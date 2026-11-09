@@ -1,11 +1,15 @@
 module v2.cli.parse_verdict_reuse
 
 import std.types { Bool, Char, Int, List, Map, String }
-import std.algebra { FreeMonoid, Empty, FreeSemigroup, empty_map, fold_list, list_head, list_map, map_insert }
+import std.algebra { FreeMonoid, Empty, FreeSemigroup, empty_map, fold_list, list_head, list_map, map_insert, map_lookup }
 import std.optional { Absent, Optional, Present }
 import std.integer { int_to_decimal_string }
 import std.coercion { unicode_scalar_fold, unicode_scalar_unfold }
 import v2.std.text { string_split }
+import v2.std.read_set {
+  ReadSetDigestAccepts, DigestAcceptsRecorded, DigestAcceptsAbsent, DigestAcceptsUnreadable,
+  read_set_path_is_normal,
+}
 import extdeps.filesystem.filesystem_io {
   Filesystem,
   FilesystemReadOutcome,
@@ -35,18 +39,50 @@ import gunbc.parse_verdict_schema {
 // A READ THAT DID NOT SUCCEED IS A MISS, NEVER A PASS. A restore that found no entry (evicted,
 // released after idle, or never published) leaves no file; a file that exists and cannot be read is
 // also not usable. Both refuse reuse and re-parse, which is the safe direction: the failure arm
-// narrows to the walk and cannot mint an Accepted. They are not distinguished here because nothing
-// downstream acts differently on them; the typed standing records which blob was unusable.
+// narrows to the walk and cannot mint an Accepted. `receipt_lines` carries the read state and the
+// decoded integrity as the authority's OWN accepted-payload sum: a blob the restore never put back is
+// `DigestAcceptsAbsent` (the cache miss, never corrupt), a blob that came back and decoded cleanly is
+// `DigestAcceptsRecorded` (module path -> sealed source digest, compiler-bound), and a blob whose
+// contents are malformed or self-conflicting is `DigestAcceptsUnreadable` naming the offending line --
+// a corrupt recording is never silently narrowed into a valid one (fail-closed).
 type ParseVerdictBase {
   ancestor: Optional<String>
   i_base: Optional<String>
-  receipt_lines: Optional<Map<String, Bool>>
+  receipt_lines: ReadSetDigestAccepts
 }
 
 data parse_verdict_line_delimiter: Char = 10
 
-// ONE CROSSING: the receipts text unfolds to scalars, splits on the newline scalar, and each line
-// folds back to the kernel text the digests are keyed in. The set is built once per run.
+data parse_verdict_field_delimiter: Char = 9
+
+// One accepted receipt line of this family, carrying its OWN provenance: the module's stable PATH (field 1), the
+// source digest it sealed (field 2), and the COMPILER identity that stamped it (field 3). A receipt may enter the
+// digest recording only when its compiler matches the compiler performing the reuse (section 2.1's generator-identity
+// condition applied PER RECEIPT: a restored identity file vouches for the blob's generator as a whole but cannot
+// substitute for verification of an individual receipt's own provenance).
+type ParseVerdictReceiptEntry {
+  path: String
+  digest: String
+  compiler: String
+}
+
+// A receipts line decoded against this family. NotReceipt: a blank line, a line of another family, or a
+// well-formed line whose status is not Accepted -- skipped, it is not an accepted receipt of this recording.
+// Malformed: a line that CLAIMS this family's Accepted status but lacks a path, source digest, or compiler -- an
+// integrity violation that corrupts the whole recording (fail-closed), never a silent skip.
+type ReceiptLineParse
+  = Entry { entry: ParseVerdictReceiptEntry }
+  | NotReceipt
+  | Malformed
+
+// The fold state carries the compiler we are reusing under (so no closure capture is needed) plus a sticky corrupt
+// marker: once any same-family line is malformed, or two accepted records disagree on one path's sealed digest, the
+// whole recording is corrupt and STAYS corrupt; the accepted map is built alongside so a clean blob decodes to
+// DigestAcceptsRecorded.
+type ReceiptFoldState { corrupt: Optional<String>, accepts: Map<String, String>, current_compiler: String }
+
+// The receipts text unfolds to scalars and splits on the newline scalar; each line is then folded back to the
+// kernel text the digests are keyed in (ruling `gunbc.design_ruling text_crossings_go_through_the_unfold`).
 fn parse_verdict_line_scalars(text: String) -> FreeMonoid<FreeMonoid<Char>> {
   string_split(
     source: unicode_scalar_unfold(s: text),
@@ -54,19 +90,131 @@ fn parse_verdict_line_scalars(text: String) -> FreeMonoid<FreeMonoid<Char>> {
   )
 }
 
-fn parse_verdict_receipt_lines(text: String) -> Map<String, Bool> {
-  let no_lines: Map<String, Bool> = empty_map()
-  fold_list(
+// THE RECEIPTS RECORDING: read a restored receipts blob into the authority's accepted-payload sum, binding each
+// accepted record to the compiler that stamped it and REFUSING to mint a valid recording from a malformed or
+// self-conflicting blob. ONE CROSSING (text_crossings_go_through_the_unfold): the text unfolds to scalars, splits on
+// the newline scalar, each line folds back to kernel text and splits on the tab field delimiter. A line enters the
+// recording (module path -> sealed source digest) only if it is an Accepted line of this family STAMPED BY
+// `current_compiler`; a line claiming this family's Accepted status but malformed, or two records disagreeing on one
+// path's digest, makes the WHOLE blob DigestAcceptsUnreadable (naming the line) -- never a silently narrowed valid
+// recording (gunbc.design_argument::fail_closed). Nothing here enumerates the map; every read is a keyed lookup.
+fn parse_verdict_receipt_lines(text: String, current_compiler: String) -> ReadSetDigestAccepts {
+  let final = fold_list(
     xs: parse_verdict_line_scalars(text: text),
-    empty: no_lines,
-    cons: fn(acc, line) { map_insert(m: acc, key: unicode_scalar_fold(xs: line), value: true) }
+    empty: ReceiptFoldState { corrupt: Absent, accepts: empty_map(), current_compiler: current_compiler },
+    cons: fn(state, raw) {
+      match state.corrupt {
+        Present { value: _ } => state
+        Absent => parse_verdict_receipt_consume(state: state, line: unicode_scalar_fold(xs: raw))
+      }
+    }
   )
+  match final.corrupt {
+    Present { value: offending } => DigestAcceptsUnreadable { line: offending }
+    Absent => DigestAcceptsRecorded { accepts: final.accepts }
+  }
+}
+
+// Fold one already-folded-to-kernel receipts line into the state: sticky-corrupt once set; skip non-receipts; a
+// malformed accepted claim corrupts; an accepted record stamped by another compiler is foreign (never admitted, so
+// its module re-parses); an accepted record whose path already sealed a DIFFERENT digest is a conflict (corrupt).
+fn parse_verdict_receipt_consume(state: ReceiptFoldState, line: String) -> ReceiptFoldState {
+  match parse_verdict_receipt_line(line: line) {
+    NotReceipt => state
+    Malformed => ReceiptFoldState { corrupt: Present { value: line }, accepts: state.accepts, current_compiler: state.current_compiler }
+    Entry { entry: e } =>
+      if e.compiler != state.current_compiler { state }
+      else {
+        match map_lookup(m: state.accepts, key: e.path) {
+          Present { value: sealed } =>
+            if sealed != e.digest { ReceiptFoldState { corrupt: Present { value: line }, accepts: state.accepts, current_compiler: state.current_compiler } }
+            else { state }
+          Absent => ReceiptFoldState { corrupt: Absent, accepts: map_insert(m: state.accepts, key: e.path, value: e.digest), current_compiler: state.current_compiler }
+        }
+      }
+  }
+}
+
+// Decode one receipts line against this family. Blank and other-family lines are NotReceipt (skipped); a well-formed
+// line of this family whose status is not Accepted is NotReceipt; a line claiming this family's Accepted status but
+// missing (or empty in) a path, source digest, or compiler is Malformed (an integrity violation). Field order
+// matches parse_verdict_stored_accepted_line: family, module path, source digest, compiler, status.
+fn parse_verdict_receipt_line(line: String) -> ReceiptLineParse {
+  if line == "" { NotReceipt }
+  else {
+    match parse_verdict_field(line: line, index: 0) {
+      Present { value: family } =>
+        if family != parse_verdict_request_family { NotReceipt }
+        else {
+          match parse_verdict_field(line: line, index: 4) {
+            Present { value: status } =>
+              if status != parse_verdict_receipt_accepted { NotReceipt }
+              else {
+                match parse_verdict_field(line: line, index: 1) {
+                  Present { value: path } =>
+                    match parse_verdict_field(line: line, index: 2) {
+                      Present { value: digest } =>
+                        match parse_verdict_field(line: line, index: 3) {
+                          Present { value: compiler } =>
+                            // Exactly five fields: an Accepted claim with a sixth field is not this wire format, and
+                            // silently ignoring the tail would let a hand-mangled record authorize reuse.
+                            match parse_verdict_field(line: line, index: 5) {
+                              Present { value: _ } => Malformed
+                              Absent =>
+                                // The authority's member rule (v2.std.read_set::read_set_path_is_normal) is the
+                                // admission rule for EVERY recorded member, applied here before insertion -- not
+                                // only to the requested member at validation time -- so one malformed non-normal
+                                // member corrupts the blob rather than hiding inside an otherwise-valid recording.
+                                if path == "" || digest == "" || compiler == "" || read_set_path_is_normal(path: path) == false { Malformed }
+                                else { Entry { entry: ParseVerdictReceiptEntry { path: path, digest: digest, compiler: compiler } } }
+                            }
+                          Absent => Malformed
+                        }
+                      Absent => Malformed
+                    }
+                  Absent => Malformed
+                }
+              }
+            Absent => Malformed
+          }
+        }
+      Absent => NotReceipt
+    }
+  }
+}
+
+type ParseVerdictFieldCursor { position: Int, found: Optional<String> }
+
+// ONE CROSSING: the kernel receipt field list is split through the unfold (text_crossings_go_through_the_unfold);
+// each field is a scalar list, folded back to kernel text by `parse_verdict_field` (mirrors parse_verdict_line_scalars).
+fn parse_verdict_field_scalars(line: String) -> FreeMonoid<FreeMonoid<Char>> {
+  string_split(source: unicode_scalar_unfold(s: line), delimiter: FreeSemigroup { head: parse_verdict_field_delimiter, tail: Empty })
+}
+
+// Extracts field `index` from a tab-delimited kernel line. This uses `fold_list` (not `skip`/`list_head`) because
+// `string_split` emits a kernel vector whose Rust representation is not the generic `FreeMonoid` carrier that
+// `skip`/`list_head` take; `fold_list` over the scalar split is the composition the v2-native codegen admits (the
+// same shape parse_verdict_line_scalars feeds the receipts reader).
+fn parse_verdict_field(line: String, index: Int) -> Optional<String> {
+  let cursor = fold_list(
+    xs: parse_verdict_field_scalars(line: line),
+    empty: ParseVerdictFieldCursor { position: 0, found: Absent },
+    cons: fn(state, value) {
+      if state.position == index {
+        ParseVerdictFieldCursor { position: state.position + 1, found: Present { value: unicode_scalar_fold(xs: value) } }
+      } else {
+        ParseVerdictFieldCursor { position: state.position + 1, found: state.found }
+      }
+    }
+  )
+  cursor.found
 }
 
 fn parse_verdict_base_from(
   ancestor: Optional<String>,
   identity: FilesystemReadOutcome,
-  receipts: FilesystemReadOutcome
+  receipts: FilesystemReadOutcome,
+  current_compiler: String
 ) -> ParseVerdictBase {
   ParseVerdictBase {
     ancestor: ancestor,
@@ -74,9 +222,12 @@ fn parse_verdict_base_from(
       FilesystemReadSucceeded { content: c } => Present { value: c }
       FilesystemReadRefused { error: _ } => Absent
     },
+    // A receipts blob the restore never put back is a MISSING recording (DigestAcceptsAbsent), never corrupt; a
+    // blob that came back is decoded under the compiler we are reusing under, so a foreign-compiler or malformed
+    // blob can only ever narrow reuse, never mint it.
     receipt_lines: match receipts {
-      FilesystemReadSucceeded { content: c } => Present { value: parse_verdict_receipt_lines(text: c) }
-      FilesystemReadRefused { error: _ } => Absent
+      FilesystemReadSucceeded { content: c } => parse_verdict_receipt_lines(text: c, current_compiler: current_compiler)
+      FilesystemReadRefused { error: _ } => DigestAcceptsAbsent
     }
   }
 }
@@ -99,14 +250,15 @@ fn parse_verdict_ancestor_from(record: FilesystemReadOutcome) -> Optional<String
 // THE RESTORE CHAIN ALREADY CHOSE THE ANCESTOR (first published identity wins, gated in the
 // workflow), so there is exactly one pair of blobs here and nothing to select between: a mismatch
 // refuses reuse in the standing, and no other ancestor is ever consulted.
-fn parse_verdict_base_read(dir: String) -> ParseVerdictBase {
+fn parse_verdict_base_read(dir: String, current_compiler: String) -> ParseVerdictBase {
   let record = Filesystem.Read(path: parse_verdict_restored_path(dir: dir, basename: parse_verdict_restore_ancestors_basename))
   let identity = Filesystem.Read(path: parse_verdict_restored_path(dir: dir, basename: parse_verdict_restore_identity_basename))
   let receipts = Filesystem.Read(path: parse_verdict_restored_path(dir: dir, basename: parse_verdict_restore_receipts_basename))
   parse_verdict_base_from(
     ancestor: parse_verdict_ancestor_from(record: filesystem_read_outcome(content: record.content, success: record.success, error: record.error)),
     identity: filesystem_read_outcome(content: identity.content, success: identity.success, error: identity.error),
-    receipts: filesystem_read_outcome(content: receipts.content, success: receipts.success, error: receipts.error)
+    receipts: filesystem_read_outcome(content: receipts.content, success: receipts.success, error: receipts.error),
+    current_compiler: current_compiler
   )
 }
 
