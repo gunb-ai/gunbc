@@ -272,8 +272,8 @@ pub enum RegenReceipt {
     ///
     /// "Not asked" was already modelled correctly by the `first_generation_equal()` accessor's
     /// documented `Option`, so the Bool was a second representation disagreeing with a correct
-    /// neighbour, not a missing state (DESIGN §3). The variant has no `first_generation_equal` and no digest
-    /// fields, so the fabrication is UNWRITABLE (DESIGN §4b, structural impossibility). It carries
+    /// neighbour, not a missing state (gunbc.design_argument::single_authority). The variant has no `first_generation_equal` and no digest
+    /// fields, so the fabrication is UNWRITABLE (gunbc.design_argument::guarantee_ladder, structural impossibility). It carries
     /// the one thing a refusal knows -- why it refused.
     #[serde(rename = "refused")]
     Refused {
@@ -1063,7 +1063,7 @@ fn compile_stage0(
 
 /// THE EMISSION AND ITS EDGE ADMISSION, OVER A SUPPLIED PACKAGE GRAPH. `compile_stage0` supplies
 /// the seed tree's host shell and partition; a witness over a fixture population supplies the rows
-/// that population is built under, rather than being judged against the seed's (DESIGN §3, a
+/// that population is built under, rather than being judged against the seed's (gunbc.design_argument::single_authority, a
 /// witness supplies its inputs). The admission itself is not relaxed for either.
 fn compile_stage0_admitted(
     sources: &[(String, String)],
@@ -1160,12 +1160,22 @@ fn emitted_tree_packages(
                  {roots:?}, so the emitted tree's package graph cannot be read"
             )
         })?;
-    // ITS OWN INDEX, RELEASED WITH THIS READ. The regen roots are read here for this one entry
-    // and by nothing after it, so the pool is not put in the thread's shared memo, where it
-    // would sit beside the round's source-roots index for the life of the thread.
-    let index = super::build_multi_entry_index(&roots);
-    let (graph, indices) = super::resolve_entry_with_index(&index, &entry.to_string_lossy())
+    // ONE ROUTE, THE CHEAP ONE. This read resolves ONE entry, and it used to build the whole
+    // regen tree's index to do it -- `build_multi_entry_index`, the route this file measures at
+    // 169 s and 10.13 GB for a 26-module closure (see `resolve_orchestrator_model`), paid inside
+    // the orchestrator between generations. That is what `GenerationStateRetainedByOrchestrator`
+    // caught: the peak is the orchestrator's own, so the ~8 GB stayed resident after the read
+    // ended and the next generation was refused. Every other orchestrator-side model load goes
+    // through `resolve_orchestrator_model` and pays ~150 MB; this was the one site that forked to
+    // the whole-tree route (gunbc.design_argument::earliest_unjustified_boundary: a cost's costliest route avoided by one caller and
+    // paid by another is a fork, and the rule is one route at the owed cost). The child that
+    // answers the partition-move question took the same route and exited -- "process exit frees
+    // the index" -- which is why the round peaked in a child while the orchestrator alone was
+    // charged for the memory.
+    report_cgroup_memory_diagnostic("parent.emitted_tree.resolve.begin");
+    let (graph, indices) = resolve_orchestrator_model(&roots, &entry.to_string_lossy())
         .map_err(|e| format!("refusal: the emitted tree's package graph did not resolve: {e}"))?;
+    report_cgroup_memory_diagnostic("parent.emitted_tree.resolve.end");
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
     // DECODE IS NOT HAND-WRITTEN: `Value` -> `value_to_wire_json` -> `serde_json::from_value` into
     // the mirror types, the decode authority `namespace_baseline` `decode_environment_value` uses.
@@ -1186,9 +1196,11 @@ fn emitted_tree_packages(
     }
     let rows: im::Vector<Rc<GeneratedPartitionCrateRow>> =
         decode(&ctx, "generated_partition_crate_rows")?;
+    report_cgroup_memory_diagnostic("parent.emitted_tree.decode.rows");
     let host_shell_package_name: String = decode(&ctx, "generated_host_shell_package_name")?;
     let host_shell_dependencies: im::Vector<String> =
         decode(&ctx, "generated_host_shell_partition_dependencies")?;
+    report_cgroup_memory_diagnostic("parent.emitted_tree.decode.end");
     Ok(Rc::new(Stage0EmittedTreePackages {
         rows: Rc::new(rows),
         host_shell_package_name,
@@ -1223,7 +1235,7 @@ fn is_compared_generated_basename(basename: &str) -> bool {
 /// non-Rust artifact out of that roster was `is_compared_generated_basename` — a predicate
 /// upstream, in a different function, answering a DIFFERENT question ("what does the drift
 /// comparison denominate?"). Install admissibility had no authority of its own; it was a
-/// consequence of the comparator's denominator, which is exactly the shape DESIGN section 3
+/// consequence of the comparator's denominator, which is exactly the shape gunbc.design_argument::single_authority
 /// forbids: one fact with no home, inferred from another fact that is free to move.
 ///
 /// THIS GUARD DELIBERATELY DOES NOT ASK WHETHER THE ARTIFACT IS RUST, and the omission is the
@@ -1247,7 +1259,7 @@ fn is_compared_generated_basename(basename: &str) -> bool {
 /// identity work, not of this boundary.
 ///
 /// So the boundary asks only what it can answer on its own, and refuses rather than widening
-/// (DESIGN section 5) — both arms kind-agnostic:
+/// (gunbc.design_argument::fail_closed) — both arms kind-agnostic:
 ///
 /// - a path that is not a bare basename cannot address anything outside `stage0_src`;
 /// - a hand-maintained mirror is authored, never installed — the remedy for an emitted/committed
@@ -1270,7 +1282,7 @@ fn is_compared_generated_basename(basename: &str) -> bool {
 /// `RegenSurfaceIdentity` already carries for the candidate manifest) instead of a
 /// `List<String>`, and the installer takes that type rather than `&[String]`. That
 /// projection is the next-rung trigger; this admission dissolves with it, while the RED below
-/// stays enrolled as the regression control the climb does not retire (DESIGN 4b(4)).
+/// stays enrolled as the regression control the climb does not retire (gunbc.design_argument::guarantee_ladder (dissolution on climb)).
 fn admit_install_target(basename: &str) -> Result<(), String> {
     if basename.is_empty() || emit_path_basename(basename) != basename {
         return Err(format!(
@@ -1296,10 +1308,10 @@ fn admit_install_target(basename: &str) -> Result<(), String> {
 /// row under-enumerated: it reaches a path outside `stage0_src` without the join ever changing.
 ///
 /// RUNG, HONESTLY: this is a BOUNDARY OBSERVATION, not a construction, and deliberately not on the
-/// ladder (DESIGN 4b, "outside the modeled guarantee"). The filesystem is external reality that no
+/// ladder (gunbc.design_argument::guarantee_ladder, "outside the modeled guarantee"). The filesystem is external reality that no
 /// modeled type can make impossible, so the only honest arms are LOOK and REFUSE. It refuses on
 /// unreadable as well as on symlink: an unreadable destination is ignorance about containment, and
-/// answering ignorance with "proceed" is the absorbing fallback DESIGN 5 forbids.
+/// answering ignorance with "proceed" is the absorbing fallback gunbc.design_argument::fail_closed forbids.
 fn admit_install_destination(stage0_src: &Path, basename: &str) -> Result<(), String> {
     let destination = stage0_src.join(basename);
     // symlink_metadata, never metadata: metadata FOLLOWS the link and would report the target's
@@ -1663,9 +1675,9 @@ fn compare_generated_surfaces(
         // second pass (a `let ... = if (long_receiver_chain)` splits differently), so the fold
         // reported the same file as drifted at generation 2, 3 and 4 with the candidate on disk
         // BYTE-IDENTICAL to the committed file. No reachable green; the only silence was
-        // hand-editing the mirror -- validation where construction was available (DESIGN 5).
+        // hand-editing the mirror -- validation where construction was available (gunbc.design_argument::fail_closed).
         // Comparing against the written artifact makes "install the candidate" a guaranteed
-        // remedy by construction, and the two derivations of the candidate one fact (DESIGN 3).
+        // remedy by construction, and the two derivations of the candidate one fact (gunbc.design_argument::single_authority).
         let committed = fs::read_to_string(&committed_path)
             .map_err(|e| format!("read committed {}: {e}", committed_path.display()))?;
         let candidate = lookup_emitted(emitted, basename)
@@ -1715,7 +1727,7 @@ fn verify_hand_maintained(
                     Ok(candidate_norm) => {
                         // THE MEASUREMENT ABOVE USED TO BE DISCARDED HERE: the divergent branch was
                         // an empty block under a comment saying drift is expected on a clean tree
-                        // -- the absorbing fallback (DESIGN section 5) in authoring form. A real
+                        // -- the absorbing fallback (gunbc.design_argument::fail_closed) in authoring form. A real
                         // divergence between authority and committed artifact produced no typed,
                         // located, countable output, so its frequency was zero by construction and
                         // never ranked for repair. Membership in HAND_MAINTAINED_STAGE0_FILES did
@@ -1931,7 +1943,7 @@ fn tree_digest_from_map(
 
 /// Maximum rustfmt passes taken while seeking the formatter's fixed point. Exceeding it is a
 /// typed refusal, never a silent "good enough" -- a widened failure arm here would be exactly the
-/// absorbing fallback DESIGN 5 forbids, and it would restore the unclosable state below.
+/// absorbing fallback gunbc.design_argument::fail_closed forbids, and it would restore the unclosable state below.
 const NORMALIZE_FIXED_POINT_MAX_PASSES: usize = 8;
 
 /// Run rustfmt to a FIXED POINT, not once.
@@ -1950,7 +1962,7 @@ const NORMALIZE_FIXED_POINT_MAX_PASSES: usize = 8;
 /// emitted artifact must be one -- then `cargo fmt` is a no-op on it by definition and the byte
 /// comparison is exact.
 ///
-/// Construction, not validation (DESIGN 5): the disagreement is made unrepresentable by writing the
+/// Construction, not validation (gunbc.design_argument::fail_closed): the disagreement is made unrepresentable by writing the
 /// artifact in the one form both consumers agree on. Iterating here rather than teaching the
 /// comparator to tolerate a second pass is deliberate -- the fmt gate would need the tolerance
 /// too, and a tolerance shared by two gates is a hole in both.
@@ -2185,7 +2197,7 @@ pub struct ResolvedFormatter {
     /// whose emit did not change pays ZERO rustfmt spawns. Each entry stores the raw input beside
     /// the normalized output and is honoured only when the stored raw is byte-equal to the
     /// request -- a digest-named file is a LOCATION, never the identity, so a hash collision
-    /// cannot serve another input's formatting (DESIGN section 5).
+    /// cannot serve another input's formatting (gunbc.design_argument::fail_closed).
     disk_cache: Option<PathBuf>,
 }
 
@@ -2593,7 +2605,7 @@ mod tests {
             },
             &temp,
             GenerationSupervision::SlotStallVerdict {
-                ordinal: 1,
+                subject: "generation 1".to_string(),
                 model: &liveness,
             },
         )
@@ -3390,7 +3402,7 @@ pub struct RegenRoundCostOutcome {
     /// Anything that stopped the round short of install/rebuild/diff, or that the regen
     /// reported as a failure. Non-empty means the round is not a clean round.
     pub round_failures: Vec<String>,
-    /// The base commit round 1 seeded from, when this round was asked to bootstrap (DESIGN §5,
+    /// The base commit round 1 seeded from, when this round was asked to bootstrap (gunbc.design_argument::fail_closed,
     /// RFM #14963). The receipt text names it too; carrying it lets a
     /// caller (and a test) assert WHICH commit the round seeded from without parsing that text.
     /// `None` is not "it failed": it means this round was never a heal round.
@@ -3400,7 +3412,7 @@ pub struct RegenRoundCostOutcome {
 pub const REGEN_ROUND_COST_RECEIPT_REL: &str = "target/stage0-regen-round-cost.txt";
 /// Set on the single re-exec after the seed build replaced the running executable.
 const REGEN_ROUND_COST_REEXEC_ENV: &str = "GUNBC_REGEN_ROUND_COST_REEXEC";
-/// The heal round's base-mirror authority (DESIGN §5, RFM PR #14963): the base commit whose
+/// The heal round's base-mirror authority (gunbc.design_argument::fail_closed, RFM PR #14963): the base commit whose
 /// COMMITTED stage0 mirror population bootstraps round 1's seed, carried as an env value so the
 /// ref never reaches argv — the admit gate refuses any argv word containing `${{`.
 /// THE ROUND'S BOOTSTRAP AUTHORITY, its own name: the pull request's base COMMIT (`base.sha`),
@@ -3418,7 +3430,7 @@ const STAGE0_SRC_REL: &str = "src/v1/stage0/src";
 /// Workspace-relative directory holding the WHOLE SEED CRATE — `src`, `tests`, `testdata`,
 /// `Cargo.toml`, `build.rs`. The round-1 bootstrap restores this, not the mirror directory alone:
 /// what cargo compiles is the crate, so what round 1 must pin is the crate. See
-/// `base_crate_population`.
+/// `crate_population_at_commit`.
 const STAGE0_CRATE_REL: &str = "src/v1/stage0";
 
 struct CargoBuildObservation {
@@ -3459,8 +3471,13 @@ struct RegenConvergenceJournal {
     entries: Vec<RegenConvergenceJournalEntry>,
 }
 
-#[derive(Debug, Clone)]
-struct RegenConvergenceCheckpointSubject {
+/// What a convergence checkpoint is about: the commit, the stage0 input closure's authority digest,
+/// and the stage plan's. ONE value per round (`round_subject` in `run_regen_round_cost`): produced
+/// once by the checkpoint-subject child, carried across the re-exec in `SeedHandoff`, and passed to
+/// every journal write and restore of the round.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RegenConvergenceCheckpointSubject {
     starting_commit: String,
     source_authority_digest: String,
     stage_plan_authority_digest: String,
@@ -3478,7 +3495,7 @@ struct RegenConvergenceModel {
 /// 169 s and left 10.13 GB resident to resolve a 26-module closure that the demand-acquired route
 /// resolves in 2.9 s at 150 MB -- the orchestrator's whole pre-generation footprint (heal runs read
 /// 10.69-10.70 GB at generation 0). A whole-tree index serving a handful of small entries is the
-/// duplication DESIGN section 2 orders removed before any cache is considered; every orchestrator-side
+/// duplication gunbc.design_argument::demand_before_materialization orders removed before any cache is considered; every orchestrator-side
 /// model load goes through here so none of them rebuilds it later, between generations.
 fn resolve_orchestrator_model(
     source_roots: &[String],
@@ -4101,17 +4118,46 @@ fn rebuild_scope_decision_with(
     .map_err(|e| format!("refusal: {function} did not evaluate: {e}"))
 }
 
-/// The modules the host shell crate declares PLUS the shell's own root, read from the same file:
-/// the rebuild-scope fold owns a mirror through this declaration alone, so the root file is a
-/// fact this read supplies (its stem), not a spelling the fold recognises. `closure_modules`
-/// reads the declaration transitively, so a hand file a root module declares is owned too.
-fn host_shell_scope_modules(lib_rs: &Path) -> Result<Vec<String>, String> {
-    let mut modules = super::emitted_closure_compile_host::closure_modules(lib_rs)?;
-    let root = lib_rs
-        .file_stem()
-        .and_then(|stem| stem.to_str())
-        .ok_or_else(|| format!("refusal: shell root {} has no file stem", lib_rs.display()))?;
-    modules.push(root.to_string());
+/// The modules the host shell package declares PLUS each of its crate roots, read from the files
+/// that declare them: the rebuild-scope fold owns a mirror through this declaration alone, so a
+/// root file is a fact this read supplies (its stem), not a spelling the fold recognises. A
+/// package has one root per target: `lib.rs` AND the path of every `[[bin]]` in its manifest
+/// (the generated `main.rs` is the `gunbc` bin's root and no `mod` declares it, so reading
+/// `lib.rs` alone left it `MirrorHasNoOwningPackage`). `closure_modules` reads each root's
+/// declarations transitively, so a hand file any root declares is owned too. An unreadable
+/// manifest or bin root is returned, never rendered as an empty roster.
+fn host_shell_scope_modules(lib_rs: &Path, manifest: &Path) -> Result<Vec<String>, String> {
+    let package_dir = manifest
+        .parent()
+        .ok_or_else(|| format!("refusal: manifest {} has no directory", manifest.display()))?;
+    let mut roots = vec![lib_rs.to_path_buf()];
+    let text = std::fs::read_to_string(manifest)
+        .map_err(|e| format!("refusal: shell manifest {}: {e}", manifest.display()))?;
+    // ONE READER of the manifest's bin roster (`cli_run`), not a second TOML walk here.
+    match super::parse_stage0_cargo_manifest_bin_paths(&text) {
+        super::Stage0CargoManifestBinParse::Parsed {
+            authored_relative_paths,
+        } => {
+            for path in authored_relative_paths {
+                roots.push(package_dir.join(path));
+            }
+        }
+        super::Stage0CargoManifestBinParse::Refused { detail } => {
+            return Err(format!(
+                "refusal: shell manifest {}: {detail}",
+                manifest.display()
+            ));
+        }
+    }
+    let mut modules = Vec::new();
+    for root in &roots {
+        modules.extend(super::emitted_closure_compile_host::closure_modules(root)?);
+        let stem = root
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .ok_or_else(|| format!("refusal: shell root {} has no file stem", root.display()))?;
+        modules.push(stem.to_string());
+    }
     Ok(modules)
 }
 
@@ -4173,18 +4219,53 @@ fn regen_convergence_journal_path(workspace: &Path) -> PathBuf {
     workspace.join(REGEN_CONVERGENCE_JOURNAL_REL)
 }
 
+/// THE ONE PRODUCER of a round's checkpoint subject. Its source digest is taken over the stage0 input
+/// closure (`regen_input_sources`), which builds the whole-tree `build_multi_entry_index`, so only the
+/// checkpoint-subject child calls it (`run_checkpoint_subject`); the orchestrator consumes the value.
 fn current_convergence_checkpoint_subject(
     workspace: &Path,
 ) -> Result<RegenConvergenceCheckpointSubject, String> {
+    let (starting_commit, stage_plan_authority_digest) = checkpoint_subject_live_facts(workspace)?;
     Ok(RegenConvergenceCheckpointSubject {
-        starting_commit: git_head_sha(workspace)?,
+        starting_commit,
         source_authority_digest: authority_digest_from_sources(&super::regen_input_sources(
             workspace,
         )?)?,
-        stage_plan_authority_digest: path_digest(
-            &workspace.join("src/v2/workflow/regen_convergence_transaction.dag"),
-        )?,
+        stage_plan_authority_digest,
     })
+}
+
+const STAGE_PLAN_AUTHORITY_REL: &str = "src/v2/workflow/regen_convergence_transaction.dag";
+
+/// The checkpoint subject's two CHEAP facts, read live: the commit and the stage plan's digest. The
+/// producer reads them here, and so does every journal write and restore
+/// (`admit_subject_live_facts`), so the carried subject's cheap facts are re-observed at each
+/// checkpoint boundary rather than assumed. The expensive fact, the source closure's digest, is
+/// re-observed by every generation instead (`admit_generation_authority`).
+fn checkpoint_subject_live_facts(workspace: &Path) -> Result<(String, String), String> {
+    Ok((
+        git_head_sha(workspace)?,
+        path_digest(&workspace.join(STAGE_PLAN_AUTHORITY_REL))?,
+    ))
+}
+
+/// A journal write or restore under the carried subject first re-reads its cheap facts. A HEAD that
+/// moved, or a stage plan edited, during the round refuses: the carried subject no longer names the
+/// round, and journalling or restoring under it would checkpoint the wrong transaction.
+fn admit_subject_live_facts(
+    workspace: &Path,
+    subject: &RegenConvergenceCheckpointSubject,
+) -> Result<(), String> {
+    let (commit, plan) = checkpoint_subject_live_facts(workspace)?;
+    if commit == subject.starting_commit && plan == subject.stage_plan_authority_digest {
+        return Ok(());
+    }
+    Err(format!(
+        "CheckpointSubjectDriftedMidRound: at a checkpoint boundary the tree reads \
+         (commit={commit}, plan={plan}), but the round's checkpoint subject carries \
+         (commit={}, plan={}); the carried subject no longer names the round",
+        subject.starting_commit, subject.stage_plan_authority_digest
+    ))
 }
 
 fn convergence_checkpoint_id(journal: &RegenConvergenceJournal) -> Result<String, String> {
@@ -4199,25 +4280,35 @@ fn convergence_checkpoint_id(journal: &RegenConvergenceJournal) -> Result<String
     Ok(bytes_digest(&bytes))
 }
 
-fn restore_regen_convergence_journal(workspace: &Path) -> Result<usize, String> {
-    let subject = current_convergence_checkpoint_subject(workspace)?;
-    restore_regen_convergence_journal_for_subject(workspace, &subject).map(|paths| paths.len())
+/// Return every journalled path to the byte recorded before the round, and report WHICH were put
+/// back and WHICH were removed (workspace-relative). The paths are returned rather than re-derived by
+/// a caller so that the journal keeps exactly one reader (gunbc.design_argument::single_authority): a round that seeded the base snapshot
+/// prints what its rollback did, and the partition-rebuild decision is fed the rewritten list — the
+/// paths whose mtime this restore moved are exactly the ones cargo will see as changed. A removed
+/// path is NOT in that second list: the head's commit does not track it, so it is not a mirror whose
+/// new bytes round 2 must rebuild around.
+/// WHAT THE JOURNAL RESTORE DID, in the two actions it can take per entry. A journalled path is
+/// either put back by writing the bytes the round found there (`rewritten`), or taken away because
+/// the round found NOTHING there and the round itself created the file (`removed`, the
+/// `AbsentBeforeInstall` shape). They are kept apart because the receipt has to say which happened:
+/// a path the head's commit does not track is removed, and reporting that as a rewrite would claim
+/// the round restored a byte the head never had.
+#[derive(Debug, Default, Clone)]
+struct RegenJournalRestore {
+    rewritten: Vec<String>,
+    removed: Vec<String>,
 }
 
-/// Return every journalled path to the byte recorded before the round, and report WHICH were put
-/// back (workspace-relative). The paths are returned rather than re-derived by a caller so that the
-/// journal keeps exactly one reader (§3): a round that seeded the base snapshot prints what its
-/// rollback restored, and the partition-rebuild decision is fed the same list — the paths whose
-/// mtime this restore moved are exactly the ones cargo will see as changed.
 fn restore_regen_convergence_journal_for_subject(
     workspace: &Path,
     subject: &RegenConvergenceCheckpointSubject,
-) -> Result<Vec<String>, String> {
+) -> Result<RegenJournalRestore, String> {
     let root = regen_convergence_journal_path(workspace);
     let manifest_path = root.join("journal.json");
     if !manifest_path.is_file() {
-        return Ok(Vec::new());
+        return Ok(RegenJournalRestore::default());
     }
+    admit_subject_live_facts(workspace, subject)?;
     let manifest: RegenConvergenceJournal = serde_json::from_slice(
         &fs::read(&manifest_path).map_err(|e| format!("read {}: {e}", manifest_path.display()))?,
     )
@@ -4275,7 +4366,7 @@ fn restore_regen_convergence_journal_for_subject(
                 .map_err(|e| format!("prepare validated restore {}: {e}", backup.display()))?;
         }
     }
-    let mut restored: Vec<String> = Vec::new();
+    let mut restored = RegenJournalRestore::default();
     for entry in &manifest.entries {
         let destination = workspace.join(&entry.relative_path);
         if matches!(
@@ -4287,7 +4378,7 @@ fn restore_regen_convergence_journal_for_subject(
             // journal backed up, the rename is redundant work, and it bumps an mtime that cargo's
             // path-dependency fingerprint reads as a change — the same defect the round-1 seed now
             // avoids (#14876 specimen: an excluded crate recompiled because a restore rewrote a file
-            // whose bytes had never changed). DESIGN §2.
+            // whose bytes had never changed). gunbc.design_argument::minimize_redundancy.
             if destination_bytes_equal(&destination, &prepared)? {
                 continue;
             }
@@ -4298,7 +4389,7 @@ fn restore_regen_convergence_journal_for_subject(
                     destination.display()
                 )
             })?;
-            restored.push(entry.relative_path.clone());
+            restored.rewritten.push(entry.relative_path.clone());
         } else if destination.exists() {
             fs::remove_file(&destination).map_err(|e| {
                 format!(
@@ -4306,6 +4397,12 @@ fn restore_regen_convergence_journal_for_subject(
                     destination.display()
                 )
             })?;
+            // THE PATH IS NAMED IN THE RETURN, NOT ONLY REMOVED. A journalled
+            // `AbsentBeforeInstall` entry is the shape a round-1 bootstrap leaves when the PR DELETED
+            // a path: the restore's action on it is removal, not a rewrite, and a teardown line that
+            // counted it among "paths rewritten to the head's own bytes" would describe an action
+            // that did not happen.
+            restored.removed.push(entry.relative_path.clone());
         }
     }
     fs::remove_dir_all(&root)
@@ -4347,6 +4444,7 @@ fn journal_paths_for_subject(
     paths: &[(String, PathBuf)],
     subject: &RegenConvergenceCheckpointSubject,
 ) -> Result<(), String> {
+    admit_subject_live_facts(workspace, subject)?;
     let root = regen_convergence_journal_path(workspace);
     fs::create_dir_all(&root).map_err(|e| format!("create {}: {e}", root.display()))?;
     let manifest_path = root.join("journal.json");
@@ -4423,9 +4521,11 @@ fn journal_paths_for_subject(
     fs::write(&manifest_path, bytes).map_err(|e| format!("write {}: {e}", manifest_path.display()))
 }
 
-/// THE SEED CRATE'S OWN SOURCE POPULATION as committed in a base commit: every path git tracks
-/// under `src/v1/stage0`, keyed by its repo-relative path — mirrors at any depth, the
-/// hand-maintained files, and the hand-maintained directories.
+/// THE SEED CRATE'S OWN SOURCE POPULATION as committed at ONE COMMIT: every path git tracks under
+/// `src/v1/stage0`, keyed by its repo-relative path — mirrors at any depth, the hand-maintained
+/// files, and the hand-maintained directories. Called for the BASE commit by the bootstrap authority
+/// and for the HEAD commit by the same round, because the delta between those two populations is the
+/// fact the receipt has to state; one git spelling for both (gunbc.design_argument::single_authority).
 ///
 /// There is deliberately NO filter here, and the two that used to be are the bug this replaces.
 /// `!rest.contains('/')` skipped every nested mirror (`cli_run/compile_clean.rs`,
@@ -4444,7 +4544,7 @@ fn journal_paths_for_subject(
 /// COMPILES, and the head's authored `.dag`/`.rs` authorities are what it REGENERATES — round 2
 /// installs the regeneration over the whole base surface, so a base byte here is transient and can
 /// never be published. What a base checkout can no longer do is hand the round half of each.
-fn base_crate_population(
+fn crate_population_at_commit(
     workspace: &Path,
     commit: &str,
 ) -> Result<BTreeMap<String, String>, String> {
@@ -4462,7 +4562,7 @@ fn base_crate_population(
         .map_err(|e| format!("git ls-tree {commit}: {e}"))?;
     if !output.status.success() {
         return Err(format!(
-            "BootstrapBaseMirrorUnreadable: git ls-tree {commit} -- {STAGE0_CRATE_REL}: {}",
+            "git ls-tree {commit} -- {STAGE0_CRATE_REL}: {}",
             String::from_utf8_lossy(&output.stderr)
         ));
     }
@@ -4505,6 +4605,76 @@ fn worktree_crate_population(stage0_crate: &Path) -> Result<BTreeSet<String>, St
     Ok(present)
 }
 
+/// THE BASE/HEAD PATH-SET DELTA, computed in ONE place from the three populations a round can see.
+///
+/// THREE SETS, and the round must not confuse them:
+/// - THE BASE POPULATION: every path the base commit tracks under the seed crate. That is the
+///   validated bootstrap input, and round 1 compiles ALL of it, with no filter of any kind. Every
+///   filter that used to sit here is the defect this replaces: the last one, `from_base ∩ worktree`,
+///   dropped the paths a PR had DELETED while still restoring base's `lib.rs`, which declares them,
+///   so round 1 compiled a crate that was neither base nor head. The two retained specimens, read
+///   from the heal logs and the object store (commands and counts in
+///   `gunbc.recurring_failure_mode.heal_round_one_bootstraps_from_the_mirror_the_change_must_repair`):
+///   PR #15418 heal run 41605027842 job 125813087856, base `5ff414e66015` tracks 303 crate paths and
+///   head `5b7b2bc2` tracks 300, the receipt printed `paths=300`, and rustc printed
+///   `error[E0583]: file not found for module v1_tests_claim_interpolation_hole_census` and the same
+///   for `v1_tests_claim_shared_type_leaf_collision_census`; PR #15540 heal run 41591786053 job
+///   125769944667, base `6e1c65a36bcb` 303 and head `3be90ce5363e` 302, receipt `paths=302`,
+///   `error[E0583]: file not found for module required_lane_resolution_census` at the NESTED path
+///   `src/v1/stage0/src/cli_run/required_lane_resolution_census.rs`.
+/// - THE HEAD'S TRACKED POPULATION, read from the head COMMIT. "The head deleted this path" is a
+///   fact about a commit; the filesystem cannot tell a deleted path from an untracked one.
+/// - THE WORKTREE'S ON-DISK POPULATION, a filesystem walk, which also sees UNTRACKED files. It is
+///   not an authority about the head. What it is good for is exactly one thing here: telling a truly
+///   absent path from a path some other process left behind, so the round never guesses.
+///
+/// `head_deleted` is base minus head-tracked. Those paths are restored for the compile and journalled
+/// `AbsentBeforeInstall`, so the round's own teardown removes them again: absence is the head's
+/// authority, and the final regenerated output never carries a module the head deleted.
+///
+/// A `head_deleted` path that is nevertheless PRESENT ON DISK is not a deleted path — it is an
+/// untracked file sitting at a path base names. Overwriting it would clobber bytes the head never
+/// tracked; deleting it would clobber them by inference. So the round REFUSES, typed and located, and
+/// moves nothing.
+///
+/// INTERRUPTION IS THE SAME JOURNAL, NOT A NEW ONE. A round killed after the write leaves the
+/// resurrected path on disk with the journal naming it `AbsentBeforeInstall`; the next round restores
+/// that journal BEFORE it bootstraps (`restore_regen_convergence_journal` at the head of the
+/// convergence loop), which removes it. If the subject has moved since the kill, that recovery refuses
+/// with `CheckpointSubjectMismatch` instead of guessing which on-disk files "look like" base's.
+struct BasePopulationDelta {
+    /// The exact validated bootstrap input: every path the base commit tracks under the crate.
+    restore: BTreeSet<String>,
+    /// Base tracks it, the head does not: restored for the compile, removed after it.
+    head_deleted: BTreeSet<String>,
+    /// The head tracks it, base does not: it stays at the head, journalled, and counted.
+    head_added: BTreeSet<String>,
+}
+
+fn base_population_delta(
+    from_base: &BTreeMap<String, String>,
+    head_tracked: &BTreeSet<String>,
+    in_worktree: &BTreeSet<String>,
+    base_commit: &str,
+    head_commit: &str,
+) -> Result<BasePopulationDelta, String> {
+    let base: BTreeSet<String> = from_base.keys().cloned().collect();
+    let head_deleted: BTreeSet<String> = base.difference(head_tracked).cloned().collect();
+    if let Some(path) = head_deleted.iter().find(|path| in_worktree.contains(*path)) {
+        return Err(format!(
+            "BootstrapBaseMirrorUntrackedCollision: {path} is tracked by the base commit \
+             {base_commit}, is not tracked by the head {head_commit}, and is present in the \
+             worktree; the round will neither overwrite it with base's bytes nor remove it by \
+             inference"
+        ));
+    }
+    Ok(BasePopulationDelta {
+        restore: base.clone(),
+        head_deleted,
+        head_added: head_tracked.difference(&base).cloned().collect(),
+    })
+}
+
 /// What the round-1 bootstrap did, in the receipt's vocabulary.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct BaseRestore {
@@ -4523,10 +4693,16 @@ struct BaseRestore {
     /// support file is exactly where a new hand-written call to a new generated method lives, and
     /// the compile is still whole-crate base because the generated side of that call is base's.
     paths_absent_at_base: usize,
+    /// How many paths the BASE tracks that the HEAD does not: the PR deleted them. Round 1 restores
+    /// them so the crate it compiles is base's crate and not a chimera, and the journal's
+    /// `AbsentBeforeInstall` entries remove them again before anything is published. Counted, never
+    /// silent: this is the delta the receipt could not previously show, and the two specimens in
+    /// `base_population_delta` are what hiding it cost.
+    head_deleted_paths: usize,
 }
 
 /// The receipt's base-mirror arm, in the shape its renderer takes. Split out so the HOST half of
-/// the line — which commit and which two counts reach the renderer — is checkable without loading a
+/// the line — which commit and which three counts reach the renderer — is checkable without loading a
 /// corpus. The RENDERER's half (the line's text, and its absence for a round that was never asked
 /// to bootstrap) is asserted in `dag/test/claim/self_host_regen_round_cost_witness.dag`
 /// `a_bootstrapped_receipt_names_the_base_commit_after_the_header` and
@@ -4534,11 +4710,12 @@ struct BaseRestore {
 /// run. A Rust control that renders through the interpreter pays a whole corpus load per call —
 /// measured at about 50 minutes of libtest time on srv1 at `b339f6fa0e6f`, the same front-end cost
 /// this repository's native-execution lane exists to remove — so rendering does not belong here.
-fn base_mirror_receipt_authority(base: &BaseRestore) -> (String, usize, usize) {
+fn base_mirror_receipt_authority(base: &BaseRestore) -> (String, usize, usize, usize) {
     (
         base.base_commit.clone(),
         base.paths_restored,
         base.paths_absent_at_base,
+        base.head_deleted_paths,
     )
 }
 
@@ -4547,26 +4724,39 @@ fn base_mirror_receipt_authority(base: &BaseRestore) -> (String, usize, usize) {
 /// seeds nothing, so `base_bootstrap` is `None` there, and passing that `None` to the renderer would
 /// select the `SeedBuiltFromHead` arm and print a receipt claiming round 1 built from the HEAD —
 /// fabricating a plausible output for the one run whose whole purpose is to say which bytes round 1
-/// compiled. So the child re-derives the commit and both counts from the same authority the parent
-/// used. No fallback and no `.ok()`: a base commit that cannot be named refuses the round with the
-/// typed `BootstrapBaseMirrorCommitUnresolved` diagnostic instead of dropping the line.
+/// compiled. So the child re-derives the commit and all three counts through the SAME
+/// `base_population_delta` the seeding image used, rather than a second copy of the set arithmetic:
+/// two spellings of that arithmetic is how the parent and the child could disagree about a delta
+/// neither one admits. No fallback and no `.ok()`: a base commit that cannot be named refuses the
+/// round with the typed `BootstrapBaseMirrorCommitUnresolved` diagnostic instead of dropping the line,
+/// and so does an untracked file sitting at a base-only path, which is the one case the delta refuses.
 fn round_one_receipt_base_authority(
     workspace: &Path,
     base_commit_env: Option<&str>,
-) -> Result<(String, usize, usize), String> {
+) -> Result<(String, usize, usize, usize), String> {
     let (base_commit, from_base) = resolve_base_mirror_authority(workspace, base_commit_env)?;
     let in_worktree = worktree_crate_population(&workspace.join(STAGE0_CRATE_REL))?;
-    let seeded = from_base
+    let head_commit = git_head_sha(workspace)?;
+    let head_tracked: BTreeSet<String> = crate_population_at_commit(workspace, &head_commit)?
         .keys()
-        .filter(|path| in_worktree.contains(*path))
-        .count();
-    let head_added = in_worktree
-        .difference(&from_base.keys().cloned().collect())
-        .count();
-    Ok((base_commit, seeded, head_added))
+        .cloned()
+        .collect();
+    let delta = base_population_delta(
+        &from_base,
+        &head_tracked,
+        &in_worktree,
+        &base_commit,
+        &head_commit,
+    )?;
+    Ok((
+        base_commit,
+        delta.restore.len(),
+        delta.head_added.len(),
+        delta.head_deleted.len(),
+    ))
 }
 
-/// THE HEAL ROUND'S BOOTSTRAP AUTHORITY — DESIGN §5, `gunbc.recurring_failure_mode`
+/// THE HEAL ROUND'S BOOTSTRAP AUTHORITY — gunbc.design_argument::fail_closed, `gunbc.recurring_failure_mode`
 /// `heal_round_one_bootstraps_from_the_mirror_the_change_must_repair` (RFM #14963).
 ///
 /// Round 1 of the heal round compiles the seed against the BASE ref's committed stage0 mirror,
@@ -4587,7 +4777,7 @@ fn round_one_receipt_base_authority(
 /// `--base-mirror` unconditionally and the commit arrives as `HEAL_BASE_MIRROR_COMMIT`; a round
 /// that is not a
 /// heal round simply does not ask for it. One path runs per invocation — there is no second
-/// attempt, no retry, and nothing to fall back TO (§5).
+/// attempt, no retry, and nothing to fall back TO (gunbc.design_argument::fail_closed).
 ///
 /// Scope, and why it is exactly this wide:
 /// - Round 1's seed build ONLY. Rounds 2+ regenerate, install and re-measure from what the PR's own
@@ -4597,9 +4787,9 @@ fn round_one_receipt_base_authority(
 ///   depth, `tests/**`, `testdata/**`, `Cargo.toml`, `build.rs` — so that is what round 1 pins.
 ///   Restoring only top-level generated mirrors left a CRATE THAT IS NEITHER BASE NOR HEAD, and
 ///   that chimera refuses with its own E0599/E0308 while the fix sits unreachable in the tree:
-///   `base_crate_population` names the specimens.
+///   `crate_population_at_commit` names the specimens.
 /// - THE BASE SNAPSHOT EXISTS ONLY FOR THE COMPILE. `restore_regen_convergence_journal` — the round's
-///   own teardown, the one reader of the journal (§3) — puts the head's own bytes back as soon as
+///   own teardown, the one reader of the journal (gunbc.design_argument::single_authority) — puts the head's own bytes back as soon as
 ///   round 1's seed build is no longer reading them.
 ///   It is NOT enough to rely on regeneration: the generator regenerates GENERATED files, so the
 ///   hand-maintained paths the whole-crate population now includes — `required_regen_host.rs`
@@ -4618,7 +4808,7 @@ fn round_one_receipt_base_authority(
 ///   extdeps-languages, v1-artifact, emit-core, v1-compiler]`) and PR #15310 (heal run 41098380134 —
 ///   six excluded partition packages, `changed_mirrors=[v1_compiler_emit_rust.rs]`,
 ///   `closure=[v1-compiler]`). The guard is right and is NOT widened; the writer was doing redundant
-///   work (DESIGN §2), and mtimes are not restored either — a restored mtime is a second lie on the
+///   work (gunbc.design_argument::minimize_redundancy), and mtimes are not restored either — a restored mtime is a second lie on the
 ///   same file. `a_stage0_untouched_pr_moves_no_mtime_in_the_seed_or_the_restore` controls both
 ///   halves, with a discriminator so the mtime assertion cannot pass vacuously.
 /// - Every path it DOES overwrite is journalled FIRST, under the same checkpoint subject the install
@@ -4637,19 +4827,33 @@ fn bootstrap_round_one_from_base_mirror(
     let (base_commit, from_base) = resolve_base_mirror_authority(workspace, base_commit_env)?;
     let stage0_crate = workspace.join(STAGE0_CRATE_REL);
     let in_worktree = worktree_crate_population(&stage0_crate)?;
-    // RESTORE EVERYTHING BASE HAS THAT THE WORKTREE HAS; a path base has and the worktree lacks is a
-    // path the PR deleted (leaving it deleted is the head's authority), and one the worktree has and
-    // base lacks is a path the PR ADDED: it stays at the head, is still journalled, and is counted in
-    // the receipt rather than passed over silently — it is exactly where a new hand-written call to a
-    // new generated method lives, and the generated side of that call is still base's bytes.
-    let restore: BTreeSet<String> = from_base
+    // RESTORE THE EXACT VALIDATED BASE POPULATION: every path the base commit tracks under the
+    // crate, with NO filter of any kind. The rule used to be `from_base ∩ worktree`, and that
+    // intersection was a filter in the one place it mattered — it dropped exactly the paths the PR
+    // had DELETED while base's `lib.rs` went on declaring them, so round 1 compiled a crate that was
+    // neither base nor head and rustc refused with E0583. `base_population_delta` states the three
+    // sets, the two retained specimens, and the one case that still refuses: a base-only path
+    // present on disk as an untracked file, which the round neither overwrites nor removes.
+    //
+    // WHAT THIS DOES NOT DO IS RESURRECT A DELETION. A restored head-deleted path is journalled
+    // `AbsentBeforeInstall` by the same journal that snapshots every other staged path, so the
+    // round's own teardown removes it before the candidate is compared or published, and the
+    // emitter's population walk never sees a base byte for it.
+    let head_commit = git_head_sha(workspace)?;
+    let head_tracked: BTreeSet<String> = crate_population_at_commit(workspace, &head_commit)?
         .keys()
-        .filter(|path| in_worktree.contains(*path))
         .cloned()
         .collect();
-    let paths_absent_at_base = in_worktree
-        .difference(&from_base.keys().cloned().collect())
-        .count();
+    let delta = base_population_delta(
+        &from_base,
+        &head_tracked,
+        &in_worktree,
+        &base_commit,
+        &head_commit,
+    )?;
+    let restore = delta.restore;
+    let head_deleted_paths = delta.head_deleted.len();
+    let paths_absent_at_base = delta.head_added.len();
 
     // FETCH EVERY BASE BLOB ONCE AND WRITE ONLY THE PATHS WHOSE BYTES ACTUALLY DIFFER.
     //
@@ -4664,7 +4868,7 @@ fn bootstrap_round_one_from_base_mirror(
     // owning_packages=[v1-stage0-std-core, v1-stage0-v1-infer]`, closure = reverse deps, runtime not
     // in it), so the scope guard refused a round that had done nothing wrong.
     //
-    // The guard is right and stays exactly as it is; the writer is what was wrong. DESIGN §2: no
+    // The guard is right and stays exactly as it is; the writer is what was wrong. gunbc.design_argument::minimize_redundancy: no
     // redundant work. mtimes are not restored either — a restored mtime would be a second, stranger
     // lie on the same file.
     let mut base_bytes: BTreeMap<String, Vec<u8>> = BTreeMap::new();
@@ -4724,6 +4928,7 @@ fn bootstrap_round_one_from_base_mirror(
         // were already the same bytes, which is the #14876 shape and the reason no mtime moved.
         paths_rewritten: to_write.len(),
         paths_absent_at_base,
+        head_deleted_paths,
     })
 }
 
@@ -4734,7 +4939,7 @@ fn bootstrap_round_one_from_base_mirror(
 /// that a checkout's local branch and its remote-tracking ref can disagree about (a local `main`
 /// can sit behind `origin/main`); seeding the round from whichever one happens to exist, and then
 /// recording the pick as "the base commit", would fabricate a fact the round never established —
-/// DESIGN §3 (each fact lives in exactly one place) and §5 (no plausible output is fabricated).
+/// gunbc.design_argument::single_authority (each fact lives in exactly one place) and gunbc.design_argument::fail_closed (no plausible output is fabricated).
 /// GitHub has already resolved this pull request's base to a commit; that commit is the input.
 ///
 /// Every refusal is typed and located, and none of them builds from the head mirror instead:
@@ -4806,7 +5011,8 @@ fn resolve_base_mirror_authority(
             String::from_utf8_lossy(&output.stderr).trim()
         ));
     }
-    let population = base_crate_population(workspace, base_commit)?;
+    let population = crate_population_at_commit(workspace, base_commit)
+        .map_err(|e| format!("BootstrapBaseMirrorUnreadable: {e}"))?;
     if population.is_empty() {
         return Err(format!(
             "BootstrapBaseMirrorUnreadable: {env}={base_commit} carries no generated mirror \
@@ -4834,6 +5040,10 @@ struct SeedHandoff {
     cost: SeedBuildCost,
     source: String,
     built_exe: String,
+    /// The round's checkpoint subject if the image that owns the round established one (a
+    /// base-mirror round always has). Encoded explicitly as present or absent: a handoff without
+    /// the field is `HandoffPredatesRoundSubject`, never a cue to recompute.
+    round_subject: Option<RegenConvergenceCheckpointSubject>,
 }
 
 /// Why the seed handoff refuses. Standing: runtime mitigation (guarantee-ladder rung 1) -- a
@@ -4869,6 +5079,15 @@ enum SeedHandoffRefusal {
     },
     /// The carried observation does not decode.
     HandoffUndecodable {
+        value: String,
+    },
+    /// The carried observation is well formed up to the point where the round-subject field is
+    /// due and ends there: the image that wrote it predates that field (first written by 0256037,
+    /// #15855). Refused, never read as an absent subject. Distinct from `HandoffUndecodable` so it
+    /// can be counted: its remedy is known (merge the base into the head), an undecodable value's
+    /// is not.
+    HandoffPredatesRoundSubject {
+        missing_field: &'static str,
         value: String,
     },
     ReExecFailed {
@@ -4911,6 +5130,15 @@ impl std::fmt::Display for SeedHandoffRefusal {
                 f,
                 "refusal: HandoffUndecodable: {p}: {REGEN_ROUND_COST_REEXEC_ENV}={value:?}"
             ),
+            Self::HandoffPredatesRoundSubject {
+                missing_field,
+                value,
+            } => write!(
+                f,
+                "refusal: HandoffPredatesRoundSubject: {p}: the pre-exec image predates the \
+                 round-subject handoff (base 0256037): its handoff ends where `{missing_field}` \
+                 is due ({REGEN_ROUND_COST_REEXEC_ENV}={value:?}); merge the base into the head"
+            ),
             Self::ReExecFailed { path, cause } => write!(
                 f,
                 "refusal: ReExecFailed: {p}: the seed build replaced the running executable and \
@@ -4931,8 +5159,15 @@ impl SeedHandoff {
             .cost
             .cpu_ms
             .map_or("unreadable".to_string(), |c| c.to_string());
+        let subject = match &self.round_subject {
+            Some(s) => format!(
+                "subject=present;subject_commit={};subject_source={};subject_plan={}",
+                s.starting_commit, s.source_authority_digest, s.stage_plan_authority_digest
+            ),
+            None => "subject=absent".to_string(),
+        };
         format!(
-            "crates={};wall_ms={};cpu_ms={};source={};built_exe={}",
+            "crates={};wall_ms={};cpu_ms={};source={};built_exe={};{subject}",
             self.cost.compiled_crates, self.cost.wall_ms, cpu, self.source, self.built_exe
         )
     }
@@ -4945,6 +5180,11 @@ impl SeedHandoff {
         let mut field = |key: &str| -> Result<String, SeedHandoffRefusal> {
             match it.next() {
                 Some(Some((k, v))) if k == key => Ok(v.to_string()),
+                // The input ends exactly where the subject field is due: the previous encoding.
+                None if key == "subject" => Err(SeedHandoffRefusal::HandoffPredatesRoundSubject {
+                    missing_field: "subject",
+                    value: value.to_string(),
+                }),
                 _ => Err(bad()),
             }
         };
@@ -4958,6 +5198,18 @@ impl SeedHandoff {
         };
         let source = field("source")?;
         let built_exe = field("built_exe")?;
+        let round_subject = match field("subject")?.as_str() {
+            "present" => Some(RegenConvergenceCheckpointSubject {
+                starting_commit: field("subject_commit")?,
+                source_authority_digest: field("subject_source")?,
+                stage_plan_authority_digest: field("subject_plan")?,
+            }),
+            "absent" => None,
+            _ => return Err(bad()),
+        };
+        if it.next().is_some() {
+            return Err(bad());
+        }
         Ok(SeedHandoff {
             cost: SeedBuildCost {
                 compiled_crates,
@@ -4966,6 +5218,7 @@ impl SeedHandoff {
             },
             source,
             built_exe,
+            round_subject,
         })
     }
 
@@ -4986,6 +5239,7 @@ fn decide_seed_handoff(
     exe_after: &str,
     source: &str,
     cost: &SeedBuildCost,
+    round_subject: Option<&RegenConvergenceCheckpointSubject>,
 ) -> Result<SeedHandoffDecision, SeedHandoffRefusal> {
     if let Some(h) = incoming {
         if h.source != source {
@@ -5015,6 +5269,7 @@ fn decide_seed_handoff(
         cost: cost.clone(),
         source: source.to_string(),
         built_exe: exe_after.to_string(),
+        round_subject: round_subject.cloned(),
     }))
 }
 
@@ -5064,7 +5319,7 @@ fn seed_cargo_build(workspace: &Path, label: &str) -> Result<CargoBuildObservati
         // the packages a scoped rebuild touched, but a refusal that names only them leaves the
         // mechanism to be inferred: three heal refusals (#14876 job 124081920078, #15310 run
         // 41098380134, #15441 run 41121984158) carried no evidence of WHY the excluded packages
-        // were dirty. Logging only — it changes no route and no decision (DESIGN section 5) — and
+        // were dirty. Logging only — it changes no route and no decision (gunbc.design_argument::fail_closed) — and
         // the lines reach a refusal's text, never a digest.
         .env("CARGO_LOG", "cargo::core::compiler::fingerprint=info")
         .current_dir(workspace)
@@ -5074,7 +5329,7 @@ fn seed_cargo_build(workspace: &Path, label: &str) -> Result<CargoBuildObservati
     let stderr = String::from_utf8_lossy(&output.stderr);
     if !output.status.success() {
         // The fingerprint log is noise in a FAILURE tail: the compiler's own diagnostics must stay
-        // the last thing a reader sees, not a `Dirty` line (§5: a refusal names the error).
+        // the last thing a reader sees, not a `Dirty` line (gunbc.design_argument::fail_closed: a refusal names the error).
         let kept: Vec<&str> = stderr
             .lines()
             .filter(|line| !line.contains("fingerprint"))
@@ -5297,7 +5552,7 @@ fn render_round_cost_receipt(
     rebuild_packages: &[String],
     executable_digest: &str,
     second_generation_candidate_digest: &str,
-    base_mirror_authority: Option<(&str, usize, usize)>,
+    base_mirror_authority: Option<(&str, usize, usize, usize)>,
 ) -> Result<String, String> {
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     let entry = round_cost_entry(source_roots)?;
@@ -5425,18 +5680,24 @@ fn render_round_cost_receipt(
             (
                 ctx.sym("base_mirror_authority"),
                 match base_mirror_authority {
-                    Some((commit, crate_paths, head_added_paths_kept)) => Value::Variant {
-                        type_name: ctx.sym("RoundOneMirrorAuthority"),
-                        variant_name: ctx.sym("FromBaseMirror"),
-                        fields: Rc::new(vec![
-                            (ctx.sym("commit"), str_value(commit)),
-                            (ctx.sym("crate_paths"), Value::Int(crate_paths as i64)),
-                            (
-                                ctx.sym("head_added_paths_kept"),
-                                Value::Int(head_added_paths_kept as i64),
-                            ),
-                        ]),
-                    },
+                    Some((commit, crate_paths, head_added_paths_kept, head_deleted_paths)) => {
+                        Value::Variant {
+                            type_name: ctx.sym("RoundOneMirrorAuthority"),
+                            variant_name: ctx.sym("FromBaseMirror"),
+                            fields: Rc::new(vec![
+                                (ctx.sym("commit"), str_value(commit)),
+                                (ctx.sym("crate_paths"), Value::Int(crate_paths as i64)),
+                                (
+                                    ctx.sym("head_added_paths_kept"),
+                                    Value::Int(head_added_paths_kept as i64),
+                                ),
+                                (
+                                    ctx.sym("head_deleted_paths"),
+                                    Value::Int(head_deleted_paths as i64),
+                                ),
+                            ]),
+                        }
+                    }
                     None => Value::Variant {
                         type_name: ctx.sym("RoundOneMirrorAuthority"),
                         variant_name: ctx.sym("SeedBuiltFromHead"),
@@ -5627,10 +5888,14 @@ fn partition_rebuild_actuation(
 /// The converse equality (the built seed's own compiled-in rows project to these same bytes) is
 /// checked after each build by `built_seed_boundary_drift`, whose answer is another loop population. Anything else keeps the
 /// typed `WholeCompilerRebuildRequired` refusal.
-fn admit_derived_partition_move(
+/// THE DECISION ITSELF, in whichever process runs it: whether this change's edits explain the moved
+/// partition mirror. It is the one step of a partition move that demands the whole-corpus closure
+/// edge index, so the orchestrator never calls it -- `partition_move_explanation_child` runs it in a
+/// child (`claim_executor --regen-partition-move-explanation`) and reads the answer back.
+fn partition_move_explained_by_this_change(
     source_roots: &[String],
     workspace: &Path,
-) -> Result<crate::v1_compiler_stage0_crates::Stage0CrateBoundaryEmitOutcome, String> {
+) -> Result<bool, String> {
     let (changed, _departed) = super::required_floor_runner::floor_git_diff_name_status_range()
         .map_err(|e| {
             format!(
@@ -5654,7 +5919,7 @@ fn admit_derived_partition_move(
     let (edges, modules) = regen_module_edges(workspace).map_err(unexplainable)?;
     let compared = compared_mirror_rows(&workspace.join("src/v1/stage0/src"), &modules)
         .map_err(unexplainable)?;
-    let explained = match rebuild_scope_decision_with(
+    match rebuild_scope_decision_with(
         source_roots,
         "stage0_partition_move_explained_by_affected_inputs",
         |ctx| {
@@ -5672,27 +5937,333 @@ fn admit_derived_partition_move(
             Ok(args)
         },
     )? {
-        ModelValue::Bool(value) => value,
-        other => {
-            return Err(format!(
-                "refusal: stage0_partition_move_explained_by_affected_inputs returned {} instead of Bool",
-                other.type_label_public()
-            ))
-        }
-    };
-    if !explained {
-        return Err(
+        ModelValue::Bool(value) => Ok(value),
+        other => Err(format!(
+            "refusal: stage0_partition_move_explained_by_affected_inputs returned {} instead of Bool",
+            other.type_label_public()
+        )),
+    }
+}
+
+/// A partition move is ADMITTED only when it is DERIVED, never asserted (no flag, no input, no
+/// allow-list): this change's edits explain the moved mirror (`partition_move_explained_by_this_change`,
+/// answered by a child process), and the boundary files the move needs are rendered from the
+/// candidate tree's rows. Anything else keeps the typed `WholeCompilerRebuildRequired` refusal.
+fn admit_derived_partition_move(
+    workspace: &Path,
+    source_roots: &[String],
+    liveness: &SupervisedSubjectModel,
+) -> Result<crate::v1_compiler_stage0_crates::Stage0CrateBoundaryEmitOutcome, String> {
+    match partition_move_explanation_child(workspace, source_roots, liveness)? {
+        PartitionMoveExplanationReceipt::Explained { .. } => {}
+        PartitionMoveExplanationReceipt::Unexplained { .. } => return Err(
             "PartitionMoveUnexplained: WholeCompilerRebuildRequired stands; the partition mirror \
-             moved but no changed input of it (gunbc.regen_affected_set) explains it"
+                 moved but no changed input of it (gunbc.regen_affected_set) explains it"
                 .to_string(),
-        );
+        ),
+        PartitionMoveExplanationReceipt::Refused { reason, .. } => return Err(reason),
     }
     let packages = emitted_tree_packages(workspace)?;
     let outcome = crate::v1_compiler_stage0_crates::partition_crate_boundary_emit_outcome_over(
         packages.rows.clone(),
         crate::v1_compiler_stage0_crates::stage0_foundation_runtime_dependencies(),
     );
+    report_cgroup_memory_diagnostic("parent.partition_move.boundary_fold.end");
     Ok((*outcome).clone())
+}
+
+/// THE ONE ANSWER THE EXPLANATION CHILD HANDS BACK, and this enum is its only definition: it is a
+/// host process-boundary carrier, encoded and decoded here and nowhere else, so no `.dag` type stands
+/// beside it (review 90466: a model with no executing route would be a second, drifting authority).
+/// The decision it carries is the model's -- `stage0_partition_move_explained_by_affected_inputs` --
+/// and the three arms keep its outcomes apart: explained, unexplained (the decision answered no),
+/// and refused (the decision could not be taken, with its cause), which is neither answer.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
+#[serde(tag = "answer", deny_unknown_fields)]
+pub enum PartitionMoveExplanationReceipt {
+    #[serde(rename = "explained")]
+    Explained { schema: String },
+    #[serde(rename = "unexplained")]
+    Unexplained { schema: String },
+    #[serde(rename = "refused")]
+    Refused { schema: String, reason: String },
+}
+
+const PARTITION_MOVE_EXPLANATION_SCHEMA: &str = "gunbc.regen_partition_move_explanation.v1";
+const PARTITION_MOVE_EXPLANATION_RECEIPT_REL: &str = "target/stage0-regen-partition-move.json";
+
+/// The child's entry (`claim_executor --regen-partition-move-explanation`): take the decision with
+/// the whole-corpus index resident in THIS process, write the answer, and exit -- process exit
+/// frees the index. Every outcome, the refusal included, is written, so the orchestrator always
+/// reads an answer rather than inferring one from an exit code.
+pub fn run_partition_move_explanation(
+    receipt_rel: &str,
+    source_roots: &[String],
+) -> Result<PartitionMoveExplanationReceipt, String> {
+    let workspace = workspace_root();
+    let schema = PARTITION_MOVE_EXPLANATION_SCHEMA.to_string();
+    let receipt = match partition_move_explained_by_this_change(source_roots, &workspace) {
+        Ok(true) => PartitionMoveExplanationReceipt::Explained { schema },
+        Ok(false) => PartitionMoveExplanationReceipt::Unexplained { schema },
+        Err(reason) => PartitionMoveExplanationReceipt::Refused { schema, reason },
+    };
+    write_child_answer(&workspace, receipt_rel, &receipt)?;
+    Ok(receipt)
+}
+
+/// The orchestrator's side of the partition-move decision: one `answer_in_child` call.
+fn partition_move_explanation_child(
+    workspace: &Path,
+    source_roots: &[String],
+    liveness: &SupervisedSubjectModel,
+) -> Result<PartitionMoveExplanationReceipt, String> {
+    let mut mode = vec!["--regen-partition-move-explanation".to_string()];
+    for root in source_roots {
+        mode.push("--source-root".to_string());
+        mode.push(root.clone());
+    }
+    answer_in_child(
+        workspace,
+        &mode,
+        PARTITION_MOVE_EXPLANATION_RECEIPT_REL,
+        liveness,
+    )
+}
+
+/// ONE TYPED ANSWER HANDED ACROSS A PROCESS BOUNDARY by a child of this image. The answer's type is
+/// its only definition (a host carrier, encoded and decoded here and nowhere else), and its schema
+/// names the version both ends must agree on.
+trait ChildAnswer: Serialize + serde::de::DeserializeOwned {
+    /// The schema the child writes and the readback demands.
+    const SCHEMA: &'static str;
+    /// The question's name, used in the supervisor's heartbeat and in every refusal.
+    const SUBJECT: &'static str;
+    fn schema(&self) -> &str;
+}
+
+impl ChildAnswer for PartitionMoveExplanationReceipt {
+    const SCHEMA: &'static str = PARTITION_MOVE_EXPLANATION_SCHEMA;
+    const SUBJECT: &'static str = "partition-move explanation";
+    fn schema(&self) -> &str {
+        match self {
+            Self::Explained { schema }
+            | Self::Unexplained { schema }
+            | Self::Refused { schema, .. } => schema,
+        }
+    }
+}
+
+/// THE ONE ROUTE BY WHICH THE ORCHESTRATOR ASKS A QUESTION WHOSE WORK IT MUST NOT HOLD (a
+/// whole-corpus index, today): run it in a child of THIS image (`/proc/self/exe`, so the child is
+/// exactly the orchestrator's own code even after a stage build replaced the executable on disk),
+/// under the same liveness supervisor as a generation, and read back its one typed answer. Process
+/// exit is the destructor for the child's work. A prior answer is retired first, and a missing,
+/// unparseable or other-schema answer refuses, so nothing is ever inferred from an exit code or a
+/// stale file.
+fn answer_in_child<R: ChildAnswer>(
+    workspace: &Path,
+    mode_argv: &[String],
+    receipt_rel: &str,
+    liveness: &SupervisedSubjectModel,
+) -> Result<R, String> {
+    let subject = R::SUBJECT;
+    let receipt_path = workspace.join(receipt_rel);
+    if receipt_path.exists() {
+        fs::remove_file(&receipt_path).map_err(|e| {
+            format!(
+                "refusal: cannot retire a prior {subject} answer {}: {e}",
+                receipt_path.display()
+            )
+        })?;
+    }
+    let mut argv = mode_argv.to_vec();
+    argv.push("--regen-receipt".to_string());
+    argv.push(receipt_rel.to_string());
+    report_cgroup_memory_diagnostic(&format!("parent.begin {subject}"));
+    let run = spawn_rebuilt_seed_regen_child(
+        Path::new("/proc/self/exe"),
+        &argv,
+        rebuilt_seed_regen_child_output_policy(),
+        workspace,
+        GenerationSupervision::SlotStallVerdict {
+            subject: subject.to_string(),
+            model: liveness,
+        },
+    );
+    report_cgroup_memory_diagnostic(&format!("parent.end {subject}"));
+    let run = run?;
+    read_child_answer::<R>(&receipt_path).map_err(|reason| {
+        format!(
+            "{reason}; status={} stderr_tail={}{}",
+            run.status,
+            run.stderr_tail,
+            rebuilt_seed_regen_truncation_note(run.stderr_truncated)
+        )
+    })
+}
+
+/// The child's side: write its one answer, whatever it is, so the orchestrator always reads one.
+fn write_child_answer<R: ChildAnswer>(
+    workspace: &Path,
+    receipt_rel: &str,
+    answer: &R,
+) -> Result<(), String> {
+    let path = workspace.join(receipt_rel);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
+    }
+    fs::write(
+        &path,
+        serde_json::to_vec(answer).map_err(|e| format!("encode {}: {e}", path.display()))?,
+    )
+    .map_err(|e| format!("write {}: {e}", path.display()))
+}
+
+/// Read a child's answer back: an absent, unparseable or other-schema answer refuses.
+fn read_child_answer<R: ChildAnswer>(path: &Path) -> Result<R, String> {
+    let subject = R::SUBJECT;
+    let bytes = fs::read(path).map_err(|e| {
+        format!(
+            "refusal: the {subject} child wrote no answer at {}: {e}",
+            path.display()
+        )
+    })?;
+    let answer: R = serde_json::from_slice(&bytes)
+        .map_err(|e| format!("refusal: parse {}: {e}", path.display()))?;
+    if answer.schema() != R::SCHEMA {
+        return Err(format!(
+            "refusal: the {subject} answered in {}, not {}",
+            answer.schema(),
+            R::SCHEMA
+        ));
+    }
+    Ok(answer)
+}
+
+/// THE ROUND'S CHECKPOINT SUBJECT, AS THE ONE ANSWER ITS CHILD HANDS BACK
+/// (`claim_executor --regen-checkpoint-subject`). Two arms: the subject, or the reason it could not
+/// be produced, which is not a subject.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
+#[serde(tag = "answer", deny_unknown_fields)]
+pub enum CheckpointSubjectReceipt {
+    #[serde(rename = "answered")]
+    Answered {
+        schema: String,
+        subject: RegenConvergenceCheckpointSubject,
+    },
+    #[serde(rename = "refused")]
+    Refused { schema: String, reason: String },
+}
+
+const CHECKPOINT_SUBJECT_SCHEMA: &str = "gunbc.regen_checkpoint_subject.v1";
+const CHECKPOINT_SUBJECT_RECEIPT_REL: &str = "target/stage0-regen-checkpoint-subject.json";
+
+impl ChildAnswer for CheckpointSubjectReceipt {
+    const SCHEMA: &'static str = CHECKPOINT_SUBJECT_SCHEMA;
+    const SUBJECT: &'static str = "checkpoint subject";
+    fn schema(&self) -> &str {
+        match self {
+            Self::Answered { schema, .. } | Self::Refused { schema, .. } => schema,
+        }
+    }
+}
+
+/// The child's entry (`claim_executor --regen-checkpoint-subject`): produce the round's checkpoint
+/// subject with the whole-tree index resident in THIS process, write it, and exit.
+pub fn run_checkpoint_subject(receipt_rel: &str) -> Result<CheckpointSubjectReceipt, String> {
+    let workspace = workspace_root();
+    let schema = CHECKPOINT_SUBJECT_SCHEMA.to_string();
+    let receipt = match current_convergence_checkpoint_subject(&workspace) {
+        Ok(subject) => CheckpointSubjectReceipt::Answered { schema, subject },
+        Err(reason) => CheckpointSubjectReceipt::Refused { schema, reason },
+    };
+    write_child_answer(&workspace, receipt_rel, &receipt)?;
+    Ok(receipt)
+}
+
+/// The orchestrator's side: the round's checkpoint subject, from its child.
+fn checkpoint_subject_child(
+    workspace: &Path,
+    liveness: &SupervisedSubjectModel,
+) -> Result<RegenConvergenceCheckpointSubject, String> {
+    match answer_in_child::<CheckpointSubjectReceipt>(
+        workspace,
+        &["--regen-checkpoint-subject".to_string()],
+        CHECKPOINT_SUBJECT_RECEIPT_REL,
+        liveness,
+    )? {
+        CheckpointSubjectReceipt::Answered { subject, .. } => Ok(subject),
+        CheckpointSubjectReceipt::Refused { reason, .. } => {
+            Err(format!("CheckpointSubjectRefused: {reason}"))
+        }
+    }
+}
+
+/// THE ROUND SUBJECT'S ONE PRODUCTION: if the slot is empty, ask `produce` once (the child) and
+/// keep the answer; if it holds a value (established earlier in this image, or carried across the
+/// re-exec), return it and produce nothing. `latest_generation` is the generation current at the
+/// moment of a late establishment, whose own reading of the closure must agree with the produced
+/// subject.
+fn establish_round_subject<'s>(
+    slot: &'s mut Option<RegenConvergenceCheckpointSubject>,
+    latest_generation: Option<(usize, &str)>,
+    produce: impl FnOnce() -> Result<RegenConvergenceCheckpointSubject, String>,
+) -> Result<&'s RegenConvergenceCheckpointSubject, String> {
+    if slot.is_none() {
+        let produced = produce()?;
+        if let Some((ordinal, observed)) = latest_generation {
+            admit_generation_authority(&produced, ordinal, observed)?;
+        }
+        *slot = Some(produced);
+    }
+    slot.as_ref()
+        .ok_or_else(|| "refusal: the round subject was not established".to_string())
+}
+
+fn regen_convergence_journal_exists(workspace: &Path) -> bool {
+    regen_convergence_journal_path(workspace)
+        .join("journal.json")
+        .is_file()
+}
+
+/// THE ROUND'S ROLLBACK. A journal never exists without the round's subject: every journal write
+/// is preceded by `establish_round_subject`. So no journal restores nothing, and a journal with no
+/// established subject is a refusal, never a cue to produce one at teardown.
+fn restore_round_journal(
+    workspace: &Path,
+    established: Option<&RegenConvergenceCheckpointSubject>,
+) -> Result<RegenJournalRestore, String> {
+    match established {
+        Some(subject) => restore_regen_convergence_journal_for_subject(workspace, subject),
+        None if !regen_convergence_journal_exists(workspace) => Ok(RegenJournalRestore::default()),
+        None => Err(
+            "CheckpointJournalWithoutRoundSubject: a convergence journal exists but this round \
+             established no checkpoint subject; it was not written by this round, and the round \
+             refuses rather than restore under a subject it did not produce"
+                .to_string(),
+        ),
+    }
+}
+
+/// THE CARRIED SUBJECT IS CHECKED, NOT ASSUMED. Every generation loads the stage0 input closure
+/// itself and reports its authority digest, so each one is a free reading of the fact the round
+/// carries. A difference means the closure changed during the round (a `.dag` edit, or a rebuilt
+/// seed that computes the closure differently) and the carried subject no longer names it, so the
+/// round refuses rather than journal or restore under a stale subject.
+fn admit_generation_authority(
+    round_subject: &RegenConvergenceCheckpointSubject,
+    ordinal: usize,
+    observed: &str,
+) -> Result<(), String> {
+    if observed == round_subject.source_authority_digest {
+        return Ok(());
+    }
+    Err(format!(
+        "CheckpointSubjectDriftedMidRound: generation {ordinal} read the stage0 input closure as \
+         {observed}, but the round's checkpoint subject carries {}; the carried subject no longer \
+         names the round's sources",
+        round_subject.source_authority_digest
+    ))
 }
 
 /// The whole-compiler rebuild the partition-generation class requires: the closure is NOT shown
@@ -5773,22 +6344,24 @@ fn boundary_drift_from_producer_report(stdout: &[u8]) -> Option<Vec<String>> {
 
 /// Install the rebuilt producer's boundary output: journal the files first (the one rollback),
 /// then let the built seed write them.
-fn install_built_seed_boundary(workspace: &Path, drifted: &[String]) -> Result<(), String> {
-    let journal_path = regen_convergence_journal_path(workspace).join("journal.json");
-    let journal: RegenConvergenceJournal = serde_json::from_slice(
-        &fs::read(&journal_path).map_err(|e| format!("read {}: {e}", journal_path.display()))?,
-    )
-    .map_err(|e| format!("parse {}: {e}", journal_path.display()))?;
-    let subject = RegenConvergenceCheckpointSubject {
-        starting_commit: journal.starting_commit,
-        source_authority_digest: journal.source_authority_digest,
-        stage_plan_authority_digest: journal.stage_plan_authority_digest,
-    };
+/// Install the built seed's boundary files, journalled under the round's established subject (a
+/// boundary install always follows a stage install, which established it; the journal write refuses
+/// if the journal on disk names another subject).
+fn install_built_seed_boundary(
+    workspace: &Path,
+    drifted: &[String],
+    subject: Option<&RegenConvergenceCheckpointSubject>,
+) -> Result<(), String> {
+    let subject = subject.ok_or_else(|| {
+        "CheckpointJournalWithoutRoundSubject: a boundary install was asked to journal before any \
+         stage install established the round's checkpoint subject"
+            .to_string()
+    })?;
     let entries = drifted
         .iter()
         .map(|path| (path.clone(), workspace.join(path)))
         .collect::<Vec<_>>();
-    journal_paths_for_subject(workspace, &entries, &subject)?;
+    journal_paths_for_subject(workspace, &entries, subject)?;
     let on_disk = current_exe_on_disk()?;
     let status = Command::new(&on_disk)
         .args(["--emit-partition-crates", "--write"])
@@ -5926,6 +6499,7 @@ fn run_built_seed_regen(
     admitted_executable_digest: &str,
     ordinal: usize,
     liveness: &SupervisedSubjectModel,
+    round_subject: Option<&RegenConvergenceCheckpointSubject>,
 ) -> Result<FirstGenerationConvergenceObservation, String> {
     let receipt_path = workspace.join(receipt_rel);
     if receipt_path.exists() {
@@ -5980,7 +6554,7 @@ fn run_built_seed_regen(
         rebuilt_seed_regen_child_output_policy(),
         workspace,
         GenerationSupervision::SlotStallVerdict {
-            ordinal,
+            subject: format!("generation {ordinal}"),
             model: liveness,
         },
     )?;
@@ -5995,7 +6569,15 @@ fn run_built_seed_regen(
     let receipt = read_first_generation_receipt(&receipt_path);
     report_cgroup_memory_diagnostic("parent.readback");
     match receipt {
-        Ok(value) => Ok(value),
+        Ok(value) => {
+            // Checked against the carried subject whenever one is established; a subject
+            // established later is checked against the generation current at that moment
+            // (`establish_round_subject`).
+            if let Some(subject) = round_subject {
+                admit_generation_authority(subject, ordinal, &value.authority_digest)?;
+            }
+            Ok(value)
+        }
         Err(reason) => Err(format!(
             "{reason}; {}",
             rebuilt_seed_regen_failed_refusal(&run)
@@ -6187,7 +6769,9 @@ fn spawn_rebuilt_seed_regen_child(
 pub(crate) enum GenerationSupervision<'a> {
     /// Production: read the slot counters from this process's own cgroup (the child inherits it).
     SlotStallVerdict {
-        ordinal: usize,
+        /// What is watched, as the heartbeat and the refusal name it: `generation N`, or the
+        /// partition-move explanation child.
+        subject: String,
         model: &'a SupervisedSubjectModel,
     },
     /// Test seam: refuse after a fixed wall, so the teardown route is executed for real without a
@@ -6272,7 +6856,7 @@ impl std::io::Write for ProgressMarkScanner {
 /// The supervisor's decision per sample, pure over (time, mark count, slot reading) so the arms are
 /// driven by a test without a process or a slot.
 struct GenerationSupervisor {
-    ordinal: usize,
+    subject: String,
     begun: Instant,
     marks_seen: u64,
     /// The slot reading the current window is measured from: taken when the last progress mark was
@@ -6288,9 +6872,9 @@ enum SupervisorStep {
 }
 
 impl GenerationSupervisor {
-    fn new(ordinal: usize, now: Instant) -> Self {
+    fn new(subject: String, now: Instant) -> Self {
         GenerationSupervisor {
-            ordinal,
+            subject,
             begun: now,
             marks_seen: 0,
             baseline: None,
@@ -6320,9 +6904,9 @@ impl GenerationSupervisor {
                     heartbeat: heartbeat_due.then(|| {
                         self.last_heartbeat = now;
                         format!(
-                            "required-regen: generation {} supervisor elapsed_s={elapsed_s} \
+                            "required-regen: {} supervisor elapsed_s={elapsed_s} \
                              progress_marks={marks} supervision=unavailable cause={cause}",
-                            self.ordinal
+                            self.subject
                         )
                     }),
                 };
@@ -6342,10 +6926,7 @@ impl GenerationSupervisor {
             Ok(judged) => judged,
             Err(failure) => {
                 return SupervisorStep::Refuse {
-                    refusal: format!(
-                        "{failure} [rebuilt-seed generation {} after {elapsed_s} s]",
-                        self.ordinal
-                    ),
+                    refusal: format!("{failure} [{} after {elapsed_s} s]", self.subject),
                 }
             }
         };
@@ -6354,8 +6935,8 @@ impl GenerationSupervisor {
         if let Some(refusal) = refusal {
             return SupervisorStep::Refuse {
                 refusal: format!(
-                    "{refusal} [rebuilt-seed generation {} after {elapsed_s} s; {receipt}]",
-                    self.ordinal
+                    "{refusal} [{} after {elapsed_s} s; {receipt}]",
+                    self.subject
                 ),
             };
         }
@@ -6363,8 +6944,8 @@ impl GenerationSupervisor {
             heartbeat: heartbeat_due.then(|| {
                 self.last_heartbeat = now;
                 format!(
-                    "required-regen: generation {} supervisor elapsed_s={elapsed_s} {receipt}",
-                    self.ordinal
+                    "required-regen: {} supervisor elapsed_s={elapsed_s} {receipt}",
+                    self.subject
                 )
             }),
         }
@@ -6393,8 +6974,8 @@ fn supervise_generation(
     let begun = Instant::now();
     let slot_dir = crate::memory_governor::leaf_cgroup_dir();
     let mut supervisor = match &supervision {
-        GenerationSupervision::SlotStallVerdict { ordinal, .. } => {
-            Some(GenerationSupervisor::new(*ordinal, begun))
+        GenerationSupervision::SlotStallVerdict { subject, .. } => {
+            Some(GenerationSupervisor::new(subject.clone(), begun))
         }
         #[cfg(test)]
         GenerationSupervision::RefuseAfter { .. } => None,
@@ -6602,20 +7183,100 @@ fn cgroup_memory_diagnostic_line(dir: &Path, mount_root: &Path, phase: &str, pid
     )
 }
 
-/// OBSERVATION ONLY: prints the cgroup this process runs in, at a named point of the round. The
-/// parent and the rebuilt-seed child call it with their own `phase` labels; a child spawned without
-/// a cgroup move shares its parent's cgroup, so the two share a `cgroup=` value and the `pid=`
-/// field says which process read it. Nothing reads the line back, no cap moves, nothing refuses.
+/// This process's own `/proc/self/status` memory lines, in the same field shape the residency
+/// gate reads.
+///
+/// THE TWO HALVES OF ONE QUESTION, PRINTED TOGETHER. `admit_generation_begin` reports the
+/// ORCHESTRATOR (`VmRSS`); `cgroup_memory_diagnostic_line` reports the SLOT (`memory.current`).
+/// They were printed by separate lines that never appeared at the same instant, so a reader
+/// comparing a generation-begin `VmRSS` against the last slot reading two steps earlier saw a
+/// contradiction that was only a gap in the log. Every diag line now carries both, and the
+/// high-water mark beside the current value, so a peak the allocator did not return is
+/// distinguishable from state the process still holds.
+fn status_memory_fields_from(status: &str) -> String {
+    let mut fields = Vec::new();
+    for name in ["VmRSS", "VmHWM", "VmSize"] {
+        // THE KEY AND THE VALUE ARE ONE WHITESPACE-FREE TOKEN APART: a status line is
+        // "VmRSS:\t  216968 kB", so the key arrives WITH its colon and the number is the second
+        // field. Stripping the bare name and taking the next token yields ":" and every number on
+        // the line reads as `VmRSS=:kB` -- an instrumentation bug that reports itself as a real
+        // reading, which is the one thing a measurement line must not do. `admit_generation_begin`'s
+        // own probe reads the same line by field position; this parses it the same way.
+        let key = format!("{name}:");
+        let value = status
+            .lines()
+            .find(|line| line.split_whitespace().next() == Some(key.as_str()))
+            .and_then(|line| line.split_whitespace().nth(1))
+            .filter(|value| !value.is_empty() && value.chars().all(|c| c.is_ascii_digit()));
+        if let Some(value) = value {
+            fields.push(format!("{name}={value}kB"));
+        }
+    }
+    fields.join(" ")
+}
+
+fn self_status_memory_fields() -> String {
+    status_memory_fields_from(&std::fs::read_to_string("/proc/self/status").unwrap_or_default())
+}
+
+/// OBSERVATION ONLY: prints the cgroup this process runs in, at a named point of the round, beside
+/// this process's own memory lines. The parent and the rebuilt-seed child call it with their own
+/// `phase` labels; a child spawned without a cgroup move shares its parent's cgroup, so the two
+/// share a `cgroup=` value and the `pid=` field says which process read it. Nothing reads the line
+/// back, no cap moves, nothing refuses.
+///
+/// IT NAMES THE BINARY THAT PRINTED IT, because a round that cannot say which executable ran it is
+/// not evidence. A srv1 pair of rounds was run at two heads and refused identically to the unpatched
+/// reproduction, with none of the phases that had just been added to the source firing -- including a
+/// diag line sitting four lines above one that did fire, in the same straight-line function. That is
+/// only possible if the image that ran was not the tree that was checked out, and nothing in the log
+/// could say so: the `pid` and `cgroup` fields identify the process, never the file it was launched
+/// from. So every diag line now carries the resolved `exe=` path and that file's modification time.
+/// Render the executing image's identity for a diagnostic line.
+///
+/// The path is always printed; the modification time is printed only when it
+/// was actually read. An unreadable timestamp must not appear as `0`, because
+/// this field exists to tell two builds of the same-named file apart, and a
+/// placeholder that looks like a reading is how a stale binary gets credited
+/// as the one under test. Absent is rendered as absent, matching the
+/// `/proc/self/status` parser, which omits an unreadable field rather than
+/// printing it as zero.
+fn self_exe_field() -> String {
+    let mtime = std::env::current_exe()
+        .ok()
+        .and_then(|p| std::fs::metadata(p).ok())
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs());
+    let path = std::env::current_exe()
+        .ok()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "unresolved".to_string());
+    self_exe_field_with(path, mtime)
+}
+
+fn self_exe_field_with(path: String, mtime: Option<u64>) -> String {
+    match mtime {
+        Some(secs) => format!("exe={path} exe_mtime={secs}"),
+        None => format!("exe={path}"),
+    }
+}
+
 fn report_cgroup_memory_diagnostic(phase: &str) {
+    let process = self_status_memory_fields();
+    let exe = self_exe_field();
     let line = match crate::memory_governor::leaf_cgroup_dir() {
-        Some(dir) => cgroup_memory_diagnostic_line(
-            &dir,
-            Path::new("/sys/fs/cgroup"),
-            phase,
-            std::process::id(),
+        Some(dir) => format!(
+            "{} {process} {exe}",
+            cgroup_memory_diagnostic_line(
+                &dir,
+                Path::new("/sys/fs/cgroup"),
+                phase,
+                std::process::id()
+            )
         ),
         None => format!(
-            "required-regen: cgroup-diag phase={phase} pid={} cgroup=absent",
+            "required-regen: cgroup-diag phase={phase} pid={} cgroup=absent {process} {exe}",
             std::process::id()
         ),
     };
@@ -6641,7 +7302,7 @@ fn convergence_surface_roles(
     // 100 s and 2.5 GB of transient heap on a release build) and returns that index's module keys
     // beside it -- and this function bound the edges and never read them. `regen_module_names` is
     // the identical `source_files` key set of the identical index, so the answer is unchanged by
-    // construction and the undemanded edge build is gone (DESIGN section 2). This call runs in the
+    // construction and the undemanded edge build is gone (gunbc.design_argument::demand_before_materialization). This call runs in the
     // generation child right after `regen.digest`: the point where the srv3 children went silent
     // at memory.high.
     let modules = regen_module_names(workspace);
@@ -6734,6 +7395,15 @@ fn admit_generation_begin(
         )
     })?;
     let first = resident_at_first.unwrap_or(now);
+    // THE INSTANT THE GATE DECIDES, in both currencies. This is the only place the orchestrator's
+    // own `VmRSS` and the slot's `memory.current` are read at the same instant. The gate printed
+    // only the process and the periodic diag only the slot, never at the instant that matters, so
+    // a reader comparing a generation-begin `VmRSS` with the last slot reading (taken steps
+    // earlier) could mistake a log gap for a contradiction -- which is how a correct refusal came
+    // to be argued about instead of read.
+    report_cgroup_memory_diagnostic(&format!(
+        "parent.generation_begin_admission ordinal={ordinal} orchestrator_resident={now}"
+    ));
     eprintln!(
         "required-regen: generation {ordinal} begins; orchestrator resident={now} \
          (at generation 0: {first})"
@@ -7232,12 +7902,16 @@ fn install_convergence_stage(
     candidate_tree_digest: &str,
     dependency_closure_id: &str,
     whole_compiler: bool,
+    liveness: &SupervisedSubjectModel,
+    subject: &RegenConvergenceCheckpointSubject,
 ) -> Result<(RegenConvergenceStageReceipt, bool), String> {
-    let subject = current_convergence_checkpoint_subject(workspace)?;
     // The generated shell declares the emitted modules not owned by a partition.
     // Read the same declaration surface convergence_surface_roles uses for seed
     // membership; missing partition ownership alone must never imply shell ownership.
-    let declared_shell_modules = host_shell_scope_modules(&stage0_src.join("lib.rs"))?;
+    let declared_shell_modules = host_shell_scope_modules(
+        &stage0_src.join("lib.rs"),
+        &stage0_src.join("../Cargo.toml"),
+    )?;
     let changed_mirrors: Vec<String> = basenames
         .iter()
         .chain(base_rewritten_mirrors)
@@ -7248,7 +7922,11 @@ fn install_convergence_stage(
     let actuation =
         partition_rebuild_actuation(source_roots, &changed_mirrors, &declared_shell_modules)?;
     let partition_move = if actuation.partition_generation_move {
-        Some(admit_derived_partition_move(source_roots, workspace)?)
+        Some(admit_derived_partition_move(
+            workspace,
+            source_roots,
+            liveness,
+        )?)
     } else {
         None
     };
@@ -7891,7 +8569,7 @@ fn admit_stage_execution_from_model(
         Value::Str(ref label) => {
             // The label NAMES the arm; the detail LOCATES it. Rendering only the name collapsed
             // every unlabelled arm to one word and discarded the populations that caused a
-            // population verdict -- which is what a reader needs and what §5 asks a typed
+            // population verdict -- which is what a reader needs and what gunbc.design_argument::fail_closed asks a typed
             // diagnostic to carry. A detail that itself refuses is reported rather than dropped,
             // because a silent renderer here would reintroduce exactly the silence it repairs.
             let detail = match v1_interpreter::with_active_context(&ctx, || {
@@ -7938,10 +8616,27 @@ pub fn run_regen_round_cost(
     // observations.
     let handoff_in = SeedHandoff::from_env().map_err(|cause| cause.to_string())?;
 
+    // THE ROUND'S CHECKPOINT SUBJECT: AT MOST ONE PRODUCER PER ROUND, INVOKED AT THE FIRST DEMAND,
+    // THEN CARRIED (`establish_round_subject`). The demands are a journal to restore at startup, the
+    // base-mirror bootstrap's journal, and the first install; a round that never journals never
+    // produces it, and a journal never exists without it (`restore_round_journal`). Every journal
+    // write and restore below is about this one value; the stage0 input closure it digests does not change
+    // during a round (installs and the base snapshot write `.rs`, never `.dag`), and every
+    // generation receipt checks that (`admit_generation_authority`). It used to be recomputed at
+    // each restore, in each image, and at each install stage, and each recompute built the
+    // whole-tree index in THIS process (run 41899288377: 7.57 GB resident at generation 0). Now the
+    // image that owns the round asks a child for it, so the index lives and dies there, and the
+    // re-exec'd image takes the carried value. The liveness model supervises that child, so it is
+    // loaded first.
+    let liveness_model = SupervisedSubjectModel::load(source_roots)?;
+    let mut round_subject: Option<RegenConvergenceCheckpointSubject> = handoff_in
+        .as_ref()
+        .and_then(|carried| carried.round_subject.clone());
+
     // THE HANDOFF CHILD IS NOT A SECOND OWNER OF THE TREE (manager ruling 2026-10-29, #15339).
     // The parent seeded the base snapshot, journaled the head's bytes, and compiled that tree; the
     // child was exec'd to report on THAT build. Restoring the journal and seeding again is redundant
-    // work (§2), and it is what made the two images' populations disagree: the child restored every
+    // work (gunbc.design_argument::minimize_redundancy), and it is what made the two images' populations disagree: the child restored every
     // journaled path to the head's bytes and then re-seeded under ITS OWN rule, so a round whose
     // parent and child disagree about the population leaves the child compiling a tree its parent
     // never compiled, cargo rebuilds, the relink trips `ExecutableReplacedAfterHandoff`, and the
@@ -7956,7 +8651,12 @@ pub fn run_regen_round_cost(
         // restore here would replace the very bytes the child was exec'd to report on, and the
         // build below would compile something its parent never compiled. Every other round keeps
         // the behaviour main has always had, including the recovery of an interrupted round.
-        restore_regen_convergence_journal(&workspace)?;
+        if regen_convergence_journal_exists(&workspace) {
+            let subject = establish_round_subject(&mut round_subject, None, || {
+                checkpoint_subject_child(&workspace, &liveness_model)
+            })?;
+            restore_regen_convergence_journal_for_subject(&workspace, subject)?;
+        }
     }
 
     // THE SUBJECT IS READ AFTER THE RESTORE, which is what that comment has always claimed and
@@ -7971,7 +8671,7 @@ pub fn run_regen_round_cost(
     let tree = git_head_sha(&workspace)?;
     let tree_dirty = git_tree_dirty(&workspace)?;
 
-    // THE ROUND-1 BOOTSTRAP (DESIGN §5, RFM #14963): when the caller is the heal round, the seed
+    // THE ROUND-1 BOOTSTRAP (gunbc.design_argument::fail_closed, RFM #14963): when the caller is the heal round, the seed
     // build below compiles the BASE ref's committed mirror instead of the head's. Unconditional
     // for a heal round — never a step taken after a failure — and scoped to round 1: everything
     // after the first seed build runs on bytes this PR's own `.dag` regenerates, and the journal
@@ -7987,11 +8687,7 @@ pub fn run_regen_round_cost(
     // teardown returns them under it; `restore_regen_convergence_journal_for_subject` REFUSES on a
     // subject mismatch, so a second read at teardown time would turn any mid-round drift into a new
     // refusal instead of a rollback. One read, both ends.
-    let round_subject = if base_mirror {
-        Some(current_convergence_checkpoint_subject(&workspace)?)
-    } else {
-        None
-    };
+    // That one read is `round_subject`, above: one producer per round, carried across the re-exec.
     let base_bootstrap = if base_mirror && handoff_in.is_none() {
         v1_rt::trace_mark("round.base_mirror_bootstrap.begin".to_string());
         // The ref is read HERE, from the environment, and passed as a value: a branch name is
@@ -7999,24 +8695,24 @@ pub fn run_regen_round_cost(
         // containing `${{`, so the ref never reaches argv. The subject is the one the install path
         // reads later, so the journal this bootstrap creates is the journal the round restores.
         let base_commit_env = std::env::var(REGEN_ROUND_COST_BASE_MIRROR_ENV).ok();
-        let restored = bootstrap_round_one_from_base_mirror(
-            &workspace,
-            base_commit_env.as_deref(),
-            round_subject
-                .as_ref()
-                .expect("the base-mirror round read its subject"),
-        )?;
+        let subject = establish_round_subject(&mut round_subject, None, || {
+            checkpoint_subject_child(&workspace, &liveness_model)
+        })?;
+        let restored =
+            bootstrap_round_one_from_base_mirror(&workspace, base_commit_env.as_deref(), subject)?;
         v1_rt::trace_mark("round.base_mirror_bootstrap.done".to_string());
         // THE RECEIPT NAMES ITS SOURCE (sleek-owl-397, RFM #14963): the commit, the population size,
         // and the whole-crate scope, so a reader can tell WHICH bytes the round compiled and can
         // distinguish a base byte from a head byte without re-running anything.
         println!(
             "regen-round-cost: round 1 builds the whole {STAGE0_CRATE_REL} crate from the base \
-             mirror commit={} paths={} paths_rewritten={} head_added_paths_kept={}",
+             mirror commit={} paths={} paths_rewritten={} head_added_paths_kept={} \
+             head_deleted_paths={}",
             restored.base_commit,
             restored.paths_restored,
             restored.paths_rewritten,
-            restored.paths_absent_at_base
+            restored.paths_absent_at_base,
+            restored.head_deleted_paths
         );
         Some(restored)
     } else {
@@ -8055,6 +8751,7 @@ pub fn run_regen_round_cost(
         &exe_after,
         &source_identity,
         &seed_build_cost,
+        round_subject.as_ref(),
     )
     .map_err(|cause| cause.to_string())?
     {
@@ -8093,7 +8790,7 @@ pub fn run_regen_round_cost(
     // the specimen: it edits the very file that implements the bootstrap.
     //
     // THE ROLLBACK IS THE AUTHORITY, not a second copy of it (`restore_regen_convergence_journal`
-    // is the one reader of `journal.json`, §3): it returns every journalled path to the byte
+    // is the one reader of `journal.json`, gunbc.design_argument::single_authority): it returns every journalled path to the byte
     // recorded before the round and deletes the journal. On the pre-fix success path that call never
     // happened — the journal was simply deleted at the end of the round, so base bytes survived into
     // the candidate. Generated mirrors do not depend on this: the generator rewrites them anyway.
@@ -8107,18 +8804,21 @@ pub fn run_regen_round_cost(
     // not survive the round. The child reaches here with the parent's journal still on disk (the
     // child restores nothing at startup, and only the end of a round deletes it), so one call
     // unwinds what the parent seeded.
-    let base_rewritten_mirrors: Vec<String> = if let Some(subject) = round_subject.as_ref() {
+    let base_rewritten_mirrors: Vec<String> = if base_mirror {
         v1_rt::trace_mark("round.base_snapshot_revert.begin".to_string());
-        let rewritten = restore_regen_convergence_journal_for_subject(&workspace, subject)?;
-        let reverted = rewritten.len();
+        let revert = restore_round_journal(&workspace, round_subject.as_ref())?;
+        let (rewritten, removed) = (revert.rewritten, revert.removed);
         v1_rt::trace_mark("round.base_snapshot_revert.done".to_string());
         // THE RECEIPT NAMES WHAT IT PUT BACK, so a reader can tell a round that returned the head's
         // bytes from one that quietly kept compiling base's into the candidate. The count is the
         // paths the restore actually rewrote: a journalled path the seed never moved already holds
         // the head's bytes, and rewriting it would be mtime churn cargo reads as a change.
         println!(
-            "regen-round-cost: round 1 ended the base snapshot; {reverted} journalled paths were \
-             rewritten to the head's own bytes (the rest already held them)"
+            "regen-round-cost: round 1 ended the base snapshot; {} journalled paths were rewritten \
+             to the head's own bytes, {} were removed because the head's commit does not track them \
+             (the rest already held them)",
+            rewritten.len(),
+            removed.len()
         );
         // THE CHANGED SET THE REBUILD DECISION READS INCLUDES THESE. Round 1 compiled base's
         // bytes; this restore just moved the head's differing mirrors under the built artifacts, so
@@ -8157,7 +8857,6 @@ pub fn run_regen_round_cost(
     // below -- is loaded BEFORE generation 0, so the orchestrator's footprint at generation 0 is
     // the baseline every later transition is held to.
     let convergence_model = RegenConvergenceModel::load(source_roots)?;
-    let liveness_model = SupervisedSubjectModel::load(source_roots)?;
     let initial_seed_digest = current_exe_digest()?;
     let orchestrator_resident_at_first = admit_generation_begin(&convergence_model, 0, None)?;
     v1_rt::trace_mark("round.built_seed_regen.begin".to_string());
@@ -8171,6 +8870,7 @@ pub fn run_regen_round_cost(
         &initial_seed_digest,
         0,
         &liveness_model,
+        round_subject.as_ref(),
     );
     report_cgroup_memory_diagnostic("parent.end generation=0");
     v1_rt::trace_mark("round.built_seed_regen.done".to_string());
@@ -8212,7 +8912,7 @@ pub fn run_regen_round_cost(
             let boundary_drift = match built_seed_boundary_drift(&workspace) {
                 Ok(paths) => paths,
                 Err(failure) => {
-                    restore_regen_convergence_journal(&workspace)?;
+                    restore_round_journal(&workspace, round_subject.as_ref())?;
                     return Err(format!("{failure}; checkpoint restored"));
                 }
             };
@@ -8224,7 +8924,7 @@ pub fn run_regen_round_cost(
                  rebuilt producer {boundary_drift:?}"
             ));
             if regen_convergence_bound_exceeded(source_roots, generation_ordinal)? {
-                restore_regen_convergence_journal(&workspace)?;
+                restore_round_journal(&workspace, round_subject.as_ref())?;
                 return Err(format!(
                     "RegenConvergenceBoundExceeded: boundary files did not converge within the \
                      declared bound (regen_convergence_max_generations) at generation \
@@ -8232,13 +8932,14 @@ pub fn run_regen_round_cost(
                     round_records.join("; ")
                 ));
             }
-            let rebuilt = install_built_seed_boundary(&workspace, &boundary_drift)
-                .and_then(|()| seed_cargo_build(&workspace, "round.rebuild_from_boundary"))
-                .and_then(|_| next_pass_executable_digest(&workspace));
+            let rebuilt =
+                install_built_seed_boundary(&workspace, &boundary_drift, round_subject.as_ref())
+                    .and_then(|()| seed_cargo_build(&workspace, "round.rebuild_from_boundary"))
+                    .and_then(|_| next_pass_executable_digest(&workspace));
             match rebuilt {
                 Ok(digest) => current_seed_digest = digest,
                 Err(failure) => {
-                    restore_regen_convergence_journal(&workspace)?;
+                    restore_round_journal(&workspace, round_subject.as_ref())?;
                     return Err(format!(
                         "boundary stage refused; checkpoint restored: {failure}"
                     ));
@@ -8250,7 +8951,7 @@ pub fn run_regen_round_cost(
                 generation_ordinal,
                 Some(orchestrator_resident_at_first),
             ) {
-                restore_regen_convergence_journal(&workspace)?;
+                restore_round_journal(&workspace, round_subject.as_ref())?;
                 return Err(format!(
                     "next generation refused; checkpoint restored: {failure}"
                 ));
@@ -8264,6 +8965,7 @@ pub fn run_regen_round_cost(
                 &current_seed_digest,
                 generation_ordinal,
                 &liveness_model,
+                round_subject.as_ref(),
             ) {
                 Ok(next) => {
                     candidate_digest = next.manifest.candidate_tree_digest.clone();
@@ -8273,7 +8975,7 @@ pub fn run_regen_round_cost(
                     candidate_manifest = next.manifest;
                 }
                 Err(failure) => {
-                    restore_regen_convergence_journal(&workspace)?;
+                    restore_round_journal(&workspace, round_subject.as_ref())?;
                     return Err(format!(
                         "next generation refused; checkpoint restored: {failure}"
                     ));
@@ -8285,7 +8987,7 @@ pub fn run_regen_round_cost(
             "generation {generation_ordinal}: first_generation_equal=false drifted={drifted:?}"
         ));
         if regen_convergence_bound_exceeded(source_roots, generation_ordinal)? {
-            restore_regen_convergence_journal(&workspace)?;
+            restore_round_journal(&workspace, round_subject.as_ref())?;
             return Err(format!(
                 "RegenConvergenceBoundExceeded: no fixed point within the declared bound \
                  (regen_convergence_max_generations) at generation {generation_ordinal}; checkpoint restored; nothing is published -- {}",
@@ -8343,7 +9045,7 @@ pub fn run_regen_round_cost(
             })
             .collect::<Vec<_>>();
         if install_set.is_empty() {
-            restore_regen_convergence_journal(&workspace)?;
+            restore_round_journal(&workspace, round_subject.as_ref())?;
             return Err(format!(
                 "generation made no progress with drift {drifted:?}"
             ));
@@ -8373,7 +9075,7 @@ pub fn run_regen_round_cost(
             match built_seed_boundary_drift(&workspace) {
                 Ok(paths) => paths,
                 Err(failure) => {
-                    restore_regen_convergence_journal(&workspace)?;
+                    restore_round_journal(&workspace, round_subject.as_ref())?;
                     return Err(format!("{failure}; checkpoint restored"));
                 }
             }
@@ -8386,14 +9088,25 @@ pub fn run_regen_round_cost(
                 "generation {generation_ordinal}: boundary drift under the post-install producer \
                  {stage_boundary:?} installs with the pending mirrors"
             ));
-            if let Err(failure) = install_built_seed_boundary(&workspace, &stage_boundary) {
-                restore_regen_convergence_journal(&workspace)?;
+            if let Err(failure) =
+                install_built_seed_boundary(&workspace, &stage_boundary, round_subject.as_ref())
+            {
+                restore_round_journal(&workspace, round_subject.as_ref())?;
                 return Err(format!(
                     "boundary install refused; checkpoint restored: {failure}"
                 ));
             }
         }
         let drifted_entering_stage = drifted.clone();
+        // THE FIRST INSTALL IS A DEMAND: the stage journals what it overwrites, under the round's
+        // subject. Produced here if nothing demanded it earlier, and checked against this
+        // generation's own reading of the closure.
+        let subject = establish_round_subject(
+            &mut round_subject,
+            Some((generation_ordinal, &authority_digest)),
+            || checkpoint_subject_child(&workspace, &liveness_model),
+        )?
+        .clone();
         v1_rt::trace_mark("round.install.begin".to_string());
         let stage_result = install_convergence_stage(
             &convergence_model,
@@ -8413,6 +9126,8 @@ pub fn run_regen_round_cost(
             &candidate_digest,
             &dependency_closure_id,
             stage_whole_compiler,
+            &liveness_model,
+            &subject,
         );
         v1_rt::trace_mark("round.install.done".to_string());
         let mut stage = match stage_result {
@@ -8421,7 +9136,7 @@ pub fn run_regen_round_cost(
                 stage
             }
             Err(failure) => {
-                restore_regen_convergence_journal(&workspace)?;
+                restore_round_journal(&workspace, round_subject.as_ref())?;
                 return Err(format!(
                     "stage seed build refused; checkpoint restored: {failure}"
                 ));
@@ -8436,7 +9151,7 @@ pub fn run_regen_round_cost(
             generation_ordinal,
             Some(orchestrator_resident_at_first),
         ) {
-            restore_regen_convergence_journal(&workspace)?;
+            restore_round_journal(&workspace, round_subject.as_ref())?;
             return Err(format!(
                 "next generation refused; checkpoint restored: {failure}"
             ));
@@ -8452,6 +9167,7 @@ pub fn run_regen_round_cost(
             &current_seed_digest,
             generation_ordinal,
             &liveness_model,
+            round_subject.as_ref(),
         );
         report_cgroup_memory_diagnostic(&format!("parent.end generation={generation_ordinal}"));
         v1_rt::trace_mark("round.built_seed_regen.done".to_string());
@@ -8496,7 +9212,7 @@ pub fn run_regen_round_cost(
                 candidate_manifest = next.manifest;
             }
             Err(failure) => {
-                restore_regen_convergence_journal(&workspace)?;
+                restore_round_journal(&workspace, round_subject.as_ref())?;
                 return Err(format!(
                     "next generation refused; checkpoint restored: {failure}"
                 ));
@@ -8603,7 +9319,10 @@ pub fn run_regen_round_cost(
         drained_marks,
     )
     .map_err(|cause| cause.to_string())?;
-    let declared_shell_modules = host_shell_scope_modules(&stage0_src.join("lib.rs"))?;
+    let declared_shell_modules = host_shell_scope_modules(
+        &stage0_src.join("lib.rs"),
+        &stage0_src.join("../Cargo.toml"),
+    )?;
 
     // ONE AUTHORITY FOR THE RECEIPT'S BASE ARM, read by whichever image reports. The parent holds
     // what its own seed did. The handoff child seeds nothing (the handoff rule), so it DERIVES the
@@ -8612,16 +9331,17 @@ pub fn run_regen_round_cost(
     // output in the one run whose purpose is to record which bytes round 1 compiled. No `.ok()`
     // anywhere: a base commit that cannot be named refuses the round with its typed
     // `BootstrapBaseMirrorCommitUnresolved` diagnostic rather than dropping the line silently.
-    let receipt_base_authority: Option<(String, usize, usize)> = match base_bootstrap.as_ref() {
-        Some(restored) => Some(base_mirror_receipt_authority(restored)),
-        None if base_mirror => Some(round_one_receipt_base_authority(
-            &workspace,
-            std::env::var(REGEN_ROUND_COST_BASE_MIRROR_ENV)
-                .ok()
-                .as_deref(),
-        )?),
-        None => None,
-    };
+    let receipt_base_authority: Option<(String, usize, usize, usize)> =
+        match base_bootstrap.as_ref() {
+            Some(restored) => Some(base_mirror_receipt_authority(restored)),
+            None if base_mirror => Some(round_one_receipt_base_authority(
+                &workspace,
+                std::env::var(REGEN_ROUND_COST_BASE_MIRROR_ENV)
+                    .ok()
+                    .as_deref(),
+            )?),
+            None => None,
+        };
     let rendered = render_round_cost_receipt(
         source_roots,
         &host,
@@ -8640,7 +9360,9 @@ pub fn run_regen_round_cost(
         &second_generation_candidate_digest,
         receipt_base_authority
             .as_ref()
-            .map(|(commit, seeded, head_added)| (commit.as_str(), *seeded, *head_added)),
+            .map(|(commit, seeded, head_added, head_deleted)| {
+                (commit.as_str(), *seeded, *head_added, *head_deleted)
+            }),
     )?;
     let receipt_path = workspace.join(REGEN_ROUND_COST_RECEIPT_REL);
     if let Some(parent) = receipt_path.parent() {
@@ -8660,11 +9382,11 @@ pub fn run_regen_round_cost(
         // exactly the run that answers it, and the rendered receipt would claim the head instead.
         base_mirror_commit: receipt_base_authority
             .as_ref()
-            .map(|(commit, _, _)| commit.clone()),
+            .map(|(commit, _, _, _)| commit.clone()),
     })
 }
 
-/// THE ROUND-1 BOOTSTRAP — DESIGN §5, `gunbc.recurring_failure_mode`
+/// THE ROUND-1 BOOTSTRAP — gunbc.design_argument::fail_closed, `gunbc.recurring_failure_mode`
 /// `heal_round_one_bootstraps_from_the_mirror_the_change_must_repair` (RFM #14963).
 ///
 /// These tests are the discriminating evidence for the heal round-1 deadlock hit on PR #13936
@@ -8690,7 +9412,12 @@ mod heal_round_one_base_mirror_tests {
     /// file, and a hand-maintained directory. HEAD carries the damage the PR came to repair
     /// (the `Nat` refusal spelled in the generated mirror), its own hand-authored repair, and a
     /// mirror base has no form of.
-    fn base_mirror_fixture() -> (PathBuf, PathBuf, String) {
+    /// THE FIXTURE, parameterized by the one shape the bootstrap authority had never seen: a module
+    /// the BASE tracks and the HEAD DELETES. `deleted` is a path relative to the crate's `src`
+    /// directory; when it is `Some`, base carries that file and the head removes it in its own commit,
+    /// which is exactly the PR shape that made round 1 compile a base/head chimera (PR #15418, PR
+    /// #15540). When it is `None` the fixture is byte-for-byte the one every existing test uses.
+    fn base_mirror_fixture_with_deleted(deleted: Option<&str>) -> (PathBuf, PathBuf, String) {
         let root = std::env::temp_dir().join(format!(
             "gunbc-heal-base-mirror-{}-{}",
             std::process::id(),
@@ -8763,6 +9490,25 @@ mod heal_round_one_base_mirror_tests {
             "// base build identity source\n",
         )
         .unwrap();
+        // A MODULE THE HEAD WILL DELETE, in a NESTED directory: the shape of PR #15540, whose lost
+        // path was `src/v1/stage0/src/cli_run/required_lane_resolution_census.rs`. Base's crate is
+        // incomplete without it, and the head's tree is incomplete with it -- which is the whole
+        // difficulty the authority has to get right in both directions.
+        if let Some(retired) = deleted {
+            fs::write(
+                stage0.join(retired),
+                "// base bytes for a module the head deletes\n",
+            )
+            .unwrap();
+            // A SECOND NESTED MODULE THE HEAD KEEPS UNEDITED: the survivor is the control that the
+            // round's journal and restore leave an untouched file alone, bytes AND mtime. A module
+            // the head edits cannot show that, because the round rewrites it in both directions.
+            fs::write(
+                stage0.join("cli_run").join("fixture_survivor.rs"),
+                "// base bytes for a module the head keeps exactly as they are\n",
+            )
+            .unwrap();
+        }
         // The `.dag` sources are OUTSIDE the crate the authority owns: they are what the round
         // regenerates FROM, so the pull request's edits there must survive the bootstrap.
         fs::create_dir_all(root.join("dag")).unwrap();
@@ -8819,9 +9565,159 @@ mod heal_round_one_base_mirror_tests {
             "// head .dag authority -- the repair this PR authored\n",
         )
         .unwrap();
+        write_fixture_stage_plan(&root);
         git(&["add", "-A"]);
         git(&["commit", "-qm", "head"]);
+        if let Some(retired) = deleted {
+            git(&["rm", "-q", &format!("{STAGE0_SRC_REL}/{retired}")]);
+            git(&["commit", "-qm", "head deletes a module"]);
+        }
         (root, stage0, base_commit)
+    }
+
+    /// The fixture as every existing test has always used it: no head-deleted module.
+    fn base_mirror_fixture() -> (PathBuf, PathBuf, String) {
+        base_mirror_fixture_with_deleted(None)
+    }
+
+    /// The fixture WITH a head-deleted nested module: base tracks it, the head removes it.
+    fn base_mirror_deletion_fixture() -> (PathBuf, PathBuf, String) {
+        base_mirror_fixture_with_deleted(Some("cli_run/fixture_retired.rs"))
+    }
+
+    /// The crate's tracked population AT A COMMIT, read straight from git. A test that reused the
+    /// set the code under test computes could only prove the writer agrees with itself; this reads
+    /// the commit, which is the thing the authority is supposed to agree with.
+    fn fixture_crate_paths_at_commit(root: &Path, commit: &str) -> Vec<String> {
+        let output = Command::new("git")
+            .current_dir(root)
+            .args([
+                "ls-tree",
+                "-r",
+                "--name-only",
+                commit,
+                "--",
+                STAGE0_CRATE_REL,
+            ])
+            .output()
+            .expect("git ls-tree runs");
+        assert!(
+            output.status.success(),
+            "git ls-tree {commit} -- {STAGE0_CRATE_REL}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8(output.stdout)
+            .expect("path list is utf8")
+            .lines()
+            .map(str::to_string)
+            .collect()
+    }
+
+    /// The blob a commit holds for one path, read straight from git.
+    fn fixture_blob_at_commit(root: &Path, commit: &str, path: &str) -> String {
+        let output = Command::new("git")
+            .current_dir(root)
+            .args(["show", &format!("{commit}:{path}")])
+            .output()
+            .expect("git show runs");
+        assert!(
+            output.status.success(),
+            "git show {commit}:{path}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8(output.stdout).expect("blob is utf8")
+    }
+
+    /// THE DELETION SHAPE, ASSERTED IN BOTH DIRECTIONS. Base tracks a nested module the head
+    /// DELETES, plus a second nested module the head keeps byte-for-byte. Round 1 must compile
+    /// BASE's crate — every path base tracks present with base's bytes, the deleted one included —
+    /// and the round's own teardown must put the tree back to HEAD: the deleted module absent
+    /// again, the survivor untouched down to its mtime.
+    ///
+    /// THIS TEST IS ALSO THE CONTROL FOR THE RULE IT REPLACES, and it was written and run against
+    /// that rule BEFORE the rule was changed: there it fails at the first assertion, because the
+    /// old authority restored only the paths base and the worktree shared, a path the head deleted
+    /// is by definition absent from the worktree, so it was never written, and base's restored
+    /// `lib.rs` went on declaring a module with no file. That is the E0583 in the heal runs of PR
+    /// #15418 (run 41605027842, head 5b7b2bc2, base 5ff414e6, `lib.rs` lines 755 and 832) and PR
+    /// #15540 (run 41591786053, head 3be90ce5, base 6e1c65a3, the lost path nested under `cli_run/`).
+    /// The old rule is NOT re-implemented here: a second copy of it would be a second authority,
+    /// and the red comes from the run at the pre-fix revision instead.
+    #[test]
+    fn a_head_deleted_module_is_restored_for_round_one_and_removed_after_it() {
+        let (root, stage0, base_commit) = base_mirror_deletion_fixture();
+        let retired = stage0.join("cli_run").join("fixture_retired.rs");
+        let survivor = stage0.join("cli_run").join("fixture_survivor.rs");
+        let survivor_bytes = read(&survivor);
+        let survivor_mtime = fs::metadata(&survivor)
+            .expect("survivor metadata")
+            .modified()
+            .expect("survivor mtime");
+        assert!(
+            !retired.exists(),
+            "the fixture's head must not carry the module its commit deleted"
+        );
+
+        bootstrap_round_one_from_base_mirror(&root, Some(&base_commit), &fixture_subject(&root))
+            .expect("the round-1 bootstrap runs");
+
+        // ROUND 1 SEES BASE'S CRATE, PATH FOR PATH.
+        for path in fixture_crate_paths_at_commit(&root, &base_commit) {
+            let on_disk = root.join(&path);
+            assert!(
+                on_disk.is_file(),
+                "round 1 left {path} absent, so the crate it compiled was neither base's nor                  head's: base declares this path and the tree does not have it"
+            );
+            assert_eq!(
+                read(&on_disk),
+                fixture_blob_at_commit(&root, &base_commit, &path),
+                "round 1 left {path} short of the base commit it claims to compile"
+            );
+        }
+        assert!(
+            retired.is_file(),
+            "round 1 did not restore the module the head deleted"
+        );
+
+        // THE ROUND'S OWN TEARDOWN PUTS THE TREE BACK TO HEAD.
+        let put_back_paths =
+            restore_regen_convergence_journal_for_subject(&root, &fixture_subject(&root))
+                .expect("the round ends its snapshot");
+        assert!(
+            !retired.exists(),
+            "a module the head deleted survived the round into the tree the emitter walks:              {put_back_paths:?}"
+        );
+        assert!(
+            put_back_paths
+                .removed
+                .iter()
+                .any(|path| path.starts_with(STAGE0_CRATE_REL)
+                    && path.ends_with("/fixture_retired.rs")),
+            "the restore did not report the resurrected path among the paths it REMOVED: \
+             {put_back_paths:?}"
+        );
+        assert!(
+            put_back_paths
+                .removed
+                .iter()
+                .all(|path| path.ends_with("/fixture_retired.rs")),
+            "a path other than the head-deleted one was removed, which would mean the round \
+             deleted something the head tracks: {put_back_paths:?}"
+        );
+        assert_eq!(
+            read(&survivor),
+            survivor_bytes,
+            "the round changed a module neither base nor the head touched"
+        );
+        assert_eq!(
+            fs::metadata(&survivor)
+                .expect("survivor metadata")
+                .modified()
+                .expect("survivor mtime"),
+            survivor_mtime,
+            "the round rewrote a module neither side touched, bumping an mtime cargo's              path-dependency fingerprint reads as a change (PR #14876): {put_back_paths:?}"
+        );
+        let _ = fs::remove_dir_all(&root);
     }
 
     /// The subject a round journals under. The three digests are fixed for one fixture: what the
@@ -8829,10 +9725,12 @@ mod heal_round_one_base_mirror_tests {
     /// the identity formula has its own tests. `git` is left to the code under test, which is the
     /// only thing here that must read a real commit.
     fn fixture_subject(root: &Path) -> RegenConvergenceCheckpointSubject {
+        let (starting_commit, stage_plan_authority_digest) =
+            checkpoint_subject_live_facts(root).expect("fixture commit and stage plan");
         RegenConvergenceCheckpointSubject {
-            starting_commit: git_head_sha(root).expect("fixture head"),
+            starting_commit,
             source_authority_digest: "fixture-source-authority".to_string(),
-            stage_plan_authority_digest: "fixture-plan-authority".to_string(),
+            stage_plan_authority_digest,
         }
     }
 
@@ -8946,7 +9844,7 @@ mod heal_round_one_base_mirror_tests {
         let put_back_paths =
             restore_regen_convergence_journal_for_subject(&root, &fixture_subject(&root))
                 .expect("the round ends its snapshot");
-        let put_back = put_back_paths.len();
+        let put_back = put_back_paths.rewritten.len() + put_back_paths.removed.len();
         // THE DECISION'S CHANGED SET IS THESE PATHS, NOT AN MTIME SCAN (RFM
         // `heal_partition_guard_infers_changed_mirrors_from_mtimes_not_rewritten_paths`): the restore
         // names each file it moved under the built artifacts, workspace-relative, so the rebuild
@@ -8954,12 +9852,13 @@ mod heal_round_one_base_mirror_tests {
         // bytes) must not appear.
         assert!(
             put_back_paths
+                .rewritten
                 .iter()
                 .any(|path| path.starts_with(STAGE0_CRATE_REL) && path.ends_with("/std_logic.rs")),
             "the restore did not name the hand-maintained file it moved: {put_back_paths:?}"
         );
         assert!(
-            put_back_paths.iter().all(|path| !path.ends_with("/build.rs")),
+            put_back_paths.rewritten.iter().all(|path| !path.ends_with("/build.rs")),
             "the restore named a path it never moved (its bytes were identical): {put_back_paths:?}"
         );
         // The journal covers exactly what the seed MOVED. A path whose base bytes already equal the
@@ -9109,6 +10008,7 @@ mod heal_round_one_base_mirror_tests {
         assert_eq!(
             restore_regen_convergence_journal_for_subject(&root, &subject)
                 .expect("the round's teardown restores what the parent seeded")
+                .rewritten
                 .len(),
             restored.paths_rewritten,
             "the teardown did not return every path the parent seed moved ({}), so the child touched \
@@ -9515,7 +10415,7 @@ mod heal_round_one_base_mirror_tests {
             &fixture_subject(&root),
         )
         .expect("the bootstrap runs");
-        let (commit, seeded, head_added) = base_mirror_receipt_authority(&restored);
+        let (commit, seeded, head_added, head_deleted) = base_mirror_receipt_authority(&restored);
         assert_eq!(
             commit,
             base_commit.as_str(),
@@ -9523,10 +10423,215 @@ mod heal_round_one_base_mirror_tests {
              round's stated source is not the authority it actually used"
         );
         assert_eq!(
-            (seeded, head_added),
-            (5, 2),
+            (seeded, head_added, head_deleted),
+            (5, 2, 0),
             "the receipt's counts moved off the fixture's population, so the line it feeds no \
-             longer describes what the seed built"
+             longer describes what the seed built. The third count is the new one: this fixture has \
+             no head-deleted path, so it must read zero rather than borrow another fixture's number."
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// THE PATH-SET DELTA IS IN THE RECEIPT, not hidden in the writer's arithmetic. The #15418 heal
+    /// log printed `paths=300` while the base commit it named tracked 303 crate paths, and nothing in
+    /// that line separated the three paths the head had deleted from paths that were never in base at
+    /// all -- the two cases print identically until a count of the deletions exists next to the count
+    /// of head additions. The fixture's population is exact, so the row is checked against it.
+    #[test]
+    fn the_receipt_names_the_paths_the_head_deleted() {
+        let (root, _stage0, base_commit) = base_mirror_deletion_fixture();
+        let restored = bootstrap_round_one_from_base_mirror(
+            &root,
+            Some(&base_commit),
+            &fixture_subject(&root),
+        )
+        .expect("the bootstrap runs");
+        let (commit, seeded, head_added, head_deleted) = base_mirror_receipt_authority(&restored);
+        assert_eq!(
+            commit,
+            base_commit.as_str(),
+            "the receipt would name something other than the commit the step named"
+        );
+        assert_eq!(
+            (seeded, head_added, head_deleted),
+            (7, 2, 1),
+            "base tracks seven crate paths here, the head tracks eight of which two are new and one \
+             is base-only; a receipt that does not carry that delta cannot distinguish a deleted \
+             module from a path base never had"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// AN UNTRACKED FILE AT A BASE-ONLY PATH REFUSES THE ROUND AND MOVES NOTHING. The path is in
+    /// base's population, absent from the head's tracked set, and PRESENT on disk. The round cannot
+    /// tell that from a head deletion whose bytes some other process left behind, and both readings
+    /// are destructive in different ways: overwriting the file clobbers bytes the head never tracked,
+    /// deleting it clobbers them by inference. So the round refuses, typed and located, before it
+    /// journals or writes anything -- which is also why the refusal carries both commit ids: the
+    /// reader has to be able to see which side of the delta the path sits on.
+    #[test]
+    fn an_untracked_file_at_a_base_only_path_refuses_and_moves_nothing() {
+        let (root, stage0, base_commit) = base_mirror_deletion_fixture();
+        let retired = stage0.join("cli_run").join("fixture_retired.rs");
+        let untracked_bytes = "// not base's bytes, and not tracked by either commit\n";
+        fs::write(&retired, untracked_bytes).expect("plant the untracked file");
+        let before = mtimes_under(&root.join(STAGE0_CRATE_REL));
+        let error = bootstrap_round_one_from_base_mirror(
+            &root,
+            Some(&base_commit),
+            &fixture_subject(&root),
+        )
+        .expect_err("a base-only path present on disk as an untracked file must refuse the round");
+        assert!(
+            error.contains("BootstrapBaseMirrorUntrackedCollision")
+                && error.contains("cli_run/fixture_retired.rs"),
+            "the refusal is not the typed, located one: {error}"
+        );
+        assert!(
+            error.contains(&base_commit) && error.contains(&git_head_sha(&root).expect("head sha")),
+            "the refusal names the path but not the two commits whose delta put it on the \
+             deleted side: {error}"
+        );
+        assert_eq!(
+            read(&retired),
+            untracked_bytes,
+            "the round overwrote a file the head does not track"
+        );
+        assert_eq!(
+            mtimes_under(&root.join(STAGE0_CRATE_REL)),
+            before,
+            "the round moved a file before refusing"
+        );
+        assert!(
+            !regen_convergence_journal_path(&root).exists(),
+            "the round journalled before refusing, so a later round would restore a state that \
+             never existed"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// CLEANUP AFTER A FORCED FAILURE. `std_logic.rs` is made unwritable, so the bootstrap writes
+    /// some base bytes and then refuses mid-round: by that point the head-deleted module is back on
+    /// disk, which is exactly the state a failure leaves. Every failure arm of the round ends in the
+    /// same journal restore this test calls, so the assertion is about the journal's lifecycle and
+    /// not about one error arm: absence comes back, and the head's own bytes come back for every file
+    /// the round managed to rewrite. The file that refused is never touched by the restore either --
+    /// it still holds the head's bytes, and the mode the fixture gave it survives.
+    #[test]
+    fn a_forced_failure_after_the_bootstrap_restores_absence_and_the_heads_bytes() {
+        use std::os::unix::fs::PermissionsExt;
+        let (root, stage0, base_commit) = base_mirror_deletion_fixture();
+        let retired = stage0.join("cli_run").join("fixture_retired.rs");
+        let rewritten = stage0.join("cli_run").join("fixture_partition.rs");
+        let std_logic = stage0.join("std_logic.rs");
+        let head_partition = read(&rewritten);
+        let head_std_logic = read(&std_logic);
+        fs::set_permissions(&std_logic, fs::Permissions::from_mode(0o444))
+            .expect("make one base-tracked file unwritable");
+
+        let error = bootstrap_round_one_from_base_mirror(
+            &root,
+            Some(&base_commit),
+            &fixture_subject(&root),
+        )
+        .expect_err("an unwritable base-tracked file must refuse the bootstrap");
+        // THE REFUSAL IS LOCATED, NOT TYPED: the write arm spells `write {path}: {cause}` (an existing
+        // property of this function, not widened or narrowed by this change), so the assertion names
+        // the path and the cause rather than a prefix that does not exist.
+        assert!(
+            error.contains(&format!("write {}:", std_logic.display()))
+                && error.contains("Permission denied"),
+            "the refusal is not the located write refusal this fixture forces: {error}"
+        );
+        assert!(
+            retired.is_file(),
+            "the fixture did not reach the state a mid-round failure leaves, so the cleanup below \
+             would be asserting nothing: {error}"
+        );
+
+        let put_back_paths =
+            restore_regen_convergence_journal_for_subject(&root, &fixture_subject(&root))
+                .expect("the failure path restores the journal");
+        assert!(
+            !retired.exists(),
+            "a module the head deleted survived a FAILED round into the tree the next stage walks: \
+             {put_back_paths:?}"
+        );
+        assert_eq!(
+            read(&rewritten),
+            head_partition,
+            "a file the round rewrote before failing did not come back to the head's bytes"
+        );
+        assert_eq!(
+            read(&std_logic),
+            head_std_logic,
+            "the file whose write refused was changed anyway"
+        );
+        assert_eq!(
+            fs::metadata(&std_logic)
+                .expect("metadata")
+                .permissions()
+                .mode()
+                & 0o222,
+            0,
+            "the restore wrote through a mode the head had, so the next round sees a tree the head \
+             never had"
+        );
+        assert!(
+            put_back_paths
+                .removed
+                .iter()
+                .any(|path| path.ends_with("/cli_run/fixture_retired.rs")),
+            "the restore did not report the resurrected path among the paths it REMOVED: \
+             {put_back_paths:?}"
+        );
+        assert!(
+            put_back_paths
+                .rewritten
+                .iter()
+                .any(|path| path.ends_with("/cli_run/fixture_partition.rs")),
+            "the file the round rewrote before failing is not among the paths the restore put \
+             back: {put_back_paths:?}"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// INTERRUPTION AND RECOVERY. A process that dies after the bootstrap and before the round's own
+    /// teardown leaves the journal behind, and the next round begins by restoring it -- the head of
+    /// the round body calls `restore_regen_convergence_journal` before anything else. That recovery
+    /// can only match if the bootstrap left the journal's subject re-derivable, and it does: the
+    /// subject is the starting commit, the digest of the `.dag` sources under the entry root, and the
+    /// digest of the transaction plan, none of which a base-mirror bootstrap touches, because it
+    /// writes only inside `src/v1/stage0`. This test calls the subject-carrying form because the
+    /// fixture's subject is fixed rather than computed; the production call is the same function with
+    /// the subject the next round would carry.
+    #[test]
+    fn a_round_that_died_after_the_bootstrap_leaves_a_journal_the_next_round_can_recover() {
+        let (root, stage0, base_commit) = base_mirror_deletion_fixture();
+        let retired = stage0.join("cli_run").join("fixture_retired.rs");
+        bootstrap_round_one_from_base_mirror(&root, Some(&base_commit), &fixture_subject(&root))
+            .expect("the bootstrap runs");
+        assert!(
+            retired.is_file(),
+            "the round did not reach the state a crash would interrupt"
+        );
+        assert!(
+            regen_convergence_journal_path(&root).exists(),
+            "no journal was left behind, so there is no interruption to recover from"
+        );
+
+        let put_back_paths =
+            restore_regen_convergence_journal_for_subject(&root, &fixture_subject(&root))
+                .expect("the next round's head restores the stale journal");
+        assert!(
+            !retired.exists(),
+            "the resurrected module survived the interruption into the tree the next round builds: \
+             {put_back_paths:?}"
+        );
+        assert!(
+            !regen_convergence_journal_path(&root).exists(),
+            "the recovery left its journal behind, so a third round would restore a state that no \
+             longer exists"
         );
         let _ = fs::remove_dir_all(&root);
     }
@@ -9569,7 +10674,7 @@ mod heal_round_one_base_mirror_tests {
     /// content. Writing identical bytes is not a no-op: it bumps the mtime, and cargo fingerprints a
     /// path dependency by mtime, so the seed build and then the measured partition rebuild recompile
     /// crates the round's own derived scope had EXCLUDED. The scope guard refuses correctly; the
-    /// writer was doing redundant work (DESIGN §2). Heal run 41061363628 / job 124081920078 on #14876
+    /// writer was doing redundant work (gunbc.design_argument::minimize_redundancy). Heal run 41061363628 / job 124081920078 on #14876
     /// (`compiled excluded packages ["v1-stage0-runtime"]`, closure `[std-core, v1-infer, std-surface,
     /// extdeps-languages, v1-artifact, emit-core, v1-compiler]`) and run 41098380134 on #15310
     /// (six excluded partition packages, `changed_mirrors=[v1_compiler_emit_rust.rs]`, closure
@@ -9627,6 +10732,7 @@ mod heal_round_one_base_mirror_tests {
         assert_eq!(
             restore_regen_convergence_journal_for_subject(&root, &fixture_subject(&root))
                 .expect("the round's teardown runs")
+                .rewritten
                 .len(),
             0,
             "the teardown wrote back paths the seed never moved"
@@ -9671,6 +10777,14 @@ mod heal_round_one_base_mirror_tests {
 #[cfg(test)]
 mod regen_round_cost_tests {
     use super::*;
+
+    fn handoff_subject() -> RegenConvergenceCheckpointSubject {
+        RegenConvergenceCheckpointSubject {
+            starting_commit: "c0ffee".to_string(),
+            source_authority_digest: "sha256:source".to_string(),
+            stage_plan_authority_digest: "sha256:plan".to_string(),
+        }
+    }
 
     fn cost(crates: u64, wall: u64, cpu: Option<u64>) -> SeedBuildCost {
         SeedBuildCost {
@@ -9777,12 +10891,22 @@ mod regen_round_cost_tests {
             "an edited untracked file changes the identity"
         );
         let c = cost(1, 1, None);
-        let carry = match decide_seed_handoff(None, "a", "b", &with_new, &c).unwrap() {
-            SeedHandoffDecision::ReExec(h) => h,
-            SeedHandoffDecision::Proceed => panic!(),
-        };
+        let carry =
+            match decide_seed_handoff(None, "a", "b", &with_new, &c, Some(&handoff_subject()))
+                .unwrap()
+            {
+                SeedHandoffDecision::ReExec(h) => h,
+                SeedHandoffDecision::Proceed => panic!(),
+            };
         assert!(matches!(
-            decide_seed_handoff(Some(&carry), "b", "b", &edited_id, &c),
+            decide_seed_handoff(
+                Some(&carry),
+                "b",
+                "b",
+                &edited_id,
+                &c,
+                Some(&handoff_subject())
+            ),
             Err(SeedHandoffRefusal::SourceChangedAcrossHandoff { .. })
         ));
     }
@@ -9801,16 +10925,32 @@ mod regen_round_cost_tests {
         let id_two = compose_source_identity("H", b"d", &mut two);
         let id_one = compose_source_identity("H", b"d", &mut one);
         assert_ne!(id_two, id_one);
-        let carry = match decide_seed_handoff(None, "a", "b", &id_two, &c).unwrap() {
+        let carry = match decide_seed_handoff(None, "a", "b", &id_two, &c, Some(&handoff_subject()))
+            .unwrap()
+        {
             SeedHandoffDecision::ReExec(h) => h,
             SeedHandoffDecision::Proceed => panic!(),
         };
         assert!(matches!(
-            decide_seed_handoff(Some(&carry), "b", "b", &id_one, &c),
+            decide_seed_handoff(
+                Some(&carry),
+                "b",
+                "b",
+                &id_one,
+                &c,
+                Some(&handoff_subject())
+            ),
             Err(SeedHandoffRefusal::SourceChangedAcrossHandoff { .. })
         ));
         assert!(matches!(
-            decide_seed_handoff(Some(&carry), "b", "b", &id_two, &c),
+            decide_seed_handoff(
+                Some(&carry),
+                "b",
+                "b",
+                &id_two,
+                &c,
+                Some(&handoff_subject())
+            ),
             Ok(SeedHandoffDecision::Proceed)
         ));
     }
@@ -9844,7 +10984,9 @@ mod regen_round_cost_tests {
     fn exec_target_admission_compares_with_the_build_output_and_never_overwrites() {
         let c = cost(1, 1, None);
         // production decision: build output B is what the carry names
-        let carry = match decide_seed_handoff(None, "old", "B", "S", &c).unwrap() {
+        let carry = match decide_seed_handoff(None, "old", "B", "S", &c, Some(&handoff_subject()))
+            .unwrap()
+        {
             SeedHandoffDecision::ReExec(h) => h,
             SeedHandoffDecision::Proceed => panic!(),
         };
@@ -9859,7 +11001,7 @@ mod regen_round_cost_tests {
         assert_eq!(admitted, carry);
         // and the receiver still proceeds on the admitted carry
         assert!(matches!(
-            decide_seed_handoff(Some(&admitted), "B", "B", "S", &c),
+            decide_seed_handoff(Some(&admitted), "B", "B", "S", &c, Some(&handoff_subject())),
             Ok(SeedHandoffDecision::Proceed)
         ));
     }
@@ -9883,6 +11025,7 @@ mod regen_round_cost_tests {
             cost: c.clone(),
             source: "S".into(),
             built_exe: built.clone(),
+            round_subject: Some(handoff_subject()),
         };
         // rewrite the same inode, then put B back at the installed path
         let mut rewritten = fs::OpenOptions::new().write(true).open(&path).unwrap();
@@ -9895,17 +11038,38 @@ mod regen_round_cost_tests {
         );
         // receiver: running image C, installed path B again -> the old path-reopen said Proceed
         assert!(matches!(
-            decide_seed_handoff(Some(&carry), &running, &built, "S", &c),
+            decide_seed_handoff(
+                Some(&carry),
+                &running,
+                &built,
+                "S",
+                &c,
+                Some(&handoff_subject())
+            ),
             Err(SeedHandoffRefusal::WrongArtifactAcrossHandoff { .. })
         ));
         // installed/running mismatch with the carried artifact running
         assert!(matches!(
-            decide_seed_handoff(Some(&carry), &built, &running, "S", &c),
+            decide_seed_handoff(
+                Some(&carry),
+                &built,
+                &running,
+                "S",
+                &c,
+                Some(&handoff_subject())
+            ),
             Err(SeedHandoffRefusal::ExecutableReplacedAfterHandoff { .. })
         ));
         // same artifact everywhere proceeds
         assert!(matches!(
-            decide_seed_handoff(Some(&carry), &built, &built, "S", &c),
+            decide_seed_handoff(
+                Some(&carry),
+                &built,
+                &built,
+                "S",
+                &c,
+                Some(&handoff_subject())
+            ),
             Ok(SeedHandoffDecision::Proceed)
         ));
         let _ = fs::remove_dir_all(&dir);
@@ -9914,33 +11078,41 @@ mod regen_round_cost_tests {
     #[test]
     fn handoff_decisions_are_typed_and_round_trip() {
         let c = cost(4, 5, Some(6));
-        let carry = match decide_seed_handoff(None, "a", "b", "T", &c).unwrap() {
-            SeedHandoffDecision::ReExec(h) => h,
-            SeedHandoffDecision::Proceed => panic!("replaced exe must hand off"),
-        };
+        let carry =
+            match decide_seed_handoff(None, "a", "b", "T", &c, Some(&handoff_subject())).unwrap() {
+                SeedHandoffDecision::ReExec(h) => h,
+                SeedHandoffDecision::Proceed => panic!("replaced exe must hand off"),
+            };
         assert_eq!(carry.built_exe, "b", "the carry names the built artifact");
         assert_eq!(SeedHandoff::decode(&carry.encode()).unwrap(), carry);
         assert!(matches!(
-            decide_seed_handoff(None, "a", "a", "T", &c),
+            decide_seed_handoff(None, "a", "a", "T", &c, Some(&handoff_subject())),
             Ok(SeedHandoffDecision::Proceed)
         ));
         // positive: the re-exec'd image is the built artifact, same source, build is a no-op
         assert!(matches!(
-            decide_seed_handoff(Some(&carry), "b", "b", "T", &c),
+            decide_seed_handoff(Some(&carry), "b", "b", "T", &c, Some(&handoff_subject())),
             Ok(SeedHandoffDecision::Proceed)
         ));
         assert!(matches!(
-            decide_seed_handoff(Some(&carry), "b", "c", "T", &c),
+            decide_seed_handoff(Some(&carry), "b", "c", "T", &c, Some(&handoff_subject())),
             Err(SeedHandoffRefusal::ExecutableReplacedAfterHandoff { .. })
         ));
         // same commit, different uncommitted source
         assert!(matches!(
-            decide_seed_handoff(Some(&carry), "b", "b", "T-other-diff", &c),
+            decide_seed_handoff(
+                Some(&carry),
+                "b",
+                "b",
+                "T-other-diff",
+                &c,
+                Some(&handoff_subject())
+            ),
             Err(SeedHandoffRefusal::SourceChangedAcrossHandoff { .. })
         ));
         // wrong artifact: running image is not the one the first image built
         assert!(matches!(
-            decide_seed_handoff(Some(&carry), "z", "z", "T", &c),
+            decide_seed_handoff(Some(&carry), "z", "z", "T", &c, Some(&handoff_subject())),
             Err(SeedHandoffRefusal::WrongArtifactAcrossHandoff { .. })
         ));
         assert!(matches!(
@@ -10065,13 +11237,16 @@ mod regen_convergence_host_instrument_tests {
                 String::from_utf8_lossy(&output.stderr)
             );
         };
+        write_fixture_stage_plan(&root);
         git(&["init", "-q", "--initial-branch=main"]);
         git(&["add", "."]);
         git(&["commit", "-qm", "fixture"]);
+        let (starting_commit, stage_plan_authority_digest) =
+            checkpoint_subject_live_facts(&root).expect("fixture commit and stage plan");
         let subject = RegenConvergenceCheckpointSubject {
-            starting_commit: "fixture-head".to_string(),
+            starting_commit,
             source_authority_digest: "fixture-authority".to_string(),
-            stage_plan_authority_digest: "fixture-plan".to_string(),
+            stage_plan_authority_digest,
         };
         (root, stage0, candidate, subject)
     }
@@ -10838,7 +12013,7 @@ fn required_regen_scope_entry(source_roots: &[String]) -> Result<String, String>
 /// becomes `RegenEmissionScope::Unlocatable`, which REFUSES the round. It does not become
 /// `WholePopulation`. "Regenerate everything" and "the selection could not answer" are different
 /// states, and a fallback that widened here would be denominated in the corpus rather than in the
-/// change — the absorbing fallback DESIGN section 5 forbids, in the one place where its cost is
+/// change — the absorbing fallback gunbc.design_argument::fail_closed forbids, in the one place where its cost is
 /// unbounded.
 pub fn regen_emission_scope_for_diff(
     workspace: &Path,
@@ -11002,7 +12177,7 @@ mod regen_emission_scope_tests {
     /// unlocatable scope produces an `Err`, and the assertion below is that it did NOT produce the
     /// committed population. A regression to `WholePopulation` here would be green on every other
     /// check in this file -- the round would run, converge and pass -- while the only signal that
-    /// the module locator has a deficit was gone (DESIGN section 5, the absorbing fallback).
+    /// the module locator has a deficit was gone (gunbc.design_argument::fail_closed, the absorbing fallback).
     #[test]
     fn an_unlocatable_scope_refuses_and_does_not_widen_to_the_population() {
         let scope = RegenEmissionScope::Unlocatable {
@@ -11400,9 +12575,64 @@ pub fn run_dag_artifact_identity() -> Result<DagArtifactIdentityOutcome, String>
 }
 
 #[cfg(test)]
+/// The residency observation the generation gate is argued from, read the way the gate reads it.
+///
+/// WHY THIS TEST EXISTS: these lines are the evidence a correct refusal is judged on, and the one
+/// failure mode that makes them worse than nothing is a field that parses to something plausible
+/// and wrong. Stripping the bare name from `"VmRSS:\t 216968 kB"` leaves `":"` as the next token,
+/// which prints as `VmRSS=:kB` -- a number-shaped field that is not a number, in the one line a
+/// reviewer is reading to decide whether a retention is real.
+mod orchestrator_residency_observation_tests {
+    use super::{self_exe_field_with, status_memory_fields_from};
+
+    #[test]
+    fn status_memory_fields_parse_the_number_not_the_colon() {
+        // Real `/proc/self/status` padding: a tab after the key, then the value right-aligned.
+        let status = "Name:\tclaim_executor\nVmHWM:\t  8272424 kB\nVmSize:\t 123456789 kB\n\
+                      VmRSS:\t   216968 kB\nUid:\t1000\t1000\t1000\t1000\n";
+        let line = status_memory_fields_from(status);
+        assert_eq!(
+            line, "VmRSS=216968kB VmHWM=8272424kB VmSize=123456789kB",
+            "the fields a reader judges a refusal by must carry the numbers, not the key's colon"
+        );
+        // A name that is a PREFIX of another key's line must not be confused with it: `VmRSS` and
+        // `VmHWM` are distinct keys, and `Name:` starts with no field we read.
+        assert!(
+            !line.contains("Name"),
+            "only the memory fields are printed: {line}"
+        );
+    }
+
+    #[test]
+    fn an_unreadable_field_is_omitted_rather_than_printed_as_zero() {
+        // Absent, not zero: a diag line claiming `VmRSS=0kB` would read as an orchestrator that
+        // released everything, which is the exact claim this whole observation is asked about.
+        let line = status_memory_fields_from("Name:\tgum\nThreads:\t1\n");
+        assert_eq!(line, "");
+        let partial = status_memory_fields_from("VmRSS:\t 12 kB\nVmHWM:\t junk kB\n");
+        assert_eq!(partial, "VmRSS=12kB");
+    }
+
+    #[test]
+    fn an_unreadable_exe_mtime_is_omitted_rather_than_printed_as_a_reading() {
+        // The same discipline on the field whose entire job is to tell two builds of the
+        // same-named file apart. `exe_mtime=0` is a value, and a value is read as an observation:
+        // an unreadable timestamp printed as zero is how a stale image gets credited as the one
+        // under test, which is the failure this branch was diagnosed under.
+        let known = self_exe_field_with("/tmp/claim_executor".to_string(), Some(1_730_000_000));
+        assert_eq!(known, "exe=/tmp/claim_executor exe_mtime=1730000000");
+        let unknown = self_exe_field_with("/tmp/claim_executor".to_string(), None);
+        assert_eq!(unknown, "exe=/tmp/claim_executor");
+        assert!(
+            !unknown.contains("exe_mtime"),
+            "an unreadable timestamp must not print at all: {unknown}"
+        );
+    }
+}
+
+#[cfg(test)]
 mod dag_artifact_identity_tests {
     use super::{run_dag_artifact_identity, DAG_ARTIFACT_IDENTITY_MIN_REGISTRY_KEYS};
-
     /// THE LOCAL ARM OF THE REQUIRED RIDER, so the control can be run against a tree without
     /// driving a whole required lane. It is not the enrolled consumer -- that is the
     /// `dag-artifact-identity` rider inside `RequiredCiPhase::GeneratedArtifact`, which is what
@@ -11487,7 +12717,21 @@ mod host_shell_scope_modules_tests {
         std::fs::write(dir.join("deeper.rs"), "").unwrap();
         std::fs::write(dir.join("sibling.rs"), "").unwrap();
         std::fs::write(dir.join("stray.rs"), "").unwrap();
-        let modules = host_shell_scope_modules(&dir.join("lib.rs")).unwrap();
+        // A second target root: `main.rs` is the `[[bin]]` root no `mod` declares, and it declares
+        // `bin_child` itself. Reading lib.rs alone owns neither.
+        std::fs::write(dir.join("main.rs"), "mod bin_child;\n").unwrap();
+        std::fs::write(dir.join("bin_child.rs"), "").unwrap();
+        // A second `[[bin]]` under `bin/`, as `infer_semantics_witness` is in the seed: a changed
+        // file there refused `MirrorHasNoOwningPackage` (#15175 heal, run 41934097748).
+        std::fs::create_dir_all(dir.join("bin")).unwrap();
+        std::fs::write(dir.join("bin/witness.rs"), "").unwrap();
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[[bin]]\nname = \"x\"\npath = \"main.rs\"\n\n[[bin]]\nname = \"witness\"\npath = \"bin/witness.rs\"\n",
+        )
+        .unwrap();
+        let modules =
+            host_shell_scope_modules(&dir.join("lib.rs"), &dir.join("Cargo.toml")).unwrap();
         let _ = std::fs::remove_dir_all(&dir);
         for owned in [
             "cli_run",
@@ -11497,6 +12741,9 @@ mod host_shell_scope_modules_tests {
             "deeper",
             "sibling",
             "lib",
+            "main",
+            "bin_child",
+            "witness",
         ] {
             assert!(
                 modules.iter().any(|m| m == owned),
@@ -11613,7 +12860,7 @@ mod generation_supervisor_tests {
     fn a_silent_generation_under_the_envelope_throttle_is_refused_after_the_window() {
         let t0 = Instant::now();
         let model = liveness_model();
-        let mut supervisor = GenerationSupervisor::new(1, t0);
+        let mut supervisor = GenerationSupervisor::new("generation 1".to_string(), t0);
         // A mark arrives at 60 s: the window is measured from here.
         assert!(matches!(
             supervisor.observe(&model, t0, 0, counters(0, 0, 0, Some(0))),
@@ -11650,7 +12897,7 @@ mod generation_supervisor_tests {
                     refusal.starts_with("MemoryStallRefusedEnvelopeThrottle"),
                     "{refusal}"
                 );
-                assert!(refusal.contains("rebuilt-seed generation 1"), "{refusal}");
+                assert!(refusal.contains("[generation 1 after"), "{refusal}");
                 assert!(refusal.contains("psi_full_share_bp=8000"), "{refusal}");
                 assert!(
                     refusal.contains("envelope_events_in_window=412"),
@@ -11667,7 +12914,7 @@ mod generation_supervisor_tests {
     fn a_generation_that_keeps_marking_is_never_judged_on_its_counters() {
         let t0 = Instant::now();
         let model = liveness_model();
-        let mut supervisor = GenerationSupervisor::new(2, t0);
+        let mut supervisor = GenerationSupervisor::new("generation 2".to_string(), t0);
         let _ = supervisor.observe(&model, t0, 0, counters(0, 0, 0, Some(0)));
         for minute in 1..=40u64 {
             let at = t0 + Duration::from_secs(minute * 60);
@@ -11690,7 +12937,7 @@ mod generation_supervisor_tests {
     fn an_unreadable_slot_is_reported_unsupervised_not_admitted_as_healthy() {
         let t0 = Instant::now();
         let model = liveness_model();
-        let mut supervisor = GenerationSupervisor::new(1, t0);
+        let mut supervisor = GenerationSupervisor::new("generation 1".to_string(), t0);
         let unreadable = || SlotStallReading::Unreadable {
             cause: "read /sys/fs/cgroup/x/memory.stat: No such file or directory".to_string(),
         };
@@ -11960,11 +13207,449 @@ mod surface_roles_receipt_tests {
     }
 }
 
-/// THE ORCHESTRATOR LOADS ITS MODELS FROM THEIR OWN CLOSURES, never through the whole-tree shared
-/// index. The discriminator is the thread's shared-index memo (`PROCESS_RESOLVE_INDEX` is
-/// thread-local and each test runs on its own thread): replaying the re-exec'd orchestrator's loads
-/// in PRODUCTION ORDER -- the liveness model, the convergence model, the round-cost decider -- must
-/// leave it empty, and a shared-index build over even a tiny root must not.
+/// THE PARTITION-MOVE EXPLANATION CROSSES A PROCESS BOUNDARY AS ONE TYPED ANSWER
+/// (`PartitionMoveExplanationReceipt`, its only definition). The spawn itself needs the real
+/// `claim_executor` binary and is exercised by the heal round; these pin the carrier, the readback's
+/// refusals, and the child entry's write.
+#[cfg(test)]
+mod partition_move_explanation_tests {
+    use super::*;
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc-partition-move-{name}-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        dir.join("answer.json")
+    }
+
+    #[test]
+    fn the_three_answers_round_trip_and_stay_distinct() {
+        let schema = PARTITION_MOVE_EXPLANATION_SCHEMA.to_string();
+        for answer in [
+            PartitionMoveExplanationReceipt::Explained {
+                schema: schema.clone(),
+            },
+            PartitionMoveExplanationReceipt::Unexplained {
+                schema: schema.clone(),
+            },
+            PartitionMoveExplanationReceipt::Refused {
+                schema: schema.clone(),
+                reason: "diff range unreadable".to_string(),
+            },
+        ] {
+            let path = scratch("roundtrip");
+            fs::write(&path, serde_json::to_vec(&answer).unwrap()).unwrap();
+            assert_eq!(
+                read_child_answer::<PartitionMoveExplanationReceipt>(&path).unwrap(),
+                answer
+            );
+        }
+    }
+
+    /// RED: no answer, an unparseable answer, and an answer in another schema all refuse.
+    #[test]
+    fn an_absent_garbled_or_foreign_answer_refuses() {
+        let path = scratch("refusals");
+        let _ = fs::remove_file(&path);
+        assert!(read_child_answer::<PartitionMoveExplanationReceipt>(&path)
+            .unwrap_err()
+            .contains("wrote no answer"));
+        fs::write(&path, b"{\"answer\":\"maybe\"}").unwrap();
+        assert!(read_child_answer::<PartitionMoveExplanationReceipt>(&path)
+            .unwrap_err()
+            .contains("refusal: parse"));
+        fs::write(
+            &path,
+            serde_json::to_vec(&PartitionMoveExplanationReceipt::Explained {
+                schema: "gunbc.regen_partition_move_explanation.v0".to_string(),
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        assert!(read_child_answer::<PartitionMoveExplanationReceipt>(&path)
+            .unwrap_err()
+            .contains("not gunbc.regen_partition_move_explanation.v1"));
+    }
+
+    /// The child's real entry writes whatever it answered -- here, with no diff range bound in a test
+    /// process, a typed refusal -- and the readback returns exactly that.
+    #[test]
+    fn the_child_entry_writes_the_answer_it_returns() {
+        let rel = format!(
+            "target/test-partition-move-explanation-{}.json",
+            std::process::id()
+        );
+        let roots: Vec<String> = ["dag", "src/v2"]
+            .iter()
+            .map(|r| workspace_root().join(r).to_string_lossy().into_owned())
+            .collect();
+        let answered = run_partition_move_explanation(&rel, &roots).unwrap();
+        let path = workspace_root().join(&rel);
+        assert_eq!(
+            read_child_answer::<PartitionMoveExplanationReceipt>(&path).unwrap(),
+            answered
+        );
+        let _ = fs::remove_file(&path);
+    }
+}
+
+/// THE ROUTE REPLACEMENT'S EQUIVALENCE CONTROL, at the one interface the shipped change can change
+/// in generated bytes: the rows `admit_derived_partition_move` hands to
+/// `partition_crate_boundary_emit_outcome_over`.
+///
+/// WHY THIS AND NOT THE WHOLE-GRAPH DIFFERENTIAL. The broader
+/// `both_routes_resolve_every_orchestrator_entry_identically` compares two live graphs, so one
+/// process must hold the ~10 GB whole-tree index AND the demand graph at the comparison point. That
+/// peak was measured at more than 48 GiB for a single site (srv1, 9a5da065: wall-stalled at the cap
+/// with `oom_kill=0`, and at 25 GiB with rc=101/rc=124) -- an environment fact, not a verdict, and
+/// not a question this control has to ask. The routes are answers to ONE question here, and the
+/// answer is a row list: each route is resolved in its OWN child process, sequentially, and only
+/// the serialized rows survive, so the peak is the costlier single route rather than their sum.
+/// Consequences worth stating: an equal-by-construction comparison would read green, so
+/// `a_planted_row_difference_fails_the_row_comparison` alters one dumped row and requires the
+/// comparison to refuse; and two empty row lists would also read green, so an empty projection
+/// refuses on its own rather than agreeing with another empty.
+#[cfg(test)]
+mod route_projection_control {
+    use super::*;
+
+    const ROUTE_ENV: &str = "GUNBC_ORCH_DUMP_ROUTE";
+    const OUT_ENV: &str = "GUNBC_ORCH_DUMP_OUT";
+    const DUMP_TEST: &str = "orchestrator_route_row_projection_dump";
+    /// Only the child that actually performed a dump prints this. A child that matched no
+    /// test, or returned early, exits 0 without it - see the parent's non-vacuity assert.
+    const DONE_MARKER: &str = "route_projection_done:";
+    const SHARED_ROUTE: &str = "shared_index";
+    const DEMAND_ROUTE: &str = "demand";
+
+    /// The site that forked, over the corpus its production caller uses -- `regen_source_roots()`,
+    /// exactly as `emitted_tree_packages` builds them. Asking either route about `[dag, src/v2]`
+    /// would compare two answers to a question no caller asks.
+    fn emitted_tree_site() -> (Vec<String>, String) {
+        let roots: Vec<String> = super::super::regen_source_roots()
+            .all()
+            .iter()
+            .map(|root| {
+                workspace_root()
+                    .join(root.repo_relative_path())
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect();
+        let entry = roots
+            .iter()
+            .map(|root| {
+                Path::new(root)
+                    .join("gunbc/stage0/stage0_emitted_edge_admission.dag")
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .find(|path| Path::new(path).is_file())
+            .unwrap_or_else(|| {
+                panic!(
+                    "gunbc.stage0.stage0_emitted_edge_admission is under no regen source root \
+                     {roots:?}, so there is no emitted-tree site to compare"
+                )
+            });
+        (roots, entry)
+    }
+
+    /// THE CONSUMED PROJECTION, in canonical order: the value of `generated_partition_crate_rows`
+    /// as the interpreter answers it under `route`, one canonical JSON line per row, sorted.
+    ///
+    /// ALL ROW FIELDS ARE COMPARED, deliberately. The manager's condition was that the diff must not
+    /// pass or fail on ordering or on unconsumed fields; ordering is removed by sorting, and the two
+    /// host-shell values that `admit_derived_partition_move` does not read are excluded. Row fields
+    /// are NOT excluded on a partial reading of the plan's call chain: dropping a field on an
+    /// incomplete read risks a false PASS, which is the worse error, and a field that genuinely
+    /// differs between the routes is worth a human seeing rather than a green line.
+    ///
+    /// Decoded to `serde_json::Value` rather than the mirror's row type on purpose: the mirror type
+    /// would silently normalise what the two routes produced, and this control exists to catch the
+    /// routes producing different things.
+    fn row_projection(route: &str) -> Result<Vec<String>, String> {
+        use crate::v1_interpreter::{self, ExecutionMode};
+        let (roots, entry) = emitted_tree_site();
+        let (graph, indices) = match route {
+            DEMAND_ROUTE => resolve_orchestrator_model(&roots, &entry)
+                .map_err(|e| format!("the demand-acquired route refused: {e:?}"))?,
+            SHARED_ROUTE => {
+                let shared = super::super::process_shared_index_or_refuse(&roots);
+                super::super::resolve_entry_with_index(&shared, &entry)
+                    .map_err(|e| format!("the whole-tree route refused: {e}"))?
+            }
+            other => {
+                return Err(format!(
+                    "unknown route {other:?}; expected {SHARED_ROUTE} or {DEMAND_ROUTE}"
+                ))
+            }
+        };
+        let ctx = super::super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+        let value = v1_interpreter::with_active_context(&ctx, || {
+            v1_interpreter::run_in_context_with_args(
+                &ctx,
+                "generated_partition_crate_rows",
+                &[],
+                false,
+            )
+        })
+        .map_err(|e| format!("{route}: generated_partition_crate_rows did not evaluate: {e}"))?;
+        let wire = super::super::value_to_wire_json(&value, &ctx).map_err(|e| {
+            format!("{route}: generated_partition_crate_rows did not wire-encode: {e}")
+        })?;
+        let rows: Vec<serde_json::Value> = serde_json::from_value(wire)
+            .map_err(|e| format!("{route}: generated_partition_crate_rows did not decode: {e}"))?;
+        let mut lines: Vec<String> = rows
+            .iter()
+            .map(|row| {
+                serde_json::to_string(row)
+                    .map_err(|e| format!("{route}: a row did not re-encode: {e}"))
+            })
+            .collect::<Result<_, _>>()?;
+        lines.sort();
+        Ok(lines)
+    }
+
+    /// THE COMPARISON, as a pure function so the planted control can test it without a 10 GB run.
+    fn compare_row_projections(
+        route_a: &str,
+        a: &[String],
+        route_b: &str,
+        b: &[String],
+    ) -> Result<(), String> {
+        if a.is_empty() || b.is_empty() {
+            return Err(format!(
+                "the row projection is empty on {route_a} ({} row(s)) or {route_b} ({} row(s)); an \
+                 empty projection is not an agreement -- it is the route answering nothing",
+                a.len(),
+                b.len()
+            ));
+        }
+        if a == b {
+            return Ok(());
+        }
+        let first = a
+            .iter()
+            .zip(b.iter())
+            .position(|(x, y)| x != y)
+            .unwrap_or_else(|| a.len().min(b.len()));
+        Err(format!(
+            "the two routes returned different partition-crate rows: {route_a} gave {} row(s), \
+             {route_b} gave {} row(s); first difference at index {first}: \
+             {route_a} = {} | {route_b} = {}",
+            a.len(),
+            b.len(),
+            a.get(first).map(String::as_str).unwrap_or("<none>"),
+            b.get(first).map(String::as_str).unwrap_or("<none>"),
+        ))
+    }
+
+    /// One route, one process, one file. Run by the parent below as a child so each route's peak is
+    /// its own; the parent never holds either.
+    ///
+    /// NOT `#[ignore]`d, and that is deliberate rather than sloppy: an ignored test is SKIPPED when a
+    /// child asks for it by name, the child still exits 0, and the parent would then compare nothing
+    /// and call that agreement. So this helper runs when, and only when, it is asked -- with
+    /// {ROUTE_ENV} set -- and returns without work when the parent is not driving it. Half a
+    /// configuration is a refusal, not a skip: name a route without an output path and it panics.
+    #[test]
+    fn orchestrator_route_row_projection_dump() {
+        let Ok(route) = std::env::var(ROUTE_ENV) else {
+            eprintln!(
+                "route_projection: {ROUTE_ENV} unset, so this is the parent's helper, not a run"
+            );
+            return;
+        };
+        let out = std::env::var(OUT_ENV).unwrap_or_else(|_| {
+            panic!(
+                "{} is unset; this dump test writes one canonical row file",
+                OUT_ENV
+            )
+        });
+        let lines = row_projection(&route).unwrap_or_else(|e| panic!("{route}: {e}"));
+        std::fs::write(&out, lines.join("\n") + "\n")
+            .unwrap_or_else(|e| panic!("could not write the {route} projection to {out}: {e}"));
+        eprintln!(
+            "{DONE_MARKER} {route} wrote {} row(s) to {out}",
+            lines.len()
+        );
+    }
+
+    /// THE CONTROL. Two children, one per route, run SEQUENTIALLY so the second starts after the
+    /// first's index is gone with its process; then the two files are compared. This is the receipt
+    /// that the shipped route returns the rows the whole-tree route returned, for the real
+    /// emitted-tree entry, inside a slot a normal machine has.
+    ///
+    /// RESOURCE NOTE, measured. The two children run SEQUENTIALLY, so the peak is the costlier
+    /// single route rather than the sum of both; the shared arm still builds the whole-tree index
+    /// over the `dag` corpus, so budget generously. A sibling control that held the whole index
+    /// and the demand graph at once was measured on srv1 at head 9a5da065: one site hit a 25 GiB
+    /// cap and was wall-timed out (`rc=124`, `memory.peak` AT the cap), and at a 48 GiB cap the
+    /// same site sat at the limit for 2 h with `oom_kill=0` and `memory.events max=19179707`. Run
+    /// with swap 0, a generous timeout, and `--nocapture`. Absence of a line is not a verdict:
+    /// this test's own verdict is always a printed line (`shared index returned N row(s)`,
+    /// `EQUIVALENT ...`, or a `panic!` naming the difference), so `rc=101`, `rc=124`, or an exit 1
+    /// carrying only `shared index refused:` / `module index refused:` with no such line is a fact
+    /// about the machine, not about the routes.
+    #[test]
+    #[ignore = "spawns one child per route over the real emitted tree; run with --nocapture"]
+    fn orchestrator_route_row_projections_agree_in_separate_processes() {
+        let exe = std::env::current_exe().expect("the test binary should know its own path");
+        let dir =
+            std::env::temp_dir().join(format!("gunbc-route-projection-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("the projection directory should be creatable");
+        let mut files: Vec<(String, std::path::PathBuf)> = Vec::new();
+        for route in [SHARED_ROUTE, DEMAND_ROUTE] {
+            // SEQUENTIAL ON PURPOSE. Two concurrent children would peak at the sum again, which is
+            // the very property that made the in-process comparison unrunnable.
+            let file = dir.join(format!("{route}.rows"));
+            let child = std::process::Command::new(&exe)
+                // SUBSTRING FILTER, deliberately, and no `--exact`. Two measured traps: a bare
+                // test name with `--exact` matches ZERO tests, and a `module_path!()` prefix does
+                // not match the harness's own spelling of the path either. Both leave the child
+                // printing "running 0 tests" and exiting 0 having written nothing. The name below
+                // is unique as a substring, and the marker assert is what actually proves the dump
+                // ran - a filter that matches nothing cannot produce it.
+                .arg(DUMP_TEST)
+                .arg("--nocapture")
+                .arg("--test-threads=1")
+                .env(ROUTE_ENV, route)
+                .env(OUT_ENV, &file)
+                .output()
+                .unwrap_or_else(|e| panic!("the {route} child could not start: {e}"));
+            let child_out = format!(
+                "{}{}",
+                String::from_utf8_lossy(&child.stdout),
+                String::from_utf8_lossy(&child.stderr)
+            );
+            for line in child_out.lines() {
+                // Forwarded rather than swallowed, so a child that refuses for a stated reason
+                // (a closure error, an index refusal) is still readable in the parent's log.
+                eprintln!("route_projection: [{route} child] {line}");
+            }
+            assert!(
+                child.status.success(),
+                "the {route} child exited with {:?}; its lines are above",
+                child.status
+            );
+            assert!(
+                child_out
+                    .lines()
+                    .any(|l| l.starts_with(DONE_MARKER) && l.contains(route)),
+                "the {route} child exited 0 without printing its {DONE_MARKER} line, so it never \
+                 ran the dump - a filter that matches no test looks like this. Its lines are above."
+            );
+            let rows = std::fs::read_to_string(&file).unwrap_or_else(|e| {
+                panic!(
+                    "the {route} child left no projection at {}: {e}",
+                    file.display()
+                )
+            });
+            let rows: Vec<String> = rows
+                .lines()
+                .filter(|l| !l.is_empty())
+                .map(String::from)
+                .collect();
+            assert!(
+                !rows.is_empty(),
+                "the {route} child wrote an empty projection"
+            );
+            eprintln!("route_projection: {route} returned {} row(s)", rows.len());
+            files.push((route.to_string(), file));
+        }
+        let read = |f: &std::path::PathBuf| -> Vec<String> {
+            std::fs::read_to_string(f)
+                .unwrap_or_else(|e| panic!("{} should be readable: {e}", f.display()))
+                .lines()
+                .filter(|l| !l.is_empty())
+                .map(String::from)
+                .collect()
+        };
+        let shared = read(&files[0].1);
+        let demand = read(&files[1].1);
+        compare_row_projections(SHARED_ROUTE, &shared, DEMAND_ROUTE, &demand)
+            .unwrap_or_else(|e| panic!("EQUIVALENCE REFUSED: {e}"));
+        eprintln!(
+            "EQUIVALENT (canonical rows, consumed projection only): both routes gave {} row(s) for \
+             gunbc.stage0.stage0_emitted_edge_admission",
+            shared.len()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// THE PLANTED CONTROL, without which the comparison above could be equal by construction.
+    /// Same rows, one field altered, and the comparison must refuse. Also holds for an added row, a
+    /// dropped row, and an empty projection, none of which the shipped route could produce by
+    /// accident but all of which a green run would otherwise survive.
+    #[test]
+    fn a_planted_row_difference_fails_the_row_comparison() {
+        let rows = || {
+            vec![
+                r#"{"package_name":"a","modules":["m1"]}"#.to_string(),
+                r#"{"package_name":"b","modules":["m2"]}"#.to_string(),
+                r#"{"package_name":"c","modules":[]}"#.to_string(),
+            ]
+        };
+        assert!(compare_row_projections(SHARED_ROUTE, &rows(), DEMAND_ROUTE, &rows()).is_ok());
+
+        let altered = {
+            let mut r = rows();
+            r[1] = r#"{"package_name":"b","modules":["m2","EXTRA"]}"#.to_string();
+            r
+        };
+        let why = compare_row_projections(SHARED_ROUTE, &rows(), DEMAND_ROUTE, &altered)
+            .expect_err("an altered module list in one row must refuse");
+        assert!(why.contains("different partition-crate rows"), "{why}");
+
+        let renamed = {
+            let mut r = rows();
+            r[0] = r#"{"package_name":"a-renamed","modules":["m1"]}"#.to_string();
+            r.sort();
+            r
+        };
+        assert!(compare_row_projections(SHARED_ROUTE, &rows(), DEMAND_ROUTE, &renamed).is_err());
+
+        let dropped = {
+            let mut r = rows();
+            r.remove(2);
+            r
+        };
+        assert!(compare_row_projections(SHARED_ROUTE, &rows(), DEMAND_ROUTE, &dropped).is_err());
+
+        let added = {
+            let mut r = rows();
+            r.push(r#"{"package_name":"d","modules":[]}"#.to_string());
+            r.sort();
+            r
+        };
+        assert!(compare_row_projections(SHARED_ROUTE, &rows(), DEMAND_ROUTE, &added).is_err());
+
+        // TWO EMPTIES ARE NOT AGREEMENT, and one empty against one non-empty is not either.
+        let why_empty = compare_row_projections(SHARED_ROUTE, &[], DEMAND_ROUTE, &[])
+            .expect_err("two empty projections must refuse");
+        assert!(why_empty.contains("empty projection"), "{why_empty}");
+        assert!(compare_row_projections(SHARED_ROUTE, &rows(), DEMAND_ROUTE, &[]).is_err());
+    }
+
+    /// Canonical order is part of the claim, so a dump that came out unsorted is a bug in the
+    /// control rather than a difference between routes.
+    #[test]
+    fn the_projection_is_canonically_ordered() {
+        let mut unsorted = vec![
+            r#"{"package_name":"z"}"#.to_string(),
+            r#"{"package_name":"a"}"#.to_string(),
+        ];
+        unsorted.sort();
+        assert_eq!(
+            unsorted.first().map(String::as_str),
+            Some(r#"{"package_name":"a"}"#)
+        );
+        assert!(compare_row_projections(SHARED_ROUTE, &unsorted, DEMAND_ROUTE, &unsorted).is_ok());
+    }
+}
+
 #[cfg(test)]
 mod orchestrator_model_load_tests {
     use super::*;
@@ -12017,10 +13702,61 @@ mod orchestrator_model_load_tests {
         assert_ne!(canonical_occurrences(a), canonical_occurrences(unshared));
     }
 
+    fn carried_subject() -> RegenConvergenceCheckpointSubject {
+        RegenConvergenceCheckpointSubject {
+            starting_commit: "c0ffee".to_string(),
+            source_authority_digest: "sha256:source".to_string(),
+            stage_plan_authority_digest: "sha256:plan".to_string(),
+        }
+    }
+
+    /// EVERYTHING THE ORCHESTRATOR DOES IN-PROCESS BEFORE GENERATION 0, in production order
+    /// (`run_regen_round_cost`): the liveness model, the round subject, the convergence model, the
+    /// round-cost decider, then the generation-begin admission. None of it may start a whole-pool
+    /// index build on this thread. The previous version of this replay listed only the model loads
+    /// and missed the checkpoint subject, which run 41899288377 then measured in production (7.57
+    /// GB at generation 0). The subject child itself needs the real `claim_executor` and runs in
+    /// the heal round; here the ask is counted, and both images' routes are driven.
     #[test]
-    fn the_orchestrators_model_loads_build_no_shared_index() {
+    fn nothing_the_orchestrator_does_before_generation_0_builds_a_whole_pool_index() {
         let roots = roots();
+        let builds_before = super::super::entry_resolve::whole_pool_index_builds_on_this_thread();
         let _liveness = SupervisedSubjectModel::load(&roots).expect("liveness model");
+        // The image that owns a base-mirror round establishes the subject (the child, counted)...
+        let mut owned_slot = None;
+        let mut asks = 0;
+        let owned = establish_round_subject(&mut owned_slot, None, || {
+            asks += 1;
+            Ok(carried_subject())
+        })
+        .unwrap()
+        .clone();
+        let _ = establish_round_subject(&mut owned_slot, None, || {
+            panic!("an established subject is never produced again")
+        })
+        .unwrap();
+        assert_eq!(
+            asks, 1,
+            "the owning image produces the subject exactly once"
+        );
+        // ...and the re-exec'd image takes the carried value and asks nobody.
+        let carry = SeedHandoff {
+            cost: SeedBuildCost {
+                compiled_crates: 1,
+                wall_ms: 1,
+                cpu_ms: None,
+            },
+            source: "S".to_string(),
+            built_exe: "B".to_string(),
+            round_subject: Some(owned.clone()),
+        };
+        let mut reexecd_slot = SeedHandoff::decode(&carry.encode()).unwrap().round_subject;
+        let reexecd = establish_round_subject(&mut reexecd_slot, None, || {
+            panic!("the re-exec'd image must not produce the subject again")
+        })
+        .unwrap()
+        .clone();
+        assert_eq!(reexecd, owned);
         let convergence = RegenConvergenceModel::load(&roots).expect("convergence model");
         let entry = round_cost_entry(&roots).unwrap();
         let _decider = resolve_orchestrator_model(&roots, &entry).expect("round-cost decider");
@@ -12030,9 +13766,43 @@ mod orchestrator_model_load_tests {
             Ok(())
         );
         assert_eq!(
+            super::super::entry_resolve::whole_pool_index_builds_on_this_thread() - builds_before,
+            0,
+            "something the orchestrator does before generation 0 built a whole-pool index"
+        );
+        assert_eq!(
             super::super::entry_resolve::shared_index_residency_control(),
             Ok(0),
             "an orchestrator model load built the whole-tree shared index"
+        );
+    }
+
+    /// RED for the discriminator, on the SUBJECT PRODUCER'S OWN ROUTE: `regen_input_sources`, which
+    /// the checkpoint subject's digest calls unconditionally, is seen as a whole-pool build -- here
+    /// over a one-module fixture root, because the real corpus costs about 7.5 GB.
+    #[test]
+    fn the_subject_producers_closure_build_is_seen_by_the_counter() {
+        let root = workspace_root().join(format!(
+            "target/gunbc-subject-producer-red-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(root.join("probe")).unwrap();
+        fs::write(
+            root.join("probe/fixture.dag"),
+            "module probe.fixture\n\nimport std.types { Int }\n\ndata fixture_value: Int = 1\n",
+        )
+        .unwrap();
+        let before = super::super::entry_resolve::whole_pool_index_builds_on_this_thread();
+        let sources = super::super::regen_input_sources_over_roots(
+            &root,
+            &[root.to_string_lossy().into_owned()],
+        );
+        let builds = super::super::entry_resolve::whole_pool_index_builds_on_this_thread() - before;
+        let _ = fs::remove_dir_all(&root);
+        assert!(sources.is_ok(), "the fixture closure resolves: {sources:?}");
+        assert!(
+            builds >= 1,
+            "the counter did not see the subject producer's whole-pool build"
         );
     }
 
@@ -12051,37 +13821,135 @@ mod orchestrator_model_load_tests {
         )
         .unwrap();
         let fixture_roots = vec![root.to_string_lossy().into_owned()];
+        let before = super::super::entry_resolve::whole_pool_index_builds_on_this_thread();
         let _ = super::super::entry_resolve::try_process_shared_index(&fixture_roots);
+        let builds = super::super::entry_resolve::whole_pool_index_builds_on_this_thread() - before;
         let resident = super::super::entry_resolve::shared_index_residency_control();
         let _ = fs::remove_dir_all(&root);
         assert!(
             matches!(resident, Ok(n) if n >= 1),
             "the residency read did not see a shared-index build: {resident:?}"
         );
+        assert!(builds >= 1, "the counter did not see a shared-index build");
     }
 
     /// EQUIVALENCE, PER SITE: the demand-acquired route and the shared-index route resolve each
     /// orchestrator entry to the SAME graph -- the same modules, the same item registry with every
     /// item's resolved content, the same diagnostics -- and the model functions the five sites call
     /// answer identically on fixed inputs. Two resolutions that could diverge silently would be two
-    /// authorities for one model (DESIGN section 3). The shared-index side costs about 169 s and
-    /// 10 GB, so this runs on demand: --ignored --test-threads=1 on a release build.
+    /// authorities for one model (gunbc.design_argument::single_authority). The shared-index side costs about 169 s and
+    /// 10 GB on the small fixture, so this runs on demand: `--ignored --test-threads=1` on a
+    /// release build.
+    ///
+    /// RESOURCE, MEASURED - and corrected. An earlier version of this comment told the rerunner
+    /// that a 25 GiB slot suffices if sites are run one at a time. That was wrong, and the
+    /// correction is here because following it wastes a slot: srv1 ran one site per process at a
+    /// 25 GiB cap and returned no verdict (wall-timed out with `memory.peak` AT the cap), then ran
+    /// the gating site ALONE at a 48 GiB cap with swap 0 and sat at the limit for 2 h with
+    /// `oom_kill=0` and `memory.events max=19179707`. The differential holds the whole-tree index
+    /// and the demand-acquired graph at the same comparison point, so budget well above 48 GiB.
+    /// A death under the cap is a fact about the machine, not a verdict: this control's verdict is
+    /// always a printed line, so no line means it did not run.
+    ///
+    /// This is the full-graph cross-check. The receipt that gates the route swap is the narrower
+    /// `route_projection_control`, which compares only the rows `admit_derived_partition_move`
+    /// consumes and answered in a 25 GiB unit in 188 s at 9.88 GB peak.
+    ///
+    /// To narrow this one, set `GUNBC_ORCH_ROUTE_SITE` to a substring of exactly one site's file
+    /// name (e.g. `stage0_emitted_edge_admission`); a value matching no site fails rather than
+    /// skipping. Unset runs all four, on a machine that can hold them.
     #[test]
     #[ignore]
     fn both_routes_resolve_every_orchestrator_entry_identically() {
         use crate::v1_interpreter::{self, ExecutionMode, Value};
         let roots = roots();
-        let entries = [
-            Path::new(&roots[1]).join("workflow/regen_convergence_transaction.dag"),
-            Path::new(&roots[0]).join("gunbc/host/memory_stall_refusal.dag"),
-            PathBuf::from(round_cost_entry(&roots).unwrap()),
+        // EACH SITE CARRIES THE CORPUS ITS PRODUCTION CALLER INDEXES -- the whole point of the
+        // control. A route replacement is equivalent only if both routes are asked the same
+        // question over the same corpus. The emitted-tree site does not read the claim corpus:
+        // `emitted_tree_packages` builds its roots from `regen_source_roots()` -- the seed's
+        // `src/v1` plus the `dag` corpus, in the round's workspace. Indexing it over `[dag, src/v2]`
+        // asks about a corpus no caller ever used, and the shared-index route then correctly
+        // refuses an entry whose closure is not in the index it was handed.
+        let regen_roots: Vec<String> = super::super::regen_source_roots()
+            .all()
+            .iter()
+            .map(|root| {
+                workspace_root()
+                    .join(root.repo_relative_path())
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect();
+        let sites: Vec<(Vec<String>, PathBuf)> = vec![
+            (
+                roots.clone(),
+                Path::new(&roots[1]).join("workflow/regen_convergence_transaction.dag"),
+            ),
+            (
+                roots.clone(),
+                Path::new(&roots[0]).join("gunbc/host/memory_stall_refusal.dag"),
+            ),
+            (
+                roots.clone(),
+                PathBuf::from(round_cost_entry(&roots).unwrap()),
+            ),
+            // THE SITE THAT FORKED. This entry resolved over the whole-tree route while every
+            // site above was on the demand-acquired one, and it ran inside the orchestrator
+            // between generations -- ~10 GB, which is why a round that needed a second generation
+            // was refused by GenerationStateRetainedByOrchestrator. Its rows feed the partition
+            // boundary emit and reach generated bytes, so a divergence between the routes here
+            // would be a divergence in the seed, not only in a log line.
+            (
+                regen_roots,
+                Path::new(&roots[0]).join("gunbc/stage0/stage0_emitted_edge_admission.dag"),
+            ),
         ];
-        let shared = super::super::process_shared_index_or_refuse(&roots);
-        for entry in &entries {
-            let entry = entry.to_string_lossy().into_owned();
-            let (demand, demand_si) = resolve_orchestrator_model(&roots, &entry).unwrap();
-            let (whole, whole_si) =
-                super::super::resolve_entry_with_index(&shared, &entry).unwrap();
+        // ONE SITE PER INVOCATION, AND THAT IS NOT A WEAKENING. Each site builds a whole-tree
+        // index (~10 GB) and a demand graph; the allocator does not return a released index to the
+        // OS, so four sites in one process accumulate to ~26 GB and are OOM-killed in a 25 GiB
+        // slot -- measured, not predicted. Selecting a site by name keeps every site covered
+        // without lowering a bound or dropping the site that forked: the operator runs this once
+        // per site. With the variable unset all four run, which is the right thing on a machine
+        // that can hold them and the wrong thing in a CI-sized slot.
+        let wanted = std::env::var("GUNBC_ORCH_ROUTE_SITE").unwrap_or_default();
+        let entries: Vec<(Vec<String>, PathBuf)> = if wanted.is_empty() {
+            sites
+        } else {
+            sites
+                .into_iter()
+                .filter(|(_, p)| p.to_string_lossy().contains(&wanted))
+                .collect()
+        };
+        assert!(
+            !entries.is_empty(),
+            "GUNBC_ORCH_ROUTE_SITE named no site: {wanted}"
+        );
+        eprintln!(
+            "both_routes: comparing {} of 4 site(s): {}",
+            entries.len(),
+            entries
+                .iter()
+                .map(|(_, p)| p
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .into_owned())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        for (site_roots, entry_path) in &entries {
+            let entry = entry_path.to_string_lossy().into_owned();
+            // The DEMAND side is resolved first, deliberately: it is the route this change ships,
+            // and it needs no memory budget. Building the ~10 GB shared index first meant an
+            // environment without an enforceable limit refused before the shipped route was asked
+            // anything, so the half that was answerable went unobserved.
+            let (demand, demand_si) = resolve_orchestrator_model(site_roots, &entry)
+                .unwrap_or_else(|e| panic!("{entry}: the demand-acquired route refused: {e:?}"));
+            // The shared side indexes exactly what the demand side indexes, or the two sides are
+            // answering two different questions and the comparison proves nothing.
+            let shared = super::super::process_shared_index_or_refuse(site_roots);
+            let (whole, whole_si) = super::super::resolve_entry_with_index(&shared, &entry)
+                .unwrap_or_else(|e| panic!("{entry}: the shared-index route refused: {e}"));
             // EQUAL UP TO OCCURRENCE NUMBERING. Occurrence identities are minted from a per-process
             // counter (std.occurrence_identity), so the route that resolved a whole tree first numbers
             // the same occurrences from a different base (measured: 6877 against 1276332 for one
@@ -12224,6 +14092,12 @@ mod orchestrator_model_load_tests {
                         ]
                     }),
                 )]
+            } else if entry.ends_with("stage0_emitted_edge_admission.dag") {
+                // NO ARGUMENTS: the rows are the emitted tree's own. Compared RAW, un-renumbered,
+                // like the other arms -- these are the rows the boundary emit digests into
+                // generated bytes, so an occurrence identity reaching one would change the seed
+                // between routes and must fail this claim rather than be renumbered away.
+                vec![("generated_partition_crate_rows", Box::new(|_ctx| vec![]))]
             } else {
                 vec![]
             };
@@ -12255,6 +14129,12 @@ mod orchestrator_model_load_tests {
         }
     }
 
+    /// THE ORCHESTRATOR LOADS ITS MODELS FROM THEIR OWN CLOSURES, never through the whole-tree shared
+    /// index. The discriminator is the thread's shared-index memo (`PROCESS_RESOLVE_INDEX` is
+    /// thread-local and each test runs on its own thread): replaying the re-exec'd orchestrator's loads
+    /// in PRODUCTION ORDER -- the liveness model, the convergence model, the round-cost decider -- must
+    /// leave it empty, and a shared-index build over even a tiny root must not.
+    ///
     /// The footprint, in production order, on a release build in a fresh process: run alone with
     /// --ignored --nocapture --test-threads=1. Prints the readings the RFM row cites.
     #[test]
@@ -12280,5 +14160,322 @@ mod orchestrator_model_load_tests {
             t.elapsed(),
             rss()
         );
+    }
+}
+
+/// THE ROUND'S CHECKPOINT SUBJECT IS ONE CARRIED VALUE: it crosses the re-exec in the handoff (and
+/// an old handoff without it refuses), every generation receipt is checked against it, and its
+/// child's answer refuses when absent, garbled or foreign.
+/// A fixture tree's stage plan: the checkpoint subject's cheap facts are read live at every journal
+/// boundary, so a fixture that journals needs a real plan file at the production path.
+#[cfg(test)]
+fn write_fixture_stage_plan(root: &Path) {
+    let plan = root.join(STAGE_PLAN_AUTHORITY_REL);
+    fs::create_dir_all(plan.parent().unwrap()).unwrap();
+    fs::write(&plan, "module v2.workflow.regen_convergence_transaction\n").unwrap();
+}
+
+#[cfg(test)]
+mod round_checkpoint_subject_tests {
+    use super::*;
+
+    fn git_fixture(name: &str) -> PathBuf {
+        let root =
+            std::env::temp_dir().join(format!("gunbc-live-facts-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        write_fixture_stage_plan(&root);
+        fs::write(root.join("file.rs"), "before\n").unwrap();
+        for args in [
+            vec!["init", "-q", "--initial-branch=main"],
+            vec!["add", "-A"],
+            vec![
+                "-c",
+                "user.email=f@f",
+                "-c",
+                "user.name=f",
+                "commit",
+                "-qm",
+                "fixture",
+            ],
+        ] {
+            let out = Command::new("git")
+                .args(&args)
+                .current_dir(&root)
+                .output()
+                .unwrap();
+            assert!(
+                out.status.success(),
+                "{}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
+        root
+    }
+
+    fn live_subject(root: &Path) -> RegenConvergenceCheckpointSubject {
+        let (starting_commit, stage_plan_authority_digest) =
+            checkpoint_subject_live_facts(root).unwrap();
+        RegenConvergenceCheckpointSubject {
+            starting_commit,
+            source_authority_digest: "sha256:source".to_string(),
+            stage_plan_authority_digest,
+        }
+    }
+
+    /// ALL THREE CARRIED FACTS ARE RE-OBSERVED. The cheap two at every journal write and restore:
+    /// the live subject journals; a moved HEAD and an edited stage plan each refuse, at the write
+    /// and at the restore. (The source digest is the generation check, below.)
+    #[test]
+    fn a_moved_head_or_an_edited_stage_plan_refuses_at_journal_write_and_restore() {
+        let root = git_fixture("cheap");
+        let subject = live_subject(&root);
+        let entries = vec![("file.rs".to_string(), root.join("file.rs"))];
+        journal_paths_for_subject(&root, &entries, &subject).expect("the live subject journals");
+
+        let moved = RegenConvergenceCheckpointSubject {
+            starting_commit: "0000000000000000000000000000000000000000".to_string(),
+            ..subject.clone()
+        };
+        let edited = RegenConvergenceCheckpointSubject {
+            stage_plan_authority_digest: "sha256:another-plan".to_string(),
+            ..subject.clone()
+        };
+        for stale in [&moved, &edited] {
+            let write = journal_paths_for_subject(&root, &entries, stale).unwrap_err();
+            assert!(
+                write.starts_with("CheckpointSubjectDriftedMidRound: at a checkpoint boundary"),
+                "{write}"
+            );
+            let restore = restore_regen_convergence_journal_for_subject(&root, stale).unwrap_err();
+            assert!(
+                restore.starts_with("CheckpointSubjectDriftedMidRound: at a checkpoint boundary"),
+                "{restore}"
+            );
+        }
+        // Positive control: the live subject still restores its own journal.
+        restore_regen_convergence_journal_for_subject(&root, &subject)
+            .expect("the live subject restores");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    fn subject(source: &str) -> RegenConvergenceCheckpointSubject {
+        RegenConvergenceCheckpointSubject {
+            starting_commit: "c0ffee".to_string(),
+            source_authority_digest: source.to_string(),
+            stage_plan_authority_digest: "sha256:plan".to_string(),
+        }
+    }
+
+    fn handoff() -> SeedHandoff {
+        SeedHandoff {
+            cost: SeedBuildCost {
+                compiled_crates: 3,
+                wall_ms: 4,
+                cpu_ms: Some(5),
+            },
+            source: "T".to_string(),
+            built_exe: "B".to_string(),
+            round_subject: Some(subject("sha256:source")),
+        }
+    }
+
+    #[test]
+    fn the_handoff_carries_the_subject_or_its_absence_and_round_trips() {
+        let carry = handoff();
+        assert_eq!(SeedHandoff::decode(&carry.encode()).unwrap(), carry);
+        let none = SeedHandoff {
+            round_subject: None,
+            ..handoff()
+        };
+        assert_eq!(SeedHandoff::decode(&none.encode()).unwrap(), none);
+    }
+
+    /// AT MOST ONE PRODUCTION, AT THE FIRST DEMAND: a round that never demands it produces nothing;
+    /// a late establishment is checked against the generation current at that moment.
+    #[test]
+    fn the_subject_is_produced_once_at_first_demand_and_checked_when_late() {
+        let mut slot = None;
+        assert!(slot.is_none(), "nothing is produced before a demand");
+        let mut asks = 0;
+        let produced = establish_round_subject(&mut slot, Some((2, "sha256:source")), || {
+            asks += 1;
+            Ok(subject("sha256:source"))
+        })
+        .unwrap()
+        .clone();
+        assert_eq!(produced, subject("sha256:source"));
+        let again = establish_round_subject(&mut slot, Some((3, "sha256:source")), || {
+            asks += 1;
+            Ok(subject("sha256:other"))
+        })
+        .unwrap()
+        .clone();
+        assert_eq!((asks, again), (1, produced));
+        // RED: produced late, disagreeing with the current generation's reading.
+        let mut late = None;
+        let refused = establish_round_subject(&mut late, Some((2, "sha256:edited")), || {
+            Ok(subject("sha256:source"))
+        })
+        .unwrap_err();
+        assert!(
+            refused.starts_with("CheckpointSubjectDriftedMidRound: generation 2 "),
+            "{refused}"
+        );
+        assert!(late.is_none(), "a refused production establishes nothing");
+    }
+
+    /// No journal restores nothing without a subject; a journal with no established subject refuses.
+    #[test]
+    fn a_journal_without_an_established_subject_refuses_at_restore() {
+        let root = std::env::temp_dir().join(format!("gunbc-round-journal-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let nothing = restore_round_journal(&root, None).expect("no journal restores nothing");
+        assert!(nothing.rewritten.is_empty() && nothing.removed.is_empty());
+        let journal = regen_convergence_journal_path(&root);
+        fs::create_dir_all(&journal).unwrap();
+        fs::write(journal.join("journal.json"), b"{}").unwrap();
+        let refused = restore_round_journal(&root, None).unwrap_err();
+        let _ = fs::remove_dir_all(&root);
+        assert!(
+            refused.starts_with("CheckpointJournalWithoutRoundSubject"),
+            "{refused}"
+        );
+    }
+
+    /// RED: a handoff in the previous encoding (no subject) refuses at decode with its own typed
+    /// arm naming the missing field and the remedy; a truncated subject and a trailing field stay
+    /// `HandoffUndecodable`. None is read as a cue to recompute.
+    #[test]
+    fn a_handoff_without_the_subject_refuses() {
+        let old = "crates=3;wall_ms=4;cpu_ms=5;source=T;built_exe=B";
+        let refused = SeedHandoff::decode(old)
+            .err()
+            .expect("the old encoding must refuse");
+        assert_eq!(
+            refused,
+            SeedHandoffRefusal::HandoffPredatesRoundSubject {
+                missing_field: "subject",
+                value: old.to_string(),
+            }
+        );
+        let rendered = refused.to_string();
+        assert!(
+            rendered.starts_with("refusal: HandoffPredatesRoundSubject: ")
+                && rendered.contains("predates the round-subject handoff")
+                && rendered.contains("merge the base into the head"),
+            "{rendered}"
+        );
+        // An old encoding that carried an unreadable cpu reading is the same arm.
+        assert!(matches!(
+            SeedHandoff::decode("crates=3;wall_ms=4;cpu_ms=unreadable;source=T;built_exe=B"),
+            Err(SeedHandoffRefusal::HandoffPredatesRoundSubject { .. })
+        ));
+        // Ending earlier than the subject field is not this arm: it is not a well-formed old handoff.
+        assert!(matches!(
+            SeedHandoff::decode("crates=3;wall_ms=4;cpu_ms=5;source=T"),
+            Err(SeedHandoffRefusal::HandoffUndecodable { .. })
+        ));
+        let truncated = "crates=3;wall_ms=4;cpu_ms=5;source=T;built_exe=B;subject=present";
+        assert!(matches!(
+            SeedHandoff::decode(truncated),
+            Err(SeedHandoffRefusal::HandoffUndecodable { .. })
+        ));
+        let extra = format!("{};extra=1", handoff().encode());
+        assert!(matches!(
+            SeedHandoff::decode(&extra),
+            Err(SeedHandoffRefusal::HandoffUndecodable { .. })
+        ));
+    }
+
+    /// The check runs for EVERY generation (one call site, inside `run_built_seed_regen`): equal
+    /// digests admit at any ordinal, and a drifted digest refuses at generation 0 and at a later one.
+    #[test]
+    fn every_generation_receipt_is_checked_against_the_carried_subject() {
+        let carried = subject("sha256:source");
+        for ordinal in [0usize, 1, 3] {
+            assert_eq!(
+                admit_generation_authority(&carried, ordinal, "sha256:source"),
+                Ok(())
+            );
+        }
+        for ordinal in [0usize, 3] {
+            let refused =
+                admit_generation_authority(&carried, ordinal, "sha256:edited").unwrap_err();
+            assert!(
+                refused.starts_with("CheckpointSubjectDriftedMidRound: generation ")
+                    && refused.contains(&format!("generation {ordinal} "))
+                    && refused.contains("sha256:edited")
+                    && refused.contains("sha256:source"),
+                "{refused}"
+            );
+        }
+    }
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc-checkpoint-subject-{name}-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        dir.join("answer.json")
+    }
+
+    #[test]
+    fn the_subject_answer_round_trips_and_its_refusal_stays_distinct() {
+        let schema = CHECKPOINT_SUBJECT_SCHEMA.to_string();
+        for answer in [
+            CheckpointSubjectReceipt::Answered {
+                schema: schema.clone(),
+                subject: subject("sha256:source"),
+            },
+            CheckpointSubjectReceipt::Refused {
+                schema: schema.clone(),
+                reason: "corpus unreadable".to_string(),
+            },
+        ] {
+            let path = scratch("roundtrip");
+            fs::write(&path, serde_json::to_vec(&answer).unwrap()).unwrap();
+            assert_eq!(
+                read_child_answer::<CheckpointSubjectReceipt>(&path).unwrap(),
+                answer
+            );
+        }
+    }
+
+    /// RED: no answer, an unparseable answer, an answer missing a subject field, and an answer in
+    /// another schema all refuse.
+    #[test]
+    fn an_absent_garbled_partial_or_foreign_subject_answer_refuses() {
+        let path = scratch("refusals");
+        let _ = fs::remove_file(&path);
+        assert!(read_child_answer::<CheckpointSubjectReceipt>(&path)
+            .unwrap_err()
+            .contains("checkpoint subject child wrote no answer"));
+        fs::write(&path, b"{\"answer\":\"maybe\"}").unwrap();
+        assert!(read_child_answer::<CheckpointSubjectReceipt>(&path)
+            .unwrap_err()
+            .contains("refusal: parse"));
+        fs::write(
+            &path,
+            br#"{"answer":"answered","schema":"gunbc.regen_checkpoint_subject.v1","subject":{"starting_commit":"c","source_authority_digest":"s"}}"#,
+        )
+        .unwrap();
+        assert!(read_child_answer::<CheckpointSubjectReceipt>(&path)
+            .unwrap_err()
+            .contains("refusal: parse"));
+        fs::write(
+            &path,
+            serde_json::to_vec(&CheckpointSubjectReceipt::Answered {
+                schema: "gunbc.regen_checkpoint_subject.v0".to_string(),
+                subject: subject("sha256:source"),
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        assert!(read_child_answer::<CheckpointSubjectReceipt>(&path)
+            .unwrap_err()
+            .contains("not gunbc.regen_checkpoint_subject.v1"));
     }
 }

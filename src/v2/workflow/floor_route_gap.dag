@@ -85,7 +85,7 @@ type FloorRouteGapExpectation = {
 // rung drop must name — a module the gate readmits brings its enrollments straight back under
 // the four arms above.
 //
-// THE ORACLE THIS ROSTER IS ALLOWED TO BE (DESIGN §5, the 2026-08-01 ruling on numeric
+// THE ORACLE THIS ROSTER IS ALLOWED TO BE (gunbc.design_argument::fail_closed, the 2026-08-01 ruling on numeric
 // literals). It is a monotone debt contract, and it is legitimate only because all four of that
 // ruling's conditions hold: the subject universe is INDEPENDENTLY DISCOVERED (the floor's own
 // discovered roster, not a hand-authored list of what someone remembered), it is CLOSED (every
@@ -1638,7 +1638,7 @@ fn floor_route_gap_expectation_chunk_21() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_discharge_wet_witness.another_attempts_lease_survives_this_attempts_discharge", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_discharge_wet_witness.a_legacy_lease_naming_no_holder_is_refused_and_kept", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_discharge_wet_witness.a_legacy_lease_refuses_the_lease_mint_and_is_kept", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_discharge_wet_witness.a_driver_refuses_the_pass_when_the_attempts_directory_cannot_be_listed", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
@@ -1648,12 +1648,18 @@ fn floor_route_gap_expectation_chunk_21() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_discharge_wet_witness.the_operator_door_resolves_a_dispatch_owned_seat_and_refuses_an_unreadable_attempts_directory", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_discharge_wet_witness.an_undecodable_exit_entry_is_named_by_the_pass_and_claims_no_ending", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_discharge_wet_witness.a_decodable_exit_entry_claims_the_ended_owner_and_nothing_is_reported_undecodable", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.compute.host_capacity_wet_witness.two_requests_summing_past_the_observed_headroom_cannot_both_admit", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.compute.host_capacity_wet_witness.releasing_one_seat_twice_is_not_a_ledger_failure_and_charges_nothing", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.compute.host_capacity_wet_witness.the_real_reservation_route_admits_exactly_what_the_reading_backs", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Empty {}
+  }
+  }
   }
   }
   }
@@ -2178,10 +2184,6 @@ fn floor_route_gap_expectation_chunk_35() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.workspace_request_consumer_witness.enrolled_roster_discovers_a_customer_request_the_operator_pass_misses", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.roadmap_task_store_wet_witness.task_store_create_replay_and_conflicting_key", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.roadmap_task_store_wet_witness.task_store_revise_stale_and_supersede", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.roadmap.workspace_allocation_write_seam_wet_witness.seam_admitted_create_and_release_land_in_the_store", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.live_deploy.tailnet_door_cutover_journal_wet_witness.the_cutover_journal_survives_its_writer_and_fences_a_stale_write", operation: "Dir", ground: NoMockResponse {} },
@@ -2191,7 +2193,7 @@ fn floor_route_gap_expectation_chunk_35() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.workspace_acquisition_storage_wet_witness.running_elected_actor_retains_quota", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.workspace_acquisition_storage_wet_witness.concurrent_actor_replacement_admits_exactly_one", operation: "Dir", ground: NoMockResponse {} },
-    tail: Empty {} } } } } } } } } } } } } }  } } }
+    tail: Empty {} } } } } } } } } } } } } }  }
 }
 
 // THE PROCESS-LIFECYCLE WET EVIDENCE (the emit-host node serve smoke), the third member of its
@@ -2531,7 +2533,7 @@ fn floor_route_gap_expectation_chunk_43() -> List<FloorRouteGapExpectation> {
 // and flattening the universe into a list for a linear contains was the corpus-sized join this
 // shape retires: on the required-run census the plan doc cites (declared in the tens of
 // thousands, suppressed in the hundreds), a per-row linear scan is millions of interpreted
-// comparisons per required run, a proven cost-shape defect that DESIGN.md's §6 says is always
+// comparisons per required run, a proven cost-shape defect that gunbc.design_argument::how_to_work says is always
 // fixed, not retired on "n is small here".
 //
 // THE GROUND IS A DECLARED COPRODUCT, NOT A LABEL. Suppression grounds are a closed set -- the

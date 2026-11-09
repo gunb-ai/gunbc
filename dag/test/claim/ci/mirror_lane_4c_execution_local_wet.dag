@@ -443,7 +443,7 @@ test fn the_relative_candidate_directory_resolves_at_the_workspace() -> Bool {
 // A PROOF IS ONLY AS REAL AS A FAILURE YOU CAN PRODUCE. The verifier's second proof asks what the fetch
 // actually brought (`rev-parse --verify FETCH_HEAD` after one `git fetch` into a store created empty
 // seconds earlier). The model can state that question but cannot answer it -- only git can -- and a check
-// whose forbidden state cannot be produced is a decoration that later gets cited as coverage (DESIGN 4b).
+// whose forbidden state cannot be produced is a decoration that later gets cited as coverage (gunbc.design_argument::guarantee_ladder).
 // The first version of this proof was exactly that: it ran `git rev-parse <pin>`, which prints the sha it
 // was handed whether or not anything was fetched, and every control stayed green. So the scenarios below
 // run the EMITTED statement list -- `seed_pin_verification_statements`, the same function the verifier

@@ -18,7 +18,7 @@ data concession_annotation_is_not_a_disposition: RecurringFailureMode = Recurrin
 
     "The invalid state stays writable, a fold still reads it, and the next reader cites the concession as evidence the class is governed.",
 
-    "DESIGN section 4c is why the costume works: no Accepted program can read the annotation, so the only thing that moved is what a human sees.",
+    "gunbc.design_argument::source_annotations is why the costume works: no Accepted program can read the annotation, so the only thing that moved is what a human sees.",
 
     "DISTINGUISHING FACTS. It is not [[stale_present_tense_coverage_claim_in_the_authority_consulted_first]] -- that class ASSERTS COVERAGE that is false; this one ADMITS THE DEFECT and still ships the construction.",
 
@@ -34,7 +34,7 @@ data concession_annotation_is_not_a_disposition: RecurringFailureMode = Recurrin
 
     "gunbc#10942's census derived every other column, then kept `RouteReach` / `reached_by_native_route` after gunbc#11003 deleted the required-v2-native lane.",
 
-    "The axis had gone constant: `route_reach_of` ignored its argument, `ReachedByNativeRoute` had no constructor anywhere in the tree, and `census_counts` published `reached_by_native_route=` as a permanently-zero column -- DESIGN section 4b's decoration and DESIGN section 3c's dangling declaration.",
+    "The axis had gone constant: `route_reach_of` ignored its argument, `ReachedByNativeRoute` had no constructor anywhere in the tree, and `census_counts` published `reached_by_native_route=` as a permanently-zero column -- gunbc.design_argument::guarantee_ladder's decoration and gunbc.design_argument::consumption's dangling declaration.",
 
     "The previous cut KEPT THE AXIS and wrote an annotation conceding it had gone constant.",
 
@@ -58,9 +58,9 @@ data concession_annotation_is_not_a_disposition: RecurringFailureMode = Recurrin
 
     "Both specimens survived until a reviewer joined the concession to the construction it left standing.",
 
-    "CEILING AND NEXT TRIGGER, STATED PER SUB-CASE, BECAUSE A PLURAL LOSS WITH A SINGULAR TRIGGER IS THE GRAIN MISMATCH DESIGN section 4b(3) NAMES.",
+    "CEILING AND NEXT TRIGGER, STATED PER SUB-CASE, BECAUSE A PLURAL LOSS WITH A SINGULAR TRIGGER IS THE GRAIN MISMATCH gunbc.design_argument::guarantee_ladder (no silent regression) NAMES.",
 
-    "THE ANNOTATION ITSELF CARRIES NO RUNG: whether a free-prose sentence is offered as a disposition rather than a description is not a property the source decides, so DESIGN section 4c puts that form in the adjacent column -- outside the modeled guarantee -- rather than at a low rung.",
+    "THE ANNOTATION ITSELF CARRIES NO RUNG: whether a free-prose sentence is offered as a disposition rather than a description is not a property the source decides, so gunbc.design_argument::source_annotations puts that form in the adjacent column -- outside the modeled guarantee -- rather than at a low rung.",
 
     "SUB-CASE ONE, specimen one, ceiling mechanically preventable: a closed-roster producer that ignores its subject, or an axis identically fixed across the closed population.",
 

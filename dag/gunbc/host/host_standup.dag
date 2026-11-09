@@ -353,12 +353,12 @@ data host_standup_spine: List<HostStandupStep> = [
 ]
 
 // 🟡 dissolve-on: this ledger is a PARALLEL REPRESENTATION of host_standup_spine, declared rather
-// than ambient (DESIGN §3; an honestly-marked scaffold duplicating a canonical fact is still a
+// than ambient (gunbc.design_argument::single_authority; an honestly-marked scaffold duplicating a canonical fact is still a
 // violation). Twelve rows are hand-written beside the twelve spine steps, and `modeling` is a
 // String carrying four values — modeled / modeled-new-authority / partial / gap — where
 // PhaseDisposition has two arms. Nothing derives one from the other, so they drift invisibly:
 // p0_gap_ledger_matches_spine_partial_authorities exists only because the ledger CAN disagree with
-// the spine — validation standing where construction was available (§5). It was also the source
+// the spine — validation standing where construction was available (gunbc.design_argument::fail_closed). It was also the source
 // consulted for 'where does subsumption stand', so a stale string became a status report. WHY IT
 // CANNOT SIMPLY BE DERIVED TODAY, the real finding: PhaseDisposition is a SUM, so authorities and
 // interim_realization are mutually exclusive — and two live phases need BOTH.

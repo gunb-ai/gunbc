@@ -2,7 +2,7 @@ module test.claim.owned_directory_witness
 
 import std.types { Bool, String, NonEmptyStr, FilePath }
 import extdeps.posix.identity { PosixOwnerNames }
-import gunbc.managed_directory { DirectoryOwnerOnly }
+import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerOnly, DirectoryOwnerGroupWritableSetgid, DirectoryOwnerAllGroupTraverse }
 import gunbc.ensure { EnsureMayApply, EnsureObserveOnly, EnsureObservation, EnsureObserved, EnsureAbsent, EnsureInaccessible }
 import std.upsert_decision { Noop, Apply, Refuse }
 import gunbc.owned_directory {
@@ -11,10 +11,10 @@ import gunbc.owned_directory {
   ObserverRead, ObserverReadOut, ObserverReadFailed, ObserverFailure, ObserverNotSpawned, ObserverExited, ObserverTransportRefused,
   owned_directory_ensure, owned_directory_ensure_observed, OwnedDirectoryEnsured, OwnedDirectoryEnsureRefused,
   owned_directory_act_time_handover, HandoverOwnerChanged, HandoverAppeared,
-  SameUserRegroupToDeclaredGroup,
+  SameUserRegroupToDeclaredGroup, owned_directory_inheriting_from_parent,
 }
 
-// THE PROVIDER'S DECISION TABLE, over supplied observations (DESIGN 3: one interface, supplied values).
+// THE PROVIDER'S DECISION TABLE, over supplied observations (gunbc.design_argument::witness_one_interface: one interface, supplied values).
 // The real path -- a stat line read off a host and parsed -- is inhabited by the parse claims below and
 // by the live_deploy route claims in test.claim.live_deploy.owned_directory_route_witness.
 
@@ -72,7 +72,7 @@ test fn a_non_directory_refuses() -> Bool {
 
 // ── THE OBSERVATION CONTRACT: ABSENCE IS ESTABLISHED BY A READ, NEVER INFERRED FROM A FAILURE ────
 //
-// Routes are stubbed at the contract (DESIGN 3: supplied values at one interface): `list` and `stat`
+// Routes are stubbed at the contract (gunbc.design_argument::witness_one_interface: supplied values at one interface): `list` and `stat`
 // return what a read of one directory returned, or the typed origin of why nothing was read.
 fn listing(stdout: String) -> ObserverRead { ObserverReadOut { stdout: stdout } }
 
@@ -267,11 +267,13 @@ test fn the_provider_installs_nothing_over_a_foreign_owner_at_act_time() -> Bool
 // will feed when the apply legs thread it, the node's next rung), and every observe() call of the
 // provider (act re-read, after-readback) returns the same post-plan reading.
 
+// The baseline is 755, not the declared 700: a baseline equal to the declaration decides Noop, and the
+// act-time handover is consulted only under Apply, so the claim would never reach the check it names.
 test fn the_provider_refuses_a_handover_before_the_install_runs() -> Bool {
   match owned_directory_ensure(
     policy: EnsureMayApply,
     target: target(),
-    plan_reading: Present { value: observed(line: "directory|svc|svc|700") },
+    plan_reading: Present { value: observed(line: "directory|svc|svc|755") },
     observe: p => observed(line: "directory|root|root|700"),
     run: plan => false,
   ) {
@@ -295,4 +297,46 @@ test fn the_provider_refuses_a_foreign_baseline_as_foreign_never_as_a_handover()
     OwnedDirectoryEnsureRefused { target: _, reason } =>
       string_contains(s: reason, pattern: "never adopted") && !string_contains(s: reason, pattern: "changed hands")
   }
+}
+
+// A CHILD OF A SETGID PARENT EXPECTS THE PARENT'S GROUP AND THE SETGID BIT (derived, not re-declared).
+fn inheriting_parent(mode: DeclaredDirectoryMode) -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: "attempt-state" as NonEmptyStr,
+    path: "/srv/instance/attempt-state" as FilePath,
+    owner: PosixOwnerNames { user: "svc" as NonEmptyStr, group: "gunbc-attempt" as NonEmptyStr },
+    mode: mode,
+    group_adoption: ForeignOwnershipRefuses,
+  }
+}
+
+fn inheriting_child_decision(parent_mode: DeclaredDirectoryMode, line: String) -> String {
+  match owned_directory_decide(
+    policy: EnsureMayApply,
+    target: owned_directory_inheriting_from_parent(parent: inheriting_parent(mode: parent_mode), child: target()),
+    observation: observed(line: line),
+  ) {
+    Noop => "noop"
+    Apply { plan: _ } => "apply"
+    Refuse { reason } => join(["refuse:", reason as String], "")
+  }
+}
+
+// PASS on the live shape: a 2700 child of the setgid parent in the parent's group.
+test fn a_setgid_parents_child_expects_the_inherited_group_and_bit() -> Bool {
+  inheriting_child_decision(parent_mode: DirectoryOwnerGroupWritableSetgid, line: "directory|svc|gunbc-attempt|2700") == "noop"
+}
+
+// A non-setgid parent changes nothing: the child still expects the owner's own group, and the
+// inherited-shape reading is no longer the expected one.
+test fn a_non_setgid_parents_child_still_expects_the_owners_group() -> Bool {
+  inheriting_child_decision(parent_mode: DirectoryOwnerAllGroupTraverse, line: "directory|svc|svc|700") == "noop"
+    && starts_with(s: inheriting_child_decision(parent_mode: DirectoryOwnerAllGroupTraverse, line: "directory|svc|gunbc-attempt|2700"), prefix: "refuse:")
+}
+
+// A live group that differs from the derived one still refuses (never adopted), and a
+// missing setgid bit under a setgid parent is a mode drift the plan repairs (Apply).
+test fn a_child_whose_live_group_or_bit_differs_from_the_derived_still_refuses() -> Bool {
+  starts_with(s: inheriting_child_decision(parent_mode: DirectoryOwnerGroupWritableSetgid, line: "directory|svc|svc|2700"), prefix: "refuse:")
+    && inheriting_child_decision(parent_mode: DirectoryOwnerGroupWritableSetgid, line: "directory|svc|gunbc-attempt|700") == "apply"
 }

@@ -3,7 +3,7 @@ module gunbc.machine_intake.bmc_inband_recovery_receipts
 // THE OBSERVING LAYER'S OWN SHELF. Everything below is a RECEIPT THIS REPOSITORY TOOK, not a fact about
 // the board it was taken from: the sha256 of a file under artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-
 // 2026-10-16/, the Get Device ID answer one controller gave in that session, and what that controller's
-// firmware did when asked to write the published factory password. DESIGN section 3 puts observations
+// firmware did when asked to write the published factory password. gunbc.design_argument::single_authority puts observations
 // here: "Observations this repository makes are receipts in the observing layer, not facts of the observed
 // upstream; a missing observation is a downstream coverage obligation, never an `Unobserved` property
 // inside the upstream module." That is why none of this lives in extdeps.boards.asrock_rack: that module
@@ -38,10 +38,11 @@ import std.interval {
 }
 import std.measure { milliseconds_per_second }
 import std.optional { Absent, Present }
-import std.types { Bool, EpochMs, List, list_length }
+import std.types { Bool, EpochMs, List }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
 
 import gunbc.machine_intake.receipt { EvidenceRef }
+import std.algebra { length }
 
 // ── CAN THE PUBLISHED FACTORY PASSWORD BE WRITTEN BACK IN? A PER-RELEASE FACT ─────────────────
 //
@@ -62,7 +63,7 @@ import gunbc.machine_intake.receipt { EvidenceRef }
 // rule out a password-length policy: the payload bytes are the same in both attempts, so an implementation
 // rejecting the string's length would reject both, identically. The refusal is therefore recorded as what
 // it is -- the firmware declined this credential write at this account, for a reason the completion code
-// does not itemise -- and no cause is selected among the candidates on this evidence (§4d: do not assert as
+// does not itemise -- and no cause is selected among the candidates on this evidence (gunbc.design_argument::epistemic_humility: do not assert as
 // deduced what is only inferred).
 //
 // WHAT IS ON THE RECORD IS THE ATTEMPT AND ITS AFTERMATH. The attempt ended exit 1 and the unit was still
@@ -80,7 +81,7 @@ import gunbc.machine_intake.receipt { EvidenceRef }
 // second version authority beside the catalog.
 //
 // A RELEASE THE CATALOG DOES NOT CARRY IS NotMeasured, and NotMeasured means "refuse", not "assume
-// the same as the release we did read" (DESIGN §4d). The row's own version is checked into the
+// the same as the release we did read" (gunbc.design_argument::epistemic_humility). The row's own version is checked into the
 // judgement: a policy for 2.07.00 never answers a question about 3.22.00.
 //
 // Cited bytes (SHA256SUMS committed with them):
@@ -189,7 +190,7 @@ data asrock_altrad8ud_published_factory_password_write_policy_catalog: List<Publ
 // controller, so the same "evidence" would have proved a reset on any board at all. Filed HERE, keyed by
 // the same IpmiDeviceIdentity the write-policy row above is keyed by, the citation becomes a LOOKUP that
 // can fail: a standing whose readback cites bytes that were not taken from this controller has no row to
-// cite, and the absence is the refusal (§5: "a failure arm refuses, never widens").
+// cite, and the absence is the refusal (gunbc.design_argument::fail_closed: "a failure arm refuses, never widens").
 //
 // THE IDENTITY IS THE KEY AND THE ANSWER CARRIES IT BACK, so the fold compares one join rather than
 // assembling three facts from three places. That is the shape the recovery proof needs: unit, controller and
@@ -310,8 +311,8 @@ type PublishedPasswordWritePolicySighting
   // published_password_refusal_row_agrees_with_its_reading). This is NOT "never measured" -- somebody did
   // measure this controller, and telling them otherwise sends them to re-measure a board that has a
   // measurement on file, and leaves the mislabelled row in the catalog to do it again. It is its own arm
-  // because the repair belongs to whoever maintains the filing, not to whoever owns the board (§5: "every
-  // degradation is typed, located and countable"; §3b: a failure cause keeps its own meaning and may not be
+  // because the repair belongs to whoever maintains the filing, not to whoever owns the board (gunbc.design_argument::fail_closed: "every
+  // degradation is typed, located and countable"; gunbc.design_argument::conformance: a failure cause keeps its own meaning and may not be
   // absorbed by its neighbour). The row itself travels, so the bad filing is findable from the refusal.
   | RowDisagreesWithItsOwnReading {
       row: PublishedFactoryPasswordWritePolicy
@@ -354,7 +355,7 @@ fn asrock_altrad8ud_published_factory_password_write_policy_sighted_on_catalog(
   //     send someone to re-measure a board that had been measured twice, and would erase the one cause the
   //     type already had an arm for.
   // No arm defaults and no arm picks a row: choosing the first would put a coin flip behind wiping a chassis.
-  match list_length(items: matches) {
+  match length(xs: matches) {
     0 => ControllerNeverMeasured { observed: observed }
     1 =>
       match matches |> first() {
@@ -411,7 +412,7 @@ fn asrock_altrad8ud_published_factory_password_write_policy_sighted_on(
 // (00_README.txt, and date fields quoted inside the captures). The route module therefore receives a
 // CapturedInstant and never mints one: what the run's date is has no business inside a reusable route,
 // and a band built through a hardcoded day would silently pin every observation to a date it never
-// checked (DESIGN section 3: "Policy has leaked when an argv carries a literal it should receive as a
+// checked (gunbc.design_argument::interface_realization_policy: "Policy has leaked when an argv carries a literal it should receive as a
 // parameter"). One day stands here instead, because one run's README records one day -- and it is read
 // back through the calendar authority below, never asserted beside a bare literal.
 //
@@ -422,7 +423,7 @@ fn asrock_altrad8ud_published_factory_password_write_policy_sighted_on(
 //   00_README.txt           `PRIVILEGED WRITE 2 (Redfish Manager.ResetToDefaults): executed ~06:45Z`
 //   00_README.txt           `Fresh re-capture taken 2026-10-16 ~06:5xZ, AFTER the reset`
 // An EpochMs field holds ONE exact instant, so every value typed into one claims second precision the
-// bytes do not support (DESIGN section 5: "no plausible output is fabricated"; section 4d: an
+// bytes do not support (gunbc.design_argument::fail_closed: "no plausible output is fabricated"; section 4d: an
 // inference is a bet and travels typed as one). So what an observation carries is the INTERVAL the
 // capture licenses, minted through std.interval -- a reversed pair becomes CaptureTimeBandInverted
 // carrying std.interval's own words about the pair rather than being swapped into order, and there is
@@ -439,7 +440,7 @@ fn recovery_capture_day() -> Iso8601CivilDate {
 }
 
 // one UTC instant on a NAMED DAY, from the hour/minute/second a capture line shows. The combination of
-// the calendar's scale factors is owned by extdeps.units.iso8601_calendar (DESIGN §6b: this was the
+// the calendar's scale factors is owned by extdeps.units.iso8601_calendar (gunbc.design_argument::earliest_unjustified_boundary: this was the
 // third hand-written copy of it), and std.measure owns only the second-to-millisecond scale, which is
 // this mint's own concern. The DAY is a parameter, and the parameter this module passes is its own
 // notebook's date.

@@ -4,6 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
 import std.measure { Celsius, celsius, celsius_count, percent }
 import extdeps.external_authority { CitedToAuthority, ObservedByReceipt, TranscribedUncited }
+import extdeps.cpu.types { cpu_tdp_unread_standing }
 import extdeps.cpu.types { CpuModelCatalogRow, ProcessorThermalLimits }
 import extdeps.vendor.cisco { cisco }
 import extdeps.cpu.ampere { altra_max_m12830_catalog, altra_q8030_catalog, ampere_altra_max_m12830_thermal_limits, ampere_altra_thermal_limits_for_catalog }
@@ -115,7 +116,7 @@ test fn witness_every_exit_leaves_automatic() -> Bool {
 }
 
 // THE FLEET CARRIES ONLY THE SOC MARGIN (the ceiling is the machine row's), AND THE OTHER THREE
-// FIGURES STAY TYPED BETS (DESIGN 4d).
+// FIGURES STAY TYPED BETS (gunbc.design_argument::epistemic_humility).
 fn is_bet(t: GuardTrip) -> Bool {
   match t {
     AbsoluteTrip { trip: _, standing: st } => match st {
@@ -179,6 +180,7 @@ fn foreign_vendor_m128() -> CpuModelCatalogRow {
     nominal_sustained_per_thread_hz: altra_max_m12830_catalog.nominal_sustained_per_thread_hz,
     socket: altra_max_m12830_catalog.socket,
     tdp_watts: altra_max_m12830_catalog.tdp_watts,
+    tdp_standing: cpu_tdp_unread_standing,
     l1_cache: altra_max_m12830_catalog.l1_cache,
     l1_cache_citations: altra_max_m12830_catalog.l1_cache_citations,
     l2_cache: altra_max_m12830_catalog.l2_cache,

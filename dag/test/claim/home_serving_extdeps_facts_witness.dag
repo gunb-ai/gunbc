@@ -178,7 +178,7 @@ test fn w_purchase_candidates_are_add_in_cards_and_sxm_are_references() -> Bool 
     // fold instead of describing it — and the no-card-chosen fact is claimed where it can be seen,
     // in test.claim.home_serving_candidate_field_witness::home_serving_live_verdict_is_never_a_pick_and_never_empty,
     // which calls the fold and fails if any arm is SelectedWithin. Requiring unbound here would
-    // have kept a satisfied §3c frontier artificially open just so a sentence about "not yet"
+    // have kept a satisfied gunbc.design_argument::consumption frontier artificially open just so a sentence about "not yet"
     // could keep riding on it.
     && dissolution_is_bound(condition: home_serving_accelerator_field_p4_frontier)
     && string_contains(

@@ -1,7 +1,7 @@
 module v2.workflow.floor_cost_debt
 
-import std.types { list_length, List }
-import std.algebra { Cons, Empty, list_flat_map }
+import std.types { List }
+import std.algebra { Cons, Empty, list_flat_map, length }
 
 // THE OVER-COST WITHHOLDING MECHANISM. ITS POPULATION IS NOT STATED HERE -- ASK
 // `floor_cost_debt_population_report`, WHICH FOLDS THE SAME CHUNKS THE ROSTER DOES.
@@ -80,7 +80,7 @@ import std.algebra { Cons, Empty, list_flat_map }
 // THE OPERATOR RULING THIS SERVES (2026-08-27). The per-claim ceiling is 500ms. It was set to
 // 500 at gunbc#8283 (2026-08-17) and was raised twice without a ruling on the value: to 1552 at
 // gunbc#8514, justified only by "measured-max plus one scheduler-quantum" over the then-current
-// tree -- the tree-copied oracle DESIGN section 5 forbids -- and to 5000 at gunbc#8533, which
+// tree -- the tree-copied oracle gunbc.design_argument::fail_closed forbids -- and to 5000 at gunbc#8533, which
 // cited an operator ruling that was about SPLITTING the CPU and wall clocks, not about the
 // magnitude. The operator's quoted words in that diff, "DO NOT set CPU and wall to the same
 // 5000ms", presuppose 5000 was already on the table; the value rode in as a passenger on a
@@ -90,7 +90,7 @@ import std.algebra { Cons, Empty, list_flat_map }
 // WHAT MEMBERSHIP MEANS, STATED SO IT IS NEVER READ AS COVERAGE. A rostered identity is
 // WITHHELD FROM EXECUTION. It does not run on the floor, it does not run in a long home, it
 // does not run on a cadence. Its coverage is GONE while it sits here. That is a declared
-// DESIGN section 4b(3) rung drop -- below -- and not a deferral: the operator's ruling is that
+// gunbc.design_argument::guarantee_ladder (no silent regression) rung drop -- below -- and not a deferral: the operator's ruling is that
 // these rows are broken, and a broken row does not get an exemption that lets it keep spending
 // the budget it broke.
 //
@@ -101,7 +101,7 @@ import std.algebra { Cons, Empty, list_flat_map }
 // this roster is DECLARED, COUNTED EVERY RUN, IDENTITY-GRAIN, AND SHRINK-ONLY, and a relocation
 // is none of those. The files do not move.
 //
-// THE MONOTONE DEBT CONTRACT (DESIGN section 5's fourth sanctioned oracle form), and each
+// THE MONOTONE DEBT CONTRACT (gunbc.design_argument::fail_closed's fourth sanctioned oracle form), and each
 // condition is load-bearing:
 //   - the subject universe is INDEPENDENTLY DISCOVERED -- the floor measures every claim's
 //     marginal cost itself; this roster is checked against that discovery, never authored beside
@@ -114,7 +114,7 @@ import std.algebra { Cons, Empty, list_flat_map }
 //     THE TYPED ADMISSIONS `v2.workflow.floor_cost_debt_admission`
 //     `floor_cost_debt_typed_admissions` ARE NOT this roster's mint path today. Membership is
 //     still the hand-authored identity-string chunks `floor_cost_debt_roster` folds. Claiming
-//     those strings are minted through the typed rows was a §3c dangling assertion (review
+//     those strings are minted through the typed rows was a gunbc.design_argument::consumption dangling assertion (review
 //     65585). A typed row carries identity and reason and is live-conditioned at the enrolment
 //     gate (`v2.workflow.floor_enrolment_margin` `enrolment_declared_measured_standing`); its
 //     later consumer is the required-floor runner unioning typed-admitted identities into the
@@ -284,7 +284,7 @@ import std.algebra { Cons, Empty, list_flat_map }
 // subject.
 //
 // TRIGGER, and it is a CAPABILITY rather than a PR: a required population that reaches these
-// identities -- the restoration of the DESIGN section 4b(3) rung drop "Required gate reduced to
+// identities -- the restoration of the gunbc.design_argument::guarantee_ladder (no silent regression) rung drop "Required gate reduced to
 // the compiler floor", by a change-derived required population rather than a static prefix
 // roster. Until then they are held here, reported by the roster-standing line as
 // `outside_this_runs_universe`, and explicitly NOT counted as debt. Deleting them on the strength
@@ -305,7 +305,7 @@ import std.algebra { Cons, Empty, list_flat_map }
 // (withholding 266 rows left 16 others tripping the same conjuncts, 9 of them under the ceiling
 // on main, one at 1ms).
 //
-// TRIGGER, and it is a CAPABILITY rather than an artifact, per DESIGN section 4b(3): the row is
+// TRIGGER, and it is a CAPABILITY rather than an artifact, per gunbc.design_argument::guarantee_ladder (no silent regression): the row is
 // released when `inert_carrier_data` is built and adjudicated in preparation -- a
 // `FloorPreparationPhase` member warmed by calling its declared producer once before any claim
 // window opens, reporting its own `provenance=built-by-preparation` -- OR when the build is
@@ -403,7 +403,7 @@ import std.algebra { Cons, Empty, list_flat_map }
 // `cpu_ms`/`wall_ms` columns a completed row's exact measurement occupies, distinguished only by
 // the adjacent `verdict_reached` column -- which is an exact discriminator (false for exactly the
 // 12 `budget_interrupted` rows and nothing else) that every reader above failed to join. Making
-// the bound unable to inhabit the measured-cost slot is the DESIGN section 5 construction move,
+// the bound unable to inhabit the measured-cost slot is the gunbc.design_argument::fail_closed construction move,
 // and it was deliberately not landed here: forward implementation is frozen under the 2026-08-28
 // wind-down. TRIGGER: when that freeze lifts, a censored figure gets a rendering a numeric reader
 // cannot silently consume, and this paragraph's warning becomes the regression control for it.
@@ -715,7 +715,7 @@ fn floor_cost_debt_proven_chunk_04() -> List<String> {
 // the line no longer describes the tree at all. `test.claim.ssh_transport_witness.witness_apply_script_stays_under_argv_embed_budget`
 // was a BYTE-IDENTICAL duplicate of the claim in test.claim.shell_exec_run_argv_embed_witness --
 // the required floor measured both at 194,291 eval steps and 962ms on run 34888954422, to the step
-// -- and the ssh copy was deleted as the DESIGN section 3 fork it was. Leaving its row here would
+// -- and the ssh copy was deleted as the gunbc.design_argument::single_authority fork it was. Leaving its row here would
 // have refused the floor as `CostDebtUndeclared`: a roster line naming an identity the tree does
 // not declare is exactly what `v2.workflow.required_floor` `cost_debt_roster_standing` blocks on,
 // and that refusal is correct -- the row would have claimed a withhold for something that cannot
@@ -842,7 +842,7 @@ fn floor_cost_debt_censored_chunk_04() -> List<String> {
 // WHAT WAS REFUSED, AND WHY, BECAUSE THE TWO EASY MOVES ARE BOTH WRONG HERE.
 // RAISING THE CEILING is refused: 500 -> 600 tunes a literal so a check passes on a basis the
 // declared drop says is unstable at ANY threshold, and buys nothing the next runner slot cannot
-// take back at 602ms. It is also the tree-copied oracle DESIGN section 5 forbids -- the number
+// take back at 602ms. It is also the tree-copied oracle gunbc.design_argument::fail_closed forbids -- the number
 // would come from this same tree's current measurement.
 // THE EXPECTED-RED ROSTER is refused, and the floor's own diagnostic refuses it for us in the
 // sentence it prints beside these two rows: "This is a cost debt only -- it is not a defect and
@@ -863,7 +863,7 @@ fn floor_cost_debt_censored_chunk_04() -> List<String> {
 // witnesses moved. What moved is which runner the job landed on. An addition on that ground is
 // the one the direction was never meant to forbid -- the alternative it leaves is a required lane
 // whose verdict is decided by hardware -- and it is enrolled here, at identity grain, counted every
-// run, and rostered as a DESIGN section 4b(3) drop at
+// run, and rostered as a gunbc.design_argument::guarantee_ladder (no silent regression) drop at
 // `gunbc.rung_drop.floor_cost_debt_straddling_produced_decl` rather than resolved by silence.
 //
 // TRIGGER, A CAPABILITY AND NOT A ROSTER ERASURE, AND EITHER ARM RETIRES THE ROW. (a) The
@@ -1059,7 +1059,7 @@ fn floor_cost_debt_proven_chunk_22() -> List<String> {
   Cons { head: "v2.test.claim.long.caller_admission_native_wall_red.the_native_route_refuses_exactly_the_outside_cross_module_calls_holds", tail: Empty {} }
 }
 
-// PROVEN, ADMITTED AS THE ONE REAL-PATH INHABITANCE CLAIM OF ITS MODULE (DESIGN section 3, the
+// PROVEN, ADMITTED AS THE ONE REAL-PATH INHABITANCE CLAIM OF ITS MODULE (gunbc.design_argument::witness_one_interface, the
 // pairing obligation). v2.test.claim.long.cwc_resolution_probe takes every other input at the interface
 // under test as a supplied value; this claim runs the real tokenize -> parse -> normalize -> resolve
 // route and checks that each supplied fixture is what its producer emits, so it cannot itself be
@@ -1116,7 +1116,7 @@ fn floor_cost_debt_holds(name: String) -> Bool {
 // wrong figure was prose copied beside it and never re-read, and correcting the number a third
 // time would only reset the same decay.
 //
-// So the number is not stated in this file any more. DESIGN section 6 rules that a measurement is
+// So the number is not stated in this file any more. gunbc.design_argument::how_to_work rules that a measurement is
 // cited by NAMING THE PRODUCER THAT RE-DERIVES IT, and that if a measurement is worth re-deriving
 // it is worth an entry point. These three functions are that entry point: they fold the same
 // chunks `floor_cost_debt_roster` folds, so they cannot disagree with the roster the floor
@@ -1124,7 +1124,7 @@ fn floor_cost_debt_holds(name: String) -> Bool {
 //
 // NO WITNESS PINS THESE AGAINST A LITERAL, and that is deliberate rather than an omission. A
 // merge-blocking assertion that the population equals some number copied from this same tree is
-// the change detector DESIGN section 5 forbids: automating the literal's update collapses it to
+// the change detector gunbc.design_argument::fail_closed forbids: automating the literal's update collapses it to
 // `measure() == measure()`. What guards this roster is the monotone debt contract stated above --
 // identity-grain membership, shrink-only, a stale row refusing -- and a size assertion would add
 // nothing to it while breaking on every legitimate release.
@@ -1140,15 +1140,15 @@ fn floor_cost_debt_holds(name: String) -> Bool {
 // the correct behaviour rather than a workaround: a report is not a verdict, and this file
 // deliberately does not mint one (see the paragraph above on why no witness pins the size).
 fn floor_cost_debt_proven_population() -> Int {
-  list_length(items: floor_cost_debt_proven_roster())
+  length(xs: floor_cost_debt_proven_roster())
 }
 
 fn floor_cost_debt_censored_population() -> Int {
-  list_length(items: floor_cost_debt_censored_roster())
+  length(xs: floor_cost_debt_censored_roster())
 }
 
 fn floor_cost_debt_straddling_population() -> Int {
-  list_length(items: floor_cost_debt_straddling_roster())
+  length(xs: floor_cost_debt_straddling_roster())
 }
 
 fn floor_cost_debt_population_report() -> String {
@@ -1161,7 +1161,7 @@ fn floor_cost_debt_population_report() -> String {
       " straddling=",
       to_string(floor_cost_debt_straddling_population()),
       " total=",
-      to_string(list_length(items: floor_cost_debt_roster())),
+      to_string(length(xs: floor_cost_debt_roster())),
     ],
     ""
   )

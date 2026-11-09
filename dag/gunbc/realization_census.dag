@@ -108,7 +108,7 @@ type FindingCensusReading {
 }
 
 // THE CLASSES TAB'S RUNG IS NOT gunbc.guarantee_rung ALONE. The census writes 0 for a class nothing
-// models yet; DESIGN section 4b's OutsideTheLadder is a different fact (external reality,
+// models yet; gunbc.design_argument::guarantee_ladder's OutsideTheLadder is a different fact (external reality,
 // undecidable or undeclared intent), so mapping 0 onto it would give one name two meanings.
 type CensusClassRung
   = RungUnmodeled

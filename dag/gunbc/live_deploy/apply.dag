@@ -79,7 +79,6 @@ import gunbc.ci.ci_deploy_access {
   deploy_target_proof_from_access,
   deploy_access_sudoers_install_scope,
 }
-import gunbc.fleet.fleet_posix_accounts { grounded_posix_principal_name }
 import gunbc.ci.ci_deploy_access_observe {
   deploy_mutation_gate,
 }
@@ -117,7 +116,7 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.fleet.fleet_known_hosts_anchor { SshTargetResolved, SshTargetRefused, ssh_target_refusal_text }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.runner.runner_host_file_converge { administrator_ssh_target, observe_deploy_slot_host_reading_on_the_slot }
-import gunbc.runner.runner_slot_job_role { srv1_deploy_route_switch_admitted, srv1_deploy_slot }
+import gunbc.runner.runner_slot_job_role { srv1_deploy_route_switch_admitted }
 import gunbc.ci.deploy_slot_tenancy { deploy_slot_job_user, deploy_slot_runner_group_name, deploy_slot_selected_workflow, DeploySlotReading, deploy_slot_host_reading_line }
 import gunbc.fleet.org_actions_inspection { read_org_runner_groups, org_actions_organization }
 import gunbc.runner.runner_group_restriction_observation {
@@ -141,10 +140,10 @@ import gunbc.auth.approval_device_crypto_realization { DeviceCryptoExpectation, 
 import gunbc.live_deploy.member_identity { MemberObserved, ExecutableIdentity }
 import gunbc.live_deploy.member_observe { observe_executable, OnTheHostItself, deployment_effect_plan, deployment_identity_readback, IdentityReadbackConverged, IdentityReadbackDrift, IdentityReadbackRefused }
 import gunbc.live_deploy.member_identity { EffectsDerived, EffectsRefused, decision_label }
-import gunbc.auth.approval_broker_cutover {
-  CutoverAdmission, StageAdmitted, StageRefused,
-  dark_install_release_discharged, cutover_refusal_reason,
-  BrokerTreeReceiptRead, observe_broker_tree_receipt,
+import gunbc.auth.approval_broker_cutover { CutoverAdmission, StageAdmitted, StageRefused, dark_install_release_discharged, cutover_refusal_reason }
+import gunbc.live_deploy.release_locus {
+  ReleaseTreeReceiptRead, observe_release_tree_receipt, release_locus_dir, release_locus_tree_receipt_path, RevisionBoundAtEmission, ReleaseRevisionBinding,
+  TreeReceiptUnreadable, TreeReceiptMalformed, TreeReceiptObserved,
 }
 import gunbc.live_deploy.readiness {
   live_deploy_poll_until_service_ready_for_deploy, live_deploy_healthz_get_for_port, running_release_unidentified_detail,
@@ -162,16 +161,11 @@ import gunbc.serve_liveness { ServeLivenessRead, ServeLivenessUnreachable }
 import gunbc.live_deploy.emit {
   microvm_controller_vmm_receipt_path, device_crypto_sidecar_binary_path,
 }
-import gunbc.live_deploy.release_locus {
-  release_locus_tree_receipt_path,
-  RevisionBoundAtEmission,
-  ReleaseRevisionBinding,
-}
 import gunbc.runner.runner_microvm_slot_unit {
   microvm_controller_root, microvm_controller_vmm_name, microvm_controller_jailer_name,
   microvm_slot_unit_instance_name, microvm_slot_reserve_unit_name,
 }
-import gunbc.runner.runner_slot_allocation { srv1_microvm_shakedown_slot }
+import gunbc.runner.runner_slot_allocation { srv1_microvm_shakedown_slot, srv1_deploy_slot }
 import gunbc.build_cache.build_cache_instance { runner_slot_instance_name }
 import extdeps.systemd { systemd_unit_property_wire, LoadState }
 import std.algebra { trim }
@@ -880,7 +874,7 @@ fn live_deploy_retract_wet_with_access(spec: DeploymentSpec, access: DeployAcces
 // ── STAGE 1 OF THE APPROVAL-BROKER CUTOVER, AS A DEPLOY RATHER THAN AS A TERMINAL SESSION ───
 // IT RUNS THE SAME PREFLIGHT AND THE SAME MUTATION GATE as every other deploy on this spine, which
 // is the point: an additive install is still a privileged host mutation, and giving it its own path
-// around the gate would be the escape hatch DESIGN section 5 forbids at exactly the boundary the
+// around the gate would be the escape hatch gunbc.design_argument::fail_closed forbids at exactly the boundary the
 // gate exists to hold.
 //
 // WHAT IT DOES NOT DO is restart gunbc-roadmap.service or write anything that deployment owns
@@ -926,7 +920,7 @@ fn approval_broker_dark_install_wet_with_access(
 // written and systemd was asked to start one -- it says nothing about whether a process came up,
 // bound the port, or is the release this deploy just named. Stage 2 of the cutover is exactly that
 // question, and this is where it is asked, so the plan has a production consumer rather than being
-// an authority nobody calls (review 68050: an inert lens is a lie, DESIGN section 4b).
+// an authority nobody calls (review 68050: an inert lens is a lie, gunbc.design_argument::guarantee_ladder).
 //
 // THE PORT IS THE SPEC'S, which gunbc.live_deploy.spec derives from the cutover switch -- so the
 // probe reaches the process this deploy actually placed, and cannot drift to the serving port while
@@ -967,7 +961,7 @@ fn approval_broker_dark_install_wet_with_access(
 // approval_broker_readback_poll_bound (measured against one srv1 start; see the rationale there for
 // its thinness), never from the roadmap's 240 s: the two units load different closures. This is a
 // CONSUMER of that single derivation, not a re-derivation of expected_startup times the margin -- the
-// CI step budget that runs the install reads the same figure, per DESIGN section 6b. The cadence and
+// CI step budget that runs the install reads the same figure, per gunbc.design_argument::earliest_unjustified_boundary. The cadence and
 // the margin factor are the roadmap's own declarations rather than new numbers, because the
 // uncertainty they encode is a property of polling a restarting unit, not of which unit it is.
 fn approval_broker_readback_poll_attempts() -> Int {
@@ -1038,7 +1032,7 @@ fn approval_broker_dark_install_readback_exit(spec: DeploymentSpec, candidate: C
     revision: RevisionBoundAtEmission { revision: candidate.revision },
   )
   let receipt_read = Filesystem.Read(path: receipt_path)
-  let tree_receipt = observe_broker_tree_receipt(
+  let tree_receipt = observe_release_tree_receipt(
     success: receipt_read.success,
     body: receipt_read.content,
     error: join(["reading ", receipt_path, ": ", receipt_read.error], "") as NonEmptyStr,
@@ -1081,11 +1075,11 @@ fn approval_broker_dark_install_readback_exit(spec: DeploymentSpec, candidate: C
 // controller's release locus, the VMM and jailer, the template units and the dispatch grant, then
 // reloads the manager. The spec is consumed for WHERE (the target host) and not for WHAT: the effect
 // carries the candidate alone, because the controller is not a member of the dashboard deployment
-// (gunbc.runner.runner_microvm_slot_unit states the locus root and owner), which is the one section 3b
+// (gunbc.runner.runner_microvm_slot_unit states the locus root and owner), which is the one gunbc.design_argument::conformance
 // divergence this install declares.
 //
 // ITS ROOT WRITES ARE NOT THE JOB USER'S (operator rulings 2026-10-25 and 2026-10-26; plan
-// gunbc.plans.srv1_deploy_principal_split D1, D5). Run 39284886844 and run 40704727549 died at the first
+// gunbc.plans.srv1_deploy_principal_split (deleted 2026-11-08) D1, D5). Run 39284886844 and run 40704727549 died at the first
 // `sudo -n dd` because no job-user grant names it, and granting it would make the job user
 // root-equivalent. So the install is admitted three ways, and every elevated leg runs as the fleet
 // administrator over its SSH edge (HostEffectElevationRoute):
@@ -1221,7 +1215,7 @@ fn microvm_controller_install_over_edge(spec: DeploymentSpec) -> ProcessExit {
 fn microvm_controller_install_readback_exit(candidate: CandidateRelease) -> ProcessExit {
   let revision = RevisionBoundAtEmission { revision: candidate.revision }
   let tree = Filesystem.Read(path: release_locus_tree_receipt_path(root: microvm_controller_root, revision: revision))
-  match observe_broker_tree_receipt(success: tree.success, body: tree.content, error: tree.error as NonEmptyStr) {
+  match observe_release_tree_receipt(success: tree.success, body: tree.content, error: tree.error as NonEmptyStr) {
     TreeReceiptUnreadable { detail: d } =>
       exit_failure(reason: join(["microvm_controller_install: the locus tree receipt could not be read, so the copy did not complete: ", d as String], ""))
     TreeReceiptMalformed { detail: d } =>
@@ -1404,9 +1398,11 @@ fn live_deploy_prod_role_wet_with_access(access: DeployAccess) -> ProcessExit {
   }
 }
 
-// The converge verb's deploy mode: the same admitted path the CI entry runs, under the operator
-// principal on the host itself. Candidate observation, preflight, mutation and the readiness
-// gate are all shared; nothing here is a second deploy.
+// The converge verb's deploy mode -- DISSOLVED (prod gap 1, F1). The selection, realization
+// admission and host checks below stay (a refusal must still be located: wrong host, wrong branch,
+// unadmitted realization each name themselves before the route retires), and the route ends in
+// live_deploy_operator_local_admitted's typed OperatorLocalDeployDissolved refusal naming the CI
+// transaction as the one deploy path.
 fn live_deploy_apply_prod_role_operator_local_wet() -> ProcessExit {
   match live_deploy_prod_role_apply_selection(access: ci_deploy_srv1_operator_local_access) {
     DesiredApplyRefused { reason } => exit_failure(reason: reason)
@@ -1434,25 +1430,26 @@ fn live_deploy_operator_local_wet_for_realization(
   }
 }
 
+// THE OPERATOR-LOCAL DEPLOY ROUTE IS DISSOLVED (prod gap 1, F1: one deploy path).
+// The serve-entry compile verdict is a PLAN-JOB artifact -- produced beside the plan artifact by
+// record_plan_serve_entry_compile_verdict and consumed by identity in the swap. An operator-local
+// apply has no plan job, so its only "verdict" options were a cold recompile inside the swap (the
+// 10-minute resolve that took the deploy down: the exact symptom gunbc.design_argument::earliest_unjustified_boundary forbids treating at the
+// symptom link) or a file no operator host ever writes (always-refuse). Both are second-path
+// mechanisms the CI transaction already owns receipted. The route therefore retires here with a
+// typed refusal naming the surviving path -- not a silent widen, not a plausible default (gunbc.design_argument::fail_closed).
+fn operator_local_deploy_dissolved_refusal() -> String {
+  join([
+    "live_deploy: OperatorLocalDeployDissolved — the operator-local converge deploy route ",
+    "(gunbc converge --mode deploy) is retired; the CI dashboard_deploy transaction is the ONE ",
+    "deploy path (prod gap 1, F1). The serve-entry compile verdict travels with the plan artifact, ",
+    "which only the plan job writes. To deploy: dispatch fleet-converge dashboard_deploy (plan ",
+    "modes first, then the receipted apply) from GitHub. Nothing was mutated.",
+  ], "")
+}
+
 fn live_deploy_operator_local_admitted(deployment: DesiredDeployment, access: DeployAccess) -> ProcessExit {
-  match observe_candidate_release() {
-    CandidateUnobservable { cause: why } =>
-      exit_failure(reason: candidate_unobservable_detail(cause: why))
-    CandidateObserved { candidate: candidate } =>
-      match live_deploy_pre_swap_for_deployment(deployment: deployment) {
-        PreSwapRefused { reason } => exit_failure(reason: reason)
-        PreSwapAdmitted =>
-          live_deploy_receipted_with_candidate(
-            deployment: deployment,
-            access: access,
-            candidate: candidate,
-            provenance: OperatorLocalApply {
-              host: access.host.identity,
-              principal: grounded_posix_principal_name(p: access.principal),
-            },
-          )
-      }
-  }
+  exit_failure(reason: operator_local_deploy_dissolved_refusal())
 }
 
 fn live_deploy_retract_prod_role_wet() -> ProcessExit {

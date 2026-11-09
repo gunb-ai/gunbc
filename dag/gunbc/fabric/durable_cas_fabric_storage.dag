@@ -35,7 +35,7 @@ import gunbc.fabric.fabric_storage_client { FabricStorageBinding, fabric_storage
 // absent. The fabric DB (std.fabric_storage, one placed store every host reaches through
 // gunbc.fabric.fabric_storage_client) is exactly the fleet-wide linearization such a claim needs: a named head
 // advanced by a compare-and-set on the expected object, whose generation the store itself keeps.
-// So this module binds the same CAS shape to a head. DESIGN §3: transport is a realization handler
+// So this module binds the same CAS shape to a head. gunbc.design_argument::single_authority: transport is a realization handler
 // bound to the shape, one of N, never a fact about the operation -- the attempt a caller builds is
 // the same CasAttempt<NonEmptyStr> the file store takes, and the caller chooses the store.
 //

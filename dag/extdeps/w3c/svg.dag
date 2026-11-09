@@ -107,7 +107,7 @@ fn svg_markup_medium() -> MarkupMedium {
     raw_text_tags: [],
     // Filled because this change gave the serializer a comment arm and a Document arm: a medium that
     // left these unset would have its comment's delimiters silently dropped — the body emitted as
-    // markup, which is §5's silent degradation, not a refusal. Filling them from XML's own rows is
+    // markup, which is gunbc.design_argument::fail_closed's silent degradation, not a refusal. Filling them from XML's own rows is
     // what makes a comment through this medium serialize as a comment.
     comment_grammar: CommentGrammar {
       open: xml_comment_open_sequence,

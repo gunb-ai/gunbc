@@ -19,7 +19,6 @@ import gunbc.compiler_frontend_program_interlock {
   NamespaceWaveAdmissionEnrolled,
   NamespaceBaselineObservationComplete,
   NamespaceFixForwardComplete,
-  NamespaceGrammarRetired,
   NamespaceFirstSemanticWave,
   milestone_label,
 }
@@ -28,7 +27,6 @@ import gunbc.namespace_cut.namespace_cut_stage {
   StageF0,
   StageXL5Waves,
   StageXL6AtomicCutover,
-  StageXL7GrammarDeletion,
   namespace_cut_stages,
   namespace_cut_stage_label,
   ActivationReceipt,
@@ -77,6 +75,7 @@ import v2.compiler.self_host.stage0_crate_layout { emitter_produced_divergent_re
 import gunbc.compiler_frontend_program_status {
   milestone_missing_instruments,
   SeedDeletionObservation,
+  ScopedClosureEmitReceipt,
   standing_rung_drop_outstanding,
   MilestoneStanding,
   Clear,
@@ -175,8 +174,8 @@ import gunbc.compiler_frontend_program_status {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// WHY THESE ARMS EXIST IN PAIRS. DESIGN section 4b(1) requires a discriminating RED beside an
-// accepted positive control, and DESIGN section 4b's decoration rule requires asking whether the
+// WHY THESE ARMS EXIST IN PAIRS. gunbc.design_argument::guarantee_ladder (rung honesty) requires a discriminating RED beside an
+// accepted positive control, and gunbc.design_argument::guarantee_ladder's decoration rule requires asking whether the
 // forbidden state is AUTHORABLE before writing a check. Both arms of every fold below are
 // authorable here, and several are executed against a fixture population this file authors
 // independently of the live one -- so a claim cannot be satisfied by the tree happening to be in
@@ -186,7 +185,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // `standing_is_clear` and `standing_is_outstanding` as Boolean matches over MilestoneStanding --
 // a second representation of a classification the carrier already owns as `standing_class`, and
 // one that would keep answering the old way if a variant were added or its meaning moved. A test
-// that forks the judgement it is testing checks its own copy (DESIGN section 3).
+// that forks the judgement it is testing checks its own copy (gunbc.design_argument::single_authority).
 
 fn standing_is(s: MilestoneStanding, want: MilestoneStandingClass) -> Bool {
   standing_class_label(c: standing_class(s: s)) == standing_class_label(c: want)
@@ -314,7 +313,7 @@ fn emitter_expected_members() -> List<String> {
 
 // THE FOUR-ROW TRUTH TABLE, AUTHORED. Every row is authorable at fixture grain because the variant
 // constructors and the evidence mint are both exported, so all four REDs can be exhibited here
-// rather than argued for in prose (DESIGN 4b: the fixture boundary is the one that decides).
+// rather than argued for in prose (gunbc.design_argument::guarantee_ladder: the fixture boundary is the one that decides).
 test fn a_standing_agrees_only_when_its_class_matches_its_population() -> Bool {
   let empty_evidence = observe_outstanding(subject: "fixture" as NonEmptyStr, outstanding: [])
   let one_member = observe_outstanding(subject: "fixture" as NonEmptyStr, outstanding: ["m"])
@@ -411,16 +410,14 @@ fn milestone_in(ms: List<ProgramMilestone>, want: ProgramMilestone) -> Bool {
   any(ms, m => (milestone_label(m: m) as String) == (milestone_label(m: want) as String))
 }
 
-// THE ORDER THE TWO RULINGS ADOPT, stated as edges. Grammar deletion runs last (2026-08-25), after
-// v1 is deleted on the native floor (2026-09-12). Seed retirement must not wait on grammar
-// retirement, seed retirement waits on the native floor, the cutover waits on seed retirement, and
-// grammar retirement waits on the cutover. On main before this change the first three clauses are
-// red: the interlock carried the edge that, combined with the adopted order, forms the cycle.
-test fn the_namespace_cutover_runs_on_the_native_floor_after_the_seed() -> Bool {
-  !milestone_in(ms: milestone_prerequisites(m: SelfHostSeedRetirement), want: NamespaceGrammarRetired)
+// THE ORDER AFTER THE 2026-11-08 SCOPE RESET (gunbc.design_ruling::n7_requires_only_its_own_closure,
+// imports_are_the_terminal_name_mechanism). Seed retirement does not wait on the namespace program, and the
+// namespace fix-forward no longer waits on seed retirement: the two programs are separate.
+test fn the_namespace_program_and_seed_retirement_do_not_wait_on_each_other() -> Bool {
+  !milestone_in(ms: milestone_prerequisites(m: SelfHostSeedRetirement), want: NamespaceFixForwardComplete)
+    && !milestone_in(ms: milestone_prerequisites(m: SelfHostSeedRetirement), want: NamespaceFirstSemanticWave)
     && milestone_in(ms: milestone_prerequisites(m: SelfHostSeedRetirement), want: SelfHostNativeRouteRequiredLane)
-    && milestone_in(ms: milestone_prerequisites(m: NamespaceFixForwardComplete), want: SelfHostSeedRetirement)
-    && milestone_in(ms: milestone_prerequisites(m: NamespaceGrammarRetired), want: NamespaceFixForwardComplete)
+    && !milestone_in(ms: milestone_prerequisites(m: NamespaceFixForwardComplete), want: SelfHostSeedRetirement)
 }
 
 // STARTABILITY IS CHECKED AS A WIRING RELATION OVER EVERY MILESTONE, replacing two arms that each
@@ -505,7 +502,7 @@ test fn a_milestone_with_no_prerequisites_is_startable() -> Bool {
 // THE ANTI-INFLATION CLAIM IS STRUCTURAL, AND THE WITNESS THAT USED TO STAND HERE WAS DELETED
 // (review 56456, and it was right against an earlier APPROVE that had praised this arm by name).
 // `no_milestone_reads_clear_today` asserted count(clear) == 0 over the LIVE roster. That is a live
-// population compared to a bare literal with none of the four groundings DESIGN section 5 allows:
+// population compared to a bare literal with none of the four groundings gunbc.design_argument::fail_closed allows:
 // not a controlled fixture, not an external or versioned authority, not a policy budget, and as a
 // monotone debt contract it ran BACKWARD -- it ratcheted against the program making progress. The
 // day a milestone legitimately became Clear, CI would red and the only closing move would be to
@@ -541,7 +538,7 @@ test fn a_milestone_with_no_prerequisites_is_startable() -> Bool {
 // RUNG, stated rather than implied, because review 56456 was right that prose alone leaves this
 // without a disposition: MITIGATABLE. A milestone variant added to the interlock and omitted from
 // this roster is silently absent from the report, and nothing detects it. The class is not a
-// ratchet -- it is decidable -- so it is a WALL AFTER GROUNDING in DESIGN section 5's vocabulary,
+// ratchet -- it is decidable -- so it is a WALL AFTER GROUNDING in gunbc.design_argument::fail_closed's vocabulary,
 // blocked on one missing language capability. NEXT-RUNG TRIGGER: `.dag` gaining a way to enumerate
 // a closed coproduct's inhabitants, at which point `program_milestones` and `all_missing_instruments`
 // are both DERIVED and both hand rosters are deleted rather than checked.
@@ -564,14 +561,11 @@ test fn the_report_renders() -> Bool {
 //
 // THE RELATION IS `AWAITED BY`, NOT `UNBLOCKS`, and the distinction is not wording. This fold tests
 // whether an instrument appears anywhere in a milestone's required-instrument list, which is a
-// membership question. SelfHostRatchetGateEnrolled requires the whole-corpus board AND the separate
-// gate-enrolment fact, so NEITHER alone makes it derivable: the requirement is a hyperedge and
-// projecting it into per-instrument rows attributes the whole effect to each conjunct. Calling the
-// result "unblocks" would let a leverage count direct dispatch toward an instrument that, delivered
-// alone, moves nothing. Counted honestly: the board independently answers two milestones and is
-// co-required for a third; the gate-enrolment fact independently answers NONE and is only
-// co-required. Deriving singleton sufficiency is a stronger carrier and is not claimed here.
-// THE THREE DELETION MILESTONES ARE WIRED TO THE SUBJECT ROSTER -- the same wiring relation as
+// membership question. A milestone that requires two instruments is a hyperedge, and projecting it
+// into per-instrument rows attributes the whole effect to each conjunct. Calling the result
+// "unblocks" would let a leverage count direct dispatch toward an instrument that, delivered alone,
+// moves nothing. Deriving singleton sufficiency is a stronger carrier and is not claimed here.
+// THE DELETION MILESTONE IS WIRED TO THE SUBJECT ROSTER -- the same wiring relation as
 // the S4a arm: the milestone's members equal its stage's declared-subject fold, re-derived here
 // from the roster's own sources (subjects_deleted_at + subject_probe_list) rather than obtained
 // from the carrier's stage_subject_outstanding, so a fold that adds or drops a member is visible
@@ -587,9 +581,6 @@ test fn the_deletion_milestones_are_wired_to_their_stage_subjects() -> Bool {
   standing_agrees_with_population(
     s: milestone_status(m: NamespaceFixForwardComplete),
     expected: expected_stage_subjects(stage: StageXL6AtomicCutover))
-    && standing_agrees_with_population(
-         s: milestone_status(m: NamespaceGrammarRetired),
-         expected: expected_stage_subjects(stage: StageXL7GrammarDeletion))
 }
 
 // F4 -- NO SUBJECT IS ASSIGNED TO XL-5, AND THIS IS THE RULE THAT REDS IF ONE IS.
@@ -603,7 +594,7 @@ test fn the_deletion_milestones_are_wired_to_their_stage_subjects() -> Bool {
 //
 // THE SECOND HALF IS WHAT STOPS THE EMPTY SET FROM READING AS SUCCESS. An XL-5 derived from its
 // subjects would fold zero rows to CLEAR and report a wave nobody has run as complete -- the rung
-// inflation DESIGN section 4b calls worse than sitting low. So the milestone must be NOT-DERIVABLE
+// inflation gunbc.design_argument::guarantee_ladder calls worse than sitting low. So the milestone must be NOT-DERIVABLE
 // and must name the residual census, and both halves are asserted together: dropping either one
 // alone restores the defect.
 test fn no_subject_is_scheduled_for_the_waves_and_xl5_is_not_derivable_from_the_empty_set() -> Bool {
@@ -1139,7 +1130,7 @@ test fn the_live_census_partitions_on_both_axes() -> Bool {
 // milestone in the program today -- so before startability_from_populations was split out of
 // milestone_startability, no witness could exhibit them at all. That is why the split exists: the
 // RED must be authorable somewhere the check can run, and the fixture boundary is the boundary that
-// decides (DESIGN 4b). Authoring all four together is also what makes them discriminating as a set,
+// decides (gunbc.design_argument::guarantee_ladder). Authoring all four together is also what makes them discriminating as a set,
 // since a classifier collapsing any two would fail exactly one of these lines.
 test fn the_four_direct_prerequisite_states_are_each_exhibited() -> Bool {
   startability_class_label(c: startability_class(s: startability_from_populations(unanswerable: [], blocking: [])))
@@ -1192,6 +1183,19 @@ test fn a_retired_census_milestone_never_reads_clear_off_its_historical_series()
   }
 }
 
+// S5 IS SCOPED (gunbc.design_ruling self_host_scope_is_the_compiler_closures) AND DOES NOT READ THE
+// WHOLE-CORPUS SERIES: its standing is not derivable and awaits the receipt at its own grain, so a
+// historical whole-corpus reading can neither clear nor block it.
+test fn the_scoped_self_host_milestone_awaits_its_own_receipt() -> Bool {
+  match milestone_status(m: SelfHostCorpusEmitsCleanly) {
+    Clear { evidence: _ } => false
+    Outstanding { evidence: _ } => false
+    NotDerivable { why: _, cause: _ } =>
+      any(milestone_missing_instruments(m: SelfHostCorpusEmitsCleanly),
+        i => missing_instrument_label(i: i) == missing_instrument_label(i: ScopedClosureEmitReceipt))
+  }
+}
+
 fn obstacle_cites_the_census_retirement(o: InstrumentObstacle) -> Bool {
   match o {
     RefusedByAuthority { authority, why: _ } =>
@@ -1217,4 +1221,14 @@ test fn the_two_census_edges_are_gone_and_their_siblings_stay() -> Bool {
     && !milestone_in(ms: milestone_prerequisites(m: NamespaceFirstSemanticWave), want: NamespaceBaselineObservationComplete)
     && milestone_in(ms: milestone_prerequisites(m: SelfHostRatchetGateEnrolled), want: SelfHostCargoPhaseEnrolled)
     && milestone_in(ms: milestone_prerequisites(m: NamespaceFirstSemanticWave), want: SelfHostRatchetGateEnrolled)
+}
+
+// S4b IS PENDING, NOT REFUSED (gunbc.design_ruling self_host_scope_is_the_compiler_closures). It was
+// NotDerivable on the retired live-tree compile-phase measurement, so the seed-retirement chain through
+// it could never become answerable. Restated as a native gate over the compiler closures, it reads
+// OUTSTANDING until that step exists. Reverting the arm to NotDerivable reds this.
+test fn the_native_gate_milestone_is_pending_not_refused_by_the_census_retirement() -> Bool {
+  standing_is(want: ClassOutstanding, s: milestone_status(m: SelfHostRatchetGateEnrolled))
+    && !any(milestone_missing_instruments(m: SelfHostRatchetGateEnrolled),
+            i => missing_instrument_label(i: i) == missing_instrument_label(i: LiveTreeCompilePhaseMeasurement))
 }

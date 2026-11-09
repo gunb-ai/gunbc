@@ -7,7 +7,7 @@ module gunbc.instruments.instrument_registry_emit
 // wire function it calls, the census verb it runs — beside the label. The same subjects are declared
 // once in `gunbc.instrument_targets` `instrument_bindings()`, and the host file's own header says the
 // registry "mirrors" that module. A subject written in two places where the dispatch reads the
-// unbound copy is the fork DESIGN §3 forbids: the row the host reads can go stale and nothing
+// unbound copy is the fork gunbc.design_argument::single_authority forbids: the row the host reads can go stale and nothing
 // refuses, because the authority it mirrors is never consulted. This module renders the table FROM
 // the authority, so the subject is named once and the host reads it.
 //
@@ -21,7 +21,7 @@ module gunbc.instruments.instrument_registry_emit
 // AN UNRENDERABLE ARM REFUSES; IT DOES NOT FALL BACK. A producer arm with no host counterpart
 // (`RequiredFloorProducer`, `BazelProducer`) renders a sentinel that cannot compile, and
 // `expected_instrument_registry_generated_rs` refuses the emission when the sentinel appears — a loud
-// error where a plausible line would have been fabricated (DESIGN §5).
+// error where a plausible line would have been fabricated (gunbc.design_argument::fail_closed).
 
 import extdeps.bazel.label { PackageName }
 import extdeps.languages.rust.string_literal { escape_rust_cooked_string_literal_body }
@@ -36,7 +36,6 @@ import gunbc.instrument_targets {
   self_host_source_roots,
   v2_native_cli_source_roots
 }
-import gunbc.native_census_verb { native_census_verb_word }
 import gunbc.target_binding { TargetBinding, TargetProducer }
 import std.types { List, NonEmptyStr, String }
 
@@ -108,21 +107,12 @@ fn instrument_producer_rust(producer: TargetProducer) -> String {
     BehavioralReceiptPlanProducer => "TargetProducer::BehavioralReceiptPlan"
     BehavioralReceiptCensusProducer => "TargetProducer::BehavioralReceiptCensus"
     BehavioralReceiptSelftestProducer => "TargetProducer::BehavioralReceiptSelftest"
-    CompileCleanDiagnosticCensusProducer => "TargetProducer::CompileCleanDiagnosticCensus"
     EvaluationStoreAddressExactHeadProducer => "TargetProducer::EvaluationStoreAddressExactHead"
     TypedGraphExclusiveBytesProducer => "TargetProducer::TypedGraphExclusiveBytes"
     TypedGraphExclusiveBytesFloorSubjectProducer => "TargetProducer::TypedGraphExclusiveBytesFloorSubject"
-    RequiredLaneResolutionCensusProducer => "TargetProducer::RequiredLaneResolutionCensus"
     BareReferenceChannelOutcomeProducer => "TargetProducer::BareReferenceChannelOutcome"
     SelfHostBehavioralEquivalenceProducer => "TargetProducer::SelfHostBehavioralEquivalence"
-    NativeCensusVerbProducer { verb } => concat(
-      "TargetProducer::NativeCensusVerb \{\n                verb: ",
-      concat(rust_string_literal(value: native_census_verb_word(v: verb)), ",\n            }"),
-    )
     SelfHostFrontierProducer => "TargetProducer::SelfHostFrontier"
-    GenericIdentityCensusProducer => "TargetProducer::GenericIdentityCensus"
-    InterpolationHoleCensusProducer => "TargetProducer::InterpolationHoleCensus"
-    SharedTypeLeafCollisionCensusProducer => "TargetProducer::SharedTypeLeafCollisionCensus"
     CardinalityRealizationProducer => "TargetProducer::CardinalityRealization"
     RegenRoundCostProducer => "TargetProducer::RegenRoundCost"
     NativeClaimProgramProducer { entry, deadline } => concat(

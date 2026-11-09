@@ -454,7 +454,7 @@ fn locus_cache_digest(at: Locus) -> Hash {
     NodeLocus { anchor: a } =>
       combine_hash(
         a: test_claim_symbol_digest(sym: ^test_claim_cache_locus_node_tag),
-        b: content_hash(n: a.at)
+        b: content_hash(n: a.at.node)
       )
     SourcePortLocus { anchor: a, file: f, extent: e } =>
       combine_hash(
@@ -2487,7 +2487,7 @@ fn eval_constant_member_body(node: Node, facts: InferredFacts) -> Optional<Node>
 // THE RECEIVER'S VALUE ARRIVES AS THE ONE RUNTIME ARGUMENT, through the same seam the evaluator already
 // uses to decide which children are values (eval_edge_is_runtime_argument). So the base is evaluated
 // ONCE, by the ordinary walk, rather than re-evaluated here: re-entering the base would compute it a
-// second time for every projection off it, which is the duplicated work DESIGN section 2 forbids at any
+// second time for every projection off it, which is the duplicated work gunbc.design_argument::minimize_redundancy forbids at any
 // n. The FIELD edge is deliberately not an argument -- it carries a name, not a value, and evaluating it
 // would ask for the grounding of a field-name atom.
 //

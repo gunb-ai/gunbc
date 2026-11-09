@@ -1,0 +1,62 @@
+module gunbc.native_ingress_emission_seed_growth
+
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField }
+
+// FORWARD-FREEZE RECEIPT FOR THE SEED EMITTER'S NATIVE INGRESS REALIZATION (gunbc.plans.converged_ingress (deleted 2026-11-08) M2a, M2b).
+//
+// The v1 emitter's native serve arm read a unit driver (NativeServeDriver) and spelled the handler, the startup and
+// the startup bound by convention (native_serve_handle, native_serve_startup, native_serve_startup_bound), and its
+// rendered main parsed its own serve flags (gunbc.native_serve NativeServeArgs). Those are deleted. In their place the
+// emitter resolves one typed program descriptor (std.compiler_entry NativeIngressDriver { program } naming a
+// NativeIngressProgram) as a closed boundary and renders a main that calls the EXACT binding constructor the
+// descriptor names, derives its contract from what that constructor returned (gunbc.http_ingress
+// http_ingress_native_contract), and enforces one effective deadline by ending the process after a crossing. M2b
+// widens the handler contract to the seed's whole one: the emitter types each request parameter's carrier (text or the
+// header list) and the rendered main hands those to the start, which plans them with the seed's own fact plan; the
+// main binds the binding's listener, TCP or a unix socket, and reads each unix connection's peer from the kernel.
+//
+// PURPOSE ADMISSION (gunbc.v1.v1_maintenance_standing v1_seed_standing): the device-crypto verifier is the native route
+// by which the approval broker's device obligations are discharged, and it is emitted by this seed; deleting the serve
+// door's naming convention and its argv grammar, which are second authorities for the deployment binding, serves the
+// v2 program (the binding model is the one v2 inherits) and adds no v1 language semantics. Every declaration below is
+// enumerated on its own; the deleted convention and argv fold are not netted against them.
+data native_ingress_emission_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "NativeIngressRef", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "NativeIngressRefReading", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "native_ingress_literal_ref", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "NativeIngressSite", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "native_ingress_site", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "native_ingress_binding_refusals", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "native_ingress_handler_refusals", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "native_ingress_startup_refusals", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "NativeIngressProgramResolved", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "NativeIngressResolution", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "native_ingress_program_resolution", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "native_ingress_program_diagnostics", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "native_callable_admissions", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "native_effect_call_arguments", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "emit_native_ingress_driver_main_rs", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "NativeIngressRequestShape", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "NativeIngressRequestParameter", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "NativeIngressRequestParameterReading", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "native_ingress_request_parameter", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "native_ingress_request_params", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "native_ingress_request_parameters", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "native_ingress_type_is_header_list", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "native_ingress_request_parameter_values", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "NativeIngressPositionalRender", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "native_ingress_worker_pattern", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "native_ingress_worker_arguments", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "native_ingress_call_arguments", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.std.core", decl_name: "CompilerDiagnostic", field: NamedField { field_name: "NativeIngressProgramRefused" } },
+    DeclarationRef { module_path: "v1_compiler.cli_run.compile_clean", decl_name: "compile_clean_diagnostic_histogram_key", field: NamedField { field_name: "NativeIngressProgramRefused" } },
+    DeclarationRef { module_path: "v1_compiler.cli_run.compile_clean", decl_name: "compile_clean_diagnostic_rendered_pair", field: NamedField { field_name: "NativeIngressProgramRefused" } }
+  ],
+  reason: "A served binding's native realization has to be emitted by the seed, because the seed is what emits native binaries today; what is new is only that the emitter READS the deployment binding's typed descriptor instead of a naming convention. The resolution is a closed typed boundary over declarations already in the closure -- the driver row's program reference, the descriptor's three references, and the declared types of the constructor, handler and startup it names, judged by declaration identity (v1.compiler.infer_env type_reference_declaration_reading) -- and it refuses with one typed diagnostic (NativeIngressProgramRefused, whose census class compile_clean names, as it names every diagnostic class) before any artifact is written. The effect union (native_callable_admissions, native_effect_call_arguments) reuses v1.compiler.emit NativeEffectRealizationAdmission per exact declaration rather than per module. The rendered main decides nothing: argv, the constructor's answer, the contract, framing, routing, failures and response bytes are folds of gunbc.http_ingress and gunbc.native_serve; the main performs the socket and thread operations no fold can, and exits after a deadline crossing because a compiled handler cannot be unwound in-process. Which request fact each handler parameter names is the start's (gunbc.http_ingress http_ingress_fact_plan, the seed's own plan); emission only reads each parameter's declared type into the carrier the compiled call needs (text, or the List of extdeps.http.server ServeRequestHeader) and refuses any other. Binding a unix socket, holding the socket path's lock (an exclusive flock on <path>.lock, for the listener's lifetime), replacing only a socket file shown stale under that lock, and reading a connection's peer through SO_PEERCRED and getpwuid_r are operations on the operating system no fold can perform; the policy (which listener, which mode, that only a unix listener attests a peer) stays in the binding and the fact plan.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete these declarations when the v2 native emitter realizes a std.compiler_entry NativeIngressDriver program itself (resolving the descriptor and rendering its main from the v2 emission route), SUFFICIENT FOR //gunbc/instruments:native-serve, //gunbc/instruments:native-serve-unix and //gunbc/instruments:native-serve-device-crypto to build their binaries without the v1 seed's emit_rust. WHAT DOES NOT RETIRE IT: moving the resolution to another v1 module; reading the descriptor by bare name.",
+  current_boundary: "v1.compiler.emit_rust native_ingress_program_resolution, called once per emission in the Rust emission entry; its refusal stops emission with NativeIngressProgramRefused; its resolved program is read by native_entry_effects and emit_native_ingress_driver_main_rs, reached only for a corpus whose one compiler_pipeline_entry row is a NativeIngressDriver. Controls: test.claim.native_ingress_program_witness (resolution refusals and admissions), v1.tests.claim.carrier_realization_census (the rendered main's shape), and the native-serve instruments (the real route).",
+}

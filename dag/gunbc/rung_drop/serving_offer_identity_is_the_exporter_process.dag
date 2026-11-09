@@ -6,7 +6,7 @@ import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, Delet
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 
 // ============================================================================================
-// THE DECLARED RUNG DROP for a serving offer identified by its exporter process (DESIGN 4b(3)).
+// THE DECLARED RUNG DROP for a serving offer identified by its exporter process (gunbc.design_argument::guarantee_ladder (no silent regression)).
 // ============================================================================================
 //
 // WHY THIS IS A ROW AND NOT A SENTENCE IN THE PR. The module states honestly that

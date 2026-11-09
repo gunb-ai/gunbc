@@ -30,7 +30,7 @@ import product.fabric.provider_route {
 // missing legal or data-handling authority. Compliance is not depleted by use, so it is not a
 // budget, and it does not belong anywhere in a selection cost.
 //
-// WHO CONSUMES A PERMIT, AND AT WHICH RUNG (DESIGN section 3c, and section 4b(1) rung honesty).
+// WHO CONSUMES A PERMIT, AND AT WHICH RUNG (gunbc.design_argument::consumption, and gunbc.design_argument::guarantee_ladder (rung honesty) rung honesty).
 // This replaced a declared frontier rather than outliving it: the frontier's trigger has fired, and
 // a discharged declaration left standing is cited as a known gap while the gap is closed.
 //
@@ -51,7 +51,7 @@ import product.fabric.provider_route {
 // the route without consulting the candidate that produced it. product.fabric.execution names
 // the three projections.
 
-// STATED DIVERGENCE FROM std.scoped_authorization (DESIGN section 3b). That module already models
+// STATED DIVERGENCE FROM std.scoped_authorization (gunbc.design_argument::conformance). That module already models
 // a permit-shaped answer - AuthorizationDecision<Subject> is Permitted { grant } | Refused { cause }
 // over a located AuthorizationRefusalCause, which is the same SHAPE as the admission below - and it
 // is Subject-parametric precisely so a domain can bring its own payload. This module does not
@@ -71,7 +71,7 @@ import product.fabric.provider_route {
 // A DISPOSITION IS A STANDING, NOT A POINTER. These were once bare DeclarationRef fields on the
 // use scope, which meant the sanctions, export and prohibited-use programs could hand this
 // decision anything at all and it would neither read it nor record it - dangling inputs on the
-// subject of the decision (DESIGN section 3c), and worse, an unresolved sanctions case would have
+// subject of the decision (gunbc.design_argument::consumption), and worse, an unresolved sanctions case would have
 // been indistinguishable from a cleared one. A standing has to say which it is.
 // THE FOURTH ARM IS "THE PROGRAM HAS NO SUBJECT HERE", AND IT IS A DIFFERENT CLAIM FROM CLEARED.
 // The distinction is the one product.fabric.provider_route already draws one type over, in the same
@@ -85,7 +85,7 @@ import product.fabric.provider_route {
 // WITHOUT THIS ARM THE ONLY WAY TO ADMIT SUCH A ROUTE WAS TO WRITE A CLEARANCE NOBODY ISSUED, which
 // is the fabricated legal finding this gate exists to close, arriving through the gate itself. It
 // was written that way once, in gunbc.spark.first_party_serving, with the honesty carried in prose
-// fields nothing matches on -- and prose cannot discharge a machine claim (DESIGN 4c), which is
+// fields nothing matches on -- and prose cannot discharge a machine claim (gunbc.design_argument::source_annotations), which is
 // exactly review 63981's finding. With the arm, a not-engaged standing is expressible AS ITSELF, a
 // future real clearance is distinguishable from it BY MATCHING rather than by reading a string, and
 // a permit records which of the two admitted it.
@@ -113,8 +113,8 @@ fn disposition_obligation(d: DispositionStanding) -> List<DeclarationRef> {
   }
 }
 
-// disposition_evidence IS GONE, AND ITS DISSOLUTION IS THE CLIMB RATHER THAN A DELETION (DESIGN
-// 4b(4)). It projected a zero-or-one DeclarationRef out of the standing so the permit could record
+// disposition_evidence IS GONE, AND ITS DISSOLUTION IS THE CLIMB RATHER THAN A DELETION (
+// gunbc.design_argument::guarantee_ladder (dissolution on climb)). It projected a zero-or-one DeclarationRef out of the standing so the permit could record
 // "what the gate saw" without a fabricable seed, and the list shape was the right answer to that
 // question. The question stops existing once the permit records the STANDING ITSELF: a reference
 // alone cannot say which arm admitted the route, so two materially different admissions -- a
@@ -179,7 +179,7 @@ type ProviderUseEvidence {
 }
 
 // SEALED. sole_constructor confines minting to admit_provider_use below, so a permit cannot be
-// authored beside the decision that is supposed to produce it. DESIGN section 4b's ceiling applies
+// authored beside the decision that is supposed to produce it. gunbc.design_argument::guarantee_ladder's ceiling applies
 // unchanged: this establishes WHO may construct one and nothing about whether the route facts were
 // honestly observed, which stays a boundary obligation on whoever produced them.
 type ProviderUsePermit<P> sole_constructor {
@@ -199,7 +199,7 @@ type ProviderUsePermit<P> sole_constructor {
 // TransferOrLocationUnresolved and ProviderAccessPathUnsupported were deleted rather than left
 // uninhabitable, because both require comparing a LOCATED path's jurisdiction against the
 // jurisdictions a posture permits and the posture revision carried no such population -- an arm no
-// producer can inhabit is decoration that will later be cited as coverage (DESIGN section 4b). The
+// producer can inhabit is decoration that will later be cited as coverage (gunbc.design_argument::guarantee_ladder). The
 // stated restoration trigger was "a posture revision that carries its permitted-jurisdiction
 // population", and product.fabric.provider_route CompliancePostureRevision now carries exactly
 // that, so both arms land below with producers that reached them by matching the coproduct that
@@ -220,7 +220,7 @@ type ProviderUsePermit<P> sole_constructor {
 // THE THIRD ARM IS THE POPULATION ITSELF, AND IT IS NOT A SPARE. A posture whose permitted
 // jurisdictions nobody has read cannot be compared against, and the two arms above would then be
 // diagnosing the data path for a defect that is in the posture -- the category right and the remedy
-// wrong, which DESIGN section 5 calls a fabricated diagnosis. The remedy here is to go and read
+// wrong, which gunbc.design_argument::fail_closed calls a fabricated diagnosis. The remedy here is to go and read
 // what the posture authority permits, which is neither of the other two, so it is its own arm and
 // it REFUSES. It never widens to "all permitted".
 type ProviderUseRefusal
@@ -298,7 +298,7 @@ fn deny<P>(cause: ProviderUseRefusal) -> ProviderUseAdmission<P> {
 // point. An empty full-match set has two materially different causes - this customer profile is
 // not sanctioned on this route at all, or it is but THIS DATA CLASS is not - and they are
 // different things to go and do. Reporting both as CustomerScopeUnsupported names the wrong
-// remedy, which under DESIGN section 5 is a fabricated diagnosis rather than a located one.
+// remedy, which under gunbc.design_argument::fail_closed is a fabricated diagnosis rather than a located one.
 fn sanctions_for_route_and_customer<P>(
   roster: List<RouteScopeSanction>,
   route: ProviderRoute,
@@ -381,7 +381,7 @@ fn disposition_program_refusal(p: DispositionProgram, obligation: DeclarationRef
 // a source for the first time, nonempty means the published sources have been read and do not
 // answer, so the next step is to ask the provider. path_refusals matches first_unread_standing
 // ONCE and projects both fields from that standing, so obligation and consulted cannot name
-// different paths (DESIGN sections 2 and 3).
+// different paths (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority).
 fn path_refusals(facts: ProviderRouteFacts) -> List<ProviderUseRefusal> {
   fold(
     first_unread_standing(c: facts.data_paths),
@@ -408,7 +408,7 @@ fn downstream_refusals(facts: ProviderRouteFacts) -> List<ProviderUseRefusal> {
 // THE SUBJECT IS A CLOSED COPRODUCT FOR THE SAME REASON DispositionProgram IS. The two
 // jurisdiction arms are built by ONE fold over ONE path group each, and the only thing that differs
 // between the two calls is which refusal the offending path becomes. Writing the fold twice would
-// be section 2's duplicated work in the place it is most expensive -- two copies of a wall, free to
+// be gunbc.design_argument::minimize_redundancy's duplicated work in the place it is most expensive -- two copies of a wall, free to
 // drift -- and passing a string to choose would be the undeclared sum this module already deleted
 // once, where a typo silently routes a location defect to an access remedy. As a coproduct the
 // dispatch is exhaustive, so a third path group fails to compile rather than quietly becoming an
@@ -676,7 +676,7 @@ fn admit_provider_use<P>(
 // path that actually places work was the SHORT one, and a permit admitted for work A could seal a
 // candidate that was then ranked and reserved for work B.
 //
-// So this is DESIGN section 3 arriving exactly as it says it will: a fork gets consolidated later,
+// So this is gunbc.design_argument::single_authority arriving exactly as it says it will: a fork gets consolidated later,
 // which makes it a correctness concern rather than a style one. Adding the missing two comparisons
 // to the second copy would have restored agreement for exactly as long as nobody edited either
 // one, and would have made the third consumer - the broker - a third place to disagree. The

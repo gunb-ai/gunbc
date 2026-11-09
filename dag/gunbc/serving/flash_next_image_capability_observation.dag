@@ -8,7 +8,7 @@ import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 
 data image_capability_read_obligation: NonEmptyStr = "Re-read ghcr.io/local-inference-lab/vllm@sha256:751ee72beb242b163e1124b2e0b825a509e20bacaf1423f467d65f6b8b664bc7: its build arch lists (b12x sm120/sm121; FlashInfer wheel sm120-only; vLLM compiled kernels sm_80/sm_90/sm_120a plus PTX sm_80/sm_90) and the quoted engine errors (PLE format 'nvfp4' requires the b12x execution backend; Qwen4Exp QSA requires a BF16 main KV cache). These are the operator's and a peer session's reports of that image, not a read by this repository; no H200 or B200 run has executed the Hopper or sm100 rows." as NonEmptyStr
 
-// WHAT ONE IMAGE DIGEST CAN DO ON ONE GPU ARCHITECTURE, as an observation of the image (DESIGN section 3:
+// WHAT ONE IMAGE DIGEST CAN DO ON ONE GPU ARCHITECTURE, as an observation of the image (gunbc.design_argument::single_authority:
 // the local-inference-lab build is an upstream, these are readings this repository makes of it, so they
 // sit here and not in extdeps.vllm.local_inference_lab_build). The architecture is the CUDA compute
 // capability major the catalog already carries (extdeps.gpu.types compute_capability), not a product name.
@@ -133,5 +133,5 @@ fn image_main_kv_element_bytes(rows: List<ImageCapabilityObservation>, arch: Ima
 }
 
 data flash_next_image_observation_frontier: DissolutionCondition = unbound_dissolution(
-  description: "DESIGN section 3c: flash_next_image_observations is consumed by gunbc.serving.flash_next_roofline through image_main_kv_element_bytes (BF16 vs FP8 KV per card) and by the prediction rows' path conditions. Declared frontier, trigger: a committed H200 or B200 launch log of this digest replaces the Sm90/Sm100 rows' TranscribedUncited standing, and the Sm100 FlashInferNativeFp4Moe JitIfCompiles row is resolved to BuiltIn or NotBuilt by the compile's outcome. Until then the B200 rows are a conditional, not a reading." as NonEmptyStr
+  description: "gunbc.design_argument::consumption: flash_next_image_observations is consumed by gunbc.serving.flash_next_roofline through image_main_kv_element_bytes (BF16 vs FP8 KV per card) and by the prediction rows' path conditions. Declared frontier, trigger: a committed H200 or B200 launch log of this digest replaces the Sm90/Sm100 rows' TranscribedUncited standing, and the Sm100 FlashInferNativeFp4Moe JitIfCompiles row is resolved to BuiltIn or NotBuilt by the compile's outcome. Until then the B200 rows are a conditional, not a reading." as NonEmptyStr
 )

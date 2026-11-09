@@ -1,0 +1,123 @@
+module gunbc.runner.runner_lost_agent
+
+import std.types { Int, NonEmptyStr }
+import std.measure { Second, second, second_count }
+import std.disposition { ConstructionMechanism, SingleAuthority }
+
+// A LOST AGENT: THE JOB IS CLAIMED BUT NO AGENT EVER PICKED IT UP.
+//
+// The GitHub Actions jobs API reports a job whose status is `in_progress` while its `runner` is null
+// and its `startedAt` is null. That combination is not "slow" and not "queued" — queued jobs are
+// `queued`, and a job with an agent bound carries a non-null `runner` and a non-null `startedAt`. It
+// is the wedge measured on gunbc-private job 126894416098: the run flipped to in_progress, never
+// bound an agent, and sat for about seven hours until a human cancelled it by hand. No runner process
+// on any host corresponds to it, so the local unit/process observations and the org roster join used
+// by the connectivity verdicts are all silent about it — they describe runner processes, and there is
+// no runner process. It is visible only in the jobs API, and it is visible as an ABSENCE in exactly
+// the fields that must be populated for an in_progress job.
+//
+// WHY THIS IS ITS OWN OBSERVATION AND NOT A VERDICT. The connectivity verdicts (fleet_runner_connectivity)
+// answer "is the runner process this slot owns registered and online." A lost agent is a different
+// question — "a job was opened against a slot and never reached any agent" — answered from a different
+// source with a different failure mode. Collapsing it into the roster join would let a roster row that
+// happens to look online (a stale keep-alive from a DIFFERENT job) mask the fact that THIS job is
+// stranded, which is the whole defect. This observation is CORROBORATION the restart leg uses on a slot the
+// connectivity verdict has ALREADY named Detached or Orphaned; it names no slot itself (detection requires a
+// null runner), so it is never an independent permission to restart, and never acts on a partial/refused read
+// (review 90967, gunbc.design_argument::fail_closed).
+
+data runner_lost_agent_authority_disposition: ConstructionMechanism = SingleAuthority
+
+// A job's own timeout and the time it has been observed in_progress are elapsed time, so they carry
+// the std.measure duration carrier (Second), not a bare second-count. The clock that starts the count
+// is NOT a field on the job (startedAt is null — one of the three symptoms); it is the caller's record
+// of how long the job has been observed in this state, supplied at the boundary, never inferred from a
+// wall clock inside the classifier (which would make the pure decision depend on the host clock and
+// drift between witnesses and production).
+
+// The jobs-API `status`, kept as the wire vocabulary GitHub uses. The `Unread` arm is for a read that
+// did not answer it, so "we could not see it" is distinct from any concrete status (gunbc.design_argument::epistemic_humility).
+type LostAgentJobStatus
+  = JobQueued
+  | JobInProgress
+  | JobCompleted { reason: NonEmptyStr }
+  | JobStatusUnread { reason: NonEmptyStr }
+
+// The jobs-API `runner`, which is an object when an agent is bound and null when none is. A read that
+// did not answer the field is its own arm, so a missing read is never read as "null" (which would look
+// like a lost agent).
+type LostAgentRunnerAssignment
+  = RunnerBound { runner_id: Int }
+  | RunnerNull
+  | RunnerReadUnavailable { reason: NonEmptyStr }
+
+// The jobs-API `startedAt`, populated once an agent reaches the job. Same refusal-not-null discipline.
+type LostAgentStartField
+  = StartRecorded { started_at: NonEmptyStr }
+  | StartNull
+  | StartReadUnavailable { reason: NonEmptyStr }
+
+// The whole boundary shape. Every field is what the jobs API reported for one job, plus the caller's
+// record of how long it has been observed in_progress.
+type LostAgentJob {
+  job_id: Int,
+  run_id: Int,
+  status: LostAgentJobStatus,
+  runner: LostAgentRunnerAssignment,
+  started: LostAgentStartField,
+  timeout: Second,
+  in_progress_for: Second,
+}
+
+type LostAgentObservation
+  // in_progress for longer than its timeout, with no runner and no startedAt: the job is stranded.
+  = LostAgentDetected { job_id: Int, over_by: Second }
+  // The job is genuinely progressing (a runner is bound, or a start is recorded, or it is not yet over
+  // its timeout, or it is not in_progress). A located reason, never a bare "no".
+  | JobNotLost { job_id: Int, reason: NonEmptyStr }
+  // The read did not answer one of the three fields, so the job cannot be classified either way. This
+  // is a refusal, not a negative: the restart leg must NOT reclaim on it.
+  | LostAgentReadRefused { job_id: Int, reason: NonEmptyStr }
+
+// ALL THREE SYMPTOMS MUST HOLD TOGETHER, and none of them may be a read the caller could not make.
+// in_progress (not queued, not completed), runner null, startedAt null, AND the time since the job was
+// observed in_progress exceeds the job's own timeout — the bound is EXCLUSIVE, equal-to-timeout is not
+// yet over it, because a job at exactly its timeout may still bind an agent in its final instant. A
+// single unreadable field drops to the refusal arm rather than being silently treated as null.
+//
+// FRONTIER (gunbc.design_argument::consumption, declared not dangling). This is the lost-agent detector (brief item 4): its
+// CONSUMER is the wet observe/reconcile arm, which reads each running job's state over the typed REST route
+// (the same admitted token source the roster read uses), calls this on every in_progress job, and folds the
+// resulting LostAgentObservation into the slot verdict as the restart leg's `lost` corroboration argument
+// (runner_lifecycle_restart_leg above). Its TRIGGER is the same runner-liveness-reconcile pass, which stays
+// DISABLED here. Its WITNESS (runner_lost_agent_witness) supplies the job at the boundary and discriminates
+// the three symptoms and the exclusive timeout bound. DISSOLVES when the reconcile timer is re-enabled and the
+// wet observe arm calls it in production.
+fn classify_lost_agent(job: LostAgentJob) -> LostAgentObservation {
+  match job.status {
+    JobStatusUnread { reason: r } => LostAgentReadRefused { job_id: job.job_id, reason: r }
+    JobQueued => JobNotLost { job_id: job.job_id, reason: "the job is queued, not in_progress" }
+    JobCompleted { reason: c } => JobNotLost { job_id: job.job_id, reason: c }
+    JobInProgress =>
+      match job.runner {
+        RunnerBound { runner_id: _ } => JobNotLost { job_id: job.job_id, reason: "a runner is bound to the job" }
+        RunnerReadUnavailable { reason: r } => LostAgentReadRefused { job_id: job.job_id, reason: r }
+        RunnerNull =>
+          match job.started {
+            StartRecorded { started_at: _ } => JobNotLost { job_id: job.job_id, reason: "startedAt is recorded, so an agent reached the job" }
+            StartReadUnavailable { reason: r } => LostAgentReadRefused { job_id: job.job_id, reason: r }
+            StartNull =>
+              if second_count(s: job.in_progress_for) > second_count(s: job.timeout) {
+                LostAgentDetected { job_id: job.job_id, over_by: second(count: second_count(s: job.in_progress_for) - second_count(s: job.timeout)) }
+              } else {
+                JobNotLost { job_id: job.job_id, reason: "in_progress with no runner and no startedAt, but not yet past its timeout" }
+              }
+          }
+      }
+  }
+}
+
+// A NECESSARY-BUT-NOT-SUFFICIENT CORROBORATION GATE now lives in restart_leg_decision, which MATCHES on the
+// LostAgentObservation directly (review 91001) rather than collapsing it to a Bool: only the connectivity
+// verdict can permit, and the observation only deepens the reason, keeping its typed over_by / read-refused
+// cause. The classifier below is the sole producer of that observation.

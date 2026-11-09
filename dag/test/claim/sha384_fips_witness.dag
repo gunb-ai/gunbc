@@ -35,13 +35,13 @@ fn sha384_hex_of(digest: List<UInt8>) -> String {
 // the abc vector changes no semantic fact about the other two yet can make the admission stale, and
 // adding an unrelated fourth vector strengthens no existing fact yet makes the admission more
 // stable. A cost ground that moves with its neighbours is not a ground for the subject it claims to
-// admit -- it is the enrolment gate dodged by aggregation, and DESIGN section 3 names the shape
+// admit -- it is the enrolment gate dodged by aggregation, and gunbc.design_argument::single_authority names the shape
 // directly: a conjunction of independent cases forced through one budget when splitting them loses
 // no coverage.
 //
 // WHAT IS HERE INSTEAD. Each published vector is its own claim, paired with the mutation that
 // proves that vector's equality is discriminating. The second evaluation in each pair is not
-// ballast bought to clear a budget: it is the RED for the same boundary, which DESIGN section 4b
+// ballast bought to clear a budget: it is the RED for the same boundary, which gunbc.design_argument::guarantee_ladder
 // requires of every rung claim anyway ("a discriminating RED refused on the real acceptance path
 // plus an accepted positive control"). So each claim's cost is caused by its own subject, and no
 // claim's admission depends on a vector belonging to a different path.

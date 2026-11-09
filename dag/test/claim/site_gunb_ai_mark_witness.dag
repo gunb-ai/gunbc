@@ -1,6 +1,6 @@
 module test.claim.site_gunb_ai_mark_witness
 
-// §5 — the executed witness for gunbc.site.gunb_ai_mark. Every test reads the bytes render_mark()
+// gunbc.design_argument::fail_closed — the executed witness for gunbc.site.gunb_ai_mark. Every test reads the bytes render_mark()
 // produces (the same bytes mark_write writes), and the parity claim compares them to
 // dag/test/fixture/gunb_ai/live_mark.svg, a committed copy of gunb.ai's served assets/mark.svg
 // (fetched 2026-10-19). The oracle is outside this repo's model, which is what stops the

@@ -219,7 +219,7 @@ fn admit_composed_displacement(d: ComposedVisualDisplacement) -> DisplacementAdm
 // EnclosureCharacterReachesResponseTravel arm, so the residual risk is that a caller reads headroom
 // WITHOUT consulting that admission first. Rung: mechanically preventable, not structurally
 // guaranteed; the ceiling is structural impossibility and the gap is one function's return type.
-// NEXT-RUNG TRIGGER (DESIGN 4b, no untracked stall): headroom returns a typed HeadroomAvailable {
+// NEXT-RUNG TRIGGER (gunbc.design_argument::guarantee_ladder, no untracked stall): headroom returns a typed HeadroomAvailable {
 // px: Nat } | HeadroomUnavailable coproduct rather than a bare Int, so a caller cannot obtain a
 // number at all when the enclosure has overspent — at which point this paragraph collapses back to
 // the one-sentence construction claim it originally made.

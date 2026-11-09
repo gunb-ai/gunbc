@@ -210,7 +210,7 @@ fn fleet_capacity_withdrawn_line() -> String? {
 
 // THE DECISION TAKES THE TWO TOTALS rather than reading them, so all three of its answers are
 // reachable from a witness at this one interface -- including the complete-and-equal answer, which
-// is unauthorable against the live fleet while any host is unresolved (DESIGN 4b: ask whether the
+// is unauthorable against the live fleet while any host is unresolved (gunbc.design_argument::guarantee_ladder: ask whether the
 // red is authorable). The wrapper above is the real path's single inhabitance.
 fn fleet_capacity_withdrawn_line_over(
   all_hosts: FleetCommittedSlotTotal,

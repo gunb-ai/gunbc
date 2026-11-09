@@ -1,10 +1,12 @@
 module gunbc.tools.review
 
+import extdeps.llm.anthropic_rest { anthropic_rest_with_environment_key }
+import extdeps.github.auth { github_rest }
 import extdeps.llm.anthropic_rest
 import extdeps.cron.schedule_model { CronSchedule }
 import extdeps.git
 import std.types { GitRef, FilePath, Seconds }
-import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestCredentialRefused, rest_credential_refusal_cause, RestBodyUndecodable }
 import extdeps.cron.schedule_model { CronSchedule, Wildcard, render_cron_schedule }
 import std.integer { int_to_decimal_string }
 
@@ -97,6 +99,10 @@ fn review_rest_refusal_reason(step: String, refusal: RestRefusal) -> String {
       concat("review refused: ", step, " answered HTTP ", to_string(status), ": ", body)
     RestTransportRefused { cause } =>
       concat("review refused: ", step, " was not reached: ", cause as String)
+    RestCredentialRefused { refusal: credential_refusal } => {
+      let cause = rest_credential_refusal_cause(refusal: credential_refusal)
+      concat("review refused: ", step, " was not reached: ", cause as String)
+    }
     RestBodyUndecodable { status, cause } =>
       concat("review refused: ", step, " answered HTTP ", to_string(status), " with an undecodable body: ", cause as String)
   }
@@ -109,32 +115,32 @@ fn review_pr(
   model: String = default_model
 ) -> { reviewed: Bool, comment_url: String } {
 
-  match github.Pulls.Get(
-    auth_token: "",
+  match github_rest(call: token => github.Pulls.Get(
+    auth_token: token,
     owner: owner,
     repo: repo,
     pull_number: pr_number
-  ) {
+  )) {
     RestRefused { refusal } =>
       return { reviewed: false, comment_url: review_rest_refusal_reason(step: "github.Pulls.Get", refusal: refusal) }
     RestAnswered { answer: pr } =>
-      match github.Pulls.ListReviews(
-        auth_token: "",
+      match github_rest(call: token => github.Pulls.ListReviews(
+        auth_token: token,
         owner: owner,
         repo: repo,
         pull_number: pr_number
-      ) {
+      )) {
         RestRefused { refusal } =>
           return { reviewed: false, comment_url: review_rest_refusal_reason(step: "github.Pulls.ListReviews", refusal: refusal) }
         RestAnswered { answer: existing } => {
           already_done = has_review_at_sha(reviews: existing.reviews, sha: pr.pr.head.sha)
 
-          match github.Pulls.Diff(
-            auth_token: "",
+          match github_rest(call: token => github.Pulls.Diff(
+            auth_token: token,
             owner: owner,
             repo: repo,
             pull_number: pr_number
-          ) {
+          )) {
             RestRefused { refusal } =>
               return { reviewed: false, comment_url: review_rest_refusal_reason(step: "github.Pulls.Diff", refusal: refusal) }
             RestAnswered { answer: diff } => {
@@ -155,26 +161,26 @@ fn review_pr(
                     base_ref: pr.pr.base.ref,
                     diff: diff.diff
                   )
-                  match llm.Anthropic.Messages(
-                    api_key: "",
+                  match anthropic_rest_with_environment_key(call: key => llm.Anthropic.Messages(
+                    api_key: key,
                     model: model,
                     messages: review_messages,
                     max_tokens: 8192,
                     temperature: none,
                     system: "{system_prompt}\n\n{user_msg}"
-                  ) {
+                  )) {
                     RestRefused { refusal } =>
                       return { reviewed: false, comment_url: review_rest_refusal_reason(step: "llm.Anthropic.Messages", refusal: refusal) }
                     RestAnswered { answer: llm_response } =>
-                      match github.Pulls.CreateReview(
-                        auth_token: "",
+                      match github_rest(call: token => github.Pulls.CreateReview(
+                        auth_token: token,
                         owner: owner,
                         repo: repo,
                         pull_number: pr_number,
                         commit_id: pr.pr.head.sha,
                         body: llm_response.content,
                         comments: "[]"
-                      ) {
+                      )) {
                         RestRefused { refusal } =>
                           return { reviewed: false, comment_url: review_rest_refusal_reason(step: "github.Pulls.CreateReview", refusal: refusal) }
                         RestAnswered { answer: posted } =>
@@ -214,12 +220,12 @@ fn review_cycle(
     log_path: "/Users/briansrls/.local/share/gunbc-review/logs/cron.log"
   )
 
-  match github.Pulls.List(
-    auth_token: "",
+  match github_rest(call: token => github.Pulls.List(
+    auth_token: token,
     owner: owner,
     repo: repo,
     state: extdeps.github.pulls.ListStateOpen
-  ) {
+  )) {
     RestRefused { refusal } =>
       return ReviewAgentCycleRefused { refusal: refusal }
     RestAnswered { answer: open_prs } => {

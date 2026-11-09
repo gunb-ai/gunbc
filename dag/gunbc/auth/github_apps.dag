@@ -423,7 +423,7 @@ type BoundObservationProducer {
 // THIS IS A BINDING STANDING, NOT A PRODUCER, and the name matters beyond taste. It was
 // `ObservationProducer` until 2026-09-18, which collided with std.observation's type of the same
 // name -- a different concept entirely (CoordinatorProducer | OrdinaryWorkerProducer |
-// ScopedWorkerProducer, who produces an observation). The two are a DESIGN section 3 meaning fork:
+// ScopedWorkerProducer, who produces an observation). The two are a gunbc.design_argument::single_authority meaning fork:
 // one name, two materially different meanings.
 //
 // THE COLLISION WAS NOT INERT. operator_packet_or_producer_binding's `observation` parameter bound
@@ -455,7 +455,7 @@ type GitHubAppNextAction
 // bindings were module-level data read directly by control_plane_next_action, so binding a
 // real producer for one App would have simultaneously reported every other App as observed
 // - including gunbai_bot, which no producer watches. That is a rung claim made on a subject
-// whose evidence does not exist (DESIGN §4b(1)), so the binding travels with the App.
+// whose evidence does not exist (gunbc.design_argument::guarantee_ladder (rung honesty)), so the binding travels with the App.
 type AppObservationProducers {
   app_registration: ObservationProducerBinding
   installation: ObservationProducerBinding

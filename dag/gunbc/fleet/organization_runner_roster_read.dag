@@ -16,7 +16,7 @@ import std.page_fold {
 import std.integer { PositiveInt }
 import std.measure { Second, second, second_count }
 import extdeps.uri { uri_wire }
-import extdeps.transports.rest { RestRefusal, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestRefusal, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestCredentialRefused, rest_credential_refusal_cause, RestBodyUndecodable }
 import extdeps.github.actions_self_hosted_runners { OrganizationRunnerRosterEntryWire, OrganizationRunnerRosterPageWire }
 import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
 import extdeps.languages.json.parse {
@@ -225,7 +225,7 @@ fn decode_roster_page_json(body: String) -> RosterPageDecode {
 
 // ONE INCLUDED RESPONSE TO ONE PAGE READ. This is the pure half of the fetch, so the decision a
 // response produces -- status, continuation, body -- is exercisable over a supplied response
-// without a network (DESIGN section 3: a witness discriminates at one interface).
+// without a network (gunbc.design_argument::witness_one_interface: a witness discriminates at one interface).
 fn link_field_text(link: GitHubLinkHeader) -> String {
   match link {
     LinkHeaderPresent { field_value: v } => v
@@ -859,6 +859,10 @@ fn rest_page_refusal_cause(page: Int, refusal: RestRefusal) -> NonEmptyStr {
   match refusal {
     RestStatusRefused { status, body: _ } => join(["org runners page ", to_string(page), " answered HTTP ", to_string(status)], "") as NonEmptyStr
     RestTransportRefused { cause } => join(["org runners page ", to_string(page), " was not exchanged: ", cause as String], "") as NonEmptyStr
+    RestCredentialRefused { refusal: credential_refusal } => {
+      let cause = rest_credential_refusal_cause(refusal: credential_refusal)
+      join(["org runners page ", to_string(page), " was not exchanged: ", cause as String], "") as NonEmptyStr
+    }
     RestBodyUndecodable { status, cause } => join(["org runners page ", to_string(page), " answered HTTP ", to_string(status), " with an undecodable body: ", cause as String], "") as NonEmptyStr
   }
 }

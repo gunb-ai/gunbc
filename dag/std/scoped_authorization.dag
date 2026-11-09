@@ -53,7 +53,7 @@ import std.durable_compare_and_set {
 //        name. A second run reuses it; any action reuses it.
 //   std.temporal_effect DurableApprovalGrant
 //     -- expiry and single-use were modeled here, with ZERO production consumers, and this is
-//        the §3 meaning fork of the carrier above: one meaning, two names.
+//        the gunbc.design_argument::single_authority meaning fork of the carrier above: one meaning, two names.
 //
 // Both are dissolved into ScopedAuthorization. This is the reach layer for OPERATOR CONSENT
 // standing above std.effect_grant, exactly as std.effect_grant stands above std.effects: the
@@ -67,7 +67,7 @@ import std.durable_compare_and_set {
 // gunbc.spark.grant_privileged_operation used to carry as its own type. A
 // `AuthorizationSubject = EulaSubject | SecretSubject | ...` would make this module depend on every
 // consuming domain and require an edit here every time any lane needs a grant -- the module would
-// grow a row per consumer, which is the growth surface §3 exists to prevent. So the domain owns its
+// grow a row per consumer, which is the growth surface gunbc.design_argument::single_authority exists to prevent. So the domain owns its
 // Subject and this module never names one.
 //
 // SCOPE AND SUBJECT ARE TWO FACTS, and only the first enforces. AuthorizationScope is the ENFORCING
@@ -112,7 +112,7 @@ type AuthorizationRequest<Subject> {
 // What the operator's click produces. Every field is load-bearing at the consuming end:
 // escalation_id joins it to the request, scope bounds it, attempt binds it to one run,
 // intent_hash binds it to the exact planned action content (inherited from the dissolved
-// std.temporal_effect check -- dropping it would have been a §4b(3) regression), and expires_at
+// std.temporal_effect check -- dropping it would have been a gunbc.design_argument::guarantee_ladder (no silent regression) regression), and expires_at
 // ends it without anyone having to remember to revoke it.
 type OperatorGrant<Subject> {
   escalation_id: NonEmptyStr
@@ -175,7 +175,7 @@ type AuthorizationClaimState
 // ABSENCE, STALENESS and MISMATCH are three different facts about a refused step and lead to three
 // different operator actions -- ask for the grant, ask again because it aged out, or stop because
 // something asked for access nobody approved. Collapsing them to a boolean loses exactly the
-// distinction the operator needs, so each is a located, typed cause (§5). The mismatch family is
+// distinction the operator needs, so each is a located, typed cause (gunbc.design_argument::fail_closed). The mismatch family is
 // split further because escalation, scope and attempt mismatches are not the same incident: an
 // attempt mismatch is a REPLAY, a scope mismatch is a PRIVILEGE WIDENING, and an intent mismatch
 // is the planned action having changed under a grant issued for the old one.

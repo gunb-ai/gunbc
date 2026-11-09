@@ -36,8 +36,8 @@ test fn the_shakedown_job_asks_for_the_provenance_label_and_the_attempt_alone() 
 // the step, not the rendered script's bytes. An expression inside `run:` is evaluated before the shell
 // parses it, so a crafted input would become script text; the step instead binds
 // MICROVM_SHAKEDOWN_ATTEMPT to the attempt input and the script reads the variable. The script is
-// supplied empty here because rendering it is v2.workflow.bash_emit's subject, not this claim's (DESIGN
-// section 3, a witness discriminates at one interface): the first writing of this claim rendered the
+// supplied empty here because rendering it is v2.workflow.bash_emit's subject, not this claim's (
+// gunbc.design_argument::witness_one_interface, a witness discriminates at one interface): the first writing of this claim rendered the
 // whole script to search its bytes and cost 247,268 eval steps against a 72,300 budget, every one of
 // them spent re-running the emitter. The real render is executed by the generated-artifact gate, which
 // holds the committed microvm-shakedown.yml to exactly what the emitter produces.

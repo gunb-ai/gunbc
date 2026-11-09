@@ -97,7 +97,7 @@ Slice 09 read depth: grep leads, plus full text for ~15 modules; L0/L1 rows ther
 scripts/classes.py assigns every hand-read-class instance at Rederived/Literal/Forked to exactly ONE error class, using the first matching rule
 (dimension + site + specimen/note/symbol keywords, in the order written in the script). Unmatched rows fall to <dim>_<site>_unclassified; that count is
 reported and is currently 0. The class membership is findings.tsv filtered by class_id, so every class count is identity-backed.
-current_rung is DESIGN.md §4b. This census looked for decision SITES, not for gates that already refuse them. A class is therefore written rung 0 unless a
+current_rung is gunbc.design_argument::guarantee_ladder. This census looked for decision SITES, not for gates that already refuse them. A class is therefore written rung 0 unless a
 wall is named from the corpus (authz_ambient_sudo is 1: gunbc.auth.privileged_effect_census classifies the sites, which contains them, but refuses nothing).
 A 0 means "no wall observed by this census", not "proved unguarded".
 attainable_ceiling, wall and red_control are written in the parent's vocabulary (admit_callers roster / type / declared requires / derived from one

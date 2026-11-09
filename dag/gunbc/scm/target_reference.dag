@@ -55,7 +55,7 @@ type TargetReferenceRefusal
   | TargetReferenceNotOneArm { found: Int }
   | TargetReferenceUncontainedDigestInvalid { found: String }
 
-// THE AUTHORITY THAT OWNS THE CAUSES OWNS THE STANDING DECISION, per DESIGN section 3 -- and this
+// THE AUTHORITY THAT OWNS THE CAUSES OWNS THE STANDING DECISION, per gunbc.design_argument::single_authority -- and this
 // function exists because the alternative was measured. Every arm above means "the reference is
 // spelled wrongly", which is the same fact to all three callers, so each of them classifying it
 // inline put ONE decision under three authorities. Two copies already existed and the object table

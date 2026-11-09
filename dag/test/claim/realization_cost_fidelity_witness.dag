@@ -547,7 +547,7 @@ test fn the_unorderable_arm_appears_in_a_reported_population() -> Bool {
 // The behavioural claims are the same two fabrications that were measured before the gate existed --
 // sqrt(n) read as cheaper than n, an unbounded cost read as equal to a constant -- and they are kept
 // here as permanent regression controls even though the ordering that produced them is now
-// unwritable (DESIGN section 4b(4): a climb dissolves the production handling, never the evidence).
+// unwritable (gunbc.design_argument::guarantee_ladder (dissolution on climb): a climb dissolves the production handling, never the evidence).
 test fn a_fractional_exponent_growth_has_no_rank() -> Bool {
   match cost_bound_growth_in_param(b: cost_sqrt(param: "n"), param: "n") {
     GrowthNotOrderable => true
@@ -709,7 +709,7 @@ test fn a_single_fact_for_one_key_still_compares() -> Bool {
 // an ordinary DUPLICATE: the same primitive carried twice, once structured and once coarse. The
 // coverage did not move down the ladder and was not deleted; the state it described became a case
 // of a broader writable one, and this witness keeps exercising it under the arm that survives. That
-// is what DESIGN section 4b(4) asks for -- the evidence stays enrolled when the production
+// is what gunbc.design_argument::guarantee_ladder (dissolution on climb) asks for -- the evidence stays enrolled when the production
 // machinery it justified dissolves.
 test fn one_primitive_carrying_both_a_structured_and_a_coarse_row_refuses() -> Bool {
   refusal_kind(

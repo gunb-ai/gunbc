@@ -8,6 +8,7 @@ pub use crate::std_compiler_entry::CompilerEntryDriver;
 use crate::std_compiler_entry::CompilerEntryDriver::RetainedHostCliKernel;
 pub use crate::std_computation::ShrinkFactor;
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
+pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_generated_provider::GeneratedProviderDemand;
 use crate::std_induction::RecursionShape::{
     DirectRecursion, ListRecursion, MapValueRecursion, OptionalRecursion, SetRecursion,
@@ -120,13 +121,13 @@ pub struct SourceFile {
     pub content: String,
 }
 
-pub fn compiler_pipeline_entry() -> CompilerEntryDriver {
+pub fn compiler_pipeline_entry() -> Rc<CompilerEntryDriver> {
     thread_local! {
-        static CACHED: CompilerEntryDriver = {
-            CompilerEntryDriver::RetainedHostCliKernel
+        static CACHED: Rc<CompilerEntryDriver> = {
+            Rc::new(CompilerEntryDriver::RetainedHostCliKernel)
         };
     }
-    CACHED.with(|c: &CompilerEntryDriver| c.clone())
+    CACHED.with(|c: &Rc<CompilerEntryDriver>| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -328,6 +329,8 @@ pub fn extract_ownership_proofs(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<Ownership
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CompilePipelineOptions {
     pub analyze_complexity: bool,
+    pub analyze_ownership: bool,
+    pub analyze_test_references: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -900,6 +903,16 @@ pub fn test_reference_diagnostics(
 pub fn default_compile_pipeline_options() -> CompilePipelineOptions {
     CompilePipelineOptions {
         analyze_complexity: false,
+        analyze_ownership: true,
+        analyze_test_references: true,
+    }
+}
+
+pub fn run_settle_compile_options() -> CompilePipelineOptions {
+    CompilePipelineOptions {
+        analyze_complexity: false,
+        analyze_ownership: false,
+        analyze_test_references: false,
     }
 }
 
@@ -3540,9 +3553,16 @@ pub fn compile_to_resolved_with_options(
                     Rc::new(vec![])
                 };
                 let all_diags = v1_rt::concat(typed_diags.clone(), complexity_diags.clone());
-                let ownership = extract_ownership_proofs(typed.clone());
-                let test_reference_diags =
-                    test_reference_diagnostics(typed.clone(), source_indices.clone());
+                let ownership = if options.analyze_ownership.clone() {
+                    extract_ownership_proofs(typed.clone())
+                } else {
+                    Rc::new(vec![])
+                };
+                let test_reference_diags = if options.analyze_test_references.clone() {
+                    test_reference_diagnostics(typed.clone(), source_indices.clone())
+                } else {
+                    Rc::new(vec![])
+                };
                 let _ = v1_rt::trace_mark("compile.analyses.done".to_string());
                 Rc::new(ResolvedPipelineResult {
                     graph: Some(typed.clone()),

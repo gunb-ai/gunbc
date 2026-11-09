@@ -522,10 +522,10 @@ thread_local! {
 ///
 /// THE NAME LOST ITS `floor_` PREFIX WHEN IT ACQUIRED A SECOND REGISTRANT, and the rename is the
 /// point rather than tidying: the memo is not a floor mechanism, it is the census provider whose
-/// retention has to span the demands that share it (DESIGN §2 — one computation identity joined to
+/// retention has to span the demands that share it (gunbc.design_argument::demand_before_materialization — one computation identity joined to
 /// a provider whose scope reaches the demands' least common ancestor). The floor was simply the
 /// first caller that had a bounded subject to hang it on. Keeping `floor_` in the name while
-/// `claim_batch` registered it too would be a §3 nickname: one concept answering to a name that
+/// `claim_batch` registered it too would be a gunbc.design_argument::single_authority nickname: one concept answering to a name that
 /// says it belongs to one of its callers.
 ///
 /// WHY A SECOND REGISTRANT EXISTS AT ALL. A keyed read (`decl_facts_at`) is one demand of one
@@ -866,7 +866,7 @@ pub(crate) fn data_item_declared_type_name(
 /// THE HOST SHAPE EXISTS SO THE BUILTIN AND ITS ONE HOST CONSUMER ARE NOT TWO PRODUCERS.
 /// `v1_compiler.cli_run.rostered_row_join` runs the declared-versus-rostered identity join
 /// inside required CI, where there is no `InterpContext` to marshal a `Value` into; deriving
-/// the same population a second way would be exactly the second authority DESIGN §3 refuses,
+/// the same population a second way would be exactly the second authority gunbc.design_argument::single_authority refuses,
 /// agreeing today and diverging on the first amendment. So the walk, the filter and the
 /// declared-type projection stay here, and the builtin is a marshaller over these rows.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1176,8 +1176,8 @@ fn node_kind_computation_node(ctx: &InterpContext, behavior: Value) -> Value {
 // including calls, so `node_is_call` was false on every skeleton node the corpus can produce, and
 // each lens folding a skeleton through it (`v2.lens.determinism` transitive findings,
 // `v2.lens.machine_shape`, the origin probe's call walk) was GREEN BY CONSTRUCTION: the state it
-// refuses had no constructor on its own input. That is DESIGN §4b's decoration -- worse than an
-// absent check, because it was cited as coverage -- and its §3 receipt was already standing in
+// refuses had no constructor on its own input. That is gunbc.design_argument::guarantee_ladder's decoration -- worse than an
+// absent check, because it was cited as coverage -- and its gunbc.design_argument::single_authority receipt was already standing in
 // `v2.lens.no_dual_representation_test.scan`, which carried a SECOND call predicate spelled against
 // the Conj shape because the shared one could not answer here.
 fn transform_record(ctx: &InterpContext, edges: Vec<Value>) -> Value {
@@ -1208,7 +1208,7 @@ fn marshal_skeleton(
     }
 }
 
-// SCAFFOLD (§7 hand-Rust shrink-to-zero): G2 live-read skeleton marshal expansion
+// SCAFFOLD (gunbc.design_argument::self_hosting hand-Rust shrink-to-zero): G2 live-read skeleton marshal expansion
 // (`marshal_string_literal_atom`, `hoist_call_arg_string_literal_edges`, callee atoms on
 // `ExprCall`) — see `v2.std.fn_index::fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger`.
 // Host SOURCE half for P1 G2 call-reachability (live-read-witness-classification-design (plan doc deleted 2026-08-28) §9 P1 / §14).
@@ -1843,39 +1843,60 @@ pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
         let rel = repo_rel(file.path());
         files_scanned += 1;
         let content = file.read().ok();
-        let module_path = content
-            .as_ref()
-            .and_then(|c| extract_module_path(c))
-            .unwrap_or_default();
         // The acquired bytes, not a second read of the path: a derived roster has no file.
         let filename = file
             .path()
             .file_name()
             .and_then(|s| s.to_str())
             .unwrap_or("?");
-        let Some(parsed) = content.as_deref().and_then(|c| {
-            crate::module_path_index::parsed_dag_file::parse_dag_content(c, filename)
-        }) else {
+        let Some(rows) = decl_facts_of_source(&rel, filename, content.as_deref()) else {
             continue;
         };
         files_parsed += 1;
-        let si = parsed.source_indices;
-        for item in parsed.items.iter() {
-            let name = authored_name_at(si.clone(), item.clone());
-            if name.is_empty() {
-                continue;
-            }
-            let kind = item_kind(item.clone());
-            out.push(DeclFactRaw {
-                qualified_name: decl_qualified_name(&module_path, &name),
-                name,
-                kind,
-                node: item.clone(),
-                rel_path: rel.clone(),
-                source_indices: si.clone(),
-            });
-        }
+        out.extend(rows);
     }
+    sort_decl_facts(&mut out);
+    DeclFactsCorpusWalk {
+        facts: out,
+        files_scanned,
+        files_parsed,
+    }
+}
+
+/// The declaration rows of ONE source: `None` when it does not parse (the census skips it),
+/// otherwise every named top-level item, `qualified_name` = the file's own module line + name. The
+/// ONE per-file fold: the census walk and the keyed read (`keyed_decl_facts`) both project it, so a
+/// keyed row is the census row byte for byte.
+fn decl_facts_of_source(
+    rel: &str,
+    filename: &str,
+    content: Option<&str>,
+) -> Option<Vec<DeclFactRaw>> {
+    let module_path = content.and_then(extract_module_path).unwrap_or_default();
+    let parsed = content
+        .and_then(|c| crate::module_path_index::parsed_dag_file::parse_dag_content(c, filename))?;
+    let si = parsed.source_indices;
+    let mut out = Vec::new();
+    for item in parsed.items.iter() {
+        let name = authored_name_at(si.clone(), item.clone());
+        if name.is_empty() {
+            continue;
+        }
+        let kind = item_kind(item.clone());
+        out.push(DeclFactRaw {
+            qualified_name: decl_qualified_name(&module_path, &name),
+            name,
+            kind,
+            node: item.clone(),
+            rel_path: rel.to_string(),
+            source_indices: si.clone(),
+        });
+    }
+    Some(out)
+}
+
+/// The census's canonical row order: (rel_path, name, kind).
+fn sort_decl_facts(out: &mut [DeclFactRaw]) {
     out.sort_by(|a, b| {
         let kind_ord = |k: ItemKind| match k {
             ItemKind::FnItem => 0,
@@ -1891,11 +1912,49 @@ pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
             kind_ord(b.kind),
         ))
     });
-    DeclFactsCorpusWalk {
-        facts: out,
-        files_scanned,
-        files_parsed,
+}
+
+/// The KEYED declaration read: the census rows whose `qualified_name` is in `qualified_names`,
+/// without walking the pool. A top-level item's qualified name is its module + "." + its name, so
+/// the module is the name minus its last segment; each module's files are located from the NAME
+/// (`cli_run::keyed_module_lookup`, `gunbc.source_layout`) and only those files are parsed. Every
+/// file declaring the module contributes (two roots shadowing one module path emit both copies:
+/// `DeclarationRefAmbiguous` is derived from that multiplicity). The census stays the offline
+/// oracle (`keyed_reads_equal_the_whole_pool_census`) and is never a fallback.
+pub fn keyed_decl_facts(pool_roots: &[String], qualified_names: &[String]) -> Vec<DeclFactRaw> {
+    let wanted: std::collections::HashSet<&str> =
+        qualified_names.iter().map(String::as_str).collect();
+    // An item name may itself be dotted (`service oauth2.Google`), so the declaring module is any
+    // proper dotted prefix of the qualified name; a prefix with no file costs one stat, and the
+    // rows are still filtered to the wanted names.
+    let mut modules: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+    for q in &wanted {
+        let mut rest = *q;
+        while let Some((module, _)) = rest.rsplit_once('.') {
+            // A prefix with no storage path (the bare `v2` namespace) names no module.
+            if crate::cli_run::source_layout_lookup::module_storage_relative(module).is_ok() {
+                modules.insert(module);
+            }
+            rest = module;
+        }
     }
+    let mut out = Vec::new();
+    for module in modules {
+        for src in crate::cli_run::keyed_module_lookup::keyed_module_sources(pool_roots, module) {
+            let filename = std::path::Path::new(&src.path)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("?");
+            if let Some(rows) = decl_facts_of_source(&src.path, filename, Some(&src.content)) {
+                out.extend(
+                    rows.into_iter()
+                        .filter(|f| wanted.contains(f.qualified_name.as_str())),
+                );
+            }
+        }
+    }
+    sort_decl_facts(&mut out);
+    out
 }
 
 /// Declaration facts for `roots`; preserves the non-test corpus boundary (delegates to `decl_facts_corpus_walk`).
@@ -1944,7 +2003,7 @@ fn marshal_decl_fact_node(
     }
 }
 
-// SCAFFOLD (§7 hand-Rust shrink-to-zero): see
+// SCAFFOLD (gunbc.design_argument::self_hosting hand-Rust shrink-to-zero): see
 // `v2.std.decl_index::export_signature_facts_host_scaffold_dissolution_trigger`.
 // Host SOURCE half for `export_signature_facts`; strict sibling of `marshal_decl_fact_node` /
 // `eval_decl_facts`. Reuses `decl_facts_for_roots` (#5966 neat-fox-279) — no new corpus walk.
@@ -2082,7 +2141,7 @@ pub fn eval_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResu
 /// (`gunbc run` registers none) each ask re-walked and re-parsed the whole pool. Measured on
 /// BuildBuddy 2026-10-25: one lookup 91s, six lookups 506s. The demands share their least common
 /// ancestor — the fold already holds every key — so the fold reads once with all of them and joins
-/// each key against the returned rows in the substrate (DESIGN section 2, the materialization
+/// each key against the returned rows in the substrate (gunbc.design_argument::demand_before_materialization, the materialization
 /// ladder's first question: carry the value at the ancestor, never cache the later asks). The
 /// bare-name read that used to be its own seam (`type_declarer_qualified_names`) was the same rule
 /// at a sibling leaf and is this read's `type_names` arm, so a reflection that needs a type by bare
@@ -2114,15 +2173,22 @@ pub fn eval_decl_facts_at(
     let qualified: std::collections::HashSet<&str> =
         qualified_names.iter().map(String::as_str).collect();
     let typed: std::collections::HashSet<&str> = type_names.iter().map(String::as_str).collect();
-    let facts = decl_facts_for_roots_shared(pool_roots);
-    let matching: Vec<DeclFactRaw> = facts
-        .iter()
-        .filter(|f| {
-            qualified.contains(f.qualified_name.as_str())
-                || (f.kind == ItemKind::TypeItem && typed.contains(f.name.as_str()))
-        })
-        .cloned()
-        .collect();
+    // KEYED BY NAME: the qualified-name arm locates each module from its name and reads only those
+    // files. Only the bare-spelling arm (`type_names`) genuinely needs the population, and it alone
+    // stays on the census.
+    let mut matching: Vec<DeclFactRaw> = keyed_decl_facts(pool_roots, qualified_names);
+    if !typed.is_empty() {
+        let facts = decl_facts_for_roots_shared(pool_roots);
+        for f in facts.iter() {
+            if f.kind == ItemKind::TypeItem
+                && typed.contains(f.name.as_str())
+                && !qualified.contains(f.qualified_name.as_str())
+            {
+                matching.push(f.clone());
+            }
+        }
+        sort_decl_facts(&mut matching);
+    }
     eval_decl_facts_rows(ctx, &matching)
 }
 
@@ -2175,7 +2241,7 @@ fn nullary_coproduct_variant_value(
     }
 }
 
-// DESIGN section 7 seed-retained repair. This bridge retires with
+// gunbc.design_argument::self_hosting seed-retained repair. This bridge retires with
 // `coproduct_reflection` under ROADMAP "Drain the hand-maintained v1 product
 // queue" (`dag/gunbc/v1/v1_deletion_plan.dag` milestone `^hand_queue_drain`).
 // Checkable receipt: the imported-named-coproduct generic-wrapper witness must
@@ -2557,7 +2623,7 @@ mod parse_only_uppercase_variant_regression_tests {
     // THE WHOLE ACCEPTED SHAPE, NOT ITS OUTER TAG. `node_is_call` reads two nested variants -- the
     // kind's `behavior` and the callee child's `connective` -- so a probe asserting only
     // `ComputationNode` and `TypeNode` is satisfied by a marshal emitting `behavior: Loop` over a
-    // `connective: Conj` child, which `node_is_call` refuses. That is the §5 tell in this module's
+    // `connective: Conj` child, which `node_is_call` refuses. That is the gunbc.design_argument::fail_closed tell in this module's
     // own test: an assertion that passes while the realization lies. These two read the full path.
     fn is_transform_computation_node(ctx: &InterpContext, skel: &Value) -> bool {
         match field(ctx, skel, "kind") {

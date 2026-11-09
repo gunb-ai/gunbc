@@ -21,7 +21,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // this file none existed: service_effect_expansion_budget_witness asserts only that a compile
 // COMPLETED, and says in its own header that it cannot see whether the service reached the top.
 //
-// WHY SUPPLIED VALUES (DESIGN section 3, a witness discriminates at one interface). The claim is
+// WHY SUPPLIED VALUES (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface). The claim is
 // about what this interface returns for inputs of a given shape, so the callee graph and the
 // registry are supplied here rather than derived by compiling source, which would re-run the
 // parser and typechecker once per claim. The pairing obligation is discharged by

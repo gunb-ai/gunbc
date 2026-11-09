@@ -2,7 +2,7 @@ module test.claim.compute.output_capture_absence_wet_witness
 
 // WET EXECUTING-ROUTE WITNESS FOR THE BUILD-OUTPUT CAPTURE (Charter 2; manager ruling of
 // 2026-10-19: the inhabittance rows must EXECUTE production's route -- "a grep is not a consumer",
-// DESIGN 5).
+// gunbc.design_argument::fail_closed).
 //
 // WHAT THIS FILE ADDS OVER THE HERMETIC ONE.
 // test.claim.compute.output_capture_absence_witness supplies readings as data and pins the route
@@ -128,6 +128,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_child,
   dashboard_named_tmux_server,
   dispatch_worker_memory_ceiling,
+  compute_build_memory_ceiling_default,
   belt_max_concurrent_default,
   fleet_admitted_revision_source,
   fleet_compute_hermetic_dashboard_id,
@@ -211,11 +212,12 @@ fn witness_instance(temp_root: String) -> HostDashboardInstance {
     listen_port: 18099,
     tmux_server: dashboard_named_tmux_server(instance_id: fleet_compute_hermetic_dashboard_id),
     actuation: DashboardObserveOnly,
-    provision_transport: DashboardLocalProvision,
+    actuator_host: "wet-capture-witness" as NonEmptyStr,
     source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as NonEmptyStr },
     admitted_revision: fleet_admitted_revision_source,
     toolchain: toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+    compute_build_memory_ceiling: compute_build_memory_ceiling_default,
     belt_max_concurrent: belt_max_concurrent_default,
     directory_owner: fleet_compute_hermetic_directory_owner,
     worker: WorkerIsServiceUser,

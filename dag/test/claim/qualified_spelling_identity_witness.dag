@@ -33,7 +33,7 @@ module test.claim.qualified_spelling_identity_witness
 // run — both compile_dag_rust_emit_check calls are live inside one claim and each builds a
 // corpus-wide scope. So the two arms are separate test fns: independent propositions (the RED and
 // its regression control), a failure names WHICH arm broke instead of one conjoined false, and each
-// compile is evaluated and collected on its own. DESIGN section 6 bare-minimum-cost — a proven
+// compile is evaluated and collected on its own. gunbc.design_argument::how_to_work bare-minimum-cost — a proven
 // cost-shape defect is fixed regardless of the realized n, and this one measured 10x the roster
 // worst.
 

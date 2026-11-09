@@ -1,0 +1,671 @@
+module test.claim.product.p4261_marking_witness
+
+// ==================================================================================================
+// THE MARKING-TEXT CONTROLS, one test per contract control (docs/plans/2026-11-03-p4261-e1-atlas/
+// contracts/marking_text_contract.md, revision 6).
+//
+// What this file holds is the boundary between "the bench wrote words about a body" and "this body is this
+// part". Everything on the far side of that boundary -- a marking that carries an identification -- has to
+// pass a check that a person wrote into the model and a machine applies to every row. The controls are
+// numbered exactly as gunbc.design_argument::fail_closed numbers them, and the four subject discriminators (12-15) are required rows, not
+// optional ones: they are the only thing standing between "these bytes are in the store" and "this
+// specimen's marking was read from these pixels", and the store cannot tell the difference by itself.
+//
+// WHY EACH CONTROL IS A TEST AND NOT A COMMENT. A control nobody runs is a claim about the code. Two of
+// these -- the reduction being unavailable, and a span recorded in two channels -- have already been
+// silently wrong once during this work, each time because a function looked at prose instead of at the
+// type. Reading the contract and agreeing with it is not evidence that the model enforces it.
+//
+// THE FIXTURES ARE DELIBERATELY NOT REAL READINGS. They are shaped like the E1 rows and carry real digests
+// from the photograph store, because the green cases have to resolve against the store the model actually
+// uses -- a fixture whose bytes the store has never heard of proves nothing about whether attribution
+// works. The red cases are what a fixture is for: a citation the store does not attribute is refused here
+// before it can be relied on in a row.
+// ==================================================================================================
+import std.types { Bool, List, NonEmptyStr }
+import std.optional { Absent, Present }
+import std.algebra { is_empty }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import product.electrical.connectivity { ComponentInstanceIdentity, component_identity_eq }
+import extdeps.electronic_component.ti_sn74lv165a { sn74lv165a_pw }
+import product.electrical.continuity { OperatorPhotograph }
+import product.electrical.photograph {
+  BoardSightings,
+  BytesNotInStore,
+  InStore,
+  PixelRegion,
+  PhotographCitation,
+  SpecimenSighting,
+}
+import product.electrical.identification {
+  GlyphSpan,
+  Glyphs,
+  LookedNothingReadable,
+  IdentifiedByMarking,
+  identify_by_marking,
+  observation_subject,
+  observation_relied_on,
+  MarkingReading,
+  MarkingReadingSet,
+  MarkingSpan,
+  PrintedLogo,
+  ReadingCircumstance,
+  Transcribed,
+  consumes_no_dispute,
+  disputed_glyphs,
+  duplicate_channel_claim,
+  glyph_spans,
+  no_dissent,
+  only_reading,
+  prefer_checkable,
+  read_no_glyphs,
+  reading_set_is_wellformed,
+  reduced_content,
+  Reduced,
+  reliance_may_rest_on,
+  same_glyph_text,
+}
+import product.p4261.e1_design { e1_component }
+import product.p4261.e1_photographs { e1_photo_b4_02, e1_photo_b4_01 }
+
+// ─── FIXTURES ────────────────────────────────────────────────────────────────────────────────────
+
+// Two frames the store actually holds, taken from the E1 photograph rows. Using their real digests is the
+// point: an attribution that only works for a made-up hash would test nothing about the store.
+fn frame_a() -> Sha256Digest {
+  e1_photo_b4_02.content
+}
+
+fn frame_b() -> Sha256Digest {
+  e1_photo_b4_01.content
+}
+
+// A frame the store has never seen. Control 12's subject: bytes nobody attributed, which is exactly the
+// citation that must not carry an identification.
+fn frame_unknown() -> Sha256Digest {
+  Sha256Digest { hex: "0000000000000000000000000000000000000000000000000000000000000000" as Sha256DigestHex }
+}
+
+fn box_one() -> PixelRegion {
+  PixelRegion { left: 100, top: 200, width: 300, height: 90 }
+}
+
+// The same frame, a different box. Control 14: same bytes, different pixels.
+fn box_other() -> PixelRegion {
+  PixelRegion { left: 100, top: 200, width: 300, height: 91 }
+}
+
+fn boxed(digest: Sha256Digest, box: PixelRegion) -> PhotographCitation {
+  InStore { content: digest, region: Present { value: box } }
+}
+
+fn boxed_a() -> PhotographCitation {
+  boxed(digest: frame_a(), box: box_one())
+}
+
+fn boxed_a_other_box() -> PhotographCitation {
+  boxed(digest: frame_a(), box: box_other())
+}
+
+fn boxed_b() -> PhotographCitation {
+  boxed(digest: frame_b(), box: box_one())
+}
+
+fn boxed_unknown() -> PhotographCitation {
+  boxed(digest: frame_unknown(), box: box_one())
+}
+
+// Bytes exist, no pixels named. Control 15: an overview frame shows dozens of components, so this can
+// never say whose marking it shows.
+fn unboxed_a() -> PhotographCitation {
+  InStore { content: frame_a(), region: Absent }
+}
+
+fn gap_citation() -> PhotographCitation {
+  BytesNotInStore {
+    taken_on: "2026-10-20",
+    locator: "session upload, chat attachment 7",
+    obligation: "the operator re-supplies the original upload so it can be hashed",
+  }
+}
+
+fn read_citation(c: PhotographCitation) -> MarkingReading {
+  // A reading is content plus the evidence it was read from. The span-level sighting is what binds the
+  // GLYPHS to pixels; the evidence field says where the reading as a whole came from.
+  MarkingReading {
+    content: Transcribed { leading: [], first: GlyphSpan { preceded_by: "", span: "LV165A", sighting: Present { value: c } }, rest: [], followed_by: "" },
+    evidence: OperatorPhotograph { citation: c }
+  }
+}
+
+// The everyday fixture: a reading taken from frame A, whose span sighting is whatever the test asks for. The
+// evidence stays frame A even when the sighting is elsewhere, which is what controls 12-14 need (a sighting
+// the store does not attribute, or attributes to another specimen, under an evidence citation the store does).
+// A reading taken off the board's OWN boxed frame for U49, which is what the citation in this fixture family
+// always is. Its name says so: this builder PINS `evidence` to that frame and puts the caller's `c` only in the
+// span's sighting. That is the ordinary case -- one photograph, both channels -- but it is not every case, and a
+// test that needs a DIFFERENT evidence (an uncheckable dissenter, bytes the store never attributed) must come
+// through `read_glyphs_from` or `read_no_citation` instead. Asking this builder for `c: Absent` and reading the
+// row as "uncheckable" is the trap that made control_8 green-for-no-reason: the span carried no pixels while the
+// evidence carried a boxed, attributed frame, so at reading level the dissenter was perfectly checkable.
+fn read_glyphs_on_board_frame(text: NonEmptyStr, c: PhotographCitation?, rest: List<MarkingSpan>) -> MarkingReading {
+  MarkingReading {
+    content: Transcribed { leading: [], first: GlyphSpan { preceded_by: "", span: text, sighting: c }, rest: rest, followed_by: "" },
+    evidence: OperatorPhotograph { citation: boxed_a() }
+  }
+}
+
+// A SECOND OBSERVATION of the same specimen: one citation, used in both channels -- the reading was taken from
+// these pixels of this frame, so the reading's evidence and its span's sighting are the same photograph. The
+// helper above cannot express that, and control_9 was the proof: passing frame B as the sighting while the
+// evidence stayed pinned to frame A produced a second reading with the same reduced text under the same
+// evidence, `reading_key` collided, and the set was refused as a duplicate -- not two observations, one
+// observation written twice. Anything that needs a corroborating reading must come through here.
+fn read_glyphs_from(text: NonEmptyStr, citation: PhotographCitation, rest: List<MarkingSpan>) -> MarkingReading {
+  MarkingReading {
+    content: Transcribed {
+      leading: [],
+      first: GlyphSpan { preceded_by: "", span: text, sighting: Present { value: citation } },
+      rest: rest,
+      followed_by: ""
+    },
+    evidence: OperatorPhotograph { citation: citation }
+  }
+}
+
+fn read_no_citation(text: NonEmptyStr) -> MarkingReading {
+  MarkingReading {
+    content: Transcribed { leading: [], first: GlyphSpan { preceded_by: "", span: text, sighting: Absent }, rest: [], followed_by: "" },
+    evidence: OperatorPhotograph { citation: unboxed_a() }
+  }
+}
+
+// Bytes that exist in the store and are attributed to a specimen, which is what makes a reading checkable
+// as a reading OF that specimen. The roster is the board's own record; nothing infers an attribution.
+fn roster_of(who: ComponentInstanceIdentity, c: PhotographCitation) -> BoardSightings {
+  BoardSightings { rows: [SpecimenSighting { specimen: who, sighting: c }] }
+}
+
+fn empty_roster() -> BoardSightings {
+  BoardSightings { rows: [] }
+}
+
+fn u49() -> ComponentInstanceIdentity {
+  e1_component(local: "U49")
+}
+
+fn u51() -> ComponentInstanceIdentity {
+  e1_component(local: "U51")
+}
+
+fn set_of(who: ComponentInstanceIdentity, relied: MarkingReading, others: List<MarkingReading>) -> MarkingReadingSet {
+  MarkingReadingSet { subject: who, relied_on: relied, others: others }
+}
+
+// ─── CONTROLS 1-3: the reduction, and what counts as disagreement ────────────────────────────────
+
+// CONTROL 1. Two transcriptions of one body, written twice with different spacing, are the same reading.
+// The reduction drops whitespace runs, so the comparison is of glyphs, not of the string the bench typed.
+test fn control_1_spacing_alone_is_not_a_difference() -> Bool {
+  let a = read_glyphs_on_board_frame(text: "LV165A / 2BK G4 / AECQ", c: Present { value: boxed_a() }, rest: [])
+  let b = read_glyphs_on_board_frame(text: "LV165A /  2BK G4 /AECQ", c: Present { value: boxed_a() }, rest: [])
+  same_glyph_text(a: a.content, b: b.content)
+}
+
+// CONTROL 2. An unread mark consumes nothing. The bench wrote what it could not read as "?", which is not
+// a claim about the glyph and so cannot dissent from a reading that did get it. This is the clause that
+// keeps ten bare-"?" rows from becoming ten disagreements with the rows beside them.
+test fn control_2_an_unread_mark_dissents_with_nothing() -> Bool {
+  // The reduction keeps "?" -- it drops spacing and splits lines, nothing else -- so silence here is NOT
+  // string equality, and a test asserting same_glyph_text would have been asserting something untrue. What
+  // silence means is that the comparison produces no dispute at all.
+  let a = read_glyphs_on_board_frame(text: "LV165A / 2BK G4", c: Present { value: boxed_a() }, rest: [])
+  let b = read_glyphs_on_board_frame(text: "LV165A / 2?K G4", c: Present { value: boxed_a() }, rest: [])
+  consumes_no_dispute(c: b.content)
+    && is_empty(xs: disputed_glyphs(relied: a, others: [b]))
+    // and the same pair without the mark does dissent, so the emptiness above is the mark's doing
+    && !is_empty(
+      xs: disputed_glyphs(
+        relied: a,
+        others: [read_glyphs_on_board_frame(text: "LV165A / 2XK G4", c: Present { value: boxed_a() }, rest: [])]
+      )
+    )
+}
+
+// CONTROL 3. A real difference is reported as the positions where the two readings disagree -- not as a
+// Bool, so a reviewer can see WHICH glyph is in dispute without re-reading the two strings side by side.
+test fn control_3_a_real_difference_is_a_dispute_and_not_a_coincidence() -> Bool {
+  let a = read_glyphs_on_board_frame(text: "LV165A / 2BKG4", c: Present { value: boxed_a() }, rest: [])
+  let b = read_glyphs_on_board_frame(text: "LV165A / 9BKG4", c: Present { value: boxed_a() }, rest: [])
+  let d = disputed_glyphs(relied: a, others: [b])
+  // A disagreement is reported as the positions where the two readings part company, so a reviewer can see
+  // WHICH glyph is in dispute; here one position, and it is the B against the 9.
+  !same_glyph_text(a: a.content, b: b.content)
+    && !is_empty(xs: d)
+}
+
+// ─── CONTROLS 4-7: what a reading must be before any standing is considered ──────────────────────
+
+// CONTROL 4. A reduction that cannot run cannot support anything. Every mint refuses a reading whose glyph
+// run holds nothing but unread marks: there is no comparison to have won.
+test fn control_4_a_comparison_that_never_ran_supports_nothing() -> Bool {
+  // WHAT THIS ROW CANNOT TEST, SAID OUT LOUD. `reduced_marking` reports ReductionUnavailable only when it
+  // cannot obtain a scalar for "/" or for " ", which does not happen -- so no fixture reaches that branch,
+  // and a green row here would be a green row over dead code. The reachable form of "no comparison ran" is
+  // a reading with no glyphs in it, and that is what every mint must refuse.
+  let corpus_shaped = read_glyphs_on_board_frame(text: "P617A / 01 14 / 226", c: Present { value: boxed_a() }, rest: [])
+  let unread_only = read_glyphs_on_board_frame(text: "?", c: Present { value: boxed_a() }, rest: [])
+  let nobody = roster_of(who: u49(), c: boxed_a())
+  // the reduction runs on a real corpus shape, so the comparisons above were comparisons
+  (match reduced_content(c: corpus_shaped.content) {
+     Reduced { lines: _ } => true
+     _ => false
+   })
+    // an unread mark is silence about identity, and the reduction still runs on it
+    && (match reduced_content(c: unread_only.content) {
+         Reduced { lines: _ } => true
+         _ => false
+       })
+    // a read that yielded no glyphs is legal to record and cannot carry a standing, by any route
+    && (match only_reading(
+      roster: nobody,
+      readings: set_of(
+        who: u49(),
+        relied: MarkingReading {
+          content: LookedNothingReadable { circumstances: [], followed_by: "" },
+          evidence: OperatorPhotograph { citation: boxed_a() }
+        },
+        others: []
+      )
+    ) {
+       Absent => true
+       Present { value: _ } => false
+     })
+}
+
+// CONTROL 5. "Looked, read nothing" is a state of the type now, not a string a function has to recognise.
+// It is legal to record and legal among `others`; it cannot carry an identification. Without this clause
+// revision 6 would have quietly undone the reason the glyph type exists.
+test fn control_5_a_look_that_yielded_nothing_is_legal_but_carries_nothing() -> Bool {
+  let looked = MarkingReading {
+    content: LookedNothingReadable { circumstances: [ReadingCircumstance { preceded_by: "",
+        span: "faint unreadable glyph",
+        noted: "the print is worn; the bench recorded that nothing resolved",
+        sighting: Absent
+      }], followed_by: "" },
+    evidence: OperatorPhotograph { citation: boxed_a() }
+  }
+  let readable = read_glyphs_on_board_frame(text: "LV165A", c: Present { value: boxed_a() }, rest: [])
+  let nobody = roster_of(who: u49(), c: boxed_a())
+  read_no_glyphs(c: looked.content)
+    // legal as a second reading of a reading that did resolve
+    && (match no_dissent(roster: nobody, readings: set_of(who: u49(), relied: readable, others: [looked])) {
+         Present { value: _ } => true
+         Absent => false
+       })
+    // never as the reading relied on
+    && (match only_reading(roster: nobody, readings: set_of(who: u49(), relied: looked, others: [])) {
+         Absent => true
+         Present { value: _ } => false
+       })
+}
+
+// CONTROL 6. A mark is not letters. A reading whose content is only a PrintedLogo carries no transcription
+// at all, so it is the same shape as having read nothing -- the type will not open a Transcribed without a
+// glyph span, which is why this row cannot be written and why no function has to notice.
+test fn control_6_a_logo_alone_is_not_a_transcription() -> Bool {
+  let logo_only = MarkingReading {
+    content: LookedNothingReadable { circumstances: [PrintedLogo { preceded_by: "",
+        span: "ON logo",
+        whose: "onsemi -- the ON mark",
+        sighting: Absent
+      }], followed_by: "" },
+    evidence: OperatorPhotograph { citation: boxed_a() }
+  }
+  // No glyph span survives a content with no transcription, so nothing here can be relied on.
+  is_empty(xs: glyph_spans(c: logo_only.content)) && read_no_glyphs(c: logo_only.content)
+}
+
+// CONTROL 7. The same observed span may not be recorded twice, in two channels, under one exact
+// digest+region. This is structural: it compares the EVIDENCE IDENTITY of two spans, never their
+// characters, because "the same characters appear in both fields" is not a fact about what was observed.
+test fn control_7_one_span_may_not_be_claimed_in_two_channels() -> Bool {
+  let c = boxed_a()
+  let twice = MarkingReading {
+    content: Transcribed { leading: [], first: GlyphSpan { preceded_by: "", span: "ON", sighting: Present { value: c } }, rest: [Annotation { annotation: PrintedLogo { preceded_by: "",
+        span: "ON",
+        whose: "onsemi",
+        sighting: Present { value: c }
+      } }], followed_by: "" },
+    evidence: OperatorPhotograph { citation: c }
+  }
+  // Same pixels, two channels: a fault of the row, and every mint refuses it.
+  let twice_set = set_of(who: u49(), relied: twice, others: [])
+  let nobody = roster_of(who: u49(), c: c)
+  duplicate_channel_claim(r: twice)
+    && (match only_reading(roster: nobody, readings: twice_set) {
+         Absent => true
+         Present { value: _ } => false
+       })
+    // Same characters, DIFFERENT evidence: not the same observation, so no refusal -- the check is about
+    // pixels, and a row that happens to repeat a word is not double-recording anything.
+    && !duplicate_channel_claim(
+      r: read_glyphs_on_board_frame(text: "LV165A", c: Present { value: boxed_a() }, rest: [Annotation { annotation: ReadingCircumstance { preceded_by: "",
+        span: "LV165A",
+        noted: "the bench wrote the code again in its note",
+        sighting: Absent
+      } }])
+    )
+}
+
+// ─── CONTROLS 8-11: the three standings, and the seal around each ────────────────────────────────
+
+// CONTROL 8. A preference is earned, not declared: it mints only when the relied-on reading is checkable
+// as a reading of THIS subject and at least one dissenting reading is not.
+test fn control_8_preference_mints_only_when_the_other_reading_is_the_uncheckable_one() -> Bool {
+  let c = boxed_a()
+  let good = read_glyphs_on_board_frame(text: "LV165A / 2BKG4", c: Present { value: c }, rest: [])
+  // "Uncheckable" here means uncheckable AT READING LEVEL, which is the channel `prefer_checkable` measures for
+  // a dissenter: its witness is not a stored frame the board attributes to this subject. An unboxed span over a
+  // boxed evidence is a different state (recorded debt, still checkable as a reading), and `read_glyphs_on_board_frame`
+  // would have handed the second of those to a test that asked for the first.
+  let bad = read_no_citation(text: "LV165A / 9BKG4")
+  let mine = roster_of(who: u49(), c: c)
+  // Checkable relied-on, uncheckable dissenter: the one case the standing exists for.
+  (match prefer_checkable(roster: mine, readings: set_of(who: u49(), relied: good, others: [bad])) {
+     Present { value: _ } => true
+     Absent => false
+   })
+    // Both checkable: no basis to prefer, and "the author preferred this one" is not a basis.
+    && (match prefer_checkable(
+      roster: mine,
+      readings: set_of(
+        who: u49(),
+        relied: good,
+        others: [read_glyphs_on_board_frame(text: "LV165A / 9BKG4", c: Present { value: c }, rest: [])]
+      )
+    ) {
+       Absent => true
+       Present { value: _ } => false
+     })
+    // THREE READINGS: B is checkable and dissents, C is uncheckable and dissents. A and B are both checkable and
+    // conflict, so C's existence gives no reason to prefer A: every DISSENTER must be uncheckable, not just one.
+    && (match prefer_checkable(
+      roster: mine,
+      readings: set_of(
+        who: u49(),
+        relied: good,
+        others: [
+          read_glyphs_on_board_frame(text: "LV165A / 9BKG4", c: Present { value: c }, rest: []),
+          read_no_citation(text: "LV165A / 7BKG4")
+        ]
+      )
+    ) {
+       Absent => true
+       Present { value: _ } => false
+     })
+    // Two uncheckable dissenters: the standing still mints (every dissenter is uncheckable).
+    && (match prefer_checkable(
+      roster: mine,
+      readings: set_of(who: u49(), relied: good, others: [bad, read_no_citation(text: "LV165A / 7BKG4")])
+    ) {
+       Present { value: _ } => true
+       Absent => false
+     })
+    // The relied-on reading uncheckable: nothing to prefer.
+    && (match prefer_checkable(
+      roster: mine,
+      readings: set_of(
+        who: u49(),
+        relied: read_glyphs_on_board_frame(text: "LV165A / 2BKG4", c: Absent, rest: []),
+        others: [bad]
+      )
+    ) {
+       Absent => true
+       Present { value: _ } => false
+     })
+}
+
+// CONTROL 9. Agreement with nobody is not agreement. `no_dissent` requires a second reading, and a single
+// reading that "agrees" with itself is the free pass the standing was written to refuse.
+test fn control_9_no_dissent_refuses_a_reading_with_no_company() -> Bool {
+  let c = boxed_a()
+  let alone = read_glyphs_on_board_frame(text: "LV165A", c: Present { value: c }, rest: [])
+  let mine = roster_of(who: u49(), c: c)
+  (match no_dissent(roster: mine, readings: set_of(who: u49(), relied: alone, others: [])) {
+     Absent => true
+     Present { value: _ } => false
+   })
+    // with a second reading that says the same thing under the reduction, it mints
+    && (match no_dissent(
+      roster: mine,
+      readings: set_of(
+        who: u49(),
+        relied: alone,
+        // A SECOND OBSERVATION, not the same one written twice: another frame, another box. Keyed by
+        // reduced text plus the evidence's own spelling (reading_key), a repeat of frame A's box here
+        // would be a duplicate reading, `reading_set_is_wellformed` would refuse the set, and
+        // `no_dissent` would return Absent -- which is what this test was failing on before the fix.
+        others: [read_glyphs_from(text: "LV165A ", citation: boxed_b(), rest: [])]
+      )
+    ) {
+       Present { value: _ } => true
+       Absent => false
+     })
+}
+
+// control_9 fails as a plain assertion, which says the mint refused but not WHERE. `no_dissent` has four
+// gates, and a test that cannot say which gate refused is a weak control, so each gate the second reading
+// must clear gets its own verdict. Gates: the set is well formed; the relied-on reading may rest on its
+// evidence (checkable for the subject, not a no-glyph look, every glyph span boxed AND attributed to this
+// specimen by the roster); and nothing is disputed against the others.
+test fn control_9a_the_two_reading_set_is_wellformed() -> Bool {
+  let c = boxed_a()
+  let alone = read_glyphs_on_board_frame(text: "LV165A", c: Present { value: c }, rest: [])
+  reading_set_is_wellformed(
+    readings: set_of(
+      who: u49(),
+      relied: alone,
+      others: [read_glyphs_from(text: "LV165A ", citation: boxed_b(), rest: [])]
+    )
+  )
+}
+
+test fn control_9b_reliance_may_rest_on_the_relied_reading() -> Bool {
+  let c = boxed_a()
+  reliance_may_rest_on(
+    roster: roster_of(who: u49(), c: c),
+    subject: u49(),
+    reading: read_glyphs_on_board_frame(text: "LV165A", c: Present { value: c }, rest: [])
+  )
+}
+
+test fn control_9c_the_second_reading_disputes_nothing() -> Bool {
+  let c = boxed_a()
+  let relied = read_glyphs_on_board_frame(text: "LV165A", c: Present { value: c }, rest: [])
+  is_empty(
+    xs: disputed_glyphs(
+      relied: relied,
+      others: [read_glyphs_from(text: "LV165A ", citation: boxed_b(), rest: [])]
+    )
+  )
+}
+
+// CONTROL 10. An observation is MINTED, and what it reports is what was minted for: the subject and the relied-on
+// reading are read off the sealed standing, so an identification for U49 reports U49 and not U51. A hand-written
+// observation (a standing beside a swapped subject, reading or `others`) is refused by the compiler
+// (`sole_constructor`), recorded in the PR as the refusal lines.
+test fn control_10_a_minted_observation_reports_the_subject_it_was_minted_for() -> Bool {
+  let c = boxed_a()
+  let good = read_glyphs_on_board_frame(text: "LV165A", c: Present { value: c }, rest: [])
+  match identify_by_marking(
+    roster: roster_of(who: u49(), c: c),
+    row: sn74lv165a_pw,
+    readings: set_of(who: u49(), relied: good, others: []),
+    discriminator: "x"
+  ) {
+    IdentifiedByMarking { row: _, observation } =>
+      component_identity_eq(a: observation_subject(o: observation), b: u49())
+      && !component_identity_eq(a: observation_subject(o: observation), b: u51())
+    _ => false
+  }
+}
+
+// CONTROL 16. The relied-on reading an observation reports is the EXACT reading it was minted for, compared whole,
+// including a reading that REDUCES to the same glyphs under other evidence or other span content.
+test fn control_16_a_minted_observation_reports_the_exact_reading_it_was_issued_for() -> Bool {
+  let c = boxed_a()
+  let issued_for = read_glyphs_on_board_frame(text: "LV165A", c: Present { value: c }, rest: [])
+  match identify_by_marking(
+    roster: roster_of(who: u49(), c: c),
+    row: sn74lv165a_pw,
+    readings: set_of(who: u49(), relied: issued_for, others: []),
+    discriminator: "x"
+  ) {
+    IdentifiedByMarking { row: _, observation } =>
+      observation_relied_on(o: observation) == issued_for
+      && observation_relied_on(o: observation) != read_glyphs_from(text: "LV165A", citation: boxed_b(), rest: [])
+      && observation_relied_on(o: observation) != read_glyphs_on_board_frame(text: "LV165A ", c: Present { value: c }, rest: [])
+    _ => false
+  }
+}
+
+// CONTROL 11. "There is no second reading" is decided by a function, not written by a row. A set that
+// carries a second reading with different content cannot mint the single-reading standing, however the
+// author feels about the second one.
+test fn control_11_only_reading_refuses_a_set_that_has_a_second_reading() -> Bool {
+  let c = boxed_a()
+  let good = read_glyphs_on_board_frame(text: "LV165A", c: Present { value: c }, rest: [])
+  let mine = roster_of(who: u49(), c: c)
+  // a second reading, whatever it says, closes this standing
+  (match only_reading(
+    roster: mine,
+    readings: set_of(who: u49(), relied: good, others: [read_glyphs_on_board_frame(text: "SN74LV165A", c: Present { value: c }, rest: [])])
+  ) {
+     Absent => true
+     Present { value: _ } => false
+   })
+    // and with no second reading, and the pixels attributed, it mints
+    && (match only_reading(roster: mine, readings: set_of(who: u49(), relied: good, others: [])) {
+         Present { value: _ } => true
+         Absent => false
+       })
+}
+
+// ─── CONTROLS 12-15: the subject discriminators (REQUIRED rows) ─────────────────────────────────
+//
+// These four are the difference between "the store has these bytes" and "this specimen's marking was read
+// from these pixels". Each is a case where an identification would be a fabrication, and each must be
+// refused by the mint rather than reported by a process.
+
+// CONTROL 12. Bytes the store has never attributed to anybody. An unknown hash is refused here, before it
+// can be relied on in a row -- the rung the evidence module names as the next one up.
+test fn control_12_a_frame_the_store_does_not_attribute_mint_nothing() -> Bool {
+  // One citation in both channels, so the refusal can only be about the bytes the store has never attributed:
+  // with the evidence pinned to a real frame and only the span unknown, the same Absent would have come from a
+  // different rule and the test would still have printed PASS.
+  let unknown = read_glyphs_from(text: "LV165A", citation: boxed_unknown(), rest: [])
+  let roster_knows_the_frame_but_says_nobody = BoardSightings {
+    rows: [SpecimenSighting { specimen: u51(), sighting: boxed_b() }]
+  }
+  (match only_reading(
+    roster: roster_knows_the_frame_but_says_nobody,
+    readings: set_of(
+      who: u49(),
+      relied: unknown,
+      others: []
+    )
+  ) {
+     Absent => true
+     Present { value: _ } => false
+   })
+    // and the store's own verdict on an unattributed citation is not "yes"
+    && (match only_reading(
+      roster: empty_roster(),
+      readings: set_of(
+        who: u49(),
+        relied: read_glyphs_on_board_frame(text: "LV165A", c: Present { value: boxed_a() }, rest: []),
+        others: []
+      )
+    ) {
+       Absent => true
+       Present { value: _ } => false
+     })
+}
+
+// CONTROL 13. Attributed, but to a DIFFERENT specimen. The bytes are real, the box is real, and the bench
+// recorded the reading off another part's body: the roster is what says so, and the mint listens.
+test fn control_13_a_frame_belonging_to_another_specimen_mint_nothing() -> Bool {
+  let c = boxed_a()
+  let reading_of_u49 = read_glyphs_on_board_frame(text: "LV165A", c: Present { value: c }, rest: [])
+  // the board attributes this frame's box to U51, and to nobody else
+  let roster_says_u51 = roster_of(who: u51(), c: c)
+  match only_reading(roster: roster_says_u51, readings: set_of(who: u49(), relied: reading_of_u49, others: [])) {
+    Absent =>
+      // the same reading, for the specimen the board does attribute it to, does mint: the refusal above is
+      // about WHOSE it is, not about the citation being malformed.
+      match only_reading(roster: roster_says_u51, readings: set_of(who: u51(), relied: reading_of_u49, others: [])) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    Present { value: _ } => false
+  }
+}
+
+// CONTROL 14. Same bytes, different pixels. A crop of the frame is a different observation from the frame,
+// and an attribution of one is not an attribution of the other.
+test fn control_14_the_same_bytes_in_another_box_are_not_the_same_sighting() -> Bool {
+  let right = read_glyphs_on_board_frame(text: "LV165A", c: Present { value: boxed_a() }, rest: [])
+  let shifted = read_glyphs_on_board_frame(text: "LV165A", c: Present { value: boxed_a_other_box() }, rest: [])
+  let roster_has_the_right_box = roster_of(who: u49(), c: boxed_a())
+  match only_reading(roster: roster_has_the_right_box, readings: set_of(who: u49(), relied: right, others: [])) {
+    Present { value: _ } =>
+      match only_reading(roster: roster_has_the_right_box, readings: set_of(who: u49(), relied: shifted, others: [])) {
+        Absent => true
+        Present { value: _ } => false
+      }
+    Absent => false
+  }
+}
+
+// CONTROL 15. No pixels named at all. Digest alone never binds: this is the shape of an overview frame,
+// which shows dozens of components, so it cannot say whose marking it shows. Bytes that exist are not
+// evidence of whose body they show.
+test fn control_15_an_unboxed_frame_never_carries_an_identification() -> Bool {
+  let whole_frame = read_glyphs_on_board_frame(text: "LV165A", c: Present { value: unboxed_a() }, rest: [])
+  let roster_attributes_the_frame = roster_of(who: u49(), c: unboxed_a())
+  // even a roster that attributes THE WHOLE FRAME does not make the glyphs bound: the glyph span itself
+  // carries no sighting, and a relied-on transcription needs one.
+  match only_reading(roster: roster_attributes_the_frame, readings: set_of(who: u49(), relied: whole_frame, others: [])) {
+    Absent =>
+      // the same reading with its glyphs boxed mints, so the refusal is about the box and nothing else
+      match only_reading(
+        roster: roster_of(who: u49(), c: boxed_a()),
+        readings: set_of(who: u49(), relied: read_glyphs_on_board_frame(text: "LV165A", c: Present { value: boxed_a() }, rest: []), others: [])
+      ) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    Present { value: _ } => false
+  }
+}
+
+// ─── A LAST ROW: the gap arm is not a refusal of the kind that loses the reading ─────────────────
+
+// BytesNotInStore is the typed gap for a frame whose bytes never reached the store. It carries the locator
+// and the obligation, and it never carries a guessed digest. A reading citing it is legal to record and
+// cannot be relied on -- the same refusal as an unattributed frame, for a different reason, and the reason
+// is in the arm's name.
+test fn unstored_bytes_are_a_recorded_gap_and_not_a_reliance() -> Bool {
+  let gap = MarkingReading {
+    content: Transcribed { leading: [], first: GlyphSpan { preceded_by: "", span: "P617A", sighting: Present { value: gap_citation() } }, rest: [], followed_by: "" },
+    evidence: OperatorPhotograph { citation: gap_citation() }
+  }
+  match only_reading(
+    roster: roster_of(who: u49(), c: boxed_a()),
+    readings: set_of(who: u49(), relied: gap, others: [])
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}

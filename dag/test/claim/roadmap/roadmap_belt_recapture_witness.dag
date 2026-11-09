@@ -1,6 +1,6 @@
 module test.claim.roadmap.roadmap_belt_recapture_witness
 
-// RECAPTURE ADMISSION AT ITS OWN INTERFACE (DESIGN §3). The dirty-worktree, missing-head,
+// RECAPTURE ADMISSION AT ITS OWN INTERFACE (gunbc.design_argument::single_authority). The dirty-worktree, missing-head,
 // unobservable-base and head-address capture refusals are decided from supplied observations --
 // porcelain, a typed head, a typed spawn base, a typed SubmissionCaptureObservation -- because
 // those claims are about those preconditions, not about git. The real recapture path is the wet

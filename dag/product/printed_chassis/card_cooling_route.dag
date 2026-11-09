@@ -7,7 +7,8 @@ import std.optional {Present, Absent}
 import product.printed_chassis.chassis_clearances {ChassisGap, single_card_side_allowance_2026_11_02, Measured, NeedsMeasurement, CaliperByOperator, EstimatedByOperator, DeclaredConservativeByOperator, chassis_gaps, card_end_to_chassis_fan_2026_10_29, power_connector_head_protrusion, cable_bend_keepout, card_end_rear_fan_clearance, deck_to_lid_clearance, side_lane_width, neighbour_lane_width, gap_display, gap_declared_bound, gap_is_estimate, inter_card_gap, card_to_rear_fans, power_connector_latch, power_connector_head_protrusion, cable_bend_keepout, outer_side_at_the_wall, GapRoom, Room, OverSubscribed, NoReading, gap_room, standing_origin, gap_may_be_printed_on}
 import product.printed_chassis.printable_assembly {CardFaceSide, BackFaceSide, FrontFaceSide, card_face_side_wire}
 import product.printed_chassis.side_mount_duct {side_mount_rear_spend, side_mount_side_spend, side_mount_card_gap}
-import product.printed_chassis.gpu_duct {EndFaceMeasurement, GpuDuctDesign, BlowerDuctDesign, a16_end_face, a16_duct_design, a16_blower_duct_design, blower_reach_behind, um, plane_on_end_duct_run_back, plane_on_end_blower_bottom_standoff}
+import product.printed_chassis.gpu_duct {EndFaceMeasurement, GpuDuctDesign, BlowerDuctDesign, a16_end_face, a16_duct_design, a16_blower_duct_design, blower_reach_behind, um, plane_on_end_duct_run_back, plane_on_end_blower_bottom_standoff, plane_on_end_connector_protrusion_admits, plane_on_end_max_admissible_protrusion, plane_on_end_relief_back_reach, plane_on_end_relief_inboard_x, plane_on_end_floor_behind_face}
+import product.printed_chassis.duct_card_catalog {DuctCard, duct_card_dims, duct_card_unread_reason}
 import extdeps.fans.types {RadialBlowerEnvelope}
 import extdeps.fans.delta {delta_bfb1012m_envelope}
 import extdeps.gpu.nvidia_a16 {nvidia_a16_board_facts}
@@ -101,7 +102,7 @@ fn thickness_extent(b: RadialBlowerEnvelope) -> Int { um(m: b.thickness) + um(m:
 // delegates to product.printed_chassis.gpu_duct plane_on_end_duct_run_back rather than re-deriving it here,
 // because the demand the route admits against and the geometry the CAD builds are one fact. They were
 // written separately once (this fn said "two walls", the duct said "two walls") and drifted apart when the
-// seat was introduced; a route that reports a smaller spend than the part has is the fabrication §5 forbids.
+// seat was introduced; a route that reports a smaller spend than the part has is the fabrication gunbc.design_argument::fail_closed forbids.
 fn plane_on_end_run_back(fan: BlowerDuctDesign, d: GpuDuctDesign) -> Int { um(m: plane_on_end_duct_run_back(b: fan, d: d)) }
 // ...but its face spans the slot, where the pitch is the only room.
 fn plane_on_end_slot_demand(b: RadialBlowerEnvelope) -> Int { longest_face_edge(b: b) }
@@ -202,12 +203,7 @@ fn route_admission_display(a: RouteAdmission) -> String {
 
 // THE ANSWER, FOR THE A16 ROW, AS RUN TEXT. Three homes, each with the reading it wants. A fourth card is
 // another call with another end face; nothing here branches on the card's name.
-fn a16_route_report() -> List<String> {
-  [route_admission_display(a: admit_home(s: a16_route_subject(), home: PlaneOnEnd)),
-   route_admission_display(a: admit_home(s: a16_route_subject(), home: PlaneAcrossRowStanding)),
-   route_admission_display(a: admit_home(s: a16_route_subject(), home: OverTheRow {riser: micrometer(count: 6000)})),
-   route_admission_display(a: admit_home(s: a16_route_subject(), home: BesideTheRow))]
-}
+fn a16_route_report() -> List<String> { route_report_of(s: a16_route_subject()) }
 
 fn a16_blower() -> RadialBlowerEnvelope { delta_bfb1012m_envelope }
 fn a16_wall_design() -> GpuDuctDesign { a16_duct_design }
@@ -218,6 +214,48 @@ type RouteSubject { face: EndFaceMeasurement, wall: GpuDuctDesign, fan: BlowerDu
 
 // The A16 subject, built once from the A16 DuctCard row; the only place the A16 binding is named for the route.
 fn a16_route_subject() -> RouteSubject { RouteSubject { face: a16_end_face, wall: a16_duct_design, fan: a16_blower_duct_design } }
+
+// A ROUTE SUBJECT FOR A ROSTER CARD, OR NOTHING. Every card-dependent report below is a function of a RouteSubject,
+// and this is the ONLY way a roster card becomes one: through duct_card_catalog duct_card_dims, which is the single
+// authority for a card's read dimensions. A card whose end face has not been read (EndFaceNeedsReading) has no
+// dimensions to derive, so this returns Absent -- the card is refused by naming its reading
+// (duct_card_catalog duct_card_unread_reason, which quotes the EndFaceNeedsReading obligation), NEVER by falling
+// back to the A16. @ref(gunbc.design_argument::single_authority) @ref(gunbc.design_argument::fail_closed)
+fn route_subject_of(card: DuctCard) -> RouteSubject? {
+  match duct_card_dims(card: card) {
+    Present { value: d } => Present { value: RouteSubject { face: d.face, wall: d.wall, fan: d.fan } }
+    Absent => Absent
+  }
+}
+
+// Why a roster card has no route subject: the reading it still owes, named. An unread card is refused by the name of
+// its EndFaceNeedsReading obligation, not by a substituted A16 number. @ref(gunbc.design_argument::epistemic_humility)
+fn route_refusal_of(card: DuctCard) -> String { duct_card_unread_reason(card: card) }
+
+// The four home verdicts as run text for ANY subject -- the subject's own numbers, never the A16's. a16_route_report
+// is this applied to the A16 subject; route_report_for applies it to whatever roster card has been read.
+fn route_report_of(s: RouteSubject) -> List<String> {
+  [route_admission_display(a: admit_home(s: s, home: PlaneOnEnd)),
+   route_admission_display(a: admit_home(s: s, home: PlaneAcrossRowStanding)),
+   route_admission_display(a: admit_home(s: s, home: OverTheRow {riser: micrometer(count: 6000)})),
+   route_admission_display(a: admit_home(s: s, home: BesideTheRow))]
+}
+
+// THE ROUTE REPORT, ASKED OF A ROSTER CARD. A card whose end face has been read gets the four homes measured on its
+// OWN dimensions. A card whose end face has NOT been read is refused -- and the refusal NAMES the reading it still
+// owes (its EndFaceNeedsReading obligation), rather than reporting it with the A16's numbers standing in for a card
+// nobody has measured. A catalog candidate is never presented as an installed card by these reports.
+// @ref(gunbc.design_argument::single_authority) @ref(gunbc.design_argument::fail_closed) @ref(gunbc.design_argument::epistemic_humility)
+type RouteReport
+  = RouteReported { card: NonEmptyStr, lines: List<String> }
+  | RouteEndFaceNeedsReading { card: NonEmptyStr, refusing_reading: String }
+
+fn route_report_for(card: DuctCard) -> RouteReport {
+  match route_subject_of(card: card) {
+    Present { value: s } => RouteReported { card: card.row.id, lines: route_report_of(s: s) }
+    Absent => RouteEndFaceNeedsReading { card: card.row.id, refusing_reading: route_refusal_of(card: card) }
+  }
+}
 
 // THE PUBLISHED VERDICT: every home measured against THIS chassis -- the one gap the operator has given a
 // word about, and the three that have never been read.
@@ -308,7 +346,7 @@ fn admit_home_over(s: RouteSubject, home: BlowerHome, rear: ChassisGap, lane: Ch
 // twice now (rear_of_end_room), and a design may not be admitted against the generous reading of a span
 // that somebody has since read tighter. Absent means the ordinary case: this row's own standing governs.
 // `need` is a Micrometer, not a count: this is the function that decides whether a route is admitted, and a
-// count at that boundary is a unit system that lives in the caller's memory. §5 -- "making it unwritable,
+// count at that boundary is a unit system that lives in the caller's memory. gunbc.design_argument::fail_closed -- "making it unwritable,
 // correctness by construction, not validation" -- is about exactly this: with `need: Int`, someone passing
 // millimetres, or a raw count, writes a wrong admission and nothing complains.
 fn ask(gap: ChassisGap, need: Micrometer, home: BlowerHome, unmet: RouteDemand, over: GapRoom?) -> RouteAdmission? {
@@ -508,7 +546,7 @@ fn shape_um(m: Int) -> Micrometer { micrometer(count: m) }
 //                    home does not fit THIS direction, and by how much is a measured fact worth reporting.
 //   Unread           no reading reaches this direction at all. Not zero, not negative: there is no number,
 //                    and inventing one -- or smuggling absence in through a sign -- is the fabricated output
-//                    DESIGN.md §5 refuses and gunbc.design_ruling dag_absence_is_one_meaning forbids.
+//                    gunbc.design_argument::fail_closed refuses and gunbc.design_ruling dag_absence_is_one_meaning forbids.
 //
 // The old shape carried all three as one Micrometer whose sign meant "probably unmeasured", which merged the
 // second case into the first and let a caller's arithmetic turn the third into a plausible-looking extent.
@@ -540,10 +578,10 @@ fn room_plus(base: GapRoom, room: GapRoom) -> GapRoom {
   }
 }
 
-// A measured distance of the model itself (the slot pitch, drawn on NVIDIA's card drawing) entering the
-// same arithmetic as a gap's room. This is NOT a chassis reading and never becomes one: it is a fact about
-// the card, and the only reason it appears here is that a span across the card row is measured from the
-// centre of one lane to the centre of the next.
+// A measured distance of the model itself (the card's slot pitch, from the PCIe CEM slot envelope over the card's
+// stated slot count) entering the same arithmetic as a gap's room. This is NOT a chassis reading and never becomes
+// one: it is a fact about the card, and the only reason it appears here is that a span across the card row is
+// measured from the centre of one lane to the centre of the next.
 fn room_of(m: Micrometer, from: NonEmptyStr) -> GapRoom { Room { room: m, from: from } }
 
 // THE TIGHTEST OF SEVERAL READINGS OF ONE SPAN. The same distance can be spoken more than once -- the
@@ -609,8 +647,9 @@ fn unread_extent(obligation: NonEmptyStr) -> ShapeExtent { Unread { obligation: 
 // owed, rather than reporting a maximum somebody never took.
 type BlowerShape { across_the_binding_gap: ShapeExtent, along_the_row: ShapeExtent, behind_the_end: ShapeExtent }
 
-fn shape_max_for_home(home: BlowerHome, d: GpuDuctDesign, riser: Micrometer) -> BlowerShape {
+fn shape_max_for_home(home: BlowerHome, s: RouteSubject, riser: Micrometer) -> BlowerShape {
   let rear = gap_room(g: card_end_rear_fan_clearance)
+  let d = s.wall
   let walls_two = [d.wall, d.wall]
   match home {
     // BESIDE THE ROW. The fan lies flat in the free lane: its planform spans the lane, so the lane caps the
@@ -619,7 +658,7 @@ fn shape_max_for_home(home: BlowerHome, d: GpuDuctDesign, riser: Micrometer) -> 
     // floor-to-lid at an unnamed place, and no deck height exists -- so this home's third extent reports the
     // reading it still owes.
     AgainstCardSide {side: _} => BlowerShape {
-      across_the_binding_gap: extent_of(room: room_less(room: gap_room(g: single_card_side_allowance_2026_11_02), deductions: [side_mount_card_gap, d.wall, d.wall, a16_blower_duct_design.socket_clearance, a16_blower_duct_design.socket_clearance]), why: "less the card gap, two socket walls and two socket clearances"),
+      across_the_binding_gap: extent_of(room: room_less(room: gap_room(g: single_card_side_allowance_2026_11_02), deductions: [side_mount_card_gap, d.wall, d.wall, s.fan.socket_clearance, s.fan.socket_clearance]), why: "less the card gap, two socket walls and two socket clearances"),
       along_the_row: unread_extent(obligation: "the housing runs along the card's own side; nothing read here bounds that length but the card"),
       behind_the_end: extent_of(room: room_less(room: rear, deductions: [d.wall]), why: "the housing does not reach behind the end; only the chamber, flange and back wall do"),
     }
@@ -632,7 +671,7 @@ fn shape_max_for_home(home: BlowerHome, d: GpuDuctDesign, riser: Micrometer) -> 
     // and the riser are inside the same 120 mm figure and are subtracted first. The other two extents run
     // along and across the row, where nothing was read.
     OverTheRow {riser: _} => BlowerShape {
-      across_the_binding_gap: extent_of(room: room_less(room: gap_room(g: deck_to_lid_clearance), deductions: concat([a16_end_face.face_length, riser], [d.wall, d.wall, d.wall])), why: "less the card's own height, the riser, and the three walls a leg needs"),
+      across_the_binding_gap: extent_of(room: room_less(room: gap_room(g: deck_to_lid_clearance), deductions: concat([s.face.face_length, riser], [d.wall, d.wall, d.wall])), why: "less the card's own height, the riser, and the three walls a leg needs"),
       along_the_row: unread_extent(obligation: "nothing was read along the row, where this home's long edge would run"),
       behind_the_end: extent_of(room: rear, why: "the rear bound itself"),
     }
@@ -642,13 +681,13 @@ fn shape_max_for_home(home: BlowerHome, d: GpuDuctDesign, riser: Micrometer) -> 
     // exceed the card itself without overhanging into the slot above, and the card's height is the only
     // reading there; behind the end the declared 70 mm governs and the 120 mm is not in this axis at all.
     PlaneOnEnd => BlowerShape {
-      across_the_binding_gap: extent_of(room: flat_on_end_housing_length_cap(), why: "one slot pitch plus the declared side lane on each side -- the pair question is flat_on_end_twin_verdict, not this"),
-      along_the_row: extent_of(room: room_of(m: a16_end_face.face_length, from: "the card's own end-face height (product.printed_chassis.gpu_duct a16_end_face)"), why: "beyond it the housing overhangs into the slot above, and no reading covers that"),
+      across_the_binding_gap: extent_of(room: flat_on_end_housing_length_cap(s: s), why: "one slot pitch plus the declared side lane on each side -- the pair question is flat_on_end_twin_verdict, not this"),
+      along_the_row: extent_of(room: room_of(m: s.face.face_length, from: face_origin(s: s)), why: "beyond it the housing overhangs into the slot above, and no reading covers that"),
       behind_the_end: extent_of(room: room_less(room: rear, deductions: walls_two), why: "less the two duct walls the stack needs"),
     }
     // PLANE ACROSS THE ROW (today's duct): the slot bounds its long edge and the rear bound its reach.
     PlaneAcrossRowStanding => BlowerShape {
-      across_the_binding_gap: extent_of(room: room_of(m: a16_blower_duct_design.slot_pitch, from: "the 40.64 mm slot pitch"), why: "the housing may not overhang into a neighbouring card's lane"),
+      across_the_binding_gap: extent_of(room: room_of(m: s.fan.slot_pitch, from: slot_pitch_origin(s: s)), why: "the housing may not overhang into a neighbouring card's lane"),
       along_the_row: unread_extent(obligation: "nothing was read along the row for this home"),
       behind_the_end: extent_of(room: room_less(room: rear, deductions: [d.wall]), why: "less the wall at the back"),
     }
@@ -676,8 +715,8 @@ fn flat_on_end_pair_need(fan: BlowerDuctDesign) -> Micrometer {
 
 // The span the pair shares: one pitch, plus whatever the inter-card gap actually leaves. If the gap has no
 // reading, the span has no reading -- the type says so instead of inventing a number.
-fn flat_on_end_pair_span() -> GapRoom {
-  room_plus(base: room_of(m: a16_blower_duct_design.slot_pitch, from: "one 40.64 mm slot pitch, from the NVIDIA card drawing (product.printed_chassis.gpu_duct a16_blower_duct_design.slot_pitch)"),
+fn flat_on_end_pair_span(s: RouteSubject) -> GapRoom {
+  room_plus(base: room_of(m: s.fan.slot_pitch, from: slot_pitch_origin(s: s)),
             room: gap_room(g: inter_card_gap))
 }
 
@@ -686,19 +725,19 @@ fn flat_on_end_pair_span() -> GapRoom {
 // Deliberately NOT narrowed by the twin-card span: the pair question is its own verdict below, with its own
 // number, because the two cards' overhangs face each other across the gap between them rather than each
 // spending a full lane. Folding the pair span in here would forbid a single card from spending room that the
-// twin case already shows it does not need -- over-forbidding, which DESIGN.md §4d refuses as plainly as it
+// twin case already shows it does not need -- over-forbidding, which gunbc.design_argument::epistemic_humility refuses as plainly as it
 // refuses fabricating. Any cap with no reading makes the answer unread: the unmeasured one is exactly the
 // one that could be binding.
-fn flat_on_end_housing_length_cap() -> GapRoom {
-  let pitch = room_of(m: a16_blower_duct_design.slot_pitch, from: "one 40.64 mm slot pitch, from the NVIDIA card drawing (product.printed_chassis.gpu_duct a16_blower_duct_design.slot_pitch)")
+fn flat_on_end_housing_length_cap(s: RouteSubject) -> GapRoom {
+  let pitch = room_of(m: s.fan.slot_pitch, from: slot_pitch_origin(s: s))
   room_plus(base: room_plus(base: pitch, room: gap_room(g: neighbour_lane_width)), room: gap_room(g: neighbour_lane_width))
 }
 
 // Does the pair clear? Reported with its margin, because the margin is the point, and with the kind of each
 // number kept: a span that has no reading cannot be called clear or refused.
-fn flat_on_end_twin_verdict() -> String {
-  let need = plane_on_end_pair_need_for_blower()
-  match flat_on_end_pair_span() {
+fn flat_on_end_twin_verdict(s: RouteSubject) -> String {
+  let need = plane_on_end_pair_need_for_blower(s: s)
+  match flat_on_end_pair_span(s: s) {
     NoReading {obligation: o} => join(["two ducted cards, flat on the end: the span they share has no reading -- ", o], "")
     Room {room: span, from: o} =>
       let margin = micrometer_count(m: span) - micrometer_count(m: need)
@@ -715,7 +754,7 @@ fn flat_on_end_twin_verdict() -> String {
   }
 }
 
-fn plane_on_end_pair_need_for_blower() -> Micrometer { flat_on_end_pair_need(fan: a16_blower_duct_design) }
+fn plane_on_end_pair_need_for_blower(s: RouteSubject) -> Micrometer { flat_on_end_pair_need(fan: s.fan) }
 
 // Millimetres, with the fraction shown WHEN THERE IS ONE. The first cut divided by 1000 and stopped, which
 // rendered a 21.5 mm margin as "21 mm" -- a half millimetre dropped from every number on the print sheet, in
@@ -738,6 +777,25 @@ fn dec_text(frac_um: Int) -> String {
   join([".", to_string(value: tenths)], "")
 }
 
+// THE PROVENANCE TRAVELS WITH THE SUBJECT, NOT WITH THE A16. A from:/why: string is stored in the room as the
+// origin the reader can check a number back to, so for a non-A16 subject it must name that subject's reading,
+// not the A16's -- naming a reading the report never used is fabrication (gunbc.design_argument::epistemic_humility).
+// The end-face origin is the subject's own EndFaceMeasurement.source, which the caliper read for THAT card.
+fn face_origin(s: RouteSubject) -> NonEmptyStr {
+  join(["the card's own end face (", s.face.source, ")"], "") as NonEmptyStr
+}
+
+// The slot-pitch origin carries the subject's OWN pitch, and names where a pitch really comes from: the PCIe CEM
+// slot envelope over the card's stated slot count (product.printed_chassis.gpu_duct card_slot_pitch through
+// blower_duct_design_of) -- not a fixed 40.64 mm read off one card's drawing. (The 40.64 mm the A16 shows IS that
+// CEM figure for its two slots; the point is the label no longer bakes the A16's number in.) The fan row inside
+// the blower design is always the Delta BFB1012M while blower_duct_design_of takes that row (gpu_duct
+// blower_duct_design sets blower: delta_bfb1012m_envelope unconditionally), so a pitch label need not name a card
+// to be true; the BFB1012M literals elsewhere in this module are safe for that reason, not because every card is a A16.
+fn slot_pitch_origin(s: RouteSubject) -> NonEmptyStr {
+  join(["one ", mm_text(m: s.fan.slot_pitch), " slot pitch -- the PCIe CEM slot envelope over the card's stated slot count (product.printed_chassis.gpu_duct card_slot_pitch)"], "") as NonEmptyStr
+}
+
 fn extent_display(e: ShapeExtent) -> String {
   match e {
     Fits {at_most: a, capped_by: c} => join(["at most ", mm_text(m: a), " (", c, ")"], "")
@@ -756,38 +814,42 @@ fn shape_display(s: BlowerShape) -> String {
 // line runs the same ask()/finish() the published verdicts use, with the operator's own gap rows passed in
 // as the gaps. The flat-on-end line is the twin case -- the same home, with the inter-card gap standing in
 // for the generous side, which is what two ducted cards in one row do to each other.
-fn verdict_against_2026_10_27_readings() -> List<String> {
-  let d = a16_wall_design()
-  let b = a16_blower()
+fn verdict_against_2026_10_27_readings(s: RouteSubject) -> List<String> {
+  let d = s.wall
+  let b = s.fan.blower
   let lane_need = beside_the_row_demand(b: b, d: d)
   let lane = RouteDemand { name: "housing width across the free lane", needed: micrometer(count: lane_need), of_gap: "free lane beside the card row" }
   let at_lane = ask(gap: side_lane_width, need: lane.needed, home: BesideTheRow, unmet: lane, over: Absent)
   let at_wall = ask(gap: outer_side_at_the_wall, need: lane.needed, home: BesideTheRow, unmet: lane, over: Absent)
   let lid_riser = shape_um(m: 6000)
-  let lid_demand = RouteDemand { name: "deck to lid above the row", needed: over_the_row_height(f: a16_end_face, d: d, b: b, riser: lid_riser), of_gap: "deck to chassis lid, behind the plug end" }
+  let lid_demand = RouteDemand { name: "deck to lid above the row", needed: over_the_row_height(f: s.face, d: d, b: b, riser: lid_riser), of_gap: "deck to chassis lid, behind the plug end" }
   let lid = ask(gap: deck_to_lid_clearance, need: lid_demand.needed, home: OverTheRow {riser: lid_riser}, unmet: lid_demand, over: Absent)
-  let pair_need = flat_on_end_pair_need(fan: a16_blower_duct_design)
+  let pair_need = flat_on_end_pair_need(fan: s.fan)
   let twins = ask(gap: inter_card_gap, need: pair_need, home: PlaneOnEnd, unmet: RouteDemand { name: "both housings' overhang, across the gap between the two cards", needed: pair_need, of_gap: "clear gap between the two cards" }, over: Absent)
   [route_admission_display(a: match at_lane { Present { value: r } => r Absent => RouteAdmitted { home: BesideTheRow, needs: [lane] } }),
    route_admission_display(a: match at_wall { Present { value: r } => r Absent => RouteAdmitted { home: BesideTheRow, needs: [lane] } }),
    route_admission_display(a: match lid { Present { value: r } => r Absent => RouteAdmitted { home: OverTheRow {riser: shape_um(m: 6000)}, needs: [] } }),
    route_admission_display(a: match twins { Present { value: r } => r Absent => RouteAdmitted { home: PlaneOnEnd, needs: [] } }),
-   flat_on_end_twin_verdict(),
+   flat_on_end_twin_verdict(s: s),
    "and the one home the operator declared a bound for, unchanged by any of this: ",
-   route_admission_display(a: admit_home(s: a16_route_subject(), home: PlaneOnEnd))]
+   route_admission_display(a: admit_home(s: s, home: PlaneOnEnd))]
 }
 
 // THE ANSWER TO "WHICH BLOWER WOULD FIT": the largest planform each home can take under the 2026-10-27
 // readings, with the kind of every number attached -- a maximum, a shortfall, or the reading still owed.
-fn largest_planform_per_home() -> List<String> {
-  let d = a16_wall_design()
-  let b = a16_blower()
-  [join(["beside the row, against the '60mm' side: ", shape_display(s: shape_max_for_home(home: BesideTheRow, d: d, riser: shape_um(m: 6000)))], ""),
-   join(["over the row on a 6 mm riser: ", shape_display(s: shape_max_for_home(home: OverTheRow {riser: shape_um(m: 6000)}, d: d, riser: shape_um(m: 6000)))], ""),
-   join(["flat on the plug end, two ducted cards across the inter-card gap: ", shape_display(s: shape_max_for_home(home: PlaneOnEnd, d: d, riser: shape_um(m: 6000)))], ""),
+// The BFB1012M named below is read from the subject (s.fan.blower), so its edges are the subject's; it is called
+// the BFB1012M in the label because blower_duct_design_of always builds the design on that Delta row (gpu_duct
+// blower_duct_design sets blower: delta_bfb1012m_envelope unconditionally), so today every subject's fan IS that
+// row. If a future blower_duct_design_of takes another row, this label must follow s.fan.blower's own name.
+fn largest_planform_per_home(s: RouteSubject) -> List<String> {
+  let d = s.wall
+  let b = s.fan.blower
+  [join(["beside the row, against the '60mm' side: ", shape_display(s: shape_max_for_home(home: BesideTheRow, s: s, riser: shape_um(m: 6000)))], ""),
+   join(["over the row on a 6 mm riser: ", shape_display(s: shape_max_for_home(home: OverTheRow {riser: shape_um(m: 6000)}, s: s, riser: shape_um(m: 6000)))], ""),
+   join(["flat on the plug end, two ducted cards across the inter-card gap: ", shape_display(s: shape_max_for_home(home: PlaneOnEnd, s: s, riser: shape_um(m: 6000)))], ""),
    join(["what the BFB1012M actually asks for: across the slot ", mm_text(m: micrometer(count: longest_face_edge(b: b))),
          "; up the end face ", mm_text(m: micrometer(count: shortest_face_edge(b: b))),
-         "; behind the end ", mm_text(m: micrometer(count: plane_on_end_run_back(fan: a16_blower_duct_design, d: d))), " (fan envelope from extdeps.fans.delta delta_bfb1012m_envelope, cited)"], "")]
+         "; behind the end ", mm_text(m: micrometer(count: plane_on_end_run_back(fan: s.fan, d: d))), " (fan envelope from extdeps.fans.delta delta_bfb1012m_envelope, cited)"], "")]
 }
 
 // THE FIXED FAN DECIDES THE POSE, AND THE POSE DECIDES WHETHER IT FITS
@@ -932,39 +994,38 @@ fn fan_poses(fan: RadialBlowerEnvelope, d: GpuDuctDesign) -> List<FanPose> {
 // across the row is the span the row leaves (one pitch plus the declared side lane on each side); along the
 // end face is the card's own 97.84 mm bracket face, which is all the duct can be supported by. No room is
 // read off a raw number -- each carries its standing's origin through gap_room.
-fn fan_pose_checks(pose: FanPose, d: GpuDuctDesign) -> PoseFit {
+fn fan_pose_checks(pose: FanPose, s: RouteSubject) -> PoseFit {
   PoseFit {
     rear: axis_check(along: ForeAft, need: pose.behind_end.extent, room: rear_of_end_room()),
-    across_row: axis_check(along: AcrossRow, need: pose.across_row.extent, room: flat_on_end_housing_length_cap()),
-    end_face: axis_check(along: AlongEndFace, need: pose.along_end_face.extent, room: room_of(m: a16_end_face.face_length, from: "the card's own end-face length, caliper-read (product.printed_chassis.gpu_duct a16_end_face)")),
+    across_row: axis_check(along: AcrossRow, need: pose.across_row.extent, room: flat_on_end_housing_length_cap(s: s)),
+    end_face: axis_check(along: AlongEndFace, need: pose.along_end_face.extent, room: room_of(m: s.face.face_length, from: face_origin(s: s))),
   }
 }
 
 fn fan_pose_admits(fit: PoseFit) -> Bool { fit.rear.clears && fit.across_row.clears && fit.end_face.clears }
 
 // Which of the six admit, as facts a caller can branch on.
-fn admitting_fan_poses() -> List<FanPose> {
-  let d = a16_wall_design()
-  filter(fan_poses(fan: a16_blower(), d: d), p => fan_pose_admits(fit: fan_pose_checks(pose: p, d: d)))
+fn admitting_fan_poses(s: RouteSubject) -> List<FanPose> {
+  filter(fan_poses(fan: s.fan.blower, d: s.wall), p => fan_pose_admits(fit: fan_pose_checks(pose: p, s: s)))
 }
 
 // The printed home IS one of the six, and this says which: the duct's own run-back, from the same fn the CAD
 // is built with, so a report can never drift from the geometry it describes.
-fn printed_pose() -> FanPose {
-  let fan = a16_blower()
-  let d = a16_wall_design()
+fn printed_pose(s: RouteSubject) -> FanPose {
+  let fan = s.fan.blower
+  let d = s.wall
   let walls = micrometer(count: 2 * micrometer_count(m: d.wall))
   FanPose {
     wheel_axis: ForeAft,
-    behind_end: placed(along: ForeAft, extent: plane_on_end_duct_run_back(b: a16_blower_duct_design, d: d), which_envelope_dimension: "thickness + tolerance + the printed pocket's two walls (gpu_duct plane_on_end_duct_run_back)"),
+    behind_end: placed(along: ForeAft, extent: plane_on_end_duct_run_back(b: s.fan, d: d), which_envelope_dimension: "thickness + tolerance + the printed pocket's two walls (gpu_duct plane_on_end_duct_run_back)"),
     across_row: placed(along: AcrossRow, extent: fan.housing_length, which_envelope_dimension: "housing_length, placed across the row by gpu_duct plane_on_end_duct_parts (housing_y = the larger envelope dimension)"),
     along_end_face: placed(along: AlongEndFace, extent: fan.housing_depth, which_envelope_dimension: "housing_depth, placed along the end face by the same fn (housing_x = the smaller)"),
   }
 }
 
 // The report's rendering -- the only place a pose becomes a sentence, and it reads out facts, adding nothing.
-fn fan_pose_display(pose: FanPose, d: GpuDuctDesign) -> String {
-  let fit = fan_pose_checks(pose: pose, d: d)
+fn fan_pose_display(pose: FanPose, s: RouteSubject) -> String {
+  let fit = fan_pose_checks(pose: pose, s: s)
   join([if fan_pose_admits(fit: fit) { "ADMITTED" } else { "REFUSED" }, ": wheel axis ",
         envelope_axis_display(a: pose.wheel_axis),
         "; behind the end ", mm_text(m: pose.behind_end.extent), " (", pose.behind_end.which_envelope_dimension, ") vs ", extent_display(e: fit.rear.room),
@@ -972,9 +1033,8 @@ fn fan_pose_display(pose: FanPose, d: GpuDuctDesign) -> String {
         "; along the end face ", mm_text(m: pose.along_end_face.extent), " (", pose.along_end_face.which_envelope_dimension, ") vs ", extent_display(e: fit.end_face.room)], "")
 }
 
-fn fan_pose_displays() -> List<String> {
-  let d = a16_wall_design()
-  map(fan_poses(fan: a16_blower(), d: d), p => fan_pose_display(pose: p, d: d))
+fn fan_pose_displays(s: RouteSubject) -> List<String> {
+  map(fan_poses(fan: s.fan.blower, d: s.wall), p => fan_pose_display(pose: p, s: s))
 }
 
 // ARE THE SCROLL AND THE FLAT-ON-END DUCT THE SAME GEOMETRY? ONE GEOMETRY, NOT TWO -- derived, above. The
@@ -986,18 +1046,20 @@ fn fan_pose_displays() -> List<String> {
 // image still contributes is the collector's SHAPE -- a throat that turns the wheel's tangential discharge
 // into the heatsink's end face -- printed here as the duct's open-shoulder collector rather than as a second
 // root. A second root would be the same plate under another name, and the operator asked for one to prepare.
-fn scroll_is_not_a_second_geometry() -> String {
-  join(["one geometry, not two. Of the ", to_string(value: length(list: fan_poses(fan: a16_blower(), d: a16_wall_design()))),
-        " poses the fixed BFB1012M can stand in, ", to_string(value: length(list: admitting_fan_poses())),
+// "the fixed BFB1012M" labels the subject's fan, read from s.fan.blower: it is that row for every subject because
+// blower_duct_design_of always builds on delta_bfb1012m_envelope, not because every card is the A16.
+fn scroll_is_not_a_second_geometry(s: RouteSubject) -> String {
+  join(["one geometry, not two. Of the ", to_string(value: length(list: fan_poses(fan: s.fan.blower, d: s.wall))),
+        " poses the fixed BFB1012M can stand in, ", to_string(value: length(list: admitting_fan_poses(s: s))),
         " clear every reading, and all of them have the 33 mm wheel axis fore-aft -- the pose gpu_duct plane_on_end_duct_parts already prints. The reference image's pose (axis across the row) is refused on cited envelope dimensions: a disc dimension goes behind the plug end and is short by ",
-        mm_text(m: best_sideways_rear_shortfall()), " at best. What survives of the image is its collector SHAPE, printed as the duct's open shoulder."], "")
+        mm_text(m: best_sideways_rear_shortfall(s: s)), " at best. What survives of the image is its collector SHAPE, printed as the duct's open shoulder."], "")
 }
 
 // How far a pose falls short behind the end, as a positive Micrometer the reader never has to subtract.
 // Refusal arithmetic, not fabrication: a pose that clears, or one whose room no reading reaches, has no
 // shortfall to report and says so with zero rather than with a made-up number.
-fn fan_pose_rear_shortfall(pose: FanPose) -> Micrometer {
-  let check = fan_pose_checks(pose: pose, d: a16_wall_design()).rear
+fn fan_pose_rear_shortfall(pose: FanPose, s: RouteSubject) -> Micrometer {
+  let check = fan_pose_checks(pose: pose, s: s).rear
   match check.room {
     FullySubscribed {short_by: s, capped_by: _} => s
     Fits {at_most: _, capped_by: _} => micrometer(count: 0)
@@ -1007,8 +1069,8 @@ fn fan_pose_rear_shortfall(pose: FanPose) -> Micrometer {
 
 // The best the reference image's family of poses can do behind the plug end: the SMALLEST shortfall among the
 // four sideways poses, which is the most favourable reading anyone could honestly give the idea.
-fn best_sideways_rear_shortfall() -> Micrometer {
-  let shortfalls = map(sideways_fan_poses(), p => micrometer_count(m: fan_pose_rear_shortfall(pose: p)))
+fn best_sideways_rear_shortfall(s: RouteSubject) -> Micrometer {
+  let shortfalls = map(sideways_fan_poses(s: s), p => micrometer_count(m: fan_pose_rear_shortfall(pose: p, s: s)))
   micrometer(count: fold(shortfalls, init: 0, f: (best, s) => closer_to_zero(best: best, other: s)))
 }
 
@@ -1022,8 +1084,8 @@ fn closer_to_zero(best: Int, other: Int) -> Int {
 }
 
 // The four poses with the wheel axis perpendicular to the CARD FACE -- the reference image's family.
-fn sideways_fan_poses() -> List<FanPose> {
-  filter(fan_poses(fan: a16_blower(), d: a16_wall_design()), p => match p.wheel_axis { AcrossRow => true AlongEndFace => true ForeAft => false })
+fn sideways_fan_poses(s: RouteSubject) -> List<FanPose> {
+  filter(fan_poses(fan: s.fan.blower, d: s.wall), p => match p.wheel_axis { AcrossRow => true AlongEndFace => true ForeAft => false })
 }
 
 // WHERE EACH CARD'S AIR COMES FROM, per card, for the pose that actually admits.
@@ -1215,7 +1277,7 @@ fn a16_power_points_w() -> List<String> {
     Present { value: ConfigurableBoardPower { default: dd, minimum: lo, maximum: hi, named_points: _ } } =>
       // #15315 made the published default an Optional, because that is what vendors do: the A16's row states
       // 250 W, the A2's page states "40-60 W (configurable)" and no default at all. A report that printed
-      // "default 0 W" for the second case would be §5's fabricated output, so the absence is a line of its own.
+      // "default 0 W" for the second case would be gunbc.design_argument::fail_closed's fabricated output, so the absence is a line of its own.
       concat(
         match dd {
           Present { value: d } => [join(["default ", to_string(value: watt_count(w: d)), " W"], "")]
@@ -1300,8 +1362,8 @@ fn rear_of_end_governing_room() -> Micrometer {
 // THE ANSWER, not the boundary: does the plugged head, at its worst credible reach, fit in the window the
 // duct opens for it? The window is the shoulder's printed floor (2 x 2 mm) plus whatever rear room is left
 // once the blower stack (33 + 0.5 tolerance + 2 + 2 = 37.5 mm) has spent its share.
-fn plugged_head_admits() -> Bool {
-  plane_on_end_connector_protrusion_admits(reach: plugged_head_reach(), b: a16_blower_duct_design, d: a16_wall_design(), rear_bound: rear_of_end_governing_room())
+fn plugged_head_admits(s: RouteSubject) -> Bool {
+  plane_on_end_connector_protrusion_admits(reach: plugged_head_reach(), b: s.fan, d: s.wall, rear_bound: rear_of_end_governing_room())
 }
 
 // How much of the window is left over, in micrometres, after the plugged head has taken its worst-case
@@ -1312,8 +1374,8 @@ fn plugged_head_admits() -> Bool {
 // (product.printed_chassis.gpu_duct plane_on_end_max_admissible_protrusion) rather than re-derived here. It
 // used to re-derive it as "two wall plates + rear room - stack", which silently disagreed with the part the
 // day the seat replaced the plates.
-fn plugged_head_margin() -> Micrometer {
-  let window = plane_on_end_max_admissible_protrusion(b: a16_blower_duct_design, d: a16_wall_design(), rear_bound: rear_of_end_governing_room())
+fn plugged_head_margin(s: RouteSubject) -> Micrometer {
+  let window = plane_on_end_max_admissible_protrusion(b: s.fan, d: s.wall, rear_bound: rear_of_end_governing_room())
   micrometer(count: um(m: window) - um(m: plugged_head_reach()))
 }
 
@@ -1357,14 +1419,14 @@ type CableBendPath
 // that stays parallel to the end face keeps that depth, so `depth` is the head's own worst-case reach and the
 // answer is per-surface rather than one yes/no: what sits in the path changes with depth, and naming the
 // surface is the part that turns "measure the cable" into "measure this one thing".
-fn cable_bend_path(depth: Micrometer, stays_across_the_window: Bool) -> CableBendPath {
-  let relief = plane_on_end_relief_back_reach(a16_wall_design())
-  let seat = plane_on_end_blower_bottom_standoff(d: a16_wall_design())
+fn cable_bend_path(depth: Micrometer, s: RouteSubject, stays_across_the_window: Bool) -> CableBendPath {
+  let relief = plane_on_end_relief_back_reach(s.wall)
+  let seat = plane_on_end_blower_bottom_standoff(d: s.wall)
   if !stays_across_the_window && um(m: depth) <= um(m: seat) {
     MeetsPrintedSeat {
       cable_depth_behind_face: depth,
       seat_surface_behind_face: seat,
-      relief_edge_from_face_centre: plane_on_end_relief_inboard_x(a16_end_face, a16_wall_design()),
+      relief_edge_from_face_centre: plane_on_end_relief_inboard_x(s.face, s.wall),
       which_wall: "the printed seat's end face, at the depth this arm carries. The seat spans the whole blower footprint and the relief cut opens it only across the connector's own band, so a cable that strays past the window's inboard edge at this depth hits the seat rather than passing under it",
     }
   } else if um(m: depth) <= um(m: relief) {
@@ -1376,7 +1438,7 @@ fn cable_bend_path(depth: Micrometer, stays_across_the_window: Bool) -> CableBen
   } else {
     PastTheReliefEdge {
       cable_depth_behind_face: depth,
-      relief_edge_from_face_centre: plane_on_end_relief_inboard_x(a16_end_face, a16_wall_design()),
+      relief_edge_from_face_centre: plane_on_end_relief_inboard_x(s.face, s.wall),
       which_wall: "past the relief's depth the surface in the path is the blower's own housing, which is a purchased part -- no cut in plastic clears it",
     }
   }
@@ -1391,8 +1453,8 @@ fn cable_bend_path(depth: Micrometer, stays_across_the_window: Bool) -> CableBen
 //
 // It is NOT discharged against the blower, and that is the finding the reading produced rather than the one it
 // was asked for: see plane_on_end_head_vs_blower_overlap.
-fn cable_bend_is_discharged_by_geometry() -> Bool {
-  match cable_bend_path(depth: plugged_head_reach(), stays_across_the_window: true) {
+fn cable_bend_is_discharged_by_geometry(s: RouteSubject) -> Bool {
+  match cable_bend_path(depth: plugged_head_reach(), s: s, stays_across_the_window: true) {
     ClearOfPrintedMaterial {cable_depth_behind_face: _, cleared_to: _, why: _} => true
     _ => false
   }
@@ -1415,9 +1477,9 @@ fn cable_bend_is_discharged_by_geometry() -> Bool {
 // nominal, which is zero clearance on a printed part; sized one allowance short, the nominal case interferes.
 // Sizing it as reach + tolerance is also why the fit print still has a job: it measures the gap this arithmetic
 // can only predict.
-fn plane_on_end_head_vs_blower_overlap_without_the_seat() -> Micrometer {
+fn plane_on_end_head_vs_blower_overlap_without_the_seat(s: RouteSubject) -> Micrometer {
   let head = plugged_head_reach()
-  let seat_before = plane_on_end_original_seat_ceiling(a16_wall_design())
+  let seat_before = plane_on_end_original_seat_ceiling(s.wall)
   let over = um(m: head) - um(m: seat_before)
   micrometer(count: if over > 0 { over } else { 0 })
 }
@@ -1430,16 +1492,16 @@ fn plane_on_end_original_seat_ceiling(d: GpuDuctDesign) -> Micrometer {
 
 // What the fit print reports for item (b): the gap between the plugged head's worst-case reach and the face the
 // blower's housing bears on. Positive means clear.
-fn plane_on_end_head_clearance() -> Micrometer {
-  micrometer(count: um(m: plane_on_end_floor_behind_face(a16_wall_design())) - um(m: plugged_head_reach()))
+fn plane_on_end_head_clearance(s: RouteSubject) -> Micrometer {
+  micrometer(count: um(m: plane_on_end_floor_behind_face(s.wall)) - um(m: plugged_head_reach()))
 }
 
-fn plane_on_end_plugged_head_clears_blower() -> Bool { um(m: plane_on_end_head_clearance()) > 0 }
+fn plane_on_end_plugged_head_clears_blower(s: RouteSubject) -> Bool { um(m: plane_on_end_head_clearance(s: s)) > 0 }
 
 // How much the seat was raised from the ceiling the design originally had. This is what the correction added to
 // the part, and it is the number that has to stay inside the rear room -- which is the next check.
-fn plane_on_end_fan_standoff_required() -> Micrometer {
-  micrometer(count: um(m: plane_on_end_floor_behind_face(a16_wall_design())) - um(m: plane_on_end_original_seat_ceiling(a16_wall_design())))
+fn plane_on_end_fan_standoff_required(s: RouteSubject) -> Micrometer {
+  micrometer(count: um(m: plane_on_end_floor_behind_face(s.wall)) - um(m: plane_on_end_original_seat_ceiling(s.wall)))
 }
 
 // THE COST OF THE SEAT, AGAINST THE ROOM THAT GOVERNS. The stack behind the end face now spends
@@ -1447,7 +1509,7 @@ fn plane_on_end_fan_standoff_required() -> Micrometer {
 // room the tightest reading of the span behind the end leaves. If a future reading took the room under this, the
 // seat would stop fitting and the home would have to be refused rather than the seat quietly shortened -- which
 // is why this is a check and not a comment.
-fn plane_on_end_standoff_admits() -> Bool {
-  let spent = um(m: plane_on_end_duct_run_back(b: a16_blower_duct_design, d: a16_wall_design()))
+fn plane_on_end_standoff_admits(s: RouteSubject) -> Bool {
+  let spent = um(m: plane_on_end_duct_run_back(b: s.fan, d: s.wall))
   spent <= um(m: rear_of_end_governing_room())
 }

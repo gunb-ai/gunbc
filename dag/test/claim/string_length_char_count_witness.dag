@@ -21,7 +21,7 @@ module test.claim.string_length_char_count_witness
 // (CI on this PR, not by reading the surface).
 //
 // That fork is a real defect and is NOT this witness's to fix: three names for
-// one concept is nicknaming (DESIGN §2/§3), so the likely correct repair is to
+// one concept is nicknaming (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority), so the likely correct repair is to
 // DELETE `size` from the interpreter arm and the primitive surface rather than
 // to widen the typechecker to admit it. Either direction changes a load-bearing
 // file and needs its own change. Until one lands, this witness covers exactly

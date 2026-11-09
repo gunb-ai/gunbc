@@ -10,10 +10,8 @@ import extdeps.gpu.types {
   SeveralGpus, InterconnectRead, OnBoardPcieSwitch,
   PcieAddInBoard, ZeroPowerNotSupported, PassiveThermalSolution, Cuda, gpu_board_power_ceiling,
 }
-import extdeps.gpu.passive_card_row {
-  CardRow, FromCitedFigure, NeedsReading, CardLength, BracketInclusionUnstated, AuxiliaryPowerInput, CpuEightPin,
-  CardEastEdge, AirflowBidirectional,
-}
+import extdeps.gpu.passive_card_row { CardRow, CardLength, BracketInclusionUnstated, AuxiliaryPowerInput, CpuEightPin, CardEastEdge, AirflowBidirectional }
+import extdeps.cited_field { FromCitedFigure, NeedsReading }
 import extdeps.standards.pcie_cem { CemFullHeight, CemFullHeightBracket }
 import extdeps.memory.types { MemoryFacts, Dram }
 import extdeps.storage.types { PcieLink, Gen4 }
@@ -133,7 +131,7 @@ data nvidia_a16_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
 // The row a consumer reads is the admitted one; the facts above are what the brief states.
 data nvidia_a16_board_catalog: GpuBoardAdmission = admit_gpu_board(facts: nvidia_a16_board_facts)
 
-// DESIGN section 3c declared frontier.
+// gunbc.design_argument::consumption declared frontier.
 data nvidia_a16_board_consumer_frontier: DissolutionCondition = unbound_dissolution(
   description: "TRIGGER: a fleet card census binds each installed A16 to nvidia_a16_board_catalog, and a power policy reads board_power to bound the cap it selects, thermal to decide that the card needs a fan zone that follows it, and zero_power so a park policy cannot select a state the board does not have. SUFFICIENT FOR: the board row has a production consumer; until then only test.claim.gpu_board_catalog_witness reads it, which exercises admission and is not a consumer." as NonEmptyStr
 )

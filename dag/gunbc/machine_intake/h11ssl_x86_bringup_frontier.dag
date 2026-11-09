@@ -35,7 +35,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 //    uefi_pxe_admitted_architectures, now Aarch64 and X86_64) and gunbc.site_pxe_edge (one pxe-service
 //    per served chain; the converge's amd64 row is Unpinned until its grub.cfg rendering is bound);
 //    extdeps.firmware.ipxe ships ipxe_arm64_efi_snponly and no x86_64 target -- and per the route
-//    settled 2026-10-24 (gunbc.plans.network_install_architecture_rows, #15060) the x86 first stages
+//    settled 2026-10-24 (gunbc.plans.network_install_architecture_rows (deleted 2026-11-08), #15060) the x86 first stages
 //    are the Ubuntu signed chain (shim + grub netboot builds), not an x86 iPXE. For x86 UEFI
 //    PXE/HTTP boot: none exists.
 //
@@ -61,7 +61,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // G6 adopting a hand-installed host into the fleet. Exists: gunbc.host.host_identity_adopt
 //    (HostIdentityAdoptReceipt -- the SSH transport identity of a host it PROBES) and
 //    gunbc.host.host_identity_assimilation (the converged-state fold, which must NOT be called for
-//    an effect no route realized -- DESIGN §4d). What does NOT exist: the shape this unit needs --
+//    an effect no route realized -- gunbc.design_argument::epistemic_humility). What does NOT exist: the shape this unit needs --
 //    adoption that begins from an operator-DECLARED install with no prior modeled effect (no minted
 //    boot-media key, no provisioned standing; cf. gunbc.boot_medium_key_mint, which the modeled
 //    converge mode mints and a hand install never had).
@@ -100,7 +100,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 //   5. G1 seed/image: the largest new modeling surface (arch-gate inversion + x86 seed content), and
 //      it gates only G2's happy path.
 //   6. G3 x86 network boot: needs G1's artifacts and the signed shim+grub loader chain served whole
-//      by the edge per gunbc.plans.network_install_architecture_rows (#15060 -- the approved route;
+//      by the edge per gunbc.plans.network_install_architecture_rows (deleted 2026-11-08) (#15060 -- the approved route;
 //      iPXE stays the ARM row's chain), and edits the srv4 PXE edge's admission set -- the most
 //      site-wide change, done last of the enablers.
 //   7. G2 install-to-disk route: composes G1 (media), G3 (boot path), G4 (media attach) on the
@@ -220,8 +220,7 @@ data h11ssl_install_to_disk_frontier: FrontierRow = frontier_row_decl(
   dissolution: h11ssl_install_to_disk_dissolution,
 )
 
-// THE FOLD (DESIGN §3c): gunbc.census_closure_frontier enrolls these rows into the dissolution
-// census; the hand-install receipt names this module as where its install's missing route lives;
+// gunbc.design_argument::consumption: the roster fold that enrolled these rows (gunbc.census_closure_frontier) was retired; the hand-install receipt names this module as where its install's missing route lives;
 // test.claim.supermicro_h11ssl_x86_bringup_frontier_witness exercises the roster.
 data h11ssl_x86_bringup_frontier_rows: List<FrontierRow> = [
   h11ssl_virtual_media_frontier,
