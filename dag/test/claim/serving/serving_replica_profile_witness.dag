@@ -331,8 +331,8 @@ test fn srv1_ram_refuses_on_at_least_two_components() -> Bool {
 
 test fn srv3_artifact_bills_its_host_ram_rung_directly() -> Bool {
   match serving_artifact_charged_host_ram(a: srv3_routed_expert_artifact) {
-    Present { value: b } => byte_size_count(b: b) > 0
-    Absent => false
+    Present { value: ServingMemoryRead { bytes: b, provenance: _ } } => byte_size_count(b: b) > 0
+    _ => false
   }
 }
 

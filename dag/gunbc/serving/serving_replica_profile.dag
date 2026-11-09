@@ -1129,10 +1129,12 @@ fn expert_ram_charge_of(artifact: Optional<ServingSharedArtifact>) -> Optional<B
         Absent => Present { value: byte_size(count: 0) },
         Present { value: rung } =>
           match serving_artifact_charged_host_ram(a: row) {
-            // The reading the layout actually bills: whole bytes when pinned, the floor when evictable. An
-            // unread one is not a zero; it is an obligation, and the axis refuses.
-            ServingMemoryRead { bytes: bytes, provenance: _ } => Present { value: bytes },
-            _ => Absent,
+            // The reading the layout actually bills: whole bytes when pinned, the floor when evictable. The
+            // rule answers a READING, so unwrap the reading first -- an assumed or unread one is not a zero,
+            // it is an obligation, and the axis refuses.
+            Present { value: ServingMemoryRead { bytes: bytes, provenance: _ } } => Present { value: bytes },
+            Present { value: _ } => Absent,
+            Absent => Absent,
           },
       },
   }
