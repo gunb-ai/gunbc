@@ -72,3 +72,7 @@ Maintained by silent-bee-845, the daily integration manager. CI's required job (
 - body_lowering/data_initializer_fn_value: 0/3 at every leg.
 - The emitter third boundary (branch/match tail closure): lane dispatched 2026-11-09.
 - Fleet flake: runs that die at ~50 s with "workflow file issue" and no steps are the fleet, not the diff; re-run them.
+
+## EMITTER THIRD BOUNDARY (masked; recorded in concern row branch_match_arm_closure_declared_return_not_admitted, #16195)
+- Becomes testable once any upstream blocker admits the shape. Blocker (ii), inhabitance, is being worked in lane adhoc-b66614dd-46c.
+- The fix is mapped (cool-newt-294): thread the FunctionTypeAtItemReturn position through target_project_branch_bool_if_else and the match projector to target_project_realized_closure, at BOTH item-body routes. In target_serialize project_arrow_body_from_inferred_facts, add ComputationBody{Branch}/{Match} arms mirroring #16180's Bind arm. In target_model target_project_arrow_body_by_kind, pass Present(FunctionTypeAtItemReturn) at the Branch/Match arms. Fixture-first; rustc is the referee.
