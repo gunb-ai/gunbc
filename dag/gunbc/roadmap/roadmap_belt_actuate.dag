@@ -400,7 +400,7 @@ import gunbc.roadmap.roadmap_dispatch_destination {
   DispatchSpawnOrigin,
   dispatch_spawn_origin_json,
 }
-import gunbc.roadmap.roadmap_validation_oracle {
+import gunbc.roadmap.roadmap_validation_oracle { ValidationRefusalCause,
   ValidationOracleRef,
   OracleObservation,
   OraclePinScope,
@@ -9595,15 +9595,15 @@ fn belt_verify_capture_gate(node_id: String, capture: SubmissionCaptureObservati
 // every recorded verdict pass through unchanged, and the operator resume bypasses the ledger.
 type RetryLedgerCount
   = RetryLedgerCounted { n: Int }
-  | RetryLedgerUnreadable { reason: String }
+  | RetryLedgerCountUnreadable { reason: String }
 
 fn belt_verify_retry_ledger_count(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, receipt_basename: String) -> RetryLedgerCount {
   match attempt_state_open(instance: instance, node: node_id as String, attempt_key: attempt_key) {
-    AttemptStateUnready { detail } => RetryLedgerUnreadable { reason: join(["the refused-retry ledger could not be opened: ", detail], "") }
+    AttemptStateUnready { detail } => RetryLedgerCountUnreadable { reason: join(["the refused-retry ledger could not be opened: ", detail], "") }
     AttemptStateReady { store } =>
       match attempt_state_list(store: store, directory: AttemptDirectoryVerification) {
         AttemptStateListingRead { entries } => RetryLedgerCounted { n: refused_retry_ledger_count(entries: entries, receipt_basename: receipt_basename) }
-        AttemptStateListingUnreadable { detail } => RetryLedgerUnreadable { reason: join(["the refused-retry ledger could not be listed: ", detail], "") }
+        AttemptStateListingUnreadable { detail } => RetryLedgerCountUnreadable { reason: join(["the refused-retry ledger could not be listed: ", detail], "") }
       }
   }
 }
@@ -9653,7 +9653,7 @@ fn belt_verify_retry_standing_of_refused(instance: HostDashboardInstance, progre
             Absent => RefusedRetryUnreadable { reason: "the refused verification receipt carries no typed refusal cause, so whether it is an infrastructure refusal cannot be decided" }
             Present { value: cause } =>
               match belt_verify_retry_ledger_count(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, receipt_basename: basename) {
-                RetryLedgerUnreadable { reason } => RefusedRetryUnreadable { reason: reason }
+                RetryLedgerCountUnreadable { reason } => RefusedRetryUnreadable { reason: reason }
                 RetryLedgerCounted { n } => refused_retry_standing(class: refusal_cause_class(cause: cause), retries_recorded: n)
               }
           }
@@ -9721,7 +9721,7 @@ fn belt_verify_retry_gate(
     BeltVerificationDefer { reason: _ } => {
       let node_id = progress.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
       match belt_verify_retry_ledger_count(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, receipt_basename: receipt_basename) {
-        RetryLedgerUnreadable { reason } =>
+        RetryLedgerCountUnreadable { reason } =>
           BeltVerificationEvidenceUnreadable { reason: join(["the refused-retry ledger is unreadable, so the retry is neither run nor silently dropped: ", reason], "") }
         RetryLedgerCounted { n } =>
           match belt_verification_retry_verdict(decision: decision, source: source, retries_recorded: n) {
@@ -10393,6 +10393,16 @@ fn belt_verify_one_for_instance(instance: HostDashboardInstance, node_id: String
   belt_verify_one_gated(instance: instance, node_id: node_id, attempt_key: attempt_key, mode: VerifyAsBelt)
 }
 
+// The refused cause of a receipt read through the file source: only a present receipt carries one,
+// read by the one classifier (belt_verification_refused_cause); absent or unreadable carries none.
+fn belt_verification_file_refused_cause(source: VerificationReceiptFileSource) -> ValidationRefusalCause? {
+  match source {
+    VerificationReceiptPresent { text } => belt_verification_refused_cause(source: ExactVerificationReceiptPresent { text: text })
+    VerificationReceiptAbsent => none
+    VerificationReceiptUnreadable { detail: _ } => none
+  }
+}
+
 fn belt_verify_one_gated(instance: HostDashboardInstance, node_id: String, attempt_key: String, mode: BeltVerifyMode) -> BeltVerifyOneResult {
   let nid = node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
   let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: nid, attempt_key: attempt_key)
@@ -10423,7 +10433,7 @@ fn belt_verify_one_gated(instance: HostDashboardInstance, node_id: String, attem
                     match mode {
                       VerifyAsBelt => VerifyOneAlreadyRecorded { verdict_key: verdict_key, detail: detail }
                       VerifyAsOperatorResume =>
-                        match belt_verification_refused_cause(source: receipt_source) {
+                        match belt_verification_file_refused_cause(source: receipt_source) {
                           Present { value: _ } => belt_verify_one_run(instance: instance, node_id: node_id, attempt_key: attempt_key, mode: mode)
                           Absent => VerifyOneAlreadyRecorded { verdict_key: verdict_key, detail: detail }
                         }

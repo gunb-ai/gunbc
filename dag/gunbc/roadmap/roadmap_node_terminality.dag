@@ -13,7 +13,7 @@ import std.types { String, NonEmptyStr }
 import gunbc.roadmap.roadmap_acceptance_history_carrier { RoadmapAcceptanceEventHistoryLoad }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
 import gunbc.roadmap.roadmap_event_carrier { roadmap_event_carrier_layout_for_instance, roadmap_events_read, CarrierClosed, EventsRead, EventsReadRefused }
-import gunbc.roadmap.roadmap_event_log { roadmap_issue_state, roadmap_standing_is_retired, NodeRetired }
+import gunbc.roadmap.roadmap_event_log { event_principal_label, roadmap_issue_state, roadmap_standing_is_retired, NodeRetired }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_operator_acceptance { roadmap_operator_node_closed, AcceptanceFound, AcceptanceAbsent, ClosedStatusUnreadable }
 
@@ -50,7 +50,7 @@ fn belt_node_lineage_terminal_read(instance: HostDashboardInstance, node_id: Str
             // The retirement standing names the principal (by) and the reason; carry them typed
             // rather than flattening to a "NodeRetired:" prose tag (DESIGN §4c/§5).
             match standing {
-              NodeRetired { by, reason } => LineageRetired { by: by as String, reason: reason as String }
+              NodeRetired { by, reason } => LineageRetired { by: event_principal_label(p: by), reason: reason as String }
               // Unreachable: roadmap_standing_is_retired answers true only for NodeRetired. Fail closed
               // rather than leave the arm unwritten (§5).
               _ => LineageTerminalUnreadable { reason: "the retirement standing was not NodeRetired despite the retired predicate — fail closed" }
