@@ -103,6 +103,7 @@ import test.claim.roadmap.witness_supplied_instance {
   witness_write_locus_file, witness_install_locus_file, witness_locus_executables,
   witness_guest_tree_revision, witness_locus_install, witness_locus_install_converged,
   witness_sudo_elevation_available,
+  witness_locus_install_spine, witness_fold_spine_dir_is_admissible,
 }
 import extdeps.tools.stat { stat_mode_command, stat_size_bytes_command }
 import extdeps.tools.gnu_coreutils {
@@ -2681,6 +2682,7 @@ fn launcher_inner_start(instance: HostDashboardInstance, unit: WetLaunchedUnit, 
                   instance_root: instance.instance_root as String,
                   attempt_key: unit.attempt_key,
                   before: before,
+                  claim: claim,
                 )
                 wet_stage_of(
                   stage: join(["unit-exit-observed:", unit.label], ""),
@@ -3211,8 +3213,13 @@ fn wet_record_names_snapshot(before: WetRecordNames) -> List<String> {
 fn wet_unit_exited_with_its_record(instance_root: String, unit: WetLaunchedUnit, before: WetRecordNames) -> Bool {
   match wet_unit_exit_record(instance_root: instance_root, unit: unit, before: before) {
     WetUnitExitRecordPresent { name: _ } => true
+    // THE SPELLING IS DELIBERATELY DIFFERENT FROM THE WAIT'S GIVE-UP BELOW. Both lines used to read
+    // `unit exited before its exit record: no record at ... for attempt ...`, so a trail line could not be
+    // attributed to one call site: on srv2 run15794r2 the refusal claim's DESIGNED false conjunct looked
+    // exactly like an exhausted 240-beat wait, and the adjudication read it as a PASS absorbing a timeout.
+    // The trail is the adjudication's authority only if a line names one site.
     WetUnitExitRecordAbsent { inbox: inbox } => wet_stage(
-      stage: join(["unit exited before its exit record: no record at ", inbox, " for attempt ", unit.attempt_key], ""),
+      stage: join(["exit-record-check-absent: no record at ", inbox, " for attempt ", unit.attempt_key], ""),
       ok: false,
     )
     WetUnitExitRecordUnreadable { inbox: inbox } => wet_stage(
@@ -3222,14 +3229,17 @@ fn wet_unit_exited_with_its_record(instance_root: String, unit: WetLaunchedUnit,
   }
 }
 
-fn wet_inner_exit_status(instance_root: String, attempt_key: String, before: WetRecordNames) -> SandboxTouch {
+fn wet_inner_exit_status(instance_root: String, attempt_key: String, before: WetRecordNames, claim: String) -> SandboxTouch {
   match before {
     WetRecordNamesUnreadable => SandboxTouchUnrunnable
-    WetRecordNamesListed { names: seen } => wet_inner_exit_status_poll(instance_root: instance_root, attempt_key: attempt_key, seen: seen, remaining: 240)
+    WetRecordNamesListed { names: seen } => wet_inner_exit_status_poll(instance_root: instance_root, attempt_key: attempt_key, seen: seen, remaining: 240, wait_beats: 240, claim: claim)
   }
 }
 
-fn wet_inner_exit_status_poll(instance_root: String, attempt_key: String, seen: List<String>, remaining: Int) -> SandboxTouch {
+// `wait_beats` is the ORIGINAL budget and `remaining` counts down, because the give-up arm has to tell a
+// wait that ran out from a probe that never asked to wait: the first is a capability gap, the second is a
+// designed condition. Both arrive at `remaining <= 0`.
+fn wet_inner_exit_status_poll(instance_root: String, attempt_key: String, seen: List<String>, remaining: Int, wait_beats: Int, claim: String) -> SandboxTouch {
   match wet_record_names(instance_root: instance_root, attempt_key: attempt_key) {
     WetRecordNamesUnreadable => SandboxTouchUnrunnable
     WetRecordNamesListed { names: after } => {
@@ -3241,13 +3251,23 @@ fn wet_inner_exit_status_poll(instance_root: String, attempt_key: String, seen: 
             // after 240 beats: "Unrunnable" told the reader nothing about what had been waited for. The
             // bound itself is unchanged -- this only says out loud what it was waiting for.
             let _ = wet_stage(
-              stage: join(["unit exited before its exit record: no record at ", attempt_exit_inbox_dir(instance_root: instance_root), " for attempt ", attempt_key], ""),
+              stage: join(["exit-record-wait-gave-up: still no record at ", attempt_exit_inbox_dir(instance_root: instance_root), " for attempt ", attempt_key, " after ", to_string(wait_beats), " beats"], ""),
               ok: false,
             )
+            // A WAIT THAT EXHAUSTS ITS BUDGET IS A CAPABILITY GAP, NOT A REFUSAL WITH A CAUSE: the record
+            // may appear one beat later, and nothing here says the property is false. The claim still goes
+            // false -- every consuming arm maps an unrunnable touch to false -- but the adjudication must
+            // not count that FAIL as FALSIFIED, which is exactly what it does to a FAIL with no
+            // not-observed record. A zero-beat call is the other thing: it asks "is the record there
+            // right now?" and its empty answer IS the designed condition (the prior-run claim's refusal
+            // arm), so it records no gap.
+            if wait_beats > 0 {
+              let _ = wet_not_observed(claim: claim as NonEmptyStr, capability: "unit-exit-record-within-the-wait" as NonEmptyStr)
+            }
             SandboxTouchUnrunnable
           } else {
             let _ = shell.Exec.RunArgv(program: "/usr/bin/sleep", arguments: ["1"])
-            wet_inner_exit_status_poll(instance_root: instance_root, attempt_key: attempt_key, seen: seen, remaining: remaining - 1)
+            wet_inner_exit_status_poll(instance_root: instance_root, attempt_key: attempt_key, seen: seen, remaining: remaining - 1, wait_beats: wait_beats, claim: claim)
           }
         Present { value: name } =>
           if length(fresh) != 1 {
@@ -3295,12 +3315,12 @@ test fn a_prior_run_record_for_the_key_is_not_read_as_this_runs() -> Bool {
       && match wet_record_names(instance_root: root, attempt_key: wet_prior_run_attempt_key) {
         WetRecordNamesUnreadable => false
         WetRecordNamesListed { names: seen } =>
-          (match wet_inner_exit_status_poll(instance_root: root, attempt_key: wet_prior_run_attempt_key, seen: seen, remaining: 0) {
+          (match wet_inner_exit_status_poll(instance_root: root, attempt_key: wet_prior_run_attempt_key, seen: seen, remaining: 0, wait_beats: 0, claim: "a_prior_run_record_for_the_key_is_not_read_as_this_runs") {
             SandboxTouchUnrunnable => true
             SandboxTouchRan { exit_code: _ } => false
           })
             && wet_plant_record(root: root, stage_dir: attempt_exit_inbox_dir(instance_root: root), status: 0, attempt_key: wet_prior_run_attempt_key)
-            && (match wet_inner_exit_status_poll(instance_root: root, attempt_key: wet_prior_run_attempt_key, seen: seen, remaining: 0) {
+            && (match wet_inner_exit_status_poll(instance_root: root, attempt_key: wet_prior_run_attempt_key, seen: seen, remaining: 0, wait_beats: 0, claim: "a_prior_run_record_for_the_key_is_not_read_as_this_runs") {
               SandboxTouchUnrunnable => false
               SandboxTouchRan { exit_code } => exit_code == 0
             })
@@ -4168,6 +4188,83 @@ test fn the_shared_helper_locus_base_is_run_keyed_and_never_a_fixed_path() -> Bo
   wet_claim_verdicts_with_root_readbacks(verdict: verdict, roots: [root as NonEmptyStr, other_root as NonEmptyStr])
 }
 
+// WHY THIS CLAIM EXISTS. srv2 run15794r2 (2026-11-09) lost two claims to ONE line in the fixture: the
+// install fold was handed the run-keyed locus base as a SPINE dir, and the fold's directory step runs
+// `install -d -o <owner> -g <owner> -m 0755` over every spine entry plus the locus
+// (`tree_install_in_realm`: `fold(list_snoc_item(xs: spine, item: locus), ...)`). A spine entry is therefore
+// a directory the fold is told to TAKE OWNERSHIP of, not merely to create. The first fold on an elevating
+// host re-owned the base the harness had mktemped, and every later claim in the same run that creates a NEW
+// locus dir under it as the unprivileged principal got EACCES. Both readbacks were identical --
+// `mkdir -p <base>/<rev>/dag` -> `cannot create directory '<base>/<rev>': Permission denied` -- for
+// `an_unsealed_or_altered_helper_locus_receipt_is_not_read_as_installed` and
+// `a_locus_whose_seal_cannot_be_written_is_not_read_as_installed`, and the surviving trail of the run
+// before it shows the same interaction one step later: the fold converged and its receipt could not be
+// sealed under that base. The base is the harness's directory; the fold owns the locus it is installing and
+// nothing above it.
+//
+// WHAT IS JUDGEABLE ON A HOST WITH NO SUDO: the spine list and the filter over it, both pure. WHAT IS NOT:
+// the consequence. The re-own needs a real chown, so the two claims this blocked stay NOT OBSERVED locally
+// and are discharged only on a host with elevation; the PR body says so instead of booking this claim as
+// their discharge. The control that keeps this claim honest is the mutant: put the base back into the
+// fixture's candidate list and conjunct (1) goes false on any host, elevated or not.
+test fn the_fold_is_never_handed_the_run_keyed_locus_base_as_a_spine_dir() -> Bool {
+  let root = wet_claim_root(tag: "fold-spine" as NonEmptyStr)
+  let inst = wet_supplied_lab_instance(scratch_parent: root)
+  let base = witness_batch_locus_base(instance: inst)
+  let spine = witness_locus_install_spine(instance: inst)
+  // THE LOCUS, from production's accessor over the revision this claim put under git -- the same route
+  // every other locus conjunct in this file uses, so a mutation of the real derivation has somewhere to
+  // show up.
+  let planted = wet_plant_confined_tree(instance: inst)
+  let revision = witness_guest_tree_revision(instance: inst)
+  let locus = witness_locus_dir_text(instance: inst, revision_text: revision)
+  let live_root = srv1_lab_dashboard_instance().instance_root as String
+
+  // ONE STAGE PER CONJUNCT, because the trail is what an adjudication reads: a FAIL with no stage line
+  // cannot say which half broke, and on a host where the fold runs the halves fail for different reasons.
+  let premise = wet_stage(
+    stage: "fold-spine-premise-planted-with-a-real-revision",
+    ok: planted && revision != "",
+  )
+  // 1. THE FOLD IS HANDED NO SUCH DIR: not the run's base, not this claim's own root, not any root the
+  // fixture refuses. This is the arm the mutant reddens.
+  let spine_holds_none = wet_stage(
+    stage: "fold-spine-holds-no-harness-dir",
+    ok: !contains(xs: spine, item: base)
+      && !contains(xs: spine, item: inst.instance_root as String)
+      && all(xs: spine, predicate: entry => !witness_supplied_root_is_refused(candidate: entry)),
+  )
+  // 2. THE FILTER BITES, so 1 is not the vacuous truth of a guard that refuses nothing: the base and the
+  // live lab root are inadmissible as spine dirs.
+  let filter_refuses = wet_stage(
+    stage: "fold-spine-filter-refuses-the-base-and-the-live-root",
+    ok: !witness_fold_spine_dir_is_admissible(instance: inst, candidate: base)
+      && !witness_fold_spine_dir_is_admissible(instance: inst, candidate: inst.instance_root as String)
+      && !witness_fold_spine_dir_is_admissible(instance: inst, candidate: live_root),
+  )
+  // ...and the LOCUS itself is admissible, which is what stops the filter from being a constant false that
+  // would also drop the directory the fold is installing.
+  let filter_accepts_the_locus = wet_stage(
+    stage: "fold-spine-filter-accepts-the-locus-being-installed",
+    ok: witness_fold_spine_dir_is_admissible(instance: inst, candidate: locus),
+  )
+  // 3. THE EMPTY SPINE IS SAFE BECAUSE THE BASE PRECEDES THE FOLD: the run names it, or the fallback base
+  // IS this claim's own root, which `wet_claim_root` created. Without this leg the claim would read as
+  // "the fold no longer creates the base", which is a different and worse claim -- the fold creating it is
+  // exactly how the base ended up owned by the deploy principal.
+  let base_precedes = wet_stage(
+    stage: "fold-spine-base-precedes-the-fold",
+    ok: wet_ok(command: mkdir_parents_command(path: base))
+      && wet_path_exists(path: base)
+      && starts_with(s: locus, prefix: join([base, "/"], "")),
+  )
+
+  wet_claim_verdict_with_root_readback(
+    verdict: premise && spine_holds_none && filter_refuses && filter_accepts_the_locus && base_precedes,
+    root: root as NonEmptyStr,
+  )
+}
+
 test fn a_leg_that_finds_its_locus_installed_does_not_reinstall_it() -> Bool {
   // WHY THIS CLAIM EXISTS. srv2's S1 at 06995b57 spent 450 s of CPU re-installing a locus that was
   // already installed, once per leg, inside a single claim (27.5M eval steps for two legs). The fix makes
@@ -4803,16 +4900,26 @@ test fn the_drain_names_the_installed_locus_and_not_the_source_copy() -> Bool {
           predicate: word => starts_with(s: word, prefix: join([repo, "/"], "")),
         ),
     )
-    // 5. THE LOCUS IS PRODUCTION'S SHAPE, READ FROM PRODUCTION'S ACCESSOR: under the claim's instance
-    // root (never the live lab root -- that is `wet_claim_is_confined`'s job), revision-qualified
-    // through production's `helper_locus_dir` (`base + "/" + revision`, release_locus.dag:112 -- the
-    // step stem lives in the HelperLocus row, not in the path), and the row's step stem IS the live
-    // launcher's, so this is the attempt-unit helper locus's shape and not some directory with a
-    // receipt in it.
+    // 5. THE LOCUS IS PRODUCTION'S SHAPE, READ FROM PRODUCTION'S ACCESSOR: revision-qualified under the
+    // helper locus's BASE through production's `helper_locus_dir` (`base + "/" + revision`,
+    // release_locus.dag:112 -- the step stem lives in the HelperLocus row, not in the path), and the row's
+    // step stem IS the live launcher's, so this is the attempt-unit helper locus's shape and not some
+    // directory with a receipt in it.
+    //
+    // WHAT THE FIRST DRAFT GOT WRONG, AND IT GOT WRONG ONLY ON THE HOST THIS CLAIM EXISTS FOR. It also
+    // required the locus under `inst.instance_root`, conjoined with the base arm -- and those two are
+    // mutually exclusive exactly when the run names a shared base, which is the configuration the S1 script
+    // runs: the base is then the run's mktemp, not the claim's root, so NO locus could satisfy the
+    // conjunction. srv2 run15794r2 failed here and nowhere else in the claim (trail: four legs ok, then
+    // `drain-argv-locus-is-a-production-helper-locus FAILED`); locally the base falls back to the instance
+    // root, so the same claim had been passing for the wrong reason all along. Confinement is now asserted
+    // where it is actually decided -- the fixture's own refusal, over the BASE -- which rules the live lab
+    // roots out under either derivation of it, while `wet_claim_is_confined` keeps ruling the claim's own
+    // root out.
     && wet_stage(
       stage: "drain-argv-locus-is-a-production-helper-locus",
-      ok: starts_with(s: locus, prefix: join([inst.instance_root as String, "/"], ""))
-        && starts_with(s: locus, prefix: join([witness_claim_helper_locus(instance: inst).base, "/"], ""))
+      ok: starts_with(s: locus, prefix: join([witness_claim_helper_locus(instance: inst).base, "/"], ""))
+        && !witness_supplied_root_is_refused(candidate: witness_claim_helper_locus(instance: inst).base)
         && string_contains(s: locus, pattern: revision)
         && witness_claim_helper_locus(instance: inst).step_stem
           == attempt_system_unit_launcher_locus(instance: inst).step_stem

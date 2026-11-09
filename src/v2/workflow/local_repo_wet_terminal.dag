@@ -4150,6 +4150,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "the_fold_is_never_handed_the_run_keyed_locus_base_as_a_spine_dir" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "the_fold_is_never_handed_the_run_keyed_locus_base_as_a_spine_dir",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "an_answer_that_never_arrives_refuses_at_a_real_bound_naming_beats_and_path" },
       entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
       function: "an_answer_that_never_arrives_refuses_at_a_real_bound_naming_beats_and_path",

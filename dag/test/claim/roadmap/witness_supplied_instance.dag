@@ -713,12 +713,48 @@ fn witness_guest_tree_revision(instance: HostDashboardInstance) -> String {
 data witness_locus_needs_elevation_cause: NonEmptyStr =
   "the locus install route needs elevation; this host has no sudo"
 
-// PRODUCTION'S FOLD, CALLED AS-IS. The spine is the helper locus's base (the fold installs the spine
-// dirs, then the ancestor of the locus, then the locus itself); `source_root` is the planted guest
-// tree, whose `dag/` and `src/v2` the fold observes, installs and reads back; `executables` is exactly
-// what production's helper-snapshot comment says a helper locus holds — `gunbc_release_bin_name` alone.
-// The refusal arms are the two ways this claim can be unable to proceed, each with its own cause;
-// neither is a pass, and the fold's own `TreeInstallRefused` names the step that failed.
+// THE SPINE THE FOLD IS TOLD TO OWN, and it is EMPTY. The fold's directory step runs
+// `install -d -o <owner> -g <owner> -m 0755` over every spine entry plus the locus (host_effect_realize
+// `tree_install_in_realm`: `fold(list_snoc_item(xs: spine, item: locus), ...)`), so a spine entry is a
+// directory the fold is told to TAKE OWNERSHIP of, not merely to create.
+//
+// srv2 run15794r2 (2026-11-09) is what found this. The spine used to name the run-keyed locus base, and
+// the first fold on an elevating host therefore re-owned that base to the deploy principal at 0755. Every
+// later claim in the same run that creates a NEW locus dir under it as the unprivileged principal then
+// gets EACCES: two claims were lost exactly that way, both reading back
+// `mkdir -p <base>/<rev>/dag` -> `cannot create directory '<base>/<rev>': Permission denied`
+// (`an_unsealed_or_altered_helper_locus_receipt_is_not_read_as_installed`,
+// `a_locus_whose_seal_cannot_be_written_is_not_read_as_installed`), and the surviving trail of the
+// previous run shows the same interaction one step later — the fold converged and its receipt could not
+// be sealed under that base. The base is the HARNESS's directory: the S1 script mktemps it, exports it,
+// and other claims write into it. The fold owns the locus it is installing and nothing above it.
+//
+// THE FILTER IS THE RULE, the empty candidate list is one of its consequences. Any future entry that
+// names the run's own base, a claim's own root, or any root the fixture refuses is dropped here, so the
+// defect cannot come back as one added line in a list. `the_fold_is_never_handed_the_run_keyed_locus_
+// base_as_a_spine_dir` asserts both halves: the spine holds no such entry, AND the filter actually bites
+// on the base (a guard that refuses nothing would pass that first half vacuously).
+data witness_locus_install_spine_candidates: List<String> = []
+
+fn witness_fold_spine_dir_is_admissible(instance: HostDashboardInstance, candidate: String) -> Bool {
+  candidate != witness_batch_locus_base(instance: instance)
+    && candidate != (instance.instance_root as String)
+    && !witness_supplied_root_is_refused(candidate: candidate)
+}
+
+fn witness_locus_install_spine(instance: HostDashboardInstance) -> List<String> {
+  filter(
+    xs: witness_locus_install_spine_candidates,
+    predicate: candidate => witness_fold_spine_dir_is_admissible(instance: instance, candidate: candidate),
+  )
+}
+
+// PRODUCTION'S FOLD, CALLED AS-IS. The spine is what the fold owns above the locus (see above: nothing,
+// by rule); `source_root` is the planted guest tree, whose `dag/` and `src/v2` the fold observes,
+// installs and reads back; `executables` is exactly what production's helper-snapshot comment says a
+// helper locus holds — `gunbc_release_bin_name` alone. The refusal arms are the two ways this claim can
+// be unable to proceed, each with its own cause; neither is a pass, and the fold's own `TreeInstallRefused`
+// names the step that failed.
 fn witness_locus_install(
   instance: HostDashboardInstance,
   revision_text: String,
@@ -737,7 +773,7 @@ fn witness_locus_install(
   } else {
     approval_broker_tree_install_at(
       owner: approval_broker_helper_root_principal,
-      spine: [witness_claim_helper_locus(instance: instance).base],
+      spine: witness_locus_install_spine(instance: instance),
       source_root: instance.repo_root as String,
       locus: witness_claim_locus_dir(instance: instance, revision: revision),
       revision: revision,
