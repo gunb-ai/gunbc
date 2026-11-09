@@ -233,7 +233,7 @@ fn acceptance_json_value(a: Acceptance, line: RoadmapItem) -> JsonValue {
           json_kv(key: "kind", value: json_string(s: "prs_merged")),
           json_kv(key: "prs", value: json_array(elements: prs |> map(n => json_int(n: n)))),
         ])
-      AuthoredLine { done: _, content: _ } =>
+      AuthoredLine { content: _ } =>
         json_object(members: [
           json_kv(key: "kind", value: json_string(s: "prs_merged_model_error")),
           json_kv(key: "prs", value: json_array(elements: [])),

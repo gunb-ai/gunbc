@@ -337,11 +337,14 @@ fn node_accepted_in(index: Map<String, List<RoadmapAcceptanceReceipt>>, rn: Road
 type AcceptanceNodeReopensActiveFrontier {}
 type AcceptanceNodeRemainsSuperseded {}
 
-// The revocation disposition names the FRONTIER CONSEQUENCE, not the supersession fact.
-// SupersededLine already owns terminal standing and `by`. AcceptanceNodeRemainsSuperseded is
-// deliberately payload-free: it says the revoked receipt stays off the active frontier because the
-// referenced node remains superseded. The join to that node's existing SupersededLine is the
-// wall; `by` is read from the line, never re-authored on the event.
+// The revocation disposition names the FRONTIER CONSEQUENCE, not the ending fact. Terminal standing
+// belongs to the event log alone: a node is ended by an AcceptanceRecordedEvent (accepted) or a
+// RetiredEvent (retired), and roadmap_standing_is_terminal is the only read of that.
+// AcceptanceNodeRemainsSuperseded is deliberately payload-free: it says the revoked receipt stays off
+// the active frontier, and what holds it there is the log's own standing for the referenced node --
+// accepted or retired -- never a field re-authored on the event. The row-level supersession line this
+// comment used to join against was a second, hand-editable home for that fact and is deleted with the
+// authored carrier.
 type AcceptanceRevocationDisposition
   = AcceptanceNodeReopensActiveFrontier
   | AcceptanceNodeRemainsSuperseded
@@ -1003,8 +1006,9 @@ fn remains_superseded_revocations_join(
 }
 
 // Consequence fold only. Callers that admit a withheld set MUST first
-// remains_superseded_revocations_join against the declared nodes; a RemainsSuperseded arm that
-// does not join a SupersededLine is a projection refusal, not an empty withheld list.
+// remains_superseded_revocations_join against the declared nodes; a RemainsSuperseded arm that joins
+// neither an accepted node nor a retired one in the event log is a projection refusal
+// (RemainsSupersededRevocationOnUnretiredNode), not an empty withheld list.
 // THE NODES OFF THE ACTIVE FRONTIER: the ones the acceptance history withholds (accepted, or revoked
 // under a remains-superseded disposition) UNION the ones the EVENT LOG has retired. A retired node
 // leaves the plan exactly like an accepted one — that is the whole point of retiring it — and the union

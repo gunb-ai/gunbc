@@ -762,7 +762,7 @@ test fn witness_superseded_row_cannot_reenter_active_graph() -> Bool {
 // the ticket's standing fields.
 test fn witness_authority_contains_no_mutable_execution_ledger() -> Bool {
   all(nodes() |> filter(n => match line_ticket(item: n.line) { Present { value: _ } => true  Absent => false }), n => match n.line {
-    TicketLine { done: _, ticket } =>
+    TicketLine { ticket } =>
       ticket.authored_on == ""
         && ticket.last_verified_on == ""
         && !string_contains(s: ticket.current_state, pattern: "PR #")
