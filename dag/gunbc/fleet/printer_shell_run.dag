@@ -8,7 +8,7 @@ import gunbc.fleet.printer_selection { select_printer, PrinterSelected, PrinterS
 import gunbc.fleet.printer_credential_source { HostCustodyCredentialSource }
 import gunbc.fleet.printer_workflow_run { printer_operation }
 
-// THE SHELL ROUTE: prepare, observe, hold-release-request or start a print from a shell on srv1, with no
+// THE SHELL ROUTE: prepare, observe or start a print from a shell on srv1, with no
 // GitHub Actions run, gated only by the operator's approval in the approval app (operator rulings
 // 2026-11-05: gunbc.design_ruling printer_start_gate_is_the_approval_not_the_ref and
 // printer_credential_is_held_in_host_custody). It calls the SAME printer_operation the workflow route
@@ -23,8 +23,7 @@ import gunbc.fleet.printer_workflow_run { printer_operation }
 //   sudo -u ghrunner env PRINTER_OPERATION=converge PRINTER_TARGET=printer-01 PRINTER_REQUEST_ID=<id> \
 //     PRINTER_ROOT=<root> PRINTER_RECIPE=<recipe> PRINTER_SOURCE_REVISION=<commit of the plate plan> \
 //     gunbc run --entry dag/gunbc/fleet/printer_shell_run.dag --function run
-// PRINTER_OPERATION is observe, hold-release-request or converge; observe and hold-release-request need
-// only PRINTER_TARGET. A converge over an unrecorded request prepares and records; over a recorded
+// PRINTER_OPERATION is observe or converge; observe needs only PRINTER_TARGET. A converge over an unrecorded request prepares and records; over a recorded
 // request it files the approval card and, on approval, starts exactly what the card named.
 //
 // With no custody copy the route refuses with PrinterCustodyAbsent naming the path; it never falls back

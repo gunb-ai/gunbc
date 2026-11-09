@@ -20,7 +20,10 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use crate::cli_run::{collect_dag_files_tolerant, extract_module_path, repo_rel, workspace_root};
-use crate::module_path_index::parsed_dag_file::{parse_dag_content, parse_dag_file};
+use crate::module_path_index::parsed_dag_file::{
+    dag_parse_refusal_sentence, parse_dag_content, parse_dag_content_checked, parse_dag_file,
+    DagParseRefusal,
+};
 use crate::v1_compiler_infer_env::lookup_binding_by_name;
 use crate::v1_compiler_infer_items::{item_kind, ItemKind};
 use crate::v1_interpreter::{
@@ -1863,18 +1866,63 @@ pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
     }
 }
 
-/// The declaration rows of ONE source: `None` when it does not parse (the census skips it),
-/// otherwise every named top-level item, `qualified_name` = the file's own module line + name. The
-/// ONE per-file fold: the census walk and the keyed read (`keyed_decl_facts`) both project it, so a
-/// keyed row is the census row byte for byte.
-fn decl_facts_of_source(
+/// The refusal of the KEYED declaration read when a file an asked key derives cannot be looked at.
+///
+/// The census may read the same failure as absence: it counts a population, and a file it cannot
+/// parse is not in the population it counted. A read that answers a NAMED key has no such licence,
+/// because the answer it then produces -- no rows -- is the answer an absent declaration produces,
+/// and nothing above it can tell the two apart. So the keyed projection of the one per-file fold
+/// carries WHY instead: the file, the module the key derives it from, and the parse's own words.
+/// (Design input, not a patch: the archived keyed-read layer, PR #15607, carried this as
+/// `DeclFactsKeyedRefusal`; it predates #15930's shape, where the fold is SHARED with the census,
+/// and its `ModuleHeaderDisagrees` arm belongs to a lookup this shape does not have.)
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DeclFactsKeyedRefusal {
+    /// The asked key derives THIS file, and it does not answer. `cause` is the parse's located
+    /// diagnostic (`file:line:col: message`), or the finding that the file carries no `module`
+    /// head, or that no bytes could be read -- each one a file the key names and the read did not
+    /// look at.
+    FileUnreadable {
+        file: String,
+        module: String,
+        cause: String,
+    },
+}
+
+/// The refusal as ONE sentence, so the wording lives in the one place that knows the variants and
+/// the interpreter's error text can carry it. It says the file and the cause -- the two things a
+/// reader needs to act, and precisely the two a caller that dropped the failure could not produce.
+pub fn decl_facts_keyed_refusal_sentence(refusal: &DeclFactsKeyedRefusal) -> String {
+    match refusal {
+        DeclFactsKeyedRefusal::FileUnreadable {
+            file,
+            module,
+            cause,
+        } => format!(
+            "decl_facts_at: the keyed read of `{module}` could not look at `{file}`, which is where that module is stored; it does not answer: {cause}"
+        ),
+    }
+}
+
+/// The declaration rows of ONE source, TYPED: `Err` with the located reason when the file cannot
+/// be read or does not parse, `Ok` with every named top-level item otherwise (`qualified_name` =
+/// the file's own module line + name). The ONE per-file fold: the census walk and the keyed read
+/// (`keyed_decl_facts`) both project it, so a keyed row is the census row byte for byte -- and the
+/// two now differ only in what they DO with the failure this reports, which neither of them invents.
+pub(crate) fn decl_facts_of_source_checked(
     rel: &str,
     filename: &str,
     content: Option<&str>,
-) -> Option<Vec<DeclFactRaw>> {
-    let module_path = content.and_then(extract_module_path).unwrap_or_default();
-    let parsed = content
-        .and_then(|c| crate::module_path_index::parsed_dag_file::parse_dag_content(c, filename))?;
+) -> Result<Vec<DeclFactRaw>, DagParseRefusal> {
+    // A source with no bytes is not a file that parsed into nothing, and it is not silence either:
+    // it is a refusal the census folds into its own `None` and the keyed read carries.
+    let Some(content) = content else {
+        return Err(DagParseRefusal::ContentAbsent {
+            file: filename.to_string(),
+        });
+    };
+    let module_path = extract_module_path(content).unwrap_or_default();
+    let parsed = parse_dag_content_checked(content, filename)?;
     let si = parsed.source_indices;
     let mut out = Vec::new();
     for item in parsed.items.iter() {
@@ -1892,7 +1940,28 @@ fn decl_facts_of_source(
             source_indices: si.clone(),
         });
     }
-    Some(out)
+    Ok(out)
+}
+
+/// The census's reading of the same fold: `None` when the file cannot be looked at, so the walk
+/// skips it. That disposition -- render the parse diagnostic, then absence -- is
+/// `parse_dag_content`'s, restated here because the fold is shared and the census is the caller
+/// for which absence IS the correct reading (it counts a population, and names its denominator).
+/// The keyed read does not come through here.
+fn decl_facts_of_source(
+    rel: &str,
+    filename: &str,
+    content: Option<&str>,
+) -> Option<Vec<DeclFactRaw>> {
+    match decl_facts_of_source_checked(rel, filename, content) {
+        Ok(rows) => Some(rows),
+        Err(refusal @ DagParseRefusal::ParseDiagnostic { .. }) => {
+            eprintln!("{}", dag_parse_refusal_sentence(&refusal));
+            None
+        }
+        Err(DagParseRefusal::ModuleHeadAbsent { .. }) => None,
+        Err(DagParseRefusal::ContentAbsent { .. }) => None,
+    }
 }
 
 /// The census's canonical row order: (rel_path, name, kind).
@@ -1921,7 +1990,17 @@ fn sort_decl_facts(out: &mut [DeclFactRaw]) {
 /// file declaring the module contributes (two roots shadowing one module path emit both copies:
 /// `DeclarationRefAmbiguous` is derived from that multiplicity). The census stays the offline
 /// oracle (`keyed_reads_equal_the_whole_pool_census`) and is never a fallback.
-pub fn keyed_decl_facts(pool_roots: &[String], qualified_names: &[String]) -> Vec<DeclFactRaw> {
+///
+/// A file the key derives that CANNOT BE LOOKED AT is a refusal, not an empty answer. The lookup
+/// hands back the files that carry the asked module, so an unparseable one is not a file that
+/// contributes nothing -- it is the file the answer was supposed to come from, and reading on
+/// without it produced a zero exactly like the one an absent declaration produces (DESIGN:
+/// fail_closed -- an absence must mean a thing; a silent miss is a wrong answer). The refusal is
+/// TYPED and LOCATED: which file, under which module, and what the parse said.
+pub fn keyed_decl_facts(
+    pool_roots: &[String],
+    qualified_names: &[String],
+) -> Result<Vec<DeclFactRaw>, DeclFactsKeyedRefusal> {
     let wanted: std::collections::HashSet<&str> =
         qualified_names.iter().map(String::as_str).collect();
     // An item name may itself be dotted (`service oauth2.Google`), so the declaring module is any
@@ -1945,16 +2024,22 @@ pub fn keyed_decl_facts(pool_roots: &[String], qualified_names: &[String]) -> Ve
                 .file_name()
                 .and_then(|s| s.to_str())
                 .unwrap_or("?");
-            if let Some(rows) = decl_facts_of_source(&src.path, filename, Some(&src.content)) {
-                out.extend(
-                    rows.into_iter()
-                        .filter(|f| wanted.contains(f.qualified_name.as_str())),
-                );
-            }
+            // `if let Some(rows)` here was the silent miss: a derived file that failed to parse
+            // contributed nothing, and the read answered from the files it did manage to read.
+            let rows = decl_facts_of_source_checked(&src.path, filename, Some(&src.content))
+                .map_err(|cause| DeclFactsKeyedRefusal::FileUnreadable {
+                    file: src.path.clone(),
+                    module: module.to_string(),
+                    cause: dag_parse_refusal_sentence(&cause),
+                })?;
+            out.extend(
+                rows.into_iter()
+                    .filter(|f| wanted.contains(f.qualified_name.as_str())),
+            );
         }
     }
     sort_decl_facts(&mut out);
-    out
+    Ok(out)
 }
 
 /// Declaration facts for `roots`; preserves the non-test corpus boundary (delegates to `decl_facts_corpus_walk`).
@@ -2176,7 +2261,17 @@ pub fn eval_decl_facts_at(
     // KEYED BY NAME: the qualified-name arm locates each module from its name and reads only those
     // files. Only the bare-spelling arm (`type_names`) genuinely needs the population, and it alone
     // stays on the census.
-    let mut matching: Vec<DeclFactRaw> = keyed_decl_facts(pool_roots, qualified_names);
+    //
+    // The read REFUSES rather than answering when one of the files the key derives cannot be
+    // looked at. The line-stop above stops a declared root from being invisible in an empty answer;
+    // this stops a single unreadable FILE from being invisible in one, for the same reason -- an
+    // empty keyed answer is what a genuine miss looks like, and before this the two were
+    // indistinguishable from here down. The refusal travels as a type, so the caller can still tell
+    // which file it could not read and what the parse said.
+    let mut matching: Vec<DeclFactRaw> =
+        keyed_decl_facts(pool_roots, qualified_names).map_err(|refusal| {
+            crate::v1_interpreter::InterpError::DeclFactsKeyedReadRefused { refusal }
+        })?;
     if !typed.is_empty() {
         let facts = decl_facts_for_roots_shared(pool_roots);
         for f in facts.iter() {
@@ -2843,5 +2938,147 @@ mod field_binder_default_tests {
             span_of(17, 22),
         );
         marshal_with_default(literal).expect("a literal default marshals");
+    }
+}
+
+/// THE SILENT MISS, CLOSED: a keyed declaration read that cannot read the file its key derives
+/// refuses, and says which file and why.
+///
+/// WHY these two tests go through `eval_decl_facts_at` and not `keyed_decl_facts` directly:
+/// `keyed_decl_facts` is where the fix is, and its signature is what changed, so a test written
+/// against it cannot be RUN at the revision before the fix. The interpreter entry is the seam a
+/// consumer actually stands at and its signature is unchanged — so this module is the paired
+/// receipt: at the revision before the refusal existed the first test is RED (the read answered an
+/// empty list, indistinguishable from a genuine miss) and the second is GREEN; at this revision both
+/// are GREEN. The positive control is the half that stops the change from being "the read refuses
+/// everything": the same fixture, one character different, answers its row.
+#[cfg(test)]
+mod keyed_decl_facts_unreadable_file_tests {
+    use std::rc::Rc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use im::{vector as im_vec, HashMap};
+
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_interpreter::{ExecutionMode, InterpContext, InterpError, Value};
+
+    use super::eval_decl_facts_at;
+
+    /// The fixture's module: two lowercase identifier segments, so the read DERIVES a storage path
+    /// for it and goes and reads THE FILE. That is the whole point — a key whose module spells
+    /// nothing never looks at the unreadable file, and a test built on one would prove nothing about
+    /// how the read handles a file it actually opened.
+    const PROBE_MODULE: &str = "keyed_probe_root.probe";
+    const PROBE_QUALIFIED: &str = "keyed_probe_root.probe.probe_authority";
+
+    /// Parses: the module's one named top-level item. The census lists it; the keyed read must
+    /// ANSWER it.
+    const PARSES: &str = "fn probe_authority() -> Bool { true }";
+
+    /// Does not parse: the module head is intact — so the key finds the file and the read takes it
+    /// into the fold — and then a stray `)` opens an item the grammar has no shape for. This is the
+    /// failure the read used to swallow. The token is the recipe
+    /// `src/v1/stage0/tests/dag_parse_sweep_refusal_location.rs` proves refuses at the heads layer
+    /// ("a stray `)` at the start of a line is no module item"), so the fixture does not rest on my
+    /// own guess about the grammar.
+    const DOES_NOT_PARSE: &str = "fn probe_authority() -> Bool { true }\n) stray";
+
+    static FIXTURE_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+    fn test_ctx() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    /// A NON-GOVERNED pool root holding one module file, under `target/` on the repository's own
+    /// terms (the keyed-lookup fixtures do the same). Non-governed on purpose: a governed root would
+    /// have to carry the module at its layout path inside the pool the whole build reads, and an
+    /// unparseable file has no business in that pool. The custom-root census indexes a module by its
+    /// HEADER (`extract_module_path`), so this file IS located by the key, read into the fold, and
+    /// only then fails to parse — the ordering that hid the miss.
+    fn probe_root(tag: &str, body: &str) -> Vec<String> {
+        let dir = crate::cli_run::workspace_root()
+            .join("target")
+            .join(format!(
+                "gunbc-keyed-unreadable-{tag}-{}-{}",
+                std::process::id(),
+                FIXTURE_COUNTER.fetch_add(1, Ordering::Relaxed)
+            ));
+        std::fs::create_dir_all(&dir).expect("fixture dir");
+        std::fs::write(dir.join("probe.dag"), format!("module {PROBE_MODULE}\n\n{body}\n"))
+            .expect("fixture file");
+        vec![dir.to_string_lossy().into_owned()]
+    }
+
+    fn read(roots: &[String]) -> Result<Value, InterpError> {
+        eval_decl_facts_at(&test_ctx(), roots, &[PROBE_QUALIFIED.to_string()], &[])
+    }
+
+    /// The refusal, LOCATED: the read names the file it could not look at, the module the key
+    /// spelled it from, and the parse's own words. At the revision before the refusal this is the
+    /// assertion that fails — the read answered `[]`, which is what a declaration that does not
+    /// exist answers too (DESIGN: fail_closed; a silent miss is a wrong answer).
+    #[test]
+    fn a_derived_file_that_does_not_parse_refuses_rather_than_answering_empty() {
+        let roots = probe_root("refuse", DOES_NOT_PARSE);
+        // `&read(...)`, not `read(...)`: `Value` implements `Drop`, and moving a payload out of
+        // something with drop glue is E0509 -- the arms below only read what they match, so they
+        // match it by reference.
+        match &read(&roots) {
+            Ok(answer) => panic!(
+                "the keyed read of {PROBE_QUALIFIED} answered {answer:?} about a file it could not \
+                 read. That is the silent miss: an unreadable derived file and an absent \
+                 declaration answered the same thing, and nothing above the read could tell them \
+                 apart."
+            ),
+            Err(error) => {
+                let said = error.to_string();
+                assert!(
+                    said.contains("probe.dag"),
+                    "the refusal must name the file the key derives; got: {said}"
+                );
+                assert!(
+                    said.contains(PROBE_MODULE),
+                    "the refusal must name the module the key spelled that file from; got: {said}"
+                );
+                assert!(
+                    said.contains("could not look at"),
+                    "the refusal must say the file was never looked at, not that it held nothing; got: {said}"
+                );
+                // The WHY is the parse's own words, carried after the file rather than paraphrased
+                // into a sentence the reader cannot act on.
+                assert!(
+                    said.contains("probe.dag:"),
+                    "the refusal must carry the parse's own diagnostic for the file; got: {said}"
+                );
+            }
+        }
+    }
+
+    /// The positive control: the same fixture with the stray token removed answers its row. Without
+    /// it, the refusal test would be satisfied by a read that refuses everything, or by one that
+    /// refuses for a reason that has nothing to do with the file it was handed.
+    #[test]
+    fn the_same_read_answers_the_row_when_the_derived_file_parses() {
+        let roots = probe_root("accept", PARSES);
+        match &read(&roots) {
+            Ok(Value::List(rows)) => {
+                assert_eq!(
+                    rows.len(),
+                    1,
+                    "the one named item of the module the key derives must answer"
+                );
+            }
+            Ok(other) => panic!("expected a list of rows, got {other:?}"),
+            Err(error) => panic!(
+                "a derived file that parses must answer, not refuse: {error}. The refusal is for a \
+                 file the read could not look at, not for one it read."
+            ),
+        }
     }
 }

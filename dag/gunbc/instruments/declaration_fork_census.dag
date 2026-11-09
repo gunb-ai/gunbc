@@ -6,8 +6,8 @@ import gunbc.ci.ci_layer_roots { witness_layer_roots }
 
 // THE INSTRUMENT BEHIND ONE DECISION, so the decision cites a producer and not a number (gunbc.design_argument::how_to_work).
 //
-// The decision: gunbc.floor.incremental_floor_authority's `declaration_identity_uniqueness` row was
-// repointed from a DECLARATION-grained lens (gunbc.bare_name_fork_lens, deleted with this change) to
+// The decision: a floor `declaration_identity_uniqueness` row was
+// repointed from a DECLARATION-grained lens (gunbc.bare_name_fork_lens, since deleted) to
 // the READ-grained detector (v1_compiler.cli_run claim_scope_for, ambiguous_bare_reads). The ground
 // was that the declaration-grained population over the witness roots is dominated by per-module
 // conventions -- every module declaring its own `live_tree_disposition`, every extdeps module its
