@@ -307,13 +307,6 @@ fn lst_unbound_at(v: LstVerdict, atom: Symbol) -> Bool {
   }
 }
 
-fn lst_is_not_resolved(v: LstVerdict) -> Bool {
-  match v {
-    LstResolved => false
-    _ => true
-  }
-}
-
 // THE ROWS, AND WHAT EACH ONE IS.
 //
 // THREE DISCRIMINATORS. A statement `let` in a TAIL position refuses at the door holder with
@@ -478,11 +471,12 @@ test fn a_reachable_statement_let_refuses_unbound_at_its_own_atom() -> Bool {
 
 // RESTORED PAIR (work item adhoc-d6e47a99-2e0): the two intents whose fixtures lively-crane-453 dropped
 // unexecuted in #15363. They never had a row; both are pinned to an executed reading, paired against main.
-// A tail `let` is refused before it is ever resolved, so its undeclared value is never reached -- whereas the
-// arm block's rest below IS resolved.
+// A tail `let` is refused at normalize-time (wrapper_retention) before it is ever resolved, so its
+// undeclared value is never reached -- if lowering changed to reach resolve it would refuse unbound instead, which
+// this row's reason check sends red. The arm block's rest below IS resolved.
 test fn a_tail_statement_let_whose_value_is_undeclared_is_never_resolved() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, let_und_reachable: _, tail_let_und: v, last_arm_block: _ } => lst_is_not_resolved(v: v)
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, let_und_reachable: _, tail_let_und: v, last_arm_block: _ } => lst_refuses_as(v: v, reason: ^normalized_tree_reason_wrapper_retention_not_normalized)
     LstContextRefused => false
   }
 }
