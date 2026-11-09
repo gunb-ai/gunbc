@@ -1,0 +1,14 @@
+module test.claim.heal_publication_sts_default_scope_witness
+
+import std.types { Bool }
+import std.optional { Present, Absent }
+import gunbc.heal_publication { sts_exchange_defaults_witness }
+
+// Red at base (NoSuchVariable Jwt) because #16160's heal_publication.dag lacked
+// the named import of Jwt and RequestAccessToken; the evaluator resolves field
+// defaults in the caller's scope, so calling gcp.STS.Exchange without
+// subject_token_type fails when Jwt is not bound in heal_publication.
+// Green at head after the fix binds the constructors.
+test fn sts_exchange_defaults_resolve_in_heal_publication_scope() -> Bool {
+  sts_exchange_defaults_witness()
+}

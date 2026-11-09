@@ -880,11 +880,11 @@ fn classify_write_tree_completion(exit_code: Int, stdout: String, stderr: String
   }
 }
 
-// Witnesses that the STS Exchange field defaults (subject_token_type = Jwt,
-// requested_token_type = RequestAccessToken) resolve in this module's scope.
+// Exercises gcp.STS.Exchange from this module's scope relying on field defaults
+// (subject_token_type = Jwt, requested_token_type = RequestAccessToken).
 // Red at base (NoSuchVariable Jwt) because #16160 omitted the named import;
 // green at head after the fix binds the constructors.
-test fn sts_exchange_defaults_resolve_in_heal_publication_scope() -> Bool {
+fn sts_exchange_defaults_witness() -> Bool {
   match gcp.STS.Exchange(
     subject_token: "witness-token" as Secret,
     audience: heal_publisher_exchange_audience(),
