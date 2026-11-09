@@ -99,17 +99,17 @@ test fn witness_both_sections() -> Bool {
     && string_contains(s: out, pattern: "## 6. Expansion")
 }
 
-test fn witness_authored_evidence_awaiting_signoff() -> Bool {
+test fn witness_authored_evidence_awaiting_acceptance() -> Bool {
   let out = emit_roadmap(merged: [5491])
   string_contains(s: out, pattern: "[ ] **fail-open audit**")
     && string_contains(s: out, pattern: "[plan](docs/plans/scaffold-admission-doctrine.md)")
-    && string_contains(s: out, pattern: "⏳ awaiting sign-off")
+    && string_contains(s: out, pattern: "⏳ awaiting an acceptance receipt")
 }
 
-test fn witness_derived_merged_awaiting_signoff() -> Bool {
+test fn witness_derived_merged_awaiting_acceptance() -> Bool {
   let out = emit_roadmap(merged: [5491])
   string_contains(s: out, pattern: "[ ] **PR-checkbox status**")
-    && string_contains(s: out, pattern: "⏳ awaiting sign-off")
+    && string_contains(s: out, pattern: "⏳ awaiting an acceptance receipt")
     && !string_contains(s: out, pattern: "[x] **PR-checkbox status**")
 }
 
@@ -127,11 +127,11 @@ fn expected_roadmap() -> String {
     "\n",
     "## 0. Fail-closed lock-down\n",
     "\n",
-    "- [ ] **fail-open audit** [plan](docs/plans/scaffold-admission-doctrine.md) — ⏳ awaiting sign-off\n",
+    "- [ ] **fail-open audit** [plan](docs/plans/scaffold-admission-doctrine.md) — ⏳ awaiting an acceptance receipt\n",
     "\n",
     "## 6. Expansion\n",
     "\n",
-    "- [ ] **PR-checkbox status** (#5491) — ⏳ awaiting sign-off\n",
+    "- [ ] **PR-checkbox status** (#5491) — ⏳ awaiting an acceptance receipt\n",
     "  - [ ] **host-fed status bridge**\n"
   ], "")
 }

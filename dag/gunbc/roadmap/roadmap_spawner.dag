@@ -425,7 +425,7 @@ fn done_ids_json(frontier_done: List<RoadmapNode>) -> String {
 
 data dispatch_brief_template: String = "Node: <node_id>\nWhy now: <displaced cost / what it unblocks>\nNon-goals: <explicitly out of scope>\nM0 evidence: <prove current state / reproduce the gap>\nM1 smallest change: <first implementation slice>\nM2 RED control: <perturbation that goes red>\nM3 green receipt: <execution on the real path>\nStop and return if: <named hand-back conditions>\nFiles likely touched: <paths>\nCommands to run: <repro/verify commands>\nExpected artifact: <what comes back even if the fix does not land>"
 
-// roadmap-dispatch/v3 drops v2's "done" array. It was filled only from the authored node sign-off,
+// roadmap-dispatch/v3 drops v2's "done" array. It was filled only from the authored node acceptance field,
 // which production never set, and a node accepted in the acceptance history is not in the document
 // at all; an always-empty array kept under the v2 name would claim a fact this emitter cannot state,
 // so the contract change takes a new name (gunbc.design_argument::single_authority).

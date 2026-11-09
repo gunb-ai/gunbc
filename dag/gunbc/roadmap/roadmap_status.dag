@@ -52,7 +52,7 @@ type RoadmapItem
 // TicketFields.handback, both in NonEmptyStr fields, so an unnamed witness and an empty delivery are
 // unwritable and the two predicates below are pure discrimination. They are read by the acceptance
 // receipt (gunbc.roadmap.roadmap_model RoadmapAcceptanceReceipt), which is the only carrier of a
-// node's acceptance. A node DEFINITION carries no acceptance field: the authored Signoff that once
+// node's acceptance. A node DEFINITION carries no acceptance field: the authored acceptance field that once
 // sat on RoadmapNode was never set in production and was a second, hand-editable home for "done"
 // beside the receipt history (plan-consolidation audit, operator ruling
 // gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08), so it was deleted rather

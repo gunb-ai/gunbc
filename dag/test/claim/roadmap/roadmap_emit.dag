@@ -64,10 +64,10 @@ test fn witness_parent_authored_box_and_link() -> Bool {
     && string_contains(s: out, pattern: "[plan](docs/plans/replacement-migration-doctrine.md)")
 }
 
-test fn witness_child_merged_unsigned_awaiting_signoff() -> Bool {
+test fn witness_child_merged_unaccepted_awaiting_acceptance() -> Bool {
   let out = emit_roadmap(merged: [5491])
   string_contains(s: out, pattern: "[ ] **PR-checkbox status**")
-    && string_contains(s: out, pattern: "⏳ awaiting sign-off")
+    && string_contains(s: out, pattern: "⏳ awaiting an acceptance receipt")
     && !string_contains(s: out, pattern: "[x] **PR-checkbox status**")
 }
 
@@ -75,7 +75,7 @@ test fn witness_child_derived_unchecked_when_unmerged() -> Bool {
   let out = emit_roadmap(merged: [])
   string_contains(s: out, pattern: "[ ] **PR-checkbox status**")
     && !string_contains(s: out, pattern: "[x] **PR-checkbox status**")
-    && !string_contains(s: out, pattern: "⏳ awaiting sign-off")
+    && !string_contains(s: out, pattern: "⏳ awaiting an acceptance receipt")
 }
 
 test fn witness_multi_parent_dependencies_render_complete_set() -> Bool {
@@ -108,8 +108,8 @@ fn superseded_child_node() -> RoadmapNode {
   }
 }
 
-test fn witness_superseded_checked_struck_no_signoff_suffix() -> Bool {
+test fn witness_superseded_checked_struck_no_acceptance_suffix() -> Bool {
   let out = emit_nodes(nodes: [parent_node(), superseded_child_node()], merged: [])
   string_contains(s: out, pattern: "[x] ~~**PR-checkbox status**~~ **superseded →** successor-lane")
-    && !string_contains(s: out, pattern: "⏳ awaiting sign-off")
+    && !string_contains(s: out, pattern: "⏳ awaiting an acceptance receipt")
 }

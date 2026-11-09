@@ -11,7 +11,7 @@ fn mini_doc(node: RoadmapNode) -> RoadmapDocument {
     preamble: [],
     lead_lanes: [],
     sections: [RoadmapSection {
-      title: "Sign-off gate",
+      title: "Acceptance gate",
       elements: [section_group(label: "", nodes: [node], edges: [])],
     }],
   }
@@ -30,18 +30,18 @@ test fn witness_hand_edit_drifts() -> Bool {
 }
 
 test fn witness_unsigned_with_evidence_awaiting() -> Bool {
-  let node = fx_derivable(identity: "rnfx_82B698TW1CS8DZ9WGJBX", id: "signoff-witness", prs: [5491], title: "**signoff witness**", description: "")
+  let node = fx_derivable(identity: "rnfx_82B698TW1CS8DZ9WGJBX", id: "acceptance-witness", prs: [5491], title: "**acceptance witness**", description: "")
   let out = emit_node(node: node, merged: [5491])
-  string_contains(s: out, pattern: "[ ] **signoff witness**")
-    && string_contains(s: out, pattern: "⏳ awaiting sign-off")
-    && !string_contains(s: out, pattern: "[x] **signoff witness**")
+  string_contains(s: out, pattern: "[ ] **acceptance witness**")
+    && string_contains(s: out, pattern: "⏳ awaiting an acceptance receipt")
+    && !string_contains(s: out, pattern: "[x] **acceptance witness**")
 }
 
 // A merged PR never checks the box: a node definition carries no acceptance, so implementation
 // evidence leaves the row unchecked whether or not its PR merged (the acceptance history, not the
 // row, is what closes a node).
 test fn witness_merge_perturb_does_not_flip_box() -> Bool {
-  let unsigned_node = fx_derivable(identity: "rnfx_19FCXZK9ZJR91QKHYAFR", id: "signoff-witness", prs: [5491], title: "**signoff witness**", description: "")
-  string_contains(s: emit_node(node: unsigned_node, merged: []), pattern: "[ ] **signoff witness**")
-    && string_contains(s: emit_node(node: unsigned_node, merged: [5491]), pattern: "[ ] **signoff witness**")
+  let unsigned_node = fx_derivable(identity: "rnfx_19FCXZK9ZJR91QKHYAFR", id: "acceptance-witness", prs: [5491], title: "**acceptance witness**", description: "")
+  string_contains(s: emit_node(node: unsigned_node, merged: []), pattern: "[ ] **acceptance witness**")
+    && string_contains(s: emit_node(node: unsigned_node, merged: [5491]), pattern: "[ ] **acceptance witness**")
 }
