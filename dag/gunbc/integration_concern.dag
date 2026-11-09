@@ -1557,7 +1557,55 @@ data host_effect_apply_witness_import_block_absent: IntegrationConcern = Integra
     },
     tail: [],
   },
-  disposition: Open,
+  disposition: Integrated { evidence: IntegrationEvidence {
+    integrated_at: "926a1e009c1d" as CommitSha,
+    // The interim leaves this PR deletes, each cited at the revision that introduced it: #16099 rewrote the
+    // host_effect CreateCause site and seat_fell_by, #16045 rewrote the fleet rackmount arithmetic. With the
+    // root rule in place all three read as plain structural '==' again.
+    superseded: [
+      HistoricalDeclaration { at: "f9bad88f8a569a803a4fbfccbd8d17552fdd9611" as CommitSha, module_path: "gunbc.host.host_effect", decl_name: "host_effect_is_converge_loop_evidence" },
+      HistoricalDeclaration { at: "f9bad88f8a569a803a4fbfccbd8d17552fdd9611" as CommitSha, module_path: "gunbc.compute.compute_seat_ensure", decl_name: "seat_fell_by" },
+      HistoricalDeclaration { at: "3ca4fe166b5d511426dd0ae1ee2b73e0fd70e0b4" as CommitSha, module_path: "gunbc.fleet.fleet_physical_inventory", decl_name: "fleet_nominal_rackmount_arithmetic_holds" },
+    ],
+    // ONE predicate answers the question at ONE place: the rule every applied reference's arguments go
+    // through, which now carries the two arms it was missing - an argument that is a parameter of the
+    // declaration the walk is inside (roster carried by equality_scope_with_params into
+    // InferScope.enclosing_declared_type_param_names), and a unit-variant phantom marker such as Measure's
+    // Length and RackUnitHeight dimensions.
+    replacement: FreeSemigroup {
+      head: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_argument_by_target"),
+      tail: [decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_scope_with_params"), decl_ref(module_path: "v1.compiler.infer", decl_name: "is_unit_variant_phantom_argument")],
+    },
+    executions: FreeSemigroup {
+      head: RetainedExecutionResult {
+        control: decl_ref(module_path: "gunbc.host.host_effect", decl_name: "host_effect_is_converge_loop_evidence"),
+        run: "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/host/host_effect.dag --function \"\" with a compiler built from the seed carried by 926a1e009c1d",
+        conclusion: "PASS: NoSuchFunction for the empty function name, zero equality rows, zero resolve-failed headers, 5.81 GiB peak. The same entry refused at 3d34fc61ca6e with the refusal at dag/gunbc/host/host_effect.dag:254:12 over CreateCause.",
+      },
+      tail: [
+        RetainedExecutionResult {
+          control: decl_ref(module_path: "gunbc.compute.compute_seat_ensure", decl_name: "seat_fell_by"),
+          run: "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/compute/compute_seat_ensure.dag --function \"\" with the same compiler",
+          conclusion: "PASS: zero equality rows, zero resolve-failed headers, 7.63 GiB peak. The same entry refused at 3d34fc61ca6e at dag/gunbc/compute/compute_seat_ensure.dag:160:41 over the Measure.",
+        },
+        RetainedExecutionResult {
+          control: decl_ref(module_path: "gunbc.fleet.fleet_physical_inventory", decl_name: "fleet_nominal_rackmount_arithmetic_holds"),
+          run: "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/fleet/fleet_physical_inventory.dag --function \"\" with the same compiler",
+          conclusion: "PASS: zero equality rows, zero resolve-failed headers, 0.67 GiB. The same entry refused at 3d34fc61ca6e at dag/gunbc/fleet/fleet_physical_inventory.dag:424:12 over the Measure.",
+        },
+        RetainedExecutionResult {
+          control: decl_ref(module_path: "v2.compiler.source_root_eval", decl_name: "source_root_eval"),
+          run: "gunbc test //gunbc/instruments:self-host with the same compiler",
+          conclusion: "exit_status=0 warning_count=0 wall_s=795, zero E0369, zero E0277, 9.37 GiB peak: the emitted self-host closure that failed with E0369 in v2-bootstrap run 42575201140 builds under rustc.",
+        },
+        RetainedExecutionResult {
+          control: decl_ref(module_path: "test.claim.self_host_equality_admission_witness", decl_name: "nested_structural_argument_equality_admits_at_the_use"),
+          run: "claim_batch --wet --entry dag/test/claim/self_host_equality_admission_witness.dag over the eight nested and demand-shape controls, with the same compiler",
+          conclusion: "8 PASS, 0 FAIL: the structural shapes admit (Engine<LeafVal>, DqEngine<DqPlain>, the nested parameter shapes) while the routed and function-bearing shapes refuse (Engine<Node>, Engine<Value>, DqEngine<DqValue>, the routed argument).",
+        },
+      ],
+    },
+  } },
 }
 
 data integration_concerns: List<IntegrationConcern> = [provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim]
