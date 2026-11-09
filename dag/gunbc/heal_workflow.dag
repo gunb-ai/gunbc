@@ -129,7 +129,8 @@ data heal_round_base_mirror_env: String = "HEAL_BASE_MIRROR_COMMIT"
 // commits no generated mirror deletes the heal row and this file with it, and a repository that does
 // keeps them - with one description of the job rather than this module and the profile each carrying one.
 // The committed bytes are the evidence, and the comparison belongs to the authority that owns generated
-// artifacts (dag/gunbc/instruments/tier_o_drift_check.dag, repaired by generated_artifact_gate.dag main_wet);
+// artifacts (gunbc.instruments.tier_o_drift_check_native.drift_findings, reached as the label
+// //gunbc/instruments:tier-o-drift-check, repaired by gunbc.generated_artifact_gate main_wet);
 // a claim holding a second copy of this file's text would only be another thing to keep equal.
 data heal_workflow_required_bins: List<String> = ["gunbc", "claim_executor"]
 

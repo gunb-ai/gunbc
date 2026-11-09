@@ -316,6 +316,23 @@ fn compose_gunbc_run_statements(overlay: OverlayIngest, source_roots: List<Strin
 }
 
 
+// A LANE THAT CANNOT RUN ITS SUBJECT SAYS SO, AND FAILS. The refusal is emitted as a STEP rather than as a
+// generation refusal on purpose: a lane that emits no workflow at all hides its missing capability behind
+// an absence nobody reads, which is the silent path DESIGN refuses; a step that prints the reason and exits
+// non-zero turns the gap into a red an operator can act on. bash_emit_stmts supplies `set -e`, and the
+// `exit` word is what carries the verdict -- echo alone would be a green that only mentions the problem.
+// The notes print first, so a reader sees what the step was for before it sees why it stopped. The
+// failing word pair is built with the same word() builders the rest of this module uses, so the step
+// renders in the one quoting style every other emitted word here already has.
+fn compose_refusal_statements(notes: List<String>, reason: String) -> List<Node> {
+  let note_stmts = fold(
+    notes,
+    init: [] as List<Node>,
+    f: (acc, n) => concat(acc, [echo_stmt(text: n)])
+  )
+  concat(note_stmts, [echo_stmt(text: reason), command(words: [word(text: "exit"), word(text: "1")])])
+}
+
 // THE SOURCE ROOTS OF A COMPOSED RUN: the repository's own roots, plus the overlay copy the composition
 // made. Derived rather than written into a row, because a row that lists the overlay root can go stale
 // against the row that names the overlay directory - and a stale root list resolves claims against a

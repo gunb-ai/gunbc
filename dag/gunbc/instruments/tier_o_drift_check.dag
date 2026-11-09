@@ -1,19 +1,25 @@
 module gunbc.instruments.tier_o_drift_check
 
 import std.types { String, List }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.optional { Present, Absent }
 import gunbc.generated_artifact { GeneratedArtifact, artifact_path }
-import gunbc.tier_o_artifact_emit { tier_o_artifacts, tier_o_artifact_body, TierOArtifactProduced, TierOArtifactRefused, TierOArtifactNotTierO }
+import gunbc.tier_o_artifact_emit { tier_o_artifact_body, TierOArtifactProduced, TierOArtifactRefused, TierOArtifactNotTierO }
 import gunbc.ci.ci_spec { generated_artifact_author_regen_command }
 
 // READ-ONLY: COMPARE EACH TIER O ARTIFACT'S COMMITTED BYTES WITH ITS AUTHORITY, WRITE NOTHING.
 // This judges no revision and gates no merge; it names where the tree has drifted from the .dag that
 // emits it so the drift is found on a schedule instead of by the next unrelated author. Every
 // artifact is examined (a finding does not stop the fold), and each finding is typed, located by
-// path, and names the remedy. The exit is non-zero when any finding exists, which is what the
-// scheduled run turns into a failed, visible run; nothing is pushed.
+// path, and names the remedy. Nothing is pushed and nothing is written.
+//
+// THE FOLD LIVES ONCE, IN gunbc.instruments.tier_o_drift_check_native.drift_findings, and the scheduled
+// verdict is the label //gunbc/instruments:tier-o-drift-check bound there. This module used to carry its own
+// `main` for the route where a lane handed the corpus to the v1 interpreter; that route and its
+// gunbc_ci_tier_o_drift_check_target row are gone, so the fold was deleted here rather than left as a second
+// copy with no consumer (DESIGN: replacement migrations delete first -- a surviving copy is an attractor, and
+// two folds over the same artifacts are two things to keep equal). What stays here is the OBSERVATION --
+// tier_o_finding and tier_o_content_finding -- which the one fold calls.
 fn tier_o_finding(a: GeneratedArtifact) -> String? {
   let path = artifact_path(a: a)
   match tier_o_artifact_body(a: a) {
@@ -23,21 +29,20 @@ fn tier_o_finding(a: GeneratedArtifact) -> String? {
       let r = Filesystem.Read(path: path)
       if !r.success {
         Present { value: concat("UNREADABLE ", concat(path, concat(": ", concat(r.error, "; remedy: restore the committed file or regenerate it")))) }
-      } else if r.content == content { none }
-      else {
-        Present { value: concat("DRIFT ", concat(path, concat(": committed bytes differ from the authority's emission; remedy: ", generated_artifact_author_regen_command))) }
-      }
+      } else { tier_o_content_finding(path: path, emitted: content, committed: r.content) }
     }
   }
 }
 
-fn main() -> ProcessExit {
-  let findings = fold(tier_o_artifacts(), init: [], f: fn(acc, a) {
-    match tier_o_finding(a: a) {
-      Present { value: f } => concat(acc, [f])
-      Absent => acc
-    }
-  })
-  if findings.length() == 0 { ExitSuccess }
-  else { exit_failure(reason: join(findings, "\n")) }
+// THE COMPARISON, SEPARATED FROM THE READ, SO IT CAN BE CONTROLLED. The scheduled lane's whole job is
+// to refuse when committed bytes are not what the authority emits; changing the lane's ROUTE (it is
+// judged by the emitted binary now, not by a lane handing its corpus to the v1 interpreter) must not
+// quietly cost it that teeth. `test.claim.drift_verdict_route_witness` plants a body that differs from
+// the emission and requires a DRIFT finding naming the path and the remedy, and requires no finding
+// when the bytes agree.
+fn tier_o_content_finding(path: String, emitted: String, committed: String) -> String? {
+  if committed == emitted { none }
+  else {
+    Present { value: concat("DRIFT ", concat(path, concat(": committed bytes differ from the authority's emission; remedy: ", generated_artifact_author_regen_command))) }
+  }
 }

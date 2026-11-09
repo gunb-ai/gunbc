@@ -108,7 +108,9 @@ import v2.workflow.bash_emit { bash_emit_stmts }
 // THE PUBLISHER'S NAME, JOB ID AND TIMEOUT COME FROM THE REPOSITORY'S CI PROFILE ROW. Two of these
 // literals used to sit beside the step list while the profile also described the job; the row is now the
 // single description and this emitter is a projection of it. The committed bytes are compared against this
-// emission by the authority that owns generated artifacts (dag/gunbc/instruments/tier_o_drift_check.dag),
+// emission by the authority that owns generated artifacts
+// (gunbc.instruments.tier_o_drift_check_native.drift_findings, reached as the label
+// //gunbc/instruments:tier-o-drift-check),
 // which is the check the drift-watch job already runs; a claim re-quoting this file would be a second
 // description of the same bytes.
 data heal_publisher_no_job_refusal_reason: String = "REFUSED gunbc.heal_publisher_workflow: the repository's CI profile row declares no publisher (gunbc.ci.repository_ci_profile RepositoryCiProfile publisher is Absent). A publisher whose candidate source is not declared is a job that fires with nothing to publish - the shape this repository must not be able to commit. Delete .github/workflows/heal-publish.yml, or declare the heal or drift job that seals the candidate."
