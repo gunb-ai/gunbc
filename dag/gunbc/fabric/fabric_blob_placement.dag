@@ -6,7 +6,7 @@ import std.cache_interface { ProviderRetention, ReleasedAfterInterval, CapacityU
 import std.fabric_blob { FabricBlobAddress, fabric_blob_object_name }
 
 // WHERE THE FABRIC CACHE'S BLOBS LIVE, HOW LARGE ONE MAY BE, AND HOW LONG ONE IS HELD. This is the
-// POLICY fact of the blob plane (DESIGN 3): std.fabric_blob is the interface, gunbc.fabric.
+// POLICY fact of the blob plane (gunbc.design_argument::single_authority): std.fabric_blob is the interface, gunbc.fabric.
 // fabric_blob_r2 and the emitted workflow shell are its transports, and these rows are which prefix,
 // which bound and which release. The bucket itself is allocated where every fleet bucket is, as the
 // FabricCacheBlobs purpose in gunbc.cloudflare.r2_origin; this module names only what lives in it.

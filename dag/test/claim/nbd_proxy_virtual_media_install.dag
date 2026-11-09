@@ -13,9 +13,9 @@ import gunbc.nbd_proxy_virtual_media_install { ActuatorArmNbdProxy, ActuatorBoot
 import gunbc.os_install_actuator_selection { ActuatorSelected, ActuatorUnsatisfiable, OsInstallActuatorSelection, srv3_os_install_actuator_selection }
 import gunbc.provisioning.seeded_install_media_publish { SeededImageNotBuilt, SeededImageRecordDiverged, SeededImageRecordedImageAbsent, SeededImageResolution, SeededImageResolved, SeededImageUnobservable }
 import gunbc.srv3.srv3_seeded_install_media_artifact { srv3_seeded_install_media_input_for }
-import std.algebra { string_contains }
+import std.algebra { string_contains, length }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { Bool, List, NonEmptyStr, list_length }
+import std.types { Bool, List, NonEmptyStr }
 import test.fixture.boot_delivery_plans { incoherent_pxe_solution, pxe_solution }
 
 
@@ -49,7 +49,7 @@ test fn a_coherent_plan_is_not_refused_as_incoherent() -> Bool {
 // real rendering route is exercised by test.claim.srv3.srv3_seeded_install_media_witness.
 data srv3_seeded_user_data_fixture: NonEmptyStr = "#cloud-config\nautoinstall:\n  identity:\n    hostname: srv3\n" as NonEmptyStr
 
-// A SUPPLIED resolved image (DESIGN §3: a witness discriminates at one interface). What these
+// A SUPPLIED resolved image (gunbc.design_argument::witness_one_interface: a witness discriminates at one interface). What these
 // claims check does not depend on which bytes the actuator serves, only on the path reaching the
 // intent; the real resolution route is exercised by test.claim.machine_intake.mtcollins1_census_image_witness.
 data srv3_resolved_image_fixture: SeededImageResolution = SeededImageResolved {
@@ -88,7 +88,7 @@ test fn srv3_actuator_plan_is_solve_driven_and_follows_the_refusal() -> Bool {
 
 test fn nbd_proxy_actuator_steps_serve_boot_restart() -> Bool {
   let steps = actuator_steps_fixture(arm: ActuatorArmNbdProxy, boot_control: BootFromRemovableMedia)
-  list_length(items: steps) == 3
+  length(xs: steps) == 3
     && match steps.first() {
       ActuatorNbdProxyServe { endpoint: e, slot: 0, index: 0, export: _ } =>
         e == VmSlotIndexEndpoint
@@ -106,7 +106,7 @@ test fn nbd_proxy_actuator_steps_serve_boot_restart() -> Bool {
 
 test fn pxe_actuator_steps_stage_boot_restart() -> Bool {
   let steps = actuator_steps_fixture(arm: ActuatorArmPxe, boot_control: BootFromNetworkPxe)
-  list_length(items: steps) == 3
+  length(xs: steps) == 3
     && match steps.first() {
       ActuatorPxeNetworkBootStaging => true
       _ => false
@@ -192,7 +192,7 @@ test fn plan_with_unrealized_steps_is_refused_and_names_them() -> Bool {
     steps: actuator_steps_fixture(arm: ActuatorArmPxe, boot_control: BootFromNetworkPxe),
     image: srv3_resolved_image_fixture,
   ) {
-    ActuatorPlanUnrealized { refusals: rs } => list_length(items: rs) == 1
+    ActuatorPlanUnrealized { refusals: rs } => length(xs: rs) == 1
     ActuatorPlanRealized { intents: _ } => false
   }
 }

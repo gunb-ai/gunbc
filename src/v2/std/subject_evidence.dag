@@ -45,7 +45,7 @@ module v2.std.subject_evidence
 // name the EXACT phase and cause. A `{ phase, cause }` record admits a phase from one stage beside a
 // cause from another -- the states are independently writable, so nothing stops a Build phase
 // carrying a Run diagnostic. Handing the consumer ONE type that names both makes the mismatch
-// unrepresentable rather than merely wrong (DESIGN 4b: construction over validation). It is also
+// unrepresentable rather than merely wrong (gunbc.design_argument::guarantee_ladder: construction over validation). It is also
 // what keeps this from becoming the giant universal error enum the ruling forbids: each consumer
 // supplies its own closed vocabulary, so a new phase in one consumer is invisible to every other.
 //

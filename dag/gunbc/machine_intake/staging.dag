@@ -1,6 +1,7 @@
 module gunbc.machine_intake.staging
 
-import std.types { Bool, EpochMs, List, NonEmptyStr, String, list_length }
+import std.types { Bool, EpochMs, List, NonEmptyStr, String }
+import std.algebra { length }
 import product.host_identity { HostIdentity }
 import gunbc.boot_artifact_delivery {
   BootArtifactDelivery,
@@ -84,7 +85,7 @@ fn bind_observed_staging(
   observation: IntakeStagingObservation,
 ) -> IntakeStagingRealization {
   let missing = staging_missing_capabilities(required: required, observation: observation)
-  if list_length(items: missing) == 0 {
+  if length(xs: missing) == 0 {
     StagingRealized { host: observation.host, observation: observation }
   } else {
     StagingUnrealized { host: observation.host, missing: missing }

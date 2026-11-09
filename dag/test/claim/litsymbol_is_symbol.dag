@@ -59,7 +59,7 @@ test fn symbol_at_string_stays_accepted() -> Bool {
   blocking_count(source: "module litsymbol.atstr\nfn f() -> String { ^tag }\n") == 0
 }
 
-// ── THE BOUNDARY IS THE MINTED CARRIER, NOT THE SPELLING (gunbc#14082 review, DESIGN §3b) ──
+// ── THE BOUNDARY IS THE MINTED CARRIER, NOT THE SPELLING (gunbc#14082 review, gunbc.design_argument::conformance) ──
 //
 // THE DISCRIMINATING RED. The judgment admits Symbol by node equality against the seed's own minted
 // carrier (v1.std.core symbol_type), never by the leaf name "Symbol". A user-declared `type Symbol`

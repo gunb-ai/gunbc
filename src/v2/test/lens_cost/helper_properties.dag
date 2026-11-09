@@ -10,7 +10,7 @@ import v2.std.diagnostic {
   Unavailable,
   WholeFile,
 }
-import v2.std.node { Atom, Node, Symbol, TypeNode }
+import v2.std.node { Atom, Node, Symbol, TypeNode, NodeOccurrence }
 import v2.std.logic { Bool }
 import std.live_tree { LiveTreeDisposition }
 import v2.lens.cost {
@@ -33,7 +33,7 @@ import v2.lens.cost {
 // The one-time differential audit of the rewrite (the full 13 x 13 x 3
 // cross-product against the pre-refactor semantics, 507 pair claims) ran on
 // this branch and passed; its receipt lives in this PR's body and CI logs,
-// and the pre-refactor semantics live in git history, per DESIGN.md 3
+// and the pre-refactor semantics live in git history, per gunbc.design_argument::single_authority
 // ("may serve from history as an offline differential oracle") rather than
 // as a committed second copy of the old code. What stays is this: property
 // claims pinning each semantic boundary the rewrite touched, so a future
@@ -61,7 +61,7 @@ fn prop_synthetic_leaf(identity: Symbol) -> Node {
 
 data prop_leaf: Node = prop_synthetic_leaf(identity: ^prop_size_source)
 
-data prop_variable: SizeVariable = SizeVariable { source: prop_leaf }
+data prop_variable: SizeVariable = SizeVariable { source: NodeOccurrence { node: prop_leaf } }
 
 data prop_diagnostic: Diagnostic = Diagnostic {
   reason: ^cost_reason_unmodeled_symbolic_cost,

@@ -8,7 +8,7 @@ module gunbc.scm.write_spine
 // re-read the worktree would freeze the bytes present at the instant of the COMMIT, not the bytes the
 // author staged and then inspected. Every intervening edit would be swept in silently and the author
 // would be told their reviewed snapshot was committed. That is the fabricated-plausible-output
-// failure DESIGN section 5 forbids, and the only structural defence against it is that the commit
+// failure gunbc.design_argument::fail_closed forbids, and the only structural defence against it is that the commit
 // verb has no filesystem operation to reach for -- so the read lives in the ingress and the freeze
 // lives here, and the staged manifest is the only channel between them.
 //

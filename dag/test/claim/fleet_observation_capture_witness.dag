@@ -656,7 +656,7 @@ fn refuses_unheld_release(outcome: OwnershipOutcome) -> Bool {
 // ── EXCLUSIVITY IS CARRIED HONESTLY ────────────────────────────────────────────────────────────
 
 // AN OWNER OVER AN UNFENCED ENDPOINT RECORDS BUT DOES NOT CLAIM STRUCTURAL EXCLUSIVITY. Reading the
-// unfenced arm as enforced would claim a guarantee the transport does not provide (DESIGN section 4b
+// unfenced arm as enforced would claim a guarantee the transport does not provide (gunbc.design_argument::guarantee_ladder
 // rung inflation), and the four conjuncts below keep the two independent axes apart: being the
 // recorder, and the endpoint being fenced. Collapsing them is what the deleted Bool did.
 test fn w_unfenced_owner_records_without_claiming_exclusivity() -> Bool {

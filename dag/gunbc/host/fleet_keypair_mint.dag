@@ -588,7 +588,7 @@ data fleet_keypair_pin_commit_rule: String = "Pin the public row AND the fingerp
 
 // THE OPERATOR'S WORDS AND DATE ARE NOT STORED HERE. They live once, in gunbc.design_ruling
 // `the_mint_of_a_fleet_ssh_keypair_is_account_creation` -- provenance carries the quote, `decided` the
-// date -- and a consumer cites the ROW (review 88000, DESIGN §3: a second declaration holding the same
+// date -- and a consumer cites the ROW (review 88000, gunbc.design_argument::single_authority: a second declaration holding the same
 // fact can drift from it independently). What the mint asserts about the ruling is witnessed against
 // the row itself in dag/test/claim/host/fleet_keypair_mint_witness.dag.
 

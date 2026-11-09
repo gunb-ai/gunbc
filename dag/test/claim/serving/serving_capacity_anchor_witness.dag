@@ -1,0 +1,335 @@
+module test.claim.serving.serving_capacity_anchor_witness
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.measure { tokens_per_second, token_count, permille, millisecond, millisecond_count, byte_size }
+import gunbc.serving.serving_host_memory { ServingMemoryReading, ServingMemoryRead, ServingMemoryUnread, ConversationSnapshotCost }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, CitedToAuthority, ExternalAuthority }
+import extdeps.uri { uri_https }
+import product.fabric.serving_throughput { ThroughputOperatorReading, ThroughputUnread }
+import gunbc.serving.serving_capacity_anchor {
+  ServingCapacityAnchor, ServingConversationPolicy, ServingCapacityShape, ServingShapeDerived, ServingShapeEstimated, ServingShapeRefused,
+  ServingHeldBound, HeldByActiveShare, HeldBySwapStore, HeldToTurnsNoWarmSwap, HeldToTurnsSwapTooSlow, HeldToTurnsStoreUnread, HeldByRetentionGrant,
+  ServingRetentionGrant, GrantAdmits, GrantUnmodeled, GrantRefused, single_replica_grant,
+  ServingWarmSwap, WarmSwapRestores, WarmSwapAbsent, SwapTierHostRam, SwapTierDisk,
+  serving_capacity_shape, serving_conversation_policy, srv1_vllm_replica_shape, srv3_strata_shape, srv4_strata_shape,
+}
+import gunbc.serving.serving_layout { ServingLayoutRefused, ServingLayoutNoGroups, host_6ce85c_layout }
+import gunbc.serving.router_dev_policy {
+  router_dev_first_party, RouterDevFirstPartyRows, RouterDevFirstPartyRefused, RouterDevUpstream,
+  router_dev_shaped_under, RouterDevShaped, RouterDevShapedRow, RouterDevShapeRefused, AdmitEstimatedCapacity, AdmitDerivedCapacityOnly,
+  UpstreamHttp, RouterDevCapacity, RouterDevRetention,
+  OwnedCap, RentedCapped, RentedUncapped, RetentionAdmitted, NoRetention,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUPPLIED ANCHORS AT THE DERIVATION'S INTERFACE (gunbc.design_argument::witness_one_interface): every case below
+// varies one input of one fixture, so each bound and each refusal is reached by the input that names it.
+
+fn ca_policy() -> ServingConversationPolicy {
+  ServingConversationPolicy { anchor_context: token_count(count: 100000), min_stream_rate: tokens_per_second(count: 10), active_share: permille(count: 250), max_swap_wait: millisecond(count: 5000) }
+}
+
+// A fixture snapshot of one byte per token, so a 100k conversation costs 100,000 bytes and a cache of n * 100,000
+// bytes keeps exactly n of them.
+fn ca_cost() -> ConversationSnapshotCost {
+  ConversationSnapshotCost { fixed: byte_size(count: 0), per_token: byte_size(count: 1), provenance: "fixture" as NonEmptyStr, observed_up_to: token_count(count: 100000) }
+}
+
+fn ca_store(n: Nat) -> ServingMemoryReading { ServingMemoryRead { bytes: byte_size(count: n * 100000), provenance: "fixture" as NonEmptyStr } }
+
+fn ca_warm_slots(ms: Nat, store: ServingMemoryReading, slots: Nat?) -> ServingWarmSwap {
+  WarmSwapRestores { tier: SwapTierHostRam, restore: millisecond(count: ms), cache: store, slots: slots, cost: ca_cost(), standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr } }
+}
+
+fn ca_warm(ms: Nat, store: ServingMemoryReading) -> ServingWarmSwap { ca_warm_slots(ms: ms, store: store, slots: Absent) }
+
+fn ca_anchor(context: Nat, agg: Nat, at: Nat, prefill: Nat, warm: ServingWarmSwap) -> ServingCapacityAnchor {
+  ServingCapacityAnchor {
+    deployment: "fixture" as NonEmptyStr,
+    grant: GrantAdmits { conversations: 1000 },
+    context: token_count(count: context),
+    throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: agg), at_concurrency: at, standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr } },
+    cold_prefill: Present { value: tokens_per_second(count: prefill) },
+    cold_prefill_standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr },
+    warm_swap: warm,
+  }
+}
+
+fn ca_turns_held(s: ServingCapacityShape, turns: Nat, held: Nat) -> Bool {
+  match s {
+    ServingShapeDerived { deployment: _, turns: t, held: h, bound: _, cold_reread: _ } => t == turns && h == held
+    ServingShapeEstimated { deployment: _, turns: t, held: h, bound: _, cold_reread: _, standings: _ } => t == turns && h == held
+    ServingShapeRefused { deployment: _, reason: _ } => false
+  }
+}
+
+fn ca_bound_text(b: ServingHeldBound) -> String {
+  match b {
+    HeldByActiveShare => "share"
+    HeldBySwapStore => "store"
+    HeldToTurnsNoWarmSwap => "no-warm"
+    HeldToTurnsSwapTooSlow => "too-slow"
+    HeldToTurnsStoreUnread { obligation: _ } => "store-unread"
+    HeldByRetentionGrant => "grant"
+  }
+}
+
+fn ca_bound_is(s: ServingCapacityShape, want: String) -> Bool {
+  match s {
+    ServingShapeDerived { deployment: _, turns: _, held: _, bound: b, cold_reread: _ } => ca_bound_text(b: b) == want
+    ServingShapeEstimated { deployment: _, turns: _, held: _, bound: b, cold_reread: _, standings: _ } => ca_bound_text(b: b) == want
+    ServingShapeRefused { deployment: _, reason: _ } => false
+  }
+}
+
+fn ca_refused(s: ServingCapacityShape) -> Bool {
+  match s {
+    ServingShapeRefused { deployment: _, reason: _ } => true
+    ServingShapeDerived { deployment: _, turns: _, held: _, bound: _, cold_reread: _ } => false
+    ServingShapeEstimated { deployment: _, turns: _, held: _, bound: _, cold_reread: _, standings: _ } => false
+  }
+}
+
+fn ca_opt_is(x: Nat?, n: Nat) -> Bool {
+  match x {
+    Present { value: v } => v == n
+    Absent => false
+  }
+}
+
+fn ca_opt_absent(x: Nat?) -> Bool {
+  match x {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// The number of uncited standings an estimate carries, or Absent when the shape is derived or refused.
+fn ca_estimate_count(s: ServingCapacityShape) -> Nat? {
+  match s {
+    ServingShapeEstimated { deployment: _, turns: _, held: _, bound: _, cold_reread: _, standings: ss } => Present { value: count(ss) }
+    ServingShapeDerived { deployment: _, turns: _, held: _, bound: _, cold_reread: _ } => Absent
+    ServingShapeRefused { deployment: _, reason: _ } => Absent
+  }
+}
+
+fn ca_is_derived(s: ServingCapacityShape) -> Bool {
+  match s {
+    ServingShapeDerived { deployment: _, turns: _, held: _, bound: _, cold_reread: _ } => true
+    ServingShapeEstimated { deployment: _, turns: _, held: _, bound: _, cold_reread: _, standings: _ } => false
+    ServingShapeRefused { deployment: _, reason: _ } => false
+  }
+}
+
+// The base fixture: 300 tok/s at 8 concurrent, a 100k cold re-read of 100 s (1,000 tok/s), a 200 ms warm tier of
+// 40 conversations. Turns = min(8, 300/10) = 8; held = 8 / 0.25 = 32, under the store's 40.
+fn ca_base() -> ServingCapacityAnchor { ca_anchor(context: 100000, agg: 300, at: 8, prefill: 1000, warm: ca_warm(ms: 200, store: ca_store(n: 40))) }
+
+// Turns are the reading's own concurrency when each of its turns gets the least rate there. A reading of 50 tok/s at
+// eight establishes nothing about five, so it refuses rather than redistributing the aggregate.
+test fn turns_are_the_measured_concurrency_and_a_short_rate_is_not_redistributed() -> Bool {
+  ca_turns_held(s: serving_capacity_shape(a: ca_base(), p: ca_policy()), turns: 8, held: 32)
+    && ca_bound_is(s: serving_capacity_shape(a: ca_base(), p: ca_policy()), want: "share")
+    && ca_refused(s: serving_capacity_shape(a: ca_anchor(context: 100000, agg: 50, at: 8, prefill: 1000, warm: ca_warm(ms: 200, store: ca_store(n: 40))), p: ca_policy()))
+}
+
+test fn a_smaller_warm_store_binds_what_is_held() -> Bool {
+  let s = serving_capacity_shape(a: ca_anchor(context: 100000, agg: 300, at: 8, prefill: 1000, warm: ca_warm(ms: 200, store: ca_store(n: 12))), p: ca_policy())
+  let slotted = serving_capacity_shape(a: ca_anchor(context: 100000, agg: 300, at: 8, prefill: 1000, warm: ca_warm_slots(ms: 200, store: ca_store(n: 40), slots: Present { value: 10 })), p: ca_policy())
+  ca_turns_held(s: s, turns: 8, held: 12) && ca_bound_is(s: s, want: "store")
+    && ca_turns_held(s: slotted, turns: 8, held: 10) && ca_bound_is(s: slotted, want: "store")
+}
+
+// A WARM STORE SMALLER THAN THE TURNS BOUNDS BOTH. It can resume only what it keeps, so a store of 2 holds 2 and runs at
+// most 2 turns -- a concurrency the 8-turn reading never measured, so the shape is an estimate carrying that
+// extrapolation (cited fixture, so it is the only standing). A store that keeps none resumes nothing and refuses.
+test fn a_store_smaller_than_the_turns_bounds_held_and_turns() -> Bool {
+  let small = serving_capacity_shape(a: ca_anchor_cited_store(n: 2), p: ca_policy())
+  ca_turns_held(s: small, turns: 2, held: 2) && ca_bound_is(s: small, want: "store") && ca_opt_is(x: ca_estimate_count(s: small), n: 1)
+    && ca_refused(s: serving_capacity_shape(a: ca_anchor_cited_store(n: 0), p: ca_policy()))
+}
+
+// Holding exactly the turns with no qualifying warm path assumes GPU residency between turns: an estimate even when
+// every figure is cited.
+test fn holding_turns_without_a_warm_path_is_an_estimate() -> Bool {
+  let s = serving_capacity_shape(a: ServingCapacityAnchor {
+    deployment: "fixture" as NonEmptyStr, grant: GrantAdmits { conversations: 1000 }, context: token_count(count: 100000),
+    throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: 300), at_concurrency: 8, standing: ca_cited() },
+    cold_prefill: Present { value: tokens_per_second(count: 1000) }, cold_prefill_standing: ca_cited(), warm_swap: WarmSwapAbsent }, p: ca_policy())
+  ca_turns_held(s: s, turns: 8, held: 8) && ca_bound_is(s: s, want: "no-warm") && ca_opt_is(x: ca_estimate_count(s: s), n: 1)
+}
+
+test fn without_a_fast_warm_path_a_deployment_holds_only_its_turns() -> Bool {
+  let absent = serving_capacity_shape(a: ca_anchor(context: 100000, agg: 300, at: 8, prefill: 1000, warm: WarmSwapAbsent), p: ca_policy())
+  let slow = serving_capacity_shape(a: ca_anchor(context: 100000, agg: 300, at: 8, prefill: 1000, warm: ca_warm(ms: 6000, store: ca_store(n: 40))), p: ca_policy())
+  let unread = serving_capacity_shape(a: ca_anchor(context: 100000, agg: 300, at: 8, prefill: 1000, warm: ca_warm(ms: 200, store: ServingMemoryUnread { reason: "fixture" as NonEmptyStr })), p: ca_policy())
+  ca_turns_held(s: absent, turns: 8, held: 8) && ca_bound_is(s: absent, want: "no-warm")
+    && ca_turns_held(s: slow, turns: 8, held: 8) && ca_bound_is(s: slow, want: "too-slow")
+    && ca_turns_held(s: unread, turns: 8, held: 8) && ca_bound_is(s: unread, want: "store-unread")
+}
+
+test fn a_cold_reread_within_the_wait_ignores_the_store() -> Bool {
+  let s = serving_capacity_shape(a: ca_anchor(context: 100000, agg: 300, at: 8, prefill: 25000, warm: WarmSwapAbsent), p: ca_policy())
+  ca_turns_held(s: s, turns: 8, held: 32) && ca_bound_is(s: s, want: "share")
+    && match s {
+      ServingShapeDerived { deployment: _, turns: _, held: _, bound: _, cold_reread: c } => millisecond_count(m: c) == 4000
+      ServingShapeEstimated { deployment: _, turns: _, held: _, bound: _, cold_reread: c, standings: _ } => millisecond_count(m: c) == 4000
+      ServingShapeRefused { deployment: _, reason: _ } => false
+    }
+}
+
+test fn inputs_that_make_a_figure_meaningless_refuse() -> Bool {
+  let unread = ServingCapacityAnchor { deployment: "fixture" as NonEmptyStr, grant: GrantAdmits { conversations: 1000 }, context: token_count(count: 100000), throughput: ThroughputUnread, cold_prefill: Present { value: tokens_per_second(count: 1000) }, cold_prefill_standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr }, warm_swap: WarmSwapAbsent }
+  ca_refused(s: serving_capacity_shape(a: unread, p: ca_policy()))
+    && ca_refused(s: serving_capacity_shape(a: ca_anchor(context: 32000, agg: 300, at: 8, prefill: 1000, warm: WarmSwapAbsent), p: ca_policy()))
+    && ca_refused(s: serving_capacity_shape(a: ca_anchor(context: 100000, agg: 9, at: 8, prefill: 1000, warm: WarmSwapAbsent), p: ca_policy()))
+    && ca_refused(s: serving_capacity_shape(a: ca_anchor(context: 100000, agg: 300, at: 8, prefill: 0, warm: WarmSwapAbsent), p: ca_policy()))
+    && ca_refused(s: serving_capacity_shape(a: ServingCapacityAnchor { deployment: "fixture" as NonEmptyStr, grant: GrantAdmits { conversations: 1000 }, context: token_count(count: 100000), throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: 300), at_concurrency: 8, standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr } }, cold_prefill: Absent, cold_prefill_standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr }, warm_swap: WarmSwapAbsent }, p: ca_policy()))
+    && ca_refused(s: serving_capacity_shape(a: ca_base(), p: ServingConversationPolicy { anchor_context: token_count(count: 100000), min_stream_rate: tokens_per_second(count: 0), active_share: permille(count: 250), max_swap_wait: millisecond(count: 5000) }))
+    && ca_refused(s: serving_capacity_shape(a: ca_base(), p: ServingConversationPolicy { anchor_context: token_count(count: 100000), min_stream_rate: tokens_per_second(count: 10), active_share: permille(count: 0), max_swap_wait: millisecond(count: 5000) }))
+}
+
+// THE REAL PATH (the pairing obligation): the shipped anchors under the shipped policy, and the router rows they
+// render. Each srv1 replica reads the srv1 topology comparison's 2xTP=1 row (679 tok/s over 2 replicas at 8 sessions:
+// 339 tok/s at 4 each); deleting that row refuses both srv1 shapes and the write. Every shipped warm store is wider
+// than its share bound at the 100k anchor, so the active share binds everywhere: each srv1 replica's 100 GiB /
+// (512 MiB + 20,625 B x 100k) keeps 41; srv3 64 GiB / (1,240 MiB + 10 KiB x 100k) keeps 29, 24
+// slots; srv4 32 GiB / (800 MiB + 10 KiB x 100k) keeps 18, 8 slots; each h11 engine 8 GiB / (750 MiB + 10 KiB x
+// 100k) keeps 4, 6 slots.
+test fn the_shipped_anchors_derive_the_fleet_shape() -> Bool {
+  ca_turns_held(s: srv1_vllm_replica_shape(deployment: "srv1-vllm"), turns: 4, held: 16) && ca_bound_is(s: srv1_vllm_replica_shape(deployment: "srv1-vllm"), want: "share")
+    && ca_turns_held(s: srv3_strata_shape(), turns: 2, held: 8) && ca_bound_is(s: srv3_strata_shape(), want: "share")
+    && ca_turns_held(s: srv4_strata_shape(), turns: 1, held: 4) && ca_bound_is(s: srv4_strata_shape(), want: "share")
+}
+
+fn ca_row(rows: List<RouterDevUpstream>, name: String, cap: Nat, retain: Nat) -> Bool {
+  count(filter(rows, u => u.name == name && match u.capacity {
+    OwnedCap { turns: t } => t == cap && match u.retention {
+      RetentionAdmitted { conversations: n } => n == retain
+      NoRetention => false
+    }
+    RentedCapped { turns: _ } => false
+    RentedUncapped => false
+  })) == 1
+}
+
+test fn the_router_rows_carry_the_derived_cap_and_retain() -> Bool {
+  match router_dev_first_party() {
+    RouterDevFirstPartyRefused { reason: _ } => false
+    RouterDevFirstPartyRows { rows: rs } =>
+      ca_row(rows: rs, name: "srv1-vllm", cap: 4, retain: 16)
+        && ca_row(rows: rs, name: "srv1-vllm-1", cap: 4, retain: 16)
+        && ca_row(rows: rs, name: "srv3-strata", cap: 2, retain: 8)
+        && ca_row(rows: rs, name: "srv4-strata", cap: 1, retain: 4)
+        && ca_row(rows: rs, name: "h11-05", cap: 1, retain: 2)
+        && ca_row(rows: rs, name: "h11-07", cap: 1, retain: 1)
+        && ca_row(rows: rs, name: "h11-08", cap: 1, retain: 1)
+        && ca_row(rows: rs, name: "h11-88", cap: 1, retain: 1)
+  }
+}
+
+// THE SHAPE KEEPS ITS INPUTS' STANDING. A cited fixture: every figure cited to an authority.
+fn ca_cited() -> CitedFigureStanding { CitedToAuthority { authority: ExternalAuthority { uri: uri_https(locator: "example.org/fixture" as NonEmptyStr) } } }
+
+fn ca_anchor_standing(throughput: CitedFigureStanding, prefill: CitedFigureStanding, warm: CitedFigureStanding) -> ServingCapacityAnchor {
+  ServingCapacityAnchor {
+    deployment: "fixture" as NonEmptyStr,
+    grant: GrantAdmits { conversations: 1000 },
+    context: token_count(count: 100000),
+    throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: 300), at_concurrency: 8, standing: throughput },
+    cold_prefill: Present { value: tokens_per_second(count: 1000) },
+    cold_prefill_standing: prefill,
+    warm_swap: WarmSwapRestores { tier: SwapTierHostRam, restore: millisecond(count: 200), cache: ca_store(n: 40), slots: Absent, cost: ca_cost(), standing: warm },
+  }
+}
+
+test fn an_uncited_input_makes_the_shape_an_estimate_that_carries_it() -> Bool {
+  let uncited = TranscribedUncited { read_obligation: "fixture" as NonEmptyStr }
+  ca_is_derived(s: serving_capacity_shape(a: ca_anchor_standing(throughput: ca_cited(), prefill: ca_cited(), warm: ca_cited()), p: ca_policy()))
+    && ca_opt_is(x: ca_estimate_count(s: serving_capacity_shape(a: ca_anchor_standing(throughput: uncited, prefill: ca_cited(), warm: ca_cited()), p: ca_policy())), n: 1)
+    && ca_opt_is(x: ca_estimate_count(s: serving_capacity_shape(a: ca_anchor_standing(throughput: ca_cited(), prefill: uncited, warm: ca_cited()), p: ca_policy())), n: 1)
+    && ca_opt_is(x: ca_estimate_count(s: serving_capacity_shape(a: ca_anchor_standing(throughput: ca_cited(), prefill: ca_cited(), warm: uncited), p: ca_policy())), n: 1)
+    && ca_opt_is(x: ca_estimate_count(s: serving_capacity_shape(a: ca_anchor_standing(throughput: uncited, prefill: uncited, warm: uncited), p: ca_policy())), n: 3)
+}
+
+fn ca_row_of(cap: RouterDevCapacity, retention: RouterDevRetention, rests: List<CitedFigureStanding>) -> RouterDevUpstream {
+  RouterDevUpstream { name: "fixture", scheme: UpstreamHttp, host: "127.0.0.1", port: 19101, tls_name: Absent, model: "m", capacity: cap, max_model_len: 0, path_prefix: "", retiring_names: [], in_service: true, retention: retention, effort_effects: [], capacity_rests_on: rests }
+}
+
+fn ca_shaped_rests(r: RouterDevShaped) -> Nat? {
+  match r {
+    RouterDevShapedRow { row: u } => Present { value: count(u.capacity_rests_on) }
+    RouterDevShapeRefused { reason: _ } => Absent
+  }
+}
+
+test fn the_router_admits_an_estimate_only_under_an_admission_and_carries_its_obligations() -> Bool {
+  let uncited = TranscribedUncited { read_obligation: "fixture" as NonEmptyStr }
+  let estimate = serving_capacity_shape(a: ca_anchor_standing(throughput: uncited, prefill: ca_cited(), warm: ca_cited()), p: ca_policy())
+  let derived = serving_capacity_shape(a: ca_anchor_standing(throughput: ca_cited(), prefill: ca_cited(), warm: ca_cited()), p: ca_policy())
+  let admitted = AdmitEstimatedCapacity { directive: "fixture" as NonEmptyStr }
+  ca_opt_is(x: ca_shaped_rests(r: router_dev_shaped_under(shape: estimate, admission: admitted, row: (c, r, o) => ca_row_of(cap: c, retention: r, rests: o))), n: 1)
+    && ca_opt_absent(x: ca_shaped_rests(r: router_dev_shaped_under(shape: estimate, admission: AdmitDerivedCapacityOnly, row: (c, r, o) => ca_row_of(cap: c, retention: r, rests: o))))
+    && ca_opt_is(x: ca_shaped_rests(r: router_dev_shaped_under(shape: derived, admission: AdmitDerivedCapacityOnly, row: (c, r, o) => ca_row_of(cap: c, retention: r, rests: o))), n: 0)
+}
+
+// Every shipped first-party row's capacity is an estimate today, so each carries what it rests on.
+test fn the_shipped_rows_carry_the_obligations_their_capacity_rests_on() -> Bool {
+  match router_dev_first_party() {
+    RouterDevFirstPartyRefused { reason: _ } => false
+    RouterDevFirstPartyRows { rows: rs } =>
+      count(filter(rs, u => u.name != "ctrl-vast-pool" && count(u.capacity_rests_on) == 0)) == 0
+        && count(filter(rs, u => u.name == "ctrl-vast-pool" && count(u.capacity_rests_on) == 0)) == 1
+  }
+}
+
+fn ca_anchor_grant(g: ServingRetentionGrant) -> ServingCapacityAnchor {
+  ServingCapacityAnchor {
+    deployment: "fixture" as NonEmptyStr,
+    grant: g,
+    context: token_count(count: 100000),
+    throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: 300), at_concurrency: 8, standing: ca_cited() },
+    cold_prefill: Present { value: tokens_per_second(count: 1000) },
+    cold_prefill_standing: ca_cited(),
+    warm_swap: WarmSwapRestores { tier: SwapTierHostRam, restore: millisecond(count: 200), cache: ca_store(n: 40), slots: Absent, cost: ca_cost(), standing: ca_cited() },
+  }
+}
+
+// THE RESOURCE GRANT TIGHTENS AND NEVER ENLARGES. Unbounded, the cited fixture runs 8 turns and holds 32. A grant of 20
+// holds 20 at the measured 8 turns, still derived. A grant of 3 forces 3 turns, a concurrency nothing was read at, so
+// it is an estimate carrying that extrapolation, never a derived figure. A grant of 1000 changes nothing; an unmodeled
+// grant leaves the figure but makes it an estimate; a refused grant refuses.
+test fn a_retention_grant_tightens_held_and_an_unmodeled_one_is_carried() -> Bool {
+  let mid = serving_capacity_shape(a: ca_anchor_grant(g: GrantAdmits { conversations: 20 }), p: ca_policy())
+  let tight = serving_capacity_shape(a: ca_anchor_grant(g: GrantAdmits { conversations: 3 }), p: ca_policy())
+  let loose = serving_capacity_shape(a: ca_anchor_grant(g: GrantAdmits { conversations: 1000 }), p: ca_policy())
+  let unmodeled = serving_capacity_shape(a: ca_anchor_grant(g: GrantUnmodeled { obligation: "fixture" as NonEmptyStr }), p: ca_policy())
+  ca_turns_held(s: mid, turns: 8, held: 20) && ca_bound_is(s: mid, want: "grant") && ca_is_derived(s: mid)
+    && ca_turns_held(s: tight, turns: 3, held: 3) && ca_bound_is(s: tight, want: "grant") && ca_opt_is(x: ca_estimate_count(s: tight), n: 1)
+    && ca_turns_held(s: loose, turns: 8, held: 32) && ca_is_derived(s: loose)
+    && ca_turns_held(s: unmodeled, turns: 8, held: 32) && ca_opt_is(x: ca_estimate_count(s: unmodeled), n: 1)
+    && ca_refused(s: serving_capacity_shape(a: ca_anchor_grant(g: GrantRefused { reason: "fixture" as NonEmptyStr }), p: ca_policy()))
+}
+
+// A LAYOUT THAT REFUSES, OR CONFIGURES OTHER THAN ONE REPLICA, REFUSES THE SHAPE; it never becomes an admitted
+// estimate. host_6ce85c_layout configures four replicas, so as a single deployment's grant it refuses.
+test fn a_refused_or_multi_replica_layout_refuses_the_shape() -> Bool {
+  ca_refused(s: serving_capacity_shape(a: ca_anchor_grant(g: single_replica_grant(layout: ServingLayoutRefused { refusal: ServingLayoutNoGroups }, deployment: "fixture")), p: ca_policy()))
+    && ca_refused(s: serving_capacity_shape(a: ca_anchor_grant(g: single_replica_grant(layout: host_6ce85c_layout, deployment: "fixture")), p: ca_policy()))
+}
+
+fn ca_anchor_cited_store(n: Nat) -> ServingCapacityAnchor {
+  ServingCapacityAnchor {
+    deployment: "fixture" as NonEmptyStr,
+    grant: GrantAdmits { conversations: 1000 },
+    context: token_count(count: 100000),
+    throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: 300), at_concurrency: 8, standing: ca_cited() },
+    cold_prefill: Present { value: tokens_per_second(count: 1000) },
+    cold_prefill_standing: ca_cited(),
+    warm_swap: WarmSwapRestores { tier: SwapTierHostRam, restore: millisecond(count: 200), cache: ca_store(n: n), slots: Absent, cost: ca_cost(), standing: ca_cited() },
+  }
+}

@@ -30,7 +30,7 @@ import gunbc.machine_intake.subject { MachineIntakeSubject }
 import gunbc.machine_intake.receipt { EvidenceRef, same_intake_subject }
 
 // THE ACCESS CONTEXT IS BOUND ONCE, BEFORE THE DELIVERY SOLVER RUNS (machine-intake ruling 3
-// §1 and its layer-placement ruling; ruling 4 §1, §4, §5). extdeps.bmc.access_profile owns the
+// gunbc.design_argument::goal_safe_efficient_predictable and its layer-placement ruling; ruling 4 §1, §4, §5). extdeps.bmc.access_profile owns the
 // external shapes — profile, observation, the catalog lookup. This module owns the WORKFLOW
 // standings around them: whether the lookup ran, whether this controller was observed at all,
 // whether the observation belongs to THIS attempt, whether every raw blob the observation and

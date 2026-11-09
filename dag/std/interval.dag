@@ -9,7 +9,7 @@ import std.types { Bool, NonEmptyStr }
 //
 // The wall is structural, not a check: the carrier is `sole_constructor`, so no other module can
 // write the record literal or cast into it, and the single mint refuses the reversed case. The
-// invalid state has no constructor outside this module (DESIGN section 4b, rung four for this
+// invalid state has no constructor outside this module (gunbc.design_argument::guarantee_ladder, rung four for this
 // class) rather than being validated after the fact.
 //
 // Ordering is supplied by the caller as `le`, because the substrate has no typeclass to demand it
@@ -27,7 +27,7 @@ type IntervalConstruction<T>
   | IntervalRefused { reason: NonEmptyStr }
 
 // The ONE mint. A reversed pair is refused, typed and located, never silently swapped into order —
-// swapping would be the absorbing fallback (DESIGN section 5): a plausible answer that destroys the
+// swapping would be the absorbing fallback (gunbc.design_argument::fail_closed): a plausible answer that destroys the
 // evidence that the caller's endpoints were wrong.
 fn closed_interval<T>(
   low: T,

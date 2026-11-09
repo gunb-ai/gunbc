@@ -21,7 +21,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // crossing is not this wall's question), a value already typed NonEmptyStr, and a non-text cast that
 // is not into text (`as Float`) all still compile.
 //
-// PATH SCOPE (DESIGN section 4b): this measures compile acceptance only.
+// PATH SCOPE (gunbc.design_argument::guarantee_ladder): this measures compile acceptance only.
 
 fn blocking_count(source: String) -> Int {
   match compile_dag_diagnostic_census(source) {
@@ -132,7 +132,7 @@ test fn w_declared_int_to_text_route_is_accepted() -> Bool { blocking_count(sour
 test fn w_non_empty_text_as_string_is_accepted() -> Bool { blocking_count(source: non_empty_text_as_string_source) == 0 }
 
 // `true as Int` still refuses: the Bool row was withdrawn from dag_cast_rules and this change adds
-// no route (DESIGN section 4).
+// no route (gunbc.design_argument::closed_grounded_substrate).
 test fn w_bool_as_int_is_still_refused() -> Bool { blocking_count(source: bool_as_int_source) >= 1 }
 
 // Bool is the declared coproduct True | False: a cast from it onto a target outside the cast table

@@ -18,7 +18,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE BOUNDARY IS resolve_node_walk AND ITS INPUTS ARE SUPPLIED: a hand-built Bind over an empty
 // namespace, so every name is unbound unless the Bind's own binder binds it. That is the one walk
-// whose inner scope is PRODUCED by a sibling (DESIGN section 3's supplied-input rule; the real
+// whose inner scope is PRODUCED by a sibling (gunbc.design_argument::single_authority's supplied-input rule; the real
 // route through tokenize/parse/normalize is exercised by
 // v2.test.claim.native_census.whole_tree_census_resolve, which is this boundary's inhabitance claim).
 
@@ -89,7 +89,7 @@ fn walk_bind(binder: Node, value: Node, body: Node) -> Node {
 fn walk_chain_identity(c: NonEmptyDiagnostics) -> Symbol {
   match diagnostics_fatal(d: c).at {
     NodeLocus { anchor: a } =>
-      match a.at.kind {
+      match a.at.node.kind {
         TypeNode { connective: Atom { identity: id } } => id
         _ => ^walk_chain_not_an_atom
       }

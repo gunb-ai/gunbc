@@ -52,7 +52,7 @@ data unexpected_linked: String = "/opt/gunbc/dispatch-worktrees/concurrent-attem
 // WHAT THAT STILL DOES NOT ESTABLISH, and the sibling decoder witnesses say the same: nothing here
 // shows that git EMITS these bytes for any given repository state. That is a transport claim, it
 // cannot execute in the hermetic fold, and reporting these as coverage for it would be rung
-// inflation (DESIGN §4b).
+// inflation (gunbc.design_argument::guarantee_ladder).
 fn ref_record(name: String, oid: String) -> String {
   concat(concat(name, concat("\0", oid)), "\0")
 }

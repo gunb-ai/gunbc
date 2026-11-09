@@ -5,10 +5,9 @@ import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.types { NonEmptyStr }
 import std.markdown { MarkdownBlock, TableBlock, BlockquoteBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, p, li, ul, cell, row }
-import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 
 // Normative authority rows for the extdeps modeling preflight (operator verdict on gunbc#7556;
-// DESIGN §3 'External upstream decomposition'): before any new extdeps work, the agent returns this
+// gunbc.design_argument::external_upstreams 'External upstream decomposition'): before any new extdeps work, the agent returns this
 // table, and no implementation starts until the table is coherent. The typed rows below are the
 // single authority; the registered plan doc renders its table FROM these rows (derive, never a
 // second copy).
@@ -41,7 +40,7 @@ fn extdeps_preflight_table() -> MarkdownBlock {
 
 fn extdeps_modeling_preflight_body() -> List<MarkdownBlock> {
   [
-    BlockquoteBlock { blocks: [p(text: "Operator-directed (verdict on gunbc#7556, 2026-08-01). Normative source: DESIGN §3 → \"External upstream decomposition\". The typed rows live in `gunbc.plans.extdeps_modeling_preflight` `extdeps_modeling_preflight_rows`; this table is rendered from them.")] },
+    BlockquoteBlock { blocks: [p(text: "Operator-directed (verdict on gunbc#7556, 2026-08-01). Normative source: gunbc.design_argument::external_upstreams → \"External upstream decomposition\". The typed rows live in `gunbc.plans.extdeps_modeling_preflight` `extdeps_modeling_preflight_rows`; this table is rendered from them.")] },
     h2(text: "The preflight"),
     p(text: "Before any new extdeps work, the agent should return this table:"),
     extdeps_preflight_table(),
@@ -58,10 +57,10 @@ fn extdeps_modeling_preflight_body() -> List<MarkdownBlock> {
 }
 
 data extdeps_modeling_preflight_plan: Plan = Plan {
-  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  projection: PlanIsAuthorityOnly,
   slug: "extdeps-modeling-preflight",
   title: "extdeps modeling preflight — one subject per upstream module",
   body: extdeps_modeling_preflight_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Dissolves when the preflight's decidable half is machine-consumed end-to-end: the ExternalModelScope requirement is promoted from the gunbc.extdeps_scope_frontier staging roster to a v2.lens.mandatory_tag region (compile-grain wall), at which point the subject/coverage questions are enforced by construction and this doc's residue (the genuinely judgment-shaped rows: existing-model search, proposed file map) folds into DESIGN §3's standing text.")
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Dissolves when the preflight's decidable half is machine-consumed end-to-end: the ExternalModelScope requirement is promoted from the gunbc.extdeps_scope_frontier staging roster to a v2.lens.mandatory_tag region (compile-grain wall), at which point the subject/coverage questions are enforced by construction and this doc's residue (the genuinely judgment-shaped rows: existing-model search, proposed file map) folds into gunbc.design_argument::single_authority's standing text.")
   }
 }

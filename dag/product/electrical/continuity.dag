@@ -68,6 +68,20 @@ fn evidence_ref_text(e: EvidenceRef) -> String {
   }
 }
 
+// The frame a piece of evidence is a citation OF, when it is one. A spoken statement carries no image
+// behind it, and a seller's listing photograph is an image we never held: neither can be what a
+// stored-bytes check leans on, so both come back Absent and the CALLER decides what the gap costs --
+// which is why this returns an Option instead of failing. The evidence is kept either way; only the
+// inference that would rest on it is refused. Anything that needs pixels out of an unphotographed
+// statement has to say so through its own typed arm, not by reading through this one.
+fn evidence_citation(e: EvidenceRef) -> PhotographCitation? {
+  match e {
+    OperatorPhotograph { citation } => Present { value: citation }
+    OperatorStatement { stated_on: _, verbatim: _ } => Absent
+    SellerListingPhotograph { listing: _, read_on: _ } => Absent
+  }
+}
+
 type ContinuityResult
   = BuzzerAsserted
   | BuzzerNotAsserted
@@ -77,7 +91,7 @@ type ContinuityResult
 // statement over a population ("everything I touched", "nothing goes to ground", "the very middle pin")
 // names no exact first point either: the visible terminals it covers each stand for a touch, inferred
 // with that basis. An inferred point is kept, typed with its basis, and every derivation that rests on
-// one says so -- an inference neither deleted nor promoted to a recorded point (DESIGN section 4d).
+// one says so -- an inference neither deleted nor promoted to a recorded point (gunbc.design_argument::epistemic_humility).
 type PointProvenance
   = PointRecorded
   | PointInferred { basis: NonEmptyStr }

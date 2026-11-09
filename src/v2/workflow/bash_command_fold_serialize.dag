@@ -194,7 +194,7 @@ fn bash_fold_serialize_stmts_semi(stmts: List<Node>) -> Outcome<String> {
 // plant a one-child refused-empty placeholder; that is not a statement or word and must
 // refuse here, not serialize as a member. A tagged statement (first child an Atom) and
 // any third child are not that encoding. Reading only children 0 and 1 of an or_else
-// body used to keep left and drop right (DESIGN section 5).
+// body used to keep left and drop right (gunbc.design_argument::fail_closed).
 fn bash_fold_stmt_list_shape_refused(list_node: Node) -> Outcome<List<Node>> {
   Rejected {
     diagnostics: diagnostics_singleton(

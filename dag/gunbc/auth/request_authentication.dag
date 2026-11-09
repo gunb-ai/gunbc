@@ -36,7 +36,7 @@ import std.algebra { non_empty }
 // THE ACCESS-PATH VOCABULARY, owned here and supplied to extdeps.http.server RequestSecurityContext
 // as its AccessPath type argument. It moved from that module because which front doors this
 // deployment routes through is a fact about this deployment, not about HTTP, and enumerating it
-// there made every HTTP program import the Tailscale modules (DESIGN section 3).
+// there made every HTTP program import the Tailscale modules (gunbc.design_argument::single_authority).
 //
 // THE TAILNET PATH IS MODELED THROUGH THE EXISTING AUTHORITIES, not as ambient reachability:
 // the arm carries the tailscale serve route key and the ACL policy revision the modeling was
@@ -349,7 +349,6 @@ fn tailnet_route_readback_observed(acl_revision: ContentHash, serve_route: Tails
 // second CSRF mechanism beside csrf_write_decision; the token is the inhabited proof.
 type ServeRouteAction
   = ServeActionAssignIssue
-  | ServeActionCreateIssue
   | ServeActionCommentIssue
   | ServeActionSaveOwnView
   | ServeActionApproveDecision
@@ -358,11 +357,17 @@ type ServeRouteAction
   | ServeActionDispatchNode
   | ServeActionStopNode
   | ServeActionPublishNode
+  // The operator's daily close and retire (operator ruling 2026-11-04). CLOSE admits the
+  // authenticated Workspace human; the merged-PR readback gate lives in the route (roadmap_serve),
+  // so authorization itself is the principal axis only. RETIRE admits the authenticated Workspace
+  // human with NO further precondition — the operator retires any work item, in any state; the
+  // route's only refusals are unknown node, already terminal, unauthenticated, stale revision.
+  | ServeActionCloseNode
+  | ServeActionRetireNode
 
 fn serve_route_action_label(action: ServeRouteAction) -> NonEmptyStr {
   match action {
     ServeActionAssignIssue => "assign-issue" as NonEmptyStr
-    ServeActionCreateIssue => "create-issue" as NonEmptyStr
     ServeActionCommentIssue => "comment-issue" as NonEmptyStr
     ServeActionSaveOwnView => "save-own-issue-view" as NonEmptyStr
     ServeActionApproveDecision => "approve-decision" as NonEmptyStr
@@ -371,6 +376,8 @@ fn serve_route_action_label(action: ServeRouteAction) -> NonEmptyStr {
     ServeActionDispatchNode => "dispatch-node" as NonEmptyStr
     ServeActionStopNode => "stop-node" as NonEmptyStr
     ServeActionPublishNode => "publish-node" as NonEmptyStr
+    ServeActionCloseNode => "close-node" as NonEmptyStr
+    ServeActionRetireNode => "retire-node" as NonEmptyStr
   }
 }
 
@@ -446,13 +453,17 @@ fn deployment_admits_agent_peer(deployment: DeploymentId) -> Bool {
 fn serve_route_action_agent_admissible(action: ServeRouteAction) -> Bool {
   match action {
     ServeActionAssignIssue => true
-    ServeActionCreateIssue => false
     ServeActionCommentIssue => false
     ServeActionSaveOwnView => false
     ServeActionDispatchNode => true
     ServeActionStopNode => false
     ServeActionPublishNode => false
     ServeActionApproveDecision => false
+    // CLOSE is an acceptance act — the acceptance verdict belongs to the human operator, never to
+    // an agent closing its own work. RETIRE is the operator's disposal of a work item; the agent
+    // door's grant (2026-11-04) was assign/dispatch only. Both stay human acts.
+    ServeActionCloseNode => false
+    ServeActionRetireNode => false
     ServeActionCreateAllocation => false
     ServeActionReleaseAllocation => false
   }
@@ -616,12 +627,13 @@ fn human_action_authorization_decision(
     GoogleOidcSession { session } =>
       match action {
         ServeActionAssignIssue => Permit
-        ServeActionCreateIssue => Permit
         ServeActionCommentIssue => Permit
         ServeActionSaveOwnView => Permit
         ServeActionDispatchNode => Permit
         ServeActionStopNode => Permit
         ServeActionPublishNode => Permit
+        ServeActionCloseNode => Permit
+        ServeActionRetireNode => Permit
         ServeActionCreateAllocation => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "allocation-specific authorization required" })
         ServeActionReleaseAllocation => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "allocation-specific authorization required" })
         ServeActionApproveDecision =>

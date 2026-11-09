@@ -2,7 +2,7 @@ module test.claim.instrument_registry_artifact_rendering_witness
 
 // THE REGRESSION CONTROL FOR THE RENDERED INSTRUMENT TABLE.
 //
-// SUBJECT AND BOUNDARY (DESIGN section 3, one authority): the committed bytes of
+// SUBJECT AND BOUNDARY (gunbc.design_argument::single_authority, one authority): the committed bytes of
 // `src/v1/stage0/src/instrument_registry_generated.rs` against the rendering that
 // `gunbc.instruments.instrument_registry_emit` `expected_instrument_registry_generated_rs` produces from
 // `gunbc.instrument_targets` `instrument_bindings()`. The host dispatches instruments by reading the

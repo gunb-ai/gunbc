@@ -376,7 +376,7 @@ mod tests {
         assert!(
             // THE LITERAL IS THE POINT: an oracle built from the table would assert
             // `render_roster` against the same const it renders from -- `measure() == measure()`
-            // (DESIGN section 5). These spellings are INDEPENDENT referents.
+            // (gunbc.design_argument::fail_closed). These spellings are INDEPENDENT referents.
             body.contains("module gunbc.recurring_failure_mode.roster"),
             "absence of members is a present module with an empty list, not a missing module"
         );

@@ -1,0 +1,42 @@
+module test.claim.reexport_owner_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE DISCRIMINATING PAIR FOR THE OWNER OF A DATA ROW REACHED THROUGH A RE-EXPORT (#15571).
+// test.fixture.reexport_owner_probe.a declares the nullary data rows probe_d and probe_e; .b imports
+// them by name, which re-exports them. A consumer that imports them from .b has the declarer two
+// hops away. Before v1.compiler.infer_env named_import_chain_declares, global_bare_declarer_in_scope
+// admitted only the containment chain or a DIRECT import parent, the census answered NotFound, and
+// declaring_module_for_local_binding named the IMPORTER as owner: the effect join then refused with
+// "names no registry row" (measured on srv1, seed of 6962b247: owner printed was the consumer itself).
+// The direct-import arm never failed and stays enrolled as the bound that keeps the class from
+// reading as "any bare data reference" (gunbc.design_argument::guarantee_ladder (dissolution on climb): the expecting-red arm is now the
+// regression control). Both are compiled through the real emitter, so a hard diagnostic refuses.
+
+fn v_reexported_rows_resolve_to_their_declarer() -> Bool {
+  compile_dag_rust_emit_check(
+    "module rop_hop\n\nimport std.types { Int, Bool }\nimport test.fixture.reexport_owner_probe.b { probe_b_use, probe_d, probe_e }\n\nfn rop_pick_hop(flag: Bool) -> Int {\n  match flag {\n    true => probe_d\n    false => probe_e\n  }\n}\n",
+    "src/rop_hop.rs",
+    ["rop_pick_hop"],
+    []
+  )
+}
+
+test fn rows_reached_through_a_reexport_have_their_declaring_module_as_owner() -> Bool {
+  v_reexported_rows_resolve_to_their_declarer()
+}
+
+fn v_direct_rows_resolve_to_their_declarer() -> Bool {
+  compile_dag_rust_emit_check(
+    "module rop_direct\n\nimport std.types { Int, Bool }\nimport test.fixture.reexport_owner_probe.a { probe_d, probe_e }\n\nfn rop_pick_direct(flag: Bool) -> Int {\n  match flag {\n    true => probe_d\n    false => probe_e\n  }\n}\n",
+    "src/rop_direct.rs",
+    ["rop_pick_direct"],
+    []
+  )
+}
+
+test fn rows_imported_directly_have_their_declaring_module_as_owner() -> Bool {
+  v_direct_rows_resolve_to_their_declarer()
+}

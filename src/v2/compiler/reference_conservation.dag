@@ -2,7 +2,7 @@ module v2.compiler.reference_conservation
 
 import v2.compiler.tokenize { PreparedLexRules, prepare_lex_rules }
 import std.types { List, Map }
-import v2.compiler.parse { ParseArtifact, PreparedGrammar }
+import v2.compiler.parse { parse_artifact_span_index, ParseArtifact, PreparedGrammar }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.program_assembly {
   program_assembly_phase_parse_seeded,
@@ -282,7 +282,7 @@ fn conserved_identity_of(node: Node) -> Optional<Symbol> {
 // atom's identity with the interned source slice at its extent; on real corpus files the recorded
 // extents and the slice primitive disagree past the first multibyte character, so the comparison
 // silently EXCLUDED most atoms and the population shrank without a count -- the absorbing fallback
-// DESIGN section 5 forbids, in drop form. The test is now what the stamp mode means: a terminal
+// gunbc.design_argument::fail_closed forbids, in drop form. The test is now what the stamp mode means: a terminal
 // stamped with its token CLASS publishes a symbol the lexer declares (v2.std.compilers.lexing
 // TokenRule.token_class), so an atom whose identity is NOT a declared token class was stamped with
 // its lexeme and IS authored. An int / float literal publishes its class and carries its value
@@ -386,7 +386,7 @@ fn population_count_item(acc: AuthoredAtomPopulation, emitted: Symbol) -> Author
   }
 }
 
-// THE ACCUMULATOR IS THREADED, NEVER APPENDED (DESIGN section 6, bare minimum cost).
+// THE ACCUMULATOR IS THREADED, NEVER APPENDED (gunbc.design_argument::how_to_work, bare minimum cost).
 fn population_walk(
   acc: AuthoredAtomPopulation,
   node: Node,
@@ -481,11 +481,11 @@ fn population_walk_children(
   })
 }
 
-fn authored_atom_population(artifact: ParseArtifact, token_classes: Map<Symbol, Bool>) -> AuthoredAtomPopulation {
+fn authored_atom_population(artifact: ParseArtifact, span_index: SpanIndex, token_classes: Map<Symbol, Bool>) -> AuthoredAtomPopulation {
   population_walk(
     acc: authored_atom_population_empty(),
     node: artifact.tree,
-    span_index: artifact.span_index,
+    span_index: span_index,
     token_classes: token_classes,
     frame: PopulationFrame { context: Empty, innermost: ^reference_conservation_outside_every_production, item: 0 - 1 }
   )
@@ -494,7 +494,7 @@ fn authored_atom_population(artifact: ParseArtifact, token_classes: Map<Symbol, 
 // ---- the normalized-side index -----------------------------------------------------------------
 
 // One pass over the normalized tree, keyed by occurrence, so each authored atom is answered by a
-// lookup rather than a rescan (DESIGN section 6: a per-atom rescan is the quadratic this refuses).
+// lookup rather than a rescan (gunbc.design_argument::how_to_work: a per-atom rescan is the quadratic this refuses).
 fn occurrence_identity_index(acc: Map<OccurrenceId, Symbol>, node: Node) -> Map<OccurrenceId, Symbol> {
   let here = match conserved_identity_of(node: node) {
     Absent => acc
@@ -529,7 +529,7 @@ fn occurrence_identity_index(acc: Map<OccurrenceId, Symbol>, node: Node) -> Map<
 // -- an unlocated refusal that swallows a module is exactly the silence this check exists to count.
 // THE BYTE RANGE IS v2.std.diagnostic's Extent, declared once there; a local field-isomorphic
 // record (the deleted `type RefusalRange { start: Int, end: Int }`) was a structural nickname --
-// DESIGN 3's one-declaration rule names the SYMBOL's home instead (gunbc.recurring_failure_mode
+// gunbc.design_argument::single_authority's one-declaration rule names the SYMBOL's home instead (gunbc.recurring_failure_mode
 // .nominal_isomorphic_record_admitted_at_sibling_declaration). The slot carries the coproduct
 // parent Extent, not one of its arms: ByteRange is an arm, not a type (review 38602), and the
 // arm is matched where the fields are read.
@@ -551,7 +551,7 @@ fn refusal_cover_anchor(acc: Map<OccurrenceId, Bool>, node: Node) -> Map<Occurre
 fn refusal_cover_add(cover: RefusalCover, d: Diagnostic) -> RefusalCover {
   match d.at {
     NodeLocus { anchor: anchor } =>
-      RefusalCover { anchored: refusal_cover_anchor(acc: cover.anchored, node: anchor.at), ranges: cover.ranges }
+      RefusalCover { anchored: refusal_cover_anchor(acc: cover.anchored, node: anchor.at.node), ranges: cover.ranges }
     Textual { file: _, extent: extent } =>
       match extent {
         ByteRange { start: s, end: e } =>
@@ -1030,7 +1030,7 @@ type TreeConservationState {
 }
 
 // The module's qualified name is read ONCE here and handed to both pools, which previously each
-// re-derived it from the root (DESIGN section 2: one demand, one production).
+// re-derived it from the root (gunbc.design_argument::demand_before_materialization: one demand, one production).
 fn conservation_against_tree(path: String, population: AuthoredAtomPopulation, tree: NormalizedTree, roles: OccurrenceRoles) -> ReferenceConservationReport {
   let index = occurrence_identity_index(acc: empty_map(), node: tree.root)
   let role_index = occurrence_role_index(roles: roles)
@@ -1157,7 +1157,7 @@ fn reference_conservation_subject_of_read(
       match normalize_scoped(
         parse_tree: artifact.tree,
         allocator: scoped_occurrence_allocator(alloc: artifact.alloc, scope: content_hash(n: artifact.tree)),
-        spans: artifact.span_index
+        spans: parse_artifact_span_index(artifact: artifact)
       ) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: scoped, diagnostics: d } => Accepted { value: scoped.tree, diagnostics: d }
@@ -1212,7 +1212,8 @@ fn reference_conservation_of_subject_admitted(
   match subject.parsed {
     Rejected { diagnostics: d } => reference_conservation_unmeasured(path: subject.path, diagnostics: d)
     Accepted { value: artifact, diagnostics: _ } =>
-      let population = authored_atom_population(artifact: artifact, token_classes: token_classes)
+      let spans = parse_artifact_span_index(artifact: artifact)
+      let population = authored_atom_population(artifact: artifact, span_index: spans, token_classes: token_classes)
       let roles = occurrence_roles_of_admitted(tree: artifact.tree, admission: admission)
       match subject.normalized {
         Accepted { value: tree, diagnostics: advisories } =>
@@ -1226,7 +1227,7 @@ fn reference_conservation_of_subject_admitted(
             advisories: advisories
           )
         Rejected { diagnostics: d } =>
-          let refused = conservation_against_refusal(path: subject.path, population: population, diagnostics: d, spans: artifact.span_index)
+          let refused = conservation_against_refusal(path: subject.path, population: population, diagnostics: d, spans: spans)
           match roles {
             OccurrenceRolesRead { roles: r } => report_with_role_gaps(report: refused, roles: r)
             OccurrenceRoleTableRefused { unlisted: u, unknown: k, unkeyed: x } =>

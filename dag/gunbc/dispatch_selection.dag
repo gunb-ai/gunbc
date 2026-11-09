@@ -1,6 +1,7 @@
 module gunbc.dispatch_selection
 
-import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, list_length }
+import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
+import std.algebra { length }
 import std.optional { optional_absent, optional_present }
 import extdeps.llm.cli {
   ProviderModelSelection,
@@ -856,7 +857,7 @@ fn claude_offer_for_instance(instance: HostDashboardInstance) -> ClaudeOffer {
 // A withdrawn host or runtime makes NO OFFER, so ResolvedProviderSelection has no constructor for
 // it -- the cut-off provider is not selected-and-then-rejected, it is unselectable. Gating after
 // selection instead would concede that the bad state is writable and leave a refusal to catch it
-// (DESIGN section 5: construction over validation).
+// (gunbc.design_argument::fail_closed: construction over validation).
 //
 // THE WITHDRAWALS ARE RETURNED SEPARATELY AND THAT IS NOT A CONVENIENCE. An inventory emptied by
 // withdrawal and an inventory empty because nothing is installed are different facts with opposite
@@ -1776,7 +1777,7 @@ fn resolve_dispatch_selection(
   request: ProviderSelectionRequest,
   sizing_expectation: SizingProfileExpectation,
 ) -> DispatchSelectionResult {
-  if list_length(items: inventory.offers) == 0 {
+  if length(xs: inventory.offers) == 0 {
     DispatchSelectionRefused {
       sizing_expectation: sizing_expectation,
       requested_selection: request,

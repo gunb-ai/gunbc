@@ -398,7 +398,7 @@ test fn an_unknown_outcome_carries_guidance_that_a_human_can_act_on() -> Bool {
     && string_contains(s: fleet_keypair_unknown_outcome_guidance, pattern: "same commit")
 }
 
-// WHY A HUMAN STEP WAS REMOVED FROM BESIDE THIS KEY, WITNESSED BY CROSS-REFERENCE (DESIGN §3, §16; review
+// WHY A HUMAN STEP WAS REMOVED FROM BESIDE THIS KEY, WITNESSED BY CROSS-REFERENCE (gunbc.design_argument::single_authority; review
 // 88000). The operator's words and the date live in exactly ONE place -- the gunbc.design_ruling row -- and
 // NOTHING copies them: the old shape kept a second `data` pair beside the mint that could drift from the
 // ruling independently, and a test comparing those copies to literals of themselves proved nothing. So each
@@ -527,7 +527,7 @@ fn fleet_keypair_mint_other_entry(subject: FleetKeypairMintSubject) -> String {
 // the refusal marker where the folded script belongs, and the committed workflow's body had to be carried
 // from the committed grant-wait job's step (which calls the SAME builder with a different purpose). A carry
 // is only honest if the committed bytes equal the builder's emission modulo the declared name difference,
-// and "trust me" is not a witness (DESIGN §6: a projection must be checked, not asserted). Three legs, in
+// and "trust me" is not a witness (gunbc.design_argument::how_to_work: a projection must be checked, not asserted). Three legs, in
 // order of how much interpreter they need:
 //   1. (any interpreter) the builder's BODY does not depend on `purpose` -- only its NAME interpolates it.
 //      Together with leg 2 this is the structural half of the equality: carried bytes for one purpose can

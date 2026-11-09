@@ -49,7 +49,7 @@ type RepresentationSpelling<R> {
 // ARE refusals: an ambiguous binding is a corpus authoring defect (two rows for one declaration) and
 // an unavailable source identity is a caller that reached a declaration-keyed authority with a
 // spelling -- the bare-name fallback this carrier exists to delete. Neither arm may be answered by
-// widening to the spelling table (DESIGN section 5: a failure arm refuses, never widens).
+// widening to the spelling table (gunbc.design_argument::fail_closed: a failure arm refuses, never widens).
 type ExactBindingResolution<R>
   = ResolvedExactBinding { binding: SourceTypeTargetBinding<R> }
   | ExactBindingAbsent
@@ -96,14 +96,14 @@ fn representation_spelling_for<R>(representation: R, spellings: List<Representat
 // "unique" asserted bare is the claim a reader most wants to check:
 //   MigratedToExactBinding    -- the declarations this name resolved to now carry exact rows and the
 //                                bare row is DELETED; a spelling-keyed lookup of this name answers
-//                                nothing, which is the census (DESIGN section 3 delete-first).
+//                                nothing, which is the census (gunbc.design_argument::replacement_migration delete-first).
 //   ProvenUniqueKernelBinding -- the bare row survives for the kernel mint (a reference the compiler
 //                                itself creates, carrying no declaration), and the proof states why
 //                                its spelling cannot be captured: a Rust primitive token, or a token
 //                                whose only capturing import binds the same name.
 //   StillBareNameDebt         -- the bare row survives because a declaration still depends on the
 //                                bypass; the trigger names the CAPABILITY that retires it, not an
-//                                artifact contributing to one (DESIGN section 4b(3)).
+//                                artifact contributing to one (gunbc.design_argument::guarantee_ladder (no silent regression)).
 type CheckpointRowDisposition
   = MigratedToExactBinding { bindings: List<DeclarationRef> }
   | ProvenUniqueKernelBinding { proof: NonEmptyStr }

@@ -56,7 +56,7 @@ fn printer_row(id: NonEmptyStr, catalog: DeclarationRef) -> PhysicalAsset {
 // is the difference between a check and a change detector. An earlier cut of this witness asserted
 // that the LIVE owned_printer_inventory admits nothing -- true today, and false the moment a printer
 // is registered, at which point someone edits the witness to match. That is a test whose entire
-// content is the manual update, which DESIGN section 5 names directly. What is permanent is the
+// content is the manual update, which gunbc.design_argument::fail_closed names directly. What is permanent is the
 // BEHAVIOUR: an identity that no roster row carries is refused rather than admitted, and that holds
 // for an empty roster forever.
 test fn w_an_unregistered_identity_is_refused_rather_than_admitted() -> Bool {

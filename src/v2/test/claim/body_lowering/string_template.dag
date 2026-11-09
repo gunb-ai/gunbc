@@ -31,7 +31,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // STRING TEMPLATES: LEXED DISJOINTLY FROM PLAIN LITERALS, READ AS ONE NODE, LOWERED TO A CONCAT CHAIN
 // (XL-2 PR2b).
 //
-// Every claim here supplies its input at ONE interface (DESIGN section 3, a witness discriminates at
+// Every claim here supplies its input at ONE interface (gunbc.design_argument::witness_one_interface, a witness discriminates at
 // one interface): the lexer over a short source, the part decoder over a lexeme, and the reader and
 // the lowering over a supplied template shell. The ONE real-path claim -- lexer, parse, normalize,
 // infer, end to end -- is v2.test.claim.compiler.string_template_hole_type.
@@ -69,7 +69,7 @@ test fn a_hole_lexes_as_head_expression_tail() -> Bool {
 // TWO HOLES ARE SEPARATED BY A MIDDLE.   "{a}-{b}"
 // v1 fuses holes separated only by `-` or `/` into one binary-operator hole (the census row
 // v1_fused_adjacent_holes, gunbc#13405; e.g. "{s}-{e}" in cron render_cron_field). That is a seed
-// defect v2 does not carry (DESIGN section 7): the `-` is template text, and each hole is its own
+// defect v2 does not carry (gunbc.design_argument::self_hosting): the `-` is template text, and each hole is its own
 // operand, as the census lists them.
 test fn two_holes_lex_with_a_middle() -> Bool {
   let two = [^dag_token_string_template_head, ^dag_token_ident, ^dag_token_string_template_middle, ^dag_token_ident, ^dag_token_string_template_tail]

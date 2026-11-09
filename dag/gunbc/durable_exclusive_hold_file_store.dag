@@ -380,6 +380,7 @@ fn file_hold_acquire_windowed(root: NonEmptyStr, slot_key: NonEmptyStr, requeste
   admit_callers: [
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_acquire_settled"),
     decl_ref(module_path: "test.claim.materialization_store_local_wet_witness", decl_name: "a_hold_left_by_a_dead_writer_is_recovered_by_observation_by_real_execution"),
+    decl_ref(module_path: "v2.workflow.roster_import_sweep", decl_name: "roster_hold_try"),
   ]
 {
   file_hold_acquire_retained(root: root, slot_key: slot_key, requested_owner: requested_owner, retention: KeepGenerationWindow { window: window })
@@ -454,6 +455,7 @@ fn file_hold_release_assess(root: NonEmptyStr, slot_key: NonEmptyStr, owner: Dur
 fn file_hold_release_assess_windowed_at(root: NonEmptyStr, slot_key: NonEmptyStr, owner: DurableHoldOwnerRef, acquired_generation: CasGeneration, released_by: DurableHoldReleaseRef, window: CasGenerationWindow) -> FileHoldWindowedReleaseAssessment
   admit_callers: [
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_release_family_hold"),
+    decl_ref(module_path: "v2.workflow.roster_import_sweep", decl_name: "roster_lock_release"),
   ]
 {
   match windowed_hold_release_from_verify(
@@ -624,6 +626,8 @@ fn file_hold_recover_dead_holder(
 fn file_hold_recovery_assess_windowed(root: NonEmptyStr, slot_key: NonEmptyStr, report: DurableHoldHolderReport, released_by: DurableHoldReleaseRef, window: CasGenerationWindow) -> FileHoldWindowedRecoveryAssessment
   admit_callers: [
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_hold_occupied"),
+    decl_ref(module_path: "v2.workflow.roster_import_sweep", decl_name: "roster_hold_occupied"),
+    decl_ref(module_path: "v2.workflow.roster_import_sweep", decl_name: "roster_control_moved_report"),
   ]
 {
   match windowed_hold_recovery_from_verify(
@@ -712,7 +716,7 @@ fn file_hold_nonholder_release_assess<Observation>(
   }
 }
 
-// THE NON-HOLDER RELEASE'S PRODUCTION CONSUMER IS A DECLARED FRONTIER (DESIGN 3c); the
+// THE NON-HOLDER RELEASE'S PRODUCTION CONSUMER IS A DECLARED FRONTIER (gunbc.design_argument::consumption); the
 // roster fold that read it was retired. The consumer this row first named -- gunbc.deploy_transition's transition
 // lease, triggered by its exclusive-create outcome type LeaseCreateOutcome retiring -- did not materialize:
 // the lease moved onto this hold library for acquire and the holder's release, LeaseCreateOutcome is

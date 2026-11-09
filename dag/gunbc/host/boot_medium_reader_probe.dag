@@ -560,7 +560,7 @@ fn reader_probe_holds(r: ReaderProbeReceipt) -> Bool {
 
 // ── THE WET ENTRY ─────────────────────────────────────────────────────────────────────────────────
 // `gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/host/boot_medium_reader_probe.dag --function boot_medium_reader_probe_wet`
-// CONSUMPTION (DESIGN section 3c): invoked by the fleet-converge mode BootMediumReaderProbe
+// CONSUMPTION (gunbc.design_argument::consumption): invoked by the fleet-converge mode BootMediumReaderProbe
 // (gunbc.fleet.fleet_converge_workflow), on the self-hosted runner under the fleet identity at main, after
 // the modeled agent-load step has put the reader key in the run's agent. srv2 is named here and is never a
 // dispatch input; the receipt is written whatever the outcome, so a refusal is evidence rather than a red

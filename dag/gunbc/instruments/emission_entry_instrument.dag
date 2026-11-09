@@ -159,7 +159,7 @@ type EmissionAssemblyMode
 // it OUT LOUD -- it is simply silent, and a silent subject is read as the subject the reader
 // expected. The scope is therefore a closed coproduct whose PrimaryRootScope arm carries the pool
 // list SEPARATELY from the primary root, which makes the confusion that produced this
-// unrepresentable rather than merely documented (DESIGN section 5, construction over validation).
+// unrepresentable rather than merely documented (gunbc.design_argument::fail_closed, construction over validation).
 type EmissionScope
   = EntryScope { entry: String }
   | PrimaryRootScope { primary_root: String, dependency_pools: List<String> }
@@ -511,7 +511,7 @@ fn emission_primary_root_demand_args() -> List<String> {
 // joins measurements to its roster on entry identity; both ask the same question and a primary-root
 // scope answers neither. Fabricating an entry -- the primary root's own path, say -- would hand one
 // consumer a subject the measurement never named and the other a false roster match, so the absence
-// is a typed arm and each caller decides what to do with it (DESIGN section 3: one concept, one
+// is a typed arm and each caller decides what to do with it (gunbc.design_argument::single_authority: one concept, one
 // home). NEXT-RUNG TRIGGER: an assembler that takes a population rather than an entry, at which
 // point the assembly half of this distinction dissolves into EmissionAssemblyMode.
 type EmissionScopeEntry
@@ -552,9 +552,9 @@ fn emission_scope_entry(sc: EmissionScope) -> EmissionScopeEntry {
 // receipt that records rustc's host triple records what the machine IS rather than what was
 // compiled. Two censuses taken under different effective targets would then compare as equal
 // epochs and a regression gate could report Held across them -- a fabricated plausible output in
-// the sense DESIGN section 5 forbids, and rung inflation in the sense of section 4b, since the
+// the sense gunbc.design_argument::fail_closed forbids, and rung inflation in the sense of gunbc.design_argument::guarantee_ladder, since the
 // reported comparability would exceed what the evidence established. Passing the triple makes the
-// recorded target TRUE BY CONSTRUCTION rather than checked afterwards, which is section 5's order
+// recorded target TRUE BY CONSTRUCTION rather than checked afterwards, which is gunbc.design_argument::fail_closed's order
 // of preference; and where the triple cannot be read the half REFUSES, because an unpinned target
 // is exactly the state this pin exists to exclude. Found by review on gunbc#9857.
 //
@@ -789,8 +789,8 @@ fn measure_entry_emission(entry: String) -> EmissionMeasurement {
 
 // THE SCOPE-GENERAL BODY. measure_entry_emission is the entry-shaped face of it and is retained
 // because its callers ask an entry-shaped question; it is one call, not a second implementation
-// (DESIGN section 3 -- an entry measurement and a primary-root measurement are one operation at
-// two breadths, which is section 2's horizontal move, not two instruments).
+// (gunbc.design_argument::single_authority -- an entry measurement and a primary-root measurement are one operation at
+// two breadths, which is gunbc.design_argument::minimize_redundancy's horizontal move, not two instruments).
 //
 // THE SCRATCH CRATE STAGES OUTSIDE THE WORKSPACE, AND MOVING IT INSIDE FAILS AS AN EMISSION
 // ERROR WOULD. Mktemp.Dir puts out_dir under /tmp, which reads like an arbitrary choice next to

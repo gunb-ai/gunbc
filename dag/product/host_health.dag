@@ -2,6 +2,8 @@ module product.host_health
 
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.measure { Celsius, celsius, celsius_count }
+import extdeps.cited_field { RowField, FromCitedFigure, NeedsReading }
+import extdeps.external_authority { CitedToAuthority, TranscribedUncited, ObservedByReceipt }
 import product.host_identity { HostIdentity }
 import product.fan_tach { FanTachWindow }
 import product.fan_tach_health {
@@ -133,7 +135,7 @@ fn counter_window_standing(left: CounterSnapshot, right: CounterSnapshot) -> Cou
 // THE LEFT EDGE IS AN INPUT. A prior baseline is the last snapshot someone ADMITTED or explicitly
 // dispositioned -- never simply the previous run's reading. If the previous run saw a new error and
 // became the next run's baseline automatically, the error would vanish after one cycle: that is the
-// absorbing fallback DESIGN section 5 forbids. Selecting and admitting a baseline is therefore not
+// absorbing fallback gunbc.design_argument::fail_closed forbids. Selecting and admitting a baseline is therefore not
 // this module's job, and nothing here can mint one from an observation.
 type HostHealthBaselineBasis
   = NoPriorBaseline
@@ -166,16 +168,12 @@ type TemperatureWindow {
   worst_bmc_standing: BmcThresholdStanding
 }
 
-// A LIMIT CARRIES WHO SAYS SO. There is deliberately no fleet-wide default: a limit is a fact about
+// A LIMIT CARRIES WHO SAYS SO (the carrier is extdeps.cited_field RowField<Celsius>, the one evidence authority). There is deliberately no fleet-wide default: a limit is a fact about
 // a component grade and a sensor's meaning, and until that fact is grounded the honest answer is
 // that the limit is unestablished -- which can never produce a green.
-type TemperatureLimit
-  = TemperatureLimitCited { critical: Celsius, authority: NonEmptyStr }
-  | TemperatureLimitUnestablished
-
 type TemperatureExpectation {
   sensor: NonEmptyStr
-  limit: TemperatureLimit
+  limit: RowField<Celsius>
 }
 
 // WHICH SENSORS A HOST SHOULD EXPOSE IS ITSELF A FACT THAT CAN BE MISSING. A host whose sensor
@@ -505,22 +503,39 @@ fn judge_temperature(expectation: TemperatureExpectation, windows: List<Temperat
         Present { value: first } => {
           let maximum = fold(readings, init: first, f: (acc, r) => if r > acc { r } else { acc })
           match expectation.limit {
-            TemperatureLimitUnestablished => SignalVerdict {
+            NeedsReading { read_obligation: _ } => SignalVerdict {
               deviations: bmc,
               unknowns: [ThermalLimitUnestablished { sensor: w.sensor }],
               refusal: none,
               judged: 1,
             }
-            TemperatureLimitCited { critical, authority: _ } => SignalVerdict {
-              deviations: flat_map([
-                bmc,
-                if maximum > celsius_count(critical) {
-                  [TemperatureLimitExceeded { sensor: w.sensor, maximum: celsius(maximum), critical: critical }]
-                } else { [] },
-              ], group => group),
-              unknowns: [],
-              refusal: none,
-              judged: 1,
+            FromCitedFigure { value: limit_value, standing: standing } => match standing {
+              // Only a figure cited to its authority is a wall (gunbc.design_argument::epistemic_humility). A transcribed-uncited figure is a
+              // bet, and an observed one is this repository's measurement (a past maximum is not the component grade's critical temperature): neither
+              // yields a divergence or a green, and a new standing variant must be decided here.
+              TranscribedUncited { read_obligation: _ } => SignalVerdict {
+                deviations: bmc,
+                unknowns: [ThermalLimitUnestablished { sensor: w.sensor }],
+                refusal: none,
+                judged: 1,
+              }
+              ObservedByReceipt { observed: _ } => SignalVerdict {
+                deviations: bmc,
+                unknowns: [ThermalLimitUnestablished { sensor: w.sensor }],
+                refusal: none,
+                judged: 1,
+              }
+              CitedToAuthority { authority: _ } => SignalVerdict {
+                deviations: flat_map([
+                  bmc,
+                  if maximum > celsius_count(limit_value) {
+                    [TemperatureLimitExceeded { sensor: w.sensor, maximum: celsius(maximum), critical: limit_value }]
+                  } else { [] },
+                ], group => group),
+                unknowns: [],
+                refusal: none,
+                judged: 1,
+              }
             }
           }
         }

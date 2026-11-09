@@ -10,8 +10,8 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // realizes as), rostered in std.primitive_projection as a HostRealizedSeam so resolution routes a
 // call to the realization and never to this body. The body is the self-call that shape requires.
 // It was `[pure_dag_seam_unreachable()]`, which is not a seam at all to an emitter: it emitted as
-// ordinary code, a one-element list holding `1 / 0` -- a fabricated value in emitted code (DESIGN
-// section 5), where the interpreter answered the real octets.
+// ordinary code, a one-element list holding `1 / 0` -- a fabricated value in emitted code (
+// gunbc.design_argument::fail_closed), where the interpreter answered the real octets.
 //
 // THE RESULT IS List<Int>, NOT List<UInt8>, for the reason gunbc.recurring_failure_mode
 // bounded_natural_arithmetic_evaluated_as_unbounded_int rules every such site: a value is typed as
@@ -32,14 +32,14 @@ fn bytes_octets(b: Bytes) -> List<Int> {
 // bytes_octets' own .dag body is the divergent seam -- the realization is the seed's interpreter
 // arm -- so nothing in this corpus establishes the range. word_to_octets is admitted to the mint
 // roster because its members run through uint8_of_int where a reader can follow them; this value
-// has no such derivation, only a declared row asserting it. DESIGN section 4b puts external
+// has no such derivation, only a declared row asserting it. gunbc.design_argument::guarantee_ladder puts external
 // reality in the observe-refuse-or-mitigate-at-a-declared-boundary column, explicitly NOT on the
 // ladder and explicitly never fabricated, and names the failure directly: a brand or Validated<T>
 // is cosmetic until construction and acceptance enforce the distinction. Minting the seal from an
 // unobserved host value was exactly that cosmetic wrapper.
 //
 // So the value is OBSERVED here, once, where it crosses into the corpus. This is deliberately ONE
-// boundary rather than a check at each consumer (DESIGN section 3, single authority): every
+// boundary rather than a check at each consumer (gunbc.design_argument::single_authority, single authority): every
 // downstream holder of a QualifiedOctets receives a carrier that was actually inspected and does
 // no checking of its own.
 //
@@ -56,7 +56,7 @@ fn bytes_octets(b: Bytes) -> List<Int> {
 //
 // RUNG, STATED HONESTLY AND NOT INFLATED: MITIGATABLE at a declared boundary. This is not
 // construction and must not be described as such -- the wrong value can still arrive, and what
-// changes is that it is refused with a located observation instead of sealed. What section 5
+// changes is that it is refused with a located observation instead of sealed. What gunbc.design_argument::fail_closed
 // forbids is mislabelling mitigation as construction, not performing it.
 //
 // IS THE RED AUTHORABLE? NOT TODAY, AND THAT IS STATED RATHER THAN LEFT TO BE DISCOVERED (4b's

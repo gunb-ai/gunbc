@@ -12,7 +12,7 @@ data obr_kinds: List<ObrKind> = [ObrFirst, ObrSecond]
 // method-form specimen of gunbc.recurring_failure_mode optional_equality_answers_by_representation
 // over a data list of variant rows. The interpreter's `first` used to yield the raw element while the
 // literal is held as Present, so `==` answered false. This PR makes `first` yield the modeled
-// optional, so the claim must now hold; it stays enrolled permanently (DESIGN 4b(4)). Standing:
+// optional, so the claim must now hold; it stays enrolled permanently (gunbc.design_argument::guarantee_ladder (dissolution on climb)). Standing:
 // climb authored, not yet executed.
 test fn a_present_first_equals_its_present_literal() -> Bool {
   obr_kinds.first() == Present { value: ObrFirst }

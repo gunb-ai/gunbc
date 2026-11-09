@@ -1,0 +1,16 @@
+module gunbc.annotation_reference_citer
+
+// THE REFUSING CONTROL: each line below is one finding v2.cli.reference_check must report, and the
+// sentence that holds is the only one that resolves.
+// holds: @ref(gunbc.annotation_reference_home::AnnotationReferenceHome)
+// no such declaration: @ref(gunbc.annotation_reference_home::NoSuchDeclaration)
+// no such field: @ref(gunbc.annotation_reference_home::AnnotationReferenceHome::no_such_field)
+// module not read: @ref(gunbc.annotation_reference_no_such_module::Anything)
+// malformed coordinate: @ref(gunbc.annotation_reference_home)
+// unsupported target: @ref(gunbc.annotation_reference_home::AnnotationReferenceBox::<T>)
+// contested: @ref(gunbc.annotation_reference_contested::AnnotationReferenceTwin)
+// unterminated marker: @ref(gunbc.annotation_reference_home::AnnotationReferenceHome
+
+fn annotation_reference_citer_value() -> Int {
+  1
+}

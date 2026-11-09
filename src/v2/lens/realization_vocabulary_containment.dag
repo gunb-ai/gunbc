@@ -236,7 +236,7 @@ fn path_has_any_prefix(prefixes: List<String>, path: String) -> Bool {
 
 // THE VOCABULARY AXIS IS AN ARGUMENT, NOT A LITERAL. This lens answers one
 // question -- does module X reach construction vocabulary from set V -- and V was
-// welded to the target-AST set at every use site. Opening it is the DESIGN section 2
+// welded to the target-AST set at every use site. Opening it is the gunbc.design_argument::minimize_redundancy
 // horizontal move (one axis, not N copies): a second question about a second
 // vocabulary is a row, never a second lens, because a forked lens would be exactly
 // the section 3 duplication this mechanism exists to detect.

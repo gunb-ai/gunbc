@@ -2,9 +2,9 @@ module gunbc.auth.deployment_gate_operator_steps
 
 // The OPERATOR'S OWN ACTS for moving the srv1 deployment gate from the GitHub "Review deployments"
 // click onto the existing ntfy tap, modelled as std.human_intervention rows rather than as prose
-// in a runbook. The plan that argues for them is gunbc.plans.ntfy_deployment_gate_approval; this
+// in a runbook. The plan that argues for them is gunbc.plans.ntfy_deployment_gate_approval (deleted 2026-11-08); this
 // file carries their burden, so that the human cost of this design is countable next to the other
-// human burdens in the provisioning fleet (DESIGN §2: an alternative that quietly keeps a human
+// human burdens in the provisioning fleet (gunbc.design_argument::minimize_redundancy: an alternative that quietly keeps a human
 // step is not cheaper, it is uncounted).
 //
 // WHY EVERY ROW HERE IS AN OPERATOR ACT AND NOT AN AUTOMATION. GitHub's own UI is the only place
@@ -13,7 +13,7 @@ module gunbc.auth.deployment_gate_operator_steps
 // GitHub environment settings at all in this design; that is a hard constraint of the work item,
 // not a convenience.
 //
-// WHY NO ROW MAY BE DISCHARGED BY EDITING A FLAG BESIDE IT (DESIGN §5). Each row states the
+// WHY NO ROW MAY BE DISCHARGED BY EDITING A FLAG BESIDE IT (gunbc.design_argument::fail_closed). Each row states the
 // observation that shows the act happened, and the two rows that could silently open the srv1
 // boundary — enabling the rule and removing the human reviewer — state their observation as a
 // READ BACK FROM GITHUB, not as a checkbox. In particular the removal row must not be dischargeable
@@ -93,7 +93,7 @@ import gunbc.auth.github_deployment_environment {
 
 // The repository the App is installed on — DERIVED from the sealed boundary, never re-spelled. The
 // boundary carries gunbc.repository.gunbc_repository, the ONE typed row this project owns for the
-// repository fact (§3: each fact lives in exactly one place), and boundary_repository_label assembles
+// repository fact (gunbc.design_argument::single_authority: each fact lives in exactly one place), and boundary_repository_label assembles
 // owner + name the way the receipts and the REST route already carry it. The prior row was a sixth
 // spelling of one entity wearing a no-drift comment: the review (artifact 84186) caught that the
 // comment described the drift it was creating.
@@ -101,7 +101,7 @@ data deployment_gate_repository: NonEmptyStr = boundary_repository_label(boundar
 
 // THE OWNER HALF OF THE BOUNDARY, read from the same sealed row. Needed because the App
 // registration instruction must name WHO owns the App, and "gunb-ai" as a literal there was another
-// spelling of the boundary's owner (§3). Field access at a row initializer follows
+// spelling of the boundary's owner (gunbc.design_argument::single_authority). Field access at a row initializer follows
 // gunbc.runner.runner_lifecycle's runner_lifecycle_ci_org.
 data deployment_gate_owner: NonEmptyStr = srv1_deployment_gate_boundary.repository.owner
 
@@ -111,7 +111,7 @@ data deployment_gate_environment: NonEmptyStr = srv1_production_environment_name
 
 // THE PERMISSIONS THE OPERATOR MUST GRANT. Not a description of them: the same typed rows the
 // model says the review call needs, so the instruction, the activation check and the refusal red all
-// read one authority (§3). Verbatim upstream: Actions Read-only, Deployments Read and write. Contents
+// read one authority (gunbc.design_argument::single_authority). Verbatim upstream: Actions Read-only, Deployments Read and write. Contents
 // is NOT on that list; an App granted Contents:write here holds something the upstream never asked
 // for, on the identity that releases srv1 root mutation.
 data deployment_gate_app_permissions: List<GitHubAppPermission> = gate_app_permissions
@@ -173,7 +173,7 @@ data rule_enablement_step: HumanIntervention = HumanIntervention {
 // `deployment_gate_operator_steps.reviewer_removal`. Any consumer could read the act -- the thing an
 // operator performs in the GitHub UI to take srv1's human reviewer out -- without ever calling
 // reviewer_removal_act_for. The `DischargedAt` annotation named the mint that ought to have run; naming
-// it confined nothing (§4b rung honesty: an annotation establishes nothing). A guard that lives beside
+// it confined nothing (gunbc.design_argument::guarantee_ladder rung honesty: an annotation establishes nothing). A guard that lives beside
 // the act as prose is a guard that can be walked past, and this design has already been caught doing
 // that twice.
 //
@@ -224,7 +224,7 @@ type ReviewerRemovalStepDecision
 // THE READY ARM IS READ AS `admitted`, and the sealed record's fields are read directly -- sealing
 // confines CONSTRUCTION, not reading, which is the same split the sealed ObservedRuleOwnership already
 // relies on. Deliberately NO accessor trio (intervention()/evidence()/boundary()): a declaration whose
-// only reader is a witness is dangling (§3c), and field reads need no help.
+// only reader is a witness is dangling (gunbc.design_argument::consumption), and field reads need no help.
 
 fn reviewer_removal_act_identity(boundary: DeploymentGateBoundary) -> HumanInterventionIdentity {
   // ONE CAST PER LINE, in `let`s. The chained form `(<expr>\n as NonEmptyStr) as HumanInterventionIdentity`
@@ -297,7 +297,7 @@ fn build_reviewer_removal_act(boundary: DeploymentGateBoundary) -> HumanInterven
     // completion evidence as "the human did it", and
     // gunbc.auth.authorization_pattern_selection::receipt_in_substrate counts DischargedAt as a receipt in
     // the substrate -- so the model was awarding itself a substrate receipt for its own admission function.
-    // That is the §5 defect exactly: a field satisfiable by editing a declaration while the world is
+    // That is the gunbc.design_argument::fail_closed defect exactly: a field satisfiable by editing a declaration while the world is
     // unchanged. The admission is the act's precondition, not its outcome; the human still has to click in
     // GitHub's UI afterwards, and nothing here has seen that happen.
     //
@@ -333,7 +333,7 @@ fn build_reviewer_removal_act(boundary: DeploymentGateBoundary) -> HumanInterven
 //                not a licence that outlives the rule it was earned under. The standing is sealed and
 //                its mint requires the rule enabled, the human reviewer present and the branch policy
 //                main-only, so EXISTING AT ALL is the proof and nothing below re-checks those
-//                properties (R1/§4b: no unreachable re-validation of a construction).
+//                properties (R1/gunbc.design_argument::guarantee_ladder: no unreachable re-validation of a construction).
 fn reviewer_removal_act_for(
   boundary: DeploymentGateBoundary,
   admission: ReviewerRemovalAdmission,
@@ -459,7 +459,7 @@ fn reviewer_removal_act_for(
                     // dial that made every stale standing spendable. The second is not a forged standing and
                     // not a wrong subject -- it is a true statement about a world that may have moved, and
                     // refusing on age is what makes "immediately beforehand" a checked property rather than a
-                    // comment (§5). The two share an arm only in this `if`; each carries its own reason.
+                    // comment (gunbc.design_argument::fail_closed). The two share an arm only in this `if`; each carries its own reason.
                     ReviewerRemovalBlocked {
                       missing: match now {
                         Absent => ActClockWasNotRead
@@ -494,7 +494,7 @@ fn reviewer_removal_act_for(
 // a List<HumanIntervention> whose ordering and cardinality were policed AFTERWARDS by folds: a count that
 // had to stay at five, a uniqueness count per identity, and a walker that found the removal row after the
 // enablement row. All three could be satisfied by EDITING THE DECLARATION — reorder the list literal and
-// the walker reddens only when it runs — which is §5's tell that the type was not carrying the invariant
+// the walker reddens only when it runs — which is gunbc.design_argument::fail_closed's tell that the type was not carrying the invariant
 // it was claimed to carry.
 //
 // Now the sequence IS the record: five named fields in the order they are performed, and
@@ -631,7 +631,7 @@ fn removal_act_frequency_is_fleet_once(decision: ReviewerRemovalStepDecision) ->
 // that put them in the other order would open an interval in which srv1 root mutation is gated by nothing.
 //
 // That used to be enforced by folding over a List and comparing identities cast to String — a check that
-// could be satisfied by reordering the literal while the realization still lay (§5's tell). Under
+// could be satisfied by reordering the literal while the realization still lay (gunbc.design_argument::fail_closed's tell). Under
 // DeploymentGateOperatorSequence the order IS the field order: `reviewer_removal` is declared after
 // `rule_enablement`. The fold and the `as String` comparisons are gone because there is no list to
 // permute. What a caller can still get wrong is binding a field to the wrong row — `rule_enablement:`

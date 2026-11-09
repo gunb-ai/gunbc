@@ -93,7 +93,7 @@ test fn w_a_true_negation_and_a_bare_mention_are_not_refused() -> Bool {
 // below is a universal over `rostered_job_ids`, so a roster that arrived empty would satisfy all of
 // them by having nothing to check -- green forever, carrying no information. This row fails in that
 // case. It asserts membership at IDENTITY grain and not by count, because a count equality against
-// a literal measured from this same tree is the change detector DESIGN section 5 refuses.
+// a literal measured from this same tree is the change detector gunbc.design_argument::fail_closed refuses.
 test fn w_the_live_roster_is_read_and_carries_both_lanes() -> Bool {
   count_where(xs: rostered_job_ids, predicate: fn(id) { id == "required-witnesses-build" }) == 1
     && count_where(xs: rostered_job_ids, predicate: fn(id) { id == "required-witnesses-floor" }) == 1

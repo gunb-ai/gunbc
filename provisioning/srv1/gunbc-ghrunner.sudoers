@@ -123,8 +123,8 @@ ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv1-1
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl start fabric-cell-srv1-13.slice
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 00755 -o root -g root /opt/fabric-cells/srv1-14
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 00755 -o ghrunner -g ghrunner /opt/fabric-cells/srv1-14/attempts
-ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv1-14.slice MemoryMax\=23622320128
-ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv1-14.slice MemoryHigh\=22548578304
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv1-14.slice MemoryMax\=26843545600
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv1-14.slice MemoryHigh\=26843545600
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv1-14.slice MemorySwapMax\=0
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv1-14.slice TasksMax\=16384
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv1-14.slice CPUWeight\=100
@@ -198,7 +198,7 @@ ghrunner ALL=(root) NOPASSWD: /usr/bin/ls -1A -- /var/lib/gunbc
 ghrunner ALL=(root) NOPASSWD: /usr/bin/ls -1A -- /var/lib
 ghrunner ALL=(root) NOPASSWD: /usr/bin/ls -1A -- /var
 ghrunner ALL=(root) NOPASSWD: /usr/bin/ls -1A -- /opt/gunbc/provider-runtime
-ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 02770 -o gunbc-fleet -g gunbc-fleet /var/lib/gunbc/printer-starts
+ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 00755 -o root -g root /var/lib/gunbc/printer-starts
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 02770 -o gunbc-fleet -g gunbc-fleet /var/lib/gunbc/printer-starts/start-evidence
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 02770 -o gunbc-fleet -g gunbc-fleet /var/lib/gunbc/printer-starts/requests
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 02770 -o gunbc-fleet -g gunbc-fleet /var/lib/gunbc/printer-starts/completions
@@ -269,8 +269,8 @@ ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv1-1
 ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv1-13.slice CPUWeight\=100
 ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv1-13.slice CPUQuota\=400%
 ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl start fabric-cell-srv1-13.slice
-ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv1-14.slice MemoryMax\=23622320128
-ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv1-14.slice MemoryHigh\=22548578304
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv1-14.slice MemoryMax\=26843545600
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv1-14.slice MemoryHigh\=26843545600
 ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv1-14.slice MemorySwapMax\=0
 ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv1-14.slice TasksMax\=16384
 ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv1-14.slice CPUWeight\=100

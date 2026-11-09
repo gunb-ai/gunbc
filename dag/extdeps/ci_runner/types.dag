@@ -228,7 +228,7 @@ type CatalogSnapshot {
 //
 // IT IS A DeclarationRef AND NOT A VARIANT, for exactly the reason RunnerShapeRow.provider is: a
 // central enum of surfaces would have to be widened by every CI system anyone ever enrolls, which
-// is the concrete-product enumeration DESIGN section 3 forbids a generic hub. A surface names the
+// is the concrete-product enumeration gunbc.design_argument::single_authority forbids a generic hub. A surface names the
 // declaration that defines it and a consumer compares refs.
 // WHICH CATALOG THIS IS, WHICH IS NOT THE SAME FACT AS WHO PUBLISHED ITS ROWS. One provider can
 // have SEVERAL catalogs in a survey - GitHub's sized larger-runner families and its standard

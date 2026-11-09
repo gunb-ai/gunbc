@@ -24,7 +24,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // the docs' own machine-readable form and a reader can fetch the same bytes: the tree below is pinned
 // to a commit, and the package version at that commit is 3.42.0. Where this section cites a member's
 // name, optionality or enumerated values, it is read off these generated types; where the prose
-// explains a meaning, it is the docs anchor. DESIGN section 3 -- cite the source, keep its real names,
+// explains a meaning, it is the docs anchor. gunbc.design_argument::single_authority -- cite the source, keep its real names,
 // declare its version.
 data extdeps_generated_sdk_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -415,7 +415,7 @@ type OpenAiResponses200Body {
 // lists no products, engines or endpoints: the authority is the pair of ExternalAuthority anchors at
 // the top of this file -- the docs page for meaning, and the vendor's generated types pinned to a
 // commit and version for names, optionality and enumerated values -- whose member lists are what the
-// coverage rows below declare unmodelled rather than absent (DESIGN section 3, external upstream
+// coverage rows below declare unmodelled rather than absent (gunbc.design_argument::external_upstreams, external upstream
 // decomposition).
 //
 // WHY A SAMPLING PARAMETER IS AN UN-EVALUATED NUMBER LEXEME, AND NEVER A FLOAT AND NEVER TEXT.
@@ -478,7 +478,7 @@ type OpenAiChatCompletionRequest {
   frequency_penalty: JsonNumberLexeme?
 }
 
-// WHY THIS IS THE SIXTH COPY OF A PAIR, WHAT IS GENERALIZED NOW, AND WHAT IS NOT (DESIGN section 6b).
+// WHY THIS IS THE SIXTH COPY OF A PAIR, WHAT IS GENERALIZED NOW, AND WHAT IS NOT (gunbc.design_argument::earliest_unjustified_boundary).
 // Five members of this file already carry the construction -- a wire-name table, a chain that reads it,
 // an arm that keeps an unknown name whole, and a match that re-emits it: `OpenAiToolCallType`,
 // `OpenAiResponsesOutputContentType`, `OpenAiResponsesOutputItemType`, `OpenAiResponsesStatus` and
@@ -489,7 +489,7 @@ type OpenAiChatCompletionRequest {
 // idiom local to this module: `extdeps.cloud.gcp.errors`' `GcpRpcCodeOther` and
 // `extdeps.container.oci.types`' `OciMediaTypeOther` are written the same way, outside this file.
 //
-// Section 6b's trigger is the second local implementation, so the generalization is overdue, and part of
+// gunbc.design_argument::earliest_unjustified_boundary's trigger is the second local implementation, so the generalization is overdue, and part of
 // it is taken HERE: what the six genuinely share is the CHECK, and the check is now one declaration,
 // `openai_documented_wire_name`, which this member routes through and which any migration should adopt.
 // What is not folded together is the documented-name TABLES, and the reason holds rather than being
@@ -587,8 +587,8 @@ data openai_chat_completion_chunk_object_wire: String = "chat.completion.chunk"
 // the same shape as `OpenAiTextCompletionObject`, and for the same reason: the chat answer, the chunk and
 // a text completion all carry an `object` member, and while its member type was `String` a reader could
 // hand a `text_completion` or an error envelope to anything expecting a chunk. A nominal carrier plus a
-// constructor that yields Present for the documented value and Absent for everything else is DESIGN
-// section 4's `gunbc.design_ruling` where_refinements_retire_for_checked_constructors; the where-BRAND
+// constructor that yields Present for the documented value and Absent for everything else is
+// gunbc.design_argument::closed_grounded_substrate's `gunbc.design_ruling` where_refinements_retire_for_checked_constructors; the where-BRAND
 // carries identity only (the atom yields a `WherePredicateMarker`, never evaluated as a refinement), so
 // the type claims nothing the compiler cannot hold. Pattern: `extdeps.languages.json.grammar`'s
 // `JsonNumberLexeme` with `json_number_lexeme_valid`, `json_number_lexeme_unchecked` and the constructor
@@ -732,17 +732,17 @@ data openai_chat_completion_wire_frontier_rows: List<FrontierRow> = [
   // read of the serving path, which the approved plan dag/gunbc/plans/fabric_serving_router.dag
   // puts in its S3 decisions (model, stream, stop and reasoning_effort are exactly what that read
   // needs), and the dashboard client that sends the call. The row exists so an unread model is
-  // tracked as debt (DESIGN section 3c) instead of being deleted quietly when the read lands.
+  // tracked as debt (gunbc.design_argument::consumption) instead of being deleted quietly when the read lands.
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.llm.openai", decl_name: "OpenAiChatCompletionRequest"),
     reason: "no module reads this record yet: the only consumer today is its own witness, and a model nobody reads is not yet evidence that the shape is right",
     dissolution: unbound_dissolution(description: "feature:s3-serving-request-read - the serving path's request read, which the approved plan gunbc.plans.fabric_serving_router puts in its S3 decisions, reads model, stream, stop and reasoning_effort out of this record, and the dashboard client builds it for the call it sends. It dissolves when that reader lands WITH a witness that builds a request of this shape and reads it back, so the record is paid for by an observation and not by a compile. The read belongs to that plan, not to this module: nothing here decides what to do with a request"),
   ),
   // The repeated enumerated-member pair, declared as debt with its carrier named rather than left
-  // in a comment: §6b allows deferring a generalization only with a stated reason and trigger.
+  // in a comment: gunbc.design_argument::earliest_unjustified_boundary allows deferring a generalization only with a stated reason and trigger.
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.llm.openai", decl_name: "OpenAiReasoningEffort"),
-    reason: "the wire-name pair (table, read chain, unknown-keeping arm, re-emitting match) is written out by hand for the sixth time in this module, and the five older copies are the same shape -- Other { raw: NonEmptyStr } filled straight from a String, which is why the empty-name check now lives in one shared checked constructor, openai_documented_wire_name, instead of a hand-written guard per member. What is still six copies is the documented-name TABLE, and DESIGN section 6b's trigger for generalizing that was the second local implementation, so it is overdue: the reason it is deferred, and the fact that the idiom also stands in extdeps.cloud.gcp.errors and extdeps.container.oci.types, is in the comment above OpenAiReasoningEffort",
+    reason: "the wire-name pair (table, read chain, unknown-keeping arm, re-emitting match) is written out by hand for the sixth time in this module, and the five older copies are the same shape -- Other { raw: NonEmptyStr } filled straight from a String, which is why the empty-name check now lives in one shared checked constructor, openai_documented_wire_name, instead of a hand-written guard per member. What is still six copies is the documented-name TABLE, and gunbc.design_argument::earliest_unjustified_boundary's trigger for generalizing that was the second local implementation, so it is overdue: the reason it is deferred, and the fact that the idiom also stands in extdeps.cloud.gcp.errors and extdeps.container.oci.types, is in the comment above OpenAiReasoningEffort",
     dissolution: unbound_dissolution(description: "feature:openai-wire-name-table-generalization - one wire-name table over a type parameter (parametric declarations exist: std.algebra's Magma and std.affine_space's SpatialResult) taking each member's rows plus its unknown-name behaviour, adopted by all six members of this module and then by the same idiom in extdeps.cloud.gcp.errors and extdeps.container.oci.types. The migrating PR carries the readers with it member by member, which is where the cost really is: the five older parse functions are called by test/claim/extdeps_llm_type_grounding_witness, and a parse's return type is reader-visible"),
   ),
   // Same for the streamed payload: the framing is already read by extdeps.llm.openai_compat_sse,

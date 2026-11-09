@@ -1,6 +1,7 @@
 module gunbc.machine_intake.mtcollins1_sixteen_module_restore_observation
 
-import std.types { Int, List, NonEmptyStr, String, list_length }
+import std.types { Int, List, NonEmptyStr, String }
+import std.algebra { length }
 import std.measure { byte_size }
 import std.content_hash { Sha256Digest, Sha256Hash }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -271,7 +272,7 @@ fn check_restore_window_is_undetermined_not_terminal(console: SolCaptureReading)
 // the window's end is not a boot.
 fn check_no_restart_after_the_swap() -> ProcessExit {
   let cycles: BootCycleWindow = boot_cycles(window: sel_window_after_cursor(window: mtcollins1_restore_sel_window(), cursor_record_id: mtcollins1_sel_cursor_before_restore))
-  let closed = list_length(items: cycles.closed)
+  let closed = length(xs: cycles.closed)
   if closed != 0 {
     exit_failure(reason: concat("restore window: ", to_string(closed), " cycle(s) closed by a restart after the swap; the window claims none"))
   } else {

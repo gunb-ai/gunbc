@@ -1,6 +1,7 @@
 module test.claim.mt_jade_getting_started_guide_witness
 
-import std.types { Bool, String, list_length }
+import std.types { Bool, String }
+import std.algebra { length }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.ampere.mt_jade_getting_started_guide.subject {
   mt_jade_gsg_authority,
@@ -62,13 +63,13 @@ test fn w_jade_gsg_declared_digest_is_the_digest_both_reads_recorded() -> Bool {
 
 test fn w_jade_gsg_table11_16_dimm_row_is_the_odd_hash_slots() -> Bool {
   mt_jade_gsg_population_2s2p_16_dimms.dimm_count == (2 * altra_ddr4_channel_count)
-    && list_length(mt_jade_gsg_socket0_channel_pairs) == altra_ddr4_channel_count
-    && list_length(mt_jade_gsg_socket1_channel_pairs) == altra_ddr4_channel_count
+    && length(mt_jade_gsg_socket0_channel_pairs) == altra_ddr4_channel_count
+    && length(mt_jade_gsg_socket1_channel_pairs) == altra_ddr4_channel_count
     && mt_jade_gsg_population_2s2p_16_dimms.populated_slot_labels == concat(
       mt_jade_gsg_socket0_one_dpc_slot_labels,
       mt_jade_gsg_socket1_one_dpc_slot_labels,
     )
-    && list_length(mt_jade_gsg_one_dpc_empty_slot_labels) == mt_jade_gsg_population_2s2p_16_dimms.dimm_count
+    && length(mt_jade_gsg_one_dpc_empty_slot_labels) == mt_jade_gsg_population_2s2p_16_dimms.dimm_count
     && match mt_jade_gsg_socket0_channel_pairs.first() {
       Present { value: p } => p.one_dpc_slot_label == 1 && p.two_dpc_additional_slot_label == 2 && p.memory_controller == 0
       Absent => false

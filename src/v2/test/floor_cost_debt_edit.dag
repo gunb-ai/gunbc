@@ -21,6 +21,7 @@ import v2.std.integer { Int }
 import v2.std.text { String }
 import std.measure { EvalStepCount, eval_step_count, eval_step_count_value }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.algebra { length }
 
 // Every fixture below is authored in this source; the module reaches nothing outside the
 // substrate inputs.
@@ -35,7 +36,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // SAME observation is admitted under a pure removal and refused under any other edit, so each test
 // asserts the verdict the floor would reach and not only the arm a classifier returned.
 //
-// The fixtures are supplied SOURCES, not files read from the tree (DESIGN section 3, a witness
+// The fixtures are supplied SOURCES, not files read from the tree (gunbc.design_argument::single_authority, a witness
 // discriminates at one interface). The real path -- the host reading the head file and this module
 // showing the base at the floor's comparison base -- is exercised by the required floor itself on
 // any PR that edits a cost-debt row, first gunbc#11593.
@@ -230,7 +231,7 @@ test fn a_file_batch_keeps_each_declarations_own_ceiling() -> Bool {
   let rows = cost_debt_changed_witness_ceilings_from_sources(
     base_source: base, head_source: head, functions: ["a", "b", "missing"],
     test_fn_identities: ["specimen.a", "specimen.b"])
-  list_length(rows) == 3 && all(rows, row =>
+  length(rows) == 3 && all(rows, row =>
     if row.function == "a" {
       row.ceiling.label == "pure_conjunct_removal" && ceiling_is_grandfathered(ceiling: row.ceiling)
     } else if row.function == "b" {
@@ -247,7 +248,7 @@ test fn a_file_batch_preserves_untokenizable_and_missing_head_refusals() -> Bool
     base_source: base, head_source: "module specimen\n", functions: ["a"], test_fn_identities: ["specimen.a"])
   let malformed = cost_debt_changed_witness_ceilings_from_sources(
     base_source: "\"", head_source: base, functions: ["a", "missing"], test_fn_identities: ["specimen.a"])
-  list_length(rows) == 1 && list_length(malformed) == 2
+  length(rows) == 1 && length(malformed) == 2
     && all(rows, row => row.ceiling.label == "rejudged_as_new_witness cause=witness_not_declared_at_head")
     && all(malformed, row => row.ceiling.label == "rejudged_as_new_witness cause=witness_source_did_not_tokenize")
     && all(concat(rows, malformed), row => ceiling_is_new_witness(ceiling: row.ceiling))

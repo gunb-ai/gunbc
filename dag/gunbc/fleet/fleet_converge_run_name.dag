@@ -7,10 +7,10 @@ import std.optional { Present, Absent }
 // word the workflow-runs listing returns that says WHICH mode and WHICH host a run converged
 // (WorkflowRun.display_title), so a reader that selects a producer run by mode and host is reading the
 // title the workflow wrote. The workflow (gunbc.fleet.fleet_converge_workflow fleet_converge_workflow
-// run_name) renders it from fleet_converge_run_title and the selector in
-// gunbc.runner.runner_user_session_receipt reads the same words from fleet_converge_run_title_selector;
+// run_name) renders it from fleet_converge_run_title and the producer-run selection in
+// gunbc.fleet.fleet_converge_producer_run reads the same words from fleet_converge_run_title_selector;
 // neither spells the other's half. This module is a LEAF (it imports only std.types) because the workflow
-// imports the receipt module and the receipt module must not reach the workflow.
+// imports the receipt modules and they must not reach the workflow.
 data fleet_converge_run_title_head: String = "fleet-converge "
 data fleet_converge_run_title_separator: String = " "
 data fleet_converge_run_title_nonce_prefix: String = "nonce="

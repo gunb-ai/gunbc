@@ -14,7 +14,7 @@ import gunbc.fleet.fleet_asset_identity { gh200_dv5_b, p4261_e1_b }
 import product.electrical.connectivity { ElectricalTerminalRef, terminal_ref_equal }
 import product.electrical.continuity { BenchConditions, BeforeIncidents, BetweenIncidents, BuzzerAsserted, BuzzerNotAsserted, ContinuityObservation, ContinuityResult, ModuleInstalled, ReadingOrder, Unpowered, both_points_recorded }
 import product.electrical.identification { numbered_pins, pin_number_name }
-import product.p4261.carrier { CarrierLayoutObservation, ConnectorHousing, InputConnector, MeasuredBoard, admit_correspondence, away_side, lm5066i_terminals, lv165a_pins }
+import product.p4261.carrier { CarrierLayoutObservation, ConnectorHousing, InputConnector, MeasuredBoard, admit_correspondence, away_side }
 import product.p4261.evidence {
   ConnectorNotMappedWhole,
   InputClassesNotEstablished,
@@ -45,7 +45,7 @@ import product.p4261.evidence {
   net_assessment,
 }
 import product.p4261.findings { J20Polarity, NetPropositionJudged, RevisionNetPropositionSupported, finding_established, judge_finding }
-import product.p4261.e1_b { e1_bench, e1_bridge_incident, e1_d2_far, e1_f1_far, e1_f1_near, e1_fuse_ends_said, e1_inductor_short_incident, e1_j20_at, e1_j24, e1_rail_ref, e1_u10p2_lift, p4261_e1_layout }
+import product.p4261.e1_b { e1_bench, e1_bridge_incident, e1_d2_far, e1_f1_far, e1_f1_near, e1_fuse_ends_said, e1_inductor_short_incident, e1_j20_at, e1_j24, e1_photo_part_2_removal, e1_rail_ref, e1_u10p2_lift, p4261_e1_layout }
 import product.p4261.k1_a { p4261_k1_layout }
 
 // THE NETLIST IS NVIDIA'S, THE ASSESSMENT IS OURS (Stage B3). Each control supplies the E1's own record
@@ -164,15 +164,15 @@ fn with_readings(extra: List<ContinuityObservation>) -> CarrierLayoutObservation
 }
 
 fn received_order() -> ReadingOrder {
-  BeforeIncidents { keys: [e1_bridge_incident.key, e1_inductor_short_incident.key, e1_u10p2_lift.key] }
+  BeforeIncidents { keys: [e1_bridge_incident.key, e1_inductor_short_incident.key, e1_u10p2_lift.key, e1_photo_part_2_removal.key] }
 }
 
 fn post_short_order() -> ReadingOrder {
-  BetweenIncidents { after: [e1_bridge_incident.key, e1_inductor_short_incident.key], before: [e1_u10p2_lift.key] }
+  BetweenIncidents { after: [e1_bridge_incident.key, e1_inductor_short_incident.key], before: [e1_u10p2_lift.key, e1_photo_part_2_removal.key] }
 }
 
 fn post_lift_order() -> ReadingOrder {
-  BetweenIncidents { after: [e1_bridge_incident.key, e1_inductor_short_incident.key, e1_u10p2_lift.key], before: [] }
+  BetweenIncidents { after: [e1_bridge_incident.key, e1_inductor_short_incident.key, e1_u10p2_lift.key], before: [e1_photo_part_2_removal.key] }
 }
 
 fn read(a: ElectricalTerminalRef, b: ElectricalTerminalRef, conditions: BenchConditions, result: ContinuityResult, order: ReadingOrder) -> ContinuityObservation {
@@ -376,9 +376,23 @@ fn lv165a_less_pin_16() -> ElectronicComponentRow {
   }
 }
 
+// A FACT ABOUT THE PART, not about any specimen: TI numbers sixteen pins on the SN74LV165A and
+// twenty-nine terminals on the LM5066I, and that stays true whether or not a marking on our board has
+// settled. What may NOT happen is writing this numbering onto a specimen row: a specimen's body is the
+// positions the bench probed, counted on the body, and carrier_layout's
+// a_specimens_body_is_what_was_probed_and_not_a_named_parts_numbering is the check that holds that line.
 test fn the_pin_names_follow_the_manufacturers_table() -> Bool {
-  count(lv165a_pins) == 16 && any(lv165a_pins, n => (n as String) == "pin 16")
-    && count(lm5066i_terminals) == 29 && any(lm5066i_terminals, n => (n as String) == "pin 28") && any(lm5066i_terminals, n => (n as String) == "exposed pad") && !any(lm5066i_terminals, n => (n as String) == "pin 29")
+  // The manufacturers' numberings taken AT THE POINT OF USE, from each row's own pin table. They were
+  // free-standing data here and in product.p4261.carrier until this PR: nothing else read them, and a
+  // datasheet numbering sitting in a board file is the route by which one sized a specimen's body (the
+  // two rows are gone; this is what a part fact looks like when it is actually consulted, gunbc.design_argument::consumption).
+  // The LM5066I count is TI's twenty-eight numbered leads -- twenty-nine with its exposed pad, which the
+  // table does not number: that name belongs to the reading that read it, never to a part fact.
+  let lv165a_names = map(numbered_pins(row: sn74lv165a_pw), n => pin_number_name(number: n))
+  let lm5066i_names = map(numbered_pins(row: lm5066i_pwp), n => pin_number_name(number: n))
+  count(lv165a_names) == 16 && any(lv165a_names, n => (n as String) == "pin 16")
+    && count(lm5066i_names) == 28 && any(lm5066i_names, n => (n as String) == "pin 28")
+    && !any(lm5066i_names, n => (n as String) == "pin 29")
     && count(map(numbered_pins(row: lv165a_less_pin_16()), n => pin_number_name(number: n))) == 15
     && !any(map(numbered_pins(row: lv165a_less_pin_16()), n => pin_number_name(number: n)), n => (n as String) == "pin 16")
 }

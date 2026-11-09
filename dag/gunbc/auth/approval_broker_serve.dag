@@ -90,7 +90,7 @@ import extdeps.ietf.http_semantics { HttpMethod, GET, POST }
 // two slices, two MainPIDs, two restart lifecycles and two memory bounds mean the roadmap's demand
 // has no route by which it can reach the broker's resident set: the invalid state -- an approval
 // unanswerable because a roadmap page was rendered -- stops being a thing the deployment can enter
-// rather than a thing it enters less often (DESIGN section 4b, construction over mitigation).
+// rather than a thing it enters less often (gunbc.design_argument::guarantee_ladder, construction over mitigation).
 //
 // WHAT WAS EXTRACTED AND WHAT WAS NOT. The four handler folds below and the HTTP adapter around
 // them MOVED here; roadmap_serve no longer declares them, no longer routes to them, and no longer
@@ -166,7 +166,7 @@ fn device_route_response(marker: ApprovalBrokerMarker, process: ApprovalServingP
 // the marker and the process are PARAMETERS of this fold rather than something each handler
 // remembers to append. A caller cannot construct a response without naming which fold produced it
 // AND which process it is running in -- neither is validated afterwards, both are unwritable to
-// omit (DESIGN section 5: construction over validation).
+// omit (gunbc.design_argument::fail_closed: construction over validation).
 //
 // THE PROCESS PARAMETER IS NOT REDUNDANT WITH THE MARKER, and an earlier cut that carried only the
 // marker was wrong in exactly the way that matters (review 68539). These folds are mounted by BOTH

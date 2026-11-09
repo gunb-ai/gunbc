@@ -1,0 +1,238 @@
+module test.claim.fleet.srv1_root_mutation_workflow_witness
+
+// THE EMITTED srv1 ROOT-MUTATION JOBS, as gunbc.fleet.fleet_converge_workflow projects them: the gate step
+// before any root step, the mode bound at job level, the approved selection covering every input a root step
+// consumes, and the fleet key held only after the approval that authorizes it.
+//
+// WHY THIS FILE EXISTS APART FROM test.claim.fleet.srv1_root_mutation_approval_witness (split 2026-11-05,
+// gunbc#15901). Those six claims read the emitted Job/Step structures, so they need the projecting module in
+// their closure; that module is 7.8k lines and its typecheck alone outran the witness harness's 90-minute
+// budget, which meant the seventeen gate-fold claims sharing the file never reached a verdict either. A
+// witness that cannot run proves nothing, so the expensive closure is now paid only where it is spent: this
+// file imports the projection, the approval witness no longer does. No claim here is a copy of one from that
+// file, and the helpers below serve only these claims.
+//
+// gunbc.design_argument::single_authority still decides what each claim touches: it asserts over the EMITTED shape, the workflow's own
+// output, and never re-derives a gate decision -- the decisions themselves are witnessed at the fold, in the
+// other file, one interface apiece.
+
+import std.types { Bool, Int, NonEmptyStr, String, List, Timestamp }
+import std.algebra { string_contains, list_map }
+import std.optional { Present, Absent }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.scoped_authorization { AuthorizationRequest, AuthorizationScope }
+import gunbc.fleet.fleet_workflow_steps {
+  gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes,
+  gunbc_ci_microvm_controller_install_job_backstop_timeout_minutes,
+  gunbc_ci_approval_broker_dark_install_job_backstop_timeout_minute_count,
+}
+import extdeps.github.actions { Job, Step, RunStep, UsesStep }
+import extdeps.languages.yaml.types { YamlKeyValue, YamlString }
+import gunbc.auth.approval_decision_store { request_revision_of }
+import gunbc.auth.approval_request_client { PollApproved, PollDenied, PollExpired }
+import gunbc.auth.approval_gate { approval_gate_from_poll, GateAdmitted, GateRefused, ApprovalDenied, ApprovalExpired, approval_request_window, approval_expires_at }
+import std.measure { second_count, minute_count }
+import std.integer { nat_to_int }
+import extdeps.github.actions { max_job_timeout_minutes }
+import gunbc.fleet.srv1_root_mutation_approval_run {
+  srv1_root_mutation_inheritance, Srv1InheritedGrantAdmitted, Srv1InheritedGrantRefused,
+  microvm_controller_install_root_scopes, srv1_root_write_scope,
+  srv1_root_mutation_request, srv1_root_mutation_escalation_id, srv1_root_mutation_after_gate,
+  srv1_root_mutation_approved_scopes, Srv1RootMutationApproval, Srv1RootMutationSelect, srv1_root_mutation_approval_artifact_glob, srv1_root_mutation_approval_receipt_path,
+  srv1_root_mutation_mode_env,
+  srv1_root_mutation_poll_cadence, srv1_root_mutation_poll_tick_budget,
+  srv1_root_mutation_expiry_overrun_ticks, srv1_root_mutation_prelude_allowance,
+  srv1_root_mutation_step_margin, srv1_root_mutation_approval_step_timeout_minutes,
+  srv1_root_mutation_approval_window,
+}
+import gunbc.auth.privileged_effect_census { srv1_root_mutation_approval_root, srv1_root_mutation_approval_row, privileged_effect_census }
+import gunbc.auth.authorization_pattern_selection { EntailedByApprovedConvergence }
+import std.decl_ref { declaration_ref_display_key }
+import gunbc.ci.ci_spec { gunbc_ci_srv1_root_mutation_approval_invoke }
+// The family's own wire and job id, declared in gunbc.fleet.srv1_root_mutation_mode: the workflow module
+// DELEGATES to these, and a claim that compares the two must name the callee, or its effect summary
+// cannot be joined (stern's run at eab572a3).
+import gunbc.fleet.srv1_root_mutation_mode {
+  Srv1RootMutationMode, srv1_root_mutation_mode_wire, srv1_root_mutation_mode_job_id,
+  srv1_root_mutation_modes,
+}
+import gunbc.fleet.fleet_converge_workflow {
+  fleet_converge_dashboard_deploy_job, fleet_converge_approval_broker_dark_install_job, fleet_converge_microvm_controller_install_job,
+  fleet_converge_dashboard_deploy_selected_inputs, fleet_converge_microvm_controller_install_selected_inputs,
+  fleet_converge_approval_broker_dark_install_selected_inputs,
+  fleet_converge_approval_ntfy_retire_job, fleet_converge_approval_ntfy_retire_selected_inputs,
+  fleet_converge_workflow_mode_wire, fleet_converge_printer_job, Srv1RootMutation, fleet_converge_mode_job_id
+}
+
+// THE GENERATOR AND THE AUTHORITY SPEAK THE SAME WIRE AND THE SAME JOB NAME: the dispatch vocabulary
+// carries the family as ONE constructor and delegates both names to the family module, so the string a
+// dispatch carries is the string the request builder parses back. Enumerated from the family's own
+// list -- no mode is spelled by hand in this witness.
+test fn the_generator_delegates_the_family_wire_and_job_names() -> Bool {
+  all(srv1_root_mutation_modes, m =>
+    fleet_converge_workflow_mode_wire(mode: Srv1RootMutation(m)) == srv1_root_mutation_mode_wire(mode: m)
+      && (fleet_converge_mode_job_id(mode: Srv1RootMutation(m)) as String) == srv1_root_mutation_mode_job_id(mode: m))
+}
+
+// THE MODE REACHES EVERY STEP OF THE JOB AT JOB LEVEL: the gate step AND the inheriting steps rebuild
+// the same request from the run's variables, so a mode only one step could see would make the others
+// refuse mid-job, after the operator has already said yes.
+fn job_binds_its_mode_at_job_level(j: Job) -> Bool {
+  match j.env {
+    Absent => false
+    Present { value: kvs } => any(kvs, e => match e {
+      YamlKeyValue { key: k, value: YamlString { value: v } } => k == srv1_root_mutation_mode_env
+        && v == "${{ github.event.inputs.mode }}"
+      _ => false
+    })
+  }
+}
+
+test fn every_root_mutation_job_hands_its_mode_to_every_step() -> Bool {
+  job_binds_its_mode_at_job_level(j: fleet_converge_dashboard_deploy_job())
+    && job_binds_its_mode_at_job_level(j: fleet_converge_approval_broker_dark_install_job())
+    && job_binds_its_mode_at_job_level(j: fleet_converge_microvm_controller_install_job())
+    && job_binds_its_mode_at_job_level(j: fleet_converge_approval_ntfy_retire_job())
+    && !job_binds_its_mode_at_job_level(j: fleet_converge_printer_job())
+}
+
+fn step_id_of(st: Step) -> String {
+  match st {
+    RunStep { name: _, id: Present { value: i }, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => i
+    UsesStep { name: _, id: Present { value: i }, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => i
+    _ => ""
+  }
+}
+
+// THE ORDER, read off the emitted job: WIF auth, then the gate, then the root step. The fold's state
+// is how far the sequence has got; a root step seen before the gate is sticky at -1.
+fn gated_before(j: Job, root_step: String) -> Bool {
+  let reached = fold(j.steps, init: 0, f: fn(at, st) {
+    let id = step_id_of(st: st)
+    if at < 0 { at }
+    else if id == root_step { if at == 2 { 3 } else { 0 - 1 } }
+    else if id == "wif_auth" && at == 0 { 1 }
+    else if id == "srv1_root_mutation_approval" && at == 1 { 2 }
+    else { at }
+  })
+  reached == 3
+}
+
+test fn every_srv1_root_mutation_job_runs_the_gate_before_its_root_step() -> Bool {
+  gated_before(j: fleet_converge_dashboard_deploy_job(), root_step: "dashboard_deploy")
+    && gated_before(j: fleet_converge_approval_broker_dark_install_job(), root_step: "approval_broker_dark_install")
+    && gated_before(j: fleet_converge_microvm_controller_install_job(), root_step: "microvm_controller_install")
+    && gated_before(j: fleet_converge_approval_ntfy_retire_job(), root_step: "approval_ntfy_retire")
+}
+
+fn kv_strings(kvs: List<YamlKeyValue>?) -> List<String> {
+  match kvs {
+    Absent => []
+    Present { value: xs } => fold(xs, init: [], f: fn(acc, e) {
+      match e.value {
+        YamlString { value: v } => concat(acc, [v])
+        _ => acc
+      }
+    })
+  }
+}
+
+fn step_input_strings(st: Step) -> List<String> {
+  match st {
+    RunStep { name: _, id: _, run: _, shell: _, env: e, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => kv_strings(kvs: e)
+    UsesStep { name: _, id: _, uses: _, with: w, env: e, if_condition: _, continue_on_error: _, timeout_minutes: _ } => concat(kv_strings(kvs: w), kv_strings(kvs: e))
+  }
+}
+
+// EVERY DISPATCH INPUT A ROOT STEP CONSUMES IS IN THE APPROVED SELECTION, read off the emitted job:
+// each env or with value after the gate that reads an input names one the gate binds, or host / mode,
+// which the job's own condition fixes. A step that starts reading a new input without the selection
+// naming it fails here, so the approved subject cannot silently fall behind what the job converges.
+fn later_inputs_are_selected(j: Job, selects: List<String>) -> Bool {
+  let bound = concat(selects, ["host", "mode"])
+  let after = fold(j.steps, init: [], f: fn(acc, st) {
+    if step_id_of(st: st) == "srv1_root_mutation_approval" { [st] } else if acc == [] { acc } else { concat(acc, [st]) }
+  })
+  after != []
+    && all(after.skip(n: 1), st => all(step_input_strings(st: st), v =>
+      !string_contains(s: v, pattern: "inputs.")
+        || any(bound, n => string_contains(s: v, pattern: join(["inputs.", n, " "], "")))))
+}
+
+test fn every_input_a_root_step_consumes_is_in_the_approved_selection() -> Bool {
+  later_inputs_are_selected(j: fleet_converge_dashboard_deploy_job(), selects: fleet_converge_dashboard_deploy_selected_inputs)
+    && later_inputs_are_selected(j: fleet_converge_microvm_controller_install_job(), selects: fleet_converge_microvm_controller_install_selected_inputs)
+    && later_inputs_are_selected(j: fleet_converge_approval_broker_dark_install_job(), selects: fleet_converge_approval_broker_dark_install_selected_inputs)
+    && later_inputs_are_selected(j: fleet_converge_approval_ntfy_retire_job(), selects: fleet_converge_approval_ntfy_retire_selected_inputs)
+    && !later_inputs_are_selected(j: fleet_converge_dashboard_deploy_job(), selects: ["plan_workflow_run_id"])
+}
+
+// A NON-srv1 DISPATCH NEVER REACHES THE CREDENTIAL (review 5649820707): the host check is the job's
+// own condition, so the WIF step and the submission-key fetch never run on another host's runner.
+fn job_admits_srv1_only(j: Job) -> Bool {
+  match j.if_condition {
+    Absent => false
+    Present { value: c } => string_contains(s: c, pattern: "github.event.inputs.host == 'srv1'")
+  }
+}
+
+test fn a_non_srv1_dispatch_never_reaches_the_credential_steps() -> Bool {
+  job_admits_srv1_only(j: fleet_converge_dashboard_deploy_job())
+    && job_admits_srv1_only(j: fleet_converge_approval_broker_dark_install_job())
+    && job_admits_srv1_only(j: fleet_converge_microvm_controller_install_job())
+    && job_admits_srv1_only(j: fleet_converge_approval_ntfy_retire_job())
+}
+
+fn step_name_of(st: Step) -> String {
+  match st {
+    RunStep { name: Present { value: n }, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => n
+    UsesStep { name: Present { value: n }, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => n
+    _ => ""
+  }
+}
+
+fn is_key_step(st: Step) -> Bool { string_contains(s: step_name_of(st: st), pattern: "Materialize fleet key in-run") }
+
+fn is_key_cleanup_step(st: Step) -> Bool { string_contains(s: step_name_of(st: st), pattern: "kill the in-run ssh-agent") }
+
+// THE ADMINISTRATOR'S KEY EXISTS ONLY IN AN APPROVED RUN, read off the emitted job: the gate, then the
+// key, then the install, and the agent's teardown last. A key step before the gate leaves the fold
+// sticky at -1; a job with no key step, or no teardown after the install, never reaches 4.
+test fn the_controller_install_holds_the_fleet_key_only_after_its_approval() -> Bool {
+  let j = fleet_converge_microvm_controller_install_job()
+  let reached = fold(j.steps, init: 0, f: fn(at, st) {
+    if at < 0 { at }
+    else if step_id_of(st: st) == "srv1_root_mutation_approval" { if at == 0 { 1 } else { at } }
+    else if is_key_step(st: st) { if at == 1 { 2 } else { 0 - 1 } }
+    else if step_id_of(st: st) == "microvm_controller_install" { if at == 2 { 3 } else { 0 - 1 } }
+    else if is_key_cleanup_step(st: st) { if at == 3 { 4 } else { 0 - 1 } }
+    else { at }
+  })
+  reached == 4
+}
+
+// THE THREE JOBS THAT CARRY THE APPROVAL STEP FIT INSIDE THE PLATFORM CEILING. Review 91262 asked for
+// this arithmetic to be checked rather than trusted, and it is the one place the ceiling is NOT already
+// enforced: only the fleet-converge job routes its backstop through gunbc.fleet.fleet_workflow_steps
+// checked_job_timeout_minutes, while the deploy, controller-install and dark-install backstops are plain
+// sums -- so a raise of gunbc.auth.approval_gate approval_request_window would today widen the step and
+// all three job totals with nothing refusing an impossible timeout-minutes. At the four-hour default the
+// totals are 314 (deploy: 5 prelude + 10 transfer + 5 aux + 30 live-deploy + 5 WIF aux + 249 step + 10
+// receipt upload), 344 (controller install: the deploy's terms + its own 30-minute live-deploy tier) and
+// 331 (dark install: the same frame with the deploy tier replaced by the dark-install step's 47, whose
+// 12-minute render allowance and 10-minute broker readback poll are each derived, not guessed). That is
+// 46, 16 and 29 minutes of headroom, which is why the row can move but not by much: the step's own
+// ceiling claim in the approval witness goes red first, and this one catches a raise that leaves the step
+// legal but the jobs not. Nothing here repeats 360 or any of the totals -- both bounds are read from the
+// rows that own them, so the claim moves with the model.
+test fn the_three_root_mutation_carrying_job_backstops_stay_inside_the_platform_ceiling() -> Bool {
+  let deploy_minutes = gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes()
+  let controller_minutes = gunbc_ci_microvm_controller_install_job_backstop_timeout_minutes()
+  let dark_install_minutes = nat_to_int(n: gunbc_ci_approval_broker_dark_install_job_backstop_timeout_minute_count())
+  deploy_minutes > 0
+    && deploy_minutes <= max_job_timeout_minutes
+    && controller_minutes > 0
+    && controller_minutes <= max_job_timeout_minutes
+    && dark_install_minutes > 0
+    && dark_install_minutes <= max_job_timeout_minutes
+}

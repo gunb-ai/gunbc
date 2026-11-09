@@ -1,0 +1,30 @@
+module test.claim.fleet.runner_roster_decode_inhabitance_witness
+
+import std.types { Bool, Int, NonEmptyStr }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_srv4 }
+import gunbc.fleet.fleet_runner_connectivity { RosterObserved, observe_slot_registrations, SlotRegistrationsObserved, SlotRegistrationsUnobserved }
+import gunbc.fleet.organization_runner_roster_read { decode_roster_page_json, RosterPageDecoded, RosterPageDecodeRefused }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data srv4_01_slot: RunnerSlotIdentity = RunnerSlotIdentity { host: operator_host_srv4, slot_index: 1 }
+
+// INHABITANCE CLAIM (gunbc.design_argument::witness_one_interface pairing), in its own file because the REAL producer
+// (organization_runner_roster_read) has a far larger closure than the connectivity witness that supplies rosters:
+// the supplied rows there are what the REAL decode emits. A GitHub org-runners JSON body carrying a live and a dead
+// JIT registration of srv4-01 goes through decode_roster_page_json and the decoded rows feed the same observation
+// the wet entry records; deleting the decode from the route, or the JIT grammar from decode_registration_slot,
+// turns this red.
+test fn the_real_roster_page_decode_feeds_the_registration_observation() -> Bool {
+  let body = "{\"total_count\":2,\"runners\":[{\"id\":9001,\"name\":\"srv4-01-1793701320-333\",\"status\":\"online\",\"busy\":false,\"os\":\"linux\",\"labels\":[{\"name\":\"self-hosted\"}],\"ephemeral\":true},{\"id\":9002,\"name\":\"srv4-01-1793600000-111\",\"status\":\"offline\",\"busy\":false,\"os\":\"linux\",\"labels\":[{\"name\":\"self-hosted\"}],\"ephemeral\":true}]}"
+  match decode_roster_page_json(body: body) {
+    RosterPageDecodeRefused { reason: _ } => false
+    RosterPageDecoded { registrations: regs, total_count: _ } =>
+      match observe_slot_registrations(slot: srv4_01_slot, roster: RosterObserved { observed_on: "2026-11-04" as NonEmptyStr, registrations: regs }) {
+        SlotRegistrationsObserved { slot: _, live: l, dead: d } => l == 1 && d == 1
+        SlotRegistrationsUnobserved { slot: _, reason: _ } => false
+      }
+  }
+}

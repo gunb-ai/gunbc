@@ -12,11 +12,11 @@ import product.fabric.provider_route { ProviderRoute, ProviderRouteFacts, provid
 // OFFER AT ALL. That case is not ProviderRouteUnclassified - unclassified means facts exist and no
 // sanction covers them, and its remedy is to sanction the route. The remedy here is different and
 // earlier: go and observe the provider's data paths. Reporting one as the other names the wrong
-// thing to go and do, which DESIGN section 5 rules is a fabricated diagnosis rather than a located
+// thing to go and do, which gunbc.design_argument::fail_closed rules is a fabricated diagnosis rather than a located
 // one.
 //
 // WHY THIS IS PUBLIC AND WHY IT IS THE SHAPE ONLY. Which route an offer runs on, and what that
-// route's data paths are, are facts about the PROVIDER, so by DESIGN section 3 they belong beside
+// route's data paths are, are facts about the PROVIDER, so by gunbc.design_argument::single_authority they belong beside
 // the offers and the routes rather than inside a buyer's strategy module. But DESIGN's external
 // upstream decomposition equally forbids a generic hub from enumerating concrete products: this
 // module therefore declares the correspondence and its refusals, and enumerates no vendor, no sku
@@ -71,7 +71,7 @@ fn claimed_routes<P>(rows: List<OfferRouteRow<P>>) -> List<ProviderRoute> {
 // that move one paragraph up, and the check did not implement it.
 //
 // So the question is arity. Two rows for one offer identity is a roster that does not know what
-// governs this offer, whether or not the duplicates happen to line up today, and DESIGN section 5's
+// governs this offer, whether or not the duplicates happen to line up today, and gunbc.design_argument::fail_closed's
 // rule is that a failure arm refuses rather than widening. Comparing whole facts rows instead would
 // re-open the same hole one level down: it would admit on a full-equality match and therefore have
 // to be right about which fields are material forever, whereas "the roster answered twice" needs no

@@ -324,7 +324,7 @@ test fn mbt_the_match_is_typed_by_its_binder_arm_holds() -> Bool {
 // types -- which was the right claim when the defect it guarded was a scope walk that typed such a binder
 // as the parameter. The operator ruling of 2026-09-30 forbids value-name shadowing outright, so the
 // program this row was written over is no longer a legal one and the row is reversed rather than deleted
-// (DESIGN section 4b(4): an expecting-red probe that flips becomes the regression control, it does not
+// (gunbc.design_argument::guarantee_ladder (dissolution on climb): an expecting-red probe that flips becomes the regression control, it does not
 // retire). Here `artifact` is an Int parameter of `g` and also the Accepted arm's binder.
 //
 // WHAT IT NOW ESTABLISHES, AND WHY IT STAYS ON THE SOURCE ROUTE. v2.compiler.resolve admits every value
@@ -429,7 +429,7 @@ test fn mbt_a_record_scrutinee_refuses_holds() -> Bool {
   )
 }
 
-// A HOST-TEXT SCRUTINEE IS NOT A COPRODUCT (DESIGN section 4, ruling
+// A HOST-TEXT SCRUTINEE IS NOT A COPRODUCT (gunbc.design_argument::closed_grounded_substrate, ruling
 // text_crossings_go_through_the_unfold). The scrutinee type is the kernel String's own node (v2.std.node
 // host_text_type_node), what `std.types String` resolves to, and the checker refuses with
 // infer_match_scrutinee_not_coproduct. This is a check of the inference interface with a supplied
@@ -455,7 +455,7 @@ test fn mbt_a_host_text_scrutinee_refuses_holds() -> Bool {
 // (gunbc#12506's floor measured the three at 0.7-1.3M eval steps). They are now three functions in ONE
 // module after ONE copy of the prefix, assembled, resolved and inferred once by mbt_program_reading, which
 // the floor serves to every row that reads it (v2.workflow.floor_pure_producer_share, shared by declared
-// demand). DESIGN section 2: the duplicated prefix is removed, not cached.
+// demand). gunbc.design_argument::demand_before_materialization: the duplicated prefix is removed, not cached.
 //
 // EACH ROW READS ITS OWN FUNCTION, AND ONLY ITS OWN. Every fact below is taken inside the declaration the
 // row names (mbp_declaration_named), and every reported reason is counted only when its locus lies inside
@@ -506,7 +506,7 @@ fn mbp_node_within(root: Node, wanted: Node) -> Bool {
 
 fn mbp_reason_within(x: Diagnostic, declaration: Node) -> List<Symbol> {
   match x.at {
-    NodeLocus { anchor: a } => if mbp_node_within(root: declaration, wanted: a.at) { [x.reason] } else { Empty }
+    NodeLocus { anchor: a } => if mbp_node_within(root: declaration, wanted: a.at.node) { [x.reason] } else { Empty }
     _ => Empty
   }
 }
@@ -636,7 +636,7 @@ test fn mbt_an_underived_arm_body_is_a_counted_frontier_holds() -> Bool {
 // THE MATCH-TYPING BOUNDARY, READ AT ONE INTERFACE WITH SUPPLIED INPUTS. Every refusal row below used
 // to assemble a twenty-five line module, resolve it and run the whole of `infer` in order to inspect
 // what ONE function answers for ONE match node. Re-derive the cost with claim_batch over this entry
-// rather than trusting a figure here: what it shows is the diagnostic DESIGN section 3 names, that the
+// rather than trusting a figure here: what it shows is the diagnostic gunbc.design_argument::single_authority names, that the
 // row's cost did not move when its assertion changed, because the assertion was never the expense.
 //
 // THE INTERFACE IS v2.compiler.infer infer_match_coproduct, which is where every one of these

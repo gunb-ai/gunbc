@@ -26,7 +26,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 // THE AGNOSTIC SHAPES OF "WHICH BOARD IS THIS HOST", and nothing else. This module enumerates no
-// product (DESIGN section 3, External upstream decomposition): the board a host reports is the
+// product (gunbc.design_argument::external_upstreams, External upstream decomposition): the board a host reports is the
 // Board Area of its own FRU (Platform Management FRU Information Storage Definition, Board Area:
 // manufacturer, product name, part number), and the board a consumer reasons about is an
 // authority REFERENCE to the per-board subject module that owns that board's facts. Adding a board

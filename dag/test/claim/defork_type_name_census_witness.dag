@@ -9,7 +9,7 @@ import gunbc.defork_type_name_census {
   shared_type_names, defork_census_findings, defork_census_derivation_over
 }
 
-// The census join's discriminating reds, over a PLANTED pool supplied at the interface (DESIGN §3,
+// The census join's discriminating reds, over a PLANTED pool supplied at the interface (gunbc.design_argument::single_authority,
 // a witness discriminates at one interface). The real path -- the live pool, the authored rows,
 // the plan's bytes -- runs where the plan is generated, under the required generated-artifact
 // drift gate, which refuses the artifact when this join has any finding. The population claim pins

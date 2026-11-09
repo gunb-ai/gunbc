@@ -347,7 +347,7 @@ test fn the_standing_route_is_served() -> Bool {
 }
 
 // An index older than the newest event is stale; equal or newer is current. Serving the older
-// bytes without this standing would be silent wrongness (DESIGN §5).
+// bytes without this standing would be silent wrongness (gunbc.design_argument::fail_closed).
 test fn a_newer_event_makes_the_served_observation_stale() -> Bool {
   match served_observation_freshness(observed_at: "2026-10-10T18:00:00Z", newest_event_at: "2026-10-10T18:00:01Z") {
     ObservationStale { observed_at, newest_event_at } => observed_at == "2026-10-10T18:00:00Z" && newest_event_at == "2026-10-10T18:00:01Z"
