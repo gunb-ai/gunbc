@@ -1,10 +1,16 @@
 module test.claim.field_default_importing_caller_control
 
 import std.types { Bool }
-// THE HOTFIX CONTROL. This caller does what #16185 did at `gunbc.heal_publication`: it names the arm
-// in its import clause. Green at base (that is what the hotfix bought) and green at head; it exists so
-// the witness pair in `field_default_declaring_scope_witness` is read as "the default is read in the
-// caller's scope" rather than "defaults of coproduct-typed parameters never work".
+// THE HOTFIX SHAPE, AND WHAT THE PAIRED RUN SAYS ABOUT IT. This caller does what #16185 did at
+// `gunbc.heal_publication`: it names the arms in its import clause. It was written as a control and the
+// executed pair refused that reading — at BASE it fails with the SAME refusal as a caller that names
+// nothing (rc=1, runtime error [no-such-variable]: undefined variable: FieldDefaultBearer), and it is
+// green only at HEAD. That is the cheaper of the two bad outcomes: it means the hotfix's import clause
+// bought nothing on its own, which is exactly why #16185 also passed `subject_token_type: Jwt` and
+// `requested_token_type: RequestAccessToken` explicitly, and it means the line the witness set draws is
+// between a default whose read the DECLARING site can name and one it cannot -- not between a caller
+// that imported the arm and one that did not. It still rules out the failure mode this file was written
+// to rule out: defaults of coproduct-typed parameters are not simply broken.
 import test.claim.field_default_declaring_scope_fixture {
   field_default_is_bearer, field_default_is_opaque, FieldDefaultBearer, FieldDefaultOpaque,
 }
