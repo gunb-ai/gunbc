@@ -311,6 +311,9 @@ fn ui_attr_refs_of_page(page_text: String) -> List<HtmlAttributeReference> {
   html_attribute_references(ui_octets_of(page_text), [megarac_ui_src_name_octets, megarac_ui_href_name_octets])
 }
 
+// The page's data-main value is REPORTED (ui_page_diagnostic_lines) and never derived into a fetch: the
+// loader's rule would name /app/main.js, and run 42569430109's receipt shows the BMC answering 404 for it.
+// The labels are inline in source.min.js, so the only derived references are src and href.
 fn ui_asset_refs_of_page(page_text: String) -> List<NonEmptyStr> {
   ui_attr_refs_of_page(page_text) |> map(r => ui_octets_text(r.value) as NonEmptyStr)
 }
@@ -430,6 +433,12 @@ data megarac_ui_probes: List<MegaRacUiProbe> = [
   MegaRacUiProbe { name: "preload" as NonEmptyStr, octets: ui_octets_of("preload") },
   MegaRacUiProbe { name: "select_lang" as NonEmptyStr, octets: ui_octets_of("select_lang") },
   MegaRacUiProbe { name: "lang_en_us" as NonEmptyStr, octets: ui_octets_of("en-us") },
+  MegaRacUiProbe { name: "res_store" as NonEmptyStr, octets: ui_octets_of("resStore") },
+  MegaRacUiProbe { name: "resources" as NonEmptyStr, octets: ui_octets_of("resources") },
+  MegaRacUiProbe { name: "res_option" as NonEmptyStr, octets: ui_octets_of("res:") },
+  MegaRacUiProbe { name: "lmedia_object" as NonEmptyStr, octets: ui_octets_of("lmedia:{") },
+  MegaRacUiProbe { name: "lmedia_object_quoted" as NonEmptyStr, octets: ui_octets_of("\"lmedia\":{") },
+  MegaRacUiProbe { name: "local_storage_res" as NonEmptyStr, octets: ui_octets_of("\"res_\"") },
 ]
 
 data megarac_ui_data_main_name_octets: List<Int> = ui_octets_of("data-main")
@@ -533,6 +542,109 @@ fn ui_split_starts(pieces: List<String>, needle_length: Int) -> List<Int> {
     }))
 }
 
+// THE INLINE CATALOG READER. i18next here is configured with inline resources, so each language's
+// lmedia namespace is an object literal `lmedia:{...}` inside source.min.js. This reads named members
+// of such a literal with octet offsets. It is CANDIDATE-GRADE: the marker is found by raw split, so an
+// occurrence may sit in a string or a comment (claim=raw_member_shaped_occurrence_not_binding), and no
+// language is inferred from a block's position -- block_offset is all a receipt says.
+//
+// ENDING A BLOCK AT THE FIRST `}` IS SOUND ONLY BECAUSE THESE CATALOG OBJECTS ARE FLAT (string-valued
+// members). A block whose text before that `}` holds a `{` is a nested object and is REFUSED as
+// nested_object, never truncated; a `}` inside a string value would end the block early, which can only
+// make a later member absent or its value unterminated (both typed), never yield a wrong value.
+// A member is `key:"value"` with the key at the block start or after a `,`; a value holding a backslash
+// is refused (escapes are not decoded); a key occurring twice is refused, never first-wins.
+type MegaRacUiCatalogMember
+  = | CatalogMemberAbsent
+  | CatalogMemberDuplicated { occurrences: Int }
+  | CatalogMemberEscaped { value_offset: Int }
+  | CatalogMemberUnterminated { value_offset: Int }
+  | CatalogMemberRead { value_offset: Int  value_octets: List<Int> }
+
+data megarac_ui_catalog_open_text: String = "lmedia:\{"
+
+data megarac_ui_catalog_member_keys: List<String> = ["halted", "status_0", "status_1", "status_16"]
+
+fn ui_first_piece(text: String, delimiter: String) -> String {
+  match split(s: text, delimiter: delimiter) |> get(0) {
+    null => ""
+    first => first as String
+  }
+}
+
+fn ui_catalog_member(body: String, body_offset: Int, key: String) -> MegaRacUiCatalogMember {
+  let needle = join([",", key, ":\""], "")
+  let pieces = split(s: join([",", body], ""), delimiter: needle)
+  let occurrences = count(pieces) - 1
+  if occurrences == 0 {
+    CatalogMemberAbsent
+  } else if occurrences > 1 {
+    CatalogMemberDuplicated { occurrences: occurrences }
+  } else {
+    let before = match pieces |> get(0) {
+      null => ""
+      p => p as String
+    }
+    let rest = match pieces |> get(1) {
+      null => ""
+      p => p as String
+    }
+    let value_offset = body_offset + count(ui_octets_of(before)) + count(ui_octets_of(key)) + 2
+    if !string_contains(s: rest, pattern: "\"") {
+      CatalogMemberUnterminated { value_offset: value_offset }
+    } else {
+      let value = ui_first_piece(text: rest, delimiter: "\"")
+      if string_contains(s: value, pattern: "\\") { CatalogMemberEscaped { value_offset: value_offset } } else { CatalogMemberRead { value_offset: value_offset, value_octets: ui_octets_of(value) } }
+    }
+  }
+}
+
+fn ui_catalog_member_hex(octets: List<Int>, withheld: Bool, session_values: List<List<Int>>) -> String {
+  if withheld || count(session_values) == 0 {
+    "withheld"
+  } else {
+    match uint8_octets_of_ints(values: octets) {
+      QualifiedOctetsRefused { observed: _ } => "withheld_not_octets"
+      QualifiedOctetsReady { value: qualified } => base16_encode_lower(octets: qualified)
+    }
+  }
+}
+
+fn ui_catalog_member_line(index: Int, key: String, member: MegaRacUiCatalogMember, withheld: Bool, session_values: List<List<Int>>) -> NonEmptyStr {
+  let head = join(["lmedia_member block=", megarac_ui_count_text(index), " key=", key], "")
+  match member {
+    CatalogMemberAbsent => join([head, " state=absent"], "") as NonEmptyStr
+    CatalogMemberDuplicated { occurrences: n } => join([head, " state=duplicated occurrences=", megarac_ui_count_text(n)], "") as NonEmptyStr
+    CatalogMemberEscaped { value_offset: at } => join([head, " state=escaped value_offset=", megarac_ui_count_text(at)], "") as NonEmptyStr
+    CatalogMemberUnterminated { value_offset: at } => join([head, " state=unterminated value_offset=", megarac_ui_count_text(at)], "") as NonEmptyStr
+    CatalogMemberRead { value_offset: at, value_octets: octets } => join([head, " state=read value_offset=", megarac_ui_count_text(at), " value_length=", megarac_ui_count_text(count(octets)), " hex=", ui_catalog_member_hex(octets: octets, withheld: withheld, session_values: session_values)], "") as NonEmptyStr
+  }
+}
+
+fn ui_catalog_block_lines(index: Int, block_offset: Int, piece: String, withheld: Bool, session_values: List<List<Int>>) -> List<NonEmptyStr> {
+  let head = join(["lmedia_block index=", megarac_ui_count_text(index), " block_offset=", megarac_ui_count_text(block_offset)], "")
+  if !string_contains(s: piece, pattern: "}") {
+    [join([head, " refused=block_unclosed"], "") as NonEmptyStr]
+  } else {
+    let body = ui_first_piece(text: piece, delimiter: "}")
+    if string_contains(s: body, pattern: "\{") {
+      [join([head, " refused=nested_object"], "") as NonEmptyStr]
+    } else {
+      let body_offset = block_offset + count(ui_octets_of(megarac_ui_catalog_open_text))
+      concat([join([head, " claim=raw_member_shaped_occurrence_not_binding"], "") as NonEmptyStr], megarac_ui_catalog_member_keys |> map(k => ui_catalog_member_line(index: index, key: k, member: ui_catalog_member(body: body, body_offset: body_offset, key: k), withheld: withheld, session_values: session_values)))
+    }
+  }
+}
+
+fn ui_catalog_lines(asset_text: String, withheld: Bool, session_values: List<List<Int>>) -> List<NonEmptyStr> {
+  let scan = ui_text_needle_scan(text: asset_text, needle: ui_octets_of(megarac_ui_catalog_open_text), limit: megarac_ui_occurrence_window_limit)
+  let pieces = if scan.count == 0 { [] } else { split(s: asset_text, delimiter: megarac_ui_catalog_open_text) |> skip(1) |> take(count(scan.starts)) }
+  concat(
+    [join(["lmedia_blocks total=", megarac_ui_count_text(scan.count), " read=", megarac_ui_count_text(count(pieces))], "") as NonEmptyStr],
+    flat_map(pieces |> enumerate, p => ui_catalog_block_lines(index: p.first, block_offset: match scan.starts |> get(p.first) { null => 0  at => at }, piece: p.second as String, withheld: withheld, session_values: session_values)),
+  )
+}
+
 // Occurrence counts of both spellings and a bounded hex window around the first few occurrences of the
 // bare spelling (which contains the dotted one). Counts are non-overlapping, windows are bounded by
 // megarac_ui_occurrence_window_limit * (radius + after + token), whatever the asset holds.
@@ -565,7 +677,7 @@ fn ui_status_token_diagnostic_lines(asset_text: String, session_values: List<Lis
     join(["status_window index=", megarac_ui_count_text(p.first), " at=", megarac_ui_count_text(p.second), " ", ui_window_or_withheld(withheld: asset_holds_secret, octets: octets, start: p.second, token_length: bare_length, session_values: session_values)], "") as NonEmptyStr)
   let probe_lines = flat_map(megarac_ui_probes |> enumerate, q =>
     ui_probe_lines(probe: q.second, scan: scans |> get(2 + q.first), withheld: asset_holds_secret, octets: octets, session_values: session_values))
-  concat(concat([head], status_lines), probe_lines)
+  concat(concat(concat([head], status_lines), probe_lines), ui_catalog_lines(asset_text: asset_text, withheld: asset_holds_secret, session_values: session_values))
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1581,300 +1693,6 @@ fn megarac_ui_refusal_text(cause: MegaRacUiStatusExcerptRefusal) -> NonEmptyStr 
   ], "") as NonEmptyStr
 }
 
-// ---------------------------------------------------------------------------------------------
-// THE SCRIPT-NAMED CATALOG. i18next resolves a label from a catalog file whose path the SCRIPT spells:
-// the resGetPath template with its language and namespace filled in. The namespace is the part of the
-// constructed key before the separator, and the languages are the option values of the page's own
-// language selector, which the bundle embeds as a template. This is a second derivation beside the
-// page-derived asset set, with its own admission (ui_catalog_path_admission), so the page-derived
-// admission (ui_asset_path_admission, JavaScript only) is not loosened to let a JSON path through.
-// Everything here is candidate-grade: a value read from a catalog says what the catalog holds, and
-// does not establish that the status cell is bound to it (see MegaRacUiMarkerContext).
-// Only the FIRST occurrence of each marker is read.
-// ---------------------------------------------------------------------------------------------
-
-data megarac_ui_res_get_path_marker_text: String = "resGetPath:\""
-
-data megarac_ui_catalog_template_window_limit: Int = 200
-
-data megarac_ui_lng_placeholder_text: String = "__lng__"
-
-data megarac_ui_ns_placeholder_text: String = "__ns__"
-
-data megarac_ui_catalog_suffix_text: String = ".json"
-
-data megarac_ui_lang_select_marker_text: String = "id=\"select_lang_top\""
-
-data megarac_ui_lang_region_window_limit: Int = 1200
-
-data megarac_ui_select_close_text: String = "</select>"
-
-data megarac_ui_option_value_marker_text: String = "value=\""
-
-data megarac_ui_catalog_key_text: String = "\"status_0\""
-
-data megarac_ui_namespace_separator_text: String = ":"
-
-data megarac_ui_language_token_limit: Int = 16
-
-type MegaRacUiCatalogPathRefusal
-  = CatalogTemplateAbsent
-  | CatalogTemplateUnterminated { template_offset: Int }
-  | CatalogTemplateLacksPlaceholders { template_offset: Int }
-  | CatalogLanguageListAbsent
-  | CatalogLanguageListUnclosed { language_list_offset: Int }
-  | CatalogLanguageValueRefused { value_length: Int }
-  | CatalogTemplateWalksOrEscapes { template_offset: Int }
-
-type MegaRacUiCatalogPath
-  = ScriptNamedCatalogPath { path: NonEmptyStr  lng: NonEmptyStr  ns: NonEmptyStr  template_offset: Int  language_list_offset: Int }
-  | CatalogPathUnderived { cause: MegaRacUiCatalogPathRefusal }
-
-type MegaRacUiCatalogTemplate
-  = TemplateRead { template: NonEmptyStr  template_offset: Int }
-  | TemplateRefused { cause: MegaRacUiCatalogPathRefusal }
-
-type MegaRacUiCatalogAdmission
-  = AdmittedUiCatalogPath { path: NonEmptyStr }
-  | RefusedUiCatalogPath { path: String  cause: MegaRacUiAssetPathRefusal }
-  | RefusedUiCatalogNotJson { path: String }
-
-type MegaRacUiCatalogStatus
-  = CatalogStatusValueCandidate { value_octets: List<Int>  value_offset: Int }
-  | CatalogStatusKeyAbsent
-  | CatalogStatusNotAString { at: Int }
-  | CatalogStatusValueEscaped { at: Int }
-  | CatalogStatusUnterminated { at: Int }
-
-fn megarac_ui_catalog_namespace(key: MegaRacUiConstructedKey) -> NonEmptyStr? {
-  match key {
-    ConstructedKeyRefused { cause: _ } => Absent
-    ConstructedKeyCandidate { asset_path: _, asset_sha256: _, marker_offset: _, key_prefix_offset: _, key_prefix_text: prefix, operand_text: _, candidate_span_length: _, marker_context: _ } => {
-      let pieces = split(s: prefix as String, delimiter: megarac_ui_namespace_separator_text)
-      if count(pieces) < 2 {
-        Absent
-      } else {
-        match pieces |> get(0) {
-          Absent => Absent
-          Present { value: ns } => if string_length(s: ns) == 0 { Absent } else { Present { value: ns as NonEmptyStr } }
-        }
-      }
-    }
-  }
-}
-
-fn megarac_ui_catalog_template_of_asset(asset_text: String) -> MegaRacUiCatalogTemplate {
-  let pieces = split(s: asset_text, delimiter: megarac_ui_res_get_path_marker_text)
-  match pieces |> get(0) {
-    Absent => TemplateRefused { cause: CatalogTemplateAbsent }
-    Present { value: before } => match pieces |> get(1) {
-      Absent => TemplateRefused { cause: CatalogTemplateAbsent }
-      Present { value: after } => {
-        let at = count(ui_octets_of(before)) + count(ui_octets_of(megarac_ui_res_get_path_marker_text))
-        let room = string_length(s: after)
-        let window = substring(s: after, start: 0, end: if room < megarac_ui_catalog_template_window_limit { room } else { megarac_ui_catalog_template_window_limit })
-        if !string_contains(s: window, pattern: "\"") {
-          TemplateRefused { cause: CatalogTemplateUnterminated { template_offset: at } }
-        } else {
-          match split(s: window, delimiter: "\"") |> get(0) {
-            Absent => TemplateRefused { cause: CatalogTemplateUnterminated { template_offset: at } }
-            Present { value: template } => if string_contains(s: template, pattern: megarac_ui_lng_placeholder_text) && string_contains(s: template, pattern: megarac_ui_ns_placeholder_text) {
-              TemplateRead { template: template as NonEmptyStr, template_offset: at }
-            } else {
-              TemplateRefused { cause: CatalogTemplateLacksPlaceholders { template_offset: at } }
-            }
-          }
-        }
-      }
-    }
-  }
-}
-
-fn ui_language_token_refused(value: String) -> Bool {
-  let octets = ui_octets_of(value)
-  count(octets) == 0 || count(octets) > megarac_ui_language_token_limit || any(octets, c => !((c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 45))
-}
-
-fn megarac_ui_catalog_path_of_value(piece: String, ns: NonEmptyStr, template: NonEmptyStr, template_offset: Int, language_list_offset: Int) -> MegaRacUiCatalogPath {
-  match split(s: piece, delimiter: "\"") |> get(0) {
-    Absent => CatalogPathUnderived { cause: CatalogLanguageValueRefused { value_length: string_length(s: piece) } }
-    Present { value: lng } => if ui_language_token_refused(lng) {
-      CatalogPathUnderived { cause: CatalogLanguageValueRefused { value_length: string_length(s: lng) } }
-    } else {
-      let substituted = replace(replace(template as String, megarac_ui_lng_placeholder_text, lng), megarac_ui_ns_placeholder_text, ns as String)
-      if string_contains(s: substituted, pattern: "..") {
-        CatalogPathUnderived { cause: CatalogTemplateWalksOrEscapes { template_offset: template_offset } }
-      } else {
-        match uri_resolve_path_reference(base_path: "/", reference: substituted) {
-          ResolvedPathReference { path: resolved } => ScriptNamedCatalogPath { path: resolved as NonEmptyStr, lng: lng as NonEmptyStr, ns: ns, template_offset: template_offset, language_list_offset: language_list_offset }
-          _ => CatalogPathUnderived { cause: CatalogTemplateWalksOrEscapes { template_offset: template_offset } }
-        }
-      }
-    }
-  }
-}
-
-fn megarac_ui_catalog_paths_of_asset(asset_text: String, ns: NonEmptyStr) -> List<MegaRacUiCatalogPath> {
-  match megarac_ui_catalog_template_of_asset(asset_text) {
-    TemplateRefused { cause: cause } => [CatalogPathUnderived { cause: cause }]
-    TemplateRead { template: template, template_offset: template_offset } => {
-      let pieces = split(s: asset_text, delimiter: megarac_ui_lang_select_marker_text)
-      match pieces |> get(0) {
-        Absent => [CatalogPathUnderived { cause: CatalogLanguageListAbsent }]
-        Present { value: before } => match pieces |> get(1) {
-          Absent => [CatalogPathUnderived { cause: CatalogLanguageListAbsent }]
-          Present { value: after } => {
-            let list_at = count(ui_octets_of(before))
-            let room = string_length(s: after)
-            let window = substring(s: after, start: 0, end: if room < megarac_ui_lang_region_window_limit { room } else { megarac_ui_lang_region_window_limit })
-            if !string_contains(s: window, pattern: megarac_ui_select_close_text) {
-              [CatalogPathUnderived { cause: CatalogLanguageListUnclosed { language_list_offset: list_at } }]
-            } else {
-              match split(s: window, delimiter: megarac_ui_select_close_text) |> get(0) {
-                Absent => [CatalogPathUnderived { cause: CatalogLanguageListUnclosed { language_list_offset: list_at } }]
-                Present { value: region } => {
-                  let values = split(s: region, delimiter: megarac_ui_option_value_marker_text) |> skip(1)
-                  if count(values) == 0 {
-                    [CatalogPathUnderived { cause: CatalogLanguageListAbsent }]
-                  } else {
-                    values |> map(piece => megarac_ui_catalog_path_of_value(piece: piece, ns: ns, template: template, template_offset: template_offset, language_list_offset: list_at))
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}
-
-fn ui_catalog_path_admission(path: String) -> MegaRacUiCatalogAdmission {
-  match ui_path_walk_refusal(path) {
-    Present { value: cause } => RefusedUiCatalogPath { path: path, cause: cause }
-    Absent => if !ui_string_ends_with(path, megarac_ui_catalog_suffix_text) {
-      RefusedUiCatalogNotJson { path: path }
-    } else {
-      AdmittedUiCatalogPath { path: path as NonEmptyStr }
-    }
-  }
-}
-
-fn megarac_ui_catalog_status_zero(body: String) -> MegaRacUiCatalogStatus {
-  let pieces = split(s: body, delimiter: megarac_ui_catalog_key_text)
-  match pieces |> get(0) {
-    Absent => CatalogStatusKeyAbsent
-    Present { value: before } => match pieces |> get(1) {
-      Absent => CatalogStatusKeyAbsent
-      Present { value: after } => {
-        let octets = ui_octets_of(after)
-        let base = count(ui_octets_of(before)) + count(ui_octets_of(megarac_ui_catalog_key_text))
-        let colon_at = ui_skip_blanks(octets, 0)
-        match html_octet_at(octets, colon_at) {
-          Absent => CatalogStatusNotAString { at: base + colon_at }
-          Present { value: o } => if o != megarac_ui_zero_key_colon_octets {
-            CatalogStatusNotAString { at: base + colon_at }
-          } else {
-            match ui_quoted_value_after(octets, colon_at + 1) {
-              NoOpeningQuote { at: a } => CatalogStatusNotAString { at: base + a }
-              UnterminatedQuote { at: a } => CatalogStatusUnterminated { at: base + a }
-              QuotedLabel { label_octets: label, after: _ } => if any(label, c => c == 92) {
-                CatalogStatusValueEscaped { at: base + ui_skip_blanks(octets, colon_at + 1) + 1 }
-              } else {
-                CatalogStatusValueCandidate { value_octets: label, value_offset: base + ui_skip_blanks(octets, colon_at + 1) + 1 }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}
-
-fn megarac_ui_catalog_refusal_line(cause: MegaRacUiCatalogPathRefusal) -> NonEmptyStr {
-  match cause {
-    CatalogTemplateAbsent => "catalog_path refused template_absent" as NonEmptyStr
-    CatalogTemplateUnterminated { template_offset: at } => join(["catalog_path refused template_unterminated template_offset=", megarac_ui_count_text(at)], "") as NonEmptyStr
-    CatalogTemplateLacksPlaceholders { template_offset: at } => join(["catalog_path refused template_lacks_placeholders template_offset=", megarac_ui_count_text(at)], "") as NonEmptyStr
-    CatalogTemplateWalksOrEscapes { template_offset: at } => join(["catalog_path refused template_walks_or_escapes template_offset=", megarac_ui_count_text(at)], "") as NonEmptyStr
-    CatalogLanguageListAbsent => "catalog_path refused language_list_absent" as NonEmptyStr
-    CatalogLanguageListUnclosed { language_list_offset: at } => join(["catalog_path refused language_list_unclosed language_list_offset=", megarac_ui_count_text(at)], "") as NonEmptyStr
-    CatalogLanguageValueRefused { value_length: n } => join(["catalog_path refused language_value value_length=", megarac_ui_count_text(n)], "") as NonEmptyStr
-  }
-}
-
-fn megarac_ui_catalog_status_line(lng: NonEmptyStr, status: MegaRacUiCatalogStatus, session_values: List<List<Int>>) -> NonEmptyStr {
-  let head = join(["catalog_status_0 lng=", lng as String], "")
-  match status {
-    CatalogStatusKeyAbsent => join([head, " refused key_absent"], "") as NonEmptyStr
-    CatalogStatusNotAString { at: at } => join([head, " refused not_a_string at=", megarac_ui_count_text(at)], "") as NonEmptyStr
-    CatalogStatusValueEscaped { at: at } => join([head, " refused value_escaped at=", megarac_ui_count_text(at)], "") as NonEmptyStr
-    CatalogStatusUnterminated { at: at } => join([head, " refused unterminated at=", megarac_ui_count_text(at)], "") as NonEmptyStr
-    CatalogStatusValueCandidate { value_octets: octets, value_offset: at } => if count(session_values) == 0 {
-      join([head, " withheld_nothing_to_check_against"], "") as NonEmptyStr
-    } else if any(session_values, value => ui_octets_contain(hay: octets, needle: value)) {
-      join([head, " withheld_matches_session_value"], "") as NonEmptyStr
-    } else {
-      match uint8_octets_of_ints(values: octets) {
-        QualifiedOctetsRefused { observed: _ } => join([head, " withheld_not_octets"], "") as NonEmptyStr
-        QualifiedOctetsReady { value: qualified } => join([head, " value_offset=", megarac_ui_count_text(at), " value_length=", megarac_ui_count_text(count(octets)), " hex=", base16_encode_lower(octets: qualified), " claim=raw_status_0_shaped_occurrence_not_membership_not_binding"], "") as NonEmptyStr
-      }
-    }
-  }
-}
-
-fn ui_catalog_fetch_lines(
-  host: NonEmptyStr,
-  cookie_jar: NonEmptyStr,
-  csrf_token: NonEmptyStr,
-  session_values: List<List<Int>>,
-  paths: List<MegaRacUiCatalogPath>,
-  at: Int,
-  acc: List<NonEmptyStr>
-) -> List<NonEmptyStr> {
-  if at >= count(paths) {
-    acc
-  } else {
-    match paths |> get(at) {
-      null => acc
-      derivation => ui_catalog_fetch_lines(
-        host: host,
-        cookie_jar: cookie_jar,
-        csrf_token: csrf_token,
-        session_values: session_values,
-        paths: paths,
-        at: at + 1,
-        acc: concat(acc, match derivation {
-          CatalogPathUnderived { cause: cause } => [megarac_ui_catalog_refusal_line(cause: cause)]
-          ScriptNamedCatalogPath { path: path, lng: lng, ns: ns, template_offset: template_offset, language_list_offset: language_list_offset } => {
-            let named = join(["catalog_path script_named lng=", lng as String, " ns=", ns as String, " path=", path as String, " template_offset=", megarac_ui_count_text(template_offset), " language_list_offset=", megarac_ui_count_text(language_list_offset)], "") as NonEmptyStr
-            match ui_catalog_path_admission(path: path as String) {
-              RefusedUiCatalogPath { path: _, cause: cause } => [named, join(["catalog_path admission_refused lng=", lng as String, " category=", ui_asset_path_refusal_category(cause) as String], "") as NonEmptyStr]
-              RefusedUiCatalogNotJson { path: _ } => [named, join(["catalog_path admission_refused lng=", lng as String, " category=not_json"], "") as NonEmptyStr]
-              AdmittedUiCatalogPath { path: admitted } => {
-                let response = megarac.Media.GetUiResource(
-                  bmc_host: host,
-                  cookie_jar: cookie_jar,
-                  csrf_token: csrf_token,
-                  path: admitted,
-                  max_time: megarac_media_read_max_time_operand(),
-                )
-                let http = ui_http_of(get_body: response.body, get_succeeded: response.success)
-                let read = join(["catalog_read lng=", lng as String, " http_status=", megarac_ui_count_text(http.http_status), " transport_ok=", if http.transport_ok { "true" } else { "false" }], "") as NonEmptyStr
-                if http.transport_ok && http.http_status == 200 {
-                  [named, read, megarac_ui_catalog_status_line(lng: lng, status: megarac_ui_catalog_status_zero(body: http.body), session_values: session_values)]
-                } else {
-                  [named, read]
-                }
-              }
-            }
-          }
-        }),
-      )
-    }
-  }
-}
-
 type MegaRacUiAssetTry {
   attempt: MegaRacUiAssetAttempt
   diagnostic_lines: List<NonEmptyStr>
@@ -1930,21 +1748,7 @@ fn ui_try_one_asset(
           excerpt: excerpt,
         },
         diagnostic_lines: if http.transport_ok && http.http_status == 200 {
-          concat(
-            concat(ui_status_token_diagnostic_lines(asset_text: http.body, session_values: session_values), [megarac_ui_constructed_key_line(key: key)]),
-            match megarac_ui_catalog_namespace(key: key) {
-              Absent => []
-              Present { value: ns } => ui_catalog_fetch_lines(
-                host: host,
-                cookie_jar: cookie_jar,
-                csrf_token: csrf_token,
-                session_values: session_values,
-                paths: megarac_ui_catalog_paths_of_asset(asset_text: http.body, ns: ns),
-                at: 0,
-                acc: [],
-              )
-            },
-          )
+          concat(ui_status_token_diagnostic_lines(asset_text: http.body, session_values: session_values), [megarac_ui_constructed_key_line(key: key)])
         } else {
           []
         },
