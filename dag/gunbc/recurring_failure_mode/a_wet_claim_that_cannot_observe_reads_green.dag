@@ -1,6 +1,7 @@
 module gunbc.recurring_failure_mode.a_wet_claim_that_cannot_observe_reads_green
 
 import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
 import gunbc.guarantee_rung { StructurallyGuaranteed }
 import gunbc.rung_climb { ClimbableButUnbuilt }
@@ -39,11 +40,19 @@ data a_wet_claim_that_cannot_observe_reads_green: RecurringFailureMode = Recurri
     "**WHERE IT BIT:** the fold-cost claims and the install-half measurement claim. The refusal arm of the install route used to accept `reason == <the documented elevation cause>` as a complete answer, which is true on a sudo-less host and a defect on an elevating one; it now additionally requires the capability to be genuinely absent, so a refusal where elevation exists is a plain red, and the not-observed line is only earned when the host really cannot do it.",
     "**MEASURED 2026-11-07, same lane, after the marker was threaded:** every launch leg prints `[witness] not-observed: <claim> capability=<edge>` at the edge it is really refused at, with the claim name carried through the path builders, so the tally is an IDENTITY JOIN of (claim, capability) pairs against the launch roster and not a count of lines. Eleven legs answered thirteen pairs: two legs ask for two host capabilities in sequence (the helper release locus, which is installed with an elevated `install`, then the root launcher and user manager) and show up as named doubles; the unsandboxed control refuses one capability at three units, which is reported as cells, not as a double. Join: missing=0 extra=0 doubles=2. The join has its own controls -- a trail whose records do not name claims gives missing=11 extra=2 and refuses the run, and a marker naming something off the roster refuses it too. The host roster of 36 scheduled claims splits 32 observed PASS / 4 not-observed / 0 falsified, and the four are exactly the claims whose verdict depends on an install arm this host cannot run. Two refusals that answered bare `false` (the control's wait-refusal arm and its spawn-refusal arm) are the class in its cheapest form: a leg walked to its probe check with no record of whether its unit ever ran.",
     "**THE HARNESS HAS THE SAME DEFECT, TWICE OVER, AND BOTH TIMES IT POINTED THE WRONG WAY.** (i) A claim body carrying a CLOSURE DIAGNOSTIC makes the batch print `FAIL <name>` for every requested claim without executing any of them -- three consecutive runs in a row looked like eleven reds -- and the name-join only caught it because eleven missing records against eleven failures is not an identity. A batch is now read as INVALID unless it has zero closure diagnostics and a non-empty verdict set. (ii) Bounding a run with `ulimit -v` produced `memory allocation of 544 bytes failed` at rc 134 on an UNMUTATED corpus, which read as a memory defect of the code under test; the ceiling was the defect (the lane's own pre-compute baseline is ~10 GiB), and the same trap had already made a mutant look like it exhausted the machine. A red produced by the harness is not a falsified claim either, and neither case is distinguishable by type -- which is this row's ceiling, stated from below.",
-  ],
-
-  evidence: [
     "The measurement that exposed it, same corpus and binary lineage: plant+observe+fold over the whole tree PASSED at 430,047 eval steps locally, where the observe pass alone over 10,117 files costs 429,788 and the install half on srv2 costs ~27.47M -- so the local green was plant plus observation with the fold refusing at its elevation probe.",
     "The distinction the lane is missing exists elsewhere in the corpus: target-invocation claims return route verdicts and `ClaimRouteVerdict::ClaimUnobserved` is rendered as UNOBSERVED by the host, which is the shape this row's ceiling asks the wet lane to adopt.",
     "Not claimed by this row: that the interim marker is a verdict. It is a log line a runner counts. A claim that stopped writing it, or wrote it while returning true, would be caught only by the S1 script's tally -- which is not a claim, and not a gate on any other host.",
+  ],
+
+  // evidence names DECLARATIONS (List<DeclarationRef>), so the measurement prose does not belong here:
+  // it moved to receipts, where a reader can read the numbers, and evidence points at the declarations
+  // that produced them -- the two install-half cost claims whose gap IS the defect, the marker that
+  // carries the distinction today, and the carrier the wet lane lacks.
+  evidence: [
+    DeclarationRef { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", decl_name: "the_install_fold_alone_over_the_whole_tree_reports_its_cost", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", decl_name: "the_install_fold_alone_over_a_thousand_planted_files_reports_its_cost", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", decl_name: "wet_not_observed", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.target_invocation", decl_name: "ClaimRouteVerdict", field: WholeDeclaration },
   ],
 }
