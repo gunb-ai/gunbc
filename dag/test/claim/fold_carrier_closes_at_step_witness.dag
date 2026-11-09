@@ -17,7 +17,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn w_free_call_fold_emits() -> Bool {
   compile_dag_rust_emit_check(
     "module foldcarrier.free\n\nimport std.algebra { list_push }\nimport std.types { Int }\n\nfn gather(xs: List<Int>) -> List<Int> { fold(xs, init: [], f: (acc, x) => list_push(acc, x)) }\n",
-    "src/foldcarrier_free_emits.rs",
+    "src/foldcarrier_free.rs",
     ["fn gather", "Vec<i64>"],
     []
   )
@@ -28,7 +28,7 @@ test fn free_call_fold_emits() -> Bool { w_free_call_fold_emits() }
 fn w_free_call_fold_carrier_closed() -> Bool {
   compile_dag_rust_emit_check(
     "module foldcarrier.free\n\nimport std.algebra { list_push }\nimport std.types { Int }\n\nfn gather(xs: List<Int>) -> List<Int> { fold(xs, init: [], f: (acc, x) => list_push(acc, x)) }\n",
-    "src/foldcarrier_free_carrier_closed.rs",
+    "src/foldcarrier_free.rs",
     ["fn gather"],
     ["acc: _"]
   )
@@ -39,7 +39,7 @@ test fn free_call_fold_carrier_closed() -> Bool { w_free_call_fold_carrier_close
 fn w_method_call_fold_emits() -> Bool {
   compile_dag_rust_emit_check(
     "module foldcarrier.method\n\nimport std.algebra { list_push }\nimport std.types { Int }\n\nfn gather(xs: List<Int>) -> List<Int> { xs.fold(init: [], f: (acc, x) => list_push(acc, x)) }\n",
-    "src/foldcarrier_method_emits.rs",
+    "src/foldcarrier_method.rs",
     ["fn gather", "Vec<i64>"],
     []
   )
@@ -50,7 +50,7 @@ test fn method_call_fold_emits() -> Bool { w_method_call_fold_emits() }
 fn w_method_call_fold_carrier_closed() -> Bool {
   compile_dag_rust_emit_check(
     "module foldcarrier.method\n\nimport std.algebra { list_push }\nimport std.types { Int }\n\nfn gather(xs: List<Int>) -> List<Int> { xs.fold(init: [], f: (acc, x) => list_push(acc, x)) }\n",
-    "src/foldcarrier_method_carrier_closed.rs",
+    "src/foldcarrier_method.rs",
     ["fn gather"],
     ["acc: _"]
   )
@@ -61,7 +61,7 @@ test fn method_call_fold_carrier_closed() -> Bool { w_method_call_fold_carrier_c
 fn w_closed_init_emits() -> Bool {
   compile_dag_rust_emit_check(
     "module foldcarrier.closed\n\nimport std.algebra { list_push }\nimport std.types { Int }\n\nfn gather(xs: List<Int>) -> List<Int> { fold(xs, init: [0], f: (acc, x) => list_push(acc, x)) }\n",
-    "src/foldcarrier_closed_emits.rs",
+    "src/foldcarrier_closed.rs",
     ["fn gather", "Vec<i64>"],
     []
   )
@@ -72,7 +72,7 @@ test fn closed_init_emits() -> Bool { w_closed_init_emits() }
 fn w_closed_init_carrier_closed() -> Bool {
   compile_dag_rust_emit_check(
     "module foldcarrier.closed\n\nimport std.algebra { list_push }\nimport std.types { Int }\n\nfn gather(xs: List<Int>) -> List<Int> { fold(xs, init: [0], f: (acc, x) => list_push(acc, x)) }\n",
-    "src/foldcarrier_closed_carrier_closed.rs",
+    "src/foldcarrier_closed.rs",
     ["fn gather"],
     ["acc: _"]
   )
@@ -83,7 +83,7 @@ test fn closed_init_carrier_closed() -> Bool { w_closed_init_carrier_closed() }
 fn w_empty_init_emits() -> Bool {
   compile_dag_rust_emit_check(
     "module foldcarrier.empty\n\nimport std.algebra { Empty, FreeMonoid, list_push }\nimport std.types { Int }\n\nfn gather(xs: List<Int>) -> FreeMonoid<Int> { fold(xs, init: Empty, f: (acc, x) => list_push(acc, x)) }\n",
-    "src/foldcarrier_empty_emits.rs",
+    "src/foldcarrier_empty.rs",
     ["fn gather", "Vec<i64>"],
     []
   )
@@ -94,7 +94,7 @@ test fn empty_init_emits() -> Bool { w_empty_init_emits() }
 fn w_empty_init_carrier_closed() -> Bool {
   compile_dag_rust_emit_check(
     "module foldcarrier.empty\n\nimport std.algebra { Empty, FreeMonoid, list_push }\nimport std.types { Int }\n\nfn gather(xs: List<Int>) -> FreeMonoid<Int> { fold(xs, init: Empty, f: (acc, x) => list_push(acc, x)) }\n",
-    "src/foldcarrier_empty_carrier_closed.rs",
+    "src/foldcarrier_empty.rs",
     ["fn gather"],
     ["acc: _"]
   )
@@ -107,7 +107,7 @@ test fn empty_init_carrier_closed() -> Bool { w_empty_init_carrier_closed() }
 fn w_any_then_push_emits() -> Bool {
   compile_dag_rust_emit_check(
     "module foldcarrier.anypush\n\nimport std.algebra { list_push }\nimport std.types { Int }\n\nfn gather(xs: List<Int>) -> List<Int> { fold(xs, init: [], f: (acc, x) => if any(acc, seen => seen == x) { acc } else { list_push(acc, x) }) }\n",
-    "src/foldcarrier_anypush_emits.rs",
+    "src/foldcarrier_anypush.rs",
     ["fn gather", "Vec<i64>"],
     []
   )
@@ -118,7 +118,7 @@ test fn any_then_push_emits() -> Bool { w_any_then_push_emits() }
 fn w_any_then_push_carrier_closed() -> Bool {
   compile_dag_rust_emit_check(
     "module foldcarrier.anypush\n\nimport std.algebra { list_push }\nimport std.types { Int }\n\nfn gather(xs: List<Int>) -> List<Int> { fold(xs, init: [], f: (acc, x) => if any(acc, seen => seen == x) { acc } else { list_push(acc, x) }) }\n",
-    "src/foldcarrier_anypush_carrier_closed.rs",
+    "src/foldcarrier_anypush.rs",
     ["fn gather"],
     ["acc: _"]
   )
@@ -134,7 +134,7 @@ test fn any_then_push_carrier_closed() -> Bool { w_any_then_push_carrier_closed(
 fn w_owner_any_then_push_emits() -> Bool {
   compile_dag_rust_emit_check(
     "module foldcarrier.owner\n\nimport std.algebra { list_push, map_lookup }\nimport std.optional { Absent, Optional, Present }\nimport std.types { Bool, Int, List, Map, NonEmptyStr, String, brand }\n\ntype ModuleId = NonEmptyStr where brand(\"ModuleId\")\ntype Owner = NonEmptyStr where brand(\"Owner\")\n\nfn gather(members: List<String>, assignment: Map<ModuleId, Owner>) -> Int { (members |> fold(init: [], f: (acc, member) => match map_lookup(m: assignment, key: member as ModuleId) { Present { value: owner } => if acc |> any(seen => seen == owner) { acc } else { acc |> list_push(owner) } Absent => acc }) |> count) }\n",
-    "src/foldcarrier_owner_emits.rs",
+    "src/foldcarrier_owner.rs",
     ["fn gather"],
     []
   )
@@ -145,7 +145,7 @@ test fn owner_any_then_push_emits() -> Bool { w_owner_any_then_push_emits() }
 fn w_owner_any_then_push_carrier_closed() -> Bool {
   compile_dag_rust_emit_check(
     "module foldcarrier.owner\n\nimport std.algebra { list_push, map_lookup }\nimport std.optional { Absent, Optional, Present }\nimport std.types { Bool, Int, List, Map, NonEmptyStr, String, brand }\n\ntype ModuleId = NonEmptyStr where brand(\"ModuleId\")\ntype Owner = NonEmptyStr where brand(\"Owner\")\n\nfn gather(members: List<String>, assignment: Map<ModuleId, Owner>) -> Int { (members |> fold(init: [], f: (acc, member) => match map_lookup(m: assignment, key: member as ModuleId) { Present { value: owner } => if acc |> any(seen => seen == owner) { acc } else { acc |> list_push(owner) } Absent => acc }) |> count) }\n",
-    "src/foldcarrier_owner_carrier_closed.rs",
+    "src/foldcarrier_owner.rs",
     ["fn gather"],
     ["acc: _"]
   )
