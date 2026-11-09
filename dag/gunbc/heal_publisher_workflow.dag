@@ -100,12 +100,6 @@ import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script_with_prelude }
 // description of the same bytes.
 data heal_publisher_no_job_refusal_reason: String = "REFUSED gunbc.heal_publisher_workflow: the repository's CI profile row declares no publisher (gunbc.ci.repository_ci_profile RepositoryCiProfile publisher is Absent). A publisher whose candidate source is not declared is a job that fires with nothing to publish - the shape this repository must not be able to commit. Delete .github/workflows/heal-publish.yml, or declare the heal or drift job that seals the candidate."
 
-// THE REFUSAL FOR THE CASE THE PUBLISHER HAS NO CONSUMER FOR. Minted here, in the module that owns the
-// publisher's reasons, rather than in the projection: the projection says only that the case is not one this
-// emitter can be built from, and this is the module that knows why (its two phases would run a compiler the
-// row's build steps never produced).
-data heal_publisher_no_publisher_source_refusal_reason: String = "REFUSED gunbc.heal_publisher_workflow: the row's publisher has no buildable compiler source. With one compiler route (this checkout's floor build) this is unreachable for a well-formed row; it is kept as the single home for a publisher that would otherwise run phases under a compiler its build steps never produced."
-
 data heal_publisher_candidate_directory: String = "heal-candidate"
 
 data heal_publisher_build_step_name: String = "Build the publisher this job runs from the default branch"
@@ -541,20 +535,15 @@ fn heal_publisher_census_workflow(profile: RepositoryCiProfile) -> Optional<Work
         Absent => Absent
         Present { value: job } =>
           // THE SAME RESOLUTION THE RENDER USES, not a second reading of the row: one function resolves
-          // the compiler source, the route and the step list, and both consumers ask it. A row the
-          // publisher cannot be built from -- a `CompilerSource` with no publisher consumer -- yields no
-          // census row here and is refused with its reason by the render entrypoint.
-          match profile_publisher_compiler_source(profile: profile) {
-            Absent => Absent
-            Present { value: source } =>
-              match heal_publisher_resolved_steps(profile: profile, job: job, source: source) {
-                Rejected { diagnostics: _ } => Absent
-                Accepted { value: steps, diagnostics: _ } =>
-                  match heal_publisher_verifier_job(source: source, job: job) {
-                    Rejected { diagnostics: _ } => Absent {  }
-                    Accepted { value: verifier_job, diagnostics: _ } =>
-                      Present { value: heal_publisher_workflow_of(profile: profile, job: job, steps: steps, verifier_job: verifier_job) }
-                  }
+          // the compiler source, the route and the step list, and both consumers ask it.
+          let source = profile_publisher_compiler_source(profile: profile)
+          match heal_publisher_resolved_steps(profile: profile, job: job, source: source) {
+            Rejected { diagnostics: _ } => Absent
+            Accepted { value: steps, diagnostics: _ } =>
+              match heal_publisher_verifier_job(source: source, job: job) {
+                Rejected { diagnostics: _ } => Absent {  }
+                Accepted { value: verifier_job, diagnostics: _ } =>
+                  Present { value: heal_publisher_workflow_of(profile: profile, job: job, steps: steps, verifier_job: verifier_job) }
               }
           }
       }
@@ -764,13 +753,9 @@ fn heal_publisher_workflow_yml_of_admitted_row(profile: RepositoryCiProfile) -> 
   match profile.publisher {
     Absent => HealPublisherWorkflowGenerationRefused { reason: heal_publisher_no_job_refusal_reason }
     Present { value: job } =>
-      // THE COMPILER SOURCE IS RESOLVED BEFORE A SINGLE STEP IS BUILT. The sum the row carries has a case
-      // this emitter has no consumer for, and the honest response to being asked for it is this refusal --
-      // not a step list assembled from the other case's recipe, which is what happened while the phases
-      // dispatched on the presence of a composition instead of on the source that named the compiler.
-      match profile_publisher_compiler_source(profile: profile) {
-        Absent => HealPublisherWorkflowGenerationRefused { reason: heal_publisher_no_publisher_source_refusal_reason }
-        Present { value: source } =>
+      // THE COMPILER SOURCE IS RESOLVED BEFORE A SINGLE STEP IS BUILT, from the one total projection the
+      // census and the claims also read, so the build steps and the phases name the same compiler.
+      let source = profile_publisher_compiler_source(profile: profile)
       match heal_publisher_resolved_steps(profile: profile, job: job, source: source) {
         Rejected { diagnostics: d } => HealPublisherWorkflowGenerationRefused { reason: heal_publisher_steps_refusal_reason(diagnostics: d) }
         Accepted { value: steps, diagnostics: _ } =>
@@ -800,7 +785,6 @@ fn heal_publisher_workflow_yml_of_admitted_row(profile: RepositoryCiProfile) -> 
         }
       }
       }
-  }
   }
   }
   }

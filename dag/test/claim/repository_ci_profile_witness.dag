@@ -185,23 +185,14 @@ test fn the_own_checkout_publisher_phases_invoke_the_floor_binary_it_built() -> 
   match row.publisher {
     Absent => false
     Present { value: job } =>
-      match publisher_source_of(row: row) {
-        Absent => false
-        Present { value: source } =>
-          let script = publisher_phase_scripts(profile: row, job: job, source: source)
-          string_contains(s: script, pattern: "target/release/gunbc")
-          // A row with no seed and no composed overlay reaches for exactly the checkout's own floor binary,
-          // built in-tree: the composed-root binary and its dag/ no longer exist to reach for.
-      }
+      let source = profile_publisher_compiler_source(profile: row)
+      let script = publisher_phase_scripts(profile: row, job: job, source: source)
+      string_contains(s: script, pattern: "target/release/gunbc")
+      // A row with no seed and no composed overlay reaches for exactly the checkout's own floor binary,
+      // built in-tree: the composed-root binary and its dag/ no longer exist to reach for.
   }
 }
 
-
-// THE PUBLISHER'S COMPILER SOURCE, as the emitter reads it. Claims ask the SAME projection the entrypoint
-// asks, so a claim can never be run against a source the emitter would have refused to build from.
-fn publisher_source_of(row: RepositoryCiProfile) -> Optional<PublisherCompilerSource> {
-  profile_publisher_compiler_source(profile: row)
-}
 
 
 // THE PHASE STEPS' SCRIPTS, joined into one text to read assertions out of. Built from the step builders the
@@ -261,16 +252,13 @@ test fn the_candidate_directory_is_anchored_only_where_a_phase_leaves_the_worksp
   match own_row.publisher {
     Absent => false
     Present { value: own_job } =>
-      match profile_publisher_compiler_source(profile: own_row) {
-        Absent => false
-        Present { value: own_source } =>
-          publisher_phase_candidate_directories(
-            profile: own_row,
-            job: own_job,
-            source: own_source
-          ) == join([relative, "|", relative], "")
-            && step_with_entry(step: heal_publisher_download_step(), key: "path") == relative
-      }
+      let own_source = profile_publisher_compiler_source(profile: own_row)
+      publisher_phase_candidate_directories(
+        profile: own_row,
+        job: own_job,
+        source: own_source
+      ) == join([relative, "|", relative], "")
+        && step_with_entry(step: heal_publisher_download_step(), key: "path") == relative
   }
 }
 
@@ -295,22 +283,19 @@ test fn the_publish_phase_holds_no_credential_of_any_kind() -> Bool {
   match row.publisher {
     Absent => false
     Present { value: job } =>
-      match profile_publisher_compiler_source(profile: row) {
-        Absent => false
-        Present { value: source } =>
-          match heal_publisher_publish_step(profile: row, job: job, source: source) {
-            Accepted { value: step, diagnostics: _ } =>
-              // The job token stays: it answers the openness check, which is a job-token call and is not
-              // time-limited in the way the two minted credentials are. The runner supplies the OIDC
-              // request pair itself when the job carries id-token permission, so an env row for it would
-              // be a second, workflow-rendered spelling of something the runner already owns.
-              step_env_entry(step: step, key: "WIF_ACCESS_TOKEN") == ""
-                && step_env_entry(step: step, key: "GOOGLE_ACCESS_TOKEN") == ""
-                && step_env_entry(step: step, key: "GITHUB_ACCESS_TOKEN") == ""
-                && step_env_entry(step: step, key: "ACTIONS_ID_TOKEN_REQUEST_TOKEN") == ""
-                && step_env_entry(step: step, key: "GITHUB_TOKEN") != ""
-            Rejected { diagnostics: _ } => false
-          }
+      let source = profile_publisher_compiler_source(profile: row)
+      match heal_publisher_publish_step(profile: row, job: job, source: source) {
+        Accepted { value: step, diagnostics: _ } =>
+          // The job token stays: it answers the openness check, which is a job-token call and is not
+          // time-limited in the way the two minted credentials are. The runner supplies the OIDC
+          // request pair itself when the job carries id-token permission, so an env row for it would
+          // be a second, workflow-rendered spelling of something the runner already owns.
+          step_env_entry(step: step, key: "WIF_ACCESS_TOKEN") == ""
+            && step_env_entry(step: step, key: "GOOGLE_ACCESS_TOKEN") == ""
+            && step_env_entry(step: step, key: "GITHUB_ACCESS_TOKEN") == ""
+            && step_env_entry(step: step, key: "ACTIONS_ID_TOKEN_REQUEST_TOKEN") == ""
+            && step_env_entry(step: step, key: "GITHUB_TOKEN") != ""
+        Rejected { diagnostics: _ } => false
       }
   }
 }
@@ -320,14 +305,11 @@ test fn no_publisher_step_delegates_federation_to_an_action() -> Bool {
   match row.publisher {
     Absent => false
     Present { value: job } =>
-      match profile_publisher_compiler_source(profile: row) {
-        Absent => false
-        Present { value: source } =>
-          match heal_publisher_resolved_steps(profile: row, job: job, source: source) {
-            Accepted { value: steps, diagnostics: _ } =>
-              !any(steps, b => step_uses_action(step: b.step, action: google_auth_action))
-            Rejected { diagnostics: _ } => false
-          }
+      let source = profile_publisher_compiler_source(profile: row)
+      match heal_publisher_resolved_steps(profile: row, job: job, source: source) {
+        Accepted { value: steps, diagnostics: _ } =>
+          !any(steps, b => step_uses_action(step: b.step, action: google_auth_action))
+        Rejected { diagnostics: _ } => false
       }
   }
 }

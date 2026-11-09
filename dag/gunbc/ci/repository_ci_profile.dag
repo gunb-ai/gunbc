@@ -177,14 +177,11 @@ type CompilerSource
 type PublisherCompilerSource
   = PublisherBuildsItsOwnCheckout { required_bins: List<NonEmptyStr> }
 
-// THE ONE READING of that projection. Every well-formed profile builds its own checkout, so the publisher
-// always runs under it. The Optional is kept because the emitters match on it as the single place a
-// publisher with no buildable compiler would be refused; with one source there is no value that reaches that
-// arm, but the refusal shape stays so a future source that lacks a publisher consumer has one home.
-fn profile_publisher_compiler_source(profile: RepositoryCiProfile) -> Optional<PublisherCompilerSource> {
+// THE ONE READING of that projection. Every well-formed profile builds its own checkout, so the reading is
+// total: a second CompilerSource would add its arm here, and the match below refuses to compile until it does.
+fn profile_publisher_compiler_source(profile: RepositoryCiProfile) -> PublisherCompilerSource {
   match profile.source {
-    Own_checkout_under_witness_floor { required_bins: bins } =>
-      Present { value: PublisherBuildsItsOwnCheckout { required_bins: bins } }
+    Own_checkout_under_witness_floor { required_bins: bins } => PublisherBuildsItsOwnCheckout { required_bins: bins }
   }
 }
 
