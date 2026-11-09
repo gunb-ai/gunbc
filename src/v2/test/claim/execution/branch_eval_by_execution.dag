@@ -235,12 +235,12 @@ fn branch_call_primitive(
   outcome_rejected(d: branch_runtime_diagnostic(n: _node))
 }
 
-fn branch_nth_child_target(node: Node, wanted: Int) -> Outcome<Node> {
+fn branch_nth_child_target(node: Node, wanted: Int) -> Outcome<Optional<Node>> {
   match list_at_optional(xs: node.children, index: wanted) {
     Present { value: child } =>
       match child {
         Edge { label: _, target: arm } =>
-          outcome_accepted(value: arm)
+          outcome_accepted(value: optional_present(value: arm))
       }
     Absent =>
       outcome_rejected(d: branch_runtime_diagnostic(n: node))
@@ -251,7 +251,7 @@ fn branch_choose_branch_bool_if_else(
   node: Node,
   condition: RuntimeValue,
   _env: EvaluationEnvironment
-) -> Outcome<Node> {
+) -> Outcome<Optional<Node>> {
   if count(node.children) == 3 {
     if branch_runtime_bool_true(value: condition) {
       branch_nth_child_target(node: node, wanted: 1)

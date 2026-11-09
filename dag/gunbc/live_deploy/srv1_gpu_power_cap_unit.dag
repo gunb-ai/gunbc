@@ -35,10 +35,13 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 // write, and one host has one such snapshot per revision. The snapshot is installed by the board-function
 // converge leg, which the apply chain runs first.
 //
-// A PENDING CARD IS NOT THIS UNIT'S FAILURE. srv1's Workstation card does not enumerate (unpowered,
-// 2026-11-07); its admission is GpuCapDevicePending, the entry prints it on every run and exits 0 for it, and
-// the apply path reports it as a leg on every deploy (apply_legs deploy_apply_srv1_gpu_power_cap_plan). The
-// service the selected one-card configuration provides does not depend on a card that is not in it.
+// A PENDING CARD IS NOT THIS UNIT'S FAILURE. A board whose device row nobody has read arrives as
+// GpuCapDevicePending: the entry prints it on every run and exits 0 for it, and the apply path reports it as a
+// leg on every deploy (apply_legs deploy_apply_srv1_gpu_power_cap_plan), because the service the selected
+// one-card configuration provides does not depend on a card that is not in it. As of 2026-11-08 srv1 has NO
+// pending card -- both RTX PRO 6000s are powered, enumerate, and carry their own UUID and limit range in
+// gunbc.fleet.gpu_device_observation (the Workstation card, GPU-96b749dc, was read that day) -- so this unit's
+// boot run caps both, and the arm above is reached only by a board no one has observed yet.
 
 data srv1_gpu_power_cap_unit_name: NonEmptyStr = "gunbc-srv1-gpu-power-cap.service"
 
@@ -142,10 +145,10 @@ data srv1_gpu_power_cap_realization_triggers: List<GpuCapRealizationTrigger> = [
     },
   },
   GpuCapRealizationTrigger {
-    trigger: "a device appearing (srv1's Workstation card, once powered)",
+    trigger: "a device appearing (srv1's Workstation card, powered and read on 2026-11-08)",
     coverage: OwedObligation {
-      obligation: "the card appears across a power cycle, so the boot run covers its realization, but its admission joins the policy with gunbc.fleet.gpu_device_observation's TRANSCRIBED rows: until the card's UUID and limit range are read into that row it stays GpuCapDevicePending, however it enumerates" as NonEmptyStr,
-      closes_on: "a boot-time device observation read from nvidia-smi in place of the transcribed rows, so a card that enumerates is admitted on its own reading" as NonEmptyStr,
+      obligation: "the card appeared across a power cycle and its UUID and limit range were transcribed into gunbc.fleet.gpu_device_observation by hand that day, so it is admitted and the boot run caps it; what is still owed is that the row be READ rather than transcribed -- an observation taken from nvidia-smi at boot, so a card that enumerates is admitted on its own reading and a re-seat that moves a UUID cannot leave a stale one behind" as NonEmptyStr,
+      closes_on: "a boot-time device observation read from nvidia-smi in place of the transcribed rows" as NonEmptyStr,
     },
   },
 ]

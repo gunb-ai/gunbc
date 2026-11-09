@@ -1,0 +1,130 @@
+module test.claim.live_deploy.user_work_slice_admission_witness
+
+// THE WITNESS FOR ADMISSION, NOT DEATH (row 29, srv1 #15822 comment 6663129463).
+//
+// WHAT IT ANSWERS, at the boundary the defect sits on (DESIGN 6b): given the slice's ceiling and the charge
+// the kernel already reports resident, does a per-attempt review that cannot fit get REFUSED BEFORE LAUNCH,
+// rather than started and memcg-OOM-killed? The shipped belt launch path reads the same fold
+// (gunbc.live_deploy.slice_bounds user_work_slice_admit_against), so this is not a helper no caller consults;
+// it is the decision the actuator makes, pinned on the srv1 shape. The fold decides through the one fit rule
+// (std.measure measure_fits) that gunbc.compute.host_capacity compute_reserve_against also consumes -- so this
+// witness also pins that rule's behaviour for byte-scale pools.
+//
+// PURE over supplied readings: the ceiling, the resident charge and the requesting bound are inputs, the way
+// compute_reserve_against is pure over total/available/request. It reads no host, so SubstrateInputsOnly.
+
+import std.types { Bool }
+import std.nat { Nat }
+import std.measure { ByteSize, byte_size, byte_size_count, Fits, Below }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.live_deploy.slice_bounds {
+  user_work_slice_admit_against, user_work_slice_memory_max_of,
+}
+import gunbc.live_deploy.user_work_pool_slots { user_work_charged_slots }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// GiB as the operators quote them on srv1. 1 GiB = 1073741824 bytes, a Nat the measure accepts directly.
+fn gib(n: Nat) -> ByteSize {
+  byte_size(n * 1073741824)
+}
+
+// The slice ceiling here is the RULED pool width times the runner slot: two charged slots
+// (user_work_charged_slots = 2) at the 25 GiB runner slot (gunbc_runner_slot_memory_max_bytes) = 50 GiB,
+// derived from source so the witness follows the ruling when it moves rather than a stale literal.
+// SCOPE LIMIT: the shipped belt path (belt_user_work_slice_fit) reads the slice's LIVE MemoryMax -- 44
+// GiB on the incident host, not the 50 GiB the source ruling yields here -- and parses MemoryCurrent for
+// the charge. This witness exercises NEITHER the live read NOR its parsers (parse_systemd_memory_limit_show
+// incl. its Unbounded/Absent arms, nor parse_cgroup_nonnegative_bytes). A PASS therefore proves the PURE
+// fold on these literal inputs ONLY; it does not prove the actuator route. Covering the live-MemoryMax
+// parse arms and a direct compute_reserve_against Below claim are recorded UNMET OBLIGATIONS (integration
+// concern / PR body), not tested here. Claim 1 refuses because resident 41 GiB + bound 22 GiB exceed the
+// two-slot ceiling; at a runner slot of 31.5 GiB or more (two slots >= 63 GiB) that shape would become Fits.
+fn slice_ceiling() -> ByteSize {
+  user_work_slice_memory_max_of(slots: user_work_charged_slots)
+}
+
+// THE SRV1 SHAPE IS REFUSED, NOT KILLED. The six standing obligation daemons sit at ~41 GiB together (the
+// brief's reading) and the goal-audit reviewer asks for its own per-unit bound (~22 GiB, the worker ceiling).
+// Under the ruled two-slot pool the resident total plus the reviewer's bound cannot fit, so the one fit rule
+// answers Below -- the review is refused at admission and never becomes a unit the kernel can OOM.
+test fn srv1_shape_refuses_the_goal_audit_reviewer_before_launch() -> Bool {
+  let standing = gib(41)
+  let reviewer_bound = gib(22)
+  let ceiling = slice_ceiling()
+  match user_work_slice_admit_against(ceiling: ceiling, charged: standing, requested: reviewer_bound) {
+    // The refusal is the whole point: Below means the caller must not launch the unit.
+    Below { requested: r, available: a } =>
+      byte_size_count(b: r) == byte_size_count(b: reviewer_bound)
+        // available is exactly the room the standing daemons left: reported-available plus what is already
+        // resident must equal the real ceiling. Derived, not transcribed, so a re-ruled pool width moves
+        // this figure rather than breaking it.
+        && byte_size_count(b: a) + byte_size_count(b: standing) == byte_size_count(b: ceiling)
+    // Fits here would mean the reviewer is launched to be killed -- the defect, asserted absent.
+    Fits { available: _ } => false
+  }
+}
+
+// A REVIEW THAT FITS IS ADMITTED, NOT REFUSED. The fold must not be an unconditional "no": with little
+// resident the reviewer's bound leaves room, and then the unit is started. This is the case that
+// distinguishes a capacity check from a stall.
+test fn a_review_that_fits_is_admitted_not_refused() -> Bool {
+  let ceiling = slice_ceiling()
+  let standing = gib(1)
+  let reviewer_bound = gib(20)
+  match user_work_slice_admit_against(ceiling: ceiling, charged: standing, requested: reviewer_bound) {
+    Fits { available: room } =>
+      // The room handed back is the ceiling minus the resident charge: together with the charge it accounts
+      // for every byte of the ceiling, and it is strictly at least the reviewer's bound (that is why Fits).
+      byte_size_count(b: room) + byte_size_count(b: standing) == byte_size_count(b: ceiling)
+        && byte_size_count(b: reviewer_bound) <= byte_size_count(b: room)
+    Below { requested: _, available: _ } => false
+  }
+}
+
+// ALREADY-OVER-CHARGED IS A REFUSAL WITH NOTHING AVAILABLE. If the kernel reports the slice already above
+// the ceiling, a new review certainly cannot fit; it is Below with available 0 -- not a silently-admitted
+// pass. The charge exceeding the ceiling is a subtraction the fold names, not a default it swallows.
+test fn resident_above_the_ceiling_is_a_refusal_with_nothing_available() -> Bool {
+  let ceiling = slice_ceiling()
+  let over = byte_size(byte_size_count(b: ceiling) + byte_size_count(b: gib(1)))
+  match user_work_slice_admit_against(ceiling: ceiling, charged: over, requested: gib(7)) {
+    Below { requested: _, available: a } => byte_size_count(b: a) == 0
+    Fits { available: _ } => false
+  }
+}
+
+// A ZERO CEILING IS A FINITE BOUND NOTHING FITS UNDER (finding 2), guarding the specific defect where a
+// zero ceiling is treated as a "no limit" special case and admitted. ByteSize has no unbounded value, so the
+// fold can never return "unbounded"; the only thing to pin here is that zero is a real finite bound, and the
+// fold answers Below with available 0 rather than Fits. The genuinely no-finite-cap slice is a SEPARATE
+// caller-side concern -- belt_user_work_slice_fit reads MemoryMax as its own typed value and defers on
+// MemoryLimitUnbounded/MemoryLimitAbsent before the fold is ever reached -- and is a recorded unmet obligation.
+test fn a_zero_ceiling_is_a_finite_refusal_not_unbounded() -> Bool {
+  match user_work_slice_admit_against(ceiling: byte_size(0), charged: byte_size(0), requested: gib(1)) {
+    Below { requested: r, available: a } =>
+      byte_size_count(b: a) == 0
+        && byte_size_count(b: r) == byte_size_count(b: gib(1))
+    Fits { available: _ } => false
+  }
+}
+
+// THE BOUNDARY IS THE REQUESTED BOUND, NOT THE RESIDENT ALONE. With the same resident charge that refused
+// the 22 GiB reviewer, a 1-byte task that does fit is admitted -- proving the decision turns on whether
+// THIS unit's bound fits the remaining room, not on a blanket "slice is busy" stall.
+test fn the_decision_turns_on_the_unit_bound_not_a_busy_stall() -> Bool {
+  let ceiling = slice_ceiling()
+  let standing = gib(41)
+  // The reviewer's 22 GiB bound does not fit ...
+  let refused = user_work_slice_admit_against(ceiling: ceiling, charged: standing, requested: gib(22))
+  // ... but a 1-byte task into the same slice with the same charge does. Same charge, different verdict.
+  let admitted = user_work_slice_admit_against(ceiling: ceiling, charged: standing, requested: byte_size(1))
+  match refused {
+    Below { requested: _, available: _ } =>
+      match admitted {
+        Fits { available: _ } => true
+        Below { requested: _, available: _ } => false
+      }
+    Fits { available: _ } => false
+  }
+}

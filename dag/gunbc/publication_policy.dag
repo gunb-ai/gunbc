@@ -1,6 +1,7 @@
 module gunbc.publication_policy
 
 import std.types { Bool, FilePath, List, NonEmptyStr, String }
+import std.algebra { is_prefix_of }
 
 // Subtree-prefix publication policy: default WithholdPrivate; explicit SubtreePublishRule rows override by most-specific matching prefix; unknown top-level roots refuse at construction. Duplicate identical rules are idempotent; conflicting rules at the same prefix refuse at construction — never a projection-wide ambiguity at admission time.
 type PublicationDisposition
@@ -42,19 +43,8 @@ fn path_segments(path: FilePath) -> List<String> {
   split(s: path as String, delimiter: "/")
 }
 
-fn segment_prefix_is_prefix(prefix: List<String>, path: List<String>) -> Bool {
-  match prefix.first() {
-    Absent => true
-    Present { value: ph } => match path.first() {
-      Absent => false
-      Present { value: xh } =>
-        ph == xh && segment_prefix_is_prefix(prefix: prefix.skip(n: 1), path: path.skip(n: 1))
-    }
-  }
-}
-
 fn path_under_prefix(path: FilePath, prefix: FilePath) -> Bool {
-  segment_prefix_is_prefix(prefix: path_segments(path: prefix), path: path_segments(path: path))
+  is_prefix_of(prefix: path_segments(path: prefix), xs: path_segments(path: path), eq: fn(a, b) { a == b })
 }
 
 fn top_level_root(path: FilePath) -> String? {

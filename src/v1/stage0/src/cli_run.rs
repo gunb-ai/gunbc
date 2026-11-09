@@ -11059,7 +11059,11 @@ impl WitnessRuntimeCause {
             // Raised only inside a witness frame, whose evaluation converts it into a
             // WitnessRefused / WitnessInterrupted value: reaching this classifier is a leak.
             | E::ModeledOperationRefused { .. }
-            | E::ModeledWorkerKilled { .. } => WitnessRuntimeCause::MappedOutcomeEscaped,
+            | E::ModeledWorkerKilled { .. }
+            // Raised only on the wet/record REST and record dispatch paths; a claim runs
+            // Hermetic (`execution_mode_for`), so reaching this classifier is a leak too.
+            | E::RecordRefusedCredentialOperation { .. }
+            | E::RestUrlRefusedCredentialPosition { .. } => WitnessRuntimeCause::MappedOutcomeEscaped,
         }
     }
 }
