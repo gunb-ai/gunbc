@@ -148,7 +148,7 @@ jobs:
             gunbc-read-set.txt
             gunbc-fast-lane-native-cli
             gunbc-fast-lane-compiler-identity
-          key: gunbc-materialization-fast-lane-${{ steps.parse_ancestors.outputs.a0 }}
+          key: gunbc-materialization-fast-lane-${{ runner.arch }}-${{ steps.parse_ancestors.outputs.a0 }}
         if: github.event_name == 'pull_request'
       - name: Restore fast-lane unit for base ancestor 1
         id: fast_lane_unit_1
@@ -158,7 +158,7 @@ jobs:
             gunbc-read-set.txt
             gunbc-fast-lane-native-cli
             gunbc-fast-lane-compiler-identity
-          key: gunbc-materialization-fast-lane-${{ steps.parse_ancestors.outputs.a1 }}
+          key: gunbc-materialization-fast-lane-${{ runner.arch }}-${{ steps.parse_ancestors.outputs.a1 }}
         if: github.event_name == 'pull_request' && steps.fast_lane_unit_0.outputs['cache-hit'] != 'true'
       - name: Restore fast-lane unit for base ancestor 2
         id: fast_lane_unit_2
@@ -168,7 +168,7 @@ jobs:
             gunbc-read-set.txt
             gunbc-fast-lane-native-cli
             gunbc-fast-lane-compiler-identity
-          key: gunbc-materialization-fast-lane-${{ steps.parse_ancestors.outputs.a2 }}
+          key: gunbc-materialization-fast-lane-${{ runner.arch }}-${{ steps.parse_ancestors.outputs.a2 }}
         if: github.event_name == 'pull_request' && steps.fast_lane_unit_0.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_1.outputs['cache-hit'] != 'true'
       - name: Restore fast-lane unit for base ancestor 3
         id: fast_lane_unit_3
@@ -178,7 +178,7 @@ jobs:
             gunbc-read-set.txt
             gunbc-fast-lane-native-cli
             gunbc-fast-lane-compiler-identity
-          key: gunbc-materialization-fast-lane-${{ steps.parse_ancestors.outputs.a3 }}
+          key: gunbc-materialization-fast-lane-${{ runner.arch }}-${{ steps.parse_ancestors.outputs.a3 }}
         if: github.event_name == 'pull_request' && steps.fast_lane_unit_0.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_1.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_2.outputs['cache-hit'] != 'true'
       - name: Restore fast-lane unit for base ancestor 4
         id: fast_lane_unit_4
@@ -188,7 +188,7 @@ jobs:
             gunbc-read-set.txt
             gunbc-fast-lane-native-cli
             gunbc-fast-lane-compiler-identity
-          key: gunbc-materialization-fast-lane-${{ steps.parse_ancestors.outputs.a4 }}
+          key: gunbc-materialization-fast-lane-${{ runner.arch }}-${{ steps.parse_ancestors.outputs.a4 }}
         if: github.event_name == 'pull_request' && steps.fast_lane_unit_0.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_1.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_2.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_3.outputs['cache-hit'] != 'true'
       - name: Restore fast-lane unit for base ancestor 5
         id: fast_lane_unit_5
@@ -198,7 +198,7 @@ jobs:
             gunbc-read-set.txt
             gunbc-fast-lane-native-cli
             gunbc-fast-lane-compiler-identity
-          key: gunbc-materialization-fast-lane-${{ steps.parse_ancestors.outputs.a5 }}
+          key: gunbc-materialization-fast-lane-${{ runner.arch }}-${{ steps.parse_ancestors.outputs.a5 }}
         if: github.event_name == 'pull_request' && steps.fast_lane_unit_0.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_1.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_2.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_3.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_4.outputs['cache-hit'] != 'true'
       - name: Restore fast-lane unit for base ancestor 6
         id: fast_lane_unit_6
@@ -208,7 +208,7 @@ jobs:
             gunbc-read-set.txt
             gunbc-fast-lane-native-cli
             gunbc-fast-lane-compiler-identity
-          key: gunbc-materialization-fast-lane-${{ steps.parse_ancestors.outputs.a6 }}
+          key: gunbc-materialization-fast-lane-${{ runner.arch }}-${{ steps.parse_ancestors.outputs.a6 }}
         if: github.event_name == 'pull_request' && steps.fast_lane_unit_0.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_1.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_2.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_3.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_4.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_5.outputs['cache-hit'] != 'true'
       - name: Restore fast-lane unit for base ancestor 7
         id: fast_lane_unit_7
@@ -218,7 +218,7 @@ jobs:
             gunbc-read-set.txt
             gunbc-fast-lane-native-cli
             gunbc-fast-lane-compiler-identity
-          key: gunbc-materialization-fast-lane-${{ steps.parse_ancestors.outputs.a7 }}
+          key: gunbc-materialization-fast-lane-${{ runner.arch }}-${{ steps.parse_ancestors.outputs.a7 }}
         if: github.event_name == 'pull_request' && steps.fast_lane_unit_0.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_1.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_2.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_3.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_4.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_5.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_6.outputs['cache-hit'] != 'true'
       - name: Restore fast-lane unit for base ancestor 8
         id: fast_lane_unit_8
@@ -228,7 +228,7 @@ jobs:
             gunbc-read-set.txt
             gunbc-fast-lane-native-cli
             gunbc-fast-lane-compiler-identity
-          key: gunbc-materialization-fast-lane-${{ steps.parse_ancestors.outputs.a8 }}
+          key: gunbc-materialization-fast-lane-${{ runner.arch }}-${{ steps.parse_ancestors.outputs.a8 }}
         if: github.event_name == 'pull_request' && steps.fast_lane_unit_0.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_1.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_2.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_3.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_4.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_5.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_6.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_7.outputs['cache-hit'] != 'true'
       - name: Restore fast-lane unit for base ancestor 9
         id: fast_lane_unit_9
@@ -238,7 +238,7 @@ jobs:
             gunbc-read-set.txt
             gunbc-fast-lane-native-cli
             gunbc-fast-lane-compiler-identity
-          key: gunbc-materialization-fast-lane-${{ steps.parse_ancestors.outputs.a9 }}
+          key: gunbc-materialization-fast-lane-${{ runner.arch }}-${{ steps.parse_ancestors.outputs.a9 }}
         if: github.event_name == 'pull_request' && steps.fast_lane_unit_0.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_1.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_2.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_3.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_4.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_5.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_6.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_7.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_8.outputs['cache-hit'] != 'true'
       - name: Restore fast-lane unit for base ancestor 10
         id: fast_lane_unit_10
@@ -248,7 +248,7 @@ jobs:
             gunbc-read-set.txt
             gunbc-fast-lane-native-cli
             gunbc-fast-lane-compiler-identity
-          key: gunbc-materialization-fast-lane-${{ steps.parse_ancestors.outputs.a10 }}
+          key: gunbc-materialization-fast-lane-${{ runner.arch }}-${{ steps.parse_ancestors.outputs.a10 }}
         if: github.event_name == 'pull_request' && steps.fast_lane_unit_0.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_1.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_2.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_3.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_4.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_5.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_6.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_7.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_8.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_9.outputs['cache-hit'] != 'true'
       - name: Restore fast-lane unit for base ancestor 11
         id: fast_lane_unit_11
@@ -258,7 +258,7 @@ jobs:
             gunbc-read-set.txt
             gunbc-fast-lane-native-cli
             gunbc-fast-lane-compiler-identity
-          key: gunbc-materialization-fast-lane-${{ steps.parse_ancestors.outputs.a11 }}
+          key: gunbc-materialization-fast-lane-${{ runner.arch }}-${{ steps.parse_ancestors.outputs.a11 }}
         if: github.event_name == 'pull_request' && steps.fast_lane_unit_0.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_1.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_2.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_3.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_4.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_5.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_6.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_7.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_8.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_9.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_10.outputs['cache-hit'] != 'true'
       - name: Decide whether the fast-lane unit covers this change
         id: fast_lane
@@ -268,9 +268,11 @@ jobs:
           if '[' '!' '-s' 'gunbc-read-set.txt' ']'; then 'echo' 'fast lane: full run -- the restored read-set receipt is empty or absent'; 'echo' 'skip=''false' | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'; exit 0; fi
           if '[' '!' '-x' 'gunbc-fast-lane-native-cli' ']'; then 'echo' 'fast lane: full run -- the restored native CLI is not an executable file'; 'echo' 'skip=''false' | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'; exit 0; fi
           if '[' '!' '-s' 'gunbc-fast-lane-compiler-identity' ']'; then 'echo' 'fast lane: full run -- the restored compiler identity is empty or absent'; 'echo' 'skip=''false' | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'; exit 0; fi
-          IDENTITY_LINES=$('wc' '-l' < 'gunbc-fast-lane-compiler-identity')
-          if '[' "$IDENTITY_LINES" '!=' '1' ']'; then 'echo' 'fast lane: full run -- the restored compiler identity is not exactly one line'; 'echo' 'skip=''false' | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'; exit 0; fi
-          if ! 'grep' '-Eqx' '[0-9a-f]{64}' 'gunbc-fast-lane-compiler-identity'; then 'echo' 'fast lane: full run -- the restored compiler identity is not a lowercase hex sha256 digest'; 'echo' 'skip=''false' | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'; exit 0; fi
+          IDENTITY_BYTES=$('wc' '-c' < 'gunbc-fast-lane-compiler-identity')
+          IDENTITY_NEWLINES=$('wc' '-l' < 'gunbc-fast-lane-compiler-identity')
+          if '[' "$IDENTITY_BYTES" '!=' '65' ']'; then 'echo' 'fast lane: full run -- the restored compiler identity file is not exactly one digest and its newline'; 'echo' 'skip=''false' | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'; exit 0; fi
+          if '[' "$IDENTITY_NEWLINES" '!=' '1' ']'; then 'echo' 'fast lane: full run -- the restored compiler identity file is not exactly one digest and its newline'; 'echo' 'skip=''false' | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'; exit 0; fi
+          if ! ('head' '-c' '64' 'gunbc-fast-lane-compiler-identity' | 'grep' '-Eqx' '[0-9a-f]{64}'); then 'echo' 'fast lane: full run -- the restored compiler identity is not a lowercase hex sha256 digest'; 'echo' 'skip=''false' | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'; exit 0; fi
           'grep' '-Ev' '^(file|probe|dir) [^/]' 'gunbc-read-set.txt' > "$RUNNER_TEMP"'/gunbc-fast-lane-unreadable.txt' || '[' "$?" '=' '1' ']'
           if '[' '-s' "$RUNNER_TEMP"'/gunbc-fast-lane-unreadable.txt' ']'; then 'echo' 'fast lane: full run -- these receipt lines have no recorded kind or name an empty or absolute path:'; 'cat' "$RUNNER_TEMP"'/gunbc-fast-lane-unreadable.txt'; 'echo' 'skip=''false' | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'; exit 0; fi
           'grep' '-E' '^(file|probe|dir) \.\.?(/|$)|/\.\.?(/|$)|//|/$' 'gunbc-read-set.txt' > "$RUNNER_TEMP"'/gunbc-fast-lane-abnormal.txt' || '[' "$?" '=' '1' ']'
@@ -326,7 +328,6 @@ jobs:
           key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: |
             cargo-ci-${{ runner.os }}-${{ runner.arch }}-
-        if: steps.fast_lane.outputs.skip != 'true'
       - name: Build the compiler
         id: build_witness_fold
         run: |+
@@ -410,7 +411,6 @@ jobs:
           if (! '[' '-f' "$GUNBC_FLOOR_RECEIPT" ']') || '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' || ('[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT"))) || ('[' "$GUNBC_FLOOR_CLASS" '=' 'none' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT")) && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=infra' "$GUNBC_FLOOR_RECEIPT"))); then 'printf' 'class=%s\nsignature=%s\nexit=%s\n' "$GUNBC_FLOOR_CLASS" "$GUNBC_FLOOR_SIGNATURE" "$GUNBC_FLOOR_EXIT" > "$GUNBC_FLOOR_RECEIPT"; if '[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']'; then 'echo' '::error title=environment::floor_class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' exit='"$GUNBC_FLOOR_EXIT"'; this is not a verdict about the diff. Attempt receipt: '"$GUNBC_FLOOR_RECEIPT"; fi; if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']'; then 'echo' '::error title=subject::floor_class='"$GUNBC_FLOOR_CLASS"' exit='"$GUNBC_FLOOR_EXIT"'; read the step log for the subject defect'; fi; fi
           'exit' "$GUNBC_FLOOR_EXIT"
 
-        if: steps.fast_lane.outputs.skip != 'true'
       - name: emit and build //gunbc/instruments:self-host
         id: emit_build_self_host
         run: |+
@@ -634,7 +634,7 @@ jobs:
             gunbc-read-set.txt
             gunbc-fast-lane-native-cli
             gunbc-fast-lane-compiler-identity
-          key: gunbc-materialization-fast-lane-${{ github.sha }}
+          key: gunbc-materialization-fast-lane-${{ runner.arch }}-${{ github.sha }}
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       - name: Why this lane is red, and what would be a real finding
         run: |-
