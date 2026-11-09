@@ -20,7 +20,7 @@ import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_
 import gunbc.cloudflare.r2_bucket_ensure { r2_bucket_ensure_receipt_path }
 import gunbc.cloudflare.r2_conditional_put_race_probe { race_probe_receipt_path }
 import gunbc.spark.managed_access_apply { spark_apply_receipt_path }
-import gunbc.ledger_row_coherence { heal_repair_declaration_artifact_path }
+import gunbc.heal_repair_declaration { heal_repair_declaration_artifact_path }
 import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_access_url, secret_ref_version_resource }
 import gunbc.auth.ci_app_key_rotation {
   app_key_version_env_name,
@@ -1200,6 +1200,11 @@ data gunbc_ci_service_runner_lost_boot_sweep_dry_run_target: GunbcRunStepTarget 
   function: "lost_boot_sweep_dry_run_wet",
 }
 
+data gunbc_ci_service_slot_start_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_service_slot_start.dag",
+  function: "service_slot_start_wet",
+}
+
 data gunbc_ci_qualification_attempt_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/runner/runner_qualification_attempt_run.dag",
   function: "qualification_attempt_wet",
@@ -1620,6 +1625,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_srv1_root_mutation_approval_target,
     gunbc_ci_service_runner_lost_boot_sweep_target,
     gunbc_ci_service_runner_lost_boot_sweep_dry_run_target,
+    gunbc_ci_service_slot_start_target,
     gunbc_ci_qualification_attempt_target,
     gunbc_ci_mtcollins1_boot_admit_target,
     gunbc_ci_gcp_iam_converge_request_target,
@@ -4603,6 +4609,16 @@ fn gunbc_ci_service_runner_lost_boot_sweep_dry_run_invoke() -> String {
     source_roots: witness_layer_roots,
     entry: gunbc_ci_service_runner_lost_boot_sweep_dry_run_target.entry,
     function: gunbc_ci_service_runner_lost_boot_sweep_dry_run_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_service_slot_start_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_service_slot_start_target.entry,
+    function: gunbc_ci_service_slot_start_target.function,
     claim_run: false,
     receipt_rel: none
   )

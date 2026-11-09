@@ -129,11 +129,10 @@ fn v1_convergence_fronts() -> List<ConvergenceFrontSpec> {
     ConvergenceFrontSpec {
       front: TestMigrationTailFront,
       name: "Test migration and the namespace tail",
-      purpose: "The old compiler's tests migrate or retire with coverage receipts, the seed honesty decision lands, and the import grammar deletes.",
+      purpose: "The old compiler's tests migrate or retire with coverage receipts, and the seed honesty decision lands.",
       gates: [
         "v1-test-migration" as RoadmapNodeId,
         "v1-seed-honesty-decision" as RoadmapNodeId,
-        "namespace-import-deletion" as RoadmapNodeId,
       ],
     },
   ]

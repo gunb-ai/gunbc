@@ -214,6 +214,8 @@ import gunbc.runner.runner_slot_provision {
 import product.host_identity { HostIdentity }
 import gunbc.runner.runner_host_deploy {
   RunnerHostDeployFound,
+  RunnerHostDeployResolution,
+  RunnerHostDeployZeroWidth,
   RunnerHostDeployUnmodeled,
   RunnerHostSpecFound,
   RunnerHostSpecAbsent,
@@ -315,7 +317,7 @@ type TimerRetirementMemberAt = NonEmptyStr
 //   actuation seam, admitted by an axis nobody could act on.
 //
 //   FABRIC EXECUTION CELLS ARE RULED OFF THIS PROOF'S PATH BY THE PLAN ITSELF.
-//   docs/plans/roadmap-launch-mvp-plan.md: "Do not couple the first roadmap-launch proof to Fabric
+//   docs/plans/roadmap-launch-mvp-plan.md (deleted 2026-11-08): "Do not couple the first roadmap-launch proof to Fabric
 //   CI." An axis the governing plan excludes is not this scope's obligation to carry.
 //
 // WHY THE REMAINDER IS NOT A CEREMONIAL EMPTY SCOPE. Timer retirement is a real observed obligation
@@ -1187,7 +1189,15 @@ type FleetConvergeSlotFamily
   | SlotFamilyUnmodeledHost { host: HostIdentity }
   | SlotFamilyArtifactUnpublished { host: HostIdentity }
   | SlotFamilyHostRefused { host: HostIdentity, cause: String }
+  | SlotFamilyZeroWidth { host: HostIdentity }
 
+// A GROUNDED ZERO IS NOT A REFUSAL AND NOT A WANTED-EMPTY ROSTER. `SlotFamilyZeroWidth` is the disposition of a
+// host whose committed width DERIVED to 0 (an admission axis admitted no slot, e.g. srv1 under the operator's
+// 71 GiB serving decision): the slot family plans nothing, so no ADD, no mask and -- the point of its being
+// typed -- no REMOVE derived from an empty desired set. It is NOT a teardown: units already running on the
+// host are neither planned for retirement nor protected by this pass; retiring them is a named obligation
+// (needs an operator-authorised width transition, `slot_retirement` evidence), not an effect of this arm. It
+// contributes no refusal and no `exit 1`, so the rest of the host's script runs: the fabric cells and the allocation store are spec facts and still converge. Activation plans nothing because it activates SLOT units and a zero-width host has none.
 // ONE RESOLUTION FEEDS BOTH THE REVIEW LINES AND THE APPLY SCRIPT, which is not tidiness -- it is
 // the property the whole plan/apply split rests on. If the renderer and the actuator each resolved
 // the host and reconciled the roster on their own, the reviewer could approve one membership and
@@ -1199,9 +1209,26 @@ fn fleet_converge_slot_family(
   observed_slots: List<RunnerSlotMember>,
   retirement_evidence: SlotRetirementEvidence,
 ) -> FleetConvergeSlotFamily {
-  match runner_host_deploy_for(host: host as HostIdentity) {
+  fleet_converge_slot_family_of(
+    resolution: runner_host_deploy_for(host: host as HostIdentity),
+    host: host,
+    observed_slots: observed_slots,
+    retirement_evidence: retirement_evidence,
+  )
+}
+
+// THE RESOLUTION IS A SUPPLIED VALUE AT THIS BOUNDARY: a witness establishes what the family does for each
+// disposition without re-running the memory derivation that produces it.
+fn fleet_converge_slot_family_of(
+  resolution: RunnerHostDeployResolution,
+  host: NonEmptyStr,
+  observed_slots: List<RunnerSlotMember>,
+  retirement_evidence: SlotRetirementEvidence,
+) -> FleetConvergeSlotFamily {
+  match resolution {
     RunnerHostDeployUnmodeled { host: h } => SlotFamilyUnmodeledHost { host: h }
     RunnerHostDeployRefused { host: h, cause: c } => SlotFamilyHostRefused { host: h, cause: c }
+    RunnerHostDeployZeroWidth { spec: sp } => SlotFamilyZeroWidth { host: sp.host_label as HostIdentity }
     RunnerHostDeployFound { deploy: d } =>
       {
         match fleet_runner_slot_artifact() {
@@ -1435,13 +1462,18 @@ fn fleet_converge_slot_lines(
   observed_slots: List<RunnerSlotMember>,
   retirement_evidence: SlotRetirementEvidence,
 ) -> List<String> {
-  match fleet_converge_slot_family(host: host, observed_slots: observed_slots, retirement_evidence: retirement_evidence) {
+  slot_family_lines(family: fleet_converge_slot_family(host: host, observed_slots: observed_slots, retirement_evidence: retirement_evidence))
+}
+
+fn slot_family_lines(family: FleetConvergeSlotFamily) -> List<String> {
+  match family {
     SlotFamilyUnmodeledHost { host: h } =>
       [concat("REFUSED-UNMODELED-HOST runner-slot host=", h as String)]
     SlotFamilyArtifactUnpublished { host: h } =>
       [concat("REFUSED-NO-PUBLISHED-RUNNER-BINARY runner-slot host=", h as String)]
     SlotFamilyHostRefused { host: h, cause: c } =>
       [concat(concat("REFUSED-HOST-NOT-ADMITTED runner-slot host=", h as String), concat(" cause=", c))]
+    SlotFamilyZeroWidth { host: h } => [concat("ZERO-WIDTH runner-slot host=", concat(h as String, " derives to zero slots; nothing planned, no retirement"))]
     SlotFamilyPlanned { plan: p } => map(p.membership.actions, a => slot_action_line(action: a))
   }
 }
@@ -1473,10 +1505,15 @@ fn fleet_converge_slot_refusal_count(
   observed_slots: List<RunnerSlotMember>,
   retirement_evidence: SlotRetirementEvidence,
 ) -> Int {
-  match fleet_converge_slot_family(host: host, observed_slots: observed_slots, retirement_evidence: retirement_evidence) {
+  slot_family_refusal_count(family: fleet_converge_slot_family(host: host, observed_slots: observed_slots, retirement_evidence: retirement_evidence))
+}
+
+fn slot_family_refusal_count(family: FleetConvergeSlotFamily) -> Int {
+  match family {
     SlotFamilyUnmodeledHost { host: _ } => 1
     SlotFamilyArtifactUnpublished { host: _ } => 1
     SlotFamilyHostRefused { host: _, cause: _ } => 1
+    SlotFamilyZeroWidth { host: _ } => 0
     SlotFamilyPlanned { plan: p } => membership_refusal_count(plan: p.membership)
   }
 }
@@ -1518,6 +1555,7 @@ fn fleet_converge_activation_plans(
   match runner_host_deploy_for(host: host as HostIdentity) {
     RunnerHostDeployUnmodeled { host: _ } => []
     RunnerHostDeployRefused { host: _, cause: _ } => []
+    RunnerHostDeployZeroWidth { spec: _ } => []
     RunnerHostDeployFound { deploy: d } =>
       runner_activation_plans_for_deploy(
         host_admission: admit_runner_host(deploy: d),
@@ -1859,7 +1897,11 @@ fn slot_apply_lines(
   observed_slots: List<RunnerSlotMember>,
   retirement_evidence: SlotRetirementEvidence,
 ) -> List<String> {
-  match fleet_converge_slot_family(host: host, observed_slots: observed_slots, retirement_evidence: retirement_evidence) {
+  slot_family_apply_lines(family: fleet_converge_slot_family(host: host, observed_slots: observed_slots, retirement_evidence: retirement_evidence))
+}
+
+fn slot_family_apply_lines(family: FleetConvergeSlotFamily) -> List<String> {
+  match family {
     SlotFamilyUnmodeledHost { host: h } =>
       [
         concat(
@@ -1884,6 +1926,8 @@ fn slot_apply_lines(
         ),
         "exit 1",
       ]
+    SlotFamilyZeroWidth { host: h } =>
+      [concat("# runner-slot: ", concat(h as String, " derives to zero slots; nothing to add, nothing to activate, no retirement planned (units already running are not touched)"))]
     SlotFamilyPlanned { plan: p } =>
       concat(
         if membership_added_count(plan: p.membership) == 0 {
@@ -1919,10 +1963,12 @@ fn slot_apply_lines(
 type FleetConvergeCapAxis
   = CapAxisPlanned { plan: MembershipPlan<CapMember, NonEmptyStr> }
   | CapAxisHostRefused { host: HostIdentity, cause: String }
+  | CapAxisZeroWidth { host: HostIdentity }
 
 fn fleet_converge_cap_axis(host: NonEmptyStr, observed_caps: List<CapMember>) -> FleetConvergeCapAxis {
   match runner_host_deploy_for(host: host as HostIdentity) {
     RunnerHostDeployRefused { host: h, cause: c } => CapAxisHostRefused { host: h, cause: c }
+    RunnerHostDeployZeroWidth { spec: sp } => CapAxisZeroWidth { host: sp.host_label as HostIdentity }
     RunnerHostDeployUnmodeled { host: h } =>
       CapAxisHostRefused {
         host: h,
@@ -1936,6 +1982,7 @@ fn fleet_converge_cap_axis(host: NonEmptyStr, observed_caps: List<CapMember>) ->
 fn fleet_converge_cap_refusal_count(host: NonEmptyStr, observed_caps: List<CapMember>) -> Int {
   match fleet_converge_cap_axis(host: host, observed_caps: observed_caps) {
     CapAxisHostRefused { host: _, cause: _ } => 1
+    CapAxisZeroWidth { host: _ } => 0
     CapAxisPlanned { plan: p } => membership_refusal_count(plan: p)
   }
 }
@@ -1944,6 +1991,7 @@ fn fleet_converge_cap_lines(host: NonEmptyStr, observed_caps: List<CapMember>) -
   match fleet_converge_cap_axis(host: host, observed_caps: observed_caps) {
     CapAxisHostRefused { host: h, cause: c } =>
       [concat(concat("REFUSED-HOST-NOT-ADMITTED cap-axis host=", h as String), concat(" cause=", c))]
+    CapAxisZeroWidth { host: h } => [concat("ZERO-WIDTH cap-axis host=", concat(h as String, " derives to zero slots; no per-slot cap population, existing caps untouched"))]
     CapAxisPlanned { plan: p } => membership_plan_lines_cap(plan: p)
   }
 }
@@ -3136,19 +3184,29 @@ fn fabric_cell_effect_apply_command_lines(
 
 data fabric_cell_apply_effects_header: String = "# fabric-cell effects (gunbc.fabric.fabric_cell_effect) — boundary first, then root-owned substrate, then delegated attempt root"
 
+// THE JOB USER IS A HOST SPEC FACT, NOT A SLOT-POPULATION FACT: a host whose width derived to 0 still has
+// its fabric cells and allocation store, so the zero-width arm reads it from the spec (review 92015) and
+// only an unmodeled or refused host has none.
+fn fleet_converge_host_job_user(host: NonEmptyStr) -> NonEmptyStr? {
+  match runner_host_deploy_for(host: host as HostIdentity) {
+    RunnerHostDeployUnmodeled { host: _ } => Absent
+    RunnerHostDeployRefused { host: _, cause: _ } => Absent
+    RunnerHostDeployZeroWidth { spec: sp } => Present { value: sp.job_user }
+    RunnerHostDeployFound { deploy: d } => Present { value: d.job_user }
+  }
+}
+
 fn fabric_cell_apply_executable_lines(
   host: NonEmptyStr,
   effects: List<FabricCellEffect>,
 ) -> List<String> {
-  match runner_host_deploy_for(host: host as HostIdentity) {
-    RunnerHostDeployUnmodeled { host: _ } => []
-    RunnerHostDeployRefused { host: _, cause: _ } => []
-    RunnerHostDeployFound { deploy: d } => {
+  match fleet_converge_host_job_user(host: host) {
+    Absent => []
+    Present { value: job_user } =>
       concat(
         [fabric_cell_apply_effects_header],
-        fabric_cell_effect_apply_command_lines(effects: effects, job_user: d.job_user),
+        fabric_cell_effect_apply_command_lines(effects: effects, job_user: job_user),
       )
-    }
   }
 }
 
@@ -3285,14 +3343,13 @@ fn fleet_converge_allocation_store_plan_artifact(
   let baseline = observed_baseline_text(request: request)
   match cas_generation_following(prior: prior_generation) {
     Absent => none
-    Present { value: generation } => match runner_host_deploy_for(host: host as HostIdentity) {
-    RunnerHostDeployUnmodeled { host: _ } => Absent
-    RunnerHostDeployRefused { host: _, cause: _ } => Absent
-    RunnerHostDeployFound { deploy: deploy } => {
+    Present { value: generation } => match fleet_converge_host_job_user(host: host) {
+    Absent => Absent
+    Present { value: job_user } => {
       let planned_generation = cas_generation_count(g: generation)
       let operations = fabric_allocation_store_effect_operations(
         effect: fabric_allocation_store_ensure_effect(),
-        job_user: deploy.job_user,
+        job_user: job_user,
       )
       let body = join(
         [

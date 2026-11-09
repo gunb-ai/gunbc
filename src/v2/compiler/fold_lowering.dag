@@ -1238,7 +1238,7 @@ type FoldCallOperands {
   carrier: Symbol
 }
 
-// THE FOLD ENCODING, gunbc.plans.for_while_loop_sugar §2.3:
+// THE FOLD ENCODING, gunbc.plans.for_while_loop_sugar (deleted 2026-11-08) §2.3:
 //   Bind { carrier := init, body: Loop { step, domain: collection, carrier, bound, realized: head } }
 // The carrier edge stays a binder, never a value; init is the Bind's value. The Loop's positional
 // child is the step as a function value, the member template of §2.2. ONE constructor, whatever the

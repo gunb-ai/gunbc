@@ -9,7 +9,7 @@ module gunbc.firmware_network_boot_standing
 // Nothing in the corpus could state, for one unit, that it is READY to network boot together
 // with the evidence that makes the claim good — nor, just as importantly, that it is NOT, with
 // the route a controller or a human must take to make it so. Cut 6 of
-// gunbc.plans.physical_machine_boot_program needs exactly one place that says either.
+// gunbc.plans.physical_machine_boot_program (deleted 2026-11-08) needs exactly one place that says either.
 //
 // WHY THE NAMES HERE ARE THE NAMES THE PROBE MUST EMIT. gunbc.firmware_network_boot_probe (S2)
 // emits these five axis types; it does not define them. A probe that owned its own vocabulary
@@ -3044,7 +3044,7 @@ fn edge_serviceable_for_mode(boot_mode: ClientNetworkBootMode) -> EdgeServiceabl
 // THE DECLARED FRONTIER (gunbc.design_argument::consumption: name the consumer and the executing route, or classify it).
 //
 // WHY THIS IS HERE RATHER THAN IN A COMMENT. This seam is the readiness contract that cut 6 of
-// gunbc.plans.physical_machine_boot_program needs, and the two modules at its boundaries are landing
+// gunbc.plans.physical_machine_boot_program (deleted 2026-11-08) needs, and the two modules at its boundaries are landing
 // as separate PRs: the probe that EMITS FirmwareBootObservation (gunbc.firmware_network_boot_probe,
 // #14275) and the actuation step that READS this standing to decide what to do with a unit
 // (gunbc.provisioning.network_boot_actuation::network_boot_arm_actuator_steps, cut 6/S9). Neither is

@@ -858,6 +858,30 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.runner_host_baked_release_build_wet_witness", function: "the_baked_release_is_staged_unelevated_packed_and_read_back_on_the_export_host" },
+      entry: "dag/test/claim/runner/runner_host_baked_release_build_wet_witness.dag",
+      function: "the_baked_release_is_staged_unelevated_packed_and_read_back_on_the_export_host",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.runner_host_baked_release_build_wet_witness", function: "the_archive_carries_the_elevated_install_tree_for_the_same_manifest" },
+      entry: "dag/test/claim/runner/runner_host_baked_release_build_wet_witness.dag",
+      function: "the_archive_carries_the_elevated_install_tree_for_the_same_manifest",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.runner_host_baked_release_build_wet_witness", function: "the_staged_route_refuses_a_target_outside_its_staging_root" },
+      entry: "dag/test/claim/runner/runner_host_baked_release_build_wet_witness.dag",
+      function: "the_staged_route_refuses_a_target_outside_its_staging_root",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.runner_host_baked_release_build_wet_witness", function: "a_copy_whose_bytes_differ_on_the_export_host_builds_nothing" },
+      entry: "dag/test/claim/runner/runner_host_baked_release_build_wet_witness.dag",
+      function: "a_copy_whose_bytes_differ_on_the_export_host_builds_nothing",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "the_supplied_principal_is_the_hosts_own" },
       entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
       function: "the_supplied_principal_is_the_hosts_own",
@@ -3405,18 +3429,6 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.workspace_request_consumer_witness", function: "waiting_reason_is_durable_but_cannot_refresh_readiness_or_overwrite_retirement" },
       entry: "dag/test/claim/workspace_request_consumer_witness.dag",
       function: "waiting_reason_is_durable_but_cannot_refresh_readiness_or_overwrite_retirement",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_task_store_wet_witness", function: "task_store_create_replay_and_conflicting_key" },
-      entry: "dag/test/claim/roadmap/roadmap_task_store_wet_witness.dag",
-      function: "task_store_create_replay_and_conflicting_key",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_task_store_wet_witness", function: "task_store_revise_stale_and_supersede" },
-      entry: "dag/test/claim/roadmap/roadmap_task_store_wet_witness.dag",
-      function: "task_store_revise_stale_and_supersede",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
