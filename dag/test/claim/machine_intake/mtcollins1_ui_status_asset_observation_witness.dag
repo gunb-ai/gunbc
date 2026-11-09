@@ -27,7 +27,6 @@ import extdeps.tools.curl { CurlCookieJarParsed, CurlCookieJarMalformedRow, Curl
 import extdeps.uri_reference { ResolvedPathReference, EmptyPathReference, PathReferenceCarriesQueryOrFragment, PathReferenceCarriesSchemeOrAuthority, uri_resolve_path_reference, uri_remove_dot_segments }
 import std.optional { Absent, Present }
 import gunbc.machine_intake.mtcollins1_ui_status_asset_observation {
-  TemplateRefused,
   AdmittedUiAssetPath,
   AssetHttpNotOkay,
   AssetNotFetchedPathRefused,
