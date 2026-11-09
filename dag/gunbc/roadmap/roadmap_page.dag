@@ -3332,8 +3332,14 @@ fn issue_query_snapshot_for_projection(proj: RoadmapAuthorityProjection, attempt
 // FIELD VISIBILITY IS NOT A SERVER CONTRACT (2026-11-09 operator request: "what is up with all of
 // these fields in the UI? could you please get rid of these somehow?"). An identity token is not a
 // human's typing task: the operation key rides the per-render form operation plus the node id and
-// ships HIDDEN, exactly as the assign form already carries its key and CSRF token — a fresh page
-// mints a fresh key, which is the retry path after a recorded conflict; no operator ever edits it.
+// ships HIDDEN, exactly as the assign form already carries its key and CSRF token. The retry path
+// after a recorded conflict is a fresh page: the serving route mints the form context's operation
+// from issue_operation_nonce on every render under a signed-in session (roadmap_serve's
+// GoogleOidcSession arm), so the next render carries a different key. The node-scoped fallback key
+// appears only on a render with no session context, which also carries no CSRF token — a browser
+// POST from that render is refused by the write access gate before the key is ever consulted, so
+// there is no operator holding a key they cannot fix. Machine clients on the host-peer path
+// author their own bodies and never read this field.
 // A receipt field the close handler validates stays REQUIRED OF THE OPERATOR but is not the daily
 // view, so it rides behind a CLOSED disclosure titled by what it records ("Operator: record
 // acceptance"). Collapsed by default is not optional-by-omission: the disclosure carries the
