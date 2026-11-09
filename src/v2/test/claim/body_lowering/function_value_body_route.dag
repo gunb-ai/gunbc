@@ -142,6 +142,12 @@ test fn an_undeclared_name_inside_a_curried_lambda_refuses_at_its_atom() -> Bool
 // The specimens are Int-typed because a produced declaration's type references spell through
 // binding_spellings, which carries Int (i32) and not Bool; Bool's spelling there is the separate
 // TargetAtomRealization lane stage0_production_target names, not this one.
+//
+// Neither specimen imports Int: kernel vocabulary is never imported (CLAUDE.md, "the kernel-vocab
+// imports" rule), and in an inline-ingest specimen `import v2.std.integer { Int }` refused with
+// resolve_module_not_found BEFORE the emitter ran -- which is exactly how the defect these goldens
+// pin stayed invisible, since a row that refuses at resolve never reaches the emission it means to
+// check. The specimen must reach the emitter for the golden to compare anything.
 data fvb_emit_source: String = "module fvb_emit_probe\n\nfn fvb_curried_emit(p: Int) -> fn(Int) -> fn(Int) -> Int { x => y => x }\n"
 
 data fvb_emit_direct_source: String = "module fvb_emit_probe\n\nfn fvb_direct(p: Int) -> fn(Int) -> Int { fn(q) { p } }\n"
