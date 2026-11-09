@@ -4032,9 +4032,9 @@ fn equality_resolved_declaration_structure(rt: Node, peeled: Node, name: String,
 // and populated for a function body by v1.compiler.infer::fn_type_param_names); the equality walk populates it for
 // the declaration whose members it is walking (equality_scope_with_params, called from
 // equality_resolved_declaration_structure). This is deliberately NOT "any name the reading could not bind": an
-// unresolved name also arrives unidentified, and the pinned control
-// test.claim.self_host_equality_admission_witness::non_empty_diagnostics_family_helper_absent_refuses_at_subject
-// requires that a member applied to a name with no import (List<NedDiag> with std.types unimported) still refuses.
+// unresolved name arrives unidentified too, so an arm built on that admits every typo -- measured, with such an
+// arm a member applied to List<NedDiag> with std.types unimported admitted. The refusal is kept by the executing
+// control test.claim.self_host_equality_admission_witness::an_unresolved_type_name_still_refuses_blocking.
 // Why the parameter must pass: the emitted Rust bounds EVERY parameter of a generic carrier
 // (impl<V: PartialEq> PartialEq for Engine<V>), so the carrier's own shape is admissible for every instantiation;
 // the requirement is discharged where the generic is APPLIED, by this same predicate over the argument actually

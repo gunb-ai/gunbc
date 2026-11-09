@@ -203,6 +203,18 @@ test fn nested_structural_argument_equality_admits_at_the_use() -> Bool {
   eq_admitted(source: nested_structural_argument_eq_source)
 }
 
+// THE OTHER SIDE OF THE SAME RULE, executing rather than prose. The arm the repair adds reads the DECLARED parameter
+// roster (v1.compiler.infer::equality_argument_is_enclosing_type_parameter), deliberately not "any name the reading
+// could not bind": an unresolved name arrives unidentified too, so an arm built on that would admit every typo and
+// leave the wall open wherever a module forgot an import. This source names a type no declaration provides, and it
+// must keep refusing. It refuses before inference reaches the argument rule -- resolution reports the name -- which
+// is why the control asserts a blocking row rather than an EqualityMemberUnjudgeable one: the claim is that the
+// refusal survives, not which stage carries it.
+data unresolved_name_eq_red_source: String = "module eq_probe_unresolved_name\ntype Holder {\n  v: NotAType\n}\nfn same(a: Holder, b: Holder) -> Bool { a == b }\n"
+
+test fn an_unresolved_type_name_still_refuses_blocking() -> Bool {
+  eq_blocking_total(source: unresolved_name_eq_red_source) >= 1
+}
 test fn interpretation_algebra_equality_refuses_blocking() -> Bool {
   eq_wall_refusal_count(source: interpretation_algebra_eq_red_source) >= 1
 }
@@ -843,13 +855,19 @@ test fn local_generic_plain_alias_operand_stays_admitted() -> Bool {
   eq_admitted(source: local_generic_plain_alias_eq_green_source)
 }
 
-// AN APPLIED GENERIC IS WALKED WITH ITS PARAMETERS BOUND TO ITS ARGUMENTS (re-land of gunbc#15175; main_wet refused at resolve in
-// fleet_physical_inventory and compute_seat_ensure on Measure<Memory, Kibi, Nat>, and in host_effect on CreateCause inside
-// EffectShape<KeySource>). An argument is judged exactly where its parameter OCCURS in the body (equality_applied_arguments_by_target),
-// so a phantom parameter imposes no obligation and a nested application over the parent's parameter is judged at that parameter's
-// argument rather than against a name that means nothing at the use site. A lookup miss still refuses: the REDs below keep a
-// function-bearing argument refused at every occurrence.
-data generic_phantom_fn_green_source: String = "module eq_probe_phantom\ntype EqPhantom<Q, M> { count: M }\nfn same(a: EqPhantom<fn(Int) -> Int, Int>, b: EqPhantom<fn(Int) -> Int, Int>) -> Bool { a == b }\n"
+// AN APPLIED ARGUMENT IS JUDGED WHERE IT IS WRITTEN, not where its parameter happens to be used. The walk judges the
+// declaration's members with that declaration's parameter roster visible (v1.compiler.infer::equality_scope_with_params),
+// and every argument written at the applied reference goes through
+// v1.compiler.infer::equality_argument_by_target -- the same condition the emitted derive answers, because a derived
+// impl bounds every parameter. A function-typed argument therefore refuses wherever it is written, INCLUDING in a
+// position the declaration never mentions: measured at main and at this head, EqPhantom<fn(Int) -> Int, Int> over
+// EqPhantom<Q, M> { count: M } refuses with "a routed member inside a generic application whose shape the equality plan
+// does not model". That refusal is over-broad -- no walked member reaches Q, so no carrier can reach a function value --
+// and it is fail-closed, which is the side the wall takes. The next rung would have the argument rule consult whether
+// the parameter occurs in any walked member; until then this pair records that the rule is syntactic, not usage-based.
+// An earlier shape of this PR judged arguments by occurrence instead; it is ruled out in the commit that removed it,
+// because it exempted arguments wholesale and let DemandEngine<NativeDemandValue> through to E0369.
+data generic_phantom_fn_refuses_source: String = "module eq_probe_phantom\ntype EqPhantom<Q, M> { count: M }\nfn same(a: EqPhantom<fn(Int) -> Int, Int>, b: EqPhantom<fn(Int) -> Int, Int>) -> Bool { a == b }\n"
 
 data generic_phantom_fn_occurring_red_source: String = "module eq_probe_phantom_red\ntype EqPhantom<Q, M> { count: M }\nfn same(a: EqPhantom<Int, fn(Int) -> Int>, b: EqPhantom<Int, fn(Int) -> Int>) -> Bool { a == b }\n"
 
@@ -857,8 +875,8 @@ data generic_nested_green_source: String = "module eq_probe_nested\ntype EqCause
 
 data generic_nested_fn_red_source: String = "module eq_probe_nested_red\ntype EqCause<K> = EqPost | EqKeyed { key: K }\ntype EqShape<K> = EqRead | EqCreate { cause: EqCause<K> }\ntype EqFnKey = EqFn { f: fn(Int) -> Int }\ntype EqEvidence = EqLattice { shape: EqShape<EqFnKey> }\nfn same(a: EqEvidence, b: EqEvidence) -> Bool { a == b }\n"
 
-test fn a_phantom_parameter_bound_to_a_function_type_is_not_judged() -> Bool {
-  eq_admitted(source: generic_phantom_fn_green_source)
+test fn a_function_typed_argument_refuses_even_in_a_phantom_position() -> Bool {
+  eq_wall_refusal_count(source: generic_phantom_fn_refuses_source) > 0
 }
 
 test fn a_parameter_that_occurs_in_the_body_and_binds_a_function_type_refuses() -> Bool {
