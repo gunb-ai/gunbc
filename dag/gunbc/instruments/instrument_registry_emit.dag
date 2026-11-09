@@ -28,7 +28,6 @@ import extdeps.languages.rust.string_literal { escape_rust_cooked_string_literal
 import gunbc.instrument_targets {
   InstrumentSourceRootsRow,
   bare_reference_channel_source_roots,
-  behavioral_receipt_source_roots,
   emitted_crate_workspace_source_roots,
   heads_reading_differential_source_roots,
   instrument_bindings,
@@ -104,9 +103,6 @@ fn instrument_producer_rust(producer: TargetProducer) -> String {
     V2NativeFrontierProducer => "TargetProducer::V2NativeFrontier"
     EmittedCrateWorkspaceProducer => "TargetProducer::EmittedCrateWorkspace"
     HeadsReadingDifferentialProducer => "TargetProducer::HeadsReadingDifferential"
-    BehavioralReceiptPlanProducer => "TargetProducer::BehavioralReceiptPlan"
-    BehavioralReceiptCensusProducer => "TargetProducer::BehavioralReceiptCensus"
-    BehavioralReceiptSelftestProducer => "TargetProducer::BehavioralReceiptSelftest"
     EvaluationStoreAddressExactHeadProducer => "TargetProducer::EvaluationStoreAddressExactHead"
     TypedGraphExclusiveBytesProducer => "TargetProducer::TypedGraphExclusiveBytes"
     TypedGraphExclusiveBytesFloorSubjectProducer => "TargetProducer::TypedGraphExclusiveBytesFloorSubject"
