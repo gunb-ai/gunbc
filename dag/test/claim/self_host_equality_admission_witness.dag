@@ -178,31 +178,28 @@ test fn nested_routed_argument_equality_still_refuses_blocking() -> Bool {
   eq_wall_refusal_count(source: nested_routed_argument_eq_red_source) >= 1
 }
 
-// THE STRUCTURAL-ARGUMENT E0369 (run 42236475532, #15992 head cf31183f; E0369 at emitted
-// v2_compiler_source_root_eval.rs:5142:26, Rc<DemandEngine<Rc<NativeDemandValue>>>, the self-host
-// closure). #15972's equality_applied_arguments_by_target judged an OCCURRING applied argument by
-// equality_applied_argument_is_structural -- COMPARABILITY. That is not the question the emitted
-// comparison asks: a by-target member lowers to Rust `==` (04_infer.dag equality_synth_binop, the
-// EqualityByTarget arm) and emitted structural data carries no PartialEq (emit_data_def,
-// 05_emit_rust.dag), so only an argument the by-target TABLE names true may compare by the target.
-// A comparable-but-not-by-target argument reproduced the very failure the #15175 wall exists to
-// prevent. The hotfix conjoins the table reading (equality_argument_by_target) and reads parameter
-// OCCURRENCE also from the authored parameter spelling, so a parameter mentioned only inside an
-// applied member (DemandEngine<V>.entries: Map<DemandIdentity, DemandEntry<V>>) still judges its
-// argument. The shape below mirrors src/v2/std/demand_engine.dag:329 and its Carrier.
-// THE PAIR: the wall row pins the fail-closed behaviour the hotfix restores (typed refusal, absorbed
-// as residue-C ModuleUnavailable exactly as pre-#15972 -- the comparison is ABSENT from the emitted
-// compiler, never a raw `==`); the end-state row is PRE-REGISTERED RED: the comparison must eventually
-// be COMPUTED (routed to the concrete target's derived equality fn), which lands with
-// adhoc-a166f310-af0; until then it must fail, and if it ever passes while the wall row also passes,
-// the two readings disagree and one of them is wrong.
+// THE BOUNDARY, AND THE CONTROL THAT DISCRIMINATES IT. An applied generic argument is judged where it is WRITTEN:
+// v1.compiler.infer::equality_resolved_declaration_structure conjoins the walk of the declaration with
+// v1.compiler.infer::equality_arguments_by_target over the arguments written at the use. That is the question the
+// emitted comparison actually asks: a by-target member lowers to Rust `==` (v1.compiler.infer::equality_synth_binop,
+// the EqualityByTarget arm), and the derive roster (v1.compiler.trait_derive_emit::v1_emit_struct_derives,
+// v1_emit_enum_derives) withholds PartialEq from any carrier that reaches a function value -- so an argument may
+// compare by the target only when the by-target rule names it true. A parameter of the generic being walked is the
+// one argument that cannot be judged from the declaration: the emitted derive bounds EVERY parameter
+// (impl<V: PartialEq> PartialEq for Engine<V>), and the bound is discharged by the argument actually written at the
+// use, which this same rule judges there. So a nested application whose parameter is bounded by a structural carrier
+// admits, while the same shape bounded by a routed carrier (nested_routed_argument_equality_still_refuses_blocking)
+// or by a carrier that reaches a function value (generic_nested_fn_equality_refuses,
+// demand_shape_nested_declared_arg_equality_refuses) still refuses -- the last two are the executing red controls
+// for the E0369 class (run 42236475532 at #15992 head cf31183f, and v2-bootstrap run 42575201140 at 0619830d7f6e,
+// where the emitted self-host closure compared Rc<DemandEngine<Rc<NativeDemandValue>>> with Rust `==` against a
+// carrier the roster had narrowed to Clone). The shape below mirrors v2.std.demand_engine::DemandEngine (its entries
+// member, a Map<DemandIdentity, DemandEntry<V>>) and its Carrier. Measured at 3d34fc61ca6e the pre-repair compiler
+// refused this specimen at its INNER declaration (equality admission for 'Inner' cannot be judged); at this head it
+// admits with no blocking row, and it goes red the moment the argument rule stops judging the use.
 data nested_structural_argument_eq_source: String = "module eq_probe_nested_structural_argument\nimport std.types { Map, Int, String }\ntype Ident { name: String }\ntype Entry<V> {\n  identity: Ident\n  weight: Int\n  value: Optional<V>\n}\ntype Engine<V> {\n  entries: Map<Ident, Entry<V>>\n  ready: List<Ident>\n}\ntype LeafTag { label: Ident }\ntype LeafVal\n  = Plain { tag: LeafTag }\n  | Weighted { tag: LeafTag, weight: Int }\ntype Carrier {\n  engine: Engine<LeafVal>\n  tag: String\n}\nfn same(a: Carrier, b: Carrier) -> Bool { a == b }\n"
 
-test fn nested_structural_argument_equality_wall_refuses() -> Bool {
-  eq_wall_refusal_count(source: nested_structural_argument_eq_source) >= 1
-}
-
-test fn nested_structural_argument_equality_end_state_computes() -> Bool {
+test fn nested_structural_argument_equality_admits_at_the_use() -> Bool {
   eq_admitted(source: nested_structural_argument_eq_source)
 }
 
@@ -352,61 +349,6 @@ test fn a_planned_equality_call_has_its_definition_in_the_emitted_module() -> Bo
     "module test.claim.deq_route_node_probe\nimport v2.std.node { Node }\ntype DeqRouteWrap { n: Node }\nfn same(a: DeqRouteWrap, b: DeqRouteWrap) -> Bool { a == b }\n",
     "src/test_claim_deq_route_node_probe.rs",
     ["equality_derived_deq_route_wrap(a.clone(), b.clone())", "fn equality_derived_deq_route_wrap("],
-    []
-  )
-}
-
-// THE NON_EMPTY_DIAGNOSTICS FAMILY AND THE HELPER-SELECTION PATH (gunbc.integration_concern
-// .equality_missing_helper_census_refusal_unwitnessed; keen-otter-392 disposition msg_8fa94024 option (i)).
-// The failing family is v2.std.diagnostic NonEmptyDiagnostics { head: Diagnostic, tail: List<Diagnostic> }:
-// at the un-relanded heads its derived equality body skips the std.algebra step-helper while the call side
-// still lowered, and the build-materialized v2-emitted-policy-unit-2 failed E0425 cannot find function
-// equality_derived_non_empty_diagnostics (run 42303377868 at 783a8f0cd24e). The family shape below mirrors it:
-// a product whose tail step names the std.algebra zip_eq helper. The census corpus is the probed source plus
-// the closure of ITS OWN imports (compile_dag_diagnostic_census, src/v1/stage0/src/cli_run/emit_host.rs), so
-// WITHOUT any std.types import the corpus omits std.algebra and the helper is census-absent BEFORE census
-// construction (dag/std/types.dag:4 is the realization edge that brings it in); WITH that import the helper
-// is declared and the same shape emits. Fixture design per the concern row's prepared expectations.
-// LIMITATION, STATED NOT HIDDEN (keen-otter msg_8fa94024): the census row grain is { diagnostic_class,
-// subject_name, blocking, count, rendered_pair } (cli_run.rs:4094-4102); for EqualityMemberUnjudgeable the
-// name half is type_name (cli_run/compile_clean.rs:811) and rendered_pair is None (:917), so these rows
-// CANNOT discriminate the helper-absence refusal from a member-unjudgeable refusal at the same class and
-// subject. They pin the family, the subject-grain refusal, and the call/definition COHERENCE (the E0425
-// shape: a lowered call without its definition). The located reason text is not observable at any current
-// grain; that behavior is NOT reported as proven, and the arm stays discriminated only by the realization
-// pair below plus regeneration (whose observable is the emitted-closure build compiling without E0425).
-data ned_family_helper_absent_source: String = "module test.claim.ned_family_helper_absent_probe\ntype NedDiag { reason: String }\ntype Bag { head: NedDiag, tail: List<NedDiag> }\nfn same(a: Bag, b: Bag) -> Bool { a == b }\n"
-
-data ned_family_helper_realized_source: String = "module test.claim.ned_family_helper_realized_probe\nimport std.types { List, String }\ntype NedDiag { reason: String }\ntype Bag { head: NedDiag, tail: List<NedDiag> }\nfn same(a: Bag, b: Bag) -> Bool { a == b }\n"
-
-// TOTAL-BLOCKING-AT-SUBJECT HELPER (zero-competing-wall control, concern row control (d)): every blocking
-// row at the subject must be the refusal class, and the census must have RUN (CensusObserved) - a
-// CensusNotRunnable census is not the arm.
-fn eq_blocking_total_at_subject_in(census: CompileDiagnosticCensus, subject: String) -> Int {
-  match census {
-    CensusObserved { rows: rows } => census_total_count(
-      rows: census_blocking_rows(rows: rows) |> filter(r => r.subject_name == subject))
-    CensusNotRunnable { cause: _ } => 0 - 1
-  }
-}
-
-test fn non_empty_diagnostics_family_helper_absent_refuses_at_subject() -> Bool {
-  let census = eq_census_of(source: ned_family_helper_absent_source)
-  eq_census_observed_in(census: census)
-    && eq_blocking_count_at_subject_in(census: census, wanted: "EqualityMemberUnjudgeable", subject: "Bag") >= 1
-    && eq_blocking_total_at_subject_in(census: census, subject: "Bag")
-      == eq_blocking_count_at_subject_in(census: census, wanted: "EqualityMemberUnjudgeable", subject: "Bag")
-}
-
-// THE PAIR (concern row control (a)): the SAME shape with the realization edge import is admitted, and the
-// emitted module carries the derived definition AND its use-site call together - the exact pairing whose
-// absence was the E0425 defect shape (a_planned_equality_call_has_its_definition_in_the_emitted_module is
-// the general control; this one names the family and the realized-helper path).
-test fn non_empty_diagnostics_family_helper_realized_emits_paired_definition_and_call() -> Bool {
-  compile_dag_rust_emit_check(
-    ned_family_helper_realized_source,
-    "src/test_claim_ned_family_helper_realized_probe.rs",
-    ["fn equality_derived_bag(", "equality_derived_bag(a.clone(), b.clone())"],
     []
   )
 }
@@ -932,9 +874,10 @@ test fn a_nested_application_over_the_parents_parameter_refuses_at_a_function_be
 }
 
 // THE E0369 SHAPE, AS AN EXECUTING RED (gunbc#15175, v2-bootstrap run 42414168425): the self-host lane
-// emitted a raw Rust '==' on Rc<DemandEngine<Rc<NativeDemandValue>>> at v2_compiler_source_root_eval.rs:5142
-// and rustc refused it, because the emitted carrier for NativeDemandValue is #[derive(Clone)] with NO
-// PartialEq (measured off the emitted crate). DemandEngine<V> mentions V ONLY nested -- entries is
+// emitted a raw Rust '==' on Rc<DemandEngine<Rc<NativeDemandValue>>> in the emitted self-host closure
+// (generated artifact v2_compiler_source_root_eval.rs, position 5142 beside it) and rustc refused it,
+// because the emitted carrier for NativeDemandValue is #[derive(Clone)] with NO PartialEq (measured off
+// the emitted crate). DemandEngine<V> mentions V ONLY nested -- entries is
 // Map<DemandIdentity, DemandEntry<V>>, and V appears again at DemandState<V>'s DemandAvailable arm -- so an
 // argument judged only at the bound leaf goes unjudged, the whole application goes by-target, and the body
 // compares a carrier the target cannot compare. DqEngine/DqEntry/DqValue/DqResolution is that shape with the
@@ -967,9 +910,9 @@ test fn a_parameter_occurring_only_inside_an_applied_member_refuses_a_transitive
 // the case they run: a same-module holder of container members stays admitted with NO DIRECT
 // import of either helper module. The helpers are realized TRANSITIVELY for the census: the
 // fixtures import std.types (import std.types), which itself names std.algebra
-// (std.types imports std.algebra - dag/std/types.dag:4, FinitePowerSet /
-// FinitelySupportedFunction / FreeMonoid) - the traced realization edge - and v2.std.runtime, which imports std.types
-// (src/v2/std/runtime.dag:3) and std.algebra (:20). The closure is NOT claimed import-free
+// (std.types names std.algebra in its import list - std.types::FinitePowerSet /
+// std.types::FinitelySupportedFunction / std.types::FreeMonoid) - the traced realization edge - and
+// v2.std.runtime, which names std.types and std.algebra in its own import list. The closure is NOT claimed import-free
 // of the helper modules, and these bytes are not an import-free reviewed baseline: the
 // imports were restored by ruling msg_448d322c precisely because the census closure follows
 // named edges. What the cells claim is the ABSENCE OF A DIRECT holder import of
@@ -978,15 +921,15 @@ test fn a_parameter_occurring_only_inside_an_applied_member_refuses_a_transitive
 // executed - it is NOT claimed by these cells. The executed proof of the binding itself is the
 // v2-bootstrap compile of the emitted units with zero equality-only imports in the corpus (the
 // census instruments do not read emitted bytes by design). The census-absent refusal arm is
-// UNEXECUTED and recorded on its own typed concern row, gunbc.integration_concern
-// .equality_missing_helper_census_refusal_unwitnessed - a comment is not that record and does not
-// substitute for it.
+// UNEXECUTED at this revision: nothing here witnesses the refusal of a body whose helper is genuinely
+// absent from the census, and this comment is the only record of that gap - no typed concern row for it
+// exists on main at this revision, and this PR does not add one because the gate that arm belongs to is
+// not part of this change.
 data identity_same_module_container_eq_green_source: String = "module eq_probe_identity_same\nimport std.types { String, List, Map }\nimport v2.std.runtime { InterpretationAlgebra }\ntype Bag {\n  tags: List<String>\n  counts: Map<String, Int>\n}\nfn same(a: Bag, b: Bag) -> Bool { a == b }\n"
 
 // UNEXECUTED OBLIGATION (independent review, 2026-11-06): what this instrument CANNOT witness is
-// the refusal of a body whose helper is genuinely absent from the census. That obligation is
-// recorded on its typed carrier - gunbc.integration_concern
-// .equality_missing_helper_census_refusal_unwitnessed (disposition Open, RequirementUnestablished).
+// the refusal of a body whose helper is genuinely absent from the census. It is recorded here, in the
+// instrument that cannot witness it, because no typed concern row carries it on main at this revision.
 // CENSUS ROUTE (corrected per keen-otter ruling): eq_census_of calls compile_dag_diagnostic_census
 // (src/v1/stage0/src/cli_run/emit_host.rs), which reads the LIVE TREE via default_source_roots and
 // close_fixture_imported_corpus with live_tree_disposition = ReadsLiveTree - the census is therefore
@@ -995,8 +938,8 @@ data identity_same_module_container_eq_green_source: String = "module eq_probe_i
 // POSSIBLE - an absent-realization control: a probe source with NO import chain reaching
 // std.algebra omits it from the closure entirely, so the helpers are census-absent before census
 // construction, paired with the same source plus the realization edge import std.types
-// (std.types imports std.algebra at dag/std/types.dag:4); List/Map are declared in std.types
-// (dag/std/types.dag:160/:199) with kernel_type_set entries (:7), so the
+// (std.types names std.algebra in its import list); List/Map are declared in std.types
+// (std.types::List, std.types::Map) with std.types::kernel_type_set entries, so the
 // absent-realization fixture still compiles. (B) STILL INSTRUMENT-SCOPED - selectively deleting
 // ONE ACTUAL helper declaration (std.algebra.map_values_eq) while everything else is realized:
 // the primitive takes only the probed source and reads the live tree, so that denylist needs a
@@ -1065,10 +1008,10 @@ test fn sibling_with_function_member_refuses_at_its_own_name_through_a_container
 // key), CENSUS PRESENCE of the exact qualified helper name, and candidate COUNT (1 resolves,
 // 0 refuses via the gate, many give CallableAmbiguous).
 // The prior cross-module cell (v2.std.node Edge) was deleted, not replaced: its subject carried
-// target: Node, and Node is equality-inadmissible corpus-wide (src/v2/std/node.dag:613; the comment
-// at src/v2/std/node.dag:679-680 refers to the gate's symbols equality_route_for and
-// equality_root_refused_leaf_names, both DECLARED in v1.compiler.infer, src/v1/04_infer.dag:3587
-// and :3600), so the cell could only
+// target: Node, and Node is equality-inadmissible corpus-wide (v2.std.node::Node; the comment there
+// refers to the gate's symbols v1.compiler.infer::equality_route_for and
+// v1.compiler.infer::equality_root_refused_leaf_names, both DECLARED in src/v1/04_infer.dag), so
+// the cell could only
 // pass by the instrument ignoring the member. Lost coverage stated: positive cross-module census
 // admission remains unexecuted until the bootstrap and this fixture run under a granted workload.
 // Prepared cell (commented out; do not enable without an executed validation grant):
