@@ -259,7 +259,7 @@ fn emit_field_eval_choose_branch(
   node: Node,
   _value: RuntimeValue,
   _env: EvaluationEnvironment
-) -> Outcome<Node> {
+) -> Outcome<Optional<Node>> {
   outcome_rejected(
     d: emit_field_eval_diagnostic(reason: ^emit_field_eval_branch_miss, node: node)
   )

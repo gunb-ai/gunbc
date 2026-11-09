@@ -6,6 +6,7 @@ import std.optional { Present, Absent }
 import std.measure { Watt, watt, watt_count }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_asset_identity { gpu_board_02 }
 import gunbc.fleet.gpu_power_cap_converge {
   GpuCapReading, GpuCapRead, GpuCapUnread, GpuCapProbe, GpuCapTarget, GpuCapPorts, GpuCapRun,
   GpuCapOutcome, GpuCapAlreadyConverged, GpuCapConvergedAfterApply, GpuCapNotConverged,
@@ -13,7 +14,9 @@ import gunbc.fleet.gpu_power_cap_converge {
 }
 import extdeps.nvidia.system_management_interface { PersistenceEnabled, PersistenceDisabled }
 import std.measure { milliwatt }
-import gunbc.serving.gpu_power_state_policy { gpu_cap_admissions_on, installed_gpu_cap_intents, admit_gpu_cap }
+import gunbc.serving.gpu_power_state_policy {
+  GpuCapAdmission, GpuCapDevicePending, gpu_cap_admissions_on, installed_gpu_cap_intents, admit_gpu_cap,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -84,19 +87,40 @@ test fn a_failed_write_stops_before_any_later_write_and_an_unreadable_device_wri
     && unread.writes.length() == 0 && (match unread.outcome { GpuCapNotConverged { cause: _ } => true _ => false })
 }
 
-// THE REAL PATH: the policy's own admissions for srv1 drive the converge. The Max-Q is admitted at the
-// operator's 300 W and converges; the Workstation card is PENDING and is reported, not refused, so the
-// one-card configuration's unit succeeds. The control: a card whose limit never moves refuses the same
-// admissions, so deleting the apply-and-readback path fails this claim.
-test fn the_real_admissions_converge_the_max_q_and_report_the_workstation_pending() -> Bool {
+// THE REAL PATH: the policy's own admissions for srv1 drive the converge. BOTH of srv1's cards are admitted
+// at the operator's 300 W now -- the Workstation card was powered and read on 2026-11-08, so the row that used
+// to be Pending is an admission addressed by its own UUID (the readings are
+// gunbc.fleet.gpu_device_observation's), and a boot with no pending card is exactly what the unit's success
+// means. The control is unchanged: a card whose limit never moves refuses the same admissions, so deleting the
+// apply-and-readback path fails this claim.
+test fn the_real_admissions_converge_both_srv1_cards_by_uuid() -> Bool {
   let admissions = gpu_cap_admissions_on(host: operator_host_srv1)
   let good = gpu_cap_lines_over(admissions: admissions, ports: ports_reading(before: held(w: 600), after: held(w: 300), persistence_error: none, limit_error: none))
   let stuck = gpu_cap_lines_over(admissions: admissions, ports: ports_reading(before: held(w: 600), after: held(w: 600), persistence_error: none, limit_error: none))
   good.length() == 2
     && !any(good, l => l.refused)
-    && any(good, l => contains(l.text, "pending") && contains(l.text, "not a failure"))
+    && !any(good, l => contains(l.text, "pending"))
     && any(good, l => contains(l.text, "GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3") && contains(l.text, "300 W"))
+    && any(good, l => contains(l.text, "GPU-96b749dc-e2ea-5b6f-2e45-ee868b1a9750") && contains(l.text, "300 W"))
     && any(stuck, l => l.refused)
+}
+
+// THE PENDING ARM STILL HAS ITS WITNESS, as a fixture rather than as srv1's state: a board the device reading
+// has never covered is reported and not refused, because a card nobody has read is nobody's failure. When
+// srv1's second card was read this arm stopped being the real path, but the arm is still reachable -- an
+// un-read board on any host lands here -- and it must still behave this way.
+test fn an_unread_board_is_reported_as_pending_and_never_refused() -> Bool {
+  let pending_only: List<GpuCapAdmission> = [GpuCapDevicePending {
+    board: gpu_board_02,
+    cap: watt(count: 300),
+    read_obligation: "no device observation exists for this board" as NonEmptyStr,
+  }]
+  let lines = gpu_cap_lines_over(admissions: pending_only, ports: ports_reading(before: held(w: 600), after: held(w: 300), persistence_error: none, limit_error: none))
+  lines.length() == 1
+    && match lines.first() {
+      Absent => false
+      Present { value: l } => !l.refused && contains(l.text, "pending") && contains(l.text, "not a failure")
+    }
 }
 
 // CHANGING THE DESIRED CAP CHANGES WHAT IS DEMANDED BACK: at 250 W the 300 W reading no longer holds.

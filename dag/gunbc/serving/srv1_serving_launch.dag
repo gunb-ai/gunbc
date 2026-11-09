@@ -518,7 +518,7 @@ fn srv1_serving_member(board: PhysicalAssetIdentity, rank: Nat) -> Srv1ServingDe
       Present { value: o } => match o {
         GpuDeviceNotEnumerated { host: _, board: _, cause: c, read_on: _ } =>
           Srv1ServingDevicePending { board: board, rank: rank, pending: c }
-        GpuDeviceEnumerated { host: _, board: _, gpu_uuid: uuid_opt, pci_address: _, power_limit_minimum: _, power_limit_maximum: _, power_limit_current: _, read_on: _ } =>
+        GpuDeviceEnumerated { host: _, board: _, gpu_uuid: uuid_opt, pci_address: _, power_limit_minimum: _, power_limit_maximum: _, power_limit_current: _, power_limit_default: _, read_on: _ } =>
           match uuid_opt {
             Absent => Srv1ServingDevicePending { board: board, rank: rank, pending: "the device enumerates but its GPU UUID was not read; a device is admitted by UUID, never by an index or slot that can change" as NonEmptyStr }
             Present { value: uuid } => match admit_gpu_cap_against(intent: intent, observation: observation) {

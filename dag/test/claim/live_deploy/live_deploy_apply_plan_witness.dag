@@ -22,6 +22,7 @@ import gunbc.live_deploy.apply_legs {
   ApplyLegBrokerStateDirectories, ApplyLegObjectSource, ApplyLegDigestVerify, ApplyLegDiagnosedCommand,
   ApplyLegRootHelperSnapshot, HelperSnapshotInstall, ApplyLegBrokerTree, ApplyLegRetract, ApplyLegDependency, ApplyLegDigestEnvFile,
   deploy_apply_plan_legs, deploy_apply_leg_step, deploy_apply_oidc_plan, deploy_apply_step_plan,
+  gpu_cap_report_legs,
   deploy_apply_git_worker_subtree_plan, deploy_apply_directories_plan, deploy_apply_chain,
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec }
@@ -44,6 +45,9 @@ import gunbc.serving.srv1_serving_launch { srv1_serving_wrapper, srv1_serving_wr
 import gunbc.live_deploy.retract_legs { RetractDisableIfLoaded }
 import gunbc.live_deploy.srv1_serving_engine_unit { srv1_serving_engine_unit_name }
 import gunbc.live_deploy.srv1_gpu_power_cap_unit { srv1_gpu_power_cap_unit_name }
+import gunbc.serving.gpu_power_state_policy { GpuCapAdmission, GpuCapDevicePending }
+import gunbc.fleet.fleet_asset_identity { gpu_board_02 }
+import std.measure { watt }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_full_install_plan, deploy_witness_release_target, deploy_witness_release_revision }
 
 fn lab_spec() -> DeploymentSpec {
@@ -1001,13 +1005,27 @@ test fn the_gpu_power_cap_is_installed_for_the_next_boot_before_the_engine_and_n
     })
 }
 
-// A PENDING CARD IS A REPORT LEG ON EVERY DEPLOY AND NEVER A FAILURE: the Workstation card does not enumerate,
-// the plan is still Ready (the one-card service is installed), and the report names the card.
-test fn a_pending_gpu_card_is_reported_on_every_deploy_and_does_not_refuse_the_plan() -> Bool {
+// A PENDING CARD IS A REPORT LEG AND NEVER A FAILURE -- and srv1 has no pending card to report. Both of its
+// RTX PRO 6000s were powered and read on 2026-11-08 (gunbc.fleet.gpu_device_observation), so the real plan
+// carries no gpu-power-cap-pending leg at all; asserting the leg here would have pinned the deploy to the card
+// being unpowered, which was a state of the machine and not a rule of the plan. The arm keeps its witness on a
+// fixture admission instead, because a board nobody has read still has to arrive as a report and not a refusal.
+test fn a_pending_card_is_a_report_leg_and_srv1_now_has_none() -> Bool {
   let spec = deployment_spec_srv1()
   let kept = legs_of(p: plan_for(spec: spec, plan: converged_effect_plan(roster: deployment_member_roster(spec: spec), target: deploy_witness_release_target(spec: spec))))
   match leg_at(legs: kept, step: "gpu-power-cap-pending") {
-    Present { value: ApplyLegReport { step: _, line: line } } => contains(line, "pending") && contains(line, "not a failure")
-    _ => false
+    Absent => true
+    Present { value: _ } => false
   }
+    && match gpu_cap_report_legs(admissions: [GpuCapDevicePending {
+        board: gpu_board_02, cap: watt(count: 300),
+        read_obligation: "no device observation exists for this board" as NonEmptyStr,
+      }]).first() {
+      Absent => false
+      Present { value: leg } => match leg {
+        ApplyLegReport { step: step, line: line } => step == "gpu-power-cap-pending"
+          && contains(line, "pending") && contains(line, "not a failure")
+        _ => false
+      }
+    }
 }
