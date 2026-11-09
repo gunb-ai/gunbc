@@ -25,9 +25,9 @@ import v2.std.inhabitance {
   InhabitanceRefused,
   InhabitanceUndecidable,
   Inhabits,
-  RefusalComparisonCouldNotRun,
-  RefusalStructuralMismatch,
-  RefusalWitnessSearchDecision,
+  RefusalReasonComparisonCouldNotRun,
+  RefusalReasonStructuralMismatch,
+  RefusalReasonWitnessSearchDecision,
   declared_type_inhabitance,
   inhabitance_pair_undecidable_reason,
   inhabitance_refusal_diagnostic
@@ -110,7 +110,9 @@ test fn a_malformed_occupancy_wrapper_refuses() -> Bool {
 test fn a_malformed_occupancy_wrapper_is_refused_at_inhabitance() -> Bool {
   let one = wrap_type_node_occupancy(base: ol_atom(id: ^ol_int), depth: one_optional_layer())
   match declared_type_inhabitance(obligation: ol_obligation(declared: ol_malformed_occupancy(), produced: one)) {
-    InhabitanceRefused { find_witness_reason: r, refusal_class: _ } => r == ^inhabitance_optional_layer_wrapper_malformed
+    InhabitanceRefused { reason: RefusalReasonComparisonCouldNotRun { reason: r } } => r == ^inhabitance_optional_layer_wrapper_malformed
+    InhabitanceRefused { reason: RefusalReasonStructuralMismatch { reason: _ } } => false
+    InhabitanceRefused { reason: RefusalReasonWitnessSearchDecision { reason: _ } } => false
     Inhabits { homomorphism: _ } => false
     InhabitanceUndecidable { reason: _ } => false
   }
@@ -131,10 +133,10 @@ test fn a_malformed_occupancy_wrapper_is_refused_at_inhabitance() -> Bool {
 test fn a_malformed_occupancy_wrapper_refuses_as_could_not_run() -> Bool {
   let one = wrap_type_node_occupancy(base: ol_atom(id: ^ol_int), depth: one_optional_layer())
   match declared_type_inhabitance(obligation: ol_obligation(declared: ol_malformed_occupancy(), produced: one)) {
-    InhabitanceRefused { find_witness_reason: r, refusal_class: RefusalComparisonCouldNotRun, position: _ } =>
+    InhabitanceRefused { reason: RefusalReasonComparisonCouldNotRun { reason: r }, position: _ } =>
       r == ^inhabitance_optional_layer_wrapper_malformed
-    InhabitanceRefused { find_witness_reason: _, refusal_class: RefusalStructuralMismatch, position: _ } => false
-    InhabitanceRefused { find_witness_reason: _, refusal_class: RefusalWitnessSearchDecision, position: _ } => false
+    InhabitanceRefused { reason: RefusalReasonStructuralMismatch { reason: _ }, position: _ } => false
+    InhabitanceRefused { reason: RefusalReasonWitnessSearchDecision { reason: _ }, position: _ } => false
     Inhabits { homomorphism: _ } => false
     InhabitanceUndecidable { reason: _ } => false
   }
@@ -150,8 +152,8 @@ test fn a_malformed_occupancy_wrapper_diagnostic_carries_no_suggested_node() -> 
     produced: wrap_type_node_occupancy(base: ol_atom(id: ^ol_int), depth: one_optional_layer())
   )
   match declared_type_inhabitance(obligation: obligation) {
-    InhabitanceRefused { find_witness_reason: r, refusal_class: cls, position: p } =>
-      match inhabitance_refusal_diagnostic(obligation: obligation, refusal_class: cls, find_witness_reason: r, position: p) {
+    InhabitanceRefused { reason: carried_reason, position: p } =>
+      match inhabitance_refusal_diagnostic(obligation: obligation, reason: carried_reason, position: p) {
         Diagnostic { reason: _, at: _, correction: Unavailable { reason: _ } } => true
         Diagnostic { reason: _, at: _, correction: Suggested { node: _ } } => false
       }
@@ -171,14 +173,14 @@ test fn a_depth_mismatch_keeps_the_type_mismatch_class_and_its_suggestion() -> B
     Present { value: _ } => false
     Absent =>
       match declared_type_inhabitance(obligation: obligation) {
-        InhabitanceRefused { find_witness_reason: r, refusal_class: RefusalStructuralMismatch, position: p } =>
+        InhabitanceRefused { reason: RefusalReasonStructuralMismatch { reason: r }, position: p } =>
           r == ^inhabitance_optional_layer_depth_mismatch
-            && (match inhabitance_refusal_diagnostic(obligation: obligation, refusal_class: RefusalStructuralMismatch, find_witness_reason: r, position: p) {
+            && (match inhabitance_refusal_diagnostic(obligation: obligation, reason: RefusalReasonStructuralMismatch { reason: r }, position: p) {
               Diagnostic { reason: _, at: _, correction: Suggested { node: _ } } => true
               Diagnostic { reason: _, at: _, correction: Unavailable { reason: _ } } => false
             })
-        InhabitanceRefused { find_witness_reason: _, refusal_class: RefusalComparisonCouldNotRun, position: _ } => false
-        InhabitanceRefused { find_witness_reason: _, refusal_class: RefusalWitnessSearchDecision, position: _ } => false
+        InhabitanceRefused { reason: RefusalReasonComparisonCouldNotRun { reason: _ }, position: _ } => false
+        InhabitanceRefused { reason: RefusalReasonWitnessSearchDecision { reason: _ }, position: _ } => false
         Inhabits { homomorphism: _ } => false
         InhabitanceUndecidable { reason: _ } => false
       }
@@ -190,10 +192,10 @@ test fn a_depth_mismatch_keeps_the_type_mismatch_class_and_its_suggestion() -> B
 test fn an_optional_at_a_required_declared_position_keeps_the_type_mismatch_class() -> Bool {
   let one = wrap_type_node_occupancy(base: ol_atom(id: ^ol_int), depth: one_optional_layer())
   match declared_type_inhabitance(obligation: ol_obligation(declared: ol_atom(id: ^ol_int), produced: one)) {
-    InhabitanceRefused { find_witness_reason: r, refusal_class: RefusalStructuralMismatch, position: _ } =>
+    InhabitanceRefused { reason: RefusalReasonStructuralMismatch { reason: r }, position: _ } =>
       r == ^inhabitance_optional_produced_at_required_declared
-    InhabitanceRefused { find_witness_reason: _, refusal_class: RefusalComparisonCouldNotRun, position: _ } => false
-    InhabitanceRefused { find_witness_reason: _, refusal_class: RefusalWitnessSearchDecision, position: _ } => false
+    InhabitanceRefused { reason: RefusalReasonComparisonCouldNotRun { reason: _ }, position: _ } => false
+    InhabitanceRefused { reason: RefusalReasonWitnessSearchDecision { reason: _ }, position: _ } => false
     Inhabits { homomorphism: _ } => false
     InhabitanceUndecidable { reason: _ } => false
   }
@@ -290,7 +292,9 @@ test fn two_optional_layers_are_not_one_at_inhabitance() -> Bool {
   match inhabitance_pair_undecidable_reason(declared: one, produced: two, type_variables: []) {
     Absent =>
       match declared_type_inhabitance(obligation: ol_obligation(declared: one, produced: two)) {
-        InhabitanceRefused { find_witness_reason: r, refusal_class: _ } => r == ^inhabitance_optional_layer_depth_mismatch
+        InhabitanceRefused { reason: RefusalReasonStructuralMismatch { reason: r } } => r == ^inhabitance_optional_layer_depth_mismatch
+        InhabitanceRefused { reason: RefusalReasonComparisonCouldNotRun { reason: _ } } => false
+        InhabitanceRefused { reason: RefusalReasonWitnessSearchDecision { reason: _ } } => false
         Inhabits { homomorphism: _ } => false
         InhabitanceUndecidable { reason: _ } => false
       }
@@ -304,7 +308,7 @@ test fn matching_optional_depths_are_decidable_not_a_collapsed_carrier() -> Bool
     Absent =>
       match declared_type_inhabitance(obligation: ol_obligation(declared: one, produced: one)) {
         Inhabits { homomorphism: _ } => true
-        InhabitanceRefused { find_witness_reason: _, refusal_class: _ } => false
+        InhabitanceRefused { reason: _ } => false
         InhabitanceUndecidable { reason: _ } => false
       }
     Present { value: _ } => false

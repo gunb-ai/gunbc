@@ -160,13 +160,17 @@ type InhabitanceVerdict
   // and naming a
   // refusal by position is what let one symbol stand for nine different mechanisms. See
   // v2.std.exact_structural_equality_zip_fold_predicate.
-  // `refusal_class` is set once, by the decision that produced `find_witness_reason` -- never re-derived
-  // from the symbol afterwards, so there is one authority for which class a refusal is.
+  // `reason` is ONE value that carries the class and the reason together: the class is the arm of the sum,
+  // so the pair cannot be written wrong (a reason from one family beside a class from another has no
+  // spelling). It is set by the decision that answers no, never re-derived from a symbol afterwards, so
+  // there is one authority for which class a refusal is (gunbc.design_argument::fail_closed -- what a
+  // type cannot express is left to be polite about; the pair this replaces was hand-paired at three sites
+  // and re-pinned at twenty-four claim lines).
   // `position` is the judgment site, its OWN field: the reason says what answered no, the position says
   // where, and neither is inferred from the other -- the position-named reason symbols were deleted for
   // exactly that reason. It carries the argument ordinal path of the
   // decision that refused, so a nested mismatch says which argument it was decided at.
-  | InhabitanceRefused { find_witness_reason: Symbol, refusal_class: InhabitanceRefusalClass, position: DeclaredTypePosition }
+  | InhabitanceRefused { reason: InhabitanceRefusalReason, position: DeclaredTypePosition }
   | InhabitanceUndecidable { reason: InhabitanceUndecidableReason }
 
 // Five producers, one relation: v2.compiler.infer builds PositionDirectCallArgument per argument of
@@ -464,15 +468,16 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation) -> InhabitanceV
     produced: obligation.produced,
     type_variables: obligation.type_variables
   ) {
-    InhabitanceRefused { find_witness_reason: inhabitance_optional_at_required_reason(), refusal_class: RefusalStructuralMismatch, position: obligation.position }
+    InhabitanceRefused { reason: RefusalReasonStructuralMismatch { reason: inhabitance_optional_at_required_reason() }, position: obligation.position }
   } else {
     inhabitance_optional_layer_verdict(obligation: obligation)
   }
 }
 
 // THE OPTIONAL-LAYER REFUSAL, built in ONE place from the judgement's own answer, so no refusal site names a
-// class for a layer answer by hand (review 92072). The class is decided HERE, where the malformed fact is
-// known: a wrapper that cannot be read at all belongs to the could-not-run family, the same family
+// class for a layer answer by hand (review 92072; review 92373 item 3 then made the pair unwritable instead
+// of merely single-sourced: the class IS the arm of InhabitanceRefusalReason now). The class is decided HERE,
+// where the malformed fact is known: a wrapper that cannot be read at all belongs to the could-not-run family, the same family
 // inhabitance_structural_decision names for every malformed input, because the judgement never compared two
 // types -- it could not answer at all. It is never a claim that the value's type is wrong, and it must not
 // borrow a type-error diagnostic with a suggested node on it. A depth mismatch IS a type error at this
@@ -480,7 +485,7 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation) -> InhabitanceV
 fn inhabitance_optional_layer_verdict(obligation: DeclaredTypeObligation) -> InhabitanceVerdict {
   match inhabitance_optional_layer_judgement(declared: obligation.declared, produced: obligation.produced) {
     OptionalLayerWrapperMalformed =>
-      InhabitanceRefused { find_witness_reason: inhabitance_optional_layer_wrapper_malformed_reason(), refusal_class: RefusalComparisonCouldNotRun, position: obligation.position }
+      InhabitanceRefused { reason: RefusalReasonComparisonCouldNotRun { reason: inhabitance_optional_layer_wrapper_malformed_reason() }, position: obligation.position }
     OptionalLayerDepthMismatch => inhabitance_optional_layer_depth_mismatch_refusal(obligation: obligation)
     OptionalLayerInhabitanceHolds => declared_type_inhabitance_optional(obligation: obligation)
   }
@@ -489,9 +494,10 @@ fn inhabitance_optional_layer_verdict(obligation: DeclaredTypeObligation) -> Inh
 // THE DEPTH-MISMATCH REFUSAL, built in ONE place. Two routes reach the same fact: the judgement compares
 // occupancies (a declared `Optional<Optional<T>>` at a produced `Optional<T>`), and
 // declared_type_inhabitance_optional finds a declared payload that is an optional over a produced payload
-// that is not one. Both must give the same reason symbol and the same class, so neither writes them.
+// that is not one. Both must give the same reason and the same class, so neither writes them -- and under
+// InhabitanceRefusalReason they could not write them differently even if a caller tried.
 fn inhabitance_optional_layer_depth_mismatch_refusal(obligation: DeclaredTypeObligation) -> InhabitanceVerdict {
-  InhabitanceRefused { find_witness_reason: inhabitance_optional_layer_depth_mismatch_reason(), refusal_class: RefusalStructuralMismatch, position: obligation.position }
+  InhabitanceRefused { reason: RefusalReasonStructuralMismatch { reason: inhabitance_optional_layer_depth_mismatch_reason() }, position: obligation.position }
 }
 
 // AN ARROW AT AN ARROW IS ITS DOMAIN TYPES, POSITIONALLY, AND ITS RETURN. Parameter names and a body are
@@ -773,8 +779,7 @@ fn declared_type_inhabitance_refusal(
 ) -> InhabitanceVerdict {
   let refusal_decision = declared_type_inhabitance_refusal_decision(obligation: obligation, find_witness_reason: find_witness_reason)
   InhabitanceRefused {
-    find_witness_reason: refusal_decision.reason,
-    refusal_class: refusal_decision.refusal_class,
+    reason: refusal_decision.reason,
     // the site the obligation names, with the path the decision came through written into it
     position: inhabitance_position_with_argument_path(position: obligation.position, argument_ordinal_path: refusal_decision.argument_ordinal_path)
   }
@@ -791,23 +796,30 @@ fn declared_type_inhabitance_refusal_decision(
   if find_witness_reason == ^find_witness_reason_no_candidate {
     inhabitance_structural_decision(comparison: exact_structural_comparison(source_facts: obligation.produced, algebra: obligation.produced, candidate: obligation.declared, type_variables: obligation.type_variables))
   } else {
-    InhabitanceStructuralDecision { refusal_class: RefusalWitnessSearchDecision, reason: find_witness_reason, argument_ordinal_path: [] }
+    InhabitanceStructuralDecision { reason: RefusalReasonWitnessSearchDecision { reason: find_witness_reason }, argument_ordinal_path: [] }
   }
 }
 
-// WHICH CLASS A REFUSAL BELONGS TO, decided exhaustively over every arm the verdict can have.
-// A closed set of symbols plus a default would let the next arm
-// anyone adds inherit "does not inhabit" silently; this match has no default, so adding an arm to
-// ExactStructuralComparison breaks the build until its class is named.
-type InhabitanceRefusalClass
-  = RefusalStructuralMismatch
-  | RefusalComparisonCouldNotRun
-  | RefusalWitnessSearchDecision
+// WHY A REFUSAL ANSWERED NO, AND WHICH FAMILY THAT ANSWER IS, AS ONE VALUE. The class is the arm: a refusal
+// cannot carry one family's reason under another family's class, because there is no such value to build.
+// This replaces `find_witness_reason: Symbol` plus `refusal_class: InhabitanceRefusalClass`, which the type
+// let any caller pair wrongly -- three production sites and twenty-four claim lines had to get it right by
+// hand (gunbc.recurring_failure_mode.a_refusal_reason_and_its_class_are_paired_by_hand, review 92373 F2 and
+// review 92403; gunbc.design_argument::fail_closed).
+//
+// Decided exhaustively over every arm the comparison can answer with: a closed set of symbols plus a default
+// would let the next arm anyone adds inherit "does not inhabit" silently, so the classifier below has no
+// default arm and adding an arm to ExactStructuralComparison breaks the build until its family is named.
+type InhabitanceRefusalReason
+  = RefusalReasonStructuralMismatch { reason: Symbol }
+  | RefusalReasonComparisonCouldNotRun { reason: Symbol }
+  | RefusalReasonWitnessSearchDecision { reason: Symbol }
 
 // `argument_ordinal_path` is the path the answering arm carries: [] when the arm was decided at this
 // pair, or at a refusal that never compared a pair at all (the could-not-run family, and a fold's own
-// decision), where there is no position to name.
-type InhabitanceStructuralDecision { refusal_class: InhabitanceRefusalClass, reason: Symbol, argument_ordinal_path: List<Nat> }
+// decision), where there is no position to name. The reason travels with its family, so the decision cannot
+// report a reason and a class that disagree.
+type InhabitanceStructuralDecision { reason: InhabitanceRefusalReason, argument_ordinal_path: List<Nat> }
 
 // A nested pair's decision, reported at the pair that contains it: the mechanism and the arm are the
 // nested one's, and the path grows by the ordinal of the argument it came through. This is the ONLY way a
@@ -828,7 +840,6 @@ fn inhabitance_decision_through_argument(
   ordinal: Nat
 ) -> InhabitanceStructuralDecision {
   InhabitanceStructuralDecision {
-    refusal_class: decision.refusal_class,
     reason: decision.reason,
     argument_ordinal_path: Cons { head: ordinal, tail: decision.argument_ordinal_path }
   }
@@ -868,24 +879,24 @@ fn inhabitance_structural_decision(comparison: ExactStructuralComparison) -> Inh
     // it -- find_witness returning a structured verdict, which changes every preservation rule's contract from
     // Bool to a verdict and so is its own change with its own census.
     ComparisonHolds =>
-      InhabitanceStructuralDecision { refusal_class: RefusalComparisonCouldNotRun, reason: ^inhabitance_comparison_witness_absent_under_holding_comparison, argument_ordinal_path: [] }
+      InhabitanceStructuralDecision { reason: RefusalReasonComparisonCouldNotRun { reason: ^inhabitance_comparison_witness_absent_under_holding_comparison }, argument_ordinal_path: [] }
     ComparisonSourceFactsMalformed =>
-      InhabitanceStructuralDecision { refusal_class: RefusalComparisonCouldNotRun, reason: ^inhabitance_comparison_source_facts_malformed, argument_ordinal_path: [] }
+      InhabitanceStructuralDecision { reason: RefusalReasonComparisonCouldNotRun { reason: ^inhabitance_comparison_source_facts_malformed }, argument_ordinal_path: [] }
     ComparisonAlgebraMalformed =>
-      InhabitanceStructuralDecision { refusal_class: RefusalComparisonCouldNotRun, reason: ^inhabitance_comparison_algebra_malformed, argument_ordinal_path: [] }
+      InhabitanceStructuralDecision { reason: RefusalReasonComparisonCouldNotRun { reason: ^inhabitance_comparison_algebra_malformed }, argument_ordinal_path: [] }
     ComparisonCandidateMalformed =>
-      InhabitanceStructuralDecision { refusal_class: RefusalComparisonCouldNotRun, reason: ^inhabitance_comparison_candidate_malformed, argument_ordinal_path: [] }
+      InhabitanceStructuralDecision { reason: RefusalReasonComparisonCouldNotRun { reason: ^inhabitance_comparison_candidate_malformed }, argument_ordinal_path: [] }
     ComparisonAlgebraNotTheSourceFacts =>
-      InhabitanceStructuralDecision { refusal_class: RefusalComparisonCouldNotRun, reason: ^inhabitance_comparison_algebra_not_source_facts, argument_ordinal_path: [] }
+      InhabitanceStructuralDecision { reason: RefusalReasonComparisonCouldNotRun { reason: ^inhabitance_comparison_algebra_not_source_facts }, argument_ordinal_path: [] }
     // THE MISMATCH FAMILY: the only arms that answer the inhabitance question. The comparison ran and the
     // produced type does not inhabit the declared one, which is a type error at the obligation.
     // the path travels with the arm that answered no, so a decision never loses where it was decided
     ComparisonRootsDiffer { argument_ordinal_path: argument_ordinal_path } =>
-      InhabitanceStructuralDecision { refusal_class: RefusalStructuralMismatch, reason: ^inhabitance_structural_roots_differ, argument_ordinal_path: argument_ordinal_path }
+      InhabitanceStructuralDecision { reason: RefusalReasonStructuralMismatch { reason: ^inhabitance_structural_roots_differ }, argument_ordinal_path: argument_ordinal_path }
     ComparisonArgumentCountDiffers { source_arity: _, candidate_arity: _, argument_ordinal_path: argument_ordinal_path } =>
-      InhabitanceStructuralDecision { refusal_class: RefusalStructuralMismatch, reason: ^inhabitance_structural_argument_count_differs, argument_ordinal_path: argument_ordinal_path }
+      InhabitanceStructuralDecision { reason: RefusalReasonStructuralMismatch { reason: ^inhabitance_structural_argument_count_differs }, argument_ordinal_path: argument_ordinal_path }
     ComparisonArgumentsDiffer { argument_ordinal_path: argument_ordinal_path } =>
-      InhabitanceStructuralDecision { refusal_class: RefusalStructuralMismatch, reason: ^inhabitance_structural_arguments_differ, argument_ordinal_path: argument_ordinal_path }
+      InhabitanceStructuralDecision { reason: RefusalReasonStructuralMismatch { reason: ^inhabitance_structural_arguments_differ }, argument_ordinal_path: argument_ordinal_path }
     // The comparison ran out at a position it holds no instance for. The relation answers Undecidable for
     // that today through its own variable check; this arm is the same fact coming out of the ONE decision,
     // and the fork it is -- the same rule answered twice -- is recorded in gunbc.integration_concern.
@@ -894,7 +905,7 @@ fn inhabitance_structural_decision(comparison: ExactStructuralComparison) -> Inh
     // Classed as could-not-run because that is exactly what happened: no pair at that position could be
     // compared.
     ComparisonUndecidedTypeVariable { argument_ordinal_path: argument_ordinal_path } =>
-      InhabitanceStructuralDecision { refusal_class: RefusalComparisonCouldNotRun, reason: ^inhabitance_comparison_pair_undecided_type_variable, argument_ordinal_path: argument_ordinal_path }
+      InhabitanceStructuralDecision { reason: RefusalReasonComparisonCouldNotRun { reason: ^inhabitance_comparison_pair_undecided_type_variable }, argument_ordinal_path: argument_ordinal_path }
   }
 }
 
@@ -924,17 +935,16 @@ fn inhabitance_refusal_without_suggestion_diagnostic(
 // without a suggestion, so a reader is never sent to fix a type error the compiler never showed.
 fn inhabitance_refusal_diagnostic(
   obligation: DeclaredTypeObligation,
-  refusal_class: InhabitanceRefusalClass,
-  find_witness_reason: Symbol,
+  reason: InhabitanceRefusalReason,
   // the judgment position of this refusal, already carrying the argument ordinal path of the decision that
   // refused; it is written into the diagnostic's own slot, so a reader of a refusal about a nested
   // argument sees that argument and not only the outer position
   position: DeclaredTypePosition
 ) -> Diagnostic {
-  match refusal_class {
-    RefusalStructuralMismatch => application_argument_does_not_inhabit_diagnostic(obligation: obligation, find_witness_reason: find_witness_reason, position: position)
-    RefusalWitnessSearchDecision => application_argument_does_not_inhabit_diagnostic(obligation: obligation, find_witness_reason: find_witness_reason, position: position)
-    RefusalComparisonCouldNotRun => inhabitance_refusal_without_suggestion_diagnostic(obligation: obligation, find_witness_reason: find_witness_reason, position: position)
+  match reason {
+    RefusalReasonStructuralMismatch { reason: find_witness_reason } => application_argument_does_not_inhabit_diagnostic(obligation: obligation, find_witness_reason: find_witness_reason, position: position)
+    RefusalReasonWitnessSearchDecision { reason: find_witness_reason } => application_argument_does_not_inhabit_diagnostic(obligation: obligation, find_witness_reason: find_witness_reason, position: position)
+    RefusalReasonComparisonCouldNotRun { reason: find_witness_reason } => inhabitance_refusal_without_suggestion_diagnostic(obligation: obligation, find_witness_reason: find_witness_reason, position: position)
   }
 }
 

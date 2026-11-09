@@ -284,7 +284,7 @@ test fn relation_refuses_outcome_of_record_at_outcome_of_node_holds() -> Bool {
       type_variables: []
     )
   ) {
-    InhabitanceRefused { find_witness_reason: _, refusal_class: _ } => true
+    InhabitanceRefused { reason: _ } => true
     Inhabits { homomorphism: _ } => false
     InhabitanceUndecidable { reason: _ } => false
   }
@@ -299,7 +299,7 @@ test fn relation_admits_outcome_of_node_at_outcome_of_node_holds() -> Bool {
     )
   ) {
     Inhabits { homomorphism: _ } => true
-    InhabitanceRefused { find_witness_reason: _, refusal_class: _ } => false
+    InhabitanceRefused { reason: _ } => false
     InhabitanceUndecidable { reason: _ } => false
   }
 }
@@ -315,6 +315,6 @@ test fn relation_counts_outcome_of_a_type_variable_as_generic_formal_holds() -> 
     InhabitanceUndecidable { reason: reason } =>
       inhabitance_undecidable_reason_symbol(reason: reason) == ^inhabitance_undecidable_generic_formal
     Inhabits { homomorphism: _ } => false
-    InhabitanceRefused { find_witness_reason: _, refusal_class: _ } => false
+    InhabitanceRefused { reason: _ } => false
   }
 }

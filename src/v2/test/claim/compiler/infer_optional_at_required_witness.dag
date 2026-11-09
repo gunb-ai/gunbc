@@ -193,7 +193,9 @@ fn oar_obligation(declared: Node, produced: Node, type_variables: List<Symbol>) 
 
 fn oar_refused_optional_at_required(declared: Node, produced: Node, type_variables: List<Symbol>) -> Bool {
   match declared_type_inhabitance(obligation: oar_obligation(declared: declared, produced: produced, type_variables: type_variables)) {
-    InhabitanceRefused { find_witness_reason: r, refusal_class: _ } => r == ^inhabitance_optional_produced_at_required_declared
+    InhabitanceRefused { reason: RefusalReasonStructuralMismatch { reason: r } } => r == ^inhabitance_optional_produced_at_required_declared
+    InhabitanceRefused { reason: RefusalReasonComparisonCouldNotRun { reason: _ } } => false
+    InhabitanceRefused { reason: RefusalReasonWitnessSearchDecision { reason: _ } } => false
     InhabitanceUndecidable { reason: _ } => false
     Inhabits { homomorphism: _ } => false
   }
@@ -209,7 +211,7 @@ test fn oar_an_optional_at_a_required_kernel_type_is_refused_holds() -> Bool {
 // implicit lift this claim formerly counted is retired with the Occupancy connective.
 test fn oar_a_bare_lift_is_refused_holds() -> Bool {
   match declared_type_inhabitance(obligation: oar_obligation(declared: oar_optional_int(), produced: integer_int_type_node(), type_variables: [])) {
-    InhabitanceRefused { find_witness_reason: _, refusal_class: _ } => true
+    InhabitanceRefused { reason: _ } => true
     InhabitanceUndecidable { reason: _ } => false
     Inhabits { homomorphism: _ } => false
   }
@@ -222,7 +224,7 @@ test fn oar_a_bare_lift_is_refused_holds() -> Bool {
 test fn oar_optional_at_optional_is_decided_by_peeling_holds() -> Bool {
   match declared_type_inhabitance(obligation: oar_obligation(declared: oar_optional_int(), produced: oar_optional_int(), type_variables: [])) {
     Inhabits { homomorphism: _ } => true
-    InhabitanceRefused { find_witness_reason: _, refusal_class: _ } => false
+    InhabitanceRefused { reason: _ } => false
     InhabitanceUndecidable { reason: _ } => false
   }
 }

@@ -2620,7 +2620,7 @@ fn infer_coproduct_coverage_obligation(
     Inhabits { homomorphism: _ } => outcome_accepted(value: covered_carrier)
     InhabitanceUndecidable { reason: _ } =>
       outcome_rejected(infer_match_coverage_undecidable_diagnostic(node: node))
-    InhabitanceRefused { find_witness_reason: _, refusal_class: _ } =>
+    InhabitanceRefused { reason: _ } =>
       outcome_rejected(infer_match_non_exhaustive_diagnostic(node: node))
   }
 }
@@ -4612,12 +4612,11 @@ fn infer_judge_declared_position(
                 Rejected { diagnostics: r } => Rejected { diagnostics: r }
                 Accepted { value: _, diagnostics: d } => Accepted { value: closed, diagnostics: d }
               }
-            InhabitanceRefused { find_witness_reason: fw_reason, refusal_class: refusal_class, position: refusal_position } =>
+            InhabitanceRefused { reason: refusal_reason, position: refusal_position } =>
               outcome_rejected(
                 inhabitance_refusal_diagnostic(
                   obligation: obligation,
-                  refusal_class: refusal_class,
-                  find_witness_reason: fw_reason,
+                  reason: refusal_reason,
                   position: refusal_position
                 )
               )
@@ -5516,8 +5515,7 @@ fn infer_judge_generic_formal(
               // The generic-formal route decides by SHAPE (its head or its argument count); it never runs the
               // witness fold, so reporting a search reason there would say a search ran when none did. The
               // matcher's own branch decided which shape question answered no, and that is what is reported.
-              refusal_class: shape_decision.refusal_class,
-              find_witness_reason: shape_decision.reason,
+              reason: shape_decision.reason,
               // the shape decision names the argument it was decided at; the position carries it into the
               // diagnostic, so a nested mismatch is located at the nested argument
               position: inhabitance_position_with_argument_path(position: position, argument_ordinal_path: shape_decision.argument_ordinal_path)
@@ -6069,7 +6067,7 @@ fn infer_literal_refinement_demand(
                     ) {
                       Inhabits { homomorphism: _ } =>
                         Present { value: InferLiteralRefinementDemand { site: pair.arg, predicate: predicate, target: target, carrier: refinement.carrier } }
-                      InhabitanceRefused { find_witness_reason: _, refusal_class: _ } => Absent
+                      InhabitanceRefused { reason: _ } => Absent
                       InhabitanceUndecidable { reason: _ } => Absent
                     }
                 }
@@ -9840,12 +9838,12 @@ fn infer_fold_member_judged_frame(frame: InferFrame, formal: FoldMemberFormal, m
     Inhabits { homomorphism: _ } => InferFrame { instances: frame.instances, binder_types: frame.binder_types, entering: InferFrameEnteredPlain, declared_position_expected: Absent, rigid_binders: frame.rigid_binders }
     InhabitanceUndecidable { reason: _ } =>
       infer_frame_with_advisory(frame: frame, reason: ^infer_reason_fold_member_formal_undecided, at: formal.formal.type_node)
-    InhabitanceRefused { find_witness_reason: fw_reason, refusal_class: refusal_class, position: refusal_position } =>
+    InhabitanceRefused { reason: refusal_reason, position: refusal_position } =>
       InferFrame {
         instances: frame.instances,
         binder_types: frame.binder_types,
         entering: InferFrameEnteredRefused {
-          refused: diagnostics_singleton(d: inhabitance_refusal_diagnostic(obligation: obligation, refusal_class: refusal_class, find_witness_reason: fw_reason, position: refusal_position))
+          refused: diagnostics_singleton(d: inhabitance_refusal_diagnostic(obligation: obligation, reason: refusal_reason, position: refusal_position))
         },
         declared_position_expected: Absent,
         rigid_binders: frame.rigid_binders
@@ -10932,8 +10930,8 @@ fn infer_fold_judge(declared: Node, produced: Node, at: Node, step: Node, resolv
   match declared_type_inhabitance(obligation: obligation) {
     Inhabits { homomorphism: _ } => Accepted { value: true, diagnostics: None }
     InhabitanceUndecidable { reason: reason } => infer_inhabitance_undecidable_accepted(application: at, reason: reason)
-    InhabitanceRefused { find_witness_reason: fw_reason, refusal_class: refusal_class, position: refusal_position } =>
-      outcome_rejected(inhabitance_refusal_diagnostic(obligation: obligation, refusal_class: refusal_class, find_witness_reason: fw_reason, position: refusal_position))
+    InhabitanceRefused { reason: refusal_reason, position: refusal_position } =>
+      outcome_rejected(inhabitance_refusal_diagnostic(obligation: obligation, reason: refusal_reason, position: refusal_position))
   }
 }
 
