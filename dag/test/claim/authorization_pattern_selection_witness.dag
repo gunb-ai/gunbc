@@ -522,7 +522,7 @@ test fn the_runner_retirement_mask_selects_the_federated_grant_and_conforms() ->
       && match v.conformance { Conforms => true _ => false })
 }
 
-// ── THE srv1 DEPLOY EFFECTS, CLASSIFIED BY EXECUTION (gunbc.plans.srv1_deploy_principal_split) ─────────
+// ── THE srv1 DEPLOY EFFECTS, CLASSIFIED BY EXECUTION (gunbc.plans.srv1_deploy_principal_split (deleted 2026-11-08)) ─────────
 // A recurring root write on a fleet host owes a witness and must run unattended. The federated pattern
 // is unwitnessed and unbindable, the approval pattern is attended, the operator's session is both, so
 // before the arm existed the only honest filing was a cloud reach the effect does not have.

@@ -17,6 +17,9 @@ type HarnessTool
   | WriteFileTool
   | EditFileTool
   | ValidateWorktreeTool
+  | WaitJobsTool
+  | ReadJobOutputTool
+  | KillJobTool
 
 fn harness_tool_wire_name(tool: HarnessTool) -> String {
   match tool {
@@ -25,14 +28,23 @@ fn harness_tool_wire_name(tool: HarnessTool) -> String {
     WriteFileTool => "write_file"
     EditFileTool => "edit_file"
     ValidateWorktreeTool => "validate_worktree"
+    WaitJobsTool => "wait"
+    ReadJobOutputTool => "job_output"
+    KillJobTool => "job_kill"
   }
 }
 
-// THE CLOSED VARIANT LIST, the one place the four tools are enumerated as values. Both inverses
+// THE CLOSED VARIANT LIST, the one place the eight tools are enumerated as values. Both inverses
 // below fold over it and compare against the forward function, so a spelling lives only in the
 // forward match and adding a tool is one variant, one match arm, and one entry here.
+// ONE list: a bracketed list juxtaposed after another is not an append, so a second list written
+// here would silently shrink the enumeration rather than extend it -- the fold below walks exactly
+// the list it is given.
 fn all_harness_tools() -> List<HarnessTool> {
-  [RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool, ValidateWorktreeTool]
+  [
+    RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool, ValidateWorktreeTool,
+    WaitJobsTool, ReadJobOutputTool, KillJobTool,
+  ]
 }
 
 type HarnessToolRead
@@ -66,6 +78,9 @@ fn harness_tool_item_type(tool: HarnessTool) -> String {
     WriteFileTool => "file_write"
     EditFileTool => "file_edit"
     ValidateWorktreeTool => "worktree_validation"
+    WaitJobsTool => "job_wait"
+    ReadJobOutputTool => "job_output"
+    KillJobTool => "job_kill"
   }
 }
 

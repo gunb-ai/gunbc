@@ -33,7 +33,7 @@ import gunbc.compute.compute_producer_lease {
   ComputeProducerLeaseReleased, ComputeProducerLeaseKept, compute_producer_lease_standing, compute_producer_lease_release_observed,
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
-  AttemptUnitRole, AttemptWorkerRole,
+  AttemptUnitRole, AttemptWorkerRole, attempt_worker_invocation_of,
   AttemptExitStageListing, AttemptExitStageNames, AttemptExitStageUnreadable, attempt_exit_stage_listings,
   AttemptExitEntryDecoded, AttemptExitEntryMalformed, attempt_exit_entry_decode,
   AttemptExitSubject, RoadmapAttemptExit, ComputeAttemptExit,
@@ -439,11 +439,12 @@ fn seat_worker_exit_owners(listings: List<AttemptExitStageListing>) -> List<Seat
       AttemptExitEntryDecoded { record } => match record.subject {
         // A SEAT IS OWNED BY A ROADMAP ATTEMPT. A compute seat's exit record carries the provider's own
         // execution identity, which is not an attempt coordinate: it names no owner here, and the compute
-        // provider discharges its own seats at its own door.
+        // provider discharges its own seats at its own door. Any worker invocation (the first or a resume)
+        // owns the seat; a reviewer, auditor or obligation does not.
         RoadmapAttemptExit { node_id, attempt_key, role } =>
-          match role {
-            AttemptWorkerRole => [SeatOwnerKey { node_id: node_id, attempt_key: attempt_key }]
-            other_role => [] as List<SeatOwnerKey>
+          match attempt_worker_invocation_of(role: role) {
+            Present { value: _ } => [SeatOwnerKey { node_id: node_id, attempt_key: attempt_key }]
+            Absent => [] as List<SeatOwnerKey>
           }
         ComputeAttemptExit { identity: _ } => [] as List<SeatOwnerKey>
       }

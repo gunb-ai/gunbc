@@ -12,7 +12,7 @@ import gunbc.fleet.gpu_device_observation {
   current_gpu_device_observations_of,
 }
 
-// THE DESIRED POWER CAP OF EACH INSTALLED GPU BOARD: gunbc.plans.gpu_card_host_program row N8's home, in its
+// THE DESIRED POWER CAP OF EACH INSTALLED GPU BOARD: gunbc.plans.gpu_card_host_program (deleted 2026-11-08) row N8's home, in its
 // first form. N8's finished form selects a cap through std.decision from the installed realization once the
 // N7 power sweep exists. That selection does not exist, and the operator has already decided, so the ONE arm
 // is the operator's own choice carried as exactly that -- who, when, and what was said. It is durable intent
@@ -21,9 +21,13 @@ import gunbc.fleet.gpu_device_observation {
 //
 // THIS MODULE HOLDS ONLY THE DESIRED SETTING. The vendor specification is extdeps.gpu.*; what the device
 // reports (its UUID, PCI function and supported limit range) is gunbc.fleet.gpu_device_observation; the
-// applied setting is a readback no module takes yet. Admission is the JOIN of the desired setting with the
-// current observation, and the intent survives every outcome of that join: a card that is unpowered keeps
-// its decided cap as a pending admission, it is not dropped and not admitted on hope.
+// applied setting is a readback taken after the writes by gunbc.fleet.gpu_power_cap_converge, and what is
+// installed to make the cap survive a boot -- plus what that mechanism claims in its own journal -- is
+// gunbc.fleet.gpu_power_cap_boot_state. Admission is the JOIN of the desired setting with the
+// current observation, and the intent survives every outcome of that join: a board whose device row has not
+// been read keeps its decided cap as a pending admission, it is not dropped and not admitted on hope. srv1
+// reached no such arm on 2026-11-08 -- both of its RTX PRO 6000s are read and admitted -- but the arm is the
+// policy's protection for a card nobody has observed, so it stays exercised (its witness is a fixture).
 //
 // THE RANGE IS THE DEVICE'S. nvidia-smi refuses a limit outside the device's reported [min, max], and that
 // range is not the vendor's rated board power (the Max-Q is rated 300 W; its device accepts 250-325 W).
@@ -61,7 +65,7 @@ fn admit_gpu_cap_against(intent: InstalledGpuCapIntent, observation: GpuDeviceOb
         board: intent.board, cap: cap,
         read_obligation: join(["the board does not enumerate (", c as String, "); once it does, read its GPU UUID and power-limit range"], "") as NonEmptyStr,
       }
-      GpuDeviceEnumerated { host: _, board: _, gpu_uuid: u, pci_address: _, power_limit_minimum: lo, power_limit_maximum: hi, power_limit_current: _, read_on: _ } =>
+      GpuDeviceEnumerated { host: _, board: _, gpu_uuid: u, pci_address: _, power_limit_minimum: lo, power_limit_maximum: hi, power_limit_current: _, power_limit_default: _, read_on: _ } =>
         if watt_count(w: cap) < watt_count(w: lo) || watt_count(w: cap) > watt_count(w: hi) {
           GpuCapOutsideDeviceRange { board: intent.board, cap: cap, minimum: lo, maximum: hi }
         } else {

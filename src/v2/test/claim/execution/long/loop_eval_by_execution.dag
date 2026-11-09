@@ -195,7 +195,7 @@ fn loop_choose_branch(
   node: Node,
   _condition: RuntimeValue,
   _env: EvaluationEnvironment
-) -> Outcome<Node> {
+) -> Outcome<Optional<Node>> {
   outcome_rejected(d: loop_runtime_diagnostic(n: node))
 }
 

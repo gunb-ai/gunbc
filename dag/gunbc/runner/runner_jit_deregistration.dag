@@ -93,7 +93,7 @@ type RecoveredReservedRegistration sole_constructor {
   installation: GitHubAppInstallationId
 }
 
-// THE STOPPING UNIT'S OWN REGISTRATION (gunbc.plans.mtcollins1_ci_service_legs F3). When a service-slot unit is
+// THE STOPPING UNIT'S OWN REGISTRATION (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) F3). When a service-slot unit is
 // stopped -- the host shuts down, or the unit is stopped -- its ExecStop runs in a process that holds no dispatch
 // value, so its registration is not a JitRegistration; nor is it recovered from a lost boot, because the boot is the
 // current one and the unit is a member of its population. It is its own sealed record, minted only from the

@@ -1,0 +1,89 @@
+module test.claim.serving.lil_serving_defects_witness
+
+// Consumes the receipt module's enumeration and lookup, and holds every row to what was ACTUALLY READ at
+// srv1 (the header's promise): each row keeps the verbatim substring of the exact error, the source lines
+// and the image tag. It also ties srv1_lil_serving_defect_rows() + defect_by_identity to the SAME named
+// declarations the launch guard binds by name — so the enumeration route and the compile-time route cannot
+// drift apart independently.
+
+import std.types { Bool, NonEmptyStr, List }
+import std.nat { Nat }
+import std.algebra { length, string_contains }
+import std.optional { Absent, Present }
+import gunbc.serving.lil_serving_defects {
+  LilServingDefect, LilServeComponent, B12xPcieAllReduce, LilLauncher, LmCacheRecurrentConnector, LilReplicaProxy,
+  srv1_lil_serving_defect_rows, defect_by_identity,
+  srv1_f24_b12x_tp2_hang_defect, srv1_f25_nvfp4_kv_defect, srv1_f26a_lmcache_replica_crash_defect, srv1_f26b_replica_proxy_tls_defect,
+}
+
+// The roster enumerates exactly the four named declarations (review 92374's compile-time tie is the guard's
+// own named references; this closes the enumeration route). A named row that is renamed, dropped or
+// duplicated in rows() goes red here rather than drifting from the guard's view.
+test fn the_rows_are_the_named_declarations() -> Bool {
+  let rows = srv1_lil_serving_defect_rows()
+  let found = match defect_by_identity(rows: rows, identity: srv1_f24_b12x_tp2_hang_defect.identity) {
+    Present { value: _ } => true
+    Absent => false
+  }
+    && match defect_by_identity(rows: rows, identity: srv1_f25_nvfp4_kv_defect.identity) {
+      Present { value: _ } => true
+      Absent => false
+    }
+    && match defect_by_identity(rows: rows, identity: srv1_f26a_lmcache_replica_crash_defect.identity) {
+      Present { value: _ } => true
+      Absent => false
+    }
+    && match defect_by_identity(rows: rows, identity: srv1_f26b_replica_proxy_tls_defect.identity) {
+      Present { value: _ } => true
+      Absent => false
+    }
+  length(xs: rows) == 4 && found
+}
+
+// The identity-string lookup resolves each identity to its named declaration. If an identity string is
+// edited on the row, this goes red (the guard itself can no longer miss it — it binds by name; review
+// 92374 — but the enumeration/lookup route must agree with the named rows too).
+test fn each_identity_resolves_to_its_named_row() -> Bool {
+  let f24 = defect_by_identity(rows: srv1_lil_serving_defect_rows(), identity: "srv1-f24-b12x-pcie-allreduce-tp2-hang")
+  let f25 = defect_by_identity(rows: srv1_lil_serving_defect_rows(), identity: "srv1-f25-nvfp4-main-kv-unsupported")
+  let f26a = defect_by_identity(rows: srv1_lil_serving_defect_rows(), identity: "srv1-f26a-lmcache-replica-checkpoint-dma-crash")
+  let f26b = defect_by_identity(rows: srv1_lil_serving_defect_rows(), identity: "srv1-f26b-replica-proxy-plain-http-to-tls-replicas")
+  let same =
+    (match f24 { Present { value: d } => (d.identity as String) == (srv1_f24_b12x_tp2_hang_defect.identity as String)
+                Absent => false })
+    && (match f25 { Present { value: d } => (d.identity as String) == (srv1_f25_nvfp4_kv_defect.identity as String)
+                Absent => false })
+    && (match f26a { Present { value: d } => (d.identity as String) == (srv1_f26a_lmcache_replica_crash_defect.identity as String)
+                Absent => false })
+    && (match f26b { Present { value: d } => (d.identity as String) == (srv1_f26b_replica_proxy_tls_defect.identity as String)
+                Absent => false })
+  let none_is_fabricated = match defect_by_identity(rows: srv1_lil_serving_defect_rows(), identity: "srv1-f99-not-a-row") {
+    Present { value: _ } => false
+    Absent => true
+  }
+  same && none_is_fabricated
+}
+
+// VERBATIM RECEIPTS (the header's anti-fabrication promise): the substrings that were read off srv1's
+// container log and the in-container launcher/proxy source on 2026-11-08 must stay present, so an edit
+// that softens or invents the wording is refused.
+test fn the_exact_errors_stay_verbatim() -> Bool {
+  string_contains(s: srv1_f24_b12x_tp2_hang_defect.exact_error as String, pattern: "failed to exchange CUDA IPC import-open status")
+    && string_contains(s: srv1_f25_nvfp4_kv_defect.exact_error as String, pattern: "QSA requires BF16 or FP8 E4M3 main KV cache")
+    && string_contains(s: srv1_f26a_lmcache_replica_crash_defect.exact_error as String, pattern: "Checkpoint DMA requires a registered SHM mapping")
+    && string_contains(s: srv1_f26b_replica_proxy_tls_defect.exact_error as String, pattern: "Server disconnected without sending a response")
+}
+
+test fn the_source_lines_stay_verbatim() -> Bool {
+  string_contains(s: srv1_f24_b12x_tp2_hang_defect.source_line as String, pattern: "b12x_pcie_all_reduce.py:298")
+    && string_contains(s: srv1_f25_nvfp4_kv_defect.source_line as String, pattern: "runtime/launcher.py:2011")
+    && string_contains(s: srv1_f26a_lmcache_replica_crash_defect.source_line as String, pattern: "recurrent_checkpoint_connector.py:253")
+    && string_contains(s: srv1_f26b_replica_proxy_tls_defect.source_line as String, pattern: "runtime/replica_proxy.py:297")
+}
+
+// All four readings were taken on the same image build; the tag is part of what makes them receipts.
+test fn every_row_scopes_to_the_read_image() -> Bool {
+  let rows = srv1_lil_serving_defect_rows()
+  length(xs: rows) == 4
+    && all(rows, d => string_contains(s: d.on_image as String, pattern: "local-inference-lab:2026-11-03-19-54-02"))
+}

@@ -82,7 +82,7 @@ type HostKeyEnrollmentProvenance
   = ScannedFirstContact { scanned_from: NonEmptyStr }
   | IndependentlyAnchored { authority: NonEmptyStr }
   | ConsolePerBoot { boot_id: NonEmptyStr, channel: NonEmptyStr }
-  // ProvisionedInstall (T2, gunbc.plans.host_trust_provisioned_key): the key was minted ON
+  // ProvisionedInstall (T2, gunbc.plans.host_trust_provisioned_key (deleted 2026-11-08)): the key was minted ON
   // the install target during a named provisioning attempt and its public half was announced
   // over that attempt's console; the row is enrolled from that install's record, so
   // install_attempt names the attempt whose network_install_receipt row grounds the installed
@@ -216,7 +216,7 @@ fn host_key_provenance_label(p: HostKeyEnrollmentProvenance) -> String {
   }
 }
 
-// T2 CATALOG RULE (gunbc.plans.host_trust_provisioned_key): a public half belongs to ONE
+// T2 CATALOG RULE (gunbc.plans.host_trust_provisioned_key (deleted 2026-11-08)): a public half belongs to ONE
 // host identity; within that host, ONE install attempt may own it and ONE (address, record)
 // slot may state it. Legal: one host's one key recorded at several of its addresses, and
 // corroborated by several independent records. Refused: the same half under two host
@@ -234,7 +234,7 @@ fn host_key_provenance_label(p: HostKeyEnrollmentProvenance) -> String {
 // the claim lane was withdrawn from it (gunbc.rung_drop v1_required_lanes_withdrawn). So a
 // contradicting row enters the catalog unnoticed by the required gate and is caught when the
 // witness runs. Two closures exist for that gap and neither is built yet: the write-time gate,
-// the enrolment admission fold named in gunbc.plans.host_trust_provisioned_key (step ENROL: the
+// the enrolment admission fold named in gunbc.plans.host_trust_provisioned_key (deleted 2026-11-08) (step ENROL: the
 // fold admits a ProvisionedInstall row under its duplicate and staleness rules), and any later
 // row putting this check onto a required gate. Until one lands, do not read this name as
 // construction-time or required-path enforcement.

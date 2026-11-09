@@ -60,7 +60,7 @@ import gunbc.runner.runner_qualification_attempt_pass {
   AttemptNothingRegistered, AttemptDeregistered, AttemptRegistrationRemains,
 }
 
-// THE PRODUCTION BINDING OF THE QUALIFICATION PASS (gunbc.plans.mtcollins1_ci_service_legs G1b): the qualification_attempt
+// THE PRODUCTION BINDING OF THE QUALIFICATION PASS (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) G1b): the qualification_attempt
 // fleet-converge mode runs qualification_attempt_wet, which binds every real effect to
 // gunbc.runner.runner_qualification_attempt_pass qualification_attempt_pass_over and nothing else decides an order.
 //
@@ -72,8 +72,8 @@ import gunbc.runner.runner_qualification_attempt_pass {
 // that token; the unit hold for the subject host, which takes the accepted revision and without which
 // dispatch_qualification_floor refuses; and under the hold the runner initialization
 // (gunbc.runner.runner_initialization runner_initialization_live): the subject's running-OS receipt from its boot
-// run, the host authenticated over a live anchored transport GATED on the operator's go
-// (gunbc.host.anchored_host_transport anchored_host_transport_live) with its boot id re-read over it, its account
+// run, the host authenticated by the per-boot pin that receipt carries over a live anchored transport GATED on the
+// operator's go (gunbc.host.anchored_host_transport anchored_host_transport_live_per_boot) with its boot id re-read over it, its account
 // and the accepted revision. The key is removed and the hold released on every arm after they were taken.
 
 data qualification_attempt_wif_env_name: NonEmptyStr = "WIF_ACCESS_TOKEN"

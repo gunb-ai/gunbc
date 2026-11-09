@@ -27,7 +27,7 @@ import gunbc.actions_run_binding {
 // durable said WHICH RUN, at WHICH REVISION, on WHICH OBSERVED HOST minted the plan or performed
 // the apply. gunbc.fleet.fleet_converge_cli ConvergeCliReceipt is not that receipt: it belongs to the
 // periodic `gunbc converge` path and binds no plan hash, subject, lease generation or run. The
-// RLM-2 ruling (docs/plans/roadmap-launch-mvp-plan.md, RLM-2 section 2) requires one receipt per
+// RLM-2 ruling (docs/plans/roadmap-launch-mvp-plan.md (deleted 2026-11-08), RLM-2 section 2) requires one receipt per
 // phase, produced INSIDE the typed composition before the CLI projection to ProcessExit, so the
 // final RoadmapLaunchDeploymentReceipt can join a plan run to an apply run to a dashboard run by
 // identity rather than by narrative.

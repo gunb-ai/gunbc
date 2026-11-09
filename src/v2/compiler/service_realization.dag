@@ -16,7 +16,7 @@ import extdeps.uri_path {
 }
 import v2.extdeps.languages.dag { dag_int_literal_magnitude_int_from_node, dag_string_literal_value_optional }
 import std.types { http_status_of }
-import std.operation_argv { ArgvEmpty, ArgvExpressionUnsupported, ArgvRefusalCause, ArgvTemplate, BindingMalformed, ExecutablePositionNotLiteral, OperationInputName, UndeclaredInputBound }
+import std.operation_argv { ArgvRefusalGrain, OperationGrain, ServiceGrain, argv_refusal_cause_grain, ArgvEmpty, ArgvExpressionUnsupported, ArgvRefusalCause, ArgvTemplate, BindingMalformed, ExecutablePositionNotLiteral, OperationInputName, UndeclaredInputBound }
 import std.template { Template, TemplateHolePart, TemplateLiteralPart, TemplatePart, template_holes }
 import v2.std.list_introduction { list_introduction_elements_optional }
 import v2.std.node_query { binder_node_parts }
@@ -274,6 +274,17 @@ fn status_code_int_optional(pat: Node) -> Optional<Int> {
 
 // `argv` carries the shared argv vocabulary's cause (std.operation_argv ArgvRefusalCause) when the
 // refusal is a shell argv's, and is Absent otherwise.
+// An entry the strict wall refuses only for an operation-grain argv cause: `name` is the operation's
+// label, `refusal` the located refusal (at the offending argv).
+type UnrealizableOperation {
+  name: Symbol
+  refusal: RealizationRefusal
+}
+
+fn unrealizable_operation_list_empty() -> List<UnrealizableOperation> {
+  Empty
+}
+
 type RealizationRefusal {
   reason: Symbol
   at: Node
@@ -392,12 +403,84 @@ fn symbol_in(xs: List<Symbol>, s: Symbol) -> Bool {
 // transport of a kind with a declared binding; every member reads in that kind's vocabulary. Located at
 // the offending node; the first refusal in authored order.
 fn service_realization_refusal(interface: Node, realization: Node) -> Optional<RealizationRefusal> {
+  realization_judgment_strict(j: service_realization_judgment(interface: interface, realization: realization))
+}
+
+// THE WALL RUN ONCE. A refusal whose cause is OPERATION-grain (std.operation_argv argv_refusal_cause_grain)
+// is not a service defect: it makes that one operation unrealizable and is collected in `unrealizable`
+// (authored order, located at the offending argv). Every other refusal is service-fatal; `fatal` is the
+// first of them.
+type RealizationJudgment {
+  fatal: Optional<RealizationRefusal>
+  unrealizable: List<UnrealizableOperation>
+}
+
+fn service_realization_judgment(interface: Node, realization: Node) -> RealizationJudgment {
   if !all_names_distinct(children: realization.children) {
-    realization_refusal(reason: ^service_realization_entry_repeated, at: realization)
+    RealizationJudgment { fatal: realization_refusal(reason: ^service_realization_entry_repeated, at: realization), unrealizable: unrealizable_operation_list_empty() }
   } else {
-    fold(realization.children, init: optional_absent(), f: fn(acc, e) {
-      realization_first_refusal(acc: acc, next: fn() { realization_leaf_member_refusal(interface: interface, member: e) })
+    fold(realization.children, init: RealizationJudgment { fatal: optional_absent(), unrealizable: unrealizable_operation_list_empty() }, f: fn(acc, e) {
+      match realization_leaf_member_refusal(interface: interface, member: e) {
+        Absent => acc
+        Present { value: r } => realization_judgment_with(acc: acc, member: e, r: r)
+      }
     })
+  }
+}
+
+fn realization_judgment_with(acc: RealizationJudgment, member: Edge, r: RealizationRefusal) -> RealizationJudgment {
+  match realization_refusal_grain(r: r) {
+    OperationGrain =>
+      match named_label(e: member) {
+        Present { value: n } => RealizationJudgment { fatal: acc.fatal, unrealizable: list_snoc_item(xs: acc.unrealizable, item: UnrealizableOperation { name: n, refusal: r }) }
+        Absent => realization_judgment_fatal(acc: acc, r: r)
+      }
+    ServiceGrain => realization_judgment_fatal(acc: acc, r: r)
+  }
+}
+
+fn realization_judgment_fatal(acc: RealizationJudgment, r: RealizationRefusal) -> RealizationJudgment {
+  RealizationJudgment { fatal: realization_first_refusal(acc: acc.fatal, next: fn() { optional_present(value: r) }), unrealizable: acc.unrealizable }
+}
+
+// The strict reading: any refusal, a service-fatal one first.
+fn realization_judgment_strict(j: RealizationJudgment) -> Optional<RealizationRefusal> {
+  match j.fatal {
+    Present { value: _ } => j.fatal
+    Absent =>
+      match j.unrealizable {
+        Empty => optional_absent()
+        Cons { head: u, tail: _ } => optional_present(value: u.refusal)
+      }
+  }
+}
+
+// Only a shell argv refusal carries a cause, and the cause declares its own grain.
+fn realization_refusal_grain(r: RealizationRefusal) -> ArgvRefusalGrain {
+  match r.argv {
+    Present { value: cause } => argv_refusal_cause_grain(cause: cause)
+    Absent => ServiceGrain
+  }
+}
+
+// Within one entry the most severe refusal is reported, so an operation-grain cause never hides a
+// service-fatal defect authored after it.
+fn realization_most_severe(acc: Optional<RealizationRefusal>, next: fn() -> Optional<RealizationRefusal>) -> Optional<RealizationRefusal> {
+  match acc {
+    Absent => next()
+    Present { value: held } =>
+      match realization_refusal_grain(r: held) {
+        ServiceGrain => acc
+        OperationGrain =>
+          match next() {
+            Present { value: later } =>
+              match realization_refusal_grain(r: later) {
+                ServiceGrain => optional_present(value: later)
+                OperationGrain => acc
+              }
+            Absent => acc
+          }
+      }
   }
 }
 
@@ -471,7 +554,7 @@ fn realization_transport_block_refusal(op: Node, entry: Node, transport: Node) -
       match realization_transport_kind(k: k) {
         Present { value: kind } =>
           fold(entry.children, init: realization_transport_refusal(kind: kind, op: op, transport: transport), f: fn(acc, e) {
-            realization_first_refusal(acc: acc, next: fn() { realization_entry_member_refusal(kind: kind, op: op, member: e) })
+            realization_most_severe(acc: acc, next: fn() { realization_entry_member_refusal(kind: kind, op: op, member: e) })
           })
         Absent => realization_transport_kind_refusal(k: k)
       }
@@ -509,7 +592,7 @@ fn realization_transport_refusal(kind: DeclaredTransport, op: Node, transport: N
     realization_refusal(reason: ^service_realization_binding_field_repeated, at: transport)
   } else {
     fold(transport.children, init: optional_absent(), f: fn(acc, e) {
-      realization_first_refusal(acc: acc, next: fn() { realization_binding_field_refusal(kind: kind, op: op, field: e) })
+      realization_most_severe(acc: acc, next: fn() { realization_binding_field_refusal(kind: kind, op: op, field: e) })
     })
   }
 }

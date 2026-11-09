@@ -1,7 +1,7 @@
 module test.claim.roadmap.roadmap_sizing_witness
 
 import std.types { String, Bool }
-import gunbc.roadmap.roadmap_status { TicketLine, TicketFields, TicketUpdate, PlainLine, Unsigned }
+import gunbc.roadmap.roadmap_status { TicketLine, TicketFields, TicketUpdate, PlainLine }
 import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified }
 import gunbc.roadmap.roadmap_model {
   RoadmapNode, RoadmapNodeId, RoadmapNodeIdentity, RoadmapEdge,
@@ -51,7 +51,6 @@ fn fixture_node() -> RoadmapNode {
     dispatch: Dispatchable { repo: "gunbc", acceptance: PrsMerged },
     execution: ExecutionContractUnspecified,
     owner: "fixture",
-    signoff: Unsigned,
   }
 }
 
@@ -84,7 +83,6 @@ test fn witness_subject_without_an_exit_criterion_is_absent_not_empty() -> Bool 
     dispatch: NotDispatchable,
     execution: ExecutionContractUnspecified,
     owner: "",
-    signoff: Unsigned,
   }
   match node_sizing_subject(rn: n).exit_criterion {
     Absent => true

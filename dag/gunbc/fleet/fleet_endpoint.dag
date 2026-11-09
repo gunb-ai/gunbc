@@ -2,7 +2,7 @@ module gunbc.fleet.fleet_endpoint
 
 // HOW A SERVICE ON A FLEET MEMBER IS ADDRESSED, AND WHAT IT IS ALLOWED TO REACH.
 //
-// WHAT THIS MODULE IS. The other half of gunbc.plans.fleet_naming_reach_access P2: the endpoint identity
+// WHAT THIS MODULE IS. The other half of gunbc.plans.fleet_naming_reach_access (deleted 2026-11-08) P2: the endpoint identity
 // that replaces the raw-string endpoints the fleet passes today, and the reach demand that says what a
 // member may be reached for -- with the AUTHORIZATION asked as a provider-neutral question rather than
 // as a Tailscale ACL. Declarations only; the producers are migrated in P3-P5.

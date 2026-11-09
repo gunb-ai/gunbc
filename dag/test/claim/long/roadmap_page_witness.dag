@@ -8,7 +8,7 @@ import gunbc.site.document { SiteStyles, site_styles, site_styles_css, site_styl
 
 import gunbc.roadmap.roadmap_project { membership_index }
 import test.claim.roadmap.roadmap_authority_subtree_fixture { fx_authority_subtree_roadmap_page, fx_authority_subtree_daily_page, fx_multi_parent_ids, fx_live_project_ids }
-import test.claim.roadmap.roadmap_node_fixture { fx_authored, fx_authored_wi, fx_derivable_wi, fx_ticket_row, fx_ticket_wi, fx_superseded, fx_signed, fx_sign }
+import test.claim.roadmap.roadmap_node_fixture { fx_authored, fx_authored_wi, fx_derivable_wi, fx_ticket_row, fx_ticket_wi, fx_superseded }
 
 import gunbc.roadmap.roadmap_spawner { doc_all_edges }
 
@@ -258,22 +258,6 @@ fn unsized_open_dispatch_node() -> RoadmapNode {
   fx_authored(identity: "rnfx_324RFH775DGZZMVETPT6", id: "disp-unsized", done: false, content: "observe-only")
 }
 
-fn signed_off_dispatch_node() -> RoadmapNode {
-  let base = ready_dispatch_node()
-  RoadmapNode {
-    identity: "rnfx_08P5JSFSS1NH1YY20PWV" as RoadmapNodeIdentity,
-    node: base.node,
-    line: base.line,
-    carriers: base.carriers,
-    dispatch: base.dispatch,
-    execution: base.execution,
-    owner: base.owner,
-    signoff: fx_signed(by: "op", works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] }, as_expected: true),
-    parent: none,
-    centering: none,
-  }
-}
-
 fn dispatch_doc_page(rn: RoadmapNode) -> Fragment {
   let sec = RoadmapSection { title: "Belt", elements: [ section_group(label: "", nodes: [rn], edges: []) ] }
   let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
@@ -359,14 +343,6 @@ fn rogue_src_script_page() -> Fragment {
 test fn witness_rogue_src_script_reds() -> Bool {
   let v = page_script_census(page: rogue_src_script_page())
   v.length() == 1 && all(v, x => x.kind == "unknown-src")
-}
-
-test fn witness_signed_off_node_doc_has_no_button() -> Bool {
-  match dispatch_doc_html_for(rn: signed_off_dispatch_node()) {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: h } =>
-      !string_contains(s: h, pattern: "<button class=\"dispatch-btn")
-  }
 }
 
 // RLM-1: a review row is NOT relaunchable by an ordinary click. The button renders, disabled, carrying
@@ -2219,8 +2195,8 @@ test fn witness_issue_rail_counts_unmet_prerequisites_from_readiness() -> Bool {
     && row(gunbc.roadmap.roadmap_presentation.SchedulingReady) == "<dl class=\"el-field-list\"></dl>"
     && string_contains(s: unmet, pattern: "<dt class=\"el-field-list-label\">Unmet Prerequisites</dt><dd class=\"el-field-list-value\"><button class=\"el-field-list-action\" type=\"button\" title=\"1 issue\" data-tab-chip=\"dependencies\">1 issue</button></dd>")
     && other_gap == "<dl class=\"el-field-list\"></dl>"
-    && string_contains(s: row(gunbc.roadmap.roadmap_presentation.SchedulingDone), pattern: "<dt class=\"el-field-list-label\">Prerequisites</dt><dd class=\"el-field-list-value\"><button class=\"el-field-list-action\" type=\"button\" title=\"1 issue\" data-tab-chip=\"dependencies\">1 issue</button></dd>")
-    && !string_contains(s: row(gunbc.roadmap.roadmap_presentation.SchedulingDone), pattern: "Unmet")
+    && string_contains(s: row(gunbc.roadmap.roadmap_presentation.SchedulingSuperseded), pattern: "<dt class=\"el-field-list-label\">Prerequisites</dt><dd class=\"el-field-list-value\"><button class=\"el-field-list-action\" type=\"button\" title=\"1 issue\" data-tab-chip=\"dependencies\">1 issue</button></dd>")
+    && !string_contains(s: row(gunbc.roadmap.roadmap_presentation.SchedulingSuperseded), pattern: "Unmet")
 }
 
 // The assignment mapping after the legacy-session cleanup (owner 2026-09-26): when an attempt

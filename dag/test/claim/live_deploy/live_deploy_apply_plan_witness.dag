@@ -22,6 +22,7 @@ import gunbc.live_deploy.apply_legs {
   ApplyLegBrokerStateDirectories, ApplyLegObjectSource, ApplyLegDigestVerify, ApplyLegDiagnosedCommand,
   ApplyLegRootHelperSnapshot, HelperSnapshotInstall, ApplyLegBrokerTree, ApplyLegRetract, ApplyLegDependency, ApplyLegDigestEnvFile,
   deploy_apply_plan_legs, deploy_apply_leg_step, deploy_apply_oidc_plan, deploy_apply_step_plan,
+  gpu_cap_report_legs,
   deploy_apply_git_worker_subtree_plan, deploy_apply_directories_plan, deploy_apply_chain,
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec }
@@ -40,9 +41,12 @@ import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_launcher_h
 import gunbc.host.host_layout { belt_spawn_workdir_env_var }
 import extdeps.systemd.systemctl { systemctl_user_daemon_reload_argv }
 import extdeps.tailscale.serve { tailscale_serve_enable_argv }
-import gunbc.serving.srv1_serving_launch { srv1_serving_wrapper }
 import gunbc.live_deploy.retract_legs { RetractDisableIfLoaded }
 import gunbc.live_deploy.srv1_serving_engine_unit { srv1_serving_engine_unit_name }
+import gunbc.live_deploy.srv1_gpu_power_cap_unit { srv1_gpu_power_cap_unit_name }
+import gunbc.serving.gpu_power_state_policy { GpuCapAdmission, GpuCapDevicePending }
+import gunbc.fleet.fleet_asset_identity { gpu_board_02 }
+import std.measure { watt }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_full_install_plan, deploy_witness_release_target, deploy_witness_release_revision }
 
 fn lab_spec() -> DeploymentSpec {
@@ -928,28 +932,90 @@ fn stops_the_hand_unit(leg: DeployApplyLeg) -> Bool {
   }
 }
 
-// SRV1'S SERVING ENGINE IS CONVERGED FOR THE NEXT BOOT AND NEVER TOUCHED NOW, on every apply including one
-// whose serve unit is unchanged: the wrapper lands as the model's bytes, then the unit, then the hand unit's
-// files are removed, then a reload and enable -- and no leg starts, restarts or reloads the engine unit, no
-// leg stops the hand unit, and no leg carries --now, because the wrapper's first act removes the running
-// container.
-test fn the_serving_engine_is_installed_for_the_next_boot_and_never_started() -> Bool {
+// SRV1'S SERVING BOOT PATH IS TWO REPLICA INSTANCES, NOT THE SINGLETON, on every apply including one whose
+// serve unit is unchanged. The apply RETIRES the legacy gpu=all singleton (its unit file, its WantedBy
+// enablement link and the wrapper that started it) BY PATH, reloads, then ENABLES lil-replica@0 and @1 --
+// their names derived from the replica roster. The legacy install legs (wrapper-dir / wrapper / unit /
+// enable-singleton) are GONE, no leg carries `--now`, no leg stops the hand unit, the retired singleton is
+// never enabled, and NO leg carries the gpu=all launch or the legacy container name -- the marker of the
+// retired single-container start. Reinstating the legacy launch would bring back a gpu=all leg and the
+// enable-singleton step, and this test goes red.
+test fn the_serving_boot_path_retires_the_singleton_and_enables_the_replicas_never_starting() -> Bool {
   let spec = deployment_spec_srv1()
   let kept = legs_of(p: plan_for(spec: spec, plan: converged_effect_plan(roster: deployment_member_roster(spec: spec), target: deploy_witness_release_target(spec: spec))))
   let unit = srv1_serving_engine_unit_name as String
-  let wrapper = match leg_at(legs: kept, step: "serving-engine-wrapper") { Present { value: l } => leg_payload(leg: l) Absent => "" }
-  wrapper == srv1_serving_wrapper.body
-    && step_index(legs: kept, step: "serving-engine-wrapper-dir") < step_index(legs: kept, step: "serving-engine-wrapper")
-    && step_index(legs: kept, step: "serving-engine-wrapper") < step_index(legs: kept, step: "serving-engine-unit")
-    && step_index(legs: kept, step: "serving-engine-unit") < step_index(legs: kept, step: "serving-engine-hand-unit-remove")
-    && step_index(legs: kept, step: "serving-engine-hand-unit-remove") < step_index(legs: kept, step: "serving-engine-reload")
+  let install_gone = !has_step(legs: kept, step: "serving-engine-wrapper-dir")
+    && !has_step(legs: kept, step: "serving-engine-wrapper")
+    && !has_step(legs: kept, step: "serving-engine-unit")
+    && !has_step(legs: kept, step: "serving-engine-enable")
+  let retired = has_step(legs: kept, step: "serving-engine-retire-gunbc-srv1-serving-engine.service")
+    && has_step(legs: kept, step: "serving-engine-retire-srv1-lil-serve.service")
+    && has_step(legs: kept, step: "serving-engine-reload")
+  let e0 = words_at(legs: kept, step: "serving-replica-enable-lil-replica@0.service")
+  let e1 = words_at(legs: kept, step: "serving-replica-enable-lil-replica@1.service")
+  let enable_ok = length(e0) == 3 && length(e1) == 3
+    && any(e0, w => w == "systemctl") && any(e0, w => w == "enable") && any(e0, w => w == "lil-replica@0.service")
+    && any(e1, w => w == "systemctl") && any(e1, w => w == "enable") && any(e1, w => w == "lil-replica@1.service")
+    && step_index(legs: kept, step: "serving-engine-reload") < step_index(legs: kept, step: "serving-replica-enable-lil-replica@0.service")
+  let never_starts_or_reenables = !any(kept, l => any(leg_argv_words(leg: l), w => w == "--now"))
     && !any(kept, l => stops_the_hand_unit(leg: l))
-    && !any(kept, l => any(leg_argv_words(leg: l), w => w == "--now"))
-    && step_index(legs: kept, step: "serving-engine-reload") < step_index(legs: kept, step: "serving-engine-enable")
-    && any(leg_argv_words(leg: match leg_at(legs: kept, step: "serving-engine-enable") { Present { value: l } => l Absent => ApplyLegReport { step: "", line: "" } }), w => w == unit)
+    && !any(kept, l => any(leg_argv_words(leg: l), w => w == unit))
     && !any(kept, l => {
       let words = leg_argv_words(leg: l)
       any(words, w => w == unit) && any(words, w => w == "start" || w == "restart" || w == "reload-or-restart" || w == "try-restart")
     })
-    && !any(kept, l => any(leg_argv_words(leg: l), w => contains(w, "lil-flash-next")))
+  let no_gpu_all_launch = !any(kept, l => any(leg_argv_words(leg: l), w => contains(w, "gpu=all"))
+    || contains(leg_payload(leg: l), "gpu=all")
+    || contains(leg_payload(leg: l), "nvidia.com/gpu=all")
+    || any(leg_argv_words(leg: l), w => contains(w, "lil-flash-next")))
+  install_gone && retired && enable_ok && never_starts_or_reenables && no_gpu_all_launch
+}
+
+// SRV1'S GPU POWER CAPS ARE INSTALLED AND ENABLED FOR THE NEXT BOOT, BEFORE THE SERVING BOOT PATH IS REARMED, AND NEVER RUN
+// NOW: the unit's text runs the converge entry (not a bare nvidia-smi line) and carries the admitted 300 W
+// device's pending sibling as a REPORT leg that is not a refusal; no leg starts, restarts or reloads the cap
+// unit, so applying a deploy changes no live card's limit. This is the real producer-to-consumer route:
+// removing deploy_apply_srv1_gpu_power_cap_plan from the chain fails it.
+test fn the_gpu_power_cap_is_installed_for_the_next_boot_before_the_engine_and_never_run() -> Bool {
+  let spec = deployment_spec_srv1()
+  let kept = legs_of(p: plan_for(spec: spec, plan: converged_effect_plan(roster: deployment_member_roster(spec: spec), target: deploy_witness_release_target(spec: spec))))
+  let unit = srv1_gpu_power_cap_unit_name as String
+  let text = match leg_at(legs: kept, step: "gpu-power-cap-unit") { Present { value: l } => leg_payload(leg: l) Absent => "" }
+  contains(text, "gpu_power_cap_converge.dag")
+    && contains(text, "gpu_power_cap_converge_cli")
+    && contains(text, "Type=oneshot")
+    && contains(text, "WantedBy=multi-user.target")
+    && step_index(legs: kept, step: "gpu-power-cap-unit") < step_index(legs: kept, step: "gpu-power-cap-reload")
+    && step_index(legs: kept, step: "gpu-power-cap-reload") < step_index(legs: kept, step: "gpu-power-cap-enable")
+    && step_index(legs: kept, step: "gpu-power-cap-enable") < step_index(legs: kept, step: "serving-engine-reload")
+    && any(leg_argv_words(leg: match leg_at(legs: kept, step: "gpu-power-cap-enable") { Present { value: l } => l Absent => ApplyLegReport { step: "", line: "" } }), w => w == unit)
+    && !any(kept, l => {
+      let words = leg_argv_words(leg: l)
+      any(words, w => w == unit) && any(words, w => w == "start" || w == "restart" || w == "reload" || w == "reload-or-restart" || w == "try-restart" || w == "--now")
+    })
+}
+
+// A PENDING CARD IS A REPORT LEG AND NEVER A FAILURE -- and srv1 has no pending card to report. Both of its
+// RTX PRO 6000s were powered and read on 2026-11-08 (gunbc.fleet.gpu_device_observation), so the real plan
+// carries no gpu-power-cap-pending leg at all; asserting the leg here would have pinned the deploy to the card
+// being unpowered, which was a state of the machine and not a rule of the plan. The arm keeps its witness on a
+// fixture admission instead, because a board nobody has read still has to arrive as a report and not a refusal.
+test fn a_pending_card_is_a_report_leg_and_srv1_now_has_none() -> Bool {
+  let spec = deployment_spec_srv1()
+  let kept = legs_of(p: plan_for(spec: spec, plan: converged_effect_plan(roster: deployment_member_roster(spec: spec), target: deploy_witness_release_target(spec: spec))))
+  match leg_at(legs: kept, step: "gpu-power-cap-pending") {
+    Absent => true
+    Present { value: _ } => false
+  }
+    && match gpu_cap_report_legs(admissions: [GpuCapDevicePending {
+        board: gpu_board_02, cap: watt(count: 300),
+        read_obligation: "no device observation exists for this board" as NonEmptyStr,
+      }]).first() {
+      Absent => false
+      Present { value: leg } => match leg {
+        ApplyLegReport { step: step, line: line } => step == "gpu-power-cap-pending"
+          && contains(line, "pending") && contains(line, "not a failure")
+        _ => false
+      }
+    }
 }

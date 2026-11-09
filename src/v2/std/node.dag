@@ -834,12 +834,71 @@ fn bind_positional_slot(ordinal: Int) -> BindSlot {
   }
 }
 
+// THE POSITIONAL ARITIES A SLOT TABLE IS READ AT: its full arity, or one slot Absent. ONE ANSWER FOR BOTH
+// TABLES (v2.std.node bind_slot_target and branch_slot_target): three positionals, or two with the LAST
+// slot absent -- for the Bind that is the binder (a statement Bind owns no value), for the Branch the else
+// arm (an else-less if). The two arities could not diverge, because the absent slot IS the encoding of "no
+// binder" and "no else": a behavior admitting a different arity set would be a different fact, and no
+// consumer asks the two tables about arity separately (DESIGN 6b: the second local implementation of one
+// rule is the trigger to generalize it, and under 6b "no answer is a reject"). A consumer that preflights
+// a WHOLE node asks branch_positional_shape_admitted rather than counting children beside the table
+// (DESIGN 3: the arity fact lives where the roles live). There is no whole-Bind twin: no consumer asks that
+// question -- every Bind site reads a named slot through bind_slot_target, or numbers ordinals through
+// bind_positional_slot_in_arity -- and a check with no consumer is a second API for a question nobody asks.
+fn positional_arity_admitted(n: Node) -> Bool {
+  positional_arity_admitted_in(children: n.children)
+}
+
+// THE SAME QUESTION OVER A CHILDREN LIST: the one place the admitted arity set {2, 3} is written. The slot
+// tables ask it through positional_arity_admitted and the shape-conformance fold asks it directly, so there
+// is one answer. Both count POSITIONAL edges only (positional_child_count is the count behind
+// positional_child_target_nodes); a Branch's conformance already requires every edge positional, so there
+// the count equals count(children) and nothing differs, while a Bind may also carry named marker edges that
+// are rightly not counted.
+fn positional_arity_admitted_in(children: List<Edge>) -> Bool {
+  let arity = positional_child_count(children: children)
+  (arity == 2) || (arity == 3)
+}
+
+// THE ROLE OF A Bind's POSITIONAL CHILD, given how many positionals the Bind has. A three-positional Bind
+// numbers binder, value, body. A TWO-positional Bind has NO BINDER: its first positional is the VALUE and its
+// second is the BODY, so the ordinals shift -- the binder is absent at this table, the way BranchElseSlot is
+// absent on a two-positional Branch. That is how a reader tells "no binder" from "malformed": a
+// binder-absent Bind answers Absent for BindBinderSlot and Present for value and body, a malformed Bind
+// (fewer than two positionals) answers Absent for EVERY slot.
+fn bind_positional_slot_in_arity(ordinal: Int, arity: Int) -> Optional<BindSlot> {
+  if arity == 2 {
+    if ordinal == 0 {
+      optional_present(value: BindValueSlot)
+    } else if ordinal == 1 {
+      optional_present(value: BindBodySlot)
+    } else {
+      optional_absent()
+    }
+  } else if arity == 3 {
+    optional_present(value: bind_positional_slot(ordinal: ordinal))
+  } else {
+    optional_absent()
+  }
+}
+
 // THE NODE A Bind OR A Match HOLDS IN A SLOT: its first positional child whose ordinal the table maps to
 // `slot` -- a Bind's binder, value or (first) body, a Match's scrutinee or first arm. Readers of a node's
 // parts read them here, so the tables are the only place those slots are numbered. One walk serves both:
-// it counts positional ordinals and stops at the first child the table selects.
+// it counts positional ordinals and stops at the first child the table selects. A Bind's walk numbers its
+// ordinals by its own arity (bind_positional_slot_in_arity), so a binder-absent Bind answers Absent at
+// BindBinderSlot and still answers Present for its value and body.
 fn bind_slot_target(n: Node, slot: BindSlot) -> Optional<Node> {
-  positional_target_where(edges: n.children, ordinal: 0, wanted: fn(i) { bind_positional_slot(ordinal: i) == slot })
+  if positional_arity_admitted(n: n) {
+    bind_slot_target_in_arity(n: n, slot: slot)
+  } else {
+    optional_absent()
+  }
+}
+
+fn bind_slot_target_in_arity(n: Node, slot: BindSlot) -> Optional<Node> {
+  let arity = count(positional_child_target_nodes(node: n))
+  positional_target_where(edges: n.children, ordinal: 0, wanted: fn(i) { bind_positional_slot_in_arity(ordinal: i, arity: arity) == optional_present(value: slot) })
 }
 
 fn match_slot_target(n: Node, slot: MatchSlot) -> Optional<Node> {
@@ -865,15 +924,26 @@ fn match_role_slots_step(acc: List<ChildSlot>, s: ChildSlot, role: MatchSlot) ->
   }
 }
 
-// THE NODE A Branch HOLDS IN A SLOT, or Absent when `n` is not a three-positional Branch: a Branch of any
-// other positional arity is malformed and has no roles to read, so the accessor that owns the table refuses
-// rather than returning a plausible child (a fourth positional is not a second else).
+// THE NODE A Branch HOLDS IN A SLOT, or Absent when `n` is not a two- or three-positional Branch: a Branch
+// of any other positional arity is malformed and has no roles to read, so the accessor that owns the table
+// refuses rather than returning a plausible child (a fourth positional is not a second else). A
+// TWO-positional Branch is the else-less shape, read at this table like any other: Present for the
+// condition and the then arm, Absent for BranchElseSlot. That is how a reader tells "no else" from
+// "malformed": a malformed Branch answers Absent for EVERY slot, the else-less one answers Absent for the
+// else slot only.
 fn branch_slot_target(n: Node, slot: BranchSlot) -> Optional<Node> {
-  if count(positional_child_target_nodes(node: n)) == 3 {
+  if positional_arity_admitted(n: n) {
     branch_slot_target_in_arity(n: n, slot: slot)
   } else {
     optional_absent()
   }
+}
+
+// IS THE Branch READABLE AT ALL: every edge positional and an admitted positional arity. This is the whole-node
+// question the consumers used to answer by counting children; the labeled-child case (three positionals plus
+// a labeled edge) fails here, as it did in their preflights.
+fn branch_positional_shape_admitted(n: Node) -> Bool {
+  all_edges_positional(children: n.children) && positional_arity_admitted(n: n)
 }
 
 fn branch_slot_target_in_arity(n: Node, slot: BranchSlot) -> Optional<Node> {
@@ -918,11 +988,13 @@ fn child_slot_target(slot: ChildSlot) -> Node {
 }
 
 // WHAT EACH POSITIONAL CHILD OF A Branch IS: ordinal 0 the condition, 1 the then arm, 2 the else arm
-// (lower_branch; v2.std.compilers.body_lowering branch_view reads exactly three whole positionals). Unlike
+// (lower_branch; an else-less Branch simply has no child at ordinal 2, and branch_slot_target answers Absent
+// for that slot while still answering Present for the condition and the then arm). Unlike
 // Match, whose arms are unbounded so its table is total over Int, a Branch has EXACTLY these three roles, so
 // an ordinal of 3 or more has no role: the table answers Absent, and branch_slot_target answers Absent for
-// any Branch that is not three-positional, so the malformed Branch is refused where the table lives. Match and Branch keep separate tables
-// because the arity differs (total vs. three roles); both are read by the one positional walker
+// any Branch whose positional arity is not two or three, so the malformed Branch is refused where the table
+// lives. Match and Branch keep separate tables
+// because the arity differs (total vs. these roles); both are read by the one positional walker
 // positional_target_where, which is where the shared "find the positional child by role" lives.
 type BranchSlot
   = BranchConditionSlot
@@ -1073,7 +1145,7 @@ fn loop_positional_child_count(children: List<Edge>) -> Int {
   positional_child_count(children: children)
 }
 
-// WHAT EACH EDGE OF A LOOP MEANS, read in exactly one place (gunbc.plans.for_while_loop_sugar §2.2).
+// WHAT EACH EDGE OF A LOOP MEANS, read in exactly one place (gunbc.plans.for_while_loop_sugar (deleted 2026-11-08) §2.2).
 // The positional children are the iterated body. ^loop_domain_edge targets the value iterated, which
 // is evaluated ONCE and outside the iteration. ^loop_bound_edge targets the termination measure.
 // ^loop_carrier_edge targets the loop-carried state's BINDER, never a value; the carried state's
@@ -2068,11 +2140,12 @@ fn match_arm_pattern_edge(parent: Node, edge: Edge) -> Bool {
     && edge_is_core(e: edge, marker: MatchArmPatternEdge)
 }
 
-// THE KEY EDGE OF A BIND: the first of a Bind's exactly three positionals, when it is an atom -- the shape
-// v2.compiler.lexical_scope bind_binder sites a `let` binder at. The key is a binder NAME, a binding form as a
-// match arm's pattern is, so infer declines it (v2.compiler.infer infer_gather_fold_step) and the walk over
-// the nodes infer derives facts for skips it (v2.std.type_binder node_inferred_subtree_nodes). The binder's
-// type is the InferBinderType row its references read, never a fact about the key atom.
+// THE KEY EDGE OF A BIND: the first of a Bind's three positionals, when it is an atom -- the shape
+// v2.compiler.lexical_scope bind_binder sites a `let` binder at. A binder-absent (two-positional) Bind has NO
+// key: its first positional is the value, so this declines it by arity. The key is a binder NAME, a binding
+// form as a match arm's pattern is, so infer declines it (v2.compiler.infer infer_gather_fold_step) and the
+// walk over the nodes infer derives facts for skips it (v2.std.type_binder node_inferred_subtree_nodes). The
+// binder's type is the InferBinderType row its references read, never a fact about the key atom.
 fn bind_key_edge_is(key: Edge, edge: Edge) -> Bool {
   key.label == edge.label && node_same_occurrence(a: key.target, b: edge.target) && match key.target.kind {
     TypeNode { connective: Atom { identity: _ } } => true
@@ -2134,10 +2207,11 @@ fn behavior_edges_conform(children: List<Edge>, b: Behavior) -> Bool {
     Transform =>
       edges_conform(children: children, d: PositionalPrefixThenLabeledEdges)
         && (positional_child_count(children: children) >= 1)
-    Branch => edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
+    Branch => edges_conform(children: children, d: PositionalEdges) && positional_arity_admitted_in(children: children)
     Loop => edges_conform(children: children, d: LoopBoundEdges)
     Bind =>
-      edges_conform(children: children, d: PositionalPlusNamedMarkerEdges) && (positional_child_count(children: children) == 3)
+      edges_conform(children: children, d: PositionalPlusNamedMarkerEdges)
+        && positional_arity_admitted_in(children: children)
     // Scrutinee only is well-formed (Never eliminator). Exhaustiveness is infer, not shape.
     Match =>
       edges_conform(children: children, d: PositionalEdges)
