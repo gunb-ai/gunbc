@@ -56,10 +56,6 @@ import gunbc.runner.runner_retirement_causes {
 fn retiree(unit: String) -> NonEmptyStr { unit as NonEmptyStr }
 
 // THE POPULATIONS AS THE WIDTH AUTHORITIES DERIVE THEM for the move recorded in the PR: 19/20 out, 06/07 in.
-fn prior_population() -> List<NonEmptyStr> {
-  ["srv3-01", "srv3-02", "srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr)
-}
-
 fn target_population() -> List<NonEmptyStr> {
   ["srv3-01", "srv3-02", "srv3-06", "srv3-07"] |> map(u => u as NonEmptyStr)
 }
@@ -705,15 +701,8 @@ fn host_population(live: List<String>) -> RunnerSlotPopulation {
   }
 }
 
-fn kept_slots() -> List<String> { ["srv1-01", "srv1-02"] }
 
-fn kept_slots_proven() -> List<ReplacementJobEvidence> {
-  [collected(runner: "srv1-01", concluded: true), collected(runner: "srv1-02", concluded: true)]
-}
 
-fn kept_slots_roster() -> OrganizationRunnerRosterEvidence {
-  roster(entries: [registration("srv1-01", true), registration("srv1-02", true)])
-}
 
 fn drain_now_units(steps: List<RunnerHostDrainStep>) -> List<String> {
   map(
@@ -813,7 +802,32 @@ fn drain_leg_holds_everything(subject: RunnerHostFileSubject, live: List<String>
     )
   length(steps) == length(runner_host_drain_units(subject: subject))
     && all(subject.retired_units, u => is_step_held_for(steps: steps, unit: u))
-    && length(drain_now_units(steps: steps)) == 0
+    // THE ONLY THINGS THAT DRAIN ARE THE FABRIC MEMBERS. A model-declared fabric member is not runner
+    // capacity a build is waiting on -- it is authorized by its standing alone -- so a claim that demanded an
+    // empty DrainNow set would be demanding the wrong thing. What must be empty is the set of RUNNERS drained.
+    && all(drain_now_units(steps: steps), u => any(subject.fabric_units, f => (f as String) == u))
+}
+
+// THE SAME LEG WHEN THE HOST SAYS A SLOT IS UP AND THE ORG ROSTER AGREES, BUT THAT SLOT HAS NEVER BUILT
+// ANYTHING: registered online, no floor job. This is the half of the invariant the registration check alone
+// cannot give -- a runner that came up and never ran a job has not shown it can take the retiree's work.
+fn drain_leg_holds_while_one_slot_is_registered_but_silent(
+  subject: RunnerHostFileSubject,
+  wanted: List<String>,
+  silent: String,
+) -> Bool {
+  let steps =
+    runner_host_drain_leg_decided(
+      subject: subject,
+      population: host_population(live: wanted),
+      readback: runner_retirement_readback_of(
+        roster: Present { value: roster(entries: map(wanted, u => registration(u, true))) },
+        qualification_verdicts: map(filter(wanted, w => w != silent), u => collected(runner: u, concluded: true)),
+      ),
+    )
+  length(steps) == length(runner_host_drain_units(subject: subject))
+    && all(subject.retired_units, u => is_step_held_for(steps: steps, unit: u))
+    && all(drain_now_units(steps: steps), u => any(subject.fabric_units, f => (f as String) == u))
 }
 
 // THE SAME LEG, ONE FACT CHANGED: the population this plan keeps is on the host, registered in the org, and
@@ -864,52 +878,58 @@ test fn the_drain_leg_holds_while_a_slot_the_host_is_bringing_up_has_never_run_a
 }
 
 // A PARTIAL PROOF IS NOT A PROOF. One of the two kept slots has registered and run; the other has neither.
-// The whole retiree population stays held -- the gate does not drain half a population on half an answer.
+// THE HOST SAYS EVERY SLOT IS UP, THE ORG ROSTER SEES EVERY ONE OF THEM, and every one but a single slot
+// holds a floor job that concluded Success. The one that has never built anything is the hole: registration
+// alone is a runner that came up, not a runner that has taken a build. The whole retirement set stays held,
+// and only the fabric members -- which are not runner capacity -- drain.
 test fn the_drain_leg_waits_when_only_one_kept_slot_has_run_a_job() -> Bool {
   match srv1_subject() {
     Absent => false
     Present { value: subject } =>
-      let steps = runner_host_drain_leg_decided(
-        subject: subject,
-        population: host_population(live: kept_slots()),
-        readback: runner_retirement_readback_of(
-          roster: Present { value: roster(entries: [registration("srv1-01", true)]) },
-          qualification_verdicts: [collected(runner: "srv1-01", concluded: true)],
-        ),
-      )
-      length(subject.retired_units) > 0
-        && all(subject.retired_units, u => is_step_held_for(steps: steps, unit: u))
-        && length(drain_now_units(steps: steps)) == length(subject.fabric_units)
+      match first(subject.desired_units) {
+        Absent => false
+        Present { value: silent } =>
+          let incoming = replacement_incoming_for_host(host: "srv1" as HostIdentity)
+          let wanted = wanted_units(subject: subject, incoming: incoming)
+          let silent_name = silent as String
+          // THE SILENT SLOT IS REALLY ONE OF THE SLOTS THE ROUTE DERIVES, or "all but one" means nothing.
+          any(wanted, w => w == silent_name)
+            && drain_leg_holds_while_one_slot_is_registered_but_silent(
+                 subject: subject,
+                 wanted: wanted,
+                 silent: silent_name,
+               )
+      }
   }
 }
 
 // THE HAND-STARTED UNIT IS REPORTED, NEVER DRAINED. srv1-51 is live on the host and appears in NO derived
 // list -- not desired, not a required retiree, not fabric -- so it is capacity a human started and converge
 // has no authority over. What the route emits for it is one notice that names it, and it is not among the
-// drain candidates at all, so no step of the plan can stop it.
+// A HAND-STARTED UNIT THE PLAN DERIVES NOTHING ABOUT IS THE ONE CASE THE OPERATOR ASKED ABOUT BY NAME
+// (srv3/srv4 19/20, srv1 07-09): working capacity, not an unknown occupant to kill. The route reports it and
+// never drains it. The kept population is read off the admitted SUBJECT rather than written out, so this
+// claim cannot sit green while proving a population the route does not derive.
 test fn the_hand_capacity_route_reports_the_unit_and_never_drains_it() -> Bool {
   match srv1_subject() {
     Absent => false
     Present { value: subject } =>
       let hand = "srv1-51"
-      let live = kept_slots()
-      // HOISTED INTO TYPED LETS: the lists the leg returns are what these claims judge, and naming their type
-      // here is the cheapest way to make the witness say which list it is filtering rather than leaning on
-      // inference through a call with named arguments.
+      let kept = map(subject.desired_units, d => d as String)
       let candidates: List<NonEmptyStr> = runner_host_drain_units(subject: subject)
       let hand_units: List<NonEmptyStr> = runner_host_hand_started_units(
         subject: subject,
-        // THE HOST ANSWERS WITH BOTH THE KEPT SLOTS AND THE HAND UNIT, because that is the reading these two
-        // assertions judge together: the kept slots are derived capacity and must not be reported as
-        // hand-started, and srv1-51 is the hand-started one the plan leaves alone.
-        population: host_population(live: concat(live, [hand])),
+        // THE HOST ANSWERS WITH BOTH THE KEPT SLOTS AND THE HAND UNIT, because that is the reading these
+        // assertions judge together: derived capacity must not be reported as hand-started, and srv1-51 is
+        // the hand-started one the plan leaves alone.
+        population: host_population(live: concat(kept, [hand])),
       )
       let outcomes = runner_host_hand_capacity_notices(
         subject: subject,
         population: host_population(live: [hand]),
         readback: runner_retirement_readback_of(
-          roster: Present { value: kept_slots_roster() },
-          qualification_verdicts: kept_slots_proven(),
+          roster: Present { value: roster(entries: map(kept, u => registration(u, true))) },
+          qualification_verdicts: map(kept, u => collected(runner: u, concluded: true)),
         ),
       )
       length(outcomes) == 1
@@ -921,8 +941,8 @@ test fn the_hand_capacity_route_reports_the_unit_and_never_drains_it() -> Bool {
              _ => false
            }
         && !any(candidates, u => (u as String) == hand)
-        // and the live list stays untouched by the report: the kept slots are not hand-started capacity
-        && !any(hand_units, u => (u as String) == "srv1-01")
+        // and the report stays off the derived population: not one kept slot is called hand-started capacity
+        && length(filter(hand_units, u => any(kept, k => (k as String) == (u as String)))) == 0
         && any(hand_units, u => (u as String) == hand)
   }
 }
