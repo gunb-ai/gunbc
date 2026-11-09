@@ -214,10 +214,24 @@ test fn w_the_read_card_selects_through_the_same_function() -> Bool {
 // Digest re-recorded for the schema-string change ONLY (gunbc.a16-inlet-duct-review.v2 -> gunbc.printed-duct-review.v3):
 // a field-by-field diff of the manifest against main 18a76b7 shows that string as the sole difference, and main's
 // digest reproduced the previous literal.
+// RE-RECORDED AGAIN, text only, and settled by hash rather than by eye. #15859 (8dfe326a3545) made interface_json
+// emit one intended_overlap key per interface; that is the WHOLE difference. manifest_identity is sha256 over the
+// UTF-8 bytes of the exact manifest text (product.printed_chassis.preparation_identity), so the two manifests read
+// from the compiler's own refusal line -- at 6dd51633 (invocation 98330965-be50-4c02-a284-c7dfcf9f4bca) and at
+// 24fe705b (invocation ca5ebc9e-5115-4b1a-862d-62fe385411b0) -- decide the reviewer's duty this row imposes: sha256
+// of the 4527-char text at 6dd51633 reproduces the literal this row used, and adding exactly two members,
+// "intended_overlap": [] to each of the two interfaces and nothing else, reproduces the digest below byte for byte.
+// No dimension, string, key or list length other than those two differs, so no printed dimension moved. The a16 card
+// end that same refactor relocated (gpu_duct a16_end_face -> product.printed_chassis.card_end_interface a16_card_end)
+// carried every reading across unchanged -- face 97840 / 38600, window 88030 / 23940 / 5540 / 13090, fin setback
+// 6000, inserts 27620 / 8860 / 59720 / 7540, connector 2560, same source string -- so the ring the operator printed
+// and fitted is still the model's. The digest below is what the compiler returns for this very expression at
+// 24fe705b, read off its ProcessExit refusal line (invocation 4b0397ad-5429-4272-94f2-0fede5db37e7), not
+// hand-computed; the same run found the selection Present and the root wire byte-identical.
 test fn w_the_a16_plug_fit_ring_is_the_geometry_that_was_printed_and_fitted() -> Bool {
   match selected(root: a16_root(kind: PlugFitRing)) {
     Present { value: a } => match manifest_identity(content: serialize_json(v: printable_manifest(a: a))) {
-      Present { value: m } => m.root_wire == "a16-plug-fit-ring" && m.digest.hex == "83dddd9fb4066e4756974fd3d5c1d0dfba3dbc4f2434bf040af82d64549f3a78"
+      Present { value: m } => m.root_wire == "a16-plug-fit-ring" && m.digest.hex == "4718c23d9bcc9e914b0540d09458be6b23300d7ba3860ed8628a8fa554e5dd55"
       Absent => false
     }
     Absent => false
