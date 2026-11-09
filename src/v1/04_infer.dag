@@ -400,21 +400,40 @@ type BlockInferState {
 // diagnostic unsaid, and turn the standing control
 // `test.claim.juxtaposed_bare_value_seed_refusal_witness` red.
 //
-// WHICH STATEMENTS REFUSE: value forms ONLY -- a statement that evaluates and binds nothing. Calls,
-// control forms and bindings pass: they either effect or bind, so a dropped value there is not this
-// class. `let` remains THE admitted binding (`let x = [1, 2, 3]` followed by `x` is well-formed),
-// which is why this is a whitelist of value shapes and not a blacklist of statements.
+// WHICH STATEMENTS REFUSE: a statement that evaluates and binds nothing. The match below NAMES THE
+// ADMITTED SET (bindings, returns, effect-position calls, control readings, blocks, errors, the
+// empty marker) and REFUSES BY DEFAULT, per gunbc.design_argument::fail_closed: "a failure arm
+// refuses, never widens" -- a `_ => false` whitelist would have silently accepted `ExprBinOp`,
+// `ExprUnaryOp`, `ExprStringInterp`, `ExprCast`, `ExprIndex`, `ExprSlice` and `ExprLambda` the day
+// they were juxtaposed, and would accept any future value-bearing variant by default. `let` remains
+// THE admitted binding (`let x = [1, 2, 3]` followed by `x` is well-formed).
+// THE ARM DIRECTION IS FAIL-CLOSED (gunbc.design_argument::fail_closed: "a failure arm refuses,
+// never widens"). This match NAMES THE ADMITTED SET -- the statements that bind, control, effect, or
+// carry their own value reading -- and REFUSES BY DEFAULT, so any future ExprData variant
+// (src/v1/00_core.dag::ExprData) is refused as a bare value until someone rules it admitted, instead
+// of being silently accepted the way a `_ => false` whitelist would have accepted `ExprBinOp`,
+// `ExprUnaryOp`, `ExprStringInterp`, `ExprCast`, `ExprIndex`, `ExprSlice` and `ExprLambda` the day
+// they were juxtaposed. The admitted forms: `ExprLet` binds; `ExprReturn` returns; `ExprCall` and
+// `ExprMethodCall` are effect-position readings (the v2 spine narrows further with its guard forms;
+// the seed's corpus admits call statements mid-body and the CLASS this row closes is the dropped
+// VALUE, not the call); `ExprIf`/`ExprMatch`/`ExprForEach` are control readings whose value is
+// consumed by their own arms; `ExprBlock` recurses, so a nested bare value refuses inside it;
+// `ExprError` is already a refusal; `NoExprData` is the empty marker.
 data block_bare_value_refusal_message: String = "a bare value statement precedes another statement in the same block, so its value would be silently dropped; bind it with `let` or delete it: statement_precedes_without_binding"
 
 fn stmt_is_bare_value(stmt: Node) -> Bool {
   match stmt.expr_data {
-    ExprLiteral { value: _ } => true
-    ExprElaboratedLiteral { value: _, elaboration: _ } => true
-    ExprVar { binding_kind: _ } => true
-    ExprFieldAccess { summary: _ } => true
-    ExprListLit => true
-    ExprRecordLit { parent_enum: _ } => true
-    _ => false
+    NoExprData => false
+    ExprLet => false
+    ExprReturn => false
+    ExprCall { call_semantics: _, descent_evidence: _ } => false
+    ExprMethodCall { method_semantics: _ } => false
+    ExprIf => false
+    ExprMatch => false
+    ExprForEach => false
+    ExprBlock => false
+    ExprError { kind: _, message: _ } => false
+    _ => true
   }
 }
 

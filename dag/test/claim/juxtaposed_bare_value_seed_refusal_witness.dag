@@ -58,6 +58,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data juxtaposed_literals_source: String = "module juxtap.lit\n\nfn bad_literals() -> Int {\n  1\n  2\n}\n"
 data juxtaposed_lists_source: String = "module juxtap.lists\n\nfn bad_lists() -> List<Int> {\n  [1, 2, 3]\n  [4, 5]\n}\n"
 data juxtaposed_names_source: String = "module juxtap.names\n\nfn bad_names(a: Int) -> Int {\n  a\n  a\n}\n"
+data juxtaposed_binop_source: String = "module juxtap.binop\n\nfn bad_binop(a: Int) -> Int {\n  a + 1\n  a\n}\n"
+data juxtaposed_unary_source: String = "module juxtap.unary\n\nfn bad_unary() -> Int {\n  -1\n  1\n}\n"
+data juxtaposed_binop_source: String = "module juxtap.binop\n\nfn bad_binop(a: Int) -> Int {\n  a + 1\n  a\n}\n"
+data juxtaposed_unary_source: String = "module juxtap.unary\n\nfn bad_unary() -> Int {\n  -1\n  1\n}\n"
 
 // THE ACCEPTED CONTROLS, differing from the reds by exactly the absence of a preceding bare value:
 // a single-statement body, and a `let` binding followed by its tail reference.
@@ -89,6 +93,19 @@ test fn juxtaposed_bracketed_list_literals_refuse_at_the_seed_fold_holds() -> Bo
 
 test fn juxtaposed_bare_name_statements_refuse_at_the_seed_fold_holds() -> Bool {
   let o = juxtaposed_scope("juxtap/names.dag", "juxtap.names", juxtaposed_names_source)
+  claim_scope_compile_refusal_has_class(o: o, wanted: "InternalError")
+}
+
+// AND THE NON-BINDING VARIANTS: a pure value expression that is not a literal or a name — a
+// binop, a unary — is the same invalid state, and the admitted-set fold catches it by
+// exclusion (gunbc.design_argument::fail_closed: "A failure arm refuses, never widens").
+test fn juxtaposed_binop_statement_refuses_at_the_seed_fold_holds() -> Bool {
+  let o = juxtaposed_scope("juxtap/binop.dag", "juxtap.binop", juxtaposed_binop_source)
+  claim_scope_compile_refusal_has_class(o: o, wanted: "InternalError")
+}
+
+test fn juxtaposed_unary_statement_refuses_at_the_seed_fold_holds() -> Bool {
+  let o = juxtaposed_scope("juxtap/unary.dag", "juxtap.unary", juxtaposed_unary_source)
   claim_scope_compile_refusal_has_class(o: o, wanted: "InternalError")
 }
 
