@@ -11422,10 +11422,19 @@ pub fn edited_population_from_diff(workspace: &Path, diff_text: &str) -> EditedP
             non_dag_paths.push(path);
             continue;
         }
+        // A DEPARTED MODULE IS NAMED BY ITS PATH. The layout fixes where module `a.b.c` is stored
+        // (`gunbc.source_layout`), so a deleted file's module name is known without the file; its
+        // importers still name it, so the reverse closure reaches every mirror that read it. Only a
+        // departed path outside the layout stays unlocatable (gunbc.plans.read_set_convergence P2).
         if departed.contains(&path) {
-            unlocatable.push(format!(
-                "{path} (departed: no module line remains in the tree)"
-            ));
+            match super::native_lane_runner::dag_module_name_from_path(&path) {
+                Some(module) => {
+                    edited_modules.insert(module);
+                }
+                None => unlocatable.push(format!(
+                    "{path} (departed, and outside the source layout: no module name derivable)"
+                )),
+            }
             continue;
         }
         match fs::read_to_string(workspace.join(&path)) {
@@ -12285,8 +12294,10 @@ mod regen_affected_set_tests {
         .collect()
     }
 
-    /// The edit reader on a synthetic diff: an existing module is named, a departed `.dag` and an
-    /// added `.dag` that is not in the tree are unlocatable, and a `.rs` is only counted.
+    /// The edit reader on a synthetic diff: an existing module is named by its module line, a
+    /// departed `.dag` under the layout is named by its PATH (`std.gone`), a departed `.dag`
+    /// outside the layout and an added `.dag` that is not in the tree are unlocatable, and a `.rs`
+    /// is only counted.
     #[test]
     fn edited_population_classifies_named_departed_and_missing_paths() {
         let diff = "\
@@ -12302,6 +12313,12 @@ deleted file mode 100644
 +++ /dev/null
 @@ -1,1 +0,0 @@
 -module std.gone
+diff --git a/fixtures/stray/gone.dag b/fixtures/stray/gone.dag
+deleted file mode 100644
+--- a/fixtures/stray/gone.dag
++++ /dev/null
+@@ -1,1 +0,0 @@
+-module stray.gone
 diff --git a/dag/std/never_written.dag b/dag/std/never_written.dag
 new file mode 100644
 --- /dev/null
@@ -12316,15 +12333,19 @@ diff --git a/src/v1/stage0/src/v1_rt.rs b/src/v1/stage0/src/v1_rt.rs
 +// y
 ";
         let population = edited_population_from_diff(&workspace_root(), diff);
-        assert_eq!(population.edited_modules, vec![s("std.content_hash")]);
+        assert_eq!(
+            population.edited_modules,
+            vec![s("std.content_hash"), s("std.gone")]
+        );
         assert_eq!(
             population.unlocatable.len(),
             2,
             "{:?}",
             population.unlocatable
         );
-        assert!(population.unlocatable[0].starts_with("dag/std/gone.dag (departed"));
-        assert!(population.unlocatable[1].starts_with("dag/std/never_written.dag (unreadable"));
+        assert!(population.unlocatable[0].starts_with("dag/std/never_written.dag (unreadable"));
+        assert!(population.unlocatable[1]
+            .starts_with("fixtures/stray/gone.dag (departed, and outside the source layout"));
         assert_eq!(
             population.non_dag_paths,
             vec![s("src/v1/stage0/src/v1_rt.rs")]

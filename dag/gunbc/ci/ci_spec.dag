@@ -4493,8 +4493,15 @@ fn gunbc_ci_heal_candidate_invoke() -> String {
 // pick as the base commit would fabricate the fact the receipt carries (gunbc.design_argument::single_authority, gunbc.design_argument::fail_closed). It is passed unconditionally -- the round does not try the
 // head mirror and fall back -- and this invoke is the heal round alone, so a non-heal round is a
 // different invocation of the same producer with the flag absent, not a second path.
+//
+// SCOPED TO WHAT THE PULL REQUEST CAN AFFECT (gunbc.plans.read_set_convergence P2): `--regen-affected-scope`
+// adjudicates, writes and digests only the mirrors gunbc.regen_affected_set names for this edit; an edit
+// that reaches no mirror selects none, and an edit under a generation input is the whole population, by
+// the bound's own arms. The edit is the pull request's changes since its base commit, named by the step
+// (gunbc.heal_workflow heal_stage0_round_step). A departed module is named by its layout path, so a
+// deletion scopes like an edit.
 fn gunbc_ci_stage0_round_invoke() -> String {
-  concat(claim_executor_relative_path(), " --regen-round-cost --base-mirror --source-root dag --source-root src/v2")
+  concat(claim_executor_relative_path(), " --regen-round-cost --base-mirror --regen-affected-scope --source-root dag --source-root src/v2")
 }
 
 fn gunbc_ci_heal_candidate_stage0_invoke() -> String {
