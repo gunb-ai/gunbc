@@ -11,7 +11,8 @@ import extdeps.cron.schedule_model { render_cron_schedule }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
   WorkflowTrigger, Push, PullRequest, WorkflowDispatch, Schedule, MergeGroup,
-  WorkflowRunTriggered, workflow_run_activity_name,
+  WorkflowRunTriggered, workflow_run_activity_name, WorkflowCall,
+  WorkflowCallInput, WorkflowCallInputType, CallInputString, CallInputBoolean, CallInputNumber,
   DispatchInput, DispatchInputType, InputString, InputBoolean, InputChoice, InputEnvironment,
   PullRequestActivity, Opened, Synchronize, Reopened, ReadyForReview, Closed,
   WorkflowPermissions, PermissionLevel, PermRead, PermWrite, PermNone,
@@ -168,6 +169,40 @@ fn workflow_dispatch_yaml(inputs: List<DispatchInput>) -> YamlValue {
 // options is undispatchable. The CI heal revalidation input is the first production consumer and
 // its witness reads the projected YamlValue rather than trusting generated text.
 
+// workflow_call inputs are projected the way dispatch inputs are: this serializer used to emit
+// `workflow_call: null` whatever the list held, so a caller's `with:` would have named inputs the
+// called workflow never declared.
+fn workflow_call_input_type_label(t: WorkflowCallInputType) -> String {
+  match t {
+    CallInputString => "string"
+    CallInputBoolean => "boolean"
+    CallInputNumber => "number"
+  }
+}
+
+fn workflow_call_input_yaml(input: WorkflowCallInput) -> YamlKeyValue {
+  kv(
+    key: input.name,
+    value: yaml_mapping(entries: concat(
+      dispatch_input_optional_string(key: "description", value: input.description),
+      [
+        kv(key: "required", value: yaml_bool(b: input.required)),
+        kv(key: "type", value: yaml_string(s: workflow_call_input_type_label(t: input.type)))
+      ]
+    ))
+  )
+}
+
+fn workflow_call_yaml(inputs: List<WorkflowCallInput>) -> YamlValue {
+  if length(inputs) == 0 {
+    YamlNull
+  } else {
+    yaml_mapping(entries: [
+      kv(key: "inputs", value: yaml_mapping(entries: map(inputs, input => workflow_call_input_yaml(input: input))))
+    ])
+  }
+}
+
 fn workflow_trigger_entry(trigger: WorkflowTrigger) -> YamlKeyValue {
   match trigger {
     WorkflowDispatch { inputs: inputs } =>
@@ -180,8 +215,8 @@ fn workflow_trigger_entry(trigger: WorkflowTrigger) -> YamlKeyValue {
       kv(key: "schedule", value: yaml_sequence(elements: [
         yaml_mapping(entries: [kv(key: "cron", value: yaml_string(s: render_cron_schedule(s: c)))])
       ]))
-    WorkflowCall { inputs: _ } =>
-      kv(key: "workflow_call", value: YamlNull)
+    WorkflowCall { inputs: inputs } =>
+      kv(key: "workflow_call", value: workflow_call_yaml(inputs: inputs))
     WorkflowRunTriggered { workflows: ws, branches: bs, activity: a } =>
       kv(key: "workflow_run", value: yaml_mapping(entries: [
         kv(key: "workflows", value: string_list_flow(items: ws)),

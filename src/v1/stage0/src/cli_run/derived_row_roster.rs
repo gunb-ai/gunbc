@@ -1,5 +1,6 @@
 //! Derived membership for the one-row-per-file ledgers: `gunbc.recurring_failure_mode.roster`,
-//! `gunbc.rung_drop.roster` and `gunbc.guarantee_stall.roster` (`DERIVED_ROW_ROSTERS`).
+//! `gunbc.rung_drop.roster`, `gunbc.guarantee_stall.roster` and `gunbc.layout_namespace_row.roster`
+//! (`DERIVED_ROW_ROSTERS`).
 //!
 //! Row files under each row directory are the authority. A hand-appended roster list is a second
 //! authoring of the same membership -- the rung-drop list was one until it was cut over to this
@@ -97,8 +98,24 @@ pub const GUARANTEE_STALL: DerivedRowRoster = DerivedRowRoster {
     roster_declaration: "guarantee_stall_roster",
 };
 
-pub const DERIVED_ROW_ROSTERS: [&DerivedRowRoster; 3] =
-    [&RECURRING_FAILURE_MODE, &RUNG_DROP, &GUARANTEE_STALL];
+/// The namespace rows of the storage layout, one row file per source tree (gunbc's own, and the
+/// one a calling repository's `dag/` brings when it is judged by gunbc's gate). The `.dag` authority
+/// for this row is `gunbc.source_layout` `layout_derived_rosters`; this const is its seed realization,
+/// enumerated in `gunbc.derived_row_roster_seed_growth`.
+pub const LAYOUT_NAMESPACE_ROW: DerivedRowRoster = DerivedRowRoster {
+    row_module: "gunbc.layout_namespace_row",
+    row_dir_rel: "gunbc/layout_namespace_row",
+    row_type: "LayoutNamespaceRow",
+    roster_module: "gunbc.layout_namespace_row.roster",
+    roster_declaration: "layout_namespace_row_roster",
+};
+
+pub const DERIVED_ROW_ROSTERS: [&DerivedRowRoster; 4] = [
+    &RECURRING_FAILURE_MODE,
+    &RUNG_DROP,
+    &GUARANTEE_STALL,
+    &LAYOUT_NAMESPACE_ROW,
+];
 
 /// The failure-mode ledger's parts, read by `rostered_row_join`'s file-to-roster join, which is
 /// specific to that ledger: its directory holds rows only, so every file must be a member. The
