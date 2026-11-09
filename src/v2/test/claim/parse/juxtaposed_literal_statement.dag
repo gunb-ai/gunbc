@@ -11,11 +11,13 @@ module v2.test.claim.parse.juxtaposed_literal_statement
 // THE DISCRIMINATOR IS THE FIRST CLAIM. Two juxtaposed bracketed literals are a two-statement body (the
 // grammar makes a next-line `[` a new statement, not an index suffix --
 // v2.extdeps.languages.dag::dag_grammar_index_lbracket_head_expr guards `not_predicate(after_line_break)`
-// on the `[`), so the first list is a bare value with a successor and must refuse. The accepted siblings
-// are the positive controls: a SINGLE bracketed literal (no successor) and a `let`-bound value followed by
-// its tail (the non-final statement IS a binding) lower -- the refusal is specific to a bare value that
-// precedes another statement, not to bracketed literals in general. The paired cause at a node (not a
-// silent fold) is the second claim.
+// on the `[`), so the first list is a bare value with a successor and must refuse. The REDs are juxtaposed
+// bracketed literals and juxtaposed bare NAMES (the rule is not list-specific). The positive controls are a
+// single-statement body and a `let`-bound value followed by its tail (the non-final statement IS a binding):
+// both lower, so the refusal is specific to a bare value that precedes another statement. They use the
+// sibling's Int shapes because conserved_normalize measures Int atoms but parks bracketed-list atoms as
+// unmeasured (see the per-control note); the bracketed-literal instance is still exercised by the REDs,
+// which refuse at LOWERING before conservation. The paired cause at a node (not a silent fold) is the second claim.
 //
 // WHY THESE ARE GREEN AT BASE AND STAY GREEN. v2 body lowering already refuses this shape (the statement
 // authority v2.compiler.body_lowering_fold::body_lower_stmt_spine answers a statement that precedes
@@ -41,18 +43,18 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data juxtaposed_lists_source: String = "module m\nfn juxtaposed_lists() -> List<Int> {\n  [1, 2, 3]\n  [4, 5]\n}\n"
 
 // A SINGLE bracketed literal: no successor, so no non-final bare value. Must lower (accept).
-data single_literal_source: String = "module m\nfn single_literal() -> List<Int> {\n  [1, 2, 3]\n}\n"
+data single_literal_source: String = "module m.t\nfn f() -> Int {\n  1\n}\n"
 
 // A `let`-bound value followed by its tail: the non-final statement is a binding, which is exactly what
 // must keep lowering. Must lower (accept) -- this is what stops the refusal from being over-broad.
-data let_then_tail_source: String = "module m\nfn let_then_tail() -> List<Int> {\n  let xs = [1, 2, 3]\n  xs\n}\n"
+data let_then_tail_source: String = "module m.t\nfn f() -> Int {\n  let x = 1\n  x\n}\n"
 
 // Two juxtaposed bare NAMES (a bound param read as a value, then the tail): the same rule, not
 // list-specific. Must refuse under the same cause.
 data juxtaposed_names_source: String = "module m\nfn juxtaposed_names(a: Int) -> Int {\n  a\n  a\n}\n"
 
 fn subject_of(text: String) -> ReferenceConservationSubject {
-  conservation_subject_of_text(path: "src/m.dag", text: text)
+  conservation_subject_of_text(path: "juxtaposed_literal_statement_subject", text: text)
 }
 
 // THE FATAL CAUSE, by lexeme, or "accepted" when normalize conserved the tree. A silent last-wins would
@@ -94,14 +96,19 @@ test fn juxtaposed_bare_names_refuse_under_the_same_cause_holds() -> Bool {
   fatal_cause(juxtaposed_names_source) == "body_lowering_reason_statement_precedes_without_binding"
 }
 
-// POSITIVE CONTROL. A single bracketed literal has no successor, so it is not a non-final bare value; it
-// must lower, else the refusal is over-broad and would refuse every bracketed-literal body.
-test fn a_single_bracketed_literal_body_is_accepted_holds() -> Bool {
+// POSITIVE CONTROL. A single-statement body has no successor, so it is not a non-final bare value; it must
+// lower, else the refusal is over-broad. It mirrors the sibling `v2.test.claim.body_lowering.statement_let_bind`
+// accepted shape (`fn f() -> Int { 1 }`): conserved_normalize measures Int atoms, whereas a bracketed LIST body
+// lands its element atoms in the conservation `unmeasured` monoid (reference_conservation_accepted demands a
+// nonzero conserved population AND no unmeasured), so a list would be refused as unmeasured, not accepted --
+// the REDs still exercise the bracketed-literal instance, because they refuse at LOWERING before conservation.
+test fn a_single_literal_body_is_accepted_holds() -> Bool {
   fatal_cause(single_literal_source) == "accepted"
 }
 
 // POSITIVE CONTROL. A `let`-bound value followed by its tail is the bind-and-continue form: the non-final
-// statement is a binding, so it must keep lowering to the tail. This is the shape the rule must NOT touch.
+// statement is a binding, so it must keep lowering to the tail. This is the shape the rule must NOT touch. It
+// mirrors the sibling accepted shape (`fn f() -> Int { let x = 1  x }`) so conservation measures it (Int atoms).
 test fn a_let_then_tail_body_is_accepted_holds() -> Bool {
   fatal_cause(let_then_tail_source) == "accepted"
 }
