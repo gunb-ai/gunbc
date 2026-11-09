@@ -2,7 +2,7 @@ module gunbc.site_segment_anchor
 
 // THE PRODUCTION CONSUMER OF THE PER-HOST INTERFACE INVENTORY: it anchors each host's interfaces, the
 // operating system's and the controller's, to the site network segment their address falls in. This is S2
-// of gunbc.plans.site_segment_anchor_bmc_reach ("bind one host interface to a segment"); S1 declared the
+// of gunbc.plans.site_segment_anchor_bmc_reach (deleted 2026-11-08) ("bind one host interface to a segment"); S1 declared the
 // inventory, and this is the first fold that asks it for an interface BY FUNCTION.
 //
 // NOTHING NEW IS COINED. The segment is product.network_topology NetworkSegment, the address is the

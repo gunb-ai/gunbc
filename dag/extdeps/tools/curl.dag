@@ -50,7 +50,7 @@ data curl_localhost_max_time: Second = second(count: 5)
 
 // THE DOWNLOAD, WITH ITS SUCCESS SEMANTICS ATTACHED. -f is not decoration: without it curl exits 0
 // on a 404 and writes the error page to the destination, which is the fail-open class
-// gunbc.plans.transport_argv_anemia_dissolution exists to remove. -s suppresses the progress meter,
+// gunbc.plans.transport_argv_anemia_dissolution (deleted 2026-11-08) exists to remove. -s suppresses the progress meter,
 // -L follows redirects, -o names the destination. Moved here from extdeps.exec.command, which is a
 // generic hub and may not carry one product's flags (gunbc.design_argument::single_authority).
 // PATH-resolved program name, deliberately: this repository has made no filesystem observation of

@@ -6,7 +6,7 @@ import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 
 // Seed-growth obligation for the joint-claim join instrument, checkpoint 1 of
-// gunbc.plans.joint_incompatibility_claim_join. Homed here, beside the obligation it declares,
+// gunbc.plans.joint_incompatibility_claim_join (deleted 2026-11-08). Homed here, beside the obligation it declares,
 // rather than in gunbc.seed_growth_admission, which owns the roster and the join.
 //
 // WHAT THE CHANGE IS. One cargo bin, v1_compiler.bin.joint_claim_join, that computes for each change
@@ -38,7 +38,7 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // DeclarationRef; test-module items are enumerated under the tests submodule path.
 //
 // RUNG, HONESTLY. The class this instrument measures stays at its ceiling record's rung
-// (gunbc.plans.ci_merge_freshness; gunbc.merge_admission receipt_is_admissible, deferred). This bin
+// (gunbc.plans.ci_merge_freshness (deleted 2026-11-08); gunbc.merge_admission receipt_is_admissible, deferred). This bin
 // establishes no rung for it: it is executed by nobody on the merge path, and its own evidence is
 // the fixture-boundary controls in its tests module -- one positive control per instance shape and
 // one discriminating RED for the exclusion -- which run under cargo test, itself off the merge path.

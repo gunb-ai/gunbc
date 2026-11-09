@@ -940,7 +940,7 @@ fn module_storage_binding_file_path(binding: ModuleStorageBinding) -> Optional<S
 // parses each module of an ingest and records module, path and provenance -- deliberately no source
 // text, which is why this carrier differs from SourceRootIngest. The host manifest emitter that once
 // supplied the same rows from a whole-repository walk is deleted by the source layout cutover
-// (gunbc.plans.source_layout_authority): a module's file is decided by its name and the layout rule
+// (gunbc.plans.source_layout_authority (deleted 2026-11-08)): a module's file is decided by its name and the layout rule
 // (v2.cli.repository_layout), and a driver acquires only the modules it requests, so no walk exists to
 // enumerate paths and no second supply remains to be reconciled with the derivation.
 
@@ -1376,7 +1376,7 @@ fn source_authority_round_trip(
   )
 }
 
-// ---- the storage rule (gunbc.plans.source_layout_authority, R5) --------------------------------
+// ---- the storage rule (gunbc.plans.source_layout_authority (deleted 2026-11-08), R5) --------------------------------
 //
 // THE ONE FACT THAT MAPS A MODULE NAME TO ITS FILE. Module `a.b.c` lives at `<root(a)>/b/c.dag`:
 // the namespace root decides which tree holds it and whether the top segment is part of the

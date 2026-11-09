@@ -1,0 +1,378 @@
+module product.p4261.enable_chain_sheet
+
+import std.types { List, NonEmptyStr, String }
+import std.nat { Nat }
+import gunbc.fleet.fleet_asset_identity { p4261_e1_c }
+import product.electrical.connectivity { ComponentInstanceIdentity, ElectricalTerminalRef, terminal_ref_equal }
+import std.optional { Absent, Present }
+import product.electrical.continuity { ModuleRemoved }
+import product.p4261.readings { board_after, BoardState }
+import product.electrical.bench_session { NodeVoltageObservation, ResistanceObservation }
+import product.p4261.investigation { ClassifiedHypothesis, p4261_enable_network_hypothesis, p4261_hypotheses }
+import product.p4261.sheet {
+  BenchAsk,
+  CandidateOpen,
+  Correspondence,
+  CorrespondenceIdentical,
+  beep_admitted,
+  beeps_between,
+  MeasuredLink,
+  FaultCandidate,
+  observed_between,
+  PartialSheet,
+  reading_admitted,
+  voltage_admitted,
+  PartOffSheet,
+  PartOnSheet,
+  PartSymbol,
+  PinPlace,
+  ProposedConnection,
+  RoleCandidate,
+  SeriesUnresolved,
+  Settlement,
+  SheetHypothesis,
+  SheetLayout,
+  SheetNode,
+  sheet_svg,
+  StubPlace,
+  StubTextLeft,
+  StubTextRight,
+  UnknownContinuation,
+  VoltageNote,
+}
+import product.p4261.e1_b {
+  e1_back_cluster,
+  e1_bridge_incident,
+  e1_beige_top,
+  e1_ground_ref,
+  e1_measured,
+  e1_ovlo_pad,
+  e1_q300,
+  e1_q300_lead_a,
+  e1_q300_lead_b,
+  e1_q300_lone_lead,
+  e1_q301,
+  e1_q301_b_via,
+  e1_q301_lead_a,
+  e1_q301_lead_b,
+  e1_q301_lone_lead,
+  e1_q301_resistor,
+  e1_q301_resistor_far,
+  e1_q301_resistor_near,
+  e1_route_near_u2,
+  e1_route_toward_j1,
+  e1_terminal,
+  e1_u1_p5,
+  e1_u500_pad,
+  e1_u51_pin,
+  e1_u55_pin,
+  e1_w4_end,
+}
+
+// U1_P5'S ENABLE AND THE Q300 / Q301 PAIR AS A PARTIAL SCHEMATIC SHEET (sheet 2), drawn in one declared
+// state of the E1-b (enable_states): after the 2026-10-19 probe bridge, before the 2026-10-21 inductor
+// short and everything after it. The vocabulary and its rules are product.p4261.sheet's; every reading
+// here is selected by its exact pair from the E1-b's whole record (e1_measured) and admitted only when
+// bench_session places it in that state, so a reading between those points cannot be left out by hand
+// and a later one cannot slip into this state's view.
+//
+// WHAT THE SHEET DOES NOT SAY. Every zero in this region was reported with no shorted-probe baseline, so
+// no connection joins: each is drawn as proposed, and each path is series-unresolved. The kilohm readings
+// from Q300's lead b -- to U51, U55, the part above U500, VDD's point and the return -- are links: they
+// bound a path and identify no driver, and a value that moves with the meter's range holds a junction.
+// U51 reads as TI's SN74LV165A, a parallel-in shift register, so a pin there may sense Q300's gate node
+// rather than drive it. That P6 is pin 7's node is the operator's ruling, drawn as a ruling. Which
+// physical lead of each K38 part is which pin is a candidate from the marking, drawn as a candidate role.
+// The leading hypothesis -- Q301 held on, holding pin 7 low -- is product.p4261.investigation's, cited
+// here with candidates wider than the sheet.
+
+fn identical(t: ElectricalTerminalRef) -> Correspondence {
+  Correspondence { sheet: t, counterpart: t, standing: CorrespondenceIdentical }
+}
+
+// The state the sheet is drawn in: the E1-b after the 2026-10-19 probe bridge and before every later
+// dividing event (the inductor short, the U10_P2 lift, photo part 2's removal), module removed. Absent
+// only if the record stops holding the bridge as a dividing event, which the witness refuses.
+data enable_states: List<BoardState> = match board_after(b: e1_measured, keys: [e1_bridge_incident.key], module: ModuleRemoved) {
+  Present { value } => [value]
+  Absent => []
+}
+
+data e1_resistances: List<ResistanceObservation> = e1_measured.bench.resistances
+
+// The E1-b's readings between exactly two points, in the sheet's state. A reading of the same points in
+// another state stays in the record and is listed on the sheet as outside its state, never cited here.
+fn in_state_between(a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> List<ResistanceObservation> {
+  filter(observed_between(os: e1_resistances, a: a, b: b), o => reading_admitted(states: enable_states, o: o))
+}
+
+// A proposed connection on the E1-b itself.
+fn on_e1(key: NonEmptyStr, a: ElectricalTerminalRef, b: ElectricalTerminalRef, why: NonEmptyStr) -> ProposedConnection {
+  ProposedConnection { key: key, first: identical(t: a), second: identical(t: b), path: SeriesUnresolved { why: why }, observed: in_state_between(a: a, b: b) }
+}
+
+fn link(key: NonEmptyStr, a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> MeasuredLink {
+  MeasuredLink { key: key, first: a, second: b, observed: in_state_between(a: a, b: b), beeps: filter(beeps_between(os: e1_measured.continuity, a: a, b: b), o => beep_admitted(states: enable_states, o: o)) }
+}
+
+fn volts_at(t: ElectricalTerminalRef) -> VoltageNote {
+  VoltageNote { at: t, readings: filter(e1_measured.bench.voltages, v => terminal_ref_equal(a: v.at, b: t) && voltage_admitted(states: enable_states, v: v)) }
+}
+
+data pin7: ElectricalTerminalRef = e1_terminal(c: e1_u1_p5, name: "pin 7")
+
+data ovlo_pad: ElectricalTerminalRef = e1_terminal(c: e1_ovlo_pad, name: "pad")
+
+fn pad(name: NonEmptyStr) -> ElectricalTerminalRef {
+  e1_terminal(c: e1_back_cluster, name: name)
+}
+
+data no_part_seen: NonEmptyStr = "no frame follows the copper between these points, so a low-resistance part between them is not excluded"
+
+// ── NODES ──────────────────────────────────────────────────────────────────────────────────────────
+
+data pin7_node: SheetNode = SheetNode {
+  key: "pin7", anchor: pin7, connections: [], by_datasheet: [], candidates: [],
+  continuations: [
+    UnknownContinuation { key: "pin7-is-p6-by-ruling", from: pin7, unknown: "the operator ruled P6 pin 7's node (2026-10-19): W4 reads pin 7's own 11 kohm signature and 0 ohm to P5, P6 and P7, but the tape covers its join to the lead, so no reading joins W4 or P6 to pin 7. A ruling, not a join" },
+  ],
+}
+
+data p6_node: SheetNode = SheetNode {
+  key: "p6", anchor: pad(name: "P6"),
+  connections: [
+    on_e1(key: "q301-lone-to-p6", a: e1_q301_lone_lead, b: pad(name: "P6"), why: no_part_seen),
+    on_e1(key: "w4-to-p6", a: e1_w4_end, b: pad(name: "P6"), why: "W4 is a wire taped at U1_P5's left-hand row; its far end to the pad, through the wire"),
+    on_e1(key: "w4-to-p5", a: e1_w4_end, b: pad(name: "P5"), why: "W4 is a wire taped at U1_P5's left-hand row; its far end to the pad, through the wire"),
+    on_e1(key: "w4-to-p7", a: e1_w4_end, b: pad(name: "P7"), why: "W4 is a wire taped at U1_P5's left-hand row; its far end to the pad, through the wire"),
+  ],
+  by_datasheet: [], candidates: [],
+  continuations: [
+    UnknownContinuation { key: "q301-q300-lead-roles", from: e1_q301_lone_lead, unknown: "which physical lead of each K38 part is which pin: only the candidate BSS138 pinout, read with the silkscreen triangle on pin 1, says lone lead drain, lead a source, lead b gate" },
+  ],
+}
+
+data q301_b_node: SheetNode = SheetNode {
+  key: "q301-b", anchor: e1_q301_lead_b,
+  connections: [
+    on_e1(key: "q301-b-to-q300-lone", a: e1_q301_lead_b, b: e1_q300_lone_lead, why: no_part_seen),
+    on_e1(key: "r18d-near-to-q301-b", a: e1_q301_resistor_near, b: e1_q301_lead_b, why: no_part_seen),
+    on_e1(key: "via-to-q301-b", a: e1_q301_b_via, b: e1_q301_lead_b, why: "the via is on lead b's trace in the photograph; the trace's whole length is not in frame"),
+  ],
+  by_datasheet: [], candidates: [], continuations: [],
+}
+
+data return_node: SheetNode = SheetNode {
+  key: "return", anchor: e1_ground_ref,
+  connections: [
+    on_e1(key: "q301-a-to-return", a: e1_q301_lead_a, b: e1_ground_ref, why: "the return runs from the lead to J20 on copper no frame follows"),
+    on_e1(key: "q300-a-to-return", a: e1_q300_lead_a, b: e1_ground_ref, why: "the return runs from the lead to J20 on copper no frame follows"),
+    on_e1(key: "p10-to-return", a: pad(name: "P10"), b: e1_ground_ref, why: "the return runs from the pad to J20 on copper no frame follows"),
+  ],
+  by_datasheet: [], candidates: [], continuations: [],
+}
+
+data input_node: SheetNode = SheetNode {
+  key: "input", anchor: e1_q301_resistor_far,
+  connections: [
+    on_e1(key: "r18d-far-to-route", a: e1_q301_resistor_far, b: e1_route_near_u2, why: "the route was followed by eye on the front and its points are named by place only"),
+  ],
+  by_datasheet: [], candidates: [],
+  continuations: [
+    UnknownContinuation { key: "input-route", from: e1_q301_resistor_far, unknown: "which input the far end joins: it reads the source itself energized, and its trace, followed by eye, runs toward D5's tab beside J20 and up past the bare U2_P5 and U3_P5 footprints toward U1_TSE beside J1 (about 2 kohm beyond U2_P5, hedged); 'two input sides' is the operator's reading of the layout, not a measurement" },
+  ],
+}
+
+data q300_b_node: SheetNode = SheetNode {
+  key: "q300-b", anchor: e1_q300_lead_b, connections: [], by_datasheet: [], candidates: [],
+  continuations: [
+    UnknownContinuation { key: "q300-b-destination", from: e1_q300_lead_b, unknown: "what is directly on Q300's lead b: its trace, followed by eye on the back, runs to beside U51, and no reading joins the trace's end to the lead. U51's pins 1 to 8 read 2.5 to 6 kohm from it and pin 8's value moves with the range (a junction path); U51 reads as an SN74LV165A, a parallel-in shift register, so a pin there may sense the node rather than drive it" },
+    UnknownContinuation { key: "q300-b-500-ohm-points", from: e1_q300_lead_b, unknown: "about 500 ohm from lead b at U55's pins 14 to 16, at the U43 / Y50 / U500 corner and at U3 by the module site, and 1500 ohm at U55's data ports: the simplest reading is a supply rail reached through a junction; the powered read at the 500 ohm pad separates rail from signal" },
+  ],
+}
+
+data enable_nodes: List<SheetNode> = [pin7_node, p6_node, q301_b_node, return_node, input_node, q300_b_node]
+
+// ── LINKS, ROLES AND VOLTAGES ──────────────────────────────────────────────────────────────────────
+
+data enable_links: List<MeasuredLink> = concat(concat([
+  link(key: "pin7-to-return", a: pin7, b: e1_ground_ref),
+  link(key: "w4-to-return", a: e1_w4_end, b: e1_ground_ref),
+  link(key: "w4-to-ovlo-pad", a: e1_w4_end, b: ovlo_pad),
+  link(key: "across-r18d", a: e1_q301_resistor_near, b: e1_q301_resistor_far),
+  link(key: "r18d-far-toward-j1", a: e1_q301_resistor_far, b: e1_route_toward_j1),
+  link(key: "q300-b-to-return", a: e1_q300_lead_b, b: e1_ground_ref),
+  link(key: "q300-b-to-vdd-point", a: e1_q300_lead_b, b: e1_beige_top),
+  link(key: "q300-b-to-u500-pad", a: e1_q300_lead_b, b: e1_u500_pad),
+  link(key: "u500-pad-to-return", a: e1_u500_pad, b: e1_ground_ref),
+],
+  map([1, 2, 3, 4, 5, 6, 7, 8], k => link(key: join(["q300-b-to-u51-pin", to_string(k)], "") as NonEmptyStr, a: e1_q300_lead_b, b: e1_u51_pin(n: join(["pin ", to_string(k)], "") as NonEmptyStr)))),
+  map([13, 14, 15, 16], k => link(key: join(["q300-b-to-u55-pin", to_string(k)], "") as NonEmptyStr, a: e1_q300_lead_b, b: e1_u55_pin(n: join(["pin ", to_string(k)], "") as NonEmptyStr))))
+
+data k38_basis: NonEmptyStr = "K38 is Diodes Incorporated's BSS138 marking code, a candidate (e1_k38_candidate); its SOT-23 pinout read with the silkscreen triangle on pin 1"
+
+data enable_roles: List<RoleCandidate> = [
+  RoleCandidate { terminal: e1_q301_lone_lead, role: "drain", basis: k38_basis },
+  RoleCandidate { terminal: e1_q301_lead_a, role: "source", basis: k38_basis },
+  RoleCandidate { terminal: e1_q301_lead_b, role: "gate", basis: k38_basis },
+  RoleCandidate { terminal: e1_q300_lone_lead, role: "drain", basis: k38_basis },
+  RoleCandidate { terminal: e1_q300_lead_a, role: "source", basis: k38_basis },
+  RoleCandidate { terminal: e1_q300_lead_b, role: "gate", basis: k38_basis },
+]
+
+data enable_voltages: List<VoltageNote> = [
+  volts_at(t: pin7), volts_at(t: e1_q301_b_via), volts_at(t: e1_q300_lead_b), volts_at(t: pad(name: "P6")), volts_at(t: e1_q301_resistor_far),
+]
+
+// ── THE HYPOTHESIS, THE READS AND THE DRAWING ──────────────────────────────────────────────────────
+
+data enable_hypothesis_key: NonEmptyStr = "pin7-held-low"
+
+data enable_hypothesis: List<ClassifiedHypothesis> = filter(p4261_hypotheses, h => h.hypothesis.claim == p4261_enable_network_hypothesis.claim)
+
+// What holds pin 7 low, wider than the sheet: Q301 is the leading candidate, but the P6 ruling is not a
+// reading, whatever should drive Q300's gate is not drawn, and the controller's own input is not excluded.
+data enable_candidates: List<FaultCandidate> = [
+  PartOnSheet { part: e1_q301, standing: CandidateOpen },
+  PartOnSheet { part: e1_u1_p5, standing: CandidateOpen },
+  PartOffSheet { scope: "a path holding pin 7 low that does not pass through P6: P6 is pin 7's node by ruling, not by a reading" },
+  PartOffSheet { scope: "whatever should drive Q300's lead b and does not: the logic its trace reaches is not on this sheet" },
+]
+
+data lot_e1: NonEmptyStr = "the opened pair's E1 from the lot of ten: revision E, unpowered, module off, J20 disconnected, pad-level only"
+
+data baseline_outcomes: List<NonEmptyStr> = [
+  "the display equals the probes-shorted display on the same fixed range: a low-impedance path at baseline on revision E, which joins only with a frame showing no part in series",
+  "above it: not reachable at baseline on revision E; the value is kept as a link",
+]
+
+fn pair_settles(target: NonEmptyStr, between: NonEmptyStr) -> Settlement {
+  Settlement { target: target, observable: join(["the display between ", between as String, " against the probes-shorted display on the same range"], "") as NonEmptyStr, outcomes: baseline_outcomes }
+}
+
+// The next unpowered reads, each naming what it settles. Physical lead names throughout: the roles are
+// candidates until the diode-mode read maps them.
+data enable_asks: List<BenchAsk> = [
+  BenchAsk {
+    key: "lot-e1-pin7-p6", asset: p4261_e1_c, on: lot_e1,
+    procedure: "baseline first on a fixed range, then U1_P5's pin 7 lead (counted from the pin 1 marker) to the back pad at P6's place",
+    settles: [Settlement { target: "pin7-is-p6-by-ruling", observable: "the display between pin 7's lead and P6 against the probes-shorted display on the same range", outcomes: ["at baseline: P6 is on pin 7's low-impedance path on revision E", "above it: P6 is not pin 7's node on revision E, and the E1-b's ruling is reopened"] }],
+  },
+  BenchAsk {
+    key: "lot-e1-q301-q300-pairs", asset: p4261_e1_c, on: lot_e1,
+    procedure: "baseline first on a fixed range, then each pair below at the same places on the lot E1",
+    settles: [
+      pair_settles(target: "q301-lone-to-p6", between: "Q301's lone lead and P6"),
+      pair_settles(target: "q301-a-to-return", between: "Q301's lead a and J20's black lead"),
+      pair_settles(target: "q300-a-to-return", between: "Q300's lead a and J20's black lead"),
+      pair_settles(target: "q301-b-to-q300-lone", between: "Q301's lead b and Q300's lone lead"),
+      pair_settles(target: "r18d-near-to-q301-b", between: "the resistor's end nearer Q301 and Q301's lead b"),
+    ],
+  },
+  BenchAsk {
+    key: "lot-e1-q300-b-trace", asset: p4261_e1_c, on: lot_e1,
+    procedure: "follow Q300's lead b's trace on the back to where it ends; photograph the end; read the end to lead b at baseline and name the position it lands on, counted on that body",
+    settles: [Settlement { target: "q300-b-destination", observable: "where the trace ends, and the display between that end and lead b against the baseline", outcomes: ["the end reads at baseline and lands on a counted position of a body: that position is on Q300's gate node, and whether it senses or drives is read from the identified part", "the end reads above baseline or lands on no body: the destination stays open"] }],
+  },
+  BenchAsk {
+    key: "lot-e1-lead-roles", asset: p4261_e1_c, on: lot_e1,
+    procedure: "diode mode on each lead pair of Q301 and of Q300, both polarities, in circuit; recorded as the display for red on each lead",
+    settles: [Settlement { target: "q301-q300-lead-roles", observable: "the diode-mode display for each ordered lead pair of each part", outcomes: ["a junction from lead a to the lone lead only with red on lead a, and lead b open both ways: supports the candidate pinout's source, drain and gate, without proving them in circuit", "another pattern: the pinout or the identification is not the candidate's, or the circuit around the leads masks it"] }],
+  },
+]
+
+// ── WHERE THINGS SIT ───────────────────────────────────────────────────────────────────────────────
+
+fn sym(part: ComponentInstanceIdentity, label: NonEmptyStr, x: Nat, y: Nat, w: Nat, h: Nat) -> PartSymbol {
+  PartSymbol { part: part, label: label, x: x, y: y, w: w, h: h }
+}
+
+fn pin(t: ElectricalTerminalRef, label: String, x: Nat, y: Nat) -> PinPlace {
+  PinPlace { terminal: t, label: label, x: x, y: y }
+}
+
+fn u51_pin_place(n: NonEmptyStr, y: Nat) -> PinPlace {
+  pin(t: e1_u51_pin(n: n), label: n as String, x: 1720, y: y)
+}
+
+fn u55_pin_place(n: NonEmptyStr, y: Nat) -> PinPlace {
+  pin(t: e1_u55_pin(n: n), label: n as String, x: 1720, y: y)
+}
+
+// U1_P5 and the OVLO pad at the left, W4 and the back pads beside them, Q301 and Q300 in the middle with
+// the resistor and the via below Q301, the front trace below that, J20's return at the bottom, and the
+// parts Q300's lead b reads kilohms to in a column at the right.
+data enable_layout: SheetLayout = SheetLayout {
+  width: 2000,
+  height: 900,
+  symbols: [
+    sym(part: e1_u1_p5, label: "U1_P5 (LM5066I)", x: 60, y: 110, w: 170, h: 110),
+    sym(part: e1_ovlo_pad, label: "OVLO pad (pin 8's)", x: 60, y: 300, w: 170, h: 30),
+    sym(part: e1_w4_end.component, label: "W4 wire", x: 330, y: 120, w: 90, h: 26),
+    sym(part: e1_back_cluster, label: "back pads", x: 520, y: 200, w: 110, h: 120),
+    sym(part: e1_q301, label: "Q301 K38", x: 740, y: 150, w: 130, h: 100),
+    sym(part: e1_q300, label: "Q300 K38", x: 1040, y: 150, w: 130, h: 100),
+    sym(part: e1_q301_b_via.component, label: "via", x: 890, y: 300, w: 50, h: 24),
+    sym(part: e1_q301_resistor, label: "R 18D", x: 840, y: 380, w: 40, h: 100),
+    sym(part: e1_route_near_u2.component, label: "front trace (by eye)", x: 560, y: 560, w: 200, h: 30),
+    sym(part: e1_ground_ref.component, label: "J20 return (black lead)", x: 900, y: 800, w: 220, h: 40),
+    sym(part: e1_beige_top.component, label: "beige part (VDD point)", x: 1450, y: 85, w: 180, h: 28),
+    sym(part: e1_u51_pin(n: "pin 1").component, label: "U51 (LV165A)", x: 1720, y: 120, w: 130, h: 300),
+    sym(part: e1_u55_pin(n: "pin 13").component, label: "U55 (ZVK)", x: 1720, y: 470, w: 130, h: 170),
+    sym(part: e1_u500_pad.component, label: "part above U500", x: 1350, y: 690, w: 150, h: 28),
+  ],
+  pins: [
+    pin(t: pin7, label: "pin 7", x: 230, y: 150),
+    pin(t: ovlo_pad, label: "pad", x: 230, y: 315),
+    pin(t: e1_w4_end, label: "far end", x: 420, y: 133),
+    pin(t: pad(name: "P6"), label: "P6", x: 575, y: 200),
+    pin(t: pad(name: "P5"), label: "P5", x: 520, y: 240),
+    pin(t: pad(name: "P7"), label: "P7", x: 520, y: 290),
+    pin(t: pad(name: "P10"), label: "P10", x: 575, y: 320),
+    pin(t: e1_q301_lone_lead, label: "lone", x: 740, y: 190),
+    pin(t: e1_q301_lead_a, label: "a", x: 870, y: 165),
+    pin(t: e1_q301_lead_b, label: "b", x: 870, y: 230),
+    pin(t: e1_q300_lone_lead, label: "lone", x: 1040, y: 190),
+    pin(t: e1_q300_lead_a, label: "a", x: 1170, y: 165),
+    pin(t: e1_q300_lead_b, label: "b", x: 1170, y: 230),
+    pin(t: e1_q301_b_via, label: "", x: 915, y: 300),
+    pin(t: e1_q301_resistor_near, label: "near", x: 860, y: 380),
+    pin(t: e1_q301_resistor_far, label: "far", x: 860, y: 480),
+    pin(t: e1_route_near_u2, label: "near U2_P5", x: 560, y: 575),
+    pin(t: e1_route_toward_j1, label: "toward J1", x: 760, y: 575),
+    pin(t: e1_ground_ref, label: "", x: 1010, y: 800),
+    pin(t: e1_beige_top, label: "top end", x: 1540, y: 113),
+    u51_pin_place(n: "pin 1", y: 145), u51_pin_place(n: "pin 2", y: 180), u51_pin_place(n: "pin 3", y: 215), u51_pin_place(n: "pin 4", y: 250),
+    u51_pin_place(n: "pin 5", y: 285), u51_pin_place(n: "pin 6", y: 320), u51_pin_place(n: "pin 7", y: 355), u51_pin_place(n: "pin 8", y: 390),
+    u55_pin_place(n: "pin 13", y: 500), u55_pin_place(n: "pin 14", y: 540), u55_pin_place(n: "pin 15", y: 580), u55_pin_place(n: "pin 16", y: 620),
+    pin(t: e1_u500_pad, label: "lower pad", x: 1425, y: 718),
+  ],
+  stubs: [
+    StubPlace { key: "pin7-is-p6-by-ruling", x: 330, y: 70, side: StubTextRight },
+    StubPlace { key: "input-route", x: 700, y: 650, side: StubTextLeft },
+    StubPlace { key: "q300-b-destination", x: 1200, y: 105, side: StubTextRight },
+    StubPlace { key: "q300-b-500-ohm-points", x: 1230, y: 640, side: StubTextRight },
+    StubPlace { key: "q301-q300-lead-roles", x: 700, y: 110, side: StubTextLeft },
+  ],
+}
+
+data enable_chain_sheet: PartialSheet = PartialSheet {
+  source: "product.p4261.enable_chain_sheet",
+  title: "P4261 E1-b: U1_P5's enable, P6 and the Q300 / Q301 pair (reconstructed sheet 2)",
+  states: enable_states,
+  layout: enable_layout,
+  aliases: [],
+  nodes: enable_nodes,
+  links: enable_links,
+  propositions: [],
+  roles: enable_roles,
+  voltages: enable_voltages,
+  disputes: [],
+  removals: [],
+  hypotheses: map(enable_hypothesis, h => SheetHypothesis { key: enable_hypothesis_key, hypothesis: h, candidates: enable_candidates }),
+  asks: enable_asks,
+}
+
+fn enable_chain_sheet_svg() -> String {
+  sheet_svg(s: enable_chain_sheet)
+}

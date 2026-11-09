@@ -56,7 +56,7 @@ type HardwareProcurementIntent {
 // (host_network_diagnosis.InterfaceObservation is still a shape with no live producer). TWO OF THE
 // THREE THINGS THIS SENTENCE WAITED FOR HAVE SINCE LANDED, and the prose says so rather than
 // continuing to assert a wait that is over: extdeps.dhcp.v4's anemic MacAddress brand is deleted
-// (plan gunbc.plans.site_segment_anchor_bmc_reach phase S1, 2026-10-26 -- Cr1000aDhcpLeaseRow.mac_address
+// (plan gunbc.plans.site_segment_anchor_bmc_reach (deleted 2026-11-08) phase S1, 2026-10-26 -- Cr1000aDhcpLeaseRow.mac_address
 // is now extdeps.network.mac Eui48Address), and the per-host interface inventory exists at
 // gunbc.machine_intake.host_interface_inventory, keyed by (host, function) with the reading's
 // provenance beside it. DISSOLVES WHEN this sentence becomes two retired-attachment rows in that

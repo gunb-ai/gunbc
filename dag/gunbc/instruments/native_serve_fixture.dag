@@ -31,7 +31,7 @@ import std.algebra { trim }
 //
 // THIS MODULE IS ALSO ITS OWN DEPLOYMENT BINDING, which a fixture may be: the program descriptor below
 // names this module's constructor and handler by reference, and the NativeIngressDriver row selects
-// the native realization (gunbc.plans.converged_ingress M2a). native_serve_fixture_twin_handle is a
+// the native realization (gunbc.plans.converged_ingress (deleted 2026-11-08) M2a). native_serve_fixture_twin_handle is a
 // second handler of the same module that the descriptor does NOT name: a launch whose binding names
 // it is refused before any bind (gunbc.native_serve_probe, the twin-handler refused launch).
 data native_serve_fixture_program: NativeIngressProgram = NativeIngressProgram {

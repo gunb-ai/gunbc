@@ -1,9 +1,8 @@
 module test.claim.generated_artifact_assessment
 
-import gunbc.generated_artifact { GeneratedArtifact, DesignArtifact, DesignFailureModesArtifact, RoadmapArtifact, GitignoreArtifact, GitattributesArtifact, GithooksPrePushArtifact, GeneratedArtifactMergeDriverArtifact, WitnessFloorYamlArtifact, Stage0CrateLayoutGeneratedRsArtifact, SeedRetentionFrontierGeneratedRsArtifact, PlanArtifact, ContributorOnboardingArtifact, artifact_path, artifact_directory, artifact_name, artifact_eq }
+import gunbc.generated_artifact { GeneratedArtifact, DesignArtifact, DesignFailureModesArtifact, GitignoreArtifact, GitattributesArtifact, GithooksPrePushArtifact, GeneratedArtifactMergeDriverArtifact, WitnessFloorYamlArtifact, Stage0CrateLayoutGeneratedRsArtifact, SeedRetentionFrontierGeneratedRsArtifact, ContributorOnboardingArtifact, artifact_path, artifact_directory, artifact_name, artifact_eq }
 import gunbc.generated_artifact { artifact_is_committed, artifact_is_project_documentation, artifact_is_commit_required_project_documentation }
 import gunbc.generated_artifact_registry { generated_artifact_registry, uncommitted_project_documentation_artifacts }
-import gunbc.plans.source_layout_authority { source_layout_authority_plan }
 import gunbc.generated_artifact_assessment {
   GeneratedArtifactObservation,
   GeneratedArtifactObserved,
@@ -31,7 +30,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn documentation_projections_except_design_are_not_committed() -> Bool {
   !artifact_is_committed(a: DesignFailureModesArtifact)
-    && !artifact_is_committed(a: RoadmapArtifact)
+    && !artifact_is_committed(a: ContributorOnboardingArtifact)
     && artifact_is_committed(a: DesignArtifact)
 }
 
@@ -45,15 +44,12 @@ test fn commit_required_project_documentation_is_only_design() -> Bool {
     && fold(rows, init: true, f: fn(acc, a) { acc && artifact_eq(a: a, b: DesignArtifact) })
 }
 
-// documentation_wet folds this population. Design stays out; Roadmap, onboarding, and the
-// source-layout plan (flipped off PlanProjectsCommittedMarkdown) stay in; Gitignore is not
-// documentation.
+// documentation_wet folds this population. Design stays out; onboarding stays in; Gitignore is not
+// documentation. Plan and roadmap markdown are not generated artifacts (gunbc.plan_documentation).
 test fn documentation_wet_population_is_uncommitted_project_documentation() -> Bool {
   let pop = uncommitted_project_documentation_artifacts()
   !any(pop, a => artifact_eq(a: a, b: DesignArtifact))
-    && any(pop, a => artifact_eq(a: a, b: RoadmapArtifact))
     && any(pop, a => artifact_eq(a: a, b: ContributorOnboardingArtifact))
-    && any(pop, a => artifact_eq(a: a, b: PlanArtifact { plan: source_layout_authority_plan }))
     && !any(pop, a => artifact_eq(a: a, b: GitignoreArtifact))
     && fold(pop, init: true, f: fn(acc, a) { acc && artifact_is_project_documentation(a: a) && !artifact_is_committed(a: a) })
 }
@@ -84,13 +80,13 @@ fn drifted_observation(a: GeneratedArtifact, path: String) -> GeneratedArtifactO
 // ---------------------------------------------------------------------------------------------
 
 fn two_drift_expected() -> List<GeneratedArtifact> {
-  [DesignArtifact, RoadmapArtifact]
+  [DesignArtifact, ContributorOnboardingArtifact]
 }
 
 fn two_drift_observations() -> List<GeneratedArtifactObservation> {
   [
     drifted_observation(a: DesignArtifact, path: "DESIGN.md"),
-    drifted_observation(a: RoadmapArtifact, path: "ROADMAP.md")
+    drifted_observation(a: ContributorOnboardingArtifact, path: "docs/onboarding.md")
   ]
 }
 
@@ -109,7 +105,7 @@ test fn two_content_drifts_are_both_reported() -> Bool {
 test fn two_content_drifts_name_both_distinct_artifacts() -> Bool {
   let f = generated_artifact_population_findings(expected: two_drift_expected(), observations: two_drift_observations())
   let paths = map(f.observation_failures, x => observation_finding_rendered(f: x))
-  any(paths, p => string_contains(s: p, pattern: "DESIGN.md")) && any(paths, p => string_contains(s: p, pattern: "ROADMAP.md"))
+  any(paths, p => string_contains(s: p, pattern: "DESIGN.md")) && any(paths, p => string_contains(s: p, pattern: "docs/onboarding.md"))
 }
 
 // ORDER INDEPENDENCE. The removed projections were folds that kept whichever failure they met
@@ -119,7 +115,7 @@ test fn finding_population_does_not_depend_on_observation_order() -> Bool {
   let reversed = generated_artifact_population_findings(
     expected: two_drift_expected(),
     observations: [
-      drifted_observation(a: RoadmapArtifact, path: "ROADMAP.md"),
+      drifted_observation(a: ContributorOnboardingArtifact, path: "docs/onboarding.md"),
       drifted_observation(a: DesignArtifact, path: "DESIGN.md")
     ]
   )
@@ -134,13 +130,13 @@ test fn finding_population_does_not_depend_on_observation_order() -> Bool {
 // One population carrying every cause at once. The old diagnostic priority-ordered these three
 // classes and returned the first non-empty, so a tree with all of them reported exactly one.
 fn mixed_expected() -> List<GeneratedArtifact> {
-  [DesignArtifact, RoadmapArtifact, GitignoreArtifact, GithooksPrePushArtifact]
+  [DesignArtifact, ContributorOnboardingArtifact, GitignoreArtifact, GithooksPrePushArtifact]
 }
 
 fn mixed_observations() -> List<GeneratedArtifactObservation> {
   [
     drifted_observation(a: DesignArtifact, path: "DESIGN.md"),
-    GeneratedArtifactObservationRefused { artifact: RoadmapArtifact, path: "ROADMAP.md", cause: "committed read failed" },
+    GeneratedArtifactObservationRefused { artifact: ContributorOnboardingArtifact, path: "docs/onboarding.md", cause: "committed read failed" },
     artifact_observation_fixture(a: GitignoreArtifact, path: ".gitignore", gen: "same", com: "same", valid: false),
     clean_observation(a: GitattributesArtifact, path: ".gitattributes")
   ]
@@ -182,7 +178,7 @@ test fn a_fully_observed_population_has_no_unadjudicated_members() -> Bool {
 // identity aliasing. One ExpectedCardinalityWrong arm would discard that.
 test fn duplicate_and_missing_are_distinct_findings() -> Bool {
   let f = generated_artifact_population_findings(
-    expected: [DesignArtifact, RoadmapArtifact],
+    expected: [DesignArtifact, ContributorOnboardingArtifact],
     observations: [
       clean_observation(a: DesignArtifact, path: "DESIGN.md"),
       clean_observation(a: DesignArtifact, path: "DESIGN.md")
@@ -207,14 +203,14 @@ test fn duplicate_and_missing_are_distinct_findings() -> Bool {
 // and an unknown observation are all outstanding, with absence landing in the comparison bucket
 // beside the drift and the refusal still alone in provenance.
 fn every_cause_expected() -> List<GeneratedArtifact> {
-  [DesignArtifact, RoadmapArtifact, GitignoreArtifact, GithooksPrePushArtifact, WitnessFloorYamlArtifact]
+  [DesignArtifact, ContributorOnboardingArtifact, GitignoreArtifact, GithooksPrePushArtifact, WitnessFloorYamlArtifact]
 }
 
 fn every_cause_observations() -> List<GeneratedArtifactObservation> {
   [
     drifted_observation(a: DesignArtifact, path: "DESIGN.md"),
     absent_observation(a: WitnessFloorYamlArtifact, path: ".github/workflows/witnesses.yml"),
-    GeneratedArtifactObservationRefused { artifact: RoadmapArtifact, path: "ROADMAP.md", cause: "committed read failed" },
+    GeneratedArtifactObservationRefused { artifact: ContributorOnboardingArtifact, path: "docs/onboarding.md", cause: "committed read failed" },
     artifact_observation_fixture(a: GitignoreArtifact, path: ".gitignore", gen: "same", com: "same", valid: false),
     clean_observation(a: GitattributesArtifact, path: ".gitattributes")
   ]
@@ -247,13 +243,13 @@ test fn absence_survives_alongside_every_other_cause() -> Bool {
 // empty, never from the observations being empty.
 test fn an_empty_observation_population_cannot_green_a_nonempty_roster() -> Bool {
   let f = generated_artifact_population_findings(
-    expected: [DesignArtifact, RoadmapArtifact, GitignoreArtifact],
+    expected: [DesignArtifact, ContributorOnboardingArtifact, GitignoreArtifact],
     observations: []
   )
   !generated_artifact_population_findings_empty(f: f)
     && ((f.expected_cardinality |> count) == 3)
     && ((f.observation_failures |> count) == 0)
-    && !assess_generated_artifact_population(expected: [DesignArtifact, RoadmapArtifact, GitignoreArtifact], observations: [])
+    && !assess_generated_artifact_population(expected: [DesignArtifact, ContributorOnboardingArtifact, GitignoreArtifact], observations: [])
     && generated_artifact_population_findings_empty(
          f: generated_artifact_population_findings(expected: [], observations: [])
        )
@@ -274,10 +270,10 @@ fn absent_observation(a: GeneratedArtifact, path: String) -> GeneratedArtifactOb
 // carrier that folded them together fails the second clause while passing the first.
 test fn absent_is_a_finding_and_refused_is_unadjudicated() -> Bool {
   let f = generated_artifact_population_findings(
-    expected: [DesignArtifact, RoadmapArtifact],
+    expected: [DesignArtifact, ContributorOnboardingArtifact],
     observations: [
       absent_observation(a: DesignArtifact, path: "DESIGN.md"),
-      GeneratedArtifactObservationRefused { artifact: RoadmapArtifact, path: "ROADMAP.md", cause: "listed and could not be read" }
+      GeneratedArtifactObservationRefused { artifact: ContributorOnboardingArtifact, path: "docs/onboarding.md", cause: "listed and could not be read" }
     ]
   )
   ((f.observation_failures |> count) == 1)
@@ -292,7 +288,7 @@ test fn absent_is_a_finding_and_refused_is_unadjudicated() -> Bool {
 // two identities produce one of each, in different fields, from one population.
 test fn committed_absent_is_distinct_from_expected_observation_missing() -> Bool {
   let f = generated_artifact_population_findings(
-    expected: [DesignArtifact, RoadmapArtifact],
+    expected: [DesignArtifact, ContributorOnboardingArtifact],
     observations: [absent_observation(a: DesignArtifact, path: "DESIGN.md")]
   )
   let absent_rendered = map(f.observation_failures, x => observation_finding_rendered(f: x))
@@ -358,7 +354,7 @@ test fn root_level_artifacts_carry_a_listable_directory() -> Bool {
 // Reintroducing any run-level remedy makes this red.
 test fn remedies_are_class_specific_not_universal() -> Bool {
   let f = generated_artifact_population_findings(
-    expected: [DesignArtifact, RoadmapArtifact],
+    expected: [DesignArtifact, ContributorOnboardingArtifact],
     observations: [drifted_observation(a: DesignArtifact, path: "DESIGN.md")]
   )
   let drift = map(f.observation_failures, x => observation_finding_rendered(f: x))
@@ -385,10 +381,10 @@ test fn one_observation_yields_both_content_and_validation_findings() -> Bool {
 // ---------------------------------------------------------------------------------------------
 
 test fn clean_population_agrees_over_a_nonempty_roster() -> Bool {
-  let expected = [DesignArtifact, RoadmapArtifact]
+  let expected = [DesignArtifact, ContributorOnboardingArtifact]
   let observations = [
     clean_observation(a: DesignArtifact, path: "DESIGN.md"),
-    clean_observation(a: RoadmapArtifact, path: "ROADMAP.md")
+    clean_observation(a: ContributorOnboardingArtifact, path: "docs/onboarding.md")
   ]
   let f = generated_artifact_population_findings(expected: expected, observations: observations)
   generated_artifact_population_findings_empty(f: f)

@@ -9,7 +9,7 @@ import std.access {
 import std.authorization_profile {
   EffectAuthorizationAction, EffectRequest, effect_access_request,
 }
-// P-A model for effect-namespace grants (docs/plans/effect-namespace-grants.md, owned
+// P-A model for effect-namespace grants (docs/plans/effect-namespace-grants.md (deleted 2026-11-08), owned
 // silent-ibex-417). An effect target is a POSITION in a containment tree that already exists;
 // permission is a GRANT of (verb x subtree) attached to a Frame; admissibility is the namespace
 // prefix relation (target under a granted root). This is the reach layer standing ABOVE the single
@@ -167,7 +167,7 @@ fn grant_coverage_fold<T>(
 }
 
 // The grant that covers (verb, target) in an envelope -- the P-C primitive both reach-admission AND
-// per-grant binding selection read (docs/plans/effect-namespace-grants.md P-C: 'claim runners
+// per-grant binding selection read (docs/plans/effect-namespace-grants.md (deleted 2026-11-08) P-C: 'claim runners
 // select handler bindings per grant instead of per-process mode'). The covering Grant is the single
 // reach authority: its root is the reach and its HandlerBinding is the transport-vs-replay selector
 // at dispatch. effect_grant_policy projects this relation into the one std.access decision kernel;

@@ -433,7 +433,7 @@ fn cas_observe_slot(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotProbe {
 // still create-new of head+1, so a losing writer still re-reads and retries and nothing waits on a
 // hold (which is why this, and not gunbc.durable_exclusive_hold_file_store, bounds the index).
 //
-// docs/plans/fabric-storage.md names the head-probe bound this shape also lifts, and assigns its
+// docs/plans/fabric-storage.md (deleted 2026-11-08) names the head-probe bound this shape also lifts, and assigns its
 // remedy to compaction -- a head that starts from a snapshot object. A window is that same
 // head-starting-above-1 shape for a slot whose history needs no snapshot. The fabric storage heads
 // are deliberately NOT opted in here: their history is their record, and that is their lane's call.

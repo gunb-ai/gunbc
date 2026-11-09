@@ -7,7 +7,7 @@ module gunbc.provisioning.ubuntu_network_origin_observation
 // decomposition; 3b External facts). The verdict is descriptive only: it never says an origin is
 // admitted or selected; the first thing that decides from it is the later install step.
 // CONSUMER (gunbc.design_argument::consumption): consumed by its witness in this change; executing consumer is a declared
-// later change of cut 6 of gunbc.plans.physical_machine_boot_program (the PXE-edge provisioning arm
+// later change of cut 6 of gunbc.plans.physical_machine_boot_program (deleted 2026-11-08) (the PXE-edge provisioning arm
 // and the wet install step that calls verify_ubuntu_network_origin).
 
 import std.types { Bool, Int, List, NonEmptyStr, String }

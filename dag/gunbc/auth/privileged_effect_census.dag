@@ -1026,7 +1026,7 @@ fn ruling_discharge_for(scope: OperatorScopeRuling, site_ref: DeclarationRef) ->
   }
 }
 
-// ── THE srv1 JOB USER'S WHOLE-BINARY SUDO GRANTS (gunbc.plans.srv1_deploy_principal_split) ─────────
+// ── THE srv1 JOB USER'S WHOLE-BINARY SUDO GRANTS (gunbc.plans.srv1_deploy_principal_split (deleted 2026-11-08)) ─────────
 // Each row below is an effect the deploy performs through ghrunner's whole-binary NOPASSWD sudo
 // (gunbc.ci.ci_deploy_sudoers rendering gunbc.fleet.fleet_posix_accounts fleet_posix_ci_runner_sudo_grants).
 // The effect is characterized by the reach IT needs, not by the reach of the grant that happens to
@@ -1147,7 +1147,7 @@ data site_pxe_edge_converge_edge_beside_the_broker_route: DivergenceReason = Div
   dissolution: unbound_dissolution(description: "NAMED CAPABILITY: the site_pxe_edge_converge apply mode files an access_request (gunbc.auth.access_request) for its re-derived srv4 write and activation set and executes it only on a redeemed ApprovalCapability (gunbc.auth.approval_broker redeem_capability), with the existing post-apply readback of files, units, served digests and the HTTP listening socket. NOT satisfied by a GitHub environment reviewer gate or by a merry-fox-82 relay alone." as NonEmptyStr),
 }
 
-// THE SERVICE-SLOT START (gunbc.runner.runner_service_slot_start; gunbc.plans.mtcollins1_ci_service_legs F1). It starts one
+// THE SERVICE-SLOT START (gunbc.runner.runner_service_slot_start; gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) F1). It starts one
 // transient controller unit per member of the subject host's current service population, over the one live anchored
 // transport, on a dispatch naming the host. Same shape as the fleet host file converge: host-root reach over the fleet
 // SSH edge, a human attending each dispatch, and therefore the same divergence from the approval-capability selection
