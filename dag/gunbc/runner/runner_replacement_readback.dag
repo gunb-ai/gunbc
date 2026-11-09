@@ -524,6 +524,21 @@ fn retire_pending_cause_wire(cause: RetirePendingCause) -> String {
   }
 }
 
+// THE THIRD RETIREE-CAUSE, TYPED LIKE THE OTHER TWO: the drain leg asked the gate about a candidate and the
+// gate produced NO DECISION for it. That is not a withhold (the gate did not consult the readback and say
+// wait) and not a refusal (the gate did not classify the candidate), it is the gate never having spoken --
+// and the drain leg treats silence the way it treats a refusal: nothing drains. It gets its own type so the
+// outcome cannot lean on a string literal to say it.
+type RetireUndecidedCause
+  = NoDecisionFor { candidate: NonEmptyStr }
+
+fn retire_undecided_cause_wire(cause: RetireUndecidedCause) -> String {
+  match cause {
+    NoDecisionFor { candidate: c } =>
+      concat((c as String), ": the retirement gate produced no decision for this candidate; nothing was drained")
+  }
+}
+
 // ONE RENDERING OF A STANDING, SHARED BY THE PLAN LINE AND THE HAND NOTICE. There used to be two -- the
 // withheld cause and the notice each spelled the registration and job cases out, with the same words in
 // both and nothing keeping them together. The two `Registered` / `JobConcluded` arms are the same

@@ -172,8 +172,9 @@ import gunbc.runner.runner_width_transition {
 import gunbc.runner.runner_replacement_readback {
   OrganizationRunnerRosterEvidence, ReplacementIncoming, ReplacedBy, ShrunkOnly, IncomingUnresolved,
   RetireDrainDecision, RetireDrainAuthorized, RetireDrainWithheld, RetireDrainRefused,
+  RetirePendingCause, RetireRefusalCause, RetireUndecidedCause, NoDecisionFor,
   replacement_incoming_for_host, replacement_proven_of_host, retire_drain_decisions,
-  retire_pending_cause_wire, retire_refusal_cause_wire, hand_retirement_notice,
+  hand_retirement_notice,
 }
 import gunbc.runner.runner_qualification_dispatch { QualificationRunVerdict }
 import gunbc.runner.runner_throughput_qualification { RouteLegStanding, LegAuthorityImplemented }
@@ -3309,8 +3310,7 @@ fn runner_host_slot_actuations(
                   DrainRefusedByStanding { unit: u, cause: why } => SlotRetirementRefused { unit: u, cause: why }
                   // THE GATE NEVER SPOKE ABOUT THIS CANDIDATE: nobody drains it. A drain leg whose gate was
                   // skipped reports instead of acting, which is what makes the gate impossible to bypass.
-                  DrainUndecided { unit: u } =>
-                    SlotRetirementRefused { unit: u, cause: "the retirement gate produced no decision for this candidate; nothing was drained" }
+                  DrainUndecided { unit: u, cause: why } => SlotRetirementUndecided { unit: u, cause: why }
                 },
             ),
           )
@@ -3324,9 +3324,14 @@ fn runner_host_slot_actuations(
 // read is gunbc.fleet.organization_runner_roster_read's, and the qualification verdicts are
 // gunbc.runner.runner_qualification_dispatch's. A caller that brings NEITHER retires nothing -- which is the
 // fail-closed default, and the reason a route cannot forget the gate by forgetting to wire it.
-// `prior_committed` is the committed population BEFORE the open width transition's move, from
-// gunbc.runner.runner_slot_allocation -- the same authority `required_retirees_for_host` reads, so the
-// replacement set and the retiree set cannot be built from different worlds.
+// The three fields are the WHOLE of what a pass knew: `roster` is the org runner roster reading that answers
+// "did the replacement register", `qualification_verdicts` are the collected floor-job verdicts that answer
+// "did it complete a job", and `pass` says which entry assembled them -- an observe pass holds neither and
+// says `ObservePassDidNotRead` rather than presenting an empty roster as a search that found nothing. The
+// set each one is judged AGAINST is not carried here at all: it is derived at judgment time by
+// `replacement_incoming_for_host` from gunbc.runner.runner_width_transition and
+// gunbc.runner.runner_slot_allocation's committed widths, the same authorities `required_retirees_for_host`
+// reads, so the replacement set and the retiree set cannot be built from different worlds.
 type RunnerRetirementReadback sole_constructor {
   roster: OrganizationRunnerRosterEvidence?
   qualification_verdicts: List<QualificationRunVerdict>
@@ -3389,9 +3394,13 @@ data converge_replacement_job_proof_leg: RouteLegStanding = LegAuthorityImplemen
 // including the fail-closed arm -- is decidable by a claim without an SSH session.
 type RunnerHostDrainStep
   = DrainNow { unit: NonEmptyStr }
-  | DrainHeld { unit: NonEmptyStr, cause: String }
-  | DrainRefusedByStanding { unit: NonEmptyStr, cause: String }
-  | DrainUndecided { unit: NonEmptyStr }
+  // THE CAUSES TRAVEL TYPED AS FAR AS THE OUTCOME AND ARE RENDERED ONLY IN
+  // gunbc.runner.runner_slot_actuation's wire. The gate's decision is a fact that must survive the leg that
+  // made it (DESIGN.md, Source: "a fact that must survive belongs in a typed carrier"); turning it into
+  // prose here would put a second representation of the decision in front of anyone reading the leg.
+  | DrainHeld { unit: NonEmptyStr, cause: RetirePendingCause }
+  | DrainRefusedByStanding { unit: NonEmptyStr, cause: RetireRefusalCause }
+  | DrainUndecided { unit: NonEmptyStr, cause: RetireUndecidedCause }
 
 // THE DECISIONS FOR THE HOST'S DRAIN CANDIDATES. `live` comes from the host's OWN unit reading (the
 // population fold's loaded units), which is what makes a hand-started slot visible at all: it is in no
@@ -3444,12 +3453,11 @@ fn runner_host_drain_leg_decided(
     runner_host_drain_units(subject: subject),
     u =>
       match first(filter(decisions, d => (retire_drain_decision_unit(d: d) as String) == (u as String))) {
-        Absent => DrainUndecided { unit: u }
+        Absent => DrainUndecided { unit: u, cause: NoDecisionFor { candidate: u } }
         Present { value: RetireDrainAuthorized { unit: _, over: _ } } => DrainNow { unit: u }
-        Present { value: RetireDrainWithheld { unit: _, cause: cause } } =>
-          DrainHeld { unit: u, cause: retire_pending_cause_wire(cause: cause) }
+        Present { value: RetireDrainWithheld { unit: _, cause: cause } } => DrainHeld { unit: u, cause: cause }
         Present { value: RetireDrainRefused { unit: _, cause: cause } } =>
-          DrainRefusedByStanding { unit: u, cause: retire_refusal_cause_wire(cause: cause) }
+          DrainRefusedByStanding { unit: u, cause: cause }
       },
   )
 }
