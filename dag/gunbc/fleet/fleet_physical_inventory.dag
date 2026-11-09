@@ -273,15 +273,21 @@ data installed_cooler_containments: List<PhysicalContainment> = [
 // row N6a's extension of PhysicalContainment and is not carried yet, so the slot facts read so far stay in
 // the annotation beside the row they belong to.
 
-// srv1's RTX PRO 6000 Blackwell Workstation Edition, read on srv1 2026-10-30 (nvidia-smi: name, serial
-// 1792726101367, 97887 MiB, power limit 600 W, VBIOS 98.02.81.00.07, PCI 0005:01:00.0). IT NO LONGER SITS
-// AT 0005:01:00.0: on 2026-11-07 that address read the Max-Q below (gpu_board_04), and the operator stated
-// the Workstation card is installed beside it but has no power cable, so it does not enumerate and its
-// current slot is unread. Its containment in srv1 stands (it is in the chassis); the slot facts that
-// follow are the 2026-10-30 reading of the slot it then occupied. The operator's
+// srv1's RTX PRO 6000 Blackwell Workstation Edition. Read on srv1 2026-10-30 (nvidia-smi: name, serial
+// 1792726101367, 97887 MiB, power limit 600 W, VBIOS 98.02.81.00.07, PCI 0005:01:00.0); IT NO LONGER SAT
+// THERE: on 2026-11-07 that address read the Max-Q below (gpu_board_04), and the operator then stated the
+// Workstation card was installed beside it with no power cable, so it did not enumerate and its slot was
+// unread. THAT IS SUPERSEDED -- on 2026-11-08 the card enumerates on srv1 as GPU1, UUID
+// GPU-96b749dc-e2ea-5b6f-2e45-ee868b1a9750, PCI 0004:01:00.0, serial 1792726101367 (matching this asset),
+// VBIOS 98.02.81.00.07, 97887 MiB, ECC off, power range 150..600 W with a default limit of 600 W and a
+// limit of 300 W in force; nvidia-smi draws 275.9 W on it under serving load, so its power cable is
+// connected. The typed reading is gunbc.fleet.gpu_device_observation's gpu_board_01 row; the cap that put
+// 300 W on a 600 W default card is gunbc.fleet.gpu_power_cap_boot_state. The operator's
 // purchase is PNY VCNRTXPRO6000B-PB, PNY's SKU of this NVIDIA board. THE SLOT RUNS IT AT PCIe 4.0: the card
-// advertises 32 GT/s x16 (PCIe 5.0), its upstream port 0005:00:01.0 is an Ampere Altra root port whose
-// LnkCap is 16 GT/s x16 (lspci -vv), so the link can train no higher than PCIe 4.0 x16 on this host.
+// advertises 32 GT/s x16 (PCIe 5.0), its upstream port 0004:00:01.0 is an Ampere Altra root port (rev 04)
+// whose LnkCap and LnkSta both read 16 GT/s x16 (lspci -vv, 2026-11-08), so the link runs PCIe 4.0 x16 on
+// this host. WHICH PHYSICAL SLOT IT SITS IN IS STILL UNREAD: no software reading names a slot label, and the
+// 2026-10-30 address is not one.
 data gpu_board_01_asset: PhysicalAsset = PhysicalAsset {
   identity: gpu_board_01,
   catalog: DeclarationRef {
@@ -319,12 +325,18 @@ data gpu_board_03_asset: PhysicalAsset = PhysicalAsset {
   procurement: none,
 }
 
-// srv1's RTX PRO 6000 Blackwell Max-Q Workstation Edition, read on srv1 2026-11-07 (nvidia-smi: name
-// "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition", serial 1793526019879, 97887 MiB, VBIOS
-// 98.02.6A.00.03). Its device binding -- UUID, PCI function, power-limit range -- is the typed reading in
-// gunbc.fleet.gpu_device_observation, not restated here. Installed by the operator
-// 2026-11-07 in the slot the Workstation card left; the same PCIe 4.0 x16 ceiling applies (dmesg: "limited
-// by 16.0 GT/s PCIe x16 link at 0005:00:01.0"). Not the rented Vast Max-Q of gunbc.plans.gpu_card_host_program (deleted 2026-11-08)
+// srv1's RTX PRO 6000 Blackwell Max-Q Workstation Edition, re-read on srv1 2026-11-08 (nvidia-smi: name
+// "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition", UUID GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3,
+// serial 1793526019879, 97887 MiB, VBIOS 98.02.6A.00.03, ECC off, limit 300 W with a default limit of 300 W
+// and a 250..325 W range, driver 580.178.04, kernel 7.0.0-42-generic). Its device binding -- UUID, PCI
+// function, power-limit range -- is the typed reading in gunbc.fleet.gpu_device_observation, not restated
+// here. It read 0005:01:00.0 on 2026-11-07 and 0001:01:00.0 on 2026-11-08; its upstream port then reads
+// 0001:00:01.0, an Ampere Altra root port (rev 04) whose LnkCap and LnkSta both read 16 GT/s x16, while the
+// endpoint itself advertises 32 GT/s x16, so the link runs PCIe 4.0 x16. The address change is a
+// re-enumeration of the domains, NOT a read move: whether the card was physically moved between 2026-11-07
+// and 2026-11-08 is unread, so its slot stays unread (the 2026-11-07 "installed by the operator in the slot
+// the Workstation card left" statement is the operator's account of the seating, not a read). Not the rented
+// Vast Max-Q of gunbc.plans.gpu_card_host_program (deleted 2026-11-08)
 // (that census row stays OutsideBound): this one is owned. Its procurement is unrecorded.
 data gpu_board_04_asset: PhysicalAsset = PhysicalAsset {
   identity: gpu_board_04,

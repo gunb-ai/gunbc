@@ -90,9 +90,20 @@ data ce_duplicate_b_source: String = "module v2.test.ce_duplicate\n\nimport std.
 data ce_unparseable_source: String = "module v2.test.ce_unparseable\nfn ce_broken( -> Int { x }\n"
 
 // A member whose body does not lower: the entry reaches it, so the refusal is a member's.
-data ce_refusing_entry_source: String = "module v2.test.ce_refusing_entry\n\nimport std.types { Bool }\n\nfn ce_refusing_entry_fn(p: Bool) -> Bool { v2.test.ce_refusing_member.ce_refusing_fn(p: p) }\n"
+data ce_refusing_entry_source: String = "module v2.test.ce_refusing_entry\n\nfn ce_refusing_entry_fn(p: Bool) -> Bool { v2.test.ce_refusing_member.ce_refusing_fn(p: p) }\n"
 
-data ce_refusing_member_source: String = "module v2.test.ce_refusing_member\n\nimport std.types { Bool }\n\nfn ce_refusing_fn(p: Bool) -> Bool { if p { p } }\n"
+data ce_refusing_member_source: String = "module v2.test.ce_refusing_member\n\nfn ce_refusing_fn(p: Bool) -> Bool { if p { p } }\n"
+
+// The let-BINDER variant of the shape: a member whose body binds an else-less `if` with an expression arm
+// to a named binder `x`, and whose tail DEMANDS `x` -- so the function's return owes the binder a value.
+// The tail (`if p { p }` as the whole body) is guarded by `a_closure_member_whose_body_does_not_lower_is_its_own_typed_refusal_holds`
+// (refused at TARGET); this fixture guards the CONSUMER that owes the *binder* a value, the shape the
+// native-census statement_if_lowering lane admits at resolve but the emission route refuses -- at the INFER
+// stage, with `infer_branch_else_less_as_value` (executed, invocation 5a263a14), a different stage from the
+// tail guard because the binder value is consumed at typing while the tail value is consumed at realization.
+data ce_binder_entry_source: String = "module v2.test.ce_binder_entry\n\nfn ce_binder_entry_fn(p: Bool) -> Bool { v2.test.ce_binder_member.ce_binder_fn(p: p) }\n"
+
+data ce_binder_member_source: String = "module v2.test.ce_binder_member\n\nfn ce_binder_fn(p: Bool) -> Bool {\n  let x = if p { p }\n  x\n}\n"
 
 fn ce_read(source: String, id: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -164,6 +175,19 @@ fn ce_emission_member_body_refuses() -> ClosureEmissionLocated {
       ce_read(source: ce_refusing_member_source, id: ^ce_refusing_member_read, path: "src/v2/test/ce_refusing_member.dag")
     ],
     entry: "v2.test.ce_refusing_entry"
+  )
+}
+
+// The let-binder variant: entry reaches a member whose body binds an else-less `if` to `x` and demands `x`
+// as its tail, so the return owes the binder a value. Same target/serialize route as the tail guard.
+fn ce_emission_binder_body_refuses() -> ClosureEmissionLocated {
+  ce_emit(
+    ingest: [
+      ce_logic_read(),
+      ce_read(source: ce_binder_entry_source, id: ^ce_binder_entry_read, path: "src/v2/test/ce_binder_entry.dag"),
+      ce_read(source: ce_binder_member_source, id: ^ce_binder_member_read, path: "src/v2/test/ce_binder_member.dag")
+    ],
+    entry: "v2.test.ce_binder_entry"
   )
 }
 
@@ -339,7 +363,24 @@ test fn a_closure_member_whose_body_does_not_lower_is_its_own_typed_refusal_hold
     Accepted { value: e, diagnostics: _ } =>
       length(xs: e.modules) == 3
         && ce_arm_count(e: e, name: "v2.test.ce_refusing_member") == 1
-        && ce_arm_is_refused_with(arm: ce_arm_of(e: e, name: "v2.test.ce_refusing_member"), reason: ^body_lowering_reason_else_less_if_unlowered)
+        && ce_arm_is_refused_with(arm: ce_arm_of(e: e, name: "v2.test.ce_refusing_member"), reason: ^target_value_expr_reason_branch_else_less_as_value)
+  }
+}
+
+// The let-BINDER variant of DIRECTION 5. The consumer that owes the NAMED BINDER a value refuses the
+// else-less `if` bound to it, at that member's own arm -- the guard the native-census statement_if_lowering
+// lane cannot exercise (it stops at resolve, where the module admits; the binder's no-value refusal fires
+// at INFER, during emission/typing). Executed reason is ^infer_branch_else_less_as_value (invocation
+// 5a263a14) -- the stage differs from the tail guard above (which refuses at TARGET), because the tail value
+// is consumed at realization while the binder value is consumed at typing. Red if the consumer stops
+// refusing or the reason changes, so it is not a tautology.
+test fn a_closure_member_whose_let_binder_is_an_else_less_if_is_its_own_typed_refusal_holds() -> Bool {
+  match ce_emission_binder_body_refuses().outcome {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: e, diagnostics: _ } =>
+      length(xs: e.modules) == 3
+        && ce_arm_count(e: e, name: "v2.test.ce_binder_member") == 1
+        && ce_arm_is_refused_with(arm: ce_arm_of(e: e, name: "v2.test.ce_binder_member"), reason: ^infer_branch_else_less_as_value)
   }
 }
 
@@ -572,5 +613,73 @@ test fn an_emitted_row_carries_no_diagnostic_holds() -> Bool {
         _ => false })
         && (match json_field(obj: row, key: "diagnostic") { FieldAbsent => true
           _ => false })
+  }
+}
+
+// NESTED NULLARY COPRODUCT ARMS (R1). A marked declaration reference reached through a record field or a
+// match arm is projected by the same facts-aware rule as an arrow body, so a nullary arm spells as its
+// parent's arm there too. The arrow-body spelling `CeTsiScheme::Https` is the oracle for the nested ones.
+data ce_nested_arm_record_source: String = "module v2.test.ce_nested_arm_record\n\ntype CeTsiScheme = Https | Http\n\ntype CeTsiUri { scheme: CeTsiScheme }\n\ndata ce_nested_arm_record_uri: CeTsiUri = CeTsiUri { scheme: Https }\n"
+
+data ce_nested_arm_match_source: String = "module v2.test.ce_nested_arm_match\n\ntype CeTsiScheme = Https | Http\n\nfn ce_nested_arm_flip(s: CeTsiScheme) -> CeTsiScheme { match s { Https => Http Http => Https } }\n"
+
+data ce_nested_arm_const_source: String = "module v2.test.ce_nested_arm_const\n\ntype CeTsiScheme = Https | Http\n\ntype CeTsiUri { scheme: CeTsiScheme }\n\nfn ce_nested_arm_k() -> CeTsiScheme { Https }\n\nfn ce_nested_arm_red() -> CeTsiUri { CeTsiUri { scheme: ce_nested_arm_k } }\n"
+
+fn ce_nested_arm_emitted_contains(source: String, id: Symbol, path: String, module: String, pattern: String) -> Bool {
+  match ce_row_of(located: ce_emit(ingest: [ce_read(source: source, id: id, path: path)], entry: module), name: module) {
+    Absent => false
+    Present { value: row } =>
+      match json_field_string(obj: row, key: "emitted") {
+        FieldRead { value: text } => string_contains(s: text, pattern: pattern)
+        _ => false
+      }
+  }
+}
+
+test fn a_nested_nullary_arm_in_a_record_field_emits_its_parents_arm_holds() -> Bool {
+  ce_nested_arm_emitted_contains(
+    source: ce_nested_arm_record_source,
+    id: ^ce_nested_arm_record_read,
+    path: "src/v2/test/ce_nested_arm_record.dag",
+    module: "v2.test.ce_nested_arm_record",
+    pattern: "CeTsiScheme::Https"
+  )
+}
+
+// DECLARED PIN of today's production behaviour, not the target one. A match whose arm pattern is a
+// nullary coproduct arm refuses `target_lex_rule_literal_not_found`: the production Rust lex
+// (`rust_production_lex_rules`) has no rule for `rust_token_unwired_match` or `rust_token_unwired_fat_arrow`;
+// those exist only in `rust_staging_match_additional_lex_rules`. The pattern-position recognition itself is
+// held by `v2.test.claim.emit.nested_arm_pattern_position`. TRIGGER: the production match-emission wiring
+// (rustc-validated rules), which flips this to the positive assertion that the emission contains
+// `CeTsiScheme::Https =>`; this pin then goes red on purpose and is rewritten, not deleted.
+test fn a_match_with_a_nullary_arm_pattern_refuses_for_want_of_production_match_tokens_holds() -> Bool {
+  match ce_emit(
+    ingest: [ce_read(source: ce_nested_arm_match_source, id: ^ce_nested_arm_match_read, path: "src/v2/test/ce_nested_arm_match.dag")],
+    entry: "v2.test.ce_nested_arm_match"
+  ).outcome {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: e, diagnostics: _ } =>
+      ce_arm_is_refused_with(arm: ce_arm_of(e: e, name: "v2.test.ce_nested_arm_match"), reason: ^target_lex_rule_literal_not_found)
+  }
+}
+
+// RED. A marked reference to a nullary ARROW constant is not an arm: the facts-aware rule must not spell it
+// `CeTsiScheme::ce_nested_arm_k`. The row either refuses or spells something else; it never becomes an arm.
+test fn a_nested_reference_to_a_nullary_arrow_constant_is_not_spelled_as_an_arm_holds() -> Bool {
+  let module = "v2.test.ce_nested_arm_const"
+  match ce_row_of(
+    located: ce_emit(
+      ingest: [ce_read(source: ce_nested_arm_const_source, id: ^ce_nested_arm_const_read, path: "src/v2/test/ce_nested_arm_const.dag")],
+      entry: module
+    ),
+    name: module
+  ) {
+    Absent => false
+    Present { value: row } =>
+      match json_field_string(obj: row, key: "emitted") {
+        FieldRead { value: text } => !string_contains(s: text, pattern: "::ce_nested_arm_k")
+        _ => true
+      }
   }
 }

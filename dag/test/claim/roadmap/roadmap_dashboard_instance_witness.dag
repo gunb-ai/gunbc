@@ -1361,7 +1361,7 @@ test fn the_lab_instance_declares_its_serve_binary_directory_and_the_macbook_doe
 // admitted ref into the repo itself and the reset op never clones), so an absent origin is the converged state there.
 // lab_observed above carries origin_present: true, which hid that Converged demanded one.
 test fn a_convergence_seeded_instance_reads_converged_with_no_origin_and_a_bundle_seeded_one_does_not() -> Bool {
-  let o = lab_observed(production_untouched: true, source_anchor_matches: true, source_revision_observed: true, source_revision_current: true, health_current: true)
+  let o = lab_observed(production_untouched: true, source_anchor_matches: true, serve_binary_current: true, source_revision_observed: true, source_revision_current: true, health_current: true)
   let no_origin = DashboardInstanceObserved {
     observation_refusals: o.observation_refusals, root_present: o.root_present, ownership_marker_present: o.ownership_marker_present,
     bundle_present: o.bundle_present, origin_present: false, source_present: o.source_present,
@@ -1371,6 +1371,7 @@ test fn a_convergence_seeded_instance_reads_converged_with_no_origin_and_a_bundl
     provider_runtime_detail: o.provider_runtime_detail, provider_authenticated: o.provider_authenticated,
     provider_auth_detail: o.provider_auth_detail, health_current: o.health_current,
     production_untouched: o.production_untouched, source_anchor_matches: o.source_anchor_matches,
+    serve_binary_current: o.serve_binary_current,
   }
   let lab_converges = match dashboard_instance_reconcile(instance: srv1_lab_dashboard_instance(), observed: no_origin) { DashboardInstanceConverged => true, _ => false }
   let seeded = match srv1_lab_dashboard_instance().source_seed { DashboardSeededByConvergence { serve_binary_origin: _, apply_workdir: _ } => true, _ => false }

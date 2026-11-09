@@ -96,6 +96,27 @@ type ArgvRefusalCause
   | ArgvExpressionUnsupported { detail: String }
   | BindingMalformed { detail: String }
 
+// THE GRAIN OF A REFUSAL: which unit it makes unrealizable. Only these two causes say the OPERATION's argv is
+// beyond what the lowering evaluates (its consumer sets that one operation aside); every other cause is an
+// authoring defect of the service. A cause added to ArgvRefusalCause must be placed here: the match is closed.
+type ArgvRefusalGrain
+  = OperationGrain
+  | ServiceGrain
+
+fn argv_refusal_cause_grain(cause: ArgvRefusalCause) -> ArgvRefusalGrain {
+  match cause {
+    ExecutablePositionNotLiteral { detail: _ } => OperationGrain
+    ArgvExpressionUnsupported { detail: _ } => OperationGrain
+    OperationNotFound => ServiceGrain
+    ArgvEmpty => ServiceGrain
+    UndeclaredInputBound { name: _ } => ServiceGrain
+    DuplicateInputBinding { name: _ } => ServiceGrain
+    DeclaredInputUnbound { name: _ } => ServiceGrain
+    TokenListInStringPosition { name: _ } => ServiceGrain
+    BindingMalformed { detail: _ } => ServiceGrain
+  }
+}
+
 // A transport string that interpolates a declared input, as a value: holes are OperationInputName, resolved
 // against the operation's declared inputs by its consumer (XL-2 3b-ii). An expression in a hole is
 // not a name and refuses as ArgvExpressionUnsupported; a list input in a hole refuses as

@@ -13,9 +13,8 @@ import gunbc.roadmap.roadmap_model {
   WorkItemDispatch, NotDispatchable,
   roadmap_primary_parent, roadmap_parent_ids, is_top_level,
   node_carrier_clean,
-  node_status_drift,
 }
-import gunbc.roadmap.roadmap_status { Signoff, Unsigned }
+
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -73,7 +72,6 @@ fn node_with_carriers(cs: List<Pointer>) -> RoadmapNode {
     dispatch: NotDispatchable,
     execution: ExecutionContractUnspecified,
     owner: "",
-    signoff: Unsigned,
     parent: none,
     centering: none,
   }
@@ -95,40 +93,4 @@ test fn witness_dangling_carrier_caught() -> Bool {
 
 test fn witness_no_carrier_clean() -> Bool {
   node_carrier_clean(rn: node_with_carriers(cs: []), existing_docs: existing_docs)
-}
-
-test fn witness_node_status_drifts() -> Bool {
-  let rn = RoadmapNode {
-    identity: "rnfx_WZ1MVE2JJZ2CCAWP2TVM" as RoadmapNodeIdentity,
-    node: roadmap_model_child_node,
-    line: DerivableLine { prs: [5491], title: "stale", description: "" },
-    carriers: [],
-    dispatch: NotDispatchable,
-    execution: ExecutionContractUnspecified,
-    owner: "",
-    signoff: Unsigned,
-    parent: none,
-    centering: none,
-  }
-  verdict_is_drifted(v: node_status_drift(rn: rn, committed_box: true, merged: [5491]))
-}
-
-test fn witness_node_unsigned_box_clean() -> Bool {
-  let rn = RoadmapNode {
-    identity: "rnfx_Q203PA6K5BSTTSCXR7JB" as RoadmapNodeIdentity,
-    node: roadmap_model_child_node,
-    line: AuthoredLine { done: false, content: "partial evidence" },
-    carriers: [],
-    dispatch: NotDispatchable,
-    execution: ExecutionContractUnspecified,
-    owner: "",
-    signoff: Unsigned,
-    parent: none,
-    centering: none,
-  }
-  match node_status_drift(rn: rn, committed_box: false, merged: [5491]) {
-    Clean => true
-    Drifted => false
-    Underivable => false
-  }
 }

@@ -176,7 +176,7 @@ fn meet_join_eval_choose_branch(
   node: Node,
   _value: RuntimeValue,
   _env: EvaluationEnvironment
-) -> Outcome<Node> {
+) -> Outcome<Optional<Node>> {
   outcome_rejected(
     d: meet_join_eval_diagnostic(reason: ^meet_join_eval_branch_miss, node: node)
   )

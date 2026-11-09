@@ -1,0 +1,232 @@
+module test.claim.harness_supervision_test
+
+import std.types { Bool, String, List }
+import std.algebra { length }
+import std.process { ExitSuccess, ExitFailure }
+import std.optional { Present, Absent }
+import extdeps.languages.json.emit { serialize_json }
+import gunbc.harness.harness_wire { AnthropicMessagesShape, OpenAiChatCompletionsShape }
+import gunbc.roadmap.roadmap_alignment_verdict { Aligned, Misaligned, ExtremelyMisaligned, CatastrophicallyMisaligned, RoutedConflict }
+import gunbc.harness.harness_turn {
+  HarnessToolResult, HarnessSupervision, Unsupervised, SupervisedRounds,
+  HarnessSupervisionVerdictRead, SupervisionVerdictDecoded, SupervisionVerdictUnreadable,
+  TurnStoppedBySupervision, StoppedByAlignmentCheck, StoppedBySupervisor, TurnSupervisionUnavailable, TurnStepBudgetExhausted,
+  harness_supervision_verdict_decode, harness_supervision_counts_down, harness_messages_with_steer,
+  harness_tool_result_messages_json, harness_outcome_label, harness_outcome_detail,
+  harness_event_supervision_verdict, harness_supervision_verdict_name,
+  harness_supervisor_receipt_decode, HarnessSupervisorRead, SupervisorReadDecoded, SupervisorReadUnreadable,
+  harness_nested_usage_lines, harness_supervision_observation_text, harness_supervision_message_bound,
+  harness_supervision_observed_message_cap,
+  harness_pause_action, HarnessPauseAction, PauseContinues, PauseSteers, PauseConvenesSupervisor, PauseStops,
+}
+import gunbc.roadmap.roadmap_supervisor { SupervisorVerdictReceipt, VerdictSteer, VerdictStuck, VerdictPlanDefect, supervisor_verdict_text }
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string }
+import gunbc.harness.harness_cli { harness_turn_exit, harness_worker_supervision, harness_worker_step_budget }
+
+fn decodes_to_kind(text: String, kind: String) -> Bool {
+  match harness_supervision_verdict_decode(text: text) {
+    SupervisionVerdictUnreadable { cause: _ } => false
+    SupervisionVerdictDecoded { verdict } =>
+      match verdict {
+        Aligned => kind == "aligned"
+        Misaligned { direction } => kind == "misaligned" && direction == "add the regression test first"
+        ExtremelyMisaligned { direction: _ } => kind == "extremely-misaligned"
+        CatastrophicallyMisaligned { reason: _ } => kind == "catastrophically-misaligned"
+        RoutedConflict { conflict: _ } => kind == "routed-conflict"
+      }
+  }
+}
+
+fn refuses(text: String) -> Bool {
+  match harness_supervision_verdict_decode(text: text) {
+    SupervisionVerdictUnreadable { cause: _ } => true
+    SupervisionVerdictDecoded { verdict: _ } => false
+  }
+}
+
+// THE CHECK'S VERDICT FILE IS READ OR REFUSED, NEVER GUESSED. Every kind the check may write decodes
+// to its arm with its payload intact; a malformed file, an unknown kind, or a steer without its
+// direction refuses, because an undecided check must stop the session rather than pass for aligned.
+test fn the_verdict_file_decodes_each_kind_and_refuses_the_rest() -> Bool {
+  decodes_to_kind(text: "\{\"kind\": \"aligned\"}", kind: "aligned")
+    && decodes_to_kind(text: "\{\"kind\": \"misaligned\", \"direction\": \"add the regression test first\"}", kind: "misaligned")
+    && decodes_to_kind(text: "\{\"kind\": \"extremely-misaligned\", \"direction\": \"off contract\"}", kind: "extremely-misaligned")
+    && decodes_to_kind(text: "\{\"kind\": \"catastrophically-misaligned\", \"reason\": \"deletes the gate\"}", kind: "catastrophically-misaligned")
+    && refuses(text: "aligned")
+    && refuses(text: "\{\"kind\": \"looks-fine\"}")
+    && refuses(text: "\{\"kind\": \"misaligned\"}")
+    && refuses(text: "\{\"kind\": \"aligned\"} trailing")
+}
+
+// A SUPERVISED SESSION HEARS NOTHING ABOUT ITS ROUNDS. Only an unsupervised turn, which really ends
+// at zero, gets the countdown after its tool results; a supervised worker's tool results arrive bare.
+test fn only_an_unsupervised_turn_counts_down() -> Bool {
+  let supervised = SupervisedRounds { chain_fingerprint: "fp", check_prompt: "chain", check_directory: "/state", round_steps: 40 }
+  let results = [HarnessToolResult { tool_use_id: "call-1", text: "ok\n[exit 0]", is_error: false }]
+  let bare = harness_tool_result_messages_json(shape: OpenAiChatCompletionsShape, results: results, steps_remaining: 2, countdown: harness_supervision_counts_down(s: supervised))
+  let counted = harness_tool_result_messages_json(shape: OpenAiChatCompletionsShape, results: results, steps_remaining: 2, countdown: harness_supervision_counts_down(s: Unsupervised))
+  length(xs: bare) == 1
+    && length(xs: counted) == 2
+    && !join(bare |> map(m => serialize_json(v: m)), "").contains("rounds")
+}
+
+// A STEER IS THE ONLY TEXT A BOUNDARY ADDS: the direction verbatim, after everything the worker
+// already had -- a user message on the chat shape, and a text block inside the trailing tool-result
+// message on the messages shape, so that shape never sees two user turns in a row.
+test fn a_steer_appends_one_user_message_with_the_direction() -> Bool {
+  let before = harness_tool_result_messages_json(shape: OpenAiChatCompletionsShape, results: [HarnessToolResult { tool_use_id: "call-1", text: "x", is_error: false }], steps_remaining: 0, countdown: false)
+  let chat = harness_messages_with_steer(shape: OpenAiChatCompletionsShape, messages: before, steer: "add the regression test first")
+  let tool_round = harness_tool_result_messages_json(shape: AnthropicMessagesShape, results: [HarnessToolResult { tool_use_id: "toolu_1", text: "x", is_error: false }], steps_remaining: 0, countdown: false)
+  let joined = harness_messages_with_steer(shape: AnthropicMessagesShape, messages: tool_round, steer: "add the regression test first")
+  length(xs: chat) == length(xs: before) + 1
+    && (match chat.last() { Present { value: m } => serialize_json(v: m).contains("\"role\": \"user\"") && serialize_json(v: m).contains("add the regression test first")  Absent => false })
+    && length(xs: joined) == length(xs: tool_round)
+    && (match joined.last() {
+      Present { value: m } => serialize_json(v: m).contains("toolu_1") && serialize_json(v: m).contains("add the regression test first")
+      Absent => false
+    })
+}
+
+// A SUPERVISION STOP IS A TYPED END, NOT A CONTROL TRANSFER. Its label and detail name the verdict,
+// and it exits as a refusal like every other turn that did not complete -- there is no exit 3 left
+// for a consumer to read as "resume me".
+test fn a_supervision_stop_is_a_named_refusal() -> Bool {
+  let stopped = TurnStoppedBySupervision { verdict: StoppedByAlignmentCheck { verdict: ExtremelyMisaligned { direction: "off contract" } }, detail: "off contract", steps_taken: 80 }
+  let undecided = TurnSupervisionUnavailable { cause: "the verdict is not readable as JSON at offset 0", steps_taken: 40 }
+  harness_outcome_label(outcome: stopped) == "stopped-by-supervision"
+    && harness_outcome_label(outcome: undecided) == "supervision-unavailable"
+    && harness_outcome_detail(outcome: stopped).contains("extremely-misaligned")
+    && harness_outcome_detail(outcome: TurnStoppedBySupervision { verdict: StoppedBySupervisor { verdict: VerdictPlanDefect { defect: "d" } }, detail: "d", steps_taken: 80 }).contains("plan-defect")
+    && harness_outcome_detail(outcome: undecided).contains("rather than continue unsupervised")
+    && (match harness_turn_exit(outcome: stopped) { ExitSuccess => false  ExitFailure { code, reason: _ } => code != 3 })
+    && (match harness_turn_exit(outcome: undecided) { ExitSuccess => false  ExitFailure { code, reason: _ } => code != 3 })
+}
+
+// A DISPATCHED WORKER CARRIES A CHAIN OR IS REFUSED: a chain yields supervised rounds at the worker step budget,
+// and a lost (empty) fingerprint yields no supervision value, which the worker entry refuses on.
+test fn a_dispatched_worker_is_supervised_or_refused() -> Bool {
+  let chained = match harness_worker_supervision(chain_fingerprint: "fp", check_prompt: "chain", check_directory: "/state") {
+    Present { value: supervised } =>
+      match supervised {
+        Unsupervised => false
+        SupervisedRounds { chain_fingerprint: f, check_prompt: p, check_directory: d, round_steps: n } =>
+          f == "fp" && p == "chain" && d == "/state" && n == harness_worker_step_budget
+      }
+    none => false
+  }
+  let chainless = match harness_worker_supervision(chain_fingerprint: "", check_prompt: "chain", check_directory: "/state") {
+    none => true
+    Present { value: _ } => false
+  }
+  chained && chainless
+}
+
+// THE VERDICT IS RECORDED IN THE WORKER'S EVENT STREAM, keyed by the turn it followed, and each
+// boundary's check and supervisor write distinct verdict files, so a later boundary never reads an
+// earlier verdict and the check never reads the supervisor's.
+test fn each_boundary_records_its_own_verdict() -> Bool {
+  let event = harness_event_supervision_verdict(steps_taken: 40, verdict: Misaligned { direction: "add the regression test first" })
+  event.contains("supervision.verdict")
+    && event.contains("40")
+    && event.contains("add the regression test first")
+    && harness_supervision_verdict_name(kind: "check", steps_taken: 40) != harness_supervision_verdict_name(kind: "check", steps_taken: 80)
+    && harness_supervision_verdict_name(kind: "check", steps_taken: 40) != harness_supervision_verdict_name(kind: "supervisor", steps_taken: 40)
+}
+
+// THE SUPERVISOR'S RECEIPT DECIDES ONLY THE TURN IT ADJUDICATED: a receipt for another turn is
+// refused, never applied, so a stale or copied file cannot steer or stop this boundary.
+test fn the_supervisor_receipt_binds_this_boundary_turn() -> Bool {
+  let steer = supervisor_verdict_text(receipt: SupervisorVerdictReceipt { adjudicated_turn: 80, verdict: VerdictSteer { direction: "emit the crontab line only" } })
+  let stale = supervisor_verdict_text(receipt: SupervisorVerdictReceipt { adjudicated_turn: 40, verdict: VerdictStuck { cause: "c" } })
+  (match harness_supervisor_receipt_decode(text: steer, steps_taken: 80) {
+    SupervisorReadDecoded { verdict } => match verdict { VerdictSteer { direction } => direction == "emit the crontab line only"  _ => false }
+    SupervisorReadUnreadable { cause: _ } => false
+  })
+    && (match harness_supervisor_receipt_decode(text: stale, steps_taken: 80) {
+      SupervisorReadDecoded { verdict: _ } => false
+      SupervisorReadUnreadable { cause } => cause.contains("turn 40") && cause.contains("turn 80")
+    })
+}
+
+// THE PAUSE'S TOKENS ARE THE ATTEMPT'S: from a nested turn's stream, usage rows are carried --
+// including a usage-unavailable row and a line that is not JSON, so a gap refuses where usage is
+// read -- and every other event stays behind.
+test fn a_nested_turn_carries_its_usage_and_nothing_else() -> Bool {
+  let body = join([
+    "\{\"type\": \"turn.started\"}",
+    "\{\"type\": \"round.usage\", \"step\": 1, \"input_tokens\": 900, \"output_tokens\": 40, \"epoch_ms\": 5}",
+    "\{\"type\": \"item.completed\", \"item\": \{\"type\": \"command_execution\"}}",
+    "\{\"type\": \"round.usage_unavailable\", \"step\": 2, \"cause\": \"no usage member\"}",
+    "not json",
+    "",
+  ], "\n")
+  let carried = harness_nested_usage_lines(body: body)
+  length(xs: carried) == 3
+    && any(carried, l => l.contains("\"round.usage\""))
+    && any(carried, l => l.contains("round.usage_unavailable"))
+    && any(carried, l => l == "not json")
+    && !any(carried, l => l.contains("turn.started") || l.contains("item.completed"))
+}
+
+fn message(text: String) -> JsonValue {
+  json_object([json_kv(key: "role", value: json_string(s: "user")), json_kv(key: "content", value: json_string(s: text))])
+}
+
+// THE OBSERVATION IS THE ROUND, BOUNDED: the brief is never re-sent, only the latest round's
+// messages are, and each is cut at its bound with the cut marked.
+test fn the_observation_is_the_latest_round_bounded() -> Bool {
+  let big = join(["the start ", join(["0123456789", "0123456789", "0123456789", "0123456789", "0123456789", "0123456789", "0123456789", "0123456789", "0123456789", "0123456789"], ""), "", ""], "")
+  let huge = join([big, big, big, big, big, big, big, big, big, big], "")
+  let msgs = [message(text: "THE BRIEF"), message(text: "older"), message(text: "recent"), message(text: huge)]
+  let observed = harness_supervision_observation_text(messages: msgs, round_steps: 1)
+  !observed.contains("THE BRIEF")
+    && observed.contains("recent")
+    && observed.contains("...[cut]")
+    && string_length(s: observed) < string_length(s: huge)
+}
+
+// A LONG ROUND IS OBSERVED BY ITS TAIL: a hundred-turn round could add three hundred messages, and
+// the check sees only the latest cap of them -- the newest is in, the oldest beyond the cap is out.
+test fn a_long_round_is_observed_by_its_capped_tail() -> Bool {
+  let ten = "0123456789"
+  let marks = chars(s: join([ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten], ""))
+  let msgs = concat([message(text: "THE BRIEF")], enumerate(marks) |> map(pair => message(text: join(["m", to_string(value: pair.first)], ""))))
+  let observed = harness_supervision_observation_text(messages: msgs, round_steps: 100)
+  length(xs: split(s: observed, delimiter: "\n")) == harness_supervision_observed_message_cap
+    && observed.contains("\"m199\"")
+    && observed.contains("\"m80\"")
+    && !observed.contains("\"m79\"")
+}
+
+
+fn acted_on(text: String) -> HarnessPauseAction? {
+  match harness_supervision_verdict_decode(text: text) {
+    SupervisionVerdictUnreadable { cause: _ } => none
+    SupervisionVerdictDecoded { verdict } => Present { value: harness_pause_action(verdict: verdict) }
+  }
+}
+
+// THE IN-SESSION SUPERVISOR'S VERDICT IS READ BACK AND ACTED ON (review 91801, composition seam). The
+// text a check writes to its verdict file is decoded and becomes the action harness_pause_apply takes:
+// aligned continues, misaligned steers with the direction verbatim (and the steer reaches the worker's
+// messages), extremely-misaligned convenes the supervisor, catastrophically-misaligned stops with the
+// reason. RED: an unreadable verdict yields no action at all, so it can never pass as aligned.
+// The real supervised session over a provider round is owed to a wet host (the #15804 body).
+test fn a_written_verdict_is_read_back_and_acted_on() -> Bool {
+  (match acted_on(text: "\{\"kind\": \"aligned\"}") { Present { value: PauseContinues } => true  _ => false })
+    && (match acted_on(text: "\{\"kind\": \"misaligned\", \"direction\": \"add the regression test first\"}") {
+      Present { value: PauseSteers { direction } } => {
+        let before = harness_tool_result_messages_json(shape: OpenAiChatCompletionsShape, results: [HarnessToolResult { tool_use_id: "call-1", text: "x", is_error: false }], steps_remaining: 0, countdown: false)
+        let steered = harness_messages_with_steer(shape: OpenAiChatCompletionsShape, messages: before, steer: direction)
+        direction == "add the regression test first"
+          && (match steered.last() { Present { value: m } => serialize_json(v: m).contains("add the regression test first")  Absent => false })
+      }
+      _ => false
+    })
+    && (match acted_on(text: "\{\"kind\": \"extremely-misaligned\", \"direction\": \"off contract\"}") { Present { value: PauseConvenesSupervisor } => true  _ => false })
+    && (match acted_on(text: "\{\"kind\": \"catastrophically-misaligned\", \"reason\": \"deletes the gate\"}") {
+      Present { value: PauseStops { verdict: StoppedByAlignmentCheck { verdict: _ }, detail } } => detail == "deletes the gate"
+      _ => false
+    })
+    && (match acted_on(text: "\{\"kind\": \"looks-fine\"}") { Absent => true  Present { value: _ } => false })
+}

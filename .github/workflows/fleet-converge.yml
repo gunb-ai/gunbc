@@ -2188,6 +2188,7 @@ jobs:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
           FLEET_CONVERGE_LOST_BOOT_SWEEP_HOST: ${{ github.event.inputs.sweep_host }}
           FLEET_CONVERGE_HOST_CAPTURE_PATH: ${{ github.event.inputs.host_capture_path }}
+          GITHUB_TOKEN: ${{ github.token }}
         if: github.event.inputs.mode == 'service_runner_lost_boot_sweep'
         timeout-minutes: 42
       - name: "qualification attempt: pin, mint, dispatch the floor to the attempt's runner, collect, deregister, unpin"
@@ -2229,6 +2230,7 @@ jobs:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
           FLEET_CONVERGE_LOST_BOOT_SWEEP_HOST: ${{ github.event.inputs.sweep_host }}
           FLEET_CONVERGE_HOST_CAPTURE_PATH: ${{ github.event.inputs.host_capture_path }}
+          GITHUB_TOKEN: ${{ github.token }}
         if: github.event.inputs.mode == 'service_runner_lost_boot_sweep_dry_run'
         timeout-minutes: 42
       - name: Upload the service runner lost-boot sweep dry-run receipt
@@ -2249,6 +2251,7 @@ jobs:
         env:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
           FLEET_CONVERGE_SUBJECT_HOST: ${{ github.event.inputs.subject_host }}
+          GITHUB_TOKEN: ${{ github.token }}
         if: github.event.inputs.mode == 'service_slot_start'
         timeout-minutes: 15
       - name: Upload the service-slot start receipt
@@ -3023,7 +3026,7 @@ jobs:
 
         env:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
-        timeout-minutes: 5
+        timeout-minutes: 17
       - name: Mt. Collins unit 1 diskless boot under the unit hold (hold, SOL, attach, CD handoff, release)
         id: mtcollins1_boot
         run: |

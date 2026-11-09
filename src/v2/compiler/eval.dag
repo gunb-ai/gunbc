@@ -612,8 +612,26 @@ fn eval_grounding_not_derived_digest_node() -> Node {
   }
 }
 
+// THE NO-VALUE ARM CONTRIBUTES ITS OWN TAG to the digest preimage: two facts that differ only in this
+// arm vs another must not share a key (a keys/hashing completeness defect, ruling keen-heron-809).
+fn eval_grounding_no_value_digest_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^eval_grounding_no_value_digest_tag } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
 fn inferred_facts_digest(facts: InferredFacts) -> Hash {
   match facts.grounding {
+    GroundingNoValue { node: n } =>
+      combine_hash(
+        a: combine_hash(
+          a: content_hash(n: eval_grounding_no_value_digest_node()),
+          b: content_hash(n: n)
+        ),
+        b: descent_witness_digest(d: inferred_facts_descent(facts: facts))
+      )
     DerivedGrounding { grounding: g } =>
       combine_hash(
         a: content_hash(n: g.node),
@@ -1988,16 +2006,28 @@ fn eval_control_frame_if_agreeing(
   }
 }
 
-// THE ONE CHOICE: the interpretation's chooser for the site's behavior, in the site's environment.
+// THE ONE CHOICE: the interpretation's chooser for the site's behavior, in the site's environment. A
+// Branch's chooser may answer PRESENT (the arm it selects) or ABSENT -- the latter is a Branch with no
+// else arm on the path where the condition does not select the then arm: there is no arm to continue
+// with, and that is a well-formed answer, not a refusal (v2.std.node answers the absent else slot). Who
+// may see Absent is decided by the consumers: the binder-absent Bind proceeds without a value; every
+// consumer that owes a value refuses (DESIGN 5 -- no value is minted for a node whose decided fact is
+// that it produces none).
 fn eval_control_choose(
   site: Node,
   interpreter: RuntimeBehaviorInterpreter,
   selector_value: RuntimeValue,
   environment: EvaluationEnvironment
-) -> Outcome<Node> {
+) -> Outcome<Optional<Node>> {
   match interpreter {
     BranchRuntimeInterpreter { interpreter: branch } => branch.choose_branch(site, selector_value, environment)
-    MatchRuntimeInterpreter { interpreter: match_interpreter } => match_interpreter.choose_arm(site, selector_value, environment)
+    // A Match's chooser always selects an arm (its std.runtime slot answers Outcome<Node>), so its answer is
+    // PRESENT by construction; only a Branch's chooser may answer Absent.
+    MatchRuntimeInterpreter { interpreter: match_interpreter } =>
+      match match_interpreter.choose_arm(site, selector_value, environment) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: arm, diagnostics: d } => Accepted { value: optional_present(value: arm), diagnostics: d }
+      }
     _ => outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: site))
   }
 }
@@ -2018,33 +2048,33 @@ fn eval_branch_node_eval(
   match interpreter {
     BranchRuntimeInterpreter { interpreter: _ } =>
       bind_outcome(
-        o: eval_branch_condition(node: node),
-        f: fn(cond_node) {
-          bind_outcome(
-            o: eval_runtime_node(
-              node: cond_node,
-              tree: tree,
-              interpretation: interpretation,
-              environment: environment,
-              runtime: runtime,
-              effect_io: effect_io
-            ),
-            f: fn(condition) {
-              bind_outcome(
-                o: eval_control_choose(site: node, interpreter: interpreter, selector_value: condition, environment: environment),
-                f: fn(chosen) {
-                  eval_runtime_node(
-                    node: chosen,
-                    tree: tree,
-                    interpretation: interpretation,
-                    environment: environment,
-                    runtime: runtime,
-                    effect_io: effect_io
-                  )
-                }
+        o: eval_branch_selection(
+          node: node,
+          interpreter: interpreter,
+          tree: tree,
+          interpretation: interpretation,
+          environment: environment,
+          runtime: runtime,
+          effect_io: effect_io
+        ),
+        f: fn(chosen) {
+          match chosen {
+            Present { value: arm } =>
+              eval_runtime_node(
+                node: arm,
+                tree: tree,
+                interpretation: interpretation,
+                environment: environment,
+                runtime: runtime,
+                effect_io: effect_io
               )
-            }
-          )
+            // THIS ROW OWES A VALUE: the branch produced none, so it refuses with the fact's own reason
+            // rather than handing back a value nobody supplied.
+            Absent =>
+              outcome_rejected(
+                d: eval_diagnostic(reason: ^eval_reason_branch_else_less_as_value, node: node)
+              )
+          }
         }
       )
     ValueRuntimeInterpreter { interpreter: _ } =>
@@ -2138,14 +2168,17 @@ fn eval_bind_node_eval(
     MatchRuntimeInterpreter { interpreter: _ } =>
       outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
     BindRuntimeInterpreter { interpreter: bind } =>
-      bind_outcome(
-        o: eval_bind_key(node: node),
-        f: fn(key) {
+      match bind_slot_target(n: node, slot: BindBinderSlot) {
+        // THE BINDER-ABSENT Bind (the statement Bind the lowering produces for a non-binding statement
+        // followed by more statements): the value is evaluated for its effects and DISCARDED -- there is no
+        // binder to receive it, so the environment is unchanged -- and the body is evaluated in the
+        // environment the Bind arrived with.
+        Absent =>
           bind_outcome(
             o: eval_bind_value(node: node),
             f: fn(value_target) {
               bind_outcome(
-                o: eval_runtime_node(
+                o: eval_statement_effect(
                   node: value_target,
                   tree: tree,
                   interpretation: interpretation,
@@ -2153,20 +2186,56 @@ fn eval_bind_node_eval(
                   runtime: runtime,
                   effect_io: effect_io
                 ),
-                f: fn(bound_value) {
+                f: fn(_discarded) {
                   bind_outcome(
-                    o: bind.bind_value(key, bound_value, environment),
-                    f: fn(bound_environment) {
+                    o: eval_bind_body(node: node),
+                    f: fn(body) {
+                      eval_runtime_node(
+                        node: body,
+                        tree: tree,
+                        interpretation: interpretation,
+                        environment: environment,
+                        runtime: runtime,
+                        effect_io: effect_io
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        Present { value: _binder } =>
+          bind_outcome(
+            o: eval_bind_key(node: node),
+            f: fn(key) {
+              bind_outcome(
+                o: eval_bind_value(node: node),
+                f: fn(value_target) {
+                  bind_outcome(
+                    o: eval_runtime_node(
+                      node: value_target,
+                      tree: tree,
+                      interpretation: interpretation,
+                      environment: environment,
+                      runtime: runtime,
+                      effect_io: effect_io
+                    ),
+                    f: fn(bound_value) {
                       bind_outcome(
-                        o: eval_bind_body(node: node),
-                        f: fn(body) {
-                          eval_runtime_node(
-                            node: body,
-                            tree: tree,
-                            interpretation: interpretation,
-                            environment: bound_environment,
-                            runtime: runtime,
-                            effect_io: effect_io
+                        o: bind.bind_value(key, bound_value, environment),
+                        f: fn(bound_environment) {
+                          bind_outcome(
+                            o: eval_bind_body(node: node),
+                            f: fn(body) {
+                              eval_runtime_node(
+                                node: body,
+                                tree: tree,
+                                interpretation: interpretation,
+                                environment: bound_environment,
+                                runtime: runtime,
+                                effect_io: effect_io
+                              )
+                            }
                           )
                         }
                       )
@@ -2176,9 +2245,148 @@ fn eval_bind_node_eval(
               )
             }
           )
+      }
+  }
+}
+
+
+// THE EFFECT MODE of a statement Bind's value: evaluate the value node for its effects and report the
+// value it produces, if any. The else-less Branch is the shape that produces none on the path where the
+// condition does not select the then arm; every other node produces a value, which this row discards.
+// The shape question is asked of v2.std.node's slot table, and the choice is asked of the SAME chooser the
+// value pipeline asks -- no arm-selection rule is spelled twice.
+fn eval_statement_effect(
+  node: Node,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> Outcome<Optional<RuntimeValue>> {
+  match node.kind {
+    ComputationNode { behavior: Branch } =>
+      match branch_slot_target(n: node, slot: BranchElseSlot) {
+        Absent =>
+          eval_branch_effect_eval(
+            node: node,
+            interpreter: interpretation_behavior_dispatch(interpretation: interpretation, behavior: Branch),
+            tree: tree,
+            interpretation: interpretation,
+            environment: environment,
+            runtime: runtime,
+            effect_io: effect_io
+          )
+        Present { value: _ } =>
+          match eval_runtime_node(
+            node: node,
+            tree: tree,
+            interpretation: interpretation,
+            environment: environment,
+            runtime: runtime,
+            effect_io: effect_io
+          ) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: v, diagnostics: d } =>
+              Accepted { value: optional_present(value: v), diagnostics: d }
+          }
+      }
+    _ =>
+      match eval_runtime_node(
+        node: node,
+        tree: tree,
+        interpretation: interpretation,
+        environment: environment,
+        runtime: runtime,
+        effect_io: effect_io
+      ) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: v, diagnostics: d } =>
+          Accepted { value: optional_present(value: v), diagnostics: d }
+      }
+  }
+}
+
+// THE ELSE-LESS BRANCH IN A DISCARDED POSITION: the SAME selection path as the value row
+// (eval_branch_selection -- one condition route, one chooser call, DESIGN 6b), and only the continuation
+// differs. PRESENT(arm) evaluates the arm and drops its value; ABSENT evaluates nothing, and the Bind's
+// body follows, which is what "the statement ran or did not run and the sequence continues" means. A
+// refusal from the arm, or from the chooser, propagates: nothing here swallows one.
+fn eval_branch_effect_eval(
+  node: Node,
+  interpreter: RuntimeBehaviorInterpreter,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> Outcome<Optional<RuntimeValue>> {
+  bind_outcome(
+    o: eval_branch_selection(
+      node: node,
+      interpreter: interpreter,
+      tree: tree,
+      interpretation: interpretation,
+      environment: environment,
+      runtime: runtime,
+      effect_io: effect_io
+    ),
+    f: fn(chosen) {
+      match chosen {
+        Present { value: arm } =>
+          match eval_runtime_node(
+            node: arm,
+            tree: tree,
+            interpretation: interpretation,
+            environment: environment,
+            runtime: runtime,
+            effect_io: effect_io
+          ) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: v, diagnostics: d } =>
+              Accepted { value: optional_present(value: v), diagnostics: d }
+          }
+        Absent => Accepted { value: optional_absent(), diagnostics: None }
+      }
+    }
+  )
+}
+
+// ONE PATH THROUGH A BRANCH'S SELECTION: evaluate the condition, then ask the interpretation's chooser.
+// Both the value row and the effect row call this; only what they do with the answer differs, so the
+// condition route and the chooser call cannot drift apart (DESIGN 6b: a generalization beside surviving
+// leaves is a second path).
+fn eval_branch_selection(
+  node: Node,
+  interpreter: RuntimeBehaviorInterpreter,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> Outcome<Optional<Node>> {
+  bind_outcome(
+    o: eval_branch_condition(node: node),
+    f: fn(cond_node) {
+      bind_outcome(
+        o: eval_runtime_node(
+          node: cond_node,
+          tree: tree,
+          interpretation: interpretation,
+          environment: environment,
+          runtime: runtime,
+          effect_io: effect_io
+        ),
+        f: fn(condition) {
+          eval_control_choose(
+            site: node,
+            interpreter: interpreter,
+            selector_value: condition,
+            environment: environment
+          )
         }
       )
-  }
+    }
+  )
 }
 
 fn eval_bind_node(
@@ -2230,14 +2438,23 @@ fn eval_match_node_eval(
               bind_outcome(
                 o: eval_control_choose(site: node, interpreter: interpreter, selector_value: scrutinee_value, environment: environment),
                 f: fn(chosen) {
-                  eval_runtime_node(
-                    node: chosen,
+                  match chosen {
+                    Present { value: chosen_arm } => eval_runtime_node(
+                    node: chosen_arm,
                     tree: tree,
                     interpretation: interpretation,
                     environment: environment,
                     runtime: runtime,
                     effect_io: effect_io
                   )
+                    // A Match's chooser always selects an arm; an absent answer here would be a chooser
+                    // that selected nothing from a scrutinee, and this row owes a value -- it fails closed
+                    // rather than evaluating a node that was never chosen.
+                    Absent =>
+                      outcome_rejected(
+                        d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node)
+                      )
+                  }
                 }
               )
             }

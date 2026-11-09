@@ -49,6 +49,7 @@ import std.optional { Absent, Present }
 import extdeps.filesystem.filesystem_io { Filesystem, FilesystemDelete, FilesystemDeleted, FilesystemDeleteTargetAbsent, FilesystemDeleteRefused, FilesystemDeleteKindUnrecognized, filesystem_delete }
 import extdeps.cloud.gcp.secret_manager
 import extdeps.cloud.gcp.secret_manager { decode_sm_access_version_secret_wire, SmAccessVersionSecretDecoded, SmAccessVersionSecretDecodeRefused }
+import extdeps.cloud.gcp.error_info { gcp_safe_error_codes }
 import extdeps.transports.rest { RestRefusal, RestStatusRefused, RestTransportRefused, RestCredentialRefused, rest_credential_refusal_cause, RestBodyUndecodable }
 import extdeps.github.app { GitHubInstallationTokenPermissions, github_installation_token_permissions }
 import extdeps.github.effect { contents_write, pull_requests_write }
@@ -600,15 +601,23 @@ type PublisherTokenMint
   = PublisherTokenMinted { token: Secret }
   | PublisherTokenNotMinted { cause: String }
 
+// THE PUBLISHER'S REFUSAL TEXT CARRIES NO BODY AND NO CAUSE TEXT. Both operations it describes are
+// credential operations (the Secret Manager read of the App key, the installation-token mint), and the
+// text reaches stderr through exit_failure. A response body can echo request material and a 2xx body
+// IS the secret, so neither is printed: a status refusal carries the HTTP status plus the safe codes of
+// a Google error body (extdeps.cloud.gcp.error_info gcp_safe_error_codes; a GitHub body contributes
+// none), and the transport and undecodable arms carry their kind only. A credential refused before
+// dispatch sent no request and holds no body, so it keeps its access-refusal reason
+// (extdeps.transports.rest rest_credential_refusal_cause).
 fn publisher_refusal_text(refusal: RestRefusal) -> String {
   match refusal {
-    RestStatusRefused { status, body } => join(["HTTP ", to_string(status as Int), ": ", body], "")
-    RestTransportRefused { cause } => concat("transport: ", cause as String)
+    RestStatusRefused { status, body } => join(["HTTP ", to_string(status as Int), gcp_safe_error_codes(body: body)], "")
+    RestTransportRefused { cause: _ } => "transport refused (cause withheld on a credential path)"
     RestCredentialRefused { refusal: credential_refusal } => {
       let cause = rest_credential_refusal_cause(refusal: credential_refusal)
       cause as String
     }
-    RestBodyUndecodable { status, cause } => join(["HTTP ", to_string(status as Int), " undecodable: ", cause as String], "")
+    RestBodyUndecodable { status, cause: _ } => join(["HTTP ", to_string(status as Int), " undecodable (cause withheld on a credential path)"], "")
   }
 }
 
@@ -724,9 +733,13 @@ fn mint_publication_helper_installation_token() -> PublisherTokenMint uses net: 
   )
 }
 
-fn mint_publisher_installation_token(wif_access_token: Secret, key_path: NonEmptyStr, repository_name: String) -> PublisherTokenMint uses net: Network {
+// `cloud_access_token` is the credential heal_publisher_cloud_credential minted moments ago, NOT a step
+// environment token: the parameter used to be named wif_access_token because the workflow's federation
+// step handed one down, and that name became false the moment the exchange moved into the seed. The token
+// authorizes exactly one read, the App private key, and is dropped as soon as the JWT is signed.
+fn mint_publisher_installation_token(cloud_access_token: Secret, key_path: NonEmptyStr, repository_name: String) -> PublisherTokenMint uses net: Network {
   match gcp.SecretManager.AccessVersion(
-    access_token: wif_access_token,
+    access_token: cloud_access_token,
     project_id: gunbai_bot_app_pem_secret.project,
     secret: gunbai_bot_app_pem_secret.secret,
     version: gunbai_bot_app_pem_secret.version,

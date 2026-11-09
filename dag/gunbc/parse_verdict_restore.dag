@@ -48,7 +48,7 @@ import gunbc.parse_verdict_publish {
   materialization_gha_cache_key_prefix,
   materialization_scope_guard,
   parse_verdict_compiler_expr,
-  parse_verdict_generation_one_bin,
+  native_cli_bin,
   parse_verdict_identity_blob_file,
   parse_verdict_receipts_file,
   parse_verdict_unit_path,
@@ -113,7 +113,9 @@ fn parse_verdict_restore_receipts_key(ordinal: Int) -> String {
 }
 
 // THE LOCATOR: the first-parent ancestors of the base, newest first, to the declared ordinals, each
-// written as a step output, which the restore keys and the record step read. The script is a bash node tree emitted through bash_emit, as the
+// written as a step output, which the restore keys and the record step read. It is the one ancestor search
+// of the job: the fast-lane chain (gunbc.read_set_restore) reads the same outputs, which is why the job runs
+// it right behind the stamp guard rather than beside the parse chain it was written for. The script is a bash node tree emitted through bash_emit, as the
 // release-bins runners are; no shell is authored here. A `git rev-list` that cannot answer (a
 // base sha outside the checkout) leaves the output empty, and an empty sha is a key no entry carries,
 // so the restore is a typed miss rather than a failed required job.
@@ -185,16 +187,26 @@ fn parse_verdict_locate_step() -> Step {
 // <prefix><head compiler identity>-<ancestor sha>, so a cache-hit is the COMPLETE-and-COMPATIBLE
 // signal -- it can only hit if that ancestor published under THIS run's compiler identity, which
 // is exactly "compatible identity AND receipts present". One key, one step, one unit.
+// ONE RESTORE CHAIN PER CACHE FAMILY, ONE RULE FOR ALL OF THEM. The parse-verdict unit and the fast-lane
+// unit (gunbc.read_set_restore) are each restored for the same located ancestors with the same selection
+// policy; a family differs only in the step-id prefix its restore steps carry. The functions below take that
+// prefix, so the chain's condition and its winner are one rule rather than one copy per family.
+data parse_verdict_receipts_restore_id_prefix: String = "parse_receipts_"
+
+fn materialization_restore_step_id(id_prefix: String, ordinal: Int) -> String {
+  join([id_prefix, int_to_decimal_string(value: ordinal)], "")
+}
+
+fn materialization_restore_hit_output(id_prefix: String, ordinal: Int) -> Expression {
+  ContextAccess { context: Steps, path: [materialization_restore_step_id(id_prefix: id_prefix, ordinal: ordinal), "outputs", "cache-hit"] }
+}
+
+fn materialization_restore_hit(id_prefix: String, ordinal: Int) -> Expression {
+  Equals { left: materialization_restore_hit_output(id_prefix: id_prefix, ordinal: ordinal), right: StringLiteral { value: "true" } }
+}
+
 fn parse_verdict_receipts_restore_id(ordinal: Int) -> String {
-  join(["parse_receipts_", int_to_decimal_string(value: ordinal)], "")
-}
-
-fn parse_verdict_receipts_hit_output(ordinal: Int) -> Expression {
-  ContextAccess { context: Steps, path: [parse_verdict_receipts_restore_id(ordinal: ordinal), "outputs", "cache-hit"] }
-}
-
-fn parse_verdict_receipts_hit(ordinal: Int) -> Expression {
-  Equals { left: parse_verdict_receipts_hit_output(ordinal: ordinal), right: StringLiteral { value: "true" } }
+  materialization_restore_step_id(id_prefix: parse_verdict_receipts_restore_id_prefix, ordinal: ordinal)
 }
 
 // SELECTION POLICY (declared): the restore chain selects the NEAREST ancestor with a COMPLETE, COMPATIBLE
@@ -206,18 +218,22 @@ fn parse_verdict_receipts_hit(ordinal: Int) -> Expression {
 // identity blob + receipts key), where a stale identity blob at a sha-only key could stop the search
 // and degrade to a full walk even when an older ancestor had a usable publication.
 
-fn parse_verdict_receipts_restore_condition(ordinal: Int) -> Expression {
+fn materialization_restore_chain_condition(id_prefix: String, ordinal: Int) -> Expression {
   fold_list(
     xs: parse_verdict_restore_ancestor_ordinals,
     empty: materialization_scope_guard(scope: GhaCachePullRequestMergeRefScope),
     cons: fn(acc, earlier) {
       if earlier < ordinal {
-        LogicalAnd { left: acc, right: NotEquals { left: parse_verdict_receipts_hit_output(ordinal: earlier), right: StringLiteral { value: "true" } } }
+        LogicalAnd { left: acc, right: NotEquals { left: materialization_restore_hit_output(id_prefix: id_prefix, ordinal: earlier), right: StringLiteral { value: "true" } } }
       } else {
         acc
       }
     }
   )
+}
+
+fn parse_verdict_receipts_restore_condition(ordinal: Int) -> Expression {
+  materialization_restore_chain_condition(id_prefix: parse_verdict_receipts_restore_id_prefix, ordinal: ordinal)
 }
 
 fn parse_verdict_cache_restore_step(name: String, id: Optional<String>, path: String, cache_key: String, condition: Expression) -> Step {
@@ -257,6 +273,10 @@ fn parse_verdict_receipts_restore_step(ordinal: Int) -> Step {
 // through env, never spliced into the script, because the emitter quotes literals and a quote inside an
 // expression would split it.
 fn parse_verdict_restored_ancestor_expression() -> Expression {
+  materialization_restored_ancestor_expression(id_prefix: parse_verdict_receipts_restore_id_prefix)
+}
+
+fn materialization_restored_ancestor_expression(id_prefix: String) -> Expression {
   LogicalOr {
     left: fold_list(
       xs: parse_verdict_restore_ancestor_ordinals,
@@ -265,7 +285,7 @@ fn parse_verdict_restored_ancestor_expression() -> Expression {
         LogicalOr {
           left: acc,
           right: LogicalAnd {
-            left: parse_verdict_receipts_hit(ordinal: ordinal),
+            left: materialization_restore_hit(id_prefix: id_prefix, ordinal: ordinal),
             right: ContextAccess { context: Steps, path: [parse_verdict_locate_step_id, "outputs", parse_verdict_ordinal_output(ordinal: ordinal)] }
           }
         }
@@ -324,7 +344,7 @@ fn parse_verdict_reuse_args() -> List<ParseVerdictInvocationArg> {
 
 fn parse_verdict_reuse_command() -> String {
   parse_verdict_invocation_command(
-    bin: parse_verdict_generation_one_bin(),
+    bin: native_cli_bin(),
     verb: cli_verb_parse_population,
     args: parse_verdict_reuse_args()
   )
