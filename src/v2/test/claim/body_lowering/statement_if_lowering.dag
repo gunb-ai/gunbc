@@ -52,13 +52,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // infer_application_callee_arrow_with_facts; a surface spelling of applying an if-expression is not
 // surface syntax.
 
-data sil_fallthrough_source: String = "module v2.test.sil_fallthrough\n\nimport std.types { Bool, Int }\n\nfn sil_probe(c: Bool, i: Int) -> Int {\n  if c { i }\n  i\n}\n"
+data sil_fallthrough_source: String = "module v2.test.sil_fallthrough\n\nfn sil_probe(c: Bool, i: Int) -> Int {\n  if c { i }\n  i\n}\n"
 
-data sil_arm_und_source: String = "module v2.test.sil_arm_und\n\nimport std.types { Bool, Int }\n\nfn sil_probe(c: Bool, i: Int) -> Int {\n  if c { sil_undeclared_arm }\n  i\n}\n"
+data sil_arm_und_source: String = "module v2.test.sil_arm_und\n\nfn sil_probe(c: Bool, i: Int) -> Int {\n  if c { sil_undeclared_arm }\n  i\n}\n"
 
-data sil_let_binder_source: String = "module v2.test.sil_let_binder\n\nimport std.types { Bool, Int }\n\nfn sil_probe(c: Bool, i: Int) -> Int {\n  let x = if c { i }\n  i\n}\n"
+data sil_let_binder_source: String = "module v2.test.sil_let_binder\n\nfn sil_probe(c: Bool, i: Int) -> Int {\n  let x = if c { i }\n  i\n}\n"
 
-data sil_tail_source: String = "module v2.test.sil_tail\n\nimport std.types { Bool, Int }\n\nfn sil_probe(c: Bool, i: Int) -> Int {\n  if c { i }\n}\n"
+data sil_tail_source: String = "module v2.test.sil_tail\n\nfn sil_probe(c: Bool, i: Int) -> Int {\n  if c { i }\n}\n"
 
 fn sil_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
