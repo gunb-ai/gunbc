@@ -9,6 +9,7 @@ import std.bytes { utf8_encode_bytes }
 import std.optional { Present, Absent }
 import std.resources { Network }
 import extdeps.cloud.gcp.sts
+import extdeps.cloud.gcp.sts { Jwt, RequestAccessToken }
 import extdeps.cloud.gcp.gcp { cloud_platform_scope }
 import extdeps.cloud.gcp.iam
 import extdeps.cloud.gcp.iam {
@@ -723,6 +724,8 @@ fn heal_publisher_cloud_credential_exchange() -> PublisherCloudCredential uses n
               match gcp.STS.Exchange(
                 subject_token: answer.subject_token,
                 audience: heal_publisher_exchange_audience(),
+                subject_token_type: Jwt,
+                requested_token_type: RequestAccessToken,
               ) {
                 RestRefused { refusal } =>
                   PublisherCloudCredentialNotMinted { cause: concat("HealPublisherFederationRefused: Cloud STS refused the assertion: ", rest_refusal_text(o: refusal)) }
@@ -874,5 +877,19 @@ fn classify_write_tree_completion(exit_code: Int, stdout: String, stderr: String
       Present { value: oid } => WriteTreeCompleted { tree_hex: git_object_id_wire_hex(oid: oid) as String }
       Absent => WriteTreeRejected { detail: "git write-tree exited 0 but printed no decodable object id" }
     }
+  }
+}
+
+// Witnesses that the STS Exchange field defaults (subject_token_type = Jwt,
+// requested_token_type = RequestAccessToken) resolve in this module's scope.
+// Red at base (NoSuchVariable Jwt) because #16160 omitted the named import;
+// green at head after the fix binds the constructors.
+test fn sts_exchange_defaults_resolve_in_heal_publication_scope() -> Bool {
+  match gcp.STS.Exchange(
+    subject_token: "witness-token" as Secret,
+    audience: heal_publisher_exchange_audience(),
+  ) {
+    RestAnswered { _ } => true
+    RestRefused { _ } => true
   }
 }
