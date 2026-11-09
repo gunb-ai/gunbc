@@ -20,7 +20,7 @@ import gunbc.required_ci_epoch_observation { RequiredCiEpochObservation, observe
 import gunbc.repository { gunbc_repository }
 import gunbc.github_effect_perform { ControllerInstallationToken, read_merge_group_runs_with }
 
-// THE REVISION A QUALIFICATION ATTEMPT MAY QUALIFY (gunbc.plans.mtcollins1_ci_service_legs: "push a
+// THE REVISION A QUALIFICATION ATTEMPT MAY QUALIFY (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08): "push a
 // fleet_revision_acceptance-admitted release"). A dispatch's revision is its event sha (operator, 2026-10-10;
 // gunbc.actions_run_binding admit_optional_expected_revision_given), and before anything is held, minted or launched
 // for it, it must be an AcceptedFleetRevision: the required floor succeeded on the merge queue for exactly that

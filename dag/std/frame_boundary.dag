@@ -6,7 +6,7 @@ import std.effect_grant {
   LifecycleGrade, LifecycleByConstruction, LifecycleByConvention,
 }
 
-// Frame-boundary SPEC (docs/plans/effect-namespace-grants.md 6, owned silent-ibex-417): the
+// Frame-boundary SPEC (docs/plans/effect-namespace-grants.md (deleted 2026-11-08) 6, owned silent-ibex-417): the
 // effect-grants Envelope says what is INSIDE a frame (its grants); this says how the frame's
 // BOUNDARY -- everything OUTSIDE the envelope -- is enforced, per LAYER (operator framing
 // 2026-07-20: isolation is a per-layer property; each std.effect_grant.NamespaceTree is a layer;

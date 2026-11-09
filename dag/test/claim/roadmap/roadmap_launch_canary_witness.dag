@@ -48,7 +48,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// RLM-0 (docs/plans/roadmap-launch-mvp-plan.md): the two-node canary in a SYNTHETIC roadmap graph,
+// RLM-0 (docs/plans/roadmap-launch-mvp-plan.md (deleted 2026-11-08)): the two-node canary in a SYNTHETIC roadmap graph,
 // decided by the same predicates the live page and belt consume -- gunbc.roadmap.roadmap_spawner
 // spawn_frontier / next_spawnable / node_unmet_parent_ids and gunbc.roadmap.roadmap_presentation
 // work_scheduling -- never a readiness re-implemented here. Nothing in this file touches

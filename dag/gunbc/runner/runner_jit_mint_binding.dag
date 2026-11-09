@@ -176,7 +176,7 @@ fn deregister_binding_subject(binding: JitMintBinding, state: GitHubAppControlPl
   }
 }
 
-// THE STOPPING UNIT'S SUBJECT IS THE BINDING'S OWN (gunbc.plans.mtcollins1_ci_service_legs F3): the registration
+// THE STOPPING UNIT'S SUBJECT IS THE BINDING'S OWN (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) F3): the registration
 // subject the mint would register under this binding, so a stop deletes exactly the name its own slot registers and
 // nothing a caller names. A binding whose subject did not prove has no registration to stop.
 type JitBindingStoppingSubject

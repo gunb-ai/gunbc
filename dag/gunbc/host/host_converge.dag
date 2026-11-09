@@ -248,7 +248,7 @@ type GunbcBinaryProvenancePolicy {
 // avoid. The variant name and its bytes_value field over-narrow to the memory axis that
 // landed first: a gunbc.design_argument::single_authority mislabel carried knowingly rather than a ~96-site mechanical rename
 // inside this change. dissolve-on: the HostAxisBundle axis framework
-// (gunbc.plans.host_convergence_circuit_residue P3), whose landing renames the variant to
+// (gunbc.plans.host_convergence_circuit_residue (deleted 2026-11-08) P3), whose landing renames the variant to
 // the mechanism it names (PerSlotUnitProperty, value_raw) in one motion.
 type ConvergeTarget
   = SliceProperty { unit: String, property: String, apply_value: String, expected_effective: String }

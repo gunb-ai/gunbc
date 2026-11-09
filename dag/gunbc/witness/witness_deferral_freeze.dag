@@ -69,7 +69,7 @@ THE RATCHET, and why it is a freeze rather than a sweep. Classifying every histo
 // Re-adding any one falsifier cadence would restore one door; it would not restore
 // the refusal, which needs a required run to enter the discovery path. Both halves
 // are in the restoration trigger for that reason.
-// SHRINK LOG. 2026-10-12 — the source layout cutover (gunbc.plans.source_layout_authority) deleted
+// SHRINK LOG. 2026-10-12 — the source layout cutover (gunbc.plans.source_layout_authority (deleted 2026-11-08)) deleted
 // the transport that ran the whole-tree ingest gate, and with it the OfflineLocalRecipe exclusion
 // rows that existed only to route their files to that transport (gunbc.ci.ci_layer_roots). Every
 // freeze row whose entry those rows excluded left with its file, except one: src/v2/test/claim/

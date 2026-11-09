@@ -317,7 +317,7 @@ type TimerRetirementMemberAt = NonEmptyStr
 //   actuation seam, admitted by an axis nobody could act on.
 //
 //   FABRIC EXECUTION CELLS ARE RULED OFF THIS PROOF'S PATH BY THE PLAN ITSELF.
-//   docs/plans/roadmap-launch-mvp-plan.md: "Do not couple the first roadmap-launch proof to Fabric
+//   docs/plans/roadmap-launch-mvp-plan.md (deleted 2026-11-08): "Do not couple the first roadmap-launch proof to Fabric
 //   CI." An axis the governing plan excludes is not this scope's obligation to carry.
 //
 // WHY THE REMAINDER IS NOT A CEREMONIAL EMPTY SCOPE. Timer retirement is a real observed obligation

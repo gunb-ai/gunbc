@@ -176,7 +176,7 @@ fn seed_gunbc_assign_stmt(seed: PublicSeed) -> Node {
 // bash_cmdsubst_body_spelling), so `$((` is never emitted and the arithmetic reading cannot be produced by
 // any call site; v2.test.claim.bash_command_fold holds that at the substitution. The structural shape of
 // the subshell carrier is a separate, already recorded program row
-// (gunbc.plans.convergence_coverage_program cc-structural-carriers, F37).
+// (gunbc.plans.convergence_coverage_program (deleted 2026-11-08) cc-structural-carriers, F37).
 fn private_root_assign_stmt() -> Node {
   bash_build_assign(
     name: "PRIVATE_ROOT",

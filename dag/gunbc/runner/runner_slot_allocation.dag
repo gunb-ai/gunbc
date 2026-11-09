@@ -107,7 +107,7 @@ data revision_job_slots: List<RunnerSlotIdentity> = [srv1_revision_job_slot()]
 // OWN CELL PLUS ITS OWN CONTROLLER SLICE. This list is the one fact the single-slot special cases
 // (the shakedown slot's charge, its place in the committed identities) were each a copy of; a second
 // authored slot is a row here, not another special case. Order is the order of the identities.
-// srv1-02 IS THE DEPLOY SLOT (decision D4 = A of gunbc.plans.srv1_deploy_principal_split). The index is
+// srv1-02 IS THE DEPLOY SLOT (decision D4 = A of gunbc.plans.srv1_deploy_principal_split (deleted 2026-11-08)). The index is
 // authored because renaming live state is not free; it lives here, beside the other authored indices, so
 // the fleet range can charge it first, and gunbc.runner.runner_slot_job_role reads it from here.
 data srv1_deploy_slot_index: Nat = 2

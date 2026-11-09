@@ -18,7 +18,6 @@ import gunbc.compiler_frontend_program_interlock {
   NamespaceBaselineObservationComplete,
   NamespaceFirstSemanticWave,
   NamespaceFixForwardComplete,
-  NamespaceGrammarRetired,
   SelfHostCorpusEmitsCleanly,
   SelfHostEmittedContractsHeld,
   SelfHostEmitterProducesEveryRetainedArtifact,
@@ -38,13 +37,7 @@ import gunbc.self_host_behavioral_equivalence_receipt {
   BehavioralEquivalenceLatest,
   current_behavioral_equivalence_standing,
 }
-import gunbc.self_host_compile_phase_frontier {
-  CompilePhaseFrontierEmpty,
-  CompilePhaseFrontierValidated,
-  CompilePhaseFrontierInvalid,
-  current_compile_phase_frontier_standing,
-  self_host_compile_phase_ratchet_enrolment,
-}
+import gunbc.self_host_compile_phase_frontier { self_host_compile_phase_ratchet_enrolment }
 import v2.compiler.self_host.stage0_crate_layout { emitter_produced_divergent_registrations }
 import v2.workflow.legacy_baseline_capture {
   CaptureAvailable,
@@ -66,7 +59,6 @@ import gunbc.namespace_cut.namespace_cut_stage {
   StageAct0ActivationGate,
   StageXL5Waves,
   StageXL6AtomicCutover,
-  StageXL7GrammarDeletion,
   namespace_cut_stages,
   namespace_cut_stage_label,
   stage_prerequisites,
@@ -178,6 +170,7 @@ type MissingInstrument
   | PersistedPromotionOutcome
   | LiveTreeCompilePhaseMeasurement
   | SeedDeletionObservation
+  | ScopedClosureEmitReceipt
 
 fn missing_instrument_label(i: MissingInstrument) -> String {
   match i {
@@ -188,6 +181,7 @@ fn missing_instrument_label(i: MissingInstrument) -> String {
     PersistedBehavioralReceipt => "a persisted behavioral-equivalence receipt (the taker exists; the series is empty or refused until one is appended)"
     PersistedPromotionOutcome => "a persisted PromotionOutcome over a named candidate"
     SeedDeletionObservation => "an observation of the live tree that the v1 seed families (interpreter, cli_run, seed harness, interpreter floor) are ABSENT, read from the tree rather than from an authored roster"
+    ScopedClosureEmitReceipt => "a persisted receipt, keyed by tree identity, that the two retained compiler closures (v2.compiler.source_root_eval, v2.cli.compile_cli) and the declared seed-retained rows emitted Rust that cargo built with zero blocking diagnostics -- the required v2-bootstrap job establishes this on every run but persists nothing the corpus can read"
     LiveTreeCompilePhaseMeasurement => "a compile-phase board measured on the TREE UNDER JUDGMENT and joined to the receipt series by tree identity, which is what gunbc.self_host_compile_phase_frontier compile_phase_frontier_coverage consumes -- gated on an in-epoch receipt first and an affordable whole-closure measurement second, both named in this instrument's obstacle"
   }
 }
@@ -555,6 +549,7 @@ fn missing_instrument_obstacle(i: MissingInstrument) -> InstrumentObstacle {
     PersistedBehavioralReceipt => NotBuilt
     PersistedPromotionOutcome => NotBuilt
     SeedDeletionObservation => NotBuilt
+    ScopedClosureEmitReceipt => NotBuilt
     LiveTreeCompilePhaseMeasurement => census_retired_obstacle()
   }
 }
@@ -651,7 +646,7 @@ fn emitter_retained_artifact_outstanding() -> List<String> {
 // the runner declares. This module consults them rather than minting a second "does anything run
 // this" vocabulary beside them.
 //
-// IT DOES NOT REACH THE GATE HALF, which is why S4b stays NotDerivable below: one cadence row
+// IT DOES NOT REACH THE GATE HALF, which is why S4b has its own arm below: one cadence row
 // cannot distinguish "taken and persisted" from "merge-blocking", so deriving both from it would
 // let enrolling an observation read as enrolling a gate -- the fused-variant defect the interlock
 // was split four times to remove, committed by its reader instead.
@@ -689,7 +684,7 @@ fn stage_subject_outstanding(stage: NamespaceCutStage) -> List<String> {
 // fold: v2.workflow.legacy_baseline_persisted_observation holds a capture by its own
 // GitObjectId, never a receipts roster. Production pin stays PreCutBaseUnpinned until ACT-0
 // names B; the AVAILABLE arm is outstanding until then. That is not ACT-0's BaselineCaptureReceipt.
-// THE THREE DELETION MILESTONES, DERIVED FROM THE SUBJECT ROSTER SINCE F-0 -- at DECLARED-ROW
+// THE DELETION MILESTONE, DERIVED FROM THE SUBJECT ROSTER SINCE F-0 -- at DECLARED-ROW
 // grain, stated at exactly that strength. gunbc.namespace_cut.namespace_cut_subject_roster carries every
 // authority scheduled to disappear as string-identity probes (not authored citations, which
 // would refuse at ingestion the moment a wave deletes a target -- the old absence-is-not-a-
@@ -736,11 +731,23 @@ fn milestone_status(m: ProgramMilestone) -> MilestoneStanding {
           outstanding: ratchet_observation_outstanding(cadence: emit_ratchet_runner_cadence)
         )
       )
+    // RESTATED 2026-11-08 (gunbc.design_ruling::self_host_scope_is_the_compiler_closures). S4b is a
+    // merge-blocking NATIVE gate over the two retained compiler closures, discharged by the compiler
+    // refusing on the route, never by a census -- so it no longer awaits the retired live-tree
+    // compile-phase measurement and is not RefusedByAuthority. No such step is on the required job
+    // today: the v2-bootstrap emit-and-build rows (gunbc.emitted_subject_build_gate
+    // emitted_subject_build_rows) have the seed emit the closures and cargo build them, and that module
+    // states they are NOT the native route. So the standing is OUTSTANDING at one named identity:
+    // NOT YET OBSERVED, an honest pending state. Rung, stated honestly: the identity is authored, not
+    // read off the workflow roster, so it leaves only by the edit that lands the step -- review
+    // diligence, the same strength as the rung-drop-standing arms.
     SelfHostRatchetGateEnrolled =>
-      NotDerivable {
-        why: "THIS MILESTONE CLAIMS A MERGE-BLOCKING GATE AGAINST S2'S IDENTITY-GRAIN POPULATION, and until 2026-09-01 it rendered Clear whenever the PERSISTED RECEIPT SERIES validated. Those are different facts. phase_board_series_ratchet folds authored receipts against each other, so what the enrolled witness blocks a merge on is the COHERENCE OF THE SERIES -- an incoherent receipt, a broken prefix link, an unadmitted regression left open. Nothing in it reads the tree being merged, so a regression introduced by the diff under judgment is invisible to it and the merge is blocked on nothing that measures the change. Rendering Clear there was gunbc.design_argument::guarantee_ladder (rung honesty) rung inflation on the compiler's own self-description, and the inflated class never ranks for climbing. WHAT SURVIVES AND IS REPORTED ELSEWHERE: the series ratchet is real, executes on the required floor, and its standing is carried by SelfHostWholeCorpusPopulationDerived and SelfHostCorpusEmitsCleanly, both of which say RECEIPT in their subject. WHAT IS MISSING is the join to the live tree: gunbc.self_host_compile_phase_frontier compile_phase_frontier_coverage is the typed judgment that decides it, it refuses rather than widens when the tree under judgment is unobserved, and it is wired to nothing that gates. Derivable once a board measured on the tree under judgment can be supplied to it." as NonEmptyStr,
-        cause: needs(i: LiveTreeCompilePhaseMeasurement)
-      }
+      standing_from_evidence(
+        e: observe_outstanding(
+          subject: "self-host S4b: a merge-blocking native gate over the compiler closures (v2.compiler.source_root_eval, v2.cli.compile_cli)" as NonEmptyStr,
+          outstanding: ["not yet observed: no merge-blocking native-compiler step over the compiler closures is on the required job"]
+        )
+      )
     NamespaceWaveAdmissionEnrolled =>
       standing_from_evidence(
         e: observe_outstanding(
@@ -777,36 +784,14 @@ fn milestone_status(m: ProgramMilestone) -> MilestoneStanding {
           outstanding: stage_subject_outstanding(stage: StageXL6AtomicCutover)
         )
       )
-    NamespaceGrammarRetired =>
-      standing_from_evidence(
-        e: observe_outstanding(
-          subject: "namespace: grammar and parse deletion subjects, LAST" as NonEmptyStr,
-          outstanding: stage_subject_outstanding(stage: StageXL7GrammarDeletion)
-        )
-      )
-    // DELIBERATELY NOT RETIRED IN V2-GOV-001 PART A (operator scope correction, 2026-10-31). The
-    // ruling retires census-CONDITIONED obligations; it does not retire every reader of a shared
-    // series. S5 asks a diagnostic question of one reconciled, non-vacuous historical receipt
-    // (receipt_4_e0d0e01e, 2026-09-29, cargo check profile check/dev), so it is a historical
-    // observation, not fresh codegen or link evidence, and not a census gate. S2 above was a
-    // population-completeness obligation, which is what was retired. FOLLOW-UP: V2-GOV-001 Part B
-    // owns S5's interlock edges and the historical-retirement redesign. Until then this arm reads only
-    // that receipt. gunbc.design_ledgers compile_phase_frontier_blocks renders the same series as
-    // documentation and sets no standing.
+    // S5 IS SCOPED TO THE COMPILER CLOSURES (gunbc.design_ruling self_host_scope_is_the_compiler_closures),
+    // so the whole-corpus compile-phase receipt series is evidence about a DIFFERENT subject and does not
+    // decide it. That series stays as history (gunbc.design_ledgers compile_phase_frontier_blocks). The
+    // scoped claim is not derivable until a receipt at its own grain is persisted.
     SelfHostCorpusEmitsCleanly =>
-      match current_compile_phase_frontier_standing() {
-        CompilePhaseFrontierValidated { latest } => standing_from_evidence(e: observe_outstanding(
-          subject: "self-host: error diagnostics in the latest validated whole-corpus compile-phase receipt (coded and codeless)" as NonEmptyStr,
-          outstanding: latest.raw_error_diagnostic_identities
-        ))
-        CompilePhaseFrontierEmpty => standing_from_evidence(e: observe_outstanding(
-          subject: "self-host: whole-corpus compile-phase frontier has no genesis receipt" as NonEmptyStr,
-          outstanding: ["frontier receipt series is empty"]
-        ))
-        CompilePhaseFrontierInvalid { reason } => standing_from_evidence(e: observe_outstanding(
-          subject: "self-host: whole-corpus compile-phase frontier validation" as NonEmptyStr,
-          outstanding: [reason as String]
-        ))
+      NotDerivable {
+        why: "S5 is scoped to the two retained compiler closures plus declared seed-retained rows (gunbc.design_ruling self_host_scope_is_the_compiler_closures); the persisted compile-phase receipts measure the whole corpus, a different subject, so they cannot decide it, and no receipt at the scoped grain is persisted yet" as NonEmptyStr,
+        cause: needs(i: ScopedClosureEmitReceipt)
       }
     SelfHostEmittedContractsHeld =>
       match current_behavioral_equivalence_standing() {
@@ -1009,9 +994,8 @@ fn join_names(names: List<String>) -> String {
 // is a join over the arms above rather than a fact anyone should author, so the answer moves when
 // the arms move. IT IS NOT THE UNBLOCKING QUESTION and must not be read as one: a milestone may
 // require several instruments conjunctively, so appearing in this list never means that delivering
-// this instrument alone would move it. SelfHostRatchetGateEnrolled is the live proof -- it requires
-// the whole-corpus board AND the ratchet's gate-enrolment fact, and the gate-enrolment fact alone
-// moves NOTHING. Deriving singleton sufficiency would mean asking, per instrument, whether the
+// this instrument alone would move it: a milestone that awaits two instruments is moved by
+// neither alone. Deriving singleton sufficiency would mean asking, per instrument, whether the
 // milestone becomes derivable with every OTHER current fact held fixed; that is a stronger carrier
 // and is deliberately not built here rather than approximated by this count.
 // ---------------------------------------------------------------------------------------------
@@ -1024,6 +1008,7 @@ data all_missing_instruments: List<MissingInstrument> = [
   PersistedPromotionOutcome,
   LiveTreeCompilePhaseMeasurement,
   SeedDeletionObservation,
+  ScopedClosureEmitReceipt,
 ]
 
 fn missing_instrument_eq(a: MissingInstrument, b: MissingInstrument) -> Bool {
@@ -1071,7 +1056,6 @@ data program_milestones: List<ProgramMilestone> = [
   NamespaceBaselineObservationComplete,
   NamespaceFirstSemanticWave,
   NamespaceFixForwardComplete,
-  NamespaceGrammarRetired,
   SelfHostCorpusEmitsCleanly,
   SelfHostEmittedContractsHeld,
   SelfHostEmitterProducesEveryRetainedArtifact,
@@ -1122,7 +1106,7 @@ fn milestone_report_line(m: ProgramMilestone) -> String {
 //             identity, and fabricating a population would be worse than naming the gap.
 //   XL-4   -- the reference-graph digest read out of ACT-0's receipt carrier.
 //   ACT-0  -- the full required-receipt set (all four kinds outstanding today).
-//   XL-5/6/7 -- delegation to the three deletion milestones.
+//   XL-5/6 -- delegation to the wave and cutover milestones.
 // ---------------------------------------------------------------------------------------------
 // ACT-0'S TWO FACTS, AND THIS FUNCTION DERIVES ONLY THE SECOND.
 //
@@ -1282,7 +1266,6 @@ fn stage_status(s: NamespaceCutStage) -> MilestoneStanding {
     StageAct0ActivationGate => act0_release_standing()
     StageXL5Waves => milestone_status(m: NamespaceFirstSemanticWave)
     StageXL6AtomicCutover => milestone_status(m: NamespaceFixForwardComplete)
-    StageXL7GrammarDeletion => milestone_status(m: NamespaceGrammarRetired)
   }
 }
 

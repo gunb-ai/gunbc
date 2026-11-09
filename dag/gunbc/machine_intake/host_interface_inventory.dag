@@ -1,6 +1,6 @@
 module gunbc.machine_intake.host_interface_inventory
 
-// THE PER-HostIdentity INTERFACE INVENTORY. Plan gunbc.plans.site_segment_anchor_bmc_reach named
+// THE PER-HostIdentity INTERFACE INVENTORY. Plan gunbc.plans.site_segment_anchor_bmc_reach (deleted 2026-11-08) named
 // this in its own discovery: "MACs are scattered across intake observations", with no per-host
 // carrier, so nothing in the corpus could answer, for one machine, which of its permanent addresses
 // belongs to an interface that answers the HOST versus one that answers the CONTROLLER. The plan's
