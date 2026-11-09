@@ -28,9 +28,9 @@ module gunbc.host.boot_attempt
 // DissolutionFired (std.dissolution retires_dissolution; gunbc.design_argument::fail_closed). A row that wants its
 // console reading imports it from the neutral home.
 
-import std.types { Bool, List, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { Second, second }
-import std.algebra { FreeSemigroup }
+import std.algebra { FreeSemigroup, trim }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionCondition, DissolutionStatus, dissolution_status, retires_dissolution }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable }
@@ -346,20 +346,25 @@ type StaleOverrideClearance
   | StaleOverrideWouldNotClear { write: StaleOverrideClearWrite }
   | StaleOverrideUnread { reason: NonEmptyStr }   // the clear or its readback never answered
 
-// WHAT THE CLEAR'S WRITE ITSELF ANSWERED, in the controller's terms. A write's answer is never the verdict of
-// a clear -- the readback is -- but when the readback says the flag is still in force, the write's answer is
-// what says why. Accepted: the controller took the write. Refused: it answered and declined, with the cause it
-// gave. Unanswered: no answer from the controller was received, so whether the write landed is unknown.
+// WHAT THE CLEAR'S WRITE ITSELF ANSWERED -- THE ONE SUM FOR IT, stored by the row as it reads it (no row keeps
+// a sum of its own for this and maps it 1:1 into this one; review 92721, the MegaRacOverride lesson). A write's
+// answer is never the verdict of a clear -- the readback is -- but when the readback says the flag is still in
+// force, the write's answer is what says why. Accepted: the controller took the write. Refused: it answered and
+// declined, and `code` is the refusal code exactly as the controller's protocol numbers it (for an IPMI
+// controller, the completion-code byte), kept as a value so two different refusals -- a request of the wrong
+// length and a value the firmware's policy rejects -- are told apart without parsing words; `detail` is the
+// client's own report of it. Unanswered: no answer from the controller was received, so whether the write
+// landed is unknown.
 type StaleOverrideClearWrite
   = ClearWriteAccepted
-  | ClearWriteRefused { cause: NonEmptyStr }
-  | ClearWriteUnanswered { cause: NonEmptyStr }
+  | ClearWriteRefused { code: Int, detail: String }
+  | ClearWriteUnanswered { exit_code: Int, detail: String }
 
 fn stale_override_clear_write_text(w: StaleOverrideClearWrite) -> String {
   match w {
     ClearWriteAccepted => "the controller accepted the write and the flag still reads valid"
-    ClearWriteRefused { cause: c } => concat("the controller refused the write: ", c as String)
-    ClearWriteUnanswered { cause: c } => concat("the write was not answered, so whether it landed is unknown: ", c as String)
+    ClearWriteRefused { code: c, detail: d } => join(["the controller refused the write with code ", to_string(c), ": ", trim(d)], "")
+    ClearWriteUnanswered { exit_code: x, detail: d } => join(["the write was not answered (client exited ", to_string(x), " naming no code), so whether it landed is unknown: ", trim(d)], "")
   }
 }
 

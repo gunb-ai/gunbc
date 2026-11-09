@@ -32,9 +32,9 @@ import extdeps.bmc.ipmitool_raw_reply { ipmitool_raw_stderr_completion }
 import extdeps.bmc.ipmitool_observed_output { ipmitool_bootparam5_valid_after_bootdev_none }
 import gunbc.bmc_model { BmcWorld, bmc_world, BmcPowerOff, bmc_with_override, BootOverrideNone, BootOverrideCdromEfiNextBoot }
 import gunbc.bmc_dry_realization { bmc_boot_options_clear_reply, bmc_ipmi_operation, BmcReplied, BmcRefused, BmcReplyFault }
-import gunbc.host.boot_attempt { StaleOverrideWouldNotClear, ClearWriteRefused }
+import gunbc.host.boot_attempt { StaleOverrideWouldNotClear, ClearWriteRefused, ClearWriteAccepted }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
-  BootParamRead, ClearSetRefused, ClearSetAccepted, boot_param5_clear_write_of, stale_clear_verdict,
+  BootParamRead, boot_param5_clear_write_of, stale_clear_verdict,
 }
 
 // THE OLD OPERATION, VERBATIM BUT FOR ITS SERVICE NAME: the argv the lane dispatched before this change.
@@ -104,7 +104,7 @@ test fn the_refusal_reads_back_as_a_refused_write_not_an_accepted_one() -> Bool 
     BmcRefused { exit_code: code, stderr: err, world: _ } => {
       let write = boot_param5_clear_write_of(success: false, exit_code: code, stderr: err)
       match write {
-        ClearSetRefused { completion: c, stderr: _ } => c == 199
+        ClearWriteRefused { code: c, detail: _ } => c == 199
         _ => false
       }
       && match stale_clear_verdict(
@@ -112,7 +112,8 @@ test fn the_refusal_reads_back_as_a_refused_write_not_an_accepted_one() -> Bool 
         write: write,
         readback: ipmitool_bootparam5_valid_after_bootdev_none,
       ) {
-        StaleOverrideWouldNotClear { write: ClearWriteRefused { cause: c } } => string_contains(s: c as String, pattern: "0xc7")
+        // THE CODE ARRIVES AS A VALUE, so a 0xC7 (wrong length) is told from a 0xCC (policy) without parsing words.
+        StaleOverrideWouldNotClear { write: ClearWriteRefused { code: c, detail: _ } } => c == 199
         _ => false
       }
     }
@@ -127,5 +128,5 @@ test fn the_real_clear_is_the_parameters_length_and_clears_the_override() -> Boo
     BmcReplied { stdout: out, world: after } => out == "" && after.boot_override == BootOverrideNone
     _ => false
   }
-  && boot_param5_clear_write_of(success: true, exit_code: 0, stderr: "") == ClearSetAccepted
+  && boot_param5_clear_write_of(success: true, exit_code: 0, stderr: "") == ClearWriteAccepted
 }

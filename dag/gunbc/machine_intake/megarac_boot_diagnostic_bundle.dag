@@ -185,7 +185,7 @@ import gunbc.host.boot_console_observation {
   bracketed_int, firmware_report_text, grub_report_text, console_text,
   console_path_retained, console_size_of_stat, checkpoint_relations, console, console_reading,
 }
-import extdeps.bmc.ipmitool_raw_reply { ipmitool_raw_stderr_completion, ipmitool_raw_byte_report }
+import extdeps.bmc.ipmitool_raw_reply { ipmitool_raw_stderr_completion }
 import gunbc.host.boot_attempt {
   AttemptIdentityReading, AttemptRunId, AttemptIdentityUnavailable, attempt_identity_text,
   HostPowerState, PowerOn, PowerOff, PowerUnread, host_power_text,
@@ -205,7 +205,7 @@ import gunbc.host.boot_attempt {
   BootOverrideClear, StaleOverrideClearance, OverrideCleared, OverrideClearLeftPending,
   OverrideClearNotRequired, OverrideClearUnread, StaleOverrideNoneFound, StaleOverrideCleared,
   StaleOverrideWouldNotClear, StaleOverrideUnread, StaleOverrideClearedUnread, boot_override_clear_text,
-  StaleOverrideClearWrite, ClearWriteAccepted, ClearWriteRefused, ClearWriteUnanswered,
+  StaleOverrideClearWrite, ClearWriteAccepted, ClearWriteRefused, ClearWriteUnanswered, stale_override_clear_write_text,
   stale_override_clearance_text, boot_override_standing_after_clear,
   DerivedFinding, derived_finding_text, run_record_derived_findings,
   StandingFinding, TerminalObserved,
@@ -1318,43 +1318,22 @@ fn megarac_run_record_not_taken(reason: NonEmptyStr) -> MegaRacRunRecord {
 // controller REFUSED (boot run 42663208460's clear sent six data bytes for a five-byte parameter) and a write
 // it TOOK are different defects, and a Bool that nothing read could not tell them apart.
 type BootParam5Clear
-  = BootParam5ClearIssued { policy: BootParamReading, write: BootParam5ClearWrite, readback: BootParamReading }
+  = BootParam5ClearIssued { policy: BootParamReading, write: StaleOverrideClearWrite, readback: BootParamReading }
   | BootParam5ClearNotIssued { reason: NonEmptyStr }
 
-// WHAT THE SET SYSTEM BOOT OPTIONS WRITE ANSWERED, as ipmitool reports it: exit 0 is the controller's
-// completion code 00h; a nonzero exit with "rsp=0x.." on stderr is the controller answering and declining with
-// that code (extdeps.bmc.ipmitool_raw_reply ipmitool_raw_stderr_completion); a nonzero exit without one is no
-// answer from the controller at all.
-type BootParam5ClearWrite
-  = ClearSetAccepted
-  | ClearSetRefused { completion: Int, stderr: String }
-  | ClearSetUnanswered { exit_code: Int, stderr: String }
-
-fn boot_param5_clear_write_of(success: Bool, exit_code: Int, stderr: String) -> BootParam5ClearWrite {
+// WHAT THE SET SYSTEM BOOT OPTIONS WRITE ANSWERED, read into the core's one sum for it
+// (gunbc.host.boot_attempt StaleOverrideClearWrite) as ipmitool reports it: exit 0 is the controller's completion
+// code 00h; a nonzero exit with "rsp=0x.." on stderr is the controller declining with that completion code
+// (extdeps.bmc.ipmitool_raw_reply ipmitool_raw_stderr_completion); a nonzero exit without one is no answer from
+// the controller at all.
+fn boot_param5_clear_write_of(success: Bool, exit_code: Int, stderr: String) -> StaleOverrideClearWrite {
   if success {
-    ClearSetAccepted
+    ClearWriteAccepted
   } else {
     match ipmitool_raw_stderr_completion(stderr: stderr) {
-      Present { value: c } => ClearSetRefused { completion: c, stderr: stderr }
-      Absent => ClearSetUnanswered { exit_code: exit_code, stderr: stderr }
+      Present { value: c } => ClearWriteRefused { code: c, detail: stderr }
+      Absent => ClearWriteUnanswered { exit_code: exit_code, detail: stderr }
     }
-  }
-}
-
-fn boot_param5_clear_write_text(w: BootParam5ClearWrite) -> String {
-  match w {
-    ClearSetAccepted => "accepted (completion code 0x00)"
-    ClearSetRefused { completion: c, stderr: e } => join(["refused by the controller, completion code ", ipmitool_raw_byte_report(n: c), ": ", trim(e)], "")
-    ClearSetUnanswered { exit_code: x, stderr: e } => join(["not answered (ipmitool exited ", to_string(x), " naming no completion code): ", trim(e)], "")
-  }
-}
-
-// THE WRITE'S ANSWER IN THE CORE'S WORDS, for the clearance verdict.
-fn boot_param5_clear_write_core(w: BootParam5ClearWrite) -> StaleOverrideClearWrite {
-  match w {
-    ClearSetAccepted => ClearWriteAccepted
-    ClearSetRefused { completion: _, stderr: _ } => ClearWriteRefused { cause: concat("Set System Boot Options ", boot_param5_clear_write_text(w: w)) as NonEmptyStr }
-    ClearSetUnanswered { exit_code: _, stderr: _ } => ClearWriteUnanswered { cause: concat("Set System Boot Options ", boot_param5_clear_write_text(w: w)) as NonEmptyStr }
   }
 }
 
@@ -1578,9 +1557,9 @@ fn boot_param5_standing_not_established(read: BootParamReading) -> NonEmptyStr {
 // controller, and must not report one). What was there to clear is judged from the BEFORE-read: 'cleared'
 // is said only when the controller had reported a flag in force, 'none found' only when it reported none,
 // and the blind case -- where nobody ever read what stood -- is StaleOverrideClearedUnread, which is neither.
-fn stale_clear_verdict(before: BootParamReading, write: BootParam5ClearWrite, readback: String) -> StaleOverrideClearance {
+fn stale_clear_verdict(before: BootParamReading, write: StaleOverrideClearWrite, readback: String) -> StaleOverrideClearance {
   if boot_param5_override_is_pending(readback: readback) {
-    StaleOverrideWouldNotClear { write: boot_param5_clear_write_core(w: write) }
+    StaleOverrideWouldNotClear { write: write }
   } else {
     stale_clear_verdict_of_unchanged_standings(before: before, readback: readback)
   }
@@ -1680,7 +1659,7 @@ fn boot_param5_clear_text(label: String, c: BootParam5Clear) -> String {
   match c {
     BootParam5ClearIssued { policy: p, write: w, readback: rb } => join([
       boot_param_text(parameter: "3", label: concat("before the ", label), r: p),
-      concat("boot parameter 5 ", label, " write: ", boot_param5_clear_write_text(w: w)),
+      concat("boot parameter 5 ", label, " write: ", stale_override_clear_write_text(w: w)),
       boot_param5_text(label: label, r: rb),
     ], "\n")
     BootParam5ClearNotIssued { reason: r } => concat("boot parameter 5 ", label, ": NOT TAKEN: ", r as String)
