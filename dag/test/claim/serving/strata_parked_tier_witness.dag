@@ -19,7 +19,7 @@ import gunbc.serving.strata_parked_tier {
 }
 import gunbc.serving.serving_capacity_anchor {
   ServingWarmSwap, WarmSwapRestores, WarmSwapRefused, SwapTierDisk, SwapByRouterSlotFile, slot_file_warm_swap,
-  SurvivesProcessRestart,
+  SurvivesProcessRestart, RungSharingUnread,
 }
 import extdeps.external_authority { TranscribedUncited, CitedFigureStanding }
 
@@ -64,10 +64,10 @@ test fn witness_declared_budget_is_the_figure_and_free_space_only_admits_it() ->
     && ad(why: BudgetUndeclared { detail: "fixture: nobody declared a cap" as NonEmptyStr },
           v: strata_slot_file_admissible(active_slots: 1, budget: unread_budget, free: srv4_host_free_disk, guard: srv4_strata_restore_guard))
     && match slot_file_warm_swap(admissible: strata_warm_admission(v: strata_slot_file_admissible(active_slots: 1, budget: srv4_strata_parked_budget, free: more_free_than_budget, guard: srv4_strata_restore_guard)), budget: srv4_strata_parked_budget, cost: srv4_strata_snapshot_cost, restore: millisecond(count: 1500), standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr }, durability: SurvivesProcessRestart) {
-         // The rung's sharing is UNREAD (Absent -- the ladder folds it inclusive of the RAM tier), it survives the
+         // The rung's sharing is UNREAD (RungSharingUnread -- the ladder folds it inclusive of the RAM tier), it survives the
          // process, and it charges the DECLARED 128 GiB -- not the host's 256 GiB of free space (free space admits
          // the rung; it is never the figure charged).
-         WarmSwapRestores { tier: SwapTierDisk, mechanism: SwapByRouterSlotFile, durability: SurvivesProcessRestart, sharing: Absent, restore: _, cache: c, slots: Absent, cost: _, standing: _, admission_standings: _ } =>
+         WarmSwapRestores { tier: SwapTierDisk, mechanism: SwapByRouterSlotFile, durability: SurvivesProcessRestart, sharing: RungSharingUnread { reason: _ }, restore: _, cache: c, slots: Absent, cost: _, standing: _, admission_standings: _ } =>
            byte_size_count(b: serving_reading_bytes_or_zero(r: c)) == byte_size_count(b: serving_reading_bytes_or_zero(r: srv4_strata_parked_budget))
              && byte_size_count(b: serving_reading_bytes_or_zero(r: c)) != byte_size_count(b: serving_reading_bytes_or_zero(r: more_free_than_budget))
          _ => false

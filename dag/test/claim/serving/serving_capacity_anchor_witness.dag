@@ -15,7 +15,7 @@ import gunbc.serving.serving_capacity_anchor {
   ServingRetentionGrant, GrantAdmits, GrantUnmodeled, GrantRefused, single_replica_grant,
   ServingWarmSwap, WarmSwapRestores, WarmSwapAbsent, WarmSwapRefused, SwapTierHostRam, SwapTierDisk,
   ServingSwapMechanism, SwapByEngineEviction, SwapByRouterSlotFile, ServingSwapDurability, LostWithProcess, SurvivesProcessRestart,
-  ServingRungSharing, RungAdds, RungInclusiveOfHotter,
+  ServingRungSharing, RungAdds, RungInclusiveOfHotter, RungSharingUnread,
   serving_capacity_shape, serving_conversation_policy, srv1_vllm_replica_shape, srv3_strata_shape, srv4_strata_shape,
   srv3_strata_anchor, srv4_strata_anchor,
 }
@@ -45,11 +45,11 @@ fn ca_cost() -> ConversationSnapshotCost {
 fn ca_store(n: Nat) -> ServingMemoryReading { ServingMemoryRead { bytes: byte_size(count: n * 100000), provenance: "fixture" as NonEmptyStr } }
 
 fn ca_warm_slots(ms: Nat, store: ServingMemoryReading, slots: Nat?) -> ServingWarmSwap {
-  WarmSwapRestores { tier: SwapTierHostRam, mechanism: SwapByEngineEviction, durability: LostWithProcess, sharing: Absent, restore: millisecond(count: ms), cache: store, slots: slots, cost: ca_cost(), standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr }, admission_standings: [] }
+  WarmSwapRestores { tier: SwapTierHostRam, mechanism: SwapByEngineEviction, durability: LostWithProcess, sharing: RungAdds, restore: millisecond(count: ms), cache: store, slots: slots, cost: ca_cost(), standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr }, admission_standings: [] }
 }
 
 // A rung of the ladder, for the combination rules below: one tier's holds, restore, and how it shares the hotter rung.
-fn ca_rung(ms: Nat, n: Nat, sharing: ServingRungSharing?) -> ServingWarmSwap {
+fn ca_rung(ms: Nat, n: Nat, sharing: ServingRungSharing) -> ServingWarmSwap {
   WarmSwapRestores { tier: SwapTierHostRam, mechanism: SwapByEngineEviction, durability: LostWithProcess, sharing: sharing, restore: millisecond(count: ms), cache: ca_store(n: n), slots: Absent, cost: ca_cost(), standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr }, admission_standings: [] }
 }
 
@@ -323,7 +323,7 @@ fn ca_anchor_standing(throughput: CitedFigureStanding, prefill: CitedFigureStand
     throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: 300), at_concurrency: 8, standing: throughput },
     cold_prefill: Present { value: tokens_per_second(count: 1000) },
     cold_prefill_standing: prefill,
-    warm_swap: [WarmSwapRestores { tier: SwapTierHostRam, mechanism: SwapByEngineEviction, durability: LostWithProcess, sharing: Absent, restore: millisecond(count: 200), cache: ca_store(n: 40), slots: Absent, cost: ca_cost(), standing: warm, admission_standings: [] }],
+    warm_swap: [WarmSwapRestores { tier: SwapTierHostRam, mechanism: SwapByEngineEviction, durability: LostWithProcess, sharing: RungAdds, restore: millisecond(count: 200), cache: ca_store(n: 40), slots: Absent, cost: ca_cost(), standing: warm, admission_standings: [] }],
   }
 }
 
@@ -375,7 +375,7 @@ fn ca_anchor_grant(g: ServingRetentionGrant) -> ServingCapacityAnchor {
     throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: 300), at_concurrency: 8, standing: ca_cited() },
     cold_prefill: Present { value: tokens_per_second(count: 1000) },
     cold_prefill_standing: ca_cited(),
-    warm_swap: [WarmSwapRestores { tier: SwapTierHostRam, mechanism: SwapByEngineEviction, durability: LostWithProcess, sharing: Absent, restore: millisecond(count: 200), cache: ca_store(n: 40), slots: Absent, cost: ca_cost(), standing: ca_cited(), admission_standings: [] }],
+    warm_swap: [WarmSwapRestores { tier: SwapTierHostRam, mechanism: SwapByEngineEviction, durability: LostWithProcess, sharing: RungAdds, restore: millisecond(count: 200), cache: ca_store(n: 40), slots: Absent, cost: ca_cost(), standing: ca_cited(), admission_standings: [] }],
   }
 }
 
@@ -410,7 +410,7 @@ fn ca_anchor_cited_store(n: Nat) -> ServingCapacityAnchor {
     throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: 300), at_concurrency: 8, standing: ca_cited() },
     cold_prefill: Present { value: tokens_per_second(count: 1000) },
     cold_prefill_standing: ca_cited(),
-    warm_swap: [WarmSwapRestores { tier: SwapTierHostRam, mechanism: SwapByEngineEviction, durability: LostWithProcess, sharing: Absent, restore: millisecond(count: 200), cache: ca_store(n: n), slots: Absent, cost: ca_cost(), standing: ca_cited(), admission_standings: [] }],
+    warm_swap: [WarmSwapRestores { tier: SwapTierHostRam, mechanism: SwapByEngineEviction, durability: LostWithProcess, sharing: RungAdds, restore: millisecond(count: 200), cache: ca_store(n: n), slots: Absent, cost: ca_cost(), standing: ca_cited(), admission_standings: [] }],
   }
 }
 
@@ -431,12 +431,12 @@ test fn witness_ladder_rung_slower_than_the_wait_contributes_nothing() -> Bool {
 }
 
 // Rule 2 (a rung never double-counts the hotter one): inclusive contributes the MAX of the two figures, exclusive
-// adds them, and a rung that does not say folds as inclusive so the store never over-promises. With the hot rung at
-// 4 and the cold at 10: inclusive 10, exclusive 14, unstated 10.
+// adds them, and a rung whose sharing is unread folds as inclusive so the store never over-promises. With the hot rung
+// at 4 and the cold at 10: inclusive 10, exclusive 14, unread 10.
 test fn witness_ladder_combines_by_stated_sharing_never_by_summation() -> Bool {
   ca_ladder_held(rungs: [ca_rung(ms: 200, n: 4, sharing: RungAdds), ca_rung(ms: 300, n: 10, sharing: RungInclusiveOfHotter)]) == 10
     && ca_ladder_held(rungs: [ca_rung(ms: 200, n: 4, sharing: RungAdds), ca_rung(ms: 300, n: 10, sharing: RungAdds)]) == 14
-    && ca_ladder_held(rungs: [ca_rung(ms: 200, n: 4, sharing: RungAdds), ca_rung(ms: 300, n: 10, sharing: Absent)]) == 10
+    && ca_ladder_held(rungs: [ca_rung(ms: 200, n: 4, sharing: RungAdds), ca_rung(ms: 300, n: 10, sharing: RungSharingUnread { reason: "witness: cold rung sharing not read" as NonEmptyStr })]) == 10
 }
 
 // Rule 3 (an unread rung is refused its figure, not the ladder): the read rung still holds, and the shape is
@@ -445,7 +445,7 @@ test fn witness_ladder_combines_by_stated_sharing_never_by_summation() -> Bool {
 test fn witness_ladder_unread_rung_contributes_zero_and_its_obligation() -> Bool {
   // A rung the adapter could not MEASURE -- its cache is an UNREAD reading carrying why: it contributes 0, its
   // obligation joins the standings, and the rungs that WERE read still bind.
-  let unread = WarmSwapRestores { tier: SwapTierDisk, mechanism: SwapByRouterSlotFile, durability: SurvivesProcessRestart, sharing: Absent, restore: millisecond(count: 1500), cache: ServingMemoryUnread { reason: "the host's free disk has not been read" as NonEmptyStr }, slots: Absent, cost: ca_cost(), standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr }, admission_standings: [] }
+  let unread = WarmSwapRestores { tier: SwapTierDisk, mechanism: SwapByRouterSlotFile, durability: SurvivesProcessRestart, sharing: RungSharingUnread { reason: "witness: disk rung sharing not read" as NonEmptyStr }, restore: millisecond(count: 1500), cache: ServingMemoryUnread { reason: "the host's free disk has not been read" as NonEmptyStr }, slots: Absent, cost: ca_cost(), standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr }, admission_standings: [] }
   ca_ladder_held(rungs: [ca_rung(ms: 200, n: 4, sharing: RungAdds), unread]) == 4
     && ca_ladder_binds_store(rungs: [ca_rung(ms: 200, n: 4, sharing: RungAdds), unread])
     && ca_ladder_held(rungs: [unread, ca_rung(ms: 200, n: 4, sharing: RungAdds)]) == 4
@@ -462,7 +462,7 @@ test fn witness_ladder_unread_rung_contributes_zero_and_its_obligation() -> Bool
 // test discriminates: same ladder shape, different input arm, different bound.
 test fn witness_ladder_hard_refusal_is_named_not_unread() -> Bool {
   let refused = WarmSwapRefused { reason: "the replica runs --batch 8: slot save/restore is refused (server.py:4091)" as NonEmptyStr, cites: "serve/server.py:4091" as NonEmptyStr }
-  let unread = WarmSwapRestores { tier: SwapTierDisk, mechanism: SwapByRouterSlotFile, durability: SurvivesProcessRestart, sharing: Absent, restore: millisecond(count: 1500), cache: ServingMemoryUnread { reason: "the declared disk budget has not been declared" as NonEmptyStr }, slots: Absent, cost: ca_cost(), standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr }, admission_standings: [] }
+  let unread = WarmSwapRestores { tier: SwapTierDisk, mechanism: SwapByRouterSlotFile, durability: SurvivesProcessRestart, sharing: RungSharingUnread { reason: "witness: disk rung sharing not read" as NonEmptyStr }, restore: millisecond(count: 1500), cache: ServingMemoryUnread { reason: "the declared disk budget has not been declared" as NonEmptyStr }, slots: Absent, cost: ca_cost(), standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr }, admission_standings: [] }
   // the refused rung alone: bound NAMES the refusal, and it is NOT a store bound and NOT the store-unread shape.
   ca_ladder_bound_is(rungs: [refused], want: "rung-refused")
     && !ca_ladder_binds_store(rungs: [refused])
@@ -510,7 +510,7 @@ test fn witness_srv4_anchor_ladder_carries_the_slot_file_disk_rung() -> Bool {
   count(rungs) == 2
     // exactly one RAM rung, the engine's own eviction tier, charging the engine row's conversation cache;
     && count(filter(rungs, r => match r {
-         WarmSwapRestores { tier: SwapTierHostRam, mechanism: SwapByEngineEviction, durability: LostWithProcess, sharing: Absent, restore: _, cache: c, slots: _, cost: _, standing: _, admission_standings: _ } =>
+         WarmSwapRestores { tier: SwapTierHostRam, mechanism: SwapByEngineEviction, durability: LostWithProcess, sharing: RungAdds, restore: _, cache: c, slots: _, cost: _, standing: _, admission_standings: _ } =>
            byte_size_count(b: serving_reading_bytes_or_zero(r: c)) == byte_size_count(b: serving_reading_bytes_or_zero(r: srv4_serving_engine_memory.conversation_cache))
          _ => false
        })) == 1
@@ -518,7 +518,7 @@ test fn witness_srv4_anchor_ladder_carries_the_slot_file_disk_rung() -> Bool {
     // the ladder folds it inclusive of the RAM rung), restores in the assumed 1500 ms, and charges the DECLARED
     // budget -- never free space.
     && count(filter(rungs, r => match r {
-         WarmSwapRestores { tier: SwapTierDisk, mechanism: SwapByRouterSlotFile, durability: SurvivesProcessRestart, sharing: Absent, restore: r1, cache: c, slots: Absent, cost: _, standing: _, admission_standings: _ } =>
+         WarmSwapRestores { tier: SwapTierDisk, mechanism: SwapByRouterSlotFile, durability: SurvivesProcessRestart, sharing: RungSharingUnread { reason: "witness: disk rung sharing not read" as NonEmptyStr }, restore: r1, cache: c, slots: Absent, cost: _, standing: _, admission_standings: _ } =>
            millisecond_count(m: r1) == 1500
              && byte_size_count(b: serving_reading_bytes_or_zero(r: c)) == byte_size_count(b: serving_reading_bytes_or_zero(r: srv4_strata_parked_budget))
          _ => false

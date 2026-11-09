@@ -63,9 +63,12 @@ type ServingSwapDurability = LostWithProcess | SurvivesProcessRestart
 
 // WHETHER A COLDER RUNG ADDS CONVERSATIONS OR RE-HOLDS ONES A HOTTER RUNG ALREADY HOLDS. LMCache's L1 is a hot copy
 // of its L2; Strata's RAM cache may still hold a conversation the router has also saved to disk. An inclusive rung
-// contributes max(hotter, itself), an exclusive one adds. UNSTATED FOLDS INCLUSIVE, so a rung whose sharing is
-// unknown never enlarges what the deployment promises (gunbc.design_argument::fail_closed).
-type ServingRungSharing = RungAdds | RungInclusiveOfHotter
+// contributes max(hotter, itself), an exclusive one adds. Every rung STATES its sharing (review 92669: an optional
+// field let Absent and RungInclusiveOfHotter spell one fold twice and left the add-versus-include decision unmade).
+// Not knowing is its own arm, distinct from knowing the rung is inclusive, and it folds inclusive so a rung whose
+// sharing is unread never enlarges what the deployment promises (gunbc.design_argument::fail_closed,
+// gunbc.design_argument::epistemic_humility).
+type ServingRungSharing = RungAdds | RungInclusiveOfHotter | RungSharingUnread { reason: NonEmptyStr }
 
 // ONE RUNG OF THE WARM LADDER, ONE RULE FOR EVERY RUNG. It keeps as many conversations as its warm bytes hold
 // snapshots of the anchor context, capped by its slots where the engine has them: gunbc.serving.serving_host_memory
@@ -80,7 +83,7 @@ type ServingRungSharing = RungAdds | RungInclusiveOfHotter
 // resume a conversation in time), a rung whose bytes are unread contributes nothing and joins its obligation to the
 // standings so the shape is Estimated, and rungs combine by their sharing, never blindly summed.
 type ServingWarmSwap
-  = WarmSwapRestores { tier: ServingSwapTier, mechanism: ServingSwapMechanism, durability: ServingSwapDurability, sharing: ServingRungSharing?, restore: Millisecond, cache: ServingMemoryReading, slots: Nat?, cost: ConversationSnapshotCost, standing: CitedFigureStanding, admission_standings: List<CitedFigureStanding> }
+  = WarmSwapRestores { tier: ServingSwapTier, mechanism: ServingSwapMechanism, durability: ServingSwapDurability, sharing: ServingRungSharing, restore: Millisecond, cache: ServingMemoryReading, slots: Nat?, cost: ConversationSnapshotCost, standing: CitedFigureStanding, admission_standings: List<CitedFigureStanding> }
   | WarmSwapAbsent
   // A rung the deployment adapter refused outright. Distinct from an unread rung (WarmSwapRestores with an
   // unread cache): this is not "we have not looked", it is "this store cannot be used here" -- batch disables the
@@ -103,8 +106,9 @@ fn serving_warm_store(cache: ServingMemoryReading, slots: Nat?, cost: Conversati
 
 // A Strata engine's warm tier, read from its memory row so the bytes and slots have one authority. The engine keeps
 // these conversations itself and they die with the process.
+// The engine's RAM cache is the HOTTEST rung: there is nothing hotter for it to re-hold, so it adds to the empty tally.
 fn engine_warm_swap(e: ServingEngineMemory, cost: ConversationSnapshotCost, restore: Millisecond, standing: CitedFigureStanding) -> ServingWarmSwap {
-  WarmSwapRestores { tier: SwapTierHostRam, mechanism: SwapByEngineEviction, durability: LostWithProcess, sharing: Absent, restore: restore, cache: e.conversation_cache, slots: e.conversation_slots, cost: cost, standing: standing, admission_standings: [] }
+  WarmSwapRestores { tier: SwapTierHostRam, mechanism: SwapByEngineEviction, durability: LostWithProcess, sharing: RungAdds, restore: restore, cache: e.conversation_cache, slots: e.conversation_slots, cost: cost, standing: standing, admission_standings: [] }
 }
 
 // A RUNG THE ROUTER REALIZES, NOT THE ENGINE. The bytes are a DECLARED BUDGET (the operator wants capped disk and
@@ -119,10 +123,10 @@ fn engine_warm_swap(e: ServingEngineMemory, cost: ConversationSnapshotCost, rest
 fn slot_file_warm_swap(admissible: ServingWarmAdmission, budget: ServingMemoryReading, cost: ConversationSnapshotCost, restore: Millisecond, standing: CitedFigureStanding, durability: ServingSwapDurability) -> ServingWarmSwap {
   match admissible {
     // The disk rung's sharing is UNREAD -- we do not know whether a conversation the router has saved is still
-    // resident in the engine's RAM cache -- so it is Absent, which the ladder folds INCLUSIVE (max with the hotter
+    // resident in the engine's RAM cache -- so it says so, and the ladder folds it INCLUSIVE (max with the hotter
     // rung), never a sum: the store never over-promises on an unknown (rule 2, operator's "unknown folds inclusive").
-    WarmAdmit { admission_standings: adm } => WarmSwapRestores { tier: SwapTierDisk, mechanism: SwapByRouterSlotFile, durability: durability, sharing: Absent, restore: restore, cache: budget, slots: Absent, cost: cost, standing: standing, admission_standings: adm }
-    WarmRungUnread { reason: r } => WarmSwapRestores { tier: SwapTierDisk, mechanism: SwapByRouterSlotFile, durability: durability, sharing: Absent, restore: restore, cache: ServingMemoryUnread { reason: r }, slots: Absent, cost: cost, standing: standing, admission_standings: [] }
+    WarmAdmit { admission_standings: adm } => WarmSwapRestores { tier: SwapTierDisk, mechanism: SwapByRouterSlotFile, durability: durability, sharing: RungSharingUnread { reason: strata_slot_file_sharing_unread }, restore: restore, cache: budget, slots: Absent, cost: cost, standing: standing, admission_standings: adm }
+    WarmRungUnread { reason: r } => WarmSwapRestores { tier: SwapTierDisk, mechanism: SwapByRouterSlotFile, durability: durability, sharing: RungSharingUnread { reason: strata_slot_file_sharing_unread }, restore: restore, cache: ServingMemoryUnread { reason: r }, slots: Absent, cost: cost, standing: standing, admission_standings: [] }
     WarmRungRefused { reason: r, cites: c } => WarmSwapRefused { reason: r, cites: c }
   }
 }
@@ -131,10 +135,13 @@ fn slot_file_warm_swap(admissible: ServingWarmAdmission, budget: ServingMemoryRe
 // read its bytes sets read_any even when it holds none -- a store that is read and empty is a refusal, not an absence.
 type ServingLadderTally { kept: Nat, read_any: Bool, too_slow_any: Bool, used: List<CitedFigureStanding>, unread: List<NonEmptyStr>, refused: List<NonEmptyStr> }
 
-fn rung_adds_hotter(sh: ServingRungSharing?) -> Bool {
+data strata_slot_file_sharing_unread: NonEmptyStr = "whether a conversation the router saved to a Strata slot file is still resident in the engine's RAM cache is not read" as NonEmptyStr
+
+fn rung_adds_hotter(sh: ServingRungSharing) -> Bool {
   match sh {
-    Present { value: RungAdds } => true
-    _ => false
+    RungAdds => true
+    RungInclusiveOfHotter => false
+    RungSharingUnread { reason: _ } => false
   }
 }
 
@@ -431,7 +438,8 @@ fn srv1_vllm_replica_anchor(deployment: String, r: Srv1TopologyReading) -> Servi
       tier: SwapTierDisk,
       mechanism: SwapByEngineEviction,
       durability: SurvivesProcessRestart,
-      sharing: Absent,
+      // srv1's only rung: LMCache's disk tier. Nothing hotter is modeled as a rung, so it adds to the empty tally.
+      sharing: RungAdds,
       restore: millisecond(count: 156),
       cache: srv1_vllm_disk_tier,
       slots: Absent,
