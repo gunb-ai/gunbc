@@ -22,7 +22,8 @@ import gunbc.serving.serving_capacity_anchor {
   LostWithProcess, RungInclusiveOfHotter, SwapByEngineEviction, SwapByRouterSlotFile, SwapTierDisk,
   SwapTierHostRam, SurvivesProcessRestart, WarmSwapRestores,
 }
-import gunbc.serving.serving_layout { ArtifactHeldEvictable, ArtifactHeldPinned, ServingMemoryRead }
+import gunbc.serving.serving_layout { serving_artifact_charged_host_ram, srv3_routed_expert_artifact, ArtifactHeldEvictable, ArtifactHeldPinned, ServingMemoryRead }
+import gunbc.serving.serving_replica_configuration { configuration_host_charges, srv4_batch1_slotfile_configuration, srv4_batch8_ram_only_configuration }
 import gunbc.serving.serving_replica_profile {
   ReplicaRunIdentityMatch, ReplicaExpertRung, ExpertInHostRam, ExpertOnDevice, ExpertOnDisk,
   replica_expert_ram_charge, replica_expert_rungs, replica_expert_placement_obligation,
@@ -325,6 +326,27 @@ test fn h11_ram_refuses_with_an_obligation() -> Bool {
 test fn srv1_ram_refuses_on_at_least_two_components() -> Bool {
   let p = replica_host_charges(p: srv1_vllm_replica_0_profile)
   match p.ram { Absent => p.obligations.length() >= 2 Present { value: _ } => false }
+}
+
+test fn srv3_artifact_bills_its_host_ram_rung_directly() -> Bool {
+  match serving_artifact_charged_host_ram(a: srv3_routed_expert_artifact) {
+    Present { value: b } => byte_size_count(b: b) > 0
+    Absent => false
+  }
+}
+
+test fn srv4_batch1_config_ram_is_present() -> Bool {
+  match configuration_host_charges(c: srv4_batch1_slotfile_configuration).ram {
+    Present { value: b } => byte_size_count(b: b) > 0
+    Absent => false
+  }
+}
+
+test fn srv4_batch8_config_ram_is_present() -> Bool {
+  match configuration_host_charges(c: srv4_batch8_ram_only_configuration).ram {
+    Present { value: b } => byte_size_count(b: b) > 0
+    Absent => false
+  }
 }
 
 // ── A READING PRICES ONLY THE RUN IT WAS TAKEN UNDER ──────────────────────────────────────────
