@@ -566,7 +566,6 @@ data reference_conservation_stratified_sample_paths: List<String> = [
   "src/v2/extdeps/github/diagnostic_emit.dag",
   "src/v2/extdeps/languages/c_bool_literal_emit.dag",
   "src/v2/extdeps/languages/rust_sg2_mode2.dag",
-  "src/v2/lens/affected_set/entry_selection.dag",
   "src/v2/lens/complexity_accumulator_copy/compile_gate.dag",
   "src/v2/lens/doc_reachability.dag",
   "src/v2/lens/grounding_ledger.dag",
