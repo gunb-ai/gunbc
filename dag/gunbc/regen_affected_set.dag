@@ -1,6 +1,9 @@
 module gunbc.regen_affected_set
 
 import std.types { String, List, Bool }
+import std.algebra { list_map }
+import gunbc.seed_build_artifact_emit { seed_build_artifacts }
+import gunbc.generated_artifact { artifact_path }
 
 // THE AFFECTED SET OF ONE EDIT: which committed mirrors can change when these .dag modules
 // change. This is the bound gunbc.regen_round_cost regen_affected_set_disposition scoped
@@ -298,6 +301,40 @@ fn regen_affected_set(
         bootstrap_products: regen_bootstrap_products(reached: reached)
       }
     }
+  }
+}
+
+// THE SEED'S OWN SOURCE IS A GENERATION INPUT (gunbc.plans.read_set_convergence P2 and A1). Every mirror is
+// emitted by the seed, so an edit to a hand-maintained seed file -- anything under the seed tree that is
+// not one of heal's own products -- can change any mirror, and a scope that read only `.dag` edits would
+// silently leave stale mirrors. The products are excluded because heal writes them: the committed mirrors
+// arrive here already translated to their modules (an edited mirror re-adjudicates that mirror), and the
+// seed-build artifacts are gunbc.seed_build_artifact_emit's roster, read here so the two never drift. The
+// required job's fast lane declares the same tree an invalidating input (gunbc.read_set_restore
+// fast_lane_fixed_input_members) for the same reason.
+data regen_seed_source_prefix: String = "src/v1/"
+
+fn regen_seed_source_edits(paths: List<String>) -> List<String> {
+  let products = list_map(xs: seed_build_artifacts(), f: fn(a) { artifact_path(a: a) })
+  paths |> filter(p => starts_with(s: p, prefix: regen_seed_source_prefix) && !regen_list_has(items: products, item: p))
+}
+
+// THE BOUND A CONSUMER OVER A WHOLE CHANGE ASKS FOR: the `.dag` bound above, unless the change also
+// edits a seed source, in which case the whole population is the answer and the seed sources are its
+// generation inputs. An unlocatable edit still refuses first.
+fn regen_affected_set_over_change(
+  non_module_paths: List<String>,
+  edited: List<String>,
+  unlocatable: List<String>,
+  edges: List<DependencyEdge>,
+  compared: List<MirrorRow>,
+  modules: List<String>
+) -> AffectedSetBound {
+  let sources = regen_seed_source_edits(paths: non_module_paths)
+  if count(unlocatable) == 0 && count(sources) > 0 {
+    WholePopulation { edited: edited, generation_inputs: sources }
+  } else {
+    regen_affected_set(edited: edited, unlocatable: unlocatable, edges: edges, compared: compared, modules: modules)
   }
 }
 

@@ -3,7 +3,8 @@ module test.claim.self_host_regen_affected_set_witness
 import std.types { Bool, String, List }
 import gunbc.regen_affected_set {
   DependencyEdge, MirrorRow, BootstrapEdge, AffectedSetBound, AffectedMirrors, WholePopulation, EditedSetUnlocatable,
-  regen_affected_set, regen_reverse_closure, regen_affected_set_members, regen_affected_set_bound_line
+  regen_affected_set, regen_reverse_closure, regen_affected_set_members, regen_affected_set_bound_line,
+  regen_affected_set_over_change
 }
 
 // WHAT THIS WITNESS COVERS: the bound's three arms and the reverse walk, on a fixture graph
@@ -93,4 +94,39 @@ test fn w_RED_an_unlocatable_edited_path_refuses_without_widening() -> Bool {
 
 test fn a_bound_line_names_the_arm_and_the_counts() -> Bool {
   regen_affected_set_bound_line(bound: bound_for(edited: ["std.a"])) == "regen-affected-set: AffectedMirrors edited=1 mirrors=4 bootstrap_products=0"
+}
+
+// ═══ THE WHOLE CHANGE (gunbc.plans.read_set_convergence P2) ═══
+
+fn change_bound(non_module_paths: List<String>, edited: List<String>) -> AffectedSetBound {
+  regen_affected_set_over_change(non_module_paths: non_module_paths, edited: edited, unlocatable: [], edges: fixture_edges, compared: fixture_compared, modules: fixture_modules)
+}
+
+// THE DISCRIMINATING RED for the seed-source arm: a hand-maintained seed file is the generator, so an
+// edit to it answers the whole population even when the `.dag` edit alone would select one mirror.
+test fn w_RED_a_seed_source_edit_answers_whole_population() -> Bool {
+  match change_bound(non_module_paths: ["src/v1/stage0/src/cli_run.rs"], edited: ["gunbc.d"]) {
+    WholePopulation { edited: e, generation_inputs: g } => same_members(a: g, b: ["src/v1/stage0/src/cli_run.rs"])
+    AffectedMirrors { edited: e, mirrors: m, bootstrap_products: b } => false
+    EditedSetUnlocatable { unlocatable: u, reason: r } => false
+  }
+}
+
+// HEAL'S OWN PRODUCTS ARE NOT SEED SOURCES: a seed-build artifact heal regenerates, and a path outside
+// the seed tree, leave the `.dag` bound as it was -- otherwise every heal commit would force the
+// whole population on the next run.
+test fn a_seed_build_artifact_or_non_seed_path_keeps_the_dag_bound() -> Bool {
+  same_members(
+    a: mirrors_of(bound: change_bound(non_module_paths: ["src/v1/stage0/src/instrument_registry_generated.rs", "docs/notes.md", ".github/workflows/heal.yml"], edited: ["gunbc.d"])),
+    b: ["gunbc_d.rs"]
+  )
+}
+
+// An unlocatable edit still refuses first, whatever else changed.
+test fn an_unlocatable_edit_refuses_before_the_seed_source_arm() -> Bool {
+  match regen_affected_set_over_change(non_module_paths: ["src/v1/stage0/src/cli_run.rs"], edited: [], unlocatable: ["fixtures/stray/gone.dag"], edges: fixture_edges, compared: fixture_compared, modules: fixture_modules) {
+    EditedSetUnlocatable { unlocatable: u, reason: r } => true
+    AffectedMirrors { edited: e, mirrors: m, bootstrap_products: b } => false
+    WholePopulation { edited: e, generation_inputs: g } => false
+  }
 }

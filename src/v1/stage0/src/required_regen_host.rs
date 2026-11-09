@@ -11721,6 +11721,7 @@ fn affected_set_entry(source_roots: &[String]) -> Result<String, String> {
 /// the bound's own run and for the partition-move decision that consumes the typed bound.
 fn affected_set_model_args(
     ctx: &crate::v1_interpreter::InterpContext,
+    non_module_paths: &[String],
     edited: &[String],
     unlocatable: &[String],
     edges: &[(String, String)],
@@ -11755,6 +11756,7 @@ fn affected_set_model_args(
     };
     let reached_list: Vec<String> = reached.iter().cloned().collect();
     let args = vec![
+        (Some("non_module_paths".to_string()), strs(non_module_paths)),
         (Some("edited".to_string()), strs(edited)),
         (Some("unlocatable".to_string()), strs(unlocatable)),
         (
@@ -11776,6 +11778,7 @@ fn affected_set_model_args(
 /// n-1 edges). The bootstrap rows are the model's own declaration; nothing is passed for them.
 pub fn render_affected_set_bound(
     source_roots: &[String],
+    non_module_paths: &[String],
     edited: &[String],
     unlocatable: &[String],
     edges: &[(String, String)],
@@ -11789,11 +11792,17 @@ pub fn render_affected_set_bound(
     })?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
 
-    let args = affected_set_model_args(&ctx, edited, unlocatable, edges, compared);
+    let args =
+        affected_set_model_args(&ctx, non_module_paths, edited, unlocatable, edges, compared);
     let bound = v1_interpreter::with_active_context(&ctx, || {
-        v1_interpreter::run_in_context_with_args(&ctx, "regen_affected_set", &args, false)
+        v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "regen_affected_set_over_change",
+            &args,
+            false,
+        )
     })
-    .map_err(|e| format!("refusal: regen_affected_set did not answer: {e}"))?;
+    .map_err(|e| format!("refusal: regen_affected_set_over_change did not answer: {e}"))?;
     let bound_arg = vec![(Some("bound".to_string()), bound)];
     let line = match v1_interpreter::with_active_context(&ctx, || {
         v1_interpreter::run_in_context_with_args(
@@ -11876,15 +11885,42 @@ pub fn render_affected_set_bound(
 
 /// The bound for an edited population against the live tree: edges and compared rows from the
 /// tree, verdict from the model.
+/// The bound over a whole change. `non_dag_paths` are the change's other paths: an edited committed
+/// MIRROR is heal's own product, so it is translated to its module and re-adjudicated (its own mirror is
+/// selected); every remaining path goes to the model, which decides whether it is a seed source that
+/// makes the answer the whole population (`gunbc.regen_affected_set` `regen_affected_set_over_change`).
 pub fn affected_set_bound_for(
     workspace: &Path,
     source_roots: &[String],
     edited: &[String],
     unlocatable: &[String],
+    non_dag_paths: &[String],
 ) -> Result<AffectedSetBound, String> {
     let (edges, modules) = regen_module_edges(workspace)?;
     let compared = compared_mirror_rows(&workspace.join("src/v1/stage0/src"), &modules)?;
-    render_affected_set_bound(source_roots, edited, unlocatable, &edges, &compared)
+    let mut edited_modules: BTreeSet<String> = edited.iter().cloned().collect();
+    let mut non_module_paths = Vec::new();
+    for path in non_dag_paths {
+        let mirror_module = compared
+            .iter()
+            .find(|(_, basename)| path == &format!("src/v1/stage0/src/{basename}"))
+            .map(|(module, _)| module.clone());
+        match mirror_module {
+            Some(module) => {
+                edited_modules.insert(module);
+            }
+            None => non_module_paths.push(path.clone()),
+        }
+    }
+    let edited: Vec<String> = edited_modules.into_iter().collect();
+    render_affected_set_bound(
+        source_roots,
+        &non_module_paths,
+        &edited,
+        unlocatable,
+        &edges,
+        &compared,
+    )
 }
 
 /// The model's own answer for one scope, over one committed roster.
@@ -12039,6 +12075,7 @@ pub fn regen_emission_scope_for_diff(
         source_roots,
         &population.edited_modules,
         &population.unlocatable,
+        &population.non_dag_paths,
     )?;
     let scope = match bound.arm.as_str() {
         "AffectedMirrors" => RegenEmissionScope::Affected {
@@ -12097,6 +12134,7 @@ pub fn run_regen_affected_set(source_roots: &[String]) -> Result<RegenAffectedSe
         source_roots,
         &population.edited_modules,
         &population.unlocatable,
+        &population.non_dag_paths,
     )?;
     let mut rendered = format!(
         "regen-affected-set: producer={REGEN_AFFECTED_SET_PRODUCER} host={} tree={tree} tree_dirty={tree_dirty}\n",
