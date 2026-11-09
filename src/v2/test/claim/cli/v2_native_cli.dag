@@ -3,6 +3,7 @@ import std.optional { Absent, Optional, Present }
 
 
 import std.algebra { Cons, Empty, FreeMonoid, length, list_head }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
 import std.process { ExitFailure, ExitSuccess }
 import extdeps.process.gnu_bash_exit { exit_code_misuse }
 import extdeps.process.posix_exit { exit_code_general_error }
@@ -32,6 +33,13 @@ import v2.cli.compile_cli {
   v2_cli_run
 }
 import v2.cli.population_verb_names { cli_verb_check_layout, cli_verb_check_references, cli_verb_parse_population }
+import v2.cli.population_verb_names {
+  cli_verb_apply_reference_migration,
+  cli_verb_check_layout,
+  cli_verb_check_references,
+  cli_verb_parse_population,
+  cli_verb_plan_reference_migration,
+}
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.std.artifact { Artifact, SourceFile }
 import extdeps.communication.medium { Lossless, Medium }
@@ -77,6 +85,8 @@ fn plan_first_root(plan: CliPlan) -> String {
         CliIfArmReaderDifferential { source_roots: _ } => ""
         CliCheckLayout { source_roots: _ } => ""
         CliCheckReferences { source_roots: _ } => ""
+        CliPlanReferenceMigration { source_roots: _, rules: _ } => ""
+        CliApplyReferenceMigration { source_roots: _, rules: _ } => ""
         CliParsePopulation { source_roots: _, compiler: _, write_identity: _, receipts: _, reuse_from: _ } => ""
       }
   }
@@ -273,6 +283,8 @@ fn plan_is_target(plan: CliPlan, expected: CliEmitTarget) -> Bool {
         CliIfArmReaderDifferential { source_roots: _ } => false
         CliCheckLayout { source_roots: _ } => false
         CliCheckReferences { source_roots: _ } => false
+        CliPlanReferenceMigration { source_roots: _, rules: _ } => false
+        CliApplyReferenceMigration { source_roots: _, rules: _ } => false
         CliParsePopulation { source_roots: _, compiler: _, write_identity: _, receipts: _, reuse_from: _ } => false
       }
   }
@@ -541,6 +553,8 @@ fn plan_roots_verb_label(plan: CliPlan) -> String {
         CliIfArmReaderDifferential { source_roots: _ } => cli_verb_if_arm_reader_differential
         CliCheckLayout { source_roots: _ } => cli_verb_check_layout
         CliCheckReferences { source_roots: _ } => cli_verb_check_references
+        CliPlanReferenceMigration { source_roots: _, rules: _ } => cli_verb_plan_reference_migration
+        CliApplyReferenceMigration { source_roots: _, rules: _ } => cli_verb_apply_reference_migration
         CliParsePopulation { source_roots: _, compiler: _, write_identity: _, receipts: _, reuse_from: _ } => cli_verb_parse_population
       }
   }
@@ -617,6 +631,8 @@ test fn parse_population_parses_write_identity_and_receipts_holds() -> Bool {
         CliIfArmReaderDifferential { source_roots: _ } => false
         CliCheckLayout { source_roots: _ } => false
         CliCheckReferences { source_roots: _ } => false
+        CliPlanReferenceMigration { source_roots: _, rules: _ } => false
+        CliApplyReferenceMigration { source_roots: _, rules: _ } => false
       }
   }
 }
@@ -643,6 +659,8 @@ test fn parse_population_parses_reuse_from_and_refuses_it_dangling_holds() -> Bo
         CliIfArmReaderDifferential { source_roots: _ } => false
         CliCheckLayout { source_roots: _ } => false
         CliCheckReferences { source_roots: _ } => false
+        CliPlanReferenceMigration { source_roots: _, rules: _ } => false
+        CliApplyReferenceMigration { source_roots: _, rules: _ } => false
       }
   })
     && match v2_cli_parse(argv: argv_of(items: argv_parse_population_reuse_dangling)) {
@@ -722,5 +740,100 @@ test fn a_refused_population_verdict_exits_general_error_holds() -> Bool {
   match v2_cli_exit(outcome: CliPopulationReported { text: "a located line", held: false, detail: "did not hold" }) {
     ExitSuccess => false
     ExitFailure { code: code, reason: _ } => code == exit_code_general_error
+  }
+}
+
+// THE MIGRATION VERBS ARE ROOTS VERBS WITH ONE EXTRA INPUT: the rules file they read. The rules are run
+// input rather than tree data — a rule is consumed by exactly one migration, so a row would be a ledger
+// of spent renames — which makes the file the only place a migration's intent is written down, and makes
+// a missing one a REFUSAL rather than a migration that silently reads no rules and reports the population
+// as settled (gunbc.design_argument::fail_closed).
+fn plan_rules_of(plan: CliPlan) -> String {
+  match plan {
+    CliPlanRefused { reason: _, detail: _ } => ""
+    CliPlanParsed { verb: verb } =>
+      match verb {
+        CliEmitClosure { entry: _, source_roots: _, target: _ } => ""
+        CliIfArmReaderDifferential { source_roots: _ } => ""
+        CliCheckLayout { source_roots: _ } => ""
+        CliCheckReferences { source_roots: _ } => ""
+        CliPlanReferenceMigration { source_roots: _, rules: rules } => rules
+        CliApplyReferenceMigration { source_roots: _, rules: rules } => rules
+        CliParsePopulation { source_roots: _, compiler: _, write_identity: _, receipts: _, reuse_from: _ } => ""
+      }
+  }
+}
+
+// The three shapes the rules option can arrive in: named with its file, absent, or named with nothing
+// after it. Each is its own argv, so a refusal can only be read as the case it names.
+fn reference_migration_rules_tail(case: String) -> FreeMonoid<String> {
+  if case == "given" {
+    Cons { head: "--rules", tail: Cons { head: "migration.rules", tail: Empty } }
+  } else if case == "dangling" {
+    Cons { head: "--rules", tail: Empty }
+  } else {
+    Empty
+  }
+}
+
+fn argv_reference_migration(verb: String, case: String) -> FreeMonoid<String> {
+  Cons {
+    head: verb,
+    tail: Cons {
+      head: "--source-root",
+      tail: Cons {
+        head: "fixtures/one/dag",
+        tail: Cons {
+          head: "--source-root",
+          tail: Cons { head: "fixtures/two/dag", tail: reference_migration_rules_tail(case: case) },
+        },
+      },
+    },
+  }
+}
+
+test fn the_plan_reference_migration_spelling_selects_its_own_verb_holds() -> Bool {
+  let plan = v2_cli_parse(argv: argv_of(items: argv_reference_migration(verb: "plan-reference-migration", case: "given")))
+  plan_roots_verb_label(plan: plan) == cli_verb_plan_reference_migration
+    && plan_rules_of(plan: plan) == "migration.rules"
+    && plan_first_root_of_roots_verb(plan: plan) == "fixtures/one/dag"
+    && length(xs: v2_cli_plan_source_roots(plan: plan)) == 2
+}
+
+test fn the_apply_reference_migration_spelling_selects_its_own_verb_holds() -> Bool {
+  let plan = v2_cli_parse(argv: argv_of(items: argv_reference_migration(verb: "apply-reference-migration", case: "given")))
+  plan_roots_verb_label(plan: plan) == cli_verb_apply_reference_migration
+    && plan_rules_of(plan: plan) == "migration.rules"
+}
+
+test fn a_reference_migration_verb_without_a_rules_file_refuses_holds() -> Bool {
+  plan_refusal_reason(
+    plan: v2_cli_parse(argv: argv_of(items: argv_reference_migration(verb: "plan-reference-migration", case: "absent"))),
+  ) == ^cli_no_rules
+    && plan_refusal_reason(
+      plan: v2_cli_parse(argv: argv_of(items: argv_reference_migration(verb: "apply-reference-migration", case: "absent"))),
+    ) == ^cli_no_rules
+}
+
+test fn a_reference_migration_verb_with_a_dangling_rules_option_refuses_holds() -> Bool {
+  plan_refusal_reason(
+    plan: v2_cli_parse(
+      argv: argv_of(items: argv_reference_migration(verb: "plan-reference-migration", case: "dangling")),
+    ),
+  ) == ^cli_rules_missing_value
+}
+
+// TEMPORARY — deleted before the commit. `gunbc run` needs a ProcessExit entry; the claims answer Bool.
+fn native_cli_migration_claims_gate() -> ProcessExit {
+  if !the_plan_reference_migration_spelling_selects_its_own_verb_holds() {
+    exit_failure(reason: "claim red: the_plan_reference_migration_spelling_selects_its_own_verb_holds")
+  } else if !the_apply_reference_migration_spelling_selects_its_own_verb_holds() {
+    exit_failure(reason: "claim red: the_apply_reference_migration_spelling_selects_its_own_verb_holds")
+  } else if !a_reference_migration_verb_without_a_rules_file_refuses_holds() {
+    exit_failure(reason: "claim red: a_reference_migration_verb_without_a_rules_file_refuses_holds")
+  } else if !a_reference_migration_verb_with_a_dangling_rules_option_refuses_holds() {
+    exit_failure(reason: "claim red: a_reference_migration_verb_with_a_dangling_rules_option_refuses_holds")
+  } else {
+    ExitSuccess
   }
 }

@@ -1,0 +1,254 @@
+module v2.cli.reference_migration_verbs
+
+// THE CLI ROUTE FOR `v2.workflow.reference_migration`: two verbs, one route, no second surface.
+//
+//   <binary> plan-reference-migration  --source-root <dir> [--source-root <dir>]... --rules <path>
+//   <binary> apply-reference-migration --source-root <dir> [--source-root <dir>]... --rules <path>
+//
+// WHY A VERB, AND WHY NOT A DRIVER SOMEBODY RUNS BY HAND. The plan and the apply are compiled code, so
+// they only really run inside a program that has already BOUND the source roots — and the program that
+// binds them is this CLI. The alternative was a driver `.dag` holding the population list, the rule
+// table and a report path: a second surface over the same machinery, covered by no check, whose
+// population is a hand-kept list that goes stale the day a file is added, and which is dead code the
+// moment the one migration it was written for is spent (`gunbc.design_argument::how_to_work`: work
+// expected to be thrown away is presumed redundant). The rules this module carries outlive any single
+// migration — every future module or declaration rename needs the marked-reference rules — so the
+// route that executes them has to be part of the front door, not a script beside it.
+//
+// THE POPULATION IS THE BOUND ROOTS, exactly as `check-references` takes it: every module the declared
+// namespace rows store under the roots, enumerated rather than listed. Nobody maintains a roster of
+// files to migrate, so no file can be left out by forgetting it — which is the whole reason the
+// operator's rule ("the whole codebase moves") is satisfiable at all.
+//
+// THE RULES ARE RUN INPUT: one file named by --rules, parsed by the module's own one parser
+// (`reference_migration_rules_parse`), which the fixture control exercises too. Rules are not tree data
+// because a rule is consumed by exactly one migration; committed, they would be a ledger of spent
+// renames, stale the moment apply runs. They are not argv because a table of them in a shell line is
+// unreviewable at this size.
+//
+// BOTH VERBS RUN THE SAME PLAN UNDER THE SAME LAW. The plan is complete when it holds no unresolved
+// finding, no malformed marker and no unread file (`migration_plan_complete`), AND every `resolve` line
+// of the run input was consumed — a resolve line nobody answered is an input that does not exist as far
+// as the migration is concerned, so it fails the run rather than quietly not applying. `plan` reports
+// and exits on that law; `apply` REFUSES unless the plan holds it, so no file is ever edited by a plan
+// that still has a question in it. Apply then writes exactly what its own plan proposed — the module's
+// digest guard is what makes "the plan said so" mean something.
+
+import std.types { Bool, Int, List, String }
+import std.algebra { Cons, Empty, contains, fold_list, is_empty, length, list_map, list_reverse }
+import v2.std.text { string_eq }
+import std.integer { int_to_decimal_string }
+import std.optional { Absent, Optional, Present }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import v2.cli.population_verbs { PopulationReport }
+import v2.cli.source_root_bindings { SourceRootBinding }
+import v2.compiler.module_acquisition {
+  AcquisitionEnv,
+  BoundModulesListed,
+  BoundModulesRefused,
+  ModuleFileDerived,
+  ModuleNameUnderivable,
+  acquisition_host_directory,
+  enumerate_bound_modules,
+  module_file,
+}
+import v2.workflow.reference_migration {
+  Applied,
+  MigrationApplyOutcome,
+  MigrationApplyRefusal,
+  MigrationFile,
+  MigrationPlan,
+  MigrationResolution,
+  MigrationRule,
+  Refused,
+  migration_context_policy_design,
+  migration_plan_complete,
+  migration_plan_edit_count,
+  migration_plan_edits,
+  migration_plan_open_count,
+  migration_plan_render,
+  migration_plan_resolution_defects,
+  migration_plan_run_holds,
+  reference_migration_apply_bound,
+  reference_migration_env,
+  reference_migration_plan_bound,
+  reference_migration_rules_parse,
+}
+
+// The bound population as the module's wet reader wants it: host paths, or the one reason there is no
+// list. A module whose file cannot be derived refuses the run instead of being skipped, because a
+// migration that quietly reads fewer files than the roots hold is a partial migration.
+type MigrationBoundPaths
+  = MigrationBoundPathsListed { paths: List<String> }
+  | MigrationBoundPathsRefused { subject: String, cause: String }
+
+fn reference_migration_plan_cli(bindings: List<SourceRootBinding>, rules_path: String) -> PopulationReport {
+  reference_migration_run(bindings: bindings, rules_path: rules_path, apply: false)
+}
+
+fn reference_migration_apply_cli(bindings: List<SourceRootBinding>, rules_path: String) -> PopulationReport {
+  reference_migration_run(bindings: bindings, rules_path: rules_path, apply: true)
+}
+
+fn reference_migration_run(bindings: List<SourceRootBinding>, rules_path: String, apply: Bool) -> PopulationReport {
+  let read = Filesystem.Read(path: rules_path)
+  if !read.success {
+    // A rules file that cannot be read is not a migration with no rules.
+    PopulationReport {
+      text: "",
+      held: false,
+      detail: "the rules file " + rules_path + " could not be read: " + read.error,
+    }
+  } else {
+    let input = reference_migration_rules_parse(content: read.content)
+    if !is_empty(xs: input.defects) {
+      PopulationReport {
+        text: reference_migration_join(lines: list_map(xs: input.defects, f: fn(defect) { "not a rule: " + defect })),
+        held: false,
+        detail: int_to_decimal_string(value: length(xs: input.defects)) + " line(s) of " + rules_path + " are not rules; the file is read whole or not at all",
+      }
+    } else {
+      match reference_migration_env(bindings: bindings) {
+        Absent =>
+          PopulationReport { text: "", held: false, detail: "the dag grammar did not prepare; no citation was observed" }
+        Present { value: env } =>
+          match reference_migration_bound_paths(env: env) {
+            MigrationBoundPathsRefused { subject: subject, cause: cause } =>
+              PopulationReport { text: subject + ": " + cause, held: false, detail: "could not enumerate the modules of " + subject }
+            MigrationBoundPathsListed { paths: paths } =>
+              if is_empty(xs: paths) {
+                PopulationReport { text: "", held: false, detail: "the bound trees hold no module; a migration over nothing is not a migration of zero" }
+              } else {
+                reference_migration_decide(
+                  env: env,
+                  paths: paths,
+                  rules: input.rules,
+                  resolutions: input.resolutions,
+                  apply: apply,
+                )
+              }
+          }
+      }
+    }
+  }
+}
+
+fn reference_migration_decide(env: AcquisitionEnv, paths: List<String>, rules: List<MigrationRule>, resolutions: List<MigrationResolution>, apply: Bool) -> PopulationReport {
+  let policy = migration_context_policy_design()
+  let plan = reference_migration_plan_bound(env: env, paths: paths, rules: rules, policy: policy, resolutions: resolutions)
+  let defects = migration_plan_resolution_defects(plan: plan, resolutions: resolutions)
+  // Two laws, and the difference is when each is asked. `holds` is the gate this run answers: nothing
+  // unresolved, unread or malformed, and every resolve line consumed. `complete` is the law an APPLIED
+  // population satisfies (nothing outstanding AND nothing left to do), which is why it is the word a
+  // REPLAN is judged by and never a reason to refuse an apply that has work to do.
+  let holds = migration_plan_run_holds(plan: plan) && is_empty(xs: defects)
+  // Which verb ran, in the first words of stdout, so a log line cannot be read as the other verb's.
+  let label = if apply { "reference migration apply: " } else { "reference migration plan: " }
+  let complete = migration_plan_complete(plan: plan)
+  let body = reference_migration_join(lines: migration_plan_render(plan: plan) + list_map(xs: defects, f: fn(defect) { "RESOLUTION DEFECT: " + defect }))
+  if apply && !holds {
+    // Nothing is written by a plan that still holds a question; the report names the questions.
+    PopulationReport {
+      text: label + reference_migration_head(plan: plan, verdict: "INCOMPLETE", written: []) + body,
+      held: false,
+      detail: "the plan does not hold: nothing was written",
+    }
+  } else if apply {
+    let selected = list_map(xs: migration_plan_edits(plan: plan), f: fn(edit) { edit.id })
+    match reference_migration_apply_bound(env: env, paths: paths, rules: rules, policy: policy, resolutions: resolutions, plan: plan, selected: selected) {
+      Refused { refusals: refusals } =>
+        PopulationReport {
+          text: label + reference_migration_head(plan: plan, verdict: "INCOMPLETE", written: []) + body,
+          held: false,
+          detail: "apply refused: " + reference_migration_join(lines: list_map(xs: refusals, f: fn(refusal) { refusal.id + ": " + refusal.reason })),
+        }
+      Applied { written: written, contents: _ } =>
+        PopulationReport {
+          text: label + reference_migration_head(plan: plan, verdict: "APPLIED", written: written) + body,
+          held: true,
+          detail: int_to_decimal_string(value: length(xs: reference_migration_written_files(written: written))) + " file(s) written",
+        }
+    }
+  } else {
+    PopulationReport {
+      text: label + reference_migration_head(plan: plan, verdict: reference_migration_verdict(holds: holds, complete: complete), written: []) + body,
+      held: holds,
+      detail: if !holds { "the plan does not hold" } else if complete { "the plan is complete: nothing outstanding, nothing left to do" } else { "the plan holds: its edits are outstanding" },
+    }
+  }
+}
+
+// The files the run actually rewrote, ONCE EACH. `MigrationApplyOutcome.written` follows the edits, and
+// several edits land in one file — the head line reports files, so it counts paths distinctly instead of
+// repeating a file once per edit it changed.
+fn reference_migration_written_files(written: List<String>) -> List<String> {
+  fold_list(xs: written, empty: Empty, cons: fn(acc, path) {
+    if contains(xs: acc, item: path, eq: string_eq) { acc } else { Cons { head: path, tail: acc } }
+  })
+}
+
+// THE VERDICT WORD the CI log is read by: INCOMPLETE names a run that does not hold; COMPLETE is the
+// replan answer (nothing outstanding, nothing left to do); HOLDING is a plan whose findings are all
+// settled and whose edits have not been applied; APPLIED is a run that wrote what it proposed.
+fn reference_migration_verdict(holds: Bool, complete: Bool) -> String {
+  if !holds {
+    "INCOMPLETE"
+  } else if complete {
+    "COMPLETE"
+  } else {
+    "HOLDING"
+  }
+}
+
+// THE HEAD LINE, in the shape the reference check's own line has: counts first, then the one word that
+// says whether the run holds. The CI log shows the totals before the detail.
+fn reference_migration_head(plan: MigrationPlan, verdict: String, written: List<String>) -> String {
+  int_to_decimal_string(value: length(xs: plan.population))
+    + " file(s), "
+    + int_to_decimal_string(value: migration_plan_edit_count(plan: plan))
+    + " proposed edit(s), "
+    + int_to_decimal_string(value: migration_plan_open_count(plan: plan))
+    + " unresolved, "
+    + int_to_decimal_string(value: length(xs: plan.malformed))
+    + " malformed marker(s), "
+    + int_to_decimal_string(value: length(xs: plan.unread))
+    + " unread file(s), "
+    + int_to_decimal_string(value: length(xs: plan.resolved))
+    + " resolution(s) consumed, "
+    + int_to_decimal_string(value: length(xs: reference_migration_written_files(written: written)))
+    + " file(s) written -> "
+    + verdict
+    + "\n"
+}
+
+fn reference_migration_join(lines: List<String>) -> String {
+  fold_list(xs: lines, empty: "", cons: fn(acc, line) { if is_empty(xs: acc) { line } else { acc + "\n" + line } })
+}
+
+// THE POPULATION: every module the bound trees store, as the host path the module's own reader opens.
+// The path is the root's host directory plus the module's stored relative path — the same pair the
+// acquisition machinery puts together to read a module — so a file the compiler can see is a file the
+// migration can read.
+fn reference_migration_bound_paths(env: AcquisitionEnv) -> MigrationBoundPaths {
+  match enumerate_bound_modules(layout: env.layout, bindings: env.bindings) {
+    BoundModulesRefused { subject: subject, cause: cause } => MigrationBoundPathsRefused { subject: subject, cause: cause }
+    BoundModulesListed { modules: modules } => reference_migration_paths_go(env: env, pending: modules, acc: [])
+  }
+}
+
+fn reference_migration_paths_go(env: AcquisitionEnv, pending: List<String>, acc: List<String>) -> MigrationBoundPaths {
+  match pending {
+    Empty => MigrationBoundPathsListed { paths: list_reverse(xs: acc) }
+    Cons { head: name, tail: rest } =>
+      match module_file(layout: env.layout, name: name) {
+        ModuleNameUnderivable { name: underivable, cause: cause } =>
+          MigrationBoundPathsRefused { subject: underivable, cause: cause }
+        ModuleFileDerived { file: file } =>
+          match acquisition_host_directory(bindings: env.bindings, tree: file.tree) {
+            Absent => MigrationBoundPathsRefused { subject: name, cause: "its tree is not bound to a host directory" }
+            Present { value: host_directory } =>
+              reference_migration_paths_go(env: env, pending: rest, acc: Cons { head: host_directory + "/" + file.relative_path, tail: acc })
+          }
+      }
+  }
+}
