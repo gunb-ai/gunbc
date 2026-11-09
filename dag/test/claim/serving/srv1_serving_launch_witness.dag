@@ -33,7 +33,8 @@ import gunbc.serving.srv1_serving_launch {
   Srv1ServingDeviceMember, Srv1ServingDeviceSelected, Srv1ServingDevicePending,
 }
 
-// The argv `docker inspect --format {{.Config.Cmd}} lil-flash-next` showed for the 2026-10-31 08:02 relaunch (recovery1, LMCACHE_L2_GB 150, the pool context cap), with the two
+// The argv `docker inspect --format {{.Config.Cmd}} lil-flash-next` showed for the 2026-11-08 two-replica
+// relaunch (L1=12, L2=125, disk-first KV, the pool context cap), with the two
 // shell substitutions left as the wrapper writes them and the output redirect cut at its boundary (the
 // wrapper's `>> $D/serve.log 2>&1` is shell, not argv). A LITERAL, deliberately: this is the reading the
 // derivation is checked against, and restating it from the rows would make the check circular.
@@ -42,8 +43,8 @@ data observed_cmd_tail: List<String> = [
   "--profile", "qwen38-flash-next",
   "--hardware", "rtx-pro-6000-pcie",
   "--env", "LMCACHE_MODE=ram-disk",
-  "--env", "LMCACHE_L1_GB=100",
-  "--env", "LMCACHE_L2_GB=150",
+  "--env", "LMCACHE_L1_GB=12",
+  "--env", "LMCACHE_L2_GB=125",
   "--env", "LMCACHE_L2_ROOT=/cache/kv",
   "--env", "LMCACHE_L2_WORKERS=16",
   "--env", "LMCACHE_L2_ODIRECT=1",
@@ -108,8 +109,8 @@ test fn the_environment_tiers_wire_as_the_container_shows_them() -> Bool {
   srv1_serving_launch.environment
     == [
       lil_serve_environment_entry(key: "LMCACHE_MODE" as NonEmptyStr, value: "ram-disk" as NonEmptyStr),
-      lil_serve_environment_entry(key: "LMCACHE_L1_GB" as NonEmptyStr, value: "100" as NonEmptyStr),
-      lil_serve_environment_entry(key: "LMCACHE_L2_GB" as NonEmptyStr, value: "150" as NonEmptyStr),
+      lil_serve_environment_entry(key: "LMCACHE_L1_GB" as NonEmptyStr, value: "12" as NonEmptyStr),
+      lil_serve_environment_entry(key: "LMCACHE_L2_GB" as NonEmptyStr, value: "125" as NonEmptyStr),
       lil_serve_environment_entry(key: "LMCACHE_L2_ROOT" as NonEmptyStr, value: "/cache/kv" as NonEmptyStr),
       lil_serve_environment_entry(key: "LMCACHE_L2_WORKERS" as NonEmptyStr, value: "16" as NonEmptyStr),
       lil_serve_environment_entry(key: "LMCACHE_L2_ODIRECT" as NonEmptyStr, value: "1" as NonEmptyStr),
@@ -234,8 +235,8 @@ test fn a_port_override_changes_only_the_port() -> Bool {
       "--profile", "qwen38-flash-next",
       "--hardware", "rtx-pro-6000-pcie",
       "--env", "LMCACHE_MODE=ram-disk",
-      "--env", "LMCACHE_L1_GB=100",
-      "--env", "LMCACHE_L2_GB=150",
+      "--env", "LMCACHE_L1_GB=12",
+      "--env", "LMCACHE_L2_GB=125",
       "--env", "LMCACHE_L2_ROOT=/cache/kv",
       "--env", "LMCACHE_L2_WORKERS=16",
       "--env", "LMCACHE_L2_ODIRECT=1",
