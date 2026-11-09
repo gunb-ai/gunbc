@@ -20,9 +20,9 @@ import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimR
 // value is NativeClaimNotHeld.
 //
 //   renamed_bind_capture  the not_predicate_attempt shape itself: arm `AcceptedProbe { ..., table: table1 }`
-//                         (renamed Bind leaf), body reads the parameter `table` AND `table1`. Pre-fix the
-//                         body's `table` was the field: expected 77*1000 + 13*10 + 4 + 1 = 77135, the
-//                         class observes 13*1000 + 13*10 + 4 + 1 = 13135.
+//                         (renamed Bind leaf), body reads the parameter `table` AND `table1`: expected
+//                         77*1000 + 13*10 + 4 + 1 = 77135; a captured outer reads the field and observes
+//                         13*1000 + 13*10 + 4 + 1 = 13135.
 //   shorthand_bind        the arm binds `table` plainly: binding the field under the field name IS the
 //                         declared binding here, so this case holds before and after -- it fences the fix
 //                         from over-reaching into shorthand arms.
@@ -32,13 +32,24 @@ import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimR
 //                         and after the fix -- a regression guard, expected 5*100 + 2*10 + 1 = 521 on both
 //                         legs.
 //
-// RED: the entry built at the PRE-FIX seed (the seed emission whose v2_compiler_parse.rs carries sha
-// 188439f2, pre-fix src/v1/05_emit_rust.dag) must exit NOT-HELD (1); built at the fix it must exit HELD
-// (0). The fix binds the rc-ref PAIR under one emitter-owned binder: the pattern renders
-// `field: ref __rc_field` and the prelude reads `__rc_field.as_ref()`, so no arm-body identifier can be
-// captured by a field binder and the declared variable is bound from the pair source. Both legs are run
-// by hand; the discriminating case is renamed_bind_capture -- shorthand_bind and nested_variant_rename
-// hold on both legs by construction.
+// WHAT THIS LABEL DOES NOT REACH (verified by reading the gate, not by running): an arm is lowered by
+// emit_pattern_rc_aware only when rc_pattern_analysis_with_box_fields leaves needs_rc_pattern true -- that
+// is, when analyze_rc_pattern finds a field whose PATTERN is a variant pattern over a shared (Rc) type, or
+// box_bound_fields_for_pattern finds a field whose declared TYPE needs a Box (a recursive type). Every
+// fixture type here (ProbeResult, ProbePayload, ProbeSelector, ProbeTable) is non-recursive and
+// non-shared, and a renamed Bind leaf never enters ref_bound_fields on its own, so all three arms take the
+// ordinary emit_pattern path, which already bound the renamed field under the arm's declared name BEFORE
+// the fix. So this label pins the renamed/shorthand/nested renderings at the value level; it is NOT the
+// witness for the `field_needs_rc_ref` branch the fix changed. A fixture that reaches that branch needs a
+// renamed field whose declared type is recursive (Box-wrapped) or nested over a shared type -- the shape the
+// seed instance had (parse_expr_not_predicate_attempt over the Rc-shared parse types).
+//
+// MISSING EVIDENCE (restore): the two legs -- entry built at the PRE-FIX seed (the seed emission whose
+// v2_compiler_parse.rs carries sha 188439f2, pre-fix src/v1/05_emit_rust.dag) exiting NOT-HELD (1), and at
+// the fix exiting HELD (0) -- were never pinned on a final green-CI head, and no build runs in the session
+// that restored this change. The fix's pair rule IS exercised by the heal regen at head: the seed's real
+// rc-ref arms compile only when pattern and prelude share one binder (a half-renamed pair failed heal with
+// rustc E0425 `__rc_view`). Nothing here re-executes the pre-fix leg.
 //
 // NOT ON THE REQUIRED PATH: this label is executed by host runs, not by the required job; the class rung
 // is mechanical-by-label, not gate-enrolled (gunbc.recurring_failure_mode
