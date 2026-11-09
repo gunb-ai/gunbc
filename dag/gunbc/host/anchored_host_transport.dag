@@ -1,7 +1,8 @@
 module gunbc.host.anchored_host_transport
 
-import std.types { String, NonEmptyStr, List }
+import std.types { String, NonEmptyStr, List, Bool }
 import std.optional { Present, Absent }
+import gunbc.actions_run_binding { actions_run_attempt_label_of_run }
 import std.algebra { trim }
 import v2.std.node { Node }
 import v2.std.diagnostic { Outcome, Accepted, Rejected }
@@ -30,8 +31,11 @@ import extdeps.ssh.openssh_client_commands { ssh_keyscan_command, ssh_keygen_gen
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.fleet.fleet_ssh_access { mtcollins1_ssh_host_key_secret, fleet_automation_ssh_key, fleet_automation_ssh_key_fingerprint }
 import gunbc.fleet.fleet_host_key_enrollment {
-  KnownHostKeyRow, ScannedFirstContact, known_hosts_line, fleet_name_at_ssh_port,
+  KnownHostKeyRow, ScannedFirstContact, ConsolePerBoot, ProvisionedInstall, known_hosts_line, fleet_name_at_ssh_port,
 }
+import gunbc.provisioning.network_install_receipt { NetworkInstallReceipt, InstalledToDisk, InstallNotEstablished, network_install_client, CurrentInstallForHost, CurrentInstallEstablished, CurrentInstallUnestablished }
+import gunbc.host.per_boot_console_pin { AnchoredHostRow, PerBootHostPin }
+import extdeps.network.mac { mac_addresses_are_equal }
 import gunbc.host.host_effect { HostEffectTransport, FleetSsh }
 import gunbc.host.host_bound_transport {
   HostBoundTransport, HostBoundTransportResolved, HostBoundTransportRefused, host_bound_transport_of,
@@ -47,7 +51,7 @@ import gunbc.auth.authorization_pattern_selection {
   select_authorization_pattern,
 }
 import gunbc.auth.access_token_source {
-  AccessTokenSourceSelected, AccessTokenSourceUnavailable,
+  AccessTokenSourceSelection, AccessTokenSourceSelected, AccessTokenSourceUnavailable,
   select_access_token_source,
 }
 import std.human_intervention {
@@ -57,7 +61,7 @@ import std.human_intervention {
 // A HOST-AUTHENTICATED TRANSPORT: a transport already bound (by gunbc.host.host_bound_transport) to the
 // managed host its ADDRESS reaches, checked additionally against a TRUSTED STATEMENT of the key that host
 // presents. The binding is GENERIC -- host plus anchor gives a binding -- and each anchored machine lives
-// in a ROW below, never in a module or a branch of its own (§3: one place for the mechanism, rows for
+// in a ROW below, never in a module or a branch of its own (gunbc.design_argument::single_authority: one place for the mechanism, rows for
 // the machines).
 //
 // WHY IT EXISTS. host_bound_transport_of binds a transport to the managed host its address reaches --
@@ -81,19 +85,6 @@ import std.human_intervention {
 // NOT a fork of the route. Booting mtcollins1 is ruled not sensitive.
 
 // ── 1. The rows: one per anchored machine, the machine's name lives HERE and nowhere else ─────────
-
-// WHAT IS ANCHORED: a managed host, the trusted statement about the key it presents (Absent until that
-// statement is authored -- see mtcollins1's row), the read obligation the statement carries as a VALUE,
-// the Secret holding the private half (so the scan's argv check can assert the name never renders), and
-// the address the statement is stated at, built by the registry's own constructor so the anchor, the scan
-// and the registry cannot spell one endpoint twice (§3).
-type AnchoredHostRow {
-  host: HostIdentity
-  anchor: KnownHostKeyRow?
-  read_obligation: NonEmptyStr
-  host_key_secret: SecretRef
-  address: SocketAddress
-}
 
 // THE ANCHORED HOSTS. mtcollins1's row is the only entry today; adding a second anchored machine adds a
 // ROW here, not a module and not a branch.
@@ -161,7 +152,7 @@ fn anchored_host_row_for(host: HostIdentity) -> AnchoredHostRow? {
 // (gunbc.fleet.fleet_host_key_enrollment, the srv5/srv6 note) says a row whose external corroboration
 // EXISTS BUT WHOSE JOIN HAS NOT BEEN PERFORMED stays ScannedFirstContact, because IndependentlyAnchored
 // "would be a claim about work that has not happened -- the same over-claim in a different place" (and
-// DESIGN §4d forbids asserting as deduced what is only inferred). This anchor's join -- matching the
+// gunbc.design_argument::epistemic_humility forbids asserting as deduced what is only inferred). This anchor's join -- matching the
 // transcribed public half against a live boot's PRESENTED key -- has not executed, so the row carries the
 // measured, honest arm: scanned_from records the method (transcription of the minted public half, never
 // read back) and the TranscribedUncited standing beside its read obligation, so both are visible to any
@@ -200,14 +191,13 @@ fn anchored_host_trusted_row(
 
 // ── 2. The binding: host_bound_transport_of first, then the host's own trust tests ────────────────
 
-// §3c: the anchored binding and the gated readback are CONSUMED BY A NAMED LATER CHANGE, not dangling and
+// gunbc.design_argument::consumption: the anchored binding and the gated readback are CONSUMED BY A NAMED LATER CHANGE, not dangling and
 // not consumed-in-this-change (review 85051, correctly): no production fold yet routes a FleetSsh transport
 // to mtcollins1 through anchored_host_transport_of, and nothing starts sshd pointing at the delivered key --
 // the RAM image has no sshd in this slice at all (gunbc.runner.runner_host_first_boot_receipt
 // unobserved_after_first_boot: "no network or sshd exists in this slice"). These rows state that honestly
-// with the trigger that retires each, and they stand in the census-closure registry
-// (gunbc.census_closure_frontier); this module's witness pins they are well-formed and registered (the
-// network_boot_manifest_broker pattern). Until they dissolve, production transports to mtcollins1 do NOT
+// with the trigger that retires each, and this module's witness pins they are well-formed (the
+// network_boot_manifest_broker pattern); the census-closure registry that once enrolled them was retired. Until they dissolve, production transports to mtcollins1 do NOT
 // pass through this module, and the honest claim is only: any transport ROUTED through
 // anchored_host_transport_of refuses at AnchoredBindingAnchorAbsent today -- not that every production
 // transport does.
@@ -217,6 +207,20 @@ data anchored_host_transport_frontier_rows: List<FrontierRow> = [
     reason: "anchored_host_transport_of is called only by this module's witness and by anchored_host_transport_against; no production fold routes a FleetSsh transport to an anchored host through it, so no live transport is host-authenticated yet and unanchored binding through host_bound_transport_of remains the only production path",
     dissolution: unbound_dissolution(
       description: "dissolves when a production fold that sends traffic to an anchored host calls anchored_host_transport_of with that host's FleetSsh transport and the presented line from a live readback, and refuses the leg on any non-Bound arm; a witness claim does not fire this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "anchored_host_transport_per_boot"),
+    reason: "anchored_host_transport_per_boot and per_boot_pin_from_checked_key are called only by this module's witness: nothing reads the BMC serial console (SOL) of a boot, nothing supplies expected_boot_id from a real subject, and no production fold routes a transport through the per-boot binding (anchored_host_transport_live still compares against the row's static anchor)",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a production fold acting on a mtcollins1 boot has a production reader of that boot's SOL console that mints the pin through per_boot_pin_from_checked_key (the pin's only mint; the reader runner_host_key_observation exists in gunbc.runner.runner_host_medium but only a witness consumes it; no production fold does), supplies the subject's boot id as expected_boot_id, and refuses the leg on any non-Bound arm from anchored_host_transport_per_boot; a witness claim does not fire this. OPEN: the boot_id character set is not yet restricted (control characters in a console-read id could contaminate a refusal diagnostic); the restriction lands with the live SOL reader, which is the first place such text can arrive"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.runner.runner_host_medium", decl_name: "runner_host_key_gen_argv"),
+    reason: "the host-key stages' inhabitance claim, test.claim.runner.runner_host_key_stage_real_execution_witness, executes the real stages against ssh-keygen but is run BY HAND only: it is not enrolled in the required floor's wet lane (the job roster is closed to growth, the wet lane needs a ci_layer_roots LocalRepoWetLane row, WetScheduledClaim rows and floor_route_gap rows, and a runner carrying ssh-keygen), and nothing consumes the SOL reader in production yet, so an edit to the key stages is not re-paired with a real run by any gate",
+    dissolution: unbound_dissolution(
+      description: "dissolves when the SOL reader runner_host_key_observation has a production consumer, at which point that witness is enrolled in the wet lane and executes on every change to the key stages (runner_host_key_gen_argv, runner_host_key_pub_argv, runner_host_key_fingerprint_argv); a hand-run does not fire this"
     )
   ),
   frontier_row_decl(
@@ -246,21 +250,39 @@ data anchored_host_transport_frontier_rows: List<FrontierRow> = [
   // this module rather than in a registry that asserts a live residual.
 ]
 
+// A BOUND BINDING CARRIES THE ANCHOR ITS PRESENTED KEY MATCHED, so a consumer that states what the host was trusted
+// on (gunbc.host.initialized_host) reads it off the binding rather than looking the row up a second time.
 type AnchoredHostBinding
-  = AnchoredBindingBound { bound: HostBoundTransport }
+  = AnchoredBindingBound { bound: HostBoundTransport, anchor: KnownHostKeyRow }
   | AnchoredBindingNotTheAnchoredHost { cause: String }
   | AnchoredBindingAnchorNotForRow { cause: String }
   | AnchoredBindingAnchorAbsent { cause: String }
   | AnchoredBindingPresentedKeyMismatch { expected_line: String, observed_line: String }
+  | AnchoredBindingPinFromAnotherBoot { pinned_boot: String, expected_boot: String }
+  // T2 (gunbc.plans.host_trust_provisioned_key): the pin is not this installed system's install
+  // record - a scanned, transcribed or per-boot pin never vouches an installed contact.
+  | AnchoredBindingPinNotInstallRecord { cause: String }
+  // No complete install receipt attests the contact's installed system, so the pin's install
+  // cannot be shown current and nothing is vouched (gunbc.design_argument::fail_closed: refuse, name the gap, repair nothing).
+  | AnchoredBindingInstallNotAttested { why: String }
+  // The host has been REINSTALLED: a newer complete receipt names a different installing attempt,
+  // and a provisioned pin dies at reinstall even if the presented key still matches the old row -
+  // the reused-key case the per-install minting rule exists to forbid.
+  | AnchoredBindingInstallSuperseded { pinned_install: String, current_install: String }
+  // The current-install carrier is not established for this transport's host: either no selection
+  // of the latest complete receipt exists yet (the honest production state until the enrolment
+  // fold lands, the carrier's only intended producer), or the carrier names a host other than the
+  // transport's bound host. Never a bind; the comparison refuses without it.
+  | AnchoredBindingCurrentInstallUnestablished { why: String }
   | AnchoredBindingRefused { cause: String }
 
-// THE BOUNDING, generic over the anchored machine; every refusal a typed, located state (§5). The host
+// THE BOUNDING, generic over the anchored machine; every refusal a typed, located state (gunbc.design_argument::fail_closed). The host
 // is NOT an input: it is read from the transport by host_bound_transport_of -- the same route a FleetSsh
 // target is built by -- so no caller can pair a transport to one machine with the trust of another (the
 // wrong-host guarantee the re-land made structural). The checks happen in this order:
 //   1. host_bound_transport_of does the HOST binding. Its refusals pass through whole -- LocalShell,
 //      SshShell, EmitArtifactThenThinRun, an unmanaged address, an ambiguous address all refuse there.
-//      This module adds no second host list and no second spelling of an address (§3).
+//      This module adds no second host list and no second spelling of an address (gunbc.design_argument::single_authority).
 //   2. The bound host MUST have a row. A machine with no row is not anchored -- a refusal that says so;
 //      there is no fallback path that proceeds unanchored.
 //   3. A row whose anchor is absent (the honest production state today) refuses carrying the read
@@ -310,12 +332,14 @@ fn anchored_host_transport_against(
 ) -> AnchoredHostBinding
   admit_callers: [
     decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "anchored_host_transport_of"),
+    decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "anchored_host_transport_per_boot"),
     decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_wrong_presented_key_refuses_the_transport"),
     decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "matching_presented_key_binds_the_anchored_host"),
     decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_transport_to_another_machine_never_binds_the_anchored_host"),
     decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_local_shell_refuses_before_any_key_is_read"),
     decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_empty_presented_line_never_binds"),
     decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_anchor_for_another_machine_refuses_the_row"),
+    decl_ref(module_path: "test.claim.host.initialized_host_witness", decl_name: "mtcollins1_binding"),
   ] {
   match host_bound_transport_of(transport: transport) {
     HostBoundTransportRefused { cause: cause } => AnchoredBindingRefused { cause: cause }
@@ -335,7 +359,7 @@ fn anchored_host_transport_against(
         } else {
           let expected = known_hosts_line(k: anchor)
           if expected == presented_key_line {
-            AnchoredBindingBound { bound: bound }
+            AnchoredBindingBound { bound: bound, anchor: anchor }
           } else {
             AnchoredBindingPresentedKeyMismatch { expected_line: expected, observed_line: presented_key_line }
           }
@@ -348,18 +372,168 @@ fn anchored_host_transport_against(
   }
 }
 
+// ── 2b. THE PER-BOOT PIN (operator-delegated route, merry-fox-82 2026-10-31) ─────────────────────────
+//
+// mtcollins1's runner OS is a RAM image: a stable host key cannot reach it before sshd starts (the custody
+// arm delivers over the very SSH it would have to start). The key is therefore generated ON the host at
+// every boot and the image prints its PUBLIC line on the BMC serial console (SOL), which is authenticated
+// by the BMC credential and independent of the network path under test. No secret crosses any channel.
+// What the fleet pins is that line, TIED TO THE BOOT it was printed in: a pin from another boot is a pin
+// for another key, so the boot id is part of the pin and compared before the key is.
+//
+// The comparison is unchanged -- anchored_host_transport_against, the known_hosts-line equality -- so a
+// per-boot pin is one more source of an anchor, not a second trust algorithm (gunbc.design_argument::single_authority).
+//
+// THE PER-BOOT BINDING. The pin is a SUPPLIED VALUE (the console read mints it); the expected boot id is
+// the boot the caller is acting on (the subject's boot id), so a pin captured at boot A can never vouch
+// for boot B's sshd. Order: no pin refuses; a pin from another boot refuses before any key is compared;
+// then the same host binding and row lookup anchored_host_transport_of does, and the same sealed
+// comparison against the pin's anchor.
+fn anchored_host_transport_per_boot(
+  transport: HostEffectTransport,
+  expected_boot_id: NonEmptyStr,
+  pin: PerBootHostPin?,
+  presented_key_line: String,
+) -> AnchoredHostBinding {
+  match pin {
+    Absent => AnchoredBindingAnchorAbsent {
+      cause: "no per-boot host-key pin: the console read of this boot's checked host-key fields is absent or malformed; matching against nothing is accepting anything",
+    }
+    Present { value: p } =>
+      if (p.boot_id as String) != (expected_boot_id as String) {
+        AnchoredBindingPinFromAnotherBoot { pinned_boot: p.boot_id as String, expected_boot: expected_boot_id as String }
+      } else {
+        match host_bound_transport_of(transport: transport) {
+          HostBoundTransportRefused { cause: cause } => AnchoredBindingRefused { cause: cause }
+          HostBoundTransportResolved { bound: bound } => match anchored_host_row_for(host: bound.host) {
+            Absent => AnchoredBindingAnchorAbsent {
+              cause: join(["no anchored row exists for ", bound.host as String], ""),
+            }
+            Present { value: row } => anchored_host_transport_against(row: row, anchor: p.anchor, transport: transport, presented_key_line: presented_key_line)
+          }
+        }
+      }
+  }
+}
+
+// T2's PER-INSTALL COMPARISON (gunbc.plans.host_trust_provisioned_key, the trust axis of
+// gunbc.plans.physical_machine_boot_program): the pin is a ProvisionedInstall row of the catalog,
+// and current_install is NOT a bare receipt (side-chat P1 at 7e4e926b): a caller could hand an
+// older complete receipt matching an older pin, and a host still presenting that key would bind
+// though a newer install superseded both. It is the CurrentInstallForHost carrier, minted only by
+// the selection of the latest complete receipt for that host (gunbc.provisioning.network_install_receipt);
+// that selection fold does not exist yet, so production can supply only Unestablished - which
+// refuses, never binds - and the carrier's Established mint is admit_callers-gated to the T2
+// witnesses until the fold lands; the join obligation belongs to the fold (the plan). A provisioned pin vouches only for the
+// installed system its attempt installed: a newer complete record supersedes it, so a reinstall
+// invalidates the old pin EVEN IF the presented key still matches the stale row - the reused-key
+// case per-install minting exists to forbid. The host is never an input: it is read from the
+// transport (host_bound_transport_of), so no caller pairs one machine's transport with another
+// machine's pin - the same discipline as anchored_host_transport_against. The RECEIPT side is
+// machine-checked too: the pin names the install-boot client MAC of the install that minted it,
+// and a receipt whose install-boot MAC differs never vouches this pin - attempt ids are unique
+// across hosts only by convention, and this compare does not trust conventions (the receipt
+// world carries no HostIdentity; machine identity travels in the receipt's own currency).
+// Crossing strategies
+// refuses: a scanned, transcribed or (T1, #15523) per-boot pin never vouches an installed
+// contact; the per-boot comparison refuses the other direction. admit_callers gates this to its
+// witnesses until the fold and a live route consume it - that wiring is the plan's next slice,
+// and this function is uncalled in production until then, honestly.
+fn anchored_host_transport_provisioned(
+  pin: KnownHostKeyRow,
+  current_install: CurrentInstallForHost,
+  transport: HostEffectTransport,
+  presented_key_line: String,
+) -> AnchoredHostBinding admit_callers: [
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "anchored_pin_and_current_install_record_bind_the_host"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_reinstall_without_re_enrolment_refuses_the_old_pin"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_wrong_key_refuses_a_provisioned_pin"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_unattested_install_never_binds_a_provisioned_pin"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_pin_from_another_record_never_vouches_an_installed_contact"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_transport_to_another_machine_never_binds_a_provisioned_pin"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_install_record_of_another_machine_never_vouches_a_provisioned_pin"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_current_install_carrier_for_another_host_never_binds"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_unestablished_current_install_never_binds_a_provisioned_pin"),
+] {
+  match host_bound_transport_of(transport: transport) {
+    HostBoundTransportRefused { cause: cause } => AnchoredBindingRefused { cause: cause }
+    HostBoundTransportResolved { bound: bound } =>
+      if !host_identity_eq(a: bound.host, b: pin.host) {
+        AnchoredBindingNotTheAnchoredHost {
+          cause: join(["the transport bound to ", bound.host as String, ", not to ", pin.host as String, "; a provisioned binding binds its host and nothing else"], ""),
+        }
+      } else {
+          match pin.provenance {
+          ProvisionedInstall { install_client_mac: pinned_mac, install_attempt: pinned_attempt, authority: _ } => match current_install {
+            CurrentInstallUnestablished { why: why } =>
+              AnchoredBindingCurrentInstallUnestablished { why: why as String }
+            CurrentInstallEstablished { host: carrier_host, install: install } =>
+              if !host_identity_eq(a: carrier_host, b: bound.host) {
+                AnchoredBindingCurrentInstallUnestablished {
+                  why: join(["the current-install carrier names ", carrier_host as String, ", not the transport's bound host ", bound.host as String, "; a receipt whose association with this transport's host is unestablished never vouches the contact"], ""),
+                }
+              } else { match install {
+            InstallNotEstablished { subject: subject, gaps: _ } =>
+              AnchoredBindingInstallNotAttested {
+                why: join(["no complete install record attests the installed system of attempt `", subject.attempt.attempt as String, "`; a provisioned pin vouches only against the complete record of the install that minted it; contacting NO host"], ""),
+              }
+            InstalledToDisk { subject: subject, client_class: _, root_chain: _, root_disk_serial: _, root_created_at: _, installer_record_at: _, secure_boot: _, trust: _, observed_at: _ } =>
+              if !mac_addresses_are_equal(left: network_install_client(subject: subject), right: pinned_mac) {
+                AnchoredBindingInstallNotAttested {
+                  why: join(["the install record on file is not this machine's: its install-boot client MAC is not the MAC the provisioned pin for ", pin.host as String, " names; one host's install record never vouches another host"], ""),
+                }
+              } else if subject.attempt.attempt != pinned_attempt {
+                AnchoredBindingInstallSuperseded {
+                  pinned_install: pinned_attempt as String,
+                  current_install: subject.attempt.attempt as String,
+                }
+              } else if known_hosts_line(k: pin) == presented_key_line {
+                AnchoredBindingBound { bound: bound, anchor: pin }
+              } else {
+                AnchoredBindingPresentedKeyMismatch {
+                  expected_line: known_hosts_line(k: pin),
+                  observed_line: presented_key_line,
+                }
+              }
+              }
+            }
+          }
+          ScannedFirstContact { scanned_from: _ } =>
+            AnchoredBindingPinNotInstallRecord {
+              cause: join(["the pin for ", pin.host as String, " is a scanned first contact, not an install record; an installed-system contact is vouched only by its install's provisioning record"], ""),
+            }
+          IndependentlyAnchored { authority: _ } =>
+            AnchoredBindingPinNotInstallRecord {
+              cause: join(["the pin for ", pin.host as String, " is an independently anchored transcription, not this installed system's install record"], ""),
+            }
+          ConsolePerBoot { boot_id: _, channel: _ } =>
+            AnchoredBindingPinNotInstallRecord {
+              cause: join(["the pin for ", pin.host as String, " is a per-boot console pin, not this installed system's install record"], ""),
+            }
+        }
+      }
+  }
+}
+
 // The refusal text, kept beside the coproduct so no consumer invents wording for a state the model names
 // (the fleet_ssh_credential_verify refusal-reason pattern). A bound transport is not a refusal and says
 // so; no arm's text can carry key material, because no arm carries any field that could hold one beyond
 // the PRESENTED and EXPECTED PUBLIC lines OpenSSH would print anyway.
 fn anchored_host_binding_refusal_reason(b: AnchoredHostBinding) -> String {
   match b {
-    AnchoredBindingBound { bound: _ } => "bound; not a refusal"
+    AnchoredBindingBound { bound: _, anchor: _ } => "bound; not a refusal"
     AnchoredBindingNotTheAnchoredHost { cause: cause } => cause
     AnchoredBindingAnchorNotForRow { cause: cause } => cause
     AnchoredBindingAnchorAbsent { cause: cause } => cause
     AnchoredBindingPresentedKeyMismatch { expected_line: expected, observed_line: observed } =>
       join(["AnchoredBindingPresentedKeyMismatch: got `", observed as String, "`, not the anchored key `", expected as String, "`; contacting NO host"], "")
+    AnchoredBindingPinFromAnotherBoot { pinned_boot: pinned, expected_boot: expected } =>
+      join(["the pin was printed at boot ", pinned, ", not boot ", expected, "; a per-boot key vouches for its own boot only"], "")
+    AnchoredBindingPinNotInstallRecord { cause: cause } => cause
+    AnchoredBindingInstallNotAttested { why: why } => why
+    AnchoredBindingInstallSuperseded { pinned_install: pinned, current_install: current } =>
+      join(["AnchoredBindingInstallSuperseded: the pin vouches for install `", pinned as String, "` but the host's current complete record is install `", current as String, "`; a reinstall invalidates the old pin, contacting NO host"], "")
+    AnchoredBindingCurrentInstallUnestablished { why: why } => why
     AnchoredBindingRefused { cause: cause } => cause
   }
 }
@@ -438,8 +612,11 @@ fn anchored_host_pattern_citation(host: HostIdentity) -> String {
 
 // THE TOKEN-SOURCE CITATION. select_access_token_source resolves the credential the leg would run under
 // from the run's environment; its typed output is cited whole, never flattened to a bool.
-fn anchored_host_token_source_citation() -> String {
-  match select_access_token_source() {
+// The selection is a SUPPLIED value (the route passes select_access_token_source(), the environment read), so the
+// citation's two arms are witnessed without ambient state; the route that passes the real read is the two
+// call sites below.
+fn anchored_host_token_source_citation(selection: AccessTokenSourceSelection) -> String {
+  match selection {
     AccessTokenSourceSelected { source: _ } => "select_access_token_source: AccessTokenSourceSelected"
     AccessTokenSourceUnavailable { cause: cause } => join(["select_access_token_source: AccessTokenSourceUnavailable -- ", cause as String], "")
   }
@@ -484,7 +661,7 @@ fn anchored_host_key_scan_wet(host: HostIdentity) -> String {
         "GATED: the ", row.host as String, " host-key readback does not run without GUNBC_HOST_KEY_READBACK_GO in the environment ",
         "(the operator go for the live boot and scan comes from merry-fox-82, relayed by snappy-koi-83); nothing contacted, nothing minted.\n",
         "prepared argv: ", anchored_host_key_scan_argv_text(row: row), "\n",
-        "selectors cited -- ", anchored_host_pattern_citation(host: host), " | ", anchored_host_token_source_citation(), "\n",
+        "selectors cited -- ", anchored_host_pattern_citation(host: host), " | ", anchored_host_token_source_citation(selection: select_access_token_source()), "\n",
       ], "")
       Present { value: _ } =>
         match run_shell_command_capture(command: anchored_host_key_scan_command(row: row), transport: LocalExec) {
@@ -492,7 +669,7 @@ fn anchored_host_key_scan_wet(host: HostIdentity) -> String {
             "scan host=", row.host as String, " outcome=observed\n",
             "presented ", trim(s: key_text), "\n",
             "record this presented line through the REAL dispatch (lost_boot_sweep_effect_pairing_frontier); ",
-            "selectors cited -- ", anchored_host_pattern_citation(host: host), " | ", anchored_host_token_source_citation(), "\n",
+            "selectors cited -- ", anchored_host_pattern_citation(host: host), " | ", anchored_host_token_source_citation(selection: select_access_token_source()), "\n",
           ], "")
           ProcessOutputAbsent => join(["scan host=", row.host as String, " outcome=no-key-offered; nothing to anchor-match\n"], "")
           ProcessRefused { exit_code: _, stderr: e } => join(["scan host=", row.host as String, " outcome=refused cause=", trim(s: e), "\n"], "")
@@ -535,6 +712,16 @@ fn anchored_host_transport_live(host: HostIdentity, attempt_raw: String) -> Anch
         }
       }
     }
+  }
+}
+
+// THE LIVE TRANSPORT FOR THIS RUN: the SSH context's attempt-owned path is the run's own label
+// (gunbc.actions_run_binding actions_run_attempt_label, prefixed by the mode), so a re-run never shares a path with the
+// run it repeats. The lost-boot sweep and the service-slot start both reach their host this way.
+fn anchored_host_transport_for_run(host: HostIdentity, prefix: String) -> AnchoredHostBinding {
+  match actions_run_attempt_label_of_run(prefix: prefix) {
+    Absent => AnchoredBindingRefused { cause: "GITHUB_RUN_ID or GITHUB_RUN_ATTEMPT is unset, so the SSH context has no attempt-owned path" }
+    Present { value: label } => anchored_host_transport_live(host: host, attempt_raw: label as String)
   }
 }
 

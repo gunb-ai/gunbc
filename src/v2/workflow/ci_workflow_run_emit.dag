@@ -22,7 +22,7 @@ import v2.std.diagnostic { Accepted, Rejected, None, Some }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-data ci_workflow_run_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ ci_workflow run-step emission was rejected by v2.compiler.emit_orchestration; this marker is not valid workflow shell, so the committed ci.yml drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN 5: refuse, never widen)\n"
+data ci_workflow_run_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ ci_workflow run-step emission was rejected by v2.compiler.emit_orchestration; this marker is not valid workflow shell, so the committed ci.yml drift gate goes red rather than a hand-spelled fallback masking the refusal (gunbc.design_argument::fail_closed: refuse, never widen)\n"
 
 data ci_isolate_rm_rustup_cargo_command: String = "rm -rf \"$RUNNER_TEMP/rustup\" \"$RUNNER_TEMP/cargo\""
 
@@ -42,7 +42,7 @@ data ci_isolate_echo_rustup_home_command: String = "echo \"RUSTUP_HOME=$RUNNER_T
 // extdeps.realization.emit_on_demand_host places the host-observed resolved build-context identity
 // (tools + constructed environment + Cargo configuration) beneath each input realization before
 // .native_ready is consulted. Fail-closed: rustc -V must succeed — a fabricated
-// toolchain-unresolved slug would poison every native-cache write into one shared root (DESIGN 5).
+// toolchain-unresolved slug would poison every native-cache write into one shared root (gunbc.design_argument::fail_closed).
 // Falsifier cold control: GUNBC_CI_NATIVE_CACHE_COLD_CONTROL.
 
 data ci_native_cache_root_toolchain_segment_capture_command: String = "if ! GUNBC_TOOLCHAIN_SEG_RAW=$(rustc -V 2>/dev/null); then echo \"::error::rustc -V failed after setup-rust-toolchain: cannot derive native-cache toolchain segment\"; exit 1; fi"

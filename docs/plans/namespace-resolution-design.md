@@ -91,7 +91,7 @@ Historical direct `twin_sig` probes found three conflicting rules: authored impo
 
 Delete `fn_nodes`; dispatch by the resolver’s exact `QualifiedName` into shared `SymbolIndex.entries`, one map hit after resolution, not an ancestor walk per call. Do not independently teach runtime imports or stamp targets from a wrong resolver. A temporary holding measure may expose actual dispatch in the existing typed binding-fork ledger, never widen or introduce another binding rule.
 
-### 12.4 NEXT STEP — the divergence census (operator-directed 2026-07-19)
+### 12.4 The divergence census (operator-directed 2026-07-19; delivered, and no longer a prerequisite under the 2026-10-30 process ruling)
 
 The read-only census compares actual resolver return identities, not diagnostic silence. Every whole-corpus/both-root call site records callee, caller, legacy target and containment target. Bucket into Agree, Diverge (list both targets), ContainmentAmbiguous (qualification owed), ContainmentUnresolved (fill gaps reported separately); never skip. Record lookup cost to falsify the substitution claim without changing policy, resolver or dispatch.
 
@@ -107,6 +107,6 @@ Historical step-1 receipt (2026-07-22): host-set thread-local `NameResolutionPol
 
 **No ambient prelude** (operator 2026-10-04/13; kernel ruling B, 2026-10-14): a module sees its own declarations and imports. Native free roster calls bind only imported `std.algebra.collection_*_shape` identities (or within std.algebra); there is no free `fn concat`, and `kernel_mint_declaration_rows` is Optional mint only. `resolve_atom_unscoped` must refuse invisible roster heads rather than fall through to primitive authority. Seed `infer_builtin_call_type`/registry acceptance is a frozen migration window bounded by generated import sweep #14017, not native success. Restoration: native emit of `v2.cli.compile_cli` over dag+src/v2 produces no concat/count missing-import unbound fatal.
 
-Receiver-inhabitant methods remain independent of imports: removing free-call fallback must preserve carrier templates for map_get/count/map/any. `collection_map_get_shape` free identity is deleted; `map_lookup` survives. Inline map_get method and map_lookup remain one operation represented twice until v1 method migration/dedicated rename; map_insert/empty_map/map_lookup await #13872’s real functions. Bare-member sugar remains restricted to syntactically local annotations (§4).
+Receiver-inhabitant methods remain independent of imports: removing free-call fallback must preserve carrier templates for map_get/count/map/any. `collection_map_get_shape` free identity is deleted; `map_lookup` survives. Inline map_get method and map_lookup remain one operation represented twice until v1 method migration/dedicated rename; map_insert/empty_map/map_lookup await #13872’s real functions. Bare-member sugar remains restricted to syntactically local annotations (gunbc.design_argument::source_annotations).
 
 Historical flip-red residue: homonym/local consolidation did not depend on Root-A; two-std Set/Map/Byte/Char forks did, with only Char using its emit seam. Re-measure current residue through the owning instruments rather than treating those dated totals as standing.

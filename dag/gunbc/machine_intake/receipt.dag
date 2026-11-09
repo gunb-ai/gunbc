@@ -1,6 +1,7 @@
 module gunbc.machine_intake.receipt
 
-import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, list_length, brand }
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, brand }
+import std.algebra { length }
 import std.content_hash {
   content_hash_equal,
   ContentHash,
@@ -354,7 +355,7 @@ type IntakeAttemptNonce = NonEmptyStr where brand("IntakeAttemptNonce")
 // authority, so they cannot disagree — there is nowhere to write the mismatched
 // pair. gunbc.boot_artifact was extracted for exactly this: delivery already
 // imports this module, so the artifact could not be reached from there without a
-// cycle, and copying its two fields here would have been the fork DESIGN §3
+// cycle, and copying its two fields here would have been the fork gunbc.design_argument::single_authority
 // forbids.
 type IssuedAttemptNonce {
   attempt_id: IntakeAttemptId
@@ -484,7 +485,7 @@ type DiagnosticBootAttestation
 
 // WHAT THIS FUNCTION CAN AND CANNOT CONCLUDE FROM A POPULATION IT DID NOT CLOSE.
 // The input is a population somebody OBSERVED, not one anybody closed, so the
-// three readings of its cardinality are not equally sound and it is a §4b rung
+// three readings of its cardinality are not equally sound and it is a gunbc.design_argument::guarantee_ladder rung
 // error to treat them as if they were:
 //
 //   more than one  -- DEFINITE. Hidden extra callbacks can only make a duplicate
@@ -502,7 +503,7 @@ type DiagnosticBootAttestation
 // So the two indefinite readings do not produce a verdict at all: they produce
 // DiagnosticBootCompletenessUnestablished, which reports what was observed and
 // points at the record it was observed in. Reporting either of them as a verdict
-// would be the fabricated-plausible-output failure of §5 -- a caller's filtering
+// would be the fabricated-plausible-output failure of gunbc.design_argument::fail_closed -- a caller's filtering
 // decision arriving downstream wearing the compiler's authority.
 //
 // CARDINALITY IS CHECKED BEFORE ANY CALLBACK IS INSPECTED. A replay is a fact
@@ -510,7 +511,7 @@ type DiagnosticBootAttestation
 // would let a well-formed one speak for a population that should have been
 // refused outright. A duplicate is refused even when the two callbacks are
 // byte-identical: choosing one of two to honour would be an absorbing fallback
-// (§5) -- widening on ambiguity instead of stopping the line.
+// (gunbc.design_argument::fail_closed) -- widening on ambiguity instead of stopping the line.
 //
 // THE REFUSAL POINTS AT THE ACQUIRER'S OWN RECORD rather than inventing an
 // identity per callback. IntakeAgentBootReceipt carries no transport identity,
@@ -550,7 +551,7 @@ fn adjudicate_observed_population(
   observed: ObservedAgentCallbackPopulation,
   supporting: List<SupportingBootObservation>,
 ) -> DiagnosticBootAttestation {
-  let received = list_length(items: observed.callbacks)
+  let received = length(xs: observed.callbacks)
   if received > 1 {
     DiagnosticBootNotAttested {
       cause: DuplicateAgentCallback { received: received },
@@ -581,7 +582,7 @@ fn adjudicate_observed_population(
 // non-refusing arm, and annotated that as "every outcome names the population it
 // was read from" -- which was FALSE for the four field mismatches, and the
 // control greened anyway because it only exercised the unestablished path. That
-// is this repository's own §5 trap: a claim in prose with an oracle that cannot
+// is this repository's own gunbc.design_argument::fail_closed trap: a claim in prose with an oracle that cannot
 // see the paths it is about. Every outcome now takes population_evidence at the
 // same grain, so no adjudication path can return without it, and the cause
 // carries only what distinguishes it -- DuplicateAgentCallback keeps the count

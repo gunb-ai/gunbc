@@ -24,7 +24,7 @@ import v2.std.text { String }
 
 // THE LADDER ANSWER FOR THE PREPARED-EFFECT-INPUT CARRY, AT THE LADDER'S OWN VOCABULARY.
 //
-// WHY THIS IS A MODULE AND NOT A PARAGRAPH IN THE ROSTER. DESIGN section 2 names
+// WHY THIS IS A MODULE AND NOT A PARAGRAPH IN THE ROSTER. gunbc.design_argument::minimize_redundancy names
 // `std.materialization_ladder` as the STRUCTURAL AUTHORITY over "another production may exist",
 // and a citation that lives only in a plan document is a side channel: the next reader opens the
 // roster declaration, not the plan (bright-boar-435's condition on the 2026-09-14 adjudication).
@@ -88,7 +88,7 @@ fn producer_demand(producer: String, claim: String) -> FrameDemand {
 // it, which the floor caught by execution (`the_carry_is_discharged_at_the_preparation_lca`
 // returned false on run 34854251612).
 //
-// WHAT THE LADDER ACTUALLY SAYS, and it is DESIGN section 2's own sentence: when several demands
+// WHAT THE LADDER ACTUALLY SAYS, and it is gunbc.design_argument::demand_before_materialization's own sentence: when several demands
 // share a least common ancestor that is a SHARED-STATE frame, the repetition is AUTHORED
 // DUPLICATION and the repair is to CARRY, REWIRE OR SHARE THE FIRST VALUE — "caching a later
 // request only makes redundant work cheap and suppresses the signal that would make it rank for
@@ -197,7 +197,7 @@ fn every_carried_identity_is_authored_duplication_before_the_carry() -> Bool {
 }
 
 // And every one of them is a SINGLE RECOMPUTE after it: the carry removed the repetition rather
-// than making it cheap, which is the only move DESIGN section 2 admits at a shared-state LCA.
+// than making it cheap, which is the only move gunbc.design_argument::minimize_redundancy admits at a shared-state LCA.
 fn every_carried_identity_is_a_single_demand_after_the_carry() -> Bool {
   let verdicts = carried_input_verdicts_after_the_carry()
   fold(carried_input_identities(), init: true, f: fn(acc, identity) {

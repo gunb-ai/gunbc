@@ -78,7 +78,7 @@ fn authored_order_row_from_entry(entry: OccurrenceIndexEntry) -> AuthoredOrderRo
 }
 
 // Input projection accumulates by prepend during fold and reverses once at the end — never
-// concat(acc, [row]) (§6 bare-minimum cost / blocker 6).
+// concat(acc, [row]) (gunbc.design_argument::how_to_work bare-minimum cost / blocker 6).
 
 fn occurrence_binding_inputs_from_transport(
   module_path: NonEmptyStr,

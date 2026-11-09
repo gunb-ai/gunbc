@@ -4,14 +4,23 @@ module extdeps.cloud.gcp.iam
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail, GcpOperation, GoogleRpcStatus }
-import std.types { Bool, Int, Json, List, NonEmptyStr, Secret, String }
+import std.types { Bearer, Bool, Int, Json, List, NonEmptyStr, Secret, String }
 import std.algebra { fold_list }
 import std.optional { Absent, Present }
 import extdeps.ietf.http_semantics { GET, POST }
 import std.resources { Network }
 import extdeps.transports.rest { RestResult }
 import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField }
+import std.algebra { contains }
+import extdeps.transports.rest { RestAnswered, RestRefused, RestRefusal }
+import std.access { AccessRefusalLocation }
+import std.credential_admission { CredentialPresentation, present_credential }
+import extdeps.time.rfc3339 { rfc3339_parse_instant, Rfc3339InstantParsed, Rfc3339InstantRefused }
+import std.credentials {
+  AcquisitionClockReading, AcquisitionClockObserved, AcquisitionClockUnread, observe_acquisition_clock, CredentialValidity, CredentialUseRequirement, ValidityUnestablished, IssuerStated, credential_validity_of,
+}
+import std.credential_refusal { ExpiryUndecodable, BindingAxis, BindingMember, BindingRefusal, BindingAxisMismatch, BindingUnestablished }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -835,4 +844,173 @@ service gcp.ResourceManager {
       5xx => GcpErrorShape
     }
   }
+}
+
+// ── AN IMPERSONATED ACCESS TOKEN AS ESTABLISHED CREDENTIAL EVIDENCE ─────────────────────────────
+// generateAccessToken answers 200 with accessToken and expireTime and NOTHING ELSE: it does not echo
+// the service account or the scopes. Those are established by the successful answer TO THIS REQUEST
+// under the API's documented semantics -- the token is "an OAuth 2.0 access token for a service
+// account" named in the path, carrying the requested scope -- so the binding is constructed from the
+// validated request together with its 200, and never from a caller's later claim about a token it
+// already holds. Both records are sealed and minted in this file only: by the acquisition below, and
+// by the declared fixture supplier of the credential witnesses.
+type GcpImpersonatedAccessBinding sole_constructor {
+  target_service_account: ServiceAccountEmail
+  scopes: List<String>
+}
+
+type GcpImpersonatedAccessCredential sole_constructor {
+  secret_released_only_by_admission: Secret
+  binding: GcpImpersonatedAccessBinding
+  validity: CredentialValidity
+}
+
+type GcpImpersonatedAccessAcquisition
+  = GcpImpersonatedAccessAcquired { credential: GcpImpersonatedAccessCredential }
+  | GcpImpersonatedAccessClockUnread { detail: String }
+  | GcpImpersonatedAccessRefused { refusal: RestRefusal }
+
+// The expiry is decoded through the shared RFC 3339 parse: Google's output is Z-normalized with 0, 3, 6
+// or 9 fractional digits, so the spelling varies and only the instant is the fact. An expiry that does
+// not parse is not a deadline of zero or of an hour: the credential carries ValidityUnestablished with
+// the parse refusal, and every request that needs remaining lifetime refuses it.
+fn impersonated_access_credential_of(
+  token: Secret,
+  expire_time: String,
+  target_service_account: ServiceAccountEmail,
+  scopes: List<String>,
+  acquisition: AcquisitionClockReading,
+) -> GcpImpersonatedAccessCredential
+  admit_callers: [
+    decl_ref(module_path: "extdeps.cloud.gcp.iam", decl_name: "acquire_impersonated_access"),
+    decl_ref(module_path: "test.claim.credential_validity_witness", decl_name: "fx_gcp_credential"),
+    decl_ref(module_path: "test.claim.credential_validity_witness", decl_name: "fx_gcp_credential_acquired_now"),
+    decl_ref(module_path: "test.claim.credential_dispatch_probe", decl_name: "probe_credential"),
+  ]
+{
+  let validity = match rfc3339_parse_instant(text: expire_time) {
+    Rfc3339InstantRefused { cause: c } => ValidityUnestablished { cause: ExpiryUndecodable { cause: c } }
+    Rfc3339InstantParsed { instant: expiry, spelling: _ } =>
+      credential_validity_of(basis: IssuerStated { stated_expiry: expiry, acquisition: acquisition })
+  }
+  GcpImpersonatedAccessCredential {
+    secret_released_only_by_admission: token,
+    binding: GcpImpersonatedAccessBinding { target_service_account: target_service_account, scopes: scopes },
+    validity: validity,
+  }
+}
+
+// THE CLOCK IS READ BEFORE THE SEND, so the local deadline can only be earlier than the provider's.
+// The requested lifetime is a request input only; the issued expireTime is what the credential carries.
+fn acquire_impersonated_access(
+  source_token: Secret,
+  target_service_account: ServiceAccountEmail,
+  scopes: List<String>,
+  lifetime: String,
+) -> GcpImpersonatedAccessAcquisition uses net: Network, clk: std.resources.Clock {
+  match observe_acquisition_clock(label: "gcp-iam-generate-access-token") {
+    AcquisitionClockUnread { detail: d } => GcpImpersonatedAccessClockUnread { detail: d }
+    AcquisitionClockObserved { reading: acq } =>
+      match gcp.IAM.GenerateAccessToken(access_token: source_token, target_sa: target_service_account, scope: scopes, lifetime: lifetime) {
+        RestRefused { refusal: r } => GcpImpersonatedAccessRefused { refusal: r }
+        RestAnswered { answer: a } =>
+          GcpImpersonatedAccessAcquired {
+            credential: impersonated_access_credential_of(
+              token: a.access_token, expire_time: a.expire_time,
+              target_service_account: target_service_account, scopes: scopes, acquisition: acq,
+            )
+          }
+      }
+  }
+}
+
+fn gcp_impersonated_access_validity(c: GcpImpersonatedAccessCredential) -> CredentialValidity { c.validity }
+
+data gcp_impersonated_service_account_axis: BindingAxis = BindingAxis {
+  field: DeclarationRef { module_path: "extdeps.cloud.gcp.iam", decl_name: "GcpImpersonatedAccessBinding", field: NamedField { field_name: "target_service_account" } }
+}
+
+data gcp_impersonated_scopes_axis: BindingAxis = BindingAxis {
+  field: DeclarationRef { module_path: "extdeps.cloud.gcp.iam", decl_name: "GcpImpersonatedAccessBinding", field: NamedField { field_name: "scopes" } }
+}
+
+fn gcp_scope_members(scopes: List<String>) -> List<BindingMember> {
+  scopes.map(s => BindingMember { identity: s as NonEmptyStr })
+}
+
+// SUITABILITY OF THE PRINCIPAL AND SCOPE for one request: the token must be the named service account's
+// (equality), and every scope the request needs must be among the scopes it was issued (set
+// containment, order and duplicates irrelevant). Absence of refusal is not an authorization of the
+// work; that stays with the request's own grant.
+fn gcp_impersonated_binding_refusal(
+  credential: GcpImpersonatedAccessCredential,
+  required_service_account: ServiceAccountEmail,
+  required_scopes: List<String>,
+) -> BindingRefusal? {
+  let held = credential.binding
+  if (held.target_service_account as String) != (required_service_account as String) {
+    Present { value: BindingAxisMismatch {
+      axis: gcp_impersonated_service_account_axis,
+      required: [BindingMember { identity: required_service_account as NonEmptyStr }],
+      held: [BindingMember { identity: held.target_service_account as NonEmptyStr }],
+    } }
+  } else if required_scopes.any(r => !contains(xs: held.scopes, item: r, eq: (a, b) => a == b)) {
+    Present { value: BindingAxisMismatch {
+      axis: gcp_impersonated_scopes_axis,
+      required: gcp_scope_members(scopes: required_scopes),
+      held: gcp_scope_members(scopes: held.scopes),
+    } }
+  } else {
+    none
+  }
+}
+
+// Binding equality for RENEWAL: the renewed credential must name the same principal and the same SET
+// of scopes. Exact set equality, conservatively: a renewal that narrows or widens is a different
+// credential, not a renewal.
+fn gcp_impersonated_binding_same(a: GcpImpersonatedAccessCredential, b: GcpImpersonatedAccessCredential) -> Bool {
+  (a.binding.target_service_account as String) == (b.binding.target_service_account as String)
+    && !a.binding.scopes.any(s => !contains(xs: b.binding.scopes, item: s, eq: (x, y) => x == y))
+    && !b.binding.scopes.any(s => !contains(xs: a.binding.scopes, item: s, eq: (x, y) => x == y))
+}
+
+// ── PRESENTATION: THE ONE ROUTE FROM A HELD CREDENTIAL TO A REQUEST ─────────────────────────────
+// The secret leaves the credential only here, through std.credential_admission present_credential,
+// which reads the process monotonic clock at this call and judges the credential's established
+// validity and its binding against what the operation requires. The caller matches the presentation
+// and sends at once: CredentialPresented carries the secret, CredentialPresentationRefused becomes
+// RestCredentialRefused and nothing is sent. Each adapter invocation obtains a fresh admission and
+// invokes the transport at most once; resends inside the transport (reqwest's HTTP/2 protocol-NACK
+// retries on the emitted route, ureq's stale-connection retry on the interpreter) reuse that admitted
+// bearer and are not individually re-admitted. A caller's own retry calls the adapter again.
+// It is not a generic helper taking the operation: a declaration with type parameters and a `uses`
+// row is refused at parse (generic effectful declaration is not realized).
+//
+// THE FIELD NAME IS THE GUARD. The language confines construction (sole_constructor) and callers
+// (admit_callers) but not field reads, so a caller holding the credential could read the secret
+// directly and send it unjudged. The field is named secret_released_only_by_admission so that every
+// such read must spell a name nothing else uses: the allowed sites are this module's constructor, this
+// function, and each caller that matches a CredentialPresented and sends at once; and `git grep -n secret_released_only_by_admission` is the exact check
+// (gunbc.integration_concern credential_secret_field_reads_confined_by_name_not_construction).
+fn gcp_impersonated_presentation(
+  credential: GcpImpersonatedAccessCredential,
+  required_service_account: ServiceAccountEmail,
+  required_scopes: List<String>,
+  requirement: CredentialUseRequirement,
+) -> CredentialPresentation uses clk: std.resources.Clock
+  admit_callers: [
+    decl_ref(module_path: "test.claim.credential_dispatch_probe", decl_name: "echo_with_gcp_credential"),
+    decl_ref(module_path: "test.claim.credential_validity_witness", decl_name: "presentation_releases_the_secret_only_when_admitted"),
+    decl_ref(module_path: "test.claim.credential_validity_witness", decl_name: "a_stale_credential_is_refused_and_the_operation_never_runs"),
+    decl_ref(module_path: "test.claim.credential_validity_witness", decl_name: "a_wrong_binding_is_refused_and_the_operation_never_runs"),
+  ]
+{
+  present_credential(
+    secret: credential.secret_released_only_by_admission,
+    evidence: "GCP impersonated access token",
+    validity: credential.validity,
+    binding_refusal: gcp_impersonated_binding_refusal(credential: credential, required_service_account: required_service_account, required_scopes: required_scopes),
+    requirement: requirement,
+    location: AccessRefusalLocation { profile: "extdeps.cloud.gcp.iam", subject: required_service_account as String, action: "present an impersonated access token", object: "GCP impersonated access token" },
+  )
 }

@@ -33,7 +33,7 @@ import std.realization_width { bounded_host_spawn_width, memory_aware_spawn_widt
 //
 // These are machine questions, not container questions -- a bare-metal host and a rented VM answer
 // them identically -- so owning them inside a model of our fleet's containers put a general fact in
-// a specific home. Consumed, not redeclared (DESIGN section 3).
+// a specific home. Consumed, not redeclared (gunbc.design_argument::single_authority).
 
 type ContainerBaseline
   = ContainerBaselineMeasured { idle: ResourceEnvelope }

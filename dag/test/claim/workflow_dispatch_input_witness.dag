@@ -11,8 +11,8 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_fabric_writer_identity_observe_receipt_if, fleet_converge_fabric_writer_identity_observe_step_if,
   FleetConvergeWorkflowMode, fleet_converge_workflow_modes, fleet_converge_workflow_mode_wire, fleet_converge_gcp_iam_bootstrap_job_id, fleet_converge_gcp_iam_bootstrap_request_job_id,
   fleet_converge_mode_step_if, fleet_converge_dashboard_deploy_step_if, fleet_converge_dashboard_deploy_job, fleet_converge_approval_broker_dark_install_job, fleet_converge_microvm_controller_install_job, fleet_converge_srv1_root_mutation_environment, fleet_converge_mode_scope, fleet_converge_host_reset_return_job, fleet_converge_host_reset_return_step_if, fleet_converge_reset_observer_dispatch_admission_step,
-  ApprovalBrokerDarkInstall, fleet_converge_approval_broker_dark_install_step_if,
-  FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, DashboardDeploy, HostResetReturn,
+  Srv1RootMutation, fleet_converge_approval_broker_dark_install_step_if,
+  FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, HostResetReturn,
   fleet_converge_workspace_commissioning_plan_step, fleet_converge_any_plan_step_if,
   RunnerPasswordSessionToolConverge,
   RunnerBrowserToolchainConverge,
@@ -23,7 +23,7 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_branch_run_grant_await_job_id, FleetKeypairMint, QualificationFloor,
   fleet_converge_microvm_network_observe_step, fleet_converge_mode_fleet_ssh_key_demand,
   MicrovmNetworkObserve, FleetSshKeyNotConsumed, FleetSshKeyConsumed,
-  FleetApply, WorkspaceImageBuild, RevisionJobImageBuild, ApprovalKeyringConverge, ApprovalBrokerDarkInstall, fleet_converge_mutation_group_for,
+  FleetApply, WorkspaceImageBuild, RevisionJobImageBuild, ApprovalKeyringConverge, fleet_converge_mutation_group_for,
   fleet_converge_mutation_concurrency_group_expression,
   fleet_converge_reset_subject_mutation_concurrency_group_expression, fleet_converge_reset_subject_map_json,
   reset_subject_map_json,
@@ -121,7 +121,7 @@ test fn workflow_dispatch_empty_inputs_preserve_null_projection() -> Bool {
 // (that the workflow's mode input carries the fleet's mode roster). Only the first is a fact about
 // workflow_trigger_entry, and the second is true by construction anyway -- the workflow literal
 // writes `options: fleet_converge_mode_options`, so asserting equality with that same row restates
-// a constraint the source already carries (DESIGN section 5). The roster's own coherence is
+// a constraint the source already carries (gunbc.design_argument::fail_closed). The roster's own coherence is
 // established separately by every_dispatch_option_is_a_wire_value_of_the_vocabulary.
 fn mode_input_has_choice_options(v: YamlValue, expected: List<String>) -> Bool {
   match v {
@@ -187,7 +187,7 @@ fn mode_input_has_choice_options(v: YamlValue, expected: List<String>) -> Bool {
 // carrying a choice input into a yaml mapping with an `options` sequence under `mode`. It used to
 // reach that interface by forcing fleet_converge_workflow and taking its first trigger, which pays
 // to construct EVERY DispatchInput's description -- one of them is a multi-thousand-character
-// string -- for a fact about none of them. That is DESIGN section 3's tell verbatim: evaluation
+// string -- for a fact about none of them. That is gunbc.design_argument::single_authority's tell verbatim: evaluation
 // dominated by one call whose result shape is all the claim inspects. Measured: 528572 eval steps
 // against a 72300 budget, and the cost rose with every input any lane added.
 //
@@ -250,7 +250,7 @@ test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
 // THE EXPECTED JOB SET IS DERIVED, NOT COPIED (operator ruling 2026-09-28: no hardcoded lists).
 //
 // The id literal this claim used to compare against was a measurement of the current tree, so it
-// went red on every added job (namecheap-observe) while establishing nothing (DESIGN section 5).
+// went red on every added job (namecheap-observe) while establishing nothing (gunbc.design_argument::fail_closed).
 // Completeness is now an identity join: the edge roster's ids must equal the release-bins job plus
 // the job each rostered mode's work runs in (gunbc.fleet.fleet_converge_workflow
 // fleet_converge_mode_job_id), compared as sets. The two directions are separate, named results --
@@ -377,7 +377,7 @@ fn expected_fleet_converge_yml_content() -> String {
 
 // TWO ABSENCES, ONE RENDER. Both patterns are facts about the same emitted workflow, and rendering it
 // is the expensive part -- roughly the whole 500ms claim budget on its own. Asking them in separate
-// witnesses renders it twice for no additional information, which is DESIGN section 2's authored
+// witnesses renders it twice for no additional information, which is gunbc.design_argument::minimize_redundancy's authored
 // duplication rather than a cache question: the two demands share this frame as their least common
 // ancestor, so the first value is carried.
 //
@@ -402,7 +402,7 @@ test fn fleet_converge_workflow_has_no_heal_revalidation_paste_through() -> Bool
 }
 
 // ONE EMISSION, READ TWICE. Both conjuncts ask about the same rendered workflow, so emitting it
-// once and binding it is not a cache but the removal of an authored duplicate (DESIGN section 2):
+// once and binding it is not a cache but the removal of an authored duplicate (gunbc.design_argument::demand_before_materialization):
 // the two demands share this frame as their least common ancestor, so the first value is carried.
 test fn fleet_converge_apply_step_binds_plan_hash_to_env_not_shell_literal() -> Bool {
   let yml = expected_fleet_converge_yml_content()
@@ -458,7 +458,7 @@ test fn fleet_converge_spark_serving_apply_prints_the_receipt_its_entry_writes()
 // the admitted fold. That fold IS NOW DELETED, so the assertion had become permanently green by
 // construction: a must-refuse probe over a spelling nothing in the corpus produces carries no
 // information and would be cited as coverage it does not provide. The door is closed by the
-// deletion, which is DESIGN section 5's construction over validation -- guarding a door that no
+// deletion, which is gunbc.design_argument::fail_closed's construction over validation -- guarding a door that no
 // longer exists is the weaker half of the pair, not an addition to it.
 test fn the_dark_install_step_invokes_the_runner_principal_fold() -> Bool {
   let invoke = gunbc_ci_approval_broker_dark_install_invoke()
@@ -471,7 +471,7 @@ test fn the_dark_install_step_invokes_the_runner_principal_fold() -> Bool {
 // above, because those join options to wires and never reach a job. This joins the job's own
 // condition to the same derivation, so the two cannot drift apart silently.
 test fn the_dark_install_job_guards_on_its_own_dispatch_mode() -> Bool {
-  string_contains(s: fleet_converge_approval_broker_dark_install_step_if, pattern: fleet_converge_mode_step_if(mode: ApprovalBrokerDarkInstall))
+  string_contains(s: fleet_converge_approval_broker_dark_install_step_if, pattern: fleet_converge_mode_step_if(mode: Srv1RootMutation(ApprovalBrokerDarkInstall)))
     && string_contains(s: fleet_converge_approval_broker_dark_install_step_if, pattern: "github.event.inputs.mode == 'approval_broker_dark_install'")
     && string_contains(s: fleet_converge_approval_broker_dark_install_step_if, pattern: "github.event.inputs.host == 'srv1'")
 }
@@ -530,10 +530,10 @@ test fn a_whitespace_only_observer_is_refused_as_unnamed() -> Bool {
 }
 
 // AND IT IS ACTUALLY IN THE JOB. A step function nothing calls is the dangling-declaration shape
-// (DESIGN section 3c) and would leave the guard passing its own witness while never running.
+// (gunbc.design_argument::consumption) and would leave the guard passing its own witness while never running.
 //
 // IT ASKS THE JOB'S OWN STEPS, NOT THE PRELUDE-PREFIXED LIST, and that is a subject fact before it is
-// a cost one (DESIGN section 3, a witness discriminates at one interface). The shared CI prelude is a
+// a cost one (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface). The shared CI prelude is a
 // different producer with its own witnesses; folding it in made every prelude render part of this
 // claim's subject, and it was most of the cost that put the old claim over the 72,300 new-witness
 // budget (re-derive with claim_batch --entry on this file, its `[witness] ... eval_steps=` line). fleet_converge_build_job_steps() is prelude ++ own steps, and the job
@@ -641,7 +641,7 @@ test fn a_reset_subject_map_escapes_a_label_that_would_break_the_json() -> Bool 
 // DISTINCTNESS, NOT A CENSUS LITERAL. Two members returning the same wire would still populate the
 // menu twice while one mode became unselectable; unique wires refuse that. A count equality
 // against a hand-updated N is a change detector: updating N when the roster grows collapses the
-// assertion to measure() == measure() (DESIGN §5). The coproduct-vs-roster drop is still the
+// assertion to measure() == measure() (gunbc.design_argument::fail_closed). The coproduct-vs-roster drop is still the
 // known stall (roster_re_enumerates_its_own_rows_stall); this witness cannot mint that join, and
 // a literal does not substitute for it. What it CAN join is identities: the mode this lane added
 // is on the roster, every dispatch option is some rostered mode's wire, and every rostered wire is
@@ -683,8 +683,8 @@ test fn empty_spark_roster_does_not_emit_an_empty_choice_or_spark_dispatch_modes
 // second conjunct: a projection that returned a constant, or ignored its argument, would satisfy the
 // first and fail this.
 test fn a_step_condition_is_the_wire_value_of_the_mode_it_selects() -> Bool {
-  fleet_converge_mode_step_if(mode: DashboardDeploy) == "github.event.inputs.mode == 'dashboard_deploy'"
-    && fleet_converge_mode_step_if(mode: FullHostPlan) != fleet_converge_mode_step_if(mode: DashboardDeploy)
+  fleet_converge_mode_step_if(mode: Srv1RootMutation(DashboardDeploy)) == "github.event.inputs.mode == 'dashboard_deploy'"
+    && fleet_converge_mode_step_if(mode: FullHostPlan) != fleet_converge_mode_step_if(mode: Srv1RootMutation(DashboardDeploy))
 }
 
 test fn srv1_root_mutation_jobs_name_the_protected_environment() -> Bool {
@@ -702,7 +702,7 @@ test fn srv1_root_mutation_jobs_name_the_protected_environment() -> Bool {
 // to FleetConvergeScope. The three modes that DO name a scope are asserted beside it, so a projection
 // that answered `none` for everything cannot pass.
 test fn dashboard_deploy_selects_live_deploy_scope_while_the_plan_modes_do() -> Bool {
-  let deploy_live = match fleet_converge_mode_scope(mode: DashboardDeploy) {
+  let deploy_live = match fleet_converge_mode_scope(mode: Srv1RootMutation(DashboardDeploy)) {
     Absent => false
     Present { value: s } => match s {
       LiveDeploy => true

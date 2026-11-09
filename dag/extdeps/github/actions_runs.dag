@@ -19,7 +19,7 @@ import extdeps.github.workflow_runs { GitHubWorkflowRunId }
 // NOT decide what a `cancelled` run MEANS -- whether a cancellation was a lawful supersession or an
 // eviction is a judgement about THIS repository's concurrency configuration and its runner fleet,
 // which is a workflow-layer fact (gunbc.run_disposition). Modelling that here would be the layer
-// inversion DESIGN section 3 names: a policy literal wearing an upstream module's authority.
+// inversion gunbc.design_argument::single_authority names: a policy literal wearing an upstream module's authority.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https

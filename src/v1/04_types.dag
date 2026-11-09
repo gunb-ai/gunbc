@@ -5,18 +5,19 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParameter, decl_ref, declaration_ref_eq }
 import v1.compiler.type_head_exposure { type_declaration_identity_key }
 
-import v1.compiler.infer_env { TypeBinding, TypeEnv, type_reference_declaration_ref, text_crossing_by_identity, alias_settled_agree, alias_names_settled_agree, settled_type }
+import v1.compiler.infer_env { TypeBinding, TypeEnv, type_reference_declaration_ref, text_crossing_by_identity, alias_settled_agree, alias_names_settled_agree, settled_type, kernel_settled_name, type_reference_declaration_reading, TypeReferenceIsTypeVariable, is_where_refinement_node, text_representation_by_identity, alias_rhs_of_declaration, refinement_rhs_of_declaration, parameterized_alias_of_declaration }
 
-import std.types { SourceSpan, is_container_type, container_expected_arity, container_param_name, container_template_algebra, container_template_alias_algebra, container_template_alias_rows }
+import std.types { SourceSpan, is_container_type, container_expected_arity, container_param_name, container_template_algebra, container_spelling_is_algebra, container_template_alias_algebra, container_template_alias_rows }
 
 import std.algebra {
   AlgebraProfile, OrderedRingProfile, ApproximateFieldProfile,
   BooleanAlgebraProfile, FinitePowerSetProfile,
   FreeMonoidScalarProfile,
   FreeMonoidCollectionProfile, PartialFunctionProfile, FinitelySupportedFunctionProfile,
-  AlgebraTypeTemplate, ReceiverSelf, ReceiverElement, ReceiverKey, ReceiverValue,
+  AlgebraTypeTemplate, ReceiverSelf, ReceiverElement, ReceiverElementOrSelf, ReceiverKey, ReceiverValue,
   NamedTemplate, ContainerOf, ContainerSource, SameAsReceiver, Named, OptionalOf, WitnessOf, TupleOf, AlgebraTypeVariable,
   AlgebraFieldTemplate,
+  algebra_carriers,
   kernel_algebra_profile,
   algebra_templates_for_profile
 }
@@ -24,9 +25,11 @@ import std.algebra {
 import std.syntax { AlgAdd, AlgebraFieldKind, BinOp, LitStr, LiteralValue }
 
 
-import std.coercion { SubtractionRefinement, SubtractionStaysInOperandAlgebra, SubtractionEscapesTo, SubtractionRefinementAmbiguous, dag_subtraction_refinement }
+import std.coercion { ArithmeticCarrierSelection, ArithmeticCarrierSelected, ArithmeticNoCarrier, ArithmeticCarrierAmbiguous, ArithmeticCarrierUndecided, select_arithmetic_carrier, injection_targets, ConversionPlan, TextRepresentation, HostText, CodePointSequence, NotText, TextRepresentationUnidentified }
+import gunbc.structural_realization_bindings { conversion_plan_rows, kernel_grounding_rows }
+import std.literal_elaboration { UnboundedIntegers }
 
-import v1.std.core { Unmarked,
+import v1.std.core { Unmarked, UnaryOpKind, Not, Neg,
   Node, make_param_node, param_node_type_expr,
   find_child_named, NewlineIndex,
   Connective, Conj, Disj, NoConnective,
@@ -58,7 +61,7 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
 }
 
 fn type_variable_node(id: String) -> Node {
-  Node { occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  Node { ident: Absent, occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
 }
 
 fn resolved_type(n: Node) -> Node {
@@ -79,7 +82,7 @@ fn child_type_node(ch: Node) -> Node {
 }
 
 // THE JOIN'S ELEMENT READ -- the single reader both container-descend and container-alias-descend arms use
-// (one authority for the subject; DESIGN 6b). An element of a container is read by its SHAPE. A bare leaf slot
+// (one authority for the subject; gunbc.design_argument::earliest_unjustified_boundary). An element of a container is read by its SHAPE. A bare leaf slot
 // (no children) only NAMES a type: read it through child_type_node to what it resolves to. An unsolved one --
 // the empty list's element -- then arrives as its type variable, and node_type_compatible defers on a type
 // variable, so the empty list joins any List<X> (the corpus shapes std.materialization_ladder's
@@ -101,8 +104,32 @@ fn is_type_expr_annotation(n: Node) -> Bool {
   }
 }
 
+// THE CANONICAL SPELLING OF THE FINITE CARRIER IS THE SAME CARRIER AS ITS ALIAS. std.types declares
+// `type Set<element> = FinitePowerSet<element>`, and gunbc.design_argument::single_authority makes an alias and the carrier it
+// names ONE thing with ONE Rust type -- the declared shape and the realized shape are the same carrier
+// "not two, and the emitter never asks which to use". The host container used to be read off the ALIAS
+// roster alone, which answers for `Set` and misses the canonical name (the roster registers it with
+// canonical_spelling_sorts_ahead_of_alias_reason, std.algebra), so one carrier was emitted twice: the
+// OrdSet/BTreeSet realization wherever a position was spelled `Set`, and the std.algebra profile RECORD
+// wherever the same position was spelled `FinitePowerSet` -- including the alias's own right-hand side,
+// which is why std_types.rs carried `pub type Set<Element> = Rc<crate::std_algebra::FinitePowerSet<Element>>`
+// while every `Set` position lowered to `Rc<BTreeSet<Element>>`. A value built at one position could not
+// flow into the other (E0308), which is the element half of the keyed fork #14880 closed for
+// `Map`/`FinitelySupportedFunction` (32 E0308 in the regenerated std_algebra.rs). The algebra row
+// decides which spelling, never a literal here.
+// Only THIS algebra joins the roster read: the free-monoid spelling is a v2 inductive with constructors
+// of its own, and PointwisePower has no host inhabitant to lower to -- the retirement of its byte-identical
+// fossil row (extdeps.languages.rust types.dag) is what makes `coerce_container_template` a safe fact.
+// RESIDUE: keyed on the leaf spelling, not on the declaration identity std.algebra.FinitePowerSet; the
+// emitter reaches only the authored spelling here. gunbc.recurring_failure_mode
+// emitter_element_container_lowering_is_keyed_by_leaf_spelling (same class as
+// emitter_keyed_container_lowering_is_keyed_by_leaf_spelling).
+fn node_is_finite_power_set_algebra_spelling(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  n.connective == NoConnective && container_spelling_is_algebra(name: qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: n)), algebra: "FinitePowerSet")
+}
+
 fn node_is_collection(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  (n.children |> count) > 0 && n.connective == NoConnective && is_declared_container_alias_spelling(name: authored_name_at(source_indices: source_indices, node: n))
+  (n.children |> count) > 0 && n.connective == NoConnective && (is_declared_container_alias_spelling(name: authored_name_at(source_indices: source_indices, node: n)) || node_is_finite_power_set_algebra_spelling(n: n, source_indices: source_indices))
 }
 
 // The arity conjunct is tested FIRST because it is free and the collection
@@ -110,7 +137,7 @@ fn node_is_collection(n: Node, source_indices: Map<String, NewlineIndex>) -> Boo
 // span against the newline index and slices source text on every call. Testing
 // arity first is the SAME conjunction, so the answer cannot change, and it
 // spares that lookup for every node that could not have been a keyed collection
-// anyway (DESIGN §6 bare-minimum cost — a conjunction that puts its expensive
+// anyway (gunbc.design_argument::how_to_work bare-minimum cost — a conjunction that puts its expensive
 // term first is a cost-shape defect regardless of the realized n).
 fn node_is_keyed_collection(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   (n.children |> count) == 2 && (node_is_collection(n: n, source_indices: source_indices) || node_is_keyed_algebra_spelling(n: n, source_indices: source_indices))
@@ -127,10 +154,7 @@ fn node_is_keyed_collection(n: Node, source_indices: Map<String, NewlineIndex>) 
 // emitter_keyed_container_lowering_is_keyed_by_leaf_spelling (same class as
 // host_seam_realization_is_keyed_by_primitive_spelling).
 fn node_is_keyed_algebra_spelling(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  n.connective == NoConnective && match container_template_algebra(name: qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: n))) {
-    Present { value: algebra } => algebra == "FinitelySupportedFunction"
-    Absent => false
-  }
+  n.connective == NoConnective && container_spelling_is_algebra(name: qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: n)), algebra: "FinitelySupportedFunction")
 }
 
 fn collection_carrier_node(n: Node) -> Node {
@@ -147,8 +171,63 @@ fn node_is_element_collection(n: Node, source_indices: Map<String, NewlineIndex>
   (c.children |> count) == 1 && node_is_collection(n: c, source_indices: source_indices)
 }
 
+// THE SAME ALGEBRA DECISION `node_is_element_collection` MAKES, READ ONCE MORE AND NOT TWICE. This
+// predicate and its neighbour must not answer from two different registries: `node_is_collection`
+// admits both registered spellings of the power-set carrier (the alias roster and the carrier's
+// algebra row), so a leaf-literal "Set" comparison HERE puts the two answers out of step -- the type
+// is an element collection and not a set at once, and every consumer that distinguishes the two
+// inherits the disagreement. Two of them execute, both measured (see the RFM row below):
+// `type_is_ordered_element_run` then calls a `FinitePowerSet<Int>` an ordered run, so std.algebra's
+// `ReceiverElementOrSelf` and the emitter's `rust_append_call_is_concat_form` CONCATENATE a set
+// appended to a list of sets instead of snocing it as one element; and
+// `v1.compiler.emit_rust`'s set branch reaches the element Ord validation
+// (`rust_btree_set_element_ord_eligible`) only through this predicate, so the canonical spelling
+// silently skips the refusal its alias gets. Both spellings are registered rows of ONE carrier
+// algebra (std.algebra's FinitePowerSet carrier carries the alias row `Set`), which is the fact
+// being unified here -- not a declaration identity, which is the later rung the RFM below names.
+// The element-collection shape test stays on the neighbour, so arity and the collection-carrier
+// requirement are unchanged: one argument, resolving to a collection carrier, whose algebra is
+// FinitePowerSet.
+// RESIDUE: the leaf-literal fallback in `expected_type_is_set_collection` (v1.compiler.infer
+// `last == "Set"`) still consults a spelling, and it gates the kernel `empty_set()` admission rather
+// than this renderer question; generalizing it belongs with the same roster rule as the other
+// spelling-check sites, not here. gunbc.recurring_failure_mode
+// emitter_element_container_lowering_is_keyed_by_leaf_spelling names the trigger that retires both:
+// the resolver recording a declaration reference on every type reference.
 fn node_is_set_collection(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  node_is_element_collection(n: n, source_indices: source_indices) && qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: n)) == "Set"
+  node_is_element_collection(n: n, source_indices: source_indices) && node_is_finite_power_set_algebra_spelling(n: n, source_indices: source_indices)
+}
+
+// IS THIS TYPE AN ORDERED RUN OF ELEMENTS -- the free monoid's own shape? ONE QUESTION, ONE
+// AUTHORITY, TWO READERS: the inference of a dual-form argument (std.algebra's
+// `ReceiverElementOrSelf`, the free-monoid `append` row) asks it of the argument's TYPE to decide
+// whether the call concatenates a run or snocs an item, and the Rust emitter asks it of the same
+// argument at the lowered call seam (v1.compiler.emit_rust `type_node_is_ordered_element_run`). The
+// model answers the same question of the VALUE at runtime -- v1_interpreter's `method_call.concat`
+// arm merges `value_to_list_carrier(arg)` and pushes anything else as one item. Three answers, one
+// fact read three ways; a reader that guessed by NAME is how `append(acc, [v])` came to type its
+// accumulator as a list OF lists, the E0308 this predicate closes. The string exclusion stays with
+// each reader, because it is a carrier fact and the carriers differ: the emitter consults its
+// target's table of string spellings (`is_rust_string_like`), inference has only the authored kernel
+// name (`type_is_kernel_string` below, with its residue recorded there).
+fn type_is_ordered_element_run(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  t.return_cardinality != CardOptional
+    && node_is_element_collection(n: t, source_indices: source_indices)
+    && !node_is_set_collection(n: t, source_indices: source_indices)
+}
+
+// THE MODEL'S STRING TEST, read at the type level: v1_interpreter's `method_call.concat` arm answers
+// `Value::Str` FIRST and pushes the argument as one item before it ever asks `value_to_list_carrier`,
+// so a string is an atom to the model and never a run. `String` is `FreeMonoid<Char>` in this
+// substrate, so a structurally spelled string would satisfy node_is_element_collection; the Rust
+// realization closes the same gap with its own carrier test (v1.compiler.emit_rust
+// `type_node_is_ordered_element_run`, which excludes `is_rust_string_like`) because that reader has a
+// target table of string spellings and inference has none -- inference has only the authored kernel
+// name. RESIDUE FOR THE ROSTER, NOT FOR THIS DEFECT: a `FreeMonoid<Char>`-spelled string reaching a
+// dual-form position of an OPEN accumulator would still read as a run here, exactly as it mis-reads
+// today; the corpus spells strings `String`, and a name-free string registry is the missing fact.
+fn type_is_kernel_string(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: t)) == "String"
 }
 
 fn canonical_template_name(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
@@ -202,6 +281,7 @@ fn kernel_profile_lookup(name: String) -> AlgebraProfile? {
 fn reground_alias_carrier_identity(n: Node, source_indices: Map<String, NewlineIndex>) -> Node {
   if n.name != "" && n.name != authored_name_at(source_indices: source_indices, node: n) && is_declared_container_alias_spelling(name: n.name) {
     Node {
+      ident: Absent,
       occurrence_identity: OccurrenceSynthetic, name: n.name, span: n.span, ident_span: Present { value: kernel_span(name: n.name) },
       children: n.children, connective: n.connective, params: n.params, inferred: n.inferred,
       return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport,
@@ -217,6 +297,7 @@ fn reground_alias_carrier_identity(n: Node, source_indices: Map<String, NewlineI
 fn structural_carrier_template_name(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
   if n.name != "" {
     canonical_template_name(n: Node {
+      ident: Absent,
       occurrence_identity: OccurrenceSynthetic, name: n.name, span: n.span, ident_span: Present { value: kernel_span(name: n.name) },
       children: n.children, connective: n.connective, params: n.params, inferred: n.inferred,
       return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport,
@@ -354,9 +435,9 @@ fn bare_map_node() -> Node? {
       match container_param_name(kind_name: "Map", index: 1) {
         Present { value: val_id } =>
           Present {
-            value: Node { occurrence_identity: OccurrenceSynthetic, name: "Map", span: no_span(), ident_span: Present { value: no_span() }, children: [
-              Node { occurrence_identity: OccurrenceSynthetic, name: key_id, span: no_span(), ident_span: Present { value: no_span() }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: type_variable_node(id: key_id) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData },
-              Node { occurrence_identity: OccurrenceSynthetic, name: val_id, span: no_span(), ident_span: Present { value: no_span() }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: type_variable_node(id: val_id) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+            value: Node { ident: Absent, occurrence_identity: OccurrenceSynthetic, name: "Map", span: no_span(), ident_span: Present { value: no_span() }, children: [
+              Node { ident: Absent, occurrence_identity: OccurrenceSynthetic, name: key_id, span: no_span(), ident_span: Present { value: no_span() }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: type_variable_node(id: key_id) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData },
+              Node { ident: Absent, occurrence_identity: OccurrenceSynthetic, name: val_id, span: no_span(), ident_span: Present { value: no_span() }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: type_variable_node(id: val_id) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
             ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
           }
         Absent => none
@@ -369,8 +450,8 @@ fn bare_set_node() -> Node? {
   match container_param_name(kind_name: "Set", index: 0) {
     Present { value: elem_id } =>
       Present {
-        value: Node { occurrence_identity: OccurrenceSynthetic, name: "Set", span: no_span(), ident_span: Present { value: no_span() }, children: [
-          Node { occurrence_identity: OccurrenceSynthetic, name: elem_id, span: no_span(), ident_span: Present { value: no_span() }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: type_variable_node(id: elem_id) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+        value: Node { ident: Absent, occurrence_identity: OccurrenceSynthetic, name: "Set", span: no_span(), ident_span: Present { value: no_span() }, children: [
+          Node { ident: Absent, occurrence_identity: OccurrenceSynthetic, name: elem_id, span: no_span(), ident_span: Present { value: no_span() }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: type_variable_node(id: elem_id) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
         ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
       }
     Absent => none
@@ -388,6 +469,7 @@ fn kernel_container_profile_miss_diagnostic(kind_name: String) -> ErrorNode {
 fn missing_kernel_container_profile_type(kind_name: String) -> Node {
   let msg = concat("missing kernel container profile: ", kind_name)
   Node {
+    ident: Absent,
     occurrence_identity: OccurrenceSynthetic, name: "",
     span: no_span(),
     ident_span: none,
@@ -416,12 +498,13 @@ type KernelTypeBuild {
 // it cannot answer. make_kernel_record_type lets a builtin declare the product type it actually
 // returns, so the field's type is READ from the declaration rather than invented. It is the same
 // Conj-with-named-children shape lookup_field_type_node already walks for authored records, not a
-// second representation of one (DESIGN §3): the kernel path and the authored path resolve fields
+// second representation of one (gunbc.design_argument::single_authority): the kernel path and the authored path resolve fields
 // through the identical traversal, so a kernel record cannot drift from what an authored record
 // means.
 
 fn make_kernel_record_field(field_name: String, field_type: Node) -> Node {
   Node {
+    ident: Absent,
     occurrence_identity: OccurrenceSynthetic, name: field_name, span: kernel_span(name: field_name),
     ident_span: Present { value: kernel_span(name: field_name) },
     children: [], connective: NoConnective, params: [],
@@ -434,6 +517,7 @@ fn make_kernel_record_field(field_name: String, field_type: Node) -> Node {
 
 fn make_kernel_record_type(type_name: String, fields: List<Node>) -> Node {
   Node {
+    ident: Absent,
     occurrence_identity: OccurrenceSynthetic, name: type_name, span: kernel_span(name: type_name),
     ident_span: Present { value: kernel_span(name: type_name) },
     children: fields, connective: Conj, params: [], inferred: none,
@@ -447,8 +531,8 @@ fn make_container_type(kind_name: String, element: Node) -> KernelTypeBuild {
   match container_param_name(kind_name: kind_name, index: 0) {
     Present { value: param_name } =>
       KernelTypeBuild {
-        ty: Node { occurrence_identity: OccurrenceSynthetic, name: kind_name, span: kernel_span(name: kind_name), ident_span: Present { value: kernel_span(name: kind_name) }, children: [
-          Node { occurrence_identity: OccurrenceSynthetic, name: param_name, span: kernel_span(name: param_name), ident_span: Present { value: kernel_span(name: param_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: element } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+        ty: Node { ident: Absent, occurrence_identity: OccurrenceSynthetic, name: kind_name, span: kernel_span(name: kind_name), ident_span: Present { value: kernel_span(name: kind_name) }, children: [
+          Node { ident: Absent, occurrence_identity: OccurrenceSynthetic, name: param_name, span: kernel_span(name: param_name), ident_span: Present { value: kernel_span(name: param_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: element } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
         ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData },
         diagnostics: []
       }
@@ -466,9 +550,9 @@ fn make_map_type(key: Node, value: Node) -> KernelTypeBuild {
       match container_param_name(kind_name: "Map", index: 1) {
         Present { value: val_name } =>
           KernelTypeBuild {
-            ty: Node { occurrence_identity: OccurrenceSynthetic, name: "Map", span: kernel_span(name: "Map"), ident_span: Present { value: kernel_span(name: "Map") }, children: [
-              Node { occurrence_identity: OccurrenceSynthetic, name: key_name, span: kernel_span(name: key_name), ident_span: Present { value: kernel_span(name: key_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: key } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData },
-              Node { occurrence_identity: OccurrenceSynthetic, name: val_name, span: kernel_span(name: val_name), ident_span: Present { value: kernel_span(name: val_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: value } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+            ty: Node { ident: Absent, occurrence_identity: OccurrenceSynthetic, name: "Map", span: kernel_span(name: "Map"), ident_span: Present { value: kernel_span(name: "Map") }, children: [
+              Node { ident: Absent, occurrence_identity: OccurrenceSynthetic, name: key_name, span: kernel_span(name: key_name), ident_span: Present { value: kernel_span(name: key_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: key } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData },
+              Node { ident: Absent, occurrence_identity: OccurrenceSynthetic, name: val_name, span: kernel_span(name: val_name), ident_span: Present { value: kernel_span(name: val_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: value } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
             ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData },
             diagnostics: []
           }
@@ -487,28 +571,28 @@ fn make_map_type(key: Node, value: Node) -> KernelTypeBuild {
 }
 
 fn make_callable_type(func_params: List<Node>, ret: Node) -> Node {
-  Node { occurrence_identity: OccurrenceSynthetic, name: "Callable", span: kernel_span(name: "Callable"), ident_span: Present { value: kernel_span(name: "Callable") }, children: [], connective: Arrow, params: func_params, inferred: Present { value: Resolved { node: ret } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  Node { ident: Absent, occurrence_identity: OccurrenceSynthetic, name: "Callable", span: kernel_span(name: "Callable"), ident_span: Present { value: kernel_span(name: "Callable") }, children: [], connective: Arrow, params: func_params, inferred: Present { value: Resolved { node: ret } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
 }
 
 fn make_tuple_type(first: Node, second: Node) -> Node {
-  Node { occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [
-    Node { occurrence_identity: OccurrenceSynthetic, name: "first", span: kernel_span(name: "first"), ident_span: Present { value: kernel_span(name: "first") }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: first } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData },
-    Node { occurrence_identity: OccurrenceSynthetic, name: "second", span: kernel_span(name: "second"), ident_span: Present { value: kernel_span(name: "second") }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: second } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  Node { ident: Absent, occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [
+    Node { ident: Absent, occurrence_identity: OccurrenceSynthetic, name: "first", span: kernel_span(name: "first"), ident_span: Present { value: kernel_span(name: "first") }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: first } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData },
+    Node { ident: Absent, occurrence_identity: OccurrenceSynthetic, name: "second", span: kernel_span(name: "second"), ident_span: Present { value: kernel_span(name: "second") }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: second } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
   ], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
 }
 
 fn algebra_value_field(name: String, type_node: Node) -> Node {
-  Node { occurrence_identity: OccurrenceSynthetic, name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: type_node } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  Node { ident: Absent, occurrence_identity: OccurrenceSynthetic, name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: type_node } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
 }
 
 fn algebra_method_field(name: String, param_types: List<Node>, return_type: Node) -> Node {
   let params = param_types |> map(t => make_param_node(occurrence_identity: OccurrenceSynthetic, name: "_", type_expr: t, default_value: none, span: no_span(), name_span: no_span()))
   let callable = make_callable_type(func_params: params, ret: return_type)
-  Node { occurrence_identity: OccurrenceSynthetic, name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: callable } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  Node { ident: Absent, occurrence_identity: OccurrenceSynthetic, name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: callable } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
 }
 
 fn enrich_base_with_fields(name: String, base: Node, fields: List<Node>) -> Node {
-  Node { occurrence_identity: base.occurrence_identity, name: name, span: base.span, ident_span: base.ident_span, children: fields, connective: Conj, params: base.params, inferred: base.inferred, return_cardinality: base.return_cardinality, uses: base.uses, body: base.body, transport: base.transport, properties: base.properties, type_annotation: base.type_annotation, is_self_recursive: base.is_self_recursive, has_non_tail_self_call: base.has_non_tail_self_call, match_pattern: base.match_pattern, module_item_kind: base.module_item_kind, declaration_marker: base.declaration_marker, declaration: base.declaration, expr_data: base.expr_data }
+  Node { ident: Absent, occurrence_identity: base.occurrence_identity, name: name, span: base.span, ident_span: base.ident_span, children: fields, connective: Conj, params: base.params, inferred: base.inferred, return_cardinality: base.return_cardinality, uses: base.uses, body: base.body, transport: base.transport, properties: base.properties, type_annotation: base.type_annotation, is_self_recursive: base.is_self_recursive, has_non_tail_self_call: base.has_non_tail_self_call, match_pattern: base.match_pattern, module_item_kind: base.module_item_kind, declaration_marker: base.declaration_marker, declaration: base.declaration, expr_data: base.expr_data }
 }
 
 fn nominal_type_ref(name: String) -> Node {
@@ -531,8 +615,7 @@ fn nominal_type_ref(name: String) -> Node {
 // was present in authored facts and an inference dropped it -- and the placeholder returned here
 // for a dropped argument is the base itself, so the element is read as the container
 // (gunbc.recurring_failure_mode unapplied_generic_accumulator_types_element_as_container). The
-// repair is upstream at the dropping link; this seam stays advisory, with its ceiling row in
-// gunbc.compile_clean_diagnostic_policy advisory_class_ceilings.
+// repair is upstream at the dropping link; this seam stays advisory.
 fn algebra_child_or_placeholder(base: Node, child_index: Int, placeholder: String) -> KernelTypeBuild {
   let evidence_diags = if base.connective != NoConnective {
     [make_error_node(
@@ -550,6 +633,11 @@ fn instantiate_algebra_type(template: AlgebraTypeTemplate, base: Node, source_in
   match template {
     ReceiverSelf => KernelTypeBuild { ty: base, diagnostics: [] }
     ReceiverElement => algebra_child_or_placeholder(base: base, child_index: 0, placeholder: "T")
+    // The DECLARED contract of a dual-form position is its snoc form: an element. That is the type
+    // the argument is expected against, and it is what every call at this position is judged against
+    // today -- the dual read is not a question about the ROW, it is a question about the VALUE, and
+    // it is answered below (`unify_template`) where the argument's own inferred type is the evidence.
+    ReceiverElementOrSelf => algebra_child_or_placeholder(base: base, child_index: 0, placeholder: "T")
     ReceiverKey => algebra_child_or_placeholder(base: base, child_index: 0, placeholder: "K")
     ReceiverValue => algebra_child_or_placeholder(base: base, child_index: 1, placeholder: "V")
     NamedTemplate { name: n } => KernelTypeBuild { ty: nominal_type_ref(name: n), diagnostics: [] }
@@ -632,6 +720,25 @@ fn unify_template(template: AlgebraTypeTemplate, concrete: Node, receiver: Node,
     ReceiverValue =>
       if map_get(subst, "__value__") != none { subst }
       else { map_insert(subst, "__value__", concrete) }
+    // THE DUAL-FORM ARGUMENT (std.algebra `ReceiverElementOrSelf`, the free-monoid `append` row).
+    // A run lands here, or one item does, and the argument's own type answers which -- the same
+    // question `type_is_ordered_element_run` records, and the same one the interpreter asks of the
+    // value and the Rust emitter of the lowered call. RUNNED, the argument IS the receiver's own
+    // type, so what it CARRIES is the element and the call answers the receiver; SNOCCED, the
+    // argument is itself the element. Both readings then go through the one `ReceiverElement` clause
+    // below, so the guard that keeps the first element evidence stands for both.
+    ReceiverElementOrSelf =>
+      if type_is_ordered_element_run(t: concrete, source_indices: source_indices)
+        && !type_is_kernel_string(t: concrete, source_indices: source_indices) {
+        let carrier = collection_carrier_node(n: concrete)
+        match carrier.children |> first {
+          Present { value: child } =>
+            unify_template(template: ReceiverElement, concrete: child_type_node(ch: child), receiver: receiver, subst: subst, source_indices: source_indices)
+          Absent => subst
+        }
+      } else {
+        unify_template(template: ReceiverElement, concrete: concrete, receiver: receiver, subst: subst, source_indices: source_indices)
+      }
     ReceiverElement =>
       if map_get(subst, "__element__") != none { subst }
       else { map_insert(subst, "__element__", concrete) }
@@ -725,6 +832,12 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
           }
         } else { KernelTypeBuild { ty: receiver, diagnostics: [] } }
       } else { KernelTypeBuild { ty: receiver, diagnostics: [] } }
+    // No row RETURNS a dual-form position -- the free-monoid `append` answers with its receiver, and
+    // the run a dual argument carried IS that receiver. Should a row ever return this template, the
+    // value it yields is the run itself, which is what ReceiverSelf answers; asking ReceiverElement
+    // instead would invent an element out of a position that may hold the whole run.
+    ReceiverElementOrSelf =>
+      apply_type_substitution(template: ReceiverSelf, subst: subst, receiver: receiver, source_indices: source_indices)
     ReceiverElement =>
       match receiver.children |> first {
         Present { value: child } => KernelTypeBuild { ty: child_type_node(ch: child), diagnostics: [] }
@@ -884,7 +997,7 @@ fn normalize_access_type_node(n: Node) -> Node {
 // sides of a type-ARGUMENT refusal print identically. Wrapper<KindB> at a Wrapper<KindA>
 // position is a real refusal whose diagnostic read "declared 'Node(Wrapper)', produced
 // 'Node(Wrapper)'" -- typed and located but carrying nothing a reader could act on, which is
-// the located-but-uninformative half of DESIGN 5's typed-diagnostic duty. The container arm
+// the located-but-uninformative half of gunbc.design_argument::fail_closed's typed-diagnostic duty. The container arm
 // already renders its element for the same reason; this is that rule applied to the general
 // application rather than a second idea.
 fn node_type_shape_argument_list(args: List<Node>, source_indices: Map<String, NewlineIndex>) -> String {
@@ -1467,7 +1580,7 @@ fn callable_signatures_agree(left: Node, right: Node, agree: fn(Node, Node) -> B
 // side carries no stamp it is resolved through the judging env to its alias-resolved head declaration and the
 // heads compare. A side that resolves to no declaration keeps the existing refusal - there is deliberately no
 // spelling fallback: identity comes from the declaration, never from printed text
-// (gunbc.rung_drop.text_boundary_identity_wall; DESIGN section 5 forbids the silent widen).
+// (gunbc.rung_drop.text_boundary_identity_wall; gunbc.design_argument::fail_closed forbids the silent widen).
 fn applied_head_identity_agrees(left: Node, right: Node, source_indices: Map<String, NewlineIndex>, text: TextJudgment) -> Bool {
   let both_stamped = match left.declaration {
     Present { value: ld } =>
@@ -1732,25 +1845,284 @@ type BinOpInferred {
   algebra_field: AlgebraFieldKind?
 }
 
-// The one reading of std.coercion's subtraction rows for an operand type: its resolved declaration,
-// then the three-valued answer. infer_binop_type_node types from it and the binop arm of infer
-// refuses on its Ambiguous arm, so the type and the diagnostic cannot disagree.
-fn subtraction_refinement_of(left_type: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> SubtractionRefinement {
-  match type_reference_declaration_ref(n: left_type, source_indices: source_indices, env: env) {
-    Present { value: operand } => dag_subtraction_refinement(operand: operand)
-    Absent => SubtractionStaysInOperandAlgebra
+// THE OPERATOR'S REQUIREMENT ON A CARRIER: the std.algebra field the operation needs, and the positive fields an
+// implicit injection into that carrier must commute with (a subtraction needs the ring's negate, and the
+// operands must still add after the embedding). Operators outside this roster keep the operand-algebra
+// reading in infer_arithmetic_binop_type_node.
+type ArithmeticRequirement {
+  field: String
+  preserved: List<String>
+}
+
+fn arithmetic_requirement(op: BinOp) -> ArithmeticRequirement? {
+  match op {
+    Add => Present { value: ArithmeticRequirement { field: "add", preserved: ["add"] } }
+    Mul => Present { value: ArithmeticRequirement { field: "mul", preserved: ["mul"] } }
+    Sub => Present { value: ArithmeticRequirement { field: "negate", preserved: ["add"] } }
+    _ => none
   }
 }
 
-fn infer_binop_type_node(op: BinOp, left_type: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> BinOpInferred {
+// THE UNARY HALF OF THE SAME ROSTER: one home for every operator requirement carrier selection reads, so
+// `negate` is stated once (review 90087 found it inline at the v1.compiler.infer call site).
+fn unary_arithmetic_requirement(op: UnaryOpKind) -> ArithmeticRequirement? {
   match op {
-    Sub =>
-      match subtraction_refinement_of(left_type: left_type, source_indices: source_indices, env: env) {
-        SubtractionEscapesTo { from_type: from_type } => BinOpInferred { result_type: nominal_type_ref(name: from_type), algebra_field: none }
-        SubtractionRefinementAmbiguous { from_types: _ } => BinOpInferred { result_type: error_type, algebra_field: none }
-        SubtractionStaysInOperandAlgebra => infer_arithmetic_binop_type_node(op: op, left_type: left_type, source_indices: source_indices)
+    Neg => Present { value: ArithmeticRequirement { field: "negate", preserved: [] } }
+    Not => none
+  }
+}
+
+// algebra_carriers is keyed by the carrier's leaf name (AlgebraCarrier carries no declaration identity), so
+// this lookup is the table's own contract: a homonym such as v2.std.nat.Nat is told apart from std.nat.Nat
+// only by the injection rows and operand declarations that feed the fold, which are compared by
+// declaration_ref_eq. Giving AlgebraCarrier a declaration identity is the climb gunbc.guarantee_stall algebra_carrier_table_keyed_by_leaf_name_stall declares.
+fn carrier_defines_field(carrier: DeclarationRef, field: String) -> Bool {
+  algebra_carriers() |> any(c => c.name == carrier.decl_name && (algebra_templates_for_profile(profile: c.profile) |> any(t => t.name == field)))
+}
+
+// Whether the carrier has an algebra row at all, whatever fields it defines (keyed by leaf name, the same table contract as above).
+fn carrier_has_algebra(carrier: DeclarationRef) -> Bool {
+  algebra_carriers() |> any(c => c.name == carrier.decl_name)
+}
+
+// THE CARRIER AN ARITHMETIC OPERAND DENOTES: its declaration, or -- for the kernel integer spelling, which
+// names no declaration -- the carrier gunbc.structural_realization_bindings kernel_grounding_rows grounds the
+// unbounded kernel integer in (std.integer Int). The same row the literal elaboration reads, so a kernel Int
+// operand meets the injection rows by identity rather than falling outside the fold.
+fn operand_carrier_ref(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
+  match operand_carrier_reading_settled(n: n, source_indices: source_indices, env: env, fuel: 16) {
+    OperandCarrierNamed { carrier: d } => Present { value: d }
+    OperandCarrierUnnamed => none
+    OperandCarrierChainUnbounded => none
+  }
+}
+
+fn operand_carrier_chain_unbounded(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Bool {
+  match operand_carrier_reading_settled(n: n, source_indices: source_indices, env: env, fuel: 16) {
+    OperandCarrierNamed { carrier: _ } => false
+    OperandCarrierUnnamed => false
+    OperandCarrierChainUnbounded => true
+  }
+}
+
+// AN ALIAS IS THE CARRIER OF WHAT IT SETTLES TO. A declared alias (`type NonNegativeInt = Nat`,
+// `type StateDurabilityInstant = EpochMs`, `type List<element> = FreeMonoid<element>`) names no algebra of
+// its own; its carrier is its right-hand side's (a transparent alias, read through v1.compiler.infer_env
+// alias_rhs_of_declaration) or its declared right-hand side's head (a parameterized alias, v1.compiler.infer_env parameterized_alias_of_declaration),
+// never by spelling. A declared refinement (`type EpochMs = Int where range(min: 0)`) is the carrier of its base. Reading the alias's own declaration
+// made `instant + 1` and `nonneg * n` carrier-less and refused (gunbc#15610 heal: std.state_durability,
+// extdeps.git.object_store). Fuel bounds an alias chain; a cycle is refused where aliases are resolved. A chain
+// longer than the fuel is OperandCarrierChainUnbounded, never "names no declaration": the selection refuses it as
+// ArithmeticCarrierUndecided rather than abstaining (review 90183: exhaustion read as Absent let the operator fall
+// back to the left operand's typing, or refuse as carrier-less, reporting "we did not look" as an answer).
+type OperandCarrierReading
+  = OperandCarrierNamed { carrier: DeclarationRef }
+  | OperandCarrierUnnamed
+  | OperandCarrierChainUnbounded
+
+fn operand_carrier_reading_settled(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv, fuel: Int) -> OperandCarrierReading {
+  if fuel <= 0 { return OperandCarrierChainUnbounded }
+  // A `T where p` field is the carrier of T: the refinement narrows the value set, not the algebra.
+  if is_where_refinement_node(n: n) {
+    return match n.children |> first {
+      Present { value: base } => operand_carrier_reading_settled(n: base, source_indices: source_indices, env: env, fuel: fuel - 1)
+      Absent => OperandCarrierUnnamed
+    }
+  }
+  match type_reference_declaration_ref(n: n, source_indices: source_indices, env: env) {
+    // A declaration the algebra table names IS a carrier; the walk stops there rather than read through it. v2.std.integer
+    // `type Int = GroupCompletion<Nat>` is the Int carrier, and walking on reached GroupCompletion, which has no row
+    // (srv2 kh-q1e-e4, gunbc 6803c3f0: 14 refusals in src/v2/std/integer.dag).
+    Present { value: d } => if carrier_has_algebra(carrier: d) { OperandCarrierNamed { carrier: d } } else {
+      match alias_rhs_of_declaration(item_ref: d, env: env) {
+        // A transparent alias recurses on its right-hand side NODE, so a kernel right-hand side (`type X = Int`,
+        // which names no declaration) still reaches the kernel grounding arm below.
+        Present { value: rhs } => operand_carrier_reading_settled(n: rhs, source_indices: source_indices, env: env, fuel: fuel - 1)
+        Absent =>
+          // A PARAMETERIZED alias (`type List<element> = FreeMonoid<element>`) has no transparent right-hand
+          // side; without this arm `done + [x]` (FreeMonoid beside List) read as two carriers and refused (gunbc#15610
+          // corpus gate: extdeps.debian.version, gunbc.runner.runner_host_file_converge).
+          // The carrier is the alias's declared right-hand side HEAD, which no argument changes, so it is read from the
+          // declaration (parameterized_alias_of_declaration), never by substituting the use site: settled_type cannot
+          // substitute at a kernel container node and answered the alias itself there, so `xs + [x]` read List beside
+          // FreeMonoid and refused (srv2 kh-lp2, gunbc 86235c39: authored List<T> operands passed, every list-literal
+          // operand refused; corpus gate kh-q1e-e3, 25 sites).
+          match parameterized_alias_of_declaration(item_ref: d, source_indices: source_indices, env: env) {
+            Present { value: pa } => operand_carrier_reading_settled(n: pa.rhs, source_indices: source_indices, env: env, fuel: fuel - 1)
+            Absent =>
+              // A declared refinement is the carrier of its base, the same reading the field-level `T where p` arm gives.
+              match refinement_rhs_of_declaration(item_ref: d, env: env) {
+                Present { value: refined } => operand_carrier_reading_settled(n: refined, source_indices: source_indices, env: env, fuel: fuel - 1)
+                Absent => OperandCarrierNamed { carrier: d }
+              }
+          }
+      } }
+    Absent =>
+      match kernel_settled_name(n: n, source_indices: source_indices, env: env, fuel: 16) {
+        Present { value: kernel } =>
+          if kernel != "Int" { OperandCarrierUnnamed } else {
+            match kernel_grounding_rows |> filter(g => match g.extent { UnboundedIntegers => true  _ => false }) |> first {
+              Present { value: g } => OperandCarrierNamed { carrier: g.carrier }
+              Absent => OperandCarrierUnnamed
+            }
+          }
+        Absent => OperandCarrierUnnamed
       }
-    _ => infer_arithmetic_binop_type_node(op: op, left_type: left_type, source_indices: source_indices)
+  }
+}
+
+// A type variable is instantiation-blind at this rung: an operand that is one keeps the operand-algebra reading
+// (gunbc.guarantee_stall algebra_carrier_table_keyed_by_leaf_name_stall names the climb); any other operand with
+// no carrier beside one that has a carrier is refused, never typed from the operand that happens to be on the left.
+fn operand_is_type_variable(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Bool {
+  match type_reference_declaration_reading(n: n, source_indices: source_indices, env: env) {
+    TypeReferenceIsTypeVariable { id: _ } => true
+    _ => false
+  }
+}
+
+// AN OPERAND WHOSE IDENTITY IS UNKNOWN IS NOT A CARRIER-LESS OPERAND. A type variable, or a type whose
+// authored name reads empty (inference erased its identity: the v2 self-host emit met
+// `state.count + 1` typed 'Primitive()'), names no declaration because nothing is known about it,
+// not because it is known to lie outside every algebra. Refusing it as ArithmeticWithoutCarrier would
+// report "we did not look" as "it has no carrier"; the selection abstains instead, the same reading
+// declared_type_inhabitance gives an empty produced name (UndecidableProducedIdentityErased). A
+// declared operand outside the algebra table still refuses.
+fn operand_identity_unknown(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Bool {
+  operand_is_type_variable(n: n, source_indices: source_indices, env: env)
+    || authored_name_at(source_indices: source_indices, node: n) == ""
+}
+
+// The one reading of the carrier an arithmetic operator lands in, from the operands' DECLARATIONS: a
+// candidate is an operand's carrier or one an implicit-safe injection (conversion_plan_rows InjectionPhase)
+// reaches from it, kept when its algebra profile defines the field. Absent means an operand names no resolved
+// declaration, so the operand-algebra reading decides as before; two DIFFERENT resolved declarations of which one has no
+// algebra row are ArithmeticNoCarrier (refused), never the left operand's typing; the ambiguity arm is refused by the caller.
+// TEXT IS NOT CLAIMED BY CARRIER SELECTION. `+` on text is concatenation, outside the Nat->Int injection
+// domain this selection reads, and the seed cannot consult the one authority that says which declarations
+// spell one kernel text type (v2.extdeps.languages dag_kernel_value_type_roster lives in src/v2, and seed
+// imports resolve under dag/). So an operand v1.compiler.infer_env text_representation_by_identity reads
+// as text is not selected for: the operator keeps the typing it had before selection existed, and nothing
+// here judges it. Stated, not silent: gunbc.recurring_failure_mode
+// host_text_plus_is_not_judged_by_carrier_selection, whose trigger is the seed consuming that roster.
+fn operand_is_text(n: Node, env: TypeEnv) -> Bool {
+  match text_representation_by_identity(n: n, env: env) {
+    HostText => true
+    CodePointSequence => true
+    NotText => false
+    TextRepresentationUnidentified => false
+  }
+}
+
+// THE SELECTION JUDGES AN OPERATOR OVER CARRIERS THAT REACH IT (carrier_reaches_field): the carrier's own algebra
+// defines the operation, or a declared injection preserving the requirement carries it to one that does (Nat has no
+// `negate`, but `Nat - Nat` is judged through nat_to_int). Not every carrier the algebra table names: a free monoid is
+// in the table, but its `+` is concatenation and it injects nowhere, so two operands of ONE such carrier keep that
+// carrier, the typing they had. Table membership refused `xs + [x]` at 31 corpus sites (srv2 kh-q1e-c, gunbc
+// 9667dc1d); own-definition alone refused every Nat `-` at 96 (srv2 kh-q1e-d, gunbc 17ff6cf5). A pair whose carriers
+// DIFFER, one reaching nothing (`FreeMonoid<Int> + Int`), still refuses: there is no carrier both reach.
+fn carrier_reaches_field(carrier: DeclarationRef, requirement: ArithmeticRequirement, rows: List<ConversionPlan>) -> Bool {
+  carrier_defines_field(carrier: carrier, field: requirement.field)
+    || (injection_targets(rows: rows, from: carrier, preserved: requirement.preserved) |> any(t => carrier_defines_field(carrier: t, field: requirement.field)))
+}
+
+fn arithmetic_carrier_selection(requirement: ArithmeticRequirement, left_type: Node, right_type: Node?, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> ArithmeticCarrierSelection? {
+  let right_is_text = match right_type { Absent => false  Present { value: rt } => operand_is_text(n: rt, env: env) }
+  if operand_is_text(n: left_type, env: env) || right_is_text { return none }
+  let right_unbounded = match right_type { Absent => false  Present { value: rt } => operand_carrier_chain_unbounded(n: rt, source_indices: source_indices, env: env) }
+  if (operand_carrier_chain_unbounded(n: left_type, source_indices: source_indices, env: env) || right_unbounded) { return Present { value: ArithmeticCarrierUndecided } }
+  match operand_carrier_ref(n: left_type, source_indices: source_indices, env: env) {
+    Absent =>
+      match right_type {
+        Absent => none
+        Present { value: rt } =>
+          match operand_carrier_ref(n: rt, source_indices: source_indices, env: env) {
+            Absent => none
+            Present { value: r } =>
+              if carrier_reaches_field(carrier: r, requirement: requirement, rows: conversion_plan_rows) && !operand_identity_unknown(n: left_type, source_indices: source_indices, env: env) { Present { value: ArithmeticNoCarrier } } else { none }
+          }
+      }
+    Present { value: left } =>
+      let rows = conversion_plan_rows
+      let right = match right_type {
+        Absent => none
+        Present { value: rt } => operand_carrier_ref(n: rt, source_indices: source_indices, env: env)
+      }
+      let right_missing = match right_type {
+        Absent => false
+        Present { value: _ } => match right { Absent => true  Present { value: _ } => false }
+      }
+      let right_outside = match right { Absent => false  Present { value: r } => !carrier_reaches_field(carrier: r, requirement: requirement, rows: conversion_plan_rows) }
+      let pair_differs = match right { Absent => false  Present { value: r } => !declaration_ref_eq(a: left, b: r) }
+      let one_outside = match right { Absent => false  Present { value: r } => right_outside || !carrier_reaches_field(carrier: left, requirement: requirement, rows: conversion_plan_rows) }
+      let right_blind = match right_type { Absent => false  Present { value: rt } => operand_identity_unknown(n: rt, source_indices: source_indices, env: env) }
+      // A same-carrier pair that reaches nothing keeps its typing only where `+` is the carrier's concatenation (its algebra
+      // defines `append`, std.algebra list_append: a free monoid). Any other carrier that reaches nothing refuses: a declared carrier with no algebra
+      // row, and a local Peano `Nat`, which the leaf-name table cannot tell from std.nat.Nat
+      // (test.claim.refinement_cast_wall_witness w_peano_nat_difference_is_not_the_refinement, red at srv2 kh-q1e-e4).
+      let pair_concatenates = requirement.field == "add" && carrier_defines_field(carrier: left, field: "append")
+      let same_without_algebra = match right { Absent => false  Present { value: _ } => !pair_differs && !carrier_reaches_field(carrier: left, requirement: requirement, rows: conversion_plan_rows) && !pair_concatenates }
+      if (right_missing && carrier_reaches_field(carrier: left, requirement: requirement, rows: conversion_plan_rows) && !right_blind) || (pair_differs && one_outside) || same_without_algebra { Present { value: ArithmeticNoCarrier } } else if right_missing || right_outside || !carrier_reaches_field(carrier: left, requirement: requirement, rows: conversion_plan_rows) { none } else {
+        let named = match right { Absent => [left]  Present { value: r } => [left, r] }
+        let candidates = concat(named, named |> flat_map(d => injection_targets(rows: rows, from: d, preserved: requirement.preserved)))
+        let definers = candidates |> filter(d => carrier_defines_field(carrier: d, field: requirement.field))
+        Present { value: select_arithmetic_carrier(rows: rows, left: left, right: right, definers: definers, preserved: requirement.preserved) }
+      }
+  }
+}
+
+// The type node of a selected carrier: an operand's own node when the carrier is its declaration (so a
+// same-carrier operation is exactly the pre-existing answer), else the carrier's nominal reference.
+fn arithmetic_carrier_type(selected: DeclarationRef, left_type: Node, right_type: Node?, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Node {
+  let left_is = match operand_carrier_ref(n: left_type, source_indices: source_indices, env: env) {
+    Present { value: d } => declaration_ref_eq(a: d, b: selected)
+    Absent => false
+  }
+  if left_is { left_type } else {
+    let right_is = match right_type {
+      Absent => none
+      Present { value: rt } =>
+        match operand_carrier_ref(n: rt, source_indices: source_indices, env: env) {
+          Present { value: d } => if declaration_ref_eq(a: d, b: selected) { Present { value: rt } } else { none }
+          Absent => none
+        }
+    }
+    match right_is { Present { value: rt } => rt  Absent => nominal_type_ref(name: selected.decl_name) }
+  }
+}
+
+fn infer_binop_type_node(op: BinOp, left_type: Node, right_type: Node?, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> BinOpInferred {
+  match arithmetic_requirement(op: op) {
+    Absent => infer_arithmetic_binop_type_node(op: op, left_type: left_type, source_indices: source_indices)
+    Present { value: req } =>
+      match arithmetic_carrier_selection(requirement: req, left_type: left_type, right_type: right_type, source_indices: source_indices, env: env) {
+        Present { value: ArithmeticCarrierSelected { carrier: c } } =>
+          // the algebra field is read from the SELECTED carrier's own type, exactly as the same-carrier
+          // operation always did, so emission still receives the field that chooses the realization
+          infer_arithmetic_binop_type_node(op: op, left_type: arithmetic_carrier_type(selected: c, left_type: left_type, right_type: right_type, source_indices: source_indices, env: env), source_indices: source_indices)
+        Present { value: ArithmeticCarrierAmbiguous { candidates: _ } } => BinOpInferred { result_type: error_type, algebra_field: none }
+        Present { value: ArithmeticNoCarrier } => BinOpInferred { result_type: error_type, algebra_field: none }
+        Present { value: ArithmeticCarrierUndecided } => BinOpInferred { result_type: error_type, algebra_field: none }
+        Absent => infer_arithmetic_binop_type_node(op: op, left_type: left_type, source_indices: source_indices)
+      }
+  }
+}
+
+// Unary minus: the same fold with one operand. -n for a Nat is the Int the embedding reaches (Nat defines no
+// negate), never the operand's own type.
+// The requirement is read from unary_arithmetic_requirement, the one home of `negate` (review 90183 found the
+// literal still inline here after review 90087 moved it).
+fn infer_neg_type_node(operand_type: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Node {
+  match unary_arithmetic_requirement(op: Neg) {
+    Absent => operand_type
+    Present { value: requirement } =>
+      match arithmetic_carrier_selection(requirement: requirement, left_type: operand_type, right_type: none, source_indices: source_indices, env: env) {
+        Present { value: ArithmeticCarrierSelected { carrier: c } } => arithmetic_carrier_type(selected: c, left_type: operand_type, right_type: none, source_indices: source_indices, env: env)
+        Present { value: ArithmeticCarrierAmbiguous { candidates: _ } } => error_type
+        Present { value: ArithmeticNoCarrier } => error_type
+        Present { value: ArithmeticCarrierUndecided } => error_type
+        Absent => operand_type
+      }
   }
 }
 

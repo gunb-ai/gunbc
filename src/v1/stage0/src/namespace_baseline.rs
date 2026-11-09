@@ -118,7 +118,7 @@ fn declaring_candidates(
 }
 
 /// Where a name reached through `module` is actually DECLARED. A re-export names the wrong
-/// authority (DESIGN §3 — a fact's home is its declaring module), so the chain is followed to
+/// authority (gunbc.design_argument::single_authority — a fact's home is its declaring module), so the chain is followed to
 /// the declarer, bounded by a visited set so a re-export cycle terminates at the last module
 /// reached.
 fn declarer_of(index: &DeclarationIndex, module: &str, name: &str) -> String {
@@ -497,7 +497,7 @@ fn records_reading<'a>(
 }
 
 /// THE SELECTOR THE REQUIRED FLOOR'S PLANNING ROW CONSUMES, derived from declarations and
-/// never from paths or names (DESIGN §3c: a declaration's consumers are a fact the namespace
+/// never from paths or names (gunbc.design_argument::consumption: a declaration's consumers are a fact the namespace
 /// tree carries; the planned set is producer-derived, never a path filter).
 ///
 /// THE CLASS. A declaration's interface changes in one module -- a coproduct grows an arm
@@ -1224,7 +1224,7 @@ pub fn diff_sides(name_status_z: &str) -> (Vec<String>, Vec<String>) {
 /// Backwards, and review 56449 was right to reject it: rows with no base side are not deltas,
 /// so every row that file carried silently STOPS BEING COMPARED while the caller answers
 /// success — the empty-observation narrow, ⊥-as-answer conflated with ⊥-as-ignorance, strictly
-/// worse than the widen §5 forbids: a widen is expensive, a narrow is silently uncovered.
+/// worse than the widen gunbc.design_argument::fail_closed forbids: a widen is expensive, a narrow is silently uncovered.
 ///
 /// The head sweep refuses on diagnostics, so refusing here keeps both sides on ONE instrument.
 /// History is not this module's to repair — but "I cannot see the baseline" is a refusal to
@@ -2029,7 +2029,7 @@ pub fn decode_environment_value(
 /// `SyntaxSpec` record its `std.syntax` module declares is THIS revision's declaration. A decoder
 /// that guessed "historical" from a missing key would silently restore the old powers for a
 /// CURRENT revision whose encoder lost the field -- the exact silent-wrongness class this PR
-/// closes (DESIGN section 5: no escape hatch; DESIGN section 4: the richer source always exists,
+/// closes (gunbc.design_argument::fail_closed: no escape hatch; gunbc.design_argument::closed_grounded_substrate: the richer source always exists,
 /// here it is the revision's own text, so a heuristic is not merely avoidable, it is unnecessary).
 pub enum OperatorRowAuthority {
     /// The revision's own `std.syntax` declares BOTH rows: decode the wire exactly as it is. If a

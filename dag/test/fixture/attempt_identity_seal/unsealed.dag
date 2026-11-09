@@ -1,0 +1,7 @@
+module test.fixture.attempt_identity_seal.unsealed
+
+import std.types { NonEmptyStr }
+
+// THE STRIPPED TWIN for test.claim.attempt_identity_seal_witness: the SAME record with the SAME fields,
+// WITHOUT sole_constructor, so the same forged text shows the refusal is the keyword.
+type AttemptIdentityStore { instance: NonEmptyStr, root: NonEmptyStr }

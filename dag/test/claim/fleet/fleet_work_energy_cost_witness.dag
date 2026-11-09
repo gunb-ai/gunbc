@@ -9,9 +9,15 @@ import extdeps.energy.con_edison {
 import gunbc.fleet.fleet_host_power {
   fleet_host_power_roster, host_power_profile, power_is_measured,
   measured_host_count, inferred_host_count, srv1_power,
+  MeasuredOnHost, InferredFromSimilarBuild, PowerProvenance,
 }
+import gunbc.fleet.fleet_host_assembly { host_installed_components, psu_srv1, psu_srv1_b }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
+import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_04, gpu_board_05, gpu_board_06 }
+import product.placement_supply { physical_asset_identity_eq }
+import std.list { list_member }
 import gunbc.fleet.fleet_work_energy_cost {
-  WorkEnergyCostOutcome, EnergyCostDerived, EnergyCostRefused,
+  WorkEnergyCostOutcome, EnergyCostDerived, EnergyCostRefused, ReadingAppliesToSupersededAssembly,
   work_energy_cost, cost_micros, cost_rests_on_measured_power,
 }
 
@@ -34,52 +40,50 @@ test fn witness_fixed_and_proportional_components_are_not_marginal() -> Bool {
     && count(el1_components) == 7
 }
 
-// THE ARITHMETIC, HAND-CHECKED. 94 W for 600 s is 56400 watt-seconds; 56400 x 376270 / 3600000
-// truncates to 5894 micro-USD, i.e. about 0.59 US cents for a ten-minute job with a whole srv1 to
-// itself. A literal is legitimate here because it is derived from the modeled rows by an arithmetic
-// this test restates independently, not copied from a run of the code under test.
-test fn witness_ten_minute_job_on_srv1_costs_5894_micros() -> Bool {
-  match work_energy_cost(host: "srv1", duration: second(count: 600)) {
+// AN UNCHANGED ASSEMBLY PRICES EXACTLY AS BEFORE THIS MIGRATION. srv2 carries srv1's build-similarity
+// figure and its installed configuration is unchanged since it was taken, so the applicability join accepts
+// it and the arithmetic is the untouched 94 W one: 94 W x 600 s x 376270 / 3.6e6 truncates to 5894 micro-USD.
+// This is the positive half of the discriminating control -- the join must price an applicable reading, not
+// refuse everything. The literal is derived from the modeled rows by arithmetic this test restates
+// independently, not copied from a run of the code under test.
+test fn witness_unchanged_assembly_prices_as_today() -> Bool {
+  match work_energy_cost(host: "srv2", duration: second(count: 600)) {
     EnergyCostDerived { cost } =>
       cost_micros(c: cost) == 5894 && watt_count(w: cost.draw) == 94
-    EnergyCostRefused { reason: _ } => false
+    EnergyCostRefused { cause: _ } => false
   }
 }
 
-// Zero duration costs nothing, and the truncation direction is visible: a one-second job on 94 W is
-// 94 x 376270 / 3600000 = 9.82 micros, which truncates to 9 -- an UNDERSTATEMENT, as the carrier
-// says. Asserting the truncated value pins the direction rather than leaving it to prose.
+// Zero duration costs nothing, and the truncation direction is visible on an applicable reading: a
+// one-second job on srv2's 94 W is 94 x 376270 / 3600000 = 9.82 micros, truncating to 9 -- an UNDERSTATEMENT,
+// as the carrier says. Asserting the truncated value pins the direction rather than leaving it to prose.
 test fn witness_short_work_truncates_downward() -> Bool {
-  match work_energy_cost(host: "srv1", duration: second(count: 1)) {
+  match work_energy_cost(host: "srv2", duration: second(count: 1)) {
     EnergyCostDerived { cost } => cost_micros(c: cost) == 9
-    EnergyCostRefused { reason: _ } => false
+    EnergyCostRefused { cause: _ } => false
   }
 }
 
 // AN UNMODELED HOST REFUSES rather than falling back to a fleet average. A default would answer
 // every question including the ones about hosts nobody declared, which is the absorbing fallback
-// DESIGN section 5 forbids: it destroys the signal that the roster is missing a host.
+// gunbc.design_argument::fail_closed forbids: it destroys the signal that the roster is missing a host.
 test fn witness_unknown_host_refuses_rather_than_averaging() -> Bool {
   match work_energy_cost(host: "srv99", duration: second(count: 600)) {
-    EnergyCostRefused { reason: _ } => true
+    EnergyCostRefused { cause: _ } => true
     EnergyCostDerived { cost: _ } => false
   }
 }
 
-// PROVENANCE SURVIVES INTO THE COST. srv1 was measured; srv2 carries srv1's figure by build
-// similarity. A consumer that may not price work on an unmeasured host can refuse on this without
-// re-deriving where the wattage came from -- and the two must not report the same way, or the
-// distinction the roster carries is lost at the first join.
-test fn witness_cost_carries_whether_its_power_was_measured() -> Bool {
-  let on_srv1 = match work_energy_cost(host: "srv1", duration: second(count: 600)) {
-    EnergyCostDerived { cost } => cost_rests_on_measured_power(c: cost)
-    EnergyCostRefused { reason: _ } => false
+// PROVENANCE SURVIVES INTO THE COST, and the applicability join does not disturb it. srv2 is inferred by
+// build similarity and its assembly is unchanged, so it still DERIVES -- it is not refused merely for being
+// inferred -- but its cost must report as NOT resting on a measured draw, distinct from a measured host.
+// (The fleet's only measured host, srv1, currently refuses on its changed assembly; its measured provenance
+// is still preserved on the reading and asserted by the roster and history witnesses below.)
+test fn witness_inferred_applicable_host_derives_but_is_flagged_unmeasured() -> Bool {
+  match work_energy_cost(host: "srv2", duration: second(count: 600)) {
+    EnergyCostDerived { cost } => !cost_rests_on_measured_power(c: cost)
+    EnergyCostRefused { cause: _ } => false
   }
-  let on_srv2 = match work_energy_cost(host: "srv2", duration: second(count: 600)) {
-    EnergyCostDerived { cost } => cost_rests_on_measured_power(c: cost)
-    EnergyCostRefused { reason: _ } => true
-  }
-  on_srv1 && !on_srv2
 }
 
 // The roster's own honesty: exactly one host is measured today and three are inferred. This reds
@@ -90,4 +94,89 @@ test fn witness_roster_reports_one_measured_and_three_inferred() -> Bool {
     && inferred_host_count() == 3
     && count(fleet_host_power_roster) == 4
     && power_is_measured(p: srv1_power)
+}
+
+// THE INTEGRATION, AND THE CONTROL THAT PROVES IT IS WIRED. srv1's assembly changed materially (two RTX PRO
+// 6000 boards added, and psu_srv1 replaced by psu_srv1_b), so the 2026-09-05 94 W figure no longer applies to
+// the machine it prices. work_energy_cost must REFUSE it with the typed cause that names the measurement we
+// need -- not price it silently, and not substitute any configured power ceiling for the missing measurement.
+// Removing the applicability join in work_energy_cost makes this RED: srv1 would derive again, which is exactly
+// the bypass this migration removes.
+// The refusal carries what a fresh measurement must cover: srv1 as installed now, both PRO 6000 boards and
+// the PG-1600G, never the replaced supply.
+test fn witness_changed_assembly_refuses_the_stale_measured_reading() -> Bool {
+  match work_energy_cost(host: "srv1", duration: second(count: 600)) {
+    EnergyCostRefused { cause: cause } => match cause {
+      ReadingAppliesToSupersededAssembly { host: refused_host, provenance: prov, measure_against: current } =>
+        (refused_host as String) == "srv1"
+          && match prov {
+               MeasuredOnHost { sample_count: _, sensor: _, observed_on: observed } => (observed as String) == "2026-09-05"
+               InferredFromSimilarBuild { basis_host: _, basis_reason: _ } => false
+             }
+          && list_member(xs: current, x: gpu_board_04, eq: physical_asset_identity_eq)
+          && list_member(xs: current, x: gpu_board_01, eq: physical_asset_identity_eq)
+          && list_member(xs: current, x: psu_srv1_b, eq: physical_asset_identity_eq)
+          && !list_member(xs: current, x: psu_srv1, eq: physical_asset_identity_eq)
+      NoPowerProfileDeclared { host: _ } => false
+    }
+    EnergyCostDerived { cost: _ } => false
+  }
+}
+
+// THE STALE FIGURE STAYS AS HISTORY. srv1's 94 W measurement is not deleted by refusing to price it: the
+// reading is still declared, still measured (a MeasuredOnHost of 2026-09-05), still queryable, and its
+// applicability is the PRE-CHANGE configuration -- no accelerator and the original psu_srv1, not the new
+// psu_srv1_b. Refusing to price is not the same as forgetting.
+test fn witness_stale_measured_reading_is_kept_as_history() -> Bool {
+  power_is_measured(p: srv1_power)
+    && watt_count(w: srv1_power.draw) == 94
+    && !list_member(xs: srv1_power.applies_to, x: gpu_board_04, eq: physical_asset_identity_eq)
+    && !list_member(xs: srv1_power.applies_to, x: gpu_board_01, eq: physical_asset_identity_eq)
+    && !list_member(xs: srv1_power.applies_to, x: psu_srv1_b, eq: physical_asset_identity_eq)
+}
+
+// THE CURRENT-ASSEMBLY JOIN READS THE AUTHORITIES, INCLUDING THE INSTALLED ACCELERATOR BOARDS. srv1 now
+// carries gpu_board_01 and gpu_board_04 (from gunbc.fleet.fleet_physical_inventory
+// installed_gpu_board_containments) and psu_srv1_b (from gunbc.fleet.fleet_host_assembly's own edges), and no
+// longer psu_srv1. srv2 has no accelerator. This reds if host_installed_components stops joining the physical
+// inventory's installed-GPU containment edges -- the very integration that makes a stale non-accelerated
+// figure refuse srv1.
+test fn witness_current_assembly_reflects_installed_gpu_and_psu() -> Bool {
+  let srv1_now = host_installed_components(host: operator_host_srv1)
+  let srv2_now = host_installed_components(host: operator_host_srv2)
+  list_member(xs: srv1_now, x: gpu_board_04, eq: physical_asset_identity_eq)
+    && list_member(xs: srv1_now, x: gpu_board_01, eq: physical_asset_identity_eq)
+    && list_member(xs: srv1_now, x: psu_srv1_b, eq: physical_asset_identity_eq)
+    && !list_member(xs: srv1_now, x: psu_srv1, eq: physical_asset_identity_eq)
+    && !list_member(xs: srv2_now, x: gpu_board_05, eq: physical_asset_identity_eq)
+}
+
+// THE POSITIVE HALF, AND THE INFERRED-HOST GUARD. srv3 came from srv1's build too but only adds a liquid
+// cooler -- no power-relevant change -- so its figure still applies and it keeps pricing; this reds if the
+// cooler edge is dropped from host_installed_components, since the current set would no longer cover what the
+// reading declares. srv4 is the counter-case: it is inferred from the SAME accelerator-free srv1 figure but its
+// build now carries two RTX 2000 Ada boards (gpu_board_05, gpu_board_06), so no measurement describes srv4 as it stands and it must REFUSE
+// with a cause naming srv1 as the basis and a non-empty measurement to take -- rather than price on a figure
+// that never covered its accelerators. Its applies_to naming the GPUs would silently pass the join here; this
+// witness is what keeps that fabrication red.
+test fn witness_cooled_inferred_host_prices_but_accelerated_inferred_host_refuses() -> Bool {
+  let srv3_ok = match work_energy_cost(host: "srv3", duration: second(count: 600)) {
+    EnergyCostDerived { cost: _ } => true
+    EnergyCostRefused { cause: _ } => false
+  }
+  let srv4_refuses = match work_energy_cost(host: "srv4", duration: second(count: 600)) {
+    EnergyCostRefused { cause: cause } => match cause {
+      ReadingAppliesToSupersededAssembly { host: refused_host, provenance: prov, measure_against: current } =>
+        (refused_host as String) == "srv4"
+          && match prov {
+               InferredFromSimilarBuild { basis_host: basis, basis_reason: _ } => (basis as String) == "srv1"
+               MeasuredOnHost { sample_count: _, sensor: _, observed_on: _ } => false
+             }
+          && list_member(xs: current, x: gpu_board_05, eq: physical_asset_identity_eq)
+          && list_member(xs: current, x: gpu_board_06, eq: physical_asset_identity_eq)
+      NoPowerProfileDeclared { host: _ } => false
+    }
+    EnergyCostDerived { cost: _ } => false
+  }
+  srv3_ok && srv4_refuses
 }

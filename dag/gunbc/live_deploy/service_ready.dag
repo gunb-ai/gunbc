@@ -5,9 +5,9 @@ import std.measure { Second, second, second_count, measure_fit_count_floor }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.live_deploy.spec { gunbc_roadmap_unit_name }
-import gunbc.roadmap.roadmap_static_site { roadmap_site_health_path }
 import v2.std.dependency { ready_set }
 import v2.std.node { Node }
+import gunbc.roadmap.roadmap_site_surface_render { roadmap_site_health_path }
 
 data live_deploy_service_ready_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
@@ -53,7 +53,7 @@ type ServiceNotReady {
 // exit code, recent journal lines), captured once when the poll bound is exhausted. It is a
 // SEPARATE fact from last_probe and must not be folded into it: last_probe is what the health
 // endpoint said (a curl-level observation from outside), unit_diagnosis is what the service said (a
-// process-level observation from inside). Conflating them is the state-space conflation DESIGN 3
+// process-level observation from inside). Conflating them is the state-space conflation gunbc.design_argument::single_authority
 // names -- 'the endpoint refused connection' and 'the process exited 1 while compiling' are
 // different states whose remedies differ, and only the second locates the defect. Motivating
 // incident: the srv1 deploy refused with ServiceNotReady on every run from belt B's merge (PR 6940)
@@ -89,7 +89,7 @@ data live_deploy_roadmap_unit_expected_startup: Second = second(count: 240)
 // That is 183 s start to listen, NRestarts=0, /livez 200. Following the roadmap's calibration practice
 // (a measured 219 s declared as 240 s), the expectation is set just above the one measured start
 // and the shared margin factor is unchanged. One observation is a thin basis, stated as such
-// (DESIGN section 4d). The next dark install's journal is the second reading, and a slower one
+// (gunbc.design_argument::epistemic_humility). The next dark install's journal is the second reading, and a slower one
 // refuses loudly at the bound rather than being admitted on a lucky probe.
 //
 // MEMORY HEADROOM IS THE THINNER MARGIN AND IS NOT THIS DECLARATION'S TO FIX. The same boot
@@ -115,7 +115,7 @@ data live_deploy_service_ready_poll_bound_margin_factor: Int = 3
 // the CI step budget that runs the install
 // (gunbc.fleet.fleet_workflow_steps gunbc_ci_approval_broker_dark_install_step_timeout) are
 // BOTH consumers of this figure, not separate products of expected_startup and the margin -- one
-// derivation per DESIGN section 6b. Giving the broker startup its own declared bound rather than
+// derivation per gunbc.design_argument::earliest_unjustified_boundary. Giving the broker startup its own declared bound rather than
 // inheriting the live-deploy step tier is the point: run 40630763823 restarted the broker at
 // 04:56:17 and killed the step at the inherited 30-minute cap at 04:58:17, ~160 s into a 200 s
 // startup, so the broker died mid-boot and never bound 8085.
@@ -131,7 +131,7 @@ THE MEASUREMENT ERROR. The prior rationale cited 'analyses-done at 3.3s, wide ma
 
 WHY THE BOUND IS NOT THE EXPECTATION. The old decl read 'bound = expected_startup', which is the modeling defect underneath the wrong number: a bound set EQUAL to the expected duration has zero margin by construction and is expected to fail about half the time even when the estimate is perfect. Expectation and bound are different facts -- one predicts, the other refuses -- so they are now separate decls related by an explicit margin factor. expected_startup is the measured ceiling (40s, above all four observations); the bound is 3x that. The margin is deliberately generous in the direction the cost actually moves: load time grows with the corpus, so a tight bound would silently re-break on ordinary corpus growth, and this bound refuses on a genuine failure (a crash exits in seconds and never binds at all) rather than on ordinary slowness.
 
-THIS IS NOT THE ABSORBING FALLBACK. The test DESIGN 5 sets is whether the failure arm WIDENS or refuses. Nothing here widens: the arm still refuses, typed and located, and now carries the unit's own account of itself. What changed is the bound's derivation, from a figure that measured the wrong phase to one measured against the thing being bounded. Raising a bound to cover a REAL, measured, successful startup is calibration; raising it to make a failing probe pass would be the fallback, and the discriminator is that we hold a green-by-execution receipt of the unit reaching listening under this bound, four times.
+THIS IS NOT THE ABSORBING FALLBACK. The test gunbc.design_argument::fail_closed sets is whether the failure arm WIDENS or refuses. Nothing here widens: the arm still refuses, typed and located, and now carries the unit's own account of itself. What changed is the bound's derivation, from a figure that measured the wrong phase to one measured against the thing being bounded. Raising a bound to cover a REAL, measured, successful startup is calibration; raising it to make a failing probe pass would be the fallback, and the discriminator is that we hold a green-by-execution receipt of the unit reaching listening under this bound, four times.
 
 DISSOLUTION TRIGGER. This bound is sized around a cost-shape defect, not a fact of the service: gunbc serve pays a corpus-scale load to serve an entry-scale closure (26x the sources it needs). When load_sources_for_entry / build_module_index are demand-scoped to the entry's closure, startup returns to roughly compile time alone and expected_startup drops back to single digits with the margin factor unchanged. Until then this is a loud, measured, receipt-carrying interim -- not a resting place."
 

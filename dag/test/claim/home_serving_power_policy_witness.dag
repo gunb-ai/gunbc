@@ -216,7 +216,7 @@ test fn an_admitted_pair_arrives_with_both_figures_intact_and_distinct() -> Bool
 // verdict: a driver fault and a genuine defect printed the same one word, and an `== 0` conjunct is one
 // arithmetic slip from reading the other way. That collapse is one of the could-not-measure instances
 // Charter 4 census, and it is removed here rather than documented. The algebra is
-// gunbc.compile_census_probe (keen-owl-704, row 11) consumed rather than forked, per DESIGN §3; the
+// gunbc.compile_census_probe (keen-owl-704, row 11) consumed rather than forked, per gunbc.design_argument::single_authority; the
 // harness-side half (a code 2 printing as UNOBSERVED rather than FAIL) belongs to claim_batch's own
 // lane on gunbc#14539's axis, NOT to #14783, which converts the six consumer sites. Neither is waited
 // on here: these claims no longer answer false when they cannot run, which is the change this file makes.
@@ -262,7 +262,7 @@ test fn an_unlisted_caller_is_refused_by_the_roster() -> ProcessExit {
 // emitted as a row of a DIFFERENT class (`UnresolvedImport`), so both seal counts stay zero and the
 // control goes green without the subject module ever having been resolved. `gunbc.compile_diagnostic_census`
 // warns against the obvious repair as well -- `census_total_count == 0` on an importing fixture is
-// permanently false because the row set is the whole imported closure, and §4b names a check whose
+// permanently false because the row set is the whole imported closure, and gunbc.design_argument::guarantee_ladder names a check whose
 // RED is unauthorable a decoration, not a weak wall. So the control is now two things the module
 // does certify: that the census ACTUALLY RAN on this source, and that it produced NO unresolved-import
 // row naming the subject module. Both key on rows the census itself emitted, and the arm below proves
@@ -278,7 +278,7 @@ test fn the_census_resolves_the_subject_module_so_the_refusals_are_not_vacuous()
   ])
 }
 
-// THE ARM THAT MAKES THE CONTROL DISCRIMINATING. §4b will not accept a green as evidence unless the
+// THE ARM THAT MAKES THE CONTROL DISCRIMINATING. gunbc.design_argument::guarantee_ladder will not accept a green as evidence unless the
 // same instrument is shown able to go red on the forbidden state, and this control's forbidden state
 // is "the subject module never resolved". One token differs from the source above -- the imported
 // module path -- and the census must then report the failure. Measured first, then permanent: a probe

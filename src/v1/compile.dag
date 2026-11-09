@@ -10,7 +10,7 @@ import v1.std.core {
   CompileResult, TextFile, SourceSpan, authored_name_at, ErrorNode, CompilerDiagnostic,
   render_span_location,
   is_error_diagnostic, is_interpreter_blocking_diagnostic, diagnostic_to_message,
-  diagnostic_to_span, make_error_node, InternalError, OwnershipViolation, no_span, Connective,
+  diagnostic_to_span, make_error_node, InternalError, no_span, Connective,
   NoConnective, Arrow, Cardinality, resource_use_name_at, resource_use_resource,
   param_node_name_at, param_node_type_expr, param_node_default_value, param_node_span,
   field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value,
@@ -86,7 +86,7 @@ import std.termination {
   ProportionalDivisor, DivideByTwo, StrictlyLarger
 }
 
-import v1.compiler.ownership { OwnershipProof, OwnershipDecision, SharedError, analyze_ownership }
+import v1.compiler.ownership { OwnershipProof, OwnershipDecision, analyze_ownership }
 
 import v1.compiler.artifact { ArtifactPlan, Artifact, RenderTarget, Dag, default_artifact_plan, selected_artifact_plan, RustModuleRenderSelection, RenderEveryModule }
 
@@ -208,20 +208,14 @@ fn extract_ownership_proofs(typed: ResolvedGraph) -> List<OwnershipProof> {
     |> flat_map(m => module_ownership_proofs(m: m))
 }
 
-fn ownership_diagnostics(proofs: List<OwnershipProof>) -> List<ErrorNode> {
-  proofs |> flat_map(proof =>
-    proof.decisions |> flat_map(decision =>
-      match decision {
-        SharedError { binding: binding, consumer_count: count, sites: sites } =>
-          [make_error_node(diagnostic: OwnershipViolation { binding: binding, fn_name: proof.func_name, consumers: count, span: no_span() }, module_name: proof.func_name)]
-        _ => []
-      }
-    )
-  )
-}
-
+// Ownership facts and the test-reference gate are compile/emit/witness analyses. A run that only
+// settles an entry for the interpreter reads neither result and must not pay the whole-closure
+// cost nor gain a diagnostic the interpreter does not enforce, so both are modeled switches
+// (default on; the run settle opts them out) rather than an unmodeled bypass of a stage.
 type CompilePipelineOptions {
   analyze_complexity: Bool
+  analyze_ownership: Bool
+  analyze_test_references: Bool
 }
 
 // TEST CODE IS ENTERED ONLY BY THE WITNESS RUNNER. A `test` marker (v1.std.core DeclarationMarker)
@@ -229,8 +223,8 @@ type CompilePipelineOptions {
 // crosses that segregation. The marker is item-scoped, so the wall is too:
 //   - a call whose target is a TestMarked declaration, from anywhere, including another test in
 //     its module: a test that calls a test re-runs a claim already enrolled on its own, so its cost
-//     and verdict are duplicated work (DESIGN section 2) and it tests more than one interface
-//     (section 3, a witness discriminates at one interface);
+//     and verdict are duplicated work (gunbc.design_argument::minimize_redundancy) and it tests more than one interface
+//     (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface);
 //   - a TestMarked declaration used as a function VALUE, including as a parameter default, which is
 //     how a test reaches a caller without a call site: a value bound here and applied through a
 //     local binding (LocallyBoundCall) is decided where the value is taken, not where it is applied;
@@ -444,7 +438,7 @@ fn module_test_references(m: TypedModule, modules_by_name: Map<String, TypedModu
 }
 
 // One key per (module, referrer, target) identity, so admission and the budget are map lookups built
-// once per compile rather than scans of the ledger or the occurrence list (DESIGN section 6: a
+// once per compile rather than scans of the ledger or the occurrence list (gunbc.design_argument::how_to_work: a
 // quadratic fold is always fixed, whatever the realized n).
 fn test_reference_occurrence_diag(o: TestReferenceOccurrence) -> ErrorNode {
   make_error_node(diagnostic: TestCodeReferenced { referrer: concat(o.module_name, ".", o.referrer), target: o.target, span: o.span }, module_name: o.module_name)
@@ -459,7 +453,16 @@ fn test_reference_diagnostics(typed: ResolvedGraph, source_indices: Map<String, 
 }
 
 fn default_compile_pipeline_options() -> CompilePipelineOptions {
-  CompilePipelineOptions { analyze_complexity: false }
+  CompilePipelineOptions { analyze_complexity: false, analyze_ownership: true, analyze_test_references: true }
+}
+
+// The options the `run` entry-settle consumes: it hands the settled graph to the interpreter and
+// reads no ownership facts and no complexity report, and the interpreter does not enforce the
+// test-reference gate (a `test` declaration is entered only by the witness runner). So the settle
+// skips all three analyses -- matching exactly the resolve stage its consumer's contract covers --
+// while the compile/emit/witness path keeps them via default_compile_pipeline_options.
+fn run_settle_compile_options() -> CompilePipelineOptions {
+  CompilePipelineOptions { analyze_complexity: false, analyze_ownership: false, analyze_test_references: false }
 }
 
 fn run_complexity_analysis(typed: ResolvedGraph, source_indices: Map<String, NewlineIndex>) -> ComplexityReport {
@@ -1432,7 +1435,7 @@ type ParsedRevisionDeclarations {
 // resident simultaneously, for a fold that consumes each exactly once and in order — the token
 // stream for module N was alive for the entire parse of modules N+1..5400 with no consumer.
 // Fusing the tokenize into the fold frees each module's tokens before the next is read, which is
-// DESIGN §2's "minimise the demand before materialising" applied to a RETENTION shape: the same
+// gunbc.design_argument::demand_before_materialization's "minimise the demand before materialising" applied to a RETENTION shape: the same
 // work, the same order, the same results, held for the interval it is actually used.
 //
 // THE PRE-INTERN PASS DISSOLVES WITH `prepared`, and that is a consequence rather than a
@@ -1652,13 +1655,17 @@ fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompileP
         []
       }
       let all_diags = concat(typed_diags, complexity_diags)
-      let ownership = extract_ownership_proofs(typed: typed)
-      let ownership_diags = ownership_diagnostics(proofs: ownership)
-      let test_reference_diags = test_reference_diagnostics(typed: typed, source_indices: source_indices)
+      let ownership = if options.analyze_ownership { extract_ownership_proofs(typed: typed) } else { [] }
+      let test_reference_diags =
+        if options.analyze_test_references {
+          test_reference_diagnostics(typed: typed, source_indices: source_indices)
+        } else {
+          []
+        }
       let _ = trace_mark("compile.analyses.done")
       ResolvedPipelineResult {
         graph: typed,
-        diagnostics: concat(frontend.diagnostics, norm_diags, all_diags, ownership_diags, test_reference_diags),
+        diagnostics: concat(frontend.diagnostics, norm_diags, all_diags, test_reference_diags),
         provider_demands: pass.provider_demands,
         source_indices: source_indices,
         complexity: complexity,

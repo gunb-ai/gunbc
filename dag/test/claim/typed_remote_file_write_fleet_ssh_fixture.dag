@@ -112,13 +112,14 @@ fn fleet_ssh_execution_context_hermetic_witness_fixture() -> FleetSshExecutionCo
     // The withdraw/restore witness seals the same sealed context for its runs rather than resealing it.
     decl_ref(module_path: "test.claim.runner.runner_host_withdraw_witness", decl_name: "withdraw_run"),
     // P4: the cap-route witness reads the sealed fleet context through this one fixture rather than
-    // resealing it -- one way to seal a fleet context, one home (DESIGN section 6).
+    // resealing it -- one way to seal a fleet context, one home (gunbc.design_argument::how_to_work).
     decl_ref(module_path: "test.claim.runner.runner_slot_cap_observe_route_witness", decl_name: "cap_context"),
     // The host-bound transport witness builds its FleetSsh transports to srv2 and mtcollins1 over this context.
     decl_ref(module_path: "test.claim.host.host_bound_transport_witness", decl_name: "fleet_transport_to"),
     // The anchored host transport witness builds its mtcollins1 and srv2 FleetSsh transports the same way.
     decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "fleet_transport_to"),
     decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "mtcollins1_bound_transport"),
+    decl_ref(module_path: "test.claim.host.initialized_host_witness", decl_name: "mtcollins1_fleet_transport"),
     decl_ref(module_path: "test.claim.host.host_bound_transport_witness", decl_name: "an_address_no_managed_host_answers_at_or_a_non_host_transport_binds_nothing"),
   ]
 {

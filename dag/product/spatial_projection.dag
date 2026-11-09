@@ -263,7 +263,7 @@ fn insert_farthest_first(sorted: List<ProjectedRoom>, r: ProjectedRoom) -> List<
 // rooms contend, drawing them farthest-first cannot hide anything that should be visible, because
 // any two rooms that could occlude one another are wholly separated in depth. When two rooms do
 // contend the correct picture requires splitting them, and this returns the pair rather than a
-// plausible order - the fabricated output DESIGN section 5 forbids, in the form a renderer would
+// plausible order - the fabricated output gunbc.design_argument::fail_closed forbids, in the form a renderer would
 // have believed.
 // The empty seed is a named function because a bare literal in argument position has no expected
 // type for the resolver to read: the fold's result type is what fixes the element type, and it is

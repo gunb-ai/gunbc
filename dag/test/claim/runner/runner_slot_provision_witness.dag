@@ -1,7 +1,8 @@
 module test.claim.runner.runner_slot_provision_witness
 
 import std.logic { Bool }
-import std.types { list_length, NonEmptyStr, List, String }
+import std.types { NonEmptyStr, List, String }
+import std.algebra { length }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.github.actions_runner {
   actions_runner_registration_decode,
@@ -17,6 +18,7 @@ import gunbc.runner.runner_host_deploy {
   runner_host_deploy_for,
   RunnerHostDeployFound,
   RunnerHostDeployUnmodeled,
+  RunnerHostDeployZeroWidth,
   fleet_runner_host_deploys,
   runner_host_installer_command_argv,
   runner_instance_names,
@@ -131,7 +133,7 @@ test fn witness_runner_count_not_in_installer_argv() -> Bool {
 // It read `== 6` on both the count and the last instance name, which was a measurement copied from
 // the tree the day it was written. The 2026-08-23 CPU-axis change moved srv3 to twenty-one and the
 // row went red without a single thing about instance NAMING having changed -- which is the tell that
-// the literal was never the claim (DESIGN section 5: a measurement copied from the same current tree
+// the literal was never the claim (gunbc.design_argument::fail_closed: a measurement copied from the same current tree
 // is not an oracle).
 //
 // What survives is the part a fixture can falsify independently of width: the roster is exactly as
@@ -139,9 +141,9 @@ test fn witness_runner_count_not_in_installer_argv() -> Bool {
 // width is decided, not restated here.
 test fn witness_srv3_deploy_row_names_its_declared_slots() -> Bool {
   let names = runner_instance_names(deploy: wt_srv3_deploy())
-  list_length(items: names) == wt_srv3_deploy().runner_count
-    && string_contains(s: names.first(), pattern: "srv3-01")
-    && list_length(items: names) > 1
+  length(xs: names) == wt_srv3_deploy().runner_count
+    && (match names.first() { Present { value: n } => string_contains(s: n, pattern: "srv3-01") Absent => false })
+    && length(xs: names) > 1
     && roster_names_are_distinct(names: names)
 }
 
@@ -199,9 +201,9 @@ test fn witness_provision_plan_extracts_only_upserts() -> Bool {
         retirement_evidence: no_retirement_evidence(),
       )
       runner_slot_provision_has_width_increase(plan: plan)
-        && list_length(items: plan.upsert_extract_scripts) == 4
+        && length(xs: plan.upsert_extract_scripts) == 4
         && string_contains(s: plan.base_dir_script, pattern: "/opt/actions-runner")
-        && string_contains(s: plan.upsert_extract_scripts.first(), pattern: "sha256sum -c")
+        && (match plan.upsert_extract_scripts.first() { Present { value: n } => string_contains(s: n, pattern: "sha256sum -c") Absent => false })
     Absent => false
   }
 }
@@ -230,7 +232,7 @@ test fn witness_enumeration_postcondition_red_on_under_count() -> Bool {
 // the instance roster and the declared count cannot disagree, which holds at any width.
 test fn witness_srv4_instance_roster_matches_its_declared_count() -> Bool {
   let names = runner_instance_names(deploy: wt_srv4_deploy())
-  list_length(items: names) == wt_srv4_deploy().runner_count
+  length(xs: names) == wt_srv4_deploy().runner_count
     && roster_names_are_distinct(names: names)
 }
 
@@ -244,7 +246,7 @@ test fn witness_srv4_instance_roster_matches_its_declared_count() -> Bool {
 // does NOT cover before shipping. Kept as a named function rather than inlined because it belongs
 // beside every length claim, not just this one.
 fn roster_names_are_distinct(names: List<String>) -> Bool {
-  !any(names, a => list_length(items: filter(names, b => b == a)) > 1)
+  !any(names, a => length(xs: filter(names, b => b == a)) > 1)
 }
 
 // THE INDEXING CONTRACT, PINNED ON GROUND THAT CANNOT MOVE.
@@ -276,9 +278,9 @@ data authored_three_slot_deploy: RunnerHostDeploy = RunnerHostDeploy {
 
 test fn an_authored_count_enumerates_exactly_that_many_indexed_names() -> Bool {
   let names = runner_instance_names(deploy: authored_three_slot_deploy)
-  list_length(items: names) == 3
-    && string_contains(s: names.first(), pattern: "fixture-host-01")
-    && string_contains(s: names.skip(n: 2).first(), pattern: "fixture-host-03")
+  length(xs: names) == 3
+    && (match names.first() { Present { value: n } => string_contains(s: n, pattern: "fixture-host-01") Absent => false })
+    && (match names.skip(n: 2).first() { Present { value: n } => string_contains(s: n, pattern: "fixture-host-03") Absent => false })
     && roster_names_are_distinct(names: names)
 }
 
@@ -339,7 +341,7 @@ test fn an_observed_host_plans_the_missing_slots() -> Bool {
       ) {
         RunnerSlotConvergePlanned { host: _, plan: p } =>
           runner_slot_provision_has_width_increase(plan: p)
-            && list_length(items: desired_runner_slot_members(deploy: wt_srv1_deploy())) > 0
+            && length(xs: desired_runner_slot_members(deploy: wt_srv1_deploy())) > 0
             && membership_added_count(plan: p.membership) == 1
         RunnerSlotConvergeRefused { host: _, reason: _ } => false
       }
@@ -366,6 +368,7 @@ test fn every_enrolled_host_resolves_and_none_is_unmodeled() -> Bool {
       RunnerHostDeployFound { deploy: d } => (d.host_label as String) == (h as String)
       RunnerHostDeployRefused { host: rh, cause: c } => (rh as String) == (h as String) && c != ""
       RunnerHostDeployUnmodeled { host: _ } => false
+      RunnerHostDeployZeroWidth { spec: _ } => false
     }
   )
 }
@@ -380,9 +383,11 @@ test fn srv2_resolves_as_refused_and_the_others_as_rows() -> Bool {
           RunnerHostDeployFound { deploy: d } => d.runner_count > 0
           RunnerHostDeployRefused { host: _, cause: _ } => false
           RunnerHostDeployUnmodeled { host: _ } => false
+          RunnerHostDeployZeroWidth { spec: _ } => false
         })
     RunnerHostDeployFound { deploy: _ } => false
     RunnerHostDeployUnmodeled { host: _ } => false
+    RunnerHostDeployZeroWidth { spec: _ } => false
   }
 }
 
@@ -393,6 +398,7 @@ test fn an_unmodeled_host_has_no_deploy_row() -> Bool {
     RunnerHostDeployUnmodeled { host: h } => (h as String) == "srv-does-not-exist"
     RunnerHostDeployRefused { host: _, cause: _ } => false
     RunnerHostDeployFound { deploy: _ } => false
+    RunnerHostDeployZeroWidth { spec: _ } => false
   }
 }
 
@@ -473,13 +479,13 @@ fn resolution_count_is(r: RunnerWidthResolution, expected: Int) -> Bool {
 }
 
 test fn only_the_fabric_hosts_lose_provisioning_targets() -> Bool {
-  list_length(items: desired_runner_slot_members(deploy: wt_srv3_deploy()))
+  length(xs: desired_runner_slot_members(deploy: wt_srv3_deploy()))
     == provision_width_of(host: operator_host_srv3) - 2
     && resolution_count_is(r: host_fabric_slot_count(host: operator_host_srv3), expected: 2)
-    && list_length(items: desired_runner_slot_members(deploy: wt_srv4_deploy()))
+    && length(xs: desired_runner_slot_members(deploy: wt_srv4_deploy()))
          == provision_width_of(host: operator_host_srv4) - 2
     && resolution_count_is(r: host_fabric_slot_count(host: operator_host_srv4), expected: 2)
-    && list_length(items: desired_runner_slot_members(deploy: wt_srv1_deploy()))
+    && length(xs: desired_runner_slot_members(deploy: wt_srv1_deploy()))
          == provision_width_of(host: operator_host_srv1) - 2
     && resolution_count_is(r: host_fabric_slot_count(host: operator_host_srv1), expected: 2)
 }
@@ -719,6 +725,7 @@ fn srv1_deploy() -> RunnerHostDeploy {
     RunnerHostDeployFound { deploy: d } => d
     RunnerHostDeployUnmodeled { host: _ } => fixture_five_slot_deploy()
     RunnerHostDeployRefused { host: _, cause: _ } => fixture_five_slot_deploy()
+    RunnerHostDeployZeroWidth { spec: _ } => fixture_five_slot_deploy()
   }
 }
 
@@ -752,7 +759,7 @@ fn real_srv1_plan(observed: List<RunnerSlotMember>, evidence: SlotRetirementEvid
   }
 }
 
-// THE SUPPLIED WORLD FOR THE PLAN FOLD (DESIGN 3, a witness discriminates at one interface): the
+// THE SUPPLIED WORLD FOR THE PLAN FOLD (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface): the
 // fold runner_slot_provision_plan_over takes its retirement obligation and maskable scope as values, so
 // these claims name no live host. The authorization is the one declared value that can be consumed
 // (InterruptionAuthorization is sole_constructor); its scope is the fixture's required retirees and its
@@ -822,7 +829,7 @@ fn line_emits_mask_for(lines: List<String>, unit: String) -> Bool {
 // rather than withholding the whole host. 07..12 are refused per unit (outside the grant),
 // not masked or deleted. On main this observation never reaches the planner: admission
 // returned Absent before any read.
-// INHABITANCE CLAIM (DESIGN 3 pairing obligation): the REAL wrapper on srv1, reading the live model,
+// INHABITANCE CLAIM (gunbc.design_argument::witness_one_interface pairing obligation): the REAL wrapper on srv1, reading the live model,
 // takes the retirement arm for authorized required retirees. It goes red when the fleet moves.
 test fn srv1_provision_plan_masks_the_authorized_remainder_when_07_through_12_are_complete() -> Bool {
   match required_retirees_for_host(host: operator_host_srv1) {

@@ -35,7 +35,7 @@ import v2.std.witness {
 
 // `type CoreNode = Node` WAS DECLARED HERE AND IS DELETED. The identical alias, onto the identical
 // target, was also declared in v2.compiler.compile, and v2.compiler.ingest already imports it from
-// there -- so one concept had two authorities, which DESIGN 3 forbids independently of anything
+// there -- so one concept had two authorities, which gunbc.design_argument::single_authority forbids independently of anything
 // downstream. This module now asks the same authority ingest does.
 //
 // WHAT THE DUPLICATE COST, measured rather than asserted: v1's direct-call argument-type judgment
@@ -60,7 +60,7 @@ type SourceModels {
 // WHAT THIS SYMBOL ACTUALLY GATES, renamed to say so.
 //
 // It read `self_host_equality_authority`, declaring byte identity to be the authority
-// on self-host equality. DESIGN §7 says the opposite in as many words: a byte-identical
+// on self-host equality. gunbc.design_argument::self_hosting says the opposite in as many words: a byte-identical
 // fixed point is explicitly NOT the goal, because matching bytes forces the emitter to
 // reproduce the seed's warts and thereby cements the seed's accidents. Under the old
 // name the milestone meant the wrong thing in both directions — byte-identical but

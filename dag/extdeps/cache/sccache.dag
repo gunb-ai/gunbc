@@ -83,12 +83,12 @@ type SccacheBinaryRelease {
 // projected from the release's named digest_aarch64 / digest_x86_64 fields — never re-minted.
 // SccachePublishedMuslArch is a CLOSED two-arm coproduct (SccacheMuslAarch64 | SccacheMuslX86_64)
 // so unsupported extdeps.toolchain.types.Architecture variants are UNWRITABLE on the carrier rather
-// than admitted and refused later (review 44866, DESIGN section 5 construction). Distinct variant
+// than admitted and refused later (review 44866, gunbc.design_argument::fail_closed construction). Distinct variant
 // names avoid the typechecker fork where reusing Aarch64 | X86_64 as a separate coproduct collided
 // with Architecture; sccache_published_musl_arch_of is the Architecture→SccachePublishedMuslArch
 // projection (Present only for published musl arches) used by sccache_binary_artifact_for_arch and
 // sccache_release_digest consumers. CpuArchitecture and TargetArchitecture in std are
-// byte-identical forks (DESIGN section 3) and are deliberately NOT imported here.
+// byte-identical forks (gunbc.design_argument::single_authority) and are deliberately NOT imported here.
 
 type SccachePublishedMuslArch = SccacheMuslAarch64 | SccacheMuslX86_64
 
@@ -186,7 +186,7 @@ data sccache_toolchain_capability: ToolchainCapability = ToolchainCapability {
 // read-back check) reads it — so 'which sccache is the modeled one' has exactly one answer. Before
 // this row the P1b provisioning path hand-rolled `apt-get install -y sccache` and a unit with
 // ExecStart=/usr/bin/sccache while this module installed the pinned v0.15.0 tarball to
-// /usr/local/bin: a §3 fork of one concept across two authorities, disagreeing on source, version,
+// /usr/local/bin: a gunbc.design_argument::single_authority fork of one concept across two authorities, disagreeing on source, version,
 // digest verification AND path, both firing on the same host (P1:runner-deploy-slot then
 // P1b:build-cache-provision).
 
@@ -203,7 +203,7 @@ data sccache_server_uds_env_var: NonEmptyStr = "SCCACHE_SERVER_UDS" as NonEmptyS
 // caller pins an arch (runner_host_sccache_provision_aarch64). These two selectors make the choice
 // a total function of the modeled Architecture coproduct instead: every arch the cited release does
 // NOT publish a musl tarball for returns Absent, so an unsupported host REFUSES rather than
-// silently receiving an aarch64 binary. Fail-closed by construction (§5) — there is no default arm.
+// silently receiving an aarch64 binary. Fail-closed by construction (gunbc.design_argument::fail_closed) — there is no default arm.
 
 fn sccache_release_arch_token(arch: Architecture) -> NonEmptyStr? {
   match arch {
@@ -251,8 +251,8 @@ fn sccache_release_digest(rel: SccacheBinaryRelease, arch: Architecture) -> Dige
 // every in-flight compile also runs a process named 'sccache'; selecting by name samples a
 // transient client and reads the WRONG cgroup. Upstream exposes two mutually exclusive endpoint
 // realizations: SCCACHE_SERVER_PORT (loopback TCP, default 4226) and SCCACHE_SERVER_UDS (a
-// Unix-domain socket path). Modeling only the port would be a nickname for one realization (DESIGN
-// section 3): the gunbc fleet configures the UDS form, so a port-only probe finds no listener at
+// Unix-domain socket path). Modeling only the port would be a nickname for one realization (
+// gunbc.design_argument::single_authority): the gunbc fleet configures the UDS form, so a port-only probe finds no listener at
 // all. Observed live on srv1 2026-08-01: no TCP 4226 listener exists, while
 // /var/lib/ctrl/sccache-ci/server.sock is held LISTEN by the CI server and
 // /var/lib/ctrl/sccache/server.sock by the session server — endpoint ownership is what
@@ -268,7 +268,7 @@ type SccacheServerSpawn
   = ClientAutoSpawned
   | UnitStarted
 
-data sccache_stats_query_does_not_spawn_note: String = "MEASURED CORRECTION, 2026-08-01: `--show-stats` does NOT auto-start a server, and the widely-repeated claim that 'any sccache invocation auto-starts a server, so --show-stats manufactures the evidence it reports' is FALSE for sccache 0.15.0. Two controls on srv2, each with a PRIVATE cache dir AND a private endpoint so the falsifier could not touch production: with SCCACHE_SERVER_UDS the socket did not exist before or after the call; with a private SCCACHE_SERVER_PORT the listener count was 0 before and 0 after. In both the call returned rc=0 and printed a fully-formed table of ZEROES. A third control isolated what DOES spawn: one real compile (`sccache /usr/bin/gcc -c t.c`) through the same private port took the listener count 0 -> 1, and the new server inherited the INVOKING process's cgroup (observed: the caller's own session scope). THE DEFECT IS REAL BUT DIFFERENTLY SHAPED, and the difference changes the remedy's justification rather than the remedy: --show-stats answers plausibly WITHOUT a server existing at all, so a read-back that converges on it greens over a host with no durable daemon — a fabricated plausible output (DESIGN section 5), which is exactly what srv3 exhibited on 2026-07-25 (a full stats table while the unit had been inactive six hours). The observation there was right; the inference drawn from it — that the call had created a server — was wrong. Consequence for the observer: stats is supplemental data gathered AFTER ownership is independently established, never the thing that establishes it; and the auto-spawn wall belongs on the COMPILE path, which is where a client actually creates a server in its own cgroup."
+data sccache_stats_query_does_not_spawn_note: String = "MEASURED CORRECTION, 2026-08-01: `--show-stats` does NOT auto-start a server, and the widely-repeated claim that 'any sccache invocation auto-starts a server, so --show-stats manufactures the evidence it reports' is FALSE for sccache 0.15.0. Two controls on srv2, each with a PRIVATE cache dir AND a private endpoint so the falsifier could not touch production: with SCCACHE_SERVER_UDS the socket did not exist before or after the call; with a private SCCACHE_SERVER_PORT the listener count was 0 before and 0 after. In both the call returned rc=0 and printed a fully-formed table of ZEROES. A third control isolated what DOES spawn: one real compile (`sccache /usr/bin/gcc -c t.c`) through the same private port took the listener count 0 -> 1, and the new server inherited the INVOKING process's cgroup (observed: the caller's own session scope). THE DEFECT IS REAL BUT DIFFERENTLY SHAPED, and the difference changes the remedy's justification rather than the remedy: --show-stats answers plausibly WITHOUT a server existing at all, so a read-back that converges on it greens over a host with no durable daemon — a fabricated plausible output (gunbc.design_argument::fail_closed), which is exactly what srv3 exhibited on 2026-07-25 (a full stats table while the unit had been inactive six hours). The observation there was right; the inference drawn from it — that the call had created a server — was wrong. Consequence for the observer: stats is supplemental data gathered AFTER ownership is independently established, never the thing that establishes it; and the auto-spawn wall belongs on the COMPILE path, which is where a client actually creates a server in its own cgroup."
 
 // THE STATS QUERY AS ONE TYPED ARGV, for the host-effect realizer's build-cache ensure
 // (gunbc.host.build_cache_daemon_ensure), which until now could only ask the question by running the
@@ -364,9 +364,9 @@ data sccache_server_process_facts: SccacheServerProcessFacts = {
 // `build_cache_fragment_words_are_shell_safe`, whose name promised a shell check; review 82053 found
 // its body had been repurposed to an emptiness check whose second conjunct (`string_contains(join
 // ["prefix", frag, "suffix"], frag)`) is true of every string, i.e. green by construction and cited as
-// coverage (DESIGN 3's name/obligation rule, DESIGN 4b's decoration rule). Deleting the check WITHOUT
+// coverage (gunbc.design_argument::single_authority's name/obligation rule, gunbc.design_argument::guarantee_ladder's decoration rule). Deleting the check WITHOUT
 // typing the row would leave the invariant unenforced; typing the row is what makes the deletion safe
-// (DESIGN 5: unwritable beats validated). The shell-era reason the check existed -- fragments were
+// (gunbc.design_argument::fail_closed: unwritable beats validated). The shell-era reason the check existed -- fragments were
 // single-quoted into a word list -- died with the script this PR retired.
 data sccache_fatal_error_log_fragment: NonEmptyStr = "sccache: encountered fatal error"
 
@@ -394,7 +394,7 @@ data sccache_misconfigured_log_fragments: List<NonEmptyStr> = [
 // systemd, and not about gunbc. Before 2026-07-25 the P1b unit emitter spelled
 // SCCACHE_START_SERVER=1 / SCCACHE_NO_DAEMON=1 as bare literals of its own, which made
 // gunbc.host_build_cache_provision_script a SECOND authority for sccache's environment vocabulary
-// (§3) — and the knob that was missing from that second authority is exactly the one that broke:
+// (gunbc.design_argument::single_authority) — and the knob that was missing from that second authority is exactly the one that broke:
 // SCCACHE_IDLE_TIMEOUT. Cited text: 'how long the local daemon process waits for more client
 // requests before exiting, in seconds. Set to 0 to run sccache permanently.' The default is 600
 // seconds, confirmed by execution rather than read off the doc: on srv3 2026-07-25 the

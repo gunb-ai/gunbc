@@ -7,7 +7,7 @@ import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CensusObserved
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// THE RUN WITNESS'S SUPPLIED-WIDTH HELPER REFUSES AN OUTSIDE CALLER (DESIGN §4b executed RED). The probe
+// THE RUN WITNESS'S SUPPLIED-WIDTH HELPER REFUSES AN OUTSIDE CALLER (gunbc.design_argument::guarantee_ladder executed RED). The probe
 // source calls supplied_population from outside its admit_callers list; the refusal must land at that
 // subject. The positive control is the run witness itself, whose own claims call it through run_sweep.
 fn blocking(c: CompileDiagnosticCensus, wanted: String, subject: String) -> Int {

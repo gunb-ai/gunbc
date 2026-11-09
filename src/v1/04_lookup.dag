@@ -51,9 +51,9 @@ import v1.compiler.infer_types {
 }
 
 import v1.compiler.infer_env {
-  TypeEnv, TypeBinding, authored_name, census_declaration_type_env, declaration_substitution_basis,
+  TypeEnv, TypeBinding, authored_name, census_declaration_type_env, declared_module_owner, declaration_substitution_basis,
   is_recursive_type, lookup_type, lookup_type_for,
-  GlobalBareLookupState, GlobalBareCandidate, borrowed_generic_param_names, global_bare_policy_candidate, lookup_binding_by_name, lookup_binding_by_name_local, qualified_all_but_last, qualify_borrowed_type_names, symbol_index_lookup,
+  GlobalBareLookupState, GlobalBareCandidate, borrowed_generic_param_names, global_bare_policy_candidate, global_bare_declarer_in_scope, lookup_binding_by_name, lookup_binding_by_name_local, qualified_all_but_last, qualify_borrowed_type_names, symbol_index_lookup,
   listed_import_required_bare_call_blocked
 }
 
@@ -422,7 +422,7 @@ fn resolved_plain_call_target_for_outcome(outcome: CallTargetOutcome) -> CallTar
 // cannot tell listed from transitive at all. An empty map therefore means THIS SEAM CANNOT
 // DISTINGUISH and takes the 1a arm (no builtin co-candidate, today's behaviour) -- never
 // "nothing was named", which would make the wall strictest exactly where it knows least.
-// The class's rung is therefore per path and its minimum governs (DESIGN 4b): refuses on the
+// The class's rung is therefore per path and its minimum governs (gunbc.design_argument::guarantee_ladder): refuses on the
 // resolve path, silent on the emit path. Next-rung trigger for the emit row: persisting
 // authored_import_names onto TypedModule.type_env.
 //
@@ -570,7 +570,9 @@ fn borrowed_census_decl(type_env: TypeEnv, name: String) -> BorrowedCensusDeclLo
     } else {
       match map_get(type_env.symbol_index.global_bare, name) {
         Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
-          BorrowedCensusDeclFound { declaration: BorrowedCensusDecl { owner_module_path: mp, node: b.resolved } }
+          if global_bare_declarer_in_scope(env: type_env, name: name, declarer: mp) {
+            BorrowedCensusDeclFound { declaration: BorrowedCensusDecl { owner_module_path: mp, node: b.resolved } }
+          } else { BorrowedCensusDeclNotFound }
         Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
           match global_bare_policy_candidate(env_module_path: type_env.module_path, candidates: cands) {
             Present { value: cand } =>
@@ -601,7 +603,7 @@ fn borrowed_census_decl(type_env: TypeEnv, name: String) -> BorrowedCensusDeclLo
 // NotAdmissionBearingReference.
 // THE VALUE NODE IS NOT AN ADMISSION FALLBACK. An earlier revision kept it as one and argued
 // the change could only add refusals; that is not sufficient, because a fabricated refusal is
-// a wrong answer exactly as a fabricated success is (DESIGN section 5), and keeping it would
+// a wrong answer exactly as a fabricated success is (gunbc.design_argument::fail_closed), and keeping it would
 // leave one policy with two metadata sources -- the fork this de-fork exists to remove. So
 // the outcome is typed three ways and an unrecoverable declaration REFUSES rather than
 // falling back to a provenance-losing node. Typing is unaffected: the value node remains the

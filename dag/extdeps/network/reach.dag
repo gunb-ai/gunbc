@@ -4,6 +4,7 @@ import std.types { String, Bool, List, NonEmptyStr, Int }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.network.endpoint { NetworkHost }
+import std.algebra { length }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -28,7 +29,7 @@ data reach_proxycommand_authority: ExternalAuthority = ExternalAuthority {
 // FabricTunnel (the intended long-term reach over the network fabric). FabricTunnel does not work
 // yet (operator: 'none of that actually works'), so it is modeled but REFUSES realization —
 // reach_realizability returns ReachRefused{FabricTunnelNotOperational}, a typed/located/counted
-// refusal, never a silent fall-through (§5). The operator-sanctioned interim for a fabric-only
+// refusal, never a silent fall-through (gunbc.design_argument::fail_closed). The operator-sanctioned interim for a fabric-only
 // target (e.g. srv3) is a ProxyJump through something actually reachable (srv2) that stands in for
 // the fabric — a NAMED interim with a dissolution trigger, not a hidden hack: the ProxyJump reach
 // dissolves to FabricTunnel when tunneling is operational. The srv-specific reach ROWS live in the
@@ -72,7 +73,7 @@ fn reach_realizability(reach: Reach) -> ReachRealizability {
   match reach {
     DirectLan { host: _ } => ReachRealizable
     ProxyJump { jumps: js, target: _ } =>
-      if list_length(items: js) == 0 {
+      if length(xs: js) == 0 {
         ReachRefused { cause: ProxyJumpChainEmpty }
       } else {
         ReachRealizable

@@ -31,7 +31,7 @@ import extdeps.posix.sh_invocation { posix_sh_export_from_stdin_then_exec_comman
 import gunbc.runner.runner_throughput_qualification_route { ephemeral_slot_unit, ephemeral_slot_command, ephemeral_slot_labels, ephemeral_slot_properties }
 import extdeps.github.actions { self_hosted_provenance_label }
 import gunbc.runner.provider_guest_incarnation { ProviderGuestIncarnation }
-import gunbc.machine_intake.host_capture_envelope { HostCaptureRunIdentity, KernelBootId, HistoricalAttemptOrdinal }
+import gunbc.host.host_boot_id { HostBootId }
 import gunbc.runner.runner_registration_labels { RunnerRegistrationLabelsResolution, RegistrationLabelsResolved, RegistrationLabelsRefused, runner_evidence_gated_registration_labels }
 import gunbc.runner.runner_slot_allocation { RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, RunnerWidthUnresolvedCause, gunbc_runner_committed_width }
 import gunbc.repository { gunbc_repository }
@@ -40,7 +40,7 @@ import gunbc.generated_artifact { artifact_path, WitnessFloorYamlArtifact }
 // THE SECOND BINDING OF ONE JIT MINT: A TRANSIENT systemd UNIT ON A LIVE MANAGED HOST.
 //
 // gunbc.runner.runner_jit_mint plans a JIT registration over a slot; a microVM cell is one realization of
-// a slot and this is the other. The mint is not forked per binding (DESIGN §3: transport is
+// a slot and this is the other. The mint is not forked per binding (gunbc.design_argument::single_authority: transport is
 // realization) -- this module only decides whether a host-unit slot EXISTS, and the mint decides
 // everything else over the sum both bindings inhabit.
 //
@@ -85,14 +85,14 @@ type HostUnitSlotRefusal
 // -- plus its index in the host's population, and it answers to the host's registration labels.
 type HostUnitSlotPurpose
   = AttemptSlot { attempt: NonEmptyStr }
-  | ServiceSlot { boot: ServiceBootId, index: Int }
+  | ServiceSlot { boot: HostBootId, index: Int }
 
-// A SERVICE BOOT IDENTITY IS BUILT FROM A KERNEL BOOT ID AND NOTHING ELSE. sole_constructor: its only
-// producer is service_boot_id_of over a HostCaptureRunIdentity, so a population or a sweep's current
-// boot cannot be minted from a bare string, a historical attempt ordinal, or a name read off a listing.
-type ServiceBootId sole_constructor {
-  boot_id: Uuid
-}
+// A SERVICE SLOT'S INCARNATION IS A LIVE BOOT'S KERNEL BOOT ID AND NOTHING ELSE: gunbc.host.host_boot_id
+// HostBootId, built only from a kernel boot id. The run identity a capture carries is a sum whose
+// historical-attempt arm is not a boot, and the two render identically, so a slot carrying the sum would lose the
+// arm in its name and the parse would have to fabricate one. ServiceSlot.index is an Int whose only producers are
+// the population (0..N-1) and the parse (decimal digits); a std.integer NonNegativeInt carrier is the next-rung
+// trigger, taken when the width and to_string consumers accept it.
 
 type HostUnitSlotStanding
   = HostUnitSlotBound { slot: HostUnitSlot }
@@ -125,7 +125,7 @@ fn host_unit_slot_listener_argv(root: NonEmptyStr) -> List<String> {
   [concat(root as String, actions_runner_listener_relative_path), actions_runner_listener_run_verb]
 }
 
-// THE LISTENER LAUNCH, ONE BUILDER FOR EVERY HOST-UNIT SLOT (DESIGN section 6b): the service slot and the
+// THE LISTENER LAUNCH, ONE BUILDER FOR EVERY HOST-UNIT SLOT (gunbc.design_argument::earliest_unjustified_boundary): the service slot and the
 // qualification attempt slot each start the listener the same way and differ in exactly three facts -- the
 // transient unit's name, the account it runs as and the root it runs from -- so those are the parameters. The unit
 // carries the fleet slot shape (ephemeral_slot_properties over gunbc_runner_slot_desired) as that user, under a
@@ -214,7 +214,7 @@ fn host_unit_slot_for(host: HostControlStanding, purpose: HostUnitSlotPurpose, w
   }
 }
 
-// ARCHITECTURE FRONTIER (DESIGN section 3c): the runner binary is selected for Aarch64 unconditionally,
+// ARCHITECTURE FRONTIER (gunbc.design_argument::consumption): the runner binary is selected for Aarch64 unconditionally,
 // which holds for every host that registers through this fold today (all Altra boards). Trigger: a
 // non-AArch64 service host's compute offer. It must be sufficient for deriving the runner binary's
 // architecture from gunbc.runner.runner_spec_from_offer (the same offer the registration labels read),
@@ -276,24 +276,6 @@ fn service_purpose_spelling(host: HostIdentity, boot_id: Uuid, index: Int, regis
   }
 }
 
-// A SERVICE SLOT'S INCARNATION IS A LIVE BOOT'S KERNEL BOOT ID AND NOTHING ELSE. The run identity a
-// capture carries is a sum, and its historical-attempt arm is not a boot; the two render identically,
-// so a slot carrying the sum would lose the arm in its name and the parse would have to fabricate one.
-// The slot therefore carries the boot id itself, and this is the only way a run identity becomes one.
-// CONSUMER FRONTIER (DESIGN section 3c): consumed today only by test.claim.runner.runner_jit_listed_registration_witness.
-// The production caller is the fleet-converge mode (operator answer Q3), which reads the admitted boot's
-// run identity from gunbc.runner.runner_host_medium runner_host_up_readback and hands it through here
-// to service_slot_population and lost_boot_sweep; that wiring lands with the mode, not before it.
-// ServiceSlot.index is an Int whose only producers are the population (0..N-1) and the parse
-// (decimal digits); a std.integer NonNegativeInt carrier is the next-rung trigger, taken when the
-// width and to_string consumers accept it.
-fn service_boot_id_of(run: HostCaptureRunIdentity) -> ServiceBootId? {
-  match run {
-    KernelBootId { boot_id: b } => Present { value: ServiceBootId { boot_id: b } }
-    HistoricalAttemptOrdinal { ordinal: _ } => none
-  }
-}
-
 // THE ATTEMPT A SLOT IS SCOPED TO, absent for a slot that is not attempt-scoped.
 fn host_unit_slot_attempt(slot: HostUnitSlot) -> NonEmptyStr? {
   match slot.purpose {
@@ -317,7 +299,7 @@ fn service_slot_unit_prefix(host: HostIdentity) -> String {
 
 data service_slot_unit_suffix: String = ".service"
 
-fn service_slot_unit(host: HostIdentity, boot: ServiceBootId, index: Int) -> NonEmptyStr {
+fn service_slot_unit(host: HostIdentity, boot: HostBootId, index: Int) -> NonEmptyStr {
   service_slot_unit_spelled(host: host, boot_id: boot.boot_id, index: index)
 }
 
@@ -326,7 +308,7 @@ fn service_slot_unit_spelled(host: HostIdentity, boot_id: Uuid, index: Int) -> N
 }
 
 // THE UNTRUSTED CANDIDATE a listed name parses to. Its boot_id is text read off a listing, NOT a
-// ServiceBootId: nothing says that boot was ever admitted, so it cannot enter a population or be
+// HostBootId: nothing says that boot was ever admitted, so it cannot enter a population or be
 // compared as a current boot, only rebuilt as a RecoveredServiceSlot and round-tripped.
 type ServiceSlotName {
   boot_id: Uuid
@@ -376,7 +358,7 @@ fn service_slot_split(body: String, tail: Int) -> ServiceSlotName? {
 // membership to anyone cannot exist to be read as "nothing is a member".
 type CurrentServicePopulation sole_constructor {
   host: ControlledHost
-  boot: ServiceBootId
+  boot: HostBootId
   units: List<NonEmptyStr>
 }
 
@@ -400,11 +382,11 @@ fn service_slot_selected_workflow() -> NonEmptyStr {
 // from the host's fleet compute offer (gunbc.runner.runner_slot_allocation gunbc_runner_committed_width);
 // an unresolved width is a refusal, never read as zero. No host is named: a host's population differs
 // from another's only by its offer.
-// CONSUMER FRONTIER (DESIGN section 3c): consumed today only by test.claim.runner.runner_jit_listed_registration_witness.
-// Its production consumer is the fleet-converge mode that registers the current boot's slots, which waits
-// on operator answer Q3 of the mtcollins1 stateless-registration design; lost_boot_sweep (gunbc.runner.runner_jit_deregistration)
-// is the same mode's other half.
-fn current_service_population(host: HostControlStanding, boot: ServiceBootId, receipt: RunnerUserSessionReceiptInput) -> CurrentServicePopulationStanding {
+// CONSUMERS (gunbc.design_argument::consumption): the service-slot start (gunbc.runner.runner_service_slot_start
+// service_slot_start_over), which starts one controller unit per member; the lost-boot sweep
+// (gunbc.runner.runner_lost_boot_sweep_run), which leaves every member untouched; and the slot controller
+// (gunbc.runner.runner_service_slot_controller). Each takes the boot the host's own route minted.
+fn current_service_population(host: HostControlStanding, boot: HostBootId, receipt: RunnerUserSessionReceiptInput) -> CurrentServicePopulationStanding {
   match host {
     HostControlRefused { refusal: r } => CurrentServicePopulationRefused { refusal: CurrentPopulationHostNotControlled { refusal: r } }
     HostControlled { controlled: b } =>
@@ -415,7 +397,7 @@ fn current_service_population(host: HostControlStanding, boot: ServiceBootId, re
 // THE FOLD OVER SUPPLIED WIDTH AND LABELS: the one production host's offer is not yet in the fleet
 // catalog, so the success shape is reachable only by supplying them. A boundary, so it is admitted to
 // its production wrapper and to the witness helper that supplies them, and to no one else.
-fn current_service_population_over(host: HostControlStanding, width: RunnerWidthResolution, registration_labels: RunnerRegistrationLabelsResolution, boot: ServiceBootId) -> CurrentServicePopulationStanding admit_callers: [
+fn current_service_population_over(host: HostControlStanding, width: RunnerWidthResolution, registration_labels: RunnerRegistrationLabelsResolution, boot: HostBootId) -> CurrentServicePopulationStanding admit_callers: [
   decl_ref(module_path: "gunbc.runner.runner_host_unit_slot", decl_name: "current_service_population"),
   decl_ref(module_path: "test.claim.runner.runner_jit_listed_registration_witness", decl_name: "population_over_host"),
   decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "population_for"),

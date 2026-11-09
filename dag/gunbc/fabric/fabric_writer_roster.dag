@@ -5,22 +5,28 @@ import std.types { String, NonEmptyStr, List, Bool }
 import extdeps.tailscale.identity { TailnetIdentity, TailnetUser, TailnetIdentityAbsent, tailnet_identity_of }
 import product.host_identity { HostIdentity }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
-import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root }
+import gunbc.fabric.fabric_storage_file_store { FabricStorageOperations, FabricStoreReady, FabricStoreUnready, fabric_store_open, fabric_storage_slots }
 import gunbc.fabric.fabric_storage_binding { fabric_storage_placement }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.fabric.fabric_storage_placement { fabric_storage_store_root, fabric_storage_door_local_writers, fabric_storage_door_proxy_peer }
-import std.fabric_storage { FabricStoreUnreachable, FabricWriterRefusal, WriterLoginAbsent, WriterLoginUnrostered, WriterPeerUnrostered, WriterPeerUnattested }
+import std.fabric_storage { FabricStoreUnreachable }
 import gunbc.fabric.fabric_storage_wire { FabricIdentityPresented, FabricIdentityUnproxied, FabricIdentityReadRefused, FabricDoorPrincipal, DoorProxied, DoorLocalPeer, DoorUnattested }
 import gunbc.fabric.fabric_writer_identity_observe {
   FabricWriterIdentityReceipt, fabric_writer_identity_ground, WriterUserPrincipalObserved, WriterPrincipalUnavailable, WriterLocalPeerObserved, NotAReadingOfTheDoor,
 }
 
+// THE ROW'S BINDING IS OBTAINED, NOT SPELLED. The srv1 receipt used to name the store's directory
+// (the deleted fabric_storage_file_root over fabric_storage_store_root) -- a caller-chosen directory is exactly the
+// route this lane deletes -- so the row now goes through the ONE mint, over the declared member chain and
+// the placed instance. That makes reading the roster an OBSERVATION: if the declared store is not standing
+// the roster is unread, and the refusal is carried out with its area and its cause. It is not projected
+// into an empty roster, which would turn "we cannot see the door's store" into "the door has no writers".
 // THE SERVED DOOR'S WRITER ROSTER: the tailnet USER principals admitted to put and advance through
 // gunbc.fabric.fabric_storage_serve. IT IS AN AUTHORED ROSTER OF RECORDED READINGS, and says so: each row is
 // the receipt gunbc.fabric.fabric_writer_identity_observe printed on one fleet host, transcribed by hand
 // with the run that printed it, and the roster is the fold of those receipts' grounds -- a login
 // enters exactly when a recorded reading presented it, and a host that presented none contributes
-// nothing. WHAT IS NOT MECHANIZED, stated at its rung (DESIGN §4b(1)): nothing checks that a row
+// nothing. WHAT IS NOT MECHANIZED, stated at its rung (gunbc.design_argument::guarantee_ladder (rung honesty)): nothing checks that a row
 // matches the run it names, so that correspondence is review diligence -- rung 1, mitigatable --
 // and adding a writer is a dispatch of the observe mode plus a hand-appended row. Its next-rung
 // trigger is a typed receipt store the observe mode writes and this fold reads, so a row can no
@@ -55,10 +61,16 @@ fn door_unresolved() -> NonEmptyStr {
   "could not resolve the placed host's tailnet name (curl exit 6)" as NonEmptyStr
 }
 
-fn fabric_writer_identity_observations() -> List<FabricWriterIdentityObservation> {
-  [
+type FabricWriterRosterReading
+  = WriterRosterRead { rows: List<FabricWriterIdentityObservation> }
+  | WriterRosterUnread { area: String, detail: String }
+
+fn fabric_writer_identity_observations() -> FabricWriterRosterReading {
+  match fabric_store_open(members: fabric_storage_slots, instance: srv1_live_dashboard_instance(), entry_mode: none) {
+    FabricStoreUnready { area: a, detail: d } => WriterRosterUnread { area: a, detail: d }
+    FabricStoreReady { store: ops } => WriterRosterRead { rows: [
     FabricWriterIdentityObservation { run: "36347411725" as NonEmptyStr, receipt: FabricWriterIdentityReceipt {
-      host: "srv1" as HostIdentity, binding: FabricStorageLocalFiles { root: fabric_storage_file_root(root: fabric_storage_store_root(instance: srv1_live_dashboard_instance())) },
+      host: "srv1" as HostIdentity, binding: FabricStorageLocalFiles { operations: ops },
       read: FabricIdentityUnproxied, observed_at: "2026-09-27T20:29Z" as NonEmptyStr } },
     FabricWriterIdentityObservation { run: "36347414620" as NonEmptyStr, receipt: FabricWriterIdentityReceipt {
       host: "srv3" as HostIdentity, binding: recorded_binding(host: "srv3"),
@@ -66,7 +78,8 @@ fn fabric_writer_identity_observations() -> List<FabricWriterIdentityObservation
     FabricWriterIdentityObservation { run: "36347416176" as NonEmptyStr, receipt: FabricWriterIdentityReceipt {
       host: "srv4" as HostIdentity, binding: recorded_binding(host: "srv4"),
       read: FabricIdentityReadRefused { fault: FabricStoreUnreachable { detail: door_unresolved() } }, observed_at: "2026-09-27T20:30Z" as NonEmptyStr } },
-  ]
+    ] }
+  }
 }
 
 fn observed_login(o: FabricWriterIdentityObservation) -> List<NonEmptyStr> {
@@ -78,24 +91,30 @@ fn observed_login(o: FabricWriterIdentityObservation) -> List<NonEmptyStr> {
   }
 }
 
+// THE PROJECTION, OVER AN ALREADY-READ ROSTER. The decision "which logins may write" is a function of
+// the readings; it takes them, never a store. The one place that reads the store is
+// fabric_served_writer_roster below, and it projects through this same function -- so a witness of the
+// decision supplies readings, and one wet claim on the store proves those readings are what the real
+// roster holds.
 fn fabric_served_writer_roster_of(observations: List<FabricWriterIdentityObservation>) -> List<NonEmptyStr> {
   fold(flat_map(observations, o => observed_login(o: o)), init: [], f: (acc, l) =>
     if any(acc, a => (a as String) == (l as String)) { acc } else { concat(acc, [l]) })
 }
 
-fn fabric_served_writer_roster() -> List<NonEmptyStr> {
-  fabric_served_writer_roster_of(observations: fabric_writer_identity_observations())
+// THE ROSTER IS A READING, and it stays one: when the declared store the receipts are read over is not
+// standing, the roster is Unread with that cause -- never an empty list, which would answer "no writer is
+// admitted" for a fact we do not have.
+type FabricServedWriterRoster
+  = ServedWriterRosterListed { logins: List<NonEmptyStr> }
+  | ServedWriterRosterUnread { detail: String }
+
+fn fabric_served_writer_roster() -> FabricServedWriterRoster {
+  match fabric_writer_identity_observations() {
+    WriterRosterUnread { area: a, detail: d } => ServedWriterRosterUnread { detail: join(["at ", a, ": ", d], "") }
+    WriterRosterRead { rows: rows } => ServedWriterRosterListed { logins: fabric_served_writer_roster_of(observations: rows) }
+  }
 }
 
-// THE DOOR'S TWO ROSTERS, ONE ADMISSION. A proxied request (the peer is the tailscale proxy) is
-// admitted by its login against the served roster above; a local peer is admitted by its account
-// against the door directory's dependents (gunbc.fabric.fabric_storage_placement
-// fabric_storage_door_local_writers), the same declaration the kernel enforces on the socket's
-// directory. A proxied request with no login, a local peer outside that roster, and a peer the
-// kernel did not attest are each refused, and each refusal is its own arm of std.fabric_storage FabricWriterRefusal.
-type FabricDoorWriterAdmission
-  = FabricDoorWriterAdmitted { principal: NonEmptyStr }
-  | FabricDoorWriterRefused { refusal: FabricWriterRefusal }
 
 fn fabric_door_principal_of(tailscale_identity: String, peer_user: String) -> FabricDoorPrincipal {
   if peer_user == "" { DoorUnattested }
@@ -103,26 +122,6 @@ fn fabric_door_principal_of(tailscale_identity: String, peer_user: String) -> Fa
   else { DoorLocalPeer { user: peer_user as NonEmptyStr } }
 }
 
-fn listed(roster: List<NonEmptyStr>, name: NonEmptyStr) -> Bool {
-  any(roster, r => (r as String) == (name as String))
-}
-
-// The comparison is exact, as extdeps.tailscale.identity requires of any identity match.
-fn fabric_door_writer_admission_over(logins: List<NonEmptyStr>, locals: List<NonEmptyStr>, principal: FabricDoorPrincipal) -> FabricDoorWriterAdmission {
-  match principal {
-    DoorUnattested => FabricDoorWriterRefused { refusal: WriterPeerUnattested }
-    DoorLocalPeer { user: u } =>
-      if listed(roster: locals, name: u) { FabricDoorWriterAdmitted { principal: u } }
-      else { FabricDoorWriterRefused { refusal: WriterPeerUnrostered { account: u } } }
-    DoorProxied { identity: i } =>
-      match i {
-        TailnetIdentityAbsent => FabricDoorWriterRefused { refusal: WriterLoginAbsent }
-        TailnetUser { login: l } =>
-          if listed(roster: logins, name: l) { FabricDoorWriterAdmitted { principal: l } }
-          else { FabricDoorWriterRefused { refusal: WriterLoginUnrostered { login: l } } }
-      }
-  }
-}
 
 fn fabric_door_local_roster() -> List<NonEmptyStr> {
   fabric_storage_door_local_writers()

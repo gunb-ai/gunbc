@@ -11,7 +11,7 @@ module gunbc.roadmap.attempt_system_unit_launch
 // serve handler) writes a request into the spool and reads answers/<entry> once; a system `.path`
 // unit (DirectoryNotEmpty on requests/) starts a system oneshot service whose ExecStart is the
 // `gunbc run` of attempt_system_unit_launch_cli with --arg instance_root pinned. No requester holds
-// a sudo grant for it, and no requester waits on a child it cannot signal. DESIGN §3 replacement:
+// a sudo grant for it, and no requester waits on a child it cannot signal. gunbc.design_argument::single_authority replacement:
 // no --user dual path.
 //
 // THE REQUEST NAMES AN ATTEMPT; ROOT DERIVES EVERYTHING PRIVILEGED (review 80324). Each request is
@@ -30,8 +30,8 @@ module gunbc.roadmap.attempt_system_unit_launch
 // world-writable, sha-addressed, with the service ExecStart pinned to that path. The requester can
 // edit instance.serve_binary and the checkout; those paths are not what root runs.
 
-import gunbc.roadmap.roadmap_attempt_state_store { AttemptWorkerLog, attempt_state_text }
-import gunbc.roadmap.dispatch_worker_unit_confinement { DispatchWorkerUnitPlan, GunbcHarnessProvider, dispatch_attempt_unit_stem, dispatch_pane_working_directory, dispatch_worker_unit_properties_for_plan, dispatch_worktree_path_for_instance, session_process_bounds, dispatch_worker_git_trust_environment }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptWorkerLog, attempt_log_member_text }
+import gunbc.roadmap.dispatch_worker_unit_confinement { DispatchWorkerUnitPlan, GunbcHarnessProvider, dispatch_pane_working_directory, dispatch_worker_unit_properties_for_plan, dispatch_worktree_path_for_instance, session_process_bounds, dispatch_worker_git_trust_environment }
 import std.types { String, NonEmptyStr, Bool, Int, List, FilePath, CommitSha, path_segment_is_safe }
 import std.optional { Present, Absent }
 import extdeps.languages.json.emit { JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, json_array, json_string, serialize_json }
@@ -63,7 +63,7 @@ import extdeps.tools.stat {
 }
 import gunbc.host.host_layout {
   attempt_unit_spool_staging_dir, attempt_unit_spool_request_dir,
-  attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir,
+  attempt_unit_spool_claimed_dir, attempt_unit_spool_deferred_dir, attempt_unit_spool_answer_dir,
   attempt_unit_spool_stalled_dir, attempt_unit_spool_stall_record_path,
 }
 import gunbc.roadmap.spool_stall { SpoolStallEntry, SpoolStallStep, spool_stall_step_text, SpoolStallListRequests, SpoolStallClaim, SpoolStallRecorded, SpoolStallUnrecorded, spool_stall_record_at }
@@ -100,6 +100,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 }
 import extdeps.exec.command { ArgvCommand }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_attempt_occurrence { UnitLaunchManagerRoute, UnitRunOnSystemManager }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptWorkerRole,
   attempt_exit_entry_separator,
@@ -107,6 +108,13 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
 import gunbc.live_deploy.slice_bounds {
   live_deploy_slice_memory_swap_max, attempt_worker_slice_unit_name,
 }
+import gunbc.roadmap.attempt_worker_byte_admission {
+  InFlightAttemptCap, InFlightCapKnown, InFlightCapUnknown, AttemptByteAdmission,
+  AttemptByteAdmitted, AttemptByteWaits, AttemptByteRefused,
+  attempt_worker_byte_admission, in_flight_cap_of_reading,
+}
+import gunbc.systemd_unit_names { dispatch_attempt_unit_stem }
+
 
 data attempt_system_unit_launch_entry: String = "dag/gunbc/roadmap/attempt_system_unit_launch.dag"
 data attempt_system_unit_launch_function: String = "attempt_system_unit_launch_cli"
@@ -117,6 +125,7 @@ fn attempt_system_unit_launcher_locus(instance: HostDashboardInstance) -> Helper
   HelperLocus {
     base: join([attempt_system_unit_launcher_helpers_root, "/", instance.instance_id as String], ""),
     owner: approval_broker_helper_root_principal,
+    step_stem: "attempt-unit",
   }
 }
 
@@ -156,6 +165,10 @@ fn attempt_system_unit_request_path(instance_root: String, entry: String) -> Str
 
 fn attempt_system_unit_staging_path(instance_root: String, entry: String) -> String {
   join([attempt_unit_spool_staging_dir(instance_root: instance_root), "/", entry, ".staging"], "")
+}
+
+fn attempt_system_unit_deferred_path(instance_root: String, entry: String) -> String {
+  join([attempt_unit_spool_deferred_dir(instance_root: instance_root), "/", entry], "")
 }
 
 fn attempt_system_unit_claimed_path(instance_root: String, entry: String) -> String {
@@ -225,7 +238,7 @@ fn attempt_system_unit_start_facts_for_request(instance: HostDashboardInstance, 
       SystemdUnitNameAdmitted { name } => {
     let node = request.node_id as RoadmapNodeId
     let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: node, attempt_key: request.attempt_key)
-    let log = attempt_state_text(instance: instance, node_id: node, attempt_key: request.attempt_key, member: AttemptWorkerLog)
+    let log = attempt_log_member_text(instance: instance, node_id: node, attempt_key: request.attempt_key, member: AttemptWorkerLog)
     match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: request.node_id, attempt_key: request.attempt_key, role: AttemptWorkerRole, record_owner: instance.directory_owner) {
       AttemptExitHookRefused { reason } => AttemptSystemUnitStartUnderivable { reason: reason as String }
       AttemptExitHookRendered { exec_line } =>
@@ -334,6 +347,18 @@ fn attempt_system_unit_systemd_run_command(instance: HostDashboardInstance, plan
     wait: false,
   )
 }
+
+// WHICH MANAGER THIS LAUNCHER RUNS ITS UNITS ON, in the vocabulary a placement record carries
+// (gunbc.roadmap.roadmap_attempt_occurrence UnitLaunchManagerRoute). It is read from this module rather than
+// asserted beside the record: the command rendered above is systemd-run WITHOUT `--user`
+// (attempt_system_unit_systemd_run_command_of), and this module's own refusal carrier spells it --
+// "systemd-run system transient refused". The belt records THIS row on the placement record before the
+// launch (gunbc.roadmap.roadmap_belt_actuate -> gunbc.roadmap.roadmap_session_placement
+// session_placement_record_write), so the record cannot drift from how the unit is actually launched.
+// RETIRE THIS ROW when the launch answer itself carries the route it ran on: the record would then copy the
+// fact out of the launch rather than beside it, which is the same move as recording the InvocationID and
+// boot id after the launch (roadmap_session_placement, follow-up).
+data attempt_system_unit_launch_manager_route: UnitLaunchManagerRoute = UnitRunOnSystemManager
 
 // THE WORKER'S ENVIRONMENT, derived here like every other privileged fact: its git trust in its own worktree
 // (gunbc.roadmap.dispatch_worker_unit_confinement dispatch_worker_git_trust_environment). Each setting is one
@@ -881,6 +906,44 @@ fn attempt_system_unit_instance_for_root(instance_root: String) -> HostDashboard
   }
 }
 
+// THE IN-FLIGHT OBSERVATION: every active/activating gunbc-attempt-* system transient on the HOST (all instances
+// share the slice), each with the MemoryMax systemd reports for it. An unreadable or unlimited cap is
+// InFlightCapUnknown, which the decision refuses on.
+fn attempt_system_unit_in_flight_caps() -> List<InFlightAttemptCap> {
+  let listed = systemd.Systemctl.ListUnits(pattern: "gunbc-attempt-*.service" as NonEmptyStr, unit_type: "service", state: "active,activating,deactivating,reloading")
+  if !listed.success {
+    [InFlightCapUnknown { unit: "gunbc-attempt-*.service", observed: "systemctl list-units failed" }]
+  } else {
+    map(
+      filter(map(split(s: listed.stdout, delimiter: "\n"), l => first_field(line: l)), u => u != ""),
+      u => in_flight_cap_of_reading(unit: u, reading: systemd.Systemctl.ShowProperty(unit: u as NonEmptyStr, property: "MemoryMax" as NonEmptyStr).value),
+    )
+  }
+}
+
+fn first_field(line: String) -> String {
+  match split(s: trim(line), delimiter: " ").first() {
+    Present { value: f } => f
+    Absent => ""
+  }
+}
+
+fn attempt_system_unit_byte_admission(instance: HostDashboardInstance) -> AttemptByteAdmission {
+  attempt_worker_byte_admission(in_flight: attempt_system_unit_in_flight_caps(), candidate: instance.dispatch_worker_memory_max)
+}
+
+fn attempt_system_unit_byte_bound_waits(instance: HostDashboardInstance?) -> Bool {
+  match instance {
+    Absent => false
+    Present { value: inst } =>
+      match attempt_system_unit_byte_admission(instance: inst) {
+        AttemptByteWaits { in_flight_declared: _, candidate: _, bound: _ } => true
+        AttemptByteAdmitted { in_flight_declared: _, headroom_after: _ } => false
+        AttemptByteRefused { reason: _ } => false
+      }
+  }
+}
+
 fn attempt_system_unit_cli_start(
   instance: HostDashboardInstance,
   verb: AttemptSystemUnitStartVerb,
@@ -892,7 +955,13 @@ fn attempt_system_unit_cli_start(
       match attempt_system_unit_start_admitted(instance: instance, facts: facts) {
         AttemptSystemUnitRefused { reason: why } => exit_failure(reason: why)
         AttemptSystemUnitAdmitted { unit: unit, facts: admitted } =>
-          attempt_system_unit_run_admitted_start(instance: instance, facts: admitted, unit: unit, verb: verb)
+          match attempt_system_unit_byte_admission(instance: instance) {
+            AttemptByteRefused { reason: why } => exit_failure(reason: why)
+            AttemptByteWaits { in_flight_declared: _, candidate: _, bound: _ } =>
+              exit_failure(reason: "the attempt-worker slice byte bound filled between the drain's check and this start; the request is refused, not launched")
+            AttemptByteAdmitted { in_flight_declared: _, headroom_after: _ } =>
+              attempt_system_unit_run_admitted_start(instance: instance, facts: admitted, unit: unit, verb: verb)
+          }
       }
   }
 }
@@ -1013,7 +1082,7 @@ fn attempt_system_unit_handle_claimed(
   }
 }
 
-// THE DRAIN PASS AND ITS LINE STOP (DESIGN section 5; the record is gunbc.roadmap.spool_stall's, shared with the
+// THE DRAIN PASS AND ITS LINE STOP (gunbc.design_argument::fail_closed; the record is gunbc.roadmap.spool_stall's, shared with the
 // exit spool). A pass that retired nothing from requests/ and left at least one entry it could not move stalls:
 // it writes the stall record into `stalled/`, and the drain service is skipped by
 // `ConditionDirectoryNotEmpty=!stalled` until attempt_unit_stall_release_cli clears it. A pass that retired
@@ -1040,9 +1109,10 @@ fn attempt_unit_stall_verdict(pass: AttemptUnitDrainPass) -> AttemptUnitStallVer
 
 // THE PASS IS DERIVED FROM ONE OUTCOME PER ENTRY, never accumulated: each spool entry is mapped to what became
 // of it, and the counts, the first failure and the unmovable list are read off that list in one pass each, so
-// no step copies a growing list (DESIGN 6, a copied accumulator is always fixed).
+// no step copies a growing list (gunbc.design_argument::how_to_work, a copied accumulator is always fixed).
 type AttemptUnitEntryOutcome
   = AttemptUnitEntrySkipped
+  | AttemptUnitEntryWaiting { entry: String }
   | AttemptUnitEntryHandled { handled: AttemptUnitHandled }
   | AttemptUnitEntryUnmovable { entry: String, step: SpoolStallStep, cause: String }
 
@@ -1070,6 +1140,7 @@ fn attempt_unit_outcome_failure(outcome: AttemptUnitEntryOutcome) -> List<Proces
     AttemptUnitEntryUnmovable { entry: entry, step: step, cause: cause } =>
       [exit_failure(reason: join([entry, ": unmovable at ", spool_stall_step_text(step: step), " (stays in requests/): ", cause], ""))]
     AttemptUnitEntrySkipped => [] as List<ProcessExit>
+    AttemptUnitEntryWaiting { entry: _ } => [] as List<ProcessExit>
   }
 }
 
@@ -1085,6 +1156,7 @@ fn attempt_unit_outcome_is_retired(outcome: AttemptUnitEntryOutcome) -> Bool {
     AttemptUnitEntryHandled { handled: _ } => true
     AttemptUnitEntryUnmovable { entry: _, step: _, cause: _ } => false
     AttemptUnitEntrySkipped => false
+    AttemptUnitEntryWaiting { entry: _ } => false
   }
 }
 
@@ -1093,6 +1165,7 @@ fn attempt_unit_outcome_is_refusal(outcome: AttemptUnitEntryOutcome) -> Bool {
     AttemptUnitEntryHandled { handled: h } => attempt_unit_handled_is_refusal(handled: h)
     AttemptUnitEntryUnmovable { entry: _, step: _, cause: _ } => false
     AttemptUnitEntrySkipped => false
+    AttemptUnitEntryWaiting { entry: _ } => false
   }
 }
 
@@ -1101,6 +1174,7 @@ fn attempt_unit_outcome_unmovable(outcome: AttemptUnitEntryOutcome) -> List<Spoo
     AttemptUnitEntryUnmovable { entry: entry, step: step, cause: cause } => [SpoolStallEntry { entry: entry, step: step, cause: cause }]
     AttemptUnitEntryHandled { handled: _ } => [] as List<SpoolStallEntry>
     AttemptUnitEntrySkipped => [] as List<SpoolStallEntry>
+    AttemptUnitEntryWaiting { entry: _ } => [] as List<SpoolStallEntry>
   }
 }
 
@@ -1115,7 +1189,53 @@ fn attempt_unit_pass_of(outcomes: List<AttemptUnitEntryOutcome>) -> AttemptUnitD
   }
 }
 
+// A REQUEST THE SLICE'S BYTE BOUND CANNOT ADMIT YET WAITS UNCLAIMED in requests/: not a failure, not unmovable, not
+// retired, never launched (gunbc.roadmap.attempt_worker_byte_admission). Only a bound that says Waits defers; an
+// unreadable in-flight cap falls through to the claim, where attempt_system_unit_cli_start refuses it fail-closed.
 fn attempt_unit_entry_outcome(instance_root: String, instance: HostDashboardInstance?, entry: String) -> AttemptUnitEntryOutcome {
+  if attempt_system_unit_byte_bound_waits(instance: instance) {
+    attempt_system_unit_defer_entry(instance_root: instance_root, entry: entry)
+  } else {
+    attempt_unit_entry_outcome_claimed(instance_root: instance_root, instance: instance, entry: entry)
+  }
+}
+
+// DEFER = MOVE OUT OF THE WATCHED requests/ into deferred/ (same no-replace rename as the claim). A move that
+// fails with the source still present is Unmovable, the stall arm: the entry would re-fire the path unit.
+fn attempt_system_unit_defer_entry(instance_root: String, entry: String) -> AttemptUnitEntryOutcome {
+  if entry == "" || entry == "." || entry == ".." || string_contains(s: entry, pattern: "/") {
+    AttemptUnitEntryUnmovable { entry: entry, step: SpoolStallClaim, cause: "request entry name is not one path segment" }
+  } else if attempt_system_unit_rename_exact(
+    source: attempt_system_unit_request_path(instance_root: instance_root, entry: entry),
+    destination: attempt_system_unit_deferred_path(instance_root: instance_root, entry: entry),
+  ) {
+    AttemptUnitEntryWaiting { entry: entry }
+  } else {
+    AttemptUnitEntryUnmovable { entry: entry, step: SpoolStallClaim, cause: "the request could not be deferred to deferred/ and is still in requests/" }
+  }
+}
+
+// REQUEUE AT THE START OF EVERY PASS, in the sorted listing order (the order the drain itself processes
+// requests/ in): entries are moved back one by one in that order, so defer and requeue preserve it. The
+// admission decision then runs again on each, so one that still does not fit is deferred again.
+fn attempt_system_unit_requeue_deferred(instance_root: String) -> List<String> {
+  let dir = attempt_unit_spool_deferred_dir(instance_root: instance_root)
+  let listed = Filesystem.List(path: dir)
+  match filesystem_listing_observation(directory: dir, success: listed.success, entries: listed.entries, error: listed.error) {
+    FilesystemDirectoryListed(admitted) =>
+      filter(
+        filesystem_listing_entry_names(listing: admitted),
+        e => !attempt_system_unit_rename_exact(
+          source: attempt_system_unit_deferred_path(instance_root: instance_root, entry: e),
+          destination: attempt_system_unit_request_path(instance_root: instance_root, entry: e),
+        ),
+      )
+    FilesystemDirectoryListingRefused { directory: _, error: _ } => [] as List<String>
+    FilesystemDirectorySubjectRefused { directory: _, cause: _ } => [] as List<String>
+  }
+}
+
+fn attempt_unit_entry_outcome_claimed(instance_root: String, instance: HostDashboardInstance?, entry: String) -> AttemptUnitEntryOutcome {
   match attempt_system_unit_claim_entry(instance_root: instance_root, entry: entry) {
     AttemptSystemUnitAlreadyClaimed { entry: _ } => AttemptUnitEntrySkipped
     AttemptSystemUnitClaimUnmovable { entry: e, cause: c } => AttemptUnitEntryUnmovable { entry: e, step: SpoolStallClaim, cause: c }
@@ -1132,11 +1252,15 @@ fn attempt_unit_entry_outcome(instance_root: String, instance: HostDashboardInst
 
 fn attempt_system_unit_drain_pass(instance_root: String) -> AttemptUnitDrainPass {
   let instance = attempt_system_unit_instance_for_root(instance_root: instance_root)
+  let still_deferred = attempt_system_unit_requeue_deferred(instance_root: instance_root)
   match attempt_system_unit_list_request_entries(instance_root: instance_root) {
     AttemptSystemUnitRequestListRefused { reason } =>
       attempt_unit_pass_of(outcomes: [AttemptUnitEntryUnmovable { entry: "requests", step: SpoolStallListRequests, cause: reason }])
     AttemptSystemUnitRequestNames { names: entries } =>
-      attempt_unit_pass_of(outcomes: map(entries, entry => attempt_unit_entry_outcome(instance_root: instance_root, instance: instance, entry: entry)))
+      attempt_unit_pass_of(outcomes: concat(
+        map(still_deferred, e => AttemptUnitEntryUnmovable { entry: e, step: SpoolStallClaim, cause: "a deferred request could not be moved back to requests/" }),
+        map(entries, entry => attempt_unit_entry_outcome(instance_root: instance_root, instance: instance, entry: entry)),
+      ))
   }
 }
 

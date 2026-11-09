@@ -38,11 +38,12 @@ import v2.std.diagnostic {
   bind_outcome,
   diagnostics_singleton,
   node_locus,
-  outcome_rejected
+  outcome_rejected,
+  outcome_accepted,
 }
 import v2.std.node { Instantiation, ComputationNode, Arrow, Atom, Conj, Disj, Edge, Authored, StructuralLabel, Node, node_synthetic, Positional, Symbol, TypeNode }
 import v2.std.qualified_name { declaration_reference_path_optional }
-import v2.std.type_binder { GenericTypeDecl, NotATypeDecl, OpaqueTypeDecl, PlainTypeDecl, TypeAlias, type_decl_view }
+import v2.std.type_binder { GenericTypeDecl, NotATypeDecl, OpaqueTypeDecl, PlainTypeDecl, TypeAlias, type_decl_view, type_param_names }
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl, produced_type_binding }
 import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source, translate_target_atom_realization_for_carrier }
 import v2.compiler.body_lowering_fold { DeclaredRecord, DeclaredRefinement, DeclaredResource, DeclaredTypeKind }
@@ -121,7 +122,7 @@ fn emit_produced_decl_inner_arrow(decl: Node) -> Outcome<Node> {
 // projects per declaration is the declaration's canonical node form — the same shape
 // v2.compiler.ingested_fixture_arrows ingested_add_decl_node builds — so emit_produced_decl and
 // produced_decl_subject_from_decl keep consuming a Node.
-// STANDING §3 FORK, NOT CLOSED HERE: v2.workflow.realization_attempt collect_arrows answers this
+// STANDING gunbc.design_argument::single_authority FORK, NOT CLOSED HERE: v2.workflow.realization_attempt collect_arrows answers this
 // same question for itself, and answered it CORRECTLY per-edge while this authority did not, which
 // is why the census lane never saw the drop. Consolidating it onto this collector is a separate
 // change against a separate consumer (it walks a RESOLVED tree and searches for the first arrow
@@ -187,8 +188,8 @@ fn produced_decl_conjs_in_tree(root: Node) -> FreeMonoid<Node> {
 // v2.compiler.normalized_tree NormalizedTree type_declaration_kinds, one coproduct value per declaration,
 // so a member has one kind or none. A plain Conj with none -- a payload-bearing single variant shares
 // that shape after lowering -- is UNDECIDED and refuses; reading the kind back from the lowered shape or
-// its labels would be the heuristic the captured kind exists to replace. An alias, a bodyless declaration and a generic declaration
-// refuse under their own reasons: no target realization exists for them yet.
+// its labels would be the heuristic the captured kind exists to replace. An alias and a bodyless declaration
+// refuse under their own reasons: no target realization exists for them yet. A generic coproduct or record is the plain member carrying its binders (emit_generic_module_member).
 type ModuleMemberClass
   = ModuleMemberBodiedArrow
   | ModuleMemberBodylessArrow
@@ -198,7 +199,7 @@ type ModuleMemberClass
   | ModuleMemberRecordOrRefinement
   | ModuleMemberAlias
   | ModuleMemberOpaque
-  | ModuleMemberGeneric
+  | ModuleMemberGeneric { name: Symbol, params: List<Symbol>, member: Node }
   | ModuleMemberUnsupported
 
 fn module_member_class(edge: Edge, kinds: FreeMonoid<DeclaredTypeKind>) -> ModuleMemberClass {
@@ -216,7 +217,7 @@ fn module_member_class(edge: Edge, kinds: FreeMonoid<DeclaredTypeKind>) -> Modul
           match type_decl_view(target: edge.target) {
             TypeAlias { binders: _, aliased: _ } => ModuleMemberAlias
             OpaqueTypeDecl { binders: _ } => ModuleMemberOpaque
-            GenericTypeDecl { binders: _, member: _ } => ModuleMemberGeneric
+            GenericTypeDecl { binders: _, member: g } => ModuleMemberGeneric { name: n, params: type_param_names(n: edge.target), member: g }
             NotATypeDecl => ModuleMemberUnsupported
             PlainTypeDecl { member: m } =>
               match m.kind {
@@ -388,8 +389,25 @@ fn emit_module_member(edge: Edge, target: TargetModel, realization_host: TargetM
     ModuleMemberRecordOrRefinement => emit_module_member_refused(reason: ^emit_module_member_record_or_refinement_undecided, at: edge.target)
     ModuleMemberAlias => emit_module_member_refused(reason: ^emit_module_member_alias_not_realized, at: edge.target)
     ModuleMemberOpaque => emit_module_member_refused(reason: ^emit_module_member_opaque_not_realized, at: edge.target)
-    ModuleMemberGeneric => emit_module_member_refused(reason: ^emit_module_member_generic_not_realized, at: edge.target)
+    ModuleMemberGeneric { name: n, params: ps, member: m } => emit_generic_module_member(edge: edge, name: n, params: ps, member: m, kinds: kinds, target: target, realization_host: realization_host)
     ModuleMemberUnsupported => emit_module_member_refused(reason: ^emit_module_member_unsupported, at: edge.target)
+  }
+}
+
+// A GENERIC COPRODUCT OR RECORD IS THE PLAIN MEMBER WITH ITS BINDERS. The classifier unwrapped the
+// declaration once (type_decl_view) and read its binder names (type_param_names); this hands the
+// unwrapped member to the same semantic-declaration route a plain member takes, with the params that
+// route already threads, so there is no generic emitter beside it. A generic member of any other
+// shape (a refinement, an undecided Conj, an Atom) still refuses under the generic reason.
+fn emit_generic_module_member(edge: Edge, name: Symbol, params: List<Symbol>, member: Node, kinds: FreeMonoid<DeclaredTypeKind>, target: TargetModel, realization_host: TargetModel) -> Outcome<Medium<String>> {
+  match member.kind {
+    TypeNode { connective: Disj } => emit_semantic_type_decl(header: [], documentation: target_semantic_decl_no_documentation(), conformances: ConformancesTargetDefault, imports: [], members: [], name: name, params: params, node: member, target: target, realization_host: realization_host)
+    TypeNode { connective: Conj } =>
+      match module_member_conj_class(name: name, member: member, kinds: kinds) {
+        ModuleMemberRecord { name: n, record: r } => emit_semantic_type_decl(header: [], documentation: target_semantic_decl_no_documentation(), conformances: ConformancesTargetDefault, imports: [], members: [], name: n, params: params, node: r, target: target, realization_host: realization_host)
+        _ => emit_module_member_refused(reason: ^emit_module_member_generic_not_realized, at: edge.target)
+      }
+    _ => emit_module_member_refused(reason: ^emit_module_member_generic_not_realized, at: edge.target)
   }
 }
 
@@ -484,7 +502,7 @@ fn emit_produced_decl_with_target(
 // exists, or how the declaration closes -- every one of those is a row the target
 // declares. A target that registered no rows refuses with a typed, located
 // produced_decl_target_unwired:
-// never a widen, never a fabricated default (DESIGN section 5).
+// never a widen, never a fabricated default (gunbc.design_argument::fail_closed).
 fn emit_produced_decl(decl: Node, target: TargetModel) -> Outcome<Medium<String>> {
   // DECLARED GAP: this entry serializes one decl without an inferred tree or a resolve index
   // (claim fixtures and emit_produced_decl's own wrapper). Module emit threads both. Facts
@@ -569,7 +587,7 @@ fn emit_produced_module_step(
 // the first consumers to read this fold's output through `split`. Nothing on the production door
 // reached this fold until the door started routing every nonempty population through it, so the
 // defect was latent rather than new, and the equality-only readers could never have found it.
-// One representation for one concept (DESIGN section 3): a String is a String, not a FreeMonoid
+// One representation for one concept (gunbc.design_argument::single_authority): a String is a String, not a FreeMonoid
 // that happens to compare equal to one.
 fn emit_produced_module(decls: List<Node>, target: TargetModel) -> Outcome<Medium<String>> {
   bind_outcome(

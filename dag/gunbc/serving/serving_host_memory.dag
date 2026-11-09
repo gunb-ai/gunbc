@@ -13,10 +13,7 @@ import extdeps.accounting.budget { Appropriation, LineItem }
 import product.budget_tree { BudgetNode, BudgetClaim, Guaranteed, node_conserves_local }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_6ce85c }
-import gunbc.host.host_memory_observation {
-  HostUsableRam, HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured,
-  HostFixedOverhead, HostFixedOverheadMeasured, HostFixedOverheadAllowance, HostFixedOverheadUnmeasured,
-}
+import gunbc.host.host_memory_carrier { HostUsableRam, HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured, HostFixedOverhead, HostFixedOverheadMeasured, HostFixedOverheadAllowance, HostFixedOverheadUnmeasured }
 
 // WHAT A SERVING HOST'S RAM IS SPENT ON, AND WHETHER IT FITS WITH NO SWAP. A serving engine keeps the
 // sessions it is not running parked in host RAM (Strata's conversation cache, vLLM's LMCache L1), and a
@@ -59,7 +56,7 @@ type ServingEngineMemory {
 
 // A HOST THAT DOES NOTHING BUT SERVE, so its whole RAM is this tree. A host that also runs CI or dashboard
 // sessions (srv1, srv3, srv4) is NOT one: its RAM is already partitioned by gunbc.fleet.fleet_host_budget,
-// and a second tree over the same RAM would be a second authority for it (DESIGN section 3).
+// and a second tree over the same RAM would be a second authority for it (gunbc.design_argument::single_authority).
 type ServingDedicatedHostMemory {
   host: HostIdentity
   usable_ram: HostUsableRam
@@ -377,7 +374,7 @@ data srv4_serving_engine_memory: ServingEngineMemory = ServingEngineMemory {
   conversation_slots: Present { value: 8 },
 }
 
-// DECLARED FRONTIERS (DESIGN section 3c).
+// DECLARED FRONTIERS (gunbc.design_argument::consumption).
 //
 // Consumer: the h11 cell's launch row renders its MemoryMax, MemorySwapMax (zero) and
 // --conversation-cache-mib/--conversation-cache-slots from a layout this verdict passes, and the router's

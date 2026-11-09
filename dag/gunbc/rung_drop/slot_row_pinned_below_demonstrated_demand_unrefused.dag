@@ -6,7 +6,7 @@ import gunbc.rung_drop { RungDrop, Superseded, TypedDeclaration, Enumerated, Rep
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // ============================================================================================
-// THE DECLARED RUNG DROP for the slot wall's floor-demand conjunct (DESIGN 4b(3)), landed by
+// THE DECLARED RUNG DROP for the slot wall's floor-demand conjunct (gunbc.design_argument::guarantee_ladder (no silent regression)), landed by
 // gunbc#11672 because review 68382 found the wall green over a receipt that says its row is
 // below demonstrated demand, and silence in the module that now owns both facts is the one
 // arm that is not honest.

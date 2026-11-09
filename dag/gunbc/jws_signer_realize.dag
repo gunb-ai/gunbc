@@ -1,7 +1,6 @@
 module gunbc.jws_signer_realize
 
 import std.types { String, NonEmptyStr, Int, List }
-import std.integer { UInt8 }
 import extdeps.auth.jws { JwsAlgorithm, JwsRs256, JwsEs256, jws_es256_coordinate_octets, JwsSigningKeyRef, HostKeyFile, JwsSignOutcome, JwsSigned, JwsSignRefused }
 import extdeps.tools.openssl { openssl_sign_sha256, OpensslSigned, OpensslSignRefused }
 import extdeps.standards.rfc_5280 { ecdsa_sig_value, EcdsaSigValueRead, EcdsaSigValueRefused, EcdsaSigValueTooWide }
@@ -9,7 +8,7 @@ import gunbc.host.host_cli_dependency { first_absent_host_cli_dependency, jws_si
 import std.optional { Absent, Present }
 
 // THE HANDLER DISPATCH FOR extdeps.auth.jws's signer interface, kept peripheral because selecting a
-// realization is itself realization (DESIGN §3). A key held as a HOST FILE is signed by openssl,
+// realization is itself realization (gunbc.design_argument::single_authority). A key held as a HOST FILE is signed by openssl,
 // which reads the file itself: the key never enters the evaluator, the signing input goes on stdin
 // and the signature comes back on stdout. openssl is ONE handler: a key held elsewhere (an HSM, a
 // cloud KMS) is a new JwsSigningKeyRef arm with its own handler here, and the interface stays as it is. A
@@ -40,7 +39,7 @@ fn jws_sign(alg: JwsAlgorithm, signing_input: NonEmptyStr, key: JwsSigningKeyRef
   }
 }
 
-fn jws_signature_of_openssl(alg: JwsAlgorithm, octets: List<UInt8>) -> JwsSignOutcome {
+fn jws_signature_of_openssl(alg: JwsAlgorithm, octets: List<Int>) -> JwsSignOutcome {
   match alg {
     JwsRs256 => JwsSigned { signature: octets }
     JwsEs256 =>

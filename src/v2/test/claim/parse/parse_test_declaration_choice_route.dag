@@ -3,7 +3,6 @@ module v2.test.claim.parse.parse_test_declaration_choice_route
 import v2.compiler.body_lowering_fold {
   BodyLowerTypedParam,
   body_lower_collect_typed_params,
-  body_lower_deep_unwrap_optional,
   body_lower_field_pattern_edge,
   body_lower_find_captured,
   body_lower_param_list_comma_spine_optional
@@ -16,7 +15,7 @@ import v2.extdeps.languages.dag {
   ParseSubtreeFound,
   parse_production_captured_child_optional
 }
-import v2.std.compilers.sugar { sugar_sequence_pair_optional }
+import v2.std.compilers.sugar { sugar_deep_unwrap_optional, sugar_sequence_pair_optional }
 import v2.std.compilers.lexing { token_stream_remaining }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_identity_optional }
@@ -38,7 +37,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the class's two tokens (dag_grammar_status_pattern_expr), and the `requires` type list off the two
 // clause words (dag_grammar_op_requires_expr). Each
 // claim parses SUPPLIED FRAGMENTS at the one production it is about -- not a whole module, whose
-// header and items are not this claim's subject (DESIGN section 3, a witness discriminates at one
+// header and items are not this claim's subject (gunbc.design_argument::single_authority, a witness discriminates at one
 // interface) -- and asserts the ROUTE each former alternative took, read by the real reader where one
 // exists. The real module path still parses every one of these forms in the corpus. The `test`
 // marker's half of the family is held in v2.test.claim.parse.parse_test_marker_channel.
@@ -87,7 +86,7 @@ fn route_of(shell: Node) -> String {
       match sugar_sequence_pair_optional(node: captured) {
         Absent => "unpaired"
         Present { value: pair } =>
-          if is_empty_conj_root(n: body_lower_deep_unwrap_optional(node: pair.right)) { "bare" } else { "suffixed" }
+          if is_empty_conj_root(n: sugar_deep_unwrap_optional(node: pair.right)) { "bare" } else { "suffixed" }
       }
   }
 }

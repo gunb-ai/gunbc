@@ -113,7 +113,7 @@ fn roster_names_distinct(roster: List<V1ComplexityDeclClassification>) -> Bool {
 // declaration of v1.compiler.complexity has a distinct name, and NOTHING HERE MAKES THAT TRUE — it
 // is a property of the subject module, not a wall this carrier erects. Measured 2026-08-06: 201
 // top-level declarations (171 fn, 26 type, 4 data, 0 let), zero duplicate names. A measurement of
-// the current tree is not an oracle (DESIGN §5), so the precondition is EXECUTED by
+// the current tree is not an oracle (gunbc.design_argument::fail_closed), so the precondition is EXECUTED by
 // population_names_distinct rather than assumed: if a duplicate top-level name ever appears, the
 // witness reds instead of the join silently matching two declarations for one row. Note the
 // existing roster_names_distinct does NOT cover this — it checks the AUTHORED side, and a duplicate

@@ -145,8 +145,8 @@ test fn all_four_legs_carry_a_reading() -> Bool {
 // rather than having been deleted by it. The supplied row is kept anyway, because the claim is about
 // the PROJECTION and not about the roster's current membership -- it must stay red if
 // fabric_leg_reading_of_row ever promotes an invalidated row, on a day when no real row is invalidated. A leg re-flashed and not re-read must project to LegNeverRead -- NOT to
-// LegReadingTaken with its pre-flash coding, which would present a known-false current coding (§5).
-// This is the discriminating red for the acquisition-standing projection (DESIGN §4b(4): the red
+// LegReadingTaken with its pre-flash coding, which would present a known-false current coding (gunbc.design_argument::fail_closed).
+// This is the discriminating red for the acquisition-standing projection (gunbc.design_argument::guarantee_ladder (dissolution on climb): the red
 // stays enrolled after the population it was written against moves); it reds if
 // fabric_leg_reading_of_row ever promotes an AcquisitionInvalidatedByReflash row to a live reading.
 test fn a_reflashed_but_unread_leg_reads_as_never_not_as_its_stale_value() -> Bool {

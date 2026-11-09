@@ -167,8 +167,12 @@ fn between(text: String, open: String, close: String) -> String? {
   let after = split(s: text, delimiter: open)
   if after.length() < 2 { none }
   else {
-    let tail = split(s: after.skip(n: 1).first(), delimiter: close)
-    if tail.length() < 2 { none } else { Present { value: tail.first() } }
+    match after.skip(n: 1).first() {
+      Absent => none
+      Present { value: rest } =>
+        let tail = split(s: rest, delimiter: close)
+        if tail.length() < 2 { none } else { tail.first() }
+    }
   }
 }
 
@@ -186,9 +190,17 @@ fn parse_kv_recommendation_bytes(text: String, occurrence: Nat) -> Nat? {
   let parts = split(s: text, delimiter: "--kv-cache-memory=")
   if parts.length() < occurrence + 1 { none }
   else {
-    match parse_int(s: split(s: parts.skip(n: occurrence).first(), delimiter: "`").first()) {
+    match parts.skip(n: occurrence).first() {
       Absent => none
-      Present { value: b } => if b < 0 { none } else { Present { value: b } }
+      Present { value: rest } =>
+        match split(s: rest, delimiter: "`").first() {
+          Absent => none
+          Present { value: bytes_wire } =>
+            match parse_int(s: bytes_wire) {
+              Absent => none
+              Present { value: b } => if b < 0 { none } else { Present { value: b } }
+            }
+        }
     }
   }
 }

@@ -141,7 +141,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE RATCHET'S OWN EVIDENCE. Every input here is authored beside its expected verdict, so nothing
 // is compared against a measurement taken from the tree these claims judge — the fold's live-corpus
 // population is a separate claim with a separate cost, and pinning one here would be the tree-copied
-// census DESIGN §5 refuses.
+// census gunbc.design_argument::fail_closed refuses.
 //
 // THE REDS ARE THE POINT, and they come in three kinds. The ratchet's two directions each have one
 // (an entry that stops being clean refuses; an admission row whose debt was paid refuses), and the
@@ -600,7 +600,7 @@ test fn clean_subject_gaining_a_blocker_refuses_which_is_the_wall_that_holds() -
 
 // HOLE 2, NOW CLOSED — AND THIS IS THE SAME CLAIM FLIPPED, NOT A NEW ONE. It was pinned as
 // `a_file_the_index_cannot_classify_vanishes_from_the_universe_instead_of_blocking`, green while
-// the hole was open. The dual denominator turns it red, so per §4b(4) it is converted to the
+// the hole was open. The dual denominator turns it red, so per gunbc.design_argument::guarantee_ladder (dissolution on climb) it is converted to the
 // regression control that keeps the closure real rather than deleted with the machinery it
 // obsoleted: the climb deletes the production handling, never the evidence.
 //
@@ -816,7 +816,7 @@ test fn an_unevaluated_subject_is_observed_rather_than_suppressed() -> Bool {
 // WHAT THIS ROW DELIBERATELY DOES NOT ASSERT, because the first shape of it did and the assertion
 // could not fail: that the not-taken arm holds no standing. That is true, and it is true BY
 // CONSTRUCTION -- the variant has no such field, so the violating state is unauthorable in the
-// corpus AND in a fixture, which §4b names as exactly the case where the right answer is no check
+// corpus AND in a fixture, which gunbc.design_argument::guarantee_ladder names as exactly the case where the right answer is no check
 // at all. Three of that row's four conjuncts were substring matches over rendered text, so the one
 // artifact a reader would have cited as proof of execution provenance was a change detector: red on
 // any wording edit, green on any cause carrying the phrase. The property survives in the type; only
@@ -875,7 +875,7 @@ test fn a_refusing_standing_is_a_taken_observation_and_not_a_missing_one() -> Bo
 //
 // THE EXPECTED ROWS ARE COMPOSED FROM THE RENDERER, never hand-written. A literal fragment here
 // would pin the renderer's current wording into an unrelated claim, so an edit to one authority
-// would red the other — the fork §3 forbids, arriving as a test fixture. What is asserted is that
+// would red the other — the fork gunbc.design_argument::single_authority forbids, arriving as a test fixture. What is asserted is that
 // the report CARRIES the observation's own rendering and that the two renderings DIFFER, which is
 // the distinction the row is named for and the only one it should own.
 fn fixture_observation_row(r: EmitSubjectCleanRatchet) -> String {

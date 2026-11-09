@@ -1,0 +1,294 @@
+module product.printed_chassis.card_installation
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.algebra { FreeSemigroup }
+import std.measure { Micrometer, micrometer, micrometer_count }
+import extdeps.external_authority { CitedFigureStanding }
+import extdeps.boards.types { BoardExpansionSlot, BoardExpansionSlots }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_expansion_slots }
+import extdeps.standards.pcie_cem { cem_slot_width }
+import extdeps.cited_field { row_field_value }
+import product.printed_chassis.duct_card_catalog { DuctCard, a16_duct_card, a2_duct_card }
+
+// ═══ WHICH CARDS ARE INSTALLED, WHERE, AND WHICH OF THEM SHARE COOLING ═══
+//
+// THREE FACTS THAT AN EARLIER MODEL RAN TOGETHER. How much space a card needs is the card's (its row's slot
+// count, under the PCIe CEM envelope). Where the board puts a slot is the board's
+// (extdeps.boards.types BoardExpansionSlots). Which card sits in which slot is THIS MACHINE's, and it is
+// what places one card relative to another. product.printed_chassis.gpu_duct card_slot_pitch derives a
+// "pitch" from a card's slot count, which is an occupancy envelope and not the separation of installed
+// cards; a duct serving several cards takes their separation from here.
+//
+// EVERY INSTALLED CARD IS AN INSTANCE. Four A2s are four physical subjects in four places, so a group keeps
+// instance identities, not the model name.
+
+type CardInstance { id: NonEmptyStr, card: DuctCard }
+
+type InstalledSlot
+  = InBoardSlot { board: BoardExpansionSlots, designator: NonEmptyStr }
+  | SlotNotRecorded { read_obligation: NonEmptyStr }
+
+type InstalledCard { instance: CardInstance, slot: InstalledSlot }
+
+type CardInstallation { name: NonEmptyStr, cards: List<InstalledCard> }
+
+fn board_slot(board: BoardExpansionSlots, designator: NonEmptyStr) -> BoardExpansionSlot? {
+  fold(board.slots, init: Absent, f: (acc, s) => match acc { Present { value: v } => Present { value: v } Absent => if s.designator == designator { Present { value: s } } else { Absent } })
+}
+
+fn installed_position(c: InstalledCard) -> Int? {
+  match c.slot {
+    SlotNotRecorded { read_obligation: _ } => Absent
+    InBoardSlot { board: b, designator: d } => match board_slot(board: b, designator: d) { Present { value: s } => Present { value: s.position as Int } Absent => Absent }
+  }
+}
+
+// THE SEPARATION OF TWO INSTALLED CARDS, PCB plane to PCB plane: their slots' position difference in CEM
+// slot widths. It stands on the board's position reading and on the CEM width, and it carries both
+// standings rather than upgrading either; a card whose slot is not recorded has no separation.
+type CardSeparation { across: Micrometer, positions: CitedFigureStanding, slot_width: CitedFigureStanding }
+
+fn card_separation(from: InstalledCard, to: InstalledCard) -> CardSeparation? {
+  match from.slot {
+    SlotNotRecorded { read_obligation: _ } => Absent
+    InBoardSlot { board: b, designator: _ } => match installed_position(c: from) {
+      Absent => Absent
+      Present { value: p } => match installed_position(c: to) {
+        Absent => Absent
+        Present { value: q } => Present { value: CardSeparation { across: micrometer(count: (q - p) * (micrometer_count(m: cem_slot_width.value) as Int)), positions: b.positions, slot_width: cem_slot_width.standing } }
+      }
+    }
+  }
+}
+
+// ═══ WHETHER AN INSTALLATION CAN EXIST ═══
+// Each instance id once; each slot on its board; no two cards in one slot; and no card in a slot that the
+// card before it already covers with its width. A partition of an installation that fails this is refused
+// (partition_installation), so no consumer of a group sees cards that cannot be where they are said to be.
+
+type InstallationRefusal
+  = InstanceRepeated { instance: NonEmptyStr }
+  | SlotNotOnBoard { instance: NonEmptyStr, designator: NonEmptyStr }
+  | SlotShared { instance: NonEmptyStr, with: NonEmptyStr }
+  | SlotsOutOfOrder { instance: NonEmptyStr, after: NonEmptyStr }
+  | SlotCoveredByNeighbour { instance: NonEmptyStr, covered_by: NonEmptyStr }
+  | SlotCountUnread { instance: NonEmptyStr }
+
+type PairCheck { previous: InstalledCard?, refusals: List<InstallationRefusal> }
+
+fn pair_refusals(a: InstalledCard, b: InstalledCard) -> List<InstallationRefusal> {
+  match installed_position(c: a) {
+    Absent => []
+    Present { value: p } => match installed_position(c: b) {
+      Absent => []
+      Present { value: q } => if q == p { [SlotShared { instance: b.instance.id, with: a.instance.id }] } else if q < p { [SlotsOutOfOrder { instance: b.instance.id, after: a.instance.id }] } else {
+        match row_field_value(field: a.instance.card.row.slot_count) {
+          Absent => [SlotCountUnread { instance: a.instance.id }]
+          Present { value: n } => if q - p < (n as Int) { [SlotCoveredByNeighbour { instance: b.instance.id, covered_by: a.instance.id }] } else { [] }
+        }
+      }
+    }
+  }
+}
+
+fn installation_refusals(inst: CardInstallation) -> List<InstallationRefusal> {
+  let repeated = fold(inst.cards, init: [], f: (acc, c) =>
+    if count(filter(inst.cards, o => o.instance.id == c.instance.id)) > 1 && !any(acc, r => match r { InstanceRepeated { instance: i } => i == c.instance.id _ => false }) { concat(acc, [InstanceRepeated { instance: c.instance.id }]) } else { acc })
+  let off_board = fold(inst.cards, init: [], f: (acc, c) => match c.slot {
+    InBoardSlot { board: b, designator: d } => match board_slot(board: b, designator: d) { Present { value: _ } => acc Absent => concat(acc, [SlotNotOnBoard { instance: c.instance.id, designator: d }]) }
+    SlotNotRecorded { read_obligation: _ } => acc
+  })
+  let pairs = fold(inst.cards, init: PairCheck { previous: Absent, refusals: [] }, f: (acc, c) => match acc.previous {
+    Absent => PairCheck { previous: Present { value: c }, refusals: acc.refusals }
+    Present { value: a } => PairCheck { previous: Present { value: c }, refusals: concat(acc.refusals, pair_refusals(a: a, b: c)) }
+  })
+  concat(concat(repeated, off_board), pairs.refusals)
+}
+
+fn installation_refusal_text(r: InstallationRefusal) -> String {
+  match r {
+    InstanceRepeated { instance: i } => join([i as String, " is installed twice"], "")
+    SlotNotOnBoard { instance: i, designator: d } => join([i as String, " is in ", d as String, ", which is not on its board"], "")
+    SlotShared { instance: i, with: w } => join([i as String, " is in the same slot as ", w as String], "")
+    SlotsOutOfOrder { instance: i, after: a } => join([i as String, " is listed after ", a as String, " but sits before it"], "")
+    SlotCoveredByNeighbour { instance: i, covered_by: c } => join([i as String, " is in a slot ", c as String, " already covers"], "")
+    SlotCountUnread { instance: i } => join([i as String, " has no stated slot count"], "")
+  }
+}
+
+// ═══ A CHECKED PARTITION OF THE INSTALLED CARDS ═══
+//
+// The groups name instances. The result establishes that every installed instance occurs exactly once,
+// that no group is empty, and that every named instance belongs to the installation; otherwise it refuses
+// with every cause it found. Group sizes ([4], [2, 2], [1, 3]) are a SHORTHAND over the installation's
+// order, read into instance lists and then put through the same check, so a size list that does not cover
+// the installation refuses there rather than being trusted for its notation.
+
+type CardGroup { members: FreeSemigroup<InstalledCard> }
+
+fn group_members(g: CardGroup) -> List<InstalledCard> { concat([g.members.head], g.members.tail) }
+
+fn group_ids(g: CardGroup) -> List<NonEmptyStr> { map(group_members(g: g), m => m.instance.id) }
+
+type PartitionRefusal
+  = PartitionMemberMissing { instance: NonEmptyStr }
+  | PartitionMemberRepeated { instance: NonEmptyStr }
+  | PartitionMemberUnknown { instance: NonEmptyStr }
+  | PartitionGroupEmpty { index: Int }
+  | PartitionSizesDoNotCover { requested: Int, installed: Int }
+  | PartitionInstallationRefused { refusals: List<InstallationRefusal> }
+
+type Partition
+  = Partitioned { groups: List<CardGroup> }
+  | PartitionRefused { causes: List<PartitionRefusal> }
+
+fn installed_card(inst: CardInstallation, id: NonEmptyStr) -> InstalledCard? {
+  fold(inst.cards, init: Absent, f: (acc, c) => match acc { Present { value: v } => Present { value: v } Absent => if c.instance.id == id { Present { value: c } } else { Absent } })
+}
+
+type IndexedGroups { index: Int, groups: List<CardGroup>, causes: List<PartitionRefusal> }
+
+fn build_group(ids: List<NonEmptyStr>, inst: CardInstallation) -> CardGroup? {
+  let known = fold(ids, init: [], f: (acc, id) => match installed_card(inst: inst, id: id) { Present { value: c } => concat(acc, [c]) Absent => acc })
+  fold(known, init: Absent, f: (acc, c) => match acc {
+    Absent => Present { value: CardGroup { members: FreeSemigroup { head: c, tail: [] } } }
+    Present { value: g } => Present { value: CardGroup { members: FreeSemigroup { head: g.members.head, tail: concat(g.members.tail, [c]) } } }
+  })
+}
+
+fn partition_installation(inst: CardInstallation, groups: List<List<NonEmptyStr>>) -> Partition {
+  let invalid = installation_refusals(inst: inst)
+  if length(list: invalid) > 0 { return PartitionRefused { causes: [PartitionInstallationRefused { refusals: invalid }] } }
+  let named = fold(groups, init: [], f: (acc, g) => concat(acc, g))
+  let unknown = fold(named, init: [], f: (acc, id) => match installed_card(inst: inst, id: id) {
+    Present { value: _ } => acc
+    Absent => if any(acc, r => match r { PartitionMemberUnknown { instance: i } => i == id _ => false }) { acc } else { concat(acc, [PartitionMemberUnknown { instance: id }]) }
+  })
+  let repeated = fold(named, init: [], f: (acc, id) =>
+    if count(filter(named, o => o == id)) > 1 && !any(acc, r => match r { PartitionMemberRepeated { instance: i } => i == id _ => false }) { concat(acc, [PartitionMemberRepeated { instance: id }]) } else { acc })
+  let missing = fold(inst.cards, init: [], f: (acc, c) => if any(named, id => id == c.instance.id) { acc } else { concat(acc, [PartitionMemberMissing { instance: c.instance.id }]) })
+  let built = fold(groups, init: IndexedGroups { index: 0, groups: [], causes: [] }, f: (acc, ids) => match build_group(ids: ids, inst: inst) {
+    Absent => IndexedGroups { index: acc.index + 1, groups: acc.groups, causes: if length(list: ids) == 0 { concat(acc.causes, [PartitionGroupEmpty { index: acc.index }]) } else { acc.causes } }
+    Present { value: g } => IndexedGroups { index: acc.index + 1, groups: concat(acc.groups, [g]), causes: acc.causes }
+  })
+  let causes = concat(concat(concat(unknown, repeated), missing), built.causes)
+  if length(list: causes) > 0 { PartitionRefused { causes: causes } } else { Partitioned { groups: built.groups } }
+}
+
+type SizeSlice { taken: Int, groups: List<List<NonEmptyStr>> }
+
+type IdSlice { index: Int, ids: List<NonEmptyStr> }
+
+fn ids_from(inst: CardInstallation, start: Int, n: Int) -> List<NonEmptyStr> {
+  let r = fold(inst.cards, init: IdSlice { index: 0, ids: [] }, f: (acc, c) =>
+    IdSlice { index: acc.index + 1, ids: if acc.index >= start && acc.index < start + n { concat(acc.ids, [c.instance.id]) } else { acc.ids } })
+  r.ids
+}
+
+fn partition_by_sizes(inst: CardInstallation, sizes: List<Int>) -> Partition {
+  let total = fold(sizes, init: 0, f: (acc, n) => acc + n)
+  if total != length(list: inst.cards) { return PartitionRefused { causes: [PartitionSizesDoNotCover { requested: total, installed: length(list: inst.cards) }] } }
+  let sliced = fold(sizes, init: SizeSlice { taken: 0, groups: [] }, f: (acc, n) => SizeSlice { taken: acc.taken + n, groups: concat(acc.groups, [ids_from(inst: inst, start: acc.taken, n: n)]) })
+  partition_installation(inst: inst, groups: sliced.groups)
+}
+
+fn partition_refusal_text(r: PartitionRefusal) -> String {
+  match r {
+    PartitionMemberMissing { instance: i } => join([i as String, " is in no group"], "")
+    PartitionMemberRepeated { instance: i } => join([i as String, " is in more than one group"], "")
+    PartitionMemberUnknown { instance: i } => join([i as String, " is not installed"], "")
+    PartitionGroupEmpty { index: n } => join(["group ", to_string(value: n), " is empty"], "")
+    PartitionSizesDoNotCover { requested: a, installed: b } => join(["the sizes cover ", to_string(value: a), " cards and ", to_string(value: b), " are installed"], "")
+    PartitionInstallationRefused { refusals: rs } => join(["the installation cannot exist: ", join(map(rs, x => installation_refusal_text(r: x)), "; ")], "")
+  }
+}
+
+// A shared manifold needs its members side by side: consecutive in the installation, and each starting at
+// the slot position where the member before it ends (its position plus its slot count), so no empty slot
+// lies between them. That is the first realization's requirement, not the definition of a group; a group
+// that is not contiguous is still a group, and a realization that cannot serve it says so.
+type GroupContiguity
+  = GroupContiguous
+  | GroupNotConsecutive { instance: NonEmptyStr }
+  | GroupSlotGap { instance: NonEmptyStr, after: NonEmptyStr }
+  | GroupSlotsNotRecorded { instance: NonEmptyStr }
+  | GroupSlotCountUnread { instance: NonEmptyStr }
+
+type PlacedMember { card: InstalledCard, index: Int, position: Int }
+
+type ContiguityFold { previous: PlacedMember?, verdict: GroupContiguity }
+
+type IndexFind { index: Int, found: Int? }
+
+fn installation_index(inst: CardInstallation, id: NonEmptyStr) -> Int? {
+  let r = fold(inst.cards, init: IndexFind { index: 0, found: Absent }, f: (acc, c) =>
+    IndexFind { index: acc.index + 1, found: match acc.found { Present { value: v } => Present { value: v } Absent => if c.instance.id == id { Present { value: acc.index } } else { Absent } } })
+  r.found
+}
+
+fn next_member_contiguity(prev: PlacedMember, here: PlacedMember) -> GroupContiguity {
+  if here.index != prev.index + 1 { return GroupNotConsecutive { instance: here.card.instance.id } }
+  match row_field_value(field: prev.card.instance.card.row.slot_count) {
+    Absent => GroupSlotCountUnread { instance: prev.card.instance.id }
+    Present { value: n } => if here.position == prev.position + (n as Int) { GroupContiguous } else { GroupSlotGap { instance: here.card.instance.id, after: prev.card.instance.id } }
+  }
+}
+
+fn group_contiguity(inst: CardInstallation, g: CardGroup) -> GroupContiguity {
+  let ms = group_members(g: g)
+  if length(list: ms) == 1 { return GroupContiguous }
+  let r = fold(ms, init: ContiguityFold { previous: Absent, verdict: GroupContiguous }, f: (acc, m) => match acc.verdict {
+    GroupContiguous => match installed_position(c: m) {
+      Absent => ContiguityFold { previous: Absent, verdict: GroupSlotsNotRecorded { instance: m.instance.id } }
+      Present { value: pos } => match installation_index(inst: inst, id: m.instance.id) {
+        Absent => ContiguityFold { previous: Absent, verdict: GroupNotConsecutive { instance: m.instance.id } }
+        Present { value: i } => {
+          let here = PlacedMember { card: m, index: i, position: pos }
+          match acc.previous {
+            Absent => ContiguityFold { previous: Present { value: here }, verdict: GroupContiguous }
+            Present { value: prev } => ContiguityFold { previous: Present { value: here }, verdict: next_member_contiguity(prev: prev, here: here) }
+          }
+        }
+      }
+    }
+    _ => acc
+  })
+  r.verdict
+}
+
+// Why a group is not side by side, for every realization that needs it to be; absent when it is.
+fn group_contiguity_text(c: GroupContiguity) -> String? {
+  match c {
+    GroupContiguous => Absent
+    GroupNotConsecutive { instance: i } => Present { value: join([i as String, " is not next to the member before it in the installation"], "") }
+    GroupSlotGap { instance: i, after: a } => Present { value: join([i as String, " does not start in the slot where ", a as String, " ends: an empty slot lies between them"], "") }
+    GroupSlotsNotRecorded { instance: i } => Present { value: join(["the slot of ", i as String, " is not recorded"], "") }
+    GroupSlotCountUnread { instance: i } => Present { value: join([i as String, " has no stated slot count, so where it ends is unknown"], "") }
+  }
+}
+
+// ═══ THE INSTALLATIONS THIS LAYER KNOWS ═══
+
+fn altra_slot(designator: NonEmptyStr) -> InstalledSlot { InBoardSlot { board: asrock_altrad8ud_expansion_slots, designator: designator } }
+
+// The A2 chassis (operator, 2026-11-02): four A2s on the ALTRAD8UD, one in each of PCIE4 to PCIE7, nothing
+// beside them. Each instance is named by its slot until the cards carry serials here.
+data a2_altra_installation: CardInstallation = CardInstallation {
+  name: "A2 row on the ALTRAD8UD",
+  cards: [
+    InstalledCard { instance: CardInstance { id: "a2@PCIE4", card: a2_duct_card }, slot: altra_slot(designator: "PCIE4") },
+    InstalledCard { instance: CardInstance { id: "a2@PCIE5", card: a2_duct_card }, slot: altra_slot(designator: "PCIE5") },
+    InstalledCard { instance: CardInstance { id: "a2@PCIE6", card: a2_duct_card }, slot: altra_slot(designator: "PCIE6") },
+    InstalledCard { instance: CardInstance { id: "a2@PCIE7", card: a2_duct_card }, slot: altra_slot(designator: "PCIE7") },
+  ],
+}
+
+// The A16 is the only card in its chassis (operator, 2026-11-02, nothing beside it). Its slot is not recorded
+// here; a group of one needs no separation, so that reading is owed only when a second card joins it.
+data a16_installation: CardInstallation = CardInstallation {
+  name: "A16, alone in its chassis",
+  cards: [
+    InstalledCard { instance: CardInstance { id: "a16", card: a16_duct_card }, slot: SlotNotRecorded { read_obligation: "the board and slot the A16 is installed in, when a second card is installed beside it" } },
+  ],
+}

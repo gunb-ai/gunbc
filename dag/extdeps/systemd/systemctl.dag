@@ -141,6 +141,19 @@ fn systemctl_reload_unit_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", "reload", unit as String]
 }
 
+// `reload-or-restart UNIT`: systemctl(1) reloads a unit that supports reloading and is active, and otherwise
+// restarts it, which for a unit that is not active is a start. That is the verb a converger wants for a
+// RemainAfterExit oneshot that other units Require=: on an active unit it runs ExecReload, which re-runs the
+// work without the restart that Requires= propagates to every dependent, and on an inactive one it starts
+// the unit without touching dependents that are already running. Measured on systemd 255 (srv1,
+// 2026-11-02, throwaway units under /run/systemd/system): `restart` of the required oneshot restarted a
+// running dependent under both Requires= and Requisite=; `reload` and `reload-or-restart` left it running,
+// in the inactive-first-install case and the active case alike; a failing ExecReload returned exit 1 and
+// left the dependent running.
+fn systemctl_reload_or_restart_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "reload-or-restart", unit as String]
+}
+
 // THE USER MANAGER IS A DIFFERENT MANAGER, AND DAEMON-RELOAD IS PER MANAGER. `systemctl daemon-reload`
 // reloads ONLY the system manager. Units under /etc/systemd/user/ are loaded by user@UID.service;
 // --user transients look up Slice= there (gunbc.live_deploy.spec gunbc_user_work_slice_unit_path).
@@ -169,6 +182,7 @@ fn systemctl_user_daemon_reload_argv(uid: Int) -> List<String> {
 data systemctl_enable_verb: NonEmptyStr = "enable" as NonEmptyStr
 
 data systemctl_start_verb: NonEmptyStr = "start" as NonEmptyStr
+data systemctl_stop_verb: NonEmptyStr = "stop" as NonEmptyStr
 
 // IS-ACTIVE AND IS-ENABLED ARE READS, NOT TRANSITIONS, and they are hoisted to rows for the same reason
 // the transitions are: a second module now asks the same question, and a verb authored twice in two

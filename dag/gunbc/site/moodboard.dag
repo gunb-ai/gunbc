@@ -1,4 +1,5 @@
 module gunbc.site.moodboard
+import extdeps.languages.css.selectors { ClassSelector, RawSelector }
 
 import std.markup { MarkupDocument, Fragment, Element, FragmentText, Attribute, attr }
 import gunbc.site.markup { txt, el, el_class }
@@ -29,6 +30,7 @@ import gunbc.design.interaction {
   Approach, Enter, Receipt, Reveal, Brighten,
   StarElement, HashElement, SwatchElement, element_id_eq,
   coverage_gaps, verb_key, response_key,
+  element_id_key,
 }
 import gunbc.site.constellation { constellation_figure, layer_stars, LayerStar }
 import gunbc.site.theme_transition { reframe_css, reframe_watcher_js, unthemed_color_decls }
@@ -436,7 +438,7 @@ fn moodboard_page() -> Fragment {
 // The document type is declared through the model now: Fragment.Document carries it through the
 // guarded serializer instead of being concatenated onto the serialized string here. That was a real
 // gap, not cosmetics — the concatenation sat OUTSIDE try_serialize_html_source, so the doctype line
-// bypassed every guard, and its spelling was one more hand-typed copy of "<!DOCTYPE" (§6b: a leaf
+// bypassed every guard, and its spelling was one more hand-typed copy of "<!DOCTYPE" (gunbc.design_argument::earliest_unjustified_boundary: a leaf
 // beside the modeled route).
 fn moodboard_document() -> MarkupDocument {
   MarkupDocument { doctype: html_doctype_name, root: moodboard_page() }

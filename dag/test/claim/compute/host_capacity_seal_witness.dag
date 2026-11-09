@@ -4,6 +4,8 @@ import std.types { Bool, Int, String }
 import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdict, census_verdict, census_verdict_all, total_blocking_census, census_exit, CensusVerdict }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
 import std.process { ProcessExit }
+import gunbc.compute.host_capacity { compute_root, compute_capacity_root }
+import test.claim.fabric.fabric_storage_fixture { fabric_fixture_instance }
 
 // THE HOST CAPACITY SUBJECT IS MINTED FROM ITS DECLARATION AND CANNOT BE SPELLED OR HANDED OVER A PATH.
 // gunbc.compute.host_capacity ComputeCapacitySubject is sole_constructor, built in one place
@@ -25,10 +27,10 @@ fn blocking_delta(hostile: String, safe: String, holds: fn(Int) -> Bool) -> Cens
 }
 
 data capacity_baseline_source: String = "module probe_capacity_baseline\nimport std.types { NonEmptyStr }\nimport product.capacity.event_chain { PartitionId }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.compute.host_capacity { ComputeCapacitySubject, ComputeCapacityLedger, ComputeBuildPool, host_capacity_subject_in }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
-data capacity_forged_literal_source: String = "module probe_capacity_literal\nimport std.types { NonEmptyStr }\nimport product.capacity.event_chain { PartitionId }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.compute.host_capacity { ComputeCapacitySubject, ComputeCapacityLedger, ComputeBuildPool, host_capacity_subject_in }\nfn f(r: NonEmptyStr, p: PartitionId) -> ComputeCapacitySubject {\n  ComputeCapacitySubject { root: r, partition: p }\n}\n"
+data capacity_forged_literal_source: String = "module probe_capacity_literal\nimport std.types { NonEmptyStr }\nimport product.capacity.event_chain { PartitionId }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.compute.host_capacity { ComputeCapacitySubject, ComputeCapacityLedger, ComputeBuildPool, host_capacity_subject_in }\nfn f(i: HostDashboardInstance, p: PartitionId) -> ComputeCapacitySubject {\n  ComputeCapacitySubject { instance: i, partition: p }\n}\n"
 data capacity_forged_cast_source: String = "module probe_capacity_cast\nimport std.types { NonEmptyStr }\nimport product.capacity.event_chain { PartitionId }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.compute.host_capacity { ComputeCapacitySubject, ComputeCapacityLedger, ComputeBuildPool, host_capacity_subject_in }\nfn f(r: NonEmptyStr) -> ComputeCapacitySubject {\n  r as ComputeCapacitySubject\n}\n"
-data capacity_path_minter_source: String = "module probe_capacity_path_minter\nimport std.types { NonEmptyStr }\nimport product.capacity.event_chain { PartitionId }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.compute.host_capacity { ComputeCapacitySubject, ComputeCapacityLedger, ComputeBuildPool, host_capacity_subject_in }\nfn f(i: HostDashboardInstance) -> ComputeCapacityLedger {\n  host_capacity_subject_in(requesting: i, host_instance: i, pool: ComputeBuildPool, root: \"/tmp/forged-capacity\")\n}\n"
-data capacity_root_out_source: String = "module probe_capacity_root_out\nimport std.types { NonEmptyStr }\nimport product.capacity.event_chain { PartitionId }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.compute.host_capacity { ComputeCapacitySubject, ComputeCapacityLedger, ComputeBuildPool, host_capacity_subject_in }\nfn f(i: HostDashboardInstance) -> NonEmptyStr {\n  host_capacity_subject_in(requesting: i, host_instance: i, pool: ComputeBuildPool).subject.root\n}\n"
+data capacity_path_minter_source: String = "module probe_capacity_path_minter\nimport std.types { NonEmptyStr }\nimport gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root }\nimport product.capacity.event_chain { PartitionId }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.compute.host_capacity { ComputeCapacitySubject, ComputeCapacityLedger, ComputeBuildPool, host_capacity_subject_in }\nfn f(i: HostDashboardInstance) -> NonEmptyStr {\n  \"the subject mint takes no path; the deleted path mint is unreachable\"\n}\n"
+data capacity_root_out_source: String = "module probe_capacity_root_out\nimport std.types { NonEmptyStr }\nimport product.capacity.event_chain { PartitionId }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.compute.host_capacity { ComputeCapacitySubject, ComputeCapacityLedger, ComputeBuildPool, host_capacity_subject_in }\nfn f(i: HostDashboardInstance) -> NonEmptyStr {\n  host_capacity_subject_in(requesting: i, host_instance: i, pool: ComputeBuildPool).instance.instance_id as NonEmptyStr\n}\n"
 data capacity_lawful_source: String = "module probe_capacity_lawful\nimport std.types { NonEmptyStr }\nimport product.capacity.event_chain { PartitionId }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.compute.host_capacity { ComputeCapacitySubject, ComputeCapacityLedger, ComputeBuildPool, host_capacity_subject_in }\nfn f(i: HostDashboardInstance) -> ComputeCapacityLedger {\n  host_capacity_subject_in(requesting: i, host_instance: i, pool: ComputeBuildPool)\n}\n"
 
 test fn a_forged_capacity_subject_literal_is_refused_at_compile() -> ProcessExit {
@@ -39,12 +41,20 @@ test fn a_forged_capacity_subject_cast_is_refused_at_compile() -> ProcessExit {
   census_exit(census_verdict(census: seal_violations(source: capacity_forged_cast_source, subject: "ComputeCapacitySubject"), holds: fn(n) { n == 1 }))
 }
 
+// THE PATH ROUTE IS GONE, attributed by name: the probe that used to mint a capacity store over a path now
+// asks for the deleted fabric path mint, and the compiler refuses with exactly one MissingExport keyed on
+// fabric_storage_file_root. The subject mint itself takes no path (host_capacity_subject_in's signature no
+// longer has a root parameter), so there is nothing left to refuse.
 test fn no_capacity_subject_mint_takes_a_path() -> ProcessExit {
-  census_exit(blocking_delta(hostile: capacity_path_minter_source, safe: capacity_baseline_source, holds: fn(n) { n >= 1 }))
+  census_exit(census_verdict(census: blocking_subject_census(source: capacity_path_minter_source, wanted_class: "MissingExport", wanted_subject: "fabric_storage_file_root"), holds: fn(n) { n == 1 }))
 }
 
-test fn a_root_is_readable_through_a_capacity_subject_today() -> ProcessExit {
-  census_exit(blocking_delta(hostile: capacity_root_out_source, safe: capacity_baseline_source, holds: fn(n) { n <= 0 }))
+// WHAT THE SEAL DOES NOT CLOSE, restated for the new record: ComputeCapacitySubject no longer carries a
+// root at all (it was the deleted path mint's input), so a root is not reachable through a subject. What IS
+// reachable is the business key -- the resolved instance -- and a holder could rebuild a path from it: the
+// same declared residual (field reads are not module-private), now on the instance rather than on a root.
+test fn no_root_is_reachable_through_a_capacity_subject_and_the_instance_is() -> ProcessExit {
+  census_exit(blocking_delta(hostile: capacity_root_out_source, safe: capacity_baseline_source, holds: fn(n) { n == 1 }))
 }
 
 test fn the_lawful_capacity_subject_mint_is_admitted() -> ProcessExit {
@@ -52,4 +62,13 @@ test fn the_lawful_capacity_subject_mint_is_admitted() -> ProcessExit {
     blocking_delta(hostile: capacity_lawful_source, safe: capacity_baseline_source, holds: fn(n) { n <= 0 }),
     census_verdict(census: seal_violations(source: capacity_lawful_source, subject: "ComputeCapacitySubject"), holds: fn(n) { n == 0 }),
   ])
+}
+
+// THE DECLARATION CONTROL: the provisioned compute directory (compute_root_directory, which the census and
+// deployment rows ask for) and the ledger's store chain read ONE member row, compute_root_member. The
+// ledger root is exactly the provisioned directory plus this module's own member, so renaming that one row
+// moves the mint and the provisioning together; either one spelling its own "compute" would make this false.
+test fn the_ledger_root_is_the_provisioned_compute_directory_plus_its_own_member() -> Bool {
+  let instance = fabric_fixture_instance(root: "/tmp/gunbc_capacity_decl")
+  (compute_capacity_root(host_instance: instance) as String) == join([compute_root(instance: instance) as String, "/capacity"], "")
 }

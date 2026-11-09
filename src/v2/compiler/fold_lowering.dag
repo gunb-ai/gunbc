@@ -104,7 +104,7 @@ import v2.std.algebra_structure_signature { free_monoid_structure_node }
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-data fold_lowering_note: String = "The un-forked forward lowering for fold — the first slice of the general body producer that replaces both the removed cost-shape fork and the hand-rolled MVP shapes. A surface fold has NO dedicated grammar production; it parses as an ordinary call (a ^dag_surface_primary_expr whose head ident, after the StampLexeme grammar fix, carries its NAME as an atom identity), so its lowering is a SEMANTIC desugaring keyed on the CALLEE identity (DESIGN §4: fold/recursion is sugar over Loop), never a lexeme scan. The input is the fold-call surface subtree — the primary_expr captured child, a sequence(head_ident, call_suffix) — read the homogeneous way cost_coverage locates fn bodies and the qualified-name parser reads sequence heads: fold_call_head_symbol reads the sequence-left head projection (the callee ^fold); fold_call_lowering reads the collection, init and step from their declared slots (named, else at the position std.algebra collection_fold_shape declares), and fold_recurrence_encoding builds the full fold encoding Bind { acc := init, Loop { step, domain, carrier, bound, realized: head } } (gunbc.plans.for_while_loop_sugar §2.3), bounded by the fold-iteration measure ^dag_surface_fold_iteration_measure (registered Strict in v2.std.cardinality.measure_descent_fact_registry, so loop_multiplicity derives its termination). Fail-closed twice: a call whose head is not ^fold refuses with ^fold_lowering_not_a_fold_call, and a fold call carrying no fn-literal iteration body refuses with ^fold_lowering_shape_invalid — never fabricates a loop. Verified end-to-end on real source (v2.test.claim.complexity.fold_lowering): fold(xs, init: 0, f: fn(acc, x) { acc }) lowers to an encoding whose Loop terminates; v2.test.claim.fold_encoding pins each operand at its authored occurrence. This unit is the same desugaring the whole-tree body producer will run on every located fold call once corpus resolution/walking is affordable; the caller supplies the located call subtree."
+data fold_lowering_note: String = "The un-forked forward lowering for fold — the first slice of the general body producer that replaces both the removed cost-shape fork and the hand-rolled MVP shapes. A surface fold has NO dedicated grammar production; it parses as an ordinary call (a ^dag_surface_primary_expr whose head ident, after the StampLexeme grammar fix, carries its NAME as an atom identity), so its lowering is a SEMANTIC desugaring keyed on the CALLEE identity (gunbc.design_argument::closed_grounded_substrate: fold/recursion is sugar over Loop), never a lexeme scan. The input is the fold-call surface subtree — the primary_expr captured child, a sequence(head_ident, call_suffix) — read the homogeneous way cost_coverage locates fn bodies and the qualified-name parser reads sequence heads: fold_call_head_symbol reads the sequence-left head projection (the callee ^fold); fold_call_lowering reads the collection, init and step from their declared slots (named, else at the position std.algebra collection_fold_shape declares), and fold_recurrence_encoding builds the full fold encoding Bind { acc := init, Loop { step, domain, carrier, bound, realized: head } } (gunbc.plans.for_while_loop_sugar §2.3), bounded by the fold-iteration measure ^dag_surface_fold_iteration_measure (registered Strict in v2.std.cardinality.measure_descent_fact_registry, so loop_multiplicity derives its termination). Fail-closed twice: a call whose head is not ^fold refuses with ^fold_lowering_not_a_fold_call, and a fold call carrying no fn-literal iteration body refuses with ^fold_lowering_shape_invalid — never fabricates a loop. Verified end-to-end on real source (v2.test.claim.complexity.fold_lowering): fold(xs, init: 0, f: fn(acc, x) { acc }) lowers to an encoding whose Loop terminates; v2.test.claim.fold_encoding pins each operand at its authored occurrence. This unit is the same desugaring the whole-tree body producer will run on every located fold call once corpus resolution/walking is affordable; the caller supplies the located call subtree."
 
 fn fold_iteration_measure_atom() -> Node {
   node_synthetic(
@@ -137,7 +137,7 @@ fn fold_call_head_symbol(fold_call: Node) -> Optional<Symbol> {
 // has not written the collection operation, and the desugar has no standing to say otherwise. There
 // are two kinds of target:
 //   * FoldRealizesRosterOperation: an OPERATION of the collection profile, derived by inhabitance
-//     from its std.algebra template (DESIGN section 4: no per-type ops). No corpus fn declares it,
+//     from its std.algebra template (gunbc.design_argument::closed_grounded_substrate: no per-type ops). No corpus fn declares it,
 //     so the head must be UNBOUND in its lookup chain and binds to the row's declaring function.
 //     The row's own `name` is the one spelling, and every slot POSITION is read off the row.
 //   * FoldRealizesDeclaration: an ordinary corpus declaration (std.algebra fold_list), which
@@ -234,8 +234,8 @@ fn collection_step_slot_name(form: CollectionRosterForm) -> Symbol {
 // filter conses the KEPT member, so like map it is order-preserving only right to left; any is all's dual
 // and, like all, the same in either order.
 // Each step is O(1) per member: it conses one cell onto the carrier or joins one Bool into it, and never
-// copies it (no snoc, no append), which is the template's ShapeIterateBody at linear cost (DESIGN
-// section 6).
+// copies it (no snoc, no append), which is the template's ShapeIterateBody at linear cost (
+// gunbc.design_argument::how_to_work).
 //
 // THE STEP SHAPE PER OPERATION WAS A DECLARED FRONTIER -- one arm per row, authored in the builder and a
 // second, unlinked arm in the direction reader -- and its trigger was "a realization body readable off
@@ -244,7 +244,7 @@ fn collection_step_slot_name(form: CollectionRosterForm) -> Symbol {
 // step body FROM the shape arm) and the direction (callback_step_shape_iteration_direction, the one
 // total match over CallbackStepShape) READ that row. The contradiction class -- a cons-shaped step
 // declared to iterate left to right -- has no constructor: the direction is read from the shape, never
-// carried beside it -- construction over validation, DESIGN section 5 (gunbc.recurring_failure_mode
+// carried beside it -- construction over validation, gunbc.design_argument::fail_closed (gunbc.recurring_failure_mode
 // fold_realized_loop_carries_no_iteration_direction is the failure home and records the rung).
 //
 // filter and any were the std.algebra declarations of those names; they are RETIRED onto these rows
@@ -285,7 +285,7 @@ type CallbackInitShape
 // realization the sum declares but this function has no row for does not COMPILE (v2.compiler.infer
 // infer_match_non_exhaustive refuses the non-exhaustive arm set), so a rowless realization is not a
 // runtime refusal to remember -- it is unwritable, and no coverage claim over a population is needed to
-// keep the two sides in step (DESIGN section 5, construction over validation: exhaustiveness is
+// keep the two sides in step (gunbc.design_argument::fail_closed, construction over validation: exhaustiveness is
 // checked by the compiler, so a missing row is unwritable rather than policed). v2.compiler.body_lowering_fold body_lower_callback_step_body CONSTRUCTS the step body
 // from step_shape -- each shape arm builds its body, so there is no free choice left between what a step
 // is and what order it claims to visit in -- and callback_step_shape_iteration_direction is the one
@@ -432,6 +432,12 @@ fn collection_roster_template_type(t: AlgebraTypeTemplate) -> Optional<Node> {
   match t {
     ReceiverSelf => optional_present(value: collection_roster_carrier_type())
     ReceiverElement => optional_present(value: collection_roster_element_type())
+    // A dual-form position inhabits the carrier OR the element, and this roster states one type per
+    // position -- so it cannot name this one, and the rule above is "answers Absent, never a guess".
+    // No roster row takes a dual-form argument today (`append` is not among `collection_roster_rows`),
+    // so this arm declines a row that does not exist rather than claiming a signature for it; a row
+    // that ever needs it must first give the roster a position that holds two types.
+    ReceiverElementOrSelf => optional_absent()
     ReceiverKey => optional_absent()
     ReceiverValue => optional_absent()
     NamedTemplate { name: n } =>
@@ -500,6 +506,7 @@ fn collection_roster_template_variables(t: AlgebraTypeTemplate, seen: List<Strin
       collection_roster_template_variables(t: r, seen: fold(ps, init: seen, f: fn(acc, p) { collection_roster_template_variables(t: p, seen: acc) }))
     ReceiverSelf => seen
     ReceiverElement => seen
+    ReceiverElementOrSelf => seen
     ReceiverKey => seen
     ReceiverValue => seen
     NamedTemplate { name: _ } => seen
@@ -542,7 +549,7 @@ fn collection_roster_signature_arrow(row: CollectionRosterRow) -> Optional<Node>
 // The signature a resolved reference to a primitive-call row denotes, keyed on the row's declaring path. THREE
 // answers, never two (review 76235): a path that is no roster row is the indexed declaration's business; a row whose
 // signature reads is typed by it; a row whose template the projection cannot read REFUSES -- it must never fall
-// through to the indexed declaration, which is the row's template VALUE, not the operation (DESIGN section 5: a
+// through to the indexed declaration, which is the row's template VALUE, not the operation (gunbc.design_argument::fail_closed: a
 // failure arm refuses, it does not widen).
 type RosterSignatureLookup
   = NotARosterPrimitiveCallRow
@@ -553,7 +560,7 @@ fn collection_roster_primitive_call_signature_at(path: String) -> RosterSignatur
   collection_roster_primitive_call_signature_in(rows: collection_roster_rows, path: path)
 }
 
-// The lookup over a SUPPLIED roster, so the unreadable arm's RED is authorable at this interface (DESIGN section 4b,
+// The lookup over a SUPPLIED roster, so the unreadable arm's RED is authorable at this interface (gunbc.design_argument::guarantee_ladder,
 // review 76235): the production lookup above passes the one real roster.
 fn collection_roster_primitive_call_signature_in(rows: List<CollectionRosterRow>, path: String) -> RosterSignatureLookup {
   match fold_list(xs: rows, empty: optional_absent(), cons: fn(acc, r) {
@@ -649,7 +656,7 @@ fn fold_realization_slots(r: FoldRealization) -> FoldSlots {
 // MATCH, not a read of the step argument, so `fold(xs, init: 0, f: (acc, x) => fold(x, init:
 // acc, f: fn(a, b) { a }))` classified on the INNER fn literal and built a seam Loop whose body
 // and carrier belong to the inner lambda -- a fabricated, plausible lowering handed to the
-// complexity lens, which then answers about the wrong carrier (DESIGN section 5). The same
+// complexity lens, which then answers about the wrong carrier (gunbc.design_argument::fail_closed). The same
 // search reached inside a `fold_node(algebra: NodeFold { ... })` record, whose step is not a
 // lambda at all. So the step form is now read from the STEP ARGUMENT of THIS call, located by
 // the binding name the callee declares, and from that argument the reading descends only the
@@ -1247,7 +1254,7 @@ type FoldCallOperands {
 // it is unauthorable, deterministic, derived from structure rather than occurrence or traversal order, and
 // distinct wherever two folds' scopes can overlap. The step is still carried WHOLE, with both of its
 // binders: a fold step is an ordinary callable, and dropping its first formal to let it read the slot
-// instead would make fold lambdas a second kind of function value (DESIGN section 3).
+// instead would make fold lambdas a second kind of function value (gunbc.design_argument::single_authority).
 //
 // THE CARRIER REACHES THE STEP BY ROLE. The slot's current value is the step callable's actual 0 and the
 // domain member is actual 1; that relation is positional and semantic. No consumer may recover one from
@@ -1325,7 +1332,7 @@ fn callback_step_shape_iteration_direction(s: CallbackStepShape) -> FoldIteratio
 
 // The realization's direction is read through its step row. The reading is TOTAL because the row is
 // total: callback_step_row has no missing arm to write (infer_match_non_exhaustive refuses one), so there
-// is no absent row to default (DESIGN section 5: the total match makes the default unwritable).
+// is no absent row to default (gunbc.design_argument::fail_closed: the total match makes the default unwritable).
 fn callback_realization_iteration_direction(r: CallbackRealization) -> FoldIterationDirection {
   callback_step_shape_iteration_direction(s: callback_step_row(r: r).step_shape)
 }

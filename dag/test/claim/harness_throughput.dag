@@ -1,6 +1,7 @@
 module test.claim.harness_throughput
 
-import std.types { Bool, String, Int, list_length }
+import std.types { Bool, String, Int }
+import std.algebra { length }
 import gunbc.harness.harness_throughput {
   HarnessThroughput, ThroughputObserved, ThroughputUnobserved,
   harness_throughput_from_events, throughput_centi_tokens_per_second,
@@ -12,7 +13,7 @@ import gunbc.harness.harness_throughput {
 
 // A CONTROLLED FIXTURE, NOT A TREE MEASUREMENT. The rows below are authored here with their answer
 // computed by hand, so the assertion compares a fold against an independent oracle rather than
-// against whatever the current tree happens to produce -- the distinction DESIGN section 5 draws
+// against whatever the current tree happens to produce -- the distinction gunbc.design_argument::fail_closed draws
 // between a check and a change detector.
 //
 // THE ARITHMETIC, STATED SO A FAILURE IS READABLE: three clocked rounds at t=1000, 3000, 5000 ms
@@ -102,7 +103,7 @@ fn three_rounds_one_write() -> String {
 }
 
 test fn n_rounds_paint_n_minus_one_segments() -> Bool {
-  list_length(items: round_segments(ledger: harness_round_ledger_from_events(body: three_rounds_one_write()))) == 2
+  length(xs: round_segments(ledger: harness_round_ledger_from_events(body: three_rounds_one_write()))) == 2
 }
 
 fn playback_expected(p: RoundPlayback) -> Bool {
@@ -119,7 +120,7 @@ test fn playback_compresses_the_run_into_a_fixed_window_with_a_floor() -> Bool {
     RoundSegment { step: 4, duration_ms: 40, output_tokens: 1, kind: WriteRound },
   ]
   let plays = round_playback(segs: segs, playback_ms: 4040)
-  list_length(items: plays) == 3 && fold(plays, init: true, f: (acc, p) => acc && playback_expected(p: p))
+  length(xs: plays) == 3 && fold(plays, init: true, f: (acc, p) => acc && playback_expected(p: p))
 }
 
 test fn segment_width_is_the_interval_that_ended_at_its_round() -> Bool {
@@ -238,7 +239,7 @@ test fn a_duplicated_output_tokens_member_says_duplicated() -> Bool {
 test fn an_older_row_without_the_optional_counts_still_reads() -> Bool {
   match harness_round_ledger_from_events(body: three_clocked_rounds()) {
     RoundsUnobserved { reason: _ } => false
-    RoundsObserved { rounds } => list_length(items: rounds) == 3
+    RoundsObserved { rounds } => length(xs: rounds) == 3
   }
 }
 

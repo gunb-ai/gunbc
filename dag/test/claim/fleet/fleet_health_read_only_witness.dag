@@ -83,10 +83,8 @@ data forbidden_spellings: List<String> = [
   "run_shell_command_capture",
   "SshShell",
   "FleetSsh",
-  "bmc_rotate_credential",
   "bmc_store_credential_verified",
   "bmc_establish_custody_container",
-  "bmc_takeover_credential",
   "mint_bmc_credential",
   "create_secret_container",
   "RecursiveForce",
@@ -151,7 +149,7 @@ test fn the_walk_reaches_the_collector_and_the_credential_modules() -> Bool {
     && any(names, n => n == "ensure_access_token")
 }
 
-// THE BLIND SPOT, EXECUTED RATHER THAN PROMISED (DESIGN section 4b: ask whether the check's RED is
+// THE BLIND SPOT, EXECUTED RATHER THAN PROMISED (gunbc.design_argument::guarantee_ladder: ask whether the check's RED is
 // authorable before writing the check).
 //
 // A mutation written as a SERVICE call -- how every real Redfish and Secret Manager write in this

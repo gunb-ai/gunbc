@@ -60,7 +60,7 @@ test fn documentation_wet_population_is_uncommitted_project_documentation() -> B
 
 // EVERY FIXTURE HERE IS AUTHORED, INPUT AND EXPECTATION BOTH. The production population is never
 // the oracle: folding the live committed roster and asserting what it returns would be
-// `measure() == measure()`, the change detector DESIGN section 5 rejects. The defect this carrier
+// `measure() == measure()`, the change detector gunbc.design_argument::fail_closed rejects. The defect this carrier
 // was built to remove -- a complete verdict reported through a one-item diagnostic -- is only
 // observable when MORE THAN ONE finding exists at once, and the live tree cannot be relied on to
 // carry a specific multiplicity. So the multiplicities are planted.

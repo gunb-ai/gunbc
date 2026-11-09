@@ -67,7 +67,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // healthy endpoints sit at 16-20 and srv1's two bad ones at 4 and 9, so any floor in that gap
 // separates them; 12 is chosen inside that gap and threaded as a parameter rather than frozen into
 // the judgement, so a number measured on the current fleet cannot quietly become the definition of
-// healthy (DESIGN section 5 on literals that are not grounded in an authority).
+// healthy (gunbc.design_argument::fail_closed on literals that are not grounded in an authority).
 //
 // It is declared here rather than imported because product.fan_tach_health deliberately does not
 // own it: the floor is policy about one fleet's telemetry, so the module takes it as a parameter of
@@ -212,7 +212,10 @@ test fn a_roster_naming_one_header_twice_refuses() -> Bool {
 test fn a_collector_answering_twice_for_one_endpoint_refuses() -> Bool {
   match inspect_fan_tach(subject: subject_of(
     expectation: srv3_fan_tach_expectation,
-    windows: flat_map([srv3_windows, [srv3_windows.first()]], g => g),
+    windows: match srv3_windows.first() {
+      Absent => srv3_windows
+      Present { value: window } => flat_map([srv3_windows, [window]], g => g)
+    },
   )) {
     GoalObservationRefused { subject: s, goal: g, request: rq, cause: c } => false
     GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
@@ -244,7 +247,7 @@ test fn a_well_formed_question_does_not_refuse() -> Bool {
 // change deletes. It was not dropped for being wet: it was referenced by nothing -- absent from
 // `local_repo_wet_schedule`, named by no lane, no roster and no CI step -- so its claims had never
 // executed on any merge path. A module that looks like coverage while being inert is worse than an
-// absent one, because it is cited as the safety net it is not (DESIGN section 5,
+// absent one, because it is cited as the safety net it is not (gunbc.design_argument::fail_closed,
 // specification-without-execution; section 3c, a witness no roster reads).
 //
 // AN EARLIER CUT OF THIS FILE PROJECTED THE JUDGEMENT SUM ONTO STRING TAGS and counted them by

@@ -11,7 +11,7 @@ import extdeps.huggingface.hub { HubRepoId, HubModelRepo, hub_repo_https_uri, Hu
 // ── NVIDIA's NVFP4 QUANTIZATION OF GLM-5.3-FLASH, ITS OWN UPSTREAM ─────────────────────────────────
 //
 // nvidia/GLM-5.3-Flash-NVFP4 is NVIDIA's artifact -- its own Hub repository, revision history and
-// quantization producer (ModelOpt) -- so it is its own module (DESIGN section 3, external upstream
+// quantization producer (ModelOpt) -- so it is its own module (gunbc.design_argument::external_upstreams, external upstream
 // decomposition), exactly as RadixArk's redistribution of GLM-5.3 is. The base model is Z.ai's, cited
 // as a further citation; the architecture class and parsers are the base's and are not restated here.
 //

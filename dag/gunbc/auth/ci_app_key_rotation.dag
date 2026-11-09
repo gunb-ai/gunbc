@@ -61,6 +61,7 @@ import gunbc.auth.secret_rotation {
   rotation_loss_remedy_text,
 }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
+import std.algebra { fold_list }
 
 // THE FIRST REAL SUBJECT OF gunbc.auth.secret_rotation: the gunbai-ci GitHub App private key
 // (gunbc.auth.github_apps gunbai_ci_app_pem_secret). It is the root of trust for every org-admin
@@ -397,7 +398,7 @@ fn env_or_empty(name: NonEmptyStr) -> String {
   }
 }
 
-// The record read is a typed outcome, never a silently defaulted value (DESIGN §5). The facts a
+// The record read is a typed outcome, never a silently defaulted value (gunbc.design_argument::fail_closed). The facts a
 // supplied record path can produce are kept apart: the record is absent (the directory listing
 // establishes that nothing is there -- the mint step wrote no record), the record's content could
 // not be obtained (a refused read establishes nothing about existence by itself), and the record

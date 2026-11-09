@@ -54,7 +54,7 @@ import v2.std.diagnostic { Accepted, Rejected, None }
 // provenance passes so none of the refusals is a blanket red, and the decision carries a
 // NonEmptyStr rationale in one of the two decided arms.
 //
-// WHY THE EXPECT-RED PROBE WAS FLIPPED RATHER THAN DELETED. DESIGN 4b(4) rules that a climb
+// WHY THE EXPECT-RED PROBE WAS FLIPPED RATHER THAN DELETED. gunbc.design_argument::guarantee_ladder (dissolution on climb) rules that a climb
 // dissolves the redundant lower-rung PRODUCTION machinery and keeps the discriminating evidence
 // enrolled, because deleting the evidence recreates specification-without-execution one rung up.
 // seed_honesty_undecided_keeps_closing_contract_red read the live decision constant, so once the

@@ -216,7 +216,7 @@ pub fn render_governor_hold_line_mirror(hold: &HoldReason, emoji: bool) -> Strin
 pub const DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES: u64 = 26843545600;
 
 /// SEED MIRROR of `gunbc.runner.runner_slot_allocation` `gunbc_floor_minimum_viable_armed_budget`
-/// — SCAFFOLD (§7 seed-retained HAND-RUST; doomed/success witness receipts in that module):
+/// — SCAFFOLD (gunbc.design_argument::self_hosting seed-retained HAND-RUST; doomed/success witness receipts in that module):
 /// arm-time floor refusal when the governor budget is below the measured minimum viable
 /// footprint, else a crowded slot with a genuinely low cgroup limit starts a doomed ~30min walk
 /// (runs 29834380839, 29845210061). Its witnesses were taken when an uncapped host could still
@@ -274,12 +274,12 @@ impl WholeCorpusCompileRootIdentity {
     }
 }
 
-/// One projected `MeasuredForRoot` row: the identity key and the peak the admission compares to.
+/// One projected `BudgetDeclaredForRoot` row: the identity key and the declared budget the admission compares to.
 /// The census and receipt travel in the projection for the reader and are not re-typed here.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MeasuredRootDemandRow {
     pub root: WholeCorpusCompileRootIdentity,
-    pub peak_bytes: u64,
+    pub budget_bytes: u64,
 }
 
 /// Where the rows were read from, as an outcome — the seed realization of
@@ -350,8 +350,8 @@ pub fn parse_whole_corpus_compile_demand_projection(
                 None => return unreadable(format!("row {index} has a non-string pool")),
             }
         }
-        let Some(peak_bytes) = row.get("peak_bytes").and_then(|v| v.as_u64()) else {
-            return unreadable(format!("row {index} lacks an unsigned peak_bytes"));
+        let Some(budget_bytes) = row.get("budget_bytes").and_then(|v| v.as_u64()) else {
+            return unreadable(format!("row {index} lacks an unsigned budget_bytes"));
         };
         rows.push(MeasuredRootDemandRow {
             root: WholeCorpusCompileRootIdentity {
@@ -359,7 +359,7 @@ pub fn parse_whole_corpus_compile_demand_projection(
                 primary_root,
                 dependency_pools,
             },
-            peak_bytes,
+            budget_bytes,
         });
     }
     WholeCorpusCompileDemandsRead::Read {
@@ -402,14 +402,14 @@ pub enum WholeCorpusCompileUnmeasuredCause {
 ///
 /// What it does NOT claim: an admitted budget is not certified sufficient. A row is one tree's
 /// peak, so admission means "not provably doomed at the tree that was measured" (mitigatable,
-/// §4b), never "will fit".
+/// gunbc.design_argument::guarantee_ladder), never "will fit".
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WholeCorpusCompileAdmission {
     Admitted {
         budget_bytes: u64,
         required_bytes: u64,
     },
-    RefusedBudgetBelowMeasuredDemand {
+    RefusedBudgetBelowDeclaredDemand {
         budget_bytes: u64,
         required_bytes: u64,
         source: String,
@@ -417,7 +417,7 @@ pub enum WholeCorpusCompileAdmission {
     RefusedBudgetUnreadable {
         source: String,
     },
-    RefusedUnmeasuredRoot {
+    RefusedNoBudgetForRoot {
         root: WholeCorpusCompileRootIdentity,
         cause: WholeCorpusCompileUnmeasuredCause,
     },
@@ -436,7 +436,7 @@ pub fn whole_corpus_compile_admission(
     root: &WholeCorpusCompileRootIdentity,
     read: &WholeCorpusCompileDemandsRead,
 ) -> WholeCorpusCompileAdmission {
-    let unmeasured = |cause| WholeCorpusCompileAdmission::RefusedUnmeasuredRoot {
+    let unmeasured = |cause| WholeCorpusCompileAdmission::RefusedNoBudgetForRoot {
         root: root.clone(),
         cause,
     };
@@ -466,7 +466,7 @@ pub fn whole_corpus_compile_admission(
             location: location.clone(),
         });
     };
-    let required_bytes = row.peak_bytes;
+    let required_bytes = row.budget_bytes;
     // A DECLARED budget refuses exactly as an unreadable one does, as in the model
     // (`whole_corpus_compile_admission` maps HostBudgetDeclaredUnverified to the unreadable
     // refusal). This arm once took `(Option<u64>, label)`, which admitted on a declared
@@ -485,7 +485,7 @@ pub fn whole_corpus_compile_admission(
     };
     let source = source.as_str();
     if budget_bytes < required_bytes {
-        WholeCorpusCompileAdmission::RefusedBudgetBelowMeasuredDemand {
+        WholeCorpusCompileAdmission::RefusedBudgetBelowDeclaredDemand {
             budget_bytes,
             required_bytes,
             source: source.to_string(),
@@ -498,324 +498,16 @@ pub fn whole_corpus_compile_admission(
     }
 }
 
-/// A ROOT DEMAND MEASUREMENT THAT HAS BEEN ADMITTED — the only way to construct the measurement
-/// compile subject. Its field is private, so `CompileSubject::RootDemandMeasurement` cannot be built
-/// without passing `root_demand_measurement_admission`: the measurement is its own arm, not the
-/// whole-root compile with its refusal skipped (seed realization of `gunbc.root_demand_measurement`,
-/// direction ruling on gunbc#11265 review 65495).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AdmittedRootDemandMeasurement {
-    root: WholeCorpusCompileRootIdentity,
-    limit_bytes: u64,
-    limit_source: String,
-}
-
-impl AdmittedRootDemandMeasurement {
-    pub fn root(&self) -> &WholeCorpusCompileRootIdentity {
-        &self.root
-    }
-    pub fn limit_bytes(&self) -> u64 {
-        self.limit_bytes
-    }
-    pub fn limit_source(&self) -> &str {
-        &self.limit_source
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RootDemandMeasurementAdmission {
-    Admitted(AdmittedRootDemandMeasurement),
-    RefusedNoEnforceableLimit {
-        root: WholeCorpusCompileRootIdentity,
-        reason: String,
-    },
-}
-
-/// What bounds a measurement run, READ AS memory.max directly — never the budget resolution, which
-/// reports the lower of memory.high and memory.max and so names memory.high whenever both are set.
-/// Seed mirror of `gunbc.root_demand_measurement` `RootDemandMeasurementLimitReading`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RootDemandMeasurementLimitReading {
-    MemoryMaxBindsProcess {
-        cgroup_dir: String,
-        bytes: u64,
-    },
-    /// Both set and high < max: the kernel throttles at memory.high before the kill line is
-    /// reachable, so memory.max does not bound the run even though it is set.
-    MemoryHighThrottlesBelowMax {
-        cgroup_dir: String,
-        high_bytes: u64,
-        max_bytes: u64,
-    },
-    MemoryHighOnly {
-        cgroup_dir: String,
-        high_bytes: u64,
-    },
-    NoCgroupMemoryLimit,
-}
-
-/// The effect: walk the cgroup tree for the tightest numeric memory.max; if none binds, report a
-/// memory.high that is set so the refusal can name it.
-pub fn read_root_demand_measurement_limit() -> RootDemandMeasurementLimitReading {
-    if let Some(dir) = binding_cap_cgroup_dir() {
-        if let Some(bytes) = read_cgroup_u64(&dir, "memory.max") {
-            // The tightest memory.high on the same walk: if it sits below the kill line it
-            // throttles first, and the reading must say so rather than report memory.max alone.
-            let high = binding_high_cgroup_dir()
-                .and_then(|h| read_cgroup_u64(&h, "memory.high").map(|b| (h, b)));
-            return classify_measurement_limit(dir.display().to_string(), bytes, high);
-        }
-    }
-    if let Some(dir) = binding_high_cgroup_dir() {
-        if let Some(high_bytes) = read_cgroup_u64(&dir, "memory.high") {
-            return RootDemandMeasurementLimitReading::MemoryHighOnly {
-                cgroup_dir: dir.display().to_string(),
-                high_bytes,
-            };
-        }
-    }
-    RootDemandMeasurementLimitReading::NoCgroupMemoryLimit
-}
-
-/// The pure half of the reading: memory.max binds only when no finite memory.high sits below it.
-pub fn classify_measurement_limit(
-    max_dir: String,
-    max_bytes: u64,
-    high: Option<(PathBuf, u64)>,
-) -> RootDemandMeasurementLimitReading {
-    match high {
-        Some((high_dir, high_bytes)) if high_bytes < max_bytes => {
-            RootDemandMeasurementLimitReading::MemoryHighThrottlesBelowMax {
-                cgroup_dir: high_dir.display().to_string(),
-                high_bytes,
-                max_bytes,
-            }
-        }
-        _ => RootDemandMeasurementLimitReading::MemoryMaxBindsProcess {
-            cgroup_dir: max_dir,
-            bytes: max_bytes,
-        },
-    }
-}
-
-/// Admitted ONLY under an observed memory.max that bounds this process (direction ruling on
-/// gunbc#11265 review 65682): memory.high throttles and never kills, so under it the Exceeded receipt
-/// could not fire and the parent could wait on a thrashing child indefinitely. The seed mirror of
-/// `gunbc.root_demand_measurement` `root_demand_measurement_admission`, arm for arm; the same fact
-/// `HostBudgetSource::bounds_this_process` carries.
-pub fn root_demand_measurement_admission(
-    limit: &RootDemandMeasurementLimitReading,
-    root: &WholeCorpusCompileRootIdentity,
-) -> RootDemandMeasurementAdmission {
-    match limit {
-        RootDemandMeasurementLimitReading::MemoryMaxBindsProcess { cgroup_dir, bytes } => {
-            RootDemandMeasurementAdmission::Admitted(AdmittedRootDemandMeasurement {
-                root: root.clone(),
-                limit_bytes: *bytes,
-                limit_source: HostBudgetSource::CgroupMemoryMax {
-                    cgroup_dir: cgroup_dir.clone(),
-                }
-                .label(),
-            })
-        }
-        RootDemandMeasurementLimitReading::MemoryHighThrottlesBelowMax {
-            cgroup_dir,
-            high_bytes,
-            max_bytes,
-        } => RootDemandMeasurementAdmission::RefusedNoEnforceableLimit {
-            root: root.clone(),
-            reason: format!(
-                "memory.high={high_bytes} at {cgroup_dir} is set below memory.max={max_bytes}: the \
-                 kernel throttles and reclaims at memory.high before the process can reach the kill \
-                 line, so memory.max does not bound the measurement; raise memory.high to memory.max \
-                 (or unset it) on the measuring cgroup"
-            ),
-        },
-        RootDemandMeasurementLimitReading::MemoryHighOnly { cgroup_dir, high_bytes } => {
-            RootDemandMeasurementAdmission::RefusedNoEnforceableLimit {
-                root: root.clone(),
-                reason: format!(
-                    "memory.high={high_bytes} is set at {cgroup_dir} but memory.max is not: memory.high \
-                     throttles and never kills, so it does not bound the process; the measurement \
-                     needs memory.max"
-                ),
-            }
-        }
-        RootDemandMeasurementLimitReading::NoCgroupMemoryLimit => {
-            RootDemandMeasurementAdmission::RefusedNoEnforceableLimit {
-                root: root.clone(),
-                reason: "no cgroup memory.max binds this process; a declared or physical-memory \
-                         budget bounds nothing, and the measurement needs memory.max"
-                    .to_string(),
-            }
-        }
-    }
-}
-
-pub fn root_demand_measurement_refusal_diagnostic(
-    admission: &RootDemandMeasurementAdmission,
-) -> Option<String> {
-    match admission {
-        RootDemandMeasurementAdmission::Admitted(_) => None,
-        RootDemandMeasurementAdmission::RefusedNoEnforceableLimit { root, reason } => Some(format!(
-            "RootDemandMeasurementRefusedNoEnforceableLimit: measuring {} needs an enforceable cgroup \
-             memory.max binding this process, because a root with no row has no demand figure to be \
-             refused against and only the host can bound the run — {reason}. Remedy: run the \
-             measurement where a cgroup memory.max binds the process.",
-            root.label()
-        )),
-    }
-}
-
-/// How the measured child ended, as the parent observed it through `wait4`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RootDemandMeasurementWait {
-    Exited(i32),
-    Signaled(i32),
-}
-
-/// What the measured child reported resolving, when it lived to report it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RootDemandMeasurementCensus {
-    pub source_count: u64,
-    pub source_bytes: u64,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RootDemandMeasurementRun {
-    pub root: WholeCorpusCompileRootIdentity,
-    pub limit_bytes: u64,
-    pub limit_source: String,
-    pub measured_on_host: String,
-    pub instrument_run: String,
-    pub census: Option<RootDemandMeasurementCensus>,
-}
-
-/// The receipt the PARENT records — the seed mirror of `gunbc.root_demand_measurement`
-/// `RootDemandMeasurementReceipt`. It carries no artifact and no subject verdict by construction.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RootDemandMeasurementReceipt {
-    Completed {
-        run: RootDemandMeasurementRun,
-        exit_status: i32,
-        peak_bytes: u64,
-    },
-    /// Killed at the limit: an honest lower bound (demand > limit), never a peak.
-    Exceeded { run: RootDemandMeasurementRun },
-    Terminated {
-        run: RootDemandMeasurementRun,
-        signal: i32,
-    },
-}
-
-pub const SIGKILL_SIGNAL: i32 = 9;
-
-/// THE PARENT'S EXIT CODE IS THE RECEIPT'S STANDING, NOT THE FACT THAT A RECEIPT WAS WRITTEN.
-/// A child killed at the limit or by any other signal, or one that completed with a nonzero
-/// status, measured no peak; a caller reading `$?` must see that as a deficit (DESIGN section 5:
-/// a wrong answer is a loud error). Only a completed, zero-status child answers 0 (review 66337).
-pub fn root_demand_measurement_exit_code(receipt: &RootDemandMeasurementReceipt) -> i32 {
-    match receipt {
-        RootDemandMeasurementReceipt::Completed { exit_status: 0, .. } => 0,
-        RootDemandMeasurementReceipt::Completed { .. }
-        | RootDemandMeasurementReceipt::Exceeded { .. }
-        | RootDemandMeasurementReceipt::Terminated { .. } => 1,
-    }
-}
-
-/// Map the parent's observation to the receipt. A SIGKILL under an enforceable limit is the kill
-/// at the limit; any other signal measured nothing.
-pub fn root_demand_measurement_receipt(
-    run: RootDemandMeasurementRun,
-    wait: RootDemandMeasurementWait,
-    peak_bytes: u64,
-) -> RootDemandMeasurementReceipt {
-    match wait {
-        RootDemandMeasurementWait::Exited(exit_status) => RootDemandMeasurementReceipt::Completed {
-            run,
-            exit_status,
-            peak_bytes,
-        },
-        RootDemandMeasurementWait::Signaled(SIGKILL_SIGNAL) => {
-            RootDemandMeasurementReceipt::Exceeded { run }
-        }
-        RootDemandMeasurementWait::Signaled(signal) => {
-            RootDemandMeasurementReceipt::Terminated { run, signal }
-        }
-    }
-}
-
-pub const ROOT_DEMAND_MEASUREMENT_RECEIPT_SCHEMA: &str = "gunbc.root_demand_measurement/receipt/1";
-
-pub fn root_demand_measurement_receipt_json(receipt: &RootDemandMeasurementReceipt) -> String {
-    let (arm, run) = match receipt {
-        RootDemandMeasurementReceipt::Completed { run, .. } => ("completed", run),
-        RootDemandMeasurementReceipt::Exceeded { run } => ("exceeded", run),
-        RootDemandMeasurementReceipt::Terminated { run, .. } => ("terminated", run),
-    };
-    let mut v = serde_json::json!({
-        "schema": ROOT_DEMAND_MEASUREMENT_RECEIPT_SCHEMA,
-        "arm": arm,
-        "repository": run.root.repository,
-        "primary_root": run.root.primary_root,
-        "dependency_pools": run.root.dependency_pools,
-        "limit_bytes": run.limit_bytes,
-        "limit_source": run.limit_source,
-        "measured_on_host": run.measured_on_host,
-        "instrument_run": run.instrument_run,
-        "census": run.census.map(|c| serde_json::json!({"source_count": c.source_count, "source_bytes": c.source_bytes})),
-    });
-    match receipt {
-        RootDemandMeasurementReceipt::Completed {
-            exit_status,
-            peak_bytes,
-            ..
-        } => {
-            v["exit_status"] = serde_json::json!(exit_status);
-            v["peak_bytes"] = serde_json::json!(peak_bytes);
-        }
-        RootDemandMeasurementReceipt::Exceeded { .. } => {
-            v["demand_exceeds_bytes"] = serde_json::json!(run.limit_bytes);
-        }
-        RootDemandMeasurementReceipt::Terminated { signal, .. } => {
-            v["signal"] = serde_json::json!(signal);
-        }
-    }
-    format!("{v}\n")
-}
-
-/// The census line the measured child prints and the parent reads; one line, one prefix, so the
-/// parent never parses compiler output for it.
-pub const ROOT_DEMAND_MEASUREMENT_CENSUS_PREFIX: &str = "root-demand-measurement-census:";
-
-pub fn parse_root_demand_measurement_census(stdout: &str) -> Option<RootDemandMeasurementCensus> {
-    stdout.lines().find_map(|line| {
-        let rest = line.strip_prefix(ROOT_DEMAND_MEASUREMENT_CENSUS_PREFIX)?;
-        let mut parts = rest.split_whitespace();
-        Some(RootDemandMeasurementCensus {
-            source_count: parts.next()?.parse().ok()?,
-            source_bytes: parts.next()?.parse().ok()?,
-        })
-    })
-}
-
-/// The recipe an unmeasured root names — the seed rendering of
-/// `gunbc.whole_corpus_compile_admission` `whole_corpus_compile_measurement_recipe`.
+/// The remedy an unmeasured root names — the seed rendering of
+/// `gunbc.whole_corpus_compile_admission` `whole_corpus_compile_measurement_recipe`. The figures
+/// are frozen DECLARED budgets, not measurements: nothing re-measures a root, so the remedy is an
+/// authored row, never a measurement run.
 fn whole_corpus_compile_measurement_recipe(root: &WholeCorpusCompileRootIdentity) -> String {
-    let pools: String = root
-        .dependency_pools
-        .iter()
-        .map(|p| format!(" --source-root {p}"))
-        .collect();
     format!(
-        "measure once, on a host where a cgroup memory.max binds the process: gunbc \
-         measure-root-demand --repository {} --source-root {}{pools} --receipt <receipt.json>; the \
-         run's only product is that receipt. Author the MeasuredForRoot row for {} from it with \
-         gunbc.root_demand_measurement measured_for_root_from_receipt in that repository's own \
-         measured-root demands, regenerate the repository's demand projection, and hand its \
-         location to the compile",
-        root.repository,
-        root.primary_root,
+        "this root has no declared budget row; author a BudgetDeclaredForRoot row for {} with a declared \
+         peak in gunbc.whole_corpus_compile_admission whole_corpus_compile_measured_root_demands \
+         (a declared budget, not a measured peak and not proof that a whole-root compile fits), \
+         regenerate the repository's demand projection, and hand its location to the compile",
         root.label()
     )
 }
@@ -832,14 +524,14 @@ pub fn whole_corpus_compile_refusal_diagnostic(
 ) -> Option<String> {
     match admission {
         WholeCorpusCompileAdmission::Admitted { .. } => None,
-        WholeCorpusCompileAdmission::RefusedBudgetBelowMeasuredDemand {
+        WholeCorpusCompileAdmission::RefusedBudgetBelowDeclaredDemand {
             budget_bytes,
             required_bytes,
             source,
         } => Some(format!(
-            "WholeCorpusCompileBudgetBelowMeasuredDemand: host memory budget={budget_bytes} \
+            "WholeCorpusCompileBudgetBelowDeclaredDemand: host memory budget={budget_bytes} \
              bytes (source={source}) is below this root's measured whole-root compile demand of \
-             {required_bytes} bytes (its MeasuredForRoot row, gunbc.whole_corpus_compile_admission). \
+             {required_bytes} bytes (its BudgetDeclaredForRoot row, gunbc.whole_corpus_compile_admission). \
              Refusing to start a run that is provably below measured demand — the previous \
              behaviour was to start it and be SIGKILLed, which reports as a silent exit-137 zero \
              rather than a diagnostic. Remedy: scope the compile with --entry <file.dag>, or run \
@@ -852,7 +544,7 @@ pub fn whole_corpus_compile_refusal_diagnostic(
              host is the OOM-kill this arm exists to prevent. Model this platform's memory source \
              (dag/gunbc/host/host_budget_source.dag)."
         )),
-        WholeCorpusCompileAdmission::RefusedUnmeasuredRoot { root, cause } => {
+        WholeCorpusCompileAdmission::RefusedNoBudgetForRoot { root, cause } => {
             let why = match cause {
                 WholeCorpusCompileUnmeasuredCause::NoDemandsProjectionDeclared => {
                     "no demand projection was declared (--measured-root-demands)".to_string()
@@ -865,7 +557,7 @@ pub fn whole_corpus_compile_refusal_diagnostic(
                 }
             };
             Some(format!(
-                "WholeCorpusCompileUnmeasuredRoot: {} has no measured whole-root compile demand — \
+                "WholeCorpusCompileNoBudgetForRoot: {} has no declared whole-root compile budget — \
                  {why}. Refusing rather than admitting on another root's number or extrapolating \
                  one. Remedy: {}.",
                 root.label(),
@@ -1032,6 +724,57 @@ pub fn memory_stall_refusal_pressure_text(v: &MemoryStallVerdict) -> String {
             observation.cache_evictions_in_window,
             observation.cache_readmissions_in_window,
         ),
+    }
+}
+
+/// ONE READING OF A SLOT'S CUMULATIVE COUNTERS, taken by an observer outside the subject and
+/// supplied, as read, to `gunbc.host.memory_stall_refusal` `SupervisedSlotReading`. This is host
+/// observation only: the window between two readings, the PSI parse, the verdict and every line it
+/// prints are the authority's (`supervised_subject_window_between` and the fns after it), evaluated
+/// by the seed through the interpreter -- nothing here restates them. The three counters are
+/// required together: a reading missing any is `SlotStallReading::Unreadable`, never a zero.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SlotStallCounters {
+    /// `memory.stat` `pgmajfault`.
+    pub major_faults: u64,
+    /// `cpu.stat` `user_usec` (present whether or not the cpu controller is enabled).
+    pub user_usec: u64,
+    /// `memory.events` `high` + `max`.
+    pub envelope_events: u64,
+    /// `memory.pressure`, uncut; empty when the file is absent, which the authority's `parse_psi`
+    /// answers as unparseable rather than as zero pressure.
+    pub pressure_body: String,
+    /// `memory.current`, for the heartbeat only.
+    pub memory_current: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SlotStallReading {
+    Read(SlotStallCounters),
+    Unreadable { cause: String },
+}
+
+/// Read the slot counters from one cgroup directory.
+pub fn read_slot_stall_counters(dir: &Path) -> SlotStallReading {
+    let read = |file: &str| std::fs::read_to_string(dir.join(file));
+    let field = |file: &str, key: &str| -> Result<u64, String> {
+        let body = read(file).map_err(|e| format!("read {}/{file}: {e}", dir.display()))?;
+        memory_events_field(&body, key)
+            .ok_or_else(|| format!("{}/{file} carries no `{key}` field", dir.display()))
+    };
+    let counters = (|| -> Result<SlotStallCounters, String> {
+        Ok(SlotStallCounters {
+            major_faults: field("memory.stat", "pgmajfault")?,
+            user_usec: field("cpu.stat", "user_usec")?,
+            envelope_events: field("memory.events", "high")?
+                .saturating_add(field("memory.events", "max")?),
+            pressure_body: read("memory.pressure").unwrap_or_default(),
+            memory_current: read_cgroup_u64(dir, "memory.current"),
+        })
+    })();
+    match counters {
+        Ok(c) => SlotStallReading::Read(c),
+        Err(cause) => SlotStallReading::Unreadable { cause },
     }
 }
 
@@ -1359,7 +1102,7 @@ pub fn read_host_budget_resolution() -> HostBudgetResolution {
 
 /// `(budget, source label)` view of `read_host_budget_resolution` for the log lines and
 /// diagnostics that render the source as text. A consumer deciding anything about the
-/// SOURCE must use the resolution, never this label (§3: the label is a rendering, not a
+/// SOURCE must use the resolution, never this label (gunbc.design_argument::single_authority: the label is a rendering, not a
 /// second representation of the discriminant).
 /// INHERITED DEFECT, DECLARED HERE RATHER THAN LEFT FOR THE NEXT READER TO TRIP OVER
 /// (found by review 2026-09-12; NOT introduced by the slot-sizing change that surfaced it).
@@ -1542,6 +1285,18 @@ pub fn read_cgroup_u64(dir: &Path, file: &str) -> Option<u64> {
     std::fs::read_to_string(dir.join(file))
         .ok()
         .and_then(|s| s.trim().parse().ok())
+}
+
+/// One cgroup control file as text for an observation line: the trimmed content, `absent` when the
+/// file does not exist, `unreadable(<kind>)` for any other failure. Unlike `read_cgroup_raw`, which
+/// folds both failures into `None`, this keeps them apart so a printed line never defaults a
+/// missing file to a number.
+pub fn cgroup_file_or_absent(dir: &Path, file: &str) -> String {
+    match std::fs::read_to_string(dir.join(file)) {
+        Ok(body) => body.trim().to_string(),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => "absent".to_string(),
+        Err(error) => format!("unreadable({:?})", error.kind()),
+    }
 }
 
 pub fn read_cgroup_raw(dir: &Path, file: &str) -> Option<String> {
@@ -1789,7 +1544,7 @@ pub fn cgroup_bind_note(decision: &CgroupBindDecision) -> String {
 ///
 /// READ FOR ONE QUESTION ONLY and it is not a budget question: whether a requested bound could
 /// bind at all. `resolve_host_budget` deleted its meminfo arms deliberately — a host-shared
-/// reading standing in for a process-scoped bound is DESIGN §5's absorbing substitution, and it
+/// reading standing in for a process-scoped bound is gunbc.design_argument::fail_closed's absorbing substitution, and it
 /// is what got `main_wet` SIGKILLed with no diagnostic. Nothing here reverses that: this number
 /// never becomes anybody's budget, and when it is absent the bind REFUSES rather than assuming
 /// the request fits.
@@ -2335,7 +2090,7 @@ mod tests {
                 rows.iter()
                     .find(|r| r.root == public_root())
                     .expect("the committed projection carries the public root's row")
-                    .peak_bytes
+                    .budget_bytes
             }
             other => panic!("committed projection must read: {other:?}"),
         }
@@ -2370,10 +2125,10 @@ mod tests {
         );
         assert!(matches!(
             doomed,
-            WholeCorpusCompileAdmission::RefusedBudgetBelowMeasuredDemand { .. }
+            WholeCorpusCompileAdmission::RefusedBudgetBelowDeclaredDemand { .. }
         ));
         let msg = whole_corpus_compile_refusal_diagnostic(&doomed).expect("refusal must diagnose");
-        assert!(msg.contains("WholeCorpusCompileBudgetBelowMeasuredDemand"));
+        assert!(msg.contains("WholeCorpusCompileBudgetBelowDeclaredDemand"));
         assert!(msg.contains("cgroup memory.high (/sys/fs/cgroup/runner.slice)"));
         assert!(msg.contains("--entry"));
         // THE OLD EFFECTIVE SLOT STILL REFUSES, AND THIS IS THE CONTROL THAT MUST SURVIVE THE
@@ -2383,7 +2138,7 @@ mod tests {
         let old_effective_slot = admit(Some(16_106_127_360), &public_root());
         assert!(matches!(
             old_effective_slot,
-            WholeCorpusCompileAdmission::RefusedBudgetBelowMeasuredDemand { .. }
+            WholeCorpusCompileAdmission::RefusedBudgetBelowDeclaredDemand { .. }
         ));
         assert!(whole_corpus_compile_refusal_diagnostic(&old_effective_slot).is_some());
 
@@ -2402,52 +2157,6 @@ mod tests {
         assert!(whole_corpus_compile_refusal_diagnostic(&declared_slot).is_none());
     }
 
-    /// The discriminating red for review 66337: a killed or failing child must not read as
-    /// success to anyone consulting the parent's exit status.
-    #[test]
-    fn measure_root_demand_parent_exits_nonzero_unless_the_child_completed_cleanly() {
-        let run = || RootDemandMeasurementRun {
-            root: public_root(),
-            limit_bytes: 1,
-            limit_source: "test".to_string(),
-            measured_on_host: "test".to_string(),
-            instrument_run: "test".to_string(),
-            census: parse_root_demand_measurement_census(""),
-        };
-        assert_eq!(
-            root_demand_measurement_exit_code(&root_demand_measurement_receipt(
-                run(),
-                RootDemandMeasurementWait::Exited(0),
-                1
-            )),
-            0
-        );
-        assert_eq!(
-            root_demand_measurement_exit_code(&root_demand_measurement_receipt(
-                run(),
-                RootDemandMeasurementWait::Exited(1),
-                1
-            )),
-            1
-        );
-        assert_eq!(
-            root_demand_measurement_exit_code(&root_demand_measurement_receipt(
-                run(),
-                RootDemandMeasurementWait::Signaled(SIGKILL_SIGNAL),
-                1
-            )),
-            1
-        );
-        assert_eq!(
-            root_demand_measurement_exit_code(&root_demand_measurement_receipt(
-                run(),
-                RootDemandMeasurementWait::Signaled(15),
-                1
-            )),
-            1
-        );
-    }
-
     /// Positive control and its one-byte-below red, at the public root's own row.
     #[test]
     fn whole_corpus_compile_admission_is_tight_at_the_measured_demand() {
@@ -2457,7 +2166,7 @@ mod tests {
         );
         assert!(matches!(
             admit(Some(peak - 1), &public_root()),
-            WholeCorpusCompileAdmission::RefusedBudgetBelowMeasuredDemand { required_bytes, .. }
+            WholeCorpusCompileAdmission::RefusedBudgetBelowDeclaredDemand { required_bytes, .. }
                 if required_bytes == peak
         ));
     }
@@ -2465,7 +2174,7 @@ mod tests {
     /// A root with no row refuses at a budget four times the public peak, naming the recipe —
     /// never admitted on the public root's number. The same budget admits the public root.
     #[test]
-    fn whole_corpus_compile_unmeasured_root_refuses_naming_the_recipe() {
+    fn whole_corpus_compile_no_budget_root_refuses_naming_the_recipe() {
         let ample = Some(public_peak() * 4);
         assert!(matches!(
             admit(ample, &public_root()),
@@ -2490,7 +2199,7 @@ mod tests {
             assert!(
                 matches!(
                     &refused,
-                    WholeCorpusCompileAdmission::RefusedUnmeasuredRoot {
+                    WholeCorpusCompileAdmission::RefusedNoBudgetForRoot {
                         cause: WholeCorpusCompileUnmeasuredCause::NoRowForRoot { .. },
                         ..
                     }
@@ -2499,12 +2208,9 @@ mod tests {
             );
             let msg =
                 whole_corpus_compile_refusal_diagnostic(&refused).expect("refusal must diagnose");
-            assert!(msg.contains("WholeCorpusCompileUnmeasuredRoot"));
-            assert!(msg.contains(&format!("--source-root {}", root.primary_root)));
-            assert!(
-                msg.contains("gunbc measure-root-demand --repository"),
-                "{msg}"
-            );
+            assert!(msg.contains("WholeCorpusCompileNoBudgetForRoot"));
+            assert!(msg.contains("BudgetDeclaredForRoot"), "{msg}");
+            assert!(!msg.contains("measure-root-demand"), "{msg}");
         }
     }
 
@@ -2546,7 +2252,7 @@ mod tests {
                 &root,
                 &read_whole_corpus_compile_demands(None)
             ),
-            WholeCorpusCompileAdmission::RefusedUnmeasuredRoot {
+            WholeCorpusCompileAdmission::RefusedNoBudgetForRoot {
                 cause: WholeCorpusCompileUnmeasuredCause::NoDemandsProjectionDeclared,
                 ..
             }
@@ -2554,7 +2260,7 @@ mod tests {
         let missing = read_whole_corpus_compile_demands(Some("/nonexistent/demands.json"));
         assert!(matches!(
             whole_corpus_compile_admission(&cgroup_budget(ample), &root, &missing),
-            WholeCorpusCompileAdmission::RefusedUnmeasuredRoot {
+            WholeCorpusCompileAdmission::RefusedNoBudgetForRoot {
                 cause: WholeCorpusCompileUnmeasuredCause::DemandsProjectionNotRead { .. },
                 ..
             }
@@ -2583,7 +2289,7 @@ mod tests {
                 },
                 &public_read()
             ),
-            WholeCorpusCompileAdmission::RefusedUnmeasuredRoot { .. }
+            WholeCorpusCompileAdmission::RefusedNoBudgetForRoot { .. }
         ));
     }
 
@@ -2600,166 +2306,6 @@ mod tests {
             whole_corpus_compile_admission(&declared, &public_root(), &public_read()),
             WholeCorpusCompileAdmission::RefusedBudgetUnreadable { .. }
         ));
-    }
-
-    fn unmeasured_private_root() -> WholeCorpusCompileRootIdentity {
-        WholeCorpusCompileRootIdentity {
-            repository: "gunbc-private".to_string(),
-            primary_root: "strategy".to_string(),
-            dependency_pools: vec!["dag".to_string()],
-        }
-    }
-
-    /// Positive control and its reds: an observed memory.max admits and its value is the receipt's
-    /// limit; memory.high alone refuses naming that it never kills; no cgroup limit refuses.
-    #[test]
-    fn root_demand_measurement_needs_memory_max() {
-        let root = unmeasured_private_root();
-        match root_demand_measurement_admission(
-            &RootDemandMeasurementLimitReading::MemoryMaxBindsProcess {
-                cgroup_dir: "/sys/fs/cgroup/session.slice".to_string(),
-                bytes: 6_442_450_944,
-            },
-            &root,
-        ) {
-            RootDemandMeasurementAdmission::Admitted(a) => {
-                assert_eq!(a.limit_bytes(), 6_442_450_944);
-                assert!(a.limit_source().contains("memory.max"));
-                assert_eq!(a.root(), &root);
-            }
-            other => panic!("an observed memory.max must admit: {other:?}"),
-        }
-        let high_only = root_demand_measurement_admission(
-            &RootDemandMeasurementLimitReading::MemoryHighOnly {
-                cgroup_dir: "/sys/fs/cgroup/runner.slice".to_string(),
-                high_bytes: 8_589_934_592,
-            },
-            &root,
-        );
-        let msg = root_demand_measurement_refusal_diagnostic(&high_only)
-            .expect("memory.high alone must refuse");
-        assert!(
-            msg.contains("throttles and never kills") && msg.contains("needs memory.max"),
-            "{msg}"
-        );
-        // Both set with high below max: the throttle line wins and the reading refuses; the
-        // classifier that produces that reading is exercised on both sides of the line.
-        let below = classify_measurement_limit(
-            "/sys/fs/cgroup/runner.slice".to_string(),
-            17_179_869_184,
-            Some((PathBuf::from("/sys/fs/cgroup/runner.slice"), 8_589_934_592)),
-        );
-        assert!(matches!(
-            below,
-            RootDemandMeasurementLimitReading::MemoryHighThrottlesBelowMax { .. }
-        ));
-        let msg = root_demand_measurement_refusal_diagnostic(&root_demand_measurement_admission(
-            &below, &root,
-        ))
-        .expect("memory.high below memory.max must refuse");
-        assert!(
-            msg.contains("set below memory.max") && msg.contains("before the process can reach"),
-            "{msg}"
-        );
-        assert!(matches!(
-            classify_measurement_limit(
-                "/sys/fs/cgroup/runner.slice".to_string(),
-                17_179_869_184,
-                Some((PathBuf::from("/sys/fs/cgroup/runner.slice"), 17_179_869_184)),
-            ),
-            RootDemandMeasurementLimitReading::MemoryMaxBindsProcess { .. }
-        ));
-        assert!(matches!(
-            classify_measurement_limit("/sys/fs/cgroup/runner.slice".to_string(), 1, None),
-            RootDemandMeasurementLimitReading::MemoryMaxBindsProcess { .. }
-        ));
-        let none = root_demand_measurement_admission(
-            &RootDemandMeasurementLimitReading::NoCgroupMemoryLimit,
-            &root,
-        );
-        assert!(root_demand_measurement_refusal_diagnostic(&none)
-            .expect("no limit must refuse")
-            .contains("RootDemandMeasurementRefusedNoEnforceableLimit"));
-    }
-
-    fn fixture_run(census: Option<RootDemandMeasurementCensus>) -> RootDemandMeasurementRun {
-        RootDemandMeasurementRun {
-            root: unmeasured_private_root(),
-            limit_bytes: 6_442_450_944,
-            limit_source: "cgroup memory.max (/sys/fs/cgroup/session.slice)".to_string(),
-            measured_on_host: "fixture-host".to_string(),
-            instrument_run: "fixture".to_string(),
-            census,
-        }
-    }
-
-    /// A kill at the limit is the typed EXCEEDED receipt carrying the limit as a lower bound; any
-    /// other signal is TERMINATED; an exit is COMPLETED with its status and peak. The receipt's JSON
-    /// carries no artifact and no verdict field.
-    #[test]
-    fn root_demand_measurement_receipt_types_the_kill() {
-        let killed = root_demand_measurement_receipt(
-            fixture_run(None),
-            RootDemandMeasurementWait::Signaled(SIGKILL_SIGNAL),
-            6_400_000_000,
-        );
-        assert!(matches!(
-            killed,
-            RootDemandMeasurementReceipt::Exceeded { .. }
-        ));
-        let json = root_demand_measurement_receipt_json(&killed);
-        assert!(
-            json.contains("\"arm\":\"exceeded\"")
-                && json.contains("\"demand_exceeds_bytes\":6442450944")
-        );
-        assert!(
-            !json.contains("peak_bytes"),
-            "an exceeded run has no measured peak: {json}"
-        );
-        assert!(matches!(
-            root_demand_measurement_receipt(
-                fixture_run(None),
-                RootDemandMeasurementWait::Signaled(15),
-                1
-            ),
-            RootDemandMeasurementReceipt::Terminated { signal: 15, .. }
-        ));
-        let done = root_demand_measurement_receipt(
-            fixture_run(Some(RootDemandMeasurementCensus {
-                source_count: 548,
-                source_bytes: 9_000_000,
-            })),
-            RootDemandMeasurementWait::Exited(0),
-            4_000_000_000,
-        );
-        let json = root_demand_measurement_receipt_json(&done);
-        assert!(
-            json.contains("\"arm\":\"completed\"")
-                && json.contains("\"peak_bytes\":4000000000")
-                && json.contains("\"source_count\":548")
-        );
-        for forbidden in ["artifact", "files", "verdict", "emitted"] {
-            assert!(
-                !json.contains(forbidden),
-                "receipt must carry no {forbidden}: {json}"
-            );
-        }
-    }
-
-    #[test]
-    fn root_demand_measurement_census_line_round_trips() {
-        let out = format!(
-            "noise\n{} 548 9000000\nmore\n",
-            ROOT_DEMAND_MEASUREMENT_CENSUS_PREFIX
-        );
-        assert_eq!(
-            parse_root_demand_measurement_census(&out),
-            Some(RootDemandMeasurementCensus {
-                source_count: 548,
-                source_bytes: 9_000_000
-            })
-        );
-        assert_eq!(parse_root_demand_measurement_census("no census here"), None);
     }
 
     /// THE DISCRIMINATING RED for the 2026-08-30 default-VM treadmill: a window shaped like

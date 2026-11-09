@@ -17,11 +17,12 @@ module gunbc.fleet.fleet_workflow_steps
 // constructors, because its build is one cargo invocation with no artifact handoff, and reusing
 // a cross-job artifact-transfer vocabulary to express that would be borrowing an architecture it
 // does not have.
+import gunbc.ci.workflow_artifact_upload { workflow_artifact_upload_with, AbsenceRefused }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
-import std.measure { minute_count, second_count }
+import std.measure { minute_count, second_count, minute }
 import gunbc.fleet.srv1_root_mutation_approval_run { srv1_root_mutation_approval_step_timeout_minutes }
 import gunbc.live_deploy.service_ready { approval_broker_readback_poll_bound }
-import std.types { Duration }
+import std.types { Duration, List, String, Int, NonEmptyStr }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue }
 import extdeps.github.actions {
   Step, RunStep, UsesStep, 
@@ -31,7 +32,7 @@ import gunbc.action_use_admission { cache_action, checkout_action, download_arti
 import gunbc.ci.ci_workflow_expressions {
   ci_setup_rust_home, ci_cache_path, ci_cache_key, ci_cache_restore_keys,
 }
-import gunbc.ci.ci_compile_jobs { compile_jobs_count_or_serial }
+import gunbc.ci.ci_compile_jobs { compile_jobs_count_or_serial, ci_compile_jobs }
 import gunbc.ci.ci_runner_target { ci_runner_target_ram_speed_budget, selected_ci_runner_target }
 import gunbc.ci.ci_floor_measurement { gunbc_ci_runner_slot_ram_speed_ceiling }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
@@ -73,7 +74,6 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_var, bash_build_word_lit, bash_build_word_concat_from_nodes, bash_build_assign,
   bash_build_if_from_stmts, bash_build_test_bracket, bash_build_command_with_words,
 }
-import std.types { List, String, Int, NonEmptyStr }
 
 // THE SEED-BUILD ENVIRONMENT, consumed where this file's build steps compose their `run:` text.
 import gunbc.repo.repo_self_build { repo_self_seed_build_step_run }
@@ -91,6 +91,7 @@ import gunbc.workflow_capability_closure {
   provides_only,
   consumes_only,
 }
+import std.algebra { list_map }
 
 fn ci_checkout_step() -> Step {
   UsesStep {
@@ -536,13 +537,13 @@ fn ci_release_bins_upload_step() -> Step {
     id: none,
     uses: upload_artifact_action,
     with: Present {
-      value: [
-        kv(key: "name", value: yaml_string(s: ci_release_bins_artifact_name)),
-        kv(key: "path", value: yaml_string(s: release_bins_staging_paths())),
-        kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-        kv(key: "retention-days", value: yaml_int(n: 3)),
-        kv(key: "compression-level", value: yaml_int(n: 0))
-      ]
+      value: workflow_artifact_upload_with(
+        name: ci_release_bins_artifact_name,
+        path: release_bins_staging_paths(),
+        retention_days: Present { value: 3 },
+        compression_level: Present { value: 0 },
+        absence: AbsenceRefused,
+      )
     },
     env: none,
     if_condition: none,
@@ -767,6 +768,13 @@ data gunbc_ci_aux_step_timeout_minutes: Duration = 5
 // class as 35230228049, one step over.
 data gunbc_ci_fleet_converge_plan_step_timeout_minutes: Duration = 15
 
+// THE PLAN'S SERVE-ENTRY VERDICT STEP PAYS THE FOLD THE PLAN OWNS: the cold serve-entry compile
+// measured, in the transaction it replaces, typecheck_files ms=452671 plus
+// resolve_entry_graph_inclusive ms=614964 -- about 18 minutes of work (job 117824998335) -- and
+// the pair build, document write, and process start sit around it. Half an hour is that work
+// with room, and it stays far under the job backstop.
+data gunbc_ci_plan_serve_entry_verdict_step_timeout_minutes: Duration = 30
+
 data gunbc_ci_spark_serving_step_timeout_minutes: Duration = 60
 
 // The Spark vLLM runtime-image-build step is gone with that module (#13779). Its 180-minute
@@ -878,7 +886,7 @@ data gunbc_ci_release_build_step_timeout_minutes: Duration = 45
 // Its own tier rather than a borrowed one. The aux tier (5m) is sized for a small command and this
 // step rsyncs a tree, writes a unit, restarts and waits on readiness; the spark tier (60m) is the
 // right magnitude but wrong name, and spending a `spark_serving` constant on a dashboard deploy
-// would be the second-name-for-one-concept violation DESIGN section 3 forbids. 30m is a ceiling on a
+// would be the second-name-for-one-concept violation gunbc.design_argument::single_authority forbids. 30m is a ceiling on a
 // hung deploy, not a budget: the observe-then-cutover path either converges or refuses well inside
 // it, and exceeding it means the host mutation is stuck rather than slow.
 data gunbc_ci_live_deploy_step_timeout_minutes: Duration = 30
@@ -888,7 +896,7 @@ data gunbc_ci_live_deploy_step_timeout_minutes: Duration = 30
 // observe blue active and the second would restart what had become the active green slot. THAT
 // MECHANISM DOES NOT EXIST: blue/green was deleted at the root on 2026-08-19 by operator directive
 // (annotated on gunbc.live_deploy.apply live_deploy_fold), and apply now converges deployment_spec_srv1 IN
-// PLACE. The conclusion survived the deletion and its stated reason did not, which is the §3
+// PLACE. The conclusion survived the deletion and its stated reason did not, which is the gunbc.design_argument::single_authority
 // stale-citation failure -- and it is the load-bearing kind, because a reader who checks the cited
 // mechanism finds it gone and can correctly conclude the group is obsolete.
 //

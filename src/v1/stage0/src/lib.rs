@@ -279,39 +279,6 @@ pub mod std_compiler_entry;
     suspicious_double_ref_op,
     clippy::all
 )]
-pub mod std_constructors;
-#[allow(
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_parens,
-    dead_code,
-    non_shorthand_field_patterns,
-    suspicious_double_ref_op,
-    clippy::all
-)]
-pub mod std_integer;
-#[allow(
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_parens,
-    dead_code,
-    non_shorthand_field_patterns,
-    suspicious_double_ref_op,
-    clippy::all
-)]
-pub mod std_machine_constraints;
-#[allow(
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_parens,
-    dead_code,
-    non_shorthand_field_patterns,
-    suspicious_double_ref_op,
-    clippy::all
-)]
 pub mod std_occurrence_binding;
 #[allow(
     unused_imports,
@@ -741,28 +708,6 @@ pub mod v1_tests_claim_escape_json_string_differential;
     suspicious_double_ref_op,
     clippy::all
 )]
-pub mod v1_tests_claim_generic_identity_census;
-#[allow(
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_parens,
-    dead_code,
-    non_shorthand_field_patterns,
-    suspicious_double_ref_op,
-    clippy::all
-)]
-pub mod v1_tests_claim_interpolation_hole_census;
-#[allow(
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_parens,
-    dead_code,
-    non_shorthand_field_patterns,
-    suspicious_double_ref_op,
-    clippy::all
-)]
 pub mod v1_tests_claim_item_kind_dissolves_shape_predicates_control_test;
 #[allow(
     unused_imports,
@@ -819,17 +764,6 @@ pub mod v1_tests_claim_production_fed_exposure_discrimination_control_test;
     clippy::all
 )]
 pub mod v1_tests_claim_reference_derived_disposition_census_witness_test;
-#[allow(
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_parens,
-    dead_code,
-    non_shorthand_field_patterns,
-    suspicious_double_ref_op,
-    clippy::all
-)]
-pub mod v1_tests_claim_shared_type_leaf_collision_census;
 #[allow(
     unused_imports,
     unused_variables,
@@ -905,6 +839,7 @@ pub mod coproduct_reflection;
 pub mod data_initializer_identity;
 pub mod evaluation_budget_consequence_generated;
 pub mod gunbc_file_transport_generated;
+pub mod instrument_registry_generated;
 pub mod memory_governor;
 pub mod module_path_index;
 pub mod native_route_seed_boundary_generated;
@@ -935,7 +870,7 @@ impl<T: Clone + PartialEq> PartialEq for NonEmptyVec<T> {
 }
 
 impl<T: Clone> NonEmptyVec<T> {
-    pub fn new(items: Vec<T>) -> Result<Self, &'static str> {
+    pub fn new(items: Vec<T>) -> std::result::Result<Self, &'static str> {
         if items.is_empty() {
             Err("NonEmptyVec requires at least one element")
         } else {
@@ -952,7 +887,7 @@ impl<T: Clone> NonEmptyVec<T> {
 pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
 
 impl<T: Ord> NonEmptyBTreeSet<T> {
-    pub fn new(items: std::collections::BTreeSet<T>) -> Result<Self, &'static str> {
+    pub fn new(items: std::collections::BTreeSet<T>) -> std::result::Result<Self, &'static str> {
         if items.is_empty() {
             Err("NonEmptyBTreeSet requires at least one element")
         } else {

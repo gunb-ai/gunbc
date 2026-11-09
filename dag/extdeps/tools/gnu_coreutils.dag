@@ -163,6 +163,32 @@ fn cp_preserve_if_absent_command(source: String, destination: String) -> ArgvCom
   argv_command(program: cp_program(), arguments: ["-p", "--update=none", source, destination])
 }
 
+// COPY A SYMBOLIC LINK AS A LINK: `cp -P` (cp invocation, "-P, --no-dereference: do not follow
+// symbolic links"; cp(1) "Copying Files and Directories" -- WITHOUT this flag cp follows a source
+// symlink and writes the TARGET'S CONTENTS as a regular file at the destination, which is exactly
+// what install(1) does too, so a payload link -- a venv interpreter shim, a compatibility alias --
+// would be silently replaced by a copy of whatever it pointed at the moment of the copy). -P changes
+// no other behaviour: no -p (the tree install sets mode and ownership with its own owned steps, and
+// a link's own mode and ownership are set with the chown --no-dereference row beside this one), no
+// recursion flags (the caller hands one entry). THE ARGV FORM, like coreutils_install_file_owned_argv:
+// a caller that elevates builds the command itself with sudo_elevate_command.
+fn cp_copy_as_link_argv(source: String, destination: String) -> List<String> {
+  concat([cp_program().invocation as String], cp_copy_as_link_arguments(source: source, destination: destination))
+}
+
+// THE OPERANDS OF cp -P, without the program word: the one spelling both the argv form above and the
+// unelevated command below take.
+fn cp_copy_as_link_arguments(source: String, destination: String) -> List<String> {
+  ["-P", source, destination]
+}
+
+// cp -P AS THE INVOKING PRINCIPAL: the link written as the link, owned by whoever runs it. For a caller
+// that writes into a tree it owns (gunbc.host.host_effect_realize's staged tree install, whose ownership
+// is declared by the archive rather than set per entry), so no chown follows it.
+fn cp_copy_as_link_command(source: String, destination: String) -> ArgvCommand {
+  argv_command(program: cp_program(), arguments: cp_copy_as_link_arguments(source: source, destination: destination))
+}
+
 // install(1) COPYING /dev/null CREATES AN EMPTY FILE WITH ITS FINAL OWNER AND MODE IN ONE STEP.
 // The point is the ORDER it makes possible: a file that will later hold a secret exists with its
 // restrictive mode before a single secret byte is written, so there is no window in which the bytes
@@ -190,7 +216,7 @@ fn rm_force_command(path: String) -> ArgvCommand {
 // never-built host succeeded, so the defect was invisible until a host was used twice.
 //
 // The refusal was the substrate working. What was wrong was the CALLER, whose own annotation
-// claimed it issued `rm -rf` while it issued `rm -f` -- a §4c annotation asserting the very
+// claimed it issued `rm -rf` while it issued `rm -f` -- a gunbc.design_argument::source_annotations annotation asserting the very
 // property that failed, which no Accepted program could contradict.
 fn rm_recursive_force_command(path: String) -> ArgvCommand {
   argv_command(program: rm_program(), arguments: [coreutils_rm_force_recursive_flags as String, path])
@@ -379,6 +405,13 @@ fn coreutils_install_directories_arguments(mode: FileMode, paths: List<String>) 
   )
 }
 
+// install -d -m AS THE INVOKING PRINCIPAL: the directory created with its mode, owned by whoever runs it
+// (coreutils_install_directories_arguments' one spelling). For a principal creating directories in a tree
+// it owns -- the staged tree install, whose ownership the archive declares.
+fn install_directory_mode_command(mode: FileMode, path: String) -> ArgvCommand {
+  argv_command(program: install_program(), arguments: coreutils_install_directories_arguments(mode: mode, paths: [path]))
+}
+
 fn coreutils_install_file_owned_argv(
   mode: NonEmptyStr,
   owner: NonEmptyStr,
@@ -553,7 +586,7 @@ fn timeout_program() -> ProgramIdentity = uncataloged_program(invocation: "timeo
 // supposed to be bounded by -- so a deadline without a follow-up KILL is not a deadline, it is a
 // request. The grace period is a parameter because how long a subject deserves to shut down cleanly
 // is the caller's fact, and the escalation is unconditional because a bounded lifetime that the
-// subject can decline is exactly the escape hatch DESIGN section 5 refuses.
+// subject can decline is exactly the escape hatch gunbc.design_argument::fail_closed refuses.
 //
 // THE WRAPPED COMMAND IS AN ArgvCommand AND ITS PROGRAM IS NOT RE-SPELLED. This takes the built
 // command rather than a program and a word list, so the deadline composes over any command that

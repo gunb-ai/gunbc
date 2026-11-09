@@ -138,7 +138,7 @@ data mt_jade_mixed_dimm_support_table: List<MtJadeMixedDimmSupportCell> = concat
 // THE LOOKUP REFUSES RATHER THAN DEFAULTING. A cell this table does not carry is an UNMODELLED
 // CELL, and the honest answer is to say which coordinate was asked for. Returning MixingSupported,
 // MixingNotSupported or MixingUndetermined for a missing cell would each be a fabricated plausible
-// output (DESIGN section 5) - and MixingUndetermined in particular would be the worst of the three,
+// output (gunbc.design_argument::fail_closed) - and MixingUndetermined in particular would be the worst of the three,
 // because it is a value the table itself prints, so a manufactured one would be indistinguishable
 // from the real TBD that Table 3 states for different-channel 1R/2R mixing.
 type MtJadeMixedDimmSupportQuery {

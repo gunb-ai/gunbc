@@ -4,7 +4,7 @@
 use self::KeyedMapVerdict::*;
 use self::V1FreeMonoidSupplementalRoute::*;
 use crate::extdeps_languages_rust_capabilities::RustCapability::{
-    RustDebug, RustDeserialize, RustPartialEq, RustSerialize,
+    RustClone, RustDebug, RustDeserialize, RustPartialEq, RustSerialize,
 };
 pub use crate::extdeps_languages_rust_capabilities::{
     derive_traits_union, fn_field_derive_traits, kernel_int_arithmetic_traits,
@@ -46,7 +46,8 @@ pub use crate::v1_compiler_infer_emit_info::{
     TypeDeclIndex, TypeDeclResolution,
 };
 pub use crate::v1_compiler_infer_types::{
-    child_type_node, is_coproduct_type, node_is_collection, resolved_type,
+    child_type_node, is_coproduct_type, node_is_element_collection,
+    node_is_finite_power_set_algebra_spelling, resolved_type,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -57,8 +58,8 @@ use crate::v1_std_core::ContainerSpellingVerdict::{
 use crate::v1_std_core::InferredNode::Resolved;
 pub use crate::v1_std_core::{
     authored_container_spelling_verdict, authored_name_at, generic_param_name_at,
-    param_node_type_expr, qualified_last_segment, Connective, ContainerSpellingVerdict,
-    InferredNode, NewlineIndex, Node,
+    item_generic_param_names, param_node_type_expr, qualified_last_segment, Connective,
+    ContainerSpellingVerdict, InferredNode, NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -69,15 +70,6 @@ pub fn trait_derive_emit_item_clone_bound_rule_note() -> String {
     thread_local! {
         static CACHED: String = {
             "Item-level Clone bound rule: for each generic type parameter P on a derive-only struct (no fn fields, no supplemental impl_bodies from v1_emit_struct_from_capability_table), emit P: Clone when P is a bare resolved field type or a direct element of a container/FreeMonoid field (same structural trigger as v1_generic_param_used_as_collection_element on field type exprs). Under THIS trigger enum items keep bare item params — derive emits per-impl bounds, so variant-payload mention does not add declaration bounds. That is a statement about the derive trigger only, and it is not the whole rule for enums: the well-formedness trigger below DOES bound enum params, because naming a Clone-bounded declared type in a variant payload is ill-formed without the bound whatever the derive does. Read the two notes together before concluding an enum keeps bare params. Phantom-only params receive no bound. Callable-field structs keep bare item params under this trigger. ARITHMETIC CARRIERS NO LONGER DO, and this sentence is corrected in place rather than left standing: supplemental impl blocks were gated on impl_bodies being nonempty, which was ONE FLAG ENCODING TWO FACTS -- it stood in for the field-bound question AND kept the item header in agreement with its supplemental impl headers. Header bareness now derives from the well-formedness record, so GroupCompletion emits a BOUNDED header (pub struct GroupCompletion<M: Clone>) and its supplemental impls read the same record through one Bool, because Rust requires an impl's generics to satisfy the type's own bounds. Note the bound renders in the impl GENERIC LIST only and must be absent from the type reference -- one fact, two renderings. Not wired from target_derive_supplemental_generic_bound_contract.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn trait_derive_emit_item_clone_bound_wf_propagation_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "SECOND, INDEPENDENT trigger for an item-level Clone bound, distinct from the derive/lowering trigger above and NOT a widening of it: WELL-FORMEDNESS PROPAGATION. Naming a declared generic type G<A..> at all requires satisfying G's own declared bounds, so if G's i-th parameter already carries `: Clone` and the i-th argument's Clone impl requires P: Clone, then the item declaring that field is ill-formed without P: Clone -- rustc E0277 at the field, before any derive is considered. This applies to STRUCTS AND ENUMS alike, because it is a property of naming the type, not of deriving Clone for it; the rule note above correctly scopes the DERIVE trigger to structs (derive emits per-impl bounds) and that scoping is unchanged here. The two axes are grounded differently and can disagree: im::Vector<A> carries NO declaration bound (checked against im-15.1.0 vector::Vector), so a container field is a derive-trigger fact only, while Boxed<T: Clone> is a well-formedness fact that propagates through Nested<T> { boxed: Boxed<T> } and List<Boxed<T>> alike. The requirement is a LEAST FIXPOINT over the declared-type graph (v1_clone_bounded_type_params), not a one-field-shape-deep read: each round derives every declared generic type's bounded parameters from the current approximation and stops when a round adds nothing, so a chain Boxed -> Nested -> TwoHop propagates all the way and a recursive type (Cyclic<T> { self_ref: Cyclic<T>? }) saturates instead of diverging. The derive trigger SEEDS the fixpoint (v1_clone_bound_seed_for_item, structs only, reusing v1_item_type_param_needs_clone_bound_struct verbatim rather than restating it) and then propagates, because Boxed<T: Clone> earns its bound from the derive trigger and Nested<T> { boxed: Boxed<T> } inherits it from well-formedness. Two sub-predicates, deliberately separate because they answer different questions about the same type expression: v1_type_expr_clone_impl_needs_param asks whether `tau: Clone` requires P: Clone (every derive(Clone) type and every container bounds all of its parameters, so this reduces to `P occurs in tau`), while v1_type_expr_wf_needs_clone_param asks whether NAMING tau requires it (only the argument positions the fixpoint has already bounded count). The undecidable residue is answered by its own total function rather than fused into either Bool: a type application whose head is neither a container nor a declared type in the closure has no readable parameter list, so v1_type_expr_clone_undecided_head names it and the emit site refuses with compile_error!. It is NOT silently treated as `no bound needed` and NOT widened to `bound everything` -- widening would zero the deficit's frequency by construction (DESIGN section 5, absorbing fallback). Dead in corpus as of this landing; kept as the fail-closed arm.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -429,7 +421,7 @@ pub fn v1_map_key_round_add(
 pub fn map_key_alias_hop_gap_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "LANDED. The gap this note originally recorded (see git history for the full pre-landing account) was that map-key requirement propagation walks a required type's FIELD type expressions, and a type ALIAS has no fields -- it is a bare leaf item whose right-hand side hangs off the item's own inference rather than off a child -- so `type Hash = Fnv1a64Structural` in v2.std.node terminated the walk, Fnv1a64Structural was emitted with PartialEq but without Eq or std::hash::Hash, and `Map<Hash, RuntimeValue>` in v2.extdeps.runtimes.v2_effect_io_pure failed to compile at four sites. The DISSOLVE-ON trigger named at the time -- declaration identity reaching the type renderer, the same threading the identity-keyed lookup_checkpoint cut (T7, #8537) was blocked on -- landed as v1.compiler.coercion lookup_checkpoint/decl_identity_file, so the fix reuses that authority rather than inventing the DeclarationRef binding the earlier attempt lacked (DESIGN section 2/3, single authority). v1_item_alias_hop_type_exprs (below v1_item_field_type_exprs) follows a bare-leaf alias item's resolved right-hand side into the walk ONLY when lookup_checkpoint(target: Rust, dag_name, decl_file) returns Absent for the alias's own (dag_name, decl_file) -- i.e. only when the emitter has no native realization and renders the alias structurally. `type Int = AbelianGroup<GroupCompletion<Nat>>` and `type Nat = CommutativeSemiring<Magnitude>` both have Rust checkpoint rows (realize as i64), so lookup_checkpoint returns Present and the alias arm contributes nothing for them -- the previously measured false positive (AbelianGroup/CommutativeSemiring reaching map-key position via Rc<dyn Fn> fields) does not recur, because the gate is keyed on realization rather than on bare-alias shape. Folded into the single shared v1_item_field_type_exprs (see v1_item_field_type_exprs_alias_hop_note) rather than a map-key-only variant, since is_leaf_type_item forces params.count == 0 on every alias item, so no alias ever enters the generic-only clone-bound fixpoints that are this function's other callers.".to_string()
+            "LANDED. The gap this note originally recorded (see git history for the full pre-landing account) was that map-key requirement propagation walks a required type's FIELD type expressions, and a type ALIAS has no fields -- it is a bare leaf item whose right-hand side hangs off the item's own inference rather than off a child -- so `type Hash = Fnv1a64Structural` in v2.std.node terminated the walk, Fnv1a64Structural was emitted with PartialEq but without Eq or std::hash::Hash, and `Map<Hash, RuntimeValue>` in v2.extdeps.runtimes.v2_effect_io_pure failed to compile at four sites. The DISSOLVE-ON trigger named at the time -- declaration identity reaching the type renderer, the same threading the identity-keyed lookup_checkpoint cut (T7, #8537) was blocked on -- landed as v1.compiler.coercion lookup_checkpoint/decl_identity_file, so the fix reuses that authority rather than inventing the DeclarationRef binding the earlier attempt lacked (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority, single authority). v1_item_alias_hop_type_exprs (below v1_item_field_type_exprs) follows a bare-leaf alias item's resolved right-hand side into the walk ONLY when lookup_checkpoint(target: Rust, dag_name, decl_file) returns Absent for the alias's own (dag_name, decl_file) -- i.e. only when the emitter has no native realization and renders the alias structurally. `type Int = AbelianGroup<GroupCompletion<Nat>>` and `type Nat = CommutativeSemiring<Magnitude>` both have Rust checkpoint rows (realize as i64), so lookup_checkpoint returns Present and the alias arm contributes nothing for them -- the previously measured false positive (AbelianGroup/CommutativeSemiring reaching map-key position via Rc<dyn Fn> fields) does not recur, because the gate is keyed on realization rather than on bare-alias shape. Folded into the single shared v1_item_field_type_exprs (see v1_item_field_type_exprs_alias_hop_note) rather than a map-key-only variant, since is_leaf_type_item forces params.count == 0 on every alias item, so no alias ever enters the generic-only clone-bound fixpoints that are this function's other callers.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -438,7 +430,7 @@ pub fn map_key_alias_hop_gap_note() -> String {
 pub fn map_key_alias_hop_reconciliation_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "RECONCILED (smart-ram-730, adhoc-2ea6fb98-a3f, 2026-08-21, merging gunbc#8736 into this branch's own review-54323-finding-3 work): this branch independently developed a map-key-only alias-hop arm (v1_map_key_propagate_alias, gated on is_type_alias_item in v1_map_key_propagate_round) that called v1.compiler.coercion type_realization_decision directly, concurrently with gunbc#8736 landing the fold-in above on main. DROPPED IN FAVOR OF THE LANDED VERSION, not run alongside it: this branch's own v1.compiler.coercion lookup_checkpoint was separately refactored in the same review cycle into a thin derivation of type_realization_decision for every decl_file != \"\" caller (coercion.dag's own note beside lookup_checkpoint records this), so v1_item_alias_hop_type_exprs's call to lookup_checkpoint already answers from type_realization_decision as the underlying authority -- a second, map-key-only function asking the same decision through a different name would be exactly the forked second copy DESIGN section 2/3 forbids and v1_item_field_type_exprs_alias_hop_note's own reasoning (below) already argues against. The two implementations are not merely similar, they are behaviorally identical for every case this fold-in covers: lookup_checkpoint(target, dag_name, decl_file) for decl_file != \"\" maps Realized -> Present, Unrealized -> Absent, Refused -> Absent, so the guard 'lookup_checkpoint == Absent' used above is the same predicate as 'type_realization_decision answers Unrealized or Refused' this branch's dropped arm matched separately. coercion.dag's DECLARED RESIDUE note, written before this reconciliation, named this arm as a caller required to use type_realization_decision directly; that requirement is satisfied indirectly, through lookup_checkpoint, and is corrected there rather than left standing.".to_string()
+            "RECONCILED (smart-ram-730, adhoc-2ea6fb98-a3f, 2026-08-21, merging gunbc#8736 into this branch's own review-54323-finding-3 work): this branch independently developed a map-key-only alias-hop arm (v1_map_key_propagate_alias, gated on is_type_alias_item in v1_map_key_propagate_round) that called v1.compiler.coercion type_realization_decision directly, concurrently with gunbc#8736 landing the fold-in above on main. DROPPED IN FAVOR OF THE LANDED VERSION, not run alongside it: this branch's own v1.compiler.coercion lookup_checkpoint was separately refactored in the same review cycle into a thin derivation of type_realization_decision for every decl_file != \"\" caller (coercion.dag's own note beside lookup_checkpoint records this), so v1_item_alias_hop_type_exprs's call to lookup_checkpoint already answers from type_realization_decision as the underlying authority -- a second, map-key-only function asking the same decision through a different name would be exactly the forked second copy gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority forbids and v1_item_field_type_exprs_alias_hop_note's own reasoning (below) already argues against. The two implementations are not merely similar, they are behaviorally identical for every case this fold-in covers: lookup_checkpoint(target, dag_name, decl_file) for decl_file != \"\" maps Realized -> Present, Unrealized -> Absent, Refused -> Absent, so the guard 'lookup_checkpoint == Absent' used above is the same predicate as 'type_realization_decision answers Unrealized or Refused' this branch's dropped arm matched separately. coercion.dag's DECLARED RESIDUE note, written before this reconciliation, named this arm as a caller required to use type_realization_decision directly; that requirement is satisfied indirectly, through lookup_checkpoint, and is corrected there rather than left standing.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -731,6 +723,8 @@ pub fn v1_freemonoid_filter_hand_written(
 pub fn v1_freemonoid_element_params(
     generic_param_names: Rc<Vec<String>>,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
+    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
     Rc::new({
@@ -743,9 +737,11 @@ pub fn v1_freemonoid_element_params(
                         && {
                             let mut __found = false;
                             for c in te.children.clone().iter().cloned() {
-                                if v1_type_expr_contains_param_name(
+                                if v1_type_expr_clone_impl_needs_param(
                                     p.clone(),
-                                    c.clone(),
+                                    crate::v1_compiler_infer_types::child_type_node(c.clone()),
+                                    bounds.clone(),
+                                    type_decl_items.clone(),
                                     source_indices.clone(),
                                 ) {
                                     __found = true;
@@ -1114,16 +1110,11 @@ pub fn v1_type_expr_is_finite_power_set_carrier(
     type_expr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    (crate::v1_compiler_infer_types::node_is_collection(type_expr.clone(), source_indices.clone())
-        && match crate::std_types::container_template_algebra(
-            crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(
-                source_indices.clone(),
-                type_expr.clone(),
-            )),
-        ) {
-            Some(algebra) => (algebra.clone() == "FinitePowerSet".to_string()),
-            std::option::Option::None => false,
-        })
+    (((type_expr.children.clone().len() as i64) > 0)
+        && crate::v1_compiler_infer_types::node_is_finite_power_set_algebra_spelling(
+            type_expr.clone(),
+            source_indices,
+        ))
 }
 
 pub fn v1_set_unroutable_row_refusal() -> String {
@@ -2143,10 +2134,7 @@ pub fn v1_item_own_set_affected_param_names(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
     v1_set_element_params(
-        crate::v1_compiler_emit_rust::item_generic_param_names(
-            item.clone(),
-            source_indices.clone(),
-        ),
+        crate::v1_std_core::item_generic_param_names(item.clone(), source_indices.clone()),
         v1_item_field_type_exprs(item.clone(), source_indices.clone()),
         source_indices.clone(),
     )
@@ -2535,6 +2523,8 @@ pub fn v1_emit_enum_derives(
     map_key_required: bool,
     deserialize_forbidden: bool,
     generic_param_names: Rc<Vec<String>>,
+    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
@@ -2554,6 +2544,8 @@ pub fn v1_emit_enum_derives(
             v1_freemonoid_element_params(
                 generic_param_names.clone(),
                 v1_enum_variant_field_type_exprs(children.clone()),
+                bounds,
+                type_decl_items,
                 source_indices.clone(),
             )
         };
@@ -3446,18 +3438,24 @@ pub fn v1_field_type_expr_needs_clone_bound_for_param_narrow(
         {
             true
         } else {
-            if (crate::std_types::is_container_type(name.clone()) && {
-                let mut __found = false;
-                for c in type_expr.children.clone().iter().cloned() {
-                    if (crate::v1_std_core::authored_name_at(source_indices.clone(), c.clone())
-                        == param_name.clone())
-                    {
-                        __found = true;
-                        break;
+            if ((crate::std_types::is_container_type(name.clone())
+                || crate::v1_compiler_infer_types::node_is_element_collection(
+                    type_expr.clone(),
+                    source_indices.clone(),
+                ))
+                && {
+                    let mut __found = false;
+                    for c in type_expr.children.clone().iter().cloned() {
+                        if (crate::v1_std_core::authored_name_at(source_indices.clone(), c.clone())
+                            == param_name.clone())
+                        {
+                            __found = true;
+                            break;
+                        }
                     }
-                }
-                __found
-            }) {
+                    __found
+                })
+            {
                 true
             } else {
                 false
@@ -4760,6 +4758,7 @@ pub fn v1_emit_struct_from_capability_table(
     has_fn_fields: bool,
     map_key_required: bool,
     generic_param_names: Rc<Vec<String>>,
+    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     header_clone_param_names: Rc<Vec<String>>,
     deserialize_forbidden: bool,
@@ -4787,6 +4786,8 @@ pub fn v1_emit_struct_from_capability_table(
             v1_freemonoid_element_params(
                 generic_param_names.clone(),
                 field_type_exprs.clone(),
+                bounds,
+                type_decl_items.clone(),
                 source_indices.clone(),
             )
         };
@@ -4810,7 +4811,7 @@ pub fn v1_emit_struct_from_capability_table(
                 v1_item_ord_propagated_param_names(
                     generic_param_names.clone(),
                     field_type_exprs.clone(),
-                    type_decl_items,
+                    type_decl_items.clone(),
                     source_indices.clone(),
                 ),
             ))
@@ -4977,6 +4978,8 @@ pub fn v1_emit_enum_supplemental_impls(
     children: Rc<Vec<Rc<Node>>>,
     generic_param_names: Rc<Vec<String>>,
     header_clone_param_names: Rc<Vec<String>>,
+    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
@@ -4984,6 +4987,8 @@ pub fn v1_emit_enum_supplemental_impls(
         let fm_params = v1_freemonoid_element_params(
             generic_param_names.clone(),
             field_type_exprs.clone(),
+            bounds,
+            type_decl_items,
             source_indices.clone(),
         );
         let set_params = v1_set_element_params(

@@ -109,7 +109,7 @@ import std.algebra { Cons, Empty, fold_list, empty_map, map_insert, map_lookup }
 // floor consults is the Rust literal `floor_prepared_subject_exclusions` in `cli_run.rs`, whose
 // own comment records that adding rows to gunbc.ci.ci_layer_roots witness_exclusion_frontier had
 // no effect at all. Mirroring that literal here would be a second representation of one fact
-// (DESIGN section 3) that drifts silently, which is worse than an arm with no production
+// (gunbc.design_argument::single_authority) that drifts silently, which is worse than an arm with no production
 // producer, so the substrings stay a PARAMETER.
 //
 // THE TWO STATES THIS ARM IS IN ARE DIFFERENT AND BOTH ARE TRUE. Its inhabitant count over the
@@ -209,7 +209,7 @@ fn quarantine_probe_subject_identity(subject: QuarantineProbeSubject) -> String 
 // THE TWO QUALIFIED-NAME ROSTERS, KEYED ONCE PER POPULATION. The join is still exact identity
 // (a key either equals the probe's identity or is absent), but it is keyed rather than scanned:
 // scanning each roster once per probe made the fold rows x roster, and the live claim paid that
-// product on every run (DESIGN section 6, bare minimum cost). quarantine_probe_dispositions
+// product on every run (gunbc.design_argument::how_to_work, bare minimum cost). quarantine_probe_dispositions
 // builds the index once and every subject reads it.
 type QuarantineProbeRosterIndex {
   expected_red: Map<String, Bool>

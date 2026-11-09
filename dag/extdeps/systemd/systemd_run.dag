@@ -1,11 +1,11 @@
 module extdeps.systemd.systemd_run
 
+import std.algebra { list_append, trim }
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
 import std.types { NonEmptyStr, List, Bool, Int, Unit, String }
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size }
-import std.algebra { trim }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -15,7 +15,7 @@ import extdeps.systemd {
   SystemdUnitProperty, systemd_unit_property_wire,
 }
 // The manager's version line has ONE spelling for the whole systemd upstream, so the major is read
-// with the existing parser rather than a second one (DESIGN section 3: no fork of one concept).
+// with the existing parser rather than a second one (gunbc.design_argument::single_authority: no fork of one concept).
 import extdeps.systemd.systemctl { systemd_major_version }
 import extdeps.exec.command { ArgvCommand, argv_command, argv_words }
 import extdeps.systemd.unit_file { LoadCredential, systemd_service_directive_line }
@@ -308,7 +308,7 @@ fn systemd_run_option_projection_step(acc: SystemdRunOptionWordsReading, option:
 // lane can run systemd units under the privilege/elevation posture these builders need, and the
 // one real execution that reaches the manager (the manual lifecycle receipt's wet path) is a
 // NON-required, manual receipt, not an enrolled required claim. A claim file nothing can execute
-// would be dangling (DESIGN 3c), so the standing is a declared unbound dissolution here beside
+// would be dangling (gunbc.design_argument::consumption), so the standing is a declared unbound dissolution here beside
 // the builders -- the authority that owns the behaviour -- rather than a placeholder row in a
 // lane that cannot run it. Dissolves when a required-workflow lane exists that can execute these
 // system-manager builders under their required privilege/elevation posture: at that point the
@@ -487,7 +487,7 @@ fn systemd_run_transient_wait_pipe_unit_command(unit: NonEmptyStr, properties: L
 // callers want the child's own stdio unpolluted by the launcher's chatter, which is a real and
 // different need -- the fix is that the two cannot be confused, not that one of them loses its flag.
 //
-// (Authored at module-item grain because DESIGN 4c admits annotations only above a module-scope
+// (Authored at module-item grain because gunbc.design_argument::source_annotations admits annotations only above a module-scope
 // declaration; an operation nested in this service has no annotation site of its own, so the
 // annotation names its subject instead of relying on adjacency.)
 // THE WORDS THIS SERVICE RUNS ARE NOT TEMPLATED HERE. Each operation takes the complete projected
@@ -559,7 +559,7 @@ service systemd.SystemdRun {
 //
 //   READING memory.peak FROM THE CGROUP means a process inside the unit at stop time, i.e. an
 //   ExecStopPost carrying shell that writes a file -- raw shell implementing semantics beside the
-//   modeled invocation (DESIGN 6), plus a second file protocol to parse. The number would be exact,
+//   modeled invocation (gunbc.design_argument::how_to_work), plus a second file protocol to parse. The number would be exact,
 //   but the route is more authored machinery for a fact the manager already reads over D-Bus.
 //
 //   THIS ROUTE: systemd-run itself reads Result and MemoryPeak as TYPED D-Bus properties before the
@@ -613,7 +613,7 @@ fn systemd_service_result_wire(r: SystemdServiceResult) -> String {
 // A bare NotReported answers identically for a manager below v254, a launcher run with --quiet, a
 // unit that was never started, an empty capture and a parser that has stopped working -- so a defect
 // that makes EVERYTHING unreported satisfies every absence claim at once, and the producer cannot
-// tell an old manager from a broken read. That is DESIGN 5's absorbing fallback in miniature: the
+// tell an old manager from a broken read. That is gunbc.design_argument::fail_closed's absorbing fallback in miniature: the
 // failure arm answers rather than refuses precisely. So the absence carries its cause, one vocabulary
 // shared by both readings because both go missing for the same reasons (loyal-swift-608, 2026-09-22:
 // assert the mechanism, not the outcome).
@@ -672,7 +672,7 @@ fn summary_format_standing(version_line: String) -> SummaryFormatStanding {
 // A REFUSAL NAMES ITS OWN REMEDY (loyal-swift-608, 2026-09-22). Every new systemd major refuses
 // here until someone reads it, which is correct and WILL happen -- so the diagnostic carries the
 // procedure rather than leaving the next reader to rediscover it. This is the same discipline
-// DESIGN 4b(2) applies to a next-rung trigger: name the capability, not the symptom. The four
+// gunbc.design_argument::guarantee_ladder (no untracked stall) applies to a next-rung trigger: name the capability, not the symptom. The four
 // facts are named because each one is separately load-bearing and the third is the one that would
 // be skipped -- the flags are invisible in the output, and USE_IEC is the difference between
 // 1024-based and 1000-based figures.
@@ -826,7 +826,7 @@ fn systemd_argv_suppresses_summary(argv: List<String>) -> Bool {
 // List<String> returned by systemd_run_transient_wait_unit_argv (which carries --quiet) as this
 // parameter COMPILED AND EVALUATED, reading a peak out of stderr no quiet launcher could have
 // printed. A declared record parameter does not refuse a list on this path, so the type alone is a
-// decoration -- DESIGN 4b(1) rung inflation, and it would have been reported as a wall.
+// decoration -- gunbc.design_argument::guarantee_ladder (rung honesty) rung inflation, and it would have been reported as a wall.
 //
 // SCOPED SINCE, AND THE SCOPE MATTERS BECAUSE IT IS NARROW (neat-boar-16, grid on main ff2110b7e).
 // Declared parameter types ARE enforced generally -- Int from String, Int from List<Int>, a record
@@ -842,7 +842,7 @@ fn systemd_argv_suppresses_summary(argv: List<String>) -> Bool {
 // same fail-closed reading as a manager below v254, and the probe that compiled now goes red
 // through it. Next-rung trigger: parameter-type enforcement for the collection-to-nominal relation
 // ON THE EVALUATION PATH, at which point the mint becomes the wall and this fold retires as its
-// regression control. THE PATH IS NAMED DELIBERATELY: DESIGN 4b(1) makes a class's rung the minimum
+// regression control. THE PATH IS NAMED DELIBERATELY: gunbc.design_argument::guarantee_ladder (rung honesty) makes a class's rung the minimum
 // across its in-scope paths, and the EMISSION path has not been measured, so closing the
 // interpreter does not by itself restore a rung claimed source-to-emission.
 fn systemd_run_wait_summary(launcher: SystemdSummaryPrintingWait, standing: SummaryFormatStanding, stderr: String) -> SystemdRunWaitSummary {

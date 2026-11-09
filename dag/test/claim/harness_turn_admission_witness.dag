@@ -23,6 +23,7 @@ import gunbc.harness.harness_seat {
   harness_select_supply,
 }
 import gunbc.harness.harness_cli { harness_model_request_inputs, harness_worker_system_prompt_at, harness_default_wire_shape, harness_seat_policy }
+import gunbc.harness.harness_tool { ValidationNotOffered }
 import product.fabric.supply {
   ExactGrantDuration, EstimatedGrantDuration, UnobservedGrantDuration,
   SupplierOffer, QuotedPerSecond, ObservedSupply, PlacementAffinityKey, StableRosterOrder,
@@ -49,7 +50,7 @@ import extdeps.currency.currency { Usd, Eur, CurrencyCode, currency_code_eq }
 //
 // The harness builds the turn's subject once at harness_bind_seat. These witnesses pin the subject,
 // the factored work and demand, and the placement duration. The rented-replica offer and its
-// provider-use admission are a declared frontier (DESIGN 3c) owned by the warm-trace vertical: no
+// provider-use admission are a declared frontier (gunbc.design_argument::consumption) owned by the warm-trace vertical: no
 // witness here claims an admitted candidate, because none can be produced until that offer exists.
 
 fn t_buy() -> BuyTerms {
@@ -119,22 +120,22 @@ test fn the_inputs_identity_does_not_collapse_on_a_separator() -> Bool {
 }
 
 // RED: THE NORMALIZED MODEL REQUEST IS THE WORK. A worker's rendered system prompt depends on the
-// gunbc program it names, so two turns on one brief with different programs are different Work; one
+// worktree it names, so two turns on one brief with different worktrees are different Work; one
 // rendered request placed twice is one Work and two Demands; and the model requirement is request
 // identity, so an exact-unit turn on the same request is a third Work.
-fn t_worker_subject(gunbc_program: String, attempt: String) -> HarnessTurnSubject {
-  let prompt = harness_worker_system_prompt_at(worktree: "/w", repo_root: "/r", gunbc_program: gunbc_program)
+fn t_worker_subject(worktree: String, attempt: String) -> HarnessTurnSubject {
+  let prompt = harness_worker_system_prompt_at(worktree: worktree)
   harness_turn_subject(
-    request: harness_turn_request(shape: harness_default_wire_shape, requirement: AnyAdmittedModel, inputs: harness_model_request_inputs(role: "worker", shape: harness_default_wire_shape, system_prompt: prompt, user_input: "brief")),
+    request: harness_turn_request(shape: harness_default_wire_shape, requirement: AnyAdmittedModel, inputs: harness_model_request_inputs(role: "worker", shape: harness_default_wire_shape, system_prompt: prompt, user_input: "brief", validation: ValidationNotOffered)),
     attempt: attempt as NonEmptyStr,
     admission: t_admission(objective: debt_payoff_objective),
   )
 }
 
 test fn the_rendered_request_is_the_work_and_the_attempt_is_the_demand() -> Bool {
-  let a = t_worker_subject(gunbc_program: "/bin/gunbc-a", attempt: "a-1")
-  let b = t_worker_subject(gunbc_program: "/bin/gunbc-b", attempt: "a-1")
-  let a2 = t_worker_subject(gunbc_program: "/bin/gunbc-a", attempt: "a-2")
+  let a = t_worker_subject(worktree: "/w/a", attempt: "a-1")
+  let b = t_worker_subject(worktree: "/w/b", attempt: "a-1")
+  let a2 = t_worker_subject(worktree: "/w/a", attempt: "a-2")
   let exact = harness_turn_subject(
     request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: ExactServingUnit { unit: Glm53FlashOnVllm }, inputs: ["witness", "p"]),
     attempt: "a-1" as NonEmptyStr,

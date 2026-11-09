@@ -1,9 +1,10 @@
 module extdeps.electronic_component.types
 
 import std.logic { Bool }
-import std.types { List, NonEmptyStr }
+import std.types { List, NonEmptyStr, String }
 import std.nat { Nat }
-import std.measure { Volt, Millivolt, Milliampere, Micrometer }
+import std.optional { Absent, Present }
+import std.measure { Volt, Millivolt, Milliampere, Micrometer, Ampere }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -53,6 +54,15 @@ type TvsSpecification {
   reverse_standoff: Volt
   breakdown_minimum: Millivolt
   breakdown_maximum: Millivolt
+}
+
+/// A rectifier diode. One rating is carried, the one a consumer reads: the peak repetitive
+/// reverse voltage V_RRM, the figure a rectifier is chosen by. It is a different quantity
+/// from a TVS reverse standoff -- a TVS clamps and a rectifier blocks -- so it is a
+/// different arm, and voltage_withstand labels it RectifierRepetitivePeak rather than
+/// borrowing the TVS name.
+type RectifierSpecification {
+  reverse_repetitive_peak: Volt
 }
 
 type CapacitorSpecification {
@@ -156,6 +166,53 @@ type HotSwapControllerSpecification {
   pins: List<ControllerPin>
   enable_threshold: ThresholdWindow
   overvoltage_threshold: ThresholdWindow
+}
+
+// A SWITCHING REGULATOR WITH ITS SWITCHES INSIDE: the pins a bench reading lands on are named by what
+// the datasheet says each one does, so a lead that reads to the return is read as GND, SW, VIN or
+// BST by the row and not by the reader. The switch node is the pin the inductor hangs on; the
+// bootstrap pin is the high-side driver's floating supply, joined to the switch node outside the part
+// through a capacitor (and often a series resistor); power-good is an open drain that needs an
+// external pull-up, which is why it reads as a resistance to some rail. Switching frequency and the
+// on-resistances are not modeled: no consumer reads them. The first consumer re-adds them, shaping
+// frequency as fixed or programmable (a programmable part has no single figure) and the on-resistances
+// as optional where the document states none.
+type RegulatorPinRole
+  = RegulatorSupplyInput
+  | SwitchNode
+  | RegulatorGround
+  | BootstrapSupply
+  | EnableInput
+  | SoftStartProgram
+  | FeedbackInput
+  | PowerGoodOpenDrain
+  // The arms below are named as the datasheets name each pin's function. FAN65004C/D Rev. 3 Table 2
+  // (page 5): NC, LG, MODE, ILIM, COMP, RT, SYNC, VCC, PVCC, EXTBIAS, HVBIAS, VINMON (current sense positive pin), PH, PGND.
+  // MPQ8633A Rev. 1.1 pin table (page 11): CS, MODE, TRK/REF, RGND, VCC, PGND.
+  | PowerGround
+  | RegulatorNoConnection
+  | LowSideGateDrive
+  | RegulatorModeSelect
+  | CurrentLimitSet
+  | CompensationOutput
+  | FrequencySet
+  | SynchronizationPort
+  | BiasSupply
+  | BootstrapSwitchReturn
+  | CurrentSense
+  | TrackingReference
+  | RemoteSenseGround
+
+type RegulatorPin {
+  number: Nat
+  name: NonEmptyStr
+  role: RegulatorPinRole
+}
+
+type SwitchingRegulatorSpecification {
+  pins: List<RegulatorPin>
+  input: MillivoltRange
+  continuous_output_current: Ampere
 }
 
 type ConnectorOrientation
@@ -426,14 +483,134 @@ type ComponentSpecification
   | ProgrammableLogicSpec { logic: ProgrammableLogicSpecification }
   | RootOfTrustSpec { root_of_trust: RootOfTrustSpecification }
   | SerialFlashSpec { flash: SerialFlashSpecification }
+  | SwitchingRegulatorSpec { regulator: SwitchingRegulatorSpecification }
+  | BusMultiplexerSpec { multiplexer: BusMultiplexerSpecification }
+  | UsbHubSpec { hub: UsbHubSpecification }
+  | ClockFanoutSpec { clock: ClockFanoutSpecification }
+  | RectifierSpec { rectifier: RectifierSpecification }
 
+/// A switch or multiplexer on a shared bus: `channels` independent buses, each reachable from
+/// `inputs_per_channel` candidates, powered by `supplies` (a translating switch lists one range per
+/// rail domain, so a single-supply part lists one). This one shape covers both the TCA9546A (four
+/// channels, one input each, one rail) and the PI3CH480QE (four channels, two inputs each, two
+/// rails); minting an "I2C switch" type beside a "bus multiplexer" type would name the same
+/// decomposition twice, and the two would drift.
+///
+/// A consumer reads it to say how many buses a position reaches and at how many candidates each
+/// is loaded -- which is what the position-grain net relation needs. Terminal grain needs pin
+/// numbers, and those come from the datasheet only when a pin-level relation actually asks.
+type BusMultiplexerSpecification {
+  channels: Nat
+  inputs_per_channel: Nat
+  supplies: List<MillivoltRange>
+}
+
+/// A USB hub: `downstream_ports` ports facing devices, `upstream_ports` facing the host, at the
+/// generator named in `generation` (kept as the vendor's own string, because "USB 3.2 x1 Gen1" is
+/// SuperSpeed 5 Gbps under a name only the vendor chose; inventing a speed type for one row would
+/// be a second home for a fact USB-IF already owns).
+type UsbHubSpecification {
+  downstream_ports: Nat
+  upstream_ports: Nat
+  generation: NonEmptyStr
+  /// The package's ball names, when a pin-level consumer needs them. Absent means NOT READ, which
+  /// is different from an empty list: an empty list would claim the part has no pins to name.
+  pins: List<NonEmptyStr>?
+}
+
+/// A clock fanout buffer: `inputs` selectable reference sources, `outputs` copies of the chosen one,
+/// at the core supplies the vendor's own list offers. `pins` holds what the pin table says -- "number
+/// NAME (type)" strings -- because no pin-level consumer exists yet: typing roles for a table nobody
+/// reads would be a second authority waiting for a caller. Absent means NOT READ, which is not the
+/// same claim as an empty list.
+type ClockFanoutSpecification {
+  inputs: Nat
+  outputs: Nat
+  supplies: List<MillivoltRange>
+  pins: List<NonEmptyStr>?
+}
+
+/// One segment of one printed line of a manufacturer's top mark, in the document's own terms:
+/// glyphs the document prints verbatim, or a field the document's legend names and whose glyphs vary
+/// per unit. `legend` is the VENDOR's own cited wording ("YY = year"), never a cross-vendor alphabet.
+/// `width` is the glyph count only where the document states one; `Absent` is "not stated", not zero.
+type MarkSegment
+  = FixedGlyphs { text: NonEmptyStr }
+  | VariableField { legend: NonEmptyStr, width: Nat? }
+
+type MarkLine {
+  segments: List<MarkSegment>
+}
+
+/// Whether the modelled lines account for the vendor's whole published marking. `Complete`: they do.
+/// `ListedOnly`: further marking content is known to exist (a logo, plant or date line, a trace code)
+/// or is not excluded by the cited figure. A source's omission is not evidence of absence, so a
+/// complete-mark comparison may rest only on `Complete`, and the default for a row is `ListedOnly`.
+/// Consumed by product.electrical.mark_comparison `compare_reading_to_mark`.
+type MarkCoverage
+  = Complete
+  | ListedOnly
+
+/// A top mark as the cited document PUBLISHES it. `MarkStructured` lists the lines the document
+/// prints, in order, with `coverage` saying whether that is the whole marking; a line or position the
+/// document does not describe is omitted. `MarkDescribedNotStructured` is the honest standing of a
+/// document that describes the mark in prose, lists alternatives, or does not say which positions
+/// are fixed or variable: the text is kept, `why` names what keeps it from being structured, and a
+/// comparison against it can only be undecidable. Consumed by product.electrical.mark_comparison
+/// `compare_reading_to_mark`; `published_fixed_line_contains` is the narrow one-line join the FSV rows keep.
+type PublishedMark
+  = MarkStructured { lines: List<MarkLine>, coverage: MarkCoverage }
+  | MarkDescribedNotStructured { text: NonEmptyStr, why: NonEmptyStr }
+
+// A line is a whole FixedGlyphs run when it has exactly one segment and that segment is FixedGlyphs.
+fn line_sole_fixed_glyphs(line: MarkLine) -> NonEmptyStr? {
+  if line.segments.length() == 1 {
+    match line.segments.first() {
+      Absent => Absent
+      Present { value: seg } => match seg {
+        FixedGlyphs { text } => Present { value: text }
+        VariableField { legend: _, width: _ } => Absent
+      }
+    }
+  } else { Absent }
+}
+
+// True iff `code` equals a whole FixedGlyphs-only line among the lines the row lists. It says only that
+// the document prints that line; it is NOT a full-mark match under any coverage (the FSV20100V
+// device-code join is its consumer, and FSV20100V's own diagram has a further logo/plant/date line).
+fn published_fixed_line_contains(row: ElectronicComponentRow, code: NonEmptyStr) -> Bool {
+  match row.top_marking {
+    Absent => false
+    Present { value: m } => match m {
+      MarkDescribedNotStructured { text: _, why: _ } => false
+      MarkStructured { lines, coverage: _ } => lines.any(l => match line_sole_fixed_glyphs(line: l) {
+        Absent => false
+        Present { value: t } => (t as String) == (code as String)
+      })
+    }
+  }
+}
+
+/// The manufacturer's own top mark. `Absent` means the cited document's marking table has not been read
+/// -- it is never filled with what this repository's own bodies print: an observation this repository
+/// makes is a receipt in the observing layer (product.electrical.identification's MarkingReading, or the
+/// board's per-position receipts), and the unread table is a coverage obligation carried by the claim
+/// that uses the row (gunbc.design_argument::single_authority). A document read to its marking table that publishes no top mark
+/// is a third state with no row yet (PI3CH480ZHD: "Top mark is not available at this time"); it is added
+/// as an arm of PublishedMark when a row needs it.
 type ElectronicComponentRow {
   vendor: Vendor<Hardware>
   ordering_code: NonEmptyStr
   package: NonEmptyStr
-  top_marking: NonEmptyStr
+  top_marking: PublishedMark?
   specification: ComponentSpecification
   vendor_application_statements: List<NonEmptyStr>
+}
+
+// One row is one maker's orderable part: two makers can publish the same ordering code (Bourns' and
+// AOS's 5.0SMDJ60A), so a row is the vendor and the code together.
+fn electronic_component_row_eq(a: ElectronicComponentRow, b: ElectronicComponentRow) -> Bool {
+  (a.vendor.legal_name as String) == (b.vendor.legal_name as String) && (a.ordering_code as String) == (b.ordering_code as String)
 }
 
 // THE ONE PROJECTION A RAIL BOUND CONSUMES: the highest voltage the part tolerates across its rated
@@ -444,6 +621,7 @@ type VoltageWithstandKind
   | CapacitorRatedVoltage
   | DrainSourceMaximum
   | FuseInterruptRating
+  | RectifierRepetitivePeak
 
 type VoltageWithstand {
   kind: VoltageWithstandKind
@@ -453,6 +631,7 @@ type VoltageWithstand {
 fn voltage_withstand(spec: ComponentSpecification) -> VoltageWithstand? {
   match spec {
     TvsDiodeSpec { tvs } => Present { value: VoltageWithstand { kind: TvsReverseStandoff, maximum: tvs.reverse_standoff } }
+    RectifierSpec { rectifier } => Present { value: VoltageWithstand { kind: RectifierRepetitivePeak, maximum: rectifier.reverse_repetitive_peak } }
     CapacitorSpec { capacitor } => Present { value: VoltageWithstand { kind: CapacitorRatedVoltage, maximum: capacitor.rated_voltage } }
     MosfetSpec { mosfet } => Present { value: VoltageWithstand { kind: DrainSourceMaximum, maximum: mosfet.drain_source_maximum } }
     TemperatureSensorSpec { sensor: _ } => Absent
@@ -464,5 +643,50 @@ fn voltage_withstand(spec: ComponentSpecification) -> VoltageWithstand? {
     ProgrammableLogicSpec { logic: _ } => Absent
     RootOfTrustSpec { root_of_trust: _ } => Absent
     SerialFlashSpec { flash: _ } => Absent
+    SwitchingRegulatorSpec { regulator: _ } => Absent
+    BusMultiplexerSpec { multiplexer: _ } => Absent
+    UsbHubSpec { hub: _ } => Absent
+    ClockFanoutSpec { clock: _ } => Absent
   }
+}
+
+// ── THE REFERENCE DESIGNATOR: ITS SPELLING IS ITS IDENTITY ──────────────────────────────────────
+//
+// One position on one assembly, named the way the silkscreen names it. THE VERBATIM TEXT IS THE IDENTITY:
+// U1_2 and U12 are two components, U3_2 and U32 two components, U3_P3 and U3_3 two positions, U1_P1 and
+// U1_P5 two channels. This is not pedantry -- the atlas cleanup of 2026-11-03 normalised designators by
+// stripping underscores and so merged U1_2 into U12, U2_2 into U22 and U3_2 into U32: it minted positions
+// NVIDIA may never have placed, lost the parts that were really in the other footprint, and moved a
+// PCA9617A from U12 to U1_2 on nothing but a tidied string. The merged row looked exactly like a good row.
+//
+// So: normalisation may produce a field for SEARCHING -- a fold, a family prefix, a sort key, a grouping
+// for a zone -- and may never produce identity. Two designators that share a search key are still two
+// components, and no position is resolved by anything but the verbatim text. No search key is defined here,
+// because nothing groups by one yet; when the function zones want one it must be its own field, derived,
+// and never what a position is looked up by.
+//
+// It lives in the component vocabulary rather than the board layer because both layers need ONE rule and
+// the design-fact layer may not import the observation layer: NVIDIA's positions (extdeps.nvidia.p4261) and
+// our silkscreen readings (product.p4261) resolve against each other, and a rule about identity that two
+// sides share has to sit where both can reach it.
+type Designator {
+  verbatim: NonEmptyStr
+}
+
+// A designator as it was read. No case folding, no punctuation removal, no suffix-boundary rewriting, no
+// leading-zero stripping -- those are the operations that made the 2026-11-03 corruption invisible.
+fn designator_of(verbatim: NonEmptyStr) -> Designator {
+  Designator { verbatim: verbatim }
+}
+
+// What the silkscreen says, for printing and for a search key to be derived FROM. Not a comparison.
+fn designator_text(designator: Designator) -> NonEmptyStr {
+  designator.verbatim
+}
+
+// Identity: character for character, with nothing done to either side first. Every comparison of
+// designators in the model goes through this, so there is exactly one place a normalisation could creep
+// back in -- and `p4261_designator_identity_witness.dag` holds it to the five pairs the atlas broke.
+fn designator_eq(a: Designator, b: Designator) -> Bool {
+  (designator_text(designator: a) as String) == (designator_text(designator: b) as String)
 }

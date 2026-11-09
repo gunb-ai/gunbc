@@ -32,8 +32,8 @@ import extdeps.bmc.pid_control_program {
 }
 
 // REALIZATION: A product.zone_thermal_curve ZoneCurve PROJECTED ONTO AN OpenBMC phosphor-pid-control
-// ZONE (DESIGN 3: the curve is policy, the program shape is extdeps.bmc.pid_control_program's, and
-// this join is realization, so it sits peripheral). SELECTION, stated as DESIGN 3d requires: the
+// ZONE (gunbc.design_argument::single_authority: the curve is policy, the program shape is extdeps.bmc.pid_control_program's, and
+// this join is realization, so it sits peripheral). SELECTION, stated as gunbc.design_argument::selection_precedes_convergence requires: the
 // BMC-side loop is chosen over a host-side controller for a passive-accelerator OpenBMC host because
 // swampd keeps driving the zone when the host crashes and, with a sensor timeout, drives the zone's
 // failsafe when the host stops pushing the reading. That was read live on butch (OpenBMC 3.22.00,
@@ -165,7 +165,7 @@ fn openbmc_curve_zone_built(row: OpenBmcCurveZoneRow, curve: ZoneCurve) -> OpenB
 }
 
 // THE ACCEPTED INPUT DOMAIN. Two inputs would break the guarantees this projection states, so each is
-// refused with a named cause at admission, before any OpenBmcCurveZone exists (DESIGN 5):
+// refused with a named cause at admission, before any OpenBmcCurveZone exists (gunbc.design_argument::fail_closed):
 // - a timeout of zero. phosphor-pid-control reads a sensor timeout of 0 as "read-timeout checking
 //   disabled", so a host that stops publishing would leave its last cool value in force and the
 //   100 percent failsafes (which govern what happens AFTER a failure is detected) would never run.
@@ -211,7 +211,7 @@ fn openbmc_curve_zone(row: OpenBmcCurveZoneRow, curve: ZoneCurve) -> OpenBmcCurv
   }
 }
 
-// DESIGN 3c declared frontier. THE INHABITANCE CLAIM IS NOT MET: the witness compares this projection
+// gunbc.design_argument::consumption declared frontier. THE INHABITANCE CLAIM IS NOT MET: the witness compares this projection
 // with the program read from butch, supplied as values, and no enrolled claim yet shows the BMC
 // running a rendered program or answering a stale sensor with the failsafe.
 data zone_curve_openbmc_projection_consumer_frontier: DissolutionCondition = unbound_dissolution(

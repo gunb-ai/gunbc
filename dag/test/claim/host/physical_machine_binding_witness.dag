@@ -220,7 +220,7 @@ test fn positive_mtcollins1_seals_with_bound_control_route() -> Bool {
   }
 }
 
-// ---- the allocation frontier carrier (DESIGN section 4b: a class below ceiling names its
+// ---- the allocation frontier carrier (gunbc.design_argument::guarantee_ladder: a class below ceiling names its
 // next-rung trigger, ON A CARRIER a consumer can read) ----
 
 // An enrolled host whose owned-machine allocation has NO board-serial observation yet -- the state

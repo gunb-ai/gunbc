@@ -55,6 +55,7 @@ import product.compute_board.device_binding {
 }
 import product.compute_board.verilog_projection { power_interlock_verilog_bindings }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.algebra { length }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -130,8 +131,8 @@ test fn w_the_observations_are_distinct_and_present() -> Bool {
 // recorded the milliamp figure, which is the only part of the run that discriminates the suffix.
 test fn w_the_operating_point_discriminates_the_scale_suffix() -> Bool {
   let s = run_of(outcome: conditioning_network_run)
-  let divider_ratio_is_reported = list_length(items: split(s: s.observation, delimiter: "pg_cond 3.000000e+00")) > 1
-  let series_current_pins_the_k_suffix = list_length(items: split(s: s.observation, delimiter: "-3.00000e-04")) > 1
+  let divider_ratio_is_reported = length(xs: split(s: s.observation, delimiter: "pg_cond 3.000000e+00")) > 1
+  let series_current_pins_the_k_suffix = length(xs: split(s: s.observation, delimiter: "-3.00000e-04")) > 1
   divider_ratio_is_reported && series_current_pins_the_k_suffix
 }
 
@@ -277,12 +278,12 @@ test fn w_each_implementation_run_reports_its_own_tool() -> Bool {
   let synth = run_of(outcome: interlock_synthesis_run)
   let pnr = run_of(outcome: interlock_place_and_route_run)
   let pack = run_of(outcome: interlock_bitstream_run)
-  let synth_is_its_own = list_length(items: split(s: synth.observation, delimiter: "SB_LUT4")) > 1
-    && list_length(items: split(s: synth.observation, delimiter: "32220 byte bitstream")) == 1
-  let pnr_is_its_own = list_length(items: split(s: pnr.observation, delimiter: "constrained power_permit")) > 1
-    && list_length(items: split(s: pnr.observation, delimiter: "SB_LUT4")) == 1
-  let pack_is_its_own = list_length(items: split(s: pack.observation, delimiter: "32220 byte bitstream")) > 1
-    && list_length(items: split(s: pack.observation, delimiter: "constrained power_permit")) == 1
+  let synth_is_its_own = length(xs: split(s: synth.observation, delimiter: "SB_LUT4")) > 1
+    && length(xs: split(s: synth.observation, delimiter: "32220 byte bitstream")) == 1
+  let pnr_is_its_own = length(xs: split(s: pnr.observation, delimiter: "constrained power_permit")) > 1
+    && length(xs: split(s: pnr.observation, delimiter: "SB_LUT4")) == 1
+  let pack_is_its_own = length(xs: split(s: pack.observation, delimiter: "32220 byte bitstream")) > 1
+    && length(xs: split(s: pack.observation, delimiter: "constrained power_permit")) == 1
   synth_is_its_own && pnr_is_its_own && pack_is_its_own
 }
 

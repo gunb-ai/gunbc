@@ -62,7 +62,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE REAL REPOSITORY IS SMALL AND THE MASS IS SUPPLIED (DESIGN section 3, a witness discriminates at
+// THE REAL REPOSITORY IS SMALL AND THE MASS IS SUPPLIED (gunbc.design_argument::single_authority, a witness discriminates at
 // one interface). The claims are about the READ PLAN, whose inputs are the roster and the commit
 // table; building a thousand-file repository through the production verbs per claim measured ~1.8M
 // eval steps and taught nothing the plan does not already see. So a small repository is built for

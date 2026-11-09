@@ -1,0 +1,51 @@
+module extdeps.electronic_component.onsemi_fsv20100v
+
+import std.measure { volt }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor.onsemi { onsemi }
+import extdeps.electronic_component.types { MarkStructured, ListedOnly, MarkLine, FixedGlyphs, ElectronicComponentRow, RectifierSpec, RectifierSpecification }
+
+// onsemi's FSV20100V datasheet, publication order number FSV20100V/D, Rev. 4, September 2024, read
+// 2026-11-04 from the vendor copy (fsv20100v-d.pdf, sha256
+// b91fbaead29316bae6e20d5ebb7794f3fb32c384c5688eedadbac1f1ceb9120d). Its ORDERING INFORMATION table
+// gives Part Number FSV20100V with Top Mark FSV20100V in the vendor's own column -- the body prints the
+// part number itself -- and package TO-277 3L, CASE 340BQ. The MARKING DIAGRAM legend makes a real body
+// four lines: $Y = onsemi Logo, Z = assembly plant code, 3 = date code (year and week), and the device
+// code, so a photograph that shows only the device code is a complete read of the identifying field.
+//
+// The one rating carried is V_RRM: the page-1 maximum-ratings table pairs the symbol V_RRM with
+// "Peak Repetitive Reverse Voltage", value 100, unit V, on a single baseline (T_A = 25 C unless
+// otherwise noted, one value column). voltage_withstand is what reads it. The sheet's other figures --
+// I_F(AV) 20 A, I_FSM 270 A, V_F, V_RMS 70 V, height 1.1 mm -- are deliberately not fields here: no
+// consumer reads them, and RectifierSpecification has no place to put them.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.onsemi.com/pdf/datasheet/fsv20100v-d.pdf"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.electronic_component.onsemi_fsv20100v",
+      decl_name: "onsemi_schottky_fsv20100v",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data onsemi_schottky_fsv20100v: ElectronicComponentRow = ElectronicComponentRow {
+  vendor: onsemi,
+  ordering_code: "FSV20100V",
+  package: "TO-277 3L",
+  top_marking: Present { value: MarkStructured { lines: [MarkLine { segments: [FixedGlyphs { text: "FSV20100V" }] }], coverage: ListedOnly } },
+  specification: RectifierSpec { rectifier: RectifierSpecification {
+    reverse_repetitive_peak: volt(count: 100),
+  } },
+  vendor_application_statements: [],
+}

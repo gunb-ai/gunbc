@@ -25,7 +25,7 @@ module gunbc.fabric.fabric_source_snapshot
 // most often needs. There is no directory walk here for the reason gunbc.scm.write_spine_ingress
 // gives for its own absence: a recursive acquisition needs a modeled traversal with its own
 // refusals -- symlinks, cycles, unreadable subtrees, binary content -- and inventing one inside a
-// capture would be the second path beside an existing modeled route that DESIGN section 6 names.
+// capture would be the second path beside an existing modeled route that gunbc.design_argument::how_to_work names.
 // Every file in a snapshot is named by its requester, so a new file and a tracked file enter by one
 // route and neither is privileged.
 //
@@ -47,7 +47,7 @@ module gunbc.fabric.fabric_source_snapshot
 // there. It was named, typed and declared -- and it was still a workaround: "an executor with
 // source and no repository" is exactly the capability this module exists to provide, so a function
 // that manufactures a repository to obtain it had answered the symptom at the link where the
-// symptom appeared. DESIGN section 6b names that shape and names the remedy: re-derive the slice
+// symptom appeared. gunbc.design_argument::earliest_unjustified_boundary names that shape and names the remedy: re-derive the slice
 // and stop at the earliest boundary that cannot justify itself.
 //
 // THAT BOUNDARY WAS v1_compiler.cli_run process_workspace_root. What the workspace root ESTABLISHES
@@ -102,14 +102,18 @@ import std.fabric_storage {
   FabricObjectFetched,
   FabricObjectGetRefused,
   fabric_object_ref_wire,
+  fabric_object_ref_of,
   fabric_storage_fault_wire,
 }
 import gunbc.fabric.fabric_storage_file_store {
-  FabricStorageFileRoot,
+  FabricStorageOperations,
   fabric_storage_file_get,
   fabric_storage_file_put,
 }
 import std.algebra { trim }
+import extdeps.crypto.hash { Digest, HashAlgorithm, Sha256, Sha512, sha256_digest, sha256sum_line_digest }
+import std.judgment_contract { length_prefixed_encode }
+import product.fabric.work { SourceManifestRef }
 
 // WHAT THIS DOES AND DOES NOT REPLACE, AND THE SECOND ROUTE IT WOULD OTHERWISE BE.
 //
@@ -128,7 +132,7 @@ import std.algebra { trim }
 // BELOW RATHER THAN QUIETLY DOUBLED. `dispatch_verification_checkout_path_for_instance` asks exactly
 // the question this module answers -- give an executor the exact immutable source at a named
 // identity -- and answers it through the caller's object store. Leaving two answers standing with no
-// statement is the fork DESIGN section 3 forbids, so the statement is here: git remains the binding
+// statement is the fork gunbc.design_argument::single_authority forbids, so the statement is here: git remains the binding
 // for that path today because every verification executor is a process on the host that holds the
 // repository, where the caller's object store IS the executor's and the snapshot route buys nothing
 // it does not already have. The moment that stops being true -- a verification executor off that
@@ -168,8 +172,8 @@ data verification_checkout_git_binding_frontier: FrontierRow = frontier_row_decl
 // has a distinct textual form: the whole path (`..`), the first segment (`../` prefix), an interior
 // segment (`/../` infix), or the last segment (`/..` suffix). The same four hold for ".". An empty
 // segment is a leading "/", a trailing "/", or an interior "//". There is no fifth position, so the
-// disjunction below is complete rather than heuristic -- which is precisely the question DESIGN
-// section 4b says to ask before writing a check: is the forbidden state still authorable once this
+// disjunction below is complete rather than heuristic -- which is precisely the question
+// gunbc.design_argument::guarantee_ladder says to ask before writing a check: is the forbidden state still authorable once this
 // runs? For a "/"-separated relative path, it is not.
 //
 // SCOPE, stated rather than implied: separators are "/" only. A backslash is an ordinary character
@@ -213,7 +217,7 @@ fn admit_relative_source_path(text: String) -> RelativePathAdmission {
 // a list of strings because the two arms are two different contracts. A public-only snapshot may be
 // served to any executor; a snapshot carrying a private root may not, and an executor that expects
 // one and is handed the other has been handed a DIFFERENT SUBJECT under the same name -- the
-// meaning fork DESIGN section 3 forbids. With a list, "public + private" and "public" differ by a
+// meaning fork gunbc.design_argument::single_authority forbids. With a list, "public + private" and "public" differ by a
 // membership test someone has to remember to perform; with arms, the mismatch is a match arm.
 //
 // THE ROOT NAMES ARE CARRIED RATHER THAN FIXED, because the prefix a snapshot is materialized under
@@ -222,6 +226,7 @@ fn admit_relative_source_path(text: String) -> RelativePathAdmission {
 type SourceComposition
   = PublicOnlyComposition { public_root: NonEmptyStr }
   | PublicAndPrivateComposition { public_root: NonEmptyStr, private_root: NonEmptyStr }
+  | DeclaredRootsComposition { directory_roots: List<NonEmptyStr>, file_paths: List<NonEmptyStr> }
 
 // THE WIRE IS THE COMPARISON, AND IT IS ONE STRING ON PURPOSE. The manifest object carries this
 // text as its body, so agreement between what a snapshot IS and what an executor EXPECTS is a
@@ -239,7 +244,22 @@ fn source_composition_wire(composition: SourceComposition) -> NonEmptyStr {
         ";private=",
         q as String,
       ], "") as NonEmptyStr
+    DeclaredRootsComposition { directory_roots: d, file_paths: f } =>
+      join([
+        "gunbc.fabric_source_snapshot.composition.v1;declared-directories=",
+        declared_roots_wire(roots: d),
+        ";declared-files=",
+        declared_roots_wire(roots: f),
+      ], "") as NonEmptyStr
   }
+}
+
+// The declared-roots arm lists directory roots and exact file paths apart, so a file such as Cargo.toml
+// is declared as itself and never as a "root" whose boundary would match nothing. Each entry is length-prefixed
+// (std.judgment_contract length_prefixed_encode), so the wire is injective, and the arm tag precedes both, so it cannot render like the
+// public/private arms.
+fn declared_roots_wire(roots: List<NonEmptyStr>) -> String {
+  join(roots |> map(r => length_prefixed_encode(s: r as String)), "")
 }
 
 // EVERY ROOT THE COMPOSITION DECLARES, IN THE ORDER A SOURCE-ROOT ARGUMENT LIST NAMES THEM.
@@ -247,6 +267,7 @@ fn source_composition_roots(composition: SourceComposition) -> List<NonEmptyStr>
   match composition {
     PublicOnlyComposition { public_root: p } => [p]
     PublicAndPrivateComposition { public_root: p, private_root: q } => [p, q]
+    DeclaredRootsComposition { directory_roots: d, file_paths: _ } => d
   }
 }
 
@@ -267,7 +288,12 @@ fn snapshot_path_inside_composition(composition: SourceComposition, path: Relati
   any(
     source_composition_roots(composition: composition),
     root => starts_with(s: relative_source_path_text(path: path) as String, prefix: snapshot_root_boundary(root: root)),
-  )
+  ) || match composition {
+    DeclaredRootsComposition { directory_roots: _, file_paths: f } =>
+      any(f, file => (file as String) == (relative_source_path_text(path: path) as String))
+    PublicOnlyComposition { public_root: _ } => false
+    PublicAndPrivateComposition { public_root: _, private_root: _ } => false
+  }
 }
 
 // ── THE OBJECTS ──────────────────────────────────────────────────────────────────────────────
@@ -284,7 +310,7 @@ fn snapshot_path_inside_composition(composition: SourceComposition, path: Relati
 //
 // Every one of them is content-addressed by the same rule, so a mutated byte anywhere changes the
 // ref that names it and the store's own verification refuses -- this module writes no second
-// integrity check, because writing one would be the re-statement DESIGN section 5 rejects.
+// integrity check, because writing one would be the re-statement gunbc.design_argument::fail_closed rejects.
 fn snapshot_leaf_object(body: NonEmptyStr) -> FabricObject {
   FabricObject { links: [] as List<FabricObjectRef>, body: body }
 }
@@ -310,8 +336,21 @@ type SnapshotInclusion {
   name: NonEmptyStr
 }
 
+// A FILE DIRECTLY IN A ROOT'S PARENT (Cargo.toml) HAS NO DIRECTORY, and the entry's directory field is
+// non-empty, so the root level is spelled ".". That cannot collide with a real directory: admission
+// refuses a "." segment, so no admitted path has a directory named ".".
+data snapshot_root_directory: NonEmptyStr = "." as NonEmptyStr
+
+fn snapshot_relative_path(directory: NonEmptyStr, name: NonEmptyStr) -> String {
+  if directory == snapshot_root_directory {
+    name as String
+  } else {
+    join([directory as String, "/", name as String], "")
+  }
+}
+
 fn snapshot_inclusion_relative_path(inclusion: SnapshotInclusion) -> String {
-  join([inclusion.directory as String, "/", inclusion.name as String], "")
+  snapshot_relative_path(directory: inclusion.directory, name: inclusion.name)
 }
 
 // ── REFUSALS ────────────────────────────────────────────────────────────────────────────────
@@ -398,7 +437,7 @@ fn snapshot_capture_refuse(acc: SnapshotCaptureAcc, cause: SnapshotCaptureRefusa
 // node's children, for the same reason -- a reachable hole is the state a closure walk exists to
 // refuse, and publishing one is how it gets created.
 fn snapshot_store_inclusion(
-  root: FabricStorageFileRoot,
+  root: FabricStorageOperations,
   acc: SnapshotCaptureAcc,
   inclusion: SnapshotInclusion,
   content: NonEmptyStr,
@@ -445,7 +484,7 @@ fn snapshot_store_inclusion(
 // root is a requester defect, and storing its content first would leave the object in the store
 // with nothing referring to it -- harmless to the store and misleading to anyone reading it.
 fn snapshot_capture_step(
-  root: FabricStorageFileRoot,
+  root: FabricStorageOperations,
   composition: SourceComposition,
   acc: SnapshotCaptureAcc,
   inclusion: SnapshotInclusion,
@@ -495,12 +534,12 @@ fn snapshot_capture_step(
 // this time at the root, where a materialization would find it and refuse one entry at a time
 // instead of refusing the request.
 fn capture_source_snapshot(
-  root: FabricStorageFileRoot,
+  root: FabricStorageOperations,
   composition: SourceComposition,
   inclusions: List<SnapshotInclusion>,
 ) -> SnapshotCapture {
   match fold(
-    inclusions,
+    inclusions |> sort_by(i => snapshot_inclusion_relative_path(inclusion: i)),
     init: SnapshotCaptureAcc { entries: [] as List<FabricObjectRef>, files: 0, refusal: none },
     f: fn(acc, inclusion) {
       snapshot_capture_step(root: root, composition: composition, acc: acc, inclusion: inclusion)
@@ -525,6 +564,130 @@ fn capture_source_snapshot(
                 composition: source_composition_wire(composition: composition) as String,
               }
           }
+      }
+  }
+}
+
+// ── THE MANIFEST'S IDENTITY, DERIVED WITHOUT A STORE ─────────────────────────────────────────
+//
+// A source manifest's ref is a function of (composition, the files' directory, name and bytes) and of
+// nothing else: not where a file was READ from, not which commit or worktree it came from. Both
+// producers of a work's source -- a clean Git tree and a dirty worker worktree -- therefore call THIS
+// function over what they read, and equal bytes under an equal composition mint one ref whichever
+// adapter listed them. Entries are put in path order, the same order capture_source_snapshot stores
+// them in, and both build the manifest body with the one snapshot_manifest_object. THE DERIVED REF IS
+// AN IDENTITY MANIFEST OF DIGESTS, NOT THE STORED CAPTURE'S REF: capture stores file bytes as leaves,
+// this function leaves a digest per file (snapshot_digest_leaf_body), so the two refs are different
+// values by design and the derived one does not carry the bytes. Moving bytes to an executor is the
+// snapshot/transport obligation of PRs 5 and 7 (gunbc.plans.durable_work_program_boundaries), and any
+// claim relating a stored capture to a derived identity is owed to that wet route.
+//
+// A NEW UNTRACKED FILE IS IN THE IDENTITY BY THE SAME ROUTE as a tracked one: the inclusion list is
+// the requester's, and this function has no notion of tracked. An absent file is therefore a
+// DIFFERENT manifest, never a silently equal one.
+// The accepted-work name for a manifest, branded once here.
+fn source_manifest_ref(manifest: FabricObjectRef) -> SourceManifestRef {
+  fabric_object_ref_wire(object: manifest) as SourceManifestRef
+}
+
+// A SOURCE FILE ENTERS THE IDENTITY BY THE DIGEST OF ITS BYTES, never by the bytes. The kind of file
+// (empty, binary, text) is therefore not a case: every file is one leaf, so equal bytes are one leaf
+// under any path or adapter, the identity's size is independent of the source's, and an empty or
+// non-UTF-8 file is an ordinary member. The leaf body names the digest's algorithm
+// (snapshot_digest_leaf_body), so a later family is a distinct leaf, never a silent re-key.
+type SnapshotSourceFile {
+  directory: NonEmptyStr
+  name: NonEmptyStr
+  digest: Digest
+}
+
+fn snapshot_digest_leaf_body(digest: Digest) -> NonEmptyStr {
+  match digest.algorithm {
+    Sha256 => join(["sha256:", digest.hex as String], "") as NonEmptyStr
+    Sha512 => join(["sha512:", digest.hex as String], "") as NonEmptyStr
+  }
+}
+
+fn snapshot_source_file_path(file: SnapshotSourceFile) -> String {
+  snapshot_relative_path(directory: file.directory, name: file.name)
+}
+
+type SnapshotIdentityRefusal
+  = SnapshotIdentityPathRefused { cause: SnapshotCaptureRefusal }
+  | SnapshotIdentityDuplicatePath { path: String }
+
+fn snapshot_identity_refusal_detail(cause: SnapshotIdentityRefusal) -> String {
+  match cause {
+    SnapshotIdentityPathRefused { cause: c } =>
+      match c {
+        SnapshotPathNotRelative { path, cause: why } => join(["path ", path, " is not an admitted relative path: ", why], "")
+        SnapshotPathOutsideComposition { path, composition } => join(["path ", path, " is outside the declared composition ", composition], "")
+        SnapshotFileUnreadable { path, detail } => join(["file ", path, " is unreadable: ", detail], "")
+        SnapshotFileAbsent { path } => join(["file ", path, " is absent"], "")
+        SnapshotFileEmpty { path } => join(["file ", path, " is empty"], "")
+        SnapshotStoreRefusedObject { path, fault } => join(["store refused ", path, ": ", fault], "")
+        SnapshotManifestNotStored { fault } => join(["manifest not stored: ", fault], "")
+      }
+    SnapshotIdentityDuplicatePath { path } => join(["path ", path, " appears twice"], "")
+  }
+}
+
+type SnapshotIdentity
+  = SnapshotIdentified { manifest: FabricObjectRef, files: Int, composition: String }
+  | SnapshotIdentityRefused { cause: SnapshotIdentityRefusal }
+
+type SnapshotIdentityAcc {
+  entries: List<FabricObjectRef>
+  last: String?
+  refusal: SnapshotIdentityRefusal?
+}
+
+fn snapshot_identity_entry_ref(file: SnapshotSourceFile) -> FabricObjectRef {
+  fabric_object_ref_of(object: snapshot_entry_object(
+    name: fabric_object_ref_of(object: snapshot_leaf_object(body: file.name)),
+    content: fabric_object_ref_of(object: snapshot_leaf_object(body: snapshot_digest_leaf_body(digest: file.digest))),
+    directory: file.directory,
+  ))
+}
+
+fn snapshot_identity_step(composition: SourceComposition, acc: SnapshotIdentityAcc, file: SnapshotSourceFile) -> SnapshotIdentityAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent => {
+      let path = snapshot_source_file_path(file: file)
+      match admit_relative_source_path(text: path) {
+        RelativePathRefused { text: t, cause: c } =>
+          SnapshotIdentityAcc { entries: acc.entries, last: acc.last, refusal: Present { value: SnapshotIdentityPathRefused { cause: SnapshotPathNotRelative { path: t, cause: c } } } }
+        RelativePathAdmitted { path: relative } =>
+          if !snapshot_path_inside_composition(composition: composition, path: relative) {
+            SnapshotIdentityAcc { entries: acc.entries, last: acc.last, refusal: Present { value: SnapshotIdentityPathRefused { cause: SnapshotPathOutsideComposition {
+              path: path,
+              composition: source_composition_wire(composition: composition) as String,
+            } } } }
+          } else if acc.last == Present { value: path } {
+            SnapshotIdentityAcc { entries: acc.entries, last: acc.last, refusal: Present { value: SnapshotIdentityDuplicatePath { path: path } } }
+          } else {
+            SnapshotIdentityAcc { entries: concat(acc.entries, [snapshot_identity_entry_ref(file: file)]), last: Present { value: path }, refusal: none }
+          }
+      }
+    }
+  }
+}
+
+fn snapshot_manifest_identity(composition: SourceComposition, files: List<SnapshotSourceFile>) -> SnapshotIdentity {
+  match fold(
+    files |> sort_by(f => snapshot_source_file_path(file: f)),
+    init: SnapshotIdentityAcc { entries: [] as List<FabricObjectRef>, last: none, refusal: none },
+    f: fn(acc, file) { snapshot_identity_step(composition: composition, acc: acc, file: file) },
+  ) {
+    SnapshotIdentityAcc { entries: entries, last: _, refusal: refusal } =>
+      match refusal {
+        Present { value: cause } => SnapshotIdentityRefused { cause: cause }
+        Absent => SnapshotIdentified {
+          manifest: fabric_object_ref_of(object: snapshot_manifest_object(entries: entries, composition: composition)),
+          files: count(entries),
+          composition: source_composition_wire(composition: composition) as String,
+        }
       }
   }
 }
@@ -555,7 +718,7 @@ fn capture_source_snapshot(
 // chat reproduced that with two non-root uids. This module claimed at that moment that no actor
 // but the owner could substitute anything, and the claim was FALSE: it silently depended on a
 // property of whatever directory TMPDIR happened to name. A guarantee that rests on an unexamined
-// environment variable is not a guarantee, and asserting it was the DESIGN section 4d
+// environment variable is not a guarantee, and asserting it was the gunbc.design_argument::epistemic_humility
 // over-assertion this corpus is supposed to catch.
 //
 // So the candidate parent is OBSERVED and ADMITTED before anything is created in it:
@@ -580,7 +743,7 @@ fn capture_source_snapshot(
 // and re-resolves its ancestry at the moment of the call, so between any two of them the ancestry
 // can change. A one-time `lstat` or canonicalization before the writes would not close it either:
 // it would move the window, not remove it, and citing it as coverage is worse than not having it
-// (DESIGN section 4b -- ask whether the check's red is authorable before writing the check). The
+// (gunbc.design_argument::guarantee_ladder -- ask whether the check's red is authorable before writing the check). The
 // state is genuinely OUTSIDE the modeled guarantee for that principal, and it is named rather than
 // papered over.
 //
@@ -619,7 +782,7 @@ fn capture_source_snapshot(
 // principal.
 //
 // WHY THIS IS A FAILURE-MODE ROW AND NOT A DECLARED RUNG DROP, since a reader is entitled to ask.
-// A section 4b(3) drop records a rung that HELD and was lowered, with a restoration trigger. This
+// A gunbc.design_argument::guarantee_ladder (no silent regression) drop records a rung that HELD and was lowered, with a restoration trigger. This
 // class never held higher here: the route is new, and its first honest reading is the one written
 // above. So it is rostered as `gunbc.recurring_failure_mode`
 // `a_pathname_reresolves_its_ancestry_between_calls` -- found at mitigatable, ceiling structurally
@@ -649,7 +812,7 @@ type ProviderWorkspaceAllocation
 // EACH REPAIR WAS A BETTER HEURISTIC OVER AN ARBITRARY PATH, AND THE FOURTH WOULD HAVE BEEN TOO.
 // The thing being defended was a caller-supplied prefix, and every property of it has to be
 // re-established at the moment of use because any of it can change; that is not a wall a check can
-// reach. DESIGN section 5's construction-over-validation says what to do instead: remove the state
+// reach. gunbc.design_argument::fail_closed's construction-over-validation says what to do instead: remove the state
 // rather than keep checking it. So the provider does not ADMIT a base, it OWNS one.
 //
 // THE BASE IS A CONSTRUCTED LOCATION WITH A DERIVED ANCESTRY. /run/user/<uid>/gunbc, built from the
@@ -786,7 +949,7 @@ data provider_root_trusted_root_owner: NonEmptyStr = "root" as NonEmptyStr
 // THE MODES WITH NO GROUP OR OTHER WRITE BIT, COMPARED AS WHOLE STRINGS because the substrate has
 // no string indexing and a hand-rolled digit scan would be a parser standing where a comparison was
 // available. The roster covers what a protected ancestry is actually spelled with; anything outside
-// it refuses. The cost is over-refusal and it is deliberate (DESIGN section 4d), and widening is a
+// it refuses. The cost is over-refusal and it is deliberate (gunbc.design_argument::epistemic_humility), and widening is a
 // matter of adding spellings rather than loosening the rule.
 data provider_root_unwritable_modes: List<String> = [
   "700", "0700", "750", "0750", "755", "0755", "711", "0711",
@@ -811,7 +974,7 @@ fn level_is_safe(observed: LevelObservation, trusted: TrustedOwners) -> Bool {
 // There were two observations of the same fact: a second observer, since deleted, ran `id -un` for
 // the ownership predicate while `observe_provider_principal` ran it again for the base name, and
 // the selection called both. (The deleted one is described rather than named, because a citation to
-// a symbol that no longer resolves is the stale reference DESIGN section 3 makes decidable.) Two reads of one fact can disagree, so the name in
+// a symbol that no longer resolves is the stale reference gunbc.design_argument::single_authority makes decidable.) Two reads of one fact can disagree, so the name in
 // /tmp/gunbc-provider-<name> and the name the level rule trusts could come from different readings
 // -- and this module argues against exactly that one field over, where the base and its ancestry
 // were two values a caller filled separately until they were derived from one chain. Found by
@@ -1159,7 +1322,7 @@ fn snapshot_materialize_entry_content(
 }
 
 fn snapshot_materialize_entry_links(
-  store: FabricStorageFileRoot,
+  store: FabricStorageOperations,
   destination: NonEmptyStr,
   composition: SourceComposition,
   acc: SnapshotMaterializeAcc,
@@ -1200,7 +1363,7 @@ fn snapshot_materialize_entry_links(
 // data. The count is checked before either link is taken, so the optional arms below cannot be
 // reached by a short list and are not a second, silent membership rule.
 fn snapshot_materialize_entry(
-  store: FabricStorageFileRoot,
+  store: FabricStorageOperations,
   destination: NonEmptyStr,
   composition: SourceComposition,
   acc: SnapshotMaterializeAcc,
@@ -1245,7 +1408,7 @@ fn snapshot_materialize_entry(
 }
 
 fn snapshot_materialize_step(
-  store: FabricStorageFileRoot,
+  store: FabricStorageOperations,
   destination: NonEmptyStr,
   composition: SourceComposition,
   acc: SnapshotMaterializeAcc,
@@ -1285,7 +1448,7 @@ fn snapshot_materialize_step(
 // So the parameter is the PARENT, and the destination is a fresh directory this call creates inside
 // it through `mktemp -d`, whose name no caller chose and whose contents are therefore exactly what
 // the manifest put there. Membership is established by construction rather than by inspecting a
-// directory afterwards, which is DESIGN section 5's preference stated for a filesystem: the
+// directory afterwards, which is gunbc.design_argument::fail_closed's preference stated for a filesystem: the
 // polluted-destination state is unwritable, not validated.
 //
 // THREE CONSEQUENCES FOLLOW FROM THE SAME PROPERTY, and they are the three the reviewer asked for.
@@ -1308,7 +1471,7 @@ fn snapshot_materialize_step(
 // bytes on its disk and a refusal in its log; on this ordering nothing has been created at all when
 // that refusal fires.
 fn materialize_source_snapshot(
-  store: FabricStorageFileRoot,
+  store: FabricStorageOperations,
   manifest: FabricObjectRef,
   workspace: ProviderWorkspace,
   expected: SourceComposition,

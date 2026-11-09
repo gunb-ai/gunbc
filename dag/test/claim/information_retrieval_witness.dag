@@ -22,7 +22,7 @@ import test.claim.information_query_witness {
 
 // THE FIXTURES ARE IMPORTED, NOT COPIED. The hermetic witness module already owns this specimen --
 // the same locator, subject, pin and provenance -- and a second transcription would be two
-// authorities for one fixture (DESIGN sections 2 and 3): they drift, and this run would then measure
+// authorities for one fixture (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority): they drift, and this run would then measure
 // a different subject than the run it is supposed to correspond to.
 
 // THIS IS A HERMETIC WITNESS, AND AN EARLIER REVISION LIED ABOUT THAT. It was named and annotated as

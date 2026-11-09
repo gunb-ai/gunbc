@@ -70,7 +70,7 @@ fn plan_p(text: String) -> MarkdownBlock { ParagraphBlock { inlines: [TextInline
 fn plan_retirement_blocks(p: Plan) -> List<MarkdownBlock> {
   match p.retirement {
     PlanRetiresWhen { condition } =>
-      [plan_h2(text: "Dissolution trigger (DESIGN §6)"), plan_p(text: dissolution_description(condition: condition))]
+      [plan_h2(text: "Dissolution trigger (gunbc.design_argument::how_to_work)"), plan_p(text: dissolution_description(condition: condition))]
     PlanHasNoRetirement => []
   }
 }

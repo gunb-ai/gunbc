@@ -55,7 +55,7 @@ import gunbc.extdeps_scope_frontier {
 // re-verification. This gate dissolves with the whole storage-grain frontier into the
 // v2.lens.mandatory_tag region promotion (compile-grain, module-name grain).
 
-// ONE fold over a name-status diff, read at two different bases (DESIGN section 2 horizontal: one concept, every breadth). The base is the caller's parameter because WHICH base answers WHICH question is a workflow fact, not a property of the git operation (DESIGN section 3: business policy must not fuse into the extdeps interface).
+// ONE fold over a name-status diff, read at two different bases (gunbc.design_argument::minimize_redundancy horizontal: one concept, every breadth). The base is the caller's parameter because WHICH base answers WHICH question is a workflow fact, not a property of the git operation (gunbc.design_argument::single_authority: business policy must not fuse into the extdeps interface).
 fn diff_added_paths_observation(success: Bool, raw: String) -> DiffAddedObservation {
   if success {
     match git_diff_name_status_parse(raw: raw) {
@@ -115,7 +115,7 @@ fn manifest_remove_only_exit(observation: ManifestLineObservation) -> ProcessExi
       )
     )
     ManifestDiffUnreadable => exit_failure(
-      reason: "extdeps scope placement gate: manifest remove-only diff observation unreadable — refusing, never skipping (DESIGN section 5)"
+      reason: "extdeps scope placement gate: manifest remove-only diff observation unreadable — refusing, never skipping (gunbc.design_argument::fail_closed)"
     )
   }
 }
@@ -130,20 +130,20 @@ fn manifest_remove_only_verdict() -> ProcessExit {
     manifest_remove_only_exit(observation: manifest_line_observation(diff_text: diff.diff))
   } else {
     exit_failure(
-      reason: "extdeps scope placement gate: git.Core.DiffUnified0(origin/main...HEAD) failed — refusing, never skipping (DESIGN section 5)"
+      reason: "extdeps scope placement gate: git.Core.DiffUnified0(origin/main...HEAD) failed — refusing, never skipping (gunbc.design_argument::fail_closed)"
     )
   }
 }
 
-data scope_placement_base_split_note: String = "The two arms read DIFFERENT bases because they answer different questions (the defect this splits, gunbc#7644 diagnosis): the PLACEMENT arm asks 'does THIS CHANGE introduce an unrostered dag/extdeps file', which is the merge base origin/main...HEAD; the FREEZE arm asks 'does any manifest row name a file created after the freeze anchor', which is inherently the whole post-freeze population and therefore stays at legacy_manifest_freeze_sha..HEAD. Before the split both arms read the freeze base, so ONE unrostered file merged to main refused EVERY branch — the party blocked was never the party at fault (gunbc#7573 added dag/extdeps/session_dashboard.dag eleven seconds after the gate landed, its own CI ran against a gate-less base, and main then refused ten consecutive runs while unrelated lanes burned sessions proving the red was not theirs). DECLARED COVERAGE NARROWING (DESIGN section 4b meta-obligation 3, no silent regression): the freeze-base placement read incidentally re-verified roster membership over the WHOLE post-freeze population on every run; the merge-base read does not, so a file that reaches main unrostered is no longer re-refused per-PR. Bounded population: dag/extdeps .dag files added after legacy_manifest_freeze_sha whose introducing PR never executed this gate — reachable only when the gate itself changes between a PR's last CI run and its merge. Residual detection: the wet live-cover witness (test.claim.external_model_scope_live_cover_witness) still walks disk and re-verifies the whole population under its documented local recipe, and the manifest-smuggling class keeps whole-population coverage here because the freeze arm is unchanged. Restoration trigger: the v2.lens.mandatory_tag region promotion, which replaces this storage-grain gate with a compile-grain wall over every module and makes the population question structural rather than diffed."
+data scope_placement_base_split_note: String = "The two arms read DIFFERENT bases because they answer different questions (the defect this splits, gunbc#7644 diagnosis): the PLACEMENT arm asks 'does THIS CHANGE introduce an unrostered dag/extdeps file', which is the merge base origin/main...HEAD; the FREEZE arm asks 'does any manifest row name a file created after the freeze anchor', which is inherently the whole post-freeze population and therefore stays at legacy_manifest_freeze_sha..HEAD. Before the split both arms read the freeze base, so ONE unrostered file merged to main refused EVERY branch — the party blocked was never the party at fault (gunbc#7573 added dag/extdeps/session_dashboard.dag eleven seconds after the gate landed, its own CI ran against a gate-less base, and main then refused ten consecutive runs while unrelated lanes burned sessions proving the red was not theirs). DECLARED COVERAGE NARROWING (gunbc.design_argument::guarantee_ladder meta-obligation 3, no silent regression): the freeze-base placement read incidentally re-verified roster membership over the WHOLE post-freeze population on every run; the merge-base read does not, so a file that reaches main unrostered is no longer re-refused per-PR. Bounded population: dag/extdeps .dag files added after legacy_manifest_freeze_sha whose introducing PR never executed this gate — reachable only when the gate itself changes between a PR's last CI run and its merge. Residual detection: the wet live-cover witness (test.claim.external_model_scope_live_cover_witness) still walks disk and re-verifies the whole population under its documented local recipe, and the manifest-smuggling class keeps whole-population coverage here because the freeze arm is unchanged. Restoration trigger: the v2.lens.mandatory_tag region promotion, which replaces this storage-grain gate with a compile-grain wall over every module and makes the population question structural rather than diffed."
 
 fn scope_placement_membership_verdict(observation: DiffAddedObservation) -> ProcessExit {
   match observation {
     DiffObserveFailed => exit_failure(
-      reason: "extdeps scope placement gate: git.Core.DiffNameStatus(origin/main...HEAD) failed — refusing, never skipping (DESIGN section 5)"
+      reason: "extdeps scope placement gate: git.Core.DiffNameStatus(origin/main...HEAD) failed — refusing, never skipping (gunbc.design_argument::fail_closed)"
     )
     DiffParseTruncated => exit_failure(
-      reason: "extdeps scope placement gate: merge-base diff parse truncated — refusing, never skipping (DESIGN section 5)"
+      reason: "extdeps scope placement gate: merge-base diff parse truncated — refusing, never skipping (gunbc.design_argument::fail_closed)"
     )
     AddedPathsObserved { paths: added } => {
       let refused = scope_placement_refused_paths(
@@ -168,10 +168,10 @@ fn scope_placement_membership_verdict(observation: DiffAddedObservation) -> Proc
 fn scope_placement_freeze_verdict(observation: DiffAddedObservation) -> ProcessExit {
   match observation {
     DiffObserveFailed => exit_failure(
-      reason: "extdeps scope placement gate: git.Core.DiffNameStatus(freeze..HEAD) failed — refusing, never skipping (DESIGN section 5)"
+      reason: "extdeps scope placement gate: git.Core.DiffNameStatus(freeze..HEAD) failed — refusing, never skipping (gunbc.design_argument::fail_closed)"
     )
     DiffParseTruncated => exit_failure(
-      reason: "extdeps scope placement gate: freeze-base diff parse truncated — refusing, never skipping (DESIGN section 5)"
+      reason: "extdeps scope placement gate: freeze-base diff parse truncated — refusing, never skipping (gunbc.design_argument::fail_closed)"
     )
     AddedPathsObserved { paths: added } => {
       let manifest = parse_frontier_manifest(
@@ -203,15 +203,15 @@ fn scope_placement_freeze_verdict(observation: DiffAddedObservation) -> ProcessE
 // beside the rows it enforces: gunbc.language_module_home holds the decision functions and this
 // file holds the per-PR execution, exactly the split gunbc.extdeps_scope_frontier and this gate
 // already use. Without this arm the homing rosters would have been a predicate nothing calls — the
-// coverage-by-illusion tier DESIGN section 6 names, where an inert lens is itself a lie.
+// coverage-by-illusion tier gunbc.design_argument::how_to_work names, where an inert lens is itself a lie.
 
 fn language_module_home_verdict(observation: DiffAddedObservation) -> ProcessExit {
   match observation {
     DiffObserveFailed => exit_failure(
-      reason: "extdeps scope placement gate: git.Core.DiffNameStatus(origin/main...HEAD) failed for the language-module homing arm — refusing, never skipping (DESIGN section 5)"
+      reason: "extdeps scope placement gate: git.Core.DiffNameStatus(origin/main...HEAD) failed for the language-module homing arm — refusing, never skipping (gunbc.design_argument::fail_closed)"
     )
     DiffParseTruncated => exit_failure(
-      reason: "extdeps scope placement gate: merge-base diff parse truncated for the language-module homing arm — refusing, never skipping (DESIGN section 5)"
+      reason: "extdeps scope placement gate: merge-base diff parse truncated for the language-module homing arm — refusing, never skipping (gunbc.design_argument::fail_closed)"
     )
     AddedPathsObserved { paths: added } => {
       let refused = added_language_paths_refused(added: added)

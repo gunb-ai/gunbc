@@ -12,7 +12,7 @@ import std.measure { ByteSize, byte_size_count }
 import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex }
 import gunbc.fabric.fabric_witness_run { VerifiedGitCommitTree }
 import std.decimal { decimal_digits_only }
-import gunbc.target_invocation { ClaimRouteVerdict, claim_route_verdict_exit, claim_route_verdict_of_exit }
+import gunbc.target_invocation { ClaimRouteVerdict, ClaimHeld, ClaimDidNotHold, ClaimUnobserved, claim_route_verdict_exit, claim_route_verdict_of_exit }
 
 // THE CLAIM-SET RESULTS FRAME: WHAT A REVISION JOB'S GUEST HANDS BACK, AND HOW THE HOST READS IT.
 //
@@ -43,7 +43,7 @@ import gunbc.target_invocation { ClaimRouteVerdict, claim_route_verdict_exit, cl
 // ran anything, and admission refuses a record whose commit or tree is not the job's admitted
 // revision: a result about another tree is not a result about this job.
 //
-// CONSUMED, AND WHAT REMAINS (DESIGN 3c). The writer-to-reader join is executed: the guest's frame
+// CONSUMED, AND WHAT REMAINS (gunbc.design_argument::consumption). The writer-to-reader join is executed: the guest's frame
 // writer (gunbc.runner.runner_claim_set_guest write_claim_set_frame) writes a zeroed device and this
 // decoder admits it by real execution (test.claim.runner.runner_claim_set_guest_wet_witness). What
 // remains is the full guest run -- the unit installed in an image, launched, running the claims --
@@ -214,7 +214,7 @@ fn decode_claim_set_body(declared: Int, body: List<String>) -> ClaimSetResultsDe
 
 // ── admission: the decoded records against the job ─────────────────────────────────────────────
 
-// COMPLETENESS IS AN IDENTITY JOIN, IN ORDER (DESIGN 5): record i is claim i of the Work's declared
+// COMPLETENESS IS AN IDENTITY JOIN, IN ORDER (gunbc.design_argument::fail_closed): record i is claim i of the Work's declared
 // claims, each exactly once, and every record names the admitted commit and tree.
 type ClaimSetResultsAdmission
   = ClaimSetResultsAdmitted { results: List<ClaimSetResult>, outputs: ContentHash }
@@ -261,4 +261,24 @@ fn admit_claim_set_results(
 type ClaimSetAdmissionFold {
   index: Int
   verdict: ClaimSetResultsAdmission
+}
+
+// ── the job's standing, read from its admitted results ─────────────────────────────────────────
+
+// THREE ANSWERS, AND ONLY ONE QUALIFIES. Every claim held; some claim did not hold with every claim
+// observed; or some claim was not observed (an unresolved label at this commit, or no observation) -- which never counts toward the held arm, whatever the others did, so
+// a typo in a label reads as an unresolved, non-qualifying job naming that label, never a pass.
+type RevisionJobStanding
+  = RevisionJobAllHeld
+  | RevisionJobSomeNotHeld { not_held: List<String> }
+  | RevisionJobSomeUnobserved { unobserved: List<String>, not_held: List<String> }
+
+// Read from each claim's ClaimRouteVerdict: an unobserved claim never counts toward the held arm,
+// whatever the others did.
+fn revision_job_standing(results: List<ClaimSetResult>) -> RevisionJobStanding {
+  let unobserved = map(filter(results, r => match r.verdict { ClaimUnobserved => true  ClaimHeld => false  ClaimDidNotHold => false }), r => r.label as String)
+  let not_held = map(filter(results, r => match r.verdict { ClaimDidNotHold => true  ClaimHeld => false  ClaimUnobserved => false }), r => r.label as String)
+  if count(unobserved) > 0 { RevisionJobSomeUnobserved { unobserved: unobserved, not_held: not_held } }
+  else if count(not_held) > 0 { RevisionJobSomeNotHeld { not_held: not_held } }
+  else { RevisionJobAllHeld }
 }

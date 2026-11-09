@@ -435,7 +435,7 @@ test fn procfs_reading_labels_do_name_their_path() -> Bool {
 
 // The refusal above proves the resolution carries no NUMBER; this proves it carries the two things
 // a stopped operator needs, because a line-stop that does not say how to restart the line is a stop
-// nobody can analyze (DESIGN section 5, the factory model). The reason must name what was
+// nobody can analyze (gunbc.design_argument::fail_closed, the factory model). The reason must name what was
 // unreadable — the cgroup limit files — and the env request that cannot replace them. On the
 // BuildBuddy runner that motivated this change the executor must expose the missing observation;
 // a plausible environment integer is exactly the unverified state this change refuses.

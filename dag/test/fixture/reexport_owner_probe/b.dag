@@ -1,0 +1,8 @@
+module test.fixture.reexport_owner_probe.b
+
+import std.types { Int }
+import test.fixture.reexport_owner_probe.a { probe_make, probe_d, probe_e }
+
+fn probe_b_use() -> Int {
+  probe_make(n: 1)
+}

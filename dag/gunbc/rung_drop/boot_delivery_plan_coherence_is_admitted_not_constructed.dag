@@ -1,0 +1,32 @@
+module gunbc.rung_drop.boot_delivery_plan_coherence_is_admitted_not_constructed
+
+import std.types { NonEmptyStr }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
+import gunbc.guarantee_rung { StructurallyGuaranteed, MechanicallyPreventable }
+
+// DECLARED DIVERGENCE (gunbc.design_argument::conformance, gunbc.design_argument::guarantee_ladder (no silent regression)) for reviews 90138 and 90139. `BootDeliveryPlan` stores
+// `delivery`, `boot_control`, `boot_control_route`, `eligibility` and the target as independent
+// fields, so six incoherent combinations are writable and `admit_boot_delivery_plan` refuses them
+// after the fact: a rung-2 validator standing where construction (rung 3) is available. The ceiling
+// is a plan type indexed by delivery family, with boot_control and eligibility derived from the
+// delivery value and the seed holding one delivery value instead of a second copy of its architecture.
+// NOT NOW because that change touches the solver, every consumer, the fixtures and the seed across
+// the three stacked PRs; landing it inside the stack would re-open all three for review at once.
+// The trigger is the capability, not the PR: no live boot consumes `ProvisioningArm` until the
+// construction lands, and it is the next PR after the stack, owned by sleek-deer-601.
+data boot_delivery_plan_coherence_is_admitted_not_constructed: RungDrop = RungDrop {
+  identity: "boot_delivery_plan_coherence_is_admitted_not_constructed" as NonEmptyStr,
+
+  subject: "the coherence of a BootDeliveryPlan (and of the seed's delivery against its client architecture): refused by admit_boot_delivery_plan after construction instead of unwritable",
+
+  declared: "2026-11-02",
+
+  standing: Standing { declaration: TypedDeclaration {
+    previous: StructurallyGuaranteed,
+    temporary: MechanicallyPreventable,
+    reason: ReplacementStaged { replacement: "admit_boot_delivery_plan at gunbc.boot_artifact_delivery, consumed by provisioning_arm, until the plan is indexed by delivery family (disposition of review 90138 and review 90139, merry-fox-82 decision)" },
+    population: Enumerated { members: FreeSemigroup { head: "PlanBootControlNotTheDeliverys", tail: ["PlanControlRouteNotTheTargets", "PlanControllerDeliveryWithoutController", "PlanEligibilityNotTheDeliverys", "PlanEligibilityNotEstablished", "PlanProfileProvenanceNotTheTargets", "PlanNetworkEstablishmentForOtherTarget"] } },
+    restoration_trigger: "RESIDUAL the validator does not hide: admission REFUSES the configfs and UEFI HTTP arms (PlanEligibilityNotEstablished) until their association can be checked, because the configfs qualified_by and UEFI HTTP evidence lists carry no params-side fact the plan retains (the solver keys them to the target at a standing the plan drops), so only the UEFI HTTP artifact digest is compared and the arms are refused; the indexed plan carries that evidence with its delivery. A BootDeliveryPlan type indexed by delivery family exists, boot_control and eligibility are derived from the delivery value, and the seed holds one delivery value, so the seven BootDeliveryPlanIncoherence arms have no constructor; it lands as the next PR after the delivery stack and before any live boot consumes ProvisioningArm. Observed at retirement: admit_boot_delivery_plan and its seven causes are deleted and their REDs become compile refusals."
+  } }
+}

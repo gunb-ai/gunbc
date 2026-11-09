@@ -1,6 +1,7 @@
 module gunbc.namespace_cut.namespace_cut_subject_observation
 
-import std.types { String, NonEmptyStr, Bool, Int, List, list_length }
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.algebra { length }
 import std.render_repeat_string_bootstrap { repeat_string }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -59,7 +60,7 @@ import gunbc.namespace_cut.namespace_cut_subject_roster {
 // observe_current_live_hand_rust returns the live hand-Rust item population at item-identity grain,
 // scanned by gunbc.rust_item_scan and scoped by the namespace rows that claim src/v1/stage0/src/ --
 // the exact tree every host probe here names. The missing thing was the JOIN, never the authority,
-// and a second Rust-item observer would have been the parallel authority DESIGN section 3 forbids.
+// and a second Rust-item observer would have been the parallel authority gunbc.design_argument::single_authority forbids.
 // So observe_host_probe below CONSUMES that producer.
 // ---------------------------------------------------------------------------------------------
 type SubjectProbeObservation
@@ -140,7 +141,7 @@ fn observation_from_resolution(
 //
 // Arm 3 is what makes the instrument able to report the cut's success state, and arm 4 is what
 // stops it from reporting success for a file it never opened. Deleting arm 4 would be the exact
-// absorbing fallback DESIGN section 5 forbids: an unread file silently joining the deleted.
+// absorbing fallback gunbc.design_argument::fail_closed forbids: an unread file silently joining the deleted.
 fn host_item_matches(item: RustItemIdentity, path: String, name: String) -> Bool {
   (item.repo_path as String) == path && rust_item_identity_qualified_name(item: item) == name
 }
@@ -196,7 +197,7 @@ fn host_paths_holding_name(items: List<RustItemIdentity>, name: String) -> Strin
 // search of the entire scanned population distinguishes a MOVED item from a DELETED one, because
 // the two differ nowhere except in where the item now is.
 //
-// The arm REFUSES rather than answering, and that is deliberate under DESIGN section 5: an
+// The arm REFUSES rather than answering, and that is deliberate under gunbc.design_argument::fail_closed: an
 // instrument that has just discovered its own citation is stale has no sound verdict to give, and
 // silently correcting itself to PRESENT would be equally wrong -- it would repair the reading while
 // leaving the roster carrying a citation that will rot again on the next move, with no record that
@@ -239,7 +240,7 @@ fn host_probe_over_items(
 
 // Parameterized on the observation so a witness can author every arm -- the refusal, a hit, a
 // scanned-file miss and an unread file -- without a tree read. THAT WITNESS NOW EXISTS and is this
-// arm's enrolled evidence under DESIGN section 4b(4):
+// arm's enrolled evidence under gunbc.design_argument::guarantee_ladder (dissolution on climb):
 // test.claim.namespace_cut_stale_citation_witness. It carries the discriminating RED (a probe
 // citing the file an item has moved out of must refuse and name both paths) beside two positive
 // controls (a correct citation resolves PRESENT, a genuinely missing name in a scanned file stays
@@ -281,7 +282,7 @@ fn probe_is_host(p: NamespaceCutSubjectProbe) -> Bool {
 // THE VERDICT WORD HAS ONE AUTHORITY. It was previously spelled once inside the renderer's own
 // match and again wherever anything needed to ask which verdict an observation carried -- and the
 // second spelling is what invites a hand-rolled variant-to-Bool predicate at every asking site,
-// which is the structural-equality residue DESIGN section 6 names (a param scrutinee with an
+// which is the structural-equality residue gunbc.design_argument::how_to_work names (a param scrutinee with an
 // off-variant arm returning false). One total projection removes both: the renderer derives its
 // column from this, and a consumer asking "is this PRESENT" compares against this rather than
 // re-matching the coproduct. Raised by codex review 60447 against the fixture, but the duplication
@@ -309,7 +310,7 @@ fn observation_verdict(o: SubjectProbeObservation) -> String {
 // THE COLUMN IS DERIVED, NOT AUTHORED -- and it now is. An earlier cut said this while padding to a
 // hardcoded 13, which is a literal that has to be kept in sync with the verdict vocabulary BY HAND:
 // a verdict longer than twelve characters would have gone ragged or driven repeat_string negative,
-// and the sentence above would still have read as a guarantee. That is DESIGN section 5's own tell
+// and the sentence above would still have read as a guarantee. That is gunbc.design_argument::fail_closed's own tell
 // for validation standing where construction was available -- the claim satisfied by editing the
 // prose while the realization lies -- reproduced inside the pull request that exists to remove it,
 // and caught by review 60569. The width is now folded from the vocabulary itself, plus one space.
@@ -393,7 +394,7 @@ fn probe_is_v1(p: NamespaceCutSubjectProbe) -> Bool {
 // THE OBSERVATION IS THE AUTHORITY; THE LINES AND THE VERDICT ARE TWO PROJECTIONS OF IT. An
 // earlier revision rendered straight to List<String>, which left the command with nothing but
 // prose to decide on -- so it wrote a report saying UNOBSERVABLE and exited 0. A report that
-// cannot refuse is the absorbing-fallback shape DESIGN section 5 names: the deficit produces no
+// cannot refuse is the absorbing-fallback shape gunbc.design_argument::fail_closed names: the deficit produces no
 // signal, so it never ranks for fixing. The rows below are acquired ONCE and both the body and
 // the refusal are folded from the same structure, never from the rendered text.
 type SubjectObservationRow {
@@ -454,8 +455,8 @@ fn subject_report_lines() -> List<String> {
 // same motion that removed a structural-equality residue: the predicates were correctly deleted and
 // replaced by a String projection whose empty value was doing sentinel duty.
 //
-// No current construction site passes an empty reason -- all eight carry real text -- but DESIGN
-// section 4b asks whether the RED is AUTHORABLE, not whether it fires on today's corpus, and a
+// No current construction site passes an empty reason -- all eight carry real text -- but
+// gunbc.design_argument::guarantee_ladder asks whether the RED is AUTHORABLE, not whether it fires on today's corpus, and a
 // fixture can construct that observation trivially. The witness now does exactly that.
 // THE REFUSAL IS CLASSIFIED BY AN EXHAUSTIVE FOLD, NOT BY A LABEL. An earlier cut asked whether
 // observation_verdict equalled the string "UNOBSERVABLE" -- which traded a reason-text sentinel for
@@ -489,7 +490,7 @@ fn observation_refusals(o: SubjectProbeObservation) -> List<SubjectProbeObservat
 }
 
 fn observation_refuses(o: SubjectProbeObservation) -> Bool {
-  list_length(items: observation_refusals(o: o)) > 0
+  length(xs: observation_refusals(o: o)) > 0
 }
 
 // A refusal that carries no reason is still a refusal, and it renders as one rather than vanishing.
@@ -518,7 +519,7 @@ fn refusals_in_rows(rows: List<SubjectObservationRow>) -> List<SubjectProbeObser
 }
 
 fn rows_refuse(rows: List<SubjectObservationRow>) -> Bool {
-  list_length(items: refusals_in_rows(rows: rows)) > 0
+  length(xs: refusals_in_rows(rows: rows)) > 0
 }
 
 fn unobservable_in_row(acc: String, r: SubjectObservationRow) -> String {
@@ -530,7 +531,7 @@ fn unobservable_digest(rows: List<SubjectObservationRow>) -> String {
 }
 
 // THE COMMAND REFUSES ON ANY UNOBSERVABLE PROBE, and writes the report first. Writing before
-// refusing is the stopped-line audit of DESIGN section 5: the operator gets the full evidence to
+// refusing is the stopped-line audit of gunbc.design_argument::fail_closed: the operator gets the full evidence to
 // analyse, and the line still stops. It does not green.
 fn subject_roster_report(out: String) -> ProcessExit {
   if out == "" {

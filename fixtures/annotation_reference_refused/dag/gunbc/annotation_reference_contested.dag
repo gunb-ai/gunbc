@@ -1,0 +1,10 @@
+module gunbc.annotation_reference_contested
+
+import gunbc.annotation_reference_twin_a { AnnotationReferenceTwin }
+import gunbc.annotation_reference_twin_b { AnnotationReferenceTwin }
+
+// A NAME WITH TWO DECLARING CLAIMANTS: a citation of it here is contested, never a silent pick.
+
+fn annotation_reference_contested_value() -> Int {
+  0
+}

@@ -18,7 +18,7 @@ import gunbc.design_ledgers { rung_drop_standing_suffix, rung_drop_standing_bloc
 import gunbc.rung_drop_amendment { standing_sentence }
 import gunbc.rung_drop.rust_unit_tests_over_their_cap { rust_unit_tests_over_their_cap }
 
-// A SUPERSEDED DROP NEVER RENDERS AS ONE WHOSE TRIGGER FIRED. DESIGN 4b(3) retires a drop by its
+// A SUPERSEDED DROP NEVER RENDERS AS ONE WHOSE TRIGGER FIRED. gunbc.design_argument::guarantee_ladder (no silent regression) retires a drop by its
 // trigger and by nothing else, so the projection's "RETIRED -- TRIGGER FIRED" is a claim that the
 // trigger fired, and consumers read it that way. The red is the shape the first supersession was
 // written in before this arm existed: the ruling stored in Retired.trigger_fired, rendered as

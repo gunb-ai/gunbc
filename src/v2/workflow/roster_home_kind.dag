@@ -41,7 +41,7 @@ import v2.compiler.source_authority { ModuleFileDerived, ModuleNameUnderivable, 
 // fact keyed by qualified name. v2.std.decl_index decl_facts_at is the one home for that question ("THE KEYED READ...
 // Both project one census"); this module is its only consumer on the roster route. The declaration that classifies a
 // home is read from the HOME MODULE'S OWN FILE, the one v2.compiler.source_authority module_file assigns <home> over
-// v2.cli.repository_layout repository_storage_layout (DESIGN 3: paths follow names, one way). The census walk is rooted at
+// v2.cli.repository_layout repository_storage_layout (gunbc.design_argument::single_authority: paths follow names, one way). The census walk is rooted at
 // that file's directory (it accepts directory roots only) and its rows are then kept only where rel_path is that exact
 // file, because the walk trusts each file's own `module` line: a sibling declaring the home module is read but never
 // classifies it. The pool was the whole corpus (dag, src/v1, src/v2) until Seat 7: gunbc run registers no census memo,
@@ -49,10 +49,10 @@ import v2.compiler.source_authority { ModuleFileDerived, ModuleNameUnderivable, 
 // derives no file reads zero rows and refuses as KindUnclassified -- never a widening back to the corpus.
 //
 // THE BINDING FACT STAYS WHERE IT WAS. site.head is v2.compiler.reference_site_collector's own classification and this
-// module reads it, never re-decides it (DESIGN 3). What was missing, and what this file adds, is only the
+// module reads it, never re-decides it (gunbc.design_argument::single_authority). What was missing, and what this file adds, is only the
 // position<->kind compatibility neither the collector nor the sweep could express alone.
 
-// WHAT THE RULE ANSWERS, as a coproduct rather than a Bool, so non-decidability is expressible (DESIGN 5: runtime
+// WHAT THE RULE ANSWERS, as a coproduct rather than a Bool, so non-decidability is expressible (gunbc.design_argument::fail_closed: runtime
 // uncertainty -> a typed refusal, never a plausible "no import needed"). Four readings:
 //   KindNotAsked     the rule decided, and the answer is no: the head is bound, or the position is a label/pattern tag,
 //                    which matches no declaration kind unless the declaration says so. Silence is correct here.
@@ -163,7 +163,7 @@ fn type_ask_verdict(side: HomeKindSide) -> HomeKindVerdict {
 //
 // ONE READ PER DIRECTORY, NOT PER ROW. Every ask whose home file sits in one directory is a demand on the same pool, so
 // the asks are grouped by that directory and each directory is read once with all of its asks' keys; each ask then joins
-// its own key against that read (DESIGN 2, materialization ladder step 1: share the read at the demands' common
+// its own key against that read (gunbc.design_argument::demand_before_materialization, materialization ladder step 1: share the read at the demands' common
 // ancestor). Reading per row re-walked one directory once per row of it wherever no census provider was registered.
 type RosterHomeAsk {
   home: String
@@ -288,7 +288,7 @@ fn side_as_value(side: HomeKindSide) -> HomeKindSide {
   }
 }
 
-// THE KIND IS A PER-ROW FACT, SO IT IS READ ONCE PER ROW PER RUN AND CARRIED (DESIGN 2, materialization ladder step 1:
+// THE KIND IS A PER-ROW FACT, SO IT IS READ ONCE PER ROW PER RUN AND CARRIED (gunbc.design_argument::demand_before_materialization, materialization ladder step 1:
 // the same semantic fact demanded again is authored duplication to carry, not a cache obligation). The sweep reads one
 // RosterHomeSide per row when it starts and hands the table to every site fold; asking the census per site re-walked the
 // pool once per site per row (gunbc run registers no census memo), which is what kept a single-file run from finishing.

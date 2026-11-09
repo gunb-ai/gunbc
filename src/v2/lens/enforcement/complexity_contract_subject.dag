@@ -128,7 +128,7 @@ data complexity_derived_kernel_boundary: ConstructionJustification = Constructio
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
 
-// PARTITION (DESIGN 4b / C0(c)): Rice-complete "ANY cheaper equivalent" is off the ladder.
+// PARTITION (gunbc.design_argument::guarantee_ladder / C0(c)): Rice-complete "ANY cheaper equivalent" is off the ladder.
 // required_capability is not a DeclFact; authoring it reds this stamp.
 data complexity_optimality_boundary: ConstructionJustification = ConstructionJustification {
   class: OutsideModeledGuarantee {

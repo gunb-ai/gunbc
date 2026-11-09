@@ -16,7 +16,7 @@ import extdeps.cloud.gcp.iam {
   gcp_cells_bindings, gcp_policy_from_wire, gcp_policy_cells, gcp_cell_in, reconcile_gcp_policy,
   GcpPolicyAlreadyConverged, GcpPolicyDeltaRequired, GcpPolicyRepresentationLossy,
 }
-import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestCredentialRefused, RestBodyUndecodable }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import gunbc.actions_run_binding { actions_variable_trimmed }
 import gunbc.auth.access_token_source { read_supplied_access_token, SuppliedTokenReady, SuppliedTokenUnavailable }
@@ -64,6 +64,9 @@ import gunbc.auth.gcp_iam_bootstrap_authority {
 }
 import gunbc.auth.approval_gate { approval_instant_now }
 import std.measure { Second, second_count }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.decl_ref { decl_ref }
+import std.dissolution { retires_dissolution }
 import extdeps.clock { clock_unix_millis_read, clock_timestamp_to_unix_secs, epoch_secs_of_millis, ClockUnixMillisRead, ClockUnixMillisObserved, ClockUnixMillisRefused, ClockTimestampObserved, ClockTimestampRefused }
 import extdeps.cloud.gcp.error_info { decode_429_error_info, quota_retry_wait_for, QuotaErrorInfoObserved, QuotaErrorInfoRefused, QuotaWaitBefore, QuotaWaitNow, QuotaWaitRefused }
 import gunbc.auth.gcp_operation_wait { gcp_access_change_propagation_attempts, gcp_operation_poll_cadence, gcp_quota_wait_fits_actuation_allowance, OperationWaitDone, iam_deny_create_operation_outcome, operation_wait_refusal }
@@ -854,7 +857,7 @@ fn iam_bootstrap_execute_stage(stage: IamBootstrapStage, token: Secret) -> Strin
 // REST log, ExitSuccess). THE CEREMONY NOW PROVES ITS OWN POPULATION WITH ITS OWN TOKEN AFTER THE
 // FOLD, AND REFUSES LOUDLY IF ANY CELL IT OWNS IS NOT ESTABLISHED. Fail-closed: an absent or unreadable
 // policy counts as not established. The wording of each cell is ceremony_cell_phrase, the same phrase
-// the delta's refusal uses, so the two sides cannot drift into two dialects (DESIGN section 3).
+// the delta's refusal uses, so the two sides cannot drift into two dialects (gunbc.design_argument::single_authority).
 type CeremonySubjectReading { subject: IamBootstrapResource, reading: PolicyReading }
 
 fn ceremony_unestablished_cell_phrases(readings: List<CeremonySubjectReading>) -> List<String> {
@@ -871,7 +874,7 @@ fn ceremony_unestablished_cell_phrases(readings: List<CeremonySubjectReading>) -
 
 // THE POPULATION THE POST-RUN PROOF COVERS: every cell the owner relation gives this ceremony. THE
 // SAME FILTER THE DELTA'S ROOT-CELL CHECK FOLDS (root_cell_repair_ceremony over the same roster), so
-// one population drives both sides of the ceremony/delta meaning (DESIGN section 2).
+// one population drives both sides of the ceremony/delta meaning (gunbc.design_argument::minimize_redundancy).
 fn iam_bootstrap_ceremony_owned_cells() -> List<IamBootstrapBinding> {
   distinct_by_key(xs: iam_bootstrap_root_ceremony_bindings(), key: b => concat(iam_bootstrap_resource_key(resource: b.resource), cell_preimage(c: b.cell)))
 }
@@ -1054,7 +1057,7 @@ fn iam_bootstrap_tag_detach_probe(token: Secret) -> String {
 }
 
 fn iam_bootstrap_is_forbidden(refusal: RestRefusal) -> Bool {
-  match refusal { RestStatusRefused { status, body: _ } => (status as Int) == 403  RestTransportRefused { cause: _ } => false  RestBodyUndecodable { status: _, cause: _ } => false }
+  match refusal { RestStatusRefused { status, body: _ } => (status as Int) == 403  RestTransportRefused { cause: _ } => false  RestCredentialRefused { refusal: _ } => false  RestBodyUndecodable { status: _, cause: _ } => false }
 }
 
 // Readback uses a temporary, exact-account token permission for the verified operator.
@@ -1426,7 +1429,7 @@ fn iam_bootstrap_operator_readback_standing(token: Secret) -> OperatorReadbackSt
   match google.OidcUserInfo.Get(access_token: token) {
     RestRefused { refusal } => OperatorReadbackRefused { reason: concat("bootstrap operator identity unreadable: ", rest_refusal_text(o: refusal)) }
     RestAnswered { answer: actor } =>
-      if bootstrap_operator_matches(subject: actor.subject, claims: OidcStandardClaims { email: actor.email, email_verified: actor.email_verified, name: none }) { OperatorReadbackAdmitted }
+      if bootstrap_operator_matches(subject: actor.subject, claims: OidcStandardClaims { picture: Absent, email: actor.email, email_verified: actor.email_verified, name: none }) { OperatorReadbackAdmitted }
       else { OperatorReadbackRefused { reason: "bootstrap credential is not the admitted Google subject with its pinned verified IAM email; no grant" } }
   }
 }
@@ -1738,3 +1741,13 @@ fn iam_bootstrap_service_readback(service: String, token: Secret, remaining: Int
       } else { "API enablement readback wait failed" }
   }
 }
+
+// Census member S88241eea (the temporary-authority intent/closure journal) is NOT a sealed store: by the 2026-10-19
+// ruling its records live in the operator checkout's target/ (iam_authority_record) until the ceremony runs in CI,
+// and only then move to gunbc.auth.gcp_iam_bootstrap_journal. Declared as frontier so the move is a tracked trigger,
+// not an omission; it dissolves when iam_authority_record retires, i.e. when the ceremony runs in CI and its records take gunbc.auth.gcp_iam_bootstrap_journal.
+data gcp_iam_bootstrap_journal_frontier_rows: List<FrontierRow> = [frontier_row_decl(
+  ref: decl_ref(module_path: "gunbc.auth.gcp_iam_bootstrap", decl_name: "iam_authority_record"),
+  reason: "census member S88241eea (temporary-authority intent/closure journal) is written under the operator checkout's target/ by the 2026-10-19 ruling until the ceremony runs in CI; no retention is added",
+  dissolution: retires_dissolution(ref: decl_ref(module_path: "gunbc.auth.gcp_iam_bootstrap", decl_name: "iam_authority_record")),
+)]

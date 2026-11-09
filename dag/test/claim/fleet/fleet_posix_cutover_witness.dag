@@ -37,7 +37,7 @@ import extdeps.filesystem.filesystem_io {
 // compound gcloud auth-list probe, ${GOOGLE_APPLICATION_CREDENTIALS:-absent}, the `test -f` ADC
 // check, the two authorized_keys grep verdicts, the ssh-config pin, the mkdir/chmod/touch/cat>>
 // bootstrap — is replaced by a typed carrier whose DECISION lives in a pure function. These
-// witnesses supply the values (DESIGN 3: a witness discriminates at one interface) and pin each
+// witnesses supply the values (gunbc.design_argument::witness_one_interface: a witness discriminates at one interface) and pin each
 // decision: each one goes red if its carrier is deleted or degraded, and the positive controls
 // pin the admitted side. No witness here runs a process, an ssh leg, sudo, or DNS.
 

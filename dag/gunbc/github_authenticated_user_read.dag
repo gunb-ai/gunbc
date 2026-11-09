@@ -19,7 +19,7 @@ import extdeps.github.github { GitHubUser }
 // this change. Reading the user without eliminating the refusal arm is unwritable, since the
 // operation yields a RestResult; a standing that mislabels a mutation as a read is still writable.
 
-// DECLARED FRONTIER (§3c). perform_github_authenticated_user_read has no production caller in
+// DECLARED FRONTIER (gunbc.design_argument::consumption). perform_github_authenticated_user_read has no production caller in
 // this change; the hermetic witness is not a consumer. classify_rest_refusal is consumed by
 // create_secret_for_attempt, add_initial_version, and delete_observed_secret. NAMED CONSUMER for
 // the read perform: a production func that calls it. TRIGGER: that import and call exist outside

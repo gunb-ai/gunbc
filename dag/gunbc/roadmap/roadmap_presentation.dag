@@ -9,13 +9,14 @@ import gunbc.roadmap.roadmap_issue_status {
 import std.types { Map }
 import gunbc.roadmap.roadmap_readiness {
   ReadinessGap, NodeReadiness, ReadyToDispatch, NotReady, node_readiness, readiness_text, readiness_reason_text,
-  readiness_is_dispatchable, readiness_gap_blockers,
+  readiness_is_dispatchable, readiness_gap_blockers, readiness_text_with_retired, readiness_reason_text_with_retired,
 }
 import gunbc.roadmap.roadmap_project { node_project_membership_in, MembershipMember, RoadmapMembershipIndex, membership_index, project_member_ids_in }
 
 import gunbc.roadmap.roadmap_event_log {
-  RoadmapNodeStanding, IssueAssignmentProjection,
+  RoadmapNodeStanding, IssueAssignmentProjection, RoadmapStandings, StandingsUnobserved, NodeStandingRow,
   NodeOpen, NodeClaimed, NodeInProgress, NodeBlocked, NodeHandedBack, NodeReadyForReview, NodeForked, NodeHistoryIncomplete,
+  NodeRetired, standing_for_node,
 }
 import gunbc.roadmap.roadmap_model {
   RoadmapNode, RoadmapEdge, Pointer,
@@ -92,7 +93,7 @@ import gunbc.harness.harness_throughput {
 // the actuator cell is the falsifier specimen this module dissolves. DELIBERATE ABSENCE: no
 // progress_percent field, and none may be added — the seven obligations are independently
 // evidenced facts, not percentage increments; a scalar appears only if the graph establishes one
-// (making the false scalar UNWRITABLE is the §5 construction form of the rule).
+// (making the false scalar UNWRITABLE is the gunbc.design_argument::fail_closed construction form of the rule).
 
 // ONE projection authority across server and client (operator constraint 1, 2026-08-01). The
 // dangerous shape is two: the server folding facts to HTML here while client TypeScript
@@ -141,7 +142,7 @@ type ActivityEvidenceRow {
 // every attempt arm, and a refused strip without its red segment would be a refusal with no
 // location. ActivityUnobservable is 'the evidence could not
 // be read', distinct from refusal and absence — collapsing it into either is the state-space
-// conflation §5 names. NAMING: the field is current_activity, not latest_observation — the event
+// conflation gunbc.design_argument::fail_closed names. NAMING: the field is current_activity, not latest_observation — the event
 // authority establishes no temporal order across observation channels, so 'latest' would claim an
 // ordering nobody derived.
 
@@ -452,6 +453,12 @@ type WorkRowView {
   assignment: IssueAssignmentProjection?
   attempt_stale: Bool
   profiles: List<PrincipalProfile>
+  // BLOCKERS THIS ROW IS HELD BY THAT ARE RETIRED, derived from each blocker's OWN standing at
+  // construction (never by name, claim, or position). A child of a retired parent is blocked
+  // forever; the surface says so with the retired voice instead of a bare id (the operator rule
+  // against blocked-with-no-visible-reason). Empty is the ordinary voice, including when the
+  // standings could not be read — unobserved never claims retired.
+  retired_blockers: List<String>
 }
 
 // STALENESS DIMS (operator ruling 2026-09-20): an attempt launched against a revision that is no
@@ -786,7 +793,7 @@ fn agent_completion_claim(process: WorkerProcessEvidence) -> String {
 // Bool that could disagree with it: per belt_sessions_observation_separation_note, a running or
 // exited pane implies a present session container, an unobserved pane probe maps a PRESENT session
 // to process-unobserved, and Absent means no container was observed. A second session_present
-// parameter would be the two-facts-one-truth fork §3 forbids.
+// parameter would be the two-facts-one-truth fork gunbc.design_argument::single_authority forbids.
 
 fn session_container_value(process: WorkerProcessEvidence) -> String {
   match process {
@@ -1127,11 +1134,12 @@ fn work_row_view(
   attempt_stale: Bool,
   profiles: List<PrincipalProfile>,
   assignment: IssueAssignmentProjection? = none,
+  standings: RoadmapStandings = StandingsUnobserved { reason: "this projection observes no live standings" as NonEmptyStr },
 ) -> WorkRowView {
   work_row_view_in(
     rn: rn, graph: row_graph(nodes: nodes, edges: edges), merged: merged,
     activity: activity, rounds: rounds, launch: launch, worker_alive: worker_alive, standing: standing,
-    attempt_stale: attempt_stale, profiles: profiles, assignment: assignment,
+    attempt_stale: attempt_stale, profiles: profiles, assignment: assignment, standings: standings,
   )
 }
 
@@ -1147,9 +1155,20 @@ fn work_row_view_in(
   attempt_stale: Bool,
   profiles: List<PrincipalProfile>,
   assignment: IssueAssignmentProjection?,
+  standings: RoadmapStandings,
 ) -> WorkRowView {
   let lifecycle = work_lifecycle(rn: rn, merged: merged)
   let scheduling = work_scheduling_in(rn: rn, graph: graph, merged: merged)
+  // A blocker reads as retired exactly when ITS OWN standing says so — never by name, claim, or
+  // position. Unobserved standings leave every blocker in the ordinary voice (never-blocks).
+  let retired_blockers = match scheduling {
+    SchedulingNotReady { missing } => filter(flat_map(missing, g => readiness_gap_blockers(g: g)), b =>
+      match standing_for_node(standings: standings, node_id: b) {
+        Present { value } => match value { NodeRetired { by: _, reason: _ } => true _ => false }
+        Absent => false
+      })
+    _ => [] as List<String>
+  }
   WorkRowView {
     node_id: rn.node as String,
     headline: row_headline(line: rn.line),
@@ -1167,6 +1186,7 @@ fn work_row_view_in(
     assignment: assignment,
     attempt_stale: attempt_stale,
     profiles: profiles,
+    retired_blockers: retired_blockers,
   }
 }
 
@@ -1454,7 +1474,9 @@ fn task_bar_idle_view(view: WorkRowView) -> TaskBarView {
             match view.scheduling {
               SchedulingNotReady { missing } => TaskBarView {
                 fill: BarFillNone,
-                signal: readiness_text(r: NotReady { missing: missing }),
+                // The blockers a RETIRED parent holds read "blocked by retired <id>" (operator
+                // ruling 2026-11-04): a child held forever must say why, in its own visible strip.
+                signal: readiness_text_with_retired(r: NotReady { missing: missing }, retired: view.retired_blockers),
                 signal_class: "neutral", count: "", subline: "", attention: false,
               }
               SchedulingReady => TaskBarView {
@@ -1512,7 +1534,7 @@ fn activity_evidence_row_json_value(row: ActivityEvidenceRow) -> JsonValue {
 // evidence rows are label/value pairs). The obligation ledger is NOT duplicated
 // here — the attempt payload already carries the canonical segments and the client renders the
 // ledger from those rows; a second segments copy under activity would be the dual representation
-// §3 forbids.
+// gunbc.design_argument::single_authority forbids.
 fn activity_view_json_value(view: ActivityView) -> JsonValue {
   let summary_class = activity_line_class_key(c: activity_line_class_of_activity(a: view))
   let bar = task_bar_view_of_activity(a: view, observation: ObservationsNominal)
@@ -1893,6 +1915,7 @@ fn row_pulses(row: WorkRowView) -> Bool {
         NodeInProgress { by: _, last_note: _ } => true
         NodeBlocked { by: _, reason: _ } => true
         NodeHandedBack { by: _, reason: _ } => true
+        NodeRetired { by: _, reason: _ } => false
         NodeReadyForReview { by: _, pr: _, head: _ } => true
         NodeForked { heads: _ } => true
         NodeHistoryIncomplete { missing_parents: _ } => true
@@ -2138,6 +2161,7 @@ fn issue_display_status(view: WorkRowView) -> IssueDisplayStatus {
       NodeInProgress { by: _, last_note: _ } => "in_progress"
       NodeBlocked { by: _, reason: _ } => "blocked"
       NodeHandedBack { by: _, reason: _ } => "handed_back"
+      NodeRetired { by: _, reason: _ } => "retired"
       NodeReadyForReview { by: _, pr: _, head: _ } => "ready_for_review"
       NodeForked { heads: _ } => "unknown"
       NodeHistoryIncomplete { missing_parents: _ } => "unknown"
@@ -2148,6 +2172,7 @@ fn issue_display_status(view: WorkRowView) -> IssueDisplayStatus {
   let activity = activity_arm_key(a: view.activity)
   if standing == "unknown" || activity == "unobservable" { DisplayUnknown }
   else if work_lifecycle_is_closed(l: view.lifecycle) { closed_lifecycle_display_status(l: view.lifecycle) }
+  else if standing == "retired" { DisplayRetired }
   else if standing == "blocked" || activity == "refused" || activity == "legacy_supersedable" { DisplayBlocked }
   else if standing == "in_progress" || activity == "active" { DisplayActive }
   else if lifecycle == "review" || standing == "ready_for_review" || scheduling == "done" { DisplayReview }
@@ -2172,7 +2197,9 @@ fn issue_status_sort_rank(view: WorkRowView) -> Int {
 fn issue_status_details(view: WorkRowView) -> IssueStatusDetails {
   let planning = join([work_lifecycle_key(l: view.lifecycle), " · ", match view.scheduling {
     SchedulingReady => "Ready to dispatch"
-    SchedulingNotReady { missing } => readiness_reason_text(r: NotReady { missing: missing })
+    // Same voice law as the idle strip: a dependency blocker that is retired is named retired
+    // (the row derived that from the blocker's own standing; no new label type exists).
+    SchedulingNotReady { missing } => readiness_reason_text_with_retired(r: NotReady { missing: missing }, retired: view.retired_blockers)
     SchedulingDone => "Delivered; acceptance evidence remains authoritative"
     SchedulingSuperseded => concat("Superseded by ", view.superseded_by)
   }], "")
@@ -2282,6 +2309,7 @@ fn family_subject_row(row: WorkRowView, subject: String) -> WorkRowView {
     assignment: row.assignment,
     attempt_stale: row.attempt_stale,
     profiles: row.profiles,
+    retired_blockers: row.retired_blockers,
   }
 }
 
@@ -2384,6 +2412,7 @@ fn row_has_work_in_flight(row: WorkRowView) -> Bool {
       NodeInProgress { by: _, last_note: _ } => true
       NodeBlocked { by: _, reason: _ } => true
       NodeHandedBack { by: _, reason: _ } => true
+      NodeRetired { by: _, reason: _ } => true
       NodeReadyForReview { by: _, pr: _, head: _ } => true
       NodeForked { heads: _ } => true
       NodeHistoryIncomplete { missing_parents: _ } => true

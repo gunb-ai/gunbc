@@ -4,7 +4,11 @@ import std.types { Bool, NonEmptyStr }
 import extdeps.shell
 import extdeps.languages.json.emit { serialize_json, json_array }
 import gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles }
-import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
+import gunbc.fabric.fabric_storage_file_store { fabric_storage_slots }
+import test.claim.fabric.fabric_storage_fixture {
+  fabric_wet_scenario, FabricWetScenarioReady, FabricWetScenarioUnready, fabric_wet_store,
+  FabricWetStoreReady, FabricWetStoreUnready,
+}
 import gunbc.workspace_allocation_store { WorkspaceAllocation, WorkspaceWanted, WorkspaceRetired, WorkspaceReserved, WorkspaceReleased, WorkspaceStoreReadOk, WorkspaceStoreWriteRefused, workspace_owner_key, workspace_allocation_json, workspace_read_owner, workspace_record_request, workspace_allocation_store }
 import gunbc.runner.runner_microvm_slot_controller { workspace_slot_from_ledger, SlotControllerRefused }
 import test.claim.workspace_acquisition_storage_wet_witness { acquisition_fixture_write }
@@ -14,10 +18,15 @@ import test.claim.workspace_allocation_lifecycle_witness { allocation_test_reque
 // Executes the actual controller boundary against durable owner state. The hold authority is
 // unreadable in this fixture, so expiry must retire intent but cannot release capacity or quota.
 test fn expired_reserved_controller_retires_even_when_cleanup_is_uncertain() -> Bool {
-  let directory = shell.Mktemp.Dir()
-  let root = fabric_storage_file_root(root: concat(directory.path as String, "/fabric") as NonEmptyStr)
-  if !directory.success { false } else { match fabric_storage_file_root_ensure(root: root) {
-    FabricStorageRootReady => match launch_fixture_allocation() {
+  // THE STORE IS OPENED THROUGH THE ONE MINT: the declared chain over an isolated instance of a temporary
+  // directory (the recorded witness route). The mint's own Unready fails the claim; nothing here can name a
+  // store directory.
+  let scenario = fabric_wet_scenario(template: "/tmp/gunbc_prelaunch.XXXXXX" as NonEmptyStr)
+  match scenario {
+    FabricWetScenarioUnready { detail: _ } => false
+    FabricWetScenarioReady { instance: scenario_instance, root: _ } => match fabric_wet_store(members: fabric_storage_slots, instance: scenario_instance) {
+      FabricWetStoreUnready { area: _, detail: _ } => false
+      FabricWetStoreReady { store: ledger_ops } => match launch_fixture_allocation() {
       Absent => false
       Present { value: fixture } => match fixture.plan {
         Absent => false
@@ -25,7 +34,7 @@ test fn expired_reserved_controller_retires_even_when_cleanup_is_uncertain() -> 
           let reserved = WorkspaceAllocation { recorded_at: "2026-09-27T12:00:00Z", retired_at: "", desired: WorkspaceWanted,
             request: fixture.request, plan: fixture.plan, reservation: Present { value: prepared.reservation },
             phase: WorkspaceReserved, connection: "", observed_at: "", reason: "reserved but never launched" }
-          let store = FabricStorageLocalFiles { root: root }
+          let store = FabricStorageLocalFiles { operations: ledger_ops }
           if !acquisition_fixture_write(store: store, key: workspace_owner_key(owner: reserved.request.owner),
             value: serialize_json(v: json_array(elements: [workspace_allocation_json(allocation: reserved)])) as NonEmptyStr) { false }
           else { let refused = match workspace_slot_from_ledger(allocation: reserved, store: store, release_dir: "/fixture/not-installed", invocation_id: "0123456789abcdef0123456789abcdef") { SlotControllerRefused { refusal: _ } => true _ => false }
@@ -41,6 +50,6 @@ test fn expired_reserved_controller_retires_even_when_cleanup_is_uncertain() -> 
         }
       }
     }
-    _ => false
-  } }
+    }
+  }
 }

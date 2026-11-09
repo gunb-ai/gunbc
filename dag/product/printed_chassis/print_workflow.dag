@@ -31,7 +31,7 @@ import product.printed_chassis.assembly_inventory { inventory_report, captured_i
 import product.printed_chassis.assembly_inventory_store { initialize_inventory, mutate_inventory, observe_stored_inventory, cassette_inventory_store, CassetteInventoryStoreReady, CassetteInventoryStoreUnready }
 import gunbc.host_state_root { host_state_tree }
 import product.printed_chassis.prepared_bundle_store { prepared_bundle_stage, PreparedBundleStaging, PreparedBundleStagingReady, PreparedBundleStagingUnready, prepared_bundle_stage_directory, prepared_bundle_stage_queues, PreparedQueuesWritten, PreparedQueuesRefused, prepared_bundle_publish, PreparedPublished, PreparedPublishRefused, PreparationInputs, prepared_bundle_published, PreparedBundleReady, PreparedBundleNotPrepared, PreparedBundleAmbiguous, PreparedBundleCorrupt, PreparedBundleUnready }
-import product.printed_chassis.printable_assembly { PrintedAssemblyRoot, ResidentialCassette, CassetteRackReview, DuctCardRoot, PrintableAssemblyReady, PrintableAssemblyRefused, printed_assembly_root_wire }
+import product.printed_chassis.printable_assembly { PrintedAssemblyRoot, ResidentialCassette, CassetteRackReview, DuctCardRoot, CardGroupRoot, PrintableAssemblyReady, PrintableAssemblyRefused, printed_assembly_root_wire }
 import product.printed_chassis.printable_assembly_selection { select_printable_assembly, printed_assembly_root_from_wire }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 
@@ -55,8 +55,8 @@ fn plate_path(output:String,printer:PrinterSpec,plate:PlateSpec) -> String {
 }
 // PREPARATION IS RECOMPUTED, NOT CACHED. A prepared plate is identified by the sha256 of its bytes,
 // read back from the sliced archive; its path is a locator re-hashed by every consumer. No store or
-// preparation key sits beside std.materialization_provider: by the materialization ladder (DESIGN
-// section 2) a cache answers a reuse obligation, and prints are rare, take minutes to prepare and
+// preparation key sits beside std.materialization_provider: by the materialization ladder (
+// gunbc.design_argument::demand_before_materialization) a cache answers a reuse obligation, and prints are rare, take minutes to prepare and
 // share no preparation across requests, so there is none. A recurring, measured reuse is the trigger
 // to key preparation as a std.materialization_provider ArtifactRequest and serve it from the local
 // materialization store, not to grow a second one here.
@@ -190,6 +190,7 @@ fn inventory_root(plan_file:String) -> InventoryRoot {
       }
       CassetteRackReview=>InventoryRootRefused
       DuctCardRoot {card:_,kind:_}=>InventoryRootRefused
+      CardGroupRoot {plan:_,kind:_}=>InventoryRootRefused
      }
     }
    }

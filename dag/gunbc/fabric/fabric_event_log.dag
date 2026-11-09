@@ -255,7 +255,7 @@ type SeatAttemptState {
 // seat pool, with nothing in the type to say which -- so the unit moved into the consumer's head and
 // into rendered strings, which is the unit modeled twice and checked nowhere (review 69624). The
 // earliest unjustified boundary is this declaration, not its consumers, and it is one this change
-// moved itself (DESIGN 6b).
+// moved itself (gunbc.design_argument::earliest_unjustified_boundary).
 type SeatStandingObservation<Q, S>
   = SeatRoomObserved { headroom: Measure<Q, S, Nat>, generation: Nat }
   | SeatFullObserved { generation: Nat }
@@ -282,6 +282,81 @@ fn fabric_seat_observe<Q, S>(store: FabricStorageBinding, partition: PartitionId
                 PoolRead { committed: _, ceiling: _, headroom: h, over_committed: _ } =>
                   if h.count > 0 { SeatRoomObserved { headroom: h, generation: g } }
                   else { SeatFullObserved { generation: g } }
+              }
+          }
+      }
+  }
+}
+
+// WHEN WAS THIS REFERENCE ACQUIRED, according to the ledger that holds it.
+//
+// A holder-death proof has to be bound to the holder's identity, and one leg of that binding is a TIME:
+// the instant the hold was acquired, against the instant the current boot began. Nothing in the corpus
+// could ask that question of a reference. compute_release_on knows a reference is held only by trying to
+// release it, and fabric_seat_observe answers how much room is left -- neither can say when a particular
+// encumbrance was taken. A consumer that needed the acquisition instant had only its own clock, which is
+// the instant of the READING: comparing a reading's own instant to a boot proves nothing about when the
+// hold began, and that is exactly the unbound inference the recurring-failure-mode row
+// gunbc.recurring_failure_mode hold_recovered_by_age_not_observed_holder_death exists to stop.
+//
+// So this is the same chain-minus-append walk the standing reading already runs, and the answer is taken
+// from the folded pool's OWN terms (product.capacity.pool LeaseTerm.acquired_at), not from a timestamp a
+// caller kept beside its own bookkeeping. One question, one authority: the ledger's acquired instant for a
+// reference is whatever the ledger's term for that reference says.
+//
+// NO TERM IS ITS OWN ANSWER. A reference with no term is not held, and that is reported rather than
+// answered with zero -- a zero here would read as "acquired at the epoch", which is older than every hold
+// and would make any boot look like it began after the acquisition. More than one term for one reference
+// is a pool defect, and it is refused rather than resolved by picking the first, the last, or the newest.
+type SeatAcquisitionObservation
+  = SeatAcquisitionObserved { reference: NonEmptyStr, acquired_at: EpochSecs, generation: Nat }
+  | SeatAcquisitionNoTerm { reference: NonEmptyStr }
+  | SeatAcquisitionAmbiguous { reference: NonEmptyStr, terms: Int }
+  | SeatAcquisitionUnobserved { step: String, reason: String }
+  | SeatAcquisitionStoreRefused { cause: EventLogRefusal }
+
+// The scan is a total classification of "how many terms name this reference", so the refusal above cannot
+// be reached by a count that fell between two cases.
+type SeatTermScan
+  = NoTermForReference
+  | OneTermForReference { acquired_at: EpochSecs }
+  | MoreThanOneTermForReference { count: Int }
+
+fn seat_term_scan<Q, S>(pool: Pool<Q, S>, reference: NonEmptyStr) -> SeatTermScan {
+  fold(
+    pool.terms,
+    init: NoTermForReference,
+    f: fn(acc, t) {
+      if t.reference != reference { acc }
+      else {
+        match acc {
+          NoTermForReference => OneTermForReference { acquired_at: t.acquired_at }
+          OneTermForReference { acquired_at: _ } => MoreThanOneTermForReference { count: 2 }
+          MoreThanOneTermForReference { count: c } => MoreThanOneTermForReference { count: c + 1 }
+        }
+      }
+    },
+  )
+}
+
+fn fabric_seat_acquisition_of<Q, S>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, reference: NonEmptyStr, budget: Nat) -> SeatAcquisitionObservation {
+  match event_log_read_partition(store: store, partition: partition, budget: budget) {
+    PartitionReadRefused { cause: c } => SeatAcquisitionStoreRefused { cause: c }
+    PartitionReadOk { head: _, walk: walk } =>
+      match walk {
+        ChainIncomplete { missing: m, newest_first_so_far: _ } =>
+          SeatAcquisitionUnobserved { step: "chain", reason: join(["partition chain is missing event ", m as String], "") }
+        ChainBudgetExhausted { at: a } =>
+          SeatAcquisitionUnobserved { step: "chain", reason: join(["partition chain exceeded the read budget at ", a as String], "") }
+        ChainWalked { oldest_first: xs } =>
+          match pool_fold(root: root, oldest_first: xs) {
+            PoolFoldRefused { at_event: e, wire: w } =>
+              SeatAcquisitionUnobserved { step: "fold", reason: join(["event ", e as String, " refused: ", w], "") }
+            PoolFolded { pool: p, generation: g } =>
+              match seat_term_scan(pool: p, reference: reference) {
+                NoTermForReference => SeatAcquisitionNoTerm { reference: reference }
+                MoreThanOneTermForReference { count: c } => SeatAcquisitionAmbiguous { reference: reference, terms: c }
+                OneTermForReference { acquired_at: at } => SeatAcquisitionObserved { reference: reference, acquired_at: at, generation: g }
               }
           }
       }
@@ -525,7 +600,7 @@ fn pool_transition_wire(t: PoolTransition) -> String {
 // AN OPERATOR-FACING RECOVERY DOOR IS NOT AMONG ITS CONSUMERS, and this annotation said it was
 // until review 69645 caught the citation naming two symbols that do not exist -- they were removed
 // when the compute lifecycle was split out, and the comment was not. A citation that does not
-// resolve is a citation defect (DESIGN 3), and worse here because host_capacity's own annotation
+// resolve is a citation defect (gunbc.design_argument::single_authority), and worse here because host_capacity's own annotation
 // states the opposite. Discharging a seat whose release did not land is the capability named by
 // gunbc.recurring_failure_mode a_held_compute_seat_has_no_in_corpus_discharge; when it lands it
 // will reach this same function, which is why the check below is built to serve a caller that did

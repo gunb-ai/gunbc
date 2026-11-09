@@ -180,6 +180,7 @@ type HealPublicationRefusal
   | PullRequestNumberDisagreed { candidate: Int, observed: Int }
   | PullRequestNotOpen { pull_number: Int }
   | PullRequestHeadRefDisagreed { candidate: String, observed: String }
+  | PullRequestBaseRefDisagreed { candidate: String, observed: String }
   | BaseRefNotTheDefaultBranch { base_ref: String, default_branch: String }
   | HeadMoved { expected: String, observed: String }
   | BranchRefUnreadable { head_ref: String, detail: String }
@@ -227,6 +228,7 @@ fn heal_publication_refusal_token(r: HealPublicationRefusal) -> NonEmptyStr {
     PullRequestNumberDisagreed { candidate: _, observed: _ } => "PullRequestNumberDisagreed"
     PullRequestNotOpen { pull_number: _ } => "PullRequestNotOpen"
     PullRequestHeadRefDisagreed { candidate: _, observed: _ } => "PullRequestHeadRefDisagreed"
+    PullRequestBaseRefDisagreed { candidate: _, observed: _ } => "PullRequestBaseRefDisagreed"
     BaseRefNotTheDefaultBranch { base_ref: _, default_branch: _ } => "BaseRefNotTheDefaultBranch"
     HeadMoved { expected: _, observed: _ } => "HeadMoved"
     BranchRefUnreadable { head_ref: _, detail: _ } => "BranchRefUnreadable"
@@ -266,6 +268,7 @@ fn heal_publication_refusal_detail(r: HealPublicationRefusal) -> String {
       join(["candidate=", to_string(candidate), " observed=", to_string(observed)], "")
     PullRequestNotOpen { pull_number } => concat("pull_number=", to_string(pull_number))
     PullRequestHeadRefDisagreed { candidate, observed } => join(["candidate=", candidate, " observed=", observed], "")
+    PullRequestBaseRefDisagreed { candidate, observed } => join(["candidate=", candidate, " observed=", observed], "")
     BaseRefNotTheDefaultBranch { base_ref, default_branch } => join(["base_ref=", base_ref, " default_branch=", default_branch], "")
     HeadMoved { expected, observed } => join(["expected_head=", expected, " branch_head=", observed], "")
     BranchRefUnreadable { head_ref, detail } => join(["head_ref=", head_ref, " ", detail], "")
@@ -591,15 +594,17 @@ type TriggeringRunFacts {
   repository_full_name: String
 }
 
-type PullRequestFacts {
-  number: Int
-  open: Bool
-  head_ref: String
-  base_ref: String
-}
-
-// A proposed blob as the publisher read it back: the bytes found under the blob's own name, and the
-// git blob id recomputed from those bytes by the publisher's own git.
+// THE PULL-REQUEST IDENTITY IS NOT OBSERVABLE AT ADMIT, SO ADMIT MAKES NO CLAIM ABOUT IT. The
+// credential-free admit reads only the ref (a credential-free ls-remote of refs/pull/<n>/head) and the base
+// tree (a credential-free fetch into an isolated store); no git transport answers the pull request's number,
+// head ref, base ref, or open/closed state. An earlier shape filled PullRequestFacts from the sealed
+// candidate itself, which made admit's number/head_ref/base arms compare a value with itself -- arms no input
+// could make refuse, reporting a guarantee they could not discharge (gunbc.design_argument::guarantee_ladder rung honesty). They are gone.
+// The LIVE cross-check of number, head ref and base ref against the sealed candidate runs at PUBLISH, at the
+// credential site next to the write (classify_publish_pull_request, in gunbc.heal_publication), where an
+// authed github.Pulls.Get answers. What admit DOES check, and can, is the candidate's own base_ref against
+// the default branch (a policy fact of the sealed candidate), and the head SHA three ways (the triggering
+// run payload's head_sha, the live refs/pull/<n>/head sha, and the sealed expected_head_sha).
 type ProposedBlobObservation
   = ProposedBlobComputed { blob_hex: String, computed_hex: String }
   | ProposedBlobReadRefused { blob_hex: String, detail: String }
@@ -609,7 +614,6 @@ type PublisherObservations {
   default_branch: NonEmptyStr
   candidate_producer_workflow_path: NonEmptyStr
   run: TriggeringRunFacts
-  pull_request: PullRequestFacts
   branch_head_sha: String
   base_tree_sha: String
   base_tree_truncated: Bool
@@ -631,6 +635,7 @@ type AdmittedEntry {
 type AdmittedHealPublication sole_constructor {
   repository_full_name: NonEmptyStr
   head_ref: NonEmptyStr
+  base_ref: NonEmptyStr
   expected_head_sha: CommitSha
   base_tree_sha: String
   message: NonEmptyStr
@@ -838,14 +843,6 @@ fn admit_heal_publication(
     HealPublicationRefused { refusal: TriggeringRunBranchDisagreed { run_head_branch: o.run.head_branch, candidate_head_ref: c.head_ref as String } }
   } else if !head_ref_is_addressable(head_ref: c.head_ref as String) {
     HealPublicationRefused { refusal: HeadRefNotAddressable { head_ref: c.head_ref as String } }
-  } else if o.pull_request.number != c.pull_number {
-    HealPublicationRefused { refusal: PullRequestNumberDisagreed { candidate: c.pull_number, observed: o.pull_request.number } }
-  } else if !o.pull_request.open {
-    HealPublicationRefused { refusal: PullRequestNotOpen { pull_number: c.pull_number } }
-  } else if o.pull_request.head_ref != (c.head_ref as String) {
-    HealPublicationRefused { refusal: PullRequestHeadRefDisagreed { candidate: c.head_ref as String, observed: o.pull_request.head_ref } }
-  } else if o.pull_request.base_ref != (o.default_branch as String) {
-    HealPublicationRefused { refusal: BaseRefNotTheDefaultBranch { base_ref: o.pull_request.base_ref, default_branch: o.default_branch as String } }
   } else if (c.base_ref as String) != (o.default_branch as String) {
     HealPublicationRefused { refusal: BaseRefNotTheDefaultBranch { base_ref: c.base_ref as String, default_branch: o.default_branch as String } }
   } else if o.branch_head_sha != (c.expected_head_sha as String) {
@@ -867,6 +864,7 @@ fn admit_heal_publication(
               admitted: AdmittedHealPublication {
                 repository_full_name: o.repository_full_name,
                 head_ref: c.head_ref,
+                base_ref: c.base_ref,
                 expected_head_sha: c.expected_head_sha,
                 base_tree_sha: o.base_tree_sha,
                 message: heal_publication_message(c: c),

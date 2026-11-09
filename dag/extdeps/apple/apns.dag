@@ -1,12 +1,15 @@
 module extdeps.apple.apns
 
+import std.access { AccessRefusal }
 import std.types { NonEmptyStr, String, Int, Bool, List, brand }
 import std.optional { Absent, Present }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.measure { Second, second, ByteSize, byte_size }
+import std.measure { Second, second, ByteSize, byte_size, byte_size_count }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import std.algebra { length }
 import extdeps.crypto.signature { SignatureSuite, EcdsaP256Sha256 }
-import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestCredentialRefused, RestBodyUndecodable }
 import extdeps.auth.jwt { JwtCompactSerialization }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, serialize_json, json_object, json_kv, json_string, json_int }
 
@@ -100,6 +103,14 @@ fn apns_priority_wire(p: ApnsPriority) -> Int {
 // its value at 64 bytes.
 type ApnsCollapseId = NonEmptyStr where brand("ApnsCollapseId")
 data apns_collapse_id_max_size: ByteSize = byte_size(count: 64)
+
+// THE CHECKED CONSTRUCTOR: the cap is Apple's, so the judgment that a value fits it lives here with
+// the cap, and every producer of a collapse id goes through it (gunbc.design_argument::closed_grounded_substrate, checked
+// constructors returning Optional). A value over the cap has no collapse id; what a producer does
+// then -- derive a shorter key, or refuse -- is the producer's choice, not this module's.
+fn apns_collapse_id(value: NonEmptyStr) -> ApnsCollapseId? {
+  if length(xs: bytes_octets(b: utf8_encode_bytes(s: value as String))) <= byte_size_count(apns_collapse_id_max_size) { Present { value: value as ApnsCollapseId } } else { none }
+}
 
 // ── Payload ──────────────────────────────────────────────────────────────────────────────────
 // The aps dictionary's alert and mutable-content keys. mutable-content = 1 lets a Notification
@@ -243,15 +254,19 @@ fn apns_refusal_class(status: Int) -> ApnsRefusalClass {
   if status == 400 { ApnsBadRequest } else { if status == 403 { ApnsAuthenticationRefused } else { if status == 404 { ApnsBadPath } else { if status == 405 { ApnsBadMethod } else { if status == 410 { ApnsTokenUnregistered } else { if status == 413 { ApnsPayloadTooLarge } else { if status == 429 { ApnsTooManyRequests } else { if status == 500 { ApnsServerError } else { if status == 503 { ApnsServiceUnavailable } else { ApnsStatusUnlisted { status: status } } } } } } } } } }
 }
 
-// The same four-way outcome extdeps.ntfy.ntfy NtfyPublishOutcome settled on, for the same reasons: a
-// transport refusal has no status and must not be given one, and an undecodable 200 is not a
-// refusal. The broker-level shape both fold into is the consumer's (gunbc.auth.approval_device_redemption
-// PushProviderOutcome), not this module's.
+// THE FOUR-WAY OUTCOME, settled here: an HTTP client can honestly report three things -- accepted,
+// refused-with-a-status, never-reached -- and a body it cannot decode is a fourth thing that is none
+// of them. A transport refusal has no status and must not be given one; an undecodable 200 is not a
+// refusal. The broker-level shape this folds into is the consumer's
+// (gunbc.auth.approval_device_redemption PushProviderOutcome), not this module's.
 type ApnsSendOutcome
   = ApnsAccepted { apns_id: NonEmptyStr }
   | ApnsRefused { status: Int, class: ApnsRefusalClass, reason: String }
   | ApnsUnreached { cause: String }
   | ApnsUndecodable { status: Int, cause: String }
+  // The push was never sent: its credential was refused before dispatch (extdeps.transports.rest
+  // RestCredentialRefused). Unlike ApnsUnreached it establishes that no notification was delivered.
+  | ApnsNotSent { refusal: AccessRefusal }
 
 // APNs ANSWERS EVERY ACCEPTED REQUEST WITH AN apns-id HEADER, supplied or generated. A 200 without
 // one is not an acceptance this module can name, so it is undecodable -- never an ApnsAccepted
@@ -262,6 +277,7 @@ fn apns_send_outcome_of(rest: RestResult<String>) -> ApnsSendOutcome {
     RestRefused { refusal } => match refusal {
       RestStatusRefused { status, body } => ApnsRefused { status: status, class: apns_refusal_class(status: status), reason: body }
       RestTransportRefused { cause } => ApnsUnreached { cause: cause as String }
+      RestCredentialRefused { refusal: r } => ApnsNotSent { refusal: r }
       RestBodyUndecodable { status, cause } => ApnsUndecodable { status: status, cause: cause as String }
     }
   }

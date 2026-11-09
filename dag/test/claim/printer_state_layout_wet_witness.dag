@@ -12,6 +12,7 @@ import gunbc.fleet.print_record_stores { print_request_store, PrintRequestStoreR
 import gunbc.fleet.printer_actuation { printer_start_claims, PrinterStartClaimsReady, PrinterStartClaimsUnready, printer_start_claim_path }
 import gunbc.fleet.printer_execution_hold { printer_execution_hold_fence, printer_execution_hold_fence_begin, HoldFenceBegun, HoldFenceRefused, printer_execution_hold_fence_handover, HoldHandedOver, HoldHandoverRefused, printer_execution_hold_fence_entry, printer_execution_hold_store, PrinterExecutionHoldStoreReady, PrinterExecutionHoldStoreUnready, printer_execution_hold_path, hold_key }
 import product.printed_chassis.assembly_inventory_store { cassette_inventory_store, CassetteInventoryStoreReady, CassetteInventoryStoreUnready, cassette_inventory_path }
+import gunbc.fleet.printer_start_evidence_store { start_evidence_path, start_evidence_store, StartEvidenceStoreReady, StartEvidenceStoreUnready }
 import gunbc.fleet.printer_state_layout { printer_state_move, PrinterStateMoved, PrinterStateMoveRefused }
 import product.printing.cad_runtime_store { cad_runtime_store, CadRuntimeStoreReady, CadRuntimeStoreUnready, print_runtime_path, cad_environments_member, legacy_lock_suffix }
 import product.printing.cad_runtime_spec { cad_runtime_spec, cad_runtime_spec_digest }
@@ -23,7 +24,7 @@ import product.printing.cad_runtime_spec { cad_runtime_spec, cad_runtime_spec_di
 fn tree_with_members() -> HostStateTree? {
   let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_printer_layout.XXXXXX").path
   let tree = isolated_host_state_tree(dir: dir as NonEmptyStr)
-  let made = [printer_starts_path(tree: tree) as String, print_request_path(tree: tree) as String, print_completion_path(tree: tree) as String, printer_start_claim_path(tree: tree) as String, printer_execution_hold_path(tree: tree) as String, cassette_inventory_path(tree: tree) as String]
+  let made = [start_evidence_path(tree: tree) as String, printer_starts_path(tree: tree) as String, print_request_path(tree: tree) as String, print_completion_path(tree: tree) as String, printer_start_claim_path(tree: tree) as String, printer_execution_hold_path(tree: tree) as String, cassette_inventory_path(tree: tree) as String]
   if all(made, d => shell.Mkdir.Parents(path: d as FilePath).success) { Present { value: tree } } else { none }
 }
 
@@ -37,6 +38,7 @@ fn completions_unready(tree: HostStateTree) -> Bool { match print_completion_sto
 fn hold_unready(tree: HostStateTree) -> Bool { match printer_execution_hold_store(tree: tree) { PrinterExecutionHoldStoreReady { store: _ } => false PrinterExecutionHoldStoreUnready { detail: _ } => true } }
 fn inventory_unready(tree: HostStateTree) -> Bool { match cassette_inventory_store(tree: tree) { CassetteInventoryStoreReady { store: _ } => false CassetteInventoryStoreUnready { detail: _ } => true } }
 fn claims_ready(tree: HostStateTree) -> Bool { !claims_unready(tree: tree) }
+fn evidence_ready(tree: HostStateTree) -> Bool { match start_evidence_store(tree: tree) { StartEvidenceStoreReady { store: _ } => true StartEvidenceStoreUnready { detail: _ } => false } }
 
 // RED: while a claim-store entry of the flat layout remains, the claim mint refuses and no other store's does (each
 // mint refuses on its own store's entries only); POSITIVE CONTROL: every mint over the clean tree is Ready.
@@ -82,7 +84,7 @@ fn carried(dir: String, name: String, content: String) -> Bool {
 // retained HELD execution hold. RED: the move refuses naming the hold and leaves the hold's entry where it was;
 // everything else has moved byte for byte, so the claim, completion, inventory and request mints are Ready while
 // the hold mint is Unready (typed, its own store only). The old claim bytes read through the new claim store.
-test fn w_representative_srv1_patterns_move_per_store_while_the_held_hold_refuses() -> Bool {
+test fn w_representative_srv1_patterns_move_per_store() -> Bool {
   match tree_with_members() {
     Absent => false
     Present { value: tree } => {
@@ -97,20 +99,13 @@ test fn w_representative_srv1_patterns_move_per_store_while_the_held_hold_refuse
         && plant(tree: tree, name: "batch-state.json", content: "state1")
         && plant(tree: tree, name: "cassette-prototype-inventory.1", content: "inv1")
         && Filesystem.WriteCreateNew(path: join([print_request_path(tree: tree) as String, "/deadbeef.request.json"], ""), content: "req1").success
-      let held = match file_hold_acquire(root: printer_starts_path(tree: tree), slot_key: hold_key, requested_owner: "retained-controller" as NonEmptyStr as DurableHoldOwnerRef) {
-        FileHoldAcquired { slot_key: _, owner: _, generation: _ } => true
-        FileHoldOccupied { slot_key: _, holder: _, generation: _ } => false
-        FileHoldAcquireLost { slot_key: _ } => false
-        FileHoldAcquireStoreUnavailable { slot_key: _, cause: _ } => false
-        FileHoldSlotUndecodable { slot_key: _, generation: _, detail: _ } => false
-        FileHoldKeyNotSlotAddressable { slot_key: _ } => false
-      }
-      let before = claims_unready(tree: tree) && completions_unready(tree: tree) && inventory_unready(tree: tree) && hold_unready(tree: tree) && !requests_unready(tree: tree)
-      let refused = match printer_state_move(tree: tree) { PrinterStateMoved => false PrinterStateMoveRefused { cause: c } => string_contains(s: c, pattern: "execution hold was not moved") }
+      let before = !evidence_ready(tree: tree) && claims_unready(tree: tree) && completions_unready(tree: tree) && inventory_unready(tree: tree) && !hold_unready(tree: tree) && !requests_unready(tree: tree)
+      let refused = match printer_state_move(tree: tree) { PrinterStateMoved => true PrinterStateMoveRefused { cause: _ } => false }
       let claims = printer_start_claim_path(tree: tree) as String
       let moved = carried(dir: claims, name: "printer-start-aa.1", content: claim)
         && carried(dir: claims, name: "printer-start-aa.claimed.before-start.json", content: "b1")
-        && carried(dir: claims, name: "printer-start-aa.claimed.after-start-1.json", content: "a1")
+        && carried(dir: start_evidence_path(tree: tree) as String, name: "printer-start-aa.after-start-1.json", content: "a1")
+        && !Filesystem.Read(path: join([printer_starts_path(tree: tree) as String, "/printer-start-aa.claimed.after-start-1.json"], "")).success
         && carried(dir: claims, name: "printer-start-aa.claimed.batch-report.json", content: "r1")
         && carried(dir: claims, name: "printer-start-aa.claimed.receipt.json", content: "c1")
         && carried(dir: claims, name: "batch-attempt-bb.1", content: "batch-claim")
@@ -118,9 +113,8 @@ test fn w_representative_srv1_patterns_move_per_store_while_the_held_hold_refuse
         && carried(dir: print_completion_path(tree: tree) as String, name: "printer-start-aa.completed.json", content: "done1")
         && carried(dir: cassette_inventory_path(tree: tree) as String, name: "cassette-prototype-inventory.1", content: "inv1")
         && carried(dir: print_request_path(tree: tree) as String, name: "deadbeef.request.json", content: "req1")
-      let hold_stays = Filesystem.Read(path: join([printer_starts_path(tree: tree) as String, "/fleet-print-controller.1"], "")).success
-      let after = claims_ready(tree: tree) && !completions_unready(tree: tree) && !inventory_unready(tree: tree) && !requests_unready(tree: tree) && hold_unready(tree: tree)
-      planted && held && before && refused && moved && hold_stays && after
+      let after = evidence_ready(tree: tree) && claims_ready(tree: tree) && !completions_unready(tree: tree) && !inventory_unready(tree: tree) && !requests_unready(tree: tree) && !hold_unready(tree: tree)
+      planted && before && refused && moved && after
     }
   }
 }
@@ -208,6 +202,24 @@ test fn w_a_legacy_acquire_after_the_migration_is_fenced_and_the_new_store_takes
   }
 }
 
+// ABSENT IS NOT EXCLUSION. The legacy slot starts with no entry at all; the move takes the fence anyway, BEFORE any relocation,
+// and keeps it as the slot's head, so a legacy controller acquiring afterwards (the competing acquisition) is refused with the
+// fence owner as holder. BROKEN (paired run): skip the fence on an absent slot and the same legacy acquire reads "acquired".
+test fn w_an_absent_legacy_hold_is_fenced_and_a_competing_legacy_acquisition_is_refused() -> Bool {
+  match tree_with_members() {
+    Absent => false
+    Present { value: tree } => {
+      let legacy_root = printer_starts_path(tree: tree)
+      let absent_before = !Filesystem.Read(path: join([legacy_root as String, "/fleet-print-controller.1"], "")).success
+      let moved = match printer_state_move(tree: tree) { PrinterStateMoved => true PrinterStateMoveRefused { cause: _ } => false }
+      let fence_owner = printer_execution_hold_fence.owner as String
+      let refused = acquire_by(root: legacy_root, owner: "old-controller-late") == join(["occupied:", fence_owner], "")
+      let fence_stays = Filesystem.Read(path: join([legacy_root as String, "/fleet-print-controller.1"], "")).success
+      absent_before && moved && refused && fence_stays
+    }
+  }
+}
+
 // RED: while the copied hold is still held by the fence owner (generations copied, hand-over not done) the new hold
 // store is Unready; after the hand-over it is Ready. The state is built through the production fence functions.
 test fn w_the_new_hold_store_refuses_until_the_handover_completes() -> Bool {
@@ -222,6 +234,89 @@ test fn w_the_new_hold_store_refuses_until_the_handover_completes() -> Bool {
         let handed = match printer_execution_hold_fence_handover(tree: tree, fence: f) { HoldHandedOver => true HoldHandoverRefused { cause: _ } => false }
         copied && pending && handed && !hold_unready(tree: tree)
       }
+    }
+  }
+}
+
+// AFTER-START EVIDENCE LEFT INSIDE claims/ by a host that ran the claim-store layout before the evidence store: the move
+// carries it into start-evidence/ byte for byte and removes it from claims/, and the evidence mint reads Ready after.
+test fn w_after_start_evidence_left_in_claims_moves_into_the_evidence_store() -> Bool {
+  match tree_with_members() {
+    Absent => false
+    Present { value: tree } => {
+      let claims = printer_start_claim_path(tree: tree) as String
+      let planted = Filesystem.WriteCreateNew(path: join([claims, "/printer-start-cc.claimed.after-start-2.json"], ""), content: "a2").success
+      let ok = match printer_state_move(tree: tree) { PrinterStateMoved => true PrinterStateMoveRefused { cause: _ } => false }
+      let moved = carried(dir: start_evidence_path(tree: tree) as String, name: "printer-start-cc.after-start-2.json", content: "a2")
+      let gone = !Filesystem.Read(path: join([claims, "/printer-start-cc.claimed.after-start-2.json"], "")).success
+      planted && ok && moved && gone && evidence_ready(tree: tree)
+    }
+  }
+}
+
+// RED: the same stray evidence file with a DIFFERENT file already under its new name refuses the move naming the collision, and
+// neither file is touched.
+test fn w_stray_evidence_in_claims_colliding_with_a_different_record_refuses_the_move() -> Bool {
+  match tree_with_members() {
+    Absent => false
+    Present { value: tree } => {
+      let claims = printer_start_claim_path(tree: tree) as String
+      let stray = join([claims, "/printer-start-cc.claimed.after-start-2.json"], "")
+      let planted = Filesystem.WriteCreateNew(path: stray, content: "stray").success
+        && Filesystem.WriteCreateNew(path: join([start_evidence_path(tree: tree) as String, "/printer-start-cc.after-start-2.json"], ""), content: "different").success
+      let refused = match printer_state_move(tree: tree) { PrinterStateMoved => false PrinterStateMoveRefused { cause: _ } => true }
+      let kept = Filesystem.Read(path: stray)
+      let other = Filesystem.Read(path: join([start_evidence_path(tree: tree) as String, "/printer-start-cc.after-start-2.json"], ""))
+      planted && refused && kept.success && kept.content == "stray" && other.success && other.content == "different"
+    }
+  }
+}
+
+// SRV1 SHAPE (live read 2026-10-31): printer-starts holds exactly five <key>.claimed.after-start-1.json files, no claims/, no start-evidence/.
+// The evidence mint is Unready before the move; the move carries all five byte for byte into start-evidence/ and removes the originals; the mint is Ready after.
+test fn w_the_srv1_shaped_five_after_start_files_move_into_the_evidence_store() -> Bool {
+  match tree_with_members() {
+    Absent => false
+    Present { value: tree } => {
+      let planted = plant(tree: tree, name: "printer-start-295c9dbe.claimed.after-start-1.json", content: "e0")
+        && plant(tree: tree, name: "printer-start-5105118e.claimed.after-start-1.json", content: "e1")
+        && plant(tree: tree, name: "printer-start-6f679392.claimed.after-start-1.json", content: "e2")
+        && plant(tree: tree, name: "printer-start-c2b15415.claimed.after-start-1.json", content: "e3")
+        && plant(tree: tree, name: "printer-start-cc1b78dc.claimed.after-start-1.json", content: "e4")
+      let before = !evidence_ready(tree: tree)
+      let ok = match printer_state_move(tree: tree) { PrinterStateMoved => true PrinterStateMoveRefused { cause: _ } => false }
+      let dir = start_evidence_path(tree: tree) as String
+      let moved = carried(dir: dir, name: "printer-start-295c9dbe.after-start-1.json", content: "e0")
+        && carried(dir: dir, name: "printer-start-5105118e.after-start-1.json", content: "e1")
+        && carried(dir: dir, name: "printer-start-6f679392.after-start-1.json", content: "e2")
+        && carried(dir: dir, name: "printer-start-c2b15415.after-start-1.json", content: "e3")
+        && carried(dir: dir, name: "printer-start-cc1b78dc.after-start-1.json", content: "e4")
+      let gone = !Filesystem.Read(path: join([printer_starts_path(tree: tree) as String, "/printer-start-295c9dbe.claimed.after-start-1.json"], "")).success
+        && !Filesystem.Read(path: join([printer_starts_path(tree: tree) as String, "/printer-start-cc1b78dc.claimed.after-start-1.json"], "")).success
+      planted && before && ok && moved && gone && evidence_ready(tree: tree)
+    }
+  }
+}
+
+// THE LEGACY WRITER IS EXCLUDED BEFORE ANY ENTRY MOVES. RED: an old controller pass is live (it holds the legacy slot
+// and has written post-start evidence). The move refuses naming the exclusion, touches nothing (the evidence file is
+// still in the parent and absent from the evidence store), and the live holder is undisturbed. Its GREEN is the released-
+// hold case above (w_a_legacy_acquire_after_the_migration...): the same move succeeds once no live pass holds the slot.
+test fn w_a_live_legacy_controller_pass_refuses_the_move_before_any_evidence_moves() -> Bool {
+  match tree_with_members() {
+    Absent => false
+    Present { value: tree } => {
+      let legacy_root = printer_starts_path(tree: tree)
+      let planted = plant(tree: tree, name: "printer-start-295c9dbe.claimed.after-start-1.json", content: "e0")
+        && acquire_by(root: legacy_root, owner: "old-controller") == "acquired"
+      let refused = match printer_state_move(tree: tree) {
+        PrinterStateMoved => false
+        PrinterStateMoveRefused { cause: c } => string_contains(s: c, pattern: "the legacy printer controller is not excluded; nothing was moved")
+      }
+      let stays = Filesystem.Read(path: join([legacy_root as String, "/printer-start-295c9dbe.claimed.after-start-1.json"], "")).success
+      let not_moved = !Filesystem.Read(path: join([start_evidence_path(tree: tree) as String, "/printer-start-295c9dbe.after-start-1.json"], "")).success
+      let holder_undisturbed = acquire_by(root: legacy_root, owner: "another") == "occupied:old-controller"
+      planted && refused && stays && not_moved && holder_undisturbed
     }
   }
 }

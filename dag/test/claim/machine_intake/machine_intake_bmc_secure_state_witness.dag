@@ -1,6 +1,7 @@
 module test.claim.machine_intake.machine_intake_bmc_secure_state_witness
 
-import std.types { Bool, EpochMs, Int, List, NonEmptyStr, Secret, String, list_length }
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, Secret, String }
+import std.algebra { length }
 import std.decl_ref { decl_ref }
 import std.content_hash { content_hash_of_value }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
@@ -784,7 +785,7 @@ fn applied_with(
 // THE APPLY-AND-READ-BACK, IN ONE PLACE. applied_with above is its label form; a claim that needs the
 // receipt the application converges to -- the standing projection's witnesses -- reads the outcome here
 // instead of relabeling it, so the dry application, the independent re-read and the mint exist once
-// (DESIGN §2: the label is derived from this, not carried beside it). Sealed carrier: the outcome holds
+// (gunbc.design_argument::minimize_redundancy: the label is derived from this, not carried beside it). Sealed carrier: the outcome holds
 // the sealed receipt, so it is admitted only to the label form and to the claims that consume the
 // receipt and return Bool.
 fn applied_outcome_of_plan(
@@ -936,7 +937,7 @@ test fn the_post_read_is_independent_of_the_reading_that_diverged() -> Bool {
           let old_generation = read(w: step.world, subject: lab_subject(), managed: managed_ref(version: "1", epoch: 1), managed_password: managed_password_v1, closed: true, at: t_readback)
           phase_label(o: bmc_secure_phase_applied(application: step.application, post_read: before)) == "refused:post-read-precedes-application"
             && phase_label(o: bmc_secure_phase_applied(application: step.application, post_read: old_generation)) == "refused:post-read-not-held:refuse"
-            && list_length(items: match bmc_secure_phase_applied(application: step.application, post_read: read(w: step.world, subject: lab_subject(), managed: p.goal.managed, managed_password: managed_password_v2, closed: true, at: t_readback)) {
+            && length(xs: match bmc_secure_phase_applied(application: step.application, post_read: read(w: step.world, subject: lab_subject(), managed: p.goal.managed, managed_password: managed_password_v2, closed: true, at: t_readback)) {
               BmcSecurePhaseConverged { receipt: r } => bmc_secure_phase_receipt_evidence(receipt: r)
               BmcSecurePhaseRefused { cause: _ } => []
             }) > 2
@@ -1085,7 +1086,7 @@ fn channel_plan_label(o: BmcAccountPlanOutcome?) -> String {
   match o {
     Present { value: x } =>
       match x {
-        BmcAccountPlanned { plan: p } => join(["planned:", to_string(list_length(items: p.channel_writes))], "")
+        BmcAccountPlanned { plan: p } => join(["planned:", to_string(length(xs: p.channel_writes))], "")
         BmcAccountPlanRefused { cause: _ } => plan_label(o: o)
       }
     Absent => plan_label(o: o)
@@ -1249,7 +1250,7 @@ test fn a_planned_channel_close_is_applied_read_back_and_converges() -> Bool {
         BmcAccountPlanned { plan: p } => {
           let step = dry_apply_bmc_account_plan(world: initial, plan: p, managed_fetch: managed_v2_fetch(), published_fetch: ready(secret: "bmc-lab-o1b-admin", version: "4", bytes: break_glass_password), applied_at_millis: t_apply)
           let after = read_in(w: step.world, subject: lab_subject(), managed: p.goal.managed, managed_password: managed_password_v2, census_value: layout, account: PublishedAccountRetired, attempt: "attempt-1", at: t_readback)
-          list_length(items: p.channel_writes) == 1
+          length(xs: p.channel_writes) == 1
             && phase_label(o: bmc_secure_phase_applied(application: step.application, post_read: after)) == "converged:applied"
             && match bmc_ipmi_get_user_access(world: step.world, user: published_user, channel: 2) { Present { value: v } => v == IpmiPrivilegeNoAccess  Absent => false }
             && match bmc_ipmi_get_user_access(world: step.world, user: managed_user, channel: 2) { Present { value: v } => v == IpmiPrivilegeAdministrator  Absent => false }
@@ -1286,7 +1287,7 @@ test fn one_approval_admits_exactly_the_convergence_it_names() -> Bool {
 
 // ── THE STANDING PROJECTION (bmc_secure_standing_of_phase_receipt) ────────────────────────────────
 //
-// RUNG (§4b). THE ONE ROUTE FROM THIS FOLD TO THE CARRIER EVERY CONSUMER READS. BmcSecureStanding is what
+// RUNG (gunbc.design_argument::guarantee_ladder). THE ONE ROUTE FROM THIS FOLD TO THE CARRIER EVERY CONSUMER READS. BmcSecureStanding is what
 // gunbc.host.managed_host, gunbc.host.bmc_control_binding, gunbc.host.managed_host_boot_federation and
 // gunbc.fleet.mtcollins_firmware_converge join on; until this projection its only mint consumed the
 // rotation-EVENT observation, so a controller THIS fold converged could not be handed to any of them, and
@@ -1316,8 +1317,8 @@ test fn the_secured_noop_projects_to_a_secured_standing() -> Bool {
                endpoint == lab_endpoint
                  && reference == managed_ref(version: "1", epoch: 1)
                  && latest == t_read
-                 && list_length(items: evidence) == list_length(items: receipt.held.evidence)
-                 && list_length(items: evidence) > 0
+                 && length(xs: evidence) == length(xs: receipt.held.evidence)
+                 && length(xs: evidence) > 0
              BmcSecureRefused { cause: _ } => false
            }
     }
@@ -1349,7 +1350,7 @@ test fn the_secured_apply_projects_to_a_secured_standing_carrying_the_writes() -
               let standing = bmc_secure_standing_of_phase_receipt(subject: lab_subject(), receipt: receipt)
               bmc_secure_receipt_result(standing: standing) == ReceiptSatisfied
                 && bmc_secure_receipt_observations(standing: standing) == bmc_secure_phase_receipt_evidence(receipt: receipt)
-                && list_length(items: bmc_secure_receipt_observations(standing: standing)) == list_length(items: receipt.held.evidence) + 2
+                && length(xs: bmc_secure_receipt_observations(standing: standing)) == length(xs: receipt.held.evidence) + 2
             }
           }
       }

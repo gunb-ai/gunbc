@@ -4,7 +4,7 @@ module gunbc.instruments.source_snapshot_handoff
 //
 // gunbc.fabric.fabric_source_snapshot is a join between two closed things -- std.fabric_storage's
 // content-addressed objects and a source tree -- and a join is exactly the shape that typechecks
-// while establishing nothing. DESIGN section 5 names the trap: a typecheck and a grep are not
+// while establishing nothing. gunbc.design_argument::fail_closed names the trap: a typecheck and a grep are not
 // consumers. So the subject here is a REQUEST that runs, and the question each scenario answers is
 // whether the executor received the source that was intended.
 //
@@ -27,7 +27,7 @@ module gunbc.instruments.source_snapshot_handoff
 // because no remote one ran. The fabric's transport is gunbc.fabric.fabric_storage_client's served store,
 // and binding this route to it is the next step, not this one.
 
-// THE INSTRUMENT IS NAMED RATHER THAN ITS OUTPUT TRANSCRIBED (DESIGN section 6). Re-derive every
+// THE INSTRUMENT IS NAMED RATHER THAN ITS OUTPUT TRANSCRIBED (gunbc.design_argument::how_to_work). Re-derive every
 // figure this module produces with:
 //
 //   CTRL_BUILD_MODE=local gunbc run --source-root dag --source-root src/v2 \
@@ -44,6 +44,9 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.gunbc
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.roadmap.roadmap_dashboard_instance { isolated_dashboard_instance, DashboardActuating }
+import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.deployment_risk { deployment_id }
 import std.fabric_storage {
   FabricObject,
   FabricObjectRef,
@@ -54,14 +57,8 @@ import std.fabric_storage {
   fabric_object_ref_wire,
 }
 import gunbc.fabric.fabric_storage_file_store {
-  FabricStorageFileRoot,
-  fabric_storage_file_root,
-  fabric_storage_file_root_ensure,
+  FabricStorageOperations, FabricStoreReady, FabricStoreUnready, fabric_store_open, fabric_storage_slots,
   fabric_storage_object_path,
-  fabric_storage_file_put,
-  FabricStorageRootStanding,
-  FabricStorageRootReady,
-  FabricStorageRootRefused,
 }
 import gunbc.fabric.fabric_source_snapshot {
   SourceComposition,
@@ -240,7 +237,7 @@ fn snapshot_scenarios() -> List<SnapshotScenario> {
 }
 
 // THE OUTCOME IS LOCATED. A conjunction over four scenarios answers false and says nothing about
-// which obligation failed, which is the state-space conflation DESIGN section 5 refuses: the line
+// which obligation failed, which is the state-space conflation gunbc.design_argument::fail_closed refuses: the line
 // must stop, and the stop must say where.
 type SnapshotScenarioOutcome
   = SnapshotScenarioPassed { scenario: String, detail: String }
@@ -272,7 +269,7 @@ fn snapshot_outcome_line(outcome: SnapshotScenarioOutcome) -> String {
 type SnapshotWorkspace sole_constructor {
   root: String
   authoring: String
-  store: FabricStorageFileRoot
+  store: FabricStorageOperations
   provider: ProviderWorkspace
 }
 
@@ -290,11 +287,26 @@ fn prepare_snapshot_workspace() -> SnapshotWorkspaceStanding {
     SnapshotWorkspaceUnavailable { detail: "no temporary directory" }
   } else {
     let root = trim(s: made.path as String)
-    let store = fabric_storage_file_root(root: join([root, "/store"], "") as NonEmptyStr)
-    match fabric_storage_file_root_ensure(root: store) {
-      FabricStorageRootRefused { area: a, detail: d } =>
+    // THE SCENARIO'S STORE SITS ON THE DECLARED CHAIN, over an instance rooted at the temporary directory
+    // this scenario owns (gunbc.roadmap.roadmap_dashboard_instance isolated_dashboard_instance -- the recorded
+    // route for an isolated instance, no new route), and it is obtained through the ONE mint. The store's
+    // directory is now <tmp>/fabric-storage, the declared member, instead of a "store" directory this driver
+    // picked: a driver that can name a store directory is exactly the route this lane deletes.
+    let scenario_instance = isolated_dashboard_instance(
+      deployment: deployment_id(name: "snapshot-scenario" as NonEmptyStr),
+      instance_id: "snapshot-scenario" as NonEmptyStr,
+      layout: srv1_host_layout(),
+      root: root as FilePath,
+      serve_function: "fabric_storage_serve_handle" as NonEmptyStr,
+      listen_port: 18099,
+      source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+      actuation: DashboardActuating,
+      actuator_host: "srv1" as NonEmptyStr,
+    )
+    match fabric_store_open(members: fabric_storage_slots, instance: scenario_instance, entry_mode: none) {
+      FabricStoreUnready { area: a, detail: d } =>
         SnapshotWorkspaceUnavailable { detail: join(["store ", a, ": ", d], "") }
-      FabricStorageRootReady =>
+      FabricStoreReady { store: store } =>
         let authoring = join([root, "/authored"], "")
         match allocate_provider_workspace() {
           ProviderWorkspaceRefused { detail: d } =>
@@ -607,8 +619,8 @@ fn run_corrupted_bytes_scenario(workspace: SnapshotWorkspace, binary: ScmAccepta
 }
 
 // THE MISSING-OBJECT CONTROL. A store that has lost an object must refuse the request rather than
-// materialize the rest of the tree: a partial checkout is the fabricated plausible output DESIGN
-// section 5 forbids, and it is the dangerous one here because the missing file is the one the
+// materialize the rest of the tree: a partial checkout is the fabricated plausible output
+// gunbc.design_argument::fail_closed forbids, and it is the dangerous one here because the missing file is the one the
 // executor would then compile without.
 fn run_missing_object_scenario(workspace: SnapshotWorkspace, binary: ScmAcceptanceBinary) -> SnapshotScenarioOutcome {
   match capture_for_scenario(workspace: workspace) {
@@ -1025,7 +1037,7 @@ fn run_unsafe_allocation_root_scenario(workspace: SnapshotWorkspace) -> Snapshot
 // scenario reports the squatted base as adopted, at exit 1. The untouched half CANNOT fail against
 // the current module, because the mode is applied by `mkdir -m 0700` at creation and there is no
 // follow-up chmod to aim anywhere -- it is a regression control over a wall that has landed, which
-// is what DESIGN section 4b(4) says such a probe becomes rather than something that retires. It
+// is what gunbc.design_argument::guarantee_ladder (dissolution on climb) says such a probe becomes rather than something that retires. It
 // goes red again the moment a second pathname operation reappears between creating the base and
 // trusting it.
 fn run_squatted_base_scenario(workspace: SnapshotWorkspace) -> SnapshotScenarioOutcome {

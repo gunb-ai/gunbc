@@ -2,6 +2,7 @@ module std.decl_ref
 
 import std.types { NonEmptyStr, List }
 import std.algebra { collection_concat_shape, Ordering, int_compare_canonical, string_compare_canonical }
+import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural }
 
 // A TYPE PARAMETER IS A NAMED COMPONENT OF ITS OWNER DECLARATION, declared in the owner's header,
 // exactly as a field is declared in its body. So a reference to one is identified by
@@ -21,7 +22,7 @@ type DeclarationRef {
 
 // WHETHER A REFERENCE NAMES A TYPE PARAMETER, read from the carrier and never from a spelling. It
 // lives beside the type for the reason the constructors do: one authority for what the field arm
-// means (DESIGN section 3).
+// means (gunbc.design_argument::single_authority).
 fn declaration_ref_is_type_parameter(ref: DeclarationRef) -> Bool {
   match ref.field {
     TypeParameter { name: _ } => true
@@ -30,7 +31,7 @@ fn declaration_ref_is_type_parameter(ref: DeclarationRef) -> Bool {
   }
 }
 
-// The constructors live HERE, beside the type they construct — single authority (DESIGN section 3).
+// The constructors live HERE, beside the type they construct — single authority (gunbc.design_argument::single_authority).
 // Two parallel lanes each minted an identical fn decl_ref/decl_field_ref pair
 // (std.primitive_identity and std.roster_frontier, both 2026-08-01), and because v1-seed fn names
 // are not module-scoped, any closure containing both modules refused every bare decl_ref reference
@@ -51,7 +52,7 @@ fn declaration_ref_is_type_parameter(ref: DeclarationRef) -> Bool {
 // left to check"; carrying the disposition makes it "N resolved, M outside the index, here is which
 // and why" — the number stays readable.
 // One axis, one variant per reason a declaration sits outside the index — NOT a wrapper carrying a
-// nested class enum. A single-variant coproduct is read as a type ALIAS here, the §3 hollow-alias
+// nested class enum. A single-variant coproduct is read as a type ALIAS here, the gunbc.design_argument::single_authority hollow-alias
 // shape, and, measured, does not even export its name.
 type CitationIndexCoverage
   = CitableThroughDeclIndex
@@ -90,7 +91,7 @@ fn decl_type_parameter_ref(module_path: String, decl_name: String, parameter: St
 
 // The DeclField total order is the SINGLE source for both ordering and equality of a DeclField: the
 // variant tag first (WholeDeclaration < NamedField < TypeParameter), then the payload. decl_field_eq is
-// defined from it, so ordering and equality can never drift apart (DESIGN 3: one fact, one place).
+// defined from it, so ordering and equality can never drift apart (gunbc.design_argument::single_authority: one fact, one place).
 fn decl_field_rank(f: DeclField) -> Int {
   match f {
     WholeDeclaration => 0
@@ -126,7 +127,7 @@ fn decl_field_eq(a: DeclField, b: DeclField) -> Bool {
 // display key: distinct refs can share a display key (decl_name "n::x" with WholeDeclaration renders
 // "m::n::x", the same string as decl_name "n" with NamedField "x"), so ordering by the display key could
 // collapse distinct refs into Equal. This compares the variant tag and payload structurally.
-// declaration_ref_eq is defined from the order, so order-equality and equality are one fact (DESIGN 3).
+// declaration_ref_eq is defined from the order, so order-equality and equality are one fact (gunbc.design_argument::single_authority).
 fn declaration_ref_compare(a: DeclarationRef, b: DeclarationRef) -> Ordering {
   let m = string_compare_canonical(a: a.module_path as String, b: b.module_path as String)
   match m {
@@ -164,4 +165,22 @@ fn declaration_ref_display_key(ref: DeclarationRef) -> String {
         concat("::", concat(ref.decl_name as String, concat("::<", concat(t as String, ">")))),
       )
   }
+}
+
+// THE STRUCTURAL IDENTITY OF A DeclarationRef, beside the type, its equality and its order: module path,
+// declaration name and the field coordinate, each tagged so that no two coordinates share a preimage. A
+// consumer that keys on a declaration reference (gunbc.serving.serving_layout's grant identity) asks the
+// type's own home instead of a census module.
+fn declaration_ref_identity(reference: DeclarationRef) -> Fnv1a64Structural {
+  let module_part = content_hash_tagged_structural(tag: "declaration-module", payload: content_hash_atom(value: reference.module_path))
+  let name_part = content_hash_tagged_structural(tag: "declaration-name", payload: content_hash_atom(value: reference.decl_name))
+  let field_part = match reference.field {
+    WholeDeclaration =>
+      content_hash_tagged_structural(tag: "declaration-field-whole", payload: content_hash_atom(value: "whole"))
+    NamedField { field_name: named } =>
+      content_hash_tagged_structural(tag: "declaration-field-named", payload: content_hash_atom(value: named))
+    TypeParameter { name: parameter } =>
+      content_hash_tagged_structural(tag: "declaration-field-type-parameter", payload: content_hash_atom(value: parameter))
+  }
+  content_hash_combine_structural(left: module_part, right: content_hash_combine_structural(left: name_part, right: field_part))
 }

@@ -186,7 +186,7 @@ data altra_pcie_only_lane_count: Int = 96
 // 192 lanes in 2P configuration. The two are NOT reconciled here and no third number is derived
 // from them: the section 2.3.1 figures are per socket at a stated split, the overview bullets are
 // family-level and their grain is not stated, and inventing a reconciliation would be the
-// fabricated-plausible-output failure DESIGN section 5 forbids. Consumers take the per-socket rows;
+// fabricated-plausible-output failure gunbc.design_argument::fail_closed forbids. Consumers take the per-socket rows;
 // a grain the document itself states is the only thing that retires this note.
 
 data altra_overview_ccix_link_count: Int = 4

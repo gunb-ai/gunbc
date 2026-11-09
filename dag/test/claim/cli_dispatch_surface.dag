@@ -122,9 +122,12 @@ test fn generated_dispatch_executor_name_is_bounded_deterministic_and_duplicate_
     && fresh_rust_value_binding_name(blocked: [next, base], prefix: prefix) == Present { value: third }
 }
 
-// KNOWN RED: the interpreter returns the raw element or Null for terminal `first`, while emitted
-// Rust returns Optional<T>. Keep this exact discriminator enrolled when the primitive is repaired;
-// its transition to green removes the expected-red roster row, not the executing evidence.
+// KNOWN-RED, stays on the v2.workflow.floor_expected_red roster: the interpreter used to return the
+// raw element or Null for terminal `first` while emitted Rust returns Optional<T>. The interpreter
+// route now returns the modeled optional (executed by test.claim.interpreter_list_read_optional_witness,
+// srv2, head 8941390fdf37, 16/0 after vs 5/10 before), but THIS claim is not executed true: this file
+// did not resolve under claim-run on either binary (type mismatch at the CommitSha line, pre-existing).
+// The roster row is deleted by the PR that executes this claim true; the claim remains as the control.
 test fn interpreter_first_returns_the_modeled_optional() -> Bool {
   (["x"] |> filter(n => true) |> first) == Present { value: "x" }
 }
@@ -224,7 +227,7 @@ test fn dirty_version_identity_cannot_impersonate_the_commit() -> Bool {
 // default field at all, so that state has no constructor: it is unwritable in any source a
 // fixture could author, not merely absent from the live rows. A check whose RED cannot be
 // produced anywhere it could run is permanently green by construction and would be cited as
-// coverage while carrying no information (DESIGN section 4b). The guarantee climbed; the check
+// coverage while carrying no information (gunbc.design_argument::guarantee_ladder). The guarantee climbed; the check
 // went with the machinery it replaced, and this note is what remains of it.
 
 // ---------------------------------------------------------------------------------------------

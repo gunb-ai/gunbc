@@ -236,7 +236,7 @@ fn xl2_report_duplicate_path(acc: Xl2PathAdmission, path: Symbol) -> Xl2PathAdmi
   }
 }
 
-// ONE PATH-KEYED INDEX, BUILT ONCE (DESIGN section 6, bare minimum cost), over admitted members
+// ONE PATH-KEYED INDEX, BUILT ONCE (gunbc.design_argument::how_to_work, bare minimum cost), over admitted members
 // only, whose paths are unique by the admission above.
 fn xl2_coordinate_index(members: List<Xl2StrippedMember>) -> Map<Symbol, List<ImportStripCoordinateSegment>> {
   fold(members, init: empty_map(), f: fn(acc, member) {

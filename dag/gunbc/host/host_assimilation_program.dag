@@ -43,9 +43,6 @@ import gunbc.host.host_standup {
   host_standup_p3_gunbc_pinned_tree_landed,
   assimilation_input_is_required,
 }
-import std.decl_ref { decl_ref }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution, bound_dissolution }
 import gunbc.fleet.fleet_host_backing { HostBacking, OwnedMachine, OwnedProvisioning, OwnedOsDelivery, Bmc, NoOutOfBand, InstalledViaVirtualMedia, ApplianceImage, RamImageBoot, ProviderGuest }
 import gunbc.fleet.fleet_enrollment {
   FleetParticipation,
@@ -57,6 +54,7 @@ import gunbc.fleet.fleet_enrollment {
   participation_list_contains,
   ci_runner_enrollment_participation,
 }
+import std.algebra { fold_list }
 
 // WHY THIS EXISTS: host_standup_spine is ONE universal list, and gunbc.host.host_phase_status crossed
 // every enrolled host with all of it. That was correct while every enrolled host was the same kind
@@ -68,11 +66,10 @@ import gunbc.fleet.fleet_enrollment {
 // never be satisfied and can never honestly be marked converged. A fleet-completeness number
 // computed over invented obligations is worse than no number. THE CORRECTION IS PROGRAM SCOPING,
 // NOT AN APPLICABILITY VERDICT: an Applicable-or-NotApplicable arm on the cell would keep the false
-// cells and label them, which is the parallel-representation shape (DESIGN section 3) and leaves
+// cells and label them, which is the parallel-representation shape (gunbc.design_argument::single_authority) and leaves
 // every consumer to remember to filter. A host's participation instead SELECTS which obligations
 // exist at all, so an obligation that does not apply is not a cell with a label -- it is not a
 // cell.
-
 
 // The one place a standup phase is bound to what requires it -- an assimilation phase to the
 // participations that need it, a prefix phase to the provisioning that owes it -- kept HERE rather
@@ -82,7 +79,7 @@ import gunbc.fleet.fleet_enrollment {
 // reviewable apart -- this is the third change in that neighbourhood and it obeys the same ruling.
 // The match below is EXHAUSTIVE over both closed phase enums, so a newly added phase does not
 // silently default into or out of any program: the compiler refuses until its participations are
-// stated. That is the construction half (DESIGN section 5) -- there is no unclassified phase to
+// stated. That is the construction half (gunbc.design_argument::fail_closed) -- there is no unclassified phase to
 // detect after the fact, because an unclassified phase does not compile.
 
 // A PREFIX STEP IS PROVISIONING, AND PROVISIONING FOLLOWS FROM BACKING, NOT FROM ROLE. The four
@@ -155,8 +152,6 @@ fn assimilation_phase_participations(p: HostStandupAssimilationPhase) -> List<Fl
   }
 }
 
-
-
 fn step_serves_participation(step: HostStandupStep, wanted: FleetParticipation) -> Bool {
   match step.phase {
     Prefix { phase: _ } => false
@@ -193,19 +188,6 @@ fn step_phase_awaits_a_real_enrollment(step: HostStandupStep, awaiting: List<Hos
   }
 }
 
-data host_assimilation_program_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.host.host_assimilation_program", decl_name: "phases_awaiting_a_real_enrollment"),
-    reason: "InferenceServingProvision maps to InferenceServingParticipation, and no real gunbc.fleet.fleet_enrollment fleet_enrollments entry carries that participation (the Sparks were sold), so the phase is in no real host program; the spine-claimed claim admits it only through this row",
-    dissolution: unbound_dissolution(description: "a real enrollment carries InferenceServingParticipation: the flex wet create (product.fabric.flex_market) produces a RentedAllocationAcquired allocation whose intent gunbc.serving.rented_allocation_host_enrollment derives, or the owned RTX PRO 6000 enrollment lands. SUFFICIENT FOR deleting this row and the phase from phases_awaiting_a_real_enrollment, after which witness_every_spine_step_is_claimed_by_some_participation needs no exception"),
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.ci.ci_runner_placement", decl_name: "runner_image_baked_deployment_plan"),
-    reason: "the image-baked arm (RamImageBoot hosts: fleet_image_baked_offers, ConvergePolicyDerived.image_baked) is derived but no image build input reads it yet: the runner_host_medium publish that bakes a host's slots and knobs into its seeded image is a later change, so the arm's only readers today are its witnesses. The trigger is the declaration gunbc.runner.runner_host_medium runner_host_image_slot_roster that folds runner_image_baked_deployment_plan into that image-build input; it must be executed by a claim that a RamImageBoot host's image carries the derived runner count before this row is deleted",
-    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.runner.runner_host_medium", decl_name: "runner_host_image_slot_roster")),
-  ),
-]
-
 type HostAssimilationProgram {
   identity: NonEmptyStr
   steps: List<HostStandupStep>
@@ -237,7 +219,7 @@ fn assimilation_program_for(intent: HostEnrollmentIntent) -> HostAssimilationPro
 // obligations exist. Deriving the identity from the raw list did let them through: [CiRunner,
 // InferenceServing] and [InferenceServing, CiRunner] and [CiRunner, CiRunner, InferenceServing]
 // select exactly the same steps while producing three different identity strings, which is a second
-// representation of one program (DESIGN section 3) and would fork any consumer that keys on
+// representation of one program (gunbc.design_argument::single_authority) and would fork any consumer that keys on
 // identity. The correction projects through a FIXED roster instead of reading the caller's list
 // order: filtering the roster by membership yields at most one occurrence of each participation, in
 // one order, whatever the caller wrote. That is the construction half -- a duplicate or a
@@ -278,7 +260,6 @@ fn host_enrollment_program_identity(intent: HostEnrollmentIntent) -> NonEmptyStr
 fn program_step_count(program: HostAssimilationProgram) -> Int {
   program.steps.length()
 }
-
 
 // Completion inputs derive as the union over enrolled participations, deduplicated by
 // AssimilationCompleteInput identity, not as a priority chain over participation kinds. A host

@@ -109,7 +109,6 @@ import std.types {
   Bool,
   Int,
   List,
-  list_length,
   Map
 }
 import gunbc.scm.object_store {
@@ -149,6 +148,8 @@ import gunbc.scm.object_store {
   store_admission_admit,
   store_admission_store,
   store_records_in_dependency_order,
+  authored_source_target_of,
+  node_target_of,
 }
 import gunbc.scm.target_reference {
   TargetReferenceRefusal,
@@ -161,6 +162,7 @@ import gunbc.scm.target_reference {
   TargetReferenceNotOneArm,
   TargetReferenceUncontainedDigestInvalid,
   decode_target_reference,
+  target_reference_load_standing,
 }
 import gunbc.scm.json_member {
   MemberReadRefusal,
@@ -307,7 +309,7 @@ type ObjectTableDecodeRefusal
   | ObjectTableTargetReferenceRefused { cause: TargetReferenceRefusal }
   | ObjectTableObjectCollision { identity: ObjectId }
 
-// THE AUTHORITY THAT OWNS THE CAUSES OWNS THE STANDING DECISION, per DESIGN section 3: the dispatch
+// THE AUTHORITY THAT OWNS THE CAUSES OWNS THE STANDING DECISION, per gunbc.design_argument::single_authority: the dispatch
 // selecting a realization is itself realization, so each format classifies ITS OWN refusals into the
 // shared vocabulary and the consumer sees only the standing. gunbc.scm.load_standing's header states
 // the same rule from the other side -- a new format is a new classifier beside its own refusals.
@@ -457,7 +459,7 @@ fn node_entry_member_set_refusal(
 // identified. It therefore CANNOT represent an empty repository -- the state `gunbc init` creates --
 // because there is no root to designate and decode_closure_document refuses a root that names no object. That
 // refusal is correct at this grain and must not be softened into an empty-store fallback, which
-// would be the empty-observation narrow DESIGN section 5 names: "no objects" and "could not tell
+// would be the empty-observation narrow gunbc.design_argument::fail_closed names: "no objects" and "could not tell
 // what the objects were" would become one state.
 //
 // The repository image is the LAYER ABOVE this one, and it is where optionality belongs: a current
@@ -562,7 +564,7 @@ fn encode_label(l: EdgeLabel) -> List<JsonKeyValue> {
 //
 // The first version carried a List and answered position_of by folding it, once per edge, while the
 // list itself grew by concat-at-end inside a fold. That is O(n^2) in accumulator copying and
-// O(objects x edges) in lookup -- the copied-accumulator and quadratic-fold pair DESIGN section 6
+// O(objects x edges) in lookup -- the copied-accumulator and quadratic-fold pair gunbc.design_argument::how_to_work
 // names under bare minimum cost, where the rule is that a proven cost shape is ALWAYS fixed
 // regardless of the realized n. An earlier revision of this module excused it on the grounds that
 // object_store already scans linearly, which is precisely the "n is small here" reasoning that rule
@@ -608,7 +610,7 @@ fn encode_label(l: EdgeLabel) -> List<JsonKeyValue> {
 //
 // A kind-blind index cannot be consulted correctly by a caller that needs a kind, and every caller
 // here needs one. Deleting it makes the wrong lookup unwritable rather than merely wrong, which is
-// what DESIGN section 5 asks for ahead of a check.
+// what gunbc.design_argument::fail_closed asks for ahead of a check.
 type EncodePositions {
   nodes_by_identity: Map<String, String>
   sources_by_identity: Map<String, String>

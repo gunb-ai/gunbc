@@ -1,9 +1,8 @@
 module gunbc.durable_append_log_store
 
-import std.types { NonEmptyStr, String, Bool, List, Int }
+import std.types { NonEmptyStr, String, Bool, List }
 import std.durable_exclusive_hold { DurableHoldOwnerRef }
 import std.optional { Present, Absent }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.durable_cas_file_store { cas_key_generation_of_name }
 import std.durable_append_log {
@@ -11,41 +10,51 @@ import std.durable_append_log {
   MemberWriterPolicy, HostOnly, HostCreatesThenSandboxWrites,
 }
 
-// THE SEALED SHAPE OF AN APPEND-LOG / MULTI-WRITER STORE, and the per-member disposition of every row the
-// sealed-store migration left `Blocked: append-only` or `Blocked: written by the worker sandbox`.
+// THE APPEND-LOG / MULTI-WRITER DATA LAYER, and the per-member disposition of every row the sealed-store
+// migration left `Blocked: append-only` or `Blocked: written by the worker sandbox`.
 // Contract semantics (atomicity, order, torn tail, readback, writer windows) are std.durable_append_log's;
 // the exclusion is std.durable_exclusive_hold's, released on evidence (ReleasedOnEvidence); host-authored
-// generation logs are std.durable_compare_and_set's. This module adds only what those leave open: the
-// sealed handle, its one mint, and the census.
+// generation logs are std.durable_compare_and_set's. This module adds only what those leave open: the carrier
+// types, the pure operations over them, the listing classification, and the census.
 //
-// SEALED LIKE EVERY STORE THE MIGRATION HAS SEALED (gunbc.roadmap.roadmap_attempt_state_store AttemptState):
-// AppendLogStore is `sole_constructor`, minted from a parent handle and a declared slot row, never from a
-// path; AppendLogParent is itself `sole_constructor`, and the only producers of one are the owning cohort's
-// own sealed store (the attempt-state store for the attempt members). The declaration is data: the slot
-// rows below are the only place a log member's name is written.
+// UNSEALED DATA, NOT A WALL (amend to #15471: the seal moved to the declaring roadmap module; gunbc.design_argument::guarantee_ladder, do
+// not claim a rung you did not take). `AppendLogStore` and `AppendLogParent` carry NO `sole_constructor` here,
+// so any module can build one over a literal path -- exactly the accepted residual recorded by
+// gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module, whose evidence names
+// gunbc.durable_cas_file_store file_slot_store as the path-taking constructor and
+// test.claim.slot_store_seal_witness a_plain_store_over_a_literal_path_is_accepted_today as the executing probe.
+// The wall is one rung up: `sole_constructor type AttemptAppendLogStore` in
+// gunbc.roadmap.roadmap_attempt_state_store, whose one mint takes the business key (instance, node, attempt_key,
+// member) and never a path. Nothing declared in this file is sealed.
 
-// ONE SLOT ROW PER LOG MEMBER. The entry NAME is not written here: it is the owning sealed store's row
-// (gunbc.roadmap.roadmap_attempt_state_store attempt_state_member_name for the attempt members), read by
-// `member`, so a log member's name has one spelling (DESIGN 3).
+// A DISPOSITION ROW PER DURABLE MEMBER CLASS THIS LAYER KNOWS ABOUT. THE EIGHT ATTEMPT LOG MEMBERS ARE NOT
+// HERE ANY MORE: their slots are declared as a TOTAL function over the closed member type in the module that
+// declares them (gunbc.roadmap.roadmap_attempt_state_store attempt_append_log_member_slot), which removes both a
+// string key and the string-equality join with it (review 90246). A row keyed by a variant NAME could not say
+// that, so the eight rows were deleted rather than left beside their replacement. What remains is the disposition
+// record for member classes that do not yet have a declaring-module slot function (the attempt directory wire,
+// the create-once members, the blocked and stays rows). LIMIT STATED, NOT GATED: as of this head nothing in this
+// repository mints from those remaining rows except the one member class whose slot is still census-declared
+// (AttemptDirectoryWire, read by test.claim.durable_append_log_witness). They are otherwise the declaration a
+// later store lane takes as its input. A lane that declares its own slot function deletes its rows here instead of
+// adding a second reader.
 type AppendLogSlot {
   member: NonEmptyStr
   framing: AppendFraming
   writers: MemberWriterPolicy
 }
 
-type AppendLogParent sole_constructor {
+// THE UNSEALED CARRIER, both types below (the layering and its residual are stated once, in the header).
+// Data-only: no `sole_constructor`, no mint here. The seal and the ONE business-key mint live in the module
+// that declares the members -- gunbc.roadmap.roadmap_attempt_state_store, type AttemptAppendLogStore.
+type AppendLogParent {
   directory: NonEmptyStr
 }
 
-type AppendLogStore sole_constructor {
+type AppendLogStore {
   parent: NonEmptyStr
   slot: AppendLogSlot
 }
-
-// THE MINT'S CONSUMER IS A DECLARED FRONTIER, not a gap: the typed row below names the consumer and the trigger.
-data append_log_mint_consumer_frontier: DissolutionCondition = unbound_dissolution(
-  description: "append_log_store_mint is called by no code today because the only producer of an AppendLogParent is the owning cohort's sealed store, and the attempt-state store (gunbc.roadmap.roadmap_attempt_state_store) does not yet declare its log members as AppendLogSlot rows. DISSOLVES WHEN the implementation lane that flips floor_expected_red_chunk_append_log_store makes the attempt-state store mint each census MigrateToLogStore member through append_log_store_mint over its own parent handle, SUFFICIENT FOR the two expecting-red claims to pass and for a generic attempt_state_write of a log member to be refused",
-)
 
 // THE MINT REFUSES ON LEGACY. The parent directory is listed; an entry that is the slot's file under a
 // different framing (a generation file where a stream is declared, or the reverse) or a second file claiming
@@ -63,7 +72,7 @@ type AppendLogMinting
 
 // THE ONE MINT. Pure over the listing the owning store took; the legacy decision is a fold, and the claimants
 // and the mismatched entries are DERIVED here from that listing and the slot's own member name, never
-// supplied by the caller (a caller-supplied claimant list is a laundering shape: DESIGN 5). A stream or in-place slot
+// supplied by the caller (a caller-supplied claimant list is a laundering shape: gunbc.design_argument::fail_closed). A stream or in-place slot
 // is mismatched by any entry that is a generation file of its key (gunbc.durable_cas_file_store
 // cas_key_generation_of_name, the one recognizer of that framing); an entry equal to the member name is a claimant.
 fn append_log_entry_claims(slot: AppendLogSlot, entry: String) -> Bool {
@@ -118,17 +127,26 @@ fn append_log_store_mint(parent: AppendLogParent, slot: AppendLogSlot, listing: 
 }
 
 // ── THE DISPOSITION CENSUS, at identity grain ─────────────────────────────────────────────────────
-// Identity is (inventory row_id, member name). Sixteen rows from Seeadecb2 (the per-attempt dispatch
-// state), one from S88241eea (gcp_iam_bootstrap), one from the approval decision store. The census read the
+// Identity is (inventory row_id, member name). The rows below come from three sources, named rather than
+// counted (the list is the count): Seeadecb2 (the per-attempt dispatch state: the directory wire member, the
+// `*RequestScratch` members, the verdict members), S88241eea (gcp_iam_bootstrap intent/elected/closed/retired)
+// and approval_decision_store (the decision store and its receipt, StaysSharedByAgreement). #15576 deleted the
+// attempt log members' rows together with the census-key join they fed, because their slots now come from
+// the total `AttemptLogMember -> AppendLogSlot` function in the module that declares the members. What is left
+// here is exactly the set that has NO declaring-module slot function. The census read the
 // merged disposition tables of #15417, #15412, #15068, #15104, #15081, #15396 and #15414; the other
 // `Blocked` rows there (capacity store, cleanup authority root-per-call, tailnet door cutover journal,
 // transition lease) are blocked on other capabilities and are NOT this contract's: capacity store (S9892f19f), fabric cleanup authority (S703c0e8e), tailnet door cutover journal (S78f330a6), deploy transition lease (S33f05980; the ReleasedOnEvidence arm now exists, so its own trigger should be re-read by that lane).
 //
-// THE GROUNDING THAT CHANGED THE SHAPE. `dispatch_attempt_events_initialize_for_instance` creates the events
-// file (create-new, group-writable under a dedicated worker account) and the sandboxed worker then appends
-// it; `attempt_state_prepare_argvs_for_instance` creates the wire directory the harness writes
-// `<events>.wire/<round>.{request,response}.json` into. So every `multi-writer` member is a host create
-// followed by ONE sandbox window, and the contract is a sequence of exclusive windows, not concurrent writers.
+// THE GROUNDING THAT CHANGED THE SHAPE (historic: the raw events initializer, deleted by #15576; its absence is
+// pinned by test.claim.durable_append_log_witness the_raw_events_initializer_is_gone. That callable created the
+// events file create-new group-writable under a dedicated worker account and the sandboxed worker then appended
+// it). What it established holds for the eight attempt log streams #15576 migrated (the AttemptLogMember
+// members): each is a host create followed by ONE sandbox window, so their contract is a sequence of
+// exclusive windows, not concurrent writers. It does NOT hold for AttemptDirectoryWire, whose row is still
+// MigrateToLogStore { InPlaceRecordFile }: `attempt_state_prepare_argvs_for_instance` only provisions the
+// `<events>.wire/` directory, and gunbc.harness.harness_turn writes each `<round>.{request,response}.json`
+// itself with Filesystem.Write at `harness_wire_log_path`; nothing host-creates those per-round records.
 type MemberDisposition
   = MigrateToLogStore { framing: AppendFraming, principal: DurableHoldOwnerRef }
   | MigrateToCreateOnceMember {}
@@ -151,57 +169,9 @@ data attempt_worker_principal_role: NonEmptyStr = "attempt-worker-unit" as NonEm
 
 data append_log_member_census: List<MemberCensusRow> = [
   MemberCensusRow {
-    row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptWorkerEvents" as NonEmptyStr,
-    disposition: MigrateToLogStore {
-      framing: NewlineDelimitedStream {}, principal: sandbox_provider(owner: attempt_worker_principal_role),
-    },
-  },
-  MemberCensusRow {
-    row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptReviewEvents" as NonEmptyStr,
-    disposition: MigrateToLogStore {
-      framing: NewlineDelimitedStream {}, principal: sandbox_provider(owner: attempt_worker_principal_role),
-    },
-  },
-  MemberCensusRow {
-    row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptAuditEvents" as NonEmptyStr,
-    disposition: MigrateToLogStore {
-      framing: NewlineDelimitedStream {}, principal: sandbox_provider(owner: attempt_worker_principal_role),
-    },
-  },
-  MemberCensusRow {
-    row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptSupervisorEvents" as NonEmptyStr,
-    disposition: MigrateToLogStore {
-      framing: NewlineDelimitedStream {}, principal: sandbox_provider(owner: attempt_worker_principal_role),
-    },
-  },
-  MemberCensusRow {
     row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptDirectoryWire" as NonEmptyStr,
     disposition: MigrateToLogStore {
       framing: InPlaceRecordFile {}, principal: sandbox_provider(owner: attempt_worker_principal_role),
-    },
-  },
-  MemberCensusRow {
-    row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptWorkerLog" as NonEmptyStr,
-    disposition: MigrateToLogStore {
-      framing: NewlineDelimitedStream {}, principal: sandbox_provider(owner: attempt_worker_principal_role),
-    },
-  },
-  MemberCensusRow {
-    row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptReviewLog" as NonEmptyStr,
-    disposition: MigrateToLogStore {
-      framing: NewlineDelimitedStream {}, principal: sandbox_provider(owner: attempt_worker_principal_role),
-    },
-  },
-  MemberCensusRow {
-    row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptAuditLog" as NonEmptyStr,
-    disposition: MigrateToLogStore {
-      framing: NewlineDelimitedStream {}, principal: sandbox_provider(owner: attempt_worker_principal_role),
-    },
-  },
-  MemberCensusRow {
-    row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptSupervisorLog" as NonEmptyStr,
-    disposition: MigrateToLogStore {
-      framing: NewlineDelimitedStream {}, principal: sandbox_provider(owner: attempt_worker_principal_role),
     },
   },
   MemberCensusRow {
@@ -260,14 +230,9 @@ data append_log_member_census: List<MemberCensusRow> = [
 
 // THE SLOT A CENSUS ROW DECLARES. The window law is the only policy a log member can carry, so the row holds
 // the member, framing and principal and the slot is built here: a HostOnly log row has no spelling.
-fn append_log_census_slot(row: MemberCensusRow) -> AppendLogSlot? {
-  match row.disposition {
-    MigrateToLogStore { framing: f, principal: p } => Present { value: AppendLogSlot { member: row.member, framing: f, writers: HostCreatesThenSandboxWrites { principal: p } } }
-    _ => Absent
-  }
-}
-
-// The census has one reader: the slots the implementation lane declares on the attempt-state store.
+// WHO READS THE CENSUS: the controls over member classes whose slot is still census-declared (today only
+// AttemptDirectoryWire, in test.claim.durable_append_log_witness). The eight attempt log members are not in this
+// list at all, so nothing here feeds them (see the header above).
 fn append_log_census_slots() -> List<AppendLogSlot> {
   append_log_census_slots_of(rows: append_log_member_census)
 }
@@ -281,3 +246,11 @@ fn append_log_census_slots_of(rows: List<MemberCensusRow>) -> List<AppendLogSlot
     }
   }
 }
+
+fn append_log_census_slot(row: MemberCensusRow) -> AppendLogSlot? {
+  match row.disposition {
+    MigrateToLogStore { framing: f, principal: p } => Present { value: AppendLogSlot { member: row.member, framing: f, writers: HostCreatesThenSandboxWrites { principal: p } } }
+    _ => Absent
+  }
+}
+

@@ -22,7 +22,7 @@ data demand_restatement_follow_up_commit_range: NonEmptyStr = "5ff323b6d29..4446
 // MEASURED DELETABLE whose deletion is not yet landable. The retained population is read off the lists
 // rather than stated here. The counts of that pass are the landing change's receipt and are
 // not carried in this module: the census resolver has no entry point in the tree, so a figure written
-// here could not be re-derived and would rot (DESIGN 6). The re-derivable fact is the tree itself --
+// here could not be re-derived and would rot (gunbc.design_argument::how_to_work). The re-derivable fact is the tree itself --
 // every authored `uses` row it still carries is one of the retained identities below, or a new
 // arrival: the roster of unmeasured modules is deleted rather than left empty, and nothing walls new
 // rows out yet (the restatement refusal is EFFECTS-1's open slice).

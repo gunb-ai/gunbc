@@ -18,7 +18,7 @@ import gunbc.roadmap.roadmap_page {
   roadmap_daily_workspace_page_for_projection_observed_stale_with_stylesheet,
 }
 
-// THE AUTHORITY'S OWN ROWS AT ONE INTERFACE (DESIGN section 3, a witness discriminates at one
+// THE AUTHORITY'S OWN ROWS AT ONE INTERFACE (gunbc.design_argument::witness_one_interface, a witness discriminates at one
 // interface). A claim about how real roadmap rows render -- a row with four prerequisites, a live
 // project with members, the page chrome around a section -- is a claim about the page fold, and its
 // input is a projection. Rendering the whole projected authority made each such claim pay for every

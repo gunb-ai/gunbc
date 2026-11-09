@@ -1,6 +1,7 @@
 module test.claim.fabric.fabric_cell_acquire_witness
 
-import std.types { Bool, String, List, NonEmptyStr, list_length }
+import std.types { Bool, String, List, NonEmptyStr }
+import std.algebra { length }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
@@ -61,7 +62,7 @@ import gunbc.fabric.fabric_cell_acquire {
 // projections of gunbc.fabric.fabric_cell_acquire; the host effects in that module are unreachable from a
 // hermetic fixture by construction, and that is the boundary rather than a gap -- a mocked
 // directory listing would assert this file's laws against authored data instead of against the
-// projection, which is the vacuous pass DESIGN section 4b rules worse than absent.
+// projection, which is the vacuous pass gunbc.design_argument::guarantee_ladder rules worse than absent.
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn witness_slot() -> RunnerSlotIdentity {
@@ -195,19 +196,19 @@ test fn witness_acquire_observed_boundary_digest_equals_the_desired_spelling() -
 // host the contradiction join refuses -- so a fresh host would refuse instead of planning. The
 // present and unreadable cases DO contribute, because there is something to say about them.
 test fn witness_acquire_absent_directory_supplies_no_address_probe() -> Bool {
-  list_length(items: fabric_cell_directory_address_entries(
+  length(xs: fabric_cell_directory_address_entries(
     slot: witness_slot(),
     address: FabricCellRootAddress,
     path: fabric_cell_root_path(slot: witness_slot()),
     observation: DirectoryNotPresent,
   )) == 0
-    && list_length(items: fabric_cell_directory_address_entries(
+    && length(xs: fabric_cell_directory_address_entries(
         slot: witness_slot(),
         address: FabricCellRootAddress,
         path: fabric_cell_root_path(slot: witness_slot()),
         observation: DirectoryListed { entries: [] },
       )) == 1
-    && list_length(items: fabric_cell_directory_address_entries(
+    && length(xs: fabric_cell_directory_address_entries(
         slot: witness_slot(),
         address: FabricCellRootAddress,
         path: fabric_cell_root_path(slot: witness_slot()),
@@ -524,9 +525,9 @@ test fn witness_acquire_one_acquisition_projects_consistently() -> Bool {
     },
   }
   probe_is_enumerated_as(p: fabric_cell_acquisition_namespace_entry(acquisition: listed).probe, entries: ["attempts"])
-    && list_length(items: fabric_cell_acquisition_address_entries(acquisition: listed)) == 2
+    && length(xs: fabric_cell_acquisition_address_entries(acquisition: listed)) == 2
     && probe_is_observed_absent(p: fabric_cell_acquisition_namespace_entry(acquisition: absent).probe)
-    && list_length(items: fabric_cell_acquisition_address_entries(acquisition: absent)) == 0
+    && length(xs: fabric_cell_acquisition_address_entries(acquisition: absent)) == 0
 }
 
 fn property_is_refused(o: FabricCellPropertyObservation) -> Bool {

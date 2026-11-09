@@ -1,0 +1,105 @@
+module gunbc.live_deploy.srv1_serving_engine_unit
+
+import std.types { List, NonEmptyStr, String }
+import std.measure { Second, second, second_count }
+import product.host_identity { HostIdentity, host_identity_eq }
+import extdeps.systemd.unit_file {
+  SystemdUnitFile, ServiceUnitFile,
+  Description, After, Requires, Wants,
+  ServiceType, OneshotMode, RemainAfterExit, ExecStart, TimeoutStartSec,
+  ServiceUser, ServiceGroup, Environment,
+  Installable, WantedBy,
+}
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.host.host_layout { operator_home_root }
+import gunbc.live_deploy.spec { gunbc_service_user }
+import gunbc.live_deploy.board_function_converge_unit { RetiredHandInstalledRemoval }
+import gunbc.live_deploy.srv1_gpu_power_cap_unit { srv1_gpu_power_cap_unit_name }
+import gunbc.retained_shell_script { RetainedShellScript }
+
+// SRV1'S SERVING ENGINE COMES BACK AT BOOT (operator, 2026-11-02, after the 15:50Z outage left the router
+// routing to an engine nothing restarted). The engine is the lil-flash-next container that
+// gunbc.serving.srv1_serving_launch models, launched by its retained wrapper srv1_serving_wrapper, which keeps
+// `--restart no`: this unit, not docker's restart policy, decides when the container starts, so it starts
+// only once docker is up -- and docker is gated on the board-function converge
+// (gunbc.live_deploy.board_function_converge_unit), so the engine never starts on a host whose PCIe removals
+// did not read back.
+//
+// IT REQUIRES THE GPU POWER-CAP UNIT (gunbc.live_deploy.srv1_gpu_power_cap_unit), not only waits for it: a cap or
+// readback that fails fails that unit, and Requires= refuses this one's start.
+//
+// WHAT IT DOES NOT DO. It has no ExecStop and the apply never starts or restarts it: the wrapper begins with
+// `docker rm -f lil-flash-next`, so running it while the engine serves would drop every bound session and
+// the engine's cache. Stopping or relaunching a RUNNING engine stays the operator's maintenance procedure
+// (gunbc.serving.srv1_serving_launch srv1_serving_unmodeled_frontier_rows); this unit only covers a boot,
+// when nothing is bound. A shutdown stops the container through docker.
+//
+// The wrapper is installed FROM THE MODEL: its bytes are the script in srv1_serving_wrapper's Installable arm,
+// whose `--device` flags are the declared GPU group's per-device selectors; a group that does not resolve has no
+// script, and the deploy refuses the engine leg (gunbc.live_deploy.apply_legs deploy_apply_srv1_serving_engine_plan).
+// The startup receipt pins the sha of the script the RUNNING container was launched from; when the installed
+// body is ahead of it (a group change not yet relaunched into) srv1_serving_wrapper_adoption types the gap as
+// a PendingOperatorRelaunch — declared, not auto-applied, and never a red witness.
+
+data srv1_serving_engine_unit_name: NonEmptyStr = "gunbc-srv1-serving-engine.service"
+
+fn srv1_serving_engine_unit_path() -> NonEmptyStr {
+  join(["/etc/systemd/system/", srv1_serving_engine_unit_name as String], "") as NonEmptyStr
+}
+
+data srv1_serving_engine_wrapper_dir: NonEmptyStr = "/usr/local/libexec/gunbc"
+data srv1_serving_engine_wrapper_path: NonEmptyStr = "/usr/local/libexec/gunbc/srv1-serving-engine-launch.sh"
+
+// The wrapper's start: the docker removal wait (up to 120 s), the run, and its own readback; image pulls
+// never happen here because the image is a local build pinned by digest.
+data srv1_serving_engine_start_timeout: Second = second(count: 300)
+
+// The wrapper text is the Installable arm's own script: a caller must hold that arm to ask for it, so a refused
+// group has no text to install (gunbc.serving.srv1_serving_launch srv1_serving_wrapper).
+fn srv1_serving_engine_wrapper_text(script: RetainedShellScript) -> String {
+  script.body
+}
+
+fn srv1_serving_engine_unit_file() -> SystemdUnitFile {
+  ServiceUnitFile {
+    unit: [
+      Description { text: "srv1 serving engine (lil-flash-next) at boot (gunbc.live_deploy.srv1_serving_engine_unit)" as NonEmptyStr },
+      Requires { target: "docker.service" as NonEmptyStr },
+      After { target: "docker.service" as NonEmptyStr },
+      Requires { target: srv1_gpu_power_cap_unit_name },
+      After { target: srv1_gpu_power_cap_unit_name },
+      After { target: "nvidia-cdi-refresh.service" as NonEmptyStr },
+      Wants { target: "network-online.target" as NonEmptyStr },
+      After { target: "network-online.target" as NonEmptyStr },
+    ],
+    service: [
+      ServiceType { mode: OneshotMode },
+      RemainAfterExit { active: true },
+      TimeoutStartSec { duration: to_string(second_count(s: srv1_serving_engine_start_timeout)) as NonEmptyStr },
+      ServiceUser { name: gunbc_service_user },
+      ServiceGroup { name: gunbc_service_user },
+      Environment { assignment: join(["HOME=", operator_home_root as String], "") as NonEmptyStr },
+      ExecStart { command: join(["/bin/bash ", srv1_serving_engine_wrapper_path as String], "") as NonEmptyStr },
+    ],
+    install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
+  }
+}
+
+// The engine lives on srv1 only: the launch row is srv1's (its hardware row, its image, its slice).
+fn srv1_serving_engine_hosted_on(host: HostIdentity) -> Bool {
+  host_identity_eq(a: host, b: operator_host_srv1)
+}
+
+// The unit installed by hand on 2026-11-02 16:20Z to bring the engine back before this landed. It runs the
+// same wrapper from the operator's copy. It is retired by removing these paths -- the unit file and its only
+// enablement link, since it is WantedBy=multi-user.target alone -- so retiring it never stops it.
+data srv1_serving_engine_retired_hand_units: List<RetiredHandInstalledRemoval> = [
+  RetiredHandInstalledRemoval {
+    host: operator_host_srv1,
+    unit: "srv1-lil-serve.service",
+    paths: [
+      "/etc/systemd/system/srv1-lil-serve.service",
+      "/etc/systemd/system/multi-user.target.wants/srv1-lil-serve.service",
+    ],
+  },
+]

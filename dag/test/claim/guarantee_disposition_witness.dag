@@ -181,7 +181,7 @@ test fn the_fixture_pair_actually_joins() -> Bool {
   }
 }
 
-// THE POSITIVE CONTROL: the pair that DESIGN §4b(1) names — a discriminating RED refused and a
+// THE POSITIVE CONTROL: the pair that gunbc.design_argument::guarantee_ladder (rung honesty) names — a discriminating RED refused and a
 // positive control accepted — is the only shape that puts a path on the ladder.
 test fn a_refused_red_and_an_accepted_green_is_on_the_ladder() -> Bool {
   match disposition_for_path(evidence: evidence(red: refused(), green: AcceptedClean)) {
@@ -229,7 +229,7 @@ test fn the_two_below_floor_directions_are_named_apart() -> Bool {
 }
 
 // A PROBE THAT COULD NOT RUN IS IGNORANCE, NOT A VERDICT: could-not-measure must never read as the
-// subject passing or failing (DESIGN §5, top-as-answer against top-as-ignorance).
+// subject passing or failing (gunbc.design_argument::fail_closed, top-as-answer against top-as-ignorance).
 test fn an_unrunnable_probe_is_unmeasured_not_below_floor() -> Bool {
   match disposition_for_path(evidence: evidence(
     red: ProbeNotRunnable { cause: "toolchain absent" as NonEmptyStr },
@@ -294,7 +294,7 @@ test fn unmeasured_outranks_a_rung() -> Bool {
   }
 }
 
-// MINIMUM, NEVER MAXIMUM: §4b(1) — a class's rung is the minimum across its in-scope paths, and
+// MINIMUM, NEVER MAXIMUM: gunbc.design_argument::guarantee_ladder (rung honesty) — a class's rung is the minimum across its in-scope paths, and
 // citing the strongest while another stays silent is exactly the inflation the rule names.
 test fn the_fold_takes_the_minimum_rung_not_the_maximum() -> Bool {
   match fold_dispositions(dispositions: [
@@ -528,7 +528,7 @@ test fn receipts_over_different_probe_sets_do_not_join() -> Bool {
   }
 }
 
-// ONE PROBE CANNOT BE BOTH DIRECTIONS. DESIGN §4b(1) requires a discriminating RED *and* an accepted
+// ONE PROBE CANNOT BE BOTH DIRECTIONS. gunbc.design_argument::guarantee_ladder (rung honesty) requires a discriminating RED *and* an accepted
 // positive control; one probe playing both parts is half the evidence reported as a whole pair, and
 // it is the arm a caller reaches by accident rather than by wiring error.
 test fn one_probe_cannot_serve_as_both_directions() -> Bool {
@@ -640,7 +640,7 @@ test fn a_contradicted_ceiling_is_not_at_ceiling() -> Bool {
 // AtCeiling -- and a class at its ceiling stops owing its next-rung trigger. So an UNDERSTATED
 // ceiling silently closed a class that had already climbed past it, which is the same
 // two-facts-disagree shape as the off-ladder case and was left in the one arm I had convinced
-// myself was handled. The evidence is not the doubtful half: DESIGN section 4b calls the ceiling
+// myself was handled. The evidence is not the doubtful half: gunbc.design_argument::guarantee_ladder calls the ceiling
 // DERIVED, so a measurement above it falsifies the derivation and the requirement is what needs
 // rewriting.
 test fn a_rung_above_a_finite_ceiling_contradicts_it() -> Bool {

@@ -158,7 +158,7 @@ fn terminal_matching() -> WetTerminalRow {
 
 // THE ROSTER DOES NOT LAND EMPTY. An empty roster would make this lane's coverage claim vacuously
 // true and leave nothing proving the executor runs anything at all -- permanently green by
-// construction, which DESIGN 4b calls a decoration rather than a wall. This is the witness that
+// construction, which gunbc.design_argument::guarantee_ladder calls a decoration rather than a wall. This is the witness that
 // keeps every guard below non-vacuous, so it is asserted rather than assumed.
 test fn the_local_roster_is_not_empty() -> Bool {
   length(xs: local_repo_wet_schedule()) > 0

@@ -555,7 +555,7 @@ fn realization_claim_key(declaring_file: String, name: String) -> String {
 }
 
 // THE CLAIMS ARE INDEXED ONCE, NOT FILTERED PER LOOKUP. Every import in the closure asks this
-// question, so a linear scan per import is the quadratic fold DESIGN section 6 rules is always
+// question, so a linear scan per import is the quadratic fold gunbc.design_argument::how_to_work rules is always
 // fixed regardless of the realized n -- and here n is the whole closure's declaration roster.
 fn claim_index(claims: List<RealizationClaim>) -> Map<String, RealizationClaim> {
   fold(
@@ -682,7 +682,7 @@ fn module_candidate_paths(source_module: String, roots: List<String>) -> List<St
 // have. The whole file already owns the authority for this question: `edge_is_boundary` /
 // `is_identifier_code_point`, written for exactly the reason its own annotation gives -- "`String`
 // occurring inside `NonEmptyString` is not an occurrence of `String`". This function was the one
-// place that did not ask it. It does now; the fix is a call, not a new rule (DESIGN section 3 --
+// place that did not ask it. It does now; the fix is a call, not a new rule (gunbc.design_argument::single_authority --
 // one authority, consulted everywhere, rather than a second boundary notion invented here).
 //
 // A MODIFIER SUCH AS `nominal_opaque` OR `sole_constructor` SITS BETWEEN THE NAME AND THE BODY, so
@@ -893,7 +893,7 @@ fn emitted_tree_read_then(acc: EmittedTreeRead, path: String) -> EmittedTreeRead
 // pipeline's exit status is its LAST command's -- `sort` succeeds whatever `find` did. So a missing
 // or unreadable directory comes back success=true with empty stdout, indistinguishable from a
 // directory that genuinely holds no .rs file. An arm keyed on that success flag would therefore be
-// permanently green: not a weak wall but a decoration, which DESIGN section 4b rates worse than
+// permanently green: not a weak wall but a decoration, which gunbc.design_argument::guarantee_ladder rates worse than
 // absent because it would be cited as coverage. shell.Test.IsDirectory is a separate process with
 // its own status, so the refusal below has a RED anyone can author by naming a path that is not
 // there -- and that RED is executed.

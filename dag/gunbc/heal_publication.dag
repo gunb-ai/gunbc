@@ -5,11 +5,13 @@ import extdeps.github.issues { IssueComment }
 import gunbc.github_effect_perform { mint_publisher_installation_token, PublisherTokenMinted, PublisherTokenNotMinted }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.algebra { trim }
+import std.bytes { utf8_encode_bytes }
 import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
-import extdeps.git.plumbing
-import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.git
+import extdeps.git.plumbing { GitWorktreeAt, GitDirectoryAt }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestCredentialRefused, rest_credential_refusal_cause, RestBodyUndecodable }
 import extdeps.github.pulls { Open, Closed }
 import extdeps.github.commits { comparison_files_listing_cap }
 import extdeps.github.git_database { GitTreeItemWire, GitTreeEntryInput, git_blob_encoding_utf8 }
@@ -17,7 +19,11 @@ import extdeps.github.workflow_run_event {
   workflow_run_event_from_event_path, WorkflowRunEventObserved, WorkflowRunEventMemberAbsent,
   WorkflowRunEventMemberMalformed, WorkflowRunEventMalformed, WorkflowRunEventPayloadReadRefused
 }
-import extdeps.git.object_store { git_object_id_wire_hex, git_sha1_object_id, git_encode_tree_mode, git_tree_mode_object_type }
+import extdeps.git.object_store {
+  git_object_id_wire_hex, git_sha1_object_id, git_encode_tree_mode, git_tree_mode_object_type,
+  git_object_id_from_untagged_hex, git_decode_ls_files_stage_z, GitLsFilesStageZDecoded,
+  GitLsFilesStageZRefused, git_path_octets, git_ascii_field_text, GitPath, GitObjectFormatSha1
+}
 import extdeps.github.github { Repository }
 import gunbc.repository { gunbc_repository }
 import gunbc.generated_artifact { artifact_path, HealWorkflowYamlArtifact }
@@ -28,7 +34,8 @@ import gunbc.heal_publication_boundary {
   heal_repair_candidate_manifest_file_name, candidate_blob_file_name, candidate_file_path,
   heal_publication_refusal_token, heal_publication_refusal_detail, HealPublicationRefusal,
   HeadRefNotAddressable, BranchRefUnreadable, ExpectedHeadUnreadable, BaseTreeUnreadable, head_ref_is_addressable,
-  publisher_path_policy, TriggeringRunFacts, PullRequestFacts,
+  PullRequestNotOpen, PullRequestNumberDisagreed, PullRequestHeadRefDisagreed,
+  publisher_path_policy, TriggeringRunFacts,
   ProposedBlobObservation, ProposedBlobComputed, ProposedBlobReadRefused,
   PublisherObservations, AdmittedHealPublication, AdmittedEntry,
   admit_heal_publication, HealPublicationAdmitted, HealPublicationRefused,
@@ -210,70 +217,130 @@ fn rest_refusal_text(o: RestRefusal) -> String {
   match o {
     RestStatusRefused { status, body } => join(["status ", to_string(status as Int), ": ", body], "")
     RestTransportRefused { cause } => concat("transport: ", cause as String)
+    RestCredentialRefused { refusal: credential_refusal } => {
+      let cause = rest_credential_refusal_cause(refusal: credential_refusal)
+      cause as String
+    }
     RestBodyUndecodable { status, cause } => join(["status ", to_string(status as Int), " undecodable: ", cause as String], "")
   }
 }
 
+// CREDENTIAL-FREE ADMIT OBSERVATION (heal publisher admit fix). Admit reaches NO auth-declaring
+// operation, so a step that holds no publication credential can still admit. Four facts, four
+// credential-free sources, no token anywhere:
+//   * the run facts are the workflow_run event payload the fold already parsed (parameter `run`);
+//   * the pull-request IDENTITY (number, head/base refs) is the SEALED CANDIDATE'S OWN -- credential-free
+//     admit has no transport that answers number/head/base independently, so it does NOT claim to verify
+//     them here; the LIVE cross-check (github.Pulls.Get number + head.ref + base.ref vs the sealed
+//     candidate) runs at PUBLISH, at the credential site next to the write (see
+//     classify_publish_pull_request), so a pull request retargeted after sealing fails closed;
+//   * head LIVENESS is a live, credential-free `git ls-remote` of refs/pull/<n>/head against the
+//     PUBLIC repository, whose sha lands in observations.branch_head_sha -- the boundary then refuses
+//     with HeadMoved if it disagrees with the sealed expected_head_sha, and with
+//     TriggeringRunSubjectDisagreed if the payload disagrees, so the three sources (live ref, event
+//     payload, sealed candidate) must all name one head or admission fails closed. Nothing picks a
+//     winner and nothing falls back to a branch tip, a peeled tag, or github.sha;
+//   * the BASE TREE is one `git fetch` of that single ref into a freshly allocated, isolated object
+//     store, then read with LOCAL git plumbing (read-tree + ls-files --stage) -- no network after the
+//     fetch, no credential.
+// "The pull request is still OPEN" is deliberately NOT observed here: it is not a ref, so no git
+// transport can answer it credential-free. It is checked at PUBLISH (which holds the job token and
+// sits closer to the write), before anything is written.
 fn observe_candidate_world_wet(subject: HealPublicationSubject, directory: String, candidate: HealRepairCandidate, run: TriggeringRunFacts) -> PublisherRun
 {
-  let owner = subject.repository.owner
-  let repo = subject.repository.name
-  match github.Pulls.Get(auth_token: "", owner: owner, repo: repo, pull_number: candidate.pull_number) {
-    RestRefused { refusal } =>
-      PublisherRunRefused {
-        cause: join(["PullRequestUnreadable: pull_number=", to_string(candidate.pull_number), " ", rest_refusal_text(o: refusal)], "")
-      }
-    RestAnswered { answer: pr } =>
-      match github.GitDatabase.GetRef(auth_token: "", owner: owner, repo: repo, ref: concat("heads/", candidate.head_ref as String)) {
-        RestRefused { refusal } =>
-          PublisherRunRefused {
-            cause: refusal_line(refusal: BranchRefUnreadable { head_ref: candidate.head_ref as String, detail: rest_refusal_text(o: refusal) })
-          }
-        RestAnswered { answer: branch } =>
-          match github.GitDatabase.GetCommit(auth_token: "", owner: owner, repo: repo, commit_sha: candidate.expected_head_sha as String) {
-            RestRefused { refusal } =>
-              PublisherRunRefused {
-                cause: refusal_line(refusal: ExpectedHeadUnreadable { expected: candidate.expected_head_sha as String, detail: rest_refusal_text(o: refusal) })
-              }
-            RestAnswered { answer: head_commit } =>
-              match github.GitDatabase.GetTreeRecursive(auth_token: "", owner: owner, repo: repo, tree_sha: head_commit.commit.tree.sha) {
-                RestRefused { refusal } =>
-                  PublisherRunRefused {
-                    cause: refusal_line(refusal: BaseTreeUnreadable { tree_sha: head_commit.commit.tree.sha, detail: rest_refusal_text(o: refusal) })
-                  }
-                RestAnswered { answer: base_tree } => {
-                  let reads = map(candidate.entries, e => read_candidate_blob(directory: directory, blob_hex: git_object_id_wire_hex(oid: e.proposed_blob) as String))
-                  let observations = PublisherObservations {
-                    repository_full_name: subject.repository.full_name as NonEmptyStr,
-                    default_branch: subject.repository.default_branch as NonEmptyStr,
-                    candidate_producer_workflow_path: subject.candidate_producer_workflow_path as NonEmptyStr,
-                    run: run,
-                    pull_request: PullRequestFacts {
-                      number: pr.pr.number,
-                      open: match pr.pr.state { Open => true  Closed => false },
-                      head_ref: pr.pr.head.ref as String,
-                      base_ref: pr.pr.base.ref as String
-                    },
-                    branch_head_sha: branch.reference.object.sha,
-                    base_tree_sha: head_commit.commit.tree.sha,
-                    base_tree_truncated: base_tree.tree_object.truncated,
-                    base_tree: base_tree.tree_object.tree,
-                    proposed_blobs: map(reads, r => observed_blob_observation(r: r))
-                  }
-                  match admit_heal_publication(
-                    candidate: candidate,
-                    observations: observations,
-                    policy: publisher_path_policy(committed_artifact_paths: subject.committed_artifact_paths)
-                  ) {
-                    HealPublicationRefused { refusal } =>
-                      PublisherRunRefused { cause: refusal_line(refusal: refusal) }
-                    HealPublicationAdmitted { admitted } =>
-                      PublisherRunAdmitted { admitted: admitted, blobs: observed_blob_contents(reads: reads), pull_number: candidate.pull_number }
-                  }
-                }
-              }
-          }
-      }
+  let owner = subject.repository.owner as String
+  let repo = subject.repository.name as String
+  let ref_name = concat("refs/pull/", to_string(candidate.pull_number), "/head")
+  let public_url = concat("https://github.com/", owner, "/", repo, ".git")
+  let sealed_head = candidate.expected_head_sha as String
+  // One isolated store, allocated fresh per run, holds the one fetched ref. Never a fixed path.
+  let mk = shell.Mktemp.Dir()
+  if !mk.success {
+    return PublisherRunRefused { cause: refusal_line(refusal: ExpectedHeadUnreadable { expected: sealed_head, detail: "could not allocate the isolated fetch store" }) }
+  }
+  let store = mk.path
+  if git.Plumbing.InitBareAt(address: GitWorktreeAt { path: store }, path: store).exit_code != 0 {
+    return PublisherRunRefused { cause: refusal_line(refusal: ExpectedHeadUnreadable { expected: sealed_head, detail: "could not initialise the isolated fetch store" }) }
+  }
+  // LIVENESS. The live PR head, read credential-free from the public repository. An empty advertisement
+  // is NOT absence of a problem: the ref is gone, so the candidate does not admit.
+  let ls = git.Core.LsRemoteRefInRepo(repo: store, remote: public_url, ref_name: ref_name)
+  if ls.exit_code != 0 {
+    return PublisherRunRefused { cause: refusal_line(refusal: HeadRefNotAddressable { head_ref: candidate.head_ref as String }) }
+  }
+  let live_oid = match (match split(s: trim(s: ls.advertised), delimiter: "\t").first() { Absent => none  Present { value: wire_field } => git_object_id_from_untagged_hex(hex: wire_field) }) {
+    Present { value: oid } => oid
+    Absent => return PublisherRunRefused { cause: refusal_line(refusal: HeadRefNotAddressable { head_ref: candidate.head_ref as String }) }
+  }
+  // Fetch that one ref into the isolated store, then read its tree with LOCAL plumbing.
+  let fetched = git.Core.FetchForcedRefInRepo(repo: store, remote: public_url, refspec: concat("+", ref_name, ":refs/heal-publisher/candidate-head"))
+  if fetched.exit_code != 0 {
+    return PublisherRunRefused { cause: refusal_line(refusal: ExpectedHeadUnreadable { expected: sealed_head, detail: concat("the candidate head could not be fetched into the isolated store: ", fetched.stderr) }) }
+  }
+  // Read the fetched head's full file set into a per-run index file under the isolated store. `git
+  // read-tree` accepts the commit directly and stages its root tree; `git write-tree` then answers that
+  // root tree's OWN object id, which is the base_tree_sha the policy names (the tree, not the commit).
+  // A fetched tree is never truncated, so base_tree_truncated stays false; the boundary's truncation
+  // refusal is retained as strictness kept from the old REST read, not widened by it.
+  let live_hex = git_object_id_wire_hex(oid: live_oid) as String
+  // The index is the bare store's OWN default index (git resolves $GIT_DIR/index == <store>/index for a
+  // bare repo addressed with `-C <store>`); LsFilesStageZInRepo below reads that same default with no
+  // GIT_INDEX_FILE, so read-tree, write-tree and ls-files must all name it or they see three different
+  // indexes and the staged listing comes back empty.
+  let index_file = concat(store as String, "/index") as FilePath
+  let read_tree = git.Plumbing.ReadTreeIntoIndex(address: GitDirectoryAt { path: store, run_in: store }, index: index_file, treeish: live_hex)
+  if read_tree.exit_code != 0 {
+    return PublisherRunRefused { cause: refusal_line(refusal: BaseTreeUnreadable { tree_sha: live_hex, detail: concat("the candidate head tree could not be read into the index: ", read_tree.stderr) }) }
+  }
+  let written = git.Plumbing.WriteTreeFromIndex(address: GitDirectoryAt { path: store, run_in: store }, index: index_file)
+  // A write-tree that EXITS NONZERO is refused even when its stdout would otherwise decode -- a failed
+  // completion is not a tree, and decoding a parseable-but-failed stdout would let a broken index through.
+  // The decision is the pure classify_write_tree_completion below, so a bounded control can prove the
+  // exit-code gate discriminates on exit_code alone; the stderr is preserved into the refusal detail.
+  let head_tree_hex = match classify_write_tree_completion(exit_code: written.exit_code, stdout: written.tree, stderr: written.stderr) {
+    WriteTreeCompleted { tree_hex } => tree_hex as String
+    WriteTreeRejected { detail } => return PublisherRunRefused { cause: refusal_line(refusal: BaseTreeUnreadable { tree_sha: live_hex, detail: detail }) }
+  }
+  let staged = git.Core.LsFilesStageZInRepo(repo: store)
+  if !staged.success {
+    return PublisherRunRefused { cause: refusal_line(refusal: BaseTreeUnreadable { tree_sha: head_tree_hex, detail: "the staged candidate file set could not be listed" }) }
+  }
+  // An unrenderable (non-ASCII) base path never names a candidate path (candidate paths are ASCII
+  // generated-artifact paths), so it is carried as the empty string, which base_entry_for can never
+  // match -- it refuses rather than matching something else, exactly as heal_candidate's own reader does.
+  let base_tree = match git_decode_ls_files_stage_z(payload: utf8_encode_bytes(s: staged.raw), format: GitObjectFormatSha1) {
+    GitLsFilesStageZRefused { cause: _ } =>
+      return PublisherRunRefused { cause: refusal_line(refusal: BaseTreeUnreadable { tree_sha: head_tree_hex, detail: "the staged file set did not decode" }) }
+    GitLsFilesStageZDecoded { entries } =>
+      map(entries, e => GitTreeItemWire {
+        path: match git_ascii_field_text(octets: git_path_octets(path: e.path)) { Present { value: text } => text as String  Absent => "" },
+        mode: git_encode_tree_mode(mode: e.mode) as String,
+        type: "blob",
+        sha: git_object_id_wire_hex(oid: e.oid) as String,
+        size: none
+      })
+  }
+  let reads = map(candidate.entries, e => read_candidate_blob(directory: directory, blob_hex: git_object_id_wire_hex(oid: e.proposed_blob) as String))
+  let observations = PublisherObservations {
+    repository_full_name: subject.repository.full_name as NonEmptyStr,
+    default_branch: subject.repository.default_branch as NonEmptyStr,
+    candidate_producer_workflow_path: subject.candidate_producer_workflow_path as NonEmptyStr,
+    run: run,
+    branch_head_sha: git_object_id_wire_hex(oid: live_oid) as String,
+    base_tree_sha: head_tree_hex,
+    base_tree_truncated: false,
+    base_tree: base_tree,
+    proposed_blobs: map(reads, r => observed_blob_observation(r: r))
+  }
+  match admit_heal_publication(
+    candidate: candidate,
+    observations: observations,
+    policy: publisher_path_policy(committed_artifact_paths: subject.committed_artifact_paths)
+  ) {
+    HealPublicationRefused { refusal } =>
+      PublisherRunRefused { cause: refusal_line(refusal: refusal) }
+    HealPublicationAdmitted { admitted } =>
+      PublisherRunAdmitted { admitted: admitted, blobs: observed_blob_contents(reads: reads), pull_number: candidate.pull_number }
   }
 }
 
@@ -404,18 +471,19 @@ fn publish_admitted_wet(subject: HealPublicationSubject, publisher_token: Secret
                   auth_token: publisher_token, owner: owner, repo: repo,
                   ref: concat("heads/", admitted.head_ref as String), sha: commit.commit.sha
                 ) {
-                  RestAnswered { answer: _ } => readback_wet(subject: subject, pull_number: pull_number, admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
+                  RestAnswered { answer: _ } => readback_wet(subject: subject, publisher_token: publisher_token, pull_number: pull_number, admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
                   RestRefused { refusal } => match refusal {
                     RestStatusRefused { status, body } =>
                       if (status as Int) == 422 {
                         refused_exit(refusal: ReferenceNotFastForward { detail: body })
                       } else if (status as Int) >= 500 {
-                        readback_wet(subject: subject, pull_number: pull_number, admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
+                        readback_wet(subject: subject, publisher_token: publisher_token, pull_number: pull_number, admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
                       } else {
                         refused_exit(refusal: ReferenceWriteRefused { detail: rest_refusal_text(o: refusal) })
                       }
-                    RestTransportRefused { cause: _ } => readback_wet(subject: subject, pull_number: pull_number, admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
-                    RestBodyUndecodable { status: _, cause: _ } => readback_wet(subject: subject, pull_number: pull_number, admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
+                    RestTransportRefused { cause: _ } => readback_wet(subject: subject, publisher_token: publisher_token, pull_number: pull_number, admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
+                    RestCredentialRefused { refusal: _ } => refused_exit(refusal: ReferenceWriteRefused { detail: rest_refusal_text(o: refusal) })
+                    RestBodyUndecodable { status: _, cause: _ } => readback_wet(subject: subject, publisher_token: publisher_token, pull_number: pull_number, admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
                   }
                 }
               }
@@ -424,24 +492,32 @@ fn publish_admitted_wet(subject: HealPublicationSubject, publisher_token: Secret
   }
 }
 
-fn readback_wet(subject: HealPublicationSubject, pull_number: Int, admitted: AdmittedHealPublication, created_commit: String, created_tree: String) -> ProcessExit
+fn readback_wet(subject: HealPublicationSubject, publisher_token: Secret, pull_number: Int, admitted: AdmittedHealPublication, created_commit: String, created_tree: String) -> ProcessExit
 {
   let owner = subject.repository.owner
   let repo = subject.repository.name
-  match github.GitDatabase.GetRef(auth_token: "", owner: owner, repo: repo, ref: concat("heads/", admitted.head_ref as String)) {
+  // READBACK CREDENTIAL (heal-publisher admit fix, gunb-ai/gunbc#<this>). These four reads are CONTENTS
+  // reads (git refs/commits/trees and a comparison), reachable by the installation token that ALREADY
+  // performed the writes; they used to pass an EMPTY auth_token and fall through to the service auth_source
+  // (GITHUB_TOKEN), which does not resolve in this publisher's wet run (that is the very defect that kept
+  // admit from observing). An auth-declaring op with no resolvable token refuses closed pre-send with
+  // AuthDeclaredButUnwired, so the read-back would fail AFTER the fast-forward had already moved the ref
+  // - a red job with a moved head and no receipt. Pass the publisher token explicitly, the same identity
+  // that owns the write, exactly as the writes above do.
+  match github.GitDatabase.GetRef(auth_token: publisher_token, owner: owner, repo: repo, ref: concat("heads/", admitted.head_ref as String)) {
     RestRefused { refusal } =>
       exit_failure(reason: concat("HealPublicationUnverified: the branch could not be read back: ", rest_refusal_text(o: refusal)))
     RestAnswered { answer: branch } =>
-      match github.GitDatabase.GetCommit(auth_token: "", owner: owner, repo: repo, commit_sha: branch.reference.object.sha) {
+      match github.GitDatabase.GetCommit(auth_token: publisher_token, owner: owner, repo: repo, commit_sha: branch.reference.object.sha) {
         RestRefused { refusal } =>
           exit_failure(reason: concat("HealPublicationUnverified: the branch head could not be read back: ", rest_refusal_text(o: refusal)))
         RestAnswered { answer: head } =>
-          match github.GitDatabase.GetTreeRecursive(auth_token: "", owner: owner, repo: repo, tree_sha: head.commit.tree.sha) {
+          match github.GitDatabase.GetTreeRecursive(auth_token: publisher_token, owner: owner, repo: repo, tree_sha: head.commit.tree.sha) {
             RestRefused { refusal } =>
               exit_failure(reason: concat("HealPublicationUnverified: the published tree could not be read back: ", rest_refusal_text(o: refusal)))
             RestAnswered { answer: head_tree } =>
               match github.Commits.Compare(
-                auth_token: "", owner: owner, repo: repo,
+                auth_token: publisher_token, owner: owner, repo: repo,
                 basehead: join([admitted.expected_head_sha as String, "...", branch.reference.object.sha], "")
               ) {
                 RestRefused { refusal } =>
@@ -527,22 +603,103 @@ fn heal_publication_publish_for(subject: HealPublicationSubject) -> ProcessExit
     PublisherRunRefused { cause } => exit_failure(reason: cause)
     PublisherRunNothingToPublish => ExitSuccess
     PublisherRunAdmitted { admitted, blobs, pull_number } =>
-      match env_value(name: heal_publisher_wif_access_token_env_name) {
-        Absent => exit_failure(reason: "HealPublisherFederationMissing: the workflow federation step supplied no access token")
-        Present { value: wif } =>
-          match env_value(name: runner_temp_env_name) {
-            Absent => exit_failure(reason: "HealPublisherKeyStageMissing: RUNNER_TEMP is unset, so the App key has nowhere owner-only to stage")
-            Present { value: temp } =>
-              match mint_publisher_installation_token(
-                wif_access_token: wif as Secret,
-                key_path: join([temp, "/", heal_publisher_app_key_file_name], "") as NonEmptyStr,
-                repository_name: subject.repository.name
-              ) {
-                PublisherTokenNotMinted { cause } => exit_failure(reason: cause)
-                PublisherTokenMinted { token } =>
-                  publish_admitted_wet(subject: subject, publisher_token: token, pull_number: pull_number, admitted: admitted, blobs: blobs)
+      match ensure_pull_request_open_wet(subject: subject, pull_number: pull_number, expected_head_ref: admitted.head_ref as String, expected_base_ref: admitted.base_ref as String) {
+        PullRequestOpenCheckRefused { reason } => exit_failure(reason: reason)
+        PullRequestOpenCheckPassed =>
+          match env_value(name: heal_publisher_wif_access_token_env_name) {
+            Absent => exit_failure(reason: "HealPublisherFederationMissing: the workflow federation step supplied no access token")
+            Present { value: wif } =>
+              match env_value(name: runner_temp_env_name) {
+                Absent => exit_failure(reason: "HealPublisherKeyStageMissing: RUNNER_TEMP is unset, so the App key has nowhere owner-only to stage")
+                Present { value: temp } =>
+                  match mint_publisher_installation_token(
+                    wif_access_token: wif as Secret,
+                    key_path: join([temp, "/", heal_publisher_app_key_file_name], "") as NonEmptyStr,
+                    repository_name: subject.repository.name
+                  ) {
+                    PublisherTokenNotMinted { cause } => exit_failure(reason: cause)
+                    PublisherTokenMinted { token } =>
+                      publish_admitted_wet(subject: subject, publisher_token: token, pull_number: pull_number, admitted: admitted, blobs: blobs)
+                  }
               }
           }
       }
+  }
+}
+
+// "The pull request is still OPEN" is checked here, at publish, NOT at admit: openness is not a ref, so
+// no git transport can answer it credential-free, and admit must hold no credential. Publish already
+// holds the job's own token (the same GITHUB_TOKEN post_receipt_wet comments with, whose pull-requests
+// permission the emitter grants) and sits immediately before the write, so the time-of-check gap is
+// smaller than it would be at admit. The read is the EXISTING github.Pulls interface with the job token
+// passed explicitly as auth_token (no second, no-auth GitHub service -- gunbc.design_argument::single_authority forbids the meaning
+// fork). A closed pull request, or a state that cannot be read at all, refuses with a typed cause
+// BEFORE the App installation token is minted and before any blob, tree, commit or ref write. A
+// candidate for a closed PR never reaches mint_publisher_installation_token.
+type PullRequestOpenCheck = PullRequestOpenCheckPassed | PullRequestOpenCheckRefused { reason: String }
+
+// The pull request exactly as the publish step OBSERVES it from the LIVE github.Pulls.Get read (made under
+// the job token), held separate from the decision so every arm is checkable hermetically on supplied values.
+type PublishPullRequestState =
+    PublishPrObserved { number: Int, head_ref: String, base_ref: String, open: Bool }
+  | PublishPrStateUnreadable { detail: String }
+  | PublishPrCredentialAbsent
+
+// THE DECISION, pure and offline-testable. Fail-closed first: an absent credential or an unreadable state
+// refuses, because a publish that cannot READ the pull request must not write. Then the identity cross-check
+// the credential-free admit cannot perform: the LIVE pull request must be the very one the sealed candidate
+// describes (its number, its head ref, and its BASE ref), or a different or retargeted pull request would be
+// fast-forwarded onto the wrong branch. Then the OPEN check. Any failure refuses BEFORE the App token is
+// minted and before any write.
+fn classify_publish_pull_request(obs: PublishPullRequestState, pull_number: Int, expected_head_ref: String, expected_base_ref: String) -> PullRequestOpenCheck {
+  match obs {
+    PublishPrCredentialAbsent =>
+      PullRequestOpenCheckRefused { reason: "HealPublishPreconditionUnmet: the publish step's own token is absent, so the pull request cannot be verified; refusing to publish" }
+    PublishPrStateUnreadable { detail } =>
+      PullRequestOpenCheckRefused { reason: join(["HealPublishPreconditionUnmet: the pull request could not be read; refusing to publish: ", detail], "") }
+    PublishPrObserved { number, head_ref, base_ref, open } =>
+      if number != pull_number {
+        PullRequestOpenCheckRefused { reason: refusal_line(refusal: PullRequestNumberDisagreed { candidate: pull_number, observed: number }) }
+      } else if head_ref != expected_head_ref {
+        PullRequestOpenCheckRefused { reason: refusal_line(refusal: PullRequestHeadRefDisagreed { candidate: expected_head_ref, observed: head_ref }) }
+      } else if base_ref != expected_base_ref {
+        PullRequestOpenCheckRefused { reason: refusal_line(refusal: PullRequestBaseRefDisagreed { candidate: expected_base_ref, observed: base_ref }) }
+      } else if !open {
+        PullRequestOpenCheckRefused { reason: refusal_line(refusal: PullRequestNotOpen { pull_number: pull_number }) }
+      } else {
+        PullRequestOpenCheckPassed
+      }
+  }
+}
+
+fn ensure_pull_request_open_wet(subject: HealPublicationSubject, pull_number: Int, expected_head_ref: String, expected_base_ref: String) -> PullRequestOpenCheck {
+  let obs = match env_value(name: github_token_env_name) {
+    Absent => PublishPrCredentialAbsent
+    Present { value: job_token } =>
+      match github.Pulls.Get(auth_token: job_token as Secret, owner: subject.repository.owner, repo: subject.repository.name, pull_number: pull_number) {
+        RestRefused { refusal } => PublishPrStateUnreadable { detail: rest_refusal_text(o: refusal) }
+        RestAnswered { answer: pr } =>
+          PublishPrObserved { number: pr.pr.number, head_ref: pr.pr.head.ref as String, base_ref: pr.pr.base.ref as String, open: match pr.pr.state { Open => true  Closed => false } }
+      }
+  }
+  classify_publish_pull_request(obs: obs, pull_number: pull_number, expected_head_ref: expected_head_ref, expected_base_ref: expected_base_ref)
+}
+
+// THE WRITE-TREE COMPLETION, pure and offline-testable. git.Plumbing.WriteTreeFromIndex can exit nonzero while
+// still printing something that LOOKS like an object id (a partial write, a lock race). Decoding that stdout as a
+// tree would let a broken index through the fence, so the completion is decided on exit_code FIRST: a nonzero exit
+// is refused regardless of stdout, and the stderr is carried into the refusal. Only a zero exit whose stdout decodes
+// to a git object id yields a tree. Splitting this out lets a bounded control prove the gate discriminates on
+// exit_code alone, with the identical parseable stdout on both sides (deleting the check cannot leave the suite green).
+type WriteTreeCompletion = WriteTreeCompleted { tree_hex: String } | WriteTreeRejected { detail: String }
+
+fn classify_write_tree_completion(exit_code: Int, stdout: String, stderr: String) -> WriteTreeCompletion {
+  if exit_code != 0 {
+    WriteTreeRejected { detail: concat("git write-tree exited nonzero: ", trim(s: stderr)) }
+  } else {
+    match git_object_id_from_untagged_hex(hex: trim(s: stdout)) {
+      Present { value: oid } => WriteTreeCompleted { tree_hex: git_object_id_wire_hex(oid: oid) as String }
+      Absent => WriteTreeRejected { detail: "git write-tree exited 0 but printed no decodable object id" }
+    }
   }
 }

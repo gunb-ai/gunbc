@@ -108,7 +108,7 @@ fn stage0_production_decl_support(base: ProducedDeclSupport) -> ProducedDeclSupp
 }
 
 // The Rust map with one key replaced. A second map authored here would be a fork of a spelling
-// authority (DESIGN section 3): every other spelling this boundary needs is Rust's own and must
+// authority (gunbc.design_argument::single_authority): every other spelling this boundary needs is Rust's own and must
 // keep tracking it.
 fn stage0_production_binding_spellings() -> Map<Symbol, String> {
   map_insert(rust_binding_spellings(), ^dag_binding_type_int, stage0_production_int_spelling)

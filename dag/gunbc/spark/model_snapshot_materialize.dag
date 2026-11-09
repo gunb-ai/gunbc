@@ -39,6 +39,7 @@ import gunbc.spark.model_snapshot_acquisition {
   model_snapshot_subject_for, model_snapshot_completion_check_argv, spark_hub_cache_root,
   SnapshotPlacement, HubCachePlacement, LocalDirectoryPlacement,
 }
+import extdeps.network.ipv4 { render_ipv4_address }
 
 // THE SPARK SIDE OF ACQUISITION, RUN AS THE TYPED FOLD RATHER THAN AS RENDERED SHELL.
 //
@@ -84,7 +85,7 @@ type SparkRemoteRun
 //                          before the marker reached the client. The command MAY HAVE RUN.
 //
 // FIRST CLAIM NOT MADE: "host down". From one leg the executor cannot tell a dark LAN leg from a host
-// that is off (DESIGN §4d), so there is no HostDown arm. The FIRST settling readback is a probe of the
+// that is off (gunbc.design_argument::epistemic_humility), so there is no HostDown arm. The FIRST settling readback is a probe of the
 // host's fabric-rail address (enp1s0f1np1, 192.168.110.x) from a same-group peer: rail answers -> LAN
 // dark, host up; rail dark too -> host down or both links down, still undecided. Uptime and the wlP9s9
 // NetworkManager journal come after, since they need a session. This is how the 2026-10-03 incident
@@ -672,7 +673,7 @@ type TransferStartOutcome
 // this change answered an EMPTY argv for that case and claimed in a comment that `systemd-run --` with
 // no command would fail loudly -- an assertion made without running it, and wrong: executor_wrap
 // builds `concat([cli], argv.skip(n: 1))`, so an empty argv becomes RUN THE CLI WITH NO ARGUMENTS.
-// That is a silent widen wearing a refusal's comment, which is the exact shape DESIGN section 5 calls
+// That is a silent widen wearing a refusal's comment, which is the exact shape gunbc.design_argument::fail_closed calls
 // the absorbing fallback.
 //
 // THE TYPED LOCATOR EARNS ITS KEEP AT THIS MATCH. A source built for the install-media transport and
@@ -697,7 +698,7 @@ fn spark_transfer_start(ctx: SparkMaterializeContext, subject: AcquisitionSubjec
 // It is BOUNDED, never a loop: at most spark_transfer_restart_burst starts within the interval, then the
 // unit stays failed and the supervision reads TransferExitedFailed, exactly as one failure did before.
 // RetryLaw is the backoff the supervisor will ask. StartLimitBurst / StartLimitIntervalSec are
-// systemd burst-window facts, not delay_cap or real_work_failure_bound (DESIGN §3 meaning fork).
+// systemd burst-window facts, not delay_cap or real_work_failure_bound (gunbc.design_argument::single_authority meaning fork).
 data spark_transfer_retry_law: RetryLaw = RetryLaw {
   initial_delay: second(count: 120),
   delay_cap: second(count: 120),
@@ -745,13 +746,13 @@ type SparkTransferSupervision
 // whatever the last poll had actually seen -- so a host that had gone away entirely was reported as a
 // transfer still in progress, and SupervisionLost was declared, matched, and CONSTRUCTED NOWHERE. The
 // annotation that stood here described the lost case as though it were implemented; it was not, which
-// is precisely what DESIGN section 4c means by an annotation never being evidence that a claim holds.
+// is precisely what gunbc.design_argument::source_annotations means by an annotation never being evidence that a claim holds.
 //
 // NOW EACH TERMINAL IS PRODUCED BY THE STATE THAT CAUSED IT. Exhausted while the unit was RUNNING is
 // still-running; exhausted while its state was UNREADABLE is lost, and carries the cause that made it
 // unreadable. A mid-run poll failure remains non-fatal, because the unit really is still running and
 // the next poll will find it -- only the LAST such failure is terminal. The loop is bounded and forward
-// either way (DESIGN section 4).
+// either way (gunbc.design_argument::closed_grounded_substrate).
 //
 // A UNIT THAT IS ABSENT IS NOT A UNIT THAT SUCCEEDED. Absence is genuinely ambiguous -- a completed
 // oneshot is reaped and leaves nothing behind, and so does a unit that never started -- so it gets its

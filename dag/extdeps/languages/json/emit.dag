@@ -8,7 +8,7 @@ import extdeps.uri { Uri, Https }
 import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
 import std.coercion { unicode_scalar_unfold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.algebra { collection_concat_shape, collection_count_shape, collection_map_shape, collection_join_shape }
+import std.algebra { collection_concat_shape, collection_count_shape, collection_map_shape, collection_join_shape, list_reverse }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -96,7 +96,7 @@ fn escape_json_string(s: String) -> String {
 // quote follows, then the five named controls, then the remaining control range as \u00XX -- every
 // code point below 0x20 is covered by construction, and none of the replacement texts contains a
 // code point a later pass splits on, so each original character escapes exactly once. Output bytes
-// are identical to the per-char fold's; only the building cost changes (DESIGN section 6).
+// are identical to the per-char fold's; only the building cost changes (gunbc.design_argument::how_to_work).
 // Each row is ONE fact, the control character spelled as a text literal. Its code point is DERIVED from
 // that spelling through the declared Unicode scalar unfold (std.coercion unicode_scalar_unfold), so the
 // number and the character cannot drift apart (review 79227) and no Int is asked to be a Char at run time
@@ -198,7 +198,7 @@ fn json_escape_via_passes(s: String) -> String {
 // but could never PERSIST). The flush accumulator keeps a small pending list and concatenates it
 // once per granularity window, so the copy work stays proportional to the document size times a
 // small factor instead of to its square. Output bytes are identical; only the building cost
-// changes (DESIGN section 6: a proven cost-shape defect is always fixed).
+// changes (gunbc.design_argument::how_to_work: a proven cost-shape defect is always fixed).
 data json_emit_flush_granularity: Int = 128
 
 // PENDING IS CARRIED AS A COUNT, NOT RE-DERIVED WITH count(parts) PER PUSH: count is a list fold,
@@ -214,7 +214,7 @@ type JsonEmitAcc {
 fn json_emit_push(acc: JsonEmitAcc, part: String) -> JsonEmitAcc {
   if acc.pending >= json_emit_flush_granularity {
     JsonEmitAcc {
-      out: concat(acc.out, join(reverse(acc.parts), "")),
+      out: concat(acc.out, join(list_reverse(xs: acc.parts), "")),
       parts: [part],
       pending: 1,
     }
@@ -224,7 +224,7 @@ fn json_emit_push(acc: JsonEmitAcc, part: String) -> JsonEmitAcc {
 }
 
 fn json_emit_finish(acc: JsonEmitAcc) -> String {
-  concat(acc.out, join(reverse(acc.parts), ""))
+  concat(acc.out, join(list_reverse(xs: acc.parts), ""))
 }
 
 fn quote_json_string(s: String) -> String {

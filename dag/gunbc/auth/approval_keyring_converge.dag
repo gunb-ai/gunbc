@@ -146,7 +146,7 @@ fn keyring_mkdir_argv() -> List<String> {
 // THE DECISION STORE ROOT IS PROVISIONED BY THE BROKER STATE-DIRECTORY CENSUS ROW
 // (gunbc.auth.approval_broker_state_directories.approval_decision_store_directory): this lane PROJECTS
 // that row rather than restating owner/mode/path, so the deploy fold and this converge step install the
-// exact same argv from one declaration (DESIGN §3 — one fact, one place). The approval-keyring-
+// exact same argv from one declaration (gunbc.design_argument::single_authority — one fact, one place). The approval-keyring-
 // converge witness pins the projection against the row, so a drift in either lane fails a claim.
 fn store_root_mkdir_argv() -> List<String> {
   broker_state_directory_install_argv(d: approval_decision_store_directory())

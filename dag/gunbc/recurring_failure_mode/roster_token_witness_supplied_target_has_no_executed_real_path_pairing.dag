@@ -11,7 +11,7 @@ data roster_token_witness_supplied_target_has_no_executed_real_path_pairing: Rec
   rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: MechanicallyPreventable, blocker: ClimbableButUnbuilt, trigger_capability: "the call-reach walk (fn_arrow_decl_facts_live over the runner and fleet pool) completes inside the runner envelope, so it is enrolled on a lane or cadence that executes it to a terminal verdict on every change touching that pool." } },
 
   receipts: [
-    "**the fleet-converge roster-token witness is handed the roster-reading target, and the pairing obligation (DESIGN 3) that the real producer emits that shape has never been executed to a verdict.** INVALID STATE: a new roster-reading target in the runner and fleet pool, or the supplied target ceasing to reach organization_runner_roster_live_read, turns nothing red. HARM: the witness stays green over a hypothesis the world has left.",
+    "**the fleet-converge roster-token witness is handed the roster-reading target, and the pairing obligation (gunbc.design_argument::witness_one_interface) that the real producer emits that shape has never been executed to a verdict.** INVALID STATE: a new roster-reading target in the runner and fleet pool, or the supplied target ceasing to reach organization_runner_roster_live_read, turns nothing red. HARM: the witness stays green over a hypothesis the world has left.",
 
     "POPULATION, DERIVED AND NOT TRANSCRIBED: every target in the runner and fleet pool that reaches the roster read, re-derived by `gunbc test //gunbc/instruments:roster-reach-inhabitance`, not only the one target the witness is handed.",
 

@@ -149,6 +149,10 @@ import gunbc.scm.object_store {
   WholeResidence, PartialResidence, store_unrostered_objects, store_shadowing_objects, store_rostered_rows, store_rostered_shards,
   store_rostered_lookup, store_object_index, find_object_via,
   authored_source_target_locator, scm_object_kind,
+  corpus_manifest_target_locator,
+  find_corpus_manifest_record,
+  object_id_eq,
+  path_unique_manifest_identity,
 }
 import std.content_hash { fnv1a64_structural_hex_digest }
 import gunbc.scm.commit_closure {
@@ -192,6 +196,7 @@ import gunbc.scm.load_standing {
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.integer { int_to_decimal_string }
+import std.algebra { map_lookup }
 
 // THE ENCODING IS NOT CANONICAL WITH RESPECT TO INSERTION HISTORY, and that is declared here rather
 // than left for someone to discover by diffing two repositories that ought to match.
@@ -330,7 +335,7 @@ data repository_envelope_format_tag_v3: String = "gunbc-scm-repository-v3"
 //
 // THE NAME MOVED WITH IT, AND THAT IS NOT COSMETIC. The symbol said `node` while the table it
 // governs holds non-node identities, so the authority's own name asserted something false about its
-// subject -- the meaning fork DESIGN section 3 names, in the one place whose whole job is to say
+// subject -- the meaning fork gunbc.design_argument::single_authority names, in the one place whose whole job is to say
 // which rule was used. It now names the OBJECT identity rule, and the value names the rule rather
 // than one branch's hash function, because the rule is a total law over the object coproduct whose
 // semantic-node branch delegates to v2.std.node content_hash.
@@ -338,7 +343,7 @@ data repository_envelope_format_tag_v3: String = "gunbc-scm-repository-v3"
 // ON A FUTURE MANIFEST ARM, corrected: this note said such a branch "joins this same tag when it
 // lands; it does not mint a third one". The first half is right and the second does not follow. A
 // manifest arm joins this identity AUTHORITY rather than standing up a peer authority beside it --
-// that is the section 3 point. But adding an arm and its derivation changes the authority's TOTAL
+// that is the gunbc.design_argument::single_authority point. But adding an arm and its derivation changes the authority's TOTAL
 // LAW over the object coproduct, and this tag names the law, so the version advances with it. The
 // tag is not pre-bumped for a branch that does not exist; what is corrected here is the transition
 // rule, so the next author does not read this as permission to grow the law under a fixed name.
@@ -395,7 +400,7 @@ fn repository_generation_of_content(content: String) -> Fnv1a64Structural {
 // another edge. This removes the subject of the former append-only obligation rather than adding a
 // wall that would become redundant at this cut.
 // THE ROOT IS THE AUTHORED SNAPSHOT THIS COMMIT FREEZES, AND IT IS A CORPUS MANIFEST. It was a
-// SemanticNodeObjectRef until gunbc#10522 section 5 ruled the subject: the authored snapshot is
+// SemanticNodeObjectRef until gunbc#10522 gunbc.design_argument::fail_closed ruled the subject: the authored snapshot is
 // authoritative for what was authored, and structural interpretation is a derived view over it. A
 // semantic root cannot hold that position, because the projection it comes from erases annotations
 // and cannot represent source that does not ingest -- so a commit rooted at one could not freeze a
@@ -443,7 +448,7 @@ type RepositoryCommit sole_constructor {
 //
 // What an author accumulates before committing is a set of path -> authored-source bindings. That is
 // EXACTLY what a CorpusManifestObject is, and it is exactly what a commit root is, so a separate
-// staging representation would be a second answer to one question (DESIGN section 3) and would need
+// staging representation would be a second answer to one question (gunbc.design_argument::single_authority) and would need
 // its own identity rule, its own codec, its own duplicate-path law and its own migration. The stage
 // is therefore an ordinary manifest OBJECT in the ordinary store, and this member is one reference
 // into it. An `add` mints a new manifest from the old one and moves this pointer; nothing accumulates
@@ -529,7 +534,7 @@ type RepositoryEnvelope {
 // `NotInCommits` would describe a weaker check than the one that runs -- a reader deciding whether the
 // ordering case is covered would read the name and conclude it is not -- and the decode sibling
 // already carries the accurate spelling. One rule answering under two names is the meaning fork
-// DESIGN section 3 refuses. The neighbouring parent arm keeps its older membership spelling because
+// gunbc.design_argument::single_authority refuses. The neighbouring parent arm keeps its older membership spelling because
 // renaming it is a separate subject with its own consumers, not because the two are equivalent.
 type RepositoryEncodeRefusal
   = RepositoryEncodeUncontainedTarget { target: ObjectId }
@@ -604,7 +609,7 @@ type RepositoryDecodeRefusal
 // `unexpected_member_key`, which answers a context-free question -- which key is not in this set --
 // and each layer names its own shapes. Adding `RepositoryEnvelopeMembers` to commit_closure_json_v2's context
 // coproduct would have made the lower carrier enumerate the shapes of a layer above it, which is the
-// inversion DESIGN section 3 names; duplicating the fold here instead would have been a second
+// inversion gunbc.design_argument::single_authority names; duplicating the fold here instead would have been a second
 // authority for one rule. Neither is necessary: the mechanism generalizes, the vocabulary does not.
 type RepositoryMemberContext
   = RepositoryEnvelopeMembers
@@ -662,7 +667,7 @@ type RepositoryCommitMint
 // refusal to appear and the wrong owner to name in it.
 //
 // THE KIND THE ROOT MUST BE IS NOW THE CORPUS MANIFEST, AND THE THREE REFUSALS ARE RE-AIMED RATHER
-// THAN DELETED. A repository commit freezes an AUTHORED SNAPSHOT: gunbc#10522 section 5 ruled that the
+// THAN DELETED. A repository commit freezes an AUTHORED SNAPSHOT: gunbc#10522 gunbc.design_argument::fail_closed ruled that the
 // authored snapshot is authoritative for what was authored and that structural interpretation is a
 // DERIVED VIEW, and `gunbc.scm.object_store` had already said a manifest "is the thing a repository
 // commit freezes". A semantic root cannot be that subject, because it cannot represent a
@@ -693,7 +698,7 @@ type RepositoryCommitMint
 // repository's history. The anchor cannot fail to pre-exist, so the check has no subject rather than
 // no callers.
 //
-// IT WAS LEFT STANDING AS A PUBLIC HELPER WITH NO CALL SITE, which DESIGN 3c names outright: a
+// IT WAS LEFT STANDING AS A PUBLIC HELPER WITH NO CALL SITE, which gunbc.design_argument::consumption names outright: a
 // declaration nothing consumes is redundant work that costs authoring, review and maintenance and
 // displaces nothing -- and worse here, a public membership check beside a sealed route invites a
 // future caller to re-admit an integration on membership alone, which is the exact hole the seal was
@@ -722,8 +727,8 @@ type RepositoryCommitMint
 // contradicts a collision-aware insertion far more strongly. Collapsing them would erase the
 // evidence needed to tell which invariant had failed.
 //
-// So the question is REMOVED rather than answered more elegantly, which is DESIGN section 5's
-// construction over validation and section 4b's top rung: the invalid state has no constructor on
+// So the question is REMOVED rather than answered more elegantly, which is gunbc.design_argument::fail_closed's
+// construction over validation and gunbc.design_argument::guarantee_ladder's top rung: the invalid state has no constructor on
 // this route.
 //
 // EVERY OTHER ADMISSION STILL RUNS. This is not a fast path around the mint's rules -- the allocator,
@@ -1548,7 +1553,7 @@ type CommitSubjectAdmission
 // stood next to it is not a wall. Found by external review.
 //
 // The parameter is REMOVED rather than validated: this function supplies `NoSquashIntegration` itself,
-// so the integrated arm is unwritable through this route instead of refused by it (DESIGN 4b:
+// so the integrated arm is unwritable through this route instead of refused by it (gunbc.design_argument::guarantee_ladder:
 // construction over validation). `CommitSubjectIntegrationSourceMissing` goes with it -- there is no
 // source to look for, so the question has no subject rather than an unknown answer, and the
 // `integration_anchor_resolves` call it guarded is gone.
@@ -1604,7 +1609,7 @@ fn admit_commit_subject(
 // up, because the evidence was still not bound to the thing it was evidence ABOUT. The integration had
 // the identical hole: `CommitIntegration` arrived raw, its source never established anywhere.
 //
-// A COMPARISON WOULD HAVE BEEN VALIDATION WHERE CONSTRUCTION WAS AVAILABLE (DESIGN 5). Checking that
+// A COMPARISON WOULD HAVE BEEN VALIDATION WHERE CONSTRUCTION WAS AVAILABLE (gunbc.design_argument::fail_closed). Checking that
 // the ancestry's repository equals the subject's is a check that can be satisfied while the realization
 // still lies. So the three facts became ONE sealed value instead: the subject travels INSIDE the
 // evidence, and every mint below derives the ancestry and the integration from `subject.repository`
@@ -1682,7 +1687,7 @@ fn admit_commit_presence(
 // `MintedCommit` and `AdmittedCommitSubject` are all sole-constructed here, so the seal chain cannot
 // be moved up without dragging the entire mint stack with it, and a basis constructor living above
 // this module could not build the subject it exists to produce. Splitting was tried first and is what
-// surfaced that constraint (DESIGN 3, acyclicity). The merged entries arrive as `MergedManifestEntries`
+// surfaced that constraint (gunbc.design_argument::single_authority, acyclicity). The merged entries arrive as `MergedManifestEntries`
 // -- constructible only by `merge_manifests` -- so the conflict-free decision is carried rather than
 // re-asserted, and `manifest_merge` imports only `object_store`, so naming it introduces no cycle.
 type AdmittedMergeSubject sole_constructor {
@@ -2029,7 +2034,7 @@ fn read_anchor_manifest(
 // So there is no seam to mis-pair any more. This function reads the three manifests from
 // `anchors.repository` at the anchors' own roots, runs `merge_manifests` on exactly those records, and
 // constructs the subject from THAT `ManifestMerged` arm and no other value. `merged` is never an
-// argument, so no caller can supply one (DESIGN 4b: construction over validation). The three read
+// argument, so no caller can supply one (gunbc.design_argument::guarantee_ladder: construction over validation). The three read
 // refusals and the conflict travel out typed for the verb to carry one-to-one.
 // A MERGE COMMIT IS PUBLISHED THE SAME WAY AN ORDINARY ONE IS, SO IT PASSES THE SAME ADMISSION.
 //
@@ -2041,7 +2046,7 @@ fn read_anchor_manifest(
 // path-grain merge decides that path without ever resolving it.
 //
 // The alternative was to state partial-merge semantics explicitly as a different contract. That would
-// be a second meaning for "merged", and DESIGN 3 requires a materially different contract to carry a
+// be a second meaning for "merged", and gunbc.design_argument::single_authority requires a materially different contract to carry a
 // materially different name. It is one contract, so it gets one admission. Ruled by external review.
 //
 // THE COMPLETENESS OBSERVATION HAS NO SEPARATE FUNCTION, AND THAT IS THE WHOLE SEAM. An earlier
@@ -2131,7 +2136,7 @@ fn admit_merge_subject_for(intent: MergeIntent) -> MergeSubjectAdmission {
 // refusal after the advance, and the caller never passes anchors beside an advanced repository. This
 // lives in the envelope rather than beside the merge because the envelope owns both
 // `repository_root_by_storing_unique` and the basis seal, and the merge modules import THIS one:
-// homing it there would invert the dependency (DESIGN 3, acyclicity). Ruled by external review.
+// homing it there would invert the dependency (gunbc.design_argument::single_authority, acyclicity). Ruled by external review.
 type MergeStoreOutcome
   = MergeStoreAdvanced(AdmittedCommitBasis)
   | MergeStoreLocatorCollision { identity: ObjectId }
@@ -2304,7 +2309,7 @@ fn widen_minted_commit(minted: MintedCommit) -> BrandedRootMint {
 // stylistic. The empty string is already what encoded_root_reference yields for a root that names no
 // object -- the value decode refuses as unresolved. Spelling "no commit is checked out" the same way
 // would fuse a legitimate repository state with a corruption signal, so an empty repository and a
-// repository whose checkout reference is dangling would become one state (DESIGN section 5).
+// repository whose checkout reference is dangling would become one state (gunbc.design_argument::fail_closed).
 // CHECKED_OUT IS A COMMIT REFERENCE, NOT A NODE REFERENCE, and that is a construction wall rather
 // than a check.
 //
@@ -3125,7 +3130,7 @@ fn unresolved_commit_root_step(
 // a cycle unwritable; this one exists because A SQUASH CONSUMED A SOURCE THAT EXISTED WHEN IT RAN, so
 // the anchor must already be admitted when the result is. The mint enforces exactly this against the
 // INPUT repository, and without the same rule here the wire is the weaker of the two paths -- which
-// DESIGN section 4b reads as the class's rung, since a rung is the MINIMUM across a class's in-scope
+// gunbc.design_argument::guarantee_ladder reads as the class's rung, since a rung is the MINIMUM across a class's in-scope
 // paths and never the strongest one.
 type CommitOrderRefusal
   = CommitReferenceDuplicated { reference: RepositoryCommitRef }
@@ -3229,7 +3234,7 @@ fn unresolved_checkout_selection(commits: List<RepositoryCommit>, selected: Repo
 // ------------------------------------------------------------------------------------------------
 
 // COMMITS ACCUMULATE BY PREPEND AND ARE REVERSED ONCE AT THE CONSUMER. concat-at-end inside a fold
-// copies the whole accumulator per commit, which is the quadratic shape DESIGN section 6 says is
+// copies the whole accumulator per commit, which is the quadratic shape gunbc.design_argument::how_to_work says is
 // always fixed regardless of the realized n. This stack removed that shape from commit_closure_json_v2 and from
 // object_store.dag and then reintroduced it here in the same diff -- caught by review, and the point
 // worth recording is that fixing a cost shape at the sites a review names is not the same as not
@@ -3770,7 +3775,7 @@ fn decode_commit_members_after_reference(
 // THE ARMS AND THE CODEC FUNCTIONS ARE NAMED FOR THE TAG THEY ACTUALLY IMPLEMENT, which is the rule
 // that made this rename mechanical rather than a judgment call: they said v2 while
 // repository_envelope_format_tag moved to v3, and one spelling over two materially different
-// contracts is the meaning fork DESIGN section 3 names -- with the wrong one left standing where a
+// contracts is the meaning fork gunbc.design_argument::single_authority names -- with the wrong one left standing where a
 // reader looks first.
 // The identity-rule tag stays a separate axis for the same reason it is separate today: a schema-v3
 // document may still carry an older node-identity rule, and an identity migration may leave the JSON
@@ -4713,7 +4718,7 @@ fn repository_envelope_load_standing(cause: RepositoryDecodeRefusal) -> LoadStan
 }
 
 // THE FOUR REFUSALS ARE DISTINGUISHED BECAUSE THEY HAVE DIFFERENT REMEDIES AND DIFFERENT BLAME.
-// Collapsing them into one "no base" arm would be the absorbing fallback DESIGN section 5 names: a
+// Collapsing them into one "no base" arm would be the absorbing fallback gunbc.design_argument::fail_closed names: a
 // failure arm must refuse, never widen, and a widened arm destroys the signal that would rank the
 // precise deficit for repair. An unwalkable history is damage to be investigated; an already-consumed
 // source is an unsupported OPERATION on an intact repository; disjoint histories are two repositories
@@ -4732,7 +4737,7 @@ fn repository_envelope_load_standing(cause: RepositoryDecodeRefusal) -> LoadStan
 // `MergeBaseSourceAlreadyIntegrated`, sitting directly beside `MergeBaseSourceAlreadyConsumed`, where
 // "integrated" already names ONE mechanism: the explicit `SquashIntegrated` receipt a squash writes.
 // This arm fires for an ordinary ancestor/descendant chain carrying no receipt at all, so the name
-// gave one word two mechanisms in adjacent arms of one type -- the meaning fork section 3 forbids,
+// gave one word two mechanisms in adjacent arms of one type -- the meaning fork gunbc.design_argument::single_authority forbids,
 // and the more dangerous direction of it, because a reader who trusts the name looks for a receipt
 // that does not exist. The name now states the structural fact: the source is an ancestor of the
 // target. Found by external review, on this arm's first appearance.
@@ -4778,7 +4783,7 @@ fn repository_envelope_load_standing(cause: RepositoryDecodeRefusal) -> LoadStan
 // beside them. Three presences establish membership in SOME repository; the one they were looked up in
 // is the fact that makes them mean anything, and leaving it out is what forced every downstream seal to
 // take a repository as a peer -- reintroducing exactly the mis-pairing the presences were sealed to
-// prevent. It is set once, by the resolution that performed the lookups. DESIGN 5: the invalid pairing
+// prevent. It is set once, by the resolution that performed the lookups. gunbc.design_argument::fail_closed: the invalid pairing
 // has no constructor rather than a check.
 //
 // WHAT THIS DOES AND DOES NOT ESTABLISH, because the boundary is easy to overstate and I did.
@@ -4813,7 +4818,7 @@ type ResolvedMergeAnchors sole_constructor {
 // execution of that verb constructs -- the `callee_arm_carried_past_its_exclusion` shape, found by
 // external review on this stack for the sixth time. Splitting the derivation's ANSWER from its
 // REFUSALS is what makes the downstream arm unconstructible rather than merely unreachable
-// (DESIGN 4b rung 4), and it is not a duplication: the four arms have one home, here.
+// (gunbc.design_argument::guarantee_ladder rung 4), and it is not a duplication: the four arms have one home, here.
 type MergeBaseRefusal
   = MergeBaseSourceIsAncestorOfTarget {
       target: RepositoryCommitRef,
@@ -4942,7 +4947,7 @@ fn nearest_common_ancestor(
 //
 // So the presences are resolved in the ADMITTED BRANCH and nowhere else. There is no longer a function
 // that turns raw references into anchors, so the only route to `MergeBaseDerived` runs through the
-// consumed join and the common-ancestor search above it (DESIGN 4b: construction over validation).
+// consumed join and the common-ancestor search above it (gunbc.design_argument::guarantee_ladder: construction over validation).
 
 fn merge_base(
   repository: RepositoryEnvelope,
