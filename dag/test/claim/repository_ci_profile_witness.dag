@@ -92,6 +92,11 @@ import gunbc.ci.repository_projection_drift_workflow {
 import gunbc.witness.repository_witness_workflow {
   RosterProgram, repository_witness_lane_refusal, expected_repository_witnesses_yml,
   repository_witnesses_yml_emission, yaml_emission_admitted, repository_witness_triggers,
+  // Called unqualified at lines 1184, 1195 and 1215 and never imported: the load refused with "no
+  // established callee identity, so its effects cannot be joined". Pre-existing -- main carries the same two
+  // omissions -- and invisible until now because no CI lane loads this file standalone; v2-bootstrap runs no
+  // .dag witness. Imported here because this PR's paired evidence cannot be read while the file refuses.
+  enforced_rows_need_an_aggregate_refusal, lane_admission,
 }
 
 // WHAT THESE CLAIMS HOLD.
