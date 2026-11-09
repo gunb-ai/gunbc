@@ -1005,7 +1005,7 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
     case_of(identity: "dev_red_wrong_client_key_answers_401", held: contains(s: dev_no_key, p: "\n401 exit=0"), observed: dev_no_key),
     // The row fields the binding rules read are the ones in the emitted file: a drained row is present
     // and false, an engine-local row is not silently shared, and every row carries the fields at all.
-    case_of(identity: "rows_carry_retain_capacity_and_in_service", held: shipped_json_holds(p: j => row_key_count(json: j, key: "retain") == 4 && row_key_count(json: j, key: "cap") == 7 && row_bool_field_count(json: j, key: "overflow", want: true) == 1 && row_bool_field_count(json: j, key: "in_service", want: true) == 7 && row_bool_field_count(json: j, key: "in_service", want: false) == 0) && contains(s: dev_text(), p: "retains(") && contains(s: dev_text(), p: "u.in_service ~= false"), observed: ""),
+    case_of(identity: "rows_carry_retain_capacity_and_in_service", held: shipped_json_holds(p: j => row_key_count(json: j, key: "retain") == 8 && row_key_count(json: j, key: "cap") == 9 && row_bool_field_count(json: j, key: "overflow", want: true) == 1 && row_bool_field_count(json: j, key: "in_service", want: true) == 9 && row_bool_field_count(json: j, key: "in_service", want: false) == 0) && contains(s: dev_text(), p: "retains(") && contains(s: dev_text(), p: "u.in_service ~= false"), observed: ""),
     // A NAME CANNOT BE BOTH LIVE AND RETIRING. The guard is a function of the rows, so it is tested on
     // rows: clean on the shipped set, and red on each defect it exists to refuse -- a live name in
     // another row's retiring list, and one name retired by two rows at once.

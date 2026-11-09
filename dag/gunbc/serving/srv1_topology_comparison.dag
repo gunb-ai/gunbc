@@ -118,9 +118,11 @@ fn srv1_same_topology(a: ServingTopology, b: ServingTopology) -> Bool {
   topology_tp(t: a) == topology_tp(t: b) && topology_dp(t: a) == topology_dp(t: b) && a.expert_parallel == b.expert_parallel
 }
 
-// The reading at one topology and session count, or Absent when none was taken there.
+// The ONE reading at a topology and session count. Absent when none was taken there, and also when two rows claim the
+// same point: an ambiguous pair is never resolved by list order.
 fn srv1_topology_reading(topology: ServingTopology, sessions: Nat) -> Srv1TopologyReading? {
-  fold(srv1_topology_readings, init: Absent, f: (acc, r) => if srv1_same_topology(a: r.topology, b: topology) && r.sessions == sessions { Present { value: r } } else { acc })
+  let matching = filter(srv1_topology_readings, r => srv1_same_topology(a: r.topology, b: topology) && r.sessions == sessions)
+  if count(matching) == 1 { fold(matching, init: Absent, f: (acc, r) => Present { value: r }) } else { Absent }
 }
 
 // Requests the router failed during a deliberate maintenance window, with the window they fell in.

@@ -1,7 +1,7 @@
 module gunbc.serving.serving_capacity_anchor
 
 import std.types { Bool, List, NonEmptyStr, String }
-import std.nat { Nat, nat_max }
+import std.nat { Nat }
 import std.optional { Optional, Present, Absent }
 import std.measure { TokensPerSecond, tokens_per_second, tokens_per_second_count, TokenCount, token_count, token_count_value, Permille, permille, permille_count, Millisecond, millisecond, millisecond_count, token_count_duration_at }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, cited_figure_read_obligation }
@@ -143,21 +143,29 @@ fn shape_of(a: ServingCapacityAnchor, f: ServingHeldFigures) -> ServingCapacityS
   }
 }
 
-// The grant tightens what throughput derived and never enlarges it; turns never exceed what is held. When the grant
-// forces FEWER turns than the reading's concurrency, the rate at that concurrency was never read: the lowered figure is
-// carried as an explicit extrapolation, so the shape is an estimate, never a derived figure at an unmeasured point.
+// The grant tightens what throughput and the warm store derived and never enlarges it.
 fn within_grant(a: ServingCapacityAnchor, f: ServingHeldFigures) -> ServingCapacityShape {
   match a.grant {
     GrantRefused { reason: r } => ServingShapeRefused { deployment: a.deployment, reason: r }
-    GrantUnmodeled { obligation: o } => shape_of(a: a, f: ServingHeldFigures { turns: f.turns, held: f.held, bound: f.bound, cold_reread: f.cold_reread, used: concat(f.used, [TranscribedUncited { read_obligation: o }]) })
+    GrantUnmodeled { obligation: o } => turns_within_held(a: a, f: ServingHeldFigures { turns: f.turns, held: f.held, bound: f.bound, cold_reread: f.cold_reread, used: concat(f.used, [TranscribedUncited { read_obligation: o }]) })
     GrantAdmits { conversations: n } =>
-      if n >= f.held {
-        shape_of(a: a, f: f)
-      } else if n >= f.turns {
-        shape_of(a: a, f: ServingHeldFigures { turns: f.turns, held: n, bound: HeldByRetentionGrant, cold_reread: f.cold_reread, used: f.used })
-      } else {
-        shape_of(a: a, f: ServingHeldFigures { turns: n, held: n, bound: HeldByRetentionGrant, cold_reread: f.cold_reread, used: concat(f.used, [TranscribedUncited { read_obligation: ("the retention grant lowers turns from " + to_string(f.turns as Int) + " to " + to_string(n as Int) + "; no throughput reading exists at the lower concurrency, so its rate is extrapolated from the reading's") as NonEmptyStr }]) })
-      }
+      if n >= f.held { turns_within_held(a: a, f: f) }
+      else { turns_within_held(a: a, f: ServingHeldFigures { turns: f.turns, held: n, bound: HeldByRetentionGrant, cold_reread: f.cold_reread, used: f.used }) }
+  }
+}
+
+// NO MORE TURNS THAN CONVERSATIONS HELD. Whatever bound held (the warm store or the grant), a deployment cannot run more
+// turns at once than it can resume, since each turn's conversation must come back within the wait. When held falls
+// below the reading's concurrency the turns fall with it, and the rate at that concurrency was never read: the lowered
+// figure is carried as an explicit extrapolation, so the shape is an estimate, never a derived figure at an unmeasured
+// point. Held of zero resumes nothing and refuses.
+fn turns_within_held(a: ServingCapacityAnchor, f: ServingHeldFigures) -> ServingCapacityShape {
+  if f.held == 0 {
+    ServingShapeRefused { deployment: a.deployment, reason: "the deployment can keep no conversation of the anchor context resumable within the swap wait" as NonEmptyStr }
+  } else if f.held >= f.turns {
+    shape_of(a: a, f: f)
+  } else {
+    shape_of(a: a, f: ServingHeldFigures { turns: f.held, held: f.held, bound: f.bound, cold_reread: f.cold_reread, used: concat(f.used, [TranscribedUncited { read_obligation: ("held conversations lower turns from " + to_string(f.turns as Int) + " to " + to_string(f.held as Int) + "; no throughput reading exists at the lower concurrency, so its rate is extrapolated from the reading's") as NonEmptyStr }]) })
   }
 }
 
@@ -171,6 +179,12 @@ fn single_replica_grant(layout: ServingLayoutResult, deployment: String) -> Serv
         fold(rs, init: GrantRefused { reason: "unreachable: a one-replica layout always folds its replica" as NonEmptyStr }, f: (acc, c) => GrantAdmits { conversations: c.admitted_conversations })
       } else { GrantRefused { reason: ("the serving layout for " + deployment + " configures " + to_string(count(rs) as Int) + " replicas, not one") as NonEmptyStr } }
   }
+}
+
+// Holding exactly the active turns' conversations when no warm path qualifies assumes their KV stays resident on the
+// GPU between turns; nothing here reads that, so it is carried as a bet.
+fn gpu_resident_turns() -> CitedFigureStanding {
+  TranscribedUncited { read_obligation: "the active turns' KV is assumed to stay GPU-resident between turns; read the engine's KV pool against the turns at the anchor context" as NonEmptyStr }
 }
 
 // An assumed byte figure is a bet too: its reason is the read that would ground it.
@@ -191,18 +205,17 @@ fn serving_held(turns: Nat, by_share: Nat, cold: Millisecond, a: ServingCapacity
     ServingHeldFigures { turns: turns, held: by_share, bound: HeldByActiveShare, cold_reread: cold, used: [] }
   } else {
     match a.warm_swap {
-      WarmSwapAbsent => ServingHeldFigures { turns: turns, held: turns, bound: HeldToTurnsNoWarmSwap, cold_reread: cold, used: [] }
+      WarmSwapAbsent => ServingHeldFigures { turns: turns, held: turns, bound: HeldToTurnsNoWarmSwap, cold_reread: cold, used: [gpu_resident_turns()] }
       WarmSwapRestores { tier: t, restore: r, cache: ch, slots: sl, cost: co, standing: st } =>
         if millisecond_count(m: r) > wait {
-          ServingHeldFigures { turns: turns, held: turns, bound: HeldToTurnsSwapTooSlow, cold_reread: cold, used: [st] }
+          ServingHeldFigures { turns: turns, held: turns, bound: HeldToTurnsSwapTooSlow, cold_reread: cold, used: [st, gpu_resident_turns()] }
         } else {
           match serving_warm_store(cache: ch, slots: sl, cost: co, context: p.anchor_context) {
-            WarmStoreUnread { obligation: o } => ServingHeldFigures { turns: turns, held: turns, bound: HeldToTurnsStoreUnread { obligation: o }, cold_reread: cold, used: [st] }
+            WarmStoreUnread { obligation: o } => ServingHeldFigures { turns: turns, held: turns, bound: HeldToTurnsStoreUnread { obligation: o }, cold_reread: cold, used: [st, gpu_resident_turns()] }
             WarmStoreKeeps { conversations: n } => {
-              let by_store = nat_max(a: turns, b: n)
               let used = concat([st], cache_standings(cache: ch))
-              if by_store < by_share {
-                ServingHeldFigures { turns: turns, held: by_store, bound: HeldBySwapStore, cold_reread: cold, used: used }
+              if n < by_share {
+                ServingHeldFigures { turns: turns, held: n, bound: HeldBySwapStore, cold_reread: cold, used: used }
               } else {
                 ServingHeldFigures { turns: turns, held: by_share, bound: HeldByActiveShare, cold_reread: cold, used: used }
               }

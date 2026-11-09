@@ -144,8 +144,23 @@ test fn a_smaller_warm_store_binds_what_is_held() -> Bool {
     && ca_turns_held(s: slotted, turns: 8, held: 10) && ca_bound_is(s: slotted, want: "store")
 }
 
-test fn a_store_smaller_than_the_turns_still_holds_the_turns() -> Bool {
-  ca_turns_held(s: serving_capacity_shape(a: ca_anchor(context: 100000, agg: 300, at: 8, prefill: 1000, warm: ca_warm(ms: 200, store: ca_store(n: 2))), p: ca_policy()), turns: 8, held: 8)
+// A WARM STORE SMALLER THAN THE TURNS BOUNDS BOTH. It can resume only what it keeps, so a store of 2 holds 2 and runs at
+// most 2 turns -- a concurrency the 8-turn reading never measured, so the shape is an estimate carrying that
+// extrapolation (cited fixture, so it is the only standing). A store that keeps none resumes nothing and refuses.
+test fn a_store_smaller_than_the_turns_bounds_held_and_turns() -> Bool {
+  let small = serving_capacity_shape(a: ca_anchor_cited_store(n: 2), p: ca_policy())
+  ca_turns_held(s: small, turns: 2, held: 2) && ca_bound_is(s: small, want: "store") && ca_opt_is(x: ca_estimate_count(s: small), n: 1)
+    && ca_refused(s: serving_capacity_shape(a: ca_anchor_cited_store(n: 0), p: ca_policy()))
+}
+
+// Holding exactly the turns with no qualifying warm path assumes GPU residency between turns: an estimate even when
+// every figure is cited.
+test fn holding_turns_without_a_warm_path_is_an_estimate() -> Bool {
+  let s = serving_capacity_shape(a: ServingCapacityAnchor {
+    deployment: "fixture" as NonEmptyStr, grant: GrantAdmits { conversations: 1000 }, context: token_count(count: 100000),
+    throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: 300), at_concurrency: 8, standing: ca_cited() },
+    cold_prefill: Present { value: tokens_per_second(count: 1000) }, cold_prefill_standing: ca_cited(), warm_swap: WarmSwapAbsent }, p: ca_policy())
+  ca_turns_held(s: s, turns: 8, held: 8) && ca_bound_is(s: s, want: "no-warm") && ca_opt_is(x: ca_estimate_count(s: s), n: 1)
 }
 
 test fn without_a_fast_warm_path_a_deployment_holds_only_its_turns() -> Bool {
@@ -305,4 +320,16 @@ test fn a_retention_grant_tightens_held_and_an_unmodeled_one_is_carried() -> Boo
 test fn a_refused_or_multi_replica_layout_refuses_the_shape() -> Bool {
   ca_refused(s: serving_capacity_shape(a: ca_anchor_grant(g: single_replica_grant(layout: ServingLayoutRefused { refusal: ServingLayoutNoGroups }, deployment: "fixture")), p: ca_policy()))
     && ca_refused(s: serving_capacity_shape(a: ca_anchor_grant(g: single_replica_grant(layout: host_6ce85c_layout, deployment: "fixture")), p: ca_policy()))
+}
+
+fn ca_anchor_cited_store(n: Nat) -> ServingCapacityAnchor {
+  ServingCapacityAnchor {
+    deployment: "fixture" as NonEmptyStr,
+    grant: GrantAdmits { conversations: 1000 },
+    context: token_count(count: 100000),
+    throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: 300), at_concurrency: 8, standing: ca_cited() },
+    cold_prefill: Present { value: tokens_per_second(count: 1000) },
+    cold_prefill_standing: ca_cited(),
+    warm_swap: WarmSwapRestores { tier: SwapTierHostRam, restore: millisecond(count: 200), cache: ca_store(n: n), slots: Absent, cost: ca_cost(), standing: ca_cited() },
+  }
 }
