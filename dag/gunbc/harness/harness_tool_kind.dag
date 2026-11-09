@@ -34,12 +34,16 @@ fn harness_tool_wire_name(tool: HarnessTool) -> String {
   }
 }
 
-// THE CLOSED VARIANT LIST, the one place the four tools are enumerated as values. Both inverses
+// THE CLOSED VARIANT LIST, the one place the eight tools are enumerated as values. Both inverses
 // below fold over it and compare against the forward function, so a spelling lives only in the
 // forward match and adding a tool is one variant, one match arm, and one entry here.
+// ONE list, not a second bracketed list juxtaposed after the first: that did not append, and the
+// fold below walked only the tools in the LAST list -- three -- while the five earlier ones read
+// back as unrecognized wire names. `harness_execute_tool_use` dispatches on this fold, so those
+// five tools were refused in production, not only in a claim.
 fn all_harness_tools() -> List<HarnessTool> {
-  [RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool, ValidateWorktreeTool]
   [
+    RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool, ValidateWorktreeTool,
     WaitJobsTool, ReadJobOutputTool, KillJobTool,
   ]
 }
