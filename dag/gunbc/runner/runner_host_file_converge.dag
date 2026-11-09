@@ -170,15 +170,16 @@ import gunbc.runner.runner_width_transition {
   RequiredRetirees, RetireesKnown, RetireesUnresolved,
 }
 import gunbc.runner.runner_replacement_readback {
-  OrganizationRunnerRosterEvidence, ReplacementIncoming, ReplacedBy, ShrunkOnly, IncomingUnresolved,
-  RetireDrainDecision, RetireDrainAuthorized, RetireDrainWithheld, RetireDrainRefused,
-  RetirePendingCause, RetireRefusalCause, RetireUndecidedCause, NoDecisionFor,
-  replacement_incoming_for_host, replacement_proven_of_host, retire_drain_decisions,
-  hand_retirement_notice,
+  ReplacementIncoming, ReplacedBy, ShrunkOnly, IncomingUnresolved, replacement_incoming_for_host, replacement_proven_of_host, retire_drain_decisions, hand_retirement_notice
+}
+
+import gunbc.runner.runner_retirement_causes {
+  RetireDrainDecision, RetireDrainAuthorized, RetireDrainWithheld, RetireDrainRefused, RetirePendingCause, RetireRefusalCause, RetireUndecidedCause, NoDecisionFor
 }
 import gunbc.runner.runner_qualification_dispatch { QualificationRunVerdict }
 import gunbc.runner.runner_throughput_qualification { RouteLegStanding, LegAuthorityImplemented }
 import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_live_read }
+import gunbc.fleet.fleet_runner_connectivity { OrganizationRunnerRosterEvidence }
 import gunbc.runner.runner_slot_retirement {
   RunnerRetirementStanding,
   RetirementComplete,

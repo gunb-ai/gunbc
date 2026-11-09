@@ -23,14 +23,11 @@ import gunbc.fleet.fleet_runner_connectivity {
 }
 import gunbc.runner.runner_qualification_dispatch { QualificationRunVerdict, RunVerdictCollected }
 import gunbc.runner.runner_replacement_readback {
-  ReplacementProven, RegistrationUnreadable, ReplacementIncoming, ReplacedBy, ShrunkOnly, IncomingUnresolved,
-  RetireDrainDecision, RetireDrainAuthorized, RetireDrainWithheld, RetireDrainRefused,
-  WaitingOnReplacement, ReplacementProofMissing, RegistrationPending, JobPending,
-  NotRegistered, RegisteredOffline, JobUnreadable, IncomingUnprovable,
-  StillDesiredUnit, HandStartedOutsideTheDerivedPopulation, DrainCandidateUnaccountedFor,
-  replacement_registration_of, replacement_proven_of_host, drain_candidate_standing, retire_drain_decision,
-  retire_drain_decisions, retire_drain_is_authorized, retire_pending_cause_wire, retire_refusal_cause_wire,
-  hand_retirement_notice,
+  ReplacementProven, ReplacementIncoming, ReplacedBy, ShrunkOnly, IncomingUnresolved, replacement_registration_of, replacement_proven_of_host, drain_candidate_standing, retire_drain_decision, retire_drain_decisions, retire_drain_is_authorized, hand_retirement_notice
+}
+
+import gunbc.runner.runner_retirement_causes {
+  RegistrationUnreadable, RetireDrainDecision, RetireDrainAuthorized, RetireDrainWithheld, RetireDrainRefused, WaitingOnReplacement, ReplacementProofMissing, RegistrationPending, JobPending, NotRegistered, RegisteredOffline, JobUnreadable, IncomingUnprovable, StillDesiredUnit, HandStartedOutsideTheDerivedPopulation, DrainCandidateUnaccountedFor, retire_pending_cause_wire, retire_refusal_cause_wire, Registered
 }
 
 // THE FIXTURES ARE THE SHAPE OF THE SCENARIO, AND EVERY ONE OF THEM IS MEANT TO BE READ AS A FACT ABOUT

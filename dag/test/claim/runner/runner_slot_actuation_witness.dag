@@ -32,7 +32,7 @@ import gunbc.runner.runner_slot_actuation {
   slot_actuation_settled,
   runner_job_process_comm,
 }
-import gunbc.runner.runner_replacement_readback {
+import gunbc.runner.runner_retirement_causes {
   WaitingOnReplacement, RegistrationPending, NotRegistered, NoDecisionFor,
   HandStartedOutsideTheDerivedPopulation,
 }

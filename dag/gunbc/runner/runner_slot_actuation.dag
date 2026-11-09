@@ -13,7 +13,7 @@ import extdeps.posix.getconf { clock_ticks_reading, ClockTicksObserved, ClockTic
 import extdeps.exec.command { argv_words, ArgvCommand }
 import extdeps.tools.gnu_coreutils { cat_command }
 import std.checked_arithmetic { checked_int_to_nat }
-import gunbc.runner.runner_replacement_readback {
+import gunbc.runner.runner_retirement_causes {
   RetirePendingCause, RetireRefusalCause, RetireUndecidedCause,
   retire_pending_cause_wire, retire_refusal_cause_wire, retire_undecided_cause_wire,
 }

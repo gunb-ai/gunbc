@@ -65,14 +65,18 @@ import gunbc.runner.runner_slot_allocation {
 import gunbc.runner.runner_slot_population_census { committed_unit_names_at }
 import gunbc.runner.runner_width_transition { transition_row_for_host }
 
-// ─────────────────────────── LEG 1: THE REGISTRATION READBACK ───────────────────────────
-// WHY `RegisteredOffline` IS ITS OWN ARM RATHER THAN `NotRegistered`. A runner that is registered but
-// offline is a slot that has been created and has failed to hold a connection: it tells the operator to
-// look at the runner, while `NotRegistered` tells them to look at the provisioning. Folding them would
-// make an offline replacement look like an unprovisioned one, and the plan would provision a second tree
-// over a slot that only needs its runner restarted.
-type ReplacementRegistration
-  = Registered { slot: NonEmptyStr }
+import gunbc.runner.runner_retirement_causes {
+  ReplacementRegistration, Registered, RegisteredOffline, NotRegistered, RegistrationUnreadable,
+  ReplacementJobStanding, JobConcluded, JobNotConcluded, JobUnreadable,
+  ReplacementPendingCause, RegistrationPending, JobPending,
+  DrainCandidateStanding, StillDesired, DeclaredRetiree, ModelDeclaredFabricMember,
+  HandStartedWorkingCapacity, DrainCandidateUnexplained,
+  RetirePendingCause, WaitingOnReplacement, ReplacementProofMissing, IncomingUnprovable,
+  RetireRefusalCause, StillDesiredUnit, HandStartedOutsideTheDerivedPopulation, DrainCandidateUnaccountedFor,
+  RetireDrainDecision, RetireDrainAuthorized, RetireDrainWithheld, RetireDrainRefused,
+  RetireUndecidedCause, NoDecisionFor, pending_cause_text,
+}
+
   | RegisteredOffline { slot: NonEmptyStr }
   | NotRegistered { slot: NonEmptyStr }
   | RegistrationUnreadable { slot: NonEmptyStr, cause: String }
@@ -123,9 +127,6 @@ fn registration_from_entries(
   }
 }
 
-// ─────────────────────────── LEG 2: THE COMPLETED-JOB READBACK ───────────────────────────
-type ReplacementJobStanding
-  = JobConcluded { slot: NonEmptyStr, run: WorkflowRun, floor_job: WorkflowJobRun }
   | JobNotConcluded { slot: NonEmptyStr, cause: String }
   | JobUnreadable { slot: NonEmptyStr, cause: String }
 
@@ -184,18 +185,6 @@ fn qualification_run_refusal_cause(refusal: QualificationRunRefusal) -> String {
   }
 }
 
-// ─────────────────────────── THE JOIN: REGISTERED *AND* COMPLETED A JOB ───────────────────────────
-// THE CAUSE IS THE STANDING, NOT A PARAPHRASE OF IT. The first draft of this type carried arms named
-// `NotRegistered`, `RegisteredOffline`, `JobUnreadable` and `JobNotConcluded` beside the identically named
-// arms of `ReplacementRegistration` and `ReplacementJobStanding` in the same module -- one fact held twice,
-// with the `slot` field shaved off, free to drift out of step with the standing it was meant to report, and
-// a name meaning two things on one naming surface. `gunbc.design_argument::minimize_redundancy` ("a concept
-// is modeled once and every use derived from it") and `gunbc.design_argument::single_authority` ("holding a
-// name constant may not silently change obligations") both say no. A pending cause now CARRIES the standing
-// that is holding the retirement, so "registered but offline" is decided in exactly one place and a plan
-// line cannot say something the standing does not.
-type ReplacementPendingCause
-  = RegistrationPending { standing: ReplacementRegistration }
   | JobPending { standing: ReplacementJobStanding }
 
 // `SlotProven` / `SlotPending`, not `ReplacementProven` / `ReplacementPending`: the type used to be one of
@@ -262,15 +251,6 @@ fn verdict_for(verdicts: List<QualificationRunVerdict>, slot: NonEmptyStr) -> Qu
   }
 }
 
-// ─────────────────────────── WHOSE CAPACITY IS THIS: THE DRAIN CANDIDATE'S STANDING ───────────────────────────
-// THE FOUR ANSWERS A DRAIN CANDIDATE CAN GET, IN THE ORDER THEY ARE ASKED. `StillDesired` is asked first
-// on purpose: a unit the model still desires is not this plan's to retire even when an obligation lists
-// it, because two authorities disagreeing is exactly the case where draining destroys live capacity.
-// `live_on_host` is carried and not consulted for the two declared arms: a retiree the host does not
-// report is still a retiree (the drain is a no-op), and a fabric member the host reports is still the
-// model's fabric slot -- what changes with liveness is the operator's urgency, not the model's authority.
-type DrainCandidateStanding
-  = StillDesired { unit: NonEmptyStr }
   | DeclaredRetiree { unit: NonEmptyStr, live_on_host: Bool }
   | ModelDeclaredFabricMember { unit: NonEmptyStr, live_on_host: Bool }
   | HandStartedWorkingCapacity { unit: NonEmptyStr }
@@ -351,29 +331,12 @@ fn replacement_incoming_for_host(host: HostIdentity) -> ReplacementIncoming {
   }
 }
 
-// ─────────────────────────── THE DECISION ───────────────────────────
-// ONE ARM PER WAY A RETIREMENT CAN BE STOPPED, BECAUSE THEY ARE NOT THE SAME SENTENCE. `RetireDrainWithheld`
-// is "not yet": the replacement exists in the model and has not proven itself, and a later run may retire.
-// `RetireDrainRefused` is "not yours": the unit is not this plan's to take at all, and no amount of
-// waiting on a replacement changes that. A consumer that collapsed the two would drain a hand-started
-// runner the moment an unrelated slot proved its first job.
-// TWO SENTENCES, NOT FIVE LOOK-ALIKES. `WaitingOnReplacement` says WHICH replacement and hands the caller
-// the standing that is holding it -- the rendering, and any consumer that wants to branch on registration
-// versus job, reads the standing itself. `ReplacementProofMissing` is the third thing that was previously
-// dressed up as an unreadable registration: the caller produced NO standing for that slot at all, which is
-// neither "the roster said nothing" nor "the job did not run".
-type RetirePendingCause
-  = WaitingOnReplacement { replacement: NonEmptyStr, pending: ReplacementPendingCause }
   | ReplacementProofMissing { replacement: NonEmptyStr, cause: String }
   | IncomingUnprovable { cause: String }
 
-type RetireRefusalCause
-  = StillDesiredUnit { unit: NonEmptyStr }
   | HandStartedOutsideTheDerivedPopulation { unit: NonEmptyStr }
   | DrainCandidateUnaccountedFor { unit: NonEmptyStr }
 
-type RetireDrainDecision
-  = RetireDrainAuthorized { unit: NonEmptyStr, over: List<NonEmptyStr> }
   | RetireDrainWithheld { unit: NonEmptyStr, cause: RetirePendingCause }
   | RetireDrainRefused { unit: NonEmptyStr, cause: RetireRefusalCause }
 
@@ -507,79 +470,6 @@ fn retire_drain_is_authorized(decisions: List<RetireDrainDecision>, unit: NonEmp
         RetireDrainRefused { unit: _, cause: _ } => false
       },
   )
-}
-
-// THE CAUSES RENDERED FOR A PLAN LINE, so a withheld retirement reads as a next action and not as a
-// refusal with no direction. Every withheld arm names the replacement it is waiting on -- that is the
-// difference between "converge refused" and "converge is waiting on srv3-06's first job".
-fn retire_pending_cause_wire(cause: RetirePendingCause) -> String {
-  match cause {
-    WaitingOnReplacement { replacement: slot, pending: pending } =>
-      concat("waiting on ", concat((slot as String), concat(": ", pending_cause_text(pending: pending))))
-    ReplacementProofMissing { replacement: slot, cause: why } =>
-      concat(
-        "waiting on ",
-        concat((slot as String), concat(": the replacement's readback is missing (", concat(why, ")"))),
-      )
-    IncomingUnprovable { cause: why } => concat("the replacement population is unknowable: ", why)
-  }
-}
-
-// THE THIRD RETIREE-CAUSE, TYPED LIKE THE OTHER TWO: the drain leg asked the gate about a candidate and the
-// gate produced NO DECISION for it. That is not a withhold (the gate did not consult the readback and say
-// wait) and not a refusal (the gate did not classify the candidate), it is the gate never having spoken --
-// and the drain leg treats silence the way it treats a refusal: nothing drains. It gets its own type so the
-// outcome cannot lean on a string literal to say it.
-type RetireUndecidedCause
-  = NoDecisionFor { candidate: NonEmptyStr }
-
-fn retire_undecided_cause_wire(cause: RetireUndecidedCause) -> String {
-  match cause {
-    NoDecisionFor { candidate: c } =>
-      concat((c as String), ": the retirement gate produced no decision for this candidate; nothing was drained")
-  }
-}
-
-// ONE RENDERING OF A STANDING, SHARED BY THE PLAN LINE AND THE HAND NOTICE. There used to be two -- the
-// withheld cause and the notice each spelled the registration and job cases out, with the same words in
-// both and nothing keeping them together. The two `Registered` / `JobConcluded` arms are the same
-// unreachable-by-construction pair `awaiting` spells: they can only be reached if a proven leg is handed to
-// a function that renders what is HOLDING a retirement, and saying so is better than a panic or a hole.
-fn pending_cause_text(pending: ReplacementPendingCause) -> String {
-  match pending {
-    RegistrationPending { standing: standing } =>
-      match standing {
-        Registered { slot: slot } => concat((slot as String), " is registered: the registration leg is not what is holding this")
-        RegisteredOffline { slot: slot } =>
-          concat((slot as String), " is registered in the org runner roster but offline")
-        NotRegistered { slot: slot } => concat((slot as String), " is not registered in the org runner roster")
-        RegistrationUnreadable { slot: _, cause: why } =>
-          concat("the replacement's registration is unreadable (", concat(why, ")"))
-      }
-    JobPending { standing: standing } =>
-      match standing {
-        JobConcluded { slot: slot, run: _, floor_job: _ } =>
-          concat((slot as String), " has completed a job: the job leg is not what is holding this")
-        JobNotConcluded { slot: _, cause: why } =>
-          concat("the replacement has not completed a job (", concat(why, ")"))
-        JobUnreadable { slot: _, cause: why } =>
-          concat("the replacement's first job is unreadable (", concat(why, ")"))
-      }
-  }
-}
-
-fn retire_refusal_cause_wire(cause: RetireRefusalCause) -> String {
-  match cause {
-    StillDesiredUnit { unit: unit } =>
-      concat((unit as String), " is still desired by the committed population: the retiree list and the population disagree")
-    HandStartedOutsideTheDerivedPopulation { unit: unit } =>
-      concat(
-        (unit as String),
-        " is running on the host and is in no derived population: it is hand-started working capacity, not an unknown occupant, and this plan will not drain it",
-      )
-    DrainCandidateUnaccountedFor { unit: unit } =>
-      concat((unit as String), " is a drain candidate with nothing declaring it: desired by nobody, retired by nobody, not a fabric slot, and not running")
-  }
 }
 
 // ─────────────────────────── THE SIGNAL THE OPERATOR GETS INSTEAD OF A SILENT HAND RUNNER ───────────────────────────
