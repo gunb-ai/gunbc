@@ -452,8 +452,10 @@ fn w_refusal_detail_names_the_unit_and_offers_no_fallback() -> Bool {
 
 // ── THE OPERATOR ROUTE POLICY AND ITS KEYED LOOKUP ────────────────────────────────────────────
 // The policy fact is the whole decision (main keeps the fabric router); the lookup is the mechanism that
-// makes a route a row, not a fork. Authored, not executed: CI does not run witnesses, and no build ran
-// this slice.
+// makes a route a row, not a fork. This file is executed, not only authored:
+// claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/operator_endpoint_witness.dag
+// --functions <every test fn in this file> runs each claim, so a closure that stops resolving fails the
+// witness rather than quietly passing it.
 
 // THE POLICY NAMES THE FABRIC ROUTER, and the lookup resolves it to the router row: the same route the
 // single constant named before this slice.
