@@ -15,7 +15,7 @@ import gunbc.harness.harness_shell_job {
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn unknown_elapsed() -> Second? {
-  none
+  Absent
 }
 
 fn fixture_job(state: HarnessShellJobState) -> HarnessShellJob {
@@ -45,7 +45,7 @@ test fn an_unconfirmed_kill_carries_the_terminate_stderr() -> Bool {
 }
 
 test fn the_backstop_label_reads_duration_exceeded_and_an_own_exit_reads_its_code() -> Bool {
-  let job = fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 124 }, last_seen_running: none, elapsed_at_reap: none })
+  let job = fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 124 }, last_seen_running: Absent, elapsed_at_reap: Absent })
   harness_command_table_exit_label(job: job, code: 124, standing: JobBackstopHit).contains("duration exceeded")
     && !harness_command_table_exit_label(job: job, code: 124, standing: JobBackstopHit).contains("exit 124")
     && harness_command_table_exit_label(job: job, code: 124, standing: JobOwnExit).contains("exit 124")
@@ -65,7 +65,7 @@ test fn a_failed_stdio_rename_keeps_the_mktemp_path_and_says_so() -> Bool {
 }
 
 test fn a_124_whose_elapsed_time_is_unknown_is_undecided_not_guessed() -> Bool {
-  let job = fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 124 }, last_seen_running: none, elapsed_at_reap: none })
+  let job = fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 124 }, last_seen_running: Absent, elapsed_at_reap: Absent })
   (match harness_backstop_standing(code: 124, lower: unknown_elapsed(), upper: unknown_elapsed(), backstop: second(count: 20)) {
     JobBackstopUndecided => true
     JobBackstopHit => false
@@ -123,7 +123,7 @@ test fn a_finished_jobs_standing_is_the_stored_interval_not_the_clock_at_render(
 
 test fn a_124_reaped_after_the_backstop_that_was_last_seen_running_before_it_is_undecided_not_the_backstop() -> Bool {
   let straddling = finished_124(lower: Present { value: second(count: 5) }, upper: Present { value: second(count: 30) })
-  let unseen = finished_124(lower: none, upper: Present { value: second(count: 30) })
+  let unseen = finished_124(lower: Absent, upper: Present { value: second(count: 30) })
   (match harness_job_backstop_standing(job: straddling, code: 124) {
     JobBackstopUndecided => true
     JobBackstopHit => false
@@ -151,7 +151,7 @@ test fn a_124_seen_running_a_second_past_the_backstop_is_the_backstop_and_a_code
       JobBackstopHit => false
       JobBackstopUndecided => false
     })
-    && (match harness_backstop_standing(code: 124, lower: Present { value: second(count: 21) }, upper: none, backstop: second(count: 20)) {
+    && (match harness_backstop_standing(code: 124, lower: Present { value: second(count: 21) }, upper: Absent, backstop: second(count: 20)) {
       JobBackstopHit => true
       JobOwnExit => false
       JobBackstopUndecided => false
@@ -168,7 +168,7 @@ test fn a_lower_bound_at_the_backstop_is_undecided_not_the_backstop() -> Bool {
     JobBackstopUndecided => true
     JobOwnExit => false
   })
-    && (match harness_backstop_standing(code: 124, lower: Present { value: second(count: 20) }, upper: none, backstop: second(count: 20)) {
+    && (match harness_backstop_standing(code: 124, lower: Present { value: second(count: 20) }, upper: Absent, backstop: second(count: 20)) {
     JobBackstopHit => false
     JobBackstopUndecided => true
     JobOwnExit => false

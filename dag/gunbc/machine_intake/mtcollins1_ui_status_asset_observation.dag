@@ -311,19 +311,11 @@ fn ui_attr_refs_of_page(page_text: String) -> List<HtmlAttributeReference> {
   html_attribute_references(ui_octets_of(page_text), [megarac_ui_src_name_octets, megarac_ui_href_name_octets])
 }
 
-// RequireJS names its entry module by data-main without the extension and loads it with ".js" appended
-// unless the value already ends in ".js" (requirejs.org, "data-main"). The page names the value and the
-// loader's rule names the file, so the derived path is a Candidate in the same derived set as a src,
-// and the unchanged JavaScript admission still judges it.
-fn ui_data_main_script_ref(value: String) -> String {
-  if ui_string_ends_with(value, megarac_ui_asset_path_suffix) { value } else { join([value, megarac_ui_asset_path_suffix as String], "") }
-}
-
+// The page's data-main value is REPORTED (ui_page_diagnostic_lines) and never derived into a fetch: the
+// loader's rule would name /app/main.js, and run 42569430109's receipt shows the BMC answering 404 for it.
+// The labels are inline in source.min.js, so the only derived references are src and href.
 fn ui_asset_refs_of_page(page_text: String) -> List<NonEmptyStr> {
-  concat(
-    ui_attr_refs_of_page(page_text) |> map(r => ui_octets_text(r.value) as NonEmptyStr),
-    html_attribute_references(ui_octets_of(page_text), [megarac_ui_data_main_name_octets]) |> filter(r => count(r.value) > 0) |> map(r => ui_data_main_script_ref(ui_octets_text(r.value)) as NonEmptyStr),
-  )
+  ui_attr_refs_of_page(page_text) |> map(r => ui_octets_text(r.value) as NonEmptyStr)
 }
 
 // The guard a caller's path must pass. Shape first (each failure names itself), then membership in
@@ -550,6 +542,109 @@ fn ui_split_starts(pieces: List<String>, needle_length: Int) -> List<Int> {
     }))
 }
 
+// THE INLINE CATALOG READER. i18next here is configured with inline resources, so each language's
+// lmedia namespace is an object literal `lmedia:{...}` inside source.min.js. This reads named members
+// of such a literal with octet offsets. It is CANDIDATE-GRADE: the marker is found by raw split, so an
+// occurrence may sit in a string or a comment (claim=raw_member_shaped_occurrence_not_binding), and no
+// language is inferred from a block's position -- block_offset is all a receipt says.
+//
+// ENDING A BLOCK AT THE FIRST `}` IS SOUND ONLY BECAUSE THESE CATALOG OBJECTS ARE FLAT (string-valued
+// members). A block whose text before that `}` holds a `{` is a nested object and is REFUSED as
+// nested_object, never truncated; a `}` inside a string value would end the block early, which can only
+// make a later member absent or its value unterminated (both typed), never yield a wrong value.
+// A member is `key:"value"` with the key at the block start or after a `,`; a value holding a backslash
+// is refused (escapes are not decoded); a key occurring twice is refused, never first-wins.
+type MegaRacUiCatalogMember
+  = | CatalogMemberAbsent
+  | CatalogMemberDuplicated { occurrences: Int }
+  | CatalogMemberEscaped { value_offset: Int }
+  | CatalogMemberUnterminated { value_offset: Int }
+  | CatalogMemberRead { value_offset: Int  value_octets: List<Int> }
+
+data megarac_ui_catalog_open_text: String = "lmedia:\{"
+
+data megarac_ui_catalog_member_keys: List<String> = ["halted", "status_0", "status_1", "status_16"]
+
+fn ui_first_piece(text: String, delimiter: String) -> String {
+  match split(s: text, delimiter: delimiter) |> get(0) {
+    null => ""
+    first => first as String
+  }
+}
+
+fn ui_catalog_member(body: String, body_offset: Int, key: String) -> MegaRacUiCatalogMember {
+  let needle = join([",", key, ":\""], "")
+  let pieces = split(s: join([",", body], ""), delimiter: needle)
+  let occurrences = count(pieces) - 1
+  if occurrences == 0 {
+    CatalogMemberAbsent
+  } else if occurrences > 1 {
+    CatalogMemberDuplicated { occurrences: occurrences }
+  } else {
+    let before = match pieces |> get(0) {
+      null => ""
+      p => p as String
+    }
+    let rest = match pieces |> get(1) {
+      null => ""
+      p => p as String
+    }
+    let value_offset = body_offset + count(ui_octets_of(before)) + count(ui_octets_of(key)) + 2
+    if !string_contains(s: rest, pattern: "\"") {
+      CatalogMemberUnterminated { value_offset: value_offset }
+    } else {
+      let value = ui_first_piece(text: rest, delimiter: "\"")
+      if string_contains(s: value, pattern: "\\") { CatalogMemberEscaped { value_offset: value_offset } } else { CatalogMemberRead { value_offset: value_offset, value_octets: ui_octets_of(value) } }
+    }
+  }
+}
+
+fn ui_catalog_member_hex(octets: List<Int>, withheld: Bool, session_values: List<List<Int>>) -> String {
+  if withheld || count(session_values) == 0 {
+    "withheld"
+  } else {
+    match uint8_octets_of_ints(values: octets) {
+      QualifiedOctetsRefused { observed: _ } => "withheld_not_octets"
+      QualifiedOctetsReady { value: qualified } => base16_encode_lower(octets: qualified)
+    }
+  }
+}
+
+fn ui_catalog_member_line(index: Int, key: String, member: MegaRacUiCatalogMember, withheld: Bool, session_values: List<List<Int>>) -> NonEmptyStr {
+  let head = join(["lmedia_member block=", megarac_ui_count_text(index), " key=", key], "")
+  match member {
+    CatalogMemberAbsent => join([head, " state=absent"], "") as NonEmptyStr
+    CatalogMemberDuplicated { occurrences: n } => join([head, " state=duplicated occurrences=", megarac_ui_count_text(n)], "") as NonEmptyStr
+    CatalogMemberEscaped { value_offset: at } => join([head, " state=escaped value_offset=", megarac_ui_count_text(at)], "") as NonEmptyStr
+    CatalogMemberUnterminated { value_offset: at } => join([head, " state=unterminated value_offset=", megarac_ui_count_text(at)], "") as NonEmptyStr
+    CatalogMemberRead { value_offset: at, value_octets: octets } => join([head, " state=read value_offset=", megarac_ui_count_text(at), " value_length=", megarac_ui_count_text(count(octets)), " hex=", ui_catalog_member_hex(octets: octets, withheld: withheld, session_values: session_values)], "") as NonEmptyStr
+  }
+}
+
+fn ui_catalog_block_lines(index: Int, block_offset: Int, piece: String, withheld: Bool, session_values: List<List<Int>>) -> List<NonEmptyStr> {
+  let head = join(["lmedia_block index=", megarac_ui_count_text(index), " block_offset=", megarac_ui_count_text(block_offset)], "")
+  if !string_contains(s: piece, pattern: "}") {
+    [join([head, " refused=block_unclosed"], "") as NonEmptyStr]
+  } else {
+    let body = ui_first_piece(text: piece, delimiter: "}")
+    if string_contains(s: body, pattern: "\{") {
+      [join([head, " refused=nested_object"], "") as NonEmptyStr]
+    } else {
+      let body_offset = block_offset + count(ui_octets_of(megarac_ui_catalog_open_text))
+      concat([join([head, " claim=raw_member_shaped_occurrence_not_binding"], "") as NonEmptyStr], megarac_ui_catalog_member_keys |> map(k => ui_catalog_member_line(index: index, key: k, member: ui_catalog_member(body: body, body_offset: body_offset, key: k), withheld: withheld, session_values: session_values)))
+    }
+  }
+}
+
+fn ui_catalog_lines(asset_text: String, withheld: Bool, session_values: List<List<Int>>) -> List<NonEmptyStr> {
+  let scan = ui_text_needle_scan(text: asset_text, needle: ui_octets_of(megarac_ui_catalog_open_text), limit: megarac_ui_occurrence_window_limit)
+  let pieces = if scan.count == 0 { [] } else { split(s: asset_text, delimiter: megarac_ui_catalog_open_text) |> skip(1) |> take(count(scan.starts)) }
+  concat(
+    [join(["lmedia_blocks total=", megarac_ui_count_text(scan.count), " read=", megarac_ui_count_text(count(pieces))], "") as NonEmptyStr],
+    flat_map(pieces |> enumerate, p => ui_catalog_block_lines(index: p.first, block_offset: match scan.starts |> get(p.first) { null => 0  at => at }, piece: p.second as String, withheld: withheld, session_values: session_values)),
+  )
+}
+
 // Occurrence counts of both spellings and a bounded hex window around the first few occurrences of the
 // bare spelling (which contains the dotted one). Counts are non-overlapping, windows are bounded by
 // megarac_ui_occurrence_window_limit * (radius + after + token), whatever the asset holds.
@@ -582,7 +677,7 @@ fn ui_status_token_diagnostic_lines(asset_text: String, session_values: List<Lis
     join(["status_window index=", megarac_ui_count_text(p.first), " at=", megarac_ui_count_text(p.second), " ", ui_window_or_withheld(withheld: asset_holds_secret, octets: octets, start: p.second, token_length: bare_length, session_values: session_values)], "") as NonEmptyStr)
   let probe_lines = flat_map(megarac_ui_probes |> enumerate, q =>
     ui_probe_lines(probe: q.second, scan: scans |> get(2 + q.first), withheld: asset_holds_secret, octets: octets, session_values: session_values))
-  concat(concat([head], status_lines), probe_lines)
+  concat(concat(concat([head], status_lines), probe_lines), ui_catalog_lines(asset_text: asset_text, withheld: asset_holds_secret, session_values: session_values))
 }
 
 // ---------------------------------------------------------------------------------------------
