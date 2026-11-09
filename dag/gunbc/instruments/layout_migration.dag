@@ -55,7 +55,7 @@ import gunbc.instruments.layout_migration_map {
   sorted_distinct
 }
 
-// THE LAYOUT MIGRATION GENERATOR (gunbc.plans.source_layout_authority, C0/C1). It is a .dag
+// THE LAYOUT MIGRATION GENERATOR (gunbc.plans.source_layout_authority (deleted 2026-11-08), C0/C1). It is a .dag
 // instrument, not a throwaway script: the sweep is a construction input derived from the tree it
 // runs on, so it is re-runnable on whatever base the branch is merged onto and idempotent once the
 // tree is at the rule's positions (a placed tree plans no change).

@@ -222,8 +222,8 @@ fn eval_call_primitive(
   }
 }
 
-fn eval_choose_branch(_node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
-  Accepted { value: eval_add_subgraph(), diagnostics: None }
+fn eval_choose_branch(_node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Optional<Node>> {
+  Accepted { value: optional_present(value: eval_add_subgraph()), diagnostics: None }
 }
 
 fn eval_step_loop(_node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {

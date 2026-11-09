@@ -2898,6 +2898,24 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.harness_shell_job_process_wet_witness", function: "a_long_command_stays_running_past_the_hold_and_the_group_kill_confirms" },
+      entry: "dag/test/claim/harness_shell_job_process_wet_witness.dag",
+      function: "a_long_command_stays_running_past_the_hold_and_the_group_kill_confirms",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.harness_shell_job_process_wet_witness", function: "the_expiry_status_inside_the_backstop_is_the_commands_own_exit" },
+      entry: "dag/test/claim/harness_shell_job_process_wet_witness.dag",
+      function: "the_expiry_status_inside_the_backstop_is_the_commands_own_exit",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.harness_shell_job_process_wet_witness", function: "the_backstop_expiry_kills_the_process_group_and_reads_as_the_backstop" },
+      entry: "dag/test/claim/harness_shell_job_process_wet_witness.dag",
+      function: "the_backstop_expiry_kills_the_process_group_and_reads_as_the_backstop",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.live_deploy.approval_broker_helper_readback_real_execution", function: "a_clean_observable_snapshot_reaches_the_grant_by_real_execution" },
       entry: "dag/test/claim/live_deploy/approval_broker_helper_readback_real_execution.dag",
       function: "a_clean_observable_snapshot_reaches_the_grant_by_real_execution",
@@ -3429,18 +3447,6 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.workspace_request_consumer_witness", function: "waiting_reason_is_durable_but_cannot_refresh_readiness_or_overwrite_retirement" },
       entry: "dag/test/claim/workspace_request_consumer_witness.dag",
       function: "waiting_reason_is_durable_but_cannot_refresh_readiness_or_overwrite_retirement",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_task_store_wet_witness", function: "task_store_create_replay_and_conflicting_key" },
-      entry: "dag/test/claim/roadmap/roadmap_task_store_wet_witness.dag",
-      function: "task_store_create_replay_and_conflicting_key",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_task_store_wet_witness", function: "task_store_revise_stale_and_supersede" },
-      entry: "dag/test/claim/roadmap/roadmap_task_store_wet_witness.dag",
-      function: "task_store_revise_stale_and_supersede",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {

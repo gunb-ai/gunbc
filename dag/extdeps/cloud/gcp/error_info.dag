@@ -222,3 +222,76 @@ fn quota_retry_wait_for(
     }
   }
 }
+
+// ── THE SAFE ERROR CODES OF A GOOGLE ERROR BODY (credential-path redaction) ─────────────────────
+//
+// A refusal printed on a credential path (a Secret Manager read, a token exchange) may carry ONLY
+// facts that cannot hold a secret. A Google error body is free text in `error.message` and may echo
+// request material, so it is never printed. Two of its fields are CLOSED vocabularies by Google's own
+// definition and are safe by construction:
+//   * `error.status` is a google.rpc.Code canonical name (googleapis google/rpc/code.proto), a fixed
+//     list of seventeen names; any other spelling is dropped, never printed.
+//   * a google.rpc.ErrorInfo `reason` is printed only when it is EXACTLY one of the reviewed reasons
+//     below, and then as OUR literal; any other string in that position -- unknown, empty, or anything a
+//     secret could be shaped into -- prints the one fixed label UNRECOGNIZED. A format check is not used:
+//     error_details.proto's UPPER_SNAKE_CASE shape admits an uppercase string derived from a secret.
+// The answer is a suffix (" status=<CODE>", " reason=<REASON>", either or both, or empty); a body that is
+// not JSON, has no error object, or names neither field contributes nothing, and nothing else is read.
+// The suffix MAY be empty: every caller prefixes a non-empty "HTTP <status>", so the refusal text it
+// joins never is (a refusal text read as control flow must never come out empty).
+data google_rpc_code_names: List<String> = [
+  "OK", "CANCELLED", "UNKNOWN", "INVALID_ARGUMENT", "DEADLINE_EXCEEDED", "NOT_FOUND", "ALREADY_EXISTS",
+  "PERMISSION_DENIED", "RESOURCE_EXHAUSTED", "FAILED_PRECONDITION", "ABORTED", "OUT_OF_RANGE",
+  "UNIMPLEMENTED", "INTERNAL", "UNAVAILABLE", "DATA_LOSS", "UNAUTHENTICATED"
+]
+
+// THE REVIEWED REASONS. Each is a google.rpc.ErrorInfo reason a credential read or token exchange on
+// these paths can plausibly answer with. STANDING: cited to authority -- every literal is a member of the
+// ErrorReason enum in googleapis google/api/error_reason.proto at commit
+// 0d0982bd9844aacc37a4e87c1cd43bbdb601884d (checked 2026-11-03). Which members are kept here is a
+// review choice, not the enum's; a reason absent from this list prints as UNRECOGNIZED, never as itself.
+data gcp_reviewed_error_reasons: List<String> = [
+  "ACCESS_TOKEN_EXPIRED", "ACCESS_TOKEN_SCOPE_INSUFFICIENT", "ACCESS_TOKEN_TYPE_UNSUPPORTED",
+  "CREDENTIALS_MISSING", "ACCOUNT_STATE_INVALID", "IAM_PERMISSION_DENIED", "SERVICE_DISABLED",
+  "USER_PROJECT_DENIED", "CONSUMER_INVALID", "RESOURCE_PROJECT_INVALID", "RATE_LIMIT_EXCEEDED",
+  "RESOURCE_QUOTA_EXCEEDED"
+]
+
+// The printed reason is looked up, never copied: the answer is the matching element of OUR list, or the
+// fixed label. So no upstream byte reaches the text, whatever the body holds.
+fn gcp_reviewed_reason_label(reason: String) -> String {
+  match filter(xs: gcp_reviewed_error_reasons, predicate: fn(r) { r == reason }).first() {
+    Present { value: ours } => ours
+    Absent => "UNRECOGNIZED"
+  }
+}
+
+fn gcp_safe_status_suffix(error_value: JsonValue) -> String {
+  match error_info_string_member(v: error_value, key: "status") {
+    Absent => ""
+    Present { value: code } => if any(google_rpc_code_names, n => n == code) { concat(" status=", code) } else { "" }
+  }
+}
+
+fn gcp_safe_reason_suffix(error_value: JsonValue) -> String {
+  match error_info_member(v: error_value, key: "details") {
+    Present { value: JsonArray { elements: details } } => match find_error_info_detail(elements: details) {
+      Absent => ""
+      Present { value: info } => match error_info_string_member(v: info, key: "reason") {
+        Absent => ""
+        Present { value: reason } => concat(" reason=", gcp_reviewed_reason_label(reason: reason))
+      }
+    }
+    _ => ""
+  }
+}
+
+fn gcp_safe_error_codes(body: String) -> String {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: _ } => ""
+    JsonDocumentParsed { value: doc } => match error_info_member(v: doc, key: "error") {
+      Absent => ""
+      Present { value: error_value } => concat(gcp_safe_status_suffix(error_value: error_value), gcp_safe_reason_suffix(error_value: error_value))
+    }
+  }
+}

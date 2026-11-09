@@ -10,7 +10,6 @@ import std.witness_admission {
   witness_cadence_has_scheduled_route,
 }
 import gunbc.rung_drop { RungDrop }
-import gunbc.rung_drop.deleted_cadence_reference_drop { deleted_cadence_reference_drop }
 import std.algebra { fold_list }
 
 // THE CENSUS OF AUTHORITY ROWS THAT CITE A DELETED EXECUTION CADENCE, AND THE ONE

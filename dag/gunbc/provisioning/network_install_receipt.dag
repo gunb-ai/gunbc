@@ -31,7 +31,7 @@ import gunbc.fleet.site_pxe_edge_converge {
   site_pxe_edge_seed_path,
 }
 
-// THE INSTALLED-TO-DISK RECEIPT OF ONE NETWORK INSTALL (phase 3 of gunbc.plans.network_install_architecture_rows,
+// THE INSTALLED-TO-DISK RECEIPT OF ONE NETWORK INSTALL (phase 3 of gunbc.plans.network_install_architecture_rows (deleted 2026-11-08),
 // section 7: the measured option-93 class, the served members, the installer reaching autoinstall, and the
 // installed disk). It is the provisioning consumer's terminal, not the boot's (gunbc.host.boot_attempt
 // TerminalObserved: the terminal is the consumer's fact). The fold is pure: the readings are SUPPLIED at this
@@ -174,7 +174,7 @@ fn network_install_client(subject: NetworkInstallSubject) -> Eui48Address {
 }
 
 // THE CURRENT-INSTALL CURRENCY for the T2 provisioned-key comparison
-// (gunbc.plans.host_trust_provisioned_key; side-chat P1 at 7e4e926b, merry-fox-82). A bare
+// (gunbc.plans.host_trust_provisioned_key (deleted 2026-11-08); side-chat P1 at 7e4e926b, merry-fox-82). A bare
 // NetworkInstallReceipt is NOT accepted as the current install by that comparison: a caller
 // could hand it an OLDER complete receipt that matches an OLDER pin, and a host still
 // presenting that key would bind even though a newer install superseded both. The comparison

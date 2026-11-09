@@ -20,10 +20,14 @@ module gunbc.witness.compiler_gate_workflow
 // -- the id the repository ruleset requires, so the job's own
 // check IS the required context and no aggregate reads it: the seed emits the two retained v2
 // closures, cargo builds the emitted crates, and the built binaries are started
-// (gunbc.emitted_subject_build_gate states the subject). Every run emits and builds both products
-// FRESH: the native product store's restore and save steps left this job, and each subject step
+// (gunbc.emitted_subject_build_gate states the subject). Every run that emits, emits and builds both
+// products FRESH: the native product store's restore and save steps left this job, and each subject step
 // passes native_product_reuse_env_name=fresh, under which the runner refuses a restored hit rather
-// than serving it. That is the one use the ruling leaves the seed. A verdict this gate gains from
+// than serving it. That is the one use the ruling leaves the seed. The one run that does NOT emit is a
+// pull request the planning fast lane covers (gunbc.read_set_restore, admitted by
+// @ref(gunbc.design_ruling::seed_read_set_receipt_is_admitted)): its subject steps are skipped, not
+// served from a store, and the job says so -- it reuses the verdict main's run reached at the restored
+// ancestor and runs the whole-tree checks with the binary that run built, labelled as reused. A verdict this gate gains from
 // here is a row of emitted_subject_build_rows judged by a binary built from that emission, not a
 // lane that hands the corpus to the v1 interpreter.
 //
@@ -171,6 +175,19 @@ import gunbc.parse_verdict_restore {
   parse_verdict_reuse_walk_step,
   parse_verdict_reuse_walk_step_name,
 }
+import gunbc.read_set_publish { read_set_emit_env, read_set_publish_save_step, read_set_save_step_name, fast_lane_stage_step, fast_lane_stage_step_name }
+import gunbc.read_set_restore {
+  fast_lane_restore_step,
+  fast_lane_restore_step_name,
+  fast_lane_decision_step,
+  fast_lane_decision_step_name,
+  fast_lane_decision_script_is_renderable,
+  fast_lane_unless_reused,
+  fast_lane_layout_check_step,
+  fast_lane_layout_check_step_name,
+  fast_lane_reference_check_step,
+  fast_lane_reference_check_step_name,
+}
 import gunbc.parse_verdict_publish {
   parse_verdict_publish_walk_step,
   parse_verdict_publish_save_step,
@@ -293,6 +310,11 @@ fn compiler_gate_fleet_checkout_step() -> Step {
 
 // THE HEAD OF EVERY FLEET JOB: the judged checkout, an isolated toolchain home and a pinned default.
 fn compiler_gate_fleet_head_bound_steps() -> List<CompilerGateBoundStep> {
+  concat(compiler_gate_fleet_judged_head_bound_steps(), compiler_gate_fleet_toolchain_bound_steps())
+}
+
+// THE JUDGED CHECKOUT AND ITS STAMP GUARD, which run before anything else on every run.
+fn compiler_gate_fleet_judged_head_bound_steps() -> List<CompilerGateBoundStep> {
   [
     CompilerGateBoundStep {
       step: compiler_gate_fleet_checkout_step(),
@@ -321,6 +343,12 @@ fn compiler_gate_fleet_head_bound_steps() -> List<CompilerGateBoundStep> {
       role: capability_neutral,
       step_name: compiler_gate_contract_stamp_evidence_step_name,
     },
+  ]
+}
+
+// AN ISOLATED TOOLCHAIN HOME AND A PINNED DEFAULT.
+fn compiler_gate_fleet_toolchain_bound_steps() -> List<CompilerGateBoundStep> {
+  [
     CompilerGateBoundStep {
       step: toolchain_home_isolation_step(),
       role: capability_neutral,
@@ -386,7 +414,8 @@ fn compiler_gate_emit_build_step(subject: RequiredCiEmittedSubjectObligation) ->
           key: native_fault_experiment_env_name,
           value: yaml_string(s: emitted_subject_fault_experiment_expression(contract: subject.execution))
         ),
-        kv(key: native_product_reuse_env_name, value: yaml_string(s: native_product_reuse_env_value(contract: subject.execution)))
+        kv(key: native_product_reuse_env_name, value: yaml_string(s: native_product_reuse_env_value(contract: subject.execution))),
+        read_set_emit_env()
         ],
         right: match memory_envelope_required_ci_contract().requirement {
           EnvelopeSlotRequired =>
@@ -471,7 +500,9 @@ fn compiler_gate_emit_build_subject_bound_steps() -> List<CompilerGateBoundStep>
 // registry index, crate cache and git db plus the workspace `target/`, keyed by the lockfile hash
 // (gunbc.ci.ci_workflow_expressions ci_cache_key_template), and saves them at job end. It caches the
 // SEED's build and its dependencies; the two emitted products are built in a private probe root
-// the cache never sees. The condition is Absent: this job builds the seed on every run.
+// the cache never sees. The job builds the seed on every run the fast lane does not cover
+// (compiler_gate_emit_build_bound_steps guards it); the prelude itself carries no condition, because the
+// qualification floor (compiler_gate_floor_steps_after_checkout) runs it unconditionally.
 // THE LANE BUILDS `gunbc` IN ITS OWN CHECKOUT. `gunbc test` refuses a binary whose cargo dep-info it
 // cannot read inside this checkout (BinaryFreshnessUndecided, #13007), so a binary restored from
 // anywhere else is one the freshness guard rightly cannot judge.
@@ -514,40 +545,67 @@ fn compiler_gate_v1_unit_test_compile_step() -> Step {
   )
 }
 
+fn compiler_gate_cache_cargo_bound_step() -> CompilerGateBoundStep {
+  CompilerGateBoundStep {
+    step: ci_cache_cargo_step_under(condition: none),
+    role: capability_neutral,
+    step_name: "Cache Cargo",
+  }
+}
+
+fn compiler_gate_seed_build_bound_step() -> CompilerGateBoundStep {
+  CompilerGateBoundStep {
+    step: witness_floor_build_step(
+      step_name: compiler_gate_build_step_name,
+      build_script: repo_self_build_command(bins: compiler_gate_required_bins),
+    ),
+    role: consumes_only(capabilities: [CargoCapability]),
+    step_name: compiler_gate_build_step_name,
+  }
+}
+
+fn compiler_gate_homes_guard_bound_step() -> CompilerGateBoundStep {
+  CompilerGateBoundStep {
+    step: witness_toolchain_homes_isolated_guard_step(),
+    role: capability_neutral,
+    step_name: "Require isolated toolchain homes",
+  }
+}
+
+// LAST OF THE PRELUDE, FIRST OF THE FAILURES. It runs on the pinned toolchain the prelude pins and
+// after the seed build step, so it reuses that build's artifacts, and it precedes the subject steps
+// so a harness that no longer compiles is reported before the emit-and-restore work burns a slot.
+fn compiler_gate_v1_unit_test_bound_step() -> CompilerGateBoundStep {
+  CompilerGateBoundStep {
+    step: compiler_gate_v1_unit_test_compile_step(),
+    role: consumes_only(capabilities: [CargoCapability]),
+    step_name: compiler_gate_v1_unit_test_step_name,
+  }
+}
+
 fn compiler_gate_emit_build_prelude_bound_steps() -> List<CompilerGateBoundStep> {
   concat(compiler_gate_fleet_head_bound_steps(), [
-    CompilerGateBoundStep {
-      step: ci_cache_cargo_step_under(condition: none),
-      role: capability_neutral,
-      step_name: "Cache Cargo",
-    },
-    CompilerGateBoundStep {
-      step: witness_floor_build_step(
-        step_name: compiler_gate_build_step_name,
-        build_script: repo_self_build_command(bins: compiler_gate_required_bins),
-      ),
-      role: consumes_only(capabilities: [CargoCapability]),
-      step_name: compiler_gate_build_step_name,
-    },
-    CompilerGateBoundStep {
-      step: witness_toolchain_homes_isolated_guard_step(),
-      role: capability_neutral,
-      step_name: "Require isolated toolchain homes",
-    },
-    // LAST OF THE PRELUDE, FIRST OF THE FAILURES. It runs on the pinned toolchain the prelude pins and
-    // after the seed build step, so it reuses that build's artifacts, and it precedes the subject steps
-    // so a harness that no longer compiles is reported before the emit-and-restore work burns a slot.
-    CompilerGateBoundStep {
-      step: compiler_gate_v1_unit_test_compile_step(),
-      role: consumes_only(capabilities: [CargoCapability]),
-      step_name: compiler_gate_v1_unit_test_step_name,
-    },
+    compiler_gate_cache_cargo_bound_step(),
+    compiler_gate_seed_build_bound_step(),
+    compiler_gate_homes_guard_bound_step(),
+    compiler_gate_v1_unit_test_bound_step(),
   ])
 }
 
-fn compiler_gate_emit_build_bound_steps() -> List<CompilerGateBoundStep> {
+// THE PLANNING FAST LANE (gunbc.read_set_restore). On a pull request, right behind the stamp guard and
+// before the toolchain is installed, the job locates the base's first-parent ancestors (the one locator, which
+// the parse-verdict chain below reads too), restores the fast-lane unit main saved for the nearest of them,
+// and decides whether that unit covers the change. The seed build and both emit-and-build subjects run unless the
+// decision answered skip. The v1 unit-test typecheck runs on EVERY run: with cfg(test) on, rustc reads committed
+// files outside src/v1 through include_str! (tools/ and dag/ fixtures among them), and neither the read-set
+// receipt nor the fixed inputs record what rustc reads, so skipping it could pass a change that breaks one of
+// those files (side-chat review of 0d2b831). The cargo cache stays unguarded with it, since the typecheck
+// resolves the same registry. A durable input set for rustc-read files is the compiler's own dep-info; that is
+// the follow-up that would let the typecheck join the skippable set. The checkout, the stamp guard and its
+// evidence, the toolchain homes and their guard, and the failure notice also run on every run. A reused run
+// walks the whole-tree checks with the restored binary.
+fn compiler_gate_fast_lane_decision_bound_steps() -> List<CompilerGateBoundStep> {
   concat(
-    concat(compiler_gate_emit_build_prelude_bound_steps(), compiler_gate_emit_build_subject_bound_steps()),
     concat(
       [
         CompilerGateBoundStep {
@@ -556,6 +614,68 @@ fn compiler_gate_emit_build_bound_steps() -> List<CompilerGateBoundStep> {
           step_name: parse_verdict_locate_step_name,
         },
       ],
+      fold_list(
+        xs: parse_verdict_restore_ancestor_ordinals,
+        empty: [],
+        cons: fn(acc, ordinal) {
+          concat(acc, [
+            CompilerGateBoundStep {
+              step: fast_lane_restore_step(ordinal: ordinal),
+              role: capability_neutral,
+              step_name: fast_lane_restore_step_name(ordinal: ordinal),
+            },
+          ])
+        },
+      ),
+    ),
+    [
+      CompilerGateBoundStep {
+        step: fast_lane_decision_step(),
+        role: capability_neutral,
+        step_name: fast_lane_decision_step_name,
+      },
+    ],
+  )
+}
+
+fn compiler_gate_fast_lane_guarded(b: CompilerGateBoundStep) -> CompilerGateBoundStep {
+  CompilerGateBoundStep { step: fast_lane_unless_reused(step: b.step), role: b.role, step_name: b.step_name }
+}
+
+fn compiler_gate_fast_lane_check_bound_steps() -> List<CompilerGateBoundStep> {
+  [
+    CompilerGateBoundStep {
+      step: fast_lane_layout_check_step(),
+      role: capability_neutral,
+      step_name: fast_lane_layout_check_step_name,
+    },
+    CompilerGateBoundStep {
+      step: fast_lane_reference_check_step(),
+      role: capability_neutral,
+      step_name: fast_lane_reference_check_step_name,
+    },
+  ]
+}
+
+fn compiler_gate_emit_build_bound_steps() -> List<CompilerGateBoundStep> {
+  concat(
+    concat(
+      concat(compiler_gate_fleet_judged_head_bound_steps(), compiler_gate_fast_lane_decision_bound_steps()),
+      concat(
+        compiler_gate_fleet_toolchain_bound_steps(),
+        [
+          compiler_gate_cache_cargo_bound_step(),
+          compiler_gate_fast_lane_guarded(b: compiler_gate_seed_build_bound_step()),
+          compiler_gate_homes_guard_bound_step(),
+          compiler_gate_v1_unit_test_bound_step(),
+        ],
+      ),
+    ),
+    concat(
+      concat(
+        list_map(xs: compiler_gate_emit_build_subject_bound_steps(), f: fn(b) { compiler_gate_fast_lane_guarded(b: b) }),
+        compiler_gate_fast_lane_check_bound_steps(),
+      ),
       compiler_gate_emit_build_tail_bound_steps(),
     ),
   )
@@ -631,6 +751,16 @@ fn compiler_gate_emit_build_tail_bound_steps() -> List<CompilerGateBoundStep> {
         step: parse_verdict_publish_save_step(),
         role: capability_neutral,
         step_name: parse_verdict_save_step_name(),
+      },
+      CompilerGateBoundStep {
+        step: fast_lane_stage_step(),
+        role: capability_neutral,
+        step_name: fast_lane_stage_step_name,
+      },
+      CompilerGateBoundStep {
+        step: read_set_publish_save_step(),
+        role: capability_neutral,
+        step_name: read_set_save_step_name(),
       },
       CompilerGateBoundStep {
         step: compiler_gate_emit_build_notice_step(),
@@ -873,6 +1003,12 @@ fn compiler_gate_generation_gate_first_failure(profile: RepositoryCiProfile, wor
     CompilerGateGenerationGate {
       name: "compiler_gate_contract_stamp_output_population_is_exact (the printed counts line and the stamped field rows disagree)",
       holds: compiler_gate_contract_stamp_output_population_is_exact()
+    },
+    CompilerGateGenerationGate {
+      // A marker where the decision script belongs would run as a failing command; continue-on-error would
+      // turn that into a permanent full run with nothing in the generated file saying why.
+      name: "fast_lane_decision_script_is_renderable (the fast-lane decision step cannot be built as nodes)",
+      holds: fast_lane_decision_script_is_renderable()
     }
   ]
   let first_false = list_find_first(xs: gates, predicate: fn(g) { !g.holds })

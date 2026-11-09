@@ -108,7 +108,7 @@ test fn witness_enrolled_expectation_moves_wire_from_unenrolled_to_mismatch() ->
 }
 
 // CLAIM: ONE PUBLIC HALF, ONE ROW -- ACROSS HOSTS AND ACROSS INSTALLS (T2's catalog rule,
-// gunbc.plans.host_trust_provisioned_key). The same key material at two identities is the clone
+// gunbc.plans.host_trust_provisioned_key (deleted 2026-11-08)). The same key material at two identities is the clone
 // case: a cloned image or a cloned disk putting one private key at two hosts, a second install
 // of ONE host re-enrolling the first install's key, and the same slot stating one half twice
 // (the verbatim paste). All three refuse, whichever provenance arms carry them. The distinct

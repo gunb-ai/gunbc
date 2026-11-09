@@ -60,9 +60,21 @@ type NotDerivedSite
 // carried the SOURCE NODE as its resolved type. Every literal, binding and operation was typed as
 // itself, and every downstream consumer read that as an established judgment.
 
+// THE THIRD ANSWER TO THE GROUNDING QUESTION, beside "derived" and "not derived (we do not know yet)":
+// this node DECIDEDLY PRODUCES NO VALUE. It is not ignorance -- the judgment is made, and its content is
+// that there is no value to read (the else-less Branch at the v2.std.node table: two positionals, the
+// BranchElseSlot Absent). It is not a type either: nothing inhabits it, so no Unit is coined for it and
+// DESIGN 4's vocabulary stays closed. Every match on this coproduct must decide the new arm, which is why
+// the arm is a sibling and not a site under GroundingNotDerived: under the not-derived arm the default is
+// the counted frontier, so a consumer that forgot the site would turn a decided answer back into counted
+// ignorance (DESIGN 5). Fail-closed by construction: a consumer that owes a value refuses with
+// ^infer_branch_else_less_as_value, and the ONLY consumer that admits it is the statement Bind, whose
+// binder slot is Absent and which therefore owes no value. No wildcard arm over this coproduct may absorb
+// it; where one exists it is replaced by explicit arms.
 type NodeGrounding
   = DerivedGrounding { grounding: CanonicalGrounding }
   | GroundingNotDerived { node: Node, site: NotDerivedSite }
+  | GroundingNoValue { node: Node }
 
 // WHAT A NODE DENOTES IS AN INFERRED FACT ABOUT IT, WHICH IS WHY IT LIVES HERE AND NOT IN A SECOND
 // CARRIER. A resolved reference to a corpus declaration (v2.compiler.resolve resolved_reference_node)

@@ -1,18 +1,19 @@
 module gunbc.host.initialized_host
 
-import std.types { String }
+import std.types { String, NonEmptyStr }
 import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.network.endpoint { SocketAddress }
 import gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow }
 import gunbc.host.host_bound_transport { HostBoundTransport }
 import gunbc.host.anchored_host_transport {
-  AnchoredHostBinding, AnchoredBindingBound, anchored_host_binding_refusal_reason, anchored_host_transport_live,
+  AnchoredHostBinding, AnchoredBindingBound, anchored_host_binding_refusal_reason, anchored_host_transport_live_per_boot,
 }
+import gunbc.host.per_boot_console_pin { CheckedHostKey }
 import gunbc.host.running_os { RunningOs, RunningOsReading, RunningOsObserved, RunningOsUnobserved }
 import gunbc.host.host_boot_id { HostBootId, BootIdReadEstablished, BootIdReadUnreadable, boot_id_read_verdict }
 import gunbc.host.host_operation_exec { HostOperationOutcome, host_operation_exec, ProcfsReadBootId }
 
-// WHAT ANY BOOT TRANSACTION HANDS ON ONCE A HOST IS UP (gunbc.plans.physical_machine_boot_program, the
+// WHAT ANY BOOT TRANSACTION HANDS ON ONCE A HOST IS UP (gunbc.plans.physical_machine_boot_program (deleted 2026-11-08), the
 // initialized-host contract): the host, the reach and trust it was authenticated over, what OS is running, and
 // which boot this is. It is generic: no board, no delivery route, no persistence assumption and no runner fact.
 // What a runner additionally needs (its account, the accepted workload revision) sits on top of it in
@@ -90,19 +91,28 @@ fn initialized_host_untrusted(binding: AnchoredHostBinding) -> InitializedHostSt
   HostNotInitialized { refusal: InitializedHostUntrusted { cause: anchored_host_binding_refusal_reason(b: binding) } }
 }
 
-// THE PRODUCTION ROUTE: the anchored transport (row, pin, the operator's go, the scanned key; it contacts nothing
-// when the pin is absent or the go is unset), then the kernel boot id read over THAT transport. No read is taken on
+// THE PRODUCTION ROUTE: an unobserved running OS refuses before any contact; then the anchored transport over the
+// PER-BOOT PIN (gunbc.host.anchored_host_transport anchored_host_transport_live_per_boot: the row, the pin minted from
+// the host key the running-OS receipt carried, which must be of the reading's own boot, the operator's go, the
+// scanned key; it contacts nothing when the key is absent, of another boot, or the go is unset), then the kernel boot
+// id read over THAT transport. The per-boot route has already read the boot id once to bind the pin to the live boot;
+// this read is the record's own, compared with the running-OS reading here, and is kept rather than threaded out of
+// the binding so the record's one constructor stays pure over its three supplied values. No read is taken on
 // any refusal, so an untrusted host is refused before any effect on it. The running-OS reading is the route's own
 // terminal readback (for the Ephemeral runner medium, gunbc.runner.runner_host_medium runner_host_running_os).
-fn initialized_host_live(host: HostIdentity, attempt_raw: String, running: RunningOsReading) -> InitializedHostStanding {
-  match anchored_host_transport_live(host: host, attempt_raw: attempt_raw) {
-    AnchoredBindingBound { bound: b, anchor: a } =>
-      initialized_host_over(
-        binding: AnchoredBindingBound { bound: b, anchor: a },
-        running: running,
-        read: host_operation_exec(transport: b.transport, operation: ProcfsReadBootId),
-      )
-    other => initialized_host_untrusted(binding: other)
+fn initialized_host_live(host: HostIdentity, attempt_raw: String, running: RunningOsReading, host_key: CheckedHostKey?) -> InitializedHostStanding {
+  match running {
+    RunningOsUnobserved { cause: c } => HostNotInitialized { refusal: InitializedHostRunningOsUnobserved { cause: c } }
+    RunningOsObserved { running: _, observed_host: _, observed_on: seen } =>
+      match anchored_host_transport_live_per_boot(host: host, attempt_raw: attempt_raw, host_key: host_key, expected_boot_id: (seen.boot_id as String) as NonEmptyStr) {
+        AnchoredBindingBound { bound: b, anchor: a } =>
+          initialized_host_over(
+            binding: AnchoredBindingBound { bound: b, anchor: a },
+            running: running,
+            read: host_operation_exec(transport: b.transport, operation: ProcfsReadBootId),
+          )
+        other => initialized_host_untrusted(binding: other)
+      }
   }
 }
 

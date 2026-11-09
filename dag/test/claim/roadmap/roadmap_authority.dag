@@ -67,7 +67,7 @@ import gunbc.roadmap.roadmap_execution_contract {
 import gunbc.roadmap.roadmap_document { RoadmapDocument }
 import gunbc.roadmap.roadmap_authority { roadmap_authority_projection, RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused }
 import gunbc.roadmap.roadmap_spawner { doc_all_nodes }
-import gunbc.roadmap.roadmap_emit { node_is_superseded, signoff_suffix_inlines, line_inlines }
+import gunbc.roadmap.roadmap_emit { node_is_superseded, acceptance_pending_suffix_inlines, line_inlines }
 import std.markdown { MarkdownInline, TextInline, ParagraphBlock }
 import test.claim.roadmap.roadmap_authority_subtree_fixture { fx_subtree_fixture_ids }
 import std.algebra { empty_map, map_insert, map_lookup }
@@ -112,22 +112,18 @@ import gunbc.roadmap.roadmap_model {
 }
 import gunbc.roadmap.roadmap_status {
   RoadmapItem,
-  Signoff,
   TicketLine,
   TicketFields,
   SupersededLine,
   AuthoredLine,
   PlainLine,
   DerivableLine,
-  Unsigned,
-  SignedOff,
   RedControlExecuted,
   RedControlNotRun,
   HandbackDelivered,
   HandbackNotDelivered,
   line_ticket,
   item_is_done,
-  signoff_is_present,
 }
 import std.graph { GraphEdge, CallGraph, graph_has_multi_node_scc }
 import gunbc.roadmap.roadmap_spawner { readiness_graph, node_readiness_in_graph }
@@ -271,7 +267,6 @@ fn ticket_fields_complete(ticket: TicketFields) -> Bool {
 
 fn active_node_admissible(n: RoadmapNode) -> Bool {
   !item_is_done(item: n.line, merged: [])
-    && !signoff_is_present(s: n.signoff)
     && match line_ticket(item: n.line) {
       Present { value } => ticket_fields_complete(ticket: value)
       Absent => false
@@ -285,7 +280,7 @@ fn active_node_admissible(n: RoadmapNode) -> Bool {
   }
 }
 
-fn red_fixture(line: RoadmapItem, signoff: Signoff) -> RoadmapNode {
+fn red_fixture(line: RoadmapItem) -> RoadmapNode {
   RoadmapNode {
     identity: "rnfx_8E5PG4F7CAZ148VZ8MNY" as RoadmapNodeIdentity,
     node: "red-fixture",
@@ -297,7 +292,6 @@ fn red_fixture(line: RoadmapItem, signoff: Signoff) -> RoadmapNode {
     },
     execution: ExecutionContractUnspecified,
     owner: "roadmap-authority",
-    signoff: signoff,
     parent: none,
     centering: none,
   }
@@ -539,8 +533,8 @@ test fn witness_ambiguous_declared_node_refuses_remains_superseded_join() -> Boo
   match join_remains_superseded_to_declared_line(
     node: tnid(s: "red-fixture"),
     nodes: [
-      red_fixture(line: red_ticket(done: false), signoff: Unsigned),
-      red_fixture(line: SupersededLine { by: "successor", content: "fixture" }, signoff: Unsigned),
+      red_fixture(line: red_ticket(done: false)),
+      red_fixture(line: SupersededLine { by: "successor", content: "fixture" }),
     ],
   ) {
     RemainsSupersededRevocationOnAmbiguousDeclaredNode { node } =>
@@ -727,25 +721,12 @@ test fn witness_exit_model_finish_lines_bind_declared_terminals() -> Bool {
 }
 
 test fn witness_completed_ticket_cannot_reenter_active_graph() -> Bool {
-  !active_node_admissible(n: red_fixture(line: red_ticket(done: true), signoff: Unsigned))
-}
-
-test fn witness_accepted_ticket_cannot_reenter_active_graph() -> Bool {
-  !active_node_admissible(n: red_fixture(
-    line: red_ticket(done: false),
-    signoff: SignedOff {
-      by: "operator",
-      works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" },
-      scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] },
-      as_expected: true,
-    },
-  ))
+  !active_node_admissible(n: red_fixture(line: red_ticket(done: true)))
 }
 
 test fn witness_superseded_row_cannot_reenter_active_graph() -> Bool {
   !active_node_admissible(n: red_fixture(
     line: SupersededLine { by: "replacement", content: "retired history" },
-    signoff: Unsigned,
   ))
 }
 
@@ -787,7 +768,6 @@ test fn witness_namespace_chain_is_explicit() -> Bool {
     && edge_exists(child: "namespace-legacy-choice-retirement", parent: "declaration-identity-switchover")
     && edge_exists(child: "namespace-legacy-choice-retirement", parent: "namespace-semantic-waves")
     && edge_exists(child: "namespace-legacy-choice-retirement", parent: "v1-interpreter-delete")
-    && edge_exists(child: "namespace-import-deletion", parent: "namespace-legacy-choice-retirement")
     && !id_exists(id: "namespace-canonical-binding")
     && !id_exists(id: "namespace-bound-only-consumers")
 }
@@ -852,13 +832,12 @@ test fn witness_v1_exit_fan_in_matches_finish_line_split() -> Bool {
     && !id_exists(id: "v1-verification-ledger")
 }
 
-// The grammar goes last (XL-7 after XL-6, which runs after seed retirement), so the import deletion
-// no longer gates the zero-hand-maintained-Rust terminal: that edge would close a cycle with the
-// seed retirement the namespace cutover now waits on.
-test fn witness_import_deletion_follows_the_namespace_cutover() -> Bool {
-  id_exists(id: "namespace-import-deletion")
-    && active_id_exists(id: "namespace-import-deletion")
-    && edge_exists(child: "namespace-import-deletion", parent: "namespace-legacy-choice-retirement")
+// Import-grammar deletion (XL-7) is withdrawn: imports are the terminal name mechanism
+// (gunbc.design_ruling imports_are_the_terminal_name_mechanism), so its node and every edge to it are
+// gone, and nothing may wait on it.
+test fn witness_import_deletion_is_withdrawn() -> Bool {
+  !id_exists(id: "namespace-import-deletion")
+    && !edge_exists(child: "namespace-import-deletion", parent: "namespace-legacy-choice-retirement")
     && !edge_exists(child: "v1-zero-hand-maintained-rust", parent: "namespace-import-deletion")
 }
 
@@ -926,10 +905,10 @@ test fn witness_v2_emitter_direct_rust_door_has_discriminating_contract() -> Boo
 // so an accepted row's absence here can only mean it was accepted, never that a view hid it. It
 // reads the projected rows themselves rather than their serialized markdown: every clause is a
 // fact about which rows the projection carries (an accepted row is absent, an active one present,
-// no superseded or awaiting-sign-off row survives), and serializing ~200 rows to find those facts
+// no superseded or awaiting-acceptance row survives), and serializing ~200 rows to find those facts
 // cost the markdown emitter's whole fold per run. The markers' spelling is the emitter's own
 // subject (test.claim.roadmap_emit_test); the clauses here are the same per-row predicates the
-// emitter renders them from (gunbc.roadmap.roadmap_emit node_is_superseded, signoff_suffix_inlines).
+// emitter renders them from (gunbc.roadmap.roadmap_emit node_is_superseded, acceptance_pending_suffix_inlines).
 fn inline_text_contains(i: MarkdownInline, pattern: String) -> Bool {
   match i {
     TextInline { text } => string_contains(s: text, pattern: pattern)
@@ -938,13 +917,13 @@ fn inline_text_contains(i: MarkdownInline, pattern: String) -> Bool {
 }
 
 // One pass per projected row: neither accepted row named below, not superseded, not awaiting
-// sign-off.
+// an acceptance receipt.
 fn projected_row_is_active(n: RoadmapNode) -> Bool {
   let id = n.node as String
   !(id == "namespace-occurrence-transport")
     && !(id == "pderive-typesafe-nullary-reflection")
     && !node_is_superseded(rn: n)
-    && !any(signoff_suffix_inlines(rn: n, merged: authored_merged_prs()), i => inline_text_contains(i: i, pattern: "awaiting sign-off"))
+    && !any(acceptance_pending_suffix_inlines(rn: n, merged: authored_merged_prs()), i => inline_text_contains(i: i, pattern: "awaiting an acceptance receipt"))
 }
 
 // The former markdown claim's text clause, split off because it is independent of which rows are

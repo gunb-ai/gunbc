@@ -40,7 +40,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Atom, Node, Symbol, TypeNode, node_with_occurrence_id, symbol_intern_lexeme, symbol_lexeme }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.compiler.normalized_tree { NormalizedTree }
-import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_reverse, list_starts_with, list_at_optional, map_lookup }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, is_suffix_of, list_at_optional, map_lookup }
 import v2.std.diagnostic { Outcome, outcome_accepted }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.provenance {
@@ -291,6 +291,14 @@ fn door_probe_read() -> DagSourceReadWitness {
   }
 }
 
+// THE EMISSION CARRIES THE REFUSAL, SO THE HELPER HAS TO READ IT FROM THE ARM THAT HOLDS IT.
+// v2_cli_run accepts a closure whose individual member refused: the Accepted emission then carries
+// refused_count and refusal_detail (v2.cli.compile_cli), and v2_cli_exit fails the process with
+// exactly that detail -- so a member refusal is reported to the operator even though the run emitted.
+// Returning "" for that arm dropped the only sentence both rows below are about: the positive row read
+// an empty string where the fatal line lives, and the negative row became the permanently-green needle
+// its own note calls worse than no check, because it would be cited as coverage. The line is there;
+// the arm just has to be read.
 fn door_probe_cli_detail() -> String {
   match v2_cli_run(
     plan: CliPlanParsed {
@@ -302,7 +310,7 @@ fn door_probe_cli_detail() -> String {
     },
     ingest: [door_probe_read()]
   ) {
-    CliEmitted { text: _, closure_size: _, refused_count: _, refusal_detail: _ } => ""
+    CliEmitted { text: _, closure_size: _, refused_count: _, refusal_detail: detail } => detail
     CliRunRefused { reason: _, detail: detail } => detail
     CliUsageRefused { reason: _, detail: detail } => detail
     CliPopulationReported { text: _, held: _, detail: detail } => detail
@@ -320,17 +328,24 @@ fn door_probe_cli_detail() -> String {
 // file-only assertion would pass for a renderer that found the index entry and dropped its extent --
 // leaving the operator with the right file and no idea where to look in it.
 fn detail_ends_with(detail: String, expected: String) -> Bool {
-  list_starts_with(
-    xs: list_reverse(xs: detail),
-    prefix: list_reverse(xs: expected),
-    eq: char_eq
-  )
+  is_suffix_of(suffix: expected, xs: detail, eq: char_eq)
 }
 
+// THE SPANS IN THE EXPECTED TAIL ARE READ FROM THE RUN, NOT COMPUTED BY THE AUTHOR. The refusal this
+// fixture exists to produce is resolve_module_not_found on the `import std.types { Bool }` statement of
+// door_probe_source -- the plan declares source_roots: Empty, so that std module cannot resolve, and
+// that is what makes the closure refuse at all -- so the fatal line locates that statement: bytes 36..61
+// of the 99-byte source, which is the import statement's own extent. Read off the compiler's own output
+// for this fixture at 24fe705b (invocation 76994b66-5045-4d80-84ee-89fc8f2651c2, reported by
+// quick-newt-573: refused_count 1, closure_size 1, detail ending
+// "FATAL AT fixtures/native_cli_door/door_probe.dag bytes 36..61"). Earlier this line named bytes 0..6,
+// the module keyword, when the refusal sat on the door probe's own declaration; the file and the byte
+// range -- the two things this row exists to hold together -- are unchanged in kind. If the fixture's
+// source text is ever edited, this span moves with it: re-read it from the run, do not recompute it here.
 test fn cli_fatal_line_names_the_file_and_bytes_holds() -> Bool {
   detail_ends_with(
     detail: door_probe_cli_detail(),
-    expected: "FATAL AT fixtures/native_cli_door/door_probe.dag bytes 0..6"
+    expected: "FATAL AT fixtures/native_cli_door/door_probe.dag bytes 36..61"
   )
 }
 

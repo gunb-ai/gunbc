@@ -11,7 +11,7 @@ import gunbc.roadmap.roadmap_serve {
   BeltDispatchHandler, DispatchAssetHandler,
   SessionsJsonHandler, AttemptsJsonHandler, WorkflowJsonHandler, BeltStopHandler,
   BeltPublishHandler,
-  IssueDetailPageHandler, IssueAssignHandler, IssueCommentHandler, IssueAssignmentContextHandler, IssueCreateHandler, IssueCreatePageHandler,
+  IssueDetailPageHandler, IssueAssignHandler, IssueCommentHandler, IssueAssignmentContextHandler,
   serve_issue_assignment_context_over, serve_issue_view_preferences_over,
   serve_issue_assign_response_over,
   serve_dispatch_handler_response_over,
@@ -49,7 +49,7 @@ import gunbc.roadmap.roadmap_launch_admission {
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
   LaunchNoCapacity,
 }
-import gunbc.roadmap.roadmap_readiness { GapAccepted, GapDependencies, GapContract, GapNotAgentWork }
+import gunbc.roadmap.roadmap_readiness { GapInReview, GapDependencies, GapContract, GapNotAgentWork }
 import gunbc.roadmap.roadmap_execution_contract { OperatorExclusiveMode }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, srv1_live_dashboard_instance, srv2_preview_dashboard_instance, srv1_lab_dashboard_instance }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
@@ -363,7 +363,7 @@ test fn witness_dispatch_status_total() -> Bool {
     && belt_dispatch_status(r: na(r: LaunchAlreadyLive { session_name: "s" })) == 200
     && belt_dispatch_status(r: na(r: LaunchInstanceActuationRefused { instance_id: "i", reason: "r" })) == 403
     && belt_dispatch_status(r: na(r: LaunchNodeUnknown)) == 404
-    && belt_dispatch_status(r: na(r: LaunchNotReady { missing: [GapAccepted] })) == 409
+    && belt_dispatch_status(r: na(r: LaunchNotReady { missing: [GapInReview] })) == 409
     && belt_dispatch_status(r: na(r: LaunchSessionsUnobservable { reason: "r" })) == 503
     && belt_dispatch_status(r: na(r: LaunchAuthorityUnobserved { detail: "d" })) == 503
     && belt_dispatch_status(r: SpawnFailed { node_id: "n", step: "git", detail: "d", provider: "codex", launch: launch_identity_exemplar() }) == 502
@@ -742,12 +742,6 @@ test fn witness_issue_detail_route_selects() -> Bool {
     && selects(method: POST, path: "/issue/some-node/comment", want: IssueCommentHandler)
 }
 
-// THE CREATE ROUTES: POST /issues is the write, GET /issues/new is the composer page.
-test fn witness_issue_create_routes_select() -> Bool {
-  selects(method: POST, path: "/issues", want: IssueCreateHandler)
-    && selects(method: GET, path: "/issues/new", want: IssueCreatePageHandler)
-}
-
 // ── The durable assign route: validation, concurrency, and the fabric execution entry point ──────
 // THE ASSIGN BODY'S WIRE SHAPE (the form ships enctype text/plain): a field reads as its own
 // name=value line, absent reads as empty; no percent-encoding exists to undo, and a value never
@@ -808,6 +802,29 @@ test fn witness_assign_route_refuses_404_and_403_before_any_host_read() -> Bool 
 
 fn fixture_human_ref() -> PrincipalRef {
   PrincipalRef { authority: "google-oidc" as NonEmptyStr, namespace: "accounts" as NonEmptyStr, subject: "sub-human" as NonEmptyStr }
+}
+
+// CONTROL 3b, the assign=ownership-only RED control: a FABRIC assignee ALSO never dispatches. Before
+// the ruling, assigning to the fabric workflow principal launched a worker through this follow-through
+// (the assign-as-launch coupling); now ASSIGN is ownership only and the body carries no launch
+// vocabulary at all -- no admitted session, no Work tab, no waiting-on-fabric. Launch belongs to the
+// CONTINUE/START FRESH verb behind ServeActionDispatchNode, not to ServeActionAssignIssue.
+test fn witness_fabric_assignment_never_dispatches() -> Bool {
+  let r = serve_assignment_launch_follow_through_over(
+    instance: srv2_preview_dashboard_instance(),
+    plan: caller_supplied_plan_fixture(),
+    node_id: "some-node",
+    assignee: fabric_workflow_principal,
+    event_id: "evt-9",
+    profiles: [],
+  )
+  r.status == 200
+    && string_contains(s: r.body, pattern: "assigned: some-node →")
+    && string_contains(s: r.body, pattern: "event evt-9")
+    && !string_contains(s: r.body, pattern: "fabric work request admitted")
+    && !string_contains(s: r.body, pattern: "Work tab")
+    && !string_contains(s: r.body, pattern: "waiting on fabric")
+    && !string_contains(s: r.body, pattern: "launch pending")
 }
 
 // CONTROL 3, at the response seam: a HUMAN assignee NEVER dispatches — the follow-through records

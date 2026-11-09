@@ -15,7 +15,7 @@ import v2.std.compilers.lexing { AnnotationRule, KeywordPattern, LexPattern, Lex
 import v2.std.find_witness { CandidateSet, PreservationPredicate, UniqueOnly, find_witness }
 import v2.std.passing_candidate_fold { ManyPassingCandidates, NoPassingCandidate, OnePassingCandidate, PassingCandidateFold }
 import v2.std.type_binder { cast_target_optional, type_annotation_optional, type_param_names, kinded_type_param_kind_optional }
-import v2.std.node { node_same_occurrence, BranchConditionSlot, BranchElseSlot, BranchThenSlot, branch_slot_target, MatchArmSlot, MatchScrutineeSlot, child_slot_edge, match_role_slots, match_slot_target, BindBinderSlot, BindBodySlot, BindValueSlot, bind_slot_target, positional_child_target_nodes, StructuralLabel, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, Arrow, ComputationBody, DirectAtomBody, FunctionValueBody, RecordConstructBody, DeclarationReferenceBody, ParameterReferenceBody, LexicalReferenceBody, UnsupportedArrowBody, classify_arrow_body_form, ArrowBodyEdges, Atom, Branch, ComputationNode, Conj, Connective, Disj, Edge, EdgeDiscipline, Instantiation, LabeledEdges, LoopBoundEdges, Match, Authored, NoEdges, Node, NodeFold, Positional, PositionalEdges, Symbol, Transform, TypeNode, all_edges_named, all_edges_positional, connective_edge_discipline, content_hash, fold_node, match_arm_children_conform_skip_first, name_occurrences, node_rebuild, symbol_intern_lexeme, symbol_lexeme, MatchArmBodyEdge, MatchArmPatternEdge, core_edge, core_occurrences, edge_is_core, production_edge_label, Bind, Loop, Value, PositionalPlusNamedMarkerEdges, PositionalPrefixThenLabeledEdges, fold_list_node, NotADeclaration }
+import v2.std.node { node_same_occurrence, BranchConditionSlot, BranchElseSlot, BranchThenSlot, branch_slot_target, MatchArmSlot, MatchScrutineeSlot, child_slot_edge, match_role_slots, match_slot_target, BindBinderSlot, BindBodySlot, BindValueSlot, bind_slot_target, positional_child_target_nodes, StructuralLabel, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, Arrow, ComputationBody, DirectAtomBody, FunctionValueBody, RecordConstructBody, DeclarationReferenceBody, ParameterReferenceBody, LexicalReferenceBody, UnsupportedArrowBody, classify_arrow_body_form, ArrowBodyEdges, Atom, Branch, ComputationNode, Conj, Connective, Disj, Edge, EdgeDiscipline, Instantiation, LabeledEdges, LoopBoundEdges, Match, Authored, NoEdges, Node, NodeFold, Positional, PositionalEdges, Symbol, Transform, TypeNode, all_edges_named, all_edges_positional, connective_edge_discipline, content_hash, fold_node, match_arm_children_conform_skip_first, name_occurrences, node_rebuild, symbol_intern_lexeme, symbol_lexeme, MatchArmBodyEdge, MatchArmPatternEdge, core_edge, core_occurrences, edge_is_core, production_edge_label, Bind, Loop, Value, PositionalPlusNamedMarkerEdges, PositionalPrefixThenLabeledEdges, fold_list_node, NotADeclaration, declaration_reference_body_marked }
 import v2.std.witness { StructuralPropertyWitness, map_get_checked }
 import v2.std.anonymous_binder { is_anonymous_param_label }
 import v2.std.node_query { child_lookup_step, declared_field_from_edge, member_edge_type_node, NamedChildAmbiguous, NamedChildFound, NamedChildMissing, arrow_domain_named_param_bindings, find_arrow_body_child, find_named_child, named_child_lookup, node_labeled_child_edges, nullary_inhabitant_by_discriminant, is_wildcard_pattern_identity, pattern_wildcard_name, find_core_child, find_labeled_child, construct_field_edges, construct_tag_optional }
@@ -15123,10 +15123,13 @@ fn target_transform_positional_operand_binding(node: Node, index: Int) -> Outcom
 fn target_bind_binder_binding(bind: Node) -> Outcome<Symbol> {
   match bind_slot_target(n: bind, slot: BindBinderSlot) {
     Present { value: child } => target_transform_positional_operand_binding_atom(child: child)
+    // A Bind with NO BINDER is the statement Bind the lowering produces. At this VALUE route a value is owed
+    // and there is no binder to hold it, so it refuses -- with the cause the slot table answered, not the
+    // malformed-shape reason (DESIGN 5). The statement render is the target model's own statement kind.
     Absent =>
       outcome_rejected(
         target_value_expr_diagnostic(
-          reason: ^target_value_expr_reason_transform_shape_invalid,
+          reason: ^target_value_expr_reason_bind_binder_absent_as_value,
           node: bind
         )
       )
@@ -15171,7 +15174,7 @@ fn target_value_expr_arrow_has_branch_body(arrow: Node) -> Bool {
     Accepted { value: body, diagnostics: _ } =>
       match body.kind {
         ComputationNode { behavior: Branch } =>
-          length(xs: positional_child_target_nodes(node: body)) == 3
+          target_branch_value_slots_complete(node: body)
         TypeNode { connective: _ } => false
         ComputationNode { behavior: Value } => false
         ComputationNode { behavior: Transform } => false
@@ -15180,6 +15183,25 @@ fn target_value_expr_arrow_has_branch_body(arrow: Node) -> Bool {
         ComputationNode { behavior: Match } => false
       }
     Rejected { diagnostics: _ } => false
+  }
+}
+
+// All three Branch slots Present at the table: the condition the bool gate reads, the then arm, and the else
+// arm the VALUE route cannot do without. The arity question is asked at the table, not by counting
+// positionals beside it (DESIGN 3), so an else-less (two-positional) Branch is ineligible here the same way a
+// malformed one always was, and no second arity spelling survives.
+fn target_branch_value_slots_complete(node: Node) -> Bool {
+  match branch_slot_target(n: node, slot: BranchConditionSlot) {
+    Absent => false
+    Present { value: _ } =>
+      match branch_slot_target(n: node, slot: BranchThenSlot) {
+        Absent => false
+        Present { value: _ } =>
+          match branch_slot_target(n: node, slot: BranchElseSlot) {
+            Absent => false
+            Present { value: _ } => true
+          }
+      }
   }
 }
 
@@ -16268,10 +16290,13 @@ fn target_project_branch_bool_if_else(
             )
           Present { value: then_arm } =>
             match branch_slot_target(n: body, slot: BranchElseSlot) {
+              // The condition and the then arm are read; only the else arm is missing. That is the else-less
+              // shape, which this VALUE route cannot render -- but it is not a malformed node, so it does not
+              // get the malformed-shape reason (DESIGN 5: one cause per reason).
               Absent =>
                 outcome_rejected(
                   target_value_expr_diagnostic(
-                    reason: ^target_value_expr_reason_transform_shape_invalid,
+                    reason: ^target_value_expr_reason_branch_else_less_as_value,
                     node: body
                   )
                 )
@@ -16337,7 +16362,7 @@ fn target_value_expr_bind_let_gate(node: Node) -> Bool {
   }
 }
 
-// target_project_loop realizes ONLY the unary `loop e` encoding (gunbc.plans.for_while_loop_sugar
+// target_project_loop realizes ONLY the unary `loop e` encoding (gunbc.plans.for_while_loop_sugar (deleted 2026-11-08)
 // §2.3): one evaluation of its first positional child. It admits a Loop only when every edge's role
 // (v2.std.node loop_edge_role) is the body or the bound; a Loop carrying a domain or a carrier is a
 // different encoding with a different result, so reading its first child as a unary body would emit a
@@ -16631,12 +16656,16 @@ fn target_value_expr_project_body_subexpression(
           handle_transform: handle_transform
         )
       } else {
-        outcome_rejected(
-          target_value_expr_diagnostic(
-            reason: ^target_value_expr_reason_transform_shape_invalid,
-            node: node
+        if declaration_reference_body_marked(target: node) {
+          handle_transform(arrow, node, target)
+        } else {
+          outcome_rejected(
+            target_value_expr_diagnostic(
+              reason: ^target_value_expr_reason_transform_shape_invalid,
+              node: node
+            )
           )
-        )
+        }
       }
       }
 

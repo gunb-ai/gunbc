@@ -2,19 +2,19 @@ module gunbc.compute.attempt_lifecycle
 
 import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs, Seconds }
 import std.measure { Kibibyte, kibibyte, kibibyte_count }
-import std.content_hash { content_hash_of_value }
+import std.content_hash { content_hash_of_value, compare_content_hash, ContentHashEqual }
 import std.durable_compare_and_set {
-  CasAttempt, cas_attempt, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration,
-  CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused,
-  CasSlotObservation, CasObservedReadable, CasObservedUnreadable,
-  CasReadableSlot, CasReadableAbsent, CasReadablePresent,
-  CasGeneration, cas_generation_count, cas_unreadable_slot_detail,
-  CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, CasGenerationSpaceExhausted,
+  CasAttempt, cas_attempt, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasOutcome, CasCommitted,
+  CasPreconditionFailed, CasStoreRefused, CasSlotObservation, CasObservedReadable, CasObservedUnreadable,
+  CasReadableSlot, CasReadableAbsent, CasReadablePresent, CasGeneration, cas_generation_count,
+  cas_unreadable_slot_detail, CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused,
+  CasGenerationSpaceExhausted, cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted,
 }
 import gunbc.durable_cas_file_store {
-  CasSlotKeysAbsent, CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable,
-  CasAttemptKeyNotSlotAddressable, admit_cas_attempt, DefaultAccessCreateOnly, SlotStore, slot_observe, slot_commit, slot_keys,
-  CasSlotKeysListed, CasSlotKeysListingRefused, CasSlotKeysSubjectRefused,
+  CasSlotKeysAbsent, CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch,
+  CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable, admit_cas_attempt, DefaultAccessCreateOnly,
+  SlotStore, slot_observe, slot_commit, slot_keys, CasSlotKeysListed, CasSlotKeysListingRefused,
+  CasSlotKeysSubjectRefused,
 }
 import std.decl_ref { decl_ref }
 import gunbc.compute.work_request { WorkEnding, work_ending_wire, work_ending_decode }
@@ -24,6 +24,16 @@ import extdeps.languages.json.parse {
   json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
   JsonString, JsonNumber,
 }
+import std.temporal_effect { HeldLease, LeaseEpoch, HeldLeaseObservedState, LeaseRunningExpected }
+import std.durable_exclusive_hold {
+  DurableHoldSubject, DurableHoldRef, DurableHoldOwnerRef, DurableHoldHolderReport,
+  durable_hold_recovery_assess, HoldRecoveryEligible, HoldRecoveryRefused,
+  durable_hold_release_assess, HoldReleaseEligible, HoldReleaseRefused,
+  HoldSlotHeld,
+}
+
+
+
 
 // THE ATTEMPT'S OWN RECORD, AND THE ONE PLACE ITS LIFECYCLE IS DECIDED.
 //
@@ -468,6 +478,8 @@ fn attempt_commit_bytes(
   admit_callers: [
     decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_open_payload"),
     decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_advance_payload"),
+    decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_reopen_settled_payload"),
+    decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_fenced_commit"),
   ]
 {
   match admit_cas_attempt(attempt: cas_attempt(
@@ -560,30 +572,13 @@ fn attempt_advance_payload<P>(
                   observed: join(["generation ", to_string(value: cas_generation_count(g: v.generation))], ""),
                 }
               } else {
-                match next_state {
-                  AttemptLaunching =>
-                    match codec.state_of(rec) {
-                      AttemptReserved =>
-                        attempt_commit_bytes(
-                          store: store,
-                          reference: reference,
-                          state: next_state,
-                          payload: codec.encode(codec.with_state(rec, next_state)) as NonEmptyStr,
-                          expected: ExpectSlotGeneration { generation: expected })
-                      AttemptLaunching =>
-                        AttemptTransitionRefused { detail: "begin_launch requires AttemptReserved" }
-                      AttemptTerminal { verdict: _, detail: _ } =>
-                        AttemptTransitionRefused { detail: "begin_launch requires AttemptReserved" }
-                    }
-                  AttemptReserved =>
-                    AttemptTransitionRefused { detail: "advance will not rewrite a slot back to Reserved" }
-                  AttemptTerminal { verdict: _, detail: _ } =>
-                    attempt_commit_bytes(
-                      store: store,
-                      reference: reference,
-                      state: next_state,
-                      payload: codec.encode(codec.with_state(rec, next_state)) as NonEmptyStr,
-                      expected: ExpectSlotGeneration { generation: expected })
+                if !attempt_state_transition_admitted(prior: codec.state_of(rec), next: next_state) {
+                  AttemptTransitionRefused { detail: "the attempt lifecycle refuses this transition" }
+                } else {
+                  attempt_commit_bytes(
+                    store: store, reference: reference, state: next_state,
+                    payload: codec.encode(codec.with_state(rec, next_state)) as NonEmptyStr,
+                    expected: ExpectSlotGeneration { generation: expected })
                 }
               }
           }
@@ -614,6 +609,7 @@ fn attempt_open_payload<P>(store: SlotStore, record: P, codec: AttemptPayloadCod
     decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_open"),
     decl_ref(module_path: "gunbc.dispatch_credential_acquisition", decl_name: "credential_open"),
     decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_worktree_claim", decl_name: "worktree_claim_open"),
+    decl_ref(module_path: "gunbc.compute.durable_attempt_controller", decl_name: "controller_attempt_open"),
   ]
 {
   let reserved = codec.with_state(record, AttemptReserved)
@@ -646,6 +642,82 @@ fn attempt_open_payload<P>(store: SlotStore, record: P, codec: AttemptPayloadCod
 
 fn attempt_open(store: SlotStore, record: AttemptRecord) -> AttemptTransition {
   attempt_open_payload(store: store, record: record, codec: attempt_record_codec())
+}
+
+// THE RESUME REOPEN. A request-pending attempt whose worker died holds a slot that settlement has
+// CLOSED (terminal) and RETURNED the seat for. A re-delivery of that SAME attempt key is the same
+// attempt CONTINUING, so it must reopen that slot -- it may not open a second one: the create-only
+// open is CAS ExpectSlotAbsent and loses to the closed slot forever, which is exactly how a pending
+// attempt wedges on a lab with no tick to run the settlement pass beside a new acquisition. This
+// writes the proposed record -- carrying a FRESH pre-launch window, so the resumed worker is not
+// reclaimed as a dead launch the instant the next settlement pass reads the (long-past) original
+// deadline -- over the existing slot under a CAS on its OBSERVED generation, so the generation line
+// (the attempt's placement history) stays whole: settled at generation n, reopened at generation n+1.
+// ONLY a terminal slot at that exact generation is admitted. An absent slot is no session to continue
+// (the caller opens it create-only instead); a Reserved or Launching slot is a LIVE placement -- a
+// running worker is never displaced by a resume, and the caller's RED and SAFETY cases depend on it.
+// Whether the seat was actually RETURNED (release-settled) is NOT this fold's fact to see: the seat
+// ledger lives in the placement layer, which adjudicates it and alone calls here. See the module law.
+fn attempt_reopen_settled_payload<P>(
+  store: SlotStore,
+  reference: NonEmptyStr,
+  expected: CasGeneration,
+  record: P,
+  codec: AttemptPayloadCodec<P>,
+) -> AttemptTransition
+  admit_callers: [
+    decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_worktree_claim", decl_name: "worktree_claim_reopen_settled"),
+  ]
+{
+  let reserved = codec.with_state(record, AttemptReserved)
+  let declared = codec.launch_deadline(reserved) - codec.opened_at(reserved)
+  if declared > compute_pre_launch_ceiling_seconds {
+    AttemptTransitionRefused {
+      detail: join(["the resumed attempt declared a pre-launch window of ", to_string(value: declared), " seconds and the ceiling is ", to_string(value: compute_pre_launch_ceiling_seconds), "; an over-long window is refused rather than clamped, and a slot already past its deadline would be reclaimed the moment it is written"], ""),
+    }
+  } else if declared < 0 {
+    AttemptTransitionRefused {
+      detail: join(["the resumed attempt declared a launch deadline of ", to_string(value: codec.launch_deadline(reserved)), " which precedes the instant it reopens at ", to_string(value: codec.opened_at(reserved)), "; a window already closed would be reclaimable the moment it is written"], ""),
+    }
+  } else {
+    match slot_observe(store: store, key: reference) {
+      CasObservedUnreadable { cause: c } =>
+        AttemptTransitionRefused { detail: join(["the attempt slot could not be read: ", cas_unreadable_slot_detail(cause: c)], "") }
+      CasObservedReadable { readable: r } =>
+        match r {
+          CasReadableAbsent =>
+            AttemptLostRace { expected: join(["a settled slot at generation ", to_string(value: cas_generation_count(g: expected))], ""), observed: "an absent slot" }
+          CasReadablePresent { version: v } =>
+            match codec.decode(v.value as String) {
+              Absent =>
+                AttemptTransitionRefused { detail: join(["the attempt slot at generation ", to_string(value: cas_generation_count(g: v.generation)), " holds a record this fold cannot decode"], "") }
+              Present { value: rec } =>
+                if codec.reference_of(rec) != (reference as String) {
+                  AttemptTransitionRefused { detail: join(["the attempt slot keyed ", reference as String, " names reference ", codec.reference_of(rec)], "") }
+                } else if cas_generation_count(g: v.generation) != cas_generation_count(g: expected) {
+                  AttemptLostRace {
+                    expected: join(["generation ", to_string(value: cas_generation_count(g: expected))], ""),
+                    observed: join(["generation ", to_string(value: cas_generation_count(g: v.generation))], ""),
+                  }
+                } else {
+                  match codec.state_of(rec) {
+                    AttemptTerminal { verdict: _, detail: _ } =>
+                      attempt_commit_bytes(
+                        store: store,
+                        reference: reference,
+                        state: AttemptReserved,
+                        payload: codec.encode(reserved) as NonEmptyStr,
+                        expected: ExpectSlotGeneration { generation: expected })
+                    AttemptReserved =>
+                      AttemptTransitionRefused { detail: "reopen requires a closed slot, but this slot is still Reserved -- a live placement a resume may never displace" }
+                    AttemptLaunching =>
+                      AttemptTransitionRefused { detail: "reopen requires a closed slot, but this slot is still Launching -- a running worker a resume may never displace" }
+                  }
+                }
+            }
+        }
+    }
+  }
 }
 
 // THE LAUNCH GATE. Called BEFORE the reader is admitted, never after. It reads the current slot,
@@ -824,4 +896,187 @@ fn recovery_trigger_wire(t: RecoveryTrigger) -> String {
     RecoveryUnitNotEnded { lifecycle: u } => join(["the unit has not ended: ", unit_lifecycle_wire(u: u)], "")
     RecoveryTerminalRecordMayRelease { state: s } => join(["the attempt is already ", attempt_state_wire(s: s), ", so there is no transition to make; its seat is released only once the unit is proven ended"], "")
   }
+}
+
+
+// The claim and lifecycle live in ONE slot. A HeldLease is evidence about
+// the acquisition, not a substitute for the conditional write. A prepared write
+// binds its store/key/revision; ownership transfer changes that same revision.
+
+// The consuming record owns its bytes; lifecycle owns EVERY conditional write.
+// The optional is exactly occupancy: Absent means no controller holds this attempt.
+type AttemptFencedCodec<P> {
+  payload: AttemptPayloadCodec<P>
+  claim_of: fn(P) -> DurableHoldSubject?
+  with_claim: fn(P, DurableHoldSubject?) -> P
+  change: fn(P) -> P?
+  advance: fn(P, AttemptState) -> P?
+}
+
+type AttemptFencedAction
+  = AttemptClaimAcquire { owner: DurableHoldOwnerRef }
+  | AttemptClaimRelease { lease: HeldLease }
+  | AttemptClaimRecover { report: DurableHoldHolderReport }
+  | AttemptOwnerAdvance { lease: HeldLease, next: AttemptState }
+  | AttemptOwnerChange { lease: HeldLease }
+
+type AttemptFenceRefusal
+  = AttemptFenceNoClaim
+  | AttemptFenceWrongSubject
+  | AttemptFenceWrongOwner
+  | AttemptFenceWrongEpoch
+  | AttemptFenceLeaseNotObserved
+  | AttemptFenceOccupied
+  | AttemptFenceRecoveryRefused
+  | AttemptFenceStateRefused
+  | AttemptFenceUnreadable { detail: String }
+  | AttemptFenceGenerationExhausted
+
+// Only this module mints the immutable proposal, and commit accepts no replacement
+// payload, key, store or expected generation. Delaying a proposal is legal; CAS
+// decides whether it still stands. It is not itself a launch command.
+type AttemptFencedWrite sole_constructor {
+  store: SlotStore
+  reference: NonEmptyStr
+  expected: CasGeneration
+  state: AttemptState
+  payload: NonEmptyStr
+}
+
+type AttemptFencedPreparation
+  = AttemptFencePrepared { write: AttemptFencedWrite }
+  | AttemptFenceRefused { cause: AttemptFenceRefusal }
+
+fn attempt_hold_ref(store: SlotStore, reference: NonEmptyStr) -> DurableHoldRef {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "store", value: json_string(s: store.root as String)),
+    json_kv(key: "reference", value: json_string(s: reference as String)),
+  ])) as DurableHoldRef
+}
+
+// Occupancy is not liveness. The caller supplies its independently observed
+// standing; reading a stored owner never fabricates LeaseRunningExpected.
+fn attempt_claim_lease(claim: DurableHoldSubject, observed: HeldLeaseObservedState) -> HeldLease {
+  HeldLease {
+    epoch: LeaseEpoch {
+      lease_key: claim.hold as NonEmptyStr,
+      resource_fingerprint: content_hash_of_value(value: claim.hold as NonEmptyStr),
+      owner_fingerprint: content_hash_of_value(value: claim.holder as NonEmptyStr),
+      generation: claim.generation,
+    },
+    observed: observed,
+  }
+}
+
+fn attempt_fence_owner_refusal(claim: DurableHoldSubject?, hold: DurableHoldRef, lease: HeldLease) -> AttemptFenceRefusal? {
+  let admitted: AttemptFenceRefusal? = none
+  match claim {
+    Absent => Present { value: AttemptFenceNoClaim }
+    Present { value: c } =>
+      if (c.hold as String) != (hold as String) || (lease.epoch.lease_key as String) != (hold as String) {
+        Present { value: AttemptFenceWrongSubject }
+      } else if !(match compare_content_hash(left: lease.epoch.resource_fingerprint, right: content_hash_of_value(value: hold as NonEmptyStr)) { ContentHashEqual => true _ => false }) {
+        Present { value: AttemptFenceWrongSubject }
+      } else if !(match compare_content_hash(left: lease.epoch.owner_fingerprint, right: content_hash_of_value(value: c.holder as NonEmptyStr)) { ContentHashEqual => true _ => false }) {
+        Present { value: AttemptFenceWrongOwner }
+      } else if cas_generation_count(g: lease.epoch.generation) != cas_generation_count(g: c.generation) {
+        Present { value: AttemptFenceWrongEpoch }
+      } else if !(match lease.observed { LeaseRunningExpected => true _ => false }) {
+        Present { value: AttemptFenceLeaseNotObserved }
+      } else { admitted }
+  }
+}
+
+// The same lifecycle law is used by the old payload route and the fenced route.
+// Terminal is final: it never reopens AND is never rewritten -- a Terminal prior refuses every next
+// state, including another Terminal, so a settled verdict cannot be replaced by a later writer on
+// either route. Launching never admits a second launch.
+fn attempt_state_transition_admitted(prior: AttemptState, next: AttemptState) -> Bool {
+  match next {
+    AttemptReserved => false
+    AttemptLaunching => match prior { AttemptReserved => true _ => false }
+    AttemptTerminal { verdict: _, detail: _ } => match prior { AttemptTerminal { verdict: _, detail: _ } => false _ => true }
+  }
+}
+
+fn attempt_fenced_proposal<P>(store: SlotStore, reference: NonEmptyStr, revision: CasGeneration, record: P, codec: AttemptFencedCodec<P>) -> AttemptFencedPreparation
+  admit_callers: [decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_fenced_decide")]
+{
+  AttemptFencePrepared { write: AttemptFencedWrite {
+    store: store, reference: reference, expected: revision,
+    state: codec.payload.state_of(record), payload: codec.payload.encode(record) as NonEmptyStr,
+  } }
+}
+
+fn attempt_fenced_decide<P>(store: SlotStore, reference: NonEmptyStr, revision: CasGeneration, record: P, codec: AttemptFencedCodec<P>, action: AttemptFencedAction) -> AttemptFencedPreparation
+  admit_callers: [decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_fenced_prepare")]
+{
+  let claim = codec.claim_of(record)
+  let hold = attempt_hold_ref(store: store, reference: reference)
+  match action {
+    // THE CLAIM FIELD IS THE HOLD. There is no separate hold slot: claim Present means held (refused
+    // here as occupied) and claim Absent means free. No hold-assessment fold is consulted, because
+    // its input would have to be invented rather than observed; the CAS on the attempt slot is what
+    // makes acquisition exclusive.
+    AttemptClaimAcquire { owner } => match claim {
+      Present { value: _ } => AttemptFenceRefused { cause: AttemptFenceOccupied }
+      Absent => match cas_generation_successor(g: revision) {
+        CasSuccessorExhausted { head: _ } => AttemptFenceRefused { cause: AttemptFenceGenerationExhausted }
+        CasSuccessorGeneration { generation: acquired } => attempt_fenced_proposal(store: store, reference: reference, revision: revision,
+          record: codec.with_claim(record, Present { value: DurableHoldSubject { hold: hold, holder: owner, generation: acquired } }), codec: codec)
+      }
+    }
+    AttemptClaimRecover { report } => match claim {
+      Absent => AttemptFenceRefused { cause: AttemptFenceNoClaim }
+      Present { value: c } => if (c.hold as String) != (hold as String) {
+        AttemptFenceRefused { cause: AttemptFenceWrongSubject }
+      } else { match durable_hold_recovery_assess(observed: HoldSlotHeld { generation: c.generation, owner: c.holder }, report: report) {
+        HoldRecoveryRefused { refusal: _ } => AttemptFenceRefused { cause: AttemptFenceRecoveryRefused }
+        HoldRecoveryEligible { generation: _, dead_holder: _, evidence: _ } => attempt_fenced_proposal(store: store, reference: reference, revision: revision, record: codec.with_claim(record, none), codec: codec)
+      } }
+    }
+    AttemptClaimRelease { lease } => match attempt_fence_owner_refusal(claim: claim, hold: hold, lease: lease) {
+      Present { value: cause } => AttemptFenceRefused { cause: cause }
+      Absent => match claim {
+        Absent => AttemptFenceRefused { cause: AttemptFenceNoClaim }
+        Present { value: c } => match durable_hold_release_assess(observed: HoldSlotHeld { generation: c.generation, owner: c.holder }, owner: c.holder, acquired_generation: lease.epoch.generation) {
+          HoldReleaseRefused { refusal: _ } => AttemptFenceRefused { cause: AttemptFenceWrongEpoch }
+          HoldReleaseEligible { generation: _ } => attempt_fenced_proposal(store: store, reference: reference, revision: revision, record: codec.with_claim(record, none), codec: codec)
+        }
+      }
+    }
+    AttemptOwnerChange { lease } => match attempt_fence_owner_refusal(claim: claim, hold: hold, lease: lease) {
+      Present { value: cause } => AttemptFenceRefused { cause: cause }
+      Absent => match codec.change(record) {
+        Absent => AttemptFenceRefused { cause: AttemptFenceStateRefused }
+        Present { value: changed } => attempt_fenced_proposal(store: store, reference: reference, revision: revision, record: changed, codec: codec)
+      }
+    }
+    AttemptOwnerAdvance { lease, next } => match attempt_fence_owner_refusal(claim: claim, hold: hold, lease: lease) {
+      Present { value: cause } => AttemptFenceRefused { cause: cause }
+      Absent => if attempt_state_transition_admitted(prior: codec.payload.state_of(record), next: next) {
+        match codec.advance(record, next) {
+          Absent => AttemptFenceRefused { cause: AttemptFenceStateRefused }
+          Present { value: changed } => attempt_fenced_proposal(store: store, reference: reference, revision: revision, record: changed, codec: codec)
+        }
+      } else { AttemptFenceRefused { cause: AttemptFenceStateRefused } }
+    }
+  }
+}
+
+fn attempt_fenced_prepare<P>(store: SlotStore, reference: NonEmptyStr, codec: AttemptFencedCodec<P>, action: AttemptFencedAction) -> AttemptFencedPreparation
+  admit_callers: [decl_ref(module_path: "gunbc.compute.durable_attempt_controller", decl_name: "controller_attempt_prepare")]
+{
+  match attempt_payload_read(store: store, reference: reference, codec: codec.payload) {
+    AttemptPayloadAbsent => AttemptFenceRefused { cause: AttemptFenceUnreadable { detail: "the delegated attempt slot is absent" } }
+    AttemptPayloadUnreadable { detail } => AttemptFenceRefused { cause: AttemptFenceUnreadable { detail: detail } }
+    AttemptPayloadHeld { record, generation } => if codec.payload.reference_of(record) != (reference as String) {
+      AttemptFenceRefused { cause: AttemptFenceWrongSubject }
+    } else { attempt_fenced_decide(store: store, reference: reference, revision: generation, record: record, codec: codec, action: action) }
+  }
+}
+
+fn attempt_fenced_commit(write: AttemptFencedWrite) -> AttemptTransition {
+  attempt_commit_bytes(store: write.store, reference: write.reference, state: write.state, payload: write.payload,
+    expected: ExpectSlotGeneration { generation: write.expected })
 }

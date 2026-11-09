@@ -2,14 +2,6 @@
 module gunbc.generated_artifact
 
 import gunbc.os_install { HostAutoinstall }
-import gunbc.plan {
-  Plan,
-  PlanIsAuthorityOnly,
-  PlanProjectsCommittedMarkdown,
-  PlanProjectsDerivedMarkdown,
-  plan_doc_directory,
-  plan_doc_name,
-}
 import gunbc.generated_artifact_merge_driver { generated_artifact_merge_driver_script_directory, generated_artifact_merge_driver_script_name }
 import gunbc.whole_corpus_compile_demand_projection { whole_corpus_compile_demand_projection_directory, whole_corpus_compile_demand_projection_name }
 import gunbc.fleet.fleet_intent { ComputeHost }
@@ -30,7 +22,6 @@ type GeneratedArtifact
   | GitignoreArtifact
   | GitattributesArtifact
   | CargoConfigArtifact
-  | RoadmapArtifact
   | DesignArtifact
   | DesignFailureModesArtifact
   | DesignRungDropsArtifact
@@ -54,7 +45,6 @@ type GeneratedArtifact
   | Fci1BoundedExecutionContextArtifact
   | AutoinstallUserDataArtifact { spec: HostAutoinstall }
   | RunnerHostSudoersArtifact { host: HostIdentity }
-  | PlanArtifact { plan: Plan }
   | CouponCadQueryProgramArtifact
   | WholeCorpusCompileMeasuredRootDemandsArtifact
   | ApprovalDeviceVectorsArtifact
@@ -145,7 +135,6 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
     GitignoreArtifact => ArtifactLocation { directory: ".", name: ".gitignore" }
     GitattributesArtifact => ArtifactLocation { directory: ".", name: ".gitattributes" }
     CargoConfigArtifact => ArtifactLocation { directory: ".cargo", name: "config.toml" }
-    RoadmapArtifact => ArtifactLocation { directory: ".", name: "ROADMAP.md" }
     DesignArtifact => ArtifactLocation { directory: ".", name: "DESIGN.md" }
     DesignFailureModesArtifact => ArtifactLocation { directory: "docs", name: "design-failure-modes.md" }
     DesignRungDropsArtifact => ArtifactLocation { directory: "docs", name: "design-rung-drops.md" }
@@ -190,8 +179,6 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
         directory: concat("provisioning/", host as String),
         name: runner_host_sudoers_artifact_name
       }
-    PlanArtifact { plan } =>
-      ArtifactLocation { directory: plan_doc_directory, name: plan_doc_name(slug: plan.slug) }
   }
 }
 
@@ -238,16 +225,10 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     HealPublisherWorkflowYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     DriftWatchWorkflowYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     BranchRunGrantBrokerWorkflowYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
-    RoadmapArtifact => NotCommitted
     DesignArtifact => CommitRequired { consumer: ProjectDocumentation }
     DesignFailureModesArtifact => NotCommitted
     DesignRungDropsArtifact => NotCommitted
     ContributorOnboardingArtifact => NotCommitted
-    PlanArtifact { plan } => match plan.projection {
-      PlanProjectsCommittedMarkdown => CommitRequired { consumer: ProjectDocumentation }
-      PlanProjectsDerivedMarkdown { derive: _ } => CommitRequired { consumer: ProjectDocumentation }
-      PlanIsAuthorityOnly { ruling: _ } => NotCommitted
-    }
     RunnerDeployArtifact => NotCommitted
     CouponCadQueryProgramArtifact => NotCommitted
     WholeCorpusCompileMeasuredRootDemandsArtifact => CommitRequired { consumer: CompilerRunInput }
@@ -292,12 +273,10 @@ fn artifact_is_committed(a: GeneratedArtifact) -> Bool {
 // join by also being absent from a hand-written family list.
 fn artifact_is_project_documentation(a: GeneratedArtifact) -> Bool {
   match a {
-    RoadmapArtifact => true
     DesignArtifact => true
     DesignFailureModesArtifact => true
     DesignRungDropsArtifact => true
     ContributorOnboardingArtifact => true
-    PlanArtifact { plan: _ } => true
     WitnessFloorYamlArtifact => false
     FleetConvergeYamlArtifact => false
     MicrovmShakedownYamlArtifact => false
@@ -377,7 +356,6 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     GitignoreArtifact => match b { GitignoreArtifact => true  _ => false }
     GitattributesArtifact => match b { GitattributesArtifact => true  _ => false }
     CargoConfigArtifact => match b { CargoConfigArtifact => true  _ => false }
-    RoadmapArtifact => match b { RoadmapArtifact => true  _ => false }
     DesignArtifact => match b { DesignArtifact => true  _ => false }
     DesignFailureModesArtifact => match b { DesignFailureModesArtifact => true  _ => false }
     DesignRungDropsArtifact => match b { DesignRungDropsArtifact => true  _ => false }
@@ -412,7 +390,6 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     Fci1BoundedExecutionContextArtifact => match b { Fci1BoundedExecutionContextArtifact => true  _ => false }
     AutoinstallUserDataArtifact { spec } => match b { AutoinstallUserDataArtifact { spec: spec2 } => spec.host == spec2.host  _ => false }
     RunnerHostSudoersArtifact { host } => match b { RunnerHostSudoersArtifact { host: host2 } => (host as String) == (host2 as String)  _ => false }
-    PlanArtifact { plan } => match b { PlanArtifact { plan: plan2 } => plan.slug == plan2.slug  _ => false }
   }
 }
 
@@ -460,7 +437,6 @@ fn artifact_producer(a: GeneratedArtifact) -> DeclarationRef {
     GitignoreArtifact => decl_ref(module_path: "gunbc.gitignore_emit", decl_name: "expected_gitignore")
     GitattributesArtifact => decl_ref(module_path: "gunbc.gitattributes_emit", decl_name: "expected_gitattributes")
     CargoConfigArtifact => decl_ref(module_path: "gunbc.repo.cargo_config_emit", decl_name: "expected_cargo_config_toml")
-    RoadmapArtifact => decl_ref(module_path: "gunbc.roadmap.roadmap_authority", decl_name: "expected_roadmap_md")
     DesignArtifact => decl_ref(module_path: "gunbc.design_document", decl_name: "expected_design_md")
     DesignFailureModesArtifact => decl_ref(module_path: "gunbc.design_ledgers", decl_name: "expected_design_failure_modes_md")
     DesignRungDropsArtifact => decl_ref(module_path: "gunbc.design_ledgers", decl_name: "expected_design_rung_drops_md")
@@ -495,7 +471,6 @@ fn artifact_producer(a: GeneratedArtifact) -> DeclarationRef {
     Fci1BoundedExecutionContextArtifact => decl_ref(module_path: "gunbc.fabric.fci1_bounded_execution_context_emit", decl_name: "expected_fci1_bounded_execution_context_env")
     AutoinstallUserDataArtifact { spec: _ } => decl_ref(module_path: "gunbc.os_install_emit", decl_name: "autoinstall_user_data")
     RunnerHostSudoersArtifact { host: _ } => decl_ref(module_path: "gunbc.runner.runner_host_grants", decl_name: "runner_host_sudoers_content")
-    PlanArtifact { plan: _ } => decl_ref(module_path: "gunbc.plan", decl_name: "plan_generation")
   }
 }
 

@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.measure { TokenCount, token_count, Millisecond, millisecond, Second, second, BasisPoint, basis_point }
 
 // THE SERVING BENCHMARK, ONE VERSION PER WORKLOAD AND METRIC CONTRACT (work item
-// node://adhoc-ffb4b5c7-4a5; plan gunbc.plans.serving_fleet_program row E0). It replaces the hand-run
+// node://adhoc-ffb4b5c7-4a5; plan gunbc.plans.serving_fleet_program (deleted 2026-11-08) row E0). It replaces the hand-run
 // stage scripts and the archived strata_bench.py of session calm-crab-645 (gunbc-private#239), whose
 // rows each defined their own workload and could not be compared without reading the script that made
 // them.

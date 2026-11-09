@@ -10,7 +10,9 @@ import v2.std.service_realization_labels {
   realization_projection_label,
   realization_root_label,
   realization_status_arms_label,
-  realization_transport_label
+  realization_transport_label,
+  realization_unrealizable_label,
+  realization_unrealizable_reason_label
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -37,6 +39,8 @@ data srl_repeated_exit_source: String = "module m\n\nservice S {\n  operation Ru
 data srl_class_on_shell_source: String = "module m\n\nservice S {\n  operation Run {\n    transport shell { argv: [\"true\"] }\n    exit { 5xx => Unit }\n  }\n}\n"
 data srl_shared_prefix_source: String = "module m\n\nservice s.F {\n  operation Run {\n    transport shell { argv: [\"true\"] }\n    exit { 0 => Unit }\n  }\n}\n\nservice s.E {\n  operation Get {\n    transport shell { argv: [\"true\"] }\n    exit { 0 => Unit }\n  }\n}\n"
 data srl_bound_hole_source: String = "module m\n\nservice S {\n  operation Run {\n    input { path: String }\n    transport shell { argv: [\"echo\", path] }\n  }\n}\n"
+data srl_mixed_source: String = "module m\n\nservice S {\n  operation Bad {\n    input { path: String }\n    transport shell { argv: [path] }\n  }\n  operation Good {\n    transport shell { argv: [\"true\"] }\n  }\n}\n"
+data srl_mixed_fatal_source: String = "module m\n\nservice S {\n  operation Bad {\n    input { path: String }\n    transport shell { argv: [path] }\n  }\n  operation Good {\n    input { path: String }\n    transport shell { argv: [\"echo\", other] }\n  }\n}\n"
 data srl_undeclared_hole_source: String = "module m\n\nservice S {\n  operation Run {\n    input { path: String }\n    transport shell { argv: [\"echo\", other] }\n  }\n}\n"
 data srl_template_hole_source: String = "module m\n\nservice S {\n  operation Run {\n    input { path: String }\n    transport shell { argv: [\"echo\", \"\{path\}\"] }\n  }\n}\n"
 data srl_list_field_bound_source: String = "module m\n\nservice S {\n  operation Run {\n    input { path: String }\n    transport rest { path: [\"/\", path] }\n  }\n}\n"
@@ -220,4 +224,37 @@ test fn a_rest_uri_template_unknown_hole_refuses_located_holds() -> Bool {
 test fn a_rest_uri_template_unclosed_brace_refuses_located_holds() -> Bool {
   srl_refused_as(o: srl_uri_template_unclosed(), reason: ^service_realization_argv_refused)
     && srl_refused_as(o: srl_uri_template_query_unclosed(), reason: ^service_realization_argv_refused)
+}
+
+// PER-OPERATION UNREALIZABLE (v2.compiler.service_realization service_realization_judgment). An operation
+// whose executable is not a literal does not reject the service: it lowers as a marker entry and its
+// sibling lowers as a transport entry.
+fn srl_mixed() -> Outcome<CensusTree> { srl_census(text: srl_mixed_source) }
+fn srl_mixed_fatal() -> Outcome<CensusTree> { srl_census(text: srl_mixed_fatal_source) }
+
+// POSITIVE: the service lowers; Bad is a marker (with its reason), Good keeps its transport.
+// The LAST CONJUNCT IS NEGATED ON MEASUREMENT, NOT ON READING. It used to assert [^S, ^Bad] at the body
+// root, and that shape has never existed: a one-segment (resource) service is carried entirely under the
+// realization root, so a lookup over the body root's OWN children finds no ^S -- NotFound, not an ambiguous
+// duplicate name behind a collapsed arm. The control that makes it a shape fact rather than a symptom is a
+// fully realizable one-segment service, whose emission is accepted and whose mirror side does hold its
+// realization-side path: it has no body-root ^S either, so the unrealizable marking is not what removes the
+// interface side and no lowering is broken. Resource services are the case -- a two-segment service keeps
+// its interface spine, which the row above reaches as [^s, ^F, ^Run] -- so what this conjunct holds is the
+// invariant the lowering really does guarantee: the marked service leaves nothing at the body root, and its
+// marker, its reason and its sibling's transport live only under the one realization root the four
+// conjuncts above read. The measurements, revisions and invocation receipts are in PR #16157's body.
+test fn an_operation_with_a_non_literal_executable_lowers_unrealizable_beside_its_sibling_holds() -> Bool {
+  let body = srl_body(o: srl_mixed())
+  srl_has(n: body, names: [realization_root_label(), ^S, ^Bad, realization_unrealizable_label()])
+    && srl_has(n: body, names: [realization_root_label(), ^S, ^Bad, realization_unrealizable_reason_label()])
+    && !srl_has(n: body, names: [realization_root_label(), ^S, ^Bad, realization_transport_label()])
+    && srl_has(n: body, names: [realization_root_label(), ^S, ^Good, realization_transport_label()])
+    && !srl_has(n: body, names: [^S, ^Bad])
+}
+
+// CONTROL: an operation-grain cause does not mask a fatal one. A second operation with an undeclared
+// input hole still rejects the whole service, located, with the argv reason.
+test fn a_fatal_cause_beside_an_unrealizable_operation_still_rejects_the_service_holds() -> Bool {
+  srl_refused_as(o: srl_mixed_fatal(), reason: ^service_realization_argv_refused)
 }

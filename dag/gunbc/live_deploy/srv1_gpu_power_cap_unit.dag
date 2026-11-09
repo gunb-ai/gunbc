@@ -1,0 +1,154 @@
+module gunbc.live_deploy.srv1_gpu_power_cap_unit
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.measure { ByteSize, second, second_count }
+import product.host_identity { HostIdentity, host_identity_eq }
+import extdeps.systemd.unit_file {
+  SystemdUnitFile, ServiceUnitFile,
+  Description, After,
+  ServiceType, OneshotMode, RemainAfterExit, ExecStart, ExecReload, TimeoutStartSec,
+  ServiceResourceControl, service_memory_max, service_memory_swap_max,
+  Installable, WantedBy,
+}
+import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
+import gunbc.cli_invoke { admit_named_argument, NamedArgumentAdmission, NamedArgumentAdmitted, NamedArgumentNameEmpty, NamedArgumentNameHoldsSeparator }
+import gunbc.executor_privileged_operation { gunbc_entry_run_argv }
+import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, helper_locus_dir, release_locus_tree_subdirs }
+import gunbc.live_deploy.board_function_converge_unit {
+  board_function_converge_locus, board_function_converge_memory_max, board_function_converge_memory_swap_max,
+}
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+
+// SRV1'S GPU POWER CAPS, REALIZED AT EVERY BOOT AND READ BACK (operator, 2026-11-07: "the intent should be
+// persistent"). `nvidia-smi -pl` lasts until the driver unloads or the host reboots. The unit runs
+// gunbc.fleet.gpu_power_cap_converge, which applies every ADMITTED cap and then queries power.limit and
+// persistence mode back per GPU UUID and compares them with the cap; a mismatch fails the entry, which fails
+// this unit. The cap's authority is gunbc.serving.gpu_power_state_policy; the generated commands and the
+// expected readback both derive from its admissions, so changing the decision changes both.
+//
+// THE ENGINE DEPENDS ON THIS UNIT, it is not merely ordered after it: gunbc.live_deploy.srv1_serving_engine_unit
+// carries Requires= and After= on srv1_gpu_power_cap_unit_name, so a failed cap or readback keeps the engine
+// from starting and the engine never loads weights onto a card whose cap did not read back.
+//
+// THE ENTRY RUNS FROM THE BOARD-FUNCTION CONVERGE'S ROOT-OWNED RELEASE SNAPSHOT (board_function_converge_locus),
+// the same root-helper form: this entry runs as root and must not execute a tree a non-root principal can
+// write, and one host has one such snapshot per revision. The snapshot is installed by the board-function
+// converge leg, which the apply chain runs first.
+//
+// A PENDING CARD IS NOT THIS UNIT'S FAILURE. A board whose device row nobody has read arrives as
+// GpuCapDevicePending: the entry prints it on every run and exits 0 for it, and the apply path reports it as a
+// leg on every deploy (apply_legs deploy_apply_srv1_gpu_power_cap_plan), because the service the selected
+// one-card configuration provides does not depend on a card that is not in it. As of 2026-11-08 srv1 has NO
+// pending card -- both RTX PRO 6000s are powered, enumerate, and carry their own UUID and limit range in
+// gunbc.fleet.gpu_device_observation (the Workstation card, GPU-96b749dc, was read that day) -- so this unit's
+// boot run caps both, and the arm above is reached only by a board no one has observed yet.
+
+data srv1_gpu_power_cap_unit_name: NonEmptyStr = "gunbc-srv1-gpu-power-cap.service"
+
+fn srv1_gpu_power_cap_unit_path() -> NonEmptyStr {
+  join(["/etc/systemd/system/", srv1_gpu_power_cap_unit_name as String], "") as NonEmptyStr
+}
+
+fn srv1_gpu_power_cap_hosted_on(host: HostIdentity) -> Bool {
+  host_identity_eq(a: host, b: operator_host_srv1)
+}
+
+data srv1_gpu_power_cap_entry: String = "dag/gunbc/fleet/gpu_power_cap_converge.dag"
+data srv1_gpu_power_cap_function: String = "gpu_power_cap_converge_cli"
+
+// The converge shares the board-function converge's interpreter, so it shares that measured memory bound.
+// The run is a few nvidia-smi calls over the same closure's load; ten minutes bounds a stuck interpreter.
+fn srv1_gpu_power_cap_start_timeout_seconds() -> String {
+  to_string(second_count(s: second(count: 600)))
+}
+
+type Srv1GpuPowerCapArgv
+  = Srv1GpuPowerCapArgvReady { argv: List<String> }
+  | Srv1GpuPowerCapArgvRefused { cause: NamedArgumentAdmission }
+
+fn srv1_gpu_power_cap_argv(host: HostIdentity, revision: ReleaseRevisionBinding) -> Srv1GpuPowerCapArgv {
+  let dir = helper_locus_dir(locus: board_function_converge_locus(), revision: revision)
+  match admit_named_argument(name: "host", value: host as String) {
+    NamedArgumentNameEmpty => Srv1GpuPowerCapArgvRefused { cause: NamedArgumentNameEmpty }
+    NamedArgumentNameHoldsSeparator { name } => Srv1GpuPowerCapArgvRefused { cause: NamedArgumentNameHoldsSeparator { name: name } }
+    NamedArgumentAdmitted { argument: arg } =>
+      Srv1GpuPowerCapArgvReady {
+        argv: map(
+          concat(
+            gunbc_entry_run_argv(
+              workspace_root: dir as NonEmptyStr,
+              binary: join([dir, "/", gunbc_release_bin_name], "") as NonEmptyStr,
+              source_roots: map(release_locus_tree_subdirs, sub => join([dir, "/", sub], "") as NonEmptyStr),
+              entry: join([dir, "/", srv1_gpu_power_cap_entry], "") as NonEmptyStr,
+              function: srv1_gpu_power_cap_function as NonEmptyStr,
+            ),
+            ["--arg" as NonEmptyStr, join([arg.name, "=", arg.value], "") as NonEmptyStr],
+          ),
+          w => w as String,
+        ),
+      }
+  }
+}
+
+type Srv1GpuPowerCapUnitFile
+  = Srv1GpuPowerCapUnitReady { file: SystemdUnitFile }
+  | Srv1GpuPowerCapUnitRefused { cause: NamedArgumentAdmission }
+
+// ExecReload re-runs the converge for an operator's `systemctl reload`. A RESTART is deliberately not the
+// re-run: systemd propagates a restart of a required unit to the units that Require= it, which would restart
+// the serving engine and drop every bound session.
+fn srv1_gpu_power_cap_unit_file(host: HostIdentity, revision: ReleaseRevisionBinding) -> Srv1GpuPowerCapUnitFile {
+  match srv1_gpu_power_cap_argv(host: host, revision: revision) {
+    Srv1GpuPowerCapArgvRefused { cause } => Srv1GpuPowerCapUnitRefused { cause: cause }
+    Srv1GpuPowerCapArgvReady { argv } =>
+      Srv1GpuPowerCapUnitReady { file: ServiceUnitFile {
+        unit: [
+          Description { text: "srv1 GPU power caps: apply and read back (gunbc.live_deploy.srv1_gpu_power_cap_unit)" as NonEmptyStr },
+          After { target: "local-fs.target" as NonEmptyStr },
+          After { target: "systemd-modules-load.service" as NonEmptyStr },
+        ],
+        service: [
+          ServiceType { mode: OneshotMode },
+          RemainAfterExit { active: true },
+          TimeoutStartSec { duration: srv1_gpu_power_cap_start_timeout_seconds() as NonEmptyStr },
+          ServiceResourceControl { directive: service_memory_max(bytes: board_function_converge_memory_max) },
+          ServiceResourceControl { directive: service_memory_swap_max(bytes: board_function_converge_memory_swap_max) },
+          ExecStart { command: join(argv, " ") as NonEmptyStr },
+          ExecReload { command: join(argv, " ") as NonEmptyStr },
+        ],
+        install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
+      } }
+  }
+}
+
+// WHEN A CAP IS REALIZED AGAIN. Each trigger is covered by a named mechanism or carried as a named obligation
+// with the capability that closes it; none is dropped silently.
+type GpuCapRealizationCoverage
+  = CoveredBy { mechanism: NonEmptyStr }
+  | OwedObligation { obligation: NonEmptyStr, closes_on: NonEmptyStr }
+
+type GpuCapRealizationTrigger {
+  trigger: NonEmptyStr
+  coverage: GpuCapRealizationCoverage
+}
+
+data srv1_gpu_power_cap_realization_triggers: List<GpuCapRealizationTrigger> = [
+  GpuCapRealizationTrigger {
+    trigger: "host reboot",
+    coverage: CoveredBy { mechanism: "this unit is WantedBy=multi-user.target and runs the converge at every boot, before the Requires=/After= engine" as NonEmptyStr },
+  },
+  GpuCapRealizationTrigger {
+    trigger: "device reinitialization (a GPU reset or a driver unload and reload, with the host up)",
+    coverage: OwedObligation {
+      obligation: "persistence mode (set by the converge) keeps the driver resident so the limit survives the last client exiting, but a GPU reset or a driver reload clears the limit with the engine already running; nothing re-reads the limit while the host is up" as NonEmptyStr,
+      closes_on: "a recurring or event-driven independent readback of power.limit per UUID that re-runs the converge by ExecReload (never a restart, which would restart the engine), enrolled where the host's convergence timers are" as NonEmptyStr,
+    },
+  },
+  GpuCapRealizationTrigger {
+    trigger: "a device appearing (srv1's Workstation card, powered and read on 2026-11-08)",
+    coverage: OwedObligation {
+      obligation: "the card appeared across a power cycle and its UUID and limit range were transcribed into gunbc.fleet.gpu_device_observation by hand that day, so it is admitted and the boot run caps it; what is still owed is that the row be READ rather than transcribed -- an observation taken from nvidia-smi at boot, so a card that enumerates is admitted on its own reading and a re-seat that moves a UUID cannot leave a stale one behind" as NonEmptyStr,
+      closes_on: "a boot-time device observation read from nvidia-smi in place of the transcribed rows" as NonEmptyStr,
+    },
+  },
+]

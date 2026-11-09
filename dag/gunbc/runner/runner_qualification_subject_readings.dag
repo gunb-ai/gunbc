@@ -11,7 +11,7 @@ import gunbc.host.memory_envelope_receipt_reading {
   MemoryReceiptReading, MemoryReceiptLine, NotAMemoryReceipt, MemoryReceiptRead, MemoryReceiptGarbled, memory_receipt_line,
 }
 
-// WHAT TODAY'S FLOOR SAYS ABOUT EACH SUBJECT STEP (gunbc.plans.mtcollins1_ci_service_legs G3, decision A): the step's wall,
+// WHAT TODAY'S FLOOR SAYS ABOUT EACH SUBJECT STEP (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) G3, decision A): the step's wall,
 // from the job record's own step times (the Jobs API steps), and the step's memory receipt, from the job's log. The
 // subject roster is gunbc.emitted_subject_build_gate emitted_subject_build_rows, and a step is found by the name that
 // gate renders for its row (emitted_subject_build_step_name), so the join key is the declaration that named the step,

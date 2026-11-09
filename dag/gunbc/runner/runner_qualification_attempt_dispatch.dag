@@ -7,7 +7,7 @@ import gunbc.fleet.fleet_converge_workflow {
   FleetConvergeDispatchSpec, DispatchInputValue, QualificationAttempt, fleet_converge_subject_host_input,
 }
 
-// LEG G'S FIRST DISPATCH, AS DATA AND NOT YET AN EFFECT (gunbc.plans.mtcollins1_ci_service_legs G; merry-fox-82,
+// LEG G'S FIRST DISPATCH, AS DATA AND NOT YET AN EFFECT (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) G; merry-fox-82,
 // 2026-10-31). It is the qualification_attempt mode of the fleet-converge workflow, run on an executor host and acting
 // on mtcollins1, rendered by the one builder every fleet-converge dispatch uses
 // (gunbc.fleet.fleet_converge_workflow fleet_converge_dispatch_values). It names no revision: a dispatch's revision is
@@ -19,8 +19,9 @@ import gunbc.fleet.fleet_converge_workflow {
 
 // WHAT THE DISPATCH WAITS ON, CLOSED: each is a fact read elsewhere, never a flag set here.
 type QualificationAttemptDispatchWait
-  // mtcollins1 is booted from the runner image with network and sshd, and its host-key anchor is read back under the
-  // operator's go (gunbc.host.anchored_host_transport anchored_host_transport_live refuses until then).
+  // mtcollins1 is booted from the runner image with network and sshd, its boot run published the running-OS receipt
+  // carrying the boot's per-boot host key, and the operator's go is relayed (gunbc.host.anchored_host_transport
+  // anchored_host_transport_live_per_boot refuses until then).
   = AttemptWaitsOnAnchoredBoot
   // the runner-qualification group exists, created once by microvm_runner_group_ensure under its per-create approval
   // (gunbc.runner.runner_group_restriction_ensure restricted_runner_groups).

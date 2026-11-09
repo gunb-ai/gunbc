@@ -7,9 +7,10 @@ import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.git.object_store { git_object_id_wire_hex }
 import gunbc.host.host_effect { HostEffectTransport }
 import gunbc.fleet.fleet_revision_acceptance { AcceptedFleetRevision }
-import gunbc.host.running_os { RunningOsReading, RunningOsUnobserved }
+import gunbc.host.running_os { RunningOsReading, RunningOsObserved, RunningOsUnobserved }
 import gunbc.host.running_os_receipt { RunningOsReceiptSource }
-import gunbc.host.running_os_receipt_observed { running_os_receipt_observed }
+import gunbc.host.running_os_receipt_observed { running_os_receipt_observed, RunningOsReceiptObservation, RunningOsReceiptRead, RunningOsReceiptUnread }
+import gunbc.host.anchored_host_transport { AnchoredHostBinding, AnchoredBindingAnchorAbsent, anchored_host_transport_for_run }
 import gunbc.host.initialized_host {
   InitializedHost, InitializedHostRefusal, InitializedHostStanding, HostInitialized, HostNotInitialized,
   initialized_host_live, initialized_host_identity, initialized_host_transport, initialized_host_refusal_text,
@@ -21,7 +22,7 @@ import gunbc.runner.runner_qualification_revision_admission {
 }
 import gunbc.machine_intake.mtcollins1_boot_receipts { mtcollins1_running_os_receipt_source }
 
-// WHAT A RUNNER NEEDS ON TOP OF AN INITIALIZED HOST (gunbc.plans.physical_machine_boot_program B2): the account its
+// WHAT A RUNNER NEEDS ON TOP OF AN INITIALIZED HOST (gunbc.plans.physical_machine_boot_program (deleted 2026-11-08) B2): the account its
 // listener runs as and the workload revision it is accepted to run. Neither is a boot prerequisite, so neither is
 // in gunbc.host.initialized_host; a consumer that runs a runner on a host takes this record instead of a host
 // name, a user and a transport looked up by name.
@@ -112,10 +113,36 @@ fn runner_initialization_live(host: HostIdentity, attempt_raw: String, revision:
   }
 }
 
-fn runner_initialization_contacted(host: HostIdentity, attempt_raw: String, revision: QualificationRevisionAdmission, token: Secret) -> RunnerInitializationStanding {
-  let running = match running_os_receipt_source_for(host: host) {
-    Absent => RunningOsUnobserved { cause: concat("no boot route publishes a running-OS receipt for ", host as String) }
+// THE HOST'S BOOT RECEIPT, read once per leg: the running-OS reading and the checked host key of the boot it
+// observed, from the boot run that published it (gunbc.host.running_os_receipt_observed). Every host-directed leg
+// on a runner host reads its pin here: the initialization below, the service-slot start and the lost-boot sweep
+// (runner_host_pinned_binding).
+fn runner_host_receipt_observed(host: HostIdentity, token: Secret) -> RunningOsReceiptObservation {
+  match running_os_receipt_source_for(host: host) {
+    Absent => RunningOsReceiptUnread { cause: concat("no boot route publishes a running-OS receipt for ", host as String) }
     Present { value: source } => running_os_receipt_observed(source: source, token: token)
   }
-  runner_initialization_over(host: initialized_host_live(host: host, attempt_raw: attempt_raw, running: running), revision: revision)
+}
+
+fn runner_initialization_contacted(host: HostIdentity, attempt_raw: String, revision: QualificationRevisionAdmission, token: Secret) -> RunnerInitializationStanding {
+  let initialized = match runner_host_receipt_observed(host: host, token: token) {
+    RunningOsReceiptUnread { cause: c } => initialized_host_live(host: host, attempt_raw: attempt_raw, running: RunningOsUnobserved { cause: c }, host_key: none)
+    RunningOsReceiptRead { reading: r, host_key: k } => initialized_host_live(host: host, attempt_raw: attempt_raw, running: r, host_key: Present { value: k })
+  }
+  runner_initialization_over(host: initialized, revision: revision)
+}
+
+// THE PINNED TRANSPORT FOR A LEG THAT NEEDS ONLY THE HOST, NOT ITS INITIALIZATION (the service-slot start and the
+// lost-boot sweep): the same receipt, and the per-boot route bound to the key and the boot that receipt observed
+// (gunbc.host.anchored_host_transport anchored_host_transport_for_run). No receipt, or a receipt whose reading is
+// unobserved, is no pin, and nothing is contacted.
+fn runner_host_pinned_binding(host: HostIdentity, prefix: String, token: Secret) -> AnchoredHostBinding {
+  match runner_host_receipt_observed(host: host, token: token) {
+    RunningOsReceiptUnread { cause: c } => AnchoredBindingAnchorAbsent { cause: concat("no per-boot host-key pin, because the host's running-OS receipt was not read: ", c) }
+    RunningOsReceiptRead { reading: r, host_key: k } => match r {
+      RunningOsUnobserved { cause: c } => AnchoredBindingAnchorAbsent { cause: concat("no per-boot host-key pin, because the receipt's running OS is unobserved: ", c) }
+      RunningOsObserved { running: _, observed_host: _, observed_on: seen } =>
+        anchored_host_transport_for_run(host: host, prefix: prefix, host_key: k, expected_boot_id: (seen.boot_id as String) as NonEmptyStr)
+    }
+  }
 }

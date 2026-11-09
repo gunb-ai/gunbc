@@ -1,12 +1,29 @@
 module gunbc.plans.fleet_hardware_fact_consumption
 
 import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Absent, Present }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { unbound_dissolution }
 import std.markdown { MarkdownBlock, MarkdownTableRow, TableBlock, AlignNone }
 import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
 import gunbc.plans.md_helpers { h2, p, li, ul, cell, row }
-import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
+// The two modules that carry srv1's interconnect and boot-time power-cap readings, imported because the table
+// below COMPUTES its evidence column from their joins. Review 92338 was right that naming a module inside a
+// text string is not consumption: nothing outside the tests executed these joins, so a whole-table retyping of
+// them would have rendered identically. The column is where a reading either reaches a consumer or does not.
+import gunbc.fleet.gpu_interconnect_observation {
+  gpu_pair_peer_access_is_absent, gpu_pair_interconnect_readings_complete, srv1_acs_redirects_at_both_root_ports,
+  srv1_iommu_translates_both_gpu_groups, srv1_gpu_peer_access_readings, srv1_collective_transport_readings,
+  srv1_interconnect_explanations, srv1_reading_is_read, srv1_reading_obligation, peer_access_is_absent,
+  HypothesisStanding, Hypothesis, Bet,
+}
+import gunbc.fleet.gpu_power_cap_boot_state {
+  srv1_power_cap_boot_units, srv1_cap_application_claims, srv1_gunbc_cap_unit_presence, unit_lines_can_fail,
+  gunbc_cap_unit_is_installed, boot_cap_actually_reduces_the_device_default, board_rests_on_its_own_default,
+  cap_application_claim_starts_from_the_device_default,
+}
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_physical_inventory { gpu_board_01, gpu_board_04 }
 
 // FLEET HARDWARE FACTS, CONSUMED (operator, 2026-11-07). The operator's intent, in their words: changing
 // the installed hardware or an operating decision should change the generated configuration, admission
@@ -24,10 +41,19 @@ import gunbc.design_ruling { project_documentation_projections_are_not_checkout_
 //
 // Rows were read against gunbc main 613e59301a78 and the operator's design review of the same day.
 
-// The four completion states the review asks to keep separate, per row: the fact is modeled; the
-// decision is adopted; the host matches (an independent readback); the setting survives the relevant
-// lifecycle (reboot, device reinitialization, a device appearing). A row closes only on the evidence
-// its closure names, never on a merged model alone.
+// Which first-hand readings a row's evidence column is computed from. A tag rather than a sentence, because
+// the renderer must not decide what a row is about by matching its prose, and a row that owes no readings says
+// so as a case instead of leaving the cell blank.
+type MigrationReadings
+  = ReadingsNotOwed
+  | Srv1InterconnectReadings
+  | Srv1PowerCapReadings
+
+// The four completion states, kept separate per row: the fact is modeled; the decision is adopted; the host
+// matches (an independent readback); the setting survives the relevant lifecycle (reboot, device
+// reinitialization, a device appearing). A row closes only on the evidence its closure names, never on a
+// merged model alone -- gunbc.design_argument::separation_of_authority, four states that a single
+// "migrated" flag would flatten.
 type MigrationStanding
   = MigrationUnstarted
   | MigrationStartedHere { what: NonEmptyStr }
@@ -35,6 +61,8 @@ type MigrationStanding
 
 type ConsumerMigrationRow {
   consumer: NonEmptyStr
+  // Which readings the evidence column is computed from (see MigrationReadings).
+  readings: MigrationReadings
   owner: DeclarationRef
   inputs: NonEmptyStr
   superseded: NonEmptyStr
@@ -60,6 +88,7 @@ data thermal_program: DeclarationRef = decl_ref(module_path: "gunbc.plans.host_t
 data fleet_hardware_consumer_migrations: List<ConsumerMigrationRow> = [
   ConsumerMigrationRow {
     consumer: "assembly, inventory and GPU card census",
+    readings: ReadingsNotOwed,
     owner: decl_ref(module_path: "gunbc.fleet.fleet_host_assembly", decl_name: "srv_assembly_components"),
     inputs: "canonical asset identities, installation, lifecycle, catalog binding, procurement lot",
     superseded: "unread psu_srv1..psu_srv4 catalog rows; the census row naming the Max-Q only as a rental; RTX 2000 Ada with no host",
@@ -69,24 +98,27 @@ data fleet_hardware_consumer_migrations: List<ConsumerMigrationRow> = [
   },
   ConsumerMigrationRow {
     consumer: "GPU power-cap realization",
+    readings: Srv1PowerCapReadings,
     owner: decl_ref(module_path: "gunbc.serving.gpu_power_state_policy", decl_name: "installed_gpu_cap_intents"),
-    inputs: "asset-to-device binding (gunbc.fleet.gpu_device_observation), the selected cap, the device range, the policy revision",
+    inputs: "asset-to-device binding (gunbc.fleet.gpu_device_observation), the selected cap, the device range, the policy revision, the installed boot mechanism (gunbc.fleet.gpu_power_cap_boot_state) and the post-write per-UUID readback (gunbc.fleet.gpu_power_cap_converge)",
     superseded: "caps set by hand with nvidia-smi -pl, lost at reboot or device reinitialization",
-    waits_on: ["the srv1 apply path (gunbc.live_deploy.apply_legs deploy_apply_srv1_serving_engine_plan) carrying the cap", "an independent power.limit readback per UUID"],
+    waits_on: ["the srv1 boot run of gunbc.fleet.gpu_power_cap_converge (the owed inhabitance receipt)", "re-realization on device reinitialization and on a device appearing (named obligations at gunbc.live_deploy.srv1_gpu_power_cap_unit srv1_gpu_power_cap_realization_triggers)"],
     closes_on: "changing the desired cap changes the applied command and the expected readback; a mismatch refuses; the cap is re-applied after reboot and on a device appearing",
-    standing: MigrationStartedHere { what: "the operator's 300 W decision and its admission against the read device range (this change)" },
+    standing: MigrationStartedHere { what: "the 300 W decision, its admission, a boot unit applying and independently reading back power.limit per UUID, and the engine Requires=/After= on it (gunbc.live_deploy.apply_legs deploy_apply_srv1_gpu_power_cap_plan); reinitialization and device-appearance re-realization owed. WHAT IS INSTALLED ON SRV1 TODAY, read 2026-11-08 and carried in gunbc.fleet.gpu_power_cap_boot_state, is not that unit: it is the operator's hand-written /etc/systemd/system/gpu-power-limit.service (sha256 473372180065e6b313dc6266a477e37cc6845b386789eb407bff2fc77b6f4e2a, Type=oneshot, enabled), whose one cap line addresses the Workstation card's UUID at 300 W against that card's 600 W default. Its ExecStart lines carry no `-` prefix, so a failing nvidia-smi does fail that unit -- but nothing is Requires=-gated on it, and it reads nothing back, so on the other card the limit standing there is that device's own 300 W default, not the unit's doing. #16047 landed this row's realization owner (d79a9db7addb: gunbc.fleet.gpu_power_cap_converge plus gunbc.live_deploy.srv1_gpu_power_cap_unit); its own gunbc-srv1-gpu-power-cap.service was not installed on srv1 as of 2026-11-08, which is why the boot-run wait is still open" },
   },
   ConsumerMigrationRow {
     consumer: "boot and serving launch device selection",
+    readings: ReadingsNotOwed,
     owner: decl_ref(module_path: "gunbc.serving.srv1_serving_launch", decl_name: "srv1_serving_launch"),
     inputs: "the declared GPU group and its resolved device identities; the cap readbacks the group requires",
     superseded: "--device nvidia.com/gpu=all and route device_index 0, which silently change meaning when a card is added",
     waits_on: ["GPU power-cap realization"],
     closes_on: "the engine starts only after its own devices qualify (Requires= and After= on a cap step that fails on refusal); a one-card configuration stays evaluable while a second card is pending; TP=2 requires both members and never degrades to TP=1",
-    standing: MigrationUnstarted,
+    standing: MigrationStartedHere { what: "gunbc.serving.srv1_serving_launch now declares srv1_serving_gpu_group (the one powered card, gpu_board_04) and CONSTRUCTS the installed wrapper's `--device` from it: srv1_serving_docker_device_words_of renders one `--device nvidia.com/gpu=<UUID>` per member (the UUID resolved through gunbc.fleet.gpu_device_observation current_gpu_device_observations_of, admitted through gunbc.fleet.gpu_power_state_policy admit_gpu_cap_against), and builds the wrapper body (the script the boot unit installs for the next boot) only inside srv1_serving_wrapper's Installable arm, where the group resolved to a non-empty admitted set; a group that does not resolve is Srv1ServingWrapperRefused and has NO body, so neither `nvidia.com/gpu=all` nor a GPU-less `docker run` is writable, and the deploy's install leg matches that same value. The route's served device ordinal is derived from the declared group (srv1_serving_served_device_rank), no longer the literal 0. The host copy the RUNNING container was launched from (still `all`) is retained as history in srv1_serving_wrapper_running_body and pinned by gunbc.host.srv1_serving_startup_receipt; srv1_serving_wrapper_adoption types the installed-vs-running gap PendingOperatorRelaunch — a DECLARED relaunch obligation the OPERATOR performs, never an auto-restart. The power-limit readback that lets a device run stays owned by gunbc.fleet.gpu_power_cap_converge, enforced on the real path by the engine unit's Requires= on the cap unit. Readiness belongs to the selected configuration: the one-card group resolves while gpu_board_01 (Workstation) is pending, and a TP=2 group refuses rather than degrading to TP=1 (asserted in test.claim.serving.srv1_serving_launch_witness and test.claim.live_deploy.live_deploy_apply_plan_witness)." },
   },
   ConsumerMigrationRow {
     consumer: "host power qualification",
+    readings: ReadingsNotOwed,
     owner: decl_ref(module_path: "product.node_power_envelope", decl_name: "psu_adequacy"),
     inputs: "the installed supply (assembly), supply paths (port, cable, connector), component budgets incl. accelerators, operating mode",
     superseded: "the frozen aggregate envelope, which has no accelerator term and admits no new host",
@@ -96,6 +128,7 @@ data fleet_hardware_consumer_migrations: List<ConsumerMigrationRow> = [
   },
   ConsumerMigrationRow {
     consumer: "runner admission width",
+    readings: ReadingsNotOwed,
     owner: decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "derived_runner_slots_of"),
     inputs: "the existing CPU, memory and disk axes plus the host's adopted operating restrictions (thermal ceiling, clock cap)",
     superseded: "runner caps set outside the canonical width (the srv3/srv4 12-runner restriction of 2026-11-05)",
@@ -105,6 +138,7 @@ data fleet_hardware_consumer_migrations: List<ConsumerMigrationRow> = [
   },
   ConsumerMigrationRow {
     consumer: "cooling policy adoption and qualification",
+    readings: ReadingsNotOwed,
     owner: decl_ref(module_path: "gunbc.bmc.bmc_fan_alignment_standing", decl_name: "host_alignment_admission"),
     inputs: "installed cooling, fan wiring, zone reach, workload and thermal evidence",
     superseded: "a CPU-cooler catalog compatibility verdict standing in for GPU or DIMM thermal qualification",
@@ -114,6 +148,7 @@ data fleet_hardware_consumer_migrations: List<ConsumerMigrationRow> = [
   },
   ConsumerMigrationRow {
     consumer: "serving memory and host budget",
+    readings: ReadingsNotOwed,
     owner: decl_ref(module_path: "gunbc.serving.serving_host_memory", decl_name: "serving_host_memory_consumer_frontier"),
     inputs: "the engine and cache allowance, the effective cgroup hierarchy, shared-host claims",
     superseded: "srv1-inference.slice MemoryMax=80G beside a container --memory=130g, each authored separately",
@@ -123,15 +158,17 @@ data fleet_hardware_consumer_migrations: List<ConsumerMigrationRow> = [
   },
   ConsumerMigrationRow {
     consumer: "topology and benchmark applicability",
+    readings: Srv1InterconnectReadings,
     owner: decl_ref(module_path: "gunbc.serving.flash_next_maxq_fork_measurements", decl_name: "flash_next_maxq_fork_measurements_frontier"),
     inputs: "the exact device group, placement, interconnect, software, caps and workload a reading was taken on",
     superseded: "readings from a rented two-card PCIe 5 host read as if they described srv1's PCIe 4 pair",
-    waits_on: ["the Workstation card powered and enumerated"],
+    waits_on: ["the re-run of both NCCL arms with neither serving replica loaded, which srv1_collective_read_obligation names (the 2x delta between the arms is recorded as a hypothesis until then)"],
     closes_on: "evidence from another configuration cannot qualify this one; srv1's own P2P, NCCL and serving readings exist before TP=2 is admitted",
-    standing: MigrationUnstarted,
+    standing: MigrationStartedHere { what: "the Workstation card half of the wait is closed: it enumerates (gunbc.fleet.gpu_device_observation, 2026-11-08). srv1's own interconnect readings exist and are first-hand: peer access refused in both directions, the chipset named as the cause by the two `nvidia-smi topo -p2p r` CNS tokens that were read (the CUDA runtime also refuses, unattributed -- it has no cause to give), the pair at NODE across two host bridges, both links negotiating Gen4 x16 below the Gen5 x16 the cards advertise, ACS redirecting at both root ports, the SMMU translating both GPU groups (gunbc.fleet.gpu_interconnect_observation). The NCCL half landed too, on 2026-11-08 22:22 UTC at the operator's request: an eight-row first-hand all-reduce sweep in a short-lived container with both CDI GPUs (default arm and NCCL_P2P_DISABLE=1, four sizes each), which also retired the relayed claim that the two arms behave the same -- they differ by about 2x from 256 KiB up while naming the same SHM/direct transport, and that difference is typed as a hypothesis with its re-run obligation rather than read as a mechanism. What keeps this row open is one obligation, not a missing reading: the throughput comparison itself landed on main with #16104 (gunbc.serving.srv1_topology_comparison, 2026-11-09), so all three of P2P, NCCL and serving readings named by closes_on are in-tree; what remains is the sweep re-taken in a window with neither serving replica loaded, because the 2x gap between the two arms is a hypothesis while both replicas were holding memory" },
   },
   ConsumerMigrationRow {
     consumer: "router admission ceiling",
+    readings: ReadingsNotOwed,
     owner: decl_ref(module_path: "gunbc.serving.serving_enrollment", decl_name: "serving_replica_route"),
     inputs: "applicable serving evidence and the operator's explicit ceiling",
     superseded: "capacity raised because a card was installed",
@@ -141,15 +178,17 @@ data fleet_hardware_consumer_migrations: List<ConsumerMigrationRow> = [
   },
   ConsumerMigrationRow {
     consumer: "mechanical and card-cooling artifacts",
+    readings: ReadingsNotOwed,
     owner: decl_ref(module_path: "product.printed_chassis.duct_card_catalog", decl_name: "duct_card_catalog_consumer_frontier"),
     inputs: "the selected card's geometry, installation envelope, cable bend clearance, fan geometry",
     superseded: "card-cooling route reports on A16-specific inputs",
     waits_on: [],
     closes_on: "card-dependent outputs derive from the selected subject; catalog candidates are not presented as installed",
-    standing: MigrationUnstarted,
+    standing: MigrationStartedHere { what: "card_cooling_route reports now take a RouteSubject built from duct_card_dims (route_subject_of), so card-dependent outputs derive from the selected card and route_report_for refuses an unread card by naming its reading, never substituting the A16 (this change)" },
   },
   ConsumerMigrationRow {
     consumer: "energy and cost",
+    readings: ReadingsNotOwed,
     owner: decl_ref(module_path: "gunbc.fleet.fleet_work_energy_cost", decl_name: "work_energy_cost"),
     inputs: "an applicable observed power reading, its measurement scope, workload attribution",
     superseded: "gunbc.fleet.fleet_host_power srv1_power (94 W, 2026-09-05) selected by host name for a materially changed assembly",
@@ -159,6 +198,7 @@ data fleet_hardware_consumer_migrations: List<ConsumerMigrationRow> = [
   },
   ConsumerMigrationRow {
     consumer: "owned-hardware population and dispositions",
+    readings: ReadingsNotOwed,
     owner: decl_ref(module_path: "gunbc.fleet.fleet_host_identity", decl_name: "operator_hosts"),
     inputs: "physical units, assemblies, ownership and lifecycle (installed, pending qualification, spare, retired or disposed, provider-managed)",
     superseded: "the identity roster read as a count of machines (srv13 and srv15 name one board; provider guests are rows)",
@@ -168,6 +208,90 @@ data fleet_hardware_consumer_migrations: List<ConsumerMigrationRow> = [
   },
 ]
 
+// THE EVIDENCE COLUMN, COMPUTED FROM THE READING MODULES. Every phrase here is the output of a join in
+// gunbc.fleet.gpu_interconnect_observation or gunbc.fleet.gpu_power_cap_boot_state, so rendering this plan
+// EXECUTES the readings: if the pair's peer-access rows were retyped as possible, or the boot unit stopped
+// addressing the card the device row names, this column changes and so does the generated table. That is what
+// "the readings reach their consumer" has to mean for a plan whose whole body is text -- and review 92338 was
+// right that the earlier version, which named both modules only inside strings, executed neither.
+fn migration_evidence_text(r: ConsumerMigrationRow) -> String {
+  match r.readings {
+    ReadingsNotOwed => "no first-hand reading is owed by this row yet"
+    Srv1InterconnectReadings => srv1_interconnect_evidence()
+    Srv1PowerCapReadings => srv1_power_cap_evidence()
+  }
+}
+
+// Each phrase is its own fn so each can be asked, and failed, on its own -- and so the table's cell is a
+// composition of answers rather than a sentence someone agreed with.
+fn peer_access_phrase() -> String {
+  if gpu_pair_peer_access_is_absent(host: operator_host_srv1, left_board: gpu_board_04, right_board: gpu_board_01) { "peer access refused in both directions" } else { "PEER ACCESS NOT ESTABLISHED" }
+}
+
+fn pair_readings_phrase() -> String {
+  if gpu_pair_interconnect_readings_complete(host: operator_host_srv1, left_board: gpu_board_04, right_board: gpu_board_01) { "pair readings complete" } else { "PAIR READINGS INCOMPLETE" }
+}
+
+fn first_hand_phrase() -> String {
+  if srv1_gpu_peer_access_readings.all(r => srv1_reading_is_read(w: r.warrant)) && srv1_collective_transport_readings.all(c => srv1_reading_is_read(w: c.warrant)) { "every row first-hand" } else { "A ROW IS NOT FIRST-HAND" }
+}
+
+fn acs_phrase() -> String {
+  if srv1_acs_redirects_at_both_root_ports() { "ACS redirecting" } else { "ACS NOT REDIRECTING" }
+}
+
+fn iommu_phrase() -> String {
+  if srv1_iommu_translates_both_gpu_groups() { "SMMU translating" } else { "SMMU NOT TRANSLATING" }
+}
+
+// A reading whose warrant is an Unread carries the obligation to re-read it; that obligation showing up here
+// is the table admitting it is not done, which is the point of rendering it.
+fn reread_phrase() -> String {
+  let owed_here = srv1_gpu_peer_access_readings.any(r => match srv1_reading_obligation(w: r.warrant) {
+    Absent => false
+    Present { value: _ } => true
+  }) || srv1_collective_transport_readings.any(c => match srv1_reading_obligation(w: c.warrant) {
+    Absent => false
+    Present { value: _ } => true
+  })
+  if owed_here { "re-read owed" } else { "nothing re-read owed" }
+}
+
+fn explanation_phrase() -> String {
+  if srv1_interconnect_explanations.all(e => match e.standing {
+    Hypothesis { claim: _, would_be_settled_by: _ } => true
+    Bet { claim: _, would_be_settled_by: _ } => true
+  }) { "explanations stand as hypothesis or bet" } else { "AN EXPLANATION IS OVERSTATED" }
+}
+
+fn srv1_interconnect_evidence() -> String {
+  join([peer_access_phrase(), "; ", pair_readings_phrase(), "; ", first_hand_phrase(), "; ", acs_phrase(), "; ", iommu_phrase(), "; ", reread_phrase(), "; ", explanation_phrase()])
+}
+
+fn unit_lines_phrase() -> String {
+  if srv1_power_cap_boot_units.all(u => unit_lines_can_fail(unit: u)) { "boot unit installed, its lines can fail it" } else { "BOOT UNIT SILENCED, ABSENT OR EMPTY" }
+}
+
+fn cap_below_default_phrase() -> String {
+  if srv1_power_cap_boot_units.all(u => boot_cap_actually_reduces_the_device_default(unit: u)) { "cap sits below the card's own read default" } else { "CAP NOT BELOW THE READ DEFAULT" }
+}
+
+fn max_q_phrase() -> String {
+  if board_rests_on_its_own_default(board: gpu_board_04) { "Max-Q rests on its own default" } else { "MAX-Q NOT ON ITS DEFAULT" }
+}
+
+fn journal_phrase() -> String {
+  if srv1_cap_application_claims.all(c => cap_application_claim_starts_from_the_device_default(claim: c)) { "journal's from-watts matches the read default" } else { "JOURNAL AND DEVICE ROW DISAGREE" }
+}
+
+fn gunbc_unit_phrase() -> String {
+  if gunbc_cap_unit_is_installed(p: srv1_gunbc_cap_unit_presence) { "gunbc's unit installed" } else { "gunbc's unit not installed" }
+}
+
+fn srv1_power_cap_evidence() -> String {
+  join([unit_lines_phrase(), "; ", cap_below_default_phrase(), "; ", max_q_phrase(), "; ", journal_phrase(), "; ", gunbc_unit_phrase()])
+}
+
 fn migration_row_markdown(r: ConsumerMigrationRow) -> MarkdownTableRow {
   row(cells: [
     cell(text: r.consumer as String),
@@ -175,6 +299,7 @@ fn migration_row_markdown(r: ConsumerMigrationRow) -> MarkdownTableRow {
     cell(text: r.superseded as String),
     cell(text: r.closes_on as String),
     cell(text: migration_standing_text(s: r.standing)),
+    cell(text: migration_evidence_text(r: r)),
   ])
 }
 
@@ -184,8 +309,8 @@ fn fleet_hardware_fact_consumption_body() -> List<MarkdownBlock> {
     h2(text: "Consumer migrations"),
     p(text: "One row per consumer that must come to read the hardware authority instead of an independent value or a bypass. A row closes on its stated evidence only: a merged model, an adopted decision, a matching host and a setting that survives its lifecycle are four separate states."),
     TableBlock {
-      header: row(cells: [cell(text: "consumer"), cell(text: "owner"), cell(text: "superseded"), cell(text: "closes on"), cell(text: "standing")]),
-      alignments: [AlignNone, AlignNone, AlignNone, AlignNone, AlignNone],
+      header: row(cells: [cell(text: "consumer"), cell(text: "owner"), cell(text: "superseded"), cell(text: "closes on"), cell(text: "standing"), cell(text: "readings (computed from the reading modules)")]),
+      alignments: [AlignNone, AlignNone, AlignNone, AlignNone, AlignNone, AlignNone],
       rows: map(fleet_hardware_consumer_migrations, r => migration_row_markdown(r: r)),
     },
     h2(text: "Sequence"),
@@ -205,5 +330,5 @@ data fleet_hardware_fact_consumption_plan: Plan = Plan {
   retirement: PlanRetiresWhen {
     condition: unbound_dissolution(description: "Retire when every row of fleet_hardware_consumer_migrations has closed on its stated evidence (or moved to the program that owns it and closed there), each superseded independent authoring or bypass is removed, and the owned-hardware population carries an explicit disposition for every physical unit."),
   },
-  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  projection: PlanIsAuthorityOnly,
 }

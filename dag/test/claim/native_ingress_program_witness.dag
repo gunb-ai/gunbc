@@ -18,7 +18,7 @@ import gunbc.instruments.multi_module_compile_fixture {
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE SUBJECT: v1.compiler.emit_rust native_ingress_program_resolution, the closed typed boundary by which a
-// std.compiler_entry NativeIngressDriver { program } row names its native program (gunbc.plans.converged_ingress M2a).
+// std.compiler_entry NativeIngressDriver { program } row names its native program (gunbc.plans.converged_ingress (deleted 2026-11-08) M2a).
 // Every claim compiles a real fixture through the real compile route (gunbc.instruments.multi_module_compile_fixture)
 // and reads the typed refusal it produced, NativeIngressProgramRefused, or its absence. The refusals are the REDs:
 // an absent descriptor, a descriptor whose declared type is a homonym of NativeIngressProgram, a reference to a field
@@ -31,7 +31,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // alone demands an admitted effect, and a handler whose request parameters are not the legacy set -- a path and the
 // request's header list, followed by the startup value -- because which fact a name means is the start's fact plan
 // (gunbc.http_ingress http_ingress_native_contract) and emission only types each parameter's carrier
-// (gunbc.plans.converged_ingress M2b). An AMBIGUOUS reference (two whole declarations of one kind under one qualified
+// (gunbc.plans.converged_ingress (deleted 2026-11-08) M2b). An AMBIGUOUS reference (two whole declarations of one kind under one qualified
 // identity) is refused by the same function but is not authorable here: a module cannot declare one name twice.
 //
 // The fixtures are isolated, so the declarations the resolution judges BY IDENTITY are stubbed at their owning

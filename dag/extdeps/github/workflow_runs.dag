@@ -261,7 +261,7 @@ fn workflow_job_attempt_filter_wire(f: WorkflowJobAttemptFilter) -> String {
 // job_ran_on joins on it); runner_name is corroboration, since one name can resolve to several ids.
 // Upstream publishes both as nullable -- null until a runner takes the job -- and every record in
 // this tree written before the fields existed carries none rather than a guessed value.
-// steps WAS ADDED FOR THE QUALIFICATION COLLECT LEG (gunbc.plans.mtcollins1_ci_service_legs G3b). It is OPTIONAL BECAUSE A
+// steps WAS ADDED FOR THE QUALIFICATION COLLECT LEG (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) G3b). It is OPTIONAL BECAUSE A
 // RECORD MAY NOT HAVE READ IT: every record in this tree written before the field existed carries none, which says the
 // steps were not recorded -- never an empty list, which would say the job had no steps. A REST read carries them.
 type WorkflowJobRun {
