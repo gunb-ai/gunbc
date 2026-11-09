@@ -376,11 +376,16 @@ test fn a_tail_statement_let_in_a_braced_match_arm_block_refuses_at_the_door_hol
   }
 }
 
-// NEITHER HALF MAY BE SKIPPED. A tail let's value and an arm block's rest are both read: an undeclared
-// name in either refuses unbound AT ITS OWN ATOM rather than being dropped on the floor.
-test fn a_tail_statement_let_reads_its_value_and_refuses_unbound_at_its_atom() -> Bool {
+// THE TWO DOORS, IN ORDER, AND NEITHER HALF MAY BE SKIPPED. A trailing `let` is refused by the LOWERING
+// door-holder before the file is ever resolved, so an undeclared name inside its value never reaches name
+// resolution: the file refuses with body_lowering_reason_statement_let_in_tail_position and NOT with an
+// unbound symbol at that atom -- that ORDERING is what this row pins, which is why the expectation is not
+// lst_unbound_at. A braced arm block's rest is the other door: the block IS lowered, so an undeclared name
+// in its rest refuses unbound AT ITS OWN ATOM. Each fixture declares one name that does not exist, in one of
+// those positions, and nothing else.
+test fn a_refused_tail_let_is_never_resolved_while_an_arm_block_rest_is() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: v, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, last_arm_block: _, tail_paren: _, let_und_reachable: _ } => lst_unbound_at(v: v, atom: ^lst_undeclared_tail_value)
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: v, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, last_arm_block: _, tail_paren: _, let_und_reachable: _ } => lst_refuses_as(v: v, reason: ^body_lowering_reason_statement_let_in_tail_position) && !lst_unbound_at(v: v, atom: ^lst_undeclared_tail_value)
     LstContextRefused => false
   }
 }
