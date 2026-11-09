@@ -398,7 +398,7 @@ type BlockInferState {
 // and `inference_error` instead of minting a third one (gunbc.design_argument::minimize_redundancy).
 // A fold that went back to keeping the last value would compile the fixture, leave the located
 // diagnostic unsaid, and turn the standing control
-// `v1.tests.claim.juxtaposed_bare_value_seed_refusal_test` red.
+// `test.claim.juxtaposed_bare_value_seed_refusal_witness` red.
 //
 // WHICH STATEMENTS REFUSE: value forms ONLY -- a statement that evaluates and binds nothing. Calls,
 // control forms and bindings pass: they either effect or bind, so a dropped value there is not this

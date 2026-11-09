@@ -1,6 +1,7 @@
-module v1.tests.claim.juxtaposed_bare_value_seed_refusal_test
+module test.claim.juxtaposed_bare_value_seed_refusal_witness
 
 import std.types { String, Bool, Int, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.instruments.multi_module_compile_fixture {
   MultiModuleCompileFixture,
   ClaimScopeFixtureOutcome,
@@ -10,9 +11,21 @@ import gunbc.instruments.multi_module_compile_fixture {
   claim_scope_compile_refusal_has_class
 }
 
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
 // THE SEED-SIDE STANDING CONTROL OF THE JuxtaposedBareValue CLASS
 // (gunbc.recurring_failure_mode::juxtaposed_bare_value_lowers_to_the_last_at_body_lowering).
-// The v2 fold already refuses a body whose statement sequence leaves a non-final bare value
+//
+// WHY THIS WITNESS LIVES UNDER `test.claim` AND NOT UNDER `v1.tests.claim`, which heal taught the
+// hard way (run 42651128700): modules under `src/v1` are the SEED's own source root, so every module
+// they reach must have a stage0 crate partition row, and `gunbc.instruments.multi_module_compile_fixture`
+// / `gunbc.compile_diagnostic_census` are dag-layer instruments with none -- an instrument-reading witness
+// placed in the seed root makes the fixed point refuse with Stage0EmittedEdgesNotCovered. Seed-root claim
+// tests may read only seed-side modules (`v1.compiler.parse`, `v1.compiler.tokenize`, ...), as
+// `v1.tests.claim.keyword_pattern_binder_refusal_test` does; instrument witnesses belong beside the
+// instruments, as `test.claim.bare_name_ambiguity_wall_witness` already is.
+//
+// WHAT IT PINS. The v2 fold already refuses a body whose statement sequence leaves a non-final bare value
 // (`v2.compiler.body_lowering_fold::body_lower_stmt_spine`, pinned by
 // `v2.test.claim.body_lowering.juxtaposed_bare_value`). The seed fold -- the v1 frontend that
 // actually compiles and RUNS the harness corpus -- threaded `last_type` through every statement and
