@@ -564,19 +564,16 @@ data broker_status_decision_is_unreceipted: IntegrationConcern = IntegrationConc
     standing: RequirementUnestablished { decided_by: "approval_store_receipt_mac_key_secret_ref is not yet minted, and a verifier holding the current single key could also mint receipts, so a verify-only half must exist first" },
   },
   affected: FreeSemigroup {
-    head: decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_broker_standing"),
-    tail: [
-      decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_operator_grant"),
-      decl_ref(module_path: "gunbc.fleet.printer_operator_approval", decl_name: "approve_and_print"),
-    ],
+    head: decl_ref(module_path: "gunbc.fleet.printer_operator_approval", decl_name: "approve_and_print"),
+    tail: [],
   },
-  question: "How does a runner job verify that a decision read from the broker's loopback escalation-status route is the operator's recorded decision? Residual until then: a loopback-reachable forger of the status response can present Approved for the printer hold release and for the bed-clear approval, which both read that route at the same trust.",
+  question: "How does a runner job verify that a decision read from the broker's loopback escalation-status route is the operator's recorded decision? Residual until then: a loopback-reachable forger of the status response can present Approved for the bed-clear approval, which reads that route. (The printer hold release that also read it was deleted on 2026-11-09.)",
   sightings: FreeSemigroup {
     head: ConcernSighting {
       revision: "b79423bb29e6b7a2804dc0bd0d3db629eb5688f4",
       evidence: FreeSemigroup {
         head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.auth.approval_gate", decl_name: "approval_standing_read") },
-        tail: [CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_broker_standing") }],
+        tail: [],
       },
       account: "The printer job runs as the plain CI runner and cannot read the operator-only approval store, so the printer hold release reads the decision through the broker's unauthenticated loopback status route, the same route and trust as the converge's bed-clear approval. The MAC-receipted store route exists but its key is unminted.",
     },
@@ -586,12 +583,12 @@ data broker_status_decision_is_unreceipted: IntegrationConcern = IntegrationConc
     home: ExistingHome { model: decl_ref(module_path: "gunbc.auth.approval_gate", decl_name: "approval_standing_read") },
     preserve: [
       PreservedObligation {
-        holder: decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_operator_grant"),
+        holder: decl_ref(module_path: "gunbc.fleet.printer_operator_approval", decl_name: "approve_and_print"),
         control: Absent,
-        statement: "a hold releases only on an approved decision over this exact hold and generation; Denied, Expired, Pending and mismatched intent refuse",
+        statement: "a print starts only on an approved decision over this exact attempt; Denied, Expired, Pending and mismatched intent refuse",
       },
     ],
-    next: climbs_when(capability: "the store-receipt MAC key is minted and pinned with a verify-only half the runner holds, and approval_standing_read verifies the receipt before returning a standing for both the printer hold and bed-clear consumers"),
+    next: climbs_when(capability: "the store-receipt MAC key is minted and pinned with a verify-only half the runner holds, and approval_standing_read verifies the receipt before returning a standing for the bed-clear consumer"),
   },
 }
 
@@ -1428,7 +1425,6 @@ data approval_submit_deadline_restated_per_caller: IntegrationConcern = Integrat
         decl_ref(module_path: "gunbc.runner.runner_group_restriction_ensure_run", decl_name: "microvm_runner_group_submit_timeout"),
         decl_ref(module_path: "gunbc.auth.approved_gcp_access", decl_name: "approved_gcp_file_request"),
         decl_ref(module_path: "gunbc.auth.branch_run_grant", decl_name: "branch_run_grant_request_wet"),
-        decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_release_request_filing"),
         decl_ref(module_path: "gunbc.fleet.printer_operator_approval", decl_name: "approve_and_print"),
       ],
     },
@@ -1441,11 +1437,10 @@ data approval_submit_deadline_restated_per_caller: IntegrationConcern = Integrat
       decl_ref(module_path: "gunbc.runner.runner_group_restriction_ensure_run", decl_name: "microvm_runner_group_submit_timeout"),
       decl_ref(module_path: "gunbc.auth.approved_gcp_access", decl_name: "approved_gcp_file_request"),
       decl_ref(module_path: "gunbc.auth.branch_run_grant", decl_name: "branch_run_grant_request_wet"),
-      decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_release_request_filing"),
       decl_ref(module_path: "gunbc.fleet.printer_operator_approval", decl_name: "approve_and_print"),
     ],
   },
-  question: "Is the 30 s submit_timeout every caller passes to approval_file_stored_request one decision -- how long any caller waits for the approval broker to accept a submission -- or several? It is 30 s at seven sites: three per-module rows and four inline literals. Equal values are a reason to ask, not a finding: if the broker's admission latency changed, would all seven change together? If so the decision gets one owner, and callers may still pass it explicitly, including a tighter remaining budget.",
+  question: "Is the 30 s submit_timeout every caller passes to approval_file_stored_request one decision -- how long any caller waits for the approval broker to accept a submission -- or several? It is 30 s at six sites: three per-module rows and three inline literals (a seventh, the printer hold release, was deleted on 2026-11-09). Equal values are a reason to ask, not a finding: if the broker's admission latency changed, would all six change together? If so the decision gets one owner, and callers may still pass it explicitly, including a tighter remaining budget.",
   sightings: FreeSemigroup {
     head: ConcernSighting {
       revision: "8d22701ad6ca9edf3e98ad5562efcd04031f4f36",

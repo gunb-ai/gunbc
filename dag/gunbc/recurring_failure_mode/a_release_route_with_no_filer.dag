@@ -1,7 +1,6 @@
 module gunbc.recurring_failure_mode.a_release_route_with_no_filer
 
 import std.types { NonEmptyStr }
-import std.decl_ref { decl_ref }
 import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 // A CONSENT ROUTE THAT NOBODY CAN ASK FOR. The failure is not a missing check: the check is there, it
@@ -42,11 +41,8 @@ data a_release_route_with_no_filer: RecurringFailureMode = RecurringFailureMode 
     "every claim about such a route passes, positive control included, because the witness stands in for the half that was never built",
     "spot it by comparing caller lists, not by reading the policy: the store's file path appears only under test/ while its read path runs in production",
     "the filer is its own route -- same typed subject, canonical approval route, a named outcome -- and the claim that ends the family runs the filer and asserts the store it reads is still empty",
+    "the specimen, gunbc.fleet.printer_execution_hold printer_hold_release_on_operator_observation and printer_hold_release_request with test.claim.printer_execution_hold_recovery_wet_witness, existed at revision 4aad92f8fdbcdaa029967ea0b174b1b91b81459b and was deleted with the printer execution hold on 2026-11-09 (operator ruling), so it is cited here by revision rather than as live evidence",
   ],
 
-  evidence: [
-    decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_release_on_operator_observation"),
-    decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_release_request"),
-    decl_ref(module_path: "test.claim.printer_execution_hold_recovery_wet_witness", decl_name: "the_release_request_asks_through_the_broker_and_never_conscribes_a_decision"),
-  ],
+  evidence: [],
 }

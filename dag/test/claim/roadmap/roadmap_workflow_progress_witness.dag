@@ -36,7 +36,7 @@ import gunbc.roadmap.roadmap_workflow_progress {
 }
 import gunbc.roadmap.roadmap_workflow_command { legacy_attempt_supersedable_label }
 import gunbc.harness.harness_throughput { RoundsObserved, RoundsUnobserved }
-import gunbc.roadmap.roadmap_workflow_progress { WorkflowAttemptProgress }
+import gunbc.roadmap.roadmap_workflow_progress { WorkflowAttemptProgress, workflow_provider_from_evidence }
 import gunbc.roadmap.roadmap_dispatch_environment {
   DispatchEnvironmentAdmission,
   EnvironmentAdmitted,

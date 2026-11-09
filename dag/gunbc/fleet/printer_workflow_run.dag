@@ -27,7 +27,6 @@ import gunbc.host_state_root {host_state_tree}
 import gunbc.fleet.print_converge {converge_print}
 import gunbc.fleet.printer_credential_source { PrinterCredentialSource, SecretManagerCredentialSource, HostCustodyCredentialSource, read_printer_custody_version, PrinterCustodyVersionPresent, PrinterCustodyVersionRefused }
 import gunbc.fleet.print_request {PrintRequest}
-import gunbc.fleet.printer_execution_hold {printer_hold_broker_standing,printer_hold_release_request_for_tree,printer_hold_release_request_detail,HoldReleaseCardFiled,HoldReleaseCardOnFile,HoldReleaseNothingHeld,HoldReleaseRefused}
 
 // Discovery records the provider's numeric identity, never the code. Starting is a different
 // operation and requires that exact numeric pin. Over Secret Manager it reads latest once; over host
@@ -66,22 +65,10 @@ fn observe_credential_with_source(printer: PhysicalAssetIdentity, token_source: 
 // (gunbc.fleet.printer_shell_run) differ only in where the run is attributed and where the printer
 // credential comes from; the operation, and the converge it calls, are one. Any ref may run any of them
 // (operator ruling 2026-11-05, gunbc.design_ruling printer_start_gate_is_the_approval_not_the_ref):
-// the bed-clear approval is the gate on a start, and the hold-release card is itself an operator decision.
+// the bed-clear approval is the gate on a start.
 fn printer_operation(operation: String, printer: PhysicalAssetIdentity, credential_source: PrinterCredentialSource, request_id: String, root: String, recipe: String, revision: String, run_id: String) -> ProcessExit {
   if operation == "observe" { observe_credential(printer: printer, credential_source: credential_source) }
-  // FILING THE OPERATOR'S STALE-HOLD CARD, and nothing else: it asks the Approve deck to let a
-  // human confirm that no fleet controller is driving the printer before a hold this root cannot
-  // observe is freed. It releases nothing -- the release stays behind the authorization in the
-  // converge that meets the hold.
-  else if operation == "hold-release-request" { match printer_hold_release_request_for_tree(tree: host_state_tree(), standing_of:printer_hold_broker_standing) {
-    // The receipt says WHICH of these happened. A card filed and a card already on file both leave the
-    // hold held; only the first says the operator has something new to decide.
-    HoldReleaseCardFiled { escalation_id: e } => write_receipt(printer: printer, standing: join(["hold-release-request: operator card filed under escalation ", e as String, "; no hold released by this run"], ""), version: "", remote: "", digest: "", credential_source: credential_source)
-    HoldReleaseCardOnFile { escalation_id: e, detail: d } => write_receipt(printer: printer, standing: join(["hold-release-request: ", printer_hold_release_request_detail(outcome: HoldReleaseCardOnFile { escalation_id: e, detail: d })], ""), version: "", remote: "", digest: "", credential_source: credential_source)
-    HoldReleaseNothingHeld { detail: d } => write_receipt(printer: printer, standing: join(["hold-release-request: ", d as String], ""), version: "", remote: "", digest: "", credential_source: credential_source)
-    HoldReleaseRefused { reason: r } => exit_failure(reason: r as String)
-  } }
-  else if operation != "converge" { exit_failure(reason: "Unknown printer operation; use observe, converge, or hold-release-request") }
+  else if operation != "converge" { exit_failure(reason: "Unknown printer operation; use observe or converge") }
   else if request_id == "" || root == "" || recipe == "" || revision == "" {
     exit_failure(reason: "Converge requires request_id, root and recipe, and an attributed revision")
   } else { converge_print(
