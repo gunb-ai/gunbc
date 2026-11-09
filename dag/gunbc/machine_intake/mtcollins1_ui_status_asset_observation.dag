@@ -1624,6 +1624,7 @@ type MegaRacUiCatalogPathRefusal
   | CatalogLanguageListAbsent
   | CatalogLanguageListUnclosed { language_list_offset: Int }
   | CatalogLanguageValueRefused { value_length: Int }
+  | CatalogTemplateWalksOrEscapes { template_offset: Int }
 
 type MegaRacUiCatalogPath
   = ScriptNamedCatalogPath { path: NonEmptyStr  lng: NonEmptyStr  ns: NonEmptyStr  template_offset: Int  language_list_offset: Int }
@@ -1702,11 +1703,11 @@ fn megarac_ui_catalog_path_of_value(piece: String, ns: NonEmptyStr, template: No
     } else {
       let substituted = replace(replace(template as String, megarac_ui_lng_placeholder_text, lng), megarac_ui_ns_placeholder_text, ns as String)
       if string_contains(s: substituted, pattern: "..") {
-        CatalogPathUnderived { cause: CatalogLanguageValueRefused { value_length: string_length(s: lng) } }
+        CatalogPathUnderived { cause: CatalogTemplateWalksOrEscapes { template_offset: template_offset } }
       } else {
         match uri_resolve_path_reference(base_path: "/", reference: substituted) {
           ResolvedPathReference { path: resolved } => ScriptNamedCatalogPath { path: resolved as NonEmptyStr, lng: lng as NonEmptyStr, ns: ns, template_offset: template_offset, language_list_offset: language_list_offset }
-          _ => CatalogPathUnderived { cause: CatalogLanguageValueRefused { value_length: string_length(s: lng) } }
+          _ => CatalogPathUnderived { cause: CatalogTemplateWalksOrEscapes { template_offset: template_offset } }
         }
       }
     }
@@ -1795,6 +1796,7 @@ fn megarac_ui_catalog_refusal_line(cause: MegaRacUiCatalogPathRefusal) -> NonEmp
     CatalogTemplateAbsent => "catalog_path refused template_absent" as NonEmptyStr
     CatalogTemplateUnterminated { template_offset: at } => join(["catalog_path refused template_unterminated template_offset=", megarac_ui_count_text(at)], "") as NonEmptyStr
     CatalogTemplateLacksPlaceholders { template_offset: at } => join(["catalog_path refused template_lacks_placeholders template_offset=", megarac_ui_count_text(at)], "") as NonEmptyStr
+    CatalogTemplateWalksOrEscapes { template_offset: at } => join(["catalog_path refused template_walks_or_escapes template_offset=", megarac_ui_count_text(at)], "") as NonEmptyStr
     CatalogLanguageListAbsent => "catalog_path refused language_list_absent" as NonEmptyStr
     CatalogLanguageListUnclosed { language_list_offset: at } => join(["catalog_path refused language_list_unclosed language_list_offset=", megarac_ui_count_text(at)], "") as NonEmptyStr
     CatalogLanguageValueRefused { value_length: n } => join(["catalog_path refused language_value value_length=", megarac_ui_count_text(n)], "") as NonEmptyStr

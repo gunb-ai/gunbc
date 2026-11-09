@@ -39,6 +39,7 @@ import gunbc.machine_intake.mtcollins1_ui_status_asset_observation {
   CatalogStatusValueEscaped,
   CatalogTemplateAbsent,
   CatalogTemplateLacksPlaceholders,
+  CatalogTemplateWalksOrEscapes,
   RefusedUiCatalogNotJson,
   RefusedUiCatalogPath,
   ScriptNamedCatalogPath,
@@ -2080,7 +2081,7 @@ test fn w_a_template_carrying_parent_traversal_derives_no_catalog_path() -> Bool
   match megarac_ui_catalog_paths_of_asset(asset_text: "x,resGetPath:\"locales/../private/__lng__/__ns__.json\",y,<select id=\"select_lang_top\"><option value=\"en-US\">A</option></select>", ns: "lmedia" as NonEmptyStr) |> get(0) {
     null => false
     first => match first {
-      CatalogPathUnderived { cause: _ } => true
+      CatalogPathUnderived { cause: CatalogTemplateWalksOrEscapes { template_offset: _ } } => true
       other => false
     }
   }
