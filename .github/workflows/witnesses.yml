@@ -248,6 +248,7 @@ jobs:
         env:
           GUNBC_NATIVE_FAULT_EXPERIMENT: ${{ github.event_name == 'pull_request' && 'skip_pull_request' || 'run' }}
           GUNBC_NATIVE_PRODUCT_REUSE: fresh
+          GUNBC_READ_SET_OUT: gunbc-read-set.txt
           GUNBC_MEMORY_ENVELOPE_REQUIRED: slot
       - name: emit and build //gunbc/instruments:v2-native-cli
         id: emit_build_v2_native_cli
@@ -276,6 +277,7 @@ jobs:
         env:
           GUNBC_NATIVE_FAULT_EXPERIMENT: ${{ github.event_name == 'pull_request' && 'skip_pull_request' || 'run' }}
           GUNBC_NATIVE_PRODUCT_REUSE: fresh
+          GUNBC_READ_SET_OUT: gunbc-read-set.txt
           GUNBC_MEMORY_ENVELOPE_REQUIRED: slot
       - name: Locate first-parent ancestors of base.sha
         id: parse_ancestors
@@ -442,6 +444,24 @@ jobs:
             gunbc-parse-compiler-identity
             gunbc-parse-verdict-receipts.tsv
           key: gunbc-materialization-parse-verdict-${{ steps.emit_build_v2_native_cli.outputs.compiler_identity }}-${{ github.sha }}
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      - name: Stage the fast-lane unit
+        run: |
+          set -e
+          'cp' "$GEN_ONE" 'gunbc-fast-lane-native-cli'
+          'echo' "$COMPILER" | 'tee' 'gunbc-fast-lane-compiler-identity' > '/dev/null'
+        env:
+          GEN_ONE: ${{ runner.temp }}/v2-native-cli-gen-one
+          COMPILER: ${{ steps.emit_build_v2_native_cli.outputs.compiler_identity }}
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      - name: Save fast-lane receipts to Actions cache
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            gunbc-read-set.txt
+            gunbc-fast-lane-native-cli
+            gunbc-fast-lane-compiler-identity
+          key: gunbc-materialization-fast-lane-${{ github.sha }}
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       - name: Why this lane is red, and what would be a real finding
         run: |-

@@ -2,6 +2,7 @@ module product.p4261.enable_chain_sheet
 
 import std.types { List, NonEmptyStr, String }
 import std.nat { Nat }
+import gunbc.fleet.fleet_asset_identity { p4261_e1_c }
 import product.electrical.connectivity { ComponentInstanceIdentity, ElectricalTerminalRef, terminal_ref_equal }
 import std.optional { Absent, Present }
 import product.electrical.continuity { ModuleRemoved }
@@ -13,6 +14,8 @@ import product.p4261.sheet {
   CandidateOpen,
   Correspondence,
   CorrespondenceIdentical,
+  beep_admitted,
+  beeps_between,
   MeasuredLink,
   FaultCandidate,
   observed_between,
@@ -109,7 +112,7 @@ fn on_e1(key: NonEmptyStr, a: ElectricalTerminalRef, b: ElectricalTerminalRef, w
 }
 
 fn link(key: NonEmptyStr, a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> MeasuredLink {
-  MeasuredLink { key: key, first: a, second: b, observed: in_state_between(a: a, b: b) }
+  MeasuredLink { key: key, first: a, second: b, observed: in_state_between(a: a, b: b), beeps: filter(beeps_between(os: e1_measured.continuity, a: a, b: b), o => beep_admitted(states: enable_states, o: o)) }
 }
 
 fn volts_at(t: ElectricalTerminalRef) -> VoltageNote {
@@ -236,7 +239,7 @@ data enable_candidates: List<FaultCandidate> = [
   PartOffSheet { scope: "whatever should drive Q300's lead b and does not: the logic its trace reaches is not on this sheet" },
 ]
 
-data lot_e1: NonEmptyStr = "the opened pair's E1 from the lot of ten: revision E, unpowered, module off, J20 disconnected, pad-level only (no asset identity yet)"
+data lot_e1: NonEmptyStr = "the opened pair's E1 from the lot of ten: revision E, unpowered, module off, J20 disconnected, pad-level only"
 
 data baseline_outcomes: List<NonEmptyStr> = [
   "the display equals the probes-shorted display on the same fixed range: a low-impedance path at baseline on revision E, which joins only with a frame showing no part in series",
@@ -251,12 +254,12 @@ fn pair_settles(target: NonEmptyStr, between: NonEmptyStr) -> Settlement {
 // candidates until the diode-mode read maps them.
 data enable_asks: List<BenchAsk> = [
   BenchAsk {
-    key: "lot-e1-pin7-p6", on: lot_e1,
+    key: "lot-e1-pin7-p6", asset: p4261_e1_c, on: lot_e1,
     procedure: "baseline first on a fixed range, then U1_P5's pin 7 lead (counted from the pin 1 marker) to the back pad at P6's place",
     settles: [Settlement { target: "pin7-is-p6-by-ruling", observable: "the display between pin 7's lead and P6 against the probes-shorted display on the same range", outcomes: ["at baseline: P6 is on pin 7's low-impedance path on revision E", "above it: P6 is not pin 7's node on revision E, and the E1-b's ruling is reopened"] }],
   },
   BenchAsk {
-    key: "lot-e1-q301-q300-pairs", on: lot_e1,
+    key: "lot-e1-q301-q300-pairs", asset: p4261_e1_c, on: lot_e1,
     procedure: "baseline first on a fixed range, then each pair below at the same places on the lot E1",
     settles: [
       pair_settles(target: "q301-lone-to-p6", between: "Q301's lone lead and P6"),
@@ -267,12 +270,12 @@ data enable_asks: List<BenchAsk> = [
     ],
   },
   BenchAsk {
-    key: "lot-e1-q300-b-trace", on: lot_e1,
+    key: "lot-e1-q300-b-trace", asset: p4261_e1_c, on: lot_e1,
     procedure: "follow Q300's lead b's trace on the back to where it ends; photograph the end; read the end to lead b at baseline and name the position it lands on, counted on that body",
     settles: [Settlement { target: "q300-b-destination", observable: "where the trace ends, and the display between that end and lead b against the baseline", outcomes: ["the end reads at baseline and lands on a counted position of a body: that position is on Q300's gate node, and whether it senses or drives is read from the identified part", "the end reads above baseline or lands on no body: the destination stays open"] }],
   },
   BenchAsk {
-    key: "lot-e1-lead-roles", on: lot_e1,
+    key: "lot-e1-lead-roles", asset: p4261_e1_c, on: lot_e1,
     procedure: "diode mode on each lead pair of Q301 and of Q300, both polarities, in circuit; recorded as the display for red on each lead",
     settles: [Settlement { target: "q301-q300-lead-roles", observable: "the diode-mode display for each ordered lead pair of each part", outcomes: ["a junction from lead a to the lone lead only with red on lead a, and lead b open both ways: supports the candidate pinout's source, drain and gate, without proving them in circuit", "another pattern: the pinout or the identification is not the candidate's, or the circuit around the leads masks it"] }],
   },
@@ -361,6 +364,7 @@ data enable_chain_sheet: PartialSheet = PartialSheet {
   aliases: [],
   nodes: enable_nodes,
   links: enable_links,
+  propositions: [],
   roles: enable_roles,
   voltages: enable_voltages,
   disputes: [],

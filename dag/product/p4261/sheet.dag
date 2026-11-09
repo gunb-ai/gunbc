@@ -4,6 +4,7 @@ import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat, nat_div_rem_by_succ, nat_saturating_sub }
 import std.algebra { string_contains }
 import std.measure { volt_count }
+import std.optional { Absent, Present }
 import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
 import product.electrical.connectivity {
   ComponentInstanceIdentity,
@@ -46,6 +47,9 @@ import product.electrical.bench_session {
 }
 import product.electrical.continuity {
   BenchConditions,
+  BuzzerAsserted,
+  BuzzerNotAsserted,
+  ContinuityObservation,
   Energized,
   EvidenceRef,
   ModuleInstalled,
@@ -53,13 +57,48 @@ import product.electrical.continuity {
   ModuleUnrecorded,
   ModuleState,
   PointInferred,
+  PointProvenance,
   PointRecorded,
   ReadingOrder,
   Unpowered,
 }
 import product.electrical.carrier_phase { PhaseNodeVoltage }
 import product.p4261.investigation { ClassifiedHypothesis }
-import product.p4261.readings { BoardState }
+import product.p4261.readings { AcrossGap, BoardState, InputPolarityNotEstablished, NotTwoTerminals, TerminalsNotPlaced }
+import extdeps.electronic_component.types { designator_text }
+import extdeps.nvidia.p4261 { p4261_revision_eq }
+import extdeps.nvidia.p4261.population { P4261Position }
+import extdeps.nvidia.p4261.netlist { NetRelation, RowReachesPosition, SpansInput }
+import product.p4261.carrier { admit_correspondence, CarrierLayoutObservation }
+import product.p4261.evidence {
+  bindings_at,
+  net_assessment,
+  ConnectorNotMappedWhole,
+  InputClassesNotEstablished,
+  NetAttributionGap,
+  NetCounterevidence,
+  NetEvidenceConflict,
+  NetGap,
+  NetPositionNotAdmitted,
+  NetPositionOfAnotherRevision,
+  NetPropositionAssessment,
+  NetRevisionConflict,
+  NetRevisionCounterevidence,
+  NetRevisionNotAttributable,
+  NetRevisionNotEstablishedOnBoard,
+  NetRevisionOutcome,
+  NetRevisionSupported,
+  NetRevisionUnresolved,
+  NetStateOutcome,
+  NetSupported,
+  NetUnresolved,
+  NoMeasuredBoard,
+  InputNotTheProposedConnector,
+  OccupantNotPresentInState,
+  PartNotPlaced,
+  received,
+  RowContactNotReached,
+}
 
 // A PARTIAL SCHEMATIC SHEET OF THE P4261, BUILT FROM READINGS. One vocabulary for every sheet: a sheet
 // names one carrier's own component and terminal identities -- including parts with no designator read,
@@ -238,7 +277,7 @@ fn keys_text(ks: List<NonEmptyStr>) -> String {
 // it is before, and the module configuration.
 fn state_text(s: BoardState) -> String {
   let later = filter(state_boundaries(r: s.board.bench, asset: s.board.asset), k => !key_listed(keys: s.state.after, k: k))
-  join([s.board.asset as String, ": ", if count(s.state.after) == 0 { "intact, before any dividing event" } else { join(["after ", keys_text(ks: s.state.after)], "") }, if count(later) == 0 { "" } else { join([" -- and before ", keys_text(ks: later)], "") }, "; ", module_text(m: s.state.module)], "")
+  join([s.board.asset as String, ": ", if count(s.state.after) == 0 { "intact (as received)" } else { join(["after ", keys_text(ks: s.state.after)], "") }, if count(later) == 0 { "" } else { join([", before ", keys_text(ks: later)], "") }, "; ", module_text(m: s.state.module)], "")
 }
 
 // ── ADMISSION ──────────────────────────────────────────────────────────────────────────────────────
@@ -358,13 +397,38 @@ type MeasuredLink {
   first: ElectricalTerminalRef
   second: ElectricalTerminalRef
   observed: List<ResistanceObservation>
+  beeps: List<ContinuityObservation>
+}
+
+// A beep or a silence is reachability at the meter's threshold between two points, under that reading's
+// conditions: it is a measurement, never copper, and joins nothing here.
+fn same_beep_pair(o: ContinuityObservation, a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> Bool {
+  (terminal_ref_equal(a: o.first, b: a) && terminal_ref_equal(a: o.second, b: b)) || (terminal_ref_equal(a: o.first, b: b) && terminal_ref_equal(a: o.second, b: a))
+}
+
+fn beeps_between(os: List<ContinuityObservation>, a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> List<ContinuityObservation> {
+  filter(os, o => same_beep_pair(o: o, a: a, b: b))
+}
+
+fn beep_admitted(states: List<BoardState>, o: ContinuityObservation) -> Bool {
+  in_states(states: states, asset: o.asset, order: o.order, conditions: o.conditions)
+}
+
+fn record_beeps(states: List<BoardState>) -> List<ContinuityObservation> {
+  flat_map(states, s => s.board.continuity)
+}
+
+fn outside_beeps_between(states: List<BoardState>, a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> List<ContinuityObservation> {
+  filter(beeps_between(os: record_beeps(states: states), a: a, b: b), o => !beep_admitted(states: states, o: o))
 }
 
 fn link_refusals(states: List<BoardState>, l: MeasuredLink) -> List<String> {
-  concat(concat(
-    if count(l.observed) > 0 { [] } else { ["no reading is cited"] },
-    if count(filter(l.observed, o => !same_pair(o: o, a: l.first, b: l.second))) == 0 { [] } else { ["a cited reading is between other points"] }),
-    map(filter(l.observed, o => !reading_admitted(states: states, o: o)), o => join(["a cited reading is ", why_not_in_state(states: states, asset: o.asset, order: o.order, conditions: o.conditions)], "")))
+  concat(concat(concat(concat(
+    if count(l.observed) + count(l.beeps) > 0 { [] } else { ["no reading is cited"] },
+    if count(filter(l.observed, o => !same_pair(o: o, a: l.first, b: l.second))) == 0 && count(filter(l.beeps, o => !same_beep_pair(o: o, a: l.first, b: l.second))) == 0 { [] } else { ["a cited reading is between other points"] }),
+    map(filter(l.observed, o => !reading_admitted(states: states, o: o)), o => join(["a cited reading is ", why_not_in_state(states: states, asset: o.asset, order: o.order, conditions: o.conditions)], ""))),
+    map(filter(l.beeps, o => !beep_admitted(states: states, o: o)), o => join(["a cited beep is ", why_not_in_state(states: states, asset: o.asset, order: o.order, conditions: o.conditions)], ""))),
+    [])
 }
 
 fn link_admissible(states: List<BoardState>, l: MeasuredLink) -> Bool {
@@ -395,6 +459,177 @@ fn voltage_note_refusals(states: List<BoardState>, v: VoltageNote) -> List<Strin
 
 fn voltage_note_consistent(states: List<BoardState>, v: VoltageNote) -> Bool {
   count(voltage_note_refusals(states: states, v: v)) == 0
+}
+
+// ── PROPOSITIONS ───────────────────────────────────────────────────────────────────────────────────
+
+// A reconstructed wiring proposition of the design (extdeps.nvidia.p4261.netlist) shown with the standing
+// this board's own records give it (product.p4261.evidence NetPropositionAssessment). Listing a
+// proposition asks a question; the sheet draws its assessed answer -- supported reachability,
+// counterevidence, conflict, unresolved with its gap, or not attributable -- on the part it is about,
+// never its presence in the roster as a wire.
+//
+// THE PART IS A SPECIMEN IDENTITY, NOT A NAME. A proposition names a design position; the part on this
+// board at that position is whatever the board's own position-to-specimen attribution
+// (product.p4261.carrier admit_correspondence) admits there. A bound view carries the layout it was bound
+// through, so the export re-derives that attribution and checks the assessment, the layout and the
+// sheet's states are of one asset: another specimen's same-named component, or another board's
+// assessment, is refused rather than given this board's standing. The drawing outlines the part by
+// component identity. A proposition that cannot be bound stays on the sheet as an unavailable entry with
+// its reason; a key with no assessment at all refuses the export.
+type PropositionView
+  = PropositionBound { layout: CarrierLayoutObservation, assessment: NetPropositionAssessment, part: ComponentInstanceIdentity }
+  | PropositionUnavailable { key: NonEmptyStr, asset: PhysicalAssetIdentity, why: PropositionUnavailability }
+
+type PropositionUnavailability
+  = NoAssessmentOfKey
+  | NoSpecimenAtPosition { designator: NonEmptyStr, standing: NetRevisionOutcome }
+  | SeveralSpecimensAtPosition { designator: NonEmptyStr, parts: List<ComponentInstanceIdentity> }
+
+fn proposition_key(v: PropositionView) -> NonEmptyStr {
+  match v {
+    PropositionBound { layout: _, assessment, part: _ } => assessment.proposition.key
+    PropositionUnavailable { key, asset: _, why: _ } => key
+  }
+}
+
+// The position a proposition is about: the target a connector row reaches, or the part asked to span the input.
+fn proposition_subject(r: NetRelation) -> P4261Position {
+  match r {
+    RowReachesPosition { connector: _, row: _, target } => target
+    SpansInput { component, input: _ } => component
+  }
+}
+
+fn distinct_parts(cs: List<ComponentInstanceIdentity>) -> List<ComponentInstanceIdentity> {
+  fold(cs, init: no_parts(), f: (acc, c) => if any(acc, x => component_identity_eq(a: x, b: c)) { acc } else { concat(acc, [c]) })
+}
+
+// The specimen parts the layout's own attribution admits at a position.
+fn admitted_parts(layout: CarrierLayoutObservation, p: P4261Position) -> List<ComponentInstanceIdentity> {
+  distinct_parts(cs: map(bindings_at(admitted: admit_correspondence(layout: layout).admitted, p: p), b => b.specimen))
+}
+
+fn part_text(c: ComponentInstanceIdentity) -> String {
+  join([c.design as String, " ", component_local_label(c: c) as String], "")
+}
+
+// The one way a sheet lists a proposition: the board's assessment of the key, bound to the one specimen
+// part the board admits at the position the proposition is about.
+fn proposition_on(layout: CarrierLayoutObservation, key: NonEmptyStr) -> PropositionView {
+  match net_assessment(layout: layout, key: key) {
+    Absent => PropositionUnavailable { key: key, asset: layout.asset, why: NoAssessmentOfKey }
+    Present { value: a } => {
+      let p = proposition_subject(r: a.proposition.relation)
+      let parts = admitted_parts(layout: layout, p: p)
+      match parts.first() {
+        Absent => PropositionUnavailable { key: key, asset: layout.asset, why: NoSpecimenAtPosition { designator: designator_text(designator: p.designator), standing: a.revision } }
+        Present { value: c } => if count(parts) > 1 {
+          PropositionUnavailable { key: key, asset: layout.asset, why: SeveralSpecimensAtPosition { designator: designator_text(designator: p.designator), parts: parts } }
+        } else { PropositionBound { layout: layout, assessment: a, part: c } }
+      }
+    }
+  }
+}
+
+fn unavailability_text(u: PropositionUnavailability) -> String {
+  match u {
+    NoAssessmentOfKey => "no proposition of this key is in the reconstructed roster, so it has no assessment"
+    NoSpecimenAtPosition { designator, standing } => join(["no specimen part is admitted at ", designator as String, ", so it is drawn on no part; the assessment reads ", revision_outcome_text(o: standing)], "")
+    SeveralSpecimensAtPosition { designator, parts } => join([to_string(count(parts)), " specimen parts are admitted at ", designator as String, " (", join(map(parts, c => part_text(c: c)), ", "), "), so it is drawn on none"], "")
+  }
+}
+
+// Why a listed proposition may not be exported as drawn; empty when it may.
+fn proposition_refusals(s: PartialSheet, v: PropositionView) -> List<String> {
+  match v {
+    PropositionUnavailable { key: _, asset, why } => concat(
+      if any(s.states, st => physical_asset_identity_eq(a: st.board.asset, b: asset)) { [] } else { [join(["it is listed as unavailable on ", asset as String, ", which no state of the sheet is of"], "")] },
+      match why {
+        NoAssessmentOfKey => [unavailability_text(u: why)]
+        NoSpecimenAtPosition { designator: _, standing: _ } => []
+        SeveralSpecimensAtPosition { designator: _, parts: _ } => []
+      })
+    PropositionBound { layout, assessment, part } => {
+      let p = proposition_subject(r: assessment.proposition.relation)
+      concat(concat(concat(concat(
+        if physical_asset_identity_eq(a: assessment.asset, b: layout.asset) { [] } else { [join(["the assessment is of ", assessment.asset as String, ", not of ", layout.asset as String, " whose layout binds it"], "")] },
+        if any(s.states, st => physical_asset_identity_eq(a: st.board.asset, b: layout.asset)) { [] } else { [join(["it is bound through the layout of ", layout.asset as String, ", which no state of the sheet is of"], "")] }),
+        if p4261_revision_eq(a: p.revision, b: layout.revision) { [] } else { ["the proposition is of another revision than the layout that binds it"] }),
+        if any(admitted_parts(layout: layout, p: p), c => component_identity_eq(a: c, b: part)) { [] } else { [join(["the part ", part_text(c: part), " is not the specimen the layout of ", layout.asset as String, " admits at ", designator_text(designator: p.designator) as String], "")] }),
+        if any(s.layout.symbols, y => component_identity_eq(a: y.part, b: part)) { [] } else { [join(["the part it is bound to, ", part_text(c: part), ", is not drawn"], "")] })
+    }
+  }
+}
+
+fn relation_text(r: NetRelation) -> String {
+  match r {
+    RowReachesPosition { connector, row: _, target } => join(["every contact of a ", designator_text(designator: connector.designator) as String, " row reaches one terminal of ", designator_text(designator: target.designator) as String], "")
+    SpansInput { component, input } => join([designator_text(designator: component.designator) as String, " has one terminal in each of ", designator_text(designator: input.designator) as String, "'s two row classes"], "")
+  }
+}
+
+fn gap_text(g: NetGap) -> String {
+  match g {
+    OccupantNotPresentInState => "no part present at the position in that state"
+    ConnectorNotMappedWhole => "the connector is not mapped whole"
+    RowContactNotReached => "a row contact is not reached"
+    InputClassesNotEstablished => "the input's two row classes are not established"
+    PartNotPlaced { gap } => match gap {
+      InputPolarityNotEstablished => "the input's polarity is not established"
+      NotTwoTerminals => "the part is not read as two terminals"
+      TerminalsNotPlaced => "the part's terminals are not placed in the row classes"
+    }
+  }
+}
+
+fn attribution_text(g: NetAttributionGap) -> String {
+  match g {
+    NetPositionOfAnotherRevision => "the proposition is of another revision"
+    NetRevisionNotEstablishedOnBoard => "the board's revision is not established"
+    NetPositionNotAdmitted { designator } => join(["the position ", designator as String, " is not admitted on this board"], "")
+    InputNotTheProposedConnector => "the board's input is not the proposed connector"
+    NoMeasuredBoard => "the board has no measured record"
+  }
+}
+
+fn state_outcome_text(o: NetStateOutcome) -> String {
+  match o {
+    NetSupported { terminals, readings } => join(["supported: reachability through ", to_string(count(terminals)), " terminal(s) on ", to_string(count(readings)), " beep(s)"], "")
+    NetCounterevidence { terminals, readings } => join(["counterevidence: ", to_string(count(terminals)), " terminal(s) in one class on ", to_string(count(readings)), " beep(s)"], "")
+    NetEvidenceConflict { readings, occupants } => join(["conflict: ", to_string(count(readings)), " beep(s), ", to_string(count(occupants)), " occupant(s)"], "")
+    NetUnresolved { gap } => join(["unresolved: ", gap_text(g: gap)], "")
+  }
+}
+
+fn revision_outcome_text(o: NetRevisionOutcome) -> String {
+  match o {
+    NetRevisionSupported => "SUPPORTED (reachability, as received)"
+    NetRevisionCounterevidence => "COUNTEREVIDENCE (as received)"
+    NetRevisionConflict => "CONFLICT (as received)"
+    NetRevisionUnresolved => "UNRESOLVED (as received)"
+    NetRevisionNotAttributable { gap } => join(["NOT ATTRIBUTABLE: ", attribution_text(g: gap)], "")
+  }
+}
+
+fn revision_outcome_colour(o: NetRevisionOutcome) -> String {
+  match o {
+    NetRevisionSupported => "#2e7d32"
+    NetRevisionCounterevidence => "#c62828"
+    NetRevisionConflict => "#c62828"
+    NetRevisionUnresolved => "#757575"
+    NetRevisionNotAttributable { gap: _ } => "#757575"
+  }
+}
+
+// The received state's reason when the proposition is unresolved as received.
+fn received_gap_text(a: NetPropositionAssessment) -> String {
+  join(map(filter(a.states, a => received(s: a.state)), a => match a.outcome {
+    NetUnresolved { gap } => gap_text(g: gap)
+    NetSupported { terminals: _, readings: _ } => ""
+    NetCounterevidence { terminals: _, readings: _ } => ""
+    NetEvidenceConflict { readings: _, occupants: _ } => ""
+  }), "")
 }
 
 // ── NODES ──────────────────────────────────────────────────────────────────────────────────────────
@@ -468,8 +703,11 @@ type Settlement {
   outcomes: List<NonEmptyStr>
 }
 
+// A read the next session can make, on the physical asset named: the board a sheet is drawn from, or a
+// comparison specimen, whose readings bind to that asset and to no other board's records.
 type BenchAsk {
   key: NonEmptyStr
+  asset: PhysicalAssetIdentity
   on: NonEmptyStr
   procedure: NonEmptyStr
   settles: List<Settlement>
@@ -530,6 +768,7 @@ type PartialSheet {
   aliases: List<SheetAlias>
   nodes: List<SheetNode>
   links: List<MeasuredLink>
+  propositions: List<PropositionView>
   roles: List<RoleCandidate>
   voltages: List<VoltageNote>
   disputes: List<AttributionDispute>
@@ -604,7 +843,7 @@ fn settle_targets(s: PartialSheet) -> List<NonEmptyStr> {
     map(s.nodes, n => n.key),
     continuation_keys(ns: s.nodes)),
     map(connections_of(ns: s.nodes), c => c.key)),
-    map(s.links, l => l.key)),
+    concat(map(s.links, l => l.key), map(s.propositions, v => proposition_key(v: v)))),
     map(s.hypotheses, h => h.key))
 }
 
@@ -772,8 +1011,31 @@ fn link_lines(s: PartialSheet) -> List<DrawnLine> {
   concat([DrawnLine { kind: "head", text: "MEASUREMENTS (bound the path, join nothing; M-numbers mark their points on the drawing)" }],
     flat_map(numbered_links(ls: s.links), m => concat(concat(
       [DrawnLine { kind: if link_admissible(states: s.states, l: m.link) { "link" } else { "refused" }, text: join([measurement_tag(n: m.number), "  ", m.link.key as String, ": ", tt(t: m.link.first), "  to  ", tt(t: m.link.second), if link_admissible(states: s.states, l: m.link) { "" } else { join(["   [REFUSED: ", join(link_refusals(states: s.states, l: m.link), "; "), "]"], "") }], "") }],
-      map(m.link.observed, o => DrawnLine { kind: "link", text: reading_line(o: o) })),
-      outside_lines(states: s.states, os: filter(outside_between(states: s.states, a: m.link.first, b: m.link.second), o => true)))))
+      concat(map(m.link.observed, o => DrawnLine { kind: "link", text: reading_line(o: o) }), map(m.link.beeps, o => DrawnLine { kind: "link", text: beep_line(o: o) }))),
+      concat(outside_lines(states: s.states, os: outside_between(states: s.states, a: m.link.first, b: m.link.second)),
+        map(outside_beeps_between(states: s.states, a: m.link.first, b: m.link.second), o => DrawnLine { kind: "outside", text: join([beep_line(o: o), "   [outside the sheet's state: ", why_not_in_state(states: s.states, asset: o.asset, order: o.order, conditions: o.conditions), "]"], "") })))))
+}
+
+fn point_text(p: PointProvenance, which: String) -> String {
+  match p {
+    PointRecorded => ""
+    PointInferred { basis } => join(["; ", which, " point inferred (", basis as String, ")"], "")
+  }
+}
+
+fn beep_line(o: ContinuityObservation) -> String {
+  join(["      ", match o.result { BuzzerAsserted => "beeped", BuzzerNotAsserted => "did not beep" }, point_text(p: o.record.first, which: "first"), point_text(p: o.record.second, which: "second")], "")
+}
+
+fn proposition_lines(s: PartialSheet) -> List<DrawnLine> {
+  concat([DrawnLine { kind: "head", text: "WIRING PROPOSITIONS, WITH THE STANDING THIS BOARD'S RECORDS GIVE EACH (a listed proposition asks; it asserts nothing)" }],
+    flat_map(s.propositions, v => match v {
+      PropositionBound { layout: _, assessment, part } => concat(
+        [DrawnLine { kind: "proposition", text: join([assessment.proposition.key as String, ": ", relation_text(r: assessment.proposition.relation), "   -- ", revision_outcome_text(o: assessment.revision)], "") },
+         DrawnLine { kind: "link", text: join(["      of ", assessment.asset as String, ", drawn on ", part_text(c: part), " (the part its attribution admits at the position)"], "") }],
+        map(assessment.states, a => DrawnLine { kind: "link", text: join(["      in ", if count(a.state.after) == 0 { "the received state" } else { join(["the state after ", keys_text(ks: a.state.after)], "") }, ", ", module_text(m: a.state.module), ": ", state_outcome_text(o: a.outcome)], "") }))
+      PropositionUnavailable { key, asset, why } => [DrawnLine { kind: "proposition", text: join([key as String, ": UNAVAILABLE on ", asset as String, " -- ", unavailability_text(u: why)], "") }]
+    }))
 }
 
 fn role_lines(s: PartialSheet) -> List<DrawnLine> {
@@ -823,8 +1085,10 @@ fn side_lines(s: PartialSheet) -> List<DrawnLine> {
     map(s.disputes, d => DrawnLine { kind: "dispute", text: join(["DISPUTED ", d.key as String, ": ", d.question as String], "") })),
     [DrawnLine { kind: "head", text: "READS, EACH NAMING WHAT IT SETTLES" }]),
     flat_map(s.asks, a => concat(
-      [DrawnLine { kind: "ask", text: join([a.key as String, " -- on ", a.on as String, ": ", a.procedure as String], "") }],
-      map(a.settles, t => DrawnLine { kind: "ask", text: join(["      settles ", t.target as String, ": ", t.observable as String], "") }))))
+      [DrawnLine { kind: "ask", text: join([a.key as String, " -- on ", a.asset as String, " (", a.on as String, "): ", a.procedure as String], "") }],
+      flat_map(a.settles, t => concat(
+        [DrawnLine { kind: "ask", text: join(["      settles ", t.target as String, ": ", t.observable as String], "") }],
+        map(t.outcomes, o => DrawnLine { kind: "outcome", text: join(["            if ", o as String], "") }))))))
 }
 
 fn alias_lines(s: PartialSheet) -> List<DrawnLine> {
@@ -844,7 +1108,7 @@ fn line_style(kind: NonEmptyStr) -> String {
                     if kind == "link" { "fill:#555" } else {
                       if kind == "outside" { "fill:#999;font-style:italic" } else {
                         if kind == "role" { "fill:#6b21a8" } else {
-                          if kind == "voltage" { "fill:#0e7490" } else { "fill:#222" }
+                          if kind == "voltage" { "fill:#0e7490" } else { if kind == "proposition" { "fill:#111;font-weight:bold" } else { "fill:#222" } }
                         }
                       }
                     }
@@ -864,17 +1128,54 @@ type Placed {
   out: List<String>
 }
 
-fn place_lines(x: Nat, y0: Nat, ls: List<DrawnLine>) -> Placed {
-  fold(ls, init: Placed { y: y0, out: [] }, f: (acc, l) => Placed {
+// THE TABLE STAYS INSIDE THE CANVAS. The SVG viewport clips a text that runs past its width, so a long
+// line would lose its tail with nothing to show it had one. Each line is broken at spaces into rows of
+// at most text_budget characters -- 7 px a character at 12 px, above DejaVu Sans's average and with the
+// margin the canvas keeps for a bold run -- each continuation row indented under its line. A single word longer than the budget stays one
+// row, never cut. Rows keep their leading spaces when drawn (xml:space), so an indent shows.
+fn text_budget(width: Nat) -> Nat {
+  nat_div_rem_by_succ(a: nat_saturating_sub(a: width, b: 40), divisor_prev: 6).quotient
+}
+
+type WrapState {
+  done: List<String>
+  line: String
+  lead: String
+  has_word: Bool
+  started: Bool
+}
+
+fn no_rows() -> List<String> {
+  []
+}
+
+// A continuation row starts four spaces deeper than the line it continues.
+fn wrapped_text(t: String, budget: Nat) -> List<String> {
+  let st = fold(split(s: t, delimiter: " "), init: WrapState { done: no_rows(), line: "", lead: "", has_word: false, started: false }, f: (acc, w) =>
+    if !acc.started { WrapState { done: acc.done, line: w, lead: "", has_word: !(w == ""), started: true } }
+    else { if !(w == "") && acc.has_word && string_length(s: acc.line) + 1 + string_length(s: w) > budget {
+      WrapState { done: concat(acc.done, [acc.line]), line: join([acc.lead, "    ", w], ""), lead: acc.lead, has_word: true, started: true }
+    } else {
+      WrapState { done: acc.done, line: join([acc.line, " ", w], ""), lead: if acc.has_word || (w == "") { acc.lead } else { join([acc.line, " "], "") }, has_word: acc.has_word || !(w == ""), started: true }
+    } })
+  concat(st.done, [st.line])
+}
+
+fn wrapped_lines(ls: List<DrawnLine>, budget: Nat) -> List<DrawnLine> {
+  flat_map(ls, l => map(wrapped_text(t: l.text, budget: budget), t => DrawnLine { kind: l.kind, text: t }))
+}
+
+fn place_lines(x: Nat, y0: Nat, budget: Nat, ls: List<DrawnLine>) -> Placed {
+  fold(wrapped_lines(ls: ls, budget: budget), init: Placed { y: y0, out: [] }, f: (acc, l) => Placed {
     y: acc.y + 17,
-    out: concat(acc.out, [join(["<text x=\"", nat_text(n: x), "\" y=\"", nat_text(n: acc.y), "\" font-size=\"12\" style=\"", line_style(kind: l.kind), "\">", l.text, "</text>"], "")]),
+    out: concat(acc.out, [join(["<text x=\"", nat_text(n: x), "\" y=\"", nat_text(n: acc.y), "\" font-size=\"12\" xml:space=\"preserve\" style=\"", line_style(kind: l.kind), "\">", l.text, "</text>"], "")]),
   })
 }
 
 fn sheet_lines(s: PartialSheet) -> List<DrawnLine> {
   concat(concat(concat(
     flat_map(s.nodes, n => concat(node_lines(states: s.states, n: n), [DrawnLine { kind: "gap", text: " " }])),
-    if count(s.links) > 0 { concat(link_lines(s: s), [DrawnLine { kind: "gap", text: " " }]) } else { [] }),
+    concat(if count(s.propositions) > 0 { concat(proposition_lines(s: s), [DrawnLine { kind: "gap", text: " " }]) } else { [] }, if count(s.links) > 0 { concat(link_lines(s: s), [DrawnLine { kind: "gap", text: " " }]) } else { [] })),
     if count(s.roles) > 0 { concat(role_lines(s: s), [DrawnLine { kind: "gap", text: " " }]) } else { [] }),
     if count(s.voltages) > 0 { voltage_lines(s: s) } else { [] })
 }
@@ -1071,6 +1372,21 @@ fn datasheet_svg(l: SheetLayout, n: SheetNode, d: DatasheetMember) -> List<Strin
        text_at(x: step_point(a: pa.x, b: pb.x, i: e.index, k: k), y: step_point(a: pa.y, b: pb.y, i: e.index, k: k) + 4, anchor: "middle", size: 9, style: "fill=\"#b86e00\" font-style=\"italic\"", t: join([e.element as String, "?"], ""))]))))
 }
 
+// A proposition is drawn on the part it names: an outline in its standing's colour and its standing above
+// the part, the same for every proposition, whatever the roster lists.
+fn proposition_svg(s: PartialSheet, v: PropositionView) -> List<String> {
+  match v {
+    PropositionUnavailable { key: _, asset: _, why: _ } => []
+    PropositionBound { layout: _, assessment, part } => {
+      let colour = revision_outcome_colour(o: assessment.revision)
+      let gap = received_gap_text(a: assessment)
+      flat_map(filter(s.layout.symbols, y => component_identity_eq(a: y.part, b: part)), y =>
+        [join(["<rect x=\"", nat_text(n: lifted(n: y.x, by: 5)), "\" y=\"", nat_text(n: lifted(n: y.y, by: 5)), "\" width=\"", nat_text(n: y.w + 10), "\" height=\"", nat_text(n: y.h + 10), "\" fill=\"none\" stroke=\"", colour, "\" stroke-width=\"2.4\" stroke-dasharray=\"5 2\"/>"], ""),
+         text_at(x: y.x, y: lifted(n: y.y, by: 9), anchor: "start", size: 10, style: join(["fill=\"", colour, "\" font-weight=\"bold\""], ""), t: join([revision_outcome_text(o: assessment.revision), if gap == "" { "" } else { join([": ", gap], "") }], ""))])
+    }
+  }
+}
+
 fn millivolts_text(c: CandidateEnd) -> String {
   join(map(c.readings, r => join([nat_text(n: r.millivolts), " mV"], "")), ", ")
 }
@@ -1118,7 +1434,7 @@ fn circuit_svg(s: PartialSheet) -> List<String> {
     flat_map(connections_of(ns: s.nodes), c => connection_svg(s: s, c: c))),
     flat_map(s.nodes, n => flat_map(n.continuations, c => continuation_svg(l: l, c: c)))),
     map(l.pins, p => pin_svg(p: p))),
-    measurement_tags_svg(s: s)),
+    concat(measurement_tags_svg(s: s), flat_map(s.propositions, v => proposition_svg(s: s, v: v)))),
     flat_map(s.roles, r => role_svg(l: l, r: r))),
     flat_map(s.voltages, v => voltage_svg(l: l, v: v))),
     flat_map(s.nodes, n => node_label_svg(l: l, n: n)))
@@ -1146,7 +1462,8 @@ fn sheet_findings(s: PartialSheet) -> List<String> {
     flat_map(connections_of(ns: s.nodes), c => map(connection_refusals(states: s.states, c: c), r => join(["connection ", c.key as String, ": ", r], "")))),
     flat_map(s.links, l => map(link_refusals(states: s.states, l: l), r => join(["measurement ", l.key as String, ": ", r], "")))),
     flat_map(s.voltages, v => map(voltage_note_refusals(states: s.states, v: v), r => join(["voltages at ", tt(t: v.at), ": ", r], "")))),
-    if nodes_disjoint(ns: s.nodes) { [] } else { ["two nodes reach a common terminal"] }),
+    concat(if nodes_disjoint(ns: s.nodes) { [] } else { ["two nodes reach a common terminal"] },
+      flat_map(s.propositions, v => map(proposition_refusals(s: s, v: v), r => join(["proposition ", proposition_key(v: v) as String, ": ", r], ""))))),
     ask_refusals(s: s)),
     layout_refusals(s: s)),
     map(filter(every_drawn_text(s: s), t => !drawable(t: t)), t => "a text holds '&' or '<' and would draw broken SVG")),
@@ -1167,9 +1484,10 @@ fn sheet_svg(s: PartialSheet) -> String {
   let headers = header_lines(s: s)
   let shift = 30 + 16 * count(headers)
   let top = s.layout.height + shift + 40
-  let nodes = place_lines(x: 30, y0: top, ls: sheet_lines(s: s))
-  let side = place_lines(x: 30, y0: nodes.y + 14, ls: side_lines(s: s))
-  let below = place_lines(x: 30, y0: side.y + 20, ls: alias_lines(s: s))
+  let budget = text_budget(width: s.layout.width)
+  let nodes = place_lines(x: 30, y0: top, budget: budget, ls: sheet_lines(s: s))
+  let side = place_lines(x: 30, y0: nodes.y + 14, budget: budget, ls: side_lines(s: s))
+  let below = place_lines(x: 30, y0: side.y + 20, budget: budget, ls: alias_lines(s: s))
   let height = below.y + 30
   join(concat(concat(concat(concat(concat(concat(
     [join(["<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"", nat_text(n: s.layout.width), "\" height=\"", nat_text(n: height), "\" font-family=\"DejaVu Sans, Arial, sans-serif\">"], ""),

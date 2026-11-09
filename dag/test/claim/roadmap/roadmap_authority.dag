@@ -768,7 +768,6 @@ test fn witness_namespace_chain_is_explicit() -> Bool {
     && edge_exists(child: "namespace-legacy-choice-retirement", parent: "declaration-identity-switchover")
     && edge_exists(child: "namespace-legacy-choice-retirement", parent: "namespace-semantic-waves")
     && edge_exists(child: "namespace-legacy-choice-retirement", parent: "v1-interpreter-delete")
-    && edge_exists(child: "namespace-import-deletion", parent: "namespace-legacy-choice-retirement")
     && !id_exists(id: "namespace-canonical-binding")
     && !id_exists(id: "namespace-bound-only-consumers")
 }
@@ -833,13 +832,12 @@ test fn witness_v1_exit_fan_in_matches_finish_line_split() -> Bool {
     && !id_exists(id: "v1-verification-ledger")
 }
 
-// The grammar goes last (XL-7 after XL-6, which runs after seed retirement), so the import deletion
-// no longer gates the zero-hand-maintained-Rust terminal: that edge would close a cycle with the
-// seed retirement the namespace cutover now waits on.
-test fn witness_import_deletion_follows_the_namespace_cutover() -> Bool {
-  id_exists(id: "namespace-import-deletion")
-    && active_id_exists(id: "namespace-import-deletion")
-    && edge_exists(child: "namespace-import-deletion", parent: "namespace-legacy-choice-retirement")
+// Import-grammar deletion (XL-7) is withdrawn: imports are the terminal name mechanism
+// (gunbc.design_ruling imports_are_the_terminal_name_mechanism), so its node and every edge to it are
+// gone, and nothing may wait on it.
+test fn witness_import_deletion_is_withdrawn() -> Bool {
+  !id_exists(id: "namespace-import-deletion")
+    && !edge_exists(child: "namespace-import-deletion", parent: "namespace-legacy-choice-retirement")
     && !edge_exists(child: "v1-zero-hand-maintained-rust", parent: "namespace-import-deletion")
 }
 

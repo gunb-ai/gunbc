@@ -20,6 +20,7 @@ import extdeps.gpu.nvidia { nvidia_rtx_pro_5000_48gb_catalog, nvidia_rtx_pro_500
 import extdeps.nvidia.cuda_toolkit_release { cuda_13_0_driver_requirement }
 import extdeps.vllm.local_inference_lab_build { VllmEngineRelease, local_inference_lab_vllm_release }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import product.fabric.serving_throughput { ServingThroughput, ThroughputOperatorReading, ThroughputUnread }
 import extdeps.huggingface.hub { HubCheckpointManifest }
 import extdeps.local_inference_lab.qwen3_8_flash_next { qwen3_8_flash_next_manifest }
 import gunbc.serving.srv1_serving_launch { srv1_serving_ground }
@@ -158,10 +159,7 @@ type ServingSettingStandings {
   port: ServingSettingStanding
 }
 
-// ── throughput: an operator reading, never a constant ────────────────────────────────────────
-type ServingThroughput
-  = ThroughputOperatorReading { tokens_per_second: TokensPerSecond, at_concurrency: Nat, standing: CitedFigureStanding }
-  | ThroughputUnread
+// ── throughput: an operator reading, never a constant (product.fabric.serving_throughput) ─────────────
 
 // The engine is the engine's own typed release row (each in its own module), so a provision phase reads
 // the release's pins (ninfer: installed-file pins) to verify an install. A new engine FAMILY adds an arm
