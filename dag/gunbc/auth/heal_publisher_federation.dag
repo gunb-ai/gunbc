@@ -73,16 +73,15 @@ data heal_publisher_workflow_path_retired: String = ".github/workflows/heal-publ
 // reachable from one workflow, on one ref, by one event, on a hosted runner. That is the grain
 // gunbc.auth.github_gcp_federation does NOT admit, and the grain gunbc#10887 was exploited at.
 
-// ONE PUBLISHER FEDERATION PER PUBLISHING REPOSITORY, AS A RECORD. The paragraphs above argue for a
-// pool whose single provider pins one job; gunbc-private publishes its own drifted projections and
-// needs the same wall around the same key, pinned to ITS repository and ITS publisher workflow. A
-// second provider in the public pool was the other shape and is declined: the impersonation member
-// is the whole pool (`/*`, gunbc.auth.heal_publisher_provision impersonation_cell), so a second
-// provider there would let either repository's job act as one account, and the provisioning
-// classifier refuses a pool holding more than one provider precisely to keep that from happening
-// silently. So each repository gets its own pool, provider and account, and everything that
-// distinguishes them is this record -- the condition, the pool resource and the down-scoped token
-// body are derived from it rather than restated per repository.
+// THE PUBLISHER FEDERATION, AS A RECORD. The paragraphs above argue for a pool whose single provider pins
+// one job. A second provider in the public pool was once the shape considered for the private mirror, and
+// is declined for good reason: the impersonation member is the whole pool (`/*`,
+// gunbc.auth.heal_publisher_provision impersonation_cell), so a second provider there would let either
+// repository's job act as one account, and the provisioning classifier refuses a pool holding more than one
+// provider precisely to keep that from happening silently. So the publisher keeps its own pool, provider and
+// account, and everything that distinguishes the record is derived from it -- the condition, the pool
+// resource and the down-scoped token body are read from this record rather than restated inline. (The private
+// mirror that once needed a second such record is gone; its CI is gunbc's CI, 1:1.)
 type HealPublisherFederation {
   repository: Repository
   numeric_identity: RepositoryNumericIdentity
@@ -158,18 +157,12 @@ data heal_publisher_wif_event_name: String = "workflow_run"
 
 data heal_publisher_wif_runner_environment: String = "github-hosted"
 
-// THE PRIVATE PUBLISHER IS HEADED FOR OUR microVMs, AND ITS PIN STAYS github-hosted UNTIL THE WALL
-// THAT WOULD JUSTIFY WIDENING IT EXISTS (operator 2026-09-29; review 72445). GitHub's
-// runner_environment claim is only github-hosted or self-hosted, so pinning self-hosted admits every
-// self-hosted runner, including the srv slots that execute pull-request code. What would keep
-// pull-request code off the machine is the runner group gunbc.runner.runner_group_restriction_ensure
-// private_heal_publisher_runner_group_subject -- restricted to exactly this workflow and repository
-// -- together with a controller that mints one guest per job into that group only after reading the
-// restriction back. The group is modelled; the minting path is not. So the field is per record and
-// the private record still says github-hosted: a publish job placed on a microVM label today cannot
-// federate at all, which refuses rather than widens. The flip to self-hosted lands in ONE change with
-// the controller path that mints into that group, and with the live provider's condition update.
-
+// runner_environment STAYS github-hosted and is a per-record field (operator 2026-09-29; review 72445).
+// GitHub's runner_environment claim is only github-hosted or self-hosted, so pinning self-hosted admits
+// every self-hosted runner, including the srv slots that execute pull-request code; until a restricted
+// runner group and a minting controller that reads the restriction back both exist, a publish job placed
+// on a microVM label could not federate at all, which refuses rather than widens. The flip to self-hosted
+// lands in ONE change with that controller path and the live provider's condition update.
 
 // job_workflow_ref IS DELIBERATELY NOT PINNED, AND ITS EARLIER PRESENCE WAS A DEFECT THAT WOULD HAVE
 // REFUSED THE VERY JOB THIS ADMITS. GitHub documents that claim as "For jobs using a reusable
