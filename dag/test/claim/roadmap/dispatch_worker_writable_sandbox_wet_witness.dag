@@ -3251,7 +3251,18 @@ fn wet_inner_exit_status_poll(instance_root: String, attempt_key: String, seen: 
             // after 240 beats: "Unrunnable" told the reader nothing about what had been waited for. The
             // bound itself is unchanged -- this only says out loud what it was waiting for.
             let _ = wet_stage(
-              stage: join(["exit-record-wait-gave-up: still no record at ", attempt_exit_inbox_dir(instance_root: instance_root), " for attempt ", attempt_key, " after ", to_string(wait_beats), " beats"], ""),
+              // TWO SPELLINGS, because TWO conditions reach this same arm. A wait that ran out of its budget
+              // is a capability gap; a site that declared NO wait (`wait_beats: 0`) is asking "is the record
+              // there right now?", and its empty answer is the designed condition the prior-run claim
+              // asserts. One sentence for both would let a reader -- or the adjudication -- read a designed
+              // refusal as a timeout, which is the misattribution this whole change exists to remove.
+              stage: join([
+                if wait_beats > 0 { "exit-record-wait-gave-up: still no record at " } else { "exit-record-no-wait-absent: no record at " },
+                attempt_exit_inbox_dir(instance_root: instance_root),
+                " for attempt ",
+                attempt_key,
+                if wait_beats > 0 { join([" after ", to_string(wait_beats), " beats"], "") } else { " (this site declares no wait: an empty answer is the designed condition)", "" },
+              ], ""),
               ok: false,
             )
             // A WAIT THAT EXHAUSTS ITS BUDGET IS A CAPABILITY GAP, NOT A REFUSAL WITH A CAUSE: the record
@@ -4023,7 +4034,12 @@ test fn a_unit_that_exited_without_its_exit_record_refuses_before_the_probe_chec
     // any other false the leg can produce. The trail is shared across the batch, and the line is keyed
     // by this claim's own instance root, so it cannot be another claim's line.
     && (match Filesystem.Read(path: wet_stage_trail as String) {
-         r => r.success && string_contains(s: r.content, pattern: join(["unit exited before its exit record: no record at ", inbox, " for attempt ", unit.attempt_key], ""))
+         // THE SPELLING THE CHECK ACTUALLY WRITES. This conjunct is what caught the rename: when the check's
+         // stage was re-spelled to `exit-record-check-absent:` (above, so a trail line names one call site),
+         // this readback kept searching for the OLD sentence and the claim went false on a corpus where the
+         // refusal had happened exactly as designed. A trail-text assertion and the stage it asserts must be
+         // changed together, or the claim tests a sentence that no longer exists.
+         r => r.success && string_contains(s: r.content, pattern: join(["exit-record-check-absent: no record at ", inbox, " for attempt ", unit.attempt_key], ""))
        })
     // THE READBACK DISCRIMINATES: the same check, with the record planted for the SAME identity, is
     // true. Without this arm the claim would be satisfied by a check that always refuses.
