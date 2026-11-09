@@ -848,14 +848,14 @@ data durable_request_attempt_integration: IntegrationConcern = IntegrationConcer
   kind: SuspectedCapabilityGap {
     model: decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "AttemptState"),
     requirement: "Connect durably accepted request identity to fenced attempt minting and recovery without a second live attempt or either direct launch bypass.",
-    standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.plans.durable_work_handoff", decl_name: "durable_work_handoff_plan") } },
+    standing: RequirementEstablished { by: CitesHistorical { declaration: HistoricalDeclaration { at: "6765aefcf11e8a384d425f6fd7f6ad6b30aed3f3" as CommitSha, module_path: "gunbc.plans.durable_work_handoff", decl_name: "durable_work_handoff_plan" } } },
   },
   affected: FreeSemigroup { head: decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "AttemptState"), tail: [decl_ref(module_path: "gunbc.durable_handoff_host", decl_name: "HostAcceptedRequest"), decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_provide")] },
   question: "Connect durably accepted request identity to fenced attempt minting and recovery without a second live attempt or either direct launch bypass.",
   sightings: FreeSemigroup {
     head: ConcernSighting {
       revision: "dc2b59fd53bb3b57da5e49bc2173d96c1e297711",
-      evidence: FreeSemigroup { head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.plans.durable_work_handoff", decl_name: "durable_work_handoff_plan") }, tail: [] },
+      evidence: FreeSemigroup { head: CitesHistorical { declaration: HistoricalDeclaration { at: "6765aefcf11e8a384d425f6fd7f6ad6b30aed3f3" as CommitSha, module_path: "gunbc.plans.durable_work_handoff", decl_name: "durable_work_handoff_plan" } }, tail: [] },
       account: "PR 1 records a required integration, not an executed capability. The owning cut must reuse the existing contract and retain discriminating execution evidence. Program owner quick-newt-573 dispatches implementation; bold-dove-340 owns request/attempt lifecycle.",
     },
     tail: [],
@@ -872,14 +872,14 @@ data execution_grant_composition_integration: IntegrationConcern = IntegrationCo
   kind: SuspectedCapabilityGap {
     model: decl_ref(module_path: "product.fabric.execution", decl_name: "ExecutionGrant"),
     requirement: "Realize the existing all-ledgers-or-none grant contract over cell and host reservations plus the executor permit; reservation success alone never launches.",
-    standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.plans.durable_work_handoff", decl_name: "durable_work_handoff_plan") } },
+    standing: RequirementEstablished { by: CitesHistorical { declaration: HistoricalDeclaration { at: "6765aefcf11e8a384d425f6fd7f6ad6b30aed3f3" as CommitSha, module_path: "gunbc.plans.durable_work_handoff", decl_name: "durable_work_handoff_plan" } } },
   },
   affected: FreeSemigroup { head: decl_ref(module_path: "product.fabric.execution", decl_name: "ExecutionGrant"), tail: [decl_ref(module_path: "gunbc.fabric.fabric_control_plane", decl_name: "CellReservation"), decl_ref(module_path: "gunbc.runner.runner_revision_job_launch", decl_name: "revision_job_launch_plan")] },
   question: "Realize the existing all-ledgers-or-none grant contract over cell and host reservations plus the executor permit; reservation success alone never launches.",
   sightings: FreeSemigroup {
     head: ConcernSighting {
       revision: "dc2b59fd53bb3b57da5e49bc2173d96c1e297711",
-      evidence: FreeSemigroup { head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.plans.durable_work_handoff", decl_name: "durable_work_handoff_plan") }, tail: [] },
+      evidence: FreeSemigroup { head: CitesHistorical { declaration: HistoricalDeclaration { at: "6765aefcf11e8a384d425f6fd7f6ad6b30aed3f3" as CommitSha, module_path: "gunbc.plans.durable_work_handoff", decl_name: "durable_work_handoff_plan" } }, tail: [] },
       account: "PR 1 records a required integration, not an executed capability. The owning cut must reuse the existing contract and retain discriminating execution evidence. Program owner quick-newt-573 dispatches implementation; bold-dove-340 owns request/attempt lifecycle.",
     },
     tail: [],
@@ -896,14 +896,14 @@ data execution_receipt_outcome_binding: IntegrationConcern = IntegrationConcern 
   kind: SuspectedCapabilityGap {
     model: decl_ref(module_path: "product.fabric.execution", decl_name: "Receipt"),
     requirement: "Bind admitted domain outcome and terminal evidence to canonical source and work identity in the existing attempt-and-lease receipt contract.",
-    standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.plans.durable_work_handoff", decl_name: "durable_work_handoff_plan") } },
+    standing: RequirementEstablished { by: CitesHistorical { declaration: HistoricalDeclaration { at: "6765aefcf11e8a384d425f6fd7f6ad6b30aed3f3" as CommitSha, module_path: "gunbc.plans.durable_work_handoff", decl_name: "durable_work_handoff_plan" } } },
   },
   affected: FreeSemigroup { head: decl_ref(module_path: "product.fabric.execution", decl_name: "Receipt"), tail: [decl_ref(module_path: "product.fabric.work", decl_name: "SourceManifestRef"), decl_ref(module_path: "gunbc.compute.work_request", decl_name: "WorkOutcome")] },
   question: "Bind admitted domain outcome and terminal evidence to canonical source and work identity in the existing attempt-and-lease receipt contract.",
   sightings: FreeSemigroup {
     head: ConcernSighting {
       revision: "dc2b59fd53bb3b57da5e49bc2173d96c1e297711",
-      evidence: FreeSemigroup { head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.plans.durable_work_handoff", decl_name: "durable_work_handoff_plan") }, tail: [] },
+      evidence: FreeSemigroup { head: CitesHistorical { declaration: HistoricalDeclaration { at: "6765aefcf11e8a384d425f6fd7f6ad6b30aed3f3" as CommitSha, module_path: "gunbc.plans.durable_work_handoff", decl_name: "durable_work_handoff_plan" } }, tail: [] },
       account: "PR 1 records a required integration, not an executed capability. The owning cut must reuse the existing contract and retain discriminating execution evidence. Program owner quick-newt-573 dispatches implementation; bold-dove-340 owns request/attempt lifecycle.",
     },
     tail: [],
@@ -920,7 +920,7 @@ data provider_materializes_source_twice: IntegrationConcern = IntegrationConcern
   kind: SuspectedCapabilityGap {
     model: decl_ref(module_path: "gunbc.fabric.fabric_source_snapshot", decl_name: "snapshot_manifest_identity"),
     requirement: "Derive a clean commit's source identity from the executor's one materialization instead of a throwaway checkout beside the run checkout.",
-    standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.plans.durable_work_handoff", decl_name: "durable_work_handoff_plan") } },
+    standing: RequirementEstablished { by: CitesHistorical { declaration: HistoricalDeclaration { at: "6765aefcf11e8a384d425f6fd7f6ad6b30aed3f3" as CommitSha, module_path: "gunbc.plans.durable_work_handoff", decl_name: "durable_work_handoff_plan" } } },
   },
   affected: FreeSemigroup { head: decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_resolve_subject"), tail: [decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_run_leased")] },
   question: "The clean-tree adapter hashes a throwaway detached worktree of the commit, then the lease flow checks the commit out again for the run; the layout is keyed by the identity, so the identity cannot come from the run checkout. Collapse to one materialization.",

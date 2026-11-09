@@ -68,7 +68,7 @@ import std.algebra { length }
 // preflight, the three public routes, the effective principal, the observed host, and the
 // observation window -- and the fact population is TOTAL: each member is a typed standing with its
 // own refusal arms, none is optional, and the verdict fold consults all of them before deciding.
-// The ruling (docs/plans/roadmap-launch-mvp-plan.md, RLM-2 sections 3 and 9) rejected the earlier
+// The ruling (docs/plans/roadmap-launch-mvp-plan.md (deleted 2026-11-08), RLM-2 sections 3 and 9) rejected the earlier
 // `Complete | Incomplete { first blocking member }` because it discarded sibling evidence after the
 // first refusal and made diagnosis depend on evaluation order; here `first_blocker` is a
 // presentation projection over a nonempty blocker list, and `further_blockers` is the rest of that

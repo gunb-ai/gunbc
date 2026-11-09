@@ -27,7 +27,7 @@ import std.durable_compare_and_set { CasGeneration, CasStoreFailure, CasSlotObse
 //
 // Transport is not a fact of this module (gunbc.design_argument::single_authority): a file store, an ssh-reached verb and a later
 // R2 tier are handlers bound to these shapes. Replication and chunking are not modeled here; the
-// program is docs/plans/fabric-storage.md.
+// program is docs/plans/fabric-storage.md (deleted 2026-11-08).
 
 // AN OBJECT REF IS MINTED FROM THE BYTES IT NAMES, and from nothing else a caller supplies. The
 // unverified content/digest pairing std.durable_compare_and_set declares as a boundary obligation

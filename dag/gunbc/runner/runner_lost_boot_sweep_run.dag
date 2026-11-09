@@ -84,7 +84,7 @@ import gunbc.runner.runner_jit_deregistration {
 // through the managed-host join and cannot be stated, so evidence for a host other than the one reached is
 // unwritable; see lost_boot_sweep_effect_pairing_frontier for what remains.
 //
-// TWO ARMS, ONE ADMISSION (gunbc.plans.mtcollins1_ci_service_legs F4). The dry run (fleet-converge mode
+// TWO ARMS, ONE ADMISSION (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) F4). The dry run (fleet-converge mode
 // service_runner_lost_boot_sweep_dry_run, lost_boot_sweep_dry_run_wet) admits the current boot, plans against the real
 // organization roster and writes the admitted boot and the selection to its receipt; it never reaches
 // deregister_selection. The deleting arm (service_runner_lost_boot_sweep, lost_boot_sweep_wet) refuses every dispatch
@@ -322,7 +322,7 @@ fn lost_boot_sweep_admission() -> LostBootSweepAdmission {
   }
 }
 
-// THE DELETING ARM IS GATED BY DECLARATION (gunbc.plans.mtcollins1_ci_service_legs F4). It refuses every dispatch before
+// THE DELETING ARM IS GATED BY DECLARATION (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) F4). It refuses every dispatch before
 // any read until merry-fox-82 relays the operator's go after the dry run has recorded its receipt, and the go is a
 // change to this row naming its ruling, never an input of the run. While it is gated the mode reaches no host and
 // deletes nothing, so it consumes no fleet SSH key; admitting it moves the mode to FleetSshKeyConsumed with it.

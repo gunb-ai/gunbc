@@ -8,7 +8,7 @@ import gunbc.http_ingress { HttpIngressAdmission, http_ingress_binding }
 import gunbc.auth.approval_device_crypto_serve { approval_device_crypto_handle }
 import gunbc.auth.approval_device_crypto_realization { device_crypto_native_ingress }
 
-// THE DEVICE-CRYPTO VERIFIER'S DEPLOYMENT BINDING (gunbc.plans.converged_ingress M2a). The handler is an
+// THE DEVICE-CRYPTO VERIFIER'S DEPLOYMENT BINDING (gunbc.plans.converged_ingress (deleted 2026-11-08) M2a). The handler is an
 // ordinary module (gunbc.auth.approval_device_crypto_serve); this binding names it and selects its NATIVE
 // realization: the row below names the program descriptor (gunbc.auth.approval_device_crypto_realization
 // device_crypto_native_ingress), and the emitter renders a main that calls this exact constructor with its

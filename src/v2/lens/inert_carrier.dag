@@ -24,7 +24,7 @@ fn inert_row(unit: String, reason: String) -> FrontierRow {
 // the unreferenced class dissolves the other way -- delete the carrier, or write the
 // missing test and let it land here -- so folding it in would file hundreds of rows
 // each asserting a test that does not exist. It is owned by the still-unbuilt
-// run-root reachability cut named in gunbc.plans.inert_layer_lens (v2.lens.inert_layer),
+// run-root reachability cut named in gunbc.plans.inert_layer_lens (deleted 2026-11-08) (v2.lens.inert_layer),
 // whose retirement condition already carries it; this lens is not its next rung and
 // must not be read as covering it.
 //

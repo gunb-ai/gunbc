@@ -137,13 +137,13 @@ type HostUnitListenerWait
   = HostUnitListenerReady { wait: SystemdSummaryPrintingWait }
   | HostUnitListenerUnbuilt { cause: NonEmptyStr }
 
-// WHO ENDS THE LISTENER'S LIFE (gunbc.plans.mtcollins1_ci_service_legs F3). A service slot's listener is a separate
+// WHO ENDS THE LISTENER'S LIFE (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) F3). A service slot's listener is a separate
 // transient unit its controller unit waits on, so a stop of the controller -- a unit stop or the host's shutdown --
 // must reach the listener FIRST: PartOf= propagates the controller's stop to the listener, and After= orders the
 // listener's stop before the controller's, so the controller's ExecStop runs only once the listener has ended. The
 // attempt slot's listener has no owning unit on the host; its driver ends it and tears it down.
 //
-// A LISTENER THAT ENDS ITS BOOT (gunbc.plans.mtcollins1_ci_service_legs S7, merry-fox-82's BMC-observer decision of
+// A LISTENER THAT ENDS ITS BOOT (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) S7, merry-fox-82's BMC-observer decision of
 // 2026-10-30): on a RAM-only image the boot IS the attempt's environment, so the teardown is the boot ending, and the
 // manager ends it -- SuccessAction= and FailureAction= both name the end action, so the listener exiting 0, exiting
 // nonzero, being killed and failing to start all power the host off. That is the rule

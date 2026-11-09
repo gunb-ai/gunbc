@@ -52,7 +52,7 @@ import gunbc.host.srv1_serving_startup_receipt { srv1_serving_startup_reading }
 // and says so.
 type ServingWeightsSource
   = WeightsPlacedOnObjectStore { placement: RentedWeightsPlacement }
-  // THE HUGGING FACE PIN, the generalization gunbc.plans.flex_supplier_generalization
+  // THE HUGGING FACE PIN, the generalization gunbc.plans.flex_supplier_generalization (deleted 2026-11-08)
   // generalization_55 declared ("over a Hugging Face repo at a pinned revision... Flash-Next moves
   // from WeightsNamedUnpinned to the pinned revision observed on the image"). The pin is the
   // publisher's own manifest row (extdeps.huggingface.hub HubCheckpointManifest: revision, shard

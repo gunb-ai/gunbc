@@ -159,7 +159,7 @@ fn render_runner_image_attempt(a: RunnerImagePublishAttempt) -> String {
 
 data mtcollins1_runner_image_receipt_path: String = "target/mtcollins1-runner-image.txt"
 
-// THE BAKED RELEASE IS BUILT BY THIS RUN (gunbc.plans.mtcollins1_ci_service_legs F1; merry-fox-82, 2026-10-27, decision
+// THE BAKED RELEASE IS BUILT BY THIS RUN (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) F1; merry-fox-82, 2026-10-27, decision
 // A and its conditions; 2026-11-07, decision B on #15335): on this run's own aarch64 fleet runner, at the run's checkout
 // (GITHUB_SHA), the release-locus tree is staged through the one tree install in its STAGED realm
 // (gunbc.host.host_effect_realize tree_install_in_realm, TreeInstallStaged: unelevated, confined to the staging root,
