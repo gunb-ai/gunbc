@@ -17,6 +17,7 @@ import gunbc.harness.harness_turn {
   harness_supervisor_receipt_decode, HarnessSupervisorRead, SupervisorReadDecoded, SupervisorReadUnreadable,
   harness_nested_usage_lines, harness_supervision_observation_text, harness_supervision_message_bound,
   harness_supervision_observed_message_cap,
+  harness_pause_action, HarnessPauseAction, PauseContinues, PauseSteers, PauseConvenesSupervisor, PauseStops,
 }
 import gunbc.roadmap.roadmap_supervisor { SupervisorVerdictReceipt, VerdictSteer, VerdictStuck, VerdictPlanDefect, supervisor_verdict_text }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string }
@@ -197,3 +198,35 @@ test fn a_long_round_is_observed_by_its_capped_tail() -> Bool {
     && !observed.contains("\"m79\"")
 }
 
+
+fn acted_on(text: String) -> HarnessPauseAction? {
+  match harness_supervision_verdict_decode(text: text) {
+    SupervisionVerdictUnreadable { cause: _ } => none
+    SupervisionVerdictDecoded { verdict } => Present { value: harness_pause_action(verdict: verdict) }
+  }
+}
+
+// THE IN-SESSION SUPERVISOR'S VERDICT IS READ BACK AND ACTED ON (review 91801, composition seam). The
+// text a check writes to its verdict file is decoded and becomes the action harness_pause_apply takes:
+// aligned continues, misaligned steers with the direction verbatim (and the steer reaches the worker's
+// messages), extremely-misaligned convenes the supervisor, catastrophically-misaligned stops with the
+// reason. RED: an unreadable verdict yields no action at all, so it can never pass as aligned.
+// The real supervised session over a provider round is owed to a wet host (the #15804 body).
+test fn a_written_verdict_is_read_back_and_acted_on() -> Bool {
+  (match acted_on(text: "\{\"kind\": \"aligned\"}") { Present { value: PauseContinues } => true  _ => false })
+    && (match acted_on(text: "\{\"kind\": \"misaligned\", \"direction\": \"add the regression test first\"}") {
+      Present { value: PauseSteers { direction } } => {
+        let before = harness_tool_result_messages_json(shape: OpenAiChatCompletionsShape, results: [HarnessToolResult { tool_use_id: "call-1", text: "x", is_error: false }], steps_remaining: 0, countdown: false)
+        let steered = harness_messages_with_steer(shape: OpenAiChatCompletionsShape, messages: before, steer: direction)
+        direction == "add the regression test first"
+          && (match steered.last() { Present { value: m } => serialize_json(v: m).contains("add the regression test first")  Absent => false })
+      }
+      _ => false
+    })
+    && (match acted_on(text: "\{\"kind\": \"extremely-misaligned\", \"direction\": \"off contract\"}") { Present { value: PauseConvenesSupervisor } => true  _ => false })
+    && (match acted_on(text: "\{\"kind\": \"catastrophically-misaligned\", \"reason\": \"deletes the gate\"}") {
+      Present { value: PauseStops { verdict: StoppedByAlignmentCheck { verdict: _ }, detail } } => detail == "deletes the gate"
+      _ => false
+    })
+    && (match acted_on(text: "\{\"kind\": \"looks-fine\"}") { Absent => true  Present { value: _ } => false })
+}
