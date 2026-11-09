@@ -68,7 +68,7 @@ fn shrink() -> ReplacementIncoming { ShrunkOnly }
 
 fn registration(slot: String, online: Bool) -> GitHubSelfHostedRunnerRegistration {
   GitHubSelfHostedRunnerRegistration {
-    id: 40 as Nat,
+    id: 40,
     name: slot as NonEmptyStr,
     status: if online { GitHubRunnerOnline } else { GitHubRunnerOffline },
     busy: false,
