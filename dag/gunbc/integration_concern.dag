@@ -798,6 +798,13 @@ data run_closure_typecheck_exceeds_eval_demand: IntegrationConcern = Integration
         tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "realization_profile_diagnostic") }],
       },
       account: "Public-corpus measurement of this floor at the fleet_converge_plan_wet acceptance entry, before the declaration-grain cut landed on this branch: compile.reconcile 11 minutes, whole run 931 s, peak RSS 16.5 GiB, with 3318 closure modules realized in full while only 796 of them held a demanded function body and the demanded declarations were 4915 of 49699 (about 10 percent). After the cut (the same entry, same machine): reconcile 9 minutes, run 776 s, peak RSS 11.0 GiB, zero realization gaps. The wall dropped less than the realized fraction because the per-module frame -- context assembly, parent merging, provider settlement over the dense closure -- is still paid for all 3318 modules; that residue is what stays open under this concern now that bodies and declarations are demanded.",
+    }, ConcernSighting {
+      revision: "61b01423d11",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "realization_of") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "typecheck_module_demanded") }],
+      },
+      account: "Per-phase profile of the 9-minute residue (a temporary instrumented run: atomic timers around the census build, the realization pass, the first-pass per-module fold and the per-module machinery inside it; counters reverted, never committed). The first-pass realize_module fold is about 450 s of the roughly 540 s reconcile, and inside it build_module_context alone is 308 s -- paid by all 3324 modules, 2309 of which carry ZERO realized declarations. The census is 11.6 s and the realization pass 3.6 s: corpus-proportional but not the floor. Cutting the empty-realization modules' frame (context, analysis, audit over no inputs; the type env still builds so their own import diagnostics keep firing) took the same entry to reconcile 4 minutes, whole run about 6 minutes, peak RSS 9.7 GiB, zero realization gaps. What still stays open under this concern: the per-module frame of the 1015 modules that DO carry realized declarations, and the census plus realization passes.",
     }],
   },
   disposition: Open,
