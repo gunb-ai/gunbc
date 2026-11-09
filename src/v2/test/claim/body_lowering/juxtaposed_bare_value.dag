@@ -4,30 +4,32 @@ module v2.test.claim.body_lowering.juxtaposed_bare_value
 // the live instance: dag/gunbc/harness/harness_tool_kind.dag's `all_harness_tools` was written as two
 // juxtaposed bracketed list literals, so the fold kept ONE list and `harness_execute_tool_use` refused
 // the tools the dropped list carried (the dispatcher red), and `harness_tool_use_item_events` mislabelled
-// them in the roadmap event stream. This row is the STANDING CONTROL on the v2 path: the load-bearing v2
+// them in the roadmap event stream. This file is the STANDING CONTROL on the v2 path: the load-bearing v2
 // body lowering refuses a fn body whose statement sequence leaves a non-final bare value, with the typed
 // located cause `body_lowering_reason_statement_precedes_without_binding` -- never a silent last-wins.
 //
-// THE DISCRIMINATOR IS THE FIRST CLAIM. Two juxtaposed bracketed literals are a two-statement body (the
-// grammar makes a next-line `[` a new statement, not an index suffix --
-// v2.extdeps.languages.dag::dag_grammar_index_lbracket_head_expr guards `not_predicate(after_line_break)`
-// on the `[`), so the first list is a bare value with a successor and must refuse. The REDs are juxtaposed
-// bracketed literals and juxtaposed bare NAMES (the rule is not list-specific). The positive controls are a
-// single-statement body and a `let`-bound value followed by its tail (the non-final statement IS a binding):
-// both lower, so the refusal is specific to a bare value that precedes another statement. They mirror the
-// sibling's accepted Int shapes (proven conserved by conserved_normalize); the bracketed-literal instance is
-// carried by the REDs, which refuse at LOWERING before conservation. The paired cause at a node (not a
-// silent fold) is the second claim.
+// THE DISCRIMINATOR. Two juxtaposed bracketed literals are a two-statement body (the grammar makes a
+// next-line `[` a new statement, not an index suffix -- v2.extdeps.languages.dag::
+// dag_grammar_index_lbracket_head_expr guards `not_predicate(after_line_break)` on the `[`), so the first
+// list is a bare value with a successor and must refuse; the refusal is located at a node, not a silent
+// fold. A second red uses bare NAMES instead of a list, showing the rule is not list-specific.
+//
+// NO ACCEPTANCE CONTROLS LIVE HERE (minimize_redundancy). The "the refusal is not over-broad" axis -- a
+// single-statement body and a `let`-then-tail body still ACCEPT -- is modelled ONCE by the sibling
+// standing control v2.test.claim.body_lowering.statement_let_bind, whose
+// `single_statement_body_unchanged_holds` and `statement_let_then_reference_lowers_holds` are the green
+// positive controls; they are cited by symbol in the row's `evidence` rather than copied here. Copying the
+// same fixtures through the same conserved_normalize route would model the concept twice.
 //
 // WHY THESE ARE GREEN AT BASE AND STAY GREEN. v2 body lowering already refuses this shape (the statement
 // authority v2.compiler.body_lowering_fold::body_lower_stmt_spine answers a statement that precedes
-// another with `statement_precedes_without_binding`), exactly as the sibling standing control
-// v2.test.claim.body_lowering.statement_let_bind::unbound_statement_prefix_refuses_holds pins the same
-// cause for the bare non-list literals `{ 1 \n 2 }`. These rows are the regression lock that the refusal
-// stays honest -- a lowering that reverted to keeping one value and dropping the other would fail both
-// the refusal cells AND the accept controls. The class's open path is the v1 seed fold (still silent),
-// recorded on the row gunbc.recurring_failure_mode::juxtaposed_bare_value_lowers_to_the_last_at_body_lowering;
-// its claim (red at base, green after the seed refuses) is the follow-up, not this cell.
+// another with `statement_precedes_without_binding`), exactly as the sibling's
+// `unbound_statement_prefix_refuses_holds` pins the same cause for the bare non-list literals `{ 1 \n 2 }`.
+// These rows are the regression lock that the refusal stays honest -- a lowering that reverted to keeping
+// one value and dropping the other would fail them. The class's open path is the v1 seed fold (still
+// silent), recorded on the row
+// gunbc.recurring_failure_mode::juxtaposed_bare_value_lowers_to_the_last_at_body_lowering; its claim (red at
+// base, green after the seed refuses) is the follow-up, not this cell.
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
@@ -36,47 +38,28 @@ import v2.compiler.reference_conservation_admission { conserved_normalize, conse
 import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
 import v2.std.node { symbol_lexeme }
 
+// A claim cell's live_tree_disposition answers the live-tree audit for this module: it reads only source
+// inputs, never the ambient world (v2.std.diagnostic::Diagnostic; v2.std.node::symbol_lexeme).
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// The observed instance: two juxtaposed bracketed list literals. No external references, so the refusal
-// can only come from the statement sequence, not from a dropped reference.
-data juxtaposed_lists_source: String = "module m\nfn juxtaposed_lists() -> List<Int> {\n  [1, 2, 3]\n  [4, 5]\n}\n"
+// THE RED: a fn body whose two statements are juxtaposed bracketed literals. Both are List<Int> so the
+// only defect is the juxtaposition (the RED must not lean on a second one), and the refusal reason must be
+// the non-final-bare-value cause, not a type error. No external references: it lowers in isolation.
+data juxtaposed_lists_source: String = "module m.t\nfn juxtaposed_lists() -> List<Int> {\n  [1, 2, 3]\n  [4, 5]\n}\n"
 
-// A single-value body: no successor, so no non-final bare value. Must lower (accept). Mirrors the sibling's
-// accepted Int shape; the bracketed-literal instance is carried by the REDs.
-data single_literal_source: String = "module m.t\nfn f() -> Int {\n  1\n}\n"
+// THE SAME DEFECT WITH BARE NAMES: two juxtaposed value references, so the rule is not specific to bracketed
+// literals. `a` is an Int parameter and the tail is Int, so the body is well typed except for juxtaposition.
+data juxtaposed_names_source: String = "module m.t\nfn juxtaposed_names(a: Int) -> Int {\n  a\n  a\n}\n"
 
-// A `let`-bound value followed by its tail: the non-final statement is a binding, which is exactly what
-// must keep lowering. Must lower (accept) -- this is what stops the refusal from being over-broad.
-data let_then_tail_source: String = "module m.t\nfn f() -> Int {\n  let x = 1\n  x\n}\n"
-
-// Two juxtaposed bare NAMES (a bound param read as a value, then the tail): the same rule, not
-// list-specific. Must refuse under the same cause.
-data juxtaposed_names_source: String = "module m\nfn juxtaposed_names(a: Int) -> Int {\n  a\n  a\n}\n"
-
-// Each fixture reaches conserved_normalize through its OWN NULLARY subject fn, exactly as the sibling
-// v2.test.claim.body_lowering.statement_let_bind does. A nullary pure subject producer is the
-// production-fed grain whose measured population conserved_normalize needs (reference_conservation_accepted
-// demands a nonzero conserved population with no unmeasured); a body handed to a SHARED parameterised
-// subject builder is not enrolled, so conserved_normalize sees no measured population and refuses an
-// otherwise-accepted body with conservation_reason_unmeasured. That is why the accepted controls use nullary
-// subjects. The REDs are insensitive to this: they read the LOWERING refusal off subject.normalized (the
-// statement authority body_lower_stmt_spine refuses before conservation runs), which is why they stayed
-// green while the accepts came back unmeasured.
+// The subject for each fixture, built directly from its inline text -- no external references to resolve,
+// so the subject is self-contained (v2.compiler.reference_conservation_admission::
+// conservation_subject_of_text). Each is nullary, the production-fed grain the normalize route is paid once.
 fn juxtaposed_lists_subject() -> ReferenceConservationSubject {
-  conservation_subject_of_text(path: "juxtaposed_literal_statement_subject", text: juxtaposed_lists_source)
+  conservation_subject_of_text(path: "juxtaposed_bare_value_subject", text: juxtaposed_lists_source)
 }
 
 fn juxtaposed_names_subject() -> ReferenceConservationSubject {
-  conservation_subject_of_text(path: "juxtaposed_literal_statement_subject", text: juxtaposed_names_source)
-}
-
-fn single_literal_subject() -> ReferenceConservationSubject {
-  conservation_subject_of_text(path: "juxtaposed_literal_statement_subject", text: single_literal_source)
-}
-
-fn let_then_tail_subject() -> ReferenceConservationSubject {
-  conservation_subject_of_text(path: "juxtaposed_literal_statement_subject", text: let_then_tail_source)
+  conservation_subject_of_text(path: "juxtaposed_bare_value_subject", text: juxtaposed_names_source)
 }
 
 // THE RED / STANDING CONTROL. A body of two juxtaposed bracketed literals is a two-statement body whose
@@ -110,24 +93,5 @@ test fn juxtaposed_bare_names_refuse_under_the_same_cause_holds() -> Bool {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: ds } =>
       symbol_lexeme(sym: ds.head.reason) == "body_lowering_reason_statement_precedes_without_binding"
-  }
-}
-
-// POSITIVE CONTROL. A single-statement body has no successor, so it is not a non-final bare value; it must
-// lower, else the refusal is over-broad. Mirrors the sibling accepted shape (`fn f() -> Int { 1 }`).
-test fn a_single_literal_body_is_accepted_holds() -> Bool {
-  match conserved_normalize(subject: single_literal_subject()) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-// POSITIVE CONTROL. A `let`-bound value followed by its tail is the bind-and-continue form: the non-final
-// statement is a binding, so it must keep lowering to the tail. This is the shape the rule must NOT touch.
-// Mirrors the sibling accepted shape (`fn f() -> Int { let x = 1  x }`).
-test fn a_let_then_tail_body_is_accepted_holds() -> Bool {
-  match conserved_normalize(subject: let_then_tail_subject()) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
   }
 }
