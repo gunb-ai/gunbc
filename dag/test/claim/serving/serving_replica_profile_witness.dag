@@ -207,7 +207,7 @@ test fn srv1_ladder_is_l1_then_l2_with_l2_inclusive() -> Bool {
     }
     && match rungs.skip(n: 1).first() {
       Present { value: r } => match r {
-        WarmSwapRestores { tier: SwapTierDisk, durability: SurvivesProcessRestart, sharing: Present { value: RungInclusiveOfHotter } } => true
+        WarmSwapRestores { tier: SwapTierDisk, durability: SurvivesProcessRestart, sharing: RungInclusiveOfHotter } => true
         _ => false
       }
       Absent => false

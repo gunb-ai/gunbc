@@ -65,7 +65,7 @@ import gunbc.serving.serving_layout {
 }
 import gunbc.serving.serving_warm_admission { ServingWarmAdmission }
 import gunbc.serving.serving_capacity_anchor {
-  GrantAdmits, GrantUnmodeled, RungInclusiveOfHotter, ServingCapacityAnchor, ServingCapacityShape,
+  GrantAdmits, GrantUnmodeled, RungAdds, RungInclusiveOfHotter, ServingCapacityAnchor, ServingCapacityShape,
   ServingRetentionGrant, ServingRungSharing, ServingSwapDurability, ServingSwapMechanism, ServingSwapTier,
   ServingWarmSwap, SwapByEngineEviction, SwapTierDisk, SwapTierHostRam, SurvivesProcessRestart,
   WarmSwapRestores,
@@ -555,7 +555,8 @@ fn srv1_replica_profile_as(
         tier: SwapTierHostRam,
         mechanism: SwapByEngineEviction,
         durability: LostWithProcess,
-        sharing: Absent,
+        // The hottest rung: nothing above it to share with, so it adds to the empty tally.
+        sharing: RungAdds,
         // The same cited retrieve p50 as the disk rung below: srv1's serve.log logs LMCache's RETRIEVE
         // completions without naming the tier that served them, so both rungs cite this one reading rather
         // than each claiming a tier-specific number nobody read.
@@ -576,7 +577,7 @@ fn srv1_replica_profile_as(
         mechanism: SwapByEngineEviction,
         durability: SurvivesProcessRestart,
         // Inclusive of the hotter rung (see above), stated rather than left to the default.
-        sharing: Present { value: RungInclusiveOfHotter },
+        sharing: RungInclusiveOfHotter,
         restore: millisecond(count: 156),
         cache: srv1_vllm_disk_tier,
         slots: Absent,
