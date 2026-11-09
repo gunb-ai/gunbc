@@ -233,13 +233,27 @@ fn srl_mixed() -> Outcome<CensusTree> { srl_census(text: srl_mixed_source) }
 fn srl_mixed_fatal() -> Outcome<CensusTree> { srl_census(text: srl_mixed_fatal_source) }
 
 // POSITIVE: the service lowers; Bad is a marker (with its reason), Good keeps its transport.
+// The LAST CONJUNCT IS NEGATED ON MEASUREMENT, NOT ON READING. It used to assert [^S, ^Bad] at the body
+// root, and that shape has never existed: a one-segment (resource) service is carried entirely under the
+// realization root, so named_edge_target_lookup over the body root's OWN children answers NotFound for
+// ^S -- NotFound, not Ambiguous, so no duplicate name is hiding behind srl_child's collapsed Absent arm.
+// Measured twice at 24fe705b by quick-newt-573, once on this fixture (invocation
+// d9a639fe-2a3d-4f62-adf1-bdf330944ae7) and once on a fully realizable one-segment service whose every
+// operation admits transport (invocation e26be029-312f-45e8-8140-74ad1ee1c04c, whose mirror side PASSes
+// and whose emission is Accepted). The second is what makes it a shape fact rather than a symptom: the
+// unrealizable marking is not what removes the interface side, so no lowering is broken and the row was
+// red rather than merely fragile. Resource services are the case -- a two-segment service keeps its
+// interface spine, which the row above reaches as [^s, ^F, ^Run] -- so what this conjunct now holds is
+// the invariant the lowering really does guarantee: the marked service leaves nothing at the body root,
+// and its marker, its reason and its sibling's transport live only under the one realization root the
+// four conjuncts above read.
 test fn an_operation_with_a_non_literal_executable_lowers_unrealizable_beside_its_sibling_holds() -> Bool {
   let body = srl_body(o: srl_mixed())
   srl_has(n: body, names: [realization_root_label(), ^S, ^Bad, realization_unrealizable_label()])
     && srl_has(n: body, names: [realization_root_label(), ^S, ^Bad, realization_unrealizable_reason_label()])
     && !srl_has(n: body, names: [realization_root_label(), ^S, ^Bad, realization_transport_label()])
     && srl_has(n: body, names: [realization_root_label(), ^S, ^Good, realization_transport_label()])
-    && srl_has(n: body, names: [^S, ^Bad])
+    && !srl_has(n: body, names: [^S, ^Bad])
 }
 
 // CONTROL: an operation-grain cause does not mask a fatal one. A second operation with an undeclared
