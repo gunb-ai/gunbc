@@ -1,4 +1,4 @@
-module gunbc.test.claim.runner.runner_replacement_readback_witness
+module test.claim.runner.runner_replacement_readback_witness
 
 // THE WITNESS FOR THE TWO-PHASE POPULATION MOVE: a required retiree's drain is a function of its
 // replacement's READBACK, and nothing else. The claims are ordered the way the failure would be discovered:
