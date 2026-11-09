@@ -52,3 +52,9 @@ Maintained by silent-bee-845, the daily integration manager. CI's required job (
 - INCOMPLETE: durable_append_log 25/31; the_raw_events_initializer_is_gone hangs or runs very slowly at the 45-minute limit.
 - UNOBSERVED/wet: append_log_srv1_host_shape 4, belt_actuate 9, and the four *_wet witnesses.
 - LATENT on main (from the #15993 skip): v1 infer has two disagreeing inline copies of the fold-carrier rule. In the seed mirror, refined_call_fold_acc_type carries the generic test and refined_fold_acc_type does not. #15993's fixtures do not go red on main. Wanted: a fresh, fixture-first PR (a fixture red on main first, then the unification), with its claim run at a head that carries the heal-published mirror.
+
+## CLAIM-CORPUS DRIFT on main (pending one lane, after #15363's reason read-out)
+- statement_if_lowering: REFUSED at load, `:120` Node vs NodeOccurrence. Same class as #15363's `:231` (a.at -> a.at.node).
+- parse_test_else_less_if_value_category: REFUSED at load (effect-summary/tokenize callee identity).
+- return_tail_position: 3 PASS / 14 FAIL; fixtures resolve-refused upstream.
+- let_match_early_return: 12/18 false; same resolve-refused pattern as #15363's accepted controls (the reason lies outside every resolve/infer reason symbol).
