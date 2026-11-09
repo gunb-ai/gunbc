@@ -12,7 +12,7 @@ import gunbc.roadmap.roadmap_model {
 }
 
 import std.types { Map }
-import gunbc.roadmap.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, TicketFields, item_is_done, item_superseded_by, signoff_accepts, signoff_by }
+import gunbc.roadmap.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, TicketFields, item_is_done, item_superseded_by }
 
 fn roadmap_max_depth() -> Int { 12 }
 
@@ -20,26 +20,26 @@ fn node_is_superseded(rn: RoadmapNode) -> Bool {
   !(item_superseded_by(item: rn.line) == "")
 }
 
+// A node DEFINITION carries no acceptance: an accepted node is removed from the emitted document by
+// the acceptance history projection before it is rendered, so only supersession checks a row here.
 fn node_is_done(rn: RoadmapNode, merged: List<Int>) -> Bool {
-  signoff_accepts(s: rn.signoff) || node_is_superseded(rn: rn)
+  node_is_superseded(rn: rn)
 }
 
 fn node_evidence_present(rn: RoadmapNode, merged: List<Int>) -> Bool {
   item_is_done(item: rn.line, merged: merged)
 }
 
-fn signoff_suffix_inlines(rn: RoadmapNode, merged: List<Int>) -> List<MarkdownInline> {
+// The suffix a row with implementation evidence carries while it has no acceptance receipt: the
+// acceptance history, not the row, is what closes a node, so the label names the receipt it waits on.
+fn acceptance_pending_suffix_inlines(rn: RoadmapNode, merged: List<Int>) -> List<MarkdownInline> {
   if node_is_superseded(rn: rn) {
     []
   } else {
-    if signoff_accepts(s: rn.signoff) {
-      [TextInline { text: concat(" — ✓ signed off: ", signoff_by(s: rn.signoff)) }]
+    if node_evidence_present(rn: rn, merged: merged) {
+      [TextInline { text: " — ⏳ awaiting an acceptance receipt" }]
     } else {
-      if node_evidence_present(rn: rn, merged: merged) {
-        [TextInline { text: " — ⏳ awaiting sign-off" }]
-      } else {
-        []
-      }
+      []
     }
   }
 }
@@ -158,7 +158,7 @@ fn plain_item_for(rn: RoadmapNode, graph: MarkdownTreeGraph) -> MarkdownListItem
 }
 
 fn task_item_for(rn: RoadmapNode, graph: MarkdownTreeGraph, merged: List<Int>, fuel: Int) -> MarkdownTaskItem {
-  let para = ParagraphBlock { inlines: concat(node_inlines(rn: rn, graph: graph), signoff_suffix_inlines(rn: rn, merged: merged)) }
+  let para = ParagraphBlock { inlines: concat(node_inlines(rn: rn, graph: graph), acceptance_pending_suffix_inlines(rn: rn, merged: merged)) }
   let kids = if fuel > 0 { roadmap_primary_children_in(index: graph.children, parent: rn.node) } else { [] }
   let blocks = if count(kids) > 0 {
     concat([para], nodes_to_blocks(items: kids, graph: graph, merged: merged, fuel: fuel - 1))

@@ -8,8 +8,6 @@ import gunbc.native_serve_probe_plan {
 }
 import gunbc.target_binding {
   TargetBinding,
-  BehavioralReceiptPlanProducer, BehavioralReceiptCensusProducer,
-  BehavioralReceiptSelftestProducer,
   HeadsReadingDifferentialProducer,
   TypedGraphExclusiveBytesProducer,
   TypedGraphExclusiveBytesFloorSubjectProducer,
@@ -104,18 +102,6 @@ fn typed_graph_exclusive_bytes_floor_subject_label() -> Label {
   }
 }
 
-fn behavioral_receipt_plan_label() -> Label {
-  Label { package: instruments_package() target: TargetName { name: "behavioral-receipt-plan" } }
-}
-
-fn behavioral_receipt_census_label() -> Label {
-  Label { package: instruments_package() target: TargetName { name: "behavioral-receipt-census" } }
-}
-
-fn behavioral_receipt_selftest_label() -> Label {
-  Label { package: instruments_package() target: TargetName { name: "behavioral-receipt-selftest" } }
-}
-
 // THE SELF-HOST INSTRUMENT: THE GENERATION THIS REPOSITORY CAN PERFORM, ASKED AS ONE QUESTION.
 //
 // The seed emits v2's compiler closure, assembles it as a crate, and builds it. Pass or fail is
@@ -127,8 +113,8 @@ fn behavioral_receipt_selftest_label() -> Label {
 //
 // WHAT A GREEN DOES NOT ESTABLISH, named so it is not cited for more than it carries. It is
 // EMISSION AND COMPILATION, not behavioural equivalence -- gunbc.design_argument::self_hosting asks that the emitted
-// module also behave as the seed does on a discriminating corpus, and that half lives in the three
-// behavioral-receipt instruments beside this one. Nor is it the second generation: the BUILT binary
+// module also behave as the seed does on a discriminating corpus, and that half is carried by the
+// self-host behavioral witnesses, not by this instrument. Nor is it the second generation: the BUILT binary
 // emitting the same closure is the v2 -> v2 boundary, and it refuses today because
 // `v2.compiler.source_root_eval` declares `SourceRootEvalDriver`, whose rendered main answers `census` and
 // `adjudicate` and has no compile mode at all. That refusal is the honest next position and belongs
@@ -616,18 +602,6 @@ fn instrument_test_target(label: Label) -> BuildTarget {
   BuildTarget { label: label kind: TestRule {} dependencies: [] }
 }
 
-fn behavioral_receipt_plan_target() -> BuildTarget {
-  instrument_test_target(label: behavioral_receipt_plan_label())
-}
-
-fn behavioral_receipt_census_target() -> BuildTarget {
-  instrument_test_target(label: behavioral_receipt_census_label())
-}
-
-fn behavioral_receipt_selftest_target() -> BuildTarget {
-  instrument_test_target(label: behavioral_receipt_selftest_label())
-}
-
 fn self_host_target() -> BuildTarget {
   instrument_test_target(label: self_host_label())
 }
@@ -754,6 +728,21 @@ fn cons_tail_recursion_label() -> Label {
 // (gunbc.recurring_failure_mode a_cons_around_a_self_call_rebuilds_the_result_per_element).
 fn cons_tail_recursion_binding() -> TargetBinding {
   TargetBinding { target: cons_tail_recursion_label() producer: NativeClaimProgramProducer { entry: "dag/gunbc/instruments/cons_tail_recursion_native.dag" deadline: native_claim_policy_child_deadline() } }
+}
+
+fn pattern_binder_capture_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "pattern-binder-capture" } }
+}
+
+// The renamed-field-binding fixtures on the emitted path, as a regression guard for the PLAIN (non-rc)
+// renderings only: an arm that renames a field binding must bind the arm's declared name, and a body read of
+// a same-named outer variable must keep the outer value. These fixtures are non-recursive and non-shared, so
+// they do NOT reach the emitter's rc-ref pair branch and do NOT ring gunbc.recurring_failure_mode
+// emitted_pattern_field_bound_under_its_own_name_captures_an_outer_binding -- that class's rc-ref branch is
+// left rung-unclaimed, and the fixture header says why. Mechanical-by-label, executed by host runs, not
+// gate-enrolled.
+fn pattern_binder_capture_binding() -> TargetBinding {
+  TargetBinding { target: pattern_binder_capture_label() producer: NativeClaimProgramProducer { entry: "dag/gunbc/instruments/pattern_binder_capture_native.dag" deadline: native_claim_policy_child_deadline() } }
 }
 
 fn member_home_cost_label() -> Label {
@@ -1072,18 +1061,6 @@ fn heads_reading_differential_binding() -> TargetBinding {
   }
 }
 
-fn behavioral_receipt_plan_binding() -> TargetBinding {
-  TargetBinding { target: behavioral_receipt_plan_label() producer: BehavioralReceiptPlanProducer {} }
-}
-
-fn behavioral_receipt_census_binding() -> TargetBinding {
-  TargetBinding { target: behavioral_receipt_census_label() producer: BehavioralReceiptCensusProducer {} }
-}
-
-fn behavioral_receipt_selftest_binding() -> TargetBinding {
-  TargetBinding { target: behavioral_receipt_selftest_label() producer: BehavioralReceiptSelftestProducer {} }
-}
-
 fn evaluation_store_address_exact_head_binding() -> TargetBinding {
   TargetBinding { target: evaluation_store_address_exact_head_label() producer: EvaluationStoreAddressExactHeadProducer {} }
 }
@@ -1134,12 +1111,6 @@ fn self_host_source_roots() -> List<String> {
   ["dag", "src/v2"]
 }
 
-// One modeled subject shared by the three behavioral producers. The host leaf receives this
-// population; it does not decide it.
-fn behavioral_receipt_source_roots() -> List<String> {
-  ["dag", "src/v2"]
-}
-
 // THE ORPHAN, BROUGHT HOME. The host's emitted-crate-workspace instrument read a source-root list
 // that existed only in the host; the instrument's own module never stated it. Stated here so the
 // corpus it measures is the instrument's fact, rendered into the host by
@@ -1168,7 +1139,6 @@ fn instrument_source_roots_rows() -> List<InstrumentSourceRootsRow> {
     InstrumentSourceRootsRow { name: "v2_native_cli" roots: v2_native_cli_source_roots() }
     InstrumentSourceRootsRow { name: "emitted_crate_workspace" roots: emitted_crate_workspace_source_roots() }
     InstrumentSourceRootsRow { name: "bare_reference_channel" roots: bare_reference_channel_source_roots() }
-    InstrumentSourceRootsRow { name: "behavioral_receipt" roots: behavioral_receipt_source_roots() }
   ]
 }
 
@@ -1198,8 +1168,7 @@ fn instrument_targets() -> List<Label> {
 
 fn instrument_bindings() -> List<TargetBinding> {
   [
-    heads_reading_differential_binding(), behavioral_receipt_plan_binding(),
-    behavioral_receipt_census_binding(), behavioral_receipt_selftest_binding(),
+    heads_reading_differential_binding(),
     self_host_binding(), v2_native_cli_binding(), v2_native_frontier_binding(),
     evaluation_store_address_exact_head_binding(), typed_graph_exclusive_bytes_binding(), typed_graph_exclusive_bytes_floor_subject_binding(),
     bare_reference_channel_outcome_binding(),
@@ -1207,7 +1176,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     cardinality_realization_binding(),
     regen_round_cost_binding(),
     credential_acquisition_systemd_rows_binding(),
-    known_red_derivation_binding(), roster_reach_inhabitance_binding(), witness_deferral_freeze_population_binding(), append_chain_ladder_binding(), last_use_move_binding(), exit_return_ownership_binding(), cons_tail_recursion_binding(), member_home_cost_binding(), roster_import_sweep_controls_binding(), roster_rehome_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(), derived_equality_routes_binding(),
+    known_red_derivation_binding(), roster_reach_inhabitance_binding(), witness_deferral_freeze_population_binding(), append_chain_ladder_binding(), last_use_move_binding(), exit_return_ownership_binding(), cons_tail_recursion_binding(), pattern_binder_capture_binding(), member_home_cost_binding(), roster_import_sweep_controls_binding(), roster_rehome_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(), derived_equality_routes_binding(),
     compute_dependency_wrong_capture_binding(),
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),

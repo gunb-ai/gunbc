@@ -33,7 +33,7 @@ import gunbc.roadmap.roadmap_event_carrier { RoadmapEventCarrierLayout, roadmap_
 import gunbc.roadmap.roadmap_event_log { RoadmapEventEnvelope, RoadmapNodeStanding, roadmap_issue_state, roadmap_standing_is_retired }
 import gunbc.fabric.fabric_storage_binding { fabric_state_storage_binding }
 import gunbc.roadmap.roadmap_spawner { SpawnFrontier, spawn_frontier, doc_all_nodes }
-import gunbc.roadmap.roadmap_status { signoff_accepts, line_ticket, node_title }
+import gunbc.roadmap.roadmap_status { line_ticket, node_title }
 import gunbc.roadmap.roadmap_review_role {
   ReviewReceiptSource, ReviewReceiptAbsent, ReviewReceiptPresent, ReviewReceiptUnreadable,
   CriterionReviewEvidence, criterion_standing, criterion_standing_text, review_verdict_instruction,
@@ -11134,10 +11134,10 @@ fn belt_run_once_json_in(spawn_workdir: String) -> String {
 // Per-node MANUAL dispatch — the click path (operator 2026-07-20: 'i should just manually
 // click/dispatch'). belt_run_once_in ticks the WHOLE ready frontier; belt_dispatch_node_for_instance spawns exactly
 // ONE node by id, operator-selected from the roadmap UI, NOT frontier-gated (the click IS the
-// selection). DONE = the operator's SIGNOFF, never a merged PR (operator: 'PR merged not
-// necessarily mean item == done — they may not be 1:1'): a signoff-accepted node refuses
-// (DispatchNodeAlreadyDone); a node whose PRs merged but is unsigned is still 'in review' and
-// dispatchable. Idempotent by the tick's observe-before-spawn, asserted of a PROCESS not a
+// selection). DONE = a live acceptance receipt, never a merged PR (operator: 'PR merged not
+// necessarily mean item == done — they may not be 1:1'): an accepted node's lineage is terminal
+// (gunbc.roadmap.roadmap_node_terminality); a node whose PRs merged but is not accepted is still
+// 'in review' and dispatchable. Idempotent by the tick's observe-before-spawn, asserted of a PROCESS not a
 // container name (belt_session_liveness_note): a running worker gives DispatchAlreadyLive (noop) so
 // a double-click never double-spawns; a retained dead pane gives DispatchStaleSession — refused,
 // never accepted, never suppressing the new turn. Fail-closed: unknown node id ->
@@ -11262,7 +11262,7 @@ fn belt_session_liveness_from_process(
 data belt_dispatch_wire_contract_exemplar_provider: String = "codex"
 
 // DISPATCH READS BACK THE DEPLOYED REVISION BEFORE IT ACTS, and binds it into the launch identity:
-// every fact this path consumes -- node roster, signoff, contract, the command it runs -- comes from
+// every fact this path consumes -- node roster, contract, the command it runs -- comes from
 // the deployed tree, so an attempt must name the code that produced it. After fleet-desired
 // retirement the gate is `launch_gate_landed`: the named tree must be origin/main or an ancestor of
 // it. A tree that has not landed (candidate-is-ancestor, unrelated, diverged, unverifiable) is
