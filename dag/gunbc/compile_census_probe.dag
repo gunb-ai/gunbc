@@ -58,11 +58,32 @@ fn total_rows_census(source: String) -> CompileDiagnosticCensus {
   }
 }
 
-fn total_blocking_census(source: String) -> CompileDiagnosticCensus {
-  match compile_dag_diagnostic_census(source) {
+// THE BLOCKING FILTER APPLIED TO AN ALREADY-OBSERVED CENSUS. This is the ONE implementation of the blocking
+// filter: total_blocking_census composes it with a single compile, and a probe that has already paid for a
+// source's census applies it to that census instead of paying for a second, byte-identical nested compile
+// (gunbc.design_argument::one_time_facts, gunbc.design_argument::minimize_redundancy -- many consumers of one
+// fact materialize it once on their common dominator). The CensusNotRunnable arm is carried through verbatim,
+// so a census that could not run still refuses here exactly as it did inline -- the union is never collapsed
+// to a raw row list, which is the sentinel soundness this module exists to keep.
+fn blocking_census_from(census: CompileDiagnosticCensus) -> CompileDiagnosticCensus {
+  match census {
     CensusObserved { rows: rows } => CensusObserved { rows: census_blocking_rows(rows: rows) }
     CensusNotRunnable { cause: cause } => CensusNotRunnable { cause: cause }
   }
+}
+
+// THE SUBJECT-KEYED BLOCKING FILTER APPLIED TO AN ALREADY-OBSERVED CENSUS -- the one implementation, shared
+// with blocking_subject_census so the keyed row cannot drift between the two call sites. NotRunnable verbatim.
+fn blocking_subject_census_from(census: CompileDiagnosticCensus, wanted_class: String, wanted_subject: String) -> CompileDiagnosticCensus {
+  match census {
+    CensusObserved { rows: rows } =>
+      CensusObserved { rows: census_blocking_rows_of_class_at_subject(rows: rows, wanted_class: wanted_class, wanted_subject: wanted_subject) }
+    CensusNotRunnable { cause: cause } => CensusNotRunnable { cause: cause }
+  }
+}
+
+fn total_blocking_census(source: String) -> CompileDiagnosticCensus {
+  blocking_census_from(census: total_rows_census(source: source))
 }
 
 fn blocking_class_census(source: String, wanted_class: String) -> CompileDiagnosticCensus {
@@ -81,11 +102,7 @@ fn any_class_census(source: String, wanted_class: String) -> CompileDiagnosticCe
 }
 
 fn blocking_subject_census(source: String, wanted_class: String, wanted_subject: String) -> CompileDiagnosticCensus {
-  match compile_dag_diagnostic_census(source) {
-    CensusObserved { rows: rows } =>
-      CensusObserved { rows: census_blocking_rows_of_class_at_subject(rows: rows, wanted_class: wanted_class, wanted_subject: wanted_subject) }
-    CensusNotRunnable { cause: cause } => CensusNotRunnable { cause: cause }
-  }
+  blocking_subject_census_from(census: total_rows_census(source: source), wanted_class: wanted_class, wanted_subject: wanted_subject)
 }
 
 // THE VERDICT A CLAIM RETURNS. `holds` is the comparison the claim means -- a caller writes
@@ -256,23 +273,47 @@ fn census_ran(census: CompileDiagnosticCensus) -> CensusVerdict {
 // asserts the blocking MissingExport row keyed on the deleted name, exactly one, and the delta against a baseline
 // carrying the SAME closure on top. Restore the fold and the keyed row goes to zero. The one implementation for
 // every seal witness (test.claim.transition_lease_store_seal_witness, test.claim.outcome_laundering_seal_witness).
-fn deleted_callable_route_is_gone(source: String, baseline: String, deleted_callable: String) -> ProcessExit {
+// The verdict list for the red probe, built from ONE already-observed census of the probe source. Split from
+// the wrapper so `census` is a parameter (bound once, call-by-value) and both filters below read that forced
+// value -- the builtin is never reached again here. baseline is a distinct source and keeps its own compile.
+fn deleted_callable_route_verdicts(census: CompileDiagnosticCensus, baseline: String, deleted_callable: String) -> ProcessExit {
   census_verdict_all([
     census_verdict(
-      census: blocking_subject_census(source: source, wanted_class: "MissingExport", wanted_subject: deleted_callable),
+      census: blocking_subject_census_from(census: census, wanted_class: "MissingExport", wanted_subject: deleted_callable),
       holds: fn(n) { n == 1 },
     ),
-    census_delta_verdict(red: total_blocking_census(source: source), control: total_blocking_census(source: baseline), holds: fn(n) { n >= 1 }),
+    census_delta_verdict(red: blocking_census_from(census: census), control: total_blocking_census(source: baseline), holds: fn(n) { n >= 1 }),
   ])
 }
 
+// ONE COMPILE OF THE PROBE SOURCE, READ BY BOTH CONSUMERS. The census of `source` has two consumers here
+// -- the subject-keyed MissingExport count and the total-blocking delta -- so the materialization ladder
+// (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::one_time_facts) materializes it once on
+// their common dominator: total_rows_census(source) compiles `source` a SINGLE time and the result is handed
+// to deleted_callable_route_verdicts as a parameter. Before this, the body called blocking_subject_census(source)
+// AND total_blocking_census(source): each ran its own full nested compile of the IDENTICAL source string, so one
+// probe paid source x2 + baseline x1 = 3 compiles and the two source compiles returned byte-identical rows --
+// pure duplicated work, the dominant cost of durable_append_log_witness::the_raw_events_initializer_is_gone.
+// NO CACHE IS INTRODUCED: the builtin is still asked exactly once per distinct source -- the caller simply
+// stopped asking twice for the same one.
+fn deleted_callable_route_is_gone(source: String, baseline: String, deleted_callable: String) -> ProcessExit {
+  deleted_callable_route_verdicts(census: total_rows_census(source: source), baseline: baseline, deleted_callable: deleted_callable)
+}
+
 // The lawful control: the callable that stays resolves, and the closure adds no blocking row over the baseline.
-fn retained_callable_route_resolves(source: String, baseline: String, callable: String) -> ProcessExit {
+// Same once-per-distinct-source rule as the red probe: `source` is compiled ONCE (below) and read by both the
+// subject-count filter and the blocking-delta filter. Identical rows, one compile instead of two; baseline (a
+// distinct source) keeps its own compile. No cache.
+fn retained_callable_route_verdicts(census: CompileDiagnosticCensus, baseline: String, callable: String) -> ProcessExit {
   census_verdict_all([
     census_verdict(
-      census: blocking_subject_census(source: source, wanted_class: "MissingExport", wanted_subject: callable),
+      census: blocking_subject_census_from(census: census, wanted_class: "MissingExport", wanted_subject: callable),
       holds: fn(n) { n == 0 },
     ),
-    census_delta_verdict(red: total_blocking_census(source: source), control: total_blocking_census(source: baseline), holds: fn(n) { n <= 0 }),
+    census_delta_verdict(red: blocking_census_from(census: census), control: total_blocking_census(source: baseline), holds: fn(n) { n <= 0 }),
   ])
+}
+
+fn retained_callable_route_resolves(source: String, baseline: String, callable: String) -> ProcessExit {
+  retained_callable_route_verdicts(census: total_rows_census(source: source), baseline: baseline, callable: callable)
 }
