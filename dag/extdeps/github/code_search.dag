@@ -197,7 +197,7 @@ data hermetic_code_search_incomplete: Bool = false
 
 // THE QUERY IS AN INPUT AND NEVER A LITERAL HERE: which strings this repository searches for is a
 // fact about the scan being run, not about GitHub's API, and baking one in would be the
-// policy-in-extdeps layer inversion DESIGN section 3 names. per_page and page are inputs for the
+// policy-in-extdeps layer inversion gunbc.design_argument::single_authority names. per_page and page are inputs for the
 // same reason - the pagination WALK belongs to the caller that has to record how far it got.
 service github.CodeSearch {
   config {

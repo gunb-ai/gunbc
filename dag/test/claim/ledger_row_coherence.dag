@@ -104,7 +104,7 @@ test fn the_rung_drop_ledger_is_covered_without_a_projection_index() -> Bool {
 
 // NOT-A-LEDGER MUST NOT INHABIT THE COHERENT ARM. If these collapsed, every provisioning file and
 // plan document would report "no rows missing" and a future ledger with no arm in ledger_rows would
-// read as coherent forever -- the degradation-as-fail-open shape DESIGN section 5 forbids.
+// read as coherent forever -- the degradation-as-fail-open shape gunbc.design_argument::fail_closed forbids.
 test fn a_non_ledger_artifact_cannot_report_coherent() -> Bool {
   match ledger_row_coherence(a: GitignoreArtifact, generated_content: "x", committed_content: "y") {
     NotALedgerArtifact => true
@@ -113,7 +113,7 @@ test fn a_non_ledger_artifact_cannot_report_coherent() -> Bool {
 }
 
 // THE CLASSIFICATION REACHES THE FINDING THE GATE ACTUALLY RENDERS. Testing the classifier alone
-// would leave the wiring unproven -- the exact specification-without-execution gap DESIGN section 5
+// would leave the wiring unproven -- the exact specification-without-execution gap gunbc.design_argument::fail_closed
 // names -- so this drives observation_findings, the function production calls, and asserts the
 // identity appears in the rendered diagnostic a human reads.
 test fn the_gate_diagnostic_names_the_missing_identity() -> Bool {

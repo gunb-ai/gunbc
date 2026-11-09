@@ -1,7 +1,7 @@
 // Witness for the TYPED LIVE_DEPLOY APPLY PLAN (gunbc.live_deploy.apply_legs deploy_apply_plan_legs):
 // what the real srv1 plan contains, in what order, under which elevation, and what it refuses. These
 // replace the claims that rendered the deleted apply script and searched its text; each reads the
-// typed legs at the plan interface instead (DESIGN section 3: a witness discriminates at one
+// typed legs at the plan interface instead (gunbc.design_argument::single_authority: a witness discriminates at one
 // interface), and the real route is reached once (the locus refusal) so supplying the plan never
 // removes the last execution of production's entry.
 module test.claim.live_deploy.live_deploy_apply_plan_witness
@@ -40,9 +40,10 @@ import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_launcher_h
 import gunbc.host.host_layout { belt_spawn_workdir_env_var }
 import extdeps.systemd.systemctl { systemctl_user_daemon_reload_argv }
 import extdeps.tailscale.serve { tailscale_serve_enable_argv }
-import gunbc.serving.srv1_serving_launch { srv1_serving_wrapper }
+import gunbc.serving.srv1_serving_launch { srv1_serving_wrapper, srv1_serving_wrapper_running_body, Srv1ServingWrapperInstallable, Srv1ServingWrapperRefused }
 import gunbc.live_deploy.retract_legs { RetractDisableIfLoaded }
 import gunbc.live_deploy.srv1_serving_engine_unit { srv1_serving_engine_unit_name }
+import gunbc.live_deploy.srv1_gpu_power_cap_unit { srv1_gpu_power_cap_unit_name }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_full_install_plan, deploy_witness_release_target, deploy_witness_release_revision }
 
 fn lab_spec() -> DeploymentSpec {
@@ -938,7 +939,7 @@ test fn the_serving_engine_is_installed_for_the_next_boot_and_never_started() ->
   let kept = legs_of(p: plan_for(spec: spec, plan: converged_effect_plan(roster: deployment_member_roster(spec: spec), target: deploy_witness_release_target(spec: spec))))
   let unit = srv1_serving_engine_unit_name as String
   let wrapper = match leg_at(legs: kept, step: "serving-engine-wrapper") { Present { value: l } => leg_payload(leg: l) Absent => "" }
-  wrapper == srv1_serving_wrapper.body
+  wrapper == (match srv1_serving_wrapper { Srv1ServingWrapperInstallable { script: w, device_words: _ } => w.body Srv1ServingWrapperRefused { reason: _ } => "no installable wrapper" })
     && step_index(legs: kept, step: "serving-engine-wrapper-dir") < step_index(legs: kept, step: "serving-engine-wrapper")
     && step_index(legs: kept, step: "serving-engine-wrapper") < step_index(legs: kept, step: "serving-engine-unit")
     && step_index(legs: kept, step: "serving-engine-unit") < step_index(legs: kept, step: "serving-engine-hand-unit-remove")
@@ -952,4 +953,61 @@ test fn the_serving_engine_is_installed_for_the_next_boot_and_never_started() ->
       any(words, w => w == unit) && any(words, w => w == "start" || w == "restart" || w == "reload-or-restart" || w == "try-restart")
     })
     && !any(kept, l => any(leg_argv_words(leg: l), w => contains(w, "lil-flash-next")))
+}
+
+// THE DEVICE-GROUP INTEGRATION IS ON THE REAL APPLY PATH. The wrapper the deploy installs for the next boot is
+// the Installable arm's body, and the install leg exists only because srv1_serving_wrapper IS that arm: the body names
+// exactly the declared GPU group's per-device selector and never the `all` wildcard (the UUID is resolved
+// through gunbc.fleet.gpu_device_observation, admitted through gunbc.fleet.gpu_power_state_policy). The host
+// copy the running container was launched from still says `all` and is retained as history (srv1_serving_wrapper_running_body),
+// NOT installed. A group that does not resolve has no body (Srv1ServingWrapperRefused), which fails this control
+// AND refuses the install itself — the acceptance bar: removing the integration makes a
+// control on the real deploy path fail (fleet hardware-fact consumption #16045, deliverable 3).
+test fn the_deployed_serving_wrapper_names_the_declared_device_group() -> Bool {
+  let spec = deployment_spec_srv1()
+  let kept = legs_of(p: plan_for(spec: spec, plan: converged_effect_plan(roster: deployment_member_roster(spec: spec), target: deploy_witness_release_target(spec: spec))))
+  let wrapper = match leg_at(legs: kept, step: "serving-engine-wrapper") { Present { value: l } => leg_payload(leg: l) Absent => "" }
+  match srv1_serving_wrapper {
+    Srv1ServingWrapperInstallable { script: w, device_words: _ } =>
+      wrapper == w.body
+        && string_contains(s: wrapper, pattern: "--device nvidia.com/gpu=GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3")
+        && !string_contains(s: wrapper, pattern: "nvidia.com/gpu=all")
+        && string_contains(s: srv1_serving_wrapper_running_body, pattern: "nvidia.com/gpu=all")
+    Srv1ServingWrapperRefused { reason: _ } => false
+  }
+}
+
+// SRV1'S GPU POWER CAPS ARE INSTALLED AND ENABLED FOR THE NEXT BOOT, BEFORE THE ENGINE'S UNIT, AND NEVER RUN
+// NOW: the unit's text runs the converge entry (not a bare nvidia-smi line) and carries the admitted 300 W
+// device's pending sibling as a REPORT leg that is not a refusal; no leg starts, restarts or reloads the cap
+// unit, so applying a deploy changes no live card's limit. This is the real producer-to-consumer route:
+// removing deploy_apply_srv1_gpu_power_cap_plan from the chain fails it.
+test fn the_gpu_power_cap_is_installed_for_the_next_boot_before_the_engine_and_never_run() -> Bool {
+  let spec = deployment_spec_srv1()
+  let kept = legs_of(p: plan_for(spec: spec, plan: converged_effect_plan(roster: deployment_member_roster(spec: spec), target: deploy_witness_release_target(spec: spec))))
+  let unit = srv1_gpu_power_cap_unit_name as String
+  let text = match leg_at(legs: kept, step: "gpu-power-cap-unit") { Present { value: l } => leg_payload(leg: l) Absent => "" }
+  contains(text, "gpu_power_cap_converge.dag")
+    && contains(text, "gpu_power_cap_converge_cli")
+    && contains(text, "Type=oneshot")
+    && contains(text, "WantedBy=multi-user.target")
+    && step_index(legs: kept, step: "gpu-power-cap-unit") < step_index(legs: kept, step: "gpu-power-cap-reload")
+    && step_index(legs: kept, step: "gpu-power-cap-reload") < step_index(legs: kept, step: "gpu-power-cap-enable")
+    && step_index(legs: kept, step: "gpu-power-cap-enable") < step_index(legs: kept, step: "serving-engine-unit")
+    && any(leg_argv_words(leg: match leg_at(legs: kept, step: "gpu-power-cap-enable") { Present { value: l } => l Absent => ApplyLegReport { step: "", line: "" } }), w => w == unit)
+    && !any(kept, l => {
+      let words = leg_argv_words(leg: l)
+      any(words, w => w == unit) && any(words, w => w == "start" || w == "restart" || w == "reload" || w == "reload-or-restart" || w == "try-restart" || w == "--now")
+    })
+}
+
+// A PENDING CARD IS A REPORT LEG ON EVERY DEPLOY AND NEVER A FAILURE: the Workstation card does not enumerate,
+// the plan is still Ready (the one-card service is installed), and the report names the card.
+test fn a_pending_gpu_card_is_reported_on_every_deploy_and_does_not_refuse_the_plan() -> Bool {
+  let spec = deployment_spec_srv1()
+  let kept = legs_of(p: plan_for(spec: spec, plan: converged_effect_plan(roster: deployment_member_roster(spec: spec), target: deploy_witness_release_target(spec: spec))))
+  match leg_at(legs: kept, step: "gpu-power-cap-pending") {
+    Present { value: ApplyLegReport { step: _, line: line } } => contains(line, "pending") && contains(line, "not a failure")
+    _ => false
+  }
 }

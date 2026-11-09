@@ -61,7 +61,7 @@ data specimen_other: String = "dag/gunbc/citing_module.dag"
 //
 // A twelve-site random sample of cross-file hits was read by hand and every one was a genuine section
 // 3 citation -- a paragraph naming a symbol so a reader can go and read it -- with no false positive.
-// That result was a fact someone remembered, which is exactly the shape DESIGN section 6 refuses: a
+// That result was a fact someone remembered, which is exactly the shape gunbc.design_argument::how_to_work refuses: a
 // measurement is cited by naming the producer that re-derives it. The sampled LINES are therefore
 // carried here verbatim, so the precision claim is re-executed on every run rather than recalled. If
 // the recogniser regresses, these go red; if a specimen's own citation is repaired upstream, this

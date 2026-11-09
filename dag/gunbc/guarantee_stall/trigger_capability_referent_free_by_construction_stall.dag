@@ -8,7 +8,7 @@ import gunbc.rung_climb { ClimbableButUnbuilt }
 // THE STALL THE TRIGGER WALL LEAVES BEHIND, declared by the change that built the wall rather than
 // discovered later. `stall_trigger_admission` refuses a `NextRungTrigger` whose capability spells
 // the declared dashboard-node URI scheme, and that refusal is VALIDATION: the invalid state stays
-// perfectly writable, and safety depends on the fold running and staying enrolled. DESIGN section 5
+// perfectly writable, and safety depends on the fold running and staying enrolled. gunbc.design_argument::fail_closed
 // gives the tell that construction was available, and it applies here exactly -- the check can be
 // satisfied by editing the row while the field type still permits the same text tomorrow.
 //

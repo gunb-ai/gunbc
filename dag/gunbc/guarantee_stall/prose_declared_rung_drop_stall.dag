@@ -5,9 +5,9 @@ import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
 import gunbc.rung_climb { ClimbableButUnbuilt }
 
 // THE PROSE HALF OF THE DROP ROSTER, DECLARED AS A STALL BECAUSE THAT IS WHAT IT IS. 26 of
-// gunbc.rung_drop's rows state their DESIGN section 4b(3) fields -- previous rung, temporary rung,
+// gunbc.rung_drop's rows state their gunbc.design_argument::guarantee_ladder (no silent regression) fields -- previous rung, temporary rung,
 // reason, population, restoration trigger -- only inside an `authored` paragraph, so for those rows
-// the obligation 4b(3) states is met by a human reading and by nothing a program can fold. The four
+// the obligation gunbc.design_argument::guarantee_ladder (no silent regression) states is met by a human reading and by nothing a program can fold. The four
 // rows consolidated from the deleted gunbc.guarantee_rung_drop carry the fields typed, which is
 // what makes this a stall with a known repair rather than a limit.
 //
@@ -29,7 +29,7 @@ import gunbc.rung_climb { ClimbableButUnbuilt }
 // to avoid; the capability is that every drop's five fields are readable AS DATA, which no
 // fabricated split delivers.
 data prose_declared_rung_drop_stall: GuaranteeStall = GuaranteeStall {
-  subject: "a declared section 4b(3) rung drop states its five fields only as prose, so its reason, population and restoration trigger are unreadable by any fold",
+  subject: "a declared gunbc.design_argument::guarantee_ladder (no silent regression) rung drop states its five fields only as prose, so its reason, population and restoration trigger are unreadable by any fold",
   current: Mitigatable,
   ceiling: StructurallyImpossible,
   blocker: ClimbableButUnbuilt,

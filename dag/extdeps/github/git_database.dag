@@ -6,7 +6,6 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import extdeps.github.github { default_api_base }
 import extdeps.github.errors { GitHubErrorShape }
-import std.credentials { EnvVar }
 import std.resources { Network }
 import extdeps.transports.rest { RestResult }
 
@@ -128,7 +127,6 @@ service github.GitDatabase {
     endpoint: default_api_base
     auth: Bearer
     auth_input: auth_token
-    auth_source: EnvVar { name: "GITHUB_TOKEN" }
   }
 
   operation GetRef {

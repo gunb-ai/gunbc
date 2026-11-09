@@ -16,7 +16,7 @@ import gunbc.assimilate.bmc_token_federation { bmc_assimilator_sa_email }
 import extdeps.google.sheets { sheets_serviceusage_api_id }
 
 // OBSERVING LAYER. These rows are receipts about a live GCP estate, not facts owned by
-// extdeps.cloud.gcp (DESIGN section 3: observations stay downstream of the observed upstream).
+// extdeps.cloud.gcp (gunbc.design_argument::single_authority: observations stay downstream of the observed upstream).
 //
 // THIS MODULE DOES NOT ACTUATE. It does not enable, create, bind, disable, or delete.
 

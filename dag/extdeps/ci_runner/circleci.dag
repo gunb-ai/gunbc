@@ -100,7 +100,7 @@ data circleci_catalog_snapshot: CatalogSnapshot = CatalogSnapshot {
 // circleci_catalog_authority, which is byte-for-byte the ref circleci_provider_identity already
 // uses - so "which key are these labels written in" and "who publishes them" were the same fact,
 // and a provider identity passed where a surface was expected would have compared equal. That is
-// the interface/realization/policy conflation DESIGN section 3 names, one level up from the defect
+// the interface/realization/policy conflation gunbc.design_argument::single_authority names, one level up from the defect
 // this axis was added to fix.
 //
 // GitHub's side names the declaration that IS the key: extdeps.github.actions RunnerSpec. There is

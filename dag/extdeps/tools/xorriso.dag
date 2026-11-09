@@ -49,7 +49,7 @@ service xorriso.Iso {
 // destination cannot be written. This is the one spelling of the invocation: its only consumer runs
 // it over a remote typed-argv transport (gunbc.machine_intake.mtcollins1_census_member_readback), and
 // the local ExtractPathBestEffort operation that restated the same argv had no caller and was deleted
-// rather than kept as a second copy (DESIGN §3). A local consumer binds this builder to its local
+// rather than kept as a second copy (gunbc.design_argument::single_authority). A local consumer binds this builder to its local
 // transport; it does not re-author the word list.
 fn xorriso_extract_command(iso_path: NonEmptyStr, iso_internal_path: NonEmptyStr, destination: NonEmptyStr) -> ArgvCommand {
   argv_command(program: xorriso_program(), arguments: ["-osirrox", "on", "-indev", iso_path as String, "-extract", iso_internal_path as String, destination as String])

@@ -14,6 +14,10 @@ import gunbc.fleet.fleet_host_power {
   HostPowerProfile, PowerProvenance, MeasuredOnHost, InferredFromSimilarBuild,
   host_power_profile, power_is_measured,
 }
+import gunbc.fleet.fleet_host_assembly { host_installed_components }
+import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
+import product.host_identity { HostIdentity }
+import std.list { list_cover }
 
 // THE MARGINAL ENERGY COST OF RUNNING WORK ON OWNED HARDWARE.
 //
@@ -51,9 +55,23 @@ type WorkEnergyCost {
   power_provenance: PowerProvenance
 }
 
+// WHY A TYPED CAUSE. The old outcome carried a free-text reason; a refusal that only says "no profile"
+// cannot tell a reader that the real gap is a MISSING MEASUREMENT on the host's current hardware.
+// ReadingAppliesToSupersededAssembly is that typed cause: it names the measurement we need, so the gap is
+// visible instead of being papered over with a plausible number -- a cap off a nameplate, a fleet average,
+// or srv1's 2026-09-05 figure repriced against a machine that has since gained two accelerator boards and a
+// new PSU.
+type EnergyCostRefusal
+  = NoPowerProfileDeclared { host: NonEmptyStr }
+  | ReadingAppliesToSupersededAssembly {
+      host: NonEmptyStr
+      provenance: PowerProvenance
+      measure_against: List<PhysicalAssetIdentity>
+    }
+
 type WorkEnergyCostOutcome
   = EnergyCostDerived { cost: WorkEnergyCost }
-  | EnergyCostRefused { reason: NonEmptyStr }
+  | EnergyCostRefused { cause: EnergyCostRefusal }
 
 fn marginal_energy_micros(draw: Watt, duration: Second) -> Nat {
   let watt_seconds = watt_count(w: draw) * second_count(s: duration)
@@ -62,22 +80,55 @@ fn marginal_energy_micros(draw: Watt, duration: Second) -> Nat {
 }
 
 // An unknown host REFUSES rather than defaulting to a fleet-average draw. A default here would be
-// the absorbing fallback DESIGN section 5 names: it answers every question, including the ones
+// the absorbing fallback gunbc.design_argument::fail_closed names: it answers every question, including the ones
 // about hosts nobody has modeled, and destroys the signal that a host is missing from the roster.
+// THE BYPASS THIS REMOVES. Before this, a profile was selected by host name alone and priced: srv1's 94 W
+// of 2026-09-05 billed work on a machine that has since gained two RTX PRO 6000 boards and a new PSU. The
+// reading is not deleted -- it stays declared as history, still queryable via gunbc.fleet.fleet_host_power
+// host_power_profile -- but it no longer silently prices a host it was not taken against.
+//
+// THE JOIN (@ref(gunbc.design_argument::single_authority): consume the authority, do not restate it). The host's CURRENT installed components
+// come from gunbc.fleet.fleet_host_assembly host_installed_components, which joins the assembly authority's
+// own containment edges with the installed accelerator boards the physical inventory owns. A reading prices
+// only while its declared configuration is covered by that current set (std.list list_cover is bidirectional
+// set equality, so a missing unit OR a stale extra both break the match). Removing this join -- the whole
+// integration -- must make the witness that srv1 now refuses go RED, not let the stale figure bill.
 fn work_energy_cost(host: NonEmptyStr, duration: Second) -> WorkEnergyCostOutcome {
   match host_power_profile(host: host) {
-    Absent => EnergyCostRefused {
-      reason: concat("no power profile is declared for host ", host as String) as NonEmptyStr
-    }
-    Present { value } => EnergyCostDerived {
-      cost: WorkEnergyCost {
-        host: host,
-        duration: duration,
-        draw: value.draw,
-        amount: money_amount_micro(count: marginal_energy_micros(draw: value.draw, duration: duration)),
-        power_provenance: value.provenance,
+    Absent => EnergyCostRefused { cause: NoPowerProfileDeclared { host: host } }
+    Present { value } =>
+      if list_cover(
+        held: host_installed_components(host: host as HostIdentity),
+        expected: value.applies_to,
+        eq: physical_asset_identity_eq,
+      ) {
+        EnergyCostDerived {
+          cost: WorkEnergyCost {
+            host: host,
+            duration: duration,
+            draw: value.draw,
+            amount: money_amount_micro(count: marginal_energy_micros(draw: value.draw, duration: duration)),
+            power_provenance: value.provenance,
+          }
+        }
+      } else {
+        EnergyCostRefused { cause: superseded_reading_cause(host: host, provenance: value.provenance, current: host_installed_components(host: host as HostIdentity)) }
       }
-    }
+  }
+}
+
+// THE CAUSE CARRIES WHAT THE MISSING MEASUREMENT MUST COVER, as data a consumer can act on: the reading's own
+// PowerProvenance (a MeasuredOnHost date or an InferredFromSimilarBuild basis, typed, never a string whose
+// meaning changes by branch) and measure_against, the host's CURRENT installed components -- the configuration
+// a fresh MeasuredOnHost profile must be taken against, and so the applies_to it will carry. What kind of
+// measurement is needed is the variant's own meaning (a sampled measured draw, never an inferred figure and
+// never a configured power ceiling), so it is stated here and not repeated as a string in every refusal
+// (review 91873; @ref(gunbc.design_argument::minimize_redundancy)).
+fn superseded_reading_cause(host: NonEmptyStr, provenance: PowerProvenance, current: List<PhysicalAssetIdentity>) -> EnergyCostRefusal {
+  ReadingAppliesToSupersededAssembly {
+    host: host,
+    provenance: provenance,
+    measure_against: current,
   }
 }
 

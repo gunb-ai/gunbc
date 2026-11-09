@@ -19,7 +19,7 @@ data sealing_property_erases_structure: RecurringFailureMode = RecurringFailureM
 
     "`sole_constructor` is carried as a PROPERTY on the declaration node (`v1.compiler.parse` `parsed_sole_constructor_properties`), and `v1.compiler.infer` `exposure_view_for_node` answered `OpaqueTypeHead` for any node whose properties list was non-empty -- so `nominal_product_head_name` answered the empty string for every sealed carrier, `nominal_product_inhabitance_refusal` short-circuited on the empty head, and `declared_type_inhabitance` fell through to `Inhabits`.",
 
-    "`v2.compiler.source_authority` `normalized_source_ast_equal_witness` then bound a `NormalizedTree` at a formal declared `Node` and the compiler ACCEPTED it: the ordinary-floor violation DESIGN section 4b names as exact application bijection, below baseline.",
+    "`v2.compiler.source_authority` `normalized_source_ast_equal_witness` then bound a `NormalizedTree` at a formal declared `Node` and the compiler ACCEPTED it: the ordinary-floor violation gunbc.design_argument::guarantee_ladder names as exact application bijection, below baseline.",
 
     "The discriminating pair is two record declarations identical to the token except for the word `sole_constructor` -- the sealed one compiled with zero diagnostics where the plain one refused.",
 

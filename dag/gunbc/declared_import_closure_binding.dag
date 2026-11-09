@@ -20,7 +20,7 @@ import gunbc.compile_clean_diagnostic_policy {
 // ObservationProductionRefused is distinct from BindingObserved refusal so could-not-measure, setup
 // failure, compile graph:None (parse/frontend refusal — P1(b)), and any hard diagnostic on the
 // compile (untrustworthy observation — producer refuses before populating the carrier) never read
-// as the subject passing (DESIGN §5). BindingObserved requires a successfully ingested graph with
+// as the subject passing (gunbc.design_argument::fail_closed). BindingObserved requires a successfully ingested graph with
 // zero hard diagnostics.
 // Verdict partition: total match, no wildcard, over BindingObserved vs BindingNotRunnable and over
 // UnlistedImportBindingSource. Callers still read the three Bool projections.

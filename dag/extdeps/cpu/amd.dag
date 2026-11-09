@@ -4,6 +4,7 @@ import extdeps.external_authority { ExternalAuthority, FactCitation, CitedFigure
 import std.decl_ref { decl_field_ref }
 import extdeps.uri { Uri, Https }
 import extdeps.cpu.types {
+  cpu_tdp_unread_standing,
   ProcessorCoolingMount,
   SocketedPinGrid,
   SocketedLandGrid, CpuDeploymentFacts, CpuFacts, CpuL1CacheGeometry, CpuL2CacheGeometry, CpuL3CacheGeometry, CpuModelCatalogRow, CpuSocket, LandGridArray, PinGridArray, SoCFamily }
@@ -180,6 +181,7 @@ data ryzen_5_3600_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   nominal_sustained_per_thread_hz: hertz(3600000000),
   socket: amd_socket_am4,
   tdp_watts: watt(65),
+  tdp_standing: cpu_tdp_unread_standing,
   l1_cache: amd_zen2_l1_cache_geometry,
   l1_cache_citations: amd_zen2_l1_cache_citations,
   l2_cache: amd_zen2_l2_cache_geometry,
@@ -198,6 +200,7 @@ data ryzen_7_pro_8700ge_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   nominal_sustained_per_thread_hz: hertz(3300000000),
   socket: amd_socket_am5,
   tdp_watts: watt(65),
+  tdp_standing: cpu_tdp_unread_standing,
   l1_cache: amd_zen4_l1_cache_geometry,
   l1_cache_citations: amd_zen4_l1_cache_citations,
   l2_cache: amd_zen4_l2_cache_geometry,
@@ -216,6 +219,7 @@ data ryzen_9_7950x3d_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   nominal_sustained_per_thread_hz: hertz(4200000000),
   socket: amd_socket_am5,
   tdp_watts: watt(120),
+  tdp_standing: cpu_tdp_unread_standing,
   l1_cache: amd_zen4_l1_cache_geometry,
   l1_cache_citations: amd_zen4_l1_cache_citations,
   l2_cache: amd_zen4_l2_cache_geometry,
@@ -325,7 +329,7 @@ data amd_zen1_l2_cache_citations: List<FactCitation> = [
 // SOCKET SP3 IS CARRIED UNCITED. No AMD or socket-vendor document stating the LGA termination or the 4094
 // contact count was retrievable on 2026-10-21 (the AMD EPYC 7002 data sheet and product brief state the
 // socket name only). en.wikipedia.org/wiki/Socket_SP3 reads "Type LGA - ZIF", "Contacts 4094" but a
-// secondary page is not an authority (DESIGN 4d), so no FactCitation is minted; the standing is the
+// secondary page is not an authority (gunbc.design_argument::epistemic_humility), so no FactCitation is minted; the standing is the
 // read obligation below. The cooling-mount designation is the socket's own name, the identity the AMD
 // product pages carry as "Platform", and is likewise not cited.
 data socket_sp3_standing: CitedFigureStanding = TranscribedUncited {
@@ -382,6 +386,7 @@ data epyc_7551p_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   nominal_sustained_per_thread_hz: hertz(2000000000),
   socket: amd_socket_sp3,
   tdp_watts: watt(180),
+  tdp_standing: cpu_tdp_unread_standing,
   l1_cache: amd_zen1_l1_cache_geometry,
   l1_cache_citations: amd_zen1_l1_cache_citations,
   l2_cache: amd_zen1_l2_cache_geometry,
@@ -401,6 +406,7 @@ data epyc_7702p_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   nominal_sustained_per_thread_hz: hertz(2000000000),
   socket: amd_socket_sp3,
   tdp_watts: watt(200),
+  tdp_standing: cpu_tdp_unread_standing,
   l1_cache: amd_zen2_l1_cache_geometry,
   l1_cache_citations: amd_zen2_l1_cache_citations,
   l2_cache: amd_zen2_l2_cache_geometry,

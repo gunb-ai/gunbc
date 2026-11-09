@@ -14,7 +14,7 @@ import extdeps.languages.css.grid_values {
   css_track_list_wire, one_track,
 }
 
-// §5 — "done means executed". These claims render through the route every declaration takes
+// gunbc.design_argument::fail_closed — "done means executed". These claims render through the route every declaration takes
 // (gunbc.design.material.serialize_rules, the same serializer design.scale and the gunb.ai
 // layout layer use), so a grammar that is right in isolation but wrong inside a real
 // declaration is caught. A grammar witness that only calls its own wire functions would pass
@@ -148,7 +148,7 @@ test fn witness_zero_min_is_unitless() -> Bool {
 // "" are not values, rather than values that a guard has to reject. This claim pins that the
 // one-track and head-plus-tail forms both serialize, i.e. the plus carrier is usable without
 // degenerating, and that a two-track list joins once each in order (built by construction, not a
-// count copied from a file — §5).
+// count copied from a file — gunbc.design_argument::fail_closed).
 test fn witness_track_list_carries_its_plus_cardinality() -> Bool {
   let one = one_track(t: TrackBreadth { breadth: FlexTracks { factor: 1 } })
   let two = non_empty_append(
@@ -182,7 +182,7 @@ test fn witness_repeat_count_carries_its_domain() -> Bool {
 // Three tracks, joined once each, in order, with exactly one separator between neighbours.
 // Three rather than two because a join that drops the last separator or double-emits one only
 // shows up at the boundary between the second and third item. Built by construction, so no
-// count is copied from a file (§5).
+// count is copied from a file (gunbc.design_argument::fail_closed).
 test fn witness_track_list_joins_in_order_exactly_once() -> Bool {
   let joined = non_empty_append(
     left: non_empty_append(

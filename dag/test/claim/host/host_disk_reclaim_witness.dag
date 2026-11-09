@@ -87,7 +87,7 @@ test fn a_busy_slot_refuses_git_work_however_fragmented() -> Bool {
 // or a Bool -- passes every row above and is wrong: "a job is running here" and "we could not tell
 // whether a job is running here" have different owners and different repairs. This row is an
 // INEQUALITY over the two labels, so it goes red the moment they are merged, which is exactly the
-// state-space conflation DESIGN section 5 names.
+// state-space conflation gunbc.design_argument::fail_closed names.
 test fn the_two_refusals_do_not_share_one_answer() -> Bool {
   let busy = label_for(
     job_state: SlotRunningJob { worker_cgroup_unit: "actions-runner@srv4-01.service" as NonEmptyStr },
@@ -130,7 +130,7 @@ test fn interrupted_fetch_residue_is_reported_regardless_of_job_state() -> Bool 
 // script authors them as "3 days" and "1 day", so the durable fact is that the diagnostic-log floor
 // is three times the interrupted-fetch floor and both are positive. Asserting 259200 instead would
 // be a change detector against a number transcribed from the same arithmetic that produced it --
-// the oracle failure DESIGN section 5 names -- and it would go red on a correct unit refactor while
+// the oracle failure gunbc.design_argument::fail_closed names -- and it would go red on a correct unit refactor while
 // staying green if both floors were wrong by the same factor.
 test fn the_age_floors_keep_their_authored_ratio() -> Bool {
   second_count(s: reclaim_diag_max_age) == 3 * second_count(s: reclaim_tmp_pack_min_age)

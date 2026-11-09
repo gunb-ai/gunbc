@@ -1,6 +1,6 @@
 module gunbc.host.host_name_resolution
 
-// HOST IDENTITY BY NAME, WITH SEVERAL TYPED RESOLUTIONS AND NO NICKNAMES (DESIGN §3).
+// HOST IDENTITY BY NAME, WITH SEVERAL TYPED RESOLUTIONS AND NO NICKNAMES (gunbc.design_argument::single_authority).
 //
 // ONE IDENTITY. `HostIdentity` is a branded string — the host's name, nothing else. Nothing in this module
 // turns a host identity into a spelling by appending a suffix, because that is exactly how a nickname is
@@ -10,7 +10,7 @@ module gunbc.host.host_name_resolution
 //
 // SEVERAL RESOLUTIONS, EACH TYPED. `srv2` is addressed by different spellings, by different consumers,
 // over different paths, and only a fool treats those as interchangeable (ROADMAP §5 — three names, three
-// resolutions, one meaning; DESIGN §3 — a resolution must be a named typed relation, not a string in a
+// resolutions, one meaning; gunbc.design_argument::single_authority — a resolution must be a named typed relation, not a string in a
 // field called name). The name space is the carrier of WHICH resolution a row means, and every arm carries
 // the reason it exists, so the row states its authority rather than leaving a reader to infer it. There are
 // two, because the fleet has two paths, and neither is a copy of the other:
@@ -31,7 +31,7 @@ module gunbc.host.host_name_resolution
 // media dialog lists it among the share's allowed sources. But the BMC's OOB interface is disabled
 // (observed 2026-10-27: "Network (out of band) Disabled"), and the router does not answer for that
 // hostname: srv2-asoc.mynetworksettings.com -> rcode 3 (NXDOMAIN). Modelling it as a name space would
-// claim a DNS zone that no citation shows exists (§4d: an unobserved resolution is a coverage obligation,
+// claim a DNS zone that no citation shows exists (gunbc.design_argument::epistemic_humility: an unobserved resolution is a coverage obligation,
 // not a value). It is also owned by the primary-network-convergence lane (node adhoc-0f63d99c-abf), which
 // owns the NIC and netplan config — naming is this module's, wiring is theirs.
 //
@@ -51,9 +51,9 @@ module gunbc.host.host_name_resolution
 // `NameQualification`, `host_part_of` returns the labels that belong to the host or nothing, and
 // resolvability is DATA on the consumer (`ConsumerReach.reaches`, read by the space test, and `observed`,
 // read by `first_cited_address_disagreement`) rather than a hard-coded match on the space, so a second
-// consumer adds a row instead of a branch (§6b, "a new ordinary case is data, not control flow"). Each of
+// consumer adds a row instead of a branch (gunbc.design_argument::earliest_unjustified_boundary, "a new ordinary case is data, not control flow"). Each of
 // those two fields now names the code that reads it; an earlier draft named `observed` here and read it
-// nowhere, which is the §3c red rather than a modelling choice.
+// nowhere, which is the gunbc.design_argument::consumption red rather than a modelling choice.
 
 import std.types { String, Bool, List, Int, NonEmptyStr }
 import std.optional { Present, Absent }
@@ -127,7 +127,7 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv2 }
 
 // A ZONE IS A PARSED DOMAIN, not a string. An earlier draft kept each space's domain as a `NonEmptyStr` and
 // matched names against it by rendering the name back to text, splitting on ".", and comparing the tails
-// (`domain_suffix_of`). That is DESIGN §2's "a String leaf hiding named parts": the labels were already
+// (`domain_suffix_of`). That is gunbc.design_argument::minimize_redundancy's "a String leaf hiding named parts": the labels were already
 // parsed, by the module that produced the name, and the comparison threw them away and re-derived them with
 // a different rule — silently losing the qualification the parser had settled, and leaving "is srv2.com a
 // suffix of xrv2.com?" to a string rule no one wrote down. `Zone` is sealed (sole_constructor, admitted only
@@ -145,7 +145,7 @@ type Zone sole_constructor {
 // configured something the grammar rejects" are different facts with different remedies: the first is the
 // operator ruling being violated (a zone must be a name, and someone reached for an IP), the second is a typo
 // in a domain. Flattening them to one `ZoneRefused { raw }` would make a reader re-derive which happened
-// (§5), which is what the witness `a_zone_configured_as_an_ip_literal_is_refused` caught: the module claimed
+// (gunbc.design_argument::fail_closed), which is what the witness `a_zone_configured_as_an_ip_literal_is_refused` caught: the module claimed
 // an IP literal was refused, and it was not — `parse_host_name` happily accepts "192.168.1.1", because four
 // all-numeric labels are valid LDH labels. That is not a quirk to document; it is the rule being enforced by
 // the wrong function.
@@ -168,9 +168,9 @@ type ZoneAdmission
 // "is this a syntactically valid host name?", and "192.168.1.1" is one — four numeric labels are legal LDH
 // labels — so a zone could be configured as an IP address while this module's comment claimed the opposite.
 // `extdeps.network.endpoint parse_network_host` is the module that already owns the question this has to
-// answer (§2: the concept must not be re-invented here, and §3: one source), so `zone_admit` asks IT, accepts
+// answer (gunbc.design_argument::minimize_redundancy: the concept must not be re-invented here, and gunbc.design_argument::single_authority: one source), so `zone_admit` asks IT, accepts
 // only the `HostByName` arm, and refuses the `HostByAddress` arm by name. The address arm is not folded into
-// the grammar refusal, because it is a different fact (§3: a materially different contract needs a materially
+// the grammar refusal, because it is a different fact (gunbc.design_argument::single_authority: a materially different contract needs a materially
 // different name).
 //
 // The qualification is dropped deliberately: a zone is a suffix, and whether it was written with a trailing
@@ -193,8 +193,8 @@ fn zone_admit(raw: String) -> ZoneAdmission {
 // DO TWO ADMITTED NAMES MEAN THE SAME NAME? The authority's own equality — NOT a local one. Earlier drafts
 // carried a `names_agree` here that compared labels only (with a locally-written `dns_label_eq`), so
 // "srv2.mynetworksettings.com" and the same labels without qualification were the same host to this module
-// and different names to `extdeps.dns` — one question, two sources, two answers (review 87232, §3 meaning
-// fork, §2 no re-invention).
+// and different names to `extdeps.dns` — one question, two sources, two answers (review 87232, gunbc.design_argument::single_authority meaning
+// fork, gunbc.design_argument::minimize_redundancy no re-invention).
 //
 // The full equality is also the CORRECT question for every use site here, and that is worth the paragraph,
 // because it is not obvious. `host_name_eq` checks qualification, and for a RESOLVER question the
@@ -310,7 +310,7 @@ fn lan_zone() -> Zone? {
 // THE LAN SPACE, BUILT FROM A SPELLING THE CALLER SUPPLIES. Production passes `lan_zone_wire`; the spelling
 // is a parameter rather than a constant read inside so that "this module's zone configuration is corrupt"
 // has a PRODUCER anyone can point at, and `ZoneUnconfigured { zone_spelling }` a reader that reads it. The
-// alternative — a refusal arm no call can ever reach and no claim matches — is the §3c red, and the earlier
+// alternative — a refusal arm no call can ever reach and no claim matches — is the gunbc.design_argument::consumption red, and the earlier
 // draft of this module had exactly one such arm.
 fn lan_name_space_under(zone_wire: String) -> NameSpace? {
   match lan_zone_from(zone_wire: zone_wire) {
@@ -329,7 +329,7 @@ fn lan_name_space() -> NameSpace? {
 // answer for is unavailable, not quietly empty.
 // THE TAILNET ZONE FROM A DOMAIN SPELLING, written ONCE and read twice — by `tailnet_zone` (production, from
 // the fleet's own row) and by `tailnet_name_space_under` (review 87221's parameterized form). Two copies of
-// this five-line match would be the §2 duplication the previous review round already caught once in this
+// this five-line match would be the gunbc.design_argument::minimize_redundancy duplication the previous review round already caught once in this
 // module.
 fn tailnet_zone_from(domain: NonEmptyStr?) -> Zone? {
   match domain {
@@ -350,17 +350,17 @@ fn tailnet_zone() -> Zone? {
 
 // WHICH RESOLUTION A SPELLING BELONGS TO, as a closed set of arms carrying the CONFIGURATION that decides
 // the question. There is no `why` field. An earlier draft carried one English sentence per arm, and nothing
-// read it — `space_zone` and every other match bound `why: _`. That is §4c's "a `String` declaration whose
+// read it — `space_zone` and every other match bound `why: _`. That is gunbc.design_argument::source_annotations's "a `String` declaration whose
 // only purpose is commentary": the sentence sat in the program, could not be checked, could not be kept
 // honest, and aged into something a reader trusted without anyone having to prove it. `//` is the quarantine
 // boundary, so the rationale lives here and the arms carry only what a consumer can match.
 //
 // WHY THERE ARE EXACTLY TWO, and why a consumer may not add one by editing this type: the fleet has two
 // paths, and the `zone` is the fact that makes them different — which suffix a space answers for is
-// configuration carried IN the arm (§6b: a new ordinary case is data). A third space, the out-of-band lab
+// configuration carried IN the arm (gunbc.design_argument::earliest_unjustified_boundary: a new ordinary case is data). A third space, the out-of-band lab
 // net reached via `srv2-asoc`, is deliberately absent: the BMC's OOB interface is disabled, the router
 // answers rcode 3 for that hostname, and the primary-network lane owns the NIC. Modelling it would claim a
-// zone no citation shows exists (§4d).
+// zone no citation shows exists (gunbc.design_argument::epistemic_humility).
 type NameSpace
   // THE ROUTER'S ZONE. RATIONALE (comment, not data): the BMC is not on the tailnet, so it has no daemon to
   // ask and no route to the tailnet resolver; the router at `lan_router_ipv4` below is the server it was given,
@@ -397,7 +397,7 @@ fn tailnet_name_space() -> NameSpace? {
   tailnet_name_space_under(domain: fleet_tailnet_domain)
 }
 
-// IS THIS CONSUMER ON THE TAILNET? A typed receipt, not a sentence — §4c puts a citation and a status in a
+// IS THIS CONSUMER ON THE TAILNET? A typed receipt, not a sentence — gunbc.design_argument::source_annotations puts a citation and a status in a
 // carrier, and the two arms have different consequences that a consumer must match rather than infer from
 // prose. It is NOT the gate's authority for what a consumer may ask about (that is `ConsumerReach.reaches`,
 // so nothing gets a second source for the same fact); it is the OBSERVATION that makes a one-entry `reaches`
@@ -422,9 +422,9 @@ data megarac_bmc_tailnet_membership: TailnetMembership = NotOnTailnet { receipt:
 // "it resolves" next to an uninterpreted reply, which let a green be pasted beside an NXDOMAIN; now the
 // conclusion is computed from the reply it cites, so a row whose reply says NXDOMAIN says Unresolved.
 //
-// `reader` is not decoration: a resolution claim with no named probe behind it is exactly the thing §4d
+// `reader` is not decoration: a resolution claim with no named probe behind it is exactly the thing gunbc.design_argument::epistemic_humility
 // refuses to accept as fact, and a blank is visible in a review where "true" is not.
-// HOW A PROBE WAS RUN, TYPED (review 87319, §4c). The field used to be one `reader: NonEmptyStr` holding
+// HOW A PROBE WAS RUN, TYPED (review 87319, gunbc.design_argument::source_annotations). The field used to be one `reader: NonEmptyStr` holding
 // "read-only probe, direct UDP to 192.168.1.1:53 (see docs/probes/...)" — three facts in a sentence, none of
 // them readable by the substrate. The server in particular was RE-SPELLED as text while `lan_router_ipv4` two
 // lines above was its one typed home, so changing the router would silently age every receipt and nothing
@@ -503,8 +503,8 @@ type HostNameResolution {
   grounded: ResolutionObservation
 }
 
-// WHY THE REFUSAL IS A COPRODUCT AND NOT A `cause: String` (review 87156, DESIGN §5 "every path succeeds
-// fully or fails with a typed, located diagnostic"; §4c "a dissolution condition belongs in a typed
+// WHY THE REFUSAL IS A COPRODUCT AND NOT A `cause: String` (review 87156, gunbc.design_argument::fail_closed "every path succeeds
+// fully or fails with a typed, located diagnostic"; gunbc.design_argument::source_annotations "a dissolution condition belongs in a typed
 // carrier"). An earlier draft carried `cause: String` and filled it with prose — including a
 // `cause_text(cause: ResolutionCause)` that took the typed causes the resolver module had just built and
 // flattened them back into text. That contradicted this change's own resolver.dag, which keeps four causes
@@ -529,12 +529,12 @@ type HostNameResolutionRefusal
   //    re-introduce the string comparison this module deleted.
   = NameOffZone { name: ResolvableName, filed_under: NameSpace }
   // 2. (DELETED — was `NameNotFullyQualified`.) An earlier draft refused a name that was not spelled with a
-  //    trailing dot. That was never measured (§4d), and the measurement contradicts it: the controller's own
+  //    trailing dot. That was never measured (gunbc.design_argument::epistemic_humility), and the measurement contradicts it: the controller's own
   //    `cd_remote_server_address` validator ACCEPTS "srv2.mynetworksettings.com" and REFUSES
   //    "srv2.mynetworksettings.com." (docs/probes/bmc_media_share_naming_2026-10-27.md, predicate read from
   //    the served firmware bundle). Demanding the trailing dot would have refused the only spelling the
   //    device accepts and demanded the one it rejects. The arm is deleted rather than kept unreachable —
-  //    §3c makes a declaration no producer can reach the one kind of dangling this repo calls red, and an
+  //    gunbc.design_argument::consumption makes a declaration no producer can reach the one kind of dangling this repo calls red, and an
   //    arm in a refusal coproduct that no path constructs is exactly that, however plausible it reads.
   //    Qualification remains visible where it belongs: as DATA on the name
   //    (`extdeps.dns.resolver resolvable_name_qualification`), for any consumer whose question needs it.
@@ -551,8 +551,8 @@ type HostNameResolutionRefusal
   //    is perfectly good cannot be filed, and the author must not be sent looking at the name. Carries the
   //    spelling that failed, so it can be rendered or re-admitted after it is fixed. It carries a SPELLING
   //    and nothing else: an earlier draft put the sentence "the fleet tailnet domain is not configured" in
-  //    this field too, which made one name mean two materially different things (§3) and handed a consumer
-  //    that renders or re-admits `zone_spelling` a piece of English (§4c). "Nothing is configured" is a
+  //    this field too, which made one name mean two materially different things (gunbc.design_argument::single_authority) and handed a consumer
+  //    that renders or re-admits `zone_spelling` a piece of English (gunbc.design_argument::source_annotations). "Nothing is configured" is a
   //    different fact and has its own arm below.
   | ZoneUnconfigured { zone_spelling: String }
   // 5b. The fleet has not configured a tailnet domain at all, so the tailnet space has no zone to check a
@@ -595,7 +595,7 @@ fn host_name_resolution_admit(
     Present { value: _ } =>
       match resolvable_name_qualification(name: name) {
         // BOTH QUALIFICATION ARMS ARE ACCEPTED HERE, and that is a measured correction, not a loosening
-        // (§4d). An earlier draft refused `PartiallyQualified`, which would have refused
+        // (gunbc.design_argument::epistemic_humility). An earlier draft refused `PartiallyQualified`, which would have refused
         // "srv2.mynetworksettings.com" — the exact spelling the controller's own field validator ACCEPTS —
         // and demanded the trailing-dot form, which the same validator REFUSES (probe 2026-10-27,
         // docs/probes/bmc_media_share_naming_2026-10-27.md, predicate read from the served firmware bundle).
@@ -653,7 +653,7 @@ fn host_name_resolution_accept(
 
 // WHICH SPACES A CONSUMER CAN ACTUALLY ASK ABOUT. The finding this answers: an earlier draft decided "can
 // this consumer resolve in this space" with a hard-coded match on the space, so a second consumer needed a
-// new branch in shared code rather than a new row (§6b). A consumer's resolvability is a property OF THE
+// new branch in shared code rather than a new row (gunbc.design_argument::earliest_unjustified_boundary). A consumer's resolvability is a property OF THE
 // CONSUMER — its path, its membership, the resolver it was configured with — so it is carried here: the
 // space it can reach, the resolver it asks, and the answers that resolver has been observed to give.
 //
@@ -669,7 +669,7 @@ type ConsumerReach {
 
 // THE SPACE THIS CONSUMER CAN ASK ABOUT, for a given host — found in its rows rather than decided by a
 // match on the space's shape. Absent means the consumer was never given a path to ask about that space, and
-// every caller treats Absent as a refusal: an unobserved resolution is a coverage obligation (§4d), not a
+// every caller treats Absent as a refusal: an unobserved resolution is a coverage obligation (gunbc.design_argument::epistemic_humility), not a
 // default-allow.
 fn reachable_space_for(reach: ConsumerReach, space: NameSpace) -> NameSpace? {
   first_reached(xs: reach.reaches, space: space)
@@ -703,7 +703,7 @@ fn same_space(a: NameSpace, b: NameSpace) -> Bool {
 }
 
 // WHAT WAS OBSERVED, AND WHO READS IT (review 87196, finding 1, option (b) for the dead half). This module
-// once carried `observed_for` and `first_matching_observation`, which no code called: the §3c red is a row
+// once carried `observed_for` and `first_matching_observation`, which no code called: the gunbc.design_argument::consumption red is a row
 // no fold reads, and a public helper with no call site is that, however tidy it looks. The fold that needs
 // the observations is `first_cited_address_disagreement` below, and it needs ALL the citations for a name,
 // not the first one — an earlier draft had the gate refuse on the first citation it found, which would have
@@ -732,7 +732,7 @@ fn asked_name(outcome: NameResolution) -> ResolvableName {
 
 // WHAT THE GATE CONCLUDED ABOUT A SHARE'S SERVER FIELD. Six arms because there are six different things that
 // can be wrong with a share address, and each has a different remedy — which is the entire reason they are
-// not one failure string (§5). Ordered by the CHECK THAT RUNS FIRST, which is also the cheapest and the one
+// not one failure string (gunbc.design_argument::fail_closed). Ordered by the CHECK THAT RUNS FIRST, which is also the cheapest and the one
 // that needs no network:
 //
 //   AddressIsNotAName      the field holds an IP literal. Unwritable at the row (the admission refuses it,
@@ -757,7 +757,7 @@ fn asked_name(outcome: NameResolution) -> ResolvableName {
 //   Usable                 the name is a name, is this consumer's to ask, satisfies this consumer's own
 //                          field rule, agrees with the row, and was observed to give addresses.
 type MediaShareAddressStanding
-  // Carries the resolver module's OWN refusal type rather than a sentence about it (same §5 rule review
+  // Carries the resolver module's OWN refusal type rather than a sentence about it (same gunbc.design_argument::fail_closed rule review
   // 87139/87156 applied to the row admission): an IPv4 literal, an IPv6 literal and a malformed label have
   // three different fixes, and a caller must be able to match them instead of reading prose. `raw` stays
   // because the remedy quotes the offending spelling back to whoever edits the row.
@@ -766,7 +766,7 @@ type MediaShareAddressStanding
   // THE CONSUMER'S FIRMWARE HAS NO EVIDENCED RELEASE, so the floor in the rule belongs to no known build
   // and cannot be applied. Distinct from RefusedByConsumerFirmware, which is the firmware's own kind of
   // answer on a release we DID read: "we do not know what this build would say" is a different fact, and
-  // it needs its own name (§3 meaning-fork rule).
+  // it needs its own name (gunbc.design_argument::single_authority meaning-fork rule).
   | ConsumerFirmwareUnevidenced { consumer: DeclarationRef }
   | RefusedByConsumerFirmware { host: HostIdentity, name: ResolvableName, firmware: BmcFirmwareReleaseIdentity, minimum_labels: Int }
   // The two spellings that disagree, carried as the VALUES rather than as renderings of them: the share's
@@ -795,7 +795,7 @@ type MediaShareAddressStanding
   | Usable { host: HostIdentity, name: ResolvableName, address: Ipv4Address }
 
 // THE cd_remote_server_address FIELD'S VALIDATOR, AS THIS REPOSITORY EXECUTED IT. These rows are a RECEIPT,
-// not an upstream fact: §3's external-upstream decomposition puts observations this repository makes in the
+// not an upstream fact: gunbc.design_argument::external_upstreams's external-upstream decomposition puts observations this repository makes in the
 // observing layer, and this repository RAN the controller's client-side predicate over candidate spellings
 // (docs/probes/bmc_media_share_naming_2026-10-27.md, "The firmware's own field validator, executed",
 // 2026-10-27). An earlier draft filed them under extdeps.bmc.megarac, which models the vendor and reads no
@@ -867,7 +867,7 @@ type MediaShareConsumerRule {
   member: NonEmptyStr
   // THE RELEASE THE RULE WAS READ FROM, as a key and not as prose: a rule with no release is a rule that
   // silently outlives the build it came from. Taken from the probe set rather than restated, so the key
-  // has one source (§3), and Optional because the key IS a machine read: if the committed capture is
+  // has one source (gunbc.design_argument::single_authority), and Optional because the key IS a machine read: if the committed capture is
   // missing, no build is evidenced, and the gate refuses rather than assuming one.
   firmware: BmcFirmwareReleaseIdentity?
   minimum_labels: Int
@@ -886,7 +886,7 @@ data megarac_media_address_rule: MediaShareConsumerRule = MediaShareConsumerRule
 
 // THE GATE. Every check is against a TYPE or a CITATION, and no check asks the network a question a cited
 // observation has already answered — the `ask` that reaches `resolve_name` is injected, so production can
-// pass a live query and the witness can pass a table (§4d).
+// pass a live query and the witness can pass a table (gunbc.design_argument::epistemic_humility).
 //
 // The ORDER is load-bearing and asserted by the witness: the literal check runs before anything touches a
 // resolver, so a row carrying .188 is refused even when a resolver would happily answer for it. An earlier
@@ -925,7 +925,7 @@ fn media_share_address_gate(
             Present { value: _ } =>
               match resolve_name(name: share_name, resolver: reach.resolver, ask: ask) {
                 // `addresses` is a FreeSemigroup, so there is always one to hand back and this arm cannot
-                // invent a failure: no fallback cause, no placeholder, no "shouldn't happen" branch (§5).
+                // invent a failure: no fallback cause, no placeholder, no "shouldn't happen" branch (gunbc.design_argument::fail_closed).
                 Resolved { name: _, addresses: addrs } =>
                   match citations_disagree_with_live(name: share_name, reach: reach, row: row, live: addrs) {
                     // A citation this gate is holding says the name answered something else. Do not attach.
@@ -938,7 +938,7 @@ fn media_share_address_gate(
                     // Either every citation agrees, or this name has never been cited — in which case the
                     // live reply is the only evidence there is, and the boot proceeds on it. Deliberately ONE
                     // arm: a consumer acts identically on both, and splitting them would be modelling a
-                    // distinction nothing reads (§2).
+                    // distinction nothing reads (gunbc.design_argument::minimize_redundancy).
                     Absent => Usable { host: row.host, name: share_name, address: addrs.head }
                   }
                 Unresolved { name: _, cause: c } => ShareNameUnresolved { host: row.host, cause: c }
@@ -987,7 +987,7 @@ fn first_cited_address_disagreement(
 
 // OBSERVED, BUT ONLY WHERE IT DECIDES SOMETHING. `ConsumerReach.observed` is read here, and nowhere else;
 // an earlier draft carried the field, documented it in the header as load-bearing, and never read it — the
-// §3c red (a row no fold reads), which is the only kind of dangling this repo calls red. The `asked_name`
+// gunbc.design_argument::consumption red (a row no fold reads), which is the only kind of dangling this repo calls red. The `asked_name`
 // and `observed_names_this` helpers above are used by this fold; the two list-walk helpers that were left
 // over with no call site were deleted rather than kept as a public surface nothing calls.
 fn citations_disagree_with_live(
@@ -1006,12 +1006,12 @@ fn citations_disagree_with_live(
 
 // THE LITERAL REFUSAL, rendered per arm so the remedy is the one that fits. Three sub-shapes because
 // "typo in a name", "you wrote an IPv4 literal" and "you wrote an IPv6 literal" have different fixes, and a
-// single blended string would have the reader fix the wrong thing (§5).
+// single blended string would have the reader fix the wrong thing (gunbc.design_argument::fail_closed).
 // THE LITERAL REFUSAL AS AN ARM, carrying the resolver module's refusal unchanged. The three sub-shapes
 // stay three: an IPv4 literal ("author a name, not an address"), an IPv6 literal ("no NFS client here is
 // reachable over IPv6 — this is a typo, not a route") and a malformed label ("fix the character") have
 // different remedies, and the earlier draft rendered all three into near-identical sentences, which is
-// precisely the §5 blending the review flagged on the sibling type.
+// precisely the gunbc.design_argument::fail_closed blending the review flagged on the sibling type.
 fn not_a_name_standing(raw: NonEmptyStr, refusal: ResolvableNameRefusal) -> MediaShareAddressStanding {
   AddressIsNotAName { raw: raw, refusal: refusal }
 }
@@ -1022,9 +1022,9 @@ fn not_a_name_standing(raw: NonEmptyStr, refusal: ResolvableNameRefusal) -> Medi
 // (grounded as an Ipv4Address with source net_1g, dhcp, and its reservation Absent — which is precisely
 // why a name, not this address, is what belongs in a share row). An earlier draft of this module carried
 // its own `ipv4_address(192,168,1,201)`; that was a second source for one fact, and the two were free to
-// drift — the exact §3 defect the review named. The address the boot died on (192.168.1.188) is not
+// drift — the exact gunbc.design_argument::single_authority defect the review named. The address the boot died on (192.168.1.188) is not
 // declared at all: it is a historical receipt, recorded in
-// docs/probes/bmc_media_share_naming_2026-10-27.md, and a row for it would be dangling (§3c).
+// docs/probes/bmc_media_share_naming_2026-10-27.md, and a row for it would be dangling (gunbc.design_argument::consumption).
 //
 // THE LAN RESOLVER IS READ, NOT DECLARED HERE. This module used to spell 192.168.1.1 itself and claim
 // nothing else carried it; that claim was false. gunbc.host.host_primary_network_observed
@@ -1048,7 +1048,7 @@ fn not_a_name_standing(raw: NonEmptyStr, refusal: ResolvableNameRefusal) -> Medi
 // passes `lan_zone_wire`; the spelling is a parameter so that arm 5 is a state a caller can actually put the
 // module into and `zone_spelling` is a field something reads — the refusal must carry the very spelling it
 // just failed to parse, not a constant it could disagree with. An arm no call can reach and no claim matches
-// is the §3c red; `a_zone_spelling_that_does_not_parse_refuses_with_the_spelling_it_failed` reaches this one.
+// is the gunbc.design_argument::consumption red; `a_zone_spelling_that_does_not_parse_refuses_with_the_spelling_it_failed` reaches this one.
 // THE NAME IS JOINED FROM THE ZONE, NOT SPELLING IT AGAIN (review 87319, finding 2). The zone was a
 // parameter and the name was still the literal "srv2.mynetworksettings.com", so the parameter moved the
 // suffix test but not the name the resolver is asked about: re-configure the zone and this row keeps filing
@@ -1069,7 +1069,7 @@ fn srv2_lan_name_under(zone_wire: String) -> HostNameResolutionAdmission {
       // JOINED, THEN ADMITTED THROUGH THE SPELLING. The join is typed (`host_name_joined_with_zone`), but
       // admission still goes through `resolvable_name_admit`, whose contract is a spelling: that is
       // deliberate, because `ResolvableName` is sealed to the resolver module and its admission is the gate
-      // that refuses an IP literal (§3c: the seal is the point, so this must not be handed a bypass). The
+      // that refuses an IP literal (gunbc.design_argument::consumption: the seal is the point, so this must not be handed a bypass). The
       // round trip through text is the boundary, not an oversight.
       match resolvable_name_admit(spelling: domain_name_wire(name: host_name_joined_with_zone(
         host: (operator_host_srv2 as String) as DnsLabel,
@@ -1108,7 +1108,7 @@ fn srv2_lan_name() -> HostNameResolutionAdmission {
 
 // THE PRODUCTION CUT-OVER, AS A TYPED FRONTIER WITH A MACHINE-READABLE TRIGGER.
 //
-// WHY THIS IS NOT A STRING ROW (review 87156, DESIGN §4c: "an invariant, receipt, ... ruling, citation,
+// WHY THIS IS NOT A STRING ROW (review 87156, gunbc.design_argument::source_annotations: "an invariant, receipt, ... ruling, citation,
 // status, count or dissolution condition belongs in a typed carrier, and a `String` declaration whose only
 // purpose is commentary is misplaced or dead data"). An earlier draft of this row was a sentence holding the
 // plan, its trigger, and the operator condition. Nothing could read it: `dissolution_status` cannot see a
@@ -1117,7 +1117,7 @@ fn srv2_lan_name() -> HostNameResolutionAdmission {
 // `std.dissolution`, which is the carrier the corpus already folds.
 //
 // WHAT THE GATE'S LACK OF A PRODUCTION CALLER ACTUALLY MEANS, and why it is a frontier rather than a defect
-// to fix in this PR (§3c permits exactly this: "consumed by a named later change (a declared frontier, with
+// to fix in this PR (gunbc.design_argument::consumption permits exactly this: "consumed by a named later change (a declared frontier, with
 // its trigger)"). `mtcollins1_media_share.server_address` is still `render_ipv4_address(addr: srv2_lan_ipv4)`,
 // and this module's gate REFUSES that spelling — which the witness asserts against the real row, imported
 // from its own module, not against a string authored here. The row is not cut over in this change for a
@@ -1133,7 +1133,7 @@ fn srv2_lan_name() -> HostNameResolutionAdmission {
 //   (1) the boot that must not be disturbed has run, so no gate is being changed under a live attach;
 //   (2) the BMC's network settings have been READ and its DNS server CITED. The BMC is not on the tailnet,
 //       so a LAN name is only as good as the resolver it was told to ask; writing a name while its resolver
-//       is unknown is how a share that resolves from a laptop fails on the controller (§4d);
+//       is unknown is how a share that resolves from a laptop fails on the controller (gunbc.design_argument::epistemic_humility);
 //   (3) the operator has given the go for the one-time media/general PUT, and this session owns pairing that
 //       PUT with the row change, so the two cannot land apart.
 // WHAT DOES *NOT* SATISFY IT: the witness going green (it already does, and it is refusing the row); the row
@@ -1198,7 +1198,7 @@ data media_share_name_cutover: MediaShareNameCutover = MediaShareNameCutover {
 
 // srv2's TAILNET NAME IS NOT FILED, and the absence is the point. This container has no tailnet daemon and
 // no `tailscale` binary, so nothing could have been asked about the tailnet spelling and no observation
-// exists to cite; per §4d an unobserved resolution is a coverage obligation, not a value. The function
+// exists to cite; per gunbc.design_argument::epistemic_humility an unobserved resolution is a coverage obligation, not a value. The function
 // below returns the refusal a consumer receives today, and the cause names the MISSING READER rather than
 // the name — because the name may be perfectly good, and saying so honestly is what keeps the next person
 // from "fixing" the spelling when what is missing is a probe.
@@ -1210,7 +1210,7 @@ data media_share_name_cutover: MediaShareNameCutover = MediaShareNameCutover {
 // THE srv2 TAILNET ROW, UNDER A DOMAIN THE CALLER SUPPLIES. Production calls `srv2_tailnet_name_refused`,
 // which passes the fleet's row. The parameter exists so the two tailnet refusals are both states a caller can
 // reach and a claim can match: with the domain read from the row inside the function, only one of them was
-// ever constructible, and the other was the §3c red wearing a comment.
+// ever constructible, and the other was the gunbc.design_argument::consumption red wearing a comment.
 fn srv2_tailnet_name_refused_under(domain: NonEmptyStr?) -> HostNameResolutionAdmission {
   // The domain is read here rather than funnelled through `tailnet_name_space_under` alone, because that
   // helper answers one question ("give me a Zone") and answers it Absent for TWO different facts: nothing is

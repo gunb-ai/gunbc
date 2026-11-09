@@ -7,7 +7,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // real rendering route is exercised by test.claim.srv3.srv3_seeded_install_media_witness.
 data srv3_seeded_user_data_fixture: NonEmptyStr = "#cloud-config\nautoinstall:\n  identity:\n    hostname: srv3\n" as NonEmptyStr
 
-// A SUPPLIED resolved image (DESIGN §3: a witness discriminates at one interface). What these
+// A SUPPLIED resolved image (gunbc.design_argument::witness_one_interface: a witness discriminates at one interface). What these
 // claims check does not depend on which bytes the actuator serves, only on the path reaching the
 // intent; the real resolution route is exercised by test.claim.machine_intake.mtcollins1_census_image_witness.
 data srv3_resolved_image_fixture: SeededImageResolution = SeededImageResolved {

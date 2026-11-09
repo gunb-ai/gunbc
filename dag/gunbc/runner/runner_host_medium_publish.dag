@@ -1,14 +1,14 @@
 module gunbc.runner.runner_host_medium_publish
 
-import std.types { Bool, NonEmptyStr, String }
-import std.optional { Present, Absent }
+import std.types { Bool, NonEmptyStr, String, CommitSha }
+import std.optional { Optional, Present, Absent }
 import std.algebra { trim }
 import extdeps.tools.gnu_coreutils { ln_symbolic_force_command, readlink_command }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.host_command_binding {
   CommandHost, FleetSshCommandHost, HostCommandOutcome, HostCommandDone, HostCommandFailed, HostCommandUnconfirmed, HostCommandNotDispatched,
-  host_command, host_command_outcome_text,
+  host_command, host_command_outcome_text, host_label,
 }
 import gunbc.host.boot_medium_reader_key { boot_medium_served_link_path }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
@@ -22,8 +22,25 @@ import gunbc.provisioning.seeded_install_media_publish {
 }
 import gunbc.runner.runner_host_medium {
   RunnerHostMediumHost, RunnerHostMediumImage, RunnerHostMediumImageDerived, RunnerHostMediumRunnerUnpublished, RunnerHostMediumUserDataRefused,
-  runner_host_medium_image,
+  runner_host_medium_image, RunnerHostBakedRelease, runner_host_baked_release_name,
 }
+import gunbc.host_command_binding {
+  LocalCommandHost, host_run, host_transport_kind, scratch_acquisition_of, scratch_removal_of, render_scratch_outcome,
+  ScratchAcquired, ScratchNotAcquired, scratch_removed,
+}
+import gunbc.host.host_effect_realize {
+  tree_install_in_realm, TreeInstallStaged, ApprovalBrokerTreeInstallVerdict, TreeInstallConverged, TreeInstallRefused,
+  tree_install_step_name, one_transport_route, observe_sha256_over_transport, Sha256Observed, Sha256Unobserved, sha256_unobserved_cause_text,
+  HostEffectElevationRoute, observe_tree_entry_metadata, TreeMetadataObserved, TreeMetadataObservationFailed, tree_staged_archive_disagreement,
+}
+import gunbc.host.host_effect { LocalShell }
+import gunbc.live_deploy.release_locus { RevisionBoundAtEmission, approval_broker_helper_root_principal, release_locus_tree_subdirs }
+import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
+import gunbc.live_rust_observation { current_actions_sha_observation, ActionsShaObserved, ActionsShaEmpty, ActionsShaMissing }
+import gunbc.fleet.fleet_known_hosts_anchor { fleet_scp_upload_command, SshTarget, FleetSshExecutionContext }
+import extdeps.tools.gnu_coreutils { rm_recursive_force_command, mktemp_directory_command, rm_recursive_force_one_file_system_command }
+import extdeps.tools.tar { tar_create_reproducible_command, tar_list_sizes_command }
+import extdeps.crypto.hash { sha256sum_file_command, sha256sum_line_digest, Digest }
 
 // THE IMAGE LEG'S PRODUCTION CALLER (gunbc.runner.runner_throughput_qualification_route mtcollins1_image_leg).
 // It derives the runner image from the authority (gunbc.runner.runner_host_medium runner_host_medium_image)
@@ -142,19 +159,136 @@ fn render_runner_image_attempt(a: RunnerImagePublishAttempt) -> String {
 
 data mtcollins1_runner_image_receipt_path: String = "target/mtcollins1-runner-image.txt"
 
+// THE BAKED RELEASE IS BUILT BY THIS RUN (gunbc.plans.mtcollins1_ci_service_legs F1; merry-fox-82, 2026-10-27, decision
+// A and its conditions; 2026-11-07, decision B on #15335): on this run's own aarch64 fleet runner, at the run's checkout
+// (GITHUB_SHA), the release-locus tree is staged through the one tree install in its STAGED realm
+// (gunbc.host.host_effect_realize tree_install_in_realm, TreeInstallStaged: unelevated, confined to the staging root,
+// ownership declared by the archive), packed reproducibly (owner 0, modes kept), measured, copied to the export host,
+// and READ BACK THERE: the export host's own sha256 of the copy must equal the measured one, or nothing is built. The
+// revision is the checkout's and nothing more; that a slot may RUN it is the slot start's admission
+// (gunbc.runner.runner_service_slot_start service_slot_start_admitted), not this build's.
+type BakedReleaseBuild
+  = BakedReleaseBuilt { baked: RunnerHostBakedRelease }
+  | BakedReleaseNotBuilt { reason: String }
+
+// WHERE THE BUILD STAGES AND PACKS, under the checkout's target/ (the run's own working tree; nothing outside it is
+// written, and the staged realm refuses a write outside stage_root).
+type BakedReleaseBuildPlan {
+  revision: CommitSha
+  source_root: String
+  stage_root: NonEmptyStr
+  archive: NonEmptyStr
+}
+
+fn baked_release_staged_locus(plan: BakedReleaseBuildPlan) -> String {
+  concat(plan.stage_root as String, "/release")
+}
+
+// THE LOCAL HALF: stage, pack, measure. Every leg runs on this host as the job's own principal, so a refusal names the
+// leg; nothing here is elevated.
+type BakedReleasePacked
+  = BakedReleasePackedAt { digest: Digest }
+  | BakedReleaseNotPacked { reason: String }
+
+fn baked_release_pack(plan: BakedReleaseBuildPlan) -> BakedReleasePacked {
+  let route = one_transport_route(transport: LocalShell)
+  let cleared = host_command(host: LocalCommandHost, command: rm_recursive_force_command(path: plan.stage_root as String))
+  match cleared {
+    HostCommandDone { stdout: _ } =>
+      match tree_install_in_realm(
+        realm: TreeInstallStaged { staging_root: plan.stage_root, archive_owner: approval_broker_helper_root_principal },
+        spine: [plan.stage_root as String],
+        locus: baked_release_staged_locus(plan: plan),
+        source_root: plan.source_root,
+        revision: RevisionBoundAtEmission { revision: plan.revision },
+        executables: [gunbc_release_bin_name],
+        transport: route,
+      ) {
+        TreeInstallRefused { step: st, reason: r } => BakedReleaseNotPacked { reason: concat("the staged tree install refused at ", tree_install_step_name(step: st), ": ", r) }
+        TreeInstallConverged { installed_digest: _d, files_installed: _n } =>
+          match host_command(host: LocalCommandHost, command: tar_create_reproducible_command(archive: plan.archive as String, from_directory: baked_release_staged_locus(plan: plan))) {
+            HostCommandDone { stdout: _ } =>
+              match baked_release_archive_declares_ownership(plan: plan, route: route) {
+                Present { value: why } => BakedReleaseNotPacked { reason: concat("the packed release does not declare the tree the elevated install would have produced: ", why) }
+                Absent =>
+                  match observe_sha256_over_transport(path: plan.archive as String, transport: LocalShell) {
+                    Sha256Observed { digest: d } => BakedReleasePackedAt { digest: d }
+                    Sha256Unobserved { cause: c } => BakedReleaseNotPacked { reason: concat("the packed release was not measured: ", sha256_unobserved_cause_text(cause: c)) }
+                  }
+              }
+            other => BakedReleaseNotPacked { reason: concat("the staged tree was not packed: ", host_command_outcome_text(e: other)) }
+          }
+      }
+    other => BakedReleaseNotPacked { reason: concat("the previous staging root was not cleared: ", host_command_outcome_text(e: other)) }
+  }
+}
+
+// THE OWNERSHIP THE ARCHIVE DECLARES, READ BACK (gunbc.host.host_effect_realize tree_staged_archive_disagreement):
+// the staged tree's own entries, as the tree install read them back, against the archive's member listing. Absent
+// means every member is 0/0 and the tree members carry the elevated install's kinds, targets and modes.
+fn baked_release_archive_declares_ownership(plan: BakedReleaseBuildPlan, route: HostEffectElevationRoute) -> Optional<String> {
+  match observe_tree_entry_metadata(root: baked_release_staged_locus(plan: plan), subs: release_locus_tree_subdirs, transport: route) {
+    TreeMetadataObservationFailed { reason: r } => Present { value: concat("the staged tree's entries were not read: ", r) }
+    TreeMetadataObserved { entries: staged } =>
+      match host_command(host: LocalCommandHost, command: tar_list_sizes_command(archive: plan.archive as String)) {
+        HostCommandDone { stdout: listing } => tree_staged_archive_disagreement(archive_owner: approval_broker_helper_root_principal, staged: staged, listing: listing)
+        other => Present { value: concat("the archive was not listed: ", host_command_outcome_text(e: other)) }
+      }
+  }
+}
+
+// THE WHOLE BUILD: pack, copy to `export_dir` on the export host, and read the copy's digest back ON THAT HOST. The
+// copy is a parameter so the transport is the caller's (scp over the fleet context in the wet path); the readback is
+// always a sha256sum run on the export host itself, so a copy that reported success over a truncated file refuses.
+fn baked_release_build_over(plan: BakedReleaseBuildPlan, export_host: CommandHost, export_dir: NonEmptyStr, copy: fn(NonEmptyStr, NonEmptyStr) -> HostCommandOutcome) -> BakedReleaseBuild {
+  match baked_release_pack(plan: plan) {
+    BakedReleaseNotPacked { reason: r } => BakedReleaseNotBuilt { reason: r }
+    BakedReleasePackedAt { digest: measured } => {
+      let staged = join([export_dir as String, "/", runner_host_baked_release_name(revision: plan.revision) as String], "") as NonEmptyStr
+      match copy(plan.archive, staged) {
+        HostCommandDone { stdout: _ } =>
+          match host_command(host: export_host, command: sha256sum_file_command(path: staged as String)) {
+            HostCommandDone { stdout: out } =>
+              match sha256sum_line_digest(line: out) {
+                Absent => BakedReleaseNotBuilt { reason: concat("the copy on ", host_label(host: export_host), " was not measured: sha256sum printed no digest") }
+                Present { value: read_back } =>
+                  if (read_back.hex as String) == (measured.hex as String) {
+                    BakedReleaseBuilt { baked: RunnerHostBakedRelease { revision: plan.revision, digest: measured, staged_path: staged } }
+                  } else {
+                    BakedReleaseNotBuilt { reason: join(["the copy on ", host_label(host: export_host), " reads back as ", read_back.hex as String, ", not the packed ", measured.hex as String], "") }
+                  }
+              }
+            other => BakedReleaseNotBuilt { reason: concat("the copy on ", host_label(host: export_host), " was not measured: ", host_command_outcome_text(e: other)) }
+          }
+        other => BakedReleaseNotBuilt { reason: concat("the packed release was not copied to ", host_label(host: export_host), ": ", host_command_outcome_text(e: other)) }
+      }
+    }
+  }
+}
+
+data mtcollins1_baked_release_stage_root: NonEmptyStr = "target/mtcollins1-baked-release"
+data mtcollins1_baked_release_archive: NonEmptyStr = "target/mtcollins1-baked-release.tar"
+
+// THE EXPORT HOST'S SCRATCH FOR THE COPY: an exclusively created directory (mktemp -d), removed after the publication
+// has read the copy into the image, whatever the publication's outcome.
+data mtcollins1_baked_release_export_prefix: String = "/var/tmp/gunbc-mtcollins1-baked-release."
+data mtcollins1_baked_release_export_template: NonEmptyStr = "/var/tmp/gunbc-mtcollins1-baked-release.XXXXXXXX"
+
 data mtcollins1_runner_image_attempt_raw: String = "mtcollins1-runner-image-publish"
 
-// CONSUMPTION (DESIGN §3c): invoked by the fleet-converge mode MtCollins1RunnerImagePublish, which
+// CONSUMPTION (gunbc.design_argument::consumption): invoked by the fleet-converge mode MtCollins1RunnerImagePublish, which
 // consumes the fleet SSH key and runs on any runner (gunbc.fleet.fleet_converge_workflow, gunbc.ci.ci_spec).
 // The receipt is written whatever the outcome and uploaded by the step that follows.
 fn mtcollins1_runner_image_publish_wet() -> ProcessExit {
   let attempt = match prepare_fleet_ssh_agent_context(attempt_raw: mtcollins1_runner_image_attempt_raw) {
     FleetSshContextRefused { cause: c } => RunnerImageNotDerived { reason: concat("no fleet SSH context: ", c) }
     FleetSshContextReady { context: context, receipt: _ } =>
-      runner_image_publication_on(
-        host: FleetSshCommandHost { target: bmc_boot_image_export.target, context: context },
-        image: runner_host_medium_image(host: mtcollins1_runner_host),
-      )
+      match current_actions_sha_observation() {
+        ActionsShaEmpty { detail: d } => RunnerImageNotDerived { reason: concat("no checkout revision to bake: ", d) }
+        ActionsShaMissing { detail: d } => RunnerImageNotDerived { reason: concat("no checkout revision to bake: ", d) }
+        ActionsShaObserved { sha: revision } =>
+          mtcollins1_runner_image_publish_at(revision: revision, export: FleetSshCommandHost { target: bmc_boot_image_export.target, context: context }, target: bmc_boot_image_export.target, context: context)
+      }
   }
   let rendered = render_runner_image_attempt(a: attempt)
   let written = Filesystem.Write(path: mtcollins1_runner_image_receipt_path, content: rendered)
@@ -164,5 +298,32 @@ fn mtcollins1_runner_image_publish_wet() -> ProcessExit {
     ExitSuccess
   } else {
     exit_failure(reason: concat("mtcollins1 runner image publication did not hold:\n", rendered))
+  }
+}
+
+// THE BUILD AND THE PUBLICATION AROUND ONE EXPORT-HOST SCRATCH: the copy lands in a directory this run created, the
+// publication reads it from there into the image, and the directory is removed after, whatever the publication said.
+// A scratch that was not removed is a refusal (its outcome rendered), so a stale copy never outlives an unread run.
+fn mtcollins1_runner_image_publish_at(revision: CommitSha, export: CommandHost, target: SshTarget, context: FleetSshExecutionContext) -> RunnerImagePublishAttempt {
+  let kind = host_transport_kind(host: export)
+  match scratch_acquisition_of(kind: kind, prefix: mtcollins1_baked_release_export_prefix, leg: host_run(host: export, command: mktemp_directory_command(template: mtcollins1_baked_release_export_template))) {
+    ScratchNotAcquired { outcome: o } => RunnerImageNotDerived { reason: concat("no export-host scratch for the baked release: ", render_scratch_outcome(label: "baked_release_scratch", prefix: mtcollins1_baked_release_export_prefix, o: o)) }
+    ScratchAcquired { dir: dir } => {
+      let built = baked_release_build_over(
+        plan: BakedReleaseBuildPlan { revision: revision, source_root: ".", stage_root: mtcollins1_baked_release_stage_root, archive: mtcollins1_baked_release_archive },
+        export_host: export,
+        export_dir: dir,
+        copy: (local, remote) => host_command(host: LocalCommandHost, command: fleet_scp_upload_command(context: context, target: target, local_path: local, remote_path: remote)),
+      )
+      let published = match built {
+        BakedReleaseNotBuilt { reason: r } => RunnerImageNotDerived { reason: concat("the baked release was not built: ", r) }
+        BakedReleaseBuilt { baked: baked } =>
+          runner_image_publication_on(host: export, image: runner_host_medium_image(host: mtcollins1_runner_host, baked: baked))
+      }
+      let removed = scratch_removal_of(kind: kind, dir: dir, leg: host_run(host: export, command: rm_recursive_force_one_file_system_command(path: dir as String)))
+      if scratch_removed(o: removed) { published } else {
+        RunnerImageNotDerived { reason: concat("the export-host scratch was not removed after the publication (", render_runner_image_attempt(a: published), "): ", render_scratch_outcome(label: "baked_release_scratch", prefix: mtcollins1_baked_release_export_prefix, o: removed)) }
+      }
+    }
   }
 }

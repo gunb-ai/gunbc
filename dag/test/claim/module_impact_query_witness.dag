@@ -52,7 +52,7 @@ import v2.lens.module_impact_query {
 }
 
 // Controlled fixtures: every input population and every expected population is authored here, so no
-// assertion is a measurement of the current tree copied back onto itself (DESIGN 5 oracle rule).
+// assertion is a measurement of the current tree copied back onto itself (gunbc.design_argument::fail_closed oracle rule).
 // Three discriminating families. (1) The cycle pair - all_import vs mixed - has identical topology
 // and different provenance, so a union-grain classifier reds on one while passing the other. (2)
 // The two-disjoint-cycles fixture is the regression control for review 50459: the pre-fix

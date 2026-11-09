@@ -18,7 +18,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // THE POOL ROOTS THIS CLAIM READS. Named, not discovered: the claim is about what the live
 // declaration index says under a stated population, and a population the claim does not state
-// is one a reader cannot re-derive (DESIGN section 6 -- name the instrument).
+// is one a reader cannot re-derive (gunbc.design_argument::how_to_work -- name the instrument).
 data scoped_reflection_pool_roots: List<String> = ["dag", "src/v2"]
 
 fn outcome_is_rejected<T>(o: Outcome<T>) -> Bool {

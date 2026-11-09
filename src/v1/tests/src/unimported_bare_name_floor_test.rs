@@ -1,6 +1,6 @@
 //! FLOOR PROBE (node://adhoc-5fdefc60-2eb; found by bright-crane-219 on gunbc#15230).
 //!
-//! THE FLOOR: DESIGN section 4b's "names resolve" rung, read with section 5's fail-closed rule
+//! THE FLOOR: gunbc.design_argument::guarantee_ladder's "names resolve" rung, read with section 5's fail-closed rule
 //! and namespace-resolution-design.md section 13 -- a bare name's candidates are the binders on
 //! the REFERENCING module's own chain, never the corpus-wide pool. A name declared in module A
 //! must NOT resolve in module B when B never imports it and A is not an ancestor of B.

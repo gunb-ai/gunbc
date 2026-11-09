@@ -19,7 +19,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // witnesses, not here. This receipt tracks the real current frontier (specific causes, still
 // discriminating), not a broadened pass.
 
-// HONEST frontier finding (DESIGN 5, no fail-open receipt): the ledger's import-closure feeding is
+// HONEST frontier finding (gunbc.design_argument::fail_closed, no fail-open receipt): the ledger's import-closure feeding is
 // WIRED (door_ledger feeds import_closure into the door ingest) and structurally exercised —
 // modules reach the door's deep resolve/infer/lens stages. std.bit now clears the migration-owned
 // resolve_ambiguous_export cause and reds later at resolve_reason_unbound_symbol (generics),

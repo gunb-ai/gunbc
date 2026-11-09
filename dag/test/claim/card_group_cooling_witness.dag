@@ -28,7 +28,7 @@ import product.printed_chassis.group_cooling_plan {
   GroupQualified, GroupNotQualified, group_qualification, GroupFabricableByExistingDucts, GroupFabricationBlocked, group_fabrication,
 }
 
-// SUPPLIED VALUES AT EACH INTERFACE (DESIGN section 3): the partition, separation and qualification rules
+// SUPPLIED VALUES AT EACH INTERFACE (gunbc.design_argument::witness_one_interface): the partition, separation and qualification rules
 // are judged over installations and demands built here; the claims marked REAL run the same functions over
 // the committed installations, so each supplied boundary is paired with a reading of the real path.
 

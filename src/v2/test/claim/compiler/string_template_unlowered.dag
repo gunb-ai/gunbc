@@ -100,7 +100,7 @@ test fn a_lowered_template_binds_concat_and_infers() -> Bool {
   }
 }
 
-// FRONTIER, V2 EVAL PATH (DESIGN 4b-1, 4b-4): v2.compiler.eval of a call whose body is a lowered
+// FRONTIER, V2 EVAL PATH (gunbc.design_argument::guarantee_ladder, gunbc.design_argument::goal_safe_efficient_predictable, gunbc.design_argument::closed_grounded_substrate): v2.compiler.eval of a call whose body is a lowered
 // template refuses typed and located -- never a silent concat of host bytes. The first node eval
 // cannot represent is the template's first string-literal piece: the v2 evaluator's literal shapes
 // are bool, unit and int (v2.extdeps.runtimes.v2_evaluator v2_eval_is_literal_shaped_node), so a

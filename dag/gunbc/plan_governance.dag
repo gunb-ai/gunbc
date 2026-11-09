@@ -7,7 +7,7 @@ import std.types { String, Bool, List }
 // list on the parent, reachability from the compiler root -- is DERIVED from these rows by
 // gunbc.plan plan_to_blocks and the governance witness. A plan author writes one row here and
 // nothing in any markdown body; a hand-written 'governed by' or 'see also' paragraph beside a row
-// is the second authority DESIGN section 3 forbids, at the documentation layer. The rows key on the
+// is the second authority gunbc.design_argument::single_authority forbids, at the documentation layer. The rows key on the
 // plan SLUG because the slug is the identity the generated-artifact registry already deduplicates
 // plans by; a Plan value does not know its own declaration name.
 //

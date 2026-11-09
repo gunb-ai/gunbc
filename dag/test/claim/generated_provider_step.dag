@@ -16,7 +16,7 @@ import std.generated_provider {
   observe_provider_demand, generated_provider_unavailable_message, stalled_acquisition_step
 }
 
-// Supplied inputs at the std.generated_provider interface (DESIGN section 3, a witness discriminates
+// Supplied inputs at the std.generated_provider interface (gunbc.design_argument::witness_one_interface, a witness discriminates
 // at one interface): demands and builder observations are given, never produced by a crossing. The
 // inhabitance claim that a real producer emits this shape lands with the inference sidecar.
 

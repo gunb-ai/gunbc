@@ -61,7 +61,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // G6 adopting a hand-installed host into the fleet. Exists: gunbc.host.host_identity_adopt
 //    (HostIdentityAdoptReceipt -- the SSH transport identity of a host it PROBES) and
 //    gunbc.host.host_identity_assimilation (the converged-state fold, which must NOT be called for
-//    an effect no route realized -- DESIGN §4d). What does NOT exist: the shape this unit needs --
+//    an effect no route realized -- gunbc.design_argument::epistemic_humility). What does NOT exist: the shape this unit needs --
 //    adoption that begins from an operator-DECLARED install with no prior modeled effect (no minted
 //    boot-media key, no provisioned standing; cf. gunbc.boot_medium_key_mint, which the modeled
 //    converge mode mints and a hand install never had).
@@ -220,7 +220,7 @@ data h11ssl_install_to_disk_frontier: FrontierRow = frontier_row_decl(
   dissolution: h11ssl_install_to_disk_dissolution,
 )
 
-// DESIGN §3c: the roster fold that enrolled these rows (gunbc.census_closure_frontier) was retired; the hand-install receipt names this module as where its install's missing route lives;
+// gunbc.design_argument::consumption: the roster fold that enrolled these rows (gunbc.census_closure_frontier) was retired; the hand-install receipt names this module as where its install's missing route lives;
 // test.claim.supermicro_h11ssl_x86_bringup_frontier_witness exercises the roster.
 data h11ssl_x86_bringup_frontier_rows: List<FrontierRow> = [
   h11ssl_virtual_media_frontier,

@@ -332,7 +332,7 @@ data srv1_memory_population_observation_2026_07_16_note: String = "srv1 BMC 192.
 //
 // ATTRIBUTION IS THE POINT OF THAT SENTENCE. srv3 and srv4 carry BMC Redfish reads taken directly;
 // this row does not, and recording the difference is what keeps a relayed figure from being cited
-// later as though it had the same standing (DESIGN 4b, rung honesty at a declared subject grain).
+// later as though it had the same standing (gunbc.design_argument::guarantee_ladder, rung honesty at a declared subject grain).
 // It is admitted because the reporting path is the operator observing their own machine, which is
 // the same class of evidence srv1 and srv2's 2026-07-16 rows already rest on.
 //

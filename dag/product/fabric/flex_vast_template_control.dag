@@ -7,7 +7,7 @@ import std.optional { Present, Absent }
 import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.transports.rest { RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestCredentialRefused, RestBodyUndecodable }
 import product.fabric.flex_vast_loop { flex_vast_disk_gigabytes }
 import extdeps.cloud.vast_ai
 import extdeps.cloud.vast_ai { vast_ai_wire_mb, vast_ai_wire_mbps, VastAiTemplateRow, VastAiTemplateList, VastAiTemplateCreateResult }
@@ -46,6 +46,8 @@ fn flex_template_list(api_key: Secret, filter: String) -> FlexTemplateListing us
     RestRefused { refusal: RestStatusRefused { status: status, body: _ } } =>
       FlexTemplateListRefused { cause: concat("the template list answered status ", int_to_decimal_string(status)) }
     RestRefused { refusal: RestTransportRefused { cause: _ } } =>
+      FlexTemplateListRefused { cause: "the template list was not reached" }
+    RestRefused { refusal: RestCredentialRefused { refusal: _ } } =>
       FlexTemplateListRefused { cause: "the template list was not reached" }
     RestRefused { refusal: RestBodyUndecodable { status: _, cause: _ } } =>
       FlexTemplateListRefused { cause: "the template list answer did not decode" }

@@ -1,11 +1,12 @@
 module product.printed_chassis.board_mechanical_reference
 import std.types {Int,List,String,NonEmptyStr}
 import std.measure {Micrometer,micrometer_count}
+import product.printed_chassis.fit_observations {FittedGauge,AltraFitGaugeSetProposition}
 import extdeps.external_authority {ExternalAuthority,CitedFigureStanding,CitedToAuthority,TranscribedUncited,ObservedByReceipt,observed_receipt_ref}
 import extdeps.uri {uri_wire}
 import extdeps.ocp.mt_jade.platform {mt_jade_motherboard_mechanical}
 import extdeps.ocp.mt_jade.subject {mt_jade_subject_authority_anchor}
-import extdeps.boards.types {BoardLocationStanding,HolePositionEstimatedFromImage,BoardStandardLocationRoster,standoff_placement,StandoffAdmitted,StandoffProhibited}
+import extdeps.boards.types {BoardLocationStanding,HoleCorrespondenceInferred,HolePositionEstimatedFromImage,HoleAbsenceExplicitlyDirected,HoleNotObservedInDrawing,HolePhysicallyConfirmedPresent,HolePhysicallyConfirmedAbsent,BoardStandardLocationRoster,board_standard_location_roster,board_location_correspondence,standoff_placement,StandoffAdmitted,StandoffProhibited}
 import std.optional {Present,Absent}
 import extdeps.standards.motherboard_mounting_grid {standard_mounting_grid_locations,standard_mounting_grid_label}
 import extdeps.standards.motherboard_mounting_location {MountingLocationId,LocA,LocB,LocC,LocF,LocG,LocH,LocJ,LocK,LocL,LocM,LocR,LocS}
@@ -43,6 +44,68 @@ fn standard_location_reference(roster:BoardStandardLocationRoster?) -> BoardMoun
  match roster {
  Present {value:r}=>StandardLocationReference {roster:r}
  Absent=>MountingReferencePending {read_obligation:"The board's standard-location roster refused: a corresponding letter does not resolve to exactly one location in the grid it names, or is listed twice. Correct the correspondence or the grid in the board's extdeps module."}
+ }
+}
+
+// A HOLE THE BOARD IN HAND TOOK A FIT GAUGE AT. A row the vendor's figure implied
+// (HoleCorrespondenceInferred) becomes HolePhysicallyConfirmedPresent; every other row keeps its standing.
+// The two ways this can refuse are different faults with different repairs, so they are different arms:
+// the board's own roster refusing is an extdeps correspondence defect, while a gauge reported at a location
+// the roster admits no standoff at (absent, directed empty, or undrawn) is the fit record contradicting the
+// vendor's reading -- the observation or the roster is wrong, and neither is picked silently (review 91239).
+type FitConfirmedRoster
+ = FitConfirmedRosterReady {roster:BoardStandardLocationRoster}
+ | FitBaseRosterRefused
+ | FitContradictsRoster {location:MountingLocationId}
+ | FitRecordDrifted {gauge:NonEmptyStr}
+// THE RECORD AGAINST THE GAUGES AS DECLARED NOW. A recorded fit confirms holes only while the gauges it
+// names are exactly the gauges declared today: same set, same locations, same coordinates, same hole
+// diameter. Any difference -- a gauge moved, re-cut, added or dropped, or a coordinate behind it changed --
+// refuses naming the first gauge that does not match, so a later edit never inherits a dated observation
+// (review 5789345655). The gauged locations come from the RECORD, the experiment's own subject.
+fn same_gauge(x:FittedGauge,y:FittedGauge) -> Bool {
+ x.name==y.name && x.a==y.a && x.b==y.b && x.a_along==y.a_along && x.a_depth==y.a_depth && x.b_along==y.b_along && x.b_depth==y.b_depth && x.hole_diameter==y.hole_diameter
+}
+fn fit_confirmation_for(roster:BoardStandardLocationRoster?,record:AltraFitGaugeSetProposition,current:List<FittedGauge>) -> FitConfirmedRoster {
+ if !record.every_gauge_seats {return confirm_holes_present_by_fit(roster:roster,gauged:[])}
+ let unmatched=concat(filter(record.gauges,g=>count(filter(current,c=>same_gauge(x:c,y:g)))!=1),filter(current,c=>count(filter(record.gauges,g=>same_gauge(x:c,y:g)))!=1))
+ match first(unmatched) {
+ Present {value:g}=>FitRecordDrifted {gauge:g.name}
+ Absent=>confirm_holes_present_by_fit(roster:roster,gauged:flat_map(record.gauges,g=>[g.a,g.b]))
+ }
+}
+fn confirm_holes_present_by_fit(roster:BoardStandardLocationRoster?,gauged:List<MountingLocationId>) -> FitConfirmedRoster {
+ match roster {
+ Absent=>FitBaseRosterRefused
+ Present {value:r}=>match first(filter(gauged,g=>count(filter(r.locations,x=>x.location==g && placement_admitted(standing:x.standing)))!=1)) {
+ Present {value:l}=>FitContradictsRoster {location:l}
+ Absent=>match board_standard_location_roster(grid:r.grid,locations:map(r.locations,x=>if count(filter(gauged,g=>g==x.location))>0 {board_location_correspondence(location:x.location,standing:confirmed_present(standing:x.standing))} else {x})) {
+ Present {value:c}=>FitConfirmedRosterReady {roster:c}
+ Absent=>FitBaseRosterRefused
+ }
+ }
+ }
+}
+// The mounting reference a fit-confirmed roster yields, each refusal naming its own repair.
+fn fit_confirmed_location_reference(confirmation:FitConfirmedRoster) -> BoardMountingReference {
+ match confirmation {
+ FitConfirmedRosterReady {roster:r}=>StandardLocationReference {roster:r}
+ FitBaseRosterRefused=>standard_location_reference(roster:Absent)
+ FitRecordDrifted {gauge:g}=>MountingReferencePending {read_obligation:concat("The recorded fit names gauge ",concat(g as String," but the gauges declared now are not the gauges that were printed and fitted (a gauge was moved, re-cut, added or dropped, or a coordinate behind it changed). Print and fit the current gauges, then record that fit in product.printed_chassis.fit_observations.")) as NonEmptyStr}
+ FitContradictsRoster {location:l}=>MountingReferencePending {read_obligation:concat("A fit gauge is recorded as seating at location ",concat(standard_location_label(id:l)," where the board's roster admits no standoff (absent, directed empty, or undrawn). Recheck that gauge on the board, then correct either the fit record in product.printed_chassis.fit_observations or the correspondence in the board's extdeps module.")) as NonEmptyStr}
+ }
+}
+fn confirmed_present(standing:BoardLocationStanding) -> BoardLocationStanding {
+ match standing {HoleCorrespondenceInferred=>HolePhysicallyConfirmedPresent _=>standing}
+}
+fn location_standing_label(standing:BoardLocationStanding) -> String {
+ match standing {
+ HoleCorrespondenceInferred=>"inferred from the vendor's figure"
+ HolePositionEstimatedFromImage=>"estimated from an image"
+ HoleAbsenceExplicitlyDirected=>"vendor directs no standoff"
+ HoleNotObservedInDrawing=>"not drawn by the vendor"
+ HolePhysicallyConfirmedPresent=>"confirmed present by fit"
+ HolePhysicallyConfirmedAbsent=>"confirmed absent by fit"
  }
 }
 
@@ -94,6 +157,7 @@ fn mounting_reference_json(reference:BoardMountingReference) -> JsonValue {
  json_kv(key:"locations",value:json_array(elements:map(roster.locations,r=>json_object(members:[
  json_kv(key:"location",value:json_string(s:standard_location_label(id:r.location))),
  json_kv(key:"standoff_admitted",value:json_bool(b:placement_admitted(standing:r.standing))),
+ json_kv(key:"standing",value:json_string(s:location_standing_label(standing:r.standing))),
  json_kv(key:"standard_coordinates",value:json_array(elements:map(filter(standard_mounting_grid_locations(grid:roster.grid),m=>m.id==r.location),m=>json_object(members:[json_kv(key:"along_rear_edge_um",value:json_int(n:micrometer_count(m:m.along_rear_edge))),json_kv(key:"depth_from_rear_edge_um",value:json_int(n:micrometer_count(m:m.depth_from_rear_edge)))]))))
  ]))))])
  ImageLocationReference {reading:r}=>json_object(members:[

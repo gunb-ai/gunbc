@@ -23,7 +23,7 @@ import product.placement_supply {
 // vendor/product facts to extdeps and owned inventory to the product layer. A machine that produces
 // parts rather than occupying a shelf is the same physical object with a ROLE; minting
 // PrinterNodeIdentity beside PhysicalAssetIdentity would be two names for one unit, which is the
-// net-concepts-by-re-invention failure DESIGN section 2 names. The brief calls it "node-ness of the
+// net-concepts-by-re-invention failure gunbc.design_argument::minimize_redundancy names. The brief calls it "node-ness of the
 // printers" and that name is what made a new concept look necessary.
 
 // THE ADMISSION EXISTS BECAUSE THE IDENTITY CARRIER IS WEAKER THAN THE CONSUMER NEEDS, and saying
@@ -77,7 +77,7 @@ fn scan_printer_assets(inventory: List<PhysicalAsset>, requested: PhysicalAssetI
 // THE PRODUCT ROW EVERY ADMITTED PRINTER MUST NAME, CARRIED AS A DeclarationRef SO THE CITATION HAS
 // A REFERENT SOMETHING CAN CHECK. Written as a bare module-path string this was a literal whose only
 // corroboration was a witness restating the same literal -- two authored copies agreeing with each
-// other, which DESIGN section 5 names directly: a measurement copied from the same tree is not an
+// other, which gunbc.design_argument::fail_closed names directly: a measurement copied from the same tree is not an
 // oracle. As a DeclarationRef it is RESOLVED BY A GATE: the required floor's declarations phase
 // refuses CITED-MODULE-ABSENT for any cited module path the corpus does not declare -- measured, by
 // that phase failing this PR over a sibling fixture that cited an invented module -- so a renamed or

@@ -5,7 +5,7 @@
 //! decision reads -- the checker's dependency paths and the run's changed paths -- and hands them
 //! to that function in a frame. It lists no checker path by hand: a file enters the set by being
 //! compiled into the binary that runs the floor, so a new infer helper, stage0 mirror or runtime
-//! file cannot be missing from it (DESIGN section 3, one authority: the build tool's record).
+//! file cannot be missing from it (gunbc.design_argument::single_authority, one authority: the build tool's record).
 //!
 //! THE RECORD IS CARGO'S DEP-INFO BESIDE THE RUNNING BINARY (`target/<profile>/<bin>.d`), which
 //! lists every source file rustc read for that binary, including `include_str!` inputs. Build

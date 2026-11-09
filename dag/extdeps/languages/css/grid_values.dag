@@ -20,7 +20,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // §7.2.3 the minmax() notation: minmax( <inflexible-breadth> , <track-size> ).
 // §7.2.3 <flex> = <number [0,∞]>fr, and <length-percentage>.
 //
-// THE TYPE IS THE GRAMMAR, NOT A DESCRIPTION OF IT (§5: "stronger than catching a wrong state
+// THE TYPE IS THE GRAMMAR, NOT A DESCRIPTION OF IT (gunbc.design_argument::fail_closed: "stronger than catching a wrong state
 // is making it unwritable"). Three productions are carried by the sum types themselves:
 //
 // 1. minmax()'s MIN position is <inflexible-breadth>, which EXCLUDES <flex>. So the min field
@@ -32,9 +32,9 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // 2. <track-list> is a PLUS production (one or more). Tracks are FreeSemigroup, whose shape
 //    (head: T, tail: FreeMonoid) has no empty inhabitant, so repeat(3, ) cannot be built. A
 //    List<CssTrackSize> could be [] and serialized to "" — an empty value for a grammar that
-//    has none (§3b: cardinality is a domain fact, carried not guarded).
+//    has none (gunbc.design_argument::conformance: cardinality is a domain fact, carried not guarded).
 // 3. repeat()'s count is <integer [1,∞]>, so it is std.integer.PositiveInt, the single
-//    authority for positivity, consumed rather than re-minted (§3).
+//    authority for positivity, consumed rather than re-minted (gunbc.design_argument::single_authority).
 //
 // HOW FAR THAT POSITIVITY ACTUALLY REACHES — measured on this tree, not assumed (the same
 // question std/page_fold.dag had to answer and record): a LITERAL violation is refused at
@@ -48,7 +48,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // avoid. witness_repeat_count_carries_its_domain records the measured behaviour.
 //
 // DELIBERATELY NOT MODELLED, with what would bring them: min-content / max-content / none and
-// the auto-fit keyword — no consumer constructs them today (§3c forbids modelling "for later").
+// the auto-fit keyword — no consumer constructs them today (gunbc.design_argument::consumption forbids modelling "for later").
 // Their trigger is the first consumer that asks for a track of that shape; each is one arm plus
 // one wire case, and the arms must arrive with a constructor, not ahead of one.
 

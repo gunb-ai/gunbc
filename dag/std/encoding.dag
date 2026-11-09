@@ -359,7 +359,7 @@ fn base64_encode_optional(octets: QualifiedOctets, variant: Base64Variant) -> St
 // The arm that stood here was named for a forged qualified octet, and with QualifiedOctets sealed
 // that cause no longer has an input: the only route to the parameter is std.integer's admission
 // fold, so an unadmitted member cannot reach this function at all. Keeping the old name would have
-// left a function asserting a cause that can no longer occur -- the annotation rot DESIGN section 4c
+// left a function asserting a cause that can no longer occur -- the annotation rot gunbc.design_argument::source_annotations
 // forbids, in the one place a reader would most trust it.
 //
 // WHAT REMAINS IS NOT THE SAME FACT AND IS NOT CLAIMED TO BE ZERO. The internal chain still threads
@@ -684,7 +684,7 @@ data base64_group_fill_carrier_debt_marker: Disposition = Terminal {
   reason: "Base64EncodeBuf = EncEmpty|EncOne|EncTwo and Base64DecodeBuf = DecEmpty|DecOne|DecTwo|DecThree: the hand-rolled Int count accumulator debt is paid; closed sums are declared and all arms are covered by execution in base64_rfc4648_witness.dag"
 }
 
-// THE ASCII DECODE: a NAMED, PARTIAL octet -> text conversion plan (DESIGN section 4: a crossing that
+// THE ASCII DECODE: a NAMED, PARTIAL octet -> text conversion plan (gunbc.design_argument::closed_grounded_substrate: a crossing that
 // may refuse is never implicit). ASCII is ANSI X3.4-1986 / ISO/IEC 646 IRV: the seven-bit code,
 // octets 0x00..0x7F, and Unicode 17.0 Basic Latin (U+0000..U+007F) assigns each of those octets the
 // scalar with the same number -- so on its domain the route is exact, lossless and needs no table.

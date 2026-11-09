@@ -18,7 +18,7 @@ import extdeps.package_managers.dpkg { dpkg_query_identity }
 
 // Receipt of HOST-1 inhabitance on srv1 as briansrls uid 1000 at 2026-10-15T12:11:17Z
 // (parent bright-moth-475, github.com/gunb-ai/gunbc/pull/14049#issuecomment-6191742919).
-// BOUNDARY TRANSCRIPTION (DESIGN 4b): these fields ARE the probe results that comment
+// BOUNDARY TRANSCRIPTION (gunbc.design_argument::guarantee_ladder): these fields ARE the probe results that comment
 // published. dpkg package versions were not in that receipt and stay absent; the dpkg-query
 // probe is the named obligation, not an executed probe. Next-rung trigger: an executing
 // probe route that writes this record from live argv.

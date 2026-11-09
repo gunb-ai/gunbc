@@ -23,7 +23,7 @@ import std.types { String, Bool, List }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // WHICH OF THESE ARMS HAS EXECUTED BACKING, STATED HERE SO THREE GREENS DO NOT READ AS THREE
-// EXERCISED ARMS (DESIGN section 3's pairing obligation, and the non-discriminating-input trap).
+// EXERCISED ARMS (gunbc.design_argument::witness_one_interface's pairing obligation, and the non-discriminating-input trap).
 //
 // THE SUPPLIED INPUTS ARE LEGITIMATE AND THE REASON IS THE RULE'S OWN: this fold's subject is ONE
 // INTERFACE -- a population of `NativeRouteMemberRow` in, one `InvocationTermination` out -- so its

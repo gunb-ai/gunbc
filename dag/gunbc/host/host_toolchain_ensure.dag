@@ -65,13 +65,13 @@ data host_toolchain_ensure_apply_dispatch_scaffold: Disposition = Scaffold {
 // lookup keyed on the requested host alone and pinned srv3 to ci_deploy_srv1_operator_access. Two
 // silent defects followed. (1) A BuildCache request for srv3 targeted srv3 but authenticated to
 // srv1, so the provisioning effect would have landed on the WRONG MACHINE and reported success — a
-// §5 fail-open, the exact kind this lane adds. (2) The srv1 pin is correct only in the actuator
+// gunbc.design_argument::fail_closed fail-open, the exact kind this lane adds. (2) The srv1 pin is correct only in the actuator
 // selector's UNSATISFIABLE FALLBACK arm; whenever ActuatorSelected names a different host the
 // access still pointed at srv1. Pairing target and access in one return value makes the
-// disagreement unwritable (§5 construction over validation) rather than flagged afterwards.
+// disagreement unwritable (gunbc.design_argument::fail_closed construction over validation) rather than flagged afterwards.
 // Consequence: this module no longer consumes ci_deploy_srv1_operator_access, which is
 // construction-identical to host_identity_srv1_access (same principal, host, transport, privileged
-// commands — witnessed by host_toolchain_srv1_access_rows_are_one_concept); that §3 nickname still
+// commands — witnessed by host_toolchain_srv1_access_rows_are_one_concept); that gunbc.design_argument::single_authority nickname still
 // has consumers elsewhere and its corpus-wide dissolution is a separate lane, not smuggled in here.
 
 type HostToolchainReach = ResolvedHostToolchainReach {
@@ -100,8 +100,8 @@ type HostToolchainReachOutcome
 // WHY THIS IS NOT AN Optional<ComputeHost>. "The host is absent from the compute inventory" and
 // "the actuator selection satisfied no candidate" are different facts with different remedies, and
 // collapsing them into Absent made the second report the first -- an invented inventory-absence
-// cause for a selection refusal, which is a fabricated location for a real failure (DESIGN
-// section 5: a typed, LOCATED diagnostic). The refusal reason produced by
+// cause for a selection refusal, which is a fabricated location for a real failure (
+// gunbc.design_argument::fail_closed: a typed, LOCATED diagnostic). The refusal reason produced by
 // select_os_install_actuator_host is carried through to the exit rather than discarded.
 type HostToolchainTargetHost
   = TargetHostResolved { host: ComputeHost }

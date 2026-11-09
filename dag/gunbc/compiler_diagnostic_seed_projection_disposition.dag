@@ -69,7 +69,7 @@ type SeedProjectionReceiptVerdict
 // ABSENCE IS A CONSTRUCTOR, NOT AN EMPTY STRING (review 62402). These three functions returned ""
 // to mean "nothing to say", so "no refusal" and "a refusal whose message is empty" were the same
 // value, and membership in the refusal set was decided by a SPELLING COMPARISON rather than by a
-// constructor. DESIGN section 5 asks for the state to be unwritable rather than validated, and the
+// constructor. gunbc.design_argument::fail_closed asks for the state to be unwritable rather than validated, and the
 // corpus already carries this exact class as declared debt (std.types file_path_sentinel_scaffold_note,
 // "interim re-spellings encode absence in a nominally-non_empty carrier"), so copying it into a NEW
 // module was replicating debt, not matching sibling style.

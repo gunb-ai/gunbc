@@ -2,7 +2,7 @@ module gunbc.scm.json_member
 
 // READING A NAMED MEMBER OFF A JSON OBJECT IS ONE OPERATION WITH ONE FAILURE POPULATION, and this
 // module owns both. It was previously homed inside gunbc.scm.commit_closure_json_v2 with its failure
-// typed as THAT module's ClosureDocRefusal, which is the layer inversion DESIGN section 3 names: a
+// typed as THAT module's ClosureDocRefusal, which is the layer inversion gunbc.design_argument::single_authority names: a
 // domain-neutral facility carrying a domain's vocabulary. The measured cost was not stylistic. Every
 // repository-envelope member read -- `checked_out`, `identity_rule`, `root`, `message` -- had to
 // report its failure as RepositoryDecodeClosureDocRefusal, so "the repository envelope names no
@@ -60,7 +60,7 @@ import extdeps.languages.json.emit {
 
 // FOUR DISTINCT FACTS, NEVER AN ABSENT VALUE. json_object_unique_member already separates a missing
 // member from a duplicated one from a non-object subject, and collapsing them into an Optional here
-// would be the state-space conflation DESIGN section 5 names. The duplicate arm is the one that
+// would be the state-space conflation gunbc.design_argument::fail_closed names. The duplicate arm is the one that
 // earns its keep on its own: a JSON object carrying the key twice is precisely the shape a naive
 // last-wins reader accepts while holding two answers, so it must refuse rather than pick.
 //

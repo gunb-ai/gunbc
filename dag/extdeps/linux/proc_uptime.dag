@@ -24,7 +24,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // The first value comes from the kernel's boot-based clock, which a wall-clock step (NTP, settimeofday)
 // does not move. That is why a duration between two readings of it is an elapsed interval, while two
 // `date` readings are not. This module owns the file's shape; the read is extdeps.linux.procfs
-// ReadUptime, one transport of N (DESIGN §3). The reading is carried as std.measure Millisecond:
+// ReadUptime, one transport of N (gunbc.design_argument::single_authority). The reading is carried as std.measure Millisecond:
 // std.measure has no centisecond scale, and the centisecond is a fact of this FORMAT, so the
 // conversion happens here, in the parse, and nowhere downstream.
 type ProcUptimeRead

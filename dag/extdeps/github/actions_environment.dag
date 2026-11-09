@@ -94,7 +94,7 @@ type ActionsRunCoordinate
 // THE THREE OBSERVATIONS TOGETHER, BECAUSE TWO CONSUMERS ALREADY CARRIED THEM AS ONE FACT AND
 // SPELLED IT TWICE. `gunbc.emit_subject_clean_frontier` held them as three loose fields on its
 // observation context; the floor's terminal ledger was about to declare a second triple beside it.
-// One concept named once, per DESIGN section 2 -- net concepts must not grow by re-invention.
+// One concept named once, per gunbc.design_argument::minimize_redundancy -- net concepts must not grow by re-invention.
 //
 // IT IS NAMED FOR WHAT IT OBSERVES AND NOT FOR A COORDINATE, DELIBERATELY. An earlier draft called
 // this `ActionsRunLocation`, which would have put RUNNER_NAME inside a type whose name asserts it

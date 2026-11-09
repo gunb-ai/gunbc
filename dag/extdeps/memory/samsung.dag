@@ -1,9 +1,10 @@
 module extdeps.memory.samsung
 
-import std.measure { ByteSize, byte_size, bit_width }
+import std.measure { ByteSize, byte_size, bit_width, Celsius, CelsiusDelta }
 import extdeps.memory.types { DramModuleCatalogRow, DimmBuffering, dram_generation_ddr4, DualDiePackage, ThreeDimensionalStacked }
 import extdeps.vendor.samsung { samsung }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.cited_field { RowField, FromCitedFigure, NeedsReading }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 
@@ -113,4 +114,30 @@ data m393a8g40d40_crb0q_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
   chip_width: bit_width(4),
 
   rank_count: 8,
+}
+
+// PART-SPECIFIC TEMPERATURE FACTS the SAMSUNG PUBLICATION states for this registered 3DS module, each
+// NeedsReading: no Samsung datasheet for M393A8G40D40-CRB0Q was reachable (see above), and nothing here is
+// assumed equal to the JEDEC bands in extdeps.memory.jedec (themselves uncited). These are vendor assertions
+// about the SKU only. What an installed unit shows (its SPD-reported sensor, a thermocouple case-to-sensor
+// sweep) is an observation of one physical module and belongs downstream as a receipt keyed to that module
+// or host assembly, never in this upstream module; P5 selects the applicable source.
+// Consumer: declared frontier, the P5 decision subject and its margin derivation (trigger: P5 landing).
+// Consumer: P5 hard constraint (part-specific TCASE ceiling). Trigger: P5 landing.
+data m393a8g40d40_crb0q_tcase_limit: RowField<Celsius> = NeedsReading {
+  read_obligation: "Read Samsung's module datasheet or product-selection guide for M393A8G40D40-CRB0Q: its maximum operating TCASE and whether the extended (85-95 C, doubled refresh) range is supported."
+}
+
+// The sensor model the Samsung publication says is fitted, as a symbolic reference to an upstream sensor
+// model declaration (e.g. extdeps.memory.renesas_tse2004gb2b0 tse2004gb2b0), never a part-name string.
+// Consumer: P5 margin derivation (selects the sensor-model accuracy row). Trigger: P5 landing.
+data m393a8g40d40_crb0q_fitted_sensor: RowField<DeclarationRef> = NeedsReading {
+  read_obligation: "Read Samsung's module datasheet for the temperature-sensor/SPD-hub model it states for M393A8G40D40-CRB0Q, and reference that model's declaration."
+}
+
+// The DRAM case temperature the JEDEC bands are stated on is not the module sensor's reading, so the
+// P5 margin must not treat sensor accuracy alone as the gap.
+// Consumer: P5 margin derivation (case-to-sensor term). Trigger: P5 landing.
+data m393a8g40d40_crb0q_case_to_sensor_offset: RowField<CelsiusDelta> = NeedsReading {
+  read_obligation: "Read Samsung's module datasheet or thermal application note for the stated DRAM-case-to-on-board-sensor offset of M393A8G40D40-CRB0Q; no source is held."
 }

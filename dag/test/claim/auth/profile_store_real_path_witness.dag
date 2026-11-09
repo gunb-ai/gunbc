@@ -22,7 +22,7 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE INHABITANCE CLAIMS FOR THE PROFILE STORE (DESIGN section 3, the pairing obligation). The
+// THE INHABITANCE CLAIMS FOR THE PROFILE STORE (gunbc.design_argument::witness_one_interface, the pairing obligation). The
 // profile roster read shipped decoding Filesystem.List's newline-joined `entries` as if it were a
 // list of names -- its first "entry" was a code point and `ends_with` refused -- and nothing caught
 // it because no claim ran the real store path: every consumer supplied profiles as values. These

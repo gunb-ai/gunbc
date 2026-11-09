@@ -346,7 +346,7 @@ test fn witness_partition_fold_outcome_ok_on_triangle() -> Bool {
 // while carrying none, so a literal naming id unit-a and artifact unit-b was writable and made one
 // unit claim two target identities: unit-a.h and unit-a.c against unit-b.o. The repair REMOVES the
 // field, so that specimen is unwritable rather than refused — the climb is to structural
-// impossibility, and per DESIGN section 4b the discriminating evidence stays enrolled even though
+// impossibility, and per gunbc.design_argument::guarantee_ladder the discriminating evidence stays enrolled even though
 // the production machinery is deleted. A runtime falsifier can no longer be constructed because
 // there is nothing left to mismatch, so the retained evidence is a compile-refusal pair: a record
 // literal carrying a field its declaration does not have must NOT compile clean, while the same

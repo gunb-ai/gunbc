@@ -64,7 +64,7 @@ import gunbc.auth.access_token_source {
 import std.types { NonEmptyStr, Secret, String }
 import extdeps.transports.rest {
   RestResult, RestAnswered, RestRefused,
-  RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
+  RestRefusal, RestStatusRefused, RestTransportRefused, RestCredentialRefused, rest_credential_refusal_cause, RestBodyUndecodable,
   classify_rest_refusal, RestMutationExchange,
   RestExchangeStatusRefused, RestExchangeCommitAmbiguous, RestExchangeUnreached, RestExchangeUndecodable,
 }
@@ -293,6 +293,10 @@ fn bmc_read_back_refusal_text(refusal: RestRefusal) -> String {
   match refusal {
     RestStatusRefused { status, body } => concat("HTTP ", to_string(status), ": ", body)
     RestTransportRefused { cause } => cause as String
+    RestCredentialRefused { refusal: credential_refusal } => {
+      let cause = rest_credential_refusal_cause(refusal: credential_refusal)
+      cause as String
+    }
     RestBodyUndecodable { status, cause } => concat("HTTP ", to_string(status), " with an undecodable body: ", cause as String)
   }
 }

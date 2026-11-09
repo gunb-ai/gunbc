@@ -288,7 +288,7 @@ test fn host_identity_converge_step_stays_modeled_not_gap() -> Bool {
 // D1 derived-equality backfill (non_fold_residue nfr_dissolve_derived_equality): the hand
 // fold `assimilation_complete_input_eq` is deleted; its call sites now use the derived
 // `==` on the fieldless coproduct `AssimilationCompleteInput` (inhabitance-derived,
-// DESIGN §3/§4). These two claims pin the swap: the RED is a discriminating case that
+// gunbc.design_argument::single_authority, gunbc.design_argument::closed_grounded_substrate). These two claims pin the swap: the RED is a discriminating case that
 // fails if `==` collapses distinct variants (the off-variant wildcard arms of the old
 // fold returned false); the positive control is the on-variant reflexive case.
 

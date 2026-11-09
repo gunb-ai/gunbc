@@ -22,7 +22,7 @@ import v2.std.node_query { binder_relabelled, pattern_wildcard_name }
 // N IS THE SLOT'S 1-BASED POSITION WITHIN ITS OWN BINDER LIST, never a module-wide or walk-order
 // counter and never an occurrence id. The label is part of the Arrow's TYPE: an occurrence- or
 // counter-derived label would make `fn(_: Int) -> Int` at two sites two different types with two
-// content hashes, and an edit anywhere above a site would rename it (DESIGN 4c keeps occurrence
+// content hashes, and an edit anywhere above a site would rename it (gunbc.design_argument::source_annotations keeps occurrence
 // allocation disjoint from semantic identity). The slot's occurrence stays where it already lives,
 // on the edge target. Ruled by neat-boar-16 via gentle-koi-724, 2026-09-25.
 

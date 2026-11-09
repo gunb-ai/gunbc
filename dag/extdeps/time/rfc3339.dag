@@ -1,10 +1,16 @@
 module extdeps.time.rfc3339
 
-import std.types { Bool, String, NonEmptyStr, brand }
+import std.types { Bool, String, NonEmptyStr, Int, brand }
+import std.optional { Present, Absent }
+import std.decimal { decimal_digit_char }
+import std.checked_arithmetic { CheckedInt, CheckedIntReady, CheckedIntOverflow, checked_add_results, checked_int_multiply, checked_int_subtract }
+import extdeps.units.iso8601_calendar {
+  Iso8601CivilDate, iso8601_gregorian_days_in_month, iso8601_seconds_since_midnight, iso8601_unix_seconds_at,
+}
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -96,4 +102,263 @@ fn rfc3339_compare(left: Rfc3339Timestamp, right: Rfc3339Timestamp) -> Rfc3339Co
     else if left == right { Rfc3339Simultaneous }
     else { Rfc3339Follows }
   }
+}
+
+// ── PARSING AN INSTANT (RFC 3339 section 5.6) ─────────────────────────────────────────────────
+// THE REAL PARSE THE COMPARATOR ABOVE TELLS ITS CALLERS TO SUPPLY. A provider that issues a credential
+// states its expiry in this format, and a consumer must order that expiry against its own clock, so
+// lexical comparison is unavailable: Google's IAM Credentials generateAccessToken documents expireTime
+// as a protobuf Timestamp, which "uses RFC 3339, where generated output will always be Z-normalized and
+// use 0, 3, 6 or 9 fractional digits" and whose input "offsets other than Z are also accepted". So the
+// spelling varies with the value, and only the instant is stable.
+//
+// THE INSTANT AND THE SPELLING ARE RETURNED SEPARATELY, because some consumers need the second. A
+// protocol may prescribe one spelling (gunbc.auth.approval_capability signs the original text and
+// accepts only whole-second uppercase-Z instants); that is a fact of that protocol, not of RFC 3339,
+// so it is read off Rfc3339Spelling by its owner rather than built into this parse.
+//
+// THE CALENDAR IS NOT RE-DERIVED HERE: extdeps.units.iso8601_calendar owns the proleptic Gregorian day
+// count and the month-length rule, and this parse consumes both.
+//
+// THE DOMAIN IS (unix seconds, nanoseconds within the second), NOT EPOCH NANOSECONDS. A four-digit year
+// spans 0000..9999, and nanoseconds since 1970 overflow a 64-bit integer after 2262; seconds do not, so
+// every instant this grammar can spell is representable and no caller loses range. Spans between two
+// instants are computed with checked arithmetic and refuse rather than wrap.
+type Rfc3339Instant sole_constructor {
+  unix_seconds: Int
+  nanos: Int
+}
+
+type Rfc3339Offset
+  = Rfc3339UtcDesignator { uppercase: Bool }
+  | Rfc3339NumericOffset { minutes_east: Int }
+
+type Rfc3339Spelling {
+  fraction_digits: Int
+  offset: Rfc3339Offset
+  separator_uppercase: Bool
+  width: Int
+}
+
+// One arm per distinct way the text fails, located by what was wrong, so a refusal never has to be
+// re-read from a message. Leap seconds are refused rather than accepted: RFC 3339 admits :60 only in a
+// positive leap second, and an instant that cannot be ordered against its neighbours has no place in a
+// comparison contract; a fraction finer than a nanosecond is refused rather than truncated, because
+// truncation would move a deadline earlier or later than the provider stated.
+type Rfc3339ParseRefusal
+  = Rfc3339TooShort { width: Int }
+  | Rfc3339PunctuationRefused { position: Int }
+  | Rfc3339DigitsRefused { field: NonEmptyStr }
+  | Rfc3339FieldOutOfRange { field: NonEmptyStr, value: Int }
+  | Rfc3339DayNotInMonth { year: Int, month: Int, day: Int }
+  | Rfc3339LeapSecondUnorderable
+  | Rfc3339FractionEmpty
+  | Rfc3339FractionBeyondNanoseconds { digits: Int }
+  | Rfc3339OffsetRefused { position: Int }
+  | Rfc3339TrailingText { position: Int }
+
+type Rfc3339InstantParse
+  = Rfc3339InstantParsed { instant: Rfc3339Instant, spelling: Rfc3339Spelling }
+  | Rfc3339InstantRefused { cause: Rfc3339ParseRefusal }
+
+fn rfc3339_digit_value(c: String) -> Int {
+  if c == "1" { 1 } else if c == "2" { 2 } else if c == "3" { 3 }
+  else if c == "4" { 4 } else if c == "5" { 5 } else if c == "6" { 6 }
+  else if c == "7" { 7 } else if c == "8" { 8 } else if c == "9" { 9 } else { 0 }
+}
+
+fn rfc3339_digits_in(t: String, start: Int, end: Int) -> Bool {
+  if start >= end { true }
+  else { decimal_digit_char(ch: char_at(s: t, pos: start)) && rfc3339_digits_in(t: t, start: start + 1, end: end) }
+}
+
+fn rfc3339_number_in(t: String, start: Int, end: Int, acc: Int) -> Int {
+  if start >= end { acc }
+  else { rfc3339_number_in(t: t, start: start + 1, end: end, acc: acc * 10 + rfc3339_digit_value(c: char_at(s: t, pos: start))) }
+}
+
+// The index one past the last consecutive digit from start.
+fn rfc3339_digit_run_end(t: String, start: Int) -> Int {
+  if start >= string_length(s: t) { start }
+  else if decimal_digit_char(ch: char_at(s: t, pos: start)) { rfc3339_digit_run_end(t: t, start: start + 1) }
+  else { start }
+}
+
+fn rfc3339_pow10(n: Int) -> Int {
+  if n <= 0 { 1 } else { 10 * rfc3339_pow10(n: n - 1) }
+}
+
+// THE STAGED PARSE IS CONFINED. Each stage after the first takes already-decoded fields, so an
+// unrestricted stage would construct an Rfc3339Instant (and trustworthy-looking spelling facts) from
+// caller-supplied values; every stage admits only the stage before it, and the only entry is
+// rfc3339_parse_instant over text.
+//
+// The fixed 19-character prefix date-fullyear "-" date-month "-" date-mday T time-hour ":" time-minute
+// ":" time-second, with the separator in either case (section 5.6 NOTE).
+data rfc3339_fixed_prefix_width: Int = 19
+
+fn rfc3339_prefix_punctuation_refusal(t: String) -> Int? {
+  if char_at(s: t, pos: 4) != "-" { Present { value: 4 } }
+  else if char_at(s: t, pos: 7) != "-" { Present { value: 7 } }
+  else if char_at(s: t, pos: 10) != "T" && char_at(s: t, pos: 10) != "t" { Present { value: 10 } }
+  else if char_at(s: t, pos: 13) != ":" { Present { value: 13 } }
+  else if char_at(s: t, pos: 16) != ":" { Present { value: 16 } }
+  else { none }
+}
+
+fn rfc3339_prefix_digits_refusal(t: String) -> NonEmptyStr? {
+  if !rfc3339_digits_in(t: t, start: 0, end: 4) { Present { value: "date-fullyear" as NonEmptyStr } }
+  else if !rfc3339_digits_in(t: t, start: 5, end: 7) { Present { value: "date-month" as NonEmptyStr } }
+  else if !rfc3339_digits_in(t: t, start: 8, end: 10) { Present { value: "date-mday" as NonEmptyStr } }
+  else if !rfc3339_digits_in(t: t, start: 11, end: 13) { Present { value: "time-hour" as NonEmptyStr } }
+  else if !rfc3339_digits_in(t: t, start: 14, end: 16) { Present { value: "time-minute" as NonEmptyStr } }
+  else if !rfc3339_digits_in(t: t, start: 17, end: 19) { Present { value: "time-second" as NonEmptyStr } }
+  else { none }
+}
+
+fn rfc3339_parse_instant(text: String) -> Rfc3339InstantParse {
+  let width = string_length(s: text)
+  if width < rfc3339_fixed_prefix_width + 1 {
+    Rfc3339InstantRefused { cause: Rfc3339TooShort { width: width } }
+  } else {
+    match rfc3339_prefix_punctuation_refusal(t: text) {
+      Present { value: p } => Rfc3339InstantRefused { cause: Rfc3339PunctuationRefused { position: p } }
+      Absent =>
+        match rfc3339_prefix_digits_refusal(t: text) {
+          Present { value: f } => Rfc3339InstantRefused { cause: Rfc3339DigitsRefused { field: f } }
+          Absent => rfc3339_parse_fields(text: text, width: width)
+        }
+    }
+  }
+}
+
+fn rfc3339_parse_fields(text: String, width: Int) -> Rfc3339InstantParse
+  admit_callers: [
+    decl_ref(module_path: "extdeps.time.rfc3339", decl_name: "rfc3339_parse_instant"),
+  ]
+{
+  let year = rfc3339_number_in(t: text, start: 0, end: 4, acc: 0)
+  let month = rfc3339_number_in(t: text, start: 5, end: 7, acc: 0)
+  let day = rfc3339_number_in(t: text, start: 8, end: 10, acc: 0)
+  let hour = rfc3339_number_in(t: text, start: 11, end: 13, acc: 0)
+  let minute = rfc3339_number_in(t: text, start: 14, end: 16, acc: 0)
+  let second = rfc3339_number_in(t: text, start: 17, end: 19, acc: 0)
+  if month < 1 || month > 12 {
+    Rfc3339InstantRefused { cause: Rfc3339FieldOutOfRange { field: "date-month" as NonEmptyStr, value: month } }
+  } else if day < 1 || day > iso8601_gregorian_days_in_month(y: year, m: month) {
+    Rfc3339InstantRefused { cause: Rfc3339DayNotInMonth { year: year, month: month, day: day } }
+  } else if hour > 23 {
+    Rfc3339InstantRefused { cause: Rfc3339FieldOutOfRange { field: "time-hour" as NonEmptyStr, value: hour } }
+  } else if minute > 59 {
+    Rfc3339InstantRefused { cause: Rfc3339FieldOutOfRange { field: "time-minute" as NonEmptyStr, value: minute } }
+  } else if second == 60 {
+    Rfc3339InstantRefused { cause: Rfc3339LeapSecondUnorderable }
+  } else if second > 59 {
+    Rfc3339InstantRefused { cause: Rfc3339FieldOutOfRange { field: "time-second" as NonEmptyStr, value: second } }
+  } else {
+    let local_seconds = iso8601_unix_seconds_at(
+      date: Iso8601CivilDate { year: year, month: month, day: day },
+      since_midnight: iso8601_seconds_since_midnight(hour: hour, minute: minute, second: second),
+    )
+    let separator_uppercase = char_at(s: text, pos: 10) == "T"
+    rfc3339_parse_fraction(text: text, width: width, local_seconds: local_seconds, separator_uppercase: separator_uppercase)
+  }
+}
+
+data rfc3339_max_fraction_digits: Int = 9
+
+fn rfc3339_parse_fraction(text: String, width: Int, local_seconds: Int, separator_uppercase: Bool) -> Rfc3339InstantParse
+  admit_callers: [
+    decl_ref(module_path: "extdeps.time.rfc3339", decl_name: "rfc3339_parse_fields"),
+  ]
+{
+  if char_at(s: text, pos: rfc3339_fixed_prefix_width) == "." {
+    let start = rfc3339_fixed_prefix_width + 1
+    let end = rfc3339_digit_run_end(t: text, start: start)
+    let digits = end - start
+    if digits == 0 {
+      Rfc3339InstantRefused { cause: Rfc3339FractionEmpty }
+    } else if digits > rfc3339_max_fraction_digits {
+      Rfc3339InstantRefused { cause: Rfc3339FractionBeyondNanoseconds { digits: digits } }
+    } else {
+      let nanos = rfc3339_number_in(t: text, start: start, end: end, acc: 0) * rfc3339_pow10(n: rfc3339_max_fraction_digits - digits)
+      rfc3339_parse_offset(text: text, width: width, at: end, local_seconds: local_seconds, nanos: nanos, fraction_digits: digits, separator_uppercase: separator_uppercase)
+    }
+  } else {
+    rfc3339_parse_offset(text: text, width: width, at: rfc3339_fixed_prefix_width, local_seconds: local_seconds, nanos: 0, fraction_digits: 0, separator_uppercase: separator_uppercase)
+  }
+}
+
+// time-offset = "Z" / time-numoffset ; time-numoffset = ("+" / "-") time-hour ":" time-minute. The
+// local time minus the offset is UTC (section 4.2).
+fn rfc3339_parse_offset(text: String, width: Int, at: Int, local_seconds: Int, nanos: Int, fraction_digits: Int, separator_uppercase: Bool) -> Rfc3339InstantParse
+  admit_callers: [
+    decl_ref(module_path: "extdeps.time.rfc3339", decl_name: "rfc3339_parse_fraction"),
+  ]
+{
+  let c = if at < width { char_at(s: text, pos: at) } else { "" }
+  if c == "Z" || c == "z" {
+    if at + 1 != width {
+      Rfc3339InstantRefused { cause: Rfc3339TrailingText { position: at + 1 } }
+    } else {
+      Rfc3339InstantParsed {
+        instant: Rfc3339Instant { unix_seconds: local_seconds, nanos: nanos },
+        spelling: Rfc3339Spelling { fraction_digits: fraction_digits, offset: Rfc3339UtcDesignator { uppercase: c == "Z" }, separator_uppercase: separator_uppercase, width: width },
+      }
+    }
+  } else if c == "+" || c == "-" {
+    if at + 6 > width || char_at(s: text, pos: at + 3) != ":" || !rfc3339_digits_in(t: text, start: at + 1, end: at + 3) || !rfc3339_digits_in(t: text, start: at + 4, end: at + 6) {
+      Rfc3339InstantRefused { cause: Rfc3339OffsetRefused { position: at } }
+    } else if at + 6 != width {
+      Rfc3339InstantRefused { cause: Rfc3339TrailingText { position: at + 6 } }
+    } else {
+      let oh = rfc3339_number_in(t: text, start: at + 1, end: at + 3, acc: 0)
+      let om = rfc3339_number_in(t: text, start: at + 4, end: at + 6, acc: 0)
+      if oh > 23 || om > 59 {
+        Rfc3339InstantRefused { cause: Rfc3339OffsetRefused { position: at } }
+      } else {
+        let magnitude = oh * 60 + om
+        let minutes_east = if c == "+" { magnitude } else { 0 - magnitude }
+        Rfc3339InstantParsed {
+          instant: Rfc3339Instant { unix_seconds: local_seconds - minutes_east * 60, nanos: nanos },
+          spelling: Rfc3339Spelling { fraction_digits: fraction_digits, offset: Rfc3339NumericOffset { minutes_east: minutes_east }, separator_uppercase: separator_uppercase, width: width },
+        }
+      }
+    }
+  } else {
+    Rfc3339InstantRefused { cause: Rfc3339OffsetRefused { position: at } }
+  }
+}
+
+fn rfc3339_instant_unix_seconds(i: Rfc3339Instant) -> Int { i.unix_seconds }
+fn rfc3339_instant_nanos(i: Rfc3339Instant) -> Int { i.nanos }
+
+// TOTAL, because both operands are parsed instants: there is no undecidable arm here, unlike the
+// lexical comparator above.
+fn rfc3339_instant_compare(left: Rfc3339Instant, right: Rfc3339Instant) -> Rfc3339Comparison {
+  if left.unix_seconds < right.unix_seconds { Rfc3339Precedes }
+  else if left.unix_seconds > right.unix_seconds { Rfc3339Follows }
+  else if left.nanos < right.nanos { Rfc3339Precedes }
+  else if left.nanos > right.nanos { Rfc3339Follows }
+  else { Rfc3339Simultaneous }
+}
+
+// The signed span later - earlier in nanoseconds, CHECKED: a span wider than a 64-bit nanosecond count
+// (about 292 years) refuses rather than wraps.
+fn rfc3339_instant_nanoseconds_after(later: Rfc3339Instant, earlier: Rfc3339Instant) -> CheckedInt {
+  match checked_int_subtract(a: later.unix_seconds, b: earlier.unix_seconds) {
+    CheckedIntOverflow { cause: c } => CheckedIntOverflow { cause: c }
+    CheckedIntReady { value: seconds } =>
+      checked_add_results(
+        a: checked_int_multiply(a: seconds, b: 1000000000),
+        b: CheckedIntReady { value: later.nanos - earlier.nanos },
+      )
+  }
+}
+
+// An instant at unix seconds plus nanoseconds, for a reading this repository took itself (a wall clock
+// read as epoch milliseconds). A nanos value outside one second is not an instant and refuses.
+fn rfc3339_instant_of_unix(unix_seconds: Int, nanos: Int) -> Rfc3339Instant? {
+  if nanos < 0 || nanos > 999999999 { none }
+  else { Present { value: Rfc3339Instant { unix_seconds: unix_seconds, nanos: nanos } } }
 }

@@ -3,28 +3,47 @@ module test.claim.node_power_envelope_witness
 import std.types { Bool, Int, NonEmptyStr }
 import std.nat { Nat }
 import std.measure {
+  nanosecond,
   ByteSize,
+  Bandwidth,
   bandwidth_count,
   byte_size,
   byte_size_count,
   megatransfers_per_second,
+  celsius,
   megatransfers_per_second_count,
+  milliampere,
+  millivolt,
   milliwatt,
+  milliwatt_count,
+  gibibyte,
+  gibibyte_to_byte_size,
+  permille,
   watt,
   watt_count,
 }
 import extdeps.vendor.sk_hynix { sk_hynix }
-import extdeps.memory.jedec { ddr4_generation_catalog }
+import extdeps.vendor.amd { amd }
+import extdeps.memory.jedec { ddr4_generation_catalog, ddr4_normal_refresh_band, ddr4_extended_refresh_band, Ddr4RefreshBand }
+import extdeps.cited_field { NeedsReading, FromCitedFigure, RowField }
+import product.breakout_leg_programming { fs_nvidia_eth_leg_coding_standing }
 import extdeps.memory.types {
   DramModuleCatalogRow,
   Registered,
+  Unbuffered,
   bit_width,
   dram_generation_ddr4,
+  dram_generation_ddr5,
   dram_module_is_realizable,
   dram_module_required_die_density,
   MonolithicDie,
+  DramClassPowerBound,
+  DramModuleClass,
+  DramCurrentProfile,
+  DramPartCurrentEvidence,
 }
-import extdeps.cpu.ampere { altra_max_m12830_catalog, altra_q8030_catalog }
+import product.dimm_class_power_bound { ddr4_class_power_bounds, dimm_class_bound_standing }
+import extdeps.cpu.ampere { altra_max_m12830_catalog, altra_max_m12830_usage_power, altra_q8030_catalog }
 import extdeps.cpu.ampere_altra_memory_controller {
   altra_memory_max_data_rate,
 }
@@ -38,8 +57,10 @@ import gunbc.memory_provisioning {
   asrock_altrad8ud_1l2t_geometry,
   mt_collins_per_socket_geometry,
 }
-import extdeps.external_authority { ExternalAuthority, CitedToAuthority, ObservedByReceipt, TranscribedUncited }
+import std.optional { Absent, Present }
+import extdeps.external_authority { CitedFigureStanding, ExternalAuthority, CitedToAuthority, ObservedByReceipt, TranscribedUncited }
 import extdeps.uri { Uri, File }
+import extdeps.power.eighty_plus { Gold }
 import product.node_power_envelope {
   ChannelClockAdmitted,
   ChannelClockUnresolved,
@@ -47,7 +68,6 @@ import product.node_power_envelope {
   RankSpecificRateUncited,
   DerivationReadsHigh,
   EnvelopeAgrees,
-  Gold,
   MemoryBandwidthDerived,
   MemoryBandwidthUnresolved,
   MemoryElectricalContext,
@@ -56,8 +76,15 @@ import product.node_power_envelope {
   altra_two_dpc_ceilings,
   cited_channel_clock,
   NodeElectricalInputs,
+  AmbiguousClassBound,
+  CpuUsageEvidenceForeign,
+  CpuUsageEvidenceForeignToCpu,
+  NodePsuAdequacyDerived,
+  NodePsuAdequacyUndecidable,
+  UncitedPartEvidenceAndNoClassBound,
   PsuAdequate,
   PsuUndersized,
+  WallPowerDerived,
   WallPowerMeasured,
   derived_wall_power,
   envelope_divergence,
@@ -70,7 +97,43 @@ import product.node_power_envelope {
   PopulationModuleRead,
   PopulationModuleUnread,
   PsuUndecidable,
+  CpuDesignWorstCase,
+  CpuPartialUtilisation,
+  CpuPowerUnresolved,
+  CpuRatedUsageWorkload,
+  CpuPowerDerived,
+  CpuPowerRefused,
+  DimmLoad,
+  DramCaseTemperature,
+  refresh_band_for,
+  RefreshBandSelected,
+  refresh_band_from_rows,
+  band_multiplier,
+  RefreshBandNotRead,
+  RefreshBandBeyondSpecification,
+  TemperatureBeyondExtendedBand,
+  RefreshBandLimitUnestablished,
+  RefreshBandLimitObservedOnly,
+  DimmPowerEvidence,
+  DimmPowerFromClassBound,
+  DimmPowerFromPartCurrents,
+  DimmPowerRefused,
+  DimmTraffic,
+  DimmActivation,
+  ActivationEstablished,
+  ActivationNotEstablished,
+  ActivationDutyUnestablished,
+  ActivationDutyOutOfRange,
+  UnsupportedDramGeneration,
+  dimm_power_over_bands,
+  MemoryPowerUnresolved,
+  NoPartEvidenceAndNoClassBound,
+  TrafficExceedsModulePeak,
+  cpu_power,
+  dimm_power,
   memory_power,
+  MemoryPowerDerived,
+  MemoryPowerRefused,
   node_draw,
   node_memory_capacity,
   populated_dimms_per_channel,
@@ -212,9 +275,19 @@ data eight_module_population: PopulationOption = PopulationOption {
 // which no claim below can mistake for a wattage.
 fn node_wall(inputs: NodeElectricalInputs) -> Int {
   match node_draw(inputs: inputs) {
-    NodeDrawDerived { dc_load: _, wall_draw: w } => watt_count(w: w)
+    NodeDrawDerived { dc_load: _, wall_draw: w, standings: _ } => watt_count(w: w)
     NodeDrawRefused { cause: _ } => 0 - 1
   }
+}
+
+data idle_normal_load: DimmLoad = DimmLoad {
+  traffic: DimmTraffic { read: Bandwidth { count: 0 }, write: Bandwidth { count: 0 }, activation: ActivationEstablished { duty: permille(count: 0), standing: fixture_profile_standing } },
+  case_temperature: DramCaseTemperature { tcase: celsius(count: 60) },
+}
+
+data class_bound_only_evidence: DimmPowerEvidence = DimmPowerEvidence {
+  parts: [],
+  class_bounds: ddr4_class_power_bounds,
 }
 
 data q8030_node: NodeElectricalInputs = NodeElectricalInputs {
@@ -223,7 +296,10 @@ data q8030_node: NodeElectricalInputs = NodeElectricalInputs {
   cpu: altra_q8030_catalog,
   context: altrad8ud_context,
   memory: PopulationModuleRead { population: eight_module_population },
-  dram_power_per_chip: milliwatt(count: 400),
+  dimm_load: idle_normal_load,
+  dimm_evidence: class_bound_only_evidence,
+  cpu_load: CpuDesignWorstCase,
+  cpu_power_cap: Absent,
   board_idle_draw: watt(count: 30),
   psu_rated_output: watt(count: 550),
   psu_efficiency: Gold,
@@ -372,19 +448,26 @@ test fn the_populated_depth_is_read_from_the_population() -> Bool {
 
 // PSU SIZING IS COMPUTED, and its verdict carries both numbers. 161W of
 // processor (the Q80-30's cited TDP, not a hand-authored typical draw) plus
-// 115W of DRAM plus 30W of board is 306W at the DC rail; a Gold supply turns
-// that into 340W at the wall. The DRAM figure counts the ECC devices as well as
+// 64W of DRAM (eight 32 GiB Registered monolithic sticks at the 8W class bound) plus 30W of
+// board is 255W at the DC rail; a Gold supply turns that into 283W at the wall. The DRAM figure counts the ECC devices as well as
 // the data ones — eight 2Rx4 modules are 8 x 2 x 18 chips, not 8 x 2 x 16 —
 // because the chip count comes from the module width against the ECC word:
 // dram_chips_per_rank derives the count from the 72-bit ECC word rather than
 // the 64-bit data word.
 test fn psu_sizing_is_computed_from_the_cited_tdp() -> Bool {
-  watt_count(w: memory_power(population: eight_module_population, power_per_chip: milliwatt(count: 400))) == 115
-    && node_wall(inputs: q8030_node) == 340
+  (match memory_power(population: eight_module_population, evidence: class_bound_only_evidence, load: idle_normal_load) {
+    MemoryPowerDerived { power: p, grounds: _ } => watt_count(w: p) == 64
+    MemoryPowerRefused { cause: _ } => false
+  })
+    && node_wall(inputs: q8030_node) == 283
     && match psu_adequacy(inputs: q8030_node) {
-      PsuAdequate { dc_load: dc, rated: _, headroom: h } => watt_count(w: dc) == 306 && watt_count(w: h) == 244
-      PsuUndersized { dc_load: _, rated: _, shortfall: _ } => false
-      PsuUndecidable { cause: _ } => false
+      NodePsuAdequacyDerived { verdict: v, standings: _ } =>
+        match v {
+          PsuAdequate { dc_load: dc, rated: _, headroom: h } => watt_count(w: dc) == 255 && watt_count(w: h) == 295
+          PsuUndersized { dc_load: _, rated: _, shortfall: _ } => false
+          PsuUndecidable { cause: _ } => false
+        }
+      NodePsuAdequacyUndecidable { cause: _ } => false
     }
 }
 
@@ -397,16 +480,23 @@ test fn an_undersized_supply_reports_its_shortfall() -> Bool {
     cpu: altra_q8030_catalog,
     context: altrad8ud_context,
     memory: PopulationModuleRead { population: eight_module_population },
-    dram_power_per_chip: milliwatt(count: 400),
+    dimm_load: idle_normal_load,
+  dimm_evidence: class_bound_only_evidence,
+  cpu_load: CpuDesignWorstCase,
+  cpu_power_cap: Absent,
     board_idle_draw: watt(count: 30),
     psu_rated_output: watt(count: 250),
     psu_efficiency: Gold,
   }
   match psu_adequacy(inputs: small) {
-    PsuUndersized { dc_load: dc, rated: r, shortfall: s } =>
-      watt_count(w: dc) == 306 && watt_count(w: r) == 250 && watt_count(w: s) == 56
-    PsuAdequate { dc_load: _, rated: _, headroom: _ } => false
-    PsuUndecidable { cause: _ } => false
+    NodePsuAdequacyDerived { verdict: v, standings: _ } =>
+      match v {
+        PsuUndersized { dc_load: dc, rated: r, shortfall: s } =>
+          watt_count(w: dc) == 255 && watt_count(w: r) == 250 && watt_count(w: s) == 5
+        PsuAdequate { dc_load: _, rated: _, headroom: _ } => false
+        PsuUndecidable { cause: _ } => false
+      }
+    NodePsuAdequacyUndecidable { cause: _ } => false
   }
 }
 
@@ -448,22 +538,22 @@ test fn a_measurement_beside_the_derivation_reports_the_divergence() -> Bool {
     DerivedWallPowerRefused { cause: _ } => WallPowerMeasured { watts: watt(count: 0), host: "unreachable" as NonEmptyStr, observed_at: 0 }
   }
   let measured_low = WallPowerMeasured {
-    watts: watt(count: 300),
+    watts: watt(count: 250),
     host: "srv1" as NonEmptyStr,
     observed_at: 1786600000000,
   }
   let measured_equal = WallPowerMeasured {
-    watts: watt(count: 340),
+    watts: watt(count: 283),
     host: "srv1" as NonEmptyStr,
     observed_at: 1786600000000,
   }
   match envelope_divergence(derived: derived, measured: measured_low) {
     DerivationReadsHigh { derived: d, measured: m, excess: e } =>
-      watt_count(w: d) == 340 && watt_count(w: m) == 300 && watt_count(w: e) == 40
+      watt_count(w: d) == 283 && watt_count(w: m) == 250 && watt_count(w: e) == 33
     _ => false
   }
     && match envelope_divergence(derived: derived, measured: measured_equal) {
-      EnvelopeAgrees { watts: w } => watt_count(w: w) == 340
+      EnvelopeAgrees { watts: w } => watt_count(w: w) == 283
       _ => false
     }
 }
@@ -494,7 +584,10 @@ data pending_altrad8ud_m12830_node: NodeElectricalInputs = NodeElectricalInputs 
     dimm_count: 8,
     read_obligation: "read the part number off an arriving 64 GiB RDIMM and cite its catalog row: rank count and DRAM device width decide the chip count per rank, and a 64 GiB DDR4 module may be 2Rx4, 4Rx4 or stacked-die",
   },
-  dram_power_per_chip: milliwatt(count: 400),
+  dimm_load: idle_normal_load,
+  dimm_evidence: class_bound_only_evidence,
+  cpu_load: CpuDesignWorstCase,
+  cpu_power_cap: Absent,
   board_idle_draw: watt(count: 30),
   psu_rated_output: watt(count: 550),
   psu_efficiency: Gold,
@@ -506,19 +599,21 @@ test fn the_pending_configuration_refuses_its_draw_and_names_the_read() -> Bool 
       match c {
         MemoryModuleUnread { stick_capacity: cap, dimm_count: n, read_obligation: _ } =>
           byte_size_count(b: cap) == 68719476736 && n == 8
+        MemoryPowerUnresolved { cause: _ } => false
+        CpuPowerUnresolved { utilisation: _, read_obligation: _ } => false
+        CpuUsageEvidenceForeignToCpu { cpu_model: _, usage_model: _ } => false
       }
-    NodeDrawDerived { dc_load: _, wall_draw: _ } => false
+    NodeDrawDerived { dc_load: _, wall_draw: _, standings: _ } => false
   }
 }
 
 // ...and the supply is UNDECIDABLE rather than adequate. A 550W supply against
-// a 183W processor and a board looks comfortable until the memory it could not
+// a 250W processor and a board looks comfortable until the memory it could not
 // count is added, which is exactly the reading this arm refuses to give.
 test fn the_pending_configuration_leaves_the_supply_undecidable() -> Bool {
   match psu_adequacy(inputs: pending_altrad8ud_m12830_node) {
-    PsuUndecidable { cause: _ } => true
-    PsuAdequate { dc_load: _, rated: _, headroom: _ } => false
-    PsuUndersized { dc_load: _, rated: _, shortfall: _ } => false
+    NodePsuAdequacyUndecidable { cause: _ } => true
+    NodePsuAdequacyDerived { verdict: _, standings: _ } => false
   }
 }
 
@@ -532,8 +627,8 @@ test fn the_pending_configuration_still_answers_its_capacity() -> Bool {
 
 // POSITIVE CONTROL, and the number the placement decision consumes the moment
 // the sticks are qualified: the SAME node with the part read as a 2Rx4 64 GiB
-// module derives 183W of processor plus 115W of DRAM plus 30W of board = 328W
-// at the DC rail, 364W at the wall behind a Gold supply. If the refusal above
+// module derives 250W of processor DESIGN power plus 80W of DRAM (the 10W class bound x8) plus 30W
+// of board = 360W at the DC rail, 400W at the wall behind a Gold supply. If the refusal above
 // were a modelling dead end rather than a missing read, this claim could not
 // exist.
 data rdimm_64g_2rx4: DramModuleCatalogRow = DramModuleCatalogRow {
@@ -563,7 +658,10 @@ data qualified_altrad8ud_m12830_node: NodeElectricalInputs = NodeElectricalInput
   cpu: altra_max_m12830_catalog,
   context: altrad8ud_context,
   memory: PopulationModuleRead { population: eight_by_64_population },
-  dram_power_per_chip: milliwatt(count: 400),
+  dimm_load: idle_normal_load,
+  dimm_evidence: class_bound_only_evidence,
+  cpu_load: CpuDesignWorstCase,
+  cpu_power_cap: Absent,
   board_idle_draw: watt(count: 30),
   psu_rated_output: watt(count: 550),
   psu_efficiency: Gold,
@@ -571,7 +669,488 @@ data qualified_altrad8ud_m12830_node: NodeElectricalInputs = NodeElectricalInput
 
 test fn the_same_node_derives_its_draw_once_the_part_is_read() -> Bool {
   match node_draw(inputs: qualified_altrad8ud_m12830_node) {
-    NodeDrawDerived { dc_load: dc, wall_draw: w } => watt_count(w: dc) == 328 && watt_count(w: w) == 364
+    NodeDrawDerived { dc_load: dc, wall_draw: w, standings: _ } => watt_count(w: dc) == 360 && watt_count(w: w) == 400
     NodeDrawRefused { cause: _ } => false
   }
+}
+
+
+// ── DIMM POWER IS A FUNCTION OF TRAFFIC AND TEMPERATURE (host thermal P2) ──────────────────────
+// The profile below is a FIXTURE: it exercises the current-based method and is never a Samsung or
+// any other vendor figure. It is given a fixture CitedToAuthority standing so the part path can be
+// reached; fixture_uncited_part_evidence is the same profile with an uncited standing.
+data fixture_profile_standing: CitedFigureStanding = CitedToAuthority {
+  authority: ExternalAuthority {
+    uri: Uri {
+      scheme: File,
+      locator: "dag/test/claim/node_power_envelope_witness.dag#fixture_part_evidence",
+    },
+  },
+}
+
+data fixture_uncited_profile_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "fixture current profile standing in for an uncited transcription" as NonEmptyStr,
+}
+
+data fixture_part_evidence: DramPartCurrentEvidence = DramPartCurrentEvidence {
+  subject: mod_2rx4_32g,
+  profile: DramCurrentProfile {
+    supply: millivolt(count: 1200),
+    idd0: milliampere(count: 50),
+    idd3n: milliampere(count: 40),
+    idd4r: milliampere(count: 150),
+    idd4w: milliampere(count: 140),
+    idd5b: milliampere(count: 250),
+    refresh_duty: permille(count: 40),
+    buffer_overhead: milliwatt(count: 500),
+  },
+  standing: fixture_profile_standing,
+}
+
+data fixture_uncited_part_evidence: DramPartCurrentEvidence = DramPartCurrentEvidence {
+  subject: fixture_part_evidence.subject,
+  profile: fixture_part_evidence.profile,
+  standing: fixture_uncited_profile_standing,
+}
+
+data fixture_uncited_part_only_evidence: DimmPowerEvidence = DimmPowerEvidence {
+  parts: [fixture_uncited_part_evidence],
+  class_bounds: [],
+}
+
+data fixture_uncited_part_with_class_bound_evidence: DimmPowerEvidence = DimmPowerEvidence {
+  parts: [fixture_uncited_part_evidence],
+  class_bounds: ddr4_class_power_bounds,
+}
+
+fn tied_bound(normal: Int) -> DramClassPowerBound {
+  DramClassPowerBound {
+    generation: dram_generation_ddr4,
+    class: DramModuleClass { buffering: Registered, stacking: MonolithicDie },
+    max_capacity: gibibyte_to_byte_size(g: gibibyte(count: 32)),
+    normal_milliwatts: milliwatt(count: normal),
+    extended_milliwatts: milliwatt(count: normal + 1500),
+    standing: dimm_class_bound_standing,
+  }
+}
+
+data tied_bounds_evidence: DimmPowerEvidence = DimmPowerEvidence {
+  parts: [],
+  class_bounds: [tied_bound(normal: 8000), tied_bound(normal: 9000)],
+}
+
+data fixture_part_only_evidence: DimmPowerEvidence = DimmPowerEvidence {
+  parts: [fixture_part_evidence],
+  class_bounds: [],
+}
+
+fn load_at(temp: Int, read: Int, write: Int) -> DimmLoad {
+  DimmLoad {
+    traffic: DimmTraffic { read: Bandwidth { count: read }, write: Bandwidth { count: write }, activation: ActivationEstablished { duty: permille(count: 300), standing: fixture_profile_standing } },
+    case_temperature: DramCaseTemperature { tcase: celsius(count: temp) },
+  }
+}
+
+fn part_milliwatts(evidence: DimmPowerEvidence, load: DimmLoad) -> Int {
+  match dimm_power(module: mod_2rx4_32g, evidence: evidence, load: load) {
+    DimmPowerFromPartCurrents { power: p, grounds: _ } => milliwatt_count(w: p)
+    DimmPowerFromClassBound { power: _, grounds: _ } => 0 - 1
+    DimmPowerRefused { cause: _ } => 0 - 2
+  }
+}
+
+// Equal traffic, hotter die: refresh doubles above 85 C, so 90 C reads strictly higher than 80 C.
+test fn dimm_power_at_90c_exceeds_80c_under_equal_traffic() -> Bool {
+  part_milliwatts(evidence: fixture_part_only_evidence, load: load_at(temp: 90, read: 4000000000, write: 2000000000))
+    > part_milliwatts(evidence: fixture_part_only_evidence, load: load_at(temp: 80, read: 4000000000, write: 2000000000))
+    && part_milliwatts(evidence: fixture_part_only_evidence, load: load_at(temp: 80, read: 4000000000, write: 2000000000)) > 0
+}
+
+// Equal temperature, more traffic: power rises with read/write bandwidth.
+test fn dimm_power_rises_with_traffic_at_equal_temperature() -> Bool {
+  part_milliwatts(evidence: fixture_part_only_evidence, load: load_at(temp: 60, read: 8000000000, write: 4000000000))
+    > part_milliwatts(evidence: fixture_part_only_evidence, load: load_at(temp: 60, read: 0, write: 0))
+}
+
+// Traffic beyond the module's peak bus bandwidth refuses; it is not clamped.
+test fn traffic_beyond_the_module_peak_refuses() -> Bool {
+  match dimm_power(module: mod_2rx4_32g, evidence: fixture_part_only_evidence, load: load_at(temp: 60, read: 30000000000, write: 30000000000)) {
+    DimmPowerRefused { cause: TrafficExceedsModulePeak { demanded: _, peak: _ } } => true
+    _ => false
+  }
+}
+
+// An unknown DIMM with no part evidence and no covering class bound refuses (never a silent default).
+data unbuffered_unknown_module: DramModuleCatalogRow = DramModuleCatalogRow {
+  part_number: "UNKNOWN-UDIMM",
+  manufacturer: sk_hynix,
+  generation: dram_generation_ddr4,
+  capacity_bytes: stick_32g,
+  data_rate_mts: 3200,
+  ecc: false,
+  buffering: Unbuffered,
+  die_stacking: MonolithicDie,
+  chip_width: bit_width(count: 8),
+  rank_count: 2,
+}
+
+test fn an_unknown_dimm_with_no_class_bound_refuses() -> Bool {
+  match dimm_power(module: unbuffered_unknown_module, evidence: class_bound_only_evidence, load: idle_normal_load) {
+    DimmPowerRefused { cause: NoPartEvidenceAndNoClassBound { part_number: _ } } => true
+    _ => false
+  }
+}
+
+// A part with cited-shaped evidence takes the part path; a part without it falls to the class bound.
+test fn cited_part_evidence_takes_precedence_and_class_bound_covers_its_absence() -> Bool {
+  (match dimm_power(module: mod_2rx4_32g, evidence: fixture_part_only_evidence, load: idle_normal_load) {
+    DimmPowerFromPartCurrents { power: _, grounds: _ } => true
+    _ => false
+  })
+    && (match dimm_power(module: mod_2rx4_32g, evidence: class_bound_only_evidence, load: idle_normal_load) {
+      DimmPowerFromClassBound { power: p, grounds: _ } => milliwatt_count(w: p) == 8000
+      _ => false
+    })
+}
+
+// Past the class bound's extended-temperature ceiling the class bound refuses.
+test fn the_class_bound_refuses_beyond_its_temperature_ceiling() -> Bool {
+  match dimm_power(module: mod_2rx4_32g, evidence: class_bound_only_evidence, load: load_at(temp: 100, read: 0, write: 0)) {
+    DimmPowerRefused { cause: RefreshBandLimitUnestablished { tcase: _, read_obligation: _ } } => true
+    _ => false
+  }
+}
+
+// The same out-of-specification TCASE refuses on the PART-CURRENT path too (it used to keep a 2x refresh).
+test fn the_part_current_path_refuses_beyond_the_extended_band_too() -> Bool {
+  match dimm_power(module: mod_2rx4_32g, evidence: fixture_part_only_evidence, load: load_at(temp: 100, read: 0, write: 0)) {
+    DimmPowerRefused { cause: RefreshBandLimitUnestablished { tcase: _, read_obligation: _ } } => true
+    _ => false
+  }
+}
+
+// The band edges are the canonical jedec rows: 85 C is still the normal band, 86 C the extended band
+// with the interval-ratio multiplier, 96 C no band.
+test fn the_band_edges_come_from_the_canonical_rows() -> Bool {
+  let at85 = match refresh_band_for(case_temperature: DramCaseTemperature { tcase: celsius(count: 85) }) {
+    RefreshBandSelected { band: b } => band_multiplier(band: b) == 1
+    _ => false
+  }
+  let at86 = match refresh_band_for(case_temperature: DramCaseTemperature { tcase: celsius(count: 86) }) {
+    RefreshBandSelected { band: b } => band_multiplier(band: b) == 2
+    _ => false
+  }
+  let at95 = match refresh_band_for(case_temperature: DramCaseTemperature { tcase: celsius(count: 95) }) {
+    RefreshBandSelected { band: b } => band_multiplier(band: b) == 2
+    _ => false
+  }
+  let at96 = match refresh_band_for(case_temperature: DramCaseTemperature { tcase: celsius(count: 96) }) {
+    RefreshBandBeyondSpecification { tcase: _, extended_standing: _ } => true
+    _ => false
+  }
+  at85 && at86 && at95 && at96
+}
+
+// A CITED current profile under the still-uncited band yields an uncited result: the band standing is
+// preserved, not hidden behind the profile's citation.
+test fn a_cited_profile_under_an_uncited_band_is_reported_uncited() -> Bool {
+  match dimm_power(module: mod_2rx4_32g, evidence: fixture_part_only_evidence, load: load_at(temp: 60, read: 0, write: 0)) {
+    DimmPowerFromPartCurrents { power: _, grounds: g } => !uncited_standing(g: g.profile_or_class) && uncited_standing(g: g.normal_band) && g.extended_band == Absent
+    _ => false
+  }
+}
+
+// ── CPU: DESIGN POWER AND USAGE POWER ARE TWO FACTS ────────────────────────────────────────────
+fn cpu_watts(load: CpuLoad, cap: Watt?) -> Int {
+  match cpu_power(cpu: altra_max_m12830_catalog, load: load, cap: cap) {
+    CpuPowerDerived { watts: w, standing: _ } => watt_count(w: w)
+    CpuPowerRefused { utilisation: _, read_obligation: _ } => 0 - 1
+    CpuUsageEvidenceForeign { cpu_model: _, usage_model: _ } => 0 - 2
+  }
+}
+
+test fn cpu_design_power_is_250_and_usage_power_is_183() -> Bool {
+  cpu_watts(load: CpuDesignWorstCase, cap: Absent) == 250
+    && cpu_watts(load: CpuRatedUsageWorkload { usage: altra_max_m12830_usage_power }, cap: Absent) == 183
+}
+
+test fn a_power_cap_bounds_cpu_power_and_partial_utilisation_refuses() -> Bool {
+  cpu_watts(load: CpuDesignWorstCase, cap: Present { value: watt(count: 200) }) == 200
+    && cpu_watts(load: CpuPartialUtilisation { utilisation: permille(count: 500) }, cap: Absent) == 0 - 1
+}
+
+// gunbc.design_argument::epistemic_humility: every term's standing reaches node_draw, psu_adequacy and derived_wall_power; none is promoted.
+fn uncited_standing(g: CitedFigureStanding) -> Bool {
+  match g {
+    TranscribedUncited { read_obligation: _ } => true
+    CitedToAuthority { authority: _ } => false
+    ObservedByReceipt { observed: _ } => false
+  }
+}
+
+test fn the_node_draw_carries_every_term_standing_as_a_bet() -> Bool {
+  match node_draw(inputs: q8030_node) {
+    NodeDrawDerived { dc_load: _, wall_draw: _, standings: s } =>
+      uncited_standing(g: s.cpu) && uncited_standing(g: s.memory.profile_or_class) && uncited_standing(g: s.memory.normal_band) && uncited_standing(g: s.board_idle) && uncited_standing(g: s.psu_efficiency)
+    NodeDrawRefused { cause: _ } => false
+  }
+}
+
+test fn psu_adequacy_and_wall_power_carry_the_standings_to_the_consumer() -> Bool {
+  (match psu_adequacy(inputs: q8030_node) {
+    NodePsuAdequacyDerived { verdict: _, standings: s } => uncited_standing(g: s.cpu) && uncited_standing(g: s.board_idle)
+    NodePsuAdequacyUndecidable { cause: _ } => false
+  })
+    && (match derived_wall_power(inputs: q8030_node) {
+      DerivedWallPowerReading { reading: r } =>
+        match r {
+          WallPowerDerived { watts: _, standings: s } => uncited_standing(g: s.cpu) && uncited_standing(g: s.psu_efficiency)
+          WallPowerMeasured { watts: _, host: _, observed_at: _ } => false
+        }
+      DerivedWallPowerRefused { cause: _ } => false
+    })
+}
+
+// An uncited part profile is a bet and cannot lower the conservative class ceiling.
+test fn uncited_part_evidence_cannot_lower_the_class_bound() -> Bool {
+  (match dimm_power(module: mod_2rx4_32g, evidence: fixture_uncited_part_with_class_bound_evidence, load: idle_normal_load) {
+    DimmPowerFromClassBound { power: p, grounds: _ } => milliwatt_count(w: p) == 8000
+    _ => false
+  })
+    && (match dimm_power(module: mod_2rx4_32g, evidence: fixture_uncited_part_only_evidence, load: idle_normal_load) {
+      DimmPowerRefused { cause: UncitedPartEvidenceAndNoClassBound { part_number: _, read_obligation: _ } } => true
+      _ => false
+    })
+}
+
+// Two tightest class rows are ambiguous; the first authored is not silently chosen.
+test fn tied_tightest_class_bounds_refuse_as_ambiguous() -> Bool {
+  match dimm_power(module: mod_2rx4_32g, evidence: tied_bounds_evidence, load: idle_normal_load) {
+    DimmPowerRefused { cause: AmbiguousClassBound { part_number: _, candidate_count: n } } => n == 2
+    _ => false
+  }
+}
+
+// A usage fact belongs to the CPU it describes: the M128-30 figure cannot price a Q80-30.
+test fn cpu_usage_power_for_a_foreign_cpu_refuses() -> Bool {
+  (match cpu_power(cpu: altra_q8030_catalog, load: CpuRatedUsageWorkload { usage: altra_max_m12830_usage_power }, cap: Absent) {
+    CpuUsageEvidenceForeign { cpu_model: _, usage_model: _ } => true
+    _ => false
+  })
+    && (match cpu_power(cpu: altra_max_m12830_catalog, load: CpuRatedUsageWorkload { usage: altra_max_m12830_usage_power }, cap: Absent) {
+      CpuPowerDerived { watts: w, standing: g } => watt_count(w: w) == 183 && uncited_standing(g: g)
+      _ => false
+    })
+}
+
+test fn class_bound_path_also_refuses_traffic_beyond_peak() -> Bool {
+  match dimm_power(module: mod_2rx4_32g, evidence: class_bound_only_evidence, load: load_at(temp: 60, read: 30000000000, write: 30000000000)) {
+    DimmPowerRefused { cause: TrafficExceedsModulePeak { demanded: _, peak: _ } } => true
+    _ => false
+  }
+}
+
+// Evidence is bound to the exact module row: the same part-number text under another manufacturer
+// does not match, so the foreign vendor falls to its (absent) class bound and refuses.
+data foreign_vendor_same_part_module: DramModuleCatalogRow = DramModuleCatalogRow {
+  part_number: mod_2rx4_32g.part_number,
+  manufacturer: amd,
+  generation: mod_2rx4_32g.generation,
+  capacity_bytes: mod_2rx4_32g.capacity_bytes,
+  data_rate_mts: mod_2rx4_32g.data_rate_mts,
+  ecc: mod_2rx4_32g.ecc,
+  buffering: mod_2rx4_32g.buffering,
+  die_stacking: mod_2rx4_32g.die_stacking,
+  chip_width: mod_2rx4_32g.chip_width,
+  rank_count: mod_2rx4_32g.rank_count,
+}
+
+test fn evidence_for_one_vendor_does_not_match_another_vendors_same_part_number() -> Bool {
+  (match dimm_power(module: mod_2rx4_32g, evidence: fixture_part_only_evidence, load: idle_normal_load) {
+    DimmPowerFromPartCurrents { power: _, grounds: _ } => true
+    _ => false
+  })
+    && (match dimm_power(module: foreign_vendor_same_part_module, evidence: fixture_part_only_evidence, load: idle_normal_load) {
+      DimmPowerRefused { cause: NoPartEvidenceAndNoClassBound { part_number: _ } } => true
+      _ => false
+    })
+}
+
+// An activation duty with no established evidence refuses the part-current path instead of guessing.
+test fn an_unestablished_activation_duty_refuses_the_part_current_reading() -> Bool {
+  match dimm_power(
+    module: mod_2rx4_32g,
+    evidence: fixture_part_only_evidence,
+    load: DimmLoad {
+      traffic: DimmTraffic {
+        read: Bandwidth { count: 0 },
+        write: Bandwidth { count: 0 },
+        activation: ActivationNotEstablished { read_obligation: "an ACT/PRE counter observation or a cited activation bound" as NonEmptyStr },
+      },
+      case_temperature: DramCaseTemperature { tcase: celsius(count: 40) },
+    },
+  ) {
+    DimmPowerRefused { cause: ActivationDutyUnestablished { read_obligation: _ } } => true
+    _ => false
+  }
+}
+
+fn load_with_duty(duty: Int, standing: CitedFigureStanding) -> DimmLoad {
+  DimmLoad {
+    traffic: DimmTraffic { read: Bandwidth { count: 0 }, write: Bandwidth { count: 0 }, activation: ActivationEstablished { duty: permille(count: duty), standing: standing } },
+    case_temperature: DramCaseTemperature { tcase: celsius(count: 40) },
+  }
+}
+
+fn duty_verdict(duty: Int, standing: CitedFigureStanding) -> Int {
+  match dimm_power(module: mod_2rx4_32g, evidence: fixture_part_only_evidence, load: load_with_duty(duty: duty, standing: standing)) {
+    DimmPowerFromPartCurrents { power: _, grounds: _ } => 1
+    DimmPowerRefused { cause: ActivationDutyOutOfRange { duty: _ } } => 2
+    DimmPowerRefused { cause: ActivationDutyUnestablished { read_obligation: _ } } => 3
+    _ => 0
+  }
+}
+
+// The duty is a fraction of time: 0 and 1000 permille are admitted, 1001 refuses, and an uncited in-range
+// duty still refuses as unestablished.
+test fn the_activation_duty_is_bounded_to_zero_through_one_thousand() -> Bool {
+  duty_verdict(duty: 0, standing: fixture_profile_standing) == 1
+    && duty_verdict(duty: 1000, standing: fixture_profile_standing) == 1
+    && duty_verdict(duty: 1001, standing: fixture_profile_standing) == 2
+    && duty_verdict(duty: 500, standing: fixture_uncited_profile_standing) == 3
+}
+
+data mod_2rx4_32g_ddr5: DramModuleCatalogRow = DramModuleCatalogRow {
+  part_number: mod_2rx4_32g.part_number,
+  manufacturer: mod_2rx4_32g.manufacturer,
+  generation: dram_generation_ddr5,
+  capacity_bytes: stick_32g,
+  data_rate_mts: 3200,
+  ecc: true,
+  buffering: Registered,
+  die_stacking: MonolithicDie,
+  chip_width: bit_width(count: 4),
+  rank_count: 2,
+}
+
+// Control: same part number and manufacturer, so part evidence for the DDR4 twin also names this module's
+// identity apart from generation. The DDR5 module refuses on generation BEFORE any band is selected,
+// shown by an unread normal band that would otherwise surface as RefreshBandUnread.
+test fn a_ddr5_module_refuses_before_any_ddr4_band_is_selected() -> Bool {
+  match dimm_power_over_bands(module: mod_2rx4_32g_ddr5, evidence: fixture_part_only_evidence, load: idle_normal_load, normal_row: NeedsReading { read_obligation: "unread" as NonEmptyStr }, extended_row: ddr4_extended_refresh_band) {
+    DimmPowerRefused { cause: UnsupportedDramGeneration { part_number: _ } } => true
+    _ => false
+  }
+}
+
+// Normal band unread, extended band cited: the extended multiplier needs both rows, so a 90 C reading
+// refuses as unread rather than inheriting the extended row's standing (the real extended row is TranscribedUncited; the point is that an unread NORMAL row is not masked by it).
+test fn an_unread_normal_band_is_not_hidden_by_a_cited_extended_band() -> Bool {
+  match dimm_power_over_bands(module: mod_2rx4_32g, evidence: fixture_part_only_evidence, load: load_at(temp: 90, read: 0, write: 0), normal_row: NeedsReading { read_obligation: "normal row unread" as NonEmptyStr }, extended_row: ddr4_extended_refresh_band) {
+    DimmPowerRefused { cause: RefreshBandUnread { read_obligation: _ } } => true
+    _ => false
+  }
+}
+
+// Two distinct uncited obligations survive together: the class bound's own and the normal band's.
+// The extended band is selected too (90 C) and carries its own standing beside them.
+test fn two_distinct_uncited_obligations_survive_together() -> Bool {
+  match dimm_power_over_bands(module: mod_2rx4_32g, evidence: class_bound_only_evidence, load: load_at(temp: 40, read: 0, write: 0), normal_row: ddr4_normal_refresh_band, extended_row: ddr4_extended_refresh_band) {
+    DimmPowerFromClassBound { power: _, grounds: g } =>
+      uncited_standing(g: g.profile_or_class) && uncited_standing(g: g.normal_band) && g.activation == Absent
+        && g.profile_or_class != g.normal_band
+    _ => false
+  }
+}
+
+test fn the_extended_multiplier_carries_the_normal_bands_standing_too() -> Bool {
+  match dimm_power(module: mod_2rx4_32g, evidence: fixture_part_only_evidence, load: load_at(temp: 90, read: 0, write: 0)) {
+    DimmPowerFromPartCurrents { power: _, grounds: g } =>
+      uncited_standing(g: g.normal_band) && (match g.extended_band {
+        Present { value: e } => uncited_standing(g: e)
+        Absent => false
+      })
+    _ => false
+  }
+}
+
+// Otherwise cited inputs with an OBSERVED activation: the activation ground reaches the result as the
+// observed standing, distinct from the profile's citation.
+test fn an_observed_activation_standing_reaches_the_result() -> Bool {
+  match dimm_power(module: mod_2rx4_32g, evidence: fixture_part_only_evidence, load: load_with_duty(duty: 300, standing: fs_nvidia_eth_leg_coding_standing())) {
+    DimmPowerFromPartCurrents { power: _, grounds: g } =>
+      g.activation == Present { value: fs_nvidia_eth_leg_coding_standing() } && g.activation != Present { value: fixture_profile_standing }
+    _ => false
+  }
+}
+
+data fixture_cited_extended_row: RowField<Ddr4RefreshBand> = FromCitedFigure {
+  value: Ddr4RefreshBand { upper_tcase: celsius(count: 95), refresh_interval: nanosecond(count: 3900) },
+  standing: fixture_profile_standing,
+}
+
+// Beyond a CITED extended edge the refusal is a grounded out-of-specification finding and carries the edge's
+// standing; beyond the real (TranscribedUncited) edge it is RefreshBandLimitUnestablished and the obligation survives.
+test fn the_standing_of_the_extended_edge_decides_what_beyond_it_means() -> Bool {
+  (match dimm_power_over_bands(module: mod_2rx4_32g, evidence: fixture_part_only_evidence, load: load_at(temp: 100, read: 0, write: 0), normal_row: ddr4_normal_refresh_band, extended_row: fixture_cited_extended_row) {
+    DimmPowerRefused { cause: TemperatureBeyondExtendedBand { tcase: _, extended_band_authority: _ } } => true
+    _ => false
+  })
+    && (match dimm_power_over_bands(module: mod_2rx4_32g, evidence: fixture_part_only_evidence, load: load_at(temp: 100, read: 0, write: 0), normal_row: ddr4_normal_refresh_band, extended_row: ddr4_extended_refresh_band) {
+      DimmPowerRefused { cause: RefreshBandLimitUnestablished { tcase: _, read_obligation: _ } } => true
+      _ => false
+    })
+}
+
+// The extended row is required only above the normal edge: normal established + extended unread selects the
+// normal band at 40 C (extended_band Absent) and refuses as unread at 90 C.
+test fn the_extended_row_is_required_only_above_the_normal_edge() -> Bool {
+  (match refresh_band_from_rows(case_temperature: DramCaseTemperature { tcase: celsius(count: 40) }, normal_row: ddr4_normal_refresh_band, extended_row: NeedsReading { read_obligation: "extended unread" as NonEmptyStr }) {
+    RefreshBandSelected { band: b } => band_multiplier(band: b) == 1
+    _ => false
+  })
+    && (match refresh_band_from_rows(case_temperature: DramCaseTemperature { tcase: celsius(count: 90) }, normal_row: ddr4_normal_refresh_band, extended_row: NeedsReading { read_obligation: "extended unread" as NonEmptyStr }) {
+      RefreshBandNotRead { read_obligation: _ } => true
+      _ => false
+    })
+}
+
+data fixture_observed_extended_row: RowField<Ddr4RefreshBand> = FromCitedFigure {
+  value: Ddr4RefreshBand { upper_tcase: celsius(count: 95), refresh_interval: nanosecond(count: 3900) },
+  standing: fs_nvidia_eth_leg_coding_standing(),
+}
+
+// An OBSERVED extended edge is a reading, not the JEDEC specification: beyond it the refusal is the distinct
+// observed-only result and never the spec-wall TemperatureBeyondExtendedBand.
+test fn an_observed_extended_edge_never_produces_the_spec_wall() -> Bool {
+  match dimm_power_over_bands(module: mod_2rx4_32g, evidence: fixture_part_only_evidence, load: load_at(temp: 100, read: 0, write: 0), normal_row: ddr4_normal_refresh_band, extended_row: fixture_observed_extended_row) {
+    DimmPowerRefused { cause: RefreshBandLimitObservedOnly { tcase: _, observed: _ } } => true
+    _ => false
+  }
+}
+
+// A zero module peak bandwidth, otherwise on the established part-current path (cited profile, cited activation
+// duty, cited band), has no per-mille share to divide into: it refuses as ModulePeakBandwidthZero, never defaults.
+data zero_peak_module: DramModuleCatalogRow = DramModuleCatalogRow {
+  part_number: mod_2rx4_32g.part_number,
+  manufacturer: mod_2rx4_32g.manufacturer,
+  generation: mod_2rx4_32g.generation,
+  capacity_bytes: mod_2rx4_32g.capacity_bytes,
+  data_rate_mts: 0,
+  ecc: mod_2rx4_32g.ecc,
+  buffering: mod_2rx4_32g.buffering,
+  die_stacking: mod_2rx4_32g.die_stacking,
+  chip_width: mod_2rx4_32g.chip_width,
+  rank_count: mod_2rx4_32g.rank_count,
+}
+
+test fn a_zero_peak_bandwidth_module_refuses_instead_of_defaulting() -> Bool {
+  (match dimm_power(module: zero_peak_module, evidence: fixture_part_only_evidence, load: load_with_duty(duty: 100, standing: fixture_profile_standing)) {
+    DimmPowerRefused { cause: ModulePeakBandwidthZero { part_number: _ } } => true
+    _ => false
+  })
+    && (match dimm_power(module: mod_2rx4_32g, evidence: fixture_part_only_evidence, load: load_with_duty(duty: 100, standing: fixture_profile_standing)) {
+      DimmPowerFromPartCurrents { power: _, grounds: _ } => true
+      _ => false
+    })
 }

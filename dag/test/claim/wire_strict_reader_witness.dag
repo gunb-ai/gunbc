@@ -15,7 +15,7 @@ import gunbc.auth.wire_strict_reader {
   BoundShape, ShapeBound, ShapeRefused, bind_record, read_shape,
 }
 
-// SUPPLIED STRUCTURE: the declared field lists as values (DESIGN 3, a witness discriminates at one
+// SUPPLIED STRUCTURE: the declared field lists as values (gunbc.design_argument::single_authority, a witness discriminates at one
 // interface). The inhabitance claim that the batched decl_facts_at pass yields these same lists is
 // wire_schema_derivation_witness.
 data read_authentication_declared: List<String> = ["enrollment_id", "requested_at", "assertion_b64"]

@@ -30,7 +30,7 @@ import std.scoped_authorization {
 // when, and for what stated purpose. The move is not a relocation for tidiness: a SECOND instance
 // of the identical shape is landing (the Spark first-boot agreement acceptance, which authorizes
 // one action on one device for one attempt and must refuse on absence, staleness and mismatch),
-// and modeling it beside this one would have been the §3 fork. std.temporal_effect's
+// and modeling it beside this one would have been the gunbc.design_argument::single_authority fork. std.temporal_effect's
 // DurableApprovalGrant -- the pre-existing fork of the SAME meaning, with expiry and single-use
 // modeled and zero production consumers -- is dissolved into it in the same motion.
 //
@@ -51,7 +51,7 @@ type WorkflowStepDisposition<Subject>
 // requested resource, and a grant issued against a different planned action are not "still
 // waiting", they are a live disagreement between what was approved and what is about to run.
 // Folding them into the awaiting arm would make the natural remedy "ask again and it will
-// proceed", which is the absorbing fallback DESIGN §5 names: the precise deficit disappears and
+// proceed", which is the absorbing fallback gunbc.design_argument::fail_closed names: the precise deficit disappears and
 // the widened arm succeeds. So the disagreement blocks, carrying its own located cause.
 fn workflow_step_disposition_for_authorization<Subject>(
   request: AuthorizationRequest<Subject>,
@@ -121,7 +121,7 @@ fn workflow_step_is_runnable<Subject>(disposition: WorkflowStepDisposition<Subje
 
 // The refusal sentence a caller puts in front of a human. The empty string is reserved for the
 // runnable arm ALONE, and every caller reads it as "no refusal" -- so no refusing arm may render
-// "" and no arm may fall through to a default (§5: one refusal, one destination).
+// "" and no arm may fall through to a default (gunbc.design_argument::fail_closed: one refusal, one destination).
 fn workflow_destructive_step_refusal_reason<Subject>(disposition: WorkflowStepDisposition<Subject>) -> String {
   match disposition {
     StepRunnable => ""

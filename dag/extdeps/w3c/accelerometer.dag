@@ -24,7 +24,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data accelerometer_note: String = "Cited upstream: W3C Accelerometer, Candidate Recommendation Draft, 14 May 2026. This is a SEPARATE specification from the Generic Sensor base and therefore a separate authority (DESIGN §3): the base defines the Sensor framework and explicitly delegates concrete interfaces, feature tokens and semantics to extension specifications, and this is that extension. The three concrete interfaces a motion consumer can actually construct live here, not there.
+data accelerometer_note: String = "Cited upstream: W3C Accelerometer, Candidate Recommendation Draft, 14 May 2026. This is a SEPARATE specification from the Generic Sensor base and therefore a separate authority (gunbc.design_argument::single_authority): the base defines the Sensor framework and explicitly delegates concrete interfaces, feature tokens and semantics to extension specifications, and this is that extension. The three concrete interfaces a motion consumer can actually construct live here, not there.
 
 It contains no browser and no platform behavior. Whether an engine implements these interfaces, and whether a machine's hardware can serve them, are execution facts about that engine and that host."
 
@@ -114,7 +114,7 @@ data default_reference_frame: String = "device"
 // feature name are both 'accelerometer', and this spec takes that token as defined in Device
 // Orientation and Motion. So the same string grounds both web routes from a single upstream home,
 // which is why extdeps.w3c.device_orientation_and_motion carries it and this module references the
-// relationship rather than minting a second copy (DESIGN §3).
+// relationship rather than minting a second copy (gunbc.design_argument::single_authority).
 
 data accelerometer_permission_name: String = "accelerometer"
 

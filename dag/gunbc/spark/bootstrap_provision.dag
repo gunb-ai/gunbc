@@ -126,7 +126,7 @@ data spark_legacy_containers: List<SparkLegacyContainerStanding> = [
   spark_legacy_administrator_container
 ]
 
-// THE TWO LEGACY CONTAINERS, MOVED OUT OF A `String` ROW (§4c, one reference: its own declaration).
+// THE TWO LEGACY CONTAINERS, MOVED OUT OF A `String` ROW (gunbc.design_argument::source_annotations, one reference: its own declaration).
 // What survives here is the REASONING -- why observed-but-unbound containers are not adoptable -- 
 // which is irreducible human rationale. The population arithmetic in it is not authority: the
 // classification these rows carry is `ObservedLegacyUnbound` in the typed standing, and that is what
@@ -531,7 +531,7 @@ fn spark_effective_access_standing() -> EffectiveAccessStanding {
 }
 
 // A MEASUREMENT RECEIPT, MOVED OUT OF A `String` ROW. It had one reference -- its own declaration --
-// so it was dead data under DESIGN §4c, and the counts and run id inside it were machine-consumable
+// so it was dead data under gunbc.design_argument::source_annotations, and the counts and run id inside it were machine-consumable
 // facts sitting where no machine can read them. It is kept as authored rationale rather than deleted
 // because the correction it records (an overclaim about what testIamPermissions establishes) is
 // exactly the kind of reasoning an annotation is for. The run id and cell count are HISTORICAL and
@@ -586,7 +586,7 @@ fn spark_effective_access_standing() -> EffectiveAccessStanding {
 // sensitive-input policy already refuses secrets appearing in argv or standard streams. Material is
 // generated or fetched inside the admitted run and projected to base64 at the REST boundary.
 
-// THE UNBUILT FRONTIER, MOVED OUT OF A `String` ROW for the same §4c reason: one reference, its own
+// THE UNBUILT FRONTIER, MOVED OUT OF A `String` ROW for the same gunbc.design_argument::source_annotations reason: one reference, its own
 // declaration. The '0 of 4' in it is a claim a machine should be able to check and cannot, which is
 // the defect rather than the phrasing -- the occurrence population already has a typed home in this
 // module's allocation standing, and the honest next step is that the count is DERIVED there rather
@@ -993,7 +993,7 @@ fn spark_demand_decision_for(demand: ExternalAccessDemand, op: SecretManagerOper
 // THE TWO SPELLINGS ARE NOT A NICKNAME, THEY ARE A BOUNDARY. Upstream names the policy operations
 // GetSecretIamPolicy and SetSecretIamPolicy; the local coproduct spells them SmGetIamPolicy and
 // SmSetIamPolicy. Decoding is exactly where a wire name is mapped to a modelled one, and the upstream
-// spelling stays authoritative on the wire side (DESIGN section 3 -- keep the real names). What would
+// spelling stays authoritative on the wire side (gunbc.design_argument::single_authority -- keep the real names). What would
 // have been a nickname is what was here before: two independent policy tables keyed on the two
 // spellings, neither derived from the other.
 fn secret_manager_operation_of_ref(op: OperationRef) -> SecretManagerOperation? {

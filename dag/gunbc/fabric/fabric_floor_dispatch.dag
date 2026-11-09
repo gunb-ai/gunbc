@@ -41,7 +41,7 @@ import gunbc.floor.floor_demand { floor_execution_requirements }
 
 // The floor's demand, assembled from the authority that already states every field. The budget
 // account, prices and deadline are the caller's to supply: they are policy about what this run may
-// spend, and inventing them here would be the layer inversion DESIGN section 3 names -- a workflow
+// spend, and inventing them here would be the layer inversion gunbc.design_argument::single_authority names -- a workflow
 // fact modeled inside the thing that consumes it.
 fn floor_demand(
   id: FabricIdentity<NonEmptyStr, DemandKey>,

@@ -26,7 +26,7 @@ import gunbc.oracle_oci.tenancy_usage {
   OciNamesRead, OciNamesListed, OciNamesRefused, oci_names_of, oci_availability_domains,
   OciWhole, OciWholeValue, OciWholeRefused, oci_shape_config_whole,
 }
-import gunbc.fleet.fleet_ssh_access { fleet_automation_ssh_key, operator_macbook_ssh_key }
+import gunbc.fleet.fleet_ssh_access { fleet_authorized_keys }
 import gunbc.oracle_oci.api {
   OciExchange, OciAnswered, OciExchangeRefused,
   OciListRead, OciListed, OciListInaccessible, OciListRefused,
@@ -47,8 +47,11 @@ import gunbc.oracle_oci.api {
 // Free page says to answer by trying a different availability domain, is retried in the next domain.
 // When every domain has refused for capacity, that is the outcome, and it is reported as such.
 //
-// The instances authorize two keys: the fleet automation key, so the fleet can reach them, and the
-// operator's macbook key, so the operator can. Both come from gunbc.fleet.fleet_ssh_access, not re-spelled.
+// The instances authorize exactly the fleet roster, so both the fleet automation key (fleet reach) and the
+// operator's macbook key (operator reach) land on every instance. The keys are mapped over the ONE authority,
+// gunbc.fleet.fleet_ssh_access fleet_authorized_keys, and NOT re-spelled key-by-key: re-spelling the two key
+// constants hand-joins a second key list and re-decides, route by route, who may enter -- exactly the drift
+// that rule 2 of the operator's 2026-11-07 ruling forbids. A route cannot now name a key the model does not admit.
 
 data oci_free_boot_volume: Gigabyte = gigabyte(count: 50)
 
@@ -72,7 +75,7 @@ data oci_free_plan: List<OciPlannedInstance> = [
 ]
 
 fn oci_free_authorized_keys() -> String {
-  join([ssh_public_key_line(k: fleet_automation_ssh_key), ssh_public_key_line(k: operator_macbook_ssh_key)], "\n")
+  join(map(fleet_authorized_keys, k => ssh_public_key_line(k: k)), "\n")
 }
 
 // ── QUERY ENCODING ────────────────────────────────────────────────────────────────────────────

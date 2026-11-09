@@ -47,7 +47,7 @@ data nvml_clocks_event_reasons_authority: ExternalAuthority = ExternalAuthority 
 // refuses. A consumer that treats the refusal as an observation gets a device with no memory.
 //
 // THE CONSTRUCTOR SET IS THE WHOLE POINT. There is deliberately NO way to write a zero-byte
-// observation for an unsupported query. DESIGN section 4b(4): the invalid state has no constructor,
+// observation for an unsupported query. gunbc.design_argument::guarantee_ladder (dissolution on climb): the invalid state has no constructor,
 // so `device_memory = 0` cannot be authored here at all -- not transiently, not as a default, not
 // as a placeholder while a caller decides what to do. What the caller gets is a variant it must
 // eliminate exhaustively, and the unsupported arm carries no bytes to accidentally read.
