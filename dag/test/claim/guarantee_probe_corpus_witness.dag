@@ -194,7 +194,7 @@ data bare_none_generic_parameter_boundary_source: String = "module probe_bare_no
 // (the discriminating fact, not a prediction): bare_none_scalar_red_source and
 // bare_none_collection_red_source both compiled with ZERO blocking diagnostics and emitted `n:
 // Rc::new(Diags::None)` for `n: Int` — a Rust program the declared type refutes, produced silently,
-// the below-floor class DESIGN 4b names (values inhabit declared types). THE GREEN CONTROL IS
+// the below-floor class gunbc.design_argument::guarantee_ladder names (values inhabit declared types). THE GREEN CONTROL IS
 // TWO-ARMED ON PURPOSE: a wall refusing every bare `None` would be indistinguishable from this one
 // on the REDs alone. optional_field is the `T?` carrier and none_variant_field is a coproduct
 // declaring its own `None` variant at its own level (the shape std.cache_interface AuthScope and
@@ -255,7 +255,7 @@ data formal_selection_named_then_positional_green_source: String = "module probe
 // BINARY, the discriminating fact rather than a prediction:
 // formal_selection_out_of_order_green_source is CORRECT code that main REFUSES with a hard `empty
 // list literal: expected type is not a collection`, because the `[]` sits at source position 1 and
-// was handed `label: String`'s formal. A FABRICATED REFUSAL, which DESIGN 5 forbids exactly as it
+// was handed `label: String`'s formal. A FABRICATED REFUSAL, which gunbc.design_argument::fail_closed forbids exactly as it
 // forbids fabricated success, and a second, independent symptom of the fork that produced wrong
 // Rust lambda annotations under the typed-lambda emission route. THE GREEN CONTROL IS TWO-ARMED ON
 // PURPOSE: the declaration-order sibling compiles clean on the pre-fix binary too and emits
@@ -881,7 +881,7 @@ test fn canonical_probe_resolution_refuses_duplicate_population() -> Bool {
 // expectation does not yet hold (sole_constructor_probe_scope_note,
 // sole_constructor_mint_fn_hole_still_compile_clean) — a tracked open compile gap from #7790, never
 // a retired Rust dark-suite witness — so its absence from every disposition is named here, not
-// silently unaccounted for in either direction of the join. Named residue (DESIGN §4c):
+// silently unaccounted for in either direction of the join. Named residue (gunbc.design_argument::source_annotations):
 // known_v1_migration_gap_ids is a hand-authored allowlist whose one entry's justification lives
 // only in this annotation, which no Accepted program can read — the completeness join below cannot
 // verify the exception is warranted, only that it is the sole one taken. Dissolution trigger: when

@@ -92,7 +92,7 @@ data dgx_spark_network_ports: List<SystemNetworkPort> = [
 // fields: on a UnifiedShared SoC the GPU-facing and system-facing memory are one physical
 // fact, not two independent ones, so both fields below derive from the already-cited
 // nvidia_gb10_gpu_catalog row instead of re-asserting the same 128 GiB / 273 GB/s
-// literals a second time (review 49122; DESIGN §3 parallel-representation).
+// literals a second time (review 49122; gunbc.design_argument::single_authority parallel-representation).
 fn dgx_spark_catalog_row(storage_capacity: ByteSize) -> IntegratedComputeSystemCatalogRow {
   IntegratedComputeSystemCatalogRow {
     vendor: nvidia,

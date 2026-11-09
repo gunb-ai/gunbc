@@ -39,7 +39,7 @@ import gunbc.roadmap.roadmap_launch_admission {
 // attempt over every field the node lists, bound to ONE attempt of ONE node on ONE dashboard
 // instance. It is a PURE JOIN COMPUTED ON READ, never a stored copy: each joined reader's own
 // record is already durable in attempt state, so persisting the join would give those facts a
-// second home (DESIGN §2/§3), and a write on an early tick would freeze fields that mature later
+// second home (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority), and a write on an early tick would freeze fields that mature later
 // (ruling relayed by bold-bee-114, 2026-10-03). The immutable artifact is the dogfood START receipt
 // (gunbc.roadmap.roadmap_dogfood_route, gunbc#13077), which pins this receipt's digest and per-field
 // standing once, when the start is recorded.
@@ -226,7 +226,7 @@ type ServiceEvidenceReceipt {
 }
 
 // ── 3. THE CLOSED PER-FIELD READING, typed per field; there is no default and no zero ──
-// Two slot kinds (review 75015, DESIGN §2: a String leaf hiding named parts is anemic modeling):
+// Two slot kinds (review 75015, gunbc.design_argument::minimize_redundancy: a String leaf hiding named parts is anemic modeling):
 //   a field whose reader has LANDED holds ServiceEvidenceReading<T>, where T is the typed carrier the
 //     reader's record establishes (a placement with named parts, the work-class grant, Kibibyte);
 //   a field with no landed source holds ServiceEvidenceOwed, which has NO observed arm, so nothing can

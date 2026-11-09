@@ -412,7 +412,7 @@ fn classify_board_serial_agreement(
   } else if smbios_session_disagrees(attested: smbios_controller, accessed: accessed) {
     // The guard is true only for a Present attestation naming another host, so the refusal names the
     // endpoint the session was actually attested to. There is no endpoint invented for an unattested
-    // session (DESIGN §5: a value that looks real makes a false fact writable).
+    // session (gunbc.design_argument::fail_closed: a value that looks real makes a false fact writable).
     match smbios_controller {
       Present { value: c } => Present { value: SmbiosSessionForAnotherController { attested: c, accessed: accessed } }
       Absent => none
@@ -568,14 +568,14 @@ type ArrivalStepRefusal
   // the next physical action, not a retry. The arm carries NO receipt: an available route is not
   // access, and nothing downstream may treat it as such -- it stops the run exactly like any other
   // refusal. IntakePhase is untouched: this is a refusal of a step already in the phase order, not a
-  // new phase, so IntakePhase in this module stays the only authority over the order (§3).
+  // new phase, so IntakePhase in this module stays the only authority over the order (gunbc.design_argument::single_authority).
   // THE CALLER'S WIRING MISTAKE IS REFUSED, NOT IGNORED. The standing must name the unit the step instance
   // names -- both sides are branded strings from different modules, so they are compared as whole strings,
   // and compared at all rather than trusting the caller passed the right recovery. What this function may
   // NOT do is answer `none` to a mismatch: that is indistinguishable from "nobody supplied an observation",
   // so a caller that paired this board with another board's standing would send the run down the
   // out-of-band path as if nothing had been said -- the wrong-unit observation disappears and the defect
-  // stays in the wiring. §5: "every path succeeds fully or fails with a typed, located diagnostic", and "a
+  // stays in the wiring. gunbc.design_argument::fail_closed: "every path succeeds fully or fails with a typed, located diagnostic", and "a
   // failure arm refuses, never widens". This module already refuses the same class of mistake loudly
   // (IdentityBindAccessForAnotherInstance, BmcSecureIdentityForAnotherInstance, AccessReadForAnotherUnit),
   // which is why the silent `none` here was the outlier. Both keys travel so the pairing is checkable
@@ -701,7 +701,7 @@ fn access_discover_refusal_for_locked_credential(
         // REFUSED, NOT DROPPED. `none` here meant "no observation was supplied", which is a different fact:
         // an observation WAS supplied and it belongs to another unit. A caller that crossed two boards'
         // wires got a run that quietly continued as if nothing had been observed, so the only trace of the
-        // defect was a healthy board walking the out-of-band path. §5: "every path succeeds fully or fails
+        // defect was a healthy board walking the out-of-band path. gunbc.design_argument::fail_closed: "every path succeeds fully or fails
         // with a typed, located diagnostic" -- and "a failure arm refuses, never widens".
         Present {
           value: AccessDiscoverRecoveryStandingForAnotherUnit {
@@ -814,7 +814,7 @@ fn identity_bind_for_access(key: StepInstanceKey, access: AccessDiscoverEstablis
 
 // THE PRIORLIFEBOUNDARY STEP: the archive of the unit's prior-life records, dry, over the subject the
 // IdentityBindProvisional receipt of this run and this subject bound. The platform's policy row is
-// selected by the caller before the step (DESIGN §3d); the archive, its write, its deadline and its
+// selected by the caller before the step (gunbc.design_argument::selection_precedes_convergence); the archive, its write, its deadline and its
 // readback are gunbc.machine_intake.prior_life_boundary's. A refusal wrote nothing; an incomplete
 // write is its own outcome and never converged.
 fn prior_life_boundary(key: StepInstanceKey, identity: IdentityBoundProvisional, platform: DeclarationRef, world: DryPriorLifeWorld, across: PriorLifeForcedWriteContext?) -> StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete> {
@@ -1371,7 +1371,7 @@ fn converge_mtjade1_arrival_through_bmc_secure(run: ConvergenceRunId, prior_life
 //
 // (gunbc.machine_intake.phase arrival_phases_all is UNTOUCHED: it stays the order of the ESTABLISHED
 // standings for every unit, forced or not. What follows adds NO phase and reorders NO standing. It
-// declares the one place an EFFECT may precede a standing, as a §3b divergence ROW, and the admission
+// declares the one place an EFFECT may precede a standing, as a gunbc.design_argument::conformance divergence ROW, and the admission
 // that alone permits it. merry-fox-82 approved this design 2026-10-29; the arrival phase order is
 // theirs, so this is not a new order -- it is the single effect placed before PriorLifeBoundary's
 // standing, and nothing else may do so.)
@@ -1379,7 +1379,7 @@ fn converge_mtjade1_arrival_through_bmc_secure(run: ConvergenceRunId, prior_life
 // THE PREMISE THE ROW RESTS ON is typed as an inference in its own right -- it is about the PRIOR LIFE
 // surviving the write, so its home is gunbc.machine_intake.prior_life_boundary
 // (ForcedWritePreservesArchiveInference, forced_write_preserves_archive_inference), where the established
-// receipt can carry it (§4d: the inference stays typed, and it stays on the fact it qualifies). It is
+// receipt can carry it (gunbc.design_argument::epistemic_humility: the inference stays typed, and it stays on the fact it qualifies). It is
 // imported here for the row's `reason` field below.
 
 // THE DECLARED ROW: the one effect (this run's admitted forced root password write) placed before the
@@ -1398,7 +1398,7 @@ type ForcedFirstRotationPrecedesPriorLife sole_constructor {
 // established -- there is no secured reading to stand on until the admitted forced write is made -- so it
 // is a typed pending, and the row admission consumes it. The established AccessDiscover standing for a
 // forced unit comes from the authenticated read the forced driver runs AFTER the write. Its executing route
-// is the declared frontier forced_change_arrival_route_frontier below (§3c).
+// is the declared frontier forced_change_arrival_route_frontier below (gunbc.design_argument::consumption).
 type AccessForcedChangePending sole_constructor {
   key: StepInstanceKey
   forced: PublishedCredentialChangeForced
@@ -1414,7 +1414,7 @@ fn access_forced_change_pending(key: StepInstanceKey, forced: PublishedCredentia
   AccessForcedChangePending { key: key, forced: forced }
 }
 
-// THE EXECUTING ROUTE FOR THE FORCED ARRIVAL, declared (§3c): the CONSUMERS of the pending and the row are
+// THE EXECUTING ROUTE FOR THE FORCED ARRIVAL, declared (gunbc.design_argument::consumption): the CONSUMERS of the pending and the row are
 // converge_arrival_forced_through_bmc_secure and admit_forced_first_rotation_precedes_prior_life above, and
 // the fold that consults them. What is missing is the PRODUCTION MINT of the pending on the AccessDiscover
 // route: minting it needs the unauthenticated service-root read plus the build's measured 403 from the SAME
@@ -1440,7 +1440,7 @@ data forced_change_arrival_route_frontier: DissolutionCondition = unbound_dissol
 // only by gunbc.machine_intake.bmc_credential_policy admit_published_credential_change_forced, which mints
 // nothing on a build whose row Accepts the factory login, is NotMeasured, or has no row: a non-forcing build
 // yields no forced state, so this admission is never reached for it. Re-testing the policy row here would be
-// a validation where construction already holds (DESIGN §5), so it is stated, not checked.
+// a validation where construction already holds (gunbc.design_argument::fail_closed), so it is stated, not checked.
 //
 // Ground (b) -- the forced state was admitted from THIS run's own 403 -- is what this admission checks, and
 // it is checked as a JOIN TO THE ACTIVE INSTANCE, not as agreement between supporting records. Two records
@@ -1502,7 +1502,7 @@ fn admit_forced_first_rotation_precedes_prior_life(
   // write's attempt is the account observation's attempt AND the observation's own attempt identity, so a
   // matching pair for another unit cannot borrow this unit's read. (The archive and the account observation
   // are not joined to the identity receipt here: the fold ties them to it by construction, and re-checking
-  // them here would be a validation where construction holds, DESIGN §5.) The build confirmation in the
+  // them here would be a validation where construction holds, gunbc.design_argument::fail_closed.) The build confirmation in the
   // ladder below is then confirmation of the SAME controller's inference: a matching pair from another
   // controller (the foreign-controller RED) cannot reach it.
   let access_read_endpoint = match mtjade1_observed_endpoint(network: read.identity.endpoint) {

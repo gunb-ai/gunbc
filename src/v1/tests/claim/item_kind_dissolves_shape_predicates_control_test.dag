@@ -22,7 +22,7 @@ import v1.compiler.infer_env { empty_type_env }
 // -- restore the shape-only predicate body and it goes red -- and
 // `leaf_type_declaration_is_still_a_leaf_type` is what stops that row from being satisfied by a
 // predicate answering false for everything. Same node, same five shape conjuncts, one field
-// different. Neither is retired by the climb they measure: DESIGN section 4b(4) keeps the evidence
+// different. Neither is retired by the climb they measure: gunbc.design_argument::guarantee_ladder (dissolution on climb) keeps the evidence
 // when the production machinery it falsified is deleted.
 //
 // WHERE THIS RUNS IS NOT ASSERTED HERE, AND DELIBERATELY SO. No annotation can establish that a

@@ -24,7 +24,7 @@ data rented_instance_inputs_for_another_offer_obligation: NonEmptyStr = "the dis
 
 data rented_instance_gpu_count_unusable_obligation: NonEmptyStr = "the instance offer does not state a positive GPU count that matches the replicas bound to it, so a replica cannot be read from it" as NonEmptyStr
 
-// DECLARED FRONTIER (DESIGN 3c): the consumers of this reader today are its witnesses. The named
+// DECLARED FRONTIER (gunbc.design_argument::consumption): the consumers of this reader today are its witnesses. The named
 // consumer is C4b, which hands the operator-supplied provider rental record (instance offer plus
 // dispatch observations) to rented_replica_offer_reading from the production rented_offer_reading
 // in the harness seat; until it lands that production reading stays NotRead. The trigger is that

@@ -157,7 +157,7 @@ type Site {
   at: Optional<Int>
 }
 
-// WHAT A VERDICT IS WORTH, TYPED (DESIGN 4d, review 73517): the lens infers from spelling and
+// WHAT A VERDICT IS WORTH, TYPED (gunbc.design_argument::epistemic_humility, review 73517): the lens infers from spelling and
 // position, so every verdict it mints is a bet and says so. Only a join that holds an executed
 // receipt for the module -- the self-host closure's rustc compile, the deletion PR's per-module v1
 // compile -- may promote a row to corroborated or mark it contradicted, and it names the receipt.

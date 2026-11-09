@@ -32,7 +32,7 @@ import v2.std.text { String }
 // now that the parameter is NonEmptyStr -- that is the wall. Refinement at
 // non-literal positions is still deferred, and that gap is exactly what the
 // downstream well-formedness guard defends, so this control has to reach it
-// through the gap to keep proving the guard works (DESIGN 4b(4): production
+// through the gap to keep proving the guard works (gunbc.design_argument::guarantee_ladder (dissolution on climb): production
 // machinery dissolves on a climb, the evidence stays enrolled).
 fn synthetic_nonliteral_text(text: String) -> NonEmptyStr {
   concat(text, "")

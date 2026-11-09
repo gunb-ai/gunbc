@@ -4,7 +4,6 @@ import std.types { String, NonEmptyStr, Bool, List }
 import gunbc.namespace_cut.namespace_cut_stage {
   NamespaceCutStage,
   StageXL6AtomicCutover,
-  StageXL7GrammarDeletion,
   namespace_cut_stage_label,
   namespace_cut_stage_is,
 }
@@ -28,13 +27,14 @@ import gunbc.namespace_cut.namespace_cut_stage {
 // a refusal. Absence-as-answer is the whole requirement: after the cut, SubjectProbeAbsent is
 // this roster's success state.
 //
+// THE IMPORT GRAMMAR, PARSE SURFACE AND AST CARRIERS ARE NOT SUBJECTS: imports stay as the
+// terminal name mechanism (gunbc.design_ruling::imports_are_the_terminal_name_mechanism), so they
+// are not scheduled to disappear and their XL-7 rows were deleted with that stage.
+//
 // IDENTITIES DECIDE, COUNTS SUMMARIZE. Every judgment below is a fold over probe identities;
 // no arm compares a count to a count.
 type NamespaceCutSubjectIdentity
-  = ImportGrammarProductions
-  | ImportParseSurfaceV1
-  | ImportAstCarriers
-  | ResolverImportNameUniverse
+  = ResolverImportNameUniverse
   | ImportScopeOverlays
   | ImportDerivedModuleAdjacency
   | HostImportClosureAssembly
@@ -45,9 +45,6 @@ type NamespaceCutSubjectIdentity
 
 fn namespace_cut_subject_label(s: NamespaceCutSubjectIdentity) -> NonEmptyStr {
   match s {
-    ImportGrammarProductions => "the v2 import grammar: lex rule, formal rows, productions, emit rows" as NonEmptyStr
-    ImportParseSurfaceV1 => "the v1 import parse surface" as NonEmptyStr
-    ImportAstCarriers => "the import AST carriers on both frontends" as NonEmptyStr
     ResolverImportNameUniverse => "the resolver import-name universe: source_visible_names AND authored_import_names, with the import admission folds and the callable-visibility policy that reads the second" as NonEmptyStr
     ImportScopeOverlays => "the import scope overlays in v1 inference" as NonEmptyStr
     ImportDerivedModuleAdjacency => "import-derived module adjacency and the build ordering it feeds" as NonEmptyStr
@@ -90,25 +87,6 @@ type NamespaceCutSubjectProbes {
 
 fn subject_probes(s: NamespaceCutSubjectIdentity) -> NamespaceCutSubjectProbes {
   match s {
-    ImportGrammarProductions => NamespaceCutSubjectProbes {
-      first: DagDeclarationProbe { module_path: "v2.extdeps.languages.dag", decl_name: "dag_grammar_import_decl_expr" },
-      rest: [
-        DagDeclarationProbe { module_path: "v2.extdeps.languages.dag", decl_name: "dag_grammar_import_block_expr" },
-      ],
-    }
-    ImportParseSurfaceV1 => NamespaceCutSubjectProbes {
-      first: DagDeclarationProbe { module_path: "v1.compiler.parse", decl_name: "parse_import" },
-      rest: [
-        DagDeclarationProbe { module_path: "v1.compiler.parse", decl_name: "parse_imports" },
-      ],
-    }
-    ImportAstCarriers => NamespaceCutSubjectProbes {
-      first: DagDeclarationProbe { module_path: "v1.std.core", decl_name: "import_node" },
-      rest: [
-        DagDeclarationProbe { module_path: "v1.std.core", decl_name: "module_imports" },
-        DagDeclarationProbe { module_path: "v2.compiler.name_resolve", decl_name: "Import" },
-      ],
-    }
     ResolverImportNameUniverse => NamespaceCutSubjectProbes {
       first: DagDeclarationFieldProbe { module_path: "v1.compiler.infer_env", decl_name: "TypeEnv", field_name: "source_visible_names" },
       rest: [
@@ -177,7 +155,7 @@ fn subject_probe_list(s: NamespaceCutSubjectIdentity) -> List<NamespaceCutSubjec
 // in the waves". Every one of those five is a ROOT AUTHORITY -- the resolver's import-name
 // universe, the inference scope overlays, the host text scanners, the use-line emission inputs,
 // the repair apparatus -- and deleting a root authority changes what live resolution and closure
-// ANSWER. That is the atomic cutover's motion by definition (DESIGN section 3: the authority
+// ANSWER. That is the atomic cutover's motion by definition (gunbc.design_argument::replacement_migration: the authority
 // transition is one motion, and Y never resolves through X), so scheduling it as a wave scheduled
 // a partial authority transition, the observable intermediate state the doctrine forbids.
 //
@@ -187,20 +165,14 @@ fn subject_probe_list(s: NamespaceCutSubjectIdentity) -> List<NamespaceCutSubjec
 // standing is therefore derived from that residual's own census in
 // gunbc.compiler_frontend_program_status, which reports it NOT-DERIVABLE while no producer exists.
 // Load-bearing: a subject-derived XL-5 with zero rows would fold to CLEAR and report a wave nobody
-// has run as complete, the rung inflation DESIGN section 4b names as worse than sitting low.
+// has run as complete, the rung inflation gunbc.design_argument::guarantee_ladder names as worse than sitting low.
 //
 // WHAT WOULD MOVE A SUBJECT BACK EARLIER: an EXECUTED proof that deleting it cannot change live
 // resolution or closure -- a run, not an argument that it looks independent. Until then the
 // cutover owns it, and test.claim.compiler_frontend_program_status_witness executes the
 // no-subject-at-XL-5 rule so a reassignment reds rather than being noticed in review.
-//
-// XL-7 keeps grammar, parse surface and AST carriers, structurally, by the grammar-last ruling
-// (gunbc.namespace_cut.namespace_cut_landing_order namespace_cut_grammar_last_ruling).
 fn subject_deleted_at_stage(s: NamespaceCutSubjectIdentity) -> NamespaceCutStage {
   match s {
-    ImportGrammarProductions => StageXL7GrammarDeletion
-    ImportParseSurfaceV1 => StageXL7GrammarDeletion
-    ImportAstCarriers => StageXL7GrammarDeletion
     ResolverImportNameUniverse => StageXL6AtomicCutover
     ImportScopeOverlays => StageXL6AtomicCutover
     ImportDerivedModuleAdjacency => StageXL6AtomicCutover
@@ -213,9 +185,6 @@ fn subject_deleted_at_stage(s: NamespaceCutSubjectIdentity) -> NamespaceCutStage
 }
 
 data namespace_cut_subjects: List<NamespaceCutSubjectIdentity> = [
-  ImportGrammarProductions,
-  ImportParseSurfaceV1,
-  ImportAstCarriers,
   ResolverImportNameUniverse,
   ImportScopeOverlays,
   ImportDerivedModuleAdjacency,

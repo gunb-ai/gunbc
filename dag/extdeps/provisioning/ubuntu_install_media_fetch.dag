@@ -43,7 +43,7 @@ data install_media_fetch_bash_emit_dissolution_trigger: Disposition = Terminal {
   reason: "in-process typed reconcile (shell.Test.IsFile, sha256sum_verify_via_shell, http.Client.DownloadToFile, shell.Move.File) replaces ShellProgram/serialize_bash - no shell text is built or serialized"
 }
 
-// §3 convergence note: this file verifies fetched content against Canonical's published
+// gunbc.design_argument::single_authority convergence note: this file verifies fetched content against Canonical's published
 // cryptographic SHA-256 digest (extdeps_external_authority_anchor above) via the Sha256Verify shape
 // - a genuine external-authority digest check, distinct from std.content_hash's fnv1a64 internal
 // structural fingerprint (dag/std/content_hash.dag, used for our own generated-artifact freshness,
@@ -61,7 +61,7 @@ data install_media_fetch_bash_emit_dissolution_trigger: Disposition = Terminal {
 // this module became what it should always have been: a cited artifact row, its transports, and the
 // effect bindings that make them run.
 //
-// THIS IS A REPLACEMENT, NOT A REFINEMENT (DESIGN section 3). The fold is not duplicated here in a
+// THIS IS A REPLACEMENT, NOT A REFINEMENT (gunbc.design_argument::single_authority). The fold is not duplicated here in a
 // thinner form and the old types are not retained for compatibility; there is one authority for the
 // algorithm and this module resolves through it.
 //

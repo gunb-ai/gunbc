@@ -30,7 +30,7 @@ type SystemdUnitActiveState
   | Failed
 
 data systemd_parse_label_derivation_debt: List<NonEmptyStr> = [
-  "dissolve-on: when contract-driven derivation is available (§3 single authority), derive parse/label from wire contract instead of hand-rolling",
+  "dissolve-on: when contract-driven derivation is available (gunbc.design_argument::single_authority single authority), derive parse/label from wire contract instead of hand-rolling",
 ]
 
 // `MainPID` IS THE PROPERTY THAT SAYS WHICH PROCESS THE MANAGER BELIEVES IT IS SUPERVISING, and it
@@ -123,6 +123,13 @@ type SystemdUnitProperty
   // systemd.resource-control(5) Delegate=: the unit owns its cgroup subtree, so a non-root User= can write the
   // memory controller files below it and the memory envelope read of its cgroup is bounded, not absent.
   | DelegateProperty
+  // systemd.service(5) Restart=: when the manager restarts the service's main process after it exits (no, always,
+  // on-failure, ...), set as the directive's own word.
+  | RestartProperty
+  // systemd.service(5) TimeoutStopSec=: how long the manager waits for ExecStop= and then the main process to stop
+  // before it sends the final SIGKILL. The directive is settable under this name; the manager shows the value as
+  // TimeoutStopUSec, which this vocabulary does not read.
+  | TimeoutStopSecProperty
   // systemd.unit(5) SuccessAction=/FailureAction=: what the MANAGER does when the unit stops cleanly or
   // fails (extdeps.systemd.unit_file SystemdUnitStateAction is the value set). Both are [Unit] settings a
   // transient unit accepts (systemd-run(1) --property), so the action belongs to the manager, not to a command.
@@ -219,6 +226,8 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     RestrictSUIDSGIDProperty => "RestrictSUIDSGID" as NonEmptyStr
     UMaskProperty => "UMask" as NonEmptyStr
     DelegateProperty => "Delegate" as NonEmptyStr
+    RestartProperty => "Restart" as NonEmptyStr
+    TimeoutStopSecProperty => "TimeoutStopSec" as NonEmptyStr
     SuccessActionProperty => "SuccessAction" as NonEmptyStr
     FailureActionProperty => "FailureAction" as NonEmptyStr
   }
@@ -298,6 +307,8 @@ fn systemd_property_carries_paths(property: SystemdUnitProperty) -> Bool {
     RestrictSUIDSGIDProperty => false
     UMaskProperty => false
     DelegateProperty => false
+    RestartProperty => false
+    TimeoutStopSecProperty => false
     SuccessActionProperty => false
     FailureActionProperty => false
   }
@@ -674,7 +685,7 @@ fn systemd_name_component_is_escaped(component: String) -> Bool {
 // THIS IS SYSTEMD'S FACT AND NOT THE KERNEL'S, which is why it is homed here rather than in
 // extdeps.linux.cgroup_v2. The kernel represents a hierarchy of directories; WHICH directory a
 // named slice unit gets is systemd's naming convention, and a copy of it inside the kernel's module
-// would be the layer inversion DESIGN section 3 names -- an upstream module carrying a different
+// would be the layer inversion gunbc.design_argument::single_authority names -- an upstream module carrying a different
 // upstream's policy. extdeps.linux.cgroup_v2 cgroup_v2_slice_path did exactly that, wrongly, and is
 // deleted with this landing; it had no consumer but the one that found the bug.
 //

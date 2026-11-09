@@ -100,7 +100,7 @@ fn ingested_find_arrow_in_module(root: Node) -> Optional<Node> {
 // mints per-stage evidence; this arrow folds that staged run back to the single Outcome<Node> its
 // callers have always received. It does not re-run a stage, does not re-derive the answer by a
 // second route, and has no order of its own to drift from the one it projects — which is the whole
-// reason the front end moved rather than being copied (DESIGN section 3).
+// reason the front end moved rather than being copied (gunbc.design_argument::single_authority).
 
 fn ingested_resolved_module_from_source(source: String, file: Symbol) -> Outcome<ResolvedTree> {
   front_end_run_outcome(run: run_front_end(source: source, file: file))

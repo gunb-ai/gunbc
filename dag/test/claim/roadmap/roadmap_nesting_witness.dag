@@ -31,7 +31,7 @@ test fn cycles_and_multiple_parents_have_no_focus_root() -> Bool {
 // THE DECLARED LINEAGE IS CLOSED AND ROOTED (operator ruling, 2026-09-30), over the LIVE authority:
 // every MemberOf names a declared node, every declared node that states a parent reaches the one
 // admitted root, and no parent walk is cyclic. RUNG, stated honestly: mechanically preventable
-// (DESIGN §4b rung 2) -- a row CAN still be written naming an undeclared project or a cycle; this
+// (gunbc.design_argument::guarantee_ladder rung 2) -- a row CAN still be written naming an undeclared project or a cycle; this
 // witness, executing in the floor, is what refuses it, and the model does not. The planted controls
 // below first prove each refusal fires on a constructed input, so a green over the live authority is
 // a reading and not an inert predicate.

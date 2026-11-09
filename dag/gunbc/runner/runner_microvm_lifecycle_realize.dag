@@ -117,7 +117,7 @@ data runner_microvm_lifecycle_realize_disposition: ConstructionMechanism = Singl
 // gunbc.runner.runner_microvm_lifecycle owns every DECISION this module makes and it adds none. What it owns
 // is the other half that module deliberately cannot have: reaching the host. Each producer below
 // turns one host reading into one of that module's observation carriers, and a producer that decided
-// anything would be a second authority for a verdict (DESIGN section 3), so none of them does: the
+// anything would be a second authority for a verdict (gunbc.design_argument::single_authority), so none of them does: the
 // arms they return are the arms that module declares.
 //
 // WHY THE PRODUCERS ARE SEPARATE FUNCTIONS RATHER THAN ONE OBSERVING FOLD. Each reads a different
@@ -132,7 +132,7 @@ data runner_microvm_lifecycle_realize_disposition: ConstructionMechanism = Singl
 // none. What it owns is the other half that module deliberately cannot have: reaching the host.
 // Each producer below turns one host reading into one of that module's observation carriers, and
 // the controller then hands those carriers to the folds that decide. A producer that decided
-// anything would be a second authority for a verdict (DESIGN section 3), so none of them does:
+// anything would be a second authority for a verdict (gunbc.design_argument::single_authority), so none of them does:
 // the arms they return are the arms that module declares.
 //
 // WHY THE PRODUCERS ARE SEPARATE FUNCTIONS RATHER THAN ONE OBSERVING FOLD. Each reads a different
@@ -156,7 +156,7 @@ data runner_microvm_lifecycle_realize_disposition: ConstructionMechanism = Singl
 // has already said populated, and it exists to name the pids an operator must go look at.
 //
 // SO A WALK THAT RUNS OUT OF DEPTH TRUNCATES A DETAIL AND NEVER A VERDICT. The bound is real --
-// recursion in this substrate is bounded and forward (DESIGN section 4) -- and what it can cost is
+// recursion in this substrate is bounded and forward (gunbc.design_argument::closed_grounded_substrate) -- and what it can cost is
 // a pid missing from a refusal message, never a cell released on an unread subtree.
 data cgroup_walk_depth_bound: Int = 8
 
@@ -324,7 +324,7 @@ fn populated_readback(path: NonEmptyStr) -> CgroupSubtreeReadback
 // itself failing. So exit 1 is the only reading that means ABSENT; every other nonzero status is an
 // instrument that did not answer, and reading it as absent is how a broken probe would release a
 // cell holding the previous tenant's writable layer. Matching on stderr text instead would be the
-// heuristic DESIGN section 4 rules out where a total discriminator exists -- and one does, here, in
+// heuristic gunbc.design_argument::closed_grounded_substrate rules out where a total discriminator exists -- and one does, here, in
 // the utility's own documented status.
 // AN ABSENCE IS ESTABLISHED THROUGH ITS PARENT, NOT FROM `test -e` ALONE.
 //
@@ -463,7 +463,7 @@ type StopQuiescence
 // The two arms below are the two readings that can actually hold: tasks the poll still sees, or a
 // read that failed so nothing can be concluded. `CgroupSubtreeEmpty` has no arm here, so the fold
 // over this type has no empty case to answer wrongly -- the third arm is DELETED rather than
-// corrected, which is the §5 move: the state has no constructor instead of a check that catches it.
+// corrected, which is the gunbc.design_argument::fail_closed move: the state has no constructor instead of a check that catches it.
 type CgroupNotQuiet
   = CgroupHoldsTasks { pids: List<Int>, cgroups: List<NonEmptyStr> }
   | CgroupHoldReadFailed { reason: NonEmptyStr }
@@ -622,7 +622,7 @@ fn force_stop_outcome_of_holding(asked: Bool, ask_detail: String, h: CgroupNotQu
 // which is the defect wearing the repair's clothes. The honest state is that the ordering is currently
 // a realization property, and it is recorded as such rather than papered over.
 data workflow_effect_sequencing_frontier: DissolutionCondition = unbound_dissolution(
-  description: "DECLARED FRONTIER (DESIGN 3c/4b). std carries NO effect-sequencing authority: whether a function's let-chain lowers to a Bind continuation -- which would order these effects structurally -- or whether source position is only a seed-realization property, is undecided and has no home module. The two lawful constructions gunbc.recurring_failure_mode readback_ordered_only_by_statement_position names are the effect's Bind continuation and an explicit after: receipt; statement position is neither. TRIGGER, at capability grain: an effect-sequencing authority in std that says whether a let-chain orders its effects, sufficient to decide whether this read is ordered against the stop by construction. SUFFICIENT FOR deleting this row and stating the ordering as a guarantee. NOT satisfied by this comment, by the seed continuing to evaluate in source order, or by a witness that happens to observe the read first." as NonEmptyStr,
+  description: "DECLARED FRONTIER (gunbc.design_argument::consumption, gunbc.design_argument::guarantee_ladder). std carries NO effect-sequencing authority: whether a function's let-chain lowers to a Bind continuation -- which would order these effects structurally -- or whether source position is only a seed-realization property, is undecided and has no home module. The two lawful constructions gunbc.recurring_failure_mode readback_ordered_only_by_statement_position names are the effect's Bind continuation and an explicit after: receipt; statement position is neither. TRIGGER, at capability grain: an effect-sequencing authority in std that says whether a let-chain orders its effects, sufficient to decide whether this read is ordered against the stop by construction. SUFFICIENT FOR deleting this row and stating the ordering as a guarantee. NOT satisfied by this comment, by the seed continuing to evaluate in source order, or by a witness that happens to observe the read first." as NonEmptyStr,
 )
 data attempt_binding_env_key: String = "GUNBC_ATTEMPT_TOKEN"
 
@@ -1227,7 +1227,7 @@ fn run_jailer_in_cell(attempt: MicroVmAttempt, invocation_id: NonEmptyStr, recei
 // This used to answer -1 when ShowProperty failed or the value did not parse, which is the fabricated
 // cause this lane removed twice elsewhere, sitting one function away from its own prohibition
 // (review 69084). That the field is downstream-inert bounds the SAFETY harm and not the honesty
-// defect: DESIGN 5's specimen is exactly a receipt whose verdict is right and whose cause is
+// defect: gunbc.design_argument::fail_closed's specimen is exactly a receipt whose verdict is right and whose cause is
 // invented.
 fn observe_unit_exit_status(unit: NonEmptyStr) -> UnitExitStatusReading
 {
@@ -1437,7 +1437,7 @@ fn bind_attempt_console(identity: AttemptIdentity, launch: AttemptLaunch) -> Att
 }
 
 // THE BINDING DECISION OVER ITS TWO READINGS, separated from the reads so each arm is reachable from
-// a supplied value (DESIGN section 3).
+// a supplied value (gunbc.design_argument::witness_one_interface).
 fn attempt_console_binding_of(
   identity: AttemptIdentity,
   unit: NonEmptyStr,

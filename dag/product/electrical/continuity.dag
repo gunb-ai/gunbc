@@ -91,7 +91,7 @@ type ContinuityResult
 // statement over a population ("everything I touched", "nothing goes to ground", "the very middle pin")
 // names no exact first point either: the visible terminals it covers each stand for a touch, inferred
 // with that basis. An inferred point is kept, typed with its basis, and every derivation that rests on
-// one says so -- an inference neither deleted nor promoted to a recorded point (DESIGN section 4d).
+// one says so -- an inference neither deleted nor promoted to a recorded point (gunbc.design_argument::epistemic_humility).
 type PointProvenance
   = PointRecorded
   | PointInferred { basis: NonEmptyStr }

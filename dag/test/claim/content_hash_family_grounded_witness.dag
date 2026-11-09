@@ -305,7 +305,7 @@ test fn oci_content_digest_accepts_other_algorithm_wire() -> Bool {
 // a SINGLE refinement (String where oci_other_digest_encoded), which is not a weakening:
 // oci_other_digest_encoded already establishes non-emptiness AND the OCI encoded grammar, so the
 // NonEmptyStr layer was a second representation of a fact the predicate independently proves
-// (DESIGN section 2 — one concept, one authority). This witness is the durable control for that
+// (gunbc.design_argument::minimize_redundancy — one concept, one authority). This witness is the durable control for that
 // whole path: wire String -> algorithm validation -> encoded validation -> refined carrier
 // construction -> OciOtherDigestBody -> projection -> wire rendering. It reds on either panic
 // reappearing and on any projection that fails to round-trip. dissolve-on: never — permanent

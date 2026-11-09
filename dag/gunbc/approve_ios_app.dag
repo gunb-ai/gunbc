@@ -13,7 +13,7 @@ import extdeps.apple.xcode { XcodeRelease }
 // byte builders are CHECKED against vectors the .dag witness emits into
 // dag/test/fixture/approval_device_redemption/vectors.json, which apps/approve-ios/project.yml
 // carries into the test bundle -- one authority, read from two sides, nothing hand-copied. THE
-// STANDING OF THAT CHECK, honestly (DESIGN 4b(1)): the XCTest is AUTHORED and UN-ENROLLED. No lane
+// STANDING OF THAT CHECK, honestly (gunbc.design_argument::guarantee_ladder (rung honesty)): the XCTest is AUTHORED and UN-ENROLLED. No lane
 // in this repository compiles Swift, so it executes only when an operator runs it on a MacBook, and
 // nothing on the merge path has ever compiled the Swift under apps/approve-ios. The equivalence is
 // therefore a claim at the mitigation rung whose only evidence is operator-executed, not an
@@ -22,7 +22,7 @@ import extdeps.apple.xcode { XcodeRelease }
 // stored_request section by stored_request_specimens; the outcome envelopes through
 // redemption_response_of), so a fixture regenerated from that module carries all of it.
 //
-// WHY THE SWIFT IS NOT YET DERIVED, stated as the §7 frontier row requires. The Swift is in two
+// WHY THE SWIFT IS NOT YET DERIVED, stated as the gunbc.design_argument::self_hosting frontier row requires. The Swift is in two
 // standings (operator direction 2026-09-25: hand-concatenated text, then a modeled form that is
 // emitted, then derived -- the shell-to-argv path). Protocol.swift, Wire.swift and
 // ProtocolVectorTests.swift are the MODELED stage: symbolic syntax trees

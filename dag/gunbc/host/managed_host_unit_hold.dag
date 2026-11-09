@@ -405,7 +405,7 @@ fn unit_hold_not_on_store_host(key: NonEmptyStr, decision: UnitHoldStoreExecutor
 // OBSERVING that process gone FROM THE HOLDER'S OWN NAMESPACE; from any other it cannot look. An operator
 // maintenance hold is deliberately not a process (it outlives the session that took it), so it is
 // never recovered; a host reset-return hold names no process yet, so it is never recovered either.
-// A PROCESS-HELD RUN IS ONE SHAPE, WHATEVER KIND OF RUN IT IS (DESIGN section 6b, root generalization). The boot
+// A PROCESS-HELD RUN IS ONE SHAPE, WHATEVER KIND OF RUN IT IS (gunbc.design_argument::root_generalization, root generalization). The boot
 // run and the KVM observer probe each carried the same run id, process identity and pid namespace, with the tag,
 // detail, label, decode, liveness route and maintenance refusal copied per kind; the qualification run would have
 // been the third copy. So the run is one arm and its KIND is a closed sum that owns the only facts the kinds differ
@@ -755,7 +755,7 @@ fn kvm_observer_acquire_unit_hold(host: HostIdentity, run_id: NonEmptyStr, tree:
   }
 }
 
-// THE QUALIFICATION RUN TAKES THE SAME SLOT (gunbc.plans.mtcollins1_ci_service_legs G1b). It writes nothing to the
+// THE QUALIFICATION RUN TAKES THE SAME SLOT (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) G1b). It writes nothing to the
 // controller, but it starts a runner on the unit and dispatches a floor to it, and a boot, a reset or maintenance
 // taking the unit underneath it would measure, or destroy, a run nobody accounted for; dispatch_qualification_floor
 // refuses without this hold's proof (gunbc.runner.runner_qualification_dispatch hold_covers_slot_host). Its owner

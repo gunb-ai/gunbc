@@ -5,7 +5,7 @@ import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, Repla
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_coproduct_fragment_normalize_rows }
 
-// DECLARED 4b(3) DROP (gunbc v2.test.claim.parse census phase 3, 2026-10-05; ruling stern-bear-500,
+// DECLARED gunbc.design_argument::guarantee_ladder (no silent regression) DROP (gunbc v2.test.claim.parse census phase 3, 2026-10-05; ruling stern-bear-500,
 // grammar program, under sharp-raven-357's phase-3 approval). The DECLARATION lives here; the
 // POPULATION's authority is `v2.workflow.floor_eval_step_cost_drop`
 // `floor_eval_step_cost_drop_coproduct_fragment_normalize_rows`.
@@ -24,7 +24,7 @@ import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_coprodu
 // LINEAR in its node count, with no quadratic or exponential link, and the fragment probe (BuildBuddy
 // invocation b01c394f) showed the bill: a fixed term per declaration lowered plus a per-token term, on
 // top of the fragment's parse. Going below the declaration would mean supplying hand-built parse
-// trees, the designed-fixture drift DESIGN section 3 warns of. The fixed term is a candidate for its
+// trees, the designed-fixture drift gunbc.design_argument::single_authority warns of. The fixed term is a candidate for its
 // own repair (reading every signature field in one fold rather than one deep search each), recorded
 // in the PR that declared this drop; it is not this drop's trigger.
 data coproduct_fragment_normalize_new_witness_eval_step_cost_population: List<String> = floor_eval_step_cost_drop_coproduct_fragment_normalize_rows |> map(m => concat(concat(m.identity, ": over the new-witness eval-step budget, rostered in v2.workflow.floor_eval_step_cost_drop floor_eval_step_cost_drop_coproduct_fragment_normalize_rows; measured by "), m.measured_by))

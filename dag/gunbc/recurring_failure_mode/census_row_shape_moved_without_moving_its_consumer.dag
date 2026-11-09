@@ -5,8 +5,8 @@ import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, Ru
 
 // REGISTERED BY PR #14574'S REVIEW (review 83899): the PR narrowed a real-route control to the b-side
 // because the a-side member no longer exists on the route, and recorded that fact in `//`. A status in
-// a comment is a status nobody can read (DESIGN 4c: a status belongs in a typed carrier), and a class
-// below the ceiling must name its next-rung trigger (DESIGN 4b meta-obligation 2). This row is the
+// a comment is a status nobody can read (gunbc.design_argument::source_annotations: a status belongs in a typed carrier), and a class
+// below the ceiling must name its next-rung trigger (gunbc.design_argument::guarantee_ladder meta-obligation 2). This row is the
 // carrier for that dropped rung, with the trigger.
 
 data census_row_shape_moved_without_moving_its_consumer: RecurringFailureMode = RecurringFailureMode {

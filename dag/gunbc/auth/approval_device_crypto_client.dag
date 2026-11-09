@@ -63,7 +63,7 @@ data approval_device_crypto_sidecar_host: NonEmptyStr = "127.0.0.1"
 // THE SIDECAR'S PER-REQUEST BUDGETS, the CPU and wall limits its deployment binding is launched with
 // (gunbc.auth.approval_device_crypto_ingress, rendered by gunbc.live_deploy.emit). They are the 30 s the
 // native door has always served it under; the native realization enforces their minimum as one deadline
-// and exits after a crossing for systemd to restart it (gunbc.plans.converged_ingress M2a).
+// and exits after a crossing for systemd to restart it (gunbc.plans.converged_ingress (deleted 2026-11-08) M2a).
 data approval_device_crypto_sidecar_cpu_limit: Millisecond = millisecond(count: 30000)
 data approval_device_crypto_sidecar_wall_limit: Millisecond = millisecond(count: 30000)
 

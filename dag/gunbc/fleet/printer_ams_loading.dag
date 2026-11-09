@@ -28,7 +28,7 @@ data ams_slot_readings: List<AmsSlotReading> = [
   AmsSlotReading { printer: printer_02, slot: 4, material: Petg, read_on: "2026-11-04" },
 ]
 
-// SELECTION PRECEDES CONVERGENCE (DESIGN 3d): the start command receives a tray chosen here by
+// SELECTION PRECEDES CONVERGENCE (gunbc.design_argument::selection_precedes_convergence): the start command receives a tray chosen here by
 // matching the recipe's material to what the printer's AMS holds. There is no default tray. No match
 // refuses, and so does more than one match, because two spools of one material is a choice the
 // declared readings do not make and a guessed one would start from the wrong spool.

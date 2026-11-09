@@ -10,7 +10,7 @@ import gunbc.open_node_partial_evidence { OpenNodePartialEvidenceReceipt }
 // evidence landed, with its pull request, merge commit, evaluated head and pass count --
 // independently into a program note in gunbc.roadmap.roadmap_authority (since deleted) AND into
 // gunbc.design_document, and therefore into generated DESIGN.md. Two hand-maintained copies of one
-// advancing status is the DESIGN section 3 dual representation: someone updates one, the other
+// advancing status is the gunbc.design_argument::single_authority dual representation: someone updates one, the other
 // silently goes stale, and both read as authoritative. The operator's split is the model here --
 // the DURABLE DESIGN FACT is two clauses (native-at-small-scale evidence has landed; operational
 // migration rate remains open) and belongs in the design criteria; the pull request, merge commit,
@@ -23,7 +23,7 @@ import gunbc.open_node_partial_evidence { OpenNodePartialEvidenceReceipt }
 // caught it. The per-member verdicts already have a single authority in std.selected_witness_bundle
 // NativeWitnessBundleExecutionReceipt member_equivalence, produced by the run itself; a hand-typed
 // integer beside it would be a second representation of that list. executed_evidence therefore
-// cites the witness SYMBOL, per the DESIGN section 3 rule that a citation names the module and
+// cites the witness SYMBOL, per the gunbc.design_argument::single_authority rule that a citation names the module and
 // declaration rather than a position or a snapshot. No rendered status string either: standing is
 // DERIVED below, never stored, so a transcribed standing is unrepresentable rather than
 // lens-caught.
@@ -44,7 +44,7 @@ import gunbc.open_node_partial_evidence { OpenNodePartialEvidenceReceipt }
 // gunbc.instruments.scm_acceptance under 2-scm-native-write-spine-acceptance -- so the carrier now lives in
 // gunbc.open_node_partial_evidence and what remains here is one inhabitant of it. The public
 // function keeps its name because gunbc.doc_graph_roots cites THAT symbol; a carrier generalizing
-// underneath is not a reason to rename what consumers already reach for (DESIGN section 3).
+// underneath is not a reason to rename what consumers already reach for (gunbc.design_argument::single_authority).
 
 
 // THE ONE INHABITANT. Subject is the durable roadmap node identity rn_2I5K7M9O1Q3R6T8V0W2X4Y7Z9A1C,

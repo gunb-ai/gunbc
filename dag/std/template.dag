@@ -9,7 +9,7 @@ import std.algebra { list_flat_map }
 // its upstream: extdeps.uri_path UrlPathToken (RFC 3986 path, LiteralToken | ParamToken) and
 // extdeps.github.expressions TemplateSegment (GitHub expressions, LiteralText | Interpolation).
 // Those stay as upstream-owned inhabitants of this structure; this is the home for the dag
-// language's own interpolation (DESIGN 3: a third ad hoc shape would be the fork).
+// language's own interpolation (gunbc.design_argument::single_authority: a third ad hoc shape would be the fork).
 // Arms are Template-prefixed: v2.lens.coverage already declares a nullary TemplateHole.
 
 type TemplatePart<H>

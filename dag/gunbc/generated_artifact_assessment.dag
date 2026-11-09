@@ -14,7 +14,7 @@ import gunbc.ledger_row_coherence { LedgerRowCoherence, ledger_row_coherence, le
 // gunbc.generated_artifact_observation, which imports this module — never the other direction.
 // Correction (loyal-ram-550 review, 2026-08-05): an earlier revision of this note claimed a bare
 // artifact_generate/Filesystem reference written inside this module without an import 'fails to
-// compile' — that overstates the rung. DESIGN §4b Class B (open thread, #6985) means a bare
+// compile' — that overstates the rung. gunbc.design_argument::guarantee_ladder Class B (open thread, #6985) means a bare
 // cross-module reference can still resolve by pool-membership coincidence when an unrelated import
 // elsewhere in the same closure has already dragged the target module in, which is close to
 // guaranteed here since gunbc.generated_artifact_observation imports both this module and the
@@ -236,7 +236,7 @@ fn generated_artifact_population_findings_empty(f: GeneratedArtifactPopulationFi
 // `observations` is the retained receipt population. This is ONE CARRIER WITH A BOOLEAN PROJECTION
 // rather than a second representation: it reads the finding population and asks whether it is
 // empty, so pass/fail cannot disagree with the diagnostic about which population failed. The join
-// underneath is by artifact_eq at identity grain, never a bare count equality (DESIGN section 5
+// underneath is by artifact_eq at identity grain, never a bare count equality (gunbc.design_argument::fail_closed
 // oracle-independence ruling) -- a population that lost one artifact and duplicated another would
 // count-match while missing the defect, which is exactly why Missing and Duplicated are separate
 // arms rather than one ExpectedCardinalityWrong.

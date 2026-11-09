@@ -147,7 +147,7 @@ test fn a_retirement_trigger_fires_once_its_declaration_is_gone() -> Bool {
 //   `set -e` string down through `sccache_verified_install_script` into
 //   `verified_binary_install_shell`, including the hand-built `echo ... | sha256sum -c -`
 //   pipeline. The typed plan is not on that path. Deleting the trigger there would have turned
-//   tracked debt into untracked debt (DESIGN 4b: a rung is lowered only by declaring previous
+//   tracked debt into untracked debt (gunbc.design_argument::guarantee_ladder: a rung is lowered only by declaring previous
 //   rung, temporary rung, reason, bounded population and restoration trigger), so the
 //   obligation is now carried on the two declarations that actually hold it -- the two rows
 //   asserted below, whose population is exactly those three consumers, and whose trigger is the
@@ -181,7 +181,7 @@ test fn migrated_production_retirement_conditions_are_bound() -> Bool {
 // DISSOLVES. The ctrl repo's review policy (its scripts/INVARIANTS.md Rule 12 — a path in THAT repo; it does
 // not exist in gunbc, so follow it there, review 82112) lets a hand-shell renderer exist only when the intent is
 // modelled AND the shell carries an on-carrier marker NAMING THE CAPABILITY that will generate it; this repo's
-// own equivalent bar is DESIGN 4b meta-obligation 3 with DESIGN 6 (the mark travels on the carrier). `DissolutionCondition` has no field for the end state -- it carries only a TRIGGER (the
+// own equivalent bar is gunbc.design_argument::guarantee_ladder meta-obligation 3 with gunbc.design_argument::how_to_work (the mark travels on the carrier). `DissolutionCondition` has no field for the end state -- it carries only a TRIGGER (the
 // declaration whose retirement discharges the debt) -- so the end state rides on the companion
 // `Disposition` row, and a marker nobody compares is decoration. This claim pins the pair: the marker is
 // `Scaffold` (not `Terminal`: the bash-emit path exists, this renderer just has not been routed through
@@ -215,7 +215,7 @@ test fn the_shell_renderers_on_carrier_marker_binds_the_trigger_subject() -> Boo
 //
 // The pool is the purpose-built fixture rather than a production directory: the subject
 // under test is the RESOLVER's behaviour, and scanning production to establish it prices
-// the mechanism at that directory's breadth — the cost-shape defect DESIGN §6 names.
+// the mechanism at that directory's breadth — the cost-shape defect gunbc.design_argument::how_to_work names.
 // Measured rather than assumed: pointed at `dag/std` this row was BUDGET-REFUSED at
 // 5510ms against the floor's 5000ms deadline and went undecided, which is a worse
 // outcome than a failure because nothing then claims it is broken.

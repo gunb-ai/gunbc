@@ -1,6 +1,6 @@
 module test.claim.roadmap.roadmap_belt_dispatch_instance_selection_witness
 
-// The belt entries' instance selection has no default (DESIGN 5): an unset or blank
+// The belt entries' instance selection has no default (gunbc.design_argument::fail_closed): an unset or blank
 // GUNBC_BELT_INSTANCE_ID used to mean srv1-live. The environment read is supplied as a value; the
 // route through shell.Env.Get is the one-line belt_dispatch_instance_cli.
 

@@ -35,7 +35,7 @@ fn refusal_reason(a: RepositoryTransitionAdmission) -> String {
 
 // THE PAIR IS THE WITNESS, not either arm alone. A wall asserted only on the arm that currently
 // refuses cannot distinguish a real decision from a function that returns the refusal
-// unconditionally -- which is exactly the permanently-green decoration DESIGN section 4b calls worse
+// unconditionally -- which is exactly the permanently-green decoration gunbc.design_argument::guarantee_ladder calls worse
 // than absent, inverted. Asserting BOTH arms over the same function makes a collapse in either
 // direction red: fuse them and the admitted case fails here.
 test fn the_two_realizations_are_admitted_differently() -> Bool {

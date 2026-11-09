@@ -16,7 +16,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 // THE AGNOSTIC HUB for fused-filament fabrication, and it deliberately carries NO ExternalModelScope
-// and NO product rows. DESIGN §3 "External upstream decomposition": a generic hub may define shapes
+// and NO product rows. gunbc.design_argument::external_upstreams "External upstream decomposition": a generic hub may define shapes
 // that concrete products inhabit, and may not enumerate those products, dispatch among their
 // authorities, or hold their version rows. Every machine-specific figure lives in the machine's own
 // module and cites the machine's own authority; this file is what those modules are spelled in.
@@ -178,7 +178,7 @@ type MaterialSuitability
 // twice rather than silently taking one row. That refusal is one decision, so it is counted in one
 // place: a second copy would let the two lookups disagree, and the way this function came to exist
 // is exactly that -- the feed-path lookup shipped with the last-match-wins arm the suitability
-// lookup had already been repaired for. DESIGN section 2: net concepts must not grow by
+// lookup had already been repaired for. gunbc.design_argument::minimize_redundancy: net concepts must not grow by
 // re-invention, and a defect class is not closed at one site.
 type MaterialKeyedScan<V> sole_constructor {
   count: Int
@@ -206,7 +206,7 @@ fn material_keyed_scan<R, V>(
 // both, fed from the external spool holder -- while the AMS Lite manual excludes both from the AMS
 // Lite path. Collapsing feed-path exclusion into MaterialSuitabilityNotRecommended would report a
 // material the vendor endorses as one the machine cannot print, and would lose which of the two
-// facts a consumer is actually reading. DESIGN section 3: a materially different contract needs a
+// facts a consumer is actually reading. gunbc.design_argument::single_authority: a materially different contract needs a
 // materially different name.
 //
 // THE EXCLUSION CARRIES ITS STATED CAUSE, because the causes are not interchangeable. A flexible
@@ -240,7 +240,7 @@ type FeedPathSuitabilityLookup
   | FeedPathRowsConflict { material: FilamentMaterial, count: Int }
 
 // LOOKUP DEFAULTS TO UNSTATED, NEVER TO ADMITTED. An unlisted material means the manual is silent,
-// and reading silence as permission is the fail-open arm DESIGN section 5 forbids: it would feed a
+// and reading silence as permission is the fail-open arm gunbc.design_argument::fail_closed forbids: it would feed a
 // material the vendor never cleared through a mechanism the vendor documents exclusions for.
 //
 // AND DUPLICATE ROWS REFUSE RATHER THAN RESOLVING TO THE LAST ONE. The first revision of this
@@ -290,7 +290,7 @@ fn material_suitability_row(material: FilamentMaterial, suitability: MaterialSui
 // is the tell: a second representation always claims not to be one. `==` is structurally defined for
 // closed coproducts in this substrate -- `std.roster_frontier` `frontier_subject_eq` is the same
 // one-line shape -- so the ordinals were a hand-rolled duplicate of a decision the language already
-// makes, and DESIGN section 2 prices a re-derivation of an existing law as redundant regardless of
+// makes, and gunbc.design_argument::minimize_redundancy prices a re-derivation of an existing law as redundant regardless of
 // how small it is.
 //
 // It also failed at the thing it was introduced to do. The tags were written to avoid a wildcard

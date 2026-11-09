@@ -21,8 +21,8 @@ import gunbc.design.palette {
 // page's HSL ramp, projected once into Srgb8: re-derive any of them from
 // gunb-ai/frontend's :root block (`grep -A40 ':root' assets/site.css`), never from
 // this file's comments. When the redesign retunes a hue, the edit is HERE — swatch is
-// the single value home (DESIGN §3). Consumer: gunbc.site.gunb_ai_tokens, which binds
-// each of these into the site token set; nothing else imports this module (DESIGN §3c).
+// the single value home (gunbc.design_argument::single_authority). Consumer: gunbc.site.gunb_ai_tokens, which binds
+// each of these into the site token set; nothing else imports this module (gunbc.design_argument::consumption).
 
 data gunb_ai_hues_provenance: SwatchSetProvenance = HouseAuthored {
   note: "The four live gunb.ai hue families (warm/umber-sand neutrals, moss, clay, brass) plus their in-family steps, lifted from the hand-maintained site's :root block so palette becomes the only colour authority. Operator pick A 2026-10-16; values track the live look and move when the redesign retunes them.",
@@ -72,7 +72,7 @@ data gunb_ai_hue_members: List<SwatchMember> = [
 // (gunbc.site.gunb_ai_tokens.token_binding_complete) ranges over every member and requires each to
 // be bound to a token role — and this colour is not a custom property, it is the chrome colour one
 // meta tag carries, so binding it to a --gunb-* role would model a consumer that does not exist.
-// CONSUMER (§3c): gunbc.site.gunb_ai_page reads it through gunbc.design.palette.swatch_paint to
+// CONSUMER (gunbc.design_argument::consumption): gunbc.site.gunb_ai_page reads it through gunbc.design.palette.swatch_paint to
 // fill <meta name="theme-color">; it is not filed in a SwatchSet because nothing would read the set.
 data theme_chrome_black: Swatch = Swatch { name: "theme-chrome-black", color: Srgb8 { r: 12, g: 13, b: 12 } }
 
@@ -90,7 +90,7 @@ fn gunb_ai_hues_admissible() -> Bool {
 // 2026-10-19). It is NOT warm_white (#f4f1ec): the two differ in green and blue, and the favicon's
 // seal reads warmer than the page's text, so collapsing them would repaint the tab icon. Like
 // theme_chrome_black it is a row outside gunb_ai_hues, because it is not a --gunb-* role.
-// CONSUMER (§3c): gunbc.site.gunb_ai_mark reads it through gunbc.design.palette.swatch_paint.
+// CONSUMER (gunbc.design_argument::consumption): gunbc.site.gunb_ai_mark reads it through gunbc.design.palette.swatch_paint.
 data seal_white: Swatch = Swatch { name: "seal-white", color: Srgb8 { r: 244, g: 239, b: 230 } }
 
 // THE LIVE RAMP, AS THE SERVED SHEET STATES IT. This module is the SINGLE colour authority for gunb.ai

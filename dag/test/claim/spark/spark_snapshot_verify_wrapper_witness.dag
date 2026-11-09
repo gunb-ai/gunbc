@@ -27,7 +27,7 @@ import gunbc.spark.model_snapshot_materialize {
 // command, the two wrapper shapes answered: OLD exit=0, NEW exit=1.
 //
 // WHAT IS ENROLLED HERE IS THE PURE HALF, and it is enrolled rather than retired because DESIGN section
-// 4b(4) says a climb deletes the lower-rung production machinery and KEEPS its discriminating evidence.
+// gunbc.design_argument::guarantee_ladder (dissolution on climb) says a climb deletes the lower-rung production machinery and KEEPS its discriminating evidence.
 // The wet half is asserted in test.claim.spark.spark_snapshot_verify_wrapper_local_wet, which drives real
 // processes through an admitted production bridge. An earlier version of this sentence said that half
 // was "not expressible hermetically" and could not be written at all; that was false, and the route it
@@ -85,7 +85,7 @@ fn w_is_contradiction(r: InstrumentReading) -> Bool {
 
 // SILENCE IS NOT CONSENT, WHATEVER THE STATUS SAYS. Output carrying neither sentinel means the wrapper
 // never reached its own echo, so nothing was learned; answering Verified would be the fabricated
-// plausible output DESIGN section 5 forbids, and answering Rejected would blame bytes nothing
+// plausible output gunbc.design_argument::fail_closed forbids, and answering Rejected would blame bytes nothing
 // examined. A
 // nonzero exit here is a failure of the WRAPPER or the container, not a verdict about the bytes, so it
 // must not read as a rejection.

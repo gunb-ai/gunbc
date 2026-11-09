@@ -9,7 +9,7 @@ data consumed_admission_externalized_to_the_next_roster_touch: RecurringFailureM
   rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
-    "**a permission carried in the tree is required at its owner's gate and consumed the moment the owner lands, so every owner lands a dead row and the next change to touch the roster pays for its deletion** (DESIGN section 5, externalization: the cost is caused by one change and paid by another principal who must read a stranger's change to know the deletion is safe).",
+    "**a permission carried in the tree is required at its owner's gate and consumed the moment the owner lands, so every owner lands a dead row and the next change to touch the roster pays for its deletion** (gunbc.design_argument::fail_closed, externalization: the cost is caused by one change and paid by another principal who must read a stranger's change to know the deletion is safe).",
 
     "THE INVALID STATE: a namespace transition admission resident on main whose admitted motion main already carries. Such a row can never match a delta again, so it is dead weight at best and, under any rule that refuses consumed rows, a red on some later unrelated change.",
 

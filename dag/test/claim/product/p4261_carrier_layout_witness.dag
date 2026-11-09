@@ -280,6 +280,8 @@ import product.p4261.e1_b {
   e1_u100_lead_resistances,
   e1_u104,
   e1_u10p2_lift,
+  e1_photo_part_2_removal,
+  e1_photo_part,
   e1_u1_p5,
   e1_u21,
   e1_u2_2,
@@ -578,7 +580,7 @@ fn supplied_said() -> EvidenceRef {
 }
 
 fn read(a: ElectricalTerminalRef, b: ElectricalTerminalRef, result: ContinuityResult) -> ContinuityObservation {
-  ContinuityObservation { asset: p4261_e1_b, first: a, second: b, record: both_points_recorded, conditions: e1_bench, result: result, order: BeforeIncidents { keys: [e1_bridge_incident.key, e1_inductor_short_incident.key, e1_u10p2_lift.key] }, evidence: supplied_said() }
+  ContinuityObservation { asset: p4261_e1_b, first: a, second: b, record: both_points_recorded, conditions: e1_bench, result: result, order: BeforeIncidents { keys: [e1_bridge_incident.key, e1_inductor_short_incident.key, e1_u10p2_lift.key, e1_photo_part_2_removal.key] }, evidence: supplied_said() }
 }
 
 fn positive_term() -> TerminalIdentity {
@@ -613,7 +615,7 @@ test fn the_fsv_row_names_the_maker_the_sheet_prints() -> Bool {
 // END-TO-END, NOT READ-BACK. the_fsv_row_reports_the_sheets_rrrm_as_a_rectifier only asks
 // voltage_withstand to read the row back. A defect that drops or filters RectifierSpec between an
 // installed FSV row and input_bound -- an arm filtered out of observed_ratings, a withstand kind
-// excluded from the bound -- leaves that green and this red, which is the point (§4b).
+// excluded from the bound -- leaves that green and this red, which is the point (gunbc.design_argument::guarantee_ladder).
 // Measured, with commands, before writing this: NONE of the four FSV positions is across the input on
 // the observed board. grep -c '"D2_P1"' dag/product/p4261/e1_b.dag -> 2 (its InstalledComponent and its
 // DesignatorReading; likewise D8_P1, D2_P5, D8_P5), and no continuity reading names them. So the rating
@@ -1370,11 +1372,11 @@ fn about(mv: Nat) -> VoltageValue {
 }
 
 fn analysis_order() -> ReadingOrder {
-  BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key] }
+  BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key, e1_photo_part_2_removal.key] }
 }
 
 fn before_every_event() -> ReadingOrder {
-  BeforeIncidents { keys: [e1_bridge_incident.key, e1_inductor_short_incident.key, e1_u10p2_lift.key] }
+  BeforeIncidents { keys: [e1_bridge_incident.key, e1_inductor_short_incident.key, e1_u10p2_lift.key, e1_photo_part_2_removal.key] }
 }
 
 fn q21_with(drain_mv: Nat, source_mv: Nat) -> List<NodeVoltageObservation> {
@@ -2694,7 +2696,8 @@ test fn u4_reads_as_a_cyclone_10_gx_fpga() -> Bool {
     && text.contains("U4 reads 10CX085YF672E6G: programmable logic, 85000 logic elements, its configuration volatile and loaded at every power-up over one of 4 schemes (active serial x1 from a EPCQ-L flash; active serial x4 from a EPCQ-L flash; Avalon streaming from a host; JTAG download); its user pins are weak pull-ups if its nIO_PULLUP strap enables them, else high impedance until it is configured, so whether it drives anything is read at CONF_DONE and user mode at INIT_DONE where enabled; its power-on reset also holds until VCCBAT is present")
     && u4_configuration_text(layout: without).contains("U4 is not a component of this carrier's observation")
     && carrier_input_reading(layout: e1_promoted).contains("read at CONF_DONE")
-    && count(e1_measured.bench.alterations) == 2
+    && count(e1_measured.bench.alterations) == 3
+    && count(filter(e1_measured.bench.alterations, a => match a.change { PartRemoved { refitted } => !refitted && component_identity_eq(a: a.part, b: e1_photo_part(label: "2")), _ => false })) == 1
     && count(filter(e1_measured.bench.alterations, a => match a.change { ThermalInterfaceChanged { removed: _, applied: Present { value: InterfaceUnstated } } => true, _ => false })) == 1
     && count(filter(e1_measured.bench.alterations, a => match a.change { PartRemoved { refitted } => !refitted && component_identity_eq(a: a.part, b: e1_converter_near), _ => false })) == 1
     && count(k1_measured.bench.alterations) == 1
@@ -3249,7 +3252,7 @@ fn e1_lift_refitted() -> MeasuredBoard {
 }
 
 fn mid_order() -> ReadingOrder {
-  BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key] }
+  BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key, e1_photo_part_2_removal.key] }
 }
 
 fn bridged_keys() -> List<NonEmptyStr> {

@@ -1,6 +1,6 @@
 module gunbc.fleet.deployment_gate_answer
 
-// STAGE 2 OF gunbc.plans.ntfy_deployment_gate_approval: THE ROUTE THAT ANSWERS THE PENDING GITHUB GATE.
+// STAGE 2 OF gunbc.plans.ntfy_deployment_gate_approval (deleted 2026-11-08): THE ROUTE THAT ANSWERS THE PENDING GITHUB GATE.
 //
 // WHAT THIS MODULE IS. A chain of PHASES over the facts a transport hands it, one response per phase. It
 // performs no HTTP, signs no JWT and mints no token: the later actuator change owns transport (it reuses

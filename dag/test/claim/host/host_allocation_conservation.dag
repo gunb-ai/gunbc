@@ -54,7 +54,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // that wants a yes/no would find one already written and would lose the remedy again without
 // authoring anything that looks like a mistake. So it dissolves there and is re-declared HERE, where
 // its only honest consumers are, and where a production import of it would be visibly wrong
-// (DESIGN 4b: a climb deletes the lower-rung production machinery it obsoletes, never the evidence).
+// (gunbc.design_argument::guarantee_ladder: a climb deletes the lower-rung production machinery it obsoletes, never the evidence).
 // These witnesses genuinely ask a Bool question -- does this arithmetic conserve -- and the two
 // refusal causes are discriminated by the pair in test.claim.runner.runner_placement_witness, not here.
 fn witness_allocation_conserves(
@@ -102,7 +102,7 @@ fn committed_equals_memory_admission(host: HostIdentity) -> Bool {
 //
 // TEN IS A CHOSEN CHARGE, NOT srv1'S WIDTH, and the difference is deliberate: a fixture equal to
 // the live commitment would read as a transcription of it and would have to be re-authored every
-// time the width moved (DESIGN 5 -- a measurement copied from the same current tree is not an
+// time the width moved (gunbc.design_argument::fail_closed -- a measurement copied from the same current tree is not an
 // oracle). Ten 26 GiB slots is 260 GiB against srv1's measured RAM with the overhead and headroom
 // this row already supplies, which is the "pools fit" side of the boundary the four controls below
 // pin from both directions at the live width.
@@ -323,7 +323,7 @@ test fn committed_width_never_exceeds_memory_admission() -> Bool {
 // THE LITERALS ARE REPLACED BY THE RELATION THEY WERE MEANT TO STATE, BECAUSE THEY HAD GONE STALE.
 // This row read `host_memory_admitted_width(srv4) == 29` and `committed == 21`; at the 26 GiB slot
 // those are 17 and 17, so the row was asserting a configuration the fleet left behind (the same
-// transcribed-figure decay DESIGN 6 warns about: a number copied out of the authority that owns
+// transcribed-figure decay gunbc.design_argument::how_to_work warns about: a number copied out of the authority that owns
 // it). The property this row is FOR is that srv4 commits its MEMORY width with disk gated at apply
 // rather than lowering allocation -- which is a relation, holds at any width, and is what is
 // asserted now.
@@ -578,7 +578,7 @@ test fn every_enrolled_host_carries_its_own_measured_reading() -> Bool {
 // describes those numbers as falling out of the conservation arithmetic — 'neither number is
 // authored here as a target; both are the largest width the wall will pass'. That is a claim about
 // a derivation nobody wrote: the arithmetic was run by hand once and its answers were typed in
-// beside the wall that checks them, which is the second-representation shape DESIGN 5 names, and it
+// beside the wall that checks them, which is the second-representation shape gunbc.design_argument::fail_closed names, and it
 // is why raising a host's RAM does not raise its width.
 //
 // This probe runs the derivation the note describes and asserts it reproduces every literal
@@ -636,7 +636,7 @@ fn derived_width_with_charge(host: HostIdentity, session: ByteSize) -> Int {
 // It is also not repaired by pinning a fresh number. The previous width was authored when srv1 was
 // a 125 GiB machine; the DIMM upgrade moved it to about 502 GiB and the pinned width silently
 // stopped discriminating anything. A width copied from today's tree would age out the same way --
-// DESIGN 5 on oracles: a measurement taken from the tree it is asserted against is not an oracle.
+// gunbc.design_argument::fail_closed on oracles: a measurement taken from the tree it is asserted against is not an oracle.
 //
 // So both widths are DERIVED from srv1's current policy and the probe sits strictly between them.
 // If the charge ever stops moving the boundary -- if it shrinks below the unused remainder under
@@ -718,15 +718,15 @@ test fn an_unsized_host_reports_no_discriminator() -> Bool {
 // one authored literal per host; its entire content was that somebody had kept those literals in
 // step with the machines by hand. gunbc.runner.runner_slot_allocation host_runner_memory_envelope_resolution
 // now DERIVES the envelope from the same five authorities, so both sides of that comparison read the
-// same inputs and the assertion collapses to measure() == measure() -- the change detector DESIGN 5
+// same inputs and the assertion collapses to measure() == measure() -- the change detector gunbc.design_argument::fail_closed
 // names, which is worse than absent because it would be cited as coverage.
 //
 // THE TEST FOR WHETHER TO DELETE IS WHETHER THE RED IS STILL AUTHORABLE, and it is not: there is no
 // longer an authored envelope literal anywhere for a derivation to disagree with, on any host, so
 // the invalid state this row existed to catch has no constructor rather than merely no current
-// occupant (DESIGN 4b -- at the top rung a check whose forbidden state cannot be expressed is a
+// occupant (gunbc.design_argument::guarantee_ladder -- at the top rung a check whose forbidden state cannot be expressed is a
 // decoration). This is also why the deletion is not the dissolution-on-climb violation it resembles:
-// 4b(4) keeps a class's discriminating RED enrolled when the class survives at a higher rung, and
+// gunbc.design_argument::guarantee_ladder (dissolution on climb) keeps a class's discriminating RED enrolled when the class survives at a higher rung, and
 // here the SUBJECT is gone, not merely the mechanism.
 //
 // WHAT SURVIVES AS THE EXECUTING EVIDENCE, so this is a transfer and not a subtraction: the three
@@ -887,7 +887,7 @@ fn admitted_width_search(host: HostIdentity, control_plane: ByteSize) -> WidthSe
 // derived_width_with_charge until that stopped being a complete derivation: it subtracts neither
 // the served-deployment slices nor the shakedown slot's charge, so on srv1 it answered 15 while the
 // wall admitted fewer, and this row was red on main for that reason. A literal here would have been
-// a measurement copied from the tree it is asserted against, which DESIGN 5 rules out as an oracle.
+// a measurement copied from the tree it is asserted against, which gunbc.design_argument::fail_closed rules out as an oracle.
 test fn saturation_refuses_rather_than_reporting_the_ceiling() -> Bool {
   let short = match admitted_width_search_within(
     host: operator_host_srv3, control_plane: byte_size(0), range: [1, 2, 3], bound: 3
@@ -1062,7 +1062,7 @@ test fn an_unmeasured_control_plane_refuses_on_every_host_including_the_roomy_on
 // declaration, so no witness can make the live fleet carry a zero ceiling; the standing is therefore
 // taken as a parameter, which is what lets this fixture express the state the accepted corpus cannot.
 // Without that, the check would be permanently green by construction and would be cited as coverage
-// while proving nothing (DESIGN 4b: ask whether the RED is authorable before writing the check).
+// while proving nothing (gunbc.design_argument::guarantee_ladder: ask whether the RED is authorable before writing the check).
 fn zero_memory_slot_shape() -> RunnerSlotDesired {
   RunnerSlotDesired {
     memory_max: byte_size(0),

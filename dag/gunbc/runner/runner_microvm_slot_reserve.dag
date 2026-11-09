@@ -87,7 +87,7 @@ data runner_microvm_slot_reserve_disposition: ConstructionMechanism = SingleAuth
 // grant key in the same write as the reservation -- no second reservation path, no hand-written slot
 // file. The controller re-derives that key (observe_granted_cell_wet) before it plans anything.
 //
-// THE BROKER IS NOT THE CONTROLLER (DESIGN 3b keeps broker and tenant distinct parties on the
+// THE BROKER IS NOT THE CONTROLLER (gunbc.design_argument::conformance keeps broker and tenant distinct parties on the
 // fabric route): it runs as its own root unit, gunbc-microvm-slot-reserve.service
 // (gunbc.runner.runner_microvm_slot_unit), started by the fleet-converge mode microvm_slot_reserve BEFORE
 // microvm_slot_start. It is root because the store is root-only (gunbc.fabric.fabric_allocation_store_substrate)

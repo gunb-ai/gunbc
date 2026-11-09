@@ -171,7 +171,7 @@ fn required_ci_phase_is(a: RequiredCiPhase, b: RequiredCiPhase) -> Bool {
 
 // Membership at identity grain. Parameterized on the roster rather than closing over
 // required_ci_phases so a witness can author both the enrolled and the un-enrolled population --
-// the RED is authorable at the fixture boundary, which is the boundary that decides (DESIGN 4b).
+// the RED is authorable at the fixture boundary, which is the boundary that decides (gunbc.design_argument::guarantee_ladder).
 fn required_ci_phase_enrolled(p: RequiredCiPhase, phases: List<RequiredCiPhase>) -> Bool {
   any(phases, x => required_ci_phase_is(a: x, b: p))
 }

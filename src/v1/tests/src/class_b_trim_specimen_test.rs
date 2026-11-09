@@ -1,7 +1,7 @@
 //! Class B trim: explicit `import std.algebra { trim }` binds in narrow pools;
 //! bare trim refuses even when std.algebra is already in the compilation pool.
 //!
-//! SCAFFOLD (DESIGN §7 HAND-RUST GATE — explicit deferral): this module exercises
+//! SCAFFOLD (gunbc.design_argument::self_hosting HAND-RUST GATE — explicit deferral): this module exercises
 //! the v1 compiler-test harness because Class B trim discrimination needs
 //! primary-precedence pool overlays (`fixtures/class_b_trim/narrow_pool/`) and
 //! `compile_declared_import_closure_only_with_pool` receipts that cannot be enrolled

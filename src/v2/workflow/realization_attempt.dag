@@ -265,7 +265,7 @@ fn decl_edges_named(root: Node, fn_name: Symbol, acc: List<Node>) -> List<Node> 
 // inside its reason symbol — parse/tokenize reasons are PhaseFrontend, body_lowering reasons are
 // PhaseNormalize, resolve reasons are PhaseResolve — so the harness classifies the located reason's
 // family instead of flattening every assembly refusal into one phase. An unrecognized family keeps
-// the harness stage's fallback rather than fabricating a stage (§5: never a guessed label).
+// the harness stage's fallback rather than fabricating a stage (gunbc.design_argument::fail_closed: never a guessed label).
 
 fn phase_for_reason(reason: Symbol, fallback: RealizationPhase) -> RealizationPhase {
   let lexeme = symbol_lexeme(sym: reason)

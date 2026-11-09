@@ -134,7 +134,7 @@ fn free_monoid_structure_node(inhabitant: Node, generator: Node) -> Node {
 
 // THE GENERATOR BINDER, THREE-VALUED: Optional collapsed NamedChildAmbiguous and binder_node_parts Absent
 // into the same Absent as a missing field, so an unreadable or duplicated generator was read as "not declared"
-// (DESIGN section 5 fail-open). Same shape as AlgebraFieldDeclaration: a declared generator, a genuine absence,
+// (gunbc.design_argument::fail_closed fail-open). Same shape as AlgebraFieldDeclaration: a declared generator, a genuine absence,
 // or a malformed binder with its cause.
 type FreeMonoidGeneratorDeclaration
   = GeneratorDeclared { generator: Node }
@@ -364,7 +364,7 @@ fn algebra_structure_typed_binders(structures: List<Node>) -> List<Symbol> {
 }
 
 // WHETHER AN INHABITANCE'S STRUCTURE DECLARES AN OPERATION FIELD -- typed, so a malformed inhabitance node is
-// never mistaken for a structure that lacks the field (DESIGN section 5: no fabricated plausible answer). A
+// never mistaken for a structure that lacks the field (gunbc.design_argument::fail_closed: no fabricated plausible answer). A
 // field is declared when the structure binds it, or when a sub-structure it composes (through a binder in
 // algebra_structure_composing_fields) declares it. An operation's signature and the carrier are never entered.
 // A declared field carries the type its binder declares, so a reader of the field's RESULT reads it from

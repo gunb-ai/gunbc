@@ -8,7 +8,7 @@ import std.algebra { CommutativeMonoid, CommutativeSemiring, Ordering, Less, Equ
 // accepted inductive definition -- zero, and the successor of a natural -- and it is the ONLY
 // declaration of Nat in the corpus. It used to be two: this module's
 // `CommutativeSemiring<Magnitude>` over an opaque, constructorless Magnitude (a name standing where
-// a definition was available, DESIGN section 2), and v2.std.nat's Peano coproduct. The semiring is
+// a definition was available, gunbc.design_argument::minimize_redundancy), and v2.std.nat's Peano coproduct. The semiring is
 // not the carrier's body; it is something the carrier INHABITS (nat_semiring below, and the
 // std.algebra carrier row the operators derive from).
 //
@@ -75,7 +75,7 @@ fn nat_sub(a: Nat, b: Nat) -> NatSubtraction {
 // EUCLIDEAN DIVISION WITH A TYPED ZERO-DIVISOR OUTCOME. nat_div_rem is the general operation: a
 // Zero divisor is its own arm. nat_div_rem_by_succ is the TOTAL form for a divisor that is nonzero
 // BY CONSTRUCTION -- the caller supplies the divisor's predecessor, so the divisor Succ { prev }
-// cannot be Zero and no zero-divisor arm exists to handle (DESIGN section 4b, the top rung: the
+// cannot be Zero and no zero-divisor arm exists to handle (gunbc.design_argument::guarantee_ladder, the top rung: the
 // invalid state has no constructor). A caller dividing by a literal that it knows is nonzero
 // (decimal conversion by ten) uses the by-succ form rather than matching a zero arm it cannot reach.
 type NatQuotient {
@@ -153,7 +153,7 @@ data nat_semiring: CommutativeSemiring<Nat> = CommutativeSemiring {
 // empty -- there is no naturals-shaped question this function cannot express, so it never needs a
 // could-not-say arm and a caller reading [] here is reading a computed emptiness. That is the
 // property the bucketed forms did not have: they returned [] both for a genuinely empty run and
-// for a width they could not spell, which is the empty-observation narrow DESIGN section 5 names.
+// for a width they could not spell, which is the empty-observation narrow gunbc.design_argument::fail_closed names.
 // Callers that must distinguish "no work" from "cannot express the work" must not get that
 // distinction from this function; it has only the first meaning.
 // THE ACCUMULATOR IS THE COST SHAPE AND IT IS NOT INCIDENTAL. The naive form,
@@ -161,7 +161,7 @@ data nat_semiring: CommutativeSemiring<Nat> = CommutativeSemiring {
 // extends its LEFT operand by cloning every element of its RIGHT one, so consing a singleton onto
 // the recursive tail copies the whole tail at every step. Accumulating the other way round makes
 // the long list the left operand and the singleton the right, which clones one element per step.
-// DESIGN section 6 fixes a proven cost-shape defect regardless of the realized n -- n is 7 here
+// gunbc.design_argument::how_to_work fixes a proven cost-shape defect regardless of the realized n -- n is 7 here
 // today, but a run of naturals is substrate and its n is whatever a future caller wants.
 fn nat_range_inclusive(lo: Nat, hi: Nat) -> List<Nat> {
   nat_range_accumulate(lo: lo, hi: hi, acc: [])
@@ -178,9 +178,9 @@ fn nat_range_accumulate(lo: Nat, hi: Nat, acc: List<Nat>) -> List<Nat> {
 // THE DECIMAL DIGITS OF A NATURAL, AND ITS DECIMAL TEXT. These lived in v2.std.integer, where a
 // dag module compiled into the seed could not reach them (the seed's closure does not contain
 // src/v2), so a seed-emitted module had no declared route from a Nat to its text and an
-// interpolation hole over one fell back to v1's implicit stringify (DESIGN section 4, the coercion
+// interpolation hole over one fell back to v1's implicit stringify (gunbc.design_argument::closed_grounded_substrate, the coercion
 // law). A natural's decimal spelling is a fact about the naturals, so it lives beside Nat, at the
-// lowest layer that needs it (DESIGN section 3: a fact's home is its layer); v2.std.integer
+// lowest layer that needs it (gunbc.design_argument::single_authority: a fact's home is its layer); v2.std.integer
 // imports the digit coproduct and its tables from here rather than declaring a second copy.
 type DecimalDigit
   = D0
@@ -269,7 +269,7 @@ fn decimal_digit_successor(d: DecimalDigit) -> DecimalDigitSuccessor {
 
 // THE UNITS DIGIT OF A NATURAL, by structural descent: Zero is D0, and Succ advances the digit,
 // carrying out of D9. The digit is a DecimalDigit by CONSTRUCTION, so no Nat-to-digit lookup exists
-// to be out of range and no default arm exists to answer it (DESIGN section 5: a failure arm must
+// to be out of range and no default arm exists to answer it (gunbc.design_argument::fail_closed: a failure arm must
 // refuse, never widen). The walk is linear in its argument, so it is applied only to a remainder
 // by ten (at most nine steps); nat_to_decimal_string divides by the declared operation first.
 type NatDecimalSplit {

@@ -297,7 +297,7 @@ type GroundingGatePassed {}
 // THE GATE'S REFUSAL HAS ITS OWN NAME, AND UNTIL 2026-09-21 IT DID NOT. Review 46789 routed this
 // arm through canonical_grounding_from_inferred_facts "so the typed ^infer_grounding_not_derived
 // diagnostic propagates" -- and it did, as the FATAL, spelled identically to the ADVISORY infer
-// carries on its Accepted path for the same node. One symbol, two contracts (DESIGN section 3, a
+// carries on its Accepted path for the same node. One symbol, two contracts (gunbc.design_argument::single_authority, a
 // meaning fork): a rejection chain read as `infer_grounding_not_derived x35` where thirty-four
 // links were infer's frontier rows riding along and the last was THIS gate refusing to emit, and
 // no reader could tell which. Measured on the built native CLI at gunbc#11965's specimen

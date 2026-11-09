@@ -49,7 +49,7 @@ import v2.std.text { String }
 // body_lower_if_fn_body_capture_optional, body_lower_if_then_arm_optional and
 // body_lower_if_then_fn_body_optional as they stood before #13029, renamed and nothing else. Every
 // helper they call is unchanged by #13029, so this is the old reader's logic exactly. They serve
-// from history as a differential oracle (DESIGN section 3, replacement migrations): only this
+// from history as a differential oracle (gunbc.design_argument::replacement_migration, replacement migrations): only this
 // module's census calls them, and nothing on a lowering route reaches this module. They are
 // deleted with it.
 //
@@ -283,7 +283,7 @@ fn iard_is_declaration(id: Symbol) -> Bool {
 
 // EVERY if_expr IN THE TREE, IN PRE-ORDER, WITH ITS ENCLOSING DECLARATION. Nested ifs are visited:
 // the walk does not stop at an if, because the defect's subject is exactly an if inside an if.
-// Sites are prepended and the list reversed once (DESIGN section 6, bare minimum cost).
+// Sites are prepended and the list reversed once (gunbc.design_argument::how_to_work, bare minimum cost).
 fn iard_collect(node: Node, declaration: String, acc: FreeMonoid<IardSite>) -> FreeMonoid<IardSite> {
   let here = match parse_production_emitted_identity_optional(node: node) {
     Absent => IardVisit { declaration: declaration, acc: acc }

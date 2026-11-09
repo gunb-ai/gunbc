@@ -1,0 +1,121 @@
+module gunbc.runner.runner_initialization
+
+import std.types { String, NonEmptyStr, CommitSha, List, Secret }
+import std.optional { Present, Absent }
+import std.list { first_where }
+import product.host_identity { HostIdentity, host_identity_eq }
+import extdeps.git.object_store { git_object_id_wire_hex }
+import gunbc.host.host_effect { HostEffectTransport }
+import gunbc.fleet.fleet_revision_acceptance { AcceptedFleetRevision }
+import gunbc.host.running_os { RunningOsReading, RunningOsUnobserved }
+import gunbc.host.running_os_receipt { RunningOsReceiptSource }
+import gunbc.host.running_os_receipt_observed { running_os_receipt_observed }
+import gunbc.host.initialized_host {
+  InitializedHost, InitializedHostRefusal, InitializedHostStanding, HostInitialized, HostNotInitialized,
+  initialized_host_live, initialized_host_identity, initialized_host_transport, initialized_host_refusal_text,
+}
+import gunbc.runner.runner_host_listener_account { HostUnitSlotRunnerUser, RunnerUserSelected, RunnerUserUndeclared, host_unit_slot_runner_user }
+import gunbc.runner.runner_qualification_revision_admission {
+  QualificationRevisionAdmission, QualificationRevisionAccepted, QualificationRevisionRefused, QualificationRevisionRefusal,
+  qualification_revision_refusal_message,
+}
+import gunbc.machine_intake.mtcollins1_boot_receipts { mtcollins1_running_os_receipt_source }
+
+// WHAT A RUNNER NEEDS ON TOP OF AN INITIALIZED HOST (gunbc.plans.physical_machine_boot_program (deleted 2026-11-08) B2): the account its
+// listener runs as and the workload revision it is accepted to run. Neither is a boot prerequisite, so neither is
+// in gunbc.host.initialized_host; a consumer that runs a runner on a host takes this record instead of a host
+// name, a user and a transport looked up by name.
+//
+// sole_constructor, and the only constructor takes an InitializedHost (so the host, its reach, its trust and its
+// running OS on this boot are the record's, never restated), the account the host's realization selects
+// (gunbc.runner.runner_host_listener_account) and the revision's admission
+// (gunbc.runner.runner_qualification_revision_admission over gunbc.fleet.fleet_revision_acceptance). An
+// uninitialized host, an undeclared account or an unaccepted revision has no record.
+type RunnerInitialization sole_constructor {
+  host: InitializedHost
+  account: NonEmptyStr
+  revision: AcceptedFleetRevision<NonEmptyStr, NonEmptyStr>
+}
+
+type RunnerInitializationRefusal
+  = RunnerHostNotInitialized { refusal: InitializedHostRefusal }
+  | RunnerAccountUndeclared { host: HostIdentity }
+  | RunnerRevisionUnaccepted { refusal: QualificationRevisionRefusal }
+
+type RunnerInitializationStanding
+  = RunnerInitialized { init: RunnerInitialization }
+  | RunnerNotInitialized { refusal: RunnerInitializationRefusal }
+
+// THE ONE CONSTRUCTOR, PURE: every input is a supplied value, so each refusal is authorable without a host. The
+// account is the INITIALIZED host's own selection, so it cannot be another host's.
+fn runner_initialization_over(host: InitializedHostStanding, revision: QualificationRevisionAdmission) -> RunnerInitializationStanding {
+  match host {
+    HostNotInitialized { refusal: r } => RunnerNotInitialized { refusal: RunnerHostNotInitialized { refusal: r } }
+    HostInitialized { host: h } =>
+      match host_unit_slot_runner_user(host: initialized_host_identity(host: h)) {
+        RunnerUserUndeclared { host: u } => RunnerNotInitialized { refusal: RunnerAccountUndeclared { host: u } }
+        RunnerUserSelected { user: account } =>
+          match revision {
+            QualificationRevisionRefused { refusal: r } => RunnerNotInitialized { refusal: RunnerRevisionUnaccepted { refusal: r } }
+            QualificationRevisionAccepted { accepted: a } => RunnerInitialized { init: RunnerInitialization { host: h, account: account, revision: a } }
+          }
+      }
+  }
+}
+
+fn runner_initialization_refusal_text(refusal: RunnerInitializationRefusal) -> String {
+  match refusal {
+    RunnerHostNotInitialized { refusal: r } => concat("the host is not initialized: ", initialized_host_refusal_text(refusal: r))
+    RunnerAccountUndeclared { host: h } => concat("no runner account is declared for ", h as String)
+    RunnerRevisionUnaccepted { refusal: r } => concat("the revision is not an accepted fleet revision: ", qualification_revision_refusal_message(refusal: r))
+  }
+}
+
+// READERS: projections of the sealed record.
+fn runner_initialization_host(init: RunnerInitialization) -> HostIdentity {
+  initialized_host_identity(host: init.host)
+}
+
+fn runner_initialization_account(init: RunnerInitialization) -> NonEmptyStr {
+  init.account
+}
+
+fn runner_initialization_revision(init: RunnerInitialization) -> AcceptedFleetRevision<NonEmptyStr, NonEmptyStr> {
+  init.revision
+}
+
+fn runner_initialization_commit(init: RunnerInitialization) -> CommitSha {
+  git_object_id_wire_hex(oid: init.revision.revision) as CommitSha
+}
+
+// THE TRANSPORT IS THE ONE THE HOST WAS AUTHENTICATED OVER, carried by the record, never looked up again by name.
+fn runner_initialization_transport(init: RunnerInitialization) -> HostEffectTransport {
+  initialized_host_transport(host: init.host).transport
+}
+
+// WHICH BOOT RUN PUBLISHES A HOST'S RUNNING-OS RECEIPT. A host whose boot route publishes none has no running-OS
+// reading in another job, so it is never initialized there: a typed absence, not a default.
+data running_os_receipt_sources: List<RunningOsReceiptSource> = [mtcollins1_running_os_receipt_source]
+
+fn running_os_receipt_source_for(host: HostIdentity) -> RunningOsReceiptSource? {
+  first_where(xs: running_os_receipt_sources, keep: s => host_identity_eq(a: s.host, b: host))
+}
+
+// THE PRODUCTION ROUTE: an unaccepted revision refuses first, before anything is read or contacted; then the host's
+// running-OS reading from its boot run's receipt (downloaded from that run), the host initialized over its pinned
+// transport with the boot id re-read live (a receipt from before a reboot or of another host refuses there), and
+// the account.
+fn runner_initialization_live(host: HostIdentity, attempt_raw: String, revision: QualificationRevisionAdmission, token: Secret) -> RunnerInitializationStanding {
+  match revision {
+    QualificationRevisionRefused { refusal: r } => RunnerNotInitialized { refusal: RunnerRevisionUnaccepted { refusal: r } }
+    QualificationRevisionAccepted { accepted: _ } => runner_initialization_contacted(host: host, attempt_raw: attempt_raw, revision: revision, token: token)
+  }
+}
+
+fn runner_initialization_contacted(host: HostIdentity, attempt_raw: String, revision: QualificationRevisionAdmission, token: Secret) -> RunnerInitializationStanding {
+  let running = match running_os_receipt_source_for(host: host) {
+    Absent => RunningOsUnobserved { cause: concat("no boot route publishes a running-OS receipt for ", host as String) }
+    Present { value: source } => running_os_receipt_observed(source: source, token: token)
+  }
+  runner_initialization_over(host: initialized_host_live(host: host, attempt_raw: attempt_raw, running: running), revision: revision)
+}

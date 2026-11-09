@@ -79,13 +79,13 @@ data materialization_ladder_value_binding_predicate_contract: Disposition = Term
 // structural: an unbounded provider is deliberately representable — a scoped witness memo is
 // legitimately unbounded — so discharge_verdict ADMITS providers through retention_admission (a
 // total fold over release_policy x capacity) and refuses when none qualifies. Requiring the field
-// does not make its value eligible, and conflating the two is the rung inflation DESIGN section 4b
+// does not make its value eligible, and conflating the two is the rung inflation gunbc.design_argument::guarantee_ladder
 // names. The former EvictionClass forced a choice between those two and carried its budget as free
 // text; a scoped carrier and a byte-bounded one are now the same product with different fields, and
 // TTL or LRU alone reach neither arm (freshness is InvalidationTrigger, and a replacement ORDER is
 // not a ceiling). Rule 4 keying wall: an ExistenceKeyed provider is refused even when it covers —
 // existence is not identity (receipt: the build-if-absent stale-binary red, #6352). Relation to
-// peers (DESIGN section 3, one concept per authority): std.realization.Materialization is the
+// peers (gunbc.design_argument::single_authority, one concept per authority): std.realization.Materialization is the
 // verdict vocabulary this ladder prescribes into; v2.std.materialize is the within-graph
 // (shared-state) content-hash detector feeding state 1; v2.lens.duplicate_computation is the
 // within-script command-grain demand extractor feeding the same groups. Mutable keyed state is a
@@ -145,7 +145,7 @@ type CacheProvider {
   retention: ProviderRetention
 }
 
-// docs/plans/vacuity-lens-design.md (reachable via the registered gunbc.plans.inert_layer_lens
+// docs/plans/vacuity-lens-design.md (reachable via the registered gunbc.plans.inert_layer_lens (deleted 2026-11-08)
 // carrier's link): its load-bearing review correction is about THIS file's AuthoredDuplication
 // verdict — share f(x) in f(x)==f(x) makes the test MORE tautological; vacuity needs its own
 // VacuityEvidence, not LadderVerdict. Migrates to the vacuity lens .dag carrier when it lands.
@@ -162,7 +162,7 @@ type CacheProvider {
 
 // The tiers are NOT fundamental arms and NOT heuristics (operator question, 2026-07-09): they are
 // five NAMED POINTS in a product of three grounded axes — the Int8..Int128 = Compose<Int,
-// MachineWidth> pattern (DESIGN section 2). Axis 1 placement (where the bytes live) REUSES
+// MachineWidth> pattern (gunbc.design_argument::minimize_redundancy). Axis 1 placement (where the bytes live) REUSES
 // std.realization.Placement — this projection repairs the section-3 nickname the first draft minted
 // beside it. Axis 2 addressing (how a demand finds the materialization): EdgeAddressed — the
 // dependency edge itself is the address (a pointer / direct hand-off; no key exists because the
@@ -740,7 +740,7 @@ fn ladder_verdict_prescribes(v: LadderVerdict) -> Materialization {
 // "is it this one" rather than "which one is mine". A consumer forced to ask fourteen
 // yes/no questions reconstructs the coproduct at the call site, so the prescription was
 // instead being hand-copied as a literal beside the ladder -- one fact with two authorities
-// (DESIGN section 3). These two total folds are that missing accessor: every verdict carries
+// (gunbc.design_argument::single_authority). These two total folds are that missing accessor: every verdict carries
 // its identity, so selecting by identity is a read of the arm, not a second classification.
 fn verdict_identity(v: LadderVerdict) -> String {
   match v {
@@ -764,7 +764,7 @@ fn verdict_identity(v: LadderVerdict) -> String {
 // Absent means NO VERDICT WAS PRODUCED FOR THIS IDENTITY -- the demand was never declared, so
 // the ladder never ruled on it. That is not the same as a verdict that prescribes Recompute,
 // and the distinction is the consumer's to make: this fold reports the gap rather than
-// substituting the permissive answer for it (DESIGN section 5, a failure arm must refuse).
+// substituting the permissive answer for it (gunbc.design_argument::fail_closed, a failure arm must refuse).
 // It returns the VERDICT and deliberately not its prescription: a consumer that acts on this
 // has to look at the arm it got, which is what stops "the obligation is unmet" being read as
 // "permission granted". An identity-keyed helper that answered with the bare prescription

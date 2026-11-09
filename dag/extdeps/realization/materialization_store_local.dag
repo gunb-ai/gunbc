@@ -147,7 +147,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 // THE FIRST REAL REALIZATION OF THE MATERIALIZATION STORE: a local persistent filesystem.
 //
-// This module is a TRANSPORT HANDLER and nothing more (DESIGN section 3: interface, realization and
+// This module is a TRANSPORT HANDLER and nothing more (gunbc.design_argument::interface_realization_policy: interface, realization and
 // policy are three facts). The store's semantics -- object format, lookup and commit decisions,
 // integrity, completeness, kind, the miss/refuse partition -- live in std.materialization_object
 // over std.materialization_provider. What lives here is only what is true of THIS realization:
@@ -589,7 +589,7 @@ fn local_store_initialize(root: MaterializationStoreRoot, instance_label: NonEmp
 // family's budget refuses (StoreCommitDidNotFit) without evicting anything, and no family evicts
 // another's entries -- each family's accounting is its own index.
 //
-// THE BUDGET VALUES ARE NOT THIS MODULE'S FACT (DESIGN section 3: interface, realization and policy
+// THE BUDGET VALUES ARE NOT THIS MODULE'S FACT (gunbc.design_argument::interface_realization_policy: interface, realization and policy
 // are three facts). This transport owns the SHAPE of a family budget and how one is enforced; how many
 // bytes a host grants a family is policy, owned by the store's consumer and passed in. The durable
 // policy rows and the host ceiling are gunbc.materialization_store_budgets; a witness passes fixture
@@ -847,7 +847,7 @@ fn local_store_artifact_store(budget: ByteSize, index: LocalStoreIndex, at_capac
 
 // Back from the fold: each surviving row keeps its name, found through the key it was given.
 // Each name is hashed ONCE into a key -> name map, and each surviving row finds its name by one
-// lookup -- never by re-hashing every name per row (a quadratic fold, DESIGN section 6).
+// lookup -- never by re-hashing every name per row (a quadratic fold, gunbc.design_argument::how_to_work).
 fn local_store_name_by_key(names: List<String>) -> Map<String, String> {
   fold(names, init: empty_map(), f: (m, n) => map_insert(m, serialize_content_hash(hash: local_store_row_key(name: n)) as String, n))
 }
@@ -1175,7 +1175,7 @@ fn local_store_write_index_settled(held: LocalStoreFamilyHeld, expected: CasExpe
 // only while a surviving eligible prefix cannot have holes: cas_reclaim_below deletes in generation
 // order and stops at the first host refusal, so it cannot remove G+1 while G stays. A successor
 // present still means the slot moved; an absent G is not this hold. Unknown-head observation
-// (acquire, index) still lists, as DESIGN §3b states for a window whose generation is not named.
+// (acquire, index) still lists, as gunbc.design_argument::conformance states for a window whose generation is not named.
 //
 // ACQUIRE STILL LISTS. Windowed presence is not a prefix: generations at or below head-k are
 // deleted, so a named gallop from generation 1 would read NotFound and treat a live head at 100 as

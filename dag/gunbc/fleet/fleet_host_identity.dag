@@ -17,7 +17,7 @@ data operator_host_srv4: HostIdentity = "srv4"
 
 // MTCOLLINS-RESET-0 (2026-09-07). The operator's Foxconn Ampere Mt. Collins unit, named here for the
 // reason every other identity is named here: this module is the single authority for a host's fleet
-// identity, and a second home for one would be the §3 fork the srv5/srv6 note above records being
+// identity, and a second home for one would be the gunbc.design_argument::single_authority fork the srv5/srv6 note above records being
 // cleaned up once already.
 //
 // NAMING IS NOT ENROLLMENT, on this module's own standing rule, and the distinction does real work
@@ -34,7 +34,7 @@ data operator_host_srv4: HostIdentity = "srv4"
 data operator_host_mtcollins1: HostIdentity = "mtcollins1"
 
 // MTJADE1 (2026-10-06). The operator's Foxconn Ampere Mt. Jade unit. Named here for the same reason
-// mtcollins1 is: this module is the HostIdentity authority, and a second home would be a §3 fork.
+// mtcollins1 is: this module is the HostIdentity authority, and a second home would be a gunbc.design_argument::single_authority fork.
 // NAMING IS NOT ENROLLMENT. This unit is not an executor fleet host and is not a row of
 // gunbc.host.managed_host managed_hosts (that roster is the BmcSecured join; stuffing a grant subject in
 // there would enroll a unit). The standing live-ops grant (gunbc.auth.standing_operator_grant
@@ -94,7 +94,7 @@ data operator_host_srv16: HostIdentity = "srv16"
 data operator_host_183527: HostIdentity = "host-183527"
 data operator_host_3dde7f: HostIdentity = "host-3dde7f"
 
-// SUPERMICRO H11SSL UNIT 1 (operator, 2026-10-30; gunbc.plans.gpu_card_host_program row N0b, "an
+// SUPERMICRO H11SSL UNIT 1 (operator, 2026-10-30; gunbc.plans.gpu_card_host_program (deleted 2026-11-08) row N0b, "an
 // opaque identity for the H11 host"). The host that serves the A16 Strata pool. Its board, BMC, DIMM
 // and fan readings are keyed by its BMC MAC under gunbc.machine_intake (supermicro_h11ssl_unit1_*); its
 // operator-facing hostname is the LEGACY spelling gunbc.hostname_allocation records. OPAQUE per the rule

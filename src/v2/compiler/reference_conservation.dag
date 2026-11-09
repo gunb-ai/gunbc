@@ -282,7 +282,7 @@ fn conserved_identity_of(node: Node) -> Optional<Symbol> {
 // atom's identity with the interned source slice at its extent; on real corpus files the recorded
 // extents and the slice primitive disagree past the first multibyte character, so the comparison
 // silently EXCLUDED most atoms and the population shrank without a count -- the absorbing fallback
-// DESIGN section 5 forbids, in drop form. The test is now what the stamp mode means: a terminal
+// gunbc.design_argument::fail_closed forbids, in drop form. The test is now what the stamp mode means: a terminal
 // stamped with its token CLASS publishes a symbol the lexer declares (v2.std.compilers.lexing
 // TokenRule.token_class), so an atom whose identity is NOT a declared token class was stamped with
 // its lexeme and IS authored. An int / float literal publishes its class and carries its value
@@ -386,7 +386,7 @@ fn population_count_item(acc: AuthoredAtomPopulation, emitted: Symbol) -> Author
   }
 }
 
-// THE ACCUMULATOR IS THREADED, NEVER APPENDED (DESIGN section 6, bare minimum cost).
+// THE ACCUMULATOR IS THREADED, NEVER APPENDED (gunbc.design_argument::how_to_work, bare minimum cost).
 fn population_walk(
   acc: AuthoredAtomPopulation,
   node: Node,
@@ -494,7 +494,7 @@ fn authored_atom_population(artifact: ParseArtifact, span_index: SpanIndex, toke
 // ---- the normalized-side index -----------------------------------------------------------------
 
 // One pass over the normalized tree, keyed by occurrence, so each authored atom is answered by a
-// lookup rather than a rescan (DESIGN section 6: a per-atom rescan is the quadratic this refuses).
+// lookup rather than a rescan (gunbc.design_argument::how_to_work: a per-atom rescan is the quadratic this refuses).
 fn occurrence_identity_index(acc: Map<OccurrenceId, Symbol>, node: Node) -> Map<OccurrenceId, Symbol> {
   let here = match conserved_identity_of(node: node) {
     Absent => acc
@@ -529,7 +529,7 @@ fn occurrence_identity_index(acc: Map<OccurrenceId, Symbol>, node: Node) -> Map<
 // -- an unlocated refusal that swallows a module is exactly the silence this check exists to count.
 // THE BYTE RANGE IS v2.std.diagnostic's Extent, declared once there; a local field-isomorphic
 // record (the deleted `type RefusalRange { start: Int, end: Int }`) was a structural nickname --
-// DESIGN 3's one-declaration rule names the SYMBOL's home instead (gunbc.recurring_failure_mode
+// gunbc.design_argument::single_authority's one-declaration rule names the SYMBOL's home instead (gunbc.recurring_failure_mode
 // .nominal_isomorphic_record_admitted_at_sibling_declaration). The slot carries the coproduct
 // parent Extent, not one of its arms: ByteRange is an arm, not a type (review 38602), and the
 // arm is matched where the fields are read.
@@ -1030,7 +1030,7 @@ type TreeConservationState {
 }
 
 // The module's qualified name is read ONCE here and handed to both pools, which previously each
-// re-derived it from the root (DESIGN section 2: one demand, one production).
+// re-derived it from the root (gunbc.design_argument::demand_before_materialization: one demand, one production).
 fn conservation_against_tree(path: String, population: AuthoredAtomPopulation, tree: NormalizedTree, roles: OccurrenceRoles) -> ReferenceConservationReport {
   let index = occurrence_identity_index(acc: empty_map(), node: tree.root)
   let role_index = occurrence_role_index(roles: roles)
