@@ -628,28 +628,32 @@ fn spool_role_directory_shape(kind: SpoolKind, role: SpoolRole) -> SpoolDirector
 type SpoolStore sole_constructor {
   kind: SpoolKind
   instance_root: String
-  partition_uid: Int
+  partition_uid: Optional<Int>
 }
 
 // THE MINT FOR AN UNPARTITIONED SPOOL: takes the kind and instance root. A partitioned kind must NOT be opened
-// through here (its uid would be zero, producing a wrong path); the sealed spool_open_uid is the only mint for
-// a ByPrincipalUid kind.
+// through here; the sealed spool_open_uid is the only mint for a ByPrincipalUid kind.
 fn spool_open(kind: SpoolKind, instance_root: String) -> SpoolStore {
-  SpoolStore { kind: kind, instance_root: instance_root, partition_uid: 0 }
+  SpoolStore { kind: kind, instance_root: instance_root, partition_uid: Absent }
 }
 
 // THE MINT FOR A PARTITIONED SPOOL: takes the kind, instance root, and the principal uid. Only a kind whose
 // declaration says ByPrincipalUid may be opened through here; any other kind is refused (the uid would be
-// meaningless). The path derivation inserts the uid segment from the kind's declaration.
+// meaningless). The uid must be positive (uid 0 is root, not a partition). The path derivation inserts the
+// uid segment from the kind's declaration.
 type SpoolOpenVerdict
   = SpoolOpenReady { store: SpoolStore }
   | SpoolOpenRefused { cause: String }
 
 fn spool_open_uid(kind: SpoolKind, instance_root: String, uid: Int) -> SpoolOpenVerdict {
-  if spool_declaration(kind: kind).partition == ByPrincipalUid {
-    SpoolOpenReady { store: SpoolStore { kind: kind, instance_root: instance_root, partition_uid: uid } }
-  } else {
+  if spool_declaration(kind: kind).partition != ByPrincipalUid {
     SpoolOpenRefused { cause: "the kind does not declare a uid partition; use spool_open" }
+  } else if uid <= 0 {
+    SpoolOpenRefused { cause: "a partitioned spool requires a positive principal uid" }
+  } else if !path_segment_is_safe(raw: to_string(value: uid)) {
+    SpoolOpenRefused { cause: "the rendered uid is not a safe path segment" }
+  } else {
+    SpoolOpenReady { store: SpoolStore { kind: kind, instance_root: instance_root, partition_uid: Present { value: uid } } }
   }
 }
 
@@ -666,7 +670,10 @@ fn spool_root_dir(store: SpoolStore) -> String {
   let base = join([store.instance_root, "/", spool_root_name(kind: store.kind)], "")
   match spool_declaration(kind: store.kind).partition {
     Unpartitioned => base
-    ByPrincipalUid => join([base, "/", to_string(value: store.partition_uid)], "")
+    ByPrincipalUid => match store.partition_uid {
+      Present { value: uid } => join([base, "/", to_string(value: uid)], "")
+      Absent => base
+    }
   }
 }
 

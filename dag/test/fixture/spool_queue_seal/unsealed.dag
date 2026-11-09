@@ -1,6 +1,7 @@
 module test.fixture.spool_queue_seal.unsealed
 
 import std.types { NonEmptyStr, String, Int }
+import std.optional { Optional }
 import gunbc.spool_queue { SpoolKind }
 
 // THE STRIPPED TWIN for test.claim.spool_queue_seal_witness: the SAME records as gunbc.spool_queue SpoolEntryKey and SpoolStore with the
@@ -15,5 +16,5 @@ type SpoolEntryKey {
 type SpoolStore {
   kind: SpoolKind
   instance_root: String
-  partition_uid: Int
+  partition_uid: Optional<Int>
 }

@@ -110,10 +110,10 @@ import gunbc.compute.host_capacity {
   ComputeRelease, ComputeReleased, ComputeNothingToRelease, ComputeReleaseRefused, compute_reserve, compute_release, compute_reservation_wire, compute_memory_ceiling,
   ComputeCapacityStanding, ComputeCapacityStandingRead, ComputeCapacityStandingUnread, compute_capacity_standing, compute_capacity_standing_wire,
   ComputeCapacitySubject, ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved,
-  compute_capacity_subject, compute_capacity_store, compute_release_on, compute_root,
+  compute_capacity_subject, compute_capacity_store, compute_release_on, compute_root, compute_exit_spool_open,
   ComputeCapacityStoreStanding, ComputeCapacityStoreReady, ComputeCapacityStoreUnready,
 }
-import gunbc.spool_queue { SpoolComputeExit, SpoolStore, spool_open_uid, SpoolOpenReady, SpoolOpenRefused }
+import gunbc.spool_queue { SpoolComputeExit, SpoolStore, SpoolOpenReady, SpoolOpenRefused }
 import gunbc.compute.compute_work_records { ComputeWorkRecords, ComputeWorkRecordWritten, ComputeWorkRecordUnwritten, ComputeWorkRecordPresent, ComputeWorkRecordUnread, compute_work_root, compute_work_records, compute_work_dir, compute_work_consumption_write, compute_work_consumption_path, compute_work_log_read, compute_work_log_write, compute_work_log_path }
 import gunbc.compute.compute_producer_lease {
   ComputeProducerLeases, ComputeProducerLeasesReading, ComputeProducerLeasesReady, ComputeProducerLeasesUnready, compute_producer_leases, compute_producer_leases_reading_label, ComputeProducerLeaseAcquired, ComputeProducerLeaseOccupied, ComputeProducerLeaseRefused,
@@ -815,7 +815,7 @@ type ComputeSeatExitSpoolDir
 fn compute_seat_exit_spool_dir(instance: HostDashboardInstance) -> ComputeSeatExitSpoolDir {
   match compute_launching_uid() {
     Absent => ComputeSeatExitSpoolDirUidUnreadable { cause: "/proc/self/status names no effective uid for this provider process" }
-    Present { value: uid } => match spool_open_uid(kind: SpoolComputeExit, instance_root: compute_root(instance: instance) as String, uid: uid) {
+    Present { value: uid } => match compute_exit_spool_open(instance: instance, uid: uid) {
       SpoolOpenReady { store } => ComputeSeatExitSpoolDirResolved { store: store }
       SpoolOpenRefused { cause } => ComputeSeatExitSpoolDirUidUnreadable { cause: cause }
     }
