@@ -684,9 +684,17 @@ test fn a_registration_naming_no_committed_slot_refuses_instead_of_being_dropped
 // at all -- it never read the roster, so it answered materialized_width_for_host regardless of what
 // GitHub held, and would have said five.
 test fn another_hosts_registrations_do_not_widen_this_host() -> Bool {
+  // THE THREE NAMES ARE srv1's COMMITTED SLOTS, not three numbers that happen to look like a prefix.
+  // gunbc.runner.runner_capacity_plan accumulate_decoded_registration drops a registration whose slot
+  // is committed on ANOTHER host and refuses outright when a name matches no committed slot at all, so
+  // a name srv1 has not committed turns this roster into the foreign-name case the row below belongs
+  // to -- and the row read red for a reason that has nothing to do with what it names. The three below
+  // are committed on srv1 under either standing of srv1's width, so the roster is what the row's name
+  // says it is: another host's registrations, handed to this host. The discriminator is untouched --
+  // an observation built from this host's dense prefix would still return three srv3 identities here.
   match observed_github_slot_identities(
     host: operator_host_srv3,
-    roster: roster_of(names: ["srv1-01", "srv1-02", "srv1-03"]),
+    roster: roster_of(names: ["srv1-01", "srv1-02", "srv1-13"]),
   ) {
     GitHubSlotPopulationObserved { identities: ids } => length(ids) == 0
     GitHubSlotPopulationUnreadable { reason: _ } => false
