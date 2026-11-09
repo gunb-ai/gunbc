@@ -117,7 +117,7 @@ fn lbe_call_primitive(_node: Node, _args: List<RuntimeValue>, _env: EvaluationEn
   }
 }
 
-fn lbe_choose_branch(node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
+fn lbe_choose_branch(node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Optional<Node>> {
   Rejected { diagnostics: diagnostics_singleton(d: lbe_runtime_diagnostic(n: node)) }
 }
 
