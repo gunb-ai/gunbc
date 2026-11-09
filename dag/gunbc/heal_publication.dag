@@ -10,7 +10,14 @@ import std.optional { Present, Absent }
 import std.resources { Network }
 import extdeps.cloud.gcp.sts
 import extdeps.cloud.gcp.iam
-import extdeps.cloud.gcp.iam { token_lifetime_wire }
+import extdeps.cloud.gcp.iam {
+  token_lifetime_wire, acquire_impersonated_access, gcp_impersonated_presentation,
+  GcpImpersonatedAccessCredential, GcpImpersonatedAccessAcquired, GcpImpersonatedAccessClockUnread,
+  GcpImpersonatedAccessRefused,
+}
+import std.credential_admission { CredentialPresented, CredentialPresentationRefused, CredentialUseRequirement }
+import std.access { access_refusal_reason }
+import std.measure { nanosecond }
 import extdeps.github.actions { github_actions_runtime }
 import gunbc.auth.heal_publisher_federation {
   heal_publisher_assertion_audience,
@@ -615,22 +622,50 @@ data github_token_env_name: NonEmptyStr = "GITHUB_TOKEN"
 data runner_temp_env_name: NonEmptyStr = "RUNNER_TEMP"
 data heal_publisher_app_key_file_name: String = "heal-publisher-app-key"
 
+// THE CREDENTIAL IS CARRIED, NOT UNPACKED. It stays a GcpImpersonatedAccessCredential -- secret, binding and
+// the validity the provider established from the response's OWN expireTime -- until the one call that spends
+// it. Unpacking to a bare Secret here would discard the expiry, which is the shape DESIGN refuses: "any
+// downstream claim that the credential is valid consumes the returned expiry." The consumer of that claim is
+// the presentation at the spend site below.
 type PublisherCloudCredential
-  = PublisherCloudCredentialMinted { cloud: Secret }
+  = PublisherCloudCredentialMinted { credential: GcpImpersonatedAccessCredential }
   | PublisherCloudCredentialNotMinted { cause: String }
+
+// THE SCOPE THIS PUBLISHER'S ONE REQUEST NEEDS, declared by the consumer that makes the request, not lifted
+// from the provider: the minted credential is spent on exactly one Secret Manager accessVersion read, and
+// that read lives under the cloud-platform scope. It is stated here because the binding judgment compares it
+// (an access token minted for a different axis is refused before the read), and it is the same value the API
+// model already defaults to, so the wire request this replaces is unchanged.
+data heal_publisher_cloud_scope: String = "https://www.googleapis.com/auth/cloud-platform"
+
+// WHAT THE ONE SECRET-MANAGER READ NEEDS, declared by the operation that makes it.
+// required_remaining = 30 s: the credential must still have that much life at the instant of dispatch, which
+// is what one HTTPS accessVersion read costs at the same single-request budget this tree already deploys for
+// its longest GitHub write. It is not tuned to hide the motivating defect -- the specimen that broke
+// publication used 456 s of a 300 s credential, so ANY positive margin refuses it; 30 s is the honest cost of
+// the request rather than a number chosen to pass.
+// skew_margin = 10 s: expireTime is stamped by Google's clock and compared against a reading taken on the
+// runner's own clock before the send, so the two clocks can disagree; this is the disagreement absorbed
+// rather than trusted. It stays well under the 300 s lifetime, so it cannot mask a credential that is
+// minutes dead -- which is precisely the class of failure this whole change exists to stop.
+data heal_publisher_cloud_credential_requirement: CredentialUseRequirement = CredentialUseRequirement {
+  required_remaining: nanosecond(count: 30000000000),
+  skew_margin: nanosecond(count: 10000000000),
+}
 
 // THE CLOUD CREDENTIAL, ACQUIRED AT THE POINT OF USE AND NOWHERE EARLIER. Three calls, each the one the
 // pinned google-github-actions/auth client performs for the same identity: the runner's OIDC sidecar for
 // an assertion, Cloud STS to exchange it for a federated token, and iamcredentials to impersonate the
 // publisher service account for exactly heal_publisher_cloud_token_lifetime. What makes this a fix rather
 // than a relocation is the ORDER: a token's age starts at its own mint, and the mint now sits one call
-// above the Secret Manager read that spends it. The specimen that motivated this (run 41951465805) minted
+// above the Secret Manager read that spends it -- with the presentation that judges the issuer's own expiry
+// between them, so adjacency is not what keeps the credential alive. The specimen that motivated this (run 41951465805) minted
 // at 02:07:18Z inside a workflow step and first used the credential at 02:14:54.435Z, 456 s against a
 // 300 s lifetime, because 273.6 s of interpreter front-end and 71 s of git fetch sat in between. Nothing
 // that can fail before the mint may be moved below it, and nothing here may write the token: it lives in
 // this process's memory only, never in the environment (the step env entry this replaces was masked in
 // the log but real in every child process), never in argv, never in a file, never in a receipt.
-fn heal_publisher_cloud_credential() -> PublisherCloudCredential uses net: Network
+fn heal_publisher_cloud_credential() -> PublisherCloudCredential uses net: Network, clk: std.resources.Clock
 {
   match env_value(name: github_actions_runtime.oidc_request_url_env) {
     Absent =>
@@ -655,14 +690,24 @@ fn heal_publisher_cloud_credential() -> PublisherCloudCredential uses net: Netwo
                 RestRefused { refusal } =>
                   PublisherCloudCredentialNotMinted { cause: concat("HealPublisherFederationRefused: Cloud STS refused the assertion: ", rest_refusal_text(o: refusal)) }
                 RestAnswered { answer: federated } =>
-                  match gcp.IAM.GenerateAccessToken(
-                    access_token: federated.access_token,
-                    target_sa: heal_publisher_service_account,
+                  // THE IMPERSONATION GOES THROUGH THE API MODEL, not the bare operation. `acquire_impersonated_access`
+                  // is the one place that reads the clock BEFORE the send, decodes the response's own `expireTime`
+                  // through the shared RFC 3339 parse, and hands back a credential whose validity is the issuer's
+                  // statement rather than nothing -- calling `gcp.IAM.GenerateAccessToken` here would keep the token
+                  // and throw the expiry away, which is the defect DESIGN names for optional_impersonation and would
+                  // leave the publisher's safety resting on two calls happening to sit next to each other.
+                  match acquire_impersonated_access(
+                    source_token: federated.access_token,
+                    target_service_account: heal_publisher_service_account,
+                    scopes: [heal_publisher_cloud_scope],
                     lifetime: token_lifetime_wire(s: heal_publisher_cloud_token_lifetime),
                   ) {
-                    RestRefused { refusal } =>
+                    GcpImpersonatedAccessClockUnread { detail: d } =>
+                      PublisherCloudCredentialNotMinted { cause: concat("HealPublisherAcquisitionClockUnread: the publisher cannot date its own credential, so it cannot bound its use: ", d) }
+                    GcpImpersonatedAccessRefused { refusal: refusal } =>
                       PublisherCloudCredentialNotMinted { cause: concat("HealPublisherImpersonationRefused: iamcredentials refused the publisher service account: ", rest_refusal_text(o: refusal)) }
-                    RestAnswered { answer: issued } => PublisherCloudCredentialMinted { cloud: issued.access_token }
+                    GcpImpersonatedAccessAcquired { credential: issued } =>
+                      PublisherCloudCredentialMinted { credential: issued }
                   }
               }
           }
@@ -684,15 +729,33 @@ fn heal_publication_publish_for(subject: HealPublicationSubject) -> ProcessExit
             Present { value: temp } =>
               match heal_publisher_cloud_credential() {
                 PublisherCloudCredentialNotMinted { cause } => exit_failure(reason: cause)
-                PublisherCloudCredentialMinted { cloud } =>
-                  match mint_publisher_installation_token(
-                    cloud_access_token: cloud,
-                    key_path: join([temp, "/", heal_publisher_app_key_file_name], "") as NonEmptyStr,
-                    repository_name: subject.repository.name
+                PublisherCloudCredentialMinted { credential: issued } =>
+                  // THE EXPIRY IS CONSUMED HERE, AT THE SPEND -- not at the mint. The credential was carried
+                  // intact precisely so that this call, and nothing upstream, is what decides it is still fit:
+                  // gcp_impersonated_presentation reads the clock again at this instant, judges the issuer's
+                  // stated expiry against the publisher's own requirement, checks the token really belongs to
+                  // the publisher's service account and scope, and only then releases the secret -- into the one
+                  // arm that sends it, this read. So "minted at use" is no longer a claim about how far apart two
+                  // calls happen to be: a credential that cannot survive the read never reaches it, and a token
+                  // minted for any other axis never releases at all. A refusal here publishes nothing.
+                  match gcp_impersonated_presentation(
+                    credential: issued,
+                    required_service_account: heal_publisher_service_account,
+                    required_scopes: [heal_publisher_cloud_scope],
+                    requirement: heal_publisher_cloud_credential_requirement,
                   ) {
-                    PublisherTokenNotMinted { cause } => exit_failure(reason: cause)
-                    PublisherTokenMinted { token } =>
-                      publish_admitted_wet(subject: subject, publisher_token: token, pull_number: pull_number, admitted: admitted, blobs: blobs)
+                    CredentialPresentationRefused { refusal: refusal } =>
+                      exit_failure(reason: concat("HealPublisherCredentialPresentationRefused: the minted credential is not fit for the read it was minted for: ", access_refusal_reason(refusal: refusal)))
+                    CredentialPresented { secret_released_only_by_admission: cloud } =>
+                      match mint_publisher_installation_token(
+                        cloud_access_token: cloud,
+                        key_path: join([temp, "/", heal_publisher_app_key_file_name], "") as NonEmptyStr,
+                        repository_name: subject.repository.name
+                      ) {
+                        PublisherTokenNotMinted { cause } => exit_failure(reason: cause)
+                        PublisherTokenMinted { token } =>
+                          publish_admitted_wet(subject: subject, publisher_token: token, pull_number: pull_number, admitted: admitted, blobs: blobs)
+                      }
                   }
               }
           }

@@ -28,8 +28,8 @@ import gunbc.witness.compiler_gate_workflow { compiler_gate_yml_for }
 import gunbc.witness.witness_floor_workflow { WitnessFloorGenerated, WitnessFloorGenerationRefused, witness_floor_build_step }
 
 import std.types { Bool, List, NonEmptyStr, String, Int }
-import std.measure { byte_size, Minute, minute, second_count }
-import extdeps.cloud.gcp.iam { token_lifetime_wire, token_lifetime_within_maximum }
+import std.measure { byte_size, Minute, minute, second, second_count }
+import extdeps.cloud.gcp.iam { token_lifetime_wire, token_lifetime_within_ordinary_maximum }
 import std.optional { Optional, Present, Absent }
 import std.algebra { for_all, list_head, list_map }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -582,7 +582,14 @@ test fn the_federation_audiences_are_two_spellings_of_one_resource_and_the_lifet
     && heal_publisher_assertion_audience() as String == join(["https://iam.googleapis.com/", resource], "")
     && second_count(s: heal_publisher_cloud_token_lifetime) == 300
     && token_lifetime_wire(s: heal_publisher_cloud_token_lifetime) == "300s"
-    && token_lifetime_within_maximum(s: heal_publisher_cloud_token_lifetime)
+    && token_lifetime_within_ordinary_maximum(s: heal_publisher_cloud_token_lifetime)
+    // The discriminating half. A lifetime just past the ORDINARY hour must be refused: the ceiling that
+    // accepts it exists in this model (default_token_lifetime.max_seconds, the CONDITIONAL twelve-hour
+    // extended maximum reachable only under constraints/iam.allowServiceAccountCredentialLifetimeExtension),
+    // so a predicate named for the maximum that checked that instead would pass this value -- and the
+    // publisher, whose service account that constraint is not known to name, would be promised a credential
+    // Google refuses to issue.
+    && !token_lifetime_within_ordinary_maximum(s: second(count: 3601))
 }
 
 

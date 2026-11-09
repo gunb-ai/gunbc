@@ -397,8 +397,21 @@ fn token_lifetime_wire(s: Second) -> String {
   to_string(second_count(s: s)) + "s"
 }
 
-fn token_lifetime_within_maximum(s: Second) -> Bool {
-  (second_count(s: s) as Int) <= default_token_lifetime.max_seconds
+// THE ORDINARY MAXIMUM, which Google applies UNCONDITIONALLY: a service account the organization-policy
+// constraint constraints/iam.allowServiceAccountCredentialLifetimeExtension does not name is refused above
+// one hour, and this tree represents no such allowlist. It is therefore the only ceiling decidable without
+// observing org policy, and the only one a predicate may claim. `default_token_lifetime` above is upstream's
+// conflation of the default WITH the ordinary maximum, and its `max_seconds: 43200` is the CONDITIONAL
+// extended ceiling reachable only under that constraint (DESIGN's worked example, the token-lifetime bullet,
+// names exactly this: the condition is "not universal", so checking max_seconds and calling the result
+// "within_maximum" would assert as deduced what is only inferred).
+data ordinary_token_lifetime_seconds: Nat = 3600
+
+// Named for what it checks. A lifetime over the ordinary maximum is not thereby invalid -- it is valid for
+// an account the constraint does name -- so this refuses nothing on its own; it is the ceiling a consumer
+// states when it will not depend on org policy. `token_lifetime_wire`'s sibling, same single home.
+fn token_lifetime_within_ordinary_maximum(s: Second) -> Bool {
+  second_count(s: s) <= ordinary_token_lifetime_seconds
 }
 
 type GcpGenerateAccessToken200Body {
@@ -1015,6 +1028,14 @@ fn gcp_impersonated_presentation(
     decl_ref(module_path: "test.claim.credential_validity_witness", decl_name: "presentation_releases_the_secret_only_when_admitted"),
     decl_ref(module_path: "test.claim.credential_validity_witness", decl_name: "a_stale_credential_is_refused_and_the_operation_never_runs"),
     decl_ref(module_path: "test.claim.credential_validity_witness", decl_name: "a_wrong_binding_is_refused_and_the_operation_never_runs"),
+    // WHY THIS CALLER QUALIFIES: it is the credential's ONLY consumer, it matches CredentialPresented and
+    // sends in the same arm -- the released secret goes straight into the one Secret Manager read (inside
+    // mint_publisher_installation_token) that the mint exists to authorize, with no binding, no retention
+    // and no second send -- and it asks for the SAME service account and scopes the credential was minted
+    // for, so admission judges the request that actually follows. The purpose it serves is the publisher's
+    // own: mint at use, spend immediately, never park a credential across the reconcile pass that expired
+    // the runner-step token this replaces (run 41951465805: 456 s against a 300 s lifetime).
+    decl_ref(module_path: "gunbc.heal_publication", decl_name: "heal_publication_publish_for"),
   ]
 {
   present_credential(
