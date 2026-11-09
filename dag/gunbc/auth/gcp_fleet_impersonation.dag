@@ -1,0 +1,68 @@
+module gunbc.auth.gcp_fleet_impersonation
+
+// THE FLEET APPLIES' SHARED HELPERS FOR SPENDING AN IMPERSONATED CREDENTIAL AT USE.
+//
+// The three-leg federation itself is NOT here -- it is the single authority
+// gunbc.auth.federated_workload_credential, which heal's publisher and the fleet's iam-bootstrap,
+// iam-converge and branch-grant identities all call with their own identity. What IS here is the two things
+// the fleet apply steps share but heal's publisher does not: the requirement each fleet estate write puts on
+// its credential at the spend, and ONE neutral rendering of the shared mint's refusal arms into a single
+// operator line. heal keeps its own seven per-leg cause prefixes; the fleet folds every leg into one message,
+// and this is the one place that fold is written (gunbc.design_argument::single_authority -- one plumbing,
+// two vocabularies). Neither helper presents a credential or reads the sealed secret; the presentation stays
+// at each consumer, beside the operation it owns.
+
+import std.types { String }
+import std.measure { nanosecond }
+import std.credential_admission { CredentialUseRequirement }
+import gunbc.auth.federated_workload_credential {
+  FederatedWorkloadCredential,
+  FederatedWorkloadCredentialMinted,
+  FederatedWorkloadCredentialLifetimeBeyondOrdinary,
+  FederatedWorkloadCredentialAssertionEndpointMissing,
+  FederatedWorkloadCredentialAssertionAuthMissing,
+  FederatedWorkloadCredentialAssertionRefused,
+  FederatedWorkloadCredentialExchangeRefused,
+  FederatedWorkloadCredentialClockUnread,
+  FederatedWorkloadCredentialImpersonationRefused,
+}
+
+// WHAT A FLEET ESTATE WRITE REQUIRES OF ITS CREDENTIAL AT THE SPEND. This is a FLOOR, not a sizing of the
+// reconcile: `required_remaining` is the shortest life the credential may still have when the write BEGINS, and
+// it rejects a credential that is already expired or nearly so at that instant (a short mint, or a clock
+// disagreement past the skew margin) -- never tuned to wave a stale token through. That the credential SURVIVES
+// the reconcile is NOT established here: the mint hands it its full lifetime at the write, and the estate's
+// actuation is bounded by that same lifetime -- the waits cannot outlast the token, because past its lifetime a
+// read is refused as unreadable and the create is never reissued (gunbc.auth.gcp_iam_converge_run, review 81321).
+// So the floor only has to refuse an already-dead credential; the bound that keeps it alive to the last write is
+// the lifetime itself, spent after the decision. skew_margin absorbs the disagreement between Google's expireTime
+// clock and the runner clock the presentation reads.
+data fleet_impersonated_credential_requirement: CredentialUseRequirement = CredentialUseRequirement {
+  required_remaining: nanosecond(count: 60000000000),
+  skew_margin: nanosecond(count: 10000000000),
+}
+
+// THE SHARED MINT'S REFUSAL, FOLDED INTO ONE OPERATOR LINE. The fleet apply steps have no per-leg vocabulary of
+// their own (unlike heal, which keeps seven distinct prefixes), so every leg the shared mint refuses becomes one
+// sentence here. The refusal DETAIL is withheld on this credential path -- naming the leg is enough for the
+// operator, and echoing a Google refusal body onto a credential path is what the redaction rule forbids. The
+// Minted arm is unreachable from any caller that folds (it presents on Minted), so it renders a neutral line.
+fn fleet_federated_mint_cause_text(result: FederatedWorkloadCredential) -> String {
+  match result {
+    FederatedWorkloadCredentialMinted { credential: _ } => "the credential was minted; this fold runs only on a refusal"
+    FederatedWorkloadCredentialLifetimeBeyondOrdinary {} =>
+      "the federation was refused before any send: the requested lifetime is past the ceiling Google grants without an organization-policy constraint this runner cannot observe; nothing was exchanged"
+    FederatedWorkloadCredentialAssertionEndpointMissing {} =>
+      "ACTIONS_ID_TOKEN_REQUEST_URL is unset, so the runner has no sidecar to mint the assertion the federation starts from"
+    FederatedWorkloadCredentialAssertionAuthMissing {} =>
+      "ACTIONS_ID_TOKEN_REQUEST_TOKEN is unset, so the sidecar at that URL cannot be authenticated to"
+    FederatedWorkloadCredentialAssertionRefused { refusal: _ } =>
+      "the runner sidecar refused the OIDC assertion (its detail is redacted on this credential path)"
+    FederatedWorkloadCredentialExchangeRefused { refusal: _ } =>
+      "Cloud STS refused the token exchange (its detail is redacted on this credential path)"
+    FederatedWorkloadCredentialClockUnread { detail: d } =>
+      concat("the credential cannot be dated, so its use cannot be bounded: ", d)
+    FederatedWorkloadCredentialImpersonationRefused { refusal: _ } =>
+      "iamcredentials refused the service account (its detail is redacted on this credential path)"
+  }
+}

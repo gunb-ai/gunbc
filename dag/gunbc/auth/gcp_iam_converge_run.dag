@@ -2,7 +2,14 @@ module gunbc.auth.gcp_iam_converge_run
 
 import gunbc.auth.approval_run_identity
 
-import gunbc.auth.approved_gcp_access { approved_gcp_access_for_request, ApprovedGcpAccessReady, ApprovedGcpAccessRefused }
+import gunbc.auth.approved_gcp_access { approved_gcp_admission_for_request, ApprovedGcpAdmitted, ApprovedGcpDenied }
+import gunbc.auth.gcp_iam_converge_federation { gcp_iam_observe_wif_provider_resource }
+import gunbc.auth.federated_workload_credential { federated_workload_credential, FederatedWorkloadCredentialMint, FederatedWorkloadCredentialMinted }
+import gunbc.auth.gcp_fleet_impersonation { fleet_impersonated_credential_requirement, fleet_federated_mint_cause_text }
+import extdeps.cloud.gcp.iam { gcp_impersonated_presentation }
+import extdeps.cloud.gcp.gcp { cloud_platform_scope, wif_assertion_audience, wif_exchange_audience }
+import std.credential_admission { CredentialPresented, CredentialPresentationRefused }
+import std.access { access_refusal_reason }
 
 import std.types { Int, List, NonEmptyStr, String, Secret, Bool, Timestamp }
 import std.measure { Second, second, second_count, minute_count }
@@ -28,7 +35,7 @@ import gunbc.auth.gcp_operation_wait { iam_converge_token_lifetime }
 import gunbc.auth.gcp_iam_converge {
   GcpIamEstateDiff, GcpIamEstatePlan, GcpIamEstateNoop, GcpIamEstateApply, GcpIamEstatePartialNoop, GcpIamEstateRefused, estate_refused_texts,
   GcpIamRequest, GcpIamRequested, GcpIamUnrequestable,
-  gcp_iam_converge_request, observe_and_plan_estate, diff_targets, execute_approved_estate,
+  gcp_iam_converge_request, observe_and_plan_estate, diff_targets, execute_approved_estate, iam_converge_service_account,
 }
 
 // ── THE CONVERGING RUN (fleet-converge mode gcp_iam_converge, its own job on srv1) ────────────
@@ -107,9 +114,11 @@ fn gcp_iam_converge_step_timeout_minutes() -> Int {
   )))
 }
 
-// THE ACTUATION TOKEN'S VARIABLE. The workflow's impersonating auth step publishes it to the apply
-// step only; the request step never has it in its environment.
-data iam_converge_token_env: NonEmptyStr = "IAM_CONVERGE_ACCESS_TOKEN"
+// THE SCOPE THE ESTATE WRITE IS SPENT ON, declared by the consumer that makes the request and named by BOTH
+// sides of the binding judgment (the mint's `scopes` and the presentation's `required_scopes`), so they cannot
+// be edited apart. The URI spelling is read from the one authority, extdeps.cloud.gcp.gcp::cloud_platform_scope
+// (gunbc.design_argument::single_authority).
+data iam_converge_cloud_scope: String = cloud_platform_scope as String
 
 // THE APPROVAL OUTPUT: written to this step's GITHUB_OUTPUT by exactly one arm below, so the
 // workflow's impersonating step reads it as steps.<request>.outputs.<name>. The apply step does not
@@ -122,11 +131,6 @@ fn observe_token() -> Secret? {
     AccessTokenUpsertRequired { plan: _ } => none
     AccessTokenEnsureRefused { reason: _ } => none
   }
-}
-
-fn converge_token() -> Secret? {
-  let t = actions_variable_trimmed(name: iam_converge_token_env)
-  if t == "" { none } else { Present { value: t as Secret } }
 }
 
 // THE ATTEMPT IS THE RUN AND ITS ATTEMPT NUMBER (HOLD review 5326329930, finding 3). GitHub keeps
@@ -239,14 +243,49 @@ fn readback_converged(observe: Secret) -> ProcessExit
 // effects are executed (gunbc.auth.gcp_iam_converge execute_approved_estate): request.subject is the
 // approved diff, because its revision is the approved one.
 fn apply_under_recorded_approval(request: AuthorizationRequest<GcpIamEstateDiff>, observe: Secret) -> ProcessExit {
-  match approved_gcp_access_for_request(request: request, token_variable: iam_converge_token_env) {
-    ApprovedGcpAccessRefused { reason } => exit_failure(reason: concat("gcp iam converge: ", reason))
-    ApprovedGcpAccessReady { authorization: _, token } => {
-      let refused = execute_approved_estate(d: request.subject, token: token)
-      if refused != "" {
-        exit_failure(reason: concat("gcp iam converge: an approved effect refused; nothing after it was applied: ", refused))
-      } else { readback_converged(observe: observe) }
-    }
+  match approved_gcp_admission_for_request(request: request) {
+    ApprovedGcpDenied { reason } => exit_failure(reason: concat("gcp iam converge: ", reason))
+    ApprovedGcpAdmitted { authorization: _ } =>
+      // MINT AT USE, THEN SPEND AT THE ADAPTER. The estate token is minted HERE, after the minutes-long
+      // compile and after the approval is re-admitted, and NEVER read from a runner step output: the old
+      // wif_auth_iam_converge step federated a 600 s token ~11 min before this line first used it, which is
+      // the ACCESS_TOKEN_EXPIRED class #16160 fixed for heal and that this closes for the fleet. The mint is
+      // the ONE shared authority (gunbc.auth.federated_workload_credential), handed the iam-converge identity only.
+      let mint_result = federated_workload_credential(
+        mint: FederatedWorkloadCredentialMint {
+          assertion_audience: wif_assertion_audience(gcp_iam_observe_wif_provider_resource()),
+          exchange_audience: wif_exchange_audience(gcp_iam_observe_wif_provider_resource()),
+          service_account: iam_converge_service_account,
+          scope: iam_converge_cloud_scope,
+          lifetime: iam_converge_token_lifetime,
+        }
+      )
+      match mint_result {
+        FederatedWorkloadCredentialMinted { credential: issued } =>
+          // THE EXPIRY IS CONSUMED HERE, AT THE SPEND, not at the mint: gcp_impersonated_presentation reads the
+          // clock at this instant, judges the issuer's own expireTime against the estate's requirement, and only
+          // then releases the secret into THE ONE ARM THAT SENDS IT -- the estate execution below, invoked in this
+          // same arm (the language refuses a generic helper taking the operation, so this adapter owns and
+          // invokes its operation here; gunbc.integration_concern). A credential that cannot survive the write
+          // never releases, and one minted for any other service account or scope never releases at all.
+          match gcp_impersonated_presentation(
+            credential: issued,
+            required_service_account: iam_converge_service_account,
+            required_scopes: [iam_converge_cloud_scope],
+            requirement: fleet_impersonated_credential_requirement,
+          ) {
+            CredentialPresentationRefused { refusal: refusal } =>
+              exit_failure(reason: concat("gcp iam converge: the minted credential is not fit for the estate write it was minted for: ", access_refusal_reason(refusal: refusal)))
+            CredentialPresented { secret_released_only_by_admission: token } => {
+              let refused = execute_approved_estate(d: request.subject, token: token)
+              if refused != "" {
+                exit_failure(reason: concat("gcp iam converge: an approved effect refused; nothing after it was applied: ", refused))
+              } else { readback_converged(observe: observe) }
+            }
+          }
+        _ =>
+          exit_failure(reason: concat("gcp iam converge: the mint-at-use refused the iam-converge federation: ", fleet_federated_mint_cause_text(result: mint_result)))
+      }
   }
 }
 
