@@ -3,7 +3,7 @@ module test.claim.c_roadmap2_attempt_name_witness
 import std.types { String, NonEmptyStr }
 import std.algebra { string_contains }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import gunbc.roadmap.roadmap_attempt_metering { MeteredRole, MeteredWorker, MeteredReviewer, MeteredAuditor, MeteredSupervisor, metered_role_key, metering_launch_entry_name }
+import gunbc.roadmap.roadmap_attempt_metering { MeteredRole, MeteredWorker, MeteredReviewer, MeteredAuditor, metered_role_key, metering_launch_entry_name }
 import gunbc.roadmap.roadmap_attempt_metering_slots { attempt_metering_slots }
 import gunbc.roadmap.roadmap_attempt_state_store { AttemptMeteringRecordFile, AttemptMeteringRosterSealed, AttemptMeteringLaunch, AttemptRequestBindingFile, attempt_state_member_name }
 import gunbc.roadmap.roadmap_event_snapshot_census { snapshot_census_receipt_slots }
@@ -57,7 +57,6 @@ data reviewer_launch_name: String = "metering-launch.reviewer.28.9f8e7d6c5b4a321
 // THE AUDITOR LAUNCH, exactly as srv1 spells it: no token-criterion stem, one length prefix before the head.
 data auditor_launch_name: String = "metering-launch.auditor.40.ffffffffffffffffffffffffffffffffffffffff.json"
 data worker_launch_name: String = "metering-launch.worker.json"
-data supervisor_launch_name: String = "metering-launch.supervisor.7.json"
 
 test fn the_launch_entry_name_is_the_name_srv1_holds() -> ProcessExit {
   names_agree(cases: [
@@ -75,11 +74,6 @@ test fn the_launch_entry_name_is_the_name_srv1_holds() -> ProcessExit {
       label: "worker launch entry",
       actual: metering_launch_entry_name(role: MeteredWorker),
       expected: worker_launch_name,
-    },
-    NameCase {
-      label: "supervisor launch entry",
-      actual: metering_launch_entry_name(role: MeteredSupervisor { turn: 7 }),
-      expected: supervisor_launch_name,
     },
   ])
 }

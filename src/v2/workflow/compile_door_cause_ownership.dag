@@ -216,6 +216,11 @@ data known_frontier_causes: List<CauseOwnership> = [
     flip_trigger: "body-lowering stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-10 at fatal grain by the v2.workflow.v2_native_route census over the lane's source roots dag + src/v2 (3 files, all under v2.test.* homes)"
   },
   CauseOwnership {
+    cause: ^body_lowering_reason_statement_let_in_tail_position,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "body-lowering stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Authored 2026-10-29 with the statement-position fix: this cause REPLACES body_lowering_reason_let_body_not_reachable_from_node where a statement `let` ENDS a spine -- a binding with nothing after it to bind is a module error, so it is refused at the let itself -- and the count is this census's entry for it over the lane's source roots dag + src/v2"
+  },
+  CauseOwnership {
     cause: ^body_lowering_reason_statement_spine_headless,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "body-lowering stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-10 at fatal grain by the v2.workflow.v2_native_route census over the lane's source roots dag + src/v2 (1 file: dag/gunbc/discovery_census.dag)"

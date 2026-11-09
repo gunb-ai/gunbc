@@ -1666,6 +1666,7 @@ data equality_wall_three_site_measure_stopgap_interim: IntegrationConcern = Inte
     },
     tail: [],
   },
+  disposition: Open,
 }
 
 data host_effect_apply_witness_import_block_absent: IntegrationConcern = IntegrationConcern {
@@ -1693,6 +1694,7 @@ data host_effect_apply_witness_import_block_absent: IntegrationConcern = Integra
     },
     tail: [],
   },
+  disposition: Open,
 }
 
 data roadmap_attempt_metering_plain_head_refusal: IntegrationConcern = IntegrationConcern {

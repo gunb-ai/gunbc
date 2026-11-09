@@ -12,15 +12,23 @@ import gunbc.clock_read { clock_now_probed_at }
 import gunbc.command_runner { run_shell_command_capture }
 import extdeps.github.workflow_runs { WorkflowRun }
 import gunbc.fleet.fleet_converge_producer_run { ProducerRunObserved, ProducerRunAbsent, ProducerRunUnreadable, fleet_converge_producer_run_observed, FleetConvergeProducerRunSelection, fleet_converge_producer_run_select }
-import gunbc.host.running_os { RunningOsReading, RunningOsUnobserved }
+import gunbc.host.running_os { RunningOsReading }
+import gunbc.host.per_boot_console_pin { CheckedHostKey }
 import gunbc.host.running_os_receipt {
   RunningOsReceiptProducer, RunningOsReceiptSource, running_os_receipt_producer_of_run, RunningOsReceiptAdmitted, RunningOsReceiptRefused, running_os_receipt_reading, running_os_receipt_refusal_text,
 }
 
 data running_os_receipt_download_root: String = "target/running-os-receipt-read"
 
-fn running_os_receipt_unobserved(step: String, cause: String) -> RunningOsReading {
-  RunningOsUnobserved { cause: join(["running-OS receipt read, ", step, ": ", cause], "") }
+// WHAT ANOTHER JOB OBTAINS FROM A BOOT RUN: the running-OS reading and the checked host key of the boot it
+// observed (gunbc.host.running_os_receipt), or the located reason it obtained neither. A host-directed leg that
+// authenticates the host by its per-boot pin needs both from ONE admitted receipt, so they are not two reads.
+type RunningOsReceiptObservation
+  = RunningOsReceiptRead { reading: RunningOsReading, host_key: CheckedHostKey }
+  | RunningOsReceiptUnread { cause: String }
+
+fn running_os_receipt_unobserved(step: String, cause: String) -> RunningOsReceiptObservation {
+  RunningOsReceiptUnread { cause: join(["running-OS receipt read, ", step, ": ", cause], "") }
 }
 
 // THE LIVE READ, and the only route by which another job obtains a host's running-OS reading: SELECT the newest
@@ -40,7 +48,7 @@ fn running_os_receipt_producer_select(source: RunningOsReceiptSource, runs: List
   fleet_converge_producer_run_select(runs: runs, mode: source.mode, host: running_os_receipt_producer_title_host(source: source))
 }
 
-fn running_os_receipt_observed(source: RunningOsReceiptSource, token: Secret) -> RunningOsReading {
+fn running_os_receipt_observed(source: RunningOsReceiptSource, token: Secret) -> RunningOsReceiptObservation {
   match fleet_converge_producer_run_observed(mode: source.mode, host: running_os_receipt_producer_title_host(source: source), token: token) {
     ProducerRunAbsent { cause: c } => running_os_receipt_unobserved(step: "producer run", cause: c)
     ProducerRunUnreadable { cause: c } => running_os_receipt_unobserved(step: "producer run", cause: c)
@@ -58,7 +66,7 @@ fn running_os_receipt_download_dir(run: GitHubWorkflowRunId, read_at: Timestamp)
   join([running_os_receipt_download_root, github_workflow_run_id_wire_text(id: run), read_at], "/")
 }
 
-fn running_os_receipt_of_run(source: RunningOsReceiptSource, run: GitHubWorkflowRunId, producer: RunningOsReceiptProducer, read_at: Timestamp) -> RunningOsReading {
+fn running_os_receipt_of_run(source: RunningOsReceiptSource, run: GitHubWorkflowRunId, producer: RunningOsReceiptProducer, read_at: Timestamp) -> RunningOsReceiptObservation {
   let dir = running_os_receipt_download_dir(run: run, read_at: read_at)
   let download = gh_run_download_command(run_id: github_workflow_run_id_wire_text(id: run), repo: gunbc_repository.full_name, artifact: source.artifact, dir: dir)
   match run_shell_command_capture(command: download, transport: LocalExec) {
@@ -68,14 +76,14 @@ fn running_os_receipt_of_run(source: RunningOsReceiptSource, run: GitHubWorkflow
   }
 }
 
-fn running_os_receipt_of_downloaded(source: RunningOsReceiptSource, producer: RunningOsReceiptProducer, dir: String) -> RunningOsReading {
+fn running_os_receipt_of_downloaded(source: RunningOsReceiptSource, producer: RunningOsReceiptProducer, dir: String) -> RunningOsReceiptObservation {
   let path = join([dir, source.file_name], "/")
   let read = Filesystem.Read(path: path)
   match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
     FilesystemReadRefused { error } => running_os_receipt_unobserved(step: "receipt file", cause: join([path, ": ", error], ""))
     FilesystemReadSucceeded { content } =>
       match running_os_receipt_reading(text: content, fetched_from: producer) {
-        RunningOsReceiptAdmitted { reading: r } => r
+        RunningOsReceiptAdmitted { reading: r, host_key: k } => RunningOsReceiptRead { reading: r, host_key: k }
         RunningOsReceiptRefused { refusal: f } => running_os_receipt_unobserved(step: "receipt", cause: running_os_receipt_refusal_text(refusal: f))
       }
   }

@@ -10,7 +10,7 @@ import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
 import v2.compiler.tokenize { tokenize_prepared }
 
 import v2.std.grammar { parse_production_emitted_identity_optional }
-import v2.std.diagnostic { Accepted, DeclarationLocus, InvariantPortLocus, Locus, NodeLocus, Rejected, SourcePortLocus, Textual, diagnostics_fatal }
+import v2.std.diagnostic { Accepted, Rejected }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, Symbol }
 import std.optional { Absent, Optional, Present }
@@ -20,8 +20,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // AN ELSE-LESS `if` PARSES ONE WAY AND HAS NO VALUE (operator ruling 2026-10-03, for this case
 // only; v2.extdeps.languages.dag dag_grammar_if_expr_expr). The ruling's controls, each at ONE
 // interface and paying ONE parse (gunbc.design_argument::single_authority, the witness rule): both inputs parse to the one
-// else-less if_expr route; at statement position the guard reader admits it; where a value is owed
-// the if reader refuses it as body_lowering_reason_else_less_if_unlowered, located at the `if`. The
+// else-less if_expr route; at statement position the guard reader admits it; at value position the if
+// reader `body_lower_if_expr` ADMITS it and lowers it to the else-less Branch -- the `if` reader does
+// NOT refuse a well-formed else-less `if` it is handed. The value it owes is refused by the value-owing
+// CONSUMER, not at the `if`: that consumer refusal is guarded on the target/serialize route by the
+// closure-emission member row
+// @ref(v2.test.claim.self_host.closure_emission::a_closure_member_whose_body_does_not_lower_is_its_own_typed_refusal_holds)
+// (its `ce_refusing_fn` is the SAME SHAPE: a value-position else-less `if` with an expression arm,
+// `if p { p }`), which refuses with `target_value_expr_reason_branch_else_less_as_value`. The
 // readers are handed the parsed node rather than reached through a whole normalize. The real path is
 // executed by v2.test.claim.parse.closure_parse_batch_two an_early_return_guard_parses_and_lowers_holds
 // (a guard specimen normalized end to end), which is the pairing this file's supplied nodes owe.
@@ -40,7 +46,7 @@ fn elif_parse_as(text: String, production: Symbol) -> Optional<Node> {
       match prepared {
         PreparedVoidGrammar => Absent
         PreparedModeled { modeled: modeled } =>
-          match tokenize(text: text, file: ^elif_probe, rules: dag_lex()) {
+          match tokenize_prepared(text: text, file: ^elif_probe, prepared: dag_prepared_lex()) {
             Rejected { diagnostics: _ } => Absent
             Accepted { value: token_stream, diagnostics: _ } =>
               match parse_production_prepared(
@@ -98,16 +104,6 @@ fn elif_none() -> Optional<Node> { Absent }
 
 fn elif_some(node: Node) -> Optional<Node> { Present { value: node } }
 
-fn elif_locus_is_the_if(at: Locus) -> Bool {
-  match at {
-    NodeLocus { anchor: anchor } => elif_is_else_less_if(node: anchor.at.node)
-    SourcePortLocus { anchor: _, file: _, extent: _ } => false
-    Textual { file: _, extent: _ } => false
-    InvariantPortLocus { anchor: _, invariant: _ } => false
-    DeclarationLocus { declaration: _ } => false
-  }
-}
-
 fn elif_one_route(parsed: Optional<Node>) -> Bool {
   match parsed {
     Present { value: tree } => elif_count_else_less_ifs(root: tree) == 1
@@ -131,7 +127,11 @@ fn elif_guard_admitted(parsed: Optional<Node>) -> Bool {
   }
 }
 
-fn elif_value_refuses_at_the_if(parsed: Optional<Node>) -> Bool {
+// The value-position else-less `if` is ADMITTED by the if reader `body_lower_if_expr` (it lowers to the
+// else-less Branch); it is NOT refused at the `if`. The value it owes is the CONSUMER's to refuse, guarded
+// on the target/serialize route by the closure-emission member row (see the file header @ref). This row
+// goes red if the if reader ever refuses this well-formed shape again -- a real discriminant, not a tautology.
+fn elif_value_if_expr_admits(parsed: Optional<Node>) -> Bool {
   match parsed {
     Absent => false
     Present { value: tree } =>
@@ -139,10 +139,8 @@ fn elif_value_refuses_at_the_if(parsed: Optional<Node>) -> Bool {
         Absent => false
         Present { value: if_shell } =>
           match body_lower_if_expr(shell: if_shell) {
-            Accepted { value: _, diagnostics: _ } => false
-            Rejected { diagnostics: d } =>
-              let fatal = diagnostics_fatal(d: d)
-              fatal.reason == ^body_lowering_reason_else_less_if_unlowered && elif_locus_is_the_if(at: fatal.at)
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
           }
       }
   }
@@ -162,6 +160,6 @@ test fn statement_position_guard_is_admitted() -> Bool {
   elif_guard_admitted(parsed: elif_parse_as(text: elif_guard_source, production: ^dag_production_fn_body))
 }
 
-test fn value_position_else_less_if_refuses_at_the_if() -> Bool {
-  elif_value_refuses_at_the_if(parsed: elif_parse_as(text: elif_value_source, production: ^dag_production_expr))
+test fn value_position_else_less_if_is_admitted_by_the_if_reader() -> Bool {
+  elif_value_if_expr_admits(parsed: elif_parse_as(text: elif_value_source, production: ^dag_production_expr))
 }

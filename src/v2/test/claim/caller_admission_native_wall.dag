@@ -34,7 +34,7 @@
 
 module v2.test.claim.caller_admission_native_wall
 
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, empty_map }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrencePending, OccurrenceSynthetic }
 import v2.compiler.infer { InferAdmissionCallerKey, infer_admission_judge_entries, infer_admit_clause_entries, infer_admit_record_check, infer_caller_admission_application_diags, infer_caller_admission_judged_diags }
 import v2.std.node_query { declaration_reference_path_optional }
@@ -307,7 +307,7 @@ test fn a_declared_callee_whose_arrow_is_unreadable_refuses_holds() -> Bool {
     application: wall_unreadable_callee_application(),
     caller: optional_present(value: InferAdmissionCallerKey { decl_name: ^outside_caller }),
     module_symbol: optional_present(value: ^bcb),
-    entries: [],
+    entries: empty_map(),
     declarations: wall_index_with_unreadable_arrow()
   ) {
     None => false
@@ -336,7 +336,7 @@ test fn a_marked_callee_whose_declaration_is_unavailable_refuses_holds() -> Bool
     application: wall_unreadable_callee_application(),
     caller: optional_present(value: InferAdmissionCallerKey { decl_name: ^outside_caller }),
     module_symbol: optional_present(value: ^bcb),
-    entries: [],
+    entries: empty_map(),
     declarations: empty_symbol_index()
   ) {
     None => false
@@ -361,7 +361,7 @@ test fn an_unmarked_callee_is_not_judged_holds() -> Bool {
     application: wall_unmarked_application(),
     caller: optional_present(value: InferAdmissionCallerKey { decl_name: ^outside_caller }),
     module_symbol: optional_present(value: ^bcb),
-    entries: [],
+    entries: empty_map(),
     declarations: empty_symbol_index()
   ) {
     None => true
@@ -388,7 +388,7 @@ test fn a_roster_primitive_call_callee_imposes_no_admission_holds() -> Bool {
     application: wall_roster_concat_application(),
     caller: optional_present(value: InferAdmissionCallerKey { decl_name: ^outside_caller }),
     module_symbol: optional_present(value: ^bcb),
-    entries: [],
+    entries: empty_map(),
     declarations: empty_symbol_index()
   ) {
     None => true
