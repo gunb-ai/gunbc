@@ -419,6 +419,8 @@ data megarac_ui_probes: List<MegaRacUiProbe> = [
   MegaRacUiProbe { name: "i18n_init" as NonEmptyStr, octets: ui_octets_of("i18n.init(") },
   MegaRacUiProbe { name: "set_lng" as NonEmptyStr, octets: ui_octets_of("setLng") },
   MegaRacUiProbe { name: "preload" as NonEmptyStr, octets: ui_octets_of("preload") },
+  MegaRacUiProbe { name: "select_lang" as NonEmptyStr, octets: ui_octets_of("select_lang") },
+  MegaRacUiProbe { name: "lang_en_us" as NonEmptyStr, octets: ui_octets_of("en-us") },
 ]
 
 data megarac_ui_data_main_name_octets: List<Int> = ui_octets_of("data-main")

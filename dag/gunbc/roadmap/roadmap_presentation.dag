@@ -31,11 +31,11 @@ import gunbc.roadmap.roadmap_sizing {
 }
 import gunbc.roadmap.roadmap_status {
   RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, TicketLine,
-  item_superseded_by, item_is_done, signoff_accepts,
+  item_superseded_by, item_is_done,
   line_ticket, TicketFields, TicketUpdate,
 }
 import gunbc.roadmap.roadmap_spawner {
-  node_is_spawnable, node_is_upcoming, node_is_frontier_done, node_closes_dependency,
+  node_is_spawnable, node_is_upcoming, node_closes_dependency,
   ReadinessGraph, readiness_graph, node_readiness_in_graph,
 }
 import gunbc.roadmap.roadmap_launch_admission {
@@ -244,8 +244,8 @@ type ActionView {
 // typed authority: Ready by gunbc.roadmap.roadmap_spawner.node_is_spawnable; Live by
 // gunbc.roadmap.roadmap_dispatch_actuator.DispatchLiveSession keyed through the node-grain tmux session
 // name; Attempted by dispatch_attempt_refs keyed through the attempt branch; Proposed and Landed by
-// extdeps.github.pulls.PullRequest observations once the missing typed binding exists; Done by
-// RoadmapNode.signoff; Superseded by SupersededLine.by. This note records the join ruling only —
+// extdeps.github.pulls.PullRequest observations once the missing typed binding exists; Done by a
+// live receipt in the acceptance event history; Superseded by SupersededLine.by. This note records the join ruling only —
 // not an executable roster, not a re-declaration, never to be enumerated as workflow status data.
 // The facts have no total order and several may hold at once (Live and Landed, Attempted and
 // Superseded, Landed but not Done); a UI may order or group them for presentation only. Proposed
@@ -267,13 +267,12 @@ type WorkLifecycle
   | DoneLifecycle
   | SupersededLifecycle
 
+// A node DEFINITION carries no acceptance, so its own facts never reach DoneLifecycle: done is
+// read from the acceptance event history, which removes an accepted node from the plan and
+// supplies it to omitted_node_lifecycle as `accepted`.
 fn work_lifecycle(rn: RoadmapNode, merged: List<Int>) -> WorkLifecycle {
   if item_superseded_by(item: rn.line) == "" {
-    if signoff_accepts(s: rn.signoff) {
-      DoneLifecycle
-    } else {
-      if item_is_done(item: rn.line, merged: merged) { ReviewLifecycle } else { OpenLifecycle }
-    }
+    if item_is_done(item: rn.line, merged: merged) { ReviewLifecycle } else { OpenLifecycle }
   } else {
     SupersededLifecycle
   }
@@ -309,12 +308,12 @@ fn lifecycle_chip_renders(l: WorkLifecycle) -> Bool {
 // Dispatchable -- the same value the launch admission refuses with -- and SchedulingNotReady
 // carries the NotReady value's missing facts, so the row says "not ready: missing centering,
 // contract" in the dispatcher's own words. The former Upcoming (unmet dependencies) and Unplanned
-// (unsized) arms were two of those facts read separately; they are gaps now. Done and Superseded
-// stay separate positions because a closed or replaced node is not waiting on anything.
+// (unsized) arms were two of those facts read separately; they are gaps now. Superseded stays a
+// separate position because a replaced node is not waiting on anything. There is no Done position:
+// an accepted node is removed from the plan by the acceptance history before scheduling is asked.
 type WorkScheduling
   = SchedulingReady
   | SchedulingNotReady { missing: List<ReadinessGap> }
-  | SchedulingDone
   | SchedulingSuperseded
 
 // A page projects every row's readiness over one graph, so it indexes the graph once
@@ -337,8 +336,6 @@ fn work_readiness(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<Roadmap
 fn work_scheduling_in(rn: RoadmapNode, graph: ReadinessGraph, merged: List<Int>) -> WorkScheduling {
   if !(item_superseded_by(item: rn.line) == "") {
     SchedulingSuperseded
-  } else if node_is_frontier_done(n: rn) {
-    SchedulingDone
   } else {
     match work_readiness_in(rn: rn, graph: graph, merged: merged) {
       ReadyToDispatch => SchedulingReady
@@ -350,7 +347,7 @@ fn work_scheduling_in(rn: RoadmapNode, graph: ReadinessGraph, merged: List<Int>)
 // WHICH PREREQUISITES ARE HOLDING THE ROW, read from the scheduling position and nowhere else. A
 // ready row has none; a not-ready row has the blockers its readiness named
 // (gunbc.roadmap.roadmap_readiness GapDependencies), which is the dispatcher's own satisfaction
-// predicate. A done or superseded row was never asked -- its position is decided before readiness
+// predicate. A superseded row was never asked -- its position is decided before readiness
 // is computed (work_scheduling_in) -- so the answer there is that it was not assessed, never zero.
 type UnmetPrerequisites
   = UnmetPrerequisitesAssessed { ids: List<String> }
@@ -360,7 +357,6 @@ fn row_unmet_prerequisites(view: WorkRowView) -> UnmetPrerequisites {
   match view.scheduling {
     SchedulingReady => UnmetPrerequisitesAssessed { ids: [] }
     SchedulingNotReady { missing } => UnmetPrerequisitesAssessed { ids: flat_map(missing, g => readiness_gap_blockers(g: g)) }
-    SchedulingDone => UnmetPrerequisitesNotAssessed
     SchedulingSuperseded => UnmetPrerequisitesNotAssessed
   }
 }
@@ -373,7 +369,6 @@ fn work_scheduling_key(s: WorkScheduling) -> String {
   match s {
     SchedulingReady => "ready"
     SchedulingNotReady { missing: _ } => "not-ready"
-    SchedulingDone => "done"
     SchedulingSuperseded => "superseded"
   }
 }
@@ -1482,9 +1477,6 @@ fn task_bar_idle_view(view: WorkRowView) -> TaskBarView {
               SchedulingReady => TaskBarView {
                 fill: BarFillNone, signal: "ready to dispatch", signal_class: "neutral", count: "", subline: "", attention: false,
               }
-              SchedulingDone => TaskBarView {
-                fill: BarFillClosed, signal: "accepted", signal_class: "done", count: "", subline: "", attention: false,
-              }
               SchedulingSuperseded => TaskBarView {
                 fill: BarFillNone,
                 signal: concat("superseded → ", view.superseded_by),
@@ -2127,7 +2119,7 @@ fn closed_lifecycle_display_status(l: WorkLifecycle) -> IssueDisplayStatus {
 }
 
 // A DECLARED NODE THE PLAN OMITS has no row, so no readiness, standing or activity is defined for
-// it. Its lifecycle still is: its own line and signoff decide it exactly as they do for a plan row
+// it. Its lifecycle still is: its own line decides it exactly as it does for a plan row
 // (work_lifecycle), and a node the acceptance authority lists as accepted
 // (gunbc.roadmap.roadmap_authority frontier_sets_projection `accepted`, the reason the plan omits it) is
 // done. A superseded line stays superseded: acceptance does not reopen that question.
@@ -2175,14 +2167,13 @@ fn issue_display_status(view: WorkRowView) -> IssueDisplayStatus {
   else if standing == "retired" { DisplayRetired }
   else if standing == "blocked" || activity == "refused" || activity == "legacy_supersedable" { DisplayBlocked }
   else if standing == "in_progress" || activity == "active" { DisplayActive }
-  else if lifecycle == "review" || standing == "ready_for_review" || scheduling == "done" { DisplayReview }
+  else if lifecycle == "review" || standing == "ready_for_review" { DisplayReview }
   else if standing == "handed_back" { DisplayReturned }
   else if standing == "claimed" { DisplayAssigned }
   else {
     match view.scheduling {
       SchedulingReady => DisplayReady
       SchedulingNotReady { missing: _ } => DisplayBlocked
-      SchedulingDone => DisplayReview
       SchedulingSuperseded => DisplaySuperseded
     }
   }
@@ -2200,7 +2191,6 @@ fn issue_status_details(view: WorkRowView) -> IssueStatusDetails {
     // Same voice law as the idle strip: a dependency blocker that is retired is named retired
     // (the row derived that from the blocker's own standing; no new label type exists).
     SchedulingNotReady { missing } => readiness_reason_text_with_retired(r: NotReady { missing: missing }, retired: view.retired_blockers)
-    SchedulingDone => "Delivered; acceptance evidence remains authoritative"
     SchedulingSuperseded => concat("Superseded by ", view.superseded_by)
   }], "")
   match view.activity {
@@ -2432,7 +2422,6 @@ fn row_is_shown_in(row: WorkRowView, index: RoadmapMembershipIndex) -> Bool {
       count(project_member_ids_in(arc: row.node_id, index: index)) > 0
         || row_has_work_in_flight(row: row)
     SchedulingReady => true
-    SchedulingDone => true
     SchedulingSuperseded => true
   }
 }
