@@ -69,6 +69,7 @@ import std.measure { Minute, minute_count }
 import std.algebra { fold_list, list_append, list_map, list_find_first }
 import gunbc.parse_verdict_schema { parse_verdict_restore_ancestor_ordinals }
 import std.optional { Absent, Optional, Present }
+import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue }
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
@@ -381,7 +382,15 @@ fn compiler_gate_caller_checkout_step() -> Step {
 // THE COMPOSITION: the caller's dag/ is added to gunbc's, file by file, and a path both trees hold is
 // refused rather than overwritten -- module a.b.c has one storage path, so a clash is two modules
 // claiming one name, and neither silently wins.
+// THE SHELL IS A DECLARED CARRIER, not the authority for what it decides. Two capabilities retire it,
+// and the marker names both: the compiler reading a caller's tree as its own source root (so nothing is
+// copied, and a module both trees declare is refused by the source layout, gunbc.source_layout, as a
+// located diagnostic rather than by a file test), and the remaining statements rendering through
+// v2.extdeps.languages.bash_build rather than being spelled here.
+data compiler_gate_compose_caller_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: compiler_gate_compose_caller_statements -- hand-spelled shell that copies a calling repository's dag/ into gunbc's and refuses a path both trees hold. Dissolves when the compiler admits a second checkout as a source root whose modules the source layout (gunbc.source_layout) admits or refuses by namespace, so the copy is deleted and a clash is that layout's located refusal; any statement left after that renders through v2.extdeps.languages.bash_build instead of being spelled as text.")
+
 data compiler_gate_compose_caller_script: String = join([
+  concat("# ", dissolution_description(condition: compiler_gate_compose_caller_dissolution_trigger)),
   "set -euo pipefail",
   concat(concat("CALLER='", compiler_gate_caller_checkout_path), "/dag'"),
   "GUNBC_HEAD=$(git rev-parse HEAD)",

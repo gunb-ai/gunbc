@@ -59,6 +59,7 @@ jobs:
         if: inputs.compose_caller_dag
       - name: Compose the calling repository's dag/ into gunbc's
         run: |-
+          # dissolve-on: compiler_gate_compose_caller_statements -- hand-spelled shell that copies a calling repository's dag/ into gunbc's and refuses a path both trees hold. Dissolves when the compiler admits a second checkout as a source root whose modules the source layout (gunbc.source_layout) admits or refuses by namespace, so the copy is deleted and a clash is that layout's located refusal; any statement left after that renders through v2.extdeps.languages.bash_build instead of being spelled as text.
           set -euo pipefail
           CALLER='.gunbc-caller/dag'
           GUNBC_HEAD=$(git rev-parse HEAD)
