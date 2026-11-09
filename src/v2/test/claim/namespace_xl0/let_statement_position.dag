@@ -27,60 +27,49 @@ import extdeps.communication.medium { Lossless, Medium }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// A STATEMENT LET REACHED AS A VALUE REFUSES AT THE DOOR-HOLDER RATHER THAN LOWERING.
+// A TAIL STATEMENT `let` REFUSES; THIS MOVES THE REFUSAL ONTO THE LET AND GIVES IT ITS OWN CAUSE.
 //
 // THE SUBJECT IS THE NATIVE LANE'S NORMALIZE, as in
 // v2.test.claim.namespace_xl0.return_tail_position and
 // v2.test.claim.namespace_xl0.let_match_early_return.
 //
 // v2.compiler.body_lowering_fold reads a STATEMENT let in exactly one place: body_lower_stmt_spine,
-// which binds the let's key to its lowered value and the lowered REST of the spine as its body, and
-// body_lower_let_expr is the door-holder for the `in` form the grammar dropped — every arm of it
-// refuses, and its Present arm answers body_lowering_reason_let_body_not_reachable_from_node. So a
-// let-shaped node that reaches the term dispatcher (body_lower_fold_dispatch, whose let arm calls that
-// door-holder) cannot lower, whatever the source said.
+// which binds the let's key to its lowered value and the lowered REST of the spine as its body. A let
+// that ENDS a statement spine has no following statement to become that body. Before this change the
+// spine's Absent arm handed that let to the VALUE reader, which answers any let through the
+// door-holder body_lower_let_expr with body_lowering_reason_let_body_not_reachable_from_node -- a
+// reason that blames the compiler for a module that wrote a binding with no body, since no let is ever
+// a value (body_lower_let_expr refuses on both arms). THE CHANGE refuses at the let itself, with
+// body_lowering_reason_statement_let_in_tail_position: the sibling of the `return` arm beside it (a
+// `return` that is not in tail position refuses; a `let` that is in tail position refuses). A braced
+// block's ONE statement is likewise read by the statement authority rather than the value reader, and
+// src/v2/workflow/compile_door_cause_ownership.dag carries the CauseOwnership row for the new cause.
 //
-// Two positions in the corpus hand a statement let to the VALUE reader, and both sit in the whole-corpus
-// census on plain main, each keeping its file on the wave's fallback:
+// IT CHANGES WHICH REASON REFUSES, AND WHO OWNS IT. It does not make any of these shapes lower, and
+// no row here claims one does. The failure the new cause names is already on the record:
+// dag/gunbc/recurring_failure_mode/accepted_source_emits_uncompilable_target.dag carries the INSTANCE
+// "a FUNCTION BODY WITH NO TAIL VALUE -- a body of statement lets whose last statement is a `let`,
+// under a declared return that is not Unit", witnessed there by an emitted Rust function that rustc
+// then refuses with E0308. That instance is on the rust target and is NOT claimed closed here; the same
+// shape on this lane's door is what this file pins.
 //
-//   fci1_canonical_cleanup_disposition, in dag/gunbc/instruments/fabric_control_plane_live_probe.dag —
-//     the LAST statement of its body is a statement let (`let disposition = match ...`, with
-//     no following expression). A spine with no following statement leaves body_lower_stmt_spine through
-//     its Absent arm to body_lower_tail_statement_read, which reads the statement as a VALUE: the let
-//     reaches the dispatcher and refuses.
-//   path_is_under_production_instance_root, in dag/gunbc/instruments/compute_run_unit_cold.dag — the
-//     braced arm block of its `ProdRoleRealizedBy { holder }` arm begins with a
-//     statement let (`let root = holder.instance.instance_root`) and ends with the arm's value
-//     expression, which READS that binding. The arm's body reaches the same value reader and refuses at
-//     the let, before its rest is ever read.
-//
-// THE REDS are the two positions and their siblings, each varying one thing; THE CONTROLS are the same
-// shapes that the spine already owns — a body-top-level let with a following statement, a braced arm with
-// one expression, a let in an if-branch — and must resolve. The three `_und` fixtures put an undeclared
-// name in a position the lowering either reads or refuses before reading, and which one it is differs by
-// position: a SPINE let's value (`lst_let_und_reachable`) and an ARM BLOCK'S rest (`lst_arm_rest_und`) are
-// read, so each must refuse unbound AT ITS OWN ATOM; a TAIL let's value (`lst_tail_let_und`) is the one
-// place the lowering door-holder answers first, so that row expects the tail-position refusal and NO unbound
-// atom — it pins which door answers first, not that the value is reached. And the arm-block let's binder
-// must stay readable from its rest, which is what the plain `is_accepted` claim for that shape checks. A
-// fix that dropped the binding, or dropped either half, would flip one of those rows.
-// FIXTURE SOURCES LIVE IN THIS CLAIM, NOT ON DISK. Each row's module is carried inline as the `source` of
-// a DagSourceReadWitness, and the `path` argument is an artifact LABEL, not a repository file. This branch
-// once also materialized each fixture under src/v2/test/fixture/namespace_xl0/ and added a
+// FIXTURE SOURCES LIVE IN THIS CLAIM, NOT ON DISK. Each row's module is carried inline as the `source`
+// of a DagSourceReadWitness, and the `path` argument is an artifact LABEL, not a repository file. This
+// branch once also materialized each fixture under src/v2/test/fixture/namespace_xl0/ and added a
 // source_layout_namespaces row to make those files compilable: two sources for one fact, one of which
-// nothing read (the claim never opens a file). The files and the layout row are removed; this claim is the
-// single home, so a fixture cannot drift from what is asserted about it.
+// nothing read (the claim never opens a file). The files and the layout row are removed; this claim is
+// the single home, so a fixture cannot drift from what is asserted about it.
 //
 // ONE ROW THE ARCHIVED BRANCH HAD IS WITHDRAWN, NOT RESTORED. It pinned a braced arm block whose tail
-// statement opens with a parenthesized expression as a door-holder refusal. That expectation asserts how
-// the parser resolves a line-leading `(` -- a question this suite cannot answer, since the grammar declares
-// no statement terminator and exactly one newline-continuation guard (`-`, v2.extdeps.languages
-// dag_grammar_additive_newline_minus_guard) -- and a module the seed ACCEPTS authors exactly that shape: the
-// line-leading `(` in path_is_under_production_instance_root, dag/gunbc/instruments/compute_run_unit_cold.dag.
-// The suite has never been run, so the row recorded a prediction about the parser as if it were a reading.
-// Re-pinning it in the other direction would be the same fabrication mirrored, so the question -- can a
-// statement expression begin with `(` -- is left open and unrowed until someone RUNS the shape.
-//
+// statement opens with a parenthesized expression, as a door-holder refusal. That expectation asserts
+// how the parser resolves a line-leading `(` -- a question this suite cannot answer, since the grammar
+// declares no statement terminator and exactly one newline-continuation guard (`-`, v2.extdeps.languages
+// dag_grammar_additive_newline_minus_guard) -- and a module the seed ACCEPTS authors exactly that shape:
+// the line-leading `(` in path_is_under_production_instance_root,
+// dag/gunbc/instruments/compute_run_unit_cold.dag. The row recorded a prediction about the parser as if
+// it were a reading. Re-pinning it in the other direction would be the same fabrication mirrored, so the
+// question -- can a statement expression begin with `(` -- is left open and unrowed until someone RUNS
+// the shape.
 data lst_ctl_body_let_source: String = "module v2.test.fixture.namespace_xl0.lst_ctl_body_let\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\nfn lst_probe(i: Int) -> Int {\n  let x = i\n  x\n}\n"
 
 data lst_ctl_arm_expr_source: String = "module v2.test.fixture.namespace_xl0.lst_ctl_arm_expr\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_probe(s: LstS, i: Int) -> Int { match s {\n  LstA { v: v } => v\n  LstB => i\n} }\n"
@@ -97,7 +86,6 @@ data lst_tail_let_after_let_source: String = "module v2.test.fixture.namespace_x
 
 data lst_tail_let_match_source: String = "module v2.test.fixture.namespace_xl0.lst_tail_let_match\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_probe(s: LstS, i: Int) -> Int {\n  let j = i\n  let d = match s {\n    LstA { v: v } => v\n    LstB => j\n  }\n}\n"
 
-data lst_tail_let_und_source: String = "module v2.test.fixture.namespace_xl0.lst_tail_let_und\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\nfn lst_probe(i: Int) -> Int {\n  let x = lst_undeclared_tail_value\n}\n"
 
 data lst_arm_block_let_source: String = "module v2.test.fixture.namespace_xl0.lst_arm_block_let\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_uses(x: Int) -> Int { x }\n\nfn lst_probe(s: LstS, i: Int) -> Int { match s {\n  LstA { v: v } => {\n    let r = v\n    lst_uses(x: r)\n  }\n  LstB => i\n} }\n"
 
@@ -110,7 +98,6 @@ data lst_if_match_branch_source: String = "module v2.test.fixture.namespace_xl0.
 data lst_arm_rest_und_source: String = "module v2.test.fixture.namespace_xl0.lst_arm_rest_und\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_probe(s: LstS, i: Int) -> Int { match s {\n  LstA { v: v } => {\n    let r = v\n    lst_undeclared_arm_rest\n  }\n  LstB => i\n} }\n"
 
 data lst_tail_call_source: String = "// Materialized fixture for the statement-position claim suite (v2.test.claim.namespace_xl0.let_statement_position).\n// Inline source of this claim's own artifact (the path in lst_ingest is a label, not a repository file). Same braced block and bindings as the parenthesized variant that is NOT pinned here: the tail statement is a plain call. Must lower.\nmodule v2.test.fixture.namespace_xl0.lst_tail_call\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_uses(x: Int) -> Int { x }\n\nfn lst_equal(a: Int, b: Int) -> Bool { a == b }\n\nfn lst_probe(s: LstS, i: Int) -> Int { match s {\n  LstA { v: v } => lst_uses(x: v)\n  LstB => {\n    let root = i\n    lst_uses(x: root)\n  }\n} }"
-data lst_last_arm_block_source: String = "// Materialized fixture for the statement-position claim suite (v2.test.claim.namespace_xl0.let_statement_position).\n// Read as a module by the native lane. Shape of both gap files: the braced block is the LAST arm of the match, preceded by an arm whose body is a plain value. Must lower.\nmodule v2.test.fixture.namespace_xl0.lst_last_arm_block\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_uses(x: Int) -> Int { x }\n\nfn lst_equal(a: Int, b: Int) -> Bool { a == b }\n\nfn lst_probe(s: LstS, i: Int) -> Int { match s {\n  LstA { v: v } => v\n  LstB => {\n    let root = i\n    lst_uses(x: root)\n  }\n} }"
 data lst_let_und_reachable_source: String = "// Materialized fixture for the statement-position claim suite (v2.test.claim.namespace_xl0.let_statement_position).\n// Read as a module by the native lane. The body normalizes: the statement `let` is followed by a trailing\n// expression, so it is not a tail let and no wrapper is retained. Its bound value names an atom this module never\n// declares. This is the non-widening control for the fold change: if the binder still hands that atom to the\n// resolver the census must refuse it with resolve_reason_unbound_symbol here, and if the fold were silently\n// dropping the tail the file would lower.\nmodule v2.test.fixture.namespace_xl0.lst_let_und_reachable\n\nimport v2.std.integer { Int }\n\nfn lst_uses(x: Int) -> Int { x }\n\nfn lst_probe(i: Int) -> Int {\n  let q = lst_undeclared_atom(x: i)\n  lst_uses(x: q)\n}"
 
 fn lst_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
@@ -140,8 +127,6 @@ fn lst_ingest() -> SourceRootIngest {
     tail: Cons {
     head: lst_read(source: lst_tail_let_match_source, id: ^lst_tail_let_match_artifact, unit: ^lst_tail_let_match_cu, path: "src/v2/test/fixture/namespace_xl0/lst_tail_let_match.dag"),
     tail: Cons {
-    head: lst_read(source: lst_tail_let_und_source, id: ^lst_tail_let_und_artifact, unit: ^lst_tail_let_und_cu, path: "src/v2/test/fixture/namespace_xl0/lst_tail_let_und.dag"),
-    tail: Cons {
     head: lst_read(source: lst_arm_block_let_source, id: ^lst_arm_block_let_artifact, unit: ^lst_arm_block_let_cu, path: "src/v2/test/fixture/namespace_xl0/lst_arm_block_let.dag"),
     tail: Cons {
     head: lst_read(source: lst_arm_block_two_let_source, id: ^lst_arm_block_two_let_artifact, unit: ^lst_arm_block_two_let_cu, path: "src/v2/test/fixture/namespace_xl0/lst_arm_block_two_let.dag"),
@@ -156,12 +141,8 @@ fn lst_ingest() -> SourceRootIngest {
     tail: Cons {
     head: lst_read(source: lst_tail_call_source, id: ^lst_tail_call_artifact, unit: ^lst_tail_call_cu, path: "src/v2/test/fixture/namespace_xl0/lst_tail_call.dag"),
     tail: Cons {
-    head: lst_read(source: lst_last_arm_block_source, id: ^lst_last_arm_block_artifact, unit: ^lst_last_arm_block_cu, path: "src/v2/test/fixture/namespace_xl0/lst_last_arm_block.dag"),
-    tail: Cons {
     head: lst_read(source: lst_let_und_reachable_source, id: ^lst_let_und_reachable_artifact, unit: ^lst_let_und_reachable_cu, path: "src/v2/test/fixture/namespace_xl0/lst_let_und_reachable.dag"),
     tail: Empty
-  }
-  }
   }
   }
   }
@@ -197,7 +178,6 @@ type LstOutcomes
       tail_let: LstVerdict
       tail_let_after_let: LstVerdict
       tail_let_match: LstVerdict
-      tail_let_und: LstVerdict
       arm_block_let: LstVerdict
       arm_block_two_let: LstVerdict
       arm_tail_let: LstVerdict
@@ -205,7 +185,6 @@ type LstOutcomes
       if_match_branch: LstVerdict
       arm_rest_und: LstVerdict
       tail_call: LstVerdict
-      last_arm_block: LstVerdict
       let_und_reachable: LstVerdict
     }
 
@@ -270,7 +249,6 @@ fn lst_outcomes() -> LstOutcomes {
         tail_let: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_tail_let", unit: ^lst_tail_let_cu),
         tail_let_after_let: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_tail_let_after_let", unit: ^lst_tail_let_after_let_cu),
         tail_let_match: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_tail_let_match", unit: ^lst_tail_let_match_cu),
-        tail_let_und: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_tail_let_und", unit: ^lst_tail_let_und_cu),
         arm_block_let: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_arm_block_let", unit: ^lst_arm_block_let_cu),
         arm_block_two_let: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_arm_block_two_let", unit: ^lst_arm_block_two_let_cu),
         arm_tail_let: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_arm_tail_let", unit: ^lst_arm_tail_let_cu),
@@ -278,7 +256,6 @@ fn lst_outcomes() -> LstOutcomes {
         if_match_branch: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_if_match_branch", unit: ^lst_if_match_branch_cu),
         arm_rest_und: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_arm_rest_und", unit: ^lst_arm_rest_und_cu),
         tail_call: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_tail_call", unit: ^lst_tail_call_cu),
-        last_arm_block: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_last_arm_block", unit: ^lst_last_arm_block_cu),
         let_und_reachable: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_let_und_reachable", unit: ^lst_let_und_reachable_cu)
       }
   }
@@ -318,62 +295,64 @@ fn lst_unbound_at(v: LstVerdict, atom: Symbol) -> Bool {
   }
 }
 
-// THE SPINE ALREADY OWNS THESE. They hold on main and must hold after the repair: the spine's own
-// let-with-a-following-statement, an arm body of one expression, a let inside an if-branch, a let
-// inside a function value's braced body.
-// READINGS, NOT PREDICTIONS. Every row below was rewritten from what this route reports, after the
-// claim suite was executed for the first time (the runner is the granted executor; receipts are in the
-// PR body). The archived branch's 17 rows were never executed: three hold, thirteen do not.
+// THE ROWS, AND WHAT EACH ONE IS.
 //
-// WHAT HOLDS. A statement `let` in a tail position refuses at the door holder with
-// `body_lowering_reason_statement_let_in_tail_position`, and that refusal is what this change adds:
-// the three rows below (a tail let after another let, a tail let bound to a match, a tail let in a
-// braced match-arm block) PASS at this head and FAIL at the merge base -- the pair this PR is about.
+// THREE DISCRIMINATORS. A statement `let` in a TAIL position refuses at the door holder with
+// `body_lowering_reason_statement_let_in_tail_position`. Three rows pin that reading -- a tail let
+// after another let, a tail let bound to a match, and a tail let in a braced match-arm block. Each
+// PASSes at this head and FAILs at the merge base; that pair is the claim this PR makes, and nothing
+// else in this file is offered as evidence for it.
 //
-// WHAT DOES NOT HOLD, AND WHY. The accepted-control fixtures never reach the door at all. The inline
+// ELEVEN TRIPWIRES OVER THIS SUITE'S OWN HARNESS DEFECT -- NOT EVIDENCE FOR THIS CHANGE. The inline
 // ingest root carries only the fixture modules, so a fixture that imports vocabulary
-// (`import v2.std.integer { Int }`) is refused at resolve with `resolve_module_not_found` and no
-// located atom, at BOTH legs -- so its `is_accepted` expectation was never observable. Those rows are
-// re-pinned to that named reading and renamed to say what they now hold: a tripwire that goes red when
-// the ingest carries vocabulary. The same defect makes main's
-// `v2.test.claim.namespace_xl0.let_match_early_return` (12 of 18 false) and
-// `return_tail_position` (14 of 17 false) unreadable; fixing the shared fixture pattern is its own
+// (`import v2.std.integer { Int }`) is refused at RESOLVE with `resolve_module_not_found` and no
+// located atom, at BOTH legs, before body lowering is reached: the archived branch's `is_accepted`
+// expectations for those shapes were never observable. Those rows are pinned to the named reading and
+// named for it, and each goes RED when the ingest starts carrying vocabulary -- which is when the
+// accepted controls this change was written with can be written at all. The same defect makes main's
+// `v2.test.claim.namespace_xl0.let_match_early_return` (12 of 18 rows false) and
+// `return_tail_position` (14 of 17 false) unreadable; repairing the shared fixture pattern is its own
 // change (work item adhoc-d6e47a99-2e0), not part of this one.
 //
-// AND ONE SHAPE THAT IS NOT THIS DOOR'S TO CLAIM. A `let` that is the whole body of a function is
-// refused at file level by `normalized_tree_reason_wrapper_retention_not_normalized` -- a
-// normalization check that runs first -- which is why the bare shape cannot be the discriminator and
-// why the observable refusals are the ones where the block has a preceding statement.
+// ONE SHAPE THAT IS NOT THIS DOOR'S TO CLAIM. A `let` that is the whole body of a function is refused
+// at file level by `normalized_tree_reason_wrapper_retention_not_normalized` -- a normalization check
+// that runs first -- which is why the bare shape cannot be the discriminator, and why the refusals
+// this change observes are the ones where the block has a preceding statement.
 //
-// TWO ROWS WERE REMOVED rather than left unexecuted: the pair over `lst_tail_let_und`
-// (a refused tail let is never resolved while an arm block's rest is) and
-// `lst_last_arm_block` (a braced block that is the last match arm lowers). Neither fixture was ever
-// read, and both intents need the ingest to carry vocabulary first; they return with that change.
+// TWO ROWS AND THEIR FIXTURES WERE REMOVED, NOT LEFT UNEXECUTED: the pair over `lst_tail_let_und` (a
+// refused tail let is never resolved while an arm block's rest is) and `lst_last_arm_block` (a braced
+// block that is the last match arm lowers). No row ever read either fixture, so the fixtures and their
+// `LstOutcomesDecided` fields are gone as well: a fixture no row reads is dangling. Both intents
+// return with the ingest change above.
+//
+// Every row here states what the route reports, not what it should report: the suite was executed
+// (granted executor; the paired HEAD/BASE per-row receipts are in the PR description). The archived
+// branch's 17 rows were never executed -- three held, thirteen did not.
 
 test fn a_body_top_level_let_fixture_never_reaches_the_door_the_ingest_carries_no_vocabulary() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: v, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, last_arm_block: _, let_und_reachable: _ } => lst_resolve_refused_as(v: v, reason: ^resolve_module_not_found)
+    LstOutcomesDecided { ctl_body_let: v, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, let_und_reachable: _ } => lst_resolve_refused_as(v: v, reason: ^resolve_module_not_found)
     LstContextRefused => false
   }
 }
 
 test fn a_braced_arm_of_one_expression_fixture_never_reaches_the_door_the_ingest_carries_no_vocabulary() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: v, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, last_arm_block: _, let_und_reachable: _ } => lst_resolve_refused_as(v: v, reason: ^resolve_module_not_found)
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: v, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, let_und_reachable: _ } => lst_resolve_refused_as(v: v, reason: ^resolve_module_not_found)
     LstContextRefused => false
   }
 }
 
 test fn a_let_in_an_if_branch_fixture_never_reaches_the_door_the_ingest_carries_no_vocabulary() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: v, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, last_arm_block: _, let_und_reachable: _ } => lst_resolve_refused_as(v: v, reason: ^resolve_module_not_found)
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: v, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, let_und_reachable: _ } => lst_resolve_refused_as(v: v, reason: ^resolve_module_not_found)
     LstContextRefused => false
   }
 }
 
 test fn a_let_in_a_function_value_body_fixture_never_reaches_the_door_the_ingest_carries_no_vocabulary() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: v, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, last_arm_block: _, let_und_reachable: _ } => lst_resolve_refused_as(v: v, reason: ^resolve_module_not_found)
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: v, tail_let: _, tail_let_after_let: _, tail_let_match: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, let_und_reachable: _ } => lst_resolve_refused_as(v: v, reason: ^resolve_module_not_found)
     LstContextRefused => false
   }
 }
@@ -387,14 +366,14 @@ test fn a_let_in_a_function_value_body_fixture_never_reaches_the_door_the_ingest
 // RED at main and GREEN at this head, and none of them asks the compiler to accept a body with no value.
 test fn a_bare_tail_statement_let_in_a_fn_body_is_claimed_by_an_earlier_normalization_check() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: v, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, last_arm_block: _, let_und_reachable: _ } => lst_refuses_as(v: v, reason: ^normalized_tree_reason_wrapper_retention_not_normalized)
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: v, tail_let_after_let: _, tail_let_match: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, let_und_reachable: _ } => lst_refuses_as(v: v, reason: ^normalized_tree_reason_wrapper_retention_not_normalized)
     LstContextRefused => false
   }
 }
 
 test fn a_tail_statement_let_after_another_let_refuses_at_the_door_holder() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: v, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, last_arm_block: _, let_und_reachable: _ } => lst_refuses_as(v: v, reason: ^body_lowering_reason_statement_let_in_tail_position)
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: v, tail_let_match: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, let_und_reachable: _ } => lst_refuses_as(v: v, reason: ^body_lowering_reason_statement_let_in_tail_position)
     LstContextRefused => false
   }
 }
@@ -403,7 +382,7 @@ test fn a_tail_statement_let_after_another_let_refuses_at_the_door_holder() -> B
 // of the body is a let whose value is a match.
 test fn a_tail_statement_let_bound_to_a_match_refuses_at_the_door_holder() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: v, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, last_arm_block: _, let_und_reachable: _ } => lst_refuses_as(v: v, reason: ^body_lowering_reason_statement_let_in_tail_position)
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: v, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, let_und_reachable: _ } => lst_refuses_as(v: v, reason: ^body_lowering_reason_statement_let_in_tail_position)
     LstContextRefused => false
   }
 }
@@ -413,21 +392,21 @@ test fn a_tail_statement_let_bound_to_a_match_refuses_at_the_door_holder() -> Bo
 // what rules out the cheap answer of dropping the binding — the rest names it.
 test fn a_let_in_a_braced_match_arm_block_fixture_never_reaches_the_door_the_ingest_carries_no_vocabulary() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: v, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, last_arm_block: _, let_und_reachable: _ } => lst_resolve_refused_as(v: v, reason: ^resolve_module_not_found)
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, arm_block_let: v, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, let_und_reachable: _ } => lst_resolve_refused_as(v: v, reason: ^resolve_module_not_found)
     LstContextRefused => false
   }
 }
 
 test fn two_lets_in_a_braced_match_arm_block_fixture_never_reaches_the_door_the_ingest_carries_no_vocabulary() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: v, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, last_arm_block: _, let_und_reachable: _ } => lst_resolve_refused_as(v: v, reason: ^resolve_module_not_found)
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, arm_block_let: _, arm_block_two_let: v, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, let_und_reachable: _ } => lst_resolve_refused_as(v: v, reason: ^resolve_module_not_found)
     LstContextRefused => false
   }
 }
 
 test fn a_tail_statement_let_in_a_braced_match_arm_block_refuses_at_the_door_holder() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: v, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, last_arm_block: _, let_und_reachable: _ } => lst_refuses_as(v: v, reason: ^body_lowering_reason_statement_let_in_tail_position)
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: v, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, let_und_reachable: _ } => lst_refuses_as(v: v, reason: ^body_lowering_reason_statement_let_in_tail_position)
     LstContextRefused => false
   }
 }
@@ -435,7 +414,7 @@ test fn a_tail_statement_let_in_a_braced_match_arm_block_refuses_at_the_door_hol
 
 test fn the_rest_of_a_braced_arm_block_fixture_never_reaches_the_door_the_ingest_carries_no_vocabulary() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: v, tail_call: _, last_arm_block: _, let_und_reachable: _ } => lst_resolve_refused_as(v: v, reason: ^resolve_module_not_found)
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: v, tail_call: _, let_und_reachable: _ } => lst_resolve_refused_as(v: v, reason: ^resolve_module_not_found)
     LstContextRefused => false
   }
 }
@@ -444,7 +423,7 @@ test fn the_rest_of_a_braced_arm_block_fixture_never_reaches_the_door_the_ingest
 // statement. This is the gap the census reports at fabric_control_plane_live_probe.dag:1053:3.
 test fn an_if_bound_by_a_let_in_a_braced_match_arm_block_fixture_never_reaches_the_door_the_ingest_carries_no_vocabulary() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_rest_und: _, arm_block_if_match: v, if_match_branch: _, tail_call: _, last_arm_block: _, let_und_reachable: _ } => lst_resolve_refused_as(v: v, reason: ^resolve_module_not_found)
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_rest_und: _, arm_block_if_match: v, if_match_branch: _, tail_call: _, let_und_reachable: _ } => lst_resolve_refused_as(v: v, reason: ^resolve_module_not_found)
     LstContextRefused => false
   }
 }
@@ -452,7 +431,7 @@ test fn an_if_bound_by_a_let_in_a_braced_match_arm_block_fixture_never_reaches_t
 // The sibling leaf: braced `if` branches at term position, each a statement sequence with its own lets.
 test fn lets_in_braced_if_branches_at_term_position_fixture_never_reaches_the_door_the_ingest_carries_no_vocabulary() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_rest_und: _, arm_block_if_match: _, if_match_branch: v, tail_call: _, last_arm_block: _, let_und_reachable: _ } => lst_resolve_refused_as(v: v, reason: ^resolve_module_not_found)
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_rest_und: _, arm_block_if_match: _, if_match_branch: v, tail_call: _, let_und_reachable: _ } => lst_resolve_refused_as(v: v, reason: ^resolve_module_not_found)
     LstContextRefused => false
   }
 }
@@ -462,7 +441,7 @@ test fn lets_in_braced_if_branches_at_term_position_fixture_never_reaches_the_do
 // plain call. If this refuses too, the refusals above are about something other than statement position.
 test fn a_tail_statement_call_in_the_same_arm_block_fixture_never_reaches_the_door_the_ingest_carries_no_vocabulary() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: v, last_arm_block: _, let_und_reachable: _ } => lst_resolve_refused_as(v: v, reason: ^resolve_module_not_found)
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: v, let_und_reachable: _ } => lst_resolve_refused_as(v: v, reason: ^resolve_module_not_found)
     LstContextRefused => false
   }
 }
@@ -473,7 +452,7 @@ test fn a_tail_statement_call_in_the_same_arm_block_fixture_never_reaches_the_do
 // begun to drop a tail it could not justify, this file would lower instead of refusing.
 test fn a_reachable_statement_let_fixture_never_reaches_the_door_the_ingest_carries_no_vocabulary() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, last_arm_block: _, let_und_reachable: v } => lst_resolve_refused_as(v: v, reason: ^resolve_module_not_found)
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, let_und_reachable: v } => lst_resolve_refused_as(v: v, reason: ^resolve_module_not_found)
     LstContextRefused => false
   }
 }
