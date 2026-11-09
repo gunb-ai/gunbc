@@ -1,0 +1,167 @@
+// CLAIMS THE CANDIDATE FIELD OWNS. The configurations a host COULD run, composed from rows the fleet already
+// has -- pinned so a candidate cannot silently become a deployment (the empty `replicas` list is the fact that
+// the fleet has never run it), cannot silently gain a byte (the ladders are composed from the roster's own
+// rungs), and cannot silently borrow a rate (an unmeasured candidate names the reading it needs).
+module test.claim.serving.serving_replica_configuration_witness
+
+import std.types { Bool, List, String }
+import std.algebra { string_contains }
+import std.measure { byte_size_count, gibibyte, gibibyte_to_byte_size, token_count_value }
+import std.optional { Optional, Present, Absent }
+import std.decl_ref { DeclarationRef, declaration_ref_identity }
+import gunbc.fleet.fleet_host_identity { HostIdentity, operator_host_6ce85c, operator_host_srv1, operator_host_srv3, operator_host_srv4 }
+import product.host_identity { host_identity_eq }
+import gunbc.serving.serving_capacity_anchor { ServingWarmSwap, SwapTierDisk, SwapTierHostRam, WarmSwapRestores }
+import gunbc.serving.serving_replica_profile {
+  FiguresUnmeasured, ServingReplicaProfile, srv1_vllm_replica_0_profile,
+}
+import gunbc.serving.serving_replica_configuration {
+  ReplicaConfiguration, configuration_expert_rungs, configuration_figures_refusal,
+  configuration_figures_resolved, configuration_host_charges, configuration_run_identity, host_configurations,
+  replica_configuration_field,
+  srv1_pair_l1_l2_configuration, srv1_pair_l1_only_configuration, srv1_tp2_l1_l2_configuration,
+  srv3_batch8_ram_only_configuration, srv3_batch1_slotfile_configuration, srv4_batch1_slotfile_configuration,
+  srv4_batch8_ram_only_configuration, h11_four_engines_configuration, h11_two_engines_configuration,
+}
+
+// THE FIELD IS PER HOST, WITH THE CANDIDATES THE OPERATOR ACTUALLY CHOOSES BETWEEN: srv1's pair against TP=2
+// against the pair without the disk tier; srv3's batch-8 RAM tier against the batch-1 slot file; srv4's running
+// slot file against a batched refusal; h11's four engines against two. Nine rows over four hosts, and every
+// candidate belongs to the host it is a way of running.
+fn all_on_host(host: HostIdentity, candidates: List<ReplicaConfiguration>) -> Bool {
+  fold(candidates, init: true, f: (acc, c) => acc && host_identity_eq(a: c.host, b: host))
+}
+
+test fn the_field_is_per_host_with_its_configurations() -> Bool {
+  replica_configuration_field.length() == 9
+    && host_configurations(host: operator_host_srv1).length() == 3
+    && host_configurations(host: operator_host_srv3).length() == 2
+    && host_configurations(host: operator_host_srv4).length() == 2
+    && host_configurations(host: operator_host_6ce85c).length() == 2
+    && all_on_host(host: operator_host_srv1, candidates: host_configurations(host: operator_host_srv1))
+}
+
+// THE QUESTION IS WHICH CONFIGURATION THIS HOST RUNS, not which host runs next: srv1's three candidates all
+// carry srv1's host and differ in what srv1 would do -- its parallelism, or which warm tiers it keeps.
+test fn srv1_candidates_are_the_three_shapes_it_could_run() -> Bool {
+  srv1_pair_l1_l2_configuration.id as String == "srv1-pair-l1-l2" as String
+    && srv1_pair_l1_only_configuration.id as String == "srv1-pair-l1-only" as String
+    && srv1_tp2_l1_l2_configuration.id as String == "srv1-tp2-l1-l2" as String
+    && srv1_pair_l1_l2_configuration.replica_count == 2
+    && srv1_tp2_l1_l2_configuration.replica_count == 1
+}
+
+// A deployed candidate's replicas ARE the roster's rows for that host -- the same rows, not a copy -- and a
+// never-run candidate says so with an empty list rather than inventing a deployment. The distinction is the
+// fleet's, and a witness that let a candidate claim a deployment it never had would be worse than no field.
+test fn deployed_candidates_reuse_the_roster_and_never_run_ones_say_so() -> Bool {
+  srv1_pair_l1_l2_configuration.replicas.length() == 2
+    && srv3_batch8_ram_only_configuration.replicas.length() == 1
+    && h11_four_engines_configuration.replicas.length() == 4
+    && srv1_tp2_l1_l2_configuration.replicas.length() == 0
+    && srv3_batch1_slotfile_configuration.replicas.length() == 0
+    && srv4_batch8_ram_only_configuration.replicas.length() == 0
+    && h11_two_engines_configuration.replicas.length() == 2
+}
+
+// THE RAM-ONLY VARIANT IS THE PAIR MINUS ITS DISK RUNG: same replicas, same checkpoint, one fewer tier. The
+// ladder is composed from the roster's own rungs, so the only thing that differs between the two candidates is
+// the tier LMCache was not configured with -- which is exactly the trade the selector is asked to weigh.
+test fn the_ram_only_variant_is_the_pair_without_its_disk_tier() -> Bool {
+  srv1_pair_l1_l2_configuration.warm_ladder.length() == 2
+    && srv1_pair_l1_only_configuration.warm_ladder.length() == 1
+    && match srv1_pair_l1_only_configuration.warm_ladder.first() {
+      Present { value: r } => match r.rung {
+        WarmSwapRestores { tier: SwapTierHostRam } => true
+        _ => false
+      }
+      Absent => false
+    }
+}
+
+// THE CHARGES FOLLOW THE LADDERS. srv4 reads its tiers, so both of its candidates charge the host real bytes;
+// the slot-file candidate holds warm disk the batched one does not, and that difference comes from the rungs
+// rather than from prose. The engine base, the cache and the expert floor are all read rows on this host, so
+// the RAM axis resolves and the disk axis DISAGREES between the two candidates.
+test fn srv4_candidates_differ_on_the_disk_axis_and_agree_on_ram() -> Bool {
+  let with_rung = configuration_host_charges(c: srv4_batch1_slotfile_configuration)
+  let without = configuration_host_charges(c: srv4_batch8_ram_only_configuration)
+  match with_rung.ram {
+    Present { value: a } =>
+      match without.ram {
+        Present { value: b } =>
+          byte_size_count(a: a) == byte_size_count(a: b)
+            && byte_size_count(a: a) > 0
+            && match with_rung.disk {
+              Present { value: disk } =>
+                match without.disk {
+                  // The batched candidate holds NO warm disk: the tier is refused at batch >1, so its absence
+                  // is a fact about the configuration, not an unread figure.
+                  Present { value: none } => byte_size_count(a: disk) > 0 && byte_size_count(a: none) == 0
+                  Absent => false
+                }
+              Absent => false
+            }
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// h11's engine base has never been read, so its RAM axis is unread for BOTH of its candidates -- the four
+// engines and the two. It is not zero, and the obligations say what to read: an unread component fails its
+// whole axis, and the same gap must not be papered over for the candidate that "looks" cheaper.
+test fn h11_candidates_refuse_to_charge_ram_they_have_not_read() -> Bool {
+  let four = configuration_host_charges(c: h11_four_engines_configuration)
+  let two = configuration_host_charges(c: h11_two_engines_configuration)
+  match four.ram {
+    Absent => four.obligations.length() > 0
+      && match two.ram { Absent => two.obligations.length() > 0 Present { value: _ } => false }
+    Present { value: _ } => false
+  }
+}
+
+// A candidate the fleet has never run either has a reading for its exact shape or names the one it needs.
+// srv3's batch-1 slot file and srv4's batched engine have never been measured, so their figures resolve to
+// nothing and the refusal is the reading to take -- at the fleet's window, not "somewhere".
+test fn unmeasured_candidates_name_the_reading_they_need() -> Bool {
+  match configuration_figures_resolved(c: srv3_batch1_slotfile_configuration) {
+    Absent => match configuration_figures_refusal(c: srv3_batch1_slotfile_configuration) {
+      Present { value: reason } => string_contains(s: reason as String, pattern: "batch 1" as String)
+        && string_contains(s: reason as String, pattern: "229376" as String)
+      Absent => false
+    }
+    Present { value: _ } => false
+  }
+}
+
+// TP=2 IS MEASURED AND STILL UNQUOTABLE AT THE ANCHOR: srv1_topology_readings has it at 150k, so the figure
+// resolves through the run-keyed resolver rather than being absent -- and a selector asking at the pool's
+// window must still refuse it, which is the choice module's test, not this one. What this pins is that the
+// candidate carries the measurement it has rather than pretending it has none.
+test fn tp2_carries_its_150k_measurement() -> Bool {
+  match configuration_figures_resolved(c: srv1_tp2_l1_l2_configuration) {
+    Present { value: f } => token_count_value(t: f.context) == 150000
+    Absent => false
+  }
+}
+
+// A never-run candidate is still keyed by a run: its identity comes from the host's live deployment row,
+// because the only thing that differs between it and what runs today is the shape it would launch in. Absent
+// that, a reading could not be checked against it and the coordinate figures would refuse -- which is the
+// fail-closed direction, but not the honest one.
+test fn never_run_candidates_still_carry_a_run_identity() -> Bool {
+  match configuration_run_identity(c: srv1_tp2_l1_l2_configuration) {
+    Present { value: want } => want.kv_cache_dtype as String == "fp8" as String
+    Absent => false
+  }
+}
+
+// The expert placement each candidate runs, as its host's artifact row states it: srv4's candidate carries the
+// capped, disk-backed ladder, h11's carries the mlocked one, and srv1's carries nothing at all -- which the
+// charge reports as an obligation.
+test fn candidates_carry_their_hosts_expert_placement() -> Bool {
+  configuration_expert_rungs(c: srv4_batch1_slotfile_configuration).length() == 3
+    && configuration_expert_rungs(c: h11_four_engines_configuration).length() == 1
+    && configuration_expert_rungs(c: srv1_pair_l1_l2_configuration).length() == 0
+}

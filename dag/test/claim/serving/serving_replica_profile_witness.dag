@@ -7,7 +7,7 @@ module test.claim.serving.serving_replica_profile_witness
 import std.types { Bool, List, String }
 import std.algebra { string_contains }
 import std.optional { Optional, Present, Absent }
-import std.measure { token_count_value, tokens_per_second_count }
+import std.measure { byte_size_count, gibibyte, gibibyte_to_byte_size, token_count_value, tokens_per_second_count, watt }
 import std.decl_ref { DeclarationRef, declaration_ref_identity }
 import extdeps.external_authority { TranscribedUncited }
 import product.fabric.serving_throughput { ThroughputOperatorReading, ThroughputUnread }
@@ -18,7 +18,17 @@ import gunbc.serving.serving_replica_profile {
   replica_warm_mechanisms, serving_replica_roster, srv1_vllm_replica_0_profile, srv1_vllm_replica_1_profile,
   srv3_strata_profile, srv4_strata_profile, h11_strata_profile,
 }
-import gunbc.serving.serving_capacity_anchor { WarmSwapRestores, SwapByEngineEviction, SwapByRouterSlotFile }
+import gunbc.serving.serving_capacity_anchor {
+  LostWithProcess, RungInclusiveOfHotter, SwapByEngineEviction, SwapByRouterSlotFile, SwapTierDisk,
+  SwapTierHostRam, SurvivesProcessRestart, WarmSwapRestores,
+}
+import gunbc.serving.serving_layout { ArtifactHeldEvictable, ArtifactHeldPinned, ServingMemoryRead }
+import gunbc.serving.serving_replica_profile {
+  ReplicaRunIdentityMatch, ReplicaExpertRung, ExpertInHostRam, ExpertOnDevice, ExpertOnDisk,
+  replica_expert_ram_charge, replica_expert_rungs, replica_expert_placement_obligation,
+  replica_host_charges, replica_run_identity, replica_run_identity_match, srv1_replica_profile_as,
+}
+import gunbc.serving.srv1_topology_comparison { ServingTopology, srv1_layout, srv1_topology_reading, Srv1TopologyReading }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4, operator_host_6ce85c }
 import product.host_identity { host_identity_eq }
 import gunbc.serving.serving_context_cap { serving_fleet_context_cap }
@@ -168,4 +178,221 @@ test fn engine_kind_is_typed_per_row() -> Bool {
     LilVllm => match r.model { LilModel { } => true StrataModel { } => false }
     StrataEngine => match r.model { StrataModel { } => true LilModel { } => false }
   }) && match srv1_vllm_replica_0_profile.engine_kind { LilVllm => true StrataEngine => false }
+}
+
+// ── SRV1'S LADDER IS THE TWO TIERS IT RUNS, NOT THE DISK ALONE ────────────────────────────────
+//
+// The fourth point of the brief: LMCache on srv1 runs LMCACHE_L1_GB=12 in host RAM and LMCACHE_L2_GB=125 on
+// disk per replica (the run identity's own environment, corroborated by the launch script), so the ladder has
+// TWO rungs. L1 is host RAM and LMCache evicts from it -- a restart loses what only L1 held (LostWithProcess).
+// L2 is a file on the host, so what L2 holds survives a process restart. And L2 is INCLUSIVE of L1: what RAM
+// holds is on disk too, so the held bound takes the max across the two and never adds their bytes. The anchor
+// witness pins the held figure the fold produces (unchanged at 16 conversations on 4 turns); these tests pin
+// the SHAPE the fold folds over, so a rung that silently disappeared -- or a disk tier quietly double-counted
+// -- fails here as well as there.
+
+test fn srv1_ladder_is_l1_then_l2_with_l2_inclusive() -> Bool {
+  let rungs = srv1_vllm_replica_0_profile.warm_ladder
+  rungs.length() == 2
+    && match rungs.first() {
+      Present { value: r } => match r.rung {
+        WarmSwapRestores { tier: SwapTierHostRam, durability: LostWithProcess } => true
+        _ => false
+      }
+      Absent => false
+    }
+    && match rungs.skip(n: 1).first() {
+      Present { value: r } => match r.rung {
+        WarmSwapRestores { tier: SwapTierDisk, durability: SurvivesProcessRestart, sharing: Present { value: RungInclusiveOfHotter } } => true
+        _ => false
+      }
+      Absent => false
+    }
+}
+
+// The L1 tier's bytes are the 12 GiB the container boots with, from the row that read it -- not the stale
+// 2026-10-30 engine-memory figure of 100 GB that the profile used to call srv1's warm tier.
+test fn srv1_l1_tier_is_the_12_gib_it_boots_with() -> Bool {
+  match srv1_vllm_replica_0_profile.warm_ladder.first() {
+    Present { value: r } => match r.rung {
+      WarmSwapRestores { cache: ServingMemoryRead { bytes: bytes, provenance: _ } } =>
+        byte_size_count(a: bytes) == byte_size_count(a: gibibyte_to_byte_size(g: gibibyte(count: 12)))
+      _ => false
+    }
+    Absent => false
+  }
+}
+
+// The disk tier did not move when L1 joined the ladder: still the 125 GiB budget kept at the 0.80 watermark,
+// charged to 100 GiB. With the anchor witness this is the proof the held figure could not have shifted: the
+// hotter rung is the smaller one, the fold takes the max, and the colder rung is the figure it always was.
+test fn srv1_disk_tier_did_not_move_when_l1_joined() -> Bool {
+  match srv1_vllm_replica_0_profile.warm_ladder.skip(n: 1).first() {
+    Present { value: r } => match r.rung {
+      WarmSwapRestores { cache: ServingMemoryRead { bytes: bytes, provenance: _ } } =>
+        byte_size_count(a: bytes) == byte_size_count(a: gibibyte_to_byte_size(g: gibibyte(count: 100)))
+      _ => false
+    }
+    Absent => false
+  }
+}
+
+// ── WHERE THE WEIGHTS AND EXPERTS SIT, PER HOST ───────────────────────────────────────────────
+//
+// The fifth point of the brief: a placement ladder for the weights too, typed, each rung with its mechanism,
+// read off the host's serving_layout artifact row rather than restated. h11's experts are mlocked (pinned: the
+// host pays the whole figure and cannot take it back); srv4's are mapped under the engine's cgroup cap
+// (evictable to a floor, with a disk tier under it); srv1's are simply not modelled, which must surface as an
+// obligation rather than as a clean zero. THE CONSUMER is the selector's host-RAM axis, whose numbers come
+// from these charges.
+
+test fn h11_experts_are_pinned_in_host_ram() -> Bool {
+  let rungs = replica_expert_rungs(p: h11_strata_profile(bus: "87"))
+  rungs.length() == 1
+    && match rungs.first() {
+      Present { value: rung } => match rung {
+        ExpertInHostRam { bytes: bytes, holds: ArtifactHeldPinned { mechanism: mechanism }, mechanism: words } =>
+          byte_size_count(a: bytes) > 0 && string_contains(s: words as String, pattern: "mlock" as String)
+        _ => false
+      }
+      Absent => false
+    }
+}
+
+test fn srv4_experts_are_capped_and_disk_backed() -> Bool {
+  let rungs = replica_expert_rungs(p: srv4_strata_profile)
+  // The ladder --mmap-experts actually runs: a card tier, a capped host-RAM tier, a disk tier.
+  rungs.length() == 3
+    && rungs.any(r => match r {
+        ExpertInHostRam { bytes: _, holds: ArtifactHeldEvictable { bound_by: bound_by, floor: floor }, mechanism: _ } =>
+          string_contains(s: bound_by as String, pattern: "cgroup" as String)
+        _ => false
+      })
+    && rungs.any(r => match r { ExpertOnDisk { bytes: _, mechanism: _ } => true _ => false })
+}
+
+// srv3's experts sit in its own private anonymous arena: a host-RAM rung the layout says nothing maps, so
+// nothing can reclaim it. It is charged, and it is charged WHOLE.
+test fn srv3_experts_are_charged_whole_in_host_ram() -> Bool {
+  let rungs = replica_expert_rungs(p: srv3_strata_profile)
+  rungs.any(r => match r {
+      ExpertInHostRam { bytes: bytes, holds: holds, mechanism: _ } => byte_size_count(a: bytes) > 0
+      _ => false
+    })
+    && match replica_expert_ram_charge(p: srv3_strata_profile) {
+      Present { value: bytes } => byte_size_count(a: bytes) > 0
+      Absent => false
+    }
+}
+
+// srv1 has no artifact row for its weights: the charge is unread AND the obligation says what to read. A
+// silent zero here would let the selector believe vLLM's checkpoint costs the host nothing.
+test fn srv1_expert_placement_is_an_obligation_not_a_zero() -> Bool {
+  match replica_expert_ram_charge(p: srv1_vllm_replica_0_profile) {
+    Absent => match replica_expert_placement_obligation(p: srv1_vllm_replica_0_profile) {
+      Present { value: reason } => string_contains(s: reason as String, pattern: "weights and experts" as String)
+      Absent => false
+    }
+    Present { value: _ } => false
+  }
+}
+
+// The charge the selector's host-RAM axis consumes, failing closed component by component. srv4 reads: its
+// cache, its expert floor and its base are all read rows, so the sum stands. srv3 refuses because its base is
+// an ASSUMPTION, h11 because its base was never read, srv1 because its base was never measured with the cache
+// empty -- each naming why. No host gets a partial total (the sum of an unknown is unknown).
+test fn host_charges_fail_closed_component_by_component() -> Bool {
+  let srv4 = replica_host_charges(p: srv4_strata_profile)
+  let srv3 = replica_host_charges(p: srv3_strata_profile)
+  let h11 = replica_host_charges(p: h11_strata_profile(bus: "87"))
+  let srv1 = replica_host_charges(p: srv1_vllm_replica_0_profile)
+  match srv4.ram {
+    Present { value: bytes } =>
+      byte_size_count(a: bytes) > byte_size_count(a: gibibyte_to_byte_size(g: gibibyte(count: 16)))
+        && match srv3.ram { Absent => srv3.obligations.length() > 0 Present { value: _ } => false }
+        && match h11.ram { Absent => h11.obligations.length() > 0 Present { value: _ } => false }
+        && match srv1.ram { Absent => srv1.obligations.length() >= 2 Present { value: _ } => false }
+    Absent => false
+  }
+}
+
+// ── A READING PRICES ONLY THE RUN IT WAS TAKEN UNDER ──────────────────────────────────────────
+//
+// The third point of the brief: srv1's readings each carry a Srv1TopologyRunIdentity, and until now a
+// coordinate hit borrowed the rate without asking whether the profile ran the same thing. These pin the check
+// BOTH ways -- the rows the fleet runs DO match the readings they borrow (so nothing that works today starts
+// failing), and a profile differing in ONE stated field stops matching, with the reason naming the field.
+// Nothing is re-scaled to make a reading fit.
+
+test fn srv1_rows_match_their_own_readings() -> Bool {
+  match srv1_topology_reading(topology: srv1_layout(tp: 1, dp: 2), sessions: 8) {
+    Absent => false
+    Present { value: r } => match replica_run_identity(p: srv1_vllm_replica_0_profile) {
+      Absent => false
+      Present { value: want } =>
+        match replica_run_identity_match(want: want, taken: r.run) {
+          // Agrees, and says what it could not check: the run identity carries no weight-quantization field,
+          // so that axis is a named obligation rather than a pass.
+          ReplicaRunIdentityMatch { agrees: true, reasons: reasons, unchecked: unchecked } =>
+            reasons.length() == 0
+              && match unchecked.first() {
+                Present { value: u } => string_contains(s: u as String, pattern: "weight quantization" as String)
+                Absent => false
+              }
+          ReplicaRunIdentityMatch { agrees: false, reasons: reasons, unchecked: unchecked } => false
+        }
+    }
+  }
+}
+
+// THE RED TEST, part one: the same row with its KV quantization spelled differently, and the reading it used
+// to borrow is gone -- resolving Absent, with the refusal naming the axis so a reader knows what to fix rather
+// than hunting for a zero.
+test fn a_different_kv_quantization_stops_matching() -> Bool {
+  let odd = srv1_replica_profile_as(
+    id: "srv1-vllm-fixture-nvfp4",
+    card_name: "NVIDIA RTX PRO 6000",
+    card_uuid: "fixture",
+    card_pci: "0000:01:00.0",
+    board: fixture_board(),
+    kv_dtype_instead: Present { value: "nvfp4" as NonEmptyStr },
+    power_cap_instead: Absent,
+  )
+  match replica_figures_resolved(p: odd) {
+    Absent => match replica_figures_refusal(p: odd) {
+      Present { value: reason } => string_contains(s: reason as String, pattern: "KV cache quantization" as String)
+      Absent => false
+    }
+    Present { value: _ } => false
+  }
+}
+
+// THE RED TEST, part two: the same row under a different power cap -- the field the brief singled out. The
+// pair and TP=2 sit apart at equal power, so a reading taken at 300 W cannot price a launch capped at 350 W.
+test fn a_different_power_cap_stops_matching() -> Bool {
+  let odd = srv1_replica_profile_as(
+    id: "srv1-vllm-fixture-350w",
+    card_name: "NVIDIA RTX PRO 6000",
+    card_uuid: "fixture",
+    card_pci: "0000:01:00.0",
+    board: fixture_board(),
+    kv_dtype_instead: Absent,
+    power_cap_instead: Present { value: watt(count: 350) },
+  )
+  match replica_figures_resolved(p: odd) {
+    Absent => match replica_figures_refusal(p: odd) {
+      Present { value: reason } => string_contains(s: reason as String, pattern: "power cap" as String)
+      Absent => false
+    }
+    Present { value: _ } => false
+  }
+}
+
+// A board identity for the fixtures' card rows: the fixtures vary the run identity, not the card, and the
+// board is whatever the row says it is.
+fn fixture_board() -> DeclarationRef {
+  match srv1_vllm_replica_0_profile.gpu.first() {
+    Present { value: card } => card.board
+    Absent => decl_ref(module_path: "extdeps.nvidia.catalogs", decl_name: "rtx_pro_6000_board")
+  }
 }

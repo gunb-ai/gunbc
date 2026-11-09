@@ -34,8 +34,10 @@ import std.nat { Nat }
 import std.optional { Optional, Present, Absent }
 import std.measure {
   ByteSize, Millisecond, MoneyAmountMicro, TokenCount, TokensPerSecond, Watt,
-  millisecond, money_amount_micro, token_count, tokens_per_second, tokens_per_second_count,
+  byte_size, byte_size_count, millisecond, money_amount_micro, token_count,
+  tokens_per_second, tokens_per_second_count, watt_count,
 }
+import std.algebra { string_contains }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_identity }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import extdeps.huggingface.hub { HubRepoId }
@@ -44,23 +46,29 @@ import product.fabric.serving_throughput { ServingThroughput, ThroughputOperator
 import gunbc.fleet.fleet_host_identity {
   HostIdentity, operator_host_6ce85c, operator_host_srv1, operator_host_srv3, operator_host_srv4,
 }
+import product.host_identity { host_identity_eq }
 import gunbc.host.srv1_serving_startup_receipt { srv1_serving_startup_reading }
 import gunbc.serving.serving_context_cap { serving_fleet_context_cap }
 import gunbc.serving.serving_host_memory {
-  ServingEngineMemory, ServingMemoryReading,
-  host_6ce85c_engine_as_launched, srv1_vllm_disk_snapshot_cost, srv1_vllm_disk_tier,
+  ServingEngineMemory, ServingMemoryAssumed, ServingMemoryRead, ServingMemoryReading, ServingMemoryUnread,
+  host_6ce85c_engine_as_launched, srv1_lmcache_l1_tier, srv1_vllm_disk_snapshot_cost, srv1_vllm_disk_tier,
+  srv1_vllm_engine_memory,
   srv3_strata_engine_memory, srv3_strata_snapshot_cost,
   srv4_serving_engine_memory, srv4_strata_snapshot_cost, srv4_strata_parked_budget,
   strata_iq3_s_snapshot_cost,
 }
 import gunbc.serving.serving_layout {
-  ServingDevice, host_6ce85c_a16_buses, host_6ce85c_grant, srv3_grant, srv3_layout, srv4_grant, srv4_layout,
+  ArtifactHeldEvictable, ArtifactHeldPinned, ServingArtifactHold, ServingArtifactRung, ServingDevice,
+  ServingSharedArtifact, host_6ce85c_a16_buses, host_6ce85c_grant, host_6ce85c_routed_expert_artifact,
+  serving_artifact_charged_host_ram, srv3_grant, srv3_layout, srv3_routed_expert_artifact, srv4_grant,
+  srv4_layout, srv4_routed_expert_artifact,
 }
 import gunbc.serving.serving_warm_admission { ServingWarmAdmission }
 import gunbc.serving.serving_capacity_anchor {
-  GrantAdmits, GrantUnmodeled, ServingCapacityAnchor, ServingCapacityShape, ServingRetentionGrant,
-  ServingWarmSwap, ServingSwapDurability, ServingSwapMechanism, SwapByEngineEviction, SwapTierDisk,
-  SurvivesProcessRestart, WarmSwapRestores,
+  GrantAdmits, GrantUnmodeled, RungInclusiveOfHotter, ServingCapacityAnchor, ServingCapacityShape,
+  ServingRetentionGrant, ServingRungSharing, ServingSwapDurability, ServingSwapMechanism, ServingSwapTier,
+  ServingWarmSwap, SwapByEngineEviction, SwapTierDisk, SwapTierHostRam, SurvivesProcessRestart,
+  WarmSwapRestores,
   engine_warm_swap, serving_capacity_shape, serving_conversation_policy, single_replica_grant,
   slot_file_warm_swap,
 }
@@ -70,6 +78,9 @@ import gunbc.serving.srv1_topology_comparison {
   Srv1TopologyRunIdentity, srv1_layout, srv1_topology_reading, srv1_topology_run,
 }
 import gunbc.serving.srv1_serving_launch { LilServeLaunch, srv1_serving_launch }
+import extdeps.vllm.lil_serve {
+  LilServeHardware, LilServeHardwareName, LilServeProfile, LilServeProfileName,
+}
 import gunbc.serving.strata_ada_pair_cell { srv3_iq3_s_artifact, srv3_strata_flags }
 import gunbc.serving.strata_parked_tier { strata_warm_admission, srv4_strata_rung_admissible }
 import gunbc.serving.serving_benchmark_run_receipt { ServingArtifact }
@@ -197,6 +208,11 @@ type ReplicaFigures
       cold_prefill: Optional<TokensPerSecond>
       cold_prefill_standing: CitedFigureStanding
     }
+  // A configuration the fleet has NEVER run has no figures, and the honest field is the reading it needs, not
+  // a neighbour's rate. srv3 with a slot-file disk rung and srv4 at batch 8 are real candidates the operator
+  // may choose between, and neither has ever been measured. Naming the reading is what lets the selector
+  // answer SelectionNeedsEvidence with an obligation instead of a rate lifted off another host.
+  | FiguresUnmeasured { obligation: NonEmptyStr }
 
 // ── THE PROFILE ──────────────────────────────────────────────────────────────────────────────────────
 
@@ -224,11 +240,21 @@ type ServingReplicaProfile {
   // the host (srv1 today; its obligation says whose job that is).
   grant: ServingRetentionGrant
   // The engine's own memory row, for consumers that price its cache: WHICH serving_host_memory row belongs
-  // to this replica. Absent where the engine has no modelled RAM cache (srv1's warm tier is LMCache's disk).
+  // to this replica. Absent where the host models no engine memory row at all.
   engine_memory: Optional<ServingEngineMemory>
+  // WHERE THE WEIGHTS AND EXPERTS SIT, as the host's serving layout models the artifact: its device rung is
+  // the bytes on the card, its host_ram rung the bytes in host memory (pinned by a lock service, or evictable
+  // under a cgroup cap with a floor -- the artifact's own hold decides which), its disk rung the bytes a miss
+  // reads through. Strata's --mmap-experts under the engine cgroup cap is the disk-backed expert tier; h11's
+  // strata-expert-lock mlock is the RAM-locked one. Absent where no layout models the host's artifact row --
+  // srv1's vLLM loads its checkpoint onto the cards and no artifact row says so yet, so its placement is an
+  // OBLIGATION, not a free pass: the host-RAM charge below refuses rather than charging nothing.
+  expert_artifact: Optional<ServingSharedArtifact>
   // The host's monthly price as billed, with its standing. NO MONTHLY PRICE HAS BEEN READ for any host in
   // this roster: srv1 is the operator's own card, srv3/srv4/h11 are the operator's accounts, and no bill is
-  // in the repo. The selector refuses to invent one -- when a bill is read it lands here, cited.
+  // in the repo. The selector keeps it an UNFUNDED axis -- an optional axis that never participates until a
+  // bill is read and lands here, cited. Host cost is decided by what the profile charges (the readers
+  // below), not by a bill that cannot be read for owned hardware.
   monthly_cost: Optional<MoneyAmountMicro>
   monthly_cost_standing: Optional<CitedFigureStanding>
 }
@@ -280,9 +306,18 @@ fn replica_survives_restart(p: ServingReplicaProfile) -> Bool {
 
 // The mechanisms this ladder prices the save through, hottest first -- the FRONTIER note's other read:
 // engine eviction costs what the engine's own cache costs, a router slot file costs what the drive takes.
+// The DISTINCT mechanisms the ladder's rungs warm through, hottest first: srv1's two rungs are both LMCache
+// eviction, so the answer is one mechanism over two tiers rather than the same word twice. Distinctness is
+// what makes this list a claim about the replica (which mechanisms it depends on) rather than a restatement of
+// the ladder's length.
 fn replica_warm_mechanisms(p: ServingReplicaProfile) -> List<ServingSwapMechanism> {
-  fold(p.warm_ladder, init: [], f: (acc, r) => match r {
-    WarmSwapRestores { mechanism: m } => concat(acc, [m])
+  fold(p.warm_ladder, init: [] as List<ServingSwapMechanism>, f: (acc, r) => match r {
+    WarmSwapRestores { mechanism: m } =>
+      if acc.any(seen => seen == m) {
+        acc
+      } else {
+        concat(acc, [m])
+      }
     _ => acc
   })
 }
@@ -309,22 +344,41 @@ type ResolvedFigures {
   cold_prefill_standing: CitedFigureStanding
 }
 
-fn replica_figures_resolved(p: ServingReplicaProfile) -> Optional<ResolvedFigures> {
-  match p.figures {
+// One resolver for a roster row AND for a candidate configuration, so the run-keying rule lives once. An
+// on-row figure is the host's own reading and travels with its standing; a coordinate figure is looked up in
+// the reading table AND checked against the identity the caller runs under -- see the run-identity section
+// below. A mismatch resolves Absent: the reading stops matching, it is never re-scaled or borrowed.
+fn resolve_replica_figures(figures: ReplicaFigures, live: Optional<ReplicaRunIdentity>) -> Optional<ResolvedFigures> {
+  match figures {
     FiguresOnRow { context: c, throughput: t, cold_prefill: cp, cold_prefill_standing: cps } =>
       Present { value: ResolvedFigures { context: c, throughput: t, cold_prefill: cp, cold_prefill_standing: cps } }
+    // Never run: nothing to resolve, and the obligation names the reading that would settle it.
+    FiguresUnmeasured { obligation: obligation } => Absent
     FiguresAtCoordinate { topology: t, sessions: s } => match srv1_topology_reading(topology: t, sessions: s) {
       Absent => Absent
-      Present { value: r } => Present { value: ResolvedFigures {
-        context: r.context,
-        throughput: ThroughputOperatorReading { tokens_per_second: r.aggregate_output, at_concurrency: r.sessions, standing: r.standing },
-        // srv1's cold prefill is the Max-Q fork's 128k prefill reading, resolved from its owner module --
-        // the same resolution serving_capacity_anchor's anchor row performed before it moved here.
-        cold_prefill: fork_cold_prefill_128k(),
-        cold_prefill_standing: borrowed(o: "fork_prefill_readings cold prefill at 128k on the Max-Q fork"),
-      } }
+      Present { value: r } => match live {
+        // No identity to check against is not a pass. A coordinate reading borrowed by a host whose
+        // checkpoint, quant, engine, wiring or cap nobody can state is the silent borrow the keying exists to
+        // stop, and fail_closed puts it away rather than pricing the row on a hope.
+        Absent => Absent
+        Present { value: want } => match replica_run_identity_match(want: want, taken: r.run) {
+          ReplicaRunIdentityMatch { agrees: false, reasons: reasons, unchecked: unchecked } => Absent
+          ReplicaRunIdentityMatch { agrees: true, reasons: reasons, unchecked: unchecked } => Present { value: ResolvedFigures {
+            context: r.context,
+            throughput: ThroughputOperatorReading { tokens_per_second: r.aggregate_output, at_concurrency: r.sessions, standing: r.standing },
+            // srv1's cold prefill is the Max-Q fork's 128k prefill reading, resolved from its owner module --
+            // the same resolution serving_capacity_anchor's anchor row performed before it moved here.
+            cold_prefill: fork_cold_prefill_128k(),
+            cold_prefill_standing: borrowed(o: "fork_prefill_readings cold prefill at 128k on the Max-Q fork"),
+          } }
+        }
+      }
     }
   }
+}
+
+fn replica_figures_resolved(p: ServingReplicaProfile) -> Optional<ResolvedFigures> {
+  resolve_replica_figures(figures: p.figures, live: replica_run_identity(p: p))
 }
 
 // The per-replica figures for a deployment of `width` replicas sharing one measured aggregate (srv1's pair):
@@ -358,6 +412,9 @@ fn replica_share_width(p: ServingReplicaProfile) -> Nat {
   match p.figures {
     FiguresAtCoordinate { topology: t } => topology_dp(t: t)
     FiguresOnRow { } => 1
+    // Never measured: nothing is shared, because nothing is claimed. The width only ever divides a rate that
+    // exists, so for an unmeasured row it is the identity and the absence carries the refusal.
+    FiguresUnmeasured { obligation: obligation } => 1
   }
 }
 
@@ -378,7 +435,10 @@ fn replica_anchor_named(p: ServingReplicaProfile, deployment: String) -> Serving
       grant: p.grant,
       context: match p.figures {
         FiguresOnRow { context: c } => c
+        // A coordinate, and a configuration never measured at all, are both quoted at the fleet's window: the
+        // anchor is about the operating point, and the missing reading is what refuses it, not the label.
         FiguresAtCoordinate { } => serving_fleet_context_cap
+        FiguresUnmeasured { obligation: obligation } => serving_fleet_context_cap
       },
       throughput: ThroughputUnread,
       cold_prefill: Absent,
@@ -434,6 +494,31 @@ fn srv1_replica_profile(
   card_pci: String,
   board: DeclarationRef,
 ) -> ServingReplicaProfile {
+  srv1_replica_profile_as(
+    id: id,
+    card_name: card_name,
+    card_uuid: card_uuid,
+    card_pci: card_pci,
+    board: board,
+    kv_dtype_instead: Absent,
+    power_cap_instead: Absent,
+  )
+}
+
+// THE SAME ROW WITH ITS RUN IDENTITY VARIED IN ONE STATED FIELD. Both real srv1 rows come through
+// srv1_replica_profile above, which passes Absent for both and so gets the run's own KV dtype and cap. The
+// witnesses that have to PROVE a mismatched reading stops matching -- change the KV quantization, or the power
+// cap, and the figure refuses -- need a profile differing from the readings in exactly one field and nothing
+// else; hand-writing a whole row to change one value would let the test drift from the row it is testing.
+fn srv1_replica_profile_as(
+  id: String,
+  card_name: String,
+  card_uuid: String,
+  card_pci: String,
+  board: DeclarationRef,
+  kv_dtype_instead: Optional<NonEmptyStr>,
+  power_cap_instead: Optional<Watt>,
+) -> ServingReplicaProfile {
   ServingReplicaProfile {
     id: id as NonEmptyStr,
     host: operator_host_srv1,
@@ -442,7 +527,7 @@ fn srv1_replica_profile(
       served_model: srv1_serving_startup_reading.served_model_name,
       checkpoint: srv1_topology_run.checkpoint,
       checkpoint_revision: srv1_topology_run.checkpoint_revision,
-      kv_cache_dtype: srv1_topology_run.kv_cache_dtype,
+      kv_cache_dtype: kv_dtype_or(own: srv1_topology_run.kv_cache_dtype, instead: kv_dtype_instead),
       launch: srv1_serving_launch,
       run: srv1_topology_run,
     },
@@ -450,7 +535,7 @@ fn srv1_replica_profile(
       name: card_name as NonEmptyStr,
       board: board,
       vram: Absent,
-      power_cap: Present { value: srv1_topology_run.power_cap_each },
+      power_cap: Present { value: cap_or(own: srv1_topology_run.power_cap_each, instead: power_cap_instead) },
       // The card's UUID is its identity on srv1 -- docker's --device word and the CDI selector are built
       // from it, and srv1_serving_replica_layout asks THIS row for it instead of keeping its own copy.
       uuid: Present { value: card_uuid as NonEmptyStr },
@@ -459,26 +544,78 @@ fn srv1_replica_profile(
     parallelism: ReplicaOnOneDevice,
     context_window: serving_fleet_context_cap,
     figures: FiguresAtCoordinate { topology: srv1_layout(tp: 1, dp: 2), sessions: 8 },
-    warm_ladder: [WarmSwapRestores {
-      tier: SwapTierDisk,
-      mechanism: SwapByEngineEviction,
-      durability: SurvivesProcessRestart,
-      sharing: Absent,
-      restore: millisecond(count: 156),
-      cache: srv1_vllm_disk_tier,
-      slots: Absent,
-      cost: srv1_vllm_disk_snapshot_cost,
-      standing: borrowed(o: "srv1 serve.log LMCache RETRIEVE finish_acknowledged p50 156 ms over 203 restores, 2026-11-08; restored sizes unread"),
-      // LMCache evicts by its own watermark and the restore time is cited to the serve.log, so nothing this
-      // rung is admitted on is an unread basis: no admission bet rides on a claim no one checked.
-      admission_standings: [],
-    }],
+    // THE WARM LADDER, hottest first: LMCache's L1 in host RAM, then its L2 on disk. LMCache keeps a
+    // conversation in the 12 GiB host-RAM tier and evicts from it by its own policy, so a restart loses what
+    // only L1 held (LostWithProcess); its L2 -- 125 GiB per replica kept at the 0.80 eviction watermark --
+    // is a file on the host, so what L2 holds survives a process restart. L2 is INCLUSIVE of L1: what L1
+    // holds, L2 holds too, so the held bound takes the max across the two rungs and never adds their bytes
+    // (a conversation resident in RAM is also on disk; adding would over-promise).
+    warm_ladder: [
+      WarmSwapRestores {
+        tier: SwapTierHostRam,
+        mechanism: SwapByEngineEviction,
+        durability: LostWithProcess,
+        sharing: Absent,
+        // The same cited retrieve p50 as the disk rung below: srv1's serve.log logs LMCache's RETRIEVE
+        // completions without naming the tier that served them, so both rungs cite this one reading rather
+        // than each claiming a tier-specific number nobody read.
+        restore: millisecond(count: 156),
+        cache: srv1_lmcache_l1_tier,
+        slots: Absent,
+        // The same conversation as the disk rung, so the same per-conversation cost row -- one authority for
+        // what a conversation costs, read off the KV pool.
+        cost: srv1_vllm_disk_snapshot_cost,
+        standing: borrowed(o: "srv1 serve.log LMCache RETRIEVE finish_acknowledged p50 156 ms over 203 restores, 2026-11-08; the lines do not name the serving tier, and restored sizes are unread"),
+        // The tier's existence and size are read (LMCACHE_L1_GB=12 in the run identity's environment,
+        // corroborated by the launch script); LMCache evicts by its own watermark. Nothing here is an
+        // unread basis, so no admission bet rides on it.
+        admission_standings: [],
+      },
+      WarmSwapRestores {
+        tier: SwapTierDisk,
+        mechanism: SwapByEngineEviction,
+        durability: SurvivesProcessRestart,
+        // Inclusive of the hotter rung (see above), stated rather than left to the default.
+        sharing: Present { value: RungInclusiveOfHotter },
+        restore: millisecond(count: 156),
+        cache: srv1_vllm_disk_tier,
+        slots: Absent,
+        cost: srv1_vllm_disk_snapshot_cost,
+        standing: borrowed(o: "srv1 serve.log LMCache RETRIEVE finish_acknowledged p50 156 ms over 203 restores, 2026-11-08; restored sizes unread"),
+        // LMCache evicts by its own watermark and the restore time is cited to the serve.log, so nothing this
+        // rung is admitted on is an unread basis: no admission bet rides on a claim no one checked.
+        admission_standings: [],
+      },
+    ],
     grant: GrantUnmodeled { obligation: "no serving layout models srv1's vLLM replicas (their LMCache tiers inside srv1's shared-host budget)" as NonEmptyStr },
-    engine_memory: Absent,
+    // srv1's container memory row, kept for its BASE (anonymous) figure, which the host-impact charge below
+    // needs. Its conversation_cache is the STALE 2026-10-30 reading (L1_GB=100, GB taken as 10^9, unconfirmed):
+    // what charges host RAM for this replica is the ladder's L1 rung, cited to the 2026-11-08 environment. The
+    // base is unread until the container's next start, so the RAM charge fails closed rather than guessing.
+    engine_memory: Present { value: srv1_vllm_engine_memory },
+    // No serving_layout artifact row models how vLLM places srv1's checkpoint (the container loads it onto its
+    // card; nothing says whether it mlocks or map()s, and nvidia-smi's per-card used bytes were never
+    // recorded). So the expert placement is unmodeled and its RAM charge is an obligation, not a zero.
+    expert_artifact: Absent,
     monthly_cost: Absent,
     monthly_cost_standing: Absent,
-    // Nothing about srv1's rung is assumed on the admission path: LMCache evicts by its own watermark and
-    // the restore time is cited to the serve.log, so no admission bet rides on a claim no one checked.
+    // Nothing about srv1's rungs is assumed on the admission path: LMCache evicts by its own watermark and
+    // the restore times are cited to the serve.log, so no admission bet rides on a claim no one checked.
+  }
+}
+
+// The two identity fields a witness may vary, defaulting to the run's own reading.
+fn kv_dtype_or(own: NonEmptyStr, instead: Optional<NonEmptyStr>) -> NonEmptyStr {
+  match instead {
+    Absent => own,
+    Present { value: value } => value,
+  }
+}
+
+fn cap_or(own: Watt, instead: Optional<Watt>) -> Watt {
+  match instead {
+    Absent => own,
+    Present { value: value } => value,
   }
 }
 
@@ -529,6 +666,10 @@ data srv3_strata_profile: ServingReplicaProfile = ServingReplicaProfile {
   warm_ladder: [engine_warm_swap(e: srv3_strata_engine_memory, cost: srv3_strata_snapshot_cost, restore: millisecond(count: 300), standing: borrowed(o: "srv3 engine.log 'slot takes N tokens (copied in M ms)': 148-296 ms for 64-131k tokens, 2026-11-08"))],
   grant: single_replica_grant(layout: srv3_layout, deployment: "srv3-strata"),
   engine_memory: Present { value: srv3_strata_engine_memory },
+  // WHERE SRV3'S EXPERTS SIT: the layout's artifact row decides -- a device rung on each card, a host-RAM rung
+  // the engine holds itself (private anonymous, nothing maps it, so nothing can reclaim it: that is a PIN, in
+  // all but name), and the GGUF on disk as the source tier. The host-RAM rung is what the selector charges.
+  expert_artifact: Present { value: srv3_routed_expert_artifact },
   monthly_cost: Absent,
   monthly_cost_standing: Absent,
 }
@@ -567,6 +708,10 @@ data srv4_strata_profile: ServingReplicaProfile = ServingReplicaProfile {
   ],
   grant: single_replica_grant(layout: srv4_layout, deployment: "srv4-strata"),
   engine_memory: Present { value: srv4_serving_engine_memory },
+  // WHERE SRV4'S EXPERTS SIT: --mmap-experts under the engine's cgroup cap, which is the disk-backed expert
+  // tier with a capped RAM rung in front of it -- evictable down to its read floor, so the host can take the
+  // bytes back. The layout's row states the cap, the floor and the shards; this row points at it.
+  expert_artifact: Present { value: srv4_routed_expert_artifact },
   monthly_cost: Absent,
   monthly_cost_standing: Absent,
 }
@@ -617,6 +762,10 @@ fn h11_strata_profile_with_grant(bus: String, launch_grant: ServingRetentionGran
     warm_ladder: [engine_warm_swap(e: engine, cost: strata_iq3_s_snapshot_cost, restore: millisecond(count: 300), standing: borrowed(o: "borrowed from srv3's Strata restore times; read an h11 engine log"))],
     grant: launch_grant,
     engine_memory: Present { value: engine },
+    // WHERE H11'S EXPERTS SIT: the mlocked copy strata-expert-lock.service holds -- a RAM-locked expert tier,
+    // pinned, so the WHOLE figure is charged to the host and nothing may reclaim it. Moving h11 onto capped
+    // mapped experts is its own modelled transition, not a choice this selector gets to make silently.
+    expert_artifact: Present { value: host_6ce85c_routed_expert_artifact },
     monthly_cost: Absent,
     monthly_cost_standing: Absent,
   }
@@ -624,6 +773,12 @@ fn h11_strata_profile_with_grant(bus: String, launch_grant: ServingRetentionGran
 
 // h11's in-service buses are the ones the host's grant row lists (its comment carries why 86/c6/c5/c7 are
 // disabled); the grant is the owner and the roster asks it, so the two cannot drift.
+
+// The roster rows on ONE host, for consumers that ask per host -- the candidate-configuration field and the
+// selector both scope this way, because the operator's question is "what should THIS host run".
+fn replicas_on_host(host: HostIdentity) -> List<ServingReplicaProfile> {
+  filter(serving_replica_roster, p => host_identity_eq(a: p.host, b: host))
+}
 
 // The whole fleet in one list: srv1's pair, srv3, srv4, and one row per h11 engine the grant admits.
 data serving_replica_roster: List<ServingReplicaProfile> =
@@ -655,4 +810,553 @@ fn srv4_strata_anchor() -> ServingCapacityAnchor { replica_anchor(p: srv4_strata
 // figure, and where the join has not spoken the row's own grant (the engine's slots) is what launches.
 fn h11_strata_shape(deployment: String, bus: String, admitted: Nat) -> ServingCapacityShape {
   replica_shape_named(p: h11_strata_profile_with_grant(bus: bus, launch_grant: GrantAdmits { conversations: admitted }), deployment: deployment)
+}
+
+// ── A READING PRICES ONLY THE RUN IT WAS TAKEN UNDER ──────────────────────────────────────────
+//
+// A reading is a claim about ONE run: this checkpoint at this revision, these quants (weights AND KV), this
+// engine image, this card wiring under this power cap. srv1's readings carry exactly that
+// (Srv1TopologyRunIdentity), and until now a coordinate hit borrowed a reading regardless of whether the
+// profile ran the same thing -- a 300 W reading would have priced a launch capped at 350 W as though the cap
+// were decoration, and it is not: the cap is one reason the pair and TP=2 sit apart, and the KV dtype moves
+// the rate on its own. So resolution asks the identity BEFORE it borrows a number, and a mismatch resolves
+// Absent with the field named. Nothing is quietly re-scaled to make a reading fit.
+type ReplicaRunIdentity {
+  // WHAT WAS LOADED: the checkpoint and BOTH quants. A reading of an fp8-KV run prices an nvfp4-KV launch not
+  // at all, and the weight quantization moves the decode rate as much as the KV dtype does.
+  checkpoint: HubRepoId
+  checkpoint_revision: NonEmptyStr
+  weights_quant: Optional<NonEmptyStr>
+  kv_cache_dtype: NonEmptyStr
+  // WHICH ENGINE, by the image digest it ran under and the profiles that selected it. A reading prices the
+  // image it was taken under, not the engine's name: this subtree's history moves image digests several times
+  // a week, and "vLLM" was the same word across all of them.
+  engine_image_digest: NonEmptyStr
+  serve_profile: NonEmptyStr
+  hardware_profile: NonEmptyStr
+  // HOW THE CARDS WIRED AND CAPPED, because that is part of what was measured, not how it was reported.
+  peer_to_peer: Bool
+  power_cap_each: Optional<Watt>
+}
+
+// What resolution asks and what it owes. `agrees` gates the borrow; `unchecked` names an axis the reading's
+// own record could not carry, so the gap is a read obligation and not a silent widening. A field both sides
+// state must be EQUAL -- there is no "close enough" for a digest, a revision, a dtype, or a cap. A field one
+// side states where the other side's record has the field and left it unset is a disagreement: an unknown
+// cannot be assumed equal (gunbc.design_argument::fail_closed).
+type ReplicaRunIdentityMatch {
+  agrees: Bool
+  reasons: List<NonEmptyStr>
+  unchecked: List<NonEmptyStr>
+}
+
+// "sha256:<hex>" and "<hex>" are the SAME digest spelled two ways in this subtree: the container's docker
+// inspect and the run identity carry the prefix, the layout's artifact rows print bare hex. Containment in
+// either direction is the whole difference -- a 64-hex digest cannot contain a DIFFERENT 64-hex digest.
+fn digests_agree(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
+  string_contains(s: a as String, pattern: b as String) || string_contains(s: b as String, pattern: a as String)
+}
+
+fn one_reason(field: String, own: String, taken: String) -> List<NonEmptyStr> {
+  [
+    concat(
+      concat(
+        concat(concat(field, ": this replica runs " as NonEmptyStr), own as NonEmptyStr),
+        ", the reading took " as NonEmptyStr
+      ),
+      taken as NonEmptyStr
+    ) as NonEmptyStr,
+  ] as List<NonEmptyStr>
+}
+
+fn one_plain_reason(text: String) -> List<NonEmptyStr> {
+  [text as NonEmptyStr] as List<NonEmptyStr>
+}
+
+fn no_match(reasons: List<NonEmptyStr>) -> ReplicaRunIdentityMatch {
+  ReplicaRunIdentityMatch { agrees: false, reasons: reasons, unchecked: [] as List<NonEmptyStr> }
+}
+
+fn agreed_match() -> ReplicaRunIdentityMatch {
+  ReplicaRunIdentityMatch { agrees: true, reasons: [] as List<NonEmptyStr>, unchecked: [] as List<NonEmptyStr> }
+}
+
+// The profile's OWN claim about what it runs, built from the rows that say so -- not from the reading it is
+// about to be compared against, which would make the check vacuous. srv1's comes from the container's report
+// of what it loaded (gunbc.host.srv1_serving_startup_receipt: the digest it resolves to, the revision and
+// quantization it reported LOADING, the KV dtype it printed) plus the launch contract's profile and hardware
+// names and the cards' cap. A Strata replica's comes from nothing today: srv3/srv4/h11 never had their power
+// caps or P2P wiring read, so it is Absent, and a coordinate-resolved reading for such a host refuses rather
+// than go unchecked.
+fn replica_run_identity(p: ServingReplicaProfile) -> Optional<ReplicaRunIdentity> {
+  match p.model {
+    LilModel {
+      checkpoint: checkpoint,
+      checkpoint_revision: checkpoint_revision,
+      kv_cache_dtype: kv_cache_dtype,
+      launch: launch,
+      run: run,
+    } =>
+      // The receipt outranks the benchmark row's transcription of it, because the receipt IS the read. The one
+      // field taken from the run row is the KV dtype, which the profile states as its own claim and the
+      // receipt corroborates -- comparing them is the point of the check, not a circularity.
+      Present {
+        value: ReplicaRunIdentity {
+          checkpoint: checkpoint,
+          checkpoint_revision: srv1_serving_startup_reading.checkpoint_revision,
+          weights_quant: Present { value: srv1_serving_startup_reading.weight_quantization },
+          kv_cache_dtype: kv_cache_dtype,
+          engine_image_digest: srv1_serving_startup_reading.image_digest_sha256,
+          serve_profile: serve_profile_name(profile: launch.profile),
+          hardware_profile: hardware_profile_name(hardware: launch.hardware),
+          // The wiring and the cap are the deployment's, read once for the host: srv1's nvidia-smi reports no
+          // peer-to-peer (the run identity's own field, transcribed from `topo -p2p` and
+          // cudaDeviceCanAccessPeer), and every card runs the cap its unit sets.
+          peer_to_peer: run.gpu_peer_to_peer,
+          power_cap_each: replica_power_cap_each(gpu: p.gpu),
+        },
+      },
+    StrataModel { artifact: artifact } => Absent,
+  }
+}
+
+// The card row's power cap, which every card of this replica runs under. Absent when the cards disagree (then
+// no single cap can be claimed) or when none was read.
+fn replica_power_cap_each(gpu: List<ReplicaGpuCard>) -> Optional<Watt> {
+  replica_power_cap_each_walk(gpu: gpu, cap: Absent)
+}
+
+fn replica_power_cap_each_walk(gpu: List<ReplicaGpuCard>, cap: Optional<Watt>) -> Optional<Watt> {
+  match gpu.first() {
+    Absent => cap,
+    Present { value: head } =>
+      match head.power_cap {
+        Absent => Absent,
+        Present { value: watt } =>
+          match cap {
+            Absent => replica_power_cap_each_walk(gpu: gpu.skip(n: 1), cap: Present { value: watt }),
+            Present { value: seen } =>
+              if watt_count(a: watt) == watt_count(a: seen) {
+                replica_power_cap_each_walk(gpu: gpu.skip(n: 1), cap: cap)
+              } else {
+                Absent
+              },
+          },
+      },
+  }
+}
+
+// The comparison resolution asks. Every stated pair must be equal; the one axis a srv1 run identity cannot
+// carry (weight quantization) is reported as unchecked rather than passed.
+fn replica_run_identity_match(want: ReplicaRunIdentity, taken: Srv1TopologyRunIdentity) -> ReplicaRunIdentityMatch {
+  if (want.checkpoint.path as String) != (taken.checkpoint.path as String) {
+    no_match(reasons: one_reason(field: "checkpoint repository", own: want.checkpoint.path as String, taken: taken.checkpoint.path as String))
+  } else if (want.checkpoint_revision as String) != (taken.checkpoint_revision as String) {
+    no_match(reasons: one_reason(field: "checkpoint revision", own: want.checkpoint_revision as String, taken: taken.checkpoint_revision as String))
+  } else if (want.kv_cache_dtype as String) != (taken.kv_cache_dtype as String) {
+    no_match(reasons: one_reason(field: "KV cache quantization", own: want.kv_cache_dtype as String, taken: taken.kv_cache_dtype as String))
+  } else if (!digests_agree(a: want.engine_image_digest, b: taken.image_digest)) {
+    no_match(reasons: one_reason(field: "engine image digest", own: want.engine_image_digest as String, taken: taken.image_digest as String))
+  } else if (want.serve_profile as String) != (taken.serve_profile as String) {
+    no_match(reasons: one_reason(field: "serve profile", own: want.serve_profile as String, taken: taken.serve_profile as String))
+  } else if (want.hardware_profile as String) != (taken.hardware_profile as String) {
+    no_match(reasons: one_reason(field: "hardware profile", own: want.hardware_profile as String, taken: taken.hardware_profile as String))
+  } else if (want.peer_to_peer != taken.gpu_peer_to_peer) {
+    // The field whose mismatch is cheapest to state and dearest to ignore: srv1 has NO peer-to-peer, so a
+    // TP=2 reading taken WITH it -- the b12x fork's condition -- says nothing about what TP=2 costs here.
+    no_match(reasons: one_plain_reason(text: "GPU peer-to-peer differs: this replica's host reports no P2P, and a reading taken where P2P exists prices nothing here"))
+  } else {
+    replica_power_cap_match(want: want, taken: taken)
+  }
+}
+
+fn replica_power_cap_match(want: ReplicaRunIdentity, taken: Srv1TopologyRunIdentity) -> ReplicaRunIdentityMatch {
+  match want.power_cap_each {
+    // This replica states no single cap (the cards disagree, or it was never read), so no reading can be shown
+    // to have been taken at this replica's cap.
+    Absent => no_match(reasons: one_plain_reason(text: "this replica states no single per-card power cap, so no reading can be shown to share its cap")),
+    Present { value: cap } =>
+      if watt_count(a: cap) == watt_count(a: taken.power_cap_each) {
+        match taken.weights_quant {
+          // A run identity that carries no weight-quantization axis: the axis goes unchecked, NAMED. The
+          // reading still has to match on everything its record can state.
+          Absent => ReplicaRunIdentityMatch {
+            agrees: true,
+            reasons: [] as List<NonEmptyStr>,
+            unchecked: [
+              "the reading's run identity carries no weight-quantization field, so only the KV dtype was checked; read the weight quantization into the run identity" as NonEmptyStr,
+            ] as List<NonEmptyStr>,
+          },
+          Present { value: taken_quant } =>
+            match want.weights_quant {
+              Absent => no_match(reasons: one_reason(field: "weight quantization", own: "(unstated)", taken: taken_quant as String)),
+              Present { value: own_quant } =>
+                if (own_quant as String) == (taken_quant as String) {
+                  ReplicaRunIdentityMatch {
+                    agrees: true,
+                    reasons: [] as List<NonEmptyStr>,
+                    unchecked: [] as List<NonEmptyStr>,
+                  }
+                } else {
+                  no_match(reasons: one_reason(field: "weight quantization", own: own_quant as String, taken: taken_quant as String))
+                },
+            },
+        }
+      } else {
+        no_match(reasons: one_plain_reason(text: "per-card power cap differs between this replica and the run the reading was taken under"))
+      },
+  }
+}
+
+fn serve_profile_name(profile: LilServeProfile) -> NonEmptyStr {
+  match profile {
+    LilServeProfileName { name: name } => name,
+  }
+}
+
+fn hardware_profile_name(hardware: LilServeHardware) -> NonEmptyStr {
+  match hardware {
+    LilServeHardwareName { name: name } => name,
+  }
+}
+
+// ── WHERE THE WEIGHTS AND EXPERTS SIT ─────────────────────────────────────────────────────────
+//
+// A ladder again, this time for the weights rather than the KV: bytes ON THE CARD (charged to VRAM, budgeted
+// per card), bytes in HOST RAM -- the WHOLE figure when a lock service mlocks them, their FLOOR when they are
+// evictable under a cgroup cap, which is exactly what serving_layout's own charge rule says -- and bytes on
+// DISK that a miss reads through. The hosts disagree about this the way they disagree about KV: h11's experts
+// are mlocked by strata-expert-lock.service (the host pays unevictable RAM and buys bounded TTFT), srv3's sit
+// in a private anonymous arena nothing can reclaim, srv4's are mapped under the engine's cgroup cap so the
+// host can take the bytes back down to the floor. None of that is a preference; each host's serving_layout
+// artifact row states which it is, and these rungs read THOSE rows rather than restating them.
+//
+// THE CONSUMER: the selector's host-RAM axis (configuration_charges below). Experts locked in host RAM are
+// bytes the host cannot take back, so they are charged there; a configuration that moves them to a capped
+// disk rung lowers that charge and takes the miss cost up instead. That is the trade the selector weighs, and
+// it is why the placement lives on the profile rather than in prose.
+type ReplicaExpertRung
+  = ExpertOnDevice { bytes: Optional<ByteSize>, mechanism: NonEmptyStr }
+  | ExpertInHostRam { bytes: ByteSize, holds: ServingArtifactHold, mechanism: NonEmptyStr }
+  | ExpertOnDisk { bytes: Optional<ByteSize>, mechanism: NonEmptyStr }
+
+// The host's placement rungs, read off its serving_layout artifact row: device rung = the card tier, host_ram
+// rung = the RAM tier, disk rung = the disk tier. No artifact row, no rungs -- and the obligation below says
+// what that costs whoever is reading.
+fn replica_expert_rungs(p: ServingReplicaProfile) -> List<ReplicaExpertRung> {
+  match p.expert_artifact {
+    Absent => [] as List<ReplicaExpertRung>,
+    Present { value: artifact } => expert_rungs_of(artifact: artifact),
+  }
+}
+
+fn expert_rungs_of(artifact: ServingSharedArtifact) -> List<ReplicaExpertRung> {
+  concat(concat(device_rungs(artifact: artifact), ram_rungs(artifact: artifact)), disk_rungs(artifact: artifact))
+}
+
+fn device_rungs(artifact: ServingSharedArtifact) -> List<ReplicaExpertRung> {
+  match artifact.device {
+    Absent => [] as List<ReplicaExpertRung>,
+    Present { value: rung } =>
+      [ExpertOnDevice {
+        bytes: rung_bytes(rung: rung),
+        mechanism: rung_mechanism(holds: rung.holds, realizes: rung.realizes),
+      }] as List<ReplicaExpertRung>,
+  }
+}
+
+fn ram_rungs(artifact: ServingSharedArtifact) -> List<ReplicaExpertRung> {
+  match artifact.host_ram {
+    Absent => [] as List<ReplicaExpertRung>,
+    Present { value: rung } =>
+      match rung_bytes(rung: rung) {
+        // A rung whose bytes are unread cannot be placed: no bytes, no charge, no rung.
+        Absent => [] as List<ReplicaExpertRung>,
+        Present { value: bytes } =>
+          [ExpertInHostRam {
+            bytes: bytes,
+            holds: rung.holds,
+            mechanism: rung_mechanism(holds: rung.holds, realizes: rung.realizes),
+          }] as List<ReplicaExpertRung>,
+      },
+  }
+}
+
+fn disk_rungs(artifact: ServingSharedArtifact) -> List<ReplicaExpertRung> {
+  match artifact.disk {
+    Absent => [] as List<ReplicaExpertRung>,
+    Present { value: rung } =>
+      [ExpertOnDisk {
+        bytes: rung_bytes(rung: rung),
+        mechanism: rung_mechanism(holds: rung.holds, realizes: rung.realizes),
+      }] as List<ReplicaExpertRung>,
+  }
+}
+
+// A rung's bytes as a charge: only a READ figure counts. An assumed figure is not a charge either way, and an
+// unread one is an obligation -- both resolve to nothing placed, which the caller reports rather than sums.
+fn rung_bytes(rung: ServingArtifactRung) -> Optional<ByteSize> {
+  match rung.bytes {
+    ServingMemoryRead { bytes: bytes, provenance: _ } => Present { value: bytes },
+    _ => Absent,
+  }
+}
+
+// HOW the bytes sit, in the host's own words: the lock service's mlock, the cgroup cap and its floor, the
+// engine's own eviction. Taken from the artifact row's hold, never re-narrated.
+fn rung_mechanism(holds: ServingArtifactHold, realizes: NonEmptyStr) -> NonEmptyStr {
+  match holds {
+    ArtifactHeldPinned { mechanism: mechanism } => mechanism,
+    ArtifactHeldEvictable { bound_by: bound_by, floor: floor } =>
+      match floor {
+        // An evictable rung with no floor read is a rung the host may take ALL of: the bound is the mechanism
+        // and the floor is what nobody has read, so the text says the bound and the charge reads it unread.
+        ServingMemoryUnread { reason: reason } => bound_by,
+        _ => concat(bound_by, " (reclaimable down to its stated floor)" as NonEmptyStr) as NonEmptyStr,
+      },
+  }
+}
+
+// What the experts cost the HOST, by serving_layout's own charge rule: the WHOLE bytes when pinned by a lock
+// service, the FLOOR when evictable under a cap. Absent when nothing models the placement (srv1's vLLM
+// weights: no artifact row says where they sit) -- an obligation the consumer reports, never a silent zero.
+fn replica_expert_ram_charge(p: ServingReplicaProfile) -> Optional<ByteSize> {
+  expert_ram_charge_of(artifact: p.expert_artifact)
+}
+
+fn expert_ram_charge_of(artifact: Optional<ServingSharedArtifact>) -> Optional<ByteSize> {
+  match artifact {
+    // Nothing models the placement at all: that is an obligation, not a zero.
+    Absent => Absent,
+    Present { value: row } =>
+      match row.host_ram {
+        // An artifact with no host-RAM rung charges the host NOTHING in RAM -- a disk-only or card-only
+        // placement is real, and serving_layout's own charge rule reserves nothing for it.
+        Absent => Present { value: byte_size(count: 0) },
+        Present { value: rung } =>
+          match serving_artifact_charged_host_ram(a: row) {
+            // The reading the layout actually bills: whole bytes when pinned, the floor when evictable. An
+            // unread one is not a zero; it is an obligation, and the axis refuses.
+            ServingMemoryRead { bytes: bytes, provenance: _ } => Present { value: bytes },
+            _ => Absent,
+          },
+      },
+  }
+}
+
+// Why a host has no expert rungs at all, for the consumer that has to name its gap rather than shrug.
+fn replica_expert_placement_obligation(p: ServingReplicaProfile) -> Optional<NonEmptyStr> {
+  match p.expert_artifact {
+    Present { value: _ } => Absent,
+    Absent => Present {
+      value: concat(
+        concat("no serving_layout artifact row models how ", p.host as NonEmptyStr),
+        " places its weights and experts (which tier holds them, pinned or capped, and how many bytes); read nvidia-smi's per-card used bytes and the engine's lock or mmap state" as NonEmptyStr
+      ) as NonEmptyStr,
+    },
+  }
+}
+
+
+// ── WHAT A CONFIGURATION CHARGES THE HOST ─────────────────────────────────────────────────────
+//
+// HOST IMPACT, not a bill: what this configuration makes the host HOLD, in the units the profile already
+// charges. srv1 is the operator's own hardware, so a monthly-cost axis could never be read and would leave the
+// selector refusing forever (a bar set on a fact that does not exist is not a constraint, it is a stall); the
+// axes that can be read are the ones the profile already states -- host RAM (the warm RAM rung, the experts'
+// host-RAM hold, the engine's anonymous base), host DISK (the warm disk rung's budget), and what a restart
+// costs (bytes to save, milliseconds to restore). A bill stays an OPTIONAL, unfunded axis in
+// gunbc.serving.serving_replica_choice until one exists.
+//
+// Fail-closed per axis: the sum of an unknown is unknown. A partial total would be a fabricated figure, so an
+// unread component makes its WHOLE axis unread and names itself in `obligations` (gunbc.design_argument::
+// fail_closed).
+type ReplicaHostCharges {
+  ram: Optional<ByteSize>
+  disk: Optional<ByteSize>
+  obligations: List<NonEmptyStr>
+}
+
+// One component of a charge: its bytes, and why there are none.
+type ChargeComponent {
+  bytes: Optional<ByteSize>
+  obligations: List<NonEmptyStr>
+}
+
+fn component_unread(obligation: NonEmptyStr) -> ChargeComponent {
+  ChargeComponent { bytes: Absent, obligations: [obligation] as List<NonEmptyStr> }
+}
+
+fn component_read(bytes: ByteSize) -> ChargeComponent {
+  ChargeComponent { bytes: Present { value: bytes }, obligations: [] as List<NonEmptyStr> }
+}
+
+// The warm rungs' RAM charge: the HOTTEST readable RAM rung's bytes. Rungs fold inclusive unless a row says
+// otherwise, so what the hot tier holds the cold tier holds too -- summing them would over-promise bytes the
+// host does not hold twice (the same rule serve_warm_store folds by). A rung whose bytes are unread fails the
+// axis and says so; a rung the adapter REFUSED (WarmSwapRefused) or nobody read (WarmSwapAbsent) is not an
+// unread figure, it is the configuration not having that tier, and it contributes nothing without failing.
+fn warm_ram_charge(ladder: List<ServingWarmSwap>) -> ChargeComponent {
+  warm_charge_walk(ladder: ladder, want_disk: false, best: Absent, obligations: [] as List<NonEmptyStr>)
+}
+
+fn warm_disk_charge(ladder: List<ServingWarmSwap>) -> ChargeComponent {
+  warm_charge_walk(ladder: ladder, want_disk: true, best: Absent, obligations: [] as List<NonEmptyStr>)
+}
+
+fn warm_charge_walk(ladder: List<ServingWarmSwap>, want_disk: Bool, best: Optional<ByteSize>, obligations: List<NonEmptyStr>) -> ChargeComponent {
+  match ladder.first() {
+    Absent =>
+      match best {
+        Present { value: bytes } => component_read(bytes: bytes),
+        // No rung of this tier at all is not an unread axis: it is a configuration that holds nothing there.
+        Absent =>
+          match obligations.first() {
+            Absent => component_read(bytes: byte_size(count: 0)),
+            Present { value: _ } => ChargeComponent { bytes: Absent, obligations: obligations },
+          },
+      },
+    Present { value: head } =>
+      match head.rung {
+        WarmSwapRestores { tier: tier, cache: cache } =>
+          if tier_is_disk(tier: tier) == want_disk {
+            match cache {
+              ServingMemoryRead { bytes: bytes, provenance: _ } =>
+                warm_charge_walk(ladder: ladder.skip(n: 1), want_disk: want_disk, best: bigger(a: best, b: bytes), obligations: obligations),
+              // An assumed byte figure is a bet on the configuration, not a reading: it charges nothing and
+              // names itself, so the axis refuses rather than bill a guess.
+              ServingMemoryAssumed { bytes: bytes, reason: reason } =>
+                warm_charge_walk(ladder: ladder.skip(n: 1), want_disk: want_disk, best: best, obligations: concat(obligations, [reason] as List<NonEmptyStr>)),
+              ServingMemoryUnread { reason: reason } =>
+                warm_charge_walk(ladder: ladder.skip(n: 1), want_disk: want_disk, best: best, obligations: concat(obligations, [reason] as List<NonEmptyStr>)),
+            }
+          } else {
+            warm_charge_walk(ladder: ladder.skip(n: 1), want_disk: want_disk, best: best, obligations: obligations)
+          },
+        _ => warm_charge_walk(ladder: ladder.skip(n: 1), want_disk: want_disk, best: best, obligations: obligations),
+      },
+  }
+}
+
+fn tier_is_disk(tier: ServingSwapTier) -> Bool {
+  match tier {
+    SwapTierDisk => true
+    _ => false
+  }
+}
+
+fn bigger(a: Optional<ByteSize>, b: ByteSize) -> Optional<ByteSize> {
+  match a {
+    Absent => Present { value: b },
+    Present { value: seen } =>
+      if byte_size_count(a: b) > byte_size_count(a: seen) {
+        Present { value: b }
+      } else {
+        Present { value: seen }
+      },
+  }
+}
+
+// The engine's own anonymous footprint: the base its memory row states, which only a reading taken with
+// nothing parked measures. Absent (with the reason) where no row states it -- srv1's container was never
+// measured with its cache empty, which is exactly the kind of gap a charge must not paper over.
+fn anonymous_base_charge(engine_memory: Optional<ServingEngineMemory>) -> ChargeComponent {
+  match engine_memory {
+    Absent => component_unread(obligation: "the host models no engine memory row for this replica, so the engine's anonymous base is unread" as NonEmptyStr),
+    Present { value: row } =>
+      match row.base {
+        ServingMemoryRead { bytes: bytes, provenance: _ } => component_read(bytes: bytes),
+        ServingMemoryAssumed { bytes: bytes, reason: reason } => component_unread(obligation: reason),
+        ServingMemoryUnread { reason: reason } => component_unread(obligation: reason),
+      },
+  }
+}
+
+// The experts' host-RAM charge as a component, so its obligation reads like the others.
+fn expert_charge_component(expert_artifact: Optional<ServingSharedArtifact>) -> ChargeComponent {
+  match expert_ram_charge_of(artifact: expert_artifact) {
+    Present { value: bytes } => component_read(bytes: bytes),
+    Absent =>
+      match expert_artifact {
+        Absent => component_unread(obligation: "no serving_layout artifact row models this host's weights and experts, so their host-RAM hold is unread" as NonEmptyStr),
+        Present { value: row } =>
+          component_unread(obligation: concat(concat("the host-RAM rung of the artifact ", row.name as NonEmptyStr), " states no readable byte figure" as NonEmptyStr) as NonEmptyStr),
+      },
+  }
+}
+
+// N replicas of a ladder, the host's expert copy counted ONCE (it is shared resident bytes, not per-replica --
+// the layout's own rule), and the engine base once per engine row. Any unread component fails its axis and
+// names itself.
+fn configuration_charges(ladder: List<ServingWarmSwap>, expert_artifact: Optional<ServingSharedArtifact>, engine_memory: Optional<ServingEngineMemory>, replica_count: Nat) -> ReplicaHostCharges {
+  let warm_ram = warm_ram_charge(ladder: ladder)
+  let warm_disk = warm_disk_charge(ladder: ladder)
+  let experts = expert_charge_component(expert_artifact: expert_artifact)
+  let anon = anonymous_base_charge(engine_memory: engine_memory)
+  let obligations = concat(concat(concat(warm_ram.obligations, warm_disk.obligations), experts.obligations), anon.obligations)
+  ReplicaHostCharges {
+    ram: sum_or_absent(parts: [scale_component(base: warm_ram.bytes, times: replica_count), experts.bytes, anon.bytes] as List<Optional<ByteSize>>),
+    disk: scale_component(base: warm_disk.bytes, times: replica_count),
+    obligations: obligations,
+  }
+}
+
+fn scale_component(base: Optional<ByteSize>, times: Nat) -> Optional<ByteSize> {
+  match base {
+    Absent => Absent,
+    Present { value: bytes } =>
+      if times == 0 {
+        Present { value: byte_size(count: 0) }
+      } else {
+        Present { value: byte_size(count: byte_size_count(a: bytes) * times) }
+      },
+  }
+}
+
+// The sum, or nothing: an unread part makes the whole axis unread, and the obligations already say which part.
+fn sum_or_absent(parts: List<Optional<ByteSize>>) -> Optional<ByteSize> {
+  match parts.first() {
+    Absent => Present { value: byte_size(count: 0) },
+    Present { value: head } =>
+      match head {
+        Absent => Absent,
+        Present { value: bytes } =>
+          match sum_or_absent(parts: parts.skip(n: 1)) {
+            Absent => Absent,
+            Present { value: tail } => Present { value: byte_size(count: byte_size_count(a: bytes) + byte_size_count(a: tail)) },
+          },
+      },
+  }
+}
+
+// One replica of the roster, charged.
+fn replica_host_charges(p: ServingReplicaProfile) -> ReplicaHostCharges {
+  configuration_charges(
+    ladder: p.warm_ladder,
+    expert_artifact: p.expert_artifact,
+    engine_memory: p.engine_memory,
+    replica_count: 1,
+  )
+}
+
+// Why a coordinate figure refused, for the witness and the selector's obligations: the identity's own words
+// when that is the reason, and "no reading at that coordinate" when the table simply has no row.
+fn replica_figures_refusal(p: ServingReplicaProfile) -> Optional<NonEmptyStr> {
+  match p.figures {
+    FiguresOnRow { context: context, throughput: throughput, cold_prefill: cold_prefill, cold_prefill_standing: cold_prefill_standing } => Absent,
+    FiguresUnmeasured { obligation: obligation } => Present { value: obligation },
+    FiguresAtCoordinate { topology: topology, sessions: sessions } =>
+      match srv1_topology_reading(topology: topology, sessions: sessions) {
+        Absent => Present { value: "no reading at that topology and concurrency" as NonEmptyStr },
+        Present { value: reading } =>
+          match replica_run_identity(p: p) {
+            Absent => Present { value: "this replica states no run identity, so no reading can be shown to match it" as NonEmptyStr },
+            Present { value: want } =>
+              match replica_run_identity_match(want: want, taken: reading.run) {
+                ReplicaRunIdentityMatch { agrees: true, reasons: reasons, unchecked: unchecked } => Absent,
+                ReplicaRunIdentityMatch { agrees: false, reasons: reasons, unchecked: unchecked } => reasons.first(),
+              },
+          },
+      },
+  }
 }

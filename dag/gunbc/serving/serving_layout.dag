@@ -674,27 +674,34 @@ fn host_6ce85c_a16_device(bus: String) -> ServingDevice {
 // were already disabled; c5 and c7 are disabled by the operator ruling 2026-11-01 above.
 data host_6ce85c_a16_buses: List<String> = ["85", "87", "88", "c8"]
 
+// H11'S ROUTED-EXPERT ARTIFACT AS ITS OWN ROW, so a consumer that asks "where do h11's experts sit" reads
+// THIS row rather than digging into the grant's shared list -- gunbc.serving.serving_replica_profile's h11
+// replicas name it as their expert placement, and the grant lists it. One row, one answer: the bytes are the
+// lock service's resident copy, held PINNED, with no device rung and no charged disk rung (the GGUF shard on
+// the drive is where the bytes come FROM).
+data host_6ce85c_routed_expert_artifact: ServingSharedArtifact = ServingSharedArtifact {
+  name: "Qwen3.8-Flash-Next IQ3_S routed-expert GGUF part 1" as NonEmptyStr,
+  bytes: host_6ce85c_serving_memory_observed.shared_resident,
+  owner: "strata-expert-lock.service (mlock, one page-cache copy mapped by every engine)" as NonEmptyStr,
+  // h11's residency, spelled in the ladder every host now uses, with its charge UNCHANGED: a pinned host-RAM
+  // rung reserves its whole figure, which is what this artifact charged before rungs existed. Moving h11 onto
+  // evictable mapped experts is its OWN modelled transition — the lock service's ownership, the grant, the
+  // launch and the qualification all move with it (bold-wren-111 and gentle-swift-129, 2026-11-09) — and is
+  // deliberately NOT taken here.
+  device: Absent,
+  host_ram: Present { value: ServingArtifactRung {
+    holds: ArtifactHeldPinned { mechanism: "strata-expert-lock.service mlocks the file; engines start After= it, so no engine pays for it and nothing can reclaim it" as NonEmptyStr },
+    bytes: ServingMemoryRead { bytes: host_6ce85c_serving_memory_observed.shared_resident, provenance: "the lock service's resident copy as the host charges it (host_6ce85c_serving_memory_observed.shared_resident)" as NonEmptyStr },
+    realizes: "one page-cache copy, mlocked, mapped by every engine on the host; the GGUF shard on the drive is its source, so an expert miss is a re-read, never a loss -- the drive is where the bytes come FROM, not a rung charged to anyone (review 92384)" as NonEmptyStr,
+  } },
+  disk: Absent,
+}
+
 data host_6ce85c_grant: ServingResourceGrant = ServingResourceGrant {
   host: operator_host_6ce85c,
   usable_ram: host_6ce85c_serving_memory_observed.usable_ram,
   overhead: HostFixedOverheadAllowance { bytes: gibibyte_to_byte_size(g: gibibyte(count: 6)), reason: "h11 host overhead: a 6 GiB allowance for the OS, sshd and the server.py front ends until a reading with every engine stopped replaces it" as NonEmptyStr },
-  shared: [ServingSharedArtifact {
-    name: "Qwen3.8-Flash-Next IQ3_S routed-expert GGUF part 1" as NonEmptyStr,
-    bytes: host_6ce85c_serving_memory_observed.shared_resident,
-    owner: "strata-expert-lock.service (mlock, one page-cache copy mapped by every engine)" as NonEmptyStr,
-    // h11's residency, spelled in the ladder every host now uses, with its charge UNCHANGED: a pinned host-RAM
-    // rung reserves its whole figure, which is what this artifact charged before rungs existed. Moving h11 onto
-    // evictable mapped experts is its OWN modelled transition — the lock service's ownership, the grant, the
-    // launch and the qualification all move with it (bold-wren-111 and gentle-swift-129, 2026-11-09) — and is
-    // deliberately NOT taken here.
-    device: Absent,
-    host_ram: Present { value: ServingArtifactRung {
-      holds: ArtifactHeldPinned { mechanism: "strata-expert-lock.service mlocks the file; engines start After= it, so no engine pays for it and nothing can reclaim it" as NonEmptyStr },
-      bytes: ServingMemoryRead { bytes: host_6ce85c_serving_memory_observed.shared_resident, provenance: "the lock service's resident copy as the host charges it (host_6ce85c_serving_memory_observed.shared_resident)" as NonEmptyStr },
-      realizes: "one page-cache copy, mlocked, mapped by every engine on the host; the GGUF shard on the drive is its source, so an expert miss is a re-read, never a loss -- the drive is where the bytes come FROM, not a rung charged to anyone (review 92384)" as NonEmptyStr,
-    } },
-    disk: Absent,
-  }],
+  shared: [host_6ce85c_routed_expert_artifact],
   swap_bound: serving_engine_swap_bound,
   charging: ["shared expert pages are charged to strata-expert-lock, not the engines: 47,784 MiB of the 51.05 GiB file read unevictable in its cgroup on 2026-10-30T19:20Z, and engines start After= it from that date; the remaining ~3.3 GiB's charge is unread" as NonEmptyStr],
   devices: map(host_6ce85c_a16_buses, b => host_6ce85c_a16_device(bus: b)),
