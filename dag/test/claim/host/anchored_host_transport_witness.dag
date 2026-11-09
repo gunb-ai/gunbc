@@ -12,6 +12,7 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv2, operator_host_mtcol
 import gunbc.fleet.fleet_ssh_access { mtcollins1_ssh_host_key_secret }
 import gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow, ScannedFirstContact, ProvisionedInstall, host_key_provenance_label, known_hosts_line, known_host_row_field, fleet_name_at_ssh_port }
 import gunbc.host.host_effect { HostEffectTransport, LocalShell, FleetSsh }
+import gunbc.host.host_operation_exec { HostOperationOutcome, HostOperationObserved }
 import gunbc.provisioning.network_install_receipt { ClientClassUnread, NetworkInstallReceipt, network_install_receipt, current_install_for_host_established, current_install_unestablished }
 import test.claim.provisioning.network_install_receipt_witness { all_fetches, client, good, installed_host, other_client, readings, subject }
 import extdeps.network.mac { Eui48Address }
@@ -33,6 +34,7 @@ import gunbc.host.anchored_host_transport {
   anchored_host_transport_of,
   anchored_host_transport_against,
   anchored_host_transport_per_boot,
+  anchored_host_binding_on_pinned_boot,
   anchored_host_transport_provisioned,
   anchored_host_binding_refusal_reason,
   anchored_host_key_scan_effect,
@@ -519,14 +521,15 @@ test fn the_transport_route_cites_the_executed_selectors() -> Bool {
   && string_contains(s: unavailable_cited, pattern: "select_access_token_source: AccessTokenSourceUnavailable")
 }
 
-// THE OPEN GAPS ARE ROWS, NOT COMMENTS (review 85051, DESIGN sec.3c). The module carries five frontier
-// rows for what this diff does NOT yet do in production: nothing routes a live transport through
-// anchored_host_transport_of, no live readback has run, and nothing on the host consumes the placed key
-// (no sshd in this slice). They must be well-formed -- a gap in
+// THE OPEN GAPS ARE ROWS, NOT COMMENTS (review 85051, DESIGN sec.3c). The module carries four frontier
+// rows for what is NOT yet done in production: nothing routes a live transport through the STATIC
+// anchored_host_transport_of, the key stages' real run is a hand step, no static readback has run, and nothing on the
+// host consumes the custody-placed key. The per-boot row retired when the boot run's SOL reader became the pin's
+// production producer (anchored_host_transport_live_per_boot). They must be well-formed -- a gap in
 // a comment dissolves; a row is at least checked for well-formedness (no fold checks its trigger).
 
 test fn the_open_gaps_are_well_formed_frontier_rows() -> Bool {
-  count(anchored_host_transport_frontier_rows) == 5
+  count(anchored_host_transport_frontier_rows) == 4
   && frontier_rows_well_formed(rows: anchored_host_transport_frontier_rows)
 }
 
@@ -673,6 +676,10 @@ data per_boot_valid_key_b64: String = "AAAAC3NzaC1lZDI1NTE5AAAAIErU2itxhvGPRx1Ux
 
 data per_boot_fixture_fingerprint: String = "SHA256:hIxG0YT2jIxXbxs4XGqwehgoA63kxD4xKP2j6YjG86w"
 
+// two kernel boot ids (UUIDs, the only boot id checked_host_key admits)
+data per_boot_a: String = "aaaaaaaa-0000-4000-8000-00000000000a"
+data per_boot_b: String = "bbbbbbbb-0000-4000-8000-00000000000b"
+
 // the pin a boot's reported fields yield; Absent when the checked constructor refuses them
 fn per_boot_pin_of(boot_id: String, key_type: String, key_b64: String, fingerprint: String) -> PerBootHostPin? {
   if boot_id == "" { none } else {
@@ -719,14 +726,14 @@ fn per_boot_binding(pin_in: PerBootHostPin?, expected_boot: NonEmptyStr, key_b64
 
 // POSITIVE CONTROL: the sshd presents the key the console printed at THIS boot -> bound.
 test fn a_per_boot_pin_binds_the_key_printed_at_that_boot() -> Bool {
-  per_boot_binding(pin_in: per_boot_pin_ok(boot_id: "boot-a", key_b64: per_boot_valid_key_b64), expected_boot: "boot-a" as NonEmptyStr, key_b64: per_boot_valid_key_b64) == "bound"
+  per_boot_binding(pin_in: per_boot_pin_ok(boot_id: per_boot_a, key_b64: per_boot_valid_key_b64), expected_boot: per_boot_a as NonEmptyStr, key_b64: per_boot_valid_key_b64) == "bound"
 }
 
 // A per-boot pin is neither trust-on-first-use nor an external join: its provenance is its own arm, so a policy
 // keyed on provenance can tell a BMC-console key from a bare network scan (review 89380). The static anchor's
 // arm is unchanged.
 test fn a_per_boot_pin_carries_its_own_provenance_arm() -> Bool {
-  match per_boot_pin_ok(boot_id: "boot-a", key_b64: per_boot_valid_key_b64) {
+  match per_boot_pin_ok(boot_id: per_boot_a, key_b64: per_boot_valid_key_b64) {
     Present { value: pin } => host_key_provenance_label(p: pin.anchor.provenance) == "console-per-boot"
     Absent => false
   }
@@ -736,25 +743,63 @@ test fn a_per_boot_pin_carries_its_own_provenance_arm() -> Bool {
 // RED: a pin read at boot A, presented while acting on boot B (the same key even) refuses before any key
 // is compared -- a per-boot key vouches for its own boot only.
 test fn a_pin_from_another_boot_refuses() -> Bool {
-  per_boot_binding(pin_in: per_boot_pin_ok(boot_id: "boot-a", key_b64: per_boot_valid_key_b64), expected_boot: "boot-b" as NonEmptyStr, key_b64: per_boot_valid_key_b64) == "pin-from-another-boot"
+  per_boot_binding(pin_in: per_boot_pin_ok(boot_id: per_boot_a, key_b64: per_boot_valid_key_b64), expected_boot: per_boot_b as NonEmptyStr, key_b64: per_boot_valid_key_b64) == "pin-from-another-boot"
 }
 
 // RED: right boot, but the sshd presents a different key than the console printed.
 test fn a_mismatched_key_under_a_per_boot_pin_refuses() -> Bool {
-  per_boot_binding(pin_in: per_boot_pin_ok(boot_id: "boot-a", key_b64: per_boot_valid_key_b64), expected_boot: "boot-a" as NonEmptyStr, key_b64: wrong_public_key_base64) == "presented-key-mismatch"
+  per_boot_binding(pin_in: per_boot_pin_ok(boot_id: per_boot_a, key_b64: per_boot_valid_key_b64), expected_boot: per_boot_a as NonEmptyStr, key_b64: wrong_public_key_base64) == "presented-key-mismatch"
 }
 
-// RED: no pin refuses, and so does every key the checked constructor refuses: an empty boot id, a key type that
-// is not ed25519, a fingerprint that is not the blob's, an absent fingerprint, a truncated blob.
+// RED: no pin refuses, and so does every key the checked constructor refuses: an empty boot id, a boot id that is
+// not a kernel boot id (console text with no UUID shape, a control character), a key type that is not ed25519, a fingerprint that is not the blob's, an absent fingerprint, a truncated blob.
 test fn no_per_boot_pin_refuses_and_so_does_every_key_the_checked_constructor_refuses() -> Bool {
   let key = per_boot_valid_key_b64
   let fp = per_boot_fixture_fingerprint
-  per_boot_binding(pin_in: none, expected_boot: "boot-a" as NonEmptyStr, key_b64: key) == "anchor-absent"
-  && per_boot_binding(pin_in: per_boot_pin_of(boot_id: "", key_type: "ssh-ed25519", key_b64: key, fingerprint: fp), expected_boot: "boot-a" as NonEmptyStr, key_b64: key) == "anchor-absent"
-  && per_boot_binding(pin_in: per_boot_pin_of(boot_id: "boot-a", key_type: "ssh-rsa", key_b64: key, fingerprint: fp), expected_boot: "boot-a" as NonEmptyStr, key_b64: key) == "anchor-absent"
-  && per_boot_binding(pin_in: per_boot_pin_of(boot_id: "boot-a", key_type: "ssh-ed25519", key_b64: key, fingerprint: "SHA256:hIxG0YT2jIxXbxs4XGqwehgoA63kxD4xKP2j6YjG86x"), expected_boot: "boot-a" as NonEmptyStr, key_b64: key) == "anchor-absent"
-  && per_boot_binding(pin_in: per_boot_pin_of(boot_id: "boot-a", key_type: "ssh-ed25519", key_b64: key, fingerprint: ""), expected_boot: "boot-a" as NonEmptyStr, key_b64: key) == "anchor-absent"
-  && per_boot_binding(pin_in: per_boot_pin_ok(boot_id: "boot-a", key_b64: "AAAAC3NzaC1lZDI1NTE5"), expected_boot: "boot-a" as NonEmptyStr, key_b64: key) == "anchor-absent"
+  per_boot_binding(pin_in: none, expected_boot: per_boot_a as NonEmptyStr, key_b64: key) == "anchor-absent"
+  && per_boot_binding(pin_in: per_boot_pin_of(boot_id: "", key_type: "ssh-ed25519", key_b64: key, fingerprint: fp), expected_boot: per_boot_a as NonEmptyStr, key_b64: key) == "anchor-absent"
+  && per_boot_binding(pin_in: per_boot_pin_of(boot_id: "boot-a", key_type: "ssh-ed25519", key_b64: key, fingerprint: fp), expected_boot: per_boot_a as NonEmptyStr, key_b64: key) == "anchor-absent"
+  && per_boot_binding(pin_in: per_boot_pin_of(boot_id: concat(per_boot_a, "\u{1b}"), key_type: "ssh-ed25519", key_b64: key, fingerprint: fp), expected_boot: per_boot_a as NonEmptyStr, key_b64: key) == "anchor-absent"
+  && per_boot_binding(pin_in: per_boot_pin_of(boot_id: per_boot_a, key_type: "ssh-rsa", key_b64: key, fingerprint: fp), expected_boot: per_boot_a as NonEmptyStr, key_b64: key) == "anchor-absent"
+  && per_boot_binding(pin_in: per_boot_pin_of(boot_id: per_boot_a, key_type: "ssh-ed25519", key_b64: key, fingerprint: "SHA256:hIxG0YT2jIxXbxs4XGqwehgoA63kxD4xKP2j6YjG86x"), expected_boot: per_boot_a as NonEmptyStr, key_b64: key) == "anchor-absent"
+  && per_boot_binding(pin_in: per_boot_pin_of(boot_id: per_boot_a, key_type: "ssh-ed25519", key_b64: key, fingerprint: ""), expected_boot: per_boot_a as NonEmptyStr, key_b64: key) == "anchor-absent"
+  && per_boot_binding(pin_in: per_boot_pin_ok(boot_id: per_boot_a, key_b64: "AAAAC3NzaC1lZDI1NTE5"), expected_boot: per_boot_a as NonEmptyStr, key_b64: key) == "anchor-absent"
+}
+
+// THE PIN'S BOOT IS THE LIVE BOOT (anchored_host_binding_on_pinned_boot): after the pin authenticated the host, the
+// kernel boot id read over that transport must be the pin's boot. The read is the supplied boundary; the live route
+// (anchored_host_transport_live_per_boot) passes the read it took over the bound transport.
+fn per_boot_bound() -> AnchoredHostBinding {
+  let row = anchored_fixture_row()
+  match fleet_transport_to(host: operator_host_mtcollins1) {
+    Absent => AnchoredBindingRefused { cause: "no hermetic fleet transport to mtcollins1" }
+    Present { value: t } => anchored_host_transport_per_boot(
+      transport: t,
+      expected_boot_id: per_boot_a as NonEmptyStr,
+      pin: per_boot_pin_ok(boot_id: per_boot_a, key_b64: per_boot_valid_key_b64),
+      presented_key_line: join([known_host_row_field(k: the_present_anchor(row: row)), " ssh-ed25519 ", per_boot_valid_key_b64], ""),
+    )
+  }
+}
+
+fn live_boot_read(stdout: String) -> HostOperationOutcome {
+  HostOperationObserved { stdout: stdout, success: true, stderr: none }
+}
+
+// POSITIVE CONTROL: the host reports the pin's boot -> still bound (and the fixture binding is bound to begin with).
+test fn a_pinned_host_on_the_pins_boot_stays_bound() -> Bool {
+  per_boot_binding_kind(b: per_boot_bound()) == "bound"
+    && per_boot_binding_kind(b: anchored_host_binding_on_pinned_boot(binding: per_boot_bound(), pinned_boot: per_boot_a as NonEmptyStr, read: live_boot_read(stdout: concat(per_boot_a, "\n")))) == "bound"
+}
+
+// RED: the host the pin authenticated reports another boot -> a pin from another boot, naming the live boot; and a
+// read that establishes no boot refuses rather than binding on an unknown boot.
+test fn a_pinned_host_reporting_another_boot_refuses() -> Bool {
+  (match anchored_host_binding_on_pinned_boot(binding: per_boot_bound(), pinned_boot: per_boot_a as NonEmptyStr, read: live_boot_read(stdout: concat(per_boot_b, "\n"))) {
+    AnchoredBindingPinFromAnotherBoot { pinned_boot: p, expected_boot: e } => p == per_boot_a && e == per_boot_b
+    _ => false
+  })
+    && per_boot_binding_kind(b: anchored_host_binding_on_pinned_boot(binding: per_boot_bound(), pinned_boot: per_boot_a as NonEmptyStr, read: live_boot_read(stdout: "not a boot id\n"))) == "refused"
 }
 
 // ══ T2: THE PROVISIONED PER-INSTALL PIN (gunbc.plans.host_trust_provisioned_key (deleted 2026-11-08)) ══

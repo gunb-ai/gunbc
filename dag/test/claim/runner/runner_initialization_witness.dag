@@ -15,7 +15,7 @@ import gunbc.runner.runner_initialization {
   RunnerInitialized, RunnerNotInitialized, RunnerHostNotInitialized, RunnerRevisionUnaccepted,
   runner_initialization_over, runner_initialization_live, runner_initialization_host, runner_initialization_account, runner_initialization_commit,
 }
-import test.claim.host.initialized_host_witness { mtcollins1_binding, mtcollins1_running_os, boot_read, captured_boot }
+import test.claim.host.initialized_host_witness { mtcollins1_binding, mtcollins1_running_os, mtcollins1_host_key, boot_read, captured_boot }
 import test.claim.runner.runner_qualification_revision_admission_witness { admit, answered, mg, epoch_match, landed, sha_r }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -35,14 +35,19 @@ fn unaccepted() -> QualificationRevisionAdmission {
   QualificationRevisionRefused { refusal: QualificationRevisionUndecodable { observed: "not-a-revision" } }
 }
 
-// mtcollins1's real running-OS reading, through the receipt the boot run writes and the qualification job reads.
+// mtcollins1's real running-OS reading, through the receipt the boot run writes and the qualification job reads,
+// written with the host key the same readback checked (the per-boot pin's facts): the receipt only exists with it.
 fn carried_reading() -> RunningOsReading {
   let producer = running_os_receipt_producer_of_run(run: github_workflow_run_id_of_wire(n: 41000000001), attempt: 1)
-  match running_os_receipt_text(producer: producer, reading: mtcollins1_running_os()) {
-    Absent => RunningOsUnobserved { cause: "the boot run's reading wrote no receipt" }
-    Present { value: text } => match running_os_receipt_reading(text: text, fetched_from: producer) {
-      RunningOsReceiptAdmitted { reading: r } => r
-      RunningOsReceiptRefused { refusal: f } => RunningOsUnobserved { cause: running_os_receipt_refusal_text(refusal: f) }
+  match mtcollins1_host_key() {
+    Absent => RunningOsUnobserved { cause: "the boot run's readback checked no host key" }
+    Present { value: key } => match running_os_receipt_text(producer: producer, reading: mtcollins1_running_os(), host_key: key) {
+      Absent => RunningOsUnobserved { cause: "the boot run's reading wrote no receipt" }
+      Present { value: text } => match running_os_receipt_reading(text: text, fetched_from: producer) {
+        RunningOsReceiptAdmitted { reading: r, host_key: k } =>
+          if (k.boot_id as String) == (key.boot_id as String) && k.public_key_base64 == key.public_key_base64 { r } else { RunningOsUnobserved { cause: "the receipt carried another key than the boot run wrote" } }
+        RunningOsReceiptRefused { refusal: f } => RunningOsUnobserved { cause: running_os_receipt_refusal_text(refusal: f) }
+      }
     }
   }
 }

@@ -3305,7 +3305,9 @@ fn mtcollins1_boot_conclude(attempt: MtCollins1BootAttempt) -> ProcessExit
 }
 
 // THE RUNNING-OS RECEIPT (gunbc.host.running_os_receipt), written only when the runner host was accepted and its
-// running OS observed, naming THIS run and attempt as its producer. A runner host accepted with no receipt written
+// running OS observed, naming THIS run and attempt as its producer, and carrying the host key the accepted
+// runner-host-up read off the same console envelope (gunbc.runner.runner_host_medium RunnerHostUp host_key) -- the
+// per-boot pin every later job authenticates this host by. A runner host accepted with no receipt written
 // fails the run: a later job could not initialize the host, and a success would say otherwise. Returns the failure,
 // or none when there is nothing to write or it was written.
 fn mtcollins1_boot_write_running_os_receipt(attempt: MtCollins1BootAttempt) -> String? {
@@ -3317,8 +3319,8 @@ fn mtcollins1_boot_write_running_os_receipt(attempt: MtCollins1BootAttempt) -> S
       if run_id == "" || run_attempt == "" {
         Present { value: "the runner host was accepted but GITHUB_RUN_ID or GITHUB_RUN_ATTEMPT is unset, so the running-OS receipt names no producer and is not written" }
       } else {
-        match running_os_receipt_text(producer: RunningOsReceiptProducer { run_id: run_id as NonEmptyStr, run_attempt: run_attempt as NonEmptyStr }, reading: terminal.running) {
-          Absent => Present { value: "the runner host was accepted but its running OS was not observed, so no running-OS receipt is written" }
+        match running_os_receipt_text(producer: RunningOsReceiptProducer { run_id: run_id as NonEmptyStr, run_attempt: run_attempt as NonEmptyStr }, reading: terminal.running, host_key: terminal.up.host_key) {
+          Absent => Present { value: "the runner host was accepted but its running OS was not observed, or its host key was checked on another boot than the one observed, so no running-OS receipt is written" }
           Present { value: text } => {
             let wrote = Filesystem.Write(path: mtcollins1_boot_running_os_receipt_path, content: text)
             if wrote.success { none } else { Present { value: concat("could not write the running-OS receipt: ", wrote.error) } }
