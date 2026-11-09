@@ -3041,10 +3041,15 @@ pub fn is_list_shrink_expr(
                         .clone())
                     .clone()
                     {
-                        ExprData::ExprLiteral { ref value, .. }
-                            if matches!(value.as_ref(), LiteralValue::LitInt { value: _, .. }) =>
+                        ExprData::ExprLiteral {
+                            value: ref __rc_value,
+                            ..
+                        } if matches!(
+                            __rc_value.as_ref(),
+                            LiteralValue::LitInt { value: _, .. }
+                        ) =>
                         {
-                            let LiteralValue::LitInt { value: n, .. } = value.as_ref() else {
+                            let LiteralValue::LitInt { value: n, .. } = __rc_value.as_ref() else {
                                 unreachable!()
                             };
                             (n.clone() > 0)
@@ -3078,10 +3083,15 @@ pub fn is_generalized_shrink(expr: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIn
                         .clone())
                     .clone()
                     {
-                        ExprData::ExprLiteral { ref value, .. }
-                            if matches!(value.as_ref(), LiteralValue::LitInt { value: _, .. }) =>
+                        ExprData::ExprLiteral {
+                            value: ref __rc_value,
+                            ..
+                        } if matches!(
+                            __rc_value.as_ref(),
+                            LiteralValue::LitInt { value: _, .. }
+                        ) =>
                         {
-                            let LiteralValue::LitInt { value: n, .. } = value.as_ref() else {
+                            let LiteralValue::LitInt { value: n, .. } = __rc_value.as_ref() else {
                                 unreachable!()
                             };
                             (n.clone() > 0)
@@ -4480,13 +4490,16 @@ pub fn is_arithmetic_descent_expr(
                 } => {
                     ((crate::v1_std_core::expr_var_name_at(left.clone(), si) == param_name.clone())
                         && match (*right.expr_data.clone()).clone() {
-                            ExprData::ExprLiteral { ref value, .. }
-                                if matches!(
-                                    value.as_ref(),
-                                    LiteralValue::LitInt { value: _, .. }
-                                ) =>
+                            ExprData::ExprLiteral {
+                                value: ref __rc_value,
+                                ..
+                            } if matches!(
+                                __rc_value.as_ref(),
+                                LiteralValue::LitInt { value: _, .. }
+                            ) =>
                             {
-                                let LiteralValue::LitInt { value: n, .. } = value.as_ref() else {
+                                let LiteralValue::LitInt { value: n, .. } = __rc_value.as_ref()
+                                else {
                                     unreachable!()
                                 };
                                 (n.clone() > 0)
