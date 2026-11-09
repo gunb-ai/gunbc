@@ -562,7 +562,7 @@ fn hand_retirement_notice(
     ShrunkOnly =>
       concat(head, "no incoming slot is pending proof on this host; retiring it is the operator's call.")
     IncomingUnresolved { cause: why } =>
-      concat(head, concat("the incoming population is unknowable (", concat(why, "); no retirement is safe to take yet."))))
+      concat(head, concat("the incoming population is unknowable (", concat(why, "); no retirement is safe to take yet.")))
     ReplacedBy { incoming: slots } =>
       if all(map(slots, k => is_proven(slots_of: proven, slot: k))) {
         concat(
