@@ -4026,19 +4026,6 @@ fn equality_resolved_declaration_structure(rt: Node, peeled: Node, name: String,
   }
 }
 
-// A UNIT-VARIANT PHANTOM TYPE ARGUMENT IS A MARKER, and it compares by the target. `type RackUnit =
-// Measure<Length, RackUnitHeight, Nat>` (std.measure) passes coproduct unit variants as its dimension and
-// scale arguments; they name no declaration, so the by-target table cannot answer for them and the walk
-// refused the whole application -- gunbc.fleet.fleet_physical_inventory::
-// fleet_nominal_rackmount_arithmetic_holds and gunbc.compute.compute_seat_ensure::seat_fell_by, measured
-// at 3d34fc61ca6e with the pre-repair infer. The emitter already decides what these symbols ARE, through
-// the same authority resolve consumes (v1.compiler.infer_env::lookup_unit_variant_phantom_type, the
-// exact-one judgment): a unit marker struct carrying the full derive roster -- measured in the emitted v2
-// crate, `pub struct Length;` and `pub struct RackUnitHeight;` both with
-// `#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]`. A marker declares
-// no fields, so v1.compiler.trait_derive_emit::v1_emit_struct_derives never narrows it, and admission
-// answers by-target for exactly that set. When the judgment is absent, or its evidence is unavailable, the
-// argument refuses as before.
 // AN APPLIED ARGUMENT THAT IS A PARAMETER OF THE GENERIC BEING WALKED COMPARES BY THE TARGET. The authority is
 // the declared roster inference already carries for the declaration in scope
 // (InferScope.enclosing_declared_type_param_names, read by v1.compiler.infer::name_is_enclosing_declared_type_parameter
@@ -4103,29 +4090,6 @@ fn equality_scope_with_params(scope: InferScope, rt: Node) -> InferScope {
 // no fields, so v1.compiler.trait_derive_emit::v1_emit_struct_derives never narrows it, and admission
 // answers by-target for exactly that set. When the judgment is absent, or its evidence is unavailable, the
 // argument refuses as before.
-// AN APPLIED ARGUMENT THAT IS A PARAMETER OF THE GENERIC BEING WALKED COMPARES BY THE TARGET. By the time this
-// arm is reached the argument has been refused a route (equality_route_for), a declaration entry (the table), a
-// kernel or extensional container reading, and an alias expansion -- what is left of a bare type name is a name
-// resolve could not bind. Resolution diagnoses an unbound type name before inference ever runs (measured at
-// 3d34fc61ca6e: a module naming `NotAType` refuses with unresolved type, no equality row), so the only bare name
-// that reaches here unbound is a generic parameter, and the instrumented walk shows that is exactly what arrives
-// at the refused sites: `CreateCause<K>` inside EffectShape's schema
-// (gunbc.host.host_effect::host_effect_is_converge_loop_evidence) and `Box<V>` inside Outer
-// (test.claim.self_host_equality_admission_witness) both arrived as [slot=V inferred=none kid=V tv=no] -- a name
-// with no declaration, no route and no inference record. The emitted Rust answers the same shape with a bound on
-// EVERY parameter (`impl<V: PartialEq> PartialEq for Engine<V>`), and this predicate discharges that bound where
-// the generic is APPLIED, over the argument actually written there (equality_resolved_declaration_structure ->
-// equality_arguments_by_target). So a parameter passes here and the use is judged there: Engine<LeafVal> admits,
-// Engine<Mid1> refuses because Mid1's own entry refuses, Engine<Rc<Leaf>> refuses at the route arm, and
-// DemandEngine<NativeDemandValue> refuses at the entry its carrier earns by reaching a function value -- the
-// E0369 of v2-bootstrap run 42575201140 at 0619830d7f6e, which is what this arm must never re-open.
-fn type_reference_is_unbound_parameter(n: Node, scope: InferScope) -> Bool {
-  match type_reference_declaration_reading(n: n, source_indices: scope.type_env.source_indices, env: scope.type_env) {
-    TypeReferenceUnidentified { authored: _, resolved: _ } => true
-    _ => false
-  }
-}
-
 fn is_unit_variant_phantom_argument(n: Node, scope: InferScope) -> Bool {
   match lookup_unit_variant_phantom_type(env: scope.type_env, variant_name: authored_name_at(source_indices: scope.type_env.source_indices, node: n)) {
     UnitVariantPhantomPresent { variant: _ } => true
