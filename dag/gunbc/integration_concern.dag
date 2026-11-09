@@ -775,7 +775,7 @@ data run_closure_typecheck_exceeds_eval_demand: IntegrationConcern = Integration
   kind: SuspectedCapabilityGap {
     model: decl_ref(module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "resolve_entry_graph_demand_acquired"),
     requirement: "a gunbc run pays memory and wall time for the part of its entry's closure that evaluation reaches, not for every module the import closure names, while every refusal that typechecking the closure raises today still fires where it fires today",
-    standing: RequirementUnestablished { decided_by: "a design that shows how the signature and type-environment work every acquired closure module still pays (reconcile over all of them) can be discharged for modules no requested function reaches, without changing what a demanded declaration observes; function-body typechecking of unreached declarations is settled by run_unreached_function_bodies_typechecked and is not the open part" },
+    standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "realization_of") } },
   },
   affected: FreeSemigroup {
     head: decl_ref(module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "resolve_entry_graph_demand_acquired"),

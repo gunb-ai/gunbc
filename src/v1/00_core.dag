@@ -524,6 +524,7 @@ type CompilerDiagnostic
       declarations: Int,
       declarations_realized: Int,
       gaps: Int,
+      summary: String,
       span: SourceSpan
     }
 
@@ -761,7 +762,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     CastRealizationRefused { target: _, missing_realization_fact: _, span: s } => s
     TypeNameCarriesNoRecordConstructor { type_name: _, declared_variants: _, span: s } => s
     DeclarationRealizationGap { reader: _, target_module: _, name: _, span: s } => s
-    DeclarationRealizationProfile { grain: _, modules: _, modules_realized: _, declarations: _, declarations_realized: _, gaps: _, span: s } => s
+    DeclarationRealizationProfile { grain: _, modules: _, modules_realized: _, declarations: _, declarations_realized: _, gaps: _, summary: _, span: s } => s
   }
 }
 
@@ -903,8 +904,8 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
       concat("record literal names '", t, "' which declares no record constructor: '", t, "' is a union with variants [", join(vs, separator: ", "), "]; construct one of its variants instead (gunbc.design_argument::guarantee_ladder: a value inhabits its declared type)")
     DeclarationRealizationGap { reader: r, target_module: m, name: n, span: _ } =>
       concat("read outside the realized set: reading check '", r, "' asked for the row of declaration '", n, "' in module '", m, "', which no demanded declaration names; realization refused instead of reporting it absent (declare the edge from '", r, "' to '", n, "' in v1.compiler.infer realization_edges, or the read is a silent miss)")
-    DeclarationRealizationProfile { grain: g, modules: ms, modules_realized: mrs, declarations: ds, declarations_realized: drs, gaps: gs, span: _ } =>
-      concat("declaration-grain realization [", g, "]: ", int_to_text(mrs), "/", int_to_text(ms), " modules realized, ", int_to_text(drs), "/", int_to_text(ds), " declarations realized, ", int_to_text(gs), " reads outside the realized set")
+    DeclarationRealizationProfile { grain: g, modules: _, modules_realized: _, declarations: _, declarations_realized: _, gaps: _, summary: s, span: _ } =>
+      concat("declaration-grain realization [", g, "]: ", s)
   }
 }
 
@@ -1049,7 +1050,7 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     // edge can never present as a green run (v1.compiler.infer declaration-grain realization).
     DeclarationRealizationGap { reader: _, target_module: _, name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     // The measurement row for the same change: rendered, counted, never blocking.
-    DeclarationRealizationProfile { grain: _, modules: _, modules_realized: _, declarations: _, declarations_realized: _, gaps: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
+    DeclarationRealizationProfile { grain: _, modules: _, modules_realized: _, declarations: _, declarations_realized: _, gaps: _, summary: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
   }
 }
 

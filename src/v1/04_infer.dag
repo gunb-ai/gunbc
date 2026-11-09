@@ -142,7 +142,7 @@ import v1.compiler.infer_method {
 }
 import v1.compiler.infer_cycle { detect_type_cycles_kahn }
 import v1.compiler.coercion { provenance_realizes_natively }
-import v1.compiler.infer_env { type_env_with_equality_by_target, generic_actual_position_type, is_unsolved_type_variable, settled_type, settled_type_of_declaration, declaration_named_by_type_name, settled_head_of_declaration, kernel_settled_name, transparent_alias_rhs, alias_rhs_head_of_declaration,  overlay_skips_kernel_name,
+import v1.compiler.infer_env { type_env_with_equality_by_target, generic_actual_position_type, is_unsolved_type_variable, settled_type, settled_type_of_declaration, declaration_named_by_type_name, settled_head_of_declaration, kernel_settled_name, transparent_alias_rhs, alias_rhs_head_of_declaration,  overlay_skips_kernel_name, parameterized_alias_rhs, is_where_refinement_node,
   text_representation_by_identity, text_crossing_by_identity, host_text_into_structural_sequence, text_representations_cross, text_representation_is_text_arm, text_representation_is_unidentified,
   TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
   merge_type_env_cache_guarded, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
@@ -16633,31 +16633,98 @@ type RealizationEdge { reader: String, name: String, span: SourceSpan }
 
 type Realization {
   active: Bool,
-  enforce: Bool,
   realized: Map<String, Bool>,
   declared: Map<String, Bool>
 }
 
 // The whole-closure typecheck: every declaration is realized, nothing is filtered, nothing refuses.
 fn inactive_realization() -> Realization {
-  Realization { active: false, enforce: false, realized: empty_map(), declared: empty_map() }
+  Realization { active: false, realized: empty_map(), declared: empty_map() }
 }
 
-fn realization_enforcing(realization: Realization) -> Bool { realization.active && realization.enforce }
+// A realization is either none at all (the whole-closure typecheck) or the enforcing one; there is no
+// measuring mode, because a switch that turns the boundary check off is a way to make a missing
+// declared edge invisible.
+fn realization_enforcing(realization: Realization) -> Bool { realization.active }
 
 // THE ONE HOME FOR THE READS A DECLARATION OWEs THE CHECKER. Every arm here is a reading check that
 // consults a declaration row by a key taken from this declaration; the edge it owes is named by that
 // key. Adding a read to the checker without adding its edge here is caught by `realization_audit`,
 // not by a reviewer noticing: the audit re-derives these edges and refuses when one names a
 // declaration the run never realized.
-fn realization_edge_readers() -> List<String> {
-  [ "spelled", "inhabitance_row", "algebra_row", "dispatch", "provider_demand", "effect_analysis", "global_bare_lookup" ]
-}
+
 
 fn realization_edges(n: Node, source_indices: Map<String, NewlineIndex>) -> List<RealizationEdge> {
-  let names = map_keys(spelled_names_into(n: n, source_indices: source_indices, acc: empty_map()))
-  fold(realization_edge_readers(), init: [], f: (acc, reader) =>
-    fold(names, init: acc, f: (a2, nm) => list_push(a2, RealizationEdge { reader: reader, name: nm, span: n.span })))
+  concat(
+    fold([ "spelled", "inhabitance_row", "algebra_row", "dispatch", "provider_demand", "effect_analysis", "global_bare_lookup" ], init: [], f: (acc, reader) =>
+      fold(realization_read_names(n: n, source_indices: source_indices), init: acc, f: (a2, nm) =>
+        list_push(a2, RealizationEdge { reader: reader, name: nm, span: n.span }))),
+    realization_row_edges(item: n, source_indices: source_indices))
+}
+
+// THE ROWS A DECLARATION'S OWN DEFINITION MAKES THE CHECKER READ. `spelled_names_into` walks the extent an
+// author wrote -- children, params, properties, uses, body, annotations, transport -- and stops at
+// `inferred`, correctly: what a TYPE IS DECLARED TO BE is not extent. `type MoneyAmountMicro =
+// MoneyAmount<Micro>` is read by the type reader through its right-hand side (resolve's
+// expand_nominal_alias_rhs, the env's alias_rhs binding), and `type EpochMs = Int where range(min: 0)`
+// through its base and its predicates -- rows no demanded declaration spells. Those reads are real, so
+// the edges are declared here, keyed by the SAME authorities the checker reads through
+// (v1.compiler.env transparent_alias_rhs, parameterized_alias_rhs, is_where_refinement_node over the
+// item's resolved node): the edge list is the checker's read, not a list of names this file wants. Growth
+// (`demand_wave_add`) and the boundary audit both come through this one function, so a row reached only
+// this way is REALIZED -- an alias body or a refinement predicate in an otherwise-unreached module counts
+// reachable -- and a row reached by no edge at all refuses.
+fn realization_row_edges(item: Node, source_indices: Map<String, NewlineIndex>) -> List<RealizationEdge> {
+  let reader = match transparent_alias_rhs(pre: item) {
+    Present { value: _ } => "alias_rhs_expansion"
+    Absent => match parameterized_alias_rhs(pre: item, source_indices: source_indices) {
+      Present { value: _ } => "alias_rhs_expansion"
+      Absent => match item.inferred {
+        Present { value: Resolved { node: rhs } } => if is_where_refinement_node(n: rhs) { "where_refinement_chain" } else { "" }
+        _ => ""
+      }
+    }
+  }
+  let rhs = match transparent_alias_rhs(pre: item) {
+    Present { value: r } => Present { value: r }
+    Absent => match parameterized_alias_rhs(pre: item, source_indices: source_indices) {
+      Present { value: pa } => Present { value: pa.rhs }
+      Absent => match item.inferred {
+        Present { value: Resolved { node: r } } => if is_where_refinement_node(n: r) { Present { value: r } } else { none }
+        _ => none
+      }
+    }
+  }
+  if reader == "" { [] } else {
+    match rhs {
+      Absent => []
+      Present { value: r } => fold(realization_read_names(n: r, source_indices: source_indices), init: [], f: (acc, nm) =>
+        list_push(acc: acc, item: RealizationEdge { reader: reader, name: nm, span: item.span }))
+    }
+  }
+}
+
+// The name set one declaration's row makes the checker read: its spelled extent plus its alias or
+// refinement right-hand side. THE ONE INVENTORY -- closure growth and the audit's edges both derive from
+// it, so growth cannot drift behind the edges the audit holds a module to.
+fn realization_row_names(item: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  concat(realization_read_names(n: item, source_indices: source_indices),
+    realization_row_edges(item: item, source_indices: source_indices) |> map(e => e.name))
+}
+
+// THE READS THAT ONLY EXIST AFTER THE CHECKER HAS DONE ITS WORK: desugaring a pipe into a `filter`
+// call, synthesizing an equality member for a type, grounding an operator into an algebra row -- each
+// introduces a name the SOURCE never spelled, and the row it selects must be realized too. These are
+// edges off the typed item, and they are deliberately NOT part of the closure's growth: the closure
+// grows from what the source spells, so a name that appears only in a typed item is a gap unless a
+// reading check declares the edge. That asymmetry is what makes the audit able to fail.
+fn realization_typed_edges(n: Node, source_indices: Map<String, NewlineIndex>) -> List<RealizationEdge> {
+  fold(realization_read_names(n: n, source_indices: source_indices), init: [], f: (acc, nm) =>
+    list_push(acc: acc, item: RealizationEdge { reader: "desugar_or_synth", name: nm, span: n.span }))
+}
+
+fn realization_read_names(n: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  map_keys(spelled_names_into(n: n, source_indices: source_indices, acc: empty_map()))
 }
 
 // The transitive naming closure, from the requested entry outward, over EVERY declaration kind. The
@@ -16666,7 +16733,7 @@ fn realization_edges(n: Node, source_indices: Map<String, NewlineIndex>) -> List
 // realized. Reuses the wave machinery of demanded_declaration_names, whose index is keyed by authored
 // name -- so a row reached only by an implicit-read edge is realized in whatever module declares it.
 fn realization_names(modules: List<ResolvedModule>, seeds: List<String>, source_indices: Map<String, NewlineIndex>) -> Map<String, Bool> {
-  let items = flat_map(modules, m => module_items(n: m.module))
+  let items = fold(modules, init: [], f: (acc, m) => concat(acc, module_items(n: m.module)))
   let declaration_index = fold(items, init: empty_map(), f: (idx, item) =>
     let nm = authored_name_at(source_indices: source_indices, node: item)
     map_insert(idx, nm, list_push(match map_get(idx, nm) { Present { value: l } => l  Absent => [] }, item)))
@@ -16681,14 +16748,13 @@ fn realization_names(modules: List<ResolvedModule>, seeds: List<String>, source_
 // reader's own business ('no such declaration'), and a name the closure declares but this run did not
 // realize is THIS refusal.
 fn realization_declared_names(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> Map<String, Bool> {
-  fold(flat_map(modules, m => module_items(n: m.module)), init: empty_map(), f: (acc, item) =>
+  fold(fold(modules, init: [], f: (acc, m) => concat(acc, module_items(n: m.module))), init: empty_map(), f: (acc, item) =>
     map_insert(acc, authored_name_at(source_indices: source_indices, node: item), true))
 }
 
-fn realization_of(modules: List<ResolvedModule>, seeds: List<String>, source_indices: Map<String, NewlineIndex>, enforce: Bool) -> Realization {
+fn realization_of(modules: List<ResolvedModule>, seeds: List<String>, source_indices: Map<String, NewlineIndex>) -> Realization {
   Realization {
     active: true,
-    enforce: enforce,
     realized: realization_names(modules: modules, seeds: seeds, source_indices: source_indices),
     declared: realization_declared_names(modules: modules, source_indices: source_indices)
   }
@@ -16706,10 +16772,20 @@ fn realization_includes(realization: Realization, name: String) -> Bool {
 // would have come from -- a located refusal, never an absent answer.
 fn realization_audit(realization: Realization, edges: List<RealizationEdge>, module_name: String) -> List<ErrorNode> {
   if !realization_enforcing(realization: realization) { [] } else {
-    fold(edges, init: [], f: (acc, edge) =>
+    // One refusal per (module, name), carrying the first reading check that asked for the row. Every
+    // family reads the same name set, so a hundred copies of one refusal -- one per spelling, one per
+    // family -- say nothing an engineer would act on differently; the refusal, its location and its
+    // reader are what a fix needs.
+    let asked = fold(edges, init: empty_map(), f: (acc, edge) =>
       if map_has(m: realization.realized, key: edge.name) { acc }
       else if !map_has(m: realization.declared, key: edge.name) { acc }
-      else { list_push(acc, make_error_node(diagnostic: DeclarationRealizationGap { reader: edge.reader, target_module: module_name, name: edge.name, span: edge.span }, module_name: module_name)) })
+      else if map_has(m: acc, key: edge.name) { acc }
+      else { map_insert(acc, edge.name, edge) })
+    fold(map_keys(m: asked), init: [], f: (acc, name) =>
+      match map_get(asked, name) {
+        Present { value: edge } => list_push(acc, make_error_node(diagnostic: DeclarationRealizationGap { reader: edge.reader, target_module: module_name, name: name, span: edge.span }, module_name: module_name))
+        Absent => acc
+      })
   }
 }
 
@@ -16717,9 +16793,11 @@ fn realization_audit(realization: Realization, edges: List<RealizationEdge>, mod
 fn declaration_demanded(demand: DeclarationDemand, item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   match demand {
     AllDeclarations => true
-    OnlyDeclarations { names: names } =>
+    OnlyDeclarations { names: names, realization: realization } =>
       if declares_function_body(item: item) {
         map_has(m: names, key: authored_name_at(source_indices: source_indices, node: item))
+      } else if realization.active {
+        map_has(m: realization.realized, key: authored_name_at(source_indices: source_indices, node: item))
       } else { true }
   }
 }
@@ -16727,7 +16805,10 @@ fn declaration_demanded(demand: DeclarationDemand, item: Node, source_indices: M
 // The names a declaration spells anywhere in its extent: every node's authored name and its
 // kernel name, through body, parameters, annotations, transport, properties and uses. A SUPERSET
 // of what the declaration references (a local that shares a declaration's spelling over-demands;
-// nothing it names is missed), so an unreached verdict is never wrong, only less narrow.
+// nothing it names is missed), so an unreached verdict is never wrong, only less narrow. It walks the
+// EXTENT the author wrote and stops at `inferred`: what a type is DECLARED TO BE is not extent, and the
+// realization reads that too -- see realization_row_names, which adds it to the inventory both closure
+// growth and the boundary audit use.
 fn spelled_names_into(n: Node, source_indices: Map<String, NewlineIndex>, acc: Map<String, Bool>) -> Map<String, Bool> {
   let own = map_insert(map_insert(acc, authored_name_at(source_indices: source_indices, node: n), true), n.name, true)
   let own = fold(n.children, init: own, f: (a, c) => spelled_names_into(n: c, source_indices: source_indices, acc: a))
@@ -16742,8 +16823,9 @@ fn spelled_names_into(n: Node, source_indices: Map<String, NewlineIndex>, acc: M
 // The declarations a requested function transitively demands, over the whole closure: a
 // declaration is demanded when its authored name is spelled in a demanded declaration (or is a seed).
 // Computed from the parsed-and-resolved modules before any body is inferred, so it reads no types.
-// Non-function declarations are always checked (declaration_demanded), but their spelled names
-// still extend the closure, because a data row or type may name a function.
+// Non-function declarations are realized only when this wave reaches their names -- spelled in a
+// demanded declaration, or named by a declared read such as an alias right-hand side
+// (realization_row_edges) -- so a data row or type this closure cannot reach is not realized.
 fn demanded_declaration_names(modules: List<ResolvedModule>, seeds: List<String>, source_indices: Map<String, NewlineIndex>) -> Map<String, Bool> {
   let items = flat_map(modules, m => module_items(n: m.module))
   let seeded = fold(seeds, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
@@ -16761,8 +16843,10 @@ fn demanded_declaration_names(modules: List<ResolvedModule>, seeds: List<String>
 }
 
 fn demand_wave_add(w: DemandWave, item: Node, source_indices: Map<String, NewlineIndex>) -> DemandWave {
-  let spelled = spelled_names_into(n: item, source_indices: source_indices, acc: empty_map())
-  fold(map_keys(spelled), init: w, f: (acc, nm) =>
+  // The names one declaration's row makes the checker read: its spelled extent plus, for a type, the
+  // alias or refinement right-hand side it is declared to be. THE SAME INVENTORY the boundary audit
+  // holds a module to (realization_row_names), so growth cannot drift behind the edges it refuses on.
+  fold(realization_row_names(item: item, source_indices: source_indices), init: w, f: (acc, nm) =>
     if map_has(m: acc.demanded, key: nm) { acc }
     else { DemandWave { demanded: map_insert(acc.demanded, nm, true), fresh: list_push(acc.fresh, nm) } })
 }
@@ -20854,7 +20938,6 @@ fn typecheck_module_demanded(resolved: ResolvedModule, parent_index: Map<String,
   // edges of `realization_edges`, and an edge naming a declaration the closure contains but this run
   // left unrealized is a read that would have been answered as 'no such declaration'. It refuses here,
   // at the owing declaration's own span, before anything downstream can consume the missing row.
-  let audit_diags = realization_audit(realization: realization, edges: flat_map(realized_items, item => realization_edges(n: item, source_indices: source_indices)), module_name: resolved_module_name)
   let data_locals = fold(ctx.resolved_items, init: ctx.locals, f: (acc, item) =>
     if item.body != none && item.params |> count == 0 && item.inferred == none && item.type_annotation != none {
       map_insert(acc, authored_name_at(source_indices: source_indices, node: item), TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: item.type_annotation.value, provenance: SubValueUnknown, alias_rhs: none })
@@ -20877,7 +20960,18 @@ fn typecheck_module_demanded(resolved: ResolvedModule, parent_index: Map<String,
     enclosing_declared_type_param_names: []
   }
   let typed_item_results = infer_items_demanded(items: ctx.resolved_items, scope: infer_scope, demand: demand)
+  // THE BOUNDARY AUDIT over BOTH sources of reads: the names the source spelled, and the names that
+  // only the typed items carry. An edge naming a declaration the closure contains but this run left
+  // unrealized is a read that would have been answered 'no such declaration'; it refuses here, at the
+  // owing declaration's own span, before anything downstream can consume the missing row.
   let typed_items = map(typed_item_results, tir => tir.item)
+  // THE BOUNDARY AUDIT over BOTH sources of reads: the names the source spelled, and the names that
+  // only the typed items carry. An edge naming a declaration the closure contains but this run left
+  // unrealized is a read that would have been answered 'no such declaration'; it refuses here, at the
+  // owing declaration's own span, before anything downstream can consume the missing row.
+  let source_edges = fold(realized_items, init: [], f: (acc, item) => concat(acc, realization_edges(n: item, source_indices: source_indices)))
+  let typed_edges = fold(typed_items, init: [], f: (acc, item) => concat(acc, realization_typed_edges(n: item, source_indices: source_indices)))
+  let audit_diags = realization_audit(realization: realization, edges: concat(source_edges, typed_edges), module_name: resolved_module_name)
   let infer_emissions = infer_emissions_concat_all(chunks: map(typed_item_results, tir => tir.emissions))
   let updated_func_env = populate_output_provenance(
     typed_items: typed_items, func_env: ctx.func_env,
@@ -21363,38 +21457,30 @@ fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, inte
   typecheck_scoped(graph: graph, source_indices: source_indices, intern_table: intern_table, scope: EveryDeclaration)
 }
 
-// Which declarations a typecheck owes bodies for. EveryDeclaration is the compile / emit / witness
-// obligation; ReachableFrom is a run's: the requested functions and what they transitively spell.
-// The grain says how far the realization of the *other* declarations follows that same demand:
-// ObserveGrain measures the declaration-grain closure without filtering anything (the run behaves
-// exactly as #16069 left it, and reports what it would have skipped); EnforceGrain realizes only the
-// declarations the closure names and refuses a read outside it. A whole-closure typecheck passes no
-// grain at all, and so carries an inactive Realization.
-type RealizationGrain = ObserveGrain | EnforceGrain
-
-type DeclarationScope = EveryDeclaration | ReachableFrom { requested: List<String>, grain: RealizationGrain }
+// Which declarations a typecheck owes, and how far their REALIZATION reaches. EveryDeclaration is the
+// compile / emit / witness obligation: every declaration is realized. ReachableFrom is a run's: the
+// requested functions and what they transitively spell, and the realization of every other
+// declaration follows that same naming closure -- a declaration no demanded declaration names gets no
+// type env, no signature and no module context, and any read that crosses the boundary refuses
+// (`realization_audit`). There is no switch to turn that check off: a run that asks for a reachable
+// set is a run that realizes exactly that set.
+type DeclarationScope = EveryDeclaration | ReachableFrom { requested: List<String> }
 
 fn typecheck_scoped(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, scope: DeclarationScope) -> TypecheckPass {
   let realization = match scope {
     EveryDeclaration => inactive_realization()
-    ReachableFrom { requested: requested, grain: grain } => realization_of(
+    ReachableFrom { requested: requested } => realization_of(
       modules: graph.modules,
       seeds: requested,
-      source_indices: source_indices,
-      enforce: match grain { EnforceGrain => true  ObserveGrain => false }
+      source_indices: source_indices
     )
   }
   let demand = match scope {
     EveryDeclaration => AllDeclarations
-    ReachableFrom { requested: requested, grain: grain } =>
-      // Under the enforcing grain the demand set and the realization set are the SAME closure: a
-      // function whose body is inferred must have its signature realized too, or the two authorities
-      // disagree about what exists and the body infers against a signature nobody built.
-      if realization_enforcing(realization: realization) {
-        OnlyDeclarations { names: realization.realized, realization: realization }
-      } else {
-        OnlyDeclarations { names: demanded_declaration_names(modules: graph.modules, seeds: requested, source_indices: source_indices), realization: realization }
-      }
+    // The demand set and the realization set are the SAME closure: a function whose body is inferred
+    // must have its signature realized too, or the two authorities disagree about what exists and the
+    // body infers against a signature nobody built.
+    ReachableFrom { requested: requested } => OnlyDeclarations { names: realization.realized, realization: realization }
   }
   let intern_table = seed_kernel_intern_table(intern_table: intern_table)
   let resolved_by_name = graph.modules |> fold(init: empty_map(), f: (acc, rm) =>
@@ -21465,7 +21551,27 @@ fn typecheck_scoped(graph: ModuleGraph, source_indices: Map<String, NewlineIndex
 // told to look': the modules and declarations the closure holds, how many of each the run realized,
 // and how many declared edges fell outside. Both counts at zero (nothing realized at all) and a
 // non-zero gap count together are the signature of a demand set built without its edges.
-fn realization_profile_diagnostic(realization: Realization, modules: List<ResolvedModule>, diagnostics: List<ErrorNode>, source_indices: Map<String, NewlineIndex>) -> List<CompilerDiagnostic> {
+// Count to text, for the profile row's rendering. The emit layer has `to_string`, but it sits
+// DOWNSTREAM of inference and cannot be reached upward, and the core layer that owns the diagnostic
+// cannot render an Int at all -- so the rendering lives here, next to the counts it renders.
+fn realization_count_text(value: Int) -> String {
+  fold(realization_count_digits(value: value, acc: []), init: "", f: (acc, ch) => concat(acc, ch))
+}
+
+fn realization_count_digits(value: Int, acc: List<String>) -> List<String> {
+  if value <= 0 { acc } else {
+    let rest = value / 10
+    realization_count_digits(value: rest, acc: concat([realization_digit_char(value - (rest * 10))], acc))
+  }
+}
+
+fn realization_digit_char(digit: Int) -> String {
+  if digit == 0 { "0" } else if digit == 1 { "1" } else if digit == 2 { "2" } else if digit == 3 { "3" }
+  else if digit == 4 { "4" } else if digit == 5 { "5" } else if digit == 6 { "6" } else if digit == 7 { "7" }
+  else if digit == 8 { "8" } else { "9" }
+}
+
+fn realization_profile_diagnostic(realization: Realization, modules: List<ResolvedModule>, diagnostics: List<ErrorNode>, source_indices: Map<String, NewlineIndex>) -> List<ErrorNode> {
   if !realization.active { [] } else {
     let declarations = fold(modules, init: 0, f: (n, rm) => n + count(module_items(n: rm.module)))
     let declarations_realized = fold(modules, init: 0, f: (n, rm) =>
@@ -21479,15 +21585,18 @@ fn realization_profile_diagnostic(realization: Realization, modules: List<Resolv
       match d.diagnostic { DeclarationRealizationGap { reader: _, target_module: _, name: _, span: _ } => list_push(acc: acc, item: d)  _ => acc }))
     match first(modules) {
       Absent => []
-      Present { value: head } => [ DeclarationRealizationProfile {
-        grain: if realization_enforcing(realization: realization) { "enforce" } else { "observe" },
+      Present { value: head } => [ make_error_node(diagnostic: DeclarationRealizationProfile {
+        grain: "reachable",
         modules: count(modules),
         modules_realized: modules_realized,
         declarations: declarations,
         declarations_realized: declarations_realized,
         gaps: gaps,
+        // The counts are the data; this is their rendering, made where Int can become text at all
+        // (v1.std.parse.int_to_string -- the core layer that owns the diagnostic cannot see it).
+        summary: concat(realization_count_text(modules_realized), "/", realization_count_text(count(modules)), " modules realized, ", realization_count_text(declarations_realized), "/", realization_count_text(declarations), " declarations realized, ", realization_count_text(gaps), " reads outside the realized set"),
         span: head.module.span
-      } ]
+      }, module_name: authored_name_at(source_indices: source_indices, node: head.module)) ]
     }
   }
 }
