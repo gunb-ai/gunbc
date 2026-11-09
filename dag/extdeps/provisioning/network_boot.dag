@@ -41,7 +41,7 @@ data shim_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// THE LOADER CHAIN A NETWORK-BOOT CLIENT IS SERVED, as a shape with no products in it (DESIGN 3,
+// THE LOADER CHAIN A NETWORK-BOOT CLIENT IS SERVED, as a shape with no products in it (gunbc.design_argument::single_authority,
 // external upstream decomposition: this hub defines the agnostic shape; each chain is declared by the
 // upstream that ships it). The members are what the client fetches from the boot server, in order;
 // the first is what the DHCP boot filename names. A chain of exactly one member is a chainloader that

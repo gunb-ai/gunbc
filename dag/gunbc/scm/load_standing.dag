@@ -11,7 +11,7 @@ module gunbc.scm.load_standing
 // identity-collision are properties ANY serialization can have; nothing about them is JSON-specific.
 // An earlier attempt (gunbc#8940, closed) computed exactly this vocabulary INSIDE publication by
 // matching on one format's error enum. The classification was right and the PLACEMENT was wrong:
-// DESIGN section 3 rules that the dispatch selecting a realization is itself realization, so each
+// gunbc.design_argument::single_authority rules that the dispatch selecting a realization is itself realization, so each
 // format classifies ITS OWN refusals into this shared vocabulary and the consumer sees only the
 // standing. A new format is then a new classifier beside its own refusals, not an edit here.
 //
@@ -57,7 +57,7 @@ import std.types { Bool }
 // CHILD could be requirement-shaped; a manifest entry requires an AUTHORED SOURCE at a locator, and
 // that requirement lands in exactly the same predicament for exactly the same reasons. Keeping the
 // node in the name and routing a source requirement through it would be one name carrying two
-// contracts -- the meaning fork DESIGN section 3 forbids -- and the alternative, a second standing
+// contracts -- the meaning fork gunbc.design_argument::single_authority forbids -- and the alternative, a second standing
 // with identical semantics, is the nickname it forbids from the other side.
 type LoadStanding
   = LoadComplete
@@ -70,8 +70,8 @@ type LoadStanding
 // WHY THE PERMISSION RELATION IS NOT HERE, and why it is not a Bool anywhere.
 //
 // This module owned `standing_may_supersede_generation : LoadStanding -> Bool` until
-// `gunbc.scm.supersession` landed. It is DELETED rather than kept beside its replacement (DESIGN
-// section 4b(4): a climb deletes the production machinery it obsoletes), because a Bool carries none
+// `gunbc.scm.supersession` landed. It is DELETED rather than kept beside its replacement (
+// gunbc.design_argument::guarantee_ladder (dissolution on climb): a climb deletes the production machinery it obsoletes), because a Bool carries none
 // of what a destructive actuation depends on -- not the exact generation observed, not the document
 // examined, not the schema identity under which malformedness was established -- so every route into
 // it was equally authoritative and none of them could be joined to the swap it authorized.

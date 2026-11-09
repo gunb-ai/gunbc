@@ -1,6 +1,7 @@
 module test.claim.printable_assembly_selection_witness
 
 import std.types { Bool, List, String }
+import std.algebra { length }
 import extdeps.languages.json.emit { serialize_json }
 import product.printed_chassis.assembly_geometry { Clearance, Printed, Purchased, Metal }
 import product.printed_chassis.cassette { rear_socket_bolt_clearances }
@@ -42,7 +43,7 @@ fn is_clearance(a: PrintableAssembly, id: String) -> Bool {
 test fn w_residential_cassette_keeps_its_socket_keepouts() -> Bool {
   match selected(root: ResidentialCassette) {
     Present { value: a } =>
-      length(list: a.required_keepouts) == length(list: rear_socket_bolt_clearances())
+      length(xs: a.required_keepouts) == length(xs: rear_socket_bolt_clearances())
         && all(rear_socket_bolt_clearances(), k => any(a.required_keepouts, r => r == k.id))
         && all(a.required_keepouts, k => is_clearance(a: a, id: k))
     Absent => false
@@ -52,9 +53,9 @@ test fn w_residential_cassette_keeps_its_socket_keepouts() -> Bool {
 fn a16_selects(root: PrintedAssemblyRoot, printed: String, with_fan: Bool) -> Bool {
   match selected(root: root) {
     Present { value: a } =>
-      length(list: a.parts) == (if with_fan { 4 } else { 3 })
+      length(xs: a.parts) == (if with_fan { 4 } else { 3 })
         && all(concat([printed, "CARD", "POWER-KEEPOUT"], if with_fan { ["FAN"] } else { [] }), i => any(ids(a: a), x => x == i))
-        && length(list: a.required_keepouts) == 1 && any(a.required_keepouts, k => k == "POWER-KEEPOUT")
+        && length(xs: a.required_keepouts) == 1 && any(a.required_keepouts, k => k == "POWER-KEEPOUT")
         && is_clearance(a: a, id: "POWER-KEEPOUT")
         && !any(a.assembly_members, m => m == "POWER-KEEPOUT")
         && a.package == printed_assembly_root_wire(root: root)
@@ -102,7 +103,7 @@ test fn w_root_wire_round_trips_and_unknown_refuses() -> Bool {
 // reading still HAS roots (t10-plug-fit-ring decodes), which is what lets it refuse by naming its reading
 // instead of not existing; and an id that is not on the roster decodes to nothing.
 test fn w_the_duct_roots_are_enumerated_from_the_card_roster() -> Bool {
-  list_length(items: printed_assembly_roots) == 2 + list_length(items: duct_cards) * list_length(items: duct_root_kinds) + list_length(items: group_duct_plans) * list_length(items: group_root_kinds)
+  length(xs: printed_assembly_roots) == 2 + length(xs: duct_cards) * length(xs: duct_root_kinds) + length(xs: group_duct_plans) * length(xs: group_root_kinds)
     && all(duct_cards, c => all(duct_root_kinds, k =>
       match printed_assembly_root_from_wire(s: printed_assembly_root_wire(root: duct_card_root(card: c, kind: k))) {
         Present { value: back } => printed_assembly_root_wire(root: back) == printed_assembly_root_wire(root: duct_card_root(card: c, kind: k))

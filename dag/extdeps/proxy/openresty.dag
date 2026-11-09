@@ -160,7 +160,7 @@ fn nginx_token_chars_allowed(s: String, i: Int, len: Int) -> Bool {
 
 // Safety is ONE rule: the per-character admitted class. Every delimiter a blacklist would name (quote,
 // backslash, CR/LF, space, tab, semicolon, braces, dollar, hash, double quote) is already outside that class,
-// so restating them here would be a second representation of a constraint the model already carries (§2/§3).
+// so restating them here would be a second representation of a constraint the model already carries (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority).
 fn nginx_text_is_safe(t: String) -> Bool {
   let len = string_length(s: t)
   len > 0 && nginx_token_chars_allowed(s: t, i: 0, len: len)

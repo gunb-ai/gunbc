@@ -6,7 +6,8 @@ use self::ContentHashComparison::*;
 use self::HashFamily::*;
 use crate::std_algebra::Ordering::*;
 pub use crate::std_algebra::{
-    collection_concat_shape, collection_join_shape, string_compare_canonical, Ordering, TotalOrder,
+    collection_concat_shape, collection_join_shape, list_at_optional, string_compare_canonical,
+    Ordering, TotalOrder,
 };
 pub use crate::std_host_text::chars;
 pub use crate::std_optional::Optional;
@@ -21,7 +22,7 @@ use std::rc::Rc;
 pub fn content_hash_family_grounding_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "ContentHash is grounded on hash family (feature:content-hash-family-grounded). Fnv1a64Structural is the fnv1a64 structural-fingerprint family minted only by content_hash_* and atom_identity_hash pipelines. Sha256Digest, Sha1Digest, and Sha512Digest are cited cryptographic digest families: Sha256Digest via sha256_hex_digest / extdeps.crypto.hash bridges; Sha1Digest via sha1_hex_digest / extdeps.crypto.hash and extdeps.git.object_store git_object_id_content_hash (Git SHA-1 object ids — cited upstream in extdeps/git/object_store.dag, not minted here); Sha512Digest via sha512_hex_digest, extdeps.crypto.hash sha512_digest / sha512_digest_content_hash (FIPS 180-4), and extdeps.npm npm_decode_integrity (npm package-lock SRI wire → typed NpmIntegrityDecode; canonical internal form is lowercase hex). OCI OciSha512Digest now carries Sha512Digest directly — OciSha512DigestHex/OciSha512DigestBody dissolved once npm became the second validated SHA-512 consumer. ContentHash is their coproduct — Fnv1a64 | Sha256Hash | Sha1Hash | Sha512Hash. CLAIM SCOPE (reviews 45353/45359): Phase A makes cross-family comparison unwritable at family-specific carrier construction walls and at union-carrier integrity paths (admit_pin_integrity CrossFamilyIdentityIncomparable) and refuses bare union `==`/`!=` at R0 eval; substrate typecheck still permits authoring cross-family ContentHash == ContentHash until Phase B. PHASE A (this PR, lands dissolve-on carrier half): union-level eq/combine helpers deleted; per-family eq/combine only; OciDescriptor.digest requires OciContentDigest (algorithm-qualified, extdeps.container.oci.digest); GateRosterHash and v2.std.node.Hash require Fnv1a64Structural; GitObjectId for tree hashes; extdeps.pin admit_pin_integrity routes cross-family to CrossFamilyIdentityIncomparable (typed refusal, not silent false). PHASE B (dissolve-on remainder, DESIGN §3 ContentHash row): substrate refuses union-level `==`/`!=` at typecheck so cross-family comparison is structurally unwritable — not landed here. Until Phase B, R0 interpreter backstop only (content_hash_cross_family_eq_v1_seed_bridge_note; same guarantee-recovery class as numeric-tower CrossRepresentationEquality). UNION CARRIERS: extdeps.pin Pin.expected_identity and extdeps.realization.emit_on_demand_host ObservedToolIdentity.observed_identity hold ContentHash because Pin<Subject> is generic. content_hash_of_value mints structural ContentHash only through content_hash_atom. Rehydrate an observed fnv1a64 digest with as_content_hash_structural(structural: structural_content_hash(digest: …)), never by labeling arbitrary text. Wire serialization (sha256:<hex> for Sha256Hash; sha512:<hex> for Sha512Hash; raw hex for Sha1Hash and Fnv1a64) lives in serialize_content_hash.".to_string()
+            "ContentHash is grounded on hash family (feature:content-hash-family-grounded). Fnv1a64Structural is the fnv1a64 structural-fingerprint family minted only by content_hash_* and atom_identity_hash pipelines. Sha256Digest, Sha1Digest, and Sha512Digest are cited cryptographic digest families: Sha256Digest via sha256_hex_digest / extdeps.crypto.hash bridges; Sha1Digest via sha1_hex_digest / extdeps.crypto.hash and extdeps.git.object_store git_object_id_content_hash (Git SHA-1 object ids — cited upstream in extdeps/git/object_store.dag, not minted here); Sha512Digest via sha512_hex_digest, extdeps.crypto.hash sha512_digest / sha512_digest_content_hash (FIPS 180-4), and extdeps.npm npm_decode_integrity (npm package-lock SRI wire → typed NpmIntegrityDecode; canonical internal form is lowercase hex). OCI OciSha512Digest now carries Sha512Digest directly — OciSha512DigestHex/OciSha512DigestBody dissolved once npm became the second validated SHA-512 consumer. ContentHash is their coproduct — Fnv1a64 | Sha256Hash | Sha1Hash | Sha512Hash. CLAIM SCOPE (reviews 45353/45359): Phase A makes cross-family comparison unwritable at family-specific carrier construction walls and at union-carrier integrity paths (admit_pin_integrity CrossFamilyIdentityIncomparable) and refuses bare union `==`/`!=` at R0 eval; substrate typecheck still permits authoring cross-family ContentHash == ContentHash until Phase B. PHASE A (this PR, lands dissolve-on carrier half): union-level eq/combine helpers deleted; per-family eq/combine only; OciDescriptor.digest requires OciContentDigest (algorithm-qualified, extdeps.container.oci.digest); GateRosterHash and v2.std.node.Hash require Fnv1a64Structural; GitObjectId for tree hashes; extdeps.pin admit_pin_integrity routes cross-family to CrossFamilyIdentityIncomparable (typed refusal, not silent false). PHASE B (dissolve-on remainder, gunbc.design_argument::single_authority ContentHash row): substrate refuses union-level `==`/`!=` at typecheck so cross-family comparison is structurally unwritable — not landed here. Until Phase B, R0 interpreter backstop only (content_hash_cross_family_eq_v1_seed_bridge_note; same guarantee-recovery class as numeric-tower CrossRepresentationEquality). UNION CARRIERS: extdeps.pin Pin.expected_identity and extdeps.realization.emit_on_demand_host ObservedToolIdentity.observed_identity hold ContentHash because Pin<Subject> is generic. content_hash_of_value mints structural ContentHash only through content_hash_atom. Rehydrate an observed fnv1a64 digest with as_content_hash_structural(structural: structural_content_hash(digest: …)), never by labeling arbitrary text. Wire serialization (sha256:<hex> for Sha256Hash; sha512:<hex> for Sha512Hash; raw hex for Sha1Hash and Fnv1a64) lives in serialize_content_hash.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -30,7 +31,7 @@ pub fn content_hash_family_grounding_note() -> String {
 pub fn content_hash_cross_family_eq_v1_seed_bridge_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Seed-retained hand-Rust backstop (reviews 45323/45331/45353/45359; same wall-after-grounding class as numeric-tower CrossRepresentationEquality in src/v1/stage0/src/v1_interpreter.rs cross_representation_numeric_straddle). cross_family_content_hash_straddle refuses bare `==`/`!=` when both operands are ContentHash values (Value::Variant type_name ContentHash) with mismatched family tags (Fnv1a64 vs Sha256Hash vs Sha1Hash vs Sha512Hash), because the substrate still derives PartialEq on coproducts and a cross-variant compare would fabricate `false` (DESIGN §5). Scoped by coproduct type_name, not variant-name homonyms alone (review 45353). DELETE SCAFFOLD — not a second digest concept; R0 safety backstop only until Phase B of feature:content-hash-family-grounded lands. CENSUS SHRINK — eval_binop Eq/Ne path in v1_interpreter.rs only; Value::eq stays infallible for map keys (same split as numeric tower). WITNESS — UNWITNESSED as of 2026-08-11 (gunbc#8146, review 51178). The witness WAS src/v1/tests/src/cross_representation_equality_test.rs cross_family_content_hash_bare_eq_refuses and cross_family_content_hash_homonym_variant_names_do_not_trigger_guard (discriminating RED if guard removed or over-broad); that module was deleted by the v1 Rust test-suite cutover. Two facts keep this from reading as a regression this PR caused: the suite was gated by cargo test --no-run, so those assertions had not executed since that gate landed — the receipt was already nominal — and the guard itself is untouched and still live in v1_interpreter.rs eval_binop. What is gone is the proof, not the backstop. DISSOLVE-ON: re-establish both assertions as a floor witness through compile_dag_diagnostic_census (naming the expected refusal, since a bare false cannot separate the guard firing from an unrelated earlier failure), OR land Phase B, which makes union-level == a typecheck refusal and retires the R0 backstop and this row together. EXPLICIT DEFERRAL — dissolves when Phase B makes ContentHash union-level `==`/`!=` a typecheck refusal (substrate coproduct eq-suppression) or when union carriers re-ground to family-specific types zero reachable sites; LANE model↔realization fork (DESIGN open thread, same row as CrossRepresentationEquality); ROADMAP docs/plans/compiler-guarantee-recovery-gap-analysis.md Cross-representation `==` full class (R0 backstop today, R3 primitive-grounding ceiling) plus DESIGN §3 dissolve-on feature:content-hash-family-grounded Phase B.".to_string()
+            "Seed-retained hand-Rust backstop (reviews 45323/45331/45353/45359; same wall-after-grounding class as numeric-tower CrossRepresentationEquality in src/v1/stage0/src/v1_interpreter.rs cross_representation_numeric_straddle). cross_family_content_hash_straddle refuses bare `==`/`!=` when both operands are ContentHash values (Value::Variant type_name ContentHash) with mismatched family tags (Fnv1a64 vs Sha256Hash vs Sha1Hash vs Sha512Hash), because the substrate still derives PartialEq on coproducts and a cross-variant compare would fabricate `false` (gunbc.design_argument::fail_closed). Scoped by coproduct type_name, not variant-name homonyms alone (review 45353). DELETE SCAFFOLD — not a second digest concept; R0 safety backstop only until Phase B of feature:content-hash-family-grounded lands. CENSUS SHRINK — eval_binop Eq/Ne path in v1_interpreter.rs only; Value::eq stays infallible for map keys (same split as numeric tower). WITNESS — UNWITNESSED as of 2026-08-11 (gunbc#8146, review 51178). The witness WAS src/v1/tests/src/cross_representation_equality_test.rs cross_family_content_hash_bare_eq_refuses and cross_family_content_hash_homonym_variant_names_do_not_trigger_guard (discriminating RED if guard removed or over-broad); that module was deleted by the v1 Rust test-suite cutover. Two facts keep this from reading as a regression this PR caused: the suite was gated by cargo test --no-run, so those assertions had not executed since that gate landed — the receipt was already nominal — and the guard itself is untouched and still live in v1_interpreter.rs eval_binop. What is gone is the proof, not the backstop. DISSOLVE-ON: re-establish both assertions as a floor witness through compile_dag_diagnostic_census (naming the expected refusal, since a bare false cannot separate the guard firing from an unrelated earlier failure), OR land Phase B, which makes union-level == a typecheck refusal and retires the R0 backstop and this row together. EXPLICIT DEFERRAL — dissolves when Phase B makes ContentHash union-level `==`/`!=` a typecheck refusal (substrate coproduct eq-suppression) or when union carriers re-ground to family-specific types zero reachable sites; LANE model↔realization fork (DESIGN open thread, same row as CrossRepresentationEquality); ROADMAP docs/plans/compiler-guarantee-recovery-gap-analysis.md Cross-representation `==` full class (R0 backstop today, R3 primitive-grounding ceiling) plus gunbc.design_argument::single_authority dissolve-on feature:content-hash-family-grounded Phase B.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -375,15 +376,15 @@ pub fn serialize_content_hash(hash: Rc<ContentHash>) -> String {
 
 pub fn parse_content_hash_candidate(wire: String) -> Option<Rc<ContentHash>> {
     if v1_rt::starts_with(wire.clone(), "sha256:".to_string()) {
-        match Rc::new(
-            wire.clone()
-                .split(&"sha256:".to_string())
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>(),
-        )
-        .get((1) as usize)
-        .cloned()
-        {
+        match v1_rt::list_get_optional(
+            &Rc::new(
+                wire.clone()
+                    .split(&"sha256:".to_string())
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>(),
+            ),
+            1,
+        ) {
             std::option::Option::None => std::option::Option::None,
             Some(hex) => match sha256_hex_digest(hex.clone()) {
                 std::option::Option::None => std::option::Option::None,
@@ -392,15 +393,15 @@ pub fn parse_content_hash_candidate(wire: String) -> Option<Rc<ContentHash>> {
         }
     } else {
         if v1_rt::starts_with(wire.clone(), "sha512:".to_string()) {
-            match Rc::new(
-                wire.clone()
-                    .split(&"sha512:".to_string())
-                    .map(|s| s.to_string())
-                    .collect::<Vec<_>>(),
-            )
-            .get((1) as usize)
-            .cloned()
-            {
+            match v1_rt::list_get_optional(
+                &Rc::new(
+                    wire.clone()
+                        .split(&"sha512:".to_string())
+                        .map(|s| s.to_string())
+                        .collect::<Vec<_>>(),
+                ),
+                1,
+            ) {
                 std::option::Option::None => std::option::Option::None,
                 Some(hex) => match sha512_hex_digest(hex.clone()) {
                     std::option::Option::None => std::option::Option::None,

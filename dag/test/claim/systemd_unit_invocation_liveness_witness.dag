@@ -116,7 +116,7 @@ test fn the_boot_only_reading_refuses_everywhere_a_default_would_sit() -> Bool {
 
 // ONE READING, ONE REFUSAL. The run reading and the boot-only reading take the same two host texts, and a
 // malformed one must produce the SAME located cause from both -- otherwise the two consumers of this
-// module are acting on two different accounts of the same file (DESIGN 3).
+// module are acting on two different accounts of the same file (gunbc.design_argument::single_authority).
 test fn the_two_readings_refuse_with_the_same_cause_for_the_same_bad_host_text() -> Bool {
   let run_reading = unit_invocation_observation(manager: SystemManager, unit: unit_a, boot_id_text: "not-a-uuid", proc_stat_text: stat_btime_1792000000, invocation_text: inv_a)
   let boot_reading = unit_boot_observation(boot_id_text: "not-a-uuid", proc_stat_text: stat_btime_1792000000)

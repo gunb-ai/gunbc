@@ -55,7 +55,7 @@ type ElfDecodeReason
 // THE SOLE DECODE-OUTCOME AUTHORITY for this module, stated because a parallel one was
 // once carried alongside it: `elf.segments.PhdrDecodeOutcome` answered the same question
 // for program headers and has been deleted. Program-header decode reports through this
-// type and `ElfDecodeReason`, and a second outcome coproduct for one decode is the §3
+// type and `ElfDecodeReason`, and a second outcome coproduct for one decode is the gunbc.design_argument::single_authority
 // violation that fork was.
 type ElfDecodeOutcome<T>
   = ElfDecoded { value: T }

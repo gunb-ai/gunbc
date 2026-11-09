@@ -3,6 +3,9 @@ module gunbc.roadmap.roadmap_dispatch_destination
 import std.types { String, NonEmptyStr, Bool, List }
 import std.algebra { trim }
 import extdeps.github.github { Repository }
+import gunbc.dispatch_attempt_launch { DispatchExecutorOrigin, RealExecutorOrigin, ReplayExecutorOrigin }
+import gunbc.dispatch_replay_recording { recording_id_text, recording_id_decode, RecordingIdDecoded, RecordingIdMalformed }
+import extdeps.languages.json.parse { json_field_string, FieldRead, FieldAbsent, FieldMalformed }
 import extdeps.languages.json.emit {
   JsonValue,
   JsonKeyValue,
@@ -26,9 +29,6 @@ import gunbc.roadmap.roadmap_execution_contract {
   attempt_path_scope_identity_json,
 }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
-import std.decl_ref { decl_ref }
 
 // A dispatch's destination is a per-NODE fact. The slug is a String: "gunbc" or owner/name.
 // It is read from the node's WorkItemDispatch: destination_from_dispatch matches Dispatchable,
@@ -96,7 +96,7 @@ fn destination_is_known_public(identity: DestinationIdentity) -> Bool {
 // Owner and name on a named destination ARE observed from the slug. Privacy and default
 // branch are not. destination_is_known_public reads Unobserved as not known to be public.
 // RoadmapPublicationSubject.repository is still a GitHub Repository (Bool/String, no
-// Unobserved arm). A fill would encode an unobserved fact as an established one (DESIGN §5).
+// Unobserved arm). A fill would encode an unobserved fact as an established one (gunbc.design_argument::fail_closed).
 // The publication path therefore refuses: DestinationGithubRepositoryUnobserved, consumed as
 // PublicationSubjectUnobserved. Do not mint a Repository for Unobserved standing.
 
@@ -194,7 +194,7 @@ fn node_dispatch_destination(node: RoadmapNode) -> DispatchDestination {
 // resolves any well-formed owner/name so publication can name that repository. This
 // instance still creates worktrees in instance.repo_root against dispatch_git_remote_ref
 // (gunbc_merge_target_ref). Admitting a resolved non-gunbc destination onto that tree
-// would work in gunbc and publish elsewhere — DESIGN section 5 widen. Until spawn binds
+// would work in gunbc and publish elsewhere — gunbc.design_argument::fail_closed widen. Until spawn binds
 // worktree and remote to the destination, actuation is only the known-public gunbc tree.
 // TRIGGER to retire this refuse: worktree-add and the merge remote are taken from the
 // node's destination, not from the instance gunbc constants.
@@ -223,10 +223,72 @@ fn destination_not_this_spawn_tree_reason(identity: DestinationIdentity) -> NonE
 // is the fact. Privacy and default branch are recorded as standings, not as GitHub
 // Repository fields, so an unobserved destination cannot mint private:true in this file.
 
+// WHAT EXECUTED THE ATTEMPT, as a fact of the attempt rather than a property of its provider: a real
+// worker, or the replay of a RECORDED end state (gunbc.dispatch_replay_recording). It is a REQUIRED field
+// of the spawn origin, which the belt writes once at spawn for every attempt, so no attempt record can
+// exist without answering it; a replayed attempt cannot be recorded as a real one because the same value
+// that selected the replay executor is the one written here. The recording is named by its id text, the
+// preimage that fixes one recording to one fact.
 type DispatchSpawnOrigin {
   identity: DestinationIdentity
   base_ref: NonEmptyStr
   base_sha: NonEmptyStr
+  executor: DispatchExecutorOrigin
+}
+
+data dispatch_executor_origin_key: String = "executor"
+
+data dispatch_executor_origin_recording_key: String = "recording_id"
+
+data dispatch_executor_origin_real_word: String = "real"
+
+data dispatch_executor_origin_replay_word: String = "replay"
+
+fn dispatch_executor_origin_json_members(origin: DispatchExecutorOrigin) -> List<JsonKeyValue> {
+  match origin {
+    RealExecutorOrigin =>
+      [json_kv(key: dispatch_executor_origin_key, value: json_string(s: dispatch_executor_origin_real_word))]
+    ReplayExecutorOrigin { recording_id } =>
+      [
+        json_kv(key: dispatch_executor_origin_key, value: json_string(s: dispatch_executor_origin_replay_word)),
+        json_kv(key: dispatch_executor_origin_recording_key, value: json_string(s: recording_id_text(id: recording_id))),
+      ]
+  }
+}
+
+// A spawn origin that does not say what executed the attempt is REFUSED, never read as a real worker: an
+// absent member is exactly the record a pre-replay belt wrote, and reading it as real would let any
+// attempt the reader cannot place count as one.
+type DispatchExecutorOriginRead
+  = DispatchExecutorOriginObserved { origin: DispatchExecutorOrigin }
+  | DispatchExecutorOriginUnreadable { reason: String }
+
+fn dispatch_executor_origin_of_document(doc: JsonValue) -> DispatchExecutorOriginRead {
+  match json_field_string(obj: doc, key: dispatch_executor_origin_key) {
+    FieldAbsent =>
+      DispatchExecutorOriginUnreadable { reason: "the spawn origin has no executor member, so what executed the attempt is not established" }
+    FieldMalformed { cause } =>
+      DispatchExecutorOriginUnreadable { reason: cause }
+    FieldRead { value: word } =>
+      if word == dispatch_executor_origin_real_word {
+        DispatchExecutorOriginObserved { origin: RealExecutorOrigin }
+      } else if word == dispatch_executor_origin_replay_word {
+        match json_field_string(obj: doc, key: dispatch_executor_origin_recording_key) {
+          FieldRead { value: text } =>
+            match recording_id_decode(text: text) {
+              RecordingIdDecoded { id } => DispatchExecutorOriginObserved { origin: ReplayExecutorOrigin { recording_id: id } }
+              RecordingIdMalformed { text: _, reason } =>
+                DispatchExecutorOriginUnreadable { reason: join(["the spawn origin names a replay whose recording id does not decode: ", reason], "") }
+            }
+          FieldAbsent =>
+            DispatchExecutorOriginUnreadable { reason: "the spawn origin names a replay without its recording id" }
+          FieldMalformed { cause } =>
+            DispatchExecutorOriginUnreadable { reason: cause }
+        }
+      } else {
+        DispatchExecutorOriginUnreadable { reason: join(["the spawn origin names an executor this reader does not know: ", word], "") }
+      }
+  }
 }
 
 fn spawn_origin_is_public_gunbc(origin: DispatchSpawnOrigin) -> Bool {
@@ -267,6 +329,8 @@ fn dispatch_spawn_origin_json_value(origin: DispatchSpawnOrigin) -> JsonValue {
         destination_privacy_json_members(privacy: origin.identity.privacy),
         concat(
           destination_default_branch_json_members(standing: origin.identity.default_branch),
+          concat(
+            dispatch_executor_origin_json_members(origin: origin.executor),
           [
             json_kv(
               key: "known_public_gunbc",
@@ -275,6 +339,7 @@ fn dispatch_spawn_origin_json_value(origin: DispatchSpawnOrigin) -> JsonValue {
             json_kv(key: "base_ref", value: json_string(s: origin.base_ref as String)),
             json_kv(key: "base_sha", value: json_string(s: origin.base_sha as String)),
           ],
+          ),
         ),
       ),
     ),
@@ -355,19 +420,6 @@ type AttemptSubjectRefusal
 type AttemptSubjectAdmission
   = AttemptSubjectAdmitted { subject: AttemptAdmissionSubject }
   | AttemptSubjectRefused { node: RoadmapNodeIdentity, cause: AttemptSubjectRefusal }
-
-// Public executing route: test.claim.roadmap.attempt_admission_subject_witness calls admission,
-// identity and join through the same functions the consumers will import. This establishes
-// runtime refusal only, not private production consumption or an unforgeable record constructor.
-// The frontier covers the types above and the mint/field/identity/join functions below.
-// census_closure_frontier_row_groups enrolls these rows for dissolution_census to fold.
-data attempt_admission_subject_frontier_rows: List<FrontierRow> = [frontier_row_decl(
-  ref: decl_ref(module_path: "gunbc.roadmap.roadmap_dispatch_destination", decl_name: "AttemptAdmissionSubject"),
-  reason: "The sealed subject is executed by public witnesses. No public production attempt currently stores or reads the sealed contract fields; gunbc-private#60 finding 4 is the named later consumer, after its coordinated recut, not in this closure",
-  dissolution: unbound_dissolution(
-    description: "gunbc-private#60 finding 4 recuts strategy.plan_item_dispatch to store AttemptAdmissionSubject as its durable admitted subject, consume sealed_validations, sealed_path_scope and sealed_extra_capabilities for grant/oracle/publication identity, import PublicRevisionStanding and public_revision_standing_text instead of defining them, derive contract identity from attempt_admission_subject_fields, and join through join_attempt_subject. The public belt follow-up binds worktree creation and publication to this subject's destination and admitted base, persists the subject at admission, and reads it at verify. A witness-only caller or a rendered parallel string contract does not satisfy this production trigger"
-  ),
-)]
 
 fn admit_attempt_subject(
   node: RoadmapNodeIdentity,

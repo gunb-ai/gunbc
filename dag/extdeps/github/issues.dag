@@ -1,4 +1,5 @@
 module extdeps.github.issues
+import std.types { Bearer }
 
 import extdeps.ietf.http_semantics { GET, PATCH, POST }
 import extdeps.github.github { GitHubUser, default_api_base, default_per_page }
@@ -39,7 +40,7 @@ data issue_comments_authority: ExternalAuthority = ExternalAuthority {
 // imports nothing to get it.
 //
 // THE MOVE IS ATOMIC AND LEAVES NO ALIAS. A compatibility re-export in extdeps.github.pulls would
-// be exactly the second name for one concept that DESIGN §3 forbids, and the usual justification
+// be exactly the second name for one concept that gunbc.design_argument::single_authority forbids, and the usual justification
 // for one — a migration window for consumers out of our control — does not apply, because every
 // consumer is in this tree and moved in the same change. The operation key changes from
 // github.Pulls.CreateComment to github.Issues.CreateComment, which is a visible, greppable rename

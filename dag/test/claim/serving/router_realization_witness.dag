@@ -29,7 +29,7 @@ test fn the_router_may_not_select_a_host_or_fabricate_a_placement() -> Bool {
   fold([NormaliseRequestToDemand, AskPlacementAuthority, ProjectEndpointFromGrant, ProxyBytes, ReleaseSeatOnCompletion], init: true, f: (acc, c) => acc && is_permitted(c: c))
     && fold([ComputeOwnLoadScore, SelectHostDirectly, MaintainAuthoritativeBindingLedger, FabricatePlacementWhenUnreadable, ForwardWithoutPermit], init: true, f: (acc, c) => acc && !is_permitted(c: c))
     && refusal_says(c: FabricatePlacementWhenUnreadable, pattern: "absorbing fallback")
-    && refusal_says(c: SelectHostDirectly, pattern: "DESIGN section 3b")
+    && refusal_says(c: SelectHostDirectly, pattern: "gunbc.design_argument::conformance")
     && refusal_says(c: ComputeOwnLoadScore, pattern: "second scoring function")
     && refusal_says(c: ForwardWithoutPermit, pattern: "second door")
 }

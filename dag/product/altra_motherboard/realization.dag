@@ -1,6 +1,7 @@
 module product.altra_motherboard.realization
 
-import std.types { Bool, NonEmptyStr, List, String, list_length }
+import std.types { Bool, NonEmptyStr, List, String }
+import std.algebra { length }
 import std.integer { Int }
 import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.external_authority { ExternalAuthority }
@@ -269,7 +270,7 @@ fn requirement_has_providers_on_plan(
       true
     } else if !row_covers_requirement(row: row, req: req) {
       false
-    } else if list_length(items: row.providers) == 0 {
+    } else if length(xs: row.providers) == 0 {
       false
     } else if !justification_discharges_required_function(j: row.justification) {
       false

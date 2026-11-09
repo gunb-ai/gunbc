@@ -40,7 +40,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // WHAT THAT PRODUCED, MEASURED RATHER THAN REASONED. On the pre-repair emitter a row declared at a
 // SHARED carrier and OPTIONAL cardinality emitted the signature `-> Rc<ZzNode>` over a body of
 // `Some(Rc::new(..))` -- an Option value returned from a non-Option signature, rustc E0308, and the
-// compile reported 0 diagnostics, so it is silent wrongness below the DESIGN section 5 floor rather
+// compile reported 0 diagnostics, so it is silent wrongness below the gunbc.design_argument::fail_closed floor rather
 // than a rung on the ladder. The declared type had lost its cardinality on the brand-preserving
 // arm, and the spelling key then added a reference layer on top of the loss.
 //

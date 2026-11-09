@@ -49,7 +49,7 @@ import gunbc.host.boot_attempt {
 }
 import gunbc.machine_intake.post_power_fan_gate_outcome { PostPowerFanGateNotReached }
 import gunbc.machine_intake.megarac_media_attach {
-  MegaRacAttachResult, MegaRacPresentationReady, MegaRacPresentationEvidence,
+  MegaRacAttachResult, MegaRacPresentationReady, ReadinessLook, MegaRacPresentationEvidence,
   MegaRacPresentationObserved, MegaRacSessionRefused, MegaRacRawRead, SessionRelease,
   SessionReleased, SessionReleaseRefused, SessionReleaseNotAttempted, RouteAlreadyPresented,
   // THE READ-ONLY LOOK, as the observe task actually returns it: a share standing, an attach readiness
@@ -144,6 +144,8 @@ fn an_evidence() -> MegaRacPresentationEvidence {
     cd_before_any_write: CdErrorUnread { detail: "fixture" },
     cd_at_ready: CdErrorUnread { detail: "fixture" },
     general_at_ready: MegaRacRawRead { answered: true, body: "{}", observed_at: none },
+    // looks: 1, so the wait's first look is the one that found the medium started.
+    in_interval: ReadinessLook { observed_at: 12000, reading: ReadinessStarted { row: a_presenting_row(), configurations: "[]" } },
   }
 }
 
@@ -202,7 +204,7 @@ fn a_look(readiness: AttachReadiness, cd: CdErrorReading, held: SessionRelease) 
 
 // The medium is being served: a Started row, a cd_error that answered, and OUR look's session released.
 fn a_still_served_look() -> MegaRacAttachResult {
-  a_look(readiness: ReadinessStarted { row: a_presenting_row() }, cd: CdErrorRead { code: CdErrorNone },
+  a_look(readiness: ReadinessStarted { row: a_presenting_row(), configurations: "[]" }, cd: CdErrorRead { code: CdErrorNone },
          held: SessionReleased)
 }
 
@@ -210,7 +212,7 @@ fn a_still_served_look() -> MegaRacAttachResult {
 // harness's session-release refusal raises, and the reason the neutral arm is neither Presented nor
 // Unread.
 fn a_session_held_look() -> MegaRacAttachResult {
-  a_look(readiness: ReadinessStarted { row: a_presenting_row() }, cd: CdErrorRead { code: CdErrorNone },
+  a_look(readiness: ReadinessStarted { row: a_presenting_row(), configurations: "[]" }, cd: CdErrorRead { code: CdErrorNone },
          held: SessionReleaseRefused { detail: "the BMC kept the look open" })
 }
 
@@ -222,7 +224,7 @@ fn a_not_served_look() -> MegaRacAttachResult {
       share: ShareMismatch { observed: MegaRacObservedShare {
         server_address: "other-host", source_path: "/mnt/other", share_type: "nfs",
         mount_cd: "0", remote_media_support: "1" } },
-      readiness: ReadinessStarted { row: a_presenting_row() }, cd_error: CdErrorRead { code: CdErrorNone },
+      readiness: ReadinessStarted { row: a_presenting_row(), configurations: "[]" }, cd_error: CdErrorRead { code: CdErrorNone },
       general: MegaRacRawRead { answered: true, body: "{}", observed_at: Present { value: 1000 } },
       configurations: MegaRacRawRead { answered: true, body: "[]", observed_at: Present { value: 1000 } },
     },
@@ -234,7 +236,7 @@ fn a_not_served_look() -> MegaRacAttachResult {
 // The look itself did not answer: an unread cd_error code beside a Started row is "the read told us
 // nothing", which must not become "not served".
 fn an_unread_look() -> MegaRacAttachResult {
-  a_look(readiness: ReadinessStarted { row: a_presenting_row() },
+  a_look(readiness: ReadinessStarted { row: a_presenting_row(), configurations: "[]" },
          cd: CdErrorUnread { detail: "general settings unreadable" }, held: SessionReleased)
 }
 
@@ -613,7 +615,7 @@ test fn the_two_reads_become_the_core_input_standings() -> Bool {
 }
 
 // THE DECISION THE ROW OWNS, AND NOTHING MORE: the census END marker is the argument that establishes
-// consumption by THIS attempt (design §4d -- the flag's valid bit times out on its own, so order is the
+// consumption by THIS attempt (design gunbc.design_argument::epistemic_humility -- the flag's valid bit times out on its own, so order is the
 // argument). The row supplies that argument; it no longer makes the decision with it.
 test fn the_census_end_marker_is_what_establishes_consumption() -> Bool {
   let sel = uefi_once_boot_selection(device: IpmiBootCdrom)
@@ -924,7 +926,7 @@ test fn harness_findings_come_through_the_same_call() -> Bool {
 
 // ── THE CONSOLE DEBT IS A CARRIER, NOT A COMMENT ───────────────────────────────────────────────────
 //
-// (review 81187, DESIGN §5: "a dissolution condition describes how admitted debt ends; it does not
+// (review 81187, gunbc.design_argument::fail_closed: "a dissolution condition describes how admitted debt ends; it does not
 // authorize creating it"). The console half is the one thing this neutral core is not yet neutral about,
 // and the trigger for ending it used to live only in `//` prose. It is now a DissolutionCondition; these
 // four claims are what keep the carrier from being a comment wearing a type.
@@ -956,7 +958,7 @@ test fn the_console_debt_carrier_names_the_retired_homes() -> Bool {
 // declares the reading"); after the re-home the world says Fired (claim (d) reads that off the real
 // corpus), and the honest residual here is the fold's liveness: given a census that DOES hold the
 // retired refs, the fold answers Pending. A witness that could only ever reach Fired would be the
-// decorative carrier in different clothes (DESIGN §6: the condition is exercised, not described).
+// decorative carrier in different clothes (gunbc.design_argument::how_to_work: the condition is exercised, not described).
 test fn the_console_debt_fold_still_says_live_on_a_census_holding_the_refs() -> Bool {
   match boot_attempt_console_debt_status(present_decls: boot_attempt_console_debt_refs) {
     DissolutionPending => true
@@ -1019,8 +1021,8 @@ test fn the_console_debt_carrier_fires_when_the_reading_retires() -> Bool {
 }
 
 // (d) THE FOLD READS THE DECLARATION POPULATION IT CLAIMS TO WATCH, not the carrier's own list,
-// AND THE DEBT IS DISCHARGED (review 86612; DESIGN §6: "a lens nothing gates on is itself a lie",
-// §3c: a witness asserting existence rather than exercising behavior; the 4d-ii re-home,
+// AND THE DEBT IS DISCHARGED (review 86612; gunbc.design_argument::how_to_work: "a lens nothing gates on is itself a lie",
+// gunbc.design_argument::consumption: a witness asserting existence rather than exercising behavior; the 4d-ii re-home,
 // node://adhoc-18598508-4f4). Claims (b)/(c)/(c2) hand the fold censuses the witness assembles, so
 // they pin its LOGIC; this claim feeds it the CORPUS (v2.std.decl_index decl_facts_at, one keyed read
 // of every borrowing's qualified name -- the keyed read because a per-element uncached lookup re-walked
@@ -1452,7 +1454,7 @@ test fn an_override_for_another_device_still_owes_the_clear() -> Bool {
 // A FOREIGN FLAG IS NEVER 'NONE FOUND'. The two states are different exposures and the receipt cannot
 // collapse them: 'none found' is what the controller itself said, and a clear that did not take over bytes
 // that still hold a valid flag -- this attempt's or anybody else's -- is WouldNotClear, which the pre-power
-// step refuses on (DESIGN §5: no plausible output is fabricated about what stood).
+// step refuses on (gunbc.design_argument::fail_closed: no plausible output is fabricated about what stood).
 test fn a_foreign_override_is_reported_as_left_pending_never_as_none_found() -> Bool {
   (match megarac_stale_override_clearance(before: p5(p5_bytes_foreign_pending),
     clear: BootParam5ClearNotIssued { reason: "no account was modeled to clear with" }) {
@@ -1499,7 +1501,7 @@ test fn the_not_required_reason_names_the_reading_that_answered_it() -> Bool {
     && (string_contains(s: boot_param5_clear_not_required_reason(read: no_param5()), pattern: "not taken"))
 }
 
-// ─── THE STANDING MUST BE ESTABLISHED BEFORE THE SET (side-chat REQUEST_CHANGES at 3a890b02, §5) ────────
+// ─── THE STANDING MUST BE ESTABLISHED BEFORE THE SET (side-chat REQUEST_CHANGES at 3a890b02, gunbc.design_argument::fail_closed) ────────
 // 'Clear what is pending' was still fail-OPEN: a before-read nobody could read owed no clear, so the set went
 // in over an UNKNOWN controller -- the same exposure the pending-override check exists to close, one layer
 // down. The route's invariant is now 'the state the set goes in over is POSITIVELY READ AS CLEARED': by the

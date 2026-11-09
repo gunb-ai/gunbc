@@ -8,15 +8,15 @@ import extdeps.huggingface.hub { HubRepoId, HubModelRepo, hub_repo_https_uri, Hu
 import std.algebra { list_append, length, string_contains }
 
 // THE LOCAL-INFERENCE-LAB QWEN3.8-FLASH-NEXT NVFP4 CHECKPOINT, AS ITS PUBLISHER'S OWN EXTDEPS AUTHORITY.
-// This is the carrier gunbc.plans.flex_supplier_generalization generalization_55 declared and nothing
+// This is the carrier gunbc.plans.flex_supplier_generalization (deleted 2026-11-08) generalization_55 declared and nothing
 // built: "the RentedWeightsPlacement shape generalizes ... over a Hugging Face repo at a pinned
 // revision, and Flash-Next moves from WeightsNamedUnpinned to the pinned revision observed on the
 // image." The row was declared; this module is the destination. The publisher is local-inference-lab,
 // not Alibaba and not vLLM upstream — they can re-quantize and push a new revision tomorrow — so under
-// DESIGN section 3's external-decomposition rule it is its own module, the shape
+// gunbc.design_argument::single_authority's external-decomposition rule it is its own module, the shape
 // extdeps.radixark.glm_5_3_nvfp4 already establishes for a different publisher's redistribution.
 //
-// WHAT THIS MODULE KNOWS AND WHAT IT DOES NOT (DESIGN 4d). It knows the Hub facts of the artifact: the
+// WHAT THIS MODULE KNOWS AND WHAT IT DOES NOT (gunbc.design_argument::epistemic_humility). It knows the Hub facts of the artifact: the
 // repository, the exact revision serving runs at, the manifest the model API reports there, and the
 // content digests of the files the engine reads at start. It does NOT assert the quantization method:
 // the engine reports what it LOADED (`quantization=nvfp4_csf`, in the serving startup log, recorded by
@@ -129,7 +129,7 @@ fn qwen3_8_flash_next_pin_roster() -> List<HubFileDigest> {
 // pins 23 of the repository's 39 files (the 21 shards, config.json and the index), so its bytes cannot
 // equal the 39-file total: the other 16 files (102262354720 - 102239367907 = 22986813 bytes) are not
 // pinned here. An equality there was false from #15222 on and went unseen because no witness over it
-// resolved until #15367; this states what the rows support (DESIGN 4d). Pure rows — this is
+// resolved until #15367; this states what the rows support (gunbc.design_argument::epistemic_humility). Pure rows — this is
 // decidable without the network, and the witness asserts it. Shards are recognised by the "-of-00021"
 // segment their names carry (config.json and the index do not contain it), so no path-prefix vocabulary
 // is needed here.

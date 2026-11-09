@@ -1,6 +1,7 @@
 module extdeps.ampere.mt_jade_getting_started_guide.memory_population
 
-import std.types { List, NonEmptyStr, list_length }
+import std.types { List, NonEmptyStr }
+import std.algebra { length }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, FactCitation }
@@ -75,7 +76,7 @@ type MtJadeGsgDimmPopulationRow {
 
 data mt_jade_gsg_population_2s2p_16_dimms: MtJadeGsgDimmPopulationRow = MtJadeGsgDimmPopulationRow {
   configuration: "2S2P",
-  dimm_count: list_length(mt_jade_gsg_2s2p_16_populated_slot_labels),
+  dimm_count: length(mt_jade_gsg_2s2p_16_populated_slot_labels),
   populated_slot_labels: mt_jade_gsg_2s2p_16_populated_slot_labels,
 }
 

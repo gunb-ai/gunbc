@@ -4,7 +4,7 @@ import std.types { String, List }
 import std.algebra { FreeSemigroup }
 import std.optional { Absent, Present }
 import std.measure { Gram, gram, ByteSize, byte_size, celsius, hardware_thread_count, hertz, watt }
-import extdeps.external_authority { ExternalAuthority, FactCitation, CitedToAuthority }
+import extdeps.external_authority { ExternalAuthority, FactCitation, CitedToAuthority, TranscribedUncited }
 import std.decl_ref { decl_field_ref, decl_ref }
 import extdeps.uri { Uri, Https }
 import extdeps.publication { HeldSpecificationSupersessionStanding, NewerRevisionPubliclyServed, HeldRevisionIsCurrentPublicCopy }
@@ -20,6 +20,8 @@ import extdeps.ampere.altra_ssif_patch { altra_ssif_patch_authority }
 // SUCCESS". The comment sits ABOVE the block, not inside it: no file in this corpus carries a comment
 // inside an import block, so it is not a position the parser is known to accept.
 import extdeps.cpu.types {
+  CpuUsagePower,
+  cpu_tdp_unread_standing,
   ProcessorCoolingMount,
   SocketedLandGrid, CpuL1CacheGeometry, CpuL2CacheGeometry, CpuL3CacheGeometry, CpuModelCatalogRow, CpuSocket, LandGridArray, ProcessorThermalLimits, SoCFamily,
   soc_family_eq,
@@ -241,7 +243,7 @@ data ampere_altra_classic_l3_cache_citations: List<FactCitation> = [
 // CpuSocket literal and extdeps.cpu.ampere_altra_package reached through the M128-30 row — an
 // ALTRA MAX part — to obtain the socket for a module named for Altra.
 //
-// That is the §3 fork in its quiet form: nothing was wrong with the VALUE, since both parts really
+// That is the gunbc.design_argument::single_authority fork in its quiet form: nothing was wrong with the VALUE, since both parts really
 // do share the socket, so no witness could fail. What was wrong is that a family fact had no
 // authority, and one product's row was silently standing in as one. The cost lands the first time
 // a Max-specific fact rides that reference, or the first time someone edits the Max row believing
@@ -277,13 +279,26 @@ data altra_max_m12830_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   threads: hardware_thread_count(128),
   nominal_sustained_per_thread_hz: hertz(3000000000),
   socket: ampere_lga4926_socket,
-  tdp_watts: watt(183),
+  tdp_watts: watt(250),
+  tdp_standing: CitedToAuthority { authority: ampere_altra_max_rev_a1_datasheet_authority },
   l1_cache: ampere_altra_l1_cache_geometry,
   l1_cache_citations: ampere_altra_l1_cache_citations,
   l2_cache: ampere_altra_l2_cache_geometry,
   l2_cache_citations: ampere_altra_l2_cache_citations,
   l3_cache: ampere_altra_max_l3_cache_geometry,
   l3_cache_citations: ampere_altra_max_l3_cache_citations,
+}
+
+// M128-30 USAGE POWER, a distinct fact from the 250 W design power on the row above. 183 W is the
+// figure Ampere lists as usage power; it was previously recorded as the row's TDP (finding A of
+// gunbc.plans.host_thermal_operating_point), which understated the worst case by 67 W. The workload
+// basis is the datasheet's usage-power condition and is carried by name so nobody reads 183 W as a
+// bound. WHAT IS NOT YET READ: the exact workload text of the usage-power footnote.
+data altra_max_m12830_usage_power: CpuUsagePower = CpuUsagePower {
+  subject: altra_max_m12830_catalog,
+  watts: watt(183),
+  workload_basis: "Ampere-listed usage power for the M128-30 at 3.0 GHz all-core; footnote workload text to be transcribed from the Rev A1 datasheet" as NonEmptyStr,
+  standing: TranscribedUncited { read_obligation: "the Rev A1 datasheet usage-power footnote: the workload text and clock that 183 W was measured under; the watt figure and its basis are one fact and stay uncited until that text is read" as NonEmptyStr },
 }
 
 data altra_q6430_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
@@ -295,7 +310,11 @@ data altra_q6430_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   threads: hardware_thread_count(64),
   nominal_sustained_per_thread_hz: hertz(3000000000),
   socket: ampere_lga4926_socket,
+  // 124 W is the figure as transcribed for this row, UNREAD against a design-power (TDP) datasheet row
+  // and possibly a usage-power figure; the unread standing makes cooling return
+  // CoolingDesignPowerUnestablished, so it is never compared as a design wall.
   tdp_watts: watt(124),
+  tdp_standing: cpu_tdp_unread_standing,
   l1_cache: ampere_altra_l1_cache_geometry,
   l1_cache_citations: ampere_altra_l1_cache_citations,
   l2_cache: ampere_altra_l2_cache_geometry,
@@ -349,7 +368,11 @@ data altra_q8030_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   threads: hardware_thread_count(80),
   nominal_sustained_per_thread_hz: hertz(3000000000),
   socket: ampere_lga4926_socket,
+  // 161 W is the figure as transcribed for this row, UNREAD against a design-power (TDP) datasheet row
+  // and possibly a usage-power figure; the unread standing makes cooling return
+  // CoolingDesignPowerUnestablished, so it is never compared as a design wall.
   tdp_watts: watt(161),
+  tdp_standing: cpu_tdp_unread_standing,
   l1_cache: ampere_altra_l1_cache_geometry,
   l1_cache_citations: ampere_altra_l1_cache_citations,
   l2_cache: ampere_altra_l2_cache_geometry,
@@ -438,7 +461,7 @@ fn ampere_soc_family_carries_smpro(family: SoCFamily) -> Bool {
   // `|> filter(...) |> first() { Present => true / Absent => false }`: a Bool helper that reconstructs an
   // Optional and answers one variant true and the other false, which is the predicate/walker dissolution
   // the review policy names -- the same fact as `row.capabilities |> any(c => c == cap)` two modules over
-  // (extdeps.bmc.capability), and DESIGN §2's "must not grow by re-invention" applies to walkers as much
+  // (extdeps.bmc.capability), and gunbc.design_argument::minimize_redundancy's "must not grow by re-invention" applies to walkers as much
   // as to types. Membership is `any` over an identity test; there is nothing else it could mean.
   ampere_smpro_carrying_soc_families |> any(c => soc_family_eq(a: c.family, b: family))
 }

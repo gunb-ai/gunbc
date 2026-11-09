@@ -17,7 +17,7 @@ data repair_enumerates_its_own_blast_radius_by_inspection: RecurringFailureMode 
 
     "HARM: the surviving sites are not merely stale prose.",
 
-    "They are ASSERTIONS STANDING IN AUTHORITIES, and DESIGN section 5 forbids exactly this -- a wrong answer sitting quietly where a reader will build on it.",
+    "They are ASSERTIONS STANDING IN AUTHORITIES, and gunbc.design_argument::fail_closed forbids exactly this -- a wrong answer sitting quietly where a reader will build on it.",
 
     "The count is what makes the reader stop looking, so a repair that under-enumerates is strictly worse than one that enumerates nothing at all.",
 
@@ -29,7 +29,7 @@ data repair_enumerates_its_own_blast_radius_by_inspection: RecurringFailureMode 
 
     "of the required aggregate\\|not yet a .needs.",
 
-    "of the required aggregate' -- '*.dag' '*.md'` -- which nobody ran -- and a THIRD SPELLING that neither the inspection nor the grep reached: DESIGN's Building & checks bullet describing CI as \"two parallel jobs, plus a third aggregating job\", which states the same fact by omission and reads as two gating lanes.",
+    "of the required aggregate' -- '*.dag' '*.md'` -- which nobody ran -- and a THIRD SPELLING that neither the inspection nor the grep reached: gunbc.design_document::ci_contract_blocks bullet describing CI as \"two parallel jobs, plus a third aggregating job\", which states the same fact by omission and reads as two gating lanes.",
 
     "**THE INSTRUMENT IMPROVED TWICE AND ONLY THE THIRD ONE ANSWERED THE QUESTION, WHICH IS THE REAL RECOGNITION RULE AND IS SHARPER THAN THE ONE THIS ROW WAS COMMISSIONED WITH.** Three counts of one population, in order: #10078 counted BY INSPECTION and got 2; the lane dispatching this repair counted BY GREP and got 10; this lane counted BY MEANING and got 12.",
 
@@ -75,7 +75,7 @@ data repair_enumerates_its_own_blast_radius_by_inspection: RecurringFailureMode 
 
     "Two capabilities block a wall, both named as capabilities rather than as artifacts, and either alone is sufficient to leave it unwalled: (i) A CORPUS-SCALE ANNOTATION READ SURFACE AVAILABLE TO A WITNESS.",
 
-    "Six of the specimen's ten sites are `//` annotations, and DESIGN section 4c makes them invisible by construction -- semantic passes receive the annotation-erased projection, an annotation mints no occurrence identity, and the only corpus-reading surfaces this repository has (`v2.std.decl_index` `decl_facts` and `data_decl_type_facts`) are semantic.",
+    "Six of the specimen's ten sites are `//` annotations, and gunbc.design_argument::source_annotations makes them invisible by construction -- semantic passes receive the annotation-erased projection, an annotation mints no occurrence identity, and the only corpus-reading surfaces this repository has (`v2.std.decl_index` `decl_facts` and `data_decl_type_facts`) are semantic.",
 
     "`std.source_annotation` CAPTURES the rows; nothing serves them to a reader.",
 
@@ -89,9 +89,9 @@ data repair_enumerates_its_own_blast_radius_by_inspection: RecurringFailureMode 
 
     "Even the literal half needs `decl_facts` over the whole corpus, and this repository has ALREADY adjudicated that cost against itself: `test.claim.long.host_identity_single_authoring_witness` was moved out of the merge path under a declared drop for \"a corpus-scale reflection cost with no lane that both admits it and runs it\", restoration trigger \"a cadence that executes test/claim/long/, or the decl_facts surface becoming cheap enough for per-PR discovery\".",
 
-    "Landing a new scanner in that same unexecuted lane is the inert lens DESIGN section 6 calls a lie; landing it on every pull request would overturn a standing decision from inside an unrelated repair lane.",
+    "Landing a new scanner in that same unexecuted lane is the inert lens gunbc.design_argument::how_to_work calls a lie; landing it on every pull request would overturn a standing decision from inside an unrelated repair lane.",
 
-    "UNTIL BOTH LAND, THE ONLY HONEST MECHANISM IS THE AUTHOR RUNNING THE SEARCH, and this row exists so that the search is the reviewer's question rather than the author's discipline: a repair claiming a count must name the producer of that count, exactly as DESIGN section 6 requires of any other measurement.)",
+    "UNTIL BOTH LAND, THE ONLY HONEST MECHANISM IS THE AUTHOR RUNNING THE SEARCH, and this row exists so that the search is the reviewer's question rather than the author's discipline: a repair claiming a count must name the producer of that count, exactly as gunbc.design_argument::how_to_work requires of any other measurement.)",
   ],
 
   evidence: [],

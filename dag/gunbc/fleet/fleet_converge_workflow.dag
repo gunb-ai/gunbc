@@ -1,4 +1,11 @@
 module gunbc.fleet.fleet_converge_workflow
+import gunbc.ci.workflow_artifact_upload { workflow_artifact_upload_with, AbsenceRefused, AbsenceExpected }
+import gunbc.ci.ci_spec { gunbc_ci_boot_medium_reader_probe_invoke, gunbc_ci_host_credential_custody_converge_invoke, gunbc_ci_host_reset_dispatch_admission_invoke, gunbc_ci_host_reset_return_invoke, gunbc_ci_mtcollins1_runner_image_publish_invoke, gunbc_ci_runner_microvm_network_apply_invoke, gunbc_ci_runner_microvm_network_observe_invoke, gunbc_ci_runner_password_session_tool_converge_invoke }
+import gunbc.fleet.fleet_converge_executor_subject_split { fleet_converge_split_gate_script_admitted, fleet_converge_split_gate_step_run }
+import gunbc.fleet.fleet_workflow_steps { ci_wif_auth_step_with_condition }
+// The row this step reads is declared over there; naming it in the import list is what gives the effect
+// join an identity to join, instead of one borrowed from proximity in this module.
+import gunbc.fleet.fleet_host_key_enrollment { probe_identity_secret_access_requirement }
 
 import gunbc.host.megarac_managed_host { megarac_operation_evidence }
 import gunbc.fleet.hetzner_cloud_server_control { hetzner_cloud_server_read_receipt_path }
@@ -17,7 +24,8 @@ import gunbc.auth.branch_dispatch_federation {
 import gunbc.auth.branch_run_grant { branch_run_grant_approved_output }
 import extdeps.github.actions { workflow_dispatch_max_inputs }
 
-import gunbc.ci.ci_spec { gunbc_ci_workspace_allocation_plan_invoke, gunbc_ci_workspace_image_build_invoke, gunbc_ci_revision_job_image_build_invoke, gunbc_ci_printer_workflow_invoke, gunbc_ci_review_sheet_converge_invoke, gunbc_ci_namecheap_observe_invoke, gunbc_ci_arrival_admit_invoke, gunbc_ci_arrival_converge_invoke, gunbc_ci_sm_max_time, gunbc_ci_runner_host_file_converge_receipt_path, gunbc_ci_runner_host_cap_release_receipt_path, gunbc_ci_runner_host_withdraw_receipt_path, gunbc_ci_runner_host_restore_receipt_path, host_primary_network_receipt_path }
+import gunbc.ci.ci_spec { gunbc_ci_workspace_allocation_plan_invoke, gunbc_ci_workspace_image_build_invoke, gunbc_ci_revision_job_image_build_invoke, gunbc_ci_printer_workflow_invoke, gunbc_ci_review_sheet_converge_invoke, gunbc_ci_namecheap_observe_invoke, gunbc_ci_arrival_admit_invoke, gunbc_ci_arrival_converge_invoke, gunbc_ci_sm_max_time, gunbc_ci_runner_host_file_converge_receipt_path, gunbc_ci_runner_host_cap_release_receipt_path, gunbc_ci_runner_host_withdraw_receipt_path, gunbc_ci_runner_host_restore_receipt_path, host_primary_network_receipt_path, gunbc_ci_admit_plan_run_pointer_invoke, gunbc_ci_admit_apply_run_pointer_invoke, gunbc_ci_admit_dashboard_deploy_inputs_invoke, gunbc_ci_assert_dashboard_deploy_receipts_invoke, gunbc_ci_host_budget_preflight_invoke }
+import gunbc.fleet.fleet_converge_plan_revision { fleet_converge_plan_pointer_env_name, fleet_converge_apply_pointer_env_name }
 import gunbc.revision_job_image_delivery { revision_job_image_artifact_name, revision_job_image_artifact_paths }
 import gunbc.runner.runner_revision_job_unit { revision_job_image_staging_root }
 import gunbc.runner.runner_user_session_receipt { runner_user_session_converge_receipt_path, runner_user_session_converge_receipt_artifact_name, runner_user_session_converge_mode_wire }
@@ -33,7 +41,13 @@ import gunbc.auth.approval_store_receipt {approval_store_receipt_mac_key_path}
 import gunbc.fleet.printer_workflow_artifact { printer_workflow_receipt_path }
 
 import gunbc.live_deploy.desired { prod_role_actuated_realization }
-import extdeps.github.expressions { Expression, ContextAccess, Github, Steps, Needs, StringLiteral, Equals, NotEquals, LogicalOr, LogicalAnd, LogicalNot, FunctionCall, Cancelled, interpolate, serialize_expression }
+import extdeps.github.expressions {
+  Expression, ContextAccess, Github, Steps, Needs, StringLiteral, Equals, NotEquals, LogicalOr, LogicalAnd, LogicalNot, FunctionCall, Cancelled, interpolate, serialize_expression,
+  FilteredContextAccess, FilterSegment, FilterKey, FilterAll, BoolLiteral, NullLiteral, NumberLiteral,
+  LessThan, LessOrEqual, GreaterThan, GreaterOrEqual, Success, Failure, Always, Contains, StartsWith, EndsWith, Format, Join, ToJSON, FromJSON, HashFiles,
+  ExpressionTemplate, Interpolation, LiteralText, ingest_template, ingest_expression, context_name,
+}
+import std.unicode.scalar { ascii_lowercase }
 import gunbc.fleet.fleet_converge_scope { FleetConvergeScope, FullHost, LaunchEnvironment, FabricAllocationStoreOnly, WorkspaceSlotCommissioningOnly, WorkspaceAllocationOnly, LiveDeploy }
 import gunbc.fleet.fleet_plan_artifact_location { fleet_converge_plan_artifact_dir }
 
@@ -58,7 +72,7 @@ import gunbc.auth.access_token_source { workload_identity_token_env }
 import std.measure { Second, minute_count, second_count }
 import gunbc.runner.runner_host_cap_bracket { runner_host_cap_drain_policy, host_cap_bracket_budget, runner_host_cap_step_budget_env_name, runner_host_closure_resolve_budget }
 
-import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, yaml_int, yaml_bool, kv }
+import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, yaml_int, yaml_bool, kv, YamlValue, YamlString, YamlSequence, YamlMapping }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep, 
   WorkflowTrigger, WorkflowDispatch, Schedule, Push, DispatchInput, InputString, InputBoolean, InputChoice, InputEnvironment,
@@ -74,12 +88,13 @@ import gunbc.action_use_admission {
 }
 import gunbc.fleet.app_control_plane_inspection { app_control_plane_receipt_path }
 import gunbc.fleet.org_actions_inspection { org_actions_validation_receipt_path }
-import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_receipt_path, runner_id_probes_env_name, roster_page_size_env_name }
+import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_receipt_path, runner_id_probes_env_name, roster_page_size_env_name, organization_runner_roster_read_budget, organization_runner_roster_request_allowance }
 import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
 import gunbc.cloudflare.r2_bucket_ensure { r2_bucket_ensure_receipt_path }
 import gunbc.cloudflare.r2_conditional_put_race_probe { race_probe_receipt_path }
-import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_observation_receipt_path, mtcollins1_fan_boot_phase_outcome_output, mtcollins1_fan_boot_phase_outcome_observed }
+import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_observe_probe_bound, mtcollins1_fan_observation_receipt_path, mtcollins1_fan_boot_phase_outcome_output, mtcollins1_fan_boot_phase_outcome_observed }
 import gunbc.machine_intake.mtcollins1_kvm_observer_observe { mtcollins1_kvm_observer_probe_bound, mtcollins1_kvm_observer_probe_artifact_glob }
+import gunbc.machine_intake.mtcollins1_ui_status_asset_observation { mtcollins1_ui_status_asset_observation_receipt_path, mtcollins1_ui_status_asset_probe_bound }
 import gunbc.machine_intake.megarac_kvm_still { megarac_kvm_observer_release_allowance }
 import gunbc.fabric.fabric_writer_identity_observe { fabric_writer_identity_receipt_path }
 import gunbc.fabric.workspace_source { workspace_source_receipt_path, workspace_agent_state_slot_env }
@@ -107,13 +122,17 @@ import gunbc.workflow_capability_closure {
   workflow_job_capability_closure,
   capability_closure_is_closed,
 }
-import std.algebra { list_map }
+import std.algebra { list_map, empty_map, map_insert, length }
+import std.list { distinct_by_key }
+import std.keyed_row { KeyedRow }
+import std.keyed_roster { keyed_roster_build, KeyedRosterBuilt, KeyedRosterBuildDuplicateKey }
+import product.host_identity { HostIdentity }
 import v2.std.diagnostic { Outcome, Accepted, Rejected }
 import v2.std.node { Node }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build { bash_build_with_redir, bash_build_command_with_words, bash_build_word_lit, bash_build_exit }
 import gunbc.fleet.fleet_workflow_steps {
-  ci_prelude_steps_with_checkout, ci_prelude_annotations, ci_release_build_step, ci_release_bins_pack_step, ci_release_bins_key_step, ci_release_bins_lookup_step, release_bins_key_step_name, release_bins_lookup_step_name, release_bins_cache_step_name, release_bins_outcome_step_name, ci_release_bins_cache_step, ci_release_bins_outcome_step, ci_cache_cargo_step, ci_release_bins_upload_step, ci_release_bins_download_step, ci_release_bins_unpack_verify_step, ci_release_bins_unpack_verify_step_for, ci_release_bins_key_step_for, ci_release_bins_outcome_step_for, ci_release_build_step_for, ci_release_bins_pack_step_for, ci_fleet_wif_auth_step, ci_fleet_wif_auth_step_when, ci_fleet_key_agent_step, ci_fleet_key_agent_step_when, ci_fleet_key_agent_cleanup_step, fleet_ssh_multiplex_teardown_admitted, ci_wif_auth_step_for, gunbc_ci_mtcollins1_boot_job_backstop_timeout_minutes, gunbc_ci_aux_step_timeout_minutes, gunbc_ci_fleet_converge_plan_step_timeout_minutes, gunbc_ci_runner_guest_image_step_timeout_minutes, gunbc_ci_mtcollins1_census_image_step_timeout_minutes, gunbc_ci_gunbc_run_resolve_step_timeout_minutes, gunbc_ci_site_pxe_edge_converge_step_timeout_minutes, gunbc_ci_spark_serving_step_timeout_minutes, gunbc_ci_artifact_transfer_step_timeout_minutes, gunbc_ci_fleet_job_backstop_timeout_minutes, gunbc_ci_release_build_step_timeout_minutes, gunbc_ci_prelude_allowance_minutes, gunbc_ci_live_deploy_step_timeout_minutes, gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes, gunbc_ci_microvm_controller_install_job_backstop_timeout_minutes, gunbc_ci_approval_broker_dark_install_step_timeout, gunbc_ci_approval_broker_dark_install_job_backstop_timeout, gunbc_ci_rlm_launch_deployment_receipt_job_backstop_timeout, fleet_host_mutation_concurrency_group_expression, fleet_host_mutation_group_prefix, fleet_arm_mutation_group_glm_group_b_native, fleet_srv1_control_plane_mutation_group, checked_job_timeout_minutes, JobTimeoutWithinCeiling, JobTimeoutExceedsCeiling, fleet_host_mutation_group_prefix, fleet_host_input_expression,
+  ci_prelude_steps_with_checkout, ci_prelude_annotations, ci_release_build_step, ci_release_bins_pack_step, ci_release_bins_key_step, ci_release_bins_lookup_step, release_bins_key_step_name, release_bins_lookup_step_name, release_bins_cache_step_name, release_bins_outcome_step_name, ci_release_bins_cache_step, ci_release_bins_outcome_step, ci_cache_cargo_step, ci_release_bins_upload_step, ci_release_bins_download_step, ci_release_bins_unpack_verify_step, ci_release_bins_unpack_verify_step_for, ci_release_bins_key_step_for, ci_release_bins_outcome_step_for, ci_release_build_step_for, ci_release_bins_pack_step_for, ci_fleet_wif_auth_step, ci_fleet_wif_auth_step_when, ci_fleet_key_agent_step, ci_fleet_key_agent_step_when, ci_fleet_key_agent_cleanup_step, fleet_ssh_multiplex_teardown_admitted, ci_wif_auth_step_for, gunbc_ci_mtcollins1_boot_job_backstop_timeout_minutes, gunbc_ci_aux_step_timeout_minutes, gunbc_ci_fleet_converge_plan_step_timeout_minutes, gunbc_ci_plan_serve_entry_verdict_step_timeout_minutes, gunbc_ci_runner_guest_image_step_timeout_minutes, gunbc_ci_mtcollins1_census_image_step_timeout_minutes, gunbc_ci_gunbc_run_resolve_step_timeout_minutes, gunbc_ci_site_pxe_edge_converge_step_timeout_minutes, gunbc_ci_spark_serving_step_timeout_minutes, gunbc_ci_artifact_transfer_step_timeout_minutes, gunbc_ci_fleet_job_backstop_timeout_minutes, gunbc_ci_release_build_step_timeout_minutes, gunbc_ci_prelude_allowance_minutes, gunbc_ci_live_deploy_step_timeout_minutes, gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes, gunbc_ci_microvm_controller_install_job_backstop_timeout_minutes, gunbc_ci_approval_broker_dark_install_step_timeout, gunbc_ci_approval_broker_dark_install_job_backstop_timeout, gunbc_ci_rlm_launch_deployment_receipt_job_backstop_timeout, fleet_host_mutation_concurrency_group_expression, fleet_host_mutation_group_prefix, fleet_arm_mutation_group_glm_group_b_native, fleet_srv1_control_plane_mutation_group, checked_job_timeout_minutes, JobTimeoutWithinCeiling, JobTimeoutExceedsCeiling, fleet_host_mutation_group_prefix, fleet_host_input_expression,
 }
 import gunbc.runner.runner_spec_from_offer { gunbc_ci_runner_spec }
 import gunbc.host.host_reset_return_run { host_reset_dispatch_mode_env }
@@ -141,16 +160,20 @@ import gunbc.auth.ci_app_key_rotation {
   app_key_verify_receipt_path,
 }
 import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_boot_artifact_glob, mtcollins1_boot_step_timeout_minutes }
+import gunbc.fleet.fleet_converge_producer_run { fleet_converge_producer_receipt_retention_days_wire }
+import gunbc.machine_intake.mtcollins1_boot_receipts { mtcollins1_boot_mode_wire, mtcollins1_boot_receipts_artifact_name }
 import gunbc.host.host_boot_attempt_admission { boot_attempt_receipt_env_name, boot_attempt_nonce_env_name }
 import gunbc.runner.runner_group_restriction_ensure_run { microvm_runner_group_ensure_artifact_glob, microvm_runner_group_step_timeout_minutes }
 import gunbc.runner.runner_qualification_floor_job { qualification_attempt_dispatch_input, qualification_floor_job, qualification_floor_job_id, qualification_attempt_subject_env_name, qualification_attempt_artifact_glob }
 import gunbc.witness.compiler_gate_workflow { compiler_gate_emit_build_timeout }
 import gunbc.fleet.srv1_root_mutation_approval_run { srv1_root_mutation_approval_artifact_glob, srv1_root_mutation_approval_step_timeout_minutes, srv1_root_mutation_select_name_env, srv1_root_mutation_select_value_env, srv1_root_mutation_mode_env }
 import gunbc.fleet.srv1_root_mutation_mode { Srv1RootMutationMode, srv1_root_mutation_mode_wire, srv1_root_mutation_mode_job_id, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, ApprovalNtfyRetire }
+import gunbc.runner.runner_service_slot_start { service_slot_start_artifact_glob }
 import gunbc.runner.runner_lost_boot_sweep_run { lost_boot_sweep_artifact_glob, lost_boot_sweep_step_timeout_minutes, lost_boot_sweep_capture_path_env_name, lost_boot_sweep_host_env_name }
 import gunbc.ci.ci_spec {
   site_pxe_edge_converge_receipt_path,
   gunbc_ci_fleet_converge_plan_invoke,
+  gunbc_ci_record_plan_serve_entry_verdict_invoke,
   gunbc_ci_fleet_converge_launch_environment_plan_invoke,
   gunbc_ci_fleet_converge_allocation_store_plan_invoke,
   gunbc_ci_fleet_converge_workspace_commissioning_plan_invoke,
@@ -161,7 +184,7 @@ import gunbc.ci.ci_spec {
   gunbc_ci_app_control_plane_inspect_invoke,
   gunbc_ci_app_key_version_verify_mint_script,
   gunbc_ci_app_key_version_verify_verdict_invoke,
-  gunbc_ci_mtcollins1_fan_observe_invoke,
+  gunbc_ci_mtcollins1_ui_status_asset_observe_invoke, gunbc_ci_mtcollins1_fan_observe_invoke,
   gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke,
   gunbc_ci_mtcollins1_kvm_observer_observe_invoke,
   gunbc_ci_mtcollins1_kvm_observer_release_invoke,
@@ -197,6 +220,7 @@ import gunbc.ci.ci_spec {
   gunbc_ci_srv1_root_mutation_approval_invoke,
   gunbc_ci_service_runner_lost_boot_sweep_invoke,
   gunbc_ci_service_runner_lost_boot_sweep_dry_run_invoke,
+  gunbc_ci_service_slot_start_invoke,
   gunbc_ci_qualification_attempt_invoke,
   gunbc_ci_mtcollins1_boot_admit_invoke,
   gunbc_ci_gcp_iam_converge_request_invoke,
@@ -213,6 +237,7 @@ import gunbc.ci.ci_spec {
   gunbc_ci_runner_host_file_observe_invoke,
   gunbc_ci_host_primary_network_observe_invoke,
   gunbc_ci_host_primary_network_converge_invoke,
+  gunbc_ci_board_function_converge_invoke,
   gunbc_ci_host_memory_envelope_observe_invoke,
   gunbc_ci_runner_host_file_converge_invoke,
   gunbc_ci_runner_host_cap_release_invoke,
@@ -249,6 +274,7 @@ import gunbc.ci.ci_spec {
 import gunbc.fleet.fleet_converge_receipt { fleet_converge_plan_run_id_env_name }
 import gunbc.actions_run_binding { rlm_expected_revision_env_name, fleet_converge_expected_host_env_name, fleet_converge_arrival_subject_env_name, fleet_converge_subject_host_env_name }
 import gunbc.host.host_primary_network_apply { primary_network_apply_phase_budgets }
+import gunbc.fleet.board_function_converge_delivery { board_function_converge_delivery_receipt_path }
 import gunbc.auth.github_deployment_environment { srv1_production_environment_name }
 import gunbc.fleet.host_credential_custody_converge { host_custody_credential_options, host_credential_custody_env_name }
 import gunbc.spark.credential_workflow { spark_administrator_credential_roster_hosts }
@@ -274,12 +300,12 @@ import gunbc.host.host_reset_return {
 }
 import gunbc.host.host_reset_subject_roster { reset_observer_peer_roster, reset_roster_hosts, reset_subject_roster }
 import gunbc.host.host_reset_return { ResetObserverPairing }
-import gunbc.live_deploy.apply_receipt { rlm_plan_run_id_env_name, rlm_apply_run_id_env_name, rlm_plan_artifact_hash_env_name, rlm_dashboard_run_id_env_name }
+import gunbc.live_deploy.apply_receipt { rlm_plan_run_id_env_name, rlm_apply_run_id_env_name, rlm_plan_artifact_hash_env_name, rlm_dashboard_run_id_env_name, live_deploy_receipt_assert_dir_env_name, live_deploy_deploy_conclusion_env_name }
 
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 import extdeps.languages.json.emit { json_kv, json_object, json_string, serialize_json }
-import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
-import std.types { NonEmptyStr, List, String, Int, Bool, list_length, Duration }
+import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml, step_yaml }
+import std.types { NonEmptyStr, List, String, Int, Bool, Duration, Map }
 
 // Emitted on-demand fleet converge workflow (operator directive 2026-08-13, sleek-heron-218).
 // workflow_dispatch with host=srv1|srv2|srv3|srv4 (executor runner pin) and
@@ -292,7 +318,7 @@ import std.types { NonEmptyStr, List, String, Int, Bool, list_length, Duration }
 // an artifact the current run did not produce.
 // THE ENROLLED HOST CHOICES ARE DERIVED, NOT SPELLED, for the reason the Spark target list beside
 // this one already records. The literal that stood here was gunbc.fleet.fleet_runner_connectivity
-// fleet_hosts() written out a second time -- a §3 fork that happened to agree, which is the only
+// fleet_hosts() written out a second time -- a gunbc.design_argument::single_authority fork that happened to agree, which is the only
 // state in which a fork is cheap to remove. It is now the same list its consumers fold as the
 // eligible executor set, so enrolling or retiring an executor host moves this input with it and
 // nobody can dispatch against a host the fleet does not think it has. Each option is the host's
@@ -319,7 +345,7 @@ data fleet_converge_spark_target_options: List<String> = map(spark_administrator
 // them used to spell every mode name independently: once as a bare String in the options
 // list, and again inside each hand-written "github.event.inputs.mode == '<name>'". Seventeen such
 // rows, so a mode's name was authored at least twice and a rename could land in one place and not
-// the other -- the second naming account section 3 refuses, in a shape no lens could see because
+// the other -- the second naming account gunbc.design_argument::single_authority refuses, in a shape no lens could see because
 // both halves are ordinary Strings.
 //
 // The wire form is now derived from the closed vocabulary, and the expressions are derived from the
@@ -359,6 +385,7 @@ type FleetConvergeWorkflowMode
   | RunnerHostFileConverge
   | HostPrimaryNetworkObserve
   | HostPrimaryNetworkConverge
+  | BoardFunctionConverge
   | RunnerHostWithdraw
   | RunnerHostRestore
   | SitePxeEdgeObserve
@@ -406,6 +433,7 @@ type FleetConvergeWorkflowMode
   | MicrovmRunnerGroupEnsure
   | ServiceRunnerLostBootSweep
   | ServiceRunnerLostBootSweepDryRun
+  | ServiceSlotStart
   | OrgRunnerRosterObserve
   | GcpIamConverge
   | NamecheapObserve
@@ -449,6 +477,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     RunnerHostFileConverge => "runner_host_file_converge"
     HostPrimaryNetworkObserve => "host_primary_network_observe"
     HostPrimaryNetworkConverge => "host_primary_network_converge"
+    BoardFunctionConverge => "board_function_converge"
     RunnerHostWithdraw => "runner_host_withdraw"
     RunnerHostRestore => "runner_host_restore"
     SitePxeEdgeObserve => "site_pxe_edge_observe"
@@ -481,7 +510,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     WorkspaceCheckpointRestore => "workspace_checkpoint_restore"
     WorkspaceTranscriptRateObserve => "workspace_transcript_rate_observe"
     ApprovalKeyringConverge => "approval_keyring_converge"
-    MtCollins1Boot => "mtcollins1_boot"
+    MtCollins1Boot => mtcollins1_boot_mode_wire
     GcpIamConverge => "gcp_iam_converge"
     NamecheapObserve => "namecheap_observe"
     ReviewSheetConverge => "review_sheet_converge"
@@ -498,6 +527,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     MicrovmRunnerGroupEnsure => "microvm_runner_group_ensure"
     ServiceRunnerLostBootSweep => "service_runner_lost_boot_sweep"
     ServiceRunnerLostBootSweepDryRun => "service_runner_lost_boot_sweep_dry_run"
+    ServiceSlotStart => "service_slot_start"
     OrgRunnerRosterObserve => "org_runner_roster_observe"
   }
 }
@@ -513,7 +543,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
 // gunbc.spark.credential_workflow's administrator roster, which is what
 // spark_converge_target_selection actually resolves against -- carries srv5 through srv12. A
 // dispatcher reading the menu would have believed srv12 was not a legal target; the resolution would
-// have accepted it. That is the §3 positional-citation decay in prose: a second spelling of a roster,
+// have accepted it. That is the gunbc.design_argument::single_authority positional-citation decay in prose: a second spelling of a roster,
 // invalidated by an edit somewhere else, with nothing to catch it. It is now joined from the roster.
 fn fleet_converge_spark_target_description() -> String {
   join([
@@ -523,7 +553,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, Srv1RootMutation(DashboardDeploy), Srv1RootMutation(ApprovalBrokerDarkInstall), Srv1RootMutation(ApprovalNtfyRetire), Srv1RootMutation(MicrovmControllerInstall), MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, HostMemoryObserve, RunnerHostFileConverge, HostPrimaryNetworkObserve, HostPrimaryNetworkConverge, RunnerHostWithdraw, RunnerHostRestore, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, RunnerUserSessionConverge, RunnerGpuContainerToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1RunnerImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve, MicrovmRunnerGroupEnsure, ServiceRunnerLostBootSweep, ServiceRunnerLostBootSweepDryRun, GcpIamConverge, NamecheapObserve, ReviewSheetConverge, PrinterWorkflow, ArrivalConverge, HetznerCloudServerRead, ExportHostReaderConverge, BootMediumReaderProbe, FleetKeypairMint, FlexPass, FlexTemplateEnsure, BranchRunGrant, QualificationFloor, QualificationAttempt]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, Srv1RootMutation(DashboardDeploy), Srv1RootMutation(ApprovalBrokerDarkInstall), Srv1RootMutation(ApprovalNtfyRetire), Srv1RootMutation(MicrovmControllerInstall), MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, HostMemoryObserve, RunnerHostFileConverge, HostPrimaryNetworkObserve, HostPrimaryNetworkConverge, BoardFunctionConverge, RunnerHostWithdraw, RunnerHostRestore, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, RunnerUserSessionConverge, RunnerGpuContainerToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1RunnerImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve, MicrovmRunnerGroupEnsure, ServiceRunnerLostBootSweep, ServiceRunnerLostBootSweepDryRun, ServiceSlotStart, GcpIamConverge, NamecheapObserve, ReviewSheetConverge, PrinterWorkflow, ArrivalConverge, HetznerCloudServerRead, ExportHostReaderConverge, BootMediumReaderProbe, FleetKeypairMint, FlexPass, FlexTemplateEnsure, BranchRunGrant, QualificationFloor, QualificationAttempt]
 // WHICH RELEASE PRODUCT A MODE'S JOB RUNS, NAMED PER MODE WITH NO WILDCARD (as the scope and fleet-key
 // matches above name theirs). A mode whose steps run only gunbc and claim_executor declares the
 // compiler pair (gunbc.fleet.fleet_release_bins_key compiler_pair_release_product): its build job then
@@ -567,6 +597,7 @@ fn fleet_converge_mode_release_product(mode: FleetConvergeWorkflowMode) -> Fleet
     RunnerHostFileConverge => SixteenBinaryPack
     HostPrimaryNetworkObserve => SixteenBinaryPack
     HostPrimaryNetworkConverge => SixteenBinaryPack
+    BoardFunctionConverge => SixteenBinaryPack
     RunnerHostWithdraw => SixteenBinaryPack
     RunnerHostRestore => SixteenBinaryPack
     SitePxeEdgeObserve => SixteenBinaryPack
@@ -613,6 +644,7 @@ fn fleet_converge_mode_release_product(mode: FleetConvergeWorkflowMode) -> Fleet
     MicrovmRunnerGroupEnsure => SixteenBinaryPack
     ServiceRunnerLostBootSweep => SixteenBinaryPack
     ServiceRunnerLostBootSweepDryRun => SixteenBinaryPack
+    ServiceSlotStart => SixteenBinaryPack
     GcpIamConverge => SixteenBinaryPack
     NamecheapObserve => SixteenBinaryPack
     ReviewSheetConverge => SixteenBinaryPack
@@ -692,6 +724,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     RunnerHostFileConverge => none
     HostPrimaryNetworkObserve => none
     HostPrimaryNetworkConverge => none
+    BoardFunctionConverge => none
     RunnerHostWithdraw => none
     RunnerHostRestore => none
     SitePxeEdgeObserve => none
@@ -741,6 +774,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     MicrovmRunnerGroupEnsure => none
     ServiceRunnerLostBootSweep => none
     ServiceRunnerLostBootSweepDryRun => none
+    ServiceSlotStart => none
     OrgRunnerRosterObserve => none
   }
 }
@@ -843,7 +877,7 @@ type FleetSshKeyDemand = FleetSshKeyConsumed | FleetSshKeyNotConsumed
 // gunbc.instruments.generated_artifact_gate failed to resolve with "non-exhaustive match: missing
 // variant(s) ApprovalKeyringConverge, MtCollins1Boot" and the heal job refused. The file is
 // byte-identical to main, so the defect is main's rather than this branch's; it is fixed here
-// because a branch cannot go green around it and DESIGN 6b is explicit that a link read and found
+// because a branch cannot go green around it and gunbc.design_argument::earliest_unjustified_boundary is explicit that a link read and found
 // wrong is followed rather than left.
 //
 // BOTH ANSWER FleetSshKeyConsumed, AND THE DIRECTION IS THE ARGUMENT. Every mode that acts on a host
@@ -913,6 +947,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     RunnerHostFileConverge => FleetSshKeyConsumed
     HostPrimaryNetworkObserve => FleetSshKeyConsumed
     HostPrimaryNetworkConverge => FleetSshKeyConsumed
+    BoardFunctionConverge => FleetSshKeyConsumed
     RunnerHostWithdraw => FleetSshKeyConsumed
     RunnerHostRestore => FleetSshKeyConsumed
     SitePxeEdgeObserve => FleetSshKeyConsumed
@@ -937,6 +972,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     MicrovmRunnerGroupEnsure => FleetSshKeyNotConsumed
     ServiceRunnerLostBootSweep => FleetSshKeyNotConsumed
     ServiceRunnerLostBootSweepDryRun => FleetSshKeyConsumed
+    ServiceSlotStart => FleetSshKeyConsumed
     GcpIamConverge => FleetSshKeyNotConsumed
     NamecheapObserve => FleetSshKeyNotConsumed
     ReviewSheetConverge => FleetSshKeyNotConsumed
@@ -955,6 +991,270 @@ fn fleet_ssh_key_demand_consumed(d: FleetSshKeyDemand) -> Bool {
 data fleet_converge_fleet_ssh_key_modes: List<FleetConvergeWorkflowMode> = filter(fleet_converge_workflow_modes, m => fleet_ssh_key_demand_consumed(d: fleet_converge_mode_fleet_ssh_key_demand(mode: m)))
 
 data fleet_converge_fleet_ssh_key_step_if: String = fleet_converge_any_mode_step_if(modes: fleet_converge_fleet_ssh_key_modes)
+
+
+// THE FLEET IDENTITY IS MINTED EXACTLY WHEN A STEP THAT READS IT CAN RUN. The credential prelude's
+// `wif_auth` step mints an access token for the fleet-cloud-convergence service account; a dispatch
+// whose enabled steps never read `steps.wif_auth.outputs` must not hold it (gunbc.design_argument::consumption: a
+// dependency is admitted by its consumer). The consumer is not declared per mode -- a per-mode table
+// would be a second authority beside the steps, and could only say "examined" or "kept for now" --
+// it is READ from the job: every step after the mint whose emitted YAML (run, with, env, if, in any
+// key or nested value) references the step's outputs is a reader, and the mint's condition is the
+// disjunction of the readers' own conditions. A reader added in any position, under any compound
+// condition, widens the mint by construction; a mode with no reader cannot reach it.
+//
+// A reader's condition is evaluated at the MINT, before the reader runs, so a condition that reads
+// what only exists later -- another step's outcome or output, or the job status functions success(),
+// failure(), cancelled() and always(), which at the mint describe the steps before it -- cannot be
+// decided there. Such a reader contributes `true`: the mint over-approximates rather than strand a
+// reader whose condition would have held (gunbc.design_argument::fail_closed: an over-approximation computed as the
+// answer, stated). An absent condition is `true` for the same reason.
+//
+// BOTH READINGS GO THROUGH THE TYPED GRAMMAR, extdeps.github.expressions, never a second spelling of
+// it (gunbc.design_argument::single_authority; review 91535). A reference is a ContextAccess or FilteredContextAccess of
+// the `steps` context, compared case-insensitively as upstream compares context properties, so
+// `steps[ 'wif_auth' ].outputs`, `steps.WIF_AUTH['outputs']`, `steps.*.outputs` and a whole-context
+// read such as `toJSON(steps)` are all readers. Text the grammar cannot read is not guessed at: a
+// step field, or a reader's condition, that does not parse refuses the whole workflow
+// (fleet_identity_unreadable_text, consumed by fleet_converge_yml_after_toolchain_admission), so a
+// reader can be neither missed nor silently assumed.
+data fleet_identity_step_id: String = "wif_auth"
+
+data fleet_identity_output_property: String = "outputs"
+
+fn property_is(segment: String, name: String) -> Bool {
+  ascii_lowercase(s: segment) == name
+}
+
+// Does a read of `steps` at this path include the identity step's outputs? The whole context, the
+// whole step object, or its outputs (any sub-path) do; another step, or another property of this
+// one (`steps.wif_auth.conclusion`), does not.
+fn steps_path_reads_fleet_identity(path: List<String>) -> Bool {
+  match path.first() {
+    Absent => true
+    Present { value: head } =>
+      property_is(segment: head, name: fleet_identity_step_id) && match path.skip(n: 1).first() {
+        Absent => true
+        Present { value: p } => property_is(segment: p, name: fleet_identity_output_property)
+      }
+  }
+}
+
+fn filter_segment_admits(segment: FilterSegment, name: String) -> Bool {
+  match segment {
+    FilterAll => true
+    FilterKey { name: n } => property_is(segment: n, name: name)
+  }
+}
+
+fn steps_filter_path_reads_fleet_identity(path: List<FilterSegment>) -> Bool {
+  match path.first() {
+    Absent => true
+    Present { value: head } =>
+      filter_segment_admits(segment: head, name: fleet_identity_step_id) && match path.skip(n: 1).first() {
+        Absent => true
+        Present { value: p } => filter_segment_admits(segment: p, name: fleet_identity_output_property)
+      }
+  }
+}
+
+fn expression_reads_fleet_identity(e: Expression) -> Bool {
+  match e {
+    ContextAccess { context: c, path: p } => context_name(context: c) == context_name(context: Steps) && steps_path_reads_fleet_identity(path: p)
+    FilteredContextAccess { context: c, path: p } => context_name(context: c) == context_name(context: Steps) && steps_filter_path_reads_fleet_identity(path: p)
+    FunctionCall { function: _, args: a } => any(a, x => expression_reads_fleet_identity(e: x))
+    StringLiteral { value: _ } => false
+    BoolLiteral { value: _ } => false
+    NullLiteral => false
+    NumberLiteral { text: _ } => false
+    LogicalOr { left: l, right: r } => expression_reads_fleet_identity(e: l) || expression_reads_fleet_identity(e: r)
+    LogicalAnd { left: l, right: r } => expression_reads_fleet_identity(e: l) || expression_reads_fleet_identity(e: r)
+    Equals { left: l, right: r } => expression_reads_fleet_identity(e: l) || expression_reads_fleet_identity(e: r)
+    NotEquals { left: l, right: r } => expression_reads_fleet_identity(e: l) || expression_reads_fleet_identity(e: r)
+    LessThan { left: l, right: r } => expression_reads_fleet_identity(e: l) || expression_reads_fleet_identity(e: r)
+    LessOrEqual { left: l, right: r } => expression_reads_fleet_identity(e: l) || expression_reads_fleet_identity(e: r)
+    GreaterThan { left: l, right: r } => expression_reads_fleet_identity(e: l) || expression_reads_fleet_identity(e: r)
+    GreaterOrEqual { left: l, right: r } => expression_reads_fleet_identity(e: l) || expression_reads_fleet_identity(e: r)
+    LogicalNot { operand: o } => expression_reads_fleet_identity(e: o)
+  }
+}
+
+// An expression that reads what exists only after the mint: the `steps` context at any path, or a
+// job status function.
+fn expression_undecidable_at_the_mint(e: Expression) -> Bool {
+  match e {
+    ContextAccess { context: c, path: _ } => context_name(context: c) == context_name(context: Steps)
+    FilteredContextAccess { context: c, path: _ } => context_name(context: c) == context_name(context: Steps)
+    FunctionCall { function: f, args: a } => match f {
+      Success => true
+      Failure => true
+      Cancelled => true
+      Always => true
+      Contains => false
+      StartsWith => false
+      EndsWith => false
+      Format => false
+      Join => false
+      ToJSON => false
+      FromJSON => false
+      HashFiles => false
+    } || any(a, x => expression_undecidable_at_the_mint(e: x))
+    StringLiteral { value: _ } => false
+    BoolLiteral { value: _ } => false
+    NullLiteral => false
+    NumberLiteral { text: _ } => false
+    LogicalOr { left: l, right: r } => expression_undecidable_at_the_mint(e: l) || expression_undecidable_at_the_mint(e: r)
+    LogicalAnd { left: l, right: r } => expression_undecidable_at_the_mint(e: l) || expression_undecidable_at_the_mint(e: r)
+    Equals { left: l, right: r } => expression_undecidable_at_the_mint(e: l) || expression_undecidable_at_the_mint(e: r)
+    NotEquals { left: l, right: r } => expression_undecidable_at_the_mint(e: l) || expression_undecidable_at_the_mint(e: r)
+    LessThan { left: l, right: r } => expression_undecidable_at_the_mint(e: l) || expression_undecidable_at_the_mint(e: r)
+    LessOrEqual { left: l, right: r } => expression_undecidable_at_the_mint(e: l) || expression_undecidable_at_the_mint(e: r)
+    GreaterThan { left: l, right: r } => expression_undecidable_at_the_mint(e: l) || expression_undecidable_at_the_mint(e: r)
+    GreaterOrEqual { left: l, right: r } => expression_undecidable_at_the_mint(e: l) || expression_undecidable_at_the_mint(e: r)
+    LogicalNot { operand: o } => expression_undecidable_at_the_mint(e: o)
+  }
+}
+
+// Every string a step emits, keys included: run, with, env, if, name, in any position.
+fn yaml_value_strings(v: YamlValue) -> List<String> {
+  match v {
+    YamlString { value: t } => [t]
+    YamlSequence { elements: els } => flat_map(els, e => yaml_value_strings(v: e))
+    YamlMapping { entries: ents } => flat_map(ents, e => concat([e.key], yaml_value_strings(v: e.value)))
+    _ => []
+  }
+}
+
+fn template_expressions(t: ExpressionTemplate) -> List<Expression> {
+  flat_map(t.segments, seg => match seg {
+    Interpolation { expression: e } => [e]
+    LiteralText { text: _ } => []
+  })
+}
+
+fn step_condition_text(step: Step) -> String {
+  match step {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } => match c { Present { value: v } => v  Absent => "" }
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } => match c { Present { value: v } => v  Absent => "" }
+  }
+}
+
+// A step `if:` is an expression whether or not it is wrapped in an interpolation; a wrapped one is
+// exactly one interpolation with no literal text around it.
+fn condition_expression(c: String) -> Expression? {
+  match ingest_template(src: c) {
+    Absent => none
+    Present { value: t } =>
+      if t.segments.length() == 1 {
+        match t.segments.first() {
+          Present { value: Interpolation { expression: e } } => Present { value: e }
+          _ => ingest_expression(src: c)
+        }
+      } else if template_expressions(t: t).length() == 0 {
+        ingest_expression(src: c)
+      } else {
+        none
+      }
+  }
+}
+
+// THE READING OF ONE STEP, or the first text in it the grammar cannot read.
+type FleetIdentityStepReading
+  = FleetIdentityStepRead { reads: Bool }
+  | FleetIdentityStepUnreadable { text: String }
+
+fn step_fleet_identity_reading(step: Step) -> FleetIdentityStepReading {
+  fold(yaml_value_strings(v: step_yaml(step: step)), init: FleetIdentityStepRead { reads: false }, f: (acc, t) => match acc {
+    FleetIdentityStepUnreadable { text: _ } => acc
+    FleetIdentityStepRead { reads: r } => match ingest_template(src: t) {
+      Absent => FleetIdentityStepUnreadable { text: t }
+      Present { value: tpl } => FleetIdentityStepRead { reads: r || any(template_expressions(t: tpl), e => expression_reads_fleet_identity(e: e)) }
+    }
+  })
+}
+
+fn step_reads_fleet_identity(step: Step) -> Bool {
+  match step_fleet_identity_reading(step: step) {
+    FleetIdentityStepRead { reads: r } => r
+    FleetIdentityStepUnreadable { text: _ } => false
+  }
+}
+
+fn fleet_identity_reader_mint_condition(step: Step) -> String {
+  let c = step_condition_text(step: step)
+  if c == "" {
+    "true"
+  } else {
+    match condition_expression(c: c) {
+      Absent => "true"
+      Present { value: e } =>
+        match expression_mint_superset(e: e) {
+          Present { value: d } => serialize_expression(expression: d)
+          Absent => "true"
+        }
+    }
+  }
+}
+
+// THE MINT NEEDS A DECIDABLE SUPERSET OF EACH READER'S CONDITION, NOT ITS ALL-OR-NOTHING DECIDABILITY. A
+// reader runs only where every conjunct holds, so dropping an undecidable conjunct (a status function,
+// a steps.* read) leaves a condition true wherever the reader can run: `!cancelled() && mode == 'x'`
+// mints for mode x, not for every mode. A disjunction or negation with an undecidable part has no
+// such superset short of `true`, and Absent says so; the caller mints unconditionally for that reader
+// rather than under-mint. Before this, one `!cancelled()` conjunct (the mtcollins1_fan_observe UI step,
+// #15976) made its whole condition `true` and the disjunct absorbed the mint for every mode (review 91761).
+fn expression_mint_superset(e: Expression) -> Expression? {
+  if !expression_undecidable_at_the_mint(e: e) {
+    Present { value: e }
+  } else {
+    match e {
+      LogicalAnd { left: l, right: r } =>
+        match expression_mint_superset(e: l) {
+          Present { value: dl } =>
+            match expression_mint_superset(e: r) {
+              Present { value: dr } => Present { value: LogicalAnd { left: dl, right: dr } }
+              Absent => Present { value: dl }
+            }
+          Absent => expression_mint_superset(e: r)
+        }
+      _ => none
+    }
+  }
+}
+
+// The first text among the candidates that the grammar cannot read -- any step field, or a
+// reader's condition -- which refuses the workflow. Absent when every candidate was read.
+fn fleet_identity_unreadable_text(candidates: List<Step>) -> String? {
+  fold(candidates, init: none, f: (acc, s) => match acc {
+    Present { value: _ } => acc
+    Absent => match step_fleet_identity_reading(step: s) {
+      FleetIdentityStepUnreadable { text: t } => Present { value: t }
+      FleetIdentityStepRead { reads: r } =>
+        if r && step_condition_text(step: s) != "" {
+          match condition_expression(c: step_condition_text(step: s)) {
+            Absent => Present { value: step_condition_text(step: s) }
+            Present { value: _ } => none
+          }
+        } else {
+          none
+        }
+    }
+  })
+}
+
+fn fleet_identity_readers(candidates: List<Step>) -> List<Step> {
+  filter(candidates, s => step_reads_fleet_identity(step: s))
+}
+
+// The mint's own condition, from the readers: their distinct conditions, each parenthesized, joined
+// by `||`; no reader is `false`, so a job with no reader never mints.
+fn fleet_identity_mint_condition(readers: List<Step>) -> String {
+  let conditions = distinct_by_key(xs: map(readers, s => fleet_identity_reader_mint_condition(step: s)), key: c => c)
+  match conditions.first() {
+    Absent => "false"
+    Present { value: _ } => join(map(conditions, c => concat(concat("(", c), ")")), " || ")
+  }
+}
 
 data fleet_converge_spark_target_modes: List<FleetConvergeWorkflowMode> = [
   SparkGrants,
@@ -1002,7 +1302,7 @@ data fleet_converge_mode_options: List<String> = map(fleet_converge_dispatchable
 // assignment lookup and never reached the identity check; the walls were then fixture-only on the
 // production route. The entry now refuses rather than falling back to its own hostname, and the
 // hostname is the independent second reading that must agree. A stale account of that is not a
-// wording slip: it is one fact with two incompatible spellings (DESIGN section 3's meaning fork), and
+// wording slip: it is one fact with two incompatible spellings (gunbc.design_argument::single_authority's meaning fork), and
 // the one a later worker would most plausibly act on is the one that disarms the corroboration.
 // gunbc.host.host_reset_return carries the full argument, above reset_return_verdict_of_mint.
 data fleet_converge_reset_subjects: List<NonEmptyStr> = reset_roster_hosts(entries: reset_subject_roster(evidence: megarac_operation_evidence()))
@@ -1034,7 +1334,7 @@ data fleet_converge_reset_observer_options: List<String> = match fleet_converge_
 // SHARED BY EVERY JOB THAT CONVERGES OR READS BACK THAT HOST (RLM-2 ruling section 9) -- and the
 // reason it gives is this mode's exact subject: a readback observing another transaction's mutation.
 // This is the most mutating job in the workflow, because it power-cycles a physical machine, and it
-// was the only host-touching one carrying no group at all. A section 3b divergence in the
+// was the only host-touching one carrying no group at all. A gunbc.design_argument::conformance divergence in the
 // leasing/locking domain with no stated reason, which is the only red that section admits.
 //
 // THE FABRICATION IT ADMITS IS THE ONE THIS MODULE EXISTS TO REFUSE. Two dispatches naming different
@@ -1049,7 +1349,7 @@ data fleet_converge_reset_observer_options: List<String> = match fleet_converge_
 // is derived rather than spelled: a pairing this mint refused cannot appear in it, and an observer
 // absent from the map yields an empty subject, which cannot collide with a real host's domain.
 // THE MAP GOES THROUGH THE JSON EMITTER, NOT THROUGH concat. It hand-built the object with string
-// literals until review 62097, which is the medium-as-string shape and a section 2 re-invention: the
+// literals until review 62097, which is the medium-as-string shape and a gunbc.design_argument::minimize_redundancy re-invention: the
 // authority already exists at extdeps.languages.json.emit, and this module already consumes its YAML
 // sibling, so reaching for the JSON one is the same move rather than a new dependency.
 //
@@ -1062,7 +1362,7 @@ data fleet_converge_reset_observer_options: List<String> = match fleet_converge_
 // not restate it.
 // TAKING THE PAIRINGS AS AN ARGUMENT IS WHAT MAKES THE ESCAPING CHECK AUTHORABLE. Reading the module
 // data row directly left no way to hand this function a hostile label, so a witness could only have
-// restated what the emitter does -- permanently green by construction, which section 4b calls a
+// restated what the emitter does -- permanently green by construction, which gunbc.design_argument::guarantee_ladder calls a
 // decoration and worse than absent. Split so the fold is exercisable and the data row is one call.
 fn reset_subject_map_json(pairings: List<ResetObserverPairing>) -> String {
   serialize_json(
@@ -1169,12 +1469,13 @@ fn fleet_converge_host_reset_return_receipt_upload_step() -> Step {
     name: Present { value: "Upload host reset-return attempt receipt" },
     id: Present { value: "host_reset_return_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "host-reset-return")),
-      kv(key: "path", value: yaml_string(s: host_reset_return_receipt_path as String)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "host-reset-return",
+      path: host_reset_return_receipt_path as String,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && (", concat(fleet_converge_host_reset_return_step_if, ")")) },
     continue_on_error: none,
@@ -1468,6 +1769,7 @@ fn fleet_converge_plan_revision_steps() -> List<Step> {
     ci_prelude_steps_with_checkout(checkout: fleet_converge_event_sha_checkout_step(), exact_head_preflight: []),
     [
       fleet_converge_plan_revision_pair_build_step(),
+      fleet_converge_admit_plan_run_pointer_step(if_condition: fleet_converge_plan_revision_step_if),
       fleet_converge_plan_revision_download_step(),
       fleet_converge_plan_revision_resolve_step(),
     ]
@@ -1528,6 +1830,15 @@ data fleet_converge_allocation_store_plan_step_if: String = fleet_converge_mode_
 data fleet_converge_workspace_commissioning_plan_step_if: String = fleet_converge_mode_step_if(mode: WorkspaceCommissioningPlan)
 
 data fleet_converge_any_plan_step_if: String = fleet_converge_any_mode_step_if(modes: [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan])
+
+// THE VERDICT STEP'S OWN GATE (gunbc.design_argument::consumption, gunbc.design_argument::earliest_unjustified_boundary step 4). The serve-entry verdict is consumed by exactly
+// one reader -- the dashboard swap's pre-swap admission -- which can only be reached from a
+// pointer run that minted the RUN-BOUND PLAN RECEIPT the receipt assertion demands. That receipt
+// is minted by the two plan modes below (the launch-environment plan carries the same run-bound
+// binding as the full-host plan, see the comment under fleet_converge_plan_step); an
+// allocation-store, workspace-commissioning or workspace-allocation plan run never feeds the
+// swap, so those runs do not pay the ~18-minute serve-entry compile for a verdict nothing reads.
+data fleet_converge_serve_entry_verdict_step_if: String = fleet_converge_any_mode_step_if(modes: [FullHostPlan, LaunchEnvironmentPlan])
 data fleet_converge_apply_step_if: String = fleet_converge_mode_step_if(mode: FleetApply)
 data fleet_converge_org_actions_step_if: String = fleet_converge_mode_step_if(mode: OrgActionsObserve)
 data fleet_converge_org_runner_roster_step_if: String = fleet_converge_mode_step_if(mode: OrgRunnerRosterObserve)
@@ -1590,6 +1901,8 @@ data fleet_converge_host_primary_network_converge_step_if: String = fleet_conver
 
 data fleet_converge_host_primary_network_any_step_if: String = fleet_converge_any_mode_step_if(modes: [HostPrimaryNetworkObserve, HostPrimaryNetworkConverge])
 
+data fleet_converge_board_function_converge_step_if: String = fleet_converge_mode_step_if(mode: BoardFunctionConverge)
+
 data fleet_converge_site_pxe_edge_observe_step_if: String = fleet_converge_mode_step_if(mode: SitePxeEdgeObserve)
 
 data fleet_converge_site_pxe_edge_converge_step_if: String = fleet_converge_mode_step_if(mode: SitePxeEdgeConverge)
@@ -1612,12 +1925,13 @@ fn fleet_converge_runner_password_session_tool_receipt_upload_step() -> Step {
     name: Present { value: "Upload password-session tool converge receipt" },
     id: Present { value: "runner_password_session_tool_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "runner-password-session-tool-converge-receipt")),
-      kv(key: "path", value: yaml_string(s: "target/runner-password-session-tool-converge-receipt.txt")),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "runner-password-session-tool-converge-receipt",
+      path: "target/runner-password-session-tool-converge-receipt.txt",
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && (", concat(fleet_converge_runner_password_session_tool_converge_step_if, ")")) },
     continue_on_error: none,
@@ -1641,12 +1955,13 @@ fn fleet_converge_runner_gpu_container_toolchain_receipt_upload_step() -> Step {
     name: Present { value: "Upload GPU container toolchain converge receipt" },
     id: Present { value: "runner_gpu_container_toolchain_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "runner-gpu-container-toolchain-converge-receipt")),
-      kv(key: "path", value: yaml_string(s: "target/runner-gpu-container-toolchain-converge-receipt.txt")),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "runner-gpu-container-toolchain-converge-receipt",
+      path: "target/runner-gpu-container-toolchain-converge-receipt.txt",
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && (", concat(fleet_converge_runner_gpu_container_toolchain_converge_step_if, ")")) },
     continue_on_error: none,
@@ -1661,12 +1976,13 @@ fn fleet_converge_runner_browser_toolchain_receipt_upload_step() -> Step {
     name: Present { value: "Upload browser toolchain converge receipt" },
     id: Present { value: "runner_browser_toolchain_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "runner-browser-toolchain-converge-receipt")),
-      kv(key: "path", value: yaml_string(s: "target/runner-browser-toolchain-converge-receipt.txt")),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "runner-browser-toolchain-converge-receipt",
+      path: "target/runner-browser-toolchain-converge-receipt.txt",
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && (", concat(fleet_converge_runner_browser_toolchain_converge_step_if, ")")) },
     continue_on_error: none,
@@ -1774,6 +2090,7 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     RunnerHostFileConverge => ExecutorDomain
     HostPrimaryNetworkObserve => ExecutorDomain
     HostPrimaryNetworkConverge => ExecutorDomain
+    BoardFunctionConverge => ExecutorDomain
     RunnerHostWithdraw => ExecutorDomain
     RunnerHostRestore => ExecutorDomain
     SitePxeEdgeObserve => ExecutorDomain
@@ -1818,6 +2135,7 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     MicrovmRunnerGroupEnsure => ExecutorDomain
     ServiceRunnerLostBootSweep => ExecutorDomain
     ServiceRunnerLostBootSweepDryRun => OwnRunConfined
+    ServiceSlotStart => ExecutorDomain
     OrgRunnerRosterObserve => ExecutorDomain
     GcpIamConverge => ExecutorDomain
     NamecheapObserve => ExecutorDomain
@@ -1886,13 +2204,13 @@ fn fleet_converge_plan_upload_step() -> Step {
     id: Present { value: "plan_upload" },
     uses: upload_artifact_action,
     with: Present {
-      value: [
-        kv(key: "name", value: yaml_string(s: gunbc_fleet_converge_plan_artifact_name)),
-        kv(key: "path", value: yaml_string(s: fleet_converge_plan_artifact_dir)),
-        kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-        kv(key: "retention-days", value: yaml_int(n: 30)),
-        kv(key: "compression-level", value: yaml_int(n: 0)),
-      ]
+      value: workflow_artifact_upload_with(
+        name: gunbc_fleet_converge_plan_artifact_name,
+        path: fleet_converge_plan_artifact_dir,
+        retention_days: Present { value: 30 },
+        compression_level: Present { value: 0 },
+        absence: AbsenceRefused,
+      )
     },
     env: none,
     if_condition: Present { value: fleet_converge_any_plan_step_if },
@@ -1937,6 +2255,29 @@ fn fleet_converge_plan_step() -> Step {
     if_condition: Present { value: fleet_converge_plan_step_if },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_fleet_converge_plan_step_timeout_minutes }
+  }
+}
+
+// THE PLAN'S SERVE-ENTRY VERDICT (gunbc.live_deploy.pre_swap_admission). The plan job compiles
+// the prod-role serve entry ONCE, with the release pair this run built, and publishes the verdict
+// beside the plan receipt; the swap transaction consumes it by identity -- source revision, entry,
+// serve argv, and the release binary the swap admits -- instead of paying the cold resolve again
+// (job 117824998335 spent 614964 ms there and still exited 1). It runs, immediately before the
+// artifact upload, exactly in the modes whose run-bound plan receipt the swap's receipt assertion
+// demands (fleet_converge_serve_entry_verdict_step_if: the full-host and launch-environment plans)
+// -- so no consumable plan artifact ships without the verdict, and the modes that never feed the
+// swap pay no serve-entry fold (gunbc.design_argument::earliest_unjustified_boundary step 4).
+fn fleet_converge_serve_entry_verdict_step() -> Step {
+  RunStep {
+    name: Present { value: "Record the serve-entry compile verdict beside the plan artifact (gunbc.live_deploy.pre_swap_admission)" },
+    id: Present { value: "serve_entry_verdict" },
+    run: gunbc_ci_record_plan_serve_entry_verdict_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_serve_entry_verdict_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_plan_serve_entry_verdict_step_timeout_minutes }
   }
 }
 
@@ -2024,19 +2365,114 @@ fn fleet_converge_apply_step() -> Step {
 // minted; the receipt mode downloads the three predecessors by the run ids the operator typed. One
 // builder per direction, parameterized by name/path/run-id expression, so the four transfers are
 // one shape rather than four spellings.
+// THE RUN POINTER ADMISSIONS (gunbc.fleet.fleet_converge_plan_revision): what the hand-typed
+// predecessor run ids NAME, admitted BEFORE actions/download-artifact is the first thing to touch
+// them. A pointer to a run that does not exist (run 39172318149: the named plan run was never
+// dispatched at all) or to a run that is not a completed successful fleet-converge dispatch
+// refuses here, by name, instead of surfacing as the download action's "Unable to download
+// artifact(s): Not Found" minutes into the job.
+fn fleet_converge_admit_plan_run_pointer_step(if_condition: String) -> Step {
+  RunStep {
+    name: Present { value: "Admit the plan run pointer before downloading from it" },
+    id: Present { value: "admit_plan_run_pointer" },
+    run: gunbc_ci_admit_plan_run_pointer_invoke(),
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}")),
+        kv(key: fleet_converge_plan_pointer_env_name, value: yaml_string(s: "${{ github.event.inputs.plan_workflow_run_id }}")),
+      ]
+    },
+    working_directory: none,
+    if_condition: Present { value: if_condition },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_admit_apply_run_pointer_step(if_condition: String) -> Step {
+  RunStep {
+    name: Present { value: "Admit the apply run pointer before downloading from it" },
+    id: Present { value: "admit_apply_run_pointer" },
+    run: gunbc_ci_admit_apply_run_pointer_invoke(),
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}")),
+        kv(key: fleet_converge_apply_pointer_env_name, value: yaml_string(s: "${{ github.event.inputs.apply_workflow_run_id }}")),
+      ]
+    },
+    working_directory: none,
+    if_condition: Present { value: if_condition },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+// THE DISPATCH-INPUT FAIL-FAST (gunbc.fleet.fleet_converge_plan_revision): the inputs the
+// transaction would refuse on are refused in seconds, before the human-approval gate is even
+// filed and long before the fold's resolve is paid (run 39177393512: an empty plan_artifact_hash
+// bought a full-closure resolve and a ten-word refusal; gunbc.design_argument::earliest_unjustified_boundary puts the missing admission one
+// link before the ten-minute symptom, not a timeout on it).
+fn fleet_converge_admit_dashboard_deploy_inputs_step() -> Step {
+  RunStep {
+    name: Present { value: "Refuse an undeployable dashboard_deploy dispatch by name, before approval and before the fold" },
+    id: Present { value: "admit_dashboard_deploy_inputs" },
+    run: gunbc_ci_admit_dashboard_deploy_inputs_invoke(),
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: rlm_expected_revision_env_name, value: yaml_string(s: "${{ github.event.inputs.expected_revision }}")),
+        kv(key: rlm_plan_artifact_hash_env_name, value: yaml_string(s: "${{ github.event.inputs.plan_artifact_hash }}")),
+        kv(key: fleet_converge_plan_pointer_env_name, value: yaml_string(s: "${{ github.event.inputs.plan_workflow_run_id }}")),
+        kv(key: fleet_converge_apply_pointer_env_name, value: yaml_string(s: "${{ github.event.inputs.apply_workflow_run_id }}")),
+      ]
+    },
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+// THE JOB'S FINAL RECEIPT ASSERTION, always run. The transaction mints a document on every terminal
+// arm -- apply receipt or named refusal -- so the job's rule is a count and a pairing, and the rule
+// lives with the documents in gunbc.live_deploy.apply_receipt (admit_dashboard_deploy_receipts), not
+// as hand-written shell here (gunbc.design_argument::how_to_work: raw shell implementing semantics expressible in .dag is the
+// scaffold tell; the rest of this workflow already runs its checks through gunbc run --function).
+// It runs under always(): when the transaction step itself failed, its exit already names the cause
+// -- this step only reports whether the refusal receipt is there to carry it, and never turns a red
+// step into a second red step whose message says less. The directory and the conclusion arrive as
+// environment, named by the same data the writer uses.
+fn fleet_converge_dashboard_receipt_assert_step() -> Step {
+  RunStep {
+    name: Present { value: "Assert exactly one live-deploy receipt (apply XOR named refusal, gunbc.live_deploy.apply_receipt)" },
+    id: Present { value: "dashboard_receipt_assert" },
+    run: gunbc_ci_assert_dashboard_deploy_receipts_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: live_deploy_receipt_assert_dir_env_name, value: yaml_string(s: gunbc_live_deploy_receipt_artifact_dir)),
+      kv(key: live_deploy_deploy_conclusion_env_name, value: yaml_string(s: "${{ steps.dashboard_deploy.conclusion }}")),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: "always()" },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
 fn fleet_converge_receipt_upload_step(id: String, name: String, artifact: String, path: String, if_condition: String) -> Step {
   UsesStep {
     name: Present { value: name },
     id: Present { value: id },
     uses: upload_artifact_action,
     with: Present {
-      value: [
-        kv(key: "name", value: yaml_string(s: artifact)),
-        kv(key: "path", value: yaml_string(s: path)),
-        kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-        kv(key: "retention-days", value: yaml_int(n: 90)),
-        kv(key: "compression-level", value: yaml_int(n: 0)),
-      ]
+      value: workflow_artifact_upload_with(
+        name: artifact,
+        path: path,
+        retention_days: Present { value: 90 },
+        compression_level: Present { value: 0 },
+        absence: AbsenceRefused,
+      )
     },
     env: none,
     if_condition: Present { value: if_condition },
@@ -2080,12 +2516,13 @@ fn fleet_converge_guest_image_receipt_upload_step() -> Step {
     name: Present { value: "Upload runner micro-VM guest image standing receipt" },
     id: Present { value: "guest_image_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "runner-guest-image-standing")),
-      kv(key: "path", value: yaml_string(s: "target/runner-guest-image-standing.txt")),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "runner-guest-image-standing",
+      path: "target/runner-guest-image-standing.txt",
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && (", concat(fleet_converge_guest_image_any_step_if, ")")) },
     continue_on_error: none,
@@ -2159,12 +2596,13 @@ fn fleet_converge_microvm_network_observe_receipt_upload_step() -> Step {
     name: Present { value: "Upload runner micro-VM network converge receipt" },
     id: Present { value: "microvm_network_observe_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "runner-microvm-network-observe-receipt")),
-      kv(key: "path", value: yaml_string(s: "target/microvm-network-observe.txt")),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "runner-microvm-network-observe-receipt",
+      path: "target/microvm-network-observe.txt",
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && (", concat(fleet_converge_microvm_network_observe_step_if, ")")) },
     continue_on_error: none,
@@ -2206,12 +2644,13 @@ fn fleet_converge_microvm_network_apply_receipt_upload_step() -> Step {
     name: Present { value: "Upload runner micro-VM network apply receipt" },
     id: Present { value: "microvm_network_apply_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "runner-microvm-network-apply-receipt")),
-      kv(key: "path", value: yaml_string(s: "target/microvm-network-apply-receipt.txt")),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "runner-microvm-network-apply-receipt",
+      path: "target/microvm-network-apply-receipt.txt",
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && (", concat(fleet_converge_microvm_network_apply_step_if, ")")) },
     continue_on_error: none,
@@ -2224,12 +2663,13 @@ fn fleet_converge_microvm_host_standing_upload_step() -> Step {
     name: Present { value: "Upload runner micro-VM host standing receipt" },
     id: Present { value: "microvm_host_standing_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "runner-microvm-host-standing")),
-      kv(key: "path", value: yaml_string(s: "target/runner-microvm-host-standing.txt")),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "runner-microvm-host-standing",
+      path: "target/runner-microvm-host-standing.txt",
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && (", concat(fleet_converge_microvm_host_converge_step_if, ")")) },
     continue_on_error: none,
@@ -2382,7 +2822,7 @@ fn fleet_converge_executor_subject_split_gate_step() -> Step {
     // THE MODE DISJUNCTION ONLY, as one expression tree from the mode roster's builder. The `if:` says
     // WHEN the precondition applies; the script says WHETHER it holds. A host comparison in the `if:`
     // fails open: `(A || B || C) && host == subject_host` is false when subject_host is empty and host
-    // is not, so a restore with no subject skipped the gate and actuated (review 86194; DESIGN.md §5).
+    // is not, so a restore with no subject skipped the gate and actuated (review 86194; gunbc.design_argument::fail_closed).
     // Before that, gluing two serialized strings made GitHub read `A || B || C && D` as
     // A || B || (C && D) (review 38602, review 386096). With the decision in the script, every
     // dispatch of an act mode executes the gate and no input combination can step around it.
@@ -2457,12 +2897,13 @@ fn fleet_converge_runner_user_session_receipt_upload_step() -> Step {
     name: Present { value: "Upload user session converge receipt" },
     id: Present { value: "runner_user_session_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: runner_user_session_converge_receipt_artifact_name)),
-      kv(key: "path", value: yaml_string(s: runner_user_session_converge_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: runner_user_session_converge_receipt_artifact_name,
+      path: runner_user_session_converge_receipt_path,
+      retention_days: Present { value: fleet_converge_producer_receipt_retention_days_wire() },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && (", concat(fleet_converge_runner_user_session_converge_step_if, ")")) },
     continue_on_error: none,
@@ -2522,12 +2963,13 @@ fn fleet_converge_host_credential_custody_receipt_upload_step() -> Step {
     name: Present { value: "Upload host credential custody receipt" },
     id: Present { value: "host_credential_custody_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "host-credential-custody-converge-receipt")),
-      kv(key: "path", value: yaml_string(s: "target/host-credential-custody-converge-receipt.txt")),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "host-credential-custody-converge-receipt",
+      path: "target/host-credential-custody-converge-receipt.txt",
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && (", concat(fleet_converge_host_credential_custody_converge_step_if, ")")) },
     continue_on_error: none,
@@ -2564,12 +3006,13 @@ fn fleet_converge_site_pxe_edge_receipt_upload_step() -> Step {
     name: Present { value: "Upload site PXE edge converge receipt" },
     id: Present { value: "site_pxe_edge_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "site-pxe-edge-converge-receipt")),
-      kv(key: "path", value: yaml_string(s: site_pxe_edge_converge_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "site-pxe-edge-converge-receipt",
+      path: site_pxe_edge_converge_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && (", concat(fleet_converge_site_pxe_edge_any_step_if, ")")) },
     continue_on_error: none,
@@ -2583,12 +3026,13 @@ fn fleet_converge_runner_host_cap_release_receipt_upload_step() -> Step {
     name: Present { value: "Upload runner host cap release receipt" },
     id: Present { value: "runner_host_cap_release_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "runner-host-cap-release-receipt")),
-      kv(key: "path", value: yaml_string(s: gunbc_ci_runner_host_cap_release_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "runner-host-cap-release-receipt",
+      path: gunbc_ci_runner_host_cap_release_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && (", fleet_converge_runner_host_file_converge_step_if, ")"], "") },
     continue_on_error: none,
@@ -2601,12 +3045,13 @@ fn fleet_converge_runner_host_withdraw_receipt_upload_step() -> Step {
     name: Present { value: "Upload runner host withdraw receipt" },
     id: Present { value: "runner_host_withdraw_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "runner-host-withdraw-receipt")),
-      kv(key: "path", value: yaml_string(s: gunbc_ci_runner_host_withdraw_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "runner-host-withdraw-receipt",
+      path: gunbc_ci_runner_host_withdraw_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && (", fleet_converge_runner_host_withdraw_step_if, ")"], "") },
     continue_on_error: none,
@@ -2619,12 +3064,13 @@ fn fleet_converge_runner_host_restore_receipt_upload_step() -> Step {
     name: Present { value: "Upload runner host restore receipt" },
     id: Present { value: "runner_host_restore_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "runner-host-restore-receipt")),
-      kv(key: "path", value: yaml_string(s: gunbc_ci_runner_host_restore_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "runner-host-restore-receipt",
+      path: gunbc_ci_runner_host_restore_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && (", fleet_converge_runner_host_restore_step_if, ")"], "") },
     continue_on_error: none,
@@ -2637,12 +3083,13 @@ fn fleet_converge_runner_host_file_receipt_upload_step() -> Step {
     name: Present { value: "Upload runner host file converge receipt" },
     id: Present { value: "runner_host_file_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "runner-host-file-converge-receipt")),
-      kv(key: "path", value: yaml_string(s: gunbc_ci_runner_host_file_converge_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "runner-host-file-converge-receipt",
+      path: gunbc_ci_runner_host_file_converge_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && (", concat(fleet_converge_runner_host_file_any_step_if, ")")) },
     continue_on_error: none,
@@ -2691,8 +3138,40 @@ fn fleet_converge_host_primary_network_converge_step() -> Step {
     name: "Primary network: stage the population, netplan try on the target, confirm only on a readback from the observer",
     invoke: gunbc_ci_host_primary_network_converge_invoke(),
     if_condition: fleet_converge_host_primary_network_converge_step_if,
-    timeout_minutes: fleet_converge_mtcollins1_probe_step_timeout_minutes(phases: primary_network_apply_phase_budgets()),
+    timeout_minutes: fleet_converge_gunbc_run_step_timeout_minutes(phases: primary_network_apply_phase_budgets()),
   )
+}
+
+// THE BOARD-FUNCTION CONVERGE, DELIVERED TO A HOST THAT RUNS NO LIVE DEPLOYMENT
+// (gunbc.fleet.board_function_converge_delivery): an executor/subject split like the primary network's, the
+// subject named in `subject_host`, the entry refusing a subject that is not an ALTRAD8UD-1L2T machine_board row.
+fn fleet_converge_board_function_converge_step() -> Step {
+  fleet_converge_host_primary_network_step(
+    id: "board_function_converge",
+    name: "Board-function converge: install the snapshot and unit on the subject ungated, gate the workloads only after the converge reads back",
+    invoke: gunbc_ci_board_function_converge_invoke(),
+    if_condition: fleet_converge_board_function_converge_step_if,
+    timeout_minutes: gunbc_ci_gunbc_run_resolve_step_timeout_minutes,
+  )
+}
+
+fn fleet_converge_board_function_converge_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload board-function converge receipt" },
+    id: Present { value: "board_function_converge_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: workflow_artifact_upload_with(
+      name: "board-function-converge-delivery-receipt",
+      path: board_function_converge_delivery_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
+    env: none,
+    if_condition: Present { value: concat("always() && (", concat(fleet_converge_board_function_converge_step_if, ")")) },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
 }
 
 fn fleet_converge_host_primary_network_receipt_upload_step() -> Step {
@@ -2700,12 +3179,13 @@ fn fleet_converge_host_primary_network_receipt_upload_step() -> Step {
     name: Present { value: "Upload primary network receipt" },
     id: Present { value: "host_primary_network_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "host-primary-network-receipt")),
-      kv(key: "path", value: yaml_string(s: host_primary_network_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "host-primary-network-receipt",
+      path: host_primary_network_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && (", concat(fleet_converge_host_primary_network_any_step_if, ")")) },
     continue_on_error: none,
@@ -2761,12 +3241,13 @@ fn fleet_converge_microvm_slot_reserve_receipt_upload_step() -> Step {
     name: Present { value: "Upload the microVM slot reserve receipt" },
     id: Present { value: "microvm_slot_reserve_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "microvm-slot-reserve")),
-      kv(key: "path", value: yaml_string(s: microvm_slot_reserve_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "microvm-slot-reserve",
+      path: microvm_slot_reserve_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && (", concat(fleet_converge_microvm_slot_reserve_step_if, ")")) },
     continue_on_error: none,
@@ -2802,12 +3283,13 @@ fn fleet_converge_microvm_slot_start_receipt_upload_step() -> Step {
     name: Present { value: "Upload the microVM slot start receipt" },
     id: Present { value: "microvm_slot_start_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "microvm-slot-start")),
-      kv(key: "path", value: yaml_string(s: microvm_slot_start_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "microvm-slot-start",
+      path: microvm_slot_start_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && (", concat(fleet_converge_microvm_slot_start_step_if, ")")) },
     continue_on_error: none,
@@ -2824,12 +3306,13 @@ fn fleet_converge_microvm_boot_probe_receipt_upload_step() -> Step {
     name: Present { value: "Upload runner micro-VM boot probe console receipt" },
     id: Present { value: "microvm_boot_probe_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "runner-microvm-boot-probe")),
-      kv(key: "path", value: yaml_string(s: "target/runner-microvm-boot-probe.txt")),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "runner-microvm-boot-probe",
+      path: "target/runner-microvm-boot-probe.txt",
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && (", concat(fleet_converge_microvm_boot_probe_step_if, ")")) },
     continue_on_error: none,
@@ -2857,6 +3340,20 @@ fn fleet_converge_org_actions_step() -> Step {
 // mode because it answers a different question: which registrations the organization holds, read
 // to exhaustion, rather than whether the runner-group settings match policy. Its receipt uploads on
 // every outcome, because a Partial or an Unavailable roster is exactly the evidence worth keeping.
+// THE ROSTER STEP'S TIMEOUT IS THE ONE RULE ABOVE, NOT THE FLAT AUX BUDGET. Run 41655364699 (srv3,
+// 2026-11-03) spent 285 s of its 5-minute aux budget resolving the entry's closure
+// (resolve_entry_graph_inclusive=285166 ms) and was killed twelve pages into an organization holding
+// more than 1,100 registrations. Its phases after startup are the credential prelude's two requests --
+// the Secret Manager read of the App key and the installation-token mint, two curls that carry no
+// --max-time, so each is given one request allowance rather than gunbc_ci_sm_max_time, which bounds
+// a different prelude -- and the read's own budget (gunbc.fleet.organization_runner_roster_read
+// organization_runner_roster_read_budget). The job timeout needs no new term: it is the backstop plus
+// the runner-host bracket's steps (fleet_converge_host_cap_job_floor_minutes), which this mode never
+// runs and which exceed this step's excess over the aux budget many times over.
+fn fleet_converge_org_runner_roster_step_timeout_minutes() -> Int {
+  fleet_converge_gunbc_run_step_timeout_minutes(phases: [organization_runner_roster_request_allowance, organization_runner_roster_request_allowance, organization_runner_roster_read_budget()])
+}
+
 fn fleet_converge_org_runner_roster_step() -> Step {
   RunStep {
     name: Present { value: "Org runner roster: paginated read of GitHub self-hosted runner registrations" },
@@ -2871,7 +3368,7 @@ fn fleet_converge_org_runner_roster_step() -> Step {
     working_directory: none,
     if_condition: Present { value: fleet_converge_org_runner_roster_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+    timeout_minutes: Present { value: fleet_converge_org_runner_roster_step_timeout_minutes() }
   }
 }
 
@@ -2880,12 +3377,13 @@ fn fleet_converge_org_runner_roster_receipt_upload_step() -> Step {
     name: Present { value: "Upload org runner roster receipt" },
     id: Present { value: "org_runner_roster_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "org-runner-roster")),
-      kv(key: "path", value: yaml_string(s: organization_runner_roster_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "org-runner-roster",
+      path: organization_runner_roster_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_org_runner_roster_step_if], "") },
     continue_on_error: none,
@@ -3028,7 +3526,10 @@ fn fleet_converge_mtcollins1_fan_observe_step() -> Step {
     working_directory: none,
     if_condition: Present { value: fleet_converge_mtcollins1_fan_observe_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+    // A FOLD, NEVER THE FLAT AUX FIGURE: the resolve of this entry's closure, the credential prelude's one
+    // bounded Secret Manager read, then the series' declared duration. The flat 5 minutes was ~94% spent in
+    // pre-entry resolve on run 42184429821 and killed the step mid-series.
+    timeout_minutes: Present { value: fleet_converge_gunbc_run_step_timeout_minutes(phases: [gunbc_ci_sm_max_time, mtcollins1_fan_observe_probe_bound()]) }
   }
 }
 
@@ -3052,7 +3553,7 @@ fn fleet_converge_runner_host_step_timeout_minutes(phases: List<Second>) -> Int 
   fleet_converge_step_timeout_minutes(startup_seconds: second_count(s: runner_host_closure_resolve_budget) as Int, phases: phases)
 }
 
-fn fleet_converge_mtcollins1_probe_step_timeout_minutes(phases: List<Second>) -> Int {
+fn fleet_converge_gunbc_run_step_timeout_minutes(phases: List<Second>) -> Int {
   fleet_converge_step_timeout_minutes(startup_seconds: gunbc_ci_gunbc_run_resolve_step_timeout_minutes * 60, phases: phases)
 }
 
@@ -3078,7 +3579,7 @@ fn fleet_converge_mtcollins1_kvm_observer_observe_step() -> Step {
     working_directory: none,
     if_condition: Present { value: fleet_converge_mtcollins1_kvm_observer_observe_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: fleet_converge_mtcollins1_probe_step_timeout_minutes(phases: [gunbc_ci_sm_max_time, mtcollins1_kvm_observer_probe_bound()]) }
+    timeout_minutes: Present { value: fleet_converge_gunbc_run_step_timeout_minutes(phases: [gunbc_ci_sm_max_time, mtcollins1_kvm_observer_probe_bound()]) }
   }
 }
 
@@ -3096,7 +3597,7 @@ fn fleet_converge_mtcollins1_kvm_observer_release_step() -> Step {
     working_directory: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_mtcollins1_kvm_observer_observe_step_if], "") },
     continue_on_error: none,
-    timeout_minutes: Present { value: fleet_converge_mtcollins1_probe_step_timeout_minutes(phases: [megarac_kvm_observer_release_allowance]) }
+    timeout_minutes: Present { value: fleet_converge_gunbc_run_step_timeout_minutes(phases: [megarac_kvm_observer_release_allowance]) }
   }
 }
 
@@ -3285,14 +3786,88 @@ fn fleet_converge_mtcollins1_fan_observe_receipt_upload_step() -> Step {
     name: Present { value: "Upload Mt. Collins fan observation series" },
     id: Present { value: "mtcollins1_fan_observe_receipt_upload" },
     uses: upload_artifact_action,
+    with: Present { value: workflow_artifact_upload_with(
+      name: "mtcollins1-fan-observation",
+      path: mtcollins1_fan_observation_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
+    env: none,
+    if_condition: Present { value: fleet_converge_mtcollins1_fan_observe_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
+// THE CONTROLLER'S OWN STATUS MAPPING, READ OFF ITS SERVED BYTES (gunbc.machine_intake
+// .mtcollins1_ui_status_asset_observation). WHY IT EXISTS: the media lane refuses a redirection status
+// the lane cannot NAME (MegaRacMediaRedirectionStatusUnknown), and the only authority for what a code
+// means is the vendor's own code that renders it. This step fetches the virtual-media page and the
+// scripts it names over the session the lane already opens - GETs only, no media action, no power, no
+// boot device, no SEL - and commits the minimum AMI excerpt that shows the status table AND the site
+// that feeds it, with the excerpt's byte offset and length inside the asset so anyone can re-fetch the
+// asset and check the excerpt against it. The words it yields are evidence for the lane's bet; the
+// ROW's identity still comes only from the parsed redirection row, never from this page (the fan
+// sensor-number lesson: a location is never a type).
+//
+// WHY IT RIDES THE FAN OBSERVATION'S MODE: the workflow's mode list is a CLOSED choice (every value is
+// declared, and a mode name typed wrong fails at that input rather than running the wrong step), and
+// this probe shares the fan lane's host, credential and read-only authority exactly. A new mode would
+// be a second door to the same box for the same purpose.
+// NOT GATED ON THE FAN STEP'S SUCCESS: this probe reads the HTTPS interface and the fan step reads RMCP+,
+// so one interface failing must not hide the other's observation. A step whose condition is only the mode
+// is skipped when an earlier step failed (the upload condition below says the same); `!cancelled()` lifts
+// that and still stops a cancelled run from reaching the BMC.
+data fleet_converge_mtcollins1_ui_status_asset_observe_mode_if: String = fleet_converge_mode_step_if(mode: MtCollins1FanObserve)
+
+data fleet_converge_mtcollins1_ui_status_asset_observe_step_if: String = join(["!cancelled() && ", fleet_converge_mtcollins1_ui_status_asset_observe_mode_if], "")
+
+// The upload's own condition, named instead of inlined so the policy is a declaration a reader can find:
+// the mode still gates it, and `always()` is what keeps the upload alive when the step it reports on
+// failed. Built the same way as the app-key version's upload condition, so every upload that must survive
+// a failed step reads the same way in the generated workflow; no parentheses, because this condition is a
+// single comparison rather than a disjunction.
+data fleet_converge_mtcollins1_ui_status_asset_observe_upload_always_if: String = join(["always() && ", fleet_converge_mtcollins1_ui_status_asset_observe_mode_if], "")
+
+fn fleet_converge_mtcollins1_ui_status_asset_observe_step() -> Step {
+  RunStep {
+    name: Present { value: "Mt. Collins vendor UI status mapping: fetch the virtual-media page and the scripts it names, commit the status-0 branch with its offsets (reads only)" },
+    id: Present { value: "mtcollins1_ui_status_asset_observe" },
+    run: gunbc_ci_mtcollins1_ui_status_asset_observe_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_mtcollins1_ui_status_asset_observe_step_if },
+    continue_on_error: none,
+    // A FOLD, NEVER A LITERAL: the resolve of this probe's closure, then the credential prelude's one
+    // bounded Secret Manager read, then the probe's own declared bound (its login, its bounded page
+    // ladder, its bounded asset fetches and its logout, each counted once).
+    timeout_minutes: Present { value: fleet_converge_gunbc_run_step_timeout_minutes(phases: [gunbc_ci_sm_max_time, mtcollins1_ui_status_asset_probe_bound()]) }
+  }
+}
+
+// THE RECEIPT IS UPLOADED WHATEVER THE STEP DID, and `always()` is what makes that sentence true:
+// a step whose condition is only the mode is SKIPPED when an earlier step failed, so the mode condition
+// alone uploads the receipt on success and discards it on the run that needed it. A refused or fallen
+// probe's receipt is the record of which pages it tried, what each answered and why the excerpt was not
+// admitted -- the host-reset upload beside it states the same rule, and it is the one that makes a
+// negative run auditable rather than merely absent.
+fn fleet_converge_mtcollins1_ui_status_asset_observe_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload Mt. Collins vendor UI status mapping observation" },
+    id: Present { value: "mtcollins1_ui_status_asset_observe_receipt_upload" },
+    uses: upload_artifact_action,
     with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "mtcollins1-fan-observation")),
-      kv(key: "path", value: yaml_string(s: mtcollins1_fan_observation_receipt_path)),
+      kv(key: "name", value: yaml_string(s: "mtcollins1-ui-status-asset-observation")),
+      kv(key: "path", value: yaml_string(s: mtcollins1_ui_status_asset_observation_receipt_path)),
       kv(key: "if-no-files-found", value: yaml_string(s: "error")),
       kv(key: "retention-days", value: yaml_int(n: 30)),
     ] },
     env: none,
-    if_condition: Present { value: fleet_converge_mtcollins1_fan_observe_step_if },
+    if_condition: Present { value: fleet_converge_mtcollins1_ui_status_asset_observe_upload_always_if },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
   }
@@ -3326,12 +3901,13 @@ fn fleet_converge_mtcollins1_census_image_publish_receipt_upload_step() -> Step 
     name: Present { value: "Upload Mt. Collins census image receipt" },
     id: Present { value: "mtcollins1_census_image_publish_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "mtcollins1-census-image")),
-      kv(key: "path", value: yaml_string(s: mtcollins1_census_image_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "mtcollins1-census-image",
+      path: mtcollins1_census_image_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && ", fleet_converge_mtcollins1_census_image_publish_step_if) },
     continue_on_error: none,
@@ -3364,12 +3940,13 @@ fn fleet_converge_mtcollins1_runner_image_publish_receipt_upload_step() -> Step 
     name: Present { value: "Upload Mt. Collins runner image receipt" },
     id: Present { value: "mtcollins1_runner_image_publish_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "mtcollins1-runner-image")),
-      kv(key: "path", value: yaml_string(s: mtcollins1_runner_image_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "mtcollins1-runner-image",
+      path: mtcollins1_runner_image_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && ", fleet_converge_mtcollins1_runner_image_publish_step_if) },
     continue_on_error: none,
@@ -3403,12 +3980,13 @@ fn fleet_converge_mtcollins1_census_member_readback_receipt_upload_step() -> Ste
     name: Present { value: "Upload Mt. Collins census member readback receipt" },
     id: Present { value: "mtcollins1_census_member_readback_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "mtcollins1-census-member-readback")),
-      kv(key: "path", value: yaml_string(s: census_member_readback_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "mtcollins1-census-member-readback",
+      path: census_member_readback_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && ", fleet_converge_mtcollins1_census_member_readback_step_if) },
     continue_on_error: none,
@@ -3442,12 +4020,13 @@ fn fleet_converge_mtcollins1_census_qemu_host_observe_receipt_upload_step() -> S
     name: Present { value: "Upload Mt. Collins census QEMU host standing receipt" },
     id: Present { value: "mtcollins1_census_qemu_host_observe_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "mtcollins1-census-qemu-host")),
-      kv(key: "path", value: yaml_string(s: census_qemu_host_observe_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "mtcollins1-census-qemu-host",
+      path: census_qemu_host_observe_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && ", fleet_converge_mtcollins1_census_qemu_host_observe_step_if) },
     continue_on_error: none,
@@ -3484,12 +4063,13 @@ fn fleet_converge_mtcollins1_census_qemu_toolchain_converge_receipt_upload_step(
     name: Present { value: "Upload Mt. Collins census QEMU toolchain converge receipt" },
     id: Present { value: "mtcollins1_census_qemu_toolchain_converge_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "mtcollins1-census-qemu-toolchain")),
-      kv(key: "path", value: yaml_string(s: census_qemu_host_observe_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "mtcollins1-census-qemu-toolchain",
+      path: census_qemu_host_observe_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && ", fleet_converge_mtcollins1_census_qemu_toolchain_converge_step_if) },
     continue_on_error: none,
@@ -3518,12 +4098,13 @@ fn fleet_converge_r2_mint_preflight_receipt_upload_step() -> Step {
     name: Present { value: "Upload R2 mint preflight receipt" },
     id: Present { value: "r2_mint_preflight_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "r2-mint-preflight")),
-      kv(key: "path", value: yaml_string(s: r2_mint_preflight_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "r2-mint-preflight",
+      path: r2_mint_preflight_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: fleet_converge_r2_mint_preflight_step_if },
     continue_on_error: none,
@@ -3559,12 +4140,13 @@ fn fleet_converge_r2_bucket_ensure_receipt_upload_step() -> Step {
     name: Present { value: "Upload R2 bucket ensure receipt" },
     id: Present { value: "r2_bucket_ensure_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "r2-bucket-ensure")),
-      kv(key: "path", value: yaml_string(s: r2_bucket_ensure_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "r2-bucket-ensure",
+      path: r2_bucket_ensure_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_r2_bucket_ensure_step_if], "") },
     continue_on_error: none,
@@ -3596,15 +4178,16 @@ fn fleet_converge_r2_bucket_admin_mint_receipt_upload_step() -> Step {
     name: Present { value: "Upload R2 bucket-admin mint receipt (token id + custody version resource; no secret)" },
     id: Present { value: "r2_bucket_admin_mint_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "r2-bucket-admin-mint-receipt")),
-      kv(key: "path", value: yaml_string(s: r2_mint_receipt_glob_in(
+    with: Present { value: workflow_artifact_upload_with(
+      name: "r2-bucket-admin-mint-receipt",
+      path: r2_mint_receipt_glob_in(
         scope: fleet_converge_r2_mint_receipt_scope(),
         profile: R2AccountBucketAdmin,
-      ))),
-      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+      ),
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_r2_bucket_admin_mint_step_if], "") },
     continue_on_error: none,
@@ -3640,6 +4223,8 @@ data fleet_converge_service_runner_lost_boot_sweep_step_if: String = fleet_conve
 
 data fleet_converge_service_runner_lost_boot_sweep_dry_run_step_if: String = fleet_converge_mode_step_if(mode: ServiceRunnerLostBootSweepDryRun)
 
+data fleet_converge_service_slot_start_step_if: String = fleet_converge_mode_step_if(mode: ServiceSlotStart)
+
 data fleet_converge_microvm_runner_group_ensure_step_if: String = fleet_converge_mode_step_if(mode: MicrovmRunnerGroupEnsure)
 
 // THE MICROVM RUNNER GROUP ENSURE (gunbc.runner.runner_group_restriction_ensure_run). It reaches GitHub over
@@ -3670,7 +4255,7 @@ fn fleet_converge_service_runner_lost_boot_sweep_step() -> Step {
 }
 
 // THE LOST-BOOT SWEEP'S DRY RUN (gunbc.runner.runner_lost_boot_sweep_run lost_boot_sweep_dry_run_wet;
-// gunbc.plans.mtcollins1_ci_service_legs F4). A mode value rather than a dispatch input on the deleting mode, because the
+// gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) F4). A mode value rather than a dispatch input on the deleting mode, because the
 // workflow already declares GitHub's limit of 25 workflow_dispatch inputs; it adds no job. It admits sweep_host's
 // current boot over the anchored fleet SSH transport (hence FleetSshKeyConsumed), plans against the real organization
 // runner listing under the gunbai-ci installation token it mints, and records the admitted boot and the selection; it
@@ -3698,12 +4283,13 @@ fn fleet_converge_service_runner_lost_boot_sweep_dry_run_receipt_upload_step() -
     name: Present { value: "Upload the service runner lost-boot sweep dry-run receipt" },
     id: Present { value: "service_runner_lost_boot_sweep_dry_run_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "service-runner-lost-boot-sweep-dry-run-receipts")),
-      kv(key: "path", value: yaml_string(s: lost_boot_sweep_artifact_glob)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "service-runner-lost-boot-sweep-dry-run-receipts",
+      path: lost_boot_sweep_artifact_glob,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_service_runner_lost_boot_sweep_dry_run_step_if], "") },
     continue_on_error: none,
@@ -3711,7 +4297,52 @@ fn fleet_converge_service_runner_lost_boot_sweep_dry_run_receipt_upload_step() -
   }
 }
 
-// THE QUALIFICATION ATTEMPT (gunbc.runner.runner_qualification_attempt_run; gunbc.plans.mtcollins1_ci_service_legs G1b): the
+// THE SERVICE-SLOT START (gunbc.runner.runner_service_slot_start; gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) F1). It starts the
+// subject host's service-slot controllers over the anchored fleet SSH transport (hence FleetSshKeyConsumed) from the
+// release the image baked. It federates for one read: the run's revision is admitted before any unit starts, with a
+// gunbai-ci installation token minted from the App key it stages over this run's identity (WIF_ACCESS_TOKEN, the
+// fleet identity step). The workflow is transport only
+// (gunbc.design_ruling fleet_converge_modes_are_outside_the_job_roster).
+fn fleet_converge_service_slot_start_step() -> Step {
+  RunStep {
+    name: Present { value: "service-slot start: start one controller unit per member of the subject host's current service population, read each back active" },
+    id: Present { value: "service_slot_start" },
+    run: gunbc_ci_service_slot_start_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+      kv(key: fleet_converge_subject_host_env_name, value: yaml_string(s: join(["${{ github.event.inputs.", fleet_converge_subject_host_input.name, " }}"], ""))),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_service_slot_start_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: 15 }
+  }
+}
+
+// if-no-files-found is error: gunbc.runner.runner_service_slot_start service_slot_start_wet writes the receipt on
+// every path that reaches a slot, and the only path that writes none (an unset subject or GITHUB_SHA) already fails its
+// own step. So error loses nothing on a failing run, and on a run whose step passed without a receipt it is the only
+// thing that stops a silent pass (DESIGN 5).
+fn fleet_converge_service_slot_start_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload the service-slot start receipt" },
+    id: Present { value: "service_slot_start_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "service-slot-start-receipts")),
+      kv(key: "path", value: yaml_string(s: service_slot_start_artifact_glob)),
+      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: join(["always() && ", fleet_converge_service_slot_start_step_if], "") },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
+// THE QUALIFICATION ATTEMPT (gunbc.runner.runner_qualification_attempt_run; gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) G1b): the
 // driver that binds the real effects to the G2 pass. It qualifies the subject_host input under that host's unit hold, so
 // the executor must be the hold store's host; it reaches the subject over the anchored fleet SSH transport (hence
 // FleetSshKeyConsumed) and signs from the gunbai-ci App key it stages over this run's federated identity. The workflow
@@ -3727,6 +4358,9 @@ fn fleet_converge_qualification_attempt_step() -> Step {
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
       kv(key: qualification_attempt_subject_env_name as String, value: yaml_string(s: join(["${{ github.event.inputs.", fleet_converge_subject_host_input.name, " }}"], ""))),
+      // the job's own token (actions: read): the slot's user-session receipt and the subject's running-OS receipt
+      // are read from their producer runs' artifacts with it (gunbc.fleet.fleet_converge_producer_run).
+      kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}")),
     ] },
     working_directory: none,
     if_condition: Present { value: fleet_converge_qualification_attempt_step_if },
@@ -3740,12 +4374,13 @@ fn fleet_converge_qualification_attempt_receipt_upload_step() -> Step {
     name: Present { value: "Upload the qualification attempt receipt" },
     id: Present { value: "qualification_attempt_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "qualification-attempt-receipts")),
-      kv(key: "path", value: yaml_string(s: qualification_attempt_artifact_glob)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "qualification-attempt-receipts",
+      path: qualification_attempt_artifact_glob,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_qualification_attempt_step_if], "") },
     continue_on_error: none,
@@ -3758,12 +4393,13 @@ fn fleet_converge_service_runner_lost_boot_sweep_receipt_upload_step() -> Step {
     name: Present { value: "Upload the service runner lost-boot sweep receipt" },
     id: Present { value: "service_runner_lost_boot_sweep_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "service-runner-lost-boot-sweep-receipts")),
-      kv(key: "path", value: yaml_string(s: lost_boot_sweep_artifact_glob)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "service-runner-lost-boot-sweep-receipts",
+      path: lost_boot_sweep_artifact_glob,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_service_runner_lost_boot_sweep_step_if], "") },
     continue_on_error: none,
@@ -3793,12 +4429,13 @@ fn fleet_converge_microvm_runner_group_ensure_receipt_upload_step() -> Step {
     name: Present { value: "Upload the microVM runner group ensure receipt" },
     id: Present { value: "microvm_runner_group_ensure_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "microvm-runner-group-ensure-receipts")),
-      kv(key: "path", value: yaml_string(s: microvm_runner_group_ensure_artifact_glob)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "microvm-runner-group-ensure-receipts",
+      path: microvm_runner_group_ensure_artifact_glob,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_microvm_runner_group_ensure_step_if], "") },
     continue_on_error: none,
@@ -3865,12 +4502,13 @@ fn fleet_converge_mtcollins1_boot_receipt_upload_step() -> Step {
     name: Present { value: "Upload Mt. Collins unit 1 boot SOL capture and receipts" },
     id: Present { value: "mtcollins1_boot_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "mtcollins1-boot-receipts")),
-      kv(key: "path", value: yaml_string(s: mtcollins1_boot_artifact_glob)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: mtcollins1_boot_receipts_artifact_name,
+      path: mtcollins1_boot_artifact_glob,
+      retention_days: Present { value: fleet_converge_producer_receipt_retention_days_wire() },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_mtcollins1_boot_step_if], "") },
     continue_on_error: none,
@@ -3906,24 +4544,25 @@ fn fleet_converge_r2_mint_receipt_scope() -> R2MintReceiptAttemptScoped {
 // store-refusal path wrote nothing, so this step claimed to cover the orphan case while the only
 // receipt it could ever find belonged to a run that did not need one. A glob, because the receipt is named for the bucket the mint ran against
 // (gunbc.cloudflare.r2_token_mint_run r2_origin_token_name) and re-spelling that name here would be
-// a second authority for it -- the §3 decay that an edit to the allocation roster would silently
-// invalidate. if-no-files-found is warn rather than error for the same reason the condition is
-// always(): a refusal before the Create writes no receipt, and that is the correct outcome, not a
-// missing artifact.
+// a second authority for it -- the gunbc.design_argument::single_authority decay that an edit to the allocation roster would silently
+// invalidate. A missing receipt refuses the upload (gunbc.ci.workflow_artifact_upload AbsenceRefused): a refusal
+// before the Create writes no receipt and already fails the mint step, so failing the upload as well loses nothing,
+// while the only exit-0 path of the mint (mint_origin_token_and_store) writes the receipt first.
 fn fleet_converge_r2_object_write_mint_receipt_upload_step() -> Step {
   UsesStep {
     name: Present { value: "Upload R2 object-write mint receipt (token id + custody version resource; no secret)" },
     id: Present { value: "r2_object_write_mint_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "r2-object-write-mint-receipt")),
-      kv(key: "path", value: yaml_string(s: r2_mint_receipt_glob_in(
+    with: Present { value: workflow_artifact_upload_with(
+      name: "r2-object-write-mint-receipt",
+      path: r2_mint_receipt_glob_in(
         scope: fleet_converge_r2_mint_receipt_scope(),
         profile: R2OriginObjectWrite,
-      ))),
-      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+      ),
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_r2_object_write_mint_step_if], "") },
     continue_on_error: none,
@@ -3956,15 +4595,16 @@ fn fleet_converge_r2_workspace_object_read_mint_receipt_upload_step() -> Step {
     name: Present { value: "Upload R2 workspace object-read mint receipt (token id + custody version resource; no secret)" },
     id: Present { value: "r2_workspace_object_read_mint_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "r2-workspace-object-read-mint-receipt")),
-      kv(key: "path", value: yaml_string(s: r2_mint_receipt_glob_in(
+    with: Present { value: workflow_artifact_upload_with(
+      name: "r2-workspace-object-read-mint-receipt",
+      path: r2_mint_receipt_glob_in(
         scope: fleet_converge_r2_mint_receipt_scope(),
         profile: R2OriginObjectRead,
-      ))),
-      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+      ),
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_r2_workspace_object_read_mint_step_if], "") },
     continue_on_error: none,
@@ -3993,15 +4633,16 @@ fn fleet_converge_r2_workspace_object_write_mint_receipt_upload_step() -> Step {
     name: Present { value: "Upload R2 workspace object-write mint receipt (token id + custody version resource; no secret)" },
     id: Present { value: "r2_workspace_object_write_mint_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "r2-workspace-object-write-mint-receipt")),
-      kv(key: "path", value: yaml_string(s: r2_mint_receipt_glob_in(
+    with: Present { value: workflow_artifact_upload_with(
+      name: "r2-workspace-object-write-mint-receipt",
+      path: r2_mint_receipt_glob_in(
         scope: fleet_converge_r2_mint_receipt_scope(),
         profile: R2OriginObjectWrite,
-      ))),
-      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+      ),
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_r2_workspace_object_write_mint_step_if], "") },
     continue_on_error: none,
@@ -4030,15 +4671,16 @@ fn fleet_converge_r2_cache_object_read_mint_receipt_upload_step() -> Step {
     name: Present { value: "Upload R2 cache-blobs object-read mint receipt (token id + custody version resource; no secret)" },
     id: Present { value: "r2_cache_object_read_mint_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "r2-cache-object-read-mint-receipt")),
-      kv(key: "path", value: yaml_string(s: r2_mint_receipt_glob_in(
+    with: Present { value: workflow_artifact_upload_with(
+      name: "r2-cache-object-read-mint-receipt",
+      path: r2_mint_receipt_glob_in(
         scope: fleet_converge_r2_mint_receipt_scope(),
         profile: R2OriginObjectRead,
-      ))),
-      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+      ),
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_r2_cache_object_read_mint_step_if], "") },
     continue_on_error: none,
@@ -4067,15 +4709,16 @@ fn fleet_converge_r2_cache_object_write_mint_receipt_upload_step() -> Step {
     name: Present { value: "Upload R2 cache-blobs object-write mint receipt (token id + custody version resource; no secret)" },
     id: Present { value: "r2_cache_object_write_mint_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "r2-cache-object-write-mint-receipt")),
-      kv(key: "path", value: yaml_string(s: r2_mint_receipt_glob_in(
+    with: Present { value: workflow_artifact_upload_with(
+      name: "r2-cache-object-write-mint-receipt",
+      path: r2_mint_receipt_glob_in(
         scope: fleet_converge_r2_mint_receipt_scope(),
         profile: R2OriginObjectWrite,
-      ))),
-      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+      ),
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_r2_cache_object_write_mint_step_if], "") },
     continue_on_error: none,
@@ -4115,12 +4758,13 @@ fn fleet_converge_r2_conditional_put_race_probe_receipt_upload_step() -> Step {
     name: Present { value: "Upload R2 If-Match race probe receipt (per-round statuses and verdict; no secret)" },
     id: Present { value: "r2_conditional_put_race_probe_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "r2-conditional-put-race-probe-receipt")),
-      kv(key: "path", value: yaml_string(s: race_probe_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 90)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "r2-conditional-put-race-probe-receipt",
+      path: race_probe_receipt_path,
+      retention_days: Present { value: 90 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_r2_conditional_put_race_probe_step_if], "") },
     continue_on_error: none,
@@ -4133,12 +4777,13 @@ fn fleet_converge_app_control_plane_receipt_upload_step() -> Step {
     name: Present { value: "Upload GitHub App control plane observation receipt" },
     id: Present { value: "app_control_plane_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "app-control-plane-observation")),
-      kv(key: "path", value: yaml_string(s: app_control_plane_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "app-control-plane-observation",
+      path: app_control_plane_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: fleet_converge_app_control_plane_receipt_if },
     continue_on_error: none,
@@ -4151,12 +4796,13 @@ fn fleet_converge_org_actions_receipt_upload_step() -> Step {
     name: Present { value: "Upload org Actions credential validation receipt" },
     id: Present { value: "org_actions_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "org-actions-credential-validation")),
-      kv(key: "path", value: yaml_string(s: org_actions_validation_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "org-actions-credential-validation",
+      path: org_actions_validation_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: fleet_converge_org_actions_step_if },
     continue_on_error: none,
@@ -4218,6 +4864,23 @@ fn fleet_converge_apply_receipt_upload_step() -> Step {
 // ci_deploy_srv1_access resolves the job principal from the runner it lands on and refuses when that
 // user is not in srv1's fleet roster, so host=srv1 is what aims it and any other host refuses at
 // preflight rather than deploying somewhere unintended.
+// THE DEPLOY PATH'S BUDGET PREFLIGHT STEP: the entry is gunbc.host.host_budget_preflight
+// admit_host_budget_declared; no environment of its own -- it READS the deployment's environment for
+// the disqualifying GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES rather than setting any.
+fn fleet_converge_host_budget_preflight_step() -> Step {
+  RunStep {
+    name: Present { value: "Admit the host budget before the fold: a bound must constrain this process (gunbc.host.host_budget_preflight)" },
+    id: Present { value: "host_budget_preflight" },
+    run: gunbc_ci_host_budget_preflight_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
 fn fleet_converge_dashboard_deploy_step() -> Step {
   RunStep {
     name: Present { value: "Deploy dashboard to srv1 (live_deploy_apply_prod_role_transaction_wet, receipted)" },
@@ -4301,12 +4964,13 @@ fn fleet_converge_srv1_root_mutation_approval_receipt_upload_step() -> Step {
     name: Present { value: "Upload the srv1 root-mutation approval receipt" },
     id: Present { value: "srv1_root_mutation_approval_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "srv1-root-mutation-approval-receipts")),
-      kv(key: "path", value: yaml_string(s: srv1_root_mutation_approval_artifact_glob)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "srv1-root-mutation-approval-receipts",
+      path: srv1_root_mutation_approval_artifact_glob,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceExpected { reason: "this upload runs under a bare always(), so it fires in every fleet-converge mode, and only the srv1 root-mutation modes write the approval receipt; error here would fail every other mode. Narrowing its condition to those modes, then refusing absence, is the follow-up." as NonEmptyStr },
+    ) },
     env: none,
     if_condition: Present { value: "always()" },
     continue_on_error: none,
@@ -4370,7 +5034,12 @@ fn fleet_converge_dashboard_deploy_job() -> Job {
         ci_release_bins_download_step(),
         ci_release_bins_unpack_verify_step(),
       ],
+      // THE DISPATCH ADMISSION IS THE GATE'S FRONT PORCH: a dispatch that cannot deploy -- malformed
+      // expected_revision, empty plan_artifact_hash, malformed run pointers -- is refused in seconds,
+      // before the human is asked to approve a run that would die at the fold anyway.
+      fleet_converge_admit_dashboard_deploy_inputs_step(),
       fleet_converge_srv1_root_mutation_approval_steps(selects: fleet_converge_dashboard_deploy_selected_inputs),
+      fleet_converge_admit_plan_run_pointer_step(if_condition: fleet_converge_dispatch_event_if),
       [
         fleet_converge_receipt_download_step(
           id: "dashboard_plan_receipt_download",
@@ -4379,6 +5048,7 @@ fn fleet_converge_dashboard_deploy_job() -> Job {
           path: fleet_converge_plan_artifact_dir,
           run_id_expression: "${{ github.event.inputs.plan_workflow_run_id }}",
         ),
+        fleet_converge_admit_apply_run_pointer_step(if_condition: fleet_converge_dispatch_event_if),
         fleet_converge_receipt_download_step(
           id: "dashboard_apply_receipt_download",
           name: "Download the fleet apply receipt from the apply run",
@@ -4387,7 +5057,17 @@ fn fleet_converge_dashboard_deploy_job() -> Job {
           run_id_expression: "${{ github.event.inputs.apply_workflow_run_id }}",
         ),
         fleet_converge_checkout_verify_step(if_condition: none),
+        // THE BUDGET QUESTION, ASKED BEFORE THE FOLD IS PAID FOR (gunbc.host.host_budget_preflight):
+        // read /proc/self/cgroup and the bounding dirs' memory.max/memory.high and refuse by name
+        // unless a limit BOUNDS this process. The fold's own gate (cli_run's budget derivation,
+        // HostBudgetUnreadable) stays authoritative -- this step only moves the same question to
+        // where it is seconds instead of a chunk of a ~10-minute fold, so a slot that drifted from
+        // its declared unit shape (recurring_failure_mode
+        // the_live_runner_unit_memory_shape_drifts_from_the_declared_slot) fails as a named probe
+        // receipt at the top of the deploy run instead of as a fold post-mortem. Read-only.
+        fleet_converge_host_budget_preflight_step(),
         fleet_converge_dashboard_deploy_step(),
+        fleet_converge_dashboard_receipt_assert_step(),
         fleet_converge_receipt_upload_step(
           id: "dashboard_receipt_upload",
           name: "Upload live-deploy transaction receipt",
@@ -4610,7 +5290,7 @@ data fleet_converge_approval_ntfy_retire_step_if: String = fleet_converge_srv1_r
 
 fn fleet_converge_approval_ntfy_retire_step() -> Step {
   RunStep {
-    name: Present { value: "Retire ntfy on srv1: stop and disable the unit by name, remove the unit file, the service account, the two rostered directories and the binary, and take the tailscale front door off 8443; the run reads every roster member absent before it calls the retirement clean" },
+    name: Present { value: "Retire ntfy on srv1: stop and disable the unit by name, remove the unit file, the service account, the group the account leaves behind, the two rostered directories and the binary, and take the tailscale front door off 8443; the run reads every roster member absent before it calls the retirement clean" },
     id: Present { value: "approval_ntfy_retire" },
     run: gunbc_ci_approval_ntfy_retire_invoke(),
     shell: none,
@@ -5014,8 +5694,8 @@ fn fleet_converge_boot_federation_admitted() -> Bool {
 // `host` input (side-chat review 5286225278): runs-on names srv1's labels as literals derived from
 // the hold store host, and the concurrency group is srv1's mutation domain. The job condition reads
 // ONLY the mode. A host term here would SKIP the job for a dispatch naming another host, and GitHub
-// reports a skipped job as success -- a green run standing in for a refusal (review 70894, DESIGN
-// section 5). Instead the job starts on srv1 and its credential-free admission step
+// reports a skipped job as success -- a green run standing in for a refusal (review 70894,
+// gunbc.design_argument::fail_closed). Instead the job starts on srv1 and its credential-free admission step
 // (fleet_converge_mtcollins1_boot_admit_step, gunbc.machine_intake.mtcollins1_boot_admission
 // mtcollins1_boot_admit_executor) refuses such a dispatch with a typed reason before the WIF token
 // or the fleet key exist; the wet entry re-runs the same fold. Beside the mode it reads only whether the
@@ -5064,7 +5744,7 @@ fn fleet_converge_mtcollins1_boot_runner() -> RunnerSpec {
 
 // The two rendered credential scripts -- the fleet key step and the boot step -- are the job's
 // expensive parts, so the composition takes them as parameters: a witness of the composition supplies
-// them, and the witnesses of each script read that producer alone (DESIGN section 3).
+// them, and the witnesses of each script read that producer alone (gunbc.design_argument::single_authority).
 //
 // THE BOOT BUILDS ITS OWN COMPILER PAIR, NOT THE SIXTEEN-BINARY PACK. The boot runs gunbc, and
 // claim_executor verifies the build; it never ran the other fourteen release binaries, yet it waited
@@ -5194,7 +5874,7 @@ fn fleet_converge_fan_policy_phase_step() -> Step {
     // hung bounded call, the step timeout - is unmodeled and must fail the job HERE, before the boot
     // step, located. continue-on-error absorbed exactly those, and the job still finished green: the
     // operator addendum this step exists for forbids a machine sitting on a controller default
-    // unobserved after boot, and that flag let an unobserved boot pass. DESIGN §5: an escape hatch is
+    // unobserved after boot, and that flag let an unobserved boot pass. gunbc.design_argument::fail_closed: an escape hatch is
     // a hard reject. timeout_minutes stays - a hang dies loudly at this step, not in the runner.
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
@@ -5206,12 +5886,13 @@ fn fleet_converge_fan_policy_phase_receipt_upload_step() -> Step {
     name: Present { value: "Upload fan-policy-phase observation series" },
     id: Present { value: "fan_policy_phase_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "fan-policy-phase-observation")),
-      kv(key: "path", value: yaml_string(s: mtcollins1_fan_observation_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "fan-policy-phase-observation",
+      path: mtcollins1_fan_observation_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: "always()" },
     continue_on_error: none,
@@ -5278,21 +5959,64 @@ fn fleet_converge_credential_prelude_steps() -> List<Step> {
     [
       ci_release_bins_download_step(),
       ci_release_bins_unpack_verify_step_for(pair_modes: fleet_converge_compiler_pair_mode_wires()),
-      fleet_converge_fleet_identity_auth_step(if_condition: concat(concat(fleet_converge_fleet_identity_step_if, " && !("), concat(fleet_converge_any_mode_step_if(modes: [WorkspaceImageBuild, RevisionJobImageBuild, WorkspaceAllocationPlan]), ")"))),
+      fleet_converge_fleet_identity_auth_step(if_condition: fleet_converge_fleet_identity_auth_condition()),
     ],
-    concat(
-      fleet_converge_granted_account_auth_steps(),
-      [ci_fleet_key_agent_step_when(if_condition: Present { value: fleet_converge_fleet_ssh_key_step_if })],
-    ),
+    fleet_converge_post_mint_credential_steps(),
   )
+}
+
+// The credential steps after the mint: the granted-account sign-ins, then the fleet key, which reads
+// the fleet identity to fetch the key.
+fn fleet_converge_post_mint_credential_steps() -> List<Step> {
+  concat(
+    fleet_converge_granted_account_auth_steps(),
+    [ci_fleet_key_agent_step_when(if_condition: Present { value: fleet_converge_fleet_ssh_key_step_if })],
+  )
+}
+
+// Every step of the job that runs after the mint and may read it.
+fn fleet_converge_fleet_identity_reader_candidates() -> List<Step> {
+  concat(fleet_converge_post_mint_credential_steps(), fleet_converge_job_work_steps())
+}
+
+fn fleet_converge_fleet_identity_unreadable_text() -> String? {
+  fleet_identity_unreadable_text(candidates: fleet_converge_fleet_identity_reader_candidates())
+}
+
+fn fleet_converge_fleet_identity_text_unreadable() -> Bool {
+  match fleet_converge_fleet_identity_unreadable_text() {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn fleet_converge_fleet_identity_unreadable_refusal() -> String {
+  match fleet_converge_fleet_identity_unreadable_text() {
+    Present { value: t } =>
+      join(["REFUSED gunbc.fleet.fleet_converge_workflow: a step after the fleet identity mint carries text extdeps.github.expressions cannot read, so whether it reads steps.wif_auth.outputs (and when) is undecided; no workflow is emitted rather than a mint that might strand or over-admit it. Text: ", t], "")
+    Absent => "REFUSED gunbc.fleet.fleet_converge_workflow: unreachable -- the fleet identity reader scan reported no unreadable text"
+  }
+}
+
+// The run-scoped exclusion (a granted-account mode never mints the fleet identity) conjoined with the
+// readers' conditions.
+fn fleet_converge_fleet_identity_auth_condition() -> String {
+  join([fleet_converge_fleet_identity_step_if, " && (", fleet_identity_mint_condition(readers: fleet_identity_readers(candidates: fleet_converge_fleet_identity_reader_candidates())), ")"], "")
 }
 
 fn fleet_converge_job() -> Job {
   fleet_converge_job_with_steps(steps: concat(
-      concat(
-        fleet_converge_consumer_prelude_steps(),
-        fleet_converge_credential_prelude_steps()
-      ),
+    concat(
+      fleet_converge_consumer_prelude_steps(),
+      fleet_converge_credential_prelude_steps()
+    ),
+    fleet_converge_job_work_steps()
+  ))
+}
+
+// THE JOB'S WORK, after the credential prelude: its own producer so the mint can read its readers
+// from it without reading itself.
+fn fleet_converge_job_work_steps() -> List<Step> {
       [
         fleet_converge_plan_step(),
         fleet_converge_launch_environment_plan_step(),
@@ -5303,6 +6027,7 @@ fn fleet_converge_job() -> Job {
         fleet_converge_workspace_image_upload_step(),
         fleet_converge_workspace_operation_step(mode: RevisionJobImageBuild, run: gunbc_ci_revision_job_image_build_invoke()),
         fleet_converge_revision_job_image_upload_step(),
+        fleet_converge_serve_entry_verdict_step(),
         fleet_converge_plan_upload_step(),
         fleet_converge_plan_download_step(),
         fleet_converge_checkout_verify_step(if_condition: Present { value: fleet_converge_apply_step_if }),
@@ -5319,6 +6044,8 @@ fn fleet_converge_job() -> Job {
         fleet_converge_app_key_version_verify_receipt_upload_step(),
         fleet_converge_mtcollins1_fan_observe_step(),
         fleet_converge_mtcollins1_fan_observe_receipt_upload_step(),
+        fleet_converge_mtcollins1_ui_status_asset_observe_step(),
+        fleet_converge_mtcollins1_ui_status_asset_observe_receipt_upload_step(),
         fleet_converge_mtcollins1_kvm_observer_observe_step(),
         fleet_converge_mtcollins1_kvm_observer_release_step(),
         fleet_converge_mtcollins1_kvm_observer_observe_upload_step(),
@@ -5379,6 +6106,8 @@ fn fleet_converge_job() -> Job {
         fleet_converge_service_runner_lost_boot_sweep_receipt_upload_step(),
         fleet_converge_service_runner_lost_boot_sweep_dry_run_step(),
         fleet_converge_service_runner_lost_boot_sweep_dry_run_receipt_upload_step(),
+        fleet_converge_service_slot_start_step(),
+        fleet_converge_service_slot_start_receipt_upload_step(),
         fleet_converge_guest_image_observe_step(),
         fleet_converge_guest_image_converge_step(),
         fleet_converge_guest_image_receipt_upload_step(),
@@ -5410,6 +6139,8 @@ fn fleet_converge_job() -> Job {
         fleet_converge_host_primary_network_observe_step(),
         fleet_converge_host_primary_network_converge_step(),
         fleet_converge_host_primary_network_receipt_upload_step(),
+        fleet_converge_board_function_converge_step(),
+        fleet_converge_board_function_converge_receipt_upload_step(),
         fleet_converge_runner_host_withdraw_step(),
         fleet_converge_runner_host_withdraw_receipt_upload_step(),
         fleet_converge_runner_host_restore_step(),
@@ -5430,7 +6161,6 @@ fn fleet_converge_job() -> Job {
         fleet_converge_site_pxe_edge_receipt_upload_step(),
         ci_fleet_key_agent_cleanup_step(),
       ]
-    ))
 }
 
 // The shared job envelope owns selection and credentials independently of its step producers.
@@ -5593,7 +6323,7 @@ fn fleet_converge_rlm_launch_deployment_receipt_job() -> Job {
 // as its own identity, or it installs onto a host the shared job does not hold). That fact was
 // authored nowhere: each builder spelled its own id, so a witness over the job roster could only
 // compare it to a copied literal, which went red on every added mode while establishing nothing
-// (DESIGN section 5). The match is exhaustive, so a new mode cannot be rostered without naming its
+// (gunbc.design_argument::fail_closed). The match is exhaustive, so a new mode cannot be rostered without naming its
 // job, and each dedicated builder takes its id from its mode's arm here.
 data fleet_converge_shared_job_id: NonEmptyStr = "fleet-converge" as NonEmptyStr
 
@@ -5632,6 +6362,7 @@ fn fleet_converge_mode_job_id(mode: FleetConvergeWorkflowMode) -> NonEmptyStr {
     RunnerHostFileConverge => fleet_converge_shared_job_id
     HostPrimaryNetworkObserve => fleet_converge_shared_job_id
     HostPrimaryNetworkConverge => fleet_converge_shared_job_id
+    BoardFunctionConverge => fleet_converge_shared_job_id
     RunnerHostWithdraw => fleet_converge_shared_job_id
     RunnerHostRestore => fleet_converge_shared_job_id
     SitePxeEdgeObserve => fleet_converge_shared_job_id
@@ -5678,6 +6409,7 @@ fn fleet_converge_mode_job_id(mode: FleetConvergeWorkflowMode) -> NonEmptyStr {
     MicrovmRunnerGroupEnsure => fleet_converge_shared_job_id
     ServiceRunnerLostBootSweep => fleet_converge_shared_job_id
     ServiceRunnerLostBootSweepDryRun => fleet_converge_shared_job_id
+    ServiceSlotStart => fleet_converge_shared_job_id
     GcpIamConverge => "gcp-iam-converge" as NonEmptyStr
     NamecheapObserve => "namecheap-observe" as NonEmptyStr
     ReviewSheetConverge => "review-sheet-converge" as NonEmptyStr
@@ -5771,7 +6503,7 @@ fn fleet_converge_job_needs(id: NonEmptyStr) -> List<String> {
   }
 }
 
-// THE QUALIFICATION FLOOR (gunbc.plans.mtcollins1_ci_service_legs G1): its own job, on exactly the runner the attempt
+// THE QUALIFICATION FLOOR (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) G1): its own job, on exactly the runner the attempt
 // registered (the attempt label is its runs-on), so no fleet slot serves it. It runs the required job's own floor
 // under that job's bound, and only on a dispatch selecting its mode; who dispatches it, and to which registration, is
 // gunbc.runner.runner_qualification_dispatch's. GitHub workflow here is transport only
@@ -5865,7 +6597,7 @@ fn fleet_converge_hosted_gunbc_build_step(purpose: String) -> Step {
 
 // WHETHER A DISPATCH OF THIS MODE AT THIS REF CLASS REQUIRES A GRANT, from the one eligibility rule
 // (gunbc.auth.branch_dispatch_federation run_scoped_mode_eligible_on), which reads run_scoped_modes and,
-// for the boot, the section 3d selection select_boot_credential_source. The wait job's condition and the
+// for the boot, the gunbc.design_argument::selection_precedes_convergence selection select_boot_credential_source. The wait job's condition and the
 // gates of the jobs that need it are both rendered from this one function, so "the wait was skipped" is
 // admitted only where this function says no grant was required.
 fn fleet_converge_grant_required(mode: FleetConvergeWorkflowMode, on_reviewed_main: Bool) -> Bool {
@@ -6104,12 +6836,13 @@ fn fleet_converge_flex_pass_receipt_upload_step() -> Step {
     name: Present { value: "Upload flex pass receipt (ids, prices, standings, walls; no secret)" },
     id: Present { value: "flex_pass_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "flex-pass-receipt")),
-      kv(key: "path", value: yaml_string(s: flex_pass_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "flex-pass-receipt",
+      path: flex_pass_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_flex_pass_step_if], "") },
     continue_on_error: none,
@@ -6145,12 +6878,13 @@ fn fleet_converge_flex_template_ensure_receipt_upload_step() -> Step {
     name: Present { value: "Upload flex template receipt (names, hashes, counts; no secret)" },
     id: Present { value: "flex_template_ensure_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "flex-template-ensure-receipt")),
-      kv(key: "path", value: yaml_string(s: flex_vast_template_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "flex-template-ensure-receipt",
+      path: flex_vast_template_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_flex_template_ensure_step_if], "") },
     continue_on_error: none,
@@ -6183,12 +6917,13 @@ fn fleet_converge_hetzner_cloud_server_read_receipt_upload_step() -> Step {
     name: Present { value: "Upload Hetzner Cloud server read receipt (ids, names, statuses; no secret)" },
     id: Present { value: "hetzner_cloud_server_read_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "hetzner-cloud-server-read-receipt")),
-      kv(key: "path", value: yaml_string(s: hetzner_cloud_server_read_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "hetzner-cloud-server-read-receipt",
+      path: hetzner_cloud_server_read_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_hetzner_cloud_server_read_step_if], "") },
     continue_on_error: none,
@@ -6225,12 +6960,13 @@ fn fleet_converge_boot_medium_reader_probe_receipt_upload_step() -> Step {
     name: Present { value: "Upload boot medium reader probe receipt" },
     id: Present { value: "boot_medium_reader_probe_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "boot-medium-reader-probe-receipt")),
-      kv(key: "path", value: yaml_string(s: boot_medium_reader_probe_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "boot-medium-reader-probe-receipt",
+      path: boot_medium_reader_probe_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_boot_medium_reader_probe_step_if], "") },
     continue_on_error: none,
@@ -6260,12 +6996,13 @@ fn fleet_converge_export_host_reader_converge_receipt_upload_step() -> Step {
     name: Present { value: "Upload export host reader converge receipt" },
     id: Present { value: "export_host_reader_converge_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "export-host-reader-converge-receipt")),
-      kv(key: "path", value: yaml_string(s: export_host_reader_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "export-host-reader-converge-receipt",
+      path: export_host_reader_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_export_host_reader_converge_step_if], "") },
     continue_on_error: none,
@@ -6362,12 +7099,13 @@ fn fleet_converge_fleet_keypair_mint_receipt_upload_step(subject: FleetKeypairMi
     name: Present { value: concat("Upload mint receipt: ", concat(subject.lane as String, " (public key, fingerprint, version; no private material)")) },
     id: Present { value: concat(fleet_converge_fleet_keypair_mint_step_id(subject: subject), "_receipt_upload") },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: concat("fleet-keypair-mint-receipt-", fleet_converge_lane_slug(subject: subject)))),
-      kv(key: "path", value: yaml_string(s: subject.receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: concat("fleet-keypair-mint-receipt-", fleet_converge_lane_slug(subject: subject)),
+      path: subject.receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     // `always()` WITHOUT `&& failure()`: a mint that failed is the case where the receipt matters most, but a
     // mint that SUCCEEDED matters more -- the job runs on a GitHub-hosted VM that is thrown away when the job
@@ -6732,7 +7470,7 @@ data fleet_converge_host_input: DispatchInput = DispatchInput {
 
 data fleet_converge_subject_host_input: DispatchInput = DispatchInput {
     name: "subject_host",
-    description: Present { value: "The host this run ACTS ON (runner_host_file_converge / withdraw / restore, host_primary_network_observe / converge, qualification_attempt). It must NOT equal host: the bracket drains every slot of its subject, and when the executor slot lives on the subject that drain waits for the job's own executor forever (refused run 40085967610, srv3-13); and a primary network readback taken from the subject itself never crosses the uplink it judges. The split is enforced as a precondition refusal before any drain, mask or netplan leg." },
+    description: Present { value: "The host this run ACTS ON (runner_host_file_converge / withdraw / restore, host_primary_network_observe / converge, board_function_converge, qualification_attempt, service_slot_start). It must NOT equal host: the bracket drains every slot of its subject, and when the executor slot lives on the subject that drain waits for the job's own executor forever (refused run 40085967610, srv3-13); and a primary network readback taken from the subject itself never crosses the uplink it judges. The split is enforced as a precondition refusal before any drain, mask or netplan leg." },
     required: false,
     default: none,
     type: InputChoice { options: fleet_converge_enrolled_host_options },
@@ -6907,6 +7645,72 @@ data fleet_converge_dispatch_inputs: List<DispatchInput> = filter(
   i => i.name != "target" || count(fleet_converge_spark_target_options) > 0
 )
 
+// ONE DISPATCH OF THIS WORKFLOW, AS A TYPED SPEC: the mode it selects, the executor host its job is pinned to, and
+// every other input it supplies, each by its declared DispatchInput so a renamed input breaks the spec rather than the
+// dispatch. One builder renders every spec into the inputs map GitHub receives (the qualification floor's dispatch and
+// the qualification attempt's, gunbc.runner.runner_qualification_dispatch and
+// gunbc.runner.runner_qualification_attempt_dispatch), so no caller assembles that map by hand.
+type DispatchInputValue {
+  input: DispatchInput
+  value: String
+}
+
+type FleetConvergeDispatchSpec {
+  mode: FleetConvergeWorkflowMode
+  executor: HostIdentity
+  inputs: List<DispatchInputValue>
+}
+
+// ONE VALUE PER INPUT NAME, OR A TYPED REFUSAL. The mode and executor are typed fields and every other input is a
+// caller's row, so a caller row naming `mode` or `host`, or two caller rows naming one input, would otherwise reach
+// one map key twice, and a map insert keeps the last: the dispatch would silently select another mode or pin another
+// host than the spec's typed fields say. The rows are built through std.keyed_roster keyed_roster_build, the one
+// fold that refuses a repeated key before a second value can exist, so a repeated name is a located refusal naming
+// the input and both values, never a choice between them.
+type FleetConvergeDispatchValues
+  = FleetConvergeDispatchValuesRendered { values: Map<String, String> }
+  | FleetConvergeDispatchInputRepeated { name: String, first_value: String, repeated_value: String }
+
+fn fleet_converge_dispatch_name_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn fleet_converge_dispatch_rows(spec: FleetConvergeDispatchSpec) -> List<KeyedRow<String, String>> {
+  concat(
+    [
+      KeyedRow { row_key: fleet_converge_mode_input.name, value: fleet_converge_workflow_mode_wire(mode: spec.mode) },
+      KeyedRow { row_key: fleet_converge_host_input.name, value: spec.executor as String },
+    ],
+    map(spec.inputs, iv => KeyedRow { row_key: iv.input.name, value: iv.value }),
+  )
+}
+
+fn fleet_converge_dispatch_values(spec: FleetConvergeDispatchSpec) -> FleetConvergeDispatchValues {
+  match keyed_roster_build(incomings: fleet_converge_dispatch_rows(spec: spec), key_eq: fleet_converge_dispatch_name_eq) {
+    KeyedRosterBuilt { rows: rows } =>
+      FleetConvergeDispatchValuesRendered {
+        values: fold(rows, init: empty_map(), f: (m, r) => map_insert(m: m, key: r.row_key, value: r.value)),
+      }
+    KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
+      FleetConvergeDispatchInputRepeated { name: k, first_value: f.value, repeated_value: d.value }
+  }
+}
+
+// THE NAMES A DISPATCH SUPPLIES, read from the inputs alone, so an admission can ask before any value exists.
+fn fleet_converge_dispatch_names_supplying(inputs: List<DispatchInput>) -> List<String> {
+  concat([fleet_converge_mode_input.name, fleet_converge_host_input.name], map(inputs, i => i.name))
+}
+
+fn fleet_converge_dispatch_value_names(spec: FleetConvergeDispatchSpec) -> List<String> {
+  fleet_converge_dispatch_names_supplying(inputs: map(spec.inputs, iv => iv.input))
+}
+
+// EVERY INPUT THE WORKFLOW REQUIRES, BY NAME, THAT THE SUPPLIED NAMES DO NOT CARRY. GitHub refuses such a dispatch
+// before any run exists; an admission reads this first.
+fn fleet_converge_required_inputs_unsupplied(declared: List<DispatchInput>, supplied: List<String>) -> List<String> {
+  declared |> filter(i => i.required && !(supplied |> any(n => n == i.name))) |> map(i => i.name)
+}
+
 fn fleet_converge_empty_choice_input_names() -> List<String> {
   map(
     filter(fleet_converge_dispatch_inputs, i => match i.type {
@@ -6967,7 +7771,7 @@ fn fleet_converge_yml_after_run_scoped_admission() -> FleetConvergeYamlGeneratio
       reason: join([
         "fleet-converge InputChoice has no options: ",
         join(fleet_converge_empty_choice_input_names(), ", "),
-        " (GitHub rejects an empty closed choice; DESIGN §5: refuse, do not emit options: [])",
+        " (GitHub rejects an empty closed choice; gunbc.design_argument::fail_closed: refuse, do not emit options: [])",
       ], "")
     }
   } else if count(fleet_converge_dispatch_inputs) > workflow_dispatch_max_inputs {
@@ -6996,7 +7800,7 @@ fn fleet_converge_yml_after_input_admission() -> FleetConvergeYamlGenerationOutc
 // THE ASSIGNMENT IS CHECKED BEFORE ANYTHING IS SERIALIZED, because an unmintable observer pairing
 // leaves fleet_converge_reset_observer_options empty and an empty choice list is a dispatch form that
 // silently cannot run the mode. A refusal that names its cause is the only honest arm: emitting a
-// workflow whose reset mode is unselectable would be the absorbing fallback DESIGN section 5 forbids,
+// workflow whose reset mode is unselectable would be the absorbing fallback gunbc.design_argument::fail_closed forbids,
 // with the loss denominated in the roster rather than in the change that caused it.
 fn fleet_converge_reset_assignment_refusal_reason(cause: ResetDispatchAssignmentRefusalCause) -> String {
   match cause {
@@ -7027,10 +7831,12 @@ fn fleet_converge_yml_after_toolchain_admission() -> FleetConvergeYamlGeneration
     DispatchAssignmentRefused { cause: c } =>
       FleetConvergeYamlGenerationRefused { reason: fleet_converge_reset_assignment_refusal_reason(cause: c) }
     DispatchAssignment { pairings: ps } =>
-      if list_length(ps) == 0 {
+      if length(ps) == 0 {
         FleetConvergeYamlGenerationRefused {
           reason: "REFUSED gunbc.fleet.fleet_converge_workflow: the reset observer assignment admitted no pairing at all, so the reset_observer choice input would carry zero options -- a mode nobody can select. gunbc.host.host_reset_return reset_dispatch_pairings is supposed to refuse both routes to this state (an empty subject roster, and a subject with no admissible peer); reaching here means a third route exists and it is silent.",
         }
+      } else if fleet_converge_fleet_identity_text_unreadable() {
+        FleetConvergeYamlGenerationRefused { reason: fleet_converge_fleet_identity_unreadable_refusal() }
       } else if !fleet_converge_boot_federation_admitted() {
         FleetConvergeYamlGenerationRefused { reason: fleet_converge_boot_federation_unprovisioned_refusal }
       } else if !fleet_converge_gcp_iam_refusal_script_admitted() {
@@ -7363,13 +8169,13 @@ fn fleet_converge_guest_image_upload_step(label: String, id: String, name: Strin
   UsesStep {
     name: Present { value: concat(concat("Archive the exact ", label), " image build and digest receipt") },
     id: Present { value: id }, uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: name)),
-      kv(key: "path", value: yaml_string(s: paths)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 90)),
-      kv(key: "compression-level", value: yaml_int(n: 6)),
-    ] }, env: none, if_condition: Present { value: fleet_converge_mode_step_if(mode: mode) },
+    with: Present { value: workflow_artifact_upload_with(
+      name: name,
+      path: paths,
+      retention_days: Present { value: 90 },
+      compression_level: Present { value: 6 },
+      absence: AbsenceRefused,
+    ) }, env: none, if_condition: Present { value: fleet_converge_mode_step_if(mode: mode) },
     continue_on_error: none, timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
   }
 }

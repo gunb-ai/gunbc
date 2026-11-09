@@ -1,6 +1,6 @@
 module gunbc.stage0_partition_rebuild_scope
 
-import std.types { String, List, Bool, Int, list_length }
+import std.types { String, List, Bool, Int }
 import gunbc.source_layout { layout_module_storage_path }
 import gunbc.regen_affected_set {
   AffectedSetBound,
@@ -12,6 +12,7 @@ import gunbc.regen_affected_set {
   regen_affected_set
 }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.algebra { length }
 import gunbc.stage0.stage0_crate_partition_generated {
   GeneratedPartitionCrateRow,
   generated_partition_crate_rows
@@ -46,7 +47,7 @@ import gunbc.stage0.stage0_partition_package_graph {
 // NARROWS -- a missing edge would drop a package that must recompile, which is a worse failure
 // than widening because the next pass would then run stale code.
 //
-// REFUSE, NEVER WIDEN (DESIGN section 5, the absorbing fallback). Every arm below that cannot
+// REFUSE, NEVER WIDEN (gunbc.design_argument::fail_closed, the absorbing fallback). Every arm below that cannot
 // compute the precise package set REFUSES with the mirror or package it could not answer for.
 // "Could not determine the owner" is not "build everything": collapsing them would destroy the
 // only signal that the ownership roster has a hole, and the hole would then never rank for
@@ -295,7 +296,7 @@ fn rebuild_scope_reverse_step(
 }
 
 // The fixpoint by construction: a package dependency path over n packages has at most n edges,
-// so n steps reach it (DESIGN section 4 -- bounded and forward, no discovered termination).
+// so n steps reach it (gunbc.design_argument::closed_grounded_substrate -- bounded and forward, no discovered termination).
 fn rebuild_scope_reverse_closure(
   seeds: List<String>,
   rows: List<GeneratedPartitionCrateRow>
@@ -600,7 +601,7 @@ fn stage0_partition_rebuild_release_scope_empty_today(
 // THE FIFTH HOST QUESTION: is this round's refusal the positively modeled partition-generation
 // class? The host decides whether the move is EXPLAINED (derived from the change's own diff and
 // the candidate tree's authority, never asserted) only when this answers true; every other
-// WholeCompilerRebuildRequired cause and every refusal keeps refusing. The class is read by
+// WholeCompilerRebuildRequired cause does not claim a partition move. The class is read by
 // variant here, never recovered from the decision line's spelling.
 fn stage0_partition_rebuild_is_partition_generation_move_today(
   changed_mirrors: List<String>,
@@ -614,6 +615,29 @@ fn stage0_partition_rebuild_is_partition_generation_move_today(
     PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: _ } => false
     RebuildScopeRefused { cause: _ } => false
   }
+}
+
+// Consume the existing whole-compiler decision for BOTH of its causes. Partition-generation
+// moves still require the host's separate derived-move admission before any build; shared build
+// inputs require the same whole-compiler build without claiming a partition move. A refusal
+// never becomes a build merely because its package closure is empty.
+fn stage0_partition_rebuild_requires_whole_compiler(decision: PartitionRebuildDecision) -> Bool {
+  match decision {
+    WholeCompilerRebuildRequired { cause: _ } => true
+    PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: _ } => false
+    ReleaseScopeEmpty { changed_mirrors: _ } => false
+    RebuildScopeRefused { cause: _ } => false
+  }
+}
+
+fn stage0_partition_rebuild_requires_whole_compiler_today(
+  changed_mirrors: List<String>,
+  unlocatable: List<String>,
+  host_shell_modules: List<String>
+) -> Bool {
+  stage0_partition_rebuild_requires_whole_compiler(decision: stage0_partition_rebuild_decision_today(
+    changed_mirrors: changed_mirrors, unlocatable: unlocatable,
+    host_shell_modules: host_shell_modules))
 }
 
 // THE PACKAGES THAT MUST NOT BE COMPILED. Reported to the host as identities so a build that
@@ -718,7 +742,7 @@ fn stage0_partition_move_explained_by_bound(changed_paths: List<String>, bound: 
 // whole-compiler arm selected by a second cause, not a widened catch-all; an unexplained
 // partition move still refuses at the host (PartitionMoveUnexplained).
 fn stage0_stage_rebuild_is_whole_compiler(boundary_files: List<String>) -> Bool {
-  list_length(items: boundary_files) > 0
+  length(xs: boundary_files) > 0
 }
 
 // THE ROUND BOUND of the regen convergence loop, a declared policy row. Exceeding it is a typed

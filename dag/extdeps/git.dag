@@ -581,7 +581,7 @@ data git_ls_remote_external_authority_anchor: ExternalAuthority = ExternalAuthor
 // decoder begins refusing valid `for-each-ref` output with "ref names are not strictly increasing",
 // a message that accuses the tool rather than the change that broke it.
 //
-// THE BOUNDARY, DECLARED RATHER THAN GUARDED (DESIGN section 4b, outside the modeled guarantee): a
+// THE BOUNDARY, DECLARED RATHER THAN GUARDED (gunbc.design_argument::guarantee_ladder, outside the modeled guarantee): a
 // refname whose bytes are not well-formed UTF-8 is permitted by git and has no defined relation to a
 // code-point comparator. No refusal is claimed for it here, because whether such a name survives the
 // shell transport into a String at all is unestablished, and a wall whose reachability has not been
@@ -589,7 +589,7 @@ data git_ls_remote_external_authority_anchor: ExternalAuthority = ExternalAuthor
 // owed first is a measurement, not a check.
 //
 // NO GIT VERSION IS PINNED ANYWHERE IN THIS MODULE, and ExternalAuthority carries no version field to
-// pin one with -- it holds a Uri and nothing else. DESIGN section 3 asks an extdeps subject to declare
+// pin one with -- it holds a Uri and nothing else. gunbc.design_argument::single_authority asks an extdeps subject to declare
 // its version, so this is a standing gap for the whole module rather than for this operation, named
 // here because the sort semantics are exactly the kind of fact that is version-relative.
 data git_for_each_ref_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -665,7 +665,7 @@ data git_reflog_external_authority_anchor: ExternalAuthority = ExternalAuthority
 // newline, and a newline-delimited reading of this output would silently split one path into two.
 //
 // THIS OPERATION OBSERVES AND DOES NOT REMOVE. `git clean -fdx` would make the tree match by
-// deleting whatever it found, which widens rather than refuses (DESIGN section 5) and would destroy
+// deleting whatever it found, which widens rather than refuses (gunbc.design_argument::fail_closed) and would destroy
 // operator state nobody adjudicated. The consumer refuses and names the residue instead.
 data git_ls_files_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -725,7 +725,7 @@ type AdvertisedRef {
 }
 
 // The scan REFUSES on a line it cannot read rather than skipping it, and the located line is
-// carried so the refusal names what it choked on. Dropping unparseable lines is the shape DESIGN 5
+// carried so the refusal names what it choked on. Dropping unparseable lines is the shape gunbc.design_argument::fail_closed
 // calls the absorbing fallback: the answer would still be a well-formed ref list, so a consumer
 // could not tell a complete advertisement from a partial one, and the deficit's frequency would be
 // zero by construction. A partial ref list is exactly the input that makes an exact-head judgment
@@ -946,14 +946,14 @@ fn shape_git_branch_show_current_argv() -> List<String> {
   git_argv_of_args(args: ["branch", "--show-current"])
 }
 
-// PATHSPEC MAGIC IS GIT'S INTERFACE; WHICH PATHS TO EXCLUDE IS NOT (DESIGN §3 (a)/(c) split).
+// PATHSPEC MAGIC IS GIT'S INTERFACE; WHICH PATHS TO EXCLUDE IS NOT (gunbc.design_argument::single_authority (a)/(c) split).
 // gitglossary(7) 'pathspec' defines the long-form magic word `exclude` — a pathspec of the form
 // `:(exclude)<pattern>` removes matching paths from the set an otherwise-matching pathspec
 // selected, and git requires at least one positive pathspec beside it for there to be a set to
 // subtract from (hence the leading `.` that shape_git_diff_unmerged_pathspec_args emits). This
 // module owns only that SPELLING. The exclusion LIST is a caller's business policy — a workflow
 // fact — and passing pathspec WORDS as a parameter is what keeps this row from becoming the layer
-// inversion §3 names (an argv carrying a literal it should receive as an argument).
+// inversion gunbc.design_argument::single_authority names (an argv carrying a literal it should receive as an argument).
 //
 // A PATHSPEC WORD IS NOT A SHELL WORD, AND THIS MODULE DELIBERATELY DOES NOT QUOTE IT.
 // `:(exclude)p` contains `(` and `)`, which are bash metacharacters, so any shell realization that
@@ -1181,7 +1181,7 @@ fn git_ls_files_command(repository_dir: String, pathspec: String) -> ArgvCommand
   argv_command(program: git_program(), arguments: git_ls_files_args(repository_dir: repository_dir, pathspec: pathspec))
 }
 
-// WHICH TRACKED FILES DECLARE A CLAIM. The second read the outside-roots census needs, because the listing
+// WHICH TRACKED FILES DECLARE A CLAIM. The second read of the tracked-claim question, because the listing
 // above answers only "which paths are tracked": a `.dag` that declares no `test fn` is a helper inventory,
 // not an uncovered claim, and reporting it as one is a fabricated finding. Some files under the note's
 // subject are exactly that, and some outside it are files whose text merely MENTIONS the phrase in a
@@ -1191,11 +1191,8 @@ fn git_ls_files_command(repository_dir: String, pathspec: String) -> ArgvCommand
 //
 // THE PATTERN IS A PARAMETER because the rule belongs to the caller, and a transport that fixes it becomes a
 // second census. BE HONEST ABOUT WHAT IT IS: this is a TEXT test by git. The interpreter's own marker read,
-// `v2.compiler.module_acquisition acquisition_test_markers`, is a PARSE of the file. The two agree on the
-// current population -- re-checked every run against the v1 emitter's own registry by the witness claims in
-// src/v2/test/claim/outside_discovery_roots_census_witness.dag, so the agreement is measured, never
-// transcribed -- and the census does not claim
-// more than that. Dissolution: when a parse is reachable for a path the layout does not bind, the marker read
+// `v2.compiler.module_acquisition acquisition_test_markers`, is a PARSE of the file. This call does not claim
+// they agree. Dissolution: when a parse is reachable for a path the layout does not bind, the marker read
 // above replaces this call (the same drop `floor_pure_producer_share`'s pairing row names for
 // `acquisition_test_markers`, interpreted route, C4-E).
 fn git_grep_files_with_matches_args(repository_dir: String, pattern: String, pathspec: String) -> List<String> {
@@ -1567,10 +1564,6 @@ fn git_config_local_get_words(repo: FilePath, key: String) -> List<String> {
 
 fn shape_git_config_local_get_in_repo_argv(repo: FilePath, key: String) -> List<String> {
   concat([git_program_word], git_config_local_get_words(repo: repo, key: key))
-}
-
-fn shape_git_rev_parse_verify_quiet_argv(target: String) -> List<String> {
-  git_argv_of_args(args: ["rev-parse", "--verify", "--quiet", target])
 }
 
 fn shape_git_rev_parse_head_args() -> List<String> {
@@ -2465,6 +2458,12 @@ fn shape_git_rev_parse_argv(repo: FilePath, target: GitRef) -> List<String> {
   ["-C", repo as String, "rev-parse", target as String]
 }
 
+// The EXISTENCE test for a ref whose absence must be a typed refusal rather than a failing
+// mutation: `git rev-parse --verify --quiet <ref>` exits 1 silently when the ref does not exist.
+fn shape_git_rev_parse_verify_quiet_argv(repo: FilePath, ref_name: GitRef) -> List<String> {
+  ["-C", repo as String, "rev-parse", "--verify", "--quiet", ref_name as String]
+}
+
 service git.Worktree {
   operation Add {
     requires opaque
@@ -2525,7 +2524,7 @@ fn git_remote_url_config_key(name: GitRemoteName) -> NonEmptyStr {
 // the expected repository. It is wrong for a CONVERGENCE question, where the two differ absolutely:
 // an absent remote is a member to add, and an unusable repository is a plan refusal. Collapsing
 // them would let a malformed or inaccessible repository present as an ordinary absence and license
-// a write against state that was never observed -- the empty-observation narrow DESIGN §5 names,
+// a write against state that was never observed -- the empty-observation narrow gunbc.design_argument::fail_closed names,
 // where a read that could not answer is rendered as the answer "nothing is there".
 //
 // The exit codes are git's own, observed live on srv1 2026-08-18: `remote get-url` answers 2 with

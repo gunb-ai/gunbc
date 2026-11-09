@@ -8,23 +8,36 @@ import gunbc.heal_publisher_workflow {
   heal_publisher_route_steps, heal_publisher_resolved_steps, heal_publisher_steps_refusal_reason,
   heal_publisher_candidate_directory, HealPublisherBoundStep, HealPublisherPolicy,
   heal_publisher_download_step, heal_publisher_admit_step, heal_publisher_publish_step,
-  heal_publisher_seed_route_steps, heal_publisher_seed_route_without_a_composition_refusal_reason
+  heal_publisher_seed_route_steps, heal_publisher_seed_route_without_a_composition_refusal_reason,
+  heal_publisher_build_step_name, heal_publisher_toolchain_install_step_name,
+  heal_publisher_seed_toolchain_role,
 }
 import gunbc.ci.ci_materialization { step_display_name }
 import v2.std.diagnostic { diagnostics_reason_lexemes, Accepted, Rejected }
 import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step }
+// THE STANDING MODULE'S OWN PREDICATES, so the order below is asserted with the definitions the
+// admission actually uses -- a name kept here would be a second account of what an install is.
+import gunbc.toolchain_home_standing { step_isolates_toolchain_homes, step_installs_toolchain, step_pins_default_toolchain }
+import gunbc.roadmap.roadmap_execution_contract {
+  ExecutionCapability, execution_capability_equal,
+  CargoCapability, RustcCapability, RustfmtCapability, RustupCapability,
+}
+import std.list { list_cover }
 import gunbc.drift_watch_workflow { drift_watch_workflow_yml_for, DriftWatchWorkflowGenerated, DriftWatchWorkflowGenerationRefused }
 import gunbc.witness.compiler_gate_workflow { compiler_gate_yml_for }
-import gunbc.witness.witness_floor_workflow { WitnessFloorGenerated, WitnessFloorGenerationRefused }
+import gunbc.witness.witness_floor_workflow { WitnessFloorGenerated, WitnessFloorGenerationRefused, witness_floor_build_step }
 
 import std.types { Bool, List, NonEmptyStr, String, Int }
 import std.measure { byte_size, Minute, minute }
 import std.optional { Optional, Present, Absent }
+import std.algebra { for_all, list_head, list_map }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.roster_frontier { FrontierRow, FrontierSubject, PathSubject, DeclSubject, frontier_rows_well_formed }
 import extdeps.cron.schedule_model { CronSchedule, Exact, Listed, Wildcard }
 import gunbc.ci.repository_ci_profile {
-  RepositoryCiProfile, RosterGate, PublicSeed, OverlayIngest, AnnotationStep, ProjectionDrift, HealSeal,
+  RepositoryCiProfile, RosterGate, PublicSeed, SeedSource, Seed_commit_pin, Seed_pin_owed,
+  SeedPinVerifierProducer, seed_source_pin, seed_source_refusal_reason, profile_seed_pin_is_a_commit_or_is_owed,
+  OverlayIngest, AnnotationStep, ProjectionDrift, HealSeal,
   HealPublisherPolicy, CompilerSource, Own_checkout_under_witness_floor, Declared_seed,
   Declared_seed_under_composed_overlay,
   DagInvocation, gunbc_repository_ci_profile, repository_ci_profile_refusal,
@@ -37,7 +50,8 @@ import gunbc.ci.repository_ci_profile {
   profile_with_publisher_runner, profile_with_required_context,
 }
 import gunbc.auth.heal_publisher_federation { public_heal_publisher_federation }
-import extdeps.github.actions { PermWrite, Step, RunStep, UsesStep }
+import extdeps.github.actions { PermWrite, Step, RunStep, UsesStep, Job, RunnerSpec, HostedRunner, UbuntuLatest }
+import extdeps.languages.yaml.types { YamlKeyValue, YamlString }
 import gunbc.ci.ci_runner_target { CiRunnerTarget, FleetSelfHosted }
 import gunbc.runner.runner_group_restriction_ensure { restricted_runner_groups }
 import gunbc.witness.witness_roster {
@@ -49,7 +63,22 @@ import gunbc.witness.witness_roster {
 import gunbc.ci.repository_mirror_frontier { repository_mirror_frontier_rows }
 import gunbc.ci.repository_compose_overlay {
   command,
-  word, heal_seal_env }
+  word, heal_seal_env, private_root_assign_stmt }
+import gunbc.action_use_admission {
+  checkout_ref_admitted_in_jobs, checkout_ref_value_refusals, job_step_ids,
+  seed_pin_verifier_producer, seed_pin_verifier_job_id, seed_pin_verifier_output_name,
+  seed_pin_verifier_check_step_id,
+}
+import gunbc.ci.repository_seed_steps {
+  seed_pin_proofs, seed_pin_fetch_url,
+  seed_lane_steps, SeedToolchainLane, seed_toolchain_lane, seed_toolchain_lane_steps,
+  seed_pin_consumer_guard_step_name, seed_pin_consumer_guard_var_name,
+  seed_pin_consumer_guard_statements,
+  seed_pin_verifier_output_path, seed_pin_checkout_ref_expression,
+  seed_pin_verification_statements, seed_pin_verifier_job,
+}
+import v2.workflow.bash_emit { bash_emit_stmts }
+import extdeps.github.expressions { ContextAccess, Expression, ExpressionContext, Needs, Steps, interpolate }
 import gunbc.ci.repository_projection_drift_workflow {
   DriftProgram, projection_drift_refusal, expected_projection_drift_workflow_yml,
   ProjectionDriftWorkflowGenerated, ProjectionDriftWorkflowGenerationRefused,
@@ -670,11 +699,57 @@ fn mirror_profile_with_annotation(lane_root: String) -> RepositoryCiProfile {
   }
 }
 
+// THE FIXTURE'S SEED COMMIT, as the only kind of reference a seed can carry. It is a fixture sha, not a
+// production one: no claim here depends on a real commit existing, and the production pin is the
+// operator's to record (gunbc.ci.repository_ci_profile Seed_pin_owed is what an unrecorded pin looks
+// like, and every seed-consuming emitter refuses it).
+data fixture_seed_pin: String = "0123456789abcdef0123456789abcdef01234567"
+
+fn fixture_seed_verifier() -> SeedPinVerifierProducer {
+  SeedPinVerifierProducer { verification_step_name: "Prove the pinned seed commit exists" }
+}
+
 fn fixture_seed() -> PublicSeed {
   PublicSeed {
     repository: "example-org/example-public",
     checkout_path: "seed_repo",
-    ref_name: "main",
+    source: Seed_commit_pin { sha: fixture_seed_pin },
+    verifier: fixture_seed_verifier(),
+    build_command: [
+      command(
+        words: [
+          word(text: "cargo"),
+          word(text: "build"),
+          word(text: "--release"),
+          word(text: "-p"),
+          word(text: "example"),
+          word(text: "--bin"),
+          word(text: "example")
+        ]
+      )
+    ],
+    seed_binary_relative_path: "target/release/example",
+    record_step_name: "Record the seed revision",
+    build_step_name: "Build the seed compiler"
+  }
+}
+
+// THE WET FIXTURE'S SEED ROW: the shape of fixture_seed pointed at the repository the seed lane really
+// fetches from, at a commit that really exists there. The two shas are `origin/main` and its parent as of
+// authoring (both ancestors of a branch that never rewrites, so they stay reachable); the verifier is
+// fetched BY SHA, which is exactly the path the poison scenario needs to differ on. If the pin ever stops
+// being fetchable the honest scenario goes red loudly rather than quietly admitting -- that is the point
+// of running the emitted script rather than reasoning about it.
+data wet_seed_repository: String = "gunb-ai/gunbc"
+data wet_seed_pin: String = "fe5d4d46331bcef8044ed3b2e2db78966546f0c3"
+data wet_seed_pin_parent: String = "4000ff2c5dcd20aa6b76a81c1c1edc71d7c138d1"
+
+fn wet_seed() -> PublicSeed {
+  PublicSeed {
+    repository: wet_seed_repository,
+    checkout_path: "seed_repo",
+    source: Seed_commit_pin { sha: wet_seed_pin },
+    verifier: fixture_seed_verifier(),
     build_command: [
       command(
         words: [
@@ -968,7 +1043,7 @@ test fn the_drift_emission_seals_at_the_head_and_uploads_the_candidate() -> Bool
 // record of why it is allowed to be unread here. What is NOT asserted, and cannot be from inside a claim:
 // that the DECL names the roster lists exist. std.roster_frontier builds them as typed `decl_ref` literals,
 // and the authority that resolves those against the live declaration index is the decl-ref census instrument
-// (gunbc.native_census_verb, dispatched through gunbc/instrument_targets.dag, manual dispatch), which per
+// (the retired census verb, dispatched through gunbc/instrument_targets.dag, manual dispatch), which per
 // gunbc.recurring_failure_mode.declaration_reference_cites_a_declaration_nothing_resolved refuses an
 // unresolved identity BY NAME; resolving refs inside claim evaluation is the repo's declared stall
 // (gunbc.guarantee_stall::decl_ref_host_resolver_awaits_native_claim_evaluation_stall), so no Bool here can
@@ -1112,6 +1187,35 @@ test fn the_seal_step_is_invoked_through_the_rows_roots() -> Bool {
   }
 }
 
+// THE COMPOSED ROOT MUST BE COMPOSABLE BY THE SHELL THAT COMPOSES IT. The compose step assigns PRIVATE_ROOT
+// from a command substitution. When that substitution's body was wrapped in a subshell the rendering came
+// out `PRIVATE_ROOT=$(('cd' '..'; 'pwd'))`, and bash reads the adjacent `((` as the opening of an arithmetic
+// expression: "syntax error: operand expected", the step dies before the overlay exists, and the section 4c
+// step behind it can only report that the composed root is absent. gunbc-private's CI found it on 2026-11-03
+// (runs 41593920495 and 41593920470) and no `gunbc` emission could, because only a mirror row composes an
+// overlay. The renderer refuses the carrier shape (v2.test.claim.bash_command_fold carries those rows); this
+// control holds the property the mirror's step needs on the bytes the emitter produces, from the isolated
+// statement AND from the emitted mirror workflow. The subshell carrier's own structural shape is a separate,
+// already recorded program row (gunbc.plans.convergence_coverage_program (deleted 2026-11-08) cc-structural-carriers, F37).
+test fn the_mirrors_compose_step_is_bash_that_parses() -> Bool {
+  let assignment = match bash_emit_stmts(statements: [private_root_assign_stmt()], set_e: false) {
+    Accepted { value: text, diagnostics: _ } => text
+    Rejected { diagnostics: _ } => ""
+  }
+  match expected_projection_drift_workflow_yml(
+    profile: mirror_profile(seal: true, publish: true),
+    program: mirror_drift_program()
+  ) {
+    ProjectionDriftWorkflowGenerationRefused { reason: _ } => false
+    ProjectionDriftWorkflowGenerated { content: text } =>
+      string_contains(s: assignment, pattern: "PRIVATE_ROOT=$(") &&
+      string_contains(s: assignment, pattern: "'realpath' '..'") &&
+      !(string_contains(s: assignment, pattern: "$((")) &&
+      !(string_contains(s: assignment, pattern: "))")) &&
+      string_contains(s: text, pattern: "PRIVATE_ROOT=$(")
+  }
+}
+
 fn program_without_aggregate(entries: List<RosterEntry>) -> RosterProgram {
   let base = gate_program(entries: entries)
   RosterProgram {
@@ -1179,13 +1283,239 @@ test fn the_drift_entrypoint_refuses_a_profile_that_builds_its_own_compiler() ->
   }
 }
 
+// THE SEED THE GATE CHECKS OUT IS THE COMMIT ITS OWN VERIFIER PROVED -- not a branch, and not the row's
+// string pasted into `with.ref`. Three things have to hold together for the gate to mean anything: the
+// checkout's ref names the verifier job's declared output, the gate waits on that job, and the pin the
+// verifier fetches is the one the row carries. Asserting only the last one is how the old control passed
+// while the workflow it described checked out `main` on every run.
 test fn the_seed_the_lane_checks_out_is_the_rows_seed() -> Bool {
-  string_contains(
-    s: expected_repository_witnesses_yml(
-      profile: mirror_profile_with_seed_ref(ref: "rev-9-9-9"),
-      program: fixture_program()
-    ),
-    pattern: "rev-9-9-9"
+  let yml = expected_repository_witnesses_yml(
+    profile: mirror_profile_with_seed_pin(pin: fixture_seed_pin),
+    program: fixture_program()
+  )
+  // The bracket access is not a style choice: a job id containing `-` is not an expression identifier,
+  // so the expression renderer must index it (extdeps.github.expressions path_segment_takes_dot_form
+  // admits only letters, digits and `_`). Pinned here because the alternative -- a ref the renderer
+  // spells a different way -- is a ref the lane silently stops reading.
+  string_contains(s: yml, pattern: "ref: ${{ needs['verify-seed-pin'].outputs.committed_sha }}")
+    && string_contains(s: yml, pattern: "verify-seed-pin")
+    && string_contains(s: yml, pattern: fixture_seed_pin)
+    && !string_contains(s: yml, pattern: "ref: main")
+}
+
+// THE VERIFIER PROVES THE TWO FACTS THAT MAKE A PIN A COMMIT, from the intended repository and by
+// nothing looser than a sha fetch. The negative half is the point: ls-remote, a branch refspec and a
+// `|| github.sha` fallback are each a way to check out a tree the row did not name, and each has been
+// the shape of a real bug in this family.
+test fn the_verifier_proves_the_facts_that_make_a_pin_a_commit() -> Bool {
+  let yml = expected_repository_witnesses_yml(
+    profile: mirror_profile_with_seed_pin(pin: fixture_seed_pin),
+    program: fixture_program()
+  )
+  string_contains(s: yml, pattern: "cat-file")
+    && string_contains(s: yml, pattern: "commit")
+    && string_contains(s: yml, pattern: "rev-parse")
+    && string_contains(s: yml, pattern: fixture_seed_pin)
+    // The fetch target and the checkout target are the SAME repository: the url is derived from the row's
+    // `repository`, so "the verifier certified a pin in a store fetched from somewhere else" is not a
+    // shape a row can describe -- there is only one field that says where the seed comes from.
+    && string_contains(s: yml, pattern: "https://github.com/example-org/example-public.git")
+    && string_contains(s: yml, pattern: "repository: example-org/example-public")
+    && !string_contains(s: yml, pattern: "ls-remote")
+    && !string_contains(s: yml, pattern: "refs/heads")
+    && !string_contains(s: yml, pattern: "|| github.sha")
+}
+
+// THE OUTPUT IS WRITTEN LAST, OR THERE IS NO OUTPUT. `needs` is what stops the checkout when the
+// verifier JOB fails, but a step that wrote its output and THEN proved the pin would hand the checkout a
+// sha nobody certified. So the order of the statement list is the guarantee, and it is read here as a
+// model fact rather than as a substring of YAML: each statement is rendered on its own, exactly one may
+// write the job output, and no git work may appear after it.
+type VerifierStatementOrder {
+  writes: Int
+  saw_write: Bool
+  git_after_write: Bool
+}
+
+fn verifier_statement_order_step(state: VerifierStatementOrder, text: String) -> VerifierStatementOrder {
+  let writes = string_contains(s: text, pattern: "GITHUB_OUTPUT")
+  VerifierStatementOrder {
+    writes: if writes { state.writes + 1 } else { state.writes },
+    saw_write: state.saw_write || writes,
+    git_after_write: state.git_after_write || (state.saw_write && !writes),
+  }
+}
+
+fn verifier_statement_texts(seed: PublicSeed, pin: String) -> List<String> {
+  fold(
+    seed_pin_verification_statements(seed: seed, pin: pin),
+    init: [],
+    f: fn(acc, stmt) {
+      match bash_emit_stmts(statements: [stmt], set_e: false) {
+        Accepted { value: t, diagnostics: _ } => concat(acc, [t])
+        Rejected { diagnostics: _ } => acc
+      }
+    }
+  )
+}
+
+test fn the_verifier_writes_its_output_only_after_both_proofs() -> Bool {
+  let seed = fixture_seed()
+  let statements = seed_pin_verification_statements(seed: seed, pin: fixture_seed_pin)
+  let texts = verifier_statement_texts(seed: seed, pin: fixture_seed_pin)
+  let order = fold(texts, init: VerifierStatementOrder { writes: 0, saw_write: false, git_after_write: false }, f: verifier_statement_order_step)
+  // Every statement must have rendered, or the comparison below would be reading a shorter list than the
+  // model produced -- a renderer refusal is a failure of the control, never a skipped row.
+  count(texts) == count(statements)
+    && order.writes == 1
+    && order.saw_write
+    && order.git_after_write == false
+    && for_all(xs: texts, predicate: fn(t) { !string_contains(s: t, pattern: "cat-file") || string_contains(s: t, pattern: fixture_seed_pin) })
+}
+
+// AN OWED PIN REFUSES EVERY LANE THAT JUDGES CLAIMS BY THE SEED, naming the missing fact. This is the
+// standing of a mirror whose approved commit the operator has not recorded: the workflow is not emitted,
+// and the reason is a requirement to fill rather than a defect to debug.
+test fn an_owed_pin_refuses_every_lane_that_judges_claims_by_the_seed() -> Bool {
+  let gate = repository_witnesses_yml_emission(
+    profile: mirror_profile_with_owed_pin(),
+    program: fixture_program()
+  )
+  let drift = expected_projection_drift_workflow_yml(
+    profile: mirror_profile_with_owed_pin(),
+    program: mirror_drift_program()
+  )
+  let publisher = heal_publisher_workflow_yml_for(profile: mirror_profile_with_owed_pin())
+  !yaml_emission_admitted(result: gate)
+    && match drift {
+         ProjectionDriftWorkflowGenerationRefused { reason: r } => string_contains(s: r as String, pattern: "Seed_pin_owed")
+         ProjectionDriftWorkflowGenerated { content: _ } => false
+       }
+    && match publisher {
+         HealPublisherWorkflowGenerationRefused { reason: r } => string_contains(s: r as String, pattern: "Seed_pin_owed")
+         HealPublisherWorkflowGenerated { content: _ } => false
+       }
+}
+
+// A PIN THAT IS NOT AN ADDRESS IS REFUSED BY THE ROW ITSELF, before any emitter is consulted. The
+// verifier would otherwise spend a job fetching a string that cannot name an object, and every consumer
+// would refuse with text that reads like an emitter defect.
+test fn a_seed_pin_that_is_not_a_commit_sha_is_refused_by_the_row() -> Bool {
+  let broken = mirror_profile_with_seed_pin(pin: "main")
+  profile_seed_pin_is_a_commit_or_is_owed(profile: broken) == false
+    && match repository_ci_profile_refusal(profile: broken) {
+         Present { value: r } => string_contains(s: r as String, pattern: "Seed_commit_pin")
+         Absent {  } => false
+       }
+}
+
+// THE NEEDS REF IS ADMITTED BY THE WORKFLOW THAT CARRIES ITS PRODUCER, not by anything a caller hands the
+// wall. Three readings of one ref: with the emitted verifier job in front of the wall it is admitted,
+// because that job declares the output at job level from a step the job contains; with no job in front of
+// it the same ref is refused, because a Needs ref names a producer nobody has shown the wall; and a ref
+// naming a job that is not there is refused. An invented producer therefore gains nothing, because
+// inventing a name does not put a declaring job in the workflow -- which is the guarantee the previous
+// shape left to caller discipline rather than to code.
+test fn the_seed_ref_is_admitted_by_the_job_that_declares_its_output() -> Bool {
+  let seed = fixture_seed()
+  let ref_expression = match seed_pin_checkout_ref_expression(seed: seed) {
+    Present { value: e } => e
+    Absent {  } => ContextAccess { context: Needs, path: ["impossible", "outputs", "nothing"] }
+  }
+  let verifier_jobs = match seed_pin_verifier_job(
+    seed: seed, pin: fixture_seed_pin, runner: HostedRunner { label: UbuntuLatest }
+  ) {
+    Accepted { value: j, diagnostics: _ } => [j]
+    Rejected { diagnostics: _ } => []
+  }
+  (verifier_jobs |> count) == 1
+    && checkout_ref_admitted_in_jobs(ref_expression: ref_expression, jobs: verifier_jobs)
+    && !checkout_ref_admitted_in_jobs(ref_expression: ref_expression, jobs: [])
+    && !checkout_ref_admitted_in_jobs(
+         ref_expression: ContextAccess { context: Needs, path: ["some-other-job", "outputs", "committed_sha"] },
+         jobs: verifier_jobs
+       )
+}
+
+// A NAME IS NOT A PRODUCER, AND A WORKFLOW CANNOT VOUCH FOR ITSELF. Three refusals that need only the job
+// the emitter actually builds: with no workflow in front of the wall the record alone admits nothing; with
+// the carried verifier job present, a ref that names a DIFFERENT job's output is refused even though that
+// job's own honest declaration is sitting in the same list -- admission comes from the producer records, and
+// the workflow is only ever asked whether it carries the record, never whether it would like to. The
+// remaining case -- the verifier's own id, declaring from a step the job does not contain -- is mutation
+// `f`: it is a property of what the emitter can build, and it is checked through the driver, where the job
+// comes from the emitter rather than from a literal in this module.
+test fn no_job_output_is_admitted_because_the_workflow_declares_it() -> Bool {
+  let seed = fixture_seed()
+  let output_name = seed_pin_verifier_output_name()
+  match seed_pin_verifier_job(
+    seed: seed, pin: fixture_seed_pin, runner: HostedRunner { label: UbuntuLatest }
+  ) {
+    Accepted { value: j, diagnostics: _ } =>
+      checkout_ref_admitted_in_jobs(
+        ref_expression: ContextAccess { context: Needs, path: [seed_pin_verifier_job_id(), "outputs", output_name] },
+        jobs: [j]
+      )
+        && !checkout_ref_admitted_in_jobs(
+             ref_expression: ContextAccess { context: Needs, path: [seed_pin_verifier_job_id(), "outputs", output_name] },
+             jobs: []
+           )
+        && !checkout_ref_admitted_in_jobs(
+             ref_expression: ContextAccess { context: Needs, path: ["some-other-job", "outputs", output_name] },
+             jobs: [j]
+           )
+        && !checkout_ref_admitted_in_jobs(
+             ref_expression: ContextAccess { context: Needs, path: [seed_pin_verifier_job_id(), "outputs", "not-its-output"] },
+             jobs: [j]
+           )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// THE VERIFIER OUTPUT THE CHECKOUT READS IS THE PRODUCER'S PATH, spelled in one place. A second spelling
+// is how a checkout ends up reading an output no job assigns. Three forms of one fact have to agree, and
+// this states the relations rather than trusting them: the path the wall compares is the Expression's own
+// path joined on dots -- WITHOUT the `needs.` the renderer prefixes, because the fold compares the two and
+// a prefix on one side only is an allowlist that matches nothing, indistinguishable from an empty one
+// (that is exactly how every Needs-based ref in this family was once silently refused); the text a step
+// renders is that Expression interpolated; and the rendered text is pinned literally, bracket and all --
+// a job id containing `-` is not an expression identifier (extdeps.github.expressions
+// path_segment_takes_dot_form admits letters, digits and `_`), so the renderer must index it, and a ref
+// spelled any other way is a ref the lane silently stops reading.
+test fn the_seed_ref_text_is_the_producer_path_and_nothing_else() -> Bool {
+  let seed = fixture_seed()
+  let path = [seed_pin_verifier_job_id(), "outputs", seed_pin_verifier_output_name()]
+  seed_pin_verifier_output_path() == join(path, ".")
+    && interpolate(expression: ContextAccess { context: Needs, path: path })
+      == "${{ needs['verify-seed-pin'].outputs.committed_sha }}"
+}
+
+// A MIRROR ON ITS OWN COMPILER GAINS NO VERIFIER JOB. The verifier exists for the seed route alone, and
+// gunbc's own rows are the proof at the byte level; this is the same fact at the fixture level, so the
+// "no new jobs" ruling is checkable without a public workflow that has a seed.
+test fn a_profile_without_a_seed_emits_no_verifier_job() -> Bool {
+  match heal_publisher_workflow_yml_for(profile: mirror_profile_own_checkout_source()) {
+    HealPublisherWorkflowGenerated { content: c } => !string_contains(s: c, pattern: "verify-seed-pin")
+    HealPublisherWorkflowGenerationRefused { reason: _ } => false
+  }
+}
+
+// A PROFILE WITH AN OWED PIN IS A ROW THE VALIDATOR ACCEPTS AND THE EMITTERS REFUSE. The distinction is
+// the point: an unfiled requirement is not a malformed row, and the place it surfaces is the byte that
+// would have used it.
+test fn an_owed_pin_is_an_honest_row_and_an_unusable_one() -> Bool {
+  let owed = mirror_profile_with_owed_pin()
+  profile_seed_pin_is_a_commit_or_is_owed(profile: owed)
+    && match repository_ci_profile_refusal(profile: owed) {
+         Absent {  } => true
+         Present { value: r } => false
+       }
+    && !yaml_emission_admitted(result: repository_witnesses_yml_emission(profile: owed, program: fixture_program()))
+}
+
+fn mirror_profile_with_owed_pin() -> RepositoryCiProfile {
+  mirror_profile_on_seed_source(
+    seed_source: Seed_pin_owed { owed_because: "the operator owes the approved source commit for the fixture repository" }
   )
 }
 
@@ -1215,7 +1545,10 @@ fn mirror_profile_own_checkout_source() -> RepositoryCiProfile {
 // THE ROW'S SEED, SWAPPED FOR ANOTHER WITH EVERYTHING ELSE LEFT ALONE -- the overlay, the step name and the
 // rest of the row. `with_seed_source` rebuilds the SAME VARIANT of the sum with the new seed inside it, so a
 // control that changes the seed cannot accidentally change where the compiler comes from.
-fn mirror_profile_with_seed_ref(ref: NonEmptyStr) -> RepositoryCiProfile {
+// A MIRROR ROW ON A SEED NAMED THIS WAY. One builder for both pins the row can carry, so the pinned
+// control and the owed control cannot drift apart in their fixtures -- the only difference between them
+// is the SeedSource they hand in.
+fn mirror_profile_on_seed_source(seed_source: SeedSource) -> RepositoryCiProfile {
   let base = mirror_profile(seal: true, publish: true)
   let seed = match profile_public_seed(profile: base) {
     Present { value: s } => s
@@ -1230,7 +1563,8 @@ fn mirror_profile_with_seed_ref(ref: NonEmptyStr) -> RepositoryCiProfile {
       base: base,
       seed: PublicSeed {
         repository: seed.repository,
-        ref_name: ref,
+        source: seed_source,
+        verifier: seed.verifier,
         checkout_path: seed.checkout_path,
         build_command: seed.build_command,
         seed_binary_relative_path: seed.seed_binary_relative_path,
@@ -1241,6 +1575,10 @@ fn mirror_profile_with_seed_ref(ref: NonEmptyStr) -> RepositoryCiProfile {
     drift: base.drift,
     publisher: base.publisher
   }
+}
+
+fn mirror_profile_with_seed_pin(pin: String) -> RepositoryCiProfile {
+  mirror_profile_on_seed_source(seed_source: Seed_commit_pin { sha: pin })
 }
 
 // EVERY GUNBC EMITTER ADMITS THE ROW BEFORE IT RENDERS (review 89604). The four emitters that read
@@ -1352,16 +1690,24 @@ test fn the_compiler_source_selects_the_build_steps_and_not_the_presence_of_othe
           match mirror_on_own {
             Absent => false
             Present { value: own_like_names } =>
-              // The isolation step is in ONE list and not the other, and the seed's own build step is in the
-              // other and not that one. Both directions are required: a single-direction check would pass if
-              // the emitter always emitted the checkout route, and the second pair rules out always emitting
-              // the seed route.
-              any(own_names, n => n == step_display_name(s: toolchain_home_isolation_step())) &&
-                all(seed_names, n => n != step_display_name(s: toolchain_home_isolation_step())) &&
-                any(seed_names, n => n == fixture_seed().build_step_name as String) &&
+              // WHAT DIFFERS IS THE BUILD, AND ONLY THE BUILD. Both routes install a toolchain, so both
+              // carry the isolation that install requires -- `every_seed_route_toolchain_lane_is_isolation_then_install_then_pin`
+              // claims that shared half, and the version of this control before the mirror wrote the
+              // isolation into ONE list only, which is the defect read back as an expectation. The
+              // discrimination is carried in both directions by the build steps, which are route-specific:
+              // the seed's own build step appears in the seed route and never in an own-checkout route, and
+              // an own-checkout route always builds through the publisher's floor build step. The third row
+              // (a mirror that keeps its seal and publish rows but says its compiler lives in this checkout)
+              // is what makes this a reading of `source` rather than of which neighbour rows happen to exist.
+              any(seed_names, n => n == fixture_seed().build_step_name as String) &&
                 all(own_names, n => n != fixture_seed().build_step_name as String) &&
-                any(own_like_names, n => n == step_display_name(s: toolchain_home_isolation_step())) &&
-                all(own_like_names, n => n != fixture_seed().build_step_name as String)
+                any(own_names, n => n == heal_publisher_build_step_name as String) &&
+                all(seed_names, n => n != heal_publisher_build_step_name as String) &&
+                any(own_like_names, n => n == heal_publisher_build_step_name as String) &&
+                all(own_like_names, n => n != fixture_seed().build_step_name as String) &&
+                any(seed_names, n => n == heal_publisher_toolchain_install_step_name as String) &&
+                any(own_names, n => n == step_display_name(s: toolchain_home_isolation_step())) &&
+                any(own_like_names, n => n == step_display_name(s: toolchain_home_isolation_step()))
           }
       }
   }
@@ -1400,14 +1746,110 @@ test fn a_seed_built_row_without_an_overlay_builds_the_seed_and_copies_nothing()
       Accepted { value: steps, diagnostics: _ } =>
         let step_names = list_map(xs: steps, f: fn(b) { step_display_name(s: b.step) })
         any(step_names, n => n == fixture_seed().build_step_name as String) &&
-          all(step_names, n => n != step_display_name(s: toolchain_home_isolation_step()))
+          // THE TOOLCHAIN LANE IS PRESENT HERE TOO: this route installs a toolchain, so it carries the
+          // isolation and the pin. (It used to assert their absence, which is how the omission survived
+          // review of gunbc, where no row takes this arm.)
+          any(step_names, n => n == step_display_name(s: toolchain_home_isolation_step()))
     }
+}
+
+// THE TOOLCHAIN LANE, IN ORDER, IN THE ROUTE THAT ONCE SHIPPED WITHOUT IT.
+// The order is asserted with gunbc.toolchain_home_standing's own predicates -- a step IT calls an install
+// must have behind it a step IT calls an isolation, and the default-toolchain pin must come after the
+// install, because an isolated RUSTUP_HOME starts with no default for a build to resolve. A fold is used
+// rather than three `any`s precisely because order is the claim: an isolation after the install isolates
+// nothing, which is the standing module's own words.
+//
+// WHY THIS CONTROL EXISTS AT ALL. The publisher's seed arm emitted the install with neither of its two
+// companions. Nothing in gunbc could see it, because gunbc's own row takes the own-checkout arm, which did
+// compose them -- so the property was tested only where it happened to hold. The first repository to run
+// the seed arm was gunbc-private, whose publisher job is scheduled in a declared self-hosted fleet group:
+// there the home persists and is shared, and gunbc.toolchain_home_standing refused the emitted file by
+// name. Two things make this a control and not a comment: deleting the isolation from
+// gunbc.ci.repository_seed_steps seed_toolchain_lane turns it red, and the same deletion makes the
+// mirror's heal-publish.yml refuse -- the emission and the claim fail together.
+fn seed_route_toolchain_lane_is_in_order(steps: List<HealPublisherBoundStep>) -> Bool {
+  let reached = fold(steps, init: 0, f: fn(state, bound) {
+    if state == 0 && step_isolates_toolchain_homes(step: bound.step) {
+      1
+    } else if state == 1 && step_installs_toolchain(step: bound.step) {
+      2
+    } else if state == 2 && step_pins_default_toolchain(step: bound.step) {
+      3
+    } else {
+      state
+    }
+  })
+  reached == 3
+}
+
+test fn every_seed_route_toolchain_lane_is_isolation_then_install_then_pin() -> Bool {
+  match heal_publisher_seed_route_steps(seed: fixture_seed()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: steps, diagnostics: _ } => seed_route_toolchain_lane_is_in_order(steps: steps)
+  }
+}
+
+// THE ROLES ARE THE STEPS', NOT THE LIST'S. Each of the three lane members is asked what it is, of the
+// same module that admits the workflow's toolchain homes, and gets the role that answer earns: the
+// isolation is capability-neutral, the install provides the toolchain, the pin consumes it. The
+// discrimination matters in both directions -- a classifier that read position, or that fell through to a
+// default, would hand the pin's consumes-only to any step at all.
+//
+// TWO MUTATIONS MAKE THESE CONTROLS CONTROLS: giving the fall-through arm back (an unrecognised step is
+// then Accepted as the pin, and `the_publisher_refuses_a_lane_step_that_is_none_of_the_three` goes red),
+// and deleting the pin arm (the real pin step then falls to the refusal, and this row goes red).
+test fn the_publisher_lane_roles_come_from_the_steps_themselves() -> Bool {
+  let lane = seed_toolchain_lane(step_name: heal_publisher_toolchain_install_step_name)
+  match heal_publisher_seed_toolchain_role(step: lane.isolation) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: isolation_role, diagnostics: _ } =>
+      list_cover(held: isolation_role.provides, expected: [], eq: execution_capability_equal) &&
+        list_cover(held: isolation_role.consumes, expected: [], eq: execution_capability_equal) &&
+        match heal_publisher_seed_toolchain_role(step: lane.install) {
+          Rejected { diagnostics: _ } => false
+          Accepted { value: install_role, diagnostics: _ } =>
+            list_cover(
+              held: install_role.provides,
+              expected: [CargoCapability, RustcCapability, RustfmtCapability, RustupCapability],
+              eq: execution_capability_equal
+            ) &&
+              list_cover(held: install_role.consumes, expected: [], eq: execution_capability_equal) &&
+              match heal_publisher_seed_toolchain_role(step: lane.pin_default) {
+                Rejected { diagnostics: _ } => false
+                Accepted { value: pin_role, diagnostics: _ } =>
+                  list_cover(held: pin_role.provides, expected: [], eq: execution_capability_equal) &&
+                    list_cover(
+                      held: pin_role.consumes,
+                      expected: [RustupCapability, CargoCapability],
+                      eq: execution_capability_equal
+                    )
+              }
+        }
+  }
+}
+
+// THE FALL-THROUGH ARM DOES NOT EXIST, SO A STEP THAT IS NONE OF THE THREE IS REFUSED RATHER THAN
+// ANNOTATED. The build step is a real step from this route's own neighbourhood -- a run step, so not the
+// install; with none of the isolation's four command rows, so not the isolation; with none of the pin's
+// three, so not the pin. Under the fall-through it would have been called the pin, which is the fabricated
+// default this refuses: the classification would then say nothing about any step it annotated.
+test fn the_publisher_refuses_a_lane_step_that_is_none_of_the_three() -> Bool {
+  let not_a_lane_member = witness_floor_build_step(
+    step_name: "Build the witness floor",
+    build_script: "cargo build --release -p gunbc"
+  )
+  match heal_publisher_seed_toolchain_role(step: not_a_lane_member) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      string_contains(s: diagnostics_reason_lexemes(diagnostics: d), pattern: "heal_publisher_seed_lane_step_unrecognised")
+  }
 }
 
 // THE COMPOSITION AND THE SEED ARE ONE FACT, NOT TWO FIELDS THAT NEED A RULE TO AGREE. An `OverlayIngest`
 // exists only inside the variant that also carries the seed it composes into, so the row that used to be
 // refused -- an overlay with nowhere to land, a publisher sealing a candidate from one composition and
-// admitting it against another -- has no syntax (DESIGN §5: an unwritable state beats a check for it). What
+// admitting it against another -- has no syntax (gunbc.design_argument::fail_closed: an unwritable state beats a check for it). What
 // is left to claim is the projection: an overlay answer always arrives with a seed answer, and the row that
 // builds its own compiler gets neither, however many mirror-shaped rows sit beside it.
 test fn an_overlay_is_never_carried_without_the_seed_it_composes_into() -> Bool {
@@ -1616,7 +2058,8 @@ fn publisher_row_with_unfoldable_seed_build() -> RepositoryCiProfile {
           base: base,
           seed: PublicSeed {
             repository: seed.repository,
-            ref_name: seed.ref_name,
+            source: seed.source,
+            verifier: seed.verifier,
             checkout_path: seed.checkout_path,
             build_command: [ command(words: []) ],
             seed_binary_relative_path: seed.seed_binary_relative_path,
@@ -1683,4 +2126,143 @@ test fn the_publisher_refusal_names_the_diagnostic_that_refused_it() -> Bool {
           }
       }
   }
+}
+
+// ─── THE PRODUCER CANNOT SILENTLY PRODUCE NOTHING ───────────────────────────────
+// `needs` orders jobs and requires success; it does not require an OUTPUT. GitHub can suppress a job
+// output without failing its producer, an absent output reaches the consumer as the empty string, and
+// actions/checkout resolves an empty ref with no commit against the repository's DEFAULT BRANCH -- so a
+// verifier that succeeded while proving nothing would send the lane to `main` through a path nobody
+// typed. These controls are the discriminating ones: each deletes a distinct protection in the mutation
+// runs and says which control notices.
+
+fn lane_step_name(step: Step) -> String {
+  match step {
+    RunStep { name: n, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match n { Present { value: v } => v  Absent => "" }
+    UsesStep { name: n, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match n { Present { value: v } => v  Absent => "" }
+  }
+}
+
+type SeedLaneOrder {
+  guard_seen: Bool
+  checkout_seen: Bool
+  violated: Bool
+}
+
+fn seed_lane_order_step(state: SeedLaneOrder, name: String, checkout_name: String) -> SeedLaneOrder {
+  let is_guard = name == seed_pin_consumer_guard_step_name()
+  let is_checkout = name == checkout_name
+  SeedLaneOrder {
+    guard_seen: state.guard_seen || is_guard,
+    checkout_seen: state.checkout_seen || is_checkout,
+    violated: state.violated || (is_checkout && !state.guard_seen),
+  }
+}
+
+// THE GUARD AND THE CHECKOUT ARE ONE LANE, AND THE GUARD IS FIRST. They are returned as a pair by
+// seed_lane_steps, so a lane cannot carry the checkout and drop the guard; this checks the pair is real
+// and that nothing in the publisher's seed route reaches the checkout -- or the build that publishes from
+// it -- before the guard has run.
+test fn the_guard_runs_before_the_checkout_it_protects() -> Bool {
+  let seed = fixture_seed()
+  let checkout_name = join(["Checkout ", seed.repository as String], "")
+  let pair_ok = match seed_lane_steps(seed: seed, pin: fixture_seed_pin) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: lane, diagnostics: _ } =>
+      lane_step_name(step: lane.guard) == seed_pin_consumer_guard_step_name()
+        && lane_step_name(step: lane.checkout) == checkout_name
+  }
+  let order = match heal_publisher_seed_route_steps(seed: seed) {
+    Rejected { diagnostics: _ } => SeedLaneOrder { guard_seen: false, checkout_seen: false, violated: true }
+    Accepted { value: steps, diagnostics: _ } =>
+      fold(
+        steps,
+        init: SeedLaneOrder { guard_seen: false, checkout_seen: false, violated: false },
+        f: fn(acc, bound) {
+          seed_lane_order_step(state: acc, name: lane_step_name(step: bound.step), checkout_name: checkout_name)
+        }
+      )
+  }
+  pair_ok && order.guard_seen && order.checkout_seen && order.violated == false
+}
+
+// THE PROOFS ARE DATA, AND THERE ARE EXACTLY TWO OF THOSE THINGS. An absent object, a tag, a blob and a
+// tree are refused by the first row; a fetch that delivered some other object is refused by the second;
+// and a verifier whose guards were deleted is a verifier with an empty list, which is what this control
+// notices. Each row's `expected` is what makes it a check rather than a command: one compares against
+// `commit`, the other against the pin the row itself carries.
+test fn the_verifier_declares_exactly_the_two_proofs_that_make_a_pin_a_commit() -> Bool {
+  let seed = fixture_seed()
+  let proofs = seed_pin_proofs(seed: seed, pin: fixture_seed_pin)
+  count(proofs) == 2
+    && count(filter(proofs, p => p.expected == "commit")) == 1
+    && count(filter(proofs, p => p.expected == fixture_seed_pin)) == 1
+    && count(filter(proofs, p =>
+         fold(p.query, init: false, f: fn(acc, q) { acc || string_contains(s: q, pattern: "cat-file") })
+       )) == 1
+    && count(filter(proofs, p =>
+         fold(p.query, init: false, f: fn(acc, q) { acc || string_contains(s: q, pattern: "rev-parse") })
+       )) == 1
+    && for_all(xs: proofs, predicate: fn(p) { p.refusal != "" && p.variable != "" && !string_contains(s: p.variable, pattern: " ") })
+}
+
+// EVERY PROOF REFUSES, IN THE SCRIPT THAT RUNS, AND ONLY ONE PLACE IS FETCHED FROM. The unavailable pin,
+// the non-commit object and the wrong repository are three runtime outcomes; the model meets all three
+// with a named refusal in the emitted body and a single derived remote. The repository the verifier
+// fetches is the repository the checkout checks out, because both read the row's one `repository` field.
+test fn each_proof_refuses_in_the_emitted_verifier_and_only_the_rows_repository_is_fetched() -> Bool {
+  let seed = fixture_seed()
+  let proofs = seed_pin_proofs(seed: seed, pin: fixture_seed_pin)
+  let script = join(verifier_statement_texts(seed: seed, pin: fixture_seed_pin), "\n")
+  for_all(xs: proofs, predicate: fn(p) { string_contains(s: script, pattern: p.name) })
+    && string_contains(s: script, pattern: seed_pin_fetch_url(seed: seed))
+    && string_contains(s: script, pattern: seed.repository as String)
+    && string_contains(s: script, pattern: "git")
+    && !string_contains(s: script, pattern: "ls-remote")
+    && !string_contains(s: script, pattern: "refs/heads")
+    && !string_contains(s: script, pattern: "git@")
+}
+
+// A SUCCESSFUL PRODUCER WITH NO OUTPUT IS REFUSED AT THE CONSUMER, IN THE WORKFLOW THAT RUNS. Both the
+// absent case and the merely-different case refuse by name, and the value compared against is the row's
+// pin -- not the producer's word, and not `github.sha`.
+test fn a_successful_producer_without_its_output_is_refused_at_the_consumer() -> Bool {
+  let seed = fixture_seed()
+  let rendered = match bash_emit_stmts(
+    statements: seed_pin_consumer_guard_statements(seed: seed, pin: fixture_seed_pin),
+    set_e: true
+  ) {
+    Accepted { value: script, diagnostics: _ } => script
+    Rejected { diagnostics: _ } => ""
+  }
+  rendered != ""
+    && string_contains(s: rendered, pattern: "SeedPinOutputAbsent")
+    && string_contains(s: rendered, pattern: "SeedPinOutputIsNotThePin")
+    && string_contains(s: rendered, pattern: fixture_seed_pin)
+    && string_contains(s: rendered, pattern: seed_pin_consumer_guard_var_name())
+    // ...and the guard survives into the workflow that actually runs, not only into the model: the gate's
+    // emitted YAML carries the step by name and carries both refusals by name.
+    && string_contains(
+         s: expected_repository_witnesses_yml(
+           profile: mirror_profile_with_seed_pin(pin: fixture_seed_pin),
+           program: fixture_program()
+         ),
+         pattern: seed_pin_consumer_guard_step_name()
+       )
+    && string_contains(
+         s: expected_repository_witnesses_yml(
+           profile: mirror_profile_with_seed_pin(pin: fixture_seed_pin),
+           program: fixture_program()
+         ),
+         pattern: "SeedPinOutputIsNotThePin"
+       )
+    && string_contains(
+         s: expected_repository_witnesses_yml(
+           profile: mirror_profile_with_seed_pin(pin: fixture_seed_pin),
+           program: fixture_program()
+         ),
+         pattern: "SeedPinOutputAbsent"
+       )
 }

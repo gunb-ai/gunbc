@@ -7,7 +7,7 @@ import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CompileDiagnos
 
 // THE SINGLE HOME for "compile this source string and ask what it refused". These were declared
 // locally in test.claim.algebra_receiver_alias_witness, and a second witness needed the same facts --
-// copying them would have made one concept answer from two authorities, which is the fork DESIGN §3
+// copying them would have made one concept answer from two authorities, which is the fork gunbc.design_argument::single_authority
 // exists to prevent. They live here rather than inside gunbc.compile_diagnostic_census because they
 // join that census to guarantee_probe_corpus's subject lookup, and the census module must not gain an
 // edge to the probe corpus to serve a helper neither of them owns.
@@ -22,7 +22,7 @@ import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CompileDiagnos
 // refusal arm was deleted rather than annotated. Handing the union through unchanged is the same
 // repair one layer out: "observed n" and "could not run, because <cause>" are two spellings, and
 // neither is writable as the other. The carrier is REUSED, not re-declared: minting a second
-// Observed|NotRunnable here would nick-name the axis (§2, "net concepts must not grow by
+// Observed|NotRunnable here would nick-name the axis (gunbc.design_argument::minimize_redundancy, "net concepts must not grow by
 // re-invention").
 
 // THE PROBES, typed. Each hands through the builtin's union. The three selector probes consume the
@@ -137,7 +137,7 @@ fn worst_census_verdict(verdicts: List<CensusVerdict>) -> CensusVerdict {
 
 // THE ONE PROCESS BOUNDARY. Held succeeds; a Disagreed finding is exit 1 naming its reason; an Unobserved
 // refusal is exit 2 with the builtin's cause worded `not evaluated: census not runnable: <cause>` -- Code
-// 2 is the label contract's "no observation" (DESIGN "Building & checks"). This is the sole place the
+// 2 is the label contract's "no observation" (gunbc.design_document::ci_contract_blocks). This is the sole place the
 // integer appears. TODAY the harness renders any claim's ExitFailure as a FAIL row (cli_run.rs:
 // `ClaimOutcome::ExitFailure { .. } => CiWitnessVerdict::Failed`); it does NOT yet map a returned code 2
 // onto a UNOBSERVED verdict line. That mapping is a named follow-up in claim_batch's own lane (sunny-bear,

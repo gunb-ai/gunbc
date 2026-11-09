@@ -32,7 +32,7 @@ import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUn
 // WHAT ENDS IT. A producer that captures the expansion into a variable and tests the quoted
 // variable, which is the shape the grammar already renders correctly; or a grammar that offers a
 // quoted-substitution word kind, which it does not have today. The first is local and was taken;
-// the second is a grammar decision, and DESIGN section 6b's warning applies to whoever takes it:
+// the second is a grammar decision, and gunbc.design_argument::earliest_unjustified_boundary's warning applies to whoever takes it:
 // quoting the substitution kind changes every command substitution in every generated artifact,
 // including the ones in assignment position where quoting is a no-op and the ones, if any, that
 // depend on splitting.

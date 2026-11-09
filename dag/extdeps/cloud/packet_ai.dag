@@ -1,4 +1,5 @@
 module extdeps.cloud.packet_ai
+import std.types { Bearer }
 
 import std.resources { Network }
 import std.types { Int, Bool, NonEmptyStr, String, Secret, List }
@@ -12,7 +13,7 @@ import extdeps.cloud.packet_ai_contracts { packet_ai_allocation_wire_contract }
 // dash.packet.ai/api/v1/openapi (title "Packet.ai API", version 1.0.0) and its pricing page. This
 // module owns the vendor's SHAPE and nothing about how this repository uses the vendor: which
 // workloads go here, which pools are acceptable and what a pool is worth to us are supplier policy
-// in product.supplier.packet_ai (DESIGN §3, interface / realization / policy are three facts).
+// in product.supplier.packet_ai (gunbc.design_argument::interface_realization_policy, interface / realization / policy are three facts).
 //
 // THREE FACTS ABOUT THE UPSTREAM THAT A CONSUMER MUST NOT LOSE, each read from the document above:
 //

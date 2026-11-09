@@ -15,7 +15,7 @@ import v2.compiler.native_test_vocabulary { native_test_file_refusal_fatal_reaso
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
-import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
+import v2.std.diagnostic { Accepted, NodeLocus, Rejected , diagnostics_fatal, diagnostics_fatal_reason}
 import v2.std.grammar { node_atom_identity_optional }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Symbol }
@@ -218,9 +218,9 @@ fn cav_verdict_of(context: NativeTestContext, unit: Symbol, outcome: NativeCensu
       CavFileRefused { fatal_reason: cav_file_refusal_reason(context: context, unit: unit) }
     NativeCensusModuleResolveRefused { first: d, rest: _, observation: _ } =>
       CavRefused {
-        reason: d.head.reason,
-        at_atom: match d.head.at {
-          NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at)
+        reason: diagnostics_fatal_reason(d: d),
+        at_atom: match diagnostics_fatal(d: d).at {
+          NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at.node)
           _ => optional_absent()
         }
       }

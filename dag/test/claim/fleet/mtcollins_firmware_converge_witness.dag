@@ -1,6 +1,7 @@
 module test.claim.fleet.mtcollins_firmware_converge_witness
 
-import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, list_length }
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
+import std.algebra { length }
 import std.measure { second, second_count }
 import std.optional { Present, Absent }
 import extdeps.bmc.access_profile { bmc_access_route_ipmi_cipher_suite }
@@ -439,10 +440,10 @@ fn admission_of(verdict: FirmwareConvergenceVerdict) -> BaselineAdmissionRefusal
   }
 }
 
-// ── Selection (§3d) and the shared admission authority ──────────────────────────────────────────
+// ── Selection (gunbc.design_argument::selection_precedes_convergence) and the shared admission authority ──────────────────────────────────────────
 test fn baseline_selects_the_delivery() -> Bool {
   match select_mtcollins1_baseline() {
-    BaselineSelected { baseline: b, receipt: _ } => list_length(b.releases) == 4
+    BaselineSelected { baseline: b, receipt: _ } => length(b.releases) == 4
     BaselineUndecided { result: _ } => false
   }
 }
@@ -548,7 +549,7 @@ test fn fresh_host_is_due_bmc_first() -> Bool {
 test fn host_at_baseline_is_converged() -> Bool {
   let s = shape(power_off: true)
   match run(w: WorldShape { power_off: true, installed: installed_at_baseline, cpus: [], rollbacks: [], sel: Absent, endpoint: s.endpoint, managed_epoch: 1, foreign_attempt: false }, records: []) {
-    FirmwareBaselineConverged { uncited_readbacks: u } => list_length(u) == 0
+    FirmwareBaselineConverged { uncited_readbacks: u } => length(u) == 0
     _ => false
   }
 }
@@ -904,7 +905,7 @@ test fn dry_bmc_step_renders_the_vendor_block_size() -> Bool {
 // BMC 0.45.3 refuses the SOP's `raw 0x3c 0x0b` with 0xc9, so rendering it would script a known refusal.
 test fn dry_scp_step_renders_no_bank_select() -> Bool {
   let lines = dry(w: shape(power_off: true), records: [bmc_good(), step_good(t: HostBios, r: mt_collins_bios_0acod014_hpm)], image: "/srv/fw/altra_scp_signed_2.10.20230126.hpm")
-  list_length(lines) == 2
+  length(lines) == 2
     && any(lines, l => l == "ipmitool -I lanplus -H mtcollins1-bmc -U admin -f /run/bmc.pw -z 8196 hpm upgrade /srv/fw/altra_scp_signed_2.10.20230126.hpm force")
     && !any(lines, l => contains(l, "hpm check"))
     && !any(lines, l => contains(l, "raw 0x3c"))
@@ -917,7 +918,7 @@ test fn dry_cpld_step_renders_the_observed_block_size() -> Bool {
 }
 
 test fn dry_realization_renders_nothing_when_refused() -> Bool {
-  list_length(dry(w: shape(power_off: false), records: [], image: "/srv/fw/x.hpm")) == 0
+  length(dry(w: shape(power_off: false), records: [], image: "/srv/fw/x.hpm")) == 0
 }
 
 // ── The boot readback after the whole set ─────────────────────────────────────────────────────
@@ -979,7 +980,7 @@ fn readback_over(lines: List<String>, restarts: List<SelWindowEvent>) -> Firmwar
 test fn whole_set_reaching_uefi_converges_naming_every_uncited_decode() -> Bool {
   match run_booted(w: shape(power_off: true), records: whole_set(), boot: readback_over(lines: uefi_cycle, restarts: [])) {
     FirmwareBaselineConverged { uncited_readbacks: u } =>
-      list_length(u) == 4 && any(u, x => (x.target == ScpFirmware)) && any(u, x => (x.target == BmcController))
+      length(u) == 4 && any(u, x => (x.target == ScpFirmware)) && any(u, x => (x.target == BmcController))
     _ => false
   }
 }

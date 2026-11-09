@@ -3,37 +3,42 @@ module product.printed_chassis.group_duct
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import std.measure { Micrometer, micrometer, micrometer_count }
-import std.euclidean_geometry { Axis3Y }
+import std.euclidean_geometry { Axis3X, Axis3Y }
 import product.printed_chassis.assembly_geometry {
   Primitive, AssemblyPart, MechanicalInterface, Printed, Purchased, FixedFrame, LayOnXY, FrictionFitSleeve, Proposed,
-  ProfileVertex, block, part, mechanical_interface, prism,
+  ProfileVertex, block, part, mechanical_interface, tapping_into, prism, M5FanScrewIntoBlowerLug, Clearance,
 }
+import product.printed_chassis.blower_outlet_mount {
+  OutletMount, EdgeAlongY, outlet_mount_unfit, run_for_label, housing_half, outlet_socket_adds, outlet_socket_cuts, lug_arm_adds, lug_arm_cuts,
+  socket_edge_lo, socket_edge_hi, opening_edge_lo, opening_edge_hi, opening_half_thickness, outlet_mount_note, label_side_stack, lug_screw_part, housing_boxes,
+}
+import extdeps.fans.delta { delta_bfb1012m_outlet }
 import product.printed_chassis.fit_observations { a2_row_fit_plate_fit_display }
 import product.printed_chassis.duct_fit_policy { plug_and_flange_print_policy }
 import product.printed_chassis.card_end_interface {
-  CardEndInterface, FinFreeBands, BandTaper, FeaturePresent, FeatureAbsentObserved, FeatureNotObserved, feature_value, missing_feature,
+  CardEndInterface, FeaturePresent, FeatureAbsentObserved, FeatureNotObserved,
 }
 import product.printed_chassis.duct_card_catalog { DuctCard, EndFaceRead, EndFaceNeedsReading }
-import product.printed_chassis.gpu_duct { card_envelope_of }
+import product.printed_chassis.gpu_duct { card_envelope_of, BlowerDuctDesign, blower_duct_design_of }
+import extdeps.boards.types { SlotLaneObstacle }
 import product.printed_chassis.card_installation {
-  CardInstallation, InstalledCard, CardGroup, group_members, Partition, Partitioned, PartitionRefused, PartitionRefusal, partition_by_sizes,
+  CardInstallation, InstalledCard, CardGroup, CardInstance, InBoardSlot, SlotNotRecorded, group_members, Partition, Partitioned, PartitionRefused, PartitionRefusal, partition_by_sizes,
   group_contiguity, group_contiguity_text, card_separation, a2_altra_installation,
 }
 
 // ═══ A DUCT THAT SERVES A GROUP OF INSTALLED CARDS SIDE BY SIDE ═══
 //
 // The first multi-card realization (operator, 2026-11-02, for the four A2s on the ALTRAD8UD): one printed
-// part over every member's end face, seated by an outer lip around the whole row and gripped by tabs in each
-// card's fin-free tapered bands. Nothing enters the gaps between cards: at 20.32 mm per slot and an 18.62 mm
+// part over every member's end face, held by an outer sleeve around the whole row. Nothing enters the gaps between cards: at 20.32 mm per slot and an 18.62 mm
 // face, a gap is about 1.7 mm, too thin for two printed walls, so the part touches the row only on its
 // outside and on the faces themselves.
 //
 // WHAT IT IS BUILT FROM, AND NOTHING ELSE: the members' read end faces (product.printed_chassis
 // .card_end_interface), their separations from the installation (card_installation card_separation, the
 // board's slot positions times the CEM slot width), and the print-proven wall, flange and sleeve allowances
-// (duct_fit_policy plug_and_flange_print_policy). It fastens to no inserts, so it does not need them; it
-// needs the fin-free bands, because that is where its tabs go, and a card whose bands were not read refuses
-// by name. It covers each member's whole end face, so a member must have been OBSERVED to have no header
+// (duct_fit_policy plug_and_flange_print_policy). It fastens to no inserts and enters no face, so it needs
+// neither the inserts nor the fin-free bands. It covers each member's whole end face, so a member must have
+// been OBSERVED to have no header
 // there: a present header, or one nobody looked for, refuses until this realization carries a keep-out.
 // Its members come from a checked partition of the installation (card_installation partition_by_sizes),
 // which refuses an installation that cannot exist, so no geometry is drawn for cards that cannot be there.
@@ -43,16 +48,20 @@ import product.printed_chassis.card_installation {
 // height and nothing here reads where two different cards' faces sit relative to each other.
 //
 // THE FIT PLATE comes first (the A16's fit ring did the same): the card interface alone, printed to check the
-// separation, the lip and the tabs before any fan stage is printed. The fan stages are the next kind of root.
+// separation and the sleeve before any fan stage is printed. The fan stages are the next kind of root.
 
 // ═══ PLANS: AN INSTALLATION, THE OPERATOR'S GROUPING, AND WHICH GROUP ═══
 
 // fit_record is what earlier prints of this plan's parts showed (product.printed_chassis.fit_observations),
 // carried into the readme so the next print says what it answers.
-type GroupDuctPlan { id: NonEmptyStr, installation: CardInstallation, sizes: List<Int>, group: Int, fit_record: String }
+// face_bottom_above_board is the height of the members' end faces' bottom edge above the board's top face: the
+// datum that places the board's lane obstacles (extdeps.boards.types SlotLaneObstacle) in the duct's frame. A
+// plan that has not read it cannot have its blower stage checked against them, and refuses one.
+type GroupDuctPlan { id: NonEmptyStr, installation: CardInstallation, sizes: List<Int>, group: Int, fit_record: String, face_bottom_above_board: Micrometer? }
 
 // The four A2s as one group (operator, 2026-11-02: one piece over all four, served by two fans, one per pair).
-data a2_altra_row_plan: GroupDuctPlan = GroupDuctPlan { id: "a2-altra-row", installation: a2_altra_installation, sizes: [4], group: 0, fit_record: a2_row_fit_plate_fit_display() }
+// The A2s' end faces' bottom edge stands 15.2 mm above the board (operator, caliper, 2026-11-04).
+data a2_altra_row_plan: GroupDuctPlan = GroupDuctPlan { id: "a2-altra-row", installation: a2_altra_installation, sizes: [4], group: 0, fit_record: a2_row_fit_plate_fit_display(), face_bottom_above_board: Present { value: micrometer(count: 15200) } }
 
 data group_duct_plans: List<GroupDuctPlan> = [a2_altra_row_plan]
 
@@ -69,7 +78,7 @@ fn nth_group(gs: List<CardGroup>, n: Int) -> CardGroup? {
 
 // ═══ ADMISSION ═══
 
-type GroupMemberFace { member: InstalledCard, face: CardEndInterface, bands: FinFreeBands, taper: BandTaper, offset: Micrometer, length: Micrometer }
+type GroupMemberFace { member: InstalledCard, face: CardEndInterface, offset: Micrometer, length: Micrometer }
 
 type GroupFitPlateAdmission
   = GroupFitPlateAdmitted { parts: List<AssemblyPart>, interfaces: List<MechanicalInterface> }
@@ -79,21 +88,17 @@ type GroupFitPlateAdmission
   | GroupMembersMixCardModels { first: NonEmptyStr, other: NonEmptyStr }
   | GroupMemberFaceUnfit { instance: NonEmptyStr, reason: String }
   | GroupMemberConnectorNotClear { instance: NonEmptyStr, reason: String }
+  | GroupDuctAdmitted { parts: List<AssemblyPart>, interfaces: List<MechanicalInterface> }
+  | GroupBlowerUnfit { reason: String }
 
 fn member_face(first: InstalledCard, m: InstalledCard) -> GroupMemberFace? {
   match m.instance.card.end_face {
     EndFaceNeedsReading { read_obligation: _ } => Absent
-    EndFaceRead { face: f } => match feature_value(f: f.fin_free_bands) {
+    EndFaceRead { face: f } => match card_separation(from: first, to: m) {
       Absent => Absent
-      Present { value: b } => match feature_value(f: b.taper) {
+      Present { value: s } => match card_envelope_of(row: m.instance.card.row) {
         Absent => Absent
-        Present { value: tp } => match card_separation(from: first, to: m) {
-          Absent => Absent
-          Present { value: s } => match card_envelope_of(row: m.instance.card.row) {
-            Absent => Absent
-            Present { value: c } => Present { value: GroupMemberFace { member: m, face: f, bands: b, taper: tp, offset: s.across, length: c.length } }
-          }
-        }
+        Present { value: c } => Present { value: GroupMemberFace { member: m, face: f, offset: s.across, length: c.length } }
       }
     }
   }
@@ -102,15 +107,9 @@ fn member_face(first: InstalledCard, m: InstalledCard) -> GroupMemberFace? {
 fn member_unfit_reason(first: InstalledCard, m: InstalledCard) -> String {
   match m.instance.card.end_face {
     EndFaceNeedsReading { read_obligation: o } => join(["end face not read: ", o as String], "")
-    EndFaceRead { face: f } => match feature_value(f: f.fin_free_bands) {
-      Absent => join(missing_feature(name: "fin-free bands (the tabs grip there)", f: f.fin_free_bands), "; ")
-      Present { value: b } => match feature_value(f: b.taper) {
-        Absent => join(missing_feature(name: "the fin-free bands' taper (the tabs follow it)", f: b.taper), "; ")
-        Present { value: _ } => match card_envelope_of(row: m.instance.card.row) {
-          Absent => "the card row states no length to draw its envelope from"
-          Present { value: _ } => "no separation from the group's first card: its slot is not recorded"
-        }
-      }
+    EndFaceRead { face: _ } => match card_envelope_of(row: m.instance.card.row) {
+      Absent => "the card row states no length to draw its envelope from"
+      Present { value: _ } => "no separation from the group's first card: its slot is not recorded"
     }
   }
 }
@@ -127,14 +126,19 @@ fn connector_not_clear(m: InstalledCard) -> String? {
   }
 }
 
-fn admit_group_fit_plate(p: GroupDuctPlan) -> GroupFitPlateAdmission {
+fn admit_group_fit_plate(p: GroupDuctPlan) -> GroupFitPlateAdmission { admit_group(p: p, duct: false) }
+
+// THE DUCT: the fit plate's card interface with a blower stage per pair of cards on its other side.
+fn admit_group_duct(p: GroupDuctPlan) -> GroupFitPlateAdmission { admit_group(p: p, duct: true) }
+
+fn admit_group(p: GroupDuctPlan, duct: Bool) -> GroupFitPlateAdmission {
   match partition_by_sizes(inst: p.installation, sizes: p.sizes) {
     PartitionRefused { causes: cs } => GroupPartitionRefused { causes: cs }
-    Partitioned { groups: gs } => admit_group_member_faces(p: p, chosen: nth_group(gs: gs, n: p.group))
+    Partitioned { groups: gs } => admit_group_member_faces(p: p, chosen: nth_group(gs: gs, n: p.group), duct: duct)
   }
 }
 
-fn admit_group_member_faces(p: GroupDuctPlan, chosen: CardGroup?) -> GroupFitPlateAdmission {
+fn admit_group_member_faces(p: GroupDuctPlan, chosen: CardGroup?, duct: Bool) -> GroupFitPlateAdmission {
   match chosen {
     Absent => GroupPlanUnresolved { reason: join(["plan ", p.id as String, " names group ", to_string(value: p.group), ", which its partition does not have"], "") }
     Present { value: g } => {
@@ -148,8 +152,24 @@ fn admit_group_member_faces(p: GroupDuctPlan, chosen: CardGroup?) -> GroupFitPla
       let blocked = fold(ms, init: Absent, f: (acc, m) => match acc { Present { value: v } => Present { value: v } Absent => match connector_not_clear(m: m) { Present { value: r } => Present { value: GroupMemberConnectorNotClear { instance: m.instance.id, reason: r } } Absent => Absent } })
       match blocked { Present { value: refused } => return refused Absent => {} }
       let faces = fold(ms, init: [], f: (acc, m) => match member_face(first: first, m: m) { Present { value: mf } => concat(acc, [mf]) Absent => acc })
-      let parts = group_fit_plate_parts(faces: faces)
-      GroupFitPlateAdmitted { parts: parts, interfaces: group_fit_plate_joints(cards: map(filter(parts, x => match x.kind { Purchased => true _ => false }), x => x.id)) }
+      if duct == false {
+        let parts = group_fit_plate_parts(faces: faces, toward: 1)
+        return GroupFitPlateAdmitted { parts: parts, interfaces: group_fit_plate_joints(cards: map(filter(parts, x => match x.kind { Purchased => true _ => false }), x => x.id), plate_id: "FIT-PLATE") }
+      }
+      match outlet_mount_unfit() { Present { value: r } => return GroupBlowerUnfit { reason: r } Absent => {} }
+      match blower_duct_design_of(row: first.instance.card.row) {
+        Absent => GroupBlowerUnfit { reason: "the card row states no slot count, so no blower design is derived for it" }
+        Present { value: b } => {
+          let keepouts = match group_board_keepouts(first: first, faces: faces, above: p.face_bottom_above_board) {
+            BoardKeepoutsUnread { reason: r } => return GroupBlowerUnfit { reason: r }
+            BoardKeepoutsRead { parts: ks } => ks
+          }
+          let plate = group_fit_plate_parts(faces: faces, toward: 0 - 1)
+          let cards = map(filter(plate, x => match x.kind { Purchased => true _ => false }), x => x.id)
+          let stages = group_blower_stages(faces: faces, b: b)
+          GroupDuctAdmitted { parts: concat(concat(concat(group_duct_merge(plate: plate, stages: stages), stages.envelopes), stages.screws), keepouts), interfaces: concat(group_fit_plate_joints(cards: cards, plate_id: "DUCT"), stages.joints) }
+        }
+      }
     }
   }
 }
@@ -157,19 +177,23 @@ fn admit_group_member_faces(p: GroupDuctPlan, chosen: CardGroup?) -> GroupFitPla
 // ═══ GEOMETRY ═══
 //
 // Part frame: Z is the airflow axis; the members' end faces lie in Z = 0 and the cards run toward +Z, so the
-// plate sits below Z = 0 and prints plate-down with its lip and tabs pointing up, support-free. X runs along
+// plate sits below Z = 0 and prints plate-down with its sleeve pointing up, support-free. X runs along
 // each face's length with the TOP end (away from the slot) toward +X and the face centred on X = 0. Y runs
 // across the slots: the first member's PCB-side edge is Y = 0 and each member is offset by its separation.
 
 fn um(m: Micrometer) -> Int { micrometer_count(m: m) as Int }
 
-// THE TAB IS THE BAND'S OWN SHAPE (second fit plate, after product.printed_chassis.fit_observations
-// a2_row_fit_plate_fit: the first plate's thin tabs struck the slope). Each tab is the band's section offset
-// clear of it: straight in past the lip, along the slope to the flat, and across the flat into the gap before
-// the first fin, stopping short of the fin. The slope is where it grips.
-data tab_slope_clearance: Micrometer = micrometer(count: 200)
-data tab_fin_clearance: Micrometer = micrometer(count: 300)
-data tab_width_inset: Micrometer = micrometer(count: 1000)
+// NO TABS: THE SLEEVE ALONE HOLDS THE PLATE (fourth fit plate). Three plates carried tabs into each card's
+// fin-free bands: thin blades struck the slope, whole-band wedges struck the fins, and tabs gripping only the
+// start of the slope still left the plate not resting flat on the faces (product.printed_chassis
+// .fit_observations a2_row_fit_plate_fit, a2_row_fit_plate_second_fit, a2_row_fit_plate_third_fit). The tabs
+// were the only part of the plate that entered a face, so they are removed, and the plate is held instead by
+// a sleeve running further along the outside of the row (operator, 2026-11-04: "get rid of those little
+// inlays, and just extend the sleeve onto the cards so it doesn't fall off"). 20 mm is twice the 10 mm sleeve
+// that went on without interference; it is the next trial, not a qualified figure, and what lies along the
+// outside of the row past 10 mm has not been read. The fourth plate's 20 mm held and was "a bit long"
+// (operator, 2026-11-04: "make it a few mm shorter"), so it is 16 mm.
+data group_sleeve_depth: Micrometer = micrometer(count: 16000)
 
 // THE LIP CLEARANCE, per side, around the outside of the row. 0.3 mm (the unqualified sleeve allowance) was
 // loose on the first plate (fit_observations a2_row_fit_plate_fit); this is the next trial, not a qualified
@@ -180,64 +204,37 @@ fn opening_top_x(f: CardEndInterface) -> Int { um(m: f.face_length) / 2 - um(m: 
 fn opening_bottom_x(f: CardEndInterface) -> Int { opening_top_x(f: f) - um(m: f.window_length) }
 fn opening_low_y(mf: GroupMemberFace) -> Int { um(m: mf.offset) + um(m: mf.face.window_from_back) }
 
-// The finned part of the opening, less the strip each tab reaches into past its band: the bands are fin-free,
-// so covering them with plate costs no fin area, and the plate under them is what the tabs stand on.
-fn tab_reach_past_band(mf: GroupMemberFace) -> Int { um(m: mf.taper.fin_gap) - um(m: tab_fin_clearance) }
-
-fn fin_window_cut(mf: GroupMemberFace, plate: Micrometer) -> Primitive {
+// The whole read opening: nothing stands on the plate inside it.
+fn fin_window_cut(mf: GroupMemberFace, plate: Micrometer, toward: Int) -> Primitive {
   let t = um(m: plate)
-  let top = opening_top_x(f: mf.face) - um(m: mf.bands.top) - tab_reach_past_band(mf: mf)
-  let bottom = opening_bottom_x(f: mf.face) + um(m: mf.bands.bottom) + tab_reach_past_band(mf: mf)
+  let top = opening_top_x(f: mf.face)
+  let bottom = opening_bottom_x(f: mf.face)
   let wd = um(m: mf.face.window_depth)
-  block(w: top - bottom, h: wd, d: t + 2000, x: (top + bottom) / 2, y: opening_low_y(mf: mf) + wd / 2, z: 0 - t / 2)
+  block(w: top - bottom, h: wd, d: t + 2000, x: (top + bottom) / 2, y: opening_low_y(mf: mf) + wd / 2, z: 0 - toward * t / 2)
 }
 
-// One wedge in each band, its section in (X, Z) extruded across the opening's width, narrower than the
-// opening so it clears the pitched sides. `sign` is +1 for the top band (the edge at the top, the band running
-// toward -X) and -1 for the bottom band. It stands on the plate from Z = -t.
-fn band_wedge(mf: GroupMemberFace, edge: Int, band: Int, sign: Int, t: Int) -> Primitive {
-  let c = um(m: tab_slope_clearance)
-  let lip = um(m: mf.taper.lip_depth)
-  let deep = lip + um(m: mf.taper.slope_depth)
-  let inner = edge - sign * (band + tab_reach_past_band(mf: mf))
-  let w = um(m: mf.face.window_depth) - 2 * um(m: tab_width_inset)
-  let y = opening_low_y(mf: mf) + um(m: mf.face.window_depth) / 2
-  prism(outline: [
-    ProfileVertex { u: edge - sign * c, v: 0 - t },
-    ProfileVertex { u: edge - sign * c, v: lip },
-    ProfileVertex { u: edge - sign * (band + c), v: deep },
-    ProfileVertex { u: inner, v: deep },
-    ProfileVertex { u: inner, v: 0 - t },
-  ], axis: Axis3Y, length: w, x: 0, y: y, z: 0)
-}
-
-fn band_tabs(mf: GroupMemberFace, plate: Micrometer) -> List<Primitive> {
-  let t = um(m: plate)
-  [
-    band_wedge(mf: mf, edge: opening_top_x(f: mf.face), band: um(m: mf.bands.top), sign: 1, t: t),
-    band_wedge(mf: mf, edge: opening_bottom_x(f: mf.face), band: um(m: mf.bands.bottom), sign: 0 - 1, t: t),
-  ]
-}
-
-fn card_part(mf: GroupMemberFace, index: Int) -> AssemblyPart {
+fn card_part(mf: GroupMemberFace, index: Int, toward: Int) -> AssemblyPart {
   let f = mf.face
   let len = um(m: mf.length)
   let th = um(m: f.face_thickness)
   part(id: join(["CARD-", to_string(value: index + 1)], ""), name: join([mf.member.instance.card.row.product as String, " envelope, ", mf.member.instance.id as String], ""), kind: Purchased, scope: FixedFrame,
-    adds: [block(w: um(m: f.face_length), h: th, d: len, x: 0, y: um(m: mf.offset) + th / 2, z: len / 2)],
-    cuts: [block(w: um(m: f.window_length), h: um(m: f.window_depth), d: um(m: f.fin_setback), x: opening_top_x(f: f) - um(m: f.window_length) / 2, y: opening_low_y(mf: mf) + um(m: f.window_depth) / 2, z: um(m: f.fin_setback) / 2)],
-    x: 0, y: 0, z: 0, ex: 0, ey: 0, ez: 60000, plane: LayOnXY,
+    adds: [block(w: um(m: f.face_length), h: th, d: len, x: 0, y: um(m: mf.offset) + th / 2, z: toward * len / 2)],
+    cuts: [block(w: um(m: f.window_length), h: um(m: f.window_depth), d: um(m: f.fin_setback), x: opening_top_x(f: f) - um(m: f.window_length) / 2, y: opening_low_y(mf: mf) + um(m: f.window_depth) / 2, z: toward * um(m: f.fin_setback) / 2)],
+    x: 0, y: 0, z: 0, ex: 0, ey: 0, ez: toward * 60000, plane: LayOnXY,
     notes: "Envelope only: the read end face and the vendor's stated length, placed at its installed separation. The fin opening is carried as a recess as deep as the read fin setback.")
 }
 
 type IndexedFaces { index: Int, parts: List<AssemblyPart> }
 
-fn group_fit_plate_parts(faces: List<GroupMemberFace>) -> List<AssemblyPart> {
+// `toward` is the direction (+1 or -1) along Z in which the cards run from their end faces: +1 for the fit
+// plate, which prints plate-down; -1 for the duct, whose blower stages stand on the plate's other side and
+// which prints sleeve-down.
+fn group_fit_plate_parts(faces: List<GroupMemberFace>, toward: Int) -> List<AssemblyPart> {
   let policy = plug_and_flange_print_policy
   let t = um(m: policy.ring_exercised.flange_thickness)
   let wall = um(m: policy.ring_exercised.wall)
   let c = um(m: group_lip_clearance)
-  let sd = um(m: policy.allowances.sleeve_depth)
+  let sd = um(m: group_sleeve_depth)
   let half = fold(faces, init: 0, f: (acc, mf) => if um(m: mf.face.face_length) / 2 > acc { um(m: mf.face.face_length) / 2 } else { acc })
   let y_hi = fold(faces, init: 0, f: (acc, mf) => if um(m: mf.offset) + um(m: mf.face.face_thickness) > acc { um(m: mf.offset) + um(m: mf.face.face_thickness) } else { acc })
   let x_in = half + c
@@ -247,29 +244,190 @@ fn group_fit_plate_parts(faces: List<GroupMemberFace>) -> List<AssemblyPart> {
   let outer_w = 2 * x_out
   let outer_h = (y_hi_in + wall) - (y_lo_in - wall)
   let outer_y = ((y_hi_in + wall) + (y_lo_in - wall)) / 2
-  let plate = block(w: outer_w, h: outer_h, d: t, x: 0, y: outer_y, z: 0 - t / 2)
+  let plate = block(w: outer_w, h: outer_h, d: t, x: 0, y: outer_y, z: 0 - toward * t / 2)
   let lip = [
-    block(w: wall, h: outer_h, d: sd, x: 0 - x_in - wall / 2, y: outer_y, z: sd / 2),
-    block(w: wall, h: outer_h, d: sd, x: x_in + wall / 2, y: outer_y, z: sd / 2),
-    block(w: outer_w, h: wall, d: sd, x: 0, y: y_lo_in - wall / 2, z: sd / 2),
-    block(w: outer_w, h: wall, d: sd, x: 0, y: y_hi_in + wall / 2, z: sd / 2),
+    block(w: wall, h: outer_h, d: sd, x: 0 - x_in - wall / 2, y: outer_y, z: toward * sd / 2),
+    block(w: wall, h: outer_h, d: sd, x: x_in + wall / 2, y: outer_y, z: toward * sd / 2),
+    block(w: outer_w, h: wall, d: sd, x: 0, y: y_lo_in - wall / 2, z: toward * sd / 2),
+    block(w: outer_w, h: wall, d: sd, x: 0, y: y_hi_in + wall / 2, z: toward * sd / 2),
   ]
-  let tabs = fold(faces, init: [], f: (acc, mf) => concat(acc, band_tabs(mf: mf, plate: policy.ring_exercised.flange_thickness)))
-  let windows = map(faces, mf => fin_window_cut(mf: mf, plate: policy.ring_exercised.flange_thickness))
-  let plate_part = part(id: "FIT-PLATE", name: join(["Group fit plate: ", to_string(value: length(list: faces)), " end faces, outer lip and band tabs"], ""), kind: Printed, scope: FixedFrame,
-    adds: concat(concat([plate], lip), tabs),
+  let windows = map(faces, mf => fin_window_cut(mf: mf, plate: policy.ring_exercised.flange_thickness, toward: toward))
+  let plate_part = part(id: "FIT-PLATE", name: join(["Group fit plate: ", to_string(value: length(list: faces)), " end faces and an outer sleeve"], ""), kind: Printed, scope: FixedFrame,
+    adds: concat([plate], lip),
     cuts: windows,
-    x: 0, y: 0, z: 0, ex: 0, ey: 0, ez: -30000, plane: LayOnXY,
-    notes: "Print plate-down, support-free. Push it onto the row of card ends: the lip should slide over the outside of the row without force and each card's two tabs should enter its fin-free bands and grip. Checks the installed separation, the lip and the tabs before any fan stage is printed.")
-  let cards = fold(faces, init: IndexedFaces { index: 0, parts: [] }, f: (acc, mf) => IndexedFaces { index: acc.index + 1, parts: concat(acc.parts, [card_part(mf: mf, index: acc.index)]) })
+    x: 0, y: 0, z: 0, ex: 0, ey: 0, ez: 0 - toward * 30000, plane: LayOnXY,
+    notes: "Print plate-down, support-free. Push it onto the row of card ends: the sleeve should slide along the outside of the row and hold by friction, with the plate resting flat on every face. Checks the installed separation and the sleeve before any fan stage is printed.")
+  let cards = fold(faces, init: IndexedFaces { index: 0, parts: [] }, f: (acc, mf) => IndexedFaces { index: acc.index + 1, parts: concat(acc.parts, [card_part(mf: mf, index: acc.index, toward: toward)]) })
   concat([plate_part], cards.parts)
 }
 
-fn group_fit_plate_joints(cards: List<String>) -> List<MechanicalInterface> {
-  [mechanical_interface(id: "fit-plate-to-row", members: concat(["FIT-PLATE"], cards), fastener: FrictionFitSleeve, quantity: 1, status: Proposed,
-    requirement: "The lip locates over the outside of the row, 0.3 mm clear of the read faces; two tabs per card grip in its fin-free bands. Nothing enters the 1.7 mm gaps between cards, and nothing touches a PCB.")]
+fn group_fit_plate_joints(cards: List<String>, plate_id: String) -> List<MechanicalInterface> {
+  [mechanical_interface(id: "fit-plate-to-row", members: concat([plate_id], cards), fastener: FrictionFitSleeve, quantity: 1, status: Proposed,
+    requirement: join(["The sleeve runs ", to_string(value: um(m: group_sleeve_depth)), " um along the outside of the row, ", to_string(value: um(m: group_lip_clearance)), " um clear of the read faces, and holds the plate flat on every face by friction. Nothing enters a face or the gaps between cards, and nothing touches a PCB."], ""))]
 }
 
 fn group_fit_plate_readme(p: GroupDuctPlan) -> String {
-  join(["Group fit plate for ", p.id as String, ". Generated from product.printed_chassis.group_duct.\nThe card interface of the group duct alone: one plate over every member's end face, an outer lip around the row, and two tabs per card in its fin-free bands.\nPrint plate-down without support. It should seat without force; check that every tab enters its band and that the lip clears the row.\n", p.fit_record, "\n"], "")
+  join(["Group fit plate for ", p.id as String, ". Generated from product.printed_chassis.group_duct.\nThe card interface of the group duct alone: one plate over every member's end face and an outer sleeve around the row.\nPrint plate-down without support. Push it on: check that the plate rests flat on every face, that the sleeve holds it on, and that nothing along the outside of the row stops the sleeve short.\n", p.fit_record, "\n"], "")
+}
+
+// ═══ THE BLOWER STAGE: ONE DELTA BFB1012M LYING FLAT, FEEDING THE WHOLE ROW ═══
+//
+// The operator's arrangement (2026-11-04, after the first stage design was too tall for the A2 chassis: two
+// blowers standing behind the row overhung the cards' top edge by about 37 mm). The board lies flat and the cards
+// stand on it, so ONE blower lies flat behind the row at the top of the plate: its 33 mm thickness runs along
+// the cards' height, its outlet edge across the slots, and the whole mount -- socket walls, screw arm and screw
+// head -- stays at or below the cards' top edge. Its label face, carrying the arm, faces up; its intake faces
+// down toward the board, where the chassis has room. Its body hangs out behind the row above the board.
+//
+// THE PLENUM narrows in two stages because the primitives here extrude a profile along one axis and cannot loft
+// two rectangles: first the height, from the four fin openings' span to the outlet's 29.3 mm, then the width,
+// from the openings' span across the slots to the outlet's 53.9 mm, centred on it. The outlet is centred on the
+// row's openings, so the housing overhangs the row on its corner's far side (toward the first card).
+//
+// THE AIR IS AN ESTIMATE, not a qualification (product.printed_chassis.group_cooling_plan says what that would
+// take). At the operator's ~37 W per card (the A2's lowest settable cap is 40 W, extdeps.gpu.nvidia_a2) the row
+// needs about 8 L/s through its fins for a 15 K air rise; the blower's free-air flow is 10.7 L/s and its
+// zero-flow pressure 186 Pa (extdeps.fans.delta delta_bfb1012m_rating). Whether the fins' impedance leaves it
+// there is read by running the cards capped and watching their temperatures.
+data group_plenum_height_taper: Micrometer = micrometer(count: 18000)
+data group_plenum_width_taper: Micrometer = micrometer(count: 12000)
+
+type BlowerStages { adds: List<Primitive>, cuts: List<Primitive>, envelopes: List<AssemblyPart>, screws: List<AssemblyPart>, joints: List<MechanicalInterface> }
+
+type FaceSpan { x_lo: Int, x_hi: Int, y_lo: Int, y_hi: Int, top: Int }
+
+// The four openings' joint span, and the faces' top end.
+fn openings_span(faces: List<GroupMemberFace>) -> FaceSpan {
+  fold(faces, init: FaceSpan { x_lo: 1000000000, x_hi: 0 - 1000000000, y_lo: 1000000000, y_hi: 0 - 1000000000, top: 0 - 1000000000 }, f: (acc, mf) => {
+    let ylo = opening_low_y(mf: mf)
+    let yhi = ylo + um(m: mf.face.window_depth)
+    let xb = opening_bottom_x(f: mf.face)
+    let xt = opening_top_x(f: mf.face)
+    let top = um(m: mf.face.face_length) / 2
+    FaceSpan { x_lo: if xb < acc.x_lo { xb } else { acc.x_lo }, x_hi: if xt > acc.x_hi { xt } else { acc.x_hi },
+      y_lo: if ylo < acc.y_lo { ylo } else { acc.y_lo }, y_hi: if yhi > acc.y_hi { yhi } else { acc.y_hi }, top: if top > acc.top { top } else { acc.top } }
+  })
+}
+
+fn y_prism(outline: List<ProfileVertex>, x_lo: Int, x_hi: Int) -> Primitive { prism(outline: outline, axis: Axis3X, length: x_hi - x_lo, x: (x_lo + x_hi) / 2, y: 0, z: 0) }
+fn x_prism_along_y(outline: List<ProfileVertex>, y_lo: Int, y_hi: Int) -> Primitive { prism(outline: outline, axis: Axis3Y, length: y_hi - y_lo, x: 0, y: (y_lo + y_hi) / 2, z: 0) }
+
+fn group_blower_stages(faces: List<GroupMemberFace>, b: BlowerDuctDesign) -> BlowerStages {
+  let policy = plug_and_flange_print_policy
+  let t = um(m: policy.ring_exercised.flange_thickness)
+  let w = um(m: policy.ring_exercised.wall)
+  let c = um(m: b.socket_clearance)
+  let half = housing_half(thickness: b.blower.thickness, tolerance: b.blower.thickness_tolerance)
+  let sp = openings_span(faces: faces)
+  // The housing's label face sits one arm stack below the faces' top, so nothing stands above the cards.
+  let xc = sp.top - label_side_stack(clearance: b.socket_clearance) - half
+  let oh = opening_half_thickness()
+  let run = run_for_label(edge: EdgeAlongY, body: 1, toward: 1)
+  let wc = (sp.y_lo + sp.y_hi) / 2
+  let corner = wc - run * um(m: delta_bfb1012m_outlet.frame_along_edge) / 2
+  let z1 = t + um(m: group_plenum_height_taper)
+  let mz = z1 + um(m: group_plenum_width_taper)
+  let m = OutletMount { edge: EdgeAlongY, corner: corner, run: run, centre: xc, mouth_z: mz, body: 1 }
+  let oy_lo = opening_edge_lo(m: m)
+  let oy_hi = opening_edge_hi(m: m)
+  let sy_lo = socket_edge_lo(m: m, clearance: b.socket_clearance, wall: policy.ring_exercised.wall)
+  let sy_hi = socket_edge_hi(m: m, clearance: b.socket_clearance, wall: policy.ring_exercised.wall)
+  let so = half + c + w
+  // Stage 1, along Y: the height narrows from the openings to the outlet; the width stays the openings'.
+  let outer1 = x_prism_along_y(outline: [ProfileVertex { u: sp.x_lo - w, v: t - 500 }, ProfileVertex { u: sp.x_hi + w, v: t - 500 }, ProfileVertex { u: xc + oh + w, v: z1 }, ProfileVertex { u: xc - oh - w, v: z1 }], y_lo: sp.y_lo - w, y_hi: sp.y_hi + w)
+  let chan1 = x_prism_along_y(outline: [ProfileVertex { u: sp.x_lo, v: t }, ProfileVertex { u: sp.x_hi, v: t }, ProfileVertex { u: xc + oh, v: z1 + 500 }, ProfileVertex { u: xc - oh, v: z1 + 500 }], y_lo: sp.y_lo, y_hi: sp.y_hi)
+  // Stage 2, along X: the width narrows from the openings to the outlet, at the outlet's height.
+  let outer2 = y_prism(outline: [ProfileVertex { u: sp.y_lo - w, v: z1 }, ProfileVertex { u: sp.y_hi + w, v: z1 }, ProfileVertex { u: sy_hi, v: mz }, ProfileVertex { u: sy_lo, v: mz }], x_lo: xc - so, x_hi: xc + so)
+  let chan2 = y_prism(outline: [ProfileVertex { u: sp.y_lo, v: z1 }, ProfileVertex { u: sp.y_hi, v: z1 }, ProfileVertex { u: oy_hi, v: mz + 500 }, ProfileVertex { u: oy_lo, v: mz + 500 }], x_lo: xc - oh, x_hi: xc + oh)
+  let envelope = part(id: "FAN-1", name: "Delta BFB1012M radial blower envelope, lying flat behind the row", kind: Purchased, scope: FixedFrame,
+    adds: housing_boxes(m: m, half: half, edge_length: b.blower.housing_depth, rise: b.blower.housing_length),
+    cuts: [], x: 0, y: 0, z: 0, ex: 0, ey: 0, ez: 120000, plane: LayOnXY,
+    notes: "Bounding envelope only: the housing is a rounded scroll inside it. Outlet frame in the socket, label face up against the screw arm, intake facing down toward the board.")
+  BlowerStages {
+    adds: concat(concat([outer1, outer2], outlet_socket_adds(m: m, half: half, clearance: b.socket_clearance, wall: policy.ring_exercised.wall, depth: b.socket_depth)), lug_arm_adds(m: m, half: half, clearance: b.socket_clearance, wall: policy.ring_exercised.wall)),
+    cuts: concat(concat([chan1, chan2], outlet_socket_cuts(m: m, half: half, clearance: b.socket_clearance, depth: b.socket_depth)), lug_arm_cuts(m: m, half: half, clearance: b.socket_clearance)),
+    envelopes: [envelope],
+    screws: [lug_screw_part(m: m, half: half, clearance: b.socket_clearance, id: "SCREW-1")],
+    joints: [group_blower_joint(k: 1)],
+  }
+}
+
+fn group_duct_merge(plate: List<AssemblyPart>, stages: BlowerStages) -> List<AssemblyPart> {
+  map(plate, x => if x.id == "FIT-PLATE" {
+    AssemblyPart { id: "DUCT", name: "Group duct: the fit plate and sleeve over the row's end faces, and one flat Delta BFB1012M socket feeding them all", kind: x.kind, scope: x.scope,
+      adds: concat(x.adds, stages.adds), cuts: concat(x.cuts, stages.cuts), at: x.at, explode: x.explode, print_plane: x.print_plane,
+      notes: join(["Print sleeve-down (the plate's card side toward the bed) with supports: under the plate inside the sleeve, and under the screw arm where it runs past the socket. ", outlet_mount_note(), " Then push the duct onto the row of card ends: the sleeve slides along the outside of the row and holds by friction."], "") }
+  } else { x })
+}
+
+fn group_blower_joint(k: Int) -> MechanicalInterface {
+  tapping_into(i: mechanical_interface(id: join(["blower-", to_string(value: k), "-to-socket"], ""), members: ["DUCT", join(["FAN-", to_string(value: k)], ""), join(["SCREW-", to_string(value: k)], "")], fastener: M5FanScrewIntoBlowerLug, quantity: 1, status: Proposed,
+    requirement: "The blower's outlet frame sits in its socket on the ledges around the opening, label face against the arm; one M5 x 10 fan screw through the arm into the lug of the hole nearer the outlet retains it."), members: [join(["SCREW-", to_string(value: k)], "")])
+}
+
+fn group_duct_readme(p: GroupDuctPlan) -> String {
+  join(["Group duct for ", p.id as String, ". Generated from product.printed_chassis.group_duct.\nOne printed part, DUCT: the fit plate and its ", to_string(value: um(m: group_sleeve_depth) / 1000), " mm sleeve over the row's end faces, and behind it a two-stage plenum to one outlet socket for a Delta BFB1012M lying flat, label face up under a screw arm.\n",
+    "Print sleeve-down with supports (under the plate inside the sleeve and under the screw arm). PETG.\n",
+    "Assembly: ", outlet_mount_note(), " Then push the duct onto the card ends. The blower lies flat behind the row with its top at or below the cards' top edge, its body over the board and its intake facing down.\n",
+    "Check at the fit: the plate rests flat on every face and the sleeve holds; the blower seats in its socket without rocking and the screw reaches its lug; nothing under the blower (the coin cell, headers) touches it or its plenum; the intake has free air below it.\n",
+    p.fit_record, "\n"], "")
+}
+
+// ═══ THE BOARD'S LANE OBSTACLES, AS KEEP-OUTS IN THE DUCT'S FRAME ═══
+//
+// Everything the board model says stands proud in a slot lane past the cards' ends (extdeps.boards.types
+// SlotLaneObstacle; the Altra's coin cell is the first, operator 2026-11-04, read after a blower design that did
+// not know it was there) becomes a Clearance part the CAD check refuses any printed part to enter. The lane is
+// placed by the same separation the cards are (card_installation card_separation, from the group's first card
+// to a card of the same model in the obstacle's slot), so an obstacle in a lane no member occupies is still
+// placed; the depth is its distance from the bracket plane less the card's length.
+type BoardKeepouts = BoardKeepoutsRead { parts: List<AssemblyPart> } | BoardKeepoutsUnread { reason: String }
+
+fn group_board_keepouts(first: InstalledCard, faces: List<GroupMemberFace>, above: Micrometer?) -> BoardKeepouts {
+  let obstacles = match first.slot { InBoardSlot { board: b, designator: _ } => b.lane_obstacles SlotNotRecorded { read_obligation: _ } => [] }
+  if length(list: obstacles) == 0 { return BoardKeepoutsRead { parts: [] } }
+  match above {
+    Absent => BoardKeepoutsUnread { reason: "the board under this row carries lane obstacles (the coin cell), and the plan has not read how high the cards' end faces stand above the board, so the blower stage cannot be checked against them" }
+    Present { value: h } => {
+      // The lane is placed from the group's FIRST card, the one card_separation measures from; admission has
+      // already refused a group of mixed card models (GroupMembersMixCardModels), so its face and length are
+      // every member's.
+      match first_member_face(faces: faces) {
+        Absent => BoardKeepoutsUnread { reason: "the group has no member face to place the board's obstacles from" }
+        Present { value: f0 } => board_keepouts_from(first: first, f0: f0, h: h, obstacles: obstacles)
+      }
+    }
+  }
+}
+
+fn first_member_face(faces: List<GroupMemberFace>) -> GroupMemberFace? {
+  fold(faces, init: Absent, f: (acc, mf) => match acc { Present { value: v } => Present { value: v } Absent => Present { value: mf } })
+}
+
+fn board_keepouts_from(first: InstalledCard, f0: GroupMemberFace, h: Micrometer, obstacles: List<SlotLaneObstacle>) -> BoardKeepouts {
+      let f = um(m: f0.face.face_length) / 2
+      let th = um(m: f0.face.face_thickness)
+      let len = um(m: f0.length)
+      let board_x = 0 - f - um(m: h)
+      fold(obstacles, init: BoardKeepoutsRead { parts: [] }, f: (acc, o) => match acc {
+        BoardKeepoutsUnread { reason: r } => BoardKeepoutsUnread { reason: r }
+        BoardKeepoutsRead { parts: done } => {
+          let lane = match first.slot {
+            InBoardSlot { board: b, designator: _ } => card_separation(from: first, to: InstalledCard { instance: first.instance, slot: InBoardSlot { board: b, designator: o.slot } })
+            SlotNotRecorded { read_obligation: _ } => Absent
+          }
+          match lane {
+            Absent => BoardKeepoutsUnread { reason: join(["the board's ", o.label as String, " is in ", o.slot as String, "'s lane, which cannot be placed relative to the group's first card"], "") }
+            Present { value: sep } => {
+              let e = um(m: o.half_extent)
+              let y = um(m: sep.across) + th / 2
+              let z = um(m: o.depth_from_bracket_plane) - len
+              BoardKeepoutsRead { parts: concat(done, [part(id: join(["KEEPOUT-", o.slot as String], ""), name: join(["Board keep-out: ", o.label as String, " in ", o.slot as String, "'s lane"], ""), kind: Clearance, scope: FixedFrame,
+                adds: [block(w: um(m: o.height_above_board), h: 2 * e, d: 2 * e, x: board_x + um(m: o.height_above_board) / 2, y: y, z: z)],
+                cuts: [], x: 0, y: 0, z: 0, ex: 0, ey: 0, ez: 0, plane: LayOnXY,
+                notes: "Keep-out only: no printed part may enter it.")]) }
+            }
+          }
+        }
+      })
 }

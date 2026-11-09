@@ -28,7 +28,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // element obligation and declared_type_inhabitance decides it, so
 // record_literal_container_element_mismatch_at_call_arg_still_refuses asserts
 // DeclaredTypeNotInhabited at "generic type argument". The witness is not deleted
-// (DESIGN 4b(4)): it is the permanent regression control. The temporary expected-red admission
+// (gunbc.design_argument::guarantee_ladder (dissolution on climb)): it is the permanent regression control. The temporary expected-red admission
 // was the retired floor_expected_red chunk_23 row.
 
 fn w_nominal_record_at_call_arg_red() -> Bool {

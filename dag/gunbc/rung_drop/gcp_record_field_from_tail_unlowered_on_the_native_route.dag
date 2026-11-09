@@ -1,0 +1,37 @@
+// Declared at the 2026-11-07 unification; see `gunbc.rung_drop`'s header on what that name now covers.
+
+module gunbc.rung_drop.gcp_record_field_from_tail_unlowered_on_the_native_route
+
+import std.types { List, NonEmptyStr, String }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { Standing, RungDrop, TypedDeclaration, Enumerated, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// THE SUBJECT, ONE SENTENCE. The native route (the emitted compiler's v2 body-lowering fold) lowers a
+// record field that carries a `from` (wire-key) tail, the way it already lowers a service io field.
+// Today it does not: `v2.compiler.body_lowering_fold` `body_lower_field_decl_block_payload`
+// (src/v2/compiler/body_lowering_fold.dag) refuses a field whose first wire key is a `from` tail as
+// `body_lowering_reason_interface_member_unmodeled` -- its own note is the sentence "a record-field
+// `from` tail still refuses as body_lowering_reason_interface_member_unmodeled (it is not a service io
+// field)." So `extdeps.cloud.gcp.gcp`, whose record carries a `from`-tailed field, refuses to emit on
+// the native route. `gunbc.rung_drop.variant_fields_unlowered_on_the_native_route` is the same shape of
+// native-route frontier, not this frontier: that one records variant-field lowering and match-arm binder
+// binding being observed on the interpreted v2 stages but not on the native route; this one records the
+// record-field `from` tail, a different member and a different fold site, so it is its own class.
+data gcp_record_field_from_tail_unlowered_on_the_native_route_population: FreeSemigroup<String> = FreeSemigroup {
+  head: "extdeps.cloud.gcp.gcp: the native route refuses the record's `from`-tailed (wire-key) field at `v2.compiler.body_lowering_fold` `body_lower_field_decl_block_payload` as `body_lowering_reason_interface_member_unmodeled`, because that tail is not a service io field and the v2 body lowering models no record-field `from` tail; the gcp workflow emitter is the only renderer of this body and nothing on the required path exercises it natively, which is why the refusal stood unrecorded until the shared repository CI profile witness was chased to it (2026-11-07)",
+  tail: []
+}
+
+data gcp_record_field_from_tail_unlowered_on_the_native_route: RungDrop = RungDrop {
+  identity: "gcp_record_field_from_tail_unlowered_on_the_native_route" as NonEmptyStr,
+  subject: "the native route (the emitted compiler's v2 body-lowering fold) lowers a record field carrying a `from` (wire-key) tail, so extdeps.cloud.gcp.gcp emits instead of refusing body_lowering_reason_interface_member_unmodeled",
+  declared: "2026-11-07",
+  standing: Standing { declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged { replacement: "a v2 body-lowering stage models the record-field `from` tail (wire-key) in `v2.compiler.body_lowering_fold` `body_lower_field_decl_block_payload` the way a service io field is already modeled, so that tail lowers on the native route rather than refusing as body_lowering_reason_interface_member_unmodeled" },
+    population: Enumerated { members: gcp_record_field_from_tail_unlowered_on_the_native_route_population },
+    restoration_trigger: "on the native route, extdeps.cloud.gcp.gcp emits with no body_lowering_reason_interface_member_unmodeled refusal: a record field carrying a `from` (wire-key) tail lowers in `v2.compiler.body_lowering_fold` `body_lower_field_decl_block_payload`, the way a service io field does; a name-bound probe runs that emit and fails it at that refusal until this is so"
+  } }
+}

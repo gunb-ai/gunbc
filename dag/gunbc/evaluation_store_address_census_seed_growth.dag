@@ -17,7 +17,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // the seed's compile and tokenize pipeline. There is no substrate representation of
 // resolve_entry_graph_shared, interpreter_blocking_diagnostic_messages_with_source_indices, or dag_parse_environment
 // tokenize, so a .dag-only re-derivation would be a SECOND detector beside the compiler -- the
-// fork DESIGN section 3 refuses. The instruments therefore call those seed functions.
+// fork gunbc.design_argument::single_authority refuses. The instruments therefore call those seed functions.
 //
 // WHY THREE BUILTINS AND NOT ONE. compile_dag_importer_resolved_call_edges and
 // compile_dag_callsite_resolved_call_edges are one host with two selection predicates (import

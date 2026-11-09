@@ -4,8 +4,10 @@ import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import product.placement_supply { PhysicalAssetIdentity }
 import product.electrical.connectivity { ElectricalDesignIdentity, TerminalIdentity, component_instance_identity }
+import product.electrical.photograph { BytesNotInStore }
 import product.electrical.continuity { EvidenceRef, OperatorPhotograph, SellerListingPhotograph }
 import extdeps.external_authority { TranscribedUncited }
+import extdeps.electronic_component.types { designator_eq, designator_of }
 import extdeps.nvidia.p4261 { p4261_e1 }
 import extdeps.nvidia.p4261.population { p4261_position }
 import extdeps.nvidia.p4261.connectors { P4261ContactInventory, p4261_contact_inventories }
@@ -52,13 +54,14 @@ import product.p4261.evidence {
   j20_inventory_assessment,
 }
 import product.p4261.findings { CarrierFinding, ComponentAcrossInput, J20ContactInventory, J20InventoryMatchesRevision, J20Polarity, finding_established, judge_finding }
-import product.p4261.e1_b { e1_d2, e1_design, e1_input, e1_j20, e1_j20_housing, p4261_e1_layout }
+import product.p4261.e1_b { e1_d2, e1_input, e1_j20, e1_j20_housing, p4261_e1_layout }
+import product.p4261.e1_design { e1_design }
 import product.p4261.k1_a { p4261_k1_layout }
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────────────────────
 
 fn with_census(base: CarrierLayoutObservation, census: ConnectorPositionCensus) -> CarrierLayoutObservation {
-  CarrierLayoutObservation {
+  CarrierLayoutObservation { ambiguous_designators: [],
     asset: base.asset, design: base.design, revision: base.revision, markings: base.markings, module_receptacles: base.module_receptacles,
     backplane_connectors: base.backplane_connectors, j20: census, j20_calipers: base.j20_calipers, edge_high_speed_connectors: base.edge_high_speed_connectors,
     management_io_survey: base.management_io_survey, management_io: base.management_io, components: base.components, measured: base.measured, input: base.input,
@@ -67,7 +70,7 @@ fn with_census(base: CarrierLayoutObservation, census: ConnectorPositionCensus) 
 }
 
 fn unlabelled(base: CarrierLayoutObservation) -> CarrierLayoutObservation {
-  CarrierLayoutObservation {
+  CarrierLayoutObservation { ambiguous_designators: [],
     asset: base.asset, design: base.design, revision: base.revision, markings: [], module_receptacles: base.module_receptacles,
     backplane_connectors: base.backplane_connectors, j20: base.j20, j20_calipers: base.j20_calipers, edge_high_speed_connectors: base.edge_high_speed_connectors,
     management_io_survey: base.management_io_survey, management_io: base.management_io, components: base.components, measured: base.measured, input: base.input,
@@ -77,7 +80,7 @@ fn unlabelled(base: CarrierLayoutObservation) -> CarrierLayoutObservation {
 
 fn second_e1() -> CarrierLayoutObservation {
   let b = p4261_e1_layout
-  CarrierLayoutObservation {
+  CarrierLayoutObservation { ambiguous_designators: [],
     asset: "p4261-e1-supplied-second" as PhysicalAssetIdentity, design: "p4261-e1-supplied-second" as ElectricalDesignIdentity, revision: b.revision, markings: b.markings,
     module_receptacles: b.module_receptacles, backplane_connectors: b.backplane_connectors, j20: b.j20, j20_calipers: b.j20_calipers,
     edge_high_speed_connectors: b.edge_high_speed_connectors, management_io_survey: b.management_io_survey, management_io: b.management_io,
@@ -86,7 +89,7 @@ fn second_e1() -> CarrierLayoutObservation {
 }
 
 fn photo() -> EvidenceRef {
-  OperatorPhotograph { taken_on: "supplied", locator: "supplied photograph" }
+  OperatorPhotograph { citation: BytesNotInStore { taken_on: "supplied", locator: "supplied photograph", obligation: "operator re-supplies the frame so its bytes can be hashed into the store" } }
 }
 
 fn listing() -> EvidenceRef {
@@ -115,7 +118,10 @@ fn extra_latch(n: Nat) -> HousingPosition {
 }
 
 fn e1_claim() -> P4261ContactInventory {
-  match (filter(p4261_contact_inventories, c => (c.position.designator as String) == "J20")).first() {
+  match (filter(
+    p4261_contact_inventories,
+    c => designator_eq(a: c.position.designator, b: designator_of(verbatim: "J20"))
+  )).first() {
     Present { value: c } => c
     Absent => P4261ContactInventory { position: p4261_position(revision: p4261_e1, designator: "J20"), latch_row_positions: 0, away_row_positions: 0, standing: TranscribedUncited { read_obligation: "missing" } }
   }
@@ -249,7 +255,7 @@ test fn support_needs_this_connector_this_board_and_our_reading() -> Bool {
 
 fn with_input_housing(h: ConnectorHousing) -> CarrierLayoutObservation {
   let b = p4261_e1_layout
-  CarrierLayoutObservation {
+  CarrierLayoutObservation { ambiguous_designators: [],
     asset: b.asset, design: b.design, revision: b.revision, markings: b.markings, module_receptacles: b.module_receptacles,
     backplane_connectors: b.backplane_connectors, j20: b.j20, j20_calipers: b.j20_calipers, edge_high_speed_connectors: b.edge_high_speed_connectors,
     management_io_survey: b.management_io_survey, management_io: b.management_io, components: b.components, measured: b.measured,

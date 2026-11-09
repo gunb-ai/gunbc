@@ -29,7 +29,7 @@ import v2.compiler.resolve { ResolveRefusalReason, resolve_refusal_reason_symbol
 // vocabulary has not been modelled contributes nothing -- that population is declared as the rung
 // drop gunbc.rung_drop fatal_reasons_outside_a_closed_stage_vocabulary, not assumed empty.
 //
-// THE JOIN IS PURE AND TAKES ITS INPUTS AS VALUES (DESIGN section 3, a witness discriminates at one
+// THE JOIN IS PURE AND TAKES ITS INPUTS AS VALUES (gunbc.design_argument::single_authority, a witness discriminates at one
 // interface): refusal_reason_ownership_findings reads a vocabulary list, an ownership roster and a
 // debt roster, so the controls supply planted vocabularies and rosters while exactly one claim runs
 // the real reflections against the real rosters.
@@ -40,12 +40,12 @@ type StageRefusalVocabulary {
 }
 
 // A stage's reflected vocabulary, or the refusal to reflect it -- never an empty list standing for
-// a type the reflection could not read (DESIGN section 5, a failure arm refuses, never widens).
+// a type the reflection could not read (gunbc.design_argument::fail_closed, a failure arm refuses, never widens).
 type StageVocabularyObservation
   = StageVocabularyReflected(StageRefusalVocabulary)
   | StageVocabularyUnreflectable { stage: String, type_name: Symbol }
 
-// THE DEBT CONTRACT (DESIGN section 5: a monotone debt contract over a closed subject universe). The
+// THE DEBT CONTRACT (gunbc.design_argument::fail_closed: a monotone debt contract over a closed subject universe). The
 // reasons already producible without a ownership row when this join landed are named here one by
 // one; the join is set membership at identity grain, never a count. A row is never deleted: when its
 // debt ends it takes the disposition that ended it, so a removal always carries its cause, and the

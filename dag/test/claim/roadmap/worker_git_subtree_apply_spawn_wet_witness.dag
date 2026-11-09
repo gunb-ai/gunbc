@@ -92,7 +92,14 @@ import test.claim.roadmap.witness_supplied_instance {
   witness_supplied_roots_are_off_the_live_host, witness_refused_instance,
   witness_unnameable_principal,
 }
-import gunbc.roadmap.roadmap_belt_actuate { BeltExecStepsOutcome, ExecStepsOk, ExecStepFailed }
+import gunbc.roadmap.roadmap_belt_actuate { BeltExecStepsOutcome, ExecStepsOk, ExecStepFailed,
+  // Called bare three times below as the gate the worker unit start sits behind; declared as
+  // gunbc.roadmap.roadmap_belt_actuate belt_worker_git_entry_grant_readback and never imported
+  // here -- the same
+  // bare_name_resolved_by_proximity_standing_in_for_resolution residual (gunbc#15247), and why this
+  // entry reported a FIFTH 'no established callee identity' where roadmap_dashboard_instance_apply
+  // alone reports three.
+  belt_worker_git_entry_grant_readback }
 
 // THE HOST ROUTE, THE PRODUCTION ONE: run_shell_command_capture over LocalExec. An ArgvCommand goes in as an
 // ArgvCommand, which is what makes a refusal here a real refusal and not a string comparison.
@@ -954,7 +961,7 @@ test fn the_worktree_grant_makes_the_checkout_editable_and_its_proof_refuses_wit
 // the same frontier is why this file carries a WitnessExclusionRow instead of pretending coverage). So what
 // runs HERE for real is the gate's own argv over a real per-attempt entry; the ROUTE that consults the
 // gate's verdict and the REFUSAL TO START THE UNIT are observed by the lab arm, where bright-moth-475 runs
-// a real dispatch on srv1 at this head composed with main. DESIGN.md 3: the last execution of the real path
+// a real dispatch on srv1 at this head composed with main. gunbc.design_argument::witness_one_interface: the last execution of the real path
 // is never removed, only moved to where it can run.
 test fn the_spawn_grants_the_attempt_entry_and_refuses_to_start_the_unit_without_it() -> Bool {
   let root = wet_out(command: mktemp_directory_command(template: "/tmp/wre3-entry-XXXXXX" as NonEmptyStr))
@@ -1455,7 +1462,7 @@ test fn the_unit_document_leg_reads_absence_by_what_its_caller_established() -> 
 //      HEAD-less .git with exit 0, which would have needed a second HEAD-based premise; that behaviour was
 //      NEVER observed -- it was inferred from a run whose gate text was itself broken, and the qualification
 //      host contradicts it. No consumer requires refusing a well-formed HEAD whose object is missing -- a
-//      corrupt repository no producer makes -- so the premise models ONE read, not two. DESIGN section 4d.)
+//      corrupt repository no producer makes -- so the premise models ONE read, not two. gunbc.design_argument::epistemic_humility.)
 //
 // RED on main: #14660 deleted the gate builder and its command text, and the typed premise builder did not
 // exist there, so the whole gate block cannot build at main -- the discriminating arms.

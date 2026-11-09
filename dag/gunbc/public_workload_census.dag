@@ -21,9 +21,7 @@ import extdeps.github.workflow_runs {
   workflow_job_name_matrix_value_parenthetical,
   workflow_job_name_matrix_parenthetical_standing,
 }
-import std.decl_ref { DeclarationRef, declaration_ref_eq, decl_ref }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
+import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import gunbc.runner.runner_label_resolution {
   resolve_runner_label,
   arm_standing,
@@ -58,34 +56,10 @@ import gunbc.runner.runner_label_resolution {
 // test is not a baseline; an unobserved cache is not warm; provider use is not verified spend;
 // a census outcome does not authorize a trial.
 //
-// DECLARED FRONTIER (DESIGN section 3c). This module is the census: rows and selection folds
+// DECLARED FRONTIER (gunbc.design_argument::consumption). This module is the census: rows and selection folds
 // land here. The executing consumer that *replays* a selected job is incumbent-head-to-head,
 // a separate year_end_plan item blocked on runner-canary and fabric-m0. A witness that imports
 // these declarations is not that consumer.
-
-data public_workload_census_replay_consumer_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.public_workload_census", decl_name: "selected_workloads"),
-    reason: "the examined job population and the two-or-three complementary selection land in this change; incumbent-head-to-head is the named later consumer that replays those jobs. Nothing outside test.claim in this change drives a trial or a comparison from selected_workloads. WorkflowJobRun.labels ARE consumed here by observed_job_labels to settle observed architecture and provider against the declared readings. run_attempt is a separate consumption obligation: see public_workload_census_run_attempt_consumer_frontier_rows",
-    dissolution: unbound_dissolution(description: "NAMED CONSUMER: gunbc-private strategy.year_end_plan item incumbent-head-to-head (blocked on runner-canary and fabric-m0). TRIGGER: a production func outside test.claim calls selected_workloads (or reads workload_census) to bind a replay or comparison. SUFFICIENT FOR deleting this row. NOT satisfied by a witness importing this module"),
-  ),
-]
-
-data public_workload_census_run_attempt_consumer_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.public_workload_census", decl_name: "observed_job_run_attempt"),
-    reason: "WorkflowJobRun.labels reach observed_arm_standing (via candidate_observed_architecture) and observed_provider_standing (via candidate_observed_provider), which are compared with the declared readings. run_attempt is copied onto BaselineAdmitted.run_attempt; correctness_admitted_workloads matches only the admitted arm, and the other readers are witness binders. Copying is not the capability the retired workflow_job_run_observed_runner_frontier_rows trigger named: an OBSERVED attempt that a production fold can tell apart from attempt 1",
-    dissolution: unbound_dissolution(description: "NAMED CONSUMER: gunbc-private strategy.year_end_plan item incumbent-head-to-head. TRIGGER: a production func outside test.claim matches BaselineAdmitted.run_attempt or observed_job_run_attempt to select or refuse a run attempt. SUFFICIENT FOR deleting this row. NOT satisfied by copying run_attempt onto BaselineAdmitted, nor by a witness comparing the field to 1"),
-  ),
-]
-
-data public_workload_census_declared_runner_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.public_workload_census", decl_name: "DeclaredRunner"),
-    reason: "DeclaredRunner (DeclaredLabel | DeclaredExpression with hand-authored alternatives), inspected_yaml_job_names, and inspected_job_matrix_axes are inspection transcripts. gunbc#11270 drafts extdeps.languages.yaml.gha_workflow_read into the Actions RunnerSpec (HostedRunner, SelfHosted, RunsOnLabel, RunsOnExpression) and evaluates expressions per matrix combination. Until that lands, these rows are authored census facts, not a parse of the inspected workflow blob",
-    dissolution: unbound_dissolution(description: "NAMED CONSUMER: gunbc#11270 gha_workflow_read / RunnerSpec. TRIGGER: a production fold in gunbc.public_workload_census reads RunnerSpec (or equivalent) from the inspected workflow blob instead of DeclaredRunner, inspected_yaml_job_names, and inspected_job_matrix_axes. SUFFICIENT FOR deleting DeclaredRunner, the hand-authored DeclaredExpression.alternatives, inspected_yaml_job_names, inspected_job_matrix_axes, and this row. NOT satisfied by adding more authored alternatives, YAML-name rows, or matrix-axis rows"),
-  ),
-]
 
 type DeclaredRunner
   = DeclaredLabel { label: String }
@@ -791,7 +765,7 @@ type ResourceRequirements
   | ResourceRequirementsUnobserved { obligation: NonEmptyStr }
 
 // CandidateSelection is complementary census coverage, not realization selection
-// (DESIGN §3b stated departure from §3d). std.decision / std.pareto choose one
+// (gunbc.design_argument::conformance stated departure from gunbc.design_argument::selection_precedes_convergence). std.decision / std.pareto choose one
 // realization on a funded multi-axis field and bind a SelectionReceipt. This item
 // asks for two or three complementary jobs kept visible with rejected and unresolved
 // rows. SelectedWorkload is an authored coverage pick, not SelectedWithin. rank orders
@@ -1026,6 +1000,7 @@ data candidate_biome_test: WorkloadCandidate = WorkloadCandidate {
       created_at: Absent,
       started_at: Present { value: "2026-09-04T16:03:32Z" },
       completed_at: Present { value: "2026-09-04T16:08:13Z" },
+      steps: none,
     },
     repository: "biomejs/biome",
     workflow_path: ".github/workflows/main.yml",
@@ -1090,6 +1065,7 @@ data candidate_pdns_dnsdist_arm: WorkloadCandidate = WorkloadCandidate {
       created_at: Absent,
       started_at: Present { value: "2026-09-04T09:57:28Z" },
       completed_at: Present { value: "2026-09-04T10:07:09Z" },
+      steps: none,
     },
     repository: "PowerDNS/pdns",
     workflow_path: ".github/workflows/build-and-test-all.yml",
@@ -1159,6 +1135,7 @@ data candidate_openobserve_arm_build: WorkloadCandidate = WorkloadCandidate {
       created_at: Absent,
       started_at: Present { value: "2026-09-01T10:02:21Z" },
       completed_at: Present { value: "2026-09-01T10:27:44Z" },
+      steps: none,
     },
     repository: "openobserve/openobserve",
     workflow_path: ".github/workflows/build-pr-image.yml",
@@ -1230,6 +1207,7 @@ data candidate_openobserve_amd64: WorkloadCandidate = WorkloadCandidate {
       created_at: Absent,
       started_at: Present { value: "2026-09-01T10:02:15Z" },
       completed_at: Absent,
+      steps: none,
     },
     repository: "openobserve/openobserve",
     workflow_path: ".github/workflows/build-pr-image.yml",
@@ -1285,6 +1263,7 @@ data candidate_openobserve_manifest: WorkloadCandidate = WorkloadCandidate {
       created_at: Absent,
       started_at: Present { value: "2026-09-01T10:28:12Z" },
       completed_at: Absent,
+      steps: none,
     },
     repository: "openobserve/openobserve",
     workflow_path: ".github/workflows/build-pr-image.yml",
@@ -1340,6 +1319,7 @@ data candidate_biome_test_windows: WorkloadCandidate = WorkloadCandidate {
       created_at: Absent,
       started_at: Present { value: "2026-09-04T16:03:31Z" },
       completed_at: Present { value: "2026-09-04T16:13:50Z" },
+      steps: none,
     },
     repository: "biomejs/biome",
     workflow_path: ".github/workflows/main.yml",
@@ -1389,6 +1369,7 @@ data candidate_biome_test_macos: WorkloadCandidate = WorkloadCandidate {
       created_at: Absent,
       started_at: Present { value: "2026-09-04T16:08:06Z" },
       completed_at: Absent,
+      steps: none,
     },
     repository: "biomejs/biome",
     workflow_path: ".github/workflows/main.yml",
@@ -1436,6 +1417,7 @@ data candidate_openobserve_summary: WorkloadCandidate = WorkloadCandidate {
       created_at: Absent,
       started_at: Present { value: "2026-09-01T10:29:11Z" },
       completed_at: Absent,
+      steps: none,
     },
     repository: "openobserve/openobserve",
     workflow_path: ".github/workflows/build-pr-image.yml",

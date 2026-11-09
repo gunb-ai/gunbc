@@ -1,9 +1,11 @@
 module test.claim.runner.runner_service_activation_witness
 
+import gunbc.runner.runner_host_deploy { runner_host_spec_of }
 import test.claim.fleet.fleet_host_grant_fixture { witness_grants_rendered }
 import gunbc.fleet.fleet_converge_terminal { FleetConvergeApplyTerminal, FullyApplied, PartiallyApplied }
 
-import std.types { Bool, String, NonEmptyStr, Int, List, list_length }
+import std.types { Bool, String, NonEmptyStr, Int, List }
+import std.algebra { length }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.host_identity { HostIdentity }
 import extdeps.posix.shell_command_language { posix_single_quote }
@@ -228,8 +230,8 @@ test fn emitted_apply_carries_enable_and_start_for_every_desired_unit() -> Bool 
   let d = wt_srv4_deploy()
   let units = runner_host_activation_units(deploy: d)
   let text = witness_apply_text(deploy: d, readiness: witness_ready_readiness(deploy: d))
-  list_length(items: units) == list_length(items: desired_runner_slot_members(deploy: d))
-    && list_length(items: units) > 0
+  length(xs: units) == length(xs: desired_runner_slot_members(deploy: d))
+    && length(xs: units) > 0
     && witness_all_units_present(text: text, units: units, verb: systemctl_enable_verb)
     && witness_all_units_present(text: text, units: units, verb: systemctl_start_verb)
 }
@@ -241,7 +243,7 @@ test fn emitted_apply_carries_enable_and_start_for_every_desired_unit() -> Bool 
 // readiness-blind path this lane exists to stop being the only one.
 //
 // THE PROHIBITION IS ON ENABLE FUSED WITH --now, NOT ON THE FLAG. This row refused any `--now` in the
-// apply text, which is broader than its subject (DESIGN §4d, over-prohibition): #11204 (1d5c804fe6)
+// apply text, which is broader than its subject (gunbc.design_argument::epistemic_humility, over-prohibition): #11204 (1d5c804fe6)
 // added retirement inhibition, `systemctl mask --now` on an authorized surplus unit, and the runner
 // family header names it, so the row went red on text that contains no activation at all. Masking
 // a unit that must stop serving is exactly the case where stopping it now is the point. The pattern
@@ -275,7 +277,7 @@ test fn emitted_activation_enables_before_it_starts() -> Bool {
   runner_transition_sequence_label(plans: plans) == "enable,start"
     && runner_activation_refusal_count(plans: plans) == 0
     && runner_activation_admitted_operation_count(plans: plans)
-         == list_length(items: runner_host_activation_units(deploy: d)) * 2
+         == length(xs: runner_host_activation_units(deploy: d)) * 2
 }
 
 // THE REFUSED POLE. It supplies the readiness every production caller supplies today, and asserts
@@ -371,11 +373,11 @@ test fn each_transition_grant_authorizes_its_own_command_and_not_the_fusion() ->
 // still equals the desired slots exactly -- that is the conjunct that pins activation.
 test fn grants_carry_one_enable_and_one_start_per_desired_slot() -> Bool {
   let d = wt_srv4_deploy()
-  let desired = list_length(items: desired_runner_slot_members(deploy: d))
-  let slices = list_length(items: fabric_cell_host_slots(deploy: d))
-  let acts = runner_slot_activation_operations(deploy: d)
+  let desired = length(xs: desired_runner_slot_members(deploy: d))
+  let slices = length(xs: fabric_cell_host_slots(spec: runner_host_spec_of(deploy: d)))
+  let acts = runner_slot_activation_operations(members: desired_runner_slot_members(deploy: d))
   let all_ops = runner_host_privileged_operations(deploy: d)
-  list_length(items: acts) == desired * 2
+  length(xs: acts) == desired * 2
     && fold(all_ops, init: 0, f: (acc, op) => match op { SystemdEnableUnit { unit: _ } => acc + 1  _ => acc }) == desired
     && fold(all_ops, init: 0, f: (acc, op) => match op { SystemdStartUnit { unit: _ } => acc + 1  _ => acc }) == desired + slices
 }
@@ -388,8 +390,8 @@ test fn grants_carry_one_enable_and_one_start_per_desired_slot() -> Bool {
 test fn the_reserved_fabric_cell_takes_no_activation_grant() -> Bool {
   let srv3_units = runner_host_activation_units(deploy: wt_srv3_deploy())
   let srv3_desired = desired_runner_slot_members(deploy: wt_srv3_deploy())
-  list_length(items: srv3_units) == list_length(items: srv3_desired)
-    && list_length(items: srv3_units) < wt_srv3_deploy().runner_count
+  length(xs: srv3_units) == length(xs: srv3_desired)
+    && length(xs: srv3_units) < wt_srv3_deploy().runner_count
     && !fold(
          srv3_units,
          init: false,
@@ -436,7 +438,7 @@ test fn the_declared_stall_agrees_with_the_executed_refusal() -> Bool {
 // THE SAFETY ROW STATES A MITIGATABLE RUNG, AND THIS IS THE ROW THAT REDS IF SOMEBODY INFLATES IT.
 // The host boundary is not structural: gunbc.runner.runner_host_grants installs the raw systemctl verbs for
 // the job user, so the grantee can run enable and start directly, outside the admission entirely.
-// Claiming StructurallyGuaranteed here would be the section 4b(1) inflation in the module whose job
+// Claiming StructurallyGuaranteed here would be the gunbc.design_argument::guarantee_ladder (rung honesty) inflation in the module whose job
 // is to stop an unadmitted activation, so the rung is asserted rather than left to a reader's
 // charity -- and asserted as an EQUALITY on the current rung, not merely as below-ceiling, because
 // below-ceiling would still pass at MechanicallyPreventable.
@@ -462,7 +464,7 @@ test fn the_refusal_names_how_many_units_and_which_set() -> Bool {
   let srv4_units = runner_host_activation_units(deploy: wt_srv4_deploy())
   let srv3_units = runner_host_activation_units(deploy: wt_srv3_deploy())
   let text = witness_apply_text(deploy: wt_srv4_deploy(), readiness: runner_activation_readiness_unobserved_no_transaction)
-  string_contains(s: text, pattern: concat("units=", to_string(list_length(items: srv4_units))))
+  string_contains(s: text, pattern: concat("units=", to_string(length(xs: srv4_units))))
     && string_contains(s: text, pattern: concat("unit_set=", runner_transition_affected_set_identity(units: srv4_units)))
     && runner_transition_affected_set_identity(units: srv3_units)
          != runner_transition_affected_set_identity(units: srv4_units)
@@ -522,7 +524,7 @@ test fn observed_converged_units_plan_no_refusal_under_unobserved_readiness() ->
   )
   runner_activation_refusal_count(plans: plans) == 0
     && (plans |> all(p => match p {
-      TransitionConverged { transition: _, units: us } => list_length(items: us) == list_length(items: desired_runner_slot_members(deploy: deploy))
+      TransitionConverged { transition: _, units: us } => length(xs: us) == length(xs: desired_runner_slot_members(deploy: deploy))
       TransitionAdmitted { transition: _, operations: _ } => false
       TransitionRefused { transition: _, host_label: _, reason: _, affected_units: _ } => false
     }))
@@ -547,7 +549,7 @@ test fn observed_enabled_inactive_units_refuse_only_the_start_transition() -> Bo
     }))
     && (plans |> any(p => match p {
       TransitionRefused { transition: RunnerStartTransition, host_label: _, reason: _, affected_units: us } =>
-        list_length(items: us) == list_length(items: desired_runner_slot_members(deploy: deploy))
+        length(xs: us) == length(xs: desired_runner_slot_members(deploy: deploy))
       TransitionRefused { transition: RunnerEnableTransition, host_label: _, reason: _, affected_units: _ } => false
       TransitionAdmitted { transition: _, operations: _ } => false
       TransitionConverged { transition: _, units: _ } => false
@@ -562,7 +564,7 @@ test fn unobserved_standings_refuse_both_transitions_over_every_unit() -> Bool {
   runner_activation_refusal_count(plans: plans) == 2
     && (plans |> all(p => match p {
       TransitionRefused { transition: _, host_label: _, reason: _, affected_units: us } =>
-        list_length(items: us) == list_length(items: desired_runner_slot_members(deploy: deploy))
+        length(xs: us) == length(xs: desired_runner_slot_members(deploy: deploy))
       TransitionAdmitted { transition: _, operations: _ } => false
       TransitionConverged { transition: _, units: _ } => false
     }))

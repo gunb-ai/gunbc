@@ -5,7 +5,7 @@ import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, Repla
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_approval_intent_digest_rows }
 
-// DECLARED 4b(3) DROP (gunbc#13004, 2026-10-02; granted by the allocation landing lane,
+// DECLARED gunbc.design_argument::guarantee_ladder (no silent regression) DROP (gunbc#13004, 2026-10-02; granted by the allocation landing lane,
 // snappy-gull-889 msg_75d78dfe). The DECLARATION lives here; the POPULATION's authority is
 // `v2.workflow.floor_eval_step_cost_drop` `floor_eval_step_cost_drop_approval_intent_digest_rows`.
 // It is its own list because growing another drop's list is a new drop.
@@ -22,7 +22,7 @@ import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_approva
 // every binding and separation claim reads the intent as a supplied value inside the budget. What
 // remains here is ONE inhabitance claim per constructor: the real digest, and the gate admitting
 // exactly that revision while refusing another. Supplying the digest as a fixture would remove the
-// last execution of the real request path (DESIGN section 3, the pairing obligation). Both members
+// last execution of the real request path (gunbc.design_argument::witness_one_interface, the pairing obligation). Both members
 // are also admitted at `v2.workflow.floor_cost_debt_admission` `approval_intent_digest_typed_admissions`.
 data approval_intent_digest_new_witness_eval_step_cost_population: List<String> = floor_eval_step_cost_drop_approval_intent_digest_rows |> map(m => concat(concat(m.identity, ": over the new-witness eval-step budget, rostered in v2.workflow.floor_eval_step_cost_drop floor_eval_step_cost_drop_approval_intent_digest_rows; measured by "), m.measured_by))
 

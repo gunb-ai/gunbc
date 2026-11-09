@@ -1,0 +1,264 @@
+module gunbc.host.host_budget_preflight
+
+// THE DEPLOY PATH ASKS THE SLOT THE QUESTION THE FOLD WOULD ASK -- AND EARLIER.
+//
+// WHAT THIS IS. A read-only admission the dashboard-deploy job runs BEFORE the deploy fold step: read
+// /proc/self/cgroup, walk the v2 bounding dirs, probe memory.max and memory.high, and refuse by name
+// unless a limit that BOUNDS this process is present. The fold's own gate stays authoritative --
+// cli_run's typed_module_cache_cap_derivation refuses an unreadable budget before resolving the
+// corpus (src/v1/stage0/src/cli_run/entry_resolve.rs, the HostBudgetUnreadable arms) -- and this
+// admission does not replace or widen it. What it changes is WHERE the job learns: today, on a slot
+// whose unit drifted from the declared shape (DESIGN recurring_failure_mode
+// the_live_runner_unit_memory_shape_drifts_from_the_declared_slot), the job's first budget word arrives
+// deep inside the fold's resolve -- after the dispatch has spent the approval gate and a chunk of the
+// fold's ~10-minute budget -- and it arrives as one line at the end of a long step. This step answers
+// in seconds, at the top of the deploy run, naming every probed file and what it said (limited N,
+// unlimited, absent, unreadable), so the operator's converge decision gets a receipt-shaped failure
+// instead of a fold post-mortem. This is the earliest unjustified boundary for failure (c) (run
+// 38865847078, srv1, HostBudgetUnreadable at resolve): the deploy paid fold-cost on a host whose
+// budget was never declared; the admission moves the SAME question earlier, which is moving it
+// cheaper, not widening anything (gunbc.design_argument::fail_closed).
+//
+// WHY THE REQUIREMENT IS memory.max (OR ITS v1 ANALOGUE) AND NOT memory.high. The authority is
+// gunbc.host.host_budget_source, and this admission asks it the question rather than re-deriving an
+// answer: host_budget_source_bounds_this_process is the single place that says which sources constrain
+// allocation (memory.max: observed AND enforced; memory.high: an observed throttle that allocation may
+// cross while the kernel reclaims; MemTotal/MemAvailable and any environment integer: not bounds at
+// all). Probing memory.high only, and calling it an envelope, would be the second representation gunbc.design_argument::single_authority
+// forbids -- an envelope that allocation walks through is not an envelope.
+//
+// WHY THE CACHE-CAP ENVIRONMENT GUARD IS PART OF THE REQUIREMENT.
+// GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES short-circuits the fold's budget gate entirely
+// (entry_resolve.rs reads it before any host read). A deploy fold running with that set is NOT running
+// under the slot's bound -- it is running under a hand-typed eviction ceiling that hides whether the
+// slot exists at all. That is fine for development and disqualifying for the deploy path, so a deploy
+// dispatch carrying it is refused by name here, at the same place and for the same reason the fold's
+// own gate refuses an unreadable budget. GUNBC_MEMORY_BUDGET_BYTES is NOT refused: per the authority's
+// disposition row it may only REQUEST a lower planning ceiling, never replace the observation, so it
+// cannot hide an absent envelope.
+//
+// WHAT IS NOT HERE. No cgroup-v1 walk: the fleet's runners are systemd units on cgroup v2 (the heal
+// lane's own cgroup-diag reads memory.max/memory.high paths under actions-runner@<host>.service), so a
+// v1 probe would be a second hierarchy model with no live consumer; if a v1 host ever joins the fleet
+// the probe list grows by one file name and the authority already has the source arm for it. No bind,
+// no create, no write: every effect here is a read. GUNBC_BIND_MEMORY_CGROUP_BYTES stays out -- the
+// fleet jobs refuse to self-bind a leaf (memory_envelope_receipt_seed_growth: MemoryCgroupBindRefused,
+// designed for containerized remote builds, not fleet hosts), and the slot's limit belongs to the
+// unit, not to the step.
+//
+// THE SEED MIRROR, DECLARED RATHER THAN LEFT IMPLICIT (the pattern this repo uses for every value the
+// seed hand-realizes): the files probed, the Unlimited rendering, and the two environment names mirror
+// src/v1/stage0/src/memory_governor.rs (read_host_budget_resolution / read_env_declared_bytes / the
+// GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES read in cli_run's typed_module_cache_cap_derivation). A change
+// to the seed's budget sources is a change to this probe list; the witness here pins the verdicts the
+// seed's arms imply.
+
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.algebra { length }
+import std.optional { Optional, Present, Absent }
+import std.measure { ByteSize, byte_size_count }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.linux.proc_self_cgroup { proc_self_cgroup_unified_hierarchy_paths }
+import extdeps.linux.cgroup_v2 { cgroup_v2_mount_point }
+import extdeps.linux.cgroup_v2_memory { CgroupMemoryLimitValue, CgroupMemoryLimited, CgroupMemoryUnlimited, CgroupMemoryLimitUnparseable, parse_cgroup_memory_limit }
+import gunbc.host.host_budget_source { HostBudgetSource, BudgetSourceCgroupMemoryMax, BudgetSourceCgroupMemoryHigh, HostBudgetObservation, HostBudgetObserved, host_budget_source_label, host_budget_source_bounds_this_process }
+import gunbc.actions_run_binding { actions_variable_trimmed }
+
+data proc_self_cgroup_path: String = "/proc/self/cgroup"
+data cgroup_memory_max_file_name: String = "memory.max"
+data cgroup_memory_high_file_name: String = "memory.high"
+data gunbc_typed_module_cache_max_entries_env_name: String = "GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES"
+
+// ONE PROBE RESULT: the authority's own source (gunbc.host.host_budget_source already distinguishes
+// which file was probed; a string key here would be a SECOND representation of that fact, and the
+// Absent arms of a string dispatch are exactly the validation gunbc.design_argument::fail_closed's correctness-by-construction
+// forbids -- "Stronger than catching a wrong state is making it unwritable") and what the file said.
+// Only the two probe constructors below build one, so source and file are born together and cannot
+// desynchronize. Unreadable carries the transport's own words -- "absent" and "not readable to this
+// process" are different operators' problems and the receipt must not blur them.
+type BudgetProbe {
+  source: HostBudgetSource,
+  value: BudgetProbeValue,
+}
+
+type BudgetProbeValue
+  = ProbeLimited { bytes: ByteSize }
+  | ProbeUnlimited
+  | ProbeUnreadable { detail: String }
+
+type HostBudgetPreflightVerdict
+  = PreflightAdmitted { source_label: String, bytes: ByteSize }
+  | PreflightCeilingOverrideRefused { env_name: String }
+  | PreflightMembershipAbsent { detail: String }
+  | PreflightNoBoundingBudget { probes: List<String> }
+
+// THE RULING, PURE ON THE PROBES. Admission needs a file whose source the authority calls a bound
+// (host_budget_source_bounds_this_process -- memory.max or its v1 analogue) AND whose read says a
+// number. Anything else -- unlimited, unreadable, high-only, nothing -- refuses with every probe line
+// rendered, because the absence is only actionable if it says WHAT IT SAW.
+fn admit_host_budget_probes(
+  ceiling_override_present: Bool,
+  membership_readable: Bool,
+  probes: List<BudgetProbe>
+) -> HostBudgetPreflightVerdict {
+  if ceiling_override_present {
+    PreflightCeilingOverrideRefused { env_name: gunbc_typed_module_cache_max_entries_env_name }
+  } else if !membership_readable {
+    PreflightMembershipAbsent { detail: proc_self_cgroup_path }
+  } else {
+    // One fold, one decision: the first probe whose value the file says is a number AND whose
+    // source the authority calls a bound. Every arm of every match here is reachable -- the
+    // authority's own observation carrier (HostBudgetObserved) is the winner's shape, so the
+    // ruling never re-derives or re-validates what the fold already established.
+    match fold(probes, init: Absent, f: first_bounding_observation) {
+      Present { value: HostBudgetObserved { source: source, bytes: bytes } } =>
+        PreflightAdmitted { source_label: host_budget_source_label(s: source) as String, bytes: bytes }
+      Absent => PreflightNoBoundingBudget { probes: render_budget_probes(probes: probes) }
+    }
+  }
+}
+
+// The fold step: a probe either IS a bounded observation (number + bounding source) or it is not;
+// no arm is unreachable, and a probe whose file name was never a memory.max/memory.high cannot be
+// built at all -- the source arrives fully constructed by the constructors below.
+fn first_bounding_observation(acc: Optional<HostBudgetObservation>, p: BudgetProbe) -> Optional<HostBudgetObservation> {
+  match acc {
+    Present { value: found } => Present { value: found }
+    Absent =>
+      match p.value {
+        ProbeLimited { bytes: bytes } =>
+          if host_budget_source_bounds_this_process(s: p.source) {
+            Present { value: HostBudgetObserved { source: p.source, bytes: bytes } }
+          } else {
+            Absent
+          }
+        ProbeUnlimited => Absent
+        ProbeUnreadable { detail: _ } => Absent
+      }
+  }
+}
+
+// The authority's label already spells file and directory ("cgroup memory.max (<dir>)"); the probe
+// line is that label plus what the file said.
+fn budget_probe_text(p: BudgetProbe) -> String {
+  let value_text = match p.value {
+    ProbeLimited { bytes: bytes } => join(["limited ", to_string(byte_size_count(b: bytes))], "")
+    ProbeUnlimited => "unlimited"
+    ProbeUnreadable { detail: detail } => join(["unreadable: ", detail], "")
+  }
+  join([host_budget_source_label(s: p.source) as String, " = ", value_text], "")
+}
+
+fn render_budget_probes(probes: List<BudgetProbe>) -> List<String> {
+  map(probes, p => budget_probe_text(p: p))
+}
+
+fn host_budget_preflight_refusal(verdict: HostBudgetPreflightVerdict) -> String {
+  match verdict {
+    PreflightAdmitted { source_label: source_label, bytes: bytes } =>
+      join(["host budget preflight admitted: ", source_label, " ", to_string(byte_size_count(b: bytes))], "")
+    PreflightCeilingOverrideRefused { env_name: env_name } =>
+      join(["host budget preflight refused: the deploy dispatch sets ", env_name, ", which short-circuits the fold's own budget gate before any host read (src/v1/stage0/src/cli_run/entry_resolve.rs reads it first); a fold running under a hand-typed eviction ceiling is not a fold running under the slot's bound, so the deploy path refuses it by name; unset it to deploy"], "")
+    PreflightMembershipAbsent { detail: detail } =>
+      join(["host budget preflight refused: ", detail, " could not be read, so this process cannot name the cgroup that is supposed to bound it; the fold's own gate refuses the same way (HostBudgetUnreadable) -- this step just says it before the fold is paid for (dag/gunbc/host/host_budget_source.dag)"], "")
+    PreflightNoBoundingBudget { probes: probes } =>
+      join(["host budget preflight refused: no file probed declares a limit that BOUNDS this process (memory.max or its v1 analogue; memory.high alone is a throttle, not a bound -- gunbc.host.host_budget_source host_budget_source_bounds_this_process). Probes: ", join(probes, " | "), ". This is DESIGN's the_live_runner_unit_memory_shape_drifts_from_the_declared_slot: the runner unit's memory shape, not the deploy, is what needs the fix (operator-dispatched converge)."], "")
+  }
+}
+
+// THE EFFECTS HALF: read membership, walk the bounding dirs the typed reader yields, probe both files
+// under each, hand the pure ruling everything it needs to name the absence. One Read per file; the
+// order is the hierarchy's own (innermost first), so the admitted source is the tightest probed bound
+// the hierarchy reports -- the fold derives its own cache cap and is authoritative for it.
+fn read_budget_probe_value(cgroup_dir: String, file_name: String) -> BudgetProbeValue {
+  let read = Filesystem.Read(path: join([cgroup_dir, "/", file_name], ""))
+  if !read.success {
+    ProbeUnreadable { detail: read.error }
+  } else {
+    match parse_cgroup_memory_limit(body: read.content) {
+      CgroupMemoryLimited { bytes: bytes } => ProbeLimited { bytes: bytes }
+      CgroupMemoryUnlimited => ProbeUnlimited
+      CgroupMemoryLimitUnparseable { body: body } => ProbeUnreadable { detail: join(["unparseable body: ", body], "") }
+    }
+  }
+}
+
+// THE ONLY TWO WAYS TO BUILD A PROBE: source arm and file name are born together here, so the
+// dispatch the string key used to need -- and the dead arms it carried -- cannot be expressed.
+fn probe_cgroup_max(cgroup_dir: String) -> BudgetProbe {
+  BudgetProbe {
+    source: BudgetSourceCgroupMemoryMax { cgroup_dir: cgroup_dir as NonEmptyStr },
+    value: read_budget_probe_value(cgroup_dir: cgroup_dir, file_name: cgroup_memory_max_file_name),
+  }
+}
+
+fn probe_cgroup_high(cgroup_dir: String) -> BudgetProbe {
+  BudgetProbe {
+    source: BudgetSourceCgroupMemoryHigh { cgroup_dir: cgroup_dir as NonEmptyStr },
+    value: read_budget_probe_value(cgroup_dir: cgroup_dir, file_name: cgroup_memory_high_file_name),
+  }
+}
+
+// THE WALK, LEAF TO ROOT. The fold's gate does not ask only the cgroup the process sits IN; it
+// walks the ancestor chain to the mount root, because the slot's memory.max is declared on the
+// UNIT directory (actions-runner@srv1.service) and a step process may sit in a child of it
+// (gunbc.host.memory_envelope: the governor's leaf-to-root binding-cap walk). Asking only the leaf
+// here would refuse deploys the authoritative gate admits -- answering a NARROWER question than
+// the gate is exactly the gunbc.design_argument::single_authority drift this step exists to prevent. Pure so the witness pins the
+// shape without a host: parent(dir) truncates at the last '/' above the mount, and the chain
+// always terminates at the mount itself.
+fn cgroup_parent_dir(path: String, mount: String) -> String {
+  match last_slash_index(path: path, from: path.length() - 1, floor: length(mount)) {
+    Present { value: cut } => path.substring(start: 0, end: cut)
+    Absent => mount
+  }
+}
+
+fn last_slash_index(path: String, from: Int, floor: Int) -> Optional<Int> {
+  if from < floor {
+    Absent
+  } else if path.substring(start: from, end: from + 1) == "/" {
+    Present { value: from }
+  } else {
+    last_slash_index(path: path, from: from - 1, floor: floor)
+  }
+}
+
+fn cgroup_ancestors(dir: String, mount: String) -> List<String> {
+  if dir == mount {
+    [mount] as List<String>
+  } else {
+    concat([dir] as List<String>, cgroup_ancestors(dir: cgroup_parent_dir(path: dir, mount: mount), mount: mount))
+  }
+}
+
+fn probe_cgroup_dirs(dirs: List<String>) -> List<BudgetProbe> {
+  fold(map(dirs, d => [probe_cgroup_max(cgroup_dir: d), probe_cgroup_high(cgroup_dir: d)] as List<BudgetProbe>), init: [] as List<BudgetProbe>, f: (acc, pair) => concat(acc, pair))
+}
+
+// THE STEP'S ENTRY. Reads only: /proc/self/cgroup, the two interface files per cgroup on each
+// membership line's leaf-to-root chain, and two environment names. Exits 0 exactly when a bounding
+// limit is present anywhere on those chains -- the same shape as the fold's walk, so the step can
+// never refuse a run the gate would admit; every refusal names itself and carries the probe lines.
+fn admit_host_budget_declared() -> ProcessExit {
+  let ceiling_override = actions_variable_trimmed(name: gunbc_typed_module_cache_max_entries_env_name as NonEmptyStr) != ""
+  let membership = Filesystem.Read(path: proc_self_cgroup_path)
+  let dirs = if membership.success {
+    fold(map(proc_self_cgroup_unified_hierarchy_paths(content: membership.content), p => cgroup_ancestors(
+      dir: concat(cgroup_v2_mount_point as String, p as String),
+      mount: cgroup_v2_mount_point as String,
+    )), init: [] as List<String>, f: (acc, chain) => concat(acc, chain))
+  } else {
+    [] as List<String>
+  }
+  let verdict = admit_host_budget_probes(
+    ceiling_override_present: ceiling_override,
+    membership_readable: membership.success,
+    probes: probe_cgroup_dirs(dirs: dirs)
+  )
+  match verdict {
+    PreflightAdmitted { source_label: source_label, bytes: bytes } => ExitSuccess
+    _ => exit_failure(reason: host_budget_preflight_refusal(verdict: verdict))
+  }
+}

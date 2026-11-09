@@ -55,7 +55,7 @@ fn transport_kind_parses(kind: String) -> Bool {
 }
 
 // One claim per kind: the four parses are independent cases, so each pays one parse under its own
-// budget rather than four under one (DESIGN section 3, a witness discriminates at one interface).
+// budget rather than four under one (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface).
 test fn the_rest_transport_kind_parses_holds() -> Bool { transport_kind_parses(kind: "rest") }
 
 test fn the_shell_transport_kind_parses_holds() -> Bool { transport_kind_parses(kind: "shell") }

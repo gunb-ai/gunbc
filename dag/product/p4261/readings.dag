@@ -57,6 +57,7 @@ import extdeps.electronic_component.types {
   TvsDiodeSpec,
   UndervoltageEnable,
   VoltageWithstand,
+  RectifierSpec,
 }
 import product.electrical.carrier_phase {
   carrier_phase_standing,
@@ -721,13 +722,14 @@ fn bench_of(layout: CarrierLayoutObservation) -> List<NodeVoltageObservation> {
 
 fn identified_row(c: InstalledComponent) -> ElectronicComponentRow? {
   match c.identification {
-    IdentifiedByMarking { row, marking: _ } => Present { value: row }
+    IdentifiedByMarking { row, observation: _ } => Present { value: row }
     MarkingSharedByMakers { rows: _, marking: _ } => Absent
     MarkingCandidate { row: _, marking: _, discriminator: _ } => Absent
     RatingPrintedOnBody { rating: _, marking: _ } => Absent
     ResistanceCodeRead { milliohms: _, marking: _ } => Absent
     MarkingUnresolved { marking: _, discriminator: _ } => Absent
     FootprintUnpopulated { evidence: _ } => Absent
+    BodySeenMarkingUnread { evidence: _ } => Absent
   }
 }
 
@@ -748,6 +750,10 @@ fn mosfet_of(c: InstalledComponent) -> MosfetSpecification? {
       RootOfTrustSpec { root_of_trust: _ } => Absent
       SerialFlashSpec { flash: _ } => Absent
       SwitchingRegulatorSpec { regulator: _ } => Absent
+      BusMultiplexerSpec { multiplexer: _ } => Absent
+      UsbHubSpec { hub: _ } => Absent
+      ClockFanoutSpec { clock: _ } => Absent
+      RectifierSpec { rectifier: _ } => Absent
     }
   }
 }
@@ -769,6 +775,10 @@ fn controller_of(c: InstalledComponent) -> HotSwapControllerSpecification? {
       RootOfTrustSpec { root_of_trust: _ } => Absent
       SerialFlashSpec { flash: _ } => Absent
       SwitchingRegulatorSpec { regulator: _ } => Absent
+      BusMultiplexerSpec { multiplexer: _ } => Absent
+      UsbHubSpec { hub: _ } => Absent
+      ClockFanoutSpec { clock: _ } => Absent
+      RectifierSpec { rectifier: _ } => Absent
     }
   }
 }
@@ -789,13 +799,14 @@ fn register_of(c: InstalledComponent) -> ShiftRegisterSpecification? {
 // reads unconditionally.
 fn translator_row_of(c: InstalledComponent) -> ElectronicComponentRow? {
   match c.identification {
-    IdentifiedByMarking { row, marking: _ } => Present { value: row }
+    IdentifiedByMarking { row, observation: _ } => Present { value: row }
     MarkingCandidate { row, marking: _, discriminator: _ } => Present { value: row }
     MarkingSharedByMakers { rows: _, marking: _ } => Absent
     RatingPrintedOnBody { rating: _, marking: _ } => Absent
     ResistanceCodeRead { milliohms: _, marking: _ } => Absent
     MarkingUnresolved { marking: _, discriminator: _ } => Absent
     FootprintUnpopulated { evidence: _ } => Absent
+    BodySeenMarkingUnread { evidence: _ } => Absent
   }
 }
 

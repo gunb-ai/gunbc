@@ -2,7 +2,7 @@ module gunbc.fleet.fleet_endpoint
 
 // HOW A SERVICE ON A FLEET MEMBER IS ADDRESSED, AND WHAT IT IS ALLOWED TO REACH.
 //
-// WHAT THIS MODULE IS. The other half of gunbc.plans.fleet_naming_reach_access P2: the endpoint identity
+// WHAT THIS MODULE IS. The other half of gunbc.plans.fleet_naming_reach_access (deleted 2026-11-08) P2: the endpoint identity
 // that replaces the raw-string endpoints the fleet passes today, and the reach demand that says what a
 // member may be reached for -- with the AUTHORIZATION asked as a provider-neutral question rather than
 // as a Tailscale ACL. Declarations only; the producers are migrated in P3-P5.
@@ -15,7 +15,7 @@ module gunbc.fleet.fleet_endpoint
 // place the string entered, which the plan's Decision D5 records as the whole point ("the gate at the
 // place the string enters, not at each place it is read").
 //
-// THE DFS, AND WHY NOTHING NEW IS INVENTED HERE (the plan's section 6).
+// THE DFS, AND WHY NOTHING NEW IS INVENTED HERE (the plan's gunbc.design_argument::how_to_work).
 //   HostName            -- extdeps.dns.domain_name: a host name, its labels, its qualification.
 //   Port                -- std.types: one bounded integer, range-checked by the brand.
 //   UriScheme           -- extdeps.uri: the scheme a URL names. It is the corpus's only scheme carrier,
@@ -48,7 +48,7 @@ module gunbc.fleet.fleet_endpoint
 // WHY THE AUTHORITY IS A SUM AND NOT A STRING. "Where did this endpoint come from" has exactly three
 // answers in this fleet, and they differ in what they license a consumer to do with the value: a name the
 // fleet DNS answers, a name the provider's nameserver answers, and a literal address someone typed. A
-// string in that slot invites an `if` on text where a match should be, and DESIGN 3 names that defect
+// string in that slot invites an `if` on text where a match should be, and gunbc.design_argument::single_authority names that defect
 // directly. A refused construction carries WHY, never a fallback endpoint.
 
 import std.types { Bool, Int, List, NonEmptyStr, Port, String, brand }
@@ -150,7 +150,7 @@ type ServiceEndpointUrlRefusal = UrlFormAbsent { service: FleetServiceRole }
 // authority is checked for whether this model can carry it at all. The port arrives already bounded: it is
 // a `Port`, which std.types range-checks at its own brand, so this function does not re-check it and no
 // refusal here claims to (a check restating a constraint the input type already carries is a second
-// representation of it -- DESIGN section 5).
+// representation of it -- gunbc.design_argument::fail_closed).
 //
 // WHAT THIS GATE DOES CHECK. `member` cannot be a string, an address, or a self-described endpoint: it is a
 // ProviderEndpoint, and the only way to hold one is to have had an allocation read through gunbc.fleet's
@@ -218,7 +218,7 @@ fn service_endpoint_authority_is_supported(authority: ServiceEndpointAuthority) 
 // in dag/ records which zone answered for a member's name, when, or from what source. P1's overlay census
 // observes a member's own view of itself and gunbc.network_access_policy models who may reach through the
 // provider fabric; neither is a record that the fleet's zone served this name. Minting a
-// "resolution evidence" type now would put a wall where nothing stands (DESIGN 4b), and quietly letting
+// "resolution evidence" type now would put a wall where nothing stands (gunbc.design_argument::guarantee_ladder), and quietly letting
 // the argument stand for the evidence is the laundering this frontier exists to name.
 //
 // WHAT DISSOLVES IT, and the order it must go in: a resolution/ownership record with a producer that
@@ -234,7 +234,7 @@ fn service_endpoint_authority_is_supported(authority: ServiceEndpointAuthority) 
 // outlives the gap it names. Naming the carrier the evidence must arrive as makes the retirement
 // observable, exactly as gunbc.machine_intake.bmc_recovery_route_frontier names its missing consumer.
 //
-// WHY THE SUBJECT SAYS gunbc.fleet.fleet_endpoint AND NOT gunbc.fleet. DESIGN section 3c's name-to-path
+// WHY THE SUBJECT SAYS gunbc.fleet.fleet_endpoint AND NOT gunbc.fleet. gunbc.design_argument::consumption's name-to-path
 // rule puts a module a.b.c at <root(a)>/b/c.dag: this module is stored at dag/gunbc/fleet/fleet_endpoint.dag
 // and its declarations are qualified gunbc.fleet.fleet_endpoint.*; there is no `gunbc.fleet` module to
 // hold `service_endpoint_identity`. A ref to the parent module's name is a ref to a module that does not
@@ -343,7 +343,7 @@ fn service_endpoint_identity_eq(a: ServiceEndpointIdentity, b: ServiceEndpointId
 //
 // WHY THE IDENTITY FUNCTION THAT WAS HERE IS GONE. It read `endpoint -> endpoint`, which is not a
 // projection: it took a ServiceEndpointIdentity and returned the same value, so it converted nothing,
-// guaranteed nothing, and could not fail -- DESIGN section 5's "a second representation of the same thing"
+// guaranteed nothing, and could not fail -- gunbc.design_argument::fail_closed's "a second representation of the same thing"
 // with a name that implied a relation. Its comment also claimed it was the endpoint field of a
 // DeploymentRiskRef, and gunbc.deployment_risk has no such declaration: the module holds DeploymentId,
 // DeploymentRiskClass, ProdRoleSelection, and the binding table, and no risk row carries an endpoint. A
@@ -559,7 +559,7 @@ type ReachDemand sole_constructor {
 // remote-control concept and an access-decision concept diverge silently, so this is its own two arms.
 //
 // THE MAGNITUDE IS std.measure's Second, the corpus's own duration carrier -- not a bare Int, and not a
-// newly minted fleet seconds wrapper beside it (DESIGN section 2, "net concepts must not grow by
+// newly minted fleet seconds wrapper beside it (gunbc.design_argument::minimize_redundancy, "net concepts must not grow by
 // re-invention"). std.retry_law states the standing rule for a length in dag/: delays, caps and hints are
 // std.measure Second, "the length already used by belt run bounds and event_backlog -- not a second Nat
 // beside the failure count", and it names std.types' Seconds/Duration as NOT the length carrier. A demand
@@ -574,8 +574,8 @@ type ReachDuration
   = ForSession
   | ForWindow { window: Second }
 
-// WHY A DEMAND CANNOT BE STATED -- TWO CAUSES, TWO NAMES. DESIGN section 3: "a materially different
-// contract needs a materially different name", and section 5 wants each path to fail with a typed, located
+// WHY A DEMAND CANNOT BE STATED -- TWO CAUSES, TWO NAMES. gunbc.design_argument::single_authority: "a materially different
+// contract needs a materially different name", and gunbc.design_argument::fail_closed wants each path to fail with a typed, located
 // diagnostic. A missing reason and an empty window are fixed in different places -- the first by whoever
 // writes the demand, the second by the caller's arithmetic -- so one name over both sends the reader to
 // the wrong field.
@@ -598,7 +598,7 @@ fn reach_demand(
 ) -> Result<ReachDemand, ReachDemandRefusal> {
   // WHY THE JUSTIFICATION CHECK IS NOT A RESTATEMENT OF THE TYPE -- and why there is no empty-string
   // branch. NonEmptyStr already refuses "", so a branch for it could never fire and would be a second
-  // representation of the brand (DESIGN section 5). What the brand does NOT refuse is whitespace: "   " is
+  // representation of the brand (gunbc.design_argument::fail_closed). What the brand does NOT refuse is whitespace: "   " is
   // a perfectly legal NonEmptyStr, and it is exactly what a caller holding a blank form field produces. So
   // the check trims before it asks, which is a question the type does not answer.
   let reason = justification as String

@@ -1,53 +1,49 @@
 module gunbc.native_serve
 
 import std.types { Int, List, String, Bool, CommitSha }
-import std.measure { ByteSize, byte_size, byte_size_count, Millisecond, millisecond, millisecond_count, Second, second, second_count }
+import std.measure { ByteSize, byte_size, byte_size_count, Millisecond, millisecond, millisecond_count, Second, second }
 import std.algebra { Cons, Empty, trim, list_push }
 import extdeps.http.server { ServeWireResponse, ServeWireHeader }
-import gunbc.running_release_identity { release_revision_text_valid }
 import extdeps.tailscale.identity { tailscale_user_login_header }
 import gunbc.serve_liveness { serve_liveness_path, serve_liveness_document }
 
 // THE NATIVE SERVE DOOR: EVERYTHING A SERVED REQUEST DECIDES, AS FOLDS THE RENDERED MAIN CALLS.
 //
-// std.compiler_entry NativeServeDriver is the arm; this module is its contract. The rendered main
-// (v1.compiler.emit_rust emit_native_serve_driver_main_rs) performs only what no fold can -- read
-// argv, bind and accept the listener, read bytes off the connection within the limits THIS module
-// hands it, call the entry's handler, write the response value back -- and every decision between
-// those reads and writes is one of the folds below: which address to bind and which release this
-// process is (native_serve_start), whether a request head is admissible and how many body bytes to
-// read (native_serve_frame), and whether the request is answered before the handler is entered
-// (native_serve_route). The handler contract is the seed's `gunbc serve` contract plus one trailing argument --
-// `fn native_serve_handle(method, path, body, tailscale_identity, release_revision[, startup]) ->
-// ServeWireResponse` (startup being the typed value this process's self-check passed with, when the entry declares one) -- so a program served by the seed today is served natively by declaring the
-// arm and naming its handler that.
+// std.compiler_entry NativeIngressDriver is the arm; this module is the request half of its
+// contract, and gunbc.http_ingress is the binding half. The rendered main
+// (v1.compiler.emit_rust emit_native_ingress_driver_main_rs) performs only what no fold can -- read
+// argv into the binding constructor's declared arguments, bind and accept the listener, read bytes
+// off the connection within the limits the contract hands it, call the handler, write the response
+// value back -- and every decision between those reads and writes is a fold: which address to bind,
+// which release this process is and what its deadline is (gunbc.http_ingress
+// http_ingress_native_contract, over the binding the exact constructor returned), whether a request
+// head is admissible and how many body bytes to read (native_serve_frame), and whether the request is
+// answered before the handler is entered (native_serve_route). The handler contract is the seed's
+// whole one: the handler's request parameters are planned by gunbc.http_ingress http_ingress_fact_plan
+// over the binding's listener, exactly as the seed's realization plans them, followed by zero or one
+// startup value from the exact startup declaration (a realization fact, not a request fact), and the
+// combined signature is judged before any bind (gunbc.http_ingress http_ingress_native_contract;
+// gunbc.plans.converged_ingress (deleted 2026-11-08) M2b). The listener is TCP or a unix socket whose every peer the
+// kernel attests; peer_user is read off the accepted connection, never from the request.
 //
-// WHERE THIS DOOR IS BETTER THAN THE SEED'S, WHICH IS THE BAR (DESIGN section 7):
-// - the 40-hex release check is gunbc.running_release_identity release_revision_text_valid, the
-//   predicate that reads the identity back off the wire, not a second hand-Rust copy of it;
+// WHERE THIS DOOR IS BETTER THAN THE SEED'S, WHICH IS THE BAR (gunbc.design_argument::self_hosting):
+// - the 40-hex release check is the binding constructor's (gunbc.http_ingress http_ingress_binding,
+//   over gunbc.running_release_identity release_revision_text_valid, the predicate that reads the
+//   identity back off the wire), not a second hand-Rust copy of it;
 // - head and body limits and the read timeout are VALUES in the contract the main reads, and the
 //   startup announcement prints them, where the seed buried them as `const`s inside its reader;
 // - every 400 is a typed refusal produced here, with the reason it names, not a Rust format string;
 // - /livez is answered from gunbc.serve_liveness serve_liveness_document, so the path and the
-//   member names are read from the graph rather than restated in hand Rust. That retires
-//   gunbc.serve_liveness_seed_growth's hand-written document AT THIS DOOR; the seed's own
-//   branch keeps that row standing until the seed seam is cut over too.
-// - the per-request budget: each handler call runs on a worker the main stops waiting for at the
-//   contract's deadline, answering a typed 500 and serving on; workers that never return are
-//   bounded by a declared ceiling, past which the process refuses with a typed 503 and exits for its
-//   supervisor. The seed's budget holds the serial loop's evaluator; this one also keeps a stuck
-//   request from blocking every later one (native_serve_admission, native_serve_deadline_refused).
-//
-// WHAT THIS DOOR DOES NOT YET HAVE, DECLARED RATHER THAN SILENT:
-// - the unix-socket listener and its kernel-attested peer_user argument: TCP only. Declared
-//   frontier below.
-
-// THE UNIX-SOCKET FRONTIER. The seed's --unix-socket listener attests each peer by SO_PEERCRED and
-// passes peer_user to handlers that declare it (gunbc.fabric.fabric_storage_serve). This door binds
-// TCP only, and that is admitted as a frontier with a stated trigger, not as a property: it lands
-// when a second NativeServeDriver consumer needs an attested peer, as a listener arm in this
-// contract and a peer_user argument the main passes only on that arm.
-data native_serve_unix_socket_frontier_trigger: String = "a second NativeServeDriver consumer needs a kernel-attested peer (peer_user)"
+//   member names are read from the graph rather than restated in hand Rust. The seed's ingress
+//   realization answers it from the same document (gunbc.http_ingress
+//   http_ingress_pre_evaluation_routes).
+// - the per-request budget: one effective deadline, armed when the request head is complete,
+//   covers framing, the admitted body read, argument construction, the handler and response
+//   rendering. A compiled handler cannot be unwound in-process, so a request that crosses the
+//   deadline with the handler still running is answered with native_serve_deadline_refused and the
+//   process then exits with native_serve_deadline_exit_code for its supervisor to restart: the
+//   timed-out computation ends with the process rather than surviving abandoned (operator decision
+//   2026-11-04, exit-after-timeout).
 
 // The seed's limits, carried as values in the units std.measure owns. They are the seed's numbers
 // because the served programs were written against them; a change to either is a change to every
@@ -56,30 +52,18 @@ data native_serve_head_limit: ByteSize = byte_size(count: 16384)
 data native_serve_body_limit: ByteSize = byte_size(count: 1048576)
 data native_serve_read_timeout: Millisecond = millisecond(count: 10000)
 
-// THE PER-REQUEST BUDGET: the capability gunbc.rung_drop.native_serve_request_budget_unrealized names as
-// its restoration trigger. That row retires when the native-serve instrument itself observes it
-// (see the row for what still blocks that run), not when this code exists. A compiled
-// handler has no evaluator to interrupt, so the rendered main runs each handler call on a worker and
-// stops waiting at this deadline; the request is then answered with native_serve_deadline_refused
-// and the loop serves on. The default is the seed's 30 s serve wall; a launch may narrow it with
-// --request-deadline-ms, parsed below like every other flag.
-data native_serve_request_deadline: Millisecond = millisecond(count: 30000)
-
-// The bound on a worker generation's STARTUP readiness (only a driver that declares native_serve_startup has one):
-// the startup fold runs on the worker before it reports ready, and a self-check over the running image is not a
-// request, so it does not inherit request_deadline. Sized from the measured device-crypto self-check, about 0.5 s
-// for the sha256 of the binary and about 60 ms per P-256 verify, with ~40x headroom for a loaded host. A worker
-// that has not finished its startup by then is the modeled startup refusal (exit native_serve_startup_refused_exit_code).
+// The default bound on a worker generation's STARTUP readiness. A program descriptor that names a
+// startup fold states its own bound (std.compiler_entry NativeIngressStartup bound); this value is the
+// one a descriptor with no startup carries, where nothing waits on it. Sized from the measured
+// device-crypto self-check, about 0.5 s for the sha256 of the binary and about 60 ms per P-256 verify,
+// with ~40x headroom for a loaded host. A worker that has not finished its startup by then is the
+// modeled startup refusal (exit native_serve_startup_refused_exit_code).
 data native_serve_startup_deadline: Second = second(count: 30)
 
-// A worker that missed its deadline cannot be killed in-process; it is abandoned and keeps its
-// thread until it returns. This ceiling bounds how many such workers one process will carry: at the
-// ceiling the next request is refused with native_serve_stuck_refused and the process exits with
-// native_serve_stuck_exit_code so its supervisor restarts it, rather than accumulating threads.
-data native_serve_stuck_worker_ceiling: Int = 4
-
-// EX_TEMPFAIL (sysexits.h 75): a temporary condition a restart is expected to clear.
-data native_serve_stuck_exit_code: Int = 75
+// EX_TEMPFAIL (sysexits.h 75): a temporary condition a restart is expected to clear. The process
+// exits with it after answering a request that crossed its deadline, because the compiled handler it
+// abandoned cannot be stopped any other way.
+data native_serve_deadline_exit_code: Int = 75
 
 // The identity header is extdeps.tailscale.identity's fact (the header Tailscale Serve sets), read
 // from there rather than restated; Content-Length is RFC 9110 section 8.6's.
@@ -88,147 +72,38 @@ data native_serve_content_length_header: String = "Content-Length"
 data native_serve_text_plain: String = "text/plain; charset=utf-8"
 data native_serve_application_json: String = "application/json; charset=utf-8"
 
+// THE CONTRACT ONE NATIVE PROCESS SERVES UNDER, derived from the binding its exact constructor
+// returned (gunbc.http_ingress http_ingress_native_contract), never parsed from a second argv.
+// cpu_limit and wall_limit are the binding's declared budgets; request_deadline is the one effective
+// deadline the native door enforces, their minimum: a single thread that stops at it has spent no
+// more CPU and no more wall time than either bound, and the process exit after a crossing is what
+// makes "stops at it" true. handler_identity is the module-qualified handler the binding names, which
+// /livez reports. Which address to bind is the binding's listener, carried beside this contract
+// (gunbc.http_ingress HttpIngressNativeStart), never restated in it.
 type NativeServeContract {
-  host: String
-  port: Int
   release_revision: CommitSha
+  handler_identity: String
   head_limit: ByteSize
   body_limit: ByteSize
   read_timeout: Millisecond
+  cpu_limit: Millisecond
+  wall_limit: Millisecond
   request_deadline: Millisecond
   startup_deadline: Second
-  stuck_worker_ceiling: Int
 }
 
-// A refused start binds nothing: the main prints the reason and exits 2 before any listener exists,
-// so a process that cannot say which release it is never becomes reachable.
-type NativeServeStart
-  = NativeServeListen { contract: NativeServeContract }
-  | NativeServeStartRefused { reason: String }
-
-// THE ARGV FOLD'S STATE IS A SUM, so "refused" and "still reading" cannot both hold, and a flag not
-// yet seen is Absent rather than an empty string standing for absence.
-type NativeServeArgs
-  = NativeServeArgsReading { host: String?, port: String?, release_revision: String?, request_deadline: String? }
-  | NativeServeArgsRefused { reason: String }
-
-data native_serve_args_empty: NativeServeArgs = NativeServeArgsReading { host: none, port: none, release_revision: none, request_deadline: none }
-
-fn native_serve_args_set(host: String?, port: String?, release_revision: String?, request_deadline: String?, flag: String, value: String) -> NativeServeArgs {
-  if flag == "--host" {
-    NativeServeArgsReading { host: value, port: port, release_revision: release_revision, request_deadline: request_deadline }
-  } else if flag == "--port" {
-    NativeServeArgsReading { host: host, port: value, release_revision: release_revision, request_deadline: request_deadline }
-  } else if flag == "--release-revision" {
-    NativeServeArgsReading { host: host, port: port, release_revision: value, request_deadline: request_deadline }
-  } else if flag == "--request-deadline-ms" {
-    NativeServeArgsReading { host: host, port: port, release_revision: release_revision, request_deadline: value }
-  } else {
-    NativeServeArgsRefused { reason: concat("unknown flag ", flag) }
-  }
-}
-
-fn native_serve_args_fold(argv: List<String>, acc: NativeServeArgs) -> NativeServeArgs {
-  match acc {
-    NativeServeArgsRefused { reason: _ } => acc
-    NativeServeArgsReading { host: host, port: port, release_revision: revision, request_deadline: deadline } =>
-      match argv {
-        Empty => acc
-        Cons { head: flag, tail: rest } =>
-          match rest {
-            Empty => NativeServeArgsRefused { reason: concat("flag without a value: ", flag) }
-            Cons { head: value, tail: more } =>
-              native_serve_args_fold(argv: more, acc: native_serve_args_set(host: host, port: port, release_revision: revision, request_deadline: deadline, flag: flag, value: value))
-          }
-      }
-  }
-}
-
-fn native_serve_usage() -> String {
-  "usage: --host <addr> --port <0-65535> --release-revision <40 lowercase hex> [--request-deadline-ms <positive integer>]"
-}
-
-fn native_serve_missing() -> NativeServeStart {
-  NativeServeStartRefused { reason: concat("--host, --port and --release-revision are all required; ", native_serve_usage()) }
-}
-
-fn native_serve_deadline_of(text: String?) -> Millisecond? {
-  match text {
-    Absent => Present { value: native_serve_request_deadline }
-    Present { value: t } =>
-      match parse_int(s: t) {
-        Present { value: ms } => if ms > 0 { Present { value: millisecond(count: ms) } } else { none }
-        Absent => none
-      }
-  }
-}
-
-fn native_serve_start_with(host: String, port: String, revision: String, deadline_text: String?) -> NativeServeStart {
-  match native_serve_deadline_of(text: deadline_text) {
-    Absent => NativeServeStartRefused { reason: "--request-deadline-ms must be a positive integer" }
-    Present { value: deadline } => native_serve_start_checked(host: host, port: port, revision: revision, deadline: deadline)
-  }
-}
-
-fn native_serve_start_checked(host: String, port: String, revision: String, deadline: Millisecond) -> NativeServeStart {
-  if !release_revision_text_valid(text: revision) {
-    NativeServeStartRefused { reason: concat("--release-revision must be exactly 40 lowercase hex digits (a git object name); got [", concat(revision, "]")) }
-  } else {
-    match parse_int(s: port) {
-      Present { value: p } =>
-        if p < 0 || p > 65535 {
-          NativeServeStartRefused { reason: concat("--port out of range: ", port) }
-        } else {
-          NativeServeListen { contract: NativeServeContract {
-            host: host,
-            port: p,
-            release_revision: revision as CommitSha,
-            head_limit: native_serve_head_limit,
-            body_limit: native_serve_body_limit,
-            read_timeout: native_serve_read_timeout,
-            request_deadline: deadline,
-            startup_deadline: native_serve_startup_deadline,
-            stuck_worker_ceiling: native_serve_stuck_worker_ceiling,
-          } }
-        }
-      Absent => NativeServeStartRefused { reason: concat("--port is not an integer: ", port) }
-    }
-  }
-}
-
-fn native_serve_start_from(a: NativeServeArgs) -> NativeServeStart {
-  match a {
-    NativeServeArgsRefused { reason: r } => NativeServeStartRefused { reason: concat(r, concat("; ", native_serve_usage())) }
-    NativeServeArgsReading { host: h, port: p, release_revision: r, request_deadline: d } =>
-      match h {
-        Absent => native_serve_missing()
-        Present { value: host } =>
-          match p {
-            Absent => native_serve_missing()
-            Present { value: port } =>
-              match r {
-                Absent => native_serve_missing()
-                Present { value: revision } => native_serve_start_with(host: host, port: port, revision: revision, deadline_text: d)
-              }
-          }
-      }
-  }
-}
-
-fn native_serve_start(argv: List<String>) -> NativeServeStart {
-  native_serve_start_from(a: native_serve_args_fold(argv: argv, acc: native_serve_args_empty))
-}
-
-// The line the main prints once it has bound, naming the address ACTUALLY bound (a --port 0 caller
-// reads the chosen port from here) and every limit the process will enforce.
 fn native_serve_announcement(c: NativeServeContract, bound_host: String, bound_port: Int) -> String {
-  concat("native-serve listening on ", concat(bound_host, concat(":", concat(to_string(value: bound_port),
-    concat(" release_revision=", concat(c.release_revision as String,
-      concat(" head_limit_bytes=", concat(to_string(value: byte_size_count(b: c.head_limit)),
-        concat(" body_limit_bytes=", concat(to_string(value: byte_size_count(b: c.body_limit)),
-          concat(" read_timeout_ms=", concat(to_string(value: millisecond_count(m: c.read_timeout)),
-            concat(" request_deadline_ms=", concat(to_string(value: millisecond_count(m: c.request_deadline)),
-              concat(" stuck_worker_ceiling=", to_string(value: c.stuck_worker_ceiling))))))))))))))))
+  join([
+    "native-serve listening on ", bound_host, ":", to_string(value: bound_port),
+    " release_revision=", c.release_revision as String,
+    " handler=", c.handler_identity,
+    " head_limit_bytes=", to_string(value: byte_size_count(b: c.head_limit)),
+    " body_limit_bytes=", to_string(value: byte_size_count(b: c.body_limit)),
+    " read_timeout_ms=", to_string(value: millisecond_count(m: c.read_timeout)),
+    " declared_cpu_limit_ms=", to_string(value: millisecond_count(m: c.cpu_limit)),
+    " declared_wall_limit_ms=", to_string(value: millisecond_count(m: c.wall_limit)),
+    " effective_native_deadline_ms=", to_string(value: millisecond_count(m: c.request_deadline)),
+  ], "")
 }
 
 // ── FRAMING: THE HEAD THE MAIN READ, JUDGED HERE ─────────────────────────────────────────────
@@ -238,10 +113,21 @@ fn native_serve_announcement(c: NativeServeContract, bound_host: String, bound_p
 // bytes follow, and the identity header. The body length is returned so the main reads exactly
 // that many bytes and no more; the main never reads a header itself.
 
+// `headers` is every header field as read, in arrival order, so a handler contract that declares
+// the request's headers (gunbc.http_ingress IngressFactRequestHeaders) reads them from the same
+// parse that judged them, never from a second reader.
 type NativeServeRequestHead {
   method: String
   target: String
   tailscale_identity: String
+  headers: List<NativeServeHeaderField>
+}
+
+// The Authorization value a handler receives is DERIVED from the head's header fields, never
+// stored beside them (one authority for one fact). The framing fold has already refused a
+// duplicated Authorization header, so the first value is the only one; absent is "".
+fn native_serve_authorization(head: NativeServeRequestHead) -> String {
+  match native_serve_named(fields: head.headers, wanted: "Authorization") |> first { Present { value: v } => v Absent => "" }
 }
 
 type NativeServeFrame
@@ -312,7 +198,7 @@ fn native_serve_headers(lines: List<String>, acc: List<NativeServeHeaderField>) 
     Cons { head: line, tail: rest } =>
       match native_serve_header(line: line) {
         NativeServeHeaderParsed { field: f } => native_serve_headers(lines: rest, acc: acc |> list_push(f))
-        NativeServeHeaderMalformed { line: bad } => NativeServeHeadersRefused { reason: concat("malformed header line: ", bad) }
+        NativeServeHeaderMalformed { line: _ } => NativeServeHeadersRefused { reason: "malformed header line" }
       }
   }
 }
@@ -325,8 +211,11 @@ fn native_serve_frame_fields(method: String, target: String, fields: List<Native
   let identity_header = tailscale_user_login_header as String
   let lengths = native_serve_named(fields: fields, wanted: native_serve_content_length_header)
   let identities = native_serve_named(fields: fields, wanted: identity_header)
+  let authorizations = native_serve_named(fields: fields, wanted: "Authorization")
   if (lengths |> count) > 1 {
     native_serve_bad_request(reason: "duplicate Content-Length header")
+  } else if (authorizations |> count) > 1 {
+    native_serve_bad_request(reason: "duplicate Authorization header")
   } else if (identities |> count) > 1 {
     native_serve_bad_request(reason: concat("duplicate ", concat(identity_header, " header")))
   } else {
@@ -335,7 +224,7 @@ fn native_serve_frame_fields(method: String, target: String, fields: List<Native
       Absent => ""
     }
     match lengths |> first {
-      Absent => NativeServeFramed { head: NativeServeRequestHead { method: method, target: target, tailscale_identity: identity }, body_length: 0 }
+      Absent => NativeServeFramed { head: NativeServeRequestHead { method: method, target: target, tailscale_identity: identity, headers: fields }, body_length: 0 }
       Present { value: text } =>
         match parse_int(s: text) {
           Absent => native_serve_bad_request(reason: concat("bad Content-Length: ", text))
@@ -345,14 +234,21 @@ fn native_serve_frame_fields(method: String, target: String, fields: List<Native
             } else if n > body_limit {
               native_serve_bad_request(reason: concat("body of ", concat(to_string(value: n), concat(" bytes exceeds the ", concat(to_string(value: body_limit), " byte serve limit")))))
             } else {
-              NativeServeFramed { head: NativeServeRequestHead { method: method, target: target, tailscale_identity: identity }, body_length: n }
+              NativeServeFramed { head: NativeServeRequestHead { method: method, target: target, tailscale_identity: identity, headers: fields }, body_length: n }
             }
         }
     }
   }
 }
 
+// THE FRAMING RULE TAKES ONLY THE LIMIT IT READS, so the native door (its contract's body limit,
+// native_serve_frame) and the seed's ingress realization (gunbc.http_ingress http_ingress_frame)
+// judge a head by one rule rather than two.
 fn native_serve_frame(contract: NativeServeContract, request_line: String, header_lines: List<String>) -> NativeServeFrame {
+  native_serve_frame_within(body_limit: byte_size_count(b: contract.body_limit), request_line: request_line, header_lines: header_lines)
+}
+
+fn native_serve_frame_within(body_limit: Int, request_line: String, header_lines: List<String>) -> NativeServeFrame {
   match split(s: request_line, delimiter: " ") |> filter(p => p != "") {
     Cons { head: method, tail: r1 } =>
       match r1 {
@@ -362,7 +258,7 @@ fn native_serve_frame(contract: NativeServeContract, request_line: String, heade
           } else {
             match native_serve_headers(lines: header_lines, acc: []) {
               NativeServeHeadersRefused { reason: r } => native_serve_bad_request(reason: r)
-              NativeServeHeadersRead { fields: fields } => native_serve_frame_fields(method: method, target: target, fields: fields, body_limit: byte_size_count(b: contract.body_limit))
+              NativeServeHeadersRead { fields: fields } => native_serve_frame_fields(method: method, target: target, fields: fields, body_limit: body_limit)
             }
           }
         Empty => native_serve_bad_request(reason: "missing request target")
@@ -386,12 +282,14 @@ fn native_serve_effect_failed(reason: String) -> ServeWireResponse {
 
 // THE EFFECT WORKER. The rendered main realizes ONE worker generation that owns the effect executor
 // and every admitted handle (none for an entry with no effects), and reuses it for each request it
-// answers; a generation that misses the deadline or panics is abandoned and a replacement realized.
-// A generation that cannot be realized is NOT an effect transport failure (native_serve_effect_failed):
-// no handler ran, and none can. At startup the main refuses with this reason before it announces --
-// exit 2, like every launch refusal -- so no process answers /livez that cannot serve a handler. A
-// REPLACEMENT that cannot be realized ends the process with native_serve_worker_replacement_exit_code
-// after the request in hand is answered, for its supervisor to restart it.
+// answers; a generation that panics is abandoned and a replacement realized (a panicked thread runs
+// nothing further, so nothing is left running for it), and a request that crosses its deadline ends
+// the process (native_serve_deadline_exit_code). A generation that cannot be realized is NOT an
+// effect transport failure (native_serve_effect_failed): no handler ran, and none can. At startup the
+// main refuses with this reason before it announces -- exit 2, like every launch refusal -- so no
+// process answers /livez that cannot serve a handler. A REPLACEMENT that cannot be realized ends the
+// process with native_serve_worker_replacement_exit_code after the request in hand is answered, for
+// its supervisor to restart it.
 fn native_serve_worker_unrealized(reason: String) -> String {
   concat("the effect worker could not be realized: ", reason)
 }
@@ -408,13 +306,13 @@ type NativeServeRoute
   = NativeServeAnswered { response: ServeWireResponse }
   | NativeServeToHandler
 
-fn native_serve_route(contract: NativeServeContract, head: NativeServeRequestHead, entry_function: String, bound_host: String, bound_port: Int) -> NativeServeRoute {
+fn native_serve_route(contract: NativeServeContract, head: NativeServeRequestHead, bound_host: String, bound_port: Int) -> NativeServeRoute {
   let liveness_path = serve_liveness_path as String
   if head.method == "GET" && head.target == liveness_path {
     NativeServeAnswered { response: ServeWireResponse {
       status: 200,
       content_type_label: native_serve_application_json,
-      body: serve_liveness_document(revision: contract.release_revision, entry_function: entry_function, bound_host: bound_host, bound_port: bound_port),
+      body: serve_liveness_document(revision: contract.release_revision, entry_function: contract.handler_identity, bound_host: bound_host, bound_port: bound_port),
       headers: [],
     } }
   } else {
@@ -422,18 +320,17 @@ fn native_serve_route(contract: NativeServeContract, head: NativeServeRequestHea
   }
 }
 
-// The name the rendered main calls; one name for every NativeServeDriver entry, so the liveness
-// document's entry_function member is this literal rather than whatever the main was told.
-// THE OPTIONAL STARTUP FOLD (a driver that declares none is unchanged). An entry MAY declare
-// `fn native_serve_startup(executable_octets: List<Int>) -> NativeServeStartup` beside its handler;
-// the rendered main then runs it once PER WORKER GENERATION (the handler's values are not Send, so the fold runs on the worker that serves; a replacement generation reruns it), the first before any listener is bound, bounded by startup_deadline rather than request_deadline, with
-// the octets of the running executable's own file -- the host's only job is to read those bytes
+// THE OPTIONAL STARTUP FOLD. A program descriptor MAY name one (std.compiler_entry
+// NativeIngressStartup), of shape `(executable_octets: List<Int>) -> NativeServeStartup<S>`; the
+// rendered main then runs it once PER WORKER GENERATION (the handler's values are not Send, so the
+// fold runs on the worker that serves; a replacement generation reruns it), the first before any
+// listener is bound, bounded by the descriptor's own startup bound rather than the request deadline,
+// with the octets of the running executable's own file -- the host's only job is to read those bytes
 // (it computes nothing about them). The fold decides everything: a NativeServeStartupRefused makes
 // the main print native_serve_startup_refusal_line on stderr and exit native_serve_startup_refused_exit_code
 // without binding, so a process whose self-check refused never becomes reachable and never serves.
 // The first consumer is gunbc.auth.approval_device_crypto_serve, whose receipt is minted over the
 // binary identity this carries. Instrument: //gunbc/instruments:native-serve-device-crypto.
-data native_serve_startup_entry_function: String = "native_serve_startup"
 
 // S is the handler's startup payload: the typed value the fold passed with, handed to every handler call as a
 // trailing argument (the device-crypto handler's is its DeviceCryptoHandlerReceipt). The line is only what the
@@ -453,8 +350,6 @@ fn native_serve_startup_refusal_line(reason: String) -> String {
 fn native_serve_startup_passed_line(line: String) -> String {
   concat("native-serve startup self-check passed: ", line)
 }
-
-data native_serve_handler_name: String = "native_serve_handle"
 
 // ── WHAT LEAVES THE PROCESS ─────────────────────────────────────────────────────────────────
 // Every response the main writes passes here first, whoever produced it. The status must be an
@@ -511,33 +406,25 @@ fn native_serve_outgoing(r: ServeWireResponse) -> NativeServeOutgoing {
 }
 
 // ── THE PER-REQUEST BUDGET, DECIDED HERE ──────────────────────────────────────────────────────
-// The rendered main asks native_serve_admission before handing a request to a worker, passing how
-// many earlier workers are still running past their deadline; it writes what this answers. It asks
-// native_serve_deadline_refused for the response when a worker misses the contract's deadline.
-type NativeServeAdmission
-  = NativeServeAdmitWorker
-  | NativeServeRefuseStuck { response: ServeWireResponse, exit_code: Int }
+// The rendered main asks native_serve_deadline_refused for the response when a request crosses the
+// contract's effective deadline, writes it, and exits with native_serve_deadline_exit_code.
 
-fn native_serve_admission(contract: NativeServeContract, stuck_workers: Int) -> NativeServeAdmission {
-  if stuck_workers < contract.stuck_worker_ceiling {
-    NativeServeAdmitWorker
-  } else {
-    NativeServeRefuseStuck {
-      response: ServeWireResponse {
-        status: 503,
-        content_type_label: native_serve_text_plain,
-        body: concat("service unavailable: ", concat(to_string(value: stuck_workers), concat(" requests are still running past their deadline (ceiling ", concat(to_string(value: contract.stuck_worker_ceiling), "); this process exits for its supervisor to restart it\n")))),
-        headers: [],
-      },
-      exit_code: native_serve_stuck_exit_code,
-    }
+// THE REQUEST'S ARGUMENTS DO NOT HAVE THE SHAPES THE HANDLER WAS TYPED WITH. The start judged every
+// planned fact against its parameter's shape before binding (gunbc.http_ingress
+// http_ingress_native_contract), so no request reaches this; the worker answers it rather than call the
+// handler with values of another shape, and nothing ran.
+fn native_serve_arguments_unplanned() -> ServeWireResponse {
+  ServeWireResponse {
+    status: 500,
+    content_type_label: native_serve_text_plain,
+    body: "the request's arguments do not have the shapes the handler was planned with; the handler was not called\n",
+    headers: [],
   }
 }
 
 // A WORKER THAT ENDS WITHOUT AN ANSWER -- the compiled handler panicked, so its result never reached
-// the loop -- is a handler failure, not a deadline: it is answered with this typed 500 and is never
-// counted as stuck, because nothing is still running. The rendered main runs the worker's cleanup
-// from a guard that also runs during a panic, so the stuck count stays exact either way.
+// the loop -- is a handler failure, not a deadline: it is answered with this typed 500, and the
+// panicked worker is replaced, because nothing is still running for it.
 fn native_serve_handler_failed() -> ServeWireResponse {
   ServeWireResponse {
     status: 500,
@@ -547,11 +434,22 @@ fn native_serve_handler_failed() -> ServeWireResponse {
   }
 }
 
+// The answer when the remaining deadline could not be installed as the connection's read bound: the main refuses to
+// read under a stale bound, answers this, and exits with native_serve_deadline_exit_code, as after a crossing.
+fn native_serve_deadline_uninstallable(contract: NativeServeContract, reason: String) -> ServeWireResponse {
+  ServeWireResponse {
+    status: 500,
+    content_type_label: native_serve_text_plain,
+    body: concat("the request's ", concat(to_string(value: millisecond_count(m: contract.request_deadline)), concat(" ms deadline could not be installed on its connection (", concat(reason, "); this process exits for its supervisor to restart it, so no read proceeded without the bound\n")))),
+    headers: [],
+  }
+}
+
 fn native_serve_deadline_refused(contract: NativeServeContract) -> ServeWireResponse {
   ServeWireResponse {
     status: 500,
     content_type_label: native_serve_text_plain,
-    body: concat("the request exceeded its ", concat(to_string(value: millisecond_count(m: contract.request_deadline)), " ms deadline and was refused; the handler did not return\n")),
+    body: concat("the request exceeded its ", concat(to_string(value: millisecond_count(m: contract.request_deadline)), " ms deadline and was refused; this process exits for its supervisor to restart it, so nothing is left running for it\n")),
     headers: [],
   }
 }

@@ -8,7 +8,7 @@ import extdeps.proxy.openresty { nginx_token }
 
 // FILED AS A STALL, NOT A RUNG DROP: the stronger rung (constructor-only admission) was NEVER held
 // for these brands, so declaring a drop would invent a rung to drop from (gunbc.guarantee_stall's
-// own correction, and DESIGN §4b(3): a drop asserts a regression that nothing here regressed).
+// own correction, and gunbc.design_argument::guarantee_ladder (no silent regression): a drop asserts a regression that nothing here regressed).
 //
 // WHAT THE MECHANISM IS — extdeps.proxy.openresty's two token brands are admitted by whitelisted
 // CONSTRUCTORS: nginx_token and nginx_variable refuse a value whose every character is not in the
@@ -34,7 +34,7 @@ data nginx_token_validator_not_constructor_stall: GuaranteeStall = GuaranteeStal
 }
 
 // THE TRIGGER IS CONSUMED, NOT JUST WRITTEN: the same admission fold the census witness runs over
-// the whole roster runs over this row. An empty capability — the untracked stall §4b(2) forbids —
+// the whole roster runs over this row. An empty capability — the untracked stall gunbc.design_argument::guarantee_ladder (no untracked stall) forbids —
 // reds here.
 test fn the_stall_trigger_is_admitted() -> Bool {
   match stall_trigger_admission(s: nginx_token_validator_not_constructor_stall) {

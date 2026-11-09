@@ -3,7 +3,8 @@ module test.claim.fabric.fabric_cell_converge_witness
 import std.logic { Bool }
 import std.nat { Nat }
 import product.host_identity { HostIdentity }
-import std.types { list_length, String, NonEmptyStr, Int }
+import std.types { String, NonEmptyStr, Int }
+import std.algebra { length }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import gunbc.ownership { Owned }
@@ -99,7 +100,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // was measuring always lived.
 //
 // THE EXPECTED ROSTER IS SUPPLIED AT THE KERNEL'S INTERFACE, NOT READ FROM THE LIVE FABRIC ROSTER
-// (DESIGN §3, a witness discriminates at one interface). These rows are about how the kernel treats
+// (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface). These rows are about how the kernel treats
 // a readback against a roster; which slots the fleet declares is gunbc.runner.runner_slot_allocation's
 // fact. Reading it here made every row a claim about the live fleet as well: when #11625 gave srv3 a
 // second fabric slot (srv3-07), the unread srv3-07 made every srv3 readback refuse, so the one row
@@ -125,9 +126,9 @@ fn classification_refuses(readback: FabricCellHostReadback) -> Bool {
 
 fn classification_is_refused(c: FabricCellHostClassification) -> Bool {
   fold(c.standings, init: false, f: (acc, st) => acc || standing_is_blocked(st: st))
-    || list_length(items: c.unexpected) > 0
-    || list_length(items: c.host_mismatched) > 0
-    || list_length(items: c.roster_mismatched) > 0
+    || length(xs: c.unexpected) > 0
+    || length(xs: c.host_mismatched) > 0
+    || length(xs: c.roster_mismatched) > 0
 }
 
 fn standing_is_blocked(st: FabricCellAddressStanding) -> Bool {
@@ -227,7 +228,7 @@ test fn witness_fabric_cell_id_is_the_slot_instance_name() -> Bool {
   (fabric_cell_id_for_slot(slot: srv3_fabric_slot()) as String) == "srv3-06"
     && (fabric_cell_id_for_slot(slot: srv3_fabric_slot()) as String)
         == runner_slot_instance_name(slot: srv3_fabric_slot())
-    && list_length(items: fabric_cell_ids()) == list_length(items: fabric_execution_slot_identities())
+    && length(xs: fabric_cell_ids()) == length(xs: fabric_execution_slot_identities())
 }
 
 // THE DESIRED POPULATION IS ONE RESOURCE-ADDRESSED MEMBER PER ADDRESS PER DECLARED FABRIC SLOT ON
@@ -243,19 +244,19 @@ fn roster_slots_on(host: HostIdentity) -> Int {
 }
 
 fn desired_is_host_exact(host: HostIdentity) -> Bool {
-  list_length(items: fabric_cell_desired_members(host: host))
-    == roster_slots_on(host: host) * list_length(items: fabric_cell_resource_addresses())
-    && list_length(items: fabric_cell_expected_slots(host: host)) == roster_slots_on(host: host)
+  length(xs: fabric_cell_desired_members(host: host))
+    == roster_slots_on(host: host) * length(xs: fabric_cell_resource_addresses())
+    && length(xs: fabric_cell_expected_slots(host: host)) == roster_slots_on(host: host)
 }
 
 test fn witness_fabric_cell_desired_population_is_host_exact() -> Bool {
-  list_length(items: fabric_cell_resource_addresses()) == 3
+  length(xs: fabric_cell_resource_addresses()) == 3
     && roster_slots_on(host: operator_host_srv3) > 0
     && desired_is_host_exact(host: operator_host_srv1)
     && desired_is_host_exact(host: operator_host_srv3)
     && desired_is_host_exact(host: operator_host_srv4)
     && roster_slots_on(host: operator_host_srv2) == 0
-    && list_length(items: fabric_cell_desired_members(host: operator_host_srv2)) == 0
+    && length(xs: fabric_cell_desired_members(host: operator_host_srv2)) == 0
 }
 
 // MEMBER KEYS ARE DISTINCT PER ADDRESS. If two addresses collided the reconcile would see a
@@ -599,7 +600,7 @@ test fn witness_fabric_cell_duplicate_slot_readbacks_merge_rather_than_last_wins
 // fabric_cell_shape's Incomplete arm, which runs BEFORE ownership is consulted -- a different
 // authority than the one the refusal names.
 //
-// So this is a decoration in DESIGN §4b's sense, and the honest rung for cell-ownership refusal is
+// So this is a decoration in gunbc.design_argument::guarantee_ladder's sense, and the honest rung for cell-ownership refusal is
 // therefore NOT structural: it is a wall whose RED is unauthorable on the production path. These
 // assertions pin the current behavior so the day ownership becomes variable -- a member scoped to a
 // host, a readback that can answer Absent -- this witness goes RED and the consumer's refusal has

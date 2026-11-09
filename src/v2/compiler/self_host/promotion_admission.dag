@@ -41,7 +41,7 @@ import v2.std.text { String }
 // fixed point as matching source digests, which makes the milestone mean the wrong
 // thing in both directions at once: a generation that is byte-identical to the seed
 // but behaviorally wrong is ADMITTED, and a generation that emits cleaner source and
-// behaves identically is REFUSED. DESIGN §7 is explicit that a byte-identical fixed
+// behaves identically is REFUSED. gunbc.design_argument::self_hosting is explicit that a byte-identical fixed
 // point is not the goal, because it forces the emitter to reproduce the seed's warts
 // to match bytes and thereby cements the seed's accidents.
 //
@@ -64,7 +64,7 @@ type EquivalenceOutcome
   | BehaviorDiverges { at_case: String }
   | BehaviorDivergesExactly { cases: List<String> }
 
-// THE SEED IS A REGRESSION ORACLE, NEVER THE SPECIFICATION (DESIGN section 7, operator ruling
+// THE SEED IS A REGRESSION ORACLE, NEVER THE SPECIFICATION (gunbc.design_argument::self_hosting, operator ruling
 // 2026-10-02). A divergence from the seed is one of two things: a v2 regression -- something the
 // seed got right that v2 lost, a defect -- or a seed defect v2 does not carry forward, which v2 fixes
 // and records as the correction it is. This row is that record. It names the corpus and case it
@@ -125,7 +125,7 @@ type BehavioralEquivalenceReceipt {
 }
 
 // The discriminating RED. A behavioral corpus that cannot fail proves nothing, so a
-// planted fault must have been executed AND caught. DESIGN §5: "done" means a real
+// planted fault must have been executed AND caught. gunbc.design_argument::fail_closed: "done" means a real
 // consumer green by execution PLUS a discriminating input that goes red when the
 // behavior is wrong.
 type DiscriminatingFaultReceipt {
@@ -166,7 +166,7 @@ type GenerationProvenanceReceipt {
 // the obligations independent of the submitter. Measured on the revision that lacked it: coverage
 // whose required set and rows were shortened together, and coverage that was entirely empty, both
 // promoted.
-// SECTION 3C STANDING, STATED BECAUSE THE HONEST ANSWER IS A FRONTIER AND NOT AN EXECUTING
+// gunbc.design_argument::consumption STANDING, STATED BECAUSE THE HONEST ANSWER IS A FRONTIER AND NOT AN EXECUTING
 // CONSUMER. `admit_promotion` has ZERO production callers and `CandidateGeneration` has ZERO
 // production constructors: every one is a witness fixture. So this binding is consumed by execution
 // only in the suite, and claiming otherwise would be the grep-matched-prose mistake -- three of the
@@ -583,7 +583,7 @@ fn concat_causes(
 // fold over the REQUIRED set rather than a fold over the coverage rows. Folding the rows answers
 // "is every row I have satisfied", and a refused join has no rows -- so the obligations would vanish
 // exactly when the compile failed to establish them, which reads as nothing-to-report and is the
-// silence DESIGN section 5 refuses. Folding the required set answers "is every obligation I owe
+// silence gunbc.design_argument::fail_closed refuses. Folding the required set answers "is every obligation I owe
 // accounted for", and that question is total on both arms.
 //
 // SO THE REFUSED ARM EMITS BOTH: the join's own cause, once, so the reason the coverage is unusable
@@ -592,7 +592,7 @@ fn concat_causes(
 // leaving them to guess what it failed to cover.
 // THE OBSERVATIONS ARE INDEXED ONCE, and the obligations are folded against the index. The earlier
 // shape scanned every observed row for every required registration, which is the quadratic fold
-// DESIGN section 6 says is always fixed regardless of the realized n -- and the compile-side join
+// gunbc.design_argument::how_to_work says is always fixed regardless of the realized n -- and the compile-side join
 // already had the answer: `required_lens_registration_keys` builds exactly this Map in one pass.
 // Reproducing its shape here rather than inventing one keeps the two joins recognisably the same
 // operation.

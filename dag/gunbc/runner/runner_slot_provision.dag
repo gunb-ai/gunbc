@@ -32,7 +32,7 @@ import extdeps.github.actions_runner {
   actions_runner_base_dir,
   actions_runner_cache_dir,
   ActionsRunnerBinaryArtifact,
-  actions_runner_release_2_336_0,
+  actions_runner_release_2_338_2,
   actions_runner_base_dir_ensure_script,
   actions_runner_slot_extract_script,
   actions_runner_binary_artifact_for_arch,
@@ -234,7 +234,7 @@ fn membership_does_not_name(removed: List<String>, unit: String) -> Bool {
 // modeled `^bash_production_fold_redir_stdout_to_stderr` rather than two characters appended to a
 // string. All four renderers route through it here rather than one being repaired -- the other
 // three carry the same defect for the same reason, and leaving them hand-spelled beside a
-// serialized sibling is the second spelling DESIGN 3 forbids.
+// serialized sibling is the second spelling gunbc.design_argument::single_authority forbids.
 fn withheld_diagnostic_line(message: String) -> String {
   shell_command_text_of_node(
     stmt: bash_build_with_redir(
@@ -275,7 +275,7 @@ fn obligation_withheld_line(unit: String, cause: String) -> List<String> {
 //
 // `retirement_actuation_units` only emits `RemovalActuationRequired`. An unobserved readback, a
 // refused interruption, or a required identity with no bound standing produced no mask and no
-// withheld line — the silent-degradation arm DESIGN section 5 forbids, and the exact population
+// withheld line — the silent-degradation arm gunbc.design_argument::fail_closed forbids, and the exact population
 // this planner exists to reach (serving 13..21). Membership teardown already prints those
 // dispositions for `MemberRemoved` trees; this is the same diagnostic for the obligation set.
 // THE UNRESOLVED ARM DOES NOT ROUTE THROUGH obligation_withheld_line, which reads a UNIT name to
@@ -385,7 +385,7 @@ fn ungranted_actuation_withheld_scripts(
 
 // A WITHHELD DELETION SAYS SO RATHER THAN VANISHING. A skipped teardown that printed nothing would
 // leave a narrowing host quietly accumulating trees with no record of which units were waiting on
-// what, which is the silent-degradation arm DESIGN section 5 forbids.
+// what, which is the silent-degradation arm gunbc.design_argument::fail_closed forbids.
 fn slot_removal_withheld_line(unit: String, tree: NonEmptyStr, cause: String) -> String {
   withheld_diagnostic_line(message: join(
     [
@@ -893,7 +893,7 @@ fn runner_slot_converge_verdict(
 // architecture, so a slot rebuilt for a new role carries exactly what a newly added slot carries.
 fn fleet_runner_slot_artifact() -> ActionsRunnerBinaryArtifact? {
   actions_runner_binary_artifact_for_arch(
-    binary_release: actions_runner_release_2_336_0,
+    binary_release: actions_runner_release_2_338_2,
     arch: altra_max_m12830_catalog.architecture,
   )
 }

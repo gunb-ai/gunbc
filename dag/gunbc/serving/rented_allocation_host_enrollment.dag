@@ -1,12 +1,10 @@
 module gunbc.serving.rented_allocation_host_enrollment
 
-import std.types { String, Bool, NonEmptyStr, List }
+import std.types { String, Bool, NonEmptyStr }
 import product.fabric.supply { SupplierOffer }
 import std.optional { Present, Absent }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.decl_ref { DeclarationRef }
 import product.fabric.flex_vast_shadow { flex_vast_offer_key_of_id }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent, inference_serving_enrollment_participation }
 import gunbc.fleet.fleet_host_backing { ProviderGuest, ProviderResourceBinding, ProviderResourceAwaited, ProviderResourceAcquired }
@@ -94,20 +92,3 @@ fn rented_allocation_host_enrollment(a: RentedServingAllocation, host: VastAiOff
   }
 }
 
-data rented_allocation_host_enrollment_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.serving.rented_allocation_host_enrollment", decl_name: "rented_allocation_host_enrollment"),
-    reason: "gunbc.fleet.vast_ai_guest derives architecture, vcpus, memory and disk from the documented search-offers fields, but three facts are undocumented by Vast and so refuse with their real standings (vast_ai_guest_standings): the MB/GB byte basis (precedent extdeps.pricing.object_storage ByteBasisUnstated), nested virtualization, and the self-identity URL. No real rented card derives until they are grounded, and the API account acquisition is still supplied rather than carried",
-    dissolution: unbound_dissolution(description: "trigger: docs.vast.ai (or a cited operator product fact) states the byte basis of cpu_ram and disk_space, nested virtualization, and a container-readable self-identity URL, and #13989 lands with the current card — sufficient for a real fleet_enrollments row derived through this function with vast_ai_guest_standings carrying Documented arms"),
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.harness.rented_allocation_seat", decl_name: "rented_allocation_seat"),
-    reason: "the seat is derived from an allocation but no harness fold reads it yet, because no real allocation is enrolled",
-    dissolution: unbound_dissolution(description: "trigger: the flex wet create (product.fabric.flex_market) produces a RentedAllocationAcquired allocation whose intent gunbc.serving.rented_allocation_host_enrollment derives — sufficient for harness_bind_seat to be called with this seat for the real allocation"),
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.serving.serving_key_grant", decl_name: "serving_key_grant_bind"),
-    reason: "no caller supplies a granted key authorization, because no operator escalation and no secret source for the serving key exist yet",
-    dissolution: unbound_dissolution(description: "trigger: a secret source delivers the granted key and the launch leg calls serving_key_grant_bind with the operator-granted authorization — sufficient for a bound ServingServeKeyBinding in a real launch"),
-  ),
-]

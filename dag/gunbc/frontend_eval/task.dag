@@ -20,7 +20,7 @@ import extdeps.languages.json.emit {
 // recalling it, so its score is evidence about tool routing and never about whether language facts
 // belong in weights. The sentinel was first authored as a dropped import member and the control run
 // PASSED all four: this frontend resolves a name whether or not its module imported it, so that
-// mutation has no authorable RED (DESIGN section 4b) and was replaced rather than kept as a
+// mutation has no authorable RED (gunbc.design_argument::guarantee_ladder) and was replaced rather than kept as a
 // decoration -- which is why the class is named for what its live specimens are, not for imports.
 //
 // SCOPE OF THE NESTING CLASS, stated so the table is not over-read: its four specimens are
@@ -67,7 +67,7 @@ fn frontend_stage_key(stage: EvalFrontendStage) -> String {
   }
 }
 
-// A TEXT MUTATION NAMES ITS SITE BY CONTENT, NOT POSITION (DESIGN section 3: cite the symbol). The
+// A TEXT MUTATION NAMES ITS SITE BY CONTENT, NOT POSITION (gunbc.design_argument::single_authority: cite the symbol). The
 // `old` text must occur exactly once in the subject module's source; a realization applying it
 // refuses on zero or several occurrences rather than picking one, the same rule the harness's edit
 // tool carries. `new` is what the mutated workspace holds; the reference repair is `old`.

@@ -14,7 +14,7 @@ import v2.std.text { String }
 // required_gate_admits), so a probe inside the gate cannot be parked here.
 //
 // Each row names its own module and its own next-rung trigger rather than sharing a blanket one,
-// so this list cannot become the place unrun reds go to be ignored (DESIGN section 5, the
+// so this list cannot become the place unrun reds go to be ignored (gunbc.design_argument::fail_closed, the
 // absorbing fallback). The population is the scope of the declared drop gunbc.rung_drop
 // required_gate_bankruptcy, member "every witness outside the roster".
 //

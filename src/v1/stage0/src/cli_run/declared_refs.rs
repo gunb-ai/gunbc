@@ -286,7 +286,7 @@ pub(crate) fn declared_source_refs_axis_for_entry(
     // The facts build already precomputes this exact map once (`ModuleGraphFactsLive.path_to_module`).
     // This site used to rebuild it from `facts.nodes` per ENTRY, and it is called per entry on the
     // selection path — an O(corpus) map allocation per question against a map already in hand
-    // (DESIGN §6 bare-minimum cost: a proven cost-shape defect is fixed regardless of realized n).
+    // (gunbc.design_argument::how_to_work bare-minimum cost: a proven cost-shape defect is fixed regardless of realized n).
     declared_source_refs_axis_for_paths(
         &declared_paths,
         &facts.path_to_module,

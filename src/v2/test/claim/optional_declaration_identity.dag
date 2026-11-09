@@ -121,7 +121,7 @@ test fn odi_a_local_homonym_is_not_reached_through_the_identity() -> Bool {
 // that into the member the source root OWES.
 // THE DISCRIMINATING INPUT IS odi_the_route_owes_nothing_without_the_sugar below: same subject, `left: T`
 // instead of `left: T?`, and the demand must come back empty. A row that could not go red would not be a
-// claim (DESIGN 5).
+// claim (gunbc.design_argument::fail_closed).
 fn odi_sugar_subject(sugar_type: String) -> String {
   concat("module p\n\nimport std.optional { Absent, Present }\n\nfn choose<T>(left: ", concat(sugar_type, ", fallback: T) -> T {\n  match left {\n    Present { value: v } => v\n    Absent => fallback\n  }\n}\n"))
 }

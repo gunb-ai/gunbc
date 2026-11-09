@@ -1,6 +1,7 @@
 module gunbc.fabric.fabric_cell_effect
 
-import std.types { String, List, Bool, Int, NonEmptyStr, list_length }
+import std.types { String, List, Bool, Int, NonEmptyStr }
+import std.algebra { length }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import extdeps.systemd.unit_file {
   SystemdSliceDirective,
@@ -95,7 +96,7 @@ fn fabric_cell_base_directory_effect() -> FabricCellEffect {
 // `slice_tasks_max`, `slice_cpu_weight`), and the refusal survived on a comment asserting the
 // two-arm shape the tree no longer had. Keeping it would be a wall whose RED names a state that
 // cannot occur -- permanently red by staleness, the mirror of the permanently-green decoration
-// DESIGN 4b forbids.
+// gunbc.design_argument::guarantee_ladder forbids.
 //
 // FIVE BASE DIRECTIVES PLUS THE CPU QUOTA LINE, ALWAYS SIX. Every magnitude comes from
 // gunbc_runner_slot_desired_for -- the same row fabric_cell_resource_boundary_state_digest renders
@@ -105,7 +106,7 @@ fn fabric_cell_base_directory_effect() -> FabricCellEffect {
 // THE QUOTA LINE IS EITHER A CEILING OR AN AFFIRMATIVE UNSET, NEVER ABSENT. CpuQuotaResolved
 // renders `CPUQuota=<threads * 100>%`; SlotCpuQuotaUnbounded renders `CPUQuota=` through
 // slice_cpu_quota_unbounded, which is the empty assignment systemd reads as "no quota". Omitting
-// the line under Unbounded would be the widen DESIGN 5 forbids: an ADDED cell would carry
+// the line under Unbounded would be the widen gunbc.design_argument::fail_closed forbids: an ADDED cell would carry
 // whatever quota its slice already had while the desired digest said infinity. The
 // RunnerSlotCpuQuota that used to carry a refusing arm no longer does (its only refusing producer,
 // a vendor survey, is deleted), so this fold is total and the SliceDirectivesQuotaSurveyRefused /
@@ -185,7 +186,7 @@ fn fabric_cell_slice_quota_directive(quota: RunnerSlotCpuQuota) -> SystemdSliceD
 // make one silence answer for an ownership wall, a duplicate key and an unclassifiable change --
 // causes with different owners and different remedies. A fifth arm,
 // BoundaryDirectiveVocabularyIncomplete, is DELETED rather than retained empty: its premise (three
-// slice directives unmodeled in extdeps.systemd.unit_file) was stale, and per DESIGN 4b(4) the
+// slice directives unmodeled in extdeps.systemd.unit_file) was stale, and per gunbc.design_argument::guarantee_ladder (dissolution on climb) the
 // witness rows that expected it flipped to positive controls asserting the boundary realizes.
 type FabricCellRealizationRefusal
   = CellTeardownRefusedByOwnership { address_wire: String, cause: TeardownRefusalCause }
@@ -303,7 +304,7 @@ fn fabric_cell_workspace_quota_repair(at: String, from: FabricCellMember, to: Fa
 // on the reasoning that a typed located refusal is fail-closed. It is not, and the objection is
 // decisive rather than a caveat: a refusal that fires AFTER two directories exist has not stopped
 // the line, it has stopped half of it and left the other half standing. That is exactly "a
-// partially applied infrastructure change without convergence", which DESIGN 4b names as a class
+// partially applied infrastructure change without convergence", which gunbc.design_argument::guarantee_ladder names as a class
 // the ladder exists to catch.
 //
 // THE OPERATIONAL FORM OF THE SAME ARGUMENT IS STRONGER THAN THE DOCTRINAL ONE. A cgroup slice
@@ -353,7 +354,7 @@ fn fabric_cell_plan_effects(
     FabricCellSliceEnsure { slice_unit: _, directives: _ } => acc
     FabricCellDirectoryEnsure { path: _, owner: _ } => concat(acc, [e])
   })
-  if list_length(items: address_effects) == 0 {
+  if length(xs: address_effects) == 0 {
     []
   } else {
     concat(boundary_effects, concat([fabric_cell_base_directory_effect()], directory_effects))
@@ -369,7 +370,7 @@ fn fabric_cell_realization(
   actions: List<MemberAction<FabricCellMember, String>>,
 ) -> FabricCellRealization {
   let refusals = fabric_cell_plan_refusals(actions: actions)
-  if list_length(items: refusals) > 0 {
+  if length(xs: refusals) > 0 {
     CellPlanRefused { refusals: refusals }
   } else {
     CellPlanRealizable { effects: fabric_cell_plan_effects(actions: actions) }
@@ -379,5 +380,5 @@ fn fabric_cell_realization(
 fn fabric_cell_realization_refusal_count(
   actions: List<MemberAction<FabricCellMember, String>>,
 ) -> Int {
-  list_length(items: fabric_cell_plan_refusals(actions: actions))
+  length(xs: fabric_cell_plan_refusals(actions: actions))
 }

@@ -28,14 +28,14 @@ data namecheap_account_report: NamecheapAccountReport = NamecheapAccountReport {
 // publishes it. So the standing is two arms; the report was the first, and the parent's answer
 // (2026-10-27) now holds the second. The Cloudflare nameserver names are assigned per account by
 // Cloudflare. The comment on NamecheapAccountReport asks for the API allowlist to be re-observed when
-// the DNS controller changes; this change triggers that. Frontier: gunbc.plans.boot_origin_bmc_media B1
-// (BootOriginHostnameAllocated) and the fleet zone (gunbc.plans.fleet_naming_reach_access P7) consume
+// the DNS controller changes; this change triggers that. Frontier: gunbc.plans.boot_origin_bmc_media (deleted 2026-11-08) B1
+// (BootOriginHostnameAllocated) and the fleet zone (gunbc.plans.fleet_naming_reach_access (deleted 2026-11-08) P7) consume
 // this row, and both require DelegationObservedInParent, never the registrar report alone.
 type RegistrarNameserverSetting
   = RegistrarBasicDns
   | RegistrarCustomNameservers { nameservers: List<HostName> }
 
-// Each standing carries the typed receipt of the read that grounds it, never free text (DESIGN 4c).
+// Each standing carries the typed receipt of the read that grounds it, never free text (gunbc.design_argument::source_annotations).
 type RegistrarConsoleReport {
   reported_at: Rfc3339Timestamp
   reporter: NonEmptyStr

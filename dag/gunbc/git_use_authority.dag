@@ -34,7 +34,7 @@ type NativeAuthorityMode
 // route has effects. That shape is right and is not abandoned. But it does not compile today:
 // v1 inference discards a local callable whose resolved parameter count is zero, so both
 // branches report as not found in scope. A declaration the compiler REFUSES is not a declared
-// frontier at all -- DESIGN 3c's admissible middle state presumes the declaration is at least
+// frontier at all -- gunbc.design_argument::consumption's admissible middle state presumes the declaration is at least
 // well formed under the current substrate, and this one was known-rejected. Landing it would
 // have parked non-compiling source inside the required-witness claim home, leaving every test
 // declaration that imports this module green by absence.
@@ -43,7 +43,7 @@ type NativeAuthorityMode
 // gunbc.git_use_census.report report_git_uses entry that reads git_use_rows and renders each
 // row's selected disposition beside its use identity, once the dispatched nullary-callable
 // inference repair makes the deferred-branch shape expressible. Adding a dummy argument, or
-// eagerly supplying both values to evade the defect, stays refused (DESIGN 5 workaround rule):
+// eagerly supplying both values to evade the defect, stays refused (gunbc.design_argument::fail_closed workaround rule):
 // the defect is the thing to fix, and the specimen is the evidence that repair lane needs.
 //
 // These modes do NOT seal gunbc.native_scm_interaction_contract Landed. A bridge landing mint
@@ -162,7 +162,7 @@ fn git_authorization_matches_role(role: GitUseRole, authorization: GitUseAuthori
 // add an arm to GitUseClassification or a finding to the finding channel, and the index can
 // keep admitting an import the finding channel has already condemned. A forbidden import
 // silently reclassified as authorized is the exact outcome this policy exists to refuse, so the
-// fork is a correctness concern and not a tidiness one (DESIGN 2, DESIGN 3).
+// fork is a correctness concern and not a tidiness one (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority).
 //
 // So standing is a closed sum resolved by one fold. The finding channel projects its findings
 // and the index channel projects its admissibility; neither re-derives the decision, and a new

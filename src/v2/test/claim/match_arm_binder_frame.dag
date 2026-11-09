@@ -83,7 +83,7 @@ fn mab_assemble(src: String) -> Outcome<ResolvedTree> {
 // diagnostics with no closure at any depth.
 //
 // THE REAL PATH STILL EXECUTES. Preparation runs each producer once, for real, and is REFUSED
-// there if it cannot run; the rows then read it. That is the DESIGN section 3 pairing obligation
+// there if it cannot run; the rows then read it. That is the gunbc.design_argument::witness_one_interface pairing obligation
 // discharged by the mechanism rather than by an extra claim -- delete the integration and
 // preparation breaks, not just an assertion.
 fn mab_outcome_accepts(o: Outcome<ResolvedTree>) -> Bool {
@@ -253,7 +253,7 @@ test fn mab_binder_spelling_a_where_alias_binds() -> Bool {
 // the compiler cannot tell which, so it refuses resolve_reason_pattern_atom_names_visible_value
 // (rename to bind, or use an equality guard to compare). Binding it is the silent wrong answer when
 // the arm reads the atom (`A(d) => d` would return the scrutinee's payload, not the constant). Kept,
-// reversed, as the regression control (DESIGN section 4b(4)); a binder spelled like a module FUNCTION
+// reversed, as the regression control (gunbc.design_argument::guarantee_ladder (dissolution on climb)); a binder spelled like a module FUNCTION
 // still binds (mab_a_binder_spelled_like_a_module_function_still_binds).
 test fn mab_binder_spelling_a_record_data_row_refuses() -> Bool {
   mab_outcome_refuses_with(o: mab_resolved_record_data_binder(), reason: ^resolve_reason_pattern_atom_names_visible_value)

@@ -1,0 +1,69 @@
+module gunbc.runner.runner_connectivity_restart
+
+import std.types { String, NonEmptyStr }
+import std.disposition { ConstructionMechanism, SingleAuthority }
+import gunbc.fleet.fleet_runner_connectivity {
+  RunnerSlotConnectivityVerdict, RunnerSlotIdentity,
+  SlotConnectivityHealthy, SlotConnectivityDetached, SlotConnectivityLabelsDiverge,
+  SlotConnectivityOrphaned, SlotConnectivityUnknown, SlotConnectivityUnexpectedRegistration,
+}
+import gunbc.runner.runner_lost_agent { LostAgentObservation, LostAgentDetected, JobNotLost, LostAgentReadRefused }
+
+data runner_connectivity_restart_authority_disposition: ConstructionMechanism = SingleAuthority
+
+// THE RESTART LEG'S DECISION, ISOLATED FROM ITS EFFECT. This is a pure gate: given what the connectivity
+// join says about a slot, may the slot be restarted? The effect (runner_slot_actuation.restart_runner_slot_over,
+// read back on a changed MainPID) is separate, and the realization that runs both is separate again. Keeping
+// the gate here, pure, is what lets every disposition be witnessed without an SSH leg.
+//
+// IT RESTARTS ONLY DETACHED OR ORPHANED. Everything else refuses, and the refuses are as load-bearing as the
+// permits:
+//   - HEALTHY is a slot that is doing its job; restarting it is a self-inflicted wedge.
+//   - LABELS_DIVERGE is a label mismatch: the remedy is a re-label, not a process cycle. Restarting a slot to
+//     fix labels would look like progress while hiding the actual defect.
+//   - UNKNOWN (where an UNRESOLVED registration or an UNREADABLE read lands) is a slot we have not actually
+//     seen. gunbc.design_argument::fail_closed: could-not-see is never a verdict, and here it is certainly never a permission to act.
+//   - UNEXPECTED_REGISTRATION is not a local slot at all; there is nothing here to restart.
+//
+// A LOST-AGENT DETECTION IS CORROBORATION, NEVER AN INDEPENDENT PERMISSION (review 90967, gunbc.design_argument::fail_closed).
+// Detection requires a null runner, so LostAgentDetected carries NO slot or job-routing identity -- by
+// construction it cannot. It therefore cannot say WHICH slot a stranded job belongs to, and cannot turn a
+// Healthy or Unknown slot into a restartable one: doing so would read "we do not know which slot this job is
+// against" as permission to cycle EVERY slot, which is exactly widening over an unavailable answer. The
+// permitted set is fixed by the VERDICT, the only structure that names the slot: Detached and Orphaned. When a
+// full lost-agent detection is present it strengthens the reason a Detached/Orphaned slot is reclaimed; a
+// refused lost-agent read is not a detection and changes nothing.
+
+type RestartLegDecision
+  = RestartLegPermit { slot: RunnerSlotIdentity, why: NonEmptyStr }
+  | RestartLegRefuse { why: NonEmptyStr }
+
+fn restart_leg_decision(verdict: RunnerSlotConnectivityVerdict, lost: LostAgentObservation) -> RestartLegDecision {
+  // MATCH ON THE OBSERVATION, DO NOT COLLAPSE IT TO A Bool (review 91001, gunbc.design_argument::fail_closed). Each lost-agent
+  // disposition contributes its OWN typed reason: a full detection deepens the claim with the over-timeout
+  // evidence; a refused read carries its refusal cause (it is not a detection, so it neither reclaims nor
+  // hides that the read failed); a not-lost job adds nothing. A Bool would throw away the over_by evidence and
+  // the typed LostAgentReadRefused cause. The corroboration NEVER opens a permit arm -- only the verdict does.
+  let corroboration: String = match lost {
+    LostAgentDetected { job_id: _, over_by: _ } => " and its job was detected stranded past its own timeout (a corroborating lost agent)"
+    JobNotLost { job_id: _, reason: _ } => ""
+    LostAgentReadRefused { job_id: _, reason: r } => concat(" and its lost-agent read was itself refused, so it is not corroborated: ", r)
+  }
+  match verdict {
+    // Only the verdict can name the slot, so only the verdict can permit. A detected lost agent deepens the
+    // reason; it never opens a new arm. A slot-less lost-agent read cannot override any refuse arm: naming no
+    // slot, it authorizes none (review 90967, gunbc.design_argument::fail_closed).
+    SlotConnectivityDetached { slot: s, registration_id: _ } =>
+      RestartLegPermit { slot: s, why: concat("the slot's registration is offline (detached)", corroboration) }
+    SlotConnectivityOrphaned { slot: s } =>
+      RestartLegPermit { slot: s, why: concat("the slot has no registration GitHub will acknowledge (orphaned)", corroboration) }
+    SlotConnectivityHealthy { slot: _, registration_id: _ } =>
+      RestartLegRefuse { why: "the slot is healthy; a restart would be a self-inflicted wedge, and a lost-agent read names no slot so it cannot override this (review 90967, gunbc.design_argument::fail_closed)" }
+    SlotConnectivityLabelsDiverge { slot: _, registration_id: _ } =>
+      RestartLegRefuse { why: "labels diverge is a re-label, not a process restart, and a slot-less lost-agent read cannot override it" }
+    SlotConnectivityUnknown { slot: _, reason: r } =>
+      RestartLegRefuse { why: concat("the slot's connectivity is unknown, not actionable, and could-not-see is never a permission that a slot-less lost-agent read can supply: ", r) }
+    SlotConnectivityUnexpectedRegistration { registration_id: _, registration_name: _, decoded: _ } =>
+      RestartLegRefuse { why: "the registration is not a local slot; there is nothing here to restart" }
+  }
+}

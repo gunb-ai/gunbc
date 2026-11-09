@@ -91,11 +91,11 @@ data host_boot_cutover_frontier: DissolutionCondition = unbound_dissolution(
 // recovered/'s dissolution is NOT this PR. Y beside X does not satisfy it; that fact is the
 // unbound host_boot_cutover_frontier, not a second false constant.
 
-// §4b(1): the reported rung is the MINIMUM across in-scope paths. The planner-witness path has
+// gunbc.design_argument::guarantee_ladder (rung honesty): the reported rung is the MINIMUM across in-scope paths. The planner-witness path has
 // executed REDs. The host-boot jailer-exec path has not: host_image_placeability_standing is still
 // HostShellAndBootImageAccessRefused (BMC answering is not tmpfs exec). Claiming
 // MechanicallyPreventable for the class would be inflation. Cutover sequence:
-// docs/plans/ci-per-job-microvm-migration.md — plan only, unbound host_boot_cutover_frontier.
+// docs/plans/ci-per-job-microvm-migration.md (deleted 2026-11-08) — plan only, unbound host_boot_cutover_frontier.
 data attempt_launch_planner_witness_rung: GuaranteeRung = MechanicallyPreventable
 
 data attempt_launch_host_boot_exec_rung: GuaranteeRung = Mitigatable

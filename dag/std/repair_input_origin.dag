@@ -49,7 +49,7 @@ type RenderedTypeSurfaceOrigin {}
 // THREE FACTS.
 //
 // THIS DIVERGES FROM std.coercion TypeDeclarationProvenance, DELIBERATELY, AND HERE IS THE REASON
-// (DESIGN section 3b admits a stated departure and refuses only a silent one). Three departures,
+// (gunbc.design_argument::conformance admits a stated departure and refuses only a silent one). Three departures,
 // each with its own cause:
 //
 //   1. CorpusDeclared carries `decl_file: String` -- A POSITION.
@@ -62,7 +62,7 @@ type RenderedTypeSurfaceOrigin {}
 //   2. KernelMinted HAS NO PRODUCER ON THIS ROUTE. The kernel-minted arm is obliged to derive from
 //      the exact-equality kernel identity predicate rather than a prefix test, and that minter --
 //      v1.std.core kernel_span -- exists only on the v1 route; no v2 module mints a kernel span.
-//      An arm with no producer is permanently uninhabited, which DESIGN section 4b calls a
+//      An arm with no producer is permanently uninhabited, which gunbc.design_argument::guarantee_ladder calls a
 //      decoration rather than a weak wall, and worse than absent because it would be cited as
 //      coverage. What the v2 route can establish exactly is the neighbouring fact: a target that
 //      resolves through the symbol index while NO DECLARATION IDENTITY CAN BE MINTED FOR IT. Two
@@ -92,7 +92,7 @@ type RepairInputDeclarationProvenance
 // the declaration path the mention sits under -- which is what makes two mentions of one name in
 // one module two rows rather than one. THERE IS NO SEPARATE referencing-module FIELD, and its
 // absence is the point: the module is the longest rostered module prefix of this chain, so a
-// second field carrying it would be the same fact stored twice (DESIGN section 2) and would then
+// second field carrying it would be the same fact stored twice (gunbc.design_argument::minimize_redundancy) and would then
 // need a fabricated answer for a position no roster covers. Every consumer of this denominator
 // holds the module roster already -- the producer builds the roster and the carrier from the same
 // roots -- so the module is DERIVED where it is wanted rather than carried where it can drift.

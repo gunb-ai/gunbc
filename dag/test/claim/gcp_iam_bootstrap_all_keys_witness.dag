@@ -14,7 +14,7 @@ import gunbc.spark.secret_access_ensure { spark_secret_access_grant }
 import gunbc.fleet.hetzner_cloud_acquisition { hetzner_cloud_api_grants }
 import gunbc.assimilate.bmc_wif_delegation_chain { bmc_wif_signed_grants, bmc_wif_all_grants, bmc_wif_legacy_grants, bmc_wif_canary_grant, bmc_srv3_admin_access_grant }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
-import gunbc.auth.secret_access_grant { SecretAccessGrant, GrantPrincipal, Signed, Unsigned, signed_grants_only, grant_is_signed }
+import gunbc.auth.secret_access_grant { DeclaredSecretGrant, GrantPrincipal, Signed, Unsigned, signed_grants_only, grant_is_signed }
 import gunbc.auth.gcp_secret_access { GrantMemberResolved, GrantMemberUnresolved }
 import gunbc.auth.gcp_iam_trust_roots { TrustRootCell, fleet_member_root_cells, TrustRootCeremony, IamBootstrapApply, ApprovalMacKeyProvision, OrgAdminAppKeyAccessConverge, ceremony_trust_root_secrets }
 import gunbc.auth.approval_mac_key_provision { approval_mac_key_ceremony_rows }
@@ -41,7 +41,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //   gunbc.fleet.hetzner_cloud_acquisition hetzner_cloud_api_grants
 //   gunbc.assimilate.bmc_wif_delegation_chain bmc_wif_signed_grants (its declarer's own apply selection:
 //     an Unsigned grant declares no cell to bind yet; signing it in reviewed code moves it in)
-// RUNG (DESIGN section 4b): mechanically preventable FOR THE LISTED DECLARERS ONLY. The universe above is
+// RUNG (gunbc.design_argument::guarantee_ladder): mechanically preventable FOR THE LISTED DECLARERS ONLY. The universe above is
 // hand-listed, so a declarer added tomorrow is invisible to this join, which stays green. Next-rung
 // trigger: gunbc.recurring_failure_mode a_secret_iam_cell_declarer_outside_a_hand_listed_universe (a
 // census over construction sites of both SecretAccessGrant types feeding this population).
@@ -57,7 +57,7 @@ fn declared_secrets() -> List<String> {
     + flat_map(gcp_iam_converge_targets, f => map(f.secret_grants, x => x.target.secret as String))
     + [gunbai_ci_app_pem_secret.secret as String, spark_secret_access_grant().target.secret as String]
     + map(hetzner_cloud_api_grants(), x => x.target.secret as String)
-    + map(bmc_wif_signed_grants(), x => x.secret_ref.secret as String)
+    + map(bmc_wif_signed_grants(), x => x.cell.target.secret as String)
   distinct_by_key(xs: names, key: x => x)
 }
 
@@ -135,8 +135,8 @@ test fn the_binder_join_compares_the_exact_cell() -> Bool {
 // ── AN UNSIGNED GRANT REACHES NO GRANT SET (the BMC declarer's own signoff selection) ──────────
 // THE PRODUCTION RED: no converge grant set names a secret only an Unsigned bmc grant declares.
 fn unsigned_only_bmc_secrets() -> List<String> {
-  let signed = map(bmc_wif_signed_grants(), g => g.secret_ref.secret as String)
-  filter(map(filter(bmc_wif_all_grants + bmc_wif_legacy_grants, g => !grant_is_signed(grant: g)), g => g.secret_ref.secret as String), s => !any(signed, x => x == s))
+  let signed = map(bmc_wif_signed_grants(), g => g.cell.target.secret as String)
+  filter(map(filter(bmc_wif_all_grants + bmc_wif_legacy_grants, g => !grant_is_signed(grant: g)), g => g.cell.target.secret as String), s => !any(signed, x => x == s))
 }
 
 test fn no_grant_set_names_a_secret_only_an_unsigned_grant_declares() -> Bool {
@@ -146,12 +146,12 @@ test fn no_grant_set_names_a_secret_only_an_unsigned_grant_declares() -> Bool {
 
 // THE FIXTURE FLIP, BOTH WAYS: the signed canary unsigned leaves no set; the unsigned srv3 grant signed
 // yields its cell, resolved to its own principal.
-fn with_signoff_unsigned(g: SecretAccessGrant) -> SecretAccessGrant {
-  SecretAccessGrant { secret_ref: g.secret_ref, principal: g.principal, role: g.role, consumer: g.consumer, justification: g.justification, signoff: Unsigned, provenance: g.provenance }
+fn with_signoff_unsigned(g: DeclaredSecretGrant) -> DeclaredSecretGrant {
+  DeclaredSecretGrant { cell: g.cell, principal: g.principal, consumer: g.consumer, justification: g.justification, signoff: Unsigned, provenance: g.provenance }
 }
 
-fn with_signoff_signed(g: SecretAccessGrant) -> SecretAccessGrant {
-  SecretAccessGrant { secret_ref: g.secret_ref, principal: g.principal, role: g.role, consumer: g.consumer, justification: g.justification, signoff: Signed { signed_by: "fixture" as NonEmptyStr, note: "witness flip" as NonEmptyStr }, provenance: g.provenance }
+fn with_signoff_signed(g: DeclaredSecretGrant) -> DeclaredSecretGrant {
+  DeclaredSecretGrant { cell: g.cell, principal: g.principal, consumer: g.consumer, justification: g.justification, signoff: Signed { signed_by: "fixture" as NonEmptyStr, note: "witness flip" as NonEmptyStr }, provenance: g.provenance }
 }
 
 test fn an_unsigned_canary_reaches_no_grant_set_and_a_signed_srv3_grant_does() -> Bool {
@@ -159,14 +159,14 @@ test fn an_unsigned_canary_reaches_no_grant_set_and_a_signed_srv3_grant_does() -
   let signed_srv3 = bmc_assimilator_grant_sets_over(c: bmc_assimilator_cells_over(grants: signed_grants_only(grants: [with_signoff_signed(g: bmc_srv3_admin_access_grant)])))
   count(unsigned_canary) == 0
     && count(signed_srv3) == 1
-    && all(signed_srv3, g => count(g.grants) == 1 && all(g.grants, x => (x.target.secret as String) == (bmc_srv3_admin_access_grant.secret_ref.secret as String)))
+    && all(signed_srv3, g => count(g.grants) == 1 && all(g.grants, x => (x.target.secret as String) == (bmc_srv3_admin_access_grant.cell.target.secret as String)))
 }
 
 // GRANTS NAMING DIFFERENT PRINCIPALS REFUSE TYPED: no single member serves the set. The control is
 // today's signed grants, which resolve.
 test fn bmc_grants_naming_two_principals_refuse_the_member() -> Bool {
   let p = bmc_wif_canary_grant.principal
-  let elsewhere = SecretAccessGrant { secret_ref: bmc_wif_canary_grant.secret_ref, principal: GrantPrincipal { service_account: "someone-else@gunbai-secrets.iam.gserviceaccount.com" as ServiceAccountEmail, condition: p.condition }, role: bmc_wif_canary_grant.role, consumer: bmc_wif_canary_grant.consumer, justification: bmc_wif_canary_grant.justification, signoff: bmc_wif_canary_grant.signoff, provenance: bmc_wif_canary_grant.provenance }
+  let elsewhere = DeclaredSecretGrant { cell: bmc_wif_canary_grant.cell, principal: GrantPrincipal { service_account: "someone-else@gunbai-secrets.iam.gserviceaccount.com" as ServiceAccountEmail, condition: p.condition }, consumer: bmc_wif_canary_grant.consumer, justification: bmc_wif_canary_grant.justification, signoff: bmc_wif_canary_grant.signoff, provenance: bmc_wif_canary_grant.provenance }
   let split = bmc_assimilator_grant_sets_over(c: bmc_assimilator_cells_over(grants: [bmc_wif_canary_grant, elsewhere]))
   let today = bmc_assimilator_grant_sets_over(c: bmc_assimilator_cells_over(grants: bmc_wif_signed_grants()))
   count(split) == 1 && all(split, g => match g.member { GrantMemberUnresolved { cause: _ } => true  GrantMemberResolved { member: _ } => false })

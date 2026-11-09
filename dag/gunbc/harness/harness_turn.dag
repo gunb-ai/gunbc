@@ -35,6 +35,7 @@ import gunbc.fabric.fabric_storage_client { FabricStorageBinding
 }
 import extdeps.clock { ClockUnixMillisRead, ClockUnixMillisObserved, ClockUnixMillisRefused, clock_unix_millis_read }
 import extdeps.http.client
+import gunbc.harness.harness_operator_route { OperatorRoundFault, operator_round_fault, operator_round_fault_text, operator_pinned_post_request }
 import extdeps.git.inspect
 import extdeps.filesystem.filesystem_io
 import extdeps.filesystem.filesystem_io { Filesystem,
@@ -62,19 +63,20 @@ import gunbc.harness.harness_wire {
 import gunbc.harness.harness_tool {
   HarnessToolEnvironment, HarnessToolOutcome, ToolCompleted, ToolRefused,
   harness_execute_tool_use, harness_outcome_text, harness_outcome_is_error,
-  harness_run_command_schema,
+  harness_run_command_schema, HarnessValidationRoute, ValidationNotOffered, ValidationRoutedTo, harness_validate_worktree_schema, harness_validate_worktree_description,
 }
 import gunbc.harness.harness_tool_kind { harness_tool_of_wire_name, harness_tool_read_item_type }
 import extdeps.llm.anthropic_messages_api {
   AnthropicStopReason, EndTurn, MaxTokens, StopSequence, ToolUse, PauseTurn, Refusal,
   ModelContextWindowExceeded,
 }
+import std.algebra { length }
 
 // THE TURN LOOP: post a request, and while the response stops on tool use, execute the tools and
 // post the results back. Everything else in this module exists to make that sentence honest.
 //
 // THE LOOP IS BOUNDED AND THE BOUND IS AN ARGUMENT. Execution here is forward and terminating by
-// construction (DESIGN section 4), so the recursion carries a step budget that strictly decreases
+// construction (gunbc.design_argument::closed_grounded_substrate), so the recursion carries a step budget that strictly decreases
 // and the exhausted case is a NAMED terminal, not a silent stop. An unbounded "while tool_use"
 // would be a program whose termination depends on the remote model's behaviour, which is precisely
 // the fact we are least entitled to assume.
@@ -280,7 +282,7 @@ type HarnessTurnConfig {
 // token count the runtime reported back -- and the same rule applies here: the response carries
 // usage.input_tokens, so the check compares a counted fact against a declared budget rather than
 // dividing bytes by an assumed characters-per-token. A chars-per-token factor would be exactly the
-// heuristic DESIGN section 4 says is never necessary when the richer source exists, and here the
+// heuristic gunbc.design_argument::closed_grounded_substrate says is never necessary when the richer source exists, and here the
 // richer source is already parsed and already discarded.
 //
 // The check fires AFTER a response rather than before a request because that is when a counted
@@ -297,7 +299,7 @@ fn harness_context_exhausted(input_tokens: TokenCount, budget: TokenCount) -> Bo
 // error, round.usage, the checkpoint announcement turn.alignment_checkpoint_due and the wire-log
 // refusal turn.wire_log_unwritable, read line by line through jq -- and every consumer of agent
 // evidence is written against it. A second stream shape
-// for this one provider would be the section 3 fork; emitting the existing one makes the harness a
+// for this one provider would be the gunbc.design_argument::single_authority fork; emitting the existing one makes the harness a
 // first-class provider on a contract that already has readers.
 //
 // IT IS EMITTED BY THE TURN, NOT OBSERVED FROM THE PROCESS, and that is the load-bearing choice. An
@@ -417,7 +419,7 @@ fn harness_worktree_files_changed(environment: HarnessToolEnvironment) -> Int? {
   if !status.success {
     none
   } else {
-    Present { value: list_length(items: split(s: status.entries_nul, delimiter: "\u{0}") |> filter(e => e != "")) }
+    Present { value: length(xs: split(s: status.entries_nul, delimiter: "\u{0}") |> filter(e => e != "")) }
   }
 }
 
@@ -724,7 +726,7 @@ fn harness_messages_request_json(
     json_kv(key: "max_tokens", value: json_int(n: config.max_tokens)),
     json_kv(key: "system", value: json_string(s: config.system_prompt)),
     json_kv(key: "messages", value: json_array(elements: messages)),
-    json_kv(key: "tools", value: harness_tool_contract_json(shape: AnthropicMessagesShape)),
+    json_kv(key: "tools", value: harness_tool_contract_json(shape: AnthropicMessagesShape, validation: config.environment.validation)),
   ], reasoning_kwargs))
 }
 
@@ -744,7 +746,7 @@ fn harness_chat_request_json(
         json_kv(key: "content", value: json_string(s: config.system_prompt)),
       ]),
     ], messages))),
-    json_kv(key: "tools", value: harness_tool_contract_json(shape: OpenAiChatCompletionsShape)),
+    json_kv(key: "tools", value: harness_tool_contract_json(shape: OpenAiChatCompletionsShape, validation: config.environment.validation)),
   ], reasoning_kwargs))
 }
 
@@ -752,34 +754,41 @@ fn harness_chat_request_json(
 // it is part of the normalized request identity a turn is placed under (gunbc.harness.harness_cli
 // harness_model_request_inputs), so the identity cannot drift from what the model is actually
 // offered. One schema, two envelopes.
-fn harness_tool_contract_json(shape: HarnessWireShape) -> JsonValue {
+fn harness_tool_contract_json(shape: HarnessWireShape, validation: HarnessValidationRoute) -> JsonValue {
+  json_array(elements: concat(
+    [harness_tool_declaration_json(shape: shape, name: "run_command", description: harness_run_command_description, schema: harness_run_command_schema())],
+    match validation {
+      ValidationNotOffered => []
+      ValidationRoutedTo { repo_root: _ } =>
+        [harness_tool_declaration_json(shape: shape, name: "validate_worktree", description: harness_validate_worktree_description, schema: harness_validate_worktree_schema())]
+    },
+  ))
+}
+
+fn harness_tool_declaration_json(shape: HarnessWireShape, name: String, description: String, schema: JsonValue) -> JsonValue {
   match shape {
     AnthropicMessagesShape =>
-      json_array(elements: [
-        json_object([
-          json_kv(key: "name", value: json_string(s: "run_command")),
-          json_kv(key: "description", value: json_string(s: harness_run_command_description)),
-          json_kv(key: "input_schema", value: harness_run_command_schema()),
-        ]),
+      json_object([
+        json_kv(key: "name", value: json_string(s: name)),
+        json_kv(key: "description", value: json_string(s: description)),
+        json_kv(key: "input_schema", value: schema),
       ])
     OpenAiChatCompletionsShape =>
-      json_array(elements: [
-        json_object([
-          json_kv(key: "type", value: json_string(s: "function")),
-          json_kv(key: "function", value: json_object([
-            json_kv(key: "name", value: json_string(s: "run_command")),
-            json_kv(key: "description", value: json_string(s: harness_run_command_description)),
-            json_kv(key: "parameters", value: harness_run_command_schema()),
-          ])),
-        ]),
+      json_object([
+        json_kv(key: "type", value: json_string(s: "function")),
+        json_kv(key: "function", value: json_object([
+          json_kv(key: "name", value: json_string(s: name)),
+          json_kv(key: "description", value: json_string(s: description)),
+          json_kv(key: "parameters", value: schema),
+        ])),
       ])
   }
 }
 
 data harness_run_command_description: String = "Run a shell command in the attempt's working directory and return its combined output and exit code."
 
-fn harness_tool_contract_wire(shape: HarnessWireShape) -> String {
-  serialize_json(v: harness_tool_contract_json(shape: shape))
+fn harness_tool_contract_wire(shape: HarnessWireShape, validation: HarnessValidationRoute) -> String {
+  serialize_json(v: harness_tool_contract_json(shape: shape, validation: validation))
 }
 
 // INLINE REASONING IS DECODED, NOT REFUSED. When the serving unit carries no reasoning parser, a
@@ -796,14 +805,24 @@ fn harness_tool_contract_wire(shape: HarnessWireShape) -> String {
 // format; that rule was this harness's invention, and it stopped a sixteen-round Think Max run that
 // had done nothing wrong. The encoder's one assertion, a MISSING closer under thinking, stands.
 fn harness_split_text_block(unit: HarnessServingUnit, text: String) -> List<HarnessWireBlock> {
-  let parts = split(s: text, delimiter: harness_unit_thinking_end_token(unit: unit) as String)
+  // An Absent closer means the unit's token is not grounded (a TranscribedUncited figure not yet read);
+  // the split does not fire and the text is the speech as it arrived -- the same answer a unit with no
+  // inline reasoning gets.
+  match harness_unit_thinking_end_token(unit: unit) {
+    Absent => [WireTextBlock { text: text }]
+    Present { value: end_token } => harness_split_text_at(unit: unit, text: text, end_token: end_token as String)
+  }
+}
+
+fn harness_split_text_at(unit: HarnessServingUnit, text: String, end_token: String) -> List<HarnessWireBlock> {
+  let parts = split(s: text, delimiter: end_token)
   match parts.first() {
     Absent => [WireTextBlock { text: text }]
     Present { value: reasoning } =>
-      if list_length(items: parts) < 2 {
+      if length(xs: parts) < 2 {
         [WireTextBlock { text: text }]
       } else {
-        let speech = join(parts.skip(n: 1), harness_unit_thinking_end_token(unit: unit) as String)
+        let speech = join(parts.skip(n: 1), end_token)
         concat(
           if reasoning == "" { [] } else { [WireThinkingBlock { thinking: reasoning }] },
           if speech == "" { [] } else { [WireTextBlock { text: speech }] },
@@ -814,7 +833,11 @@ fn harness_split_text_block(unit: HarnessServingUnit, text: String) -> List<Harn
 
 fn harness_split_inline_reasoning(unit: HarnessServingUnit, blocks: List<HarnessWireBlock>) -> List<HarnessWireBlock> {
   flat_map(blocks, b => match b {
-    WireTextBlock { text } => if text.contains(harness_unit_thinking_end_token(unit: unit) as String) { harness_split_text_block(unit: unit, text: text) } else { [b] }
+    WireTextBlock { text } =>
+      match harness_unit_thinking_end_token(unit: unit) {
+        Present { value: end_token } => if text.contains(end_token as String) { harness_split_text_at(unit: unit, text: text, end_token: end_token as String) } else { [b] }
+        Absent => [b]
+      }
     WireThinkingBlock { thinking: _ } => [b]
     WireToolUseBlock { id: _, name: _, input: _ } => [b]
   })
@@ -860,8 +883,12 @@ fn harness_chat_assistant_message_json(unit: HarnessServingUnit, blocks: List<Ha
   json_object(concat(concat(
     [json_kv(key: "role", value: json_string(s: "assistant")),
      json_kv(key: "content", value: json_string(s: speech))],
-    if reasoning == "" { [] } else { [json_kv(key: harness_unit_reasoning_field(unit: unit) as String, value: json_string(s: reasoning))] }),
-    if list_length(items: calls) == 0 { [] } else { [json_kv(key: "tool_calls", value: json_array(elements: calls))] }))
+    if reasoning == "" { [] } else {
+      match harness_unit_reasoning_field(unit: unit) {
+        Present { value: f } => [json_kv(key: f as String, value: json_string(s: reasoning))]
+        Absent => [] as List<JsonKeyValue>
+      } }),
+    if length(xs: calls) == 0 { [] } else { [json_kv(key: "tool_calls", value: json_array(elements: calls))] }))
 }
 
 // A THINKING BLOCK REPLAYS AS A THINKING BLOCK. Until 2026-09-04 this arm re-labelled the model's
@@ -1047,8 +1074,8 @@ fn harness_execute_tool(
 // cut off at that boundary is TRUNCATED -- its arguments are whatever fitted. This harness's one
 // tool runs a shell command, and its declared write forms are heredoc and in-place edit, so a
 // truncated command is a PARTIAL FILE WRITE that returns exit 0. The loop would then continue
-// against a tree it had silently corrupted, which is the fabricated-plausible-output failure DESIGN
-// section 5 forbids, arrived at through a hole nobody opened deliberately: the round arm branched on
+// against a tree it had silently corrupted, which is the fabricated-plausible-output failure
+// gunbc.design_argument::fail_closed forbids, arrived at through a hole nobody opened deliberately: the round arm branched on
 // whether tool calls were PRESENT and never asked whether they were COMPLETE.
 //
 // THE REFUSAL IS NOT A SMALLER CEILING. Raising max_tokens moves the boundary; it does not remove
@@ -1307,7 +1334,9 @@ fn harness_send_round(
       HarnessPostedRound {
         read: HarnessResponseUnreadable {
           cause: join([
-            "the backend refused the request or the transport failed; ", harness_refusal_body_text(config: config, body: posted.body),
+            "the backend refused the request or the transport failed; ",
+            match posted.fault { Present { value: f } => operator_round_fault_text(fault: f)  Absent => "" },
+            harness_refusal_body_text(config: config, body: posted.body),
           ], ""),
         },
         wire_log_detail: wire_log_detail,
@@ -1340,6 +1369,7 @@ type HarnessPostOutcome {
   body: String
   success: Bool
   headers: HttpHeaderDump?
+  fault: OperatorRoundFault?
 }
 
 // HOSTED FAILURES ARE CLASSIFIED ONCE (gunbc.harness.hosted_failure) and never retried. A fleet
@@ -1379,23 +1409,62 @@ fn harness_post_json(config: HarnessTurnConfig, header_file: NonEmptyStr?) -> Ha
         request_body_file: config.request_scratch_path as String as NonEmptyStr,
         max_seconds: to_string(value: second_count(s: config.request_deadline)) as NonEmptyStr,
       )
-      HarnessPostOutcome { body: posted.body, success: posted.success, headers: none }
+      HarnessPostOutcome { body: posted.body, success: posted.success, headers: none, fault: none }
     }
-    Present { value: hf } => {
-      let posted = http.Client.PostJsonFromFileWithHeaderFile(
-        url: config.backend_url as NonEmptyStr,
-        request_body_file: config.request_scratch_path as String as NonEmptyStr,
-        header_file: hf,
-        response_headers_file: harness_response_headers_path(config: config) as NonEmptyStr,
-        max_seconds: to_string(value: second_count(s: config.request_deadline)) as NonEmptyStr,
-      )
-      let dump = Filesystem.Read(path: harness_response_headers_path(config: config))
-      HarnessPostOutcome {
-        body: posted.body,
-        success: posted.success,
-        headers: Present { value: if dump.success { HeaderDumpRead { text: dump.content } } else { HeaderDumpUnread { cause: join(["the curl header dump ", harness_response_headers_path(config: config), " could not be read: ", dump.error], "") } } },
+    Present { value: hf } =>
+      match config.backend_access {
+        BackendAdmittedByOperatorEndpoint { header_file: _ } => harness_post_json_pinned(config: config, hf: hf)
+        BackendAdmittedBySeat => harness_post_json_with_header(config: config, hf: hf)
+        BackendAdmittedByHostedQuota { header_file: _, quota: _ } => harness_post_json_with_header(config: config, hf: hf)
       }
-    }
+  }
+}
+
+fn harness_post_json_with_header(config: HarnessTurnConfig, hf: NonEmptyStr) -> HarnessPostOutcome {
+  let posted = http.Client.PostJsonFromFileWithHeaderFile(
+    url: config.backend_url as NonEmptyStr,
+    request_body_file: config.request_scratch_path as String as NonEmptyStr,
+    header_file: hf,
+    response_headers_file: harness_response_headers_path(config: config) as NonEmptyStr,
+    max_seconds: to_string(value: second_count(s: config.request_deadline)) as NonEmptyStr,
+  )
+  let dump = Filesystem.Read(path: harness_response_headers_path(config: config))
+  HarnessPostOutcome {
+    body: posted.body,
+    success: posted.success,
+    headers: Present { value: if dump.success { HeaderDumpRead { text: dump.content } } else { HeaderDumpUnread { cause: join(["the curl header dump ", harness_response_headers_path(config: config), " could not be read: ", dump.error], "") } } },
+    fault: none,
+  }
+}
+
+// THE OPERATOR ENDPOINT IS POSTED ONLY OVER THE PINNED CERTIFICATE. The request is built once from
+// gunbc.harness.harness_operator_route operator_pinned_post_request (the pin files sit beside the header file
+// operator_open_header wrote after it had checked the custody certificate against the pin), and curl verifies
+// both the certificate and its public key in the handshake, so a different certificate sends no request byte.
+// The exit code is read into the typed fault: a refused certificate is never retried as an unreachable server.
+fn harness_post_json_pinned(config: HarnessTurnConfig, hf: NonEmptyStr) -> HarnessPostOutcome {
+  let r = operator_pinned_post_request(
+    url: config.backend_url as NonEmptyStr,
+    request_body_file: config.request_scratch_path as String as NonEmptyStr,
+    response_headers_file: harness_response_headers_path(config: config) as NonEmptyStr,
+    max_seconds: to_string(value: second_count(s: config.request_deadline)) as NonEmptyStr,
+    hf: hf,
+  )
+  let posted = http.Client.PostJsonFromFileWithHeaderFilePinned(
+    url: r.url,
+    request_body_file: r.request_body_file,
+    header_file: r.header_file,
+    response_headers_file: r.response_headers_file,
+    ca_file: r.ca_file,
+    pinned_pubkey_file: r.pinned_pubkey_file,
+    max_seconds: r.max_seconds,
+  )
+  let dump = Filesystem.Read(path: harness_response_headers_path(config: config))
+  HarnessPostOutcome {
+    body: posted.body,
+    success: posted.success,
+    headers: Present { value: if dump.success { HeaderDumpRead { text: dump.content } } else { HeaderDumpUnread { cause: join(["the curl header dump ", harness_response_headers_path(config: config), " could not be read: ", dump.error], "") } } },
+    fault: operator_round_fault(success: posted.success, curl_exit: posted.exit_code),
   }
 }
 
@@ -1483,7 +1552,7 @@ fn harness_compact_messages(
 }
 
 fn harness_compact_messages_now(messages: List<JsonValue>, shape: HarnessWireShape) -> List<JsonValue> {
-  let total = list_length(items: messages)
+  let total = length(xs: messages)
   let retained = harness_retained_tool_rounds * 2
   if total <= retained + 1 {
     messages
@@ -1689,10 +1758,10 @@ fn harness_turn_round(
           input_tokens: input_tokens,
           output_tokens: output_tokens,
           clock: clock,
-          tool_calls: list_length(items: uses),
+          tool_calls: length(xs: uses),
           files_changed: none,
         )
-        if list_length(items: uses) > 0 && harness_stop_reason_truncated(reason: stop_reason) {
+        if length(xs: uses) > 0 && harness_stop_reason_truncated(reason: stop_reason) {
           let truncated = concat(events, [
             usage,
             harness_event_turn_failed(
@@ -1726,7 +1795,7 @@ fn harness_turn_round(
                 steps_taken: steps_taken + 1,
               }
           }
-        } else if list_length(items: uses) == 0 {
+        } else if length(xs: uses) == 0 {
           let text = harness_blocks_text(blocks: blocks)
           match config.completion {
             CompletesWhenEntryPresent { directory: _, name: _ } =>
@@ -1822,7 +1891,7 @@ fn harness_turn_round(
             input_tokens: input_tokens,
             output_tokens: output_tokens,
             clock: clock,
-            tool_calls: list_length(items: uses),
+            tool_calls: length(xs: uses),
             files_changed: harness_worktree_files_changed(environment: config.environment),
           )
           let stepped = concat(concat(events, [usage_after_tools]), harness_tool_round_events(uses: uses))

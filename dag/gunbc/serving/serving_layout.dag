@@ -1,7 +1,7 @@
 module gunbc.serving.serving_layout
 
 import std.types { String, NonEmptyStr, List, Bool }
-import std.nat { Nat }
+import std.nat { Nat, nat_add }
 import std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_identity }
 import std.measure { ByteSize, byte_size, byte_size_count, TokenCount, token_count, token_count_value, mebibyte, mebibyte_to_byte_size, gibibyte, gibibyte_to_byte_size }
@@ -309,7 +309,7 @@ fn serving_replica_config(gr: ServingDeviceGroup, b: ServingBackendProfile, r: S
 fn serving_dealt(index: Nat, replicas: Nat, base: Nat, extra: Nat) -> Nat {
   let rounds = extra / replicas
   let remainder = extra - rounds * replicas
-  if index < remainder { base + rounds + 1 } else { base + rounds }
+  if index < remainder { nat_add(a: base + rounds, b: 1) } else { base + rounds }
 }
 
 // THE RAM ALLOCATION. The pool is what the host overhead and the shared artifacts leave. Every replica first
@@ -606,7 +606,7 @@ data srv4_layout: ServingLayoutResult = serving_layout_with_qualification(
   q: ServingLiveUnqualified { obligation: "srv4 has not run this configuration: its live cache is 32 GiB in 8 slots; apply the derived cap and cache, read memory.peak through real turns at the ceiling, and bind the receipt to this configuration's identity" as NonEmptyStr },
 )
 
-// CONSUMER, declared frontier (DESIGN section 3c): the h11 engine units' MemoryMax, MemorySwapMax,
+// CONSUMER, declared frontier (gunbc.design_argument::consumption): the h11 engine units' MemoryMax, MemorySwapMax,
 // --conversation-cache-mib and --conversation-cache-slots, and the router's per-replica admission, read this
 // configuration. Until a launch row renders them, the witnesses are the only readers and the values are
 // applied by hand from the derivation's output.

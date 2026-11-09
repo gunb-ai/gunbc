@@ -6,18 +6,18 @@ import std.effect_grant {
   LifecycleGrade, LifecycleByConstruction, LifecycleByConvention,
 }
 
-// Frame-boundary SPEC (docs/plans/effect-namespace-grants.md 6, owned silent-ibex-417): the
+// Frame-boundary SPEC (docs/plans/effect-namespace-grants.md (deleted 2026-11-08) 6, owned silent-ibex-417): the
 // effect-grants Envelope says what is INSIDE a frame (its grants); this says how the frame's
 // BOUNDARY -- everything OUTSIDE the envelope -- is enforced, per LAYER (operator framing
 // 2026-07-20: isolation is a per-layer property; each std.effect_grant.NamespaceTree is a layer;
 // netns/container/seccomp/mock are different MATERIALIZATIONS of different layers' boundaries).
 // This is the frame-grain sibling of std.effect_grant.HandlerBinding (RealTransport|Replay =
 // reach-for-real vs mock/simulate, at the per-grant grain): the boundary is that same
-// real-vs-simulate idea lifted to the whole frame. §3 SEAM (the load-bearing split): this module is
+// real-vs-simulate idea lifted to the whole frame. gunbc.design_argument::single_authority SEAM (the load-bearing split): this module is
 // the AGNOSTIC SPEC -- is a layer closed, at what LifecycleGrade -- and names NO mechanism. The
 // mechanisms (netns, container, seccomp, the mock/Simulated baseline) are REALIZATION HANDLERS in
 // extdeps that CONSTRUCT a BoundaryMaterialization; dispatch lives in extdeps, not std (the lane's
-// own rule). Two things wear the word 'materialization' and DESIGN 3 splits them here: (A) the
+// own rule). Two things wear the word 'materialization' and gunbc.design_argument::single_authority splits them here: (A) the
 // boundary SPEC = this carrier, a REACH fact, NOT
 // std.realization.Materialization=Recompute|Memoize|Share (that is the redundant-COMPUTATION axis
 // -- folding reach into it is a state-space conflation); (B) the boundary PROVISIONING (spawn a

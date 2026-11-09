@@ -68,7 +68,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // closes: a NativeTestRefused verdict that carried one reason symbol where the failing stage had
 // produced a located chain.
 //
-// THE SOURCES ARE SUPPLIED AND THE ROUTE IS REAL (DESIGN section 3: the boundary's inputs are
+// THE SOURCES ARE SUPPLIED AND THE ROUTE IS REAL (gunbc.design_argument::single_authority: the boundary's inputs are
 // values, everything above it is production). Each specimen is a few lines of `.dag` that reach
 // tokenize, parse, normalize and resolve through the same native_test_context_from_ingest the
 // driver's adjudicate mode assembles and the same native_lane_module_resolution it calls per
@@ -268,7 +268,7 @@ fn ndp_fatal_is_at_minted_occurrence(d: NonEmptyDiagnostics) -> Bool {
   let fatal = diagnostics_fatal(d: d)
   match fatal.at {
     NodeLocus { anchor: a } =>
-      match a.at.occurrence_id {
+      match a.at.node.occurrence_id {
         OccurrenceMinted { id: _ } => true
         OccurrenceProjected { id: _, caused_by: _ } => true
         OccurrencePending { caused_by: _ } => true
@@ -350,7 +350,7 @@ test fn shadowed_reference_row_names_lookup_class_and_both_competing_declaration
 // than retiring: `v2.ndq.user` binds `lone_value` nowhere, so it has no meaning here at all, and
 // what the corpus spells elsewhere is not evidence about this reference.
 //
-// IT STAYS ENROLLED BECAUSE IT IS THE DISCRIMINATOR FOR THE DELETION (DESIGN section 4b(4)).
+// IT STAYS ENROLLED BECAUSE IT IS THE DISCRIMINATOR FOR THE DELETION (gunbc.design_argument::guarantee_ladder (dissolution on climb)).
 // Reinstating a corpus-wide bare-name search moves this arm back -- to ambiguous if the search
 // refuses over the spelling, to resolved if it picks -- and the two negative clauses below say
 // which wrong answer would be reported, so neither can pass quietly.

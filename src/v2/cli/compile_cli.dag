@@ -23,10 +23,11 @@ import v2.compiler.module_acquisition {
   acquisition_ingest,
   enumerate_bound_modules
 }
-import v2.cli.population_verbs { PopulationReport, check_layout, parse_population, select_spelled_modules, parse_verdict_reuse_off, parse_verdict_reuse_requested }
+import v2.cli.population_verbs { PopulationReport, check_layout, parse_population, parse_verdict_reuse_off, parse_verdict_reuse_requested }
 import v2.cli.parse_verdict_reuse { parse_verdict_base_read }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import v2.cli.population_verb_names { cli_verb_check_layout, cli_verb_parse_population, cli_verb_select_spelled_modules }
+import v2.cli.population_verb_names { cli_verb_check_layout, cli_verb_check_references, cli_verb_parse_population }
+import v2.cli.reference_check { check_references }
 import v2.cli.parse_verdict_invocation {
   cli_option_compiler, cli_option_reuse_from, cli_option_write_identity, cli_option_receipts,
   cli_option_source_root
@@ -52,7 +53,7 @@ import v2.extdeps.languages.rust { rust_target_model }
 import v2.extdeps.languages.swift { swift_target_model }
 import v2.std.compilers.target_model { TargetModel }
 
-import v2.compiler.dependency_demand_census { demand_census_unbound_site_text }
+import v2.compiler.dependency_demand_facts { demand_facts_unbound_site_text }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected, diagnostics_fatal_reason }
 import v2.std.lens_verdict {
   lens_verdict_diagnostic_locus_text_in_spans,
@@ -182,7 +183,7 @@ type CliVerb
   = CliEmitClosure { entry: String, source_roots: FreeMonoid<String>, target: CliEmitTarget }
   | CliIfArmReaderDifferential { source_roots: FreeMonoid<String> }
   | CliCheckLayout { source_roots: FreeMonoid<String> }
-  | CliSelectSpelledModules { source_roots: FreeMonoid<String> }
+  | CliCheckReferences { source_roots: FreeMonoid<String> }
   | CliParsePopulation {
       source_roots: FreeMonoid<String>,
       compiler: Optional<String>,
@@ -197,17 +198,17 @@ type CliVerb
 type CliRootsVerb
   = CliRootsDifferential
   | CliRootsCheckLayout
+  | CliRootsCheckReferences
   | CliRootsParsePopulation
-  | CliRootsSelectSpelled
 
-data cli_roots_verbs: List<CliRootsVerb> = [CliRootsDifferential, CliRootsCheckLayout, CliRootsParsePopulation, CliRootsSelectSpelled]
+data cli_roots_verbs: List<CliRootsVerb> = [CliRootsDifferential, CliRootsCheckLayout, CliRootsCheckReferences, CliRootsParsePopulation]
 
 fn cli_roots_verb_spelling(kind: CliRootsVerb) -> String {
   match kind {
     CliRootsDifferential => cli_verb_if_arm_reader_differential
     CliRootsCheckLayout => cli_verb_check_layout
+    CliRootsCheckReferences => cli_verb_check_references
     CliRootsParsePopulation => cli_verb_parse_population
-    CliRootsSelectSpelled => cli_verb_select_spelled_modules
   }
 }
 
@@ -219,8 +220,27 @@ fn cli_roots_verb_usage(kind: CliRootsVerb) -> String {
       concat("usage: <binary> ", cli_roots_verb_spelling(kind: kind), " --source-root <dir> [--source-root <dir>]...")
     CliRootsCheckLayout =>
       concat("usage: <binary> ", cli_roots_verb_spelling(kind: kind), " --source-root <dir> [--source-root <dir>]...")
-    CliRootsSelectSpelled =>
+    CliRootsCheckReferences =>
       concat("usage: <binary> ", cli_roots_verb_spelling(kind: kind), " --source-root <dir> [--source-root <dir>]...")
+  }
+}
+
+// WHICH ROOTS VERBS TAKE parse-population's OPTIONS. Every option past --source-root belongs to that one
+// verb, so each option asks this once instead of listing the verbs that refuse it -- the list a new
+// roots verb would otherwise have to join at every option.
+fn cli_roots_verb_takes_parse_population_options(kind: CliRootsVerb) -> Bool {
+  match kind {
+    CliRootsParsePopulation => true
+    CliRootsDifferential => false
+    CliRootsCheckLayout => false
+    CliRootsCheckReferences => false
+  }
+}
+
+fn cli_roots_verb_option_refused(kind: CliRootsVerb, arg: String) -> CliParseState {
+  CliParseFailed {
+    reason: ^cli_unknown_option,
+    detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
   }
 }
 
@@ -245,7 +265,7 @@ fn cli_roots_verb_selected(
   match kind {
     CliRootsDifferential => CliIfArmReaderDifferential { source_roots: roots }
     CliRootsCheckLayout => CliCheckLayout { source_roots: roots }
-    CliRootsSelectSpelled => CliSelectSpelledModules { source_roots: roots }
+    CliRootsCheckReferences => CliCheckReferences { source_roots: roots }
     CliRootsParsePopulation =>
       CliParsePopulation {
         source_roots: roots,
@@ -261,7 +281,7 @@ fn cli_roots_verb_selected(
 // rendered sentence, so the host renders it once and a witness can discriminate on the CAUSE. A
 // plan that "parsed with no roots" is not an arm: it is the `cli_no_source_root` refusal, because a
 // verb with an empty root list would walk nothing and emit an empty program, which is the
-// empty-observation narrow DESIGN section 5 forbids.
+// empty-observation narrow gunbc.design_argument::fail_closed forbids.
 type CliPlan
   = CliPlanParsed { verb: CliVerb }
   | CliPlanRefused { reason: Symbol, detail: String }
@@ -386,8 +406,7 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
         }
       } else {
         if arg == cli_option_compiler {
-          match kind {
-            CliRootsParsePopulation =>
+          if cli_roots_verb_takes_parse_population_options(kind: kind) {
               CliParseSeekCompilerValue {
                 kind: kind,
                 roots: roots,
@@ -395,26 +414,12 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
                 receipts: receipts,
                 reuse_from: reuse_from
               }
-            CliRootsDifferential =>
-              CliParseFailed {
-                reason: ^cli_unknown_option,
-                detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
-              }
-            CliRootsCheckLayout =>
-              CliParseFailed {
-                reason: ^cli_unknown_option,
-                detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
-              }
-            CliRootsSelectSpelled =>
-              CliParseFailed {
-                reason: ^cli_unknown_option,
-                detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
-              }
+          } else {
+            cli_roots_verb_option_refused(kind: kind, arg: arg)
           }
         } else {
           if arg == cli_option_write_identity {
-            match kind {
-              CliRootsParsePopulation =>
+            if cli_roots_verb_takes_parse_population_options(kind: kind) {
                 CliParseSeekWriteIdentityValue {
                   kind: kind,
                   roots: roots,
@@ -422,26 +427,12 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
                   receipts: receipts,
                   reuse_from: reuse_from
                 }
-              CliRootsDifferential =>
-                CliParseFailed {
-                  reason: ^cli_unknown_option,
-                  detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
-                }
-              CliRootsCheckLayout =>
-                CliParseFailed {
-                  reason: ^cli_unknown_option,
-                  detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
-                }
-              CliRootsSelectSpelled =>
-                CliParseFailed {
-                  reason: ^cli_unknown_option,
-                  detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
-                }
+            } else {
+              cli_roots_verb_option_refused(kind: kind, arg: arg)
             }
           } else {
             if arg == cli_option_receipts {
-              match kind {
-                CliRootsParsePopulation =>
+              if cli_roots_verb_takes_parse_population_options(kind: kind) {
                   CliParseSeekReceiptsValue {
                     kind: kind,
                     roots: roots,
@@ -449,26 +440,12 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
                     write_identity: write_identity,
                     reuse_from: reuse_from
                   }
-                CliRootsDifferential =>
-                  CliParseFailed {
-                    reason: ^cli_unknown_option,
-                    detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
-                  }
-                CliRootsCheckLayout =>
-                  CliParseFailed {
-                    reason: ^cli_unknown_option,
-                    detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
-                  }
-                CliRootsSelectSpelled =>
-                  CliParseFailed {
-                    reason: ^cli_unknown_option,
-                    detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
-                  }
+              } else {
+                cli_roots_verb_option_refused(kind: kind, arg: arg)
               }
             } else {
               if arg == cli_option_reuse_from {
-                match kind {
-                  CliRootsParsePopulation =>
+                if cli_roots_verb_takes_parse_population_options(kind: kind) {
                     CliParseSeekReuseFromValue {
                       kind: kind,
                       roots: roots,
@@ -476,21 +453,8 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
                       write_identity: write_identity,
                       receipts: receipts
                     }
-                  CliRootsDifferential =>
-                    CliParseFailed {
-                      reason: ^cli_unknown_option,
-                      detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
-                    }
-                  CliRootsCheckLayout =>
-                    CliParseFailed {
-                      reason: ^cli_unknown_option,
-                      detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
-                    }
-                  CliRootsSelectSpelled =>
-                    CliParseFailed {
-                      reason: ^cli_unknown_option,
-                      detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
-                    }
+                } else {
+                  cli_roots_verb_option_refused(kind: kind, arg: arg)
                 }
               } else {
                 CliParseFailed {
@@ -752,7 +716,7 @@ fn v2_cli_plan_source_roots(plan: CliPlan) -> FreeMonoid<String> {
         CliEmitClosure { entry: _, source_roots: roots, target: _ } => roots
         CliIfArmReaderDifferential { source_roots: roots } => roots
         CliCheckLayout { source_roots: roots } => roots
-        CliSelectSpelledModules { source_roots: roots } => roots
+        CliCheckReferences { source_roots: roots } => roots
         CliParsePopulation { source_roots: roots, compiler: _, write_identity: _, receipts: _, reuse_from: _ } => roots
       }
   }
@@ -769,7 +733,7 @@ type CliRunOutcome
 // to be pending, which is the wrong link for a `reason` field to name), and the detail beside it said
 // "the located cause is this refusal's reason" -- true of the value and false of the artifact, because the rendered main prints only the
 // `ProcessExit` reason string that `detail` becomes. So generation two refused with a sentence
-// pointing at a symbol nobody could read, which is DESIGN section 5's located-where-the-author-can-
+// pointing at a symbol nobody could read, which is gunbc.design_argument::fail_closed's located-where-the-author-can-
 // act failure in its quietest form: the cause was computed, carried, and then dropped at the last
 // boundary. Measured on the built binary at gunbc#11507's head -- three different entries
 // (`v2.std.text`, this module, `v2.compiler.compile`) all refused with the same nine words.
@@ -780,7 +744,7 @@ type CliRunOutcome
 // `diagnostics_fatal`, the chain is `lens_verdict_diagnostics_located_chain_text_in_spans` (every
 // link with its locus, so thirty-five advisories in front of the fatal each say where they are),
 // and file+extent is `lens_verdict_diagnostic_locus_text_in_spans` — none a second spelling here
-// (DESIGN section 3).
+// (gunbc.design_argument::single_authority).
 //
 // BOTH ARE THE `_in_spans` DOORS, WHICH IS THE POINT OF THIS PACKAGE: they take the ingest's
 // SpanIndex, so a NodeLocus resolves to a file and byte range instead of rendering as an
@@ -812,7 +776,7 @@ fn v2_cli_run(plan: CliPlan, ingest: SourceRootIngest) -> CliRunOutcome {
             cli_if_arm_reader_differential_outcome(census: if_arm_reader_differential(ingest: ingest))
           }
         CliCheckLayout { source_roots: _ } => cli_verb_takes_no_ingest(verb: cli_verb_check_layout)
-        CliSelectSpelledModules { source_roots: _ } => cli_verb_takes_no_ingest(verb: cli_verb_select_spelled_modules)
+        CliCheckReferences { source_roots: _ } => cli_verb_takes_no_ingest(verb: cli_verb_check_references)
         CliParsePopulation { source_roots: _, compiler: _, write_identity: _, receipts: _, reuse_from: _ } =>
           cli_verb_takes_no_ingest(verb: cli_verb_parse_population)
         CliEmitClosure { entry: entry, source_roots: _, target: target } =>
@@ -890,7 +854,7 @@ fn cli_if_arm_reader_differential_outcome(census: IardCensus) -> CliRunOutcome {
 // ONE RENDERING OF A LOCATED REFUSAL, for a refused closure and for a refused member alike: the whole
 // ordered chain, then (when the fatal is an unbound mention) the census projection of WHAT failed,
 // then the fatal's file and extent. `FATAL AT` stays last so suffix controls still hold. The
-// projection is demand_census_unbound_locus_from_diagnostics; this renderer does not re-walk the node.
+// projection is demand_facts_unbound_locus_from_diagnostics; this renderer does not re-walk the node.
 fn v2_cli_refusal_detail(d: NonEmptyDiagnostics, spans: SpanIndex) -> String {
   let site = closure_refusal_site(d: d, spans: spans)
   let chain = concat(
@@ -905,7 +869,7 @@ fn v2_cli_refusal_detail(d: NonEmptyDiagnostics, spans: SpanIndex) -> String {
     Absent => concat(chain, fatal)
     Present { value: loc } =>
       concat(
-        concat(chain, concat(" | ", demand_census_unbound_site_text(u: optional_present(value: loc)))),
+        concat(chain, concat(" | ", demand_facts_unbound_site_text(u: optional_present(value: loc)))),
         fatal
       )
   }
@@ -1086,7 +1050,7 @@ fn cli_run_bound(plan: CliPlan, verb: CliVerb, bindings: List<SourceRootBinding>
       cli_run_acquired(plan: plan, bindings: bindings, entries: [entry])
     CliIfArmReaderDifferential { source_roots: _ } => cli_run_differential(plan: plan, bindings: bindings)
     CliCheckLayout { source_roots: _ } => cli_population_reported(report: check_layout(bindings: bindings))
-    CliSelectSpelledModules { source_roots: _ } => cli_population_reported(report: select_spelled_modules(bindings: bindings))
+    CliCheckReferences { source_roots: _ } => cli_population_reported(report: check_references(bindings: bindings))
     CliParsePopulation { source_roots: _, compiler: compiler, write_identity: write_identity, receipts: receipts, reuse_from: reuse_from } =>
       cli_population_reported(
         report: parse_population_written(

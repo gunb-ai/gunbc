@@ -1,0 +1,38 @@
+module extdeps.standards.motherboard_mounting_location
+
+import std.measure { Micrometer }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// THE LETTERED MOUNTING-LOCATION GRID SHARED BY THE ATX FAMILY. ATX 2.2 Figure 2 names one lettered
+// location set and tabulates which letters each form factor populates (ATX: A C F G H J K L M;
+// microATX: B C F H J L M R S). A letter is the same location in every standard that names it, which
+// is what makes "this board populates C" a checkable claim across boards and standards.
+//
+// This module owns only the SHAPES. Each standard's population and coordinates stay with that
+// standard (extdeps.standards.atx_2_2 atx_mounting_locations, extdeps.standards.micro_atx
+// micro_atx_mounting_locations), because a change to one standard must not require editing another.
+// The shapes moved here from micro_atx when ATX 2.2 became the second standard to enumerate, which
+// is the trigger micro_atx recorded for the extraction.
+//
+// Coordinates are in the board frame used throughout this corpus: x ALONG THE REAR I/O EDGE from the
+// end the F/J/M column sits at, y DEPTH FROM THE REAR EDGE, micrometres.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "web.archive.org/web/20180417122513/http://www.formfactors.org:80/developer/specs/atx2_2.pdf"
+  }
+}
+
+type MountingLocationId
+  = LocA | LocB | LocC | LocF | LocG | LocH | LocJ | LocK | LocL | LocM | LocR | LocS
+
+type MountingLocation sole_constructor {
+  id: MountingLocationId
+  along_rear_edge: Micrometer
+  depth_from_rear_edge: Micrometer
+}
+
+fn mounting_location(id: MountingLocationId, along_rear_edge: Micrometer, depth_from_rear_edge: Micrometer) -> MountingLocation {
+  MountingLocation { id: id, along_rear_edge: along_rear_edge, depth_from_rear_edge: depth_from_rear_edge }
+}

@@ -1,5 +1,6 @@
 module gunbc.auth.branch_run_grant
 
+import extdeps.github.auth { github_rest }
 import gunbc.fleet.fleet_converge_run_name { mode_of_run_title }
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String, Timestamp, CommitSha }
 import std.optional { Present, Absent }
@@ -68,7 +69,7 @@ data branch_run_grant_window: Second = second(count: 3600)
 // ── the branch run, as GitHub records it: judged by gunbc.auth.branch_dispatch_federation judge_branch_run ──
 
 fn read_branch_run(run_id: GitHubWorkflowRunId, run_attempt: Int) -> BranchRunReading {
-  match github.WorkflowRuns.GetRun(auth_token: "", owner: gunbc_repository.owner, repo: gunbc_repository.name, run_id: github_workflow_run_id_wire_text(id: run_id)) {
+  match github_rest(call: token => github.WorkflowRuns.GetRun(auth_token: token, owner: gunbc_repository.owner, repo: gunbc_repository.name, run_id: github_workflow_run_id_wire_text(id: run_id))) {
     RestRefused { refusal } => BranchRunRefused { reason: concat("the run could not be read: ", rest_refusal_text(o: refusal)) as NonEmptyStr }
     RestAnswered { answer: got } => judge_branch_run(run_id: run_id, run_attempt: run_attempt, run: got.run)
   }

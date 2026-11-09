@@ -53,7 +53,7 @@ type MemoryCompatibilityPermit {
 // The obvious shape is a `required_minimum: MemoryRequirement?` field beside a provenance tag. That
 // shape makes two contradictory states writable -- an absent minimum tagged as derived from a
 // stated requirement, and a present minimum tagged as a compatibility default -- and then owes a
-// validator to reject them. DESIGN 5 prefers the construction: the stated arm HOLDS the requirement
+// validator to reject them. gunbc.design_argument::fail_closed prefers the construction: the stated arm HOLDS the requirement
 // it was derived from, the permitted arm holds the permit it was issued under, and neither state
 // can be written. It is also what makes the rendering law at the foot of this module structural: a
 // defaulted grant has NO minimum to report, so no fold over this type can render one as
@@ -114,7 +114,7 @@ fn memory_grant_required_minimum<P, A>(g: MemoryGrant<P, A>) -> MemoryRequiremen
 // GrantBelowStatedMinimum is the law the whole module exists for: a policy may grant MORE than the
 // Work asked for and may never grant less. A grant derived from a stated requirement that is below
 // that requirement is not a grant, it is a smaller product delivered under the name of the one that
-// was asked for. Raising the number to the minimum here would be the absorbing fallback DESIGN 5
+// was asked for. Raising the number to the minimum here would be the absorbing fallback gunbc.design_argument::fail_closed
 // forbids wearing a helpful face: the policy would be silently overridden and nothing would count
 // it.
 //

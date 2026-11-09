@@ -1,4 +1,5 @@
 module gunbc.roadmap.roadmap_style
+import extdeps.languages.css.selectors { RawSelector }
 import gunbc.design.typography { interface_text_decls, InterfaceBody, InterfaceLabel, InterfaceMetadata, InterfaceHeading, InterfaceSectionHeading }
 import gunbc.roadmap.roadmap_surface_style { roadmap_surface_rules }
 import gunbc.site.document { SiteStyles, SiteThemeDecls, site_styles_css }
@@ -152,7 +153,7 @@ fn workspace_band_paints() -> List<BandPaint> {
 // The press stop, DERIVED and TOTAL (round-5 fix, root-caused by the management lane 2026-07-24:
 // the receipt targeted the ONE pressed var that existed — invite's — on the base selector, so
 // pressing a fail/loud pill flashed the green family for the press window: a fabricated 'ready'
-// painted over a fault, the pixel-layer twin of the fabricated plausible output §5 forbids. Partial
+// painted over a fault, the pixel-layer twin of the fabricated plausible output gunbc.design_argument::fail_closed forbids. Partial
 // derivation presenting as total; the graduation obligation discharged at the wrong grain; no
 // witness asked the totality question). One authority ratio applied to every band fill — a press
 // deepens THE MATERIAL IT PRESSES, per family, by construction: band_var_decls emits

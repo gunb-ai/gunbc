@@ -28,7 +28,7 @@ import gunbc.instruments.host_prelude {
 
 
 
-data bst_typed_transport_doc: String = "Build-artifact corruption-probe transport, typed. Each receipt is a composition of typed service operations (shell.Mktemp.Dir, Filesystem.Write, gunbc.WitnessBin.Run on /bin/chmod and claim_executor --verify-build-artifacts, shell.Remove.RecursiveForce) - no bash is serialized or executed. The former verifications_script serialize_bash harness dissolved with the flip: the probe exercises the same claim_executor verification path the CI floor uses, so the spelling-drift class between substrate shell AST and production verification is unwritable (DESIGN 5, construction over validation)."
+data bst_typed_transport_doc: String = "Build-artifact corruption-probe transport, typed. Each receipt is a composition of typed service operations (shell.Mktemp.Dir, Filesystem.Write, gunbc.WitnessBin.Run on /bin/chmod and claim_executor --verify-build-artifacts, shell.Remove.RecursiveForce) - no bash is serialized or executed. The former verifications_script serialize_bash harness dissolved with the flip: the probe exercises the same claim_executor verification path the CI floor uses, so the spelling-drift class between substrate shell AST and production verification is unwritable (gunbc.design_argument::fail_closed, construction over validation)."
 
 fn probe_bin_path(tmp_dir: String) -> String {
   concat(tmp_dir, "/probe_bin")

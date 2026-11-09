@@ -22,7 +22,7 @@ import extdeps.crypto.hash
 // produce one. A caller cannot pair a digest with a file it was not taken from, because a caller
 // cannot write the pair at all.
 //
-// WHAT THIS CLOSES AND WHAT IT DOES NOT, measured rather than asserted (DESIGN 4b(1)). It closes
+// WHAT THIS CLOSES AND WHAT IT DOES NOT, measured rather than asserted (gunbc.design_argument::guarantee_ladder (rung honesty)). It closes
 // AUTHORED CONFIRMATION: the confirming digest is computed by this function, over the file named in
 // the same value, and read_origin_staged_file is the only constructor. That negative is admissible
 // because it is STRUCTURALLY TRACKED, and for that reason alone: OriginReading is sole_constructor,
@@ -40,7 +40,7 @@ import extdeps.crypto.hash
 // list.
 //
 // THERE WAS ONE, IT WAS A HOLE, AND IT MERGED -- recorded here rather than quietly removed because
-// a guarantee that was reported and not held is the one thing DESIGN 4b(1) says must not stand.
+// a guarantee that was reported and not held is the one thing gunbc.design_argument::guarantee_ladder (rung honesty) says must not stand.
 // gunbc#10934 exported witness_origin_reading(staged_path, observed_digest) under admit_callers
 // naming two witness wrappers, and claimed this sub-class structurally impossible OUTSIDE THAT
 // ADMISSION. The claim was not established at the head that merged it: .dag HAS NO MODULE-PRIVATE,
@@ -99,7 +99,7 @@ import extdeps.crypto.hash
 // fetch under the hermetic envelope, i.e. a mocked S3 transport whose staged bytes are a fixture
 // rather than a canned digest -- at which point a caller-chosen path is a compile refusal and the
 // class is structurally guaranteed on the source-to-.dag path. A trigger naming one call site would
-// be satisfied while the capability stayed dead (DESIGN 4b(3)).
+// be satisfied while the capability stayed dead (gunbc.design_argument::guarantee_ladder (no silent regression)).
 //
 // RUNG HONESTY, PATH-SCOPED. The emitted Rust mirror of a sole_constructor type is a public struct
 // with public fields (gunbc.model.population), so a consumer writing Rust against the seed is
@@ -110,7 +110,7 @@ import extdeps.crypto.hash
 // a COPRODUCT does not refuse cross-module variant construction -- the declared hole measured by
 // test.claim.sole_constructor_completeness_audit_probe f13_variant_construction_refuses, which is
 // red. Sealing ManifestReadbackObservation or OriginReadback directly would therefore have been a
-// permanently green wall carrying no information, which DESIGN 4b calls worse than absent. Sealing
+// permanently green wall carrying no information, which gunbc.design_argument::guarantee_ladder calls worse than absent. Sealing
 // the RECORD the confirming variants CARRY puts the forbidden literal back on the form the wall
 // does refuse.
 type OriginReading sole_constructor {
@@ -145,7 +145,7 @@ type OriginFetchOutcome
 // from, so the two cannot describe different objects.
 //
 // The digest handler is consumed, not re-implemented: extdeps.crypto.hash owns the SHA-256 citation
-// and the sha256sum transport, one handler of N bound to that shape (DESIGN 3). A native digest
+// and the sha256sum transport, one handler of N bound to that shape (gunbc.design_argument::single_authority). A native digest
 // realization is a second handler there, not a change here.
 //
 // EVERY NON-DIGEST OUTCOME REFUSES WITH A CAUSE rather than widening to a value: a failed read, a

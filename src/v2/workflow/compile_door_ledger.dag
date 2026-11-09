@@ -24,6 +24,7 @@ import v2.workflow.floor_diff_observe {
   FloorNameStatusDiffResult,
   NameStatusDiffFail,
   NameStatusDiffOk,
+  NameStatusBaseRefUnresolvable,
   floor_observe_git_diff_name_status_for_ci
 }
 import v2.std.artifact { Artifact, SourceFile }
@@ -39,7 +40,7 @@ import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected, diagnostics_
 import v2.std.integer { Int }
 import v2.std.node { Node, Symbol, symbol_intern_lexeme }
 
-// The PR-2 transport core: the AuditOnly stopped-line ledger over the v2 compile door (DESIGN 5
+// The PR-2 transport core: the AuditOnly stopped-line ledger over the v2 compile door (gunbc.design_argument::fail_closed
 // factory model; sharp-bee-290 contract 2026-07-13; mandated by the milestone-1 receipts in
 // v2.test.claim.long.door_real_module_probe — the door's pre-existing per-node roster and resolve red
 // real corpus modules today, so Blocking is impossible until causes zero). Each subject path gets
@@ -53,7 +54,7 @@ import v2.std.node { Node, Symbol, symbol_intern_lexeme }
 // filters deletions at the diff observation, which carries name-status; a missing path is the
 // caller's defect and fails loud in the read effect, never a fabricated row).
 
-// Cost shape (DESIGN 2/6, duplicate-work thread): the module-graph census
+// Cost shape (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::how_to_work, duplicate-work thread): the module-graph census
 // (import_resolution_facts_live + module_declaration_facts_live, host-realized fact producers) runs
 // ONCE per door_ledger call and every row's import closure is a pure BFS over those shared facts —
 // per-row re-census would be the corpus-denominated duplicate-work trap. The remaining double-parse
@@ -219,6 +220,10 @@ fn affected_ledger_from_diff(
 ) -> AffectedLedgerResult {
   match diff {
     NameStatusDiffFail { reason: r } => AffectedDiffRefused { reason: r }
+    // A base that names nothing is a REFUSAL to ledger, not an empty ledger: widening the
+    // affected set because the observation could not be located is the absorbing fallback this
+    // row exists to keep out (gunbc.design_argument::fail_closed).
+    NameStatusBaseRefUnresolvable { reason: r } => AffectedDiffRefused { reason: r }
     NameStatusDiffOk { changed_paths: changed, departed_paths: _ } =>
       AffectedLedgered {
         rows: door_ledger(paths: dag_module_paths(paths: changed), pool_roots: pool_roots)
@@ -305,7 +310,7 @@ fn ledger_all_compiled(rows: List<DoorLedgerRow>) -> Bool {
   ledger_refused_count(rows: rows) == 0
 }
 
-// The per-lens flip-to-Blocking triggers, modeled as DATA in the carrier (DESIGN 6: the mark on the
+// The per-lens flip-to-Blocking triggers, modeled as DATA in the carrier (gunbc.design_argument::how_to_work: the mark on the
 // carrier is the authority, no parallel-ledger markdown). Each known frontier cause maps to its
 // OWNING lane and the named condition that flips its gate from AuditOnly-counted to Blocking. Two
 // lane shapes carry a per-cause flip (ThisLaneCalibration, SharedSelfHostCriticalPath): when that
@@ -318,7 +323,7 @@ fn ledger_all_compiled(rows: List<DoorLedgerRow>) -> Bool {
 // signal — never silently bucketed. This is why the ledger is AuditOnly and NOT wired as a CI floor
 // gate today: the seed compile path has no lens stage, so there is no stopped line to gate; wiring
 // a per-PR affected-set gate now would either block every PR (the whole corpus refuses) or pass
-// despite refusals (the DESIGN 5 absorbing fallback). The gate wiring is DEFERRED behind a named
+// despite refusals (the gunbc.design_argument::fail_closed absorbing fallback). The gate wiring is DEFERRED behind a named
 // trigger: v2 interpreted compile becomes the actual compile path (the migration), at which point
 // the door's fail-closed rejection IS compilation failure and this ledger becomes its stopped-line
 // audit.

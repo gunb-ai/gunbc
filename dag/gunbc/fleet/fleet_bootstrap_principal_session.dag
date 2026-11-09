@@ -62,7 +62,7 @@ import gunbc.host.host_cli_dependency {
 // here, once; consumers ask for a leg and never choose a shaper. A call site that wanted the key
 // session for the bootstrap principal is no longer expressible, because no call site selects a
 // session at all -- correctness by construction rather than a check that the right shaper was passed
-// (DESIGN §5).
+// (gunbc.design_argument::fail_closed).
 type FleetSshPrincipalSession
   = FleetSshKeySession
   | FleetSshPasswordSession
@@ -169,7 +169,7 @@ fn read_fleet_bootstrap_credential_path() -> FleetBootstrapCredentialPath {
 
 // A LEG THAT DID NOT RUN IS NOT A LEG THAT FAILED, so this is a typed outcome and not an
 // SshSessionExecResult carrying success:false. Minting an exec result for an invocation that was never
-// made is the fabricated-plausible-output failure DESIGN §5 forbids outright: a caller folding over
+// made is the fabricated-plausible-output failure gunbc.design_argument::fail_closed forbids outright: a caller folding over
 // exit codes would read "the host rejected us" where the truth is "this run holds no credential for
 // this principal", and those have different remedies.
 type FleetPrincipalLegOutcome
