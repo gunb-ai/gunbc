@@ -3623,6 +3623,8 @@ const REFERENCE_MIGRATION_DUPLICATE_RULES: &str =
     "fixtures/reference_migration_refused/migration_duplicate.rules";
 const REFERENCE_MIGRATION_MALFORMED_RULES: &str =
     "fixtures/reference_migration_refused/migration_malformed.rules";
+const REFERENCE_MIGRATION_BAD_DIGEST_RULES: &str =
+    "fixtures/reference_migration_refused/migration_baddigest.rules";
 /// The head words `reference_migration_verbs` prints: the plan gate holds without being complete, an
 /// apply writes what it proposed, and a plan that does not hold refuses.
 const REFERENCE_MIGRATION_PLAN_HEAD: &str = "reference migration plan:";
@@ -3652,7 +3654,8 @@ fn reference_migration_argv(verb: &str, roots: &[&Path], rules: &Path) -> Vec<St
 ///   `RFC 3339 §2.3` string is a non-citation the plan does not hold open;
 /// - the refusing fixture refuses for each broken input: a citation no rule answers, a `resolve` line whose
 ///   digest is from an earlier state of the file, a `resolve` line naming a finding that was never
-///   unresolved, a duplicated `resolve` id, and a malformed rules-file line.
+///   unresolved, a duplicated `resolve` id, a malformed rules-file line, and a resolve line whose digest
+///   is not the 64 hex characters a digest is.
 ///
 /// SEED DELTA (ctrl hand-Rust receipt): one more inhabitance walk over the existing `run_cli_door` and
 /// the existing `copy_directory_tree`; no new production route. Accounted on
@@ -3781,6 +3784,11 @@ fn walk_reference_migration_controls(binary: &Path, workspace: &Path) -> Result<
             REFERENCE_MIGRATION_MALFORMED_RULES,
             &["-> INCOMPLETE", "malformed rules-file line"][..],
         ),
+        (
+            "NativeReferenceMigrationMalformedDigestDidNotRefuse",
+            REFERENCE_MIGRATION_BAD_DIGEST_RULES,
+            &["-> INCOMPLETE", "malformed rules-file line"][..],
+        ),
     ] {
         let run = plan(&[refused_root.as_path()], rules_file)?;
         if !refused_with(&run, REFERENCE_MIGRATION_PLAN_HEAD, expect) {
@@ -3791,7 +3799,8 @@ fn walk_reference_migration_controls(binary: &Path, workspace: &Path) -> Result<
         "v2-native-cli: reference migration controls held (holding fixture plans HOLDING with its resolutions \
          consumed and its external-spec string a non-citation; apply writes its one file and the replan says \
          COMPLETE; an unanswered citation, a stale resolution digest, a resolution naming a decided finding, a \
-         duplicate resolve id and a malformed rules line each refuse)"
+         duplicate resolve id, a malformed rules line and a resolve line whose digest is not a digest \
+         each refuse)"
     );
     Ok(())
 }

@@ -1,4 +1,4 @@
 # TWO RESOLVE LINES, ONE ID. Not a choice this migration makes between two targets: a defect of the
 # input, reported when the file is parsed, before any plan is built.
-resolve fixtures/reference_migration_refused/dag/gunbc/reference_migration_unresolved_citer.dag@437-446 ee3e8423c4a5c8446607bea804479ac1d6dd20308b276a348e5bca758af46a26 => gunbc.reference_migration_unresolved_citer::reference_migration_unresolved_citer_value
-resolve fixtures/reference_migration_refused/dag/gunbc/reference_migration_unresolved_citer.dag@437-446 ee3e8423c4a5c8446607bea804479ac1d6dd20308b276a348e5bca758af46a26 => gunbc.reference_migration_unresolved_citer::reference_migration_unresolved_citer_value
+resolve fixtures/reference_migration_refused/dag/gunbc/reference_migration_unresolved_citer.dag@437-446 6c59bd538cd85e424ba55c108950475a930211f5a82984509b832b82eb34ffda => gunbc.reference_migration_unresolved_citer::reference_migration_unresolved_citer_value
+resolve fixtures/reference_migration_refused/dag/gunbc/reference_migration_unresolved_citer.dag@437-446 6c59bd538cd85e424ba55c108950475a930211f5a82984509b832b82eb34ffda => gunbc.reference_migration_unresolved_citer::reference_migration_unresolved_citer_value

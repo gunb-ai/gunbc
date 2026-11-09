@@ -1,6 +1,7 @@
-# A RESOLVE LINE FROM ANOTHER STATE OF THE FILE. The id is the one this fixture's plan renders, the
-# digest is not the one the plan read: the run refuses, writes nothing, and says why. An id whose bytes
-# have moved is not a licence to rewrite whichever occurrence now happens to sit at that extent — which
-# is the failure the digest is here for, because the id alone is positional and an edit above the
+# A RESOLVE LINE FROM ANOTHER STATE OF THE FILE. The id is the one this fixture's plan renders; the digest
+# is the well-formed sha256 the file carried BEFORE the note now at its foot was appended — a real digest
+# of a real earlier state, not a made-up string. So the refusal can only be the staleness law: an id whose
+# bytes have moved is not a licence to rewrite whichever occurrence now happens to sit at that extent,
+# which is the failure the digest is here for, because the id alone is positional and an edit above the
 # occurrence moves every id below it.
-resolve fixtures/reference_migration_refused/dag/gunbc/reference_migration_unresolved_citer.dag@437-446 sha256:stale => gunbc.reference_migration_unresolved_citer::reference_migration_unresolved_citer_value
+resolve fixtures/reference_migration_refused/dag/gunbc/reference_migration_unresolved_citer.dag@437-446 ee3e8423c4a5c8446607bea804479ac1d6dd20308b276a348e5bca758af46a26 => gunbc.reference_migration_unresolved_citer::reference_migration_unresolved_citer_value

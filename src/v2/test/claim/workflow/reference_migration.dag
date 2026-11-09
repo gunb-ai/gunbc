@@ -971,7 +971,9 @@ test fn a_resolution_answers_one_needs_resolution_and_leaves_the_other_holds() -
 test fn a_stale_resolution_digest_refuses_holds() -> Bool {
   let before = "// DESIGN §3 one place, and DESIGN §3 the other.\n"
   let ids = finding_ids(plan: plan_of(content: before, rules: [], ownership: migration_ownership_authored()))
-  let resolutions = resolutions_for(ids: ids, digest: "sha256:stale")
+  // A well-formed digest — 64 hex characters, the digest of another file entirely — so the refusal can
+  // only be the staleness law and never the shape of the string.
+  let resolutions = resolutions_for(ids: ids, digest: "f38a4edff9595f33e6fb83e24530f2839b3de6f7714e0261f103676ce8b826df")
   let stale = plan_of_resolved(content: before, rules: [], resolutions: resolutions, ownership: migration_ownership_authored())
   plan_edit_count(plan: stale) == 0
     && plan_open_count(plan: stale) == 2
@@ -1017,18 +1019,22 @@ test fn a_duplicate_resolve_line_is_a_rules_file_defect_holds() -> Bool {
 // the whole of the run input, so a line that means nothing must never be skipped quietly.
 test fn the_rules_parser_reads_its_forms_and_defects_the_rest_holds() -> Bool {
   let good = reference_migration_rules_parse(
-    content: "# a comment\nrule cite DESIGN 3 => gunbc.migration_cited::migration_cited_function\nrule cite DESIGN 4b.1 => delete sentence\nrule ref gunbc.migration_cited::migration_cited_other => gunbc.migration_cited::migration_cited_function\nresolve subject.dag@10-18 sha256:abc => gunbc.migration_cited::migration_cited_function\n"
+    content: "# a comment\nrule cite DESIGN 3 => gunbc.migration_cited::migration_cited_function\nrule cite DESIGN 4b.1 => delete sentence\nrule ref gunbc.migration_cited::migration_cited_other => gunbc.migration_cited::migration_cited_function\nresolve subject.dag@10-18 f38a4edff9595f33e6fb83e24530f2839b3de6f7714e0261f103676ce8b826df => gunbc.migration_cited::migration_cited_function\n"
   )
   // "rule cite" without a label, and a verb that is not "rule": neither is a rule, both are reported.
+  // A digest that is not 64 hex characters is not a digest: the line is malformed and reported, rather
+  // than carried into the plan where it would match nothing and be dropped.
   let bad = reference_migration_rules_parse(
-    content: "rule cite DESIGN => gunbc.migration_cited::migration_cited_function\nrules cite DESIGN 3 => gunbc.migration_cited::migration_cited_function\n"
+    content: "rule cite DESIGN => gunbc.migration_cited::migration_cited_function\nrules cite DESIGN 3 => gunbc.migration_cited::migration_cited_function\nresolve subject.dag@10-18 sha256:stale => gunbc.migration_cited::migration_cited_function\n"
   )
   length(xs: good.rules) == 3
     && length(xs: good.resolutions) == 1
     && is_empty(xs: good.defects)
     && length(xs: bad.rules) == 0
-    && length(xs: bad.defects) == 2
+    && length(xs: bad.resolutions) == 0
+    && length(xs: bad.defects) == 3
     && string_contains(s: migration_rules_defect_text(defects: bad.defects), pattern: "rule cite DESIGN =>")
+    && string_contains(s: migration_rules_defect_text(defects: bad.defects), pattern: "resolve subject.dag@10-18 sha256:stale")
 }
 
 fn first_id(ids: List<String>) -> String {
@@ -1134,4 +1140,3 @@ test fn a_section_sign_clause_continues_the_citation_it_follows_holds() -> Bool 
     && plan_reports(plan: attributed, fragment: "RFC 3339 §2.3")
     && plan_edit_count(plan: designed) == 1
 }
-

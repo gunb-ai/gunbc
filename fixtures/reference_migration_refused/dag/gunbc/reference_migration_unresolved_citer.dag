@@ -10,3 +10,7 @@ fn reference_migration_unresolved_citer_value() -> Int {
   // DESIGN 4b asks a question no rule answers.
   3
 }
+
+// A note appended after the citation, so the bytes above it keep the offsets the rules files name:
+// this file therefore has a real earlier state, and its digest below is a real digest of that state
+// rather than a made-up string.

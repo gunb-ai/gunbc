@@ -2577,6 +2577,19 @@ fn migration_rules_input_resolution(acc: MigrationRulesInput, resolution: Migrat
   }
 }
 
+// A digest is 64 hex characters, because that is what the plan renders beside every file. A resolve line
+// carrying anything else is a MALFORMED LINE, refused when the file is parsed rather than carried into the
+// plan: a typo'd digest matches no file, and a resolution that matches nothing and is quietly dropped is
+// the exact silence the refusal law above exists to prevent.
+fn migration_digest_is_well_formed(digest: String) -> Bool {
+  string_all_chars_in(s: digest, alphabet: "0123456789abcdef") && migration_digest_char_count(digest: digest) == 64
+}
+
+// One pass over the characters, because a digest is only ever 64 of them.
+fn migration_digest_char_count(digest: String) -> Int {
+  fold_list(xs: digest, empty: 0, cons: fn(count, c) { count + 1 })
+}
+
 fn migration_rules_entry(fields: List<String>) -> Optional<MigrationRulesEntry> {
   if migration_field(fields: fields, at: 0) == "rule" && migration_field(fields: fields, at: 1) == "cite" && length(xs: fields) == 6 && migration_field(fields: fields, at: 4) == "=>" {
     Present { value: EntryRule { rule: migration_rule_for_citation(document: migration_field(fields: fields, at: 2), label: migration_field(fields: fields, at: 3), coordinate: migration_field(fields: fields, at: 5)) } }
@@ -2590,7 +2603,7 @@ fn migration_rules_entry(fields: List<String>) -> Optional<MigrationRulesEntry> 
       Present { value: subject } => Present { value: EntryRule { rule: migration_rule_for_reference(reference: subject, coordinate: migration_field(fields: fields, at: 4)) } }
       Absent => Absent
     }
-  } else if migration_field(fields: fields, at: 0) == "resolve" && length(xs: fields) == 5 && migration_field(fields: fields, at: 3) == "=>" {
+  } else if migration_field(fields: fields, at: 0) == "resolve" && length(xs: fields) == 5 && migration_field(fields: fields, at: 3) == "=>" && migration_digest_is_well_formed(digest: migration_field(fields: fields, at: 2)) {
     Present { value: EntryResolution { resolution: MigrationResolution { id: migration_field(fields: fields, at: 1), digest: migration_field(fields: fields, at: 2), coordinate: migration_field(fields: fields, at: 4) } } }
   } else {
     Absent
