@@ -16,7 +16,7 @@ import gunbc.roadmap.roadmap_authority {
   RoadmapAuthorityProjection,
   RoadmapAuthorityProjectionRefused,
   roadmap_authority_projection_with,
-  roadmap_acceptance_event_history_load,
+  roadmap_acceptance_event_history_load, roadmap_retired_node_ids_load,
 }
 import gunbc.host.host_effect_realize {
   live_deploy_digest_readback_verdict,

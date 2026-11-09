@@ -25,7 +25,7 @@ import gunbc.roadmap.roadmap_site_surface_render {
   healthz_body_with_release_identity,
 }
 import gunbc.roadmap.roadmap_authority {
-  roadmap_acceptance_event_history_load,
+  roadmap_acceptance_event_history_load, roadmap_retired_node_ids_load,
   RoadmapAuthorityProjection, roadmap_authority_projection,
   authored_merged_prs,
 }

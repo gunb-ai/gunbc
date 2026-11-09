@@ -6523,7 +6523,9 @@ fn expected_roadmap_md_for_projection(proj: RoadmapAuthorityProjection) -> Strin
 }
 
 fn expected_roadmap_md() -> String {
-  expected_roadmap_md_for_projection(proj: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()))
+  expected_roadmap_md_for_projection(proj: roadmap_authority_projection(
+    history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load(),
+  ))
 }
 
 fn roadmap_drifted(committed: String) -> Bool {

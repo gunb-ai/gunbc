@@ -23,7 +23,7 @@ import gunbc.roadmap.roadmap_model {
 }
 import gunbc.roadmap.roadmap_authority {
   roadmap_authority_projection,
-  roadmap_acceptance_event_history_load,
+  roadmap_acceptance_event_history_load, roadmap_retired_node_ids_load,
   RoadmapAuthorityProjection,
   RoadmapAuthorityProjected,
   RoadmapAuthorityProjectionRefused,

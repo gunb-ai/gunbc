@@ -1,6 +1,9 @@
 module gunbc.roadmap.roadmap_runtime_plan
 
-import gunbc.roadmap.roadmap_authority { RoadmapAuthorityProjection, roadmap_authority_projection_with, roadmap_acceptance_event_history_load }
+import gunbc.roadmap.roadmap_authority {
+  RoadmapAuthorityProjection, roadmap_authority_projection_with, roadmap_acceptance_event_history_load,
+  roadmap_retired_node_ids_load,
+}
 
 // THE ONE PLAN: the declared rows and closing-contract pairs of gunbc.roadmap.roadmap_authority, with the
 // acceptance history, folded into the one RoadmapDocument every consumer reads. There is no second
