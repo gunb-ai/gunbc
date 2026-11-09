@@ -64,7 +64,7 @@ import test.claim.roadmap.sandbox_touch_reading {
   SandboxTouchWroteReading, SandboxTouchRefusedReading, SandboxTouchInconclusive, sandbox_touch_reading_of,
 }
 import gunbc.cli_invoke { admit_named_argument, NamedArgumentAdmitted, NamedArgumentNameEmpty, NamedArgumentNameHoldsSeparator }
-import gunbc.spool_queue { SpoolAttemptExit, SpoolAttemptUnit, SpoolRole, RolePending, RoleClaimed, RoleDone, SpoolListed, SpoolListingUnreadable, spool_open, spool_role_path, SpoolKind }
+import gunbc.spool_queue { SpoolAttemptExit, SpoolAttemptUnit, SpoolRole, RolePending, RoleClaimed, RoleDeferred, RoleDone, SpoolListed, SpoolListingUnreadable, spool_open, spool_role_path, SpoolKind }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -787,6 +787,7 @@ fn attempt_system_unit_spool_prepare(instance_root: String) -> Bool {
       attempt_unit_spool_staging_dir(instance_root: instance_root),
       spool_witness_dir(kind: SpoolAttemptUnit, instance_root: instance_root, role: RolePending),
       spool_witness_dir(kind: SpoolAttemptUnit, instance_root: instance_root, role: RoleClaimed),
+      spool_witness_dir(kind: SpoolAttemptUnit, instance_root: instance_root, role: RoleDeferred),
       attempt_unit_spool_answer_dir(instance_root: instance_root),
     ],
     init: true,
