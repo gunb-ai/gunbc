@@ -218,14 +218,60 @@ fn retire_drain_leg_step(unit: NonEmptyStr, decisions: List<RetireDrainDecision>
 // gunbc.design_argument::single_authority asks for; reusing those two names here would put two unrelated
 // constructors with the same spelling on the tree, which is how a reader spends an hour deciding which
 // `Collected` a `match` was written against.
+// THE COLLECTED RUN, AS A SEALED CARRIER. WHY SEAL IT: this record is the whole reason a retirement may
+// proceed -- "the runner that registered is the runner that took the floor job, and it concluded". A carrier
+// anyone can construct turns the gate into a form the plan fills in, which is the forgery this gate exists to
+// stop; the repo already holds that class closed the same way for the collected qualification run
+// (gunbc.runner.runner_qualification_dispatch::CollectedQualificationRun is a sole_constructor, and
+// dag/test/probe/qualification_collection_relabel_probe.dag is the witness that the wall bites). So the only
+// way to hold a collected reading is through `collected_floor_job_reading` below, whose admit list names
+// exactly one caller.
+type CollectedFloorJobReading sole_constructor {
+  run: WorkflowRun,
+  floor_job: WorkflowJobRun,
+  conclusion: WorkflowRunConclusion,
+}
+
+// THE JOB LEG'S INPUT, WITHOUT THE DISPATCH MODULE IN THE GRAPH.
+// WHAT THIS IS JUDGED ON IS gunbc.runner.runner_qualification_dispatch::QualificationRunVerdict -- the
+// existing observation, not a new instrument: the collected arm carries that verdict's own reading (sealed, so
+// it cannot be written by hand) plus the slot the caller asked about, and the refused arm carries the reason
+// that verdict's refusal already states. The only producer is
+// gunbc.runner.runner_qualification_dispatch::replacement_job_evidence_of -- the module that owns the verdict
+// -- and the collected reading inside it can only come from this module's admitted mint, so no caller can
+// hand the gate a floor job that was never collected.
+//
+// WHY THE GATE CANNOT SIMPLY IMPORT THE VERDICT IT JUDGES. The qualification dispatch module reaches
+// gunbc.fleet.fleet_converge_workflow -> gunbc.host.host_primary_network_apply ->
+// gunbc.runner.runner_host_file_converge, and `runner_host_file_converge` is the caller that asks this gate
+// whether a drain is authorized. Importing the verdict from the dispatch module therefore closes a cycle over
+// the very route that consumes the answer (the compiler refuses it: "circular dependency detected"). The
+// projection keeps the direction honest: the observation's owner translates its own fact into the shape the
+// gate can read, and the gate stays free to decide without naming the machinery that produced its inputs.
+//
+// THE ARMS ARE NAMED AFTER WHAT THEY CARRY, not after the verdict's own `RunVerdictCollected` /
+// `RunVerdictRefused`. Same fact, one naming surface is what
+// gunbc.design_argument::single_authority asks for; reusing those two names here would put two unrelated
+// constructors with the same spelling on the tree, which is how a reader spends an hour deciding which
+// `Collected` a `match` was written against.
 type ReplacementJobEvidence
-  = FloorJobCollected {
-      slot: NonEmptyStr,
-      run: WorkflowRun,
-      floor_job: WorkflowJobRun,
-      conclusion: WorkflowRunConclusion,
-    }
+  = FloorJobCollected { slot: NonEmptyStr, collected: CollectedFloorJobReading }
   | FloorJobRefused { slot: NonEmptyStr, reason: String }
+
+// THE ONE MINT OF THAT READING, and the one caller it admits. A mint whose admit list is a single
+// `decl_ref` is how this repo says "there is a producer, it is this function, and nothing else has written
+// one"; widening the list is a visible change to who may attest that a floor job ran.
+fn collected_floor_job_reading(
+  run: WorkflowRun,
+  floor_job: WorkflowJobRun,
+  conclusion: WorkflowRunConclusion,
+) -> CollectedFloorJobReading
+  admit_callers: [
+    decl_ref(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "replacement_job_evidence_of"),
+  ]
+{
+  CollectedFloorJobReading { run: run, floor_job: floor_job, conclusion: conclusion }
+}
 
 // WHICH SLOT THIS EVIDENCE IS ABOUT IS A FACT ABOUT THE JOB, NOT ABOUT THE CALLER'S LABEL. The verdict is
 // spent on the runner the floor job actually ran on -- `WorkflowJobRun.runner_name`, the same field
@@ -234,11 +280,14 @@ type ReplacementJobEvidence
 // not a match: a job that does not say who ran it has proved nothing about who ran it.
 fn floor_job_ran_on(evidence: ReplacementJobEvidence, slot: NonEmptyStr) -> Bool {
   match evidence {
-    FloorJobCollected { slot: _, run: _, floor_job: job, conclusion: _ } =>
-      match job.runner_name {
+    FloorJobCollected { slot: _, collected: collected } =>
+      match collected.floor_job.runner_name {
         Absent => false
         Present { value: name } => name == (slot as String)
       }
+    FloorJobRefused { slot: _, reason: _ } => false
+  }
+}
     FloorJobRefused { slot: _, reason: _ } => false
   }
 }

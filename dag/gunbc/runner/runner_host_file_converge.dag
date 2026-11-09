@@ -3374,20 +3374,33 @@ fn runner_retirement_readback_of(
 // trigger; `LegAuthorityImplemented` is that declaration, at capability grain).
 //
 // AUTHORITY: the join is implemented and witnessed -- `replacement_proven_of_host` turns a roster read and
-// collected verdicts into a per-slot proof. WHAT IS OWED: the qualification attempt route
-// (gunbc.runner.runner_qualification_attempt_run, whose collect stage calls
-// gunbc.runner.runner_qualification_dispatch::collect_qualification_run) handing its collected
-// `QualificationRunVerdict` for each incoming slot into `runner_retirement_readback_of`'s
-// `qualification_verdicts` at the converge entry's `runner_retirement_readback_of`. A converge run cannot dispatch a floor
-// job itself without turning a file converge into a nine-minute job queue.
+// collected job evidence into a per-slot proof, and the leg that consumes the proof is the one the apply route
+// maps over (`runner_host_drain_leg_decided`).
 //
-// TRIGGER: the first `runner_host_file_converge` APPLY dispatch over a host with an open width transition
-// whose incoming slots have collected qualification verdicts. UNTIL IT LANDS the route supplies `[]` there,
-// every declared retirement is WITHHELD with the replacement named and the plan says so per slot -- the
-// withhold is the fail-closed direction, so the owed wiring delays retirements rather than authorizing them.
+// WHAT ALREADY RUNS IN PRODUCTION. The producer of the carrier is not a promise: the qualification attempt
+// route (gunbc.runner.runner_qualification_attempt_run::qualification_attempt_bound, a wet hosted route)
+// collects the dispatched run and decides the attempt THROUGH the carrier --
+// gunbc.runner.runner_qualification_dispatch::replacement_job_evidence_of_collected, whose collected reading
+// only gunbc.runner.runner_qualification_dispatch::replacement_job_evidence_of may mint. So the fact "this
+// slot's registered runner took its floor job and it concluded" is minted by an executing route today; the
+// converge gate withholds on the very same carrier, which is why the two cannot drift.
+//
+// WHAT IS OWED: the hand-off at this entry. `runner_retirement_readback_of` is called with
+// `qualification_verdicts: []`; the landing passes, per incoming slot, the evidence that route attests. A
+// converge run cannot dispatch a floor job itself -- that would turn a file converge into a nine-minute job
+// queue -- so it reads what the attempt route proved, which is why the hand-off is the owed edge rather than a
+// read this entry makes.
+//
+// TRIGGER, WHICH CAN ACTUALLY HAPPEN: a qualification attempt has run for one of the host's incoming slots --
+// the attempt route's collect stage reached `QualificationRunCollected` and its minted reading is what the
+// gate would read. That is an event the fleet causes when it brings a slot up, not a description of the
+// missing wiring. UNTIL THE HAND-OFF LANDS the entry supplies `[]`, every declared retirement is WITHHELD with
+// the replacement named and the plan says so per slot: the withhold is the fail-closed direction, so the owed
+// wiring delays retirements rather than authorizing them, and this row is what keeps that standing state
+// tracked instead of permanent by accident.
 data converge_replacement_job_proof_leg: RouteLegStanding = LegAuthorityImplemented {
   authority: decl_ref(module_path: "gunbc.runner.runner_replacement_readback", decl_name: "replacement_proven_of_host"),
-  wiring_owed: "the converge entry supplies qualification_verdicts: []; the landing is the qualification attempt route's collected QualificationRunVerdict per incoming slot fed into runner_retirement_readback_of, triggered by the first runner_host_file_converge APPLY dispatch over a host with an open width transition whose incoming slots have collected qualification verdicts",
+  wiring_owed: "the converge entry supplies qualification_verdicts: []; the landing passes, per incoming slot, the CollectedFloorJobReading that gunbc.runner.runner_qualification_attempt_run::qualification_attempt_bound already attests through gunbc.runner.runner_qualification_dispatch::replacement_job_evidence_of_collected; trigger: a qualification attempt has reached QualificationRunCollected for one of the host's incoming slots",
 }
 
 // THE DECISIONS FOR THE HOST'S DRAIN CANDIDATES. `live` comes from the host's OWN unit reading (the

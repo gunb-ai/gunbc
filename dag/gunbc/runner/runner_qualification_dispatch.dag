@@ -63,7 +63,7 @@ import gunbc.runner.runner_qualification_floor_job {
 import gunbc.runner.runner_qualification_ref_pin { QualificationRefPin, QualificationBranchName }
 import gunbc.runner.runner_qualification_group { qualification_workflow_path, qualification_selected_workflow }
 import gunbc.runner.runner_retirement_causes {
-  ReplacementJobEvidence, FloorJobCollected, FloorJobRefused,
+  ReplacementJobEvidence, FloorJobCollected, FloorJobRefused, collected_floor_job_reading,
 }
 
 // THE DISPATCH LEG OF THE QUALIFICATION ROUTE, AND THE COLLECT STAGE THAT READS ITS RUN BACK.
@@ -738,7 +738,10 @@ fn decide_qualification_run(
 fn replacement_job_evidence_of(slot: NonEmptyStr, verdict: QualificationRunVerdict) -> ReplacementJobEvidence {
   match verdict {
     RunVerdictCollected { run: run, floor_job: job, conclusion: conclusion } =>
-      FloorJobCollected { slot: slot, run: run, floor_job: job, conclusion: conclusion }
+      FloorJobCollected {
+        slot: slot,
+        collected: collected_floor_job_reading(run: run, floor_job: job, conclusion: conclusion),
+      }
     RunVerdictRefused { refusal: refusal } =>
       FloorJobRefused { slot: slot, reason: qualification_run_refusal_cause(refusal: refusal) }
   }
@@ -749,6 +752,29 @@ fn replacement_job_evidence_of(slot: NonEmptyStr, verdict: QualificationRunVerdi
 // installation -- material that belongs in a refusal report, not in a plan line a host converges against. The
 // arms are named so the operator can act on the cause alone, and the full refusal stays one `match` away,
 // here, in the module that owns it.
+// THE SAME PROJECTION FOR A COLLECTION THE CALLER ALREADY HOLDS, so the qualification attempt route can
+// attest the fact it already decided -- "the registered runner took this attempt's floor job and it concluded"
+// -- through the ONE carrier the retirement gate reads, instead of re-deriving the conclusion from the record
+// beside it. The slot is taken from the floor job's own `runner_name`, the same join `decide_floor_job` made
+// against the registration: the evidence says who it is about. A collected job that names no runner yields no
+// evidence at all, because a job that does not say who ran it attests nothing about who ran it.
+fn replacement_job_evidence_of_collected(collected: CollectedQualificationRun) -> ReplacementJobEvidence? {
+  match collected.floor_job.runner_name {
+    Absent => Absent
+    Present { value: name } =>
+      Present {
+        value: replacement_job_evidence_of(
+          slot: name as NonEmptyStr,
+          verdict: RunVerdictCollected {
+            run: collected.run,
+            floor_job: collected.floor_job,
+            conclusion: collected.conclusion,
+          },
+        )
+      }
+  }
+}
+
 fn qualification_run_refusal_cause(refusal: QualificationRunRefusal) -> String {
   match refusal {
     RunReadUnreadable { refusal: _ } => "the qualification run could not be read"
