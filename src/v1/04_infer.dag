@@ -4038,10 +4038,18 @@ fn equality_resolved_declaration_structure(rt: Node, peeled: Node, name: String,
 // v2_compiler_source_root_eval.rs:5142, run 42236475532; gunbc#15175 doctrine).
 // AN OCCURRING ARGUMENT MUST BE BOTH STRUCTURAL AND JUDGED BY THE TABLE. Comparability is not enough:
 // the emitted by-target comparison IS Rust `==`, and only a declaration the by-target table names true
-// (its own walk reaching no routed step and refusing nothing) may lean on it -- emitted structural data
-// carries no PartialEq (emit_data_def, 05_emit_rust.dag). equality_applied_argument_is_structural alone
-// admitted a comparable-but-not-by-target argument and reproduced the E0369 the #15175 wall exists to
-// prevent; the table reading restores the wall at exactly the occurring positions #15972 opened.
+// (its own walk reaching no routed step and refusing nothing) may lean on it. MEASURED, not assumed: the
+// emitted carrier's PartialEq comes from the derive roster (v1.compiler.trait_derive_emit,
+// v1_emit_struct_derives / v1_emit_enum_derives), which narrows to fn_field_derive_traits() -- Clone only,
+// no PartialEq -- for any declaration whose carrier reaches a function value. On the emitted v2 crate that
+// is exactly the split: NativeDemandValue and NativeLaneModulePreparation carry #[derive(Clone)] alone,
+// while Measure<Q,S,M>, IdempotencyEvidence, EffectShape<K>, KeySource, DemandEntry<V>, DemandState<V> and
+// DemandIdentity carry PartialEq. The by-target table is the single authority that joins the two answers:
+// it refuses a declaration whose walk reaches a function value, which is the same condition the roster
+// narrows on, so infer never admits a `==` whose carrier the emitter will not give PartialEq to.
+// equality_applied_argument_is_structural alone admitted a comparable-but-not-by-target argument and
+// reproduced the E0369 the #15175 wall exists to prevent; the table reading restores the wall at exactly the
+// occurring positions #15972 opened.
 fn equality_applied_arguments_by_target(basis: Node, parameter_names: List<String>, arguments: List<Node>, scope: InferScope, visited: Map<String, Bool>, depth: Int) -> Bool {
   match parameter_names |> first {
     Absent => (arguments |> count) == 0
