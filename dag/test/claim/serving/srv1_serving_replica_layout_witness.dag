@@ -1,6 +1,6 @@
 module test.claim.serving.srv1_serving_replica_layout_witness
 
-import std.types { Bool, NonEmptyStr, List }
+import std.types { Bool, NonEmptyStr, List, Port }
 import std.nat { Nat }
 import std.algebra { length, string_contains }
 import std.optional { Absent, Present }
@@ -20,7 +20,7 @@ import gunbc.serving.srv1_serving_replica_layout {
   srv1_contract_reports_drift, srv1_contract_exits_nonzero, srv1_contract_may_destroy, srv1_contract_restarts_on_failure,
   Srv1ServingReplicaSpec,
   srv1_fleet_boot_survival_audit, srv1_audit_entry_is_unreadable, srv1_audit_entry_is_enabled_at_boot,
-  srv1_audit_entry_is_user_scope, srv1_audit_entry_is_restart_unless_stopped,
+  srv1_audit_entry_is_user_scope, srv1_audit_entry_is_user_scope_with_linger, srv1_audit_entry_is_restart_unless_stopped,
   srv1_test_only_artifacts,
   BootSurvivalObservation,
 }
@@ -41,7 +41,12 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // Builds a srv1 launch config for the admission/render tests, varying only the shape under test; the engine
 // rows (profile, hardware, LMCache tiers, max-model-len, image) are the srv1 constants so a test discriminates
 // on exactly one field (tensor_parallel_size / kv_cache_dtype / lil_replicas / host_gpu_p2p).
-fn witness_cfg(tp: Nat, kv: Srv1KvCacheDtype, reps: Nat, p2p: Bool) -> Srv1LaunchConfig {
+//
+// The five extra parameters carry the KNOB GROUPS (L2 placement, checkpoint retention, TLS material, the
+// api-key reference, the engine executable) as whole records rather than as eleven loose arguments: a render
+// red control then mutates ONE record and the others stay the admitted rows, so a failure names the group it
+// came from instead of pointing at a positional argument.
+fn witness_cfg_full(tp: Nat, kv: Srv1KvCacheDtype, reps: Nat, p2p: Bool, l2: Srv1LmCacheL2Placement, retention: Srv1CheckpointRetentionPolicy, tls: Srv1TlsMaterial, key: Srv1ApiKeyReference, exe: FilePath, port: Port) -> Srv1LaunchConfig {
   Srv1LaunchConfig {
     tensor_parallel_size: tp,
     kv_cache_dtype: kv,
@@ -52,7 +57,28 @@ fn witness_cfg(tp: Nat, kv: Srv1KvCacheDtype, reps: Nat, p2p: Bool) -> Srv1Launc
     image_digest: "sha256:2ad6245e058de7b4d0b973b08d60f67b18f563e4bd63d6a0e9b0406222a098e9" as NonEmptyStr,
     lil_replicas: reps,
     host_gpu_p2p: p2p,
+    engine_executable: exe,
+    lmcache_l2_placement: l2,
+    checkpoint_retention: retention,
+    tls_material: tls,
+    api_key_reference: key,
+    container_port: port,
   }
+}
+
+// The four-variable form every admission test uses: the knob groups are the ADMITTED rows, so the only thing
+// a test varies is the variable named in its signature.
+fn witness_cfg(tp: Nat, kv: Srv1KvCacheDtype, reps: Nat, p2p: Bool) -> Srv1LaunchConfig {
+  let admitted = srv1_admitted_launch_config
+  witness_cfg_full(
+    tp: tp, kv: kv, reps: reps, p2p: p2p,
+    l2: admitted.lmcache_l2_placement,
+    retention: admitted.checkpoint_retention,
+    tls: admitted.tls_material,
+    key: admitted.api_key_reference,
+    exe: admitted.engine_executable,
+    port: admitted.container_port
+  )
 }
 
 test fn the_admitted_config_is_admitted() -> Bool {
@@ -309,7 +335,12 @@ test fn the_boot_survival_audit_keeps_unknown_unreadable() -> Bool {
       && any(a, o => o.host == "h11-88" && srv1_audit_entry_is_unreadable(o))
       && !any(a, o => string_contains(s: o.host, pattern: "h11") && srv1_audit_entry_is_enabled_at_boot(o))
       && any(a, o => o.host == "srv3" && o.unit == "strata-pool.service" && srv1_audit_entry_is_enabled_at_boot(o))
-      && any(a, o => o.host == "srv2" && string_contains(s: o.unit, pattern: "ctrl-vast-pool") && srv1_audit_entry_is_user_scope(o))
+      // srv2's pool and srv1's dashboard are user units whose OWNER LINGERS, so they start at boot
+      // without a login. The stricter verdict is asserted (not the bare UserScopeUnit) because that is
+      // what was read on-host 2026-11-09; a row regressed to UserScopeUnit — the "down until login"
+      // claim that was wrong — goes red here.
+      && any(a, o => o.host == "srv2" && string_contains(s: o.unit, pattern: "ctrl-vast-pool") && srv1_audit_entry_is_user_scope_with_linger(o))
+      && any(a, o => o.host == "srv1" && o.unit == "session-dashboard" && srv1_audit_entry_is_user_scope_with_linger(o))
       && any(a, o => o.host == "srv1" && o.unit == "gunbc-router" && srv1_audit_entry_is_restart_unless_stopped(o))
 }
 
