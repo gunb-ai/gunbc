@@ -14,6 +14,12 @@ on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened]
+  workflow_call:
+    inputs:
+      compose_caller_dag:
+        description: Judge gunb-ai/gunbc's default branch with the calling repository's dag/ copied into it
+        required: false
+        type: boolean
 permissions:
   contents: read
 concurrency:
@@ -37,6 +43,30 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.sha }}
           persist-credentials: false
+        if: "!inputs.compose_caller_dag"
+      - name: Checkout gunbc's default branch for a calling repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          repository: gunb-ai/gunbc
+          fetch-depth: 0
+          persist-credentials: false
+        if: inputs.compose_caller_dag
+      - name: Checkout the calling repository's commit
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          path: .gunbc-caller
+          persist-credentials: false
+        if: inputs.compose_caller_dag
+      - name: Compose the calling repository's dag/ into gunbc's
+        run: |
+          # dissolve-on: compiler_gate_compose_caller_statements -- bash-node carrier of CallerTreeComposition, copying a calling repository's dag/ into gunbc's and refusing a caller file that replaces one of gunbc's. Dissolves when the compiler admits a second checkout as a source root whose modules the source layout (gunbc.source_layout) admits or refuses by namespace, so the copy is deleted and a clash is that layout's located refusal.
+          set -e
+          if ! '[' '-d' '.gunbc-caller/dag' ']'; then 'echo' '::error::the calling repository has no dag/ directory, so there is nothing to compose'; exit 1; fi
+          'cp' '-a' '.gunbc-caller/dag/.' 'dag/'
+          if ! 'git' 'diff' '--quiet' '--' 'dag'; then 'echo' '::error::the calling repository replaces these files of gunbc'\''s tree, so two modules claim one storage path:'; 'git' 'diff' '--name-only' '--' 'dag'; exit 1; fi
+          'rm' '-rf' '--' '.gunbc-caller'
+          'echo' 'judging '"$GITHUB_REPOSITORY"'@'"$GITHUB_SHA"' composed onto gunb-ai/gunbc@'$('git' 'rev-parse' 'HEAD')
+        if: inputs.compose_caller_dag
       - name: Refuse a subject older than the instruction running it
         run: |
           # dissolve-on: compiler_gate_contract_stamp_guard_statements -- bash-node carrier that reads the tree's own committed workflow stamp BEFORE any binary is built and refuses a subject older than the instruction running it; dissolves when a pre-build reader of a committed workflow member exists that does not run tree code (GitHub's own workflow_sha on the check run, or a runner-side typed reader). The awk program remains a single typed string argument until an awk-rule node grammar lands.
@@ -282,7 +312,7 @@ jobs:
           'tr' '-cd' '\n' < "$RUNNER_TEMP"'/gunbc-fast-lane-changed.z' > "$RUNNER_TEMP"'/gunbc-fast-lane-newlines.txt'
           if '[' '-s' "$RUNNER_TEMP"'/gunbc-fast-lane-newlines.txt' ']'; then 'echo' 'fast lane: full run -- a changed path contains a newline, so no line-wise rule can decide it'; 'echo' 'skip=''false' | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'; exit 0; fi
           'sed' '-En' 's/^(file|probe) //p' 'gunbc-read-set.txt' > "$RUNNER_TEMP"'/gunbc-fast-lane-exact.txt'
-          'printf' '%s\n' 'Cargo.toml' 'Cargo.lock' 'rust-toolchain' 'rust-toolchain.toml' 'src/v2/std/read_set.dag' 'dag/gunbc/seed_build_inputs.dag' 'dag/gunbc/read_set_schema.dag' 'dag/gunbc/read_set_publish.dag' 'dag/gunbc/read_set_restore.dag' 'dag/gunbc/parse_verdict_schema.dag' 'dag/gunbc/parse_verdict_publish.dag' 'dag/gunbc/parse_verdict_restore.dag' 'dag/gunbc/witness/compiler_gate_workflow.dag' 'dag/gunbc/source_layout.dag' 'dag/gunbc/source_layout_namespaces.dag' | 'tee' '-a' "$RUNNER_TEMP"'/gunbc-fast-lane-exact.txt' > '/dev/null'
+          'printf' '%s\n' 'Cargo.toml' 'Cargo.lock' 'rust-toolchain' 'rust-toolchain.toml' 'src/v2/std/read_set.dag' 'dag/gunbc/seed_build_inputs.dag' 'dag/gunbc/read_set_schema.dag' 'dag/gunbc/read_set_publish.dag' 'dag/gunbc/read_set_restore.dag' 'dag/gunbc/parse_verdict_schema.dag' 'dag/gunbc/parse_verdict_publish.dag' 'dag/gunbc/parse_verdict_restore.dag' 'dag/gunbc/witness/compiler_gate_workflow.dag' 'dag/gunbc/source_layout.dag' 'dag/gunbc/source_layout_namespaces.dag' 'dag/gunbc/layout_namespace_row.dag' 'dag/gunbc/layout_namespace_row/gunbc_tree.dag' | 'tee' '-a' "$RUNNER_TEMP"'/gunbc-fast-lane-exact.txt' > '/dev/null'
           'sed' '-En' 's/^dir (.*)$/\1\//p' 'gunbc-read-set.txt' > "$RUNNER_TEMP"'/gunbc-fast-lane-prefixes.txt'
           'printf' '%s\n' 'src/v1/' '.cargo/' 'fixtures/' '.github/' | 'tee' '-a' "$RUNNER_TEMP"'/gunbc-fast-lane-prefixes.txt' > '/dev/null'
           'sed' '-e' 's/[.[\*^$]/\\&/g' '-e' 's/^/^/' "$RUNNER_TEMP"'/gunbc-fast-lane-prefixes.txt' > "$RUNNER_TEMP"'/gunbc-fast-lane-prefix-patterns.txt'

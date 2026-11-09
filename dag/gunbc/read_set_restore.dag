@@ -144,6 +144,8 @@ data fast_lane_decision_implementation_modules: List<String> = [
   "gunbc.witness.compiler_gate_workflow",
   "gunbc.source_layout",
   "gunbc.source_layout_namespaces",
+  "gunbc.layout_namespace_row",
+  "gunbc.layout_namespace_row.gunbc_tree",
 ]
 
 fn fast_lane_unplaceable_modules() -> List<String> {
