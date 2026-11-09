@@ -60,8 +60,6 @@ data juxtaposed_lists_source: String = "module juxtap.lists\n\nfn bad_lists() ->
 data juxtaposed_names_source: String = "module juxtap.names\n\nfn bad_names(a: Int) -> Int {\n  a\n  a\n}\n"
 data juxtaposed_binop_source: String = "module juxtap.binop\n\nfn bad_binop(a: Int) -> Int {\n  a + 1\n  a\n}\n"
 data juxtaposed_unary_source: String = "module juxtap.unary\n\nfn bad_unary() -> Int {\n  -1\n  1\n}\n"
-data juxtaposed_binop_source: String = "module juxtap.binop\n\nfn bad_binop(a: Int) -> Int {\n  a + 1\n  a\n}\n"
-data juxtaposed_unary_source: String = "module juxtap.unary\n\nfn bad_unary() -> Int {\n  -1\n  1\n}\n"
 
 // THE ACCEPTED CONTROLS, differing from the reds by exactly the absence of a preceding bare value:
 // a single-statement body, and a `let` binding followed by its tail reference.
