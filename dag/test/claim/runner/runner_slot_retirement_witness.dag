@@ -1119,7 +1119,7 @@ test fn a_host_with_no_open_transition_has_no_obligation() -> Bool {
 test fn an_open_transition_derives_the_prior_minus_target_obligation() -> Bool {
   match required_retirees_for_host(host: operator_host_srv1) {
     RetireesKnown { units: units } =>
-      length(xs: units) == 46
+      length(xs: units) == 42
         && any(units, u => (u as String) == "actions-runner@srv1-50.service")
         && !any(units, u => (u as String) == "actions-runner@srv1-01.service")
     RetireesUnresolved { host: _, cause: _ } => false
@@ -1207,35 +1207,49 @@ test fn the_obligation_excludes_a_committed_member_above_the_fleet_range() -> Bo
   }
 }
 
-test fn srv1_at_committed_width_3_desires_two_fleet_plus_shakedown() -> Bool {
+// SRV1 AT THE RELEASED WIDTH DESERVES SIX FLEET SLOTS AND BOTH CELLS. The width is a derivation, so this
+// row moves when a standing moves: with srv1-13 and srv1-14 reading MicrovmSlotNotRealized -- no controller
+// installed, no slot unit live -- their cells do not pay against the envelope and the derivation admits five
+// fleet rows rather than one. The identity clauses are the part that matters: 01 is the transitional grant,
+// 02 the deploy slot, 03..06 the fleet slots the release newly commits, 13 and 14 the microVM slots
+// committed by identity above the fleet range, and 07 -- the index the live hand runners occupy -- is NOT a
+// desired slot, which is why the converge never judged its tree and why its retirement is still owed.
+test fn srv1_at_the_released_width_deserves_six_fleet_slots_and_both_cells() -> Bool {
   match gunbc_runner_committed_width(host: operator_host_srv1) {
     RunnerWidthUnresolved { cause: _ } => false
     RunnerWidthDerived { slots: w } =>
-      w == 4
+      w == 8
         && match runner_host_deploy_of(host: operator_host_srv1, spec: srv1_runner_host_spec) {
           RunnerHostDeployWidthRefused { spec: _, host: _, cause: _ } => false
           RunnerHostDeployZeroWidthAdmitted { spec: _ } => false
           RunnerHostDeployAdmitted { deploy: d } =>
-            d.runner_count == 4
-              && length(xs: host_committed_identities_at(host: operator_host_srv1, committed: d.runner_count)) == 4
+            d.runner_count == 8
+              && length(xs: host_committed_identities_at(host: operator_host_srv1, committed: d.runner_count)) == 8
               && any(committed_unit_names_at(host: operator_host_srv1, committed: d.runner_count), u => u == "actions-runner@srv1-01.service")
               && any(committed_unit_names_at(host: operator_host_srv1, committed: d.runner_count), u => u == "actions-runner@srv1-02.service")
+              && any(committed_unit_names_at(host: operator_host_srv1, committed: d.runner_count), u => u == "actions-runner@srv1-03.service")
+              && any(committed_unit_names_at(host: operator_host_srv1, committed: d.runner_count), u => u == "actions-runner@srv1-06.service")
               && any(committed_unit_names_at(host: operator_host_srv1, committed: d.runner_count), u => u == "actions-runner@srv1-13.service")
               && any(committed_unit_names_at(host: operator_host_srv1, committed: d.runner_count), u => u == "actions-runner@srv1-14.service")
-              && !any(committed_unit_names_at(host: operator_host_srv1, committed: d.runner_count), u => u == "actions-runner@srv1-03.service")
+              && !any(committed_unit_names_at(host: operator_host_srv1, committed: d.runner_count), u => u == "actions-runner@srv1-07.service")
+              && !any(committed_unit_names_at(host: operator_host_srv1, committed: d.runner_count), u => u == "actions-runner@srv1-12.service")
         }
   }
 }
 
-test fn srv1_at_width_3_owes_the_open_fifty_twelve_seven_and_five_deltas() -> Bool {
+// SRV1 OWES THE OPEN DELTAS MINUS EVERY SLOT THE WIDTH COMMITS. The obligation is prior minus committed,
+// over identities -- so the release takes its own four units out of it: srv1-03 through srv1-06 are desired
+// slots now and cannot also be owed for retirement, while 07 (the hand-started runner outside the derived
+// population), 12, 15 and 50 stay deltas exactly as they were.
+test fn srv1_owes_the_open_deltas_minus_every_slot_the_width_commits() -> Bool {
   match required_retirees_for_host(host: operator_host_srv1) {
     RetireesUnresolved { host: _, cause: _ } => false
     RetireesKnown { units: units } =>
-      length(xs: units) == 46
-        && any(units, u => (u as String) == "actions-runner@srv1-03.service")
-        && any(units, u => (u as String) == "actions-runner@srv1-04.service")
-        && any(units, u => (u as String) == "actions-runner@srv1-05.service")
-        && any(units, u => (u as String) == "actions-runner@srv1-06.service")
+      length(xs: units) == 42
+        && !any(units, u => (u as String) == "actions-runner@srv1-03.service")
+        && !any(units, u => (u as String) == "actions-runner@srv1-04.service")
+        && !any(units, u => (u as String) == "actions-runner@srv1-05.service")
+        && !any(units, u => (u as String) == "actions-runner@srv1-06.service")
         && any(units, u => (u as String) == "actions-runner@srv1-07.service")
         && any(units, u => (u as String) == "actions-runner@srv1-12.service")
         && !any(units, u => (u as String) == "actions-runner@srv1-14.service")
@@ -1271,7 +1285,7 @@ test fn a_host_at_its_current_width_owes_no_retirees() -> Bool {
 // production read yields the same derived obligation the decision produces for that width.
 test fn the_production_wrapper_reaches_the_supplied_decision() -> Bool {
   match required_retirees_for_host(host: operator_host_srv1) {
-    RetireesKnown { units: units } => length(xs: units) == 46
+    RetireesKnown { units: units } => length(xs: units) == 42
     RetireesUnresolved { host: _, cause: _ } => false
   }
 }
