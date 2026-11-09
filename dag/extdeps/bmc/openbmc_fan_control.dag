@@ -1,6 +1,7 @@
 module extdeps.bmc.openbmc_fan_control
 
-import std.algebra { Empty, trim }
+import std.algebra { Cons, Empty, trim }
+import std.coercion { unicode_scalar_unfold }
 import v2.std.diagnostic { Accepted, Rejected }
 
 import extdeps.external_authority { ExternalAuthority }
@@ -1007,12 +1008,13 @@ fn openbmc_object_mapper_service_at_result(
         reason: "ObjectMapper has no service at this index",
       }
     JqOutputPresent { text: text } =>
-      match trim(text) {
+      let service = trim(text)
+      match unicode_scalar_unfold(s: service) {
         Empty =>
           OpenBmcServiceProjectionRefused {
             reason: "ObjectMapper service name is blank",
           }
-        non_empty => OpenBmcServiceObserved { service: non_empty as NonEmptyStr }
+        Cons { head: _, tail: _ } => OpenBmcServiceObserved { service: service as NonEmptyStr }
       }
   }
 }
