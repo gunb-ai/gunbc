@@ -21,7 +21,7 @@ import extdeps.systemd.systemd_run {
 import gunbc.live_deploy.desired { srv1_lab_desired_deployment, selected_deployment_spec }
 import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionBoundAtEmission }
 import gunbc.live_deploy.emit {
-  LiveDeployServeUnitEmission, LiveDeployServeUnitEmitted, LiveDeployServeUnitOidcReadbackRefused,
+  LiveDeployServeUnitEmission, LiveDeployServeUnitEmitted, LiveDeployServeUnitOidcReadbackRefused, LiveDeployServeUnitGrammarRefused,
   live_deploy_serve_unit_emission,
   live_deploy_belt_service_unit_file,
   live_deploy_belt_exit_drain_service_unit_file,
@@ -49,6 +49,7 @@ fn ld449_render_lab_serve_unit(revision: String) -> CliWireResponse {
   match live_deploy_serve_unit_emission(spec: spec, revision: RevisionBoundAtEmission { revision: revision as CommitSha }, now_epoch: tracker_web_oidc_deploy_now_epoch()) {
     LiveDeployServeUnitEmitted { file } => CliWirePrintable { bytes: serialize_systemd_unit_file(file: file), exit: ExitSuccess }
     LiveDeployServeUnitOidcReadbackRefused { cause } => CliWirePrintable { bytes: ld449_section(title: "serve unit REFUSED", body: cause as String), exit: exit_failure(reason: cause as String) }
+    LiveDeployServeUnitGrammarRefused { binary_path, reason } => CliWirePrintable { bytes: ld449_section(title: "serve unit REFUSED (binary grammar)", body: join([binary_path as String, ": ", reason as String], "")), exit: exit_failure(reason: reason as String) }
   }
 }
 
@@ -72,7 +73,7 @@ fn ld449_render_lab_belt_units() -> CliWireResponse {
 fn ld449_render_lab_review_properties() -> CliWireResponse {
   let inst = srv1_lab_dashboard_instance()
   let props = dispatch_review_unit_properties(
-    instance: inst, granted: inst.dispatch_worker_memory_max,
+    instance: inst,
     working_directory: "<worktree>", log_path: "<log>", review_dir: "<review-dir>",
     exit_hook: "<exit-hook>" as NonEmptyStr,
   )
