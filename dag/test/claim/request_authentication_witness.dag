@@ -39,7 +39,7 @@ import gunbc.auth.request_authentication {
   DeploymentAccessPolicy,
   ServeActionAssignIssue, ServeActionCommentIssue, ServeActionApproveDecision, ServeActionDispatchNode,
   ServeRouteAction,
-  ServeActionStopNode, ServeActionPublishNode, ServeActionCreateIssue,
+  ServeActionStopNode, ServeActionPublishNode,
   ServeWriteAuthorizationPolicy,
   tracker_write_authorization_policy, write_authorization_policy_for, srv1_host_account_enrolments,
   HostAccountPeerEvidence, host_account_evidence_of_ingress, lab_agent_principal, lab_agent_host_account,
@@ -688,7 +688,6 @@ test fn a_non_lab_deployment_refuses_agent_assign_and_dispatch() -> Bool {
 test fn the_agent_is_refused_every_action_but_assign_and_dispatch() -> Bool {
   let lab = write_authorization_policy_for(deployment: srv1_lab_codex_feedback_deployment)
   !agent_admitted_under(action: ServeActionApproveDecision, policy: lab, security: agent_security())
-    && !agent_admitted_under(action: ServeActionCreateIssue, policy: lab, security: agent_security())
     && !agent_admitted_under(action: ServeActionCommentIssue, policy: lab, security: agent_security())
     && !agent_admitted_under(action: ServeActionStopNode, policy: lab, security: agent_security())
     && !agent_admitted_under(action: ServeActionPublishNode, policy: lab, security: agent_security())

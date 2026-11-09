@@ -36,7 +36,7 @@ import gunbc.design.gunb_ai_hues {
   warm_white, off_white, near_black, umber, taupe, moss_deep, clay_deep, brass_deep,
 }
 
-// The LAYOUT layer of the gunb.ai projection (carrier: gunbc.plans.gunb_ai_projection).
+// The LAYOUT layer of the gunb.ai projection (carrier: gunbc.plans.gunb_ai_projection (deleted 2026-11-08)).
 // Composes on the tokens layer and nothing else: every colour is a role_var(t: …)
 // reference into gunbc.site.gunb_ai_tokens' bindings and every magnitude a
 // scale_var(t: …) reference into ScaleToken rows, so this module cannot introduce a

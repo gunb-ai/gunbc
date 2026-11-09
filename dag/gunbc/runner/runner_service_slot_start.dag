@@ -41,7 +41,7 @@ import gunbc.runner.runner_service_slot_controller {
   service_slot_controller_execstart, service_slot_controller_execstop, service_slot_unit_env_name, service_slot_accepted_revision_env_name,
 }
 
-// THE SERVICE-SLOT START (gunbc.plans.mtcollins1_ci_service_legs F1; fleet-converge mode service_slot_start). Generic over
+// THE SERVICE-SLOT START (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) F1; fleet-converge mode service_slot_start). Generic over
 // managed hosts: the host is the subject_host input and enters only through its managed row. Over the one live anchored
 // transport (gunbc.host.anchored_host_transport anchored_host_transport_for_run) it reads the host's current boot,
 // derives that boot's service population (gunbc.runner.runner_host_unit_slot current_service_population), and starts

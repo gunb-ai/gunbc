@@ -91,7 +91,7 @@ type V4EffectIoHostRuntime {
   handlers: EffectHandlerBinding
 }
 
-// P-C per-grant binding (docs/plans/effect-namespace-grants.md line 62): read dispatch selects
+// P-C per-grant binding (docs/plans/effect-namespace-grants.md (deleted 2026-11-08) line 62): read dispatch selects
 // real-transport vs replay by the COVERING Read grant's HandlerBinding (covering_grant), NOT by
 // re-reading the per-process ExecutionMode. Mode is consumed exactly once, at envelope construction
 // (effect_io_host_envelope), where it picks the wet (RealTransport) or hermetic (Replay) preset;

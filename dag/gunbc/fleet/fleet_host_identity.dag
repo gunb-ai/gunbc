@@ -94,7 +94,7 @@ data operator_host_srv16: HostIdentity = "srv16"
 data operator_host_183527: HostIdentity = "host-183527"
 data operator_host_3dde7f: HostIdentity = "host-3dde7f"
 
-// SUPERMICRO H11SSL UNIT 1 (operator, 2026-10-30; gunbc.plans.gpu_card_host_program row N0b, "an
+// SUPERMICRO H11SSL UNIT 1 (operator, 2026-10-30; gunbc.plans.gpu_card_host_program (deleted 2026-11-08) row N0b, "an
 // opaque identity for the H11 host"). The host that serves the A16 Strata pool. Its board, BMC, DIMM
 // and fan readings are keyed by its BMC MAC under gunbc.machine_intake (supermicro_h11ssl_unit1_*); its
 // operator-facing hostname is the LEGACY spelling gunbc.hostname_allocation records. OPAQUE per the rule

@@ -627,7 +627,7 @@ fn service_slot_unit_standing() -> ServiceSlotUnitStanding
   }
 }
 
-// THE BAKED RELEASE MUST BE THE ACCEPTED ONE (gunbc.plans.mtcollins1_ci_service_legs F1; operator decision A, condition
+// THE BAKED RELEASE MUST BE THE ACCEPTED ONE (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) F1; operator decision A, condition
 // 2). The unit runs from the release the image baked, so its WorkingDirectory is that release locus and the locus's own
 // tree receipt (gunbc.live_deploy.release_locus observe_release_tree_receipt) says which revision was baked. The start mode
 // puts the revision gunbc.fleet.fleet_revision_acceptance accepted into the unit's environment. A pass is admitted only
@@ -693,7 +693,7 @@ fn service_slot_controller_main() -> ProcessExit
 // ── the stop: the unit's own registration, deregistered before the controller is signalled ──────────────
 //
 // THE SEED DOES NOT TRAP SIGTERM, so a controller told to stop dies where it stands, and the pass's own
-// deregistration may never run (gunbc.plans.mtcollins1_ci_service_legs F3). The stop is therefore its own entry, the
+// deregistration may never run (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) F3). The stop is therefore its own entry, the
 // unit's ExecStop: systemd runs it while the main process is still alive and before it sends KillSignal, within
 // TimeoutStopSec. By then the listener has ended (its unit is PartOf= and After= this one, so it stops first), and
 // the stop deregisters exactly this unit's registration with readback. If the pass got there first the readback

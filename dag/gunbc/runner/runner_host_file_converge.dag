@@ -2202,7 +2202,7 @@ fn converge_deploy_slot_account(
 //
 // WHY A DEPLOY SLOT IS ONLY ONE ROLE OF THE SAME RULE. This fold began as the deploy slot's ownership
 // transition (a CI tree any pull request job could have rewritten is never handed over to the deploy
-// account, gunbc.plans.srv1_deploy_principal_split), and that is still its deploy arm: the account and
+// account, gunbc.plans.srv1_deploy_principal_split (deleted 2026-11-08)), and that is still its deploy arm: the account and
 // the owner-only mode are the deploy role's answers. What the deploy slot alone adds is that its
 // account must be held first (deploy_slot_account_is_held); a CI slot's account is the host's job user,
 // which the slot's unit already runs as.
@@ -2365,7 +2365,7 @@ fn runner_slot_tree_step(target: RunnerSlotTreeTarget, runner_release: ActionsRu
 // THE STAGE IS WRITABLE BY ROOT ALONE FROM BEFORE THE FETCH UNTIL AFTER THE EXTRACT, because the digest
 // is checked by one leg and the bytes are read by a later one: an archive any other account could
 // replace between them would be extracted unverified under the deploy key while the run reports it
-// verified. So the stage is not in /tmp (the CI slots' jobs share it, gunbc.plans.srv1_deploy_principal_split)
+// verified. So the stage is not in /tmp (the CI slots' jobs share it, gunbc.plans.srv1_deploy_principal_split (deleted 2026-11-08))
 // but a member of the host-state tree, which root owns and nobody else writes
 // (gunbc.host_state_root host_state_tree_root); it is removed and recreated root-owned before the
 // fetch, so nothing left in it by an earlier run survives, and the fetch itself runs as root, so the

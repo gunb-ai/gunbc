@@ -35,7 +35,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 //    uefi_pxe_admitted_architectures, now Aarch64 and X86_64) and gunbc.site_pxe_edge (one pxe-service
 //    per served chain; the converge's amd64 row is Unpinned until its grub.cfg rendering is bound);
 //    extdeps.firmware.ipxe ships ipxe_arm64_efi_snponly and no x86_64 target -- and per the route
-//    settled 2026-10-24 (gunbc.plans.network_install_architecture_rows, #15060) the x86 first stages
+//    settled 2026-10-24 (gunbc.plans.network_install_architecture_rows (deleted 2026-11-08), #15060) the x86 first stages
 //    are the Ubuntu signed chain (shim + grub netboot builds), not an x86 iPXE. For x86 UEFI
 //    PXE/HTTP boot: none exists.
 //
@@ -100,7 +100,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 //   5. G1 seed/image: the largest new modeling surface (arch-gate inversion + x86 seed content), and
 //      it gates only G2's happy path.
 //   6. G3 x86 network boot: needs G1's artifacts and the signed shim+grub loader chain served whole
-//      by the edge per gunbc.plans.network_install_architecture_rows (#15060 -- the approved route;
+//      by the edge per gunbc.plans.network_install_architecture_rows (deleted 2026-11-08) (#15060 -- the approved route;
 //      iPXE stays the ARM row's chain), and edits the srv4 PXE edge's admission set -- the most
 //      site-wide change, done last of the enablers.
 //   7. G2 install-to-disk route: composes G1 (media), G3 (boot path), G4 (media attach) on the

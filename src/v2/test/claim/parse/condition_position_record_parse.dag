@@ -1,0 +1,276 @@
+module v2.test.claim.parse.condition_position_record_parse
+
+import v2.compiler.parse { PreparedModeled, PreparedVoidGrammar, parse_module_prepared, parse_production_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.std.compilers.lexing { token_stream_all }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Node, Symbol }
+import v2.std.grammar { parse_production_emitted_identity_optional }
+import std.optional { Absent, Optional, Present }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE DEFECT THESE ARMS DISCRIMINATE. At a CONDITION head (if condition, match scrutinee) a name
+// followed by braces is ambiguous: `if c { i }` is a bare variable with a one-statement block,
+// while `if x == R { value: y } { ... }` carries a genuine record operand. v1 separates them in
+// the condition parser (02_parse parse_if/parse_match -> parse_expr_no_brace: an uppercase head
+// gate plus a retry that abandons the record when it ends at neither `{` nor an operator). v2's
+// grammar cannot read the head's case, and the only prior anti-record device keyed on a one-name
+// brace run FOLLOWED BY ELSE -- so it fired exactly when an else followed: the else-less
+// `if c { i }` followed by a statement had its condition read as the record `c { i }`, the if was
+// starved of its block, and the module refused at PARSE with a token remainder AFTER the braces
+// (cc2-pp6, srv2 run.log dc759c24: BOTH executors, interpreted locus 151..152 = the tail). The
+// condition productions now carry the seed's separation declaratively: the record arm is admitted
+// only when its residue continues with a head the ORDINARY chain could continue with -- the
+// block brace, an infix class folded from dag_infix_operators, or a postfix suffix head folded
+// from dag_postfix_suffix_rows plus dag_grammar_postfix_dot_head_expr -- so the braces fall to
+// the block when a statement would start, and every reading that was right keeps its parse. The
+// postfix heads are a stated divergence from the seed's retry condition (`{` or infix only): the
+// corpus datum in dag.test.claim.review_sheet_converge_witness, claim
+// sheets_published_mock_corpus_covers_get_batch_update_and_metadata (`match R { ...
+// }.totalUpdatedCells { ... }`, green on main) proves a record in condition position must keep
+// its postfix chain; the seed's narrower retry set is the hole keen-heron flagged, not a behavior
+// to copy.
+//
+// WHAT EACH ARM ESTABLISHES (the set is a pair per shape, never a lone RED):
+//   - elseless_if_with_tail is THE RED: refused before the fix (token remainder at the tail),
+//     parses after it; the tree-shape witness pins the reading (the if owns exactly one block,
+//     the tail is a separate sibling statement), so the claim asserts the ROUTE and not only the
+//     answer (DESIGN 5).
+//   - then_branch_record is THE SECOND RED: `if c then R { s } else d` refused under the old
+//     guard although the then-branch has no block slot and the record reading is the only one
+//     that fits; it parses now, and the tree-shape witness shows zero block productions under
+//     the if -- the then-branch braces were consumed inside the expression chain. Corpus: zero
+//     real then-form uses, and the seed has no then-form, so no source depended on the old
+//     refusal (stated correction, grammar-owner review). NOTE (cc2-15695c-5279): the then-branch
+//     is an ordinary expression production, NOT the condition arm, so this claim discriminates
+//     the guard deletion, not the condition-arm record consumption; the infix/chain/scrutinee
+//     controls do that (RED at the regression head 52790408, GREEN at the fixed head).
+//   - The controls make this a repair and not a trade: a record operand in an ordinary position
+//     (let head, call argument), a parenthesised record condition, a record on the right of an
+//     infix in condition position, a record-headed match scrutinee (plus its field-access form,
+//     the corpus datum from #15639), and an operator chain of two records in condition position
+//     ALL keep parsing -- each was green before and must stay green.
+
+fn g_tokenize_parse(text: String, file: Symbol) -> Outcome<Node> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: _ } =>
+      bind_outcome(
+        o: tokenize_prepared(text: text, file: file, prepared: dag_prepared_lex()),
+        f: fn(token_stream) {
+          match parse_module_prepared(
+            tokens: token_stream,
+            prepared: prepared
+          ) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: artifact, diagnostics: d } =>
+              Accepted { value: artifact.tree, diagnostics: d }
+          }
+        }
+      )
+  }
+}
+
+fn g_parse_accepted(text: String, file: Symbol) -> Bool {
+  match g_tokenize_parse(text: text, file: file) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// THE RED: the verbatim shape of the namespace_xl0 rtp_guard_fallthrough member -- else-less
+// if-block statement, tail statement on the next line.
+data elseless_if_with_tail_source: String = "module probe.elseless_tail\n\nfn rtp_probe(c: Bool, i: Int) -> Int {\n  if c {\n    i\n  }\n  i\n}\n"
+
+// THE SECOND RED: then-branch record before else (refused under the deleted guard).
+data then_branch_record_source: String = "module probe.then_record\n\nfn f(c: Bool, s: Int) -> Int {\n  if c then R { s } else 0\n}\n"
+
+// CONTROLS: every record and block reading that was right before stays right.
+data record_let_head_source: String = "module probe.record_let\n\nfn f(x: Int) -> Int {\n  let p = R { x }\n  x\n}\n"
+
+data record_call_arg_source: String = "module probe.record_arg\n\nfn f(x: Int) -> Int {\n  g(R { x })\n}\n"
+
+// keen-heron-809's control (msg_7563c6e8): an if-condition 'x == C {' whose block STARTS with a
+// labeled call. The v1 SEED has a hole here (its retry requires the record attempt to END without
+// error; a labeled call inside the braces errors the attempt, so the seed never retries the bare
+// reading -- keen-heron parenthesized theirs in #15643). The v2 peek does not depend on the attempt's
+// error state: the record arm fails the field shape, the bare reading stands, the block is the if's.
+// Green before AND after this fix on both routes.
+data labeled_call_block_condition_source: String = "module probe.cond_labeled_call_block\n\nfn probe_cond(x: Int, y: Int) -> Int {\n  if x == CardOptional {\n    probe_labeled(n: y)\n  } else {\n    0\n  }\n}\n"
+
+data paren_record_condition_source: String = "module probe.paren_record\n\nfn f(p: Bool, x: Int) -> Bool {\n  if (p { x: 1 }) {\n    true\n  } else {\n    false\n  }\n}\n"
+
+data infix_record_condition_source: String = "module probe.infix_record\n\nfn f(x: Int, y: Int) -> Bool {\n  if x == Present { value: y } {\n    true\n  } else {\n    false\n  }\n}\n"
+
+data record_match_scrutinee_source: String = "module probe.record_scrutinee\n\nfn f(x: Int) -> Int {\n  match R { value: x } {\n    _ => x\n  }\n}\n"
+
+data record_chain_condition_source: String = "module probe.record_chain\n\nfn f(x: Int, y: Int) -> Bool {\n  if R { value: x } == S { value: y } {\n    true\n  } else {\n    false\n  }\n}\n"
+
+data else_if_chain_source: String = "module probe.else_chain\n\nfn f(c: Bool, i: Int) -> Int {\n  if c {\n    i\n  } else {\n    0\n  }\n}\n"
+
+// THE PAIRS: each RED stands beside its already-green sibling of the same shape.
+fn elseless_if_with_tail_parses() -> Bool { g_parse_accepted(text: elseless_if_with_tail_source, file: ^elseless_tail_probe) }
+
+fn then_branch_record_parses() -> Bool { g_parse_accepted(text: then_branch_record_source, file: ^then_record_probe) }
+
+fn record_let_head_still_parses() -> Bool { g_parse_accepted(text: record_let_head_source, file: ^record_let_probe) }
+
+fn record_call_arg_still_parses() -> Bool { g_parse_accepted(text: record_call_arg_source, file: ^record_arg_probe) }
+
+// The T9 RED (pp7 dotcond row): 'if c.d { i }' + tail. The record arm is reachable AFTER a
+// dot-suffix (the ordinary dot-suffix ends in the ident-suffix, so `d { i }` reads as a pun and
+// starves the if of its block -- pp7 refused at PARSE, locus 153..154). The condition gate sits on
+// that same suffix, so the pun is refused and the block stands. Field access itself is unaffected.
+data dotcond_with_tail_source: String = "module probe.dotcond_tail\n\nfn probe_dot(c: Bool, i: Int) -> Int {\n  if c.d { i }\n  i\n}\n"
+
+fn dotcond_with_tail_parses() -> Bool { g_parse_accepted(text: dotcond_with_tail_source, file: ^dotcond_tail_probe) }
+
+fn labeled_call_block_condition_still_parses() -> Bool { g_parse_accepted(text: labeled_call_block_condition_source, file: ^cond_labeled_call_probe) }
+
+fn paren_record_condition_still_parses() -> Bool { g_parse_accepted(text: paren_record_condition_source, file: ^paren_record_probe) }
+
+fn infix_record_condition_still_parses() -> Bool { g_parse_accepted(text: infix_record_condition_source, file: ^infix_record_probe) }
+
+fn record_match_scrutinee_still_parses() -> Bool { g_parse_accepted(text: record_match_scrutinee_source, file: ^record_scrutinee_probe) }
+
+// CORPUS-FIXED CONTROL (keen-koi-376, #15639 v2-bootstrap run 41546355118): a match scrutinee
+// that is a record literal followed by a FIELD ACCESS -- the shape carried by the corpus text of
+// dag.test.claim.review_sheet_converge_witness
+// .sheets_published_mock_corpus_covers_get_batch_update_and_metadata, green on main, refused
+// when the head set omits `.`.
+data record_scrutinee_dot_source: String = "module probe.record_scrutinee_dot\n\nfn f(x: Int) -> Int {\n  match R { value: x }.value {\n    _ => x\n  }\n}\n"
+
+fn record_scrutinee_dot_still_parses() -> Bool { g_parse_accepted(text: record_scrutinee_dot_source, file: ^record_scrutinee_dot_probe) }
+
+fn record_chain_condition_still_parses() -> Bool { g_parse_accepted(text: record_chain_condition_source, file: ^record_chain_probe) }
+
+fn else_if_chain_still_parses() -> Bool { g_parse_accepted(text: else_if_chain_source, file: ^else_chain_probe) }
+
+// TREE-SHAPE WITNESSES (review 38602, artifact 90174): the parse arms above show these texts
+// parse; these show HOW. The if-block form reads the fn_body production (dag_grammar_if_block_-
+// form_expr -> dag_production_fn_body), so a dag_surface_fn_body node under the if IS the if's
+// block; the condition chain emits dag_surface_postfix_expr for a dot suffix; the then-form's
+// branch is an ordinary expression production with no block production anywhere in it.
+fn g_find_production(root: Node, emitted: Symbol) -> Optional<Node> {
+  if g_is_production(node: root, emitted: emitted) {
+    Present { value: root }
+  } else {
+    fold(root.children, init: Absent, f: fn(acc, e) {
+      match acc {
+        Present { value: found } => Present { value: found }
+        Absent => g_find_production(root: e.target, emitted: emitted)
+      }
+    })
+  }
+}
+
+fn g_is_production(node: Node, emitted: Symbol) -> Bool {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } => id == emitted
+    Absent => false
+  }
+}
+
+fn g_count_production(root: Node, emitted: Symbol) -> Int {
+  let here = if g_is_production(node: root, emitted: emitted) { 1 } else { 0 }
+  fold(root.children, init: here, f: fn(acc, e) { acc + g_count_production(root: e.target, emitted: emitted) })
+}
+
+fn g_count_production_below(root: Node, emitted: Symbol) -> Int {
+  fold(root.children, init: 0, f: fn(acc, e) { acc + g_count_production(root: e.target, emitted: emitted) })
+}
+
+// The else-less if + tail: exactly one if node; it owns exactly one block (fn_body) holding
+// exactly one statement; the module holds three statements total (fn-body: if + tail; block: i),
+// so the tail is a separate sibling statement, not part of the if.
+fn elseless_if_with_tail_tree_shape() -> Bool {
+  match g_tokenize_parse(text: elseless_if_with_tail_source, file: ^elseless_probe) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      g_count_production(root: root, emitted: ^dag_surface_if_expr) == 1 &&
+      g_count_production(root: root, emitted: ^dag_surface_stmt) == 3 &&
+      match g_find_production(root: root, emitted: ^dag_surface_if_expr) {
+        Absent => false
+        Present { value: if_node } =>
+          g_count_production_below(root: if_node, emitted: ^dag_surface_fn_body) == 1 &&
+          g_count_production_below(root: if_node, emitted: ^dag_surface_stmt) == 1
+      }
+  }
+}
+
+// The then-form: the only block-capable production in an if_expr is the block form, so zero
+// fn_body nodes under the if means the then-branch braces were consumed inside the expression
+// chain -- the then-branch IS a record literal (the guard-deletion correction, pinned).
+fn then_branch_record_tree_shape() -> Bool {
+  match g_tokenize_parse(text: then_branch_record_source, file: ^thenform_probe) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      match g_find_production(root: root, emitted: ^dag_surface_if_expr) {
+        Absent => false
+        Present { value: if_node } => g_count_production_below(root: if_node, emitted: ^dag_surface_fn_body) == 0
+      }
+  }
+}
+
+// The dot-condition, shape DERIVED from the grammar rows (not copied from any tree):
+// below the dag_surface_if_expr node the condition slot is nonterminal(^dag_production_condition_expr),
+// which nests condition_expr (emits dag_surface_expr) -> condition_binary_expr (dag_surface_binary_expr)
+// -> condition_unary_expr (dag_surface_unary_expr) -> condition_postfix_expr (dag_surface_postfix_expr)
+// -> condition_primary_expr (dag_surface_primary_expr); the `.d` suffix contributes NO production node
+// (dag_grammar_postfix_dot_suffix_builder is dot head + binding name + ident suffix, all terminals and
+// optionals). The if's block slot is nonterminal(^dag_production_fn_body) (one dag_surface_fn_body),
+// whose stmt_seq holds one nonterminal(^dag_production_stmt) (one dag_surface_stmt), and that bare
+// statement `i` runs the ORDINARY chain stmt -> expr -> binary_expr -> unary_expr -> postfix_expr ->
+// primary_expr -- a postfix_expr node exists for EVERY expression, bare idents included. So the
+// derived counts below the if are: postfix_expr 2 (condition chain + block statement), fn_body 1,
+// stmt 1; module stmt total 3 (fn-body if-stmt, fn-body tail stmt, block stmt). The original witness
+// asserted postfix_expr 1, omitting the block statement's own chain node; fn_body and stmt were right.
+// The shape witnesses the fix: the braces are an fn_body under the if (a record reading would leave
+// fn_body 0 and refuse the module), and the condition is a postfix chain, not a record arm.
+fn dotcond_with_tail_tree_shape() -> Bool {
+  match g_tokenize_parse(text: dotcond_with_tail_source, file: ^dotcond_probe) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      g_count_production(root: root, emitted: ^dag_surface_stmt) == 3 &&
+      match g_find_production(root: root, emitted: ^dag_surface_if_expr) {
+        Absent => false
+        Present { value: if_node } =>
+          g_count_production_below(root: if_node, emitted: ^dag_surface_postfix_expr) == 2 &&
+          g_count_production_below(root: if_node, emitted: ^dag_surface_fn_body) == 1 &&
+          g_count_production_below(root: if_node, emitted: ^dag_surface_stmt) == 1
+      }
+  }
+}
+
+test fn elseless_if_with_tail_parses_holds() -> Bool { elseless_if_with_tail_parses() }
+
+test fn then_branch_record_parses_holds() -> Bool { then_branch_record_parses() }
+
+test fn record_let_head_still_parses_holds() -> Bool { record_let_head_still_parses() }
+
+test fn record_call_arg_still_parses_holds() -> Bool { record_call_arg_still_parses() }
+
+test fn dotcond_with_tail_parses_holds() -> Bool { dotcond_with_tail_parses() }
+
+test fn labeled_call_block_condition_still_parses_holds() -> Bool { labeled_call_block_condition_still_parses() }
+
+test fn paren_record_condition_still_parses_holds() -> Bool { paren_record_condition_still_parses() }
+
+test fn infix_record_condition_still_parses_holds() -> Bool { infix_record_condition_still_parses() }
+
+test fn record_match_scrutinee_still_parses_holds() -> Bool { record_match_scrutinee_still_parses() }
+
+test fn record_scrutinee_dot_still_parses_holds() -> Bool { record_scrutinee_dot_still_parses() }
+
+test fn elseless_if_with_tail_tree_shape_holds() -> Bool { elseless_if_with_tail_tree_shape() }
+
+test fn then_branch_record_tree_shape_holds() -> Bool { then_branch_record_tree_shape() }
+
+test fn dotcond_with_tail_tree_shape_holds() -> Bool { dotcond_with_tail_tree_shape() }
+
+test fn record_chain_condition_still_parses_holds() -> Bool { record_chain_condition_still_parses() }
+
+test fn else_if_chain_still_parses_holds() -> Bool { else_if_chain_still_parses() }

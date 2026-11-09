@@ -30,7 +30,7 @@ import gunbc.ci.deploy_route_requirement { DeployRouteJobTenancy, SharesJobUidWi
 //     2026-10-30 after L2 run 41055515944: srv1-02's tree 0755 under UMask=0022, its .credentials_rsaparams
 //     0644 and readable as ghrunner (gunbc.recurring_failure_mode
 //     a_slot_isolated_by_uid_leaves_its_runner_credentials_readable_by_other_uids).
-// gunbc.plans.srv1_deploy_principal_split, D3 precondition.
+// gunbc.plans.srv1_deploy_principal_split (deleted 2026-11-08), D3 precondition.
 
 // The runner group and the runner label are one string (as private_heal_publisher_runner_group_name
 // is): the label the deploy job selects is the group that restricts who may use it.
