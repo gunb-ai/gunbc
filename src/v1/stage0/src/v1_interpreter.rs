@@ -8363,10 +8363,15 @@ fn call_function_dispatch(
 /// `lookup_fn`, which is already anchored to the referring file. So this change touches exactly the
 /// arm population — the one read the runtime can answer no other way — and the latent remainder of the
 /// class is what `gunbc.recurring_failure_mode::a_field_default_is_evaluated_in_the_callers_scope`
-/// carries on its row as the climb to `StructurallyGuaranteed`. The witness pair names which half it
-/// tests: `test.claim.field_default_declaring_scope_witness` covers the moved half, and
-/// `test.claim.field_default_importing_caller_control` is green on both sides to prove the moved
-/// half does not disturb a caller that DOES import the arm.
+/// carries on its row as the climb to `StructurallyGuaranteed`. What the executed pair establishes, in
+/// the same words the row uses: `test.claim.field_default_declaring_scope_witness` (three cells, a
+/// caller that names no arm) is red at base with the reported runtime `[no-such-variable]` and green
+/// here; `test.claim.field_default_importing_caller_control` was written as a control and the run
+/// refused that reading — a caller that DOES name the arms in its import clause is red at base too, so
+/// it proves something stronger instead: nothing a caller imports ever reached a default, and the line
+/// this function draws is "can the declaring site name the read", not "did the caller import the arm".
+/// The only both-sides-green anchor in the set is the fixture's supplied-argument cell, which evaluates
+/// no default at all.
 fn declaring_scope_env(
     ctx: &InterpContext,
     fn_node: &Rc<Node>,
