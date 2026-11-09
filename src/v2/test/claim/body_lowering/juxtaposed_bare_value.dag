@@ -1,0 +1,101 @@
+module v2.test.claim.body_lowering.juxtaposed_bare_value
+
+// A BODY THAT SILENTLY FOLDS A NON-FINAL BARE VALUE IS THE OBSERVED HARM. gunb-ai/gunbc#16148 repaired
+// the live instance: dag/gunbc/harness/harness_tool_kind.dag's `all_harness_tools` was written as two
+// juxtaposed bracketed list literals, so the fold kept ONE list and `harness_execute_tool_use` refused
+// the tools the dropped list carried (the dispatcher red), and `harness_tool_use_item_events` mislabelled
+// them in the roadmap event stream. This file is the STANDING CONTROL on the v2 path: the load-bearing v2
+// body lowering refuses a fn body whose statement sequence leaves a non-final bare value, with the typed
+// located cause `body_lowering_reason_statement_precedes_without_binding` -- never a silent last-wins.
+//
+// THE DISCRIMINATOR. Two juxtaposed bracketed literals are a two-statement body (the grammar makes a
+// next-line `[` a new statement, not an index suffix -- v2.extdeps.languages.dag::
+// dag_grammar_index_lbracket_head_expr guards `not_predicate(after_line_break)` on the `[`), so the first
+// list is a bare value with a successor and must refuse; the refusal is located at a node, not a silent
+// fold. A second red uses bare NAMES instead of a list, showing the rule is not list-specific.
+//
+// NO ACCEPTANCE CONTROLS LIVE HERE (minimize_redundancy). The "the refusal is not over-broad" axis -- a
+// single-statement body and a `let`-then-tail body still ACCEPT -- is NOT copied here as fresh fixtures
+// through the same conserved_normalize route: that would model the concept twice, and measured, that route
+// refuses every ACCEPT expectation on a non-enrolled claim module with
+// `conservation_reason_unmeasured` (quick-newt-573: both here and on the sibling's
+// `single_statement_body_unchanged_holds` / `statement_let_then_reference_lowers_holds`). So no acceptance
+// cell can go green here to be asserted. Where the confinement IS measured is the lowering authority
+// v2.compiler.body_lowering_fold::body_lower_body_subtree_lower, which accepts the single-statement and
+// `let`-then-tail shapes and refuses the juxtaposed ones; the row records that, and records the standing
+// acceptance cell as a known gap for the floor/drift lane, never as green (fail_closed: done means executed).
+//
+// WHY THESE ARE GREEN AT BASE AND STAY GREEN. v2 body lowering already refuses this shape (the statement
+// authority v2.compiler.body_lowering_fold::body_lower_stmt_spine answers a statement that precedes
+// another with `statement_precedes_without_binding`), exactly as the sibling's
+// `unbound_statement_prefix_refuses_holds` pins the same cause for the bare non-list literals `{ 1 \n 2 }`.
+// These rows are the regression lock that the refusal stays honest -- a lowering that reverted to keeping
+// one value and dropping the other would fail them. The class's open path is the v1 seed fold (still
+// silent), recorded on the row
+// gunbc.recurring_failure_mode::juxtaposed_bare_value_lowers_to_the_last_at_body_lowering; its claim (red at
+// base, green after the seed refuses) is the follow-up, not this cell.
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.text { String }
+import v2.compiler.reference_conservation { ReferenceConservationSubject }
+import v2.compiler.reference_conservation_admission { conserved_normalize, conservation_subject_of_text }
+import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
+import v2.std.node { symbol_lexeme }
+
+// A claim cell's live_tree_disposition answers the live-tree audit for this module: it reads only source
+// inputs, never the ambient world (v2.std.diagnostic::Diagnostic; v2.std.node::symbol_lexeme).
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE RED: a fn body whose two statements are juxtaposed bracketed literals. Both are List<Int> so the
+// only defect is the juxtaposition (the RED must not lean on a second one), and the refusal reason must be
+// the non-final-bare-value cause, not a type error. No external references: it lowers in isolation.
+data juxtaposed_lists_source: String = "module m.t\nfn juxtaposed_lists() -> List<Int> {\n  [1, 2, 3]\n  [4, 5]\n}\n"
+
+// THE SAME DEFECT WITH BARE NAMES: two juxtaposed value references, so the rule is not specific to bracketed
+// literals. `a` is an Int parameter and the tail is Int, so the body is well typed except for juxtaposition.
+data juxtaposed_names_source: String = "module m.t\nfn juxtaposed_names(a: Int) -> Int {\n  a\n  a\n}\n"
+
+// The subject for each fixture, built directly from its inline text -- no external references to resolve,
+// so the subject is self-contained (v2.compiler.reference_conservation_admission::
+// conservation_subject_of_text). Each is nullary, the production-fed grain the normalize route is paid once.
+fn juxtaposed_lists_subject() -> ReferenceConservationSubject {
+  conservation_subject_of_text(path: "juxtaposed_bare_value_subject", text: juxtaposed_lists_source)
+}
+
+fn juxtaposed_names_subject() -> ReferenceConservationSubject {
+  conservation_subject_of_text(path: "juxtaposed_bare_value_subject", text: juxtaposed_names_source)
+}
+
+// THE RED / STANDING CONTROL. A body of two juxtaposed bracketed literals is a two-statement body whose
+// first statement is a bare value with a successor: v2 body lowering refuses it under the non-final
+// bare-value cause, never folds it to the last literal.
+test fn juxtaposed_bracketed_literals_refuse_the_non_final_bare_value_holds() -> Bool {
+  match conserved_normalize(subject: juxtaposed_lists_subject()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: ds } =>
+      symbol_lexeme(sym: ds.head.reason) == "body_lowering_reason_statement_precedes_without_binding"
+  }
+}
+
+// THE REFUSAL IS TYPED AND LOCATED, not a silent fold: the fatal diagnostic's locus is a node, so a
+// reader that dropped the earlier value and accepted would fail this (it would report "accepted", no node).
+test fn juxtaposed_bare_value_refusal_is_located_at_a_node_holds() -> Bool {
+  match conserved_normalize(subject: juxtaposed_lists_subject()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: ds } =>
+      match ds.head.at {
+        NodeLocus { anchor: _ } => true
+        _ => false
+      }
+  }
+}
+
+// THE RULE IS NOT LIST-SPECIFIC. Two juxtaposed bare names refuse under the same cause; a name is a bare
+// value the same way a bracketed list is.
+test fn juxtaposed_bare_names_refuse_under_the_same_cause_holds() -> Bool {
+  match conserved_normalize(subject: juxtaposed_names_subject()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: ds } =>
+      symbol_lexeme(sym: ds.head.reason) == "body_lowering_reason_statement_precedes_without_binding"
+  }
+}
