@@ -879,3 +879,16 @@ fn classify_write_tree_completion(exit_code: Int, stdout: String, stderr: String
     }
   }
 }
+
+// Module-scope invariant: the constructors backing gcp.STS.Exchange field
+// defaults (subject_token_type = Jwt, requested_token_type = RequestAccessToken)
+// must be bound in this module so that the evaluator can resolve them when the
+// wet path builds the STS request. Consumed by the paired witness claim
+// (test.claim.heal_publication_sts_default_scope_witness).
+fn sts_exchange_defaults_resolve() -> Bool {
+  match Jwt {
+    Jwt => match RequestAccessToken {
+      RequestAccessToken => true
+    }
+  }
+}

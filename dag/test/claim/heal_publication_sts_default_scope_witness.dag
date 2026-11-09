@@ -1,18 +1,13 @@
 module test.claim.heal_publication_sts_default_scope_witness
 
 import std.types { Bool }
-import extdeps.cloud.gcp.sts { Jwt, RequestAccessToken }
+import gunbc.heal_publication { sts_exchange_defaults_resolve }
 
-// Verifies that the constructors backing gcp.STS.Exchange field defaults
-// (subject_token_type = Jwt, requested_token_type = RequestAccessToken) resolve
-// in this module's scope. At base (heal_publication lacked the named import),
-// the same call context produced NoSuchVariable{Jwt}; the paired base run
-// removes the import and this fn is red. Green at head confirms the
-// constructors are in scope and the Exchange defaults resolve.
+// Discriminating witness for the #16160 regression: evaluates Jwt and
+// RequestAccessToken inside gunbc.heal_publication's module scope. At base
+// (4aad92f8, bare module import only), those constructors are unbound in
+// heal_publication → NoSuchVariable. At head (named import present), they
+// resolve → true.
 test fn sts_exchange_defaults_resolve_in_heal_publication_scope() -> Bool {
-  match Jwt {
-    Jwt => match RequestAccessToken {
-      RequestAccessToken => true
-    }
-  }
+  sts_exchange_defaults_resolve()
 }
