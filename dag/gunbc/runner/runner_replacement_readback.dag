@@ -45,7 +45,6 @@ module gunbc.runner.runner_replacement_readback
 // (runner_host_cap_extras); here it is a type, so it can only be violated by deleting it.
 
 import std.optional { Absent, Present }
-import std.algebra { length }
 import std.types { Bool, HostIdentity, Int, List, NonEmptyStr, String }
 import extdeps.github.ci_runner { GitHubSelfHostedRunnerRegistration, github_runner_registration_is_online }
 import extdeps.github.workflow_runs {
@@ -538,5 +537,81 @@ fn retire_refusal_cause_wire(cause: RetireRefusalCause) -> String {
       )
     DrainCandidateUnaccountedFor { unit: unit } =>
       concat((unit as String), " is a drain candidate with nothing declaring it: desired by nobody, retired by nobody, not a fabric slot, and not running")
+  }
+}
+
+// ─────────────────────────── THE SIGNAL THE OPERATOR GETS INSTEAD OF A SILENT HAND RUNNER ───────────────────────────
+// A hand-started slot outside the derived population is REFUSED by this plan forever -- converge never kills
+// hand capacity, and no readback changes that. Which is right, and would be useless if nothing said when the
+// operator's own retirement became safe to take: the same readback that gates a derived retirement is what
+// tells them the replacement they would be handing capacity to has actually registered and run a job. So the
+// notice is per slot, and it distinguishes the three states the replacement population can be in -- waiting
+// (and on what, and why), proven (retire when you decide), or nothing pending proof at all. A plan that
+// refused silently would leave the host carrying two populations with no line anywhere saying which one the
+// operator can now let go of.
+fn hand_retirement_notice(
+  unit: NonEmptyStr,
+  incoming: ReplacementIncoming,
+  proven: List<ReplacementProven>,
+) -> String {
+  let head = concat(
+    (unit as String),
+    " is hand-started working capacity outside the derived population: this plan will not drain it. ",
+  )
+  match incoming {
+    ShrunkOnly =>
+      concat(head, "no incoming slot is pending proof on this host; retiring it is the operator's call.")
+    IncomingUnresolved { cause: why } =>
+      concat(head, concat("the incoming population is unknowable (", concat(why, "); no retirement is safe to take yet."))))
+    ReplacedBy { incoming: slots } =>
+      if all(map(slots, k => is_proven(slots_of: proven, slot: k))) {
+        concat(
+          concat(head, concat("replacement ", join(map(slots, u => (u as String)), ", "))),
+          " registered and completed a job; hand retirement is now safe for the operator to decide.",
+        )
+      } else {
+        match first_unproven(slots: slots, proven: proven) {
+          Absent => concat(head, "no replacement is proven yet.")
+          Present { value: slot } =>
+            concat(
+              concat(head, concat("waiting on ", (slot as String))),
+              concat(
+                ": ",
+                concat(pending_reason(proven: proven, replacement: slot), "; no retirement is safe to take yet."),
+              ),
+            )
+        }
+      }
+  }
+}
+
+// THE REASON A REPLACEMENT IS NOT YET PROVEN, in words, for the notice. `Absent` is the same fail-closed
+// reading as everywhere else in this module: a replacement nobody produced a standing for is not a
+// replacement that is proven, and the notice says so rather than going quiet.
+fn pending_reason(proven: List<ReplacementProven>, replacement: NonEmptyStr) -> String {
+  let standing =
+    first(
+      filter(
+        proven,
+        p =>
+          match p {
+            ReplacementPending { slot: s, cause: _ } => (s as String) == ((replacement as String))
+            ReplacementProven { slot: s, run: _, floor_job: _ } => (s as String) == ((replacement as String))
+          },
+      ),
+    )
+  match standing {
+    Absent => "no readback was produced for this replacement slot"
+    Present { value: ReplacementPending { slot: _, cause: cause } } =>
+      match cause {
+        RegistrationUnreadable { cause: why } => why
+        NotRegistered => "not registered in the org runner roster"
+        RegisteredOffline => "registered but offline"
+        JobUnreadable { cause: why } => why
+        JobNotConcluded { cause: why } => why
+      }
+    // UNREACHABLE BY CONSTRUCTION, spelled for the same reason `awaiting` spells it: a match that leans on a
+    // filter's behaviour to be total is a comment, not a checked one.
+    Present { value: ReplacementProven { slot: _, run: _, floor_job: _ } } => "unproven filter handed back a proven replacement"
   }
 }

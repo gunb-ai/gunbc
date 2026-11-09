@@ -29,6 +29,7 @@ import gunbc.runner.runner_replacement_readback {
   IncomingUnprovable, StillDesiredUnit, HandStartedOutsideTheDerivedPopulation, DrainCandidateUnaccountedFor,
   replacement_registration_of, replacement_proven_of_host, drain_candidate_standing, retire_drain_decision,
   retire_drain_decisions, retire_drain_is_authorized, retire_pending_cause_wire, retire_refusal_cause_wire,
+  hand_retirement_notice,
 }
 
 // THE FIXTURES ARE THE SHAPE OF THE SCENARIO, AND EVERY ONE OF THEM IS MEANT TO BE READ AS A FACT ABOUT
@@ -456,6 +457,36 @@ test fn a_fabric_member_is_authorized_without_a_replacement_readback() -> Bool {
     proven: [],
   )
     == RetireDrainAuthorized { unit: retiree("srv3-13"), over: [] }
+}
+
+// THE HAND RUNNERS DO NOT LINGER SILENTLY. The refusal of a hand-started slot is permanent -- converge
+// never kills hand capacity -- so the per-slot notice is the only place the operator can learn that the
+// population they would be handing capacity to has now proven itself. Both states are claims: the notice
+// while 06/07 have no completed job says what it is waiting on, and the notice once they have says the
+// hand retirement is safe to take. A plan that refused and stayed quiet would leave srv3 carrying two
+// populations with no line anywhere saying which one can now be let go of.
+test fn the_hand_notice_says_the_retirement_is_now_safe_once_the_replacements_are_proven() -> Bool {
+  let entries = [registration("srv3-06", true), registration("srv3-07", true)]
+  let verdicts = [
+    RunVerdictCollected { run: workflow_run(), floor_job: floor_job(runner: "srv3-06", concluded: true), conclusion: Success },
+    RunVerdictCollected { run: workflow_run(), floor_job: floor_job(runner: "srv3-07", concluded: true), conclusion: Success },
+  ]
+  let proven = replacement_proven_of_host(incoming: ["srv3-06", "srv3-07"] |> map(u => u as NonEmptyStr), roster: Present { value: roster(entries: entries) }, verdicts: verdicts)
+  let text = hand_retirement_notice(unit: retiree("srv3-19"), incoming: incoming(), proven: proven)
+  contains(text, "srv3-19")
+    && contains(text, "will not drain it")
+    && contains(text, "replacement srv3-06, srv3-07")
+    && contains(text, "hand retirement is now safe for the operator to decide")
+}
+
+test fn the_hand_notice_names_the_replacement_and_the_reason_while_it_is_unproven() -> Bool {
+  let entries = [registration("srv3-06", true), registration("srv3-07", true)]
+  let proven = replacement_proven_of_host(incoming: ["srv3-06", "srv3-07"] |> map(u => u as NonEmptyStr), roster: Present { value: roster(entries: entries) }, verdicts: [])
+  let text = hand_retirement_notice(unit: retiree("srv3-19"), incoming: incoming(), proven: proven)
+  contains(text, "waiting on srv3-06")
+    && contains(text, "no qualification run readback exists for this slot")
+    && contains(text, "no retirement is safe to take yet")
+    && !contains(text, "now safe")
 }
 
 // ─────────────────────────── THE REPORT THE OPERATOR READS ───────────────────────────

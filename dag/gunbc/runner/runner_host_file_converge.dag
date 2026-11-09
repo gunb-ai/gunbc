@@ -1,4 +1,6 @@
 module gunbc.runner.runner_host_file_converge
+import std.algebra { length }
+import std.decl_ref { decl_ref }
 import std.optional { Absent, Optional, Present }
 
 
@@ -171,9 +173,11 @@ import gunbc.runner.runner_replacement_readback {
   OrganizationRunnerRosterEvidence, ReplacementIncoming, ReplacedBy, ShrunkOnly, IncomingUnresolved,
   RetireDrainDecision, RetireDrainAuthorized, RetireDrainWithheld, RetireDrainRefused,
   replacement_incoming_for_host, replacement_proven_of_host, retire_drain_decisions,
-  retire_pending_cause_wire, retire_refusal_cause_wire,
+  retire_pending_cause_wire, retire_refusal_cause_wire, hand_retirement_notice,
 }
 import gunbc.runner.runner_qualification_dispatch { QualificationRunVerdict }
+import gunbc.runner.runner_throughput_qualification { RouteLegStanding, LegAuthorityImplemented }
+import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_live_read }
 import gunbc.runner.runner_slot_retirement {
   RunnerRetirementStanding,
   RetirementComplete,
@@ -3279,7 +3283,11 @@ fn runner_host_slot_actuations(
   retirement: RunnerRetirementReadback,
 ) -> List<SlotActuationOutcome>
 {
-  match mode {
+  // THE HAND NOTICES ARE NOT AN ACTUATION, so they are not gated on the mode or on privilege: they are the
+  // receipt's own words about units no leg will touch, and a plan read is exactly when an operator wants them.
+  concat(
+    runner_host_hand_capacity_notices(subject: subject, population: population, readback: retirement),
+    match mode {
     FleetHostFilesObserveOnly => []
     FleetHostFilesApply =>
       match privilege {
@@ -3308,6 +3316,7 @@ fn runner_host_slot_actuations(
           )
       }
   }
+  )
 }
 
 // WHAT THE RETIREMENT GATE IS HANDED. SUPPLIED, NOT READ HERE, in the same style as every other readback
@@ -3340,6 +3349,58 @@ fn runner_retirement_readback_of(
   RunnerRetirementReadback { roster: roster, qualification_verdicts: qualification_verdicts }
 }
 
+// THE ROUTE'S OWN READING OF THE CARRIER, LAZILY. The org runner roster is a leg this route CAN read and
+// does: the registration standing of every incoming slot comes from the existing observation, so a withheld
+// retirement distinguishes "not registered" from "registered and idle" instead of guessing. It is read only
+// when the gate is actually ENGAGED -- a host with no required retiree, or a pure shrink, costs no REST read
+// and no roster page. The qualification verdicts are the leg this route cannot read, declared below: the
+// empty list there is a frontier's evidence, not an oversight.
+fn runner_retirement_readback_for_run(subject: RunnerHostFileSubject) -> RunnerRetirementReadback {
+  if runner_host_retirement_gate_is_engaged(subject: subject) {
+    runner_retirement_readback_of(
+      roster: Present { value: organization_runner_roster_live_read() },
+      qualification_verdicts: [],
+    )
+  } else {
+    runner_retirement_readback_unreadable()
+  }
+}
+
+// ENGAGED MEANS: THIS HOST HAS A REQUIRED RETIREE *AND* SOMETHING IS ENTERING ITS POPULATION. Those two
+// facts are exactly the case the invariant speaks to; either one alone leaves the gate inert -- a shrink has
+// no replacement to prove, and an incoming population with no retiree has no retirement to stop. The test is
+// derived from the same authorities the gate consults, so the lazy read cannot skip a case the gate would
+// have judged.
+fn runner_host_retirement_gate_is_engaged(subject: RunnerHostFileSubject) -> Bool {
+  length(subject.retired_units) > 0
+    && match replacement_incoming_for_host(host: subject.host) {
+      ReplacedBy { incoming: slots } => length(slots) > 0
+      ShrunkOnly => false
+      IncomingUnresolved { cause: _ } => true
+    }
+}
+
+// THE DECLARED FRONTIER FOR PHASE TWO, with its trigger (gunbc.design_argument::consumption: an authority
+// with no production caller is either wired in the change that adds it or declared as a frontier with its
+// trigger; `LegAuthorityImplemented` is that declaration, at capability grain).
+//
+// AUTHORITY: the join is implemented and witnessed -- `replacement_proven_of_host` turns a roster read and
+// collected verdicts into a per-slot proof. WHAT IS OWED: the qualification attempt route
+// (gunbc.runner.runner_qualification_attempt_run, whose collect stage calls
+// gunbc.runner.runner_qualification_dispatch::collect_qualification_run) handing its collected
+// `QualificationRunVerdict` for each incoming slot into `runner_retirement_readback_of`'s
+// `qualification_verdicts` at `runner_retirement_readback_for_run`. A converge run cannot dispatch a floor
+// job itself without turning a file converge into a nine-minute job queue.
+//
+// TRIGGER: the first `runner_host_file_converge` APPLY dispatch over a host with an open width transition
+// whose incoming slots have collected qualification verdicts. UNTIL IT LANDS the route supplies `[]` there,
+// every declared retirement is WITHHELD with the replacement named and the plan says so per slot -- the
+// withhold is the fail-closed direction, so the owed wiring delays retirements rather than authorizing them.
+data converge_replacement_job_proof_leg: RouteLegStanding = LegAuthorityImplemented {
+  authority: decl_ref(module_path: "gunbc.runner.runner_replacement_readback", decl_name: "replacement_proven_of_host"),
+  wiring_owed: "runner_retirement_readback_for_run supplies qualification_verdicts: []; the landing is the qualification attempt route's collected QualificationRunVerdict per incoming slot fed into runner_retirement_readback_of, triggered by the first runner_host_file_converge APPLY dispatch over a host with an open width transition whose incoming slots have collected qualification verdicts",
+}
+
 // ONE STEP OF THE DRAIN LEG, PURELY. The apply route acts only on `DrainNow`; everything else reports. The
 // leg is a function of the subject, the host's own unit reading and the readback, so the whole invariant --
 // including the fail-closed arm -- is decidable by a claim without an SSH session.
@@ -3348,10 +3409,6 @@ type RunnerHostDrainStep
   | DrainHeld { unit: NonEmptyStr, cause: String }
   | DrainRefusedByStanding { unit: NonEmptyStr, cause: String }
   | DrainUndecided { unit: NonEmptyStr }
-
-fn runner_host_drain_step_authorized(step: RunnerHostDrainStep) -> Bool {
-  match step { DrainNow { unit: _ } => true _ => false }
-}
 
 // THE DECISIONS FOR THE HOST'S DRAIN CANDIDATES. `live` comes from the host's OWN unit reading (the
 // population fold's loaded units), which is what makes a hand-started slot visible at all: it is in no
@@ -3420,6 +3477,48 @@ fn retire_drain_decision_unit(d: RetireDrainDecision) -> NonEmptyStr {
     RetireDrainWithheld { unit: u, cause: _ } => u
     RetireDrainRefused { unit: u, cause: _ } => u
   }
+}
+
+// THE HAND-STARTED UNITS OF THIS HOST: live on the host, and in NO derived list -- not desired, not a
+// required retiree, not a fabric member. They are the units the cap phase already reads and never touches
+// (`runner_host_cap_extras` states that rule in prose); here they are enumerated so the receipt can say
+// something true about them per slot. An unobservable population reading is the empty list -- the claim
+// that a unit is hand-started capacity needs the reading, and without it nothing is asserted.
+fn runner_host_hand_started_units(
+  subject: RunnerHostFileSubject,
+  population: RunnerSlotPopulation,
+) -> List<NonEmptyStr> {
+  let live = match population {
+    SlotPopulationObserved { units: us } => map(us, r => r.unit)
+    SlotPopulationUnobservable { reason: _ } => []
+  }
+  filter(
+    live,
+    u =>
+      !any(subject.desired_units, d => (d as String) == (u as String))
+        && !any(subject.retired_units, d => (d as String) == (u as String))
+        && !any(subject.fabric_units, d => (d as String) == (u as String)),
+  )
+}
+
+// THE PER-SLOT HAND NOTICE, emitted on every mode including observe-only: an operator reading a plan is
+// exactly the audience for "the replacement you would hand this runner's capacity to has now run a job".
+fn runner_host_hand_capacity_notices(
+  subject: RunnerHostFileSubject,
+  population: RunnerSlotPopulation,
+  readback: RunnerRetirementReadback,
+) -> List<SlotActuationOutcome> {
+  let incoming = replacement_incoming_for_host(host: subject.host)
+  let slots = match incoming { ReplacedBy { incoming: s } => s ShrunkOnly => [] IncomingUnresolved { cause: _ } => [] }
+  let proven = replacement_proven_of_host(
+    incoming: slots,
+    roster: readback.roster,
+    verdicts: readback.qualification_verdicts,
+  )
+  map(
+    runner_host_hand_started_units(subject: subject, population: population),
+    u => SlotHandCapacityHeld { unit: u, notice: hand_retirement_notice(unit: u, incoming: incoming, proven: proven) },
+  )
 }
 
 fn runner_host_drain_units(subject: RunnerHostFileSubject) -> List<NonEmptyStr> {
@@ -4519,7 +4618,7 @@ fn runner_host_file_ci_wet_hosted(mode: FleetHostFileConvergeMode, host: String?
                     withheld: withheld,
                     mode: mode,
                     per_slot: per_slot,
-                    retirement: runner_retirement_readback_unreadable(),
+                    retirement: runner_retirement_readback_for_run(subject: subject),
                   )
                   let body = join([
                     "runner_host_file_converge probed_at=", probed_at_word(reading: clock_now_probed_at()) as String, "\n",
