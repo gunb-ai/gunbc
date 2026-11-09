@@ -5,7 +5,7 @@ import std.optional { Present, Absent }
 import gunbc.harness.harness_operator_route {
   operator_pin_plan, operator_pinned_post_request, operator_pinned_probe_request,
   harness_router_operator_route, harness_strata_operator_route, harness_operator_unit_policy, operator_route_for_unit, HarnessOperatorRoute, PinnedServerCertificate, operator_models_url, operator_chat_completions_url, operator_endpoint_origin,
-  operator_header_line_from_key_text, operator_route_standing, operator_class_admission,
+  operator_header_line_from_key_text, operator_route_standing, operator_class_admission, operator_route_refusal_detail,
   OperatorClassAdmitted, OperatorClassRefused,
   OperatorModelsReading, OperatorFrontUnanswered, OperatorFrontCertificateRefused, OperatorProbeNotSent, OperatorModelsRefused, OperatorModelsAnswered,
   operator_certificate_pin_decision, operator_round_fault, operator_round_fault_text, OperatorRoundFault, OperatorCertificateNotPinned, OperatorCertificateNotVerifiedForHost,
@@ -211,9 +211,9 @@ test fn any_admitted_model_places_on_the_operator_endpoint_not_a_fleet_seat() ->
 
 test fn a_quality_sensitive_any_model_turn_keeps_its_fleet_seat() -> Bool {
   match harness_requirement_placement(requirement: AnyAdmittedModel, class: InteractiveQualitySensitive) {
-    PlacedOnFleetSeat => true
-    RunOnOperatorEndpoint => false
-    LeasedFromHostedQuota => false
+    Present { value: PlacedOnFleetSeat } => true
+    Present { value: RunOnOperatorEndpoint } => false
+    Present { value: LeasedFromHostedQuota } => false
     none => false // no row for the policy's unit: the bind refuses outright; it does not quietly take a fleet seat
   }
 }
@@ -445,9 +445,9 @@ test fn the_cards_reasoning_is_read_from_the_member_ninfer_emits() -> Bool {
 
 fn w_refusal_detail_names_the_unit_and_offers_no_fallback() -> Bool {
   let detail = operator_route_refusal_detail(unit: NemotronUltraFreeOnOpenRouter)
-  detail.contains("no route row carries it")
-  && detail.contains(harness_serving_unit_wire(unit: NemotronUltraFreeOnOpenRouter) as String)
-  && !detail.contains("the fabric router")
+  string_contains(s: detail, pattern: "no route row carries it")
+  && string_contains(s: detail, pattern: harness_serving_unit_wire(unit: NemotronUltraFreeOnOpenRouter) as String)
+  && !string_contains(s: detail, pattern: "the fabric router")
 }
 
 // ── THE OPERATOR ROUTE POLICY AND ITS KEYED LOOKUP ────────────────────────────────────────────
@@ -463,7 +463,7 @@ test fn the_policy_names_the_fabric_router_and_the_lookup_resolves_the_router_ro
       match operator_route_for_unit(unit: harness_operator_unit_policy) {
         Present { value: r } =>
           r.unit == Qwen38FlashNextOnFabricRouter
-          && r.origin == operator_endpoint_origin(route: harness_router_operator_route)
+          && (match operator_endpoint_origin(route: harness_router_operator_route) { Present { value: origin } => origin == r.origin  Absent => false })
           && r.concurrency_ceiling == router_concurrency_budget_policy.value
         Absent => false
       }
@@ -559,8 +559,8 @@ test fn the_strata_origin_is_built_from_the_fleet_row() -> Bool {
 // renewal to rotate the date together with the fingerprint pin.
 test fn the_certificate_expiry_is_gated_and_carries_its_renewal_obligation() -> Bool {
   row_field_grounded(field: strata_srv4_certificate_not_after) == none
-    && string_contains(
-      s: row_field_obligation(field: strata_srv4_certificate_not_after) as String,
-      pattern: "rotate it with the fingerprint",
-    )
+    && (match row_field_obligation(field: strata_srv4_certificate_not_after) {
+      Present { value: obligation } => string_contains(s: obligation as String, pattern: "rotate it with the fingerprint")
+      Absent => false
+    })
 }
