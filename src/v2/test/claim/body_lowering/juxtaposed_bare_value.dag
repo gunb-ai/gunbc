@@ -15,11 +15,15 @@ module v2.test.claim.body_lowering.juxtaposed_bare_value
 // fold. A second red uses bare NAMES instead of a list, showing the rule is not list-specific.
 //
 // NO ACCEPTANCE CONTROLS LIVE HERE (minimize_redundancy). The "the refusal is not over-broad" axis -- a
-// single-statement body and a `let`-then-tail body still ACCEPT -- is modelled ONCE by the sibling
-// standing control v2.test.claim.body_lowering.statement_let_bind, whose
-// `single_statement_body_unchanged_holds` and `statement_let_then_reference_lowers_holds` are the green
-// positive controls; they are cited by symbol in the row's `evidence` rather than copied here. Copying the
-// same fixtures through the same conserved_normalize route would model the concept twice.
+// single-statement body and a `let`-then-tail body still ACCEPT -- is NOT copied here as fresh fixtures
+// through the same conserved_normalize route: that would model the concept twice, and measured, that route
+// refuses every ACCEPT expectation on a non-enrolled claim module with
+// `conservation_reason_unmeasured` (quick-newt-573: both here and on the sibling's
+// `single_statement_body_unchanged_holds` / `statement_let_then_reference_lowers_holds`). So no acceptance
+// cell can go green here to be asserted. Where the confinement IS measured is the lowering authority
+// v2.compiler.body_lowering_fold::body_lower_body_subtree_lower, which accepts the single-statement and
+// `let`-then-tail shapes and refuses the juxtaposed ones; the row records that, and records the standing
+// acceptance cell as a known gap for the floor/drift lane, never as green (fail_closed: done means executed).
 //
 // WHY THESE ARE GREEN AT BASE AND STAY GREEN. v2 body lowering already refuses this shape (the statement
 // authority v2.compiler.body_lowering_fold::body_lower_stmt_spine answers a statement that precedes
