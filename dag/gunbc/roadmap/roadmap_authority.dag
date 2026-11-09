@@ -1041,15 +1041,15 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "namespace-v2-import-completion",
       owner: "namespace",
       carriers: carrier(path: "docs/plans/namespace-unique-on-chain-operational-plan.md"),
-      line: ticket(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: fields(
           headline: "Decide whether an import list binds, and make it enforceable",
           boundary: "The symbol index is built from a tree-wide census, while the compiled population is the import closure. One answer is needed: either the import list binds and a name resolving outside it refuses, or bare references are reconciled for every file. #12782 made the 77 files' implicit imports explicit with zero binding change.",
           displaced_cost: "A file that declares any import silently gets no bare edges, so the compiled population is decided by accident.",
           first_slice: "Record the operator's choice (Q1). Then land the chosen repair behind a declared, bounded transition.",
-          red_control: "Strict binding: a reference outside the declared closure refuses, located at file and name. Reconciliation: a permitted bare dependency enters the population and its effect summary. The flip control from compiler-import-list-binds stays as the regression probe.",
-          out_of_scope: "Deleting import syntax (XL-7); quieting the effect-summary join.",
+          red_control: "Strict binding: a reference outside the declared closure refuses, located at file and name. Reconciliation: a permitted bare dependency enters the population and its effect summary. The existing import-list flip control stays as the regression probe.",
+          out_of_scope: "Quieting the effect-summary join. (Deleting import syntax, XL-7, is withdrawn.)",
           handback: "The chosen repair, its transition population named, and the flip control enrolled."
-        ), on: "2026-09-30", note: "Not yet centered: decide after declaration-identity-switchover lands; lean: do not make import lists bind — the refusal comes from the switch-over's single definition of in-scope, and the import grammar is scheduled for deletion (XL-7).")),
+        ), on: "2026-09-30", note: "Not yet centered: decide after declaration-identity-switchover lands; lean: do not make import lists bind — the refusal comes from the switch-over's single definition of in-scope, and the import grammar is scheduled for deletion (XL-7)."), on: "2026-11-08", note: "Superseded premise: import-grammar deletion (XL-7) is withdrawn, and imports are the terminal name mechanism (gunbc.design_ruling imports_are_the_terminal_name_mechanism). The binding decision is made with imports staying; a name is decided by declaration, explicit import, or qualified path.")),
       dispatch: dispatchable(),
       parent: in_project(project: "namespace-unique-on-chain", contribution: "Imports must either bind or be derived before XL-6 can say what a name sees."),
     ),
@@ -2280,10 +2280,10 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       line: ticket(t: level_fields(
           headline: "Decide every name one canonical way",
           boundary: "The namespace cut as gunbc.namespace_cut.namespace_cut_stage stages it: F-0, XL-0 to XL-4 (evidence and the reference-derived graph), ACT-0 and XL-5 (waves), XL-6 (atomic cutover). Import-grammar deletion (XL-7) is withdrawn: imports are the terminal name mechanism (gunbc.design_ruling imports_are_the_terminal_name_mechanism). Rows are the stages that still have open work. The stage chain itself stays in the module.",
-          approach: "XL-2 and XL-3 wait on frontend prerequisites (UsesClauseCarrier, ResolverBoundDeclaringIdentity; LoweringOccurrenceProjection is delivered, gunbc#13828; ServiceModuleLowering is delivered, gunbc#13833, 7c9319cbaf). The declaration-identity switch-over is the XL-6 construction, built in shadow now. Per the 2026-09-12 interlock edge, XL-6 runs after seed retirement.",
+          approach: "XL-2 and XL-3 wait on frontend prerequisites (UsesClauseCarrier, ResolverBoundDeclaringIdentity; LoweringOccurrenceProjection is delivered, gunbc#13828; ServiceModuleLowering is delivered, gunbc#13833, 7c9319cbaf). The declaration-identity switch-over is the XL-6 construction, built in shadow now. XL-6 follows the semantic-wave progression (XL-5); it is not gated by seed retirement (2026-11-08: the namespace fix-forward no longer waits on it).",
           red_control: "ACT-0 release stays blocked while gunbc.rung_drop namespace_wave_admission_wall_removed stands or any act0_release_milestones entry is OUTSTANDING. A name answered two ways after XL-6 is a defect of this project.",
           displaced_cost: "Several mechanisms decide one name differently, so a proof about a program can be a proof about a program other than the one written.",
-          handback: "XL-6 delivered: every name is decided one canonical way through its import or qualified path, and the legacy deciding mechanisms are deleted."
+          handback: "XL-6 delivered: every name is decided one canonical way by declaration, explicit import, or qualified path, and the legacy deciding mechanisms are deleted."
         )),
       parent: in_project(project: "v2-compiler-live", contribution: "The live compiler must decide every name one way. Otherwise each proof it carries is about a program that may mean something other than what was written."),
     ),
