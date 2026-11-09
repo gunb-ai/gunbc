@@ -94,6 +94,17 @@ data ce_refusing_entry_source: String = "module v2.test.ce_refusing_entry\n\nfn 
 
 data ce_refusing_member_source: String = "module v2.test.ce_refusing_member\n\nfn ce_refusing_fn(p: Bool) -> Bool { if p { p } }\n"
 
+// The let-BINDER variant of the shape: a member whose body binds an else-less `if` with an expression arm
+// to a named binder `x`, and whose tail DEMANDS `x` -- so the function's return owes the binder a value.
+// The tail (`if p { p }` as the whole body) is guarded by `a_closure_member_whose_body_does_not_lower_is_its_own_typed_refusal_holds`
+// (refused at TARGET); this fixture guards the CONSUMER that owes the *binder* a value, the shape the
+// native-census statement_if_lowering lane admits at resolve but the emission route refuses -- at the INFER
+// stage, with `infer_branch_else_less_as_value` (executed, invocation 5a263a14), a different stage from the
+// tail guard because the binder value is consumed at typing while the tail value is consumed at realization.
+data ce_binder_entry_source: String = "module v2.test.ce_binder_entry\n\nfn ce_binder_entry_fn(p: Bool) -> Bool { v2.test.ce_binder_member.ce_binder_fn(p: p) }\n"
+
+data ce_binder_member_source: String = "module v2.test.ce_binder_member\n\nfn ce_binder_fn(p: Bool) -> Bool {\n  let x = if p { p }\n  x\n}\n"
+
 fn ce_read(source: String, id: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
     source: Medium { carried: source, fidelity: Lossless },
@@ -164,6 +175,19 @@ fn ce_emission_member_body_refuses() -> ClosureEmissionLocated {
       ce_read(source: ce_refusing_member_source, id: ^ce_refusing_member_read, path: "src/v2/test/ce_refusing_member.dag")
     ],
     entry: "v2.test.ce_refusing_entry"
+  )
+}
+
+// The let-binder variant: entry reaches a member whose body binds an else-less `if` to `x` and demands `x`
+// as its tail, so the return owes the binder a value. Same target/serialize route as the tail guard.
+fn ce_emission_binder_body_refuses() -> ClosureEmissionLocated {
+  ce_emit(
+    ingest: [
+      ce_logic_read(),
+      ce_read(source: ce_binder_entry_source, id: ^ce_binder_entry_read, path: "src/v2/test/ce_binder_entry.dag"),
+      ce_read(source: ce_binder_member_source, id: ^ce_binder_member_read, path: "src/v2/test/ce_binder_member.dag")
+    ],
+    entry: "v2.test.ce_binder_entry"
   )
 }
 
@@ -340,6 +364,23 @@ test fn a_closure_member_whose_body_does_not_lower_is_its_own_typed_refusal_hold
       length(xs: e.modules) == 3
         && ce_arm_count(e: e, name: "v2.test.ce_refusing_member") == 1
         && ce_arm_is_refused_with(arm: ce_arm_of(e: e, name: "v2.test.ce_refusing_member"), reason: ^target_value_expr_reason_branch_else_less_as_value)
+  }
+}
+
+// The let-BINDER variant of DIRECTION 5. The consumer that owes the NAMED BINDER a value refuses the
+// else-less `if` bound to it, at that member's own arm -- the guard the native-census statement_if_lowering
+// lane cannot exercise (it stops at resolve, where the module admits; the binder's no-value refusal fires
+// at INFER, during emission/typing). Executed reason is ^infer_branch_else_less_as_value (invocation
+// 5a263a14) -- the stage differs from the tail guard above (which refuses at TARGET), because the tail value
+// is consumed at realization while the binder value is consumed at typing. Red if the consumer stops
+// refusing or the reason changes, so it is not a tautology.
+test fn a_closure_member_whose_let_binder_is_an_else_less_if_is_its_own_typed_refusal_holds() -> Bool {
+  match ce_emission_binder_body_refuses().outcome {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: e, diagnostics: _ } =>
+      length(xs: e.modules) == 3
+        && ce_arm_count(e: e, name: "v2.test.ce_binder_member") == 1
+        && ce_arm_is_refused_with(arm: ce_arm_of(e: e, name: "v2.test.ce_binder_member"), reason: ^infer_branch_else_less_as_value)
   }
 }
 

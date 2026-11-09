@@ -3026,7 +3026,7 @@ jobs:
 
         env:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
-        timeout-minutes: 5
+        timeout-minutes: 17
       - name: Mt. Collins unit 1 diskless boot under the unit hold (hold, SOL, attach, CD handoff, release)
         id: mtcollins1_boot
         run: |

@@ -11,24 +11,22 @@ import gunbc.spool_queue {
   spool_needs_claim_stage, ExclusiveByRename, ExclusiveByAgreement,
   spool_requeue_assess, BootsObserved, NoClaimantObservation, RequeueEligible, RequeueClaimantStillBound, RequeueNotClaimed, RequeueRefused,
   spool_enqueue_assess, EnqueueEligible, EnqueueAlreadyPresent, EntryAbsent, spool_complete_assess, CompleteEligible, SpoolOutcomeDone, RoleDone, spool_role_writers, PrincipalExternalHook, PrincipalDrainer, SpoolPrincipal,
-  SpoolRole, SpoolKind, SpoolAttemptUnit, SpoolAttemptExit, EntryStanding, EntryAmbiguous, RolePending, RoleClaimed, RoleHandedOff, RoleRefused,
+  SpoolRole, SpoolKind, SpoolAttemptUnit, SpoolAttemptExit, EntryStanding, EntryAmbiguous, RolePending, RoleClaimed, RoleHandedOff, RoleRefused, RoleDeferred,
   ClaimEligible, ClaimRoleUndeclared, ClaimNotRealized, SpoolPublication, SpoolEntryDirectory, SpoolEntryFile, SpoolOutcomeRefused, spool_role_dir, spool_declaration, CompleteNotClaimed, ClaimAlreadyClaimed, ClaimRefused, ClaimAbsent, ClaimTerminal,
   spool_claim_assess, spool_stale_assess, StaleNotApplicable, StaleClaimantLive, StaleStopTheLine, StaleRefused,
   ClaimantObservedDead, ClaimantUnobservable, spool_entry_key_parts, spool_entry_key, spool_entry_key_of_name, spool_entry_wire_name, spool_entry_key_of_wire_name, SpoolKeyMinted, SpoolKeyRefused,
 }
+import gunbc.spool_queue {
+  spool_open, spool_entry_path, SpoolEntryPathReady, SpoolEntryRoleUndeclared, SpoolEntryKindRefused, spool_queue_observe, spool_queue_claim, spool_queue_complete, spool_queue_requeue_on_evidence,
+  spool_defer_assess, spool_undefer_assess, ParkEligible, ParkNotApplicable, ParkNotDeclared, ClaimParked,
+   SpoolClaimNotDone, SpoolCompleteNotDone, SpoolRequeueNotDone, EntryObservationUnavailable, CompleteRefused,
+}
 
-// THE QUEUE CONTRACT FOR THE THREE CROSS-PRIVILEGE SPOOLS (gunbc.spool_queue) IS A MODEL; ITS EFFECT LAYER IS NOT
-// BUILT. Two kinds of claim live here and are labelled by name.
-//
-// GREEN NOW (the model): the sealed SpoolEntryKey cannot be spelled or cast outside its declaring file, the lawful
-// mint is admitted, and the pure decisions refuse the way the contract says (a lost election is AlreadyClaimed, two
-// stages is a refusal never a pick, an unobservable claimant is not dead).
-//
-// EXPECTING-RED (the implementation): each `_today` claim asserts the state that must stop holding. The four
-// operations and the mint do not exist as effects (importing them is a MissingExport today), and the three spools'
-// raw stage-path functions are still importable. When the implementation lands the first group FLIPS to
-// "exists" and the second to MissingExport; the claims then stay enrolled as permanent regression controls
-// (gunbc.design_argument::guarantee_ladder, dissolution on climb).
+// THE QUEUE CONTRACT FOR THE THREE CROSS-PRIVILEGE SPOOLS (gunbc.spool_queue). Every claim here is a permanent
+// control. The effects RESOLVE (their stripped twins are the MissingExport probes for the operations that must not
+// exist), the sealed SpoolEntryKey cannot be spelled or cast outside its declaring file, and the raw stage-path
+// functions and HostSpoolStage are GONE (importing them is a MissingExport). Former expecting-red claims were
+// converted, not deleted (DESIGN section 4b, dissolution on climb).
 
 fn seal_violations(source: String, subject: String) -> CompileDiagnosticCensus {
   blocking_subject_census(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: subject)
@@ -45,8 +43,6 @@ data forged_literal_source: String = "module probe_spool_queue_forged_literal\ni
 data forged_cast_source: String = "module probe_spool_queue_forged_cast\nimport std.types { NonEmptyStr, String }\nimport gunbc.spool_queue { SpoolEntryKey, SpoolKind, SpoolAttemptExit, spool_entry_key, spool_claim_assess }\nfn f(n: NonEmptyStr) -> SpoolEntryKey {\n  n as SpoolEntryKey\n}\n"
 
 data lawful_mint_source: String = "module probe_spool_queue_lawful\nimport std.types { NonEmptyStr, String }\nimport gunbc.spool_queue { SpoolEntryKey, SpoolKind, SpoolAttemptExit, spool_entry_key, spool_claim_assess, SpoolKeyMinted, SpoolKeyRefused }\nfn f() -> String {\n  match spool_entry_key(kind: SpoolAttemptExit, parts: [\"a\"]) {\n    SpoolKeyMinted { key: _ } => \"minted\"\n    SpoolKeyRefused { detail: d } => d\n  }\n}\n"
-
-data probe_enqueue_source: String = "module probe_spool_queue_enqueue\nimport std.types { NonEmptyStr, String }\nimport gunbc.spool_queue { spool_queue_enqueue }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
 
 data probe_claim_source: String = "module probe_spool_queue_claim\nimport std.types { NonEmptyStr, String }\nimport gunbc.spool_queue { spool_queue_claim }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
 
@@ -65,8 +61,28 @@ data raw_publication_source: String = "module probe_spool_queue_raw_publication_
 data probe_requeue_source: String = "module probe_spool_queue_requeue\nimport std.types { NonEmptyStr }\nimport gunbc.spool_queue { spool_queue_requeue }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
 data probe_requeue_on_evidence_source: String = "module probe_spool_queue_requeue_on_evidence\nimport std.types { NonEmptyStr }\nimport gunbc.spool_queue { spool_queue_requeue_on_evidence }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
 data probe_reap_source: String = "module probe_spool_queue_reap\nimport std.types { NonEmptyStr }\nimport gunbc.spool_queue { spool_queue_reap_stale }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
-data probe_stale_stop_source: String = "module probe_spool_queue_stale_stop\nimport std.types { NonEmptyStr }\nimport gunbc.spool_queue { spool_queue_stale_stop }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
 data raw_host_spool_stage_source: String = "module probe_spool_queue_raw_stage_enum\nimport std.types { NonEmptyStr }\nimport gunbc.durable_handoff_host { HostSpoolStage }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
+
+// RoleDeferred SEAL: the park moves take the sealed SpoolEntryKey, so a foreign module cannot park or unpark an entry it did
+// not mint a key for. RED: forged key into spool_queue_defer is exactly one SoleConstructorViolation; STRIPPED TWIN: the same
+// call over a key minted by spool_entry_key_of_name has zero.
+data forged_defer_source: String = "module probe_spool_queue_forged_defer\nimport std.types { NonEmptyStr }\nimport gunbc.spool_queue { SpoolEntryKey, SpoolKind, SpoolAttemptUnit, SpoolStore, spool_queue_defer, SpoolParkOutcome }\nfn f(store: SpoolStore, n: NonEmptyStr) -> SpoolParkOutcome {\n  spool_queue_defer(store: store, key: SpoolEntryKey { kind: SpoolAttemptUnit, name: n })\n}\n"
+
+data twin_defer_source: String = "module probe_spool_queue_twin_defer\nimport std.types { NonEmptyStr }\nimport gunbc.spool_queue { SpoolKind, SpoolAttemptUnit, SpoolStore }\nimport test.fixture.spool_queue_seal.unsealed { SpoolEntryKey }\nfn defer_stand_in(store: SpoolStore, key: SpoolEntryKey) -> SpoolEntryKey {\n  key\n}\nfn f(store: SpoolStore, n: NonEmptyStr) -> SpoolEntryKey {\n  defer_stand_in(store: store, key: SpoolEntryKey { kind: SpoolAttemptUnit, name: n })\n}\n"
+
+data lawful_defer_source: String = "module probe_spool_queue_lawful_defer\nimport std.types { String }\nimport gunbc.spool_queue { SpoolAttemptUnit, SpoolStore, spool_queue_defer, spool_entry_key_of_name, SpoolKeyMinted, SpoolKeyRefused }\nfn f(store: SpoolStore, name: String) -> String {\n  match spool_entry_key_of_name(kind: SpoolAttemptUnit, name: name) {\n    SpoolKeyMinted { key } => match spool_queue_defer(store: store, key: key) {\n      _ => \"parked\"\n    }\n    SpoolKeyRefused { detail: d } => d\n  }\n}\n"
+
+test fn a_forged_key_cannot_defer_an_entry() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_defer_source, subject: "SpoolEntryKey"), holds: fn(n) { n == 1 }))
+}
+
+test fn the_same_forged_defer_passes_against_the_seal_stripped_twin() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: twin_defer_source, subject: "SpoolEntryKey"), holds: fn(n) { n == 0 }))
+}
+
+test fn a_minted_key_defers_with_no_seal_violation() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: lawful_defer_source, subject: "SpoolEntryKey"), holds: fn(n) { n == 0 }))
+}
 
 test fn a_forged_entry_key_literal_is_refused_at_compile() -> ProcessExit {
   census_exit(census_verdict(census: seal_violations(source: forged_literal_source, subject: "SpoolEntryKey"), holds: fn(n) { n == 1 }))
@@ -92,6 +108,7 @@ test fn a_claim_over_a_pending_entry_is_eligible() -> ProcessExit {
     ClaimRefused { detail: _ } => exit_failure(reason: "a pending entry is refused")
     ClaimRoleUndeclared { role: _ } => exit_failure(reason: "a pending entry reads as undeclared")
     ClaimNotRealized => exit_failure(reason: "claim reads as not realized")
+    ClaimParked { role: _ } => exit_failure(reason: "the entry reads as parked")
   }
 }
 
@@ -206,6 +223,7 @@ test fn a_lost_election_is_already_claimed_not_absent() -> ProcessExit {
     ClaimTerminal { state: _ } => exit_failure(reason: "a claimed entry reads as terminal")
     ClaimRoleUndeclared { role: _ } => exit_failure(reason: "undeclared role: a claimed entry reads as terminal")
     ClaimNotRealized => exit_failure(reason: "claim reads as not realized")
+    ClaimParked { role: _ } => exit_failure(reason: "the entry reads as parked")
     ClaimRefused { detail: _ } => exit_failure(reason: "a claimed entry is refused")
   }
 }
@@ -219,6 +237,7 @@ test fn an_entry_in_two_stages_is_refused_never_picked() -> ProcessExit {
     ClaimTerminal { state: _ } => exit_failure(reason: "an ambiguous entry was resolved to terminal")
     ClaimRoleUndeclared { role: _ } => exit_failure(reason: "undeclared role: an ambiguous entry was resolved to terminal")
     ClaimNotRealized => exit_failure(reason: "claim reads as not realized")
+    ClaimParked { role: _ } => exit_failure(reason: "the entry reads as parked")
   }
 }
 
@@ -240,36 +259,32 @@ test fn an_observed_dead_claimant_stops_the_line_and_is_not_reclaimed() -> Proce
   }
 }
 
-test fn the_enqueue_effect_does_not_exist_today() -> ProcessExit {
-  census_exit(census_verdict(census: blocking_subject_census(source: probe_enqueue_source, wanted_class: "MissingExport", wanted_subject: "spool_queue_enqueue"), holds: fn(n) { n == 1 }))
+test fn the_claim_effect_resolves() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: probe_claim_source), holds: fn(n) { n == 0 }))
 }
 
-test fn the_claim_effect_does_not_exist_today() -> ProcessExit {
-  census_exit(census_verdict(census: blocking_subject_census(source: probe_claim_source, wanted_class: "MissingExport", wanted_subject: "spool_queue_claim"), holds: fn(n) { n == 1 }))
+test fn the_complete_effect_resolves() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: probe_complete_source), holds: fn(n) { n == 0 }))
 }
 
-test fn the_complete_effect_does_not_exist_today() -> ProcessExit {
-  census_exit(census_verdict(census: blocking_subject_census(source: probe_complete_source, wanted_class: "MissingExport", wanted_subject: "spool_queue_complete"), holds: fn(n) { n == 1 }))
+test fn the_observe_effect_resolves() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: probe_observe_source), holds: fn(n) { n == 0 }))
 }
 
-test fn the_observe_effect_does_not_exist_today() -> ProcessExit {
-  census_exit(census_verdict(census: blocking_subject_census(source: probe_observe_source, wanted_class: "MissingExport", wanted_subject: "spool_queue_observe"), holds: fn(n) { n == 1 }))
+test fn the_instance_keyed_open_resolves() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: probe_open_source), holds: fn(n) { n == 0 }))
 }
 
-test fn the_instance_keyed_mint_does_not_exist_today() -> ProcessExit {
-  census_exit(census_verdict(census: blocking_subject_census(source: probe_open_source, wanted_class: "MissingExport", wanted_subject: "spool_open"), holds: fn(n) { n == 1 }))
+test fn the_unit_spool_claimed_dir_is_gone() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: raw_unit_claimed_source, wanted_class: "MissingExport", wanted_subject: "attempt_unit_spool_claimed_dir"), holds: fn(n) { n == 1 }))
 }
 
-test fn the_unit_spool_claimed_dir_is_importable_today() -> ProcessExit {
-  census_exit(census_verdict(census: blocking_subject_census(source: raw_unit_claimed_source, wanted_class: "MissingExport", wanted_subject: "attempt_unit_spool_claimed_dir"), holds: fn(n) { n <= 0 }))
+test fn the_exit_spool_stage_dir_is_gone() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: raw_exit_stage_source, wanted_class: "MissingExport", wanted_subject: "attempt_exit_spool_stage_dir"), holds: fn(n) { n == 1 }))
 }
 
-test fn the_exit_spool_stage_dir_is_importable_today() -> ProcessExit {
-  census_exit(census_verdict(census: blocking_subject_census(source: raw_exit_stage_source, wanted_class: "MissingExport", wanted_subject: "attempt_exit_spool_stage_dir"), holds: fn(n) { n <= 0 }))
-}
-
-test fn the_publication_request_dir_is_importable_today() -> ProcessExit {
-  census_exit(census_verdict(census: blocking_subject_census(source: raw_publication_source, wanted_class: "MissingExport", wanted_subject: "publication_request_dir"), holds: fn(n) { n <= 0 }))
+test fn the_publication_request_dir_is_gone() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: raw_publication_source, wanted_class: "MissingExport", wanted_subject: "publication_request_dir"), holds: fn(n) { n == 1 }))
 }
 
 test fn a_pending_exit_entry_advances_to_handed_off_not_claimed() -> ProcessExit {
@@ -280,6 +295,7 @@ test fn a_pending_exit_entry_advances_to_handed_off_not_claimed() -> ProcessExit
     ClaimTerminal { state: _ } => exit_failure(reason: "pending read as terminal")
     ClaimRoleUndeclared { role: _ } => exit_failure(reason: "undeclared role: pending read as terminal")
     ClaimNotRealized => exit_failure(reason: "claim reads as not realized")
+    ClaimParked { role: _ } => exit_failure(reason: "the entry reads as parked")
     ClaimRefused { detail: _ } => exit_failure(reason: "pending was refused")
   }
 }
@@ -293,6 +309,7 @@ test fn a_refused_entry_is_terminal_and_never_claimable_again() -> ProcessExit {
     ClaimRefused { detail: _ } => exit_failure(reason: "refused was refused")
     ClaimRoleUndeclared { role: _ } => exit_failure(reason: "undeclared role")
     ClaimNotRealized => exit_failure(reason: "claim reads as not realized")
+    ClaimParked { role: _ } => exit_failure(reason: "the entry reads as parked")
   }
 }
 
@@ -340,9 +357,9 @@ test fn no_reap_stale_reclaim_operation_exists() -> ProcessExit {
   census_exit(census_verdict(census: blocking_subject_census(source: probe_reap_source, wanted_class: "MissingExport", wanted_subject: "spool_queue_reap_stale"), holds: fn(n) { n == 1 }))
 }
 
-// EXPECTING-RED: the evidence-gated requeue effect does not exist yet (the pure decision spool_requeue_assess does).
-test fn the_requeue_on_evidence_effect_does_not_exist_today() -> ProcessExit {
-  census_exit(census_verdict(census: blocking_subject_census(source: probe_requeue_on_evidence_source, wanted_class: "MissingExport", wanted_subject: "spool_queue_requeue_on_evidence"), holds: fn(n) { n == 1 }))
+// The evidence-gated requeue effect resolves; its stripped twin is the MissingExport probes above.
+test fn the_requeue_on_evidence_effect_resolves() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: probe_requeue_on_evidence_source), holds: fn(n) { n == 0 }))
 }
 
 test fn a_different_boot_id_licenses_requeue_to_pending() -> ProcessExit {
@@ -370,16 +387,25 @@ test fn only_a_claimed_entry_is_requeued() -> ProcessExit {
   }
 }
 
-// EXPECTING-RED: the one stale effect is the line stop feeding gunbc.roadmap.spool_stall; it does not exist yet.
-test fn the_stale_stop_effect_does_not_exist_today() -> ProcessExit {
-  census_exit(census_verdict(census: blocking_subject_census(source: probe_stale_stop_source, wanted_class: "MissingExport", wanted_subject: "spool_queue_stale_stop"), holds: fn(n) { n == 1 }))
+// PERMANENT CONTROL (was expecting-red): HostSpoolStage dissolved into SpoolRole (consumers moved: gunbc.durable_handoff_host,
+// gunbc.roadmap.spool_stall, gunbc.roadmap.roadmap_attempt_exit_spool, gunbc.roadmap.roadmap_belt_actuate,
+// gunbc.roadmap.roadmap_launch_deployment_observe, and the claims that import it). It is a MissingExport.
+// MUTANT: a consumer that collapses the typed path result back to an Optional (the kind refusal read as "no entry")
+// does not typecheck, and the three-armed twin does.
+data collapse_mutant_source: String = "module probe_collapse\nimport std.types { String }\nimport std.optional { Present, Absent }\nimport gunbc.spool_queue { spool_entry_key, SpoolKind, SpoolAttemptUnit, SpoolEntryPath, SpoolEntryPathReady, SpoolEntryRoleUndeclared, SpoolEntryKindRefused, RolePending, spool_open, spool_entry_path, SpoolKeyMinted, SpoolKeyRefused }\nfn f(p: SpoolEntryPath) -> String {\n  match p {\n    Absent => \"collapsed\"\n    Present { value: _ } => \"ready\"\n  }\n}\n"
+
+data collapse_typed_twin_source: String = "module probe_collapse\nimport std.types { String }\nimport std.optional { Present, Absent }\nimport gunbc.spool_queue { spool_entry_key, SpoolKind, SpoolAttemptUnit, SpoolEntryPath, SpoolEntryPathReady, SpoolEntryRoleUndeclared, SpoolEntryKindRefused, RolePending, spool_open, spool_entry_path, SpoolKeyMinted, SpoolKeyRefused }\nfn f(p: SpoolEntryPath) -> String {\n  match p {\n    SpoolEntryPathReady { path: _ } => \"ready\"\n    SpoolEntryRoleUndeclared { role: _ } => \"undeclared\"\n    SpoolEntryKindRefused { detail: d } => d\n  }\n}\n"
+
+test fn collapsing_the_path_result_to_an_optional_is_refused_at_compile() -> ProcessExit {
+  census_exit(blocking_delta(hostile: collapse_mutant_source, safe: collapse_typed_twin_source, holds: fn(n) { n >= 1 }))
 }
 
-// EXPECTING-RED: HostSpoolStage must dissolve into SpoolRole (consumers moved: gunbc.durable_handoff_host,
-// gunbc.roadmap.spool_stall, gunbc.roadmap.roadmap_attempt_exit_spool, gunbc.roadmap.roadmap_belt_actuate,
-// gunbc.roadmap.roadmap_launch_deployment_observe, and the claims that import it). Flips to MissingExport.
-test fn the_host_spool_stage_enum_is_importable_today() -> ProcessExit {
-  census_exit(blocking_delta(hostile: raw_host_spool_stage_source, safe: baseline_source, holds: fn(n) { n <= 0 }))
+test fn the_typed_path_result_consumer_compiles_clean() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: collapse_typed_twin_source), holds: fn(n) { n == 0 }))
+}
+
+test fn the_host_spool_stage_enum_is_gone() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: raw_host_spool_stage_source, wanted_class: "MissingExport", wanted_subject: "HostSpoolStage"), holds: fn(n) { n == 1 }))
 }
 
 test fn every_declared_spool_has_a_wellformed_stage_graph() -> ProcessExit {
@@ -394,8 +420,8 @@ test fn every_declared_spool_has_a_wellformed_stage_graph() -> ProcessExit {
 // are each refused by the same decision.
 test fn a_malformed_stage_graph_is_refused() -> ProcessExit {
   let base = spool_declaration(kind: SpoolAttemptUnit)
-  let overlapping = SpoolDeclaration { exclusion: base.exclusion, entry_kind: base.entry_kind, chain: base.chain, terminals: [SpoolStage { role: RoleClaimed, directory: "claimed2" }], enqueuer: PrincipalRequester, claimant: PrincipalDrainer, key_separator: "-", key_part_count: 2 }
-  let keyless = SpoolDeclaration { exclusion: base.exclusion, entry_kind: base.entry_kind, chain: base.chain, terminals: [], enqueuer: PrincipalRequester, claimant: PrincipalDrainer, key_separator: "-", key_part_count: 0 }
+  let overlapping = SpoolDeclaration { exclusion: base.exclusion, entry_kind: base.entry_kind, chain: base.chain, terminals: [SpoolStage { role: RoleClaimed, directory: "claimed2" }], parked: base.parked, enqueuer: PrincipalRequester, claimant: PrincipalDrainer, key_separator: "-", key_part_count: 2 }
+  let keyless = SpoolDeclaration { exclusion: base.exclusion, entry_kind: base.entry_kind, chain: base.chain, terminals: [], parked: base.parked, enqueuer: PrincipalRequester, claimant: PrincipalDrainer, key_separator: "-", key_part_count: 0 }
   if spool_declaration_wellformed(declaration: overlapping) || spool_declaration_wellformed(declaration: keyless) {
     exit_failure(reason: "a malformed stage graph was admitted")
   } else {
@@ -443,4 +469,124 @@ test fn a_hyphenated_node_id_round_trips_and_the_on_disk_name_parses() -> Proces
       }
     }
   }
+}
+
+// THE KIND ADMISSION CONTROL. A lawful key of one spool kind (a publication request) against a lawful store of another
+// (the attempt-unit spool), over a root that does not exist: nothing is created or moved whatever the outcome, and the
+// outcome must be the typed kind refusal, not absence, which is what the same pair reads as without the boundary
+// (the BROKEN twin removes spool_key_kind_refusal and these claims then read EntryAbsent / ClaimAbsent / NotClaimed).
+data cross_kind_root: String = "/nonexistent-spool-kind-admission-control"
+
+data cross_kind_detail: String = "a key minted for one spool kind was presented to a store of another kind: req"
+
+test fn a_key_of_another_kind_cannot_address_a_path_in_the_store() -> ProcessExit {
+  match spool_entry_key(kind: SpoolPublication, parts: ["req"]) {
+    SpoolKeyRefused { detail: d } => exit_failure(reason: d)
+    SpoolKeyMinted { key: k } => {
+      let st = spool_open(kind: SpoolAttemptUnit, instance_root: cross_kind_root)
+      match spool_entry_path(store: st, role: RolePending, key: k) {
+        SpoolEntryKindRefused { detail: d } => if d == cross_kind_detail { ExitSuccess } else { exit_failure(reason: d) }
+        SpoolEntryRoleUndeclared { role: _ } => exit_failure(reason: "a cross-kind key read as an undeclared role")
+        SpoolEntryPathReady { path: _ } => exit_failure(reason: "a cross-kind key addressed a path")
+      }
+    }
+  }
+}
+
+test fn a_key_of_another_kind_cannot_be_observed() -> ProcessExit {
+  match spool_entry_key(kind: SpoolPublication, parts: ["req"]) {
+    SpoolKeyRefused { detail: d } => exit_failure(reason: d)
+    SpoolKeyMinted { key: k } => {
+      let st = spool_open(kind: SpoolAttemptUnit, instance_root: cross_kind_root)
+      match spool_queue_observe(store: st, key: k) {
+        EntryObservationUnavailable { detail: d } => if d == cross_kind_detail { ExitSuccess } else { exit_failure(reason: d) }
+        other => exit_failure(reason: "a cross-kind key was observed as an entry state")
+      }
+    }
+  }
+}
+
+test fn a_key_of_another_kind_cannot_be_claimed() -> ProcessExit {
+  match spool_entry_key(kind: SpoolPublication, parts: ["req"]) {
+    SpoolKeyRefused { detail: d } => exit_failure(reason: d)
+    SpoolKeyMinted { key: k } => {
+      let st = spool_open(kind: SpoolAttemptUnit, instance_root: cross_kind_root)
+      match spool_queue_claim(store: st, key: k) {
+        SpoolClaimNotDone { assessment: ClaimRefused { detail: d } } => if d == cross_kind_detail { ExitSuccess } else { exit_failure(reason: d) }
+        other => exit_failure(reason: "a cross-kind key was claimed or read as absent")
+      }
+    }
+  }
+}
+
+test fn a_key_of_another_kind_cannot_be_completed() -> ProcessExit {
+  match spool_entry_key(kind: SpoolPublication, parts: ["req"]) {
+    SpoolKeyRefused { detail: d } => exit_failure(reason: d)
+    SpoolKeyMinted { key: k } => {
+      let st = spool_open(kind: SpoolAttemptUnit, instance_root: cross_kind_root)
+      match spool_queue_complete(store: st, key: k, outcome: SpoolOutcomeDone) {
+        SpoolCompleteNotDone { assessment: CompleteRefused { detail: d } } => if d == cross_kind_detail { ExitSuccess } else { exit_failure(reason: d) }
+        other => exit_failure(reason: "a cross-kind key was completed or read as not claimed")
+      }
+    }
+  }
+}
+
+test fn a_key_of_another_kind_cannot_be_requeued() -> ProcessExit {
+  match spool_entry_key(kind: SpoolPublication, parts: ["req"]) {
+    SpoolKeyRefused { detail: d } => exit_failure(reason: d)
+    SpoolKeyMinted { key: k } => {
+      let st = spool_open(kind: SpoolAttemptUnit, instance_root: cross_kind_root)
+      match spool_queue_requeue_on_evidence(store: st, key: k, evidence: BootsObserved { claim_boot_id: "a" as NonEmptyStr, current_boot_id: "b" as NonEmptyStr }) {
+        SpoolRequeueNotDone { assessment: RequeueNotClaimed { state: EntryObservationUnavailable { detail: d } } } => if d == cross_kind_detail { ExitSuccess } else { exit_failure(reason: d) }
+        other => exit_failure(reason: "a cross-kind key was requeued or read as absent")
+      }
+    }
+  }
+}
+
+// RoleDeferred IS A ROW OF THE SAME DECLARATION: the attempt-unit spool declares it (directory derived, claimant the
+// writer), the others do not, and a parked role that also stands in the chain is refused like any overlapping stage.
+test fn the_parked_stage_is_declared_by_the_attempt_unit_spool_alone() -> ProcessExit {
+  if spool_role_dir_present(kind: SpoolAttemptUnit, role: RoleDeferred) && (!spool_role_dir_present(kind: SpoolAttemptExit, role: RoleDeferred)) && (!spool_role_dir_present(kind: SpoolPublication, role: RoleDeferred)) && (!is_empty(xs: spool_role_writers(kind: SpoolAttemptUnit, role: RoleDeferred))) && is_empty(xs: spool_role_writers(kind: SpoolPublication, role: RoleDeferred)) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "the parked stage is not declared by the attempt-unit spool alone")
+  }
+}
+
+test fn a_parked_role_in_the_chain_is_refused() -> ProcessExit {
+  let base = spool_declaration(kind: SpoolAttemptUnit)
+  let doubled = SpoolDeclaration { exclusion: base.exclusion, entry_kind: base.entry_kind, chain: base.chain, terminals: base.terminals, parked: [SpoolStage { role: RolePending, directory: "deferred" }], enqueuer: PrincipalRequester, claimant: PrincipalDrainer, key_separator: base.key_separator, key_part_count: base.key_part_count }
+  if spool_declaration_wellformed(declaration: doubled) {
+    exit_failure(reason: "a parked role standing in the chain was admitted")
+  } else {
+    ExitSuccess
+  }
+}
+
+// DEFER AND UNDEFER are the only two moves: pending -> deferred and deferred -> pending. A claimed entry is not parked,
+// a parked entry is not claimed, and a spool with no parked stage refuses both.
+test fn only_the_two_declared_park_moves_exist() -> ProcessExit {
+  let ok = match spool_defer_assess(kind: SpoolAttemptUnit, observed: EntryStanding { role: RolePending }) {
+    ParkEligible { from: RolePending, into: RoleDeferred } => true
+    _ => false
+  } && match spool_undefer_assess(kind: SpoolAttemptUnit, observed: EntryStanding { role: RoleDeferred }) {
+    ParkEligible { from: RoleDeferred, into: RolePending } => true
+    _ => false
+  }
+  let refused = match spool_defer_assess(kind: SpoolAttemptUnit, observed: EntryStanding { role: RoleClaimed }) {
+    ParkNotApplicable { state: _ } => true
+    _ => false
+  } && match spool_undefer_assess(kind: SpoolAttemptUnit, observed: EntryStanding { role: RoleClaimed }) {
+    ParkNotApplicable { state: _ } => true
+    _ => false
+  } && match spool_defer_assess(kind: SpoolPublication, observed: EntryStanding { role: RolePending }) {
+    ParkNotDeclared => true
+    _ => false
+  } && match spool_claim_assess(kind: SpoolAttemptUnit, observed: EntryStanding { role: RoleDeferred }) {
+    ClaimParked { role: _ } => true
+    _ => false
+  }
+  if ok && refused { ExitSuccess } else { exit_failure(reason: "a park move outside the two declared ones exists, or a declared one is missing") }
 }
