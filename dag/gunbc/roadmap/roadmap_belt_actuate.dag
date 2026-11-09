@@ -14,6 +14,7 @@ import std.algebra { trim, skip, list_append }
 import std.durable_compare_and_set { cas_generation_count }
 import extdeps.sudo.elevation { sudo_elevate, ElevatedInvocation }
 import extdeps.systemd.systemctl { systemctl_start_argv, systemctl_reset_failed_argv, systemctl_show_user_property_argv }
+import gunbc.systemctl_show_read { SystemdPropertyCapture, SystemdPropertyCaptured, SystemdPropertyBlank, SystemdPropertyCaptureRefused, systemctl_show_property_value_from_stdout }
 import extdeps.systemd.service_exec { ServiceResultSuccess }
 
 import gunbc.output_policy { OutcomeIsData }
@@ -12215,17 +12216,20 @@ type BeltSliceFitCheck
   | BeltSliceFull { requested: ByteSize, available: ByteSize }
   | BeltSliceUnreadable { reason: String }
 
-type BeltPropRead
-  = BeltPropValue { value: String }
-  | BeltPropUnreadable { reason: String }
-
-// ONE `systemctl --user show -p <property> <unit> --value` through the belt, the raw value or a reason.
-fn belt_read_user_slice_property(unit: NonEmptyStr, property: SystemdUnitProperty, workdir: String) -> BeltPropRead {
+// ONE `systemctl --user show -p <property> <unit> --value` through the belt. The capture DECISION is the
+// single authority's: systemctl_show_property_value_from_stdout folds the wire to SystemdPropertyCaptured
+// | SystemdPropertyBlank | SystemdPropertyCaptureRefused, so "the unit answered blank" stays a DISTINCT arm
+// from a refusal -- the exact merge a two-way sum hides, and why the existing three-way type was split.
+// Only the TRANSPORT diverges: the belt's sole exec primitive is belt_exec -> WitnessBin.Run, whereas a
+// HostEffectTransport's LocalShell leg routes through the modeled systemd realization that host_operation_exec
+// reaches and the awk-emitted belt does not wire -- so the belt supplies its own transport and reuses the
+// authoritative capture semantics over it. A stated Conformance divergence (review 92299), not a fork.
+fn belt_read_user_slice_property(unit: NonEmptyStr, property: SystemdUnitProperty, workdir: String) -> SystemdPropertyCapture {
   let show_args = systemctl_show_user_property_argv(unit: unit, property: property)
   match belt_exec(cmd: host_exec_argv(program: "systemctl", args: show_args.skip(n: 1)), workdir: workdir) {
-    ExecFailed { program: _, exit_code, stderr } => BeltPropUnreadable { reason: join(["systemctl show exited ", to_string(exit_code), ": ", trim(stderr)], "") }
-    ExecRefused { program: _, reason } => BeltPropUnreadable { reason: reason }
-    ExecOk { stdout } => BeltPropValue { value: trim(stdout) }
+    ExecFailed { program: _, exit_code, stderr } => SystemdPropertyCaptureRefused { reason: join(["systemctl show exited ", to_string(exit_code), ": ", trim(stderr)], "") }
+    ExecRefused { program: _, reason } => SystemdPropertyCaptureRefused { reason: reason }
+    ExecOk { stdout } => systemctl_show_property_value_from_stdout(success: true, stdout: stdout)
   }
 }
 
@@ -12235,14 +12239,16 @@ fn belt_user_work_slice_fit(requested: ByteSize, workdir: String) -> BeltSliceFi
   // while the source ruling yields 50, and admitting against 50 would launch a review straight into an
   // OOM at the enforced 44. An unbounded or unreadable ceiling refuses -- placement is not established.
   match belt_read_user_slice_property(unit: user_work_slice_unit_name, property: MemoryCurrent, workdir: workdir) {
-    BeltPropUnreadable { reason } => BeltSliceUnreadable { reason: join(["the user-work slice resident charge could not be read: ", reason], "") }
-    BeltPropValue { value: current_raw } =>
+    SystemdPropertyBlank => BeltSliceUnreadable { reason: "the user-work slice reported a blank MemoryCurrent, so no fit can be established" }
+    SystemdPropertyCaptureRefused { reason } => BeltSliceUnreadable { reason: join(["the user-work slice resident charge could not be read: ", reason], "") }
+    SystemdPropertyCaptured { value: current_raw } =>
       match parse_cgroup_nonnegative_bytes(text: current_raw) {
         Absent => BeltSliceUnreadable { reason: "the user-work slice reported a MemoryCurrent that is not a non-negative byte count, so no fit can be established" }
         Present { value: charged } =>
           match belt_read_user_slice_property(unit: user_work_slice_unit_name, property: MemoryMax, workdir: workdir) {
-            BeltPropUnreadable { reason } => BeltSliceUnreadable { reason: join(["the user-work slice ceiling could not be read: ", reason], "") }
-            BeltPropValue { value: max_raw } =>
+            SystemdPropertyBlank => BeltSliceUnreadable { reason: "the user-work slice reported a blank MemoryMax, so no fit can be established" }
+            SystemdPropertyCaptureRefused { reason } => BeltSliceUnreadable { reason: join(["the user-work slice ceiling could not be read: ", reason], "") }
+            SystemdPropertyCaptured { value: max_raw } =>
               match parse_systemd_memory_limit_show(raw: max_raw) {
                 MemoryLimitUnbounded => BeltSliceUnreadable { reason: "the user-work slice declares no finite MemoryMax, so no fit can be established (placement is not bounded)" }
                 MemoryLimitAbsent => BeltSliceUnreadable { reason: "the user-work slice reported a MemoryMax that is not a byte count, so no fit can be established" }
