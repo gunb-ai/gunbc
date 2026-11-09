@@ -750,7 +750,7 @@ data srv4_grant: ServingResourceGrant = ServingResourceGrant {
 data srv4_routed_expert_artifact: ServingSharedArtifact = ServingSharedArtifact {
   name: "Qwen3.8-Flash-Next iq3_s routed-expert GGUF, mmap'd by the engine under its cgroup cap" as NonEmptyStr,
   bytes: gibibyte_to_byte_size(g: gibibyte(count: 46)),
-  owner: "the engine's own mmap (--mmap-experts; the GGUF shards in place, no experts.bin), held as the engine cgroup's page cache under MemoryHigh=40G MemoryMax=48G" as NonEmptyStr,
+  owner: "the engine's own mmap (--mmap-experts; the GGUF shards in place, no experts.bin), held as the engine cgroup's page cache under the cap srv4_serving_engine_memory.memory_cap reads -- that row is the cap's only home (review 92380)" as NonEmptyStr,
   tiers: [
     ServingArtifactTier {
       medium: ArtifactOnDevice,
@@ -764,7 +764,7 @@ data srv4_routed_expert_artifact: ServingSharedArtifact = ServingSharedArtifact 
     },
     ServingArtifactTier {
       medium: ArtifactInHostRam,
-      holds: ArtifactHeldEvictable { bound_by: "the engine service's cgroup: MemoryHigh=56G, MemoryMax=64G (drop-in 60-expert-l1-cap.conf, raised 2026-11-09)" as NonEmptyStr },
+      holds: ArtifactHeldEvictable { bound_by: "the engine service's cgroup cap that srv4_serving_engine_memory.memory_cap reads (its MemoryHigh, from the drop-in 60-expert-l1-cap.conf raised 2026-11-09); MemoryMax is the hard edge above it, unread by this model and held on the host's unit file" as NonEmptyStr },
       // What this rung HOLDS is the file tier's 24.0 GiB — everything not already on the cards, which is what the
       // page cache would keep if nothing bounded it (the plan read "35.2 GiB available for the page cache"). What it
       // must KEEP is the per-request expert working set, now READ rather than guessed: ~22 GB, from the engine's own
@@ -861,8 +861,8 @@ data srv3_grant: ServingResourceGrant = ServingResourceGrant {
   swap_bound: byte_size(count: 0),
   charging: [
     "the routed experts are the engine's OWN private anonymous memory on srv3 (no --mmap-experts, no shared file): the arena is charged inside this grant and to nobody else, and nothing about it is reclaimable — which is why its rung is pinned and charged whole" as NonEmptyStr,
-    "one copy per host, charged once: srv3 runs ONE engine across both cards, so the 46.84 GiB arena is that engine's own and there is no second copy to charge (bold-wren-111, 2026-11-09)" as NonEmptyStr,
-    "base and expert tier are charged SEPARATELY and must stay that way: the base excludes the arena, because the arena is the artifact's pinned rung. Charging a 52 GiB base on top of a 46.84 GiB pinned rung would bill the same bytes twice (52 - 46.84 = 5.16 GiB is what is left for the engine itself)" as NonEmptyStr,
+    "one copy per host, charged once: srv3 runs ONE engine across both cards, so the arena is that engine's own and there is no second copy to charge (bold-wren-111, 2026-11-09); its bytes live once, in the artifact's pinned rung" as NonEmptyStr,
+    "base and expert tier are charged SEPARATELY and must stay that way: the base excludes the arena, because the arena is the artifact's pinned rung. Charging an UNSPLIT base (the engine's whole resident set, experts included) on top of the pinned rung would bill the same bytes twice; srv3_strata_engine_memory.base is the split figure, and its reason carries the arithmetic that produced it" as NonEmptyStr,
     "the slice's swap limit is unread: 0 is what srv4's serving slice was read to have (MemorySwapMax=0), taken here until MemorySwapMax on srv3's strata.slice is read" as NonEmptyStr,
   ] as List<NonEmptyStr>,
   devices: [srv3_rtx_2000_ada_device(slot: "cuda0"), srv3_rtx_2000_ada_device(slot: "cuda1")],
@@ -891,7 +891,7 @@ data srv3_routed_expert_artifact: ServingSharedArtifact = ServingSharedArtifact 
       holds: ArtifactHeldPinned { mechanism: "private anonymous memory allocated by the engine itself (no --mmap-experts, no experts.bin, no shared file): it is not a page cache, so the kernel cannot reclaim it" as NonEmptyStr },
       bytes: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 47964)), provenance: "the engine's expert arena, 46.84 GiB of private anon per engine, read over ssh 2026-11-08 by bold-wren-111 (NOT shared, NOT mapped)" as NonEmptyStr },
       floor: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 47964)), provenance: "the whole arena is resident: nothing evicts private anon, so its floor is its whole" as NonEmptyStr },
-      realizes: "one private copy in the one engine the host runs; an expert miss is served from it, and it is the reason srv3's base is 52 GiB where srv4's mapped engine sits at 6.3 GiB" as NonEmptyStr,
+      realizes: "one private copy in the one engine the host runs; an expert miss is served from it and nothing can evict it -- holding the whole arena in the process is why srv3's base row is an engine-without-mmap figure while srv4's mapped engine charges only its anon and shmem" as NonEmptyStr,
     },
     ServingArtifactTier {
       medium: ArtifactOnDisk,
