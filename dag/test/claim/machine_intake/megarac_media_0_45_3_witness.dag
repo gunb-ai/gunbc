@@ -826,11 +826,9 @@ test fn w_code_16_is_not_catalogued_on_the_releases_that_never_reported_it() -> 
 // THE TWO RELEASES REPORT DIFFERENT WIRES FOR A ROW THAT IS NOT PRESENTING, AND NEITHER MEANING TRAVELS.
 // The reads are the source, not a typed status: at the release the committed hpm check names, 16 beside the
 // marker is Stopped; the same row shape at 0.32 -- which never reported 16 -- is an unread code; the wire the
-// 2026-09-05 probe saw for a non-presenting drive (0) is Stopped at 0.32 and -- for a row that NAMES a
-// medium, which is what the probe read -- an unread code at this build. The row that names NO medium at 0 is a
-// separate claim, and it is NOT called Stopped there either: it is carried as a bet this repository drew from
-// one reading, which no lane acts on -- see
-// w_the_row_that_named_no_medium_at_zero_is_a_bet_that_no_lane_acts_on. So
+// 2026-09-05 probe saw for a non-presenting drive (0) is Stopped at 0.32 and, beside the marker at this build,
+// NOT ACTIVE -- the vendor's own rendering of that pair (w_the_status_zero_no_session_row_is_not_active_and_not_stopped),
+// which is a different state from the Stopped 0.32 names, not the same meaning carried across. So
 // no status here is a default, and a world that pairs one release's wire with a route asking at the other
 // gets a refusal rather than a silent substitution -- which is exactly how a fixture error shows up. The last
 // group ties the two row receipts to the same machine's boot lane as the committed hpm read that names the
@@ -860,7 +858,7 @@ test fn w_the_two_releases_report_different_wires_for_a_row_that_is_not_presenti
         _ => false
       }
       && match megarac_redirection_status_of_row(firmware: read, wire: 0, session_index: Present { value: megarac_no_redirection_session_index }) {
-        RedirectionStatusKnown { firmware: f, status: RedirectionWireUncatalogued { wire: w } } => w == 0 && bmc_firmware_release_identity_eq(a: f, b: read)
+        RedirectionStatusKnown { firmware: f, status: RedirectionNotActive } => bmc_firmware_release_identity_eq(a: f, b: read)
         _ => false
       }
       && boot_run_40258937016_end_media_row.redirection_status == boot_run_40264233543_end_media_row.redirection_status
