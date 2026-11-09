@@ -1,6 +1,11 @@
 module test.claim.runner.runner_slot_allocation_witness
 
-import gunbc.runner.runner_slot_allocation { host_width_facts, gunbc_runner_slot_desired_for, runner_memory_envelope_bytes_of, authored_microvm_slots_charge, transitional_ci_slot_memory_max, transitional_ci_slot_memory_max_of_envelope, committed_width_of, HostWidthFacts, transitional_slots_charge, host_transitional_ci_slot_identities, host_transitional_ci_slot_count, transitional_ci_slots, identity_in_list, srv1_deploy_slot, authored_microvm_slot_charge, microvm_controller_slice_memory_max, srv1_revision_job_slot, host_authored_microvm_slots, host_authored_slots_within_width, revision_job_slots, revision_job_slots_match_the_fleet_row, host_committed_identities_at, RunnerSlotPurpose, SlotServesGitHubActions, SlotServesFabricExecution, RunnerSlotMembership, CommittedSlotMember, SlotOutsideCommittedPopulation, runner_slot_membership, srv3_fabric_first_slot, srv3_fabric_second_slot, srv4_fabric_first_slot, srv4_fabric_second_slot, srv1_microvm_shakedown_slot, host_fabric_slot_count, host_github_slot_count, gunbc_runner_slot_allocation_wall_holds, gunbc_runner_slot_oversubscription_within_slice, host_runner_pool_charge, gunbc_microvm_shakedown_slot_charge, gunbc_runner_cores_per_slot, host_cpu_admitted_width, compute_host_cpu_admitted_width, HostCpuWidthResolution, CpuWidthDerived, CpuWidthOfferAbsent, WidthComputeOfferAbsent, host_width_axes, AxisAdmits, AxisUnmeasured, gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, RunnerWidthUnresolvedCause, WidthMemoryDenominatorUnestablished, WidthSlotShapeInadmissible, runner_width_unresolved_cause_text, host_memory_admitted_width, MemoryDenominatorStanding, MemoryDenominatorEstablished, MemoryDenominatorUnestablished, host_memory_denominator, HostRunnerSlotAllocationStanding, HostSlotAllocationAdmitted, HostSlotAllocationWidthUnresolved, gunbc_committed_runner_slot_allocation_standings, gunbc_admitted_runner_slot_allocations, SlotMembershipWidthUnresolved, host_disk_admitted_width, DiskAdmitsWidth, DiskWidthUnconstrained, gunbc_runner_slice_cap_for_width, gunbc_runner_slot_enforcement_expected_cap, gunbc_floor_minimum_viable_armed_budget_wall_holds, gunbc_floor_minimum_viable_armed_budget_bytes, gunbc_srv2_03_effective_cap_observation, runner_slot_effective_memory_max_drifts_from_declaration, runner_slot_effective_memory_high_drifts_from_declaration, gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation, srv2_03_floor_leaf_cgroup_events_at_entry_are_zero, gunbc_readback_refusal_stays_witnessed_by_synthetic_drift, FloorCgroupLeafEventAtEntry, RunnerSlotEffectiveCapMeasured }
+import gunbc.runner.runner_slot_allocation { host_width_facts, gunbc_runner_slot_desired_for, runner_memory_envelope_bytes_of, authored_microvm_slots_charge, transitional_ci_slot_memory_max, transitional_ci_slot_memory_max_of_envelope, committed_width_of, HostWidthFacts, transitional_slots_charge, host_transitional_ci_slot_identities, host_transitional_ci_slot_count, transitional_ci_slots, identity_in_list, srv1_deploy_slot, authored_microvm_slot_charge, microvm_controller_slice_memory_max, srv1_revision_job_slot, host_authored_microvm_slots, host_authored_slots_within_width, revision_job_slots, revision_job_slots_match_the_fleet_row, host_committed_identities_at, RunnerSlotPurpose, SlotServesGitHubActions, SlotServesFabricExecution, RunnerSlotMembership, CommittedSlotMember, SlotOutsideCommittedPopulation, runner_slot_membership, srv3_fabric_first_slot, srv3_fabric_second_slot, srv4_fabric_first_slot, srv4_fabric_second_slot, srv1_microvm_shakedown_slot, host_fabric_slot_count, host_github_slot_count, gunbc_runner_slot_allocation_wall_holds, gunbc_runner_slot_oversubscription_within_slice, host_runner_pool_charge, gunbc_microvm_shakedown_slot_charge, gunbc_runner_cores_per_slot, host_cpu_admitted_width, compute_host_cpu_admitted_width, HostCpuWidthResolution, CpuWidthDerived, CpuWidthOfferAbsent, WidthComputeOfferAbsent, host_width_axes, AxisAdmits, AxisUnmeasured, gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, RunnerWidthUnresolvedCause, WidthMemoryDenominatorUnestablished, WidthSlotShapeInadmissible, runner_width_unresolved_cause_text, host_memory_admitted_width, MemoryDenominatorStanding, MemoryDenominatorEstablished, MemoryDenominatorUnestablished, host_memory_denominator, HostRunnerSlotAllocationStanding, HostSlotAllocationAdmitted, HostSlotAllocationWidthUnresolved, gunbc_committed_runner_slot_allocation_standings, gunbc_admitted_runner_slot_allocations, SlotMembershipWidthUnresolved, host_disk_admitted_width, DiskAdmitsWidth, DiskWidthUnconstrained, gunbc_runner_slice_cap_for_width, gunbc_runner_slot_enforcement_expected_cap, gunbc_floor_minimum_viable_armed_budget_wall_holds, gunbc_floor_minimum_viable_armed_budget_bytes, gunbc_srv2_03_effective_cap_observation, runner_slot_effective_memory_max_drifts_from_declaration, runner_slot_effective_memory_high_drifts_from_declaration, gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation, srv2_03_floor_leaf_cgroup_events_at_entry_are_zero, gunbc_readback_refusal_stays_witnessed_by_synthetic_drift, FloorCgroupLeafEventAtEntry, RunnerSlotEffectiveCapMeasured,
+  MicrovmSlotRealization, MicrovmSlotRealizationRow, microvm_slot_realization, microvm_slot_realization_over,
+  microvm_slot_charge_is_owed, microvm_slot_charge_is_owed_for, microvm_slot_realization_rows,
+  authored_microvm_slots_charge_over, memory_admitted_width_of_envelope_over,
+  transitional_ci_slot_memory_max_of_envelope_over, committed_width_of_over,
+  srv1_microvm_shakedown_slot_realization, srv1_microvm_revision_job_slot_realization }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, gunbc_runner_slot_memory_max, CpuQuotaResolved, SlotCpuQuotaUnbounded }
 import gunbc.runner.runner_host_deploy {
   runner_host_deploy_of, RunnerHostDeployAdmitted, RunnerHostDeployZeroWidthAdmitted, RunnerHostDeployWidthRefused, srv1_runner_host_spec,
@@ -22,6 +27,7 @@ import gunbc.floor.floor_demand {
   UncensoredPeak, ThrottlePin, PeakUnmeasured,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.decl_ref { decl_ref }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -133,10 +139,15 @@ test fn runner_slot_allocation_committed_hosts_cover_the_fleet_exactly_once() ->
 // stacks attempt-worker 2 x 22 GiB on top: envelope 101.85 GiB; less 52 GiB shakedown;
 // floor(49.85/22)+1 = 3.
 // OPERATOR DECISION 2026-10-18 (user_work_pool_slots 4 -> 2, srv1-14 the revision-job slot): envelope
-// 145.85 GiB; less 52 GiB shakedown and 46 GiB revision-job (22 GiB cell + 24 GiB controller);
-// 2 authored + floor(47.85/22) = 4. The pin is the fold's answer.
+// 145.85 GiB; less 52 GiB shakedown and 46 GiB revision-job (22 GiB cell + 24 GiB controller).
+// OPERATOR DECISION 2026-11-09 (gunbc.design_ruling srv1_microvm_slot_charge_waits_for_realization):
+// those two charges follow the slots' REALIZATION, and srv1-13/srv1-14 read MicrovmSlotNotRealized
+// (no controller, no slot instance, only gunbc-microvm-nft.service active -- the rows are
+// srv1_microvm_shakedown_slot_realization / srv1_microvm_revision_job_slot_realization), so nothing is
+// subtracted: 2 authored + floor(145.85/25) = 7. The pin is the fold's answer, not a remembered number
+// -- the same fold against a MicrovmSlotRealized reading returns 3, which the row below pins.
 test fn runner_slot_allocation_memory_admissions_differ_by_host_class() -> Bool {
-  host_memory_admitted_width(host: operator_host_srv1) == 3
+  host_memory_admitted_width(host: operator_host_srv1) == 7
     && host_memory_admitted_width(host: operator_host_srv3) == 18
     && host_memory_admitted_width(host: operator_host_srv4) == 18
     && match host_memory_denominator(host: operator_host_srv2) {
@@ -768,31 +779,39 @@ test fn srv1_shakedown_slot_is_committed_by_identity_above_the_fleet_range() -> 
   match gunbc_runner_committed_width(host: operator_host_srv1) {
     RunnerWidthUnresolved { cause: _ } => false
     RunnerWidthDerived { slots: w } =>
-      w == 4
+      w == 8
         && srv1_membership_is(slot_index: 13, expect_member: true, expect_fabric: true)
         && srv1_membership_is(slot_index: 14, expect_member: true, expect_fabric: true)
         && srv1_membership_is(slot_index: 2, expect_member: true, expect_fabric: false)
         && srv1_membership_is(slot_index: 1, expect_member: true, expect_fabric: false)
-        && srv1_membership_is(slot_index: 3, expect_member: false, expect_fabric: false)
+        && srv1_membership_is(slot_index: 3, expect_member: true, expect_fabric: false)
+        && srv1_membership_is(slot_index: 6, expect_member: true, expect_fabric: false)
+        && srv1_membership_is(slot_index: 7, expect_member: false, expect_fabric: false)
   }
 }
 
 // THE REVISION-JOB SLOT IS FUNDED WITHOUT TAKING CI WIDTH (operator decision 2026-10-18). At the MEMORY width
 // (the envelope's answer, 3) the #15850 shape holds: the two authored slots plus exactly one fleet member, the DEPLOY
-// slot srv1-02 charged before the CI prefix, and no CI slot. RED: a bare index prefix keeps {1} and drops srv1-02. At the
-// COMMITTED width (4) the declared transitional row adds srv1-01 as the one CI slot beside the deploy slot
-// (operator option (a), 2026-11-05). The revision-job slot is granted exactly the fleet row it is charged.
+// slot srv1-02 charged before the CI prefix, and CI slots only from the released microVM charge. At the
+// COMMITTED width (8) the declared transitional row is srv1-01, which also sits in the fleet prefix
+// (operator option (a), 2026-11-05; the charge release, gunbc.design_ruling
+// srv1_microvm_slot_charge_waits_for_realization, widened the prefix from 1..2 to 1..6 -- the
+// transitional row is still what GRANTS srv1-01 its remainder shape, which is the claim below that
+// survives the widening). The revision-job slot is granted exactly the fleet row it is charged.
 test fn srv1_at_the_memory_width_keeps_the_deploy_slot_and_no_ci_slot_and_the_committed_width_adds_the_transitional_srv1_01() -> Bool {
   let mem = host_committed_identities_at(host: operator_host_srv1, committed: host_memory_admitted_width(host: operator_host_srv1))
   let committed = host_committed_identities_at(host: operator_host_srv1, committed: host_memory_admitted_width(host: operator_host_srv1) + host_transitional_ci_slot_count(host: operator_host_srv1))
   host_authored_microvm_slots(host: operator_host_srv1).length() == 2
-    && mem.length() == 3
-    && mem.length() - host_authored_microvm_slots(host: operator_host_srv1).length() == 1
+    && mem.length() == 7
+    && mem.length() - host_authored_microvm_slots(host: operator_host_srv1).length() == 5
     && identity_in_list(identity: srv1_deploy_slot(), members: mem)
-    && !identity_in_list(identity: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 1 }, members: mem)
-    && committed.length() == 4
+    && identity_in_list(identity: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 1 }, members: mem)
+    && !identity_in_list(identity: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 6 }, members: mem)
+    && committed.length() == 8
     && identity_in_list(identity: srv1_deploy_slot(), members: committed)
     && identity_in_list(identity: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 1 }, members: committed)
+    && identity_in_list(identity: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 6 }, members: committed)
+    && !identity_in_list(identity: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 7 }, members: committed)
     && revision_job_slots.length() == 1
     && revision_job_slots_match_the_fleet_row()
     && byte_size_count(b: authored_microvm_slot_charge(slot: srv1_revision_job_slot()))
@@ -852,6 +871,112 @@ test fn a_width_below_the_authored_count_lists_and_charges_the_same_slots() -> B
     && host_authored_slots_within_width(host: operator_host_srv1, width: 1).length() == 1
     && byte_size_count(b: host_runner_pool_charge(host: operator_host_srv1, slots: 1))
       == byte_size_count(b: gunbc_microvm_shakedown_slot_charge())
+}
+
+// THE MICROVM SLOT CHARGE IS GATED ON A STANDING, NOT ON AUTHORSHIP (operator decision 2026-11-09,
+// gunbc.design_ruling srv1_microvm_slot_charge_waits_for_realization). Four claims, each reddened by a
+// different wrong answer:
+//   * the two srv1 rows read MicrovmSlotNotRealized and NAME what dissolves them -- an install route,
+//     not a date. Reddened by deleting a row or by pointing invalidated_by elsewhere.
+//   * an unobserved slot still charges. Reddened by letting absence free memory -- the exact failure
+//     the operator's decision forbids ("Absent or unobserved realization must NOT silently free the
+//     memory"), and the reason the wet receipt home (gunbc.runner.runner_microvm_slot_unit
+//     microvm_receipt_store) cannot be the gate: its Unready arm is what an uninstalled host reads as,
+//     and Unready must keep the charge.
+//   * A LIVE CONTROLLER RESTORES THE CHARGE AND THE WIDTH FALLS BACK -- the same fold, the same
+//     envelope, only the supplied reading differs (3 vs 7 admitted). Reddened by a gate that ignores
+//     the standing in either direction, and by gating the width without gating the transitional grant.
+//   * the released charge is what widened srv1: at the declared rows the grant is the whole-envelope
+//     remainder; at the Realized rows it is the pre-2026-11-09 remainder.
+
+fn microvm_realized_row(slot: RunnerSlotIdentity, reading: String) -> MicrovmSlotRealizationRow {
+  MicrovmSlotRealizationRow {
+    slot: slot,
+    realization: MicrovmSlotRealized {
+      observed_at: "2026-11-09T01:20Z",
+      reading: reading,
+    },
+  }
+}
+
+fn srv1_realized_rows() -> List<MicrovmSlotRealizationRow> {
+  [
+    microvm_realized_row(slot: srv1_microvm_shakedown_slot(), reading: "controller unit active and gunbc-microvm-slot@<instance> live on srv1"),
+    microvm_realized_row(slot: srv1_microvm_revision_job_slot(), reading: "controller unit active and gunbc-microvm-slot@<instance> live on srv1"),
+  ]
+}
+
+test fn the_srv1_microvm_slot_rows_read_not_realized_and_name_their_dissolution() -> Bool {
+  srv1_microvm_shakedown_slot_realization.slot == srv1_microvm_shakedown_slot()
+    && srv1_microvm_revision_job_slot_realization.slot == srv1_microvm_revision_job_slot()
+    && match microvm_slot_realization(slot: srv1_microvm_shakedown_slot()) {
+      // The positive read, in the carrier: no controller unit, no slot instance, only the ruleset active.
+      MicrovmSlotNotRealized { observed_at: at, reading: _, invalidated_by: by } =>
+        at == "2026-11-09T01:20Z"
+          && by == decl_ref("gunbc.live_deploy.apply", "microvm_controller_install_wet")
+      _ => false
+    }
+    && match microvm_slot_realization(slot: srv1_microvm_revision_job_slot()) {
+      MicrovmSlotNotRealized { observed_at: at, reading: _, invalidated_by: by } =>
+        at == "2026-11-09T01:20Z"
+          && by == decl_ref("gunbc.live_deploy.apply", "microvm_controller_install_wet")
+      _ => false
+    }
+    && microvm_slot_realization_rows.length() == 2
+}
+
+// THE FAIL DIRECTION, EXECUTED. Unobserved and Realized both owe the charge; only a positive
+// not-realized reading releases it. An authored slot with NO row is the fail-closed case: it reads
+// Unobserved through the lookup default and is still owed, so deleting a row or authoring a new slot
+// cannot be a way to take host memory off the ledger.
+test fn an_unobserved_microvm_realization_keeps_the_charge_and_only_a_positive_absence_releases_it() -> Bool {
+  microvm_slot_charge_is_owed(standing: MicrovmSlotRealizationUnobserved { cause: "nobody has read the host" })
+    && microvm_slot_charge_is_owed(
+      standing: MicrovmSlotRealized { observed_at: "2026-11-09T01:20Z", reading: "controller and slot live" })
+    && !microvm_slot_charge_is_owed(
+      standing: MicrovmSlotNotRealized {
+        observed_at: "2026-11-09T01:20Z",
+        reading: "no controller, no slot",
+        invalidated_by: decl_ref("gunbc.live_deploy.apply", "microvm_controller_install_wet"),
+      })
+    && microvm_slot_charge_is_owed_for(slot: srv1_microvm_shakedown_slot()) == false
+    && microvm_slot_charge_is_owed(standing: microvm_slot_realization_over(rows: [], slot: srv1_microvm_shakedown_slot()))
+    && byte_size_count(b: authored_microvm_slots_charge_over(
+      slots: [srv1_microvm_shakedown_slot(), srv1_microvm_revision_job_slot()], rows: []))
+      == byte_size_count(b: gunbc_microvm_shakedown_slot_charge())
+        + byte_size_count(b: authored_microvm_slot_charge(slot: srv1_microvm_revision_job_slot()))
+    && byte_size_count(b: authored_microvm_slots_charge(slots: host_authored_microvm_slots(host: operator_host_srv1))) == 0
+}
+
+// THE DISCRIMINATING CLAIM (condition (2) of the manager's 2026-11-09 instruction): put a live
+// controller in front of the SAME fold and the charge returns, so srv1's admitted width falls back to
+// the pre-decision 3 and its committed width to 4 -- the numbers srv1 carried while authorship charged
+// unconditionally. Read the two conjuncts together: same facts, same envelope, only the standing rows
+// differ. Gating the width without gating the transitional grant reddens the grant conjunct.
+test fn a_live_microvm_controller_restores_the_charge_and_srv1s_width_falls_back() -> Bool {
+  let f = host_width_facts(host: operator_host_srv1)
+  let envelope = runner_memory_envelope_bytes_of(f: f)
+  let authored = host_authored_microvm_slots(host: operator_host_srv1)
+  let realized = srv1_realized_rows()
+  let fleet = byte_size_count(b: gunbc_runner_slot_memory_max)
+  memory_admitted_width_of_envelope_over(envelope: byte_size(envelope), authored_slots: authored, rows: realized) == 3
+    && host_memory_admitted_width(host: operator_host_srv1) == 7
+    && match committed_width_of_over(f: f, rows: realized) {
+      RunnerWidthDerived { slots: w } => w == 4
+      RunnerWidthUnresolved { cause: _ } => false
+    }
+    && match gunbc_runner_committed_width(host: operator_host_srv1) {
+      RunnerWidthDerived { slots: w } => w == 8
+      RunnerWidthUnresolved { cause: _ } => false
+    }
+    && byte_size_count(b: transitional_ci_slot_memory_max_of_envelope_over(
+      envelope: byte_size(envelope), authored_slots: authored, transitional_count: 1, rows: realized))
+      == envelope - byte_size_count(b: gunbc_microvm_shakedown_slot_charge())
+        - byte_size_count(b: authored_microvm_slot_charge(slot: srv1_microvm_revision_job_slot()))
+        - 1 * fleet
+    && byte_size_count(b: transitional_ci_slot_memory_max_of_envelope_over(
+      envelope: byte_size(envelope), authored_slots: authored, transitional_count: 1, rows: microvm_slot_realization_rows))
+      == envelope - 5 * fleet
 }
 
 // THE ZERO-REMAINDER REFUSAL IS REACHED THROUGH committed_width_of WITH SUPPLIED FACTS. srv1 declares a

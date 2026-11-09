@@ -1695,7 +1695,55 @@ data host_effect_apply_witness_import_block_absent: IntegrationConcern = Integra
   },
 }
 
-data integration_concerns: List<IntegrationConcern> = [controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim]
+data integration_concerns: List<IntegrationConcern> = [microvm_lane_install_writes_no_slot_realization, controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim]
+
+// THE srv1 MICROVM SLOTS' CHARGE IS RELEASED BY A READING THE LANE NEVER WRITES (filed by
+// still-otter-622, 2026-11-09, under the operator decision
+// gunbc.design_ruling srv1_microvm_slot_charge_waits_for_realization). The standing
+// gunbc.runner.runner_slot_allocation::MicrovmSlotRealization now decides whether an authored microVM
+// slot's memory is charged against its host's runner envelope. srv1-13 and srv1-14 carry
+// MicrovmSlotNotRealized rows read on 2026-11-09 (no controller, no slot instance, only the network
+// ruleset active), which frees ~60-68 GiB and takes srv1 from a committed width of 4 to 8. Every arm of
+// that standing is written BY HAND: the lane's install route
+// (gunbc.live_deploy.apply microvm_controller_install_wet) reads back the tree receipt, the VMM receipt
+// and whether systemd loads the slot template -- a positive read of realization, which is exactly what
+// MicrovmSlotRealized means -- and then throws it away. So the charge returns only if someone edits a
+// row, and the invalidation each row names is an event nothing performs on the row. That is the gap this
+// concern records; the rows' invalidated_by is the carrier that keeps it from being forgotten.
+data microvm_lane_install_writes_no_slot_realization: IntegrationConcern = IntegrationConcern {
+  identity: "microvm_lane_install_writes_no_slot_realization",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "MicrovmSlotRealization"),
+    requirement: "when the microVM lane installs its controller on a host and starts a slot, the realization rows for that host's authored microVM slots read MicrovmSlotRealized, so their memory charge returns by derivation in the same release that puts the controller on the host -- and when a slot is torn down its row returns to MicrovmSlotRealizationUnobserved rather than standing stale",
+    standing: RequirementUnestablished { decided_by: "the operator's 2026-11-09 decision (gunbc.design_ruling srv1_microvm_slot_charge_waits_for_realization) is that the charge follows realization; no route in the model writes the MicrovmSlotRealized arm, so the return half of that decision is owed to the microVM lane" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "microvm_controller_install_wet"),
+    tail: [
+      decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "MicrovmSlotRealization"),
+      decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "microvm_slot_realization"),
+      decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "srv1_microvm_shakedown_slot_realization"),
+      decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "srv1_microvm_revision_job_slot_realization"),
+    ],
+  },
+  question: "Who flips srv1-13 and srv1-14 from MicrovmSlotNotRealized to MicrovmSlotRealized when the lane goes live: the install route's own readback (which already sees the tree receipt, the VMM receipt and systemd loading the template, so it holds exactly the reading the arm means), a host converge that re-reads the host afterwards, or a hand edit of the rows? If the install readback is the writer, where do the rows live -- gunbc.runner.runner_slot_allocation keeps the fold that consumes them, and gunbc.runner.runner_microvm_slot_unit owns the receipt store whose Unready/Refused arms cannot tell an uninstalled host from an unreadable one?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "e5c2a417867ace582fed545ce9ddefd8f5eeca6d",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "MicrovmSlotRealization") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "authored_microvm_slots_charge_over") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_microvm_slot_unit", decl_name: "microvm_receipt_store") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_microvm_slot_unit", decl_name: "microvm_receipt_history") },
+        ],
+      },
+      account: "srv1 reads no microVM controller and no slot instance, yet until this change its two authored microVM slots were charged 52 GiB and 46 GiB against the host's runner envelope on AUTHORSHIP ALONE, holding the derived committed width at 4. Reading them as MicrovmSlotNotRealized takes srv1 to 8 committed. The RELEASE direction is what the model can justify today; the RETURN direction is not mechanical. The wet homes that could carry it refuse the question rather than answering it: microvm_receipt_store reports MicrovmReceiptStoreUnready and microvm_receipt_history MicrovmReceiptHistoryRefused for an absent store directory and an unreadable one in the SAME arm, so conditioning the width on them would report an uninstalled host as unobserved and keep charging it -- correct as a fail-closed answer for a width, useless for a lane that wants its charge back when it goes live. Only gunbc.live_deploy.apply microvm_controller_install_wet reads realization positively, and it reads it to decide whether ITS OWN install succeeded.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))
