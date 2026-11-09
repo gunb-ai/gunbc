@@ -156,6 +156,38 @@ data srv1_serving_gpu_launcher: RetainedShellScript = RetainedShellScript {
 // through v2.workflow.bash_emit (bash_emit_stmts), leaving no hand-authored shell body in this module.
 data srv1_serving_gpu_launcher_bash_emit_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.serving.srv1_serving_replica_layout srv1_serving_gpu_launcher — the per-replica launcher is retained as an opaque hash-pinned shell receipt. DISSOLVES WHEN it is rendered from the typed Srv1ServingReplicaSpec/Srv1LaunchConfig rows through v2.workflow.bash_emit bash_emit_stmts (device word via nvidia_cdi_device_selector_of, memory/shm via ByteSize, ports via Port, LMCache tiers via their single authority), leaving no hand-authored medium-as-string body here. Until then it is an adopted receipt verified against the typed rows, not an authority.")
 
+// THE SYSTEMD HELPER, retained verbatim (review 92396: an admitted hand script is AUTHORIZED the way the
+// launcher's is — a hash-pinned RetainedShellScript plus the scaffold marker naming its dissolution
+// capability — not a prose "ADOPTED" sentence). Read from the host 2026-11-09 (sha256
+// e2822634a23aea3f45019369cbfbfede120e1ca3de6bd0dc34818263886f6a6d): start adopts a RUNNING container by
+// the roster name (no relaunch), else execs the launcher; blocks on `docker wait` and exits with the
+// CONTAINER's status (143 = clean SIGTERM -> SuccessExitStatus; anything else -> Restart=on-failure); stop
+// is `docker stop -t 240` so LMCache can flush its disk tier. It contains NO destroy path — the witness
+// ties that to Srv1AdoptionMismatchAction's refusal of DestroyAndRelaunch.
+data srv1_replica_helper: RetainedShellScript = RetainedShellScript {
+  body: "#!/bin/bash\n# lil-replica start|stop <gpu-index> -- systemd helper for lil-replica@.service (srv1, 2026-11-08).\n# start: adopt the replica container if it is already running (no relaunch), else launch it with\n#        srv1_lil_serve_gpu.sh; then block on the container and exit with ITS status\n#        (143 = stopped by SIGTERM = success; anything else -> systemd Restart=on-failure).\n# stop:  docker stop with a long grace period so LMCache can flush its disk tier.\nset -u\nACTION=${1:?start|stop}; IDX=${2:?gpu index}\ncase $IDX in 0) NAME=lil-flash-next ;; 1) NAME=lil-flash-next-1 ;; *) echo \"unknown GPU index $IDX\" >&2; exit 2 ;; esac\nLAUNCH=/home/briansrls/strata-test/srv1_lil_serve_gpu.sh\ncase $ACTION in\n  start)\n    if [ \"$(docker container inspect -f '{{.State.Running}}' \"$NAME\" 2>/dev/null)\" = true ]; then\n      echo \"adopting running container $NAME\"\n    else\n      \"$LAUNCH\" \"$IDX\" || exit 1\n    fi\n    rc=$(docker wait \"$NAME\") || exit 1\n    echo \"$NAME exited with status $rc\"; exit \"$rc\" ;;\n  stop)\n    exec docker stop -t 240 \"$NAME\" ;;\n  *) echo \"usage: $0 start|stop <idx>\" >&2; exit 2 ;;\nesac\n",
+  reason: "the systemd helper /usr/local/sbin/lil-replica on srv1 (sha256 e2822634a23aea3f45019369cbfbfede120e1ca3de6bd0dc34818263886f6a6d, read from the host 2026-11-09): the unit's ExecStart/ExecStop verb handler — adopt-or-launch by roster name, docker-wait to propagate the container exit status to systemd, docker stop -t 240 for the LMCache disk flush. Adoption today checks only the running flag by name; the contract's verification set is the requirement, tracked as srv1_helper_adoption_verification_gap." as NonEmptyStr,
+  dissolves_to: decl_ref(module_path: "v2.workflow.bash_emit", decl_name: "bash_emit_stmts"),
+}
+
+// The counted scaffold marker authorizing the retained helper, mirroring the launcher's
+// srv1_serving_gpu_launcher_bash_emit_dissolution (review 92396: a dissolution CONDITION describes how the
+// debt ends; the scaffold row is what ADMITS it while counted).
+data srv1_replica_helper_bash_emit_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.serving.srv1_serving_replica_layout srv1_replica_helper — the adopt-or-launch helper is retained as an opaque hash-pinned shell receipt. DISSOLVES WHEN its start/stop verbs are emitted from the typed Srv1ReplicaUnitContract/Srv1ServingReplicaSpec rows through v2.workflow.bash_emit bash_emit_stmts (adopt-checks from adoption_verifies, stop grace from exec_stop_timeout, exit-status propagation from success_exit_status), leaving no hand-authored medium-as-string body here.")
+
+// THE LIVE GAP, plainly (review 92396 + parent acceptance item 2): the contract requires adoption to verify
+// the running container's GPU UUID, image, ports, mounts and resource settings and to report drift rather
+// than destroy a healthy engine; the on-host helper checks ONLY that a container with the roster NAME is
+// running, then adopts it. The model does not attribute the contract's checks to the helper as fact —
+// adopting a mismatched-but-named container is possible today. Trigger: convergence stages its own helper
+// (the bash-emit dissolution above), or the operator extends the helper's inspect to the contract's
+// fields; until then the boot path is ADOPTED, and the status stays `adopted`, never `verified`.
+data srv1_helper_adoption_verification_gap: FrontierRow = frontier_row_decl(
+  ref: decl_ref(module_path: "gunbc.serving.srv1_serving_replica_layout", decl_name: "srv1_replica_helper"),
+  reason: "srv1_replica_unit_contract.adoption_verifies names eight aspects (container name, GPU UUID, image digest, port binding, mounts, memory limit, shm size, cgroup parent); the retained helper (srv1_replica_helper, sha256 e2822634...6a6d) inspects only '{{.State.Running}}' by container name. A container that carries the roster name but drifts on any other aspect is adopted silently today. Declared, not hidden: the helper has no destroy path (so a healthy container is never destroyed), but also no drift report.",
+  dissolution: unbound_dissolution(description: "the helper's start verb checks every srv1_replica_unit_contract.adoption_verifies field on the running container (docker inspect of Config.Image, HostConfig.Memory / MemorySwap / ShmSize / CgroupParent, HostConfig.PortBindings, Mounts, and the nvidia device env for the GPU UUID) and prints a typed drift report, exiting non-zero without destroying or restarting the container; witnessed on srv1 against the roster rows."),
+)
+
 // ── the systemd management (lil-replica@.service) ───────────────────────────────────────────────────
 //
 // The operator installed this on srv1 (2026-11-08). The template unit manages ONE replica by index;
@@ -181,17 +213,27 @@ data srv1_serving_gpu_launcher_bash_emit_dissolution: DissolutionCondition = unb
 // image, port bindings, mounts and resource settings against the expected values from the spec. A
 // mismatch reports drift; it NEVER silently destroys a healthy engine.
 
+// A named systemd unit on the host (name only; unit CONTENT authority, when convergence stages it, is the
+// unit emitter named by the boot-path dissolution below — until then this is a read-only naming).
+type SystemdUnitRef {
+  name: NonEmptyStr
+}
+
 type Srv1ReplicaUnitContract {
   unit_template: NonEmptyStr
   helper_path: NonEmptyStr
   // The engine command the unit launches, CONSTRUCTED from the typed launch config (srv1_replica_engine_argv).
   // The modeled boot realization is this render, NOT the operator's gpu.sh plus a runtime EXTRA -- so EXTRA is an
-  // operator-manual path outside convergence (srv1_boot_path_executes_rendered_argv frontier). The helper_path and
-  // adoption_verifies are the live adopt-or-launch mechanism (the helper's own modeling is the parent's follow-up).
+  // operator-manual path outside convergence (srv1_boot_path_executes_rendered_argv frontier).
   exec_start_argv: List<NonEmptyStr>
-  adoption_verifies: List<NonEmptyStr>
-  on_mismatch: NonEmptyStr
-  restart: NonEmptyStr
+  // Aspects a conforming adoption must verify on the running container before adopting it (parent
+  // acceptance item 2). The LIVE helper verifies only the name — that gap is srv1_helper_adoption_verification_gap,
+  // a declared frontier, not silently attributed to the helper.
+  adoption_verifies: List<Srv1AdoptionField>
+  // The ONLY outcomes adoption may take on a mismatch; the contract never holds DestroyAndRelaunch, and
+  // srv1_replica_helper contains no destroy call (the witness checks both).
+  on_mismatch: List<Srv1AdoptionMismatchAction>
+  restart: Srv1RestartPolicy
   restart_delay: Second
   success_exit_status: Int
   start_limit_burst: Nat
@@ -199,34 +241,103 @@ type Srv1ReplicaUnitContract {
   exec_stop_timeout: Second
   timeout_stop: Second
   after_units: List<NonEmptyStr>
+  // The unit's typed dependency edge onto the power-cap oneshot (naming only; cap ownership is lane A).
+  power_cap_unit: SystemdUnitRef
   run_as_user: NonEmptyStr
   run_as_group: NonEmptyStr
   enabled_instances: List<Nat>
 }
+
+// Typed carriers for the unit contract (review 92396: invariants and policy belong in typed carriers,
+// not English sentences a fold cannot read).
+
+// One checked aspect of a running container during adoption.
+type Srv1AdoptionField
+  = ContainerName
+  | GpuUuid
+  | ImageDigest
+  | PortBinding
+  | Mounts
+  | MemoryLimit
+  | ShmSize
+  | CgroupParent
+
+// What adoption does when a check disagrees. DestroyAndRelaunch is the UNSAFE action: it is modelable
+// (so a fold can see it) but the contract never holds it, and the witness refuses any contract that does
+// — a healthy engine is never silently destroyed (parent acceptance item 2).
+type Srv1AdoptionMismatchAction
+  = ReportDrift
+  | ExitNonZero
+  | DestroyAndRelaunch
+
+// systemd Restart= policy (only the modeled variant exists here; extend when a unit needs another).
+type Srv1RestartPolicy
+  = OnFailure
+
+fn srv1_adoption_field_eq(a: Srv1AdoptionField, b: Srv1AdoptionField) -> Bool {
+  match a {
+    ContainerName => match b { ContainerName => true, _ => false }
+    GpuUuid => match b { GpuUuid => true, _ => false }
+    ImageDigest => match b { ImageDigest => true, _ => false }
+    PortBinding => match b { PortBinding => true, _ => false }
+    Mounts => match b { Mounts => true, _ => false }
+    MemoryLimit => match b { MemoryLimit => true, _ => false }
+    ShmSize => match b { ShmSize => true, _ => false }
+    CgroupParent => match b { CgroupParent => true, _ => false }
+  }
+}
+
+fn srv1_adoption_field_in(fields: List<Srv1AdoptionField>, f: Srv1AdoptionField) -> Bool {
+  any(fields, g => srv1_adoption_field_eq(a: f, b: g))
+}
+
+fn srv1_mismatch_action_eq(a: Srv1AdoptionMismatchAction, b: Srv1AdoptionMismatchAction) -> Bool {
+  match a {
+    ReportDrift => match b { ReportDrift => true, _ => false }
+    ExitNonZero => match b { ExitNonZero => true, _ => false }
+    DestroyAndRelaunch => match b { DestroyAndRelaunch => true, _ => false }
+  }
+}
+
+fn srv1_mismatch_action_in(actions: List<Srv1AdoptionMismatchAction>, a: Srv1AdoptionMismatchAction) -> Bool {
+  any(actions, b => srv1_mismatch_action_eq(a: a, b: b))
+}
+
+fn srv1_restart_policy_eq(a: Srv1RestartPolicy, b: Srv1RestartPolicy) -> Bool {
+  match a {
+    OnFailure => match b { OnFailure => true, _ => false }
+  }
+}
+
+// The unit's ordering/dependency edge onto the power-cap oneshot, named as a declaration so the edge has
+// ONE authority (review 92396 context; the cap's apply/readback ownership is lane A / #16047, NOT here —
+// this row only states that the replica unit is ordered after the on-host enabled unit).
+data srv1_replica_power_cap_unit_ref: SystemdUnitRef = SystemdUnitRef { name: "gpu-power-limit.service" as NonEmptyStr }
 
 data srv1_replica_unit_contract: Srv1ReplicaUnitContract = Srv1ReplicaUnitContract {
   unit_template: "lil-replica@.service" as NonEmptyStr,
   helper_path: "/usr/local/sbin/lil-replica" as NonEmptyStr,
   exec_start_argv: srv1_replica_engine_argv(config: srv1_admitted_launch_config),
   adoption_verifies: [
-    "container_name" as NonEmptyStr,
-    "gpu_uuid" as NonEmptyStr,
-    "image_digest" as NonEmptyStr,
-    "port_binding" as NonEmptyStr,
-    "mounts" as NonEmptyStr,
-    "memory_limit" as NonEmptyStr,
-    "shm_size" as NonEmptyStr,
-    "cgroup_parent" as NonEmptyStr,
+    ContainerName,
+    GpuUuid,
+    ImageDigest,
+    PortBinding,
+    Mounts,
+    MemoryLimit,
+    ShmSize,
+    CgroupParent,
   ],
-  on_mismatch: "report drift; do NOT destroy the running container; exit non-zero" as NonEmptyStr,
-  restart: "on-failure" as NonEmptyStr,
-  restart_delay: second(count: 5),
+  on_mismatch: [ReportDrift, ExitNonZero],
+  restart: OnFailure,
+  restart_delay: second(count: 30),
   success_exit_status: 143,
   start_limit_burst: 3,
   start_limit_interval: second(count: 3600),
   exec_stop_timeout: second(count: 240),
   timeout_stop: second(count: 300),
-  after_units: ["docker.service" as NonEmptyStr, "gpu-power-limit.service" as NonEmptyStr],
+  after_units: ["docker.service" as NonEmptyStr, "network-online.target" as NonEmptyStr, "gpu-power-limit.service" as NonEmptyStr],
+  power_cap_unit: srv1_replica_power_cap_unit_ref,
   run_as_user: "briansrls" as NonEmptyStr,
   run_as_group: "docker" as NonEmptyStr,
   enabled_instances: [0, 1],
@@ -258,7 +369,7 @@ data srv1_replica_unit_contract: Srv1ReplicaUnitContract = Srv1ReplicaUnitContra
 data srv1_replica_boot_path_guard: FrontierRow = frontier_row_decl(
   ref: decl_ref(module_path: "gunbc.serving.srv1_serving_replica_layout", decl_name: "srv1_replica_unit_contract"),
   reason: "the legacy singleton boot path is retired and the boot path is retargeted to per-replica instances derived from srv1_serving_replica_roster and gated on srv1_launch_admission; but the replica UNIT FILE and helper are the operator's hand install -- ADOPTED, their sha256 recorded on srv1_replica_unit_contract -- so convergence ENABLES the instances without staging or overwriting them while the operator configures live serving.",
-  dissolution: unbound_dissolution(description: "convergence takes canonical ownership of the replica unit file and helper: it stages its own modeled bytes, validated against the sha256 recorded on srv1_replica_unit_contract, instead of relying on the operator's hand copy; a witness on srv1 diffs the on-host helper and unit against the modeled contract. Until then the boot path is ADOPTED, not convergence-owned (the status stays distinct from configured and durable)."),
+  dissolution: unbound_dissolution(description: "dissolve-on: the boot path's hand-installed bytes become CONVERGENCE-OWNED: convergence stages its own unit file rendered from srv1_replica_unit_contract (Restart from restart, RestartSec from restart_delay, SuccessExitStatus from success_exit_status, StartLimit* from the start-limit rows, TimeoutStopSec from timeout_stop, ExecStop grace from exec_stop_timeout, After/Requires from after_units + power_cap_unit, User/Group from the run-as rows) and its own helper emitted through v2.workflow.bash_emit bash_emit_stmts (srv1_replica_helper_bash_emit_dissolution), each staged only when its sha256 differs and never while a healthy replica runs. A witness on srv1 diffs the on-host unit and helper against the modeled contract; until it is green the boot path's status stays `adopted` — distinct from configured and from durable."),
 )
 
 // ── the router's view: one endpoint per replica ─────────────────────────────────────────────────────
@@ -615,10 +726,11 @@ data srv1_serving_replica_layout_frontier: List<FrontierRow> = [
   srv1_legacy_launcher_guard_frontier,
   srv1_boot_path_executes_rendered_argv,
   srv1_replica_boot_path_guard,
+  srv1_helper_adoption_verification_gap,
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.serving.srv1_serving_replica_layout", decl_name: "srv1_serving_gpu_launcher"),
-    reason: "the gpu.sh launcher body is transcribed from the host (read 2026-11-08 21:36 UTC) and its sha256 is relayed by the operator (c486a841...26cf); no witness has independently computed the hash. If the transcription drifted from the host file, this module would not catch it until a witness runs. The adoption contract above is transcribed from the operator's relay and the unit file (read); the helper script itself is not retained verbatim here (only its behavioral contract is recorded).",
-    dissolution: unbound_dissolution(description: "a witness on srv1 computes sha256 of both the launcher and the helper script, and diffs the launcher body against this retained copy; the parent's #16104 branch adds the router row consuming the roster. SUFFICIENT for dissolving this row."),
+    reason: "the gpu.sh launcher body is transcribed from the host (read 2026-11-08 21:36 UTC) and its sha256 is relayed by the operator (c486a841...26cf); no witness has independently computed the hash. If the transcription drifted from the host file, this module would not catch it until a witness runs. The unit file was READ directly (2026-11-09) and the helper is retained verbatim (srv1_replica_helper) with its relayed sha256 e2822634...6a6d.",
+    dissolution: unbound_dissolution(description: "a witness on srv1 computes sha256 of both the launcher and the helper script, and diffs each retained body against this module's copy; the parent's #16104 branch adds the router row consuming the roster. SUFFICIENT for dissolving this row."),
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.serving.srv1_serving_replica_layout", decl_name: "srv1_replica_unit_contract"),

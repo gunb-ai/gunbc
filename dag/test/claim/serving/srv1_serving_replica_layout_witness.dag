@@ -13,6 +13,10 @@ import gunbc.serving.srv1_serving_replica_layout {
   srv1_launch_admission,
   srv1_replica_unit_contract, srv1_disk_guard_contract,
   srv1_serving_gpu_launcher, srv1_replica_engine_argv, srv1_replica_device_words,
+  srv1_replica_helper, Srv1AdoptionField, Srv1AdoptionMismatchAction, Srv1RestartPolicy,
+  ContainerName, GpuUuid, ImageDigest, PortBinding, Mounts, MemoryLimit, ShmSize, CgroupParent,
+  ReportDrift, ExitNonZero, DestroyAndRelaunch, OnFailure,
+  srv1_adoption_field_in, srv1_mismatch_action_in, srv1_restart_policy_eq,
   Srv1ServingReplicaSpec,
 }
 import extdeps.container.nvidia_container_toolkit { nvidia_cdi_device_selector_of, nvidia_cdi_device_name_prefix }
@@ -127,9 +131,51 @@ test fn the_disk_guard_reserve_is_positive() -> Bool {
   byte_size_count(b: srv1_disk_guard_contract.required_free_per_replica) > 0
 }
 
-// The systemd contract says Restart=on-failure and SuccessExitStatus=143.
+// The systemd contract carries the unit file's semantics as TYPED carriers (review 92396): restart policy,
+// exit status, and the power-cap ordering edge are machine-readable, not English.
 test fn the_systemd_contract_matches_the_unit_file() -> Bool {
-  (srv1_replica_unit_contract.restart as String) == "on-failure" && srv1_replica_unit_contract.success_exit_status == 143
+  srv1_restart_policy_eq(a: srv1_replica_unit_contract.restart, b: OnFailure)
+    && srv1_replica_unit_contract.success_exit_status == 143
+    && (srv1_replica_unit_contract.power_cap_unit.name as String) == "gpu-power-limit.service"
+}
+
+// Adoption policy is typed (review 92396 + parent item 2): the contract verifies the eight aspects, and on a
+// mismatch it REPORTS DRIFT and EXITS NON-ZERO — it can never hold DestroyAndRelaunch, and the retained
+// helper carries no destroy path. A contract that added the destroy action goes red here.
+test fn the_adoption_policy_never_destroys_a_healthy_engine() -> Bool {
+  let c = srv1_replica_unit_contract
+  let verifies_all =
+    srv1_adoption_field_in(fields: c.adoption_verifies, f: ContainerName)
+    && srv1_adoption_field_in(fields: c.adoption_verifies, f: GpuUuid)
+    && srv1_adoption_field_in(fields: c.adoption_verifies, f: ImageDigest)
+    && srv1_adoption_field_in(fields: c.adoption_verifies, f: PortBinding)
+    && srv1_adoption_field_in(fields: c.adoption_verifies, f: Mounts)
+    && srv1_adoption_field_in(fields: c.adoption_verifies, f: MemoryLimit)
+    && srv1_adoption_field_in(fields: c.adoption_verifies, f: ShmSize)
+    && srv1_adoption_field_in(fields: c.adoption_verifies, f: CgroupParent)
+  let safe_outcomes =
+    srv1_mismatch_action_in(actions: c.on_mismatch, a: ReportDrift)
+    && srv1_mismatch_action_in(actions: c.on_mismatch, a: ExitNonZero)
+    && !srv1_mismatch_action_in(actions: c.on_mismatch, a: DestroyAndRelaunch)
+  let helper_has_no_destroy = !string_contains(s: srv1_replica_helper.body as String, pattern: "docker rm")
+  verifies_all && safe_outcomes && helper_has_no_destroy
+}
+
+// The retained helper is a receipt of the ON-HOST adopt-or-launch script (read 2026-11-09): it adopts by
+// the roster names, propagates the container exit status through docker wait, and stops with -t 240. The
+// contract's eight-field verification set is NOT in the helper — that live gap is the declared frontier
+// srv1_helper_adoption_verification_gap, and this test pins what the helper DOES so the gap stays honest.
+test fn the_helper_receipt_is_the_live_adopt_or_launch_route() -> Bool {
+  let b = srv1_replica_helper.body as String
+  let r0 = srv1_replica_0
+  let r1 = srv1_replica_1
+  string_contains(s: b, pattern: r0.container_name as String)
+    && string_contains(s: b, pattern: r1.container_name as String)
+    && string_contains(s: b, pattern: "docker wait")
+    && string_contains(s: b, pattern: "exit \"$rc\"")
+    && string_contains(s: b, pattern: "docker stop -t 240")
+    && string_contains(s: b, pattern: "adopting running container")
+    && !string_contains(s: b, pattern: "docker rm")
 }
 
 // The contract enables both instances.
