@@ -108,7 +108,7 @@ type VllmUsageStatsDisableTerm {
 // environment, was deleted for postponing the attribution it must not make -- because what it holds
 // is a CITED UPSTREAM READING (the exact-equality semantics of envs.py, which review 64043
 // established after a first spelling got the direction wrong in the admitting sense), and
-// re-deriving that from the source a second time is the redundant work DESIGN 2 prices.
+// re-deriving that from the source a second time is the redundant work gunbc.design_argument::minimize_redundancy prices.
 fn vllm_usage_stats_assignment_disables(term: VllmUsageStatsDisableTerm, name: NonEmptyStr, value: String) -> Bool {
   (name as String) == (term.variable as String) && value == (term.disabling_value as String)
 }

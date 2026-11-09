@@ -26,7 +26,7 @@ import gunbc.auth.approval_store_receipt {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE MINT AND THE STORE'S CHECK OVER SUPPLIED READINGS (§3: one interface, supplied values). The
+// THE MINT AND THE STORE'S CHECK OVER SUPPLIED READINGS (gunbc.design_argument::witness_one_interface: one interface, supplied values). The
 // real readings -- the decision store slot, its generation-1 filing, the keys -- are the handler's;
 // every arm here is decided by what the fold does with them.
 
@@ -78,7 +78,7 @@ fn sr_mint(slot: EscalationSlot, attempt: String) -> StoreReceiptIssuance {
 // THE MINT'S CLAIMS, over the real filing path (the slot and its generation-1 JSON record): an
 // approved escalation over a filing that agrees mints a receipt whose claims are the filing's and the
 // decision's, addressed to the store. Verification is a separate interface and has its own claims
-// below, over a receipt built directly from the same claim constructor (§3: one interface per claim).
+// below, over a receipt built directly from the same claim constructor (gunbc.design_argument::witness_one_interface: one interface per claim).
 test fn an_approved_matching_filing_mints_a_receipt_addressed_to_the_store() -> Bool {
   match sr_mint(slot: sr_approved(revision: sr_revision), attempt: "tx-d0") {
     StoreReceiptRefused { refusal: _ } => false

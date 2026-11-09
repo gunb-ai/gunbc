@@ -1735,7 +1735,7 @@ fn bmc_fan_converge_with_credential(
 // strand a host on a policy it cannot roll back off.
 // THE HOST PREREQUISITE THIS FUNCTION ASKS FIRST is asked OF THE ENROLLED ROSTER rather than of a
 // string literal. The body opened with `shell.PosixCommandV.Check(command: "sshpass")` against a
-// hand-spelled word -- a second authority for a fact gunbc.host.host_cli_dependency now owns (§3), and
+// hand-spelled word -- a second authority for a fact gunbc.host.host_cli_dependency now owns (gunbc.design_argument::single_authority), and
 // one that could not notice the binary being renamed, re-sourced, or joined by a sibling
 // requirement.
 //

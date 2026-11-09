@@ -40,7 +40,7 @@ fn boot_medium_served_link_path() -> NonEmptyStr {
 
 // THE PRIVATE HALF'S CUSTODY. Its version is pending until the mint's receipt names the version the
 // store assigned; the pin, the public key and its fingerprint then land here together. CONSUMPTION
-// (DESIGN section 3c): the mint (gunbc.host.boot_medium_reader_key_mint) adds the version to this
+// (gunbc.design_argument::consumption): the mint (gunbc.host.boot_medium_reader_key_mint) adds the version to this
 // secret, and the converge grant set binds the mint identity's versionAdder cell on it
 // (gunbc.auth.fleet_secret_accessor_roster boot_medium_reader_key_version_adder_row). The boot's own
 // accessor cell is the third change of work item adhoc-0abea207-7ec.
@@ -73,7 +73,7 @@ fn boot_medium_reader_entry_for(key: SshPublicKey) -> AuthorizedKeyEntry? {
   }
 }
 
-// CONSUMPTION (DESIGN section 3c): a declared frontier. The consumer is the srv2 managed-host file row
+// CONSUMPTION (gunbc.design_argument::consumption): a declared frontier. The consumer is the srv2 managed-host file row
 // /etc/ssh/authorized_keys.d/<reader principal>, converged from main by gunbc.runner.runner_host_file_converge
 // once its subject is generalized to a managed host with declared rows; trigger: the second change of the
 // mtcollins1 approval-free branch boot plan (work item adhoc-0abea207-7ec), which also mints the key. Until

@@ -14,7 +14,7 @@ import std.content_hash { Fnv1a64Structural, Fnv1a64StructuralDigestHex }
 // D1 derived-equality backfill: the hand equality folds (use_relation_eq /
 // discovered_source_refs_digest_eq / node_superset_field_eq /
 // diagnostic_interface_kind_eq) are deleted; their call sites now read the
-// derived == from dag/std/algebra (DESIGN §3/§4). The RED is the control for
+// derived == from dag/std/algebra (gunbc.design_argument::single_authority, gunbc.design_argument::closed_grounded_substrate). The RED is the control for
 // the backfill: distinct variants (or distinct payload values) compare unequal,
 // so any equality that conflated them (the failure mode the hand folds were
 // backfilling) FAILs. The positive control pins the equal-values-equal

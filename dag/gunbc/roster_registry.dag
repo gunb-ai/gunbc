@@ -253,7 +253,7 @@ data roster_registry: List<RosterRegistration> = [
     ),
     unit_kind: "non-fold-residue site key (path::fn)",
     membership: DeclaredFrontier {
-      reason: "closed-coproduct wildcard sites classified un-migrated modeling (DESIGN §6). The union is computed by the seed host reader non_fold_residue_identity_join_triples, because .dag has no compile-graph access.",
+      reason: "closed-coproduct wildcard sites classified un-migrated modeling (gunbc.design_argument::how_to_work). The union is computed by the seed host reader non_fold_residue_identity_join_triples, because .dag has no compile-graph access.",
       dissolution: unbound_dissolution(description: "the typed walk and reader fold into a pure .dag Node-tree lens when compile-graph access lands (gunbc#5364)")
     }
   },
@@ -262,7 +262,7 @@ data roster_registry: List<RosterRegistration> = [
     unit_kind: "BeltSpawnOutcome / LaunchRefusal variant exemplar",
     membership: DeclaredFrontier {
       reason: "hand variant enumeration standing in for coproduct-arm enumeration: belt_dispatch_result_exemplars lists one exemplar per BeltSpawnOutcome arm, the not-admitted arm expanded over launch_refusal_exemplars (one per LaunchRefusal arm), to derive the wire-label set (belt_dispatch_all_status_labels). belt_dispatch_status_label's total match walls an 8th VARIANT at compile time, but nothing ties THIS list to the variant set, so a missed exemplar would silently narrow both the derived label set and the component wire-total that reads it while the live server emits the unmodeled label",
-      dissolution: unbound_dissolution(description: "substrate inhabitance enumeration lands (DESIGN section 4, fold over a coproduct's arms without a hand roster), or the exemplars derive from the serve JSON emit's own total match (belt_dispatch_result_json_value); then this list and its roster row delete")
+      dissolution: unbound_dissolution(description: "substrate inhabitance enumeration lands (gunbc.design_argument::closed_grounded_substrate, fold over a coproduct's arms without a hand roster), or the exemplars derive from the serve JSON emit's own total match (belt_dispatch_result_json_value); then this list and its roster row delete")
     }
   },
   RosterRegistration {
@@ -278,7 +278,7 @@ data roster_registry: List<RosterRegistration> = [
     unit_kind: "commit check enrollment (gate x lane)",
     membership: DeclaredFrontier {
       reason: "the single enrollment authority for commit and CI gates; its lane projections in gunbc.ci.ci_spec (gunbc_ci_floor_gates, gunbc_ci_floor_witness_entries; the regen lane projection is deleted with the regen root cut, 2026-08-19) are already derived from it, so the fan-out is not the debt. The hand-kept fact is which gates enroll in which lane — substantially a policy declaration and registered as such — but nothing ties this roster to the Gate coproduct, so a newly-added Gate arm can exist wholly unenrolled with no signal, the same silent-narrowing class belt_dispatch_result_exemplars is enrolled for",
-      dissolution: unbound_dissolution(description: "substrate inhabitance enumeration over the Gate coproduct (DESIGN section 4: fold over a coproduct's arms without a hand roster) makes an unenrolled arm unwritable, leaving only genuine lane policy per gate; then this roster narrows to that policy and the completeness half of this row deletes")
+      dissolution: unbound_dissolution(description: "substrate inhabitance enumeration over the Gate coproduct (gunbc.design_argument::closed_grounded_substrate: fold over a coproduct's arms without a hand roster) makes an unenrolled arm unwritable, leaving only genuine lane policy per gate; then this roster narrows to that policy and the completeness half of this row deletes")
     }
   },
   RosterRegistration {

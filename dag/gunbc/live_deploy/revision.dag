@@ -15,7 +15,7 @@ import std.types { NonEmptyStr }
 //
 // AND IT WAS A SECOND AUTHORITY BESIDE A BETTER ONE. gunbc.live_deploy.member_identity decides,
 // per member, from OBSERVATION of the host, whether anything differs. This module decided for the
-// whole release from ANCESTRY. Two authorities for one question (DESIGN §3), and the coarse one
+// whole release from ANCESTRY. Two authorities for one question (gunbc.design_argument::single_authority), and the coarse one
 // won: on 2026-09-07 it refused an operator deploy whose member plan would have converged
 // correctly, because the running host had been deployed from a side branch that main was not a
 // descendant of. The relation was right and the conclusion drawn from it was wrong.
@@ -61,7 +61,7 @@ type DeployRevisionRelation
 
 // THE CLASSIFICATION IS ONE AUTHORITY. The decision takes ANCESTRY FACTS and the merge-base
 // evidence shape in gunbc.fleet.fleet_main_revision projects into it. A deleted probe-pair projection
-// used to sit beside this fold; keeping both would have been the §3 fork of two places computing
+// used to sit beside this fold; keeping both would have been the gunbc.design_argument::single_authority fork of two places computing
 // one decision. Reusing the variant names was never enough -- the vocabulary was shared while the
 // policy was copied.
 //

@@ -47,7 +47,7 @@ import v2.std.node { Authored, Edge, Positional }
 // occurrence, not to a declaring path, so `infer_parameter_scope_search` answers a different question
 // and is not replaced here. The refinement rows in v2.test.claim.body_cast_node are its standing
 // control and they pass on this base.
-// WHICH ROWS EXECUTE THE WHOLE FRONT END, AND WHY THE REST DO NOT (DESIGN section 3's witness rule,
+// WHICH ROWS EXECUTE THE WHOLE FRONT END, AND WHY THE REST DO NOT (gunbc.design_argument::single_authority's witness rule,
 // applied row by row under gunbc#12506's restructure). A row's inputs belong at the ONE interface it
 // discriminates, as supplied values, and a row reaching through lowering and resolve to ask infer a question
 // paid 140-610k eval steps -- almost all of it lowering, which is linear in source text -- against a 72.3k
@@ -187,7 +187,7 @@ fn dre_reading(o: Outcome<ResolvedTree>, wanted: Symbol) -> DreReading {
   }
 }
 
-// SUPPLIED AT INFER'S BOUNDARY (DESIGN section 3). The rows that read these ask what infer establishes about
+// SUPPLIED AT INFER'S BOUNDARY (gunbc.design_argument::single_authority). The rows that read these ask what infer establishes about
 // ONE call to ONE declaration whose shape is given -- a Bool return, an argument the declared parameter does
 // not admit, a parameter type that names nothing -- and none of them is about how authored text reaches that
 // shape. Assembling source for each cost 270-350k eval steps (gunbc#12506's floor), nearly all of it
@@ -249,7 +249,7 @@ test fn dre_a_reference_grounds_to_its_declarations_contract_holds() -> Bool {
 // `consumer` denotes p.shared. A leaf-keyed lookup can answer either; the declaring path answers only
 // one. This control is SPECIFIED but not yet QUALIFIED as an identity-collapse detector: that claim
 // requires the forced-collapse mutation to turn it red, which is exercised separately.
-// SPLIT AT RESOLVE -> INFER, BOUND BY ONE NAMED VALUE (DESIGN section 3; operator ruling on this lane). The
+// SPLIT AT RESOLVE -> INFER, BOUND BY ONE NAMED VALUE (gunbc.design_argument::single_authority; operator ruling on this lane). The
 // property spans two stages: RESOLVE picks which declaration the use of `shared` denotes, and INFER grounds
 // the use to that declaration's contract. Executing both over authored text cost 409k eval steps, and even
 // resolve plus infer over a supplied lowered module is ~115k, so the claim is split at the stage boundary,
@@ -655,7 +655,7 @@ fn dre_imported_reference_source() -> Outcome<ResolvedTree> {
 // resolve ONCE walked a single module root and minted resolved_declarations over it, so that index carried
 // the SUBJECT module's declarations and no other. m.lib.helper was absent from it, the lookup answered
 // Absent, and the reference stayed underived. The two tempting repairs were refused then and stay refused:
-// falling back to the authored index is the absorbing fallback DESIGN section 5 forbids, and re-deriving the
+// falling back to the authored index is the absorbing fallback gunbc.design_argument::fail_closed forbids, and re-deriving the
 // return from the language's kernel spelling table inside infer is a second resolution authority (section 3).
 //
 // THE TRIGGER THIS ROW DECLARED HAS LANDED, which is why the row now reads in the opposite direction. It
@@ -664,7 +664,7 @@ fn dre_imported_reference_source() -> Outcome<ResolvedTree> {
 // resolved roots, folded through the existing single-root door, assembled by v2.compiler.name_resolve
 // closure_declarations_demand. The fact stayed resolve's to own, as this row said it must.
 //
-// DESIGN section 4b(4) IS WHY THIS DID NOT RETIRE. An expecting-red probe that greens when its wall lands
+// gunbc.design_argument::guarantee_ladder (dissolution on climb) IS WHY THIS DID NOT RETIRE. An expecting-red probe that greens when its wall lands
 // flips to a permanent regression control; it does not disappear, because the climb's evidence is what keeps
 // the higher rung real. So the row keeps its subject and its fixture and inverts its assertion, and its name
 // now states what holds rather than what is missing. The single-module rows above remain the positive

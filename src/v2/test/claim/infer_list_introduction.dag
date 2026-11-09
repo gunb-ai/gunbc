@@ -27,7 +27,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // Transform whose head is the std.algebra FreeMonoid reference and whose operands are literals --
 // the shape v2.std.list_introduction lower_list_introduction builds, which
 // v2.test.claim.namespace_xl0.list_literal_value_lowering establishes on the production route
-// (DESIGN section 3: the inhabitance claim for this supplied boundary). Three cases, one each:
+// (gunbc.design_argument::witness_one_interface: the inhabitance claim for this supplied boundary). Three cases, one each:
 // elements of one type derive FreeMonoid<T>; a differing element refuses AT that element, not at
 // the literal; `[]` derives nothing here, because its T is its boundary's.
 // The head in its RESOLVED form: infer runs on resolved trees, where resolve mints a corpus

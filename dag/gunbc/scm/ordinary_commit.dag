@@ -12,7 +12,7 @@ module gunbc.scm.ordinary_commit
 // `admit_commit_subject` line for line, and carried a parent-missing arm for the lookup. Nothing ever
 // called it: the write spine reaches its parent through `base_snapshot`, which has ALREADY found that
 // commit, so the only live caller needs the basis-taking route below. A declaration with no consumer
-// is DESIGN section 3c's red state regardless of how well it is modelled, and keeping a duplicated
+// is gunbc.design_argument::consumption's red state regardless of how well it is modelled, and keeping a duplicated
 // admission beside the one authority is the section 3 fork on top of it. Found by external review.
 
 import std.types { String, Int }

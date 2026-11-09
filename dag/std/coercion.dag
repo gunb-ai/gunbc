@@ -45,7 +45,7 @@ type TypeCheckpoint {
 // declaration site could not honour declaration identity even after the reference side did, and
 // one emitted file disagreed with itself. Splitting the field deletes that arm rather than guarding
 // it: the next name whose reference spelling collides with its own declaration cannot reach the
-// ambiguity, because there is no longer a single field to be ambiguous in (DESIGN section 4b --
+// ambiguity, because there is no longer a single field to be ambiguous in (gunbc.design_argument::guarantee_ladder --
 // construction, not a wall over a state that stays writable).
 //
 // ON THE NAME `target_type`, WHICH IS NARROWER THAN IT READS. It means the REFERENCE-position
@@ -66,7 +66,7 @@ type TypeCheckpoint {
 // declaration (a same-spelling sibling elsewhere may still be Realized). RealizationRefused is reserved for a
 // reference whose declaration identity the caller could not supply -- never a guess standing in
 // for Unrealized, because a silently-assumed Unrealized is exactly the false negative this
-// decision keeps out of the render path (DESIGN section 5). Named Unrealized rather than
+// decision keeps out of the render path (gunbc.design_argument::fail_closed). Named Unrealized rather than
 // Structural because gunbc.ci.ci_failure_class already declares a fielded Structural { reason:
 // String } resolved as an unqualified global name (imports do not bind it), so a second,
 // differently-shaped Structural here would collide corpus-wide.
@@ -74,7 +74,7 @@ type TypeCheckpoint {
 // This decision's identity key is sound ONLY while v2.compiler.source_authority
 // module_storage_binding_authority_note's file<->module binding stays 1:1 -- that note is the sole
 // owner of this scope and names many-to-many (fragment identity/order, several-modules-one-file)
-// as a deferral until a consumer prices it (DESIGN section 6), never a silent assumption. If
+// as a deferral until a consumer prices it (gunbc.design_argument::how_to_work), never a silent assumption. If
 // many-to-many lands, decl_file stops discriminating declarations and BOTH Unrealized and Realized
 // remain reachable on an input that no longer identifies one declaration -- RealizationRefused covers
 // decl_file == "" (identity ABSENT), not identity AMBIGUOUS, so a many-to-many regression here
@@ -142,7 +142,7 @@ type TextRepresentation = HostText | CodePointSequence | NotText | TextRepresent
 // falls back to the reference node's OWN span whenever no Resolved node is bound, so `this node IS
 // a declaration` and `this reference's declaration was not recovered here` both answer
 // CorpusDeclared on the file the node sits in. The second case is a location standing where an
-// identity was owed: DESIGN section 5's absorbing fallback, and gunbc.recurring_failure_mode
+// identity was owed: gunbc.design_argument::fail_closed's absorbing fallback, and gunbc.recurring_failure_mode
 // state_space_conflation's form for this carrier.
 //
 // Each arm is decided from STRUCTURE, never from span presence. A declaration node is one the parser
@@ -387,7 +387,7 @@ fn is_dag_cast_domain_type(name: String) -> Bool {
   dag_cast_rules |> any(r => r.from_type == name || r.to_type == name)
 }
 
-// NAMED CONVERSION PLANS (DESIGN section 4, operator ruling 2026-09-26: an author crosses a
+// NAMED CONVERSION PLANS (gunbc.design_argument::closed_grounded_substrate, operator ruling 2026-09-26: an author crosses a
 // representation boundary implicit coercion refuses ONLY by selecting a named conversion plan, and
 // every phase of it stays represented). A plan joins the two authorities that already exist rather
 // than minting a third: the explicit-cast surface above (which says a re-typing is legal, keyed on
@@ -403,7 +403,7 @@ fn is_dag_cast_domain_type(name: String) -> Bool {
 // one host text. A future unfold that is not injective must not receive an inverse row.
 //
 // A PLAN HAS EXACTLY ONE PHASE BY CONSTRUCTION. Every row today is one declared route, so a plan
-// with no phase is not a state to refuse but a state with no constructor (DESIGN section 5,
+// with no phase is not a state to refuse but a state with no constructor (gunbc.design_argument::fail_closed,
 // construction over validation). A composite plan -- several phases whose consecutive endpoints must
 // meet -- is the trigger for a non-empty phase sequence and the judgment of its chaining; neither
 // exists until a row needs it.
@@ -554,7 +554,7 @@ fn judge_conversion_plan(
   }
 }
 
-// CONSUMER, A DECLARED FRONTIER (DESIGN section 3c). The judgment's consumer is the KERNEL-CROSSING
+// CONSUMER, A DECLARED FRONTIER (gunbc.design_argument::consumption). The judgment's consumer is the KERNEL-CROSSING
 // WALL in v1.compiler.infer: a text crossing through the scalar reader or writer (std.host_text chars
 // / text_of_chars, and the kernel chars_to_string text_of_chars alone wraps) is admitted only inside a
 // function whose declaration a conversion_plan_rows row names as its route, judged here against the

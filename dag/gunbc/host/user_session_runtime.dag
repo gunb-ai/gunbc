@@ -19,7 +19,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 // (--setenv). Both read user_session_bus_address, so the socket path is spelled once.
 // Lifted from gunbc.instruments.compute_run_unit_cold. Read by its two instruments (compute_run_unit_cold,
 // compute_wrong_capture) and the user-session converge (gunbc.runner.runner_user_session).
-// Also consumed by a named later change (a declared frontier, DESIGN 3c): gunbc#14972's
+// Also consumed by a named later change (a declared frontier, gunbc.design_argument::consumption): gunbc#14972's
 // test.claim.dispatch_credential_acquisition_witness systemd rows bind the client env; trigger: the user-session
 // converge's readback holds on srv4 from main and its capability label lands.
 type UserSessionRuntime

@@ -261,7 +261,7 @@ fn spark_retired_dropin_converged(standing: SparkRetiredDropinStanding) -> Bool 
 // outstanding=<obligation>" -- so the rendered text said the obligation was open while the typed run
 // said nothing, and every consumer that matches on the result rather than parsing a string read
 // the two runs as the same (raised by bright-boar-435 on the first cut of the acceptance row). A
-// rendered report is not a carrier, for the same reason DESIGN 4c gives for commentary: nothing
+// rendered report is not a carrier, for the same reason gunbc.design_argument::source_annotations gives for commentary: nothing
 // downstream can match on it.
 fn spark_grant_install_run_text(run: SparkGrantInstallRun) -> String {
   join(concat(

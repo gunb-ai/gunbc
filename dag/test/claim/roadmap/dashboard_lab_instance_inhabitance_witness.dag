@@ -36,7 +36,7 @@ import test.claim.roadmap.witness_supplied_instance {
   witness_principal_from_texts,
 }
 
-// THE PAIRING OBLIGATION FOR THE SUPPLIED-ROOT FIXTURE (DESIGN section 3: a witness discriminates at ONE
+// THE PAIRING OBLIGATION FOR THE SUPPLIED-ROOT FIXTURE (gunbc.design_argument::witness_one_interface: a witness discriminates at ONE
 // interface, and the repair that moves a witness off the live host must not also move its SUBJECT off the live
 // host).
 //

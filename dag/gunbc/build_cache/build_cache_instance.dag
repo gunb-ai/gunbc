@@ -29,7 +29,7 @@ data build_cache_instance_scope_disposition: ConstructionMechanism = SingleAutho
 // the other is not. BuildCacheInstance is the deployed grain: one row per (host, consumer class,
 // instance name), carrying the endpoint and the INTENDED unit, principal, storage, capacity and
 // compile pool that an observation is checked against. One concept with multiple data rows, never a
-// second provisioning mechanism per use (DESIGN section 2 horizontal).
+// second provisioning mechanism per use (gunbc.design_argument::minimize_redundancy horizontal).
 
 type BuildCacheConsumerClass
   = ContinuousIntegrationCompiles
@@ -149,7 +149,7 @@ type RunnerSlotIdentity {
 
 // EQUALITY LIVES WITH THE IDENTITY IT IS ABOUT. Two consumers had each grown their own spelling --
 // runner_capacity_plan slot_identity_eq and runner_slot_allocation runner_slot_identity_equal --
-// which is one concept under two names, the nicknaming DESIGN section 3 forbids. Comparing on BOTH
+// which is one concept under two names, the nicknaming gunbc.design_argument::single_authority forbids. Comparing on BOTH
 // coordinates is the substance: an equality blind to slot_index would report any slot on a host as
 // the host's fabric member.
 // THE TWO-DIGIT SUFFIX IS ONE RULE AND IT WAS THREE IMPLEMENTATIONS, ONE OF WHICH WAS WRONG.
@@ -219,7 +219,7 @@ fn runner_slot_instance_name_prefix(host: HostIdentity) -> String {
 // `starts_with` over the prefix and gunbc.fabric.fabric_cell_observe with `string_contains` over the same
 // prefix. One concept, two implementations, and they disagree observably -- `backup-srv2-01` is a
 // candidate under `contains` and is not under `starts_with`. Minting the PREFIX as a single
-// authority and then forking the RELATION over it is the fork DESIGN 3 names, with the second
+// authority and then forking the RELATION over it is the fork gunbc.design_argument::single_authority names, with the second
 // spelling hidden one level down.
 //
 // THE PREFIX IS A PARAMETER BECAUSE THE NAME'S RENDERING IS THE CALLER'S FACT. A registration is
@@ -278,7 +278,7 @@ type EndpointObservationUnavailableReason
 // a Present lifecycle fell straight through to the unit comparison and could return
 // ServerManagedUnitOwned, converging on a runner-owned endpoint from inconsistent substrate data
 // (review 46217). Guarding that with a check would have conceded the state is writable; the
-// coproduct makes it unwritable instead (DESIGN section 5, construction over validation). A slot
+// coproduct makes it unwritable instead (gunbc.design_argument::fail_closed, construction over validation). A slot
 // cannot be recorded without deciding its lifecycle against current fleet intent, because deciding
 // it is the same act as finding it. When the chain reaches a cgroup it cannot classify — an
 // unreadable unit, a slot index that does not parse, a desired-slot roster the observer could not

@@ -9,8 +9,8 @@ module gunbc.machine_intake.bmc_recovery_route_frontier
 //     test.claim.machine_intake.machine_intake_bmc_recovery_route_witness supplies a standing), and
 //   * no production root acquires the unit hold the reset interlock's premise describes.
 //
-// Both were previously stated only in `//` text, which is what two reviews called out under DESIGN
-// §3c ("consumed by a named later change (a declared frontier, with its trigger)") and §4c ("an
+// Both were previously stated only in `//` text, which is what two reviews called out under
+// gunbc.design_argument::consumption ("consumed by a named later change (a declared frontier, with its trigger)") and gunbc.design_argument::source_annotations ("an
 // annotation is never evidence that a machine claim holds"). A frontier row is the carrier those
 // sections name, and it is typed data. The roster fold that once read it (gunbc.dissolution_census over
 // gunbc.census_closure_frontier) was retired, so nothing now reports a fired trigger; the row records the deferral.
@@ -99,7 +99,7 @@ fn bmc_recovery_route_pairing_frontier_rows() -> List<FrontierRow> {
 // gunbc.machine_intake.arrival_converge consumes only the route's REFUSAL (recovery_route_unavailability,
 // which maps the proof arm to `none`); no fold reads .bound. The module used to claim the arm "re-enters
 // onboarding" -- that text is deleted, and this row replaces it, because a deferral a fold reads is the
-// honest form (DESIGN §3c) while prose is not evidence that a machine claim holds (§4c).
+// honest form (gunbc.design_argument::consumption) while prose is not evidence that a machine claim holds (gunbc.design_argument::source_annotations).
 //
 // What satisfies it:
 //   1. a fold in gunbc.machine_intake.bmc_secure (the credential rotation's one authority since the

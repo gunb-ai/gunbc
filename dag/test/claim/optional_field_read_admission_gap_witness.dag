@@ -21,7 +21,7 @@ import gunbc.compile_diagnostic_census {
 // - the call-argument claim asserts the neighbouring wall still refuses it.
 // So the pair shows the asymmetry rather than a blanket compile outcome.
 // dissolve-on: the field-projection position routes through optional_produced_at_required_declared.
-// The admission claim then goes red and flips, per DESIGN 4b(4), to assert >= 1 blocking
+// The admission claim then goes red and flips, per gunbc.design_argument::guarantee_ladder (dissolution on climb), to assert >= 1 blocking
 // DeclaredTypeNotInhabited as a permanent regression control. It is not deleted.
 
 fn blocking_count(source: String) -> Int {

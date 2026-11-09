@@ -201,7 +201,7 @@ type ConvergencePlacementOperands {
 // deploys destabilizing when a measurement and its comparison crossed a rewrite of it. Worse, the
 // srv1 LAB instance READS that ref as its admitted revision (source_anchor_ref), so one name held
 // two meanings across two checkouts -- the admitted revision the instance serves, and a deployment
-// scratch target (§3). A deployment's transition target is a fact about the INSTANCE, and every
+// scratch target (gunbc.design_argument::single_authority). A deployment's transition target is a fact about the INSTANCE, and every
 // declared instance already states one: admitted_revision (remote+ref), the same authority the belt
 // and the lab readback trust. So the writer now writes where the instance says its admitted revision
 // lives, and an instance_id with no admitted-revision row in the declared roster REFUSES --
@@ -229,7 +229,7 @@ type ConvergenceOperandAdmission
 // git_decode_object_id_text is git's cited decoder and it distinguishes exactly the three refusals
 // this operand needs -- wrong length, non-hexadecimal, and non-canonical uppercase -- returning a
 // GitObjectId rather than a string that passed a predicate. A local `is_lowercase_hex` beside it
-// would have been a second authority for one concept (DESIGN section 3), and the weaker one: it
+// would have been a second authority for one concept (gunbc.design_argument::single_authority), and the weaker one: it
 // would have answered Bool where this answers WHICH WAY the value is not an object id.
 fn candidate_refusal_text(candidate: String, cause: GitObjectIdTextRefusal) -> String {
   match cause {
@@ -358,7 +358,7 @@ fn convergence_principal_admission(
 // THERE IS NO exit_code FIELD, AND ITS ABSENCE IS DERIVED RATHER THAN ECONOMISED. convergence_exit
 // maps every non-converged outcome to ExitFailure { code: 1 }, so the code is a function of the
 // converged/not distinction the verdict already carries -- storing it would be a second
-// representation of one fact (DESIGN section 2), and a reader who saw both could not be told which
+// representation of one fact (gunbc.design_argument::minimize_redundancy), and a reader who saw both could not be told which
 // one to believe if they ever disagreed.
 type ConvergencePlacementReceipt
   = PlacementWrongPrincipal { expected: String, observed: String }
@@ -413,7 +413,7 @@ fn placement_receipt_line(receipt: ConvergencePlacementReceipt) -> String {
 // THE RECEIPT IS JSON BECAUSE JSON IS ALREADY MODELLED IN BOTH DIRECTIONS. extdeps.languages.json
 // carries serialize_json and parse_json_document against one cited grammar (RFC 8259), so writing
 // the receipt and reading it back are the same rows read forwards and backwards rather than an
-// emitter and a parser that can drift (DESIGN section 4). A bespoke line format would have been a
+// emitter and a parser that can drift (gunbc.design_argument::closed_grounded_substrate). A bespoke line format would have been a
 // second grammar with one author and no authority.
 data placement_receipt_schema: String = "gunbc.repository-convergence-placement.v1"
 
@@ -586,7 +586,7 @@ fn convergence_receipt_path(instance_root: String) -> String {
 
 // THIS MODULE'S OWN FILE PATH, CARRIED AS DATA BECAUSE THE UNIT MUST NAME IT AS A `--entry`.
 //
-// A source path is a POSITIONAL fact, which DESIGN section 3 admits only where no symbol names the
+// A source path is a POSITIONAL fact, which gunbc.design_argument::single_authority admits only where no symbol names the
 // thing -- and no symbol does: `--entry` takes a file, not a module. RESIDUE, named rather than
 // hidden: renaming or moving this file breaks the emitted unit and nothing in the corpus refuses,
 // because the fact that would catch it (module name to source path) is not modelled. That is one
@@ -627,7 +627,7 @@ fn convergence_exec_start(
 // THE ENVIRONMENT FILE IS TREE-SYNC'S, DELIBERATELY AND WITH A NAMED CONSEQUENCE. GUNBC_TREE_SRC is
 // one fact -- where the deploy's checkout is -- and it already has one home, written by the deploy
 // at spec.names.tree_sync_env_path. Writing a second file would be a second representation of it
-// (DESIGN section 3). RESIDUE: that file is named for the sync this convergence replaces, so when
+// (gunbc.design_argument::single_authority). RESIDUE: that file is named for the sync this convergence replaces, so when
 // the binding change deletes the rsync legs the NAME becomes a nickname for a fact whose only
 // remaining consumer is this unit. Renaming it belongs to the change that deletes those legs,
 // because that change owns both ends; doing it here would rename a live production file out from
@@ -1005,13 +1005,13 @@ fn repository_converge_owner_wet(
 // that took only the path was a question with the run removed from it -- reached on any route
 // other than the apply's own restart leg (the installed-binary `run --function
 // repository_convergence_readback_wet` route is exactly such a route), it accepted a PRIOR run's
-// CONVERGED receipt as this plan's success. That is DESIGN section 5's silent wrong answer, and
+// CONVERGED receipt as this plan's success. That is gunbc.design_argument::fail_closed's silent wrong answer, and
 // the store migration found it at inventory row S83469995.
 //
 // THE BINDING IS THE CANDIDATE, BECAUSE THE CANDIDATE IS THE RUN'S IDENTITY HERE. The unit's
 // ExecStart already carries `--arg candidate=<revision>`, the receipt serializes the candidate it
 // converged, and the decoder requires the field -- so no new identity had to be minted; the fix
-// hands the readback the identity the write side already stamps (DESIGN section 6b: the earliest
+// hands the readback the identity the write side already stamps (gunbc.design_argument::earliest_unjustified_boundary: the earliest
 // unjustified boundary was the missing INPUT, not the receipt's content). The comparison is never
 // a file's age: mtime says when a file was written, not which run wrote it, and a timestamp check
 // would be a heuristic standing where an observation belongs (section 5).
@@ -1186,7 +1186,7 @@ fn read_convergence_receipt_bound(receipt_path: String, expected_candidate: Stri
 // IT TAKES THE RUN IT ANSWERS FOR AS A SECOND ARGUMENT. `candidate` is the plan's release revision,
 // and it is REQUIRED -- a readback invoked without one has no identity to bind to and refuses,
 // rather than falling back to the old unbound read that let a prior run's CONVERGED receipt exit 0.
-// This is the earliest unjustified boundary (DESIGN section 6b): the entry point is the module's
+// This is the earliest unjustified boundary (gunbc.design_argument::earliest_unjustified_boundary): the entry point is the module's
 // interface, and the interface omitted a fact the verdict depends on.
 fn repository_convergence_readback_wet(receipt: String, candidate: String) -> ProcessExit {
   if trim(s: receipt) == "" {

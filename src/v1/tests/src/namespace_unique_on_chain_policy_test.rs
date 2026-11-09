@@ -230,7 +230,7 @@ fn namespace_only_keeps_genuinely_unbound_as_unresolved_not_ambiguous() {
             .iter()
             .any(|m| m.contains("unresolved type 'NoSuchTypeAnywhere'")),
         "a name bound NOWHERE stays UnresolvedType under the strict policy \
-         (Ambiguous and Unresolved are distinct states, §5); got {diags:?}"
+         (Ambiguous and Unresolved are distinct states, gunbc.design_argument::fail_closed); got {diags:?}"
     );
     assert!(
         !diags.iter().any(|m| m.contains("ambiguous")),

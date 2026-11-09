@@ -23,7 +23,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // declared at <module>.<service segments...>.<Op>; a call names that path, and its callee resolves through
 // the same door as any qualified reference -- there is no second resolver.
 //
-// WHERE EACH PART OF THE ROUTE RUNS FOR REAL (DESIGN section 3: a witness supplies the inputs of the one
+// WHERE EACH PART OF THE ROUTE RUNS FOR REAL (gunbc.design_argument::single_authority: a witness supplies the inputs of the one
 // interface it discriminates, and the real path keeps executing):
 //   - a dotted CALL reaching the qualified-reference door: v2.test.claim.reference_closure resolves
 //     `v2.test.rc_dotted.rc_dotted_fn(p: p)` end to end through ingest, normalize and resolve;

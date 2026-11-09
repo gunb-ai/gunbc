@@ -20,7 +20,7 @@ import extdeps.cloudflare.r2 {
   r2_jurisdiction_wire,
   parse_r2_jurisdiction,
 }
-import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestCredentialRefused, RestBodyUndecodable }
 import extdeps.cloudflare.r2_buckets
 import extdeps.cloudflare.r2_lifecycle
 import extdeps.cloudflare.r2_lifecycle {
@@ -68,7 +68,7 @@ import gunbc.auth.secret_ref_credential {
 // independent read of the bucket (goal-blind: the Get takes the name the roster allocated and
 // returns what the account answered), a POINT classification pairing a verdict with Noop | Apply |
 // Refuse, the one Apply the classifier can choose (create the bucket), and a readback by a second
-// Get that must itself classify Converged. Selection happened earlier and elsewhere (DESIGN 3d):
+// Get that must itself classify Converged. Selection happened earlier and elsewhere (gunbc.design_argument::selection_precedes_convergence):
 // which purposes exist, which bucket each gets and in which jurisdiction are the roster's and the
 // standing's; this module chooses none of them.
 //
@@ -301,6 +301,7 @@ fn apply_r2_bucket_create(
     RestAnswered { answer: _ } => "create ok"
     RestRefused { refusal: RestStatusRefused { status: status, body: _ } } => join(["create refused with status ", to_string(status)], "")
     RestRefused { refusal: RestTransportRefused { cause: _ } } => "create got no response"
+    RestRefused { refusal: RestCredentialRefused { refusal: _ } } => "create not sent: its credential was refused before dispatch"
     RestRefused { refusal: RestBodyUndecodable { status: status, cause: _ } } => join(["create status ", to_string(status), " body undecodable"], "")
   }
   let create_status = concat(create_outcome, requested)
@@ -387,6 +388,7 @@ fn ensure_r2_purpose_lifecycle(
         RestAnswered { answer: _ } => "put ok"
         RestRefused { refusal: RestStatusRefused { status: status, body: _ } } => join(["put refused with status ", to_string(status)], "")
         RestRefused { refusal: RestTransportRefused { cause: _ } } => "put got no response"
+        RestRefused { refusal: RestCredentialRefused { refusal: _ } } => "put not sent: its credential was refused before dispatch"
         RestRefused { refusal: RestBodyUndecodable { status: status, cause: _ } } => join(["put status ", to_string(status), " body undecodable"], "")
       }
       match readback.decision {

@@ -12,8 +12,8 @@ import std.nat { Nat }
 // authority is its `.dag` carrier, so there is no docs/plans/*.md for it (`PlanIsAuthorityOnly`).
 //
 // Two conventions it holds itself to: every code reference names a module and symbol, never a
-// file:line (DESIGN §3), and a measured figure is stated together with its standing -- measured,
-// estimated, or read off a hand-written script -- because §4d forbids a bet being consumed as a fact.
+// file:line (gunbc.design_argument::single_authority), and a measured figure is stated together with its standing -- measured,
+// estimated, or read off a hand-written script -- because gunbc.design_argument::epistemic_humility forbids a bet being consumed as a fact.
 // The figures in section 3 are RECEIPTS this repository took. None of them is an upstream fact, so none
 // of them may land in extdeps.
 
@@ -64,7 +64,8 @@ fn gpu_card_in_bound(m: GpuCardBoundMembership) -> Bool {
 data gpu_card_working_census: List<GpuCardCensusReading> = [
   GpuCardCensusReading { count: Present { value: 2 }, product: "NVIDIA A16", slots: ["SLOT2", "SLOT6"], host: Absent, membership: InstalledInFleetHost },
   GpuCardCensusReading { count: Present { value: 1 }, product: "NVIDIA RTX PRO 6000 Blackwell Workstation Edition", slots: [], host: Present { value: "srv1" }, membership: InstalledInFleetHost },
-  GpuCardCensusReading { count: Present { value: 2 }, product: "NVIDIA RTX 2000 Ada Generation", slots: [], host: Absent, membership: InstalledInFleetHost },
+  GpuCardCensusReading { count: Present { value: 1 }, product: "NVIDIA RTX PRO 6000 Blackwell Max-Q", slots: [], host: Present { value: "srv1" }, membership: InstalledInFleetHost },
+  GpuCardCensusReading { count: Present { value: 2 }, product: "NVIDIA RTX 2000 Ada Generation", slots: [], host: Present { value: "srv4" }, membership: InstalledInFleetHost },
   GpuCardCensusReading { count: Present { value: 2 }, product: "AMD Radeon AI PRO R9700", slots: [], host: Absent, membership: CommittedToFleetHost },
   GpuCardCensusReading { count: Present { value: 1 }, product: "NVIDIA RTX PRO 6000 Blackwell Max-Q", slots: [], host: Absent, membership: OutsideBound { because: "a rented Vast deployment on an x86 host the supplier owns, so this leg cannot converge its driver" } },
   GpuCardCensusReading { count: Present { value: 4 }, product: "NVIDIA A2", slots: [], host: Present { value: "srv14" }, membership: InstalledInFleetHost },

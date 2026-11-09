@@ -322,6 +322,7 @@ fn plan_has_one_worker_subtree_migration(plan: List<DashboardInstanceProvisionOp
 fn lab_observed(
   production_untouched: Bool,
   source_anchor_matches: Bool,
+  serve_binary_current: Bool,
   source_revision_observed: Bool,
   source_revision_current: Bool,
   health_current: Bool,
@@ -351,6 +352,7 @@ fn lab_observed(
     health_current: health_current,
     production_untouched: production_untouched,
     source_anchor_matches: source_anchor_matches,
+    serve_binary_current: serve_binary_current,
   }
 }
 
@@ -360,6 +362,7 @@ test fn dashboard_reconcile_converges_only_after_independent_readback() -> Bool 
     observed: lab_observed(
       production_untouched: true,
       source_anchor_matches: true,
+      serve_binary_current: true,
       source_revision_observed: true,
       source_revision_current: true,
       health_current: true,
@@ -370,12 +373,36 @@ test fn dashboard_reconcile_converges_only_after_independent_readback() -> Bool 
   }
 }
 
+// STALE SERVED BYTES NEVER CONVERGE (srv1 lab, 2026-11-07): every other field converged, the binary at the serve
+// path was not the declared origin's, and the verdict was Converged without DashboardEnsureServeBinary running.
+// The pair: the control converges, the stale-bytes reading derives an Apply plan that contains the op.
+test fn dashboard_reconcile_stale_serve_binary_derives_apply_with_ensure_op() -> Bool {
+  match dashboard_instance_reconcile(
+    instance: srv1_lab_dashboard_instance(),
+    observed: lab_observed(
+      production_untouched: true,
+      source_anchor_matches: true,
+      serve_binary_current: false,
+      source_revision_observed: true,
+      source_revision_current: true,
+      health_current: true,
+    ),
+  ) {
+    DashboardInstanceApply { plan } => any(plan, op => match op {
+      DashboardEnsureServeBinary { apply_workdir: _, serve_binary_origin: _, path: _ } => true
+      _ => false
+    })
+    _ => false
+  }
+}
+
 test fn dashboard_reconcile_converges_without_health_this_apply_does_not_launch() -> Bool {
   match dashboard_instance_reconcile(
     instance: srv1_lab_dashboard_instance(),
     observed: lab_observed(
       production_untouched: true,
       source_anchor_matches: true,
+      serve_binary_current: true,
       source_revision_observed: true,
       source_revision_current: true,
       health_current: false,
@@ -392,6 +419,7 @@ test fn dashboard_reconcile_refuses_production_overlap() -> Bool {
     observed: lab_observed(
       production_untouched: false,
       source_anchor_matches: true,
+      serve_binary_current: true,
       source_revision_observed: true,
       source_revision_current: true,
       health_current: false,
@@ -408,6 +436,7 @@ test fn dashboard_reconcile_refuses_destructive_source_replacement() -> Bool {
     observed: lab_observed(
       production_untouched: true,
       source_anchor_matches: false,
+      serve_binary_current: true,
       source_revision_observed: true,
       source_revision_current: false,
       health_current: false,
@@ -425,6 +454,7 @@ test fn dashboard_reconcile_refreshes_owned_clean_stale_revision() -> Bool {
     observed: lab_observed(
       production_untouched: true,
       source_anchor_matches: true,
+      serve_binary_current: true,
       source_revision_observed: true,
       source_revision_current: false,
       health_current: true,
@@ -441,6 +471,7 @@ test fn dashboard_reconcile_refuses_unreadable_source_revision() -> Bool {
     observed: lab_observed(
       production_untouched: true,
       source_anchor_matches: true,
+      serve_binary_current: true,
       source_revision_observed: false,
       source_revision_current: false,
       health_current: true,
@@ -472,6 +503,7 @@ test fn dashboard_bundle_is_required_for_convergence() -> Bool {
     health_current: true,
     production_untouched: true,
     source_anchor_matches: true,
+    serve_binary_current: true,
   }
   match dashboard_instance_reconcile(
     instance: srv2_lab_dashboard_instance(),
@@ -529,6 +561,7 @@ test fn dashboard_reconcile_refuses_unmarked_existing_source() -> Bool {
     health_current: false,
     production_untouched: true,
     source_anchor_matches: false,
+    serve_binary_current: true,
   }
   match dashboard_instance_reconcile(
     instance: srv1_lab_dashboard_instance(),
@@ -794,6 +827,7 @@ fn observed_all_absent(refusals: List<String>) -> DashboardInstanceObserved {
     health_current: false,
     production_untouched: true,
     source_anchor_matches: false,
+    serve_binary_current: true,
   }
 }
 
@@ -913,7 +947,7 @@ test fn a_production_slot_keeping_its_own_dispatch_state_is_refused() -> Bool {
 // THIS PAIR USED TO CONSTRUCT THE INVALID STATE AND ASSERT THE LAW CAUGHT IT. It no longer can, and
 // that is the climb rather than a gap: an instance-owned scope carries only CHILD NAMES, so its
 // roots are derived beneath its own instance_root and there is no way to author a lab pointing at
-// the host-shared roots. The DESIGN §4b rule is that a climb deletes the lower-rung production
+// the host-shared roots. The gunbc.design_argument::guarantee_ladder rule is that a climb deletes the lower-rung production
 // machinery but keeps the evidence enrolled, so these assert the DERIVATION that makes the old red
 // unwritable instead of pretending to still construct it — a witness whose invalid input became
 // unrepresentable must change what it asserts, not keep a name that no longer describes it.\n\nWHAT
@@ -994,7 +1028,7 @@ test fn host_shared_slots_on_different_hosts_are_consistent() -> Bool {
 //
 // THE POPULATION FOLD DOES NOT RETIRE THIS PAIR. dashboard_declared_instances_owned_paths_
 // are_pairwise_consistent is the quantification; this named live/lab call is the discriminating
-// control that the binary-overlap class stays closed (DESIGN 4b(4): climb deletes production
+// control that the binary-overlap class stays closed (gunbc.design_argument::guarantee_ladder (dissolution on climb): climb deletes production
 // machinery, never the evidence).
 test fn the_binary_hazard_stays_closed_across_instances_on_one_host() -> Bool {
   let live = srv1_live_dashboard_instance()

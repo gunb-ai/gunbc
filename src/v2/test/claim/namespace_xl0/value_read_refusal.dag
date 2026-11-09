@@ -36,7 +36,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // value-owned refusal: each either lowers (function values, `"a" + 1`, `VrrRecord {}`, `!!v`) or is
 // refused before body lowering (tuples, ranges, `?`, tuple fields, unit, `|y| y`, record update,
 // `where`, a bare `as`), and `v[0]` parses as a following statement. So a source-driven refusal at the
-// value is unauthorable on this route (DESIGN section 4b), and re-pointing to another specimen would
+// value is unauthorable on this route (gunbc.design_argument::guarantee_ladder), and re-pointing to another specimen would
 // be a decoration. The same specimens are kept, and each claim now asserts their ROUTE: a
 // function-valued value in every value position -- match-arm body, if arm, if condition, let value,
 // field initializer, a fold's lambda argument, a block arm -- lowers whole and the module Accepts,

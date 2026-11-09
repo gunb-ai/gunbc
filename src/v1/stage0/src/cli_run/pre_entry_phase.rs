@@ -7,7 +7,7 @@
 //! small-closure entry does not demand. This is that decomposition's producer: every
 //! `gunbc run` prints one `[pre-entry] phase=<name> ms=<n> scale=<tree|closure>` line per
 //! phase on stderr, so the instrument is the ordinary invocation and a reader re-derives the
-//! figures by running it rather than reading them here (DESIGN §6).
+//! figures by running it rather than reading them here (gunbc.design_argument::how_to_work).
 //!
 //! `scale` is a declared property of the PHASE, not a measurement: `tree` names work whose
 //! input is the whole indexed pool (every file under every `--source-root`), `closure` names
@@ -43,7 +43,7 @@ impl PhaseScale {
 /// `parent`/`depth` carry the place in the containment tree (nearest enclosing `timed` span at
 /// first entry), so a reader computes exclusive time as `parent.ms - Σ children.ms` from figures
 /// that are each individually true — see `three_level_nesting_prints_inclusive_rows_with_parent_links`
-/// for why a netted figure printed here was wrong (§4 P0.1: say which a row is, never pretend the
+/// for why a netted figure printed here was wrong (gunbc.design_argument::closed_grounded_substrate P0.1: say which a row is, never pretend the
 /// other). `raw` marks a producer-`record`ed row: its span boundaries are not visible here, so it
 /// is labelled `recorded` and never counted as cover.
 struct PhaseRow {
@@ -106,7 +106,7 @@ pub fn record(name: &'static str, scale: PhaseScale, elapsed: Duration) {
 
 /// Time `f` into the named phase. The row's `ms` is INCLUSIVE of anything that ran inside `f`,
 /// and is printed as such with its `parent` and `depth`, so a reader can subtract the children
-/// themselves (§4 P0.1: "Check whether each row is inclusive or exclusive before summing").
+/// themselves (gunbc.design_argument::closed_grounded_substrate P0.1: "Check whether each row is inclusive or exclusive before summing").
 pub fn timed<T>(name: &'static str, scale: PhaseScale, f: impl FnOnce() -> T) -> T {
     // The parent/depth are read BEFORE the push: this row sits where it was entered, and its own
     // name must not become its parent.
@@ -171,7 +171,7 @@ pub fn take_lines() -> Vec<String> {
         .collect()
 }
 
-/// Drain the receipt with the attribution §4 P0.1 asks for. Every row is printed INCLUSIVE
+/// Drain the receipt with the attribution gunbc.design_argument::closed_grounded_substrate P0.1 asks for. Every row is printed INCLUSIVE
 /// (`attribution=inclusive`, or `attribution=recorded` when a producer measured it itself) with
 /// its `parent=` link and `depth=`, so a reader computes exclusive time as
 /// `parent.ms - Σ children.ms` rather than trusting a subtraction made here. `parent=none` marks
@@ -238,7 +238,7 @@ pub fn record_invocation_start() {
 
 /// The invocation total, or `None` when `record_invocation_start` was never called -- a library
 /// consumer that compiles without a CLI `main`. Printing a total then would attribute the whole
-/// process to a transaction sequence the caller never started (§4d: absent, never fabricated).
+/// process to a transaction sequence the caller never started (gunbc.design_argument::epistemic_humility: absent, never fabricated).
 fn invocation_elapsed() -> Option<Duration> {
     INVOCATION_START.get().map(|started| started.elapsed())
 }
@@ -254,7 +254,7 @@ fn invocation_elapsed() -> Option<Duration> {
 /// Cover = timed rows entered with an empty `ACTIVE` stack (`parent=none`), never seen nested,
 /// first recorded inside the transaction: two such roots cannot contain each other, so summing
 /// them cannot double-count. Predecessor rows, nested rows, and raw rows never cover — each
-/// exclusion only raises the reported floor, and a floor may over-report but never conceal (§4d).
+/// exclusion only raises the reported floor, and a floor may over-report but never conceal (gunbc.design_argument::epistemic_humility).
 fn disjoint_root_cover(transaction_started: std::time::Instant) -> (u128, u128) {
     PHASES.with(|p| {
         let mut attributed = 0u128;
@@ -333,7 +333,7 @@ fn print_invocation_receipt_inner() {
         .lock()
         .map(|t| t.clone())
         .unwrap_or_default();
-    // §4d: no recorded invocation start means no rows at all, never a zero.
+    // gunbc.design_argument::epistemic_humility: no recorded invocation start means no rows at all, never a zero.
     for line in invocation_receipt_lines(invocation_elapsed(), &transactions, index_scale()) {
         eprintln!("{line}");
     }
@@ -342,7 +342,7 @@ fn print_invocation_receipt_inner() {
 /// The two process rows (invocation total + the unattributed-outside-the-transactions figure),
 /// as pure data. `transactions` are `(subject, total_ms)` pairs in call order. No recorded
 /// invocation start yields NO rows: an absent figure is honest, a zero is a lie
-/// (§4d: "Check the instrument reads real data before it is called a receipt").
+/// (gunbc.design_argument::epistemic_humility: "Check the instrument reads real data before it is called a receipt").
 fn invocation_receipt_lines(
     elapsed: Option<Duration>,
     transactions: &[(String, u128)],
@@ -352,7 +352,7 @@ fn invocation_receipt_lines(
     // route stages one on EVERY disposition (the wrapper), so an empty list here means a verb
     // that never compiled (run, check, ...) -- and those routes keep their existing stderr.
     // No recorded start is the other omission: a library consumer without a CLI `main` must not
-    // get a total that attributes the whole process to transactions nobody started (§4d).
+    // get a total that attributes the whole process to transactions nobody started (gunbc.design_argument::epistemic_humility).
     if elapsed.is_none() || transactions.is_empty() {
         return Vec::new();
     }
@@ -465,7 +465,7 @@ mod tests {
         DEMAND_ACQUIRED_MODULES.with(|c| c.set(None));
     }
 
-    /// §4d, as a RED: with no recorded invocation start the process rows are OMITTED. A `0` here
+    /// gunbc.design_argument::epistemic_humility, as a RED: with no recorded invocation start the process rows are OMITTED. A `0` here
     /// would read as "the CLI spent no time outside the transaction" -- the fabricated-zero class
     /// the plan names. (The `record_invocation_start`-happens test is
     /// `the_invocation_total_advances_with_wall_time`.)
@@ -642,7 +642,7 @@ mod tests {
 
     /// The transaction floor covers ONLY provably-disjoint roots: a nested row is excluded even
     /// though its inclusive `ms` fits inside its root (summing both would double-count and
-    /// UNDERSTATE the hidden time — the concealment direction the floor must never go, §4d), and
+    /// UNDERSTATE the hidden time — the concealment direction the floor must never go, gunbc.design_argument::epistemic_humility), and
     /// a raw record never covers anything.
     #[test]
     fn the_transaction_floor_covers_disjoint_roots_only() {
@@ -667,7 +667,7 @@ mod tests {
         assert!(
             attributed <= wall,
             "cover {attributed} exceeds measured wall {wall}: a nested row was counted twice \
-             (understating hidden time, the one direction §4d forbids)"
+             (understating hidden time, the one direction gunbc.design_argument::epistemic_humility forbids)"
         );
     }
 

@@ -142,7 +142,7 @@ test fn a_served_resource_reads_its_fields_and_its_role() -> Bool {
   }
 }
 
-// NO FABRICATED DEFAULTS (DESIGN §5). A resource that carries only its @odata.id must read Enabled,
+// NO FABRICATED DEFAULTS (gunbc.design_argument::fail_closed). A resource that carries only its @odata.id must read Enabled,
 // Locked, and RoleId as ABSENT -- not false, not ReadOnly. The RED is that none of them may be a value.
 test fn an_unserved_resource_field_stays_absent_and_is_never_a_default() -> Bool {
   match redfish_manager_account_from_json(body: "{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/root\"}") {

@@ -76,7 +76,7 @@ type ServedDeploymentPlacement
 // (switch: gunbc.deployment_risk prod_role_selection), so moving the role moves this charge with it.
 // A refused realization (NoProdRole, no instance, several instances, no desired row) is NOT mapped
 // to a default host and NOT to Unplaced: the deployment may still be running, so the host plan
-// refuses with the typed cause as ServedDeploymentClaimUnmeasured (DESIGN 5).
+// refuses with the typed cause as ServedDeploymentClaimUnmeasured (gunbc.design_argument::fail_closed).
 fn served_deployment_placement_of(realization: ProdRoleRealization) -> ServedDeploymentPlacement {
   match realization {
     ProdRoleRealizedBy { holder } => ServedDeploymentPinned { host: holder.instance.host_identity as HostIdentity }
@@ -100,7 +100,7 @@ fn served_deployment_placement() -> ServedDeploymentPlacement {
 // live_deploy_slice_memory_max was already 26 GiB, so the note asserted 22 GiB against a charge
 // this module computes as 32 GiB -- in the one module whose entire job is to say how much of srv1
 // has been committed, where a reader reconciling the conservation verdict would have been ten
-// gibibytes out. DESIGN section 6 names the instrument rather than transcribing its output for
+// gibibytes out. gunbc.design_argument::how_to_work names the instrument rather than transcribing its output for
 // exactly this reason, and the transcription here rotted BEFORE IT LANDED: the bound was raised in
 // the same PR that wrote the sentence. Naming the two symbols cannot drift from them.
 //
@@ -129,8 +129,10 @@ fn served_deployment_placement() -> ServedDeploymentPlacement {
 // touches gunbc.fleet.fleet_host_budget, gunbc.ci.ci_runner_placement and their witnesses for no arithmetic, so
 // it is left to the change that next edits that verdict chain, and stated here so the sum is not read
 // as served processes alone.
-// THE USER-WORK APPROPRIATION IS CHARGED (operator ruling 2026-10-16, superseding 2026-10-14):
-// four 22 GiB slots, MemoryMax 88 GiB (gunbc.live_deploy.user_work_pool_slots). Charging it into served_deployment_slice_allowance
+// THE USER-WORK APPROPRIATION IS CHARGED (operator ruling 2026-10-16, superseding 2026-10-14, amended
+// 2026-10-18 to two slots): @ref(gunbc.live_deploy.user_work_pool_slots::user_work_charged_slots) slots at
+// @ref(gunbc.live_deploy.slice_bounds::user_work_slice_memory_max_of) (the count and its history live in
+// gunbc.live_deploy.user_work_pool_slots; no figure is restated here). Charging it into served_deployment_slice_allowance
 // subtracts it from the runner memory envelope; runner_host_deploy_of writes the derived
 // gunbc_runner_committed_width as runner_count.
 fn user_work_charged_in_served_allowance() -> ByteSize {
@@ -140,7 +142,8 @@ fn user_work_charged_in_served_allowance() -> ByteSize {
 }
 
 // THE ATTEMPT-WORKER APPROPRIATION STACKS (operator decision 2026-10-15, escalation
-// msg_57614325: stack 2 x 22 GiB, srv1 CI width 7 to 5). It is not a split of user-work.
+// msg_57614325: stack it beside user-work, srv1 CI width 7 to 5 that day). It is not a split of user-work; its
+// size is @ref(gunbc.live_deploy.slice_bounds::attempt_worker_slice_memory_max), not restated here.
 // The broader host-split ruling that user_manager_remainder names is still outstanding.
 fn attempt_worker_charged_in_served_allowance() -> ByteSize {
   attempt_worker_slice_memory_max

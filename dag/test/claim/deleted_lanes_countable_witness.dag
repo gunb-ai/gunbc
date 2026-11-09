@@ -18,7 +18,7 @@ import gunbc.witness.witness_floor_lanes { required_lanes_roster, witness_floor_
 // skipped required check produces. The row goes green again only together with the drop's
 // retirement, which is a measured wall and not a pull request.
 //
-// PERMANENT AFTER OBSERVED RED (DESIGN 4b(4)). Run 33924210916 supplied `fabric-evidence` and
+// PERMANENT AFTER OBSERVED RED (gunbc.design_argument::guarantee_ladder (dissolution on climb)). Run 33924210916 supplied `fabric-evidence` and
 // observed this exact identity return Bool(false). This probe is therefore a regression control,
 // not scaffolding: keep it enrolled for as long as any of the citing rung drops stands.
 // `required-v2-native` joined the deleted set 2026-09-11 (gunbc.rung_drop

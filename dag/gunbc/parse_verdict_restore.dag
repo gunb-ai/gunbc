@@ -39,7 +39,6 @@ import extdeps.github.expressions {
 }
 import gunbc.parse_verdict_schema {
   parse_verdict_request_family,
-  parse_compiler_sha_identity_cache_key,
   parse_verdict_restore_identity_basename,
   parse_verdict_restore_receipts_basename,
   parse_verdict_restore_ancestors_basename,
@@ -52,16 +51,18 @@ import gunbc.parse_verdict_publish {
   parse_verdict_generation_one_bin,
   parse_verdict_identity_blob_file,
   parse_verdict_receipts_file,
+  parse_verdict_unit_path,
   parse_verdict_publish_memory_env,
   parse_verdict_cache_working_directory,
 }
 
 // THE PULL-REQUEST SIDE OF THE PARSE-VERDICT CACHE (gunbc.parse_verdict_publish is the main side).
-// A pull-request run restores the two entries main saved for the nearest published ancestor of
-// base.sha, then walks the population with `--reuse-from`; the verb (v2.cli.parse_verdict_reuse) reads them and decides each module's
+// A pull-request run restores the ONE cache unit (identity + receipts, same path set, same key) that
+// main saved for the nearest published ancestor of base.sha, then walks the population with
+// `--reuse-from`; the verb (v2.cli.parse_verdict_reuse) reads them and decides each module's
 // standing. NOTHING HERE DECIDES REUSE: a restore that found no entry leaves no file, and the verb
 // reads that as a typed miss (MissIdentityAbsent / MissEntryAbsent), so eviction is a re-parse and
-// never a pass and never an error (DESIGN.md section 5). The restore keys are exact; there are no
+// never a pass and never an error (gunbc.design_argument::fail_closed). The restore keys are exact; there are no
 // restore-keys, because a prefix hit would be a near identity and reuse is exact or it is a miss.
 //
 // The guard is derived from the pull-request scope in the cache model, as the publisher's is from the
@@ -180,19 +181,10 @@ fn parse_verdict_locate_step() -> Step {
   }
 }
 
-// Every ordinal restores onto the SAME path the publisher saved (a cache entry's version hashes its
-// path, so the path is part of the entry's identity and must be the workspace-relative one on both
-// sides). The identity blob is restored only for the selected ancestor; see the SELECTION POLICY note on
-// parse_verdict_identity_restore_condition for which ancestor that is and why.
-fn parse_verdict_identity_restore_id(ordinal: Int) -> String {
-  join(["parse_identity_", int_to_decimal_string(value: ordinal)], "")
-}
-
-// The receipts restore carries its own step id so its cache-hit is addressable: the receipts key is
-// <prefix><head compiler identity>-<ancestor sha>, so a receipts cache-hit is the COMPLETE-and-COMPATIBLE
-// signal -- it can only hit if that ancestor published receipts under THIS run's compiler identity, which
-// is exactly "compatible identity AND receipts present". The identity blob key omits the compiler identity
-// (it is <prefix><sha>), so an identity hit alone does NOT denote a compatible, complete publication.
+// The restore step carries its own step id so its cache-hit is addressable: the cache key is
+// <prefix><head compiler identity>-<ancestor sha>, so a cache-hit is the COMPLETE-and-COMPATIBLE
+// signal -- it can only hit if that ancestor published under THIS run's compiler identity, which
+// is exactly "compatible identity AND receipts present". One key, one step, one unit.
 fn parse_verdict_receipts_restore_id(ordinal: Int) -> String {
   join(["parse_receipts_", int_to_decimal_string(value: ordinal)], "")
 }
@@ -205,18 +197,14 @@ fn parse_verdict_receipts_hit(ordinal: Int) -> Expression {
   Equals { left: parse_verdict_receipts_hit_output(ordinal: ordinal), right: StringLiteral { value: "true" } }
 }
 
-// SELECTION POLICY (declared): the locator selects the NEAREST ancestor with a COMPLETE, COMPATIBLE
-// publication -- the first ordinal whose RECEIPTS restore hit -- not the first with an identity blob.
-// The identity blob is restored ONLY for that selected ancestor (gated on its own receipts hit), so an
-// identity is never restorable without its receipts, and a stale/incompatible identity blob (an ancestor
-// that published under a DIFFERENT compiler identity, or whose receipts were evicted) is skipped rather
-// than committed to. Exact-match keys are retained; there is no prefix fallback and no restore-keys.
-// This replaces the prior first-identity-hit-wins policy, which committed to the nearest ancestor that
-// ever published an identity blob even when that identity was incompatible with this run or its receipts
-// were absent -- manufacturing an all-modules identity-mismatch instead of a clean miss (audit 708057ca).
-fn parse_verdict_identity_restore_condition(ordinal: Int) -> Expression {
-  LogicalAnd { left: materialization_scope_guard(scope: GhaCachePullRequestMergeRefScope), right: parse_verdict_receipts_hit(ordinal: ordinal) }
-}
+// SELECTION POLICY (declared): the restore chain selects the NEAREST ancestor with a COMPLETE, COMPATIBLE
+// publication -- the first ordinal whose cache-unit restore hit. Identity and receipts are published as
+// ONE unit under a key that embeds the compiler identity, so an identity is never restorable without its
+// receipts by construction: a miss (evicted, never published, or incompatible compiler identity) means
+// BOTH are absent and the chain proceeds to the next ancestor. Exact-match keys are retained; there is
+// no prefix fallback and no restore-keys. This replaces the prior two-entry form (separate sha-only
+// identity blob + receipts key), where a stale identity blob at a sha-only key could stop the search
+// and degrade to a full walk even when an older ancestor had a usable publication.
 
 fn parse_verdict_receipts_restore_condition(ordinal: Int) -> Expression {
   fold_list(
@@ -250,29 +238,15 @@ fn parse_verdict_cache_restore_step(name: String, id: Optional<String>, path: St
   }
 }
 
-fn parse_verdict_identity_restore_step_name(ordinal: Int) -> String {
-  join(["Restore parse-compiler identity for base ancestor ", int_to_decimal_string(value: ordinal)], "")
-}
-
 fn parse_verdict_receipts_restore_step_name(ordinal: Int) -> String {
-  join(["Restore parse-verdict receipts for base ancestor ", int_to_decimal_string(value: ordinal)], "")
-}
-
-fn parse_verdict_identity_restore_step(ordinal: Int) -> Step {
-  parse_verdict_cache_restore_step(
-    name: parse_verdict_identity_restore_step_name(ordinal: ordinal),
-    id: Present { value: parse_verdict_identity_restore_id(ordinal: ordinal) },
-    path: parse_verdict_identity_blob_file(),
-    cache_key: parse_compiler_sha_identity_cache_key(sha: parse_verdict_ancestor_sha_expr(ordinal: ordinal)),
-    condition: parse_verdict_identity_restore_condition(ordinal: ordinal)
-  )
+  join(["Restore parse-verdict unit for base ancestor ", int_to_decimal_string(value: ordinal)], "")
 }
 
 fn parse_verdict_receipts_restore_step(ordinal: Int) -> Step {
   parse_verdict_cache_restore_step(
     name: parse_verdict_receipts_restore_step_name(ordinal: ordinal),
     id: Present { value: parse_verdict_receipts_restore_id(ordinal: ordinal) },
-    path: parse_verdict_receipts_file(),
+    path: parse_verdict_unit_path(),
     cache_key: parse_verdict_restore_receipts_key(ordinal: ordinal),
     condition: parse_verdict_receipts_restore_condition(ordinal: ordinal)
   )

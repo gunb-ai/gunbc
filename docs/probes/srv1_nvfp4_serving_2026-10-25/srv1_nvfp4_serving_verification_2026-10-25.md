@@ -3,7 +3,7 @@
 **Found:** 2026-10-25 (UTC), read-only probe + benchmark against the **running**
 server. No change was made to srv1's serving at any point. Operator request
 2026-10-24; dashboard node `adhoc-15068614-20b`; session `sharp-ram-303`.
-**Class:** receipt (observing-layer observation, DESIGN §3 "observations are
+**Class:** receipt (observing-layer observation, gunbc.design_argument::single_authority "observations are
 receipts in the observing layer"). Raw measurement JSON alongside this file in
 this directory (`raw_*.json` / `raw_*.jsonl`).
 
@@ -13,7 +13,7 @@ Is srv1 **serving NVFP4 (FP4) model weights**, and does FP8 KV cache / FP8-capab
 attention work on its Blackwell GPU? Measure correctness, throughput, TTFT,
 peak memory, max context — keyed by engine version and flags.
 
-## What srv1 is, as observed (engine's own startup log + live state, §4d — not config intent)
+## What srv1 is, as observed (engine's own startup log + live state, gunbc.design_argument::epistemic_humility — not config intent)
 
 | item | observed value | source |
 |---|---|---|
@@ -29,7 +29,7 @@ peak memory, max context — keyed by engine version and flags.
 | **Weights as loaded** | **NVFP4**: engine log `quantization=nvfp4_csf load_format=nvfp4_csf`; checkpoint config `quant_method=modelopt, quant_algo=MIXED_PRECISION`, MoE experts NVFP4 `group_size=16, weight_scale_encoding=csf`; engine chose `B12X NvFp4 MoE backend` from `[FLASHINFER_TRTLLM, FLASHINFER_CUTEDSL, FLASHINFER_CUTEDSL_BATCHED, FLASHINFER_CUTLASS, VLLM_CUTLASS, MARLIN, HUMMING, EMULATION]` | serve.log engine-init line |
 | Activation dtype | `torch.bfloat16` | engine log `dtype=` |
 | **KV cache** | **`fp8`** (`kv_cache_dtype=fp8`), block_size 64, GPU KV cache 774,019 tokens / 2.95x concurrency at 262,144 tok per request (engine log, last boot), prefix caching on, LMCache kv connector (`kv_connector=LMCacheRecurrentCheckpointConnector`, kv-role `kv_both`; LMCache own log: multiprocess L2, token hasher `chunk_size=4096 blake3`, tensor allocator free 61,440 MB) | engine log / serve.log |
-| Attention backend | **OBSERVED:** the engine's init line prints no name for the full-attention backend, and no override flag was passed; serve.log names `AttentionBackendEnum.FLASH_ATTN` only for `vit attention` (`cuda.py:611`) and `MMEncoderAttention` (`mm_encoder_attention.py:372`); FlashInfer is named for top-p/top-k sampling and as MoE candidates ("Skipping FlashInfer autotune because it is disabled"). **DERIVED (§4d, not stated by the instrument):** that the main attention path therefore runs the auto-selected full-attention kernel of this vLLM build; which kernel that is is not printed by the log. | engine log (grep, full file) |
+| Attention backend | **OBSERVED:** the engine's init line prints no name for the full-attention backend, and no override flag was passed; serve.log names `AttentionBackendEnum.FLASH_ATTN` only for `vit attention` (`cuda.py:611`) and `MMEncoderAttention` (`mm_encoder_attention.py:372`); FlashInfer is named for top-p/top-k sampling and as MoE candidates ("Skipping FlashInfer autotune because it is disabled"). **DERIVED (gunbc.design_argument::epistemic_humility, not stated by the instrument):** that the main attention path therefore runs the auto-selected full-attention kernel of this vLLM build; which kernel that is is not printed by the log. | engine log (grep, full file) |
 | Spec decode | MTP (`method=mtp`, `num_speculative_tokens=3`) | engine log `speculative_config=` |
 | Context | `max_model_len=262144` (256k) | engine log |
 | Scheduling flags | `gpu_memory_utilization=0.96`, `max_num_batched_tokens=6019`, `max_num_seqs=16`, `enable_chunked_prefill`, `enable_prefix_caching`, `async_scheduling`, `optimization_level=2` | engine log `non-default args` |
@@ -96,7 +96,7 @@ directory. The prompt set, fixed: `code-rot13`, `code-bugfix`, `reason-train`,
 load probes `prefill-30k`, `countdown-200`, `burst-16`, `ctx-120k/180k/240k/260k`,
 `cold-prefill-150k`, `cold-fit-260k`.
 
-**What the instrument measures (§6 — read before comparing columns):**
+**What the instrument measures (gunbc.design_argument::how_to_work — read before comparing columns):**
 `prefill_tps` = `prompt_tokens / TTFT` is an **end-to-end effective rate** (tokenization, scheduling queue, chunked prefill at
 `max_num_batched_tokens=6019`, first-token decode), not a GPU-kernel prefill rate. `decode_tps` =
 `completion_tokens / (total - TTFT)` counts **all streamed deltas including reasoning tokens**, and
@@ -126,7 +126,7 @@ Additional refusals observed while measuring (not skipped — recorded with erro
   truncates (observed on budgets ≤220). Harness captures both channels; the
   correctness rows ran 4x budgets (288–880) so every answer completed.
 
-**Why burst and single-stream numbers are NOT comparable (§4d):** the 16-burst aggregate
+**Why burst and single-stream numbers are NOT comparable (gunbc.design_argument::epistemic_humility):** the 16-burst aggregate
 decode rate sits far below the single-stream peak rates because the 16 requests share the one
 GPU under `max_num_seqs=16` scheduling (decode steps interleave the batch), each burst request
 first pays a fresh prefill that competes with other requests' decode, and the 24-token completions
@@ -139,7 +139,7 @@ and neither corrects the other. Two runs are recorded —
 p50 1.804 s). Prefill is chunked (`max_num_batched_tokens=6019`) and runs
 concurrently with decode, hence burst decode sits below single-stream.
 
-## The correctness oracle (§5 — independent referents, fixed before the run)
+## The correctness oracle (gunbc.design_argument::fail_closed — independent referents, fixed before the run)
 
 The verdict **6/6 oracle-pass** is mechanical, not a hand reading. Expected-value
 predicates were fixed from referents derived **independently of the model**
@@ -158,7 +158,7 @@ it is not the basis of the claim.
 | `json-struct` | planets in Sun-order Mercury < Venus < Earth < Mars, `"count": 4` | ordered-index + count regex |
 | `code-tests` | the four cases the **prompt enumerates** — empty string, single char, `"racecar"`, `"hello"` — each present as a test input to `is_palindrome`, under pytest (form-agnostic: parametrize table or per-case functions) | input-presence predicates |
 
-Predicate honesty (§4d): run 1 of `code-tests` **failed** under a label-based
+Predicate honesty (gunbc.design_argument::epistemic_humility): run 1 of `code-tests` **failed** under a label-based
 predicate (it searched for the English words "empty"/"single" and rejected a valid
 `@pytest.mark.parametrize` table that covers all four required inputs — the answer
 is in `raw_eval_oracle.json`). The predicate, not the model, was wrong: the

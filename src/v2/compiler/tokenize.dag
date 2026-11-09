@@ -1280,7 +1280,7 @@ fn lex_unmatched_scalar_octets(remaining: LexCursor) -> Int {
   }
 }
 
-// lex_walk_artifact is the authored result; lex_walk is its SEMANTIC PROJECTION and is what every existing caller keeps using. The direction matters: the projection is derived from the artifact by dropping the annotation channel, never the reverse, so a semantic consumer cannot reach annotation text and an annotation-aware consumer does not have to re-lex. Both fold the same walk exactly once — this is one traversal read two ways, not two traversals (DESIGN 4c erasure boundary at the lexical layer, mirroring AuthoredParseArtifact at the parse layer).
+// lex_walk_artifact is the authored result; lex_walk is its SEMANTIC PROJECTION and is what every existing caller keeps using. The direction matters: the projection is derived from the artifact by dropping the annotation channel, never the reverse, so a semantic consumer cannot reach annotation text and an annotation-aware consumer does not have to re-lex. Both fold the same walk exactly once — this is one traversal read two ways, not two traversals (gunbc.design_argument::source_annotations erasure boundary at the lexical layer, mirroring AuthoredParseArtifact at the parse layer).
 // Zero-width [pos, pos] is the caret BEFORE the unmatched character, so a refusal on an offending literal landed on the insertion point rather than covering the character. Cover one scalar, in octets, when remaining is nonempty.
 fn lex_walk_artifact(source: v2.std.text.String, file: Symbol, rules: LexRuleSet) -> Outcome<LexArtifact> {
   lex_walk_artifact_prepared(source: source, file: file, prepared: prepare_lex_rule_set(rules: rules))
@@ -1479,6 +1479,31 @@ fn lex_window(text: String, limit: LexWalkLimit) -> LexWindow {
 // rest of the text. The cost of the door follows the window and not the text: the unfold, which builds a
 // scalar sequence at hundreds of nanoseconds a scalar, is paid for the window.
 fn tokenize_prefix_prepared(text: String, file: Symbol, prepared: PreparedLexRules, limit: LexWalkLimit) -> Outcome<LexPrefix> {
+  match tokenize_walk_prepared(text: text, file: file, prepared: prepared, limit: limit) {
+    v2.std.diagnostic.Rejected { diagnostics: ds } =>
+      v2.std.diagnostic.Rejected { diagnostics: ds }
+    v2.std.diagnostic.Accepted { value: walk, diagnostics: ds } =>
+      v2.std.diagnostic.Accepted {
+        value: LexPrefix { stream: lex_artifact_semantic_tokens(artifact: walk.artifact), complete: walk.complete },
+        diagnostics: ds
+      }
+  }
+}
+
+// THE AUTHORED LEX OF A WHOLE TEXT: the same door read without the semantic projection, so a consumer
+// of the annotation channel (std.annotation_reference) gets the captures the semantic walk made and
+// never re-lexes. It is the one walk: the token stream a semantic consumer reads is
+// lex_artifact_semantic_tokens of this artifact.
+fn tokenize_artifact_prepared(text: String, file: Symbol, prepared: PreparedLexRules) -> Outcome<LexArtifact> {
+  match tokenize_walk_prepared(text: text, file: file, prepared: prepared, limit: LexWalkWhole) {
+    v2.std.diagnostic.Rejected { diagnostics: ds } =>
+      v2.std.diagnostic.Rejected { diagnostics: ds }
+    v2.std.diagnostic.Accepted { value: walk, diagnostics: ds } =>
+      v2.std.diagnostic.Accepted { value: walk.artifact, diagnostics: ds }
+  }
+}
+
+fn tokenize_walk_prepared(text: String, file: Symbol, prepared: PreparedLexRules, limit: LexWalkLimit) -> Outcome<LexArtifactWalk> {
   let window = lex_window(text: text, limit: limit)
   let source = unicode_scalar_unfold(s: window.text)
   let at = Textual {
@@ -1490,18 +1515,10 @@ fn tokenize_prefix_prepared(text: String, file: Symbol, prepared: PreparedLexRul
       if window.truncated || !is_empty(xs: source) {
         v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e0_source_not_exhausted_diagnostic(at: at)) }
       } else {
-        v2.std.diagnostic.Accepted { value: LexPrefix { stream: token_stream_empty(), complete: true }, diagnostics: v2.std.diagnostic.None }
+        v2.std.diagnostic.Accepted { value: LexArtifactWalk { artifact: lex_artifact_new(tokens: token_stream_empty(), annotations: []), complete: true }, diagnostics: v2.std.diagnostic.None }
       }
     PreparedModeledLexRules { root: prepared_set } =>
-      match lex_walk_artifact_windowed(source: source, truncated: window.truncated, file: file, prepared: prepared_set) {
-        v2.std.diagnostic.Rejected { diagnostics: ds } =>
-          v2.std.diagnostic.Rejected { diagnostics: ds }
-        v2.std.diagnostic.Accepted { value: walk, diagnostics: ds } =>
-          v2.std.diagnostic.Accepted {
-            value: LexPrefix { stream: lex_artifact_semantic_tokens(artifact: walk.artifact), complete: walk.complete },
-            diagnostics: ds
-          }
-      }
+      lex_walk_artifact_windowed(source: source, truncated: window.truncated, file: file, prepared: prepared_set)
   }
 }
 

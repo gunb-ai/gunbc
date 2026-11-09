@@ -37,7 +37,7 @@ type PersistenceLocality
 // second spelling of InvalidationTrigger's TtlExpiry / ManualPurge, which this
 // module already carries on key_derivation — so the old axis could not state
 // "bounded by bytes AND released at scope exit" while it happily stated one
-// concept twice. Splitting it is a §3 de-fork, not a new taxonomy: freshness
+// concept twice. Splitting it is a gunbc.design_argument::single_authority de-fork, not a new taxonomy: freshness
 // stays on InvalidationTrigger, and what remains here is capacity, the action
 // taken at capacity, the replacement order (if any), and storage lifetime.
 
@@ -230,7 +230,7 @@ type VisibilityScope = Repo | Org | Network | World
 // retiring the old eviction axis deleted the one typed TTL in the live catalog
 // (hermetic_fixture's Ttl { days: 30 }) and left the number surviving only in an
 // evidence prose string. A de-fork that drops the fact it was consolidating has
-// not consolidated it, and prose is not a carrier a machine can read (§4c). The
+// not consolidated it, and prose is not a carrier a machine can read (gunbc.design_argument::source_annotations). The
 // window is Second rather than days because the cited seed constant is
 // FIXTURE_FRESHNESS_SECS -- the row now states the unit its authority states.
 type InvalidationTrigger
@@ -345,7 +345,7 @@ type CacheWriteResult<T>
 // bytes are not what the key promised: a digest that does not match, a missing
 // producer receipt, a malformed key, a refused or unreachable backend, a
 // transport that could not carry the value faithfully. Recomputing over those
-// is the absorbing fallback (DESIGN 5): the rebuild succeeds, the corrupt or
+// is the absorbing fallback (gunbc.design_argument::fail_closed): the rebuild succeeds, the corrupt or
 // unreachable store is never reported, and the deficit never ranks for repair.
 // So they refuse, typed and located, and the line stops.
 type RecomputeReason
@@ -442,7 +442,7 @@ fn cache_reach_candidate_recompute() -> CacheReachCandidate {
   }
 }
 
-// A CACHE CANNOT BE JUSTIFIED AGAINST A RECOMPUTE COST NOBODY ESTABLISHED. DESIGN section 2 admits
+// A CACHE CANNOT BE JUSTIFIED AGAINST A RECOMPUTE COST NOBODY ESTABLISHED. gunbc.design_argument::demand_before_materialization admits
 // a provider as an optimization only when measured total serving cost is below recomputation, so an
 // unestablished recompute time does not make the comparison conservative -- it makes it unanswerable.
 // Both consumers already had an honest arm for that: the probe returns none, and the justification

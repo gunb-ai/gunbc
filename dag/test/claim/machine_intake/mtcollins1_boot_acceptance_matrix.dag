@@ -478,7 +478,7 @@ fn world_with_console(lines: List<TimedConsoleLine>) -> MtCollins1BootWorld {
       world: bmc_publishing(bmc: bmc_world(power: BmcPowerOff), fans: healthy_fan_records),
       // This scenario's controller IS the Mt. Collins MegaRAC, so the world models the one `mc info` fact the
       // corpus has on it (transcribed, never retained as stdout) and the dry realization renders THAT when the
-      // boot asks -- rather than the handler reciting a stored transcript to every dry controller (DESIGN §2: model a concept once and derive every use).
+      // boot asks -- rather than the handler reciting a stored transcript to every dry controller (gunbc.design_argument::minimize_redundancy: model a concept once and derive every use).
       fields: Present { value: ipmitool_mc_info_mt_collins_transcribed_fields }),
     fs: worker_filesystem(),
     environment: [
@@ -949,7 +949,7 @@ test fn a_sol_session_held_elsewhere_refuses_before_the_attach() -> Bool {
 // a drop at boot+30s falls inside it. The case was red while the gate slept the settle with SOL
 // unwatched (the teardown landed 60-120s after power). The settle is now spent under the SOL watch
 // (gunbc.machine_intake.mtcollins1_boot_run mtcollins1_boot_watched_fan_settle), and THE CONTRACT WAS
-// CORRECTED ON SAFETY GROUNDS (merry-fox-82, 2026-10-24; DESIGN 5), not relaxed: a loss before the gate
+// CORRECTED ON SAFETY GROUNDS (merry-fox-82, 2026-10-24; gunbc.design_argument::fail_closed), not relaxed: a loss before the gate
 // has passed leaves a powered host with unverified fans and nothing watching it, so the boot fails safe.
 // Power-on is followed by exactly one PowerDown, no fan read is taken after power-on, and the gate reads
 // Abandoned -- all within the same sixty-second teardown bound, which stays. The bound is met in this
@@ -1567,7 +1567,7 @@ test fn an_attempt_that_never_set_an_override_owes_no_clear() -> Bool {
   }
 }
 
-// ─── THE BOOTDEV ECHO CARRIES NO VERDICT (review 87856, DESIGN §4d) ──────────────────────────────────
+// ─── THE BOOTDEV ECHO CARRIES NO VERDICT (review 87856, gunbc.design_argument::epistemic_humility) ──────────────────────────────────
 // WHAT THE CLEAR PRINTS IS NOT EVIDENCE OF ANYTHING. `ipmitool raw` echoes nothing at all, so every byte
 // this row prints is an invention -- which is the stronger form of what this row always tested. The clear it
 // replaced, `chassis bootdev none`, was answered with a row DERIVED from the shape of two captured echoes
@@ -1632,7 +1632,7 @@ test fn a_lying_bootdev_echo_moves_no_verdict() -> Bool {
        }
 }
 
-// ─── THE UNREADABLE INITIAL PARAMETER 5 (side-chat REQUEST_CHANGES at 3a890b02, §5) ────────────────────
+// ─── THE UNREADABLE INITIAL PARAMETER 5 (side-chat REQUEST_CHANGES at 3a890b02, gunbc.design_argument::fail_closed) ────────────────────
 // THE CONTROLLER CANNOT ANSWER ABOUT ITS OWN BOOT PARAMETER. Every parameter-5 read of the run -- the
 // before-read, the clear's readback, the release's readback -- comes back the way an ipmitool session that
 // will not establish does: exit 1, nothing on stdout. 'Clear what is pending' alone was fail-OPEN here: a

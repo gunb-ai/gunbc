@@ -22,7 +22,7 @@ import gunbc.fleet.fleet_fan_converge_routes { fan_converge_route_for_family }
 // COVERAGE STATE FOR THIS MODULE IS NOT HERE. Which consumer each standing waits on and what
 // retires it is carried by gunbc.machine_intake.mtjade1_coverage_frontier
 // mtjade1_fan_standing_frontier_rows as typed std.roster_frontier rows, because a "NAMED CONSUMER
-// / TRIGGER" note is unreadable to every Accepted program (DESIGN §4c, review 67984).
+// / TRIGGER" note is unreadable to every Accepted program (gunbc.design_argument::source_annotations, review 67984).
 //
 // OPERATOR RECEIPT 2026-09-18: Jade powered on with no DIMMs; fans ran at full and did not stop;
 // operator chassis-powered the host off. Next power-on is with the Table 11 16-DIMM 1DPC fill.
@@ -33,15 +33,15 @@ import gunbc.fleet.fleet_fan_converge_routes { fan_converge_route_for_family }
 // migration is the point of the revision rather than a tidy-up. gunbc#11623 and gunbc#11529 were in
 // flight at the same time and each modelled: a residence acoustic intent, a host-thermal-before-POST
 // state, a first-POST fan finding, and a per-family converge route. Two authorities for one meaning
-// is the §3 fork, and DESIGN prices the surviving one as an ATTRACTOR -- every later Jade question
+// is the gunbc.design_argument::replacement_migration fork, and DESIGN prices the surviving one as an ATTRACTOR -- every later Jade question
 // would have been answered in this module's vocabulary rather than the fleet's. So the four local
 // types are deleted here and the product rows are consumed, in the same change that introduces
 // them, rather than left to a follow-up: a fork that lands with a promise is the deferred-refactor
-// tell (§6), not a plan.
+// tell (gunbc.design_argument::how_to_work), not a plan.
 //
 // WHAT STAYS LOCAL IS WHAT IS GENUINELY THIS UNIT'S: the operator's act, the window-close cause,
 // the coverage state of a capture that has not happened, and the family dispatch that reads THIS
-// unit's firmware standing. Those are receipts in the observing layer, which is exactly where §3
+// unit's firmware standing. Those are receipts in the observing layer, which is exactly where gunbc.design_argument::single_authority
 // says an observation belongs.
 
 // THE RESIDENCE CEILING IS FLEET INTENT AND IS CONSUMED, NOT RESTATED. What is local is the ACT

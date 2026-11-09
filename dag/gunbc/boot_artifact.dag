@@ -10,12 +10,12 @@ import extdeps.toolchain.types { Architecture, X86_64, Aarch64, X86, Arm, Armv7,
 // second consumer -- nonce issuance in gunbc.machine_intake.receipt, which must
 // bind the artifact it minted a token for -- and the two cannot both reach it
 // from the delivery module, because delivery already imports the receipt layer
-// and the import graph's one structural law is acyclicity (DESIGN section 4).
+// and the import graph's one structural law is acyclicity (gunbc.design_argument::closed_grounded_substrate).
 //
 // So this is an ordinary single-authority relocation: one concept, one home,
 // both consumers importing it. A copy of the digest and architecture on the
 // issuance side would have been the alternative, and it is exactly the fork
-// DESIGN section 3 forbids -- two places answering "which artifact is this",
+// gunbc.design_argument::single_authority forbids -- two places answering "which artifact is this",
 // free to disagree.
 // What the artifact is FOR is data the same delivery mechanism accepts, never
 // a reason to fork the mechanism.

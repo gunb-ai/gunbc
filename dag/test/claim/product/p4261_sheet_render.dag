@@ -1,0 +1,32 @@
+module test.claim.product.p4261_sheet_render
+
+// Writes a P4261 partial schematic sheet's drawing, generated from its rows, to the path given:
+//   gunbc run --entry this file --function render_p4261_sheet --arg sheet=<module> --arg path=<file.svg>
+// where <module> is the sheet's module under product.p4261 (near_u4_converter_sheet, enable_chain_sheet).
+// The drawing is a view of the rows, regenerated whenever they change; it is never edited by hand. The
+// file is written only through product.p4261.sheet export_sheet, the one validation result: a sheet with
+// a refused connection or measurement, a reading outside its declared states, an inconsistent voltage
+// note, an unsettled read, an unplaced terminal or an undrawable text is refused with every reason, and
+// nothing is written.
+import std.types { List, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import product.p4261.sheet { export_sheet, PartialSheet, SheetExported, SheetRefused }
+import product.p4261.near_u4_converter_sheet { near_u4_converter_sheet }
+import product.p4261.enable_chain_sheet { enable_chain_sheet }
+
+data p4261_sheets: List<PartialSheet> = [near_u4_converter_sheet, enable_chain_sheet]
+
+fn render_p4261_sheet(sheet: NonEmptyStr, path: NonEmptyStr) -> ProcessExit {
+  let found = filter(p4261_sheets, s => s.source == join(["product.p4261.", sheet as String], ""))
+  match found.first() {
+    Absent => exit_failure(reason: join(["no P4261 sheet is the module product.p4261.", sheet as String], ""))
+    Present { value: s } => match export_sheet(s: s) {
+      SheetRefused { reasons } => exit_failure(reason: join(["the sheet is refused: ", join(reasons, "; ")], ""))
+      SheetExported { svg } =>
+        let w = Filesystem.Write(path: path as String, content: svg)
+        if w.success { ExitSuccess } else { exit_failure(reason: w.error) }
+    }
+  }
+}

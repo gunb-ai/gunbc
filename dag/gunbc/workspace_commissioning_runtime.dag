@@ -4,7 +4,9 @@ import std.types { String, NonEmptyStr, Bool, CommitSha }
 import gunbc.live_deploy.release_environment { installed_release_unit }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
 import std.algebra { trim }
-import gunbc.auth.approval_broker_cutover { BrokerTreeReceiptRead, observe_broker_tree_receipt, TreeReceiptObserved, TreeReceiptMalformed, TreeReceiptUnreadable }
+import gunbc.live_deploy.release_locus {
+  ReleaseTreeReceiptRead, observe_release_tree_receipt, TreeReceiptObserved, TreeReceiptMalformed, TreeReceiptUnreadable, release_locus_dir, release_locus_tree_receipt_path, RevisionBoundAtEmission,
+}
 import std.measure { byte_size_count }
 import extdeps.systemd { MemoryMax, MemorySwapMax }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -16,7 +18,6 @@ import gunbc.runner.runner_microvm_slot_unit {
   microvm_controller_root, microvm_controller_gunbc_binary, microvm_controller_slice_unit_name,
   microvm_slot_reserve_unit_name, microvm_slot_unit_path, microvm_slot_unit_file, microvm_slot_unit_timeout_stop_sec,
 }
-import gunbc.live_deploy.release_locus { release_locus_dir, release_locus_tree_receipt_path, RevisionBoundAtEmission }
 import gunbc.runner.runner_microvm_cell_readiness { StoreRootOwned, StoreNotRootOwned }
 import gunbc.runner.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, OwnershipUnread }
 import gunbc.fabric.fabric_cell_acquire { fabric_cell_read_boundary, fabric_cell_boundary_address_probe, fabric_cell_read_boundary_property, PropertyRead, PropertyReadRefused }
@@ -122,7 +123,7 @@ fn workspace_commissioning_installed_tree_matches(provenance: WorkspaceCommissio
     OwnershipRead { ownership: StoreRootOwned } => {
       let read = Filesystem.Read(path: path)
       workspace_commissioning_tree_receipt_matches(provenance: provenance,
-        receipt: observe_broker_tree_receipt(success: read.success, body: read.content,
+        receipt: observe_release_tree_receipt(success: read.success, body: read.content,
           error: "installed controller tree receipt is unreadable" as NonEmptyStr))
     }
     OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => false
@@ -131,7 +132,7 @@ fn workspace_commissioning_installed_tree_matches(provenance: WorkspaceCommissio
 }
 
 fn workspace_commissioning_tree_receipt_matches(provenance: WorkspaceCommissioningProvenance,
-  receipt: BrokerTreeReceiptRead) -> Bool {
+  receipt: ReleaseTreeReceiptRead) -> Bool {
   match receipt {
     TreeReceiptObserved { revision, installed_digest } => revision == provenance.source_revision
       && installed_digest == provenance.installed_tree_digest

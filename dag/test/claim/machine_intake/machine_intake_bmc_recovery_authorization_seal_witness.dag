@@ -14,8 +14,8 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 //
 // gunbc.machine_intake.bmc_recovery_route claims that a password or a reset admission cannot be spelled
 // outside the module, and that its two ticket mints cannot be called by anybody the roster does not name.
-// Those were claims. A claim about a compiler refusal that nobody re-runs is transcribed output (DESIGN
-// section 6), and it decays the moment someone removes the annotation -- so this file holds the refusals,
+// Those were claims. A claim about a compiler refusal that nobody re-runs is transcribed output (
+// gunbc.design_argument::how_to_work), and it decays the moment someone removes the annotation -- so this file holds the refusals,
 // direct and indirect.
 //
 // WHY THE SEALS ARE ON RECORDS AND NOT ON THE SUMS, stated here because getting this wrong produces a

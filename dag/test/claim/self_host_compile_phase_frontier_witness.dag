@@ -445,7 +445,7 @@ test fn the_persisted_genesis_census_is_fully_attributed_to_its_phases() -> Bool
 // the frontier-state pin `the_published_frontier_standing_does_not_claim_typeck_or_borrowck_passed`,
 // asserting the red state while the census carried typeck errors. Receipt 3's census is EMPTY --
 // the emitted closure's cargo check reports zero error diagnostics, furthest phase borrowck -- so
-// per DESIGN 4b(4) the guard flips to its permanent regression control: the rendered standing must
+// per gunbc.design_argument::guarantee_ladder (dissolution on climb) the guard flips to its permanent regression control: the rendered standing must
 // now claim typeck and borrowck passed, and any future receipt whose census re-enters either phase
 // renders "N remaining" here and reds this row.
 test fn the_published_frontier_standing_claims_typeck_and_borrowck_passed() -> Bool {

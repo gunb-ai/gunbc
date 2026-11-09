@@ -1,5 +1,6 @@
 module test.claim.scaffold_disposition_census_fixture_witness
 
+import std.algebra { count_where, for_all, list_map, unique }
 import v2.std.decl_index { DeclFact, DataItem, FnItem, decl_facts }
 import v2.std.decl_facts_skeleton { decl_facts_matching_qualified_name }
 import test.fixture.scaffold_disposition_census.expected_classification {

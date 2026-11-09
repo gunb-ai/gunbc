@@ -19,7 +19,7 @@ import gunbc.fabric.fabric_store_operation_admission {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE WALL OVER SUPPLIED READINGS (§3: one interface). A consent-slot write needs no decoded event,
+// THE WALL OVER SUPPLIED READINGS (gunbc.design_argument::witness_one_interface: one interface). A consent-slot write needs no decoded event,
 // so these claims exercise the approval path end to end with a REAL minted receipt: the broker's
 // mint (gunbc.auth.approval_store_receipt issue_store_receipt_over) over a filing whose revision is
 // the digest of a D0-framed intent, then this module's check at the store.
@@ -51,7 +51,7 @@ fn fw_intent(scope: AuthorizationScope) -> String {
   }
 }
 
-// RECEIPTS AS THE BROKER'S MINT SIGNS THEM, SUPPLIED (§3: the subject here is the store's decision,
+// RECEIPTS AS THE BROKER'S MINT SIGNS THEM, SUPPLIED (gunbc.design_argument::single_authority: the subject here is the store's decision,
 // so the receipt is an input, not a re-run of issuance, which has its own witnesses). Each is the mint's
 // own claim constructor (gunbc.auth.approval_store_receipt store_receipt_claims) over the SHA-256 of its
 // intent text as the approved revision, with the tag HMAC-SHA-256 under fw_receipt_key_hex over exactly

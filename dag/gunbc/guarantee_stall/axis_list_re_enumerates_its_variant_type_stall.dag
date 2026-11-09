@@ -8,7 +8,7 @@ import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 // first thing proposed for it. A gunbc.rung_drop records a REGRESSION -- a class that held a rung
 // and no longer does, with a previous rung to restore. Axis completeness against the variant types
 // was NEVER established here, so there is no height to restore and a restoration trigger would
-// name a capability that never existed. This is DESIGN section 4b(2)'s no-untracked-stall
+// name a capability that never existed. This is gunbc.design_argument::guarantee_ladder (no untracked stall)'s no-untracked-stall
 // obligation instead: a class below its ceiling naming what it waits on.
 //
 // THE SUBJECT, AND THE FIXTURE THAT DEMONSTRATES IT RATHER THAN A DESCRIPTION OF IT.
@@ -74,7 +74,7 @@ import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 // it is the obvious proposal and it was made. A `list_length(arms) == 7` fact fires when the LIST
 // SHRINKS. On type GROWTH the list is still seven and the fact is still seven, they agree, and the
 // check is GREEN ON PRECISELY THE HAZARD THIS ROW NAMES -- a wall permanently green on its own
-// subject, which DESIGN 4b calls a decoration and warns will be cited as coverage. It would also
+// subject, which gunbc.design_argument::guarantee_ladder calls a decoration and warns will be cited as coverage. It would also
 // be a third authority for one population. The measurement above is what settles it: the failing
 // edit was run, and the count fact would not have moved.
 data axis_list_re_enumerates_its_variant_type_stall: GuaranteeStall = GuaranteeStall {
@@ -90,5 +90,5 @@ data axis_list_re_enumerates_its_variant_type_stall: GuaranteeStall = GuaranteeS
       "gunbc.instruments.reference_binding_provenance_calibration calibration_resolution_arms",
     ],
   },
-  next_rung_trigger: climbs_when(capability: "constructor enumeration for a declared coproduct, sufficient that an axis list is DERIVED from its variant type rather than authored -- at which point a list short of its type has no constructor, because there is no list to omit a variant from. Stated as ENUMERATION OF THE TYPE and not as a completeness check over the list, because a check comparing the list to any other authored artifact is satisfied by editing that artifact while the axis stays short, which is DESIGN section 4b(3)'s trigger naming less than the capability it restores"),
+  next_rung_trigger: climbs_when(capability: "constructor enumeration for a declared coproduct, sufficient that an axis list is DERIVED from its variant type rather than authored -- at which point a list short of its type has no constructor, because there is no list to omit a variant from. Stated as ENUMERATION OF THE TYPE and not as a completeness check over the list, because a check comparing the list to any other authored artifact is satisfied by editing that artifact while the axis stays short, which is gunbc.design_argument::guarantee_ladder (no silent regression)'s trigger naming less than the capability it restores"),
 }

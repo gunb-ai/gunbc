@@ -192,7 +192,7 @@ fn hetzner_cloud_region_label(r: HetznerCloudRegion) -> NonEmptyStr {
 
 // WHETHER A ROW CAN ACTUALLY BE ORDERED IS NOT MODELLED HERE. That reading belongs to whoever
 // took it - see gunbc.procurement.hetzner_supply_observation, which joins an account's console
-// observation to these rows. DESIGN section 3: observations this repository produces are receipts
+// observation to these rows. gunbc.design_argument::single_authority: observations this repository produces are receipts
 // in the observing layer, never properties of the observed upstream.
 
 type HetznerCloudListedRow {
@@ -211,7 +211,7 @@ data hetzner_cloud_console_observation: NonEmptyStr = "Operator reading of the s
 
 // THE ROWS. Helsinki and Nuremberg quoted IDENTICAL hourly and monthly figures on every size where
 // both were read, so each row carries the list of regions it was observed in rather than being
-// duplicated per region - two rows holding one price is the fork DESIGN section 3 forbids, and the
+// duplicated per region - two rows holding one price is the fork gunbc.design_argument::single_authority forbids, and the
 // regions list keeps the observation's real breadth without inviting them to drift.
 data hetzner_regions_read: List<HetznerCloudRegion> = [Helsinki, Nuremberg]
 
@@ -297,7 +297,7 @@ fn hetzner_cloud_listed_catalog() -> List<HetznerCloudListedRow> {
 // Everything above this line is catalog and tariff. A route admission asks a different question --
 // where the execution, the storage, the backups, the logs, the support and the administrators of a
 // given location actually sit -- and the answer is in a different set of the vendor's documents.
-// They are read here rather than in the product layer for the reason DESIGN section 3 gives: an
+// They are read here rather than in the product layer for the reason gunbc.design_argument::single_authority gives: an
 // independently governed upstream owns its own facts, and what we are willing to do with them is a
 // fact about us. Silences against the nine-path questions live in
 // product.supplier.hetzner_path_reading, citing the page URIs at the top of this file; they are not

@@ -32,7 +32,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // control: a failure that consumed nothing inside the item stays at the item's first token, so the
 // furthest rule does not invent depth.
 //
-// COST SHAPE (DESIGN section 3, a witness discriminates at one interface). The subject is the
+// COST SHAPE (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface). The subject is the
 // parse, so each specimen enters as a supplied token stream and is parsed for real
 // (v2.test.claim.parse.supplied_token_stream_support); each stream is paired with a fidelity claim that
 // the real tokenizer emits exactly it. The unit claim's subject is the lexer, so it tokenizes and

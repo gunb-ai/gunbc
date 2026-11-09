@@ -84,14 +84,14 @@ import gunbc.floor_cost_distribution {
 //     --function floor_cost_distribution_report
 //
 // WHY THIS IS A SEPARATE MODULE FROM `gunbc.floor_cost_distribution`: reading bytes off disk is a
-// realization and the analysis is an interface (DESIGN section 3). The split is what lets the
+// realization and the analysis is an interface (gunbc.design_argument::single_authority). The split is what lets the
 // witness exercise every derivation on a hand-built fixture with no artifacts present, so the
 // evidence does not depend on which runs happen to be downloaded.
 //
 // AN ABSENT OR UNREADABLE FILE REFUSES AND IS NAMED. It does not contribute an empty population:
 // an empty artifact silently emptied a ten-way identity intersection during the original analysis,
 // and a run that reads as zero rows is indistinguishable from a run where nothing crossed. That is
-// the absorbing fallback DESIGN section 5 forbids, so the arm below is typed and counted.
+// the absorbing fallback gunbc.design_argument::fail_closed forbids, so the arm below is typed and counted.
 
 // THE CEILING CARRIES ITS UNIT. `v2.workflow.required_floor` `required_floor_claim_work_envelope_ms`
 // is the authority for the value; this row is the analysis-side reading of it, and it is a
@@ -249,7 +249,7 @@ fn percentile_line(values: List<Int>, percent: Int) -> String {
 // the ten-run measurement's name.
 //
 // THAT IS THE SAME ABSORBING FALLBACK AT A SECOND DOOR, and it is why proving the property of the
-// ACTUATOR was correct and insufficient -- DESIGN section 4b reads a rung as the MINIMUM across a
+// ACTUATOR was correct and insufficient -- gunbc.design_argument::guarantee_ladder reads a rung as the MINIMUM across a
 // subject's in-scope paths, and this sibling entry point is one of them. The repair is not another
 // check: `floor_cost_distribution_figures` takes `List<RunCost>`, so a refused load has NO
 // REPRESENTATION in its input and the partial-sample report is unwritable rather than guarded.
@@ -844,7 +844,7 @@ fn floor_cost_crossing_check() -> ProcessExit {
 // `EvalStepDeterminismViolation` and `same_head_eval_step_violations` -- a comparison that refuses
 // before looking at a single row when the two heads differ, so a caller cannot turn two different
 // trees into a plausible determinism result -- and NOTHING HAS EVER CALLED THEM on real bytes.
-// A model with no producer is specification without execution (DESIGN section 5), and the missing
+// A model with no producer is specification without execution (gunbc.design_argument::fail_closed), and the missing
 // producer is the whole of what this section adds: no new comparison, no new vocabulary.
 //
 // WHY THE SAMPLE IS A PAIR OF ATTEMPTS AND NOT A PAIR OF RUNS, which is the distinction this makes
@@ -858,7 +858,7 @@ fn floor_cost_crossing_check() -> ProcessExit {
 // `same_head_eval_step_violations` before any row is read. State the guarantee at its real strength:
 // the guard compares two values THE AUTHOR SUPPLIED, so it catches a roster whose heads disagree and
 // it does NOT catch a roster that declares one head over artifacts drawn from two different trees.
-// DESIGN section 5's tell applies exactly -- the check can be satisfied by editing the DECLARATION
+// gunbc.design_argument::fail_closed's tell applies exactly -- the check can be satisfied by editing the DECLARATION
 // while the bytes still lie.
 //
 // THE CONSTRUCTION IS AVAILABLE AND THE TRIGGER NAMES IT, so this does not stall silently. The
@@ -886,7 +886,7 @@ fn floor_cost_crossing_check() -> ProcessExit {
 //
 // THIS COMMENT DOES NOT FIX THAT AND MUST NOT BE READ AS DECLARING IT. It records only what the
 // trigger has to avoid: building the artifacts operation onto the stringly module would satisfy this
-// trigger while deepening a fork over one cited spec, and DESIGN section 3 says a fork always gets
+// trigger while deepening a fork over one cited spec, and gunbc.design_argument::single_authority says a fork always gets
 // consolidated later -- so that arm is deferred cost rather than a shortcut. Consolidating the two
 // is its own change against that upstream's authority, with its own review.
 //
@@ -1100,7 +1100,7 @@ fn floor_cost_attempt_pair_check() -> ProcessExit {
 //
 // WHY IT LIVES HERE RATHER THAN IN A WITNESS. The calibration row declares how many eval steps its
 // pinned specimen performs, and that literal gates every required claim through the two tier
-// budgets. DESIGN section 5 requires such a literal to have an independent referent, and the referent
+// budgets. gunbc.design_argument::fail_closed requires such a literal to have an independent referent, and the referent
 // exists: the floor executes the specimen as a required claim and publishes its `eval_steps` by
 // identity. What does not exist is a way for a claim to read its own step count, or for any witness
 // to read an artifact that is written only after the run completes -- so the join's executing home is
@@ -1119,7 +1119,7 @@ fn floor_cost_attempt_pair_check() -> ProcessExit {
 // `eval_steps` is a POINT for an observed row and a LOWER BOUND for a censored one -- the parse
 // fills it from `eval_steps_at_least` on the censored arm -- so comparing it to the pin without
 // the case split lets a bound that happens to equal the pin produce a MATCH, reporting equality
-// the run never established (review 65748; DESIGN section 5, no fabricated plausible output).
+// the run never established (review 65748; gunbc.design_argument::fail_closed, no fabricated plausible output).
 // `gunbc.floor_cost_distribution` already forces this split for the cost figure through
 // `observed_cpu_ms`, whose `Absent` arm exists precisely so a bound cannot reach a point question;
 // this is the same discipline applied to the step figure.

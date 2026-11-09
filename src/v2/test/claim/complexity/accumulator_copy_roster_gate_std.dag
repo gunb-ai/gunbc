@@ -48,7 +48,7 @@ data std_tranche_string_carrier_debt_count: Int = 7
 // Executed 2026-10-23 head-built: 14 refusals, so the hand-ceiling refused the BUDGET arm while
 // the typed population admits it (probe run, log /tmp/kd2/probe8.log; manager ruling msg_adddb844
 // item 2: wrong claim, fix forward). A hand-typed ceiling is a second representation of the
-// stall's BoundedPopulation (DESIGN section 5), and this is what the drift costs: a claim red for
+// stall's BoundedPopulation (gunbc.design_argument::fail_closed), and this is what the drift costs: a claim red for
 // a number no authority declares. The ceiling now joins that population -- the members prefixed
 // "std.change " -- so editing the stall row moves the ratchet and one authority declares it.
 //

@@ -30,10 +30,10 @@ import extdeps.ampere.mt_collins_firmware_release {
 }
 import std.algebra { length }
 
-// ── WHICH FIRMWARE BASELINE mtcollins1 SHOULD RUN: a §3d selection, ahead of the convergence ──────
+// ── WHICH FIRMWARE BASELINE mtcollins1 SHOULD RUN: a gunbc.design_argument::selection_precedes_convergence selection, ahead of the convergence ──────
 //
 // The convergence in gunbc.fleet.mtcollins_firmware_converge does not choose what to install; it is
-// handed a desired baseline and converges toward it (DESIGN §3d). Choosing it is this module, and it is
+// handed a desired baseline and converges toward it (gunbc.design_argument::selection_precedes_convergence). Choosing it is this module, and it is
 // std.decision.select_realization over a field of candidate baselines -- not a hand-picked row -- so
 // that the laws the vendor stated are HARD CONSTRAINTS that exclude a candidate before dominance:
 //

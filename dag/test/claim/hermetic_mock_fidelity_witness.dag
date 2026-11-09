@@ -24,7 +24,7 @@ import gunbc.hermetic_mock_fidelity {
 // THERE IS NO "row carries a trigger" WITNESS HERE, and its absence is deliberate. The trigger
 // is derived per fact by a total function, so a row without one has no spelling; a check for it
 // would be permanently green by construction and would be cited as coverage while carrying no
-// information (DESIGN section 4b). What replaced it is the third row below, which asserts the
+// information (gunbc.design_argument::guarantee_ladder). What replaced it is the third row below, which asserts the
 // derivation is not degenerate.
 
 fn undiagnosed_fabricating_row() -> HermeticMockRow {

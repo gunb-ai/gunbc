@@ -38,7 +38,7 @@ import std.optional { Absent, Present }
 // validating a tree and hoping the target has not moved, the queue CONSTRUCTS the tree that will
 // become the target -- the merge_group composition -- validates THAT, and fast-forwards it. There
 // is no interval in which the validated tree can go stale, because the validated tree is the
-// published one. That is the DESIGN section 5 climb the whole lane is for: stale-green stops being
+// published one. That is the gunbc.design_argument::fail_closed climb the whole lane is for: stale-green stops being
 // a state that must be detected and becomes a state with no constructor.
 //
 // THIS MODULE IS THE ADMISSION HALF AND OWNS NO SETTINGS. Which queue this repository wants and
@@ -343,7 +343,7 @@ fn queue_admission_admits(v: QueueAdmissionVerdict) -> Bool {
 // leaves a route around it. Operational does not imply Exclusive, and the gap is not theoretical --
 // a ruleset that admits a bypass actor lets an identity publish past every check while the queue
 // runs correctly beside it. Claiming Exclusive on the strength of Operational would be rung
-// inflation on precisely the axis a queue is adopted for (DESIGN section 4b): the loud property is
+// inflation on precisely the axis a queue is adopted for (gunbc.design_argument::guarantee_ladder): the loud property is
 // "no route around admission", and Operational establishes nothing about routes.
 //
 // So they are two constructors, Exclusive carries what Operational carries plus the bypass fact,

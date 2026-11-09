@@ -64,7 +64,7 @@ fn rented_cohort_enrollments_from_allocations(held: List<RentedServingAllocation
 // `rented_enrollment_index(rows: folded.enrollments)` returns a RentedEnrollmentIndex with no place for the
 // allocations the derivation refused, so a caller asking for "the index from these allocations" gets a
 // narrower index that looks valid even when a paid-for card could not be enrolled -- a public route on which
-// a refused allocation disappears, which DESIGN section 5 refuses. Whoever feeds production has to hold the
+// a refused allocation disappears, which gunbc.design_argument::fail_closed refuses. Whoever feeds production has to hold the
 // RentedCohortFold and decide in the open what happens to its refusals: report them, or refuse to publish the
 // roster at all. That decision is the consumer's to make visibly, not this module's to make silently.
 // (Nothing consumed the shortcut: its only callers were this module's own witnesses, which now build the
@@ -77,7 +77,7 @@ fn rented_cohort_refusal_reports(folded: RentedCohortFold) -> List<NonEmptyStr> 
   map(folded.refusals, r => join([r.allocation.contract as String, ": ", r.obligation as String], "") as NonEmptyStr)
 }
 
-// DECLARED FRONTIER (DESIGN 3c). The subject is the production roster that stays a literal. The trigger is
+// DECLARED FRONTIER (gunbc.design_argument::consumption). The subject is the production roster that stays a literal. The trigger is
 // bound -- the corpus convention for these rows and a TYPE rather than prose -- but to the FED fold, not to
 // this derivation: std.dissolution bound_dissolution is DeclarationAppears, so citing
 // rented_cohort_enrollments_from_allocations here would let the PR that writes the fold also dissolve the

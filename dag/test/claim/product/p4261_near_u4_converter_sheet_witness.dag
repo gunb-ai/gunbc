@@ -1,0 +1,401 @@
+module test.claim.product.p4261_near_u4_converter_sheet_witness
+
+// ==================================================================================================
+// The near-U4 converter sheet, held to what a partial schematic built from readings may claim.
+//
+//   * No two nodes reach a common terminal, joined or proposed: SW and OUT, with the inductor's winding
+//     between them, stay two nodes.
+//   * A proposed connection is admissible only on evidence between exactly its counterpart terminals,
+//     unpowered, off the shorted E1-b, and of a display that could join. An unrelated reading, a nonzero
+//     reading, an energized reading and an E1-b reading are each refused.
+//   * Nothing promotes to membership without a baseline reading, established correspondences AND a copper
+//     claim on cited evidence: a reported zero, a proposed K1-a-to-E1-b correspondence or an unresolved
+//     series path leaves the anchor the node's only member. A path through a part -- across a winding, a
+//     fuse, a shunt -- never joins; a ThroughPart claim must name the part both ends belong to.
+//   * The sheet is drawn in a declared state (the K1-a intact); a reading outside it is refused.
+//   * export_sheet is the one validation result: a sheet with a refused connection is refused with the
+//     reason, and an established correspondence with no evidence establishes nothing.
+//   * Forced-current readings are candidates, never members, and an unrecorded probe place stays inferred.
+//   * Every read names a target the sheet carries, an observable and at least two outcomes.
+//   * The fault's candidate set reaches beyond the photograph.
+//   * The disputed 3.2 V record is cited where it stands.
+//   * The drawing is generated from the rows: a circuit view with every placed part, pin and continuation
+//     stub, then the report; a drawn terminal with no place refuses the drawing.
+// ==================================================================================================
+import std.types { Bool, List }
+import std.nat { Nat }
+import std.algebra { string_contains }
+import gunbc.fleet.fleet_asset_identity { p4261_k1_a }
+import product.electrical.connectivity { ElectricalTerminalRef, terminal_ref, terminal_ref_equal, TerminalIdentity }
+import product.electrical.bench_session {
+  AutoRanging,
+  DisplayAtProbeBaseline,
+  DisplayValue,
+  ForcedCurrentReading,
+  HeldSteady,
+  RangeFullScale,
+  RedOnFirst,
+  ResistanceObservation,
+  ShortedProbeBaseline,
+  StatedPlainly,
+}
+import product.electrical.continuity {
+  AfterIncidents,
+  BeforeIncidents,
+  BenchConditions,
+  both_points_recorded,
+  Energized,
+  EvidenceRef,
+  ModuleUnrecorded,
+  OperatorStatement,
+  PointInferred,
+  PointRecorded,
+  Unpowered,
+}
+import product.p4261.bench { inductor_pad_far_u4, inductor_pad_near_u4 }
+import product.p4261.e1_b { e1_converter_pair_resistances, e1_converter_pin, e1_forced_current_readings, e1_l_4r7_near, e1_pad, e1_photo_part, e1_u100 }
+import product.p4261.k1_a { k1_converter_near, k1_l_4r7_near, k1_near_converter_lead_resistances, k1_return, k1_u10p2_lift }
+import product.p4261.near_u4_converter_sheet {
+  e1_fault_candidates,
+  l_converter_pad,
+  l_out_pad,
+  near_u4_converter_sheet,
+  near_u4_layout,
+  near_u4_sheet_svg,
+  out_voltage_dispute,
+  sheet_gnd_node,
+  sheet_nodes,
+  sheet_out_node,
+  sheet_sw_node,
+  sw_connection,
+}
+import product.p4261.sheet {
+  aliases_resolve,
+  export_sheet,
+  SheetExported,
+  SheetRefused,
+  ThroughPart,
+  all_connections_admissible,
+  asks_settle_named_targets,
+  BenchAsk,
+  CandidateOpen,
+  connection_admissible,
+  connection_joins,
+  Correspondence,
+  CorrespondenceEstablished,
+  CorrespondenceProposed,
+  continuation_keys,
+  CopperClaimed,
+  drawable,
+  FaultCandidate,
+  fault_reaches_beyond_the_sheet,
+  key_in,
+  layout_complete,
+  member_of,
+  node_members,
+  node_reach,
+  nodes_disjoint,
+  observed_between,
+  PartialSheet,
+  PartOnSheet,
+  PathClaim,
+  ProposedConnection,
+  SeriesUnresolved,
+  Settlement,
+  SheetLayout,
+  SheetNode,
+  sheet_drawable,
+  unplaced_terminals,
+}
+
+test fn no_two_nodes_reach_a_common_terminal() -> Bool {
+  nodes_disjoint(ns: sheet_nodes)
+}
+
+// RED CONTROL: OUT proposing a connection to the inductor's converter pad, SW's anchor, is caught.
+data out_across_the_winding: SheetNode = SheetNode {
+  key: "out", anchor: l_out_pad,
+  connections: [ProposedConnection { key: "control-across-winding", first: Correspondence { sheet: l_out_pad, counterpart: sw_connection.first.counterpart, standing: CorrespondenceProposed { basis: "control" } }, second: Correspondence { sheet: l_converter_pad, counterpart: sw_connection.second.counterpart, standing: CorrespondenceProposed { basis: "control" } }, path: sw_connection.path, observed: sw_connection.observed }],
+  by_datasheet: [], candidates: [], continuations: [],
+}
+
+test fn a_connection_across_the_winding_is_caught() -> Bool {
+  !nodes_disjoint(ns: [sheet_sw_node, out_across_the_winding])
+}
+
+test fn every_sheet_connection_is_admissible_and_cited() -> Bool {
+  all_connections_admissible(states: near_u4_converter_sheet.states, ns: sheet_nodes) && connection_admissible(states: near_u4_converter_sheet.states, c: sw_connection) && count(sw_connection.observed) > 0 && count(sheet_gnd_node.connections) == 5
+}
+
+// Reported zeros on the K1-a, with correspondences proposed by placement, promote nothing: the anchor is
+// each node's only member, while the proposals stay reachable on the sheet.
+test fn reported_zeros_and_proposed_correspondences_do_not_promote() -> Bool {
+  !connection_joins(states: near_u4_converter_sheet.states, c: sw_connection)
+    && count(node_members(states: near_u4_converter_sheet.states, n: sheet_sw_node)) == 1 && count(node_members(states: near_u4_converter_sheet.states, n: sheet_gnd_node)) == 1
+    && member_of(ts: node_reach(n: sheet_sw_node), t: e1_pad(number: 3, name: "SW"))
+    && !member_of(ts: node_members(states: near_u4_converter_sheet.states, n: sheet_sw_node), t: e1_pad(number: 3, name: "SW"))
+}
+
+fn with_observed(os: List<ResistanceObservation>) -> ProposedConnection {
+  ProposedConnection { key: "control", first: sw_connection.first, second: sw_connection.second, path: sw_connection.path, observed: os }
+}
+
+// RED CONTROL: wrong endpoints -- the K1-a's GND lead reading cited for the SW connection -- is refused.
+test fn evidence_between_other_points_is_refused() -> Bool {
+  !connection_admissible(states: near_u4_converter_sheet.states, c: with_observed(os: k1_near_converter_lead_resistances))
+}
+
+data k1_sw_pin: ElectricalTerminalRef = terminal_ref(component: k1_converter_near, terminal: "pin 3 (SW)" as TerminalIdentity)
+
+data k1_l_far_pad: ElectricalTerminalRef = terminal_ref(component: k1_l_4r7_near, terminal: inductor_pad_far_u4 as TerminalIdentity)
+
+data control_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-07", verbatim: "control fixture, not a reading" }
+
+fn control_reading(power_on: Bool, display_baseline: Bool, ohms: Nat) -> ResistanceObservation {
+  ResistanceObservation {
+    asset: p4261_k1_a, first: k1_sw_pin, second: k1_l_far_pad, record: both_points_recorded,
+    conditions: BenchConditions { power: if power_on { Energized } else { Unpowered }, module: ModuleUnrecorded },
+    polarity: RedOnFirst, range: RangeFullScale { ohms: 200 },
+    display: if display_baseline { DisplayAtProbeBaseline { shown: "0.3", baseline: ShortedProbeBaseline { full_scale_ohms: 200, shown: "0.3", evidence: control_said } } } else { DisplayValue { ohms: ohms, approximate: false } },
+    stability: HeldSteady, certainty: StatedPlainly, order: BeforeIncidents { keys: [k1_u10p2_lift.key] }, evidence: [control_said],
+  }
+}
+
+// RED CONTROL: a nonzero reading between exactly the right points is not join evidence.
+test fn a_nonzero_reading_is_refused() -> Bool {
+  !connection_admissible(states: near_u4_converter_sheet.states, c: with_observed(os: [control_reading(power_on: false, display_baseline: false, ohms: 8000)]))
+}
+
+// RED CONTROL: an energized reading is of another configuration and is refused.
+test fn an_energized_reading_is_refused() -> Bool {
+  !connection_admissible(states: near_u4_converter_sheet.states, c: with_observed(os: [control_reading(power_on: true, display_baseline: true, ohms: 0)]))
+}
+
+// RED CONTROL: the E1-b's own SW-to-inductor zero, read after the short, places nothing.
+data e1_sw_zero: List<ResistanceObservation> = observed_between(os: e1_converter_pair_resistances, a: e1_converter_pin(number: 3, name: "SW"), b: l_converter_pad)
+
+test fn an_e1b_reading_is_refused() -> Bool {
+  count(e1_sw_zero) > 0 && !connection_admissible(states: near_u4_converter_sheet.states, c: ProposedConnection {
+    key: "control",
+    first: Correspondence { sheet: e1_pad(number: 3, name: "SW"), counterpart: e1_converter_pin(number: 3, name: "SW"), standing: CorrespondenceProposed { basis: "control" } },
+    second: Correspondence { sheet: l_converter_pad, counterpart: l_converter_pad, standing: CorrespondenceProposed { basis: "control" } },
+    path: sw_connection.path,
+    observed: e1_sw_zero,
+  })
+}
+
+// CROSS-REVISION PROMOTION: a baseline reading on the counterpart with proposed correspondences does not
+// join; with both correspondences established it still does not while the series path is unresolved; with
+// a copper claim on cited evidence as well it does, and only then do the terminals become members.
+data baseline_proposed: ProposedConnection = with_observed(os: [control_reading(power_on: false, display_baseline: true, ohms: 0)])
+
+fn established_with(path: PathClaim) -> ProposedConnection {
+  ProposedConnection {
+    key: "control-established",
+    first: Correspondence { sheet: sw_connection.first.sheet, counterpart: sw_connection.first.counterpart, standing: CorrespondenceEstablished { evidence: [control_said] } },
+    second: Correspondence { sheet: sw_connection.second.sheet, counterpart: sw_connection.second.counterpart, standing: CorrespondenceEstablished { evidence: [control_said] } },
+    path: path,
+    observed: [control_reading(power_on: false, display_baseline: true, ohms: 0)],
+  }
+}
+
+data baseline_established_series_open: ProposedConnection = established_with(path: SeriesUnresolved { why: "control" })
+
+data baseline_established_copper: ProposedConnection = established_with(path: CopperClaimed { basis: "control frame showing the copper", evidence: [control_said] })
+
+test fn promotion_needs_baseline_established_correspondence_and_a_copper_claim() -> Bool {
+  connection_admissible(states: near_u4_converter_sheet.states, c: baseline_proposed) && !connection_joins(states: near_u4_converter_sheet.states, c: baseline_proposed)
+    && connection_admissible(states: near_u4_converter_sheet.states, c: baseline_established_series_open) && !connection_joins(states: near_u4_converter_sheet.states, c: baseline_established_series_open)
+    && connection_joins(states: near_u4_converter_sheet.states, c: baseline_established_copper)
+    && member_of(ts: node_members(states: near_u4_converter_sheet.states, n: SheetNode { key: "sw", anchor: l_converter_pad, connections: [baseline_established_copper], by_datasheet: [], candidates: [], continuations: [] }), t: e1_pad(number: 3, name: "SW"))
+}
+
+// RED CONTROL: a copper claim with no evidence cited does not promote.
+test fn a_copper_claim_without_evidence_does_not_promote() -> Bool {
+  !connection_joins(states: near_u4_converter_sheet.states, c: established_with(path: CopperClaimed { basis: "control", evidence: [] }))
+}
+
+// RED CONTROL: one connection across the inductor's two pads -- a baseline reading, both correspondences
+// established, copper claimed -- is refused on its own, with no second node needed to catch it.
+data k1_l_near_pad: ElectricalTerminalRef = terminal_ref(component: k1_l_4r7_near, terminal: inductor_pad_near_u4 as TerminalIdentity)
+
+fn pad_to_pad_reading() -> ResistanceObservation {
+  ResistanceObservation {
+    asset: p4261_k1_a, first: k1_l_near_pad, second: k1_l_far_pad, record: both_points_recorded,
+    conditions: BenchConditions { power: Unpowered, module: ModuleUnrecorded },
+    polarity: RedOnFirst, range: RangeFullScale { ohms: 200 },
+    display: DisplayAtProbeBaseline { shown: "0.3", baseline: ShortedProbeBaseline { full_scale_ohms: 200, shown: "0.3", evidence: control_said } },
+    stability: HeldSteady, certainty: StatedPlainly, order: BeforeIncidents { keys: [k1_u10p2_lift.key] }, evidence: [control_said],
+  }
+}
+
+fn across_the_winding(path: PathClaim) -> ProposedConnection {
+  ProposedConnection {
+    key: "control-across-winding",
+    first: Correspondence { sheet: l_out_pad, counterpart: k1_l_near_pad, standing: CorrespondenceEstablished { evidence: [control_said] } },
+    second: Correspondence { sheet: l_converter_pad, counterpart: k1_l_far_pad, standing: CorrespondenceEstablished { evidence: [control_said] } },
+    path: path,
+    observed: [pad_to_pad_reading()],
+  }
+}
+
+// RED CONTROLS: a baseline reading across the inductor's two pads, both correspondences established, is
+// a path through the winding: claimed as such it is admissible and never joins; left series-unresolved it
+// never joins; a ThroughPart claim naming a part whose terminals these are not is refused.
+test fn a_path_through_a_winding_never_joins() -> Bool {
+  let through = across_the_winding(path: ThroughPart { part: e1_l_4r7_near, why: "the reading is across the winding" })
+  let open = across_the_winding(path: SeriesUnresolved { why: "control" })
+  let misnamed = across_the_winding(path: ThroughPart { part: e1_u100, why: "control" })
+  connection_admissible(states: near_u4_converter_sheet.states, c: through) && !connection_joins(states: near_u4_converter_sheet.states, c: through)
+    && !connection_joins(states: near_u4_converter_sheet.states, c: open)
+    && !connection_admissible(states: near_u4_converter_sheet.states, c: misnamed)
+}
+
+// RED CONTROL: a correspondence marked established with no evidence cited establishes nothing.
+test fn an_established_correspondence_without_evidence_establishes_nothing() -> Bool {
+  let hollow = ProposedConnection {
+    key: "control-hollow",
+    first: Correspondence { sheet: sw_connection.first.sheet, counterpart: sw_connection.first.counterpart, standing: CorrespondenceEstablished { evidence: [] } },
+    second: Correspondence { sheet: sw_connection.second.sheet, counterpart: sw_connection.second.counterpart, standing: CorrespondenceEstablished { evidence: [control_said] } },
+    path: CopperClaimed { basis: "control", evidence: [control_said] },
+    observed: [control_reading(power_on: false, display_baseline: true, ohms: 0)],
+  }
+  connection_admissible(states: near_u4_converter_sheet.states, c: hollow) && !connection_joins(states: near_u4_converter_sheet.states, c: hollow)
+}
+
+// RED CONTROL: a K1-a reading of the same points after that board's U10_P2 lift is of another state, and
+// the sheet refuses it.
+test fn a_reading_outside_the_declared_state_is_refused() -> Bool {
+  let later = ResistanceObservation {
+    asset: p4261_k1_a, first: k1_sw_pin, second: k1_l_far_pad, record: both_points_recorded,
+    conditions: BenchConditions { power: Unpowered, module: ModuleUnrecorded }, polarity: RedOnFirst, range: RangeFullScale { ohms: 200 },
+    display: DisplayAtProbeBaseline { shown: "0.3", baseline: ShortedProbeBaseline { full_scale_ohms: 200, shown: "0.3", evidence: control_said } },
+    stability: HeldSteady, certainty: StatedPlainly, order: AfterIncidents { keys: [k1_u10p2_lift.key] }, evidence: [control_said],
+  }
+  count(near_u4_converter_sheet.states) == 1 && !connection_admissible(states: near_u4_converter_sheet.states, c: with_observed(os: [later]))
+}
+
+test fn forced_current_ends_are_candidates_with_their_readings() -> Bool {
+  let cs = concat(sheet_out_node.candidates, sheet_gnd_node.candidates)
+  count(filter(cs, c => count(c.readings) == 0)) == 0
+    && count(filter(cs, c => member_of(ts: concat(node_members(states: near_u4_converter_sheet.states, n: sheet_out_node), node_members(states: near_u4_converter_sheet.states, n: sheet_gnd_node)), t: c.terminal))) == 0
+}
+
+// The two 0.10 A readings keep the meter's black lead as inferred, not as G.
+test fn an_unrecorded_probe_place_stays_inferred() -> Bool {
+  count(filter(e1_forced_current_readings, r => r.injected_milliamps == 100 && match r.record.second { PointInferred { basis: _ } => true, PointRecorded => false })) == 2
+}
+
+test fn unknown_continuations_are_on_the_sheet() -> Bool {
+  let ks = continuation_keys(ns: sheet_nodes)
+  key_in(ks: ks, k: "out-loads") && key_in(ks: ks, k: "out-copper-route") && key_in(ks: ks, k: "vin-continuation") && key_in(ks: ks, k: "en-continuation")
+    && key_in(ks: ks, k: "pg-continuation") && key_in(ks: ks, k: "ss-continuation") && key_in(ks: ks, k: "fb-continuation")
+    && key_in(ks: ks, k: "out-7-8-chain") && key_in(ks: ks, k: "out-9-far-end") && key_in(ks: ks, k: "gnd-4-6-or-vin")
+}
+
+test fn every_read_names_a_target_an_observable_and_outcomes() -> Bool {
+  asks_settle_named_targets(s: near_u4_converter_sheet)
+}
+
+fn with_layout_and_asks(layout: SheetLayout, asks: List<BenchAsk>) -> PartialSheet {
+  PartialSheet {
+    source: near_u4_converter_sheet.source, title: near_u4_converter_sheet.title, layout: layout, aliases: near_u4_converter_sheet.aliases,
+    states: near_u4_converter_sheet.states, nodes: near_u4_converter_sheet.nodes, links: near_u4_converter_sheet.links,
+    roles: near_u4_converter_sheet.roles, voltages: near_u4_converter_sheet.voltages, disputes: near_u4_converter_sheet.disputes,
+    removals: near_u4_converter_sheet.removals, hypotheses: near_u4_converter_sheet.hypotheses, asks: asks,
+  }
+}
+
+fn with_asks(asks: List<BenchAsk>) -> PartialSheet {
+  with_layout_and_asks(layout: near_u4_layout, asks: asks)
+}
+
+// RED CONTROLS: a read whose target the sheet does not carry, and one with a single possible outcome.
+test fn a_read_on_an_unnamed_target_or_with_one_outcome_is_refused() -> Bool {
+  !asks_settle_named_targets(s: with_asks(asks: [BenchAsk { key: "stray", on: "control", procedure: "control", settles: [Settlement { target: "a-node-nobody-drew", observable: "control", outcomes: ["a", "b"] }] }]))
+    && !asks_settle_named_targets(s: with_asks(asks: [BenchAsk { key: "one-way", on: "control", procedure: "control", settles: [Settlement { target: "sw", observable: "control", outcomes: ["only one"] }] }]))
+}
+
+test fn the_fault_set_reaches_beyond_the_photograph() -> Bool {
+  fault_reaches_beyond_the_sheet(cs: e1_fault_candidates)
+}
+
+data photo_only_candidates: List<FaultCandidate> = [
+  PartOnSheet { part: e1_photo_part(label: "1"), standing: CandidateOpen },
+  PartOnSheet { part: e1_photo_part(label: "3"), standing: CandidateOpen },
+]
+
+test fn a_photo_only_fault_set_is_refused() -> Bool {
+  !fault_reaches_beyond_the_sheet(cs: photo_only_candidates)
+}
+
+test fn every_photo_label_names_a_placed_part() -> Bool {
+  aliases_resolve(s: near_u4_converter_sheet)
+}
+
+test fn the_disputed_record_is_cited_where_it_stands() -> Bool {
+  count(out_voltage_dispute.held) == 1
+}
+
+test fn every_drawn_terminal_has_one_place() -> Bool {
+  layout_complete(s: near_u4_converter_sheet) && count(unplaced_terminals(s: near_u4_converter_sheet)) == 0
+}
+
+// RED CONTROL: drop the OUT pad's place and the drawing is refused, naming that terminal, instead of
+// drawing the sheet without it.
+test fn a_drawn_terminal_with_no_place_refuses_the_drawing() -> Bool {
+  let short = with_layout_and_asks(layout: SheetLayout {
+    width: near_u4_layout.width, height: near_u4_layout.height, symbols: near_u4_layout.symbols,
+    pins: filter(near_u4_layout.pins, p => !terminal_ref_equal(a: p.terminal, b: l_out_pad)), stubs: near_u4_layout.stubs,
+  }, asks: near_u4_converter_sheet.asks)
+  !layout_complete(s: short) && !sheet_drawable(s: short) && count(unplaced_terminals(s: short)) > 0
+}
+
+// The drawing shows cross-specimen proposals in their own style, the BST relation with the datasheet's
+// capacitor and resistor as hypothetical elements, and the state it is drawn in.
+test fn the_circuit_view_draws_parts_pins_and_stubs() -> Bool {
+  let svg = near_u4_sheet_svg()
+  string_contains(s: svg, pattern: "U10_P2 footprint") && string_contains(s: svg, pattern: "4R7 nearest U4")
+    && string_contains(s: svg, pattern: "#2 (removed)") && string_contains(s: svg, pattern: "U10_P2 chip (removed)")
+    && string_contains(s: svg, pattern: "stroke-dasharray=\"6 3 1 3\"") && !string_contains(s: svg, pattern: "stroke-dasharray=\"9 5\"")
+    && string_contains(s: svg, pattern: "1 uF?") && string_contains(s: svg, pattern: "20 ohm?")
+    && string_contains(s: svg, pattern: "Evidence read in: ") && string_contains(s: svg, pattern: "<circle")
+    && string_contains(s: svg, pattern: "? out-loads")
+}
+
+test fn the_sheet_exports() -> Bool {
+  match export_sheet(s: near_u4_converter_sheet) {
+    SheetExported { svg } => string_contains(s: svg, pattern: "NODE sw")
+    SheetRefused { reasons: _ } => false
+  }
+}
+
+// RED CONTROL at the export boundary: the same sheet with its SW connection citing the GND lead's reading
+// is refused, and the reason names the connection and the fault; nothing is drawn.
+test fn a_sheet_with_a_refused_connection_is_refused_at_export() -> Bool {
+  let bad = PartialSheet {
+    source: near_u4_converter_sheet.source, title: near_u4_converter_sheet.title, states: near_u4_converter_sheet.states,
+    layout: near_u4_layout, aliases: near_u4_converter_sheet.aliases,
+    nodes: concat([SheetNode { key: sheet_sw_node.key, anchor: sheet_sw_node.anchor, connections: [with_observed(os: k1_near_converter_lead_resistances)], by_datasheet: sheet_sw_node.by_datasheet, candidates: [], continuations: [] }], filter(sheet_nodes, n => n.key != sheet_sw_node.key)),
+    links: [], roles: [], voltages: [], disputes: near_u4_converter_sheet.disputes, removals: near_u4_converter_sheet.removals,
+    hypotheses: near_u4_converter_sheet.hypotheses, asks: near_u4_converter_sheet.asks,
+  }
+  match export_sheet(s: bad) {
+    SheetExported { svg: _ } => false
+    SheetRefused { reasons } => count(filter(reasons, r => string_contains(s: r, pattern: "connection control") && string_contains(s: r, pattern: "between other points"))) > 0
+  }
+}
+
+test fn the_drawing_carries_every_node_continuation_dispute_and_alias() -> Bool {
+  let svg = near_u4_sheet_svg()
+  sheet_drawable(s: near_u4_converter_sheet)
+    && count(filter(sheet_nodes, n => !string_contains(s: svg, pattern: join(["NODE ", n.key as String], "")))) == 0
+    && count(filter(continuation_keys(ns: sheet_nodes), k => !string_contains(s: svg, pattern: join(["? ", k as String, ":"], "")))) == 0
+    && string_contains(s: svg, pattern: "DISPUTED out-voltage-3v2")
+    && count(filter(near_u4_converter_sheet.aliases, a => !string_contains(s: svg, pattern: join([a.label as String, " = "], "")))) == 0
+}
+
+// RED CONTROL: a text holding '&' or '<' is refused rather than drawn into broken SVG.
+test fn an_undrawable_text_is_refused() -> Bool {
+  !drawable(t: "R & D") && !drawable(t: "a < b") && drawable(t: "plain text")
+}

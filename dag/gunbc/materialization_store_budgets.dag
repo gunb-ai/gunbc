@@ -9,7 +9,7 @@ import std.cache_identity { typed_module_artifact_kind, compute_work_artifact_ki
 import extdeps.realization.materialization_store_local { LocalStoreFamilyBudget, local_store_budget_sum, materialization_store_local_facts_at }
 import extdeps.cache.types { CacheInterfaceCatalogFacts }
 
-// THE DURABLE STORE'S BUDGETS ARE POLICY, AND POLICY IS THIS LAYER'S FACT (DESIGN section 3). The
+// THE DURABLE STORE'S BUDGETS ARE POLICY, AND POLICY IS THIS LAYER'S FACT (gunbc.design_argument::single_authority). The
 // transport (extdeps.realization.materialization_store_local) owns the budget's shape and its
 // enforcement and receives these rows as a parameter; the per-host figures live here, beside the
 // consumer that opens the durable root, so revising one never edits the transport. One root per host
@@ -45,6 +45,6 @@ data materialization_store_local_facts: CacheInterfaceCatalogFacts = materializa
 
 // THE COMPUTE ROW IS CONSUMED BY EXECUTION: gunbc.compute.work_provider_local compute_store
 // opens the durable root with these rows on every compute request it memoizes. The TYPED-MODULE row's
-// production consumer is still a declared frontier (DESIGN section 3c), named below; the witnesses pass
+// production consumer is still a declared frontier (gunbc.design_argument::consumption), named below; the witnesses pass
 // fixture rows of their own, and the host-ceiling control reads the figure above.
 data materialization_store_durable_budgets_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: the TypecheckModuleRequest consumer (PR C2) opens the instance's DurableHostVolume through extdeps.realization.materialization_store_local passing materialization_store_durable_family_budgets. SUFFICIENT FOR: these rows bound a production store on every run that consumes it; until then they are read only by the host-ceiling control, and this row is retired by that landing and nothing else." as NonEmptyStr)

@@ -13,7 +13,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// Permanent regression control for the `transport file` emission wall (DESIGN §4b(4): a climb
+// Permanent regression control for the `transport file` emission wall (gunbc.design_argument::guarantee_ladder (dissolution on climb): a climb
 // deletes the production machinery it obsoletes, but the discriminating RED and its positive
 // control STAY ENROLLED as the executing evidence that the higher rung is still real -- deleting
 // the evidence with the machinery would recreate specification-without-execution one rung up).
@@ -29,7 +29,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // The census compiles for the RUST target only (cli_run compile_dag_diagnostic_census), so every
 // count here is a rust-path count. Python and go remain refused by target and are NOT witnessed
-// by this file -- claiming their rung from these rows would be the §4b(1) inflation.
+// by this file -- claiming their rung from these rows would be the gunbc.design_argument::guarantee_ladder (rung honesty) inflation.
 //
 // The two shell/rest rows are NOT decoration. Without them this file cannot distinguish "the file
 // arm behaves" from "the transport dispatch is broken for everything", which is the failure mode

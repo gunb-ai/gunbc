@@ -96,7 +96,7 @@ type ChannelPolicy {
 // identities live in the receipt artifact and the console carries batch conclusions, dwell
 // heartbeats, and anomalies at their exact leaf subject.
 // No new grain taxonomy is minted: BatchSegment and the floor plan already name the high-level work,
-// and a second phase enum beside them would be the nickname DESIGN section 3 forbids.
+// and a second phase enum beside them would be the nickname gunbc.design_argument::single_authority forbids.
 fn routine_rollup_grain_for(verbosity: Verbosity) -> ObservationGrain? {
   match verbosity {
     Quiet => Present { value: BatchGrain }
@@ -165,7 +165,7 @@ fn is_condensed(channel: OutputChannel, verbosity: Verbosity) -> Bool {
 // payoff: a red control that SUCCEEDS (the wall failing to fire) is divergence, and today logs
 // nothing at all — the single most diagnosis-worthy event in the system is currently the quietest.
 // There is deliberately no ExpectAny arm: an effect whose expectation is unknown would make every
-// observation agree, restoring the empty set (DESIGN 5 — a failure arm must refuse, never widen).
+// observation agree, restoring the empty set (gunbc.design_argument::fail_closed — a failure arm must refuse, never widen).
 
 // OutcomeIsData is the third arm (operator ruling 2026-07-25), and it exists because
 // ExpectSuccess|ExpectFailure mis-models a whole class of site: a PROBE whose exit code is an
@@ -179,7 +179,7 @@ fn is_condensed(channel: OutputChannel, verbosity: Verbosity) -> Bool {
 // context, which is this model's whole thesis. It is annotatable on a shared helper's own call
 // node, once, correct for every caller — which is why it dissolves the apparent trilemma between
 // threading a test concern through production signatures and an ambient frame that can be left
-// open. ADMISSIBILITY GUARD (§5, what stops this becoming a silence-anything sticker):
+// open. ADMISSIBILITY GUARD (gunbc.design_argument::fail_closed, what stops this becoming a silence-anything sticker):
 // OutcomeIsData is admissible ONLY where the exit provably feeds a typed consumer — the annotated
 // helper returns a typed observation or verdict, never unit. Both clusters it was ruled for qualify
 // today: witness_bin_artifact_readiness returns its WitnessBinReadiness arms, and
@@ -190,7 +190,7 @@ fn is_condensed(channel: OutputChannel, verbosity: Verbosity) -> Bool {
 // WHETHER a site declared, kept type-distinct from WHAT it declared (operator ruling 2026-07-25:
 // 'we should never have an undeclared expectation; get rid of the fallback'). Until 2026-07-26 the
 // dispatch boundary closed the gap itself — `declared_expectation.unwrap_or(ExpectSuccess)` — which
-// is textbook absorbing fallback (§5): the missing declaration was answered with a plausible one
+// is textbook absorbing fallback (gunbc.design_argument::fail_closed): the missing declaration was answered with a plausible one
 // INSIDE the callee, so it left no trace, the frequency of undeclared sites was zero by
 // construction, and the deficit could never rank for fixing. The boundary now takes
 // `ExpectationDeclaration = Declared(ExpectedOutcome) | UntracedDefault`, so absence is a value the
@@ -213,7 +213,7 @@ type ExpectedOutcome = ExpectSuccess | ExpectFailure | OutcomeIsData
 
 type ObservedOutcome = ObservedSuccess | ObservedFailure { exit: Int }
 
-// StreamDisposition is NOT a second spelling of OutputDecision (DESIGN 3 — the nicknaming check was run before minting it). They grade different payloads with different obligations: OutputDecision grades a trace LINE this repo authored (Condensed dims and truncates it to shell_trace_summary_max_columns), while StreamDisposition grades a captured SUBJECT stream this repo did not author (SummarizeCounts prints byte counts INSTEAD of content, and SurfaceContent carries the neutralization obligation a rendered line never needs). The third arm is StreamSuppressed rather than a reused Suppressed only because variant names share one namespace here; it is the same grade over the other payload.
+// StreamDisposition is NOT a second spelling of OutputDecision (gunbc.design_argument::single_authority — the nicknaming check was run before minting it). They grade different payloads with different obligations: OutputDecision grades a trace LINE this repo authored (Condensed dims and truncates it to shell_trace_summary_max_columns), while StreamDisposition grades a captured SUBJECT stream this repo did not author (SummarizeCounts prints byte counts INSTEAD of content, and SurfaceContent carries the neutralization obligation a rendered line never needs). The third arm is StreamSuppressed rather than a reused Suppressed only because variant names share one namespace here; it is the same grade over the other payload.
 type StreamDisposition = SurfaceContent | SummarizeCounts | StreamSuppressed
 
 fn observed_outcome_from_exit(exit: Int) -> ObservedOutcome {
@@ -251,7 +251,7 @@ fn divergence_disposition(diverges: Bool) -> StreamDisposition {
 
 // Observation dissolve (operator live-log 2026-07-25): Ambient ShellTrace silence at Normal must
 // not force StreamSuppressed — Anomaly Failed still surfaces via divergence alone. Quiet no longer
-// swallows divergence either (DESIGN §5: a failing effect is never silent). Verbose still surfaces
+// swallows divergence either (gunbc.design_argument::fail_closed: a failing effect is never silent). Verbose still surfaces
 // every stream (Full). The channel grades Ambient scaffolding; the stream policy grades subject
 // content; they compose rather than conflate.
 
@@ -268,7 +268,7 @@ fn effect_stream_disposition(
   }
 }
 
-// This is the ONLY producer of surfaced subject text, and it neutralizes on the SurfaceContent arm. That is what makes neutralization a property of the arm rather than a caller's duty: there is no route by which un-neutralized subject text reaches a log, so no caller can forget it and no reviewer has to check (DESIGN 5 — the bad state is unwritable, not caught after the fact). A Bool field on the arm would have been the validation shape instead: it can be set false at a call site, which is precisely the escape hatch construction removes.
+// This is the ONLY producer of surfaced subject text, and it neutralizes on the SurfaceContent arm. That is what makes neutralization a property of the arm rather than a caller's duty: there is no route by which un-neutralized subject text reaches a log, so no caller can forget it and no reviewer has to check (gunbc.design_argument::fail_closed — the bad state is unwritable, not caught after the fact). A Bool field on the arm would have been the validation shape instead: it can be set false at a call site, which is precisely the escape hatch construction removes.
 fn surface_effect_stream(disposition: StreamDisposition, text: String) -> String? {
   match disposition {
     SurfaceContent => Present { value: neutralize_workflow_commands(text: text) }

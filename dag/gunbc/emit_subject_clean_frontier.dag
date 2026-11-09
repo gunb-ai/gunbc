@@ -82,7 +82,7 @@ import gunbc.instruments.emission_entry_instrument {
 // entries and to a declared frontier of entries not yet expected to emit clean, and returns a
 // typed standing. Nothing here is enrolled in the required run.
 //
-// WHY A FRONTIER AND NOT A COUNT. DESIGN §5 admits a live-population comparison as a merge-blocking
+// WHY A FRONTIER AND NOT A COUNT. gunbc.design_argument::fail_closed admits a live-population comparison as a merge-blocking
 // oracle only under a monotone debt contract, and only when four conditions hold together: the
 // subject universe is INDEPENDENTLY DISCOVERED and closed, membership is checked at IDENTITY grain
 // rather than by count, the roadmap justifies the direction, and every removal or exception carries
@@ -132,7 +132,7 @@ import gunbc.instruments.emission_entry_instrument {
 // ---------------------------------------------------------------------------------------------
 // THREE DECLARED HOLES, OF WHICH TWO ARE OPEN AND ONE IS CLOSED AND KEPT. Each open hole is real,
 // is bounded, and carries the trigger that closes it. They are stated here rather than discovered
-// later because a carrier that does not name its own gaps is the rung inflation DESIGN §4b(1) calls
+// later because a carrier that does not name its own gaps is the rung inflation gunbc.design_argument::guarantee_ladder (rung honesty) calls
 // worse than sitting low: a class whose carrier already claims the rung never ranks for climbing.
 //
 // HOLE 2 IS CLOSED (gunbc#9231, the dual denominator) AND ITS BLOCK IS KEPT RATHER THAN DELETED,
@@ -171,7 +171,7 @@ import gunbc.instruments.emission_entry_instrument {
 // and hashes are PROVENANCE, never keys. A ratchet keyed on message text reds when someone edits a
 // diagnostic string and greens when the defect moves, which is a change detector wearing the
 // ratchet's name -- and automating that key collapses the assertion to measure() == measure(),
-// the review tell DESIGN §5 names.
+// the review tell gunbc.design_argument::fail_closed names.
 //
 // The hole is pinned by an executing claim rather than by this paragraph:
 // `blocked_subject_gaining_a_blocker_is_held_not_refused` in the witness. It is GREEN while the
@@ -183,7 +183,7 @@ import gunbc.instruments.emission_entry_instrument {
 // file the index could not CLASSIFY was not a subject at all. The fold was never asked about it,
 // and its disappearance read as a smaller universe rather than as a problem -- a regression
 // rendering as improvement, which is the empty-observation narrow DESIGN calls strictly worse than
-// the widen §5 forbids. Identity grain did not save it: a subject that vanishes has no identity
+// the widen gunbc.design_argument::fail_closed forbids. Identity grain did not save it: a subject that vanishes has no identity
 // left to compare against.
 //
 // THE MECHANISM WAS MEASURED, AND THE OBVIOUS STATEMENT OF IT WAS WRONG -- this note carried the
@@ -848,12 +848,12 @@ fn emission_measurement_entry(m: EmissionMeasurement) -> String {
 // when the debt it admits is gone. At subject grain that is exactly two refusals, both live below:
 // the subject now emits clean (RatchetFrontierStale), or the subject is no longer in the discovered
 // roster at all (ADMISSION-ORPHAN). An admission that outlives its subject is an escape hatch with
-// a dissolution date nobody checks, which is the §5 refusal this carrier would otherwise become.
+// a dissolution date nobody checks, which is the gunbc.design_argument::fail_closed refusal this carrier would otherwise become.
 //
 // AND ONE KEYING IS FORBIDDEN OUTRIGHT RATHER THAN DEFERRED: authority grain -- "anything already
 // blocked under authority X is allowed" -- was priced and demoted. It survives as a dashboard
 // PROJECTION ("17 blocked subjects share authority X") and never as an admission key, because a
-// blanket authority admission is the escape hatch DESIGN §5 forbids.
+// blanket authority admission is the escape hatch gunbc.design_argument::fail_closed forbids.
 // ---------------------------------------------------------------------------------------------
 type EmitDebtAdmission {
   row: FrontierRow
@@ -1276,7 +1276,7 @@ fn emit_ratchet_standing_text(standing: EmitRatchetStanding) -> String {
 // SO THE ENROLMENT MODE IS A PARAMETER, NOT AN ASSUMPTION. An OBSERVATION reports what it measured
 // and decides nothing; a GATE stops a merge. They are different claims about the same fold, they
 // have different preconditions, and collapsing them is what would let a first live run be adopted
-// as a baseline. DESIGN §5 is explicit that a population measured from the tree being judged is not
+// as a baseline. gunbc.design_argument::fail_closed is explicit that a population measured from the tree being judged is not
 // an oracle -- and the first live run of this ratchet over a corpus nobody has measured produces
 // exactly such a population. Enrolled as an observation it is a reading; enrolled as a gate it is a
 // snapshot with merge authority, and the refusal below is what keeps the second from being reachable
@@ -1484,7 +1484,7 @@ fn emit_ratchet_enrolment_admission_text(admission: EmitRatchetEnrolmentAdmissio
 // found nothing wrong.
 //
 // AND NO WITNESS ASSERTS THAT LAST SENTENCE, DELIBERATELY. The absent field is unauthorable at BOTH
-// §4b boundaries -- not in the corpus, and not in a fixture either, since no fixture can construct a
+// gunbc.design_argument::guarantee_ladder boundaries -- not in the corpus, and not in a fixture either, since no fixture can construct a
 // variant field that does not exist -- so a check over it would be permanently green BY CONSTRUCTION
 // and worse than absent for being cited as coverage. What the witness asserts instead is the thing
 // that CAN fail: that an unobservable fold DISPATCHES to this arm rather than to the taken one.
@@ -1495,7 +1495,7 @@ fn emit_ratchet_enrolment_admission_text(admission: EmitRatchetEnrolmentAdmissio
 // ---------------------------------------------------------------------------------------------
 // THE NOT-TAKEN ARM CARRIES THE ADMISSION, NOT ITS RENDERING, and that is a correction rather than a
 // preference. It held a `cause: String` -- the typed refusal flattened into prose at the moment it
-// was stored -- which is DESIGN §2's anemic leaf: a String hiding named parts that already exist one
+// was stored -- which is gunbc.design_argument::minimize_redundancy's anemic leaf: a String hiding named parts that already exist one
 // function away. The cost was immediate and was caught in review: every claim about WHY an
 // observation was not taken had to be a substring match over rendered text, so the evidence for this
 // carrier's strongest property was a change detector that reds on a wording edit and greens on any
@@ -1827,7 +1827,7 @@ data emit_subject_clean_admissions: List<EmitDebtAdmission> = []
 // THE VOCABULARY IS BORROWED, NOT MINTED. `std.witness_admission` already separates a row with an
 // executing consumer from a row nothing claims from a row whose named cadence has no scheduled
 // route, and it already carries the mechanical per-cadence realization gate. Minting a second
-// "does anything run this" vocabulary beside it would be the §3 nicknaming violation, in the exact
+// "does anything run this" vocabulary beside it would be the gunbc.design_argument::single_authority nicknaming violation, in the exact
 // place this carrier is arguing that a name without a mechanism is worthless.
 //
 // TODAY'S ANSWER IS `NoConsumer`, and it is measured rather than assumed: no workflow, no phase and

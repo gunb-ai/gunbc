@@ -65,7 +65,7 @@ import std.list { first_where }
 // writes live in product.fabric.flex_vast_loop; writes are gated on Wet AND a readable instance list
 // AND not over cap.
 
-data flex_search_offers_inhabitance_frontier: DissolutionCondition = unbound_dissolution(description: "DECLARED FRONTIER (DESIGN §3 pairing): an inhabitance claim that live vast_ai.SearchOffers Search emits VastAiOffer (ExactDecimal money, gpu_ram in MB), using flex_vast_api_read_grant on the Vast API key SecretRef. TRIGGER: that grant is issued and a wet readonly Search executes. SUFFICIENT FOR deleting this row once that claim is enrolled. NOT satisfied by supplied-value fixtures.")
+data flex_search_offers_inhabitance_frontier: DissolutionCondition = unbound_dissolution(description: "DECLARED FRONTIER (gunbc.design_argument::witness_one_interface pairing): an inhabitance claim that live vast_ai.SearchOffers Search emits VastAiOffer (ExactDecimal money, gpu_ram in MB), using flex_vast_api_read_grant on the Vast API key SecretRef. TRIGGER: that grant is issued and a wet readonly Search executes. SUFFICIENT FOR deleting this row once that claim is enrolled. NOT satisfied by supplied-value fixtures.")
 
 type FlexWriteDecision
   = FlexWriteHeldDry
@@ -617,7 +617,7 @@ fn flex_offer_card_facts(offer: VastAiOffer) -> ServingCardFacts? {
   }
 }
 
-// An offer is a member of the shadow field with a STANDING (DESIGN 4d). A screen resting on an uncited
+// An offer is a member of the shadow field with a STANDING (gunbc.design_argument::epistemic_humility). A screen resting on an uncited
 // figure (a recipe whose driver floor is TranscribedUncited) admits the offer as ESTIMATED, never
 // established: the standing travels with it, and product.fabric.flex_vast_loop flex_entry_wall refuses a wet
 // create on it. The verdict is provisional on both sides: an uncited screen that would reject is Estimated
@@ -700,7 +700,7 @@ fn flex_offer_in_shadow_field(offer: VastAiOffer, host: VastAiOfferHostResources
 // cost an hour) plus the recipe's disk at the host's storage rate.
 // Vast prices storage in dollars per GB-month (extdeps.cloud.vast_ai: storage_cost $/GB-month); the hourly
 // rate divides by the hours in a billing month, which no cited Vast page states. That figure is
-// TranscribedUncited, so a quote resting on it is Estimated (refused as an established price, DESIGN 4d)
+// TranscribedUncited, so a quote resting on it is Estimated (refused as an established price, gunbc.design_argument::epistemic_humility)
 // and names what would ground it. GB to GiB is exact (2^30 / 10^9).
 // The billing month is a DURATION, and a zero month is unrepresentable: the period is one second more than
 // a Second-valued predecessor (the encoding std.rational NonzeroNatFraction uses for its denominator), so

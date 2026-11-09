@@ -37,7 +37,7 @@ import v2.workflow.native_frontier_ratchet {
 
 // WHAT THIS FILE DISCRIMINATES. The ratchet's boundary is a pair of supplied values, a roster
 // standing and one run's readings, plus the admission and pattern that decide whether the run is a
-// measurement at all. Each claim supplies them (DESIGN section 3: a witness discriminates at one
+// measurement at all. Each claim supplies them (gunbc.design_argument::single_authority: a witness discriminates at one
 // interface). The real producer of the readings is the emitted binary's `adjudicate` mode, whose
 // execution is the `//gunbc/instruments:v2-native-frontier` instrument. That instrument is this
 // boundary's inhabitance run: it executes `native_frontier_verdict` over a real receipt, and it

@@ -268,7 +268,7 @@ fn slot_probe_text(r: SlotProbeReading) -> String {
 // configured address; a tap whose networkd file landed but whose link never came up prints nothing.
 // ONE PREDICATE, NOT TWO. The address reading and the route reading ask the SAME question of
 // their stdout -- does this text carry the CIDR we expect -- so they were one concept under two
-// names (DESIGN 3: a second name for one concept duplicates work at the meaning layer). What
+// names (gunbc.design_argument::single_authority: a second name for one concept duplicates work at the meaning layer). What
 // differs between the two call sites is the CIDR SUPPLIED, not the test applied, and that
 // difference is already visible where each caller computes its own argument.
 fn reading_carries_cidr(stdout: String, cidr: String) -> Bool {
@@ -306,7 +306,7 @@ fn parse_auto_assignment(observed: FilesystemFileObservation, kernel_release: St
 
 // ABSENCE IS ESTABLISHED BY A LISTING, NEVER BY A FAILED READ. A read that fails for permission or
 // I/O is not evidence the sysctl is gone, and reporting it as AbsentFromKernel would make an
-// unreadable probe say "there is no setting left to turn on" -- the widening arm DESIGN section 5
+// unreadable probe say "there is no setting left to turn on" -- the widening arm gunbc.design_argument::fail_closed
 // forbids, and the inversion of this module's own nf_conntrack note (review 68963).
 fn parse_auto_assignment_value(text: String) -> HelperAutoAssignment {
   if trim(s: text) == "0" {

@@ -8,7 +8,6 @@ import gunbc.action_use_admission { cache_restore_action, cache_save_action }
 import extdeps.github.action_release { action_release_uses_text }
 import gunbc.parse_verdict_publish { materialization_publish_if }
 import gunbc.parse_verdict_restore {
-  parse_verdict_identity_restore_step,
   parse_verdict_locate_script,
   parse_verdict_ancestor_sha_expr,
   parse_verdict_receipts_restore_step,
@@ -19,7 +18,7 @@ import gunbc.parse_verdict_restore {
   parse_verdict_record_script,
   parse_verdict_restored_ancestor_expression,
 }
-import gunbc.parse_verdict_publish { parse_verdict_identity_blob_file, parse_verdict_receipts_file }
+import gunbc.parse_verdict_publish { parse_verdict_identity_blob_file, parse_verdict_receipts_file, parse_verdict_unit_path }
 import extdeps.github.expressions { serialize_expression }
 
 fn restore_step_is_exact_restore_on_pull_request(step: Step, key_marker: String) -> Bool {
@@ -39,11 +38,10 @@ fn restore_step_is_exact_restore_on_pull_request(step: Step, key_marker: String)
   }
 }
 
-// POSITIVE CONTROL, ROUTE ASSERTED: both restores are the cache RESTORE action (not save), guarded by
+// POSITIVE CONTROL, ROUTE ASSERTED: the restore is the cache RESTORE action (not save), guarded by
 // the pull-request scope, with an exact key and no restore-keys, which a near-identity hit would need.
 test fn the_base_sha_entries_are_restored_exactly_on_pull_request_only() -> Bool {
-  restore_step_is_exact_restore_on_pull_request(step: parse_verdict_identity_restore_step(ordinal: 3), key_marker: "")
-    && restore_step_is_exact_restore_on_pull_request(step: parse_verdict_receipts_restore_step(ordinal: 3), key_marker: "")
+  restore_step_is_exact_restore_on_pull_request(step: parse_verdict_receipts_restore_step(ordinal: 3), key_marker: "")
     && (parse_verdict_restore_if() != materialization_publish_if())
 }
 
@@ -91,29 +89,23 @@ fn step_condition(step: Step) -> String {
   }
 }
 
-// THE CHAIN IS GATED ON A COMPLETE PUBLICATION: the receipts restore for ordinal 3 runs only while no
-// nearer ordinal's receipts hit, and never consults 4 or later, so the nearest COMPLETE, COMPATIBLE
-// publication is the one the verb decides against. The identity blob is restored only for that selected
-// ordinal (gated on its OWN receipts hit), so a stale/incompatible identity blob is never committed to and
-// an identity is never restorable without its receipts.
+// THE CHAIN IS GATED ON A COMPLETE PUBLICATION: the restore for ordinal 3 runs only while no
+// nearer ordinal hit, so the nearest COMPLETE, COMPATIBLE publication is the one the verb decides
+// against. Identity and receipts are one cache unit under a key embedding the compiler identity,
+// so a miss (incompatible or evicted) means both are absent and the chain proceeds to the next ancestor.
 test fn the_restore_chain_takes_the_first_complete_publication_and_never_falls_through() -> Bool {
-  let identity = step_condition(step: parse_verdict_identity_restore_step(ordinal: 3))
   let receipts = step_condition(step: parse_verdict_receipts_restore_step(ordinal: 3))
   string_contains(s: receipts, pattern: "steps.parse_receipts_0.outputs['cache-hit'] != 'true'")
     && string_contains(s: receipts, pattern: "steps.parse_receipts_2.outputs['cache-hit'] != 'true'")
     && (string_contains(s: receipts, pattern: "parse_receipts_3") == false)
     && (string_contains(s: receipts, pattern: "parse_receipts_4") == false)
-    && string_contains(s: identity, pattern: "steps.parse_receipts_3.outputs['cache-hit'] == 'true'")
-    && (string_contains(s: identity, pattern: "!=") == false)
-    && string_contains(s: step_condition(step: parse_verdict_identity_restore_step(ordinal: 0)), pattern: "steps.parse_receipts_0.outputs['cache-hit'] == 'true'")
 }
 
-// POSITIVE CONTROL, ROUTE ASSERTED: publisher and restore spell the SAME relative path, which is what
+// POSITIVE CONTROL, ROUTE ASSERTED: publisher and restore spell the SAME relative paths, which is what
 // makes a cache entry's version (a hash of the path) agree across runners. A path through the runner's
 // temp directory is a version only that runner can reproduce.
 test fn publisher_and_restore_share_one_runner_independent_path() -> Bool {
-  (step_cache_path(step: parse_verdict_identity_restore_step(ordinal: 7)) == parse_verdict_identity_blob_file())
-    && (step_cache_path(step: parse_verdict_receipts_restore_step(ordinal: 7)) == parse_verdict_receipts_file())
+  (step_cache_path(step: parse_verdict_receipts_restore_step(ordinal: 7)) == parse_verdict_unit_path())
     && (string_contains(s: parse_verdict_identity_blob_file(), pattern: "runner") == false)
     && (string_contains(s: parse_verdict_receipts_file(), pattern: "/") == false)
 }

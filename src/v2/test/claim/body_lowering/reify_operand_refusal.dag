@@ -19,7 +19,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // Transform (an argument edge) and a Branch (a target edge). Its input is SUPPLIED: a binary
 // expression is tokenized and parsed, and its raw binary_expr node is placed as the operand. The real
 // path reaches reify only with lowered targets, so this is the boundary's own contract, and the
-// lowering routes keep their own witnesses (the pairing of DESIGN section 3).
+// lowering routes keep their own witnesses (the pairing of gunbc.design_argument::single_authority).
 //
 // THE RED ON MAIN (gunbc.recurring_failure_mode lowering_accessor_collapses_a_sequence_operand, the
 // reify route #12615 named): for `a + g(p: { })` the operand reader refuses -- the empty block argument

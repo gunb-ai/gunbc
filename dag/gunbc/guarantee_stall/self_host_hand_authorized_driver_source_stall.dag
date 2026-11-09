@@ -5,7 +5,7 @@ import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
 import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 
 // DECLARED 2026-09-06. The seed-unavailable transport's Rust driver (slbu_driver_main_source)
-// is HAND-AUTHORED as a string literal — medium-as-string per DESIGN §3. Unlike the
+// is HAND-AUTHORED as a string literal — medium-as-string per gunbc.design_argument::single_authority. Unlike the
 // hand-authored Cargo.toml there is no emitter-produced test driver to drift from today,
 // but the terminal architecture is the same: the emitter produces behavioral drivers from
 // the modeled source. The ceiling is structurally guaranteed: the emitter produces a

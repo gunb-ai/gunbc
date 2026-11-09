@@ -13,7 +13,7 @@ import std.measure { TokenCount, token_count, Millisecond, millisecond, Second, 
 // A VERSION IS A CONTRACT, AND ITS NAME IS BOUND TO IT. Every run receipt
 // (gunbc.serving.serving_benchmark_run_receipt) carries the version value it was admitted against, and
 // admission refuses a run whose rows do not inhabit that version. Changing any field below is a
-// different benchmark under a different name (DESIGN section 3, meaning fork): a receipt of
+// different benchmark under a different name (gunbc.design_argument::single_authority, meaning fork): a receipt of
 // serving-benchmark/1 and one of a successor are never compared as one quantity.
 //
 // THE WORKLOAD IS THE GPU-BENCH KIT'S SHAPE (extdeps.gpu_bench.request_v2): `retained` sessions are
