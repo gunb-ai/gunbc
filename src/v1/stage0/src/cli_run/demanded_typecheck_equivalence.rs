@@ -81,7 +81,7 @@ fn body() {
         names: names.clone(),
         // The equivalence this test pins is #16069's BODY demand at the whole-declaration grain: an
         // inactive realization realizes everything, so nothing here is filtered by the newer cut.
-        realization: Rc::new(infer::inactive_realization()),
+        realization: infer::inactive_realization(),
     });
 
     let mut full = (
@@ -165,10 +165,23 @@ fn body() {
 fn grain_fixture_graph() -> (
     Vec<Rc<crate::v1_compiler_compile::SourceFile>>,
     Rc<crate::v1_std_core::InternTable>,
-    crate::v1_rt::RcMap<String, Rc<crate::v1_std_core::NewlineIndex>>,
-    Rc<Vec<Rc<crate::v1_compiler_resolve::ResolvedModule>>>,
+    Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    Rc<im::Vector<Rc<crate::v1_compiler_resolve::ResolvedModule>>>,
 ) {
-    let sources = closure_of("dag/test/fixture/demanded_scope/declaration_grain.dag");
+    graph_from("dag/test/fixture/demanded_scope/declaration_grain.dag")
+}
+
+// The same graph, from any entry: the realization witnesses below also run against real corpus
+// files, because a fixture can only show the shape a failure has, not that the failure is gone.
+fn graph_from(
+    entry: &str,
+) -> (
+    Vec<Rc<crate::v1_compiler_compile::SourceFile>>,
+    Rc<crate::v1_std_core::InternTable>,
+    Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    Rc<im::Vector<Rc<crate::v1_compiler_resolve::ResolvedModule>>>,
+) {
+    let sources = closure_of(entry);
     let mut intern = empty_intern_table();
     let mut parsed = Vec::new();
     let mut si = crate::v1_rt::rc_empty_map::<String, Rc<crate::v1_std_core::NewlineIndex>>();
@@ -198,26 +211,32 @@ fn grain_fixture_graph() -> (
         );
     }
     let graph = crate::v1_compiler_resolve::resolve_modules(Rc::new(parsed.into()), si.clone());
-    (sources, Rc::new(intern), si, graph.modules.clone())
+    (sources, intern, si, graph.modules.clone())
 }
 
 fn grain_demand(
-    modules: &Rc<Vec<Rc<crate::v1_compiler_resolve::ResolvedModule>>>,
+    modules: &Rc<im::Vector<Rc<crate::v1_compiler_resolve::ResolvedModule>>>,
     seeds: &[&str],
-    si: &crate::v1_rt::RcMap<String, Rc<crate::v1_std_core::NewlineIndex>>,
+    si: &Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) -> Rc<DeclarationDemand> {
-    let seeds: Rc<Vec<String>> = Rc::new(seeds.iter().map(|s| s.to_string()).collect());
-    let realization = infer::realization_of(modules.clone(), seeds.clone(), si.clone());
+    let seeds: Rc<im::Vector<String>> = Rc::new(
+        seeds
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<im::Vector<String>>(),
+    );
+    let census = infer::build_symbol_index_census(modules.clone(), si.clone());
+    let realization = infer::realization_of(modules.clone(), seeds.clone(), census, si.clone());
     Rc::new(DeclarationDemand::OnlyDeclarations {
         names: realization.realized.clone(),
-        realization: Rc::new(realization),
+        realization: realization.clone(),
     })
 }
 
 fn grain_typecheck(
-    modules: &Rc<Vec<Rc<crate::v1_compiler_resolve::ResolvedModule>>>,
+    modules: &Rc<im::Vector<Rc<crate::v1_compiler_resolve::ResolvedModule>>>,
     intern: &Rc<crate::v1_std_core::InternTable>,
-    si: &crate::v1_rt::RcMap<String, Rc<crate::v1_std_core::NewlineIndex>>,
+    si: &Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
     demand: Rc<DeclarationDemand>,
 ) -> Vec<String> {
     let mut parents = crate::v1_rt::rc_empty_map::<String, Rc<infer::TypedModule>>();
@@ -235,9 +254,12 @@ fn grain_typecheck(
             crate::v1_rt::rc_empty_map(),
             equality.clone(),
             demand.clone(),
+            None,
         );
         for d in r.diagnostics.iter() {
-            messages.push(crate::v1_std_core::diagnostic_to_message(&d.diagnostic));
+            messages.push(crate::v1_std_core::diagnostic_to_message(
+                d.diagnostic.clone(),
+            ));
         }
         let t = r.typed.clone();
         let path = authored_name_at(si.clone(), t.module.clone());
@@ -269,24 +291,24 @@ fn declaration_grain_realizes_only_what_a_demanded_declaration_names() {
         DeclarationDemand::AllDeclarations => panic!("scoped demand expected"),
     };
     assert!(
-        realization.realized.contains("reached_entry"),
+        realization.realized.contains_key("reached_entry"),
         "the seed is realized"
     );
     assert!(
-        realization.realized.contains("GrainPoint"),
+        realization.realized.contains_key("GrainPoint"),
         "a type the entry names is realized"
     );
     assert!(
-        !realization.realized.contains("UnreachedBrokenShape"),
+        !realization.realized.contains_key("UnreachedBrokenShape"),
         "a type nothing names must not be realized: {:?}",
         realization.realized.keys().collect::<Vec<_>>()
     );
     assert!(
-        !realization.realized.contains("broken_entry"),
+        !realization.realized.contains_key("broken_entry"),
         "an unreached entry is not realized"
     );
     assert!(
-        realization.declared.contains("UnreachedBrokenShape"),
+        realization.declared.contains_key("UnreachedBrokenShape"),
         "the unrealized type is still DECLARED -- that is what makes crossing out a refusal, not an absence"
     );
 }
@@ -347,24 +369,37 @@ fn declaration_grain_still_refuses_a_reachable_error() {
 #[test]
 fn a_read_outside_the_realized_set_refuses_typed() {
     let (_sources, _intern, si, modules) = grain_fixture_graph();
-    let seeds: Rc<Vec<String>> = Rc::new(vec!["reached_entry".to_string()].into());
-    let realization = infer::realization_of(modules.clone(), seeds, si.clone());
-    let edges = Rc::new(vec![
-        infer::RealizationEdge {
+    let seeds: Rc<im::Vector<String>> = Rc::new(im::vector!["reached_entry".to_string()]);
+    let census = infer::build_symbol_index_census(modules.clone(), si.clone());
+    let realization = infer::realization_of(modules.clone(), seeds, census, si.clone());
+    let edges: Rc<im::Vector<Rc<infer::RealizationEdge>>> = Rc::new(im::vector![
+        Rc::new(infer::RealizationEdge {
             reader: "inhabitance_row".to_string(),
             name: "GrainPoint".to_string(),
-            span: crate::v1_std_core::synthetic_span(),
-        },
-        infer::RealizationEdge {
+            span: Rc::new(crate::v1_std_core::SourceSpan {
+                file: "test.dag".to_string(),
+                start: 0,
+                end: 1
+            }),
+        }),
+        Rc::new(infer::RealizationEdge {
             reader: "global_bare_lookup".to_string(),
             name: "UnreachedBrokenShape".to_string(),
-            span: crate::v1_std_core::synthetic_span(),
-        },
-        infer::RealizationEdge {
+            span: Rc::new(crate::v1_std_core::SourceSpan {
+                file: "test.dag".to_string(),
+                start: 0,
+                end: 1
+            }),
+        }),
+        Rc::new(infer::RealizationEdge {
             reader: "global_bare_lookup".to_string(),
             name: "NameNoModuleDeclares".to_string(),
-            span: crate::v1_std_core::synthetic_span(),
-        },
+            span: Rc::new(crate::v1_std_core::SourceSpan {
+                file: "test.dag".to_string(),
+                start: 0,
+                end: 1
+            }),
+        }),
     ]);
     let diags = infer::realization_audit(
         realization,
@@ -373,7 +408,7 @@ fn a_read_outside_the_realized_set_refuses_typed() {
     );
     let messages: Vec<String> = diags
         .iter()
-        .map(|d| crate::v1_std_core::diagnostic_to_message(&d.diagnostic))
+        .map(|d| crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
         .collect();
     assert_eq!(
         messages.len(),
@@ -401,11 +436,11 @@ fn a_row_reached_only_through_an_alias_body_counts_reachable() {
         DeclarationDemand::AllDeclarations => panic!("scoped demand expected"),
     };
     assert!(
-        realization.realized.contains("GrainAliasRow"),
+        realization.realized.contains_key("GrainAliasRow"),
         "the alias the entry spells is realized"
     );
     assert!(
-        realization.realized.contains("GrainHiddenRow"),
+        realization.realized.contains_key("GrainHiddenRow"),
         "the alias body is a row the type reader reads, so it must be realized: {:?}",
         realization.realized.keys().collect::<Vec<_>>()
     );
@@ -415,11 +450,11 @@ fn a_row_reached_only_through_an_alias_body_counts_reachable() {
         DeclarationDemand::AllDeclarations => panic!("scoped demand expected"),
     };
     assert!(
-        !plain.realized.contains("GrainHiddenRow"),
+        !plain.realized.contains_key("GrainHiddenRow"),
         "nothing reaches that row without the alias"
     );
     assert!(
-        !plain.realized.contains("GrainAliasRow"),
+        !plain.realized.contains_key("GrainAliasRow"),
         "and nothing reaches the alias either"
     );
     let messages = grain_typecheck(&modules, &intern, &si, through_alias);
@@ -427,4 +462,38 @@ fn a_row_reached_only_through_an_alias_body_counts_reachable() {
         fixture_module_messages(&messages, "DeclarationRealizationGap").is_empty(),
         "reading the alias must not manufacture a gap for the row it expands to: {messages:?}"
     );
+}
+
+/// THE SILENT MISS, WITNESSED AT ITS REAL SIZE. `fetch_secret_ref_credential`'s return row
+/// `SecretCredentialFetch` names `SmResolvedVersionIdentityRefusal` in one of its arms, two modules
+/// away, and nothing else in the run's demand set spells either name. A cut that skipped them did not
+/// refuse -- the run answered `unresolved type`, which is the failure this mechanism exists to make
+/// impossible. Pinned against the corpus files themselves, because a fixture can show the shape of a
+/// failure but not its absence.
+#[test]
+fn a_row_named_only_through_a_demanded_signature_is_realized() {
+    std::thread::Builder::new()
+        .stack_size(512 << 20)
+        .spawn(|| {
+            let (_sources, _intern, si, modules) =
+                graph_from("dag/gunbc/auth/secret_ref_credential.dag");
+            let demand = grain_demand(&modules, &["fetch_secret_ref_credential"], &si);
+            let realization = match &*demand {
+                DeclarationDemand::OnlyDeclarations { realization, .. } => realization.clone(),
+                DeclarationDemand::AllDeclarations => panic!("scoped demand expected"),
+            };
+            assert!(
+                realization.realized.contains_key("SecretCredentialFetch"),
+                "the return row of a demanded signature is realized"
+            );
+            assert!(
+                realization
+                    .realized
+                    .contains_key("SmResolvedVersionIdentityRefusal"),
+                "the row an arm of that return row names, two modules away, is realized"
+            );
+        })
+        .unwrap()
+        .join()
+        .unwrap();
 }
