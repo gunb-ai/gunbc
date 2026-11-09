@@ -525,8 +525,9 @@ fn compute_reserve_against(
         " KiB installed, so the share was never backed by the machine",
       ], ""),
     }
-  } else match measure_fits(requested: request, available: available) {
+  } else {
     // The one fit rule (std.measure measure_fits) decides; this pool names its refusal ComputeHostBelowFloor.
+    match measure_fits(requested: request, available: available) {
     Below { requested: r, available: a } => ComputeHostBelowFloor { requested: r, available: a }
     Fits { available: _ } =>
       match compute_capacity_store(subject: subject) {
@@ -537,6 +538,7 @@ fn compute_reserve_against(
             Present { value: now } => compute_seat(subject: subject, store: store, request: request, reference: reference, now: now, term_seconds: term_seconds, ceiling: compute_backing_ceiling(appropriation: appropriation, available: available))
           }
       }
+    }
   }
 }
 
