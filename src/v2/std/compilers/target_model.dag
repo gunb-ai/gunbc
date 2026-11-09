@@ -16337,7 +16337,7 @@ fn target_value_expr_bind_let_gate(node: Node) -> Bool {
   }
 }
 
-// target_project_loop realizes ONLY the unary `loop e` encoding (gunbc.plans.for_while_loop_sugar
+// target_project_loop realizes ONLY the unary `loop e` encoding (gunbc.plans.for_while_loop_sugar (deleted 2026-11-08)
 // §2.3): one evaluation of its first positional child. It admits a Loop only when every edge's role
 // (v2.std.node loop_edge_role) is the body or the bound; a Loop carrying a domain or a carrier is a
 // different encoding with a different result, so reading its first child as a unary body would emit a

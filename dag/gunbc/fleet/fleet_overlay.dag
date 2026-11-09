@@ -2,7 +2,7 @@ module gunbc.fleet.fleet_overlay
 
 // THE FLEET'S OVERLAY CONTRACT: WHAT IT MEANS FOR A MEMBER TO BE ATTACHED, WITHOUT NAMING A PROVIDER.
 //
-// WHAT THIS MODULE IS. The model step of gunbc.plans.fleet_naming_reach_access P2 for the overlay axis:
+// WHAT THIS MODULE IS. The model step of gunbc.plans.fleet_naming_reach_access (deleted 2026-11-08) P2 for the overlay axis:
 // the fleet's attachment and its member binding, declared provider-neutral. No producer is migrated and no
 // endpoint is cut over (P3-P5); the Tailscale realization stays where it is.
 //

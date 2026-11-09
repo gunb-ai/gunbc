@@ -4,7 +4,7 @@ import std.types { String, List, Bool }
 import gunbc.generated_artifact {
   GeneratedArtifact,
   WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, MicrovmShakedownYamlArtifact, InstrumentDispatchYamlArtifact,
-  HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, DriftWatchWorkflowYamlArtifact, BranchRunGrantBrokerWorkflowYamlArtifact, GitignoreArtifact, GitattributesArtifact, CargoConfigArtifact, RoadmapArtifact, DesignArtifact,
+  HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, DriftWatchWorkflowYamlArtifact, BranchRunGrantBrokerWorkflowYamlArtifact, GitignoreArtifact, GitattributesArtifact, CargoConfigArtifact, DesignArtifact,
   DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact,
   GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact,
   RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact,
@@ -13,7 +13,7 @@ import gunbc.generated_artifact {
   V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, ReleaseLocusSeedConstantsGeneratedRsArtifact,
   FileTransportRealizationGeneratedRsArtifact, NativeRouteSeedBoundaryGeneratedRsArtifact,
   InstrumentRegistryGeneratedRsArtifact, CouponCadQueryProgramArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact, ApprovalDeviceVectorsArtifact, ApproveIosProjectYmlArtifact, ApproveIosProtocolSwiftArtifact, ApproveIosWireSwiftArtifact, ApproveIosProtocolVectorTestsSwiftArtifact, ApproveIosEnrolmentMachineSwiftArtifact, ApproveIosEnrolmentMachineTestsSwiftArtifact, ApproveIosOperationErrorsSwiftArtifact, ApproveIosOperationErrorsTestsSwiftArtifact,
-  AutoinstallUserDataArtifact, RunnerHostSudoersArtifact, PlanArtifact
+  AutoinstallUserDataArtifact, RunnerHostSudoersArtifact
 }
 import gunbc.recurring_failure_mode { RecurringFailureMode, authored }
 import gunbc.recurring_failure_mode.roster { recurring_failure_mode_roster }
@@ -124,7 +124,6 @@ fn ledger_rows(a: GeneratedArtifact) -> List<LedgerRow> {
     GitignoreArtifact => []
     GitattributesArtifact => []
     CargoConfigArtifact => []
-    RoadmapArtifact => []
     DesignArtifact => []
     GithooksPrePushArtifact => []
     GithooksPreCommitArtifact => []
@@ -158,7 +157,6 @@ fn ledger_rows(a: GeneratedArtifact) -> List<LedgerRow> {
     ApproveIosOperationErrorsTestsSwiftArtifact => []
     AutoinstallUserDataArtifact { spec: _ } => []
     RunnerHostSudoersArtifact { host: _ } => []
-    PlanArtifact { plan: _ } => []
   }
 }
 

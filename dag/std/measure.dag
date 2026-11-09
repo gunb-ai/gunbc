@@ -1615,6 +1615,15 @@ fn tokens_per_second_count(r: TokensPerSecond) -> Nat {
   measure_count(r)
 }
 
+// HOW LONG A COUNT OF TOKENS TAKES AT A TOKEN RATE, rounded up to the millisecond so a duration is never
+// understated. A zero rate has no duration: absent, and the caller says what that means in its domain.
+fn token_count_duration_at(tokens: TokenCount, rate: TokensPerSecond) -> Millisecond? {
+  match nat_ceil_div(a: token_count_value(t: tokens) * milliseconds_per_second(), b: tokens_per_second_count(r: rate)) {
+    Present { value: ms } => Present { value: millisecond(count: ms) }
+    Absent => Absent
+  }
+}
+
 // The same token rate at Milli: a count of N is N/1000 tokens per second, so a client figure quoted
 // to three decimals ("17.39 tok/s") is carried exactly as 17390 without a bare Nat whose scale lives
 // only in its field name. Same Frequency axis as TokensPerSecond; the scale marker, not a suffix,

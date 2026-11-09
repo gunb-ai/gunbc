@@ -20,7 +20,7 @@ import gunbc.native_serve {
 
 // AN HTTP INGRESS BINDING: SERVING AS A DEPLOYMENT FACT ABOUT AN ORDINARY ENTRY.
 //
-// gunbc.plans.converged_ingress (operator decision 2026-11-04: the fact "this entry is served" lives
+// gunbc.plans.converged_ingress (deleted 2026-11-08) (operator decision 2026-11-04: the fact "this entry is served" lives
 // in a deployment binding that names the entry, not on the entry). A handler is an ordinary `.dag`
 // function from request facts to a ServeWireResponse; its declared parameter names are its handler
 // contract. A binding names that handler and the listener, release and per-request bounds it is
@@ -490,7 +490,7 @@ fn http_ingress_limit_argument(name: String, ms: Int?) -> List<String> {
   }
 }
 
-// ── THE NATIVE REALIZATION OF A BINDING (gunbc.plans.converged_ingress M2a) ─────────────────────
+// ── THE NATIVE REALIZATION OF A BINDING (gunbc.plans.converged_ingress (deleted 2026-11-08) M2a) ─────────────────────
 // A natively emitted binding (std.compiler_entry NativeIngressDriver) reads its argv here into the
 // exact constructor's declared arguments, calls that constructor, and derives the contract it serves
 // under from the binding the constructor RETURNS -- never from a second argv grammar or a parallel

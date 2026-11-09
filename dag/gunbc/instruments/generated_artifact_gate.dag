@@ -254,8 +254,8 @@ fn main_wet() -> ProcessExit {
 
 // THE COMPLETING ACTUATOR FOR UNCOMMITTED PROJECT DOCUMENTATION. After those rows left
 // committed_generated_artifacts(), main_wet no longer writes them and docs regen still writes
-// only the docs/-located subset. This fold is the registry remainder: Roadmap, the docs
-// ledgers/onboarding, and every PlanIsAuthorityOnly projection. It uses the same generate-and-
+// only the docs/-located subset. This fold is the registry remainder: the docs ledgers and
+// onboarding (plan and roadmap markdown render from gunbc.plan_documentation). It uses the same generate-and-
 // write as main_wet; it does not enlarge the committed roster.
 fn documentation_wet() -> ProcessExit {
   fold(uncommitted_project_documentation_artifacts(), init: ExitSuccess, f: fn(acc, a) {

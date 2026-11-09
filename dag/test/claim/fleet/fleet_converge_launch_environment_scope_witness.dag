@@ -72,7 +72,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // wider one. Caps and fabric cells were removed after review measured them as foreign -- caps
 // because gunbc_runner_per_slot_dropin_path resolves under /etc/systemd/system/actions-runner@
 // .service.d and is therefore the same CI-capacity family reached by another name, and fabric cells
-// because docs/plans/roadmap-launch-mvp-plan.md rules them off this proof's path outright. The
+// because docs/plans/roadmap-launch-mvp-plan.md (deleted 2026-11-08) rules them off this proof's path outright. The
 // controls below now pin BOTH exclusions, not just the slot and activation ones.
 //
 // EVERY CLAIM IS A PAIR OVER ONE HOST OBSERVATION, full-host beside launch-environment, so a red is

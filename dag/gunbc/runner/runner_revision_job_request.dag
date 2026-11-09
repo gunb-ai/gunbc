@@ -17,7 +17,7 @@ import gunbc.durable_handoff_rest { host_request_outcome_response, OutcomeUnknow
 // Native submission/readback only. Durable acceptance is not execution authority:
 // the worker still owes staging, root approval and fabric grant enforcement.
 // Tailscale-User-Login is ignored; only the API key selects the stable user.
-// Served natively by its own deployment binding (gunbc.plans.converged_ingress M2a): the descriptor below names this
+// Served natively by its own deployment binding (gunbc.plans.converged_ingress (deleted 2026-11-08) M2a): the descriptor below names this
 // module's constructor and handler, and the NativeIngressDriver row selects the native realization.
 data runner_revision_job_request_program: NativeIngressProgram = NativeIngressProgram {
   binding: DeclarationRef { module_path: "gunbc.runner.runner_revision_job_request", decl_name: "runner_revision_job_request_ingress", field: WholeDeclaration },
