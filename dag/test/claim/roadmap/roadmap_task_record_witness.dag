@@ -5,7 +5,7 @@ module test.claim.roadmap.roadmap_task_record_witness
 
 import std.types { Bool, String, NonEmptyStr, FilePath, List }
 import gunbc.roadmap.roadmap_model { RoadmapNode, RoadmapNodeId, RoadmapNodeIdentity, Pointer, Dispatchable, PrsMerged, MemberOf }
-import gunbc.roadmap.roadmap_status { TicketLine, TicketFields, TicketUpdate, Unsigned }
+import gunbc.roadmap.roadmap_status { TicketLine, TicketFields, TicketUpdate }
 import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified, gunbc_claims_execution_contract }
 
 fn sample_ticket() -> TicketFields {
@@ -20,7 +20,7 @@ fn sample_task() -> RoadmapNode {
     carriers: [Pointer { label: "plan", path: "docs/plans/x.md" }],
     dispatch: Dispatchable { repo: "gunbc", acceptance: PrsMerged },
     execution: gunbc_claims_execution_contract(entry: "dag/test/claim/x_test.dag" as FilePath, functions: ["a" as NonEmptyStr, "b" as NonEmptyStr]),
-    owner: "briansrls", signoff: Unsigned,
+    owner: "briansrls",
     parent: Present { value: MemberOf { project: "roadmap-runtime", contribution: "creates tasks" as NonEmptyStr } },
     centering: Present { value: "daily workspace" as NonEmptyStr },
   }

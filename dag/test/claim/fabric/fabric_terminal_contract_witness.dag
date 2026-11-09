@@ -5,6 +5,8 @@ import std.types { NonEmptyStr, String, Bool, Int }
 import std.measure { money_amount_micro, money_amount_micro_count, hardware_thread_count, second, Second, MoneyRate }
 import std.content_hash { content_hash_of_value }
 import extdeps.currency.currency { Usd }
+import product.fabric.envelope { unstated_envelope }
+import product.fabric.isolation { shared_kernel_sandbox_profile }
 import product.fabric.identity { FabricIdentity, fabric_identity_key, DemandKey, WorkKey, OfferKey }
 import product.fabric.work { MaterializedProgram, CapacityClass, ControlPlaneCapacity, Shape, HardRequirements, Work, WorkContract, ExecutionRequirements, WorkStep, derive_work_key, work_for, ReceiptSatisfiable, IdempotentUnderKey, OpaqueEffects, declared_terminal_obligations, WarmResidencyRequired }
 import product.fabric.demand { Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement, demand_work, demand_reservation_price, demand_maximum_buy_order, admission_terms, debt_payoff_objective }

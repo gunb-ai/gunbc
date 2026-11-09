@@ -65,7 +65,7 @@ import gunbc.roadmap.roadmap_authority {
 // A forecast projects what may happen; a CycleTimeObservation records what did happen. They are
 // separate nominal record types with no conversion in either direction. ScheduleForecast exposes
 // ForecastInstant and ForecastLowerBoundInterval; its epoch value is sealed inside ForecastInstant
-// and never appears as a bare Timestamp/EpochMs observation, RoadmapAcceptanceReceipt, Signoff, or
+// and never appears as a bare Timestamp/EpochMs observation, RoadmapAcceptanceReceipt, or
 // done/accepted stage. schedule_forecast derives only ScheduleForecastResult, and its refusal arm
 // is exhaustive. Therefore a date can neither accept a roadmap node nor inhabit the observation
 // input used to calibrate later forecasts. Estimates project; only evidence promotes.

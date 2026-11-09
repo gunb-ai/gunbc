@@ -1,0 +1,25 @@
+module gunbc.recurring_failure_mode.emitted_pattern_field_bound_under_its_own_name_captures_an_outer_binding
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { CurrentRungUnstatedAfterClimb, RecurringFailureMode, RungUnread }
+
+data emitted_pattern_field_bound_under_its_own_name_captures_an_outer_binding: RecurringFailureMode = RecurringFailureMode {
+  identity: "emitted_pattern_field_bound_under_its_own_name_captures_an_outer_binding" as NonEmptyStr,
+
+  rung: RungUnread { cause: CurrentRungUnstatedAfterClimb },
+
+  receipts: [
+    "**A MATCH-ARM PATTERN FIELD BOUND UNDER ITS FIELD NAME CAPTURES A SAME-NAMED OUTER VARIABLE** (INVALID STATE: the .dag arm RENAMES its field binding, so the arm body keeps a live reference to an outer same-named variable; the emitted arm binds the field under the FIELD name instead, and Rust resolves the body's reference to the shadowing pattern binding -- the emitted program reads a different variable than the .dag source declares). CONFIRMED INSTANCE: parse_expr_not_predicate_attempt (src/v2/compiler/parse.dag:4403-4416). The .dag arms are `ParseExprAccepted { ..., table: table1 } => ... parse_table_with_furthest(table: table1, furthest: table.furthest)` and `ParseExprRejected { table: table1 } => ...` -- in both, `table1` is the bound inner field and `table.furthest` is the OUTER PARAMETER's furthest (the position the surrounding parse had reached). The emitted code (v2_compiler_parse.rs sha 188439f2, seed emission cc2-seedemit, lines 3754/3758) renders the pattern as `ParseExprResult::ParseExprAccepted { ref table, .. }` and then `let table1 = table.as_ref();`, so `table.furthest` inside the arm reads the INNER table and the outer parameter is unreachable. A crate-wide grep over the emitted crate for the shape `ref X, .. } => { let X1 = X.as_ref();` with a body read of `X.` found this as the ONLY instance (2026-11-02, clever-crane-830)",
+
+    "**WHERE IT IS PRODUCED**: the rc-ref branch of the record-variant pattern emitter (src/v1/05_emit_rust.dag, emit_pattern_rc_aware, the field_needs_rc_ref arm) rendered `concat(\"ref \", emit_ident(fb_name))` for ANY field whose payload is an Rc-shared variant -- using the FIELD name as the binding and ignoring the arm's declared Bind variable entirely. The non-rc branch directly below it already honored renames (`field: pat_str`); only the ref branch collapsed every binding to the field name. This is the general emitter rule: a pattern binding must be emitted under the variable the source DECLARES, never under the field name it matches, unless the source binding IS the field name (shorthand). Fix (PR #15648, commits 33a7deec3 then ee4970b34): the rc-ref PATTERN and its PRELUDE are one pair -- renaming only the pattern severs it (the prelude head `let bound_str = <fb_name>.as_ref()` would read the outer, a type error or a silent inversion). The general rule: pattern binder and every consumer derive ONE emitter-owned name via rc_field_binder_name (`__rc_<field>`; no .dag identifier collides). Synced sites: emit_resolved_variant_pattern_rc_aware rc-ref arm (pattern renders `field: ref __rc_field`), rc_pattern_preludes head (reads `__rc_field.as_ref()`), rc_field_selection_test matches! source, and the two-stage plan second match (both twins). The arm body never names the binder -- it reads the declared variable or the nested destructuring -- so no same-named outer can be captured anywhere in the pair",
+
+    "**IMPACT BOUNDED BUT REAL**: furthest feeds ONLY the tokens_remain diagnostic locus (parse.dag:5021 region, parse_g0_tokens_remain_diagnostic_at) -- it decides no accept/reject -- so this instance misreports WHERE leftover tokens begin rather than WHETHER the parse refuses. A same-shape capture on an arm that reads a DECISION field (remaining, captured, refusal) would silently change behaviour; the grep is the containment proof for the current crate but must be RE-RUN after any emitter or pattern-heavy .dag change, because the capture class reproduces wherever a new arm renames a binding whose field is Rc-shared",
+
+    "**RECOGNITION RULE** wherever the emitter lowers a source-level binding into a pattern binding, ask what NAME the source gave the binding. Any emitted pattern that spells the binding as the MATCHED FIELD NAME rather than the declared variable is this class: it is only correct while every body reference happens to want the field, and it silently captures any same-named variable from the enclosing scope. Distinguishing check: in the emitted arm, does any identifier in the body resolve to something OTHER than the pattern fields the .dag arm bound? If the .dag body mentions an outer variable with the same name as a field, the binding names MUST differ.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.compiler.parse", decl_name: "parse_expr_not_predicate_attempt", field: WholeDeclaration },
+  ],
+}

@@ -1,0 +1,451 @@
+module test.claim.compute.durable_attempt_controller_witness
+
+import std.types { Bool, String, NonEmptyStr, FilePath }
+import std.optional { Present, Absent }
+import std.temporal_effect { HeldLease, LeaseRunningExpected }
+import std.durable_exclusive_hold {
+  DurableHoldOwnerRef, DurableHoldHolderReport, HolderObservedLive, HolderObservedDead, HolderLivenessUnobservable,
+  DurableHoldSubject, DurableHoldRef, DurableHoldCompletionReport, SectionObservedComplete,
+}
+import std.measure { kibibyte }
+import product.fabric.identity { FabricIdentity, DemandKey, ExecutionAttemptKey }
+import gunbc.durable_handoff_host { host_request_submit, HostRequestAccepted, host_request_directories }
+import gunbc.compute.durable_attempt_controller {
+  ControllerAttemptOpened, ControllerAttemptReattached, ControllerAttemptOpeningRefused, ControllerDelegation,
+  ControllerDelegated, controller_store, controller_delegate, controller_attempt_open, controller_attempt_read,
+  controller_attempt_prepare, controller_event_prepare, ControllerCancel, ControllerCapacityWaiting,
+  ControllerCapacityReleased, controller_next_obligation, ControllerAwaitCapacity, ControllerRequestGrant,
+  ControllerRequestTermination, ControllerObserveQuiescence, controller_receipt_for_attempt,
+  ControllerReceiptBindingMissing, ControllerReceiptWrongAttempt, ControllerReceiptFenceRefused,
+  controller_attempt_wire, ControllerDelegationRefused,
+}
+import gunbc.compute.attempt_lifecycle {
+  AttemptRecord, DirectInvocation, AttemptReserved, AttemptLaunching, AttemptAdvanced, AttemptLostRace,
+  AttemptPayloadHeld, AttemptFencedPreparation, AttemptFencePrepared, AttemptFenceRefused, AttemptClaimAcquire,
+  AttemptClaimRelease, AttemptOwnerAdvance, AttemptFenceWrongOwner, AttemptFenceWrongEpoch, attempt_fenced_commit,
+  attempt_claim_lease, AttemptPayloadAbsent, AttemptPayloadUnreadable, AttemptFenceUnreadable,
+  AttemptFenceWrongSubject, AttemptClaimRecover, AttemptFenceRecoveryRefused,
+  AttemptTerminal, AttemptRecovered, AttemptWorkEnded, AttemptFenceStateRefused, attempt_verdict_wire,
+}
+import gunbc.compute.work_request { WorkEndedFailed }
+import test.claim.fabric.work_restore_witness { base_wire }
+import extdeps.shell
+import std.durable_compare_and_set { cas_generation_first, cas_attempt, ExpectSlotGeneration, CasCommitted }
+import test.claim.fabric.fabric_terminal_contract_witness {
+  fixture_grant, granted_lease_receipt, stale_receipt, foreign_attempt_receipt,
+}
+import product.fabric.execution { ReceiptGenerationStale }
+import gunbc.durable_cas_file_store { slot_commit, admit_cas_attempt, CasAttemptAdmitted, DefaultAccessCreateOnly }
+import std.content_hash { content_hash_of_value }
+
+
+
+
+// These controls execute the production request acceptance, delegation, codec,
+// prepare and file CAS paths. The pause is an explicit prepared proposal, not
+// a sleep or a simulated scheduler. No process launch is performed here.
+// The service's declared directories are prerequisites, not effects of submit.
+// Derive both populations from their existing owners; every mkdir must succeed.
+fn fixture_prepare_root(root: String) -> Bool {
+  let store = controller_store(root: join([root, "/controller"], "") as NonEmptyStr, principal: "gunbc" as NonEmptyStr)
+  let directories = host_request_directories(root: join([root, "/accepted"], "") as NonEmptyStr) +
+    [store.requests.root as String, store.attempts.root as String]
+  directories.map(path => shell.Mkdir.Parents(path: path as FilePath).success).all(ok => ok)
+}
+
+fn delegated_fixture() -> ControllerDelegation? {
+  let temporary = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_controller.XXXXXX")
+  if !temporary.success || (temporary.path as String) == "" { return none }
+  let root = temporary.path as String
+  if !fixture_prepare_root(root: root) { return none }
+  match host_request_submit(root: join([root, "/accepted"], "") as NonEmptyStr,
+    identity: FabricIdentity { principal: "gunbc" as NonEmptyStr, key: "request-one" as DemandKey }, payload: base_wire() as NonEmptyStr) {
+    HostRequestAccepted { request } => match controller_delegate(
+      store: controller_store(root: join([root, "/controller"], "") as NonEmptyStr, principal: "gunbc" as NonEmptyStr), request: request, attempt_key: "execution-one" as ExecutionAttemptKey,
+      proposed: AttemptRecord { identity: "work-one", reference: "reservation-one", unit: "unit-one", granted: kibibyte(count: 1024), opened_at: 1800, launch_deadline: 2000,
+        state: AttemptReserved, owner: DirectInvocation { why: "isolated controller witness" } }) {
+      ControllerDelegated { delegation } => Present { value: delegation }
+      _ => none
+    }
+    _ => none
+  }
+}
+
+fn fixture() -> ControllerDelegation? {
+  match delegated_fixture() {
+    Absent => none
+    Present { value: d } => match controller_attempt_open(delegation: d) {
+      ControllerAttemptOpened { generation: _ } => Present { value: d }
+      _ => none
+    }
+  }
+}
+
+fn committed(prepared: AttemptFencedPreparation) -> Bool {
+  match prepared {
+    AttemptFencePrepared { write } => match attempt_fenced_commit(write: write) { AttemptAdvanced { state: _, generation: _ } => true _ => false }
+    AttemptFenceRefused { cause: _ } => false
+  }
+}
+fn acquire_hold(d: ControllerDelegation, owner: String) -> Bool {
+  committed(prepared: controller_attempt_prepare(delegation: d, action: AttemptClaimAcquire { owner: owner as DurableHoldOwnerRef }))
+}
+fn lease(d: ControllerDelegation) -> HeldLease? {
+  match controller_attempt_read(delegation: d) {
+    AttemptPayloadHeld { record, generation: _ } => match record.claim { Present { value: c } => Present { value: attempt_claim_lease(claim: c, observed: LeaseRunningExpected) } Absent => none }
+    _ => none
+  }
+}
+fn release_hold(d: ControllerDelegation, held: HeldLease) -> Bool {
+  committed(prepared: controller_attempt_prepare(delegation: d, action: AttemptClaimRelease { lease: held }))
+}
+fn launching(d: ControllerDelegation) -> Bool {
+  match controller_attempt_read(delegation: d) { AttemptPayloadHeld { record, generation: _ } => match record.record.state { AttemptLaunching => true _ => false } _ => false }
+}
+fn reserved_by(d: ControllerDelegation, owner: String) -> Bool {
+  match controller_attempt_read(delegation: d) {
+    AttemptPayloadHeld { record, generation: _ } => (match record.record.state { AttemptReserved => true _ => false }) &&
+      (match record.claim { Present { value: c } => (c.holder as String) == owner Absent => false })
+    _ => false
+  }
+}
+
+// R1: A prepares at r; voluntary release + B acquisition legally transfer at
+// the SAME slot. A's sealed proposal retains r and must lose the store CAS.
+test fn paused_old_owner_loses_cas_after_transfer() -> Bool {
+  match fixture() {
+    Absent => false
+    Present { value: d } => {
+      let a = acquire_hold(d: d, owner: "A")
+      match lease(d: d) {
+        Absent => false
+        Present { value: held } => match controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: held, next: AttemptLaunching }) {
+          AttemptFenceRefused { cause: _ } => false
+          AttemptFencePrepared { write } => {
+            let freed = release_hold(d: d, held: held)
+            let b = acquire_hold(d: d, owner: "B")
+            let resumed = attempt_fenced_commit(write: write)
+            a && freed && b && (match resumed { AttemptLostRace { expected: _, observed: _ } => true _ => false }) && reserved_by(d: d, owner: "B")
+          }
+        }
+      }
+    }
+  }
+}
+
+test fn prepared_current_owner_commits_without_transfer() -> Bool {
+  match fixture() {
+    Absent => false
+    Present { value: d } => {
+      let a = acquire_hold(d: d, owner: "A")
+      match lease(d: d) { Absent => false Present { value: held } => {
+        let first = committed(prepared: controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: held, next: AttemptLaunching }))
+        let duplicate = committed(prepared: controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: held, next: AttemptLaunching }))
+        a && first && !duplicate && launching(d: d)
+      } }
+    }
+  }
+}
+
+// R2: prepare performs a fresh read internally. An old lease cannot borrow B's
+// current revision. Paired B control uses identical transition and current owner.
+test fn stale_owner_rereading_current_revision_refuses_but_current_owner_commits() -> Bool {
+  match fixture() {
+    Absent => false
+    Present { value: d } => {
+      let a = acquire_hold(d: d, owner: "A")
+      match lease(d: d) { Absent => false Present { value: old } => {
+        let freed = release_hold(d: d, held: old)
+        let b = acquire_hold(d: d, owner: "B")
+        let stale = controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: old, next: AttemptLaunching })
+        let unchanged = reserved_by(d: d, owner: "B")
+        match lease(d: d) { Absent => false Present { value: current } => {
+          let positive = committed(prepared: controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: current, next: AttemptLaunching }))
+          a && freed && b && (match stale { AttemptFenceRefused { cause: AttemptFenceWrongOwner } => true _ => false }) && unchanged && positive && launching(d: d)
+        } }
+      } }
+    }
+  }
+}
+
+// ABA: same owner spelling, a different acquisition. Current epoch positive
+// prevents a blanket ban on reacquisition from passing this test.
+test fn old_epoch_refuses_after_same_owner_reacquires() -> Bool {
+  match fixture() {
+    Absent => false
+    Present { value: d } => {
+      let a = acquire_hold(d: d, owner: "A")
+      match lease(d: d) { Absent => false Present { value: old } => {
+        let freed = release_hold(d: d, held: old)
+        let again = acquire_hold(d: d, owner: "A")
+        let stale = controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: old, next: AttemptLaunching })
+        let unchanged = reserved_by(d: d, owner: "A")
+        match lease(d: d) { Absent => false Present { value: current } => {
+          let positive = committed(prepared: controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: current, next: AttemptLaunching }))
+          a && freed && again && (match stale { AttemptFenceRefused { cause: AttemptFenceWrongEpoch } => true _ => false }) && unchanged && positive && launching(d: d)
+        } }
+      } }
+    }
+  }
+}
+
+// Opposite order: the launch commits BEFORE transfer. It remains Launching,
+// and B cannot turn it into a second launch. Executor admission reconciles this committed
+// intent with its exact executor grant; a transfer cannot revoke history.
+test fn launch_committed_before_transfer_is_preserved_not_relaunched() -> Bool {
+  match fixture() {
+    Absent => false
+    Present { value: d } => {
+      let a = acquire_hold(d: d, owner: "A")
+      match lease(d: d) { Absent => false Present { value: old } => {
+        let launched = committed(prepared: controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: old, next: AttemptLaunching }))
+        // Release with the acquisition epoch still works after revision changed.
+        let freed = release_hold(d: d, held: old)
+        let b = acquire_hold(d: d, owner: "B")
+        match lease(d: d) { Absent => false Present { value: current } => {
+          let duplicate = committed(prepared: controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: current, next: AttemptLaunching }))
+          a && launched && freed && b && !duplicate && launching(d: d)
+        } }
+      } }
+    }
+  }
+}
+
+test fn restart_reattaches_the_same_attempt_without_resetting_its_claim() -> Bool {
+  match fixture() {
+    Absent => false
+    Present { value: d } => {
+      let a = acquire_hold(d: d, owner: "A")
+      let reopened = controller_attempt_open(delegation: d)
+      a && (match reopened { ControllerAttemptReattached { state: AttemptReserved, generation: _ } => true _ => false }) && reserved_by(d: d, owner: "A")
+    }
+  }
+}
+
+
+fn wake_source() -> DurableHoldSubject {
+  DurableHoldSubject { hold: "capacity-pool" as DurableHoldRef, holder: "prior-cell" as DurableHoldOwnerRef, generation: cas_generation_first() }
+}
+
+test fn capacity_wait_survives_reopen_and_exact_release_wakes_once() -> Bool {
+  match fixture() { Absent => false Present { value: d } => {
+    let a = acquire_hold(d: d, owner: "A")
+    match lease(d: d) { Absent => false Present { value: held } => {
+      let waited = committed(prepared: controller_event_prepare(delegation: d, lease: held, event: ControllerCapacityWaiting { source: wake_source() }))
+      let reopened = controller_attempt_open(delegation: d)
+      let blocked_launch = !committed(prepared: controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: held, next: AttemptLaunching }))
+      let wrong = DurableHoldSubject { hold: "unrelated-pool" as DurableHoldRef, holder: "prior-cell" as DurableHoldOwnerRef, generation: cas_generation_first() }
+      let wrong_wake = !committed(prepared: controller_event_prepare(delegation: d, lease: held, event: ControllerCapacityReleased { report: DurableHoldCompletionReport { hold: wrong, completion: SectionObservedComplete { observation: "released" as NonEmptyStr } } }))
+      let still_waiting = match controller_attempt_read(delegation: d) { AttemptPayloadHeld { record, generation: _ } => match controller_next_obligation(r: record) { ControllerAwaitCapacity { source: _ } => true _ => false } _ => false }
+      let report = DurableHoldCompletionReport { hold: wake_source(), completion: SectionObservedComplete { observation: "released" as NonEmptyStr } }
+      let woke = committed(prepared: controller_event_prepare(delegation: d, lease: held, event: ControllerCapacityReleased { report: report }))
+      let duplicate = committed(prepared: controller_event_prepare(delegation: d, lease: held, event: ControllerCapacityReleased { report: report }))
+      let ready = match controller_attempt_read(delegation: d) { AttemptPayloadHeld { record, generation: _ } => match controller_next_obligation(r: record) { ControllerRequestGrant { reference } => (reference as String) == "reservation-one" _ => false } _ => false }
+      a && waited && (match reopened { ControllerAttemptReattached { state: _, generation: _ } => true _ => false }) && blocked_launch && wrong_wake && still_waiting && woke && !duplicate && ready
+    } }
+  } }
+}
+
+test fn cancellation_winning_the_slot_prevents_a_prepared_launch() -> Bool {
+  match fixture() { Absent => false Present { value: d } => {
+    let a = acquire_hold(d: d, owner: "A")
+    match lease(d: d) { Absent => false Present { value: held } => {
+      match controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: held, next: AttemptLaunching }) {
+        AttemptFenceRefused { cause: _ } => false
+        AttemptFencePrepared { write } => {
+          let cancelled = committed(prepared: controller_event_prepare(delegation: d, lease: held, event: ControllerCancel { reason: "user cancelled" as NonEmptyStr }))
+          let resumed = attempt_fenced_commit(write: write)
+          let needs_quiescence = match controller_attempt_read(delegation: d) { AttemptPayloadHeld { record, generation: _ } => match controller_next_obligation(r: record) { ControllerObserveQuiescence { reference: _ } => true _ => false } _ => false }
+          a && cancelled && (match resumed { AttemptLostRace { expected: _, observed: _ } => true _ => false }) && needs_quiescence && !launching(d: d)
+        }
+      }
+    } }
+  } }
+}
+
+test fn launch_winning_before_cancel_requires_termination_reconciliation() -> Bool {
+  match fixture() { Absent => false Present { value: d } => {
+    let a = acquire_hold(d: d, owner: "A")
+    match lease(d: d) { Absent => false Present { value: held } => {
+      let launched = committed(prepared: controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: held, next: AttemptLaunching }))
+      let cancelled = committed(prepared: controller_event_prepare(delegation: d, lease: held, event: ControllerCancel { reason: "user cancelled" as NonEmptyStr }))
+      let reopened = controller_attempt_open(delegation: d)
+      let terminate = match controller_attempt_read(delegation: d) { AttemptPayloadHeld { record, generation: _ } => match controller_next_obligation(r: record) { ControllerRequestTermination { reference, reason } => (reference as String) == "reservation-one" && (reason as String) == "user cancelled" _ => false } _ => false }
+      a && launched && cancelled && (match reopened { ControllerAttemptReattached { state: _, generation: _ } => true _ => false }) && terminate && launching(d: d)
+    } }
+  } }
+}
+
+
+
+test fn matching_legacy_receipt_names_missing_binding_instead_of_completing() -> Bool {
+  match fixture_grant() {
+    Absent => false
+    Present { value: grant } => match controller_receipt_for_attempt(expected: grant.context.attempt, receipt: granted_lease_receipt, grant: grant) {
+      ControllerReceiptBindingMissing { missing: _ } => true
+      _ => false
+    }
+  }
+}
+
+test fn receipt_from_other_attempt_and_stale_lease_are_distinct_refusals() -> Bool {
+  match fixture_grant() {
+    Absent => false
+    Present { value: grant } =>
+      (match controller_receipt_for_attempt(expected: grant.context.attempt, receipt: foreign_attempt_receipt, grant: grant) { ControllerReceiptWrongAttempt => true _ => false }) &&
+      (match controller_receipt_for_attempt(expected: grant.context.attempt, receipt: stale_receipt, grant: grant) { ControllerReceiptFenceRefused { admission: ReceiptGenerationStale { presented: _, current: _ } } => true _ => false }) &&
+      (match controller_receipt_for_attempt(expected: grant.context.attempt, receipt: granted_lease_receipt, grant: grant) { ControllerReceiptBindingMissing { missing: _ } => true _ => false })
+  }
+}
+
+
+
+// Actual crash boundary: request CAS has committed, but no attempt exists yet.
+// Two restarters finish the SAME sealed intent. Open never grants ownership.
+test fn crash_after_delegation_before_open_retains_one_unclaimed_intent() -> Bool {
+  match delegated_fixture() { Absent => false Present { value: d } => {
+    let absent = match controller_attempt_read(delegation: d) { AttemptPayloadAbsent => true _ => false }
+    let first = controller_attempt_open(delegation: d)
+    let second = controller_attempt_open(delegation: d)
+    let unclaimed = match controller_attempt_read(delegation: d) {
+      AttemptPayloadHeld { record, generation: _ } => (record.record.reference == "reservation-one") && (match record.claim { Absent => true _ => false })
+      _ => false
+    }
+    absent && (match first { ControllerAttemptOpened { generation: _ } => true _ => false }) &&
+      (match second { ControllerAttemptReattached { state: AttemptReserved, generation: _ } => true _ => false }) && unclaimed && acquire_hold(d: d, owner: "restarter")
+  } }
+}
+
+// Fixture corruption goes through the real store, deliberately bypassing the
+// lifecycle policy using test-owned filesystem authority. Production cannot
+// infer absence or a replacement identity from this unreadable live slot.
+test fn malformed_attempt_refuses_claim_and_reopen_without_remint() -> Bool {
+  match fixture() { Absent => false Present { value: d } => {
+    match controller_attempt_read(delegation: d) {
+      AttemptPayloadHeld { record: _, generation } => {
+        let bytes = "malformed-record" as NonEmptyStr
+        match admit_cas_attempt(attempt: cas_attempt(key: d.initial.record.reference as NonEmptyStr, expected: ExpectSlotGeneration { generation: generation }, proposed: bytes, proposed_content: content_hash_of_value(value: bytes))) {
+          CasAttemptAdmitted { verified } => {
+            let corrupted = slot_commit(store: d.store.attempts, publication: DefaultAccessCreateOnly, verified: verified)
+            let attempted = controller_attempt_prepare(delegation: d, action: AttemptClaimAcquire { owner: "new-owner" as DurableHoldOwnerRef })
+            let reopened = controller_attempt_open(delegation: d)
+            let unreadable = match controller_attempt_read(delegation: d) { AttemptPayloadUnreadable { detail: _ } => true _ => false }
+            (match corrupted { CasCommitted { committed: _ } => true _ => false }) &&
+              (match attempted { AttemptFenceRefused { cause: AttemptFenceUnreadable { detail: _ } } => true _ => false }) &&
+              (match reopened { ControllerAttemptOpeningRefused { detail: _ } => true _ => false }) && unreadable
+          }
+          _ => false
+        }
+      }
+      _ => false
+    }
+  } }
+}
+
+test fn independent_principal_mismatch_refuses_delegation_with_matching_positive() -> Bool {
+  let temporary = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_principal.XXXXXX")
+  if !temporary.success || (temporary.path as String) == "" { return false }
+  let root = temporary.path as String
+  if !fixture_prepare_root(root: root) { return false }
+  match host_request_submit(root: join([root, "/accepted"], "") as NonEmptyStr,
+    identity: FabricIdentity { principal: "gunbc" as NonEmptyStr, key: "request-one" as DemandKey }, payload: base_wire() as NonEmptyStr) {
+    HostRequestAccepted { request } => {
+      let record = AttemptRecord { identity: "work-one", reference: "reservation-one", unit: "unit-one", granted: kibibyte(count: 1024), opened_at: 1800, launch_deadline: 2000,
+        state: AttemptReserved, owner: DirectInvocation { why: "isolated principal witness" } }
+      let wrong = controller_delegate(store: controller_store(root: join([root, "/controller"], "") as NonEmptyStr, principal: "other" as NonEmptyStr), request: request, attempt_key: "execution-one" as ExecutionAttemptKey, proposed: record)
+      let right = controller_delegate(store: controller_store(root: join([root, "/controller"], "") as NonEmptyStr, principal: "gunbc" as NonEmptyStr), request: request, attempt_key: "execution-one" as ExecutionAttemptKey, proposed: record)
+      (match wrong { ControllerDelegationRefused { detail: _ } => true _ => false }) && (match right { ControllerDelegated { delegation: _ } => true _ => false })
+    }
+    _ => false
+  }
+}
+
+test fn competing_delegators_resume_the_committed_link_not_their_new_candidate() -> Bool {
+  let temporary = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_delegate.XXXXXX")
+  if !temporary.success || (temporary.path as String) == "" { return false }
+  let root = temporary.path as String
+  if !fixture_prepare_root(root: root) { return false }
+  match host_request_submit(root: join([root, "/accepted"], "") as NonEmptyStr,
+    identity: FabricIdentity { principal: "gunbc" as NonEmptyStr, key: "request-one" as DemandKey }, payload: base_wire() as NonEmptyStr) {
+    HostRequestAccepted { request } => {
+      let store = controller_store(root: join([root, "/controller"], "") as NonEmptyStr, principal: "gunbc" as NonEmptyStr)
+      let first_record = AttemptRecord { identity: "work-one", reference: "reservation-one", unit: "unit-one", granted: kibibyte(count: 1024), opened_at: 1800, launch_deadline: 2000,
+        state: AttemptReserved, owner: DirectInvocation { why: "competing first" } }
+      let second_record = AttemptRecord { identity: "work-one", reference: "reservation-two", unit: "unit-two", granted: kibibyte(count: 1024), opened_at: 1800, launch_deadline: 2000,
+        state: AttemptReserved, owner: DirectInvocation { why: "competing second" } }
+      match controller_delegate(store: store, request: request, attempt_key: "execution-one" as ExecutionAttemptKey, proposed: first_record) {
+        ControllerDelegationRefused { detail: _ } => false
+        ControllerDelegated { delegation: first } => match controller_delegate(store: store, request: request, attempt_key: "execution-two" as ExecutionAttemptKey, proposed: second_record) {
+          ControllerDelegationRefused { detail: _ } => false
+          ControllerDelegated { delegation: second } => {
+            let opened1 = controller_attempt_open(delegation: first)
+            let opened2 = controller_attempt_open(delegation: second)
+            first.initial.record.reference == second.initial.record.reference && (second.initial.attempt_key as String) == "execution-one" &&
+              (match opened1 { ControllerAttemptOpened { generation: _ } => true _ => false }) && (match opened2 { ControllerAttemptReattached { state: _, generation: _ } => true _ => false })
+          }
+        }
+      }
+    }
+    _ => false
+  }
+}
+
+test fn lease_from_another_slot_refuses_even_when_owner_and_epoch_match() -> Bool {
+  match fixture() { Absent => false Present { value: left } => {
+    match fixture() { Absent => false Present { value: right } => {
+      let a = acquire_hold(d: left, owner: "A")
+      let b = acquire_hold(d: right, owner: "A")
+      match lease(d: left) { Absent => false Present { value: foreign } => {
+        let refused = controller_attempt_prepare(delegation: right, action: AttemptOwnerAdvance { lease: foreign, next: AttemptLaunching })
+        match lease(d: right) { Absent => false Present { value: current } => {
+          let positive = committed(prepared: controller_attempt_prepare(delegation: right, action: AttemptOwnerAdvance { lease: current, next: AttemptLaunching }))
+          a && b && (match refused { AttemptFenceRefused { cause: AttemptFenceWrongSubject } => true _ => false }) && positive && reserved_by(d: left, owner: "A") && launching(d: right)
+        } }
+      } }
+    } }
+  } }
+}
+
+// Controller death is not executor death. Recovery of a dead owner retains an
+// already committed Launching attempt and cannot make its replacement relaunch.
+test fn owner_recovery_refuses_live_and_unknown_and_preserves_committed_launch() -> Bool {
+  match fixture() { Absent => false Present { value: d } => {
+    let a = acquire_hold(d: d, owner: "A")
+    match lease(d: d) { Absent => false Present { value: held } => {
+      let launched = committed(prepared: controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: held, next: AttemptLaunching }))
+      let live = controller_attempt_prepare(delegation: d, action: AttemptClaimRecover { report: DurableHoldHolderReport { holder: "A" as DurableHoldOwnerRef, generation: held.epoch.generation, liveness: HolderObservedLive { evidence: "controller still running" as NonEmptyStr } } })
+      let unknown = controller_attempt_prepare(delegation: d, action: AttemptClaimRecover { report: DurableHoldHolderReport { holder: "A" as DurableHoldOwnerRef, generation: held.epoch.generation, liveness: HolderLivenessUnobservable { cause: "controller unreachable" as NonEmptyStr } } })
+      let dead = committed(prepared: controller_attempt_prepare(delegation: d, action: AttemptClaimRecover { report: DurableHoldHolderReport { holder: "A" as DurableHoldOwnerRef, generation: held.epoch.generation, liveness: HolderObservedDead { evidence: "independent controller exit observation" as NonEmptyStr } } }))
+      let b = acquire_hold(d: d, owner: "B")
+      match lease(d: d) { Absent => false Present { value: current } => {
+        let duplicate = committed(prepared: controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: current, next: AttemptLaunching }))
+        a && launched && (match live { AttemptFenceRefused { cause: AttemptFenceRecoveryRefused } => true _ => false }) &&
+          (match unknown { AttemptFenceRefused { cause: AttemptFenceRecoveryRefused } => true _ => false }) && dead && b && !duplicate && launching(d: d)
+      } }
+    } }
+  } }
+}
+
+// TERMINAL IS FINAL ON THE FENCED ROUTE. The current owner settles the attempt once; the SAME owner,
+// holding the SAME still-valid lease (an advance does not move the claim), then prepares a second
+// Terminal with a different verdict. Owner, subject and epoch all pass, so the only thing that can
+// refuse it is the lifecycle law. The positive control is the first settle on the identical path.
+fn settled_as_recovered(d: ControllerDelegation) -> Bool {
+  match controller_attempt_read(delegation: d) {
+    AttemptPayloadHeld { record, generation: _ } => match record.record.state { AttemptTerminal { verdict: v, detail: _ } => attempt_verdict_wire(v: v) == "recovered" _ => false }
+    _ => false
+  }
+}
+test fn a_settled_attempt_refuses_a_second_terminal_on_the_fenced_route() -> Bool {
+  match fixture() {
+    Absent => false
+    Present { value: d } => {
+      let a = acquire_hold(d: d, owner: "A")
+      match lease(d: d) { Absent => false Present { value: held } => {
+        let first = committed(prepared: controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: held, next: AttemptTerminal { verdict: AttemptRecovered, detail: "settled once" } }))
+        let rewrite = controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: held, next: AttemptTerminal { verdict: AttemptWorkEnded { ending: WorkEndedFailed }, detail: "a later rewrite" } })
+        a && first && (match rewrite { AttemptFenceRefused { cause: AttemptFenceStateRefused } => true _ => false }) && settled_as_recovered(d: d)
+      } }
+    }
+  }
+}

@@ -1,7 +1,7 @@
 module std.host_text
 
 import std.types { Char, List }
-import std.algebra { fold_list, list_head, skip }
+import std.algebra { Cons, Empty, fold_list, list_head, list_reverse, skip }
 import std.nat { Nat, Zero, Succ }
 import std.optional { Absent, Optional, Present }
 
@@ -81,6 +81,42 @@ fn text_of_chars(scalars: List<Char>) -> HostText {
 // replaces the host one once an explicit import outranks the ambient primitive.
 fn string_length(text: HostText) -> Nat {
   fold_list(xs: chars(text: text), empty: Zero, cons: fn(n, _) { Succ { prev: n } })
+}
+
+// THE WINDOW OF A HOST TEXT BETWEEN TWO SCALAR POSITIONS (tidy-ant-251 ruling msg_870db9ee, 2026-11-07, the
+// family of string_length and char_at above: host-text layer, positions typed Nat). The host text of the
+// Unicode scalars of `text` at CODE-POINT positions [start, end), never bytes, UTF-16 code units or grapheme
+// clusters. The semantics are the ambient operation's, stated EXACTLY as src/v1/runtime_rust.dag
+// v1_rt::substring behaves and NOT changed here (a semantic change is its own ruling):
+//   - end <= start is the EMPTY text;
+//   - start at or past the scalar count is the EMPTY text;
+//   - end past the scalar count is clamped to the count;
+//   - a negative start or end clamps to 0 in the realization. That arm has no input here: start and end are
+//     std.nat Nat, so a negative position is not expressible at this boundary, as for char_at's pos.
+// The answer is total: every pair of positions has one window, possibly empty. There is no absence arm, because
+// the ambient operation has none (an empty window is a window), unlike char_at's single-scalar read.
+//
+// A HOST SEAM, LIKE string_length AND char_at: the realization binds by THIS declaration's identity
+// (std.primitive_projection primitive_substring, a HostRealizedSeam row added with this declaration), and a
+// target without that realization refuses at realization rather than falling back to a name.
+// THE BODY IS DEAD UNTIL THE ROW IS ON MAIN, as string_length's was: heal round 1 builds its generator from
+// main's stage0 mirrors, which carry no primitive_substring row until this lands, so a self-call here would
+// emit as bare Rust recursion. The fold keeps the emitted body total meanwhile; every call routes through the
+// row, so nothing executes it. It is LINEAR anyway (DESIGN section 6: a cost-shape defect is fixed regardless of
+// reach; review 91819): the count still to keep travels in the accumulator rather than being re-measured, kept
+// scalars are prepended, and the one reverse at the end restores source order. Trigger: primitive_substring is
+// on main; the follow-up replaces the body with the self-call substring(text: text, start: start, end: end), and
+// drops SubstringWindow and the fold's imports (Cons, Empty, list_reverse).
+type SubstringWindow {
+  left: Int
+  kept: List<Char>
+}
+
+fn substring(text: HostText, start: Nat, end: Nat) -> HostText {
+  let window = fold_list(xs: skip(xs: chars(text: text), n: start as Int), empty: SubstringWindow { left: (end as Int) - (start as Int), kept: Empty }, cons: fn(acc, c) {
+    if acc.left > 0 { SubstringWindow { left: acc.left - 1, kept: Cons { head: c, tail: acc.kept } } } else { acc }
+  })
+  text_of_chars(scalars: list_reverse(xs: window.kept))
 }
 
 // THE INDEXED READ OF A HOST TEXT, WITH ABSENCE TYPED (tidy-ant-251 ruling, 2026-11-01, the F5 row of the
