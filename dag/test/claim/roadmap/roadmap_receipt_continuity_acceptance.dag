@@ -525,7 +525,7 @@ test fn witness_dispatch_projected_arm_presents_the_dispatch_schema() -> Bool {
   })
   string_contains(s: dispatch, pattern: "\"brief_template\": ")
     && string_contains(s: dispatch, pattern: "\"dispatch\": ")
-    && string_contains(s: dispatch, pattern: "\"schema\": \"roadmap-dispatch/v2\"")
+    && string_contains(s: dispatch, pattern: "\"schema\": \"roadmap-dispatch/v3\"")
     && !string_contains(s: dispatch, pattern: "\"refused\": true")
 }
 

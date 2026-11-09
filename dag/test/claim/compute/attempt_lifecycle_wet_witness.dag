@@ -950,3 +950,33 @@ test fn a_build_whose_declared_output_is_missing_commits_no_record() -> Bool {
     && (match after { ComputeStoreAbsent => true  _ => false })
     && (match recommitted { ComputeCommitted => true  _ => false })
 }
+
+// TERMINAL IS FINAL ON THE OLD PAYLOAD ROUTE. The attempt is settled once (recovered), then a second
+// terminate with a DIFFERENT verdict is presented at the CURRENT generation -- so it is not a lost
+// race, and the only thing that can refuse it is the lifecycle law. The record keeps the first verdict
+// and the generation does not move. The positive control is the first terminate on the identical path.
+test fn a_settled_attempt_refuses_a_second_terminal_on_the_payload_route() -> Bool {
+  let root = fresh_root()
+  let ok = a_settled_attempt_refuses_a_second_terminal_on_the_payload_route_cell(root: root as NonEmptyStr)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_settled_attempt_refuses_a_second_terminal_on_the_payload_route_cell(root: NonEmptyStr) -> Bool {
+  match flat_slots_at(root: root as String) {
+  Absent => false
+  Present { value: slots } => {
+  let record = record_for(reference: "attempt-terminal-final")
+  let opened = attempt_open(store: slots, record: record)
+  let g1 = attempt_slot_read(store: slots, reference: record.reference as NonEmptyStr)
+  let first = attempt_terminate(store: slots, reference: record.reference as NonEmptyStr, expected: generation_of(r: g1), verdict: AttemptRecovered, detail: "settled once")
+  let g2 = attempt_slot_read(store: slots, reference: record.reference as NonEmptyStr)
+  let rewrite = attempt_terminate(store: slots, reference: record.reference as NonEmptyStr, expected: generation_of(r: g2), verdict: AttemptWorkEnded { ending: WorkEndedFailed }, detail: "a later rewrite")
+  let g3 = attempt_slot_read(store: slots, reference: record.reference as NonEmptyStr)
+  attempt_transition_advanced(t: opened) && attempt_transition_advanced(t: first)
+    && (match rewrite { AttemptTransitionRefused { detail: _ } => true _ => false })
+    && state_word_of(r: g3) == "terminal:recovered"
+    && generation_of(r: g2) == 2 && generation_of(r: g3) == 2
+  }
+  }
+}

@@ -12,10 +12,7 @@ import gunbc.target_binding {
   TargetLookupLabelNotCanonical,
   TargetBindingIndexRefusal, TargetLabelNotCanonical, DuplicateTargetBinding,
   build_target_binding_index, target_binding_lookup,
-  BehavioralReceiptPlanProducer, HeadsReadingDifferentialProducer,
-  BehavioralReceiptPlanStanding, BehavioralReceiptPlanCompleted,
-  BehavioralReceiptPlanNoSubject, BehavioralReceiptPlanRefused,
-  BehavioralReceiptDiverged, ReceiptPlanMergeBaseUnresolvable,
+  SelfHostProducer, HeadsReadingDifferentialProducer,
   HeadsReadingDifferentialStanding, HeadsReadingDifferentialCompleted,
   HeadsReadingDifferentialSubjectUnreached, HeadsReadingDifferentialRefused,
   HeadsReadingDifferentialObservation,
@@ -52,11 +49,11 @@ test fn target_binding_is_peer_to_build_target() -> Bool {
     target: target.label
     producer: HeadsReadingDifferentialProducer {}
   }
-  let plan = TargetBinding {
+  let other = TargetBinding {
     target: target.label
-    producer: BehavioralReceiptPlanProducer {}
+    producer: SelfHostProducer {}
   }
-  (differential.target == plan.target) && (differential.producer != plan.producer)
+  (differential.target == other.target) && (differential.producer != other.producer)
 }
 
 fn one_target_index(bindings: List<TargetBinding>) -> TargetBindingIndexBuild {
@@ -109,7 +106,7 @@ test fn keyed_lookup_distinguishes_bound_missing_and_unknown() -> Bool {
 // reach. Two producers for one label refuse with the duplicated target named.
 test fn duplicate_target_binding_refuses_before_lookup() -> Bool {
   let a = TargetBinding { target: instrument_label(), producer: HeadsReadingDifferentialProducer {} }
-  let b = TargetBinding { target: instrument_label(), producer: BehavioralReceiptPlanProducer {} }
+  let b = TargetBinding { target: instrument_label(), producer: SelfHostProducer {} }
   match one_target_index(bindings: [a, b]) {
     TargetBindingIndexReady { index: _ } => false
     TargetBindingIndexRefused { cause: c } => c == DuplicateTargetBinding { target: instrument_label() }
@@ -178,19 +175,6 @@ test fn rendered_key_collision_refuses_as_noncanonical_before_indexing() -> Bool
            TargetUnknown { target: _ } => false
          }
        }
-}
-
-// COMPLETED NEGATIVE, NO-SUBJECT, AND PRODUCER REFUSAL ARE SEPARATE STATES. A bool-shaped result
-// could not distinguish them: all currently make the CLI nonzero, for three different remedies.
-test fn behavioral_receipt_plan_keeps_completion_subject_and_observation_apart() -> Bool {
-  let negative: BehavioralReceiptPlanStanding = BehavioralReceiptPlanCompleted {
-    observation: BehavioralReceiptDiverged {}
-  }
-  let absent: BehavioralReceiptPlanStanding = BehavioralReceiptPlanNoSubject { head: "abc123" }
-  let refused: BehavioralReceiptPlanStanding = BehavioralReceiptPlanRefused {
-    cause: ReceiptPlanMergeBaseUnresolvable {}
-  }
-  (negative != absent) && (absent != refused) && (negative != refused)
 }
 
 fn differential_observation(divergent: List<String>) -> HeadsReadingDifferentialObservation {

@@ -3,6 +3,9 @@ module v2.test.claim.tokenize.lex_window_beyond
 import std.algebra { Cons, Empty, length }
 import std.coercion { unicode_scalar_unfold }
 import std.types { Bool, List }
+import std.nat { Nat, nat_add }
+import std.host_text { substring }
+import v2.test.claim.compiler.literal_elaboration { lel_reason }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.compiler.tokenize {
   LexCursor,
@@ -338,7 +341,7 @@ fn equals_rules() -> LexRuleSet {
   }
 }
 
-fn equals_tokens_at(text: String, window: Int) -> List<Token> {
+fn equals_tokens_at(text: String, window: Nat) -> List<Token> {
   match tokenize_prefix_prepared(
     text: text,
     file: ^w_probe,
@@ -399,18 +402,18 @@ fn modal_prepared() -> PreparedLexRules {
   prepare_lex_rules(rules: ModeledLexRules { root: modal_rules() })
 }
 
-fn modal_window(text: String, window: Int) -> Outcome<LexPrefix> {
+fn modal_window(text: String, window: Nat) -> Outcome<LexPrefix> {
   tokenize_prefix_prepared(text: text, file: ^w_probe, prepared: modal_prepared(), limit: LexWalkUntil { scalars: window })
 }
 
-fn modal_tokens_at(text: String, window: Int) -> List<Token> {
+fn modal_tokens_at(text: String, window: Nat) -> List<Token> {
   match modal_window(text: text, window: window) {
     Rejected { diagnostics: _ } => []
     Accepted { value: prefix, diagnostics: _ } => token_stream_remaining(stream: prefix.stream)
   }
 }
 
-fn modal_window_is_open(text: String, window: Int) -> Bool {
+fn modal_window_is_open(text: String, window: Nat) -> Bool {
   match modal_window(text: text, window: window) {
     Rejected { diagnostics: _ } => false
     Accepted { value: prefix, diagnostics: _ } => !prefix.complete
@@ -429,12 +432,12 @@ fn modal_whole_refusal(text: String) -> Symbol {
 }
 
 // The cut of the text lexed as if it were the file: what a reader that took a plain prefix would have.
-fn modal_cut_refusal(text: String, window: Int) -> Symbol {
-  modal_whole_refusal(text: substring(s: text, start: 0, end: window))
+fn modal_cut_refusal(text: String, window: Nat) -> Symbol {
+  modal_whole_refusal(text: substring(text: text, start: 0, end: window))
 }
 
-fn modal_cut_tokens(text: String, window: Int) -> List<Token> {
-  match tokenize_prepared(text: substring(s: text, start: 0, end: window), file: ^w_probe, prepared: modal_prepared()) {
+fn modal_cut_tokens(text: String, window: Nat) -> List<Token> {
+  match tokenize_prepared(text: substring(text: text, start: 0, end: window), file: ^w_probe, prepared: modal_prepared()) {
     Rejected { diagnostics: _ } => []
     Accepted { value: stream, diagnostics: _ } => token_stream_remaining(stream: stream)
   }
@@ -467,7 +470,7 @@ test fn a_longer_closer_cut_by_the_edge_is_not_replaced_by_its_shorter_prefix() 
 
 // ---- the doors at the extremes ------------------------------------------------------------------------------
 
-fn dag_prefix_complete(text: String, window: Int) -> Bool {
+fn dag_prefix_complete(text: String, window: Nat) -> Bool {
   match tokenize_prefix_prepared(text: text, file: ^w_probe, prepared: dag_prepared_lex(), limit: LexWalkUntil { scalars: window }) {
     Rejected { diagnostics: _ } => false
     Accepted { value: prefix, diagnostics: _ } => prefix.complete
@@ -481,15 +484,29 @@ fn void_prefix_reason(text: String, limit: LexWalkLimit) -> Symbol {
   }
 }
 
-// A window of exactly the text's length is the whole text, and one scalar less is not; a negative window
-// holds nothing; an empty text is complete under any window.
+// A window of exactly the text's length is the whole text, and one scalar less is not; an empty text is
+// complete under any window. (A negative window is no longer writable; its RED is the test below.)
 test fn a_window_is_the_whole_text_exactly_when_it_holds_all_of_it() -> Bool {
   dag_prefix_complete(text: "module a.b\n", window: 11)
     && !dag_prefix_complete(text: "module a.b\n", window: 10)
     && dag_prefix_complete(text: "module a.b\n", window: 12)
-    && !dag_prefix_complete(text: "module a.b\n", window: -3)
     && dag_prefix_complete(text: "", window: 0)
     && dag_prefix_complete(text: "", window: 5)
+}
+
+// A NEGATIVE WINDOW IS UNWRITABLE (DESIGN section 4b, a climb to rung 4; tidy-ant-251 msg_31998a49). LexWalkUntil's
+// scalars is a COUNT, so it is a std.nat Nat and lex_window's `n < 0` arm is deleted. The conjunct that said "a
+// negative window holds nothing" moved here, in FORM not meaning: the negative window is now refused at the
+// type boundary. The fixture source writes it in a record field of LexWalkUntil's shape and is refused by
+// infer's literal judge at the Nat grounding row (the reason v2.test.claim.compiler.literal_elaboration
+// lel_negative_literal_at_nat_refuses pins); the positive control is the same source with a count.
+fn lwb_negative_window_src(scalars: String) -> String {
+  "module p\n\nimport std.nat { Nat }\n\ntype Limit\n  = Whole\n  | Until { scalars: Nat }\n\nfn until() -> Limit {\n  Until { scalars: " + scalars + " }\n}\n"
+}
+
+test fn a_negative_window_is_refused_at_the_nat_boundary() -> Bool {
+  lel_reason(src: lwb_negative_window_src(scalars: "-3")) == ^infer_reason_literal_outside_kernel_grounding_range
+    && lel_reason(src: lwb_negative_window_src(scalars: "3")) == ^accepted
 }
 
 // A rule set with no rules matches no scalar, so a text it is shown is refused and an empty text is

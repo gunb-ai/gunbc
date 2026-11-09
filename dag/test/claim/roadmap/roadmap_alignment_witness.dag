@@ -47,7 +47,7 @@ import gunbc.roadmap.roadmap_attempt_continuation {
   continuation_alignment_ask,
 }
 import gunbc.roadmap.roadmap_model {  RoadmapNode, RoadmapNodeId, RoadmapNodeIdentity, Pointer, NotDispatchable, NodeParent, MemberOf, AdmittedRoot }
-import gunbc.roadmap.roadmap_status { TicketLine, TicketFields, Unsigned }
+import gunbc.roadmap.roadmap_status { TicketLine, TicketFields }
 import gunbc.roadmap.roadmap_execution_contract { ExecutionContract, ExecutionContractUnspecified, NotAgentWork }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -83,7 +83,6 @@ fn fixture_node(id: String, headline: String, brief: String, parent: NodeParent?
     dispatch: NotDispatchable,
     execution: ExecutionContractUnspecified,
     owner: "alignment-fixture",
-    signoff: Unsigned,
     parent: parent,
     centering: none,
   }
