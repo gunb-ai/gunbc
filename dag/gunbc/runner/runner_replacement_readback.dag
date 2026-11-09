@@ -174,16 +174,19 @@ fn replacement_proven_of(
   }
 }
 
-// THE JOIN AT A HOST'S SCALE: one roster read, one verdict per replacement slot, in the caller's order. A
+// THE JOIN AT A HOST'S SCALE: one roster read, one verdict per slot the gate is waiting on, in the caller's
+// order. The parameter is `slots` and not `incoming` because the caller passes every slot the gate waits on
+// -- the incoming population AND the slots the host is bringing up -- and a join asked about only one of
+// those two sets leaves the other permanently unproven. A
 // slot with no verdict at all still gets an arm -- `replacement_job_standing_of` reads `Absent` as
 // unreadable, which is the point: a plan that forgets to collect a verdict retires nothing.
 fn replacement_proven_of_host(
-  incoming: List<NonEmptyStr>,
+  slots: List<NonEmptyStr>,
   roster: OrganizationRunnerRosterEvidence?,
   verdicts: List<ReplacementJobEvidence>,
 ) -> List<ReplacementProven> {
   map(
-    incoming,
+    slots,
     slot =>
       replacement_proven_of(
         registration: replacement_registration_of(slot: slot, roster: roster),
@@ -260,6 +263,26 @@ fn replacement_incoming_at(host: HostIdentity, prior_width: Int, target: RunnerW
         Absent => ShrunkOnly
         Present { value: _ } => ReplacedBy { incoming: map(incoming_names(host: host, prior_width: prior_width, width: width), t => t as NonEmptyStr) }
       }
+  }
+}
+
+// THE INCOMING POPULATION AS A LIST, for the callers that need the set the sum type carries. `ShrunkOnly`
+// has none, and `IncomingUnresolved` deliberately has none either -- an unresolved move is refused through
+// the sum type itself, never by handing out an empty set that reads as "nothing to prove".
+// EVERY SLOT THE GATE WAITS ON, in one place: the incoming population plus the slots the host is bringing
+// up, without duplicates. The drain gate and the operator's hand notice both read THIS, so a receipt can
+// never announce "hand retirement is now safe" while the gate is still withholding the derived retirements
+// on a slot nobody has proven -- one question, one set, one answer.
+fn waiting_slots(incoming: ReplacementIncoming, provisioning: List<NonEmptyStr>) -> List<NonEmptyStr> {
+  let slots = incoming_slots(incoming: incoming)
+  concat(slots, filter(provisioning, p => !any(slots, w => (w as String) == (p as String))))
+}
+
+fn incoming_slots(incoming: ReplacementIncoming) -> List<NonEmptyStr> {
+  match incoming {
+    ReplacedBy { incoming: slots } => slots
+    ShrunkOnly => []
+    IncomingUnresolved { cause: _ } => []
   }
 }
 
@@ -409,9 +432,22 @@ fn retire_drain_decisions(
   fabric: List<NonEmptyStr>,
   live: List<NonEmptyStr>,
   incoming: ReplacementIncoming,
-  proven: List<ReplacementProven>,
+  roster: OrganizationRunnerRosterEvidence?,
+  verdicts: List<ReplacementJobEvidence>,
 ) -> List<RetireDrainDecision> {
   let provisioning = provisioning_slots(desired: desired, live: live)
+  // THE PROVEN SET IS BUILT OVER EVERY SLOT THIS GATE WILL WAIT ON, and that set is derived here rather than
+  // handed in. Handing it in was the bug the route's own claim caught: a caller that asked about the incoming
+  // population only could never produce a standing for a slot the host is bringing up, so the withhold was
+  // permanent no matter what evidence arrived -- a stall with a fail-closed face, which `guarantee_ladder`
+  // calls an untracked stall and an operator reads as a converge that never converges. srv1 of
+  // gunb-ai/gunbc#16144 is that world: srv1-03..06 are desired with no install tree, so they are waited on,
+  // and they are not in any prior population to be labelled "incoming".
+  let proven = replacement_proven_of_host(
+    slots: waiting_slots(incoming: incoming, provisioning: provisioning),
+    roster: roster,
+    verdicts: verdicts,
+  )
   map(
     candidates,
     unit =>
@@ -458,6 +494,7 @@ fn provisioning_slots(desired: List<NonEmptyStr>, live: List<NonEmptyStr>) -> Li
 fn hand_retirement_notice(
   unit: NonEmptyStr,
   incoming: ReplacementIncoming,
+  provisioning: List<NonEmptyStr>,
   proven: List<ReplacementProven>,
   read_live: Bool,
 ) -> String {
@@ -465,24 +502,29 @@ fn hand_retirement_notice(
     (unit as String),
     " is hand-started working capacity outside the derived population: this plan will not drain it. ",
   )
+  // THE SAME SET THE DRAIN GATE WAITS ON -- the incoming population and the slots this plan is bringing up.
+  // A shrink with a slot still being installed is not "nothing pending": the capacity a hand retirement would
+  // be handed to is not running yet, and the operator reading this line is about to decide whether to stop a
+  // working runner on the strength of it.
+  let waiting = waiting_slots(incoming: incoming, provisioning: provisioning)
   match incoming {
-    ShrunkOnly =>
-      concat(head, "no incoming slot is pending proof on this host; retiring it is the operator's call.")
     IncomingUnresolved { cause: why } =>
       concat(head, concat("the incoming population is unknowable (", concat(why, "); no retirement is safe to take yet.")))
-    ReplacedBy { incoming: slots } =>
-      if !read_live {
+    _ =>
+      if length(waiting) == 0 {
+        concat(head, "no incoming slot is pending proof on this host; retiring it is the operator's call.")
+      } else if !read_live {
         concat(
-          concat(head, concat("replacement ", join(map(slots, u => (u as String)), ", "))),
+          concat(head, concat("replacement ", join(map(waiting, u => (u as String)), ", "))),
           " were not consulted: an observe-only pass reads no roster and collects no job, so it cannot say a hand retirement is safe. The converge run reports it per slot.",
         )
-      } else if all(slots, k => is_proven(slots_of: proven, slot: k)) {
+      } else if all(waiting, k => is_proven(slots_of: proven, slot: k)) {
         concat(
-          concat(head, concat("replacement ", join(map(slots, u => (u as String)), ", "))),
+          concat(head, concat("replacement ", join(map(waiting, u => (u as String)), ", "))),
           " registered and completed a job; hand retirement is now safe for the operator to decide.",
         )
       } else {
-        match first_unproven(slots: slots, proven: proven) {
+        match first_unproven(slots: waiting, proven: proven) {
           Absent => concat(head, "no replacement is proven yet.")
           Present { value: slot } =>
             concat(

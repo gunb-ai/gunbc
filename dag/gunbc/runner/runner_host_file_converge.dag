@@ -170,7 +170,8 @@ import gunbc.runner.runner_width_transition {
   RequiredRetirees, RetireesKnown, RetireesUnresolved,
 }
 import gunbc.runner.runner_replacement_readback {
-  ReplacementIncoming, ReplacedBy, ShrunkOnly, IncomingUnresolved, replacement_incoming_for_host, replacement_proven_of_host, retire_drain_decisions, hand_retirement_notice
+  ReplacementIncoming, ReplacedBy, ShrunkOnly, IncomingUnresolved, replacement_incoming_for_host, replacement_proven_of_host,
+  provisioning_slots, waiting_slots, retire_drain_decisions, hand_retirement_notice
 }
 
 import gunbc.runner.runner_retirement_causes {
@@ -3448,20 +3449,20 @@ fn runner_host_retire_drain_decisions(
     SlotPopulationObserved { units: us } => map(us, r => r.unit)
     SlotPopulationUnobservable { reason: _ } => []
   }
-  let incoming = replacement_incoming_for_host(host: subject.host)
-  let slots = match incoming { ReplacedBy { incoming: s } => s ShrunkOnly => [] IncomingUnresolved { cause: _ } => [] }
+  // THE OBSERVATIONS GO IN AND THE GATE DERIVES WHAT IT MUST PROVE. The leg used to build the proven set
+  // itself, over the incoming population only, and its own claim caught the consequence: a slot the host is
+  // bringing up -- desired, no install tree yet, exactly srv1-03..06 of gunb-ai/gunbc#16144 -- was never in
+  // the set the readback was asked about, so it could never be proven and its retiree was withheld forever,
+  // whatever evidence arrived. Which slots are waited on is one fact with one producer, inside the gate.
   retire_drain_decisions(
     candidates: runner_host_drain_units(subject: subject),
     desired: subject.desired_units,
     obligation: subject.retired_units,
     fabric: subject.fabric_units,
     live: live,
-    incoming: incoming,
-    proven: replacement_proven_of_host(
-      incoming: slots,
-      roster: readback.roster,
-      verdicts: readback.qualification_verdicts,
-    ),
+    incoming: replacement_incoming_for_host(host: subject.host),
+    roster: readback.roster,
+    verdicts: readback.qualification_verdicts,
   )
 }
 
@@ -3509,9 +3510,17 @@ fn runner_host_hand_capacity_notices(
   readback: RunnerRetirementReadback,
 ) -> List<SlotActuationOutcome> {
   let incoming = replacement_incoming_for_host(host: subject.host)
-  let slots = match incoming { ReplacedBy { incoming: s } => s ShrunkOnly => [] IncomingUnresolved { cause: _ } => [] }
+  let live = match population {
+    SlotPopulationObserved { units: us } => map(us, r => r.unit)
+    SlotPopulationUnobservable { reason: _ } => []
+  }
+  // THE NOTICE AND THE GATE READ THE SAME WAITING SET -- the incoming population plus what this plan is
+  // bringing up -- so the line an operator acts on can never say "hand retirement is now safe" while the
+  // drain leg is still withholding the derived retirements on a slot nobody has proven.
+  let provisioning = provisioning_slots(desired: subject.desired_units, live: live)
+  let waiting = waiting_slots(incoming: incoming, provisioning: provisioning)
   let proven = replacement_proven_of_host(
-    incoming: slots,
+    slots: waiting,
     roster: readback.roster,
     verdicts: readback.qualification_verdicts,
   )
@@ -3521,7 +3530,17 @@ fn runner_host_hand_capacity_notices(
   }
   map(
     runner_host_hand_started_units(subject: subject, population: population),
-    u => SlotHandCapacityHeld { unit: u, notice: hand_retirement_notice(unit: u, incoming: incoming, proven: proven, read_live: read_live) },
+        u =>
+      SlotHandCapacityHeld {
+        unit: u,
+        notice: hand_retirement_notice(
+          unit: u,
+          incoming: incoming,
+          provisioning: provisioning,
+          proven: proven,
+          read_live: read_live,
+        ),
+      },
   )
 }
 
