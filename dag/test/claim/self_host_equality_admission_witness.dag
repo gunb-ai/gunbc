@@ -447,7 +447,11 @@ data optionality_mismatch_red_source: String = "module eq_probe_optionality\ntyp
 
 data optionality_mismatch_reversed_red_source: String = "module eq_probe_optionality_rev\ntype Kind = A | B\ntype Row { kind: Kind? }\nfn is_a(r: Row) -> Bool { A != r.kind }\n"
 
-data optionality_explicit_present_green_source: String = "module eq_probe_optionality_present\ntype Kind = A | B\ntype Row { kind: Kind? }\nfn is_a(r: Row) -> Bool { r.kind == Present { value: A } }\n"
+// The value-position `Present { value: .. }` imports std.optional explicitly: the `T?` sugar names the
+// declaration at the TYPE grain only and grants no ambient prelude (gunbc.design_ruling
+// optional_sugar_is_declaration_bound), so the constructor must be in scope for the arm/payload/member
+// to resolve and the Present to admit (gunbc.design_ruling explicit_present_is_the_authoring_policy).
+data optionality_explicit_present_green_source: String = "module eq_probe_optionality_present\nimport std.optional { Present }\ntype Kind = A | B\ntype Row { kind: Kind? }\nfn is_a(r: Row) -> Bool { r.kind == Present { value: A } }\n"
 
 data optionality_explicit_match_green_source: String = "module eq_probe_optionality_match\ntype Kind = A | B\ntype Row { kind: Kind? }\nfn is_a(r: Row) -> Bool {\n  match r.kind {\n    Present { value: k } => k == A\n    Absent => false\n  }\n}\n"
 
@@ -479,7 +483,11 @@ test fn optional_compared_with_optional_stays_admitted() -> Bool {
 // are the explicit present spelling and the absent spelling, which the arm must not widen into.
 data return_lift_red_source: String = "module ret_probe_lift\nfn f(x: Int) -> Int? { x }\n"
 
-data return_explicit_present_green_source: String = "module ret_probe_present\nfn f(x: Int) -> Int? { Present { value: x } }\n"
+// The value-position `Present { value: .. }` imports std.optional explicitly: the `T?` sugar names the
+// declaration at the TYPE grain only and grants no ambient prelude (gunbc.design_ruling
+// optional_sugar_is_declaration_bound), so the constructor must be in scope for the arm/payload/member
+// to resolve and the Present to admit (gunbc.design_ruling explicit_present_is_the_authoring_policy).
+data return_explicit_present_green_source: String = "module ret_probe_present\nimport std.optional { Present }\nfn f(x: Int) -> Int? { Present { value: x } }\n"
 
 data return_absent_green_source: String = "module ret_probe_absent\nfn f(x: Int) -> Int? { none }\n"
 
@@ -542,7 +550,11 @@ test fn present_pattern_arm_with_other_bare_value_still_refuses() -> Bool {
 // control is the same row spelled Present { value: .. }.
 data data_row_bare_lift_red_source: String = "module data_probe_lift\ntype Inner {\n  n: Int\n}\ntype Shape\n  = Circle { inner: Inner }\n  | NoShape\ndata shape_row: Shape? = Circle { inner: Inner { n: 1 } }\n"
 
-data data_row_present_spelled_green_source: String = "module data_probe_present\ntype Inner {\n  n: Int\n}\ntype Shape\n  = Circle { inner: Inner }\n  | NoShape\ndata shape_row: Shape? = Present { value: Circle { inner: Inner { n: 1 } } }\n"
+// The value-position `Present { value: .. }` imports std.optional explicitly: the `T?` sugar names the
+// declaration at the TYPE grain only and grants no ambient prelude (gunbc.design_ruling
+// optional_sugar_is_declaration_bound), so the constructor must be in scope for the arm/payload/member
+// to resolve and the Present to admit (gunbc.design_ruling explicit_present_is_the_authoring_policy).
+data data_row_present_spelled_green_source: String = "module data_probe_present\nimport std.optional { Present }\ntype Inner {\n  n: Int\n}\ntype Shape\n  = Circle { inner: Inner }\n  | NoShape\ndata shape_row: Shape? = Present { value: Circle { inner: Inner { n: 1 } } }\n"
 
 test fn bare_data_initializer_at_optional_row_refuses_blocking() -> Bool {
   eq_blocking_count(source: data_row_bare_lift_red_source, wanted: "DeclaredTypeNotInhabited") == 1
