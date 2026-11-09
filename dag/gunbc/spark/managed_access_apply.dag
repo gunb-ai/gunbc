@@ -1,6 +1,11 @@
 module gunbc.spark.managed_access_apply
 
 import std.types { String, Bool, List, NonEmptyStr, Int, Secret, PathSegment }
+// The hand-shell this module and the diskless-runner boot stage emit carry a TYPED dissolution trigger naming
+// the orchestration-to-shell bash-emit capability (v2.workflow.bash_emit, #5828) as what dissolves them -- the
+// same carrier githooks_repo_local_git_config_emit uses (gunbc.design_argument::source_annotations: a
+// dissolution condition belongs in a typed carrier, not // prose; gunbc.design_argument::how_to_work).
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { ContentHash, serialize_content_hash }
@@ -354,20 +359,84 @@ fn create_inference_identity_script(admitted: PortableRemoteWord) -> String {
 // verdict on rendering remote script bodies as strings. It is named here so a reader finds the gap
 // rather than a claim of approval, and so the ask can be made explicitly rather than assumed.
 
-// The authorized-key install, by exact-line presence so a repeat appends nothing.
-fn install_authorized_key_script(admitted: PortableRemoteWord, key_line: String) -> String {
-  let login = admitted.value as String
+// The authorized-key install, by exact-line presence so a repeat appends nothing. THE RULE LIVES ONCE,
+// here, parameterized by the account's LOGIN NAME (the shared body below); the privileged Spark apply
+// hands it its admitted word's value, and the diskless runner's boot stage (gunbc.runner.runner_host_medium
+// runner_host_fleet_authorized_keys_command) hands it the fleet automation login directly -- so there is
+// not a second spelling of "write a public key into an account's authorized_keys, idempotently, at 0600,
+// owned by that account" (gunbc.design_argument::root_generalization: the second caller drove the extraction rather
+// than a copy). It resolves HOME from passwd, so the account must already exist (a login account with a
+// home, realized by gunbc.executor_privileged_operation ensure_job_account_converge_command_as_root).
+fn authorized_key_install_script_for_login(login: String, key_line: String, halt_on_error: Bool) -> String {
   let quoted_key_line = shell_quote(arg: key_line)
-  join([
-    "set -e\n",
-    "H=$(getent passwd ", login, " | cut -d: -f6)\n",
-    "install -d -m 700 -o ", login, " -g ", login, " \"$H/.ssh\"\n",
-    "touch \"$H/.ssh/authorized_keys\"\n",
-    "grep -qxF ", quoted_key_line, " \"$H/.ssh/authorized_keys\" || printf '%s\\n' ", quoted_key_line, " >> \"$H/.ssh/authorized_keys\"\n",
-    "chown ", login, ":", login, " \"$H/.ssh/authorized_keys\"\n",
-    "chmod 600 \"$H/.ssh/authorized_keys\"\n",
-    "grep -c . \"$H/.ssh/authorized_keys\"\n",
-  ], "")
+  let steps = [
+    // THE HOME IS DERIVED UNDER getent's OWN STATUS, not cut's. The original single line
+    // `H=$(getent passwd <login> | cut -d: -f6)` gave the assignment the PIPELINE's exit -- cut's -- so a
+    // FAILED getent (account absent) still exited 0 with H EMPTY, and `install ... "$H/.ssh"` then wrote to
+    // /.ssh (side-chat reproduced chain_status=0 home=<>). Split: (a) capture the passwd line so the
+    // assignment's exit IS getent's; (b) parse field 6 from that already-verified line; (c) require a
+    // non-empty home; (d) require it ABSOLUTE (${H#/} strips a leading /; unchanged => not absolute => the
+    // test fails). All four are `&&`-composable, so under both postures the first non-zero -- a missing
+    // account, an empty home, a relative home -- ends the sequence BEFORE any mutation (no install to /.ssh,
+    // no chown/chmod/append). (gunbc.design_argument::fail_closed: full success or a located failure, never a
+    // plausible green that writes into the root of the filesystem.)
+    join(["H=$(getent passwd ", login, ")"], ""),
+    join(["H=$(printf '%s' \"$H\" | cut -d: -f6)"], ""),
+    "[ -n \"$H\" ]",
+    "[ \"$\{H#/}\" != \"$H\" ]",
+    join(["install -d -m 700 -o ", login, " -g ", login, " \"$H/.ssh\""], ""),
+    "touch \"$H/.ssh/authorized_keys\"",
+    // Parenthesized: this step carries an internal `||`. When the steps are `&&`-chained (the non-halt
+    // posture below), `A && grep … || printf …` would, at equal precedence, run printf whenever A fails --
+    // appending the key even if the home dir was never created. Grouping isolates the `||` so the append
+    // runs only on its OWN grep miss. It is a no-op under the `set -e` posture (same exit on that line).
+    join(["( grep -qxF ", quoted_key_line, " \"$H/.ssh/authorized_keys\" || printf '%s\\n' ", quoted_key_line, " >> \"$H/.ssh/authorized_keys\" )"], ""),
+    join(["chown ", login, ":", login, " \"$H/.ssh/authorized_keys\""], ""),
+    "chmod 600 \"$H/.ssh/authorized_keys\"",
+    "grep -c . \"$H/.ssh/authorized_keys\"",
+  ]
+  // ONE authorized_keys writer, TWO execution postures: the rule lives once, only the error posture differs
+  // between its two callers (gunbc.design_argument::single_authority; same login-parameterization rationale
+  // as above, extended to the failure mode the two contexts require). `halt_on_error: true` is the Spark
+  // managed-access apply (install_authorized_key_script) -- a remote job over SSH where `set -e` correctly
+  // aborts the SCRIPT on the first failed step. `halt_on_error: false` is the diskless runner boot
+  // (gunbc.runner.runner_host_medium runner_host_fleet_authorized_keys_command), which embeds this in a
+  // Subiquity early-command: that program must ALWAYS return to Subiquity's interactive sections, so "set -e"
+  // is forbidden in it (the runner_host_medium never_halts claim). There the steps are `&&`-chained -- for
+  // this linear, no-tolerated-failure sequence `&&` is exactly equivalent to `set -e` (the first failing step
+  // exits the section nonzero and skips the rest), so a failed step is RECORDED as the stage's captured exit
+  // (RunnerHostSectionFailed) rather than aborting the live session: fail_closed without halting boot
+  // (gunbc.design_argument::fail_closed). BOTH postures now run the added getent/home guards above -- the
+  // Spark (`set -e`) route's emitted steps DID change with them; that is intentional, the guards close the
+  // /.ssh write for its callers too, not only the boot posture's.
+  if halt_on_error {
+    join(["set -e\n", join(steps, "\n"), "\n"], "")
+  } else {
+    // A single-line '&&'-expression, NO trailing newline: the caller composes several of these (one per
+    // fleet key) into ONE '&&'-chain via ' && ', and a trailing newline there would leave a dangling '&&'
+    // at the head of the next line (a shell syntax error). Kept newline-free so the whole boot stage
+    // stays one '&&'-chain and no step's exit can be masked by a later step (fail_closed).
+    join(steps, " && ")
+  }
+}
+
+// The privileged Spark-apply entry point: the login arrives as an admitted portable word (the whole point of
+// that carrier is that a remote login name is not a caller's free string), and its value is handed to the
+// shared login-parameterized body above -- the same script, one rule, no second copy.
+// THE TYPED DISSOLUTION TRIGGER for the hand-assembled authorized_keys shell. It is a value in the model
+// (a DissolutionCondition), not a // comment, per gunbc.design_argument::source_annotations ("a dissolution
+// condition belongs in a typed carrier"); it names the ONE capability that retires this shell -- the
+// orchestration-to-shell bash-emit path v2.workflow.bash_emit (bash_emit_stmts), tracked as #5828 -- so a
+// reader of the emitted script sees, on the artifact itself, exactly what dissolves it. The boot command and
+// the Spark script both carry it (the boot stage embeds this writer plus its own drop-in / read-back shell).
+data authorized_key_install_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: the authorized_keys writer (this module, authorized_key_install_script_for_login) and the diskless-runner boot stage that embeds it (gunbc.runner.runner_host_medium runner_host_fleet_authorized_keys_command with its sshd drop-in and effective-config read-back helpers, and its InterimShell renderer) are assembled from string-built shell; DISSOLVES WHEN gunbc.languages.bash gains the grammar rows that v2.workflow.bash_emit renders for -- pipeline, and-or sequencing, file and stderr redirection, the bracket and double-bracket test, command substitution, subshell grouping, and comment -- after which both stages are EMITTED from typed intent through bash_emit_stmts (the orchestration-to-shell capability v2.workflow.bash_emit, tracked as #5828) over their argv authorities and the InterimShell renderer and the string-assembly fragments are deleted byte-identically, so step sequencing is modeled rather than reasoned by hand; this is a bootstrap and foreign-executor emission (census §1.A: the live Subiquity early-command on mtcollins1, whose static anchor is absent so gunbc.host.anchored_host_transport refuses before contact and no typed transport exists, permitted by gunbc.plans.shell_emission_model scope -- bootstrap before a runtime or typed transport exists). (gunbc.design_argument::source_annotations a dissolution condition belongs in a typed carrier; gunbc.design_argument::closed_grounded_substrate one-grammar-both-directions.)")
+
+fn install_authorized_key_script(admitted: PortableRemoteWord, key_line: String) -> String {
+  concat(
+    "# ",
+    concat(dissolution_description(condition: authorized_key_install_dissolution_trigger), "\n"),
+    authorized_key_install_script_for_login(login: admitted.value as String, key_line: key_line, halt_on_error: true)
+  )
 }
 
 // THE NARROW GRANT, and it is narrow by construction rather than by intention: one command, one

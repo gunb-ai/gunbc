@@ -92,15 +92,40 @@ fn workspace_guest_bootstrap_script() -> String {
   ], "\n")
 }
 
+// THE FLEET SSH AUTHORIZATION RULE, spelled once. Password authentication off, keyboard-interactive off,
+// public-key on for the named login ALONE, keys read from ~/.ssh/authorized_keys, PAM and StrictModes on,
+// agent-forwarding and X11 off. Both the leased workspace's own sshd (workspace_guest_sshd_config below) and
+// the diskless runner's live-session drop-in (gunbc.runner.runner_host_medium
+// runner_host_fleet_authorized_keys_command) draw this ONE block. Only the allowed login and the host key
+// differ per caller, and those are per-deployment lines (Port, PermitRootLogin, Subsystem, HostKey) that are
+// NOT this rule. The second caller is exactly why this is a function and not inline text: a second local
+// implementation of one rule is the trigger for generalization, and a repeated pattern beside surviving
+// leaves is a second path (gunbc.design_argument::root_generalization).
+fn sshd_fleet_auth_hardening(allow_users: NonEmptyStr) -> List<String> {
+  [
+    "PasswordAuthentication no",
+    "KbdInteractiveAuthentication no",
+    "PubkeyAuthentication yes",
+    "AuthorizedKeysFile .ssh/authorized_keys",
+    "UsePAM yes",
+    "StrictModes yes",
+    concat("AllowUsers ", allow_users as String),
+    "AllowAgentForwarding no",
+    "X11Forwarding no",
+  ]
+}
+
 fn workspace_guest_sshd_config() -> String {
-  join([
-    "Port 22", "HostKey /etc/ssh/ssh_host_ed25519_key",
-    "PermitRootLogin prohibit-password", "PasswordAuthentication no",
-    "KbdInteractiveAuthentication no", "PubkeyAuthentication yes",
-    "AuthorizedKeysFile .ssh/authorized_keys", "UsePAM yes", "StrictModes yes",
-    "AllowUsers root", "AllowAgentForwarding no", "X11Forwarding no",
-    "Subsystem sftp internal-sftp", "",
-  ], "\n")
+  join(
+    concat(
+      xs: concat(
+        xs: ["Port 22", "HostKey /etc/ssh/ssh_host_ed25519_key", "PermitRootLogin prohibit-password"],
+        ys: sshd_fleet_auth_hardening(allow_users: "root" as NonEmptyStr),
+      ),
+      ys: ["Subsystem sftp internal-sftp", ""],
+    ),
+    "\n",
+  )
 }
 
 fn workspace_guest_unit() -> SystemdUnitFile {
