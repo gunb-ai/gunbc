@@ -132,6 +132,7 @@ type ReadSetChangeObservation
 
 type ReadSetUnestablishedCause
   = ReadSetRecordingLineUnreadable { line: String }
+  | ReadSetMemberMalformed { path: String }
   | ReadSetChangeObservationUnavailable
   | ReadSetChangedPathUndecidable { path: String }
 
@@ -173,10 +174,21 @@ fn read_set_first_covered<Declared>(entries: List<ReadSetEntry<Declared>>, paths
   })
 }
 
-// THE RULE. Valid when the change is observed and no changed path is covered by any entry, declared or
-// observed. A path containing a newline is undecidable line-wise and is reported, never skipped. Entries are
-// checked declared-first in the order given, so the reported entry is deterministic.
+// THE RULE, IN ITS PATH-DIFF MODE: the change is given as the paths changed since the read set was sealed.
+// (The digest mode and generator-identity comparison land with their first consumer;
+// gunbc.plans.read_set_convergence section 4 P1.) Valid when every entry's path is normal, the change is
+// observed, and no changed path is covered by any entry, declared or observed. A malformed entry -- declared
+// ones included -- is unestablished, never skipped: a member that cannot match what it names would silently
+// narrow the set. A path containing a newline is undecidable line-wise and is reported. Entries are checked
+// in the order given, so the reported entry is deterministic.
 fn validate_read_set<Declared>(entries: List<ReadSetEntry<Declared>>, changes: ReadSetChangeObservation) -> ReadSetValidity<Declared> {
+  match list_find_first(xs: entries, predicate: fn(e) { !read_set_path_is_normal(path: read_set_member_path(member: e.member)) }) {
+    Present { value: bad } => ReadSetUnestablished { cause: ReadSetMemberMalformed { path: read_set_member_path(member: bad.member) } }
+    Absent => validate_read_set_changes(entries: entries, changes: changes)
+  }
+}
+
+fn validate_read_set_changes<Declared>(entries: List<ReadSetEntry<Declared>>, changes: ReadSetChangeObservation) -> ReadSetValidity<Declared> {
   match changes {
     ReadSetChangesUnobserved => ReadSetUnestablished { cause: ReadSetChangeObservationUnavailable }
     ReadSetChangedPaths { paths: paths } =>

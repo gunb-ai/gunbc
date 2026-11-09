@@ -10,7 +10,8 @@ import v2.std.read_set {
   ReadSetOrigin, ReadSetObserved, ReadSetDeclared, ReadSetEntry,
   ReadSetChangeObservation, ReadSetChangedPaths, ReadSetChangesUnobserved,
   ReadSetUnestablishedCause, ReadSetRecordingLineUnreadable, ReadSetChangeObservationUnavailable, ReadSetChangedPathUndecidable,
-  read_set_exact_paths, read_set_dir_prefixes,
+  ReadSetMemberMalformed, ReadSetValidity, ReadSetValid, ReadSetInvalidated, ReadSetUnestablished,
+  read_set_exact_paths, read_set_dir_prefixes, validate_read_set,
 }
 import gunbc.read_set_restore {
   FastLaneDeclaredInput, FastLaneFixedInput, FastLaneDecisionImplementation,
@@ -83,6 +84,7 @@ fn unestablished_tag(u: ReadSetUnestablishedCause) -> String {
     ReadSetRecordingLineUnreadable { line: _ } => "receipt-line-unreadable"
     ReadSetChangeObservationUnavailable => "diff-unreadable"
     ReadSetChangedPathUndecidable { path: _ } => "path-undecidable"
+    ReadSetMemberMalformed { path: _ } => "member-malformed"
   }
 }
 
@@ -193,6 +195,33 @@ test fn an_unreadable_receipt_line_forces_the_full_run() -> Bool {
 test fn an_unanswered_diff_or_an_undecidable_path_forces_the_full_run() -> Bool {
   verdict_tag(v: fast_lane_decide(unit: fixture_unit(), changes: ReadSetChangesUnobserved)) == "diff-unreadable"
     && verdict_tag(v: decide_paths(paths: ["docs/a\nb.md"])) == "path-undecidable"
+}
+
+// ═══ THE AUTHORITY ITSELF (v2.std.read_set validate_read_set) ═══
+
+fn declared_fixed(member: ReadSetMember) -> ReadSetEntry<FastLaneDeclaredInput> {
+  ReadSetEntry { member: member, origin: ReadSetDeclared { reason: FastLaneFixedInput } }
+}
+
+fn validity_tag(v: ReadSetValidity<FastLaneDeclaredInput>) -> String {
+  match v {
+    ReadSetValid => "valid"
+    ReadSetInvalidated { path: _, entry: e } => concat(origin_tag(o: e.origin), member_tag(m: e.member))
+    ReadSetUnestablished { cause: c } => unestablished_tag(u: c)
+  }
+}
+
+// A MALFORMED DECLARED MEMBER NEVER VALIDATES. `../Cargo.lock` cannot match the changed path `Cargo.lock`, so
+// matching alone would answer valid and silently drop the input; the authority refuses it before matching,
+// for declared members exactly as for recorded ones. The well-formed control answers invalidated.
+test fn a_malformed_declared_member_is_unestablished_not_valid() -> Bool {
+  let changed = ReadSetChangedPaths { paths: ["Cargo.lock"] }
+  all(
+    ["../Cargo.lock", "/Cargo.lock", "./Cargo.lock", "", "src//v1"],
+    bad => validity_tag(v: validate_read_set(entries: [declared_fixed(member: ReadSetFile { path: bad })], changes: changed)) == "member-malformed"
+  )
+    && validity_tag(v: validate_read_set(entries: [declared_fixed(member: ReadSetDir { path: "src/v1/" })], changes: changed)) == "member-malformed"
+    && validity_tag(v: validate_read_set(entries: [declared_fixed(member: ReadSetFile { path: "Cargo.lock" })], changes: changed)) == "fixed-exact"
 }
 
 // ═══ THE RULE ROWS AND THEIR REALIZATION ═══
