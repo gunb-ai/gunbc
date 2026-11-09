@@ -184,39 +184,41 @@ fn qualification_run_refusal_cause(refusal: QualificationRunRefusal) -> String {
 }
 
 // ─────────────────────────── THE JOIN: REGISTERED *AND* COMPLETED A JOB ───────────────────────────
-// ONE ARM PER REASON, BECAUSE THE OPERATOR'S NEXT ACTION DIFFERS BY ARM. `AwaitingFirstJob` means the slot
-// is up and idle -- wait, or dispatch the floor job. `NotRegistered` means the tree exists and the runner
-// never appeared. Both are "not yet", and both keep the retiree running, but only one of them is fixed by
-// waiting.
+// THE CAUSE IS THE STANDING, NOT A PARAPHRASE OF IT. The first draft of this type carried arms named
+// `NotRegistered`, `RegisteredOffline`, `JobUnreadable` and `JobNotConcluded` beside the identically named
+// arms of `ReplacementRegistration` and `ReplacementJobStanding` in the same module -- one fact held twice,
+// with the `slot` field shaved off, free to drift out of step with the standing it was meant to report, and
+// a name meaning two things on one naming surface. `gunbc.design_argument::minimize_redundancy` ("a concept
+// is modeled once and every use derived from it") and `gunbc.design_argument::single_authority` ("holding a
+// name constant may not silently change obligations") both say no. A pending cause now CARRIES the standing
+// that is holding the retirement, so "registered but offline" is decided in exactly one place and a plan
+// line cannot say something the standing does not.
 type ReplacementPendingCause
-  = RegistrationUnreadable { cause: String }
-  | NotRegistered
-  | RegisteredOffline
-  | JobUnreadable { cause: String }
-  | JobNotConcluded { cause: String }
+  = RegistrationPending { standing: ReplacementRegistration }
+  | JobPending { standing: ReplacementJobStanding }
 
+// `SlotProven` / `SlotPending`, not `ReplacementProven` / `ReplacementPending`: the type used to be one of
+// its own constructors, so the same name meant the fact and one case of the fact.
 type ReplacementProven
-  = ReplacementProven { slot: NonEmptyStr, run: WorkflowRun, floor_job: WorkflowJobRun }
-  | ReplacementPending { slot: NonEmptyStr, cause: ReplacementPendingCause }
+  = SlotProven { slot: NonEmptyStr, run: WorkflowRun, floor_job: WorkflowJobRun }
+  | SlotPending { slot: NonEmptyStr, cause: ReplacementPendingCause }
 
 fn replacement_proven_of(
   registration: ReplacementRegistration,
   job: ReplacementJobStanding,
 ) -> ReplacementProven {
   match registration {
-    RegistrationUnreadable { slot: slot, cause: why } =>
-      ReplacementPending { slot: slot, cause: RegistrationUnreadable { cause: why } }
-    NotRegistered { slot: slot } => ReplacementPending { slot: slot, cause: NotRegistered }
-    RegisteredOffline { slot: slot } => ReplacementPending { slot: slot, cause: RegisteredOffline }
     Registered { slot: slot } =>
       match job {
         JobConcluded { slot: _, run: run, floor_job: job } =>
-          ReplacementProven { slot: slot, run: run, floor_job: job }
-        JobNotConcluded { slot: _, cause: why } =>
-          ReplacementPending { slot: slot, cause: JobNotConcluded { cause: why } }
-        JobUnreadable { slot: _, cause: why } =>
-          ReplacementPending { slot: slot, cause: JobUnreadable { cause: why } }
+          SlotProven { slot: slot, run: run, floor_job: job }
+        JobNotConcluded { slot: _, cause: _ } => SlotPending { slot: slot, cause: JobPending { standing: job } }
+        JobUnreadable { slot: _, cause: _ } => SlotPending { slot: slot, cause: JobPending { standing: job } }
       }
+    RegisteredOffline { slot: slot } => SlotPending { slot: slot, cause: RegistrationPending { standing: registration } }
+    NotRegistered { slot: slot } => SlotPending { slot: slot, cause: RegistrationPending { standing: registration } }
+    RegistrationUnreadable { slot: slot, cause: _ } =>
+      SlotPending { slot: slot, cause: RegistrationPending { standing: registration } }
   }
 }
 
@@ -354,11 +356,14 @@ fn replacement_incoming_for_host(host: HostIdentity) -> ReplacementIncoming {
 // `RetireDrainRefused` is "not yours": the unit is not this plan's to take at all, and no amount of
 // waiting on a replacement changes that. A consumer that collapsed the two would drain a hand-started
 // runner the moment an unrelated slot proved its first job.
+// TWO SENTENCES, NOT FIVE LOOK-ALIKES. `WaitingOnReplacement` says WHICH replacement and hands the caller
+// the standing that is holding it -- the rendering, and any consumer that wants to branch on registration
+// versus job, reads the standing itself. `ReplacementProofMissing` is the third thing that was previously
+// dressed up as an unreadable registration: the caller produced NO standing for that slot at all, which is
+// neither "the roster said nothing" nor "the job did not run".
 type RetirePendingCause
-  = AwaitingIncomingUnreadable { replacement: NonEmptyStr, cause: String }
-  | AwaitingNotRegistered { replacement: NonEmptyStr }
-  | AwaitingOfflineRegistration { replacement: NonEmptyStr }
-  | AwaitingFirstJob { replacement: NonEmptyStr, cause: String }
+  = WaitingOnReplacement { replacement: NonEmptyStr, pending: ReplacementPendingCause }
+  | ReplacementProofMissing { replacement: NonEmptyStr, cause: String }
   | IncomingUnprovable { cause: String }
 
 type RetireRefusalCause
@@ -421,8 +426,8 @@ fn is_proven(slots_of: List<ReplacementProven>, slot: NonEmptyStr) -> Bool {
     slots_of,
     p =>
       match p {
-        ReplacementProven { slot: s, run: _, floor_job: _ } => (s as String) == (slot as String)
-        ReplacementPending { slot: _, cause: _ } => false
+        SlotProven { slot: s, run: _, floor_job: _ } => (s as String) == (slot as String)
+        SlotPending { slot: _, cause: _ } => false
       },
   )
 }
@@ -443,27 +448,21 @@ fn awaiting(
         proven,
         p =>
           match p {
-            ReplacementPending { slot: s, cause: _ } => (s as String) == ((replacement as String))
-            ReplacementProven { slot: s, run: _, floor_job: _ } => (s as String) == ((replacement as String))
+            SlotPending { slot: s, cause: _ } => (s as String) == ((replacement as String))
+            SlotProven { slot: s, run: _, floor_job: _ } => (s as String) == ((replacement as String))
           },
       ),
     )
   match standing {
-    Absent => AwaitingIncomingUnreadable { replacement: replacement, cause: "no readback was produced for this replacement slot" }
-    Present { value: ReplacementPending { slot: _, cause: cause } } =>
-      match cause {
-        RegistrationUnreadable { cause: why } =>
-          AwaitingIncomingUnreadable { replacement: replacement, cause: why }
-        NotRegistered => AwaitingNotRegistered { replacement: replacement }
-        RegisteredOffline => AwaitingOfflineRegistration { replacement: replacement }
-        JobUnreadable { cause: why } => AwaitingFirstJob { replacement: replacement, cause: why }
-        JobNotConcluded { cause: why } => AwaitingFirstJob { replacement: replacement, cause: why }
-      }
+    Absent =>
+      ReplacementProofMissing { replacement: replacement, cause: "no readback was produced for this replacement slot" }
+    Present { value: SlotPending { slot: _, cause: cause } } =>
+      WaitingOnReplacement { replacement: replacement, pending: cause }
     // UNREACHABLE BY CONSTRUCTION: `first_unproven` hands back a slot that is either pending or has no
     // standing, never a proven one. The arm is spelled because a match that relies on a filter's behaviour
     // to be total is a comment, not a checked one.
-    Present { value: ReplacementProven { slot: _, run: _, floor_job: _ } } =>
-      AwaitingIncomingUnreadable { replacement: replacement, cause: "the unproven filter handed back a proven replacement" }
+    Present { value: SlotProven { slot: _, run: _, floor_job: _ } } =>
+      ReplacementProofMissing { replacement: replacement, cause: "the unproven filter handed back a proven replacement" }
   }
 }
 
@@ -514,15 +513,42 @@ fn retire_drain_is_authorized(decisions: List<RetireDrainDecision>, unit: NonEmp
 // difference between "converge refused" and "converge is waiting on srv3-06's first job".
 fn retire_pending_cause_wire(cause: RetirePendingCause) -> String {
   match cause {
-    AwaitingIncomingUnreadable { replacement: slot, cause: why } =>
-      concat("waiting on ", concat((slot as String), concat(": the replacement's readback is unreadable (", concat(why, ")"))))
-    AwaitingNotRegistered { replacement: slot } =>
-      concat("waiting on ", concat((slot as String), ": the replacement is not registered in the org runner roster"))
-    AwaitingOfflineRegistration { replacement: slot } =>
-      concat("waiting on ", concat((slot as String), ": the replacement is registered in the org runner roster but offline"))
-    AwaitingFirstJob { replacement: slot, cause: why } =>
-      concat("waiting on ", concat((slot as String), concat(": the replacement has not completed a job (", concat(why, ")"))))
+    WaitingOnReplacement { replacement: slot, pending: pending } =>
+      concat("waiting on ", concat((slot as String), concat(": ", pending_cause_text(pending: pending))))
+    ReplacementProofMissing { replacement: slot, cause: why } =>
+      concat(
+        "waiting on ",
+        concat((slot as String), concat(": the replacement's readback is missing (", concat(why, ")"))),
+      )
     IncomingUnprovable { cause: why } => concat("the replacement population is unknowable: ", why)
+  }
+}
+
+// ONE RENDERING OF A STANDING, SHARED BY THE PLAN LINE AND THE HAND NOTICE. There used to be two -- the
+// withheld cause and the notice each spelled the registration and job cases out, with the same words in
+// both and nothing keeping them together. The two `Registered` / `JobConcluded` arms are the same
+// unreachable-by-construction pair `awaiting` spells: they can only be reached if a proven leg is handed to
+// a function that renders what is HOLDING a retirement, and saying so is better than a panic or a hole.
+fn pending_cause_text(pending: ReplacementPendingCause) -> String {
+  match pending {
+    RegistrationPending { standing: standing } =>
+      match standing {
+        Registered { slot: slot } => concat((slot as String), " is registered: the registration leg is not what is holding this")
+        RegisteredOffline { slot: slot } =>
+          concat((slot as String), " is registered in the org runner roster but offline")
+        NotRegistered { slot: slot } => concat((slot as String), " is not registered in the org runner roster")
+        RegistrationUnreadable { slot: _, cause: why } =>
+          concat("the replacement's registration is unreadable (", concat(why, ")"))
+      }
+    JobPending { standing: standing } =>
+      match standing {
+        JobConcluded { slot: slot, run: _, floor_job: _ } =>
+          concat((slot as String), " has completed a job: the job leg is not what is holding this")
+        JobNotConcluded { slot: _, cause: why } =>
+          concat("the replacement has not completed a job (", concat(why, ")"))
+        JobUnreadable { slot: _, cause: why } =>
+          concat("the replacement's first job is unreadable (", concat(why, ")"))
+      }
   }
 }
 
@@ -606,23 +632,16 @@ fn pending_reason(proven: List<ReplacementProven>, replacement: NonEmptyStr) -> 
         proven,
         p =>
           match p {
-            ReplacementPending { slot: s, cause: _ } => (s as String) == ((replacement as String))
-            ReplacementProven { slot: s, run: _, floor_job: _ } => (s as String) == ((replacement as String))
+            SlotPending { slot: s, cause: _ } => (s as String) == ((replacement as String))
+            SlotProven { slot: s, run: _, floor_job: _ } => (s as String) == ((replacement as String))
           },
       ),
     )
   match standing {
     Absent => "no readback was produced for this replacement slot"
-    Present { value: ReplacementPending { slot: _, cause: cause } } =>
-      match cause {
-        RegistrationUnreadable { cause: why } => why
-        NotRegistered => "not registered in the org runner roster"
-        RegisteredOffline => "registered but offline"
-        JobUnreadable { cause: why } => why
-        JobNotConcluded { cause: why } => why
-      }
+    Present { value: SlotPending { slot: _, cause: cause } } => pending_cause_text(pending: cause)
     // UNREACHABLE BY CONSTRUCTION, spelled for the same reason `awaiting` spells it: a match that leans on a
     // filter's behaviour to be total is a comment, not a checked one.
-    Present { value: ReplacementProven { slot: _, run: _, floor_job: _ } } => "unproven filter handed back a proven replacement"
+    Present { value: SlotProven { slot: _, run: _, floor_job: _ } } => "unproven filter handed back a proven replacement"
   }
 }

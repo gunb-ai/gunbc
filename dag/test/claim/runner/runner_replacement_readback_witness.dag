@@ -25,8 +25,9 @@ import gunbc.runner.runner_qualification_dispatch { QualificationRunVerdict, Run
 import gunbc.runner.runner_replacement_readback {
   ReplacementProven, RegistrationUnreadable, ReplacementIncoming, ReplacedBy, ShrunkOnly, IncomingUnresolved,
   RetireDrainDecision, RetireDrainAuthorized, RetireDrainWithheld, RetireDrainRefused,
-  AwaitingIncomingUnreadable, AwaitingNotRegistered, AwaitingOfflineRegistration, AwaitingFirstJob,
-  IncomingUnprovable, StillDesiredUnit, HandStartedOutsideTheDerivedPopulation, DrainCandidateUnaccountedFor,
+  WaitingOnReplacement, ReplacementProofMissing, RegistrationPending, JobPending,
+  NotRegistered, RegisteredOffline, JobUnreadable, IncomingUnprovable,
+  StillDesiredUnit, HandStartedOutsideTheDerivedPopulation, DrainCandidateUnaccountedFor,
   replacement_registration_of, replacement_proven_of_host, drain_candidate_standing, retire_drain_decision,
   retire_drain_decisions, retire_drain_is_authorized, retire_pending_cause_wire, retire_refusal_cause_wire,
   hand_retirement_notice,
@@ -148,19 +149,12 @@ fn decide(
 test fn retirement_is_withheld_while_the_replacement_has_never_run_a_job() -> Bool {
   let entries = [registration("srv3-06", true), registration("srv3-07", true)]
   let proven = replacement_proven_of_host(incoming: ["srv3-06", "srv3-07"] |> map(u => u as NonEmptyStr), roster: Present { value: roster(entries: entries) }, verdicts: [])
-  decide(
-    unit: retiree("srv3-19"),
-    desired: target_population(),
-    obligation: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr),
-    fabric: [],
-    live: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr),
-    incoming: incoming(),
-    proven: proven,
+  withheld_waiting_on_job(
+    decision: decide( unit: retiree("srv3-19"), desired: target_population(), obligation: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr), fabric: [], live: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr), incoming: incoming(), proven: proven, ),
+    unit: "srv3-19",
+    replacement: "srv3-06",
+    reason: "no qualification run readback exists for this slot",
   )
-    == RetireDrainWithheld {
-      unit: retiree("srv3-19"),
-      cause: AwaitingFirstJob { replacement: retiree("srv3-06"), cause: "no qualification run readback exists for this slot" },
-    }
 }
 
 // THE SAME PLAN, ONE FACT DIFFERENT: both replacements registered AND both concluded a job. Now the drain
@@ -194,19 +188,12 @@ test fn one_proven_replacement_of_two_does_not_authorize_the_drain() -> Bool {
     RunVerdictCollected { run: workflow_run(), floor_job: floor_job(runner: "srv3-06", concluded: true), conclusion: Success },
   ]
   let proven = replacement_proven_of_host(incoming: ["srv3-06", "srv3-07"] |> map(u => u as NonEmptyStr), roster: Present { value: roster(entries: entries) }, verdicts: verdicts)
-  decide(
-    unit: retiree("srv3-20"),
-    desired: target_population(),
-    obligation: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr),
-    fabric: [],
-    live: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr),
-    incoming: incoming(),
-    proven: proven,
+  withheld_waiting_on_job(
+    decision: decide( unit: retiree("srv3-20"), desired: target_population(), obligation: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr), fabric: [], live: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr), incoming: incoming(), proven: proven, ),
+    unit: "srv3-20",
+    replacement: "srv3-07",
+    reason: "no qualification run readback exists for this slot",
   )
-    == RetireDrainWithheld {
-      unit: retiree("srv3-20"),
-      cause: AwaitingFirstJob { replacement: retiree("srv3-07"), cause: "no qualification run readback exists for this slot" },
-    }
 }
 
 // ─────────────────────────── THE JOB LEG IS A COMPLETED JOB, NOT A STARTED ONE ───────────────────────────
@@ -221,19 +208,12 @@ test fn a_collected_run_that_concluded_failure_is_not_a_completed_job() -> Bool 
     RunVerdictCollected { run: workflow_run(), floor_job: floor_job(runner: "srv3-07", concluded: true), conclusion: Success },
   ]
   let proven = replacement_proven_of_host(incoming: ["srv3-06", "srv3-07"] |> map(u => u as NonEmptyStr), roster: Present { value: roster(entries: entries) }, verdicts: verdicts)
-  decide(
-    unit: retiree("srv3-19"),
-    desired: target_population(),
-    obligation: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr),
-    fabric: [],
-    live: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr),
-    incoming: incoming(),
-    proven: proven,
+  withheld_waiting_on_job(
+    decision: decide( unit: retiree("srv3-19"), desired: target_population(), obligation: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr), fabric: [], live: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr), incoming: incoming(), proven: proven, ),
+    unit: "srv3-19",
+    replacement: "srv3-06",
+    reason: "the floor job concluded Failure",
   )
-    == RetireDrainWithheld {
-      unit: retiree("srv3-19"),
-      cause: AwaitingFirstJob { replacement: retiree("srv3-06"), cause: "the floor job concluded Failure" },
-    }
 }
 
 // A VERDICT IS SPENT ON THE SLOT ITS JOB ACTUALLY RAN ON. A Success verdict whose job carried srv3-07's
@@ -246,19 +226,12 @@ test fn a_completed_job_on_another_slot_proves_nothing_for_this_one() -> Bool {
     roster: Present { value: roster(entries: entries) },
     verdicts: [RunVerdictCollected { run: workflow_run(), floor_job: floor_job(runner: "srv3-07", concluded: true), conclusion: Success }],
   )
-  decide(
-    unit: retiree("srv3-19"),
-    desired: target_population(),
-    obligation: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr),
-    fabric: [],
-    live: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr),
-    incoming: ReplacedBy { incoming: ["srv3-06"] |> map(u => u as NonEmptyStr) },
-    proven: proven,
+  withheld_waiting_on_job(
+    decision: decide( unit: retiree("srv3-19"), desired: target_population(), obligation: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr), fabric: [], live: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr), incoming: ReplacedBy { incoming: ["srv3-06"] |> map(u => u as NonEmptyStr) }, proven: proven, ),
+    unit: "srv3-19",
+    replacement: "srv3-06",
+    reason: "no qualification run readback exists for this slot",
   )
-    == RetireDrainWithheld {
-      unit: retiree("srv3-19"),
-      cause: AwaitingFirstJob { replacement: retiree("srv3-06"), cause: "no qualification run readback exists for this slot" },
-    }
 }
 
 // ─────────────────────────── THE REGISTRATION LEG ───────────────────────────
@@ -269,16 +242,12 @@ test fn a_replacement_that_never_appeared_in_the_roster_is_not_registered() -> B
     RunVerdictCollected { run: workflow_run(), floor_job: floor_job(runner: "srv3-07", concluded: true), conclusion: Success },
   ]
   let proven = replacement_proven_of_host(incoming: ["srv3-06", "srv3-07"] |> map(u => u as NonEmptyStr), roster: Present { value: roster(entries: entries) }, verdicts: verdicts)
-  decide(
-    unit: retiree("srv3-19"),
-    desired: target_population(),
-    obligation: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr),
-    fabric: [],
-    live: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr),
-    incoming: incoming(),
-    proven: proven,
+  withheld_waiting_on_registration(
+    decision: decide( unit: retiree("srv3-19"), desired: target_population(), obligation: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr), fabric: [], live: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr), incoming: incoming(), proven: proven, ),
+    unit: "srv3-19",
+    replacement: "srv3-06",
+    reason: "is not registered in the org runner roster",
   )
-    == RetireDrainWithheld { unit: retiree("srv3-19"), cause: AwaitingNotRegistered { replacement: retiree("srv3-06") } }
 }
 
 // REGISTERED BUT OFFLINE IS NOT UNPROVISIONED: the operator's fix is the runner, not a second install tree.
@@ -289,16 +258,12 @@ test fn a_replacement_registered_offline_is_not_a_slot_that_needs_provisioning()
     RunVerdictCollected { run: workflow_run(), floor_job: floor_job(runner: "srv3-07", concluded: true), conclusion: Success },
   ]
   let proven = replacement_proven_of_host(incoming: ["srv3-06", "srv3-07"] |> map(u => u as NonEmptyStr), roster: Present { value: roster(entries: entries) }, verdicts: verdicts)
-  decide(
-    unit: retiree("srv3-19"),
-    desired: target_population(),
-    obligation: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr),
-    fabric: [],
-    live: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr),
-    incoming: incoming(),
-    proven: proven,
+  withheld_waiting_on_registration(
+    decision: decide( unit: retiree("srv3-19"), desired: target_population(), obligation: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr), fabric: [], live: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr), incoming: incoming(), proven: proven, ),
+    unit: "srv3-19",
+    replacement: "srv3-06",
+    reason: "is registered in the org runner roster but offline",
   )
-    == RetireDrainWithheld { unit: retiree("srv3-19"), cause: AwaitingOfflineRegistration { replacement: retiree("srv3-06") } }
 }
 
 // THE ABSENCE OF AN OBSERVATION IS NOT A NEGATIVE OBSERVATION. Nobody read the roster: the standing is
@@ -312,19 +277,12 @@ test fn an_unreadable_roster_read_keeps_the_retiree_running_and_says_so() -> Boo
     RunVerdictCollected { run: workflow_run(), floor_job: floor_job(runner: "srv3-07", concluded: true), conclusion: Success },
   ]
   let proven = replacement_proven_of_host(incoming: ["srv3-06", "srv3-07"] |> map(u => u as NonEmptyStr), roster: none, verdicts: verdicts)
-  decide(
-    unit: retiree("srv3-19"),
-    desired: target_population(),
-    obligation: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr),
-    fabric: [],
-    live: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr),
-    incoming: incoming(),
-    proven: proven,
+  withheld_waiting_on_registration(
+    decision: decide( unit: retiree("srv3-19"), desired: target_population(), obligation: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr), fabric: [], live: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr), incoming: incoming(), proven: proven, ),
+    unit: "srv3-19",
+    replacement: "srv3-06",
+    reason: "the org runner roster was not read this run",
   )
-    == RetireDrainWithheld {
-      unit: retiree("srv3-19"),
-      cause: AwaitingIncomingUnreadable { replacement: retiree("srv3-06"), cause: "the org runner roster was not read this run" },
-    }
 }
 
 // THE ORG ROSTER IS PAGINATED. A read that saw 1 of 2 rows cannot support "srv3-06 is not registered" --
@@ -494,12 +452,25 @@ test fn the_hand_notice_names_the_replacement_and_the_reason_while_it_is_unprove
 // on, or the plan reads as a refusal with no next action.
 test fn every_withheld_cause_names_the_replacement_it_is_waiting_on() -> Bool {
   let causes = [
-    AwaitingIncomingUnreadable { replacement: retiree("srv3-06"), cause: "the org runner roster was not read this run" },
-    AwaitingNotRegistered { replacement: retiree("srv3-06") },
-    AwaitingOfflineRegistration { replacement: retiree("srv3-06") },
-    AwaitingFirstJob { replacement: retiree("srv3-06"), cause: "no qualification run readback exists for this slot" },
+    WaitingOnReplacement {
+      replacement: retiree("srv3-06"),
+      pending: RegistrationPending { standing: RegistrationUnreadable { slot: retiree("srv3-06"), cause: "the org runner roster was not read this run" } },
+    },
+    WaitingOnReplacement {
+      replacement: retiree("srv3-06"),
+      pending: RegistrationPending { standing: NotRegistered { slot: retiree("srv3-06") } },
+    },
+    WaitingOnReplacement {
+      replacement: retiree("srv3-06"),
+      pending: RegistrationPending { standing: RegisteredOffline { slot: retiree("srv3-06") } },
+    },
+    WaitingOnReplacement {
+      replacement: retiree("srv3-06"),
+      pending: JobPending { standing: JobUnreadable { slot: retiree("srv3-06"), cause: "no qualification run readback exists for this slot" } },
+    },
+    ReplacementProofMissing { replacement: retiree("srv3-06"), cause: "no readback was produced for this replacement slot" },
   ]
-  all(causes, c => contains(retire_pending_cause_wire(cause: c), "waiting on srv3-06"))
+  all(causes, c => contains(retire_pending_cause_wire(cause: c), "srv3-06"))
 }
 
 // THE AUTHORITY IS PER-UNIT: one withheld retiree does not wave through the next, and one authorized
@@ -531,6 +502,60 @@ test fn the_authority_is_per_unit_and_not_per_host() -> Bool {
 // and a receipt that then printed "replacement srv3-06 registered and completed a job; hand retirement is
 // now safe" would be a plan-only run telling the operator to retire working capacity on the strength of
 // nobody having looked. The same per-slot line has to say the proof was not consulted.
+// THE WITHHELD CLAIMS READ THE DECISION'S ARMS AND THE RENDERED REASON, rather than comparing whole
+// values. A withheld cause now carries the standing that is holding the retirement, and the job standing
+// carries the workflow run it was read from -- so a whole-value comparison would make these claims depend on
+// structural equality over a GitHub run record, and a cause that merely LOOKED similar would still pass the
+// wrong test. Matching the arm says WHICH LEG is holding the retirement; matching the rendered reason says
+// the plan line tells the operator that in words.
+fn withheld_waiting_on_job(
+  decision: RetireDrainDecision,
+  unit: String,
+  replacement: String,
+  reason: String,
+) -> Bool {
+  match decision {
+    RetireDrainWithheld { unit: u, cause: c } =>
+      (u as String) == unit
+        && match c {
+          WaitingOnReplacement { replacement: r, pending: p } =>
+            (r as String) == replacement
+              && match p {
+                JobPending { standing: _ } => contains(retire_pending_cause_wire(cause: c), reason)
+                RegistrationPending { standing: _ } => false
+              }
+          ReplacementProofMissing { replacement: _, cause: _ } => false
+          IncomingUnprovable { cause: _ } => false
+        }
+    RetireDrainAuthorized { unit: _, over: _ } => false
+    RetireDrainRefused { unit: _, cause: _ } => false
+  }
+}
+
+fn withheld_waiting_on_registration(
+  decision: RetireDrainDecision,
+  unit: String,
+  replacement: String,
+  reason: String,
+) -> Bool {
+  match decision {
+    RetireDrainWithheld { unit: u, cause: c } =>
+      (u as String) == unit
+        && match c {
+          WaitingOnReplacement { replacement: r, pending: p } =>
+            (r as String) == replacement
+              && match p {
+                RegistrationPending { standing: _ } => contains(retire_pending_cause_wire(cause: c), reason)
+                JobPending { standing: _ } => false
+              }
+          ReplacementProofMissing { replacement: _, cause: _ } => false
+          IncomingUnprovable { cause: _ } => false
+        }
+    RetireDrainAuthorized { unit: _, over: _ } => false
+    RetireDrainRefused { unit: _, cause: _ } => false
+  }
+}
+
 test fn the_observe_pass_notice_never_announces_a_retirement_it_did_not_read() -> Bool {
   let proven: List<ReplacementProven> = []
   let text = hand_retirement_notice(unit: retiree("srv3-19"), incoming: incoming(), proven: proven, read_live: false)
