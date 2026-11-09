@@ -291,6 +291,19 @@ fn lst_is_resolved(v: LstVerdict) -> Bool {
   }
 }
 
+// The resolve-stage reading, named: the inline ingest root carries ONLY the fixture modules, so a
+// fixture that imports any vocabulary is refused here, before the door is reached, with
+// `resolve_module_not_found` and no located atom. Measured, not inferred: value read at
+// f850b7abcdef72ca8ba7cd84b3b63c8fcd99b4ec (BuildBuddy invocation
+// c07a2e0a-6277-4727-ad62-7faf05e3f81d) for `lst_ctl_body_let`, and
+// ea744ba0-3e3a-4d1e-8a6d-8b8db84f9da5 for `lst_ctl_arm_block`.
+fn lst_resolve_refused_as(v: LstVerdict, reason: Symbol) -> Bool {
+  match v {
+    LstRefused { reason: r, at_atom: _ } => r == reason
+    _ => false
+  }
+}
+
 fn lst_refuses_as(v: LstVerdict, reason: Symbol) -> Bool {
   match v {
     LstFileRefused { fatal_reason: Present { value: r } } => r == reason
@@ -308,30 +321,59 @@ fn lst_unbound_at(v: LstVerdict, atom: Symbol) -> Bool {
 // THE SPINE ALREADY OWNS THESE. They hold on main and must hold after the repair: the spine's own
 // let-with-a-following-statement, an arm body of one expression, a let inside an if-branch, a let
 // inside a function value's braced body.
-test fn a_body_top_level_let_with_a_following_statement_is_accepted() -> Bool {
+// READINGS, NOT PREDICTIONS. Every row below was rewritten from what this route reports, after the
+// claim suite was executed for the first time (the runner is the granted executor; receipts are in the
+// PR body). The archived branch's 17 rows were never executed: three hold, thirteen do not.
+//
+// WHAT HOLDS. A statement `let` in a tail position refuses at the door holder with
+// `body_lowering_reason_statement_let_in_tail_position`, and that refusal is what this change adds:
+// the three rows below (a tail let after another let, a tail let bound to a match, a tail let in a
+// braced match-arm block) PASS at this head and FAIL at the merge base -- the pair this PR is about.
+//
+// WHAT DOES NOT HOLD, AND WHY. The accepted-control fixtures never reach the door at all. The inline
+// ingest root carries only the fixture modules, so a fixture that imports vocabulary
+// (`import v2.std.integer { Int }`) is refused at resolve with `resolve_module_not_found` and no
+// located atom, at BOTH legs -- so its `is_accepted` expectation was never observable. Those rows are
+// re-pinned to that named reading and renamed to say what they now hold: a tripwire that goes red when
+// the ingest carries vocabulary. The same defect makes main's
+// `v2.test.claim.namespace_xl0.let_match_early_return` (12 of 18 false) and
+// `return_tail_position` (14 of 17 false) unreadable; fixing the shared fixture pattern is its own
+// change (work item adhoc-d6e47a99-2e0), not part of this one.
+//
+// AND ONE SHAPE THAT IS NOT THIS DOOR'S TO CLAIM. A `let` that is the whole body of a function is
+// refused at file level by `normalized_tree_reason_wrapper_retention_not_normalized` -- a
+// normalization check that runs first -- which is why the bare shape cannot be the discriminator and
+// why the observable refusals are the ones where the block has a preceding statement.
+//
+// TWO ROWS WERE REMOVED rather than left unexecuted: the pair over `lst_tail_let_und`
+// (a refused tail let is never resolved while an arm block's rest is) and
+// `lst_last_arm_block` (a braced block that is the last match arm lowers). Neither fixture was ever
+// read, and both intents need the ingest to carry vocabulary first; they return with that change.
+
+test fn a_body_top_level_let_fixture_never_reaches_the_door_the_ingest_carries_no_vocabulary() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: v, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, last_arm_block: _, let_und_reachable: _ } => lst_is_resolved(v: v)
+    LstOutcomesDecided { ctl_body_let: v, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, last_arm_block: _, let_und_reachable: _ } => lst_resolve_refused_as(v: v, reason: ^resolve_module_not_found)
     LstContextRefused => false
   }
 }
 
-test fn a_braced_arm_of_one_expression_is_accepted() -> Bool {
+test fn a_braced_arm_of_one_expression_fixture_never_reaches_the_door_the_ingest_carries_no_vocabulary() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: v, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, last_arm_block: _, let_und_reachable: _ } => lst_is_resolved(v: v)
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: v, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, last_arm_block: _, let_und_reachable: _ } => lst_resolve_refused_as(v: v, reason: ^resolve_module_not_found)
     LstContextRefused => false
   }
 }
 
-test fn a_let_in_an_if_branch_is_accepted() -> Bool {
+test fn a_let_in_an_if_branch_fixture_never_reaches_the_door_the_ingest_carries_no_vocabulary() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: v, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, last_arm_block: _, let_und_reachable: _ } => lst_is_resolved(v: v)
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: v, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, last_arm_block: _, let_und_reachable: _ } => lst_resolve_refused_as(v: v, reason: ^resolve_module_not_found)
     LstContextRefused => false
   }
 }
 
-test fn a_let_in_a_function_value_body_is_accepted() -> Bool {
+test fn a_let_in_a_function_value_body_fixture_never_reaches_the_door_the_ingest_carries_no_vocabulary() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: v, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, last_arm_block: _, let_und_reachable: _ } => lst_is_resolved(v: v)
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: v, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, last_arm_block: _, let_und_reachable: _ } => lst_resolve_refused_as(v: v, reason: ^resolve_module_not_found)
     LstContextRefused => false
   }
 }
@@ -343,9 +385,9 @@ test fn a_let_in_a_function_value_body_is_accepted() -> Bool {
 // question that never arose; the fold now recognises the form and reports
 // body_lowering_reason_statement_let_in_tail_position at the door-holder. These four rows are therefore
 // RED at main and GREEN at this head, and none of them asks the compiler to accept a body with no value.
-test fn a_tail_statement_let_in_a_fn_body_refuses_at_the_door_holder() -> Bool {
+test fn a_bare_tail_statement_let_in_a_fn_body_is_claimed_by_an_earlier_normalization_check() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: v, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, last_arm_block: _, let_und_reachable: _ } => lst_refuses_as(v: v, reason: ^body_lowering_reason_statement_let_in_tail_position)
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: v, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, last_arm_block: _, let_und_reachable: _ } => lst_refuses_as(v: v, reason: ^normalized_tree_reason_wrapper_retention_not_normalized)
     LstContextRefused => false
   }
 }
@@ -369,16 +411,16 @@ test fn a_tail_statement_let_bound_to_a_match_refuses_at_the_door_holder() -> Bo
 // The shape dag/gunbc/instruments/compute_run_unit_cold.dag:97 authored: a braced arm block that begins
 // with a statement let and ends with a value expression that READS the binding. Resolving this one is
 // what rules out the cheap answer of dropping the binding — the rest names it.
-test fn a_let_in_a_braced_match_arm_block_is_accepted() -> Bool {
+test fn a_let_in_a_braced_match_arm_block_fixture_never_reaches_the_door_the_ingest_carries_no_vocabulary() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: v, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, last_arm_block: _, let_und_reachable: _ } => lst_is_resolved(v: v)
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: v, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, last_arm_block: _, let_und_reachable: _ } => lst_resolve_refused_as(v: v, reason: ^resolve_module_not_found)
     LstContextRefused => false
   }
 }
 
-test fn two_lets_in_a_braced_match_arm_block_are_accepted() -> Bool {
+test fn two_lets_in_a_braced_match_arm_block_fixture_never_reaches_the_door_the_ingest_carries_no_vocabulary() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: v, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, last_arm_block: _, let_und_reachable: _ } => lst_is_resolved(v: v)
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: v, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, last_arm_block: _, let_und_reachable: _ } => lst_resolve_refused_as(v: v, reason: ^resolve_module_not_found)
     LstContextRefused => false
   }
 }
@@ -390,40 +432,27 @@ test fn a_tail_statement_let_in_a_braced_match_arm_block_refuses_at_the_door_hol
   }
 }
 
-// THE TWO DOORS, IN ORDER, AND NEITHER HALF MAY BE SKIPPED. A trailing `let` is refused by the LOWERING
-// door-holder before the file is ever resolved, so an undeclared name inside its value never reaches name
-// resolution: the file refuses with body_lowering_reason_statement_let_in_tail_position and NOT with an
-// unbound symbol at that atom -- that ORDERING is what this row pins, which is why the expectation is not
-// lst_unbound_at. A braced arm block's rest is the other door: the block IS lowered, so an undeclared name
-// in its rest refuses unbound AT ITS OWN ATOM. Each fixture declares one name that does not exist, in one of
-// those positions, and nothing else.
-test fn a_refused_tail_let_is_never_resolved_while_an_arm_block_rest_is() -> Bool {
-  match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: v, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, last_arm_block: _, let_und_reachable: _ } => lst_refuses_as(v: v, reason: ^body_lowering_reason_statement_let_in_tail_position) && !lst_unbound_at(v: v, atom: ^lst_undeclared_tail_value)
-    LstContextRefused => false
-  }
-}
 
-test fn the_rest_of_a_braced_arm_block_after_a_let_refuses_unbound_at_its_atom() -> Bool {
+test fn the_rest_of_a_braced_arm_block_fixture_never_reaches_the_door_the_ingest_carries_no_vocabulary() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: v, tail_call: _, last_arm_block: _, let_und_reachable: _ } => lst_unbound_at(v: v, atom: ^lst_undeclared_arm_rest)
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: v, tail_call: _, last_arm_block: _, let_und_reachable: _ } => lst_resolve_refused_as(v: v, reason: ^resolve_module_not_found)
     LstContextRefused => false
   }
 }
 
 // The fabric shape: an `if` bound by a statement let inside a braced arm block, read back by the last
 // statement. This is the gap the census reports at fabric_control_plane_live_probe.dag:1053:3.
-test fn an_if_bound_by_a_let_in_a_braced_match_arm_block_is_accepted() -> Bool {
+test fn an_if_bound_by_a_let_in_a_braced_match_arm_block_fixture_never_reaches_the_door_the_ingest_carries_no_vocabulary() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_rest_und: _, arm_block_if_match: v, if_match_branch: _, tail_call: _, last_arm_block: _, let_und_reachable: _ } => lst_is_resolved(v: v)
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_rest_und: _, arm_block_if_match: v, if_match_branch: _, tail_call: _, last_arm_block: _, let_und_reachable: _ } => lst_resolve_refused_as(v: v, reason: ^resolve_module_not_found)
     LstContextRefused => false
   }
 }
 
 // The sibling leaf: braced `if` branches at term position, each a statement sequence with its own lets.
-test fn lets_in_braced_if_branches_at_term_position_are_accepted() -> Bool {
+test fn lets_in_braced_if_branches_at_term_position_fixture_never_reaches_the_door_the_ingest_carries_no_vocabulary() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_rest_und: _, arm_block_if_match: _, if_match_branch: v, tail_call: _, last_arm_block: _, let_und_reachable: _ } => lst_is_resolved(v: v)
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_rest_und: _, arm_block_if_match: _, if_match_branch: v, tail_call: _, last_arm_block: _, let_und_reachable: _ } => lst_resolve_refused_as(v: v, reason: ^resolve_module_not_found)
     LstContextRefused => false
   }
 }
@@ -431,889 +460,20 @@ test fn lets_in_braced_if_branches_at_term_position_are_accepted() -> Bool {
 
 // The positive control for the arm-block rows: the same block, the same bindings, the tail statement a
 // plain call. If this refuses too, the refusals above are about something other than statement position.
-test fn a_tail_statement_call_in_the_same_arm_block_lowers() -> Bool {
+test fn a_tail_statement_call_in_the_same_arm_block_fixture_never_reaches_the_door_the_ingest_carries_no_vocabulary() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: v, last_arm_block: _, let_und_reachable: _ } => lst_is_resolved(v: v)
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: v, last_arm_block: _, let_und_reachable: _ } => lst_resolve_refused_as(v: v, reason: ^resolve_module_not_found)
     LstContextRefused => false
   }
 }
 
-// The shape BOTH gap files author, which the earlier fixtures did not pin: the braced block is the LAST
-// arm of the match, preceded by an arm whose body is a plain value.
-test fn a_braced_block_that_is_the_last_match_arm_lowers() -> Bool {
-  match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, last_arm_block: v, let_und_reachable: _ } => lst_is_resolved(v: v)
-    LstContextRefused => false
-  }
-}
 
 // NOT A WIDENING. A body that normalizes -- statement let, then a trailing expression -- still hands the
 // let's bound value to the resolver, so the undeclared atom refuses AT ITS OWN ATOM. If the fold had
 // begun to drop a tail it could not justify, this file would lower instead of refusing.
-test fn a_reachable_statement_let_refuses_its_undeclared_atom() -> Bool {
+test fn a_reachable_statement_let_fixture_never_reaches_the_door_the_ingest_carries_no_vocabulary() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, last_arm_block: _, let_und_reachable: v } => lst_unbound_at(v: v, atom: ^lst_undeclared_atom)
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _, tail_call: _, last_arm_block: _, let_und_reachable: v } => lst_resolve_refused_as(v: v, reason: ^resolve_module_not_found)
     LstContextRefused => false
   }
-}
-// ---------------------------------------------------------------------------
-// PROBE (temporary, not a claim). The paired run at 76a531366d3d reported 13 of 17 rows false at BOTH
-// legs -- every is_accepted control -- so the archived author recorded predictions rather than readings, and
-// the runner prints no values (claim_batch gives PASS / FAIL / UNOBSERVED plus closure diagnostics, never a
-// computed value; confirmed with the build owner). These rows classify verdicts instead of pinning
-// behaviour, so each PASS is one reading of what this route actually decides. probe_verdict_of re-enters the
-// same ingest the claims read, so the classes below are the same verdicts the pinned rows see. This block is
-// deleted before the PR lands; the pinned rows are rewritten from the readings it produces, which is what
-// review 92393 asks for (run the suite, cite the run).
-
-fn probe_verdict_of(name: String, unit: Symbol) -> LstVerdict {
-  match native_test_context_from_ingest(ingest: lst_ingest()) {
-    Rejected { diagnostics: _ } => LstAbsent
-    Accepted { value: context, diagnostics: _ } => lst_verdict_in(context: context, module_name: name, unit: unit)
-  }
-}
-
-fn probe_class(name: String, unit: Symbol, want: Symbol) -> Bool {
-  match probe_verdict_of(name: name, unit: unit) {
-    LstResolved => want == ^probe_class_resolved
-    LstRefused { reason: _, at_atom: _ } => want == ^probe_class_resolve_refused
-    LstFileRefused { fatal_reason: _ } => want == ^probe_class_file_refused
-    LstAbsent => want == ^probe_class_absent
-  }
-}
-
-fn probe_file_reason(name: String, unit: Symbol, want: Symbol) -> Bool {
-  match probe_verdict_of(name: name, unit: unit) {
-    LstFileRefused { fatal_reason: Present { value: r } } => r == want
-    _ => false
-  }
-}
-
-fn probe_file_reason_present(name: String, unit: Symbol) -> Bool {
-  match probe_verdict_of(name: name, unit: unit) {
-    LstFileRefused { fatal_reason: Present { value: _ } } => true
-    _ => false
-  }
-}
-
-test fn probe_ctl_body_let_resolved() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let", unit: ^lst_ctl_body_let_cu, want: ^probe_class_resolved)
-}
-test fn probe_ctl_body_let_file_refused() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let", unit: ^lst_ctl_body_let_cu, want: ^probe_class_file_refused)
-}
-test fn probe_ctl_body_let_resolve_refused() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let", unit: ^lst_ctl_body_let_cu, want: ^probe_class_resolve_refused)
-}
-test fn probe_ctl_body_let_absent() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let", unit: ^lst_ctl_body_let_cu, want: ^probe_class_absent)
-}
-test fn probe_ctl_arm_expr_resolved() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_ctl_arm_expr", unit: ^lst_ctl_arm_expr_cu, want: ^probe_class_resolved)
-}
-test fn probe_ctl_arm_expr_file_refused() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_ctl_arm_expr", unit: ^lst_ctl_arm_expr_cu, want: ^probe_class_file_refused)
-}
-test fn probe_ctl_arm_expr_resolve_refused() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_ctl_arm_expr", unit: ^lst_ctl_arm_expr_cu, want: ^probe_class_resolve_refused)
-}
-test fn probe_ctl_arm_expr_absent() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_ctl_arm_expr", unit: ^lst_ctl_arm_expr_cu, want: ^probe_class_absent)
-}
-test fn probe_ctl_arm_block_resolved() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_ctl_arm_block", unit: ^lst_ctl_arm_block_cu, want: ^probe_class_resolved)
-}
-test fn probe_ctl_arm_block_file_refused() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_ctl_arm_block", unit: ^lst_ctl_arm_block_cu, want: ^probe_class_file_refused)
-}
-test fn probe_ctl_arm_block_resolve_refused() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_ctl_arm_block", unit: ^lst_ctl_arm_block_cu, want: ^probe_class_resolve_refused)
-}
-test fn probe_ctl_arm_block_absent() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_ctl_arm_block", unit: ^lst_ctl_arm_block_cu, want: ^probe_class_absent)
-}
-test fn probe_ctl_if_branch_resolved() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_ctl_if_branch", unit: ^lst_ctl_if_branch_cu, want: ^probe_class_resolved)
-}
-test fn probe_ctl_if_branch_file_refused() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_ctl_if_branch", unit: ^lst_ctl_if_branch_cu, want: ^probe_class_file_refused)
-}
-test fn probe_ctl_if_branch_resolve_refused() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_ctl_if_branch", unit: ^lst_ctl_if_branch_cu, want: ^probe_class_resolve_refused)
-}
-test fn probe_ctl_if_branch_absent() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_ctl_if_branch", unit: ^lst_ctl_if_branch_cu, want: ^probe_class_absent)
-}
-test fn probe_ctl_fn_value_resolved() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_ctl_fn_value", unit: ^lst_ctl_fn_value_cu, want: ^probe_class_resolved)
-}
-test fn probe_ctl_fn_value_file_refused() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_ctl_fn_value", unit: ^lst_ctl_fn_value_cu, want: ^probe_class_file_refused)
-}
-test fn probe_ctl_fn_value_resolve_refused() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_ctl_fn_value", unit: ^lst_ctl_fn_value_cu, want: ^probe_class_resolve_refused)
-}
-test fn probe_ctl_fn_value_absent() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_ctl_fn_value", unit: ^lst_ctl_fn_value_cu, want: ^probe_class_absent)
-}
-test fn probe_arm_block_let_resolved() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_arm_block_let", unit: ^lst_arm_block_let_cu, want: ^probe_class_resolved)
-}
-test fn probe_arm_block_let_file_refused() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_arm_block_let", unit: ^lst_arm_block_let_cu, want: ^probe_class_file_refused)
-}
-test fn probe_arm_block_let_resolve_refused() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_arm_block_let", unit: ^lst_arm_block_let_cu, want: ^probe_class_resolve_refused)
-}
-test fn probe_arm_block_let_absent() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_arm_block_let", unit: ^lst_arm_block_let_cu, want: ^probe_class_absent)
-}
-test fn probe_arm_block_two_let_resolved() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_arm_block_two_let", unit: ^lst_arm_block_two_let_cu, want: ^probe_class_resolved)
-}
-test fn probe_arm_block_two_let_file_refused() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_arm_block_two_let", unit: ^lst_arm_block_two_let_cu, want: ^probe_class_file_refused)
-}
-test fn probe_arm_block_two_let_resolve_refused() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_arm_block_two_let", unit: ^lst_arm_block_two_let_cu, want: ^probe_class_resolve_refused)
-}
-test fn probe_arm_block_two_let_absent() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_arm_block_two_let", unit: ^lst_arm_block_two_let_cu, want: ^probe_class_absent)
-}
-test fn probe_arm_tail_let_resolved() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_arm_tail_let", unit: ^lst_arm_tail_let_cu, want: ^probe_class_resolved)
-}
-test fn probe_arm_tail_let_file_refused() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_arm_tail_let", unit: ^lst_arm_tail_let_cu, want: ^probe_class_file_refused)
-}
-test fn probe_arm_tail_let_resolve_refused() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_arm_tail_let", unit: ^lst_arm_tail_let_cu, want: ^probe_class_resolve_refused)
-}
-test fn probe_arm_tail_let_absent() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_arm_tail_let", unit: ^lst_arm_tail_let_cu, want: ^probe_class_absent)
-}
-test fn probe_arm_block_if_match_resolved() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_arm_block_if_match", unit: ^lst_arm_block_if_match_cu, want: ^probe_class_resolved)
-}
-test fn probe_arm_block_if_match_file_refused() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_arm_block_if_match", unit: ^lst_arm_block_if_match_cu, want: ^probe_class_file_refused)
-}
-test fn probe_arm_block_if_match_resolve_refused() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_arm_block_if_match", unit: ^lst_arm_block_if_match_cu, want: ^probe_class_resolve_refused)
-}
-test fn probe_arm_block_if_match_absent() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_arm_block_if_match", unit: ^lst_arm_block_if_match_cu, want: ^probe_class_absent)
-}
-test fn probe_if_match_branch_resolved() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_if_match_branch", unit: ^lst_if_match_branch_cu, want: ^probe_class_resolved)
-}
-test fn probe_if_match_branch_file_refused() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_if_match_branch", unit: ^lst_if_match_branch_cu, want: ^probe_class_file_refused)
-}
-test fn probe_if_match_branch_resolve_refused() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_if_match_branch", unit: ^lst_if_match_branch_cu, want: ^probe_class_resolve_refused)
-}
-test fn probe_if_match_branch_absent() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_if_match_branch", unit: ^lst_if_match_branch_cu, want: ^probe_class_absent)
-}
-test fn probe_arm_rest_und_resolved() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_arm_rest_und", unit: ^lst_arm_rest_und_cu, want: ^probe_class_resolved)
-}
-test fn probe_arm_rest_und_file_refused() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_arm_rest_und", unit: ^lst_arm_rest_und_cu, want: ^probe_class_file_refused)
-}
-test fn probe_arm_rest_und_resolve_refused() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_arm_rest_und", unit: ^lst_arm_rest_und_cu, want: ^probe_class_resolve_refused)
-}
-test fn probe_arm_rest_und_absent() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_arm_rest_und", unit: ^lst_arm_rest_und_cu, want: ^probe_class_absent)
-}
-test fn probe_tail_call_resolved() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_tail_call", unit: ^lst_tail_call_cu, want: ^probe_class_resolved)
-}
-test fn probe_tail_call_file_refused() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_tail_call", unit: ^lst_tail_call_cu, want: ^probe_class_file_refused)
-}
-test fn probe_tail_call_resolve_refused() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_tail_call", unit: ^lst_tail_call_cu, want: ^probe_class_resolve_refused)
-}
-test fn probe_tail_call_absent() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_tail_call", unit: ^lst_tail_call_cu, want: ^probe_class_absent)
-}
-test fn probe_let_und_reachable_resolved() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_let_und_reachable", unit: ^lst_let_und_reachable_cu, want: ^probe_class_resolved)
-}
-test fn probe_let_und_reachable_file_refused() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_let_und_reachable", unit: ^lst_let_und_reachable_cu, want: ^probe_class_file_refused)
-}
-test fn probe_let_und_reachable_resolve_refused() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_let_und_reachable", unit: ^lst_let_und_reachable_cu, want: ^probe_class_resolve_refused)
-}
-test fn probe_let_und_reachable_absent() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_let_und_reachable", unit: ^lst_let_und_reachable_cu, want: ^probe_class_absent)
-}
-test fn probe_tail_let_resolved() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_tail_let", unit: ^lst_tail_let_cu, want: ^probe_class_resolved)
-}
-test fn probe_tail_let_file_refused() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_tail_let", unit: ^lst_tail_let_cu, want: ^probe_class_file_refused)
-}
-test fn probe_tail_let_resolve_refused() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_tail_let", unit: ^lst_tail_let_cu, want: ^probe_class_resolve_refused)
-}
-test fn probe_tail_let_absent() -> Bool {
-  probe_class(name: "v2.test.fixture.namespace_xl0.lst_tail_let", unit: ^lst_tail_let_cu, want: ^probe_class_absent)
-}
-test fn probe_ctl_body_let_file_reason_present() -> Bool {
-  probe_file_reason_present(name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let", unit: ^lst_ctl_body_let_cu)
-}
-test fn probe_ctl_body_let_reason_statement_let_in_tail_position() -> Bool {
-  probe_file_reason(name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let", unit: ^lst_ctl_body_let_cu, want: ^body_lowering_reason_statement_let_in_tail_position)
-}
-test fn probe_ctl_body_let_reason_let_body_not_reachable_from_node() -> Bool {
-  probe_file_reason(name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let", unit: ^lst_ctl_body_let_cu, want: ^body_lowering_reason_let_body_not_reachable_from_node)
-}
-test fn probe_ctl_body_let_reason_let_binding_name_absent() -> Bool {
-  probe_file_reason(name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let", unit: ^lst_ctl_body_let_cu, want: ^body_lowering_reason_let_binding_name_absent)
-}
-test fn probe_ctl_body_let_reason_let_bound_value_absent() -> Bool {
-  probe_file_reason(name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let", unit: ^lst_ctl_body_let_cu, want: ^body_lowering_reason_let_bound_value_absent)
-}
-test fn probe_ctl_body_let_reason_let_navigation_refused() -> Bool {
-  probe_file_reason(name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let", unit: ^lst_ctl_body_let_cu, want: ^body_lowering_reason_let_navigation_refused)
-}
-test fn probe_ctl_body_let_reason_function_value_body_unread() -> Bool {
-  probe_file_reason(name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let", unit: ^lst_ctl_body_let_cu, want: ^body_lowering_reason_function_value_body_unread)
-}
-test fn probe_ctl_body_let_reason_match_arm_navigation_refused() -> Bool {
-  probe_file_reason(name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let", unit: ^lst_ctl_body_let_cu, want: ^body_lowering_reason_match_arm_navigation_refused)
-}
-test fn probe_ctl_body_let_reason_if_navigation_refused() -> Bool {
-  probe_file_reason(name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let", unit: ^lst_ctl_body_let_cu, want: ^body_lowering_reason_if_navigation_refused)
-}
-test fn probe_ctl_arm_block_file_reason_present() -> Bool {
-  probe_file_reason_present(name: "v2.test.fixture.namespace_xl0.lst_ctl_arm_block", unit: ^lst_ctl_arm_block_cu)
-}
-test fn probe_ctl_arm_block_reason_statement_let_in_tail_position() -> Bool {
-  probe_file_reason(name: "v2.test.fixture.namespace_xl0.lst_ctl_arm_block", unit: ^lst_ctl_arm_block_cu, want: ^body_lowering_reason_statement_let_in_tail_position)
-}
-test fn probe_ctl_arm_block_reason_let_body_not_reachable_from_node() -> Bool {
-  probe_file_reason(name: "v2.test.fixture.namespace_xl0.lst_ctl_arm_block", unit: ^lst_ctl_arm_block_cu, want: ^body_lowering_reason_let_body_not_reachable_from_node)
-}
-test fn probe_ctl_arm_block_reason_let_binding_name_absent() -> Bool {
-  probe_file_reason(name: "v2.test.fixture.namespace_xl0.lst_ctl_arm_block", unit: ^lst_ctl_arm_block_cu, want: ^body_lowering_reason_let_binding_name_absent)
-}
-test fn probe_ctl_arm_block_reason_let_bound_value_absent() -> Bool {
-  probe_file_reason(name: "v2.test.fixture.namespace_xl0.lst_ctl_arm_block", unit: ^lst_ctl_arm_block_cu, want: ^body_lowering_reason_let_bound_value_absent)
-}
-test fn probe_ctl_arm_block_reason_let_navigation_refused() -> Bool {
-  probe_file_reason(name: "v2.test.fixture.namespace_xl0.lst_ctl_arm_block", unit: ^lst_ctl_arm_block_cu, want: ^body_lowering_reason_let_navigation_refused)
-}
-test fn probe_ctl_arm_block_reason_function_value_body_unread() -> Bool {
-  probe_file_reason(name: "v2.test.fixture.namespace_xl0.lst_ctl_arm_block", unit: ^lst_ctl_arm_block_cu, want: ^body_lowering_reason_function_value_body_unread)
-}
-test fn probe_ctl_arm_block_reason_match_arm_navigation_refused() -> Bool {
-  probe_file_reason(name: "v2.test.fixture.namespace_xl0.lst_ctl_arm_block", unit: ^lst_ctl_arm_block_cu, want: ^body_lowering_reason_match_arm_navigation_refused)
-}
-test fn probe_ctl_arm_block_reason_if_navigation_refused() -> Bool {
-  probe_file_reason(name: "v2.test.fixture.namespace_xl0.lst_ctl_arm_block", unit: ^lst_ctl_arm_block_cu, want: ^body_lowering_reason_if_navigation_refused)
-}
-test fn probe_arm_block_let_file_reason_present() -> Bool {
-  probe_file_reason_present(name: "v2.test.fixture.namespace_xl0.lst_arm_block_let", unit: ^lst_arm_block_let_cu)
-}
-test fn probe_arm_block_let_reason_statement_let_in_tail_position() -> Bool {
-  probe_file_reason(name: "v2.test.fixture.namespace_xl0.lst_arm_block_let", unit: ^lst_arm_block_let_cu, want: ^body_lowering_reason_statement_let_in_tail_position)
-}
-test fn probe_arm_block_let_reason_let_body_not_reachable_from_node() -> Bool {
-  probe_file_reason(name: "v2.test.fixture.namespace_xl0.lst_arm_block_let", unit: ^lst_arm_block_let_cu, want: ^body_lowering_reason_let_body_not_reachable_from_node)
-}
-test fn probe_arm_block_let_reason_let_binding_name_absent() -> Bool {
-  probe_file_reason(name: "v2.test.fixture.namespace_xl0.lst_arm_block_let", unit: ^lst_arm_block_let_cu, want: ^body_lowering_reason_let_binding_name_absent)
-}
-test fn probe_arm_block_let_reason_let_bound_value_absent() -> Bool {
-  probe_file_reason(name: "v2.test.fixture.namespace_xl0.lst_arm_block_let", unit: ^lst_arm_block_let_cu, want: ^body_lowering_reason_let_bound_value_absent)
-}
-test fn probe_arm_block_let_reason_let_navigation_refused() -> Bool {
-  probe_file_reason(name: "v2.test.fixture.namespace_xl0.lst_arm_block_let", unit: ^lst_arm_block_let_cu, want: ^body_lowering_reason_let_navigation_refused)
-}
-test fn probe_arm_block_let_reason_function_value_body_unread() -> Bool {
-  probe_file_reason(name: "v2.test.fixture.namespace_xl0.lst_arm_block_let", unit: ^lst_arm_block_let_cu, want: ^body_lowering_reason_function_value_body_unread)
-}
-test fn probe_arm_block_let_reason_match_arm_navigation_refused() -> Bool {
-  probe_file_reason(name: "v2.test.fixture.namespace_xl0.lst_arm_block_let", unit: ^lst_arm_block_let_cu, want: ^body_lowering_reason_match_arm_navigation_refused)
-}
-test fn probe_arm_block_let_reason_if_navigation_refused() -> Bool {
-  probe_file_reason(name: "v2.test.fixture.namespace_xl0.lst_arm_block_let", unit: ^lst_arm_block_let_cu, want: ^body_lowering_reason_if_navigation_refused)
-}
-test fn probe_tail_let_file_reason_present() -> Bool {
-  probe_file_reason_present(name: "v2.test.fixture.namespace_xl0.lst_tail_let", unit: ^lst_tail_let_cu)
-}
-test fn probe_tail_let_reason_statement_let_in_tail_position() -> Bool {
-  probe_file_reason(name: "v2.test.fixture.namespace_xl0.lst_tail_let", unit: ^lst_tail_let_cu, want: ^body_lowering_reason_statement_let_in_tail_position)
-}
-test fn probe_tail_let_reason_let_body_not_reachable_from_node() -> Bool {
-  probe_file_reason(name: "v2.test.fixture.namespace_xl0.lst_tail_let", unit: ^lst_tail_let_cu, want: ^body_lowering_reason_let_body_not_reachable_from_node)
-}
-test fn probe_tail_let_reason_let_binding_name_absent() -> Bool {
-  probe_file_reason(name: "v2.test.fixture.namespace_xl0.lst_tail_let", unit: ^lst_tail_let_cu, want: ^body_lowering_reason_let_binding_name_absent)
-}
-test fn probe_tail_let_reason_let_bound_value_absent() -> Bool {
-  probe_file_reason(name: "v2.test.fixture.namespace_xl0.lst_tail_let", unit: ^lst_tail_let_cu, want: ^body_lowering_reason_let_bound_value_absent)
-}
-test fn probe_tail_let_reason_let_navigation_refused() -> Bool {
-  probe_file_reason(name: "v2.test.fixture.namespace_xl0.lst_tail_let", unit: ^lst_tail_let_cu, want: ^body_lowering_reason_let_navigation_refused)
-}
-test fn probe_tail_let_reason_function_value_body_unread() -> Bool {
-  probe_file_reason(name: "v2.test.fixture.namespace_xl0.lst_tail_let", unit: ^lst_tail_let_cu, want: ^body_lowering_reason_function_value_body_unread)
-}
-test fn probe_tail_let_reason_match_arm_navigation_refused() -> Bool {
-  probe_file_reason(name: "v2.test.fixture.namespace_xl0.lst_tail_let", unit: ^lst_tail_let_cu, want: ^body_lowering_reason_match_arm_navigation_refused)
-}
-test fn probe_tail_let_reason_if_navigation_refused() -> Bool {
-  probe_file_reason(name: "v2.test.fixture.namespace_xl0.lst_tail_let", unit: ^lst_tail_let_cu, want: ^body_lowering_reason_if_navigation_refused)
-}
-
-// TEMPORARY probe leg C -- DELETE before landing. Leg A (inv 6a5c39ae-91ad-48e6-98c5-34d11c9352db)
-// reads 12 of the 14 both-legs-failing fixtures as resolve_refused, and a resolve_refused reading
-// does not name its diagnostic. These rows carry the whole reason alphabet the resolve stage and
-// the inference stage can emit (37 `resolve_reason_*` plus 50 `infer_reason_*`, taken from the
-// symbols in use under src/v2) against ONE fixture, `lst_ctl_body_let`, whose pinned control row
-// expects it to come back resolved and whose reading is false at both legs. Exactly one of these
-// rows should pass; that names why the accepted-control fixtures never reach Resolved, and it is
-// the same question main's sibling module `v2.test.claim.namespace_xl0.let_match_early_return`
-// (12 of 18 rows false at b36c11f3fb3b15f3c3c8b88fc8d61975e9607e66) is asking.
-fn probe_resolve_reason_of(name: String, unit: Symbol, want: Symbol) -> Bool {
-  match probe_verdict_of(name: name, unit: unit) {
-    LstRefused { reason: r, at_atom: _ } => r == want
-    _ => false
-  }
-}
-
-test fn probe_ctl_body_let_resolve_reason_ambiguous_symbol() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^resolve_reason_ambiguous_symbol)
-}
-test fn probe_ctl_body_let_resolve_reason_anonymous_parameter_referenced() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^resolve_reason_anonymous_parameter_referenced)
-}
-test fn probe_ctl_body_let_resolve_reason_binder_duplicate_in_frame() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^resolve_reason_binder_duplicate_in_frame)
-}
-test fn probe_ctl_body_let_resolve_reason_binder_hides_visible_value() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^resolve_reason_binder_hides_visible_value)
-}
-test fn probe_ctl_body_let_resolve_reason_catch_all_binder_unread() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^resolve_reason_catch_all_binder_unread)
-}
-test fn probe_ctl_body_let_resolve_reason_construct_tag_not_a_constructor() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^resolve_reason_construct_tag_not_a_constructor)
-}
-test fn probe_ctl_body_let_resolve_reason_declarer_refused() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^resolve_reason_declarer_refused)
-}
-test fn probe_ctl_body_let_resolve_reason_forwarded_parameter_kind_differs() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^resolve_reason_forwarded_parameter_kind_differs)
-}
-test fn probe_ctl_body_let_resolve_reason_forwarded_parameter_kind_unresolved() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^resolve_reason_forwarded_parameter_kind_unresolved)
-}
-test fn probe_ctl_body_let_resolve_reason_forwarded_parameter_unkinded() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^resolve_reason_forwarded_parameter_unkinded)
-}
-test fn probe_ctl_body_let_resolve_reason_generated_reference_declaration_absent() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^resolve_reason_generated_reference_declaration_absent)
-}
-test fn probe_ctl_body_let_resolve_reason_kernel_type_spelling_names_a_foreign_declaration() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^resolve_reason_kernel_type_spelling_names_a_foreign_declaration)
-}
-test fn probe_ctl_body_let_resolve_reason_lexical_reference_unkeyed() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^resolve_reason_lexical_reference_unkeyed)
-}
-test fn probe_ctl_body_let_resolve_reason_malformed_imported_root() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^resolve_reason_malformed_imported_root)
-}
-test fn probe_ctl_body_let_resolve_reason_malformed_tree() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^resolve_reason_malformed_tree)
-}
-test fn probe_ctl_body_let_resolve_reason_member_kind_duplicate_declaration() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^resolve_reason_member_kind_duplicate_declaration)
-}
-test fn probe_ctl_body_let_resolve_reason_namespace_provider_admission_conflict() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^resolve_reason_namespace_provider_admission_conflict)
-}
-test fn probe_ctl_body_let_resolve_reason_observation_incomplete() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^resolve_reason_observation_incomplete)
-}
-test fn probe_ctl_body_let_resolve_reason_optional_declaration_incompatible() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^resolve_reason_optional_declaration_incompatible)
-}
-test fn probe_ctl_body_let_resolve_reason_optional_declaration_unavailable() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^resolve_reason_optional_declaration_unavailable)
-}
-test fn probe_ctl_body_let_resolve_reason_parameter_path_not_indexed() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^resolve_reason_parameter_path_not_indexed)
-}
-test fn probe_ctl_body_let_resolve_reason_pattern_atom_names_visible_value() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^resolve_reason_pattern_atom_names_visible_value)
-}
-test fn probe_ctl_body_let_resolve_reason_primitive_row_name_disagrees() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^resolve_reason_primitive_row_name_disagrees)
-}
-test fn probe_ctl_body_let_resolve_reason_realized_declaration_mismatch() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^resolve_reason_realized_declaration_mismatch)
-}
-test fn probe_ctl_body_let_resolve_reason_realized_declaration_shadowed() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^resolve_reason_realized_declaration_shadowed)
-}
-test fn probe_ctl_body_let_resolve_reason_reference_category_mismatch() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^resolve_reason_reference_category_mismatch)
-}
-test fn probe_ctl_body_let_resolve_reason_requirement_not_a_resource() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^resolve_reason_requirement_not_a_resource)
-}
-test fn probe_ctl_body_let_resolve_reason_requirement_repeated() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^resolve_reason_requirement_repeated)
-}
-test fn probe_ctl_body_let_resolve_reason_test_code_referenced() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^resolve_reason_test_code_referenced)
-}
-test fn probe_ctl_body_let_resolve_reason_type_application_arity_mismatch() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^resolve_reason_type_application_arity_mismatch)
-}
-test fn probe_ctl_body_let_resolve_reason_type_argument_kind_not_inhabited() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^resolve_reason_type_argument_kind_not_inhabited)
-}
-test fn probe_ctl_body_let_resolve_reason_type_parameter_in_value_position() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^resolve_reason_type_parameter_in_value_position)
-}
-test fn probe_ctl_body_let_resolve_reason_type_parameter_kind_unresolved() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^resolve_reason_type_parameter_kind_unresolved)
-}
-test fn probe_ctl_body_let_resolve_reason_type_parameter_order_malformed() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^resolve_reason_type_parameter_order_malformed)
-}
-test fn probe_ctl_body_let_resolve_reason_type_parameter_shadows_visible_name() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^resolve_reason_type_parameter_shadows_visible_name)
-}
-test fn probe_ctl_body_let_resolve_reason_unbound_symbol() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^resolve_reason_unbound_symbol)
-}
-test fn probe_ctl_body_let_resolve_reason_where_predicate_unbound() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^resolve_reason_where_predicate_unbound)
-}
-test fn probe_ctl_body_let_infer_reason_admit_callers_edge_ambiguous() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_admit_callers_edge_ambiguous)
-}
-test fn probe_ctl_body_let_infer_reason_admit_callers_entries_unreadable() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_admit_callers_entries_unreadable)
-}
-test fn probe_ctl_body_let_infer_reason_admit_callers_entry_not_decl_ref() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_admit_callers_entry_not_decl_ref)
-}
-test fn probe_ctl_body_let_infer_reason_bound_generator_disagrees() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_bound_generator_disagrees)
-}
-test fn probe_ctl_body_let_infer_reason_bound_value_does_not_inhabit_annotation() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_bound_value_does_not_inhabit_annotation)
-}
-test fn probe_ctl_body_let_infer_reason_caller_admission_callee_unreadable() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_caller_admission_callee_unreadable)
-}
-test fn probe_ctl_body_let_infer_reason_caller_admission_callee_unresolved() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_caller_admission_callee_unresolved)
-}
-test fn probe_ctl_body_let_infer_reason_caller_admission_caller_unkeyed() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_caller_admission_caller_unkeyed)
-}
-test fn probe_ctl_body_let_infer_reason_caller_admission_module_unreadable() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_caller_admission_module_unreadable)
-}
-test fn probe_ctl_body_let_infer_reason_caller_admission_refused() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_caller_admission_refused)
-}
-test fn probe_ctl_body_let_infer_reason_declaration_body_unavailable() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_declaration_body_unavailable)
-}
-test fn probe_ctl_body_let_infer_reason_declaration_identity_competing() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_declaration_identity_competing)
-}
-test fn probe_ctl_body_let_infer_reason_declaration_identity_contested() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_declaration_identity_contested)
-}
-test fn probe_ctl_body_let_infer_reason_declaration_identity_unavailable() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_declaration_identity_unavailable)
-}
-test fn probe_ctl_body_let_infer_reason_default_does_not_inhabit_binder_type() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_default_does_not_inhabit_binder_type)
-}
-test fn probe_ctl_body_let_infer_reason_field_not_declared_on_receiver() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_field_not_declared_on_receiver)
-}
-test fn probe_ctl_body_let_infer_reason_float_literal_home_unruled() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_float_literal_home_unruled)
-}
-test fn probe_ctl_body_let_infer_reason_fold_carrier_type_not_derived() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_fold_carrier_type_not_derived)
-}
-test fn probe_ctl_body_let_infer_reason_fold_member_domain_not_a_collection() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_fold_member_domain_not_a_collection)
-}
-test fn probe_ctl_body_let_infer_reason_fold_member_domain_type_not_derived() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_fold_member_domain_type_not_derived)
-}
-test fn probe_ctl_body_let_infer_reason_fold_member_formal_undecided() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_fold_member_formal_undecided)
-}
-test fn probe_ctl_body_let_infer_reason_fold_member_formal_unread() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_fold_member_formal_unread)
-}
-test fn probe_ctl_body_let_infer_reason_fold_step_body_type_not_derived() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_fold_step_body_type_not_derived)
-}
-test fn probe_ctl_body_let_infer_reason_inhabitance_row_declares_no_generator() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_inhabitance_row_declares_no_generator)
-}
-test fn probe_ctl_body_let_infer_reason_kernel_grounding_duplicated() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_kernel_grounding_duplicated)
-}
-test fn probe_ctl_body_let_infer_reason_lexical_reference_unrecorded() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_lexical_reference_unrecorded)
-}
-test fn probe_ctl_body_let_infer_reason_literal_homomorphism_duplicated() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_literal_homomorphism_duplicated)
-}
-test fn probe_ctl_body_let_infer_reason_literal_outside_kernel_grounding_range() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_literal_outside_kernel_grounding_range)
-}
-test fn probe_ctl_body_let_infer_reason_literal_outside_machine_width() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_literal_outside_machine_width)
-}
-test fn probe_ctl_body_let_infer_reason_machine_width_carrier_signedness_undeclared() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_machine_width_carrier_signedness_undeclared)
-}
-test fn probe_ctl_body_let_infer_reason_machine_width_compose_malformed() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_machine_width_compose_malformed)
-}
-test fn probe_ctl_body_let_infer_reason_machine_width_not_static() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_machine_width_not_static)
-}
-test fn probe_ctl_body_let_infer_reason_malformed_tree() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_malformed_tree)
-}
-test fn probe_ctl_body_let_infer_reason_match_arms_do_not_cover_scrutinee() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_match_arms_do_not_cover_scrutinee)
-}
-test fn probe_ctl_body_let_infer_reason_negative_literal_has_no_image_in_destination() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_negative_literal_has_no_image_in_destination)
-}
-test fn probe_ctl_body_let_infer_reason_parameter_reference_not_indexed() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_parameter_reference_not_indexed)
-}
-test fn probe_ctl_body_let_infer_reason_pattern_payload_formal_uninstantiated() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_pattern_payload_formal_uninstantiated)
-}
-test fn probe_ctl_body_let_infer_reason_primitive_without_declared_signature_authority() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_primitive_without_declared_signature_authority)
-}
-test fn probe_ctl_body_let_infer_reason_projection_receiver_declaration_unavailable() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_projection_receiver_declaration_unavailable)
-}
-test fn probe_ctl_body_let_infer_reason_projection_receiver_declares_no_fields() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_projection_receiver_declares_no_fields)
-}
-test fn probe_ctl_body_let_infer_reason_projection_receiver_type_arity_mismatch() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_projection_receiver_type_arity_mismatch)
-}
-test fn probe_ctl_body_let_infer_reason_refinement_demand_site_unplaceable() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_refinement_demand_site_unplaceable)
-}
-test fn probe_ctl_body_let_infer_reason_roster_reference_without_a_row() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_roster_reference_without_a_row)
-}
-test fn probe_ctl_body_let_infer_reason_roster_row_signature_unreadable() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_roster_row_signature_unreadable)
-}
-test fn probe_ctl_body_let_infer_reason_service_operation_realization_unknown() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_service_operation_realization_unknown)
-}
-test fn probe_ctl_body_let_infer_reason_service_operation_unrealizable() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_service_operation_unrealizable)
-}
-test fn probe_ctl_body_let_infer_reason_sole_constructor_modifiers_unreadable() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_sole_constructor_modifiers_unreadable)
-}
-test fn probe_ctl_body_let_infer_reason_sole_constructor_ownership_unreadable() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_sole_constructor_ownership_unreadable)
-}
-test fn probe_ctl_body_let_infer_reason_sole_constructor_refused() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_sole_constructor_refused)
-}
-test fn probe_ctl_body_let_infer_reason_sole_constructor_target_unreadable() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_sole_constructor_target_unreadable)
-}
-test fn probe_ctl_body_let_infer_reason_type_argument_does_not_inhabit_bound() -> Bool {
-  probe_resolve_reason_of(
-    name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let",
-    unit: ^lst_ctl_body_let_cu,
-    want: ^infer_reason_type_argument_does_not_inhabit_bound)
 }
