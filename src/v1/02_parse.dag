@@ -230,7 +230,7 @@ type RecordedErasedScope {
 
 // The published table, carried on ParseWithTableResult.
 //
-// CONSUMERS (DESIGN 3c). The recorded rows are read in this change by
+// CONSUMERS (gunbc.design_argument::consumption). The recorded rows are read in this change by
 // parse_import_statement_extents, whose production caller is v1.gunbc.parsed_import_statements
 // (import editing in std.import): it replaced the import-window rescan. The PUBLISHED table on
 // ParseWithTableResult is a declared frontier: its consumer is roadmap node
@@ -661,7 +661,7 @@ type EatResult
 
 type TokenResult { token: Token, tokens: TokenStream, err: ErrorNode? }
 type NameResult { name: String, span: SourceSpan, tokens: TokenStream, err: ErrorNode? }
-// GUARANTEE RUNG (DESIGN section 4b): parser result publication is MITIGATABLE.
+// GUARANTEE RUNG (gunbc.design_argument::guarantee_ladder): parser result publication is MITIGATABLE.
 // Invariant: a combinator must publish the context its accepted child returned, never the
 // context it received. The bounded population repaired here is function parent publication
 // after params/type params/inferred/body/properties, if condition/branch/parent publication,
@@ -669,7 +669,7 @@ type NameResult { name: String, span: SourceSpan, tokens: TokenStream, err: Erro
 // was made uniform but had no observed failure. Refusing error paths publish no successful
 // node/context pair and are outside this population. This is not a claim over every parse shape.
 // The attainable ceiling is STRUCTURALLY IMPOSSIBLE.
-// NEXT-RUNG TRIGGER (DESIGN section 4b(2)): introduce a distinct published-context carrier:
+// NEXT-RUNG TRIGGER (gunbc.design_argument::guarantee_ladder (no untracked stall)): introduce a distinct published-context carrier:
 // parse functions consume an input context, successful child results carry an advanced
 // context, and legitimate unchanged-context paths require an explicit named conversion, so
 // returning the input context where an advanced context is required becomes a type error.
@@ -2018,8 +2018,8 @@ fn stamp_parsed_node_list_with_head_role(
 //
 // WHY THE FIXTURES COULD NOT SHOW THIS. test.claim.type_reference_containment_binding_witness
 // hand-builds its declarations with `category: TypeOccurrence` -- exactly the shape production
-// never emitted -- so the suite supplied the missing side itself and stayed green. That is DESIGN
-// section 5's specification-without-execution boundary sitting on the destination authority of a
+// never emitted -- so the suite supplied the missing side itself and stayed green. That is
+// gunbc.design_argument::fail_closed's specification-without-execution boundary sitting on the destination authority of a
 // migration. Those fixtures are not wrong and are not weakened here: they test the authority's
 // logic correctly, they were never SUFFICIENT, and nothing in the tree said so.
 //
@@ -3988,7 +3988,21 @@ fn parse_config_fields(tokens: TokenStream, ctx: ParseContext, endpoint: Node?, 
       auth_source: auth_source,
       rate_limit: rate_limit
     }
-    ConfigResult { config: cfg, tokens: tokens, ctx: ctx, err: none }
+    // ONE AUTH AUTHORITY PER SERVICE. `auth_input` says the caller supplies the token; `auth_source`
+    // says the transport reads it from the environment. Declared together, the interpreter used the
+    // input when non-empty and otherwise the environment, while the emitter read only the
+    // environment, so one declaration meant two things on two routes and an empty input silently
+    // borrowed whatever credential the process held. A caller that means the ambient credential reads
+    // it itself (extdeps.github.auth github_token), so the pair is refused here, at the one parse
+    // every route shares.
+    let both_sources = match auth_input {
+      Present { value: _ } => match auth_source { Present { value: src } => Present { value: src }  Absent => none }
+      Absent => none
+    }
+    match both_sources {
+      Present { value: src } => ConfigResult { config: cfg, tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: "service config declares both `auth_input` and `auth_source`; a service has one auth authority -- the caller's input, or a declared source -- and a caller that means the environment's credential reads it explicitly", span: src.span) } }
+      Absent => ConfigResult { config: cfg, tokens: tokens, ctx: ctx, err: none }
+    }
   } else {
     let dummy_cfg = ServiceConfig { endpoint: make_expr_node(occurrence_identity: OccurrenceSynthetic, expr_data: ExprLiteral { value: LitStr { value: "" } }, children: [], inferred: none, span: no_span()), auth: none, auth_input: none, auth_source: none, rate_limit: none }
     let r = expect_ident(tokens: tokens)
@@ -5478,7 +5492,7 @@ fn parse_expr_loop(tokens: TokenStream, ctx: ParseContext, lhs: Node, lhs_from: 
                   match binop_opt {
                     Present { value: binop } => {
                       let minted = mint_parsed_node_identity(ctx: r.ctx, at: ConsumedWindow { from: lhs_from, to: r.tokens })
-                      let new_lhs = make_expr_node(occurrence_identity: minted.identity, expr_data: ExprBinOp { op: binop, algebra_field: none, operand: none }, children: [lhs, r.expr], inferred: none, span: loop_span)
+                      let new_lhs = make_expr_node(occurrence_identity: minted.identity, expr_data: ExprBinOp { op: binop, algebra_field: none, operand: none, derived: none }, children: [lhs, r.expr], inferred: none, span: loop_span)
                       parse_expr_loop(tokens: r.tokens, ctx: minted.ctx, lhs: new_lhs, lhs_from: lhs_from, min_bp: min_bp)
                     }
                     Absent => ExprResult { expr: lhs, tokens: r.tokens, ctx: r.ctx, err: Present { value: parse_error(msg: concat("unknown binary operator: ", op_tok.text), span: loop_span) } }
@@ -6227,7 +6241,7 @@ fn parse_expr_loop_no_brace(tokens: TokenStream, ctx: ParseContext, lhs: Node, l
                   match binop_opt {
                     Present { value: binop } => {
                       let minted = mint_parsed_node_identity(ctx: r.ctx, at: ConsumedWindow { from: lhs_from, to: r.tokens })
-                      let new_lhs = make_expr_node(occurrence_identity: minted.identity, expr_data: ExprBinOp { op: binop, algebra_field: none, operand: none }, children: [lhs, r.expr], inferred: none, span: loop_span)
+                      let new_lhs = make_expr_node(occurrence_identity: minted.identity, expr_data: ExprBinOp { op: binop, algebra_field: none, operand: none, derived: none }, children: [lhs, r.expr], inferred: none, span: loop_span)
                       parse_expr_loop_no_brace(tokens: r.tokens, ctx: minted.ctx, lhs: new_lhs, lhs_from: lhs_from, min_bp: min_bp)
                     }
                     Absent => ExprResult { expr: lhs, tokens: r.tokens, ctx: r.ctx, err: Present { value: parse_error(msg: concat("unknown binary operator: ", op_tok.text), span: loop_span) } }
@@ -6336,7 +6350,7 @@ fn parse_match_arm_stmts(tokens: TokenStream, ctx: ParseContext, acc: List<Node>
 // holds a `let`, the next arm was swallowed. With a nested match as the last statement, the outer
 // arm was re-parented into the inner match: the outer match lost it and refused
 // non-exhaustive, while the inner match gained it. Where the swallowed arm still type-checks in
-// its new home, nothing refuses at all (DESIGN section 5). It had already been widened once, for the
+// its new home, nothing refuses at all (gunbc.design_argument::fail_closed). It had already been widened once, for the
 // dotted form (the namespace-cut reproduction recorded on this boundary's history). This repair
 // generalises it to the rule every leaf was an instance of. Without the `let` the body is one
 // expression that never enters the statement loop, which is why the shape needs both.

@@ -305,7 +305,7 @@ test fn disjoint_ranges_do_not_collide() -> Bool {
 // defined as render(rows) cannot fail, and it failed to fail exactly once -- the renderer once joined the
 // rows with "\n" and stopped, and every witness still passed while the real file ended in a newline, so
 // each converge would have rewritten an UNCHANGED /etc/subuid by one byte. Supplying bytes literally and
-// rows through the parser is what DESIGN §5 asks of an independent oracle and what §3 forbids pairing.
+// rows through the parser is what gunbc.design_argument::fail_closed asks of an independent oracle and what gunbc.design_argument::single_authority forbids pairing.
 fn subordinate_read_of_file(path: String, stdout: String) -> SubordinateFileReading {
   parse_subordinate_file(path: path, exit_code: 0, stdout: stdout, stderr: "")
 }

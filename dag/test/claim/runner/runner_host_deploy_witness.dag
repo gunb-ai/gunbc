@@ -106,7 +106,7 @@ test fn srv4_runner_app_from_secret_manager() -> Bool {
 // extdeps.systemd.systemctl systemctl_enable_now_command, which mints through the sealed
 // argv_command with sudo_program as the program and inserts sudo's non-interactive flag. The
 // spelling was a THIRD authoring of facts extdeps.sudo.elevation and extdeps.systemd.systemctl
-// already own, so it rotted exactly the way a re-spelling does (DESIGN section 3).
+// already own, so it rotted exactly the way a re-spelling does (gunbc.design_argument::single_authority).
 //
 // The two conjuncts now cite those authorities instead of re-spelling them, and they are split
 // because they assert different things: that activation ELEVATES non-interactively, and that it

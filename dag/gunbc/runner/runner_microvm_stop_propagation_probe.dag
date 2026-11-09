@@ -67,7 +67,7 @@ data stop_propagation_probe_stand_in_unit: NonEmptyStr = "gunbc-stop-propagation
 // adds After= naming the slot unit in the SAME edit, and the argv witness then requires all three
 // words rather than the one that was gone looking for. AfterProperty is already in the modeled
 // vocabulary; BindsTo is deliberately NOT added until the probe says it is needed, because a
-// variant with no consumer is a dangling declaration (DESIGN section 3c) and every arm added to a
+// variant with no consumer is a dangling declaration (gunbc.design_argument::consumption) and every arm added to a
 // closed type refuses every exhaustive match over it.
 //
 // IF THE ANSWER IS THAT PartOf SUFFICES, the measurement is recorded where the retracted sentence

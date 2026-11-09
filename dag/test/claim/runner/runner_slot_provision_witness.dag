@@ -18,6 +18,7 @@ import gunbc.runner.runner_host_deploy {
   runner_host_deploy_for,
   RunnerHostDeployFound,
   RunnerHostDeployUnmodeled,
+  RunnerHostDeployZeroWidth,
   fleet_runner_host_deploys,
   runner_host_installer_command_argv,
   runner_instance_names,
@@ -132,7 +133,7 @@ test fn witness_runner_count_not_in_installer_argv() -> Bool {
 // It read `== 6` on both the count and the last instance name, which was a measurement copied from
 // the tree the day it was written. The 2026-08-23 CPU-axis change moved srv3 to twenty-one and the
 // row went red without a single thing about instance NAMING having changed -- which is the tell that
-// the literal was never the claim (DESIGN section 5: a measurement copied from the same current tree
+// the literal was never the claim (gunbc.design_argument::fail_closed: a measurement copied from the same current tree
 // is not an oracle).
 //
 // What survives is the part a fixture can falsify independently of width: the roster is exactly as
@@ -367,6 +368,7 @@ test fn every_enrolled_host_resolves_and_none_is_unmodeled() -> Bool {
       RunnerHostDeployFound { deploy: d } => (d.host_label as String) == (h as String)
       RunnerHostDeployRefused { host: rh, cause: c } => (rh as String) == (h as String) && c != ""
       RunnerHostDeployUnmodeled { host: _ } => false
+      RunnerHostDeployZeroWidth { spec: _ } => false
     }
   )
 }
@@ -381,9 +383,11 @@ test fn srv2_resolves_as_refused_and_the_others_as_rows() -> Bool {
           RunnerHostDeployFound { deploy: d } => d.runner_count > 0
           RunnerHostDeployRefused { host: _, cause: _ } => false
           RunnerHostDeployUnmodeled { host: _ } => false
+          RunnerHostDeployZeroWidth { spec: _ } => false
         })
     RunnerHostDeployFound { deploy: _ } => false
     RunnerHostDeployUnmodeled { host: _ } => false
+    RunnerHostDeployZeroWidth { spec: _ } => false
   }
 }
 
@@ -394,6 +398,7 @@ test fn an_unmodeled_host_has_no_deploy_row() -> Bool {
     RunnerHostDeployUnmodeled { host: h } => (h as String) == "srv-does-not-exist"
     RunnerHostDeployRefused { host: _, cause: _ } => false
     RunnerHostDeployFound { deploy: _ } => false
+    RunnerHostDeployZeroWidth { spec: _ } => false
   }
 }
 
@@ -720,6 +725,7 @@ fn srv1_deploy() -> RunnerHostDeploy {
     RunnerHostDeployFound { deploy: d } => d
     RunnerHostDeployUnmodeled { host: _ } => fixture_five_slot_deploy()
     RunnerHostDeployRefused { host: _, cause: _ } => fixture_five_slot_deploy()
+    RunnerHostDeployZeroWidth { spec: _ } => fixture_five_slot_deploy()
   }
 }
 
@@ -753,7 +759,7 @@ fn real_srv1_plan(observed: List<RunnerSlotMember>, evidence: SlotRetirementEvid
   }
 }
 
-// THE SUPPLIED WORLD FOR THE PLAN FOLD (DESIGN 3, a witness discriminates at one interface): the
+// THE SUPPLIED WORLD FOR THE PLAN FOLD (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface): the
 // fold runner_slot_provision_plan_over takes its retirement obligation and maskable scope as values, so
 // these claims name no live host. The authorization is the one declared value that can be consumed
 // (InterruptionAuthorization is sole_constructor); its scope is the fixture's required retirees and its
@@ -823,7 +829,7 @@ fn line_emits_mask_for(lines: List<String>, unit: String) -> Bool {
 // rather than withholding the whole host. 07..12 are refused per unit (outside the grant),
 // not masked or deleted. On main this observation never reaches the planner: admission
 // returned Absent before any read.
-// INHABITANCE CLAIM (DESIGN 3 pairing obligation): the REAL wrapper on srv1, reading the live model,
+// INHABITANCE CLAIM (gunbc.design_argument::witness_one_interface pairing obligation): the REAL wrapper on srv1, reading the live model,
 // takes the retirement arm for authorized required retirees. It goes red when the fleet moves.
 test fn srv1_provision_plan_masks_the_authorized_remainder_when_07_through_12_are_complete() -> Bool {
   match required_retirees_for_host(host: operator_host_srv1) {

@@ -5,7 +5,7 @@ import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.external_authority { ExternalSubjectRef, external_subject_ref_eq }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-// THE JOIN, NOT A HUB (DESIGN section 3 'External upstream decomposition', whose worked example
+// THE JOIN, NOT A HUB (gunbc.design_argument::external_upstreams 'External upstream decomposition', whose worked example
 // puts extdeps.browser.chromium and extdeps.browser.google_chrome under a gunbc join rather than a
 // generic browser hub). The two cited Pip-Boy products are independently governed upstream subjects
 // with their own modules; this module names the agnostic behaviour axis they inhabit, records which
@@ -17,7 +17,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // SUBJECTS ARE REFERENCED SYMBOLICALLY, NEVER RENAMED (review finding, 2026-08-04). An earlier
 // revision declared a local coproduct — CitedInstrument = PipBoy3000FalloutNewVegas |
 // PipBoy3000MkVTvSeries — beside the real extdeps subject declarations: a second identity system
-// for subjects the containment tree already names, the nicknaming class DESIGN section 3 forbids.
+// for subjects the containment tree already names, the nicknaming class gunbc.design_argument::single_authority forbids.
 // Identity now travels as ExternalSubjectRef over DeclarationRef, the carrier
 // extdeps.external_authority uses for scope subjects, so a subject is named by module and
 // declaration or not at all. The refs are built here rather than imported because both product
@@ -78,13 +78,13 @@ type InstrumentCitation {
 }
 
 // ONE TOTAL FUNCTION, NOT TWO LISTS AND A CHECK (review finding 48240, 2026-08-04, and the correct
-// reading of DESIGN section 5). An earlier revision carried reference_instrument_evidence and
+// reading of gunbc.design_argument::fail_closed). An earlier revision carried reference_instrument_evidence and
 // originated_axes as INDEPENDENT lists with axis_provenance_is_total asserting the XOR over them —
 // an axis with both kinds of provenance, or none, was writable and merely detected. Because
 // InstrumentBehaviourAxis is a CLOSED coproduct, an exhaustive match gives the guarantee by
 // construction: every axis has exactly one provenance because the match must answer for every
 // variant exactly once, so both bad states lose their constructor and the XOR check is deleted
-// rather than kept beside the shape that makes it unnecessary (section 4b(4): a climb dissolves the
+// rather than kept beside the shape that makes it unnecessary (gunbc.design_argument::guarantee_ladder (dissolution on climb): a climb dissolves the
 // production machinery it obsoletes). CitedOn is nonempty by the same first/rest split
 // ExternalModelScope uses for citations, so a cited axis with zero citations is likewise
 // unwritable. WHAT STAYS VALIDATION, honestly: an InstrumentCitation can still name a subject and a
@@ -243,7 +243,7 @@ fn mk_v_covers_directive() -> Bool {
   subject_covers_axes(subject: pip_boy_mk_v_subject, axes: directive_requested_axes)
 }
 
-// OUR read path, not the upstream's property (DESIGN section 3: observations this repository
+// OUR read path, not the upstream's property (gunbc.design_argument::single_authority: observations this repository
 // produces are receipts in the observing layer). Both manuals are now read DIRECTLY. The prior
 // ReadViaSearchIndex receipt recorded an HTTP 403 as though the source were unreadable; the refusal
 // was the fetcher's user agent, and a browser user agent retrieves both manuals at HTTP 200. The
@@ -310,8 +310,8 @@ data mk_v_accelerometer_obligation: CoverageObligation = CoverageObligation {
 
 // No exact-count assertion over either product's roster lives in this join or its witnesses. An
 // earlier witness froze both settings rosters at four, so legitimately adding a setting read from a
-// manual would have redded a claim unrelated to counts — a change detector, not a check (DESIGN
-// section 5 on numeric literals measured from the tree). The witnesses assert identity facts
+// manual would have redded a claim unrelated to counts — a change detector, not a check (
+// gunbc.design_argument::fail_closed on numeric literals measured from the tree). The witnesses assert identity facts
 // instead: which settings exist, which subject an axis resolves to, and that every evidence row
 // lands inside its own subject's module.
 

@@ -1,9 +1,9 @@
 module gunbc.native_serve_probe_plan
 
-import std.types { String, List, Bool, Int }
+import std.types { String, List, Bool, Int, NonEmptyStr }
 import std.algebra { Cons, Empty }
 import std.process { ProcessExit, ExitFailure }
-import gunbc.http_ingress { HttpIngressTcp, http_ingress_binding_arguments }
+import gunbc.http_ingress { HttpIngressTcp, HttpIngressUnixSocket, http_ingress_unix_socket_mode, http_ingress_binding_arguments }
 
 // WHAT ONE NATIVE-SERVE PROBE RUNS AND WHICH READER JUDGES IT, AS A ROW FIELD OF THE BINDING.
 // gunbc.target_binding NativeServeProgramProducer carries a NativeServeProbe, so the host's one
@@ -19,10 +19,20 @@ import gunbc.http_ingress { HttpIngressTcp, http_ingress_binding_arguments }
 //     one request (which may name the port of a listener the host holds and never answers), and
 //     awaited, bounded, to answer the typed 500 and exit by itself: the exit of that exact process is
 //     the observation that the timed-out computation is gone.
+//   NativeServeUnixSocket: the subject is launched on a unix socket at a path the host chooses (the
+//     reader's native_serve_probe_unix_launch_argv over that path) instead of on loopback TCP, every
+//     request is exchanged over that socket, and the host reports the account its own effective uid
+//     resolves to -- the account the kernel must attest as the peer of every connection the host makes.
+//     The subject's path first holds a stale socket (no process listens on it), which the subject must
+//     replace; and the binary is launched on each CONTENDED path, one per way another realization can
+//     be found there -- a live listener that never took the path's lock, and a stale socket whose lock
+//     the host holds -- each of which it must refuse rather than take: the host reports each launch's
+//     status and stderr and whether the path still held what the host put there afterwards.
 type NativeServePhase
   = NativeServePeerInstance
   | NativeServeRefusedLaunch
   | NativeServeDeadlineExit
+  | NativeServeUnixSocket
 
 type NativeServeProbe {
   reader: String
@@ -34,6 +44,7 @@ fn native_serve_phase_name(p: NativeServePhase) -> String {
     NativeServePeerInstance => "peer-instance"
     NativeServeRefusedLaunch => "refused-launch"
     NativeServeDeadlineExit => "deadline-exit"
+    NativeServeUnixSocket => "unix-socket"
   }
 }
 
@@ -42,7 +53,7 @@ fn native_serve_phase_name(p: NativeServePhase) -> String {
 // both as phase names. A declared phase the reader cannot judge would run and be ignored, and a
 // judged phase nobody runs would read defaults as observations; either is a refusal naming the
 // phase, evaluated by the host before it spawns anything, so a binding that declares a phase its
-// probe cannot satisfy stops the line (DESIGN section 5).
+// probe cannot satisfy stops the line (gunbc.design_argument::fail_closed).
 fn native_serve_phase_names(phases: List<NativeServePhase>) -> List<String> {
   map(phases, p => native_serve_phase_name(p: p))
 }
@@ -55,7 +66,7 @@ fn native_serve_phase_refusals(declared: List<String>, judged: List<NativeServeP
   )
 }
 
-// The three answers the host reads off a row to decide which phases to run, so no phase name is
+// The four answers the host reads off a row to decide which phases to run, so no phase name is
 // restated in the host.
 fn native_serve_declares_peer(probe: NativeServeProbe) -> Bool {
   any(probe.phases, p => p == NativeServePeerInstance)
@@ -69,10 +80,19 @@ fn native_serve_declares_deadline_exit(probe: NativeServeProbe) -> Bool {
   any(probe.phases, p => p == NativeServeDeadlineExit)
 }
 
+fn native_serve_declares_unix_socket(probe: NativeServeProbe) -> Bool {
+  any(probe.phases, p => p == NativeServeUnixSocket)
+}
+
 // ONE LAUNCH'S ARGV: the binding's arguments, rendered by the one renderer the deployment uses
 // (gunbc.http_ingress http_ingress_binding_arguments), on a loopback port the OS chooses.
 fn native_serve_probe_launch(handler: String, release_revision: String, cpu_limit_ms: Int, wall_limit_ms: Int) -> List<String> {
   http_ingress_binding_arguments(handler: handler, listener: HttpIngressTcp { host: "127.0.0.1", port: 0 }, release_revision: release_revision, cpu_limit_ms: Present { value: cpu_limit_ms }, wall_limit_ms: Present { value: wall_limit_ms })
+}
+
+// The same launch on a unix socket at the path the host chose (NativeServeUnixSocket).
+fn native_serve_probe_unix_launch(handler: String, socket_path: String, release_revision: String, cpu_limit_ms: Int, wall_limit_ms: Int) -> List<String> {
+  http_ingress_binding_arguments(handler: handler, listener: HttpIngressUnixSocket { path: socket_path as NonEmptyStr, mode: http_ingress_unix_socket_mode }, release_revision: release_revision, cpu_limit_ms: Present { value: cpu_limit_ms }, wall_limit_ms: Present { value: wall_limit_ms })
 }
 
 // ── WHAT EVERY READER OF A NATIVE-SERVE RUN SHARES: the three terminations and the parse of one raw

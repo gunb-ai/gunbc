@@ -3,7 +3,7 @@ module test.claim.machine_intake.machine_intake_bmc_secure_redfish_witness
 // BMC 1b item 3. The dry Redfish account-state reading and the Redfish Password PATCH write realization in
 // gunbc.machine_intake.bmc_secure, over the simulated controller's Redfish account service
 // (gunbc.bmc_model BmcWorld). Every check states its RUNG and is paired with a positive control on the real
-// path (DESIGN §4b): the census is EARNED BY PARSING BYTES the controller serves, never a handed structure; a
+// path (gunbc.design_argument::guarantee_ladder): the census is EARNED BY PARSING BYTES the controller serves, never a handed structure; a
 // controller that serves Redfish but whose census cannot be read is UNESTABLISHED, not secured; a foreign
 // enabled account with an unmanaged credential refuses; the factory 403 world refuses every authenticated read
 // but the Password PATCH; a refused PATCH leaves the world unchanged and mints nothing; the forced first

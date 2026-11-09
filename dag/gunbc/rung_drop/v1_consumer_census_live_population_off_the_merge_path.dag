@@ -8,7 +8,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // THE DROP. gunbc#11018 made the v1 consumer census's Rust reference population a PRODUCED
 // observation (gunbc.rust_item_host_observation head_rust_sources reads git.Inspect.HeadCommit,
 // git.Inspect.ListTreePathsAtRevision, git.Inspect.ShowTree and git.Core.Show), replacing four
-// hand-named crate roots -- a measurement copied from the tree, the oracle DESIGN section 5
+// hand-named crate roots -- a measurement copied from the tree, the oracle gunbc.design_argument::fail_closed
 // refuses. The consequence this row declares: v1_consumer_population() now reaches git, and the
 // hermetic per-PR floor has no route for it -- no mock case is published for those operations,
 // and v2.workflow.floor_changed_witness refuses a CHANGED witness that ends in a route gap unless a

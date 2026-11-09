@@ -170,7 +170,7 @@ test fn w_nat_difference_is_int() -> Bool {
 }
 
 // THE FOLD ITSELF, on the declared rows and on SUPPLIED rows. The ambiguity RED needs two incomparable minimal
-// carriers, which the one declared row cannot produce, so the rows are supplied (DESIGN section 3, a witness
+// carriers, which the one declared row cannot produce, so the rows are supplied (gunbc.design_argument::single_authority, a witness
 // discriminates at one interface); the declared row's own route is the source cells above.
 data nat_ref: DeclarationRef = decl_ref(module_path: "std.nat", decl_name: "Nat")
 data int_ref: DeclarationRef = decl_ref(module_path: "std.integer", decl_name: "Int")

@@ -59,7 +59,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // v2.compiler.resolve try_resolve_qualified_name_node: a qualified reference to test code can
 // reach its refusal door only if lowering keeps the path.
 //
-// THE SUBJECT IS LOWERING, SO THE INPUTS ARE SUPPLIED AT THE LOWERING BOUNDARY (DESIGN section 3,
+// THE SUBJECT IS LOWERING, SO THE INPUTS ARE SUPPLIED AT THE LOWERING BOUNDARY (gunbc.design_argument::single_authority,
 // a witness discriminates at one interface; review 68361 on gunbc#11683). Every shape row below
 // hands a parser-shaped node it CONSTRUCTS to the door
 // v2.compiler.body_lowering_fold body_lower_dotted_chain_lowered_optional, or to the expression-
@@ -448,7 +448,7 @@ test fn body_lowering_first_atom_fallback_would_truncate_the_chain() -> Bool {
 // Until gunbc#12033's PR2 this row was body_lowering_call_before_end_is_erased_today_holds and it
 // asserted, as a today-row, that `a.f().b` reaches the expression body as the bare atom `a`: the
 // call and the trailing projection gone, with no diagnostic. That is silent wrongness, which
-// DESIGN section 4b places BELOW the ladder rather than on it, and it was the more serious half of
+// gunbc.design_argument::guarantee_ladder places BELOW the ladder rather than on it, and it was the more serious half of
 // the single-step reader's damage -- the refusal half at least printed something.
 //
 // The row now asserts the whole chain survives, and it is the control that can DETECT the
@@ -456,7 +456,7 @@ test fn body_lowering_first_atom_fallback_would_truncate_the_chain() -> Bool {
 // answer is the atom `a` and this predicate demands a projection whose base is a call. A row
 // asserting only that the repaired fold builds a good tree would be green either way once the
 // fold exists, which is why the subject here is the shape the OLD reader could not produce.
-// Per DESIGN section 4b(4) it stays enrolled now that it greens: it is the regression control for
+// Per gunbc.design_argument::guarantee_ladder (dissolution on climb) it stays enrolled now that it greens: it is the regression control for
 // the fold, not a migration step that retires.
 //
 // The expected shape, left to right: `a.f()` closes the spine `a.f` into a Transform through it,
@@ -666,7 +666,7 @@ test fn body_lowering_qualified_value_reaches_arrow_body_whole() -> Bool {
 //
 // FALSE here means the production route loses a zero-arg call and the refusal is real.
 // TRUE here, with the supplied-shape row red, means this file's fixture does not inhabit the real
-// producer and the repair is to the fixture -- DESIGN section 3's pairing obligation, where a
+// producer and the repair is to the fixture -- gunbc.design_argument::witness_one_interface's pairing obligation, where a
 // supplied input is a hypothesis and the inhabitance claim is what makes it a reading.
 test fn body_lowering_parsed_zero_arg_call_lowers_through_its_path() -> Bool {
   match body_lowering_qualified_call_parsed() {
@@ -695,7 +695,7 @@ test fn body_lowering_supplied_zero_arg_call_lowers_through_its_path() -> Bool {
 
 // THE INHABITANCE CLAIM THIS FILE OWED AND DID NOT HAVE (quick-bat-813, 2026-09-22).
 //
-// Every supplied-node row here is a hypothesis about what the parser emits, and DESIGN section 3
+// Every supplied-node row here is a hypothesis about what the parser emits, and gunbc.design_argument::single_authority
 // says a supplied input owes ONE inhabitance claim that the real producer emits that shape. This
 // file had none for the CALL SUFFIX, and the hypothesis was wrong: dotted_fixture_call_suffix_no_args
 // built `()` as seq(lparen, rparen), a shape the parser does not produce, so every row through it

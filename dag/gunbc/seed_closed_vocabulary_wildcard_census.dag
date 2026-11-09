@@ -8,8 +8,8 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // A seed-side Rust `match` over the SAME vocabulary that ends in a catch-all discards
 // exactly that guarantee -- the wildcard absorbs every form the author did not think of,
 // including forms added to the .dag authority afterwards, and answers for them. This is
-// DESIGN section 5's fabricated-plausible-output failure sitting one layer below the
-// compiler's own claims, and DESIGN section 4b's rung honesty applied to the seed: a
+// gunbc.design_argument::fail_closed's fabricated-plausible-output failure sitting one layer below the
+// compiler's own claims, and gunbc.design_argument::guarantee_ladder's rung honesty applied to the seed: a
 // projection that ANSWERS where it cannot READ reports a state it never observed.
 //
 // The rows below are the sites this census turns on: six that still ANSWER WITH A VALUE,
@@ -19,7 +19,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // the honest classification of everything remaining are not rows here. The
 // full extraction is a measurement and lives in the change that landed this file, not
 // here; a ledger of sites that are already correct would be a second representation of
-// the source with no consumer (DESIGN section 2).
+// the source with no consumer (gunbc.design_argument::minimize_redundancy).
 //
 // THE MEASUREMENT, with its subject and its instrument, because a census without either
 // is a number nobody can re-derive.
@@ -62,7 +62,7 @@ type SeedWildcardDisposition =
   | EveryFormNamed
 
 // One hand-written seed site whose catch-all over a closed .dag vocabulary answers with a
-// value instead of refusing. Cited by SYMBOL (DESIGN section 3): the enclosing Rust
+// value instead of refusing. Cited by SYMBOL (gunbc.design_argument::single_authority): the enclosing Rust
 // function and the file that declares it, never a line offset.
 //
 // `vocabulary_authority` IS A CITATION AND IS CARRIED AS ONE. It was a `String` reading
@@ -71,20 +71,20 @@ type SeedWildcardDisposition =
 // module; `Connective` and `ExprData` are declared by `v1.std.core`) and `v1.items` (no
 // such module; `ItemKind` is declared by `v1.compiler.infer_items`). Nothing was wrong with
 // the authors; nothing could tell them. As `DeclarationRef` the same mistake is caught at
-// ingestion by the declaration index, which is DESIGN section 5's construction-over-
+// ingestion by the declaration index, which is gunbc.design_argument::fail_closed's construction-over-
 // validation: the repair is not to fix the spellings but to make an unresolvable authority
 // unwritable, at which point fixing the spellings is forced rather than remembered.
 //
 // It is a LIST because one row cites two authorities -- `ExprData` for the expression forms
 // and `LiteralValue` for the literal payloads -- which the flat String had rendered as the
-// word "and". A cardinality hidden inside a sentence is the DESIGN section 2 anemic-leaf
+// word "and". A cardinality hidden inside a sentence is the gunbc.design_argument::minimize_redundancy anemic-leaf
 // shape, and the fix for it falls out of modelling the leaf rather than being a separate
 // decision.
 //
 // The separate `vocabulary: String` field is GONE rather than kept beside this one. It held
 // the decl name -- "Connective" against an authority of "v1.core Connective" -- so it was a
 // second representation of a fact the citation already carries, and it is now
-// `decl_name` on the ref. Deriving it is DESIGN section 2; keeping both would have left the
+// `decl_name` on the ref. Deriving it is gunbc.design_argument::minimize_redundancy; keeping both would have left the
 // two free to disagree, which is exactly how the module half drifted in the first place.
 type SeedWildcardSite {
   file: String

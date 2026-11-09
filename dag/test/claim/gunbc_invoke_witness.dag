@@ -65,7 +65,7 @@ data gunbc_ci_deploy_invoke_srv1_wrong_entry_golden: String = concat(
 // v2.std.orchestration joins pipeline steps with newlines and emits none after the last, so
 // separation is now structural and the trailing byte simply has no author. Restoring it would mean
 // re-introducing a per-site concat to reproduce an artifact of the mechanism this change deletes,
-// which is DESIGN section 7's warts-for-byte-identity trap. The emitted workflows are unaffected
+// which is gunbc.design_argument::self_hosting's warts-for-byte-identity trap. The emitted workflows are unaffected
 // either way: the YAML block-scalar emitter normalizes the block body, and the measured
 // fleet-converge.yml diff carries no whitespace change at any bound step.
 
@@ -112,7 +112,7 @@ test fn gunbc_invoke_verify_artifacts_shell_nonempty_holds() -> Bool {
 // RED is below: an entry carrying a shell metacharacter must NOT reach the emitted command, and the
 // refusal must be a marker that is not valid workflow shell so the committed workflow drift gate
 // goes red. These two stay enrolled after the wall lands; deleting them would recreate
-// specification-without-execution one rung up (DESIGN section 4b, dissolution-on-climb applies to
+// specification-without-execution one rung up (gunbc.design_argument::guarantee_ladder, dissolution-on-climb applies to
 // production handling only, never the evidence).
 
 test fn gunbc_invoke_word_wall_refuses_metacharacter_entry_holds() -> Bool {

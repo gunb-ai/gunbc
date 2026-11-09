@@ -28,7 +28,7 @@ import gunbc.fabric.fabric_memory_grant_policy {
 }
 import gunbc.runner.runner_microvm { GuestCacheAllowance, AllowanceDerived, AllowanceUnderivable, gunbc_runner_microvm_guest_cache_allowance }
 
-// THE SUBJECT IS ONE INTERFACE AND ITS INPUTS ARE SUPPLIED (DESIGN 3). Every claim below but the
+// THE SUBJECT IS ONE INTERFACE AND ITS INPUTS ARE SUPPLIED (gunbc.design_argument::witness_one_interface). Every claim below but the
 // last three constructs its policy, its requirement and its identities rather than deriving them by
 // running gunbc.floor.floor_demand and gunbc.runner.runner_microvm -- those have their own subjects and their
 // own discriminating reds, and re-executing them here would buy no coverage at the price of their
@@ -91,7 +91,7 @@ fn fixture_policy(allowance: Int, ceiling: Int, permit: MemoryCompatibilityPermi
 }
 
 // THE WITNESS MATCHES THE STANDING ARM ITSELF. A Bool predicate over this coproduct lived on the
-// carrier in an earlier revision and had no consumer but this file (DESIGN 3c: a witness is not a
+// carrier in an earlier revision and had no consumer but this file (gunbc.design_argument::consumption: a witness is not a
 // consumer), so it was deleted; every site here has the MemoryGrantStanding in hand and matches it.
 fn standing_is_requirement_checked(s: MemoryGrantStanding) -> Bool {
   match s {
@@ -347,7 +347,7 @@ test fn a_permit_default_above_the_ceiling_is_refused_by_the_ceiling_law() -> Bo
   }
 }
 
-// INHABITANCE (DESIGN 3): THE REAL PRODUCERS EMIT THE SHAPE THE CLAIMS ABOVE SUPPLY.
+// INHABITANCE (gunbc.design_argument::single_authority): THE REAL PRODUCERS EMIT THE SHAPE THE CLAIMS ABOVE SUPPLY.
 //
 // The fleet policy is assembled the way its production consumer will assemble it: the allowance is
 // READ from gunbc.runner.runner_microvm's real producer over the real floor cache receipt, the ceiling is

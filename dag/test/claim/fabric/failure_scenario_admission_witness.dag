@@ -481,7 +481,7 @@ test fn w_unobserved_supply_is_never_admitted_as_capacity() -> Bool {
 
 // NO CLAIM THAT A PLANNED DEMAND REFUSES, AND THAT IS THE POINT: after review 67483 a planning
 // figure cannot inhabit CommittedDemand at all, so the state has no spelling here to be red about
-// (DESIGN section 4b - ask whether the red is authorable before writing the check). What answers the
+// (gunbc.design_argument::guarantee_ladder - ask whether the red is authorable before writing the check). What answers the
 // planning question instead is gunbc-private#141's own RepairIntervalPlanAssessment, which carries
 // the assumptions it rests on and cannot say "survived".
 

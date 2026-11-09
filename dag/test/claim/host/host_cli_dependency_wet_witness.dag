@@ -57,7 +57,7 @@ test fn observe_sshpass_wet_posix_command_v_check_does_not_crash() -> Bool {
 // CliTool, this returns an absence carrying the row's provision sentence". That case no longer
 // exists: the roster is a List<CliTool>, so a row without its tool has no constructor at all, and
 // an annotation describing how a witness catches an unwritable state is
-// worse than none -- it would be cited as coverage for a class that cannot occur (§4b: ask whether
+// worse than none -- it would be cited as coverage for a class that cannot occur (gunbc.design_argument::guarantee_ladder: ask whether
 // the check's RED is authorable before claiming the check).
 //
 // WHAT IT ACTUALLY PROVES: the roster walk reaches a real PATH observation for every enrolled row

@@ -61,7 +61,7 @@ import extdeps.vllm.server {
 // settles it rather than a preference.
 //
 // These arrived as text on the wire, and an earlier version kept them as text on the grounds that a
-// capture module should hold what it captured. That defence does not survive §2: a stream of digits
+// capture module should hold what it captured. That defence does not survive gunbc.design_argument::minimize_redundancy: a stream of digits
 // is not a different concept from the number it spells, so holding both would be one concept in two
 // representations, and holding only the text loses ordering and arithmetic on top of the unit. It
 // also defeated the module's own consumers -- a context length nothing can compare with is a blob
@@ -516,7 +516,7 @@ fn vllm_member_shape_cause(field: NonEmptyStr, lookup: JsonMemberLookup) -> NonE
 // ONE LOOKUP PER ENTRY, AND ONE AUTHORITY FOR WHAT ITS id IS. An earlier spelling asked the same
 // question twice with two predicates -- does this entry's id match, and is this entry's id readable
 // -- and their least common ancestor ran both filters over the same list, so json_object_unique_member
-// executed twice per entry (DESIGN 2: a repetition whose ancestor can carry the first value is
+// executed twice per entry (gunbc.design_argument::minimize_redundancy: a repetition whose ancestor can carry the first value is
 // authored duplication, not a cache obligation).
 //
 // THE TRAVERSAL WAS THE CHEAP HALF OF THE COST. The expensive half was that two independent readings
@@ -591,7 +591,7 @@ fn vllm_models_data_standing(doc: JsonValue) -> VllmModelsDataStanding {
 //
 // WHAT KEPT THEM ALIVE THROUGH ONE REVISION WAS A COST, AND IT IS SOLVED RATHER THAN TRADED AWAY. A
 // fold accumulating every matched entry appends to a list on each hit, which is the copied
-// accumulator DESIGN 6 says to fix regardless of the realized n. It is unnecessary here: a match
+// accumulator gunbc.design_argument::how_to_work says to fix regardless of the realized n. It is unnecessary here: a match
 // count above one REFUSES, so nothing downstream needs the second matching entry. The fold carries
 // the count and a zero-or-one first match, so it appends at most once over the whole traversal and
 // still tells 0, 1 and many apart -- which is the only distinction vllm_models_route_standing makes.

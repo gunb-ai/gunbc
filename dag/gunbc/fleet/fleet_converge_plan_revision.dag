@@ -1,5 +1,6 @@
 module gunbc.fleet.fleet_converge_plan_revision
 
+import extdeps.github.auth { github_rest }
 import std.types { String, Bool, NonEmptyStr, FilePath, GitRef, CommitSha }
 import std.optional { Optional, Present, Absent }
 import std.algebra { trim }
@@ -134,7 +135,7 @@ fn resolve_plan_revision_admission() -> PlanRevisionAdmission {
     FleetConvergePlanReceiptUnreadable { reason: r } => PlanRunUnreadable { cause: r }
     FleetConvergePlanReceiptDecoded { receipt: receipt } => {
       let run_id = actions_variable_trimmed(name: fleet_converge_plan_run_id_env_name as NonEmptyStr)
-      match github.WorkflowRuns.GetRun(auth_token: "", owner: gunbc_repository.owner, repo: gunbc_repository.name, run_id: run_id) {
+      match github_rest(call: token => github.WorkflowRuns.GetRun(auth_token: token, owner: gunbc_repository.owner, repo: gunbc_repository.name, run_id: run_id)) {
         RestRefused { refusal } => PlanRunUnreadable { cause: join(["plan run ", run_id, " could not be read: ", rest_refusal_text(o: refusal)], "") }
         RestAnswered { answer: got } => admit_plan_revision(
           receipt_repository: receipt.run.repository,
@@ -224,7 +225,7 @@ fn verify_checkout_at_plan_revision() -> ProcessExit {
 // RUN OF THIS WORKFLOW FILE (path, not name -- names are cosmetic); be a workflow_dispatch (a push
 // run of fleet-converge is not a plan somebody dispatched); have COMPLETED with conclusion success
 // (a run that died before its upload step has no artifact to cite -- and a failed plan run is not a
-// plan, §5, so a red plan is refused here rather than argued with later); sit on the default branch;
+// plan, gunbc.design_argument::fail_closed, so a red plan is refused here rather than argued with later); sit on the default branch;
 // and carry the expected artifact, unexpired. What is NOT admitted here: the CONTENT of the receipt
 // inside that artifact -- resolve_plan_revision and the transaction admissions read the receipt
 // itself and refuse by its own fields, and this step cannot open the artifact it is only about to
@@ -355,11 +356,11 @@ fn admit_run_pointer_step(pointer_env: String, artifact_name: String) -> Process
   if !run_pointer_text_ok(text: pointer) {
     exit_failure(reason: run_pointer_admission_text(a: RunPointerMalformed { value: pointer }))
   } else {
-    let run_result = match github.WorkflowRuns.GetRun(auth_token: "", owner: gunbc_repository.owner, repo: gunbc_repository.name, run_id: pointer) {
+    let run_result = match github_rest(call: token => github.WorkflowRuns.GetRun(auth_token: token, owner: gunbc_repository.owner, repo: gunbc_repository.name, run_id: pointer)) {
       RestAnswered { answer: answered } => RestAnswered { answer: answered.run }
       RestRefused { refusal: refusal } => RestRefused { refusal: refusal }
     }
-    let artifacts_result = match github.Artifacts.ListWorkflowRunArtifacts(auth_token: "", owner: gunbc_repository.owner, repo: gunbc_repository.name, run_id: pointer) {
+    let artifacts_result = match github_rest(call: token => github.Artifacts.ListWorkflowRunArtifacts(auth_token: token, owner: gunbc_repository.owner, repo: gunbc_repository.name, run_id: pointer)) {
       RestAnswered { answer: answered } => RestAnswered { answer: answered.result }
       RestRefused { refusal: refusal } => RestRefused { refusal: refusal }
     }
@@ -398,7 +399,7 @@ fn admit_apply_run_pointer() -> ProcessExit {
 // correct and stays; what was missing is that nothing checked at the top of the job what the fold
 // would check after being paid for. This step asserts NO new truth -- every check here is the same
 // admission the fold makes, moved to where it is cheap -- and so it cannot pass a dispatch the fold
-// would refuse. (Naming DESIGN §6b's tell: a budget or timeout bolted onto the resolve would have
+// would refuse. (Naming gunbc.design_argument::earliest_unjustified_boundary's tell: a budget or timeout bolted onto the resolve would have
 // been the wrong repair; the missing admission was one link earlier, at the step that starts the
 // ten-minute process.)
 // ============================================================================

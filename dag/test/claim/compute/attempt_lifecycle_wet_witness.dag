@@ -40,10 +40,11 @@ import gunbc.owned_cargo_target { owned_cargo_target_dir }
 import std.measure { byte_size }
 import std.fabric_blob { fabric_blob_reading_path }
 import gunbc.compute.work_class_grant { work_class_grant, work_class_grant_rows, work_class_of }
-import extdeps.git.object_store { git_object_id_from_untagged_hex, GitObjectId }
+import extdeps.git.object_store { git_object_id_from_untagged_hex, GitObjectId, git_object_id_wire_hex }
+import product.fabric.work { SourceManifestRef }
 import gunbc.compute.work_request {
   ComputeCapacityLedgerUnavailable,
-  ExactTree, CompileEntry, work_default_build, WorkToolchainIdentity, work_toolchain_observed, WorkOutput, WorkSucceeded, work_outcome_wire,
+  WorkSubject, GitTreeProvenance, WorkToolchainRequirement, AdmittedToolchain, work_toolchain_admitted, CompileEntry, work_default_build, WorkToolchainIdentity, work_toolchain_observed, WorkOutput, WorkSucceeded, work_outcome_wire,
   WorkEnding, WorkEndedSucceeded, WorkEndedFailed, WorkEndedRefusedByInfrastructure, WorkEndedCancelled, WorkEndedOutputMismatch,
 }
 import gunbc.compute.attempt_lifecycle {
@@ -445,7 +446,7 @@ test fn a_terminal_verdict_outside_the_closed_set_is_unreadable() -> Bool {
 // THE SELF-DECLARED BOUND HAS A BOUND, AND AN OVER-LONG DECLARATION REFUSES RATHER THAN BEING
 // CLAMPED. The deadline is declared by the party it protects, so nothing in the gate alone stops a
 // producer declaring an hour -- and the cost of that does not land on the producer, it lands on
-// every other contender as a seat nobody may reclaim. That is DESIGN 5's externalization: an
+// every other contender as a seat nobody may reclaim. That is gunbc.design_argument::fail_closed's externalization: an
 // accepted risk re-exported to another principal while the contract keeps its name.
 //
 // CLAMPING WOULD BE THE WIDEN. Admitting the attempt under a bound it did not ask for, and then
@@ -557,11 +558,19 @@ fn the_loser_of_a_launch_race_never_reports_that_it_settled_the_slot_cell(root: 
 // the unused ceiling seat is returned through ComputeNothingToRelease rather than silently. Were
 // the retry route to skip compute_open_attempt, it would reach compute_run_leased and end as a
 // unit's outcome, never as this refusal.
-fn fixture_toolchain(rustc: String) -> WorkToolchainIdentity {
-  work_toolchain_observed(
+fn fixture_subject(tree: GitObjectId) -> WorkSubject {
+  WorkSubject {
+    manifest: join(["fixture-manifest:", git_object_id_wire_hex(oid: tree) as String], "") as SourceManifestRef,
+    provenance: GitTreeProvenance { tree: tree },
+  }
+}
+
+fn fixture_toolchain(rustc: String) -> AdmittedToolchain {
+  let observed = work_toolchain_observed(
     rustc_verbose: rustc as NonEmptyStr, target_triple: "fixture-triple" as NonEmptyStr, cargo_version: "cargo fixture" as NonEmptyStr,
     cache_release: "sccache fixture" as NonEmptyStr, provider_revision: match git_object_id_from_untagged_hex(hex: "2222222222222222222222222222222222222222") { Present { value: oid } => oid  Absent => "2222222222222222222222222222222222222222" },
   )
+  work_toolchain_admitted(requirement: WorkToolchainRequirement { target_triple: "fixture-triple" as NonEmptyStr, rustc_release_prefix: "fixt" as NonEmptyStr }, observed: observed)
 }
 
 // SLOT FIRST, THEN THE LEDGER (ruling on #13074). A slot already held under the retry's reference
@@ -614,7 +623,7 @@ fn a_refused_reservation_closes_the_slot_it_was_taken_under_cell(root: String) -
   let opened = compute_open_attempt(instance: instance_at(root: root), identity: "abcdef0123456789", owner: DirectInvocation { why: "wet witness" }, reference: reference, granted: kibibyte(count: 1048576))
   let tree = match git_object_id_from_untagged_hex(hex: "0000000000000000000000000000000000000000") { Present { value: oid } => oid  Absent => "0000000000000000000000000000000000000000" }
   let r = compute_refused_after_open(
-    instance: instance_at(root: root), identity: "abcdef0123456789", subject: ExactTree { tree: tree }, op: work_default_build(),
+    instance: instance_at(root: root), identity: "abcdef0123456789", subject: fixture_subject(tree: tree), op: work_default_build(),
     layout: layout, opened: opened, cause: ComputeCapacityLedgerUnavailable { detail: "fixture: ledger refused" })
   let after = attempt_slot_read(store: slots, reference: reference)
   (match opened { AttemptGateReady { record: _, generation: _ } => true  AttemptGateRefused { detail: _ } => false })
@@ -624,7 +633,7 @@ fn a_refused_reservation_closes_the_slot_it_was_taken_under_cell(root: String) -
   }
 }
 
-// THE REAL ROUTE, ONCE (DESIGN section 3 pairing obligation for the pure decisions in
+// THE REAL ROUTE, ONCE (gunbc.design_argument::witness_one_interface pairing obligation for the pure decisions in
 // test.claim.compute.work_request_witness). A build's record is committed through
 // compute_store_commit with its two binaries staged beside the store root, read back through
 // compute_store_read as a served success, and resolved by compute_dependency_read into two VERIFIED
@@ -652,7 +661,7 @@ test fn a_build_record_round_trips_and_a_dependent_resolves_verified_binaries() 
   let g = Filesystem.WriteCreateNew(path: join([root_path, "/w.gunbc"], ""), content: "gunbc-bytes")
   let c = Filesystem.WriteCreateNew(path: join([root_path, "/w.claim_batch"], ""), content: "claim-batch-bytes")
   let tree = match git_object_id_from_untagged_hex(hex: "1111111111111111111111111111111111111111") { Present { value: oid } => oid  Absent => "1111111111111111111111111111111111111111" }
-  let request = ComputeWorkRequest { subject: ExactTree { tree: tree }, operation: work_default_build(), toolchain: fixture_toolchain(rustc: "rustc fixture") }
+  let request = ComputeWorkRequest { subject: fixture_subject(tree: tree), operation: work_default_build(), toolchain: fixture_toolchain(rustc: "rustc fixture") }
   let outcome = WorkSucceeded { identity: "fixture-identity", outputs: [
     WorkOutput { declared: "release/gunbc", blob: "b1" },
     WorkOutput { declared: "release/claim_batch", blob: "b2" },
@@ -660,13 +669,13 @@ test fn a_build_record_round_trips_and_a_dependent_resolves_verified_binaries() 
   let committed = compute_store_commit(
     materialization: ComputeMaterialization { store: root, request: request, plan: ComputeMemoized },
     layout: layout, op: work_default_build(), outcome: outcome,
-    document: work_outcome_wire(o: outcome, subject: ExactTree { tree: tree }, op: work_default_build()))
+    document: work_outcome_wire(o: outcome, subject: fixture_subject(tree: tree), op: work_default_build()))
   let served = compute_store_read(store: root, req: request)
   let resolved = compute_dependency_read(store: root, build: request)
   let other_tree = match git_object_id_from_untagged_hex(hex: "3333333333333333333333333333333333333333") { Present { value: oid } => oid  Absent => "3333333333333333333333333333333333333333" }
-  let other_toolchain = compute_store_read(store: root, req: ComputeWorkRequest { subject: ExactTree { tree: tree }, operation: work_default_build(), toolchain: fixture_toolchain(rustc: "rustc fixturf") })
-  let other_subject = compute_store_read(store: root, req: ComputeWorkRequest { subject: ExactTree { tree: other_tree }, operation: work_default_build(), toolchain: fixture_toolchain(rustc: "rustc fixture") })
-  let other_operation = compute_store_read(store: root, req: ComputeWorkRequest { subject: ExactTree { tree: tree }, operation: CompileEntry { entry: "dag/t.dag" as FilePath }, toolchain: fixture_toolchain(rustc: "rustc fixture") })
+  let other_toolchain = compute_store_read(store: root, req: ComputeWorkRequest { subject: fixture_subject(tree: tree), operation: work_default_build(), toolchain: fixture_toolchain(rustc: "rustc fixturf") })
+  let other_subject = compute_store_read(store: root, req: ComputeWorkRequest { subject: fixture_subject(tree: other_tree), operation: work_default_build(), toolchain: fixture_toolchain(rustc: "rustc fixture") })
+  let other_operation = compute_store_read(store: root, req: ComputeWorkRequest { subject: fixture_subject(tree: tree), operation: CompileEntry { entry: "dag/t.dag" as FilePath }, toolchain: fixture_toolchain(rustc: "rustc fixture") })
   let stage_left = Filesystem.Read(path: join([root_path, "/w.gunbc"], "")).success
   let removed = shell.Remove.RecursiveForce(path: root_path)
   log.success && g.success && c.success
@@ -706,8 +715,8 @@ fn target_lifetime_settle(root_path: String, write_log: Bool) -> ProvideResult {
     WorkOutput { declared: "release/claim_batch", blob: "b2" },
   ], log_path: compute_work_log_path(records: layout.records) }
   compute_settled_record(
-    materialization: ComputeMaterialization { store: reuse_store(root_path: root_path), request: ComputeWorkRequest { subject: ExactTree { tree: reuse_tree() }, operation: work_default_build(), toolchain: fixture_toolchain(rustc: "rustc fixture") }, plan: ComputeMemoized },
-    layout: layout, identity: "fixture-identity", subject: ExactTree { tree: reuse_tree() }, op: work_default_build(), outcome: outcome)
+    materialization: ComputeMaterialization { store: reuse_store(root_path: root_path), request: ComputeWorkRequest { subject: fixture_subject(tree: reuse_tree()), operation: work_default_build(), toolchain: fixture_toolchain(rustc: "rustc fixture") }, plan: ComputeMemoized },
+    layout: layout, identity: "fixture-identity", subject: fixture_subject(tree: reuse_tree()), op: work_default_build(), outcome: outcome)
 }
 
 test fn a_settlement_that_landed_removes_the_owned_target() -> Bool {
@@ -774,7 +783,7 @@ fn reuse_commit_detail(root_path: String) -> String {
   let log = Filesystem.Write(path: compute_work_log_path(records: layout.records), content: "built\n")
   let g = Filesystem.WriteCreateNew(path: join([root_path, "/w.gunbc"], ""), content: "gunbc-bytes")
   let c = Filesystem.WriteCreateNew(path: join([root_path, "/w.claim_batch"], ""), content: "claim-batch-bytes")
-  let request = ComputeWorkRequest { subject: ExactTree { tree: reuse_tree() }, operation: work_default_build(), toolchain: fixture_toolchain(rustc: "rustc fixture") }
+  let request = ComputeWorkRequest { subject: fixture_subject(tree: reuse_tree()), operation: work_default_build(), toolchain: fixture_toolchain(rustc: "rustc fixture") }
   let outcome = WorkSucceeded { identity: "fixture-identity", outputs: [
     WorkOutput { declared: "release/gunbc", blob: "b1" },
     WorkOutput { declared: "release/claim_batch", blob: "b2" },
@@ -782,7 +791,7 @@ fn reuse_commit_detail(root_path: String) -> String {
   let committed = compute_store_commit(
     materialization: ComputeMaterialization { store: reuse_store(root_path: root_path), request: request, plan: ComputeMemoized },
     layout: layout, op: work_default_build(), outcome: outcome,
-    document: work_outcome_wire(o: outcome, subject: ExactTree { tree: reuse_tree() }, op: work_default_build()))
+    document: work_outcome_wire(o: outcome, subject: fixture_subject(tree: reuse_tree()), op: work_default_build()))
   if !(log.success && g.success && c.success) { "the staged build files could not be written" } else {
     match committed {
       ComputeCommitted => ""
@@ -823,7 +832,7 @@ fn reuse_path_absent(path: String) -> Bool {
 
 fn reuse_served_without_production(root_path: String) -> Bool {
   let instance = srv1_live_dashboard_instance()
-  let subject = ExactTree { tree: reuse_tree() }
+  let subject = fixture_subject(tree: reuse_tree())
   let toolchain = fixture_toolchain(rustc: "rustc fixture")
   let work_dir = compute_layout_in(instance: instance, store_root: DurableHostVolume, identity_hex: compute_work_identity(subject: subject, op: work_default_build(), toolchain: toolchain)).work_dir
   let before = reuse_path_absent(path: work_dir)
@@ -866,7 +875,7 @@ fn reuse_warm_cli(root: String) -> ProcessExit {
 // silently rebuild over a store that is lying; a Served would hand a dependent bytes nobody checked.
 // The damaged path is the one the verified reading itself names, so no path is spelled here.
 fn reuse_request() -> ComputeWorkRequest {
-  ComputeWorkRequest { subject: ExactTree { tree: reuse_tree() }, operation: work_default_build(), toolchain: fixture_toolchain(rustc: "rustc fixture") }
+  ComputeWorkRequest { subject: fixture_subject(tree: reuse_tree()), operation: work_default_build(), toolchain: fixture_toolchain(rustc: "rustc fixture") }
 }
 
 fn reuse_served_and_resolved(root_path: String) -> Bool {
@@ -926,7 +935,7 @@ test fn a_build_whose_declared_output_is_missing_commits_no_record() -> Bool {
   let committed = compute_store_commit(
     materialization: ComputeMaterialization { store: reuse_store(root_path: root_path), request: reuse_request(), plan: ComputeMemoized },
     layout: layout, op: work_default_build(), outcome: outcome,
-    document: work_outcome_wire(o: outcome, subject: ExactTree { tree: reuse_tree() }, op: work_default_build()))
+    document: work_outcome_wire(o: outcome, subject: fixture_subject(tree: reuse_tree()), op: work_default_build()))
   let after = compute_store_read(store: reuse_store(root_path: root_path), req: reuse_request())
   // Positive control: the same commit with BOTH outputs staged lands, so the refusal above is the missing output and nothing else.
   let g2 = Filesystem.Write(path: join([root_path, "/w.gunbc"], ""), content: "gunbc-bytes")
@@ -934,7 +943,7 @@ test fn a_build_whose_declared_output_is_missing_commits_no_record() -> Bool {
   let recommitted = compute_store_commit(
     materialization: ComputeMaterialization { store: reuse_store(root_path: root_path), request: reuse_request(), plan: ComputeMemoized },
     layout: layout, op: work_default_build(), outcome: outcome,
-    document: work_outcome_wire(o: outcome, subject: ExactTree { tree: reuse_tree() }, op: work_default_build()))
+    document: work_outcome_wire(o: outcome, subject: fixture_subject(tree: reuse_tree()), op: work_default_build()))
   let removed = shell.Remove.RecursiveForce(path: root_path)
   log.success && g.success && g2.success && c2.success
     && (match committed { ComputeCommitRefused { detail } => string_contains(s: detail, pattern: "w.claim_batch")  _ => false })

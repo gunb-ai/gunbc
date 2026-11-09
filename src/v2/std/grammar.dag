@@ -2149,7 +2149,7 @@ fn formal_production_for_lhs_exact(
 // once: that resolution selects the production (resolution_production_for_lhs_exact) and carries the
 // slots derivation reads. Selecting with formal_production_for_lhs_exact and then deriving with
 // derive_grammar_relation_row_node resolved the same program twice -- one demand, two productions of
-// its answer (DESIGN §2). derive_grammar_relation_row_node stays for a production chosen by its
+// its answer (gunbc.design_argument::minimize_redundancy). derive_grammar_relation_row_node stays for a production chosen by its
 // caller rather than selected here.
 fn derive_grammar_relation_row_for_lhs(
   productions: List<FormalProduction>,
@@ -3507,7 +3507,7 @@ fn grammar_emit_index(root: GrammarRoot) -> Outcome<GrammarEmitIndex> {
 
 // A DUPLICATED PROJECTION EDGE IS A MALFORMED TREE, NOT AN ARM THAT DOES NOT FIT. Parse mints each
 // projection edge once, so two of one name refuse outright: treating them as missing would let
-// ordered choice try the next arm and emit through a production the tree never named (DESIGN 5).
+// ordered choice try the next arm and emit through a production the tree never named (gunbc.design_argument::fail_closed).
 fn grammar_emit_projection_ambiguous(at: Node) -> GrammarEmitWalk {
   GrammarEmitRefused { diagnostic: grammar_emit_diagnostic(reason: ^grammar_emit_projection_ambiguous, at: at) }
 }

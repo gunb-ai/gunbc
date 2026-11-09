@@ -1,0 +1,13 @@
+module gunbc.annotation_reference_home
+
+// THE CITED HOME of the check-references holding control (v2.cli.reference_check). Its declarations
+// are what the citer's markers name; renaming one of them turns the holding control red without
+// editing the citer, which is the point of a resolved reference.
+
+type AnnotationReferenceHome {
+  home_field: Int
+}
+
+fn annotation_reference_home_value() -> Int {
+  7
+}

@@ -423,7 +423,7 @@ fn acd_nested_inner_in_first_arm_only(d: ActivationDependencies, root: Node) -> 
   }
 }
 
-// (j) INHABITANCE (DESIGN section 3, the pairing obligation for acd_f..acd_i): the real front end writes a
+// (j) INHABITANCE (gunbc.design_argument::witness_one_interface, the pairing obligation for acd_f..acd_i): the real front end writes a
 // Branch of three positionals and a Match whose arms are (pattern, body), and the derivation turns them into
 // demands. Deleting the real route makes acd_assemble answer Absent and this claim false.
 test fn acd_j_front_end_writes_the_shape_the_derivation_reads_holds() -> Bool {
@@ -597,7 +597,7 @@ fn acd_rejection_is_in_the_else_arm(tree: ResolvedTree) -> Bool {
 
 fn acd_locus_node(l: Locus) -> Optional<Node> {
   match l {
-    NodeLocus { anchor: a } => optional_present(value: a.at)
+    NodeLocus { anchor: a } => optional_present(value: a.at.node)
     _ => optional_absent()
   }
 }

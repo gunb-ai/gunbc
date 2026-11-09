@@ -1,6 +1,6 @@
 module test.claim.runner.runner_qualification_attempt_run_witness
 
-// THE QUALIFICATION DRIVER'S DECIDABLE PARTS, AT THEIR OWN INTERFACES (DESIGN section 3, a witness discriminates at
+// THE QUALIFICATION DRIVER'S DECIDABLE PARTS, AT THEIR OWN INTERFACES (gunbc.design_argument::single_authority, a witness discriminates at
 // one interface): the exit the launch may claim, read from the remote manager's summary over supplied stderr; the
 // launch command the attempt unit runs; the attempt label; and, over the REAL anchored row, that the live transport
 // refuses before any contact while mtcollins1's host key has no anchor. The wet binding itself runs only on the live

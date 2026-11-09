@@ -10,7 +10,7 @@ import gunbc.auth.approval_decision_store {
   file_approval_request, commit_broker_decision, pending_escalations, PendingEscalationsListed, PendingEscalationsRefused,
 }
 
-// THE INHABITANCE CLAIM for the listing's membership rule (DESIGN 3, the pairing obligation):
+// THE INHABITANCE CLAIM for the listing's membership rule (gunbc.design_argument::witness_one_interface, the pairing obligation):
 // test.claim.approval_decision_store_witness supplies observed slots to
 // pending_fold_step; this claim runs the REAL route the pending read takes --
 // file_approval_request and commit_broker_decision publishing generations into a throwaway store,

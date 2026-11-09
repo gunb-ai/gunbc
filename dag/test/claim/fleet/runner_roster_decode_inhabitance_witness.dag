@@ -11,7 +11,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data srv4_01_slot: RunnerSlotIdentity = RunnerSlotIdentity { host: operator_host_srv4, slot_index: 1 }
 
-// INHABITANCE CLAIM (DESIGN section 3 pairing), in its own file because the REAL producer
+// INHABITANCE CLAIM (gunbc.design_argument::witness_one_interface pairing), in its own file because the REAL producer
 // (organization_runner_roster_read) has a far larger closure than the connectivity witness that supplies rosters:
 // the supplied rows there are what the REAL decode emits. A GitHub org-runners JSON body carrying a live and a dead
 // JIT registration of srv4-01 goes through decode_roster_page_json and the decoded rows feed the same observation

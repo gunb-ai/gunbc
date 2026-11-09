@@ -298,7 +298,7 @@ test fn a_capability_observed_before_its_issuance_is_refused_as_not_yet_valid() 
 // `<` is lexicographic. "2026-9-06T00:07:00Z" is the same instant as the canonical form and sorts
 // AFTER "2026-10-01T..."; a stamp carrying a local offset compares as though the offset were not
 // there. Under a permissive verifier those compare as times and silently answer wrongly, which is
-// the fabricated-plausible-output arm DESIGN section 5 forbids. So the shape is required.
+// the fabricated-plausible-output arm gunbc.design_argument::fail_closed forbids. So the shape is required.
 test fn a_non_canonical_observation_time_refuses_rather_than_being_ordered() -> Bool {
   match verify_authentic_at(claims: good_claims(), observed_at: "2026-9-06T00:07:00Z") {
     CapabilityRefused { cause: c } =>

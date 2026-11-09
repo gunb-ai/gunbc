@@ -3,7 +3,8 @@ module extdeps.provisioning.ubuntu_seeded_install_media_remaster
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.tools.xorriso { xorriso_extract_tree_command, xorriso_replay_build_pinned_dates_command, XorrisoPathListCommand, XorrisoChownRecursive, XorrisoChgrpRecursive, XorrisoChmod }
-import extdeps.tools.gnu_coreutils { mkdir_parents_command, mktemp_directory_command, rm_recursive_force_one_file_system_command }
+import extdeps.tools.gnu_coreutils { mkdir_parents_command, mktemp_directory_command, rm_recursive_force_one_file_system_command, cp_command }
+import extdeps.exec.command { ArgvCommand }
 import extdeps.tools.chmod { chmod_recursive_set_mode_command, chmod_path_resolved_program }
 import extdeps.posix.test_utility { test_regular_file_command }
 import extdeps.crypto.hash { Digest, Sha256, Sha512, sha256sum_file_command }
@@ -11,7 +12,7 @@ import extdeps.tools.curl { curl_download_command }
 import extdeps.provisioning.ubuntu_install_media { UbuntuInstallMediaGrubConfig, ubuntu_install_media_grub_cfg_for }
 import extdeps.provisioning.ubuntu_seeded_install_media {
   NoCloudSeedFile,
-  AdmittedSeedArtifact, SeedArtifactsAdmitted, SeedArtifactsRefused,
+  AdmittedSeedArtifact, SeedArtifactsAdmitted, SeedArtifactsRefused, SeedArtifactSource, SeedArtifactFetchedFrom, SeedArtifactCopiedFrom,
   seeded_install_media_seed_artifact_admission, seed_artifact_admission_refusal_text,
   UbuntuSeededInstallMediaBuildInput,
 }
@@ -257,7 +258,15 @@ fn install_media_remaster_write_seeds(host: CommandHost, writes: List<SeedWrite>
   })
 }
 
-// EACH ARTIFACT IS FETCHED, THEN READ BACK: the fetch's success is not the bytes' identity, so the
+// THE BYTES ARE PLACED BY THEIR SOURCE'S ONE COMMAND: fetched from the URL, or copied from the file on this host.
+fn seed_artifact_place_command(source: SeedArtifactSource, destination: NonEmptyStr) -> ArgvCommand {
+  match source {
+    SeedArtifactFetchedFrom { url: u } => curl_download_command(url: u as String, destination: destination as String)
+    SeedArtifactCopiedFrom { path: p } => cp_command(source: p as String, destination: destination as String)
+  }
+}
+
+// EACH ARTIFACT IS PLACED, THEN READ BACK: the fetch's success is not the bytes' identity, so the
 // member is admitted only when its measured sha256 equals the one the input names. The first
 // artifact that does not hold ends the seed.
 // THE READBACK IS sha256sum'S, so it holds only against a Sha256 pin with that hex: a Sha512 pin can
@@ -273,14 +282,14 @@ fn install_media_remaster_fetch_artifact(host: CommandHost, nocloud_dir: NonEmpt
   decl_ref(module_path: "extdeps.provisioning.ubuntu_seeded_install_media_remaster", decl_name: "install_media_remaster_fetch_artifacts"),
 ] {
   let path = concat(nocloud_dir as String, "/", artifact.basename.value as String) as NonEmptyStr
-  match host_command(host: host, command: curl_download_command(url: artifact.source_url as String, destination: path as String)) {
+  match host_command(host: host, command: seed_artifact_place_command(source: artifact.source, destination: path)) {
     HostCommandDone { stdout: _ } =>
       match install_media_remaster_digest(host: host, path: path) {
         Absent => Present { value: install_media_remaster_digest_refusal(host: host, path: path) }
         Present { value: d } =>
           if seed_artifact_readback_holds(read_back_sha256_hex: d, pin: artifact.digest) { none } else { Present { value: concat("seed artifact ", artifact.basename.value as String, " read back sha256 ", d, " but the input names ", artifact.digest.hex as String) } }
       }
-    other => Present { value: concat("fetching seed artifact ", artifact.basename.value as String, ": ", host_command_outcome_text(e: other)) }
+    other => Present { value: concat("placing seed artifact ", artifact.basename.value as String, ": ", host_command_outcome_text(e: other)) }
   }
 }
 

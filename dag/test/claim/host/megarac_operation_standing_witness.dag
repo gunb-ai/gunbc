@@ -90,7 +90,7 @@ test fn w_the_committed_rows_ground_0_32_by_route_and_the_read_build_by_the_run(
     // established it -- so this claim reads the Optional honestly: NO build, NO join, and this claim goes
     // red beside every other claim that leans on the reading, never passing vacuously against a missing
     // build. The Absent arm here is the same shape the ledger enforces by construction (no reading row, no
-    // transition); reaching it while the counts above still hold would be the fabricated-default state §5
+    // transition); reaching it while the counts above still hold would be the fabricated-default state gunbc.design_argument::fail_closed
     // forbids, and it fails LOUD.
     && (match mtcollins1_current_build_identity {
       Absent => false

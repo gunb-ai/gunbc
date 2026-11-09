@@ -47,7 +47,7 @@ import gunbc.spark.pair_serving_authority {
 // every effectful consumer reads, and written by a compare-and-set, so two transactions cannot
 // both believe they hold the group.
 //
-// THE STORE IS THE FABRIC EVENT LOG, ON ITS OWN PARTITION PER GROUP. DESIGN §3b puts serving-side
+// THE STORE IS THE FABRIC EVENT LOG, ON ITS OWN PARTITION PER GROUP. gunbc.design_argument::conformance puts serving-side
 // occupancy on the event chain (a termed LeaseGrant settled by fabric_seat_acquire over a
 // partition head), and this is the same linearization fact about a different subject: one
 // partition `pair-serving-authority/<group>`, one event per transition, the head advanced by a
@@ -80,7 +80,7 @@ fn pair_authority_partition(group: FabricGroup) -> PartitionId {
 
 // THE GRANT RIDES WITH THE TRANSITION THAT HOLDS IT. product.capacity.lease LeaseGrant owns the
 // term -- reference, fence, granted_at, expiry -- and std.temporal_effect HeldLease owns what an
-// observer currently sees for that lease's epoch. They are two facts (DESIGN §3b leasing row), so
+// observer currently sees for that lease's epoch. They are two facts (gunbc.design_argument::conformance leasing row), so
 // the authority carries the HeldLease and the EVENT carries the grant: a transition into a leased
 // state names the grant it holds, a transition out carries none, and the fold keeps the latest.
 // The observed state on a read is then DERIVED from the grant and the reading instant, never
@@ -2108,7 +2108,7 @@ fn placement_cleanup_line(c: PlacementCleanup) -> String {
 
 // THE CLEANUP EXIT IS DECIDED BY THE OUTCOME, BY NAME. Finalized and aborted report completion;
 // still-fencing fails loudly; and an UNREADABLE outcome is not evidence that the fence is down, so
-// it fails loudly with its cause too -- a failure arm must refuse, never widen (DESIGN 5). A
+// it fails loudly with its cause too -- a failure arm must refuse, never widen (gunbc.design_argument::fail_closed). A
 // cleanup state added later must state its exit here instead of inheriting success.
 fn placement_cleanup_step_exit(c: PlacementCleanup) -> ProcessExit {
   match c {

@@ -68,7 +68,7 @@ fn bmc_ipmi_operation(operation: String) -> OperationRef {
 // world after it, or a harness fault. Handlers are written over the BMC world alone; bmc_bindings lifts
 // them through a lens into whatever scenario state embeds the world.
 //
-// `stdout` carries NO provenance, and that is deliberate (review 87856, DESIGN §4d). A real ipmitool's
+// `stdout` carries NO provenance, and that is deliberate (review 87856, gunbc.design_argument::epistemic_humility). A real ipmitool's
 // stdout is untagged bytes too, so this is the shape consumers have to work with; the alternative was a
 // standing field on the reply, which bmc_lift then shed on the way into ShellProcessExited -- a label that
 // dies at the first boundary is worse than none, because it advertises a guarantee nothing enforces. The

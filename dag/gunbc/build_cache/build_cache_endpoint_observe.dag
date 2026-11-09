@@ -276,7 +276,7 @@ fn nat_from_digits(digits: String, whence: String) -> EndpointListenerRead {
 // /proc/net/unix IS COLUMN-STRUCTURED AND proc(5) FIXES THE COLUMNS, so this decode reads fields by
 // their documented position rather than by scanning for a token: Num RefCount Protocol Flags Type
 // St Inode Path, eight fields, with St the connection state and 01 meaning LISTEN. Reading a
-// documented, versioned wire format positionally is not the positional citation DESIGN section 3
+// documented, versioned wire format positionally is not the positional citation gunbc.design_argument::single_authority
 // warns about -- that rule is about naming something the containment tree already names by where it
 // sits, and a kernel-fixed column has no name to use instead. The PATH is matched exactly, never by
 // prefix: /var/lib/ctrl/sccache-ci/server.sock and /var/lib/ctrl/sccache/server.sock are two

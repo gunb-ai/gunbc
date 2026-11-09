@@ -23,7 +23,7 @@ import gunbc.design.brand_mark {
 // translate(-12 -12) scale(1.2) (brand_mark.dag: "a body coordinate v is 12v - 120"). So a part's
 // position p in tenths is (p + 120) / 12 in the file and a length l is l / 12. Both divisions must
 // be exact: a part that does not land on an integer is REFUSED, not rounded, because a rounded seal
-// is a different drawing under the same name (§5). The path text itself is brand_mark_box_path's,
+// is a different drawing under the same name (gunbc.design_argument::fail_closed). The path text itself is brand_mark_box_path's,
 // so the arc spelling exists once.
 //
 // WHAT THIS MODULE DOES NOT OWN: element/attribute/comment syntax (std.markup through
@@ -35,7 +35,7 @@ import gunbc.design.brand_mark {
 // spellings are one element. mark_parity_nullities carries that one difference and the witness
 // requires the render, with it applied, to EQUAL the committed copy of the served file.
 //
-// Consumers (§3c): mark_write_arg / v2_cli_main are the build route;
+// Consumers (gunbc.design_argument::consumption): mark_write_arg / v2_cli_main are the build route;
 // test.claim.site_gunb_ai_mark_witness executes render_mark. Run outside the claim runner:
 //   gunbc run --source-root dag --entry dag/gunbc/site/gunb_ai_mark.dag \
 //     --function mark_write_arg --arg dir=/tmp/gunbai/assets

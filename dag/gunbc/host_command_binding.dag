@@ -17,7 +17,7 @@ import gunbc.typed_remote_file_write { NoValidation,
   RemoteFileModeOwnerReadWriteWorldRead, RemoteFileAsSessionPrincipal,
 }
 
-// WHERE A HOST EFFECT RUNS, AS THE ONE PERIPHERAL DISPATCH (DESIGN §3: the dispatch that selects a
+// WHERE A HOST EFFECT RUNS, AS THE ONE PERIPHERAL DISPATCH (gunbc.design_argument::single_authority: the dispatch that selects a
 // realization is itself realization). Every effect a caller issues is ONE ArgvCommand built by its
 // tool's own extdeps builder; this binding decides only where that argv executes -- on this machine
 // through gunbc.command_runner, or on a fleet host over typed argv (gunbc.typed_argv_exec). A fold
@@ -94,7 +94,7 @@ fn host_leg_reply_lost(kind: HostTransportKind, leg: HostLeg) -> Bool {
 // WHAT ONE EFFECT ESTABLISHED, for callers that need the three-way reading rather than a Bool.
 // NOT gunbc.host.host_effect HostEffect: that type is an INTENT -- which privileged effect to perform.
 // This is the OBSERVED OUTCOME of one command leg that was issued; the two are different facts and
-// carry different names (DESIGN §3: one name, one meaning).
+// carry different names (gunbc.design_argument::single_authority: one name, one meaning).
 type HostCommandOutcome
   = HostCommandDone { stdout: String }
   | HostCommandFailed { exit_code: Int, stderr: String }

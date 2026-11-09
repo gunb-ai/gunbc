@@ -13,7 +13,7 @@ import product.network_topology { NetworkEgressClass }
 // gunbc.fleet.fleet_container, which is a model of OUR fleet's containers. They are not container facts:
 // a bare-metal host, a rented cloud VM and a microVM all answer the same questions about threads,
 // memory, storage and egress, and a fabric that brokers any of those needs the vocabulary without
-// depending on our container model. DESIGN section 3's rule is that a fact's home is its LAYER, so
+// depending on our container model. gunbc.design_argument::single_authority's rule is that a fact's home is its LAYER, so
 // the move is the single-authority action -- gunbc.fleet.fleet_container now consumes these rather than
 // owning them, and no second envelope was minted beside the first.
 //

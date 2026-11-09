@@ -30,7 +30,7 @@ import v2.test.claim.parse.alias_decl_parse {
 // the claim that pays it (v2.workflow.floor_pure_producer_share): each claim is charged only for its
 // own assertion. Producing from source rather than supplying a built tree is deliberate -- the
 // subject IS the route (graft dissolves the declaration, normalize captures its row, the fill binds
-// it), and a supplied tree would assert a shape nothing produced (DESIGN section 3, the pairing rule).
+// it), and a supplied tree would assert a shape nothing produced (gunbc.design_argument::single_authority, the pairing rule).
 // The discriminating red is enrolled, not transcribed: alias_decl_graft_dissolves_the_declaration_holds
 // asserts the absence of exactly the self-binding member this class names, so it is false whenever
 // v2.compiler.namespace_graft grafts the alias as a member again.

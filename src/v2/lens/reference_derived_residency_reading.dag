@@ -43,7 +43,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // DERIVES a ProducerCarrierReading from the type declaration the producer actually holds, so the
 // reading moves when the declaration moves. The alternative -- hand-authoring the reading from a
-// prose read of the producer -- transcribes an instrument's output (DESIGN section 6) and produces a
+// prose read of the producer -- transcribes an instrument's output (gunbc.design_argument::how_to_work) and produces a
 // row that keeps whatever it was set to after the producer is bounded, which is the defect review
 // 68631 named on gunbc#11740 and is the reason this module exists.
 //
@@ -83,10 +83,10 @@ fn subtree_mentions_atom(root: Node, needle: Symbol) -> Bool {
 // which meant a field retyped through an alias (`trees: TreePool` in place of
 // `Map<String, Node>`) flipped the producer from refusing to QUALIFIED while the same corpus stayed
 // resident, and `admit_bounded_realization` then minted the admission. Ignorance returned as the
-// answer that qualifies is DESIGN section 5's widen-instead-of-refuse, and it was reachable by
+// answer that qualifies is gunbc.design_argument::fail_closed's widen-instead-of-refuse, and it was reachable by
 // renaming a type (review 68724).
 //
-// WHY A ROSTER RATHER THAN RESOLUTION, which is the honest form of DESIGN section 4's "a heuristic is
+// WHY A ROSTER RATHER THAN RESOLUTION, which is the honest form of gunbc.design_argument::closed_grounded_substrate's "a heuristic is
 // never necessary". The richer source is the field type's DECLARATION, and reading it would decide
 // alias and unknown constructors properly. That read is blocked: a type declaration cannot be
 // resolved from a live tree today (gunbc#11574), which this module's own witnesses establish by

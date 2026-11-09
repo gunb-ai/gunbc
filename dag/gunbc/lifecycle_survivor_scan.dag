@@ -1,5 +1,6 @@
 module gunbc.lifecycle_survivor_scan
 
+import std.algebra { list_map }
 import v2.std.decl_index { DataDeclTypeFact, data_decl_type_facts }
 import v2.lens.lifecycle_carrier { decl_name_is_lifecycle_carrier }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
@@ -8,7 +9,7 @@ import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
 //
 // This exists because a hand-authored census cannot ground its own completeness. A roster
 // answers "here are the survivors someone wrote down" -- a measurement copied from the same
-// tree, which DESIGN section 5 rejects as an oracle. The subject universe has to be
+// tree, which gunbc.design_argument::fail_closed rejects as an oracle. The subject universe has to be
 // discovered INDEPENDENTLY of any roster and then compared at declaration identity.
 //
 // It is host-derived because no substrate-reachable producer answers the question.

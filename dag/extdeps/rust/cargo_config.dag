@@ -23,7 +23,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // join them with generic TOML entry constructors; `jobs` paired with the rustflags array, and an
 // `[env]` row placed in the build table, were both still well-typed. Cargo owning the names while
 // the consumer owns the schema leaves the wrong construction writable, which is validation
-// standing where construction was available (DESIGN section 5).
+// standing where construction was available (gunbc.design_argument::fail_closed).
 //
 // So the entry points below take TYPED CARGO FACTS -- a job count as an Int, rustflags as a list
 // of rustc arguments, env rows as records -- and produce whole tables. A caller cannot spell a

@@ -16,7 +16,7 @@ import std.algebra { list_snoc_item, fold_list }
 // toolchain and a step that PROVIDES one are indistinguishable by the time they are Steps.
 //
 // This module therefore models the relationship a step has to the capabilities its job needs,
-// and leaves Step alone (DESIGN §3: cite the upstream spec, keep its shape; the semantic layer
+// and leaves Step alone (gunbc.design_argument::single_authority: cite the upstream spec, keep its shape; the semantic layer
 // is ours, the wire model is theirs).
 //
 // WHY STRUCTURAL AND NOT TEXTUAL. The same consumption is spelled `cargo build` in one workflow

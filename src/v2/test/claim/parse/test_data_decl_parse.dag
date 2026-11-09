@@ -7,7 +7,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // `test` is deliberately not a keyword -- dag_grammar_test_fn_decl_expr matches an ident lexeme so
 // that `test` stays an ordinary identifier everywhere else, which is what lets
 // extdeps.languages.typescript model the TypeScript compiler's own `Cond { test: ... }` field under
-// DESIGN section 3's real-upstream-names rule. What the marker hardcoded was the DECLARATION AFTER
+// gunbc.design_argument::single_authority's real-upstream-names rule. What the marker hardcoded was the DECLARATION AFTER
 // it: the production's right side was `fn_decl` alone, so `test data` matched the ident, demanded
 // `fn`, found `data`, and failed. No other top-level alternative starts with an identifier, so the
 // item failed inside the module's `repeat`, the repeat ended -- which is how a repeat legitimately

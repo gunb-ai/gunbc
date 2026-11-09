@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.measure { volt, volt_count, milliampere, milliampere_count, millivolt, millivolt_count }
 import product.placement_supply { physical_asset_identity_eq }
 import gunbc.fleet.fleet_asset_identity { gh200_dv5_b, p4261_k1_a, p4261_e1_b }
-import extdeps.electronic_component.types { ElectronicComponentRow, RectifierSpec, RectifierSpecification, CapacitorSpec, CapacitorSpecification, ProgrammableLogicSpec, VolatileConfiguration, configuration_done_signal, RootOfTrustSpec, guards_boot, SerialFlashSpec, PullUpByStrap, RegulatorPin, RectifierRepetitivePeak, voltage_withstand }
+import extdeps.electronic_component.types { published_fixed_line_contains, ListedOnly, MarkStructured, MarkLine, FixedGlyphs, ElectronicComponentRow, RectifierSpec, RectifierSpecification, CapacitorSpec, CapacitorSpecification, ProgrammableLogicSpec, VolatileConfiguration, configuration_done_signal, RootOfTrustSpec, guards_boot, SerialFlashSpec, PullUpByStrap, RegulatorPin, RectifierRepetitivePeak, voltage_withstand }
 import extdeps.electronic_component.mps_mp2333c { mp2333cgtl }
 import extdeps.electronic_component.bourns_5_0smdj60a { tvs_5_0smdj60a }
 import extdeps.electronic_component.panasonic_eeh_zu1j151 { eeh_zu1j151 }
@@ -141,7 +141,12 @@ import product.electrical.continuity {
   is_inferred,
   junction_between,
 }
+import test.claim.product.p4261_identified_fixture { identified_fixture }
 import product.electrical.identification {
+  ObservedLeadCount,
+  numbered_pins,
+  pin_number_name,
+  marking_text,
   seen_unordered,
   identification_established,
   FootprintUnpopulated,
@@ -155,6 +160,8 @@ import product.electrical.identification {
   pin_terminal_name,
   regulator_pins,
   shared_withstand,
+  GlyphSpan,
+  Transcribed,
 }
 import product.p4261.carrier {
   PcbCode,
@@ -165,7 +172,6 @@ import product.p4261.carrier {
   RowRead,
   away_side,
   latch_side,
-  lv165a_pins,
   ManagementIoSurvey,
   AnalysisSelection,
   MeasuredBoard,
@@ -176,6 +182,8 @@ import product.p4261.carrier {
 }
 import product.p4261.bench { inductor_pad_far_u4, inductor_pad_near_u4, inductor_pad_unrecorded }
 import product.p4261.e1_b {
+  e1_probed_positions,
+  e1_lead_count_rows,
   e1_after_lift_rail_resistances,
   e1_after_short_resistances,
   e1_back_cluster,
@@ -272,6 +280,8 @@ import product.p4261.e1_b {
   e1_u100_lead_resistances,
   e1_u104,
   e1_u10p2_lift,
+  e1_photo_part_2_removal,
+  e1_photo_part,
   e1_u1_p5,
   e1_u21,
   e1_u2_2,
@@ -306,6 +316,8 @@ import product.p4261.e1_b {
   p4261_e1_layout,
 }
 import product.p4261.k1_a {
+  k1_probed_positions,
+  k1_lead_count_rows,
   k1_label_photo,
   k1_200,
   k1_beige,
@@ -509,7 +521,7 @@ fn layout_with(base: CarrierLayoutObservation, components: List<InstalledCompone
 }
 
 fn e1_with_continuity(cs: List<ContinuityObservation>) -> CarrierLayoutObservation {
-  layout_with(base: p4261_e1_layout, components: p4261_e1_layout.components, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, analysis: e1_measured.analysis, continuity: cs, diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: e1_measured.bench, phases: e1_measured.phases, transitions: e1_measured.transitions, pole_closures: e1_measured.pole_closures } }, input: p4261_e1_layout.input)
+  layout_with(base: e1_promoted, components: e1_promoted.components, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, analysis: e1_measured.analysis, continuity: cs, diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: e1_measured.bench, phases: e1_measured.phases, transitions: e1_measured.transitions, pole_closures: e1_measured.pole_closures } }, input: e1_promoted.input)
 }
 
 fn component_of(layout: CarrierLayoutObservation, c: ComponentInstanceIdentity) -> List<InstalledComponent> {
@@ -568,7 +580,7 @@ fn supplied_said() -> EvidenceRef {
 }
 
 fn read(a: ElectricalTerminalRef, b: ElectricalTerminalRef, result: ContinuityResult) -> ContinuityObservation {
-  ContinuityObservation { asset: p4261_e1_b, first: a, second: b, record: both_points_recorded, conditions: e1_bench, result: result, order: BeforeIncidents { keys: [e1_bridge_incident.key, e1_inductor_short_incident.key, e1_u10p2_lift.key] }, evidence: supplied_said() }
+  ContinuityObservation { asset: p4261_e1_b, first: a, second: b, record: both_points_recorded, conditions: e1_bench, result: result, order: BeforeIncidents { keys: [e1_bridge_incident.key, e1_inductor_short_incident.key, e1_u10p2_lift.key, e1_photo_part_2_removal.key] }, evidence: supplied_said() }
 }
 
 fn positive_term() -> TerminalIdentity {
@@ -589,10 +601,7 @@ fn negative_term() -> TerminalIdentity {
 // T_A = 25 C in a single value column. Both tests exist to be reddened: delete a character from
 // top_marking, or change the rating, and the identification stops being supportable.
 test fn the_fsv_row_prints_the_part_number_the_sheet_prints() -> Bool {
-  match onsemi_schottky_fsv20100v.top_marking {
-    Absent => false
-    Present { value: printed } => printed == "FSV20100V"
-  }
+  published_fixed_line_contains(row: onsemi_schottky_fsv20100v, code: "FSV20100V")
 }
 
 // The sheet's own legend prints the issuer as "onsemi" (33 occurrences, including "$Y = onsemi Logo"),
@@ -606,7 +615,7 @@ test fn the_fsv_row_names_the_maker_the_sheet_prints() -> Bool {
 // END-TO-END, NOT READ-BACK. the_fsv_row_reports_the_sheets_rrrm_as_a_rectifier only asks
 // voltage_withstand to read the row back. A defect that drops or filters RectifierSpec between an
 // installed FSV row and input_bound -- an arm filtered out of observed_ratings, a withstand kind
-// excluded from the bound -- leaves that green and this red, which is the point (§4b).
+// excluded from the bound -- leaves that green and this red, which is the point (gunbc.design_argument::guarantee_ladder).
 // Measured, with commands, before writing this: NONE of the four FSV positions is across the input on
 // the observed board. grep -c '"D2_P1"' dag/product/p4261/e1_b.dag -> 2 (its InstalledComponent and its
 // DesignatorReading; likewise D8_P1, D2_P5, D8_P5), and no continuity reading names them. So the rating
@@ -614,14 +623,14 @@ test fn the_fsv_row_names_the_maker_the_sheet_prints() -> Bool {
 // control is about the bound machinery, not about claiming a board fact the bench has not read.
 test fn a_rectifier_below_the_tvs_limit_bounds_the_input() -> Bool {
   let low = component_instance_identity(design: e1_d2.design, local_identity: "supplied 50 V rectifier")
-  let low_part = InstalledComponent { seen: seen_unordered(), component: low, terminals: [positive_term(), negative_term()], identification: IdentifiedByMarking { row: low_fsv_row(), marking: MarkingReading { text: "supplied", evidence: supplied_said() } } }
+  let low_part = InstalledComponent { seen: seen_unordered(), component: low, terminals: [positive_term(), negative_term()], identification: identified_fixture(subject: low, row: low_fsv_row(), text: "supplied") }
   let low_pos = terminal_ref(component: low, terminal: positive_term())
   let low_neg = terminal_ref(component: low, terminal: negative_term())
-  let with_low = concat(p4261_e1_layout.components, [low_part])
-  let placed = layout_with(base: p4261_e1_layout, components: with_low, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, analysis: e1_measured.analysis, continuity: concat(e1_measured.continuity, [read(a: low_pos, b: e1_rail_ref, result: BuzzerAsserted), read(a: low_neg, b: e1_ground_ref, result: BuzzerAsserted)]), diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: e1_measured.bench, phases: e1_measured.phases, transitions: e1_measured.transitions, pole_closures: e1_measured.pole_closures } }, input: p4261_e1_layout.input)
-  let unread = layout_with(base: p4261_e1_layout, components: with_low, measured: p4261_e1_layout.measured, input: p4261_e1_layout.input)
+  let with_low = concat(e1_promoted.components, [low_part])
+  let placed = layout_with(base: e1_promoted, components: with_low, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, analysis: e1_measured.analysis, continuity: concat(e1_measured.continuity, [read(a: low_pos, b: e1_rail_ref, result: BuzzerAsserted), read(a: low_neg, b: e1_ground_ref, result: BuzzerAsserted)]), diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: e1_measured.bench, phases: e1_measured.phases, transitions: e1_measured.transitions, pole_closures: e1_measured.pole_closures } }, input: e1_promoted.input)
+  let unread = layout_with(base: e1_promoted, components: with_low, measured: e1_promoted.measured, input: e1_promoted.input)
   true
-    && bound_volts(b: input_bound(layout: p4261_e1_layout)) == 60
+    && bound_volts(b: input_bound(layout: e1_promoted)) == 60
     && bound_volts(b: input_bound(layout: placed)) == 50 && bound_limiter_is(b: input_bound(layout: placed), c: low)
     && bound_volts(b: input_bound(layout: unread)) == 60
 }
@@ -632,14 +641,14 @@ test fn a_rectifier_below_the_tvs_limit_bounds_the_input() -> Bool {
 // rectifier arm reaches input_bound (50 V wins) and is ordered correctly against the TVS (100 V loses).
 test fn the_real_rectifier_rating_does_not_displace_the_tvs_limit() -> Bool {
   let low = component_instance_identity(design: e1_d2.design, local_identity: "supplied FSV20100V across the input")
-  let low_part = InstalledComponent { seen: seen_unordered(), component: low, terminals: [positive_term(), negative_term()], identification: IdentifiedByMarking { row: onsemi_schottky_fsv20100v, marking: MarkingReading { text: "FSV20100V / JC03 / ON logo", evidence: supplied_said() } } }
+  let low_part = InstalledComponent { seen: seen_unordered(), component: low, terminals: [positive_term(), negative_term()], identification: identified_fixture(subject: low, row: onsemi_schottky_fsv20100v, text: "FSV20100V / JC03 / ON logo") }
   let low_pos = terminal_ref(component: low, terminal: positive_term())
   let low_neg = terminal_ref(component: low, terminal: negative_term())
-  let with_low = concat(p4261_e1_layout.components, [low_part])
-  let placed = layout_with(base: p4261_e1_layout, components: with_low, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, analysis: e1_measured.analysis, continuity: concat(e1_measured.continuity, [read(a: low_pos, b: e1_rail_ref, result: BuzzerAsserted), read(a: low_neg, b: e1_ground_ref, result: BuzzerAsserted)]), diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: e1_measured.bench, phases: e1_measured.phases, transitions: e1_measured.transitions, pole_closures: e1_measured.pole_closures } }, input: p4261_e1_layout.input)
-  let unread = layout_with(base: p4261_e1_layout, components: with_low, measured: p4261_e1_layout.measured, input: p4261_e1_layout.input)
+  let with_low = concat(e1_promoted.components, [low_part])
+  let placed = layout_with(base: e1_promoted, components: with_low, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, analysis: e1_measured.analysis, continuity: concat(e1_measured.continuity, [read(a: low_pos, b: e1_rail_ref, result: BuzzerAsserted), read(a: low_neg, b: e1_ground_ref, result: BuzzerAsserted)]), diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: e1_measured.bench, phases: e1_measured.phases, transitions: e1_measured.transitions, pole_closures: e1_measured.pole_closures } }, input: e1_promoted.input)
+  let unread = layout_with(base: e1_promoted, components: with_low, measured: e1_promoted.measured, input: e1_promoted.input)
   true
-    && bound_volts(b: input_bound(layout: p4261_e1_layout)) == 60
+    && bound_volts(b: input_bound(layout: e1_promoted)) == 60
     && bound_volts(b: input_bound(layout: placed)) == 60 && !bound_limiter_is(b: input_bound(layout: placed), c: low)
     && bound_volts(b: input_bound(layout: unread)) == 60
     && match voltage_withstand(spec: onsemi_schottky_fsv20100v.specification) {
@@ -655,7 +664,7 @@ fn low_fsv_row() -> ElectronicComponentRow {
     vendor: onsemi_schottky_fsv20100v.vendor,
     ordering_code: "supplied 50 V rectifier",
     package: "supplied",
-    top_marking: Present { value: "supplied" },
+    top_marking: Present { value: MarkStructured { lines: [MarkLine { segments: [FixedGlyphs { text: "supplied" }] }], coverage: ListedOnly } },
     specification: RectifierSpec { rectifier: RectifierSpecification { reverse_repetitive_peak: volt(count: 50) } },
     vendor_application_statements: [],
   }
@@ -669,7 +678,7 @@ test fn the_fsv_row_reports_the_sheets_rrrm_as_a_rectifier() -> Bool {
 }
 
 test fn the_photographs_establish_no_input_bound() -> Bool {
-  match input_bound(layout: p4261_k1_layout) {
+  match input_bound(layout: k1_promoted) {
     BoundUnestablished { observed } =>
       any(observed, o => volt_count(v: o.rated.maximum) == 75) && any(observed, o => volt_count(v: o.rated.maximum) == 100)
         && all(observed, o => match o.placement {
@@ -688,7 +697,7 @@ test fn the_photographs_establish_no_input_bound() -> Bool {
 // A READING ON THE E1 CANNOT QUALIFY THE K1. The K1 given the E1's very readings and J20 mapping still
 // derives nothing: every reading names the E1 asset, and the K1's board is the K1 asset.
 test fn a_reading_on_the_e1_cannot_qualify_the_k1() -> Bool {
-  let k1_given_e1 = layout_with(base: p4261_k1_layout, components: p4261_k1_layout.components,
+  let k1_given_e1 = layout_with(base: k1_promoted, components: k1_promoted.components,
     measured: Present { value: MeasuredBoard { asset: p4261_k1_a, analysis: e1_measured.analysis, continuity: e1_measured.continuity, diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: e1_measured.bench, phases: e1_measured.phases, transitions: e1_measured.transitions, pole_closures: e1_measured.pole_closures } },
     input: Present { value: e1_input })
   let unpolarized = match input_polarity(layout: k1_given_e1) {
@@ -697,7 +706,7 @@ test fn a_reading_on_the_e1_cannot_qualify_the_k1() -> Bool {
     PolarityContradicted { readings: _ } => false
   }
   unpolarized && is_unestablished_bound(b: input_bound(layout: k1_given_e1))
-    && match j20_position_count(layout: p4261_k1_layout) { Present { value: n } => n == 16, Absent => false }
+    && match j20_position_count(layout: k1_promoted) { Present { value: n } => n == 16, Absent => false }
     && physical_asset_identity_eq(a: e1_measured.asset, b: p4261_e1_b)
 }
 
@@ -742,11 +751,11 @@ fn housing_with_sides(latch_row: RowSide, away_row: RowSide) -> ConnectorHousing
 
 // The K1 as it stood before anything was measured on it.
 fn unmeasured_k1() -> CarrierLayoutObservation {
-  layout_with(base: p4261_k1_layout, components: p4261_k1_layout.components, measured: Absent, input: Absent)
+  layout_with(base: k1_promoted, components: k1_promoted.components, measured: Absent, input: Absent)
 }
 
 fn e1_with_housing(h: ConnectorHousing) -> CarrierLayoutObservation {
-  layout_with(base: p4261_e1_layout, components: p4261_e1_layout.components, measured: p4261_e1_layout.measured, input: Present { value: InputConnector { housing: h, fuse_terminal: e1_input.fuse_terminal } })
+  layout_with(base: e1_promoted, components: e1_promoted.components, measured: e1_promoted.measured, input: Present { value: InputConnector { housing: h, fuse_terminal: e1_input.fuse_terminal } })
 }
 
 // J20'S POLARITY IS DERIVED, AND SAYS WHAT IT RESTS ON. The fused contacts are the row away from the
@@ -755,7 +764,7 @@ fn e1_with_housing(h: ConnectorHousing) -> CarrierLayoutObservation {
 // positions recorded on the opposite sides read the other way round; a side left unrecorded refuses;
 // the K1's board is measured but its J20 is not mapped, and a board with nothing measured says so.
 test fn j20_polarity_is_derived_from_the_readings() -> Bool {
-  let e1 = match input_polarity(layout: p4261_e1_layout) {
+  let e1 = match input_polarity(layout: e1_promoted) {
     PolarityEstablished { fused_side, return_side, fused: _, returns, isolation } =>
       row_is(s: fused_side, away: true) && row_is(s: return_side, away: false)
         && any(returns, o => is_inferred(o: o)) && count(isolation) > 0
@@ -775,7 +784,7 @@ test fn j20_polarity_is_derived_from_the_readings() -> Bool {
     PolarityEstablished { fused_side: _, return_side: _, fused: _, returns: _, isolation: _ } => false
     PolarityContradicted { readings: _ } => false
   }
-  let k1 = match input_polarity(layout: p4261_k1_layout) {
+  let k1 = match input_polarity(layout: k1_promoted) {
     PolarityUnestablished { gaps } => any(gaps, g => match g {
       InputUnmapped => true
       _ => false
@@ -808,7 +817,7 @@ fn placed_d2(s: AcrossInputStanding) -> Bool {
 // board's own inferred readings, which they would if each contact carried the class again.
 test fn each_reading_is_counted_once() -> Bool {
   let board = count(filter(e1_measured.continuity, o => is_inferred(o: o)))
-  match polarity_grade(p: input_polarity(layout: p4261_e1_layout)) {
+  match polarity_grade(p: input_polarity(layout: e1_promoted)) {
     IncludesInferredPoints { readings } => count(readings) > 0 && count(readings) <= board
     RecordedPointsOnly => false
   }
@@ -818,7 +827,7 @@ test fn each_reading_is_counted_once() -> Bool {
 // bound J20 at 60 V; the bound names D2 as limiting, D5 as equally limiting, J20 as the input and the
 // E1 as the asset, D2's fused-side and return-side terminals, and the grade of the readings it rests on.
 test fn the_bound_carries_typed_causes() -> Bool {
-  match input_bound(layout: p4261_e1_layout) {
+  match input_bound(layout: e1_promoted) {
     BoundEstablished { bound, equally_limiting, observed: _ } =>
       volt_count(v: bound.rated.maximum) == 60
         && component_identity_eq(a: bound.limiting_component, b: e1_d2)
@@ -837,7 +846,7 @@ test fn the_bound_carries_typed_causes() -> Bool {
 
 fn is_zu1j151(c: InstalledComponent) -> Bool {
   match c.identification {
-    IdentifiedByMarking { row, marking: _ } => (row.ordering_code as String).contains("EEH-ZU1J151")
+    IdentifiedByMarking { row, observation: _ } => (row.ordering_code as String).contains("EEH-ZU1J151")
     _ => false
   }
 }
@@ -854,16 +863,16 @@ fn is_unresolved_marking(c: InstalledComponent) -> Bool {
 // to the rail, so neither is placed. The third can has no reading and no decoded marking: no rating,
 // no placement, nothing from its neighbours.
 test fn the_capacitors_do_not_bound_and_the_third_inherits_nothing() -> Bool {
-  let caps = filter(p4261_e1_layout.components, c => is_zu1j151(c: c))
-  let third = component_of(layout: p4261_e1_layout, c: e1_third_can)
+  let caps = filter(e1_promoted.components, c => is_zu1j151(c: c))
+  let third = component_of(layout: e1_promoted, c: e1_third_can)
   count(caps) == 2
-    && all(caps, c => is_unplaced(s: across_input(layout: p4261_e1_layout, c: c)))
+    && all(caps, c => is_unplaced(s: across_input(layout: e1_promoted, c: c)))
     && count(third) == 1
-    && all(third, c => is_unplaced(s: across_input(layout: p4261_e1_layout, c: c)) && is_unresolved_marking(c: c))
+    && all(third, c => is_unplaced(s: across_input(layout: e1_promoted, c: c)) && is_unresolved_marking(c: c))
 }
 
 fn shared_marking_evidence(c: ComponentInstanceIdentity) -> List<String> {
-  flat_map(component_of(layout: p4261_e1_layout, c: c), x => match x.identification {
+  flat_map(component_of(layout: e1_promoted, c: c), x => match x.identification {
     MarkingSharedByMakers { rows: _, marking } => [evidence_text(e: marking.evidence)]
     _ => []
   })
@@ -888,7 +897,7 @@ fn with_d5_unread(c: InstalledComponent) -> InstalledComponent {
 test fn d5_cannot_inherit_d2s_identity() -> Bool {
   let d2_evidence = shared_marking_evidence(c: e1_d2)
   let d5_evidence = shared_marking_evidence(c: e1_d5)
-  let b = input_bound(layout: layout_with(base: p4261_e1_layout, components: map(p4261_e1_layout.components, c => with_d5_unread(c: c)), measured: p4261_e1_layout.measured, input: p4261_e1_layout.input))
+  let b = input_bound(layout: layout_with(base: e1_promoted, components: map(e1_promoted.components, c => with_d5_unread(c: c)), measured: e1_promoted.measured, input: e1_promoted.input))
   count(d2_evidence) == 1 && count(d5_evidence) == 1 && all(d2_evidence, x => all(d5_evidence, y => x != y))
     && bound_limiter_is(b: b, c: e1_d2) && count(bound_ties(b: b)) == 0
 }
@@ -898,7 +907,7 @@ fn low_can_row() -> ElectronicComponentRow {
     vendor: eeh_zu1j151.vendor,
     ordering_code: "supplied 16 V can",
     package: "supplied",
-    top_marking: Present { value: "supplied" },
+    top_marking: Present { value: MarkStructured { lines: [MarkLine { segments: [FixedGlyphs { text: "supplied" }] }], coverage: ListedOnly } },
     specification: CapacitorSpec { capacitor: CapacitorSpecification { capacitance_microfarads: 100, rated_voltage: volt(count: 16) } },
     vendor_application_statements: [],
   }
@@ -908,16 +917,16 @@ fn low_can_row() -> ElectronicComponentRow {
 // both its ends are on the fused side -- so it bounds nothing and the bound stays 60 V. A supplied
 // 16 V can read across the two sides lowers the bound to 16 V; the same can with no readings does not.
 test fn only_a_rating_across_the_input_bounds_it() -> Bool {
-  let f300 = placement_of(layout: p4261_e1_layout, c: e1_f300)
+  let f300 = placement_of(layout: e1_promoted, c: e1_f300)
   let low = component_instance_identity(design: e1_d2.design, local_identity: "supplied 16 V can")
-  let low_part = InstalledComponent { seen: seen_unordered(), component: low, terminals: [positive_term(), negative_term()], identification: IdentifiedByMarking { row: low_can_row(), marking: MarkingReading { text: "supplied", evidence: supplied_said() } } }
+  let low_part = InstalledComponent { seen: seen_unordered(), component: low, terminals: [positive_term(), negative_term()], identification: identified_fixture(subject: low, row: low_can_row(), text: "supplied") }
   let low_pos = terminal_ref(component: low, terminal: positive_term())
   let low_neg = terminal_ref(component: low, terminal: negative_term())
-  let with_low = concat(p4261_e1_layout.components, [low_part])
-  let placed = layout_with(base: p4261_e1_layout, components: with_low, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, analysis: e1_measured.analysis, continuity: concat(e1_measured.continuity, [read(a: low_pos, b: e1_rail_ref, result: BuzzerAsserted), read(a: low_neg, b: e1_ground_ref, result: BuzzerAsserted)]), diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: e1_measured.bench, phases: e1_measured.phases, transitions: e1_measured.transitions, pole_closures: e1_measured.pole_closures } }, input: p4261_e1_layout.input)
-  let unread = layout_with(base: p4261_e1_layout, components: with_low, measured: p4261_e1_layout.measured, input: p4261_e1_layout.input)
+  let with_low = concat(e1_promoted.components, [low_part])
+  let placed = layout_with(base: e1_promoted, components: with_low, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, analysis: e1_measured.analysis, continuity: concat(e1_measured.continuity, [read(a: low_pos, b: e1_rail_ref, result: BuzzerAsserted), read(a: low_neg, b: e1_ground_ref, result: BuzzerAsserted)]), diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: e1_measured.bench, phases: e1_measured.phases, transitions: e1_measured.transitions, pole_closures: e1_measured.pole_closures } }, input: e1_promoted.input)
+  let unread = layout_with(base: e1_promoted, components: with_low, measured: e1_promoted.measured, input: e1_promoted.input)
   count(f300) == 1 && all(f300, s => is_unplaced(s: s))
-    && bound_volts(b: input_bound(layout: p4261_e1_layout)) == 60
+    && bound_volts(b: input_bound(layout: e1_promoted)) == 60
     && bound_volts(b: input_bound(layout: placed)) == 16 && bound_limiter_is(b: input_bound(layout: placed), c: low)
     && bound_volts(b: input_bound(layout: unread)) == 60
 }
@@ -1011,8 +1020,8 @@ fn relabelled_e1() -> CarrierLayoutObservation {
 
 fn relabelled_of(bench: BenchRecord) -> CarrierLayoutObservation {
   layout_with(
-    base: p4261_e1_layout,
-    components: map(p4261_e1_layout.components, c => InstalledComponent { seen: c.seen, component: rl_c(c: c.component), terminals: map(c.terminals, t => rl_t(t: t)), identification: c.identification }),
+    base: e1_promoted,
+    components: map(e1_promoted.components, c => InstalledComponent { seen: c.seen, component: rl_c(c: c.component), terminals: map(c.terminals, t => rl_t(t: t)), identification: c.identification }),
     measured: Present { value: MeasuredBoard { asset: e1_measured.asset, analysis: e1_measured.analysis, continuity: map(e1_measured.continuity, o => rl_obs(o: o)), diode_readings: map(e1_measured.diode_readings, o => rl_diode(o: o)), source_draws: map(e1_measured.source_draws, o => rl_draw(o: o)), bench: rl_bench(b: bench), phases: e1_measured.phases, transitions: e1_measured.transitions, pole_closures: e1_measured.pole_closures } },
     input: Present { value: InputConnector { housing: rl_housing(h: e1_j20_housing), fuse_terminal: rl_ref(r: e1_input.fuse_terminal) } },
   )
@@ -1038,8 +1047,8 @@ test fn continuity_through_a_fuse_does_not_merge_nets() -> Bool {
   is_reachable(s: reachability(observations: e1_measured.continuity, asset: p4261_e1_b, a: e1_f1_near, b: e1_f1_far))
     && !net_contains_terminal(net: before, t: e1_f1_far) && !net_contains_terminal(net: after, t: e1_f1_near)
     && !terminal_ref_equal(a: e1_f1_near, b: e1_f1_far)
-    && count(component_of(layout: p4261_e1_layout, c: e1_f1)) == 1
-    && all(component_of(layout: p4261_e1_layout, c: e1_f1), c => count(c.terminals) == 2)
+    && count(component_of(layout: e1_promoted, c: e1_f1)) == 1
+    && all(component_of(layout: e1_promoted, c: e1_f1), c => count(c.terminals) == 2)
 }
 
 // CONFLICTING READINGS REFUSE. A supplied beep from D2's nearer tab to ground joins the rail to ground,
@@ -1138,15 +1147,15 @@ test fn population_statements_infer_their_endpoints() -> Bool {
 // consumer citing one finding is reopened by that finding and no other.
 test fn a_narrow_finding_stands_or_falls_alone() -> Bool {
   let e1_findings = [J20ContactInventory, J20Polarity, ComponentAcrossInput { component: e1_d2 }, ComponentAcrossInput { component: e1_d5 }, ComponentIdentified { component: e1_c10 }, ComponentIdentified { component: e1_d2 }, InputUpperBound, J20EnergizedDraw]
-  let e1_all = all(e1_findings, f => finding_established(j: judge_finding(layout: p4261_e1_layout, f: f)))
-  let k1_open = !finding_established(j: judge_finding(layout: p4261_k1_layout, f: J20Polarity))
-    && !finding_established(j: judge_finding(layout: p4261_k1_layout, f: InputUpperBound))
-    && !finding_established(j: judge_finding(layout: p4261_k1_layout, f: J20ContactInventory))
+  let e1_all = all(e1_findings, f => finding_established(j: judge_finding(layout: e1_promoted, f: f)))
+  let k1_open = !finding_established(j: judge_finding(layout: k1_promoted, f: J20Polarity))
+    && !finding_established(j: judge_finding(layout: k1_promoted, f: InputUpperBound))
+    && !finding_established(j: judge_finding(layout: k1_promoted, f: J20ContactInventory))
   let without_d2 = e1_with_continuity(cs: filter(e1_measured.continuity, o => !terminal_ref_equal(a: o.first, b: e1_d2_near) && !terminal_ref_equal(a: o.first, b: e1_d2_far)))
   let only_d2_falls = !finding_established(j: judge_finding(layout: without_d2, f: ComponentAcrossInput { component: e1_d2 }))
     && finding_established(j: judge_finding(layout: without_d2, f: J20ContactInventory))
     && finding_established(j: judge_finding(layout: without_d2, f: ComponentIdentified { component: e1_c10 }))
-  let unresolved = !finding_established(j: judge_finding(layout: p4261_e1_layout, f: ComponentIdentified { component: e1_third_can }))
+  let unresolved = !finding_established(j: judge_finding(layout: e1_promoted, f: ComponentIdentified { component: e1_third_can }))
   e1_all && k1_open && only_d2_falls && unresolved
 }
 
@@ -1169,11 +1178,11 @@ test fn a_shared_marking_supports_only_what_every_candidate_supports() -> Bool {
 // COUNTS ARE DERIVED. J20's position count is its contact inventory's length -- nine a side -- and the
 // K1's is the photograph count; component counts are counts of instances.
 test fn counts_are_derived_from_inventories() -> Bool {
-  match j20_position_count(layout: p4261_e1_layout) { Present { value: n } => n == count(e1_j20_housing.positions) && n == 18, Absent => false }
+  match j20_position_count(layout: e1_promoted) { Present { value: n } => n == count(e1_j20_housing.positions) && n == 18, Absent => false }
     && count(side_terminals(h: e1_j20_housing, side: latch_side())) == 9
     && count(side_terminals(h: e1_j20_housing, side: away_side())) == 9
-    && count(component_of(layout: p4261_e1_layout, c: e1_c10)) == 1
-    && count(component_of(layout: p4261_e1_layout, c: e1_c12)) == 1
+    && count(component_of(layout: e1_promoted, c: e1_c10)) == 1
+    && count(component_of(layout: e1_promoted, c: e1_c12)) == 1
 }
 
 // ── THE REPORT IS RENDERED FROM THE TYPED MODEL ───────────────────────────────────────────────
@@ -1204,9 +1213,9 @@ fn with_survey(base: CarrierLayoutObservation, survey: ManagementIoSurvey) -> Ca
 // management I/O: the same E1 rows re-declared as photographed whole would claim one. The edge
 // receptacle stays a candidate family, and U522's bus pins render as trace targets from typed roles.
 test fn the_report_is_rendered_from_the_typed_model() -> Bool {
-  let e1 = carrier_input_reading(layout: p4261_e1_layout)
-  let k1 = carrier_input_reading(layout: p4261_k1_layout)
-  let e1_io = management_io_text(layout: p4261_e1_layout)
+  let e1 = carrier_input_reading(layout: e1_promoted)
+  let k1 = carrier_input_reading(layout: k1_promoted)
+  let e1_io = management_io_text(layout: e1_promoted)
   e1.contains("at most 60 V, limited by D2's TVS reverse standoff")
     && e1.contains("equally limited by D5")
     && e1.contains("readings with a probe point inferred from the operator's words")
@@ -1214,10 +1223,10 @@ test fn the_report_is_rendered_from_the_typed_model() -> Bool {
     && k1.contains("no input bound established")
     && k1.contains("polarity UNESTABLISHED")
     && !e1_io.contains("shows no RJ45")
-    && management_io_text(layout: with_survey(base: p4261_e1_layout, survey: WholeBoardPhotographed)).contains("shows no RJ45")
-    && management_io_text(layout: p4261_k1_layout).contains("shows no RJ45")
+    && management_io_text(layout: with_survey(base: e1_promoted, survey: WholeBoardPhotographed)).contains("shows no RJ45")
+    && management_io_text(layout: k1_promoted).contains("shows no RJ45")
     && e1_io.contains("USB 3.0 SuperSpeed Micro-B (part number, protocol and role unestablished)")
-    && e1_io.contains("U522 ('TI 31 / T275') is TMP275AIDGKR; trace pins 1 SDA (serial data), 2 SCL (serial clock), 3 ALERT (alert output)")
+    && e1_io.contains("U522 ('T275 / TI ?1') is TMP275AIDGKR; trace pins 1 SDA (serial data), 2 SCL (serial clock), 3 ALERT (alert output)")
 }
 
 // ── THE ENERGIZED INPUT DRAW ──────────────────────────────────────────────────────────────────
@@ -1234,7 +1243,7 @@ fn on_input(open: Nat, loaded: Nat, behaviour: SourceBehaviour) -> SourceDrawObs
 }
 
 fn e1_with_draws(ds: List<SourceDrawObservation>) -> CarrierLayoutObservation {
-  layout_with(base: p4261_e1_layout, components: p4261_e1_layout.components, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, analysis: e1_measured.analysis, continuity: e1_measured.continuity, diode_readings: e1_measured.diode_readings, source_draws: ds, bench: e1_measured.bench, phases: e1_measured.phases, transitions: e1_measured.transitions, pole_closures: e1_measured.pole_closures } }, input: p4261_e1_layout.input)
+  layout_with(base: e1_promoted, components: e1_promoted.components, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, analysis: e1_measured.analysis, continuity: e1_measured.continuity, diode_readings: e1_measured.diode_readings, source_draws: ds, bench: e1_measured.bench, phases: e1_measured.phases, transitions: e1_measured.transitions, pole_closures: e1_measured.pole_closures } }, input: e1_promoted.input)
 }
 
 fn draw_finding(layout: CarrierLayoutObservation) -> Bool {
@@ -1288,13 +1297,13 @@ fn has_gap(s: SourceDrawStanding, load: Bool) -> Bool {
 // the open reading equal to the loaded one distinguishes no draw, and a source not recorded as energized
 // establishes none; the K1, never energized, has no finding.
 test fn an_energized_draw_counts_only_above_its_open_reading() -> Bool {
-  let live = draw_finding(layout: p4261_e1_layout) && bounded_by(d: input_draw(layout: p4261_e1_layout), above_open: 13, headroom: 87)
+  let live = draw_finding(layout: e1_promoted) && bounded_by(d: input_draw(layout: e1_promoted), above_open: 13, headroom: 87)
   let offset = on_input(open: 13, loaded: 13, behaviour: HeldBelowLimit)
   let offset_red = !draw_finding(layout: e1_with_draws(ds: [offset])) && has_gap(s: source_draw_standing(o: offset), load: true)
   let cold = draw_with(open: 0, loaded: 13, behaviour: HeldBelowLimit, conditions: BenchConditions { power: Unpowered, module: ModuleRemoved }, feed: e1_rail_ref, ret: e1_ground_ref)
   let cold_red = !draw_finding(layout: e1_with_draws(ds: [cold])) && has_gap(s: source_draw_standing(o: cold), load: false)
   let no_reading = !draw_finding(layout: e1_with_draws(ds: [])) && no_input_reading(d: input_draw(layout: e1_with_draws(ds: [])))
-  let k1 = !draw_finding(layout: p4261_k1_layout)
+  let k1 = !draw_finding(layout: k1_promoted)
   live && offset_red && cold_red && no_reading && k1
 }
 
@@ -1317,12 +1326,12 @@ test fn a_reading_off_the_input_rows_is_not_the_inputs() -> Bool {
 
 // The draw renders from the typed reading, with its inferred lead points, and survives relabelling.
 test fn the_energized_draw_renders_and_survives_relabelling() -> Bool {
-  let e1 = carrier_input_reading(layout: p4261_e1_layout)
+  let e1 = carrier_input_reading(layout: e1_promoted)
   e1.contains("it drew 13 mA (0 mA with the load disconnected, so 13 mA is the board's)")
     && e1.contains("over-current shutoff armed")
     && e1.contains("brief readings up to 20 mA while stepping, cause unread")
     && e1.contains("on lead points inferred from the operator's words")
-    && carrier_input_reading(layout: p4261_k1_layout).contains("no energized draw established")
+    && carrier_input_reading(layout: k1_promoted).contains("no energized draw established")
     && bounded_by(d: input_draw(layout: relabelled_e1()), above_open: 13, headroom: 87)
 }
 
@@ -1330,13 +1339,13 @@ test fn the_energized_draw_renders_and_survives_relabelling() -> Bool {
 
 // A supplied E1 whose bench readings are the given ones, read in the given analysis selection.
 fn e1_with_attached_in(analysis: AnalysisSelection, attachments: List<ProbeAttachment>, vs: List<NodeVoltageObservation>, rs: List<ResistanceObservation>) -> CarrierLayoutObservation {
-  layout_with(base: p4261_e1_layout, components: p4261_e1_layout.components, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, analysis: analysis, continuity: e1_measured.continuity, diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: BenchRecord { incidents: e1_bench_record.incidents, alterations: e1_bench_record.alterations, attachments: attachments, voltages: vs, resistances: rs }, phases: e1_measured.phases, transitions: e1_measured.transitions, pole_closures: e1_measured.pole_closures } }, input: p4261_e1_layout.input)
+  layout_with(base: e1_promoted, components: e1_promoted.components, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, analysis: analysis, continuity: e1_measured.continuity, diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: BenchRecord { incidents: e1_bench_record.incidents, alterations: e1_bench_record.alterations, attachments: attachments, voltages: vs, resistances: rs }, phases: e1_measured.phases, transitions: e1_measured.transitions, pole_closures: e1_measured.pole_closures } }, input: e1_promoted.input)
 }
 
 // A supplied E1 read in the E1's own analysis state (after the probe bridge, before the short and the
 // lift): supplied readings are ordered there (analysis_order()), beside the real ones they join.
 fn e1_with_attached(attachments: List<ProbeAttachment>, vs: List<NodeVoltageObservation>, rs: List<ResistanceObservation>) -> CarrierLayoutObservation {
-  layout_with(base: p4261_e1_layout, components: p4261_e1_layout.components, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, analysis: e1_measured.analysis, continuity: e1_measured.continuity, diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: BenchRecord { incidents: e1_bench_record.incidents, alterations: e1_bench_record.alterations, attachments: attachments, voltages: vs, resistances: rs }, phases: e1_measured.phases, transitions: e1_measured.transitions, pole_closures: e1_measured.pole_closures } }, input: p4261_e1_layout.input)
+  layout_with(base: e1_promoted, components: e1_promoted.components, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, analysis: e1_measured.analysis, continuity: e1_measured.continuity, diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: BenchRecord { incidents: e1_bench_record.incidents, alterations: e1_bench_record.alterations, attachments: attachments, voltages: vs, resistances: rs }, phases: e1_measured.phases, transitions: e1_measured.transitions, pole_closures: e1_measured.pole_closures } }, input: e1_promoted.input)
 }
 
 fn e1_with_bench(vs: List<NodeVoltageObservation>, rs: List<ResistanceObservation>) -> CarrierLayoutObservation {
@@ -1363,11 +1372,11 @@ fn about(mv: Nat) -> VoltageValue {
 }
 
 fn analysis_order() -> ReadingOrder {
-  BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key] }
+  BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key, e1_photo_part_2_removal.key] }
 }
 
 fn before_every_event() -> ReadingOrder {
-  BeforeIncidents { keys: [e1_bridge_incident.key, e1_inductor_short_incident.key, e1_u10p2_lift.key] }
+  BeforeIncidents { keys: [e1_bridge_incident.key, e1_inductor_short_incident.key, e1_u10p2_lift.key, e1_photo_part_2_removal.key] }
 }
 
 fn q21_with(drain_mv: Nat, source_mv: Nat) -> List<NodeVoltageObservation> {
@@ -1423,9 +1432,9 @@ test fn the_input_switches_read_blocking() -> Bool {
   let around_bridge = filter(e1_bench_record.voltages, o => order_is_unrecorded(o: o.order))
   let placed = map(around_bridge, o => NodeVoltageObservation { asset: o.asset, at: o.at, reference: o.reference, record: o.record, conditions: o.conditions, source: o.source, value: o.value, certainty: o.certainty, order: analysis_order(), evidence: o.evidence })
   let live = count(around_bridge) > 0
-    && !finding_holds(layout: p4261_e1_layout, f: InputSwitchState { component: e1_q21 })
-    && !finding_holds(layout: p4261_e1_layout, f: InputSwitchState { component: e1_q22 })
-    && !carrier_input_reading(layout: p4261_e1_layout).contains("Q21_P5 is BLOCKING")
+    && !finding_holds(layout: e1_promoted, f: InputSwitchState { component: e1_q21 })
+    && !finding_holds(layout: e1_promoted, f: InputSwitchState { component: e1_q22 })
+    && !carrier_input_reading(layout: e1_promoted).contains("Q21_P5 is BLOCKING")
     && finding_holds(layout: e1_with_voltages(vs: placed), f: InputSwitchState { component: e1_q21 })
     && finding_holds(layout: e1_with_voltages(vs: placed), f: InputSwitchState { component: e1_q22 })
     && is_blocking(ss: switch_of(layout: e1_with_voltages(vs: placed), c: e1_q21))
@@ -1542,12 +1551,12 @@ fn overvoltage_of(layout: CarrierLayoutObservation) -> List<ControllerPinStandin
 // candidate, and a pad with no join, or a kilohm join, is no reading of pin 7 at all. With no join, a
 // stated bound of 2.5 V does
 test fn an_enable_bound_above_the_threshold_minimum_establishes_nothing() -> Bool {
-  let identified = finding_holds(layout: p4261_e1_layout, f: ComponentIdentified { component: e1_u1_p5 })
+  let identified = finding_holds(layout: e1_promoted, f: ComponentIdentified { component: e1_u1_p5 })
   let pad_reading = filter(e1_bench_record.voltages, o => component_identity_eq(a: o.at.component, b: e1_ovlo_pad))
-  let live = enable_is(ss: enable_of(layout: p4261_e1_layout), held: true) && finding_holds(layout: p4261_e1_layout, f: ControllerEnableState { component: e1_u1_p5 })
-    && carrier_input_reading(layout: p4261_e1_layout).contains("U1_P5's enable (UVLO/EN) is HELD BELOW its threshold")
-    && enable_is(ss: overvoltage_of(layout: p4261_e1_layout), held: true) && finding_holds(layout: p4261_e1_layout, f: ControllerOvervoltageState { component: e1_u1_p5 })
-    && carrier_input_reading(layout: p4261_e1_layout).contains("U1_P5's overvoltage lockout (OVLO) is BELOW its threshold, so it does not lock the input out")
+  let live = enable_is(ss: enable_of(layout: e1_promoted), held: true) && finding_holds(layout: e1_promoted, f: ControllerEnableState { component: e1_u1_p5 })
+    && carrier_input_reading(layout: e1_promoted).contains("U1_P5's enable (UVLO/EN) is HELD BELOW its threshold")
+    && enable_is(ss: overvoltage_of(layout: e1_promoted), held: true) && finding_holds(layout: e1_promoted, f: ControllerOvervoltageState { component: e1_u1_p5 })
+    && carrier_input_reading(layout: e1_promoted).contains("U1_P5's overvoltage lockout (OVLO) is BELOW its threshold, so it does not lock the input out")
     && count(pad_reading) == 2
   let ovlo_unseparated = enable_gap(ss: overvoltage_of(layout: e1_with_bench(vs: pad_reading, rs: [pad_join(pin: "pin 8")])), which: 3)
   let as_pin7 = enable_is(ss: enable_of(layout: e1_with_bench(vs: pad_reading, rs: concat([pad_join(pin: "pin 7")], separated_from_neighbours()))), held: true)
@@ -1592,8 +1601,8 @@ test fn a_post_incident_reading_is_never_presented_as_before() -> Bool {
 test fn a_reference_design_connection_is_not_a_reachability_edge() -> Bool {
   let g = beeps_graph(b: e1_measured)
   !is_reachable(s: reach(g: g, a: terminal_ref(component: e1_u1_p5, terminal: "pin 2" as TerminalIdentity), b: terminal_ref(component: e1_q21, terminal: "pin 1" as TerminalIdentity)))
-    && carrier_input_reading(layout: p4261_e1_layout).contains("Q4_P5 is the diode-configured MMBT3904-class transistor")
-    && carrier_input_reading(layout: p4261_e1_layout).contains("incident 2026-10-19 probe bridge")
+    && carrier_input_reading(layout: e1_promoted).contains("Q4_P5 is the diode-configured MMBT3904-class transistor")
+    && carrier_input_reading(layout: e1_promoted).contains("incident 2026-10-19 probe bridge")
 }
 
 fn projection_of(layout: CarrierLayoutObservation) -> List<EnableProjection> {
@@ -1669,9 +1678,9 @@ fn pin7(mv: Nat, source_volts: Nat) -> NodeVoltageObservation {
 test fn the_enable_cannot_reach_its_threshold_within_the_input_bound() -> Bool {
   let pad_reading = filter(e1_bench_record.voltages, o => component_identity_eq(a: o.at.component, b: e1_ovlo_pad))
   let separated = e1_with_bench(vs: pad_reading, rs: concat([pad_join(pin: "pin 7")], separated_from_neighbours()))
-  let live = projection_gap(ps: projection_of(layout: p4261_e1_layout), proportional_gap: false)
-    && !finding_holds(layout: p4261_e1_layout, f: EnableInputProjection { component: e1_u1_p5 })
-    && carrier_input_reading(layout: p4261_e1_layout).contains("U1_P5's enable is not projected onto the input (no two values read under different source settings)")
+  let live = projection_gap(ps: projection_of(layout: e1_promoted), proportional_gap: false)
+    && !finding_holds(layout: e1_promoted, f: EnableInputProjection { component: e1_u1_p5 })
+    && carrier_input_reading(layout: e1_promoted).contains("U1_P5's enable is not projected onto the input (no two values read under different source settings)")
     && projection_at_attachment(ps: projection_of(layout: e1_with_attached(attachments: [e1_pin7_attachment], vs: filter(e1_bench_record.voltages, o => terminal_ref_equal(a: o.at, b: e1_pin7_wire_end)), rs: [])))
     && turn_on_is(t: unreachable_turn_on(ps: projection_of(layout: separated)), expected: 64266)
     && finding_holds(layout: separated, f: EnableInputProjection { component: e1_u1_p5 })
@@ -1718,15 +1727,15 @@ test fn a_wire_stands_for_its_pin_only_once_joined() -> Bool {
   let wire_volts = filter(e1_bench_record.voltages, o => terminal_ref_equal(a: o.at, b: e1_pin7_wire_end))
   let undisputed = ProbeAttachment { point: e1_pin7_attachment.point, intended: e1_pin7_attachment.intended, statement: e1_pin7_attachment.statement, disputes: [], ruling: [] }
   let ruled = ProbeAttachment { point: e1_pin7_attachment.point, intended: e1_pin7_attachment.intended, statement: e1_pin7_attachment.statement, disputes: e1_pin7_attachment.disputes, ruling: e1_w4_attachment.ruling }
-  let text = carrier_input_reading(layout: p4261_e1_layout)
+  let text = carrier_input_reading(layout: e1_promoted)
   let live = count(wire_volts) == 3
-    && attachment_is(layout: p4261_e1_layout, a: e1_pin7_attachment, which: 1)
+    && attachment_is(layout: e1_promoted, a: e1_pin7_attachment, which: 1)
     && text.contains("taped wire meant for U1_P5 pin 7 (free end), attached at U1_P5 pin 7 on the operator's word ('I taped a thin wire to pin 7 now so I can explore the bottom' (2026-10-19)), is DISPUTED: no reading joins it to U1_P5 pin 7 at the shorted-probe baseline")
     && text.contains("it may have bridged to pin 21")
-    && enable_is(ss: enable_of(layout: p4261_e1_layout), held: true)
+    && enable_is(ss: enable_of(layout: e1_promoted), held: true)
     && enable_gap(ss: enable_of(layout: e1_with_attached(attachments: [e1_pin7_attachment], vs: wire_volts, rs: [])), which: 4)
-    && attachment_is(layout: p4261_e1_layout, a: e1_w2_attachment, which: 1)
-    && attachment_is(layout: p4261_e1_layout, a: e1_w4_attachment, which: 3)
+    && attachment_is(layout: e1_promoted, a: e1_w2_attachment, which: 1)
+    && attachment_is(layout: e1_promoted, a: e1_w4_attachment, which: 3)
     && text.contains("W4: wire taped at U1_P5's left-hand row, far end in an alligator clip (far end), attached at U1_P5 pin 7 on the operator's word")
     && text.contains("is RULED on by the operator ('yes i am hyper confident that p6 == pin 7")
     && attachment_is(layout: e1_with_attached(attachments: [ruled], vs: wire_volts, rs: []), a: ruled, which: 3)
@@ -1844,7 +1853,7 @@ test fn two_readings_of_one_pair_stay_two_links() -> Bool {
   let live = analysis_net(b: e1_measured)
   let tab = terminal_ref(component: e1_q21, terminal: "tab" as TerminalIdentity)
   let ground_pad = terminal_ref(component: e1_ground_pad, terminal: "pad" as TerminalIdentity)
-  let text = carrier_input_reading(layout: p4261_e1_layout)
+  let text = carrier_input_reading(layout: e1_promoted)
   let swapped = measured_netlist(graph: no_beeps(), resistances: [
     with_polarity(o: pad_to_pin(pin: "pin 7", display: DisplayValue { ohms: 11000, approximate: true }), p: RedOnSecond),
     with_polarity(o: pad_to_pin(pin: "pin 7", display: DisplayValue { ohms: 557, approximate: false }), p: RedOnFirst),
@@ -1943,8 +1952,8 @@ test fn the_live_e1_record_yields_the_measured_netlist() -> Bool {
     && count(filter(post.links, l => !is_between(l: l) && (link_reading(l: l).first.terminal as String).contains("(VIN)") && terminal_ref_equal(a: link_reading(l: l).second, b: e1_ground_ref) && match valued_ohms(o: link_reading(l: l)) { Present { value: v } => v == 10 || v == 15, Absent => false })) == 2
     && count(filter(post.links, l => !is_between(l: l) && (link_reading(l: l).first.terminal as String).contains("(BST)") && (link_reading(l: l).second.terminal as String).contains("(SW)"))) == 1
     && count(filter(post.links, l => !is_between(l: l) && (link_reading(l: l).first.terminal as String).contains("(BST)") && terminal_ref_equal(a: link_reading(l: l).second, b: e1_ground_ref))) == 2
-    && carrier_input_reading(layout: p4261_e1_layout).contains("measured netlist (a node is points joined by a beep or at the shorted-probe baseline")
-    && carrier_input_reading(layout: p4261_k1_layout).contains("measured netlist (a node is points joined by a beep or at the shorted-probe baseline")
+    && carrier_input_reading(layout: e1_promoted).contains("measured netlist (a node is points joined by a beep or at the shorted-probe baseline")
+    && carrier_input_reading(layout: k1_promoted).contains("measured netlist (a node is points joined by a beep or at the shorted-probe baseline")
     && carrier_input_reading(layout: unmeasured_k1()).contains("no board measured, so no measured netlist")
 }
 
@@ -1993,11 +2002,11 @@ fn k1_pin(pin: NonEmptyStr) -> ElectricalTerminalRef {
 // and what would discriminate it, and no property of the row is credited to either part. The same
 // reading as an identification credits the row's MOSFET specification.
 test fn a_marking_candidate_is_not_an_identification() -> Bool {
-  let parts = concat(component_of(layout: p4261_e1_layout, c: e1_q301), component_of(layout: p4261_e1_layout, c: e1_q300))
+  let parts = concat(component_of(layout: e1_promoted, c: e1_q301), component_of(layout: e1_promoted, c: e1_q300))
   let live = count(parts) == 2
     && all(parts, c => match identified_row(c: c) { Absent => true, Present { value: _ } => false })
     && all(parts, c => match identification_text(i: c.identification) { Absent => false, Present { value: t } => t.contains("CANDIDATE Diodes Incorporated BSS138-7-F from the marking 'K38'") })
-  let as_identified = map(parts, c => InstalledComponent { seen: c.seen, component: c.component, terminals: c.terminals, identification: IdentifiedByMarking { row: bss138, marking: MarkingReading { text: "K38", evidence: e1_k38_photo } } })
+  let as_identified = map(parts, c => InstalledComponent { seen: c.seen, component: c.component, terminals: c.terminals, identification: identified_fixture(subject: c.component, row: bss138, text: "K38") })
   let credited = all(as_identified, c => match mosfet_of(c: c) { Absent => false, Present { value: _ } => true })
   live && credited
 }
@@ -2008,7 +2017,7 @@ test fn a_marking_candidate_is_not_an_identification() -> Bool {
 // credited -- so no decoded resistance stands for it. Without the 26 kohm reading its ends are unlinked.
 test fn the_enable_chain_is_read_at_54_v() -> Bool {
   let live = analysis_net(b: e1_measured)
-  let resistor = component_of(layout: p4261_e1_layout, c: e1_q301_resistor)
+  let resistor = component_of(layout: e1_promoted, c: e1_q301_resistor)
   let without_26k = measured_netlist(graph: no_beeps(), resistances: filter(e1_bench_record.resistances, o => !reads_pair(o: o, a: e1_q301_resistor_near, b: e1_q301_resistor_far)))
   reads_at_54(t: e1_q300_lead_b, millivolts: 0)
     && reads_at_54(t: cluster_pad(name: "P6"), millivolts: 0)
@@ -2030,7 +2039,7 @@ fn reads_at_54(t: ElectricalTerminalRef, millivolts: Nat) -> Bool {
 fn marking_text_contains(c: InstalledComponent, text: NonEmptyStr) -> Bool {
   match c.identification {
     MarkingUnresolved { marking, discriminator: _ } => match marking {
-      Present { value: m } => (m.text as String).contains(text as String)
+      Present { value: m } => (marking_text(r: m)).contains(text)
       Absent => false
     }
     _ => false
@@ -2045,8 +2054,8 @@ test fn each_pole_closes_toward_the_on_legend() -> Bool {
   let cs = e1_measured.pole_closures
   let poles = flat_map([e1_s1, e1_s2], p => [pole_closure_standing(closures: cs, package: p, pole: 1), pole_closure_standing(closures: cs, package: p, pole: 2)])
   let live = count(cs) == 8 && count(poles) == 4 && all(poles, s => closure_arm(s: s) == 0)
-    && carrier_input_reading(layout: p4261_e1_layout).contains("Pole closure, unpowered: S2.1 closes toward the ON legend (reported as 'basically 0 ohms' with no shorted-probe baseline recorded, range unrecorded across S2 pole 1 terminal a and S2 pole 1 terminal b toward it; over range on the 2000000 ohm range across S2 pole 1 terminal a and S2 pole 1 terminal b away)")
-    && carrier_input_reading(layout: p4261_e1_layout).contains("S1.2 closes toward the ON legend")
+    && carrier_input_reading(layout: e1_promoted).contains("Pole closure, unpowered: S2.1 closes toward the ON legend (reported as 'basically 0 ohms' with no shorted-probe baseline recorded, range unrecorded across S2 pole 1 terminal a and S2 pole 1 terminal b toward it; over range on the 2000000 ohm range across S2 pole 1 terminal a and S2 pole 1 terminal b away)")
+    && carrier_input_reading(layout: e1_promoted).contains("S1.2 closes toward the ON legend")
   let swapped = map(cs, c => SwitchPoleClosure { pole: SwitchPoleState { package: c.pole.package, pole: c.pole.pole, position: match c.pole.position { TowardOnLegend => AwayFromOnLegend, AwayFromOnLegend => TowardOnLegend, PolePositionUnrecorded => PolePositionUnrecorded } }, first: c.first, second: c.second, display: c.display, range: c.range, evidence: c.evidence })
   let toward_only = filter(cs, c => match c.pole.position { TowardOnLegend => true, AwayFromOnLegend => false, PolePositionUnrecorded => false })
   let valued = map(cs, c => SwitchPoleClosure { pole: c.pole, first: c.first, second: c.second, display: DisplayValue { ohms: 3, approximate: false }, range: c.range, evidence: c.evidence })
@@ -2105,7 +2114,7 @@ fn beige_apart_from(pin: NonEmptyStr) -> ResistanceObservation {
 // reading separates it from pins 20 and 22; supplied readings separating it from both drop the
 // access-point caveat and still read no window; the K1, with nothing energized, renders pin 21 unread.
 test fn the_bias_supply_is_rendered_and_no_window_is_read() -> Bool {
-  let e1 = carrier_input_reading(layout: p4261_e1_layout)
+  let e1 = carrier_input_reading(layout: e1_promoted)
   let baselined_rs = map(e1_bench_record.resistances, o => baselined(o: o))
   let joined = carrier_input_reading(layout: e1_with_bench(vs: [e1_vdd_volts], rs: baselined_rs))
   let separated = carrier_input_reading(layout: e1_with_bench(vs: [e1_vdd_volts], rs: concat(baselined_rs, [beige_apart_from(pin: "pin 20"), beige_apart_from(pin: "pin 22")])))
@@ -2118,7 +2127,7 @@ test fn the_bias_supply_is_rendered_and_no_window_is_read() -> Bool {
     && separated.contains("top end read about 4.860 V")
     && !separated.contains("so not yet the pin's access point")
     && separated.contains("no window is read from it")
-    && carrier_input_reading(layout: p4261_k1_layout).contains("U1_P5 VDD (pin 21, internal-regulator output): unread")
+    && carrier_input_reading(layout: k1_promoted).contains("U1_P5 VDD (pin 21, internal-regulator output): unread")
 }
 
 
@@ -2157,7 +2166,7 @@ fn phase_gap_is(layout: CarrierLayoutObservation, key: NonEmptyStr, which: Nat) 
 }
 
 fn e1_with_phases(ps: List<CarrierPhaseObservation>) -> CarrierLayoutObservation {
-  layout_with(base: p4261_e1_layout, components: p4261_e1_layout.components, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, analysis: e1_measured.analysis, continuity: e1_measured.continuity, diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: e1_measured.bench, phases: ps, transitions: e1_measured.transitions, pole_closures: e1_measured.pole_closures } }, input: p4261_e1_layout.input)
+  layout_with(base: e1_promoted, components: e1_promoted.components, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, analysis: e1_measured.analysis, continuity: e1_measured.continuity, diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: e1_measured.bench, phases: ps, transitions: e1_measured.transitions, pole_closures: e1_measured.pole_closures } }, input: e1_promoted.input)
 }
 
 fn e1_phase_named(key: NonEmptyStr) -> List<CarrierPhaseObservation> {
@@ -2205,7 +2214,7 @@ fn phase_text_in(layout: CarrierLayoutObservation, key: NonEmptyStr) -> String {
 // read as a further domain drawing 70 mA with nothing lit, so the bridge, not the dark indicators, is
 // what names it.
 test fn the_carrier_phases_classify_from_their_records() -> Bool {
-  let live = p4261_e1_layout
+  let live = e1_promoted
   let arms = phase_arm(layout: live, key: "p0-bias") == 0 && phase_arm(layout: live, key: "p1-s2-domain") == 1
     && phase_arm(layout: live, key: "p2-s1-sequence") == 2 && phase_arm(layout: live, key: "p3-settled") == 3
     && phase_arm(layout: live, key: "j30-held") == 4 && phase_arm(layout: live, key: "j68-held") == 4
@@ -2290,7 +2299,7 @@ fn settled_with_bus(value: VoltageValue, setting: SourceSettingStanding) -> Carr
 // Each value read at the first downstream terminal, as separate touches of it.
 fn settled_with_bus_readings(values: List<VoltageValue>, setting: SourceSettingStanding) -> CarrierLayoutObservation {
   let p3 = e1_phase_named(key: "p3-settled")
-  let t = (downstream_terminals(layout: p4261_e1_layout)).first()
+  let t = (downstream_terminals(layout: e1_promoted)).first()
   e1_with_phases(ps: map(p3, p => match t {
     Absent => p
     Present { value: term } => phase_with(p: p, conditions: p.conditions, setting: setting, supply: p.supply, held: Absent, settling: p.settling, volts: concat(p.node_voltages, map(values, v => bus_volt(t: term, value: v))))
@@ -2307,7 +2316,7 @@ fn settled_with_bus_readings(values: List<VoltageValue>, setting: SourceSettingS
 // INCONSISTENT and no finding, as are 20 V and a near reading beside a low one; the same 47.5 V with
 // the source's setting unrecorded reads nothing; a bound reads nothing.
 test fn the_protected_bus_is_read_only_at_the_downstream_terminals() -> Bool {
-  let live = p4261_e1_layout
+  let live = e1_promoted
   let downstream = downstream_terminals(layout: live)
   let read_keys = ["p3-all-poles-on", "p3-after-j30-tap"]
   let unread = all(filter(e1_phases, p => !any(read_keys, k => k == p.key)), p => bus_arm(layout: live, key: p.key) == 2)
@@ -2370,17 +2379,17 @@ test fn a_bridge_is_a_recorded_stimulus_and_a_zero_volt_point_is_not_a_ground() 
     && count(volts) == 10 && count(at_1v8) == 5 && count(at_0) == 5
     && count(flat_map(p3, p => p.aliased_voltages)) == 2
     && all(flat_map(p3, p => p.aliased_voltages), v => count(v.candidates) == 3)
-    && phase_text_in(layout: p4261_e1_layout, key: "p3-settled").contains("'point read at 3.1 V' (one of J30 A, J30 B, J30 C) read about 3.100 V")
-    && count(flat_map(component_of(layout: p4261_e1_layout, c: e1_j30), c => c.terminals)) == 3
-    && all(concat(component_of(layout: p4261_e1_layout, c: e1_s1), component_of(layout: p4261_e1_layout, c: e1_s2)), c => count(c.terminals) == 4)
+    && phase_text_in(layout: e1_promoted, key: "p3-settled").contains("'point read at 3.1 V' (one of J30 A, J30 B, J30 C) read about 3.100 V")
+    && count(flat_map(component_of(layout: e1_promoted, c: e1_j30), c => c.terminals)) == 3
+    && all(concat(component_of(layout: e1_promoted, c: e1_s1), component_of(layout: e1_promoted, c: e1_s2)), c => count(c.terminals) == 4)
     && all(["R1", "L2", "L3", "L4", "L5"], n => any(at_1v8, v => terminal_ref_equal(a: v.at, b: j68_point(name: n))))
     && all(["L1", "R2", "R3", "R4", "R5"], n => any(at_0, v => terminal_ref_equal(a: v.at, b: j68_point(name: n))))
     && !any(["L1", "R2", "R3", "R4", "R5"], n => one_node(net: live, a: j68_point(name: n), b: e1_ground_ref))
     && any(e1_measured.bench.resistances, o => reads_pair(o: o, a: j68_point(name: "R2"), b: e1_ground_ref) && match valued_ohms(o: o) { Present { value: v } => v == 57, Absent => false })
     && !one_node(net: live, a: j68_point(name: "R2"), b: e1_ground_ref)
-    && carrier_input_reading(layout: p4261_e1_layout).contains("Carrier phases (names of what was observed, not of a function): ")
-    && carrier_input_reading(layout: p4261_e1_layout).contains("on J20 power alone with the module absent, the carrier's local controls put it through recorded states")
-    && carrier_input_reading(layout: p4261_k1_layout).contains("k1-all-poles-on") && !carrier_input_reading(layout: p4261_k1_layout).contains("no carrier phase recorded")
+    && carrier_input_reading(layout: e1_promoted).contains("Carrier phases (names of what was observed, not of a function): ")
+    && carrier_input_reading(layout: e1_promoted).contains("on J20 power alone with the module absent, the carrier's local controls put it through recorded states")
+    && carrier_input_reading(layout: k1_promoted).contains("k1-all-poles-on") && !carrier_input_reading(layout: k1_promoted).contains("no carrier phase recorded")
     && phases_reading(layout: unmeasured_k1()).contains("no carrier phase recorded")
 }
 
@@ -2389,25 +2398,117 @@ test fn a_bridge_is_a_recorded_stimulus_and_a_zero_volt_point_is_not_a_ground() 
 // a U51 pin runs is read from the pin: 3 and 11 are read by the part, 7 and 9 driven by it, 1, 2 and
 // 15 controls or clocks into it, 8 and 16 its supply or return, 17 no pin at all; Q300, a marking
 // candidate, has no pin roles to read.
+// A specimen's body is what the bench probed, named by the position counted on it. A manufacturer's
+// numbering is a fact about the PART: a consumer reaches it through the identification, and when an
+// identification is only a candidate those names become unavailable -- the refusal the model already
+// implements for pin roles. The terminal LIST is different: it sits on the specimen row, so writing a named
+// part's numbering onto it makes the datasheet a second authority for what the specimen is. That is what
+// happened three times: sixteen HTSSOP-28 pin names on U49 and U51, and twenty-nine LM5066I terminal names on
+// K1's U1_P5, each copied from carrier.dag onto a specimen whose bench had probed eight positions, none, and
+// two respectively. The check looks at EVERY row the identification arm names -- IdentifiedByMarking,
+// MarkingSharedByMakers and MarkingCandidate alike -- because the failure was a candidate wearing its
+// candidate row's numbering, and a guard that consulted only identified_row(c) would have gone quiet at the
+// exact moment the defect appeared.
+fn rows_the_identification_names(c: InstalledComponent) -> List<ElectronicComponentRow> {
+  match c.identification {
+    IdentifiedByMarking { row, observation: _ } => [row]
+    MarkingSharedByMakers { rows, marking: _ } => rows
+    MarkingCandidate { row, marking: _, discriminator: _ } => [row]
+    RatingPrintedOnBody { rating: _, marking: _ } => []
+    ResistanceCodeRead { milliohms: _, marking: _ } => []
+    MarkingUnresolved { marking: _, discriminator: _ } => []
+    FootprintUnpopulated { evidence: _ } => []
+    BodySeenMarkingUnread { evidence: _ } => []
+  }
+}
+
+fn body_wears_a_named_parts_numbering(c: InstalledComponent) -> Bool {
+  count(c.terminals) > 0
+    && any(rows_the_identification_names(c), r =>
+      count(c.terminals) == count(numbered_pins(row: r))
+        && all(c.terminals, x => any(map(numbered_pins(row: r), n => pin_number_name(number: n)), t => (x as String) == (t as String))))
+}
+
+// THE OTHER HALF, and the half the carriers exist to make checkable: a body that matches a named part's
+// numbering is refused UNLESS the bench itself established that body -- the leads it counted on the
+// body, or the positions a probe touched. The justification is read from the board's own observation
+// carriers (product.electrical.identification's ObservedLeadCount and ObservedProbedPosition), selected
+// by component identity, so the datasheet is never its own authority. A body with no carrier row and no
+// probes cannot be justified this way and stays refused, which is the point: the only way a body of a
+// datasheet's size survives is by being OBSERVED at that size. Bodies whose names are not a datasheet
+// numbering at all -- a connector housing's own rows, a bead's "top end" and "bottom end" -- never reach
+// this test, because the guard asks the question only of a body that already matches a named row.
+fn body_is_justified(c: InstalledComponent, probes: List<NonEmptyStr>, counted: List<ObservedLeadCount>) -> Bool {
+  let body = map(c.terminals, t => (t as String))
+  (count(counted) > 0
+    && all(counted, r => count(body) == r.count)
+    && all(body, n => n.contains("pin "))
+    && all(body, b => count(filter(body, x => (x as String) == (b as String))) == 1)
+    && all(probes, p => any(body, b => (b as String) == (p as String))))
+    || (count(counted) == 0
+      && count(probes) > 0
+      && count(body) == count(probes)
+      && all(body, b => any(probes, p => (b as String) == (p as String)))
+      && all(probes, p => any(body, b => (b as String) == (p as String))))
+}
+
+
+test fn a_specimens_body_is_what_was_probed_and_not_a_named_parts_numbering() -> Bool {
+  // Every specimen on both boards: a body may be the leads counted on it or the positions probed on it,
+  // never the numbering of a row its identification names. RED on a tree where a body is sized from a
+  // datasheet, because the carriers that justify a body are the only thing that lets a matching size pass.
+  all(e1_promoted.components,
+    c => !body_wears_a_named_parts_numbering(c)
+      || body_is_justified(c, probes: e1_probed_positions(c: c.component), counted: e1_lead_count_rows(c: c.component)))
+    && all(k1_promoted.components,
+      c => !body_wears_a_named_parts_numbering(c)
+        || body_is_justified(c, probes: k1_probed_positions(c: c.component), counted: k1_lead_count_rows(c: c.component)))
+}
+
+// Two controls on the guard itself, because a guard nobody can show firing is a guard that has silently
+// stopped meaning anything. The first proves the candidate arm is consulted: U55 stands today as a
+// MarkingCandidate, and if rows_the_identification_names returned nothing for that arm the main check would
+// have gone quiet at the moment the defect appeared -- which is how the first version of this guard was
+// wrong. The second proves size alone does not trip it: J20 carries a long terminal list from its own housing
+// rows, as many positions as some other part's pin table, and must stay unflagged.
+test fn the_guard_consults_a_candidates_named_row_and_ignores_size_alone() -> Bool {
+  all(component_of(layout: e1_promoted, c: e1_u55), c =>
+        match c.identification {
+          MarkingCandidate { row: _, marking: _, discriminator: _ } =>
+            count(rows_the_identification_names(c: c)) == 1
+          _ => false
+        })
+    && all(component_of(layout: e1_promoted, c: e1_j20), c =>
+        // Non-empty, so the control is not vacuous, and unflagged. The old claim here was that J20 carries
+        // more than twenty terminals -- a number I had not measured, which is the same failure this whole
+        // exercise exists to stop. J20's terminals come from its own housing rows, not from any part table,
+        // and it names no row in its identification, so size alone cannot trip the guard.
+        count(c.terminals) > 0 && !body_wears_a_named_parts_numbering(c: c))
+}
+
 test fn u49_and_u51_are_shift_registers_with_pin_roles() -> Bool {
-  let parts = concat(component_of(layout: p4261_e1_layout, c: e1_u49), component_of(layout: p4261_e1_layout, c: e1_u51))
+  let parts = concat(component_of(layout: e1_promoted, c: e1_u49), component_of(layout: e1_promoted, c: e1_u51))
   count(parts) == 2
-    && all(parts, c => match identification_text(i: c.identification) { Absent => false, Present { value: t } => t.contains("Texas Instruments Incorporated SN74LV165APWR, from the marking 'LV165A / 2BKG4 / AEC0'") })
+    && all(parts, c => match identification_text(i: c.identification) { Absent => false, Present { value: t } => t.contains("Texas Instruments Incorporated SN74LV165APWR, from the marking 'LV165A / 2BK G4 / AECQ'") })
     && all(parts, c => match mosfet_of(c: c) { Absent => true, Present { value: _ } => false })
     && all(parts, c => match controller_of(c: c) { Absent => true, Present { value: _ } => false })
-    && all(parts, c => count(c.terminals) == 16)
-    && finding_holds(layout: p4261_e1_layout, f: ComponentIdentified { component: e1_u51 })
-    && register_pin_direction_text(layout: p4261_e1_layout, c: e1_u51, number: 3).contains("U51 pin 3 (E) is READ by the part")
-    && register_pin_direction_text(layout: p4261_e1_layout, c: e1_u51, number: 11).contains("U51 pin 11 (A) is READ by the part")
-    && register_pin_direction_text(layout: p4261_e1_layout, c: e1_u51, number: 7).contains("U51 pin 7 (QH (inverted)) is DRIVEN by the part")
-    && register_pin_direction_text(layout: p4261_e1_layout, c: e1_u51, number: 9).contains("U51 pin 9 (QH) is DRIVEN by the part")
-    && register_pin_direction_text(layout: p4261_e1_layout, c: e1_u51, number: 1).contains("U51 pin 1 (SH/LD) is a control or clock into the part")
-    && register_pin_direction_text(layout: p4261_e1_layout, c: e1_u51, number: 15).contains("U51 pin 15 (CLK INH) is a control or clock into the part")
-    && register_pin_direction_text(layout: p4261_e1_layout, c: e1_u51, number: 8).contains("U51 pin 8 (GND) is its supply or return")
-    && register_pin_direction_text(layout: p4261_e1_layout, c: e1_u51, number: 16).contains("U51 pin 16 (VCC) is its supply or return")
-    && register_pin_direction_text(layout: p4261_e1_layout, c: e1_u51, number: 17).contains("U51 has no pin 17")
-    && register_pin_direction_text(layout: p4261_e1_layout, c: e1_q300, number: 1).contains("is not identified as a shift register")
-    && carrier_input_reading(layout: p4261_e1_layout).contains("U49 and U51, beside the end of Q300's lead b trace, are SN74LV165A parallel-load shift registers")
+    // What the bench probed, not what the datasheet numbers: eight counted positions on U51, and nothing on
+    // U49, where no probe was ever put. TI numbers sixteen pins on the SN74LV165A; that is the part's fact and
+    // a consumer reaches it through identified_row(c), so it cannot be what makes this body sixteen-wide.
+    && all(component_of(layout: e1_promoted, c: e1_u49), c => count(c.terminals) == 0)
+    && all(component_of(layout: e1_promoted, c: e1_u51), c => count(c.terminals) == count(e1_u51_probed_pins))
+    && finding_holds(layout: e1_promoted, f: ComponentIdentified { component: e1_u51 })
+    && register_pin_direction_text(layout: e1_promoted, c: e1_u51, number: 3).contains("U51 pin 3 (E) is READ by the part")
+    && register_pin_direction_text(layout: e1_promoted, c: e1_u51, number: 11).contains("U51 pin 11 (A) is READ by the part")
+    && register_pin_direction_text(layout: e1_promoted, c: e1_u51, number: 7).contains("U51 pin 7 (QH (inverted)) is DRIVEN by the part")
+    && register_pin_direction_text(layout: e1_promoted, c: e1_u51, number: 9).contains("U51 pin 9 (QH) is DRIVEN by the part")
+    && register_pin_direction_text(layout: e1_promoted, c: e1_u51, number: 1).contains("U51 pin 1 (SH/LD) is a control or clock into the part")
+    && register_pin_direction_text(layout: e1_promoted, c: e1_u51, number: 15).contains("U51 pin 15 (CLK INH) is a control or clock into the part")
+    && register_pin_direction_text(layout: e1_promoted, c: e1_u51, number: 8).contains("U51 pin 8 (GND) is its supply or return")
+    && register_pin_direction_text(layout: e1_promoted, c: e1_u51, number: 16).contains("U51 pin 16 (VCC) is its supply or return")
+    && register_pin_direction_text(layout: e1_promoted, c: e1_u51, number: 17).contains("U51 has no pin 17")
+    && register_pin_direction_text(layout: e1_promoted, c: e1_q300, number: 1).contains("is not identified as a shift register")
+    && carrier_input_reading(layout: e1_promoted).contains("U49 and U51, beside the end of Q300's lead b trace, are SN74LV165A parallel-load shift registers")
 }
 
 fn range_arm(s: PairRangeStanding) -> Nat {
@@ -2467,24 +2568,24 @@ test fn q300_lead_b_reaches_u51_through_a_junction_not_a_join() -> Bool {
   let two_k = RangeFullScale { ohms: 2000 }
   let twenty_k = RangeFullScale { ohms: 20000 }
   count(e1_u51_resistances) == 14
-    && count(filter(e1_u51_resistances, o => any(lv165a_pins, n => reads_pair(o: o, a: e1_q300_lead_b, b: e1_u51_pin(n: n))))) == 13
+    && count(filter(e1_u51_resistances, o => any(e1_u51_probed_pins, n => reads_pair(o: o, a: e1_q300_lead_b, b: e1_u51_pin(n: n))))) == 13
     && range_arm(s: pin8) == 0 && range_bounds(s: pin8) == [600, 20000]
     && range_arm(s: to_return) == 2
-    && !any(lv165a_pins, n => one_node(net: live, a: e1_q300_lead_b, b: e1_u51_pin(n: n)))
-    && carrier_input_reading(layout: p4261_e1_layout).contains("Q300 lead b to U51 pin 8 reads MOVING WITH THE RANGE, 600 to 20000 ohm across 3 recorded ranges in 5 readings: a path holding a junction, not a conductor, and no join")
-    && carrier_input_reading(layout: p4261_e1_layout).contains("Q300 lead b to J20's black lead is valued on one recorded range only (1 readings)")
-    && carrier_input_reading(layout: p4261_k1_layout).contains("U55 is not a component of this carrier's observation") == false
-    && carrier_input_reading(layout: p4261_k1_layout).contains("U51 is not a component of this carrier's observation")
-    && all(component_of(layout: p4261_e1_layout, c: e1_u55), c => count(c.terminals) == 16 && match identified_row(c: c) { Present { value: _ } => false, Absent => true })
-    && count(component_of(layout: p4261_e1_layout, c: e1_u55)) == 1
-    && translator_pin_text(layout: p4261_e1_layout, c: e1_u55, number: 13).contains("under the candidate pinout, U55 pin 13 (VCCB) is its supply or return")
-    && translator_pin_text(layout: p4261_e1_layout, c: e1_u55, number: 16).contains("under the candidate pinout, U55 pin 16 (DIR2) is a direction or enable input into the part")
-    && translator_pin_text(layout: p4261_e1_layout, c: e1_u55, number: 7).contains("U55 pin 7 (OE) is a direction or enable input")
-    && translator_pin_text(layout: p4261_e1_layout, c: e1_u55, number: 12).contains("U55 pin 12 (B1) is the B end of channel 1: a data port whose direction is that channel's direction input, a live fact")
-    && translator_pin_text(layout: p4261_e1_layout, c: e1_u55, number: 1).contains("U55 pin 1 (A1) is the A end of channel 1")
-    && translator_pin_text(layout: p4261_e1_layout, c: e1_u55, number: 17).contains("U55 has no pin 17")
-    && translator_pin_text(layout: p4261_e1_layout, c: e1_u51, number: 1).contains("U51 carries no level-translator row")
-    && carrier_input_reading(layout: p4261_e1_layout).contains("under the candidate pinout, U55 pin 13 (VCCB) is its supply or return; under the candidate pinout, U55 pin 16 (DIR2) is a direction or enable input into the part")
+    && !any(e1_u51_probed_pins, n => one_node(net: live, a: e1_q300_lead_b, b: e1_u51_pin(n: n)))
+    && carrier_input_reading(layout: e1_promoted).contains("Q300 lead b to U51 pin 8 reads MOVING WITH THE RANGE, 600 to 20000 ohm across 3 recorded ranges in 5 readings: a path holding a junction, not a conductor, and no join")
+    && carrier_input_reading(layout: e1_promoted).contains("Q300 lead b to J20's black lead is valued on one recorded range only (1 readings)")
+    && carrier_input_reading(layout: k1_promoted).contains("U55 is not a component of this carrier's observation") == false
+    && carrier_input_reading(layout: k1_promoted).contains("U51 is not a component of this carrier's observation")
+    && all(component_of(layout: e1_promoted, c: e1_u55), c => count(c.terminals) == 16 && match identified_row(c: c) { Present { value: _ } => false, Absent => true })
+    && count(component_of(layout: e1_promoted, c: e1_u55)) == 1
+    && translator_pin_text(layout: e1_promoted, c: e1_u55, number: 13).contains("under the candidate pinout, U55 pin 13 (VCCB) is its supply or return")
+    && translator_pin_text(layout: e1_promoted, c: e1_u55, number: 16).contains("under the candidate pinout, U55 pin 16 (DIR2) is a direction or enable input into the part")
+    && translator_pin_text(layout: e1_promoted, c: e1_u55, number: 7).contains("U55 pin 7 (OE) is a direction or enable input")
+    && translator_pin_text(layout: e1_promoted, c: e1_u55, number: 12).contains("U55 pin 12 (B1) is the B end of channel 1: a data port whose direction is that channel's direction input, a live fact")
+    && translator_pin_text(layout: e1_promoted, c: e1_u55, number: 1).contains("U55 pin 1 (A1) is the A end of channel 1")
+    && translator_pin_text(layout: e1_promoted, c: e1_u55, number: 17).contains("U55 has no pin 17")
+    && translator_pin_text(layout: e1_promoted, c: e1_u51, number: 1).contains("U51 carries no level-translator row")
+    && carrier_input_reading(layout: e1_promoted).contains("under the candidate pinout, U55 pin 13 (VCCB) is its supply or return; under the candidate pinout, U55 pin 16 (DIR2) is a direction or enable input into the part")
     && range_arm(s: supplied_pin8_standing(rs: [supplied_ranged(ohms: 1000, range: two_k), supplied_ranged(ohms: 1100, range: twenty_k)])) == 1
     && range_arm(s: supplied_pin8_standing(rs: [supplied_ranged(ohms: 1000, range: two_k), supplied_ranged(ohms: 2001, range: twenty_k)])) == 0
     && range_arm(s: supplied_pin8_standing(rs: [supplied_ranged(ohms: 1000, range: two_k), supplied_ranged(ohms: 2000, range: twenty_k)])) == 1
@@ -2518,7 +2619,7 @@ test fn u500_meets_the_gate_network_at_one_contact() -> Bool {
     && polarity_arm(s: pair_polarity_standing(os: [], a: e1_q300_lead_b, b: e1_u500_pad)) == 3
     && polarity_arm(s: pair_polarity_standing(os: [e1_pad_read(a: e1_u500_pad, b: e1_ground_ref, ohms: 500, polarity: RedOnFirst), e1_pad_read(a: e1_ground_ref, b: e1_u500_pad, ohms: 540, polarity: RedOnFirst)], a: e1_u500_pad, b: e1_ground_ref)) == 0
     && polarity_arm(s: pair_polarity_standing(os: [e1_pad_read(a: e1_u500_pad, b: e1_ground_ref, ohms: 500, polarity: RedOnFirst), e1_pad_read(a: e1_ground_ref, b: e1_u500_pad, ohms: 560, polarity: RedOnFirst)], a: e1_u500_pad, b: e1_ground_ref)) == 1
-    && carrier_input_reading(layout: p4261_e1_layout).contains("the pad above U500 to J20's black lead reads DIRECTIONALLY (500 ohm with red on")
+    && carrier_input_reading(layout: e1_promoted).contains("the pad above U500 to J20's black lead reads DIRECTIONALLY (500 ohm with red on")
     && count(filter(e1_front_chain_resistances, o => match o.certainty { StatedHedged { verbatim: _ } => true, StatedPlainly => false })) == 1
     && low == ["upper-right contact"]
     && count(terminals_reading_at_most(rs: rs, c: e1_u500, names: e1_u500_contacts, ceiling_ohms: 800)) == 2
@@ -2526,17 +2627,17 @@ test fn u500_meets_the_gate_network_at_one_contact() -> Bool {
     && count(terminals_reading_at_most(rs: doubled, c: e1_u500, names: e1_u500_contacts, ceiling_ohms: 500)) == 2
     && !one_node(net: live, a: e1_u500_contact(n: "right contact 2"), b: e1_ground_ref)
     && any(rs, o => reads_pair(o: o, a: e1_u500_contact(n: "right contact 2"), b: e1_ground_ref) && is_reported_zero(o: o))
-    && all(component_of(layout: p4261_e1_layout, c: e1_u500), c => count(c.terminals) == 8 && match identified_row(c: c) { Present { value: _ } => false, Absent => true })
-    && all(component_of(layout: p4261_e1_layout, c: e1_u43), c => count(c.terminals) == 5 && match identified_row(c: c) { Present { value: _ } => false, Absent => true } && match c.identification { MarkingCandidate { row: _, marking, discriminator: _ } => (marking.text as String).contains("WEJ"), _ => false })
-    && gate_pin_text(layout: p4261_e1_layout, c: e1_u43, number: 4).contains("under the candidate pinout, U43 pin 4 (Y) is its output, the AND of its inputs")
-    && gate_pin_text(layout: p4261_e1_layout, c: e1_u43, number: 1).contains("U43 pin 1 (A) is an input the gate reads")
-    && gate_pin_text(layout: p4261_e1_layout, c: e1_u43, number: 3).contains("U43 pin 3 (GND) is its supply or return")
-    && gate_pin_text(layout: p4261_e1_layout, c: e1_u43, number: 6).contains("U43 has no pin 6")
-    && gate_pin_text(layout: p4261_e1_layout, c: e1_u55, number: 4).contains("U55 carries no logic-gate row")
-    && carrier_input_reading(layout: p4261_e1_layout).contains("under the candidate pinout, U43 pin 4 (Y) is its output")
-    && all(component_of(layout: p4261_e1_layout, c: e1_y50), c => count(c.terminals) == 4)
-    && count(component_of(layout: p4261_e1_layout, c: e1_u500)) == 1
-    && carrier_input_reading(layout: p4261_e1_layout).contains("On the front, 1 of U500's contacts read at or below 500 ohm from Q300 lead b on the 2k range (upper-right contact), against 800 ohm to its ground contact")
+    && all(component_of(layout: e1_promoted, c: e1_u500), c => count(c.terminals) == 8 && match identified_row(c: c) { Present { value: _ } => false, Absent => true })
+    && all(component_of(layout: e1_promoted, c: e1_u43), c => count(c.terminals) == 5 && match identified_row(c: c) { Present { value: _ } => false, Absent => true } && match c.identification { MarkingCandidate { row: _, marking, discriminator: _ } => (marking_text(r: marking)).contains("WEJ"), _ => false })
+    && gate_pin_text(layout: e1_promoted, c: e1_u43, number: 4).contains("under the candidate pinout, U43 pin 4 (Y) is its output, the AND of its inputs")
+    && gate_pin_text(layout: e1_promoted, c: e1_u43, number: 1).contains("U43 pin 1 (A) is an input the gate reads")
+    && gate_pin_text(layout: e1_promoted, c: e1_u43, number: 3).contains("U43 pin 3 (GND) is its supply or return")
+    && gate_pin_text(layout: e1_promoted, c: e1_u43, number: 6).contains("U43 has no pin 6")
+    && gate_pin_text(layout: e1_promoted, c: e1_u55, number: 4).contains("U55 carries no logic-gate row")
+    && carrier_input_reading(layout: e1_promoted).contains("under the candidate pinout, U43 pin 4 (Y) is its output")
+    && all(component_of(layout: e1_promoted, c: e1_y50), c => count(c.terminals) == 4)
+    && count(component_of(layout: e1_promoted, c: e1_u500)) == 1
+    && carrier_input_reading(layout: e1_promoted).contains("On the front, 1 of U500's contacts read at or below 500 ohm from Q300 lead b on the 2k range (upper-right contact), against 800 ohm to its ground contact")
 }
 
 // U55 READS AS THE CANDIDATE PREDICTS, AND ITS CONTROL AND SUPPLY PINS SIT 500 OHM FROM THE GATE. Live,
@@ -2564,12 +2665,12 @@ test fn u55_control_and_supply_pins_sit_near_the_gate() -> Bool {
     && !one_node(net: live, a: e1_u55_pin(n: "pin 8"), b: e1_ground_ref)
     && !one_node(net: live, a: e1_u55_left_pad, b: e1_u55_pin(n: "pin 6"))
     && any(rs, o => reads_pair(o: o, a: e1_u55_left_pad, b: e1_u55_pin(n: "pin 6")) && is_reported_zero(o: o))
-    && carrier_input_reading(layout: p4261_e1_layout).contains("Of U55's pins, 3 read at or below 500 ohm from Q300 lead b on the 2k range (pin 14, pin 15, pin 16)")
-    && translator_pin_text(layout: p4261_e1_layout, c: e1_u55, number: 14).contains("U55 pin 14 (VCCA) is its supply or return")
-    && count(component_of(layout: p4261_e1_layout, c: e1_j3)) == 1 && count(component_of(layout: p4261_e1_layout, c: e1_j4)) == 1
+    && carrier_input_reading(layout: e1_promoted).contains("Of U55's pins, 3 read at or below 500 ohm from Q300 lead b on the 2k range (pin 14, pin 15, pin 16)")
+    && translator_pin_text(layout: e1_promoted, c: e1_u55, number: 14).contains("U55 pin 14 (VCCA) is its supply or return")
+    && count(component_of(layout: e1_promoted, c: e1_j3)) == 1 && count(component_of(layout: e1_promoted, c: e1_j4)) == 1
     && count(e1_site_resistances) == 1 && all(e1_site_resistances, o => reads_pair(o: o, a: e1_q300_lead_b, b: terminal_ref(component: e1_u3, terminal: "lower-right lead" as TerminalIdentity)) && match valued_ohms(o: o) { Present { value: v } => v == 500, Absent => false })
     && !one_node(net: live, a: e1_q300_lead_b, b: terminal_ref(component: e1_u3, terminal: "lower-right lead" as TerminalIdentity))
-    && all(component_of(layout: p4261_e1_layout, c: e1_u3), c => count(c.terminals) == 6) && count(component_of(layout: p4261_e1_layout, c: e1_u3)) == 1
+    && all(component_of(layout: e1_promoted, c: e1_u3), c => count(c.terminals) == 6) && count(component_of(layout: e1_promoted, c: e1_u3)) == 1
 }
 
 // U4 (2026-10-21): the heatsink lifted, its marking reads Intel's Cyclone 10 GX 10CX085YF672E6G with the
@@ -2579,9 +2680,9 @@ test fn u55_control_and_supply_pins_sit_near_the_gate() -> Bool {
 // recorded as an alteration whose applied interface is InterfaceUnstated and rendered as such. Supplied: the same layout without U4's row
 // renders the not-a-component text, so the report reads the row, not the designator.
 test fn u4_reads_as_a_cyclone_10_gx_fpga() -> Bool {
-  let rows = component_of(layout: p4261_e1_layout, c: e1_u4)
-  let without = layout_with(base: p4261_e1_layout, components: filter(p4261_e1_layout.components, c => !component_identity_eq(a: c.component, b: e1_u4)), measured: p4261_e1_layout.measured, input: p4261_e1_layout.input)
-  let text = u4_configuration_text(layout: p4261_e1_layout)
+  let rows = component_of(layout: e1_promoted, c: e1_u4)
+  let without = layout_with(base: e1_promoted, components: filter(e1_promoted.components, c => !component_identity_eq(a: c.component, b: e1_u4)), measured: e1_promoted.measured, input: e1_promoted.input)
+  let text = u4_configuration_text(layout: e1_promoted)
   count(rows) == 1
     && all(rows, c => match identified_row(c: c) {
       Present { value: row } => (row.ordering_code as String).contains("10CX085YF672E6G") && match row.specification {
@@ -2594,14 +2695,15 @@ test fn u4_reads_as_a_cyclone_10_gx_fpga() -> Bool {
     })
     && text.contains("U4 reads 10CX085YF672E6G: programmable logic, 85000 logic elements, its configuration volatile and loaded at every power-up over one of 4 schemes (active serial x1 from a EPCQ-L flash; active serial x4 from a EPCQ-L flash; Avalon streaming from a host; JTAG download); its user pins are weak pull-ups if its nIO_PULLUP strap enables them, else high impedance until it is configured, so whether it drives anything is read at CONF_DONE and user mode at INIT_DONE where enabled; its power-on reset also holds until VCCBAT is present")
     && u4_configuration_text(layout: without).contains("U4 is not a component of this carrier's observation")
-    && carrier_input_reading(layout: p4261_e1_layout).contains("read at CONF_DONE")
-    && count(e1_measured.bench.alterations) == 2
+    && carrier_input_reading(layout: e1_promoted).contains("read at CONF_DONE")
+    && count(e1_measured.bench.alterations) == 3
+    && count(filter(e1_measured.bench.alterations, a => match a.change { PartRemoved { refitted } => !refitted && component_identity_eq(a: a.part, b: e1_photo_part(label: "2")), _ => false })) == 1
     && count(filter(e1_measured.bench.alterations, a => match a.change { ThermalInterfaceChanged { removed: _, applied: Present { value: InterfaceUnstated } } => true, _ => false })) == 1
     && count(filter(e1_measured.bench.alterations, a => match a.change { PartRemoved { refitted } => !refitted && component_identity_eq(a: a.part, b: e1_converter_near), _ => false })) == 1
     && count(k1_measured.bench.alterations) == 1
     && all(k1_measured.bench.alterations, a => match a.change { PartRemoved { refitted } => !refitted && component_identity_eq(a: a.part, b: k1_converter_near), _ => false })
-    && alterations_text(layout: p4261_k1_layout).contains("2026-11-01 K1 U10_P2 converter lifted: 8-lead converter below the 4R7 nearest U4 (the U10_P2 silkscreen beside it, U100 above), marked BDFP 528 was lifted off the board and not refitted, so its footprint is bare")
-    && alterations_text(layout: p4261_e1_layout).contains("2026-10-21 U4 heatsink lifted: U4 had a thermal pad removed and an interface the operator did not state applied")
+    && alterations_text(layout: k1_promoted).contains("2026-11-01 K1 U10_P2 converter lifted: 8-lead converter below the 4R7 nearest U4 (the U10_P2 silkscreen beside it, U100 above), marked BDFP 528 was lifted off the board and not refitted, so its footprint is bare")
+    && alterations_text(layout: e1_promoted).contains("2026-10-21 U4 heatsink lifted: U4 had a thermal pad removed and an interface the operator did not state applied")
     && alterations_text(layout: without).contains("U4 had a thermal pad removed")
 }
 
@@ -2612,8 +2714,8 @@ test fn u4_reads_as_a_cyclone_10_gx_fpga() -> Bool {
 // lit throughout; exactly two indicators blink, and the report renders the timing. Supplied: the same
 // layout without U5_2's row renders the not-a-component text.
 test fn u5_2_is_a_root_of_trust_and_two_indicators_blink_on_measured_periods() -> Bool {
-  let rows = component_of(layout: p4261_e1_layout, c: e1_u5_2)
-  let without = layout_with(base: p4261_e1_layout, components: filter(p4261_e1_layout.components, c => !component_identity_eq(a: c.component, b: e1_u5_2)), measured: p4261_e1_layout.measured, input: p4261_e1_layout.input)
+  let rows = component_of(layout: e1_promoted, c: e1_u5_2)
+  let without = layout_with(base: e1_promoted, components: filter(e1_promoted.components, c => !component_identity_eq(a: c.component, b: e1_u5_2)), measured: e1_promoted.measured, input: e1_promoted.input)
   let blinking = filter(e1_settled_indicators, o => match o.state { IndicatorBlinking => true, _ => false })
   let timed = filter(blinking, o => match o.basis { TimedInVideo { evidence: _, on_ms: _, off_ms: _, cycles: _ } => true, _ => false })
   let ds1_2 = filter(e1_settled_indicators, o => match o.indicator { DesignatorRead { designator } => (designator as String).contains("DS1_2"), _ => false })
@@ -2622,16 +2724,16 @@ test fn u5_2_is_a_root_of_trust_and_two_indicators_blink_on_measured_periods() -
       Present { value: row } => (row.ordering_code as String).contains("CEC1736") && match row.specification { RootOfTrustSpec { root_of_trust } => guards_boot(spec: root_of_trust) && count(root_of_trust.protections) == 5, _ => false }
       Absent => false
     })
-    && u5_2_root_of_trust_text(layout: p4261_e1_layout).contains("U5_2 reads CEC1736 (orderable suffix unread): a platform root of trust (Arm Cortex-M4, 96 MHz) with 5 protections, secure boot among them")
+    && u5_2_root_of_trust_text(layout: e1_promoted).contains("U5_2 reads CEC1736 (orderable suffix unread): a platform root of trust (Arm Cortex-M4, 96 MHz) with 5 protections, secure boot among them")
     && u5_2_root_of_trust_text(layout: without).contains("U5_2 is not a component of this carrier's observation")
-    && carrier_input_reading(layout: p4261_e1_layout).contains("U4's configuration has that release as a condition only under that candidate relation")
-    && count(component_of(layout: p4261_e1_layout, c: e1_rw251_bga)) == 1
+    && carrier_input_reading(layout: e1_promoted).contains("U4's configuration has that release as a condition only under that candidate relation")
+    && count(component_of(layout: e1_promoted, c: e1_rw251_bga)) == 1
     && count(blinking) == 2 && count(timed) == 2
     && count(ds1_2) == 1
     && all(ds1_2, o => match o.basis { TimedInVideo { evidence: _, on_ms, off_ms, cycles } => on_ms == 1010 && off_ms == 1480 && cycles == 5, _ => false })
     && any(e1_settled_indicators, o => match o.basis { TimedInVideo { evidence: _, on_ms, off_ms, cycles: _ } => on_ms == 1360 && off_ms == 1320, _ => false })
-    && phase_text_in(layout: p4261_e1_layout, key: "p3-settled").contains("DS6 green blinking timed in a video: on 1360 ms, off 1320 ms, over 5 cycles")
-    && phase_text_in(layout: p4261_e1_layout, key: "p3-settled").contains("DS5 red or amber lit throughout a 15 s video")
+    && phase_text_in(layout: e1_promoted, key: "p3-settled").contains("DS6 green blinking timed in a video: on 1360 ms, off 1320 ms, over 5 cycles")
+    && phase_text_in(layout: e1_promoted, key: "p3-settled").contains("DS5 red or amber lit throughout a 15 s video")
 }
 
 // The three flashes (2026-10-21): Micron's decoder maps RW188 to MT25QU01G and RW251 to MT25QU02G, so
@@ -2641,22 +2743,22 @@ test fn u5_2_is_a_root_of_trust_and_two_indicators_blink_on_measured_periods() -
 // and VCCBAT as a reset condition, and the report says so. Supplied: a layout without U2_2 renders the
 // not-a-component text for it alone.
 fn flash_capacity_of(c: ComponentInstanceIdentity) -> Nat {
-  match installed(layout: p4261_e1_layout, c: c) {
+  match installed(layout: e1_promoted, c: c) {
     Present { value: x } => match identified_row(c: x) { Present { value: row } => match row.specification { SerialFlashSpec { flash } => flash.capacity_mbit, _ => 0 }, Absent => 0 }
     Absent => 0
   }
 }
 
 test fn the_island_flashes_decode_to_two_1gbit_and_one_2gbit() -> Bool {
-  let without = layout_with(base: p4261_e1_layout, components: filter(p4261_e1_layout.components, c => !component_identity_eq(a: c.component, b: e1_u2_2)), measured: p4261_e1_layout.measured, input: p4261_e1_layout.input)
+  let without = layout_with(base: e1_promoted, components: filter(e1_promoted.components, c => !component_identity_eq(a: c.component, b: e1_u2_2)), measured: e1_promoted.measured, input: e1_promoted.input)
   flash_capacity_of(c: e1_u3_2) == 1024 && flash_capacity_of(c: e1_u2_2) == 1024 && flash_capacity_of(c: e1_rw251_bga) == 2048
-    && island_flash_text(layout: p4261_e1_layout).contains("U3_2 1024 Mbit (4 lanes, signature BB21h); U2_2 1024 Mbit (4 lanes, signature BB21h); BGA marked 2RA17 / RW251 right of U3_2 (designator unread; U39 is the small two-terminal part beside it) 2048 Mbit (4 lanes, signature BB22h); which image each holds is unread")
+    && island_flash_text(layout: e1_promoted).contains("U3_2 1024 Mbit (4 lanes, signature BB21h); U2_2 1024 Mbit (4 lanes, signature BB21h); BGA marked 2RA17 / RW251 right of U3_2 (designator unread; U39 is the small two-terminal part beside it) 2048 Mbit (4 lanes, signature BB22h); which image each holds is unread")
     && island_flash_text(layout: without).contains("U2_2 is not a component of this carrier's observation")
     && island_flash_text(layout: without).contains("U3_2 1024 Mbit")
-    && carrier_input_reading(layout: p4261_e1_layout).contains("which image each holds is unread")
-    && count(component_of(layout: p4261_e1_layout, c: e1_j24)) == 1
-    && u4_configuration_text(layout: p4261_e1_layout).contains("weak pull-ups if its nIO_PULLUP strap enables them, else high impedance")
-    && u4_configuration_text(layout: p4261_e1_layout).contains("holds until VCCBAT is present")
+    && carrier_input_reading(layout: e1_promoted).contains("which image each holds is unread")
+    && count(component_of(layout: e1_promoted, c: e1_j24)) == 1
+    && u4_configuration_text(layout: e1_promoted).contains("weak pull-ups if its nIO_PULLUP strap enables them, else high impedance")
+    && u4_configuration_text(layout: e1_promoted).contains("holds until VCCBAT is present")
 }
 
 // J24 (2026-10-21): ten named positions, one keyed; ten readings to J20's black lead on the 2k range,
@@ -2666,20 +2768,20 @@ test fn the_island_flashes_decode_to_two_1gbit_and_one_2gbit() -> Bool {
 // Supplied: a layout without J24's row renders the not-a-component text.
 test fn j24_is_named_measured_and_reads_no_return() -> Bool {
   let live = analysis_net(b: e1_measured)
-  let without = layout_with(base: p4261_e1_layout, components: filter(p4261_e1_layout.components, c => !component_identity_eq(a: c.component, b: e1_j24)), measured: p4261_e1_layout.measured, input: p4261_e1_layout.input)
+  let without = layout_with(base: e1_promoted, components: filter(e1_promoted.components, c => !component_identity_eq(a: c.component, b: e1_j24)), measured: e1_promoted.measured, input: e1_promoted.input)
   let valued = filter(e1_j24_resistances, o => match valued_ohms(o: o) { Present { value: _ } => true, Absent => false })
   count(e1_j24_positions) == 10 && count(e1_j24_resistances) == 10 && count(valued) == 8
     && all(valued, o => match valued_ohms(o: o) { Present { value: v } => v >= 405 && v <= 485, Absent => false })
     && !any(e1_j24_positions, n => one_node(net: live, a: e1_j24_pin(n: n), b: e1_ground_ref))
     && e1_j24_pitch.along_row_tenths_mm == 13 && e1_j24_pitch.between_rows_tenths_mm == 25
-    && j24_text(layout: p4261_e1_layout).contains("J24 has 10 positions, one keyed (A3's mating cavity is plugged; its board-side contact was read at the housing base), at about 13/10 mm along a row and 25/10 mm between rows, within 3/10 mm, by a photograph against a tape aligned to neither axis; 10 readings recorded to J20's black lead, covering 10 of the 10 positions; 8 with a value (405 ohm the least), 0 reporting zero without a baseline, 0 recorded at the probe baseline")
+    && j24_text(layout: e1_promoted).contains("J24 has 10 positions, one keyed (A3's mating cavity is plugged; its board-side contact was read at the housing base), at about 13/10 mm along a row and 25/10 mm between rows, within 3/10 mm, by a photograph against a tape aligned to neither axis; 10 readings recorded to J20's black lead, covering 10 of the 10 positions; 8 with a value (405 ohm the least), 0 reporting zero without a baseline, 0 recorded at the probe baseline")
     && e1_j24_pitch.tolerance_tenths_mm == 3
-    && all(component_of(layout: p4261_e1_layout, c: e1_u104), c => count(c.terminals) == 6)
+    && all(component_of(layout: e1_promoted, c: e1_u104), c => count(c.terminals) == 6)
     && j24_text(layout: without).contains("J24 is not a component of this carrier's observation")
-    && carrier_input_reading(layout: p4261_e1_layout).contains("covering 10 of the 10 positions")
+    && carrier_input_reading(layout: e1_promoted).contains("covering 10 of the 10 positions")
     && count(e1_ds1_2_resistances) == 1 && all(e1_ds1_2_resistances, o => is_reported_zero(o: o))
     && !one_node(net: live, a: terminal_ref(component: e1_ds1_2, terminal: "one side (which of the two unrecorded)" as TerminalIdentity), b: terminal_ref(component: e1_u104, terminal: "inner side, middle" as TerminalIdentity))
-    && count(component_of(layout: p4261_e1_layout, c: e1_u104)) == 1
+    && count(component_of(layout: e1_promoted, c: e1_u104)) == 1
 }
 
 // J68 (2026-10-21, labelled positions): ten readings to the return on the 2k range, polarity
@@ -2702,9 +2804,9 @@ test fn j68_reads_in_the_shape_of_a_jtag_header() -> Bool {
     && all(zeros, o => terminal_ref_equal(a: o.first, b: j68_point(name: "R1")) || terminal_ref_equal(a: o.first, b: j68_point(name: "R5")))
     && !one_node(net: live, a: j68_point(name: "R1"), b: e1_ground_ref) && !one_node(net: live, a: j68_point(name: "R5"), b: e1_ground_ref)
     && j68_value_at(n: "L3") == 1153 && j68_value_at(n: "L5") == 1153 && j68_value_at(n: "R2") == 57 && j68_value_at(n: "L1") == 937
-    && j68_shape_text(layout: p4261_e1_layout).contains("J68 unpowered: 10 positions read to J20's black lead; 2 report zero without a baseline (J68 R1, J68 R5), 3 over range (J68 R3, J68 R4, J68 L4); L3 and L5 read alike: the shape of Intel's ten-pin JTAG layout")
+    && j68_shape_text(layout: e1_promoted).contains("J68 unpowered: 10 positions read to J20's black lead; 2 report zero without a baseline (J68 R1, J68 R5), 3 over range (J68 R3, J68 R4, J68 L4); L3 and L5 read alike: the shape of Intel's ten-pin JTAG layout")
     && j68_shape_from(all: map(e1_j68_resistances, o => if terminal_ref_equal(a: o.first, b: j68_point(name: "L5")) { ResistanceObservation { asset: o.asset, first: o.first, second: o.second, record: o.record, conditions: o.conditions, polarity: o.polarity, range: o.range, display: DisplayValue { ohms: 1000, approximate: false }, stability: o.stability, certainty: o.certainty, order: o.order, evidence: o.evidence } } else { o })).contains("L3 and L5 do not read alike")
-    && carrier_input_reading(layout: p4261_e1_layout).contains("a candidate the powered re-read decides")
+    && carrier_input_reading(layout: e1_promoted).contains("a candidate the powered re-read decides")
 }
 
 // J68's standing as a JTAG header is derived: with the ten unpowered readings it is a candidate by its
@@ -2731,7 +2833,7 @@ test fn j68_jtag_standing_is_derived_from_the_readings() -> Bool {
     && match j68_jtag_standing(rs: rs, vs: powered, scans: scan) { FunctionallyIdentified => true, _ => false }
     && match j68_jtag_standing(rs: r5_valued, vs: powered, scans: scan) { JtagFingerprintAbsent => true, _ => false }
     && count(e1_j68_chain_scans) == 0
-    && j68_shape_text(layout: p4261_e1_layout).contains("J68 as a JTAG header is corroborated powered (returns at 0 V, the reference near 1.8 V); a read-only chain scan returning an IDCODE is not yet taken; under the candidate map R2 is the reference rail and R1, R5 the returns, so no bridge is placed between any two of its positions again")
+    && j68_shape_text(layout: e1_promoted).contains("J68 as a JTAG header is corroborated powered (returns at 0 V, the reference near 1.8 V); a read-only chain scan returning an IDCODE is not yet taken; under the candidate map R2 is the reference rail and R1, R5 the returns, so no bridge is placed between any two of its positions again")
     && all(flat_map(e1_phase_named(key: "p3-settled"), p => p.node_voltages), v => match v.certainty { StatedHedged { verbatim: _ } => true, StatedPlainly => false })
 }
 
@@ -2748,12 +2850,12 @@ test fn the_k1_reaches_the_auxiliary_domain_with_no_jtag_reference() -> Bool {
   let k1_r2 = filter(k1_j68_volts_at_40ma, v => terminal_ref_equal(a: v.at, b: terminal_ref(component: k1_j68, terminal: "R2" as TerminalIdentity)))
   let e1_r2 = filter(e1_j68_volts_under_labels, v => terminal_ref_equal(a: v.at, b: j68_point(name: "R2")))
   count(k1_phases) == 5 && count(k1_measured.transitions) == 5
-    && phase_arm(layout: p4261_k1_layout, key: "k1-all-poles-on") == phase_arm(layout: p4261_e1_layout, key: "p1-s2-domain")
-    && phase_text_in(layout: p4261_k1_layout, key: "k1-all-poles-on").contains("AUXILIARY DOMAIN ACTIVE")
+    && phase_arm(layout: k1_promoted, key: "k1-all-poles-on") == phase_arm(layout: e1_promoted, key: "p1-s2-domain")
+    && phase_text_in(layout: k1_promoted, key: "k1-all-poles-on").contains("AUXILIARY DOMAIN ACTIVE")
     && count(k1_j68_volts_at_40ma) == 6 && all(k1_j68_volts_at_40ma, v => node_mv(v: v) == 0)
     && count(k1_r2) == 1 && count(e1_r2) == 1 && all(e1_r2, v => node_mv(v: v) == 1800)
     && count(k1_j30_volts_at_40ma) == 3 && count(filter(k1_j30_volts_at_40ma, v => node_mv(v: v) == 260)) == 2
-    && carrier_input_reading(layout: p4261_k1_layout).contains("k1-all-poles-on")
+    && carrier_input_reading(layout: k1_promoted).contains("k1-all-poles-on")
 }
 
 // The pads of the three inductors beside U4 separate the carriers at the converter level: on the K1 at
@@ -2790,8 +2892,8 @@ test fn the_k1_shows_one_of_three_inductor_outputs_where_the_e1_shows_all_three(
     && count(away) == 1 && count(back) == 1
     && all(away, t => t.from_phase == "k1-s2-as-p1" && t.to_phase == "k1-s2-as-p1-s1-2-away")
     && all(back, t => t.from_phase == "k1-s2-as-p1-s1-2-away" && t.to_phase == "k1-s2-as-p1")
-    && phase_arm(layout: p4261_k1_layout, key: "k1-after-j30-tap") == phase_arm(layout: p4261_k1_layout, key: "k1-all-poles-on")
-    && carrier_input_reading(layout: p4261_k1_layout).contains("'k1-all-poles-on' -> 'k1-after-j30-tap' on")
+    && phase_arm(layout: k1_promoted, key: "k1-after-j30-tap") == phase_arm(layout: k1_promoted, key: "k1-all-poles-on")
+    && carrier_input_reading(layout: k1_promoted).contains("'k1-all-poles-on' -> 'k1-after-j30-tap' on")
 }
 
 // The second incident on the E1 is a row with its own key, and every reading taken after it carries
@@ -2818,11 +2920,11 @@ test fn the_inductor_short_is_an_incident_and_its_readings_follow_it() -> Bool {
     && count(filter(e1_after_short_resistances, o => reads_zero_to_return(o: o))) == 2
     && k1_ohms == 4000
     && count(k1_measured.bench.resistances) == count(k1_resistances) + 1 + count(k1_l_4r7_near_pad_resistances) + count(k1_u100_lead_resistances) + count(k1_converter_lead_resistances) + count(k1_near_converter_lead_resistances) + count(k1_converter_pair_resistances) + count(k1_footprint_resistances)
-    && carrier_input_reading(layout: p4261_e1_layout).contains("incident 2026-10-21 inductor short")
-    && count(component_of(layout: p4261_e1_layout, c: e1_u21)) == 1 && count(component_of(layout: p4261_e1_layout, c: e1_u69)) == 1
-    && all(concat(component_of(layout: p4261_e1_layout, c: e1_u21), component_of(layout: p4261_e1_layout, c: e1_u53)), c => match identified_row(c: c) { Present { value: r } => r.ordering_code == pca9617adp.ordering_code, Absent => false })
-    && all(component_of(layout: p4261_e1_layout, c: e1_u100), c => match identified_row(c: c) { Present { value: _ } => false, Absent => true })
-    && count(component_of(layout: p4261_e1_layout, c: e1_u100)) == 1
+    && carrier_input_reading(layout: e1_promoted).contains("incident 2026-10-21 inductor short")
+    && count(component_of(layout: e1_promoted, c: e1_u21)) == 1 && count(component_of(layout: e1_promoted, c: e1_u69)) == 1
+    && all(concat(component_of(layout: e1_promoted, c: e1_u21), component_of(layout: e1_promoted, c: e1_u53)), c => match identified_row(c: c) { Present { value: r } => r.ordering_code == pca9617adp.ordering_code, Absent => false })
+    && all(component_of(layout: e1_promoted, c: e1_u100), c => match identified_row(c: c) { Present { value: _ } => false, Absent => true })
+    && count(component_of(layout: e1_promoted, c: e1_u100)) == 1
 }
 
 // THE NEAR-4R7 CONVERTER IS IDENTIFIED ON THE K1, A CANDIDATE ON THE E1, AND READ PIN BY PIN AGAINST
@@ -2850,8 +2952,8 @@ fn lead_read_once_to(rs: List<ResistanceObservation>, c: ComponentInstanceIdenti
   count(filter(rs, o => terminal_ref_equal(a: o.first, b: terminal_ref(component: c, terminal: t as TerminalIdentity)) && terminal_ref_equal(a: o.second, b: ret))) == 1
 }
 test fn the_converter_is_read_pin_by_pin_against_its_row() -> Bool {
-  let k1_part = component_of(layout: p4261_k1_layout, c: k1_converter_near)
-  let e1_part = component_of(layout: p4261_e1_layout, c: e1_converter_near)
+  let k1_part = component_of(layout: k1_promoted, c: k1_converter_near)
+  let e1_part = component_of(layout: e1_promoted, c: e1_converter_near)
   let identified = count(k1_part) == 1 && all(k1_part, c => match identified_row(c: c) { Present { value: r } => r.ordering_code == mp2333cgtl.ordering_code, Absent => false })
     && count(e1_part) == 1 && all(e1_part, c => match identified_row(c: c) { Present { value: _ } => false, Absent => true })
     && all(e1_part, c => match identification_text(i: c.identification) { Absent => false, Present { value: t } => t.contains("CANDIDATE Monolithic Power Systems, Inc. MP2333CGTL from the marking 'DFP 528'") })
@@ -2892,14 +2994,14 @@ test fn the_converter_is_read_pin_by_pin_against_its_row() -> Bool {
     && count(filter(k1_measured.bench.resistances, o => component_identity_eq(a: o.first.component, b: k1_converter_far))) == count(k1_converter_lead_resistances)
     && count(filter(k1_measured.bench.resistances, o => component_identity_eq(a: o.first.component, b: k1_converter_near))) == count(k1_near_converter_lead_resistances) + count(k1_converter_pair_resistances)
     && count(filter(e1_measured.bench.resistances, o => component_identity_eq(a: o.first.component, b: e1_converter_near))) == count(e1_converter_lead_resistances) + count(filter(e1_converter_pair_resistances, o => component_identity_eq(a: o.first.component, b: e1_converter_near)))
-    && count(component_of(layout: p4261_k1_layout, c: k1_converter_far)) == 1
-    && all(component_of(layout: p4261_k1_layout, c: k1_converter_far), c => match identified_row(c: c) { Present { value: _ } => false, Absent => true })
-  let u100 = count(component_of(layout: p4261_k1_layout, c: k1_u100)) == 1
-    && all(component_of(layout: p4261_e1_layout, c: e1_u100), c => count(c.terminals) == count(u100_lead_terminals) && match identified_row(c: c) { Present { value: _ } => false, Absent => true })
+    && count(component_of(layout: k1_promoted, c: k1_converter_far)) == 1
+    && all(component_of(layout: k1_promoted, c: k1_converter_far), c => match identified_row(c: c) { Present { value: _ } => false, Absent => true })
+  let u100 = count(component_of(layout: k1_promoted, c: k1_u100)) == 1
+    && all(component_of(layout: e1_promoted, c: e1_u100), c => count(c.terminals) == count(u100_lead_terminals) && match identified_row(c: c) { Present { value: _ } => false, Absent => true })
     && count(u100_lead_terminals) == 8
     && all(u100_lead_terminals, t => lead_read_once_to(rs: e1_u100_lead_resistances, c: e1_u100, t: t, ret: e1_ground_ref) && lead_read_once_to(rs: k1_u100_lead_resistances, c: k1_u100, t: t, ret: k1_return))
     && !all(u100_lead_terminals, t => lead_read_once_to(rs: e1_u100_lead_resistances, c: k1_u100, t: t, ret: e1_ground_ref))
-  let reported = carrier_input_reading(layout: p4261_e1_layout).contains("MP2333CGTL (marked BDFP 528), and cleaning its footprint cleared the VIN-SW short")
+  let reported = carrier_input_reading(layout: e1_promoted).contains("MP2333CGTL (marked BDFP 528), and cleaning its footprint cleared the VIN-SW short")
     && p4261_near_4r7_converter_hypothesis.claim.contains("which of the two is not distinguished, the lifted part being unread")
     && p4261_near_4r7_converter_hypothesis.claim.contains("replacing the converter alone has not been shown sufficient")
     && p4261_near_4r7_converter_hypothesis.claim.contains("U100 is not on the switch node")
@@ -2922,7 +3024,7 @@ fn footprint_row(layout: CarrierLayoutObservation, c: ComponentInstanceIdentity)
 test fn a_lifted_parts_footprint_is_its_own_state() -> Bool {
   let k1_at_footprint = filter(k1_measured.bench.resistances, o => component_identity_eq(a: o.first.component, b: k1_converter_near_footprint))
   let e1_at_footprint = filter(e1_measured.bench.resistances, o => component_identity_eq(a: o.first.component, b: e1_converter_near_footprint))
-  let rows = footprint_row(layout: p4261_k1_layout, c: k1_converter_near_footprint) && footprint_row(layout: p4261_e1_layout, c: e1_converter_near_footprint)
+  let rows = footprint_row(layout: k1_promoted, c: k1_converter_near_footprint) && footprint_row(layout: e1_promoted, c: e1_converter_near_footprint)
   let ordered = count(k1_at_footprint) == count(k1_footprint_resistances) && all(k1_at_footprint, o => after_key(o: o, key: k1_u10p2_lift.key))
     && count(e1_at_footprint) == count(e1_footprint_resistances) + count(e1_footprint_before_cleaning_resistances) && all(e1_at_footprint, o => after_key(o: o, key: e1_u10p2_lift.key) && after_both_incidents(o: o))
     && !any(k1_measured.bench.resistances, o => after_key(o: o, key: k1_u10p2_lift.key) && component_identity_eq(a: o.first.component, b: k1_converter_near))
@@ -3019,7 +3121,7 @@ fn is_label_marking(m: BoardMarking) -> Bool {
 }
 
 fn k1_standing_with(markings: List<BoardMarking>) -> AssemblyRevisionStanding {
-  assembly_revision_standing(layout: with_markings(base: p4261_k1_layout, markings: markings))
+  assembly_revision_standing(layout: with_markings(base: k1_promoted, markings: markings))
 }
 
 fn is_label_only(s: AssemblyRevisionStanding) -> Bool {
@@ -3048,14 +3150,14 @@ fn is_unread_on_board(s: AssemblyRevisionStanding) -> Bool {
 // read; the seller's listing labels alone, or nothing, leave the board unread; and a received-board
 // marking that disagrees wins over agreeing ones whether it comes first or last.
 test fn each_board_names_its_nvidia_revision_and_its_label_holds_it() -> Bool {
-  let k1 = p4261_k1_layout.markings
+  let k1 = k1_promoted.markings
   let other_pcb = PcbCode { code: "180-14261-DAAF-B00", printed_beside: Absent, evidence: k1_label_photo }
-  let label_only = with_markings(base: p4261_k1_layout, markings: filter(k1, m => !is_pcb_marking(m: m)))
-  let pcb_only = with_markings(base: p4261_k1_layout, markings: filter(k1, m => !is_label_marking(m: m)))
-  is_read_on_board(s: assembly_revision_standing(layout: p4261_k1_layout))
-    && is_read_on_board(s: assembly_revision_standing(layout: p4261_e1_layout))
-    && is_contradicted_on_board(s: assembly_revision_standing(layout: with_revision(base: p4261_e1_layout, revision: p4261_k1)))
-    && is_contradicted_on_board(s: assembly_revision_standing(layout: with_revision(base: p4261_k1_layout, revision: p4261_e1)))
+  let label_only = with_markings(base: k1_promoted, markings: filter(k1, m => !is_pcb_marking(m: m)))
+  let pcb_only = with_markings(base: k1_promoted, markings: filter(k1, m => !is_label_marking(m: m)))
+  is_read_on_board(s: assembly_revision_standing(layout: k1_promoted))
+    && is_read_on_board(s: assembly_revision_standing(layout: e1_promoted))
+    && is_contradicted_on_board(s: assembly_revision_standing(layout: with_revision(base: e1_promoted, revision: p4261_k1)))
+    && is_contradicted_on_board(s: assembly_revision_standing(layout: with_revision(base: k1_promoted, revision: p4261_e1)))
     && is_label_only(s: assembly_revision_standing(layout: label_only))
     && is_pcb_only(s: assembly_revision_standing(layout: pcb_only))
     && is_unread_on_board(s: k1_standing_with(markings: filter(k1, m => is_label_marking(m: m) && !is_received_label(m: m))))
@@ -3063,11 +3165,11 @@ test fn each_board_names_its_nvidia_revision_and_its_label_holds_it() -> Bool {
     && is_unread_on_board(s: k1_standing_with(markings: []))
     && is_contradicted_on_board(s: k1_standing_with(markings: concat([other_pcb], k1)))
     && is_contradicted_on_board(s: k1_standing_with(markings: concat(k1, [other_pcb])))
-    && carrier_label_text(layout: p4261_k1_layout).contains("NVIDIA assembly revision K1 (694-24261-0000-100, PCB 180-14261-DAAF-A01), as its own label and PCB print read")
-    && carrier_label_text(layout: p4261_e1_layout).contains("no NVIDIA source names it")
+    && carrier_label_text(layout: k1_promoted).contains("NVIDIA assembly revision K1 (694-24261-0000-100, PCB 180-14261-DAAF-A01), as its own label and PCB print read")
+    && carrier_label_text(layout: e1_promoted).contains("no NVIDIA source names it")
     && carrier_label_text(layout: label_only).contains("its PCB print is unread") && !carrier_label_text(layout: label_only).contains("label and PCB print read")
     && carrier_label_text(layout: pcb_only).contains("its assembly label is unread") && !carrier_label_text(layout: pcb_only).contains("label and PCB print read")
-    && carrier_label_text(layout: with_revision(base: p4261_e1_layout, revision: p4261_k1)).contains("CONTRADICTS")
+    && carrier_label_text(layout: with_revision(base: e1_promoted, revision: p4261_k1)).contains("CONTRADICTS")
 }
 
 // A CANDIDATE IS NOT AN IDENTIFICATION, WHATEVER ITS TEXT. The E1's near converter carries a
@@ -3077,13 +3179,13 @@ test fn each_board_names_its_nvidia_revision_and_its_label_holds_it() -> Bool {
 // whether text renders. A part identified by its marking (C10) and one whose marking several makers
 // share (D2) are identified; an unresolved third can is not.
 test fn a_candidate_marking_is_not_an_identification() -> Bool {
-  let near = component_of(layout: p4261_e1_layout, c: e1_converter_near)
+  let near = component_of(layout: e1_promoted, c: e1_converter_near)
   count(near) == 1
     && all(near, c => !identification_established(i: c.identification) && match identification_text(i: c.identification) { Absent => false, Present { value: t } => t.contains("CANDIDATE") })
-    && !finding_established(j: judge_finding(layout: p4261_e1_layout, f: ComponentIdentified { component: e1_converter_near }))
-    && finding_established(j: judge_finding(layout: p4261_e1_layout, f: ComponentIdentified { component: e1_c10 }))
-    && finding_established(j: judge_finding(layout: p4261_e1_layout, f: ComponentIdentified { component: e1_d2 }))
-    && !finding_established(j: judge_finding(layout: p4261_e1_layout, f: ComponentIdentified { component: e1_third_can }))
+    && !finding_established(j: judge_finding(layout: e1_promoted, f: ComponentIdentified { component: e1_converter_near }))
+    && finding_established(j: judge_finding(layout: e1_promoted, f: ComponentIdentified { component: e1_c10 }))
+    && finding_established(j: judge_finding(layout: e1_promoted, f: ComponentIdentified { component: e1_d2 }))
+    && !finding_established(j: judge_finding(layout: e1_promoted, f: ComponentIdentified { component: e1_third_can }))
 }
 
 fn order_is_unrecorded(o: ReadingOrder) -> Bool {
@@ -3150,7 +3252,7 @@ fn e1_lift_refitted() -> MeasuredBoard {
 }
 
 fn mid_order() -> ReadingOrder {
-  BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key] }
+  BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key, e1_photo_part_2_removal.key] }
 }
 
 fn bridged_keys() -> List<NonEmptyStr> {
@@ -3300,7 +3402,7 @@ fn fused_readings(l: CarrierLayoutObservation) -> List<ContinuityObservation> {
 // but establish neither, on the graph path as on the netlist; and re-recording only the fused-side
 // beeps as energized leaves the unpowered remainder unable to complete the fused path.
 test fn connectivity_is_read_unpowered_on_every_path() -> Bool {
-  let fused = fused_readings(l: p4261_e1_layout)
+  let fused = fused_readings(l: e1_promoted)
   let all_energized = e1_with_continuity(cs: map(e1_measured.continuity, o => energized(o: o)))
   let fused_energized = e1_with_continuity(cs: map(e1_measured.continuity, o => if any(fused, f => same_pair(a: f, b: o)) { energized(o: o) } else { o }))
   let kept = match all_energized.measured {
@@ -3310,7 +3412,7 @@ test fn connectivity_is_read_unpowered_on_every_path() -> Bool {
       Present { value: s } => count(board_readings(s: s).continuity) == count(e1_measured.continuity) && count(board_graph(s: s).observations) == 0 && count(board_netlist(s: s).nodes) == 0
     }
   }
-  polarity_holds(l: p4261_e1_layout) && any(placement_of(layout: p4261_e1_layout, c: e1_d2), s => placed_d2(s: s))
+  polarity_holds(l: e1_promoted) && any(placement_of(layout: e1_promoted, c: e1_d2), s => placed_d2(s: s))
     && count(fused) > 0 && count(fused) < count(e1_measured.continuity)
     && kept
     && !polarity_holds(l: all_energized) && all(placement_of(layout: all_energized, c: e1_d2), s => !placed_d2(s: s))
@@ -3365,4 +3467,49 @@ test fn nvidia_revision_rows_are_supported_only_by_their_own_board() -> Bool {
     && !revision_supported(revision: p4261_k1, specimen: with_revision(base: p4261_e1_layout, revision: p4261_k1))
     && !revision_supported(revision: p4261_e1, specimen: with_markings(base: p4261_e1_layout, markings: filter(e1, m => !is_pcb_marking(m: m))))
     && !revision_supported(revision: p4261_e1, specimen: with_markings(base: p4261_e1_layout, markings: filter(e1, m => !is_label_marking(m: m))))
+}
+
+// THE BOARDS AS THE TESTS BELOW CONSUME THEM. Old: every row the E1 and K1 transcribed was an IdentifiedByMarking
+// literal. New: the arm is minted only by identify_by_marking, so a row whose frame and box the roster does not
+// attribute to its part (the unboxed readings, the prose-boxed readings, K1's empty roster) is a MarkingCandidate.
+// A test of what an IDENTIFIED part does (a bound, a switch, a pin role, a decode) takes the board with those
+// same rows identified through the one constructor -- same subjects, rows, seen and terminals, identification
+// the only difference. E1: exactly the 6 rows measured as demoted (the_six_demoted_rows_are_exactly_the_candidates);
+// the other 31 are identified on the real board and are not touched. K1: all four, its roster being empty. And the tests that follow the promoted ones state what the REAL board now says.
+fn promoted(c: InstalledComponent, ids: List<NonEmptyStr>, vars: List<ComponentInstanceIdentity>) -> InstalledComponent {
+  match c.identification {
+    MarkingCandidate { row: row, marking: marking, discriminator: _ } =>
+      if any(ids, i => i == c.component.local_identity) || any(vars, v => component_identity_eq(a: v, b: c.component)) {
+        InstalledComponent { seen: c.seen, component: c.component, terminals: c.terminals, identification: identified_fixture(subject: c.component, row: row, text: marking_text(r: marking)) }
+      } else { c }
+    _ => c
+  }
+}
+
+data e1_promoted: CarrierLayoutObservation = layout_with(
+  base: p4261_e1_layout,
+  components: map(p4261_e1_layout.components, c => promoted(c: c, ids: [], vars: [e1_c10, e1_c12, e1_q21, e1_q22, e1_u4, e1_rw251_bga])),
+  measured: p4261_e1_layout.measured,
+  input: p4261_e1_layout.input)
+
+data k1_promoted: CarrierLayoutObservation = layout_with(
+  base: p4261_k1_layout,
+  components: map(p4261_k1_layout.components, c => promoted(c: c, ids: ["input-stage MOSFET, first of two", "input-stage MOSFET, second of two"], vars: [k1_converter_near, k1_u1_p5])),
+  measured: p4261_k1_layout.measured,
+  input: p4261_k1_layout.input)
+
+// WHAT THE REAL E1 SAYS OF THE ROWS THE ROSTER DOES AND DOES NOT ATTRIBUTE. U49 and U51 are identified through
+// the roster: SD frame p122 (sd122) boxes each part separately and the roster attributes each box to its
+// designator, so their pin roles are read and ComponentIdentified holds for U51. C10_P5, Q21_P5 and U4 are
+// not: each stays a candidate, its identification is not established, and the finding is open. The promoted
+// twins above keep exercising what an identified part does for those.
+test fn the_real_e1_refuses_what_it_cannot_attribute() -> Bool {
+  let real_parts = concat(component_of(layout: p4261_e1_layout, c: e1_u49), component_of(layout: p4261_e1_layout, c: e1_u51))
+  count(real_parts) == 2
+    && all(real_parts, c => identification_established(i: c.identification))
+    && finding_established(j: judge_finding(layout: p4261_e1_layout, f: ComponentIdentified { component: e1_u51 }))
+    && !finding_established(j: judge_finding(layout: p4261_e1_layout, f: ComponentIdentified { component: e1_c10 }))
+    && !finding_established(j: judge_finding(layout: p4261_e1_layout, f: ComponentIdentified { component: e1_u4 }))
+    && register_pin_direction_text(layout: p4261_e1_layout, c: e1_u51, number: 3).contains("is READ by the part")
+    && register_pin_direction_text(layout: p4261_e1_layout, c: e1_u51, number: 7).contains("is DRIVEN by the part")
 }

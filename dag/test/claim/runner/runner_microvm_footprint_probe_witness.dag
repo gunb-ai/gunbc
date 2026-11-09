@@ -73,7 +73,7 @@ test fn a_receipt_missing_any_size_is_not_complete() -> Bool {
 // than over the list production actually samples.
 //
 // The literals are the specification rather than a measurement copied out of the tree: these are the
-// sizes this probe declares it will sample, so the check is a controlled fixture in DESIGN section 5's
+// sizes this probe declares it will sample, so the check is a controlled fixture in gunbc.design_argument::fail_closed's
 // sense and not a change detector.
 test fn the_production_sample_sizes_are_the_magnitudes_they_claim() -> Bool {
   let counts = map(runner_microvm_footprint_sample_sizes, s => byte_size_count(b: s))

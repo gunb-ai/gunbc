@@ -82,7 +82,7 @@ test fn an_unexpected_registration_has_nothing_to_restart() -> Bool {
 
 // DISCRIMINATING REDS (the review 90967 defect): a lost-agent detection requires a null runner, so it
 // names NO slot. It must therefore NOT turn a Healthy or Unknown slot into a restartable one -- a stranded
-// job somewhere in the org cannot authorize cycling a slot it cannot be tied to (DESIGN section 5: do not
+// job somewhere in the org cannot authorize cycling a slot it cannot be tied to (gunbc.design_argument::fail_closed: do not
 // widen over an unavailable answer). The pre-fix code permitted both; asserting Refuse here is the RED that
 // catches that defect.
 test fn a_stranded_job_does_not_permit_restarting_a_healthy_or_unknown_slot() -> Bool {

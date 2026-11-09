@@ -18,7 +18,7 @@ import extdeps.uri { Uri, Https }
 //   100GBASE-CR2 -- 2 lanes x 50G, PAM4
 //
 // Both aggregate to 100 Gb/s. A model carrying only the aggregate cannot tell them apart, so it
-// cannot state what was bought, what arrived, or that the two disagree. That is the DESIGN section 3
+// cannot state what was bought, what arrived, or that the two disagree. That is the gunbc.design_argument::single_authority
 // meaning fork exactly: one spelling, two contracts, and the difference is invisible in the field
 // because the wrong one still links.
 //
@@ -63,7 +63,7 @@ fn modulation_eq(a: Modulation, b: Modulation) -> Bool {
 
 // LANE COUNT IS CLOSED, NOT A BARE INT. Ethernet copper PMDs are specified at 1, 2, 4 and 8 lanes;
 // a bare Int admits 3 and 7, which name nothing and would have to be validated after the fact rather
-// than refused by construction (DESIGN section 5).
+// than refused by construction (gunbc.design_argument::fail_closed).
 type LaneCount = Lanes1 | Lanes2 | Lanes4 | Lanes8
 
 fn lane_count_value(l: LaneCount) -> Nat {
@@ -204,7 +204,7 @@ data ieee_400gbase_cr8: LinkMode = link_mode(
 
 // THE COLLISION, STATED AS A COMPUTATION RATHER THAN A COMMENT.
 //
-// A DESIGN section 4c annotation cannot be checked -- no Accepted program reads one -- so the claim
+// A gunbc.design_argument::source_annotations annotation cannot be checked -- no Accepted program reads one -- so the claim
 // that these two modes collide on aggregate is made here as something a witness can execute. It is
 // true today and must stay true: it is the reason `link_mode_eq` compares three axes, and if it ever
 // went false the justification for this module's shape would have silently evaporated.

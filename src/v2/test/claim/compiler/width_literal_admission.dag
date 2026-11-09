@@ -163,7 +163,7 @@ test fn wla_int8_minus_129_refuses() -> Bool {
 }
 
 // LITERAL BOUNDARY at a wider formal, under gunbc.design_ruling coercion_is_the_implicit_safe_subset
-// (DESIGN section 4: an implicit route must be total, exact, semantics-preserving, unique, pure and
+// (gunbc.design_argument::closed_grounded_substrate: an implicit route must be total, exact, semantics-preserving, unique, pure and
 // consent-free). These are boundary (1) of gunbc.recurring_failure_mode
 // .a_width_constrained_integer_admits_a_value_outside_its_width — a bare Int literal at a width position,
 // the same class wla_uint8_300_refuses covers; named for the literal boundary, not for a value crossing
@@ -350,22 +350,42 @@ fn wla_marker_reason(body: String) -> Symbol {
   )
 }
 
-test fn wla_marker_fixture_alone_is_accepted() -> Bool {
+fn wla_marker_fixture_alone_is_accepted_holds() -> Bool {
   wla_marker_reason(body: "fn same(n: Mark<Nat, MachineWidth<8>>) -> Bool {\n  g8(n: n)\n}\n") == ^accepted
 }
 
-test fn wla_marker_keeps_its_arguments_so_another_width_does_not_inhabit() -> Bool {
+fn wla_marker_keeps_its_arguments_so_another_width_does_not_inhabit_holds() -> Bool {
   wla_marker_reason(body: "fn cross(n: Mark<Nat, MachineWidth<16>>) -> Bool {\n  g8(n: n)\n}\n") == ^application_argument_does_not_inhabit
 }
 
-test fn wla_ordinary_alias_to_the_marker_still_unfolds() -> Bool {
+fn wla_ordinary_alias_to_the_marker_still_unfolds_holds() -> Bool {
   wla_marker_reason(body: "fn via(n: Mark8) -> Bool {\n  g8(n: n)\n}\n") == ^accepted
 }
 
-test fn wla_ordinary_alias_to_the_marker_keeps_the_marker_arguments() -> Bool {
+fn wla_ordinary_alias_to_the_marker_keeps_the_marker_arguments_holds() -> Bool {
   wla_marker_reason(body: "fn viacross(n: Mark8) -> Bool {\n  g16(n: n)\n}\n\nfn g16(n: Mark<Nat, MachineWidth<16>>) -> Bool {\n  true\n}\n") == ^application_argument_does_not_inhabit
 }
 
-test fn wla_an_unrelated_local_phantom_is_not_the_marker() -> Bool {
+fn wla_an_unrelated_local_phantom_is_not_the_marker_holds() -> Bool {
   wla_marker_reason(body: "fn lcross(n: Loose<Nat, MachineWidth<16>>) -> Bool {\n  l8(n: n)\n}\n") == ^accepted
+}
+
+test fn wla_marker_fixture_alone_is_accepted() -> Bool {
+  wla_marker_fixture_alone_is_accepted_holds()
+}
+
+test fn wla_marker_keeps_its_arguments_so_another_width_does_not_inhabit() -> Bool {
+  wla_marker_keeps_its_arguments_so_another_width_does_not_inhabit_holds()
+}
+
+test fn wla_ordinary_alias_to_the_marker_still_unfolds() -> Bool {
+  wla_ordinary_alias_to_the_marker_still_unfolds_holds()
+}
+
+test fn wla_ordinary_alias_to_the_marker_keeps_the_marker_arguments() -> Bool {
+  wla_ordinary_alias_to_the_marker_keeps_the_marker_arguments_holds()
+}
+
+test fn wla_an_unrelated_local_phantom_is_not_the_marker() -> Bool {
+  wla_an_unrelated_local_phantom_is_not_the_marker_holds()
 }

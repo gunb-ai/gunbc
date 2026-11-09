@@ -717,7 +717,7 @@ fn calibration_body_of(cells: List<ProvenanceCell>) -> String {
 }
 
 // THE INSTRUMENT REFUSES ON THE MEASURED MATRIX AND WRITES IT FIRST. Writing before refusing is the
-// stopped-line audit of DESIGN section 5: the operator gets every cell to analyse and the line still
+// stopped-line audit of gunbc.design_argument::fail_closed: the operator gets every cell to analyse and the line still
 // stops. A green here would mean the provenance the carrier pays to preserve survives to a consumer,
 // and that every arm's production route is established -- which is exactly what the corpus run
 // would otherwise assume without having asked.
@@ -830,7 +830,7 @@ fn declared_cell_population() -> Int {
 // two module-level axis lists directly, so NO FIXTURE COULD SUPPLY A DEGENERATE AXIS: an empty
 // axis, a short axis, or an axis carrying a duplicate label were all unrepresentable in any test,
 // and the refusal arms for them were therefore unauthorable -- decorations that would be cited as
-// coverage. DESIGN section 4b's own instruction is to ask whether the check's RED is authorable
+// coverage. gunbc.design_argument::guarantee_ladder's own instruction is to ask whether the check's RED is authorable
 // BEFORE writing the check, and to ask it at the fixture boundary rather than at the accepted
 // corpus. Taking the axes as parameters is what moves those reds inside the boundary a fixture
 // can reach.

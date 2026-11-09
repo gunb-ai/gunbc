@@ -21,6 +21,7 @@ import gunbc.required_ci_contract_epoch {
 import gunbc.required_ci_epoch_observation { RequiredCiEpochObservation, RequiredCiEpochObserved, RequiredCiEpochUnobservable, RequiredCiEpochUnobserved, required_ci_epoch_unobserved_message }
 import gunbc.repository { gunbc_repository }
 import gunbc.repo.repo_identity { gunbc_default_branch_name }
+import gunbc.fleet.origin_main_revision_observe { LandedOnAdmittedStanding, TreeLandedOnAdmitted, TreeNotLandedOnAdmitted, TreeLandedUnobserved }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -69,7 +70,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // roster is the contract's own business and its evidence, not the fleet's precondition.
 // THE OLD TWO-FIELD RECORD IS GONE, NOT WRAPPED. It answered the right semantic question -- WHICH
 // contract completed -- with an incomplete representation: it could not distinguish a contract whose
-// obligations were revised under an unchanged workflow path, which is the §3 meaning fork. The
+// obligations were revised under an unchanged workflow path, which is the gunbc.design_argument::single_authority meaning fork. The
 // repair is the canonical triple, and the transition is atomic: there is no second constructor, no
 // converter, no field beside the canonical identity, and no path back to the old shape. The public
 // domain name survives because it is the right name; only its content is replaced.
@@ -158,7 +159,7 @@ fn fleet_default_branch() -> String {
 // extdeps.github.workflow_run_event beside the envelope that decodes it, not in this consumer.
 // `originating_event` is NOT closed: it is the whole GitHub event namespace, open-ended and
 // extended by upstream without notice, so a closed sum over it would be re-coining an open
-// vocabulary -- the §3 nickname wearing a coproduct. Its honest shape is the documented members
+// vocabulary -- the gunbc.design_argument::single_authority nickname wearing a coproduct. Its honest shape is the documented members
 // this repository actually discriminates plus an explicit unrecognized arm carrying the wire text,
 // which is a different modeling decision than the first and should be made as one.
 //
@@ -182,7 +183,7 @@ data default_branch_originating_event: String = "push"
 // through a different channel. Putting `GitHub | Fabric` inside the positive carrier would make
 // every consumer match on a provenance it has no business branching on, and would make adding a
 // provider an edit to the admission carrier. Two provider bindings constructing the SAME type is
-// the §2 move: one concept, N realizations, dispatch at the periphery.
+// the gunbc.design_argument::minimize_redundancy move: one concept, N realizations, dispatch at the periphery.
 type RequiredCiSucceeded<E> {
   revision: GitObjectId
   contract: RequiredCiContractIdentity
@@ -232,6 +233,8 @@ type DefaultBranchRefusal
   | BranchHeadRepositoryNotThisRepository { observed: String, required: String }
   | BranchHeadShaUndecodable { observed: String }
   | BranchRefIsNotTheDefaultBranch { observed: String, required: String }
+  | BranchDoesNotContainRevision { revision: GitObjectId, branch_head: GitObjectId }
+  | BranchContainmentUnobserved { cause: String }
 
 type DefaultBranchAdmission<M>
   = DefaultBranchAdmitted { observed: DefaultBranchRevisionObserved<M> }
@@ -242,7 +245,7 @@ type DefaultBranchAdmission<M>
 // object id. Decoding at the binding boundary means an undecodable value refuses BEFORE any
 // positive carrier exists, so no downstream consumer can be handed a revision that is not one.
 // Carrying both an authored CommitSha and a decoded GitObjectId downstream would be two writable
-// names for one fact -- the §3 fork -- and the two could then disagree.
+// names for one fact -- the gunbc.design_argument::single_authority fork -- and the two could then disagree.
 type RevisionDecode
   = RevisionDecoded { revision: GitObjectId }
   | RevisionUndecodable { observed: String }
@@ -610,6 +613,33 @@ fn observe_default_branch_push<M>(push: PushRefUpdate, evidence: M) -> DefaultBr
   }
 }
 
+// THE LANDED BINDING OF THE SCM PROPOSITION, for a run that no push delivered. A workflow_dispatch run carries
+// no push event and its originating event is not a push, so neither binding above can speak for it; what it
+// can observe is the default branch's advertised head and whether the revision is an ancestor of it
+// (gunbc.fleet.origin_main_revision_observe landed_on_admitted_standing: ls-remote, then merge-base, over a full
+// checkout). The default branch moves only by the merge queue's pushes, so a revision it contains is one a push
+// put there; that is the same proposition the push binding reads off the event, reached from the branch's side.
+// It is weaker than "the branch head IS this revision" on purpose: the head moves on after any admitted
+// revision, and a qualification of a revision the branch has since built on is still a qualification of a
+// landed revision. Containment that could not be read refuses with its cause; it never admits.
+fn observe_default_branch_landed<M>(revision: GitObjectId, standing: LandedOnAdmittedStanding, evidence: M) -> DefaultBranchAdmission<M> {
+  match standing {
+    TreeLandedUnobserved { cause: c } => DefaultBranchRefused { cause: BranchContainmentUnobserved { cause: c } }
+    TreeNotLandedOnAdmitted { local: _, admitted: h } =>
+      DefaultBranchRefused { cause: BranchDoesNotContainRevision { revision: revision, branch_head: h } }
+    TreeLandedOnAdmitted { local: l, admitted: h } =>
+      if git_object_id_eq(left: l, right: revision) {
+        DefaultBranchAdmitted { observed: DefaultBranchRevisionObserved { revision: revision, branch: fleet_default_branch(), evidence: evidence } }
+      } else {
+        DefaultBranchRefused {
+          cause: BranchContainmentUnobserved {
+            cause: join(["the containment read was of ", git_object_id_wire_hex(oid: l) as String, ", not of ", git_object_id_wire_hex(oid: revision) as String], ""),
+          },
+        }
+      }
+  }
+}
+
 // THE TYPED REFUSALS RENDERED FOR A HUMAN-FACING RECEIPT. Rendering lives beside each cause set so
 // a new refusal arm cannot be added without these folds refusing to compile -- the message set and
 // the cause set stay one authority. Consumers that ROUTE still match the variants; these are for
@@ -689,6 +719,13 @@ fn default_branch_refusal_message(cause: DefaultBranchRefusal) -> String {
       concat("the run's head_sha is not a decodable object id: ", raw)
     BranchRefIsNotTheDefaultBranch { observed: o, required: r } =>
       join(["the push moved ref ", o, ", not ", r, " -- only a push to the default branch admits a fleet revision"], "")
+    BranchDoesNotContainRevision { revision: r, branch_head: h } =>
+      join([
+        "the default branch at ", git_object_id_wire_hex(oid: h) as String, " does not contain ", git_object_id_wire_hex(oid: r) as String,
+        " -- a revision that never landed is not a fleet revision, whatever ran on it",
+      ], "")
+    BranchContainmentUnobserved { cause: c } =>
+      concat("whether the default branch contains the revision was not observed: ", c)
   }
 }
 

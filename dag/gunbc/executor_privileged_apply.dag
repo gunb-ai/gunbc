@@ -27,7 +27,7 @@ data executor_privileged_apply_disposition: ConstructionMechanism = SingleAuthor
 //
 // THE ARGV IS THE SAME FUNCTION THE SUDOERS LINE IS RENDERED FROM, WHICH IS THE WHOLE POINT. If the
 // applier built its own command text, a grant and its execution could drift into two spellings of
-// one operation -- the exact §3 fork the operation type exists to prevent -- and the failure mode
+// one operation -- the exact gunbc.design_argument::single_authority fork the operation type exists to prevent -- and the failure mode
 // would be a sudoers line that authorizes something nobody runs beside a command nobody authorized.
 // Sharing executor_privileged_operation_argv makes "what is permitted" and "what is executed" the
 // same fact by construction rather than by review.
@@ -53,7 +53,7 @@ fn executor_privileged_operation_commands(ops: List<ExecutorPrivilegedOperation>
 // ordered and a later one routinely depends on an earlier one -- a directory install before the
 // unit that writes into it, a networkd file before the reload that reads it. Continuing past a
 // failure would leave a host in a state no row describes and report the last operation's status as
-// the run's, which is the fabricated-plausible-output arm §5 forbids.
+// the run's, which is the fabricated-plausible-output arm gunbc.design_argument::fail_closed forbids.
 //
 // There is deliberately NO arm that treats a failed operation as tolerable. An operation that is
 // safe to skip is not an operation this list should carry.

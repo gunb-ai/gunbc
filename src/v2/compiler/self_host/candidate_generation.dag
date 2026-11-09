@@ -3,6 +3,8 @@ module v2.compiler.self_host.candidate_generation
 import v2.compiler.resolve { ResolvedTree }
 import extdeps.communication.medium { Medium }
 import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.shell
+import std.types { FilePath }
 import v2.compiler.emit { emit }
 import v2.compiler.emit_produced { emit_module_body_members, produced_module_bodies_declare_members }
 import v2.compiler.normalized_tree { no_type_declaration_kinds }
@@ -61,6 +63,7 @@ type ProvenancedRustArtifact {
 
 type RustWorkspaceWriteReceipt {
   workspace_dir: String
+  workspace_dir_ok: Bool
   manifest_path: String
   main_rs_path: String
   manifest_write_ok: Bool
@@ -222,14 +225,29 @@ fn write_rust_workspace(
 ) -> RustWorkspaceWriteReceipt {
   let manifest_path = concat(workspace_dir, "/Cargo.toml")
   let main_rs_path = concat(workspace_dir, "/src/lib.rs")
-  let manifest = Filesystem.Write(path: manifest_path, content: direct_rust_door_cargo_toml)
-  let main_rs = Filesystem.Write(path: main_rs_path, content: source.carried)
+  // Filesystem.Write is std::fs::write: it creates no parent directory and reports ENOENT as
+  // success=false, so the directories are created first and their outcome is part of the receipt.
+  let made = shell.Mkdir.Parents(path: concat(workspace_dir, "/src") as FilePath)
+  // Writes are gated on the directory result: an effect is not attempted on a failed precondition.
+  let manifest_ok = if made.success {
+    let manifest = Filesystem.Write(path: manifest_path, content: direct_rust_door_cargo_toml)
+    manifest.success
+  } else {
+    false
+  }
+  let main_ok = if made.success {
+    let main_rs = Filesystem.Write(path: main_rs_path, content: source.carried)
+    main_rs.success
+  } else {
+    false
+  }
   RustWorkspaceWriteReceipt {
     workspace_dir: workspace_dir,
+    workspace_dir_ok: made.success,
     manifest_path: manifest_path,
     main_rs_path: main_rs_path,
-    manifest_write_ok: manifest.success,
-    main_write_ok: main_rs.success
+    manifest_write_ok: manifest_ok,
+    main_write_ok: main_ok
   }
 }
 
@@ -460,6 +478,6 @@ fn provenanced_rust_artifact_seed_independent(
 fn written_provenanced_rust_artifact_ok(
   written: WrittenProvenancedRustArtifact
 ) -> Bool {
-  written.write.manifest_write_ok && written.write.main_write_ok
+  written.write.workspace_dir_ok && written.write.manifest_write_ok && written.write.main_write_ok
     && provenanced_rust_artifact_seed_independent(artifact: written.artifact)
 }

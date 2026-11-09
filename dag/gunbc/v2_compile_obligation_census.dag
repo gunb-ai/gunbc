@@ -74,12 +74,12 @@ import gunbc.derived_obligation_row {
 // (dag, src/v2) and subtracts gunbc.ci.ci_layer_roots witness_exclusion_frontier by substring. So six
 // obligations this census reported as unreachable are discovered and running, and the error was
 // invisible precisely because the disposition was a sentence rather than a question put to the
-// authority that owns it. DESIGN section 3: a fork is a correctness concern, not a style one — and
+// authority that owns it. gunbc.design_argument::single_authority: a fork is a correctness concern, not a style one — and
 // the correctness it cost here was the census's headline number.
 //
 // TWO FINDINGS THIS CENSUS SURFACED THAT ARE NOT ROWS. Both are filed as their own classes under
 // dag/gunbc/recurring_failure_mode/ — stale_present_tense_coverage_claim_in_the_authority_consulted_first
-// and receipt_subject_is_the_prose_about_the_mechanism — because DESIGN section 4b requires a
+// and receipt_subject_is_the_prose_about_the_mechanism — because gunbc.design_argument::guarantee_ladder requires a
 // discovered error class to file a row in that ledger, and an annotation is not a row. They are
 // named here only so a reader of the census reaches them; the ledger files carry the facts.
 //
@@ -108,7 +108,7 @@ type ObligationKind
 // door, ReachedByNativeRoute had no constructor anywhere in the tree, the predicate was constant
 // false, and census_counts published a permanently-zero column.
 //
-// KEEPING IT WOULD HAVE BEEN THE DECORATION DESIGN section 4b NAMES -- permanently green by
+// KEEPING IT WOULD HAVE BEEN THE DECORATION gunbc.design_argument::guarantee_ladder NAMES -- permanently green by
 // construction, carrying no information, and worse than absent because it would be cited as
 // coverage -- and this same change had already deleted the unread-verdict premise on exactly that
 // ground one column over. An earlier cut kept the axis and wrote an annotation CONCEDING it had gone
@@ -201,7 +201,7 @@ data unverified_entry_premise: DeclarationRef = decl_ref(
 // nothing about which verdict it reached, so the native arm carried an unread-verdict premise and a
 // count beside the coverage number. That premise, its trigger and its fold are DELETED rather than
 // kept: with no required invocation there is no execution to be pending about, and a premise nobody
-// can reach is the dangling declaration DESIGN section 3c calls red -- machinery describing a state
+// can reach is the dangling declaration gunbc.design_argument::consumption calls red -- machinery describing a state
 // that cannot occur. They return with the lane, from the drop row that owns its return.
 //
 // THE SELF-HOST RECEIPT FAMILY IS WHY THE NON-MEMBER ARM IS RouteGapHeld AND NOT SOMETHING SOFTER —
@@ -303,7 +303,7 @@ fn rung_drop_ref(identity: String) -> DeclarationRef {
 // the shared native trigger is one capability, and six
 // copies of it would drift on the first correction — five sites updated, one left behind, which is
 // the failure this ledger already carries as declared_trigger_names_a_term_that_is_not_the_cause.
-data native_door_entry_trigger: NextRungTrigger = climbs_when(capability: "the emitted native lane's admitted subjects stop refusing at resolve, so compile_source_root_ingest_with_admission actually enters validate_then_compile and this gate is asked about an authored module. THAT IS THE WHOLE REMAINING CAPABILITY FOR THIS ROW: its witnesses are already discovered and already run on the interpreted per-PR route, so no discovery, exclusion or freeze change moves it — the executed rung is held down by the native path alone, and DESIGN section 4b(1) takes the MINIMUM across paths. AND ENTERING THE DOOR IS NECESSARY BUT NOT SUFFICIENT: what this census can then report is route coverage, so the rung this row reaches on the ladder additionally needs v2.compiler.self_host.compile_obligation_activation to require red-and-green execution receipts before MechanicallyPreventable is reportable at all")
+data native_door_entry_trigger: NextRungTrigger = climbs_when(capability: "the emitted native lane's admitted subjects stop refusing at resolve, so compile_source_root_ingest_with_admission actually enters validate_then_compile and this gate is asked about an authored module. THAT IS THE WHOLE REMAINING CAPABILITY FOR THIS ROW: its witnesses are already discovered and already run on the interpreted per-PR route, so no discovery, exclusion or freeze change moves it — the executed rung is held down by the native path alone, and gunbc.design_argument::guarantee_ladder (rung honesty) takes the MINIMUM across paths. AND ENTERING THE DOOR IS NECESSARY BUT NOT SUFFICIENT: what this census can then report is route coverage, so the rung this row reaches on the ladder additionally needs v2.compiler.self_host.compile_obligation_activation to require red-and-green execution receipts before MechanicallyPreventable is reportable at all")
 
 // THE CLAIMED RUNG IS DOWNGRADED, AND THE EVIDENCE IS THE REASON (gunbc#11004, 2026-09-12). This
 // row claimed MechanicallyPreventable on the strength of the discriminating red named below,
@@ -316,7 +316,7 @@ data native_door_entry_trigger: NextRungTrigger = climbs_when(capability: "the e
 // origin/main and against the head, both sibling controls PASS on both.
 //
 // So the executed evidence establishes that the invalid state is NOT prevented, and DESIGN section
-// 4b(1) admits only the rung executed evidence supports. `Mitigatable` is the honest arm: the gate
+// gunbc.design_argument::guarantee_ladder (rung honesty) admits only the rung executed evidence supports. `Mitigatable` is the honest arm: the gate
 // is total and returns a typed outcome on every tree, so harm is contained, and nothing above that
 // is established while the analyzer misses its own specimen. The class is
 // `gunbc.recurring_failure_mode required_lens_red_control_never_executes_from_its_home`, the red is
@@ -329,7 +329,7 @@ data native_door_entry_trigger: NextRungTrigger = climbs_when(capability: "the e
 // call in the corpus, and with the census scoped to the argument's value the gate refuses the
 // fold-append specimen. `gate_red_quadratic_rejects` passes, its admission row is deleted in the
 // same change, and the witness is an ordinary permanent regression control again (DESIGN section
-// 4b(4)). The sentence above is left standing rather than reworded because it was true when
+// gunbc.design_argument::guarantee_ladder (dissolution on climb)). The sentence above is left standing rather than reworded because it was true when
 // written and is the reason this paragraph exists.
 //
 // TWO EDITS ARE JOINTLY SUFFICIENT HERE, NOT ONE, AND THE ADMISSION ROW NAMED THIS EXACT HAZARD --
@@ -339,7 +339,7 @@ data native_door_entry_trigger: NextRungTrigger = climbs_when(capability: "the e
 // concat realization copies the appended side; `v2.std.fn_index` records that `v1_rt::rc_list_concat`
 // make_muts the left and clones the right). On the OLD specimen the carrier sat on the NON-copied
 // port, so the analyzer repair alone could not have minted a suspect. Attributing the green to the
-// repair alone would therefore be the rung inflation section 4b(1) forbids, measured on the wrong
+// repair alone would therefore be the rung inflation gunbc.design_argument::guarantee_ladder (rung honesty) forbids, measured on the wrong
 // path.
 //
 // WHAT DISCHARGES THE HAZARD IS A THREE-CELL MEASUREMENT, not the assurance above, and the cell that
@@ -352,7 +352,7 @@ data native_door_entry_trigger: NextRungTrigger = climbs_when(capability: "the e
 // cell and the second, which is the trigger discharged on its own terms.
 //
 // WHAT HOLDS THE RUNG DOWN IS A DIFFERENT POPULATION, NOT THE REPAIRED ONE, which is why restoring
-// on the strength of the repair would be the inflation DESIGN section 4b(1) names. That section
+// on the strength of the repair would be the inflation gunbc.design_argument::guarantee_ladder (rung honesty) names. That section
 // takes the MINIMUM across a class's in-scope paths, and
 // `gunbc.recurring_failure_mode fold_shape_visible_to_no_lens` establishes a second population
 // where this gate's wall does not execute at all: a fold whose step is passed BY NAME lowers to
@@ -398,7 +398,7 @@ data accumulator_copy_obligation: V2CompileObligation = V2CompileObligation {
     ),
   ],
   ceiling: StructurallyGuaranteed,
-  next_trigger: climbs_when(capability: "THREE CAPABILITIES, AND NONE IS A FILE MOVE. First, THE LENS OBSERVES EVERY FOLD THE SOURCE DECLARES, AT EVERY LOWERING SHAPE a fold-family call can take — a step passed BY NAME lowers to neither a substrate Loop nor a surviving surface fold call, so count_fold_sites reports 0 and the lens never sees the site to refuse about, its own ^fold_accumulator_unread arm standing as unreachable code (gunbc.recurring_failure_mode fold_shape_visible_to_no_lens). A copied accumulator inside such a fold is admitted in silence however well the named-argument path reads, so this is the capability that holds the rung down under DESIGN section 4b(1)'s minimum-across-paths and it is named FIRST because it is the binding one. Second, the gate's own witnesses become affordable on the per-PR fold so the gunbc.ci.ci_layer_roots witness_exclusion_frontier patterns 'claim/complexity/accumulator_copy_roster_gate' and 'test/claim/long/' retire on their own dissolution conditions rather than being edited around — the exclusion rows exist because the walks were priced out, so the trigger is the cost, not the pattern. Third, the native lane enters the door. Until the first lands a whole population of folds is outside the wall entirely; until the second lands no required run refuses on a copied-accumulator tree; until the third lands the executed rung stays Mitigatable however green the interpreted side becomes"),
+  next_trigger: climbs_when(capability: "THREE CAPABILITIES, AND NONE IS A FILE MOVE. First, THE LENS OBSERVES EVERY FOLD THE SOURCE DECLARES, AT EVERY LOWERING SHAPE a fold-family call can take — a step passed BY NAME lowers to neither a substrate Loop nor a surviving surface fold call, so count_fold_sites reports 0 and the lens never sees the site to refuse about, its own ^fold_accumulator_unread arm standing as unreachable code (gunbc.recurring_failure_mode fold_shape_visible_to_no_lens). A copied accumulator inside such a fold is admitted in silence however well the named-argument path reads, so this is the capability that holds the rung down under gunbc.design_argument::guarantee_ladder (rung honesty)'s minimum-across-paths and it is named FIRST because it is the binding one. Second, the gate's own witnesses become affordable on the per-PR fold so the gunbc.ci.ci_layer_roots witness_exclusion_frontier patterns 'claim/complexity/accumulator_copy_roster_gate' and 'test/claim/long/' retire on their own dissolution conditions rather than being edited around — the exclusion rows exist because the walks were priced out, so the trigger is the cost, not the pattern. Third, the native lane enters the door. Until the first lands a whole population of folds is outside the wall entirely; until the second lands no required run refuses on a copied-accumulator tree; until the third lands the executed rung stays Mitigatable however green the interpreted side becomes"),
   seed_escape: SeedEscapeOpen {
     what_the_seed_does: "the seed's own folds are never presented to this gate, so a copied accumulator authored in stage0 Rust is invisible to the complexity lens that exists to make it unwritable" as NonEmptyStr
   },
@@ -475,7 +475,7 @@ data machine_shape_obligation: V2CompileObligation = V2CompileObligation {
 // mandatory_tag_enrolled_in_root_roster_rejects_violating_module (the one whose entire job is the
 // root-roster enrollment this claim rests on), is a frozen path deferral under test/claim/long.
 // Frozen means declared never-executed. So the strongest claim in the roster is the one with no
-// executing evidence anywhere, which is DESIGN section 4b(1) rung inflation exactly.
+// executing evidence anywhere, which is gunbc.design_argument::guarantee_ladder (rung honesty) rung inflation exactly.
 data mandatory_tag_obligation: V2CompileObligation = V2CompileObligation {
   identity: "mandatory_tag_root_lens" as NonEmptyStr,
   kind: RequiredRootLens,
@@ -602,7 +602,7 @@ data lifecycle_carrier_obligation: V2CompileObligation = V2CompileObligation {
   kind: RequiredSubtreeLens,
   home: HomeAuthority { authority: decl_ref(module_path: "v2.lens.lifecycle_carrier", decl_name: "lifecycle_carrier_gate") },
   claimed_rung: MechanicallyPreventable,
-  discriminating_red: "a raw prose String field standing where a typed lifecycle carrier belongs, which the gate must flag (DESIGN section 4c)" as NonEmptyStr,
+  discriminating_red: "a raw prose String field standing where a typed lifecycle carrier belongs, which the gate must flag (gunbc.design_argument::source_annotations)" as NonEmptyStr,
   positive_control: "a typed carrier in the same position, which must pass" as NonEmptyStr,
   witnesses: [
     witness_subject(
@@ -774,11 +774,11 @@ data determinism_non_primitive_fold_obligation: V2CompileObligation = V2CompileO
 }
 
 // THE ONE OBLIGATION IN THIS CENSUS WITH NO HOME, AND THE ONLY ONE WHOSE ESCAPE RUNS IN BOTH
-// DIRECTIONS. DESIGN section 4b lists "a realization that does not preserve modeled behavior" among
+// DIRECTIONS. gunbc.design_argument::guarantee_ladder lists "a realization that does not preserve modeled behavior" among
 // the differentiating classes v2 exists to make impossible, and cost shape is modeled: std.algebra
 // carries CostShape on its method templates. What is missing is the JOIN — no declaration anywhere
 // says that an emitted realization must preserve the cost shape its authority declares, and nothing
-// compares the two. So this is a modeling obligation (section 6), not a conformance row, and the
+// compares the two. So this is a modeling obligation (gunbc.design_argument::how_to_work), not a conformance row, and the
 // home field says so rather than citing a declaration that would have to be invented to be cited.
 //
 // MEASURED, AND IT DIVERGES BOTH WAYS AT ONCE, which is what makes it a class rather than a bug.
@@ -790,7 +790,7 @@ data determinism_non_primitive_fold_obligation: V2CompileObligation = V2CompileO
 // actually fast and is blind to the one that is actually quadratic. A lens that reads one side of a
 // pair cannot police the pair.
 //
-// WHY IT IS FILED HERE RATHER THAN AS A BARE-MINIMUM-COST FINDING. DESIGN section 6's bare-minimum
+// WHY IT IS FILED HERE RATHER THAN AS A BARE-MINIMUM-COST FINDING. gunbc.design_argument::how_to_work's bare-minimum
 // cost rule already says a proven cost-shape defect is always fixed regardless of realized n, and
 // the list_append instance is being fixed under it. That rule governs the INSTANCE. This row is the
 // CLASS: the rule cannot fire on a divergence nobody can see, and nothing in the corpus can see this
@@ -879,7 +879,7 @@ fn obligations_without_a_home() -> Int {
 // ROUTE COVERAGE IS NOT QUALIFICATION, AND THE NAME SAYS SO BECAUSE AN EARLIER NAME DID NOT. This
 // fold was called obligation_executed_rung, which promised more than it computes. What it reads is
 // whether each ROUTE executes the obligation's witnesses at all — the minimum across the in-scope
-// paths, per DESIGN section 4b(1) — and NOT whether the right lens ran, whether its discriminating
+// paths, per gunbc.design_argument::guarantee_ladder (rung honesty) — and NOT whether the right lens ran, whether its discriminating
 // red went red, whether its positive control stayed green, on the compiler closure, in the current
 // generation. discriminating_red and positive_control are prose on the row, joined to nothing, and
 // the native standing is derived from LANE MEMBERSHIP rather than from a verdict, because no per-lens
@@ -911,7 +911,7 @@ fn obligations_without_a_home() -> Int {
 // both standings are derived. Once the native column stopped being an authored field, no fixture row
 // could construct a both-routes-executing obligation, and the arm that proves this fold is not a
 // constant would have had nothing to compare against -- a check that can only observe one answer is
-// the decoration DESIGN section 4b names. Splitting the law from the row keeps its RED authorable.
+// the decoration gunbc.design_argument::guarantee_ladder names. Splitting the law from the row keeps its RED authorable.
 fn route_coverage_rung_of(interpreted: PathExecution, native: PathExecution) -> GuaranteeRung {
   if path_execution_is_executing(p: native) && path_execution_is_executing(p: interpreted) {
     MechanicallyPreventable
@@ -943,14 +943,14 @@ fn obligation_route_coverage_rung(o: V2CompileObligation) -> GuaranteeRung {
 // changes touching its closure. Both were present-tense coverage claims in the authority a reader
 // consults first, each overstating by one grain, and both are the class this same change files in
 // the ledger. No required run reads a count either. That is
-// the admissible middle state of section 3c and not the red one only because the later consumer and
+// the admissible middle state of gunbc.design_argument::consumption and not the red one only because the later consumer and
 // its trigger are named here: the counts become a receipt line when the required floor publishes an
 // obligation-coverage receipt alongside its claim results, at which point census_counts is that
 // receipt's producer and this paragraph deletes.
 //
 // WHY THEY ARE NOT ROUTED INTO A REQUIRED RUN TODAY. Enrolling a count as its own gated row would
 // put a second enrollment surface beside the witness that already executes the derivation, for a
-// fact the witness already establishes — the section 3 duplication this module was rebuilt to
+// fact the witness already establishes — the gunbc.design_argument::single_authority duplication this module was rebuilt to
 // remove, one layer up. The number is a projection of a checked derivation, not an independent
 // claim, and a projection earns a gate when something consumes it, not before.
 
@@ -985,12 +985,12 @@ fn census_witness_subjects() -> List<WitnessSubject> {
 
 // THE COMPARISON THIS CENSUS IS NAMED FOR, AND IT WAS MISSING FROM THE FIRST TWO CUTS. Claimed
 // versus executing is the whole point of the roster, and until this fold existed claimed_rung was
-// authored on every row and read by nothing — DESIGN section 3c's red arm, not its
+// authored on every row and read by nothing — gunbc.design_argument::consumption's red arm, not its
 // admissible middle, and a title the diff did not make true. Review 63176 named it.
 //
 // INFLATION IS A STRICT INEQUALITY, NOT A DISAGREEMENT. A row whose declaration claims LESS than its
 // paths establish is not inflated — it is under-claimed, which is honest and costs nothing — so only
-// claimed > executed counts. DESIGN section 4b(1): the reported rung must EQUAL the rung executed
+// claimed > executed counts. gunbc.design_argument::guarantee_ladder (rung honesty): the reported rung must EQUAL the rung executed
 // evidence establishes, and citing the stronger side while another path stays silent is the
 // inflation, which is worse than sitting low because an inflated class never ranks for climbing.
 // SPLIT FROM THE ROW FOR THE SAME REASON route_coverage_rung_of IS: both standings are derived, so no
@@ -1008,8 +1008,8 @@ fn obligations_with_inflated_rung() -> Int {
   length(xs: filter(v2_compile_obligation_census, o => obligation_rung_is_inflated(o: o)))
 }
 
-// A CEILING BELOW THE CLAIM IS AN INCOHERENT ROW, and it is checkable where emptiness was not. DESIGN
-// section 4b makes the ceiling the highest honest rung a class's facts and decidability permit, so a
+// A CEILING BELOW THE CLAIM IS AN INCOHERENT ROW, and it is checkable where emptiness was not.
+// gunbc.design_argument::guarantee_ladder makes the ceiling the highest honest rung a class's facts and decidability permit, so a
 // row claiming above its own ceiling has asserted something its own record says is unreachable. The
 // RED is authorable at the fixture boundary and is authored there.
 fn obligation_claim_exceeds_its_ceiling(o: V2CompileObligation) -> Bool {
@@ -1034,7 +1034,7 @@ fn obligation_kind_label(k: ObligationKind) -> String {
 
 
 // THE REPORT IS THE RECORD'S CONSUMER, and it exists because a census whose fields nobody reads is
-// the redundant work DESIGN section 2 prices. Every authored field that is not already folded by a
+// the redundant work gunbc.design_argument::minimize_redundancy prices. Every authored field that is not already folded by a
 // count is rendered here — kind, claimed rung, the two path standings, the ceiling, the count of
 // rung-drop citations, and the trigger — so a repair lane reads one line per obligation instead of
 // the source. discriminating_red and positive_control are deliberately NOT rendered: they are
@@ -1076,8 +1076,8 @@ fn census_report() -> String {
 }
 
 // THE INSTRUMENT. One entry point that re-derives every number this census reports, so a reader
-// spends one run rather than six and a citation names a producer rather than a table (DESIGN
-// section 6). The folds above remain the authority; this is their projection and adds no fact.
+// spends one run rather than six and a citation names a producer rather than a table (
+// gunbc.design_argument::how_to_work). The folds above remain the authority; this is their projection and adds no fact.
 //
 //   gunbc run --source-root dag --source-root src/v2 \
 //     --entry dag/gunbc/v2_compile_obligation_census.dag --function census_counts

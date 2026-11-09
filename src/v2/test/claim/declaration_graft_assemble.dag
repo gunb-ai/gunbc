@@ -105,7 +105,7 @@ fn declaration_graft_atom_present(root: Node, lexeme: String) -> Bool {
 // graft's RESULT over a tiny source, and the producer of that result is the whole real
 // path (tokenize -> parse -> normalize/graft -> resolve). Measured on the required floor
 // (run 35467726264): one assemble is 74k-149k eval steps against the 72,300 new-witness
-// line, so the cheapest one-member control could not clear it -- DESIGN section 3's
+// line, so the cheapest one-member control could not clear it -- gunbc.design_argument::single_authority's
 // diagnostic exactly (the cost does not move when the assertions change). The nullary
 // producers below are enrolled WARM in v2.workflow.floor_pure_producer_share: forced once
 // at strict preparation, outside every per-claim budget, and each claim is handed the

@@ -15,7 +15,7 @@ data ssh_exec_script_remote_receiver: NonEmptyStr = "bash -s"
 // test.claim.shell_exec_run_argv_embed_witness as BYTE-IDENTICAL bodies — same spec, same plan,
 // same `host_exec_arg_max_strlen` budget, same conjunction — and its own annotation said so
 // ("same move as test.claim.shell_exec_run_argv_embed_witness"). That is one fact with two
-// authorities, which DESIGN section 3 forbids, and the required floor measured the duplication
+// authorities, which gunbc.design_argument::single_authority forbids, and the required floor measured the duplication
 // exactly: run 34888954422 records both at 194,291 eval steps and 962ms, to the step.
 //
 // IT IS DELETED HERE AND KEPT THERE, because the fact is about the APPLY EMISSION against the

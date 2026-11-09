@@ -23,7 +23,7 @@ import gunbc.tools.bmc_first_contact { bmc_first_contact_host }
 
 // CURL'S CONNECT FAILURE GOES TO STDERR, SO ProbeServiceRoot's stdout CARRIES ONLY THE WRITE-OUT
 // ("\n000" when no response was received). Refusing with that blob refuses with "\n000" — typed,
-// and locating nothing (DESIGN §5). So the unreachable arm carries two facts and neither
+// and locating nothing (gunbc.design_argument::fail_closed). So the unreachable arm carries two facts and neither
 // substitutes for the other: `cause` is this module's own located statement of what failed, and
 // `transport_stderr` is curl's own text, read from the stream the operation now binds.
 type IntakeRedfishSurface

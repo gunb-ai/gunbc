@@ -99,7 +99,7 @@ fn requirement_subject(r: ChordRequirement) -> ChordSubject {
 
 // THE FACTOR IS A POLICY BUDGET WITH AN EXTERNAL REFERENT, not a number chosen because it looked
 // safe. An earlier revision carried a bare 20 governing which observations refuse, which is the
-// ungrounded literal DESIGN section 5 refuses in a merge-blocking position: nothing beside it said
+// ungrounded literal gunbc.design_argument::fail_closed refuses in a merge-blocking position: nothing beside it said
 // what would make it wrong.
 //
 // THE REFERENT IS THE GAUGEMAKER'S RULE, the metrology convention that a measuring instrument

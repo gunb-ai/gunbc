@@ -42,7 +42,7 @@ import std.integer { Int }
 //
 // That split is why `TestStanding` carries `ClaimDisposition` rather than copying its arms. The
 // floor's per-identity disposition vocabulary is complete and owned one module away; a parallel
-// eleven-arm coproduct here would be one concept forked by layer — DESIGN §3 nicknaming — and a
+// eleven-arm coproduct here would be one concept forked by layer — gunbc.design_argument::single_authority nicknaming — and a
 // fork gets consolidated later at someone else's cost. What this module adds is the POLICY over
 // that vocabulary, which is a downstream fact by the same section: whether an enrolled expected
 // red satisfies `//:required` is not something the floor's vocabulary may decide for its
@@ -366,7 +366,7 @@ type AggregateStanding
 //   prefer one observation over another and must stop the line instead.
 //
 //   COST. The join was dependency-count × standing-count over the largest population in the
-//   repository. DESIGN §6's bare-minimum-cost rule fixes a proven cost shape regardless of the
+//   repository. gunbc.design_argument::how_to_work's bare-minimum-cost rule fixes a proven cost shape regardless of the
 //   realized n; here n is not small either.
 //
 // THE KEY IS THE CANONICAL RENDERING, AND CANONICALITY IS ADMITTED RATHER THAN ASSUMED.
@@ -378,7 +378,7 @@ type AggregateStanding
 // `extdeps.bazel.label` rather than copied: canonicality is a property of the cited label grammar
 // — `render_label`'s own header already documents `parse(render(l)) == l` as what it guarantees —
 // so it is stated once beside that grammar and read here. A second canonicality predicate in a
-// consumer would be a §3 nickname for the first, and the two would drift the moment either was
+// consumer would be a gunbc.design_argument::single_authority nickname for the first, and the two would drift the moment either was
 // refined.
 //
 // IT ANSWERS WITH A CAUSE RATHER THAN A BOOL, AND BOTH REFUSAL ARMS CARRY IT. A label outside the
@@ -443,7 +443,7 @@ fn index_standing(acc: TargetStandingIndexAcc, standing: TargetStanding) -> Targ
   }
 }
 
-// RUNG HONESTY (DESIGN §4b), declared rather than left to be rediscovered.
+// RUNG HONESTY (gunbc.design_argument::guarantee_ladder), declared rather than left to be rediscovered.
 //
 // WHAT IS CLOSED. `TargetStandingIndex` cannot be forged. It is `sole_constructor`, so a
 // cross-module record literal or cast refuses at compile time, and the only in-module constructions
@@ -457,11 +457,11 @@ fn index_standing(acc: TargetStandingIndexAcc, standing: TargetStanding) -> Targ
 // MEASURED, NOT READ. A probe constructing the record from the witness module returned
 // "sole_constructor type 'TargetStandingIndex' cannot be constructed outside its defining module",
 // and the probe was removed after measurement. The keyword is recorded here with its executed
-// refusal because a seal asserted from its own spelling is the rung inflation §4b names — the
+// refusal because a seal asserted from its own spelling is the rung inflation gunbc.design_argument::guarantee_ladder names — the
 // enrolled suite keeps it honest by reaching every index only through
 // `build_target_standing_index`.
 //
-// WHAT IS NOT CLOSED, and it is a property of the substrate rather than of this type: DESIGN §4b
+// WHAT IS NOT CLOSED, and it is a property of the substrate rather than of this type: gunbc.design_argument::guarantee_ladder
 // records that a `sole_constructor` type's own EMITTED mirror is forgeable, so the guarantee here
 // is measured on the source→`.dag`-acceptance path and does not extend to a Rust-emission
 // realization of this module. NEXT-RUNG TRIGGER: unforgeable construction surviving emission,
@@ -534,7 +534,7 @@ fn dependency_finding(index: TargetStandingIndex, dep: Label) -> List<AggregateF
 // beside its executed one — a list a reader may truncate is not a number a reader may compare.
 //
 // THE `concat(acc, ...)` ACCUMULATOR IS NOT THE COPIED-ACCUMULATOR COST SHAPE IT RESEMBLES, and
-// this is recorded here because the shape §6 names is worth re-raising by default — a reader who
+// this is recorded here because the shape gunbc.design_argument::how_to_work names is worth re-raising by default — a reader who
 // finds a `concat` fold inside the function whose purpose was removing a quadratic is right to
 // stop. It was checked against both realizations rather than assumed:
 //
@@ -654,7 +654,7 @@ fn required_gate_decision(a: AggregateStanding) -> RequiredGateDecision {
 //
 //   `INCOMPLETE` is the reading to resist, and it is not hypothetical: gunbc#9343 classified this
 //   arm that way on main while gunbc#9336 classified it this way, and the two met in a merge. It
-//   is the anemic choice by DESIGN section 3 -- `extdeps` models what the upstream spec says and
+//   is the anemic choice by gunbc.design_argument::single_authority -- `extdeps` models what the upstream spec says and
 //   keeps its real names, so mapping an EXACTLY representable state onto a vaguer one is a lossy
 //   projection where a faithful one exists, and it lands the value in the very pile the paragraph
 //   below flags as lossy. A reader diffing this file against that history will find an

@@ -169,7 +169,7 @@ type VarBindingKind
 // resolution binds is ALWAYS a declared one. Spelling FuncSigResolved's owner as
 // CallableIdentity would therefore admit a state the decision already ruled out, and spelling
 // it as a loose owner/decl String pair beside DeclaredCallable would be a second representation
-// of the pair v1.compiler.sigs already owns (DESIGN section 3). One record, two consumers.
+// of the pair v1.compiler.sigs already owns (gunbc.design_argument::single_authority). One record, two consumers.
 //
 // It is declared HERE rather than in v1.compiler.sigs, its former home, because
 // CallTargetIdentity below carries one and this module sits under that one. Re-spelling the pair
@@ -188,11 +188,11 @@ type DeclaredCallableIdentity {
 // fabricating: std.algebra length is a ModeledProjection of the `length` primitive, the Rust
 // registry has no `length` row (its list realization is `count`, its string realization is
 // `string_length`), and 05_emit_rust rendered `v1_rt::length` -- a symbol that does not exist in
-// the seed -- at 73 sites. That is DESIGN section 5 fabricated-plausible-output: the emitter
+// the seed -- at 73 sites. That is gunbc.design_argument::fail_closed fabricated-plausible-output: the emitter
 // produced a well-formed call to nothing and only rustc refused, downstream of every gate we own.
 //
 // Which realization a target has is a REALIZATION fact and belongs peripheral to the target
-// (DESIGN section 3: the dispatch that selects a realization is itself realization), so the
+// (gunbc.design_argument::single_authority: the dispatch that selects a realization is itself realization), so the
 // resolver states only what it knows and carries the declaration alongside. An emitter routes to
 // the bridge when its own registry has the primitive, falls back to the declaration when one was
 // projected, and REFUSES otherwise -- it never invents a runtime symbol from a name.
@@ -215,7 +215,7 @@ type CallTargetIdentity
 // reader remembering to test for it. Four readers had to remember. As a coproduct the test is an
 // exhaustiveness arm the compiler demands, the producer cannot forget to mark ambiguity because
 // there is no other way to write it, and a reader that would have widened has to write the widening
-// down where a reviewer can see it. DESIGN section 5: correctness by construction, not validation.
+// down where a reviewer can see it. gunbc.design_argument::fail_closed: correctness by construction, not validation.
 type LeafOwner
   = SingleOwner { module: String }
   | LeafAmbiguous
@@ -299,7 +299,7 @@ type ExprData
   | ExprLet
   | ExprRecordLit { parent_enum: String? }
   | ExprListLit
-  | ExprBinOp { op: BinOp, algebra_field: AlgebraFieldKind?, operand: OperandDeclaration? }
+  | ExprBinOp { op: BinOp, algebra_field: AlgebraFieldKind?, operand: OperandDeclaration?, derived: DeclarationRef? }
   | ExprUnaryOp { op: UnaryOpKind }
   | ExprLambda
   | ExprStringInterp
@@ -318,7 +318,7 @@ type MatchPattern
 
 // IRREFUTABILITY IS A FACT ABOUT `MatchPattern`, SO IT LIVES WITH THE TYPE. It was previously
 // answered twice -- once for emission and once for exhaustiveness -- and two authorities for one
-// classification drift apart as the type grows, which is the parallel authority DESIGN section 3
+// classification drift apart as the type grows, which is the parallel authority gunbc.design_argument::single_authority
 // forbids. Consumers import this; neither re-derives it.
 //
 // THE MATCH IS EXHAUSTIVE ON PURPOSE, with no `_` arm. A catch-all would answer `false` for any
@@ -345,7 +345,7 @@ type OperationModifier = Idempotent | Readonly | Hermetic
 // places at once -- emit_unified_transport_dispatch's if-chain, the Rust emit_transport_call's
 // copy of it, is_file_transport_after_dispatch_precedence's private copy of the ordering, and
 // is_undeclared_transport's definition-by-exclusion -- so four carriers agreed about which arm claims
-// a multi-key transport by coincidence rather than by construction (DESIGN section 3).
+// a multi-key transport by coincidence rather than by construction (gunbc.design_argument::single_authority).
 type TransportKind = RestTransport | ShellTransport | FileTransport | UndeclaredTransport
 
 type CompileResult {
@@ -447,6 +447,17 @@ type CompilerDiagnostic
   | EqualityMemberUnjudgeable { type_name: String, member: String, span: SourceSpan }
   | EqualityOnInadmissibleType { type_name: String, span: SourceSpan }
   | EqualityOptionalityMismatch { optional_side: String, span: SourceSpan }
+  // TYPED CENSUS ROWS FOR gunbc.rung_drop derived_equality_residual_field_equality, never a verdict
+  // (advisory; an accepted program stays accepted with either present). Each carries the declaration it
+  // sits in ("<module> <declaration>") and its locus, so the census label
+  // //gunbc/instruments:compile-clean-diagnostic-census joins them at identity grain. Both dissolve with
+  // that drop: the derive-eligibility fixpoint over the emitted type graph deletes them.
+  // A generic `==` the equality walk admits instantiation-blind: its operand type is a type variable, so
+  // no plan is computed and an instantiation at a Node-reaching type compares derived fields.
+  | EqualityInstantiationBlindGenericSite { operand_type: String, declaration: String, span: SourceSpan }
+  // A Map/Set key type the equality walk finds reaching a routed declaration: membership uses the emitted
+  // derived equality, not the plan.
+  | CollectionKeyReachesEqualityRoute { key_type: String, declaration: String, span: SourceSpan }
   | TypeArgumentArityMismatch { type_name: String, supplied: Int, declared: Int, span: SourceSpan }
   | TypeArgumentKindMismatch { type_name: String, param_name: String, kind_name: String, supplied: String, span: SourceSpan }
   | TypeParameterInValuePosition { name: String, span: SourceSpan }
@@ -480,7 +491,7 @@ type CompilerDiagnostic
   // can carry. Named at the literal's NAME span, before any field walk, so the refusal does not
   // depend on whether the supplied fields happen to fit some arm: `U { property: ..., value: ... }`
   // and `U { not_a_field: 1 }` refuse for the same reason, and the refusal lists the arms the
-  // author could have meant (DESIGN §4b: a value inhabits its declared type; §5: a refusal names
+  // author could have meant (gunbc.design_argument::guarantee_ladder: a value inhabits its declared type; gunbc.design_argument::fail_closed: a refusal names
   // its own reason). The specimen is extdeps.systemd systemd_run SystemdRunProperty, which #13942
   // changed from a record to NamedUnitSetting | EmptyCapabilityBoundingSet while its call sites
   // kept constructing the old record shape -- accepted at authoring and refused only at eval
@@ -546,13 +557,13 @@ type ErrorDAG {
 //
 // WHAT WAS DELETED AND WHY: this arm previously minted two placeholder SourceSpans -- file
 // '<unknown-occurrence:N>' and a wildcard '<occurrence-transport-refusal>'. Both are removed. The
-// wildcard was the DESIGN section 5 absorbing arm: a future spanless variant would have been
+// wildcard was the gunbc.design_argument::fail_closed absorbing arm: a future spanless variant would have been
 // absorbed into an anonymous placeholder instead of stopping the line. It is now
 // unreachable-by-construction rather than merely unused, because adding a variant reds the total
 // match below AND the total match in occurrence_transport_refusal_diagnostic_message. The
-// '<unknown-occurrence:N>' file name was additionally a section 2 duplicate: the occurrence id is
+// '<unknown-occurrence:N>' file name was additionally a gunbc.design_argument::minimize_redundancy duplicate: the occurrence id is
 // already carried by occurrence_transport_refusal_diagnostic_message, so the span restated a fact
-// the message owns, and a bespoke pseudo-file was a section 3 nickname for no_span().
+// the message owns, and a bespoke pseudo-file was a gunbc.design_argument::single_authority nickname for no_span().
 //
 // BOUND, STATED HONESTLY: diagnostic_to_span returns SourceSpan, not SourceSpan?, so span-absence
 // is rendered rather than typed at that boundary. Making it typed changes a load-bearing v1 seed
@@ -708,6 +719,8 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     EqualityOnFunctionMember { type_name: _, member: _, span: s } => s
     EqualityMemberUnjudgeable { type_name: _, member: _, span: s } => s
     EqualityOnInadmissibleType { type_name: _, span: s } => s
+    EqualityInstantiationBlindGenericSite { operand_type: _, declaration: _, span: s } => s
+    CollectionKeyReachesEqualityRoute { key_type: _, declaration: _, span: s } => s
     EqualityOptionalityMismatch { optional_side: _, span: s } => s
     TypeArgumentArityMismatch { type_name: _, supplied: _, declared: _, span: s } => s
     TypeArgumentKindMismatch { type_name: _, param_name: _, kind_name: _, supplied: _, span: s } => s
@@ -837,6 +850,10 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
       concat("equality is not defined for '", t, "': it is declared equality-inadmissible (it carries provenance that derived '==' would compare) — compare through the erasure route (node_equal_ignoring_provenance for structure, node_same_occurrence for identity) instead of '=='")
     EqualityMemberUnjudgeable { type_name: t, member: m, span: _ } =>
       concat("equality admission for '", t, "' cannot be judged: ", m, " — '==' is refused rather than admitted on an unjudged member")
+    EqualityInstantiationBlindGenericSite { operand_type: t, declaration: d, span: _ } =>
+      concat("census row (gunbc.rung_drop derived_equality_residual_field_equality): '==' over type variable '", t, "' in ", d, " is admitted instantiation-blind, so it carries no equality plan")
+    CollectionKeyReachesEqualityRoute { key_type: t, declaration: d, span: _ } =>
+      concat("census row (gunbc.rung_drop derived_equality_residual_field_equality): collection key type '", t, "' in ", d, " reaches a routed equality declaration, so membership uses derived equality, not the plan")
     EqualityOptionalityMismatch { optional_side: side, span: _ } =>
       concat("'==' compares an optional value with a required one (the ", side, " operand is optional): no declared coercion lifts T into T?, so the comparison has no single meaning -- match on the optional")
     TypeArgumentArityMismatch { type_name: t, supplied: s, declared: d, span: _ } =>
@@ -852,11 +869,11 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     ServiceConfigReferenceJudgmentDeferred { field: f, referenced_name: n, trigger: t, span: _ } =>
       concat("service config field '", f, "' carries the reference '", n, "', and the reference judgment does not yet run on this field -- ", t, ". This is a counted deferral, not a pass: nothing has established that '", n, "' names anything")
     TransportEmissionNotModeled { transport_kind: kind, service: svc, operation: op, declaring_module: m, target: tgt, missing_realization_fact: missing, span: _ } =>
-      concat("'", kind, "' transport emission is not modeled: operation '", svc, ".", op, "' declared in '", m, "' cannot be emitted for target '", tgt, "' -- ", missing, ". Bind a realization handler for the '", kind, "' transport (DESIGN §3: interface shape and transport are two facts); do not add a per-target renderer")
+      concat("'", kind, "' transport emission is not modeled: operation '", svc, ".", op, "' declared in '", m, "' cannot be emitted for target '", tgt, "' -- ", missing, ". Bind a realization handler for the '", kind, "' transport (gunbc.design_argument::single_authority: interface shape and transport are two facts); do not add a per-target renderer")
     CastRealizationRefused { target: tgt, missing_realization_fact: missing, span: _ } =>
       concat("cast cannot be emitted for target '", tgt, "' -- ", missing)
     TypeNameCarriesNoRecordConstructor { type_name: t, declared_variants: vs, span: _ } =>
-      concat("record literal names '", t, "' which declares no record constructor: '", t, "' is a union with variants [", join(vs, separator: ", "), "]; construct one of its variants instead (DESIGN §4b: a value inhabits its declared type)")
+      concat("record literal names '", t, "' which declares no record constructor: '", t, "' is a union with variants [", join(vs, separator: ", "), "]; construct one of its variants instead (gunbc.design_argument::guarantee_ladder: a value inhabits its declared type)")
   }
 }
 
@@ -985,6 +1002,8 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     EqualityOnFunctionMember { type_name: _, member: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     EqualityMemberUnjudgeable { type_name: _, member: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     EqualityOnInadmissibleType { type_name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    EqualityInstantiationBlindGenericSite { operand_type: _, declaration: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
+    CollectionKeyReachesEqualityRoute { key_type: _, declaration: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
     EqualityOptionalityMismatch { optional_side: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     TypeArgumentArityMismatch { type_name: _, supplied: _, declared: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     TypeArgumentKindMismatch { type_name: _, param_name: _, kind_name: _, supplied: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
@@ -1149,13 +1168,13 @@ fn is_error_diagnostic(d: CompilerDiagnostic) -> Bool {
 // feature:where-refinement-predicate-coproduct, a name that was carried at seven sites for THREE
 // different capabilities: this one, the predicate declaration authority in
 // gunbc.where_refinement_predicate_vocabulary, and refinement evidence at non-literal positions in
-// std.content_hash and std.decimal. DESIGN 4b(3) retires a drop by its trigger and by nothing else,
+// std.content_hash and std.decimal. gunbc.design_argument::guarantee_ladder (no silent regression) retires a drop by its trigger and by nothing else,
 // so satisfying the shared name here would have retired the predicate row while every string
 // classifier it names still stood.
 //
 // THIS PROSE WAS PROGRAM DATA UNTIL codex review 60718. It sat inside the String declaration below,
 // which is mirrored verbatim into the stage0 seed, so the rename roughly DOUBLED a commentary row
-// that ships in the compiler. DESIGN 4c names that shape exactly: rationale belongs in an annotation,
+// that ships in the compiler. gunbc.design_argument::source_annotations names that shape exactly: rationale belongs in an annotation,
 // and 4c's own history is the receipt -- making `//` a parse error did not make commentary
 // unwritable, it made the corpus hoist comments into `data ...: String` rows, and the first cleanup
 // swept 215 of them. This was very nearly the 216th. Moving it here removes it from the emitted seed
@@ -1166,7 +1185,7 @@ fn is_error_diagnostic(d: CompilerDiagnostic) -> Bool {
 // proposed as the terminal and is the WRONG one: its RungDropReason is a closed coproduct of
 // LostAsPassenger, DeletedWithoutReplacement and ReplacementStaged -- three ways a guarantee FELL --
 // and nothing fell here. This row declares that an interim construction exists and names what ends
-// it, so forcing it into rung_drop would require lying about which arm applied. DESIGN 5 says a
+// it, so forcing it into rung_drop would require lying about which arm applied. gunbc.design_argument::fail_closed says a
 // dissolution condition describes how admitted debt ends, and std.dissolution DissolutionCondition
 // is the type for exactly that, used by gunbc.compile_diagnostic_census
 // compile_diagnostic_census_hand_rust_dissolve_trigger and by
@@ -1557,8 +1576,8 @@ fn field_node_default_value(n: Node) -> Node? {
 // PROGRAM -- four dead readers, and the emitter answering declared `from` keys
 // with a default it should never have needed. The interpreter's own reader
 // accepted BOTH spellings, which is why the two directions of one procedure
-// disagreed without anything going red (DESIGN section 3 -- a nickname duplicates
-// work at the meaning layer; section 5 -- the emitter fabricated where it should
+// disagreed without anything going red (gunbc.design_argument::single_authority -- a nickname duplicates
+// work at the meaning layer; gunbc.design_argument::fail_closed -- the emitter fabricated where it should
 // have read).
 //
 // Converging them on the LENIENT side -- teaching the emitter to accept both --
@@ -2085,7 +2104,7 @@ fn file_transport_node(occurrence_identity: NodeOccurrenceIdentity, base_path: N
 // The property channel a type parameter's KIND annotation rides on. Named once here because the
 // parser writes it (v1.compiler.parse collect_type_param_names) and the resolver reads it
 // (v1.compiler.resolve), and a property key spelled at both ends is the same literal standing in
-// two authorities -- DESIGN section 3.
+// two authorities -- gunbc.design_argument::single_authority.
 fn type_param_kind_property_name() -> String {
   "__param_kind"
 }
@@ -2468,10 +2487,10 @@ fn service_config_field_for_property_name(name: String) -> ServiceConfigField? {
 // Measured before removal: `service_config_retry` had zero callers in the whole tree, and
 // NEITHER realization retries anything -- `05_emit_rust.dag` has no occurrence of retry or
 // backoff, and the interpreter's only match for either word is an unrelated doc comment. So
-// the field was declared policy with no consumer (DESIGN section 5, specification without
+// the field was declared policy with no consumer (gunbc.design_argument::fail_closed, specification without
 // execution). It was also in the wrong layer: `max_attempts: 3` is OUR policy authored
 // inside a cited upstream module, which is the literal-where-a-parameter-should-be-received
-// tell for the section 3 layer inversion. `rate_limit` is deliberately NOT deleted beside
+// tell for the gunbc.design_argument::single_authority layer inversion. `rate_limit` is deliberately NOT deleted beside
 // it -- a published request ceiling is a fact ABOUT the dependency and belongs in extdeps;
 // a retry policy is a fact about how WE call it and belongs to the caller. When a retrying
 // realization exists, its policy arrives as a workflow-layer carrier parameterized per call
@@ -2795,7 +2814,7 @@ fn byte_to_line_col(index: NewlineIndex, offset: Int) -> LineCol {
 // an honest unlocated phrase; every site that still prints raw offsets is named below as a surviving
 // leaf, not quietly left out of the claim.
 //
-// WHY IT IS ONE PLACE AND NOT ONE PER CALL SITE (DESIGN 6b). Before this block there was no
+// WHY IT IS ONE PLACE AND NOT ONE PER CALL SITE (gunbc.design_argument::earliest_unjustified_boundary). Before this block there was no
 // authority at all: each producer formatted a location itself. The compile lane printed
 // `{file}:{start}-{end}`; the emitted CLI printed `{file}:{line}:{col}` from its own walk; and host
 // Rust formatted `{file}:{line}:{col}` again in Rust. One diagnostic therefore reached the same
@@ -2843,7 +2862,7 @@ fn byte_to_line_col(index: NewlineIndex, offset: Int) -> LineCol {
 // WHY THIS COULD NOT LAND IN ONE COMMIT (stated because the ordering is not obvious, and a future
 // reader will otherwise "simplify" it). A host call to `crate::v1_std_core::render_span_location`
 // only compiles once the stage0 MIRROR emitted from this seed carries that function, and mirrors are
-// written by the regenerator, never by hand (DESIGN 5). So the seed edit and its hand-written
+// written by the regenerator, never by hand (gunbc.design_argument::fail_closed). So the seed edit and its hand-written
 // callers cannot be one commit: tried and measured, the regenerator's own verify fails (REGEN-EXIT=1)
 // because it compiles the emitted candidate against the hand-written files copied from the working
 // tree. The seed lands first, the heal job publishes the mirror, and this commit cuts the host over.
@@ -3153,7 +3172,7 @@ fn qualified_last_segment(name: String) -> String {
 // every user record, which is the correct answer for the overwhelming majority of
 // type-position names -- with "this IS a container spelling, and it is one we do
 // not recognize", which is ignorance. Rendering the second as the first is the
-// empty-observation narrow of DESIGN section 5: the arm answers "not under-
+// empty-observation narrow of gunbc.design_argument::fail_closed: the arm answers "not under-
 // parameterized" / "not a keyed map" about a name it could not classify at all,
 // and the wrong answer produces no evidence of itself.
 //
@@ -3168,8 +3187,8 @@ type ContainerSpellingVerdict
   | ContainerSpellingUnknown { container_leaf: String }
 
 // The known container leaves are read from container_type_arity itself -- the same
-// authority the Present arm consults -- so this is not a third roster (DESIGN
-// section 3). The lowercase alias spellings that container_template_alias_rows
+// authority the Present arm consults -- so this is not a third roster (
+// gunbc.design_argument::single_authority). The lowercase alias spellings that container_template_alias_rows
 // additionally carries are deliberately NOT read here: "list", "map" and "set" are
 // ordinary identifier spellings, so a binder or field named `map` would be refused
 // as an unrecognized container. The wall is drawn where the refusal cannot be

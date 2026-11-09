@@ -23,7 +23,7 @@ import extdeps.systemd.unit_file { OutputAppendFile, systemd_output_stream_wire 
 // assembled a SECOND list of the same facts beside them: reusing the renderer's helpers meant the two
 // could not drift today, but a path a later change handed the unit through a new property was silently
 // outside the check, and the harness argv's --source-root operands (the controller's dag/ and src/v2
-// directories the worker loads modules from) were in no list at all. Chain re-derivation (DESIGN 6b):
+// directories the worker loads modules from) were in no list at all. Chain re-derivation (gunbc.design_argument::earliest_unjustified_boundary):
 // the earliest unjustified boundary is that the unit's path facts had no single owner, so the owner
 // is this set. Nothing here parses text: the renderers below read entries, the reach check folds
 // over entries, and gunbc.roadmap.roadmap_dispatch_actuator builds the set once per plan.

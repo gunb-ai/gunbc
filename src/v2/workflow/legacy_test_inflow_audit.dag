@@ -13,6 +13,7 @@ import v2.workflow.floor_diff_observe {
   FloorUnifiedDiffResult,
   UnifiedDiffOk,
   UnifiedDiffFail,
+  UnifiedBaseRefUnresolvable,
   floor_observe_git_diff_unified_for_ci,
 }
 
@@ -26,6 +27,14 @@ fn legacy_test_inflow_observe_live() -> LegacyTestInflowObservation {
         failure_reason: "",
       )
     UnifiedDiffFail { reason } =>
+      inflow_observation_of_unified_diff_result(
+        observed: false,
+        diff_text: "",
+        failure_reason: reason,
+      )
+    // A base that names nothing is a NON-OBSERVATION, never an empty diff: the audit records
+    // that it measured nothing, with the refusal as its reason.
+    UnifiedBaseRefUnresolvable { reason: reason } =>
       inflow_observation_of_unified_diff_result(
         observed: false,
         diff_text: "",
