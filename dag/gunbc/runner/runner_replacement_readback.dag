@@ -77,10 +77,6 @@ import gunbc.runner.runner_retirement_causes {
   RetireUndecidedCause, NoDecisionFor, pending_cause_text,
 }
 
-  | RegisteredOffline { slot: NonEmptyStr }
-  | NotRegistered { slot: NonEmptyStr }
-  | RegistrationUnreadable { slot: NonEmptyStr, cause: String }
-
 // THE ROSTER IS SUPPLIED, NOT READ HERE, so the join is decidable by a claim. `Absent` is "nobody read the
 // roster this run", which is an unreadable standing and not a statement that the slot is missing.
 fn replacement_registration_of(
@@ -126,9 +122,6 @@ fn registration_from_entries(
       }
   }
 }
-
-  | JobNotConcluded { slot: NonEmptyStr, cause: String }
-  | JobUnreadable { slot: NonEmptyStr, cause: String }
 
 // THE VERDICT IS THE EXISTING OBSERVATION; `Absent` IS THE ABSENCE OF ONE. `decide_floor_job` hands back a
 // collected verdict once the floor job has STARTED on the registered runner, so the CONCLUSION has to be
@@ -184,8 +177,6 @@ fn qualification_run_refusal_cause(refusal: QualificationRunRefusal) -> String {
     RunFloorJobNotStarted { job_id: _ } => "the floor job never started"
   }
 }
-
-  | JobPending { standing: ReplacementJobStanding }
 
 // `SlotProven` / `SlotPending`, not `ReplacementProven` / `ReplacementPending`: the type used to be one of
 // its own constructors, so the same name meant the fact and one case of the fact.
@@ -250,11 +241,6 @@ fn verdict_for(verdicts: List<QualificationRunVerdict>, slot: NonEmptyStr) -> Qu
     Absent => Absent
   }
 }
-
-  | DeclaredRetiree { unit: NonEmptyStr, live_on_host: Bool }
-  | ModelDeclaredFabricMember { unit: NonEmptyStr, live_on_host: Bool }
-  | HandStartedWorkingCapacity { unit: NonEmptyStr }
-  | DrainCandidateUnexplained { unit: NonEmptyStr }
 
 fn drain_candidate_standing(
   unit: NonEmptyStr,
@@ -330,15 +316,6 @@ fn replacement_incoming_for_host(host: HostIdentity) -> ReplacementIncoming {
       replacement_incoming_at(host: host, prior_width: t.prior_width, target: gunbc_runner_committed_width(host: host))
   }
 }
-
-  | ReplacementProofMissing { replacement: NonEmptyStr, cause: String }
-  | IncomingUnprovable { cause: String }
-
-  | HandStartedOutsideTheDerivedPopulation { unit: NonEmptyStr }
-  | DrainCandidateUnaccountedFor { unit: NonEmptyStr }
-
-  | RetireDrainWithheld { unit: NonEmptyStr, cause: RetirePendingCause }
-  | RetireDrainRefused { unit: NonEmptyStr, cause: RetireRefusalCause }
 
 fn retire_drain_decision(
   standing: DrainCandidateStanding,

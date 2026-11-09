@@ -1,16 +1,16 @@
 module gunbc.runner.runner_retirement_causes
 
 // THE CAUSES A RETIREMENT DECISION CARRIES, IN A MODULE THAT IMPORTS NOTHING HEAVY -- and that is the whole
-// reason this module exists, not a packaging preference. `gunbc.runner.runner_slot_actuation` must carry the
-// gate's causes on its outcomes (review 92478: a fact that must survive belongs in a typed carrier,
-// DESIGN.md Source) and render them only in its own wire; `gunbc.runner.runner_replacement_readback`, which
-// decides those causes, imports the qualification-dispatch and slot-allocation machinery, and that
-// machinery reaches `runner_slot_actuation` by several routes. Importing the causes from where they were
-// decided would therefore have closed a dependency cycle -- claim_batch said so over 21 claims:
-// "error: circular dependency detected". The standings, the causes, the decision and their renderers are
-// pure data with no authority of their own, so they live here, with two leaf imports, and both sides read
-// them from here. A decision type that can only be reached by dragging in the whole runner fleet is a type
-// nobody can carry.
+// reason this module exists, not a packaging preference. gunbc.runner.runner_slot_actuation has to name
+// RetirePendingCause / RetireRefusalCause / RetireUndecidedCause on its outcomes (review 92478: "a fact that
+// must survive belongs in a typed carrier", DESIGN.md Source) and render them only in its own wire;
+// gunbc.runner.runner_replacement_readback, which DECIDES those causes, imports the qualification-dispatch
+// and slot-allocation machinery, and that machinery reaches runner_slot_actuation back. Importing the causes
+// from the module that decides them therefore closed a dependency cycle -- claim_batch said so over 21
+// claims: "error: circular dependency detected". The standings, the causes, the drain decision and their
+// renderers are pure data with no authority of their own, so they live here, on two leaf imports and nothing
+// else. A decision type that can only be carried by dragging in the whole runner fleet is a type nobody can
+// carry, and a module that is both judge and carrier is the cycle this prevents.
 import std.types { Bool, List, NonEmptyStr, String }
 import extdeps.github.workflow_runs { WorkflowRun, WorkflowJobRun }
 
@@ -22,9 +22,16 @@ import extdeps.github.workflow_runs { WorkflowRun, WorkflowJobRun }
 // over a slot that only needs its runner restarted.
 type ReplacementRegistration
   = Registered { slot: NonEmptyStr }
+  | RegisteredOffline { slot: NonEmptyStr }
+  | NotRegistered { slot: NonEmptyStr }
+  | RegistrationUnreadable { slot: NonEmptyStr, cause: String }
+
 // ─────────────────────────── LEG 2: THE COMPLETED-JOB READBACK ───────────────────────────
 type ReplacementJobStanding
   = JobConcluded { slot: NonEmptyStr, run: WorkflowRun, floor_job: WorkflowJobRun }
+  | JobNotConcluded { slot: NonEmptyStr, cause: String }
+  | JobUnreadable { slot: NonEmptyStr, cause: String }
+
 // ─────────────────────────── THE JOIN: REGISTERED *AND* COMPLETED A JOB ───────────────────────────
 // THE CAUSE IS THE STANDING, NOT A PARAPHRASE OF IT. The first draft of this type carried arms named
 // `NotRegistered`, `RegisteredOffline`, `JobUnreadable` and `JobNotConcluded` beside the identically named
@@ -37,6 +44,8 @@ type ReplacementJobStanding
 // line cannot say something the standing does not.
 type ReplacementPendingCause
   = RegistrationPending { standing: ReplacementRegistration }
+  | JobPending { standing: ReplacementJobStanding }
+
 // ─────────────────────────── WHOSE CAPACITY IS THIS: THE DRAIN CANDIDATE'S STANDING ───────────────────────────
 // THE FOUR ANSWERS A DRAIN CANDIDATE CAN GET, IN THE ORDER THEY ARE ASKED. `StillDesired` is asked first
 // on purpose: a unit the model still desires is not this plan's to retire even when an obligation lists
@@ -46,6 +55,11 @@ type ReplacementPendingCause
 // model's fabric slot -- what changes with liveness is the operator's urgency, not the model's authority.
 type DrainCandidateStanding
   = StillDesired { unit: NonEmptyStr }
+  | DeclaredRetiree { unit: NonEmptyStr, live_on_host: Bool }
+  | ModelDeclaredFabricMember { unit: NonEmptyStr, live_on_host: Bool }
+  | HandStartedWorkingCapacity { unit: NonEmptyStr }
+  | DrainCandidateUnexplained { unit: NonEmptyStr }
+
 // ─────────────────────────── THE DECISION ───────────────────────────
 // ONE ARM PER WAY A RETIREMENT CAN BE STOPPED, BECAUSE THEY ARE NOT THE SAME SENTENCE. `RetireDrainWithheld`
 // is "not yet": the replacement exists in the model and has not proven itself, and a later run may retire.
@@ -59,10 +73,27 @@ type DrainCandidateStanding
 // neither "the roster said nothing" nor "the job did not run".
 type RetirePendingCause
   = WaitingOnReplacement { replacement: NonEmptyStr, pending: ReplacementPendingCause }
+  | ReplacementProofMissing { replacement: NonEmptyStr, cause: String }
+  | IncomingUnprovable { cause: String }
+
 type RetireRefusalCause
   = StillDesiredUnit { unit: NonEmptyStr }
+  | HandStartedOutsideTheDerivedPopulation { unit: NonEmptyStr }
+  | DrainCandidateUnaccountedFor { unit: NonEmptyStr }
+
 type RetireDrainDecision
   = RetireDrainAuthorized { unit: NonEmptyStr, over: List<NonEmptyStr> }
+  | RetireDrainWithheld { unit: NonEmptyStr, cause: RetirePendingCause }
+  | RetireDrainRefused { unit: NonEmptyStr, cause: RetireRefusalCause }
+
+// THE THIRD RETIREE-CAUSE, TYPED LIKE THE OTHER TWO: the drain leg asked the gate about a candidate and the
+// gate produced NO DECISION for it. That is not a withhold (the gate did not consult the readback and say
+// wait) and not a refusal (the gate did not classify the candidate), it is the gate never having spoken --
+// and the drain leg treats silence the way it treats a refusal: nothing drains. It gets its own type so the
+// outcome cannot lean on a string literal to say it.
+type RetireUndecidedCause
+  = NoDecisionFor { candidate: NonEmptyStr }
+
 // THE CAUSES RENDERED FOR A PLAN LINE, so a withheld retirement reads as a next action and not as a
 // refusal with no direction. Every withheld arm names the replacement it is waiting on -- that is the
 // difference between "converge refused" and "converge is waiting on srv3-06's first job".
@@ -78,14 +109,6 @@ fn retire_pending_cause_wire(cause: RetirePendingCause) -> String {
     IncomingUnprovable { cause: why } => concat("the replacement population is unknowable: ", why)
   }
 }
-
-// THE THIRD RETIREE-CAUSE, TYPED LIKE THE OTHER TWO: the drain leg asked the gate about a candidate and the
-// gate produced NO DECISION for it. That is not a withhold (the gate did not consult the readback and say
-// wait) and not a refusal (the gate did not classify the candidate), it is the gate never having spoken --
-// and the drain leg treats silence the way it treats a refusal: nothing drains. It gets its own type so the
-// outcome cannot lean on a string literal to say it.
-type RetireUndecidedCause
-  = NoDecisionFor { candidate: NonEmptyStr }
 
 fn retire_undecided_cause_wire(cause: RetireUndecidedCause) -> String {
   match cause {
