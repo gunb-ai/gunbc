@@ -1589,26 +1589,41 @@ data operator_route_unit_chosen_by_hand: IntegrationConcern = IntegrationConcern
   },
 }
 
-// THE CENSUS ROW FOR AN UNBOUND HELPER IN A SYNTHESIZED EQUALITY BODY (EqualityMissingSynthesisHelper)
-// HAS NO WITNESS: the census instrument is MultiModuleCompileFixture-shaped, so it cannot plant a module
-// that reaches the refusal, and no corpus site reaches it. The refusal itself is exercised -- the
-// equality_admission fixture refuses at the planted site -- but no witness pins that the census row is
-// EMITTED for it. The witness needs a census instrument that takes a planted module (the same gap
-// equality_synthesis_helper_binding_is_import_authority (same family) records for the binding row).
-// Interim: grep the refusal class name in v1.compiler.infer. Dissolves when a planted-module census
-// instrument exists.
+// THE CENSUS ROW FOR AN UNBOUND HELPER IN A SYNTHESIZED EQUALITY BODY HAS NO WITNESS. When a
+// synthesized equality body binds a step to a helper no module declares, the USE is refused at its own
+// site with a located reason (equality_body_block_reason), and the admission census is meant to carry a
+// row naming the same refusal. No witness pins that the census row is EMITTED: the census instrument is
+// MultiModuleCompileFixture-shaped, so it cannot plant a module that reaches the refusal, and no corpus
+// site reaches it. The refusal at the site IS pinned (non_empty_diagnostics_family_helper_absent_refuses_
+// at_subject in test.claim.self_host_equality_admission_witness), but at census grain those rows pin
+// class and subject, not the located reason -- so they cannot discriminate this refusal from a
+// member-unjudgeable one, and the arm stays unwitnessed even at green rows. The repair is a census
+// instrument that accepts a planted module, not a grep.
 data equality_missing_helper_census_refusal_unwitnessed: IntegrationConcern = IntegrationConcern {
   identity: "equality_missing_helper_census_refusal_unwitnessed",
-  statement: "The EqualityMissingSynthesisHelper census row (the census side of the equality helper-binding wall) has no witness: no instrument can plant a module that reaches it, and no corpus site does. The refusal at the site is witnessed; the census row is not.",
-  authority: [
-    "gunbc.recurring_failure_mode equality_helper_binding_authority_two_readers",
-    "gunbc.design_argument::earliest_unjustified_boundary (the census instrument is fixture-shaped and cannot plant; building a planting census instrument is the repair, not a grep)",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_body_block_reason"),
+    requirement: "A synthesized equality body that binds a step to a helper no module declares is refused at the use with a located reason AND carries a census row naming that refusal, so a recurring failure mode can point at the site rather than only refuse it.",
+    standing: RequirementUnestablished,
+  },
+  affected: [
+    decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_body_block_reason"),
+    decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_helper_declared"),
   ],
-  detection: [
-    "grep -rn \"EqualityMissingSynthesisHelper\" src/v1/04_infer.dag",
-    "grep -rn \"EqualityMissingSynthesisHelper\" dag/test/ | grep -v \"^dag/test/claim/self_host_equality_admission_witness.dag\"",
+  question: "No witness pins that the census row for an unbound synthesized-equality helper is EMITTED: the census instrument cannot plant a module that reaches the refusal, and no corpus site does. The refusal at the use is pinned; the census row is not.",
+  sightings: [
+    ConcernSighting {
+      revision: "c95241be28a6bbd4965348ac4860743b10568863",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_body_block_reason") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "test.claim.self_host_equality_admission_witness", decl_name: "non_empty_diagnostics_family_helper_absent_refuses_at_subject") },
+        ],
+      },
+      account: "The refusal arm and its pinned fixture were added together in this PR's first commit; the fixture resolves and refuses at the planted site, but at census grain it pins class and subject, not the located reason, so the census-absent arm stays unexecuted.",
+    },
   ],
-  next: climbs_when("a census instrument accepts a planted module, or a corpus site reaches the row, and a witness pins the row's emission"),
+  disposition: Open,
 }
 
 data equality_wall_three_site_measure_stopgap_interim: IntegrationConcern = IntegrationConcern {
