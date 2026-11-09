@@ -2881,7 +2881,6 @@ test fn an_active_systemd_worker_blocks_the_launch_and_the_spawn_alike() -> Bool
       goal_audit: none,
       verification_retry: RefusedRetryOperatorOnly,
       now: none,
-    now: none,
     } },
   )
   live_refusal
