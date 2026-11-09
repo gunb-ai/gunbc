@@ -457,10 +457,13 @@ test fn witness_pinned_rungs_reserve_whole_and_evictable_ones_their_floor() -> B
       && sl_rung_floor(a: srv4_routed_expert_artifact, m: ArtifactInHostRam) == byte_size_count(b: sl_gib(n: 22))
       && sl_rung_bytes(a: srv4_routed_expert_artifact, m: ArtifactInHostRam) == byte_size_count(b: mebibyte_to_byte_size(m: mebibyte(count: 24576)))
       && byte_size_count(b: serving_artifact_host_ram_charge(a: srv4_routed_expert_artifact)) < sl_rung_bytes(a: srv4_routed_expert_artifact, m: ArtifactInHostRam)
-  // The disk rungs hold the file on both hosts; the device rungs are caches, not reservations.
+  // The disk rungs hold the file on both hosts; the device rungs are the on-card expert cache -- pinned on the
+  // card and carrying NO host-RAM floor, because a device rung reserves host RAM for nothing (review 92466; it is
+  // ArtifactHeldPinned precisely so it cannot state a host-RAM floor it must not have).
     && sl_rung_pinned(a: srv4_routed_expert_artifact, m: ArtifactOnDisk)
     && sl_rung_pinned(a: srv3_routed_expert_artifact, m: ArtifactOnDisk)
-    && !sl_rung_pinned(a: srv4_routed_expert_artifact, m: ArtifactOnDevice)
+    && sl_rung_pinned(a: srv4_routed_expert_artifact, m: ArtifactOnDevice)
+    && sl_rung_pinned(a: srv3_routed_expert_artifact, m: ArtifactOnDevice)
 }
 
 // THE RUNGS ARE ONE ARTIFACT, NOT THREE FACTS: srv4's engine planned "46.8 GiB experts, 22.9 GiB in the GPU

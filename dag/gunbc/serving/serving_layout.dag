@@ -731,7 +731,7 @@ data srv4_routed_expert_artifact: ServingSharedArtifact = ServingSharedArtifact 
   bytes: gibibyte_to_byte_size(g: gibibyte(count: 46)),
   owner: "the engine's own mmap (--mmap-experts; the GGUF shards in place, no experts.bin), held as the engine cgroup's page cache under the cap srv4_serving_engine_memory.memory_cap reads -- that row is the cap's only home (review 92380)" as NonEmptyStr,
   device: Present { value: ServingArtifactRung {
-    holds: ArtifactHeldEvictable { bound_by: "Strata's on-card expert cache, bounded per card by ServingBackendProfile.device_min_elastic_vram" as NonEmptyStr, floor: ServingMemoryUnread { reason: "lives once in strata_srv4_layer_split_profile.device_min_elastic_vram, per card; a device rung does not reserve host RAM" as NonEmptyStr } },
+    holds: ArtifactHeldPinned { mechanism: "Strata's on-card expert cache holds its resident experts on the card for the life of the engine; the per-card elastic bound strata_srv4_layer_split_profile.device_min_elastic_vram is what caps how much of the card it may take -- a device rung reserves host RAM for nothing, so it carries no host-RAM floor (review 92466)" as NonEmptyStr },
     bytes: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 23450)), provenance: "engine.log prefill plan '22.9 GiB in the GPU caches', 2026-11-09" as NonEmptyStr },
     realizes: "Strata's expert caches on both cards, filled by the routing-aware prefetcher ahead of the walk" as NonEmptyStr,
   } },
@@ -853,7 +853,7 @@ data srv3_routed_expert_artifact: ServingSharedArtifact = ServingSharedArtifact 
   bytes: mebibyte_to_byte_size(m: mebibyte(count: 47964)),
   owner: "the engine process itself (strata-pool.service, user ubuntu, /home/ubuntu/strata-test): the arena is private anonymous memory — there is no second process to share it with today, and no unit that could reclaim it" as NonEmptyStr,
   device: Present { value: ServingArtifactRung {
-    holds: ArtifactHeldEvictable { bound_by: "Strata's on-card expert cache, bounded per card by ServingBackendProfile.device_min_elastic_vram" as NonEmptyStr, floor: ServingMemoryUnread { reason: "lives once in strata_srv3_layer_split_profile.device_min_elastic_vram, per card; a device rung does not reserve host RAM" as NonEmptyStr } },
+    holds: ArtifactHeldPinned { mechanism: "Strata's on-card expert cache holds its resident experts on the card for the life of the engine; the per-card elastic bound strata_srv3_layer_split_profile.device_min_elastic_vram is what caps how much of the card it may take -- a device rung reserves host RAM for nothing, so it carries no host-RAM floor (review 92466)" as NonEmptyStr },
     bytes: ServingMemoryUnread { reason: "srv3's per-card expert cache has not been read; its cache held ~7,822 experts against srv4's ~12,054 on 2026-11-08, so it is smaller than srv4's 22.9 GiB and by how much is unread" as NonEmptyStr },
     realizes: "Strata's expert caches on both cards; what they cannot hold is served from the arena below" as NonEmptyStr,
   } },
