@@ -5,21 +5,23 @@ import std.optional { Absent, Present }
 import std.algebra { trim }
 import gunbc.source_layout { layout_module_storage_path }
 import gunbc.read_set_schema { fast_lane_skip_output, fast_lane_skip_true, fast_lane_compiler_identity_output }
+import v2.std.read_set {
+  ReadSetMember, ReadSetFile, ReadSetProbe, ReadSetDir,
+  ReadSetOrigin, ReadSetObserved, ReadSetDeclared, ReadSetEntry,
+  ReadSetChangeObservation, ReadSetChangedPaths, ReadSetChangesUnobserved,
+  ReadSetUnestablishedCause, ReadSetRecordingLineUnreadable, ReadSetChangeObservationUnavailable, ReadSetChangedPathUndecidable,
+  read_set_exact_paths, read_set_dir_prefixes,
+}
 import gunbc.read_set_restore {
-  FastLanePathRule, FastLaneExactPath, FastLanePathPrefix,
-  FastLaneRuleSource, FastLaneFixedInput, FastLaneDecisionImplementation, FastLaneRecordedRead,
-  FastLaneInputRule,
+  FastLaneDeclaredInput, FastLaneFixedInput, FastLaneDecisionImplementation,
   FastLaneUnitObservation, FastLaneUnitAbsent, FastLaneUnitRestored,
-  FastLaneDiffObservation, FastLaneDiffRead, FastLaneDiffUnanswered,
   FastLaneFullRunCause, FastLaneNoUnitRestored, FastLaneReceiptEmpty, FastLaneBinaryNotExecutable,
-  FastLaneIdentityMalformed, FastLaneReceiptLineUnreadable, FastLaneDiffUnreadable,
-  FastLaneChangedPathUndecidable, FastLaneInputChanged,
+  FastLaneIdentityMalformed, FastLaneImplementationUnplaceable, FastLaneReadSetUnestablished, FastLaneInputChanged,
   FastLaneVerdict, FastLaneReuse, FastLaneFullRun,
   fast_lane_decide,
-  fast_lane_declared_rules,
+  fast_lane_declared_entries,
+  fast_lane_unplaceable_modules,
   fast_lane_decision_implementation_modules,
-  fast_lane_rule_exact_paths,
-  fast_lane_rule_prefixes,
   fast_lane_decision_script,
   fast_lane_decision_script_is_renderable,
   fast_lane_decision_unemittable_marker,
@@ -53,7 +55,7 @@ fn fixture_unit() -> FastLaneUnitObservation {
 }
 
 fn decide_paths(paths: List<String>) -> FastLaneVerdict {
-  fast_lane_decide(unit: fixture_unit(), diff: FastLaneDiffRead { changed_paths: paths })
+  fast_lane_decide(unit: fixture_unit(), changes: ReadSetChangedPaths { paths: paths })
 }
 
 // THE ARM A VERDICT TOOK, as one word, so a claim compares the reason and not only skip-or-not.
@@ -70,25 +72,33 @@ fn cause_tag(c: FastLaneFullRunCause) -> String {
     FastLaneReceiptEmpty => "receipt-empty"
     FastLaneBinaryNotExecutable => "binary-not-executable"
     FastLaneIdentityMalformed => "identity-malformed"
-    FastLaneReceiptLineUnreadable { line: _ } => "receipt-line-unreadable"
-    FastLaneDiffUnreadable => "diff-unreadable"
-    FastLaneChangedPathUndecidable { path: _ } => "path-undecidable"
-    FastLaneInputChanged { path: _, rule: r } => input_rule_tag(r: r)
+    FastLaneImplementationUnplaceable { module: _ } => "implementation-unplaceable"
+    FastLaneReadSetUnestablished { cause: u } => unestablished_tag(u: u)
+    FastLaneInputChanged { path: _, entry: e } => concat(origin_tag(o: e.origin), member_tag(m: e.member))
   }
 }
 
-fn input_rule_tag(r: FastLaneInputRule) -> String {
-  concat(source_tag(s: r.source), match r.rule {
-    FastLaneExactPath { path: _ } => "-exact"
-    FastLanePathPrefix { prefix: _ } => "-prefix"
-  })
+fn unestablished_tag(u: ReadSetUnestablishedCause) -> String {
+  match u {
+    ReadSetRecordingLineUnreadable { line: _ } => "receipt-line-unreadable"
+    ReadSetChangeObservationUnavailable => "diff-unreadable"
+    ReadSetChangedPathUndecidable { path: _ } => "path-undecidable"
+  }
 }
 
-fn source_tag(s: FastLaneRuleSource) -> String {
-  match s {
-    FastLaneFixedInput => "fixed"
-    FastLaneDecisionImplementation => "implementation"
-    FastLaneRecordedRead => "recorded"
+fn member_tag(m: ReadSetMember) -> String {
+  match m {
+    ReadSetFile { path: _ } => "-exact"
+    ReadSetProbe { path: _ } => "-exact"
+    ReadSetDir { path: _ } => "-prefix"
+  }
+}
+
+fn origin_tag(o: ReadSetOrigin<FastLaneDeclaredInput>) -> String {
+  match o {
+    ReadSetObserved => "recorded"
+    ReadSetDeclared { reason: FastLaneFixedInput } => "fixed"
+    ReadSetDeclared { reason: FastLaneDecisionImplementation } => "implementation"
   }
 }
 
@@ -130,9 +140,18 @@ test fn a_rename_touching_a_recorded_path_forces_the_full_run() -> Bool {
 test fn a_fixed_input_edit_forces_the_full_run() -> Bool {
   verdict_tag(v: decide_paths(paths: ["src/v1/stage0/src/cli_run.rs"])) == "fixed-prefix"
     && verdict_tag(v: decide_paths(paths: ["Cargo.lock"])) == "fixed-exact"
-    && verdict_tag(v: decide_paths(paths: ["rust-toolchain.toml"])) == "fixed-prefix"
+    && verdict_tag(v: decide_paths(paths: ["rust-toolchain.toml"])) == "fixed-exact"
     && verdict_tag(v: decide_paths(paths: [".github/workflows/witnesses.yml"])) == "fixed-prefix"
     && verdict_tag(v: decide_paths(paths: ["fixtures/annotation_reference_holds/dag/x.dag"])) == "fixed-prefix"
+}
+
+// ONE MATCHER, ON A PATH-SEGMENT BOUNDARY (v2.std.read_set read_set_member_covers): a declared directory
+// covers what is under it and not a sibling whose name merely starts the same way, and an exact member is
+// exact -- the old `rust-toolchain` bare prefix would have matched `rust-toolchain.bak`.
+test fn a_declared_directory_or_file_matches_only_its_own_segment() -> Bool {
+  verdict_tag(v: decide_paths(paths: ["src/v1x/notes.md"])) == "reuse"
+    && verdict_tag(v: decide_paths(paths: [".githubx/x.yml"])) == "reuse"
+    && verdict_tag(v: decide_paths(paths: ["rust-toolchain.bak"])) == "reuse"
 }
 
 // The decision does not judge its own change, nor a change to the layout policy its checks read.
@@ -143,46 +162,46 @@ test fn a_decision_implementation_edit_forces_the_full_run() -> Bool {
 }
 
 test fn an_absent_unit_forces_the_full_run() -> Bool {
-  verdict_tag(v: fast_lane_decide(unit: FastLaneUnitAbsent, diff: FastLaneDiffRead { changed_paths: [] })) == "no-unit"
+  verdict_tag(v: fast_lane_decide(unit: FastLaneUnitAbsent, changes: ReadSetChangedPaths { paths: [] })) == "no-unit"
 }
 
 // A corrupt unit is never read as a covering one, whatever the diff says.
 test fn a_corrupt_unit_forces_the_full_run() -> Bool {
-  let clean = FastLaneDiffRead { changed_paths: [] }
-  verdict_tag(v: fast_lane_decide(unit: FastLaneUnitRestored { receipt_lines: [], binary_executable: true, identity_text: fixture_identity_file() }, diff: clean)) == "receipt-empty"
-    && verdict_tag(v: fast_lane_decide(unit: FastLaneUnitRestored { receipt_lines: fixture_receipt, binary_executable: false, identity_text: fixture_identity_file() }, diff: clean)) == "binary-not-executable"
-    && verdict_tag(v: fast_lane_decide(unit: FastLaneUnitRestored { receipt_lines: fixture_receipt, binary_executable: true, identity_text: "" }, diff: clean)) == "identity-malformed"
-    && verdict_tag(v: fast_lane_decide(unit: FastLaneUnitRestored { receipt_lines: fixture_receipt, binary_executable: true, identity_text: concat(fixture_identity_file(), fixture_identity_file()) }, diff: clean)) == "identity-malformed"
-    && verdict_tag(v: fast_lane_decide(unit: FastLaneUnitRestored { receipt_lines: fixture_receipt, binary_executable: true, identity_text: concat(fixture_identity_file(), "junk") }, diff: clean)) == "identity-malformed"
-    && verdict_tag(v: fast_lane_decide(unit: FastLaneUnitRestored { receipt_lines: fixture_receipt, binary_executable: true, identity_text: fixture_identity }, diff: clean)) == "identity-malformed"
-    && verdict_tag(v: fast_lane_decide(unit: FastLaneUnitRestored { receipt_lines: fixture_receipt, binary_executable: true, identity_text: concat("\n", fixture_identity) }, diff: clean)) == "identity-malformed"
-    && verdict_tag(v: fast_lane_decide(unit: FastLaneUnitRestored { receipt_lines: fixture_receipt, binary_executable: true, identity_text: "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF\n" }, diff: clean)) == "identity-malformed"
+  let clean = ReadSetChangedPaths { paths: [] }
+  verdict_tag(v: fast_lane_decide(unit: FastLaneUnitRestored { receipt_lines: [], binary_executable: true, identity_text: fixture_identity_file() }, changes: clean)) == "receipt-empty"
+    && verdict_tag(v: fast_lane_decide(unit: FastLaneUnitRestored { receipt_lines: fixture_receipt, binary_executable: false, identity_text: fixture_identity_file() }, changes: clean)) == "binary-not-executable"
+    && verdict_tag(v: fast_lane_decide(unit: FastLaneUnitRestored { receipt_lines: fixture_receipt, binary_executable: true, identity_text: "" }, changes: clean)) == "identity-malformed"
+    && verdict_tag(v: fast_lane_decide(unit: FastLaneUnitRestored { receipt_lines: fixture_receipt, binary_executable: true, identity_text: concat(fixture_identity_file(), fixture_identity_file()) }, changes: clean)) == "identity-malformed"
+    && verdict_tag(v: fast_lane_decide(unit: FastLaneUnitRestored { receipt_lines: fixture_receipt, binary_executable: true, identity_text: concat(fixture_identity_file(), "junk") }, changes: clean)) == "identity-malformed"
+    && verdict_tag(v: fast_lane_decide(unit: FastLaneUnitRestored { receipt_lines: fixture_receipt, binary_executable: true, identity_text: fixture_identity }, changes: clean)) == "identity-malformed"
+    && verdict_tag(v: fast_lane_decide(unit: FastLaneUnitRestored { receipt_lines: fixture_receipt, binary_executable: true, identity_text: concat("\n", fixture_identity) }, changes: clean)) == "identity-malformed"
+    && verdict_tag(v: fast_lane_decide(unit: FastLaneUnitRestored { receipt_lines: fixture_receipt, binary_executable: true, identity_text: "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF\n" }, changes: clean)) == "identity-malformed"
 }
 
 // A receipt line the rule cannot read as a path it can compare against the diff is distrust, not a gap.
 test fn an_unreadable_receipt_line_forces_the_full_run() -> Bool {
-  let clean = FastLaneDiffRead { changed_paths: [] }
+  let clean = ReadSetChangedPaths { paths: [] }
   all(
     ["blob dag/x.dag", "file /abs/x.dag", "file ", "dir dag/gunbc/", "dir dag/../src", "file dag//x.dag", "probe ./x.dag"],
     bad => verdict_tag(v: fast_lane_decide(
       unit: FastLaneUnitRestored { receipt_lines: concat(fixture_receipt, [bad]), binary_executable: true, identity_text: fixture_identity_file() },
-      diff: clean
+      changes: clean
     )) == "receipt-line-unreadable"
   )
 }
 
 test fn an_unanswered_diff_or_an_undecidable_path_forces_the_full_run() -> Bool {
-  verdict_tag(v: fast_lane_decide(unit: fixture_unit(), diff: FastLaneDiffUnanswered)) == "diff-unreadable"
+  verdict_tag(v: fast_lane_decide(unit: fixture_unit(), changes: ReadSetChangesUnobserved)) == "diff-unreadable"
     && verdict_tag(v: decide_paths(paths: ["docs/a\nb.md"])) == "path-undecidable"
 }
 
 // ═══ THE RULE ROWS AND THEIR REALIZATION ═══
 
-// Every module of the decision's implementation has a layout path, so none fell back to the empty prefix that
-// switches the fast lane off; and the path is the layout's, not a spelling kept beside it.
+// Every module of the decision's implementation has a layout path, so none switches the fast lane off; and
+// the path is the layout's, not a spelling kept beside it.
 test fn every_implementation_module_has_its_layout_path() -> Bool {
   all(fast_lane_decision_implementation_modules, m => layout_module_storage_path(module: m) != Absent)
-    && all(fast_lane_rule_prefixes(rules: fast_lane_declared_rules()), q => q != "")
+    && (length(xs: fast_lane_unplaceable_modules()) == 0)
     && layout_module_storage_path(module: "gunbc.read_set_restore") == Present { value: "dag/gunbc/read_set_restore.dag" }
 }
 
@@ -194,8 +213,8 @@ test fn the_emitted_decision_carries_the_rule_rows_and_answers_skip_last() -> Bo
   let skip_line = join(["'", fast_lane_skip_output, "=''", fast_lane_skip_true, "'"], "")
   fast_lane_decision_script_is_renderable()
     && (string_contains(s: script, pattern: fast_lane_decision_unemittable_marker) == false)
-    && all(fast_lane_rule_exact_paths(rules: fast_lane_declared_rules()), p => string_contains(s: script, pattern: join(["'", p, "'"], "")))
-    && all(fast_lane_rule_prefixes(rules: fast_lane_declared_rules()), q => string_contains(s: script, pattern: join(["'", q, "'"], "")))
+    && all(read_set_exact_paths(entries: fast_lane_declared_entries()), p => string_contains(s: script, pattern: join(["'", p, "'"], "")))
+    && all(read_set_dir_prefixes(entries: fast_lane_declared_entries()), q => string_contains(s: script, pattern: join(["'", q, "'"], "")))
     && string_contains(s: script, pattern: "'--no-renames' '-z' \"$FAST_LANE_ANCESTOR\" 'HEAD'")
     && (length(xs: split(s: script, delimiter: skip_line)) == 2)
     && (string_contains(s: trim(split(s: script, delimiter: skip_line) |> fold(init: "", f: (acc, part) => part)), pattern: "\n") == false)
