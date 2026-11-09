@@ -71,10 +71,16 @@ data raw_host_spool_stage_source: String = "module probe_spool_queue_raw_stage_e
 // call over a key minted by spool_entry_key_of_name has zero.
 data forged_defer_source: String = "module probe_spool_queue_forged_defer\nimport std.types { NonEmptyStr }\nimport gunbc.spool_queue { SpoolEntryKey, SpoolKind, SpoolAttemptUnit, SpoolStore, spool_queue_defer, SpoolParkOutcome }\nfn f(store: SpoolStore, n: NonEmptyStr) -> SpoolParkOutcome {\n  spool_queue_defer(store: store, key: SpoolEntryKey { kind: SpoolAttemptUnit, name: n })\n}\n"
 
+data twin_defer_source: String = "module probe_spool_queue_twin_defer\nimport std.types { NonEmptyStr }\nimport gunbc.spool_queue { SpoolKind, SpoolAttemptUnit, SpoolStore }\nimport test.fixture.spool_queue_seal.unsealed { SpoolEntryKey }\nfn defer_stand_in(store: SpoolStore, key: SpoolEntryKey) -> SpoolEntryKey {\n  key\n}\nfn f(store: SpoolStore, n: NonEmptyStr) -> SpoolEntryKey {\n  defer_stand_in(store: store, key: SpoolEntryKey { kind: SpoolAttemptUnit, name: n })\n}\n"
+
 data lawful_defer_source: String = "module probe_spool_queue_lawful_defer\nimport std.types { String }\nimport gunbc.spool_queue { SpoolAttemptUnit, SpoolStore, spool_queue_defer, spool_entry_key_of_name, SpoolKeyMinted, SpoolKeyRefused }\nfn f(store: SpoolStore, name: String) -> String {\n  match spool_entry_key_of_name(kind: SpoolAttemptUnit, name: name) {\n    SpoolKeyMinted { key } => match spool_queue_defer(store: store, key: key) {\n      _ => \"parked\"\n    }\n    SpoolKeyRefused { detail: d } => d\n  }\n}\n"
 
 test fn a_forged_key_cannot_defer_an_entry() -> ProcessExit {
   census_exit(census_verdict(census: seal_violations(source: forged_defer_source, subject: "SpoolEntryKey"), holds: fn(n) { n == 1 }))
+}
+
+test fn the_same_forged_defer_passes_against_the_seal_stripped_twin() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: twin_defer_source, subject: "SpoolEntryKey"), holds: fn(n) { n == 0 }))
 }
 
 test fn a_minted_key_defers_with_no_seal_violation() -> ProcessExit {
