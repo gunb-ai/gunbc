@@ -10,7 +10,7 @@ import std.algebra { empty_map, map_insert, map_lookup }
 import std.optional { Present, Absent }
 import gunbc.roadmap.roadmap_belt { BeltCapacity }
 import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified }
-import gunbc.roadmap.roadmap_status { PlainLine, Unsigned }
+import gunbc.roadmap.roadmap_status { PlainLine }
 import gunbc.roadmap.roadmap_model {
   RoadmapNodeId,
   RoadmapNodeIdentity,
@@ -120,7 +120,6 @@ fn fixture_node(id: String) -> RoadmapNode {
     dispatch: Dispatchable { repo: "gunbc", acceptance: ManualAcceptance },
     execution: ExecutionContractUnspecified,
     owner: "fixture",
-    signoff: Unsigned,
     parent: none,
     centering: none,
   }

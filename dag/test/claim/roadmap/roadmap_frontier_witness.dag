@@ -9,7 +9,7 @@ import gunbc.roadmap.roadmap_model {
   AdmittedRoot,
 }
 import std.types { NonEmptyStr }
-import gunbc.roadmap.roadmap_status { DerivableLine, SupersededLine, Signoff, Unsigned, SignedOff, RedControlExecuted, HandbackDelivered }
+import gunbc.roadmap.roadmap_status { DerivableLine, SupersededLine }
 import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified }
 import gunbc.roadmap.roadmap_launch_canary { roadmap_launch_canary_execution_contract }
 import gunbc.roadmap.roadmap_document { RoadmapDocument, RoadmapSection }
@@ -37,22 +37,23 @@ fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
     dispatch: Dispatchable { repo: "gunbc", acceptance: PrsMerged },
     execution: roadmap_launch_canary_execution_contract(),
     owner: "",
-    signoff: Unsigned,
     parent: Present { value: AdmittedRoot },
     centering: Present { value: "fixture centering plan" as NonEmptyStr },
   }
 }
 
-fn accepted_node(base: RoadmapNode) -> RoadmapNode {
+// A CLOSED parent inside the plan. A node definition carries no acceptance: an accepted node and
+// its edges leave the document through the acceptance history before the frontier is computed, so
+// the closed shape a definition can still state is a superseded line (it closes dependency edges).
+fn closed_node(base: RoadmapNode) -> RoadmapNode {
   RoadmapNode {
     identity: "rnfx_QBNJEXMAX2KQWS838BE3" as RoadmapNodeIdentity,
     node: base.node,
-    line: base.line,
+    line: SupersededLine { by: "successor-lane", content: "closed" },
     carriers: base.carriers,
     dispatch: base.dispatch,
     execution: base.execution,
     owner: base.owner,
-    signoff: SignedOff { by: "operator", works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] }, as_expected: true },
     parent: none,
     centering: none,
   }
@@ -67,7 +68,6 @@ fn undispatchable_derivable(id: String, prs: List<Int>, title: String) -> Roadma
     dispatch: NotDispatchable,
     execution: ExecutionContractUnspecified,
     owner: "",
-    signoff: Unsigned,
     parent: none,
     centering: none,
   }
@@ -89,7 +89,7 @@ fn fixture_doc(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> RoadmapDoc
 }
 
 test fn witness_ready_matches_next_spawnable() -> Bool {
-  let node_a = accepted_node(base: sized_derivable(id: "parent-done", prs: [100], title: "Parent"))
+  let node_a = closed_node(base: sized_derivable(id: "parent-done", prs: [100], title: "Parent"))
   let node_b = sized_derivable(id: "child-ready", prs: [200], title: "Child Ready")
   let edges = [RoadmapEdge { child: roadmap_frontier_nid(s: "child-ready"), parent: roadmap_frontier_nid(s: "parent-done") }]
   let doc = fixture_doc(nodes: [node_a, node_b], edges: edges)
@@ -113,8 +113,7 @@ test fn witness_merged_unsigned_node_stays_ready_for_acceptance() -> Bool {
   let node = sized_derivable(id: "review-node", prs: [999], title: "Review Node")
   let doc = fixture_doc(nodes: [node], edges: [])
   let frontier = spawn_frontier(doc: doc, merged: [999])
-  !any(frontier.done, n => n.node == roadmap_frontier_nid(s: "review-node"))
-    && any(frontier.ready, n => n.node == roadmap_frontier_nid(s: "review-node"))
+  any(frontier.ready, n => n.node == roadmap_frontier_nid(s: "review-node"))
     && !any(frontier.upcoming, n => n.node == roadmap_frontier_nid(s: "review-node"))
 }
 
@@ -130,14 +129,14 @@ test fn witness_merged_unsigned_parent_does_not_unblock_child() -> Bool {
     && !any(frontier.ready, n => n.node == child.node)
 }
 
-test fn witness_signed_node_is_done_and_unblocks_child() -> Bool {
-  let parent = accepted_node(base: sized_derivable(id: "signed-parent", prs: [700], title: "Signed Parent"))
-  let child = sized_derivable(id: "after-signoff", prs: [701], title: "After Signoff")
+test fn witness_closed_parent_unblocks_child() -> Bool {
+  let parent = closed_node(base: sized_derivable(id: "closed-parent", prs: [700], title: "Closed Parent"))
+  let child = sized_derivable(id: "after-close", prs: [701], title: "After Close")
   let edge = RoadmapEdge { child: child.node, parent: parent.node }
   let frontier = spawn_frontier(
     doc: fixture_doc(nodes: [parent, child], edges: [edge]),
     merged: [])
-  any(frontier.done, n => n.node == parent.node)
+  any(frontier.superseded, n => n.node == parent.node)
     && !any(frontier.ready, n => n.node == parent.node)
     && any(frontier.ready, n => n.node == child.node)
 }
@@ -148,19 +147,18 @@ test fn witness_unsized_excluded_from_frontier() -> Bool {
   let frontier = spawn_frontier(doc: doc, merged: [])
   count(frontier.ready) == 0
     && count(frontier.upcoming) == 0
-    && count(frontier.done) == 0
 }
 
 test fn witness_buckets_are_disjoint() -> Bool {
   let node_a = sized_derivable(id: "a-open", prs: [100], title: "A")
   let node_b = sized_derivable(id: "b-blocked", prs: [200], title: "B")
-  let node_c = accepted_node(base: sized_derivable(id: "c-done", prs: [300], title: "C"))
+  let node_c = closed_node(base: sized_derivable(id: "c-done", prs: [300], title: "C"))
   let edges = [RoadmapEdge { child: roadmap_frontier_nid(s: "b-blocked"), parent: roadmap_frontier_nid(s: "a-open") }]
   let doc = fixture_doc(nodes: [node_a, node_b, node_c], edges: edges)
   let frontier = spawn_frontier(doc: doc, merged: [300])
   any(frontier.ready, n => n.node == roadmap_frontier_nid(s: "a-open"))
     && any(frontier.upcoming, n => n.node == roadmap_frontier_nid(s: "b-blocked"))
-    && any(frontier.done, n => n.node == roadmap_frontier_nid(s: "c-done"))
+    && any(frontier.superseded, n => n.node == roadmap_frontier_nid(s: "c-done"))
     && !any(frontier.ready, n => n.node == roadmap_frontier_nid(s: "b-blocked"))
     && !any(frontier.upcoming, n => n.node == roadmap_frontier_nid(s: "a-open"))
 }
@@ -227,22 +225,6 @@ fn superseded_node_fixture(id: String, by: String) -> RoadmapNode {
     dispatch: NotDispatchable,
     execution: ExecutionContractUnspecified,
     owner: "",
-    signoff: Unsigned,
-    parent: none,
-    centering: none,
-  }
-}
-
-fn signed_sized_superseded_node_fixture(id: String, by: String) -> RoadmapNode {
-  RoadmapNode {
-    identity: "rnfx_2M0H9GXC2H0A5CZ9V7HW" as RoadmapNodeIdentity,
-    node: roadmap_frontier_nid(s: id),
-    line: SupersededLine { by: by, content: "Accepted Old Row" },
-    carriers: [],
-    dispatch: Dispatchable { repo: "gunbc", acceptance: PrsMerged },
-    execution: ExecutionContractUnspecified,
-    owner: "",
-    signoff: SignedOff { by: "operator", works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] }, as_expected: true },
     parent: none,
     centering: none,
   }
@@ -257,18 +239,6 @@ test fn witness_superseded_bucket_holds_superseded_only() -> Bool {
     && !any(frontier.superseded, n => n.node == roadmap_frontier_nid(s: "open-row"))
     && !any(frontier.ready, n => n.node == roadmap_frontier_nid(s: "old-row"))
     && !any(frontier.upcoming, n => n.node == roadmap_frontier_nid(s: "old-row"))
-    && !any(frontier.done, n => n.node == roadmap_frontier_nid(s: "old-row"))
-}
-
-test fn witness_signed_superseded_node_is_not_also_done() -> Bool {
-  let node_old = signed_sized_superseded_node_fixture(id: "accepted-old-row", by: "successor-lane")
-  let frontier = spawn_frontier(
-    doc: fixture_doc(nodes: [node_old], edges: []),
-    merged: [])
-  any(frontier.superseded, n => n.node == roadmap_frontier_nid(s: "accepted-old-row"))
-    && !any(frontier.ready, n => n.node == roadmap_frontier_nid(s: "accepted-old-row"))
-    && !any(frontier.upcoming, n => n.node == roadmap_frontier_nid(s: "accepted-old-row"))
-    && !any(frontier.done, n => n.node == roadmap_frontier_nid(s: "accepted-old-row"))
 }
 
 test fn witness_page_places_superseded_node_in_superseded_bucket() -> Bool {
@@ -290,15 +260,5 @@ test fn witness_page_places_ready_node_in_ready_bucket() -> Bool {
     && string_contains(s: h, pattern: "data-node=\"spawn-me\"")
     && !string_contains(s: h, pattern: "frontier-bucket")
     && !string_contains(s: h, pattern: "class=\"status status-open\"")
-}
-
-// A signed, sized node is done, and the table row carries the done band the band chips filter on.
-test fn witness_page_places_done_node_in_done_bucket() -> Bool {
-  let node = accepted_node(base: sized_derivable(id: "finished-row", prs: [43], title: "Finished Row"))
-  let h = workspace_band_html(doc: fixture_doc(nodes: [node], edges: []), merged: [])
-  string_contains(s: h, pattern: "Finished Row")
-    && string_contains(s: h, pattern: "data-band=\"done\"")
-    && !string_contains(s: h, pattern: "data-band=\"ready\"")
-    && !string_contains(s: h, pattern: "frontier-bucket")
 }
 
