@@ -15,6 +15,10 @@ import gunbc.runner.runner_slot_actuation {
   SlotDrainedAndMasked,
   SlotDrainPending,
   SlotActuationRefused,
+  SlotRetirementWithheld,
+  SlotRetirementRefused,
+  SlotRetirementUndecided,
+  SlotHandCapacityHeld,
   SlotRead,
   SlotReadRefused,
   SlotReadOutcome,
@@ -445,6 +449,15 @@ fn readmit_unsettled(outcomes: List<SlotActuationOutcome>) -> List<NonEmptyStr> 
     SlotNotInstalled { unit: u } => u
     SlotDrainedAndMasked { unit: u } => u
     SlotDrainPending { unit: u, cause: _ } => u
+    // A RETIREMENT THE GATE DID NOT AUTHORIZE IS NOT A COMPLETED ACTUATION: the unit is still in service and
+    // the readback has not settled it, so it is named among the stuck ones. The withheld and undecided arms
+    // reach here because gunbc.runner.runner_slot_actuation::slot_actuation_settled refuses them; the hand
+    // notice is settled -- a report about a unit this plan never intended to touch cannot leave the host stuck
+    // -- so its arm keeps the match total and the filter above is what keeps it unreachable.
+    SlotRetirementWithheld { unit: u, cause: _ } => u
+    SlotRetirementRefused { unit: u, cause: _ } => u
+    SlotRetirementUndecided { unit: u, cause: _ } => u
+    SlotHandCapacityHeld { unit: u, notice: _ } => u
   })
 }
 
