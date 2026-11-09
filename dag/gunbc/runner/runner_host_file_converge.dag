@@ -176,6 +176,7 @@ import gunbc.runner.runner_replacement_readback {
 import gunbc.runner.runner_retirement_causes {
   RetireDrainDecision, RunnerHostDrainStep, DrainNow, DrainHeld, DrainRefusedByStanding, DrainUndecided,
   retire_drain_leg_step, ReplacementJobEvidence,
+  retire_pending_cause_wire, retire_refusal_cause_wire, retire_undecided_cause_wire,
 }
 import gunbc.runner.runner_throughput_qualification { RouteLegStanding, LegAuthorityImplemented }
 import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_live_read }
@@ -2487,6 +2488,31 @@ fn converge_runner_slot_tree(
         // slot is as drained as SlotDrainedAndMasked and its tree is rebuilt.
         SlotActuationNoop { unit: _, state: _ } => rebuild_runner_slot_tree(subject: subject, context: context, target: target)
         SlotDrainedAndMasked { unit: _ } => rebuild_runner_slot_tree(subject: subject, context: context, target: target)
+        // THE GATE'S OWN OUTCOMES CANNOT COME OUT OF THIS CALL: the retirement standing is decided upstream,
+        // by gunbc.runner.runner_replacement_readback, before any drain is issued, and the effect below only
+        // ever answers with the six arms above. They are written out because the fold is total over the sum the
+        // effect returns, and each one answers with a refusal that says what it saw -- a silent fallback here
+        // would let a retirement nobody authorized read as a drained slot whose tree may now be rebuilt.
+        SlotRetirementWithheld { unit: _, cause: cause } =>
+          RunnerSlotTreeRefused {
+            unit: unit,
+            cause: join(["the drain was withheld: ", retire_pending_cause_wire(cause: cause), "; the tree is left as it is"], "") as NonEmptyStr,
+          }
+        SlotRetirementRefused { unit: _, cause: cause } =>
+          RunnerSlotTreeRefused {
+            unit: unit,
+            cause: join(["the drain was refused on the unit's standing: ", retire_refusal_cause_wire(cause: cause), "; the tree is left as it is"], "") as NonEmptyStr,
+          }
+        SlotRetirementUndecided { unit: _, cause: cause } =>
+          RunnerSlotTreeRefused {
+            unit: unit,
+            cause: join(["the drain was never classified: ", retire_undecided_cause_wire(cause: cause), "; the tree is left as it is"], "") as NonEmptyStr,
+          }
+        SlotHandCapacityHeld { unit: _, notice: notice } =>
+          RunnerSlotTreeRefused {
+            unit: unit,
+            cause: join(["the drain answered a hand-capacity notice: ", notice, "; the tree is left as it is"], "") as NonEmptyStr,
+          }
       }
   }
     }
