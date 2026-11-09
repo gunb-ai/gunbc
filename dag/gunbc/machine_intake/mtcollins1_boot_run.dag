@@ -19,7 +19,10 @@ import std.measure { Second, second, second_count, Millisecond, millisecond, mil
 import std.checked_arithmetic { checked_int_to_nat }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import gunbc.host.boot_medium { BootMedium, BootMediumNoTerminal, BootMediumVolumeLabel, BootMediumRunnerHostUp, bmc_boot_image_export }
-import gunbc.runner.runner_host_medium { RunnerHostUp, RunnerHostUpRefusal, RunnerHostUpPending, RunnerHostUpRefused, RunnerHostUpObserved, runner_host_up_readback, runner_host_up_refusal_text, runner_host_boot_medium }
+import gunbc.runner.runner_host_medium { RunnerHostUp, RunnerHostUpRefusal, RunnerHostUpPending, RunnerHostUpRefused, RunnerHostUpObserved, runner_host_up_readback, runner_host_up_refusal_text, runner_host_boot_medium, runner_host_running_os_of_up }
+import gunbc.host.running_os { RunningOsReading }
+import gunbc.host.running_os_receipt { RunningOsReceiptProducer, running_os_receipt_text }
+import gunbc.machine_intake.mtcollins1_boot_receipts { mtcollins1_boot_running_os_receipt_path }
 import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_machine, mtcollins1_census_image_stem, mtcollins1_census_image, census_served_check }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_image_stem }
 import gunbc.host.boot_medium_served_readback { boot_medium_served_readback, boot_medium_served_refusal_before_filing, boot_medium_served_refusal_before_attach, boot_medium_served_attempt_raw }
@@ -37,7 +40,7 @@ import gunbc.machine_intake.megarac_boot_media_attach { MediaGateReady, MediaGat
 import gunbc.machine_intake.megarac_media_attach { MegaRacShareBinding, MegaRacShareNfs, MegaRacAttachResult }
 import gunbc.fleet.fleet_reach { srv2_lan_ipv4 }
 import extdeps.network.ipv4 { render_ipv4_address }
-import gunbc.host.megarac_managed_host { MegaRacHostAdmitted, MegaRacHostRefused, admit_megarac_host, megarac_host_refusal_text, megarac_operation_evidence }
+import gunbc.host.megarac_managed_host { MegaRacHostAdmitted, MegaRacHostRefused, admit_megarac_host_at_current_build, megarac_host_refusal_text, megarac_operation_evidence }
 import gunbc.host.megarac_operation_standing { MegaRacKvmCanvasStill }
 import gunbc.machine_intake.megarac_media_attach { PresentationStillReady, presentation_still_served }
 import gunbc.machine_intake.mtcollins1_boot_admission { mtcollins1_boot_host_admission }
@@ -79,7 +82,7 @@ import gunbc.machine_intake.mtcollins1_boot_fan_gate { mtcollins1_boot_fan_gate,
 import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_transition_window }
 import gunbc.machine_intake.post_power_fan_gate_outcome { PostPowerFanGateReading, PostPowerFanGateNotReached, PostPowerFanGatePowered, PoweredFanGate, PostPowerFanGateReached, PostPowerFanGateAbandoned, post_power_fan_gate_abandoned_text, PostPowerFanEstablished, PostPowerFanRefused, post_power_fan_gate_exit }
 import gunbc.actions_run_binding { ActionsVariableRead, actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed }
-import extdeps.github.actions_environment { github_run_id_variable_name, github_sha_variable_name }
+import extdeps.github.actions_environment { github_run_id_variable_name, github_run_attempt_variable_name, github_sha_variable_name }
 import extdeps.bmc.ipmi
 import extdeps.shell
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
@@ -180,6 +183,7 @@ data mtcollins1_sol_collector_executable: NonEmptyStr = "ipmitool"
 data mtcollins1_boot_artifact_glob: String = "artifacts/mtcollins1-boot-*"
 
 data mtcollins1_boot_receipt_path: String = "artifacts/mtcollins1-boot-receipt.txt"
+
 
 data mtcollins1_boot_poll_cadence: Second = second(count: 15)
 
@@ -429,7 +433,7 @@ fn mtcollins1_sol_release(
 // binding the capture: the fold reached the capture by two routes -- a collector it starts, and a
 // collector it finds already held -- and only the first one truncated. The annotation claimed the
 // binding was total; it was not, and the live workflow's own shell prelude was what actually made
-// it true. That is DESIGN section 5's tell exactly: a check satisfied by editing the declaration
+// it true. That is gunbc.design_argument::fail_closed's tell exactly: a check satisfied by editing the declaration
 // while the realization lies. So the disposition is MODELED, and the arm that succeeds without
 // binding HAS NO CONSTRUCTOR -- SolAcquireBindHeldCollector carries the bind in its name, and
 // sol_acquire_plan_binds_capture is total over the sum. A future arm that proceeds without binding
@@ -847,7 +851,7 @@ fn mtcollins1_boot_terminal_tick_budget() -> Int {
 // program on the census medium and by nothing else, so a boot that attaches the stock installer can
 // never observe it: that is decidable from the medium row alone, and a run that discovered it by
 // taking the unit hold, taking the SOL lease, powering the unit and timing out would report a
-// hardware-shaped refusal for a modeling-shaped cause (DESIGN §5, the line stops at the deficit).
+// hardware-shaped refusal for a modeling-shaped cause (gunbc.design_argument::fail_closed, the line stops at the deficit).
 // THE MEDIUM THIS BOOT RUN SELECTS: the runner host image the image leg published (run 39775218607,
 // create-only into bmc_boot_image_export, export readback of the content digest). Its terminal is the
 // runner_host_up_readback, accepted only under grant_from_store; a deny, an expiry or an unfiled request
@@ -871,7 +875,7 @@ fn mtcollins1_boot_medium_refusal(medium: BootMedium) -> String? {
 // yet" with "a complete observation that does not qualify", so the await loop kept polling a
 // capture that had already answered: boot 23 attempt 3 (run 35612872611) printed nproc 80 and
 // workload-write-rc=1 and the run reported a TIMEOUT for a disagreement it had observed eight
-// minutes earlier (DESIGN §5: no-observation and observation-that-did-not-hold are different
+// minutes earlier (gunbc.design_argument::fail_closed: no-observation and observation-that-did-not-hold are different
 // facts). Now: PENDING while the envelope or the section a qualification needs is still being
 // written; REFUSED, with EVERY cause the complete sections establish, as soon as one does -- an
 // open envelope may refuse but never accept; ACCEPTED only over a CLOSED envelope in which every
@@ -1254,7 +1258,7 @@ fn open_unresolved_causes(envelope: BoundHostCaptureEnvelope, qualifications: Li
 // (run 35669747413) printed GRUB's "Failed to boot both default and fallback entries." and sat at
 // the menu; the firmware's "DDR initialization failure. STOP!" is the same class one layer down.
 // Both end the boot with no kernel and therefore no envelope, and a loop that only waits for a
-// BEGIN marker reports them as a timeout (DESIGN §5: an observation that did not hold is not the
+// BEGIN marker reports them as a timeout (gunbc.design_argument::fail_closed: an observation that did not hold is not the
 // absence of an observation). The readers are the owning grammars -- the firmware's in
 // pre_os_bringup_verdict, the loader's in extdeps.bootloader.grub -- over the same terminated
 // lines the envelope scan reads. An unrecognised firmware ERROR line or a GRUB error while the
@@ -1798,7 +1802,7 @@ fn mtcollins1_boot_await_capture_terminal(
   let ended = match seen.phase { CensusEnded => true _ => false }
   match watch_tick(verdict: seen.verdict, channel: seen.channel) {
     WatchAccepted => TerminalWatch { outcome: ExitSuccess, census_ended: ended, smpro_census: smpro_census, screen_reported: reported, runner_host: none }
-    WatchRunnerHostAccepted { up: up } => TerminalWatch { outcome: ExitSuccess, census_ended: ended, smpro_census: smpro_census, screen_reported: reported, runner_host: Present { value: up } }
+    WatchRunnerHostAccepted { up: up } => TerminalWatch { outcome: ExitSuccess, census_ended: ended, smpro_census: smpro_census, screen_reported: reported, runner_host: Present { value: MtCollins1RunnerHostTerminal { up: up, running: runner_host_running_os_of_up(up: up, subject: subject) } } }
     WatchRefused { causes: causes } => TerminalWatch { outcome: exit_failure(reason: mtcollins1_boot_terminal_refusal_text(causes: causes)), census_ended: ended, smpro_census: smpro_census, screen_reported: reported, runner_host: none }
     WatchChannelLost { collector: l, client: c, last: why } =>
       TerminalWatch { outcome: mtcollins1_boot_watch_channel_lost(seen: seen, collector: l, client: c, last: why, last_live_at: last_live_at, capture_path: capture_path, password_file: password_file, screen: screen), census_ended: ended, smpro_census: smpro_census, screen_reported: reported, runner_host: none }
@@ -1950,13 +1954,20 @@ fn mtcollins1_census_phase(capture: String, subject: AdmittedBootSubject) -> Cen
 
 // runner_host IS THE ONE ACCEPTED RUNNER-HOST READING (gunbc.runner.runner_host_medium RunnerHostUp),
 // carried whole so the qualification receipt's GuestIdleMeminfoAndNproc reads it here rather than
-// re-parsing the capture; none for every other medium and every non-accepting end.
+// re-parsing the capture, and beside it the running-OS reading of that readback over the admitted subject
+// (runner_host_running_os_of_up), which the conclusion writes as the running-OS receipt
+// (gunbc.host.running_os_receipt); none for every other medium and every non-accepting end.
+type MtCollins1RunnerHostTerminal {
+  up: RunnerHostUp
+  running: RunningOsReading
+}
+
 type TerminalWatch {
   outcome: ProcessExit
   census_ended: Bool
   smpro_census: SmproReading
   screen_reported: List<String>
-  runner_host: RunnerHostUp?
+  runner_host: MtCollins1RunnerHostTerminal?
 }
 
 // THE SCREEN'S BOUNDARY, REPORTED IN THE TICK AND BEFORE ANY OPTIONAL READ (acceptance (b)). Every
@@ -2006,7 +2017,7 @@ fn mtcollins1_boot_screen_liveness_lines(standing: KvmObserverStanding) -> List<
 // never assumed (gunbc.runner.runner_browser_toolchain). // NOT REQUIRED IN PUBLIC: no public KVM client exists, so this answers NotStarted with its typed reason
 // and the record carries it; the handoff's required observer is the SOL collector (sol_handoff_admission).
 fn mtcollins1_boot_screen_start(proof: UnitHoldProof, password_file: String, attempt: String, resolve_toolchain: fn() -> RunnerBrowserToolchainResolution) -> KvmObserverStart {
-  match admit_megarac_host(host: proof.subject.host, operation: MegaRacKvmCanvasStill) {
+  match admit_megarac_host_at_current_build(evidence: megarac_operation_evidence(), host: proof.subject.host, operation: MegaRacKvmCanvasStill) {
     MegaRacHostRefused { cause: c } => KvmObserverNotStarted { reason: megarac_host_refusal_text(cause: c) }
     MegaRacHostAdmitted { host: h } =>
       megarac_kvm_observer_start(
@@ -2126,7 +2137,7 @@ type MtCollins1BootActuation {
   power_after: HostPowerReading
   timing: BootPhaseTiming
   screen: KvmObserverRecord
-  runner_host: RunnerHostUp?
+  runner_host: MtCollins1RunnerHostTerminal?
   fan_gate: PostPowerFanGateReading
 }
 
@@ -2195,7 +2206,7 @@ type ActuationWatch {
   stage: MtCollins1BootActuationStage
   smpro_step: BootPhaseStep
   terminal_step: BootPhaseStep
-  runner_host: RunnerHostUp?
+  runner_host: MtCollins1RunnerHostTerminal?
   fan_gate: PostPowerFanGateReading
 }
 
@@ -2334,7 +2345,7 @@ fn mtcollins1_boot_param5_release(password_file: String, owed: Bool) -> BootPara
 
 // WHY THE CLEAR WITHHOLDS THE SET, in the refusal's own words, or nothing. Kept as its own function so the
 // sentence the operator reads and the witness pins lives in exactly one place. THE SET IS REFUSED UNLESS THE
-// CLEARED STATE IS POSITIVELY ESTABLISHED (side-chat REQUEST_CHANGES at 3a890b02, §5): of the five
+// CLEARED STATE IS POSITIVELY ESTABLISHED (side-chat REQUEST_CHANGES at 3a890b02, gunbc.design_argument::fail_closed): of the five
 // clearances, only three let a set go in -- nothing was in force (the controller said so), something was and
 // the clear's readback says it is gone, or the standing was never read and the clear's own readback says
 // nothing is in force now. 'Would not clear' and 'never answered' both refuse: the state a set would go in
@@ -2946,7 +2957,7 @@ type MtCollins1PrePowerPhase {
 fn mtcollins1_boot_pre_power(configuration: AttemptConfigurationReceipt, clearance: BootAttemptClearance, run_attempt: NonEmptyStr, password_file: String) -> MtCollins1PrePowerPhase {
   match mtcollins1_bmc_username {
     // THE SHORT-CIRCUIT ARMS CARRY THEIR OWN CAUSE: without an account/credential NOTHING was read, and
-    // the receipt says exactly why -- the same deficit visibility (DESIGN.md §5, "stop visibly; never
+    // the receipt says exactly why -- the same deficit visibility (gunbc.design_argument::fail_closed, "stop visibly; never
     // conceal the deficit") that the hpm check's unread arm has always had.
     Absent => {
       let why = "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with"
@@ -3049,7 +3060,7 @@ type MtCollins1BootAttempt {
   power_after: HostPowerReading
   timing: BootPhaseTiming
   screen: KvmObserverRecord
-  runner_host: RunnerHostUp?
+  runner_host: MtCollins1RunnerHostTerminal?
   fan_gate: PostPowerFanGateReading
   configuration: AttemptConfigurationReceipt
   // WHAT THE PRE-POWER PHASE ITSELF REPORTED for the two extra captures (review 86381 finding 1). They
@@ -3284,7 +3295,38 @@ fn mtcollins1_boot_conclude(attempt: MtCollins1BootAttempt) -> ProcessExit
       ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: concat(r, " | could not write receipt: ", kept.error) }
     }
   }
-  concluded
+  match mtcollins1_boot_write_running_os_receipt(attempt: attempt) {
+    Absent => concluded
+    Present { value: why } => match concluded {
+      ExitSuccess => exit_failure(reason: concat("mtcollins1 boot: ", why))
+      ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: concat(r, " | ", why) }
+    }
+  }
+}
+
+// THE RUNNING-OS RECEIPT (gunbc.host.running_os_receipt), written only when the runner host was accepted and its
+// running OS observed, naming THIS run and attempt as its producer. A runner host accepted with no receipt written
+// fails the run: a later job could not initialize the host, and a success would say otherwise. Returns the failure,
+// or none when there is nothing to write or it was written.
+fn mtcollins1_boot_write_running_os_receipt(attempt: MtCollins1BootAttempt) -> String? {
+  match attempt.runner_host {
+    Absent => none
+    Present { value: terminal } => {
+      let run_id = actions_variable_trimmed(name: github_run_id_variable_name as NonEmptyStr)
+      let run_attempt = actions_variable_trimmed(name: github_run_attempt_variable_name as NonEmptyStr)
+      if run_id == "" || run_attempt == "" {
+        Present { value: "the runner host was accepted but GITHUB_RUN_ID or GITHUB_RUN_ATTEMPT is unset, so the running-OS receipt names no producer and is not written" }
+      } else {
+        match running_os_receipt_text(producer: RunningOsReceiptProducer { run_id: run_id as NonEmptyStr, run_attempt: run_attempt as NonEmptyStr }, reading: terminal.running) {
+          Absent => Present { value: "the runner host was accepted but its running OS was not observed, so no running-OS receipt is written" }
+          Present { value: text } => {
+            let wrote = Filesystem.Write(path: mtcollins1_boot_running_os_receipt_path, content: text)
+            if wrote.success { none } else { Present { value: concat("could not write the running-OS receipt: ", wrote.error) } }
+          }
+        }
+      }
+    }
+  }
 }
 
 // THE HOST ADMISSION lives in gunbc.machine_intake.mtcollins1_boot_admission, whose closure is

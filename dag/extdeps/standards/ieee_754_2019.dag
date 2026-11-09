@@ -5,7 +5,7 @@ import extdeps.uri { Uri, Https }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.bit { Bit }
-import std.algebra { Ordering, Less, Equal, Greater }
+import std.algebra { Ordering, Less, Equal, Greater, length }
 import std.approximate_field {
   Precision, BinaryPrecision, RoundingMode, ToNearestEven, SpecialValues, QuietAndSignalingNaN,
   SignedInfinity, SignedZero, SubnormalPolicy, GradualUnderflow
@@ -116,7 +116,7 @@ data ieee_754_2019_clause_citations: List<Ieee754ClauseCitation> = [
 // carries the format it was admitted under and binary_interchange_encoding refuses a field whose
 // length disagrees with it. RUNG, stated honestly: mechanically preventable, not structural -- the
 // record constructor stays public and a record-field Length<N> refinement does not exist yet; the
-// next-rung trigger is gunbc.plans.cardinality_refinement P3 (record-field `where Length<N>`).
+// next-rung trigger is gunbc.plans.cardinality_refinement (deleted 2026-11-08) P3 (record-field `where Length<N>`).
 type BinaryInterchangeEncoding {
   format: BinaryInterchangeFormat
   s: Bit
@@ -133,11 +133,11 @@ type EncodingAdmission
   | EncodingRefused { refusal: EncodingFieldWidthRefusal }
 
 fn binary_interchange_encoding(format: BinaryInterchangeFormat, s: Bit, e: List<Bit>, t: List<Bit>) -> EncodingAdmission {
-  if list_length(e) != format.w {
-    EncodingRefused { refusal: BiasedExponentFieldWidth { expected_w: format.w, observed: list_length(e) } }
+  if length(e) != format.w {
+    EncodingRefused { refusal: BiasedExponentFieldWidth { expected_w: format.w, observed: length(e) } }
   } else {
-    if list_length(t) != format.t {
-      EncodingRefused { refusal: TrailingSignificandFieldWidth { expected_t: format.t, observed: list_length(t) } }
+    if length(t) != format.t {
+      EncodingRefused { refusal: TrailingSignificandFieldWidth { expected_t: format.t, observed: length(t) } }
     } else {
       EncodingAdmitted { encoding: BinaryInterchangeEncoding { format: format, s: s, e: e, t: t } }
     }

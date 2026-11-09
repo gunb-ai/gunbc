@@ -43,13 +43,19 @@ fn bmc_firmware_version_from_wire(wire: String) -> BmcFirmwareVersionParse {
   if fields.length() != 3 {
     BmcFirmwareVersionRefused { wire: wire }
   } else {
-    match parse_int(s: fields.first()) {
+    match fields.first() {
+      Absent => BmcFirmwareVersionRefused { wire: wire }
+      Present { value: wire_field } => match parse_int(s: wire_field) {
       Absent => BmcFirmwareVersionRefused { wire: wire }
       Present { value: major } =>
-        match parse_int(s: fields.skip(n: 1).first()) {
+        match fields.skip(n: 1).first() {
+      Absent => BmcFirmwareVersionRefused { wire: wire }
+      Present { value: wire_field } => match parse_int(s: wire_field) {
           Absent => BmcFirmwareVersionRefused { wire: wire }
           Present { value: minor } =>
-            match parse_int(s: fields.skip(n: 2).first()) {
+            match fields.skip(n: 2).first() {
+      Absent => BmcFirmwareVersionRefused { wire: wire }
+      Present { value: wire_field } => match parse_int(s: wire_field) {
               Absent => BmcFirmwareVersionRefused { wire: wire }
               Present { value: patch } =>
                 if major < 0 || minor < 0 || patch < 0 {
@@ -63,9 +69,9 @@ fn bmc_firmware_version_from_wire(wire: String) -> BmcFirmwareVersionParse {
                     ),
                   }
                 }
-            }
-        }
-    }
+            } }
+        } }
+    } }
   }
 }
 
@@ -201,7 +207,7 @@ fn bmc_firmware_version_eq(a: BmcFirmwareVersion, b: BmcFirmwareVersion) -> Bool
 // hit. First-wins over a duplicated key is a silent selection: two rows for one version is a
 // contradiction in the catalog, and answering from whichever was authored first renders that
 // contradiction as a verdict. Same three-arm shape as extdeps.package `package_lock_lookup_node`
-// (absent / unique / duplicate). DESIGN §5: the failure arm refuses, it does not widen.
+// (absent / unique / duplicate). gunbc.design_argument::fail_closed: the failure arm refuses, it does not widen.
 fn bmc_firmware_capability_row_for(
   firmware: BmcFirmwareVersion,
   catalog: List<BmcFirmwareCapabilityRow>

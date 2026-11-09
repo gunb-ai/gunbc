@@ -1,0 +1,38 @@
+module extdeps.standards.motherboard_mounting_grid
+
+import std.types { List, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.standards.motherboard_mounting_location { MountingLocation }
+import extdeps.standards.micro_atx { micro_atx_mounting_locations }
+import extdeps.standards.atx_2_2 { atx_mounting_locations }
+
+// WHICH STANDARD A BOARD'S LETTERS ARE READ AGAINST, as a nominal identity rather than a list. A
+// List<MountingLocation> accepts any authored list -- a truncated one, a duplicated one, one with ATX
+// letters at wrong coordinates -- so a board roster names a standard here and this module's one
+// total resolver returns that standard's own population (review 5775062390). Adding a standard adds
+// an arm and its resolution; nothing else may stand in for a standard's grid.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "web.archive.org/web/20180417122513/http://www.formfactors.org:80/developer/specs/atx2_2.pdf"
+  }
+}
+
+type StandardMountingGrid
+  = MicroAtxMountingGrid
+  | Atx22MountingGrid
+
+fn standard_mounting_grid_locations(grid: StandardMountingGrid) -> List<MountingLocation> {
+  match grid {
+    MicroAtxMountingGrid => micro_atx_mounting_locations
+    Atx22MountingGrid => atx_mounting_locations
+  }
+}
+
+fn standard_mounting_grid_label(grid: StandardMountingGrid) -> NonEmptyStr {
+  match grid {
+    MicroAtxMountingGrid => "microATX"
+    Atx22MountingGrid => "ATX 2.2"
+  }
+}

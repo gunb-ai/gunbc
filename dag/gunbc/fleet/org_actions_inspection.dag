@@ -25,7 +25,7 @@ import extdeps.languages.json.parse {
 }
 import extdeps.shell.credentials { env_credential }
 import extdeps.github.org_actions { OrgRunnerGroupListWire }
-import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestCredentialRefused, rest_credential_refusal_cause, RestBodyUndecodable }
 import std.resources { Network }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
@@ -159,7 +159,7 @@ fn json_member_bool(v: JsonValue, key: String) -> Bool? {
 // under a bearer token the caller holds, and one pure fold over what came back -- so there is one
 // page contract (per_page at the documented maximum), one completeness refusal (fewer groups than
 // total_count), and one set of element refusals. A second read bound to another transport was the
-// §3 fork review 70883 found: the gh-CLI copy fetched GitHub's default page and never compared
+// gunbc.design_argument::single_authority fork review 70883 found: the gh-CLI copy fetched GitHub's default page and never compared
 // total_count, so on a page boundary the ensure could read the shakedown group as absent and
 // create a duplicate while the controller refused.
 fn runner_groups_of_rest_read(outcome: RestResult<OrgRunnerGroupListWire>) -> RunnerGroupListDecode {
@@ -170,6 +170,10 @@ fn runner_groups_of_rest_read(outcome: RestResult<OrgRunnerGroupListWire>) -> Ru
         RunnerGroupListDecodeRefused { reason: join(["GET /orgs/\{org\}/actions/runner-groups answered ", to_string(s), ": ", b], "") as NonEmptyStr }
       RestTransportRefused { cause: c } =>
         RunnerGroupListDecodeRefused { reason: concat("runner-groups read unreached: ", c as String) as NonEmptyStr }
+      RestCredentialRefused { refusal: credential_refusal } => {
+        let c = rest_credential_refusal_cause(refusal: credential_refusal)
+        RunnerGroupListDecodeRefused { reason: concat("runner-groups read unreached: ", c as String) as NonEmptyStr }
+      }
       RestBodyUndecodable { status: s, cause: c } =>
         RunnerGroupListDecodeRefused { reason: join(["runner-groups body undecodable at ", to_string(s), ": ", c as String], "") as NonEmptyStr }
     }
@@ -182,6 +186,17 @@ fn read_runner_groups(token: Secret, organization: NonEmptyStr) -> RunnerGroupLi
     RestAnswered { answer } => RestAnswered { answer: answer.result }
     RestRefused { refusal } => RestRefused { refusal: refusal }
   })
+}
+
+// THE ONE IN-RUN READ OF THE ORG'S GROUPS, over the installation token a step prelude minted into
+// GUNBC_ORG_ADMIN_TOKEN (the org-admin mint, or the roster reader's read-only one). The group ensure
+// and the microVM controller install's tenancy read both call it, so they cannot disagree about the
+// groups.
+fn read_org_runner_groups(organization: NonEmptyStr) -> RunnerGroupListDecode uses net: Network {
+  match env_credential(env_var: org_admin_token_env_name).token {
+    Absent => RunnerGroupListDecodeRefused { reason: "GUNBC_ORG_ADMIN_TOKEN is absent; no bearer token to read the runner groups with" }
+    Present { value: token } => read_runner_groups(token: token, organization: organization)
+  }
 }
 
 // THE WIRE BODY, PROJECTED INTO THE ROWS THE CONSUMERS READ. Refuses a read that returned fewer

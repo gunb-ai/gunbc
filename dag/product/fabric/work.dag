@@ -8,7 +8,7 @@ import product.fabric.envelope {
 
 import std.types { NonEmptyStr, List, String, brand }
 import std.nat { Nat }
-import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
+import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash, identity_frame }
 import std.measure { HardwareThreadCount, hardware_thread_count_value, byte_size_count }
 import product.fabric.identity { FabricIdentity, WorkKey }
 
@@ -47,7 +47,7 @@ type EffectContractRef = NonEmptyStr where brand("EffectContractRef")
 // OPAQUE CONTRACT IDENTITY ONLY. A prior meaning fork let this brand carry either a
 // plain name or a content-serialised obligation roster (framed outputs stuffed into
 // the same NonEmptyStr). Both inhabited one type, so no consumer could tell which it
-// held — DESIGN section 3. The opaque name survives; obligations live on
+// held — gunbc.design_argument::single_authority. The opaque name survives; obligations live on
 // DeclaredOutputObligations and reach a gate only through resolve_output_obligations.
 //
 // A content-addressed digest (e.g. training_work_contract's serialize_content_hash
@@ -131,7 +131,7 @@ fn empty_output_obligations() -> DeclaredOutputObligations {
 
 // Revision of a declared roster — identity of WHICH roster was resolved.
 // Branded NonEmptyStr (same shape as WorkKey): ContentHash is a sum, so
-// `ContentHash where brand(...)` cannot be minted by casting a variant (§3 / §6
+// `ContentHash where brand(...)` cannot be minted by casting a variant (gunbc.design_argument::single_authority, gunbc.design_argument::how_to_work
 // still hold — a foreign digest string is ill-typed as this brand).
 type OutputObligationsRevision = NonEmptyStr where brand("OutputObligationsRevision")
 
@@ -149,15 +149,15 @@ type OutputObligationsJudgment
 // terminal-success-eligible roster must resolve; constructing the resolved arm
 // by hand is SoleConstructorViolation (fixture RED).
 //
-// RUNG HONESTY, PATH-SCOPED (DESIGN 4b(1); gunbc.model.population): structurally
+// RUNG HONESTY, PATH-SCOPED (gunbc.design_argument::guarantee_ladder (rung honesty); gunbc.model.population): structurally
 // impossible on source→.dag. The emitted Rust mirror of a sole_constructor type is
 // a public struct with public fields, so a consumer writing Rust against the seed
 // is OUTSIDE this guarantee. Fabric-M0 has no such Rust consumer today, so rung 4
 // holds NOW with a named degradation condition: the first Rust consumer of the
 // seed against this carrier. Claiming "unwritable" unqualified would be the
-// inflation 4b(1) forbids.
+// inflation gunbc.design_argument::guarantee_ladder (rung honesty) forbids.
 //
-// CONSUMPTION FRONTIER (DESIGN §3c): this sealed family is not yet read by a
+// CONSUMPTION FRONTIER (gunbc.design_argument::consumption): this sealed family is not yet read by a
 // job-ending on a run path. Named join: gunbc.fabric.fabric_m0_publication
 // publish_work resolves here and passes the sealed result to
 // admit_job_publication. That join is reached only by enrolled witnesses until
@@ -232,7 +232,7 @@ type WorkStep {
 // before selection, the implementation that will answer. Forcing a service request through the
 // program shape made the requester's identity depend on the SUPPLIER's realization -- a serving turn
 // could not construct Work until the selected engine's loaded weights, tokenizer and runtime were
-// observed, which put identity beneath supplier enumeration and refused every turn (DESIGN 3:
+// observed, which put identity beneath supplier enumeration and refused every turn (gunbc.design_argument::single_authority:
 // interface, realization and policy are three facts). Realization facts of an offered service are
 // offer provenance and admission policy; a demand that genuinely requires one states it as a
 // requirement rather than every service request inheriting it.
@@ -495,10 +495,6 @@ type WorkIdentitySchema {
   tag: NonEmptyStr
   supersedes: NonEmptyStr
   transition: NonEmptyStr
-}
-
-fn identity_frame(label: NonEmptyStr, value: String) -> NonEmptyStr {
-  concat(label, ":", to_string(value.length()), ":", value)
 }
 
 fn work_execution_material(execution: WorkExecution) -> NonEmptyStr {

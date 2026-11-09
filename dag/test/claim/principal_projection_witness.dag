@@ -36,7 +36,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // the principal.
 
 // THE FIXTURES: claims for a verified Google Workspace token, the gunb.ai-shaped policy, and the
-// realization-supplied signature input (supplied values per DESIGN 3 — the verdict fold's own
+// realization-supplied signature input (supplied values per gunbc.design_argument::witness_one_interface — the verdict fold's own
 // accept/refuse arms are test.claim.google_oidc_verdict_witness's subject).
 fn witness_claims(sub: NonEmptyStr, email: Email, email_verified: Bool) -> OidcIdTokenClaims {
   OidcIdTokenClaims {
@@ -195,7 +195,7 @@ test fn the_standard_claims_enter_classified_only_behind_the_verdict() -> Bool {
 // ── The caller-seal RED, enrolled ──────────────────────────────────────────────────────────────
 // The probe hands the mint an admissible verdict from a decl the roster does not name; the
 // census must carry a blocking ConstructorCallAdmissionRefused row. This is the executed RED half
-// of the construction wall (DESIGN 4b): the GREEN half is every test above, calling through the
+// of the construction wall (gunbc.design_argument::guarantee_ladder): the GREEN half is every test above, calling through the
 // admitted wrappers.
 data probe_dir: String = "dag/test/probe/"
 

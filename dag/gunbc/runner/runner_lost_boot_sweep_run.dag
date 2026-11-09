@@ -1,5 +1,6 @@
 module gunbc.runner.runner_lost_boot_sweep_run
 
+import gunbc.host.host_boot_id { HostBootId, host_boot_id_of_capture_run, BootIdReadEstablished, BootIdReadUnreadable, boot_id_read_verdict }
 import gunbc.runner.runner_user_session_receipt { RunnerUserSessionReceiptInput }
 import gunbc.runner.runner_user_session_receipt_observed { runner_user_session_receipt_observed }
 import std.optional { Absent, Present }
@@ -12,8 +13,8 @@ import std.resources { Network }
 import extdeps.filesystem.filesystem_io { Filesystem, FilesystemReadRefused, FilesystemReadSucceeded, filesystem_read_outcome }
 import extdeps.transports.rest { RestResult, RestAnswered }
 import product.host_identity { HostIdentity }
-import gunbc.actions_run_binding { actions_variable_trimmed, actions_run_attempt_label_of_run }
-import gunbc.host.anchored_host_transport { anchored_host_transport_live, AnchoredBindingBound, anchored_host_binding_refusal_reason }
+import gunbc.actions_run_binding { actions_variable_trimmed }
+import gunbc.host.anchored_host_transport { anchored_host_transport_for_run, AnchoredBindingBound, anchored_host_binding_refusal_reason }
 import gunbc.auth.github_apps { GitHubAppControlPlaneState, gunbai_ci_declared, gunbai_ci_declared_installation_id }
 import gunbc.auth.github_app_control_plane_observe { observe_github_app_control_plane }
 import gunbc.auth.github_credential { GitHubCredentialAuthority, ManagedAppInstallationCredential, GitHubCredentialProfileRef }
@@ -22,19 +23,16 @@ import gunbc.fleet.fleet_runner_connectivity { github_organization_ref, RosterOb
 import gunbc.fleet.organization_runner_roster_read { OrganizationRunnerRosterReport, organization_runner_roster_report_via_rest }
 import extdeps.github.pagination { github_max_page_size }
 import extdeps.github.actions_self_hosted_runners { OrganizationRunnerListWire, OrganizationRunnerWire }
-import std.algebra { trim }
 import gunbc.host.host_bound_transport { HostBoundTransport }
-import extdeps.uuid { uuid_of }
-import gunbc.host.host_operation_exec { HostOperationOutcome, HostOperationObserved, HostOperationRefused, host_operation_exec, ProcfsReadBootId }
+import gunbc.host.host_operation_exec { HostOperationOutcome, host_operation_exec, ProcfsReadBootId }
 import gunbc.host.managed_host { managed_host_binding_for, ManagedHostFound, ManagedHostFoundUnderDeclaredDrop, ManagedHostNotManaged }
 import gunbc.host.host_control_route { HostControlStanding, bmc_controlled_host }
 import extdeps.github.effect { GitHubOrganizationRef }
-import gunbc.machine_intake.host_capture_envelope { KernelBootId, HistoricalAttemptOrdinal }
 import gunbc.runner.runner_host_medium {
   runner_host_up_readback_of, runner_host_medium_volume_id, runner_host_up_refusal_text,
   RunnerHostUpPending, RunnerHostUpRefused, RunnerHostUpObserved,
 }
-import gunbc.runner.runner_host_unit_slot { ServiceBootId, service_boot_id_of, current_service_population, CurrentServicePopulation, CurrentServicePopulationDerived, CurrentServicePopulationRefused, CurrentServicePopulationRefusal, CurrentPopulationWidthUnresolved, CurrentPopulationHostNotControlled, CurrentPopulationSlotRefused, CurrentPopulationEmpty }
+import gunbc.runner.runner_host_unit_slot { current_service_population, CurrentServicePopulation, CurrentServicePopulationDerived, CurrentServicePopulationRefused, CurrentServicePopulationRefusal, CurrentPopulationWidthUnresolved, CurrentPopulationHostNotControlled, CurrentPopulationSlotRefused, CurrentPopulationEmpty }
 import gunbc.github_effect_perform {
   ControllerTokenMinted, ControllerTokenNotMinted, mint_controller_installation_token,
   ControllerInstallationToken,
@@ -86,7 +84,7 @@ import gunbc.runner.runner_jit_deregistration {
 // through the managed-host join and cannot be stated, so evidence for a host other than the one reached is
 // unwritable; see lost_boot_sweep_effect_pairing_frontier for what remains.
 //
-// TWO ARMS, ONE ADMISSION (gunbc.plans.mtcollins1_ci_service_legs F4). The dry run (fleet-converge mode
+// TWO ARMS, ONE ADMISSION (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) F4). The dry run (fleet-converge mode
 // service_runner_lost_boot_sweep_dry_run, lost_boot_sweep_dry_run_wet) admits the current boot, plans against the real
 // organization roster and writes the admitted boot and the selection to its receipt; it never reaches
 // deregister_selection. The deleting arm (service_runner_lost_boot_sweep, lost_boot_sweep_wet) refuses every dispatch
@@ -119,7 +117,7 @@ fn lost_boot_sweep_step_timeout_minutes() -> Minute {
 // ── The dispatch input ────────────────────────────────────────────────────────────────────────
 
 type LostBootCurrentInput
-  = LostBootCurrentPresent { host: NonEmptyStr, boot: ServiceBootId }
+  = LostBootCurrentPresent { host: NonEmptyStr, boot: HostBootId }
   | LostBootCurrentRefused { cause: String }
 
 // WHAT THE HOST'S OWN ROUTE SAYS ITS BOOT IS NOW, of one named host.
@@ -129,14 +127,14 @@ type LostBootCurrentInput
 // enrolment supplies a host-bound transport) and to the witness fixture, which is itself restricted to its named terminal claims.
 type CurrentBootEvidence sole_constructor {
   host: String
-  boot: ServiceBootId
+  boot: HostBootId
 }
 
 type CurrentBootObservation
   = CurrentBootObserved { evidence: CurrentBootEvidence }
   | CurrentBootUnobserved { cause: String }
 
-fn mint_current_boot_evidence(host: String, boot: ServiceBootId) -> CurrentBootEvidence admit_callers: [
+fn mint_current_boot_evidence(host: String, boot: HostBootId) -> CurrentBootEvidence admit_callers: [
   decl_ref(module_path: "gunbc.runner.runner_lost_boot_sweep_run", decl_name: "lost_boot_observed_over"),
   decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "observed_on"),
   decl_ref(module_path: "test.claim.runner.runner_machine_boot_teardown_witness", decl_name: "observed_boot"),
@@ -170,33 +168,11 @@ fn lost_boot_observed_over(bound: HostBoundTransport, read: HostOperationOutcome
   }
 }
 
-// THE READ'S OUTCOME IS THE SUPPLIED BOUNDARY (DESIGN 3), AND THE VERDICT MINTS NOTHING: a witness supplies
-// outcomes to boot_id_read_verdict, whose result is a ServiceBootId and never evidence, so the only mint stays
-// inside lost_boot_observe_current_boot and one inhabitance claim runs the dispatch itself.
-type BootIdReadVerdict
-  = BootIdReadEstablished { boot: ServiceBootId }
-  | BootIdReadUnreadable { cause: String }
+// THE READ'S OUTCOME IS THE SUPPLIED BOUNDARY (gunbc.design_argument::witness_one_interface), AND THE VERDICT MINTS NOTHING: a witness supplies
+// outcomes to gunbc.host.host_boot_id boot_id_read_verdict, whose result is a HostBootId and never evidence, so the
+// only mint stays inside lost_boot_observe_current_boot and one inhabitance claim runs the dispatch itself.
 
-fn boot_id_read_verdict(host: String, read: HostOperationOutcome) -> BootIdReadVerdict {
-  match read {
-    HostOperationRefused { operation: _, reason: why } => BootIdReadUnreadable { cause: concat("the boot id read was refused: ", why) }
-    HostOperationObserved { stdout: out, success: ok, stderr: _ } =>
-      if ok == false {
-        BootIdReadUnreadable { cause: join(["the boot id read on ", host, " exited unsuccessfully"], "") }
-      } else {
-        match uuid_of(text: trim(out)) {
-          Absent => BootIdReadUnreadable { cause: join(["the boot id read on ", host, " is not a uuid"], "") }
-          Present { value: u } =>
-            match service_boot_id_of(run: KernelBootId { boot_id: u }) {
-              Absent => BootIdReadUnreadable { cause: join(["the boot id read on ", host, " is not a kernel boot identity"], "") }
-              Present { value: b } => BootIdReadEstablished { boot: b }
-            }
-        }
-      }
-  }
-}
-
-fn lost_boot_current_joined(host: NonEmptyStr, recorded: ServiceBootId, observed: CurrentBootObservation) -> LostBootCurrentInput {
+fn lost_boot_current_joined(host: NonEmptyStr, recorded: HostBootId, observed: CurrentBootObservation) -> LostBootCurrentInput {
   match observed {
     CurrentBootUnobserved { cause: c } => LostBootCurrentRefused { cause: concat("lost-boot sweep: the capture records a boot but the current boot is unobserved: ", c) }
     CurrentBootObserved { evidence: e } =>
@@ -215,13 +191,9 @@ fn lost_boot_current_from_capture(host: NonEmptyStr, capture: String, observed: 
     RunnerHostUpPending { reason: r } => LostBootCurrentRefused { cause: concat("lost-boot sweep: the host capture is not a closed envelope: ", r) }
     RunnerHostUpRefused { refusals: rs } => LostBootCurrentRefused { cause: concat("lost-boot sweep: the host capture does not establish runner-host-up: ", join(map(rs, x => runner_host_up_refusal_text(refusal: x)), "; ")) }
     RunnerHostUpObserved { up: up } =>
-      match up.run {
-        HistoricalAttemptOrdinal { ordinal: _ } => LostBootCurrentRefused { cause: "lost-boot sweep: the host capture names a historical attempt ordinal, not a kernel boot id" }
-        KernelBootId { boot_id: u } =>
-          match service_boot_id_of(run: KernelBootId { boot_id: u }) {
-            Present { value: b } => lost_boot_current_joined(host: host, recorded: b, observed: observed)
-            Absent => LostBootCurrentRefused { cause: "lost-boot sweep: the current boot id is not a kernel boot identity" }
-          }
+      match host_boot_id_of_capture_run(run: up.run) {
+        Present { value: b } => lost_boot_current_joined(host: host, recorded: b, observed: observed)
+        Absent => LostBootCurrentRefused { cause: "lost-boot sweep: the host capture names a historical attempt ordinal, not a kernel boot id" }
       }
   }
 }
@@ -312,13 +284,9 @@ fn lost_boot_live_observation(host: String) -> CurrentBootObservation {
   if host == "" {
     CurrentBootUnobserved { cause: concat(lost_boot_sweep_host_env_name, " is unset, so no host is reached") }
   } else {
-    match actions_run_attempt_label_of_run(prefix: lost_boot_sweep_attempt_prefix) {
-      Absent => CurrentBootUnobserved { cause: "GITHUB_RUN_ID or GITHUB_RUN_ATTEMPT is unset, so the SSH context has no attempt-owned path" }
-      Present { value: label } =>
-        match anchored_host_transport_live(host: host as HostIdentity, attempt_raw: label as String) {
-          AnchoredBindingBound { bound: b } => lost_boot_observe_current_boot(transport: Present { value: b })
-          other => CurrentBootUnobserved { cause: concat("no host-authenticated transport: ", anchored_host_binding_refusal_reason(b: other)) }
-        }
+    match anchored_host_transport_for_run(host: host as HostIdentity, prefix: lost_boot_sweep_attempt_prefix) {
+      AnchoredBindingBound { bound: b, anchor: _ } => lost_boot_observe_current_boot(transport: Present { value: b })
+      other => CurrentBootUnobserved { cause: concat("no host-authenticated transport: ", anchored_host_binding_refusal_reason(b: other)) }
     }
   }
 }
@@ -327,7 +295,7 @@ fn lost_boot_live_observation(host: String) -> CurrentBootObservation {
 // live observation, the run's federation token and RUNNER_TEMP, and the host's managed row. Nothing is staged and
 // nothing is read from GitHub before it holds.
 type LostBootSweepAdmission
-  = SweepAdmitted { host: HostIdentity, standing: HostControlStanding, current: ServiceBootId, wif: Secret, temp: String }
+  = SweepAdmitted { host: HostIdentity, standing: HostControlStanding, current: HostBootId, wif: Secret, temp: String }
   | SweepNotAdmitted { cause: String }
 
 fn lost_boot_sweep_admission() -> LostBootSweepAdmission {
@@ -354,7 +322,7 @@ fn lost_boot_sweep_admission() -> LostBootSweepAdmission {
   }
 }
 
-// THE DELETING ARM IS GATED BY DECLARATION (gunbc.plans.mtcollins1_ci_service_legs F4). It refuses every dispatch before
+// THE DELETING ARM IS GATED BY DECLARATION (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) F4). It refuses every dispatch before
 // any read until merry-fox-82 relays the operator's go after the dry run has recorded its receipt, and the go is a
 // change to this row naming its ruling, never an input of the run. While it is gated the mode reaches no host and
 // deletes nothing, so it consumes no fleet SSH key; admitting it moves the mode to FleetSshKeyConsumed with it.
@@ -385,18 +353,18 @@ fn lost_boot_sweep_wet() -> ProcessExit
 // THE RECEIPT RECORDS THE ADMITTED BOOT AND THE PLAN. The first line is the current boot the live observation minted
 // and the capture joined; one line per registration the deleting arm would deregister and per name it would leave;
 // the last line states that this arm made no deletion request. No token, key or credential is a field of any line.
-fn dry_run_boot_line(host: HostIdentity, current: ServiceBootId) -> String {
+fn dry_run_boot_line(host: HostIdentity, current: HostBootId) -> String {
   join(["lost-boot-sweep-dry-run current-boot host=", host as String, " boot=", current.boot_id as String, " observed=boot-id-over-anchored-transport"], "")
 }
 
-fn dry_run_report_lines(host: HostIdentity, current: ServiceBootId, selection: SweepSelection) -> List<String> {
+fn dry_run_report_lines(host: HostIdentity, current: HostBootId, selection: SweepSelection) -> List<String> {
   concat(
     concat([dry_run_boot_line(host: host, current: current)], selection.subjects |> map(sub => join(["lost-boot-sweep-dry-run runner=", deregistration_name(subject: sub).value as String, " would-deregister"], ""))),
     concat(selection.untouched |> map(n => join(["lost-boot-sweep-dry-run runner=", n, " untouched"], "")), ["lost-boot-sweep-dry-run deletion-requests=0"]),
   )
 }
 
-fn dry_run_refused_lines(host: HostIdentity, current: ServiceBootId, cause: String) -> List<String> {
+fn dry_run_refused_lines(host: HostIdentity, current: HostBootId, cause: String) -> List<String> {
   [dry_run_boot_line(host: host, current: current), concat("lost-boot-sweep-dry-run plan-refused: ", cause), "lost-boot-sweep-dry-run deletion-requests=0"]
 }
 
@@ -416,7 +384,7 @@ fn lost_boot_sweep_dry_run_wet() -> ProcessExit
 }
 
 // THE KEY IS REMOVED ON EVERY ARM, as in the deleting arm; the token reads the roster and nothing else.
-fn dry_run_under_staged_key(host: HostIdentity, standing: HostControlStanding, current: ServiceBootId, wif: Secret, key_path: NonEmptyStr) -> ProcessExit
+fn dry_run_under_staged_key(host: HostIdentity, standing: HostControlStanding, current: HostBootId, wif: Secret, key_path: NonEmptyStr) -> ProcessExit
   uses net: Network
   admit_callers: [decl_ref(module_path: "gunbc.runner.runner_lost_boot_sweep_run", decl_name: "lost_boot_sweep_dry_run_wet")]
 {
@@ -438,7 +406,7 @@ fn dry_run_under_staged_key(host: HostIdentity, standing: HostControlStanding, c
 // THE PLAN IS THE DELETING ARM'S OWN (sweep_plan over the same population and the same roster read), so what the dry
 // run records is what the deleting arm would select. A refused plan is recorded beside the admitted boot and fails the
 // run; a selected one is recorded and the run succeeds having requested no deletion.
-fn plan_without_deleting(host: HostIdentity, standing: HostControlStanding, current: ServiceBootId, token: ControllerInstallationToken, receipt: RunnerUserSessionReceiptInput) -> ProcessExit
+fn plan_without_deleting(host: HostIdentity, standing: HostControlStanding, current: HostBootId, token: ControllerInstallationToken, receipt: RunnerUserSessionReceiptInput) -> ProcessExit
   uses net: Network
   admit_callers: [decl_ref(module_path: "gunbc.runner.runner_lost_boot_sweep_run", decl_name: "dry_run_under_staged_key")]
 {
@@ -461,7 +429,7 @@ fn plan_without_deleting(host: HostIdentity, standing: HostControlStanding, curr
 
 // THE KEY IS REMOVED ON EVERY ARM, AND A KEY THAT STAYED FAILS THE RUN beside whatever the sweep
 // answered.
-fn sweep_under_staged_key(host: HostIdentity, standing: HostControlStanding, current: ServiceBootId, wif: Secret, key_path: NonEmptyStr) -> ProcessExit
+fn sweep_under_staged_key(host: HostIdentity, standing: HostControlStanding, current: HostBootId, wif: Secret, key_path: NonEmptyStr) -> ProcessExit
   uses net: Network
   admit_callers: [decl_ref(module_path: "gunbc.runner.runner_lost_boot_sweep_run", decl_name: "lost_boot_sweep_wet")]
 {
@@ -489,7 +457,7 @@ fn sweep_under_staged_key(host: HostIdentity, standing: HostControlStanding, cur
   }
 }
 
-fn sweep_and_deregister(standing: HostControlStanding, current: ServiceBootId, token: ControllerInstallationToken, control_plane: GitHubAppControlPlaneState, receipt: RunnerUserSessionReceiptInput) -> ProcessExit
+fn sweep_and_deregister(standing: HostControlStanding, current: HostBootId, token: ControllerInstallationToken, control_plane: GitHubAppControlPlaneState, receipt: RunnerUserSessionReceiptInput) -> ProcessExit
   uses net: Network
   admit_callers: [decl_ref(module_path: "gunbc.runner.runner_lost_boot_sweep_run", decl_name: "sweep_under_staged_key")]
 {

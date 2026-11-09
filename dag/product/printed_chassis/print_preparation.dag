@@ -17,6 +17,7 @@ import extdeps.languages.json.emit {JsonObject}
 import extdeps.printing.orca_slicer {orca_slicer_linux_aarch64_appimage_sha256,with_verified_orca,orca_extract_bbl_profiles_command,OrcaMachineProfile,OrcaFilamentProfile,OrcaProcessProfile}
 import product.printing.print_recipe {PrintRecipe,flatten_orca_profile,OrcaProfileFlattened,OrcaProfileRefused,orca_profile_inheritance_bound,overlay,recipe_process_overrides}
 import extdeps.exec.command {env_prefixed_command_in}
+import gunbc.host_state_root {host_state_tree}
 import product.printing.print_runtime {PrintRuntimeReady,print_runtime_cad,print_runtime_receipt_sha256,CadRuntimeReady,cad_program_command,observe_cad_runtime,CadRuntimeObserved,CadRuntimeRefused}
 import extdeps.exec.command {LocalExec}
 import extdeps.shell.exec {ProcessRefused}
@@ -112,6 +113,6 @@ fn prepare(runtime:PrintRuntimeReady,cad:String,plan:PlatePreparation,output:Str
 // Retrospective evidence never authorizes a start or rewrites an original receipt.
 fn observe_process_batch(projects_json:String,output:String) -> ProcessExit {
  if !starts_with(s:output,prefix:"/") || !shell.Mkdir.Parents(path:output as FilePath).success {return exit_failure(reason:"Observation output must be an absolute writable directory")}
- let cad_runtime=match observe_cad_runtime() {CadRuntimeObserved {runtime:c}=>c CadRuntimeRefused {reason:why}=>return exit_failure(reason:why)}
+ let cad_runtime=match observe_cad_runtime(tree:host_state_tree()) {CadRuntimeObserved {runtime:c}=>c CadRuntimeRefused {reason:why}=>return exit_failure(reason:why)}
  run_kernel(cad_runtime:cad_runtime,script:concat(output,"/process-reader.py"),call:join(["\nprojects=json.loads(",literal(s:projects_json),")\nassert isinstance(projects,list) and projects and all(isinstance(p,str) and p for p in projects)\nfor project in projects:\n    report=observe_archived_process(project)\n    (pathlib.Path(",literal(s:output),")/(report['project_sha256']+'.process.json')).open('x').write(json.dumps(report,indent=2)+'\\n')\n"],""))
 }

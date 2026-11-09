@@ -4,7 +4,7 @@ import std.types { List, NonEmptyStr }
 import std.optional { Present }
 import std.measure { hardware_thread_count, bandwidth, watt, gibibyte, gibibyte_to_byte_size }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_field_ref }
-import extdeps.gpu.types { GpuDeviceCatalogRow, GpuBoardCatalogFacts, GpuBoardAdmission, admit_gpu_board, Cuda, ActiveThermalSolution, ConfigurableBoardPower, PassiveThermalSolution, PcieAddInBoard, RatedBoardPower }
+import extdeps.gpu.types { GpuDeviceCatalogRow, GpuBoardCatalogFacts, GpuBoardAdmission, admit_gpu_board, Cuda, ActiveThermalSolution, ConfigurableBoardPower, GpuComputeCapability, InterconnectUnread, PassiveThermalSolution, PcieAddInBoard, RatedBoardPower, SeveralGpus, cuda_legacy_gpus_page_authority }
 import extdeps.memory.types { MemoryFacts, Dram }
 import extdeps.storage.types { Gen3, PcieLink }
 import extdeps.pci.identity { PciDeviceId }
@@ -18,7 +18,9 @@ import extdeps.uri { Uri, Https }
 // splits it into TWO BOARDS that share one device: PG402 SKUs 40 and 60 are passive, "Total board power
 // Passive: 300 W default (225 W configurable)"; PG402 SKU 80 is actively cooled at 240 W. Same GPUs, same
 // device id (13f2), same driver name "Tesla M60" -- so a GPU reported under that name cannot by its name
-// alone say which of the two boards it sits on, and the board facts below keep them apart.
+// alone say which of the two boards it sits on, and the board facts below keep them apart. The brief
+// states no on-board interconnect, so how the two GPUs reach the host is unread. Compute capability 5.2
+// is the Legacy CUDA GPUs page's.
 
 data m60_product_brief_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -44,7 +46,7 @@ data nvidia_tesla_m60_passive_catalog: GpuDeviceCatalogRow = GpuDeviceCatalogRow
   memory: MemoryFacts { capacity: gibibyte_to_byte_size(g: gibibyte(count: 8)), memory_kind: Dram },
   memory_bandwidth: Present { value: bandwidth(count: 160000000000) },
   boost_clock: none,
-  compute_capability: none,
+  compute_capability: Present { value: GpuComputeCapability { vendor: nvidia, major: 5, minor: 2 } },
   supported_runtimes: [Cuda],
   sm_cache: none,
   sm_cache_citations: [],
@@ -53,6 +55,7 @@ data nvidia_tesla_m60_passive_catalog: GpuDeviceCatalogRow = GpuDeviceCatalogRow
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_m60", decl_name: "nvidia_tesla_m60_passive_catalog", field_name: "memory_bandwidth"), authority: m60_product_brief_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_m60", decl_name: "nvidia_tesla_m60_passive_catalog", field_name: "execution_lane_count"), authority: m60_product_brief_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_m60", decl_name: "nvidia_tesla_m60_passive_catalog", field_name: "microarchitecture"), authority: m60_product_brief_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_m60", decl_name: "nvidia_tesla_m60_passive_catalog", field_name: "compute_capability"), authority: cuda_legacy_gpus_page_authority },
   ],
   dense_tensor_throughput: [],
 }
@@ -61,7 +64,7 @@ data nvidia_tesla_m60_passive_board_facts: GpuBoardCatalogFacts = GpuBoardCatalo
   vendor: nvidia,
   model: "Tesla M60 (passive, PG402 SKU 40/60)",
   gpu: nvidia_tesla_m60_passive_catalog,
-  gpu_count: 2,
+  composition: SeveralGpus { count: 2, interconnect: InterconnectUnread { read_obligation: "The Tesla M60 product brief states the board's PCIe 3.0 x16 host interface and nothing about how its two GM204 GPUs are joined on the board; read it off a board specification or an nvidia-smi topo reading of a real M60." } },
   attachment: PcieAddInBoard { link: Present { value: PcieLink { generation: Gen3, lane_count: 16 } } },
   board_power: Present { value: ConfigurableBoardPower { default: Present { value: watt(count: 300) }, minimum: watt(count: 225), maximum: watt(count: 300), named_points: [] } },
   zero_power: none,
@@ -69,7 +72,7 @@ data nvidia_tesla_m60_passive_board_facts: GpuBoardCatalogFacts = GpuBoardCatalo
   pci_device_id: Present { value: "13f2" as PciDeviceId },
   driver_listed_name: Present { value: "Tesla M60" },
   figure_citations: [
-    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_m60", decl_name: "nvidia_tesla_m60_passive_board_facts", field_name: "gpu_count"), authority: m60_product_brief_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_m60", decl_name: "nvidia_tesla_m60_passive_board_facts", field_name: "composition"), authority: m60_product_brief_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_m60", decl_name: "nvidia_tesla_m60_passive_board_facts", field_name: "attachment"), authority: m60_product_brief_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_m60", decl_name: "nvidia_tesla_m60_passive_board_facts", field_name: "board_power"), authority: m60_product_brief_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_m60", decl_name: "nvidia_tesla_m60_passive_board_facts", field_name: "thermal"), authority: m60_product_brief_authority },
@@ -90,7 +93,7 @@ data nvidia_tesla_m60_active_catalog: GpuDeviceCatalogRow = GpuDeviceCatalogRow 
   memory: MemoryFacts { capacity: gibibyte_to_byte_size(g: gibibyte(count: 8)), memory_kind: Dram },
   memory_bandwidth: Present { value: bandwidth(count: 160000000000) },
   boost_clock: none,
-  compute_capability: none,
+  compute_capability: Present { value: GpuComputeCapability { vendor: nvidia, major: 5, minor: 2 } },
   supported_runtimes: [Cuda],
   sm_cache: none,
   sm_cache_citations: [],
@@ -99,6 +102,7 @@ data nvidia_tesla_m60_active_catalog: GpuDeviceCatalogRow = GpuDeviceCatalogRow 
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_m60", decl_name: "nvidia_tesla_m60_active_catalog", field_name: "memory_bandwidth"), authority: m60_product_brief_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_m60", decl_name: "nvidia_tesla_m60_active_catalog", field_name: "execution_lane_count"), authority: m60_product_brief_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_m60", decl_name: "nvidia_tesla_m60_active_catalog", field_name: "microarchitecture"), authority: m60_product_brief_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_m60", decl_name: "nvidia_tesla_m60_active_catalog", field_name: "compute_capability"), authority: cuda_legacy_gpus_page_authority },
   ],
   dense_tensor_throughput: [],
 }
@@ -107,7 +111,7 @@ data nvidia_tesla_m60_active_board_facts: GpuBoardCatalogFacts = GpuBoardCatalog
   vendor: nvidia,
   model: "Tesla M60 (active, PG402 SKU 80)",
   gpu: nvidia_tesla_m60_active_catalog,
-  gpu_count: 2,
+  composition: SeveralGpus { count: 2, interconnect: InterconnectUnread { read_obligation: "The Tesla M60 product brief states the board's PCIe 3.0 x16 host interface and nothing about how its two GM204 GPUs are joined on the board; read it off a board specification or an nvidia-smi topo reading of a real M60." } },
   attachment: PcieAddInBoard { link: Present { value: PcieLink { generation: Gen3, lane_count: 16 } } },
   board_power: Present { value: RatedBoardPower { rated: watt(count: 240) } },
   zero_power: none,
@@ -115,7 +119,7 @@ data nvidia_tesla_m60_active_board_facts: GpuBoardCatalogFacts = GpuBoardCatalog
   pci_device_id: Present { value: "13f2" as PciDeviceId },
   driver_listed_name: Present { value: "Tesla M60" },
   figure_citations: [
-    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_m60", decl_name: "nvidia_tesla_m60_active_board_facts", field_name: "gpu_count"), authority: m60_product_brief_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_m60", decl_name: "nvidia_tesla_m60_active_board_facts", field_name: "composition"), authority: m60_product_brief_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_m60", decl_name: "nvidia_tesla_m60_active_board_facts", field_name: "attachment"), authority: m60_product_brief_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_m60", decl_name: "nvidia_tesla_m60_active_board_facts", field_name: "board_power"), authority: m60_product_brief_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_m60", decl_name: "nvidia_tesla_m60_active_board_facts", field_name: "thermal"), authority: m60_product_brief_authority },

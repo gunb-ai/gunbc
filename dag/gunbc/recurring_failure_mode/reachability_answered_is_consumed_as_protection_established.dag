@@ -39,7 +39,7 @@ data reachability_answered_is_consumed_as_protection_established: RecurringFailu
 
     "**WHAT THIS ADDS TO THE ROW IS THE CONSUMER SIDE, WHICH IS WHERE THE INFLATION ACTUALLY HAPPENS.** The kernel carrier states the limitation honestly and states it FIRST -- dag/std/evaluation_budget says in terms that a declared cpu_limit is a real bound the poll can see and NO bound at all inside one opaque host call, and says it was recorded there before any caller was built on the contrary assumption.",
 
-    "The defect is that the disclaimer does not TRAVEL: `v2.workflow.required_floor` presented its CPU safety deadline as the per-claim line without carrying the population it cannot bound, so a reader of the floor's own contract sees a wall, and citing that 500ms figure as coverage is the DESIGN section 4b(1) inflation -- a class's rung is the minimum across its in-scope paths, and one of these paths has no bound at all.",
+    "The defect is that the disclaimer does not TRAVEL: `v2.workflow.required_floor` presented its CPU safety deadline as the per-claim line without carrying the population it cannot bound, so a reader of the floor's own contract sees a wall, and citing that 500ms figure as coverage is the gunbc.design_argument::guarantee_ladder (rung honesty) inflation -- a class's rung is the minimum across its in-scope paths, and one of these paths has no bound at all.",
 
     "An honest statement in the kernel and an unqualified one in the consumer is not two rungs, it is one rung reported twice at different honesty.",
 

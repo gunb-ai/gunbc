@@ -354,12 +354,29 @@ fn git_sha256_object_id(hex: String) -> GitObjectId? {
   }
 }
 
+// git's NULL object id: the id git itself spells as forty zeros, the tree that does not exist. It is a
+// constant, not a parse -- the value is fixed by git -- and the only honest way to name it is the
+// declared constructor at the type's home, where ONE reviewable spelling serves every consumer and the
+// field's own refinement (std.content_hash Sha1DigestHex = String where lower_hex_40) checks the
+// spelling. Four consumers used to ask the emitter for a String -> GitObjectId cast instead:
+// gunbc.compute.work_provider_local's null-tree refusal, two fixtures in
+// test.claim.compute.work_request_witness, one in test.claim.fleet.fleet_converge_cli_witness. A cast
+// from a text literal into a nominal type has no declared route -- the note above is exactly why -- and
+// the native emitter refuses the pair, so those closures could not be emitted at all (RED: compiling
+// test.claim.compute.work_request_witness for rust reported the cast at all three production/fixture
+// sites). Every NON-literal path still goes through the validating constructors above; this constant is
+// the one spelling no parser has to discover, and witness_git_null_object_id_agrees_with_the_validating
+// _constructor keeps the two in agreement so the constant cannot drift from what a parse would admit.
+data git_null_sha1_object_id: GitObjectId = GitSha1ObjectId {
+  digest: Sha1Digest { hex: "0000000000000000000000000000000000000000" }
+}
+
 // Format-aware equality, held beside the type rather than in a consumer: two ids of different
 // families are never equal, so a repository mid SHA-1/SHA-256 transition cannot produce a false
 // match on hex alone. It lived briefly in gunbc.merge_admission, which is generic Git behaviour
-// sitting in one consumer — the §3 fork this move closes.
+// sitting in one consumer — the gunbc.design_argument::single_authority fork this move closes.
 
-data git_object_id_untagged_hex_note: String = "THE ONE DECODER FOR UNTAGGED PLUMBING OUTPUT (review 47517, §3). Git's own plumbing (show --format=%T and friends) prints a bare lowercase-hex object id with no family tag; the family is decidable from the canonical text width alone because the two supported hash functions have distinct digest lengths (40 for SHA-1, 64 for SHA-256, per git's hash-function-transition design). That inference is a fact about GIT'S wire, so it lives here at the GitObjectId authority — a consumer re-deriving it by measuring hex lengths is a second representation of the family axis (the capture tool did exactly this). Our OWN wires stay family-prefixed (<family>:<hex>, render/parse_git_object_id_wire) and never route through this decoder; this fn exists only for text git itself produced. A width that is neither 40 nor 64 refuses."
+data git_object_id_untagged_hex_note: String = "THE ONE DECODER FOR UNTAGGED PLUMBING OUTPUT (review 47517, gunbc.design_argument::single_authority). Git's own plumbing (show --format=%T and friends) prints a bare lowercase-hex object id with no family tag; the family is decidable from the canonical text width alone because the two supported hash functions have distinct digest lengths (40 for SHA-1, 64 for SHA-256, per git's hash-function-transition design). That inference is a fact about GIT'S wire, so it lives here at the GitObjectId authority — a consumer re-deriving it by measuring hex lengths is a second representation of the family axis (the capture tool did exactly this). Our OWN wires stay family-prefixed (<family>:<hex>, render/parse_git_object_id_wire) and never route through this decoder; this fn exists only for text git itself produced. A width that is neither 40 nor 64 refuses."
 
 fn git_object_id_from_untagged_hex(hex: String) -> GitObjectId? {
   let line = trim(hex)
@@ -736,10 +753,10 @@ fn git_author_wire_line(role: String, author: GitAuthor) -> String {
   )
 }
 
-// ONE LINEAR PASS (DESIGN section 6, bare minimum cost): each entry yields its own wire chunk and
+// ONE LINEAR PASS (gunbc.design_argument::how_to_work, bare minimum cost): each entry yields its own wire chunk and
 // the chunks are flattened once, where the earlier per-entry fold copied the accumulated payload
 // for every entry. An entry whose object id has no raw octets has NO chunk (Absent), never an empty
-// one: the first such entry refuses the whole tree (DESIGN section 5, no fabricated output).
+// one: the first such entry refuses the whole tree (gunbc.design_argument::fail_closed, no fabricated output).
 fn git_tree_entry_wire_chunk(entry: TreeEntry) -> List<UInt8>? {
   let parts = git_tree_entry_canonical_parts(entry: entry)
   match git_object_id_raw_octets(oid: parts.oid) {

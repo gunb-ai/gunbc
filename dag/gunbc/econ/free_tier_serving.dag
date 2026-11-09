@@ -16,7 +16,7 @@ import std.measure {
 }
 import std.nat { Nat, nat_max }
 
-// Both reads here are DERIVED at read time from cited rows (DESIGN section 2): the bottom-up floor
+// Both reads here are DERIVED at read time from cited rows (gunbc.design_argument::minimize_redundancy): the bottom-up floor
 // prices a declared per-user resource envelope against a cited infrastructure price row, and the
 // top-down glean divides a filed cost-of-revenue fact by a filed registered-user floor. Nothing
 // about serving cost is stored as a fact of its own.

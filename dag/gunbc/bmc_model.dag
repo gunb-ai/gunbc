@@ -6,10 +6,13 @@ import std.optional { Present, Absent }
 import std.algebra { list_snoc_item }
 import extdeps.bmc.ipmi_channel { IpmiChannelNumber, IpmiUserId, IpmiUserChannelAccess, IpmiChannelPrivilegeLimit }
 import extdeps.bmc.types { RedfishAccountRole }
-import extdeps.bmc.redfish { redfish_password_change_required_body }
+import extdeps.bmc.ipmitool_mc_info { IpmiMcInfoFields }
+import extdeps.bmc.ipmitool_print_read { IpmiSolConfiguration }
+import extdeps.bmc.redfish { redfish_password_change_required_body, redfish_manager_account_collection_body, redfish_manager_account_member_body }
 import extdeps.bmc.redfish_telemetry { RedfishLogEntry, RedfishLogService, RedfishTelemetryPoint }
 import extdeps.bmc.redfish_virtual_media { RedfishVirtualMediaObservation }
 import extdeps.bmc.ipmi_sdr { SdrTypeLine }
+import extdeps.bmc.redfish_network_boot { RedfishEthernetInterfaceRead, RedfishBootOptionsRead }
 import extdeps.bmc.ipmi_chassis_control {
   IpmiChassisControlAction, IpmiChassisPowerDown, IpmiChassisPowerUp, IpmiChassisPowerCycle, IpmiChassisHardReset,
 }
@@ -88,6 +91,33 @@ type BmcSdrRecord {
 }
 
 type BmcRecordSurfaces {
+  // WHAT THE MODELED CONTROLLER ANSWERS `ipmitool mc info` WITH, field by field. A dry controller's reply
+  // is RENDERED from this by extdeps.bmc.ipmitool_mc_info's own renderer (bmc_dry_realization's McInfo
+  // handler), never from a stored transcript of some real machine — which is why the field is the
+  // upstream's parsed shape rather than a string. Absent models a controller that answers nothing, and the
+  // handler faults rather than borrowing another controller's reply. A part-modeled identity parses back as
+  // INCOMPLETE: that is the model admitting what it did not model, instead of a fixture completing it.
+  mc_info: IpmiMcInfoFields?
+  // WHAT THE MODELED CONTROLLER'S SOL CONFIGURATION IS (`ipmitool sol info <channel>`), kept apart from
+  // `sol_session_open` above on purpose: a controller can be configured for SOL and never have carried a
+  // session, and the console reading in gunbc.machine_intake.bmc_first_contact_reading distinguishes
+  // exactly those two states. Absent models a controller whose SOL configuration was never modeled.
+  sol_configuration: IpmiSolConfiguration?
+
+  // THE ONE ETHERNETINTERFACE MEMBER RESOURCE THE MODELED CONTROLLER SERVES, as the upstream's reader reads
+  // it. The battery's boot-NIC reading (R5) asks for the collection and then for a member; a modeled
+  // controller answers both from this field — the collection is rendered from the member's own id, so the
+  // model cannot announce a port it does not serve. Absent models a controller whose ports were never
+  // modeled, and then R5 stays a read the run owes, not an empty list of ports. One port per modeled
+  // controller is what this arm serves; a world that needs several ports modeled is not this arm's job, and
+  // the collection read's announced count is where a longer fleet would show up as a refusal.
+  ethernet_interface: RedfishEthernetInterfaceRead?
+  // THE MODELED CONTROLLER'S BootOptions COLLECTION, including the arm where the service says it does not
+  // serve it at all (`BootOptionsNotServed`): a modeled controller can refuse, and the reading has to report
+  // that refusal rather than invent a selection. Absent models a controller whose boot options were never
+  // modeled.
+  boot_options: RedfishBootOptionsRead?
+
   manager_date_time: NonEmptyStr?
   log_services: List<RedfishLogService>?
   account_events: List<RedfishLogEntry>?
@@ -97,6 +127,10 @@ type BmcRecordSurfaces {
 }
 
 data bmc_record_surfaces_unmodeled: BmcRecordSurfaces = BmcRecordSurfaces {
+  mc_info: none,
+  sol_configuration: none,
+  ethernet_interface: none,
+  boot_options: none,
   manager_date_time: none,
   log_services: none,
   account_events: none,
@@ -129,7 +163,7 @@ type BmcWorld {
   // The Redfish account service this controller serves (the AccountService/ManagerAccountCollection
   // surface). One entry per account the Redfish surface lists; the forced-change flag and failed-login
   // counter live here. See the Redfish account section below for the shared-vs-own-credential store.
-  // A typed surface read, NOT a defaulted collection (DESIGN 5): `none` means the Redfish surface was
+  // A typed surface read, NOT a defaulted collection (gunbc.design_argument::fail_closed): `none` means the Redfish surface was
   // never modeled for this scenario (an unreadable surface, which the dry read reports as absence, never
   // as an empty census); `Present { [] }` means the surface is modeled and serves zero accounts. The two
   // are distinct facts and the dry read must not collapse them. Every literal names it (explicit-present
@@ -219,6 +253,76 @@ fn bmc_with_web(world: BmcWorld, web: BmcWebWorld) -> BmcWorld {
     sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
     host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
     web: web, ipmi_users: world.ipmi_users, ipmi_user_access: world.ipmi_user_access, record_surfaces: world.record_surfaces, redfish_accounts: world.redfish_accounts,
+  }
+}
+
+// MODEL THE CONTROLLER'S OWN `mc info` ANSWER — the one way a scenario gives a dry controller a firmware
+// identity: state first, bytes second, rendered by the upstream's renderer at the moment it is asked.
+fn bmc_with_mc_info(world: BmcWorld, fields: IpmiMcInfoFields?) -> BmcWorld {
+  bmc_with_record_surfaces(world: world, surfaces: bmc_surfaces_with_mc_info(surfaces: world.record_surfaces, fields: fields))
+}
+
+// MODEL THE CONTROLLER'S SOL CONFIGURATION — separately from opening a session, because the two answer
+// different questions and the first-contact console reading is refused when they are confused.
+fn bmc_with_sol_configuration(world: BmcWorld, configuration: IpmiSolConfiguration?) -> BmcWorld {
+  bmc_with_record_surfaces(world: world, surfaces: bmc_surfaces_with_sol_configuration(surfaces: world.record_surfaces, configuration: configuration))
+}
+
+fn bmc_surfaces_with_mc_info(surfaces: BmcRecordSurfaces, fields: IpmiMcInfoFields?) -> BmcRecordSurfaces {
+  BmcRecordSurfaces {
+    mc_info: fields,
+    sol_configuration: surfaces.sol_configuration,
+    ethernet_interface: surfaces.ethernet_interface,
+    boot_options: surfaces.boot_options,
+    manager_date_time: surfaces.manager_date_time,
+    log_services: surfaces.log_services,
+    account_events: surfaces.account_events,
+    virtual_media: surfaces.virtual_media,
+    sensors: surfaces.sensors,
+    ipmi_sdr: surfaces.ipmi_sdr,
+  }
+}
+
+fn bmc_surfaces_with_sol_configuration(surfaces: BmcRecordSurfaces, configuration: IpmiSolConfiguration?) -> BmcRecordSurfaces {
+  BmcRecordSurfaces {
+    mc_info: surfaces.mc_info,
+    sol_configuration: configuration,
+    ethernet_interface: surfaces.ethernet_interface,
+    boot_options: surfaces.boot_options,
+    manager_date_time: surfaces.manager_date_time,
+    log_services: surfaces.log_services,
+    account_events: surfaces.account_events,
+    virtual_media: surfaces.virtual_media,
+    sensors: surfaces.sensors,
+    ipmi_sdr: surfaces.ipmi_sdr,
+  }
+}
+
+// MODEL THE CONTROLLER'S NETWORK-BOOT STATE — the port it serves and the boot options it offers, in the
+// upstream's own read shapes. This is what makes R5 (the boot NIC) runnable over a simulated controller: the
+// modeled source renders these through extdeps.bmc.redfish_network_boot's renderers and the battery parses the
+// bodies back with that module's readers, the same route a committed capture takes. Passing `none` for either
+// models a controller whose state was never modeled, and the reading reports the read it owes rather than an
+// empty answer.
+fn bmc_with_network_boot(world: BmcWorld, interface: RedfishEthernetInterfaceRead?, options: RedfishBootOptionsRead?) -> BmcWorld {
+  bmc_with_record_surfaces(
+    world: world,
+    surfaces: bmc_surfaces_with_network_boot(surfaces: world.record_surfaces, interface: interface, options: options)
+  )
+}
+
+fn bmc_surfaces_with_network_boot(surfaces: BmcRecordSurfaces, interface: RedfishEthernetInterfaceRead?, options: RedfishBootOptionsRead?) -> BmcRecordSurfaces {
+  BmcRecordSurfaces {
+    mc_info: surfaces.mc_info,
+    sol_configuration: surfaces.sol_configuration,
+    ethernet_interface: interface,
+    boot_options: options,
+    manager_date_time: surfaces.manager_date_time,
+    log_services: surfaces.log_services,
+    account_events: surfaces.account_events,
+    virtual_media: surfaces.virtual_media,
+    sensors: surfaces.sensors,
+    ipmi_sdr: surfaces.ipmi_sdr,
   }
 }
 
@@ -583,7 +687,7 @@ data non_fold_residue_frontier: List<FrontierRow> = [
 // the build does not ground.
 
 // The credential is the ONLY thing that differs between the two account kinds; everything else is modeled
-// once (DESIGN §2). A shared account references the ONE credential's home -- the IPMI user id, whose password
+// once (gunbc.design_argument::minimize_redundancy). A shared account references the ONE credential's home -- the IPMI user id, whose password
 // the IPMI user table stores -- so there is never a second copy of a secret the world did not earn.
 type BmcRedfishCredential
   = BmcRedfishCredentialSharesIpmi { ipmi_user: IpmiUserId }
@@ -604,9 +708,9 @@ type BmcRedfishAccount {
 // Which accounts the Redfish surface serves. This builder installs a MODELED census (Present): calling it with
 // [] means "the surface is modeled and serves zero accounts." The UNMODELED state (the field default `none`) is
 // reached by NOT calling this builder, and there bmc_redfish_authorize / bmc_redfish_change_password refuse with
-// a typed unmodeled answer -- NOT "serves no account", and not a fabricated 401. The declared consumer is item
-// 3's dry Redfish account read in gunbc.machine_intake.bmc_secure (the frontier rows in
-// gunbc.machine_intake.bmc_secure_redfish_frontier bind that realization -- it does not exist until PR 1b-i lands).
+// a typed unmodeled answer -- NOT "serves no account", and not a fabricated 401. Its consumer is the dry Redfish
+// account read, gunbc.machine_intake.bmc_secure dry_read_bmc_redfish_account_census, reached from every
+// dry_read_bmc_account_state.
 fn bmc_with_redfish_accounts(world: BmcWorld, accounts: List<BmcRedfishAccount>) -> BmcWorld {
   BmcWorld {
     power: world.power, pending: world.pending, fired: world.fired, boot_override: world.boot_override, sel: world.sel,
@@ -640,11 +744,38 @@ fn bmc_redfish_census(world: BmcWorld) -> List<BmcRedfishAccount> {
 
 // THE TYPED SURFACE READ. `Absent` = the Redfish surface was never modeled (report the reading as absence, not as an
 // empty census); `Present { [] }` = the surface is modeled and genuinely serves zero accounts. Never collapse the two.
-// Its declared consumer is item 3's dry Redfish account read (frontier: gunbc.machine_intake.bmc_secure_redfish_frontier),
-// which is also what keeps this distinction from being decoration -- the witness reads it on both a none world and a
-// Present { [] } world until that realization lands.
+// Its consumers are gunbc.machine_intake.bmc_secure dry_read_bmc_redfish_account_census and
+// bmc_redfish_surface_served, which is what keeps this distinction from being decoration: an Absent surface makes
+// the census Unmodeled and the observation IPMI-only, a Present one subjects the conjunction to the census gate.
 fn bmc_redfish_surface(world: BmcWorld) -> List<BmcRedfishAccount>? {
   world.redfish_accounts
+}
+
+// WHAT THE SIMULATED CONTROLLER SERVES for the AccountService/Accounts collection: the JSON body the real
+// controller would put on the wire, built from the accounts the world carries -- the writer that grounds the
+// reader `redfish_manager_account_collection_from_json`. The dry census read parses THESE bytes (not a list
+// handed to it), so the census it reports is earned by parsing served bytes. Only the names are carried to the
+// wire builder (as `@odata.id`s); the member resources come from `bmc_redfish_account_member_body`.
+// referenced-by: gunbc.machine_intake.bmc_secure.dry_read_bmc_redfish_account_census
+fn bmc_redfish_account_collection_body(world: BmcWorld) -> String {
+  redfish_manager_account_collection_body(member_odata_ids: map(bmc_redfish_census(world: world), a => bmc_redfish_account_odata_id(name: a.name)))
+}
+
+// WHAT THE SIMULATED CONTROLLER SERVES for one ManagerAccount member resource, as the bytes it would put on
+// the wire for a GET of that account: UserName, Enabled, Locked, RoleId. `Absent` is the honest answer when the
+// collection listed an id the census does not hold -- the read treats that as a census it cannot vouch for and
+// refuses, rather than a member to invent. The world's account fields are the only values rendered.
+// referenced-by: gunbc.machine_intake.bmc_secure.dry_read_bmc_redfish_account_census
+fn bmc_redfish_account_member_body(world: BmcWorld, name: String) -> String? {
+  match bmc_redfish_account(world: world, name: name) {
+    Absent => none
+    Present { value: account } => Present { value: redfish_manager_account_member_body(
+      odata_id: bmc_redfish_account_odata_id(name: account.name),
+      user_name: account.name,
+      enabled: account.enabled,
+      locked: account.locked,
+      role: account.role) }
+  }
 }
 
 fn bmc_redfish_account(world: BmcWorld, name: String) -> BmcRedfishAccount? {
@@ -702,7 +833,7 @@ type RedfishAuthOutcome
 // ("Base.1.16.0.PasswordChangeRequired" for 03.22.00), supplied by the caller from its policy row -- the
 // world does not hardcode a build's message registry version. The surface is read TYPED first: an UNMODELED
 // surface answers RedfishAuthSurfaceUnmodeled, never 401 -- inventing "bad credentials" for a controller that
-// serves no Redfish account service is a fabricated answer (DESIGN 5). On a modeled surface the fail-closed
+// serves no Redfish account service is a fabricated answer (gunbc.design_argument::fail_closed). On a modeled surface the fail-closed
 // order is: an unknown account, a disabled account, a locked account, or a mismatched credential is 401; a
 // correct credential is 403-forced while the flag stands UNLESS the request is the admitted PATCH, and 200
 // otherwise.
@@ -745,10 +876,10 @@ fn bmc_redfish_authorize(
 // record. A change that cannot fully apply -- the surface unmodeled, the account not in the census, or a shared
 // account whose IPMI user is not in the table -- returns the world UNCHANGED (flag still set, counter untouched)
 // refused with its typed reason (BmcRedfishChangeRefused); a half-applied "cleared flag, no credential written" is the
-// fabricated default DESIGN 5 refuses. The failed-login counter resets only on a completed change. The caller's
-// re-read, not this reply, decides whether the account is secured (DESIGN 4b rung discipline).
+// fabricated default gunbc.design_argument::fail_closed refuses. The failed-login counter resets only on a completed change. The caller's
+// re-read, not this reply, decides whether the account is secured (gunbc.design_argument::guarantee_ladder rung discipline).
 // Why a password change did not complete -- typed, so an UNMODELED surface is never reported as "no such
-// account" and a missing shared user is never confused with either (DESIGN 5: a located reason, never a
+// account" and a missing shared user is never confused with either (gunbc.design_argument::fail_closed: a located reason, never a
 // widened plausible answer).
 type BmcRedfishChangeBlocked
   = BmcRedfishChangeSurfaceUnmodeled {}
@@ -763,7 +894,7 @@ type BmcRedfishPasswordChangeStep
 
 // Replace ONE account record in the world's Redfish census by name -- the SINGLE record-replace every Redfish
 // world writer performs (both bmc_redfish_change_password arms and bmc_redfish_note_failed_login), so a future
-// change to how a record is matched (say, by @odata.id) reaches all of them at once (DESIGN 6b: one rule, no second leaf).
+// change to how a record is matched (say, by @odata.id) reaches all of them at once (gunbc.design_argument::earliest_unjustified_boundary: one rule, no second leaf).
 fn bmc_redfish_set_record(world: BmcWorld, name: String, cleared: BmcRedfishAccount) -> BmcWorld {
   bmc_with_redfish_accounts(
     world: world,
@@ -805,7 +936,7 @@ fn bmc_redfish_change_password(world: BmcWorld, name: String, new_password: Stri
           // A shared account moves ONE credential: the password is written to the IPMI user, and the Redfish
           // record's flag clears and its counter resets ONLY on a completed write. If the user is not in the
           // table the write is not completed and NOTHING changes -- no fabricated cleared flag, no reset counter
-          // (DESIGN 5: fully succeed, or fail with the world untouched, never a half-applied change).
+          // (gunbc.design_argument::fail_closed: fully succeed, or fail with the world untouched, never a half-applied change).
           BmcRedfishCredentialSharesIpmi { ipmi_user: i } =>
             let wrote = bmc_ipmi_set_user_password(world: world, user: i, password: new_password)
             if wrote.completed {
@@ -823,10 +954,9 @@ fn bmc_redfish_change_password(world: BmcWorld, name: String, new_password: Stri
 // The failed-login COUNTER and its lock transition are the world's. The threshold is a TYPED
 // BmcRedfishLockoutThreshold, never a magic number: `Never` models a build that serves no lockout without
 // inventing a count, and `After { count }` locks when the counter reaches it -- no `0` sentinel, no
-// `!= 0` test. Where the served value comes from -- the lockout lane's extdeps.bmc.redfish
-// RedfishAccountServiceLockoutServed -- is a DECLARED frontier (see gunbc.machine_intake.bmc_secure_redfish_frontier,
-// subject gunbc.bmc_model::bmc_redfish_note_failed_login); the 0-means-Never conversion belongs at that extdeps wire
-// boundary, not here.
+// `!= 0` test. The served value comes from the lockout lane's extdeps.bmc.redfish RedfishAccountServiceLockoutServed,
+// converted at that extdeps wire boundary (redfish_account_lockout_threshold_locks_after, 0 means never) and placed
+// in this vocabulary by gunbc.machine_intake.bmc_secure bmc_redfish_lockout_threshold_served.
 type BmcRedfishLockoutThreshold
   = BmcRedfishLockoutNever
   | BmcRedfishLockoutAfter { count: Int }

@@ -3,13 +3,15 @@ module gunbc.machine_intake.megarac_sensor_observation
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import gunbc.machine_intake.mtcollins1_power_on_account { BmcAnomaly, SensorNotNominal, SensorLineWithoutReadingNotNominal, SocketSensorsAbsent }
 import std.algebra { trim }
-import std.optional { Present }
+import std.optional { Absent, Present }
 import extdeps.bmc.ipmi_sdr { SdrLineResult, SdrLineDecoded, SdrLineUnstructured, SdrTypeLine }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_eq }
-import extdeps.bmc.megarac { megarac_firmware_0_32 }
+import extdeps.bmc.megarac { megarac_firmware_0_32, megarac_firmware_0_45_reported }
 import product.placement_supply { HostIdentity }
 import gunbc.host.megarac_managed_host { AdmittedMegaRacHost }
 import gunbc.host.megarac_operation_standing { MegaRacSdrSocketNaming, MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill }
+import gunbc.machine_intake.mtcollins1_32dimm_bringup_observation { mtcollins1_sdr_capture }
+import gunbc.machine_intake.megarac_operation_evidence { mtcollins1_run_37102391062_diagnostics }
 
 // WHAT A MEGARAC CONTROLLER'S SENSOR TABLE SAYS ABOUT EACH SOCKET, from one `sdr elist` read
 // (extdeps.bmc.ipmi SdrElistAuthenticatedCached, decoded by extdeps.bmc.ipmi_sdr). This is the
@@ -26,7 +28,27 @@ import gunbc.host.megarac_operation_standing { MegaRacSdrSocketNaming, MegaRacVi
 // admitted host (gunbc.host.megarac_managed_host, operation MegaRacSdrSocketNaming), and a sensor without it
 // belongs to no socket. Another build's naming is unread, and unread is a refusal, not "CPU".
 
-data megarac_sdr_socket_prefix_0_32: String = "CPU"
+// ONE ROW PER BUILD THIS CONTROLLER HAS RUN, each pairing the release with the capture that READ the
+// naming on it and the prefix those bytes use. The 0.32 row's capture is the 32-DIMM bring-up
+// `sdr elist`. The row for the release the controller reports today is the boot diagnostics retained
+// for boot run 37102391062 (gunbc.machine_intake.megarac_operation_evidence
+// mtcollins1_run_37102391062_diagnostics), read 2026-10-03T08:42:14Z — after the reflash window
+// (mtcollins1_reflash_not_before, mtcollins1_reflash_not_after) closed — whose table names
+// CPU0_0V75_PCP and CPU1_0V75_PCP the same way, and the tables retained for boot runs 40258937016 and
+// 40264233543 carry that naming again. The claim
+// the_prefix_a_naming_read_names_is_the_prefix_its_own_capture_uses
+// (test.claim.machine_intake.megarac_sensor_observation_witness) reads each row's own capture and goes
+// red on any row whose prefix those bytes do not use; a release with no row here gets no naming.
+type MegaRacSdrSocketNamingRead {
+  firmware: BmcFirmwareReleaseIdentity
+  prefix: String
+  capture: NonEmptyStr
+}
+
+data megarac_sdr_socket_naming_reads: List<MegaRacSdrSocketNamingRead> = [
+  MegaRacSdrSocketNamingRead { firmware: megarac_firmware_0_32, prefix: "CPU", capture: mtcollins1_sdr_capture.artifact_path },
+  MegaRacSdrSocketNamingRead { firmware: megarac_firmware_0_45_reported, prefix: "CPU", capture: mtcollins1_run_37102391062_diagnostics.label },
+]
 
 // THE SOCKET NAMING OF ONE ADMITTED CONTROLLER. sole_constructor, minted only below, so a decode cannot
 // be handed a prefix the controller's build was never read to use.
@@ -43,10 +65,9 @@ type MegaRacSdrSocketNamingStanding
 fn megarac_sdr_socket_naming(host: AdmittedMegaRacHost) -> MegaRacSdrSocketNamingStanding {
   match host.operation {
     MegaRacSdrSocketNaming =>
-      if bmc_firmware_release_identity_eq(a: host.firmware, b: megarac_firmware_0_32) {
-        SdrSocketNamingBound { naming: MegaRacSdrSocketNamingRule { host: host.host.host, firmware: host.firmware, prefix: megarac_sdr_socket_prefix_0_32 } }
-      } else {
-        SdrSocketNamingRefused { reason: concat("no SDR socket naming is read for MegaRAC firmware ", host.firmware.raw_version as String) as NonEmptyStr }
+      match filter(megarac_sdr_socket_naming_reads, r => bmc_firmware_release_identity_eq(a: host.firmware, b: r.firmware)).first() {
+        Present { value: named } => SdrSocketNamingBound { naming: MegaRacSdrSocketNamingRule { host: host.host.host, firmware: host.firmware, prefix: named.prefix } }
+        Absent => SdrSocketNamingRefused { reason: concat("no SDR socket naming is read for MegaRAC firmware ", host.firmware.raw_version as String) as NonEmptyStr }
       }
     MegaRacVirtualMediaAttach => SdrSocketNamingRefused { reason: "the MegaRAC host was admitted for another operation, not SDR socket naming" }
     MegaRacKvmCanvasStill => SdrSocketNamingRefused { reason: "the MegaRAC host was admitted for another operation, not SDR socket naming" }

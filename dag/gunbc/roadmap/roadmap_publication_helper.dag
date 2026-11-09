@@ -15,13 +15,12 @@ import extdeps.filesystem.filesystem_io {
   FilesystemReadSucceeded,
   filesystem_listing_names_entry,
   filesystem_read_outcome,
-  FilesystemCreateNew, FilesystemCreated, FilesystemCreateTargetOccupied,
-  FilesystemCreateRefused, FilesystemCreateKindUnrecognized, filesystem_create_new,
+  FilesystemCreateNew,
 }
 import gunbc.durable_handoff_host {
-  HostSpoolNameAbsent, HostSpoolNamePresent, HostSpoolNameUnreadable,
+  HostSpoolEnqueue,
   HostSpoolEntryCreated, HostSpoolEntryAlreadyPresent, HostSpoolEnqueueRefused,
-  host_spool_enqueue_assess,
+  host_spool_enqueue, host_spool_enqueue_from_create,
 }
 import extdeps.languages.json.emit {
   JsonValue,
@@ -130,7 +129,7 @@ import gunbc.roadmap.roadmap_publish_observe {
 // unique". They are not. RoadmapPublicationSubject carries SIX fields -- repository, branch and
 // expected_base as well -- so two different publication questions could address the same request
 // and answer path. That is keying an address on less than its declared inputs, the same shape as a
-// cache key that omits half of what it depends on, and DESIGN section 5 names it directly: the
+// cache key that omits half of what it depends on, and gunbc.design_argument::fail_closed names it directly: the
 // declaration can be edited green while the realization still collides.
 //
 // THE COLLISION`S TWO HALVES HAVE DIFFERENT SEVERITIES, and only one of them was already contained.
@@ -148,7 +147,7 @@ import gunbc.roadmap.roadmap_publish_observe {
 // document carries -- so the key cannot drift away from the subject it names by someone adding a
 // field to one and not the other.
 //
-// AND THIS RETIRES A VALIDATOR RATHER THAN ADDING ONE (DESIGN section 4b, construction over
+// AND THIS RETIRES A VALIDATOR RATHER THAN ADDING ONE (gunbc.design_argument::guarantee_ladder, construction over
 // validation). The previous key interpolated ledger-supplied strings into a filename, so a value
 // carrying `/` or `..` would have addressed a file outside the spool, and a PublicationSpoolAddress
 // coproduct refused that case. A lower-hex-16 digest cannot carry a path separator: the invalid
@@ -354,34 +353,18 @@ type PublicationRequestEnqueue
   | RequestAlreadyPresent { path: String }
   | RequestNotEnqueued { detail: String }
 
-fn publication_request_from_create(created: FilesystemCreateNew) -> PublicationRequestEnqueue {
-  match created {
-    FilesystemCreated { path: p } =>
-      match host_spool_enqueue_assess(name: p, observed: HostSpoolNameAbsent) {
-        HostSpoolEntryCreated { name: n } => RequestEnqueued { path: n }
-        HostSpoolEntryAlreadyPresent { name: n } => RequestAlreadyPresent { path: n }
-        HostSpoolEnqueueRefused { name: n, detail: d } => RequestNotEnqueued { detail: join([n, ": ", d], "") }
-      }
-    FilesystemCreateTargetOccupied { path: p } =>
-      match host_spool_enqueue_assess(name: p, observed: HostSpoolNamePresent) {
-        HostSpoolEntryCreated { name: n } => RequestEnqueued { path: n }
-        HostSpoolEntryAlreadyPresent { name: n } => RequestAlreadyPresent { path: n }
-        HostSpoolEnqueueRefused { name: n, detail: d } => RequestNotEnqueued { detail: join([n, ": ", d], "") }
-      }
-    FilesystemCreateRefused { path: p, kind: _, error: e } =>
-      match host_spool_enqueue_assess(name: p, observed: HostSpoolNameUnreadable { detail: e }) {
-        HostSpoolEnqueueRefused { name: n, detail: d } => RequestNotEnqueued {
-          detail: join([
-            "the publication request could not be written, so nothing was asked of the publication helper: ",
-            n, " (", d, ")",
-          ], ""),
-        }
-        HostSpoolEntryCreated { name: n } => RequestEnqueued { path: n }
-        HostSpoolEntryAlreadyPresent { name: n } => RequestAlreadyPresent { path: n }
-      }
-    FilesystemCreateKindUnrecognized { path: p, observed: o, error: e } =>
-      RequestNotEnqueued { detail: join([p, ": ", o, ": ", e], "") }
+fn publication_request_from_enqueue(enqueued: HostSpoolEnqueue) -> PublicationRequestEnqueue {
+  match enqueued {
+    HostSpoolEntryCreated { name: n } => RequestEnqueued { path: n }
+    HostSpoolEntryAlreadyPresent { name: n } => RequestAlreadyPresent { path: n }
+    HostSpoolEnqueueRefused { name: n, detail: d } => RequestNotEnqueued {
+      detail: join(["the publication request could not be written, so nothing was asked of the publication helper: ", n, " (", d, ")"], ""),
+    }
   }
+}
+
+fn publication_request_from_create(created: FilesystemCreateNew) -> PublicationRequestEnqueue {
+  publication_request_from_enqueue(enqueued: host_spool_enqueue_from_create(created: created))
 }
 
 fn publication_request_enqueue(
@@ -390,14 +373,10 @@ fn publication_request_enqueue(
   subject: RoadmapPublicationSubject,
   worktree: String,
 ) -> PublicationRequestEnqueue {
-  let path = publication_request_path_for(instance_root: instance_root, key: key)
-  let write = Filesystem.WriteCreateNew(
-    path: path,
+  publication_request_from_enqueue(enqueued: host_spool_enqueue(
+    path: publication_request_path_for(instance_root: instance_root, key: key),
     content: publication_request_json(subject: subject, worktree: worktree),
-  )
-  publication_request_from_create(
-    created: filesystem_create_new(path: write.path, success: write.success, error: write.error, error_kind: write.error_kind),
-  )
+  ))
 }
 
 // THREE STATES, BECAUSE THREE REMEDIES. An answer that is ready, a request that is now waiting, and

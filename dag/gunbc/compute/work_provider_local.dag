@@ -1,5 +1,6 @@
 module gunbc.compute.work_provider_local
 
+import gunbc.durable_create_once { create_once_record, CreateOnceRecording, CreateOnceRecorded, CreateOnceAlreadyRecorded, CreateOnceRefused, directory_admission, DirectoryAdmitted, DirectoryNotAdmitted }
 import gunbc.compute.compute_attempt_slots_root {
   compute_attempt_slots, ComputeSeat, ComputeFlatSeat, compute_seat_of, compute_seat_directory, compute_seat_holder_line,
   ComputeSeatStore, compute_seat_store, ComputeSeatStoreReady, ComputeSeatStoreUnready,
@@ -13,11 +14,12 @@ import std.optional { Optional, Present, Absent }
 import std.env_binding { EnvBinding }
 import extdeps.tools.env { env_absolute_program, env_prefixed_args }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import std.algebra { trim }
+import std.algebra { trim, skip, take_prefix, zip_map }
+import std.list { first_where }
 import std.measure { byte_size_count }
 import extdeps.filesystem.filesystem_io {
   Filesystem, filesystem_listing_names_entry, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
-  filesystem_listing_observation, filesystem_listing_entry_names,
+  filesystem_listing_observation, filesystem_listing_entry_names, filesystem_create_new, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized,
 }
 import gunbc.output_policy { OutcomeIsData }
 import gunbc.git_diff_change_window { gunbc_diff_window_path_env }
@@ -25,8 +27,14 @@ import extdeps.languages.json.emit { json_object, json_kv, json_string, json_arr
 import extdeps.gunbc
 import extdeps.shell
 import extdeps.git { shape_git_worktree_add_detached_argv }
-import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_wire_hex }
-import extdeps.systemd { ExecStopProperty, BindPathsProperty, systemd_unit_property_wire }
+import extdeps.crypto.hash { Digest, sha256sum_line_digest }
+import gunbc.fabric.fabric_source_snapshot {
+  SnapshotSourceFile, SnapshotIdentityRefused, SnapshotIdentified, snapshot_manifest_identity, source_manifest_ref,
+  snapshot_identity_refusal_detail, admit_relative_source_path, RelativePathRefused, RelativePathAdmitted, snapshot_path_inside_composition,
+}
+import product.fabric.work { SourceManifestRef }
+import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_null_sha1_object_id, git_object_id_wire_hex }
+import extdeps.systemd { SystemdUnitProperty, ExecStopProperty, ExecStopPostProperty, BindPathsProperty, systemd_unit_property_wire }
 import extdeps.systemd.systemd_run {
   SystemdSummaryPrintingWait, systemd_summary_printing_wait_argv, SystemdSetenvBinding,
   SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused, SystemdRunProperty, NamedUnitSetting,
@@ -52,6 +60,7 @@ import extdeps.cache.sccache {
   sccache_installed_binary_path, sccache_server_uds_env_var,
 }
 import extdeps.linux.procfs { procfs_status_effective_uid }
+import extdeps.posix.signal { linux_standard_signal_wire_name }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import std.durable_compare_and_set { CasGeneration, cas_generation_count }
@@ -73,6 +82,23 @@ import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_capability_program }
 import gunbc.roadmap.roadmap_execution_contract {
   ExecutionCapability, GitWorkspaceCapability, CargoCapability, RustcCapability, AttemptStateDirectoryCapability,
 }
+// The seat's stop observation reads the SAME exit record the roadmap belt writes, so the names it needs
+// come from the module that owns that record: the hook render (compute_attempt_exit_hook,
+// AttemptExitHookRendered, AttemptExitHookRefused), the per-uid listing
+// (compute_attempt_exit_record_listing), the subject split (attempt_exit_record_matching,
+// RoadmapEntrySubject, ComputeEntrySubject, OtherEntrySubject), the record observation arms
+// (AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable,
+// AttemptExitRecordWriterUnsubstituted) and the decoded process end (AttemptProcessEnd,
+// AttemptProcessExitedWith, AttemptProcessSignaled). This file named all of them without importing
+// either declaring module. The stop-observation arm ComputeUnitStopObservation's AttemptExitRecordAtStop
+// case is declared HERE and is not imported.
+import gunbc.roadmap.roadmap_attempt_exit_spool {
+  compute_attempt_exit_hook, compute_attempt_exit_record_listing, attempt_exit_record_matching,
+  AttemptExitHookRendered, AttemptExitHookRefused,
+  RoadmapEntrySubject, ComputeEntrySubject, OtherEntrySubject,
+  AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable, AttemptExitRecordWriterUnsubstituted,
+  AttemptProcessEnd, AttemptProcessExitedWith, AttemptProcessSignaled,
+}
 import std.measure { Kibibyte, kibibyte_count, kibibyte_to_byte_size, kibibyte, byte_size_count }
 import gunbc.compute.work_class_grant {
   WorkClass, work_class_of, work_class_wire, WorkClassGrant, GrantAtCeiling, GrantSized, ClassRetryAfterGrantExceeded,
@@ -85,6 +111,8 @@ import gunbc.compute.host_capacity {
   ComputeCapacityStanding, ComputeCapacityStandingRead, ComputeCapacityStandingUnread, compute_capacity_standing, compute_capacity_standing_wire,
   ComputeCapacitySubject, ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved,
   compute_capacity_subject, compute_capacity_store, compute_release_on, compute_root,
+  compute_attempt_exit_spool_done_dir,
+  ComputeCapacityStoreStanding, ComputeCapacityStoreReady, ComputeCapacityStoreUnready,
 }
 import gunbc.compute.compute_work_records { ComputeWorkRecords, ComputeWorkRecordWritten, ComputeWorkRecordUnwritten, ComputeWorkRecordPresent, ComputeWorkRecordUnread, compute_work_root, compute_work_records, compute_work_dir, compute_work_consumption_write, compute_work_consumption_path, compute_work_log_read, compute_work_log_write, compute_work_log_path }
 import gunbc.compute.compute_producer_lease {
@@ -125,18 +153,21 @@ import extdeps.realization.materialization_store_local {
 import gunbc.materialization_store_budgets { materialization_store_durable_family_budgets
 }
 import std.fabric_blob { FabricBlobReading, fabric_blob_reading_path, fabric_blob_reading_digest }
+import extdeps.rust.target_triple { parse_rust_target_triple, render_rust_target_triple }
 import gunbc.compute.work_request {
   work_refusal_detail, work_ending_decode, WorkEndedSucceeded,
-  WorkSubject, ExactTree, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoProfile, CargoRelease, CargoDebug,
+  WorkSubject, GitTreeProvenance, WorktreeProvenance, AdmittedToolchain, WorkToolchainRequirement, WorkTarget, TargetDeclared, TargetIsExecutingHost, work_target_triple, work_toolchain_admit, ToolchainAdmitted, ToolchainMismatch, ToolchainMismatchRefused, toolchain_mismatch_field_wire, work_declared_source, work_toolchain_requirement, ToolchainRequired, ToolchainRequirementRefused, work_outcome_wire_unresolved, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoProfile, CargoRelease, CargoDebug,
   WorkToolchainIdentity, work_toolchain_observed, rustc_verbose_host_triple, work_default_build, work_default_bins,
   GunbcBinary, GunbcDriver, ClaimBatchRunner, gunbc_binary_name, work_binary_declared_path, work_declared_outputs,
   DeclaredOutput, WorkOutputRoot, CheckoutRoot, TargetRoot,
   WorkOutput, WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, WorkCancelled, WorkOutputMismatch,
   WorkInfrastructureRefusal, ProducerInFlight, HostComputeCapacityFull, HostBelowMemoryFloor, ComputeCapacityLedgerUnavailable,
-  CheckoutUnavailable, StoreUnavailable, MaterializationStoreUndeclared, UnitLaunchRefused,
+  CheckoutUnavailable, StoreUnavailable, MaterializationStoreUndeclared, UnitLaunchRefused, SeatStopObservationUnrenderable,
   ToolchainUnobserved, DependencyNotSucceeded, SubjectUnresolved, UnitMemoryGrantExceeded, UnitEndingUnclassifiable,
   work_outcome_wire, work_outcome_ending, work_outcome_ending_of, work_operation_canonical, work_outcome_identity, StoredOutcomeRead, StoredOutcomeFound, StoredOutcomeUnreadable, stored_outcome_decode, stored_outcome_is_success,
 }
+import gunbc.systemd_unit_names { compute_unit_name }
+
 
 // THE LOCAL PROVIDER: one of N behind the exact work contract, serving the host it runs on. It is a
 // realization and knows nothing the contract does not: it resolves the subject, observes the
@@ -214,6 +245,10 @@ type ComputeExec
 type ComputeUnitRunReading
   = ComputeUnitRunExecuted { run: ComputeUnitRun }
   | ComputeUnitRunRefused { cause: SystemdRunOptionWordsRefusedCause }
+  // A SEAT IS NOT STARTED WITH AN UNOBSERVABLE END. The stop-hook arm of the unit's properties could not
+  // be rendered, and starting the seat anyway would leave a seat whose end no reading can ever show --
+  // the condition this route exists to close, so it refuses the launch instead of degrading into it.
+  | ComputeUnitStopObservationRefused { cause: String }
 
 fn compute_exec(program: String, workdir: String, args: List<String>) -> ComputeExec {
   let r = gunbc.WitnessBin.Run(workdir: workdir as FilePath, bin_path: program as FilePath, args: args, expect: OutcomeIsData)
@@ -284,17 +319,188 @@ fn compute_toolchain_decide(rustc: ComputeExec, cargo: ComputeExec, cache: Compu
 // THE SUBJECT IS THE COMMIT'S TREE: a caller holds a commit (its committed head) and the identity is
 // the tree that commit names, read from git rather than trusted from the caller.
 type SubjectResolution
-  = SubjectResolved { subject: WorkSubject }
+  = SubjectResolved { subject: WorkSubject, toolchain_file: String? }
   | SubjectResolutionRefused { detail: String }
 
+// THE DIRECTORY ADAPTER: ONE CAPTURE OVER A DIRECTORY, whichever way the bytes got there. The clean-tree
+// adapter (compute_resolve_subject) materializes a commit and calls this; a dirty worker worktree calls
+// it directly. Candidates are git's own list of the directory -- tracked plus untracked-not-ignored,
+// minus deleted -- so a NEW UNTRACKED FILE is in the identity and a deleted tracked file is not. The
+// bytes are DIGESTED, one sha256sum exec per batch of paths, and the digests handed to
+// gunbc.fabric.fabric_source_snapshot snapshot_manifest_identity, which keeps no notion of tracked,
+// commit or path. Every file, empty or binary included, is one digest leaf (ruling B), so no file kind
+// refuses. LIMIT: the identity NAMES bytes by digest and does not carry them; moving bytes to an
+// executor is PRs 5 and 7 (gunbc.plans.durable_work_program_boundaries).
+type SubjectManifestReading
+  = SubjectManifestRead { manifest: SourceManifestRef, files: Int, toolchain_file: String? }
+  | SubjectManifestRefused { detail: String }
+
+type SubjectDigestsReading
+  = SubjectDigestsRead { digests: List<Digest> }
+  | SubjectDigestsRefused { detail: String }
+
+fn compute_listed_paths(listing: String) -> List<String> {
+  split(s: listing, delimiter: "\n") |> filter(l => trim(s: l) != "")
+}
+
+// ONE sha256sum EXEC PER BATCH of paths, never per file; its output lines are in argument order and a
+// count that disagrees with the paths refuses (a file sha256sum could not read fails the exec, typed).
+fn compute_digest_batch(directory: String, paths: List<String>) -> SubjectDigestsReading {
+  match compute_exec(program: env_absolute_program().invocation as String, workdir: directory, args: concat(["sha256sum", "--"], paths)) {
+    ComputeExecFailed { exit_code, stdout: _, stderr } => SubjectDigestsRefused { detail: join(["sha256sum exited ", to_string(value: exit_code), ": ", stderr], "") }
+    ComputeExecOk { stdout, stderr: _ } => {
+      let lines = compute_listed_paths(listing: stdout)
+      let digests = lines |> flat_map(l => match sha256sum_line_digest(line: l) { Present { value } => [value]  Absent => [] })
+      if (count(lines) == count(paths)) && (count(digests) == count(paths)) {
+        SubjectDigestsRead { digests: digests }
+      } else {
+        SubjectDigestsRefused { detail: join(["sha256sum returned ", to_string(value: count(digests)), " digests for ", to_string(value: count(paths)), " declared files"], "") }
+      }
+    }
+  }
+}
+
+fn compute_digest_batches(directory: String, paths: List<String>) -> SubjectDigestsReading {
+  if count(paths) == 0 {
+    SubjectDigestsRead { digests: [] }
+  } else {
+    match compute_digest_batch(directory: directory, paths: take_prefix(paths, 200)) {
+      SubjectDigestsRefused { detail } => SubjectDigestsRefused { detail: detail }
+      SubjectDigestsRead { digests: head } =>
+        match compute_digest_batches(directory: directory, paths: skip(xs: paths, n: 200)) {
+          SubjectDigestsRefused { detail } => SubjectDigestsRefused { detail: detail }
+          SubjectDigestsRead { digests: rest } => SubjectDigestsRead { digests: concat(head, rest) }
+        }
+    }
+  }
+}
+
+fn compute_source_file(path: String, digest: Digest) -> SnapshotSourceFile {
+  let parts = path.split(sep: "/")
+  let dir = if count(parts) == 1 { "." } else { join(take_prefix(parts, count(parts) - 1), "/") }
+  SnapshotSourceFile { directory: dir as NonEmptyStr, name: compute_basename(path: path) as NonEmptyStr, digest: digest }
+}
+
+fn compute_subject_in_declared_source(path: String) -> Bool {
+  match admit_relative_source_path(text: path) {
+    RelativePathRefused { text: _, cause: _ } => false
+    RelativePathAdmitted { path: relative } => snapshot_path_inside_composition(composition: work_declared_source, path: relative)
+  }
+}
+
+fn compute_directory_manifest(instance: HostDashboardInstance, directory: String) -> SubjectManifestReading {
+  let git = compute_program(instance: instance, cap: GitWorkspaceCapability)
+  match compute_exec(program: git, workdir: directory, args: ["ls-files", "--cached", "--others", "--exclude-standard"]) {
+    ComputeExecFailed { exit_code, stdout: _, stderr } => SubjectManifestRefused { detail: join(["git ls-files exited ", to_string(value: exit_code), ": ", stderr], "") }
+    ComputeExecOk { stdout: listed, stderr: _ } =>
+      match compute_exec(program: git, workdir: directory, args: ["ls-files", "--deleted"]) {
+        ComputeExecFailed { exit_code, stdout: _, stderr } => SubjectManifestRefused { detail: join(["git ls-files --deleted exited ", to_string(value: exit_code), ": ", stderr], "") }
+        ComputeExecOk { stdout: deleted, stderr: _ } => {
+          let gone = compute_listed_paths(listing: deleted)
+          let wanted = compute_listed_paths(listing: listed)
+            |> filter(p => compute_subject_in_declared_source(path: p) && !any(gone, g => g == p))
+            |> sort_by(p => p)
+          compute_manifest_of_files(directory: directory, paths: wanted)
+        }
+      }
+  }
+}
+
+// The subject's own rust-toolchain.toml text (a declared-source file), read for the REQUIREMENT
+// separately from the digest that puts the file in the identity. Absent from the listing is Absent (the
+// requirement then refuses as carrying no file); a listed file that cannot be read is its OWN typed refusal.
+type SubjectToolchainFile
+  = SubjectToolchainText { text: String? }
+  | SubjectToolchainUnread { detail: String }
+
+fn compute_toolchain_file_text(directory: String, paths: List<String>) -> SubjectToolchainFile {
+  if any(paths, p => p == "rust-toolchain.toml") {
+    let read = Filesystem.Read(path: join([directory, "/rust-toolchain.toml"], ""))
+    if read.success { SubjectToolchainText { text: Present { value: read.content } } } else { SubjectToolchainUnread { detail: join(["declared source file rust-toolchain.toml is unreadable: ", read.error], "") } }
+  } else {
+    SubjectToolchainText { text: none }
+  }
+}
+
+fn compute_manifest_of_files(directory: String, paths: List<String>) -> SubjectManifestReading {
+  match compute_digest_batches(directory: directory, paths: paths) {
+    SubjectDigestsRefused { detail } => SubjectManifestRefused { detail: detail }
+    SubjectDigestsRead { digests } =>
+      match snapshot_manifest_identity(
+        composition: work_declared_source,
+        files: zip_map(a: paths, b: digests, f: fn(p, d) { compute_source_file(path: p, digest: d) }),
+      ) {
+        SnapshotIdentityRefused { cause } => SubjectManifestRefused { detail: join(["manifest identity refused: ", snapshot_identity_refusal_detail(cause: cause)], "") }
+        SnapshotIdentified { manifest, files, composition: _ } =>
+          match compute_toolchain_file_text(directory: directory, paths: paths) {
+            SubjectToolchainUnread { detail } => SubjectManifestRefused { detail: detail }
+            SubjectToolchainText { text } => SubjectManifestRead { manifest: source_manifest_ref(manifest: manifest), files: files, toolchain_file: text }
+          }
+      }
+  }
+}
+
+// THE DIRTY-WORKTREE ADAPTER: a worker's worktree path, hashed where it stands. Provenance records the
+// path and is never part of the key. CONSUMER: PR 3's attempt controller (bold-dove-340) resolves a
+// validate_worktree request's identity through this; PR 2 admits no caller because routing a worktree
+// into the provider is controller code. Its executing route today is the shared capture
+// (compute_manifest_of_files -> snapshot_manifest_identity) that work_source_identity_witness drives.
+fn compute_resolve_worktree_subject(instance: HostDashboardInstance, worktree: String) -> SubjectResolution {
+  match compute_directory_manifest(instance: instance, directory: worktree) {
+    SubjectManifestRefused { detail } => SubjectResolutionRefused { detail: detail }
+    SubjectManifestRead { manifest, files: _, toolchain_file } => SubjectResolved { subject: WorkSubject { manifest: manifest, provenance: WorktreeProvenance { path: worktree } }, toolchain_file: toolchain_file }
+  }
+}
+
+// THE CLEAN-TREE ADAPTER (option A of the PR 2 ruling): the commit is checked out detached into a
+// throwaway directory unique to the call (named for its tree, made by mktemp -d), that directory is hashed by the same capture, and the
+// directory is removed. The identity-keyed checkout the run uses later comes from the same commit, so
+// the bytes hashed are the bytes that run. KNOWN DUPLICATE MATERIALIZATION: the provider checks the
+// commit out twice. Its dissolution trigger is PR 5's executor extraction, which computes identity
+// from the executor's own single materialization (recorded on
+// gunbc.plans.durable_work_program_boundaries).
 fn compute_resolve_subject(instance: HostDashboardInstance, commit: String) -> SubjectResolution {
-  match compute_exec(program: compute_program(instance: instance, cap: GitWorkspaceCapability), workdir: instance.repo_root as String, args: ["show", "-s", "--format=%T", commit]) {
+  let git = compute_program(instance: instance, cap: GitWorkspaceCapability)
+  match compute_exec(program: git, workdir: instance.repo_root as String, args: ["show", "-s", "--format=%T", commit]) {
     ComputeExecFailed { exit_code, stdout: _, stderr } => SubjectResolutionRefused { detail: join(["git show ", commit, " exited ", to_string(value: exit_code), ": ", stderr], "") }
     ComputeExecOk { stdout, stderr: _ } =>
       match git_object_id_from_untagged_hex(hex: trim(s: stdout)) {
         Absent => SubjectResolutionRefused { detail: join(["git show printed no tree object id for ", commit, ": ", trim(s: stdout)], "") }
-        Present { value: tree } => SubjectResolved { subject: ExactTree { tree: tree } }
+        Present { value: tree } => {
+          let env = env_absolute_program().invocation as String
+          let parent = join([compute_root(instance: instance) as String, "/subject"], "")
+          // A UNIQUE scratch per call (mktemp -d), never keyed by the tree: two callers holding one commit
+          // must not share a checkout, and a crashed call leaves a directory no later call collides with.
+          let made = match compute_exec(program: env, workdir: instance.repo_root as String, args: ["mkdir", "-p", parent]) {
+            ComputeExecFailed { exit_code, stdout: _, stderr } => ComputeExecFailed { exit_code: exit_code, stdout: "", stderr: stderr }
+            ComputeExecOk { stdout: _, stderr: _ } => compute_exec(program: env, workdir: instance.repo_root as String, args: ["mktemp", "-d", join([parent, "/", git_object_id_wire_hex(oid: tree) as String, ".XXXXXX"], "")])
+          }
+          match made {
+            ComputeExecFailed { exit_code, stdout: _, stderr } => SubjectResolutionRefused { detail: join(["subject scratch directory could not be made (exit ", to_string(value: exit_code), "): ", stderr], "") }
+            ComputeExecOk { stdout: made_path, stderr: _ } => compute_resolve_in_scratch(instance: instance, commit: commit, tree: tree, scratch: trim(s: made_path))
+          }
+        }
       }
+  }
+}
+
+fn compute_resolve_in_scratch(instance: HostDashboardInstance, commit: String, tree: GitObjectId, scratch: String) -> SubjectResolution {
+  let git = compute_program(instance: instance, cap: GitWorkspaceCapability)
+  let added = compute_exec(program: git, workdir: instance.repo_root as String, args: shape_git_worktree_add_detached_argv(path: scratch as FilePath, commit: commit as GitRef))
+          match added {
+            ComputeExecFailed { exit_code, stdout: _, stderr } => SubjectResolutionRefused { detail: join(["git worktree add (subject scratch) exited ", to_string(value: exit_code), ": ", stderr], "") }
+            ComputeExecOk { stdout: _, stderr: _ } => {
+              let reading = compute_directory_manifest(instance: instance, directory: scratch)
+              let removed = compute_exec(program: git, workdir: instance.repo_root as String, args: ["worktree", "remove", "--force", scratch])
+              match reading {
+                SubjectManifestRefused { detail } => SubjectResolutionRefused { detail: detail }
+                SubjectManifestRead { manifest, files: _, toolchain_file } =>
+                  match removed {
+                    ComputeExecFailed { exit_code, stdout: _, stderr } => SubjectResolutionRefused { detail: join(["the subject scratch checkout could not be removed (git worktree remove exited ", to_string(value: exit_code), "): ", stderr], "") }
+                    ComputeExecOk { stdout: _, stderr: _ } => SubjectResolved { subject: WorkSubject { manifest: manifest, provenance: GitTreeProvenance { tree: tree } }, toolchain_file: toolchain_file }
+                  }
+              }
+            }
   }
 }
 
@@ -463,9 +669,6 @@ fn compute_dependency_program(dependency: ComputeDependency, bin: GunbcBinary) -
   }
 }
 
-fn compute_unit_name(identity_hex: String) -> NonEmptyStr {
-  join(["gunbc-compute-", identity_hex], "") as NonEmptyStr
-}
 
 // THE PROPERTIES ARE A FOLD SO THE BOUND POLICY IS CHECKABLE, and the fold is
 // gunbc.compute.unit_bounds compute_grant_unit_properties -- the one authority from a grant to a
@@ -579,21 +782,49 @@ fn compute_user_sccache_server_uds(user_runtime_dir: FilePath) -> NonEmptyStr {
   join([user_runtime_dir as String, "/sccache.sock"], "") as NonEmptyStr
 }
 
-fn compute_launching_user_runtime_dir() -> FilePath? {
+// THE UID THIS PROCESS RUNS AS, from /proc/self/status (proc(5)) -- THE ONE SPELLING of that read.
+// The per-user runtime directory below and the seat's exit-spool directory are both derived from THIS
+// function, so they cannot disagree about how the uid is obtained (gunbc.design_argument::single_authority, one fact in one place).
+// Stated precisely, because an earlier draft of this comment overclaimed: this is one spelling, not one
+// READ -- each caller parses /proc/self/status for itself, and nothing memoizes it. The two directories
+// still agree because a process's effective uid does not change under it, so two reads inside one launch
+// return the same number; and if a read fails, its caller refuses TYPED (UidUnreadable, and the door
+// answers SeatStopRecordNoUid) rather than falling back, so a seat is never charged against a directory
+// whose owner is guessed.
+fn compute_launching_uid() -> Int? {
   let status = Filesystem.Read(path: "/proc/self/status")
   if !status.success {
     none
   } else {
-    match procfs_status_effective_uid(content: status.content) {
-      Absent => none
-      Present { value: uid } => {
-        let runtime_dir = join(["/run/user/", to_string(value: uid)], "") as FilePath
-        let listed = Filesystem.List(path: runtime_dir)
-        if listed.success {
-          Present { value: runtime_dir }
-        } else {
-          none
-        }
+    procfs_status_effective_uid(content: status.content)
+  }
+}
+
+// THE DIRECTORY THIS PROVIDER'S SEATS WRITE THEIR EXIT RECORDS INTO, and may read them back from. A
+// process that cannot name its own uid reads NO records: it is not permitted to fall back to the spool
+// root, to another uid's directory, or to "there is no record" -- each of those would let an absence this
+// provider never observed stand for a seat's end. The caller keeps the seat and says why.
+type ComputeSeatExitSpoolDir
+  = ComputeSeatExitSpoolDirResolved { dir: String }
+  | ComputeSeatExitSpoolDirUidUnreadable { cause: String }
+
+fn compute_seat_exit_spool_dir(instance: HostDashboardInstance) -> ComputeSeatExitSpoolDir {
+  match compute_launching_uid() {
+    Absent => ComputeSeatExitSpoolDirUidUnreadable { cause: "/proc/self/status names no effective uid for this provider process" }
+    Present { value: uid } => ComputeSeatExitSpoolDirResolved { dir: compute_attempt_exit_spool_done_dir(instance: instance, uid: uid) }
+  }
+}
+
+fn compute_launching_user_runtime_dir() -> FilePath? {
+  match compute_launching_uid() {
+    Absent => none
+    Present { value: uid } => {
+      let runtime_dir = join(["/run/user/", to_string(value: uid)], "") as FilePath
+      let listed = Filesystem.List(path: runtime_dir)
+      if listed.success {
+        Present { value: runtime_dir }
+      } else {
+        none
       }
     }
   }
@@ -608,23 +839,105 @@ fn compute_unit_sccache_setenv(user_runtime_dir: FilePath) -> List<SystemdSetenv
   ]
 }
 
-// THE ONLY EXTENSION OF THE UNIT'S PROPERTIES, CLOSED. compute_unit_properties is the one authority
-// tying the memory grant to the unit, so a caller cannot append properties: it picks an arm here, and
-// compute_run_unit alone maps the arm to a property. SccacheStatsAtStop is ExecStop= (systemd.service(5)),
+// THE ONLY EXTENSION OF THE UNIT'S PROPERTIES, CLOSED AND COMPOSABLE. compute_unit_properties is the one
+// authority tying the memory grant to the unit, so a caller cannot append properties: it picks ARMS here,
+// and compute_run_unit alone maps each arm to a property. SccacheStatsAtStop is ExecStop= (systemd.service(5)),
 // which runs after the main process and before KillMode reaps the unit's sccache server.
-type ComputeUnitStopObservation = NoStopObservation | SccacheStatsAtStop
+// AttemptExitRecordAtStop is ExecStopPost= (the same section): the seat's own record of how its main
+// process ended, written by the manager that ran it, with the four stop variables left as the manager's
+// words. It COMPOSES with the stats arm rather than replacing it -- a seat that reports its sccache hit
+// rate and a seat whose end is observable are two facts, not a choice.
+type ComputeUnitStopObservation
+  = NoStopObservation
+  | SccacheStatsAtStop
+  | AttemptExitRecordAtStop { done_dir: String, identity: String, record_owner: PosixOwnerNames }
 
-fn compute_stop_observation_properties(observation: ComputeUnitStopObservation) -> List<SystemdRunProperty> {
+// NONE WHEN AN ARM CANNOT BE RENDERED, and compute_run_unit then refuses the LAUNCH. A seat started with a
+// silently dropped stop hook is a seat whose end can never be observed -- the exact condition srv1 holds
+// two 22 GiB seats over -- so a hook that cannot be written is a reason not to start the seat, not a
+// reason to start it quietly without one.
+type StopObservationRendering
+  = StopObservationProperty { property: SystemdUnitProperty, value: NonEmptyStr }
+  | StopObservationContributesNothing
+  | StopObservationRefused { cause: String }
+
+// A stop observation either yields the unit properties it contributes, or it says WHY it cannot. The
+// refusal path carries the causes, never a constant: a launch that is refused because a stop hook
+// could not be rendered must tell the operator WHICH render failed and for what reason, or the
+// refusal is unfalsifiable. Every cause the batch produced is kept, so a seat with two broken
+// observations reports both.
+type StopObservationProperties
+  = StopObservationPropertiesOk { properties: List<SystemdRunProperty> }
+  | StopObservationPropertiesRefused { causes: List<String> }
+
+fn compute_stop_observation_rendering(observation: ComputeUnitStopObservation) -> StopObservationRendering {
   match observation {
-    NoStopObservation => []
-    SccacheStatsAtStop => [NamedUnitSetting { property: ExecStopProperty, value: join([sccache_installed_binary_path, " --show-stats"], "") as NonEmptyStr }]
+    // NO OBSERVATION CONTRIBUTES NOTHING: it is not an empty ExecStop= line on the unit.
+    NoStopObservation => StopObservationContributesNothing
+    // The stats arm stays on ExecStop (systemd.service(5)): it runs after the main process and BEFORE
+    // KillMode reaps the unit's sccache server. Moving it to ExecStopPost would change WHEN it is taken,
+    // and those stats are read to explain a cache, not to witness an end.
+    SccacheStatsAtStop =>
+      StopObservationProperty { property: ExecStopProperty, value: join([sccache_installed_binary_path, " --show-stats"], "") as NonEmptyStr }
+    // The record arm is ExecStopPost, the manager's LAST act for the unit: the record reports the unit's
+    // end, including the exit status the manager must finish collecting before it can substitute the
+    // variables this line carries.
+    AttemptExitRecordAtStop { done_dir, identity, record_owner } => match compute_attempt_exit_hook(done_dir: done_dir, identity: identity, record_owner: record_owner) {
+      AttemptExitHookRefused { reason } => StopObservationRefused { cause: reason }
+      AttemptExitHookRendered { exec_line } => StopObservationProperty { property: ExecStopPostProperty, value: exec_line }
+    }
+  }
+}
+
+fn compute_stop_observation_properties(observations: List<ComputeUnitStopObservation>) -> StopObservationProperties {
+  let rendered = map(observations, o => compute_stop_observation_rendering(observation: o))
+  if any(rendered, r => match r {
+    StopObservationRefused { cause: _ } => true
+    StopObservationProperty { property: _, value: _ } => false
+    StopObservationContributesNothing => false
+  }) {
+    StopObservationPropertiesRefused {
+      causes: flat_map(rendered, r => match r {
+        StopObservationRefused { cause } => [cause]
+        StopObservationProperty { property: _, value: _ } => [] as List<String>
+        StopObservationContributesNothing => [] as List<String>
+      }),
+    }
+  } else {
+    StopObservationPropertiesOk { properties: flat_map(rendered, r => match r {
+      StopObservationProperty { property, value } => [NamedUnitSetting { property: property, value: value }]
+      StopObservationContributesNothing => [] as List<SystemdRunProperty>
+      StopObservationRefused { cause: _ } => [] as List<SystemdRunProperty>
+    }) }
+  }
+}
+
+// THE SEAT'S OWN STOP OBSERVATIONS. The exit record is always asked for, so a seat's end can be OBSERVED
+// rather than inferred from a manager's bookkeeping about a unit it no longer lists. A provider that
+// cannot name its own uid has no directory a record could be written to and read back from, so its seats
+// launch with no hook and their end rests on their own completed wait alone -- which is all it rests on
+// today; the door keeps the seat on the unreadable spool rather than inventing an absence.
+//
+// WHY THIS ARM LAUNCHES AND AN UNRENDERABLE HOOK DOES NOT. Both end with a unit that has no exit hook, so
+// the difference has to be stated. An observation we ASKED FOR and cannot render is a defect in our own
+// path: the caller declared that this seat's end must be observable, and quietly starting it without the
+// hook would replace a bug we can see with a seat we can never settle -- the exact condition srv1 holds two
+// 22 GiB seats over. Refusing the launch surfaces it. A missing uid is not our defect: it is a process that
+// is not the deployment's service user, so there is no per-uid spool for this provider anywhere -- the hook
+// has nowhere to be written even if it rendered. No claim of observability is made for such a seat, the door
+// answers SeatStopRecordNoUid and keeps it charged, and its end still comes from the provider's own wait on
+// the seat it started. That is a deployment the operator has to fix, not a seat we may settle on a guess.
+fn compute_seat_stop_observations(instance: HostDashboardInstance, identity: String) -> List<ComputeUnitStopObservation> {
+  match compute_seat_exit_spool_dir(instance: instance) {
+    ComputeSeatExitSpoolDirResolved { dir } => [AttemptExitRecordAtStop { done_dir: dir, identity: identity, record_owner: instance.directory_owner }]
+    ComputeSeatExitSpoolDirUidUnreadable { cause: _ } => []
   }
 }
 
 // launcher_env is applied to the systemd-run process via env(1), not as unit --setenv. Empty is
 // inherit; a cold instrument supplies XDG_RUNTIME_DIR / DBUS_SESSION_BUS_ADDRESS when the job env
 // has none. One fold: production and the instrument both call this.
-fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, identity_hex: String, argv: List<String>, env: List<SystemdSetenvBinding>, launcher_env: List<EnvBinding>, granted: Kibibyte, user_runtime_dir: FilePath, stop_observation: ComputeUnitStopObservation, path_virtualization: ComputeUnitPathVirtualization) -> ComputeUnitRunReading {
+fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, identity_hex: String, argv: List<String>, env: List<SystemdSetenvBinding>, launcher_env: List<EnvBinding>, granted: Kibibyte, user_runtime_dir: FilePath, stop_observations: List<ComputeUnitStopObservation>, path_virtualization: ComputeUnitPathVirtualization) -> ComputeUnitRunReading {
   let systemd_run = match instance.toolchain.systemd_run { Present { value: p } => p as String  Absent => "" }
   if systemd_run == "" {
     ComputeUnitRunExecuted { run: ComputeUnitRun {
@@ -636,9 +949,14 @@ fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, iden
       ComputeExecOk { stdout: v, stderr: _ } => v
       ComputeExecFailed { exit_code: _, stdout: _, stderr: _ } => ""
     })
+  match compute_stop_observation_properties(observations: stop_observations) {
+    StopObservationPropertiesRefused { causes } => ComputeUnitStopObservationRefused {
+      cause: join(["a stop observation of this seat could not be rendered, and a seat started without an observable end is the defect this route exists to close; the renders that refused said: ", join(causes, " | ")], ""),
+    }
+    StopObservationPropertiesOk { properties: stop_properties } =>
     match gunbc_user_work_wait_command(
       unit: compute_unit_name(identity_hex: identity_hex),
-      properties: concat(compute_unit_properties(layout: layout, granted: granted, path_virtualization: path_virtualization), compute_stop_observation_properties(observation: stop_observation)),
+      properties: concat(compute_unit_properties(layout: layout, granted: granted, path_virtualization: path_virtualization), stop_properties),
       setenv_bindings: concat(
         concat(
           [
@@ -671,6 +989,7 @@ fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, iden
       }
     }
   }
+}
 }
 
 // ── WHETHER THE ATTEMPT HAS ENDED AND ITS UNIT IS GONE ────────────────────────────────────────
@@ -712,7 +1031,7 @@ fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, iden
 // EVERYTHING ELSE KEEPS THE CHARGE: populated, an unreadable manager, an unreadable cgroup, an
 // undecodable body, a property that came back empty. "I could not establish it" is what a lost
 // launcher, a pending job and a broken bus all look like, and reading any of them as permission to
-// take the memory back is the absorbing fallback DESIGN 5 forbids.
+// take the memory back is the absorbing fallback gunbc.design_argument::fail_closed forbids.
 type UnitTermination
   = UnitAttemptCompleted { detail: String }
   | UnitAbsentAuthoritatively { detail: String }
@@ -736,8 +1055,101 @@ type UnitPropertyReading {
 // drive the OBSERVATION-TO-DECISION boundary -- a failed query whose text looks like an answer, a
 // property that came back empty, a pending start -- instead of only the variant-to-release mapping,
 // which cannot see any of those (side-chat review at 5ee0cce).
+// WHAT THE SEAT'S OWN STOP HOOK LEFT BEHIND, read from the directory its uid owns. Five answers, because
+// the difference between them is exactly what the door is entitled to conclude:
+//   Found                 -- the hook ran and wrote THIS seat's record; its end is the observed fact.
+//   None                  -- the directory was read and holds no record for this seat: the hook did not
+//                            run, or had not yet. The unit's absence from the manager is then NOT an
+//                            observation of an end.
+//   Unreadable            -- the listing failed. No conclusion, and never reported as "no record".
+//   WriterUnsubstituted   -- an entry for this seat still spells the stop variables in its name, which
+//                            names its WRITER as broken (srv1 2026-10-28). It is not an answer about the
+//                            holder: a broken artifact cannot show a process alive, and cannot show one dead.
+//   NoUid                 -- this process cannot name its own uid, so it has no directory to read at all:
+//                            a defect in the READER's deployment, and it is only ever issued by
+//                            compute_seat_stop_record after trying to name this process's uid.
+//   NotConsulted          -- THIS ROUTE opened no seat's spool at all: its reading is the manager only.
+//                            It is a fact about the route, never about the seat, and it must not be dressed
+//                            as NoUid -- review 90511 caught that sending an operator to fix a uid that
+//                            exists. It never frees a charge by itself: like every arm except Found, it
+//                            leaves the decision to the accounts that hold real evidence.
+type SeatStopRecord
+  = SeatStopRecordFound { invocation_id: String, end: String }
+  | SeatStopRecordNone
+  | SeatStopRecordUnreadable { cause: String }
+  | SeatStopRecordWriterUnsubstituted { entries: List<String>, variables: List<String> }
+  | SeatStopRecordNoUid { cause: String }
+  | SeatStopRecordNotConsulted { reason: String }
+
+fn seat_stop_record_wire(r: SeatStopRecord) -> String {
+  match r {
+    SeatStopRecordFound { invocation_id, end } => join(["recorded end ", end, " under invocation ", invocation_id], "")
+    SeatStopRecordNone => "no record for this seat"
+    SeatStopRecordUnreadable { cause } => join(["the spool could not be read: ", cause], "")
+    SeatStopRecordWriterUnsubstituted { entries, variables } =>
+      join(["an entry still spells the stop variables ", join(variables, ","), " -- its writer did not go through the manager's substitution: ", join(entries, ",")], "")
+    SeatStopRecordNoUid { cause } => join(["no uid for this provider process: ", cause], "")
+    SeatStopRecordNotConsulted { reason } => join(["this route consulted no exit spool: ", reason], "")
+  }
+}
+
+// THE SEAT'S RECORD, READ ONCE PER DECISION, from its own uid's directory only. The subject test is the
+// seat's identity: an entry for another seat, or a roadmap attempt's record, or an entry too broken to say
+// who wrote it, is not this seat's end.
+fn compute_seat_stop_record(instance: HostDashboardInstance, identity_hex: String) -> SeatStopRecord {
+  match compute_seat_exit_spool_dir(instance: instance) {
+    ComputeSeatExitSpoolDirUidUnreadable { cause } => SeatStopRecordNoUid { cause: cause }
+    ComputeSeatExitSpoolDirResolved { dir } =>
+      match attempt_exit_record_matching(
+        // The match is on WHOSE seat the entry names. The entry subject's invocation is a positional part
+        // of the raw name (its purpose is to say "a record exists with these parts" before decoding, and to
+        // name an unusable one in the residue); the invocation that ends up in the freeing detail is the
+        // record's own single copy -- AttemptExitSubject carries no second one.
+        matches: s => match s {
+          ComputeEntrySubject { identity, invocation_id: _ } => identity == identity_hex
+          RoadmapEntrySubject { node_id: _, attempt_key: _, role: _, invocation_id: _ } => false
+          OtherEntrySubject { parts: _ } => false
+        },
+        listings: [compute_attempt_exit_record_listing(done_dir: dir)],
+      ) {
+        AttemptExitRecordFound { record } =>
+          SeatStopRecordFound { invocation_id: record.invocation_id, end: seat_stop_record_end_wire(end: record.end) }
+        AttemptExitRecordNone => SeatStopRecordNone
+        AttemptExitRecordUnreadable { reason } => SeatStopRecordUnreadable { cause: reason }
+        AttemptExitRecordWriterUnsubstituted { entries, variables } =>
+          SeatStopRecordWriterUnsubstituted { entries: entries, variables: variables }
+      }
+  }
+}
+
+fn seat_stop_record_end_wire(end: AttemptProcessEnd) -> String {
+  match end {
+    AttemptProcessExitedWith { status } => join(["exit(", to_string(value: status), ")"], "")
+    AttemptProcessSignaled { signal } => join(["signal(", linux_standard_signal_wire_name(signal: signal), ")"], "")
+  }
+}
+
+// THE PROVIDER'S OWN WAIT ON THE UNIT IT STARTED, AS THE CALLER THAT RAN IT RECORDS IT.
+//
+// ONE FACT, TWO POSSIBLE KNOWERS. The provider that ran `systemd-run --wait` holds the answer: its
+// summary is what compute_attempt_completed reads, and it is the only reading that ever licensed a
+// release without the stop hook. Recovery is NOT a knower -- it reads the attempt slot, which records
+// the launch, the grant and the owner, and no wait -- so the answer here is a coproduct rather than a
+// Bool. A Bool would have to be invented by whoever cannot answer, and an invented `true` is the leak
+// this file exists to close while an invented `false` is a seat nobody will ever free.
+type AttemptCompletion
+  = AttemptWaitRecorded { completed: Bool }
+  | AttemptWaitUnrecorded { cause: String }
+
 type UnitObservations {
-  attempt_completed: Bool
+  // THE SEAT'S OWN WAIT, as the provider that ran it records it (see AttemptCompletion). A coproduct
+  // rather than a Bool because the route that never ran one must be able to say so; the field below it
+  // travels for the same reason the fold is pure and is called by tests with the readings it decides on.
+  attempt: AttemptCompletion
+  // THE SEAT'S OWN RECORD, read before the fold decides. It is a field rather than something the fold
+  // reads itself because the fold is pure and is called by tests with the readings it is deciding on:
+  // what the door saw has to travel with the decision it informs.
+  stop_record: SeatStopRecord
   load_state: UnitPropertyReading
   control_group: UnitPropertyReading
   events: UnitPropertyReading
@@ -755,11 +1167,13 @@ type UnitPopulation
   | PopulationUnknown { detail: String }
 
 // IT TAKES THE TWO READINGS IT USES AND NOT THE PRODUCER'S WHOLE OBSERVATION RECORD, and that is
-// a structural fact rather than tidiness. UnitObservations carries `attempt_completed` -- the
-// first-hand fact that only the process which ran `systemd-run --wait` can have. If this fold took
+// a structural fact rather than tidiness. UnitObservations carries `attempt` -- the first-hand fact
+// that only the process which ran `systemd-run --wait` can have (AttemptCompletion, whose Unrecorded
+// arm exists so a route that never ran one can say so instead of answering `false`). If this fold took
 // that record, RECOVERY WOULD HAVE TO CONSTRUCT ONE, and a caller that must supply a field it
 // cannot observe supplies a fabricated value; the honest-looking `false` is still a value recovery
-// invented. Narrowing the parameters means recovery has no carrier for first-hand completion
+// invented. That is why the recovery mapping below calls the shared rule with AttemptWaitUnrecorded
+// ITSELF: one rule, and the carrier still belongs to the provider alone. Narrowing the parameters means recovery has no carrier for first-hand completion
 // anywhere in its route -- the distinction is unwritable rather than merely unwritten
 // (ruling, loyal-swift-608, 2026-09-22: make the difference structural or the two folds can come
 // to disagree about the same facts, which is the moment they become two authorities for one
@@ -806,41 +1220,117 @@ fn unit_termination_decide(o: UnitObservations) -> UnitTermination {
 
 // The cgroup is not confirmed-occupied: the termination is decided from the manager's record and
 // the attempt's completion, with the population's own reading as the located detail.
+// WHEN THE STOP HOOK CANNOT SPEAK, THIS IS THE ONE RULE THAT ANSWERS WHETHER THE SEAT IS OVER. Both
+// folds ask it and neither answers it themselves, because the answer is one fact and the folds differ
+// only in which arm of their own type it becomes -- so the rule is written once (gunbc.design_argument::single_authority) and cannot
+// drift between settlement and recovery.
+//
+// Its premise: the manager that ran the unit reports no unit of that name (or still lists it) AND the
+// hook left nothing to read. The only admissible account of the end then is the seat's OWN WAIT, and it
+// is admissible exactly where it always was -- beside a cgroup the kernel confirms empty. A population
+// that is not confirmed empty establishes nothing; a wait that did not complete establishes nothing; a
+// route that never held a wait establishes nothing. Each answers NotEstablished CARRYING WHY AND WHAT
+// WOULD CHANGE IT, so the seat stays charged and the outcome says so out loud: gunbc.design_argument::fail_closed's budget-bounded
+// interim fallback, with its dissolution trigger named rather than a silence that keeps a seat until a
+// human notices.
+//
+// THIS IS THE RELEASE ROUTE FOR EVERY SEAT THAT HAS NO RECORD: one launched before the stop hook
+// existed, one whose ExecStopPost write failed, and one whose provider cannot name the uid whose exit
+// spool it would read. Before this rule those groups could not be released at all, which is the shape
+// srv1's two 22 GiB seats are in -- and shipping it as the permanent outcome for the whole fleet is what
+// the review of #15640 caught (artifact 89894).
+type SeatEndWithoutRecord
+  = EstablishedByWait { detail: String }
+  | NotEstablished { reason: String }
+
+fn seat_end_without_record(attempt: AttemptCompletion, population: UnitPopulation, missing: String) -> SeatEndWithoutRecord {
+  match attempt {
+    AttemptWaitUnrecorded { cause } =>
+      NotEstablished { reason: join([missing, ", and no wait was ever recorded for this seat (", cause, ") -- the seat releases when the stop hook's record appears, or when a provider that ran the wait records its success with the cgroup confirmed empty"], "") }
+    AttemptWaitRecorded { completed: false } =>
+      NotEstablished { reason: join([
+        missing,
+        ", the attempt did not complete, so its end is not established -- ",
+        match population { PopulationEmpty { detail: pd } => join([pd, ", but a realized cgroup can be empty between execs and emptiness does not cover a pending job"], "")  PopulationUnknown { detail: pd } => pd  PopulationOccupied { detail: pd } => pd },
+      ], "") }
+    AttemptWaitRecorded { completed: true } =>
+      match population {
+        PopulationEmpty { detail: pd } =>
+          EstablishedByWait { detail: join([pd, " and the provider's own systemd-run --wait returned success under ", systemd_unit_property_wire(property: compute_kill_mode_property) as String, "=", compute_kill_mode_value() as String, "; ", missing], "") }
+        PopulationUnknown { detail: pd } =>
+          NotEstablished { reason: join([missing, ", the wait says success but the population could not be read (", pd, ") -- a bound KillMode says what systemd WILL do, not what is true, so an unreadable cgroup establishes nothing even beside a completed wait"], "") }
+        PopulationOccupied { detail: pd } =>
+          NotEstablished { reason: join([missing, ", the wait says success but the cgroup is STILL POPULATED (", pd, ") -- the kernel outranks every bookkeeping about the end"], "") }
+      }
+  }
+}
+
+// THE SHARED RULE, IN THE SETTLEMENT FOLD'S ARMS.
+fn unit_termination_by_wait(attempt: AttemptCompletion, population: UnitPopulation, missing: String) -> UnitTermination {
+  match seat_end_without_record(attempt: attempt, population: population, missing: missing) {
+    EstablishedByWait { detail } => UnitAttemptCompleted { detail: detail }
+    NotEstablished { reason } => UnitTerminationUnavailable { detail: reason }
+  }
+}
+
+// THE SHARED RULE, IN THE RECOVERY FOLD'S ARMS -- AND RECOVERY BRINGS NO WAIT, SO THE FOLD IS THE ONE
+// THAT SAYS SO. Ruling loyal-swift-608 (2026-09-22) forbids giving recovery a carrier for the provider's
+// first-hand completion: a caller forced to supply a reading it cannot observe supplies a plausible
+// fabrication, and the honest-looking `false` is still a fabrication. So no parameter here is a
+// completion; the fold answers the shared rule with AttemptWaitUnrecorded out of its own knowledge of
+// what its route can observe. Today's behaviour is kept exactly -- an absent seat with no record stays
+// Unknown to recovery -- while the RULE remains written once. The single case where the two folds can
+// now differ is a recorded wait beside a cgroup confirmed empty, and that difference IS the asymmetry the
+// ruling asked for: it is the provider's fact alone, and manager_unaskable_wet_witness names it as a
+// designed divergence rather than letting it look like an accident.
+fn unit_lifecycle_by_wait(population: UnitPopulation, missing: String) -> UnitLifecycle {
+  match seat_end_without_record(
+    attempt: AttemptWaitUnrecorded { cause: "recovery reads the attempt slot and the manager, and carries no first-hand completion by ruling" },
+    population: population,
+    missing: missing) {
+    EstablishedByWait { detail } => UnitTerminatedSuccess { detail: join([detail, " -- ended on the provider's own wait, with no stop-hook record to bind"], "") }
+    NotEstablished { reason } => UnitLifecycleUnknown { detail: reason }
+  }
+}
+
 fn unit_termination_unconfirmed(o: UnitObservations, population: UnitPopulation) -> UnitTermination {
+      // THE MANAGER'S ABSENCE IS ADMISSIBLE ONLY BESIDE THE HOOK'S RECORD OF THE END IT WAS ASKED TO
+      // REPORT. "not-found" from the user manager says only that THIS manager does not currently list a
+      // unit of that name: it does not say the process ended, and it is exactly the reading srv1 held two
+      // 22 GiB seats on while its ledger kept charging them. Where the stop hook -- run by that same
+      // manager, as the unit's own last act -- wrote the end, absence and record together are the
+      // observation, and the detail names both. Where they do not agree, nothing is freed.
+      // WHEN THE HOOK CANNOT SPEAK THE SEAT'S OWN WAIT IS THE OTHER ADMISSIBLE ACCOUNT, and it is
+      // consulted HERE rather than after this branch: a seat launched before the hook existed has no
+      // record and never will, so deciding an absent seat's end only from the record would make its
+      // charge permanent -- the outcome the reviewer of #15640 caught this fold shipping.
       if o.load_state.queried && trim(s: o.load_state.value) == unit_load_state_absent_wire {
-        UnitAbsentAuthoritatively { detail: join(["LoadState=", unit_load_state_absent_wire, ", so the manager has no record of this unit"], "") }
-      } else if !o.attempt_completed {
-        UnitTerminationUnavailable {
-          detail: join([
-            "the attempt did not complete, so its end is not established -- ",
-            match population { PopulationEmpty { detail: pd } => join([pd, ", but a realized cgroup can be empty between execs and emptiness does not cover a pending job"], "")  PopulationUnknown { detail: pd } => pd  PopulationOccupied { detail: pd } => pd },
-          ], ""),
+        match o.stop_record {
+          SeatStopRecordFound { invocation_id, end } =>
+            UnitAbsentAuthoritatively { detail: join(["LoadState=", unit_load_state_absent_wire, " in the manager that ran it, and its stop hook recorded ", end, " under invocation ", invocation_id], "") }
+          SeatStopRecordNone =>
+            unit_termination_by_wait(attempt: o.attempt, population: population, missing: "the user manager lists no unit of this name and the seat's stop hook left no record")
+          SeatStopRecordUnreadable { cause } =>
+            unit_termination_by_wait(attempt: o.attempt, population: population, missing: join(["the user manager lists no unit of this name and the seat's exit spool could not be read, so the hook says nothing: ", cause], ""))
+          SeatStopRecordWriterUnsubstituted { entries: _, variables: _ } =>
+            unit_termination_by_wait(attempt: o.attempt, population: population, missing: join(["the user manager lists no unit of this name and the only entry for this seat names its own writer as broken, which is evidence about the writer and not about the seat (", seat_stop_record_wire(r: o.stop_record), ")"], ""))
+          SeatStopRecordNoUid { cause } =>
+            unit_termination_by_wait(attempt: o.attempt, population: population, missing: join(["the user manager lists no unit of this name and this provider cannot name the uid whose exit spool it would read: ", cause], ""))
+          // A route that read NO spool is not a route whose uid is broken: the reason names the route, and
+          // the seat's end still comes only from an account that holds evidence -- the hook's record (not
+          // this arm) or the seat's own wait below.
+          SeatStopRecordNotConsulted { reason } =>
+            unit_termination_by_wait(attempt: o.attempt, population: population, missing: join(["the user manager lists no unit of this name and this route read no exit spool at all, so the hook says nothing here: ", reason], ""))
         }
       } else {
-        match population {
-          PopulationEmpty { detail: pd } =>
-            UnitAttemptCompleted {
-              detail: join([
-                "systemd-run --wait returned success under ", systemd_unit_property_wire(property: compute_kill_mode_property) as String, "=", compute_kill_mode_value() as String,
-                " and ", pd,
-              ], ""),
-            }
-          PopulationUnknown { detail: _ } => unit_termination_completed_unread(population: population)
-          PopulationOccupied { detail: _ } => unit_termination_completed_unread(population: population)
-        }
+        // The manager still lists the unit, or its load state could not be read at all: no absence is
+        // claimed, so nothing about the end can come from the manager and the wait is the only account
+        // there is -- with the same demand for a cgroup the kernel confirms empty.
+        unit_termination_by_wait(attempt: o.attempt, population: population, missing: "the unit is still listed by the manager that ran it")
       }
 }
 
-// A completed wait whose population is not a confirmed-empty cgroup: the termination is not established.
-fn unit_termination_completed_unread(population: UnitPopulation) -> UnitTermination {
-  UnitTerminationUnavailable {
-    detail: join([
-      "the attempt completed, but the population could not be read (",
-      match population { PopulationUnknown { detail: pd } => pd  PopulationEmpty { detail: pd } => pd  PopulationOccupied { detail: pd } => pd },
-      ") -- a bound KillMode says what systemd WILL do, not what is true, so an unreadable cgroup establishes nothing even beside a completed wait",
-    ], ""),
-  }
-}
+
 
 // ── THE LIFECYCLE VERDICT, WHICH IS WHAT RECOVERY ASKS AND SETTLEMENT DOES NOT ────────────────
 //
@@ -856,6 +1346,10 @@ fn unit_termination_completed_unread(population: UnitPopulation) -> UnitTerminat
 // unit_population is called by both, so the kernel-outranks-systemd rule has ONE authority.
 type UnitLifecycleObservations {
   load_state: UnitPropertyReading
+  // THE SEAT'S OWN RECORD, for the same reason the termination fold carries it: the two folds must agree
+  // about what a manager's absence is worth, and they can only agree if they are deciding on the same
+  // reading. test.claim.compute.manager_unaskable_wet_witness asserts that agreement as a relation.
+  stop_record: SeatStopRecord
   active_state: UnitPropertyReading
   result: UnitPropertyReading
   population: UnitPopulation
@@ -893,7 +1387,28 @@ fn unit_lifecycle_unpopulated(o: UnitLifecycleObservations) -> UnitLifecycle {
       if !o.load_state.queried {
         UnitLifecycleUnknown { detail: "the user manager could not be queried for this unit's load state" }
       } else if trim(s: o.load_state.value) == unit_load_state_absent_wire {
-        UnitTerminatedCauseUnknown { detail: join(["LoadState=", unit_load_state_absent_wire, ", so the manager has no record of this unit: a transient --collect unit that ran has been removed, and its cause went with it"], "") }
+        // THE SAME RULE AS THE TERMINATION FOLD, DECIDED ON THE SAME READING. A transient --collect unit
+        // that ran really is removed, so not-found CAN be an ending -- but it is also the state of a unit
+        // whose manager restarted, whose unit was masked, or whose name was never this unit's. Only the
+        // stop hook the manager itself ran as the unit's last act separates those, so the ended arm is
+        // issued only beside that record; without it the fold answers Unknown and the seat stays charged.
+        match o.stop_record {
+          SeatStopRecordFound { invocation_id, end } =>
+            UnitTerminatedCauseUnknown { detail: join(["LoadState=", unit_load_state_absent_wire, " in the manager that ran it, and its stop hook recorded ", end, " under invocation ", invocation_id, " -- a transient --collect unit that ran has been removed, and its cause went with it"], "") }
+          SeatStopRecordNone =>
+            unit_lifecycle_by_wait(population: o.population, missing: join(["the manager has no unit by this name and no stop-hook record of its end (", seat_stop_record_wire(r: o.stop_record), "), so whether it ever ran is not established"], ""))
+          SeatStopRecordUnreadable { cause } =>
+            unit_lifecycle_by_wait(population: o.population, missing: join(["the manager has no unit by this name and its exit spool could not be read, so the hook says nothing: ", cause], ""))
+          SeatStopRecordWriterUnsubstituted { entries: _, variables: _ } =>
+            unit_lifecycle_by_wait(population: o.population, missing: join(["the manager has no unit by this name and the only entry for this seat names its own writer as broken, which is evidence about the writer and not about the seat (", seat_stop_record_wire(r: o.stop_record), ")"], ""))
+          SeatStopRecordNoUid { cause } =>
+            unit_lifecycle_by_wait(population: o.population, missing: join(["the manager has no unit by this name and this provider cannot name the uid whose exit spool it would read: ", cause], ""))
+          // Recovery routes that hold a seat read its record through compute_seat_stop_record; the routes
+          // that reach this arm hold no seat and consulted nothing. Their absence claim stays unproven, and
+          // the reason names the route rather than a uid defect that does not exist.
+          SeatStopRecordNotConsulted { reason } =>
+            unit_lifecycle_by_wait(population: o.population, missing: join(["the manager has no unit by this name and this route read no exit spool at all: ", reason], ""))
+        }
       } else if !o.active_state.queried {
         UnitLifecycleUnknown { detail: "the unit is known to the manager but its active state could not be read" }
       } else if trim(s: o.active_state.value) == unit_active_state_failed_wire {
@@ -915,9 +1430,10 @@ fn unit_lifecycle_unpopulated(o: UnitLifecycleObservations) -> UnitLifecycle {
 // and never rebuilds it from an identity, a path spelling or a listing: a recovery acting on a name
 // it invented can stop a unit belonging to a different attempt, and the record is the only
 // authority for that binding.
-fn observe_unit_lifecycle(unit: NonEmptyStr) -> UnitLifecycle {
+fn observe_unit_lifecycle(unit: NonEmptyStr, stop_record: SeatStopRecord) -> UnitLifecycle {
   let cg = read_user_unit_property(unit: unit, property: unit_control_group_property)
   unit_lifecycle_decide(o: UnitLifecycleObservations {
+    stop_record: stop_record,
     load_state: read_user_unit_property(unit: unit, property: unit_load_state_property),
     active_state: read_user_unit_property(unit: unit, property: unit_active_state_property),
     result: read_user_unit_property(unit: unit, property: unit_result_property),
@@ -945,7 +1461,7 @@ fn read_user_unit_property(unit: NonEmptyStr, property: NonEmptyStr) -> UnitProp
 // THE DECISION IS SEPARATED FROM THE EFFECT SO A CONTROL CAN REACH IT (review 69970). Fused to the
 // ShowUserProperty call, this mapping was only observable on a host with NO systemd user manager,
 // and the one lane the witness runs on HAS one -- so the claim over it was `if present { true }`,
-// permanently green on the only route that executes it, which DESIGN 4b names as worse than absent
+// permanently green on the only route that executes it, which gunbc.design_argument::guarantee_ladder names as worse than absent
 // because it will be cited as coverage. As a fold over a supplied ShellOutcome it is a claim at ONE
 // INTERFACE with both arms authorable anywhere, and the wet witness keeps the inhabitance half:
 // that the real producer on a host WITH a manager emits ShellExited and reaches a queried reading.
@@ -979,11 +1495,12 @@ fn read_cgroup_events(control_group: UnitPropertyReading) -> UnitPropertyReading
 // THE READS ARE TAKEN UNCONDITIONALLY AND THE FOLD DECIDES. Short-circuiting them here would put
 // half the decision in this function and half in the fold, which is the split that let an empty
 // property become a conclusion in the first place.
-fn observe_unit_termination(identity_hex: String, attempt_completed: Bool) -> UnitTermination {
+fn observe_unit_termination(identity_hex: String, attempt: AttemptCompletion, stop_record: SeatStopRecord) -> UnitTermination {
   let unit = compute_unit_name(identity_hex: identity_hex)
   let cg = read_user_unit_property(unit: unit, property: unit_control_group_property)
   unit_termination_decide(o: UnitObservations {
-    attempt_completed: attempt_completed,
+    attempt: attempt,
+    stop_record: stop_record,
     load_state: read_user_unit_property(unit: unit, property: unit_load_state_property),
     control_group: cg,
     events: read_cgroup_events(control_group: cg),
@@ -1021,7 +1538,7 @@ type OutputsReturn
 // are exactly THREE outcomes they can produce, because the install runs only once the hash
 // succeeded:
 //   NotHashed  the hash refused the output. THE ABSENT-OUTPUT CASE LIVES HERE. It is fail-closed
-//              and never says "absent" (DESIGN 5): a non-zero hash-object means the output could
+//              and never says "absent" (gunbc.design_argument::fail_closed): a non-zero hash-object means the output could
 //              not be hashed -- absent, unreadable, or not a workspace git can read; the reading
 //              cannot tell them apart -- so the refusal carries the exit code and stderr the
 //              execution reported and invents no cause.
@@ -1031,7 +1548,7 @@ type OutputsReturn
 // The two failure arms are not one arm because their causes come from DIFFERENT executions and
 // name different failures; the two shapes the pair could otherwise hold -- hashed-but-never-
 // installed, and install-run-though-hashing-failed -- have NO CONSTRUCTOR here, so the step needs
-// arm to reject them (DESIGN 5: correctness by construction, not validation; DESIGN 4b rung 4:
+// arm to reject them (gunbc.design_argument::fail_closed: correctness by construction, not validation; gunbc.design_argument::guarantee_ladder rung 4:
 // the invalid state has no constructor in the canonical model).
 type ComputeOutputCaptureReadings
   = NotHashed { exit_code: Int, stderr: String }
@@ -1059,7 +1576,7 @@ fn compute_output_capture_step(declared: String, returned: List<WorkOutput>, rea
   }
 }
 
-// THE VERDICT OVER NO DECLARED OUTPUTS -- the empty list, not a refusal (DESIGN 5: a refusal is
+// THE VERDICT OVER NO DECLARED OUTPUTS -- the empty list, not a refusal (gunbc.design_argument::fail_closed: a refusal is
 // never the shape an empty list takes). THE ONE SEED: production's capture fold starts here every
 // time, the readings fold starts here, and the control
 // no_declared_outputs_is_the_empty_return_never_a_refusal drives this same row.
@@ -1067,7 +1584,7 @@ data capture_verdict_over_no_outputs: OutputsReturn = OutputsReturned { outputs:
 
 // ONE CONTINUATION OF THE CAPTURE -- THE RULE, IN ITS ONE COPY. Given the verdict reached so far
 // and a SUPPLIER of the next declared output's readings, produce the next verdict. The match below
-// is the ONLY site in the capture that reads an OutputsReturn to decide anything (DESIGN 3, 4b): on
+// is the ONLY site in the capture that reads an OutputsReturn to decide anything (gunbc.design_argument::single_authority, gunbc.design_argument::guarantee_ladder): on
 // a refusal it propagates the verdict unchanged and NEVER ASKS FOR READINGS -- which is what stops
 // the effects, with no second stop-test beside the sum; on a success it asks for the readings and
 // lets the step decide.
@@ -1114,7 +1631,7 @@ fn compute_capture_readings_of_output(instance: HostDashboardInstance, layout: C
 // THE CAPTURE, THE ROUTE EVERY CALLER USES. Fold the declared outputs through THE ONE CONTINUATION,
 // handing it the effectful readings producer for each output. An absent or unreadable output is a
 // mismatch, never a success with a hole.
-// COST SHAPE (DESIGN 6): one continuation call and one producer call per declared output, on the
+// COST SHAPE (gunbc.design_argument::how_to_work): one continuation call and one producer call per declared output, on the
 // previous verdict -- no accumulated readings list re-folded, no verdict computed twice for one
 // input. WHAT HERMETIC CONTROLS CANNOT REACH: the effects themselves. The instrument that says so is
 // the hermetic claim run itself -- `gunbc run --claim-run --dry-run --function <row>` refuses a row
@@ -1218,7 +1735,7 @@ fn compute_attempt_completed(outcome: WorkOutcome) -> Bool {
 // AND THE ASK SITS AFTER THE CHECKOUT, NOT BEFORE IT, because the window the launch deadline
 // protects IS the checkout. Placing the ask before it made the two steps adjacent -- the gate
 // would have been asked microseconds after the open, so the interleaving it exists to refuse could
-// not occur on the real route and the wall would have been a decoration in the DESIGN 4b sense
+// not occur on the real route and the wall would have been a decoration in the gunbc.design_argument::guarantee_ladder sense
 // (ask whether the RED is authorable). Reserve, open, check out, ASK, spawn: the ask is the last
 // thing that happens before a unit exists.
 //
@@ -1226,7 +1743,7 @@ fn compute_attempt_completed(outcome: WorkOutcome) -> Bool {
 // opened and when its pre-launch window closes -- are instants, and a fabricated instant is worse
 // than no attempt: a zero opened_at makes the window look long expired, so recovery would reclaim
 // the seat out from under a producer that is running normally. There is no honest default, so the
-// arm refuses and releases (DESIGN 5: a failure arm refuses, never widens).
+// arm refuses and releases (gunbc.design_argument::fail_closed: a failure arm refuses, never widens).
 type AttemptGate
   = AttemptGateReady { record: AttemptRecord, generation: CasGeneration }
   | AttemptGateRefused { detail: String }
@@ -1305,25 +1822,70 @@ fn compute_open_attempt(instance: HostDashboardInstance, identity: String, refer
 // ONE AUTHORITY FOR WHERE EXCEEDANCES LIVE. Both the writer and the reader call these two, keyed by
 // the compute root, so the reader cannot list a path nothing writes (review 69829: the reader had
 // re-spelled the join, and a drift would have read as a silent zero).
-data compute_grant_exceeded_dirname: String = "grant-exceeded"
+//
+// THE STORE IS SEALED (sealed-store lane, row S56f70574). One declaration (the member under the compute root), one
+// sealed record, one mint; the per-class directory and the record path derive inside this module and no caller
+// names a root. The layout is unchanged: <compute root>/grant-exceeded/<class>/<reference>, one create-once file per
+// reference, so a record written by the old code reads through this store byte for byte.
+type GrantExceededDeclaration { member: NonEmptyStr }
 
-fn compute_grant_exceeded_parent(root: String) -> String {
-  join([root, "/", compute_grant_exceeded_dirname], "")
+data compute_grant_exceeded_slots: GrantExceededDeclaration = GrantExceededDeclaration { member: "grant-exceeded" as NonEmptyStr }
+
+type GrantExceededStore sole_constructor {
+  root: NonEmptyStr
+  instance: HostDashboardInstance
 }
 
-fn compute_grant_exceeded_dir(root: String, class: WorkClass) -> String {
-  join([compute_grant_exceeded_parent(root: root), "/", work_class_wire(c: class)], "")
+type GrantExceededOpening
+  = GrantExceededOpened { store: GrantExceededStore }
+  | GrantExceededUnopened { detail: String }
+
+// THE ONE MINT. It takes the instance and never a path; the compute root is derived from the instance and must
+// list through the real read (filesystem_listing_observation), so a host whose root cannot be read has no store.
+fn grant_exceeded_store_open(instance: HostDashboardInstance) -> GrantExceededOpening {
+  let root = compute_root(instance: instance)
+  match directory_admission(directory: root as String, label: "compute root") {
+    DirectoryNotAdmitted { detail: d } => GrantExceededUnopened { detail: d }
+    DirectoryAdmitted => GrantExceededOpened { store: GrantExceededStore { root: root, instance: instance } }
+  }
 }
 
-fn compute_grant_exceeded_record(instance: HostDashboardInstance, layout: ComputeLayout, op: WorkOperation, grant: WorkClassGrant, attempt: ComputeAttempt, reference: NonEmptyStr) -> Bool {
-  let dir = compute_grant_exceeded_dir(root: layout.root, class: work_class_of(op: op))
-  if !compute_ensure_dir(instance: instance, path: dir) {
-    false
+fn grant_exceeded_parent(store: GrantExceededStore) -> String {
+  join([store.root as String, "/", compute_grant_exceeded_slots.member as String], "")
+}
+
+fn grant_exceeded_class_dir(store: GrantExceededStore, class: WorkClass) -> String {
+  join([grant_exceeded_parent(store: store), "/", work_class_wire(c: class)], "")
+}
+
+// CREATE-ONCE, THEN READ BACK. Recorded only when the file reads back carrying exactly the bytes committed. A reference
+// already on disk is AlreadyRecorded only when the existing record is READ and is this attempt's: its sample line names this
+// class and this work identity (occupancy alone proves nothing, a foreign record at the path would otherwise count). An
+// unreadable or disagreeing record refuses with its cause, and the existing file is never overwritten.
+fn grant_exceeded_record_is_this_attempts(existing: String, class: WorkClass, identity: String) -> Bool {
+  let wanted = join(["sample: class=", work_class_wire(c: class), " identity=", identity, " "], "")
+  split(s: existing, delimiter: "\n").any(fn(l) { starts_with(s: l, prefix: wanted) })
+}
+
+fn compute_grant_exceeded_record(store: GrantExceededStore, class: WorkClass, reference: NonEmptyStr, identity: String, content: String) -> CreateOnceRecording {
+  let dir = grant_exceeded_class_dir(store: store, class: class)
+  if !compute_ensure_dir(instance: store.instance, path: dir) {
+    CreateOnceRefused { path: dir, cause: join(["cannot ensure ", dir], "") }
   } else {
-    Filesystem.WriteCreateNew(
-      path: join([dir, "/", reference as String], ""),
-      content: compute_peak_sample_wire(instance: instance, identity: work_outcome_identity(o: attempt.outcome), op: op, grant: grant, summary: attempt.summary),
-    ).success
+    let path = join([dir, "/", reference as String], "")
+    match create_once_record(path: path, content: content) {
+      CreateOnceAlreadyRecorded { path: p } => {
+        let back = Filesystem.Read(path: p)
+        if !back.success {
+          CreateOnceRefused { path: p, cause: "the existing exceedance record is unreadable, so it cannot be shown to be this attempt's" }
+        } else if grant_exceeded_record_is_this_attempts(existing: back.content, class: class, identity: identity) {
+          CreateOnceAlreadyRecorded { path: p }
+        } else {
+          CreateOnceRefused { path: p, cause: "the existing exceedance record at this reference is not this attempt's (class or work identity differs)" }
+        }
+      }
+      other => other
+    }
   }
 }
 
@@ -1361,7 +1923,7 @@ fn grant_exceeded_count_decide(root: ComputeListing, parent: ComputeListing, cla
     } else {
       GrantExceededCounted { count: 0 }
     }
-  } else if root.listed && !filesystem_listing_names_entry(listing: root.entries, name: compute_grant_exceeded_dirname) {
+  } else if root.listed && !filesystem_listing_names_entry(listing: root.entries, name: compute_grant_exceeded_slots.member as String) {
     GrantExceededNeverRecorded
   } else {
     GrantExceededUnreadable { detail: if root.listed { parent.error } else { root.error } }
@@ -1373,18 +1935,21 @@ fn compute_list(path: String) -> ComputeListing {
   ComputeListing { listed: l.success, entries: l.entries, error: l.error }
 }
 
-fn compute_grant_exceeded_count(instance: HostDashboardInstance, class: WorkClass) -> GrantExceededCount {
-  let root = compute_root(instance: instance) as String
+fn compute_grant_exceeded_count(store: GrantExceededStore, class: WorkClass) -> GrantExceededCount {
   grant_exceeded_count_decide(
-    root: compute_list(path: root),
-    parent: compute_list(path: compute_grant_exceeded_parent(root: root)),
-    class_dir: compute_list(path: compute_grant_exceeded_dir(root: root, class: class)),
+    root: compute_list(path: store.root as String),
+    parent: compute_list(path: grant_exceeded_parent(store: store)),
+    class_dir: compute_list(path: grant_exceeded_class_dir(store: store, class: class)),
     class: class,
   )
 }
 
 fn compute_grant_exceeded_count_wire(instance: HostDashboardInstance, class: WorkClass) -> String {
-  match compute_grant_exceeded_count(instance: instance, class: class) {
+  let count = match grant_exceeded_store_open(instance: instance) {
+    GrantExceededUnopened { detail: d } => GrantExceededUnreadable { detail: d }
+    GrantExceededOpened { store: s } => compute_grant_exceeded_count(store: s, class: class)
+  }
+  match count {
     GrantExceededCounted { count } => to_string(value: count)
     GrantExceededNeverRecorded => "0 (no exceedance has ever been recorded on this host)"
     GrantExceededUnreadable { detail } => join(["UNREADABLE (", detail, ")"], "")
@@ -1420,8 +1985,21 @@ fn compute_run_opened(
   if !compute_attempt_retries_at_ceiling(grant: grant, attempt: attempt) {
     compute_run_and_settle(instance: instance, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op, dependency: dependency, grant: grant, attempt: attempt, reference: reference, reservation: reservation)
   } else {
-    let counted = compute_grant_exceeded_record(instance: instance, layout: layout, op: op, grant: grant, attempt: attempt, reference: reference)
-    let termination = observe_unit_termination(identity_hex: identity, attempt_completed: compute_attempt_completed(outcome: attempt.outcome))
+    let recorded = match grant_exceeded_store_open(instance: instance) {
+      GrantExceededUnopened { detail: d } => CreateOnceRefused { path: "", cause: d }
+      GrantExceededOpened { store: store } => compute_grant_exceeded_record(
+        store: store, class: work_class_of(op: op), reference: reference, identity: work_outcome_identity(o: attempt.outcome),
+        content: compute_peak_sample_wire(instance: instance, identity: work_outcome_identity(o: attempt.outcome), op: op, grant: grant, summary: attempt.summary),
+      )
+    }
+    let counted = match recorded {
+      CreateOnceRecorded { path: _ } => true
+      CreateOnceAlreadyRecorded { path: _ } => true
+      CreateOnceRefused { path: _, cause: _ } => false
+    }
+    let termination = observe_unit_termination(
+      identity_hex: identity, attempt: AttemptWaitRecorded { completed: compute_attempt_completed(outcome: attempt.outcome) },
+      stop_record: compute_seat_stop_record(instance: instance, identity_hex: identity))
     let returned = if counted && unit_termination_frees_capacity(t: termination) {
       compute_release(reservation: reservation, reason: join(["grant of ", to_string(value: kibibyte_count(k: granted)), " KiB exceeded (oom-kill); retrying this attempt at the ceiling"], "") as NonEmptyStr)
     } else {
@@ -1615,7 +2193,7 @@ fn compute_run_and_settle(
   let outcome = attempt.outcome
   let launched = attempt.gate
   let standing = compute_capacity_standing(instance: instance)
-  let termination = observe_unit_termination(identity_hex: identity, attempt_completed: compute_attempt_completed(outcome: outcome))
+  let termination = observe_unit_termination(identity_hex: identity, attempt: AttemptWaitRecorded { completed: compute_attempt_completed(outcome: outcome) }, stop_record: compute_seat_stop_record(instance: instance, identity_hex: identity))
   let returned = if unit_termination_frees_capacity(t: termination) {
     compute_release(reservation: reservation, reason: join(["work ", work_outcome_ending(o: outcome), ", unit ", unit_termination_wire(t: termination)], "") as NonEmptyStr)
   } else {
@@ -1673,7 +2251,7 @@ fn compute_run_and_settle(
 // built -- the exact vanish this function exists to prevent, one arm along, in the function whose
 // annotation describes the vanish (review 69724). It was latent only because the single call site
 // passes a fresh result, which is the kind of "safe today" that stops being true at the next call
-// site. Two spellings of one join is the fork DESIGN 3 forbids, so there is now one:
+// site. Two spellings of one join is the fork gunbc.design_argument::single_authority forbids, so there is now one:
 // provide_result_with_host_record, which already handled both arms and accumulates rather than
 // letting either side win.
 fn compute_with_lost_host_record(
@@ -1816,7 +2394,7 @@ data compute_stuck_reservation_remedy: String = "THE REMEDY IS compute_recover_c
 // on which the seat stays held.
 //
 // THE COMMENTS ABOVE USED TO SIT INSIDE THIS FUNCTION'S BODY, and the first real compile of this
-// module on srv1 (2026-09-21) is what moved them: DESIGN 4c admits standalone leading blocks
+// module on srv1 (2026-09-21) is what moved them: gunbc.design_argument::source_annotations admits standalone leading blocks
 // attached to MODULE-SCOPE declarations only, and the interpreter route this provider's witnesses
 // run on tolerates a body-position block that `gunbc compile` refuses outright -- 14 blocking
 // errors on a module every witness had reported green.
@@ -1866,7 +2444,7 @@ fn compute_attach_under_lease(materialization: ComputeMaterialization, layout: C
 //
 // compute_refused_unreserved mapped a failed drop to StoreUnavailable; compute_run_and_settle
 // folded it into the consumption note; and the attach path above would have needed a third. Three
-// places deciding one fact is the DESIGN 3 fork, and the thing to delete rather than to keep
+// places deciding one fact is the gunbc.design_argument::single_authority fork, and the thing to delete rather than to keep
 // consistent by hand -- they were already inconsistent, since one turned the failure into a verdict
 // about the work and another did not.
 //
@@ -2277,7 +2855,7 @@ fn compute_store_commit_refusal_detail(r: StoreCommitRefusal) -> String {
 // store address carries when the request is admitted to a store. It names work that is never
 // stored too -- a windowed claim run is a fresh effect with no persistent address -- which is why
 // it is the request's digest and not the admission's.
-fn compute_work_identity(subject: WorkSubject, op: WorkOperation, toolchain: WorkToolchainIdentity) -> String {
+fn compute_work_identity(subject: WorkSubject, op: WorkOperation, toolchain: AdmittedToolchain) -> String {
   request_canonical_digest(req: ComputeWorkRequest { subject: subject, operation: op, toolchain: toolchain }).hex as String
 }
 
@@ -2296,7 +2874,7 @@ fn compute_execution_identity(identity: String, plan: ComputeMaterializationPlan
   }
 }
 
-// WHICH STORE IS POLICY, SO IT ARRIVES AS A PARAMETER (DESIGN section 3: an operation carrying a literal
+// WHICH STORE IS POLICY, SO IT ARRIVES AS A PARAMETER (gunbc.design_argument::single_authority: an operation carrying a literal
 // it should receive has leaked policy). The production caller names compute_store(instance) once, in
 // compute_provide_admitted; the serve-or-produce decision below is the same code for any store, which
 // is what lets its inhabitance claim execute it against a scratch root.
@@ -2307,7 +2885,7 @@ fn compute_provide_leaf(
   commit: String,
   subject: WorkSubject,
   op: WorkOperation,
-  toolchain: WorkToolchainIdentity,
+  toolchain: AdmittedToolchain,
   dependency: ComputeDependency,
 ) -> ProvideResult {
   let request = ComputeWorkRequest { subject: subject, operation: op, toolchain: toolchain }
@@ -2641,7 +3219,7 @@ fn compute_unit_ending(summary: SystemdRunWaitSummary) -> UnitEnding {
 //
 // WHAT THIS STILL DOES NOT ESTABLISH, stated rather than implied: a claim cannot observe WHICH
 // function an effectful call site calls, so bypassing this fold entirely is not detectable here. The
-// pairing obligation (DESIGN 3) for that is the real-path run, which is the srv1 inhabitance run
+// pairing obligation (gunbc.design_argument::witness_one_interface) for that is the real-path run, which is the srv1 inhabitance run
 // this PR declares as not executed.
 fn compute_failed_unit_outcome(summary: SystemdRunWaitSummary, identity: String, exit_code: Int, op: WorkOperation, granted: Kibibyte, grant_was_ceiling: Bool, log_path: String) -> WorkOutcome {
   match compute_unit_ending(summary: summary) {
@@ -2776,10 +3354,18 @@ fn compute_spawn_and_collect(
         gate: launched,
       }
     Present { value: user_runtime_dir } =>
-  match compute_run_unit(instance: instance, layout: layout, identity_hex: identity, argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency: dependency), env: compute_operation_env(op: op), launcher_env: [], granted: granted, user_runtime_dir: user_runtime_dir, stop_observation: NoStopObservation, path_virtualization: NoPathVirtualization) {
+  match compute_run_unit(instance: instance, layout: layout, identity_hex: identity, argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency: dependency), env: compute_operation_env(op: op), launcher_env: [], granted: granted, user_runtime_dir: user_runtime_dir, stop_observations: compute_seat_stop_observations(instance: instance, identity: identity), path_virtualization: NoPathVirtualization) {
     ComputeUnitRunRefused { cause: cause } =>
       ComputeAttempt {
         outcome: WorkRefusedByInfrastructure { identity: identity, cause: UnitLaunchRefused { cause: cause } },
+        summary: compute_unspawned_summary(),
+        gate: launched,
+      }
+    // THE SEAT IS NOT STARTED, AND THE REFUSAL SAYS WHY: no attempt reaches the pool, so no charge is
+    // opened for a run that could never have its end observed.
+    ComputeUnitStopObservationRefused { cause: cause } =>
+      ComputeAttempt {
+        outcome: WorkRefusedByInfrastructure { identity: identity, cause: SeatStopObservationUnrenderable { detail: cause } },
         summary: compute_unspawned_summary(),
         gate: launched,
       }
@@ -2818,28 +3404,43 @@ fn compute_unspawned_summary() -> SystemdRunWaitSummary {
 // request: attached if stored, produced once otherwise, and compile/claims consume its store. A wet
 // claim run is a FreshEffect the ladder answers Recompute (compute_materialization_plan): it runs per
 // occurrence, never reads the store and is never committed, so it is served here rather than refused.
-fn compute_provide(instance: HostDashboardInstance, owner: AttemptOwner, commit: String, op: WorkOperation) -> ProvideResult {
-  compute_provide_admitted(instance: instance, owner: owner, commit: commit, op: op)
+fn compute_provide(instance: HostDashboardInstance, owner: AttemptOwner, commit: String, op: WorkOperation, target: WorkTarget) -> ProvideResult {
+  compute_provide_admitted(instance: instance, owner: owner, commit: commit, op: op, target: target)
 }
 
-fn compute_provide_admitted(instance: HostDashboardInstance, owner: AttemptOwner, commit: String, op: WorkOperation) -> ProvideResult {
-  match compute_observe_toolchain(instance: instance) {
-    ToolchainObservationRefused { detail } =>
-      compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: ToolchainUnobserved { detail: detail } }, subject: ExactTree { tree: compute_null_tree() }, op: op)
-    ToolchainObserved { toolchain } =>
-      match compute_resolve_subject(instance: instance, commit: commit) {
-        SubjectResolutionRefused { detail } =>
-          compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: SubjectUnresolved { detail: detail } }, subject: ExactTree { tree: compute_null_tree() }, op: op)
-        SubjectResolved { subject } =>
-          match compute_store(instance: instance) {
-            Absent =>
-              compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: MaterializationStoreUndeclared { instance_id: instance.instance_id as String } }, subject: subject, op: op)
-            Present { value: store } =>
-              match op {
-                BuildGunbcBinaries { profile: _, bins: _ } =>
-                  compute_provide_leaf(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: NoComputeDependency)
-                CompileEntry { entry: _ } => compute_provide_dependent(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain)
-                RunClaims { entry: _, functions: _, hermetic: _, window: _ } => compute_provide_dependent(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain)
+fn compute_refuse_unresolved(cause: WorkInfrastructureRefusal, op: WorkOperation) -> ProvideResult {
+  let outcome = WorkRefusedByInfrastructure { identity: "", cause: cause }
+  ProvideFresh { outcome: outcome, document: work_outcome_wire_unresolved(o: outcome, op: op), host_record: HostRecordWritten }
+}
+
+// The subject is resolved FIRST because the declared release is read from the subject's own
+// rust-toolchain.toml; the observed toolchain is then admitted against that requirement.
+fn compute_provide_admitted(instance: HostDashboardInstance, owner: AttemptOwner, commit: String, op: WorkOperation, target: WorkTarget) -> ProvideResult {
+  match compute_resolve_subject(instance: instance, commit: commit) {
+    SubjectResolutionRefused { detail } => compute_refuse_unresolved(cause: SubjectUnresolved { detail: detail }, op: op)
+    SubjectResolved { subject, toolchain_file } =>
+          match compute_observe_toolchain(instance: instance) {
+            ToolchainObservationRefused { detail } =>
+              compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: ToolchainUnobserved { detail: detail } }, subject: subject, op: op)
+            ToolchainObserved { toolchain: observed } =>
+      match work_toolchain_requirement(toolchain_file: toolchain_file, target_triple: work_target_triple(target: target, observed: observed)) {
+        ToolchainRequirementRefused { cause } => compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: SubjectUnresolved { detail: cause } }, subject: subject, op: op)
+        ToolchainRequired { requirement } =>
+              match work_toolchain_admit(requirement: requirement, observed: observed) {
+                ToolchainMismatch { field, declared, observed: seen } =>
+                  compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: ToolchainMismatchRefused { field: toolchain_mismatch_field_wire(field: field), declared: declared as String, observed: seen as String } }, subject: subject, op: op)
+                ToolchainAdmitted { admitted: toolchain } =>
+                  match compute_store(instance: instance) {
+                    Absent =>
+                      compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: MaterializationStoreUndeclared { instance_id: instance.instance_id as String } }, subject: subject, op: op)
+                    Present { value: store } =>
+                      match op {
+                        BuildGunbcBinaries { profile: _, bins: _ } =>
+                          compute_provide_leaf(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: NoComputeDependency)
+                        CompileEntry { entry: _ } => compute_provide_dependent(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain)
+                        RunClaims { entry: _, functions: _, hermetic: _, window: _ } => compute_provide_dependent(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain)
+                      }
+                  }
               }
           }
       }
@@ -2851,7 +3452,7 @@ fn compute_provide_admitted(instance: HostDashboardInstance, owner: AttemptOwner
 // the fact that the BUILD failed to record its side facts -- the stuck lease or the lost consumption
 // reading vanished at exactly the seam where nobody was left to report it (side-chat review at
 // f5344b28). The work contract is untouched; only the host-record fact is joined.
-fn compute_provide_dependent(store: ComputeStore, instance: HostDashboardInstance, owner: AttemptOwner, commit: String, subject: WorkSubject, op: WorkOperation, toolchain: WorkToolchainIdentity) -> ProvideResult {
+fn compute_provide_dependent(store: ComputeStore, instance: HostDashboardInstance, owner: AttemptOwner, commit: String, subject: WorkSubject, op: WorkOperation, toolchain: AdmittedToolchain) -> ProvideResult {
   let build = compute_provide_leaf(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: work_default_build(), toolchain: toolchain, dependency: NoComputeDependency)
   if provide_result_succeeded(r: build) {
     let build_identity = provide_result_identity(r: build)
@@ -2874,15 +3475,6 @@ fn compute_provide_dependent(store: ComputeStore, instance: HostDashboardInstanc
   }
 }
 
-// git's null object id: the subject of a refusal that happened before any subject could be read, so
-// the document still has the field and a reader cannot mistake it for a real tree.
-fn compute_null_tree() -> GitObjectId {
-  match git_object_id_from_untagged_hex(hex: "0000000000000000000000000000000000000000") {
-    Present { value: oid } => oid
-    Absent => "0000000000000000000000000000000000000000" as GitObjectId
-  }
-}
-
 // THE CLI A WORKER RUNS. Arguments are strings because that is what `gunbc run --arg` carries; the
 // operation word selects the request, and the receipt (the outcome document) is written where the
 // caller asked so the worker can read it back, because no stdout channel is modeled for a run.
@@ -2890,14 +3482,19 @@ fn compute_null_tree() -> GitObjectId {
 //   entry     = the .dag entry (compile, claims); ignored for build
 //   functions = comma-joined claim functions (claims); ignored otherwise
 //   hermetic  = "true" | "false" (claims)
-fn compute_request_cli(repo_root: String, commit: String, operation: String, entry: String, functions: String, hermetic: String, receipt_path: String) -> ProcessExit {
+//   target    = "host" (the executing host's own triple) | a Rust target triple the work is declared for; no default,
+//               an unpublished spelling refuses (compute_parse_target)
+fn compute_request_cli(repo_root: String, commit: String, operation: String, entry: String, functions: String, hermetic: String, receipt_path: String, target: String) -> ProcessExit {
   match dashboard_instance_for_repo_root(repo_root: repo_root) {
     DashboardInstanceRootUnknown { repo_root: r } => ExitFailure { code: 2, reason: join(["compute: no dashboard instance is rooted at ", r], "") }
     DashboardInstanceResolved { instance } =>
+      match compute_parse_target(target: target) {
+        Absent => ExitFailure { code: 2, reason: join(["compute: target must be host or a Rust target triple extdeps.rust.target_triple publishes; got ", target], "") }
+        Present { value: declared_target } =>
       match compute_parse_operation(operation: operation, entry: entry, functions: functions, hermetic: hermetic) {
         Absent => ExitFailure { code: 2, reason: join(["compute: operation must be build, compile or claims (compile and claims need entry; claims needs functions and hermetic=true|false); got ", operation], "") }
         Present { value: op } => {
-          let result = compute_provide(instance: instance, owner: DirectInvocation { why: "compute_request_cli: an operator or worker invoked the provider directly" }, commit: commit, op: op)
+          let result = compute_provide(instance: instance, owner: DirectInvocation { why: "compute_request_cli: an operator or worker invoked the provider directly" }, commit: commit, op: op, target: declared_target)
           let record = provide_result_host_record(r: result)
           let receipt = Filesystem.Write(path: receipt_path, content: join([provide_result_document(r: result), "\n"], ""))
           let record_note = compute_write_host_record_note(receipt_path: receipt_path, record: record)
@@ -2919,6 +3516,24 @@ fn compute_request_cli(repo_root: String, commit: String, operation: String, ent
           }
         }
       }
+  }
+  }
+}
+
+// THE REQUEST'S DECLARED TARGET FROM ITS CLI WORD: `host` names the executing host's own triple; anything else must be a
+// triple extdeps.rust.target_triple publishes (the one table of Rust's spellings), else no target and the CLI refuses.
+fn compute_parse_target(target: String) -> WorkTarget? {
+  if target == "host" {
+    Present { value: TargetIsExecutingHost }
+  } else {
+    match parse_rust_target_triple(spelling: target) {
+      Absent => none
+      Present { value: triple } =>
+        match render_rust_target_triple(triple: triple) {
+          Absent => none
+          Present { value: spelling } => Present { value: TargetDeclared { triple: spelling } }
+        }
+    }
   }
 }
 
@@ -2947,7 +3562,7 @@ fn compute_request_cli(repo_root: String, commit: String, operation: String, ent
 // THE ATTEMPT SLOTS ARE PER-HOST, NOT PER-IDENTITY, which is why this is its own fold rather than
 // a field read off a layout: a layout is built around one work identity and recovery arrives
 // holding a reference, not an identity. Deriving the root through a layout with an empty identity
-// would work and would also be a second spelling of the same path (DESIGN 3).
+// would work and would also be a second spelling of the same path (gunbc.design_argument::single_authority).
 
 // THE TERMINAL TRANSITION AND THE RELEASE ARE TWO FACTS AND THE MIDDLE ARM IS THE ONE THAT
 // MATTERS. The attempt can settle -- history written, generation advanced -- and the seat can still
@@ -2993,7 +3608,12 @@ type UnitLifecycleSource
 
 fn unit_lifecycle_from_source(source: UnitLifecycleSource, unit: NonEmptyStr) -> UnitLifecycle {
   match source {
-    ObserveUnitLifecycle => observe_unit_lifecycle(unit: unit)
+    // THIS READING NEVER OPENS A SPOOL, so it answers with its own arm. Stated gap, named rather than
+    // hidden: the recovery door (compute_recover_cli) and the belt's resolver come through here, so a
+    // seat's record-bearing absence is not reachable on THOSE routes yet -- only on routes that hold the
+    // seat and read compute_seat_stop_record for it. Widening the door is its own change with its own wet
+    // witness; see recurring_failure_mode hold_recovered_by_age_not_observed_holder_death's named next rung.
+    ObserveUnitLifecycle => observe_unit_lifecycle(unit: unit, stop_record: SeatStopRecordNotConsulted { reason: "this reading observes the manager only; the route that holds the seat reads its record through compute_seat_stop_record" })
     SuppliedUnitLifecycle { lifecycle: l } => l
     SuppliedStoppableUnit { before: b, after_stop: _ } => b
   }
@@ -3184,12 +3804,17 @@ fn compute_recovery_after_settlement(reference: String, verdict: String, returne
 // request is the seat the attempt record says it was granted -- the release fold consults no
 // request, but the subject names the hold it is about rather than a figure invented for it.
 fn compute_recover_release(subject: ComputeCapacitySubject, reference: NonEmptyStr, reason: String) -> ComputeRelease {
-  compute_release_on(
-    store: compute_capacity_store(subject: subject),
+  // THE LEDGER IS OPENED, AND A LEDGER THAT DOES NOT STAND IS A REFUSED RELEASE, not a release that
+  // reports nothing held: the caller's exit code 2 exit is the honest answer, and the seat stays held.
+  match compute_capacity_store(subject: subject) {
+    ComputeCapacityStoreUnready { area: area, detail: detail } => ComputeReleaseRefused { detail: join(["the capacity ledger is not standing at ", area, ", so no seat can be released: ", detail], "") }
+    ComputeCapacityStoreReady { store: store } => compute_release_on(
+    store: store,
     partition: subject.partition,
     appropriation: kibibyte(count: 0),
     reference: reference,
     reason: join(["recovered: ", reason], "") as NonEmptyStr)
+  }
 }
 
 // THE DOOR A WORKER OR AN OPERATOR ACTUALLY OPENS. Three exits and they are the three the rest of

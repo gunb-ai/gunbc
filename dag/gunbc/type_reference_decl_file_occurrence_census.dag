@@ -7,7 +7,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // THE CENSUS OF `v1.compiler.coercion` `type_reference_decl_file` -- the seed's positional answer to
 // a declaration-identity question -- GROUPED BY WHAT EACH OCCURRENCE NEEDS RATHER THAN BY WHERE IT
 // SITS. The helper returns a `String` file path; every consumer then tests that path by SUBSTRING
-// against a roster of other file paths. DESIGN section 3's standing rule is cite the symbol, not the
+// against a roster of other file paths. gunbc.design_argument::single_authority's standing rule is cite the symbol, not the
 // position, and this is that rule's largest single population in the seed.
 //
 // WHAT THIS CARRIER IS NOT. It is not the deciding-function roster: which emitter DECISIONS can be
@@ -69,7 +69,7 @@ type AuthorityAvailability
 // the roster and reports it as paid.
 //
 // ConvertAtRosterGrainFirst therefore names the roster that must be re-keyed BEFORE any occurrence
-// moves. CorrectAsPosition is DESIGN section 3's own carve-out -- a position is legitimate where no
+// moves. CorrectAsPosition is gunbc.design_argument::single_authority's own carve-out -- a position is legitimate where no
 // symbol exists to name -- and it is a disposition of correctness, not of debt.
 type OccurrenceDisposition
   = ConvertAtRosterGrainFirst { roster_to_rekey: DeclarationRef, gate_to_rekey: DeclarationRef, why_call_site_first_is_wrong: String }
@@ -105,7 +105,6 @@ data type_reference_decl_file_classes: List<OccurrenceClass> = [
       decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "field_access_field_is_boxed"),
       decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "render_rust_decl_type"),
       decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "render_rust_fn_sig_type"),
-      decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "render_rust_fn_sig_type_applied_binding"),
       decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "render_rust_type_without_applied_binding"),
       decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "rust_field_carrier_final_type"),
       decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_leaf_admission"),
@@ -170,7 +169,7 @@ data type_reference_decl_file_classes: List<OccurrenceClass> = [
       what_would_have_to_exist: "a provenance coproduct carrying the three states this String conflates -- a corpus declaration (a DeclarationRef), a kernel mint (a name with no declaration), and identity unavailable -- so that kernel-minted is a CONSTRUCTOR rather than a spelling recognised by substring. TWO CONSTRAINTS ON BUILDING IT, both established rather than assumed. FIRST, the KernelMinted arm must be DERIVED from resolved_node_is_kernel_identity_for_name, which already owns kernel identity by EXACT EQUALITY and whose own note records that a substring or prefix test is a second, weaker authority for it; a fifth prefix test would add an authority while claiming to remove four. THIS FIRST CONSTRAINT IS DISCHARGED (XL-0B, 2026-09-04): the predicate was relocated from v1.compiler.infer_env -- which declared it, never called it, and sat ABOVE the module whose kernel_span mints the span it tests -- into v1.std.core beside that minter, and v1.std.core declaration_provenance_of now reads it rather than re-deriving the comparison. Cite it at v1.std.core; the infer_env spelling is gone. The relocation also removed a second authority the census had not counted: the infer_env body inlined concat(\"<kernel:\", name, \">\") rather than calling kernel_span, so it was a rival spelling of the span FORMAT as well as of the identity question. Enrolled evidence, green as authored and red under exactly the prefix-test mutation, is v1.compiler.compiler_tests_rust ct_kernel_identity_single_authority_test, which executes in the required rust-unit-tests job under cargo test --release -p v1-compiler --lib. WHAT REMAINS UNDISCHARGED IS THE SECOND CONSTRAINT AND IT IS THE LARGER HALF: CorpusDeclared still carries decl_file as a position, so the DeclarationCarrier half std.repair_input_origin defers is still owed. SECOND, std.repair_input_origin was read for this purpose and does NOT already model this axis: it partitions the same String by PRODUCER (six emitter surfaces, CandidateSpelling bare vs qualified), and its own header states that the source branch is deliberately named Candidate rather than DeclarationCarrier because carrying a DeclarationRef is deferred to XL-0B/C. So the provenance coproduct is the DeclarationCarrier half that module explicitly defers, and belongs beside it as that deferral discharged -- not coined as a rival.",
     },
     disposition: IrreducibleUntilAuthorityExists {
-      finding: "THE CLASS IS ALREADY FILED AND THIS ROW IS A RECEIPT AGAINST IT, NOT A DISCOVERY. gunbc.recurring_failure_mode state_space_conflation's THIRD FORM, dated 2026-09-01, is this specimen and names this symbol set: the three inhabitants, kernel_span minting the synthetic identity, consumers discriminating only empty from non-empty, lookup_checkpoint and type_realization_decision reading a kernel identity as a KNOWN declaration, decl_file_declares_structurally comparing a synthetic identity against real paths with contains so the structural gate is unreachable BY CONSTRUCTION, and the spelling-based recognisers against resolved_node_is_kernel_identity_for_name's exact equality. WHAT THIS CENSUS ADDS IS CORROBORATION OF THAT ROW'S RECOGNITION RULE, arrived at independently and from the opposite direction -- that row was reached by asking what the identity key can hold, this one by asking what each of 39 occurrences needs -- and both converge on the same four authorities. Under the rule's own terms (the number of sites recognising the inhabitant by spelling is the count of authorities the missing constructor has spawned) that convergence is evidence about the rule and not a second filing. WHY THE CLASS IS STILL NOT `CorrectAsPosition`: DESIGN section 3 admits a position where no symbol exists to name, and none does exist here -- but the kernel spelling is not a position either. It is a sentinel occupying a String whose declared domain is file paths. WHAT THIS CENSUS ADDS TO THE SEQUENCING: the two decided classes are blocked on a re-keyed roster and this one on a constructor that does not exist, and converting the other 37 occurrences to a bare DeclarationRef makes this class HARDER, because a DeclarationRef has nowhere to put no-declaration-exists and nowhere to put unknown. So the constructor is the FIRST construction rather than the last, and it is the same carrier both decided classes need for their unknown-identity half. The filed row explicitly claims and measures NO WRONG ANSWER; this census does not claim one either, and what is being built is the CLIMB -- so DESIGN section 4b(4) governs and that row keeps its discriminating evidence enrolled after the constructor lands rather than dissolving with the production machinery.",
+      finding: "THE CLASS IS ALREADY FILED AND THIS ROW IS A RECEIPT AGAINST IT, NOT A DISCOVERY. gunbc.recurring_failure_mode state_space_conflation's THIRD FORM, dated 2026-09-01, is this specimen and names this symbol set: the three inhabitants, kernel_span minting the synthetic identity, consumers discriminating only empty from non-empty, lookup_checkpoint and type_realization_decision reading a kernel identity as a KNOWN declaration, decl_file_declares_structurally comparing a synthetic identity against real paths with contains so the structural gate is unreachable BY CONSTRUCTION, and the spelling-based recognisers against resolved_node_is_kernel_identity_for_name's exact equality. WHAT THIS CENSUS ADDS IS CORROBORATION OF THAT ROW'S RECOGNITION RULE, arrived at independently and from the opposite direction -- that row was reached by asking what the identity key can hold, this one by asking what each of 39 occurrences needs -- and both converge on the same four authorities. Under the rule's own terms (the number of sites recognising the inhabitant by spelling is the count of authorities the missing constructor has spawned) that convergence is evidence about the rule and not a second filing. WHY THE CLASS IS STILL NOT `CorrectAsPosition`: gunbc.design_argument::single_authority admits a position where no symbol exists to name, and none does exist here -- but the kernel spelling is not a position either. It is a sentinel occupying a String whose declared domain is file paths. WHAT THIS CENSUS ADDS TO THE SEQUENCING: the two decided classes are blocked on a re-keyed roster and this one on a constructor that does not exist, and converting the other 37 occurrences to a bare DeclarationRef makes this class HARDER, because a DeclarationRef has nowhere to put no-declaration-exists and nowhere to put unknown. So the constructor is the FIRST construction rather than the last, and it is the same carrier both decided classes need for their unknown-identity half. The filed row explicitly claims and measures NO WRONG ANSWER; this census does not claim one either, and what is being built is the CLIMB -- so gunbc.design_argument::guarantee_ladder (dissolution on climb) governs and that row keeps its discriminating evidence enrolled after the constructor lands rather than dissolving with the production machinery.",
     },
   },
   {
@@ -185,7 +184,7 @@ data type_reference_decl_file_classes: List<OccurrenceClass> = [
       what_would_have_to_exist: "nothing. This is the arm where identity could NOT be recovered, so by construction there is no symbol to cite; the file is the most specific thing the refusal can say about where the unresolved reference was written.",
     },
     disposition: CorrectAsPosition {
-      why: "DESIGN section 3 permits a position where no symbol exists to name, and a refusal that fires precisely because identity was unavailable is that case exactly. Converting it would replace a located diagnostic with a less located one. Counted so the denominator is complete, not carried as debt.",
+      why: "gunbc.design_argument::single_authority permits a position where no symbol exists to name, and a refusal that fires precisely because identity was unavailable is that case exactly. Converting it would replace a located diagnostic with a less located one. Counted so the denominator is complete, not carried as debt.",
     },
   },
   {
@@ -200,7 +199,7 @@ data type_reference_decl_file_classes: List<OccurrenceClass> = [
       what_would_have_to_exist: "nothing. An instrument that measures the legacy answer must call the legacy helper; routing it to the authority would make the instrument agree with itself by construction.",
     },
     disposition: CorrectAsPosition {
-      why: "the subject of a measurement is not debt. This occurrence retires with the helper and not before -- it is the evidence that the helper's answer diverged, and DESIGN section 4b(4) keeps a class's discriminating evidence enrolled through the climb rather than dissolving it with the production machinery.",
+      why: "the subject of a measurement is not debt. This occurrence retires with the helper and not before -- it is the evidence that the helper's answer diverged, and gunbc.design_argument::guarantee_ladder (dissolution on climb) keeps a class's discriminating evidence enrolled through the climb rather than dissolving it with the production machinery.",
     },
   },
   {
@@ -372,7 +371,7 @@ data type_reference_decl_file_prior_route: PriorRouteRelation = LegacyIsFallback
 // directly under the repair the classes above prescribe, so a reader planning that repair meets
 // them; neither is a member of the 39 and neither is widened into this lane's scope.
 //
-// They are carried here rather than left in prose because DESIGN section 4c homes a finding in a
+// They are carried here rather than left in prose because gunbc.design_argument::source_annotations homes a finding in a
 // typed carrier, and because the first one changes what a repair may CLAIM about its own authority.
 type AdjacentFinding
   = DuplicateDeclarationOfOneAuthority {
@@ -451,7 +450,7 @@ data type_reference_decl_file_adjacent_findings: List<AdjacentFinding> = [
 //
 // THE v1 POSITION IS NOT CONVERTED AND WILL NOT BE. Holding both a DeclarationRef and a decl_file
 // for one declaration is the two-identities fork this census exists to warn about, and converting
-// the v1 arm would be building on a route scheduled for deletion -- DESIGN section 3's replacement
+// the v1 arm would be building on a route scheduled for deletion -- gunbc.design_argument::single_authority's replacement
 // migration doctrine prices an intermediate representation destined to be discarded as redundant
 // work. THE RETIREMENT TRIGGER IS THEREFORE THE DELETION OF v1.compiler.emit_rust AND ITS CLOSURE,
 // not a conversion and not a later carrier edit: the position dies with the only route that reads
@@ -545,7 +544,7 @@ data type_reference_decl_file_census_discharge: List<DeclarationRef> = [
 // reference-site read. This record states how that read's own collapsed arm is now told apart, so
 // the fallback population it produces can be scored per occurrence rather than read as one mass.
 // It carries no count on purpose. The populations are occurrence facts about a closure, and the
-// producer that re-derives them is named here instead of transcribed (DESIGN section 6).
+// producer that re-derives them is named here instead of transcribed (gunbc.design_argument::how_to_work).
 //
 // THE SPLIT IS BY STRUCTURE, AND THE RESOLVED ARM IS SPLIT TOO. Running the instrument on the typed
 // tree showed the brief's premise was half right. A missing Resolved node does NOT mean inference

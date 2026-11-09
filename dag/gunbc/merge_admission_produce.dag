@@ -46,7 +46,7 @@ data merge_admission_receipt_rel_path: String = ".gunbc/merge-admission-receipt.
 // binding six of its seven required fields and leaving the ancestry operand invented.
 data merge_admission_receipt_schema_v2: String = "gunbc.merge_admission_receipt.v3"
 
-data wire_exact_arity_note: String = "BOTH v2 parsers require an EXACT line count, and every required field goes through its domain constructor (review 2026-07-30). The first cut accepted a SUPERSET — `length(lines) >= 5` — so trailing content rode along unread, and it validated only that the schema tag and attempt id were nonempty, leaving base ref, tree, and head SHA free to be empty strings that then bound into a receipt as though observed. Worse, the optional PR line converted a MALFORMED present field into an absent one: parse_int returned Absent on garbage and the receipt parsed clean with pr_number: none, which is the state-space conflation §5 forbids — `not supplied` and `supplied but unreadable` are different facts with different remedies. A seventh line that is not an integer now refuses the whole receipt. Exact arity is what makes a format extension VISIBLE: adding a field means bumping the schema tag, not silently appending a line older readers ignore."
+data wire_exact_arity_note: String = "BOTH v2 parsers require an EXACT line count, and every required field goes through its domain constructor (review 2026-07-30). The first cut accepted a SUPERSET — `length(lines) >= 5` — so trailing content rode along unread, and it validated only that the schema tag and attempt id were nonempty, leaving base ref, tree, and head SHA free to be empty strings that then bound into a receipt as though observed. Worse, the optional PR line converted a MALFORMED present field into an absent one: parse_int returned Absent on garbage and the receipt parsed clean with pr_number: none, which is the state-space conflation gunbc.design_argument::fail_closed forbids — `not supplied` and `supplied but unreadable` are different facts with different remedies. A seventh line that is not an integer now refuses the whole receipt. Exact arity is what makes a format extension VISIBLE: adding a field means bumping the schema tag, not silently appending a line older readers ignore."
 // Gate roster hash wire is the serialized fnv1a64 structural fingerprint (16 lowercase hex digits —
 // atom_identity_hash / hash_combine wire form). parse_gate_roster_hash_wire routes through
 // std.content_hash.fnv1a64_structural_hex_digest (exact length plus lowercase-hex syntax) before
@@ -220,7 +220,10 @@ fn render_receipt_wire(receipt: MergeAdmissionReceipt) -> String {
 
 fn wire_pr_number_from_lines(lines: List<String>) -> Int? {
   if length(lines) >= 5 {
-    parse_int(s: lines.skip(n: 4).first())
+    match lines.skip(n: 4).first() {
+      Absent => none
+      Present { value: pr_wire } => parse_int(s: pr_wire)
+    }
   } else {
     none
   }

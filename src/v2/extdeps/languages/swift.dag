@@ -61,7 +61,9 @@ import v2.std.compilers.lexing {
 import std.optional {
   Absent,
   Present,
-  Optional
+  Optional,
+  optional_absent,
+  optional_present
 }
 import v2.std.model_core {
   AlgebraInhabitanceDecl,
@@ -1868,7 +1870,7 @@ fn swift_grammar() -> ParseGrammar {
 
 // The token-class membership map for swift_lex_rules(), built ONCE and read by key: the
 // membership of a class is a pure function of this module-literal rule set, so per-query
-// rebuilds of the set and linear scans of it were authored duplication (DESIGN.md §2,
+// rebuilds of the set and linear scans of it were authored duplication (gunbc.design_argument::minimize_redundancy,
 // gunbc.recurring_failure_mode.nested_membership_scan_where_a_map_primitive_exists).
 data swift_lex_token_class_membership: Map<Symbol, Bool> = lex_rule_set_token_class_map(rules: swift_lex_rules())
 

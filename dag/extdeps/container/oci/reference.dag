@@ -30,11 +30,11 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // HOW AN IMAGE IS NAMED, WHICH THE OCI MODEL IN THIS DIRECTORY DID NOT CARRY.
 //
 // manifest.dag and image_config.dag model what an image IS; nothing modelled how a party REFERS to
-// one, so "run this image" was a String -- the anemic leaf of DESIGN section 2, hiding a registry
+// one, so "run this image" was a String -- the anemic leaf of gunbc.design_argument::minimize_redundancy, hiding a registry
 // host, a repository path and a mutable-or-immutable identifier behind one scalar.
 //
 // BOTH IDENTIFIER ARMS ARE MODELLED, INCLUDING THE MUTABLE ONE. The distribution spec defines tags;
-// refusing a tag is POLICY, and policy in extdeps is the layer inversion DESIGN section 3 rules
+// refusing a tag is POLICY, and policy in extdeps is the layer inversion gunbc.design_argument::single_authority rules
 // out. The spec says what may be written; the consumer says what it will accept.
 
 fn oci_code_point_at(text: String, index: Int) -> Int {

@@ -1,0 +1,88 @@
+module extdeps.linux.sysfs_pci
+
+import std.types { Bool, List, String, NonEmptyStr }
+import std.algebra { trim }
+import std.optional { Present }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.pci.identity { PciAddress }
+
+// THE LINUX SYSFS PCI DEVICE ABI, as the kernel documents it in Documentation/ABI/testing/sysfs-bus-pci.
+// Each enumerated PCI function is a directory under /sys/bus/pci/devices named by its address
+// (domain:bus:device.function), and the kernel lists a bridge's enumerated children as directories inside
+// the bridge's own directory. This module owns the paths and the two attribute formats a consumer reads;
+// the reads and the write are extdeps.filesystem operations, one transport of N (gunbc.design_argument::single_authority).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.kernel.org/doc/Documentation/ABI/testing/sysfs-bus-pci"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.linux.sysfs_pci",
+      decl_name: "sysfs_pci_devices_dir",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data sysfs_pci_devices_dir: String = "/sys/bus/pci/devices"
+
+fn sysfs_pci_function_dir(address: PciAddress) -> String {
+  concat(sysfs_pci_devices_dir, concat("/", address as String))
+}
+
+fn sysfs_pci_attribute_path(address: PciAddress, attribute: String) -> String {
+  concat(sysfs_pci_function_dir(address: address), concat("/", attribute))
+}
+
+fn sysfs_pci_vendor_path(address: PciAddress) -> String {
+  sysfs_pci_attribute_path(address: address, attribute: "vendor")
+}
+
+fn sysfs_pci_device_path(address: PciAddress) -> String {
+  sysfs_pci_attribute_path(address: address, attribute: "device")
+}
+
+// `remove` (sysfs-bus-pci): "Writing a non-zero value to this attribute will hot-remove the PCI device and
+// any of its children." It removes the function from the kernel's device list and unbinds its driver. It
+// does NOT power the function off or take its link down, which is why a consumer that needs the link gone
+// owes a separate effect on the upstream port (extdeps.pci.express_link_control).
+fn sysfs_pci_remove_path(address: PciAddress) -> String {
+  sysfs_pci_attribute_path(address: address, attribute: "remove")
+}
+
+data sysfs_pci_remove_value: NonEmptyStr = "1"
+
+// A BRIDGE'S CHILDREN ARE LISTED INSIDE ITS OWN DIRECTORY, each a directory named by its address in the
+// kernel's fixed form DDDD:BB:DD.F (drivers/pci/probe.c, pci_setup_device: "%04x:%02x:%02x.%d"). The same
+// directory also holds attributes and port-service entries such as "0003:00:01.0:pcie010", which that form
+// excludes, so the names of this form in a listing are exactly the enumerated child functions.
+fn sysfs_pci_is_function_address(name: String) -> Bool {
+  string_length(s: name) == 12
+    && substring(s: name, start: 4, end: 5) == ":"
+    && substring(s: name, start: 7, end: 8) == ":"
+    && substring(s: name, start: 10, end: 11) == "."
+}
+
+fn sysfs_pci_child_functions(entries: List<String>) -> List<String> {
+  filter(entries, n => sysfs_pci_is_function_address(name: n))
+}
+
+// THE ID ATTRIBUTE FORMAT. `vendor` and `device` hold the id as `0x` followed by four lowercase hex
+// digits and a newline (drivers/pci/pci-sysfs.c prints them with "0x%04x\n"). The reading returns the four
+// digits, the spelling extdeps.pci.identity carries, and refuses any other shape rather than guessing.
+fn sysfs_pci_id_digits(content: String) -> String? {
+  let t = trim(s: content)
+  if string_length(s: t) == 6 && substring(s: t, start: 0, end: 2) == "0x" {
+    Present { value: substring(s: t, start: 2, end: 6) }
+  } else {
+    none
+  }
+}

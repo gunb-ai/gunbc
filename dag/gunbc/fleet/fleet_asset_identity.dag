@@ -8,7 +8,7 @@ import product.placement_supply { PhysicalAssetIdentity }
 // for the host identities. That was fine while only the inventory named an asset. It stopped being
 // fine when review 59815 required the printer's network endpoint to bind to printer_01
 // structurally: the endpoint lives in fleet_intent_network, so that binding would have made the two
-// modules import each other, and DESIGN section 3 states the import graph's ONE structural law is
+// modules import each other, and gunbc.design_argument::single_authority states the import graph's ONE structural law is
 // acyclicity.
 //
 // The cycle is the signal, not the obstacle. An identity is not a fact ABOUT an inventory row or
@@ -28,6 +28,16 @@ data pdu_01: PhysicalAssetIdentity = "pdu-01" as PhysicalAssetIdentity
 data pi_controller: PhysicalAssetIdentity = "pi-controller" as PhysicalAssetIdentity
 data cooler_srv3: PhysicalAssetIdentity = "cooler-srv3" as PhysicalAssetIdentity
 data cooler_srv4: PhysicalAssetIdentity = "cooler-srv4" as PhysicalAssetIdentity
+
+// GPU BOARDS (2026-10-30). Numbered, not named for a host: a card moves between hosts, and where it sits
+// is a containment row in gunbc.fleet.fleet_physical_inventory, never a spelling here.
+data gpu_board_01: PhysicalAssetIdentity = "gpu-board-01" as PhysicalAssetIdentity
+data gpu_board_02: PhysicalAssetIdentity = "gpu-board-02" as PhysicalAssetIdentity
+data gpu_board_03: PhysicalAssetIdentity = "gpu-board-03" as PhysicalAssetIdentity
+data gpu_board_04: PhysicalAssetIdentity = "gpu-board-04" as PhysicalAssetIdentity
+data gpu_board_05: PhysicalAssetIdentity = "gpu-board-05" as PhysicalAssetIdentity
+data gpu_board_06: PhysicalAssetIdentity = "gpu-board-06" as PhysicalAssetIdentity
+
 
 // Inventory identity is independent of a host-slot or router-observation binding.
 // Consumer: fleet_physical_inventory.dgx_spark_asset_identities, exercised by
@@ -49,6 +59,14 @@ data gh200_dv5_b: PhysicalAssetIdentity = "gh200-dv5-b" as PhysicalAssetIdentity
 data p4261_k1_a: PhysicalAssetIdentity = "p4261-k1-a" as PhysicalAssetIdentity
 // The second carrier, allocated 2026-10-15 when bench readings were first taken on it: the operator
 // reads its model label as revision E1 and believes it is the baseboard bought from Central Valley.
-// Its sticker, read 2026-10-16, carries S/N 1583323120274 (product.p4261_carrier_layout
+// Its sticker, read 2026-10-16, carries S/N 1583323120274 (product.p4261.e1_b
 // p4261_e1_layout); the asset keeps this identity, and the serial is the reading that names the board.
 data p4261_e1_b: PhysicalAssetIdentity = "p4261-e1-b" as PhysicalAssetIdentity
+// The opened pair's E1 from the lot of ten, allocated 2026-11-08 before its first recorded reading, as the
+// GH200 units were before they arrived: the comparison reads the P4261 sheets ask of it bind to this
+// asset from the first one, never to "the lot board". E1 is the operator's reading of its label; once its
+// sticker is read, the serial is recorded on its rows and is the reading that names the board. Before its
+// first new measurement, a label or photograph reading must tell this board apart from the other lot
+// boards; and the allocation attaches nothing retroactively -- an earlier lot observation that named no
+// board stays unattributed rather than becoming this asset's.
+data p4261_e1_c: PhysicalAssetIdentity = "p4261-e1-c" as PhysicalAssetIdentity

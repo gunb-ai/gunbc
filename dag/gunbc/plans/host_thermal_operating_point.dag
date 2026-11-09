@@ -1,0 +1,349 @@
+module gunbc.plans.host_thermal_operating_point
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import std.markdown { MarkdownBlock, MarkdownTableRow, TableBlock, AlignNone }
+import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
+import std.types { List, String }
+
+// THE WORKING DESIGN FOR "srv3 AND srv4 RUN TOO HOT" (gunbc-private#287, 2026-11-05), worked from that
+// one sentence forward: what the fleet must know before anyone touches a fan, the defects found on the
+// way that need fixing whatever the incident decisions are, how access to a production-like host should
+// be tiered, and the order of work. Design only: it changes no producer.
+//
+// Every code reference names a module and symbol (gunbc.design_argument::single_authority). Every figure carries its standing (§4d):
+// cited, measured on the incident, or an estimate nobody has checked. Repository references were read at
+// main 64840aa6bf60 and must be reread before action.
+
+fn t3(a: String, b: String, c: String) -> MarkdownTableRow {
+  row(cells: [cell(text: a), cell(text: b), cell(text: c)])
+}
+
+fn t4(a: String, b: String, c: String, d: String) -> MarkdownTableRow {
+  row(cells: [cell(text: a), cell(text: b), cell(text: c), cell(text: d)])
+}
+
+fn t5(a: String, b: String, c: String, d: String, e: String) -> MarkdownTableRow {
+  row(cells: [cell(text: a), cell(text: b), cell(text: c), cell(text: d), cell(text: e)])
+}
+
+fn incident() -> List<MarkdownBlock> {
+  [
+    h2(text: "0. What happened"),
+    p(text: "On 2026-11-05, about 05:45 to 06:30 UTC, after about five days of steady full load (19 CI runners per box plus the Strata engines, all 128 cores at 3.0 GHz), srv3 and srv4 ran their DIMMs at 100 to 110 °C and their SoCs at 85 to 105 °C. Overnight mitigations remain in place: runners capped at 12 per box (systemd drop-ins, survive reboot), clocks capped at 2.2 GHz (lost on reboot), CPU fan 50% and chassis fans 100% (held by the BMC, untested across a BMC reset). Source: gunbc-private#287. All readings below are measured on the incident; none is an upstream fact."),
+    TableBlock {
+      header: t3(a: "reading", b: "srv3", c: "srv4"),
+      alignments: [AlignNone, AlignNone, AlignNone],
+      rows: [
+        t3(a: "at discovery (~06:07), DIMMs", b: "89–110 °C", c: "82–102 °C"),
+        t3(a: "at discovery, SoC", b: "78–87 °C", c: "73–79 °C"),
+        t3(a: "CPU fan 35%, 3.0 GHz (~06:17), SoC", b: "85 → 105 °C in about 3 min", c: "not taken"),
+        t3(a: "after mitigation (06:30), DIMMs", b: "93–108 °C", c: "89–104 °C"),
+        t3(a: "last reading (06:39), DIMMs / CPU", b: "82–100 / 65 °C", c: "77–91 / 60 °C"),
+      ],
+    },
+    p(text: "The combined mitigation reduced the SoC sharply. The clock cap was not isolated from the CPU-fan increase and the runner drain, which changed with it, so no single lever is credited. DIMM temperatures stayed high with chassis fans at 100%, which is consistent with an airflow and load limitation; establishing which is the job of the controlled measurements (P3, P4) and the acceptance run (B7)."),
+  ]
+}
+
+fn physics() -> List<MarkdownBlock> {
+  [
+    h2(text: "1. The question"),
+    p(text: "A component settles where the heat it makes equals the heat the air carries away: roughly inlet temperature plus a rise that grows with its power and shrinks with the airflow across it. That leaves four levers. Make less heat (fewer runners, lower clock or power cap; costs throughput). Move more air (fan duty, or shrouds, placement and blockage; costs noise or hardware work). Start cooler (room or inlet temperature, never measured). Tolerate more: not ours to move, since part limits are the vendor's and the standard's."),
+    p(text: "So the question the repository must answer before anyone touches a fan: for this assembled host, at this room temperature and workload, which combination of load, clock and fan program keeps every part inside its limit at an acceptable noise level? If none does, the answer is derate or change hardware, stated by the model rather than discovered from a hot DIMM."),
+    p(text: "That thermal question is the parent problem and the final acceptance. The incident also showed that the fleet could not answer it safely: it could not see the machines without an administrator login, and it could not change them without unscoped raw writes. srv3 and srv4 are simulated production that is still being qualified, so the temptation is to treat them as development machines and open a shell. The rule here is the opposite: a need for host access is first an operational gap to close, by asking what production-grade observation should have answered the question. Thesis: a restricted machine is operable only when the fleet can observe it without mutation, escalate diagnosis deliberately, and converge a qualified safe state without relying on an unrestricted shell."),
+    p(text: "The program therefore has two workstreams that must not absorb each other. Workstream A, observation and access (section 5), is a prerequisite: it is how the thermal work sees and diagnoses. Workstream B, thermal policy and convergence, is the objective, and it chooses from the power and thermal model of section 7. Section 8 orders the work of both, and section 9 states acceptance, and it is the first concrete consumer that keeps A from becoming decorative (gunbc.design_argument::consumption). srv3 and srv4 are the incident specimen and the first end-to-end subjects, not the final scope (section 6)."),
+  ]
+}
+
+fn inventory() -> List<MarkdownBlock> {
+  [
+    h2(text: "2. Existing authorities, joined before anything is added"),
+    p(text: "During the investigation a new BMC reader and a new host-observe mode were proposed before the existing read-only BMC account and health collector were found. Every node in this program therefore starts from the authorities below and justifies new work only as a precise missing join. This is a candidate list from cited git grep and source inspection at main 64840aa6bf60, not a census and not a gate (gunbc.design_ruling bad_process_is_worse_than_no_process); a node that finds another authority adds it here."),
+    TableBlock {
+      header: t3(a: "concern", b: "existing authority", c: "what is missing"),
+      alignments: [AlignNone, AlignNone, AlignNone],
+      rows: [
+        t3(a: "read-only BMC identity", b: "gunbc.bmc.bmc_health_reader::bmc_health_reader_username (gunbc_health, Redfish ReadOnly, per-host secret bmc_health_reader_secret_id); used live on ASRock hosts 2026-09-18", c: "provisioning on srv3/srv4 unread"),
+        t3(a: "out-of-band health collector", b: "gunbc.fleet.fleet_health::fleet_health_check over gunbc.fleet.fleet_intent::fleet_intent_known_hosts (srv1 to srv4)", c: "no workflow calls it; no schedule"),
+        t3(a: "BMC fan program, raw capture", b: "gunbc.bmc.bmc_fan_program_capture::srv3_captured_program, srv4_captured_program", c: "exact historical bytes and digest; deliberately not decoded"),
+        t3(a: "BMC fan program, decoder", b: "extdeps.bmc.pid_control_decode, with extdeps.bmc.pid_control_representability and extdeps.bmc.pid_control_semantic_identity", c: "the production decoder and its gates; gunbc.bmc.bmc_fan_program_decode_witness only exercises them on the captures (witness-local, declined by the required floor, ReadsLiveTree)"),
+        t3(a: "BMC fan program, live read route", b: "gunbc.bmc.bmc_fan_converge", c: "reads the OpenBMC controller config and D-Bus over a password SSH session with the onboarding admin login; there is no least-privileged route to this surface"),
+        t3(a: "BMC fan control, current state", b: "none", c: "missing: no read returns the program or commanded duty the BMC runs now (A3)"),
+        t3(a: "fan policy", b: "product.fleet_fan_policy; gunbc.bmc.bmc_intent::fleet_quiet_temp_soc_fan_curve; product.zone_thermal_curve", c: "three overlapping authorities (finding D)"),
+        t3(a: "fan convergence", b: "gunbc.fleet.fleet_fan_converge; gunbc.fleet.fleet_fan_converge_routes", c: "no apply arm; MegaRAC and Supermicro routes unbound"),
+        t3(a: "operating-point choice", b: "product.fleet_operating_point::fleet_operating_point_selection through std.decision, wrapping product.mt_collins_power_policy::mt_collins_power_assessment", c: "one Mt. Collins decision path in two layers; no thermal, fan or runner-width axes"),
+        t3(a: "noise intent", b: "gunbc.fleet.fleet_acoustic_intent", c: "not weighed against safety or load"),
+        t3(a: "host accounts", b: "gunbc.fleet.fleet_posix_accounts::FleetPosixAccountKey", c: "no read-only principal"),
+        t3(a: "bounded unprivileged host reader, precedent", b: "gunbc.host.export_host_reader_converge (srv2: dedicated account, root-owned key file, forced command)", c: "generalize beyond its one purpose"),
+        t3(a: "approved one-off access", b: "gunbc.auth.access_request::AccessRequest; the approval broker; gunbc.auth.authorization_pattern_selection::select_authorization_pattern", c: "no request kind for host diagnosis or emergency administration"),
+        t3(a: "privileged-effect selection", b: "gunbc.auth.authorization_pattern_selection::AuthorizationPattern", c: "host read and break-glass effects not enrolled"),
+      ],
+    },
+  ]
+}
+
+fn knowledge() -> List<MarkdownBlock> {
+  [
+    h2(text: "3. What we need to know"),
+    p(text: "Each step depends on the ones above it. Standing is cited, measured, partial (in the repository but incomplete or unconsumed), missing, or estimate (unchecked)."),
+    TableBlock {
+      header: t5(a: "step", b: "fact", c: "standing", d: "value or note", e: "home"),
+      alignments: [AlignNone, AlignNone, AlignNone, AlignNone, AlignNone],
+      rows: [
+        t5(a: "limits", b: "CPU temperature limits", c: "cited", d: "100 °C continuous, throttle 105, shutdown 120 (Ampere Altra Max datasheet)", e: "extdeps.cpu.ampere::ampere_altra_max_m12830_thermal_limits"),
+        t5(a: "limits", b: "DIMM temperature limits", c: "missing", d: "normal to 85 °C; 85 to 95 °C only with doubled refresh (tREFI 7.8 to 3.9 us); above 95 °C out of spec (Samsung 64GB TSV DDR4 RDIMM datasheet; JEDEC)", e: "extdeps.memory.samsung::m393a8g40d40_crb0q_catalog"),
+        t5(a: "limits", b: "regulator and outlet limits", c: "partial", d: "fleet trips 90 and 70 °C, both TranscribedUncited", e: "product.fleet_fan_policy::fleet_fan_guard"),
+        t5(a: "heat made", b: "CPU power at 3.0 GHz all-core", c: "partial", d: "recorded 183 W, which is Ampere's usage power; TDP is 250 W", e: "extdeps.cpu.ampere::altra_max_m12830_catalog"),
+        t5(a: "heat made", b: "DIMM power", c: "missing", d: "estimate 8 to 12 W per 64 GB stick under load, 60 to 100 W for eight. Rule: a conservative bound by generation, capacity and class applies when part evidence is absent; a cited part figure may claw it back; every installed DIMM resolves through one or refuses", e: "class bound in extdeps.memory; part figures in extdeps.memory.samsung and per-vendor modules"),
+        t5(a: "heat made", b: "DIMM power rises with temperature", c: "missing", d: "cells leak faster when hot, so above 85 °C DDR4 must refresh twice as often (tREFI 7.8 to 3.9 us) and refresh energy doubles; periphery leakage also grows; a hot DIMM therefore makes more heat, a positive feedback bounded by the refresh share of its power. Whether the Altra controller switches refresh from the DIMM sensor or by a static setting is unknown", e: "extdeps.memory.samsung; controller behaviour in extdeps.cpu.ampere"),
+        t5(a: "heat made", b: "board, regulator losses, NIC, fans", c: "missing", d: "estimate 50 to 80 W; only a 30 W witness placeholder exists", e: "product.node_power_envelope::NodeElectricalInputs"),
+        t5(a: "heat made", b: "whole box, worst case", c: "estimate", d: "about 360 to 430 W into a 2U case", e: "derived"),
+        t5(a: "heat removed", b: "CPU cooler capacity", c: "cited", d: "Dynatron W1 rated 250 W, equal to the CPU TDP: zero margin", e: "extdeps.cooling.dynatron"),
+        t5(a: "heat removed", b: "cooler fits the chassis", c: "missing", d: "W1 active height 72 mm; RSV-Z2600U max cooler height 70 mm; nothing compares them", e: "product.cooling_qualification"),
+        t5(a: "heat removed", b: "chassis fans and wiring", c: "partial", d: "three P8 fans, operator-declared; srv3 on FAN1/3/4/5, srv4 on FAN1/2/3/4", e: "gunbc.fleet.fleet_fan_wiring::srv3_fan_wiring"),
+        t5(a: "heat removed", b: "air path over the DIMMs", c: "missing", d: "no placement, direction or shroud facts", e: "to create"),
+        t5(a: "heat removed", b: "room or inlet temperature", c: "missing", d: "never measured", e: "to create"),
+        t5(a: "control", b: "what the BMC runs", c: "partial", d: "three separate standings: a raw historical capture; a witness-local decode in which SoC temperature drives separate CPU-fan and chassis groups; and the current live state, which nothing reads, so the overnight 50% and 100% duties are not confirmed as still in force", e: "gunbc.bmc.bmc_fan_program_capture::srv3_captured_program; gunbc.bmc.bmc_fan_program_decode_witness; A3"),
+        t5(a: "control", b: "what the fleet wants", c: "partial", d: "three overlapping policies (finding D)", e: "product.fleet_fan_policy"),
+        t5(a: "control", b: "noise ceiling", c: "partial", d: "stated as 60% sustained fan duty, a proxy for a sound level. Noise is downstream of every source (each fan model and its speed, PSU, accelerator fans, the chassis, distance and room), so the ceiling belongs in sound level at a listening position, with each fan's duty-to-noise curve from its datasheet as one input", e: "gunbc.fleet.fleet_acoustic_intent"),
+        t5(a: "choice", b: "load x clock x fan program, safe and quiet enough", c: "missing", d: "selection exists over two power-cap candidates with no thermal evidence", e: "product.fleet_operating_point::fleet_operating_point_selection"),
+        t5(a: "seeing it", b: "live temperatures, fans, event log", c: "partial", d: "read-only collector and account exist; nothing runs them", e: "gunbc.fleet.fleet_health::fleet_health_check"),
+      ],
+    },
+  ]
+}
+
+fn findings() -> List<MarkdownBlock> {
+  [
+    h2(text: "4. Defects to fix regardless"),
+    p(text: "None of these depends on the incident decisions in section 10. They stay subordinate to the thermal question: each is fixed because it blocked or falsified an answer to it."),
+    h3(text: "A. The CPU power figure is the wrong number"),
+    p(text: "extdeps.cpu.ampere::altra_max_m12830_catalog records tdp_watts 183. Ampere lists 183 W as usage power; the M128-30 TDP is 250 W. Every consumer understates worst-case heat by 67 W, and product.cooling_qualification passes the W1 with 67 W of fictional margin. Fix: carry design power (250 W, cited) and usage power (183 W, with its workload basis) as two facts; cooling and power-supply checks read design power."),
+    h3(text: "B. Memory has no temperature or power facts, and the power arithmetic counts dies"),
+    p(text: "The M393A8G40D40 row carries capacity and organization only. product.node_power_envelope::memory_power multiplies a per-chip figure by devices_per_stick, 144 for this module (18 x8-equivalent chips x 8 logical ranks). For a stacked module that counts each die as its own package; the stick has about 36 packages. At the witness's 400 mW that is about 58 W per stick. Only a witness consumes it today. Fix: a conservative power and temperature bound by DIMM generation, capacity and class, used whenever exact evidence for a part is absent; a cited part-specific figure (here the Samsung datasheet) may claw that bound back; every installed DIMM in the fleet resolves through one of those two paths, and a DIMM that resolves through neither refuses rather than reading as zero. memory_power at module grain, with die, package, rank and stack height as distinct carriers if lower-level accounting stays."),
+    h3(text: "C. Cooler qualification checks too little"),
+    ul(items: [
+      li(text: "It never compares cooler height with chassis clearance. The rows conflict (72 mm vs 70 mm) while the machines run, so a figure or our reading of it is wrong; resolve by measurement, not by picking a catalog side."),
+      li(text: "It admits zero margin between cooler rating and CPU design power."),
+      li(text: "It says nothing about airflow reaching the DIMMs or regulators."),
+    ]),
+    h3(text: "D. The fan policy points the wrong way for this failure"),
+    ul(items: [
+      li(text: "product.fleet_fan_policy restores FirmwareAutomatic on every guard trip. Firmware automatic is the state that let the DIMMs reach 104 to 110 °C, so the DIMM guard hands control back to the cause."),
+      li(text: "The curve srv1 to srv4 point at, gunbc.bmc.bmc_intent::fleet_quiet_temp_soc_fan_curve, reads TEMP_SOC only, identical to the factory curve. No DIMM reading can raise any fan."),
+      li(text: "Three policies overlap: product.fleet_fan_policy, gunbc.bmc.bmc_intent's curve, and product.zone_thermal_curve (hottest named sensor drives the zone, a missing reading drives 100%). The last is closest to what is needed and has no consumer."),
+      li(text: "FleetFanControl holds one duty per host. It cannot express CPU automatic with chassis at 40% (Butch today) or CPU 50% with chassis 100% (srv3/srv4 today)."),
+    ]),
+    h3(text: "E. Runner width and clock ignore heat"),
+    p(text: "Runner width derives from memory and thread budgets (gunbc.runner.runner_slot_allocation, gunbc.fleet.fleet_host_budget). The cap of 12 exists only as host drop-ins and the clock cap appears nowhere in the repository, so model and machines disagree silently."),
+    h3(text: "F. We cannot see the machines, though the tools exist"),
+    ul(items: [
+      li(text: "gunbc.bmc.bmc_health_reader defines a per-host gunbc_health Redfish ReadOnly account with its own secret (bmc-srvN-health-reader); the health check never holds the admin credential (operator ruling 2026-09-18)."),
+      li(text: "gunbc.fleet.fleet_health::fleet_health_check reads the 20 ALTRAD8UD temperature sensors, every fan and the BMC event log for srv1 to srv4 through that account."),
+      li(text: "No workflow calls it and nothing schedules it. Whether the reader account is provisioned on srv3/srv4 is unread."),
+      li(text: "In-OS facts (EDAC counters, scaling_max_freq, throttle state, runner state) have no read path."),
+    ]),
+    h3(text: "G. Host access is all or nothing"),
+    p(text: "There is no read-only principal on the hosts: every fleet login route to srv1 to srv4 is an administrator, and ghrunner has no shell. gunbc.auth.access_request::AccessRequest and the approval broker carry GCP and branch-run grants but no request kind for host access. Section 5 works through this."),
+    h3(text: "H. Fan writes are not scoped or read back"),
+    p(text: "Asked for chassis fans at 100%, an agent set every fan to 100% with one raw command. Nothing separates the CPU-fan group from the chassis group at write time, and nothing reads each group back. The groups are already separate in the decoded program; the write path should refuse to touch a group it was not asked to change. The durable fix is in the operation's type: the requested actuator group, the admissible write and the required readback are parameters of the operation, so a chassis request cannot construct a CPU-fan mutation."),
+    h3(text: "I. Never checked"),
+    ul(items: [
+      li(text: "Memory errors after these temperatures (BMC event log, EDAC or rasdaemon)."),
+      li(text: "Whether the memory controller doubled refresh above 85 °C."),
+      li(text: "Room temperature."),
+      li(text: "Whether Strata or CI output was affected by throttling."),
+    ]),
+  ]
+}
+
+fn access() -> List<MarkdownBlock> {
+  [
+    h2(text: "5. Workstream A: observation and access"),
+    p(text: "The test for any access is how we would see, diagnose and act if a production host were overheating. Tiers are ordered by how far into the machine they reach; use the lowest tier that answers the question. Approval is a property of the operation, not of the tier: a tier 2 fixed diagnostic can be standing, while a diagnostic session beyond it is an escalation that needs approval per use."),
+    TableBlock {
+      header: t4(a: "tier", b: "reach and coverage", c: "identity and approval", d: "exists today"),
+      alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
+      rows: [
+        t4(a: "1. out of band (preferred)", b: "the BMC only: no load on the host, works when the OS is hung or off; all temperatures, fan speeds, BMC event log today; fan-control state, power state and power draw once A3 adds them", c: "gunbc_health ReadOnly, per-host secret; standing, schedulable, no approval", d: "partial: account and collector modeled, nothing runs them"),
+        t4(a: "2. on host, bounded reads", b: "named read capabilities for what the BMC cannot see (table below)", c: "a separate no-write host identity; fixed diagnostics standing; an approved diagnostic session is a separate escalation route (A5)", d: "missing; precedent gunbc.host.export_host_reader_converge on srv2"),
+        t4(a: "3. full admin (emergencies)", b: "root on the host or admin on the BMC", c: "requested for a named machine and reason, approved per use, time-limited, logged", d: "partial: admin works but is not requested, time-limited or logged"),
+      ],
+    },
+    h3(text: "Tier 2 is defined by its capabilities, not by a shell"),
+    p(text: "The authority is the set of bounded reads below. An account, a forced command, a brokered execution or an approved session are realizations of them, chosen per operation; can-log-in is never the semantic capability, because an unprivileged shell is a broad surface whose safety would otherwise be argued in prose."),
+    TableBlock {
+      header: t3(a: "capability", b: "reads", c: "default realization"),
+      alignments: [AlignNone, AlignNone, AlignNone],
+      rows: [
+        t3(a: "ReadMemoryErrorStanding", b: "EDAC or rasdaemon corrected and uncorrected counts per DIMM", c: "fixed diagnostic, standing"),
+        t3(a: "ReadCpuOperatingLimits", b: "scaling_max_freq and governor per core, any power cap", c: "fixed diagnostic, standing"),
+        t3(a: "ReadHostThermalState", b: "kernel thermal zones and throttle counters", c: "fixed diagnostic, standing"),
+        t3(a: "ReadRunnerLoad", b: "active runner units, busy jobs, cgroup CPU and memory use", c: "fixed diagnostic, standing"),
+        t3(a: "ReadKernelThermalEvents", b: "kernel messages filtered to thermal, MCE and EDAC sources over a window", c: "fixed diagnostic, standing"),
+        t3(a: "ReadHostPowerStanding", b: "socket and platform power draw over a window, from the host power sensors the platform exposes (ReadBmcPowerStanding in A3 is the tier 1 counterpart; P4 takes power from whichever route the platform has established)", c: "fixed diagnostic, standing"),
+        t3(a: "ReadMemoryTrafficStanding", b: "DRAM read and write traffic per channel or socket over a window, from the memory controller performance counters", c: "fixed diagnostic, standing"),
+        t3(a: "ReadAcceleratorPowerStanding", b: "accelerator power draw over a window, reusing the modeled nvidia-smi query (extdeps.nvidia.system_management_interface, power.draw) where present", c: "fixed diagnostic, standing"),
+      ],
+    },
+    p(text: "The approved diagnostic session is not a row of this table. An unprivileged shell is not read-only: it can run processes, write user-owned and temporary files, consume resources, open network connections and read anything world-readable, so it is not a predefined capability and is not described as one. It is an escalation route (A5), approved per use and bounded by exact host and requesting principal, the diagnostic question, lifetime, account and privilege, resource and where intended network scope, and an audit receipt. Its use records the missing bounded capability for A7."),
+    p(text: "The identity is the host counterpart of gunbc_health: a separate principal in gunbc.fleet.fleet_posix_accounts::FleetPosixAccountKey, no write authority, no shared admin credential, fleet-managed keys or certificates, auditable use. Reads that need root, such as in-band ipmitool, stay at tier 1 through the BMC."),
+    h3(text: "Reads and changes are separate systems"),
+    p(text: "The tiers are ways to observe and diagnose. Changing fan programs or duties, runner admission, CPU frequency or power, accelerator power or service configuration happens through a modeled convergence operation: exact target identity, requested state, approval where required, before-state capture, bounded application, independent readback, and rollback or an explicit refusal when safe rollback is unavailable. Tier 3 admits emergency manual intervention; that intervention is recorded afterwards as an incident override with cause, resulting state, rollback and end condition, and never silently becomes fleet intent."),
+    h3(text: "Escalation feeds the lower tiers"),
+    p(text: "Every diagnostic session or tier 3 use records why a lower tier was not enough. That answer becomes a candidate for a new bounded read at the lowest tier that can serve it, so dependence on broad access shrinks as srv3 and srv4 qualify."),
+    h3(text: "Workstream A nodes"),
+    ol(items: [
+      li(text: "A1. Wire fleet_health_check into a read-only dispatch mode; confirm gunbc_health on srv3/srv4. Its closed read surface is Manager, chassis Thermal and Sensors, and the event log: temperatures and fan speeds, not commanded duty, fan program or power state."),
+      li(text: "A2. Standing telemetry: schedule A1 after operator sign-off (closed job roster)."),
+      li(text: "A3. Tier 1 ReadBmcFanControlState, ReadPowerState and ReadBmcPowerStanding, realized per BMC family: the current program or mode and the commanded duty per controller group; the system power state (on, off, transitioning, unreadable); and power draw in watts over an identified observation window. State and draw are separate capabilities: a BMC that exposes only the power state must not read as one that exposed draw. Each is taken against an exact target with a receipt. What is missing is a production live acquisition and interpretation receipt, not a decoder: interpretation reuses extdeps.bmc.pid_control_decode and its representability and semantic-identity gates. The route uses gunbc_health only where that Redfish ReadOnly principal can actually read the family surface (Redfish can carry power state; the OpenBMC controller config and D-Bus state are not shown to be readable by it). Where it cannot, A3 establishes a separate least-privileged BMC read route, or refuses with the missing route as a named obligation; it never borrows the admin transport that gunbc.bmc.bmc_fan_converge uses today. This is the read B1 and every later independent readback consume."),
+      li(text: "A4. The tier 2 identity and the fixed-diagnostic capabilities above."),
+      li(text: "A5. The approved diagnostic session, as an escalation route, only where A4 is insufficient."),
+      li(text: "A6. Tier 3 break-glass for host and BMC as AccessRequest kinds through the existing broker."),
+      li(text: "A7. Escalation records, and their conversion into new lower-tier reads."),
+    ]),
+  ]
+}
+
+fn coverage() -> List<MarkdownBlock> {
+  [
+    h2(text: "6. Fleet coverage"),
+    p(text: "All machines must not mean whichever existing roster is convenient: gunbc.fleet.fleet_host_identity names 18 identities, naming is not enrollment, and fleet_intent_known_hosts holds four. Every owned identity carries one thermal standing record, and an unresolved one keeps the program open."),
+    p(text: "The record has independent axes, not one flat label, because one machine can be stored, provider-cooled and awaiting a fact at once, and a single choice would make one true fact erase another."),
+    TableBlock {
+      header: t3(a: "axis", b: "values", c: "question it answers"),
+      alignments: [AlignNone, AlignNone, AlignNone],
+      rows: [
+        t3(a: "lifecycle", b: "active, commissioning, stored, retired", c: "is the machine in service"),
+        t3(a: "cooling responsibility", b: "locally managed, provider managed", c: "who owns the fan and thermal control"),
+        t3(a: "qualification", b: "qualified (section 9 receipt), awaiting a named fact, awaiting a selection policy, refused", c: "what the evidence establishes"),
+        t3(a: "workload admission", b: "admitted, not admitted, per provider contract", c: "may work be placed on it; derived from the other three, never set by hand"),
+      ],
+    },
+    p(text: "Terminal condition, which the retirement of this plan states: no identity is awaiting a fact or a selection policy, or in commissioning; every active, locally managed identity has an admitted observation path and holds a current section 9 qualification; every provider-managed identity holds an observed and qualified provider policy or contract; a stored identity is acceptable only behind an enforced admission gate that refuses work until it qualifies; retired identities are excluded. A machine is not covered because it has a hostname, a BMC or a fan row. Where this record lives (a new carrier, or an existing lifecycle authority such as gunbc.fleet.fleet_lifecycle_observation for the lifecycle axis) is decided by B1 after reading those authorities."),
+  ]
+}
+
+fn power_model() -> List<MarkdownBlock> {
+  [
+    h2(text: "7. Power and thermal model, modeled before anything converges"),
+    p(text: "Operator objective, 2026-11-05: no DIMM in the owned fleet rises above 85 °C, under any admitted workload. 85 °C is where DDR4 leaves its normal band and must refresh twice as often (section 3), so this is the line where the part starts paying more power for the same work and loses retention margin. It is a hard constraint: a candidate that predicts more is excluded before ranking, never traded against throughput or noise (gunbc.design_argument::selection_precedes_convergence). The control target sits below 85 °C by a margin derived from the DIMM sensor's cited accuracy and the measured thermal time constant, not picked."),
+    h3(text: "Why this is hard now: Strata workers"),
+    p(text: "Strata workers are being added across the fleet. Strata with CPU-computed experts streams expert weights from DRAM for every token (srv3's cell runs pool workers beside two RTX 2000 Ada cards, gunbc.serving.strata_ada_pair_cell::srv3_strata_flags), so the working hypothesis is that it drives sustained, near-peak memory traffic, the workload that heats DIMMs most. That is unmeasured (gunbc.plans.serving_fleet_program keeps the CPU-expert route Unobserved) and is what P4 must establish. The hosts already reached 100 to 110 °C with 19 CI runners plus the Strata engines. CI and Strata therefore draw on one thermal budget per host. A host's schedulable capacity is bounded by its thermal envelope, not by its cores or its memory size, and placement must see that envelope; otherwise every new Strata worker is a fresh incident. This changes strategy outside this plan: how many workers a host is offered for, which workloads share a host, and whether some chassis can carry Strata at all."),
+    h3(text: "The model, in dependency order"),
+    p(text: "Each node lands as a model before any stage consumes it (gunbc.design_argument::how_to_work). Homes are existing modules where one exists; a new home is named only where none does."),
+    ol(items: [
+      li(text: "P1. Limits as cited facts. DIMM bands (normal to 85 °C, extended to 95 °C with doubled refresh, out of spec above), DIMM sensor accuracy, CPU and regulator limits, each with CitedFigureStanding. Homes: extdeps.memory.samsung, extdeps.cpu.ampere, the board module. P1 owns component limits only; relations between parts (cooler height against chassis clearance, cooler capacity against CPU design power) are qualification checks in product.cooling_qualification."),
+      li(text: "P2. Heat made, as functions, not constants. CPU power as a function of clock or power cap and utilisation (Ampere's usage power and TDP, not one figure). DIMM power as a function of traffic, rank and die count and temperature, by the DDR4 current-based method (background, activate, read and write, refresh) with the part's IDD values from its datasheet, replacing product.node_power_envelope::memory_power's per-chip constant, which has no traffic or temperature term. Accelerator and board power. Home: product.node_power_envelope, extended rather than forked."),
+      li(text: "P3. Heat removed, measured per host. Steady-state rise of each DIMM, the SoC and the regulators above inlet as a function of chassis and CPU fan duty, with the time constant (the SoC went from 85 to 105 °C in about 3 minutes). This is the causal model that product.mt_collins_power_policy::mt_collins_causal_model leaves unestablished; it is an observation receipt in the gunbc fleet layer, produced by a controlled sweep through workstream A, never an authored constant."),
+      li(text: "P4. Workload profiles, measured. For each workload class (CI runner, Strata worker with CPU experts, Strata GPU cell, idle): CPU power, memory traffic and accelerator power per unit of admitted work. Measured on a converged host under representative load; an unmeasured class stays SelectionNeedsEvidence, not a guess."),
+      li(text: "P5. One decision subject. Variables: runner width, Strata worker count, clock or power cap, fan program, a configured static memory bandwidth cap where the hardware exposes one (a reactive sensor-driven throttle is not a variable; it belongs to B5 as the emergency floor, and if only the reactive mechanism exists there is no memory variable here), workload mix per host. Hard constraints: DIMM ≤ 85 °C less margin, CPU and regulator limits, PSU capacity, and the B3 sound ceiling at the listening position. Context parameter: the declared worst-case inlet temperature, at which every thermal constraint is evaluated. Objective: accepted work per host. CI work and Strata work are different units; their common valuation is a separate policy decision outside this plan. P5 consumes that policy when it exists; until then, where more than one workload mix survives the constraints, P5 returns SelectionNeedsPolicy rather than choosing. Today one decision path exists, for Mt. Collins, in two layers: product.mt_collins_power_policy::mt_collins_power_assessment holds the decision assessment, and product.fleet_operating_point::fleet_operating_point_selection is the candidate and Pareto selection wrapper over it. P5 consolidates those two layers rather than adding a third (gunbc.design_argument::root_generalization root generalization). Decision grain: the subject is per assembled host, and its SelectionReceipt binds that host identity, with its installed assembly, measured envelope (P3), declared inlet and admitted workload mix as context; srv3 and srv4 share a site but differ in fan wiring and measurements, so they get separate receipts. A site-level question such as Mt. Collins (powered-host count and socket cap under a site power limit) is a separate subject that consumes the per-host qualified points as candidates; it does not re-choose them."),
+      li(text: "P6. Placement consumes the envelope. Fabric selection and runner admission treat a host's remaining thermal headroom, predicted by P2 to P4, as a supply constraint, so admitting a Strata worker that would push a DIMM past the target is refused at admission rather than discovered in a temperature log. Home: the quantitative admission path, where an offer is sealed against the exact work (product.fabric.capacity_admission is the closest existing authority), and runner-width admission, or a thermal supply screen before candidate sealing; the exact home is a P6 design decision. Not gunbc.fabric.fabric_executor_class::CapacityClassAdmission: that is a static sanction of what class of work an executor may ever serve, with no amount, headroom, expiry or thermal evidence, and fusing a dynamic headroom into it would merge two different questions."),
+    ]),
+    p(text: "If P5 excludes every candidate at the capacity the fleet needs, the answer is a hardware change (DIMM air shrouds, a different chassis, one DIMM per channel, lower-rank DIMMs), stated by the model with the evidence that excluded each candidate."),
+    h3(text: "Memory heat levers, by priority"),
+    p(text: "DDR4 RDIMMs have no voltage or clock curve to step down at run time (1.2 V fixed, data rate set at boot), so there is no GPU-style power limit. These are the levers P5 chooses among and the B5 guard acts on, highest first. Each is a candidate actuator, not a decision taken here."),
+    ol(items: [
+      li(text: "Air over the DIMMs. The incident readings (100 to 110 °C) are beyond the 95 °C extended range, so this is first: it lowers temperature directly and, through the refresh feedback in section 3, lowers power too. Facts come from B2 (air path, fan placement, shroud); the actuator is the chassis fan group driven by the hottest DIMM (B5)."),
+      li(text: "Memory traffic. DRAM power is mostly data moved times energy per bit, plus per-rank background. Runner width, concurrent memory-heavy jobs and NUMA-local placement change it with no hardware or firmware change; the overnight 12-runner cap is this lever applied by hand."),
+      li(text: "Controller bandwidth limits, two different mechanisms. A configured static bandwidth cap, if the hardware exposes one, is an operating-point variable P5 may choose, judged on its throughput and thermal evidence like any other. A reactive throttle driven by the DIMM sensor is the nearest thing to a power limit but is a safety floor, not an operating point: it converts heat into lost throughput, memory-bound work first, and belongs to B5's guard. Whether Ampere's firmware or the ASRock Rack BIOS exposes either on this board is unknown and must be read from their documentation."),
+      li(text: "Population. Background and refresh power scale with ranks and dies; the 64 GB 3DS parts carry 8 logical ranks each. Fewer DIMMs, fewer ranks per DIMM, or one DIMM per channel cut it at a capacity and bandwidth cost. This is the hardware-change answer when P5 excludes every candidate."),
+      li(text: "Lower data rate. Set at boot; costs bandwidth on every job, so it ranks below the levers that act only when hot."),
+      li(text: "Power-down and self-refresh states. Save power only on idle ranks, so they do nothing under sustained load and are recorded here only so they are not mistaken for a remedy."),
+    ]),
+  ]
+}
+
+fn work_order() -> List<MarkdownBlock> {
+  [
+    h2(text: "8. The work, in dependency order"),
+    p(text: "One list for both workstreams. A nodes are defined in section 5, P nodes in section 7; B nodes are defined here. A phase starts when the nodes it depends on have landed; nodes inside a phase are independent unless stated."),
+    h3(text: "Phase 0: holding in place (done, temporary)"),
+    ul(items: [
+      li(text: "B0. Record the overnight mitigations as incident overrides, each with an end condition: runners capped at 12 per box (survives reboot), clocks capped at 2.2 GHz (lost on reboot; record before a reboot drops it), CPU fan 50% and chassis fans 100% (untested across a BMC reset). Each ends when B6 applies the chosen point."),
+    ]),
+    h3(text: "Phase 1: see the machines"),
+    ul(items: [
+      li(text: "A1, then A2 (needs operator sign-off: a scheduled job is a roster change); A3 and A4."),
+      li(text: "B1. Baseline srv3/srv4 through A1, A3 and A4: every temperature, fan speed, commanded duty and current fan program, memory-error counts, clock caps, runner load, BMC event log. Decide the home of the section 6 standing."),
+      li(text: "A5, A6 and A7 run alongside every later phase."),
+    ]),
+    h3(text: "Phase 2: facts that need no host access"),
+    ul(items: [
+      li(text: "P1, and finding C's cooler height and positive-margin checks in product.cooling_qualification, fed by B2's assembly facts. P2 (absorbs findings A and B, including the conservative DIMM class bound with part-specific clawback, so B8 can cover DIMMs other than the incident part)."),
+      li(text: "B2. Complete each host's cooling assembly: fan parts, placement and direction, splitter topology, controller groups, air paths. srv3/srv4 first, then srv1/srv2, Butch (srv14), H11 (host-6ce85c), mtcollins1."),
+      li(text: "B3. Noise facts: each fan's duty-to-noise curve from its datasheet, the other sources in each enclosure, and gunbc.fleet.fleet_acoustic_intent restated as a sound level at a listening position instead of a duty percentage."),
+    ]),
+    h3(text: "Phase 3: measure"),
+    ul(items: [
+      li(text: "B4. Scoped change operations (finding H), pulled ahead of the sweep that needs them. They share one transaction discipline: exact target, before-state capture, bounded application, independent readback, and rollback or an explicit refusal. Each keeps its own subject identity inside that envelope: fan writes target a fan actuator group (the P3 sweep needs these); active heat reduction, which lowers the heat of work already running, targets a runner-capacity or slot population, a Strata service or worker population, a CPU socket or power domain, or an accelerator power domain. A shared envelope is not a shared subject type, so a request for one subject cannot construct a change to another. On the normal modeled path B5 and B6 use only these operations; the one exception is a tier 3 emergency intervention (section 5), which is recorded afterwards as an incident override."),
+      li(text: "P3, through B4, A1 and A3. P4, through A3 and A4 under each workload class, using ReadHostPowerStanding, ReadMemoryTrafficStanding and ReadAcceleratorPowerStanding for power and traffic per unit of work. Each P4 term is first decided applicable or not from the host assembly and the workload class: a term nothing contributes (no accelerator installed, or none participating in that workload) is a grounded NotApplicable, never a zero reading. An applicable term is either observed, or, where the platform cannot read it, a named observation obligation that keeps that host at SelectionNeedsEvidence until it is met. Nothing contributes and nobody measured it are distinct standings."),
+    ]),
+    h3(text: "Phase 4: decide"),
+    ul(items: [
+      li(text: "P5. Its outcomes are std.decision's: SelectedWithin with a receipt; SelectionNeedsEvidence; SelectionNeedsPolicy where workload mixes survive and the external CI and Strata valuation is not yet set; or every candidate excluded by a hard constraint, which is the hardware-change answer (gunbc.design_argument::selection_precedes_convergence). A host whose P5 outcome is not SelectedWithin cannot reach section 9."),
+    ]),
+    h3(text: "Phase 5: act"),
+    ul(items: [
+      li(text: "P6 first. Placement refuses work beyond the host's thermal headroom. B5's guard and B6's restoration of heat admission both depend on it."),
+      li(text: "B5. One fan policy that is also the run-time guard (finding D). Start from the program A3 reads and decodes (the two-group structure the witness decode shows is the expected starting candidate, to be confirmed against the live read); drive the chassis group from the hottest of SoC, DIMMs and regulators. When a DIMM approaches the target, act in lever order (raise chassis air, then reduce present heat through B4's active heat-reduction operations, with P6 refusing the replacement work that would undo it, and only then the reactive throttle as the floor). P6 is admission, so it can stop new work but cannot shed running work; B5 consumes both. Two failures are distinct. A required sensor unread while the chosen controller runs: full cooling, and work drained or refused until the reading returns. The chosen controller or its actuation path unavailable: a controller-loss emergency standing, where firmware automatic may be the only remaining control but, because finding D showed it does not protect the DIMMs, it is always paired with immediate reduction of admitted heat and a loud degraded standing, never treated as safe. The three overlapping policies are deleted, not kept beside it."),
+      li(text: "B6. Apply P5's chosen point through B4's operations, in thermally safe order (cooling raised before heat admitted), read back independently, persistence tested across reboot and BMC reset. B0's overrides end here."),
+    ]),
+    h3(text: "Phase 6: accept, then roll out"),
+    ul(items: [
+      li(text: "B7. The acceptance run of section 9 on srv3 and srv4."),
+      li(text: "B8. Until the section 6 terminal condition holds, each identity follows the path its axes select. Active and locally managed: Phase 1 for that host (fleet_health_check reads only fleet_intent_known_hosts, srv1 to srv4 today; other BMC families may need different realizations), then Phases 2 to 6 and section 9. Provider managed: an observation route for that provider, then qualification of the provider's policy or contract; no local fan convergence. Stored: prove the admission gate refuses work; the full active path runs when activation is requested. Retired: no further work."),
+    ]),
+  ]
+}
+
+fn acceptance() -> List<MarkdownBlock> {
+  [
+    h2(text: "9. Acceptance"),
+    p(text: "A host is accepted when every criterion below holds on one recorded run, observed through tier 1 and tier 2 only. A criterion that cannot be read is a fail, not a pass by absence. Durations and margins marked proposed are the plan's recommendation and may be changed by the operator before the run, never after it."),
+    ol(items: [
+      li(text: "Facts complete. Every limit the selection uses is cited (P1); every heat function is cited or measured, none assumed (P2); the host's envelope (P3) and the profiles of the workloads it runs (P4) are measured on this host."),
+      li(text: "A recorded choice. P5 returns SelectedWithin with its receipt. Any change to the evidence, candidates, constraints or policy it binds makes the receipt stale, and a stale receipt is a fail."),
+      li(text: "Converged. Every setting of the chosen point is applied through typed operations (B4, B6) and confirmed by an independent read, including a physical response (fan speed follows commanded duty), not only an echoed setting. It survives a reboot and a BMC reset, each run per host with operator approval."),
+      li(text: "Sustained load. The host runs the chosen point under its declared admitted worst-case workload mix, the one P5 admits for that host (for srv3 and srv4, CI and Strata together), until steady state is shown (proposed: hottest DIMM flat within sensor resolution over the last two hours) and for at least 24 hours (proposed). Throughout: hottest DIMM at or below 85 °C less the P1 margin; SoC below 100 °C; regulators below their limit; no reactive CPU or memory throttle events (a static bandwidth cap that P5 chose is part of the point, not an event); no new BMC thermal events; no uncorrected memory errors; corrected errors no higher than the B1 baseline and, in absolute terms, inside a corrected-error threshold that is cited or operator-set with its standing (the baseline is evidence of what was seen, never the limit); with no such threshold yet, zero new corrected errors in the window; measured temperatures inside P5's predicted band, so a host that stays cool while the model is wrong fails; sound level measured and recorded against the B3 ceiling."),
+      li(text: "Worst-case room. The pass holds at the warmest inlet temperature declared for the host's room, not only the room on the day: either extrapolated from the run through P3's measured envelope, or by P5 derating for it. The declared inlet is a recorded fact with its source."),
+      li(text: "Failure controls, each with operator approval before it runs: a withheld required temperature reading drives full cooling and drains or refuses work; a simulated controller loss enters the degraded standing and reduces admitted heat; a placement that would exceed headroom is refused by P6; the B5 guard acts before a DIMM crosses the target under a load step."),
+      li(text: "Clean-up and access. B0's overrides are retired or replaced by the chosen point; the overlapping fan policies are deleted; observation, diagnosis and independent readback used tier 1 or tier 2 without an administrator credential; every change went through the modeled, approved convergence route (B4, B6); no human administrator shell or unmodeled administrative operation was needed, and any tier 3 use carries its A7 escalation record."),
+    ]),
+    p(text: "The fleet is accepted, and this plan retires, when the section 6 terminal condition holds: nothing awaiting a fact or a selection policy, nothing commissioning, every active locally managed identity observed and qualified by this run, every provider-managed identity covered by a qualified provider policy, every stored identity behind an enforced admission gate."),
+  ]
+}
+
+fn decisions() -> List<MarkdownBlock> {
+  [
+    h2(text: "10. Operator decisions"),
+    p(text: "The incident's five questions with a recommendation each. Every answer is interim until P5 can produce a measured one."),
+    ol(items: [
+      li(text: "Runner cap (keep 12, change, restore 19): keep 12 as a recorded incident override with an end condition; the lasting number comes from P5."),
+      li(text: "Clock cap (make 2.2 GHz permanent, change, revert): the same. It works but is lost on reboot and was never tested alone; record it before a reboot drops it."),
+      li(text: "Airflow (physical check?): yes. DIMMs near 100 °C with chassis fans at 100% means air is not reaching them. Confirm remotely that every chassis fan reaches its expected speed, then inspect shroud, fan direction and blockage, and measure room temperature."),
+      li(text: "CPU fan at 50%: not as policy. 35% was too little at full load and 3.0 GHz; the CPU group should follow its own curve and the DIMMs should be cooled by the chassis group."),
+      li(text: "Scope and read back every fan change: yes (finding H, B4)."),
+      li(text: "New: may fleet_health_check run on a schedule (A2)? Recommended yes. A new scheduled job needs operator sign-off under the closed job roster; a manual dispatch mode does not."),
+      li(text: "Decided 2026-11-05: DIMMs stay at or below 85 °C fleet-wide, as a hard constraint (section 7)."),
+      li(text: "Decided 2026-11-05: the weighting between CI throughput and Strata serving is a separate modeling and policy decision, not made here. This plan delivers facts (P1 to P4) first."),
+      li(text: "Decided 2026-11-05: noise is its own constraint, downstream of fan duty and independent of the thermal limits. It is to be stated as a sound level, not a duty percentage; fan duty is one of several noise sources. Restating gunbc.fleet.fleet_acoustic_intent that way is a fact task (fan acoustic curves, measured sound level), not a weighting."),
+      li(text: "Decided 2026-11-05: Strata rollout is not gated on P3. The owned hosts are development and test machines; a rollout on an unmeasured host is a source of P3 and P4 evidence, with the 85 °C objective still the line the guard holds."),
+    ]),
+  ]
+}
+
+fn host_thermal_operating_point_body() -> List<MarkdownBlock> {
+  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(incident(), physics()), inventory()), knowledge()), findings()), access()), coverage()), power_model()), work_order()), acceptance()), decisions())
+}
+
+data host_thermal_operating_point_plan: Plan = Plan {
+  slug: "host-thermal-operating-point",
+  title: "Host thermal operating point: srv3/srv4 running too hot, worked through observation and access to a chosen, converged and qualified thermal operating point across the owned fleet",
+  body: host_thermal_operating_point_body(),
+  retirement: PlanRetiresWhen {
+    condition: unbound_dissolution(description: "Retire when the section 6 terminal condition holds for every owned identity: none awaiting a hardware fact or a selection policy, none in commissioning; every active, locally managed identity has passed the section 9 acceptance run (cited limits, measured host and workload evidence, an operating point chosen per host by the one power and thermal decision subject that consolidates product.fleet_operating_point and product.mt_collins_power_policy, no DIMM above 85 °C less margin under the host's declared admitted worst-case workload at the declared worst-case inlet, settings converged per actuator group with independent readback); every provider-managed identity is covered by an observed and qualified provider policy; every stored identity sits behind an enforced admission gate that refuses work until it qualifies; placement refuses work beyond a host's thermal headroom; one fan policy has replaced the overlapping ones; every active locally managed identity has an admitted tier 1 and tier 2 observation path and every provider-managed identity an admitted provider-specific observation route; observation and readback run without an administrator credential and changes only through the modeled convergence route."),
+  },
+  projection: PlanIsAuthorityOnly,
+}

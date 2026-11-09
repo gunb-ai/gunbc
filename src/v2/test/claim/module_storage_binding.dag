@@ -31,7 +31,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // src/v2/test/claim/long/module_storage_binding_derivation.dag, run by the long-lane recipe.
 // Split, not deleted: the note's own division — fast receipts stay discovered, execution proofs
 // live in long/. Duplicate detection keys on module identity independently of provenance, which is
-// exactly why the §5 wall can be proven here without paying for a parse.
+// exactly why the gunbc.design_argument::fail_closed wall can be proven here without paying for a parse.
 
 data msb_fixture_qn: QualifiedName = Cons {
   head: ^v2,

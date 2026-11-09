@@ -71,7 +71,7 @@ import std.measure { Watt, ByteSize, Bandwidth, byte_size, byte_size_count, watt
 import std.nat { Nat }
 import extdeps.systems.nvidia { nvidia_dgx_spark_4tb_catalog, dgx_spark_system_overview_authority }
 import extdeps.systems.nvidia_gh200 { nvidia_gh200_480gb_catalog, nvidia_gh200_624gb_hbm3e_catalog, extdeps_external_authority_anchor }
-import product.p4261_carrier_layout { carrier_model_text }
+import product.p4261.report { carrier_model_text }
 import product.superchip_assembly_qualification {
   SuperchipAssembly,
   AssemblyWorkloadQualified,
@@ -339,7 +339,7 @@ fn bytes_reading(axis: DeclarationRef, b: ByteSize) -> AxisReading {
 }
 
 // A ROW'S MEMORY READINGS carry its standing: an uncited row declares every memory axis missing,
-// naming the read obligation, rather than ranking on a typed bet (DESIGN §4d).
+// naming the read obligation, rather than ranking on a typed bet (gunbc.design_argument::epistemic_humility).
 fn gh200_memory_gaps(row: CoherentSuperchipCatalogRow) -> List<AxisGap> {
   match cited_figure_read_obligation(standing: row.figure_standing) {
     Absent => []
@@ -358,7 +358,7 @@ type MemoryReadings {
 
 // ABSENT BANDWIDTH IS A FUNDED-AXIS GAP, not an empty reading list. gpu_local_bandwidth is on the
 // subject; returning [] with gaps: [] declared the inputs complete while the axis had no reading
-// (DESIGN §3d / §5). Unread power already pairs the same way.
+// (gunbc.design_argument::selection_precedes_convergence, gunbc.design_argument::fail_closed). Unread power already pairs the same way.
 fn gpu_local_bandwidth(gpu_bandwidth: Bandwidth?) -> MemoryReadings {
   match gpu_bandwidth {
     Present { value: b } => MemoryReadings {

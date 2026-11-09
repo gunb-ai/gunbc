@@ -1,5 +1,10 @@
 module test.claim.live_deploy.apply_receipt_witness
 
+import extdeps.exec.command { LocalExec }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.mkdir { mkdir_parents_command }
+import gunbc.command_runner { run_shell_commands }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data apply_receipt_fixture_r: String = "0123456789abcdef0123456789abcdef01234567"
@@ -98,7 +103,7 @@ test fn witness_dashboard_receipt_without_completed_at_refuses() -> Bool {
 // THE TWO target_decision LABEL WITNESSES WERE DELETED 2026-09-07 WITH THEIR SUBJECT. They were
 // real evidence -- a round trip over all three labels, and a tampered wire value refusing as a
 // typed Unreadable rather than being absorbed -- but the field they tested no longer exists, and a
-// witness kept over a deleted subject is the decoration DESIGN section 4b names: permanently green
+// witness kept over a deleted subject is the decoration gunbc.design_argument::guarantee_ladder names: permanently green
 // by construction, carrying no information, and worse than absent because it reads as coverage.
 
 // RED: a substituted predecessor receipt identity fails the identity check (review 5061891290 P1-4).
@@ -142,4 +147,158 @@ test fn witness_v3_apply_receipt_schema_is_unreadable() -> Bool {
         string_contains(s: r, pattern: "live-deploy-apply-receipt/v4")
           && string_contains(s: r, pattern: "live-deploy-apply-receipt/v3")
     })
+}
+
+// THE TRANSACTION REFUSAL RECEIPT. Every refusal arm of the CI transaction writes this document
+// (gunbc.live_deploy.apply live_deploy_transaction_refused), so the job's failure is readable from
+// an artifact instead of an empty receipt directory and a generic upload error. These witnesses pin
+// the record itself: it round-trips, it is tamper-evident, it refuses a foreign schema, and it
+// shares the receipt DIRECTORY with the apply receipt while remaining a distinct FILE -- the
+// rollback readback reads only the apply-receipt filename and must never mistake one for the other.
+
+fn fixture_transaction_refusal() -> LiveDeployTransactionRefusalReceipt {
+  LiveDeployTransactionRefusalReceipt {
+    schema: live_deploy_transaction_refusal_schema,
+    transaction: "live_deploy_apply_prod_role_transaction_wet",
+    target: "srv1",
+    instance_id: "srv1-live",
+    arm: "FleetProvenanceAbsent",
+    detail: "live_deploy transaction: FleetProvenanceAbsent — RLM_PLAN_ARTIFACT_HASH not set",
+    completed_at: "2026-11-04T12:00:00Z",
+    receipt_identity: "",
+  }
+}
+
+test fn witness_transaction_refusal_round_trips() -> Bool {
+  let r = fixture_transaction_refusal()
+  let raw = serialize_json(v: live_deploy_transaction_refusal_json(r: r))
+  match live_deploy_transaction_refusal_receipt_decode(raw: raw) {
+    LiveDeployTransactionRefusalReceiptDecoded { receipt: back } =>
+      back.transaction == r.transaction && back.target == r.target && back.instance_id == r.instance_id
+        && back.arm == r.arm && back.detail == r.detail && back.completed_at == r.completed_at
+    LiveDeployTransactionRefusalReceiptUnreadable { reason: _ } => false
+  }
+}
+
+test fn witness_transaction_refusal_forged_identity_refuses() -> Bool {
+  let r = fixture_transaction_refusal()
+  let forged = join([
+    "{\"schema\": \"", live_deploy_transaction_refusal_schema, "\", \"transaction\": \"", r.transaction,
+    "\", \"target\": \"", r.target, "\", \"instance_id\": \"", r.instance_id,
+    "\", \"arm\": \"RunUnbound\", \"detail\": \"", r.detail,
+    "\", \"completed_at\": \"", r.completed_at, "\", \"receipt_identity\": \"0000000000000000000000000000000000000000000000000000000000000000\"}",
+  ], "")
+  match live_deploy_transaction_refusal_receipt_decode(raw: forged) {
+    LiveDeployTransactionRefusalReceiptUnreadable { reason: reason } => string_has_prefix(text: reason, prefix: "transaction refusal receipt identity does not match")
+    LiveDeployTransactionRefusalReceiptDecoded { receipt: _ } => false
+  }
+}
+
+test fn witness_transaction_refusal_foreign_schema_refuses() -> Bool {
+  let r = fixture_transaction_refusal()
+  let foreign = join([
+    "{\"schema\": \"live-deploy-apply-receipt/v4\", \"transaction\": \"", r.transaction,
+    "\", \"target\": \"", r.target, "\", \"instance_id\": \"", r.instance_id,
+    "\", \"arm\": \"", r.arm, "\", \"detail\": \"", r.detail,
+    "\", \"completed_at\": \"", r.completed_at, "\", \"receipt_identity\": \"0000000000000000000000000000000000000000000000000000000000000000\"}",
+  ], "")
+  match live_deploy_transaction_refusal_receipt_decode(raw: foreign) {
+    LiveDeployTransactionRefusalReceiptUnreadable { reason: reason } => string_has_prefix(text: reason, prefix: "transaction refusal receipt schema is not ")
+    LiveDeployTransactionRefusalReceiptDecoded { receipt: _ } => false
+  }
+}
+
+test fn witness_transaction_refusal_arm_changes_identity() -> Bool {
+  let r = fixture_transaction_refusal()
+  let other = LiveDeployTransactionRefusalReceipt {
+    schema: r.schema,
+    transaction: r.transaction,
+    target: r.target,
+    instance_id: r.instance_id,
+    arm: "PreSwapRefused",
+    detail: r.detail,
+    completed_at: r.completed_at,
+    receipt_identity: r.receipt_identity,
+  }
+  live_deploy_transaction_refusal_identity_hex(r: r) != live_deploy_transaction_refusal_identity_hex(r: other)
+}
+
+test fn witness_transaction_refusal_shares_dir_not_file_with_apply_receipt() -> Bool {
+  let dir = live_deploy_apply_receipt_dir_for(instance_id: "srv1-live")
+  let refusal = live_deploy_transaction_refusal_path_for(instance_id: "srv1-live")
+  let apply = live_deploy_apply_receipt_artifact_path_for(instance_id: "srv1-live")
+  string_has_prefix(text: refusal, prefix: dir)
+    && string_has_prefix(text: apply, prefix: dir)
+    && refusal != apply
+}
+
+fn string_has_prefix(text: String, prefix: String) -> Bool {
+  text.length() >= prefix.length() && text.substring(start: 0, end: prefix.length()) == prefix
+}
+
+// ═════ THE JOB'S EXACTLY-ONE-RECEIPT RULE, WITNESSED (fleet_converge_dashboard_receipt_assert_step) ═════
+// The rule admits exactly one decodable document, apply XOR refusal; zero never passes (on either
+// conclusion); two never pass; a document neither decoder accepts never passes; and the document must
+// pair with the deploy step's conclusion. These witnesses pin every name, and the classify paths run
+// against real files written into a scratch dir so the decoders, not the listing, decide.
+
+data receipt_assert_scratch_dir: String = "target/live-deploy-receipt-assert-witness"
+
+fn receipt_assert_verdict_tag(verdict: DashboardReceiptAssertVerdict) -> String {
+  match verdict {
+    AssertAdmitted { kind: kind, name: _ } => join(["admitted:", kind], "")
+    AssertListingUnreadable { reason: _ } => "listing-unreadable"
+    AssertZeroReceipts { conclusion: _ } => "zero"
+    AssertMultipleReceipts { names: _ } => "multiple"
+    AssertUnreadableReceipt { name: _, reason: _ } => "unreadable"
+    AssertConclusionMismatch { kind: kind, conclusion: _ } => join(["mismatch:", kind], "")
+  }
+}
+
+test fn witness_receipt_assert_zero_never_passes_on_either_conclusion() -> Bool {
+  receipt_assert_verdict_tag(admit_dashboard_deploy_receipts(dir: receipt_assert_scratch_dir, listed_success: true, listing_error: "", listing: "", conclusion: "success")) == "zero"
+    && receipt_assert_verdict_tag(admit_dashboard_deploy_receipts(dir: receipt_assert_scratch_dir, listed_success: true, listing_error: "", listing: "", conclusion: "failure")) == "zero"
+}
+
+test fn witness_receipt_assert_two_receipts_refused() -> Bool {
+  receipt_assert_verdict_tag(admit_dashboard_deploy_receipts(dir: receipt_assert_scratch_dir, listed_success: true, listing_error: "", listing: "live_deploy_transaction_refusal.json\nlive_deploy_apply_receipt.json\nnotes.txt", conclusion: "success")) == "multiple"
+}
+
+test fn witness_receipt_assert_listing_failure_is_named() -> Bool {
+  receipt_assert_verdict_tag(admit_dashboard_deploy_receipts(dir: receipt_assert_scratch_dir, listed_success: false, listing_error: "transport gone", listing: "", conclusion: "success")) == "listing-unreadable"
+}
+
+test fn witness_receipt_assert_non_json_files_do_not_count() -> Bool {
+  // The zero rule counts .json documents; a stray notes file is not a receipt and does not rescue an empty directory.
+  receipt_assert_verdict_tag(admit_dashboard_deploy_receipts(dir: receipt_assert_scratch_dir, listed_success: true, listing_error: "", listing: "notes.txt\n", conclusion: "success")) == "zero"
+}
+
+fn assert_scratch_written(name: String, content: String) -> Bool {
+  run_shell_commands(commands: [mkdir_parents_command(path: receipt_assert_scratch_dir)], transport: LocalExec) == ExitSuccess
+    && Filesystem.Write(path: join([receipt_assert_scratch_dir, "/", name], ""), content: content).success
+}
+
+test fn witness_receipt_assert_apply_receipt_admits_only_with_success() -> Bool {
+  let body = serialize_json(v: live_deploy_apply_receipt_json(r: fixture_dashboard_receipt()))
+  assert_scratch_written(name: "live_deploy_apply_receipt.json", content: body)
+    && receipt_assert_verdict_tag(admit_dashboard_deploy_receipts(dir: receipt_assert_scratch_dir, listed_success: true, listing_error: "", listing: "live_deploy_apply_receipt.json", conclusion: "success")) == "admitted:apply"
+    && receipt_assert_verdict_tag(admit_dashboard_deploy_receipts(dir: receipt_assert_scratch_dir, listed_success: true, listing_error: "", listing: "live_deploy_apply_receipt.json", conclusion: "failure")) == "mismatch:apply"
+}
+
+test fn witness_receipt_assert_refusal_admits_only_with_failure() -> Bool {
+  let body = serialize_json(v: live_deploy_transaction_refusal_json(r: fixture_transaction_refusal()))
+  assert_scratch_written(name: "live_deploy_transaction_refusal.json", content: body)
+    && receipt_assert_verdict_tag(admit_dashboard_deploy_receipts(dir: receipt_assert_scratch_dir, listed_success: true, listing_error: "", listing: "live_deploy_transaction_refusal.json", conclusion: "failure")) == "admitted:refusal"
+    && receipt_assert_verdict_tag(admit_dashboard_deploy_receipts(dir: receipt_assert_scratch_dir, listed_success: true, listing_error: "", listing: "live_deploy_transaction_refusal.json", conclusion: "success")) == "mismatch:refusal"
+}
+
+test fn witness_receipt_assert_garbage_refuses_naming_both_decoders() -> Bool {
+  assert_scratch_written(name: "live_deploy_apply_receipt.json", content: "{ not json")
+    && match admit_dashboard_deploy_receipts(dir: receipt_assert_scratch_dir, listed_success: true, listing_error: "", listing: "live_deploy_apply_receipt.json", conclusion: "failure") {
+      AssertUnreadableReceipt { name: n, reason: why } =>
+        n == "live_deploy_apply_receipt.json"
+          && string_has_prefix(text: why, prefix: "apply-receipt decode: ")
+          && why != "apply-receipt decode: "
+      _ => false
+    }
 }

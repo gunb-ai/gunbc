@@ -3,7 +3,14 @@
 
 use self::CitationIndexCoverage::*;
 use self::DeclField::*;
-pub use crate::std_algebra::collection_concat_shape;
+use crate::std_algebra::Ordering::*;
+pub use crate::std_algebra::{
+    collection_concat_shape, int_compare_canonical, string_compare_canonical, Ordering,
+};
+pub use crate::std_content_hash::{
+    content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural,
+    Fnv1a64Structural,
+};
 pub use crate::std_types::{List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -87,30 +94,75 @@ pub fn decl_type_parameter_ref(
     })
 }
 
+pub fn decl_field_rank(f: Rc<DeclField>) -> i64 {
+    match (*f.clone()).clone() {
+        DeclField::WholeDeclaration => 0,
+        DeclField::NamedField { field_name: _, .. } => 1,
+        DeclField::TypeParameter { name: _, .. } => 2,
+    }
+}
+
+pub fn decl_field_compare(a: Rc<DeclField>, b: Rc<DeclField>) -> Ordering {
+    {
+        let rank = crate::std_algebra::int_compare_canonical(
+            decl_field_rank(a.clone()),
+            decl_field_rank(b.clone()),
+        );
+        match rank.clone() {
+            Ordering::Equal => match (*a.clone()).clone() {
+                DeclField::WholeDeclaration => Ordering::Equal,
+                DeclField::NamedField { field_name: fa, .. } => match (*b.clone()).clone() {
+                    DeclField::NamedField { field_name: fb, .. } => {
+                        crate::std_algebra::string_compare_canonical(fa.clone(), fb.clone())
+                    }
+                    _ => Ordering::Equal,
+                },
+                DeclField::TypeParameter { name: ta, .. } => match (*b.clone()).clone() {
+                    DeclField::TypeParameter { name: tb, .. } => {
+                        crate::std_algebra::string_compare_canonical(ta.clone(), tb.clone())
+                    }
+                    _ => Ordering::Equal,
+                },
+            },
+            other => other.clone(),
+        }
+    }
+}
+
 pub fn decl_field_eq(a: Rc<DeclField>, b: Rc<DeclField>) -> bool {
-    match (*a.clone()).clone() {
-        DeclField::WholeDeclaration => match (*b.clone()).clone() {
-            DeclField::WholeDeclaration => true,
-            DeclField::NamedField { field_name: _, .. } => false,
-            DeclField::TypeParameter { name: _, .. } => false,
-        },
-        DeclField::NamedField { field_name: fa, .. } => match (*b.clone()).clone() {
-            DeclField::WholeDeclaration => false,
-            DeclField::NamedField { field_name: fb, .. } => (fa.clone() == fb.clone()),
-            DeclField::TypeParameter { name: _, .. } => false,
-        },
-        DeclField::TypeParameter { name: pa, .. } => match (*b.clone()).clone() {
-            DeclField::WholeDeclaration => false,
-            DeclField::NamedField { field_name: _, .. } => false,
-            DeclField::TypeParameter { name: pb, .. } => (pa.clone() == pb.clone()),
-        },
+    match decl_field_compare(a, b) {
+        Ordering::Equal => true,
+        _ => false,
+    }
+}
+
+pub fn declaration_ref_compare(a: Rc<DeclarationRef>, b: Rc<DeclarationRef>) -> Ordering {
+    {
+        let m = crate::std_algebra::string_compare_canonical(
+            a.module_path.clone(),
+            b.module_path.clone(),
+        );
+        match m.clone() {
+            Ordering::Equal => {
+                let n = crate::std_algebra::string_compare_canonical(
+                    a.decl_name.clone(),
+                    b.decl_name.clone(),
+                );
+                match n.clone() {
+                    Ordering::Equal => decl_field_compare(a.field.clone(), b.field.clone()),
+                    other => other.clone(),
+                }
+            }
+            other => other.clone(),
+        }
     }
 }
 
 pub fn declaration_ref_eq(a: Rc<DeclarationRef>, b: Rc<DeclarationRef>) -> bool {
-    (((a.module_path.clone() == b.module_path.clone())
-        && (a.decl_name.clone() == b.decl_name.clone()))
-        && decl_field_eq(a.field.clone(), b.field.clone()))
+    match declaration_ref_compare(a, b) {
+        Ordering::Equal => true,
+        _ => false,
+    }
 }
 
 pub fn declaration_ref_in_list(
@@ -150,6 +202,41 @@ pub fn declaration_ref_display_key(ref_: Rc<DeclarationRef>) -> String {
                 ),
             ),
         ),
+    }
+}
+
+pub fn declaration_ref_identity(reference: Rc<DeclarationRef>) -> Rc<Fnv1a64Structural> {
+    {
+        let module_part = crate::std_content_hash::content_hash_tagged_structural(
+            "declaration-module".to_string(),
+            crate::std_content_hash::content_hash_atom(reference.module_path.clone()),
+        );
+        let name_part = crate::std_content_hash::content_hash_tagged_structural(
+            "declaration-name".to_string(),
+            crate::std_content_hash::content_hash_atom(reference.decl_name.clone()),
+        );
+        let field_part = match (*reference.field.clone()).clone() {
+            DeclField::WholeDeclaration => crate::std_content_hash::content_hash_tagged_structural(
+                "declaration-field-whole".to_string(),
+                crate::std_content_hash::content_hash_atom("whole".to_string()),
+            ),
+            DeclField::NamedField {
+                field_name: named, ..
+            } => crate::std_content_hash::content_hash_tagged_structural(
+                "declaration-field-named".to_string(),
+                crate::std_content_hash::content_hash_atom(named.clone()),
+            ),
+            DeclField::TypeParameter {
+                name: parameter, ..
+            } => crate::std_content_hash::content_hash_tagged_structural(
+                "declaration-field-type-parameter".to_string(),
+                crate::std_content_hash::content_hash_atom(parameter.clone()),
+            ),
+        };
+        crate::std_content_hash::content_hash_combine_structural(
+            module_part,
+            crate::std_content_hash::content_hash_combine_structural(name_part, field_part),
+        )
     }
 }
 

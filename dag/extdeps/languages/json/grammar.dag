@@ -6,7 +6,7 @@ import std.optional { Absent, Present }
 import extdeps.numeric.base16 { base16_is_digit_code_point }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.algebra { collection_concat_shape }
+import std.algebra { collection_concat_shape, list_reverse }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -224,7 +224,7 @@ fn json_text_starts_with_at(s: String, i: Int, lit: String) -> Bool {
 // cosmetic and not confined to the scanner: the unescaper's unknown-escape arm dropped the
 // backslash, so `"p\assed"` - which is not JSON - decoded to the string `passed` and satisfied the
 // validation receipt's verdict identity. A malformed document fabricated a pass, which is the
-// fail-open DESIGN 5 forbids at exactly the boundary that exists to prevent it.\n\nThe refusal
+// fail-open gunbc.design_argument::fail_closed forbids at exactly the boundary that exists to prevent it.\n\nThe refusal
 // belongs HERE rather than in the unescaper because the escape set is a grammar production, and
 // deciding it at the span scan means the invalid state never reaches the value builder -
 // construction over validation. It also fixes both readings in one place: parse_json's strings come
@@ -415,7 +415,7 @@ fn drop_string_one(xs: List<String>) -> List<String> {
   let result = fold(xs, init: PairAcc { skipped: false, kept: [] }, f: fn(acc, x) {
     if acc.skipped { PairAcc { skipped: true, kept: concat([x], acc.kept) } } else { PairAcc { skipped: true, kept: [] } }
   })
-  reverse(result.kept)
+  list_reverse(xs: result.kept)
 }
 
 type PairAcc { skipped: Bool, kept: List<String> }
@@ -444,7 +444,7 @@ fn json_text_parse_number_digits(s: String, i: Int) -> Int {
 // so the scan backtracks to after_frac and the stray marker surfaces as unconsumed trailing input,
 // which json_text_parseable and every enclosing production refuse. The sibling lexeme surface
 // json_number_consume_optional_exp always required the digit — the two readings of one RFC
-// production had forked (DESIGN 3), and this restores them to agreement.
+// production had forked (gunbc.design_argument::single_authority), and this restores them to agreement.
 
 fn json_text_parse_number(s: String, i: Int) -> JsonTextParseResult {
   let start = i
@@ -560,7 +560,7 @@ fn json_text_parse_object(s: String, i: Int) -> JsonTextParseResult {
 // json_text_parseable used to live here, deciding on the span scanner alone whether a whole
 // document was JSON. That is the same question extdeps.languages.json.parse answers by CONSTRUCTING
 // the value, so the corpus had one procedure deciding whether text is JSON and another deciding
-// what it contains - two readings of one RFC that can disagree (DESIGN 3; review 44043 was that
+// what it contains - two readings of one RFC that can disagree (gunbc.design_argument::single_authority; review 44043 was that
 // disagreement, on the exponent production, found only because a witness pinned the surfaces
 // together). The whole-document reading now derives from parse_json and lives beside it. What stays
 // here is the SPAN question, which is a different question and has its own consumer:

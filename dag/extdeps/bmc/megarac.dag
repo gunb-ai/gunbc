@@ -9,13 +9,6 @@ import extdeps.bmc.capability {
   bmc_firmware_release_identity_eq,
   bmc_firmware_release_identity_of_wire,
 }
-import std.optional { Present, Absent }
-import extdeps.bmc.ipmitool_hpm_check {
-  HpmCheckRead, HpmCheckUpgradeVariant, HpmCheckUnreadable,
-  HpmComponentSelected, HpmComponentNotListed, HpmComponentListedTwice,
-  HpmVersionAbsent, HpmVersionHeld, hpm_check_table_of, hpm_component_named,
-}
-import extdeps.bmc.ipmitool_observed_output { ipmitool_hpm_check_bmc0_45 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.vendor { Vendor }
@@ -139,7 +132,7 @@ data megarac_op_fan_get_fan_info: MegaRacApiOperation = MegaRacApiOperation {
   contract_note: "cited, not executed by this repository (operator-session curl only); not a megarac_api_operations row; same UI bundle; JSON list of id, fan_number, fan_speed, fan_pwm; UI labels speed as PWM percentage",
 }
 
-// §3c frontier: megarac_op_fan_get_manager_status and megarac_op_fan_get_fan_info. Consumer: a
+// gunbc.design_argument::consumption frontier: megarac_op_fan_get_manager_status and megarac_op_fan_get_fan_info. Consumer: a
 // wet fold that opens a MegaRAC session, GETs those two paths, and closes the session — the
 // inhabitance claim that turns gunbc.machine_intake.megarac_fan_mode_observation receipts into
 // a reading of the route, not only of the answer. Until that fold exists, megarac.FanControl
@@ -214,7 +207,7 @@ data megarac_firmware_0_32: BmcFirmwareReleaseIdentity = bmc_firmware_release_id
 // lives here, because which versions AMI ships is AMI's fact. What we established about this build — the
 // capability row, the run that exercised it, and how the version string came to be known (an operator
 // read of the web UI, not a machine read) — is a receipt in the observing layer, at
-// gunbc.host.bmc_release_capability_catalog (DESIGN.md §3; review 81149).
+// gunbc.host.bmc_release_capability_catalog (gunbc.design_argument::single_authority; review 81149).
 // THE VENDOR'S PAGE LABEL, AND NOTHING MORE. "0.45.3" is what the vendor's release page SAYS this build
 // is called; it is not what the controller reports. The controller reports APP `0.45 03000000`, and the
 // release identity that flows through the platform is DERIVED from those bytes (below, and in
@@ -226,40 +219,23 @@ data megarac_firmware_0_45_3: BmcFirmwareReleaseIdentity = bmc_firmware_release_
   wire: "0.45.3",
 )
 
-// THE RELEASE THIS UNIT'S BUILD IS READ AS, DERIVED HERE FROM THE COMMITTED CAPTURE. The bytes have their
-// one home in extdeps.bmc.ipmitool_observed_output ipmitool_hpm_check_bmc0_45 (boot run 40082618814's
-// retained stdout); this parses them with the SAME parser a live read uses (hpm_check_table_of) and the
-// SAME name-keyed lookup that refuses an absent or duplicated component rather than taking the first row
-// (hpm_component_named), then takes the cell's leading revision -- exactly the path
-// gunbc.host.bmc_release_capability_catalog megarac_version_establishment walks for the capability row,
-// and witness w_the_media_table_key_and_the_capability_row_derive_the_same_release pins that the two
-// land on one release, so this shortcut cannot drift out from under the row that licenses a boot.
-// It answers Absent for every case the parser refuses, and it keeps no cause -- the cause-carrying
-// reading is the capability row's, and an Absent here simply leaves the table with no 0.45 arm.
-data megarac_committed_hpm_read_release: BmcFirmwareReleaseIdentity? = match hpm_check_table_of(stdout: ipmitool_hpm_check_bmc0_45) {
-  HpmCheckRead { rows: rows } => match hpm_component_named(rows: rows, name: "APP") {
-    HpmComponentSelected { row: row } => match row.active {
-      HpmVersionHeld { rendering: rendering } => match split(s: rendering as String, delimiter: " ").first() {
-        Present { value: revision } => Present { value: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: revision as NonEmptyStr) }
-        Absent => Absent
-      }
-      HpmVersionAbsent => Absent
-    }
-    HpmComponentNotListed { name: _, listed: _ } => Absent
-    HpmComponentListedTwice { name: _, ids: _ } => Absent
-  }
-  HpmCheckUpgradeVariant { header: _ } => Absent
-  HpmCheckUnreadable { detail: _ } => Absent
-}
-
-// IS THE IDENTITY A CALLER CARRIES THE ONE THE COMMITTED READ DERIVES? Absent read -- no capture parsed --
-// answers false, which leaves every wire of every release uncatalogued rather than assuming a build.
-fn megarac_release_is_the_committed_hpm_read(firmware: BmcFirmwareReleaseIdentity) -> Bool {
-  match megarac_committed_hpm_read_release {
-    Present { value: read } => bmc_firmware_release_identity_eq(a: firmware, b: read)
-    Absent => false
-  }
-}
+// THE RELEASE THE CONTROLLER REPORTS, DECLARED THE WAY THIS MODULE DECLARES EVERY UPSTREAM RELEASE. The
+// controller's APP hpm cell answers `0.45 03000000`: a raw release of "0.45" with NO semantic version, and
+// the auxiliary bytes are deliberately not folded into a patch number. So the release whose redirection
+// codes are catalogued below is raw "0.45" -- NOT the vendor page's label "0.45.3", which is what the
+// vendor's page CALLS this build and which no caller ever carries.
+//
+// WHETHER A PARTICULAR UNIT'S BUILD IS THIS RELEASE is an observation this repository makes, and it stays
+// in the observing layer: gunbc.host.bmc_release_capability_catalog megarac_committed_hpm_check_identity
+// walks the retained stdout through the parser and answers with its causes. The JOIN between that read and
+// the identity declared here is a CLAIM, not a parse inside the vendor model --
+// test.claim.machine_intake.megarac_media_0_45_3_witness
+// w_the_committed_read_lands_on_the_release_the_media_table_catalogues -- so the vendor table does not
+// vanish because one committed capture fails to parse, and this module reads no machine's receipt.
+data megarac_firmware_0_45_reported: BmcFirmwareReleaseIdentity = bmc_firmware_release_identity_of_wire(
+  family: AmiMegaRac,
+  wire: "0.45",
+)
 
 // THE BMC IS THE NFS CLIENT. settings/media/general carries the NFS server, source path and
 // share type; the host sees a virtual CD. PXE is not a term of this route. The required
@@ -281,6 +257,11 @@ fn megarac_release_is_the_committed_hpm_read(firmware: BmcFirmwareReleaseIdentit
 // shows 0 or 100, so they are NOT carried over from 0.32: a stopped or connecting session on 0.45.3
 // reads as an uncatalogued wire until a reading grounds it. Boot run 40038339650 read 19 on a
 // session left over from an earlier attempt; what 19 means is unread, and it stays uncatalogued.
+// CODE 16 IS NOT IN THIS WIRE TABLE, and must not be added to it: 16 was never read as a bare code, it was
+// read as a ROW -- that status beside the no-session marker -- so its meaning lives in
+// megarac_redirection_status_of_row below, keyed to that triple and to this release only. A caller holding
+// the row reads through that fold; a caller holding only a wire gets the uncatalogued answer, which is
+// exactly what the evidence supports.
 type MegaRacRedirectionStatus
   = RedirectionStopped
   | RedirectionStartedConnectionAccepted
@@ -306,9 +287,9 @@ fn megarac_redirection_status_of_wire(
       RedirectionWireUncatalogued { wire: wire }
     }
     RedirectionStatusKnown { firmware: firmware, status: status }
-  } else if megarac_release_is_the_committed_hpm_read(firmware: firmware) {
-    // THE BUILD THE CONTROLLER REPORTS, NOT THE PAGE'S NAME FOR IT. Keyed on the identity the committed
-    // hpm read derives, because that is the identity a boot carries for this controller once it has read
+  } else if bmc_firmware_release_identity_eq(a: firmware, b: megarac_firmware_0_45_reported) {
+    // THE BUILD THE CONTROLLER REPORTS, NOT THE PAGE'S NAME FOR IT. Keyed on the release the controller
+    // reports, because that is the identity a boot carries for this controller once it has read
     // its own build -- keying this arm on the operator's page label instead would leave a boot that reads
     // "0.45" unable to tell a STARTED session from a stopped one, attach refusing on every row.
     // Grounded by boot run 40258937016, which read redirection_status 1 on the session it then
@@ -324,6 +305,50 @@ fn megarac_redirection_status_of_wire(
     RedirectionStatusKnown { firmware: firmware, status: status }
   } else {
     RedirectionStatusFirmwareUncatalogued { firmware: firmware, wire: wire }
+  }
+}
+
+// THE NO-SESSION MARKER, AS THIS CONTROLLER REPORTS IT. A media row carries the redirection SESSION index
+// beside its status, and this controller answers 255 there when NO redirection session is active: boot run
+// 40258937016's end-of-attempt rows read session_index 255 on the CD row left from the attempt, while the
+// session that same run STARTED read session_index 0 (handoff_media, same capture:
+// artifacts/bmc/mtcollins1-boot-run-40258937016/mtcollins1-boot-diagnostics.txt). So 255 marks "no
+// session" and a smaller index marks a live one. Read on the release the controller reports as raw
+// "0.45"; the marker is not claimed for any other release.
+data megarac_no_redirection_session_index: Int = 255
+
+// WHAT A CODE MEANS FOR A ROW, AND ONLY AS FAR AS THE VENDOR ATTESTS IT. This fold has one arm per read
+// TRIPLE it holds VENDOR evidence for, and the arm's guards are the shape of that evidence: release, wire and
+// session marker. An arm fires only on the combination that was read; everything else falls to the wire table
+// above, which is the only other place a code becomes a state.
+// WHAT IS NOT CLAIMED, and the SHAPE of this fold is what keeps the claim inside its evidence: 16 beside an
+// ACTIVE session index is not this state -- the only started session read at this build carried index 0
+// (boot_run_40258937016_started_session_marker) with status started -- so it stays an uncatalogued wire; 16
+// on any other release stays uncatalogued (0.32 never returned 16); and a row whose reading did not carry a
+// session index is not promoted either. test.claim.machine_intake.megarac_media_0_45_3_witness pins each of
+// those separations.
+// CODE 0 ON THIS RELEASE IS NOT HERE, AND THAT IS THE VENDOR'S SILENCE RATHER THAN OURS: no 0.45 reading of a
+// media row returned 0 to the vendor's own catalogue, and no operator reading of the controller's UI covers
+// it. What this repository made of the one row it DID read at 0 -- a leftover CD row, no session, no name --
+// is an observation of ours and lives with the observations, at
+// gunbc.machine_intake.megarac_media_attach megarac_status_zero_row_inference; it is not a fact of this
+// upstream (gunbc.design_argument::single_authority, gunbc.design_argument::conformance) and the attach lane treats it as the bet it is.
+fn megarac_redirection_status_of_row(
+  firmware: BmcFirmwareReleaseIdentity,
+  wire: Int,
+  session_index: Int?,
+) -> MegaRacRedirectionStatusLookup {
+  let no_session = match session_index {
+    Present { value: i } => i == megarac_no_redirection_session_index
+    Absent => false
+  }
+  // EVERYTHING THIS FOLD HOLDS NO READING FOR IS ANSWERED BY THE WIRE TABLE, and the wire table is the only
+  // other place a code becomes a state.
+  let by_wire_table = megarac_redirection_status_of_wire(firmware: firmware, wire: wire)
+  if bmc_firmware_release_identity_eq(a: firmware, b: megarac_firmware_0_45_reported) && wire == 16 && no_session {
+    RedirectionStatusKnown { firmware: firmware, status: RedirectionStopped }
+  } else {
+    by_wire_table
   }
 }
 
@@ -355,7 +380,7 @@ fn megarac_redirection_presentation_standing(
 // template are manufacturer bytes; they have no Sender constructor. Ampere's published producer
 // layout for those manufacturer bytes is extdeps.ampere.oem_sel.
 //
-// §3c frontier: megarac_web_event_log_layout and megarac_ipmi_sel_layout. Consumer: the PreOs
+// gunbc.design_argument::consumption frontier: megarac_web_event_log_layout and megarac_ipmi_sel_layout. Consumer: the PreOs
 // OEM-decode / SEL axis in gunbc.machine_intake.pre_os_observation_capabilities on gunbc#11110
 // (this PR does not mint that file). Until that lands, a web-log empty SelData row cannot be
 // refused as a preserved IPMI payload, and the two layouts remain unjoined to a decoder.
@@ -370,7 +395,7 @@ data megarac_ipmi_sel_layout: MegaRacEventLogLayout = MegaRacIpmiSelPayloadPrese
 // THE OPERATIONS ABOVE ARE A DESCRIPTION; THESE ARE THE OPERATIONS. megarac_api_operations records
 // paths and contract notes and carries no transport, so nothing in this repository could invoke the
 // MegaRAC media surface — the first attach against a Mt. Collins unit was therefore driven by a
-// hand-written shell script, which is exactly the unmodeled realization DESIGN §6 names. These rows
+// hand-written shell script, which is exactly the unmodeled realization gunbc.design_argument::how_to_work names. These rows
 // make that surface reachable from a workflow.
 //
 // SESSION AUTH IS COOKIE-AND-HEADER, NOT netrc, which is why these cannot reuse the redfish.Http
@@ -518,6 +543,53 @@ service megarac.Media {
       nonzero => String "megarac session DELETE failed"
     }
   }
+
+  // THE UI SURFACE, READ-ONLY. SP-X renders the virtual-media table client-side: the status a human
+  // reads is a code-to-label lookup inside a JavaScript asset the BMC serves. These two operations are how
+  // those bytes enter the corpus, so the status-0 label is GROUNDED in committed bytes rather than
+  // inferred from a guess about what the UI must say. Both are `readonly` -- no media action, no session
+  // write, and nothing reachable through them can spell one.
+  //
+  // WHY A PATH PARAMETER HERE AND A BAKED LITERAL IN EVERY OTHER OPERATION ABOVE. A baked path is that
+  // command's identity, and an argv carrying a literal a caller could set is policy leaking into the
+  // interface (gunbc.design_argument::single_authority), which is why the media operations bake theirs. The asset path is a different kind of
+  // thing: not policy, but a fact ABOUT THE BOX, knowable only by reading the page that references it.
+  // What bounds it is the model, not the caller: a page path is a repository-baked candidate row, and an
+  // asset path must be one the observation DERIVED from the committed page bytes --
+  // ui_asset_path_admission in gunbc.machine_intake.mtcollins1_ui_status_asset_observation refuses
+  // anything else, a caller-invented path included -- and the shape guard it calls,
+  // ui_asset_path_shape_refusal, is what rejects a path walking out of the web root or becoming
+  // another origin.
+  //
+  // --compressed (curl(1)): sends Accept-Encoding for the encodings this curl was built with and decodes the
+  // answer. The controller serves its pages as gzip members (run 42374970825: RFC 1952 headers, ID2 lost to U+FFFD, on /,
+  // /index.html and /viewer.html), so without it the String capture held deflate data and every script-reference
+  // counter read compressed bytes as zero. The content-encoding the server named is not read back: %header{}
+  // needs curl 7.84 and this module pins 7.68.
+  //
+  // BODY THEN STATUS, IN THE HOUSE SHAPE. The write-out is
+  // extdeps.tools.curl.curl_http_code_after_newline_write_out_format spelled exactly as the configurations
+  // GET above spells it, and the caller reads the status with
+  // extdeps.tools.curl.classify_curl_http_code_after_newline -- the last newline-delimited line, not a
+  // trailing-three-character guess -- so a 200, a 401 and an unreachable host are three distinguishable
+  // receipts rather than one empty string. NO CONTENT TYPE IS ASKED FOR: it would be a field no claim
+  // consumes. HTML-ness is shown by the markers the page fold requires and JavaScript-ness by the path the
+  // page itself named, both of which are checked against committed bytes rather than against a header the
+  // server could answer differently on another request.
+  operation GetUiResource {
+    requires Network
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, path: NonEmptyStr, max_time: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--compressed", "--max-time", "{max_time}", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "-w", "\\n%\{http_code}", "https://{bmc_host}{path}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "megarac UI resource GET failed"
+    }
+  }
+
 }
 
 // THE RELEASE CAPABILITY CATALOG LIVES IN THE OBSERVING LAYER, at
@@ -526,7 +598,7 @@ service megarac.Media {
 // 83380. A capability row is not an AMI fact: it is what OUR
 // automation established about a build — which controls a named fleet-converge run of ours exercised,
 // where OUR artifacts landed, which PR of ours carried them, and whether a human read a web UI page.
-// DESIGN.md §3 puts observations this repository makes in the OBSERVING layer, "not facts of the
+// gunbc.design_argument::single_authority puts observations this repository makes in the OBSERVING layer, "not facts of the
 // observed upstream", and a missing observation is a downstream coverage obligation, "never an
 // `Unobserved` property inside the upstream module" — so neither the rows, the run receipt, the version
 // standing, nor a 'not exercised at this build' default belongs here. What stays upstream is what AMI

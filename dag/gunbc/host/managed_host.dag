@@ -20,7 +20,7 @@ import gunbc.rung_drop.standing { standing_rung_drops }
 import gunbc.rung_drop.mtcollins1_bmc_secure_standing_predates_reflash {
   mtcollins1_bmc_secure_standing_predates_reflash,
 }
-import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_access_standing }
+import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_current_access_standing }
 import gunbc.machine_intake.mtcollins1_bmc_secure_observation {
   mtcollins1_bmc_secure_standing, mtcollins1_intake_subject, mtcollins1_unit_key_standing,
 }
@@ -216,7 +216,7 @@ type ManagedHostMembership sole_constructor
 // admission record itself (record.covering_drop), so no roster join is needed to read a drop's
 // standing: a Retired or Superseded value cannot carry a stale subject, whatever list it came from.
 // Which drop covers which unit is the RECORD's cited fact, never a population-prose search --
-// RungDrop.population is the 4b(3) English bound for the DESIGN projection, and grepping it would
+// RungDrop.population is the gunbc.design_argument::guarantee_ladder (no silent regression) English bound for the DESIGN projection, and grepping it would
 // admit any host whose name happens to appear in a sentence.
 fn covering_drop_is_standing(drop: RungDrop) -> Bool {
   match drop.standing {
@@ -267,7 +267,7 @@ fn standings_bound_to_record_subject(record: ManagedHostAdmission) -> Bool {
   // NO well-formedness check on the SMpro arm (snappy's review-81278 delete-first): Carried holds an
   // ADMITTED SmproSite directly and a refused site got its own arm, so the states a validator would
   // reject (carried-without-a-read-site, not-carried-smuggling-a-site) are not writable at all --
-  // DESIGN §5, correctness by construction; a check that cannot fail is noise that reads as coverage.
+  // gunbc.design_argument::fail_closed, correctness by construction; a check that cannot fail is noise that reads as coverage.
   // The unit-key join that used to sit here is DELETED too -- the PhysicalMachineBinding mint refuses
   // a route whose unit differs from axis-1's, so no record can exist in which the two disagree.
   // What remains below is the join that CAN disagree: the endpoints a machine named.
@@ -404,7 +404,7 @@ fn mtcollins1_managed_host_admission() -> ManagedHostAdmission? {
       match mtcollins1_intake_subject() {
         Absent => none
         Present { value: subject } =>
-          match access_controller_host(access: mtcollins1_access_standing) {
+          match access_controller_host(access: mtcollins1_current_access_standing) {
             Absent => none
             Present { value: access_host } =>
               // The record's effect subject is SEALED by the three-axis admission, not assembled by
@@ -416,16 +416,16 @@ fn mtcollins1_managed_host_admission() -> ManagedHostAdmission? {
                 unit_standing: mtcollins1_unit_key_standing,
                 current_subject: Present { value: subject },
                 fleet: Absent,
-                control: Present { value: bmc_control_binding(observed: mtcollins1_access_standing, secured: secure) },
+                control: Present { value: bmc_control_binding(observed: mtcollins1_current_access_standing, secured: secure) },
               ) {
                 PhysicalMachineAdmitted { binding } =>
                   Present {
                     value: managed_host_admission(
                       host: operator_host_mtcollins1,
                       binding: binding,
-                      access: mtcollins1_access_standing,
+                      access: mtcollins1_current_access_standing,
                       secure: secure,
-                      smpro: smpro_platform_standing(access: mtcollins1_access_standing, site: mtcollins1_smpro_site()),
+                      smpro: smpro_platform_standing(access: mtcollins1_current_access_standing, site: mtcollins1_smpro_site()),
                       receipt: managed_host_admission_receipt(
                         host: operator_host_mtcollins1,
                         access_host: access_host,
@@ -504,7 +504,7 @@ fn managed_membership_for(host: HostIdentity) -> ManagedHostMembership? {
 // CURRENT subject (docs/plans/managed-host-untangle.md, cut O1c-3 PR a). mtjade1 has no record.
 // managed_hosts() is the host-row view of managed_host_memberships(); callers that read secure
 // standing, binding, reset, hold, boot, or MegaRAC admission walk the memberships and match
-// MemberUnderDeclaredDrop (DESIGN §4b(3): a declared drop may not reach consumers as silence).
+// MemberUnderDeclaredDrop (gunbc.design_argument::guarantee_ladder (no silent regression): a declared drop may not reach consumers as silence).
 fn managed_hosts() -> List<ManagedHost> {
   fold(managed_host_memberships(), init: [], f: (acc, m) => concat(acc, [membership_host(membership: m)]))
 }
@@ -622,6 +622,7 @@ fn managed_host_fixture(
     decl_ref(module_path: "test.claim.host.megarac_managed_host_witness", decl_name: "w_a_secured_account_beside_another_controllers_access_is_admitted_for_no_operation"),
     decl_ref(module_path: "test.claim.host.megarac_managed_host_witness", decl_name: "w_another_baseboard_at_the_same_megarac_build_is_refused_for_every_operation"),
     decl_ref(module_path: "test.claim.host.megarac_managed_host_witness", decl_name: "w_an_account_is_released_only_with_the_controller_it_was_bound_to"),
+    decl_ref(module_path: "test.claim.host.megarac_managed_host_witness", decl_name: "w_an_observation_stale_against_the_committed_evidence_is_refused_as_not_current"),
     decl_ref(module_path: "test.claim.machine_intake.dimm_physical_orientation_witness", decl_name: "w_the_same_anchors_on_another_reported_board_are_refused_unmodeled"),
     decl_ref(module_path: "test.claim.machine_intake.dimm_physical_orientation_witness", decl_name: "w_an_unobserved_controller_is_refused_at_the_binding_not_as_an_unmodeled_board"),
     decl_ref(module_path: "test.claim.machine_intake.fan_observe_witness", decl_name: "an_openbmc_bound_row_is_read_against_the_phosphor_policy"),

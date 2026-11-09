@@ -9,7 +9,7 @@ import gunbc.compile_diagnostic_census {
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// THE LOST-BOOT SWEEP'S UNWRITABLE ROUTES, ENROLLED AS EXECUTED REDS (DESIGN §4b). The probe source
+// THE LOST-BOOT SWEEP'S UNWRITABLE ROUTES, ENROLLED AS EXECUTED REDS (gunbc.design_argument::guarantee_ladder). The probe source
 // test.probe.lost_boot_population_probe calls the sweep internals from outside, fabricates a
 // derived-empty population, and reaches the supplied-width constructors through each witness helper;
 // each must refuse at its subject. The control names the same modules and calls only the
@@ -44,7 +44,7 @@ fn blocking_any(c: CompileDiagnosticCensus, subject: String) -> Int {
   }
 }
 
-data control_source: String = "module lost_boot_population_harness_control\nimport extdeps.transports.rest { RestResult }\nimport extdeps.github.effect { GitHubOrganizationRef }\nimport extdeps.github.actions_self_hosted_runners { OrganizationRunnerListWire }\nimport gunbc.auth.github_credential { GitHubCredentialAuthority }\nimport gunbc.host.host_control_route { HostControlStanding }\nimport gunbc.runner.runner_host_unit_slot { CurrentServicePopulation, CurrentServicePopulationStanding, ServiceBootId, current_service_population }\nimport gunbc.runner.runner_jit_deregistration { LostBootSweep, lost_boot_sweep }\nfn population(host: HostControlStanding, boot: ServiceBootId) -> CurrentServicePopulationStanding { current_service_population(host: host, boot: boot) }\nfn sweep_it(organization: GitHubOrganizationRef, population: CurrentServicePopulation, authority: GitHubCredentialAuthority, listing: RestResult<OrganizationRunnerListWire>) -> LostBootSweep { lost_boot_sweep(organization: organization, population: population, authority: authority, listing: listing) }\n"
+data control_source: String = "module lost_boot_population_harness_control\nimport extdeps.transports.rest { RestResult }\nimport extdeps.github.effect { GitHubOrganizationRef }\nimport extdeps.github.actions_self_hosted_runners { OrganizationRunnerListWire }\nimport gunbc.auth.github_credential { GitHubCredentialAuthority }\nimport gunbc.host.host_control_route { HostControlStanding }\nimport gunbc.runner.runner_host_unit_slot { CurrentServicePopulation, CurrentServicePopulationStanding, current_service_population }\nimport gunbc.host.host_boot_id { HostBootId }\nimport gunbc.runner.runner_jit_deregistration { LostBootSweep, lost_boot_sweep }\nfn population(host: HostControlStanding, boot: HostBootId) -> CurrentServicePopulationStanding { current_service_population(host: host, boot: boot) }\nfn sweep_it(organization: GitHubOrganizationRef, population: CurrentServicePopulation, authority: GitHubCredentialAuthority, listing: RestResult<OrganizationRunnerListWire>) -> LostBootSweep { lost_boot_sweep(organization: organization, population: population, authority: authority, listing: listing) }\n"
 
 test fn the_control_that_uses_the_public_routes_refuses_nothing() -> Bool {
   let c = census_of(source: control_source)

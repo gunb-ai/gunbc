@@ -114,7 +114,7 @@ fn procfs_path_literal(p: ProcfsPath) -> NonEmptyStr {
 // bet is carried IN THE TYPE, not in this sentence: procfs_path_provision names the option, and
 // procfs_availability answers ProcfsConditionalOnKernelConfig for it rather than ProcfsAvailable
 // (review 68937 on #11760: rostering the path with no such arm made an executing witness assert
-// availability on Linux that this repository has not observed -- DESIGN 4d, a bet promoted to a
+// availability on Linux that this repository has not observed -- gunbc.design_argument::epistemic_humility, a bet promoted to a
 // deduction by omission).
 data procfs_paths_read_by_this_repository: List<ProcfsPath> = [
   ProcMeminfo,
@@ -133,7 +133,7 @@ data procfs_paths_read_by_this_repository: List<ProcfsPath> = [
 // this repository was of the reading process's own /proc/self, taken through the Rust seed's
 // filesystem read. A fleet observer reading ANOTHER host's process table needs the read as a modeled
 // operation with a shell transport, so gunbc.host.host_operation_exec can carry it over whichever
-// transport the caller holds (DESIGN 3: the transport is a realization bound to this shape, never
+// transport the caller holds (gunbc.design_argument::single_authority: the transport is a realization bound to this shape, never
 // a fact about procfs). `cat` is the whole realization: procfs files are read-once text and the
 // kernel synthesizes them on open, so there is nothing to seek, follow or lock. ONE OPERATION PER
 // FILE and not one generic ReadFile, so that the operation's identity says which file it reads and
@@ -320,7 +320,7 @@ fn kernel_provides_procfs(kernel: KernelFamily) -> Bool {
 // conditional upstream (net/unix is obj-$(CONFIG_UNIX), and its proc_create_net sits inside). So a
 // path is either qualified by a specific cited option, or it is ProvisionNotYetQualified, which
 // procfs_availability carries through as ProcfsProvisionUnqualified and never as ProcfsAvailable:
-// availability may not be minted from KernelFamily alone. DECLARED FRONTIER (DESIGN 3c):
+// availability may not be minted from KernelFamily alone. DECLARED FRONTIER (gunbc.design_argument::consumption):
 // ProvidedByEveryLinuxKernel has no inhabitant until a procfs census cites, per path, the kernel
 // source that synthesises it unconditionally under CONFIG_PROC_FS (and a conjunction carrier if a
 // path needs more than one option); that census is its own change, not the resolver PR that

@@ -3,7 +3,8 @@ module product.printed_chassis.power_cassette
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.nat { Nat, nat_sub, NatSubtraction, NatDifference, NatSubtrahendExceedsMinuend }
 import std.measure { Watt, watt, watt_count, Gram }
-import product.node_power_envelope { EfficiencyRating, efficiency_percent, PsuAdequacy, PsuAdequate, PsuUndersized, PsuUndecidable, psu_adequacy_for_load }
+import extdeps.power.eighty_plus { EfficiencyRating }
+import product.node_power_envelope { efficiency_percent, PsuAdequacy, PsuAdequate, PsuUndersized, PsuUndecidable, psu_adequacy_for_load }
 import std.measure { percent_count }
 
 // THE POWER STATION AS A STACK MEMBER. Operator direction, 2026-10-04: a cassette in the same

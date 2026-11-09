@@ -97,6 +97,7 @@ mod native_product_cache;
 pub mod reach_base_standings;
 pub mod required_ci_measurement;
 pub use claim_execution::*;
+pub mod http_ingress_host;
 mod required_floor_runner;
 pub mod rostered_row_join;
 pub mod scope_rank_view;
@@ -104,30 +105,18 @@ mod serve_budget_refusal;
 pub use emitted_crate_workspace_host::{run_emitted_crate_workspace, EmittedCrateWorkspaceHeld};
 pub use emitted_crate_workspace_host::{write_emitted_workspace, EmittedWorkspace};
 pub use native_lane_runner::{
-    emitted_build_not_clean_cause, measured_spawn_route, measured_spawn_trampoline,
-    run_census_controls_and_subjects, run_census_infer_root_sets, run_native_claim_program,
-    run_native_process_memory_runs, run_native_serve_program, run_required_v2_native,
-    run_self_host, run_self_host_frontier, run_type_declaration_use_census_runs,
-    run_v2_census_verb, run_v2_native_census, run_v2_native_census_scoped, run_v2_native_cli,
-    run_v2_native_cli_emit, run_v2_native_frontier, run_v2_select_spelled_modules, CensusInferRun,
-    MeasuredSpawnRoute, NativeCensusRun, NativeCensusScopeWord, NativeChildMeasured,
-    NativeClaimProgramAttempt, NativeClaimProgramRun, NativeFrontierRun, NativeMemberTermination,
-    NativeProcessMemoryRuns, NativeRouteOutcome, NativeServePhases, NativeServeProgramRun,
-    PreparationCause, PreparationRefusal, SelfHostHeld, TypeDeclarationUseRuns, V2NativeCliHeld,
-    MEASURED_SPAWN_DIR, MEASURED_SPAWN_OPERAND, MEASURED_SPAWN_RECEIPT_ENV,
+    emitted_build_not_clean_cause, run_native_claim_program, run_native_serve_program,
+    run_required_v2_native, run_self_host, run_self_host_frontier, run_v2_native_cli,
+    run_v2_native_cli_emit, run_v2_native_frontier, NativeClaimProgramAttempt,
+    NativeClaimProgramRun, NativeFrontierRun, NativeMemberTermination, NativeRouteOutcome,
+    NativeServeContention, NativeServeLaunches, NativeServePhases, NativeServeProgramRun,
+    PreparationCause, PreparationRefusal, SelfHostHeld, V2NativeCliHeld,
 };
-pub(crate) use native_lane_runner::{native_compile_entry, v2_native_cli_entry};
 pub(crate) use required_floor_runner::*;
 mod entry_resolve;
 pub mod pre_entry_phase;
-mod required_lane_resolution_census;
 pub use entry_resolve::resolve_virtual_entry_compile_closure;
 pub(crate) use entry_resolve::*;
-pub use required_lane_resolution_census::{
-    entry_closure_module_identities, module_admission,
-    required_floor_nominal_subject_module_identities, source_root_ingest_module_identities,
-    ModuleAdmission, ModuleIdentityPopulation,
-};
 
 pub fn required_lane_judged_module_identities_for_ci() -> Vec<String> {
     entry_resolve::required_lane_judged_module_identities()
@@ -168,10 +157,9 @@ pub(crate) use complexity_gates::*;
 mod emit_host;
 pub(crate) use emit_host::*;
 pub use emit_host::{
-    builtin_function_registry_keys, compile_dag_call_form_leaf_guard,
-    compile_dag_callsite_resolved_call_edges, compile_dag_importer_resolved_call_edges,
-    compile_dag_multi_module_fixture, compile_dag_operation_requires,
-    compile_dag_primitive_call_edges, compile_dag_reference_occurrence_binding_census,
+    compile_dag_call_form_leaf_guard, compile_dag_callsite_resolved_call_edges,
+    compile_dag_importer_resolved_call_edges, compile_dag_multi_module_fixture,
+    compile_dag_operation_requires, compile_dag_reference_occurrence_binding_census,
 };
 pub use emit_host::{
     compile_dag_diagnostic_census, compile_dag_diagnostic_census_cost_counts,
@@ -203,15 +191,16 @@ pub(crate) use test_migration::*;
 // THE BASELINE RECONSTRUCTION RIDES THE SAME SWEEP the index above is built by, which is why it
 // is registered here rather than beside it: `run_dag_parse_sweep` is the one parse both consume,
 // and a second acquisition of the corpus to answer a second question is the cost-shape defect
-// DESIGN §6 names.
+// gunbc.design_argument::how_to_work names.
 mod demand_acquire;
+pub(crate) mod keyed_module_lookup;
 #[path = "namespace_baseline.rs"]
 pub mod namespace_baseline;
 #[path = "phase_profile.rs"]
 mod phase_profile;
 pub(crate) mod pool_acquire;
 mod provider_acquire;
-mod source_layout_lookup;
+pub(crate) mod source_layout_lookup;
 pub use demand_acquire::resolve_entry_graph_demand_acquired;
 #[path = "required_regen_host.rs"]
 mod required_regen_host;
@@ -532,7 +521,7 @@ pub(crate) fn extract_import_paths(content: &str) -> Vec<String> {
     imports
 }
 
-// SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.cli_run_workspace_root_scaffold;
+// SCAFFOLD (gunbc.design_argument::self_hosting seed-retained HAND-RUST — authority: gunbc.cli_run_workspace_root_scaffold;
 // receipt: docs/plans/cli-run-reconcile-defork.md#interim-workspace-root-scaffold;
 // witness: dag/test/claim/cli_run_workspace_root_hand_rust_witness.dag).
 // 🟡 dissolve-on: workspace_root_from — runtime workspace-root discovery in HAND-Rust
@@ -1126,7 +1115,7 @@ pub(crate) mod bare_reference_scanner_tests {
         }
     }
 
-    /// DESIGN §4c: annotation prose is not program text, and the same word in code is.
+    /// gunbc.design_argument::source_annotations: annotation prose is not program text, and the same word in code is.
     #[test]
     fn annotation_prose_is_not_a_reference_but_code_is() {
         let annotated =
@@ -1630,9 +1619,9 @@ mod roadmap_acceptance_history_projection_tests {
 ///
 /// Derivation: nearest ancestor of the process cwd that is a checkout root (`.git` entry — a
 /// directory for clones, a file for worktrees), computed once per process. A cwd outside any
-/// checkout refuses loudly — no fallback to a compile-time path (DESIGN §5: refuse, never
+/// checkout refuses loudly — no fallback to a compile-time path (gunbc.design_argument::fail_closed: refuse, never
 /// widen).
-// SCAFFOLD (§7 hand-Rust shrink-to-zero, dissolution named): runtime checkout-root derivation
+// SCAFFOLD (gunbc.design_argument::self_hosting hand-Rust shrink-to-zero, dissolution named): runtime checkout-root derivation
 // (#6484 / #6472 job-split). Dissolves when release bins receive checkout-root at spawn
 // (env/argv) or Step 5 deletes this Rust parallel and the v2 floor workflow owns path
 // resolution.
@@ -1654,7 +1643,7 @@ static CHECKOUT_ROOT: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
 /// spawn (env/argv)" -- discharged for the population that can supply it: a `run` whose source
 /// roots name their own base. The walk stays for every caller that supplies nothing, so no
 /// existing invocation changes, and the two roots this file memoizes are bound to ONE derived
-/// directory rather than to two independent proxies for it (DESIGN section 3: one fact, one
+/// directory rather than to two independent proxies for it (gunbc.design_argument::single_authority: one fact, one
 /// authority). They were never two facts -- in a checkout they are the same directory, and outside
 /// one the walk simply has no answer.
 pub(crate) fn bind_checkout_root(root: PathBuf) {
@@ -1680,7 +1669,7 @@ pub(crate) fn bind_checkout_root(root: PathBuf) {
 /// same or shallower indent" makes a top-level `fn` swallow every `mod` that follows it, so a
 /// module-level line was attributed to the preceding function — which here was `workspace_root`
 /// itself, a function nearly every test calls. The closure then reported 220 offenders. An
-/// over-approximating gate is the absorbing fallback DESIGN §5 refuses: it would have been cited as
+/// over-approximating gate is the absorbing fallback gunbc.design_argument::fail_closed refuses: it would have been cited as
 /// coverage while carrying no information. Extents are now closed on real brace depth, computed
 /// over a projection with comments and string bodies removed.
 ///
@@ -1703,14 +1692,14 @@ pub(crate) fn bind_checkout_root(root: PathBuf) {
 /// THIS MODULE IS MACHINERY THAT DISSOLVES, AND SAYS SO RATHER THAN WAITING TO BE ASKED. It is
 /// several hundred lines of hand-Rust that re-authors a slice of Rust name resolution in
 /// prose-scanning form — a parallel representation of something the substrate will own, and by
-/// DESIGN §6's test it does NOT survive the terminal architecture. It is admitted as rung-2
-/// machinery, which §4b(4) requires to be DELETED by the climb it enables rather than kept beside
+/// gunbc.design_argument::how_to_work's test it does NOT survive the terminal architecture. It is admitted as rung-2
+/// machinery, which gunbc.design_argument::guarantee_ladder (dissolution on climb) requires to be DELETED by the climb it enables rather than kept beside
 /// it: when the trigger above lands and every reader in the population resolves from an explicitly
 /// passed root, the ambient write has no consumer, the invalid state has no constructor, and there
 /// is nothing left for a scanner to scan. The whole module goes then — the wall, the closure, and
 /// the projection controls with it, since those exist only to make this scanner honest and have no
 /// subject once it is gone. What does NOT go is the fact it defends, which by then is carried by
-/// construction instead. Read as a permanent lens it would be exactly the parallel authority §3
+/// construction instead. Read as a permanent lens it would be exactly the parallel authority gunbc.design_argument::single_authority
 /// forbids; read as a countdown to its own deletion it is the cheapest thing that keeps the class
 /// absent until the capability exists.
 #[cfg(test)]
@@ -2055,7 +2044,7 @@ mod process_cwd_mutation_reachability_gate {
     /// and `foo` besides, so one production function reaching the mutator (`pre_push::run_inner`)
     /// bridged through those shared spellings into hundreds of unrelated tests. A wall that names
     /// `two_identical_runs_mark_nothing_unstable` as a cwd offender is the absorbing fallback
-    /// §5 refuses — it cannot be acted on, so it would be silenced rather than fixed.
+    /// gunbc.design_argument::fail_closed refuses — it cannot be acted on, so it would be silenced rather than fixed.
     ///
     /// An edge is therefore admitted only where the callee is UNAMBIGUOUS: declared in this file,
     /// or declared exactly once in the whole crate. A name declared in several files resolves to
@@ -2155,7 +2144,7 @@ mod process_cwd_mutation_reachability_gate {
     /// while the scope declaration above claimed every test the required `--lib` lane runs, and
     /// review 58640 was right that this makes the reported rung broader than the executed
     /// evidence: a mutator introduced in any other module of the same crate would leave the wall
-    /// green. DESIGN §4b(1) puts the rung at the MINIMUM across in-scope paths, so the honest
+    /// green. gunbc.design_argument::guarantee_ladder (rung honesty) puts the rung at the MINIMUM across in-scope paths, so the honest
     /// repair is to widen the evidence to the declared boundary rather than to narrow the claim —
     /// the lane compiles one library and runs its tests in one process, so the crate's library
     /// source IS the guarded population and anything smaller is a selection view read as one.
@@ -2164,7 +2153,7 @@ mod process_cwd_mutation_reachability_gate {
     /// therefore merge into one node, which OVER-approximates reachability — the direction that
     /// produces a false RED a reader can dismiss by inspection, never a false green. The
     /// over-approximation bound in the non-vacuity control is what keeps that from drifting into
-    /// the absorbing fallback §5 refuses.
+    /// the absorbing fallback gunbc.design_argument::fail_closed refuses.
     fn closure_over_lib_sources() -> (Vec<FnDecl>, BTreeSet<String>, BTreeSet<String>) {
         let root = super::workspace_root().join(LIB_SRC_REL);
         let files = lib_source_files(&root);
@@ -2243,7 +2232,7 @@ mod process_cwd_mutation_reachability_gate {
         // scope information, so its cross-file callers are not admitted as edges above. Two arms
         // were measured and rejected before this one. Merging every declaration of a shared
         // spelling (`main` 18 times in this crate, `run`, `new`, `probe`, `foo`) bridged one
-        // production seed into hundreds of unrelated tests — the absorbing fallback §5 refuses,
+        // production seed into hundreds of unrelated tests — the absorbing fallback gunbc.design_argument::fail_closed refuses,
         // since a wall naming `two_identical_runs_mark_nothing_unstable` as a cwd offender cannot
         // be acted on and would be silenced. Closing over those callers instead reproduced the
         // same blowup one step later. Dropping them silently is the narrowing arm.
@@ -2417,7 +2406,7 @@ mod process_cwd_mutation_reachability_gate {
     }
 }
 
-// SCAFFOLD (§7 HAND-RUST — `cli_run_runtime_workspace_root_plumbing`):
+// SCAFFOLD (gunbc.design_argument::self_hosting HAND-RUST — `cli_run_runtime_workspace_root_plumbing`):
 // ROADMAP lane `5-dissolve-patches` (gunbc.roadmap.roadmap_authority / ROADMAP.md) — `cli_run.rs`
 // HAND_MAINTAINED drain (~12.1k LOC absorption point; #6046 hard-gates net-new seed logic).
 // Unblock: #6106 orchestration emission → agnostic registry dispatch realizes claim-bin
@@ -2432,12 +2421,12 @@ pub(crate) const CLI_RUN_RUNTIME_WORKSPACE_ROOT_SCAFFOLD_MARKER: &str =
 
 /// Runtime workspace root for path normalization in the claim bins and module-graph pipeline.
 ///
-/// INTERIM hand-Rust scaffold (`CLI_RUN_RUNTIME_WORKSPACE_ROOT_SCAFFOLD_MARKER` / §7): dissolves
+/// INTERIM hand-Rust scaffold (`CLI_RUN_RUNTIME_WORKSPACE_ROOT_SCAFFOLD_MARKER` / gunbc.design_argument::self_hosting): dissolves
 /// under ROADMAP `5-dissolve-patches` when #6106 realizes claim-bin path resolution from `.dag`
 /// and this helper family deletes (~130 LOC). Unlike [`workspace_root`] (compile-time from
 /// `CARGO_MANIFEST_DIR`), this resolves against the process environment: sccache can ship a
 /// binary built on one runner checkout path to another, and anchoring reads to the compile-time
-/// root desyncs module-graph facts from module-content indices (DESIGN §5 — wrong answers, zero
+/// root desyncs module-graph facts from module-content indices (gunbc.design_argument::fail_closed — wrong answers, zero
 /// diagnostic).
 ///
 /// Resolution order: `git rev-parse --show-toplevel` when it names a Cargo.toml+dag/ tree, else
@@ -2457,7 +2446,7 @@ fn process_workspace_root() -> PathBuf {
 /// pre-set root, including one this `get_or_init` had just discovered on a read that happened
 /// before the bind. The verb printed `[workspace-root] declared <root>` for a root the request
 /// never named: a report that names the wrong rule, at the one boundary that exists to make the
-/// selection observable, which is worse than printing nothing (DESIGN section 5 -- no fabricated
+/// selection observable, which is worse than printing nothing (gunbc.design_argument::fail_closed -- no fabricated
 /// plausible output). Caught by review 69584 on gunbc#11960. Storing the pair makes the
 /// disagreement unconstructible rather than checked.
 static PROCESS_WORKSPACE_ROOT: OnceLock<(PathBuf, WorkspaceRootBasis)> = OnceLock::new();
@@ -2493,14 +2482,14 @@ static PROCESS_WORKSPACE_ROOT: OnceLock<(PathBuf, WorkspaceRootBasis)> = OnceLoc
 /// can name a base is the request: every declared root must then be a relative path of ordinary
 /// components resolving under cwd, and a root that escapes cwd or is absolute disqualifies the rule
 /// rather than being reinterpreted. When neither rule applies the bind REFUSES, so the failure arm
-/// is a refusal and not a widen (DESIGN section 5). Which rule answered is returned and reported by
+/// is a refusal and not a widen (gunbc.design_argument::fail_closed). Which rule answered is returned and reported by
 /// the caller, because a selection nobody can observe is indistinguishable from a silent one.
 /// THE TWO WAYS THE REQUEST CAN FAIL TO NAME A BASE ARE DIFFERENT FACTS AND SEND A CALLER TO
 /// DIFFERENT PLACES. "You named no base" is a property of the SPELLINGS -- an absolute root, or one
 /// that escapes cwd, leaves nothing for this rule to read. "A root you named is not there" is a
 /// property of the TREE, and it is the state a typo produces. Answering both with one `None` made
 /// the refusal say "no workspace root" to someone whose real problem was a misspelled directory,
-/// and it is the conflation DESIGN section 5 refuses: the line must stop, and the stop must say
+/// and it is the conflation gunbc.design_argument::fail_closed refuses: the line must stop, and the stop must say
 /// where. Named by the side-chat review of gunbc#11960.
 pub(crate) enum DeclaredBase {
     Named(PathBuf),
@@ -2513,7 +2502,7 @@ pub(crate) enum DeclaredBase {
 /// A cwd-reading wrapper stood here and was deleted: once `bind_process_workspace_root` read the
 /// working directory itself -- it needs it for the refusal text either way -- the wrapper had no
 /// call site, and an uncalled `pub(crate)` item is what `dead_code` fires on in a required lane.
-/// It is also the shape DESIGN section 3c names: a declaration whose consumers are a doc comment.
+/// It is also the shape gunbc.design_argument::consumption names: a declaration whose consumers are a doc comment.
 /// Taking the base as a parameter is what lets this rule be measured at all, since the tests in
 /// this lane may not chdir (the concurrent-cwd gate above), so a rule that could only be exercised
 /// by moving the process could not be exercised.
@@ -2581,7 +2570,7 @@ fn relative_roots_resolve_under(base: &Path, source_roots: &[String]) -> Result<
 /// Returns `Err` with a located cause when neither the request nor discovery can name a base --
 /// the state `resolve_process_workspace_root` answers with a panic. A panic is not a refusal: it
 /// carries no exit contract and prints no diagnostic a caller can act on, which is precisely what
-/// DESIGN section 5 forbids at a boundary whose job is to refuse precisely.
+/// gunbc.design_argument::fail_closed forbids at a boundary whose job is to refuse precisely.
 /// Which of the two rules named the base, so the choice is reported rather than inferred.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum WorkspaceRootBasis {
@@ -2778,12 +2767,12 @@ fn module_index_path_key(path: &Path) -> String {
     }
 }
 
-// SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.cli_run_workspace_root_scaffold
+// SCAFFOLD (gunbc.design_argument::self_hosting seed-retained HAND-RUST — authority: gunbc.cli_run_workspace_root_scaffold
 // (cli_run_source_root_anchor_scaffold row);
 // receipt: docs/plans/cli-run-reconcile-defork.md#interim-workspace-root-scaffold;
 // witness: dag/test/claim/cli_run_workspace_root_hand_rust_witness.dag).
 // 🟡 dissolve-on: try_anchor_source_root — declared layer/pool roots come from HAND-Rust
-// while `dag/compiler` is modeled-before-implemented (§6 model-first), so absence is a
+// while `dag/compiler` is modeled-before-implemented (gunbc.design_argument::how_to_work model-first), so absence is a
 // legitimate state skipped LOUDLY (counted line per root); DISSOLVES WHEN cli_run.rs Chunk F
 // lands (roots walk GENERATED; absence becomes a typed, located, counted diagnostic at the
 // roster layer) OR ROADMAP 5-dissolve-patches retires HAND path handling.
@@ -2798,73 +2787,68 @@ fn module_index_path_key(path: &Path) -> String {
 /// instead of panicking mid-floor. CLI-provided roots keep the strict panicking contract - a
 /// typo'd argument must refuse, never skip.
 fn try_anchor_source_root(root: &str) -> Option<String> {
-    let p = Path::new(root);
-    let ws = process_workspace_root();
-    if p.is_absolute() {
-        if p.is_dir() {
-            return Some(root.to_string());
-        }
-        let baked = workspace_root();
-        if let Ok(rel) = p.strip_prefix(&baked) {
-            let reanchored = ws.join(rel);
-            if reanchored.is_dir() {
-                return Some(reanchored.to_string_lossy().into_owned());
-            }
-        }
-        if let Ok(rel) = repo_relative_path(p) {
-            let reanchored = ws.join(&rel);
-            if reanchored.is_dir() {
-                return Some(reanchored.to_string_lossy().into_owned());
-            }
-        }
-        return None;
-    }
-    let anchored = ws.join(p);
-    if anchored.is_dir() {
-        Some(anchored.to_string_lossy().into_owned())
-    } else {
-        None
-    }
+    anchor_source_root_typed(root).ok()
 }
 
+/// THE PANICKING FORM, for the callers that hold a root already admitted. A caller that must refuse
+/// an ordinary user-caused root (missing, or a file) asks `admit_source_root`; a DECLARED root whose
+/// absence is legitimate asks `try_anchor_source_root`. All three read `anchor_source_root_typed`.
 fn anchor_source_root(root: &str) -> String {
+    anchor_source_root_typed(root).unwrap_or_else(|cause| panic!("anchor_source_root: {cause}"))
+}
+
+/// ANCHORING IS FALLIBLE: a root that cannot be resolved to a directory is a typed refusal, not a
+/// panic. The checks `try_build_module_index` ran AFTER anchoring were unreachable, because this
+/// panicked first -- so `a_missing_source_root_refuses_at_source_discovery_instead_of_panicking`
+/// and its file-root twin were red on main (the v1 unit tests do not run on the required path).
+fn anchor_source_root_typed(root: &str) -> Result<String, String> {
     let p = Path::new(root);
     let ws = process_workspace_root();
     if p.is_absolute() {
         if p.is_dir() {
-            return root.to_string();
+            return Ok(root.to_string());
+        }
+        if p.exists() {
+            return Err(format!(
+                "source root is not a directory: {root} -- --source-root names a directory to \
+                 walk, not a file"
+            ));
         }
         let baked = workspace_root();
         if let Ok(rel) = p.strip_prefix(&baked) {
             let reanchored = ws.join(rel);
             if reanchored.is_dir() {
-                return reanchored.to_string_lossy().into_owned();
+                return Ok(reanchored.to_string_lossy().into_owned());
             }
         }
         if let Ok(rel) = repo_relative_path(p) {
             let reanchored = ws.join(&rel);
             if reanchored.is_dir() {
-                return reanchored.to_string_lossy().into_owned();
+                return Ok(reanchored.to_string_lossy().into_owned());
             }
         }
-        panic!(
-            "anchor_source_root: absolute source root {} does not exist and cannot be \
-             re-anchored under process workspace {} (compiled-in root was {})",
-            root,
+        return Err(format!(
+            "source root does not exist: {root} (not re-anchorable under process workspace {}; \
+             compiled-in root was {})",
             ws.display(),
             baked.display()
-        );
+        ));
     }
     let anchored = ws.join(p);
-    if !anchored.is_dir() {
-        panic!(
-            "anchor_source_root: source root {root} resolved to {} which is not a directory \
-             (process workspace {})",
-            anchored.display(),
-            ws.display()
-        );
+    if !anchored.exists() {
+        return Err(format!(
+            "source root does not exist: {root} (anchored to {})",
+            anchored.display()
+        ));
     }
-    anchored.to_string_lossy().into_owned()
+    if !anchored.is_dir() {
+        return Err(format!(
+            "source root is not a directory: {root} (anchored to {}) -- --source-root names a \
+             directory to walk, not a file",
+            anchored.display()
+        ));
+    }
+    Ok(anchored.to_string_lossy().into_owned())
 }
 
 /// CLI-boundary path resolution for the claim bins (`claim_batch` / `claim_executor`).
@@ -2874,7 +2858,7 @@ fn anchor_source_root(root: &str) -> String {
 /// anchors RELATIVE source roots to that path while the module-content index reads them
 /// relative to the process cwd. For the claim bins a run from any other cwd (e.g. a git
 /// worktree) silently mixed two trees — module contents from the cwd, import-graph facts from
-/// the baked root — wrong answers with zero diagnostic (DESIGN §5 fail-open). The runtime
+/// the baked root — wrong answers with zero diagnostic (gunbc.design_argument::fail_closed fail-open). The runtime
 /// derivation removes the cross-tree case; this boundary keeps the in-tree case exact (a cwd
 /// BELOW the checkout root still resolves CLI args against the cwd, not the root).
 ///
@@ -3335,7 +3319,7 @@ mod cli_run_arg_channel_tests {
         assert!(matches!(&got[0].1, Value::Str(s) if s.is_empty()));
     }
 
-    // RED controls: the refusals are the point of the channel (§5). A bare
+    // RED controls: the refusals are the point of the channel (gunbc.design_argument::fail_closed). A bare
     // token has no defensible position to occupy, so it must not be guessed
     // into one.
     #[test]
@@ -3752,7 +3736,7 @@ fn module_path_collision_panic_message(
     candidate_path: &str,
 ) -> String {
     format!(
-        "module-path collision: module '{declaring_module}' is declared by both '{existing_path}' and '{candidate_path}' — one module, one authority (DESIGN §3); silent last-root-wins shadowing broke the floor (extdeps.shell, 2026-07-01) — de-fork or rename one side"
+        "module-path collision: module '{declaring_module}' is declared by both '{existing_path}' and '{candidate_path}' — one module, one authority (gunbc.design_argument::single_authority); silent last-root-wins shadowing broke the floor (extdeps.shell, 2026-07-01) — de-fork or rename one side"
     )
 }
 
@@ -3814,7 +3798,7 @@ fn for_each_parsed_module_binding(
                     continue;
                 }
                 // Typed and located, with the parser's own span; siblings continue so the report
-                // is COUNTED and complete (§5 factory model).
+                // is COUNTED and complete (gunbc.design_argument::fail_closed factory model).
                 Err(refusal) => {
                     refusals.push(ModuleIndexRefusal::Unparseable(refusal));
                     continue;
@@ -4044,7 +4028,7 @@ pub(crate) fn extend_fixture_imports_on_process_shared_index(
 /// authored `import` lines name, read from the workspace through `module_index`, CLOSED BY THE
 /// ONE CLOSURE AUTHORITY (`extend_sources_to_both_closure_fixpoint`), then the entry itself.
 ///
-/// WHY NOT THE IMPORT EDGES ALONE (DESIGN §3, §6b). This walker used to stop at `import` lines,
+/// WHY NOT THE IMPORT EDGES ALONE (gunbc.design_argument::single_authority, gunbc.design_argument::earliest_unjustified_boundary). This walker used to stop at `import` lines,
 /// a fourth closure rule beside the one the gate, the witness loader and regen share. An `import`
 /// line, a qualified reference and a bare reference are the same dependency edge, so the
 /// import-only walk was not a narrower closure but a blind one: `std.syllogism` reaches
@@ -4087,12 +4071,12 @@ pub(crate) fn resolve_virtual_source_with_imports(
 /// same shape and home as `compile_clean_diagnostic_histogram_key` / the fold already consults),
 /// so a class outside its pair arms yields `None` (the model's `Absent`) — never a pair-shaped
 /// stand-in for "the pair was equal": an equal pair is `Uniform` with `expected == got`
-/// (DESIGN §5, fail-open). `Uniform` is the group's single rendered pair; `Varied` counts the
+/// (gunbc.design_argument::fail_closed, fail-open). `Uniform` is the group's single rendered pair; `Varied` counts the
 /// distinct pairs the group folded (`distinct_pair_count > 1`; a count below two never reaches
 /// this arm — the fold only opens `Varied` once a second distinct pair exists, so it is
 /// unreachable by construction rather than refused). The pair TEXT is the producer
 /// node_type_shape's output (authority src/v1/04_types.dag) as already carried by the diagnostic
-/// — a witness names the producer, it never transcribes its output (§6).
+/// — a witness names the producer, it never transcribes its output (gunbc.design_argument::how_to_work).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RenderedPair {
     Uniform { expected: String, got: String },
@@ -4102,7 +4086,7 @@ pub enum RenderedPair {
 /// One aggregated row of the synthetic-source diagnostic census: a `(class, name, severity)`
 /// key and how many times the compile produced it. `diagnostic_class` and `subject_name` are
 /// exactly the two halves of [`compile_clean_diagnostic_histogram_key`], whose total match over
-/// `CompilerDiagnostic` is the single authority for naming a variant (§3 — this is a projection,
+/// `CompilerDiagnostic` is the single authority for naming a variant (gunbc.design_argument::single_authority — this is a projection,
 /// never a second diagnostic vocabulary).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompileDiagnosticCensusRow {
@@ -4117,7 +4101,7 @@ pub struct CompileDiagnosticCensusRow {
 
 /// Result of [`compile_dag_diagnostic_census`]. `NotRunnable` is a distinct arm rather than an
 /// empty row list because an empty census is byte-identical to a clean compile: could-not-measure
-/// must never be readable as the subject passing (DESIGN §5 — ⊤-as-answer conflated with
+/// must never be readable as the subject passing (gunbc.design_argument::fail_closed — ⊤-as-answer conflated with
 /// ⊤-as-ignorance). Preserving the split *here*, at the host seam, is what lets the probe layer
 /// map it to `ProbeObservation::ProbeNotRunnable` without guessing.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -4182,13 +4166,13 @@ pub struct MultiModuleFixtureSource {
 ///
 /// **Names only (permanent ceiling, no next-rung trigger):** no parameter or return types.
 ///
-/// **Registry mirror, not emit join (below ceiling — order and membership):** DESIGN §3b middle
+/// **Registry mirror, not emit join (below ceiling — order and membership):** gunbc.design_argument::conformance middle
 /// value — deliberate divergence with stated reason (see `gunbc.instruments.multi_module_compile_fixture`
 /// `ResolvedRustFnSignature`). Nothing refuses if `emit_func_params` / `emit_func_def` and this
 /// projection disagree (resource arm already reads `ItemInfo.resource_names` while emit folds
 /// `uses` via `resource_use_name_at`). **Next-rung trigger:** derive from the same source
 /// `emit_func_params` reads (or from its emit result). **Why unbuilt:** emit_rust seed
-/// regeneration would couple this instrument PR to #10688's live surface. DESIGN §5: an in-diff
+/// regeneration would couple this instrument PR to #10688's live surface. gunbc.design_argument::fail_closed: an in-diff
 /// approval claim does not authorize the debt; the technical reason does.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedRustFnSignature {
@@ -4236,18 +4220,18 @@ pub enum MultiModuleCompileFixtureOutcome {
 /// `compile_to_resolved`. So a wall in the scope builder had a positive control that could run
 /// and a discriminating RED that could not: the fixture harness could not see it, and a corpus
 /// module authored to carry an ambiguous read would refuse the whole floor rather than sit there
-/// as a probe. DESIGN section 4b answers exactly that shape -- a state unrepresentable in the
+/// as a probe. gunbc.design_argument::guarantee_ladder answers exactly that shape -- a state unrepresentable in the
 /// ACCEPTED corpus may still be representable as source handed to the compiler by a FIXTURE, and
 /// a compiler is a thing whose regression probes are invalid programs.
 ///
-/// THE §3c FRONTIER THIS TYPE CARRIED IS DISCHARGED IN THIS CHANGE, and the paragraph that
+/// THE gunbc.design_argument::consumption FRONTIER THIS TYPE CARRIED IS DISCHARGED IN THIS CHANGE, and the paragraph that
 /// declared it is replaced rather than left standing. gunbc#11143 admitted this type with its
 /// only consumers being its own witness rows, naming the consumer that would arrive (the
 /// `AmbiguousBareNameRead` refusal in `claim_scope_for`) and the trigger that would let it
 /// (the qualification batches merged and the variant-arm tier landed). Both have happened: the
 /// refusal is in this diff, below, and `dag/test/claim/bare_name_ambiguity_wall_witness.dag`
 /// is the consumer that reaches this type through `claim_scope_fixture`. A frontier that outlives
-/// its own trigger is the stale row DESIGN §4b(3) warns about, so it ends here rather than
+/// its own trigger is the stale row gunbc.design_argument::guarantee_ladder (no silent regression) warns about, so it ends here rather than
 /// describing a state that no longer holds.
 ///
 /// ONE DETECTOR, NOT TWO. This calls `claim_scope_for_with_memos` -- the SAME function the
@@ -4355,63 +4339,6 @@ pub enum ResolvedCallEdgeCensus {
     Observed { edges: Vec<ResolvedCallEdgeRow> },
 }
 
-/// THE CALLEE IDENTITY THE RESOLVER ESTABLISHED FOR ONE CALL SITE, projected for the primitive
-/// census (`gunbc.primitive_egress.census`). This is the resolver's OWN product read off the typed
-/// tree -- `CallTargetIdentity::RuntimePrimitiveCall` for a free call and
-/// `MethodSemantics::AlgebraMethodSemantics` for a method form -- never a spelling match. The
-/// two arms that carry a spelling and no identity (`PlainMethod`, `UndeterminedFreeCall`) are
-/// exactly the sites where the resolver established NOTHING; they are carried so the census can
-/// report a consumer whose callee identity is unresolved rather than drop it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PrimitiveCalleeIdentity {
-    RuntimePrimitive {
-        primitive_name: String,
-        projected_from_module: Option<String>,
-        projected_from_decl: Option<String>,
-    },
-    AlgebraMethod {
-        template_name: String,
-    },
-    ServiceOperation {
-        service_name: String,
-        operation: String,
-    },
-    PlainMethod {
-        spelling: String,
-    },
-    UndeterminedFreeCall {
-        spelling: String,
-    },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PrimitiveCallEdgeRow {
-    pub caller_module: String,
-    pub caller_decl: String,
-    pub authored_spelling: String,
-    pub callee: PrimitiveCalleeIdentity,
-    pub span_file: String,
-    pub span_start: i64,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PrimitiveCallEntryRefusal {
-    pub entry: String,
-    pub cause: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PrimitiveCallEdgeCensus {
-    Refused {
-        cause: String,
-    },
-    Observed {
-        entries_resolved: Vec<String>,
-        entries_refused: Vec<PrimitiveCallEntryRefusal>,
-        edges: Vec<PrimitiveCallEdgeRow>,
-    },
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EvaluationStoreAddressProductionCoverage {
     Qualified {
@@ -4448,7 +4375,7 @@ fn multi_module_fixture_source_digest(sources: &[MultiModuleFixtureSource], entr
 /// Aggregate a compile's diagnostics on the full `(class, name, severity)` key. Severity stays in
 /// the key because one class can occur at both severities, and folding them would hide exactly
 /// the blocking→advisory demotion these surfaces exist to keep visible. ONE fold serves both the
-/// census and the multi-module fixture, so they cannot drift into two vocabularies (§3).
+/// census and the multi-module fixture, so they cannot drift into two vocabularies (gunbc.design_argument::single_authority).
 fn compile_diagnostic_census_rows(
     diagnostics: &im::Vector<Rc<ErrorNode>>,
 ) -> Vec<CompileDiagnosticCensusRow> {
@@ -4510,7 +4437,7 @@ pub struct DeclaredImportClosureBindingObserved {
 }
 
 /// Result of [`declared_import_closure_binding_observation_from_resolved`]. `NotRunnable` is distinct from
-/// an observed refusal so could-not-measure never reads as the subject passing (DESIGN §5).
+/// an observed refusal so could-not-measure never reads as the subject passing (gunbc.design_argument::fail_closed).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeclaredImportClosureBindingObservation {
     Observed(DeclaredImportClosureBindingObserved),
@@ -4572,12 +4499,12 @@ thread_local! {
     /// rather than of the tree. The floor already refuses that accounting for its larger shared
     /// artifacts: the three `[floor-phase]` warm builds report `provenance=built-by-preparation`
     /// and are billed to preparation, never to a claim. This is the same rule at a smaller grain
-    /// (DESIGN §2 — one concept, every scale), so it reuses `SharedBuildProvenance` rather than
+    /// (gunbc.design_argument::minimize_redundancy — one concept, every scale), so it reuses `SharedBuildProvenance` rather than
     /// minting an exemption beside it.
     ///
     /// IT EXEMPTS NOTHING. The cost is measured, accumulated, reported per claim and attributed
     /// to the shared artifact; it stops being CHARGED to the first payer, not COUNTED. A cost
-    /// that vanished here would be the absorbing fallback (§5) wearing an accounting label, so
+    /// that vanished here would be the absorbing fallback (gunbc.design_argument::fail_closed) wearing an accounting label, so
     /// the receipt carries marginal and fill as two columns whose sum is the claim's whole
     /// measured cost.
     // (the CPU fill cell now lives in `v1_interpreter`; see the delegating fns below)
@@ -4588,7 +4515,7 @@ thread_local! {
     /// charging the whole fill to the first payer: two rows whose own cost is 0ms and 1ms refused
     /// a required floor at ~18000ms against a 10000ms wall requirement (main run 33145062452,
     /// `test.claim.transport_script_wall_compile_red`: `[floor-shared-fill]` reported
-    /// `marginal_cpu_ms=0 fill_cpu_ms=18966` for one). A one-clock rule is the §3 failure the CPU
+    /// `marginal_cpu_ms=0 fill_cpu_ms=18966` for one). A one-clock rule is the gunbc.design_argument::single_authority failure the CPU
     /// comment names — one concept, two homes — so this cell closes the second home rather than
     /// adding a policy beside it.
     static SHARED_ARTIFACT_FILL_WALL_NANOS: std::cell::Cell<u128> =
@@ -4647,7 +4574,7 @@ const WITNESS_LAYER_ROOTS_DATA_NAME: &str = "witness_layer_roots";
 /// `ci_layer_roots` authority as `witness_layer_roots`. Fail-closed by construction: the exemption
 /// it grants is keyed on MEMBERSHIP IN THIS ROSTER, never on the absence of a match in
 /// `witness_layer_roots` -- "not declared executing" and "declared non-executing" are different
-/// claims, and only the second carries the 4b(2) stall and its trigger
+/// claims, and only the second carries the gunbc.design_argument::guarantee_ladder (no untracked stall) stall and its trigger
 /// (`non_executing_witness_module_prefixes_restoration`). An unreadable or empty roster exempts nothing.
 const NON_EXECUTING_WITNESS_MODULE_PREFIXES_DATA_NAME: &str =
     "non_executing_witness_module_prefixes";
@@ -4699,7 +4626,7 @@ fn ci_layer_roots_authority_content() -> &'static str {
 /// Project a `List<String>` data literal out of a `.dag` module's SOURCE TEXT via the real
 /// front-end (`tokenize` + `parse`) — no second scanner. Pure (text in, list out) so a synthetic
 /// authority with non-default values can drive it; a reader returning a hardcoded copy fails
-/// that control (DESIGN §5 by-construction discrimination). Fail-closed: a parse error, missing
+/// that control (gunbc.design_argument::fail_closed by-construction discrimination). Fail-closed: a parse error, missing
 /// data def, non-string-list body, or (when `allow_empty` is false) empty list is a loud panic,
 /// never a silent fallback that re-opens the drift.
 pub(crate) fn string_list_data_from_module_source(
@@ -4843,7 +4770,7 @@ pub(crate) fn default_source_roots() -> Vec<String> {
 /// The seed boundary is the reason this is a closed two-member vocabulary rather than a string:
 /// stage0 IS the v1 seed, so a root reaching into `src/v2` would make the seed depend on the
 /// successor it bootstraps toward. There is no `src/v2` variant to write, so that root set has no
-/// spelling — DESIGN §4b *structurally impossible*, replacing a validation that never existed.
+/// spelling — gunbc.design_argument::guarantee_ladder *structurally impossible*, replacing a validation that never existed.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum RegenSourceRoot {
     /// The v1 seed tree — every `.dag` under it seeds the closure.
@@ -4865,7 +4792,7 @@ impl RegenSourceRoot {
 ///
 /// Both invalid states the previous `Vec<String>` admitted are unwritable: the empty set has no
 /// constructor, so `regen_input_sources`' "root list must not be empty" refusal is deleted rather
-/// than kept beside the proof (DESIGN §4b dissolution-on-climb); the entry role is a field, not
+/// than kept beside the proof (gunbc.design_argument::guarantee_ladder dissolution-on-climb); the entry role is a field, not
 /// `.first()`, so list order cannot decide it. Fields are private and `regen_source_roots` is
 /// the sole constructor, so a same-root or role-swapped pair is unconstructable outside this
 /// module.
@@ -4974,7 +4901,7 @@ fn regen_input_sources_over_roots(
     // dotted-reference PLUS bare-reference modules, to a joint fixpoint — not the import-only
     // walk this function used to run.
     //
-    // WHY (§3 de-fork). An `import` line and a qualified or bare reference are the SAME
+    // WHY (gunbc.design_argument::single_authority de-fork). An `import` line and a qualified or bare reference are the SAME
     // dependency edge, so an import-only walk is not a narrower closure but one that goes BLIND
     // when a module spells a dependency any other way. That function's doc-comment calls itself
     // "The ONE closure-extension authority" and names "Both source loaders — the per-entry
@@ -5113,26 +5040,21 @@ pub(crate) fn brace_delta(line: &str) -> i32 {
 
 pub(crate) type ModuleSourceIndex = HashMap<String, Rc<v1_compiler_compile::SourceFile>>;
 
+/// WHETHER ONE `--source-root` IS A DIRECTORY TO WALK, as a typed refusal. The one admission every
+/// index builder asks -- the whole-tree builder below and the demand-acquired route
+/// (`demand_acquire`) -- so a missing root, or a file where a directory belongs, refuses on both
+/// rather than being skipped on one (review 90892 on the demand-acquired entry compile).
+pub(crate) fn admit_source_root(root: &str) -> Result<String, String> {
+    anchor_source_root_typed(root)
+}
+
 /// The fallible core. Every filesystem condition and every corpus-authority violation
 /// returns a located `Err` instead of unwinding.
 fn try_build_module_index(source_roots: &[String]) -> Result<ModuleSourceIndex, String> {
     let mut index = ModuleSourceIndex::new();
     for root in source_roots.iter() {
-        let anchored_root = anchor_source_root(root);
+        let anchored_root = admit_source_root(root)?;
         let root_path = std::path::Path::new(&anchored_root);
-        if !root_path.exists() {
-            return Err(format!(
-                "source root does not exist: {root} (anchored to {})",
-                root_path.display()
-            ));
-        }
-        if !root_path.is_dir() {
-            return Err(format!(
-                "source root is not a directory: {root} (anchored to {}) -- --source-root names \
-                 a directory to walk, not a file",
-                root_path.display()
-            ));
-        }
         let mut dag_files = Vec::new();
         collect_dag_files_result(root_path, &mut dag_files)?;
         for source in dag_files {
@@ -5184,7 +5106,7 @@ fn try_build_module_index_primary_precedence(
 ///
 /// The two module-index builders forked: the strict one resolved each root through
 /// `anchor_source_root` (relative spelling anchors to the PROCESS WORKSPACE), the
-/// primary-precedence one read the string off the filesystem (PROCESS CWD) — a §3 fork visible
+/// primary-precedence one read the string off the filesystem (PROCESS CWD) — a gunbc.design_argument::single_authority fork visible
 /// only when the two paths meet. Routing the compile transaction's primary arm through the
 /// shared index made them meet: `canonical_shared_index_roots` rewrites an absolute root to its
 /// repo-relative spelling for the memo key AND hands that spelling to the builder, correct under
@@ -5211,7 +5133,7 @@ fn try_index_source_root_into_module_index(
     // two refusals below then swap: a file that exists is reported as `does not exist`. That is a
     // located lie about the filesystem, and it collapses precisely the distinction the caller
     // built these two arms to hold apart -- create the file versus move it -- which is the
-    // state-space conflation §5 names.
+    // state-space conflation gunbc.design_argument::fail_closed names.
     //
     // MEASURED, by isolating the one test that asks for this distinction
     // (`entry_admission_tests::a_file_named_as_a_source_root_refuses_and_says_it_is_not_a_directory`):
@@ -5257,7 +5179,7 @@ fn try_index_source_root_into_module_index(
             } else if let Some(existing) = index.get(&module_path) {
                 if existing.path != rel_path {
                     return Err(format!(
-                        "module-path collision: module '{}' is declared by both '{}' and '{}' — one module, one authority (DESIGN §3); silent last-root-wins shadowing broke the floor (extdeps.shell, 2026-07-01) — de-fork or rename one side",
+                        "module-path collision: module '{}' is declared by both '{}' and '{}' — one module, one authority (gunbc.design_argument::single_authority); silent last-root-wins shadowing broke the floor (extdeps.shell, 2026-07-01) — de-fork or rename one side",
                         module_path, existing.path, rel_path
                     ));
                 }
@@ -5331,7 +5253,7 @@ fn load_compile_clean_entry_sources(
         }
     }
     // BOTH closures to a joint fixpoint via the ONE shared authority the witness loader
-    // `load_sources_for_entry_with_pool` also calls (§3 dissolution: this gate loader ran ONLY
+    // `load_sources_for_entry_with_pool` also calls (gunbc.design_argument::single_authority dissolution: this gate loader ran ONLY
     // `extend_with_reference_closure`, so an entry reaching a provider purely by bare name or
     // service call — patterns.dag → `gcp.STS.Exchange`, no import — dropped it, because the edge
     // `gcp.STS` → dag/extdeps/cloud/gcp/sts.dag lives ONLY in the bare closure. Proven: ARM1
@@ -5346,7 +5268,7 @@ fn load_compile_clean_entry_sources(
 /// corpus-wide). Projection is the parsed reference set's longest declared module-path prefix,
 /// iterated to fixpoint; each addition pulls its own import closure. The ONE closure
 /// authority for the whole-tree compile-clean walk and the per-entry claim/witness loaders (a
-/// second rule would be a §3 fork). Dissolves into the parsed-tree reference projection when
+/// second rule would be a gunbc.design_argument::single_authority fork). Dissolves into the parsed-tree reference projection when
 /// the Rule-1 terminal step (import as parse error, deps derived from references) lands.
 fn extend_with_reference_closure(
     sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
@@ -5390,7 +5312,7 @@ fn extend_with_reference_closure_for_pool(
 /// reference, never a module projection; `longest_declared_module_prefix` over the chain).
 ///
 /// The parse is the authority for what is a reference: a string literal is data and an
-/// annotation is not program text (DESIGN §4c), and neither produces a chain, so no erasure pass
+/// annotation is not program text (gunbc.design_argument::source_annotations), and neither produces a chain, so no erasure pass
 /// stands in front of this reader. A file the parser refuses has no readable reference set, and
 /// the closure REFUSES for it rather than following a guessed one; the required parse sweep
 /// (`run_dag_parse_sweep`) holds every pool file to parse.
@@ -5670,7 +5592,7 @@ fn eprint_compile_clean_hard_diagnostics(diagnostics: &im::Vector<Rc<ErrorNode>>
     const SHOWN_LIMIT: usize = 20;
     let mut shown = 0usize;
     let mut total = 0usize;
-    // One pass, no accumulator: the total is counted, never collected (§6).
+    // One pass, no accumulator: the total is counted, never collected (gunbc.design_argument::how_to_work).
     for d in diagnostics
         .iter()
         .filter(|d| compile_clean_diagnostic_is_hard(d))
@@ -5682,7 +5604,7 @@ fn eprint_compile_clean_hard_diagnostics(diagnostics: &im::Vector<Rc<ErrorNode>>
         }
     }
     if total > SHOWN_LIMIT {
-        // Count the residue rather than hiding it (§5): a truncated burndown that
+        // Count the residue rather than hiding it (gunbc.design_argument::fail_closed): a truncated burndown that
         // never reports its size makes the deficit unprioritizable.
         eprintln!("compile-clean: (truncated hard diagnostics at {SHOWN_LIMIT}; {total} total)");
     }
@@ -5780,7 +5702,7 @@ fn dag_module_index(
 /// check; `NotRun` is could-not-measure — the instrument never reached its subject. The
 /// predecessors collapsed all four into a `bool` plus a second `String` builtin over the same
 /// global, so "did not run in this process" and "found hard diagnostics" rendered identically at
-/// the `.dag` call site (DESIGN §5, execution-provenance loss). `NotRun` still stops the line —
+/// the `.dag` call site (gunbc.design_argument::fail_closed, execution-provenance loss). `NotRun` still stops the line —
 /// `gate_receipt_exit` refuses it — in its own vocabulary instead of the subject's.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GateReceipt {
@@ -5853,7 +5775,7 @@ pub(crate) const CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER: &st
 // this marker once named was swept in gunbc#9160, and the dead `compile_clean_unlisted_import_census`
 // wrapper deleted when the per-class `compile_clean_diagnostic_census` subsumed it (its
 // `unlisted_import_rows` carries the same rows); what remains is the binding-source classification
-// the diagnostic census consumes. The census itself is NOT in this list: per DESIGN section 4b(4) it
+// the diagnostic census consumes. The census itself is NOT in this list: per gunbc.design_argument::guarantee_ladder (dissolution on climb) it
 // stays enrolled after each class's climb as the executing evidence that the class stays at zero.
 // Receipt: the marker const below is itself the receipt -- present until deletion, gone with the
 // scaffold (a count receipt over the marker STRING counts this comment and the marker test too,
@@ -5862,7 +5784,7 @@ pub(crate) const CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER: &st
 pub(crate) const CLI_RUN_COMPILE_CLEAN_UNLISTED_IMPORT_CENSUS_SCAFFOLD_MARKER: &str =
     "cli_run_compile_clean_unlisted_import_census";
 
-// INTERIM hand-Rust scaffold (issue 11 / §7): dispatch input for the namespace flip.
+// INTERIM hand-Rust scaffold (issue 11 / gunbc.design_argument::self_hosting): dispatch input for the namespace flip.
 // DISSOLVES WHEN import grammar deleted and binding-source modeled in substrate.
 
 /// Binding-source attribution for the UnlistedImportUse census (issue 11).
@@ -5917,13 +5839,13 @@ fn import_module_paths_for_typed_module(tm: &Rc<TypedModule>) -> HashSet<String>
 /// This used to answer a bare leaf with `.values().find(...)` -- the first matching row, silently,
 /// for exactly the question the `.dag` side refuses (`lookup_item_by_leaf` -> `ItemLeafAmbiguous`).
 /// An annotation saying "it is a guess either way" made the guess visible to a READER and not to a
-/// CONSUMER, which is the distinction DESIGN section 5 turns on.
+/// CONSUMER, which is the distinction gunbc.design_argument::fail_closed turns on.
 ///
 /// IT DOES NOT SCAN. The first repair collected the distinct owning modules by walking
 /// `item_registry.values()`, which answered correctly and re-derived, per call, an index this
 /// compiler already builds: `leaf_owner_modules_from_registry` (v1.compiler.infer_items), carried
-/// on `ResolvedGraph.item_leaf_owner_modules`. That is DESIGN section 2
-/// re-invention -- net concepts must not grow by re-invention -- and a section 6 cost-shape defect
+/// on `ResolvedGraph.item_leaf_owner_modules`. That is gunbc.design_argument::minimize_redundancy
+/// re-invention -- net concepts must not grow by re-invention -- and a gunbc.design_argument::how_to_work cost-shape defect
 /// besides, since `classify_unlisted_import_binding_source` and its callers put roughly four full
 /// registry passes behind every census row and the census is thousands of rows. Both are fixed by
 /// asking the modelled index, which is one map lookup and, being the same authority the emitted
@@ -6058,7 +5980,7 @@ fn workspace_relative_repo_path(path: &str) -> String {
 /// `resolve_transitively`, not abort via `repo_relative_path_normalized`'s panic arm — correct
 /// fail-closed for a CORPUS path, the wrong failure MODE for an entry the caller is about to
 /// reject. When the path cannot be made repo-relative, return it unchanged: `declares_repo_path`
-/// rejects it and the refusal fires (DESIGN §5: refuse, never abort-in-lieu).
+/// rejects it and the refusal fires (gunbc.design_argument::fail_closed: refuse, never abort-in-lieu).
 fn workspace_relative_entry_path(path: &str) -> String {
     let norm = path.strip_prefix("./").unwrap_or(path).replace('\\', "/");
     let p = Path::new(&norm);
@@ -6085,7 +6007,7 @@ pub(crate) fn next_facts_build_id() -> u64 {
 
 /// Pre-built `import_resolution_facts` / `module_declaration_facts` rows for one pool-root
 /// set. Built once per `MultiEntryIndex` / resolve pass so closure queries do not re-scan the
-/// corpus on every `resolve_transitively` call (Phase 1 perf receipt, DESIGN §2).
+/// corpus on every `resolve_transitively` call (Phase 1 perf receipt, gunbc.design_argument::minimize_redundancy).
 #[derive(Clone)]
 pub struct ModuleGraphFactsLive {
     /// Identity of the BUILD that produced this value, minted where the corpus is actually read
@@ -6103,7 +6025,7 @@ pub struct ModuleGraphFactsLive {
     // Workspace-relative paths of `nodes`, precomputed once per facts build: the
     // membership question is asked per ENTRY on the resolve path (see
     // `resolve_transitively`), so deriving it per call would rebuild an O(corpus)
-    // set per entry (bare-minimum-cost, DESIGN §6).
+    // set per entry (bare-minimum-cost, gunbc.design_argument::how_to_work).
     pub(crate) declared_paths: HashSet<String>,
     // SELECTION-ONLY tier: `adjacency` above PLUS strict-tier (Qualified + UniqueBare)
     // reference-derived edges for import-less files, and the import-less files the reference
@@ -6182,7 +6104,7 @@ mod shared_cache_collision_guard_tests {
 #[cfg(test)]
 mod typed_module_content_key_tests {
     //! Typed-module content-key RED controls (cross-entry-typed-module-memo-sketch (deleted)
-    //! §1/§3, operator-signed 2026-07-16; PR-α — the store re-key).
+    //! gunbc.design_argument::goal_safe_efficient_predictable, gunbc.design_argument::single_authority, operator-signed 2026-07-16; PR-α — the store re-key).
     //!
     //! The typed store keys on `std.interface_summary.typed_module_key` — module source hash ⊕
     //! direct-import interface hashes ⊕ compiler identity — never on authored module name. Each
@@ -6322,7 +6244,7 @@ impl ModuleGraphFactsLive {
     /// The dotted module names `importer_repo_path` depends on ONLY through a strict-tier
     /// reference edge (`selection_adjacency` minus `adjacency`) — i.e. the direct-import term
     /// a stripped (no `import` line) module is otherwise missing from its typed-module content
-    /// key (DESIGN §3: consumes the same `selection_adjacency` authority affected-set selection
+    /// key (gunbc.design_argument::single_authority: consumes the same `selection_adjacency` authority affected-set selection
     /// already reads; no second reference-edge producer). For an import-bearing file it
     /// returns the modules it reaches by qualified reference (bare names there are lexically bound) WITHOUT importing them;
     /// its declared imports are already covered by `resolved.resolved_imports`.
@@ -6365,7 +6287,7 @@ fn repo_paths_match_touched(closure_path: &str, touched_path: &str) -> bool {
 /// Production `entry_file_touched` decision for the discovery corpus: is any touched
 /// entry file inside this entry's transitive import closure?
 ///
-/// AUTHORITY: `v2.lens.module_graph.entry_affected_by_touched_paths` — the consolidated §3
+/// AUTHORITY: `v2.lens.module_graph.entry_affected_by_touched_paths` — the consolidated gunbc.design_argument::single_authority
 /// survivor per the 2026-09-05 replacement migration (see
 /// `v2.lens.affected_set.entry_selection`). This host rendering is certified against the
 /// `.dag` authority by execution on real merged diffs via the module-grain receipt harness
@@ -6375,7 +6297,7 @@ fn repo_paths_match_touched(closure_path: &str, touched_path: &str) -> bool {
 /// — `v2.lens.affected_set.corpus_dependency_view` removed outright (the fn-arrow
 /// selection mechanism #2). The surviving authority is this host rendering of
 /// `v2.lens.module_graph.entry_affected_by_touched_paths` (import-closure, mechanism #3).
-/// The §3 fork where three mechanisms answered "which tests are affected?" is resolved:
+/// The gunbc.design_argument::single_authority fork where three mechanisms answered "which tests are affected?" is resolved:
 /// two parallel mechanisms deleted or consolidated onto the survivor.
 ///
 /// Dissolve-on: the namespace-only resolution terminal step replaces import edges with
@@ -6383,7 +6305,7 @@ fn repo_paths_match_touched(closure_path: &str, touched_path: &str) -> bool {
 /// grain-stable and survives.
 ///
 /// Refusal, never widen: an entry absent from the facts' declared-module set is a provenance
-/// gap the relation cannot answer for, and returns a typed error that fails the batch (the §5
+/// gap the relation cannot answer for, and returns a typed error that fails the batch (the gunbc.design_argument::fail_closed
 /// fail-closed arm lives HERE; the old arm that called its widen "fail-closed" is deleted).
 fn entry_file_touched_via_import_closure(
     entry_path: &str,
@@ -6412,7 +6334,7 @@ fn entry_file_touched_via_import_closure(
     // it could not read or parse has an unknown dependency set, not an empty one. Answering
     // "affected" for it (the arm deleted here) conflated ⊤-as-ignorance with ⊤-as-answer and,
     // being silent and uncounted, zeroed the deficit's observed frequency by construction while
-    // the cost surfaced as a 95-minute CI floor rather than a diagnostic (DESIGN §5).
+    // the cost surfaced as a 95-minute CI floor rather than a diagnostic (gunbc.design_argument::fail_closed).
     if facts.selection.reference_unaccounted().contains(&entry_rel) {
         return Err(format!(
             "AFFECTED-SET REFUSAL cause=ReferenceEdgesUnaccounted entry={entry_rel} — the \
@@ -6514,7 +6436,7 @@ fn resolve_transitively(
         // scan never saw it, not because it imports nothing. Answering with the entry-only
         // closure would silently drop its imports and surface as `unresolved import` on modules
         // that exist (the interp_recorded fixture-witness dark red, masked since the facts
-        // repoint in #6210). Refuse, never narrow (DESIGN §5).
+        // repoint in #6210). Refuse, never narrow (gunbc.design_argument::fail_closed).
         if !facts.declares_repo_path(&entry_rel) {
             return Err(format!(
                 "import_closure_live: entry '{entry_rel}' has no provenance in the \
@@ -6598,7 +6520,7 @@ impl CompileDisposition {
 
 /// One compile's emission transaction, measured -- one subject, one or more render targets.
 /// Counts are reported whatever the disposition, because a stopped line is analysed before it
-/// restarts (DESIGN §5) -- but BESIDE a disposition saying which state produced them, never in
+/// restarts (gunbc.design_argument::fail_closed) -- but BESIDE a disposition saying which state produced them, never in
 /// place of one.
 /// One render target's emission from a shared resolution.
 #[derive(Debug, Clone)]
@@ -6616,7 +6538,7 @@ pub struct CompileRun {
     /// WHAT THIS RUN WAS ABOUT. Named `entry: String` until the subject coproduct landed, at
     /// which point the field silently widened to hold a directory -- a consumer reading it for
     /// a `PrimaryRoot` compile got a root from a field promising a file. One name, two
-    /// meanings, which is the §3 violation the fork closure exists to remove.
+    /// meanings, which is the gunbc.design_argument::single_authority violation the fork closure exists to remove.
     pub subject: CompileSubject,
     pub closure_modules: usize,
     /// Bytes of the resolved closure's sources: the byte half of the population a run measured,
@@ -6747,7 +6669,7 @@ mod entry_admission_tests {
     /// candidates are indistinguishable through `compile_entry_emission` wherever the process
     /// root and the compile-time root COINCIDE -- every environment this test runs in, including
     /// CI. The discriminating input cannot be authored at the outer boundary, and claiming a
-    /// fixture had proven it would be the decoration §4b warns about.
+    /// fixture had proven it would be the decoration gunbc.design_argument::guarantee_ladder warns about.
     ///
     /// What IS authorable is the predicate-level distinction: for a path outside the process
     /// root, `repo_relative_path` refuses while `try_repo_relative_path_normalized` is the
@@ -6776,7 +6698,7 @@ mod entry_admission_tests {
     ///
     /// Every arm below was a `panic!` on the compile transaction's own path. A missing root, a
     /// file where a directory belongs, an unreadable source -- ORDINARY USER-CAUSED conditions
-    /// that DESIGN §5 owes a typed located refusal, not `rc=101` with no phase and no cause.
+    /// that gunbc.design_argument::fail_closed owes a typed located refusal, not `rc=101` with no phase and no cause.
     ///
     /// THE RED IS AUTHORABLE AND WAS OBSERVED BEFORE IT WAS WRITTEN: #9242's atomicity test
     /// panicked with exactly `source root does not exist` because its fixture was not yet
@@ -7028,7 +6950,7 @@ fn compile_not_executed(
 /// no-`--entry` case. They differed in undecided ways: the whole-root arm applied the
 /// memory-admission gate and the entry arm did not; the entry arm ran the silent-pick gate
 /// inside the transaction, the whole-root arm around the outside; their refusal subjects were
-/// spelled differently. DESIGN §3's two-authorities-for-one-fact, and the precise reason a
+/// spelled differently. gunbc.design_argument::single_authority's two-authorities-for-one-fact, and the precise reason a
 /// whole-tree ratchet could not be built on the existing phase: it would have observed a
 /// different producer from the gate beside it.
 ///
@@ -7054,13 +6976,6 @@ pub enum CompileSubject {
     /// Every module under this source root, plus their transitive import closure. The
     /// remaining roots stay a dependency pool.
     PrimaryRoot(String),
-    /// THE ROOT DEMAND MEASUREMENT: the same population as `PrimaryRoot`, compiled as its OWN
-    /// subject whose only product is a measurement receipt. Constructible only from an admitted
-    /// measurement (`memory_governor::AdmittedRootDemandMeasurement` has private fields), so it is
-    /// not the whole-root compile with its demand refusal skipped: whole-root admission is not
-    /// asked of it because `root_demand_measurement_admission` already required an enforceable
-    /// limit, and its caller emits nothing (`measure_root_demand`).
-    RootDemandMeasurement(crate::memory_governor::AdmittedRootDemandMeasurement),
 }
 
 /// THE EXACT TEXT `gunbc.emit_diagnostic_observation` `emit_entry_scope_marker` MATCHES ON.
@@ -7100,13 +7015,12 @@ impl CompileScopeReceipt {
 }
 
 impl CompileSubject {
-    /// The primary root a POPULATION subject compiles, or `None` for an entry. Both population
+    /// The primary root a POPULATION subject compiles, or `None` for an entry. The population
     /// arms share every step after admission, so they read the root from one place.
     pub fn population_root(&self) -> Option<&str> {
         match self {
             CompileSubject::Entry(_) => None,
             CompileSubject::PrimaryRoot(root) => Some(root.as_str()),
-            CompileSubject::RootDemandMeasurement(m) => Some(m.root().primary_root.as_str()),
         }
     }
 
@@ -7120,11 +7034,6 @@ impl CompileSubject {
             CompileSubject::PrimaryRoot(root) => {
                 CompileScopeReceipt::PrimaryRootPopulation { root: root.clone() }
             }
-            CompileSubject::RootDemandMeasurement(m) => {
-                CompileScopeReceipt::PrimaryRootPopulation {
-                    root: m.root().primary_root.clone(),
-                }
-            }
         }
     }
 
@@ -7135,9 +7044,6 @@ impl CompileSubject {
         match self {
             CompileSubject::Entry(path) => path.clone(),
             CompileSubject::PrimaryRoot(root) => format!("{root} (whole root)"),
-            CompileSubject::RootDemandMeasurement(m) => {
-                format!("{} (root demand measurement)", m.root().primary_root)
-            }
         }
     }
 
@@ -7150,9 +7056,6 @@ impl CompileSubject {
         match self {
             CompileSubject::Entry(path) => format!("entry:{path}"),
             CompileSubject::PrimaryRoot(root) => format!("primary-root:{root}"),
-            CompileSubject::RootDemandMeasurement(m) => {
-                format!("root-demand-measurement:{}", m.root().primary_root)
-            }
         }
     }
 }
@@ -7181,7 +7084,7 @@ pub struct CompileRequest {
     /// A TARGET, NOT A (NAME, TARGET) PAIR — a defect closed, not a simplification. The pair let
     /// a caller construct `("dag", RenderTarget::Rust)`: two spellings of one fact, free to
     /// disagree, the NAME deciding the output directory and the TARGET the bytes written into
-    /// it -- the §3 violation this transaction exists to remove, reintroduced one field down.
+    /// it -- the gunbc.design_argument::single_authority violation this transaction exists to remove, reintroduced one field down.
     /// The name is now DERIVED from the target by `render_target_name`, so the disagreement has
     /// no representation. Raised in review before it could ship.
     pub render_targets: Vec<crate::v1_compiler_artifact::RenderTarget>,
@@ -7219,7 +7122,7 @@ impl CompileRequest {
     /// the artifact does not, and nothing says so.
     ///
     /// Refused rather than deduplicated: silently collapsing the duplicate answers a request
-    /// nobody made and destroys the only signal that the argv is wrong (DESIGN §5 -- a failure
+    /// nobody made and destroys the only signal that the argv is wrong (gunbc.design_argument::fail_closed -- a failure
     /// arm must refuse, never widen).
     fn names_each_target_at_most_once(&self) -> Result<(), String> {
         for (index, target) in self.render_targets.iter().enumerate() {
@@ -7258,7 +7161,7 @@ impl CompileRequest {
     ///
     /// IT IS A REFUSAL TO EXECUTE, NOT A COMPILE ERROR, and that is the honest rung. The
     /// disagreement is still WRITABLE: the two fields are constructed independently and checked
-    /// afterwards -- validation where construction was available (DESIGN §5). Rung: mechanically
+    /// afterwards -- validation where construction was available (gunbc.design_argument::fail_closed). Rung: mechanically
     /// preventable.
     ///
     /// TERMINAL FORM: one carrier, `SourcePool { primary, dependencies, index_policy }`, in which
@@ -7290,7 +7193,7 @@ impl CompileRequest {
 /// They were introduced pointing the wrong way -- `pub type CompileRun = EntryEmissionRun` --
 /// making the generic name an alias of the entry-named authority, so the canonical carrier
 /// stayed named for a subject it no longer describes. Reversing the direction fixed the
-/// authority but left both spellings live: the §3 violation the fork closure removes, one layer
+/// authority but left both spellings live: the gunbc.design_argument::single_authority violation the fork closure removes, one layer
 /// out -- a reader greps `CompileRun`, finds callers, and concludes the entry-shaped carrier is
 /// still a thing.
 ///
@@ -7466,7 +7369,6 @@ fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResiden
     let entry_path: &str = match &request.subject {
         CompileSubject::Entry(path) => path.as_str(),
         CompileSubject::PrimaryRoot(root) => root.as_str(),
-        CompileSubject::RootDemandMeasurement(m) => m.root().primary_root.as_str(),
     };
     if let CompileSubject::Entry(_) = &request.subject {
         // The entry is a FILE, so it is anchored against the workspace root directly rather
@@ -7496,8 +7398,8 @@ fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResiden
         // compiler produced. Reused for a USER-SUPPLIED path it becomes a widening fallback: on a
         // host where the build checkout still exists, `--entry /that/other/checkout/x.dag` would be
         // admitted and keyed as though it belonged to THIS tree, silently mixing two trees. That is
-        // the §5 failure arm that widens instead of refusing, inside the guard added to stop a
-        // different §5 failure. `repo_relative_path` anchors against the PROCESS root only and is
+        // the gunbc.design_argument::fail_closed failure arm that widens instead of refusing, inside the guard added to stop a
+        // different gunbc.design_argument::fail_closed failure. `repo_relative_path` anchors against the PROCESS root only and is
         // already fail-closed by its own contract.
         //
         // HAND-RUST RECEIPT: this adds NO new path predicate. It consumes the existing gate, whose
@@ -7507,7 +7409,7 @@ fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResiden
         // this file's `cli_run_repo_grant_equivalence_tests`. Its dissolve-on is that module's:
         // cli_run.rs Chunk F (docs/plans/cli-run-reconcile-defork.md), when the refusal becomes the
         // located `std.access.AccessDecision::Deny` from the single grant policy. Routing a second
-        // hand-rolled containment check beside it would have been the §3 fork this receipt exists
+        // hand-rolled containment check beside it would have been the gunbc.design_argument::single_authority fork this receipt exists
         // to prevent.
         //
         // `repo_relative_path_normalized` panics for a path it cannot anchor, and that is the
@@ -7520,7 +7422,7 @@ fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResiden
         // from a clean compile (measured 2026-08-24 while validating an annotation-grain probe).
         //
         // A panic is loud and fabricates nothing, so this is not silent wrongness -- it is an
-        // untyped, unlocated failure where §5 asks for a typed located diagnostic. The refusal
+        // untyped, unlocated failure where gunbc.design_argument::fail_closed asks for a typed located diagnostic. The refusal
         // names both the path and the root, because "not under the workspace root" is unactionable
         // without saying which root the process resolved.
         if repo_relative_path(&entry_abs).is_err() {
@@ -7549,7 +7451,7 @@ fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResiden
     // SOURCE DISCOVERY IS FALLIBLE ON THIS PATH AND ONLY ON THIS PATH. A missing root, a
     // file where a directory was named, an unreadable directory, a non-UTF-8 source, or a
     // module-path collision are ORDINARY USER-CAUSED conditions -- they owe a typed located
-    // refusal, not a panic four frames down in the index walk (DESIGN §5, fail-closed).
+    // refusal, not a panic four frames down in the index walk (gunbc.design_argument::fail_closed, fail-closed).
     //
     // FOUND BY EXECUTION, NOT BY READING: the atomicity test in #9242 panicked with
     // `source root does not exist: fixtures/atomic_materialization` because its fixture was
@@ -7564,23 +7466,59 @@ fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResiden
     // The primary arm previously built a fresh index per call and discarded it, so every cache
     // it owns -- parse, typed-module, pool census, intern table -- was per-call, and a run
     // compiling N entries reconciled the shared prefix N times over closures that overlap almost
-    // entirely. See `try_process_shared_index_for_pool` for why that is a §2 cost-shape defect
+    // entirely. See `try_process_shared_index_for_pool` for why that is a gunbc.design_argument::minimize_redundancy cost-shape defect
     // rather than a budget fact, and for what is NOT changed by the routing.
-    let index: Rc<MultiEntryIndex> = if residency == IndexResidency::OwnedByThisCompile {
+    // AN ENTRY COMPILE RESOLVES OVER THE ENTRY'S DEMAND-ACQUIRED CLOSURE, as `gunbc run` does
+    // (`demand_acquire`), not over a whole-tree index: one workflow under every subcommand
+    // (operator, 2026-11-04), and a tree-scale pool is memory the closure never reads (receipt:
+    // gunbc PR "compile --entry resolves over the demand-acquired closure"). A whole-root subject
+    // still indexes its root: that subject IS the tree.
+    let options = v1_compiler_compile::default_compile_pipeline_options();
+    let mut entry_resolved: Option<(
+        Vec<Rc<v1_compiler_compile::SourceFile>>,
+        Rc<v1_compiler_compile::ResolvedPipelineResult>,
+    )> = None;
+    let index: Option<Rc<MultiEntryIndex>> = if let CompileSubject::Entry(path) = &request.subject {
+        if let Some(cause) = source_roots.iter().find_map(|r| admit_source_root(r).err()) {
+            return compile_not_executed(&request.subject, started, "source-discovery", cause);
+        }
+        let duplicates = if primary_precedence {
+            demand_acquire::CustomRootDuplicate::FirstRootWins
+        } else {
+            demand_acquire::CustomRootDuplicate::Refuse
+        };
+        // Generated providers the entry demands join the closure exactly as `gunbc run` acquires
+        // them, and the `.dag` compile that settles the closure is the resolution emission uses.
+        match demand_acquire::demand_acquired_entry_resolved(
+            source_roots,
+            path,
+            duplicates,
+            options,
+        ) {
+            Ok(settled) => entry_resolved = Some(settled),
+            Err(cause) => {
+                return compile_not_executed(&request.subject, started, "demand-acquire", cause)
+            }
+        }
+        None
+    } else if residency == IndexResidency::OwnedByThisCompile {
         let built = if primary_precedence {
             try_build_module_index_primary_precedence(source_roots)
         } else {
             try_build_module_index(source_roots)
         };
         match built {
-            Ok(module_index) => Rc::new(new_multi_entry_index_shell(module_index, source_roots)),
+            Ok(module_index) => Some(Rc::new(new_multi_entry_index_shell(
+                module_index,
+                source_roots,
+            ))),
             Err(cause) => {
                 return compile_not_executed(&request.subject, started, "source-discovery", cause)
             }
         }
     } else if primary_precedence {
         match try_process_shared_index_for_pool(source_roots, true) {
-            Ok(idx) => idx,
+            Ok(idx) => Some(idx),
             Err(cause) => {
                 return compile_not_executed(&request.subject, started, "source-discovery", cause)
             }
@@ -7589,24 +7527,20 @@ fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResiden
         // Strict routes through the process-shared index, so a second `--entry` compile in
         // one process is a cache hit rather than a rebuild.
         match try_process_shared_index(source_roots) {
-            Ok(idx) => idx,
+            Ok(idx) => Some(idx),
             Err(cause) => {
                 return compile_not_executed(&request.subject, started, "source-discovery", cause)
             }
         }
     };
+    let mut settled_resolution = None;
     let closure = match &request.subject {
-        CompileSubject::Entry(path) => match load_sources_for_entry_with_pool(&index, path) {
-            Ok(closure) => closure,
-            Err(e) => {
-                return compile_not_executed(
-                    &request.subject,
-                    started,
-                    "closure-load",
-                    format!("reference-derived closure load failed: {e}"),
-                );
-            }
-        },
+        CompileSubject::Entry(_) => {
+            let (sources, resolved) =
+                entry_resolved.expect("the entry arm computed its closure above");
+            settled_resolution = Some(resolved);
+            sources
+        }
         // EVERY MODULE UNDER THE PRIMARY ROOT IS AN ENTRY, so the closure is those modules
         // plus their transitive IMPORT edges -- the walk `main.rs` performed before this
         // transaction absorbed it. Reference derivation IS used here, and an earlier revision
@@ -7630,15 +7564,17 @@ fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResiden
         // `compile_xl1_primary_root_tap`) derives the same subject for the same question and a
         // second copy had already drifted: it lacked the module-less step, so a `.dag` under the
         // root with no `module` header would have left its closure silently (review 66847 on
-        // gunbc#11461; DESIGN 2/6 forked logic). Each refusal names its phase so this arm maps it
+        // gunbc#11461; gunbc.design_argument::minimize_redundancy, gunbc.design_argument::how_to_work forked logic). Each refusal names its phase so this arm maps it
         // onto compile_not_executed and the tap onto its own refusal, from one derivation.
-        // Both population arms name a root and derive the same subject from it.
-        CompileSubject::PrimaryRoot(_) | CompileSubject::RootDemandMeasurement(_) => {
+        CompileSubject::PrimaryRoot(_) => {
             let root = request
                 .subject
                 .population_root()
-                .expect("both population arms name a root");
-            match primary_root_subject_closure(&index, root) {
+                .expect("the population arm names a root");
+            let index = index
+                .as_ref()
+                .expect("a population subject builds its index above");
+            match primary_root_subject_closure(index, root) {
                 Ok(closure) => closure,
                 Err(PrimaryRootSubjectRefusal { phase, cause }) => {
                     return compile_not_executed(&request.subject, started, phase, cause);
@@ -7646,17 +7582,19 @@ fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResiden
             }
         }
     };
-    let options = v1_compiler_compile::default_compile_pipeline_options();
-
     // RESOLVE ONCE, EMIT N TIMES. `compile_sources_with_options` is literally
     // `emit_resolved_for_target ∘ compile_to_resolved_with_options`, so the single-target
     // path through this pair is the same computation it was before multi-target routing --
     // not an equivalent-looking substitute (checked against that function's body, which is
     // exactly that composition).
-    let resolved = v1_compiler_compile::compile_to_resolved_with_options(
-        Rc::new(closure.clone().into()),
-        options,
-    );
+    // An entry subject arrives with the resolution that settled its closure; a population subject
+    // resolves its closure here, once.
+    let resolved = settled_resolution.unwrap_or_else(|| {
+        v1_compiler_compile::compile_to_resolved_with_options(
+            Rc::new(closure.clone().into()),
+            options,
+        )
+    });
     let emissions: Vec<TargetEmission> = request
         .render_targets
         .iter()
@@ -7669,7 +7607,7 @@ fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResiden
     // THE REFUSAL IS OVER EVERY TARGET, NOT THE FIRST. Emission is per target, so a target
     // that emits nothing or emits a blocking diagnostic must stop the line even when an
     // earlier target completed -- citing target 1 while target 2 is silent is the
-    // strongest-path inflation DESIGN §4b(1) forbids. The FIRST refusing target is reported,
+    // strongest-path inflation gunbc.design_argument::guarantee_ladder (rung honesty) forbids. The FIRST refusing target is reported,
     // named, so the message says which one.
     let target_refusal = emissions.iter().find_map(|emission| {
         v1_compiler_compile::stage0_self_compile_refusal_message(
@@ -7680,7 +7618,7 @@ fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResiden
 
     // ONE REFUSAL AUTHORITY, NOT A SECOND ONE SPELLED HERE. `stage0_self_compile_refusal_message`
     // is what `gunbc compile` itself stops on; restating "blocking, or zero files" would be
-    // a second representation of one rule (DESIGN §2/§3), free to drift.
+    // a second representation of one rule (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority), free to drift.
     let refusal = target_refusal;
     // COUNTED OVER EVERY TARGET's diagnostics, deduplicated by nothing: a diagnostic produced
     // by the shared resolution appears once per target, which is what a per-target ledger
@@ -7722,7 +7660,7 @@ fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResiden
     //
     // SO NOTHING IS LOST AND NO `gunbc.rung_drop` ROW IS OWED: a permanently-green gate held no
     // rung to drop. What ends is a FALSE CLAIM OF COVERAGE -- a fail-closed `Refused` arm a
-    // reader finds and concludes the class is walled, which DESIGN 4b rates worse than an absent
+    // reader finds and concludes the class is walled, which gunbc.design_argument::guarantee_ladder rates worse than an absent
     // check. The class it appeared to cover is
     // `gunbc.recurring_failure_mode` `binding_chosen_by_pool_membership_rather_than_by_the_declared_rule`,
     // and THAT CLASS HAS NO EXECUTING INSTRUMENT IN THIS TREE, which is what its row says and
@@ -7976,7 +7914,7 @@ fn parsed_file_references_of(
     // per-file parse out of the underlay is answering a question about THE POOL from a pool the
     // caller must prove it shares. A refusal PROPAGATES via `?` -- it does not fall through to
     // parsing it here -- because reading a pool you cannot prove you share is the failure this
-    // overlay exists to prevent, and §5 fail-closed means refusing loudly (the builtin reports
+    // overlay exists to prevent, and gunbc.design_argument::fail_closed fail-closed means refusing loudly (the builtin reports
     // the located Err, the census reports NotRunnable, CI goes red) rather than proceeding on a
     // guess. The pre-underlay behavior of parsing it here is what an index with NO underlay
     // still does; that path is the `Ok(None)` branch of the gate, not a refusal.
@@ -8247,7 +8185,7 @@ fn admit_bare_references_of_file(
     }
     // Gated on the underlay identity proof, as every other read-through is (see
     // `scratch_underlay_if_proven`). A refusal propagates via `?` rather than falling through to
-    // computing this index's own verdict below -- fail-closed, §5; the fall-through below is only
+    // computing this index's own verdict below -- fail-closed, gunbc.design_argument::fail_closed; the fall-through below is only
     // reached by an index with no underlay (the gate's `Ok(None`).
     if let Some(base) = scratch_underlay_if_proven(index)? {
         if let Some(verdict) = base.bare_reference_admission.borrow().get(&file) {
@@ -8632,7 +8570,7 @@ fn visit_bare_reference_providers(
         // existing `GUNBC_BARE_PULL_TRACE` line answer "how was this resolved", not only
         // "what did it resolve to".
         // NO WHOLE-POOL CENSUS. A name the file's own tree census does not answer used to be asked
-        // of the WHOLE-POOL census, built in full by the first such demand -- DESIGN §5's
+        // of the WHOLE-POOL census, built in full by the first such demand -- gunbc.design_argument::fail_closed's
         // absorbing fallback (not knowing the answer gets answered with the superset). What that
         // question actually depends on is the pool census's entry for THIS NAME, and that entry is
         // a function of the modules that declare the name alone (`pool_census_for_name`). So the
@@ -8782,7 +8720,7 @@ fn build_both_closure_edge_index(
         }
     }
     // Gated on the underlay identity proof like every other read-through. On refusal the `?`
-    // propagates the located Err (fail-closed, §5) -- this index does NOT quietly build its own
+    // propagates the located Err (fail-closed, gunbc.design_argument::fail_closed) -- this index does NOT quietly build its own
     // edge index, because a scratch that cannot prove its pool is exactly the state where "build
     // it yourself from local data" would answer the wrong question. The build-below path is for
     // an index with no underlay at all.
@@ -8835,7 +8773,7 @@ fn build_both_closure_edge_index(
 /// answers are already values on `BothClosureEdgeIndex`; nothing is inferred from whether a type
 /// resolved thirteen modules away.
 ///
-/// Module paths, never file paths, in and out: a path is the positional citation DESIGN section 3
+/// Module paths, never file paths, in and out: a path is the positional citation gunbc.design_argument::single_authority
 /// keeps out of a stable identity, and the caller's expectation table would decay on a file rename
 /// that changed no behaviour.
 pub struct BareReferenceChannelEntryReading {
@@ -8851,7 +8789,7 @@ pub struct BareReferenceChannelEntryReading {
 
 /// One index build, one reading per named entry. Refuses — never widens — on an entry the index
 /// does not carry (root existence is the caller's subject-unreached question, not this leaf's): an empty pull set from a module that was never read would be
-/// indistinguishable from a decline, which is the absorbing answer DESIGN section 5 forbids.
+/// indistinguishable from a decline, which is the absorbing answer gunbc.design_argument::fail_closed forbids.
 pub fn bare_reference_channel_readings(
     source_roots: &[String],
     module_paths: &[String],
@@ -9134,7 +9072,7 @@ mod closure_edge_demand_tests {
         reset_bare_reference_admission_completion_for_test();
     }
 
-    /// §5 LANE A (P0.6) DISCRIMINATOR: `extend_with_bare_reference_closure` REUSES the index's
+    /// gunbc.design_argument::fail_closed LANE A (P0.6) DISCRIMINATOR: `extend_with_bare_reference_closure` REUSES the index's
     /// shared path lookup instead of rebuilding `path_to_source_lookup` per fixpoint round. What
     /// must stay UNCHANGED is the closure and its order — this drives a two-round chain (entry
     /// bare-calls `mid`, which bare-calls `deep`, so the second provider arrives only in round
@@ -9279,10 +9217,10 @@ mod closure_edge_demand_tests {
         assert!(modules.contains("frontier.child.consumer"), "{modules:?}");
     }
 
-    /// Unique off-chain declarer: UniqueBinding still accepts, so UniqueBare must emit
-    /// (dropping it is an undercount) and the real resolve path must succeed.
+    /// Unique off-chain declarer with no import: the floor refuses (gunbc.design_argument::guarantee_ladder "names resolve"),
+    /// and the producer emits no UniqueBare edge for a binding that has no lexical authority.
     #[test]
-    fn unique_off_chain_bare_name_compiles_and_keeps_its_uniquebare_edge() {
+    fn unique_off_chain_bare_name_is_refused_and_emits_no_edge() {
         let fixture = Fixture::new(&[
             (
                 "decl.dag",
@@ -9293,29 +9231,13 @@ mod closure_edge_demand_tests {
                 "module test.user\nfn use_it() -> Int { shared_fn() }\n",
             ),
         ]);
-        let index = fixture.index();
-        let sources =
-            load_sources_for_entry_with_pool(&index, &fixture.0.join("user.dag").to_string_lossy())
-                .expect("UniqueBinding pulls the census-unique off-chain provider");
-        let compiled = v1_compiler_compile::compile_sources(
-            Rc::new(sources.iter().cloned().collect()),
-            crate::v1_compiler_artifact::RenderTarget::Dag,
-        );
-        assert!(
-            !compiled
-                .diagnostics
-                .iter()
-                .any(|d| { is_interpreter_blocking_diagnostic(d.diagnostic.clone()) }),
-            "resolver-accepted UniqueBinding must compile: {:?}",
-            compiled.diagnostics
-        );
         let roots = vec![fixture.0.to_string_lossy().into_owned()];
         let facts = dependency_resolution_facts(&roots, &roots, &[]);
         assert!(
-            facts
+            !facts
                 .iter()
                 .any(|f| f.path.contains("user.dag") && f.import_module == "test.decl"),
-            "resolver-accepted UniqueBinding must remain a UniqueBare edge: {facts:?}"
+            "an off-chain, import-less bare name has no lexical authority and must emit no edge: {facts:?}"
         );
     }
 
@@ -9564,9 +9486,9 @@ mod closure_edge_demand_tests {
         );
     }
 
-    /// Unique-bare `secret` lives in an unacquired module. Gate one (an unrelated import)
-    /// turns the bare pull off, so fill used to supply Exact for admit_callers. After the
-    /// fill cut, constructor admission must still refuse rather than remap to a no-op.
+    /// Unique-bare `secret` lives in an unacquired module and is not imported. Since #15247
+    /// the bare name refuses as not found in scope (located), never resolving to the sealed
+    /// constructor.
     #[test]
     fn host_reconcile_refuses_unacquired_unique_bare_sealed_constructor() {
         let fixture = Fixture::new(&[
@@ -9598,9 +9520,19 @@ mod closure_edge_demand_tests {
                 .collect::<Vec<_>>()
                 .join("\n"),
         };
+        // #15247 cut the global bare-name fallback: an unimported bare `secret` no longer
+        // resolves to fx.hidden.secret, so it refuses at resolution, located at the call
+        // site, before any admit_callers check. Admission on a RESOLVABLE sealed name is
+        // asserted by host_reconcile_imported_empty_map_still_enforces_admit_callers.
         assert!(
-            err.contains("fx.hidden") && err.contains("secret"),
-            "unacquired unique-bare sealed constructor must refuse naming fx.hidden.secret: {err}"
+            err.contains("ambient.dag:3:")
+                && err.contains("secret")
+                && err.contains("not found in scope"),
+            "unimported bare sealed constructor must refuse located as not found in scope: {err}"
+        );
+        assert!(
+            !err.contains("fx.hidden"),
+            "the unimported bare name must not resolve to fx.hidden.secret: {err}"
         );
     }
 
@@ -10369,7 +10301,7 @@ pub struct EntryClosureEdgeWarm {
 ///
 /// `warm_bare_reference_edge_index` asks the whole-pool question because the floor's claims
 /// collectively consume the pool. A run over named entries has no such consumer: every row outside
-/// the closure union is produced for nobody (DESIGN §2 -- authored duplication of nothing, so it is
+/// the closure union is produced for nobody (gunbc.design_argument::minimize_redundancy -- authored duplication of nothing, so it is
 /// deleted, not cached). The preparation still exists, at this narrower subject, for the reason the
 /// whole-pool one does: the shared rows are attributed to the run rather than to whichever entry
 /// resolves first.
@@ -10449,7 +10381,7 @@ fn extend_with_bare_reference_closure(
     sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     index: &MultiEntryIndex,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
-    // THE LOOKUP IS SHARED, NOT REBUILT PER ROUND (§4 P0.6). `path_to_source_lookup` maps
+    // THE LOOKUP IS SHARED, NOT REBUILT PER ROUND (gunbc.design_argument::closed_grounded_substrate P0.6). `path_to_source_lookup` maps
     // `index.source_files`, which no code path mutates after the index is built (demand-acquired
     // files arrive through a FRESH index, never into this one) — so the index's
     // `OnceCell`-memoized `pool_path_lookup` answer is the same map every round would rebuild.
@@ -10494,7 +10426,7 @@ fn extend_with_bare_reference_closure(
 /// loader and the affected-set compile-clean gate loader — call this, so the
 /// single-authority claim in `extend_with_reference_closure`'s doc-comment is
 /// true by construction rather than by two functions happening to hold identical
-/// loop bodies (the §2 duplicate that dissolving the §3 fork would otherwise
+/// loop bodies (the gunbc.design_argument::minimize_redundancy duplicate that dissolving the gunbc.design_argument::single_authority fork would otherwise
 /// have left behind).
 pub(crate) fn extend_sources_to_both_closure_fixpoint(
     mut sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
@@ -10669,7 +10601,7 @@ pub enum BudgetCompletion {
 // `BudgetCompletion` IS DELIBERATELY NOT DELETED. It is the axis as data, and it is consumed
 // where a value has to travel — `BudgetRefusal`, the wire verdict's `completion`, and the
 // `budget_event` projection below. Deleting it here would force a second spelling of the same
-// two states beside it; a dissolution that spawns a duplicate has dissolved nothing (§2/§3).
+// two states beside it; a dissolution that spawns a duplicate has dissolved nothing (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority).
 // What the split removes is the WRITABLE ERASURE, not the type.
 
 /// Both budget arms projected into one value, for a consumer that legitimately treats them
@@ -10991,7 +10923,7 @@ impl BudgetKind {
 
 /// Mirror of `gunbc.observation_ci_render CiWitnessRuntimeCause`. One arm per
 /// `v1_interpreter::InterpError` variant that can reach the witness boundary's untyped arm, and
-/// no vocabulary of its own (DESIGN §3): the cause already exists upstream, this is it surviving
+/// no vocabulary of its own (gunbc.design_argument::single_authority): the cause already exists upstream, this is it surviving
 /// the seam.
 ///
 /// FIVE `InterpError` VARIANTS ARE DELIBERATELY ABSENT. `HostToolUnresolved`,
@@ -11008,6 +10940,7 @@ pub enum WitnessRuntimeCause {
     NoSuchVariable,
     NoSuchField,
     TypeError,
+    CallDepthExceeded,
     CrossRepresentationEquality,
     StringRealizationStraddle,
     VariantRealizationRefused,
@@ -11052,6 +10985,7 @@ impl WitnessRuntimeCause {
             WitnessRuntimeCause::NoSuchVariable => "no-such-variable",
             WitnessRuntimeCause::NoSuchField => "no-such-field",
             WitnessRuntimeCause::TypeError => "type-error",
+            WitnessRuntimeCause::CallDepthExceeded => "call-depth-exceeded",
             WitnessRuntimeCause::CrossRepresentationEquality => "cross-representation-equality",
             WitnessRuntimeCause::StringRealizationStraddle => "string-realization-straddle",
             WitnessRuntimeCause::VariantRealizationRefused => "variant-realization-refused",
@@ -11089,6 +11023,7 @@ impl WitnessRuntimeCause {
             E::NoSuchVariable { .. } => WitnessRuntimeCause::NoSuchVariable,
             E::NoSuchField { .. } => WitnessRuntimeCause::NoSuchField,
             E::TypeError { .. } => WitnessRuntimeCause::TypeError,
+            E::CallDepthExceeded { .. } => WitnessRuntimeCause::CallDepthExceeded,
             E::CrossRepresentationEquality { .. } => {
                 WitnessRuntimeCause::CrossRepresentationEquality
             }
@@ -11272,7 +11207,7 @@ pub enum ClaimOutcome {
 /// This exists so `cached == cold` can be asserted by EXECUTION rather than by reading the cache
 /// keys. Without it the two arms of the oracle cannot be distinguished from inside one process:
 /// the second compile is a hit by construction, so a test that ran both arms warm would compare a
-/// value with itself and be green whatever the cache served -- the change-detector shape §5
+/// value with itself and be green whatever the cache served -- the change-detector shape gunbc.design_argument::fail_closed
 /// rejects. Clearing the slot makes the cold arm genuinely re-derive from disk.
 #[cfg(test)]
 pub(crate) fn reset_process_shared_index_for_test() {
@@ -11446,7 +11381,7 @@ const LIVE_READ_CLASSIFICATION_ENTRY: &str = "src/v2/lens/live_read_classificati
 /// Every failure arm REFUSES. There is no arm that returns an empty or partial manifest, because a
 /// manifest is consumed as a completeness claim — `row_for` treats an absent row as a refusal — and
 /// a producer that answered "here is what I could classify" would convert its own failure into a
-/// silent skip licence for everything it dropped (§5: a failure arm must refuse, never widen, and
+/// silent skip licence for everything it dropped (gunbc.design_argument::fail_closed: a failure arm must refuse, never widen, and
 /// here widening the *skippable* set is the under-selection direction that reads as a faster green).
 pub fn build_live_read_selection_manifest(
     index: &MultiEntryIndex,
@@ -11608,7 +11543,7 @@ fn variant_parts(
     }
 }
 
-// The producer's executing consumer. A `pub fn` that compiles is not evidence it works (§5:
+// The producer's executing consumer. A `pub fn` that compiles is not evidence it works (gunbc.design_argument::fail_closed:
 // specification-without-execution) — these run it against the real tree, and the decoder controls
 // below run each coproduct arm the classification can carry.
 #[cfg(test)]
@@ -11782,20 +11717,12 @@ pub struct MultiEntryIndex {
     /// Opaque identity of THIS index, minted at construction (see `next_index_generation`).
     generation: u64,
     source_files: ModuleSourceIndex,
-    /// THE DEMAND-ACQUIRED PATH'S SOURCE LAYOUT, for generated providers (`provider_acquire`): the
-    /// layout's typed answer for a module this index's acquired closure does not hold. Set only by
-    /// `demand_acquire`; every index that already holds its whole pool leaves it empty.
-    provider_layout: RefCell<Option<Rc<dyn Fn(&str) -> entry_resolve::ProviderLayoutAnswer>>>,
-    /// The source each Holds answer read, kept so the rebuild acquires those exact bytes and never
-    /// reads the provider a second time.
-    provider_snapshots:
-        RefCell<std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>>>,
     module_graph_facts: ModuleGraphFactsLive,
     /// Per-index typed results, keyed by the typed-module CONTENT key
     /// (`std.interface_summary.typed_module_key`: module source hash ⊕ direct-import
     /// interface hashes ⊕ compiler identity) — never by authored module name. The
     /// content key is the soundness license for eviction (PR-β) and the S2b-ready
-    /// backend shape (cross-entry-typed-module-memo-sketch (deleted) §1, operator-signed
+    /// backend shape (cross-entry-typed-module-memo-sketch (deleted) gunbc.design_argument::goal_safe_efficient_predictable, operator-signed
     /// 2026-07-16); within one process it also makes a same-name/different-file
     /// collision structurally unable to serve the wrong typecheck (the name-keyed
     /// store relied on `module_source_identity` failing loud instead).
@@ -11803,7 +11730,7 @@ pub struct MultiEntryIndex {
         RefCell<std::collections::HashMap<String, Rc<v1_compiler_infer::TypecheckModuleResult>>>,
     /// Counted evictions from the host-budget-derived typed-cache entry cap (width=1
     /// drain accumulation lane). Each eviction is a typed, located diagnostic — never
-    /// a silent widen (§5).
+    /// a silent widen (gunbc.design_argument::fail_closed).
     typed_cache_evictions: Cell<u64>,
     /// Content keys the cap has evicted from this index — the governor's memory of its own
     /// evictions, consulted on the next miss so a recompute of previously-evicted work is
@@ -11840,7 +11767,6 @@ pub struct MultiEntryIndex {
     intern_table: RefCell<Rc<InternTable>>,
     parse_cache: RefCell<std::collections::HashMap<String, ParseCacheEntry>>,
     normalize_diag_cache: RefCell<std::collections::HashMap<String, Rc<im::Vector<Rc<ErrorNode>>>>>,
-    ownership_diag_cache: RefCell<std::collections::HashMap<String, Rc<im::Vector<Rc<ErrorNode>>>>>,
     /// The source roots this index was built from — the tree identities behind the
     /// per-tree bare census layers (a module's bare-name universe is its own tree).
     source_roots: Vec<String>,
@@ -11930,7 +11856,7 @@ pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
 /// uses (`--dependency-pool-index primary-precedence`: root[0] wins, later roots
 /// fill only absent modules). Needed so `load_compile_clean_entry_sources` can run
 /// the SAME both-closure fixpoint as the witness loader (`extend_with_bare_reference_closure`
-/// requires the `MultiEntryIndex` for its per-tree bare census), dissolving the §3
+/// requires the `MultiEntryIndex` for its per-tree bare census), dissolving the gunbc.design_argument::single_authority
 /// closure-authority fork the two loaders' doc-comments each falsely claimed to be single.
 #[track_caller]
 fn build_multi_entry_index_primary_precedence(source_roots: &[String]) -> MultiEntryIndex {
@@ -11990,10 +11916,6 @@ pub fn private_term_entry_counts_for_test(index: &MultiEntryIndex) -> Vec<(&'sta
             index.normalize_diag_cache.borrow().len(),
         ),
         (
-            "ownership_diag_cache",
-            index.ownership_diag_cache.borrow().len(),
-        ),
-        (
             "intern_table_strings",
             index.intern_table.borrow().strings.len(),
         ),
@@ -12049,7 +11971,6 @@ pub fn drop_private_term_for_test(index: &MultiEntryIndex, term: &str) -> bool {
         "module_source_identity" => index.module_source_identity.borrow_mut().clear(),
         "parse_cache" => index.parse_cache.borrow_mut().clear(),
         "normalize_diag_cache" => index.normalize_diag_cache.borrow_mut().clear(),
-        "ownership_diag_cache" => index.ownership_diag_cache.borrow_mut().clear(),
         "pool_parse" => *index.pool_parse.borrow_mut() = None,
         "reference_pool_names" => *index.reference_pool_names.borrow_mut() = None,
         "tree_bare_census" => index.tree_bare_census.borrow_mut().clear(),
@@ -12087,7 +12008,6 @@ pub fn drop_attributable_terms_for_test() -> &'static [&'static str] {
         "entry_closure_sources",
         "intern_table",
         "normalize_diag_cache",
-        "ownership_diag_cache",
         "source_hash_by_file",
         "module_source_identity",
     ]
@@ -12126,7 +12046,7 @@ fn next_index_generation() -> u64 {
 /// WHY THIS IS NOT ANOTHER `debug_assert_eq!`. It runs in `--release`, which is the only shape
 /// that exists here: every `claim_batch` build, and therefore every census call in CI, is
 /// `--release`. A `debug_assert_eq!` beside a pool read is a decoration -- it never executes
-/// where the thing it guards runs (DESIGN §4b, "a check whose forbidden state is expressible
+/// where the thing it guards runs (gunbc.design_argument::guarantee_ladder, "a check whose forbidden state is expressible
 /// nowhere it runs is a decoration, green by construction and later cited as coverage"). It
 /// returns a located `Err` rather than panicking, so a drift makes the builtin refuse the way
 /// every other refusal here does instead of aborting the process.
@@ -12317,7 +12237,7 @@ struct PoolParse {
 // the process union.
 /// The typed-module content key for `resolved` — the Rust realization of
 /// `std.interface_summary.typed_module_key` over the live store's inputs
-/// (cross-entry-typed-module-memo-sketch (deleted) §1, operator-signed 2026-07-16):
+/// (cross-entry-typed-module-memo-sketch (deleted) gunbc.design_argument::goal_safe_efficient_predictable, operator-signed 2026-07-16):
 ///
 ///   key = typed_module_key(module_key(source_hash, direct-import interface hashes),
 ///                          compiler identity)
@@ -12332,7 +12252,7 @@ struct PoolParse {
 ///   (v0 fingerprint; its declared-weak grain and upgrade trigger live at
 ///   `src/v1/04_infer.dag` the `interface_signature_fingerprint_v0_note` annotation).
 /// - Compiler identity is `closure_identity::transform_content_digest` — the same
-///   single authority the resolved-graph subject digest consumes (§3: one concept, one
+///   single authority the resolved-graph subject digest consumes (gunbc.design_argument::single_authority: one concept, one
 ///   authority; a seed rebuild invalidates both stores through one term).
 fn closure_path_to_authored_name_map<'a>(
     closure_modules: &[Rc<v1_compiler_resolve::ResolvedModule>],
@@ -12989,7 +12909,7 @@ fn nanos_net_of_pool_parse<T>(f: impl FnOnce() -> T) -> (T, u128) {
     (out, elapsed.saturating_sub(pool))
 }
 
-// SCAFFOLD (§7 HAND-RUST — `cli_run_exclusive_cost_partition_probe`):
+// SCAFFOLD (gunbc.design_argument::self_hosting HAND-RUST — `cli_run_exclusive_cost_partition_probe`):
 // ROADMAP lane §2 *Minimal work — caching by realization* (gunbc.roadmap.roadmap_authority /
 // ROADMAP.md) — host-side stage attribution for the per-entry resolve, and the accounting
 // law over it. Same lane as the `ResolveStageNanos` rows it partitions; this scaffold
@@ -13172,7 +13092,7 @@ impl ExclusiveCostPartition {
     }
 
     /// A component's share of the parent — `None` until the accounting reconciles.
-    /// DESIGN §5: a share quoted off a non-partition is a fabricated plausible output.
+    /// gunbc.design_argument::fail_closed: a share quoted off a non-partition is a fabricated plausible output.
     pub fn share_of_parent(&self, name: &str) -> Option<f64> {
         match self.verdict {
             CostAccountingVerdict::Reconciled { .. } if self.parent_span_nanos > 0 => self
@@ -13804,7 +13724,7 @@ pub(crate) enum ResolvedGraphMemoShare {
 /// resolver-graph-major-design (plan doc deleted 2026-08-28)). The typed cache is keyed by authored module
 /// name and reused across every entry that co-resides in one process's shared index, so a
 /// name that maps to two DIFFERENT declaring files is a co-residence surprise: serving one
-/// file's typecheck for the other's would be a §5 fail-open (a divergent resolution passing
+/// file's typecheck for the other's would be a gunbc.design_argument::fail_closed fail-open (a divergent resolution passing
 /// as plausible). This fails loud instead. Re-seeing the SAME (name, file) — one module
 /// reached through many import paths — is benign and records nothing new; first sight records
 /// the identity, a later mismatch is a typed error. `build_module_index` already walls
@@ -13821,7 +13741,7 @@ fn check_module_source_identity_map(
             return Err(format!(
                 "co-residence collision: module '{mod_name}' resolved from two files \
                  ('{prev_file}' and '{decl_file}') in one process — one module, one authority \
-                 (DESIGN §3). The shared resolve store fails loud rather than silently serving \
+                 (gunbc.design_argument::single_authority). The shared resolve store fails loud rather than silently serving \
                  a divergent module (resolver-graph-major-design.md §6.3)."
             ));
         }
@@ -13832,7 +13752,7 @@ fn check_module_source_identity_map(
 }
 
 /// Antichain batches (Kahn levels) over the closure's resolved import edges — the host
-/// realization of the modeled module-node schedule (resolver-graph-major-design (deleted) §7 S2a
+/// realization of the modeled module-node schedule (resolver-graph-major-design (deleted) gunbc.design_argument::self_hosting S2a
 /// move 2: module nodes ride the same scheduler/runner shape as the CI floor,
 /// `v2.workflow.module_resolution_plan` is the model authority). Nodes are the closure's
 /// modules at authored-name grain (the typed-store key); edges are `resolved_imports` rows
@@ -13952,7 +13872,7 @@ mod module_schedule_batches_tests {
         batches.iter().flatten().copied().collect()
     }
 
-    // Once-per-node by construction (§5): every node appears in the schedule exactly once,
+    // Once-per-node by construction (gunbc.design_argument::fail_closed): every node appears in the schedule exactly once,
     // and a dependent is never batched before its source.
     #[test]
     fn diamond_schedules_antichain_levels() {
@@ -14017,8 +13937,8 @@ fn finish_resolved_graph_assembly(
         v1_compiler_infer::expand_transitive_services(modules.clone(), item_registry);
     // ONE AUTHORITY FOR THE CAUSE-TO-DIAGNOSTIC MAPPING, called rather than mirrored by hand. This
     // block used to hand-copy `typecheck`'s five-arm `EffectIncompleteness` match,
-    // three of its message strings verbatim included -- two sources for one fact, which DESIGN §2
-    // calls the forked-logic trap and §3 an authority fork, and whose failure is silent: a message
+    // three of its message strings verbatim included -- two sources for one fact, which gunbc.design_argument::minimize_redundancy
+    // calls the forked-logic trap and gunbc.design_argument::single_authority an authority fork, and whose failure is silent: a message
     // edited on one side, or a sixth arm added on one side and defaulted on the other, disagrees
     // with nothing that would refuse. It now calls the generated mirror of the `.dag` declaration
     // `v1.compiler.infer` `effect_incompleteness_diagnostics`, so the two paths cannot disagree and
@@ -14269,7 +14189,7 @@ fn parse_module_heads_for_pool_census(
     // anyway. Building thousands of modules' bodies for a consumer that discards them
     // was the largest single term
     // in `pool_parse` (7.15s of 14.24s, `docs/probes/edge_index_tree_census_attribution_2026-08-24.md`)
-    // — a cost-shape defect DESIGN §6's bare-minimum-cost rule says is always fixed.
+    // — a cost-shape defect gunbc.design_argument::how_to_work's bare-minimum-cost rule says is always fixed.
     //
     // The strip below is KEPT rather than folded into the parser, and that is load-bearing
     // rather than leftover: it is what makes the two readings agree BY CONSTRUCTION. The
@@ -14307,7 +14227,7 @@ fn parse_module_heads_for_pool_census(
     }
 }
 
-// SCAFFOLD (§7 seed-retained HAND-RUST — namespace lane, pool snapshot)
+// SCAFFOLD (gunbc.design_argument::self_hosting seed-retained HAND-RUST — namespace lane, pool snapshot)
 // `pool_parse` is the shared tokenize+parse snapshot for pool-derived terms that
 // still exist (per-tree bare census, heads name index). It is not a qualified-name
 // universe for product typecheck: a declaration that affects an entry belongs in
@@ -14384,7 +14304,7 @@ fn pool_parse(index: &MultiEntryIndex) -> Result<Rc<PoolParse>, String> {
 /// of the same grammar rather than a second, weaker parser. `narrowed` is NOT a defect and
 /// is reported separately on purpose: it is the declared, bounded scope narrowing — a body
 /// the full reading refuses on grammar and the heads reading never hands to the expression
-/// grammar at all. DESIGN §5 requires a degradation to be COUNTED rather than absorbed, so
+/// grammar at all. gunbc.design_argument::fail_closed requires a degradation to be COUNTED rather than absorbed, so
 /// it gets its own row instead of being folded into either the pass or the failure count.
 /// `regressed` is its mirror and must also be empty: the heads reading may never refuse
 /// something the full reading accepts.
@@ -14605,7 +14525,7 @@ fn closure_name_census(
     // so a scratch whose pool or facts drifted from its underlay's refuses to read through. The
     // guard used to be two `debug_assert_eq!`s here and at `pool_parse`; those compiled out in
     // `--release`, which is the only profile the census ever runs in, and a guard that never
-    // executes where the thing it guards runs is a decoration (DESIGN §4b).
+    // executes where the thing it guards runs is a decoration (gunbc.design_argument::guarantee_ladder).
     if let Some(base) = scratch_underlay_if_proven(index)? {
         return closure_name_census(&base, root);
     }
@@ -14759,7 +14679,8 @@ fn reconcile_with_typed_cache(
     let mut diag_chunks: Vec<Rc<im::Vector<Rc<ErrorNode>>>> = Vec::new();
     let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =
         v1_rt::rc_empty_map();
-    // S2a move 2 (resolver-graph-major-design (deleted) §7): per-module typecheck is DISPATCHED in
+    let mut equality_by_target: Rc<HashMap<String, bool>> = v1_rt::rc_empty_map();
+    // S2a move 2 (resolver-graph-major-design (deleted) gunbc.design_argument::self_hosting): per-module typecheck is DISPATCHED in
     // the module-node schedule's antichain-batch order, with the typed cache as the
     // node-keyed store a dependent's handler reads its imports' results from — once-per-node
     // holds by schedule (a node appears once), not merely by cache lookup. The ResolvedGraph
@@ -14855,7 +14776,7 @@ fn reconcile_with_typed_cache(
                 // authored name and shared across every co-resident entry, so a name that resolves
                 // from two DIFFERENT declaring files in one process is a co-residence surprise — the
                 // shared store must fail loud here, never silently serve one file's typecheck for the
-                // other's (that would be a §5 fail-open: a divergent resolution passing as plausible).
+                // other's (that would be a gunbc.design_argument::fail_closed fail-open: a divergent resolution passing as plausible).
                 // build_module_index already walls tree-wide module-path collisions at index build;
                 // this is the same wall at the cache seam the union widens (e.g. an on-disk entry whose
                 // module path shadows an indexed module reached via entry_source_from_index_or_disk).
@@ -14985,6 +14906,7 @@ fn reconcile_with_typed_cache(
                                     intern_table.clone(),
                                     module_symbol_index,
                                     module_variant_base,
+                                    equality_by_target.clone(),
                                 );
                                 // Per-module attribution for the typecheck-dominant resolves measured
                                 // 2026-07-04 (a closure sat in typecheck for 13+ min after ~1s of
@@ -15040,6 +14962,11 @@ fn reconcile_with_typed_cache(
                 );
                 variant_surfaces =
                     v1_rt::rc_map_insert(variant_surfaces, typed_path.clone(), variant_surface);
+                equality_by_target = v1_compiler_infer::equality_table_with_module(
+                    equality_by_target,
+                    typed.clone(),
+                    source_indices.clone(),
+                );
                 module_index = v1_rt::rc_map_insert(module_index, typed_path, typed.clone());
                 dispatched[slot] = Some((parent_diags, tc_result));
                 resolve_stage_slot_add(|s| {
@@ -15139,7 +15066,7 @@ fn reconcile_with_typed_cache(
 /// return the bare path, which reads as a location with the position missing. It now comes back as
 /// the authority's typed unlocated line, `<file>: (no position: <cause>)`, naming the file and
 /// saying why there is no position. A second `format!("{}:{}:{}", …)` written in host Rust is the
-/// fork this removes (DESIGN 6b).
+/// fork this removes (gunbc.design_argument::earliest_unjustified_boundary).
 fn format_error_loc(file: &str, start: i64, si: &HashMap<String, Rc<NewlineIndex>>) -> String {
     let span = Rc::new(crate::v1_std_core::SourceSpan {
         file: file.to_string(),
@@ -15193,7 +15120,7 @@ fn format_error_nodes(
 /// `Full` there is the worst available reply, because `Full` is the pre-funnel
 /// behaviour: a new decision would decode as "unchanged", emit no diagnostic, and
 /// read as landed while doing nothing. Found while adding the rollup grain the
-/// batch-grain projection needs (DESIGN section 5 — a failure arm must refuse,
+/// batch-grain projection needs (gunbc.design_argument::fail_closed — a failure arm must refuse,
 /// never widen).
 fn decode_output_decision(
     channel: &str,
@@ -15343,7 +15270,7 @@ pub enum CiWitnessVerdict {
     Failed,
     NotBool,
     /// Carries the cause as a PAYLOAD rather than beside the verdict, so "a PASSED row with a
-    /// cause" and "an ERROR row without one" have no spelling (DESIGN §4b: structurally
+    /// cause" and "an ERROR row without one" have no spelling (gunbc.design_argument::guarantee_ladder: structurally
     /// impossible, not merely checked).
     RuntimeError(WitnessRuntimeCause),
     BudgetRefused,
@@ -15405,7 +15332,7 @@ impl CiWitnessVerdict {
     /// The counting side refuses that absorption — `expected_red_arm` gives `BudgetRefused`,
     /// `HostToolUnresolved`, `RuntimeErrored` and `ObservationUnreadable` their own arms rather
     /// than folding them into `Held`. So the bug was not a missing rule; it was a SECOND,
-    /// coarser copy of a join this file already performs correctly (DESIGN §3). This now
+    /// coarser copy of a join this file already performs correctly (gunbc.design_argument::single_authority). This now
     /// derives from that one authority:
     ///
     /// THIS SENTENCE WAS FALSE FOR THE TWO ARMS ADDED LAST, and is corrected here rather than
@@ -15726,7 +15653,7 @@ mod runtime_error_location_tests {
 /// WHY IT IS NOT `src/v1` ALONE ANY MORE. The sweep was authored for the seed and swept
 /// `src/v1` only, while the two roots that actually carry authored `.dag` — `dag` and
 /// `src/v2`, 3831 files against the seed's 56 — were reached by nothing cheaper than the
-/// required floor. Parse-grain defects there (the §4c annotation-grain refusals above all)
+/// required floor. Parse-grain defects there (the gunbc.design_argument::source_annotations annotation-grain refusals above all)
 /// were therefore invisible locally and surfaced as a floor REFUSAL DURING STRICT
 /// PREPARATION, where no witness executes at all, so one misplaced `//` reported as the whole
 /// corpus saying nothing. Three lanes hit that in one night.
@@ -15778,7 +15705,7 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
     }
     let mut dag_paths: Vec<derived_row_roster::AcquiredDag> = Vec::new();
     // PER-ROOT, so the empty-walk refusal below is per root: one root going missing must not
-    // be absorbed by another root's files (the empty-observation narrow, DESIGN §5).
+    // be absorbed by another root's files (the empty-observation narrow, gunbc.design_argument::fail_closed).
     for root in roots {
         let root_dir = workspace.join(root);
         let before = dag_paths.len();
@@ -15925,7 +15852,7 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
                     // only the file and the message, so 52 refusals in one file arrived as 52
                     // byte-identical sentences with no way to tell which annotation was at
                     // fault. A typed, LOCATED diagnostic rendered as untyped prose is the
-                    // opposite of what DESIGN section 5 requires of a refusal.
+                    // opposite of what gunbc.design_argument::fail_closed requires of a refusal.
                     //
                     // The index is built from the same `content` the parse consumed, and the
                     // authority reads CHAR offsets -- which is what spans carry, since
@@ -15939,7 +15866,7 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
                     // THE STREAM IS BUILT ONCE, BESIDE THE INDEX -- not once per diagnostic. The
                     // stream depends only on `content` and `path_str`, neither of which moves inside
                     // the loop below, so deriving it per iteration is a proven cost-shape defect
-                    // (DESIGN 6: a proven cost-shape defect is always fixed regardless of realized n
+                    // (gunbc.design_argument::how_to_work: a proven cost-shape defect is always fixed regardless of realized n
                     // -- "n is small here" is not time-stable), and the real case this site exists
                     // for is 52 refusals in one file: 52 full tokenizations of the same text.
                     // `tokenize` returns `Rc<Vec<Rc<Token>>>`, so the N renderings below share ONE
@@ -16041,7 +15968,7 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
 /// `Full` on every channel — the exact shape the funnel exists to replace. A run that
 /// never installed the policy is therefore indistinguishable from a run whose policy
 /// CHOSE `Full`, so the deficit's frequency was zero by construction and nothing ever
-/// ranked it for fixing (DESIGN §5, the absorbing fallback and its fabricated-plausible-
+/// ranked it for fixing (gunbc.design_argument::fail_closed, the absorbing fallback and its fabricated-plausible-
 /// output twin). The three causes are kept apart because their remedies are different:
 /// the authority is not in this run's source roots (fix the invocation), the authority is
 /// there but its entry point does not evaluate (fix the module), and it evaluates to
@@ -16134,12 +16061,12 @@ fn refuse_output_policy_install(refusal: OutputPolicyInstallRefusal) -> ! {
 ///
 /// This function answered its failure modes with `Err(_) => return`: an unreadable or unresolvable
 /// policy was indistinguishable from a valid policy decision, and the process continued under
-/// whatever output behaviour was in force. That is the §5 silent widen — the deficit's frequency is
+/// whatever output behaviour was in force. That is the gunbc.design_argument::fail_closed silent widen — the deficit's frequency is
 /// zero by construction, so it never ranks for fixing. The repair is the signature, not a check: a
 /// typed located refusal nobody can receive is not a refusal, and while this returned `()` there
 /// was no arm a caller could take. Both callers now stop the line.
 ///
-/// THE SILENT ARM WAS HIDING A LIVE DEFECT, WHICH IS THE WHOLE ARGUMENT FOR §5 IN ONE RECEIPT.
+/// THE SILENT ARM WAS HIDING A LIVE DEFECT, WHICH IS THE WHOLE ARGUMENT FOR gunbc.design_argument::fail_closed IN ONE RECEIPT.
 /// A change landed here that resolved the policy through its own IMPORT closure
 /// (`policy_entry_closure_sources`) instead of `resolve_entry_graph_shared`, to stop this
 /// five-decision read from being the accidental first toucher of the bare-reference edge index.
@@ -16503,7 +16430,7 @@ pub fn precompute_whole_tree_published_mock_keys(
     let t2b = std::time::Instant::now();
     // Only modules that DECLARE a `PublishedMockCase` corpus can contribute keys —
     // `resolve_published_mock_keys` reads them by exact type annotation. Strict-
-    // resolving the whole 600+ module tree to find the ~13 declarers is §2
+    // resolving the whole 600+ module tree to find the ~13 declarers is gunbc.design_argument::minimize_redundancy
     // irrelevant work, and that transient whole-tree `ResolvedGraph` is the floor's
     // dominant RSS (measured ~1.46 GiB to produce ~58 strings). Select the
     // declarers and resolve only their transitive import closures.
@@ -16525,7 +16452,7 @@ pub fn precompute_whole_tree_published_mock_keys(
         if !sf.content.contains("PublishedMockCase") {
             continue;
         }
-        // Observation failure refuses; it never reports absence (DESIGN §5 — a
+        // Observation failure refuses; it never reports absence (gunbc.design_argument::fail_closed — a
         // candidate we could not parse is not a candidate we know is clean).
         let Some(parsed) = crate::module_path_index::parsed_dag_file::parse_dag_file(
             std::path::Path::new(&sf.path),
@@ -16607,7 +16534,7 @@ pub fn precompute_whole_tree_published_mock_keys(
 /// that do not exist) which are test DATA referenced by string path, not live
 /// code — a Strict whole-tree resolve over them fails on the deliberate
 /// `unresolved import`. Excluding them is a coverage decision, so the count of
-/// dropped modules is returned for the caller to log (DESIGN §6 — no silent cap).
+/// dropped modules is returned for the caller to log (gunbc.design_argument::how_to_work — no silent cap).
 pub struct WholeTreeCtx {
     pub ctx: v1_interpreter::InterpContext,
     pub modules_resolved: usize,
@@ -16713,7 +16640,7 @@ pub fn run_witness_verdict_diagnostic(
 /// Exposed to `.dag` witnesses via `seed_runner_bool_false_failure_detail` so CI can
 /// exercise the same `append_failure_receipt_companion_loudness` path the floor runner uses.
 ///
-/// HAND-RUST DISPOSITION (DESIGN §7 seed-shrinks-toward-zero; review 48788). DEFERRED seed
+/// HAND-RUST DISPOSITION (gunbc.design_argument::self_hosting seed-shrinks-toward-zero; review 48788). DEFERRED seed
 /// retention: one new builtin arm routing witness loudness through the existing
 /// `append_failure_receipt_companion_loudness` / `gunbc.test_module_hygiene.failure_receipt_companion`
 /// stack — no parallel naming authority. Lane: **v1 exit** (zero hand-maintained Rust).
@@ -16858,7 +16785,7 @@ enum ExpectedRedArm {
     /// while the row's only interrupt fact WAS the trigger; now the row carries the whole
     /// `SafetyInterruptReading`, whose sole producer is `claim_terminality`, and a trigger
     /// travelling separately on this arm would be a second authority over one field of it —
-    /// consolidated later at someone else's cost (DESIGN §3). The caller reads the reading.
+    /// consolidated later at someone else's cost (gunbc.design_argument::single_authority). The caller reads the reading.
     BudgetRefused,
     /// Enrolled and THREW. Not agreement, for the reason the arm above is not: the enrolled
     /// claim was never decided, so there is no expected failure for the enrollment to hold.
@@ -17160,7 +17087,7 @@ mod budget_completion_tests {
     }
 
     #[test]
-    /// The cost is SPLIT, never DROPPED (§5 — a vanished cost is the absorbing fallback wearing an
+    /// The cost is SPLIT, never DROPPED (gunbc.design_argument::fail_closed — a vanished cost is the absorbing fallback wearing an
     /// accounting label). Whatever the ceiling stops charging must still be recoverable, so the
     /// two halves are asserted to sum to what the claim actually spent.
     fn the_two_wall_halves_sum_to_the_measured_cost() {
@@ -17282,7 +17209,7 @@ mod budget_completion_tests {
     /// against the erasure it exists to catch.
     ///
     /// It stays enrolled after the wall lands: it is the permanent control that the two arms
-    /// keep projecting apart, not scaffolding for the change (DESIGN §4b meta-obligation 4).
+    /// keep projecting apart, not scaffolding for the change (gunbc.design_argument::guarantee_ladder meta-obligation 4).
     #[test]
     fn the_two_budget_arms_project_apart_in_every_consumer() {
         let interrupted = ClaimOutcome::BudgetInterrupted {
@@ -17369,7 +17296,7 @@ pub fn handle_pre_push() -> std::process::ExitCode {
 ///
 /// Named-only by construction: a `.dag` entry's parameters are named, so
 /// positional order across the CLI boundary would be an unchecked coincidence.
-/// A missing `=` refuses (§5) rather than guessing a position. The pairs stay
+/// A missing `=` refuses (gunbc.design_argument::fail_closed) rather than guessing a position. The pairs stay
 /// text until [`bind_run_args_for_entry`], which is the typed binder: argv is
 /// always text (`CliTextValue` on the run verb); inhabiting the declared
 /// parameter type is a later, located decision — never a silent `String`.
@@ -17553,7 +17480,7 @@ fn nonempty_str_predicates_from_decl(
     }
 }
 
-/// Admission from the parameter's resolved type identity (DESIGN §4): kernel
+/// Admission from the parameter's resolved type identity (gunbc.design_argument::closed_grounded_substrate): kernel
 /// String/Int/Bool, or the exact `std.types` `NonEmptyStr` declaration and its
 /// `string_non_empty` refinement. Leaf names do not authorize conversion.
 fn cli_arg_admission_from_type_expr(
@@ -17972,1115 +17899,7 @@ fn capture_scoped_run_stderr<T>(_f: impl FnOnce() -> T) -> Result<(T, Vec<u8>), 
     Err("scoped dynamic-line stderr capture requires a Unix host".to_string())
 }
 
-/// Emit the interpreter's per-`Expr`-variant evaluation profile after a `gunbc run`, when
-/// `GUNBC_INTERP_PROFILE=1` is set. Off by default and zero-cost when off: the counters are only
-/// accumulated under the same env flag, so this reads whatever the run already gathered.
-///
-/// WHY THIS EXISTS. The profiler and its printer both predate this, but the printer lived only in
-/// `claim_batch`, which evaluates HERMETICALLY and refuses host effects rather than fabricating
-/// them. So the one runner that could produce a profile could not execute any route that reads the
-/// filesystem or shells out, and the one runner that executes wet (`gunbc run`) discarded the
-/// profile it had already collected. That gap is why the 2026-08-09 dashboard wedge was profiled
-/// with `perf` — which can only name `eval_expr_inner`, never a `.dag` subject — while the
-/// interpreter held the structural identity the whole time and simply never printed it on the wet
-/// path.
-///
-/// SCOPE, STATED HONESTLY: this is variant grain (`Call`, `Match`, `StrConcat`, …), NOT declaration
-/// identity. It can say which expression KIND dominates a wet run; it cannot say which `.dag`
-/// declaration. Naming a declaration needs the caller→callee edge and per-declaration inclusive CPU
-/// that the operator's Phase-2 trace specifies, and this is the seam that work extends rather than
-/// a substitute for it.
-
-/// `gunbc serve` — the thin host seam for the gunbc-served dashboard.
-/// Compile the entry closure
-/// ONCE, then answer each HTTP request by calling ONE .dag function
-/// `fn(method, path, body) -> ServeWireResponse`. The seam is socket
-/// accept + minimal HTTP/1.1 parse + response write ONLY — routing and
-/// every handler live in .dag (the same altitude as WitnessBin.Run's argv
-/// seam). Sequential by design: one request at a time serializes the
-/// belt's observe-before-spawn window by construction, so two concurrent
-/// dispatch clicks cannot both observe the session absent.
-/// Exactly 40 lowercase hex digits — git's Sha1 object-name width.
-///
-/// The seed realization of `gunbc.running_release_identity`
-/// `release_revision_text_valid`. Both exist deliberately and neither is the
-/// other's nickname: this one refuses to START a process whose launch identity
-/// is not a revision, before the listener binds, so a misconfigured unit fails
-/// loudly at boot instead of publishing a malformed identity that every later
-/// deploy then has to refuse; the `.dag` one refuses to TRUST wire bytes read
-/// back from some other process. Same rule, two boundaries, and the boundary
-/// each guards is the reason it cannot be deleted in favour of the other.
-fn release_revision_text_valid(text: &str) -> bool {
-    text.len() == 40
-        && text
-            .chars()
-            .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
-}
-
-/// The liveness path this server answers WITHOUT entering the evaluator.
-///
-/// Seed realization of `gunbc.serve_liveness` `serve_liveness_path`. It is a constant here rather
-/// than a value read from the graph for the reason the endpoint exists at all: a path resolved by
-/// evaluating `.dag` would be unavailable in exactly the state this endpoint reports on.
-const SERVE_LIVENESS_PATH: &str = "/livez";
-
-/// The member name the liveness document publishes its release revision under.
-///
-/// THIS PROCESS IS THE ONLY PRODUCER OF THAT DOCUMENT, and that is a correction rather than a
-/// convenience (review 68036). The first cut also declared the document in `.dag` and called that
-/// declaration its authority, which gave one document two producers that could drift while the
-/// `.dag` one had no consumer and the claim over it asserted against bytes nobody served. The
-/// `.dag` side is now the READER — `gunbc.serve_liveness` `observe_serve_liveness` — so the
-/// producer here has exactly one counterpart and the counterpart executes over what this writes.
-///
-/// The NAME is `gunbc.running_release_identity` `running_release_revision_key`, the same member
-/// `/healthz` publishes its revision under, because "which release is this process" is one fact and
-/// a second spelling of it would be a nickname that drifts. It is duplicated here for the same
-/// reason the path is — no fold can run at this seam — and `release_revision_text_valid` already
-/// carries the precedent of one rule realized at two boundaries.
-const SERVE_LIVENESS_REVISION_KEY: &str = "revision";
-
-/// The process-wide evaluation budget this serve process enforces.
-///
-/// PROCESS-WIDE, NOT PER-ROUTE, and the distinction is load-bearing rather than a simplification.
-/// A per-route budget would have to be known BEFORE `run_in_context_with_args` begins, so
-/// discovering it by evaluating a `.dag` function would mean entering the very unbounded
-/// evaluator the budget exists to constrain (operator review 2026-08-09). Startup configuration
-/// is the seam that avoids that, and this server has exactly one entry — `roadmap_serve_handle`,
-/// named in its systemd unit — so a process-wide value is sufficient here rather than merely
-/// convenient. A genuinely per-route policy needs either separate processes or a generated
-/// route-policy manifest read before evaluation; neither is built.
-#[derive(Debug, Clone, Copy)]
-pub struct ServeEvaluationBudget {
-    pub cpu_limit_ms: Option<u64>,
-    pub wall_limit_ms: Option<u64>,
-}
-
-/// Minimal JSON string escaping for the refusal body. The entry name comes from a launch
-/// argument rather than a request, but it is escaped anyway: a body that can be malformed by its
-/// own configuration is a fabricated-output path, and the cost of not assuming is two lines.
-fn serve_json_string(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push('"');
-    for c in s.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
-            c => out.push(c),
-        }
-    }
-    out.push('"');
-    out
-}
-
-/// THE ROOT DEMAND MEASUREMENT — how a root acquires its first `MeasuredForRoot` row. Seed
-/// realization of `gunbc.root_demand_measurement`, DESIGN section 5's stopped-line audit: it
-/// reports, it does not green.
-///
-/// The PARENT (`measurement_child == false`) asks `root_demand_measurement_admission`, spawns this
-/// same verb as the measured CHILD, and observes it through `wait4`: exit status or signal, and the
-/// child's peak resident set from its rusage. A killed child cannot write a receipt, so the parent
-/// writes it — `Exceeded` on a kill at the limit — to `receipt_path`, and that receipt is the run's
-/// only product. The CHILD re-asks the admission under the cgroup it inherited, compiles the
-/// population as `CompileSubject::RootDemandMeasurement`, prints one census line, and exits with the
-/// compile's status. It is handed no output directory, so it has nowhere to emit an artifact, and it
-/// renders no diagnostics and no verdict.
-pub fn measure_root_demand(
-    source_roots: Vec<String>,
-    repository: String,
-    receipt_path: String,
-    measurement_child: bool,
-) -> ! {
-    let Some(primary_root) = source_roots.first().cloned() else {
-        eprintln!(
-            "gunbc measure-root-demand: admission: no --source-root names the root to measure"
-        );
-        std::process::exit(2);
-    };
-    let identity = crate::memory_governor::WholeCorpusCompileRootIdentity {
-        repository: repository.clone(),
-        primary_root,
-        dependency_pools: source_roots.iter().skip(1).cloned().collect(),
-    };
-    let limit = crate::memory_governor::read_root_demand_measurement_limit();
-    let admission = crate::memory_governor::root_demand_measurement_admission(&limit, &identity);
-    if let Some(diagnostic) =
-        crate::memory_governor::root_demand_measurement_refusal_diagnostic(&admission)
-    {
-        eprintln!("gunbc measure-root-demand: admission: {diagnostic}");
-        std::process::exit(1);
-    }
-    let crate::memory_governor::RootDemandMeasurementAdmission::Admitted(admitted) = admission
-    else {
-        unreachable!("a refused admission returned above");
-    };
-    if measurement_child {
-        let run = compile_emission(&CompileRequest {
-            subject: CompileSubject::RootDemandMeasurement(admitted),
-            root_demand: RootDemandDeclaration::default(),
-            source_roots: source_roots.clone(),
-            primary_precedence: true,
-            render_targets: vec![crate::v1_compiler_artifact::RenderTarget::Dag],
-        });
-        println!(
-            "{} {} {}",
-            crate::memory_governor::ROOT_DEMAND_MEASUREMENT_CENSUS_PREFIX,
-            run.closure_modules,
-            run.closure_source_bytes
-        );
-        let code = match run.disposition {
-            CompileDisposition::Completed { .. } => 0,
-            CompileDisposition::Refused { .. } => 1,
-            CompileDisposition::NotExecuted { .. } => 2,
-        };
-        std::process::exit(code);
-    }
-    let exe = match std::env::current_exe() {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("gunbc measure-root-demand: spawn: cannot locate this executable: {e}");
-            std::process::exit(2);
-        }
-    };
-    let mut argv = vec![
-        "measure-root-demand".to_string(),
-        "--repository".to_string(),
-        repository,
-    ];
-    for r in &source_roots {
-        argv.push("--source-root".to_string());
-        argv.push(r.clone());
-    }
-    argv.push("--receipt".to_string());
-    argv.push(receipt_path.clone());
-    argv.push("--measurement-child".to_string());
-    let mut child = match std::process::Command::new(&exe)
-        .args(&argv)
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-    {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("gunbc measure-root-demand: spawn: {e}");
-            std::process::exit(2);
-        }
-    };
-    let pid = child.id() as libc::pid_t;
-    let mut stdout = String::new();
-    if let Some(mut out) = child.stdout.take() {
-        use std::io::Read;
-        let _ = out.read_to_string(&mut stdout);
-    }
-    let mut status: libc::c_int = 0;
-    let mut usage: libc::rusage = unsafe { std::mem::zeroed() };
-    let waited = unsafe { libc::wait4(pid, &mut status, 0, &mut usage) };
-    if waited != pid {
-        eprintln!(
-            "gunbc measure-root-demand: wait4 on the measured child failed: {}",
-            std::io::Error::last_os_error()
-        );
-        std::process::exit(2);
-    }
-    let wait = if libc::WIFSIGNALED(status) {
-        crate::memory_governor::RootDemandMeasurementWait::Signaled(libc::WTERMSIG(status))
-    } else {
-        crate::memory_governor::RootDemandMeasurementWait::Exited(libc::WEXITSTATUS(status))
-    };
-    let host = std::fs::read_to_string("/proc/sys/kernel/hostname")
-        .map(|h| h.trim().to_string())
-        .unwrap_or_else(|_| "hostname unreadable".to_string());
-    let run = crate::memory_governor::RootDemandMeasurementRun {
-        root: admitted.root().clone(),
-        limit_bytes: admitted.limit_bytes(),
-        limit_source: admitted.limit_source().to_string(),
-        measured_on_host: host,
-        instrument_run: format!(
-            "gunbc measure-root-demand ({}) child pid {pid} at unix {}",
-            env!("GUNBC_BUILD_IDENTITY"),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .unwrap_or(0)
-        ),
-        census: crate::memory_governor::parse_root_demand_measurement_census(&stdout),
-    };
-    let peak_bytes = (usage.ru_maxrss as u64).saturating_mul(1024);
-    let receipt = crate::memory_governor::root_demand_measurement_receipt(run, wait, peak_bytes);
-    let json = crate::memory_governor::root_demand_measurement_receipt_json(&receipt);
-    if let Err(e) = std::fs::write(&receipt_path, &json) {
-        eprintln!("gunbc measure-root-demand: receipt: cannot write {receipt_path}: {e}");
-        std::process::exit(2);
-    }
-    eprint!("gunbc measure-root-demand: receipt written to {receipt_path}: {json}");
-    std::process::exit(crate::memory_governor::root_demand_measurement_exit_code(
-        &receipt,
-    ));
-}
-
-pub fn handle_serve(
-    source_roots: Vec<String>,
-    entry_file: String,
-    function: String,
-    host: String,
-    port: u16,
-    unix_socket: Option<String>,
-    release_revision: String,
-    serve_budget: ServeEvaluationBudget,
-) {
-    if source_roots.is_empty() {
-        eprintln!("error: provide at least one --source-root");
-        std::process::exit(1);
-    }
-    // Bound BEFORE the graph is compiled and before the listener binds: a
-    // process that cannot say which release it is must never reach a state
-    // where something can route traffic to it and read its identity back.
-    if !release_revision_text_valid(&release_revision) {
-        eprintln!(
-            "error: --release-revision must be exactly 40 lowercase hex digits \
-             (git object name); got {:?} ({} chars). This is the identity this \
-             process publishes through /healthz and that deployment ordering \
-             reads back — a branch name, an abbreviated sha, or an empty value \
-             is not a revision.",
-            release_revision,
-            release_revision.chars().count()
-        );
-        std::process::exit(1);
-    }
-    let index = process_shared_index_or_refuse(&source_roots);
-    let sources = match load_sources_for_entry_with_pool(&index, &entry_file) {
-        Ok(sources) => sources,
-        Err(msg) => {
-            eprintln!("error: {}", msg);
-            std::process::exit(1);
-        }
-    };
-    eprintln!("resolved {} sources", sources.len());
-    let (graph, source_indices, compile_clean_diags) = match resolved_graph_from_sources_with_index(
-        &index,
-        sources,
-        &entry_file,
-        ResolvedGraphMemoShare::Memoize,
-    )
-    .map_err(ResolveFailure::into_message)
-    {
-        Ok(parts) => parts,
-        Err(msg) => {
-            eprintln!("error: {}", msg);
-            std::process::exit(1);
-        }
-    };
-    if compile_clean_diags
-        .iter()
-        .any(|d| compile_clean_diagnostic_is_hard(d))
-    {
-        for d in compile_clean_diags
-            .iter()
-            .filter(|d| compile_clean_diagnostic_is_hard(d))
-        {
-            eprintln!("error: {}", format_error_node(d, &source_indices));
-        }
-        std::process::exit(1);
-    }
-    let ctx = v1_interpreter::InterpContext::new(
-        &graph,
-        source_indices.clone(),
-        v1_interpreter::ExecutionMode::Wet,
-    );
-    let listener = match serve_bind(&host, port, unix_socket.as_deref()) {
-        Ok(l) => l,
-        Err(e) => {
-            eprintln!("error: {}", e);
-            std::process::exit(1);
-        }
-    };
-    // The budget is announced at startup because "unset" is a policy state that must be visible.
-    // A process serving with no bound and a process serving with a bound are different
-    // operational facts, and the difference has to be readable without inspecting argv.
-    // ONE CONTRACT, BOUND ONCE, BEFORE THE LISTENER SERVES. Every later use of the evaluated
-    // function name and of the limits reads THIS value; `function` and `serve_budget` are not
-    // consulted again below.
-    let armed_contract = serve_budget_refusal::serve_armed_contract(function.clone(), serve_budget);
-    // THE ANNOUNCEMENT NAMES THE ADDRESS ACTUALLY BOUND, not the one requested. They differ exactly
-    // when the caller asked the OS to choose (`--port 0`), which is the only collision-free way to
-    // take a loopback port; announcing the request there would publish `:0` and leave no way to
-    // reach the server it just started. A reader of this line can now attribute a connection to
-    // THIS process rather than to whoever happened to hold the requested port.
-    let bound = match listener.bound_address() {
-        Ok(addr) => addr,
-        Err(e) => {
-            eprintln!(
-                "error: bound {}:{} but could not read its address: {}",
-                host, port, e
-            );
-            std::process::exit(1);
-        }
-    };
-    eprintln!(
-        "gunbc serve listening on {}:{} -> {}() release_revision={} eval_budget_cpu_ms={} eval_budget_wall_ms={}",
-        bound.host,
-        bound.port,
-        serve_budget_refusal::serve_contract_entry(&armed_contract),
-        release_revision,
-        serve_budget_refusal::serve_contract_cpu_limit_ms(&armed_contract)
-            .map(|v| v.to_string())
-            .unwrap_or_else(|| "unset".to_string()),
-        serve_budget_refusal::serve_contract_wall_limit_ms(&armed_contract)
-            .map(|v| v.to_string())
-            .unwrap_or_else(|| "unset".to_string()),
-    );
-    let listener_attests_peer = matches!(listener, ServeListener::Unix(..));
-    // THE ARGUMENT PLAN IS DERIVED ONCE FROM THE ENTRY'S DECLARED PARAMETERS. A parameter naming
-    // no request fact, or naming an attested peer on a listener that attests none, refuses here,
-    // before the first connection, rather than as a per-request 500.
-    let handler_facts = match v1_interpreter::declared_parameter_names(
-        &ctx,
-        serve_budget_refusal::serve_contract_entry(&armed_contract),
-    )
-    .ok_or_else(|| {
-        format!(
-            "no function `{}` in the entry closure",
-            serve_budget_refusal::serve_contract_entry(&armed_contract)
-        )
-    })
-    .and_then(|declared| serve_handler_fact_plan(&declared, listener_attests_peer))
-    {
-        Ok(plan) => plan,
-        Err(e) => {
-            eprintln!("error: {}", e);
-            std::process::exit(1);
-        }
-    };
-    v1_interpreter::with_active_context(&ctx, || {
-        loop {
-            let (mut conn, peer_user) = match listener.accept() {
-                Ok(accepted) => accepted,
-                Err(e) => {
-                    eprintln!("serve: accept error: {}", e);
-                    continue;
-                }
-            };
-            let stream: &mut dyn ServeConnection = &mut *conn;
-            match serve_read_request(&mut *stream) {
-                Err(reason) => serve_write_response(
-                    &mut *stream,
-                    400,
-                    "text/plain; charset=utf-8",
-                    &format!("bad request: {}\n", reason),
-                    &[],
-                ),
-                // Idle or cleanly-closed connection: no request was made, so the
-                // connection is dropped without a response.
-                Ok(None) => {}
-                // THE ONE ROUTE ANSWERED BEFORE THE EVALUATOR IS ENTERED.
-                //
-                // Seed realization of `gunbc.serve_liveness` — that module owns the path, the
-                // document and the single status, and states why the answer cannot live behind an
-                // evaluation. The short version, because it is the reason this branch is here and
-                // not a `.dag` row: the conditions that make a served process unhealthy are the
-                // conditions that make an expensive evaluation fail, so a health endpoint reachable
-                // only through the evaluator answers "healthy" or nothing — and "nothing" is
-                // indistinguishable from a dead host. Boot 15 was that outage (side-chat ruling
-                // 2026-09-19; the request is #11557).
-                //
-                // Every field is a value this process validated BEFORE it bound: the release
-                // revision was checked for shape and the process exited if it was not a revision,
-                // the entry is the armed contract's subject, and the address is the one
-                // `local_addr` reported. So there is nothing here that can be unavailable while
-                // the connection is writable, which is why the module declares exactly one status.
-                //
-                // NO BUDGET IS ARMED and no `.dag` function is called, deliberately: arming a
-                // deadline around a `format!` would be ceremony, and reaching the evaluator at all
-                // would reintroduce the dependency this endpoint exists to remove.
-                Ok(Some(request))
-                    if request.method == "GET" && request.path == SERVE_LIVENESS_PATH =>
-                {
-                    serve_write_response(
-                        &mut *stream,
-                        200,
-                        "application/json; charset=utf-8",
-                        &format!(
-                            "{{\"live\":true,\"{}\":{},\"entry_function\":{},\"bound_host\":{},\"bound_port\":{}}}",
-                            SERVE_LIVENESS_REVISION_KEY,
-                            serve_json_string(&release_revision),
-                            serve_json_string(serve_budget_refusal::serve_contract_entry(
-                                &armed_contract
-                            )),
-                            serve_json_string(&bound.host),
-                            bound.port,
-                        ),
-                        &[],
-                    )
-                }
-                Ok(Some(request)) => {
-                    let args = serve_handler_args(
-                        &ctx,
-                        &handler_facts,
-                        request,
-                        &release_revision,
-                        &peer_user,
-                    );
-                    // THE DEADLINE IS ARMED HERE, AROUND THIS CALL, AND THE SCOPE IS THE POINT.
-                    // Before this existed the serve path armed nothing, so a route evaluation
-                    // that did not return also prevented the `Err` arm below from ever running:
-                    // the 500 existed and was unreachable, and because the loop is serial the
-                    // stuck request held the accept queue for every later one. The guard both
-                    // arms and restores — a leaked deadline would be worse than none here,
-                    // since `ctx` outlives every request and a stale CPU baseline would refuse
-                    // all subsequent requests for the life of the process.
-                    // BOTH DERIVE FROM ONE CONTRACT. The arming subject and the invoked function
-                    // are read from the same value, so the interface no longer permits a process
-                    // armed for one entry to evaluate another and report a refusal naming the
-                    // wrong subject.
-                    let result = {
-                        let _budget = ctx.enter_evaluation_budget(
-                            serve_budget_refusal::serve_contract_entry(&armed_contract),
-                            serve_budget_refusal::serve_contract_cpu_limit_ms(&armed_contract),
-                            serve_budget_refusal::serve_contract_wall_limit_ms(&armed_contract),
-                        );
-                        v1_interpreter::run_in_context_with_args(
-                            &ctx,
-                            serve_budget_refusal::serve_contract_entry(&armed_contract),
-                            &args,
-                            true,
-                        )
-                    };
-                    match result {
-                        // ONE CLASSIFICATION, NOT A GUARD PLUS A RE-ASK. The previous shape called
-                        // the producer once for `is_some()` and again under `expect`, so the arm's
-                        // correctness rested on the two calls agreeing rather than on there being
-                        // one decision. The `Option` IS the decision.
-                        Err(ref e) => match serve_budget_refusal::serve_budget_refusal_from_exceeded(e) {
-                            Some(refusal) => {
-                                // THE REFUSAL MUST BE ABOUT THE CONTRACT THIS PROCESS ARMED. The
-                                // interpreter reports the entry it was armed with; a mismatch here
-                                // would mean arming and evaluation had different subjects, which
-                                // the single contract value exists to make unreachable. It refuses
-                                // rather than rendering a diagnostic that names the wrong function.
-                                if !serve_budget_refusal::serve_refusal_names_contract(
-                                    &refusal,
-                                    &armed_contract,
-                                ) {
-                                    eprintln!(
-                                        "serve: refusing to render a budget refusal whose entry is not the armed contract's subject"
-                                    );
-                                    serve_write_response(
-                                        &mut *stream,
-                                        500,
-                                        "text/plain; charset=utf-8",
-                                        "budget refusal did not name the armed contract\n",
-                                        &[],
-                                    )
-                                } else {
-                                // Refusal rendering is HOST-SIDE by necessity, not by preference:
-                                // the evaluation that would have rendered it is the one that was
-                                // just aborted, so asking it to describe its own abort would put
-                                // recovery behind the evaluator that failed.
-                                //
-                                // 500, not 503: this request is deterministic against a fixed
-                                // policy, so it will cross again on retry. A status meaning
-                                // "temporary capacity" would assert something the model does not
-                                // know, and no `Retry-After` is attached for the same reason
-                                // (`std.evaluation_budget.evaluation_budget_retry_semantics_note`).
-                                eprintln!(
-                                    "{}",
-                                    serve_budget_refusal::serve_budget_refusal_diagnostic_line(&refusal)
-                                );
-                                serve_write_response(
-                                    &mut *stream,
-                                    500,
-                                    "application/json; charset=utf-8",
-                                    &serve_budget_refusal::serve_budget_refusal_machine_body(
-                                        &refusal,
-                                    ),
-                                    &[],
-                                )
-                                }
-                            }
-                            None => serve_write_response(
-                                &mut *stream,
-                                500,
-                                "text/plain; charset=utf-8",
-                                &format!("handler error: {}\n", e),
-                                &[],
-                            ),
-                        },
-                        Ok(val) => match serve_wire_fields(&val, &ctx) {
-                            Some((status, content_type, resp_body, resp_headers)) => serve_write_response(
-                                &mut *stream,
-                                status,
-                                &content_type,
-                                &resp_body,
-                                &resp_headers,
-                            ),
-                            None => serve_write_response(
-                                &mut *stream,
-                                500,
-                                "text/plain; charset=utf-8",
-                                &format!(
-                                    "handler returned `{}`, not ServeWireResponse {{ status: Int, content_type_label: String, body: String, headers: List<ServeWireHeader> }} with no CR, LF or NUL in a header value\n",
-                                    ctx.format_value(&val)
-                                ),
-                                &[],
-                            ),
-                        },
-                    }
-                }
-            }
-        }
-    });
-}
-
-/// Read one HTTP/1.1 request: request line + headers (only Content-Length is
-/// consumed) + exactly Content-Length body bytes. Anything else is a typed
-/// Err → 400. No keep-alive, no chunked bodies, no TLS (tailscale serve
-/// terminates HTTPS in front). Both halves are byte-bounded: the head
-/// (request line + headers) at MAX_HEAD cumulative, the body at MAX_BODY,
-/// with the underlying stream capped via Read::take so no read path can
-/// allocate past head+body even before the typed checks fire.
-///
-/// `Ok(None)` means NO REQUEST WAS EVER MADE on this connection: the peer opened
-/// it and either sent nothing before the read timeout, or closed it cleanly at a
-/// request boundary. That is not a malformed request and must not be answered
-/// with 400. Browsers routinely open speculative preconnect sockets and send
-/// nothing on them, so answering those with an error surfaces a spurious "bad
-/// request: Resource temporarily unavailable (os error 11)" to the operator.
-/// "The client sent something malformed" and "the client has not spoken yet" are
-/// different facts with different remedies; only the first is a 400.
-/// The one header this seam extracts beyond Content-Length, and the reason it is extracted HERE
-/// rather than handed to `.dag` as a general header bag.
-///
-/// `tailscale serve` injects the authenticated tailnet identity into proxied requests. That value
-/// is the recipient authentication for the approval loop: a signed capability establishes WHAT is
-/// being decided, and this establishes WHO is deciding, so a link that leaks to someone unrelated
-/// is useless to them. Passing one named value rather than every header is deliberate — a general
-/// bag would let any handler read any client-supplied header, and the fact this server needs is
-/// exactly one.
-///
-/// A DUPLICATE IS REFUSED, exactly as duplicate Content-Length is, and for the same class of
-/// reason: with two values present, the seam and any downstream reader can disagree about which
-/// one is authoritative, and header smuggling is precisely the technique of making them disagree.
-///
-/// THE VALUE IS ONLY MEANINGFUL IF THE PROXY IS THE ONLY PATH TO THIS SOCKET. Anything that can
-/// connect directly can send this header itself. That is a deployment property — bind to loopback,
-/// let `tailscale serve` be the only route — and it is not established by this parse. The `.dag`
-/// side treats an absent value as a refusal rather than as "unknown", so the failure mode of a
-/// misconfigured deployment is a closed door rather than an open one.
-const SERVE_TAILSCALE_IDENTITY_HEADER: &str = "tailscale-user-login";
-
-// ONE CONNECTION SHAPE FOR BOTH LISTENERS. The request parse and the response write are the same
-// bytes over TCP and over a unix socket; only binding, accepting and the peer differ.
-trait ServeConnection: std::io::Read + std::io::Write {
-    fn set_read_timeout_for_request(&self, d: std::time::Duration) -> std::io::Result<()>;
-}
-
-impl ServeConnection for std::net::TcpStream {
-    fn set_read_timeout_for_request(&self, d: std::time::Duration) -> std::io::Result<()> {
-        self.set_read_timeout(Some(d))
-    }
-}
-
-impl ServeConnection for std::os::unix::net::UnixStream {
-    fn set_read_timeout_for_request(&self, d: std::time::Duration) -> std::io::Result<()> {
-        self.set_read_timeout(Some(d))
-    }
-}
-
-enum ServeListener {
-    Tcp(std::net::TcpListener),
-    Unix(std::os::unix::net::UnixListener, String),
-}
-
-struct ServeBoundAddress {
-    host: String,
-    port: u16,
-}
-
-// A unix socket path that already exists is removed only when it IS a socket (a previous
-// process's); any other file at that path refuses, so a mistyped path never deletes data.
-fn serve_bind(host: &str, port: u16, unix_socket: Option<&str>) -> Result<ServeListener, String> {
-    match unix_socket {
-        None => std::net::TcpListener::bind((host, port))
-            .map(ServeListener::Tcp)
-            .map_err(|e| format!("failed to bind {}:{}: {}", host, port, e)),
-        Some(path) => {
-            use std::os::unix::fs::FileTypeExt;
-            if let Ok(meta) = std::fs::symlink_metadata(path) {
-                if !meta.file_type().is_socket() {
-                    return Err(format!(
-                        "--unix-socket {} exists and is not a socket; refusing to replace it",
-                        path
-                    ));
-                }
-                std::fs::remove_file(path)
-                    .map_err(|e| format!("could not remove the stale socket {}: {}", path, e))?;
-            }
-            let listener = std::os::unix::net::UnixListener::bind(path)
-                .map_err(|e| format!("failed to bind unix socket {}: {}", path, e))?;
-            // WHO MAY CONNECT IS THE SOCKET DIRECTORY'S DECISION, NOT THE UMASK'S. Connecting needs
-            // write on the socket file, which the process umask would otherwise grant or withhold
-            // by accident; the socket is opened to every class and its containing directory's
-            // traverse bits are the whole filesystem wall. Every peer is then attested per
-            // connection (serve_peer_user) and admitted or refused by the handler.
-            {
-                use std::os::unix::fs::PermissionsExt;
-                std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o666)).map_err(
-                    |e| {
-                        format!(
-                            "could not open the socket {} to its directory's traversers: {}",
-                            path, e
-                        )
-                    },
-                )?;
-            }
-            Ok(ServeListener::Unix(listener, path.to_string()))
-        }
-    }
-}
-
-impl ServeListener {
-    fn bound_address(&self) -> std::io::Result<ServeBoundAddress> {
-        match self {
-            ServeListener::Tcp(l) => l.local_addr().map(|a| ServeBoundAddress {
-                host: a.ip().to_string(),
-                port: a.port(),
-            }),
-            ServeListener::Unix(_, path) => Ok(ServeBoundAddress {
-                host: format!("unix:{}", path),
-                port: 0,
-            }),
-        }
-    }
-
-    // THE PEER IS READ FROM THE KERNEL, NEVER FROM THE REQUEST. A unix connection whose peer
-    // credentials cannot be read or resolved to an account is dropped here, before any request is
-    // parsed: an unattested peer on the socket that exists to attest peers is a refusal, not an
-    // anonymous caller.
-    fn accept(&self) -> std::io::Result<(Box<dyn ServeConnection>, String)> {
-        match self {
-            ServeListener::Tcp(l) => l
-                .accept()
-                .map(|(s, _)| (Box::new(s) as Box<dyn ServeConnection>, String::new())),
-            ServeListener::Unix(l, _) => {
-                let (s, _) = l.accept()?;
-                let user = serve_peer_user(&s)?;
-                Ok((Box::new(s) as Box<dyn ServeConnection>, user))
-            }
-        }
-    }
-}
-
-// THE HANDLER'S ARGUMENTS ARE DERIVED FROM THE ENTRY'S DECLARED PARAMETERS. The seam offers a
-// closed vocabulary of request facts and an entry receives exactly the facts it declares, by name.
-// A named argument the handler does not declare is a call-contract refusal, not a dropped value
-// (srv1 500, dashboard_deploy run 36584004074), so a host-side list of names -- pushed
-// unconditionally, or conditioned per fact on the listener or on the request -- is a second
-// authority for the handler's signature that refuses every handler it disagrees with. The
-// tailscale identity is empty when the header was absent (the `.dag` side refuses on empty rather
-// than treating it as anonymous); the release revision is fixed for the process lifetime;
-// `request_headers` is every header field of the request as `ServeRequestHeader { name, value }`
-// with the name lowercased (field names are case-insensitive, RFC 9110 section 5.1) and nothing
-// interpreted -- which field carries a session, and whether a repeated field is admissible, are
-// the handler's facts.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ServeRequestFact {
-    Method,
-    Path,
-    Body,
-    TailscaleIdentity,
-    ReleaseRevision,
-    PeerUser,
-    RequestHeaders,
-}
-
-impl ServeRequestFact {
-    const ALL: [ServeRequestFact; 7] = [
-        ServeRequestFact::Method,
-        ServeRequestFact::Path,
-        ServeRequestFact::Body,
-        ServeRequestFact::TailscaleIdentity,
-        ServeRequestFact::ReleaseRevision,
-        ServeRequestFact::PeerUser,
-        ServeRequestFact::RequestHeaders,
-    ];
-
-    fn parameter_name(self) -> &'static str {
-        match self {
-            ServeRequestFact::Method => "method",
-            ServeRequestFact::Path => "path",
-            ServeRequestFact::Body => "body",
-            ServeRequestFact::TailscaleIdentity => "tailscale_identity",
-            ServeRequestFact::ReleaseRevision => "release_revision",
-            ServeRequestFact::PeerUser => "peer_user",
-            ServeRequestFact::RequestHeaders => "request_headers",
-        }
-    }
-}
-
-// THE PEER IS A FACT ONLY WHERE THE KERNEL ATTESTS ONE: an entry declaring `peer_user` behind a
-// listener that attests none is refused, never handed an empty peer.
-fn serve_handler_fact_plan(
-    declared: &[String],
-    listener_attests_peer: bool,
-) -> Result<Vec<ServeRequestFact>, String> {
-    declared
-        .iter()
-        .map(|name| {
-            let fact = ServeRequestFact::ALL
-                .iter()
-                .copied()
-                .find(|fact| fact.parameter_name() == name)
-                .ok_or_else(|| {
-                    format!(
-                        "serve entry declares parameter `{}`, which names no request fact (offered: {})",
-                        name,
-                        ServeRequestFact::ALL
-                            .iter()
-                            .map(|fact| fact.parameter_name())
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    )
-                })?;
-            if fact == ServeRequestFact::PeerUser && !listener_attests_peer {
-                return Err(
-                    "serve entry declares `peer_user`, but only the --unix-socket listener attests a peer"
-                        .to_string(),
-                );
-            }
-            Ok(fact)
-        })
-        .collect()
-}
-
-struct ServeRequest {
-    method: String,
-    path: String,
-    body: String,
-    tailscale_identity: String,
-    headers: Vec<(String, String)>,
-}
-
-fn serve_handler_args(
-    ctx: &v1_interpreter::InterpContext,
-    plan: &[ServeRequestFact],
-    request: ServeRequest,
-    release_revision: &str,
-    peer_user: &str,
-) -> Vec<(Option<String>, v1_interpreter::Value)> {
-    plan.iter()
-        .map(|fact| {
-            let value = match fact {
-                ServeRequestFact::Method => str_value(&request.method),
-                ServeRequestFact::Path => str_value(&request.path),
-                ServeRequestFact::Body => str_value(&request.body),
-                ServeRequestFact::TailscaleIdentity => str_value(&request.tailscale_identity),
-                ServeRequestFact::ReleaseRevision => str_value(release_revision),
-                ServeRequestFact::PeerUser => str_value(peer_user),
-                ServeRequestFact::RequestHeaders => list_value_from_vec(
-                    request
-                        .headers
-                        .iter()
-                        .map(|(name, value)| v1_interpreter::Value::Record {
-                            type_name: ctx.sym("ServeRequestHeader"),
-                            fields: Rc::new(v1_interpreter::sorted_fields(vec![
-                                (ctx.sym("name"), str_value(name)),
-                                (ctx.sym("value"), str_value(value)),
-                            ])),
-                        })
-                        .collect(),
-                ),
-            };
-            (Some(fact.parameter_name().to_string()), value)
-        })
-        .collect()
-}
-
-// The kernel-attested peer uid of a unix-socket connection. Linux answers through SO_PEERCRED; macOS
-// has no SO_PEERCRED and answers the same fact through getpeereid. Any other target refuses.
-#[cfg(target_os = "linux")]
-fn serve_peer_uid(s: &std::os::unix::net::UnixStream) -> std::io::Result<libc::uid_t> {
-    use std::os::unix::io::AsRawFd;
-    let mut cred: libc::ucred = unsafe { std::mem::zeroed() };
-    let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
-    let rc = unsafe {
-        libc::getsockopt(
-            s.as_raw_fd(),
-            libc::SOL_SOCKET,
-            libc::SO_PEERCRED,
-            &mut cred as *mut libc::ucred as *mut libc::c_void,
-            &mut len,
-        )
-    };
-    if rc != 0 {
-        return Err(std::io::Error::last_os_error());
-    }
-    Ok(cred.uid)
-}
-
-#[cfg(target_os = "macos")]
-fn serve_peer_uid(s: &std::os::unix::net::UnixStream) -> std::io::Result<libc::uid_t> {
-    use std::os::unix::io::AsRawFd;
-    let mut uid: libc::uid_t = 0;
-    let mut gid: libc::gid_t = 0;
-    if unsafe { libc::getpeereid(s.as_raw_fd(), &mut uid, &mut gid) } != 0 {
-        return Err(std::io::Error::last_os_error());
-    }
-    Ok(uid)
-}
-
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
-fn serve_peer_uid(_s: &std::os::unix::net::UnixStream) -> std::io::Result<libc::uid_t> {
-    Err(std::io::Error::new(
-        std::io::ErrorKind::Unsupported,
-        "unix-socket peer credentials are not modeled for this target",
-    ))
-}
-
-fn serve_peer_user(s: &std::os::unix::net::UnixStream) -> std::io::Result<String> {
-    let peer_uid = serve_peer_uid(s)?;
-    let mut pwd: libc::passwd = unsafe { std::mem::zeroed() };
-    let mut buf = vec![0 as libc::c_char; 4096];
-    let mut result: *mut libc::passwd = std::ptr::null_mut();
-    let rc =
-        unsafe { libc::getpwuid_r(peer_uid, &mut pwd, buf.as_mut_ptr(), buf.len(), &mut result) };
-    if rc != 0 || result.is_null() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::PermissionDenied,
-            format!("peer uid {} resolves to no account", peer_uid),
-        ));
-    }
-    let name = unsafe { std::ffi::CStr::from_ptr(pwd.pw_name) };
-    Ok(name.to_string_lossy().into_owned())
-}
-
-fn serve_read_request(stream: &mut dyn ServeConnection) -> Result<Option<ServeRequest>, String> {
-    use std::io::{BufRead, Read};
-    const MAX_HEAD: usize = 16 << 10;
-    const MAX_BODY: usize = 1 << 20;
-    stream
-        .set_read_timeout_for_request(std::time::Duration::from_secs(10))
-        .map_err(|e| format!("set_read_timeout: {}", e))?;
-    let mut reader = std::io::BufReader::new((&mut *stream).take((MAX_HEAD + MAX_BODY) as u64));
-    let mut request_line = String::new();
-    let mut head_bytes = match reader.read_line(&mut request_line) {
-        Ok(n) => n,
-        Err(e) => {
-            // A read timeout that yielded no bytes is an idle connection, not a
-            // malformed one. Anything else, or a timeout mid-request-line, is a
-            // real read failure and keeps its typed 400.
-            if request_line.is_empty()
-                && matches!(
-                    e.kind(),
-                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
-                )
-            {
-                return Ok(None);
-            }
-            return Err(format!("read request line: {}", e));
-        }
-    };
-    if head_bytes == 0 {
-        // Clean EOF before any request line: the peer closed at a request
-        // boundary. Nothing was asked, so there is nothing to answer.
-        return Ok(None);
-    }
-    if head_bytes > MAX_HEAD {
-        return Err(format!(
-            "request line of {} bytes exceeds the {} byte serve head limit",
-            head_bytes, MAX_HEAD
-        ));
-    }
-    let mut parts = request_line.split_whitespace();
-    let method = parts.next().ok_or("empty request line")?.to_string();
-    let target = parts.next().ok_or("missing request target")?.to_string();
-    if !target.starts_with('/') {
-        return Err(format!(
-            "request target must be origin-form, got {:?}",
-            target
-        ));
-    }
-    let mut content_length: Option<usize> = None;
-    let mut tailscale_identity: Option<String> = None;
-    let mut headers: Vec<(String, String)> = Vec::new();
-    loop {
-        let mut line = String::new();
-        let n = reader
-            .read_line(&mut line)
-            .map_err(|e| format!("read header: {}", e))?;
-        if n == 0 {
-            return Err("connection closed before end of headers".to_string());
-        }
-        head_bytes += n;
-        if head_bytes > MAX_HEAD {
-            return Err(format!(
-                "headers of {} bytes exceed the {} byte serve head limit",
-                head_bytes, MAX_HEAD
-            ));
-        }
-        let line = line.trim_end();
-        if line.is_empty() {
-            break;
-        }
-        if let Some((name, value)) = line.split_once(':') {
-            headers.push((name.to_ascii_lowercase(), value.trim().to_string()));
-            if name.eq_ignore_ascii_case("content-length") {
-                if content_length.is_some() {
-                    return Err("duplicate Content-Length header".to_string());
-                }
-                content_length = Some(
-                    value
-                        .trim()
-                        .parse()
-                        .map_err(|e| format!("bad Content-Length: {}", e))?,
-                );
-            }
-            if name.eq_ignore_ascii_case(SERVE_TAILSCALE_IDENTITY_HEADER) {
-                if tailscale_identity.is_some() {
-                    return Err(format!(
-                        "duplicate {} header",
-                        SERVE_TAILSCALE_IDENTITY_HEADER
-                    ));
-                }
-                tailscale_identity = Some(value.trim().to_string());
-            }
-        }
-    }
-    let content_length = content_length.unwrap_or(0);
-    if content_length > MAX_BODY {
-        return Err(format!(
-            "body of {} bytes exceeds the {} byte serve limit",
-            content_length, MAX_BODY
-        ));
-    }
-    let mut body_bytes = vec![0u8; content_length];
-    reader
-        .read_exact(&mut body_bytes)
-        .map_err(|e| format!("read body: {}", e))?;
-    let body = String::from_utf8(body_bytes).map_err(|e| format!("body not utf-8: {}", e))?;
-    Ok(Some(ServeRequest {
-        method,
-        path: target,
-        body,
-        tailscale_identity: tailscale_identity.unwrap_or_default(),
-        headers,
-    }))
-}
-
-fn serve_write_response(
-    stream: &mut dyn ServeConnection,
-    status: u16,
-    content_type: &str,
-    body: &str,
-    headers: &[String],
-) {
-    use std::io::Write;
-    let reason = match status {
-        200 => "OK",
-        302 => "Found",
-        400 => "Bad Request",
-        404 => "Not Found",
-        405 => "Method Not Allowed",
-        409 => "Conflict",
-        500 => "Internal Server Error",
-        501 => "Not Implemented",
-        502 => "Bad Gateway",
-        503 => "Service Unavailable",
-        _ => "",
-    };
-    let mut extra = String::new();
-    for header in headers {
-        extra.push_str(header);
-        extra.push_str("\r\n");
-    }
-    let response = format!(
-        "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n{}\r\n{}",
-        status,
-        reason,
-        content_type,
-        body.len(),
-        extra,
-        body
-    );
-    if let Err(e) = stream.write_all(response.as_bytes()) {
-        eprintln!("serve: write error: {}", e);
-    }
-}
-
-/// One `.dag` `ServeWireHeader { name, value }` rendered as a header line. The name is the
-/// RFC 9110 field-name String `extdeps.http.server` `serve_response_header_wire` chose, written
-/// verbatim: this seam keeps no per-header table and no name grammar. A name is already a token
-/// that is no framing or typed-arm field, because `ServeWireHeader` is `sole_constructor` and its
-/// open arm carries the sealed `HttpExtensionFieldName`. A value is handler data, so one carrying
-/// CR, LF or NUL is refused rather than written as a split header. None = wrong shape or refused
-/// value.
-fn serve_wire_header_line(
-    item: &v1_interpreter::Value,
-    ctx: &v1_interpreter::InterpContext,
-) -> Option<String> {
-    let v1_interpreter::Value::Record { type_name, fields } = item else {
-        return None;
-    };
-    if !ctx.sym_eq(*type_name, "ServeWireHeader") {
-        return None;
-    }
-    let name = match ctx.field(fields, "name") {
-        Some(Value::Str(s)) => s.to_string(),
-        _ => return None,
-    };
-    let value = match ctx.field(fields, "value") {
-        Some(Value::Str(s)) if !s.bytes().any(|b| b == b'\r' || b == b'\n' || b == 0) => {
-            s.to_string()
-        }
-        _ => return None,
-    };
-    Some(format!("{}: {}", name, value))
-}
-
-/// Read back the .dag handler's ServeWireResponse record. None = wrong shape
-/// (surfaced as a typed 500 by the caller, never a fabricated response). The
-/// headers list carries typed `ServeWireHeader`s in write order and is required: a
-/// handler that sets none returns the empty list, and a record without the field refuses.
-fn serve_wire_fields(
-    val: &v1_interpreter::Value,
-    ctx: &v1_interpreter::InterpContext,
-) -> Option<(u16, String, String, Vec<String>)> {
-    if let v1_interpreter::Value::Record { type_name, fields } = val {
-        if !ctx.sym_eq(*type_name, "ServeWireResponse") {
-            return None;
-        }
-        let status = match ctx.field(fields, "status") {
-            Some(v1_interpreter::Value::Int(n)) if (100..=599).contains(n) => *n as u16,
-            _ => return None,
-        };
-        let content_type = match ctx.field(fields, "content_type_label") {
-            Some(Value::Str(s)) => s.to_string(),
-            _ => return None,
-        };
-        let body = match ctx.field(fields, "body") {
-            Some(Value::Str(s)) => s.to_string(),
-            _ => return None,
-        };
-        // `headers` is a required field of ServeWireResponse: a record without it is a different
-        // shape and refuses like any other wrong shape, never read as "no headers".
-        let headers = match ctx.field(fields, "headers") {
-            Some(v1_interpreter::Value::List(items)) => {
-                let mut lines = Vec::with_capacity(items.len());
-                for item in items.iter() {
-                    lines.push(serve_wire_header_line(item, ctx)?);
-                }
-                lines
-            }
-            _ => return None,
-        };
-        return Some((status, content_type, body, headers));
-    }
-    None
-}
-
-/// VISIBILITY WIDENED by the cli-run cut for the same §3 reason as `witness_layer_roots`:
+/// VISIBILITY WIDENED by the cli-run cut for the same gunbc.design_argument::single_authority reason as `witness_layer_roots`:
 /// this is the SINGLE AUTHORITY for reading a `.dag` `ProcessExit` value, and the driver
 /// seam in `main.rs` must map that value to a process exit code. Reimplementing the match
 /// in the driver would fork the one place that knows the variant shape. Body untouched.
@@ -19304,7 +18123,7 @@ pub fn classify_exit(
 }
 
 /// The SINGLE AUTHORITY for reading a `.dag` `CliWireResponse` value, sitting beside
-/// `classify_exit` for the same §3 reason: the driver seam in `main.rs` must turn that value
+/// `classify_exit` for the same gunbc.design_argument::single_authority reason: the driver seam in `main.rs` must turn that value
 /// into bytes on stdout and a process exit code, and reimplementing the match there would
 /// fork the one place that knows the variant shape.
 ///
@@ -19356,7 +18175,7 @@ pub fn classify_cli_wire(
             }
             if ctx.sym_eq(*variant_name, "CliWirePrintable") {
                 // A MISSING FIELD IS NOT AN EMPTY ANSWER. Defaulting `bytes` to "" here would
-                // print nothing and exit 0 — a fabricated plausible output (§5) — so both
+                // print nothing and exit 0 — a fabricated plausible output (gunbc.design_argument::fail_closed) — so both
                 // fields must be present and of the declared shape or this is not a printable
                 // response at all.
                 let bytes = match ctx.field(fields, "bytes") {
@@ -19373,7 +18192,7 @@ pub fn classify_cli_wire(
                 // `cli_wire_outcome` set `stdout: Some(bytes)` and then exited 2 -- so the host
                 // PRINTED bytes carried by a value that does not inhabit the declared wire shape,
                 // and a consumer reading stdout got partial output from a refused response. That is
-                // the fabricated plausible output DESIGN section 5 forbids, reached by a value
+                // the fabricated plausible output gunbc.design_argument::fail_closed forbids, reached by a value
                 // claiming a type it does not inhabit. Found by review 58518 on gunbc#9864.
                 //
                 // Only a real exit keeps the response printable; anything else is a malformed
@@ -19497,7 +18316,7 @@ pub fn cli_wire_outcome(class: CliWireClass, function: &str) -> Option<CliWireOu
 /// equivalence against a message that had lost a line — the doc lied, not the code. Found by
 /// review 58567 on gunbc#9864. The sentence is restored rather than the claim weakened, because
 /// it carries the operator-facing reason the refusal exists: an unknown outcome reported as
-/// success is the fabricated plausible output §5 forbids.
+/// success is the fabricated plausible output gunbc.design_argument::fail_closed forbids.
 pub fn exit_status_for_class(class: ExitClass, function: &str) -> (i32, Option<String>) {
     match class {
         ExitClass::Success => (0, None),
@@ -19762,7 +18581,7 @@ mod cli_wire_outcome_tests {
         assert_eq!(out.status, 1, "the bytes printed, and the run still failed");
     }
 
-    /// The §5 arm: a renderer that refused must not read as an empty successful answer.
+    /// The gunbc.design_argument::fail_closed arm: a renderer that refused must not read as an empty successful answer.
     #[test]
     fn an_unprintable_response_refuses_rather_than_printing_nothing() {
         let out = cli_wire_outcome(
@@ -20101,7 +18920,7 @@ pub struct DiscoveryWitnessOutcome {
 }
 
 /// A witness row excluded from discovery enrollment (exclusion substring, long lane, …).
-/// Counted and logged at roster build — never a silent skip (§5 deferred-and-detected).
+/// Counted and logged at roster build — never a silent skip (gunbc.design_argument::fail_closed deferred-and-detected).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeferredDiscoveryRow {
     pub entry: String,
@@ -20182,7 +19001,7 @@ pub fn compute_percentiles(mut values: Vec<u128>) -> TimingPercentiles {
     }
 }
 
-// SCAFFOLD (§7 hand-Rust shrink-to-zero, dissolution named): the v1 evaluator measures its own
+// SCAFFOLD (gunbc.design_argument::self_hosting hand-Rust shrink-to-zero, dissolution named): the v1 evaluator measures its own
 // per-witness resolve+eval percentiles here — seed-side justified (the evaluator cannot measure
 // itself without circularity). The *rendering* of these timings now lives in `dag/gunbc/ci/ci_render.dag`
 // (boxed Frames over `std.render`, width-parameterized by the medium's `Viewport.width`); this Rust
@@ -20415,7 +19234,7 @@ pub fn project_witness_cost_receipt(
                 // the authored `millisecond` constructor across the boundary rather than
                 // assembling a Value::Record here, so the constructor stays the single
                 // authority for the carrier's shape.
-                // THE ONE DELIBERATE DROP — and per DESIGN §5 it is AcknowledgePreexistingDebt,
+                // THE ONE DELIBERATE DROP — and per gunbc.design_argument::fail_closed it is AcknowledgePreexistingDebt,
                 // not new debt, which is a distinction worth naming rather than leaving to a
                 // reader's charity. `std.observation` `TimedOut` never carried this axis, so the
                 // gap predates this change; what the change did was make it VISIBLE by creating
@@ -20750,7 +19569,7 @@ fn peak_rss_getrusage_bytes() -> Option<u64> {
     Some(ru.ru_maxrss as u64)
 }
 
-// SCAFFOLD (§7 HAND-RUST — `cli_run_witness_admission_source_scan`):
+// SCAFFOLD (gunbc.design_argument::self_hosting HAND-RUST — `cli_run_witness_admission_source_scan`):
 // Registered planning artifact: `gunbc.cli_run_witness_admission_scaffold` (review 44487
 // checkable deferral receipt). Witness: `dag/test/claim/cli_run_witness_admission_hand_rust_witness.dag`.
 // ROADMAP lane `5-dissolve-patches` / module-identity-storage-binding Phase 1 (b)
@@ -20816,7 +19635,7 @@ pub(crate) fn explicit_witness_admission_pairs() -> Vec<(String, String)> {
         .collect()
 }
 
-// SCAFFOLD (§7 HAND-RUST — `cli_run_witness_deferral_freeze`): the seed realization of the
+// SCAFFOLD (gunbc.design_argument::self_hosting HAND-RUST — `cli_run_witness_deferral_freeze`): the seed realization of the
 // frozen path-deferral wall. Registered disposition, dissolution sequence and measured LOC delta:
 // `gunbc.cli_run_witness_deferral_freeze_scaffold` (authority `gunbc.witness.witness_deferral_freeze`).
 // The .dag side being the authority does NOT exempt this realization — cli_run.rs is the largest
@@ -21377,11 +20196,11 @@ fn read_frozen_roster_at_commit(
 /// `collect_frozen_path_deferral_additions`, which joins the live tree's typed
 /// FrozenPathDeferral entries (via `frozen_path_deferral_head_keys`) against the resolved diff
 /// baseline. This function adds NO judgment of its own — no second parser, no second comparison
-/// (DESIGN §5: a check restating a constraint the model already carries is a second representation
+/// (gunbc.design_argument::fail_closed: a check restating a constraint the model already carries is a second representation
 /// of it). It renders the join's verdict as one tagged String for the dag instrument program
 /// `dag/gunbc/instruments/witness_deferral_freeze_population.dag`:
 /// * `refused|<cause>` — the join itself could not run (the baseline or a file read failed); the
-///   instrument refuses with a located diagnostic, never a silent pass (§5: every path succeeds
+///   instrument refuses with a located diagnostic, never a silent pass (gunbc.design_argument::fail_closed: every path succeeds
 ///   fully or fails with a typed, located diagnostic).
 /// * `bounded` — no live identity sits outside the baseline population: the frozen list is bounded
 ///   and shrinking only (an identity REMOVED from the roster shrinks the live set, so the join
@@ -21719,7 +20538,7 @@ pub fn claim_source_refusal_rendered(path: &str, cause: &ClaimSourceRefusalCause
             format!(": unreadable source root: {reason}")
         }
         ClaimSourceRefusalCause::ModuleCollision { other } => format!(
-            ": declares a module also declared by {other}; one module, one authority (DESIGN section 3), so de-fork or rename one side"
+            ": declares a module also declared by {other}; one module, one authority (gunbc.design_argument::single_authority), so de-fork or rename one side"
         ),
     };
     format!("claim source refused: {path}{tail}")
@@ -21831,7 +20650,7 @@ pub fn run_claim_route(
 // authority must resolve to a real top-level decl in the corpus. The witness below proves
 // that graph is TOTAL and goes RED if any binding dangles.
 //
-// SCAFFOLD (DESIGN §6): resolution is done HOST-SIDE here (extract authority refs from
+// SCAFFOLD (gunbc.design_argument::how_to_work): resolution is done HOST-SIDE here (extract authority refs from
 // source + the kind-agnostic `extract_top_level_decls` over the resolved module), standing
 // in for a not-yet-exposed unified .dag decl-resolution primitive. It keys on identity
 // (module_path + decl_name), kind-agnostically — NOT a per-kind union (no fn-index ∪
@@ -21951,7 +20770,7 @@ pub(crate) fn refuse_on_module_graph_read_refusals(
         .map(|(path, err)| format!("{path} ({err})"))
         .collect();
     Err(format!(
-        "module-graph facts read refusal (DESIGN §5 fail-closed): {} source path(s) \
+        "module-graph facts read refusal (gunbc.design_argument::fail_closed fail-closed): {} source path(s) \
          under the scan roots could not be read, so the lens census cannot answer — an \
          unreadable lens would silently vanish from the universe instead of flagging: {}",
         listed.len(),
@@ -22234,14 +21053,14 @@ fn list_value_from_vec(items: Vec<v1_interpreter::Value>) -> v1_interpreter::Val
     v1_interpreter::list_value(items)
 }
 
-// SCAFFOLD (DESIGN §6–§7): host-side diff→declaration attribution
+// SCAFFOLD (gunbc.design_argument::how_to_work, gunbc.design_argument::self_hosting): host-side diff→declaration attribution
 // (`floor_diff_edits_from_line_ranges`) and per-entry frontier materialization
 // (`rerun_frontier_nodes_for_entry`, `entry_touches_rerun_frontier`) remain host
 // realization until provenance ingest lands. Skip/precompute **verdicts** read `.dag`
 // via `floor_kernel_would_skip` / `floor_kernel_precompute_would_skip`; the
 // `entry_file_touched` axis is decided by `entry_file_touched_via_import_closure`
 // (host rendering of `v2.lens.module_graph.entry_affected_by_touched_paths` — the
-// consolidated §3 survivor per the 2026-09-05 replacement migration).
+// consolidated gunbc.design_argument::replacement_migration survivor per the 2026-09-05 replacement migration).
 // Dissolve-on: `affected_set_reading_from_git_diff_provenance` + floor-runtime provenance ingest
 // expose edit-locus → delete `floor_diff_edits_from_line_ranges`, `rerun_frontier_nodes_for_entry`,
 // `entry_touches_rerun_frontier`, and the inline floor-runner `resolve_entry_with_index` (census:
@@ -22484,7 +21303,7 @@ fn call_floor_row_precompute_would_skip(
 // on DESIGN's unguarded list awaiting its own re-add, so the sentence was true when
 // written and became false when the workflow died, with nothing to notice. One claim in
 // the authority module `std.live_tree` now carries it once as an annotation on
-// `LiveTreeDisposition` (DESIGN §3, §4c).
+// `LiveTreeDisposition` (gunbc.design_argument::single_authority, gunbc.design_argument::source_annotations).
 //
 // WHAT IS LEFT IS NOT A WEAKER WALL, IT IS NO WALL. `reads_live_tree_effective` consults
 // this declaration FIRST and falls through to `effect_reach_derived_reads_live_tree_for_entry`
@@ -22555,7 +21374,7 @@ fn parse_entry_live_tree_disposition(entry: &str, content: &str) -> Result<bool,
     Ok(declared.unwrap_or(true))
 }
 
-// SCAFFOLD (§7 HAND-RUST — `cli_run_effect_reach_inference_bridge`):
+// SCAFFOLD (gunbc.design_argument::self_hosting HAND-RUST — `cli_run_effect_reach_inference_bridge`):
 // Lane: module-identity-storage-binding Phase 0 — host-fed derived `ReadsLiveTree` and
 // path-literal touch evidence routing floor discovery admission until typed `SourceRef`
 // at host boundaries makes bare-string file dependencies unwritable.
@@ -22572,10 +21391,10 @@ pub(crate) const CLI_RUN_EFFECT_REACH_INFERENCE_BRIDGE_SCAFFOLD_MARKER: &str =
 /// Receipted Rust mirror of `v2.std.effect_reach` `effect_reach_host_sink_callee_symbols_v0`
 /// (`src/v2/std/effect_reach.dag`) — host-sink callee symbols for the derived census.
 /// Under-approximating this list lets `reads_live_tree` stay false and discovery skip when
-/// the `.dag` lens would classify host-reading (§5 fail-open on the skip axis); the drift gate
+/// the `.dag` lens would classify host-reading (gunbc.design_argument::fail_closed fail-open on the skip axis); the drift gate
 /// below evaluates the `.dag` authority through a real interpreter context.
 ///
-/// INTERIM hand-Rust scaffold (`CLI_RUN_EFFECT_REACH_INFERENCE_BRIDGE_SCAFFOLD_MARKER` / §7):
+/// INTERIM hand-Rust scaffold (`CLI_RUN_EFFECT_REACH_INFERENCE_BRIDGE_SCAFFOLD_MARKER` / gunbc.design_argument::self_hosting):
 /// dissolves when typed `SourceRef` at host boundaries deletes this bridge.
 const EFFECT_REACH_HOST_SINK_MARKERS: &[&str] = &[
     "Read",
@@ -22713,7 +21532,7 @@ fn effect_reach_touched_via_path_literals(
     false
 }
 
-// SCAFFOLD (§7 HAND-RUST — `cli_run_declared_source_ref_selection_bridge`):
+// SCAFFOLD (gunbc.design_argument::self_hosting HAND-RUST — `cli_run_declared_source_ref_selection_bridge`):
 // Lane: declared-source-ref selection (declared-source-ref-selection-design (plan doc deleted 2026-08-28)
 // task 5) — host-fed declared-ref touch axis for floor discovery admission until discovery
 // admission consumes `v2.lens.affected_set.declared_source_ref_selection` directly (same
@@ -22874,7 +21693,7 @@ fn collect_declared_source_ref_paths_for_closure(closure_paths: &HashSet<String>
     paths
 }
 
-// SCAFFOLD (§7 HAND-RUST — `cli_run_affected_set_stop_line_bridge`):
+// SCAFFOLD (gunbc.design_argument::self_hosting HAND-RUST — `cli_run_affected_set_stop_line_bridge`):
 // Lane: 7933A temporary safety stop-line (calm-fox-44) — any non-docs .dag touch blocks
 // discovery skip for compile-clean shard_a and scope witness entries. BROAD interim rule,
 // not precise self-confirmation; rationale/cost receipt in
@@ -22993,7 +21812,7 @@ fn parse_unified_diff_added_paths(diff_text: &str) -> HashSet<String> {
     // modify (`diff --git a/PATH b/PATH`, no `rename to`) still touches line 1 with no
     // added-side entry, so it stays fail-closed as before.
     //
-    // DECLARED GAP (DESIGN §4b(3)) — copy destinations are NOT enrolled. A `copy to NEW`
+    // DECLARED GAP (gunbc.design_argument::guarantee_ladder (no silent regression)) — copy destinations are NOT enrolled. A `copy to NEW`
     // destination is new-at-path by the same argument as `rename to`: every declaration at
     // NEW is a newly qualified identity that has never executed under that spelling. It is
     // not matched here, so such a file would enroll only the declarations the copy's own
@@ -23530,7 +22349,7 @@ rename to src/v2/test/claim/machine_shape_construction_wall.dag
     }
 
     // The rename destination's new-side content, SUPPLIED rather than read from the live
-    // tree (DESIGN §3 witness rule): the live file has since gained further test fns, which
+    // tree (gunbc.design_argument::single_authority witness rule): the live file has since gained further test fns, which
     // the fixed base census does not name, so reading it enrolled them and the fixture no
     // longer isolated the rename. The two test fns sit at the lines the diff's hunks name.
     fn machine_shape_rename_dest_sources(dest: &str) -> std::collections::HashMap<String, String> {
@@ -23623,7 +22442,7 @@ rename to src/v2/test/claim/machine_shape_construction_wall.dag
         );
     }
 
-    // DESIGN §4c: an annotation is not program data, so a `//` edit charges no witness. Lines:
+    // gunbc.design_argument::source_annotations: an annotation is not program data, so a `//` edit charges no witness. Lines:
     // 3 `// note a`, 4-7 `a`, 9 `// note c`, 10-13 `c` (whose body carries a `//` line).
     const NOTE_HEAD: &str = "module m.note\n\n// note a\ntest fn a() -> Bool {\n  true\n}\n\n// note c new\ntest fn c() -> Bool {\n  // body note new\n  true\n}\n";
     const NOTE_PATH: &str = "src/v2/test/claim/note_fixture_test.dag";
@@ -24169,7 +22988,7 @@ new file mode 100644
 //
 // SCAFFOLD: dissolves into a .dag execution witness when the discovery/diff seed plumbing
 // migrates off the v1 host layer (same trigger as `node_frontier_plumbing_controls` below,
-// §6 dissolution trigger) — the equivalence lens itself moves on-carrier at that point, this
+// gunbc.design_argument::how_to_work dissolution trigger) — the equivalence lens itself moves on-carrier at that point, this
 // hand-Rust harness is no longer needed to exercise it.
 //
 // It proves the module-grain "affected" decision computed by the `.dag` authority
@@ -24178,7 +22997,7 @@ new file mode 100644
 // over `import_closure_files_from_graph`) on real merged-commit diffs. Deliberately separate
 // implementations so agreement is proved by execution, not tautology.
 // Both sides are fed by the same host-realized `import_resolution_facts`/
-// `module_declaration_facts`, so this is a decision-level proof (§5: execution, not a
+// `module_declaration_facts`, so this is a decision-level proof (gunbc.design_argument::fail_closed: execution, not a
 // grep/typecheck spec), not a re-proof of closure membership (already covered by
 // `import_closure_equivalence_tests` above).
 //
@@ -24314,7 +23133,7 @@ mod module_grain_affected_equivalence_tests {
     /// citing `entry_without_declared_edges_never_skips_note` — a note that no longer exists,
     /// because it was replaced by the one repudiating it. `src/v2/lens/module_graph.dag`
     /// the `edgeless_entry_has_no_special_arm_note` annotation names that arm as the absorbing fallback
-    /// DESIGN §5 describes verbatim: it answered affected=true for every edgeless entry
+    /// gunbc.design_argument::fail_closed describes verbatim: it answered affected=true for every edgeless entry
     /// (~530 claim modules after the import strip), silently and uncounted, and the cost
     /// surfaced as a 95-minute CI floor instead of as a diagnostic. Production
     /// (`entry_file_touched_via_import_closure`) now carries reference-derived edges so an
@@ -24323,7 +23142,7 @@ mod module_grain_affected_equivalence_tests {
     ///
     /// So the twin was the stale party while production and `.dag` agreed, and the test
     /// reported a divergence about code that was fine. A third representation of one
-    /// selection rule is guaranteed to drift (§2/§3); calling production makes the property
+    /// selection rule is guaranteed to drift (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority); calling production makes the property
     /// under test the one anyone actually cares about — production ⇄ `.dag` — and deletes the
     /// copy. It is also what makes this test runnable: the twin resolved (typechecked) every
     /// entry's closure at 5-10s per module, while the facts scan is cached and does not
@@ -24534,7 +23353,7 @@ mod underlay_identity_proof_tests {
     /// `--release` -- and `Cargo.toml` additionally sets `debug-assertions = false` for this
     /// crate in dev, so they compiled out in EVERY profile the census runs in, and every
     /// `claim_batch` build is `--release`. A guard that never executes where the thing it guards
-    /// runs is a decoration, DESIGN §4b).
+    /// runs is a decoration, gunbc.design_argument::guarantee_ladder).
     ///
     /// ARMS, one per forgery the proof has to catch:
     /// * DRIFTED FACTS refuse. This is the arm no content comparison can provide: the scratch's
@@ -24621,7 +23440,7 @@ mod underlay_identity_proof_tests {
 }
 
 // SCAFFOLD: folds into a .dag execution witness when the discovery/diff seed plumbing
-// migrates off the v1 host layer (§6 dissolution trigger)
+// migrates off the v1 host layer (gunbc.design_argument::how_to_work dissolution trigger)
 #[cfg(test)]
 mod node_frontier_plumbing_controls {
     use super::{
@@ -24643,7 +23462,7 @@ mod node_frontier_plumbing_controls {
     const FIXTURE: &str = "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag";
     // File outside FIXTURE's import closure — precondition asserted at runtime in green control.
     // If a future import edge adds this file to FIXTURE's closure, the precondition assertion
-    // fails loudly rather than letting the control silently degrade (§3 anti-drift).
+    // fails loudly rather than letting the control silently degrade (gunbc.design_argument::single_authority anti-drift).
     const OUTSIDE_FILE: &str = "src/v2/lens/affected_set.dag";
     // A known data-declaration line in OUTSIDE_FILE.
     // If this line shifts the test may fail seed collection — a loud failure, not a silent pass.
@@ -24675,12 +23494,12 @@ mod node_frontier_plumbing_controls {
         ]
     }
 
-    // Discriminating RED control (§5 never-skip tooth): a `ReadsLiveTree` entry must NEVER
+    // Discriminating RED control (gunbc.design_argument::fail_closed never-skip tooth): a `ReadsLiveTree` entry must NEVER
     // qualify for skip-before-resolve, even in the exact unaffected-diff case that WOULD skip
     // a substrate-only entry. If the `reads_live_tree` guard in
     // `entry_qualifies_for_skip_without_resolve` is removed/bypassed, this goes red — the
     // fail-open (a live-tree witness predicted-skipped → never runs → false green) is caught.
-    // §5 deferred-discovery receipt: long-lane witnesses (s1_closure class) are excluded
+    // gunbc.design_argument::fail_closed deferred-discovery receipt: long-lane witnesses (s1_closure class) are excluded
     // from per-PR discovery but must be COUNTED in the floor log — never a silent skip.
     // The live floor gate, and the claim is deliberately NOT "every deferred row has a consumer" —
     // that is what the first shape of this test asserted, and it was false the moment the freeze
@@ -25439,7 +24258,7 @@ mod node_frontier_plumbing_controls {
     /// conjunction is not reachability, and it is not a conservative bound in either direction.
     ///
     /// WHY THIS PAIR AND NOT A CORPUS COUNT. A count over the live tree is a fact about today's
-    /// corpus and rots (DESIGN §5's oracle rule); this fixture authors both sides, so the red is a
+    /// corpus and rots (gunbc.design_argument::fail_closed's oracle rule); this fixture authors both sides, so the red is a
     /// property of the derivation and survives any amount of corpus drift. The two entries differ
     /// by exactly one import edge whose only content is a path-literal row, and the read they
     /// perform is byte-identical — so the disagreement can only be the conjunction.
@@ -25473,7 +24292,7 @@ mod node_frontier_plumbing_controls {
              NOT-live because no module in it carries a repository path literal. This assertion \
              is expecting-red by construction — it flips the day the derivation stops conjoining \
              a storage fact with a reachability one, and at that point it becomes the regression \
-             control for the repair rather than being deleted (DESIGN §4b(4))"
+             control for the repair rather than being deleted (gunbc.design_argument::guarantee_ladder (dissolution on climb))"
         );
     }
 
@@ -25882,7 +24701,7 @@ const LAYER_EXTDEPS: &str = "LayerPrefixExtdeps";
 const LAYER_COMPILER: &str = "LayerPrefixCompiler";
 const LAYER_WORKFLOW: &str = "LayerPrefixWorkflow";
 
-// SCAFFOLD (§7 HAND-RUST — authority: `v2.std.layer.layer_prefix_from_dotted_qualified_name`).
+// SCAFFOLD (gunbc.design_argument::self_hosting HAND-RUST — authority: `v2.std.layer.layer_prefix_from_dotted_qualified_name`).
 // Host `layer_import_facts` must stamp `LayerImportFact.layer` on every emitted row; the builtin
 // seam cannot call the `.dag` classifier without an interpreter round-trip per file. This mirror
 // is byte-synced to that authority and carries an explicit dissolution trigger — not a second
@@ -26367,7 +25186,7 @@ pub fn dependency_resolution_facts_at(
 /// This is the single authority for a union that had two independent spellings: the `.dag`
 /// `union_import_resolution_fact_lists` (reference-first, exact dedup, interpreted) and the host
 /// selection-graph twin's `selection_edges` (import-first, dedup deferred to adjacency
-/// construction). Two spellings of one concept is the §3 fork; one helper consumed by both is the
+/// construction). Two spellings of one concept is the gunbc.design_argument::single_authority fork; one helper consumed by both is the
 /// repair, and it is what lets the interpreted composition be retired without the native producer
 /// answering a different question.
 ///
@@ -26403,7 +25222,7 @@ pub(crate) fn union_dedup_import_facts_reference_first(
 
 // ── Reference-derived module edges (namespace terminal step, DESIGN "deps via container.member") ──
 //
-// SCAFFOLD (DESIGN §7). Replaces the import-parse module graph (`extract_import_paths` /
+// SCAFFOLD (gunbc.design_argument::self_hosting). Replaces the import-parse module graph (`extract_import_paths` /
 // `import_resolution_facts`) with edges derived from where a module's body/type REFERENCES resolve,
 // so the module graph survives corpus-wide `import` deletion (namespace-only resolution, operator-
 // signed 2026-07-06; the reference is the sole representation of usage, Rule 1). One O(corpus) parse
@@ -26414,7 +25233,7 @@ pub(crate) fn union_dedup_import_facts_reference_first(
 // single-swap-point end state. Every closure/loader/lens consumer is edge-source-agnostic (reads edge
 // rows as data, never import syntax).
 //
-// Confidence tag (parent ruling, 2026-07-14; DESIGN §5): the LOADER closure and affected-set read
+// Confidence tag (parent ruling, 2026-07-14; gunbc.design_argument::fail_closed): the LOADER closure and affected-set read
 // ALL edges (over-load is safe — a superset only compiles extra modules). SELECTION reads
 // Qualified + UniqueBare only (dropping AmbiguousBare), so an over-connected graph cannot silently
 // widen the selection tier. (The inert-lens reach was the other reader of that tier until gunbc#8141
@@ -27234,8 +26053,9 @@ fn on_chain_declarers<'a>(
     out
 }
 
-/// Import-less UniqueBare pick: on-chain unique, else the census-unique declarer the
-/// resolver UniqueBinding-accepts, else nothing (never nearest-prefix among homonyms).
+/// Import-less UniqueBare pick: on-chain unique, else nothing. A census-unique declarer OFF the
+/// chain has no lexical authority (the resolver's UniqueBinding arm now refuses it too), so it
+/// yields no edge; never nearest-prefix among homonyms.
 enum ImportlessBarePick<'a> {
     Unique(&'a String),
     Ambiguous(Vec<&'a String>),
@@ -27250,7 +26070,6 @@ fn pick_importless_bare<'a>(
     match on_chain.len() {
         1 => ImportlessBarePick::Unique(on_chain[0]),
         n if n > 1 => ImportlessBarePick::Ambiguous(on_chain),
-        _ if mods.len() == 1 => ImportlessBarePick::Unique(mods.iter().next().unwrap()),
         _ => ImportlessBarePick::None,
     }
 }
@@ -27278,7 +26097,7 @@ thread_local! {
     /// `REFERENCE_EDGE_CACHE` and populated in the same pass.
     ///
     /// This set is what separates the two states an empty adjacency used to conflate
-    /// (DESIGN §5, ⊤-as-answer vs ⊤-as-ignorance). An import-less file the producer PARSED and
+    /// (gunbc.design_argument::fail_closed, ⊤-as-answer vs ⊤-as-ignorance). An import-less file the producer PARSED and
     /// found no outgoing references in genuinely has no dependencies — its closure is `{self}`
     /// and "affected iff my own file is touched" is a precise answer, not a gap. An import-less
     /// file that failed to read/parse is a gap: the producer never got to ask. Only the second
@@ -27638,7 +26457,7 @@ mod nfr_observation_roster_test {
     }
 }
 
-// ── Non-fold-residue census (DESIGN §6) ──────────────────────────────────────────────────────────
+// ── Non-fold-residue census (gunbc.design_argument::how_to_work) ──────────────────────────────────────────────────────────
 //
 // Closed-coproduct name set for the complexity-linearity audit and the leftover fallback-arm
 // census. The floor-scoped typed match walk is deleted with `run_required_floor`.
@@ -28124,7 +26943,7 @@ fn compute_inert_carrier_data(files: &[(String, String)]) -> InertCarrierData {
             continue;
         }
         // INTENDED SCOPE GATE, not an oversight. This lens answers ONE question --
-        // DESIGN §5 coverage-by-illusion: a carrier that a test makes look exercised
+        // gunbc.design_argument::fail_closed coverage-by-illusion: a carrier that a test makes look exercised
         // while no production code reads it. A carrier that is referenced by NOTHING,
         // test included, is a different class with a different remedy (delete it, or
         // write the missing test and let it land here), so it cannot share this
@@ -29524,7 +28343,7 @@ mod witness_layer_roots_compile_clean_tests {
     /// returns the gate to false while the three named rows stay exempt". I had run that
     /// by hand and reported it, which is not the same thing as it being enrolled: a manual
     /// run proves the behaviour once, on one tree, for as long as someone remembers doing
-    /// it. Under DESIGN §4b the discriminating RED stays enrolled as the evidence that the
+    /// it. Under gunbc.design_argument::guarantee_ladder the discriminating RED stays enrolled as the evidence that the
     /// exemption is still exactly as narrow as the row says — otherwise the roster could
     /// widen, or the predicate could stop matching on file, and nothing would notice.
     ///
@@ -30946,7 +29765,7 @@ pub fn shell_transport_operation_declaration(
 /// One row of the corpus's shell-transport operation census, derived from the
 /// declarations themselves. The witness corpus folds over these rows rather than a
 /// hand-authored roster, so a newly authored operation enrolls by existing and
-/// coverage is a corpus fact rather than a claim (DESIGN §3, §6).
+/// coverage is a corpus fact rather than a claim (gunbc.design_argument::single_authority, gunbc.design_argument::how_to_work).
 pub struct ShellTransportOperationCensusRow {
     pub path: String,
     pub service: String,
@@ -32313,13 +31132,13 @@ mod process_resolve_store_tests {
 
 #[cfg(test)]
 mod peel_alias_fixpoint_termination {
-    // Seed-retention receipt (DESIGN §7): the bounded wall-clock timeout,
+    // Seed-retention receipt (gunbc.design_argument::self_hosting): the bounded wall-clock timeout,
     // !Send fixture thread, and in-memory CompileResult RED harness are host
     // test orchestration, retained in cli_run.rs until ROADMAP row
     // `v1-test-migration` moves these witnesses into test data.
     // That row gates "Get hand-written Rust in this repository down to zero";
     // migrate/delete this module when its executing witness is data-driven.
-    // §4 boundedness witness for the peel_alias_once_for_field_access fixpoint
+    // gunbc.design_argument::closed_grounded_substrate boundedness witness for the peel_alias_once_for_field_access fixpoint
     // guard (04_infer.dag the peel_alias_fixpoint_guard_note annotation). Discriminating RED:
     // pre-guard, resolve returning the input node itself re-enters the recurse
     // arm forever (measured 3M+ iterations / 396M resolve calls on the #6640
@@ -32410,6 +31229,7 @@ mod peel_alias_fixpoint_termination {
                 symbol_index,
                 unit_variant_index: crate::v1_rt::rc_empty_map(),
                 unit_variant_index_observed: false,
+                equality_by_target: crate::v1_rt::rc_empty_map(),
             });
             // The pre-fix firing set: the old peel called this same resolver,
             // projected `.resolved`, and discarded these diagnostics. The fix
@@ -32575,7 +31395,7 @@ fn record_probe() -> Int {
 
 #[cfg(test)]
 mod sigs_env_flat_parents {
-    // §6 cost-shape witnesses for the flat sigs-env closure
+    // gunbc.design_argument::how_to_work cost-shape witnesses for the flat sigs-env closure
     // (04_sigs.dag the sigs_env_flat_parents_note annotation). The prior shape nested each
     // parent env recursively and lookup walked the shared import DAG as a
     // TREE with no visited state — probes multiplied per PATH (measured:
@@ -32792,7 +31612,7 @@ mod sigs_env_flat_parents {
 
 #[cfg(test)]
 mod compile_clean_loader_closure_fork_regression {
-    // Regression for the §3 closure-authority fork dissolved 2026-07-20: the
+    // Regression for the gunbc.design_argument::single_authority closure-authority fork dissolved 2026-07-20: the
     // compile-clean gate loader `load_compile_clean_entry_sources` ran ONLY
     // `extend_with_reference_closure` (module-path refs), while the witness loader
     // `load_sources_for_entry_with_pool` ran BOTH that and
@@ -32831,7 +31651,7 @@ mod exclusive_cost_partition_law {
     //! The law itself holds by construction, so the tests that matter are the ones that
     //! make it FAIL: each refusal arm has an input that reaches it, and a share is
     //! unquotable in every refused state. Without these the partition would be exactly
-    //! the "specification without execution" DESIGN §5 names — a type that looks
+    //! the "specification without execution" gunbc.design_argument::fail_closed names — a type that looks
     //! fail-closed and has never been shown to refuse anything.
 
     use super::*;
@@ -33131,7 +31951,7 @@ mod exclusive_cost_partition_law {
 
 #[cfg(test)]
 mod annotation_erased_scan_projection {
-    //! DESIGN §4c: a semantic pass reads the annotation-erased projection. The module-path
+    //! gunbc.design_argument::source_annotations: a semantic pass reads the annotation-erased projection. The module-path
     //! reader takes it from the parse, which routes annotations through their own lexical channel
     //! and reads string literals as data; these pin the discriminating direction -- a module path
     //! inside an annotation or a string must not become a reference, while the same path in
@@ -33668,7 +32488,7 @@ pub(crate) fn floor_discovery_source_inventory(
 /// 51 s explicit plus ~30 s of residue after `main` returned on merge-queue run 36339106604, and
 /// 23 s in that run's build lane. Nothing reads any of that memory after the verdict, and the
 /// kernel reclaims a process's pages at exit in one step, so walking the graphs to free them is
-/// work no consumer demands (DESIGN section 2).
+/// work no consumer demands (gunbc.design_argument::demand_before_materialization).
 ///
 /// WHAT MADE THIS WAIT, AND WHY IT NO LONGER HOLDS. The earlier revision declined to skip
 /// destructors because `v1_interpreter`'s `InterpContext` had a `Drop` that absorbed recompute
@@ -33703,7 +32523,7 @@ pub fn release_process_caches_at_exit() {
 ///
 /// Split out of [`prepare_repository_from_corpus`] rather than copied beside it because a consumer that
 /// wants to MEASURE the compiler's judgment over the required run's population must read the same
-/// population BY CONSTRUCTION, not by a second discovery that happens to agree today (DESIGN §3:
+/// population BY CONSTRUCTION, not by a second discovery that happens to agree today (gunbc.design_argument::single_authority:
 /// one authority for "which modules CI compiles"). Two discoveries that drift make a measurement
 /// silently narrow, and a narrowed subject is exactly what makes a small number look like a quiet
 /// corpus.
@@ -33769,7 +32589,7 @@ pub fn assemble_prepared_subject_closure(
 /// prepares the policy closure and then the gate closure, and both call sites pass IDENTICAL source
 /// roots, identical exclusions and the same entry index, differing only in their closure seeds.
 ///
-/// So this is DESIGN §2's authored duplication, and the repair is the one §2 names: several demands
+/// So this is gunbc.design_argument::demand_before_materialization's authored duplication, and the repair is the one gunbc.design_argument::demand_before_materialization names: several demands
 /// with a shared-state least common ancestor CARRY the first value rather than caching the second.
 /// The ancestor reads once and lends; there is no key, no invalidation rule and no provider, because
 /// none of those is what was missing -- the value simply was not carried.
@@ -33991,7 +32811,7 @@ pub fn assemble_prepared_subject_from_corpus(
         // `v2.workflow.floor_discovery_producer` (`discover_floor_rows_for_source`), the one
         // authority for discovery, sidecar placement and barren sidecars. A Rust scan used to
         // stand here and disagreed with that authority on
-        // placement — deleted, DESIGN §3.
+        // placement — deleted, gunbc.design_argument::single_authority.
         inventory.push(PreparedSourceView {
             module_path: module_path.clone(),
             source: sf.clone(),
@@ -34162,10 +32982,10 @@ pub fn prepare_repository_from_corpus(
 /// importer it will ever have (the prepared subject is closed and never re-resolved), and no
 /// reader of a `PreparedRepository` touches the cache: the claim scopes, the interpreter, the
 /// declarer index and discovery read `module`, `items`, `item_registry`, `type_env` and
-/// `func_env`. So every module's cache is kept past its demanded lifetime (DESIGN §2). Its SIZE is
+/// `func_env`. So every module's cache is kept past its demanded lifetime (gunbc.design_argument::demand_before_materialization). Its SIZE is
 /// small, because the maps are persistent HAMTs whose merge shares nodes; the leave-one-out reading
 /// (//gunbc/instruments:typed-graph-exclusive-bytes, `type_env_cache`) re-derives what it holds. It
-/// is fixed because it is a lifetime defect (DESIGN §6, bare minimum), not because it is the floor's
+/// is fixed because it is a lifetime defect (gunbc.design_argument::how_to_work, bare minimum), not because it is the floor's
 /// dominant term.
 ///
 /// So the repository holds a projection with the cache emptied. The resolve is a fresh compile
@@ -34389,7 +33209,7 @@ pub struct PreparedClaimScope {
     /// instead of from a materialized winner map. The cost is the scope's MODULE count, not its
     /// item count, and one scope is alive at a time -- `module_count` beside these fields is the
     /// producer for the former and `[floor-scope-cost]` prints the latter per run, so neither is
-    /// transcribed here (DESIGN section 6).
+    /// transcribed here (gunbc.design_argument::how_to_work).
     ///
     /// NOT a second authority for the order: this is the same `Vec` the fold used, moved rather
     /// than recomputed, so nothing can derive a different one.
@@ -35171,7 +33991,7 @@ fn claim_scope_for_with_memos(
     // THE WALL. Every row left in `ambiguous_reads` is a bare value reference reaching the shared
     // name slot with two transitively-reached declarations spelling it and nothing the author
     // wrote ranking them. Until now the slot settled it silently by scope precedence -- a
-    // resolution no source authorizes, which is §5's fabricated-plausible-output in the resolver
+    // resolution no source authorizes, which is gunbc.design_argument::fail_closed's fabricated-plausible-output in the resolver
     // rather than in an output. The line stops here instead, typed and located.
     //
     // KEYED ON THE SAME VALUE THE READ CENSUS USED TO PUBLISH, and that census is DELETED by this
@@ -35180,7 +34000,7 @@ fn claim_scope_for_with_memos(
     // the refusal and the count cannot drift apart" -- which this diff falsifies: the refusal
     // returns Err before a scope exists, the runner reaches `built` only through
     // `claim_scope_for(..)?`, so the read census could not agree with the refusal either. It could
-    // only print zero. DESIGN §4b(4) says a climb deletes the lower-rung PRODUCTION machinery it
+    // only print zero. gunbc.design_argument::guarantee_ladder (dissolution on climb) says a climb deletes the lower-rung PRODUCTION machinery it
     // obsoletes while the discriminating RED and positive control stay enrolled, so the per-site
     // read lines are gone and the fixture rows in
     // `dag/test/claim/bare_name_ambiguity_wall_witness.dag` remain.
@@ -35230,7 +34050,7 @@ fn claim_scope_for_with_memos(
     //     is the conservative direction -- a false REFUSAL, never a false pass -- and the
     //     next-rung trigger is a scope-wide arm index built after resolution.
     //   - PATHS OTHER THAN CLAIM-SCOPE CONSTRUCTION. This refuses where the census measures, so
-    //     the two cannot disagree. Per §4b(1) a class's rung is the MINIMUM across its in-scope
+    //     the two cannot disagree. Per gunbc.design_argument::guarantee_ladder (rung honesty) a class's rung is the MINIMUM across its in-scope
     //     paths: the honest report is mechanically-preventable on the claim-scope path, with
     //     extension to the general interpreter entry as the named next-rung trigger.
     if !ambiguous_reads.is_empty() {
@@ -35346,8 +34166,8 @@ const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 7] = [
     // `floor_enrolment_margin_budget_ms` / `floor_enrolment_typed_cost_debt_identities`.
     // in the policy module's own frame, because `v2.workflow.floor_enrolment_margin` IMPORTS
     // `v2.workflow.required_floor` for the ceiling it derives its margin from, and asking the
-    // policy module for it would require the import to run the other way -- a cycle, which DESIGN
-    // section 4 makes the import graph's one structural prohibition.
+    // policy module for it would require the import to run the other way -- a cycle, which
+    // gunbc.design_argument::closed_grounded_substrate makes the import graph's one structural prohibition.
     "v2.workflow.floor_enrolment_margin",
     // The terminal ledger's wire grammar (`render_terminal_ledger`, via `publish_terminal_ledger`).
     // Enrolled so the ledger renders in a frame of the ONE prepared subject rather than through a
@@ -35598,6 +34418,10 @@ pub use required_regen_host::{
 
 pub use required_regen_host::RegenAffectedSetOutcome;
 pub use required_regen_host::RegenRoundCostOutcome;
+pub use required_regen_host::{
+    run_checkpoint_subject, run_partition_move_explanation, CheckpointSubjectReceipt,
+    PartitionMoveExplanationReceipt,
+};
 
 /// The affected-set bound of the floor's diff range — see
 /// `required_regen_host::run_regen_affected_set` and `gunbc.regen_affected_set`.
@@ -35792,7 +34616,7 @@ mod reference_collector_binder_fixtures {
         // THE MUTATION IS APPLIED TO THE RESULT, NOT TO THE PRODUCTION PATH. Forcing the answer
         // here rather than behind a flag inside `collect_node_refs` keeps the shipped collector
         // free of a test-only mode — a toggle whose only effect is "classify differently" is the
-        // escape hatch DESIGN §5 forbids, and it would be reachable in production.
+        // escape hatch gunbc.design_argument::fail_closed forbids, and it would be reachable in production.
         let bare: std::collections::HashSet<String> = match policy {
             BinderPolicy::Real => bare,
             // Everything bound: no occurrence is ever an edge.
@@ -35987,134 +34811,9 @@ mod reference_collector_binder_fixtures {
 }
 
 #[cfg(test)]
-mod serve_unix_socket_door_tests {
-    use super::*;
-
-    fn temp_socket_path(tag: &str) -> String {
-        let dir =
-            std::env::temp_dir().join(format!("gunbc-serve-door-{}-{}", tag, std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        dir.join("door.sock").to_string_lossy().into_owned()
-    }
-
-    // The kernel names the connecting account, and it is THIS process's account -- the value the
-    // handler receives as peer_user, never anything the request carried.
-    #[test]
-    fn a_unix_door_attests_the_connecting_account() {
-        let path = temp_socket_path("peer");
-        let listener = serve_bind("127.0.0.1", 0, Some(&path)).expect("bind");
-        let client = std::thread::spawn({
-            let path = path.clone();
-            move || std::os::unix::net::UnixStream::connect(&path).expect("connect")
-        });
-        let (_conn, peer) = listener.accept().expect("accept");
-        let _ = client.join();
-        let uid = unsafe { libc::geteuid() };
-        let mut pwd: libc::passwd = unsafe { std::mem::zeroed() };
-        let mut buf = vec![0 as libc::c_char; 4096];
-        let mut result: *mut libc::passwd = std::ptr::null_mut();
-        unsafe { libc::getpwuid_r(uid, &mut pwd, buf.as_mut_ptr(), buf.len(), &mut result) };
-        assert!(!result.is_null(), "this process's own uid resolves");
-        let me = unsafe { std::ffi::CStr::from_ptr(pwd.pw_name) }
-            .to_string_lossy()
-            .into_owned();
-        assert_eq!(peer, me);
-        let bound = listener.bound_address().unwrap();
-        assert_eq!(bound.host, format!("unix:{}", path));
-    }
-
-    // A stale socket from a previous process is replaced; any other file at the path refuses and
-    // survives, so a mistyped --unix-socket never deletes data.
-    #[test]
-    fn a_unix_door_replaces_only_a_socket() {
-        let path = temp_socket_path("replace");
-        drop(serve_bind("127.0.0.1", 0, Some(&path)).expect("first bind"));
-        assert!(
-            serve_bind("127.0.0.1", 0, Some(&path)).is_ok(),
-            "a stale socket is replaced"
-        );
-        std::fs::remove_file(&path).unwrap();
-        std::fs::write(&path, b"data").unwrap();
-        assert!(serve_bind("127.0.0.1", 0, Some(&path)).is_err());
-        assert_eq!(std::fs::read(&path).unwrap(), b"data");
-    }
-
-    // A TCP handler that declares the five standard parameters is handed exactly those five --
-    // never peer_user, whose presence refused a handler that does not declare it (srv1 500, run
-    // 36584004074). The plan is the declaration, so there is no listener-conditioned push left to
-    // get wrong: declaring peer_user behind TCP refuses at startup, and behind the unix socket it
-    // is the last fact because it is the last declared parameter.
-    #[test]
-    fn a_tcp_handler_is_not_handed_peer_user() {
-        let declared =
-            |names: &[&str]| -> Vec<String> { names.iter().map(|n| n.to_string()).collect() };
-        let five = [
-            "method",
-            "path",
-            "body",
-            "tailscale_identity",
-            "release_revision",
-        ];
-        let tcp = serve_handler_fact_plan(&declared(&five), false).unwrap();
-        assert_eq!(
-            tcp.iter().map(|f| f.parameter_name()).collect::<Vec<_>>(),
-            five.to_vec()
-        );
-        let mut six = five.to_vec();
-        six.push("peer_user");
-        assert!(serve_handler_fact_plan(&declared(&six), false)
-            .unwrap_err()
-            .contains("attests a peer"));
-        let unix = serve_handler_fact_plan(&declared(&six), true).unwrap();
-        assert_eq!(unix.last(), Some(&ServeRequestFact::PeerUser));
-    }
-
-    // The plan follows the declaration in both directions: an entry declaring three parameters is
-    // handed three facts whatever the request carries, an entry declaring request_headers is
-    // handed the header list, and a declared name outside the vocabulary refuses rather than
-    // being left unbound. `cookie_header` is such a name: no fact is conditioned on one header.
-    #[test]
-    fn handler_facts_follow_the_declared_parameters() {
-        let declared =
-            |names: &[&str]| -> Vec<String> { names.iter().map(|n| n.to_string()).collect() };
-        assert_eq!(
-            serve_handler_fact_plan(&declared(&["method", "path", "body"]), false).unwrap(),
-            vec![
-                ServeRequestFact::Method,
-                ServeRequestFact::Path,
-                ServeRequestFact::Body
-            ]
-        );
-        assert_eq!(
-            serve_handler_fact_plan(&declared(&["request_headers"]), false).unwrap(),
-            vec![ServeRequestFact::RequestHeaders]
-        );
-        assert!(
-            serve_handler_fact_plan(&declared(&["cookie_header"]), false)
-                .unwrap_err()
-                .contains("names no request fact")
-        );
-    }
-
-    // A TCP listener attests nothing: its peer is empty, which the fabric door refuses to admit.
-    #[test]
-    fn a_tcp_listener_attests_no_peer() {
-        let listener = serve_bind("127.0.0.1", 0, None).expect("bind");
-        let port = listener.bound_address().unwrap().port;
-        let client = std::thread::spawn(move || {
-            std::net::TcpStream::connect(("127.0.0.1", port)).expect("connect")
-        });
-        let (_conn, peer) = listener.accept().expect("accept");
-        let _ = client.join();
-        assert_eq!(peer, "");
-    }
-}
-
-#[cfg(test)]
 mod reference_closure_single_parse_differential {
     //! REAL-POOL DIFFERENTIAL for `extend_with_reference_closure` reading the index's one parse
-    //! per file. The oracle is the retired walk, kept here only as an offline oracle (DESIGN §3):
+    //! per file. The oracle is the retired walk, kept here only as an offline oracle (gunbc.design_argument::single_authority):
     //! a fresh parse of every visited file against a name set rebuilt from the pool, followed to
     //! fixpoint with each referenced module's import closure. For every entry the floor's
     //! discovery route loads, the production closure must equal the oracle's at identity grain

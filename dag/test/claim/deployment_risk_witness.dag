@@ -3,8 +3,6 @@ module test.claim.deployment_risk_witness
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { NonEmptyStr, List, Bool }
 import std.optional { Present, Absent }
-import extdeps.ntfy.ntfy { NtfyTopic }
-import gunbc.auth.approval_ntfy_deployment { approval_ntfy_topic }
 import gunbc.auth.github_apps { gunbai_bot_declared, gunbai_ci_declared }
 import gunbc.deployment_risk {
   DeploymentId,
@@ -43,7 +41,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // ── The discriminating RED: a TestRisk deployment never reaches the prod attachments ────────────
 // THE REAL ROW AND THE REAL TABLE. The srv1 lab shares a host with the prod deployment and, before
-// this model, shared its ntfy topic and publication app. Through the model it derives TestRisk,
+// this model, shared its publication app. Through the model it derives TestRisk,
 // finds no TestRisk set, and REFUSES -- it does not receive the ProdRisk set that exists one row
 // away.
 test fn a_test_deployment_refuses_rather_than_resolving_the_prod_bindings() -> Bool {
@@ -66,7 +64,7 @@ test fn the_prod_role_holder_resolves_the_prod_topic_and_app() -> Bool {
     deployment: srv1_daily_workspace_deployment,
   ) {
     DeploymentBindingsResolved { deployment: _, class: _, bindings: b } =>
-      b.approval_ntfy_topic == approval_ntfy_topic && b.publication_app == gunbai_bot_declared
+      b.publication_app == gunbai_bot_declared
     _ => false
   }
 }
@@ -74,20 +72,18 @@ test fn the_prod_role_holder_resolves_the_prod_topic_and_app() -> Bool {
 // NO BORROWING EVEN WHEN A TEST SET EXISTS. A fixture table carrying both classes: the test
 // deployment gets ITS set's topic and app, and the prod one never leaks across. A resolver that
 // returned "the first set" or "the prod set" would fail one of the two conjuncts.
-data fx_test_topic: NtfyTopic = "gunbc-approvals-test" as NtfyTopic
-
 data fx_both_classes: DeploymentExternalBindingTable = DeploymentExternalBindingTable {
-  prod: Present { value: DeploymentExternalBindingSet { approval_ntfy_topic: approval_ntfy_topic, publication_app: gunbai_bot_declared } },
-  test: Present { value: DeploymentExternalBindingSet { approval_ntfy_topic: fx_test_topic, publication_app: gunbai_ci_declared } },
+  prod: Present { value: DeploymentExternalBindingSet { publication_app: gunbai_bot_declared } },
+  test: Present { value: DeploymentExternalBindingSet { publication_app: gunbai_ci_declared } },
 }
 
 test fn each_class_resolves_only_its_own_set() -> Bool {
   let test_side = match resolve_deployment_bindings(selection: prod_role_selection, table: fx_both_classes, deployment: srv1_lab_codex_feedback_deployment) {
-    DeploymentBindingsResolved { deployment: _, class: _, bindings: b } => b.approval_ntfy_topic == fx_test_topic && b.publication_app != gunbai_bot_declared
+    DeploymentBindingsResolved { deployment: _, class: _, bindings: b } => b.publication_app == gunbai_ci_declared
     _ => false
   }
   let prod_side = match resolve_deployment_bindings(selection: prod_role_selection, table: fx_both_classes, deployment: srv1_daily_workspace_deployment) {
-    DeploymentBindingsResolved { deployment: _, class: _, bindings: b } => b.approval_ntfy_topic == approval_ntfy_topic
+    DeploymentBindingsResolved { deployment: _, class: _, bindings: b } => b.publication_app == gunbai_bot_declared
     _ => false
   }
   test_side && prod_side

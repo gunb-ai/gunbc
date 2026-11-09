@@ -38,8 +38,8 @@ import v1.gunbc.occurrence_binding_parser_walk {
 // test.claim.type_reference_containment_binding_witness hand-builds its declarations with
 // `category: TypeOccurrence` -- exactly the shape production never emitted -- so the suite supplied
 // the missing side of the join itself. Those fixtures are correct about the authority's LOGIC and
-// nothing here weakens them; they were never SUFFICIENT, and nothing in the tree said so. DESIGN
-// section 5: a green suite that cannot see the production population is not weak evidence, it is
+// nothing here weakens them; they were never SUFFICIENT, and nothing in the tree said so.
+// gunbc.design_argument::fail_closed: a green suite that cannot see the production population is not weak evidence, it is
 // zero evidence, and it gets cited as coverage.
 //
 // THIS ASSERTION WAS UNWRITABLE UNTIL THE STAMPING LANDED, and that is the shape of the gap rather

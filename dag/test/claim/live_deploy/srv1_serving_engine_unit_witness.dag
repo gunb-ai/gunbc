@@ -1,0 +1,49 @@
+module test.claim.live_deploy.srv1_serving_engine_unit_witness
+
+import std.types { Bool, String }
+import extdeps.systemd.unit_file { serialize_systemd_unit_file }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
+import gunbc.live_deploy.srv1_serving_engine_unit {
+  srv1_serving_engine_unit_file, srv1_serving_engine_wrapper_path, srv1_serving_engine_hosted_on, srv1_serving_engine_retired_hand_units,
+}
+import gunbc.live_deploy.srv1_gpu_power_cap_unit { srv1_gpu_power_cap_unit_name }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn unit_text() -> String { serialize_systemd_unit_file(file: srv1_serving_engine_unit_file()) }
+
+// A boot oneshot after docker (and so after the board-function converge docker requires), as the service
+// user with its home, running the modeled wrapper -- and with no ExecStop, so neither stopping it nor
+// retiring it can take the running engine down.
+test fn the_engine_unit_starts_after_docker_and_has_no_stop() -> Bool {
+  let t = unit_text()
+  contains(t, "Requires=docker.service")
+    && contains(t, "After=docker.service")
+    && contains(t, "After=nvidia-cdi-refresh.service")
+    && contains(t, "Type=oneshot")
+    && contains(t, "RemainAfterExit=yes")
+    && contains(t, "User=briansrls")
+    && contains(t, "Environment=HOME=/home/briansrls")
+    && contains(t, concat("ExecStart=/bin/bash ", srv1_serving_engine_wrapper_path as String))
+    && contains(t, "TimeoutStartSec=300")
+    && !contains(t, "ExecStop")
+    && !contains(t, "Restart=")
+    && contains(t, "WantedBy=multi-user.target")
+}
+
+// The engine is srv1's only, and so is the hand unit it retires.
+test fn the_engine_is_hosted_on_srv1_only() -> Bool {
+  srv1_serving_engine_hosted_on(host: operator_host_srv1)
+    && !srv1_serving_engine_hosted_on(host: operator_host_srv2)
+    && all(srv1_serving_engine_retired_hand_units, r => (r.host as String) == (operator_host_srv1 as String) && (r.unit as String) == "srv1-lil-serve.service")
+}
+
+// THE ENGINE DEPENDS ON THE GPU POWER-CAP UNIT, not merely follows it: Requires= refuses its start when the
+// cap or its readback failed, After= orders it behind. Either alone is the rejected form (After= alone starts
+// the engine on a failed cap; Requires= alone races it).
+test fn the_engine_requires_and_follows_the_gpu_power_cap_unit() -> Bool {
+  let t = unit_text()
+  let cap = srv1_gpu_power_cap_unit_name as String
+  contains(t, concat("Requires=", cap)) && contains(t, concat("After=", cap))
+}

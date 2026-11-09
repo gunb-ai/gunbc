@@ -44,8 +44,8 @@ import gunbc.cloudflare.zone {
   cloudflare_apex_txt, cloudflare_apex_mx, fleet_gunb_ai_zone_standing,
   ZoneLiveButIdentityUnobserved, boot_origin_hostname_binding_verdict, BindingAwaitingZoneIdentity,
   BindingAwaitingDispatch, BindingNotServing,
-  credential_route_gap, record_list_gap, bind_dispatch_gap,
-  BootOriginBindEffectGap, CloudflareCredentialRouteMissing, CloudflareRecordListUnread, BindDispatchUnmodeled,
+  zone_route_gap, record_list_gap, bind_dispatch_gap,
+  BootOriginBindEffectGap, SelectedRouteUnrealized, CloudflareRecordListUnread, BindDispatchUnmodeled,
   boot_origin_bind_gap_names,
   boot_origin_fqdn_decision, BootOriginFqdnDecision, FqdnDecided, PendingFqdnRecommendation,
   BootOriginHostnameBindingVerdict, BindingAllocated,
@@ -53,6 +53,7 @@ import gunbc.cloudflare.zone {
   gunb_ai_delegated_nameservers, boot_origin_bind_readback, ReadbackNotTaken, ReadbackOf, boot_origin_nxdomain_answers,
   boot_origin_zone_admissibility, boot_origin_zone_hold_observation, copied_record_of_type,
 }
+import std.algebra { length }
 
 // THE PRODUCT'S OWN CALL SITE is claimed too (review 87180: a rule only tests call is not a rule the
 // product uses). Today there is no zone identity to put in front of the rule, so the module's answer is
@@ -122,7 +123,7 @@ fn zone_in(account: CloudflareAccountId, active: Bool, paused: Bool) -> Cloudfla
   }
 }
 
-// A HOLD IS NOT A FIELD OF THE ZONE (review 87475, DESIGN §3): the vendor publishes it on its own
+// A HOLD IS NOT A FIELD OF THE ZONE (review 87475, gunbc.design_argument::single_authority): the vendor publishes it on its own
 // endpoint, so the rule receives the hold as the OBSERVER'S Optional receipt. These three spellings —
 // held, not-held, never-read — are what a caller can bring, and the admissibility arms below prove each
 // one lands somewhere different. The zone type has no hold to fake, so there is nothing to default.
@@ -191,7 +192,7 @@ test fn a_hold_refusal_is_not_any_other_refusal() -> Bool {
 }
 
 // THE COPY IS JOINED TO THE OBSERVED SET BY RECORD KEY, not counted against a transcription of the tree
-// (review 38602; DESIGN section 5: "Completeness is an identity join, not a count equality"). Three
+// (review 38602; gunbc.design_argument::fail_closed: "Completeness is an identity join, not a count equality"). Three
 // things have to hold together: every copied key is an observed key (the copy invented nothing), every
 // observed key that is not copied is one of the registrar's own SOA/NS rows (nothing went missing), and
 // the un-copied rows are keyed by name/type/content so dropping an MX from the copy moves this test
@@ -317,7 +318,7 @@ test fn the_filter_excludes_exactly_the_registrar_rows() -> Bool {
 // a type that admits a proxy. If a proxied answer were ever allowed to stand in for the record list, this
 // is the count that would silently empty, which is exactly the failure this witness exists to make loud.
 test fn outstanding_set_is_the_proxied_nine() -> Bool {
-  list_length(items: unverified_copied_records()) == 9
+  length(xs: unverified_copied_records()) == 9
     && fold(
          unverified_copied_records(),
          init: true,
@@ -331,7 +332,7 @@ test fn outstanding_set_is_the_proxied_nine() -> Bool {
 test fn copy_stands_pending_with_its_nine_outstanding() -> Bool {
   match zone_record_copy_standing() {
     CopyPendingRecordList { outstanding, unproxied_contents_agree: agree } =>
-      list_length(items: outstanding) == 9 && agree
+      length(xs: outstanding) == 9 && agree
     _ => false
   }
 }
@@ -342,13 +343,13 @@ test fn copy_stands_pending_with_its_nine_outstanding() -> Bool {
 test fn zone_is_live_but_identity_unobserved() -> Bool {
   match fleet_gunb_ai_zone_standing() {
     ZoneLiveButIdentityUnobserved { nameservers, soa } =>
-      list_length(items: nameservers) == 2 && string_contains(s: soa, pattern: "alexandra.ns.cloudflare.com")
+      length(xs: nameservers) == 2 && string_contains(s: soa, pattern: "alexandra.ns.cloudflare.com")
     _ => false
   }
 }
 
 test fn delegated_nameservers_match_the_parent_reading() -> Bool {
-  list_length(items: gunb_ai_delegated_nameservers) == 2
+  length(xs: gunb_ai_delegated_nameservers) == 2
     && fold(
          gunb_ai_delegated_nameservers,
          init: 0,
@@ -438,12 +439,12 @@ test fn an_unread_bucket_account_refuses_for_its_own_reason() -> Bool {
 // (c) a gap that reports nothing is UNREPRESENTABLE (missing is std.algebra FreeSemigroup), so the
 //     runtime length check and its comment are deleted; what remains is the countable one.
 fn gap_reports(gap: BootOriginBindEffectGap) -> Int {
-  list_length(items: boot_origin_bind_gap_names(gap: gap))
+  length(xs: boot_origin_bind_gap_names(gap: gap))
 }
 
 test fn each_gap_constructor_lands_on_its_own_arm() -> Bool {
-  match credential_route_gap() {
-    CloudflareCredentialRouteMissing { missing: _, basis: _ } => gap_reports(gap: credential_route_gap()) == 2
+  match zone_route_gap() {
+    SelectedRouteUnrealized { missing: _, basis: _ } => gap_reports(gap: zone_route_gap()) == 3
     _ => false
   }
     && match record_list_gap() {
@@ -464,10 +465,10 @@ test fn the_verdict_reports_the_zone_standings_own_gap() -> Bool {
   match fleet_gunb_ai_zone_standing() {
     ZoneLiveButIdentityUnobserved { apex: _, nameservers: _, soa: _, gap, observed_at: _, basis: _ } =>
       match gap {
-        CloudflareCredentialRouteMissing { missing: _, basis: _ } => {
+        SelectedRouteUnrealized { missing: _, basis: _ } => {
           match boot_origin_hostname_binding_verdict() {
             BindingAwaitingZoneIdentity { gap: verdict_gap } => match verdict_gap {
-              CloudflareCredentialRouteMissing { missing: _, basis: _ } => gap_reports(gap: verdict_gap) == gap_reports(gap: gap)
+              SelectedRouteUnrealized { missing: _, basis: _ } => gap_reports(gap: verdict_gap) == gap_reports(gap: gap)
               _ => false
             }
             _ => false
@@ -523,7 +524,7 @@ test fn awaiting_dispatch_is_not_not_serving() -> Bool {
        }
 }
 
-// THE FQDN IS RECOMMENDED, NOT DECIDED (review 87595: a decision status in a String is §4c). The carrier
+// THE FQDN IS RECOMMENDED, NOT DECIDED (review 87595: a decision status in a String is gunbc.design_argument::source_annotations). The carrier
 // names the candidate, who recommended it and when; the Decided arm additionally REQUIRES an operator
 // citation, so nothing here can pre-fill the decision — and the hostname standing stays Unallocated until
 // a follow-up builds that arm.

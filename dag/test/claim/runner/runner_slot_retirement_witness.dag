@@ -1,7 +1,8 @@
 module test.claim.runner.runner_slot_retirement_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { NonEmptyStr, String, Int, List, list_length }
+import std.types { NonEmptyStr, String, Int, List }
+import std.algebra { length }
 import product.host_identity { HostIdentity }
 import gunbc.systemctl_show_read {
   systemctl_show_property_value_from_stdout,
@@ -25,7 +26,7 @@ import gunbc.runner.runner_slot_allocation {
   host_committed_identities_at,
 }
 import gunbc.runner.runner_host_deploy {
-  runner_host_deploy_of, RunnerHostDeployAdmitted, RunnerHostDeployWidthRefused, srv1_runner_host_spec,
+  runner_host_deploy_of, RunnerHostDeployAdmitted, RunnerHostDeployZeroWidthAdmitted, RunnerHostDeployWidthRefused, srv1_runner_host_spec,
 }
 import gunbc.runner.runner_slot_population_census { committed_unit_names_at }
 import gunbc.runner.runner_width_transition {
@@ -680,7 +681,7 @@ test fn the_actuator_authorizes_a_named_unit_and_masks_that_same_unit() -> Bool 
 // masked, inactive slot completed again with live work under it. The kernel's subtree answer is the
 // `populated` key of `cgroup.events` (extdeps.linux.cgroup_v2), and the decode now takes that reading.
 //
-// THE READINGS ARE SUPPLIED AT THE INTERFACE (DESIGN 3, witness rule): the decode is pure over the two
+// THE READINGS ARE SUPPLIED AT THE INTERFACE (gunbc.design_argument::single_authority, witness rule): the decode is pure over the two
 // HostOperationOutcomes, so each row constructs exactly the host state it discriminates instead of
 // re-executing the transport. The pairing obligation is discharged once, below, by
 // `the_live_observer_reaches_the_events_decoder`, which runs the real producer route hermetically.
@@ -881,7 +882,7 @@ test fn a_refused_directory_test_is_unobserved_rather_than_absent() -> Bool {
   }
 }
 
-// THE INHABITANCE CLAIM OVER THE REAL PRODUCER ROUTE (DESIGN 3, pairing obligation). Every row above
+// THE INHABITANCE CLAIM OVER THE REAL PRODUCER ROUTE (gunbc.design_argument::witness_one_interface, pairing obligation). Every row above
 // supplies its readings; this one runs `observe_slot_cgroup_occupancy` through the LocalShell
 // transport under the hermetic envelope, where ShowProperty answers a non-blank ControlGroup,
 // PathIsDirectory answers exists, and linux.CgroupV2.ReadEvents answers the kernel's documented
@@ -939,13 +940,13 @@ fn obligation_is_unresolved(host: HostIdentity) -> Bool {
 
 test fn srv4s_authorization_does_not_cover_srv1s_obligation() -> Bool {
   let required = known_obligation_of(host: operator_host_srv1)
-  list_length(items: required) > 0
+  length(xs: required) > 0
     && match transition_interruption_coverage(
       auth: srv4_transition_interruption_authorization,
       required: required,
     ) {
       TransitionRetireesNotPermitted { permitted: p, unpermitted: u } =>
-        list_length(items: u) == list_length(items: required) && list_length(items: p) == 0
+        length(xs: u) == length(xs: required) && length(xs: p) == 0
       TransitionFullyPermitted { units: _ } => false
     }
 }
@@ -955,12 +956,12 @@ test fn srv4s_authorization_does_not_cover_srv1s_obligation() -> Bool {
 // own scope is the fixture.
 test fn a_supplied_obligation_covered_by_its_grant_is_fully_permitted() -> Bool {
   let required = srv4_transition_interruption_authorization.scope
-  list_length(items: required) > 0
+  length(xs: required) > 0
     && match transition_interruption_coverage(
       auth: srv4_transition_interruption_authorization,
       required: required,
     ) {
-      TransitionFullyPermitted { units: p } => list_length(items: p) == list_length(items: required)
+      TransitionFullyPermitted { units: p } => length(xs: p) == length(xs: required)
       TransitionRetireesNotPermitted { permitted: _, unpermitted: _ } => false
     }
 }
@@ -969,7 +970,7 @@ test fn a_supplied_obligation_covered_by_its_grant_is_fully_permitted() -> Bool 
 // length==0 row cannot admit coverage; the positive control is the supplied fixture above.
 test fn srv1s_declared_grant_does_not_cover_the_width_7_retirees() -> Bool {
   let required = known_obligation_of(host: operator_host_srv1)
-  list_length(items: required) > 0
+  length(xs: required) > 0
     && match interruption_authorization_for_host(host: operator_host_srv1) {
       HostInterruptionAuthorizationAbsent { host: _, cause: _ } => false
       HostInterruptionAuthorizationPresent { authorization: auth } =>
@@ -1039,7 +1040,7 @@ test fn srv1_admission_with_complete_readback_for_07_through_12_is_present() -> 
       ) {
         SlotRetirementEvidenceAbsent { cause: _ } => false
         SlotRetirementEvidencePresent { authorization: _, standings: ss } =>
-          list_length(items: ss) == 6
+          length(xs: ss) == 6
       }
   }
 }
@@ -1087,7 +1088,7 @@ test fn the_obligation_is_unchanged_by_what_the_census_can_see() -> Bool {
       standings: [],
     ),
   ) {
-    CapRaiseBlockedIncompleteEvidence { missing: m } => list_length(items: m) == list_length(items: required)
+    CapRaiseBlockedIncompleteEvidence { missing: m } => length(xs: m) == length(xs: required)
     CapRaiseAdmitted => false
     CapRaiseBlockedPendingRetirement { still_present: _ } => false
     CapRaiseBlockedUnobserved { cause: _ } => false
@@ -1104,7 +1105,7 @@ test fn a_host_with_no_open_transition_has_no_obligation() -> Bool {
   match host_width_transition_standing(host: operator_host_srv2) {
     HostHasNoOpenTransition { host: _ } =>
       match required_retirees_for_host(host: operator_host_srv2) {
-        RetireesKnown { units: units } => list_length(items: units) == 0
+        RetireesKnown { units: units } => length(xs: units) == 0
         RetireesUnresolved { host: _, cause: _ } => false
       }
     HostTransitionOpen { transition: _, required: _ } => false
@@ -1118,14 +1119,14 @@ test fn a_host_with_no_open_transition_has_no_obligation() -> Bool {
 test fn an_open_transition_derives_the_prior_minus_target_obligation() -> Bool {
   match required_retirees_for_host(host: operator_host_srv1) {
     RetireesKnown { units: units } =>
-      list_length(items: units) == 46
+      length(xs: units) == 46
         && any(units, u => (u as String) == "actions-runner@srv1-50.service")
         && !any(units, u => (u as String) == "actions-runner@srv1-01.service")
     RetireesUnresolved { host: _, cause: _ } => false
   }
 }
 
-// WHY THE UNRESOLVED ARM HAS NO EXECUTED RED HERE, STATED RATHER THAN IMPLIED (DESIGN 4b: ask
+// WHY THE UNRESOLVED ARM HAS NO EXECUTED RED HERE, STATED RATHER THAN IMPLIED (gunbc.design_argument::guarantee_ladder: ask
 // whether the red is authorable before writing the check). `RetireesUnresolved` is produced by
 // `transition_required_retirees` whenever a transition's host has no derivable committed width, and
 // no such state exists in the corpus today: the three transition rows name srv1, srv3 and srv4,
@@ -1176,7 +1177,7 @@ test fn a_derived_target_width_yields_the_prior_minus_target_obligation() -> Boo
     Present { value: t } =>
       match transition_required_retirees_at(t: t, target_width: RunnerWidthDerived { slots: 19 }) {
         RetireesKnown { units: units } =>
-          list_length(items: units) == 2
+          length(xs: units) == 2
             && any(units, u => string_contains(s: u as String, pattern: "srv4-20"))
             && any(units, u => string_contains(s: u as String, pattern: "srv4-21"))
             && !any(units, u => string_contains(s: u as String, pattern: "srv4-19"))
@@ -1193,7 +1194,7 @@ test fn the_obligation_excludes_a_committed_member_above_the_fleet_range() -> Bo
     Present { value: t } =>
       match transition_required_retirees_at(t: t, target_width: RunnerWidthDerived { slots: 7 }) {
         RetireesKnown { units: units } =>
-          list_length(items: units) == 43
+          length(xs: units) == 43
             && any(units, u => (u as String) == "actions-runner@srv1-07.service")
             && any(units, u => (u as String) == "actions-runner@srv1-12.service")
             && any(units, u => (u as String) == "actions-runner@srv1-50.service")
@@ -1213,9 +1214,10 @@ test fn srv1_at_committed_width_3_desires_two_fleet_plus_shakedown() -> Bool {
       w == 4
         && match runner_host_deploy_of(host: operator_host_srv1, spec: srv1_runner_host_spec) {
           RunnerHostDeployWidthRefused { spec: _, host: _, cause: _ } => false
+          RunnerHostDeployZeroWidthAdmitted { spec: _ } => false
           RunnerHostDeployAdmitted { deploy: d } =>
             d.runner_count == 4
-              && list_length(items: host_committed_identities_at(host: operator_host_srv1, committed: d.runner_count)) == 4
+              && length(xs: host_committed_identities_at(host: operator_host_srv1, committed: d.runner_count)) == 4
               && any(committed_unit_names_at(host: operator_host_srv1, committed: d.runner_count), u => u == "actions-runner@srv1-01.service")
               && any(committed_unit_names_at(host: operator_host_srv1, committed: d.runner_count), u => u == "actions-runner@srv1-02.service")
               && any(committed_unit_names_at(host: operator_host_srv1, committed: d.runner_count), u => u == "actions-runner@srv1-13.service")
@@ -1229,7 +1231,7 @@ test fn srv1_at_width_3_owes_the_open_fifty_twelve_seven_and_five_deltas() -> Bo
   match required_retirees_for_host(host: operator_host_srv1) {
     RetireesUnresolved { host: _, cause: _ } => false
     RetireesKnown { units: units } =>
-      list_length(items: units) == 46
+      length(xs: units) == 46
         && any(units, u => (u as String) == "actions-runner@srv1-03.service")
         && any(units, u => (u as String) == "actions-runner@srv1-04.service")
         && any(units, u => (u as String) == "actions-runner@srv1-05.service")
@@ -1246,7 +1248,7 @@ test fn srv1_at_width_3_owes_the_open_fifty_twelve_seven_and_five_deltas() -> Bo
 
 test fn srv1_keeps_the_open_fifty_row_and_the_twelve_seven_and_five_cuts() -> Bool {
   let rows = transition_row_for_host(host: operator_host_srv1)
-  list_length(items: rows) == 4
+  length(xs: rows) == 4
     && any(rows, t => (t.transition_id as String) == "runner-slot-26-25-gib" && t.prior_width == 50)
     && any(rows, t => (t.transition_id as String) == "runner-slot-width-12-7" && t.prior_width == 12)
     && any(rows, t => (t.transition_id as String) == "runner-slot-width-7-5" && t.prior_width == 7)
@@ -1259,7 +1261,7 @@ test fn a_host_at_its_current_width_owes_no_retirees() -> Bool {
     Present { value: t } =>
       match transition_required_retirees_at(t: t, target_width: RunnerWidthDerived { slots: t.prior_width }) {
         RetireesUnresolved { host: _, cause: _ } => false
-        RetireesKnown { units: units } => list_length(items: units) == 0
+        RetireesKnown { units: units } => length(xs: units) == 0
       }
   }
 }
@@ -1269,7 +1271,7 @@ test fn a_host_at_its_current_width_owes_no_retirees() -> Bool {
 // production read yields the same derived obligation the decision produces for that width.
 test fn the_production_wrapper_reaches_the_supplied_decision() -> Bool {
   match required_retirees_for_host(host: operator_host_srv1) {
-    RetireesKnown { units: units } => list_length(items: units) == 46
+    RetireesKnown { units: units } => length(xs: units) == 46
     RetireesUnresolved { host: _, cause: _ } => false
   }
 }
@@ -1281,7 +1283,7 @@ test fn a_surplus_outside_the_manifest_is_reported_rather_than_absorbed() -> Boo
     host: operator_host_srv4,
     observed_surplus: ["actions-runner@srv4-31.service" as NonEmptyStr],
   ) {
-    TransitionPopulationDisagrees { unexpected: u } => list_length(items: u) == 1
+    TransitionPopulationDisagrees { unexpected: u } => length(xs: u) == 1
     TransitionPopulationAgrees => false
     TransitionPopulationUndecidable { host: _, cause: _ } => false
   }
@@ -1295,7 +1297,7 @@ test fn a_surplus_outside_the_manifest_is_reported_rather_than_absorbed() -> Boo
 // 18..21, so slot 13 is now OUTSIDE it and the row asserted agreement against a decision that
 // correctly disagrees. Reading the first member of the live obligation keeps the specimen inside
 // the manifest at any width -- and if the obligation ever stops resolving there is no member to
-// read and the row fails rather than quietly passing (DESIGN 6: name the instrument, never
+// read and the row fails rather than quietly passing (gunbc.design_argument::how_to_work: name the instrument, never
 // transcribe its output).
 //
 // PERMISSION AND OBLIGATION STAY DIFFERENT FACTS. srv1's recorded interruption authorization still
@@ -1310,7 +1312,7 @@ test fn a_surplus_outside_the_manifest_is_reported_rather_than_absorbed() -> Boo
 // read of required_retirees_for_host. When no open transition owes a retiree there is no
 // inhabitant, and the row fails rather than passing vacuously.
 test fn a_surplus_inside_the_manifest_agrees() -> Bool {
-  match slot_width_transition_26_25 |> filter(t => list_length(known_obligation_of(host: t.host)) > 0) |> first() {
+  match slot_width_transition_26_25 |> filter(t => length(known_obligation_of(host: t.host)) > 0) |> first() {
     Absent => false
     Present { value: open } =>
       match known_obligation_of(host: open.host).first() {
@@ -1380,7 +1382,7 @@ test fn a_fabric_slot_outside_the_authored_scope_is_not_permitted() -> Bool {
         auth: auth,
         required: ["actions-runner@srv3-09.service" as NonEmptyStr],
       ) {
-        TransitionRetireesNotPermitted { permitted: _, unpermitted: u } => list_length(items: u) == 1
+        TransitionRetireesNotPermitted { permitted: _, unpermitted: u } => length(xs: u) == 1
         TransitionFullyPermitted { units: _ } => false
       }
   }
@@ -1396,12 +1398,12 @@ test fn the_four_authored_fabric_units_are_permitted() -> Bool {
         auth: auth,
         required: ["actions-runner@srv3-06.service" as NonEmptyStr, "actions-runner@srv3-07.service" as NonEmptyStr],
       ) {
-        TransitionFullyPermitted { units: u } => list_length(items: u) == 2
+        TransitionFullyPermitted { units: u } => length(xs: u) == 2
         TransitionRetireesNotPermitted { permitted: _, unpermitted: _ } => false
       }
   }
 }
 
 test fn the_authored_fabric_scope_names_exactly_four_units() -> Bool {
-  list_length(items: fabric_purpose_interruption_scope) == 4
+  length(xs: fabric_purpose_interruption_scope) == 4
 }

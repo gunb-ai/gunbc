@@ -903,11 +903,21 @@ fn optional_absent(ctx: &InterpContext) -> Value {
     }
 }
 
+/// A record field the checker declares `T?` (CardOptional) holds the declared Optional<T>:
+/// Null (the host's "no value") becomes Absent and a bare value Present, through the one
+/// constructors. An already-built Optional variant is kept. A non-optional field is untouched.
+fn declared_optional_field(child: &Rc<Node>, value: Value, ctx: &InterpContext) -> Value {
+    if child.return_cardinality != Cardinality::CardOptional {
+        return value;
+    }
+    declared_optional_field_value(value, ctx)
+}
+
 /// Whether a `raw_map_lookup` result already carries the `Optional<V>` contract (a
 /// `.dag`-authored `Map.lookup` closure returns `Optional<V>` by construction) or is a bare
 /// storage read still needing the wrap (native `Value::Map`/field storage, miss = `Value::Null`).
 /// Decided by call site, not value shape, so a stored `V = Optional<T>` payload is never
-/// mistaken for an already-wrapped result (DESIGN §5: construction, not validation).
+/// mistaken for an already-wrapped result (gunbc.design_argument::fail_closed: construction, not validation).
 enum RawMapLookup {
     AlreadyOptional(Value),
     NeedsWrap(Value),
@@ -922,9 +932,10 @@ fn map_lookup_as_optional(raw: RawMapLookup, ctx: &InterpContext) -> Value {
 }
 
 impl RawMapLookup {
-    /// Bare-value callers (field access, `[]` indexing, the raw `lookup`/`get`
-    /// builtins) don't observe the `Optional` contract at all — they want
-    /// exactly what was found, miss-as-`Null` included.
+    /// Exactly two callers, both where the checker's declared type is the map's
+    /// value type and NOT `Optional<V>`: `extract_field` on a `Value::Map`
+    /// (field access) and the `[]` index arm. Every `.get`/`lookup` arm the
+    /// checker types `Optional<V>` goes through `map_lookup_as_optional`.
     fn into_raw(self) -> Value {
         match self {
             RawMapLookup::AlreadyOptional(v) | RawMapLookup::NeedsWrap(v) => v,
@@ -1339,6 +1350,32 @@ fn detach_owned_children(value: &mut Value, pending: &mut Vec<Value>, detach_car
     }
 }
 
+// A PLANNED `==` IS ONE CALL of the declared function the checker named for it (the ExprBinOp's
+// `derived`): the operand type's synthesized derived equality, or the routed function itself
+// (v1.compiler.infer equality_derived_target). Every per-member decision lives in that declaration's
+// ordinary body, which this interpreter runs like any other function.
+fn derived_equality_call(
+    ctx: &InterpContext,
+    function: &crate::std_decl_ref::DeclarationRef,
+    a: &Value,
+    b: &Value,
+) -> InterpResult<bool> {
+    let qualified = format!("{}.{}", function.module_path, function.decl_name);
+    let fn_node = ctx
+        .lookup_fn(&qualified)
+        .cloned()
+        .ok_or_else(|| InterpError::TypeError {
+            msg: format!("derived equality '{qualified}' is not declared in this frame"),
+        })?;
+    let env = Env::empty();
+    match call_function(ctx, &fn_node, &[(None, a.clone()), (None, b.clone())], &env)? {
+        Value::Bool(v) => Ok(v),
+        other => Err(InterpError::TypeError {
+            msg: format!("derived equality '{qualified}' returned a non-Bool ({other:?})"),
+        }),
+    }
+}
+
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
         value_depth_guarded(|| {
@@ -1394,6 +1431,54 @@ impl PartialEq for Value {
 pub struct Env {
     bindings: HashMap<Symbol, Value>,
     parent: Option<Rc<Env>>,
+}
+
+/// An Env chain is as deep as the data that built it (each frame's parent, and every closure a
+/// binding holds, owns another Env), so the derived drop recursed one host frame per level and
+/// aborted the process on a deep chain. The outermost Env drop drains iteratively: contents of any
+/// Env released while it runs are queued on `ENV_DROP_QUEUE` rather than dropped in place.
+/// Class: gunbc.recurring_failure_mode recursion_over_value_depth_uncounted_by_the_call_limit.
+type EnvContents = (HashMap<Symbol, Value>, Option<Rc<Env>>);
+
+thread_local! {
+    static ENV_DROP_DRAINING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static ENV_DROP_QUEUE: std::cell::RefCell<Vec<EnvContents>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+impl Drop for Env {
+    fn drop(&mut self) {
+        if self.bindings.is_empty() && self.parent.is_none() {
+            return;
+        }
+        let contents: EnvContents = (std::mem::take(&mut self.bindings), self.parent.take());
+        if ENV_DROP_DRAINING.try_with(Cell::get).unwrap_or(true) {
+            if ENV_DROP_QUEUE
+                .try_with(|q| q.borrow_mut().push(contents))
+                .is_err()
+            {
+                // thread teardown: no queue to defer to
+            }
+            return;
+        }
+        let _ = ENV_DROP_DRAINING.try_with(|d| d.set(true));
+        let mut next = Some(contents);
+        while let Some((bindings, parent)) = next.take() {
+            if let Some(parent) = parent {
+                if let Ok(mut owned) = Rc::try_unwrap(parent) {
+                    let inner: EnvContents =
+                        (std::mem::take(&mut owned.bindings), owned.parent.take());
+                    let _ = ENV_DROP_QUEUE.try_with(|q| q.borrow_mut().push(inner));
+                }
+            }
+            drop(bindings);
+            next = ENV_DROP_QUEUE
+                .try_with(|q| q.borrow_mut().pop())
+                .ok()
+                .flatten();
+        }
+        let _ = ENV_DROP_DRAINING.try_with(|d| d.set(false));
+    }
 }
 
 impl Env {
@@ -1464,6 +1549,14 @@ pub enum InterpError {
     TypeError {
         msg: String,
     },
+    /// The interpreted call chain reached `CALL_DEPTH_LIMIT`. Its own variant, not a `TypeError`
+    /// string: the count is the refusal's whole content, and a sentence cannot be told apart from
+    /// any other type error by a caller or a witness classifier. `at` names the fn, or the closure
+    /// application, whose frame crossed the limit.
+    CallDepthExceeded {
+        limit: u32,
+        at: String,
+    },
     CrossRepresentationEquality {
         detail: String,
     },
@@ -1511,7 +1604,7 @@ pub enum InterpError {
     DivisionByZero,
     /// A native `Int` binop's true result does not fit `i64` (`std/integer.dag`'s
     /// `Compose<Int, MachineWidth<64>>` row). Wrapping would answer a different number — the
-    /// fabricated-plausible-output failure DESIGN section 5 forbids, the same class
+    /// fabricated-plausible-output failure gunbc.design_argument::fail_closed forbids, the same class
     /// `DivisionByZero` refuses above.
     IntegerOverflow {
         op: &'static str,
@@ -1542,7 +1635,7 @@ pub enum InterpError {
     ///
     /// Without a neutral result, a served HTTP request (not a witness) raising `EvalBudgetExceeded`
     /// would carry the fast-lane witness ruling and its "relocating the file does not discharge
-    /// it" guidance into an HTTP 5xx body — the DESIGN §3 nickname failure applied to a diagnostic
+    /// it" guidance into an HTTP 5xx body — the gunbc.design_argument::single_authority nickname failure applied to a diagnostic
     /// (operator review 2026-08-09). `entry` names which evaluation crossed; `clock` which bound
     /// fired (CPU vs wall is spin vs stall, different remedies); `elapsed_nanos` is nanoseconds,
     /// not floored milliseconds, per `std.measure`'s `nanosecond_millisecond_projection_note`: a
@@ -1636,7 +1729,7 @@ pub enum InterpError {
     /// Application-site contract mismatch between the caller's argument list and the callee's
     /// parameters. Typed and located (callee + offending label) so the line stops here rather
     /// than later as `NoSuchVariable` for an unbound parameter — or never, when mismatched names
-    /// overlap. DESIGN §5: a failure arm refuses, never widens.
+    /// overlap. gunbc.design_argument::fail_closed: a failure arm refuses, never widens.
     CallContractMismatch {
         callee: String,
         detail: String,
@@ -1646,7 +1739,7 @@ pub enum InterpError {
     ///
     /// Its own variant for the reason `TimedOut`/`HostToolUnresolved` are at the witness
     /// boundary: a route fact recovered by substring-matching prose is one fact in two
-    /// representations (DESIGN §2/§3). Previously the three refusal sites below all produced
+    /// representations (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority). Previously the three refusal sites below all produced
     /// `TypeError { msg: "hermetic mode: …" }`, so telling "ASSERTED false" from "never given a
     /// runnable route" meant matching the sentence or conflating them; the required floor
     /// conflated them by not executing the population at all.
@@ -1696,7 +1789,7 @@ pub enum EffectRefusalGround {
     /// states its own remedy rather than sending the reader to look for it.
     UnpublishedMockCase { published_cases: Vec<String> },
     /// The operation node carries no `mock_response` property, so the hermetic arm would
-    /// have to fabricate a Unit — the fabricated-plausible-output failure DESIGN §5 forbids.
+    /// have to fabricate a Unit — the fabricated-plausible-output failure gunbc.design_argument::fail_closed forbids.
     NoMockResponse,
     /// A filesystem REMOVAL. Distinct from the two above because there is no mock arm to
     /// author: the operation's whole content is the effect, so only a wet route can run it.
@@ -1785,6 +1878,11 @@ impl fmt::Display for InterpError {
                     elapsed_ms, budget_ms
                 )
             }
+            InterpError::CallDepthExceeded { limit, at } => write!(
+                f,
+                "call depth exceeded {} at {} -- the interpreted call chain did not terminate within the limit (a divergent chain, or a host seam whose realization this binary lacks); refused, never a host stack overflow",
+                limit, at
+            ),
             InterpError::CrossRepresentationEquality { detail } => {
                 write!(f, "cross-representation equality: {}", detail)
             }
@@ -1845,7 +1943,7 @@ impl fmt::Display for InterpError {
                 argv0,
             } => write!(
                 f,
-                "argv exceeds host arg limit: '{}' invocation carries a {}-byte argument > {}-byte host MAX_ARG_STRLEN — route large payloads through stdin, not argv (Linux execve(2) E2BIG; extdeps.exec.exec_arg_limit.host_exec_arg_max_strlen; DESIGN §5 typed refusal in place of an opaque os error 7)",
+                "argv exceeds host arg limit: '{}' invocation carries a {}-byte argument > {}-byte host MAX_ARG_STRLEN — route large payloads through stdin, not argv (Linux execve(2) E2BIG; extdeps.exec.exec_arg_limit.host_exec_arg_max_strlen; gunbc.design_argument::fail_closed typed refusal in place of an opaque os error 7)",
                 argv0, actual_bytes, limit_bytes
             ),
             InterpError::ModeledOperationRefused { operation, cause } => write!(
@@ -1913,7 +2011,7 @@ impl fmt::Display for InterpError {
 }
 
 /// Three-way auth resolution: splits the conflated `Option<String>` into named states so the
-/// dispatch site cannot reach the send path with auth declared but no token (§5 construction).
+/// dispatch site cannot reach the send path with auth declared but no token (gunbc.design_argument::fail_closed construction).
 #[derive(Debug, Clone)]
 pub enum AuthResolution {
     /// The service declares no auth; unauthenticated send is correct.
@@ -1946,7 +2044,7 @@ struct PureCallMemo {
 /// for total publication, structural collision verification, byte accounting, and exclusion of
 /// origin-bound closures/functions.
 ///
-/// The fix is the boundary translation the Realization pattern (DESIGN.md §4) already
+/// The fix is the boundary translation the Realization pattern (gunbc.design_argument::closed_grounded_substrate) already
 /// prescribes: reify to `PortableValue` at store time while the producing ctx is still alive.
 /// Process-canonical `Symbol`s are themselves frame-independent, so the portable shape carries
 /// them directly and a served value does not walk a second global-interner path. `Closure`/`Fn`
@@ -1979,7 +2077,7 @@ enum PortableValue {
 /// comparator serves every caller: map rendering (`Display`/`Debug` of `Value::Map`), the
 /// portable encoding's map-entry order (`portable_value_from_ctx_at`), and the emitted-agreeing
 /// sorts (`sorted_map_keys`, `sort_by`, through `admit_emitted_ord_keys`). A
-/// second comparator beside it would be a second order (DESIGN section 3), so both carriers
+/// second comparator beside it would be a second order (gunbc.design_argument::single_authority), so both carriers
 /// (`Value`, `PortableValue`) expose a borrowed `ContentView` and nothing else.
 ///
 /// * Kind rank is `ContentKind`'s DECLARATION order (derived `Ord`), which is
@@ -3312,7 +3410,7 @@ fn try_cross_claim_pure_memo(
     let probes = cross_claim_arg_probes(ctx, args)?;
     // A SERVE IS AN `Rc` CLONE. There is no per-frame reconstruction left to amortize, so the
     // per-context hit cache this path used to maintain is gone with the walk it existed to
-    // avoid — the DESIGN section 4b(4) dissolution: a climb deletes the lower-rung production
+    // avoid — the gunbc.design_argument::guarantee_ladder (dissolution on climb) dissolution: a climb deletes the lower-rung production
     // machinery it obsoletes.
     let mut fallback: Vec<Option<PortableValue>> = vec![None; args.len()];
     let mut reifies = 0u64;
@@ -3365,14 +3463,14 @@ pub enum CrossClaimStoreOutcome {
     /// non-servable outcome decorated a byte-budget or entry-cap refusal with a stale path/kind
     /// from an earlier producer (only this arm writes the slot, nothing clears it) — one cause
     /// carrying another's evidence, the fabrication this type removes. Binding the detail to
-    /// its arm makes the mismatch UNCONSTRUCTIBLE, not guarded (DESIGN section 5).
+    /// its arm makes the mismatch UNCONSTRUCTIBLE, not guarded (gunbc.design_argument::fail_closed).
     RefusedValueNotPortable(ServeCacheValueNotPortable),
     /// The key population is at `CROSS_CLAIM_PURE_MEMO_ENTRY_CAP`.
     RefusedEntryCap,
     /// Landing the entry would push retention past `CROSS_CLAIM_PURE_MEMO_BYTE_BUDGET`.
     RefusedByteBudget,
     /// A derived share's fill performed fewer evaluator steps than the declared cost floor, so the
-    /// value is recomputed rather than retained (DESIGN section 2's economic realization).
+    /// value is recomputed rather than retained (gunbc.design_argument::demand_before_materialization's economic realization).
     RefusedBelowCostFloor,
 }
 
@@ -3686,7 +3784,7 @@ thread_local! {
     /// Whether ANY prepared input is installed on this thread. `eval_call` consults the carry on
     /// every nullary call, and a `RefCell` borrow plus a hash lookup per call is a cost-shape
     /// defect on the interpreter's hottest path when the usual answer is "none installed" —
-    /// DESIGN section 6's bare-minimum-cost rule, which is not priced per site. A `Cell<bool>`
+    /// gunbc.design_argument::how_to_work's bare-minimum-cost rule, which is not priced per site. A `Cell<bool>`
     /// read answers the common case without touching the map, and is set only where the map is.
     static CROSS_CLAIM_PREPARED_INPUT_PRESENT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     /// PRODUCER fn node -> the carried input its value depends on, for rows whose producer
@@ -4205,7 +4303,7 @@ mod cross_claim_demand_census_tests {
 // module path?" with a linear scan over `ctx.modules` that re-sliced each module's authored name
 // out of its source span. `decl_facts` asks it once per DataItem row, so one whole-corpus
 // declaration inventory cost declarations x modules source-text slices -- a cost shape, not a
-// large constant, and DESIGN section 6 fixes those regardless of the realized n.
+// large constant, and gunbc.design_argument::how_to_work fixes those regardless of the realized n.
 //
 // A test that merely asserts the lookup ANSWERS is not a red for that: the scan answered too.
 // What separates an index from a scan is that the corpus is walked ONCE however many times it is
@@ -4384,6 +4482,51 @@ mod cross_claim_memo_tests {
             super::run_in_context(&ctx, name, false).expect(name)
         };
         assert_eq!(eval("left_none"), eval("right_none"));
+    }
+
+    // INTERPRETER-LAYER fail-closed control for the claim-run route defect (gunbc.design_argument::fail_closed). A claim run is
+    // executed in Hermetic mode — the mode is chosen by the ONE shared authority
+    // `cli_run::execution_mode_for` (a claim ⇒ Hermetic), which the `run` verb and `claim_batch` both
+    // call; this unit test pins the interpreter half of that guarantee (Hermetic ⇒ refuses an unbound
+    // mock), while `main.rs::claim_run_mode_tests` pins the route half (the claim route selects Hermetic
+    // AND discriminates Wet). This is the INTERPRETER layer, so it drives `InterpContext::new(.., Hermetic)`
+    // directly; the route-driven test in main.rs is what exercises the mode the route actually selects.
+    // This fixture declares a shell effect
+    // with NO `mock_response` (no mock bound on the entry route). Under Hermetic it must refuse typed
+    // (`no mock_response ... refusing`) via `eval_mock_response`, and NEVER reach `dispatch_shell` --
+    // so nothing is spawned against the host. Before the fix, `gunbc run --claim-run` ran this entry
+    // in WET mode and dispatched the real effect (the mocked journalctl ran live against srv1's
+    // journal). Host-free by construction: the refusal short-circuits before any transport.
+    #[test]
+    fn hermetic_claim_route_refuses_an_unbound_mocked_effect_without_dispatching() {
+        use crate::v1_compiler_compile::SourceFile;
+        let result = crate::v1_compiler_compile::compile_to_resolved(Rc::new(im_vec![
+            Rc::new(SourceFile {
+                path: "fixture/claim_run_route.dag".to_string(),
+                content: "module fixture.claim_run_route\n\nservice fixture.ClaimRoute {\n  operation UnboundEffect {\n    output { success: Bool from \"exit_success\" }\n    transport shell { argv: [\"true\"] }\n  }\n}\n\nfn witness() -> Bool {\n  let r = fixture.ClaimRoute.UnboundEffect()\n  r.success\n}\n"
+                    .to_string(),
+            }),
+        ]));
+        let graph = result.graph.as_ref().expect("fixture graph");
+        let ctx = InterpContext::new(
+            graph,
+            result.source_indices.clone(),
+            ExecutionMode::Hermetic,
+        );
+        match super::run_in_context(&ctx, "witness", false) {
+            Err(e) => {
+                let msg = format!("{e}");
+                assert!(
+                    msg.contains("no mock_response"),
+                    "claim route must refuse the unbound mocked effect with the typed NoMockResponse \
+                     refusal; got instead: {msg}"
+                );
+            }
+            Ok(v) => panic!(
+                "the hermetic claim route must REFUSE an unbound mocked effect, never dispatch it; \
+                 it returned: {v:?}"
+            ),
+        }
     }
 
     // The mirror-image defect is silent wrongness rather than a false negative: before symbols
@@ -5619,7 +5762,7 @@ mod cross_claim_memo_tests {
     // `free_monoid_ctx_syms`'s read-only fallback (taken when the interner is already borrowed)
     // must FIND a real Cons/Empty-encoded value's symbols, not merely not panic. Missing or
     // wrong pre-interning at context construction would let a free-monoid `Value::Variant`
-    // under a held borrow fall through `value_hash`'s generic Variant arm (DESIGN §5's
+    // under a held borrow fall through `value_hash`'s generic Variant arm (gunbc.design_argument::fail_closed's
     // empty-observation narrow: a contention miss reported as "not a list"). Builds a
     // Cons(1, Cons(2, Empty)) chain as a `Value::Map` key -- hashed inside
     // `eval_recompute_key`'s held borrow -- and proves the memo round-trips, which holds only
@@ -5715,7 +5858,7 @@ mod cross_claim_memo_tests {
     }
 }
 
-// Recompute-trace ledger (diagnostic READ mode: reports, never gates — DESIGN §5 stopped-line
+// Recompute-trace ledger (diagnostic READ mode: reports, never gates — gunbc.design_argument::fail_closed stopped-line
 // audit). Counts evaluations of pure named fns (empty `uses` row) per (fn identity, argument
 // identity). Keying is SOUND-ONLY: an argument without a cheap sound identity (composite
 // values) goes to the unkeyed bucket — the ledger never merges distinct work. Durations
@@ -6528,7 +6671,7 @@ impl PreparedScopeIndexes {
         // module win unconditionally. Those tiers can, because a top-level declaration in one's
         // own module is the authored answer by construction. Arms carry no such precedence rule
         // -- an arm of one's own coproduct and an arm of an imported one are both named by the
-        // author with equal standing -- so the fail-closed arm is the honest one here (§5).
+        // author with equal standing -- so the fail-closed arm is the honest one here (gunbc.design_argument::fail_closed).
         match visible.len() {
             1 => visible
                 .into_iter()
@@ -6584,7 +6727,7 @@ impl PreparedScopeIndexes {
         // belongs in the fingerprint the memo-equivalence witness compares. Without it the tier
         // travelled the memo path with ZERO equivalence coverage, and a divergence there flows
         // straight into `falls_through_to_shared_slot` -- i.e. into whether the wall fires. The
-        // fail-open direction (an arm tier wrongly resolving a genuinely ambiguous read) is §5's
+        // fail-open direction (an arm tier wrongly resolving a genuinely ambiguous read) is gunbc.design_argument::fail_closed's
         // absorbing fallback, which is the one direction a silent divergence must not take.
         for (arm, owners) in self.variant_arm_owners.iter() {
             for (module, coproduct) in owners.iter() {
@@ -6643,7 +6786,7 @@ pub struct InterpContext {
     // way to answer "which TypedModule is `v2.lens.cost`?" was a linear scan that re-sliced every
     // module's name out of its source span (authored_name_at). One `decl_facts` marshal asks that
     // question once per DataItem row, so the whole-corpus inventory was a PRODUCT of the two
-    // populations -- a cost-shape defect (DESIGN section 6, bare minimum cost), not a large
+    // populations -- a cost-shape defect (gunbc.design_argument::how_to_work, bare minimum cost), not a large
     // constant. Same discipline as param_name_cache above: derived from ctx-owned Rc handles,
     // filled lazily on first ask, dies with the ctx.
     typed_module_by_path:
@@ -6966,7 +7109,7 @@ impl InterpContext {
     /// reference to a name the referring module does NOT declare, claimed by two OTHER modules,
     /// is still picked by order with nothing said.
     ///
-    /// Next rung: DESIGN §3 namespace-only — a qualified reference has exactly one declarer, so
+    /// Next rung: gunbc.design_argument::single_authority namespace-only — a qualified reference has exactly one declarer, so
     /// ambiguous bare binding has no constructor (`floor_bare_name_ambiguity_next_rung_trigger`).
     pub fn build_scope_indexes_with_module_order(
         graph: &ResolvedGraph,
@@ -7376,6 +7519,17 @@ impl InterpContext {
         self.indexes.fn_nodes.get(name)
     }
 
+    /// The (declaring module, coproduct) pairs that declare a variant arm of this spelling in this
+    /// run's closure. A runtime variant value carries only its spellings, so this is how a host
+    /// boundary establishes WHICH declaration a spelling can denote before acting on it.
+    pub(crate) fn variant_arm_declarers(&self, arm: &str) -> Vec<(String, String)> {
+        self.indexes
+            .variant_arm_owners
+            .get(arm)
+            .map(|owners| owners.iter().cloned().collect())
+            .unwrap_or_default()
+    }
+
     /// Is this bare spelling claimed by more than one module in this scope?
     pub(crate) fn bare_name_is_ambiguous(&self, name: &str) -> bool {
         self.indexes.ambiguous_bare_function_names.contains(name)
@@ -7733,7 +7887,7 @@ pub fn take_raise_path() -> RaisePath {
     })
 }
 
-/// Bounded execution (§4): a call chain deeper than this is a typed, located refusal naming
+/// Bounded execution (gunbc.design_argument::closed_grounded_substrate): a call chain deeper than this is a typed, located refusal naming
 /// the frontier function — never a host stack overflow, which aborts the process and every
 /// later witness's measurement (measured: a cycle in live_deploy script assembly under
 /// census-resolved bare names killed batch-2 at entry 214/619). Deep-but-terminating recursion
@@ -7777,13 +7931,9 @@ fn call_function_guarded(
     depth: u32,
 ) -> InterpResult<Value> {
     if depth > CALL_DEPTH_LIMIT {
-        return Err(InterpError::TypeError {
-            msg: format!(
-                "call depth exceeded {} at fn '{}' — unbounded recursion (a bare-name \
-                 resolution cycle, or a genuinely divergent chain); refused, never a \
-                 host stack overflow",
-                CALL_DEPTH_LIMIT, fn_node.name
-            ),
+        return Err(InterpError::CallDepthExceeded {
+            limit: CALL_DEPTH_LIMIT,
+            at: format!("fn '{}'", fn_node.name),
         });
     }
     // Grow the host stack in slices so DEEP-but-bounded chains below the limit
@@ -7898,7 +8048,7 @@ fn call_function_inner(
                     });
                 }
                 // A duplicate caller label silently overwrote the earlier binding via
-                // HashMap::insert, losing the earlier value unlocatably (DESIGN §5: the
+                // HashMap::insert, losing the earlier value unlocatably (gunbc.design_argument::fail_closed: the
                 // compile-side wall must not report a fact the runtime keeps quiet about).
                 // Refuse instead of taking the last value.
                 //
@@ -7919,7 +8069,7 @@ fn call_function_inner(
                 // A positional actual is keyed by its resolved declared parameter, as the named
                 // branch is — so one filling a parameter an earlier named actual bound
                 // (`two(a: 1, 2)` against `fn two(a, b)`: slot 0 is `a`, already bound) must
-                // refuse the same way, not overwrite last-write-wins (DESIGN §5 fail-closed;
+                // refuse the same way, not overwrite last-write-wins (gunbc.design_argument::fail_closed fail-closed;
                 // review 48817).
                 //
                 // An anonymous declared parameter ("_") is excluded from the collision check (see
@@ -7936,7 +8086,7 @@ fn call_function_inner(
                 positional_idx += 1;
             } else {
                 // The pre-existing `else if` guard dropped surplus positional arguments on the
-                // floor. Silently discarding an evaluated argument is the §5 absorbing arm.
+                // floor. Silently discarding an evaluated argument is the gunbc.design_argument::fail_closed absorbing arm.
                 return Err(InterpError::CallContractMismatch {
                     callee: fn_node.name.clone(),
                     detail: format!(
@@ -8121,7 +8271,7 @@ thread_local! {
     /// CPU SPENT FILLING SHARED MEMOIZED ARTIFACTS ON THIS THREAD. Lives here, not beside the
     /// memos, because it has TWO readers with opposite lifetimes: the claim loop nets it at
     /// completion, the evaluation deadline WHILE the claim runs. A counter with two homes is the
-    /// §3 failure this work closes, so there is one cell and `cli_run` delegates to it.
+    /// gunbc.design_argument::single_authority failure this work closes, so there is one cell and `cli_run` delegates to it.
     static SHARED_ARTIFACT_FILL_CPU_NANOS: std::cell::Cell<u128> = const { std::cell::Cell::new(0) };
 }
 
@@ -8528,7 +8678,7 @@ fn eval_expr(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
 fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let si = ctx.si();
     match (*node.expr_data).clone() {
-        ExprData::ExprLiteral { value } => eval_literal(&value),
+        ExprData::ExprLiteral { value } => eval_literal(&value, ctx),
 
         // An elaborated literal (std.literal_elaboration) carries its image under the declared
         // homomorphism as its one child. A Peano unfolding's destination is STRUCTURAL on every
@@ -8547,7 +8697,7 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
                     crate::std_literal_elaboration::LiteralUnfolding::PeanoUnfold { .. },
                     Some(image),
                 ) => eval_expr(image, env, ctx),
-                _ => eval_literal(&value),
+                _ => eval_literal(&value, ctx),
             }
         }
 
@@ -8574,7 +8724,7 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
         // `match a { False => False  True => b }`, so the right operand is demanded only under one
         // left value, and the interpreter was the arm disagreeing with the corpus's own logic
         // authority.
-        ExprData::ExprBinOp { op, .. } => {
+        ExprData::ExprBinOp { op, derived, .. } => {
             let left = eval_expr(&binop_left(node.clone()), env, ctx)?;
             match &*crate::std_operator_realization::operand_demand(op.clone()) {
                 crate::std_operator_realization::OperandDemand::DemandsRightOnlyWhenLeftIs {
@@ -8584,14 +8734,21 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
                     // value's truth and the right operand is never asked for.
                     Ok(Value::Bool(left.is_truthy()))
                 }
-                crate::std_operator_realization::OperandDemand::DemandsRightOnlyWhenLeftIsAbsent
-                    if !matches!(left, Value::Null) =>
-                {
-                    Ok(left)
+                crate::std_operator_realization::OperandDemand::DemandsRightOnlyWhenLeftIsAbsent => {
+                    match coalesce_present(&left, ctx)? {
+                        Some(present) => Ok(present),
+                        None => eval_expr(&binop_right(node.clone()), env, ctx),
+                    }
                 }
                 _ => {
                     let right = eval_expr(&binop_right(node.clone()), env, ctx)?;
-                    eval_binop(&op, left, right, ctx)
+                    match (op, derived.as_deref()) {
+                        (BinOp::Eq | BinOp::Ne, Some(function)) => {
+                            let equal = derived_equality_call(ctx, function, &left, &right)?;
+                            Ok(Value::Bool(if matches!(op, BinOp::Eq) { equal } else { !equal }))
+                        }
+                        _ => eval_binop(&op, left, right, ctx),
+                    }
                 }
             }
         }
@@ -8662,7 +8819,7 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
 
         ExprData::NoExprData => {
             // A List/Set type node (make_container_type) is NoExprData. Evaluating it as
-            // [] was a fabricated default (review 77868, DESIGN §5/§6b). Empty list
+            // [] was a fabricated default (review 77868, gunbc.design_argument::fail_closed, gunbc.design_argument::earliest_unjustified_boundary). Empty list
             // values keep ExprListLit and evaluate in that arm. A type used as a value
             // refuses.
             let ty = match node.inferred.as_deref() {
@@ -8681,7 +8838,9 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
     }
 }
 
-fn eval_literal(lit: &LiteralValue) -> InterpResult<Value> {
+// `none` and `null` lower to one LitNull (extdeps.languages.dag syntax table); the value it
+// denotes is the optional's Absent, built by the one constructor, not a host Null.
+fn eval_literal(lit: &LiteralValue, ctx: &InterpContext) -> InterpResult<Value> {
     match lit {
         LiteralValue::LitBool { value } => Ok(Value::Bool(*value)),
         LiteralValue::LitInt { value } => Ok(Value::Int(*value)),
@@ -8693,7 +8852,7 @@ fn eval_literal(lit: &LiteralValue) -> InterpResult<Value> {
         }
         LiteralValue::LitStr { value } => Ok(str_value(value.clone())),
         LiteralValue::LitSymbol { value } => Ok(str_value(value.clone())),
-        LiteralValue::LitNull => Ok(Value::Null),
+        LiteralValue::LitNull => Ok(optional_absent(ctx)),
     }
 }
 
@@ -8753,12 +8912,13 @@ fn eval_var(
         });
     }
 
-    // Only the untyped null/optional shorthand collapses to the host Null carrier. A resolved
-    // coproduct arm named `None` was handled above and retains its declaration identity
-    // (`parent_enum`, terminal arm), so `Diagnostics.None`, an imported `None`, and a re-export
-    // construct the same value while an unrelated coproduct's `None` remains distinct.
+    // The untyped `none` shorthand denotes the optional's Absent, built by the one constructor
+    // (`optional_absent`), not a host Null second representation. A resolved coproduct arm named
+    // `None` was handled above and retains its declaration identity (`parent_enum`, terminal
+    // arm), so `Diagnostics.None`, an imported `None`, and a re-export construct the same value
+    // while an unrelated coproduct's `None` remains distinct.
     if ctx.sym_eq(sym, "none") || ctx.sym_eq(sym, "None") {
-        return Ok(Value::Null);
+        return Ok(optional_absent(ctx));
     }
 
     if let Some(val) = env.lookup(sym) {
@@ -8869,11 +9029,7 @@ fn eval_var(
 
 fn eval_binop(op: &BinOp, left: Value, right: Value, ctx: &InterpContext) -> InterpResult<Value> {
     if matches!(op, BinOp::NullCoalesce) {
-        return Ok(if matches!(left, Value::Null) {
-            right
-        } else {
-            left
-        });
+        return Ok(coalesce_present(&left, ctx)?.unwrap_or(right));
     }
 
     if matches!(op, BinOp::Add) {
@@ -8996,8 +9152,10 @@ fn cross_representation_numeric_straddle(a: &Value, b: &Value) -> Option<String>
             Some(format!(
                 "{} vs {} — a number and its coproduct (Nat Zero/Succ) encoding are \
                  two representations of one value; Value::eq cannot decide them, so \
-                 `==` would silently fabricate `false` (DESIGN §5). Ground the \
-                 primitive into its realization to compare (DESIGN §1/§2/§7).",
+                 `==` would silently fabricate `false` (gunbc.design_argument::fail_closed). \
+                 Ground the primitive into its realization to compare \
+                 (gunbc.design_argument::goal_safe_efficient_predictable, \
+                 gunbc.design_argument::minimize_redundancy, gunbc.design_argument::self_hosting).",
                 describe_repr(a),
                 describe_repr(b),
             ))
@@ -9023,8 +9181,10 @@ fn cross_representation_numeric_straddle(a: &Value, b: &Value) -> Option<String>
             Some(format!(
                 "{} vs {} — a native Bool and its True/False coproduct encoding are \
                  two representations of one value; Value::eq cannot decide them, so \
-                 `==` would silently fabricate `false` (DESIGN §5). Ground the \
-                 primitive into its realization to compare (DESIGN §1/§2/§7).",
+                 `==` would silently fabricate `false` (gunbc.design_argument::fail_closed). \
+                 Ground the primitive into its realization to compare \
+                 (gunbc.design_argument::goal_safe_efficient_predictable, \
+                 gunbc.design_argument::minimize_redundancy, gunbc.design_argument::self_hosting).",
                 describe_repr(a),
                 describe_repr(b),
             ))
@@ -9113,7 +9273,7 @@ fn cross_family_content_hash_straddle(a: &Value, b: &Value) -> Option<String> {
                     "{} vs {} — ContentHash families are not comparable; bare `==` would \
                      silently fabricate `false` whereas structural fnv1a64 and cited \
                      SHA-256/SHA-1/SHA-512 digests are different kinds with different remedies \
-                     (DESIGN §5 / feature:content-hash-family-grounded). Match on family \
+                     (gunbc.design_argument::fail_closed / feature:content-hash-family-grounded). Match on family \
                      and use per-family eq, or admit_pin_integrity at union carriers.",
                     describe_repr(a),
                     describe_repr(b),
@@ -9516,13 +9676,12 @@ fn eval_match(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
     // `v1.compiler.infer` `optional_match_arm_sees_present_value` (a bare binding after an
     // unguarded Absent arm; a non-null literal arm), and every Rust match rendering reads the same
     // predicate. The interpreter reads it too and decides nothing of its own. What is interpreter
-    // specific is only HOW the payload is reached: an optional's value has two runtime
-    // representations -- a bare value (host builtins) or an `Optional.Present` variant (an authored
-    // `Present { value }`) -- and `optional_present_payload` peels either.
+    // specific is only HOW the payload is reached: an optional's value has ONE runtime
+    // representation, the `Optional` variant, and `optional_present_payload` peels it.
     // An untyped scrutinee cannot be asked the predicate. That is harmless while its value is a
     // bare value (every arm then sees the same value either way) and a silent wrong answer when it
     // is an `Optional.Present` variant (the literal arm would miss, the binding would hold the
-    // variant), so that one case refuses, located, rather than falling back (DESIGN section 5).
+    // variant), so that one case refuses, located, rather than falling back (gunbc.design_argument::fail_closed).
     let scrutinee_type = match scrutinee.inferred.as_ref() {
         Some(_) => Some(crate::v1_compiler_infer_types::resolved_type(
             scrutinee.clone(),
@@ -9618,16 +9777,23 @@ fn eval_match(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
     })
 }
 
+/// `left ?? right`: the present payload of an `Optional` left, `None` (take the right operand) when
+/// it is `Absent`. One rule for the lazy arm and `eval_binop`; a left that is not an `Optional`
+/// refuses rather than passing through.
+fn coalesce_present(left: &Value, ctx: &InterpContext) -> InterpResult<Option<Value>> {
+    optional_present_payload(left, ctx)
+}
+
 fn is_optional_variant(value: &Value, ctx: &InterpContext) -> bool {
     matches!(value, Value::Variant { type_name, .. } if *type_name == ctx.sym("Optional"))
 }
 
-/// The present payload of an optional value in either runtime representation, `None` when it
-/// is absent (`Null` or `Optional.Absent`). An `Optional.Present` without its `value` field is
-/// malformed and refuses rather than reading as absent.
+/// The present payload of an optional value, `None` when it is `Optional.Absent`. A value that is
+/// not an `Optional` variant (host null or a bare element) refuses: there is one representation.
+/// An `Optional.Present` without its `value` field is malformed and refuses rather than reading
+/// as absent.
 fn optional_present_payload(value: &Value, ctx: &InterpContext) -> InterpResult<Option<Value>> {
     match value {
-        Value::Null => Ok(None),
         Value::Variant {
             variant_name,
             fields,
@@ -9643,7 +9809,9 @@ fn optional_present_payload(value: &Value, ctx: &InterpContext) -> InterpResult<
                 }),
             }
         }
-        other => Ok(Some(other.clone())),
+        other => Err(InterpError::TypeError {
+            msg: format!("matched an Optional but the value is not an Optional variant: {other}"),
+        }),
     }
 }
 
@@ -9727,7 +9895,7 @@ thread_local! {
 /// Closed by construction because a leaked frame is not merely a stale binding:
 /// `dispatch_service` consults `current_witness_evaluation_frame()` to decide whether a
 /// hermetic op routes to the real dispatcher, so an escaped frame would silently route
-/// *subsequent* ops out of the mock layer. Drop makes the escape unwritable (§5).
+/// *subsequent* ops out of the mock layer. Drop makes the escape unwritable (gunbc.design_argument::fail_closed).
 struct WitnessFramePop;
 
 impl Drop for WitnessFramePop {
@@ -10730,7 +10898,7 @@ fn match_pattern(
             }
 
             MatchPattern::LitPattern { value: lit } => {
-                let lit_val = eval_literal(lit).ok()?;
+                let lit_val = eval_literal(lit, ctx).ok()?;
                 if *value == lit_val {
                     Some(HashMap::new())
                 } else {
@@ -11455,7 +11623,7 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     // Every callable lexical binding was served by the gate above, so this tier reads only the
     // module free-function table. The former `else`-arm env re-lookup (serving `Value::Fn` and
     // `Value::Closure` AFTER `ctx.lookup_fn`) is deleted, not kept beside the gate: it was the
-    // lower-rung duplicate of the same decision (DESIGN §2/§3) and where the shadowing defect
+    // lower-rung duplicate of the same decision (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority) and where the shadowing defect
     // landed, since reaching it required the free-function table to answer first.
     let fn_node = match lexically_bound_fn {
         Some(node) => node,
@@ -11679,8 +11847,8 @@ fn eval_fold_list_native(
     // datetime driver folds `elem=Int` codepoint lists (trivial copy) and the Vec is transient
     // (freed each fold, never in peak RSS). The real O(n^2) is the CALLER re-folding the whole
     // source (`lex_repeat_loop`, 01_tokenize.dag:158 -- routed to the tokenize lane). Kept as
-    // `free_monoid_to_vec` rather than churning the seed for a measured-zero rewrite (DESIGN
-    // §6: denominate in displaced cost; a no-op displaces nothing).
+    // `free_monoid_to_vec` rather than churning the seed for a measured-zero rewrite (
+    // gunbc.design_argument::how_to_work: denominate in displaced cost; a no-op displaces nothing).
     let items = free_monoid_to_vec(xs).ok_or_else(|| InterpError::TypeError {
         msg: format!("fold_list expects a list, got {}", xs.type_label()),
     })?;
@@ -12379,7 +12547,7 @@ fn eval_recompute_record_unkeyed(
     // be. `absorb_claim_recompute_demand` then walks it once per frame and its own comment states
     // the invariant "the map holds one entry per (fn, argument row) and the vector one per fn",
     // which the per-call push silently falsified. A cost-shape defect inside an instrument whose
-    // subject is cost is fixed regardless of realized n (DESIGN section 6).
+    // subject is cost is fixed regardless of realized n (gunbc.design_argument::how_to_work).
     if is_new_key {
         t.keepalive_fns.push(fn_node.clone());
     }
@@ -12399,7 +12567,7 @@ fn eval_recompute_record_unkeyed(
     // worth recording: the neighbour was repaired and this one was walked past in the same commit
     // (review 65488). The closure captures `fn_node` and `name` instead, which costs nothing and
     // restores the grain the keyed path uses. A proven cost-shape defect is fixed regardless of
-    // realized n (DESIGN section 6), and doubly so inside an instrument whose subject is cost.
+    // realized n (gunbc.design_argument::how_to_work), and doubly so inside an instrument whose subject is cost.
     let row = t
         .unkeyed_by_fn
         .entry(key)
@@ -12512,7 +12680,7 @@ fn entry_wasted_ns(e: &EvalRecomputeEntry) -> u128 {
 // 3477 rows): a witness and its discriminating RED, which do materially different work, cost
 // within 2ms of each other at 294/296, 331/333 and 382/384 while p50 for the corpus is 2ms. A
 // cost that does not move when the assertion changes is not the assertion's cost; it is the
-// closure's fixed re-derivation, and DESIGN §2 prices it as authored duplication whose least
+// closure's fixed re-derivation, and gunbc.design_argument::minimize_redundancy prices it as authored duplication whose least
 // common ancestor is the RUN. This census is the demand side of that: it does not share, cache
 // or enrol anything — it reports which identity is being re-demanded across the frame boundary,
 // so roster candidacy stops being discovered by a red landing on an unrelated lane's PR.
@@ -12674,7 +12842,7 @@ struct CrossClaimDemandKey {
     decl_site: String,
     /// THE CANONICAL ARGUMENT ROW, NOT A DIGEST OF IT. A 64-bit hash stood here and it could
     /// merge two distinct argument rows into one row reporting cross-claim demand that never
-    /// happened — a fabricated identity, which DESIGN §5 forbids outright and which the header
+    /// happened — a fabricated identity, which gunbc.design_argument::fail_closed forbids outright and which the header
     /// above simultaneously promised not to do ("sound argument identity"). The ledger already
     /// keys on this exact vector; carrying it costs the memory the retention floor and key cap
     /// are here to bound, and it makes the collision unrepresentable rather than unlikely.
@@ -12820,7 +12988,7 @@ pub fn absorb_claim_recompute_demand(ctx: &InterpContext, claim: &str, module_pa
     // One declaration-site lookup per fn pointer for this frame, rather than a linear scan of
     // the keepalive vector per ledger key: the map holds one entry per (fn, argument row) and
     // the vector one per fn, so the scan was quadratic in a frame's producer count -- the
-    // cost-shape defect DESIGN section 6 says is always fixed, inside an instrument whose whole
+    // cost-shape defect gunbc.design_argument::how_to_work says is always fixed, inside an instrument whose whole
     // subject is cost.
     let mut decl_sites: std::collections::HashMap<usize, String> = std::collections::HashMap::new();
     for node in t.keepalive_fns.iter() {
@@ -12909,7 +13077,7 @@ pub fn cross_claim_demand_rows() -> Vec<CrossClaimDemandRow> {
                     .collect(),
             })
             .collect();
-        // IDENTITY ORDER, NOT COST ORDER, and that is a DESIGN section 3 distinction rather than
+        // IDENTITY ORDER, NOT COST ORDER, and that is a gunbc.design_argument::single_authority distinction rather than
         // a taste. An ordering by cost is a RANKING, and a ranking is a judgment about which
         // demands matter -- meaning, which belongs to .dag folding this artifact, not to the seed
         // whose warrant here is carrying facts across a frame boundary only the seed can reach.
@@ -13290,6 +13458,66 @@ fn eval_field_access(
 
     let access_style = summary.map(|s| &s.access_style);
 
+    // The checker DECLARES the read: `04_lookup` `field_summary_for_type` styles `.value` on an
+    // optional `OptionalUnwrap` (typed required: peel Present, refuse Absent with a typed error)
+    // and every other field read off an optional with value shape `OptionalValue` (typed
+    // OPTIONAL: peel Present and re-wrap the field, propagate Absent). The interpreter never
+    // reads a field off the variant itself, and never refuses what the checker types as optional.
+    // `OptionalValue` carries two meanings in the checker's summary: the BASE is optional
+    // (`field_summary_for_type`), or the FIELD's own value is optional (a struct field declared
+    // `T?`, `field_value_shape_from_type_node`). Only the first peels; a record base is never an
+    // Optional variant, so a field declared `T?` on a record is returned as the stored Optional.
+    let unwrap_style = matches!(access_style, Some(FieldAccessStyle::OptionalUnwrap));
+    let optional_base_read = !unwrap_style
+        && matches!(
+            summary.map(|s| &s.value_shape),
+            Some(FieldValueShape::OptionalValue)
+        )
+        && is_optional_variant(&base_val, ctx);
+    let base_val = if unwrap_style || optional_base_read {
+        match optional_present_payload(&base_val, ctx)? {
+            Some(payload) => payload,
+            None if optional_base_read => return Ok(optional_absent(ctx)),
+            None => {
+                return Err(locate_field_access_error(
+                    InterpError::TypeError {
+                        msg: format!("field '{}' read off an Absent optional", field_name),
+                    },
+                    node,
+                ))
+            }
+        }
+    } else {
+        base_val
+    };
+    if optional_base_read {
+        let read = eval_field_access_on(&base_val, access_style, &field_name, node, env, ctx)?;
+        return Ok(declared_optional_field_value(read, ctx));
+    }
+
+    eval_field_access_on(&base_val, access_style, &field_name, node, env, ctx)
+}
+
+// A field read off an optional is typed optional (one layer): an already-Optional field value is
+// returned as is, a bare one is Present, Null is Absent.
+fn declared_optional_field_value(value: Value, ctx: &InterpContext) -> Value {
+    match value {
+        Value::Null => optional_absent(ctx),
+        Value::Variant { ref type_name, .. } if ctx.sym_eq(*type_name, "Optional") => value,
+        other => optional_present(other, ctx),
+    }
+}
+
+fn eval_field_access_on(
+    base_val: &Value,
+    access_style: Option<&FieldAccessStyle>,
+    field_name: &str,
+    node: &Rc<Node>,
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let base_val = base_val.clone();
+    let field_name = field_name.to_string();
     match access_style {
         Some(FieldAccessStyle::TupleFirst) => match expect_list(&base_val, "tuple.first") {
             Ok(items) => Ok(items.front().cloned().unwrap_or(Value::Null)),
@@ -13299,10 +13527,7 @@ fn eval_field_access(
             Ok(items) => Ok(items.get(1).cloned().unwrap_or(Value::Null)),
             Err(_) => extract_field(&base_val, &field_name, env, ctx),
         },
-        Some(FieldAccessStyle::OptionalUnwrap) => match &base_val {
-            Value::Null => Ok(Value::Null),
-            _ => Ok(base_val),
-        },
+        Some(FieldAccessStyle::OptionalUnwrap) => Ok(base_val), // already peeled above
         Some(FieldAccessStyle::EnumAccessor) => extract_field(&base_val, &field_name, env, ctx)
             .map_err(|e| locate_field_access_error(e, node)),
         _ => extract_field(&base_val, &field_name, env, ctx)
@@ -13384,7 +13609,7 @@ fn extract_field(
 /// deciding quoted-and-owned vs bare — so interpreter and emitter cannot disagree about one
 /// literal's keys. Anything not established is a typed, located refusal, not a guessed key: a
 /// deny-list of bad key types lets every unlisted one through, the partial refusal that later
-/// fails open (DESIGN §5; codex review 50168 caught exactly that shape here). The refusal arm
+/// fails open (gunbc.design_argument::fail_closed; codex review 50168 caught exactly that shape here). The refusal arm
 /// has no witness: a refusing data initializer stops module evaluation rather than returning a
 /// Bool. That is can-climb-now-but-unbuilt, not cannot-climb — the trigger is an expecting-red
 /// quarantine probe declaring a non-string-keyed map literal, the mechanism named beside the
@@ -13440,7 +13665,7 @@ fn eval_record_lit(
     // A brace literal in a keyed-collection position IS a map; the single authority is the
     // literal's inferred type — the `node_is_keyed_collection` relation `05_emit_rust` reads
     // when rendering the same literal as a `HashMap`. Reading it here keeps interpreter and
-    // emitter agreeing on one value's representation (DESIGN §3/§5: derived from one authority,
+    // emitter agreeing on one value's representation (gunbc.design_argument::single_authority, gunbc.design_argument::fail_closed: derived from one authority,
     // not reconciled per consumer). Before this the interpreter built a `Record`, `map_get`
     // limped through `raw_map_lookup`'s Record arm, and `map_keys(kernel_type_set)` refused —
     // the whole ordinary front end unreachable from interpreted `.dag`.
@@ -13824,7 +14049,7 @@ fn cast_expr_inferred_type_name_uncached(ctx: &InterpContext, expr: Rc<Node>) ->
 ///
 /// node://adhoc-897a90b6-a9c item 1: this also used to treat an EMPTY resolved kernel as
 /// identity -- answering "the target's alias chain could not be resolved" with a value instead
-/// of falling through to `eval_cast`'s typed `TypeError` arm (DESIGN §5, ⊥-as-ignorance as an
+/// of falling through to `eval_cast`'s typed `TypeError` arm (gunbc.design_argument::fail_closed, ⊥-as-ignorance as an
 /// answer). Measured by execution (an unconditional counter, a positive/negative-control unit
 /// test proving the counter wired, then 1507 requested witnesses across every
 /// `*cast*`/`*refinement*`-named file in `dag/test/claim` plus a sixth-sample of the rest):
@@ -14113,7 +14338,7 @@ macro_rules! v1_algebra_method_arms {
                 let key = $args.first().ok_or_else(|| InterpError::TypeError {
                     msg: "lookup requires a key argument".to_string(),
                 })?;
-                raw_map_lookup(&$receiver, key, $env, $ctx).map(RawMapLookup::into_raw)
+                raw_map_lookup(&$receiver, key, $env, $ctx).map(|raw| map_lookup_as_optional(raw, &$ctx))
             },
 
             arm "method_call.map" { "map" } => list_method_with_closure("map", $receiver, $args, $env, $ctx, |items, f, $env, $ctx| {
@@ -14264,7 +14489,7 @@ macro_rules! v1_algebra_method_arms {
                     }
                 }
                 if let Ok(items) = expect_list(&$receiver, "concat") {
-                    // Fail-closed backstop (DESIGN §5): a native String arg meeting a
+                    // Fail-closed backstop (gunbc.design_argument::fail_closed): a native String arg meeting a
                     // codepoint-bearing `Cons`-chain receiver here is the model↔realization
                     // straddle grounding above did not dissolve — refuse rather than push the
                     // `Str` into a mixed `[codepoint.., Str]` list. A `Value::List` receiver
@@ -14340,12 +14565,12 @@ macro_rules! v1_algebra_method_arms {
 
             arm "method_call.first" { "first" } => {
                 let items = expect_list(&$receiver, "first")?;
-                Ok(items.front().cloned().unwrap_or(Value::Null))
+                Ok(list_element_as_optional(items.front().cloned(), &$ctx))
             },
 
             arm "method_call.last" { "last" } => {
                 let items = expect_list(&$receiver, "last")?;
-                Ok(items.last().cloned().unwrap_or(Value::Null))
+                Ok(list_element_as_optional(items.last().cloned(), &$ctx))
             },
 
             arm "method_call.reverse" { "reverse" } => {
@@ -14414,7 +14639,7 @@ macro_rules! v1_algebra_method_arms {
             },
 
             arm "method_call.chars" { "chars" } => {
-                // §6 residue: materializes a string as a `Value::List` of codepoint `Int`s,
+                // gunbc.design_argument::how_to_work residue: materializes a string as a `Value::List` of codepoint `Int`s,
                 // indistinguishable from a generic `Int` list — the named hole in the
                 // String-straddle wall (`string_realization_straddle_detail`'s `Value::List`
                 // exemption). Closed by regrounding `Char`/codepoint-sequence so the realization
@@ -14437,15 +14662,15 @@ macro_rules! v1_algebra_method_arms {
                     let key = $args.first().ok_or_else(|| InterpError::TypeError {
                         msg: "get requires a key argument".to_string(),
                     })?;
-                    raw_map_lookup(&$receiver, key, $env, $ctx).map(RawMapLookup::into_raw)
+                    raw_map_lookup(&$receiver, key, $env, $ctx).map(|raw| map_lookup_as_optional(raw, &$ctx))
                 } else if let Ok(items) = expect_list(&$receiver, "get") {
                     let idx = expect_int($args.first(), "get")?;
-                    Ok(list_get_at_or_null(&items, idx))
+                    Ok(list_get_at_optional(&items, idx, &$ctx))
                 } else {
                     let key = $args.first().ok_or_else(|| InterpError::TypeError {
                         msg: "get requires a key argument".to_string(),
                     })?;
-                    raw_map_lookup(&$receiver, key, $env, $ctx).map(RawMapLookup::into_raw)
+                    raw_map_lookup(&$receiver, key, $env, $ctx).map(|raw| map_lookup_as_optional(raw, &$ctx))
                 }
             },
 
@@ -14961,7 +15186,7 @@ fn eval_service_call(
         // commit-deterministic), or an unresolvable path each refuse with a typed diagnostic —
         // never a canned response.
         if service_name == "Filesystem" && matches!(op_name, "Read" | "List") {
-            // Single-authority split (§3): a readonly Filesystem operation whose path the
+            // Single-authority split (gunbc.design_argument::single_authority): a readonly Filesystem operation whose path the
             // disposition CONFIRMS is a committed checkout input reads directly — input access,
             // not a host effect, needing no fixture. Everything it cannot confirm — a recorded
             // fixture's scratch path, a `target/`/`.git` artifact, an out-of-root or absent
@@ -15033,7 +15258,7 @@ fn eval_service_call(
         // --claim-run` (Wet, reaches `dispatch_rest`) and false under `claim_batch` (Hermetic,
         // answered here) on one binary and one tree.
         //
-        // Fail-closed on both arms, never a widen (§5): a REST transport routes to ordinary wet
+        // Fail-closed on both arms, never a widen (gunbc.design_argument::fail_closed): a REST transport routes to ordinary wet
         // dispatch so `rest_exchange_selection` decides, and that already refuses
         // `RestReplayExchangeAbsent`/`Ambiguous` BEFORE any socket opens — an active frame with
         // no matching fixture is a typed refusal, not a live request escaping hermetic mode.
@@ -15128,7 +15353,7 @@ fn dispatch_service_wet(
     expected: ExpectedOutcome,
 ) -> InterpResult<Value> {
     // Local Env.Get: reading THIS process's environment is not a host effect (shell-to-dag
-    // residual census §0b / DESIGN §3(b)). `printenv` was the wrong hardwired transport —
+    // residual census §0b / gunbc.design_argument::single_authority(b)). `printenv` was the wrong hardwired transport —
     // unset vars exited 1 and, under ExpectSuccess, every optional floor_diff_observe
     // injection (GUNBC_CI_DIFF_*) painted Anomaly Failed lines (operator live-log 2026-07-25).
     // Native handler; shell printenv remains the remote-target realization.
@@ -15230,8 +15455,8 @@ fn dispatch_env_get_native(
         }
     };
     let value = match wet_env_var(&name) {
-        Some(s) => str_value(s),
-        None => Value::Null,
+        Some(s) => optional_present(str_value(s), ctx),
+        None => optional_absent(ctx),
     };
     Ok(Value::Record {
         type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
@@ -15336,7 +15561,7 @@ pub(crate) struct ShellResult {
 ///
 /// FAIL-CLOSED. Every shape mismatch is a typed error; no arm falls through to the guessing
 /// path — a carrier saying "expand this" that silently produced one joined word would be the
-/// defect it exists to remove (DESIGN section 5).
+/// defect it exists to remove (gunbc.design_argument::fail_closed).
 fn push_process_argv_expansion(
     argv: &mut Vec<String>,
     fields: &[(Symbol, Value)],
@@ -15474,7 +15699,7 @@ fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()
             // on its TwoDot arm, spliced into `git diff -U0 <range>`. Monoid-encoded it reaches the
             // process as `mainHEAD` — and on any pair whose concatenation names a real object git
             // succeeds with a diff of the WRONG RANGE: fabricated plausible output, not a crash
-            // (DESIGN §5).
+            // (gunbc.design_argument::fail_closed).
             //
             // A state-space conflation, not a missing wall: "one argument whose text is the
             // concatenation" and "N arguments" are different states with different remedies, and a
@@ -15559,7 +15784,7 @@ fn value_to_host_string(val: &Value) -> String {
 /// Why a generic argv materialization refused. Mirrors `ArgvRefusalCause` in
 /// `dag/std/operation_argv.dag` arm for arm — the .dag module owns the vocabulary, this
 /// enum is its seed realization. Every arm refuses; none widens, defaults, or sanitizes
-/// (DESIGN §5).
+/// (gunbc.design_argument::fail_closed).
 #[derive(Debug, Clone)]
 pub enum ArgvRefusalCause {
     OperationNotFound,
@@ -15580,7 +15805,7 @@ pub enum ArgvRefusalCause {
 /// plausible value, using the `.dag` declaration's own name. Replaced `argv_expr_kind_label`,
 /// which returned hyphenated nicknames (`call`, `record-literal`): a refusal naming `call`
 /// cannot be grepped back to `ExprCall`, and two spellings of one closed vocabulary is the
-/// DESIGN section 3 nickname at the diagnostic layer.
+/// gunbc.design_argument::single_authority nickname at the diagnostic layer.
 ///
 /// NO catch-all, on purpose: a form added to the `.dag` coproduct must break this compile,
 /// keeping the seed's vocabulary equal to the substrate's rather than merely older.
@@ -15630,7 +15855,7 @@ pub(crate) fn literal_value_form_name(value: &crate::std_syntax::LiteralValue) -
 /// A declared default, read from the declaration. Only literal *data* is admitted (a string
 /// literal, or a list literal of string literals): a call or reference default is left
 /// UNBOUND, so an argv position needing it refuses by name rather than being filled with a
-/// guess (DESIGN §5 — a fabricated plausible default is the failure this avoids).
+/// guess (gunbc.design_argument::fail_closed — a fabricated plausible default is the failure this avoids).
 fn declared_default_value(node: &Rc<Node>) -> Option<Value> {
     match node.expr_data.as_ref() {
         ExprData::ExprLiteral { value } => match value.as_ref() {
@@ -15908,7 +16133,7 @@ fn operation_ref_value(path: &str, service: &str, operation: &str, ctx: &InterpC
 /// Projects a host diagnostic census into the `gunbc.compile_diagnostic_census` coproduct.
 /// The two arms stay distinct to the substrate — `CensusNotRunnable` must never arrive as
 /// `CensusObserved` with an empty row list, byte-identical to a clean compile, letting
-/// could-not-measure read as the subject passing (DESIGN §5).
+/// could-not-measure read as the subject passing (gunbc.design_argument::fail_closed).
 /// Encode one `ReferenceDerivedClosureAdmission` as an interpreter value.
 ///
 /// Pure encoding. The judgement was made by
@@ -15929,8 +16154,8 @@ fn reference_derived_closure_admission_value(
     // Debug prints exactly the variant name for these nullary enums today and stops the moment
     // a variant gains a payload (`Foo { .. }`), minting a name no `.dag` match accepts — loud,
     // but at RUNTIME; a total match makes it a COMPILE error (construction over validation,
-    // DESIGN 5) and stops the Rust identifier being a second representation of the variant's
-    // identity (DESIGN 3).
+    // gunbc.design_argument::fail_closed) and stops the Rust identifier being a second representation of the variant's
+    // identity (gunbc.design_argument::single_authority).
     let capability = |c: &crate::gunbc_namespace_cut_namespace_reference_derived_closure_admission::ReferenceDerivedClosureCapability| {
         use crate::gunbc_namespace_cut_namespace_reference_derived_closure_admission::ReferenceDerivedClosureCapability as C;
         let name = match c {
@@ -16258,7 +16483,7 @@ fn namespace_structural_observation_admissions_value(
 ///
 /// Three independent hand-copies of this four-field build existed -- in
 /// `compile_diagnostic_census_value`, in `claim_scope_fixture_value`, and in
-/// `multi_module_compile_fixture_value` forty lines apart in this file -- which is §2's duplicated
+/// `multi_module_compile_fixture_value` forty lines apart in this file -- which is gunbc.design_argument::minimize_redundancy's duplicated
 /// work and fails its own test: "net concepts must not grow by re-invention". The cost is not
 /// style. The day the `.dag` row gains a field, two of the three keep emitting the old shape and
 /// the new field arrives NULL at its first reader -- which is precisely the defect this instrument
@@ -16412,7 +16637,7 @@ fn compile_diagnostic_census_value(
 /// refusal about the HOST PROCESS (`ClaimScopeInstrumentRefused`) and one about the SUBJECT
 /// (`ClaimScopeRefused`) must not wear each other's verdict, and a manifest that never reached
 /// scope construction must arrive as `ClaimScopeCompileRefused` carrying its diagnostics rather
-/// than as a bare non-acceptance (DESIGN §5 — could-not-measure conflated with a verdict).
+/// than as a bare non-acceptance (gunbc.design_argument::fail_closed — could-not-measure conflated with a verdict).
 fn claim_scope_fixture_value(
     outcome: crate::cli_run::ClaimScopeFixtureOutcome,
     ctx: &InterpContext,
@@ -16439,7 +16664,7 @@ fn claim_scope_fixture_value(
             // Carrying the rows is also what makes the instrument able to say WHY a manifest
             // failed to compile, rather than only THAT it did: diagnosing one otherwise means
             // reproducing the compile by hand outside the instrument, and a guessed cause is what
-            // DESIGN §4d calls asserting as deduced what is only inferred.
+            // gunbc.design_argument::epistemic_humility calls asserting as deduced what is only inferred.
             let rows = list_value(
                 diagnostics
                     .iter()
@@ -16480,7 +16705,7 @@ fn claim_scope_fixture_value(
 /// Projects a host multi-module fixture outcome into the `gunbc.instruments.multi_module_compile_fixture`
 /// coproduct. The three arms stay distinct to the substrate: a broken harness must never wear
 /// the compiler's verdict, and a compile that never ran must never arrive as
-/// `FixtureCompileCompleted` with an empty diagnostic list (DESIGN §5 — could-not-measure
+/// `FixtureCompileCompleted` with an empty diagnostic list (gunbc.design_argument::fail_closed — could-not-measure
 /// conflated with passing).
 fn multi_module_compile_fixture_value(
     outcome: crate::cli_run::MultiModuleCompileFixtureOutcome,
@@ -16922,162 +17147,6 @@ fn resolved_call_edge_census_value(
     }
 }
 
-fn primitive_callee_identity_value(
-    callee: crate::cli_run::PrimitiveCalleeIdentity,
-    ctx: &InterpContext,
-) -> Value {
-    use crate::cli_run::PrimitiveCalleeIdentity;
-    let variant = |name: &str, fields: Vec<(Symbol, Value)>| Value::Variant {
-        type_name: ctx.sym("PrimitiveCalleeIdentity"),
-        variant_name: ctx.sym(name),
-        fields: Rc::new(sorted_fields(fields)),
-    };
-    match callee {
-        PrimitiveCalleeIdentity::RuntimePrimitive {
-            primitive_name,
-            projected_from_module,
-            projected_from_decl,
-        } => variant(
-            "RuntimePrimitiveCallee",
-            vec![
-                (ctx.sym("primitive_name"), str_value(primitive_name)),
-                (
-                    ctx.sym("projected_from_module"),
-                    match projected_from_module {
-                        Some(m) => optional_present(str_value(m), ctx),
-                        None => optional_absent(ctx),
-                    },
-                ),
-                (
-                    ctx.sym("projected_from_decl"),
-                    match projected_from_decl {
-                        Some(d) => optional_present(str_value(d), ctx),
-                        None => optional_absent(ctx),
-                    },
-                ),
-            ],
-        ),
-        PrimitiveCalleeIdentity::AlgebraMethod { template_name } => variant(
-            "AlgebraMethodCallee",
-            vec![(ctx.sym("template_name"), str_value(template_name))],
-        ),
-        PrimitiveCalleeIdentity::ServiceOperation {
-            service_name,
-            operation,
-        } => variant(
-            "ServiceOperationCallee",
-            vec![
-                (ctx.sym("service_name"), str_value(service_name)),
-                (ctx.sym("operation"), str_value(operation)),
-            ],
-        ),
-        PrimitiveCalleeIdentity::PlainMethod { spelling } => variant(
-            "PlainMethodCallee",
-            vec![(ctx.sym("spelling"), str_value(spelling))],
-        ),
-        PrimitiveCalleeIdentity::UndeterminedFreeCall { spelling } => variant(
-            "UndeterminedFreeCallee",
-            vec![(ctx.sym("spelling"), str_value(spelling))],
-        ),
-    }
-}
-
-/// `gunbc.required_lane_resolution_census` `ModuleIdentityPopulation`, lifted from the host's
-/// carrier. Two arms and nothing else: an observed identity list, or the typed cause the
-/// population could not be established -- never an empty list standing for a refusal.
-fn module_identity_population_value(
-    population: crate::cli_run::ModuleIdentityPopulation,
-    ctx: &InterpContext,
-) -> Value {
-    match population {
-        crate::cli_run::ModuleIdentityPopulation::Refused { cause } => Value::Variant {
-            type_name: ctx.sym("ModuleIdentityPopulation"),
-            variant_name: ctx.sym("ModuleIdentityPopulationRefused"),
-            fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
-        },
-        crate::cli_run::ModuleIdentityPopulation::Observed { modules } => Value::Variant {
-            type_name: ctx.sym("ModuleIdentityPopulation"),
-            variant_name: ctx.sym("ModuleIdentityPopulationObserved"),
-            fields: Rc::new(sorted_fields(vec![(
-                ctx.sym("modules"),
-                list_value(modules.into_iter().map(str_value).collect::<Vec<_>>()),
-            )])),
-        },
-    }
-}
-
-fn primitive_call_edge_census_value(
-    census: crate::cli_run::PrimitiveCallEdgeCensus,
-    ctx: &InterpContext,
-) -> Value {
-    match census {
-        crate::cli_run::PrimitiveCallEdgeCensus::Refused { cause } => Value::Variant {
-            type_name: ctx.sym("PrimitiveCallEdgeCensus"),
-            variant_name: ctx.sym("PrimitiveCallEdgeCensusRefused"),
-            fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
-        },
-        crate::cli_run::PrimitiveCallEdgeCensus::Observed {
-            entries_resolved,
-            entries_refused,
-            edges,
-        } => Value::Variant {
-            type_name: ctx.sym("PrimitiveCallEdgeCensus"),
-            variant_name: ctx.sym("PrimitiveCallEdgeCensusObserved"),
-            fields: Rc::new(sorted_fields(vec![
-                (
-                    ctx.sym("entries_resolved"),
-                    list_value(
-                        entries_resolved
-                            .into_iter()
-                            .map(str_value)
-                            .collect::<Vec<_>>(),
-                    ),
-                ),
-                (
-                    ctx.sym("entries_refused"),
-                    list_value(
-                        entries_refused
-                            .into_iter()
-                            .map(|r| Value::Record {
-                                type_name: ctx.sym("PrimitiveCallEntryRefusal"),
-                                fields: Rc::new(sorted_fields(vec![
-                                    (ctx.sym("entry"), str_value(r.entry)),
-                                    (ctx.sym("cause"), str_value(r.cause)),
-                                ])),
-                            })
-                            .collect::<Vec<_>>(),
-                    ),
-                ),
-                (
-                    ctx.sym("edges"),
-                    list_value(
-                        edges
-                            .into_iter()
-                            .map(|edge| Value::Record {
-                                type_name: ctx.sym("PrimitiveCallEdge"),
-                                fields: Rc::new(sorted_fields(vec![
-                                    (ctx.sym("caller_module"), str_value(edge.caller_module)),
-                                    (ctx.sym("caller_decl"), str_value(edge.caller_decl)),
-                                    (
-                                        ctx.sym("authored_spelling"),
-                                        str_value(edge.authored_spelling),
-                                    ),
-                                    (
-                                        ctx.sym("callee"),
-                                        primitive_callee_identity_value(edge.callee, ctx),
-                                    ),
-                                    (ctx.sym("span_file"), str_value(edge.span_file)),
-                                    (ctx.sym("span_start"), Value::Int(edge.span_start)),
-                                ])),
-                            })
-                            .collect::<Vec<_>>(),
-                    ),
-                ),
-            ])),
-        },
-    }
-}
-
 fn evaluation_store_address_production_coverage_value(
     coverage: crate::cli_run::EvaluationStoreAddressProductionCoverage,
     ctx: &InterpContext,
@@ -17480,7 +17549,7 @@ pub fn output_decision(channel: OutputChannel) -> OutputDecision {
 ///
 /// The dispatch boundary takes this rather than a bare `ExpectedOutcome`, so "the site said
 /// nothing" is a value the caller constructs, not a default the boundary manufactures. Before
-/// 2026-07-26 the boundary used `declared_expectation.unwrap_or(ExpectSuccess)` — DESIGN §5's
+/// 2026-07-26 the boundary used `declared_expectation.unwrap_or(ExpectSuccess)` — gunbc.design_argument::fail_closed's
 /// absorbing fallback: the substitution inside the callee left no trace, so undeclared sites
 /// counted zero by construction and never ranked for fixing.
 ///
@@ -17536,7 +17605,7 @@ pub fn untraced_expectation_frontier() -> Vec<(String, u64)> {
 
 /// Carrier for `gunbc.output_policy.ExpectedOutcome` — what the caller DECLARED an effect
 /// would do. Deliberately no `ExpectAny`: an unknown expectation makes every observation
-/// agree, the empty set the untyped `exit != 0` proxy assumed (DESIGN §5 — a failure arm
+/// agree, the empty set the untyped `exit != 0` proxy assumed (gunbc.design_argument::fail_closed — a failure arm
 /// refuses, never widens).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ExpectedOutcome {
@@ -17565,7 +17634,7 @@ pub enum ExpectedOutcome {
 /// as local precedent: `dispatch_service_wet` takes the transport from
 /// `op_node.transport.or(service_node.transport)`, the extdeps DECLARATION shared by every
 /// caller. There it would be per-operation, so a red control and a genuine check both calling
-/// `shell.Test.IsFile` could not differ, and caller policy in extdeps is the DESIGN §3 layer
+/// `shell.Test.IsFile` could not differ, and caller policy in extdeps is the gunbc.design_argument::single_authority layer
 /// inversion — typechecking and reading green while wrong in both directions.
 pub const EFFECT_EXPECTATION_ARG: &str = "expect";
 
@@ -17574,7 +17643,7 @@ pub const EFFECT_EXPECTATION_ARG: &str = "expect";
 /// Absent is handled by the caller as `ExpectSuccess` — the DECLARED migration default,
 /// behaviour-identical to the untyped `exit != 0` proxy it replaces. A PRESENT but unreadable
 /// value REFUSES: `gunbc.output_policy` has no `ExpectAny` arm, so an unreadable value is
-/// ignorance, and a default would be ⊤-as-answer conflated with ⊤-as-ignorance (DESIGN §5 —
+/// ignorance, and a default would be ⊤-as-answer conflated with ⊤-as-ignorance (gunbc.design_argument::fail_closed —
 /// a failure arm refuses, never widens).
 fn expectation_from_declared_arg(val: &Value) -> InterpResult<ExpectedOutcome> {
     match val {
@@ -17832,7 +17901,7 @@ pub fn file_payload_clause(bytes: u64, mode: Option<u32>) -> String {
 /// reaching here is already four octal digits wide; the mask makes that precondition explicit
 /// instead of relying on it. An earlier draft of this comment claimed the range was guaranteed by
 /// the TYPE, which is false — a u32 holds far more — and a fabricated claim beside a
-/// silently-masking body is the widening §5 forbids. The claim now names where the refusal lives,
+/// silently-masking body is the widening gunbc.design_argument::fail_closed forbids. The claim now names where the refusal lives,
 /// and `file_mode_octal_agrees_with_the_posix_authority_over_the_admitted_range` holds the two
 /// together by execution rather than by assertion.
 fn file_mode_octal(mode: u32) -> String {
@@ -18010,7 +18079,7 @@ pub const HOST_ARG_MAX_STRLEN_BYTES: usize = 131072;
 /// exceeds the host per-argument ceiling, rather than get an opaque `os error 7` from
 /// `execve`. Per single argument as MAX_ARG_STRLEN is, not the argv total (the separate,
 /// larger ARG_MAX). `None` = within limit, `Some(err)` = refuse — no truncation, no widening
-/// (DESIGN §5: a failure arm refuses, never absorbs).
+/// (gunbc.design_argument::fail_closed: a failure arm refuses, never absorbs).
 fn argv_arg_limit_refusal(argv: &[String], limit_bytes: usize) -> Option<InterpError> {
     let offending = argv.iter().map(|a| a.len()).max().unwrap_or(0);
     if offending > limit_bytes {
@@ -18438,7 +18507,10 @@ fn map_detached_outputs(op_node: &Rc<Node>, ctx: &InterpContext) -> InterpResult
         if short == "spawn" {
             continue;
         }
-        fields.push((ctx.sym(&field_name), Value::Null));
+        fields.push((
+            ctx.sym(&field_name),
+            declared_optional_field(child, Value::Null, ctx),
+        ));
     }
     fields.sort_unstable_by_key(|(k, _)| k.0);
     Ok(Value::Record {
@@ -18818,7 +18890,10 @@ fn map_shell_outputs(
             && result.exit_code != 0
             && matches!(from_key.as_deref(), Some("stdout" | "stderr"))
         {
-            fields.push((ctx.sym(&field_name), Value::Null));
+            fields.push((
+                ctx.sym(&field_name),
+                declared_optional_field(child, Value::Null, ctx),
+            ));
             continue;
         }
         let value = match from_key.as_deref() {
@@ -18847,11 +18922,14 @@ fn map_shell_outputs(
                 "exists" => Some(Value::Bool(result.exit_code == 0)),
                 _ => None,
             } {
-                fields.push((ctx.sym(&field_name), v));
+                fields.push((ctx.sym(&field_name), declared_optional_field(child, v, ctx)));
                 continue;
             }
         }
-        fields.push((ctx.sym(&field_name), value));
+        fields.push((
+            ctx.sym(&field_name),
+            declared_optional_field(child, value, ctx),
+        ));
     }
     fields.sort_unstable_by_key(|(k, _)| k.0);
 
@@ -18866,7 +18944,7 @@ fn map_shell_outputs(
 // and "from" while every emitter reader compared against "from_key" alone, which
 // is span-derived and therefore never matched: the two directions of one
 // procedure disagreed and nothing went red. Accepting both here is what kept the
-// nickname alive, so the lenient arm is gone rather than mirrored (DESIGN §3).
+// nickname alive, so the lenient arm is gone rather than mirrored (gunbc.design_argument::single_authority).
 fn extract_from_key(field_node: &Rc<Node>, ctx: &InterpContext) -> Option<String> {
     for prop in field_node.properties.iter() {
         let prop_name = field_init_node_name_at(prop.clone(), ctx.si());
@@ -19019,7 +19097,7 @@ fn write_file_owner_only(path: &str, content: &[u8]) -> std::io::Result<()> {
 /// FABRICATES a repository nobody wrote.
 ///
 /// Two dispositions are not modeled here, because a construction that cannot reach the bad state
-/// is available (DESIGN section 4b: construction over proof, proof over validation). Content is
+/// is available (gunbc.design_argument::guarantee_ladder: construction over proof, proof over validation). Content is
 /// written to a sibling temporary that is itself created with O_EXCL, and the target name is
 /// claimed by `hard_link`, which FAILS IF THE TARGET EXISTS -- so exclusivity is preserved by the
 /// publish step rather than by the open. Every failure before the link leaves the target absent,
@@ -19157,7 +19235,7 @@ mod write_file_create_new_tests {
     // The obvious control -- race N threads and assert exactly one wins -- PASSES under the
     // defective construction, because there too exactly one wins and the losers report
     // AlreadyExists. Same verdict, same ErrorKind, no information. It would have been a decoration
-    // (DESIGN section 4b), and #10069 already paid for one of those.
+    // (gunbc.design_argument::guarantee_ladder), and #10069 already paid for one of those.
     //
     // THIS ONE IS DETERMINISTIC AND SEPARATES THE TWO CONSTRUCTIONS. It plants exactly the staging
     // file the OLD naming rule would have chosen and leaves the TARGET ABSENT. The old rule
@@ -19455,7 +19533,7 @@ mod write_file_create_new_tests {
     // DIRECTORY at the target and asserted the target was untouched. Measured against the old
     // construction, it PASSED: `create_new` fails at the OPEN when the name exists, so nothing was
     // ever created and the assertion was satisfied by the defect. A check that cannot go red on the
-    // fault it names is worse than absent (DESIGN section 4b) because it gets cited as coverage.
+    // fault it names is worse than absent (gunbc.design_argument::guarantee_ladder) because it gets cited as coverage.
     //
     // THIS ONE REACHES THE FAULT. RLIMIT_FSIZE makes `write_all` fail with EFBIG on a path that is
     // ABSENT, so the create genuinely succeeds and the write genuinely fails -- the one ordering
@@ -20099,7 +20177,10 @@ fn map_file_outputs(
             "content" | "entries" => str_value(result.content.clone()),
             _ => Value::Null,
         };
-        fields.push((ctx.sym(&field_name), value));
+        fields.push((
+            ctx.sym(&field_name),
+            declared_optional_field(child, value, ctx),
+        ));
     }
     fields.sort_unstable_by_key(|(k, _)| k.0);
 
@@ -20167,7 +20248,7 @@ fn rest_tls_posture_interp_disposition(posture: &str) -> Result<(), String> {
     }
 }
 
-/// The single-authority rule (§3): a rest operation must not declare both config-level auth and a
+/// The single-authority rule (gunbc.design_argument::single_authority): a rest operation must not declare both config-level auth and a
 /// transport `auth_basic` property. Pure so the conflict rule is execution-witnessable.
 fn rest_auth_authority_conflict(config_auth_resolved: bool, has_auth_basic: bool) -> bool {
     config_auth_resolved && has_auth_basic
@@ -20176,7 +20257,7 @@ fn rest_auth_authority_conflict(config_auth_resolved: bool, has_auth_basic: bool
 /// Whether a caller's named argument `name` matches a declared parameter `p`, following the
 /// fn-call path's convention: accept `x` against a declared `x`, `_x`, or `_`. Single authority
 /// for the rule — one site, shared by the fn-call path and the service-rest binding path
-/// (DESIGN §3 nicknaming: a second copy of one rule at a second call site drifts).
+/// (gunbc.design_argument::single_authority nicknaming: a second copy of one rule at a second call site drifts).
 fn param_name_matches_declared(name: &str, declared: &[String]) -> bool {
     declared.iter().any(|p| {
         p == name || p == "_" || p.strip_prefix('_').is_some_and(|stripped| stripped == name)
@@ -20376,7 +20457,7 @@ fn rest_auth_identity_value(
 /// every seed-side crossing into a `Fnv1a64Structural`-typed carrier of the REST replay model
 /// (`RestBoundOperationInvocation.input_digest`, `RestAuthenticated.digest`). A bare
 /// `Value::Str` at either position is the model↔realization fork: fixture matching compares
-/// a record against a string and silently never matches (DESIGN §5).
+/// a record against a string and silently never matches (gunbc.design_argument::fail_closed).
 fn fnv1a64_structural_value(digest: String, ctx: &InterpContext) -> Value {
     Value::Record {
         type_name: ctx.sym("Fnv1a64Structural"),
@@ -20721,7 +20802,7 @@ fn attach_transport_outcome(
                     .map(|field| {
                         (
                             ctx.sym(&authored_name_at(ctx.si(), field.clone())),
-                            Value::Null,
+                            declared_optional_field(field, Value::Null, ctx),
                         )
                     })
                     .collect()
@@ -20955,7 +21036,7 @@ fn dispatch_rest(
     // Basic auth (RFC 7617), from a `auth_basic: { username: <input>, password: <input> }`
     // transport-block property — the modeled dissolution of curl's `-u user:pass` / netrc: the
     // credential never touches argv or a temp file, and the header value is derived in one
-    // place (§3 the rest_auth_value_single_authority_note annotation). Fail-closed: a non-record `auth_basic`,
+    // place (gunbc.design_argument::single_authority the rest_auth_value_single_authority_note annotation). Fail-closed: a non-record `auth_basic`,
     // a missing username/password field, or a non-Str credential is a typed refusal, never an
     // unauthenticated send or a stringified-debug header.
     let mut basic_auth_header: Option<String> = None;
@@ -20967,7 +21048,7 @@ fn dispatch_rest(
         if rest_auth_authority_conflict(matches!(auth, AuthResolution::Resolved { .. }), true) {
             return Err(InterpError::TypeError {
                 msg: "rest transport declares both config-level auth and auth_basic — one auth \
-                      authority per operation (§3)"
+                      authority per operation (gunbc.design_argument::single_authority)"
                     .to_string(),
             });
         }
@@ -21044,9 +21125,9 @@ pub fn resolve_auth(
 ) -> AuthResolution {
     let mut header_name = "Authorization".to_string();
     let mut env_var_name: Option<String> = None;
-    // `auth_input: <field>` (§3): the token is an operation INPUT the caller supplies,
-    // not ambient env. Resolve it from the per-call param env. Takes precedence over
-    // `auth_source` (env var) when both are present.
+    // `auth_input: <field>` (gunbc.design_argument::single_authority): the token is an operation INPUT the caller supplies,
+    // not ambient env. Resolve it from the per-call param env. A config never declares it beside
+    // `auth_source`: the parse refuses the pair.
     let mut input_field_name: Option<String> = None;
     let mut auth_declared = false;
 
@@ -21105,10 +21186,14 @@ pub fn resolve_auth(
         return AuthResolution::NoAuthDeclared;
     }
 
-    // §3: a non-empty caller-supplied input token wins over the ambient env var; absent or
-    // empty falls through to auth_source so dual-declare services (auth_input + auth_source)
-    // get the env-var fallback. Extract the String payload explicitly — a non-Str Value must
-    // NOT produce a stringified-debug Bearer header.
+    // ONE AUTH AUTHORITY. A declared `auth_input` is the ONLY source of the token: the parse refuses a
+    // config that also declares `auth_source` (v1.compiler.parse parse_config_fields), and an input
+    // that is unresolved, empty or not a String refuses here before any request is built. This site
+    // used to fall through to the `auth_source` environment variable whenever the input was empty, so
+    // `auth_token: ""` silently borrowed the process's ambient GITHUB_TOKEN -- and the emitter, reading
+    // the same declaration, ignored the input altogether. A caller that means the ambient credential now
+    // reads it explicitly (extdeps.github.auth github_token). The String payload is extracted
+    // explicitly: a non-Str Value must NOT produce a stringified-debug Bearer header.
     if let Some(ref field) = input_field_name {
         if let Some(Value::Str(tok)) = param_env.lookup(ctx.sym(field)) {
             if !tok.is_empty() {
@@ -21118,7 +21203,11 @@ pub fn resolve_auth(
                 };
             }
         }
-        // input field unresolved or empty — fall through to auth_source attempt below.
+        return AuthResolution::DeclaredButUnwired {
+            reason: format!(
+                "auth_input `{field}` is unresolved, empty or not a String; there is no ambient fallback"
+            ),
+        };
     }
 
     match env_var_name.and_then(|var| resolve_env_var_token(ctx, &var)) {
@@ -21127,8 +21216,7 @@ pub fn resolve_auth(
             token: tok,
         },
         _ => AuthResolution::DeclaredButUnwired {
-            reason: "auth declared but no token resolved (auth_input unresolved/empty, \
-                     auth_source env var absent or empty)"
+            reason: "auth declared but no token resolved (auth_source env var absent or empty)"
                 .to_string(),
         },
     }
@@ -21308,11 +21396,11 @@ fn map_response_to_value_json(
 ) -> Result<Value, RestResponseDecodeRefusal> {
     let return_type = match op_node.inferred.as_deref() {
         Some(crate::v1_std_core::InferredNode::Resolved { node }) => node.clone(),
-        _ => return Ok(json_to_value(json)),
+        _ => return Ok(json_to_value(json, ctx)),
     };
     let children = &return_type.children;
     if children.is_empty() {
-        return Ok(json_to_value(json));
+        return Ok(json_to_value(json, ctx));
     }
 
     let payload_count = children.len();
@@ -21336,7 +21424,10 @@ fn map_response_to_value_json(
                 None => Value::Null,
             },
         };
-        fields.push((ctx.sym(&field_name), val));
+        fields.push((
+            ctx.sym(&field_name),
+            declared_optional_field(child, val, ctx),
+        ));
     }
     fields.sort_unstable_by_key(|(k, _)| k.0);
 
@@ -21641,7 +21732,7 @@ fn decode_json_by_declared_field_at(
         Some(InferredNode::Resolved { node }) => {
             decode_json_by_declared_type(json, node, path, ctx)
         }
-        _ => Ok(json_to_value(json)),
+        _ => Ok(json_to_value(json, ctx)),
     }
 }
 
@@ -21665,7 +21756,7 @@ fn decode_json_by_declared_type(
                 }
                 Ok(list_value(out))
             }
-            _ => Ok(json_to_value(json)),
+            _ => Ok(json_to_value(json, ctx)),
         };
     }
     // A field declared `std.decimal` `ExactDecimal { units, fraction_digits }` is carried on the wire
@@ -21716,12 +21807,12 @@ fn decode_json_by_declared_type(
             !ty.children.is_empty() && ty.children.iter().all(|arm| arm.children.is_empty());
         if !nullary {
             // A payload-carrying coproduct is not a JSON string and is outside this decode.
-            return Ok(json_to_value(json));
+            return Ok(json_to_value(json, ctx));
         }
         if json.is_boolean() && name.rsplit('.').next() == Some("Bool") {
             // `Bool = True | False` is carried natively (`Value::Bool`), and a JSON boolean is
             // its wire form; every other nullary coproduct is spelled as a string.
-            return Ok(json_to_value(json));
+            return Ok(json_to_value(json, ctx));
         }
         return decode_nullary_coproduct(json, ty, &name, path, ctx);
     }
@@ -21779,7 +21870,7 @@ fn decode_json_by_declared_type(
                             ctx,
                         )?,
                     ),
-                    None => (key.clone(), json_to_value(value)),
+                    None => (key.clone(), json_to_value(value, ctx)),
                 };
                 if let Some(ck) = CanonKey::new(str_value(stored)) {
                     fields.insert(ck, decoded);
@@ -21788,7 +21879,7 @@ fn decode_json_by_declared_type(
             return Ok(map_value(fields));
         }
     }
-    Ok(json_to_value(json))
+    Ok(json_to_value(json, ctx))
 }
 
 fn decode_nullary_coproduct(
@@ -21870,7 +21961,7 @@ fn decode_nullary_coproduct(
 /// text reader in this build parses with the crate's default recursion limit (no `unbounded_depth`
 /// feature is enabled), and serde_json exports that limit as no symbol -- so it is PROBED, once, as the
 /// deepest `[[...]]` nesting `serde_json::from_str` admits. A second literal would be a fork of the
-/// reader's own configuration (DESIGN section 3) that a crate upgrade silently invalidates.
+/// reader's own configuration (gunbc.design_argument::single_authority) that a crate upgrade silently invalidates.
 pub(crate) fn serde_json_read_depth_limit() -> usize {
     static LIMIT: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
     *LIMIT.get_or_init(|| {
@@ -22017,9 +22108,10 @@ fn exact_decimal_from_json_number_text(text: &str) -> Option<(i64, i64)> {
     ))
 }
 
-fn json_to_value(json: &serde_json::Value) -> Value {
+/// JSON null is absence: it builds the one `Optional.Absent` constructor, like `none`.
+fn json_to_value(json: &serde_json::Value, ctx: &InterpContext) -> Value {
     value_depth_guarded(|| match json {
-        serde_json::Value::Null => Value::Null,
+        serde_json::Value::Null => optional_absent(ctx),
         serde_json::Value::Bool(b) => Value::Bool(*b),
         serde_json::Value::Number(n) => {
             if let Some(i) = n.as_i64() {
@@ -22029,14 +22121,16 @@ fn json_to_value(json: &serde_json::Value) -> Value {
             }
         }
         serde_json::Value::String(s) => str_value(s.clone()),
-        serde_json::Value::Array(arr) => {
-            list_value(arr.iter().map(json_to_value).collect::<Vec<_>>())
-        }
+        serde_json::Value::Array(arr) => list_value(
+            arr.iter()
+                .map(|v| json_to_value(v, ctx))
+                .collect::<Vec<_>>(),
+        ),
         serde_json::Value::Object(obj) => {
             let fields: HamtMap<CanonKey, Value> = obj
                 .iter()
                 .filter_map(|(k, v)| {
-                    CanonKey::new(str_value(k.clone())).map(|ck| (ck, json_to_value(v)))
+                    CanonKey::new(str_value(k.clone())).map(|ck| (ck, json_to_value(v, ctx)))
                 })
                 .collect();
             map_value(fields)
@@ -22536,7 +22630,7 @@ fn eval_emit_host_run_transport_builtin(
     result
 }
 
-/// SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.roadmap.roadmap_authority
+/// SCAFFOLD (gunbc.design_argument::self_hosting seed-retained HAND-RUST — authority: gunbc.roadmap.roadmap_authority
 /// v1-materialization-kernel; receipt: dag/std/emit_on_demand.dag P3 kernel +
 /// extdeps.realization.emit_on_demand_host + emit_on_demand_kernel_witness_test):
 /// content-addressed emit_host transport persists the workspace under workspace_dir and skips
@@ -22959,8 +23053,8 @@ fn run_cached_process_spec(
 /// runner env has no `cargo` on PATH — repo-checkout build steps get it via the CI prelude,
 /// but the transport spawns from an emitted workspace with only the process env). Order: bare
 /// name if it resolves on PATH; else $CARGO_HOME/bin/<name>; else $HOME/.cargo/bin/<name>;
-/// else refuse (DESIGN §5: never return the bare name and widen to ambient PATH at spawn —
-/// the absorbing fallback hermetic-tool-provisioning-design (deleted) §1 names).
+/// else refuse (gunbc.design_argument::fail_closed: never return the bare name and widen to ambient PATH at spawn —
+/// the absorbing fallback hermetic-tool-provisioning-design (deleted) gunbc.design_argument::goal_safe_efficient_predictable names).
 ///
 /// HAND-RUST GATE explicit deferral (review 44883): seed retained, not a new resolver
 /// authority. Lane: ROADMAP `toolchain-single-resolver` (gunbc.roadmap.roadmap_authority,
@@ -23070,7 +23164,7 @@ struct EmitHostBuildEnvironment {
 /// build: four emit_host expected-red rows built clean on every flagless runner and were
 /// `RunFailed` only in CI, on `-D dead-code` (gunbc#9727). A build flag is policy; the
 /// emitted program's build environment is realization; a prefix must not smuggle one into
-/// the other (DESIGN §3).
+/// the other (gunbc.design_argument::single_authority).
 fn emit_host_constructed_build_environment(admitted_names: &[String]) -> EmitHostBuildEnvironment {
     use std::os::unix::ffi::OsStrExt;
     // No seed-side veto: the row is the whole policy. CARGO_TARGET_DIR is constructed at the
@@ -23754,12 +23848,12 @@ macro_rules! v1_builtin_arms {
             arm "free_call.get" { "get" } => match $positional.as_slice() {
                 [Value::List(items), idx_val] => {
                     let idx = expect_int(Some(idx_val), "get")?;
-                    Ok(Some(list_get_at_or_null(items, idx)))
+                    Ok(Some(list_get_at_optional(items, idx, &$ctx)))
                 }
                 [list_val, idx_val] if free_monoid_to_vec(list_val).is_some() => {
                     let items = expect_list(list_val, "get")?;
                     let idx = expect_int(Some(idx_val), "get")?;
-                    Ok(Some(list_get_at_or_null(&items, idx)))
+                    Ok(Some(list_get_at_optional(&items, idx, &$ctx)))
                 }
                 _ => Ok(None),
             },
@@ -23767,8 +23861,8 @@ macro_rules! v1_builtin_arms {
             arm "free_call.parse_int" { "parse_int" } => {
                 let s = expect_str($positional.first().copied(), "parse_int")?;
                 match s.parse::<i64>() {
-                    Ok(n) => Ok(Some(Value::Int(n))),
-                    Err(_) => Ok(Some(Value::Null)),
+                    Ok(n) => Ok(Some(optional_present(Value::Int(n), $ctx))),
+                    Err(_) => Ok(Some(optional_absent($ctx))),
                 }
             },
 
@@ -23922,8 +24016,8 @@ macro_rules! v1_builtin_arms {
                     expect_value_str($positional.first().copied(), "hmac_sha256_hex key")?.as_str(),
                     expect_value_str($positional.get(1).copied(), "hmac_sha256_hex message")?.as_str(),
                 ) {
-                    Some(tag) => str_value(tag),
-                    None => Value::Null,
+                    Some(tag) => optional_present(str_value(tag), $ctx),
+                    None => optional_absent($ctx),
                 }))
             },
 
@@ -23948,8 +24042,8 @@ macro_rules! v1_builtin_arms {
             arm "free_call.json_unescape_checked" { "json_unescape_checked" } => {
                 let s = expect_str($positional.first().copied(), "json_unescape_checked")?;
                 match v1_rt::json_unescape_checked(&s) {
-                    Some(out) => Ok(Some(str_value(out))),
-                    None => Ok(Some(Value::Null)),
+                    Some(out) => Ok(Some(optional_present(str_value(out), $ctx))),
+                    None => Ok(Some(optional_absent($ctx))),
                 }
             },
 
@@ -24201,12 +24295,12 @@ macro_rules! v1_builtin_arms {
 
             // ObservePeakResidentAtSubject realization seam (witness-realization plan P1):
             // process peak resident set (VmHWM) in bytes. Fail-closed when the host
-            // cannot report it — a fabricated 0 would be a Measured lie (DESIGN §5).
+            // cannot report it — a fabricated 0 would be a Measured lie (gunbc.design_argument::fail_closed).
             arm "free_call.observed_peak_resident_bytes" { "observed_peak_resident_bytes" } => match $positional.as_slice() {
                 [] => {
                     // Routed through the single peak reader (VmHWM on Linux, getrusage on macOS; see its docblock). This arm previously carried
                     // its OWN /proc/self/status VmHWM read — a second implementation of one
-                    // observation (section 3), and the copy executing for witnesses, so fixing
+                    // observation (gunbc.design_argument::single_authority), and the copy executing for witnesses, so fixing
                     // only cli_run's would have left this Linux-only. Authority for the
                     // interface and per-implementation units: dag/extdeps/posix/rusage.dag with
                     // dag/extdeps/{linux,darwin}/rusage.dag.
@@ -25112,15 +25206,6 @@ macro_rules! v1_builtin_arms {
                 )))
             },
 
-            arm "free_call.builtin_function_registry_keys" { "builtin_function_registry_keys" } => {
-                Ok(Some(list_value(
-                    crate::cli_run::builtin_function_registry_keys()
-                        .into_iter()
-                        .map(str_value)
-                        .collect::<Vec<_>>(),
-                )))
-            },
-
             arm "free_call.compile_dag_operation_requires" { "compile_dag_operation_requires" } => {
                 let source = expect_str($positional.first().copied(), $name)?;
                 let service = expect_str($positional.get(1).copied(), $name)?;
@@ -25131,41 +25216,6 @@ macro_rules! v1_builtin_arms {
                     ))),
                     Err(msg) => Err(InterpError::TypeError { msg }),
                 }
-            },
-
-            arm "free_call.compile_dag_primitive_call_edges" { "compile_dag_primitive_call_edges" } => {
-                let exclude_substrings = expect_str_list($positional.first().copied(), $name)?;
-                let pool_roots = expect_str_list($positional.get(1).copied(), $name)?;
-                let entry_prefixes = expect_str_list($positional.get(2).copied(), $name)?;
-                Ok(Some(primitive_call_edge_census_value(
-                    crate::cli_run::compile_dag_primitive_call_edges(&exclude_substrings, &pool_roots, &entry_prefixes),
-                    $ctx,
-                )))
-            },
-
-            arm "free_call.source_root_ingest_module_identities" { "source_root_ingest_module_identities" } => {
-                let source_roots = expect_str_list($positional.first().copied(), $name)?;
-                Ok(Some(module_identity_population_value(
-                    crate::cli_run::source_root_ingest_module_identities(&source_roots),
-                    $ctx,
-                )))
-            },
-
-            arm "free_call.required_floor_nominal_subject_module_identities" { "required_floor_nominal_subject_module_identities" } => {
-                let source_roots = expect_str_list($positional.first().copied(), $name)?;
-                Ok(Some(module_identity_population_value(
-                    crate::cli_run::required_floor_nominal_subject_module_identities(&source_roots),
-                    $ctx,
-                )))
-            },
-
-            arm "free_call.entry_closure_module_identities" { "entry_closure_module_identities" } => {
-                let source_roots = expect_str_list($positional.first().copied(), $name)?;
-                let entry_path = expect_str($positional.get(1).copied(), $name)?;
-                Ok(Some(module_identity_population_value(
-                    crate::cli_run::entry_closure_module_identities(&source_roots, &entry_path),
-                    $ctx,
-                )))
             },
 
             arm "free_call.compile_dag_call_form_leaf_guard" { "compile_dag_call_form_leaf_guard" } => {
@@ -25360,7 +25410,7 @@ macro_rules! v1_builtin_dispatch {
 // `gunbc.v1.v1_interpreter_opaque_host_call.opaque_host_call_surface()` and arms this recorder with
 // it, so the surface keeps one authority and an ungrounded surface refuses the run rather than
 // arming an empty one (an empty roster would report every crossing as pollable, which is the
-// reassuring direction and exactly the absorbing fallback DESIGN section 5 forbids).
+// reassuring direction and exactly the absorbing fallback gunbc.design_argument::fail_closed forbids).
 thread_local! {
     static OPAQUE_HOST_CALL_SURFACE: std::cell::RefCell<Option<Vec<String>>> =
         const { std::cell::RefCell::new(None) };
@@ -25507,13 +25557,9 @@ fn apply_closure(
     });
     if depth > CALL_DEPTH_LIMIT {
         CALL_DEPTH.with(|d| d.set(d.get() - 1));
-        return Err(InterpError::TypeError {
-            msg: format!(
-                "call depth exceeded {} in closure application — unbounded recursion \
-                 (a bare-name resolution cycle, or a genuinely divergent chain); \
-                 refused, never a host stack overflow",
-                CALL_DEPTH_LIMIT
-            ),
+        return Err(InterpError::CallDepthExceeded {
+            limit: CALL_DEPTH_LIMIT,
+            at: "closure application".to_string(),
         });
     }
     let result = stacker::maybe_grow(256 * 1024, 8 * 1024 * 1024, || {
@@ -26161,7 +26207,7 @@ per-claim work measure from a modeled receipt subsumes this -- but that is not t
 because a scaffold may always dissolve early and what a trigger fixes is the point by which \
 it MUST be gone. \
 \
-WHAT DOES NOT DISSOLVE WITH IT: `evaluator_step_work_measure_tests`. Per DESIGN 4b(4) a \
+WHAT DOES NOT DISSOLVE WITH IT: `evaluator_step_work_measure_tests`. Per gunbc.design_argument::guarantee_ladder (dissolution on climb) a \
 climb deletes the redundant lower-rung PRODUCTION handling and never the evidence -- the \
 envelope-invariance red, its size control and the fill-netting arm stay enrolled as the \
 executing proof that the measure is still invariant wherever it comes to be computed.";
@@ -26255,7 +26301,7 @@ pub(crate) fn native_len(val: &Value) -> Option<i64> {
         // REASON: the ASCII fast path covers the dominant repeated-query case, and non-ASCII
         // strings in this corpus are constructed-then-queried-once-or-never, so a precomputed
         // codepoint count would not amortize. The ASCII-in-practice half is AN ASSUMPTION about
-        // workloads, not a modeled fact — §6: "n is small here" is not time-stable.
+        // workloads, not a modeled fact — gunbc.design_argument::how_to_work: "n is small here" is not time-stable.
         // NEXT-RUNG TRIGGER: a workload repeatedly length-querying the same non-ASCII string;
         // then the amortization inverts and a carried count becomes correct.
         Value::Str(s) => Some(s.string_length()),
@@ -26402,7 +26448,7 @@ const FREE_MONOID_WELL_KNOWN_SYMS: [&str; 4] = ["Empty", "Cons", "head", "tail"]
 // interned. That is NOT "a free-monoid value must already carry them" (no help if IT is
 // about to be constructed, or lookup races an unrelated borrow) -- it is guaranteed by
 // pre-interning at context construction, so a `.get()` miss is an invariant violation, not
-// "not a list". Reporting it as `None` would be DESIGN §5's empty-observation narrow
+// "not a list". Reporting it as `None` would be gunbc.design_argument::fail_closed's empty-observation narrow
 // (⊥-as-ignorance conflated with ⊥-as-answer), so this panics rather than misreport a
 // Cons/Empty value as not one.
 fn free_monoid_ctx_syms(ctx: &InterpContext) -> Option<(Symbol, Symbol, Symbol, Symbol)> {
@@ -26482,7 +26528,7 @@ pub(crate) fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
     }
 }
 
-/// Fail-closed backstop for the model↔realization String straddle (DESIGN §5). At a
+/// Fail-closed backstop for the model↔realization String straddle (gunbc.design_argument::fail_closed). At a
 /// String-meeting point (a free monoid concatenated with a native `Value::Str`), grounding
 /// (`free_monoid_to_string`) has already consumed every well-typed all-codepoint String, so
 /// reaching the list path means the operand is *not* a pure codepoint list — and if it still
@@ -26497,11 +26543,11 @@ fn string_realization_straddle_detail(orig: &Value, items: &[Value]) -> Option<S
     // legitimate heterogeneous element. Only a `Cons`-chain / `Str`-derived flattening carries
     // codepoint semantics.
     //
-    // OPEN THREAD (DESIGN §6 residue, named): this `Value::List` exemption makes the wall a
+    // OPEN THREAD (gunbc.design_argument::how_to_work residue, named): this `Value::List` exemption makes the wall a
     // RATCHET WITH A NAMED HOLE. The `"chars"` method (this file) materializes a string as a
     // `Value::List` of codepoint `Int`s, identical to a generic `Int` list — so a `.chars()`
     // result straddled with a native `Str` would be exempted and fail open (the original bug).
-    // Undecidable at the Value level (element-identical), so honest §6 residue, the
+    // Undecidable at the Value level (element-identical), so honest gunbc.design_argument::how_to_work residue, the
     // `Value::Null` pattern. LATENT today: no `.dag` program evaluates the interpreter `chars`
     // method into a concat/`+` with a `Str` (the two `.chars()` rows in `languages.dag` /
     // `rust/emit.dag` are emit *templates*). DISSOLVES WHEN `.chars()` / `Char` is regrounded
@@ -26520,7 +26566,7 @@ fn string_realization_straddle_detail(orig: &Value, items: &[Value]) -> Option<S
     }
 }
 
-/// String grounding (DESIGN §1/§2/§7, model↔realization fork): render a string-like free
+/// String grounding (gunbc.design_argument::goal_safe_efficient_predictable, gunbc.design_argument::minimize_redundancy, gunbc.design_argument::self_hosting, model↔realization fork): render a string-like free
 /// monoid (`String = FreeMonoid<Char>`, `Char = Nat`) to its native realization. A native
 /// `Value::Str` is already grounded; a modeled `Empty`/`Cons` chain or `List` is a String
 /// **only** when every element is a `Char` codepoint (`Value::Int`). A `Value::Str` *element*
@@ -26739,8 +26785,20 @@ mod slice_cost_tests {
     }
 }
 
-fn list_get_at_or_null(items: &RrbVector<Value>, idx: i64) -> Value {
-    items.get(idx as usize).cloned().unwrap_or(Value::Null)
+/// A list element read is the declared `Optional<T>` (v2 `list_at_optional` is the referent):
+/// `Present { value }` in range, `Absent` otherwise, never a bare element or host null.
+fn list_element_as_optional(element: Option<Value>, ctx: &InterpContext) -> Value {
+    match element {
+        Some(value) => optional_present(value, ctx),
+        None => optional_absent(ctx),
+    }
+}
+
+fn list_get_at_optional(items: &RrbVector<Value>, idx: i64, ctx: &InterpContext) -> Value {
+    let element = usize::try_from(idx)
+        .ok()
+        .and_then(|i| items.get(i).cloned());
+    list_element_as_optional(element, ctx)
 }
 
 fn expect_list(val: &Value, context: &str) -> InterpResult<Rc<RrbVector<Value>>> {
@@ -26957,7 +27015,7 @@ fn expect_byte_vec(val: Option<&Value>, context: &str) -> InterpResult<Vec<u8>> 
 
 /// A ROOT THAT IS NOT A WALKABLE DIRECTORY REFUSES HERE, TYPED AND LOCATED, before the host anchors
 /// it. `cli_run` `anchor_source_root` panics on a file, which crossed the builtin boundary as a
-/// process abort rather than an answer the caller can read (DESIGN section 5). The classification is
+/// process abort rather than an answer the caller can read (gunbc.design_argument::fail_closed). The classification is
 /// `coproduct_reflection` `pool_root_defects`, the one the parse-only pool walks already refuse with,
 /// so a file root reads `NamesFile` here exactly as it does there.
 fn refuse_roots_that_are_not_walkable_directories(
@@ -27222,7 +27280,7 @@ fn expect_int(val: Option<&Value>, context: &str) -> InterpResult<i64> {
 ///
 /// A fabricated order is the worst wrong: `sorted_map_keys` exists to make a fold
 /// deterministic, so a silently-different permutation is a plausible, stable, WRONG artifact
-/// (DESIGN.md 5 -- no fabricated plausible output).
+/// (gunbc.design_argument::fail_closed -- no fabricated plausible output).
 ///
 /// `cmp_values` -- which answered `Ordering::Equal` for every pair it did not recognise, an
 /// absorbing fallback that let `sort_by` silently disagree with the emitted `derive(Ord)` --
@@ -27244,7 +27302,7 @@ fn sorted_map_keys_in_emitted_order(
 /// proven identical to the canonical content order. Every other kind refuses, typed: the
 /// emitted order there is a `derive(Ord)` in DECLARATION order (or does not compile, for
 /// `f64`), which the canonical spelling order does not reproduce, so any order here would be
-/// a silent disagreement between the two realizations (DESIGN section 5).
+/// a silent disagreement between the two realizations (gunbc.design_argument::fail_closed).
 fn admit_emitted_ord_keys<'a>(
     keys: impl IntoIterator<Item = &'a Value>,
     what: &str,
@@ -28581,7 +28639,7 @@ mod argv_arg_limit_test {
 
     // Discriminating boundary: exactly the limit passes (proceed to exec), one byte
     // over refuses with the typed, located error — carrying the offending byte count,
-    // the modeled limit, and argv0 — never a truncation or a widen (DESIGN §5).
+    // the modeled limit, and argv0 — never a truncation or a widen (gunbc.design_argument::fail_closed).
     #[test]
     fn wall_refuses_one_byte_over_and_passes_at_limit() {
         let limit = HOST_ARG_MAX_STRLEN_BYTES;
@@ -28986,7 +29044,7 @@ mod process_termination_tests {
 /// the first non-ASCII code point.
 ///
 /// The flag is unforgeable, not checked: `RcStr`'s field is private and `RcStr::new` its
-/// only producer, so "carrier says ASCII, string is not" has no constructor (DESIGN §4b --
+/// only producer, so "carrier says ASCII, string is not" has no constructor (gunbc.design_argument::guarantee_ladder --
 /// structurally impossible, so no probe can author its RED).
 #[cfg(test)]
 mod rc_str_carrier_tests {
@@ -29836,7 +29894,7 @@ mod push_hash_extension_tests {
 
     /// THROUGH THE PRODUCTION ARMS, never the helper: `i` selects the free-call arm
     /// (`eval_builtin`) or the method arm (`eval_algebra_method_inner`), alternating so deleting
-    /// the extension from EITHER arm turns the test red (DESIGN section 3: deleting the
+    /// the extension from EITHER arm turns the test red (gunbc.design_argument::single_authority: deleting the
     /// integration must make a control fail).
     fn push(ctx: &InterpContext, xs: &Rc<RrbVector<Value>>, item: Value, i: i64) -> Value {
         let receiver = Value::List(xs.clone());
@@ -30098,7 +30156,7 @@ mod value_depth_walker_tests {
     use super::{
         account_value, cross_representation_numeric_straddle,
         free_monoid_symbol_value_to_dotted_string, json_to_value, list_value, map_value,
-        portable_value_digest, portable_value_eq, portable_value_from_ctx_at,
+        optional_absent, portable_value_digest, portable_value_eq, portable_value_from_ctx_at,
         portable_value_size_bytes, value_fast_eq, value_from_portable_ctx, value_hash, CanonKey,
         ExecutionMode, InterpContext, MemoryAccounting, Value,
     };
@@ -30322,7 +30380,9 @@ mod value_depth_walker_tests {
         assert_eq!(super::json_container_depth(&wire), limit);
         let text = serde_json::to_string(&wire).expect("serializes");
         assert!(serde_json::from_str::<serde_json::Value>(&text).is_ok());
-        assert!(json_to_value(&wire) == value);
+        assert!(json_to_value(&wire, &ctx) == value);
+        // JSON null is absence: the one `Optional.Absent` constructor, not host Null.
+        assert!(json_to_value(&serde_json::Value::Null, &ctx) == optional_absent(&ctx));
         // The fixture encoding spends two containers per List level (its tag object and its items
         // array), the empty leaf included, so limit / 2 Lists -- limit / 2 - 1 wrapping levels --
         // fit inside the limit.
@@ -30673,5 +30733,186 @@ mod canonical_render_order_tests {
         assert!(admit_emitted_ord_keys(mixed.iter(), "sort_by").is_err());
         let ints = [Value::Int(2), Value::Int(1)];
         assert!(admit_emitted_ord_keys(ints.iter(), "sort_by").is_ok());
+    }
+}
+
+#[cfg(test)]
+mod t9_host_recursion_probes {
+    //! Regression controls for the host-stack drop of closure/Env chains deeper than the stack: `Env`
+    //! drops iteratively (`impl Drop for Env`), one discipline with `impl Drop for Value` and
+    //! `impl Drop for PortableValue` -- the outermost drop drains a worklist (a local Vec for Value,
+    //! a thread-local queue for Env). Each test drops a 262,144-deep chain on the default test
+    //! thread; the two `_1m` tests run the Env.parent-only shapes at 1,000,000 (the depth where
+    //! they discriminate; peak ~2.4 GB, so they are `--ignored` and run on a sized host).
+    //! Class: gunbc.recurring_failure_mode recursion_over_value_depth_uncounted_by_the_call_limit.
+    use std::rc::Rc;
+
+    use im::{vector as im_vec, HashMap};
+
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_std_core::{no_span, Cardinality, Connective, ExprData, Node};
+
+    use super::{list_value, map_value, Env, ExecutionMode, InterpContext, Value};
+
+    fn fresh_ctx() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    fn body_node() -> Rc<Node> {
+        Rc::new(Node {
+            occurrence_identity: Rc::new(
+                crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+            ),
+            name: "body".to_string(),
+            span: no_span(),
+            ident_span: None,
+            children: Rc::new(im_vec![]),
+            connective: Connective::NoConnective,
+            params: Rc::new(im_vec![]),
+            inferred: None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(im_vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(im_vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
+            declaration: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        })
+    }
+
+    /// 262,144 discriminates the closure-capture shapes; the two Env.parent-only shapes hold at that
+    /// depth and abort only at 1,000,000 (srv1, pre-fix), so they default to the deeper figure.
+    fn depth_or(default: usize) -> usize {
+        std::env::var("T9_DEPTH")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(default)
+    }
+
+    fn depth() -> usize {
+        depth_or(262_144)
+    }
+
+    fn parent_depth() -> usize {
+        depth_or(1_000_000)
+    }
+
+    fn env_parent_chain(depth: usize) {
+        let mut env = Env::empty();
+        for _ in 0..depth {
+            env = Env::extend(&env, HashMap::new());
+        }
+        drop(env);
+    }
+
+    fn closure_via_env_parent_chain(depth: usize) {
+        let ctx = fresh_ctx();
+        let (f, body) = (ctx.sym("f"), body_node());
+        let mut env = Env::empty();
+        for _ in 0..depth {
+            let c = closure(&body, env.clone());
+            env = Env::with_binding(&env, f, c);
+        }
+        drop(env);
+    }
+
+    fn closure(body: &Rc<Node>, env: Rc<Env>) -> Value {
+        Value::Closure {
+            params: vec![],
+            body: body.clone(),
+            env,
+        }
+    }
+
+    /// Env.parent-only chain: no Value anywhere, so only an iterative Env Drop holds it.
+    #[test]
+    fn probe_env_parent_chain_drops() {
+        env_parent_chain(depth());
+    }
+
+    #[test]
+    #[ignore = "1M deep, ~2.4 GB peak: run on a sized host"]
+    fn probe_env_parent_chain_drops_1m() {
+        env_parent_chain(parent_depth());
+    }
+
+    /// Each closure captures an env binding the previous closure.
+    #[test]
+    fn probe_closure_capture_chain_drops() {
+        let ctx = fresh_ctx();
+        let (f, body) = (ctx.sym("f"), body_node());
+        let mut value = closure(&body, Env::empty());
+        for _ in 0..depth() {
+            value = closure(&body, Env::with_binding(&Env::empty(), f, value));
+        }
+        drop(value);
+    }
+
+    /// Closure chain threaded through Env.parent: each env's parent binds the previous closure.
+    #[test]
+    fn probe_closure_via_env_parent_chain_drops() {
+        closure_via_env_parent_chain(depth());
+    }
+
+    #[test]
+    #[ignore = "1M deep, ~2.4 GB peak: run on a sized host"]
+    fn probe_closure_via_env_parent_chain_drops_1m() {
+        closure_via_env_parent_chain(parent_depth());
+    }
+
+    /// Closure env binds a List holding the previous closure.
+    #[test]
+    fn probe_closure_env_list_of_closures_drops() {
+        let ctx = fresh_ctx();
+        let (f, body) = (ctx.sym("f"), body_node());
+        let mut value = closure(&body, Env::empty());
+        for _ in 0..depth() {
+            let env = Env::with_binding(&Env::empty(), f, list_value(vec![value]));
+            value = closure(&body, env);
+        }
+        drop(value);
+    }
+
+    /// Closure env binds a Map whose value is the previous closure.
+    #[test]
+    fn probe_closure_env_map_value_drops() {
+        let ctx = fresh_ctx();
+        let (f, body) = (ctx.sym("f"), body_node());
+        let mut value = closure(&body, Env::empty());
+        for _ in 0..depth() {
+            let mut entries = super::HamtMap::new();
+            entries.insert(
+                super::CanonKey::new(super::str_value("k")).expect("canonical key"),
+                value,
+            );
+            let env = Env::with_binding(&Env::empty(), f, map_value(entries));
+            value = closure(&body, env);
+        }
+        drop(value);
+    }
+
+    /// Positive control: shallow chain drops fine (proves the probe builds what it claims).
+    #[test]
+    fn control_shallow_closure_chain_drops() {
+        let ctx = fresh_ctx();
+        let (f, body) = (ctx.sym("f"), body_node());
+        let mut value = closure(&body, Env::empty());
+        for _ in 0..1_000 {
+            value = closure(&body, Env::with_binding(&Env::empty(), f, value));
+        }
+        drop(value);
     }
 }

@@ -3,7 +3,7 @@ module test.claim.deployment_gate_authorization_witness
 import extdeps.github.workflow_runs { GitHubWorkflowRunId }
 // Witness file for the authorization decision behind "answer a pending environment gate for a run".
 // This is where the fixtures live; the production module gunbc.auth.deployment_gate_authorization
-// carries types and folds only, exactly as DESIGN §3 wants a deciding module to read.
+// carries types and folds only, exactly as gunbc.design_argument::single_authority wants a deciding module to read.
 //
 // WHAT THESE TESTS EXERCISE, and why each is shaped the way it is. The feature replaces one approval
 // surface with another, so the failure modes worth paying for are the ones where the model still looks
@@ -393,7 +393,7 @@ test fn a_readback_whose_app_is_not_the_claimed_app_is_refused_on_the_app_axis()
 
 test fn the_identity_readback_refuses_by_name_and_by_status() -> Bool {
   // 1. A 200 whose body is missing app_slug refuses with the FIELD NAME — no default is filled in for a
-  // required upstream field (§5, loud typed refusal), and the pin makes it required.
+  // required upstream field (gunbc.design_argument::fail_closed, loud typed refusal), and the pin makes it required.
   (match fx_observation_probe(
          status: installation_readback_success_status,
          wire: InstallationWireFields {
@@ -1852,7 +1852,7 @@ test fn the_receipt_carries_the_observed_repository_not_the_callers() -> Bool {
 //   (head 011fad21c15): `installation == app` — two same-numbered carriers of DIFFERENT axes —
 //   refused at resolve as a type mismatch, where the previous base had let it through memberwise
 //   equal (the superseded wording this comment once carried). The refusal has an owner already, so
-//   this file gives it no second home (§3): the class row
+//   this file gives it no second home (gunbc.design_argument::single_authority): the class row
 //   gunbc.recurring_failure_mode.cross_type_comparison_answers_instead_of_refusing and its enrolled
 //   control test.claim.record_escapes_declared_optional_return_witness::
 //   w_an_equality_between_unrelated_records_is_refused. A compiling file cannot contain a compile

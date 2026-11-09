@@ -17,7 +17,7 @@ import extdeps.provisioning.dhcp_client_arch {
 }
 import extdeps.provisioning.network_boot { ClientNetworkBootMode, DhcpBootDirection, UefiHttpBoot, UefiPxe, LegacyBiosPxe }
 import product.placement_supply { SiteIdentity, site_identity_eq }
-import gunbc.machine_intake.access { BootDeliveryTarget, same_boot_delivery_target }
+import gunbc.machine_intake.access { BootDeliveryTarget, boot_delivery_target_subject, same_boot_delivery_target }
 import gunbc.machine_intake.subject { UnitKey, IntakeAttemptId }
 
 // THE NETWORK-BOOT ESTABLISHMENT VOCABULARY, in its own authority (machine-intake ruling 3,
@@ -47,7 +47,7 @@ type NetworkBootRequirement
 // receipts bind an artifact, not a host, so without the target a network boot
 // established on one unit could authorize another's request. Each receipt IS
 // the per-axis observation — carrying a projected (observation, observed_at)
-// row beside it would be a second writable source for one fact (DESIGN §2/§3),
+// row beside it would be a second writable source for one fact (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority),
 // and the digest a reader wants is manifest.root_digest, which the join has
 // already proved equal to the requested one.
 type NetworkBootDeliveryEstablishment {
@@ -64,7 +64,7 @@ type NetworkBootDeliveryEstablishment {
 // The trust an ESTABLISHED delivery rests on. BootstrapTrustStanding is the join's INPUT and
 // includes BootstrapTrustUnestablished; an establishment carrying that arm would be a delivery
 // with no trust ground, so the established record has its own coproduct of the two grounded
-// arms and the ungrounded state has no constructor here (DESIGN §4b rung 4). The join builds
+// arms and the ungrounded state has no constructor here (gunbc.design_argument::guarantee_ladder rung 4). The join builds
 // it from the grounds it admitted, never by copying the input standing.
 type EstablishedBootstrapTrust
   = EstablishedProductionTrust { grounds: ProductionTrustGrounds }
@@ -366,7 +366,7 @@ type ControlledNetworkTrustObservation {
 // reader needs. A record of two independent optionals admits the both-absent
 // state — a ProductionTrustedBootstrap with no observation behind it — so the
 // grounds are a coproduct of the three inhabited combinations instead: the
-// ungrounded state has no constructor (DESIGN §4b rung 4).
+// ungrounded state has no constructor (gunbc.design_argument::guarantee_ladder rung 4).
 type ProductionTrustGrounds
   = FirmwareHttpsTrusted { firmware_https: FirmwareHttpsTrustObservation }
   | SecureBootChainloaderTrusted { secure_boot_chainloader: SecureBootChainloaderTrustObservation }
@@ -704,10 +704,10 @@ fn join_verified_ticket_after_trust(
                         cause: ManifestJoinExpired { expiry: id.expiry, observed_at: manifest_at },
                       }
                     ManifestWindowOpen =>
-                      if (id.target_unit as NonEmptyStr) != (inputs.target.subject.subject.unit_key as NonEmptyStr) {
+                      if (id.target_unit as NonEmptyStr) != (boot_delivery_target_subject(target: inputs.target).subject.unit_key as NonEmptyStr) {
                         NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongTarget }
                       } else {
-                        if (id.attempt_id as NonEmptyStr) != (inputs.target.subject.attempt_id as NonEmptyStr) {
+                        if (id.attempt_id as NonEmptyStr) != (boot_delivery_target_subject(target: inputs.target).attempt_id as NonEmptyStr) {
                           NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongAttempt }
                         } else {
                           match dhcp_client_processor_architecture(arch: id.architecture, mode: id.boot_mode) {

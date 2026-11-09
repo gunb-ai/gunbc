@@ -293,7 +293,7 @@ test fn w_semver_build_leading_zero_identifier_still_parses() -> Bool {
   }
 }
 
-// §2 is X.Y.Z with no trailing delimiter: "1.2.3." must refuse, never lose the dot and rank.
+// gunbc.design_argument::minimize_redundancy is X.Y.Z with no trailing delimiter: "1.2.3." must refuse, never lose the dot and rank.
 // The old last-field handling split on the dot first and recursed onto the empty suffix, so
 // the dot vanished and the label ranked as 1.2.3 — a fabricated order for an out-of-grammar
 // label (review 76945). The repair makes the last field consume the whole remainder, so the
@@ -306,7 +306,7 @@ test fn w_semver_core_refuses_trailing_delimiter_label() -> Bool {
   }
 }
 
-// A numeric component has NO size limit in section 2 or 9, so a 20-nines field is a valid
+// A numeric component has NO size limit in gunbc.design_argument::minimize_redundancy or 9, so a 20-nines field is a valid
 // label, not an out-of-grammar or out-of-range one: it must compare by its digits, at any
 // width (side chat review 5427723272). The field arrives constructor-confined —
 // semver_numeric_field admits it or refuses — and precedence projects .digits: run length is

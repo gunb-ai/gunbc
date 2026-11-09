@@ -1,0 +1,303 @@
+module test.claim.product.p4261_finding_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import product.p4261.carrier { CarrierLayoutObservation, DesignatorReading, MeasuredBoard }
+import product.electrical.bench_session { BenchRecord, DisplayAtProbeBaseline, DisplayValue, DisplayZeroWithoutBaseline, ResistanceDisplay, ResistanceObservation, ShortedProbeBaseline }
+import product.electrical.connectivity { ComponentInstanceIdentity, terminal_ref_equal }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import std.list { first_where }
+import product.electrical.continuity { OperatorPhotograph, OperatorStatement }
+import product.electrical.photograph { BytesNotInStore, CapturedFrame, GeneratedImage, InStore, PhotographCitation }
+import product.p4261.findings {
+  CarrierFinding,
+  CarrierPhaseObserved,
+  ComponentAcrossInput,
+  ComponentIdentified,
+  ControllerEnableState,
+  ControllerOvervoltageState,
+  EnableInputProjection,
+  FindingJudgment,
+  InputSwitchState,
+  InputUpperBound,
+  J20ContactInventory,
+  J20EnergizedDraw,
+  J20InventoryMatchesRevision,
+  J20Polarity,
+  NotAComponent,
+  PhaseJudged,
+  BusJudged,
+  PolarityJudged,
+  IdentificationJudged,
+  ProtectedInputBusInPhase,
+  finding_established,
+  judge_finding,
+  ImageReadingsJudged,
+  ReadingsRestOnStoredFrames,
+}
+import product.p4261.readings { least_of, PolarityEstablished, PolarityGap, PolarityUnestablished, installed }
+import product.p4261.report { FindingEstablished, FindingNotEstablished, FindingStanding, carrier_finding, j24_text, judgment_words, render_finding }
+import product.p4261.evidence { FromStore, NoPhotographStore, StoreHoldsAnotherBoardsFrames }
+import product.p4261.e1_photographs { e1_photographs }
+import product.p4261.e1_b { e1_j24_pin, e1_j24_read, e1_j24_resistances, p4261_e1_layout, e1_d2, e1_d5, e1_c10, e1_f300, e1_u1_p5, e1_converter_near, e1_third_can, e1_q21, e1_q22 }
+import product.p4261.k1_a { p4261_k1_layout, k1_u1_p5, k1_converter_near }
+
+// THE OUTCOMES BEFORE THE CUT. Each case is a board, a finding, and whether it was established at public
+// 5ca956b322a, before Stage B4 moved the judgment out of the report -- recorded by running the old
+// is_finding_established(carrier_finding(...)) over these cases on that revision (an offline
+// differential reference, not a retained path). The cut must leave every one as it was.
+type BaselineCase {
+  name: String
+  layout: CarrierLayoutObservation
+  finding: CarrierFinding
+  established: Bool
+}
+
+fn baseline_cases() -> List<BaselineCase> {
+  [
+    BaselineCase { name: "base_e1_j20inv", layout: p4261_e1_layout, finding: J20ContactInventory, established: true },
+    BaselineCase { name: "base_e1_j20rev", layout: p4261_e1_layout, finding: J20InventoryMatchesRevision, established: true },
+    BaselineCase { name: "base_e1_j20pol", layout: p4261_e1_layout, finding: J20Polarity, established: true },
+    BaselineCase { name: "base_e1_bound", layout: p4261_e1_layout, finding: InputUpperBound, established: true },
+    BaselineCase { name: "base_e1_draw", layout: p4261_e1_layout, finding: J20EnergizedDraw, established: true },
+    BaselineCase { name: "base_e1_across_d2", layout: p4261_e1_layout, finding: ComponentAcrossInput { component: e1_d2 }, established: true },
+    BaselineCase { name: "base_e1_across_d5", layout: p4261_e1_layout, finding: ComponentAcrossInput { component: e1_d5 }, established: true },
+    BaselineCase { name: "base_e1_across_c10", layout: p4261_e1_layout, finding: ComponentAcrossInput { component: e1_c10 }, established: false },
+    BaselineCase { name: "base_e1_across_f300", layout: p4261_e1_layout, finding: ComponentAcrossInput { component: e1_f300 }, established: false },
+    BaselineCase { name: "base_e1_id_c10", layout: p4261_e1_layout, finding: ComponentIdentified { component: e1_c10 }, established: false },
+    BaselineCase { name: "base_e1_id_d2", layout: p4261_e1_layout, finding: ComponentIdentified { component: e1_d2 }, established: true },
+    BaselineCase { name: "base_e1_id_u1", layout: p4261_e1_layout, finding: ComponentIdentified { component: e1_u1_p5 }, established: true },
+    BaselineCase { name: "base_e1_id_conv", layout: p4261_e1_layout, finding: ComponentIdentified { component: e1_converter_near }, established: false },
+    BaselineCase { name: "base_e1_id_third", layout: p4261_e1_layout, finding: ComponentIdentified { component: e1_third_can }, established: false },
+    BaselineCase { name: "base_e1_sw_q21", layout: p4261_e1_layout, finding: InputSwitchState { component: e1_q21 }, established: false },
+    BaselineCase { name: "base_e1_sw_q22", layout: p4261_e1_layout, finding: InputSwitchState { component: e1_q22 }, established: false },
+    BaselineCase { name: "base_e1_en_u1", layout: p4261_e1_layout, finding: ControllerEnableState { component: e1_u1_p5 }, established: true },
+    BaselineCase { name: "base_e1_ov_u1", layout: p4261_e1_layout, finding: ControllerOvervoltageState { component: e1_u1_p5 }, established: true },
+    BaselineCase { name: "base_e1_proj_u1", layout: p4261_e1_layout, finding: EnableInputProjection { component: e1_u1_p5 }, established: false },
+    BaselineCase { name: "base_e1_phase_p3", layout: p4261_e1_layout, finding: CarrierPhaseObserved { key: "p3-all-poles-on" }, established: false },
+    BaselineCase { name: "base_e1_phase_p0", layout: p4261_e1_layout, finding: CarrierPhaseObserved { key: "p0-bias" }, established: true },
+    BaselineCase { name: "base_e1_phase_none", layout: p4261_e1_layout, finding: CarrierPhaseObserved { key: "no-such-phase" }, established: false },
+    BaselineCase { name: "base_e1_bus_p3", layout: p4261_e1_layout, finding: ProtectedInputBusInPhase { key: "p3-all-poles-on" }, established: false },
+    BaselineCase { name: "base_e1_bus_p0", layout: p4261_e1_layout, finding: ProtectedInputBusInPhase { key: "p0-bias" }, established: false },
+    BaselineCase { name: "base_e1_notcomp", layout: p4261_e1_layout, finding: ComponentIdentified { component: k1_u1_p5 }, established: false },
+    BaselineCase { name: "base_k1_j20inv", layout: p4261_k1_layout, finding: J20ContactInventory, established: false },
+    BaselineCase { name: "base_k1_j20rev", layout: p4261_k1_layout, finding: J20InventoryMatchesRevision, established: false },
+    BaselineCase { name: "base_k1_j20pol", layout: p4261_k1_layout, finding: J20Polarity, established: false },
+    BaselineCase { name: "base_k1_bound", layout: p4261_k1_layout, finding: InputUpperBound, established: false },
+    BaselineCase { name: "base_k1_draw", layout: p4261_k1_layout, finding: J20EnergizedDraw, established: false },
+    BaselineCase { name: "base_k1_id_u1", layout: p4261_k1_layout, finding: ComponentIdentified { component: k1_u1_p5 }, established: false },
+    BaselineCase { name: "base_k1_id_conv", layout: p4261_k1_layout, finding: ComponentIdentified { component: k1_converter_near }, established: false },
+    BaselineCase { name: "base_k1_en_u1", layout: p4261_k1_layout, finding: ControllerEnableState { component: k1_u1_p5 }, established: false },
+    BaselineCase { name: "base_k1_phase_p0", layout: p4261_k1_layout, finding: CarrierPhaseObserved { key: "k1-p0-bias" }, established: false },
+    BaselineCase { name: "base_k1_bus_p0", layout: p4261_k1_layout, finding: ProtectedInputBusInPhase { key: "k1-all-poles-on" }, established: false },
+  ]
+}
+
+fn is_established_arm(s: FindingStanding) -> Bool {
+  match s {
+    FindingEstablished { text: _ } => true
+    FindingNotEstablished { reason: _ } => false
+  }
+}
+
+// EVERY FINDING HOLDS AS IT DID BEFORE THE CUT, EXCEPT FOUR THAT THE ENFORCEMENT PR (#15966) CHANGED ON PURPOSE: the
+// E1's C10 (a candidate now: its reading is not boxed) and the K1's two identified rows (the K1 roster is empty, so
+// nothing can be attributed) no longer establish identification, and the E1's protected bus in p3 rests on Q21_P5's terminals, which are now a candidate. Twelve established and twenty-three not, across
+// every finding kind on both boards, a phase not recorded and a component of the other board included.
+test fn every_finding_holds_as_before_the_cut() -> Bool {
+  let cs = baseline_cases()
+  count(cs) == 35 && all(cs, c => finding_established(j: judge_finding(layout: c.layout, f: c.finding)) == c.established)
+    && count(filter(cs, c => c.established)) == 12
+}
+
+// THE RENDERED ARM IS THE JUDGMENT'S. For every case, the report's rendered result is the rendering of
+// the judgment findings returns, and its arm agrees with finding_established.
+test fn the_rendered_arm_is_the_judgments() -> Bool {
+  all(baseline_cases(), c => is_established_arm(s: carrier_finding(layout: c.layout, f: c.finding)) == c.established
+    && is_established_arm(s: render_finding(j: judge_finding(layout: c.layout, f: c.finding))) == c.established)
+}
+
+fn no_gaps() -> List<PolarityGap> {
+  []
+}
+
+// THE TYPED BOUNDARY, SUPPLIED. A missing component, a phase not recorded and an unestablished polarity
+// are not established; the E1's real identification judgments are read from the judgment, not its
+// words -- U1_P5's matched marking holds, the converter's candidate does not.
+test fn the_typed_boundary_decides_alone() -> Bool {
+  !finding_established(j: NotAComponent { component: k1_u1_p5 })
+    && !finding_established(j: PhaseJudged { key: "supplied-absent-phase", standing: Absent })
+    && !finding_established(j: BusJudged { key: "supplied-absent-phase", standing: Absent })
+    && !finding_established(j: PolarityJudged { polarity: PolarityUnestablished { gaps: no_gaps() } })
+    && match installed(layout: p4261_e1_layout, c: e1_u1_p5) { Present { value: x } => finding_established(j: IdentificationJudged { observed: x }), Absent => false }
+    && match installed(layout: p4261_e1_layout, c: e1_converter_near) { Present { value: x } => !finding_established(j: IdentificationJudged { observed: x }), Absent => false }
+}
+
+// THE REAL PATH PRODUCES THE TYPED RESULT. The E1's J20 polarity is judged as an established polarity,
+// and the K1's U1_P5 in the E1's observation is judged absent from the board.
+test fn the_real_path_produces_the_typed_result() -> Bool {
+  match judge_finding(layout: p4261_e1_layout, f: J20Polarity) {
+    PolarityJudged { polarity } => match polarity { PolarityEstablished { fused_side: _, return_side: _, fused: _, returns: _, isolation: _ } => true, _ => false }
+    _ => false
+  }
+    && match judge_finding(layout: p4261_e1_layout, f: ComponentIdentified { component: k1_u1_p5 }) { NotAComponent { component: _ } => true, _ => false }
+}
+
+// THE J24 CORRECTION (Stage B4). The report used to say "none near zero, so no position is read as the
+// return" whatever was read. Now it summarizes what was recorded and draws no conclusion about the
+// return (a join is the unpowered, state-selected netlist's to admit): readings by kind, and DISTINCT
+// positions covered, never readings counted as positions. Through j24_reading, on the E1's own
+// readings with A1 swapped: an unbaselined zero is counted and not denied; a reading at the probe
+// baseline is reported as recorded there and as joining nothing; no reading covers no position; ten
+// readings of A1 cover one position; two baseline readings of A1 are two readings of one position.
+fn e1_with_j24(rs: List<ResistanceObservation>) -> CarrierLayoutObservation {
+  let b = p4261_e1_layout
+  let m = match b.measured { Present { value: x } => Present { value: MeasuredBoard {
+    analysis: x.analysis, asset: x.asset, continuity: x.continuity, diode_readings: x.diode_readings, source_draws: x.source_draws,
+    bench: BenchRecord { incidents: x.bench.incidents, attachments: x.bench.attachments, alterations: x.bench.alterations, voltages: x.bench.voltages,
+      resistances: concat(filter(x.bench.resistances, o => !any(e1_j24_resistances, j => terminal_ref_equal(a: j.first, b: o.first) && terminal_ref_equal(a: j.second, b: o.second))), rs) },
+    phases: x.phases, transitions: x.transitions, pole_closures: x.pole_closures,
+  } }, Absent => Absent }
+  CarrierLayoutObservation { ambiguous_designators: [],
+    asset: b.asset, design: b.design, revision: b.revision, markings: b.markings, module_receptacles: b.module_receptacles, backplane_connectors: b.backplane_connectors,
+    j20: b.j20, j20_calipers: b.j20_calipers, edge_high_speed_connectors: b.edge_high_speed_connectors, management_io_survey: b.management_io_survey,
+    management_io: b.management_io, components: b.components, measured: m, input: b.input, unresolved: b.unresolved, designator_readings: b.designator_readings,
+  }
+}
+
+fn swapped_a1(display: ResistanceDisplay) -> List<ResistanceObservation> {
+  concat(filter(e1_j24_resistances, o => !terminal_ref_equal(a: o.first, b: e1_j24_pin(n: "A1"))), [e1_j24_read(n: "A1", display: display)])
+}
+
+fn no_j24_readings() -> List<ResistanceObservation> {
+  []
+}
+
+fn baseline_display() -> ResistanceDisplay {
+  DisplayAtProbeBaseline { shown: "supplied 0.3", baseline: ShortedProbeBaseline { full_scale_ohms: 2000, shown: "supplied 0.3", evidence: OperatorStatement { stated_on: "supplied", verbatim: "supplied" } } }
+}
+
+fn a1_only(display: ResistanceDisplay, times: Nat) -> List<ResistanceObservation> {
+  map(filter([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], i => i <= times), i => e1_j24_read(n: "A1", display: display))
+}
+
+test fn j24_words_follow_what_its_readings_establish() -> Bool {
+  let zero = j24_text(layout: e1_with_j24(rs: swapped_a1(display: DisplayZeroWithoutBaseline { reported: "supplied 0.0" })))
+  let baseline = j24_text(layout: e1_with_j24(rs: swapped_a1(display: baseline_display())))
+  let unread = j24_text(layout: e1_with_j24(rs: no_j24_readings()))
+  let ten_of_a1 = j24_text(layout: e1_with_j24(rs: a1_only(display: DisplayValue { ohms: 428, approximate: false }, times: 10)))
+  let two_baseline_a1 = j24_text(layout: e1_with_j24(rs: a1_only(display: baseline_display(), times: 2)))
+  j24_text(layout: p4261_e1_layout).contains("10 readings recorded to J20's black lead, covering 10 of the 10 positions; 8 with a value (405 ohm the least), 0 reporting zero without a baseline, 0 recorded at the probe baseline")
+    && zero.contains("1 reporting zero without a baseline") && !zero.contains("none near zero")
+    && baseline.contains("1 recorded at the probe baseline") && !baseline.contains("joined") && !baseline.contains("no position is read as the return")
+    && unread.contains("0 readings recorded to J20's black lead, covering 0 of the 10 positions") && !unread.contains("no position is read as the return")
+    && ten_of_a1.contains("10 readings recorded to J20's black lead, covering 1 of the 10 positions")
+    && two_baseline_a1.contains("2 readings recorded to J20's black lead, covering 1 of the 10 positions") && two_baseline_a1.contains("2 recorded at the probe baseline") && !two_baseline_a1.contains("joined")
+}
+
+// THE LEAST OF NOTHING IS NOTHING. An empty list has no least value -- not 0 -- and a list's least is its
+// smallest member.
+test fn the_least_of_nothing_is_nothing() -> Bool {
+  match least_of(vs: []) { Absent => true, Present { value: _ } => false }
+    && match least_of(vs: [500, 300, 400]) { Present { value: v } => v == 300, Absent => false }
+}
+
+// ── THE PHOTO GROUNDING FINDING ──────────────────────────────────────────────
+// A frame the store holds, taken from the store itself rather than typed in here: if this witness named a
+// digest by hand, the store could drift away from it and the tests below would still pass.
+fn a_stored_frame() -> Photograph? {
+  first_where(e1_photographs, p => match p.origin { CapturedFrame { surface: _, capture: _, taken_on: _ } => true GeneratedImage { depicts: _, drawn_by: _, drawn_on: _, atlas_revision: _ } => false })
+}
+
+// Bytes no atlas receipt produced: the shape of a guessed digest, or of a K1 frame cited to the E1 store.
+data never_hashed_frame: Sha256Digest = Sha256Digest { hex: "0000000000000000000000000000000000000000000000000000000000000000" as Sha256DigestHex }
+
+fn reading_on_frame(designator: NonEmptyStr, citation: PhotographCitation) -> DesignatorReading {
+  DesignatorReading {
+    specimen: ComponentInstanceIdentity { design: p4261_e1_layout.design, local_identity: designator },
+    designator: designator,
+    evidence: OperatorPhotograph { citation: citation },
+  }
+}
+
+// A board carrying exactly the readings a test needs: the E1's identity fields, no components, so a count
+// below is the fixture's and not the board's 60-odd marking rows arriving uninvited.
+fn e1_with_readings(readings: List<DesignatorReading>) -> CarrierLayoutObservation {
+  let b = p4261_e1_layout
+  CarrierLayoutObservation { ambiguous_designators: [],
+    asset: b.asset, design: b.design, revision: b.revision, markings: b.markings, module_receptacles: b.module_receptacles, backplane_connectors: b.backplane_connectors,
+    j20: b.j20, j20_calipers: b.j20_calipers, edge_high_speed_connectors: b.edge_high_speed_connectors, management_io_survey: b.management_io_survey,
+    management_io: b.management_io, components: [], measured: b.measured, input: b.input, unresolved: b.unresolved, designator_readings: readings,
+  }
+}
+
+// The finding, judged. NO STORE ARGUMENT: which frames we hold for a board is one fact with one home
+// (product.p4261.photograph_store), and a finding a caller could feed a frame list to is a finding whose
+// verdict the caller owns. The store-as-control lives one level down, at product.p4261.evidence's
+// `judge_image_readings(store:, layout:)`, and the photograph witness exercises it there.
+fn on_stored_frames(layout: CarrierLayoutObservation) -> FindingJudgment {
+  judge_finding(layout: layout, f: ReadingsRestOnStoredFrames)
+}
+
+// FIVE WAYS THIS FINDING HAS TO REFUSE A FREE COVERAGE CLAIM, each refusing a different one:
+// (1) the real E1: NOT established. Its 94 image-readings came off frames whose bytes left the room in a
+// chat -- the true state of this board today and the reason the atlas was commissioned. A dossier that said
+// otherwise would be claiming coverage nobody can re-read.
+// (2) a board citing a frame we hold: ESTABLISHED, and only because the store it is judged against is the
+// one bound to its board. The fixture keeps the E1's identity fields, which is what makes the authority
+// answer for it.
+// (3) a board citing bytes nobody hashed: NOT established, and the judgement calls it BROKEN rather than a
+// gap -- "waiting on the operator's uploads" and "our own record names bytes that do not exist" are
+// different work, and a report that conflates them files a defect under coverage.
+// (4) a board with no image-readings: NOT established. `checkable == read` with `read > 0` is how that is
+// derived, so a bare board cannot earn a coverage finding by having nothing to cover, and a new standing
+// cannot slip between hand-enumerated lists.
+// (5) a board with NO STORE AT ALL (the K1): NOT established, and said as its own standing rather than as
+// zero rows -- "never photographed" and "photographed and found bare" need different work.
+// The rendered sentence is checked too: a judgement nobody can read is not a receipt.
+test fn readings_rest_on_stored_frames_only_when_the_store_holds_them() -> Bool {
+  match a_stored_frame() {
+    Absent => false
+    Present { value: frame } =>
+      let citing = e1_with_readings([reading_on_frame("U900", InStore { content: frame.content, region: Absent })])
+      let citing_absent_bytes = e1_with_readings([reading_on_frame("U900", InStore { content: never_hashed_frame, region: Absent })])
+      !finding_established(j: on_stored_frames(p4261_e1_layout))
+      && finding_established(j: on_stored_frames(citing))
+      && !finding_established(j: on_stored_frames(citing_absent_bytes))
+      && !finding_established(j: on_stored_frames(e1_with_readings([])))
+      && !finding_established(j: on_stored_frames(p4261_k1_layout))
+      && match on_stored_frames(citing_absent_bytes) {
+        ImageReadingsJudged { grounding } => match grounding {
+          FromStore { read, checkable: _, broken, gaps } => read == 1 && count(broken) == 1 && count(gaps) == 0
+          NoPhotographStore { board: _, obligation: _ } => false
+          StoreHoldsAnotherBoardsFrames { board: _, foreign: _ } => false
+        }
+        _ => false
+      }
+      && match on_stored_frames(p4261_e1_layout) {
+        ImageReadingsJudged { grounding } => match grounding {
+          // Derived, not pinned to a count: the partitions must cover the rows, nothing may be broken, and
+          // the board must not establish. How many rows are checkable is the atlas witness's business, not
+          // this one's -- before the 2026-11-03 pass it was none of them, after it most of them, and the
+          // finding's job is only to refuse establishment while any gap stands.
+          FromStore { read, checkable, broken: _, gaps } =>
+            read > 0 && checkable < read && count(gaps) == read - checkable
+          NoPhotographStore { board: _, obligation: _ } => false
+          StoreHoldsAnotherBoardsFrames { board: _, foreign: _ } => false
+        }
+        _ => false
+      }
+      && match on_stored_frames(p4261_k1_layout) {
+        ImageReadingsJudged { grounding } => match grounding {
+          NoPhotographStore { obligation } => string_length(obligation as String) > 0
+          FromStore { read: _, checkable: _, broken: _, gaps: _ } => false
+          // The K1 has a store of its own only once its photographs arrive; a store that turned out to hold
+          // another board's frames would be a defect to name, not a grounding to accept.
+          StoreHoldsAnotherBoardsFrames { board: _, foreign: _ } => false
+        }
+        _ => false
+      }
+      && string_contains(judgment_words(j: on_stored_frames(citing_absent_bytes), established: false), "U900")
+      && string_contains(judgment_words(j: on_stored_frames(citing), established: true), "rest on frames we hold for it")
+      && string_contains(judgment_words(j: on_stored_frames(p4261_k1_layout), established: false), "no photograph store is held for")
+  }
+}

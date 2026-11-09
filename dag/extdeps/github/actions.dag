@@ -15,7 +15,7 @@ import extdeps.github.log_annotations {
 }
 import extdeps.languages.yaml.types { YamlValue, YamlKeyValue }
 import std.types { NonEmptyStr, SecretName, Unit, String, List }
-import std.measure { Second, second }
+import std.measure { Second, second, seconds_per_day }
 import std.os.types { KernelFamily }
 import extdeps.toolchain.types { Architecture }
 import extdeps.external_authority { ExternalAuthority }
@@ -47,7 +47,7 @@ data github_actions_runtime: GitHubActionsRuntime = {
 // GITHUB_BASE_REF carries the base (target) branch name of a pull request — set ONLY on
 // pull_request / pull_request_target events, empty for every other event. extdeps owns these names
 // (the shape GitHub provides); the policy that maps them to a diff baseline is a workflow-layer
-// fact (gunbc.diff_baseline), not modeled here (extdeps must not depend upward — DESIGN §3(c)).
+// fact (gunbc.diff_baseline), not modeled here (extdeps must not depend upward — gunbc.design_argument::single_authority(c)).
 
 data github_event_name_env: NonEmptyStr = "GITHUB_EVENT_NAME"
 
@@ -62,7 +62,7 @@ data github_event_path_env: NonEmptyStr = "GITHUB_EVENT_PATH"
 // beside it, and not a fact about any one event. It previously lived in extdeps.github.push_event,
 // which made the push payload reader the authority for a variable that carries the pull_request,
 // schedule, and workflow_run payloads just as much. That homing only looked right while push was
-// the sole reader; adding a second event reader made it a §3 fork in waiting — two modules
+// the sole reader; adding a second event reader made it a gunbc.design_argument::single_authority fork in waiting — two modules
 // declaring one upstream name, drifting independently. Moved here rather than copied: push_event
 // and workflow_run_event both import it, and there is exactly one declaration of this name in the
 // tree.
@@ -160,7 +160,7 @@ type WorkflowTrigger
 //
 // THE MATCH IS EXHAUSTIVE ON PURPOSE AND THE WILDCARD IS THE DEFECT IT REPLACES. The original read
 // `MergeGroup => true _ => false`, so a new trigger constructor would have answered `false`
-// silently -- a fabricated default in the position DESIGN section 5 reserves for a refusal. Written
+// silently -- a fabricated default in the position gunbc.design_argument::fail_closed reserves for a refusal. Written
 // out, adding a constructor to this type fails to compile here until someone decides what it means,
 // which is the point of a closed vocabulary.
 fn workflow_trigger_is_merge_group(trigger: WorkflowTrigger) -> Bool {
@@ -432,14 +432,21 @@ type Step
 
 type ShellType = Bash | Sh | Pwsh | Python | Cmd
 
-type ArtifactOp
-  = Upload { name: String, path: String, retention_days: Int?, if_no_files_found: MissingFilesBehavior }
-  | Download { name: String, path: String? }
-
-type MissingFilesBehavior = Warn | ErrorOut | Ignore
-
 
 data max_job_timeout_minutes: Int = 360
+
+// RE-RUNNING A WORKFLOW RUN: "You can re-run a workflow run up to 30 days after the initial run." GitHub Docs,
+// Actions, "Re-running workflows and jobs"
+// (https://docs.github.com/en/actions/managing-workflow-runs-and-deployments/managing-workflow-runs/re-running-workflows-and-jobs).
+// A re-run is a new attempt of the same run: its created_at is the initial run's, so an artifact a later attempt
+// uploads can be up to this much younger than the run's creation instant.
+data workflow_rerun_window: Second = second(count: 30 * seconds_per_day())
+
+// THE WORKFLOW RUN TIME LIMIT: "Each workflow run is limited to 35 days. If a workflow run reaches this limit, the
+// workflow run is cancelled. This period includes execution duration, and time spent on waiting and approval."
+// GitHub Docs, Actions, "Usage limits, billing, and administration" -> Usage limits -> Workflow run time
+// (https://docs.github.com/en/actions/administering-github-actions/usage-limits-billing-and-administration).
+data workflow_run_time_limit: Second = second(count: 35 * seconds_per_day())
 
 data default_job_timeout_minutes: Int = 360
 

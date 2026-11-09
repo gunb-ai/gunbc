@@ -30,6 +30,8 @@ import gunbc.managed_directory {
   ManagedDirectory,
   DirectoryDependent,
   EntriesUnmanaged,
+  DirectoryOwnerGroupWritableSetgid,
+  DirectoryOwnerAllEveryoneTraverse,
 }
 import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryManaged }
 import gunbc.executor_privileged_operation {
@@ -39,6 +41,7 @@ import gunbc.executor_privileged_operation {
   EnsureOwnedDirectory,
   executor_privileged_owned_directory_plan,
   executor_privileged_owned_directory_plans,
+  executor_privileged_writable_parent_refusals,
   executor_privileged_plan_rows,
   executor_privileged_plan_merge,
   executor_privileged_empty_provisioning_plan,
@@ -60,7 +63,9 @@ import gunbc.runner.runner_host_deploy {
   runner_host_spec_for,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
-import gunbc.fleet.printer_workflow_artifact { printer_state_directories, printer_start_claim_directory }
+import gunbc.fleet.printer_workflow_artifact { printer_starts_path, printer_state_directory, printer_state_parent_directory }
+import gunbc.fleet.printer_state_layout { printer_state_directories }
+import gunbc.host_state_root { host_state_tree }
 import gunbc.owned_directory { owned_directory_path }
 import gunbc.compile_census_probe { blocking_subject_census, census_verdict, census_verdict_all, census_exit }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
@@ -186,7 +191,7 @@ test fn a_refusal_survives_a_merge_with_a_later_admitted_plan() -> Bool {
 
 // 4b. EVERY REFUSAL IS COUNTED, NOT JUST THE FIRST (review 87063). A host with two refused directory
 // targets must report TWO blocking rows -- one per refused target is what makes the degradation
-// countable (DESIGN section 5); truncating to the first let the apply block anyway, but the operator
+// countable (gunbc.design_argument::fail_closed); truncating to the first let the apply block anyway, but the operator
 // learned about missing directories one per run and the census undercounted. Pins all three places the
 // population is combined: the fold over targets, the merge of site plans, and the census rows derived
 // from either. Under the first-refusal fold/merge this conjunct is red: each produced one.
@@ -276,8 +281,8 @@ test fn an_admitted_target_blocks_nothing() -> Bool {
 }
 
 // ---------------------------------------------------------------------------
-// THE ONE REFUSAL POPULATION AND THE SEALED PLAN (the lane lead's side-chat finding (jolly-hawk-60, msg_9915ec94); DESIGN §3 "each fact
-// lives in exactly one place", §5 "a refusal that fires -> the line stops").
+// THE ONE REFUSAL POPULATION AND THE SEALED PLAN (the lane lead's side-chat finding (jolly-hawk-60, msg_9915ec94); gunbc.design_argument::single_authority "each fact
+// lives in exactly one place", gunbc.design_argument::fail_closed "a refusal that fires -> the line stops").
 //
 // THE BUG: gunbc.fleet.fleet_host_grant_coverage built its blocking rows from the host-WIDE refusal
 // population alone, while the sudoers gate consumed the COMBINED population that also carries the
@@ -306,7 +311,7 @@ test fn an_admitted_target_blocks_nothing() -> Bool {
 // refusing a writer who is neither owner nor group -- the one route by which any provisioning target
 // refuses), placed at the REAL printer-state path so the blocking row names a directory the host needs.
 fn refused_printer_target() -> OwnedDirectoryTarget {
-  managed_at(path: printer_start_claim_directory as String, writers: [stranger_user()])
+  managed_at(path: printer_starts_path(tree: host_state_tree()) as String, writers: [stranger_user()])
 }
 
 data census_reads_combined_source: String = "module probe_census_reads_combined\nimport std.types { NonEmptyStr }\nimport std.algebra { length }\nimport gunbc.runner.runner_host_deploy { srv1_runner_host_spec }\nimport gunbc.runner.runner_host_grants { runner_host_provisioning_plan_refusals }\nfn f() -> Int {\n  length(xs: runner_host_provisioning_plan_refusals(spec: srv1_runner_host_spec))\n}\n"
@@ -368,7 +373,7 @@ test fn a_refused_printer_state_target_blocks_the_apply() -> Bool {
 // 8b. THE CONTROL FOR CLAIM 8: an ADMITTED target over the same real path blocks nothing, so the stop
 // above is caused by the refusal and not by the path or the row shape.
 test fn an_admitted_printer_state_target_blocks_nothing() -> Bool {
-  let admitted = executor_privileged_owned_directory_plans(targets: printer_state_directories())
+  let admitted = executor_privileged_owned_directory_plans(targets: printer_state_directories(tree: host_state_tree()))
   let rows = host_grant_provisioning_target_rows_of(refusals: admitted.refusals, lease_owner: "lease")
   count(rows) == 0
     && match host_grant_awaiting_capability(rows: rows) {
@@ -389,11 +394,11 @@ test fn the_printer_host_demands_every_printer_state_directory() -> Bool {
     RunnerHostSpecAbsent { host: _ } => false
     RunnerHostSpecFound { spec: spec } =>
       count(executor_privileged_plan_rows(plan: printer_state_store_plan(spec: spec)))
-        == count(printer_state_directories())
+        == count(printer_state_directories(tree: host_state_tree()))
       // and each demanded directory is its own row, matched BY PATH -- a count two unrelated
       // directories could not satisfy.
       && for_all(
-        xs: map(printer_state_directories(), t => owned_directory_path(t: t) as String),
+        xs: map(printer_state_directories(tree: host_state_tree()), t => owned_directory_path(t: t) as String),
         predicate: fn(p) {
           any(
             xs: executor_privileged_plan_rows(plan: printer_state_store_plan(spec: spec)),
@@ -496,4 +501,163 @@ test fn the_refusal_dropping_builder_is_deleted() -> ProcessExit {
       holds: fn(n) { n == 1 },
     )
   )
+}
+
+// ---------------------------------------------------------------------------
+// THE PRIVILEGED-INSTALL PARENT RULING (quick-newt-573 security fix, 2026-11-05). A privileged
+// `install -d -o G -g G -m M <path>` applies its ownership only to the named leaf; when the model ALSO
+// declares the leaf's PARENT as one of these install targets and a non-root principal can write that parent
+// (by owner, group, or other -- owned_directory_caller_can_write), so the de-privileged grantee (a member of
+// that group, in the group-writable case, via runner_host_grants EnsureSupplementaryGroupMembership) can plant
+// a symlink in the parent that root's install then follows and chowns -- an ownership escalation.
+// The fold (executor_privileged_owned_directory_plans -> executor_privileged_writable_parent_refusal) refuses
+// such a target. The two fixtures below place the parent at the REAL printer-state path so the refusal names
+// a directory the host actually needs, exactly as the /var/lib/gunbc/printer-starts finding did.
+// ---------------------------------------------------------------------------
+
+// THE VULNERABLE SHAPE (what main shipped before the fix): printer-starts declared fleet-owned group-writable
+// setgid (2770), the same group the job user is granted, with a member store installed beneath it.
+fn vulnerable_parent_and_member_targets() -> List<OwnedDirectoryTarget> {
+  let parent = printer_starts_path(tree: host_state_tree()) as String
+  [
+    printer_state_directory(member: "printer-starts", path: parent as NonEmptyStr, mode: DirectoryOwnerGroupWritableSetgid),
+    printer_state_directory(member: "requests", path: concat(parent, "/requests") as NonEmptyStr, mode: DirectoryOwnerGroupWritableSetgid),
+  ]
+}
+
+// THE FIXED SHAPE (the host_state_tree_root parent ruling one level down): printer-starts root:root and
+// traverse-only (0755); the member beneath it stays fleet-owned group-writable setgid.
+fn safe_parent_and_member_targets() -> List<OwnedDirectoryTarget> {
+  let parent = printer_starts_path(tree: host_state_tree()) as String
+  [
+    printer_state_parent_directory(member: "printer-starts" as NonEmptyStr, path: parent as NonEmptyStr, mode: DirectoryOwnerAllEveryoneTraverse),
+    printer_state_directory(member: "requests", path: concat(parent, "/requests") as NonEmptyStr, mode: DirectoryOwnerGroupWritableSetgid),
+  ]
+}
+
+// THE OWNER-WRITE SHAPE (review 91167): the grantee OWNS the parent and can write it. A ManagedDirectory whose
+// only writer is its own owner resolves owner.write with a NON-root owner principal (owner rwx, group and other
+// nothing) -- the shape a group-only check let through.
+fn owner_writable_parent_and_member_targets() -> List<OwnedDirectoryTarget> {
+  let parent = printer_starts_path(tree: host_state_tree()) as String
+  [
+    managed_at(path: parent, writers: [owner_user()]),
+    printer_state_directory(member: "requests", path: concat(parent, "/requests") as NonEmptyStr, mode: DirectoryOwnerGroupWritableSetgid),
+  ]
+}
+
+// THE UNRESOLVABLE-MODE SHAPE (review 91167 fail-open, and the model-native other-write hazard). A
+// ManagedDirectory that declares a writer who is neither its owner nor in its group (a stranger wanting Write)
+// is REFUSED a derived mode by managed_directory_admit, so owned_directory_mode returns OwnedDirectoryModeRefused.
+// The old predicate read that as "not writable" and ADMITTED the install beneath it -- fail-open. It must fail
+// closed: an unknown-writability parent cannot be proven safe, so the install under it is refused.
+fn unresolvable_mode_parent_and_member_targets() -> List<OwnedDirectoryTarget> {
+  let parent = printer_starts_path(tree: host_state_tree()) as String
+  [
+    managed_at(path: parent, writers: [stranger_user()]),
+    printer_state_directory(member: "requests", path: concat(parent, "/requests") as NonEmptyStr, mode: DirectoryOwnerGroupWritableSetgid),
+  ]
+}
+
+// THE RED. The member install under a group-writable parent is refused -- located at the member path, naming
+// the cause. The ruling runs ONCE, at the host-union site (runner_host_provisioning_plan_refusals ->
+// executor_privileged_writable_parent_refusals); a non-empty refusal population withholds the host's WHOLE
+// sudoers artifact (runner_host_sudoers_body_guard), so the escalation is never granted.
+test fn a_group_writable_parent_of_a_privileged_install_is_refused() -> Bool {
+  let refusals = executor_privileged_writable_parent_refusals(targets: vulnerable_parent_and_member_targets())
+  length(xs: refusals) == 1
+    && match refusals.first() {
+      Absent => false
+      Present { value: r } =>
+        (r.path as String) == concat(printer_starts_path(tree: host_state_tree()) as String, "/requests")
+          && string_contains(s: r.reason as String, pattern: "privileged install -d")
+          && string_contains(s: r.reason as String, pattern: "can write it")
+    }
+}
+
+// THE RED (owner class, review 91167). A parent the grantee owns with owner-write is the same symlink-swap
+// path; the earlier group-only check admitted it. The refusal lands on the member beneath it.
+test fn an_owner_writable_parent_of_a_privileged_install_is_refused() -> Bool {
+  let refusals = executor_privileged_writable_parent_refusals(targets: owner_writable_parent_and_member_targets())
+  length(xs: refusals) == 1
+    && match refusals.first() {
+      Absent => false
+      Present { value: r } =>
+        (r.path as String) == concat(printer_starts_path(tree: host_state_tree()) as String, "/requests")
+          && string_contains(s: r.reason as String, pattern: "can write it")
+    }
+}
+
+// THE FAIL-CLOSED RED (review 91167). A parent whose mode cannot be resolved is refused AS A PARENT, so the
+// install beneath it is refused. Under the earlier fail-open predicate this would have been 0 refusals (the
+// parent treated as unwritable) and the privileged install granted -- the exact defect.
+test fn a_parent_with_unresolvable_mode_fails_closed() -> Bool {
+  let refusals = executor_privileged_writable_parent_refusals(targets: unresolvable_mode_parent_and_member_targets())
+  length(xs: refusals) == 1
+    && match refusals.first() {
+      Absent => false
+      Present { value: r } =>
+        (r.path as String) == concat(printer_starts_path(tree: host_state_tree()) as String, "/requests")
+          && string_contains(s: r.reason as String, pattern: "can write it")
+    }
+}
+
+// THE POSITIVE CONTROL. The SAME member under a root-owned, traverse-only parent is admitted: nothing is
+// refused and both directory rows render, so the projection keeps granting the (now safe) installs. This also
+// pins the ROOT EXEMPTION against the broadened check: the root parent carries the OWNER write bit (0755), but
+// because its owner principal IS root the caller-writable predicate exempts it (group/other are traverse-only).
+test fn a_root_owned_parent_of_a_privileged_install_is_admitted() -> Bool {
+  let targets = safe_parent_and_member_targets()
+  length(xs: executor_privileged_writable_parent_refusals(targets: targets)) == 0
+    && length(xs: executor_privileged_plan_rows(plan: executor_privileged_owned_directory_plans(targets: targets))) == 2
+}
+
+// THE SINGLE-SITE CONTROL (review 91167). One offender must yield EXACTLY ONE refusal. The parent ruling runs
+// at one host-union site; running it in the fold too (its earlier shape) refused a within-plan offender twice.
+// The fold now carries no parent refusal, so it contributes 0 and the host-union term contributes exactly 1.
+test fn a_single_writable_parent_offender_is_refused_exactly_once() -> Bool {
+  let targets = vulnerable_parent_and_member_targets()
+  length(xs: executor_privileged_owned_directory_plans(targets: targets).refusals) == 0
+    && length(xs: executor_privileged_writable_parent_refusals(targets: targets)) == 1
+}
+
+// ---------------------------------------------------------------------------
+// THE CROSS-PLAN CASE (quick-newt-573 review, msg_eb68902c). A host's sudoers is the UNION of several plans'
+// rows: a group-writable parent declared by one plan with a privileged install beneath it declared by ANOTHER
+// plan is the same escalation, and a per-plan ruling -- which is why the ruling is host-wide, NOT in the fold
+// (review 91167) -- cannot see across the two. The host projection runs the ruling over the whole declared set
+// (runner_host_grants runner_host_provisioning_plan_refusals -> executor_privileged_writable_parent_refusals
+// over runner_host_declared_directory_targets). These fixtures split the vulnerable pair across two plan lists,
+// then run the SAME ruling once per list and once over the union: per-list it is missed, over the union it is
+// caught.
+// ---------------------------------------------------------------------------
+
+// THE PARENT, alone in its own plan (a group-writable fleet-owned directory).
+fn vulnerable_parent_plan_alone_targets() -> List<OwnedDirectoryTarget> {
+  let parent = printer_starts_path(tree: host_state_tree()) as String
+  [ printer_state_directory(member: "printer-starts", path: parent as NonEmptyStr, mode: DirectoryOwnerGroupWritableSetgid) ]
+}
+
+// THE MEMBER INSTALL, alone in a DIFFERENT plan, declared beneath that parent.
+fn cross_plan_member_plan_alone_targets() -> List<OwnedDirectoryTarget> {
+  let parent = printer_starts_path(tree: host_state_tree()) as String
+  [ printer_state_directory(member: "requests", path: concat(parent, "/requests") as NonEmptyStr, mode: DirectoryOwnerGroupWritableSetgid) ]
+}
+
+test fn a_cross_plan_writable_parent_is_missed_per_plan_but_refused_by_the_host_union() -> Bool {
+  let parent_plan_refusals = executor_privileged_writable_parent_refusals(targets: vulnerable_parent_plan_alone_targets())
+  let member_plan_refusals = executor_privileged_writable_parent_refusals(targets: cross_plan_member_plan_alone_targets())
+  let union_refusals = executor_privileged_writable_parent_refusals(
+    targets: concat(vulnerable_parent_plan_alone_targets(), cross_plan_member_plan_alone_targets()))
+  // THE GAP: run per PLAN, the ruling sees only each list's own half of the pair, so neither refuses.
+  length(xs: parent_plan_refusals) == 0
+    && length(xs: member_plan_refusals) == 0
+    // THE CLOSURE: run over the UNION the host gate uses, the member install under the caller-writable parent is refused.
+    && length(xs: union_refusals) == 1
+    && match union_refusals.first() {
+      Absent => false
+      Present { value: r } =>
+        (r.path as String) == concat(printer_starts_path(tree: host_state_tree()) as String, "/requests")
+          && string_contains(s: r.reason as String, pattern: "can write it")
+    }
 }

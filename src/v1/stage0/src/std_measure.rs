@@ -42,7 +42,7 @@ pub use crate::std_decimal::{checked_decimal_pow10, ExactDecimal};
 pub use crate::std_decl_ref::DeclarationRef;
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_dissolution::{unbound_dissolution, DissolutionCondition};
-pub use crate::std_nat::Nat;
+pub use crate::std_nat::{nat_ceil_div, Nat};
 pub use crate::std_optional::Optional;
 pub use crate::std_types::{Bool, NonEmptyStr};
 use crate::v1_rt;
@@ -66,6 +66,7 @@ pub enum Quantity {
     Frequency,
     Count,
     HardwareThreadTime,
+    CalendarTime,
     Currency,
     Power,
     ApparentPower,
@@ -314,20 +315,16 @@ pub fn measure_scale_fraction_ceil<Q, S>(
     num: Nat,
     den: Nat,
 ) -> Rc<Measure<Q, S, i64>> {
-    Rc::new(Measure {
-        count: if (den.clone() == 0) {
-            v1_rt::int_mul(m.count.clone(), num.clone())
-        } else {
-            v1_rt::int_div(
-                v1_rt::int_add(
-                    v1_rt::int_mul(m.count.clone(), num.clone()),
-                    v1_rt::int_sub(den.clone(), 1),
-                ),
-                den.clone(),
-            )
-        },
-        _phantom: std::marker::PhantomData,
-    })
+    {
+        let scaled = v1_rt::int_mul(m.count.clone(), num.clone());
+        Rc::new(Measure {
+            count: match crate::std_nat::nat_ceil_div(scaled.clone(), den) {
+                Some(q) => q.clone(),
+                std::option::Option::None => scaled.clone(),
+            },
+            _phantom: std::marker::PhantomData,
+        })
+    }
 }
 
 pub fn measure_add<Q, S>(
@@ -548,6 +545,8 @@ pub type Volt = Rc<Measure<ElectricPotentialDifference, One, Nat>>;
 pub type Millivolt = Rc<Measure<ElectricPotentialDifference, Milli, Nat>>;
 
 pub type Ampere = Rc<Measure<ElectricCurrent, One, Nat>>;
+
+pub type Ohm = Rc<Measure<Resistance, One, Nat>>;
 
 pub type Nanometer = Rc<Measure<Length, Nano, Nat>>;
 
@@ -926,6 +925,17 @@ pub fn volt(count: Nat) -> Volt {
         count: count.clone(),
         _phantom: std::marker::PhantomData,
     })
+}
+
+pub fn ohm(count: Nat) -> Ohm {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn ohm_count(r: Ohm) -> Nat {
+    measure_count(r)
 }
 
 pub fn volt_count(v: Volt) -> Nat {
@@ -1727,6 +1737,16 @@ pub fn tokens_per_second_count(r: TokensPerSecond) -> Nat {
     measure_count(r)
 }
 
+pub fn token_count_duration_at(tokens: TokenCount, rate: TokensPerSecond) -> Option<Millisecond> {
+    match crate::std_nat::nat_ceil_div(
+        v1_rt::int_mul(token_count_value(tokens), milliseconds_per_second()),
+        tokens_per_second_count(rate),
+    ) {
+        Some(ms) => Some(millisecond(ms.clone())),
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
 pub type MilliTokensPerSecond = Rc<Measure<Frequency, Milli, Nat>>;
 
 pub fn milli_tokens_per_second(count: Nat) -> MilliTokensPerSecond {
@@ -1936,6 +1956,19 @@ pub fn second_displacement(count: i64) -> SecondDisplacement {
 }
 
 pub fn second_displacement_count(d: SecondDisplacement) -> i64 {
+    measure_count(d)
+}
+
+pub type CalendarDayDisplacement = Rc<Measure<CalendarTime, One, i64>>;
+
+pub fn calendar_day_displacement(count: i64) -> CalendarDayDisplacement {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn calendar_day_displacement_count(d: CalendarDayDisplacement) -> i64 {
     measure_count(d)
 }
 
@@ -2538,6 +2571,8 @@ pub struct Frequency;
 pub struct Count;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct HardwareThreadTime;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CalendarTime;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Currency;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

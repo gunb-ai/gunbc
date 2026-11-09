@@ -360,7 +360,7 @@ test fn w_reached_fields_are_covered() -> Bool {
 }
 
 // OobeUserAccount LEFT THIS LIST BY BEING OBSERVED, and the witness records the departure rather
-// than quietly shrinking. §4b(4): observing the account screen retires that coverage obligation,
+// than quietly shrinking. gunbc.design_argument::guarantee_ladder (dissolution on climb): observing the account screen retires that coverage obligation,
 // so the row that used to assert it was pending now asserts it is NOT -- which is a stronger
 // check than deletion, because deleting the row would leave nothing red if a later edit dropped
 // the account screen from the prefix and silently re-opened the obligation.

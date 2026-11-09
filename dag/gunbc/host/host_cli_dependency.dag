@@ -1,5 +1,6 @@
 module gunbc.host.host_cli_dependency
 
+import std.optional { optional_absent, optional_present, Optional, Present, Absent }
 import extdeps.tools { CliTool, install_hint }
 import extdeps.tools.npm { npm_cli_tool }
 import extdeps.tools.sshpass { sshpass_cli_tool }
@@ -11,7 +12,6 @@ import extdeps.netfilter.iptables_legacy { iptables_legacy_save_cli_tool }
 import extdeps.nftables.ruleset { nft_cli_tool }
 import extdeps.shell
 import std.types { String, NonEmptyStr, List, Int }
-import std.optional { Optional, Present, Absent, optional_absent, optional_present }
 
 // Host CLI placement for wet witnesses: observe whether an executable is on PATH before attempting
 // shell transport. A missing npm on the falsifier runner surfaced as runtime error: failed to
@@ -42,11 +42,11 @@ import std.optional { Optional, Present, Absent, optional_absent, optional_prese
 // A ROSTER IS A LIST OF THE TOOLS ITSELF, and getting here took two removals in two commits.
 // First the enrolled tool was a NonEmptyStr tag resolved back to a CliTool by a hand-rolled
 // if-chain, so "a row naming a tool no CliTool owns" was representable and answered by a runtime
-// arm; carrying the CliTool made that unwritable and deleted the arm (§5, §4b rung 4).
+// arm; carrying the CliTool made that unwritable and deleted the arm (gunbc.design_argument::fail_closed, gunbc.design_argument::guarantee_ladder rung 4).
 //
 // What survived that climb was its own residue: a HostCliEnrollmentRequirement wrapper whose other
 // field, `provision`, existed ONLY to feed the deleted arm. Nothing read it afterwards -- a data
-// row no fold reads, which §3c calls dangling and §4b(4) says a climb must dissolve along with the
+// row no fold reads, which gunbc.design_argument::consumption calls dangling and gunbc.design_argument::guarantee_ladder (dissolution on climb) says a climb must dissolve along with the
 // machinery it obsoletes. It was also a SECOND INSTALL NARRATIVE beside CliTool.installable_via:
 // the row said "apt install sshpass on every runner that executes a password-session leg" while
 // every live refusal took its hint from install_hint(sources: tool.installable_via), so the two
@@ -65,7 +65,7 @@ data codex_wet_materialization_host_cli_requirements: List<CliTool> = [npm_cli_t
 // falsifier cadence runner image, this one is about whichever runner executes a password-session
 // leg. Merging them would make a runner that never opens a password session refuse for a binary it
 // has no use for, and would make the npm requirement bind on runners the codex cadence never
-// touches -- one name covering two materially different obligations, which is the meaning fork §3
+// touches -- one name covering two materially different obligations, which is the meaning fork gunbc.design_argument::single_authority
 // forbids. A runner that does both simply satisfies both rosters.
 //
 // MEASURED, not anticipated: mode=spark_grants on runners srv3 and srv4 died with
@@ -146,7 +146,7 @@ fn observe_host_cli_dependency(tool: CliTool) -> HostCliDependencyObservation {
 }
 
 // THE FOLD IS PARAMETERIZED BY THE ROSTER rather than copied per roster. The second enrollment
-// answer (password sessions) would otherwise have duplicated this whole walk -- the §2 duplication
+// answer (password sessions) would otherwise have duplicated this whole walk -- the gunbc.design_argument::minimize_redundancy duplication
 // that a second roster invites and that the roster split does not require.
 fn first_absent_codex_wet_materialization_host_cli_dependency() -> HostCliDependencyAbsence? {
   first_absent_host_cli_dependency(tools: codex_wet_materialization_host_cli_requirements)

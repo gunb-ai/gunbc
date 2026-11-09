@@ -4,7 +4,7 @@ import std.types { String }
 import std.decl_ref { DeclarationRef, declaration_ref_display_key }
 import gunbc.dashboard_node_uri { dashboard_node_uri_scheme, text_spells_a_dashboard_node_uri }
 
-// THE REFERENT-FREE CORE OF A DESIGN section 4b(2) NEXT-RUNG TRIGGER, shared by every carrier that
+// THE REFERENT-FREE CORE OF A gunbc.design_argument::guarantee_ladder (no untracked stall) NEXT-RUNG TRIGGER, shared by every carrier that
 // says why a class sits below its ceiling: gunbc.guarantee_stall (a standing stall, whose trigger
 // additionally carries the lifecycle referents it asked to deliver) and
 // gunbc.recurring_failure_mode (a ledger row). The capability a trigger names is a fact about the
@@ -14,9 +14,9 @@ import gunbc.dashboard_node_uri { dashboard_node_uri_scheme, text_spells_a_dashb
 // them with `awaiting` -- the types are re-used, never mirrored. The rung itself is
 // gunbc.guarantee_rung.
 
-// WHY A CLASS IS BELOW ITS CEILING, section 4b(2): the two cases that can still climb. The third
-// case section 4b(2) names, "cannot climb further", has NO CONSTRUCTOR HERE ON PURPOSE: the ceiling
-// is the attainable one (DESIGN section 4b), so a class that cannot climb stands AT its ceiling and
+// WHY A CLASS IS BELOW ITS CEILING, gunbc.design_argument::guarantee_ladder (no untracked stall): the two cases that can still climb. The third
+// case gunbc.design_argument::guarantee_ladder (no untracked stall) names, "cannot climb further", has NO CONSTRUCTOR HERE ON PURPOSE: the ceiling
+// is the attainable one (gunbc.design_argument::guarantee_ladder), so a class that cannot climb stands AT its ceiling and
 // says why in AtCeiling.ceiling_reason (gunbc.recurring_failure_mode RungStanding). Every carrier
 // that takes this type is therefore below its ceiling by construction and cannot be handed the
 // contradiction; test.claim.rung_climb_witness enrols that as a RED the compiler must refuse.
@@ -49,7 +49,7 @@ fn climb_blocker_label(b: ClimbBlocker) -> String {
   }
 }
 
-// THE SECOND WALL OVER THE SAME FIELD, AND IT IS A DIFFERENT SUBJECT FROM THE FIRST. 4b(2) asks
+// THE SECOND WALL OVER THE SAME FIELD, AND IT IS A DIFFERENT SUBJECT FROM THE FIRST. gunbc.design_argument::guarantee_ladder (no untracked stall) asks
 // whether a trigger was NAMED; this asks whether what was named is a capability rather than a
 // lifecycle-bounded referent's ending. A row can satisfy the first and fail this one, which is the
 // state every migrated row here was in.

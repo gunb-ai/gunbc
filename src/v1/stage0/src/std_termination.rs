@@ -7,7 +7,7 @@ use self::PositiveDescentAmount::*;
 use self::ProportionalDivisor::*;
 use self::RankingDimension::*;
 use crate::std_algebra::Ordering::*;
-pub use crate::std_algebra::{BoundedLattice, Ordering};
+pub use crate::std_algebra::{map_lookup, BoundedLattice, Ordering};
 pub use crate::std_optional::Optional;
 pub use crate::std_types::{List, Map};
 use crate::v1_rt;
@@ -104,7 +104,7 @@ pub fn map_evidence_merge_at(
     key: String,
     new_val: DescentEvidence,
 ) -> Rc<HashMap<String, DescentEvidence>> {
-    match v1_rt::map_get(&base, key.clone()) {
+    match v1_rt::lookup(&base, key.clone()) {
         Some(existing) => v1_rt::rc_map_insert(
             base.clone(),
             key.clone(),

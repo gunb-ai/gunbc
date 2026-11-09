@@ -61,7 +61,8 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected,
   rejected_with_pending,
-  diagnostics_fatal_reason
+  diagnostics_fatal_reason,
+  sequence_outcome,
 }
 import v2.std.witness {
   Holds,
@@ -188,7 +189,7 @@ import std.optional {
   optional_absent,
   optional_present
 }
-import std.algebra { Cons, Empty, list_append, list_snoc_item, fold_list, is_empty, length, list_at_optional, collection_count_shape }
+import std.algebra { Cons, Empty, list_append, list_snoc_item, fold_list, is_empty, length, list_at_optional, collection_count_shape, list_map, zip_map }
 import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_identity_optional }
 import v2.std.text {
   String
@@ -296,7 +297,7 @@ type GroundingGatePassed {}
 // THE GATE'S REFUSAL HAS ITS OWN NAME, AND UNTIL 2026-09-21 IT DID NOT. Review 46789 routed this
 // arm through canonical_grounding_from_inferred_facts "so the typed ^infer_grounding_not_derived
 // diagnostic propagates" -- and it did, as the FATAL, spelled identically to the ADVISORY infer
-// carries on its Accepted path for the same node. One symbol, two contracts (DESIGN section 3, a
+// carries on its Accepted path for the same node. One symbol, two contracts (gunbc.design_argument::single_authority, a
 // meaning fork): a rejection chain read as `infer_grounding_not_derived x35` where thirty-four
 // links were infer's frontier rows riding along and the last was THIS gate refusing to emit, and
 // no reader could tell which. Measured on the built native CLI at gunbc#11965's specimen

@@ -2,7 +2,7 @@ module gunbc.fleet.fleet_overlay
 
 // THE FLEET'S OVERLAY CONTRACT: WHAT IT MEANS FOR A MEMBER TO BE ATTACHED, WITHOUT NAMING A PROVIDER.
 //
-// WHAT THIS MODULE IS. The model step of gunbc.plans.fleet_naming_reach_access P2 for the overlay axis:
+// WHAT THIS MODULE IS. The model step of gunbc.plans.fleet_naming_reach_access (deleted 2026-11-08) P2 for the overlay axis:
 // the fleet's attachment and its member binding, declared provider-neutral. No producer is migrated and no
 // endpoint is cut over (P3-P5); the Tailscale realization stays where it is.
 //
@@ -32,7 +32,7 @@ module gunbc.fleet.fleet_overlay
 // identity and the provider's node identity, and BOTH belong to the Tailscale realization
 // (extdeps.tailscale.devices, the P1 census), not here -- the plan's rule is that device/node identity is
 // not a name in the fabric. Minting local stand-ins would be a fork: two homes for one upstream fact, which
-// is DESIGN 3's defect and silently mergeable-wrong, because two spellings of one device id can disagree
+// is gunbc.design_argument::single_authority's defect and silently mergeable-wrong, because two spellings of one device id can disagree
 // with nothing to catch it. So the binding carries the shape the fleet owns (subject, attachment,
 // incarnation, desired label, desired roles) and the frontier rows below name the two provider halves, what
 // owns them, and what closes them.
@@ -68,7 +68,7 @@ type OverlayRealization = NonEmptyStr where brand("OverlayRealization")
 
 // WHETHER THE PROVIDER ANSWERED AT ALL, as a variant rather than as text that happens to look empty. This
 // used to be a hand-picked list of placeholder words ("unknown", "none", "TODO") compared against the
-// brand: a guess sitting where a decision belongs (DESIGN section 4: in a closed system a heuristic is
+// brand: a guess sitting where a decision belongs (gunbc.design_argument::closed_grounded_substrate: in a closed system a heuristic is
 // never necessary, and the tell that validation stood where construction was available is exactly this
 // shape), and one that let every placeholder the list did not contain -- "n/a", "Unknown", "tbd" -- through
 // as a real realization name. The provider's silence is now its own arm, so "no answer" is expressible
@@ -319,7 +319,7 @@ fn managed_overlay_attachments(
 }
 
 // ---------------------------------------------------------------------------------------------
-// THE FRONTIER THIS MODULE LEAVES OPEN (DESIGN 3c: a declared frontier, never an invented stand-in)
+// THE FRONTIER THIS MODULE LEAVES OPEN (gunbc.design_argument::consumption: a declared frontier, never an invented stand-in)
 // ---------------------------------------------------------------------------------------------
 //
 // The plan requires two provider identities on a binding and one policy row behind attachment selection.

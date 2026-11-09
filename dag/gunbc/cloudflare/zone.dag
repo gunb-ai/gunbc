@@ -2,7 +2,7 @@ module gunbc.cloudflare.zone
 
 // THE gunb.ai ZONE STANDING, THE COPY THE BIND DEPENDS ON, AND THE GAPS THAT HOLD THE BIND.
 //
-// B1 of gunbc.plans.boot_origin_bmc_media asks for the boot origin's gunb.ai hostname to be allocated,
+// B1 of gunbc.plans.boot_origin_bmc_media (deleted 2026-11-08) asks for the boot origin's gunb.ai hostname to be allocated,
 // which extdeps.cloudflare.zone shows is admissible only inside an ACTIVE zone in the SAME account as
 // gunbai-fabric-boot. Three things had to be OBSERVED before any of that could be written down, and all
 // three are here as receipts rather than as claims:
@@ -29,6 +29,7 @@ import std.human_intervention { HumanInterventionIdentity }
 import extdeps.time.rfc3339 { Rfc3339Timestamp }
 import extdeps.dns.domain_name { HostName, DomainName, DnsLabel, FullyQualified, host_name_eq }
 import extdeps.external_authority { FactCitation }
+import gunbc.cloudflare.zone_authorization { zone_routes_unrealized }
 import extdeps.cloudflare.zone {
   CloudflareAccountId, CloudflareZone, ZoneHold,
   R2CustomDomainZoneStanding, r2_custom_domain_zone_admissible,
@@ -48,7 +49,7 @@ import extdeps.cloudflare.zone {
 // cloudflare_account_id_from_text (the checked constructor) — and the result is Optional (review 87415):
 // a refused literal must stay Absent, a typed absence consumers are forced to handle, never be replaced
 // by a placeholder that wears the vendor's 32-hex shape and would pass every same-account check against
-// a zero account. DESIGN §5: no plausible output is fabricated. The literal here is cited from the
+// a zero account. gunbc.design_argument::fail_closed: no plausible output is fabricated. The literal here is cited from the
 // fleet's own roster value; if it ever stops parsing, the gap surfaces as Absent, not as a match.
 data gunb_ai_bucket_account: Optional<CloudflareAccountId> =
   cloudflare_account_id_from_text(text: "5f71db675ad3e94c16a3d5c159d16298")
@@ -166,7 +167,7 @@ fn namecheap_observed_records() -> List<CloudflareDnsRecord> {
 // THE COPY, DERIVED — not re-typed. The copied set IS the observed set minus the two records the
 // registrar owns (its NS pair and the SOA Cloudflare mints itself); that exclusion is the whole decision,
 // so it is written ONCE as a filter over the observation rather than as a second transcription of eleven
-// literals that could silently drift from the fourteen they were copied from (review 87475, §2 "a
+// literals that could silently drift from the fourteen they were copied from (review 87475, gunbc.design_argument::minimize_redundancy "a
 // perfectly DRY process is therefore the minimal one"). The match is inline because it is this filter's
 // question, not a concept the module needs a name for.
 fn namecheap_copied_records() -> List<CloudflareDnsRecord> {
@@ -412,7 +413,7 @@ fn fleet_gunb_ai_zone_standing() -> FleetGunbAiZoneStanding {
     apex: gunb_ai_apex,
     nameservers: gunb_ai_delegated_nameservers,
     soa: gunb_ai_served_soa,
-    gap: credential_route_gap(),
+    gap: zone_route_gap(),
     observed_at: zone_identity_observed_at,
     basis: r2_custom_domain_requires_zone_citation,
   }
@@ -427,7 +428,7 @@ fn fleet_gunb_ai_zone_standing() -> FleetGunbAiZoneStanding {
 // caught that Cloudflare PUBLISHES "unknown" in both status vocabularies (r2_custom_domain_status_api_read
 // ing), so the fabricated value silently collided with a real vendor answer; and a binding is what the
 // custom-domain endpoint RETURNS, so constructing one without a response invents enabled, a zone id and
-// two statuses out of nothing. §5 again: no plausible output is fabricated.
+// two statuses out of nothing. gunbc.design_argument::fail_closed again: no plausible output is fabricated.
 //
 // So the binding type now has exactly one producer path — a response — and the reading itself is a sum in
 // the OBSERVING layer with absence as one of its arms: ReadbackNotTaken is not a weird binding, it is no
@@ -458,7 +459,7 @@ data boot_origin_bind_readback: BootOriginBindReadback = ReadbackNotTaken { gap:
 
 // THE HOLD READ, as an OBSERVATION of this repository. The vendor publishes the hold on its own
 // endpoint (zones.holds, a boolean), not on the zones-list response, so whether THIS fleet has read it
-// is a fact about this fleet, never a field of a Cloudflare zone (DESIGN §3, External upstream
+// is a fact about this fleet, never a field of a Cloudflare zone (gunbc.design_argument::external_upstreams, External upstream
 // decomposition; review 87475 — the extdeps model had made it one, with a fabricated default besides).
 // Absent here is a coverage obligation with a named remedy, and it reaches the admissibility rule
 // unchanged, so the rule's refusal on unread input is the SAME absence the module carries — not a second
@@ -471,7 +472,7 @@ data boot_origin_zone_hold_read_citation: FactCitation = zone_hold_api_citation
 // calls is a rule the product does not use). It returns Optional because when the zone's identity has
 // not been read there IS no zone to put in front of the rule — the standing arms say so, and Absent is
 // their answer. The verdict path consumes that Absent as the zone-identity gap it already reports, so no
-// placeholder zone is invented to satisfy a signature (review 87415, §5).
+// placeholder zone is invented to satisfy a signature (review 87415, gunbc.design_argument::fail_closed).
 //
 // Today this yields Absent: no Cloudflare credential route reaches the session, so the zone is live but
 // unnamed. The moment the identity is read, the rule runs against the real zone, the account receipt and
@@ -541,34 +542,29 @@ fn boot_origin_verdict_for_zone(zone: CloudflareZone, observed_at: Rfc3339Timest
 // --------------------------------------------------------------------------------
 
 // WHICH CAUSE, decided BY THE STANDING, never guessed from prose (review 87595). These arms used to be
-// selected by keyword-matching a NonEmptyStr reason — a silent widening §5 forbids, because rewording a
+// selected by keyword-matching a NonEmptyStr reason — a silent widening gunbc.design_argument::fail_closed forbids, because rewording a
 // sentence re-routed the operator to the wrong remedy. Each standing arm now CARRIES one of these, built
 // where the blocking observation actually was; the prose reasons they replace are gone, so there is
 // nothing left to misread.
 //
-// missing is std.algebra::FreeSemigroup<NonEmptyStr> — the §3b cardinality home for a list that cannot be
+// missing is std.algebra::FreeSemigroup<NonEmptyStr> — the gunbc.design_argument::conformance cardinality home for a list that cannot be
 // empty. An unreported gap (a concealment, not a deficit) is now UNREPRESENTABLE: no arm of this sum can
 // be built without a remedy, so the runtime length check this declaration used to carry is deleted rather
-// than asserted (review 87595, §4b: rung inflation is worse than sitting low — this is rung 4, honestly).
+// than asserted (review 87595, gunbc.design_argument::guarantee_ladder: rung inflation is worse than sitting low — this is rung 4, honestly).
 type BootOriginBindEffectGap =
-    CloudflareCredentialRouteMissing { missing: FreeSemigroup<NonEmptyStr>, basis: FactCitation }
+    SelectedRouteUnrealized { missing: FreeSemigroup<NonEmptyStr>, basis: FactCitation }
   | CloudflareRecordListUnread { missing: FreeSemigroup<NonEmptyStr>, basis: FactCitation }
   | BindDispatchUnmodeled { missing: FreeSemigroup<NonEmptyStr>, basis: FactCitation }
 
-// The credential-route gap as the ZONE STANDING carries it. Its remedies name both halves of what is
-// missing — the token and the fleet's accessor into Cloudflare — because minting a token without a place
-// to route it would only move the gap.
-fn credential_route_gap() -> BootOriginBindEffectGap {
-  CloudflareCredentialRouteMissing {
-    missing: non_empty_append(
-      left: non_empty_singleton(
-        item: "a Cloudflare API token holding the zone-read and R2 custom-domain scopes, minted and held through the gunbc.auth authorization pattern (WIF federation, or the ntfy approval route, or an explicit refusal) — never pasted by the operator"
-      ),
-      right: non_empty_singleton(
-        item: "the fleet's Cloudflare accessor: the roster and the converge workflow carry bucket, object and token-mint modes and NO zone-read or custom-domain mode"
-      )
-    ),
-    basis: r2_custom_domain_requires_zone_citation,
+// The route gap as the ZONE STANDING carries it, DERIVED from gunbc.cloudflare.zone_authorization: the zone
+// effects' authorization-pattern selection, then the realization standing of the selected route (does the
+// fleet accessor roster carry a cell on the zone token). While that route is unrealized the gap is
+// SelectedRouteUnrealized, naming the token, its container and the accessor cell; once it is realized, what
+// remains is that nobody has read the zone's record list, so the gap is CloudflareRecordListUnread.
+fn zone_route_gap() -> BootOriginBindEffectGap {
+  match zone_routes_unrealized() {
+    Present { value: missing } => SelectedRouteUnrealized { missing: missing, basis: r2_custom_domain_requires_zone_citation }
+    Absent => record_list_gap()
   }
 }
 
@@ -577,7 +573,7 @@ fn credential_route_gap() -> BootOriginBindEffectGap {
 fn record_list_gap() -> BootOriginBindEffectGap {
   CloudflareRecordListUnread {
     missing: non_empty_singleton(
-      item: "a Cloudflare API token scoped to read the zone's DNS records (GET /client/v4/dns/records), obtained through the gunbc.auth authorization pattern"
+      item: "the GET /client/v4/dns/records of the zone and its readback, performed under the already-realized federated route (the accessor cell on the zone token has landed); no run has performed or recorded it"
     ),
     basis: dns_record_api_citation,
   }
@@ -600,7 +596,7 @@ fn bind_dispatch_gap() -> BootOriginBindEffectGap {
 // whoever reports the gap.
 fn boot_origin_bind_gap_names(gap: BootOriginBindEffectGap) -> List<NonEmptyStr> {
   match gap {
-    CloudflareCredentialRouteMissing { missing } => non_empty_to_list(xs: missing)
+    SelectedRouteUnrealized { missing } => non_empty_to_list(xs: missing)
     CloudflareRecordListUnread { missing } => non_empty_to_list(xs: missing)
     BindDispatchUnmodeled { missing } => non_empty_to_list(xs: missing)
   }
@@ -619,7 +615,7 @@ fn boot_origin_bind_gap_names(gap: BootOriginBindEffectGap) -> List<NonEmptyStr>
 // plus this carrier's Decided arm, so no agent may flip boot_origin_hostname_standing from here, and this
 // module does not.
 //
-// Modelled (review 87595) instead of stored as a sentence: a decision status is a status, and §4c puts a
+// Modelled (review 87595) instead of stored as a sentence: a decision status is a status, and gunbc.design_argument::source_annotations puts a
 // status in a typed carrier. Pending carries the candidate plus WHO recommended it and WHEN; Decided
 // requires the citation, so a decided FQDN without a source cannot be written. Today's value is Pending
 // with the parent's recommendation — the carrier is read by the hostname standing in

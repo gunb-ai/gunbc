@@ -53,7 +53,7 @@ data manufacturer_edge_note: String = "THE SHARED MANUFACTURER IS A TYPED EDGE, 
 
 data pip_boy_mk_v_manufacturer: Vendor<Hardware> = the_wand_company
 
-data subject_separation_note: String = "This module models the Fallout TV series Pip-Boy 3000 Mk V ONLY, and it carries only what THIS product's own manual grounds. The Fallout 3 / New Vegas Pip-Boy 3000 is a separate independently governed product with its own module. They share a manufacturer and a family name; neither makes them one subject. DESIGN section 3 'External upstream decomposition'."
+data subject_separation_note: String = "This module models the Fallout TV series Pip-Boy 3000 Mk V ONLY, and it carries only what THIS product's own manual grounds. The Fallout 3 / New Vegas Pip-Boy 3000 is a separate independently governed product with its own module. They share a manufacturer and a family name; neither makes them one subject. gunbc.design_argument::external_upstreams 'External upstream decomposition'."
 
 data manual_read_path_note: String = "PROVENANCE: read directly from the manual URI above (2026-08-04), and this module is much shorter than its sibling because a direct read is what shortened it. An earlier revision carried a settings menu — Glitch on tap, Tap threshold, CRT jitter, Vertical shift — that this manual does not contain: those are the sibling product's settings, attributed here by a search index that had both manuals in scope. The mechanism is recorded at the sibling's compliance_block_names_the_mk_v_note. Nothing replaced them, because the correct action on discovering a fact belongs to another subject is to remove it, not to relocate a guess."
 

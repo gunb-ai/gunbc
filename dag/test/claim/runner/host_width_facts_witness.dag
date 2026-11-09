@@ -9,7 +9,7 @@ import gunbc.runner.runner_slot_allocation {
   HostWidthFacts, host_width_facts, committed_width_of, gunbc_runner_committed_width,
   RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
 }
-import gunbc.host.host_memory_observation { HostUsableRam, HostUsableRamMeasured, HostUsableRamUnmeasured }
+import gunbc.host.host_memory_carrier { HostUsableRam, HostUsableRamMeasured, HostUsableRamUnmeasured }
 import gunbc.ci.ci_runner_placement {
   HostRunnerDeploymentStanding, HostRunnerDeploymentDerived, HostRunnerDeploymentRefused,
   HostRunnerDeploymentRefusal, UsableRamUnavailable, host_deployment_standing, host_deployment_standing_given,

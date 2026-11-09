@@ -3,6 +3,7 @@ module gunbc.observation_seed_render
 import std.types { String, NonEmptyStr, Bool }
 import std.nat { Nat }
 import extdeps.access.posix { FileMode, file_mode_octal }
+import extdeps.linux.cgroup_v2_memory { MemoryEvents, MemoryEventsLocal, cgroup_memory_interface_file_name }
 import std.symbols { Tier, Emoji, Unicode, StatusBlocked }
 import std.measure { Nanosecond, Millisecond, ByteSize, millisecond, millisecond_count, millisecond_to_nanosecond, byte_size, byte_size_count, basis_point }
 import gunbc.host.memory_stall_refusal { MemoryStallObservation }
@@ -402,8 +403,14 @@ fn phase_concluded_line(phase: NonEmptyStr, elapsed_ms: Nat, overhead_ms: Nat, e
 data seed_heartbeat_stat_unreadable_cause: NonEmptyStr = "/proc/self/stat unreadable" as NonEmptyStr
 data seed_heartbeat_statm_unreadable_cause: NonEmptyStr = "/proc/self/statm unreadable" as NonEmptyStr
 data seed_heartbeat_cgroup_current_unreadable_cause: NonEmptyStr = "memory.current unreadable" as NonEmptyStr
-data seed_heartbeat_cgroup_events_unreadable_cause: NonEmptyStr = "memory.events unreadable" as NonEmptyStr
-data seed_heartbeat_cgroup_events_local_unreadable_cause: NonEmptyStr = "memory.events.local unreadable" as NonEmptyStr
+// THE TWO EVENTS CAUSES DERIVE THEIR FILE NAME FROM THE AUTHORITY. memory.events and
+// memory.events.local are interface files of extdeps.linux.cgroup_v2_memory, and this line is that
+// file's own name plus " unreadable" -- not a string this module invents. The witness claim
+// test.claim.observation_seed_heartbeat_witness pins the whole rendered heartbeat line, so the
+// derivation is checked by an existing executing witness: rename the name on the authority and that
+// witness goes red instead of this line quietly disagreeing with it.
+data seed_heartbeat_cgroup_events_unreadable_cause: NonEmptyStr = concat(cgroup_memory_interface_file_name(f: MemoryEvents), " unreadable") as NonEmptyStr
+data seed_heartbeat_cgroup_events_local_unreadable_cause: NonEmptyStr = concat(cgroup_memory_interface_file_name(f: MemoryEventsLocal), " unreadable") as NonEmptyStr
 data seed_heartbeat_vmstat_unreadable_cause: NonEmptyStr = "/proc/vmstat unreadable" as NonEmptyStr
 data seed_heartbeat_stall_unreadable_cause: NonEmptyStr = "stall counters unreadable" as NonEmptyStr
 
@@ -430,7 +437,7 @@ fn seed_heartbeat_subject(seam: String) -> ObservationSubject {
   }
 }
 
-// The floor heartbeat's projection, RESTORED 2026-09-11. The heartbeat runs on a detached liveness thread in a memory-constrained context, so the seed renders it through a Rust MIRROR of ci_heartbeat_line (cli_run render_heartbeat_line_mirror) rather than calling the interpreter there — an interpreter render on that thread would build a duplicate module index, consuming the very memory the heartbeat watches (DESIGN section 2), and the thread's whole point is to stay alive when the main interpreter is busy. This fn is the ORACLE that keeps the mirror honest: the seed's Rust test runs this through the interpreter and its mirror on the same samples and asserts byte-equality, so the format authority stays in the one renderer and any drift reds. It WAS unwired: #9228 deleted claim_executor render_heartbeat_line_mirror and the cli_run HeartbeatFeed with the plan/walk surface they lived on, and the one-attempt floor that replaced them emitted a raw [floor-heartbeat] eprintln with no projection behind it (gunbc.observation_emit_census recorded the reversal as a CountedFrontierSite). The interface below is the seed's REAL input space on that floor -- wall since floor start, the seam label, and each /proc and cgroup reading with its own readability -- so the mirror is a complete reflection of this fn over what the seed actually holds, never a fabricated per-entry detail (observation law 2). UNIT-BEARING ARGUMENTS CROSS THE SEAM AS std.measure CARRIERS, not bare integers, on the precedent of ci_batch_summary_text's `work: Nanosecond`: the seed test builds each carrier by calling the `millisecond` / `byte_size` constructor through the interpreter, so a caller handing milliseconds where bytes were meant cannot typecheck (review 63436). Dimensionless counts (faults, events, swap-ins) stay Nat because a count has no unit to carry. The stall window arrives as its wall and two counters and is projected into the refusal authority's own MemoryStallObservation, so rate and share print by the functions the refusal decides on. The two cache counters of that observation are zero here as a TRUE statement about what this window measured -- the heartbeat does not read the typed cache -- not a stand-in for an unread counter.
+// The floor heartbeat's projection, RESTORED 2026-09-11. The heartbeat runs on a detached liveness thread in a memory-constrained context, so the seed renders it through a Rust MIRROR of ci_heartbeat_line (cli_run render_heartbeat_line_mirror) rather than calling the interpreter there — an interpreter render on that thread would build a duplicate module index, consuming the very memory the heartbeat watches (gunbc.design_argument::demand_before_materialization), and the thread's whole point is to stay alive when the main interpreter is busy. This fn is the ORACLE that keeps the mirror honest: the seed's Rust test runs this through the interpreter and its mirror on the same samples and asserts byte-equality, so the format authority stays in the one renderer and any drift reds. It WAS unwired: #9228 deleted claim_executor render_heartbeat_line_mirror and the cli_run HeartbeatFeed with the plan/walk surface they lived on, and the one-attempt floor that replaced them emitted a raw [floor-heartbeat] eprintln with no projection behind it (gunbc.observation_emit_census recorded the reversal as a CountedFrontierSite). The interface below is the seed's REAL input space on that floor -- wall since floor start, the seam label, and each /proc and cgroup reading with its own readability -- so the mirror is a complete reflection of this fn over what the seed actually holds, never a fabricated per-entry detail (observation law 2). UNIT-BEARING ARGUMENTS CROSS THE SEAM AS std.measure CARRIERS, not bare integers, on the precedent of ci_batch_summary_text's `work: Nanosecond`: the seed test builds each carrier by calling the `millisecond` / `byte_size` constructor through the interpreter, so a caller handing milliseconds where bytes were meant cannot typecheck (review 63436). Dimensionless counts (faults, events, swap-ins) stay Nat because a count has no unit to carry. The stall window arrives as its wall and two counters and is projected into the refusal authority's own MemoryStallObservation, so rate and share print by the functions the refusal decides on. The two cache counters of that observation are zero here as a TRUE statement about what this window measured -- the heartbeat does not read the typed cache -- not a stand-in for an unread counter.
 fn seed_heartbeat_line(
   elapsed: Millisecond,
   seam: String,
@@ -625,7 +632,7 @@ fn shell_effect_done_line(intent: NonEmptyStr, elapsed_ms: Nat, overhead_ms: Nat
 // THE PAYLOAD CLAUSE IS A SUM TYPE, NOT A FLAG PAIR. A write carries a byte count and a path-only
 // operation (delete/list/read) carries none, and `FileEffectPayload` makes that the only two
 // states: a boolean beside a count admits `payload_present = true` with a count of zero, which is
-// unwritable here (DESIGN section 5). The count crosses as `ByteSize` -- the carrier std.measure
+// unwritable here (gunbc.design_argument::fail_closed). The count crosses as `ByteSize` -- the carrier std.measure
 // already publishes for a byte quantity -- rather than a bare Nat, so a caller handing
 // milliseconds where bytes were meant cannot typecheck (the same reasoning seed_heartbeat_line
 // records). The mode clause is present only for WriteCreateNewWithMode.
@@ -652,7 +659,7 @@ fn seed_file_subject(intent: NonEmptyStr) -> ObservationSubject {
 
 // The payload clause, as a SUM rather than a flag pair. A write carries a byte count and a
 // path-only operation (delete/list/read) carries none; a `known: Bool` beside a `Nat` admits
-// `known = true` with a count of zero, which is one unwritable state here (DESIGN section 5). The
+// `known = true` with a count of zero, which is one unwritable state here (gunbc.design_argument::fail_closed). The
 // count is a `std.measure` ByteSize -- the carrier that module already publishes -- so a caller
 // handing milliseconds where bytes were meant cannot typecheck, on the reasoning
 // seed_heartbeat_line records for its own unit-bearing arguments. The mode is a modeled

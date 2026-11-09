@@ -39,7 +39,7 @@ test fn witness_github_2core_per_hour_exceeds_aws_m7a_large_on_demand() -> Bool 
 // It read 1600 until 2026-08-22, when a first-party read of Ubicloud's pricing page moved
 // premium x64 standard-2 to $0.002/min and this witness went red -- correctly, because that
 // is what a pinned literal is FOR when the literal is grounded in an external authority.
-// DESIGN section 5 permits exactly this case and forbids its lookalike: a number copied from
+// gunbc.design_argument::fail_closed permits exactly this case and forbids its lookalike: a number copied from
 // the current tree is a change detector, a number copied from a cited vendor page is an
 // oracle. The ordering claim above is the substance; the equality below is what stops the
 // ordering from being satisfied by a wrong number that happens to sort the same way.

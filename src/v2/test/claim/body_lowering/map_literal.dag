@@ -16,12 +16,24 @@ import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.diagnostic {
+  Accepted, Locus, Outcome, Rejected, diagnostics_fatal, diagnostics_fatal_reason, locus_eq, node_locus
+}
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.optional { Absent, Present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.node { positional_child_target_nodes, Hash, Node, Symbol, content_hash, node_subtree_nodes }
 import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_from_dotted_string }
-import v2.std.map_introduction { MapIntroductionKeyRepeated, MapIntroductionKeysDistinct, map_introduction_duplicate_key, map_introduction_head_path }
+import v2.std.map_introduction {
+  MapIntroductionKeyRepeated,
+  MapIntroductionKeysDistinct,
+  MapLiteralEntriesMalformed,
+  MapLiteralEntriesNone,
+  MapLiteralEntriesPresent,
+  map_introduction_duplicate_key,
+  map_introduction_head_path,
+  map_literal_entries
+}
+import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, named_child_lookup }
 import v2.std.text { String }
 import std.types { List }
 
@@ -129,7 +141,7 @@ data ml_mixed_ingest: SourceRootIngest = [
 // THE FRONT END RUNS ONCE, NOT ONCE PER CLAIM. The fixture ingest and each subject's resolve are
 // nullary pure producers, served across witnesses by v2.workflow.floor_pure_producer_share
 // derive_cross_claim_share (as #12740's anonymous_record producers are); every
-// claim below only inspects a produced value (DESIGN section 3: a witness discriminates at one
+// claim below only inspects a produced value (gunbc.design_argument::single_authority: a witness discriminates at one
 // interface, and the front end is not its subject).
 fn ml_fixture_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {
   module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model())
@@ -218,6 +230,62 @@ fn ml_accepts(o: Outcome<ResolvedTree>) -> Bool {
   }
 }
 
+// THE REFUSAL'S LOCUS, AS A VALUE. The fatal diagnostic's `at` field, read off the refused outcome
+// and never rendered: the claim below compares it with v2.std.diagnostic :: fn locus_eq, whose
+// NodeLocus arm is node_occurrence_eq on the anchor NodeOccurrence -- its occurrence_id and its
+// node -- so the comparison is on the locus value, not on a rendered string.
+fn ml_refusal_locus(o: Outcome<ResolvedTree>) -> Optional<Locus> {
+  match o {
+    Accepted { value: _, diagnostics: _ } => optional_absent()
+    Rejected { diagnostics: d } => optional_present(value: diagnostics_fatal(d: d).at)
+  }
+}
+
+// THE AUTHORED KEYS OF THE DUPLICATE LITERAL, from the SHARED parse the refusal came from: the same
+// ml_fixture_normalized producer, so each node here is the node resolve walked. The pairs are read
+// through v2.std.map_introduction :: fn map_literal_entries and each pair's `key` field through
+// v2.std.node_query :: fn named_child_lookup -- deliberately NOT through v2.compiler.resolve :: fn
+// resolve_map_pairs, whose output the refusal locates; the expectation must not share that reader.
+// The literal is named by its three entries, which no other fixture in the ingest spells; if a
+// future fixture spelled a second three-entry literal this helper would take the first in tree
+// order and the claim below would go red rather than silently compare the wrong node.
+fn ml_duplicate_key_nodes() -> Optional<List<Node>> {
+  match ml_fixture_normalized() {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: roots, diagnostics: _ } =>
+      fold(roots, init: optional_absent(), f: fn(acc, t) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => fold(node_subtree_nodes(root: t.root), init: optional_absent(), f: fn(inner, n) {
+            match inner {
+              Present { value: _ } => inner
+              Absent => match map_literal_entries(n: n) {
+                MapLiteralEntriesNone => optional_absent()
+                MapLiteralEntriesMalformed => optional_absent()
+                MapLiteralEntriesPresent { pairs: pairs } =>
+                  if length(xs: pairs) == 3 {
+                    fold(pairs, init: optional_present(value: Empty), f: fn(keys, pair) {
+                      match keys {
+                        Absent => optional_absent()
+                        Present { value: ks } =>
+                          match named_child_lookup(root: pair, name: ^key) {
+                            NamedChildFound { target: k } => optional_present(value: list_snoc_item(xs: ks, item: k))
+                            NamedChildMissing => optional_absent()
+                            NamedChildAmbiguous => optional_absent()
+                          }
+                      }
+                    })
+                  } else {
+                    optional_absent()
+                  }
+              }
+            }
+          })
+        }
+      })
+  }
+}
+
 // Control 1: the headless literal elaborates to exactly the introduction the headed call spells --
 // one of it, equal by content.
 test fn ml_headless_literal_equals_the_headed_introduction_holds() -> Bool {
@@ -233,6 +301,63 @@ test fn ml_a_duplicate_key_refuses_holds() -> Bool {
 // Control 2b: the key law compares DECODED text, so an escape and the scalar it stands for collide.
 test fn ml_an_escaped_and_a_raw_key_are_one_key_holds() -> Bool {
   ml_refuses_with(o: ml_resolved_escape_duplicate(), reason: ^resolve_anonymous_map_duplicate_key)
+}
+
+// Control 2c: THE REFUSAL IS LOCATED AT THE SECOND KEY. Control 2 names the reason; it would still
+// pass if the diagnostic pointed at the whole literal, at the first occurrence, or at a value. This
+// compares the fatal diagnostic's locus against node_locus of the SECOND key occurrence -- entry
+// index 2 of { "a": true, "b": true, "a": false } -- on the locus value, and requires the FIRST
+// occurrence's locus (index 0) NOT to satisfy the same comparison, so a refusal located at the first
+// key cannot satisfy it either. The producer that sets the locus is v2.compiler.resolve :: fn
+// resolve_map_literal_entries' MapIntroductionKeyRepeated arm: it takes the repeated entry as
+// list_at_optional(xs: entries, index: second), the second_index v2.std.map_introduction :: fn
+// map_introduction_duplicate_key reports, and refuses through v2.compiler.resolve :: fn
+// resolve_anonymous_record_refused, which stamps Diagnostic.at = node_locus(node: e.key). Both sides
+// are read from one shared parse, so the two nodes are the same occurrence; what is tested is WHICH
+// occurrence the refusal names. What it discriminates: that arm refusing at entries[0] instead,
+// where the second conjunct fails; and that arm's Absent case, which refuses at the literal n under
+// the SAME reason -- something control 2 cannot tell from a correct refusal, and where the first
+// conjunct fails. Either way the claim is red, so a refusal that is merely reasoned, or reasoned at
+// the wrong occurrence, does not pass.
+test fn ml_the_duplicate_refusal_is_located_at_the_second_key_holds() -> Bool {
+  ml_refuses_with(o: ml_resolved_duplicate(), reason: ^resolve_anonymous_map_duplicate_key)
+    && match ml_duplicate_key_nodes() {
+         Absent => false
+         Present { value: keys } =>
+           match list_at_optional(xs: keys, index: 0) {
+             Absent => false
+             Present { value: first } =>
+               match list_at_optional(xs: keys, index: 2) {
+                 Absent => false
+                 Present { value: second } =>
+                   match ml_refusal_locus(o: ml_resolved_duplicate()) {
+                     Absent => false
+                     Present { value: at } =>
+                       locus_eq(a: at, b: node_locus(node: second))
+                         && !locus_eq(a: at, b: node_locus(node: first))
+                   }
+               }
+           }
+       }
+}
+
+// Control 2d: the reason control 2 names is a DISCRIMINATOR, observed. ml_refuses_with answers with
+// one fatal reason per outcome, so asking it about ONE outcome five ways could never fail: distinct
+// symbols are never equal, and a check whose forbidden state is expressible nowhere it runs is a
+// decoration, green by construction (gunbc.design_argument::guarantee_ladder). The forbidden state IS writable here, by asking
+// the same question of outcomes that refuse for a DIFFERENT reason or for none. Each negated row has
+// a way to turn red that the first conjunct cannot shield: if the helper ever stopped comparing the
+// reason, the key-kind and name-key refusals would answer true and fail here; if it answered true for
+// any outcome at all, the accepted fixtures would fail here; if it never matched, control 2's own row
+// fails. The refusals and the acceptances are each claimed elsewhere under their own reason:
+// ml_a_key_of_the_wrong_kind_refuses_holds, ml_a_name_keyed_brace_under_a_map_refuses_holds,
+// ml_distinct_keys_are_accepted_holds and ml_infer_refuses_an_elaborated_value_mismatch_holds.
+test fn ml_the_duplicate_refusal_is_not_another_reason_holds() -> Bool {
+  ml_refuses_with(o: ml_resolved_duplicate(), reason: ^resolve_anonymous_map_duplicate_key)
+    && !ml_refuses_with(o: ml_resolved_key_kind(), reason: ^resolve_anonymous_map_duplicate_key)
+    && !ml_refuses_with(o: ml_resolved_name_key(), reason: ^resolve_anonymous_map_duplicate_key)
+    && !ml_refuses_with(o: ml_resolved_distinct(), reason: ^resolve_anonymous_map_duplicate_key)
+    && !ml_refuses_with(o: ml_resolved_value_mismatch(), reason: ^resolve_anonymous_map_duplicate_key)
 }
 
 // Control 3: distinct keys are accepted and elaborate.

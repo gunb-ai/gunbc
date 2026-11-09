@@ -10,7 +10,7 @@ import std.checked_arithmetic { int_inclusive_max }
 import std.integer { int_to_decimal_string }
 import extdeps.access.posix { FileMode, file_mode_bits }
 import extdeps.filesystem.filesystem_io {
-  Filesystem,
+  filesystem_listing_absence, Filesystem,
   FilesystemCreateNew, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized,
   FilesystemExactRead, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
   FilesystemFailureKind,   filesystem_create_new, filesystem_exact_read, filesystem_failure_kind_name,
@@ -154,7 +154,7 @@ type VerifiedCasAttempt sole_constructor {
 // appended, so ".." becomes the file "...1" and can never be the final path
 // component. Traversal needs a separator to climb, so removing the separator
 // removes the class -- this is one predicate, not a blocklist of dangerous
-// spellings, and a blocklist would be the heuristic DESIGN 4 says a closed
+// spellings, and a blocklist would be the heuristic gunbc.design_argument::closed_grounded_substrate says a closed
 // system never needs.
 type CasAttemptAdmission
   = CasAttemptAdmitted { verified: VerifiedCasAttempt }
@@ -377,7 +377,7 @@ fn cas_probe_bisect(root: NonEmptyStr, key: NonEmptyStr, present: CasGeneration,
 // (extdeps.filesystem.filesystem_io FilesystemExactPathAbsent disclaims the directory), so reading
 // that answer as ProbedAbsent turned an UNINITIALIZED store into an EMPTY one: every reader saw "no
 // holder" and a decision caller admitted against a store it had never observed -- the absorbing
-// fallback DESIGN section 5 names, which hid fleet-converge run 35818578751's missing fabric store
+// fallback gunbc.design_argument::fail_closed names, which hid fleet-converge run 35818578751's missing fabric store
 // until the first write.
 //
 // Absence is established by the filesystem authority's own route, not a second one beside it:
@@ -433,7 +433,7 @@ fn cas_observe_slot(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotProbe {
 // still create-new of head+1, so a losing writer still re-reads and retries and nothing waits on a
 // hold (which is why this, and not gunbc.durable_exclusive_hold_file_store, bounds the index).
 //
-// docs/plans/fabric-storage.md names the head-probe bound this shape also lifts, and assigns its
+// docs/plans/fabric-storage.md (deleted 2026-11-08) names the head-probe bound this shape also lifts, and assigns its
 // remedy to compaction -- a head that starts from a snapshot object. A window is that same
 // head-starting-above-1 shape for a slot whose history needs no snapshot. The fabric storage heads
 // are deliberately NOT opted in here: their history is their record, and that is their lane's call.
@@ -552,15 +552,21 @@ fn cas_observe_window_once(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotProbe?
   }
 }
 
+// THE FOLD'S INIT CARRIES ITS DECLARED TYPE: the v1 seed types `init: none` as the bare Optional and takes no
+// expected type from a `let` annotation into the init, so the accumulator would be emitted undeclared
+// (gunbc.recurring_failure_mode seed_fold_accumulator_declared_from_an_open_init).
+fn cas_no_observation() -> CasSlotProbe? { none }
+
 fn cas_observe_window(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotProbe
   admit_callers: [
     decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_observe_retained_slot"),
   ]
 {
-  match fold(cas_window_observation_attempts, init: none, f: (acc, _) => match acc {
+  let observed = fold(cas_window_observation_attempts, init: cas_no_observation(), f: (acc, _) => match acc {
     Present { value: p } => Present { value: p }
     Absent => cas_observe_window_once(root: root, key: key)
-  }) {
+  })
+  match observed {
     Present { value: p } => p
     Absent => ProbedWindowHeadUnsettled { attempts: count(cas_window_observation_attempts) }
   }
@@ -590,7 +596,7 @@ fn cas_window_head_unsettled(attempts: Int) -> CasUnreadableSlot {
 // `ProbedBeyondBound` to `CasReadableAbsent`. Every call site happened to be inside a `ProbedHead`
 // arm, so the bound arm was dead at all of them -- and `.dag` has no module privacy, so what the
 // corpus actually carried was an importable function that turns EXPLICIT INABILITY TO OBSERVE into
-// ESTABLISHED ABSENCE. That is the absorbing fallback DESIGN section 5 names, and the defence written
+// ESTABLISHED ABSENCE. That is the absorbing fallback gunbc.design_argument::fail_closed names, and the defence written
 // beside it -- that answering absent is correct "for reporting what beat a lost race" -- was
 // falsified by this module's own bound counterexample two screens down, where a writer really did
 // publish and the probe still could not see it.
@@ -724,6 +730,7 @@ fn cas_verify_named_window_head(root: NonEmptyStr, key: NonEmptyStr, generation:
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_hold_check"),
     decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_release_assess_windowed_at"),
     decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_recovery_assess_windowed"),
+    decl_ref(module_path: "v2.workflow.roster_import_sweep", decl_name: "roster_lock_still_held"),
   ]
 {
   if !cas_key_is_slot_addressable(key: key) {
@@ -756,7 +763,7 @@ data cas_key_not_slot_addressable_detail: NonEmptyStr = "key is not slot-address
 // Every generation was published with `Filesystem.WriteOwnerOnly`, so one operation decided both
 // "publish this generation exclusively" and "these bytes are readable only by their owner". A caller
 // could not select the second without inheriting the first, which is the interface/realization/policy
-// fusion DESIGN section 3 names: confidentiality is a POLICY fact about a particular store's contents,
+// fusion gunbc.design_argument::single_authority names: confidentiality is a POLICY fact about a particular store's contents,
 // and it was being decided by the store's write verb.
 //
 // SO THE BINDING IS A PARAMETER, AND IT IS REQUIRED RATHER THAN DEFAULTED. A default would have let
@@ -784,7 +791,7 @@ data cas_key_not_slot_addressable_detail: NonEmptyStr = "key is not slot-address
 // A DECLARED CURRENT LIMITATION ON THE OWNER-ONLY BINDING -- NOT A RUNG DROP, AND THE FIRST WRITING
 // CALLED IT ONE.
 //
-// It was filed as a DESIGN section 4b(3) declared drop whose `previous rung` was `n/a`. Those cannot
+// It was filed as a gunbc.design_argument::guarantee_ladder (no silent regression) declared drop whose `previous rung` was `n/a`. Those cannot
 // both be true: a drop is a REGRESSION RECORD, so it presupposes a guarantee that was held and is
 // being given up, and a class with no previous rung has nothing to regress from. This hazard was
 // never absent -- every generation was published this way from the module's first commit, undeclared.
@@ -1194,14 +1201,25 @@ fn file_compare_and_set_windowed(root: NonEmptyStr, publication: CasGenerationPu
 
 // ── Which slots exist ────────────────────────────────────────────────────────────────────────
 // THE STORE OWNS BOTH DIRECTIONS OF ITS LAYOUT. cas_file_slot_path renders "<root>/<key>.<n>", so
-// the inverse over a directory listing strips exactly one trailing ".<digits>" -- the generation
-// is always the LAST dotted component and always numeric, so a key that itself contains "." reads
-// back unchanged. This is the one place a name is parsed back into a key, beside the function
-// that made the name; a consumer that split file names itself would be the second identity
-// authority the head-probe note above refuses. The listing answers WHICH keys have a slot; each
-// key's standing is still read through observe_cas_slot_state.
+// the inverse over a directory listing strips exactly one trailing ".<digits>" -- the generation is
+// always the LAST dotted component and always numeric, so a key that itself contains "." reads back
+// unchanged. This is the one place a name is parsed back into a key, beside the function that made
+// the name; a consumer that split file names itself would be the second identity authority the
+// head-probe note above refuses. The listing answers WHICH keys have a slot; each key's standing is
+// still read through observe_cas_slot_state.
+//
+// THE ABSENT ARM IS A CENSUS ANSWER, NEVER A RELEASE TRIGGER (the guard snappy-carp-24 asked to be
+// written into the declaration itself, not only into a record). A slot is released ONLY through the
+// CAS-fenced transition on the lease reference plus the slot generation READ FROM THE SLOT. An
+// answer saying this store has no slot directory frees no charge, retires no lease, and does not
+// license a mint: absence that releases is hold_recovered_by_age_not_observed_holder_death rebuilt
+// on new substrate -- a holder inferred dead because it could not be found. The arm exists because a
+// consumer that cannot tell "this store was never created" from "I could not read it" cannot PROVE
+// the first case, and a lease whose slots live in a store that no longer exists needs that proof in
+// order to migrate. So ENOENT is distinguished from unreadable, and both are answered.
 type CasSlotKeys
   = CasSlotKeysListed { keys: List<NonEmptyStr> }
+  | CasSlotKeysAbsent { root: NonEmptyStr }
   | CasSlotKeysListingRefused { root: NonEmptyStr, detail: String }
   | CasSlotKeysSubjectRefused { root: NonEmptyStr, cause: String }
 
@@ -1228,7 +1246,10 @@ fn cas_slot_keys(root: NonEmptyStr) -> CasSlotKeys {
   let listing = Filesystem.List(path: root as String)
   match filesystem_listing_observation(directory: root as String, success: listing.success, entries: listing.entries, error: listing.error) {
     FilesystemDirectorySubjectRefused { directory: _, cause: c } => CasSlotKeysSubjectRefused { root: root, cause: c }
-    FilesystemDirectoryListingRefused { directory: _, error: e } => CasSlotKeysListingRefused { root: root, detail: e }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => match filesystem_listing_absence(directory: root as String, error: e, error_kind: listing.error_kind) {
+      FilesystemDirectoryListingAbsent { directory: _ } => CasSlotKeysAbsent { root: root }
+      FilesystemDirectoryListingUnreadable { directory: _, error: err, error_kind: kind } => CasSlotKeysListingRefused { root: root, detail: join(["the directory is there but could not be read (error_kind ", kind, "): ", err], "") }
+    }
     FilesystemDirectoryListed(listed) => {
       let keys: List<NonEmptyStr> = fold(filesystem_listing_entry_names(listing: listed), init: [], f: (acc, n) => match cas_key_of_slot_name(name: trim(s: n)) {
         Absent => acc
@@ -1265,7 +1286,7 @@ fn cas_slot_keys(root: NonEmptyStr) -> CasSlotKeys {
 // and stays a distinct operation pair rather than a mode of slot_observe / slot_commit, because a slot whose
 // generation line is an audit trail must not be reachable through the head-only reclamation. The retained
 // operations are not carried: no holder uses them, and a holder that does adds them with its first consumer
-// (DESIGN section 3c).
+// (gunbc.design_argument::consumption).
 type SlotStore sole_constructor {
   root: NonEmptyStr
 }
@@ -1307,12 +1328,25 @@ fn file_slot_store(root: NonEmptyStr) -> SlotStore {
 
 // The listing outcome of one store's OWN directory, before any store record is minted. The
 // Listed arm carries the root whose listing the Filesystem answered for: readiness is evidence
-// that THIS directory was observed, not a caller assertion (DESIGN section 4b).
+// that THIS directory was observed, not a caller assertion (gunbc.design_argument::guarantee_ladder).
+// READINESS OF A STORE'S OWN DIRECTORY, THREE-VALUED ON PURPOSE.
+// Listed is evidence THIS directory was observed; Refused is a directory that exists but could not be
+// read (or is not admissible at all); ABSENT is a store whose directory was never created, which is a
+// fact about the subject and not a read failure. Before the absent arm, both collapsed into Refused,
+// so a consumer could not tell "this store is not there yet" -- the state a cutover ENDS in -- from a
+// permission failure, and the one place that distinction decides whether work is complete is
+// roadmap_session_attempt_slots_cutover's source store.
+// AS WITH CasSlotKeysAbsent, THIS IS A CENSUS ANSWER AND NEVER A RELEASE TRIGGER. Admitting a store
+// mints a handle; it never frees a charge, retires a lease, or licenses a mint. A slot is released
+// only through the CAS-fenced transition on the lease reference plus the generation read from the
+// slot. A consumer that treats "absent" as permission to release has rebuilt
+// hold_recovered_by_age_not_observed_holder_death on new substrate.
 type SlotStoreAdmission
   = SlotStoreListed { root: NonEmptyStr }
+  | SlotStoreAbsent { member: String, root: NonEmptyStr }
   | SlotStoreRefused { detail: String }
 
-// THE ONE LIST-THEN-FOLD for every sealed slot store (DESIGN section 6b root generalization: a
+// THE ONE LIST-THEN-FOLD for every sealed slot store (gunbc.design_argument::root_generalization root generalization: a
 // repeated rule gets ONE implementation; four stores folded this body verbatim before it moved
 // here). List `root`, fold the listing into a SlotStoreAdmission, and the caller mints its own
 // sealed record on Listed. `member` is the store's declaration name as spelled in its own module
@@ -1328,7 +1362,17 @@ fn listed_slot_store(member: String, root: NonEmptyStr) -> SlotStoreAdmission {
   let listing = Filesystem.List(path: root as String)
   match filesystem_listing_observation(directory: root as String, success: listing.success, entries: listing.entries, error: listing.error) {
     FilesystemDirectorySubjectRefused { directory: _, cause: c } => SlotStoreRefused { detail: join(["the ", member, " store's directory is not admissible: ", c], "") }
-    FilesystemDirectoryListingRefused { directory: _, error: e } => SlotStoreRefused { detail: join(["the ", member, " store's directory could not be listed: ", e], "") }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => match filesystem_listing_absence(directory: root as String, error: e, error_kind: listing.error_kind) {
+      FilesystemDirectoryListingAbsent { directory: _ } => SlotStoreAbsent { member: member, root: root }
+      FilesystemDirectoryListingUnreadable { directory: _, error: err, error_kind: kind } => SlotStoreRefused { detail: join(["the ", member, " store's directory exists but could not be read (error_kind ", kind, "): ", err], "") }
+    }
     FilesystemDirectoryListed(_) => SlotStoreListed { root: root }
   }
+}
+
+// The ONE rendering of an Absent admission's detail, for every caller that carries the refusal as text
+// (a String error or a typed *StoreUnready { detail }): it names the store and its root, as
+// listed_slot_store's own Refused detail does, so two stores never refuse identically.
+fn slot_store_absent_detail(member: String, root: NonEmptyStr) -> String {
+  join(["the ", member, " store's own directory was never created at ", root as String, " -- admission answers absence, and an absent store is not an empty store"], "")
 }

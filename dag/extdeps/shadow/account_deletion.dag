@@ -1,0 +1,61 @@
+module extdeps.shadow.account_deletion
+
+// userdel(8) -- the shadow suite's account removal. The suite's other half (useradd, newusers) is
+// modeled in extdeps.shadow.subordinate_ids and gunbc.executor_privileged_operation; removal had no
+// model because nothing in the corpus removed an account until a retired service's account had to
+// come off its host. The invocation is the whole of it: the login name, and nothing else.
+//
+// NO -r, AND THAT IS A CHOICE. userdel -r would delete the account's home and mail spool, which for
+// a service account means whatever the packager decided those paths are. The retirement names its
+// directories itself -- the config directory and the state root the service was configured with --
+// so the account removal removes the identity and the tree removals remove the trees, and no leg
+// deletes a path this corpus has not stated.
+
+import std.types { NonEmptyStr, List, Int }
+
+data userdel_binary_path: NonEmptyStr = "/usr/sbin/userdel"
+
+fn userdel_remove_account_argv(account: NonEmptyStr) -> List<String> {
+  [userdel_binary_path as String, account as String]
+}
+
+// userdel(8), EXIT STATUS: "6 specified user doesn't exist". gunbc.fleet.approval_ntfy_retirement
+// declares it on its account-removal leg (NtfyRetireLeg.subject_absent) and reads that exit as a
+// DIVERGENCE FROM THE ROSTER, never as success: a member the run was approved to remove and did not
+// find is a host that differs from the roster, and the run refuses with the divergence named rather
+// than reporting a removal it did not perform -- or calling an absence it never caused a retirement.
+// The retirement's PROOF of absence is still its own later read (getent passwd), not this exit code.
+data userdel_user_not_found_exit: Int = 6
+
+// groupdel(8) -- the shadow suite's GROUP removal, and the reason this module is not only about
+// accounts. userdel(8) removes the identity and leaves any group of the same name that has a member
+// besides the deleted account: on srv1 the ntfy service account is gone and `gunbc-ntfy:x:984:briansrls`
+// is still in /etc/group, so a retirement that stops at the account leaves a member of its roster
+// installed. The invocation is the group name and nothing else -- no flag rewrites the group database
+// beyond removing that entry.
+//
+// WHY NO FLAG, AND WHICH ANSWER IS NOT SUCCESS. groupdel(8), CAVEATS: "You may not remove the primary
+// group of any existing user. You must remove the user before you remove the group." -- and its exit
+// table gives 8 for exactly that refusal. The suite's own escape hatch, -f/--force ("forces the removal
+// of the group, even if there's some user having the group as the primary one"), is therefore NOT used
+// here: forcing it would leave a live user with a gid no database names, which is a worse host than the
+// one this leg is called to clean. The ordered legs (gunbc.fleet.approval_ntfy_retirement removes the
+// account before the group) make the refusal unreachable in the normal case; when it does answer, the
+// run refuses rather than forcing. Likewise a caller that read ANY non-zero as "already gone" would
+// report a retirement of a group that is still installed, so this module states the one exit that says
+// the group is not there, and the retirement reads it as a DIVERGENCE FROM ITS ROSTER -- the same rule
+// userdel's code above carries -- never as success.
+data groupdel_binary_path: NonEmptyStr = "/usr/sbin/groupdel"
+
+fn groupdel_remove_group_argv(group: NonEmptyStr) -> List<String> {
+  [groupdel_binary_path as String, group as String]
+}
+
+// groupdel(8), EXIT VALUES: "0 success / 2 invalid command syntax / 6 specified group doesn't exist /
+// 8 can't remove user's primary group / 10 can't update group file"
+// (man7.org/linux/man-pages/man8/groupdel.8.html). Only the 6 is declared as an expected answer; the
+// others, including the primary-group refusal at 8, are refusals the leg reports.
+// gunbc.fleet.approval_ntfy_retirement declares it on its group-removal leg
+// (NtfyRetireLeg.subject_absent), where a leg that runs and gets this answer has diverged from the read
+// that told it the group was there.
+data groupdel_group_not_found_exit: Int = 6

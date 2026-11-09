@@ -14,7 +14,7 @@ import v2.compiler.source_root_eval {
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
-import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
+import v2.std.diagnostic { Accepted, NodeLocus, Rejected , diagnostics_fatal, diagnostics_fatal_reason}
 import v2.std.grammar { node_atom_identity_optional }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Symbol }
@@ -104,9 +104,9 @@ fn sqo_verdict_of(outcome: NativeCensusModuleOutcome) -> SqoVerdict {
     NativeCensusModuleFileRefused => SqoFileRefused
     NativeCensusModuleResolveRefused { first: d, rest: _, observation: _ } =>
       SqoRefused {
-        reason: d.head.reason,
-        at_atom: match d.head.at {
-          NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at)
+        reason: diagnostics_fatal_reason(d: d),
+        at_atom: match diagnostics_fatal(d: d).at {
+          NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at.node)
           _ => optional_absent()
         }
       }

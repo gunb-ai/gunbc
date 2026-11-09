@@ -385,7 +385,7 @@ data export_host_reader_receipt_path: String = "target/export-host-reader-conver
 data export_host_reader_attempt_raw: String = "export-host-reader-converge"
 
 // `gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/host/export_host_reader_converge.dag --function export_host_reader_converge_wet`
-// CONSUMPTION (DESIGN section 3c): invoked by the fleet-converge mode ExportHostReaderConverge
+// CONSUMPTION (gunbc.design_argument::consumption): invoked by the fleet-converge mode ExportHostReaderConverge
 // (gunbc.fleet.fleet_converge_workflow). The target is the export host, never a dispatch input; the
 // receipt is written whatever the outcome.
 fn export_host_reader_converge_wet() -> ProcessExit {

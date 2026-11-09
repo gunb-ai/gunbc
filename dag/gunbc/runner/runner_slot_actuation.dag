@@ -1,10 +1,20 @@
 module gunbc.runner.runner_slot_actuation
 
-import std.types { String, List, Bool, Int, NonEmptyStr }
+import std.types { String, List, Bool, Int, NonEmptyStr, EpochSecs }
+import std.nat { Nat }
+import std.measure { Hertz, hertz, hertz_count }
 import std.optional { Absent, Present }
 import std.algebra { trim }
+import gunbc.runner.runner_local_state { RunnerUnitMainProcess, MainProcessUnread, NoMainProcess, MainProcessUngrounded, MainProcess, ProcessAbsoluteStart, StartObserved, StartUnread }
+import gunbc.build_cache.build_cache_instance { ProcessIdentity }
+import extdeps.linux.proc_pid_stat { proc_pid_stat_start_time, StartTimeObserved, StartTimeCommUnterminated, StartTimeFieldAbsent, StartTimeUnparseable }
+import extdeps.linux.proc_stat { proc_stat_boot_time, BootTimeObserved, BootTimeLineAbsent, BootTimeUnparseable, BootTimeBeforeEpoch }
+import extdeps.posix.getconf { clock_ticks_reading, ClockTicksObserved, ClockTicksUnparseable, ClockTicksNotPositive, getconf_clock_ticks_command }
+import extdeps.exec.command { argv_words, ArgvCommand }
+import extdeps.tools.gnu_coreutils { cat_command }
+import std.checked_arithmetic { checked_int_to_nat }
 import extdeps.systemd {
-  IdProperty, LoadState, UnitFileState, ActiveState, ControlGroup, TasksCurrent, systemd_unit_property_wire, SystemdUnitProperty,
+  IdProperty, MainPID, LoadState, UnitFileState, ActiveState, ControlGroup, TasksCurrent, systemd_unit_property_wire, SystemdUnitProperty,
   SystemdUnitLoadState, UnitLoaded, UnitLoadNotFound, UnitLoadBadSetting, UnitLoadError, UnitLoadMasked, parse_systemd_unit_load_state,
   SystemdUnitActiveState, Active, Inactive, Activating, Deactivating, Reloading, Failed, parse_systemd_unit_active_state,
 }
@@ -15,11 +25,13 @@ import extdeps.systemd.systemctl {
   systemctl_unmask_argv,
   systemctl_enable_argv,
   systemctl_start_argv,
+  systemctl_restart_argv,
   systemctl_mask_argv,
   systemctl_stop_argv,
 }
 import extdeps.procps.ps { ps_unit_comm_listing_argv, ps_unit_runs_command, ps_unit_runs_any_process }
 import gunbc.runner.runner_disk_reclaim { SlotActivityObservation, SlotHasLiveWorker, SlotIdle, SlotActivityUnobserved }
+import gunbc.runner.runner_lost_agent { LostAgentObservation, LostAgentDetected, JobNotLost, LostAgentReadRefused }
 import extdeps.sudo.elevation { sudo_elevate }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
@@ -87,7 +99,7 @@ fn slot_actuation_reading_typed(unit: NonEmptyStr, load_raw: String, file_raw: S
 // the slice as `system-actions\x2drunner.slice`, and the portability alphabet refuses the backslash),
 // so the membership is read through ps(1)'s `unit` column, which procps derives from each process's
 // /proc/<pid>/cgroup: the same kernel fact, in words the edge admits.
-// §3b DIVERGENCE, STATED: gunbc.runner.runner_local_state RunnerSlotBusyStanding answers the same question
+// gunbc.design_argument::conformance DIVERGENCE, STATED: gunbc.runner.runner_local_state RunnerSlotBusyStanding answers the same question
 // with the worker's ProcessIdentity (boot id, pid, start time). This effect needs only the busy/idle
 // answer, so it maps into the payload-free SlotActivityObservation rather than reading a boot id and a
 // start time it would discard; a caller that needs the worker's identity uses that standing.
@@ -98,11 +110,15 @@ fn slot_actuation_reading_typed(unit: NonEmptyStr, load_raw: String, file_raw: S
 type SlotDrainPendingCause
   = DrainPendingJobRunning
   | DrainPendingStopInProgress
+  | DrainPendingJobRunningLeftUnmasked
+  | DrainPendingStopInProgressLeftUnmasked
 
 fn slot_drain_pending_cause_wire(c: SlotDrainPendingCause) -> String {
   match c {
     DrainPendingJobRunning => "a job is running (Runner.Worker in the unit's cgroup); the unit is masked and left running until the job ends"
     DrainPendingStopInProgress => "a stop is already in progress (ActiveState=deactivating); the unit is masked and the stop is not re-issued"
+    DrainPendingJobRunningLeftUnmasked => "a job is running (Runner.Worker in the unit's cgroup); the unit is left untouched and unmasked, and a later pass drains it once it is idle"
+    DrainPendingStopInProgressLeftUnmasked => "a stop is already in progress (ActiveState=deactivating); the unit is left unmasked until it is inactive"
   }
 }
 
@@ -229,8 +245,130 @@ fn slot_activation_read_back_holds(r: SlotActuationReading) -> Bool {
     && slot_is_enabled(r: r) && slot_state_active(active: r.active)
 }
 
-// A DRAINED SLOT IS MASKED AND STOPPED. The mask comes first and is safe at any time: it only stops
-// the unit being started again. Stopping is admitted only when the unit is not executing a job --
+// ── The restart decision (the RESTART LEG's actuation) ──────────────────────────────────────────
+//
+// A RESTART IS NOT AN ACTIVATION. Activation brings an idle slot into service; it refuses a masked
+// unit's re-provision and refuses a unit that is already running. A restart cycles a slot that the
+// connectivity verdict has already judged DETACHED, ORPHANED, or LOST — a unit that exists and may even
+// be "active" to systemd but whose runner is not registered or whose job never reached an agent. So
+// this plan is deliberately narrower than activation on the load axis (it will NOT resurrect a unit the
+// manager does not have, nor unmask a drained slot — that is a re-provision, a different effect) and
+// deliberately broader on the active axis (it restarts a running unit, which activation would no-op).
+//
+// IT MUST REFUSE WHERE THE STATE IS UNKNOWABLE. A slot whose load could not be read (LoadState=error),
+// that is not installed, has a bad setting, or is masked, is refused here rather than restarted blind:
+// gunbc.design_argument::fail_closed, fail closed on Unresolved/Unreadable. The readback then proves the cycle actually
+// happened rather than trusting a systemctl exit code.
+
+type SlotRestartPlan
+  = RestartSteps { steps: List<List<String>> }
+  | RestartRefused { reason: String }
+
+// THE BUSY CONSULT (review 91071, the #15819 class): every mutating op in this lane is required to consult
+// the slot's busy standing BEFORE it touches anything (the RunnerSlotBusyStanding contract, gunbc.runner.
+// runner_local_state). A Detached verdict (registration offline) does NOT imply idle, so the plan refuses a
+// busy slot: only an idle standing permits; a busy standing that could not be read refuses exactly like a
+// running job (gunbc.design_argument::fail_closed, could-not-see is never permission); a slot executing a job refuses UNLESS the lost-agent
+// reading corroborates that the running job IS the orphaned one (in_progress, runner null, past timeout),
+// where killing it is the remedy.
+//
+// THE BUSY STANDING AND THE RUNNING JOB IDENTITY ARE ONE ATOMIC OBSERVATION, never two inputs. The side-chat
+// review (7a1f96ec, the gunbc.design_argument::fail_closed TOCTOU) showed that taking the busy standing from a fresh read while joining a
+// SEPARATELY SUPPLIED job id lets the two describe different moments: observe job X (the boundary says the
+// slot runs X); X finishes and job Y starts; the fresh busy read says busy; the lost evidence still says X
+// is stranded; the plan permits on the stale X and the restart kills Y. Binding them into a single value that
+// the boundary reads ONCE, immediately before the mutation, makes that state inexpressible -- there is no
+// stale X to join to a fresh Y, because busy-ness and its job id arrive as one observation or not at all.
+// It is read at the OBSERVATION BOUNDARY exactly like `before` (the frontier wet restart arm correlates the
+// jobs-API job id with the ps busy standing in one pass), NEVER assumed; a live worker whose job id cannot be
+// read is the Unreadable arm, which refuses (could-not-see is never permission). A null-runner lost-agent
+// observation names no slot, so this binding is what ties a lost-agent permit to the job it is actually for.
+type SlotBusyStanding
+  = Idle
+  | Busy { job_id: Int }
+  | Unreadable { cause: NonEmptyStr }
+
+fn slot_restart_plan(r: SlotActuationReading, standing: SlotBusyStanding, lost: LostAgentObservation) -> SlotRestartPlan {
+  match r.load {
+    UnitLoadNotFound => RestartRefused { reason: "the slot's unit is not installed on this host (LoadState=not-found): restart does not install it" }
+    UnitLoadBadSetting => RestartRefused { reason: "the slot's unit file has a bad setting (LoadState=bad-setting)" }
+    UnitLoadError => RestartRefused { reason: "the manager failed to load the slot's unit (LoadState=error): the state is unreadable, so it is not restarted" }
+    UnitLoadMasked => RestartRefused { reason: "the slot's unit is masked (a drained slot): restart does not unmask — that is a re-provision" }
+    UnitLoaded => match standing {
+      Idle => RestartSteps { steps: [systemctl_restart_argv(unit: r.unit)] }
+      Unreadable { cause: c } =>
+        RestartRefused { reason: concat("whether the slot is executing a job could not be read, so it is not restarted: ", c as String) }
+      Busy { job_id: running } => match lost {
+        LostAgentDetected { job_id: orphaned, over_by: _ } =>
+          if running == orphaned {
+            RestartSteps { steps: [systemctl_restart_argv(unit: r.unit)] }
+          } else {
+            RestartRefused { reason: "the slot is executing a different job than the orphaned one the restart is for; a restart would kill an unrelated live job" }
+          }
+        JobNotLost { job_id: _, reason: why } =>
+          RestartRefused { reason: concat("the slot is executing a job that is not the orphaned one (", why as String, "); a restart would kill a live job") }
+        LostAgentReadRefused { job_id: _, reason: why } =>
+          RestartRefused { reason: concat("the slot is executing a job and the lost-agent reading was refused, so the running job is not presumed orphaned: ", why as String) }
+      }
+    }
+  }
+}
+
+// THE LIVE MAIN PID OF A READING, IF IT HAS ONE. A grounded or ungrounded main carries a pid; unread or
+// none carries none. Used only to prove the restart changed the process.
+fn slot_main_process_pid(m: RunnerUnitMainProcess) -> Nat? {
+  match m {
+    MainProcess { process: p, absolute_start: _ } => Present { value: p.pid }
+    MainProcessUngrounded { pid: p, cause: _ } => Present { value: p }
+    NoMainProcess => Absent
+    MainProcessUnread { cause: _ } => Absent
+  }
+}
+
+// THE RESTART READS BACK ONLY ON A PROCESS CYCLE: loaded, active, and a live MainPID that differs from
+// the one this leg recorded BEFORE the restart (or any live pid where there was none before). This is
+// the difference between "systemctl restart returned 0" and "a different agent process is now running"
+// — the rung gunbc.design_argument::source_annotations demands: an actuation return cannot mint convergence.
+fn slot_restart_read_back_holds(r: SlotActuationReading, before: RunnerUnitMainProcess, after_main: RunnerUnitMainProcess) -> Bool {
+  let loaded = match r.load { UnitLoaded => true UnitLoadMasked => false UnitLoadNotFound => false UnitLoadBadSetting => false UnitLoadError => false }
+  let after_pid = slot_main_process_pid(m: after_main)
+  // The BEFORE side is classified by variant, NOT collapsed through slot_main_process_pid: that helper maps
+  // both NoMainProcess (definitively no main -> a live main after is a genuine cold-start cycle) and
+  // MainProcessUnread (the unit was not readable -> we cannot tell a cycle from a no-op) to Absent, and
+  // conflating them would let an unread before confirm a restart it never observed. A restart leg may reach
+  // the actuation with an unread before only on the roster-driven Detached/Orphaned arms, which never consult
+  // main; could-not-see is therefore never a readback that a restart happened (gunbc.design_argument::fail_closed).
+  let before_confirms_cycle = match before {
+    NoMainProcess => true
+    MainProcessUnread { cause: _ } => false
+    MainProcess { process: _, absolute_start: _ } => true
+    MainProcessUngrounded { pid: _, cause: _ } => true
+  }
+  let before_changed = match slot_main_process_pid(m: before) {
+    Absent => true
+    Present { value: b } => match after_pid {
+      Absent => false
+      Present { value: a } => a != b
+    }
+  }
+  loaded
+    && slot_state_active(active: r.active)
+    && before_confirms_cycle
+    && match after_pid {
+      Absent => false
+      Present { value: _ } => before_changed
+    }
+}
+
+
+// A DRAINED SLOT IS MASKED AND STOPPED. UNDER MaskWhileRunning the mask comes first, and that is NOT
+// safe at any time, which this comment used to claim: `systemctl mask` reloads the manager, and a unit
+// whose file is masked loads none of its drop-ins, so a unit still RUNNING when it is masked loses its
+// resource-control drop-ins (the template caps on srv1, the per-slot system.control set-property caps on
+// srv4) and its Slice= at that reload. Its live job then runs outside system-actions\x2drunner.slice with
+// no memory.max on its path, and the memory envelope refuses (fleet-converge run 41861708547 on srv4,
+// 2026-11-04: twelve busy slots masked by the slot-tree fold, required v2-bootstrap red on main until the
+// units were unmasked and restarted). NeverMaskARunningUnit (below) is the admission that does not. Stopping is admitted only when the unit is not executing a job --
 // a Runner.Worker present means a job is in flight, so the slot is left masked and running and the
 // effect reports DrainPending; the ephemeral runner exits when its job ends, the mask keeps it down,
 // and the next pass reads it stopped. An unreadable process listing refuses rather than guessing idle.
@@ -247,33 +385,61 @@ type SlotDrainPlan
   | DrainWaitForStop { mask: List<List<String>> }
   | DrainRefused { reason: String }
 
+// HOW A DRAIN CLOSES ADMISSION, AS A CHOICE THE CALLER MAKES BY NAME.
+//   MaskWhileRunning: mask first, at any state. Admission closes immediately, including on a busy unit,
+//     which is what the cap bracket's drain-and-wait relies on; it carries the exposure stated above,
+//     recorded as an open integration concern on the bracket rather than changed under it here.
+//   NeverMaskARunningUnit: a running unit is never masked. An idle one is STOPPED and then masked, so it
+//     is inactive when the mask's reload lands; a busy or stopping one gets no leg at all and is pending
+//     for a later pass. Admission is not closed while it runs, so it may take the next job; that costs a
+//     later pass, never an envelope. The slot-tree rebuild uses this.
+type SlotDrainAdmission
+  = MaskWhileRunning
+  | NeverMaskARunningUnit
+
 fn slot_drain_plan(r: SlotActuationReading, worker: SlotActivityObservation) -> SlotDrainPlan {
+  slot_drain_plan_under(r: r, worker: worker, admission: MaskWhileRunning)
+}
+
+fn slot_drain_plan_under(r: SlotActuationReading, worker: SlotActivityObservation, admission: SlotDrainAdmission) -> SlotDrainPlan {
   let mask = if slot_is_masked(r: r) { [] } else { [systemctl_mask_argv(unit: r.unit)] }
   match r.load {
     UnitLoadNotFound => DrainUnitNotInstalled
     UnitLoadBadSetting => DrainRefused { reason: "the slot's unit file has a bad setting (LoadState=bad-setting)" }
     UnitLoadError => DrainRefused { reason: "the manager failed to load the slot's unit (LoadState=error)" }
-    UnitLoaded => slot_drain_plan_loaded(r: r, worker: worker, mask: mask)
-    UnitLoadMasked => slot_drain_plan_loaded(r: r, worker: worker, mask: mask)
+    UnitLoaded => slot_drain_plan_loaded(r: r, worker: worker, mask: mask, admission: admission)
+    UnitLoadMasked => slot_drain_plan_loaded(r: r, worker: worker, mask: mask, admission: admission)
   }
 }
 
-fn slot_drain_plan_loaded(r: SlotActuationReading, worker: SlotActivityObservation, mask: List<List<String>>) -> SlotDrainPlan {
+// THE MASK A RUNNING UNIT MAY RECEIVE UNDER THE ADMISSION: all of it under MaskWhileRunning, none under
+// NeverMaskARunningUnit.
+fn slot_drain_running_mask(mask: List<List<String>>, admission: SlotDrainAdmission) -> List<List<String>> {
+  match admission {
+    MaskWhileRunning => mask
+    NeverMaskARunningUnit => []
+  }
+}
+
+fn slot_drain_plan_loaded(r: SlotActuationReading, worker: SlotActivityObservation, mask: List<List<String>>, admission: SlotDrainAdmission) -> SlotDrainPlan {
   match r.active {
     Inactive => if slot_is_masked(r: r) { DrainAlreadyMasked } else { DrainSteps { steps: mask } }
     Failed => if slot_is_masked(r: r) { DrainAlreadyMasked } else { DrainSteps { steps: mask } }
-    Deactivating => DrainWaitForStop { mask: mask }
-    Active => slot_drain_plan_running(r: r, worker: worker, mask: mask)
-    Activating => slot_drain_plan_running(r: r, worker: worker, mask: mask)
-    Reloading => slot_drain_plan_running(r: r, worker: worker, mask: mask)
+    Deactivating => DrainWaitForStop { mask: slot_drain_running_mask(mask: mask, admission: admission) }
+    Active => slot_drain_plan_running(r: r, worker: worker, mask: mask, admission: admission)
+    Activating => slot_drain_plan_running(r: r, worker: worker, mask: mask, admission: admission)
+    Reloading => slot_drain_plan_running(r: r, worker: worker, mask: mask, admission: admission)
   }
 }
 
-fn slot_drain_plan_running(r: SlotActuationReading, worker: SlotActivityObservation, mask: List<List<String>>) -> SlotDrainPlan {
+fn slot_drain_plan_running(r: SlotActuationReading, worker: SlotActivityObservation, mask: List<List<String>>, admission: SlotDrainAdmission) -> SlotDrainPlan {
   match worker {
     SlotActivityUnobserved { cause: c } => DrainRefused { reason: concat("whether the slot is executing a job could not be read, so it is not stopped: ", c as String) }
-    SlotHasLiveWorker => DrainWaitForJob { mask: mask }
-    SlotIdle => DrainSteps { steps: concat(mask, [systemctl_stop_argv(unit: r.unit)]) }
+    SlotHasLiveWorker => DrainWaitForJob { mask: slot_drain_running_mask(mask: mask, admission: admission) }
+    SlotIdle => match admission {
+      MaskWhileRunning => DrainSteps { steps: concat(mask, [systemctl_stop_argv(unit: r.unit)]) }
+      NeverMaskARunningUnit => DrainSteps { steps: concat([systemctl_stop_argv(unit: r.unit)], mask) }
+    }
   }
 }
 
@@ -499,25 +665,76 @@ fn activate_runner_slot_over(target: SshTarget, context: FleetSshExecutionContex
   }
 }
 
+// THE RESTART LEG'S EFFECT. `before` is the REAL main process the connectivity join was fed — the pid
+// the observation grounded the slot on — so the readback can tell a cycled process from a no-op. The
+// caller (runner_lifecycle_realize) supplies it only for a verdict that says detached/orphaned/lost, and
+// supplies `lost` (the same lost-agent observation the decide used). This effect never re-reads a token and
+// never runs blind: it reads the unit, consults busy standing (read_slot_worker_over while active, the gunbc.design_argument::conformance
+// payload-free currency) and REFUSES a busy slot unless the running job is corroborated orphaned, refuses on
+// an unreadable or uninstalled or masked load, restarts once, and re-reads to a process cycle.
+//
+// FRONTIER (gunbc.design_argument::consumption, declared not dangling). This is the modeled restart actuation the restart leg
+// performs on a permitted verdict. Its CONSUMER is the wet realize arm that calls runner_lifecycle_restart_leg
+// above — on RestartLegPermit it invokes this with the observed main as `before`, and on the SlotActuationOutcome
+// records the readback; it is refused before it can be reached on any Unknown/Unresolved/Unreadable verdict,
+// because runner_lifecycle_restart_leg never returns Permit for those. Its TRIGGER is the same DISABLED
+// runner-liveness-reconcile timer; nothing here runs live in this PR. Its WITNESS (runner_slot_restart_witness)
+// supplies the target, context, unit and `before` at the boundary and discriminates the refuse arms and the
+// changed-MainPID readback. DISSOLVES when the reconcile timer is re-enabled and the wet arm drives it.
+fn restart_runner_slot_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr, before: RunnerUnitMainProcess, standing: SlotBusyStanding, lost: LostAgentObservation) -> SlotActuationOutcome
+{
+  // The busy standing (with the running job id bound to it) is read ONCE, at the boundary, immediately
+  // before this mutation -- it is not re-read here beside a separately supplied job id, which is the seam
+  // that let busy and job identity describe different moments (the gunbc.design_argument::fail_closed TOCTOU, side-chat review 7a1f96ec).
+  match read_slot_over(target: target, context: context, unit: unit) {
+    SlotReadRefused { reason: why } => SlotActuationRefused { unit: unit, step: "read", reason: why }
+    SlotRead { reading: r } => {
+      match slot_restart_plan(r: r, standing: standing, lost: lost) {
+        RestartRefused { reason: why } => SlotActuationRefused { unit: unit, step: "plan", reason: why }
+        RestartSteps { steps: ss } =>
+          match run_slot_steps_over(target: target, context: context, steps: ss) {
+            Present { value: why } => SlotActuationRefused { unit: unit, step: "restart", reason: why }
+            Absent =>
+              match read_slot_over(target: target, context: context, unit: unit) {
+                SlotReadRefused { reason: why } => SlotActuationRefused { unit: unit, step: "readback", reason: why }
+                SlotRead { reading: after } =>
+                  if slot_restart_read_back_holds(r: after, before: before, after_main: slot_main_process_over(target: target, context: context, unit: unit)) {
+                    SlotActivated { unit: unit }
+                  } else {
+                    SlotActuationRefused { unit: unit, step: "readback", reason: "not loaded and active on a changed MainPID after restart" }
+                  }
+              }
+          }
+      }
+      }
+  }
+}
+
+
 fn drain_and_mask_runner_slot_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotActuationOutcome
+{
+  drain_runner_slot_under_over(target: target, context: context, unit: unit, admission: MaskWhileRunning)
+}
+
+fn drain_runner_slot_under_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr, admission: SlotDrainAdmission) -> SlotActuationOutcome
 {
   match read_slot_over(target: target, context: context, unit: unit) {
     SlotReadRefused { reason: why } => SlotActuationRefused { unit: unit, step: "read", reason: why }
     SlotRead { reading: r } => {
       let worker = if slot_state_active(active: r.active) { read_slot_worker_over(target: target, context: context, unit: unit) } else { SlotIdle }
-      match slot_drain_plan(r: r, worker: worker) {
+      match slot_drain_plan_under(r: r, worker: worker, admission: admission) {
         DrainAlreadyMasked => SlotActuationNoop { unit: unit, state: "masked-and-stopped" }
         DrainUnitNotInstalled => SlotNotInstalled { unit: unit }
         DrainRefused { reason: why } => SlotActuationRefused { unit: unit, step: "plan", reason: why }
         DrainWaitForJob { mask: m } =>
           match run_slot_steps_over(target: target, context: context, steps: m) {
             Present { value: why } => SlotActuationRefused { unit: unit, step: "mask", reason: why }
-            Absent => SlotDrainPending { unit: unit, cause: DrainPendingJobRunning }
+            Absent => SlotDrainPending { unit: unit, cause: match admission { MaskWhileRunning => DrainPendingJobRunning NeverMaskARunningUnit => DrainPendingJobRunningLeftUnmasked } }
           }
         DrainWaitForStop { mask: m } =>
           match run_slot_steps_over(target: target, context: context, steps: m) {
             Present { value: why } => SlotActuationRefused { unit: unit, step: "mask", reason: why }
-            Absent => SlotDrainPending { unit: unit, cause: DrainPendingStopInProgress }
+            Absent => SlotDrainPending { unit: unit, cause: match admission { MaskWhileRunning => DrainPendingStopInProgress NeverMaskARunningUnit => DrainPendingStopInProgressLeftUnmasked } }
           }
         DrainSteps { steps: ss } =>
           match run_slot_steps_over(target: target, context: context, steps: ss) {
@@ -584,7 +801,7 @@ fn slot_registration_file_command(instance: NonEmptyStr) -> List<String> {
 
 fn slot_registration_unreadable(instance: NonEmptyStr, cause: String) -> SlotRegistrationIdentity {
   // THE CAUSE NAMES THE SLOT IT FAILED ON, not merely the typed field. A reader that cannot say which slot
-  // it could not read leaves an operator with nothing to act on, and a §5 diagnostic has to be located:
+  // it could not read leaves an operator with nothing to act on, and a gunbc.design_argument::fail_closed diagnostic has to be located:
   // this string is what reaches the observe receipt and the bracket's withheld-cap verdict verbatim.
   SlotRegistrationUnreadable { instance: instance, cause: join(["slot ", instance as String, ": ", cause], "") }
 }
@@ -638,5 +855,212 @@ fn slot_current_registration_over_unit(target: SshTarget, context: FleetSshExecu
         SlotRegistrationUnreadable { instance: i, cause: c } =>
           UnitRegistrationUnreadable { unit: unit, cause: join(["the host holds no readable current registration for ", i as String, ": ", c], "") }
       }
+  }
+}
+
+// ── ObserveRunnerLocalState: a read, never an actuation ─────────────────────────────────────────
+
+// THE SLOT'S LOCAL STANDING AS ONE READ-ONLY OBSERVATION over the same administrator edge as the two
+// actuations. It issues only `systemctl show`, `ps` and `cat` of /proc, so it mutates nothing; it is settled when
+// the unit reading AND the worker reading both came back and the main process is not unread, and any refused leg
+// is a located NotConverged naming the leg, never a default. The main process is gunbc.runner.runner_local_state
+// RunnerUnitMainProcess, parsed ONCE from the `systemctl show` answer: `0` is NoMainProcess ("supervises no
+// process", never a pid), a pid is grounded by the boot id and the /proc start time into a ProcessIdentity or
+// stays MainProcessUngrounded, and a leg that did not answer is MainProcessUnread. The unread/ungrounded reading
+// feeds slot_incarnation_registration directly.
+type SlotLocalObservation
+  = SlotLocalObserved { unit: NonEmptyStr, reading: SlotActuationReading, worker: SlotActivityObservation, main: RunnerUnitMainProcess }
+  | SlotLocalUnobserved { unit: NonEmptyStr, step: String, reason: String }
+
+fn slot_main_pid_raw_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> String
+{
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: systemctl_show_properties_argv(units: [unit], properties: [IdProperty, MainPID])) {
+    TypedArgvExecRefused { reason: why } => concat("unread:", why)
+    TypedArgvExecConverged { result: r } =>
+      if !r.success {
+        join(["unread:systemctl show exit=", to_string(r.exit_code)], "")
+      } else {
+        match fold(split(s: r.stdout, delimiter: "\n"), init: none, f: (acc, l) =>
+          if starts_with(s: l, prefix: "MainPID=") { Present { value: trim(s: substring(s: l, start: 8, end: string_length(s: l))) } } else { acc }) {
+          Absent => "unread:no MainPID line"
+          Present { value: v } => v
+        }
+      }
+  }
+}
+
+// ONE READ OF A /proc TEXT over the edge; a refused or failed read is Absent (unread), never an empty text.
+fn slot_proc_text_over(target: SshTarget, context: FleetSshExecutionContext, path: String) -> String?
+{
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv_words(command: cat_command(path: path))) {
+    TypedArgvExecRefused { reason: _ } => none
+    TypedArgvExecConverged { result: r } => if r.success { Present { value: r.stdout } } else { none }
+  }
+}
+
+// THE PARSE, PURE: the raw MainPID answer plus the two grounding texts, to the one RunnerUnitMainProcess.
+fn slot_main_process_of(raw: String, boot: String?, stat: String?, abs: ProcessAbsoluteStart) -> RunnerUnitMainProcess {
+  if starts_with(s: raw, prefix: "unread:") {
+    MainProcessUnread { cause: raw as NonEmptyStr }
+  } else {
+    match parse_int(s: raw) {
+      Absent => MainProcessUnread { cause: concat("MainPID answered something that is not an integer: ", raw) as NonEmptyStr }
+      Present { value: n } =>
+        if n == 0 {
+          NoMainProcess
+        } else {
+          match checked_int_to_nat(n: n) {
+            Absent => MainProcessUnread { cause: concat("MainPID is not a pid: ", raw) as NonEmptyStr }
+            Present { value: pid } =>
+              match boot {
+                Absent => MainProcessUngrounded { pid: pid, cause: "the boot id was not read, so the pid is not an identity" as NonEmptyStr }
+                Present { value: b } =>
+                  match stat {
+                    Absent => MainProcessUngrounded { pid: pid, cause: "/proc/PID/stat was not read, so the start time is unknown" as NonEmptyStr }
+                    Present { value: t } =>
+                      match proc_pid_stat_start_time(content: t) {
+                        StartTimeObserved { ticks_since_boot: ticks } =>
+                          if trim(s: b) == "" {
+                            MainProcessUngrounded { pid: pid, cause: "the boot id read was empty" as NonEmptyStr }
+                          } else {
+                            MainProcess { process: ProcessIdentity { boot_id: trim(s: b) as NonEmptyStr, pid: pid, start_time: to_string(ticks) as NonEmptyStr }, absolute_start: abs }
+                          }
+                        StartTimeCommUnterminated => MainProcessUngrounded { pid: pid, cause: "/proc/PID/stat has no terminated comm field" as NonEmptyStr }
+                        StartTimeFieldAbsent { fields_after_comm: _ } => MainProcessUngrounded { pid: pid, cause: "/proc/PID/stat has no start time field" as NonEmptyStr }
+                        StartTimeUnparseable { field: _ } => MainProcessUngrounded { pid: pid, cause: "/proc/PID/stat start time is not an integer" as NonEmptyStr }
+                      }
+                  }
+              }
+          }
+        }
+    }
+  }
+}
+
+fn slot_main_process_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> RunnerUnitMainProcess
+{
+  let raw = slot_main_pid_raw_over(target: target, context: context, unit: unit)
+  match parse_int(s: raw) {
+    Present { value: n } =>
+      if n > 0 {
+        let pid_stat = slot_proc_text_over(target: target, context: context, path: concat("/proc/", concat(raw, "/stat")))
+        slot_main_process_of(
+          raw: raw,
+          boot: slot_proc_text_over(target: target, context: context, path: "/proc/sys/kernel/random/boot_id"),
+          stat: pid_stat,
+          abs: proc_absolute_start_of(
+            proc_stat: slot_proc_text_over(target: target, context: context, path: "/proc/stat"),
+            clock_ticks_text: slot_command_text_over(target: target, context: context, command: getconf_clock_ticks_command()),
+            start_ticks: match pid_stat {
+              Absent => none
+              Present { value: t } => match proc_pid_stat_start_time(content: t) {
+                StartTimeObserved { ticks_since_boot: ticks } => Present { value: ticks }
+                StartTimeCommUnterminated => none
+                StartTimeFieldAbsent { fields_after_comm: _ } => none
+                StartTimeUnparseable { field: _ } => none
+              }
+            },
+          ),
+        )
+      } else {
+        slot_main_process_of(raw: raw, boot: none, stat: none, abs: StartUnread { cause: "no main process" as NonEmptyStr })
+      }
+    Absent => slot_main_process_of(raw: raw, boot: none, stat: none, abs: StartUnread { cause: "MainPID unread" as NonEmptyStr })
+  }
+}
+
+// A SECOND COMMAND READ IN THE SAME PROBE, next to the cat reads, so the absolute start comes from one
+// pass over the host and not a second, differently-timed one. The clock tick rate is READ here (getconf
+// CLK_TCK) and never assumed to be 100 — assuming it silently shifts every start comparison by the
+// ratio between the real rate and the guess.
+fn slot_command_text_over(target: SshTarget, context: FleetSshExecutionContext, command: ArgvCommand) -> String?
+{
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv_words(command: command)) {
+    TypedArgvExecRefused { reason: _ } => none
+    TypedArgvExecConverged { result: r } => if r.success { Present { value: r.stdout } } else { none }
+  }
+}
+
+// THE ABSOLUTE START, PURE AND BOUNDARY-FED: boot epoch (btime) plus the process's start ticks divided
+// by the read tick rate. Any of the three inputs missing or unparseable is StartUnread, never a zero: a
+// zero start would make a fresh pid look ancient to the recycled-pid check, or an ancient one look fresh,
+// depending on which side of the bound it landed on.
+fn proc_absolute_start_of(proc_stat: String?, clock_ticks_text: String?, start_ticks: Int?) -> ProcessAbsoluteStart {
+  match proc_stat {
+    Absent => StartUnread { cause: "/proc/stat was not read, so the boot time is unknown" as NonEmptyStr }
+    Present { value: ps } =>
+      match proc_stat_boot_time(content: ps) {
+        BootTimeLineAbsent => StartUnread { cause: "/proc/stat has no btime line" as NonEmptyStr }
+        BootTimeUnparseable { field: f } => StartUnread { cause: concat("/proc/stat btime is not an integer: ", f) as NonEmptyStr }
+        BootTimeBeforeEpoch { field: f } => StartUnread { cause: concat("/proc/stat btime precedes the epoch: ", f) as NonEmptyStr }
+        BootTimeObserved { epoch_seconds: btime } =>
+          match clock_ticks_text {
+            Absent => StartUnread { cause: "the clock tick rate was not read; it is never assumed to be 100" as NonEmptyStr }
+            Present { value: ct } =>
+              match clock_ticks_reading(stdout: ct) {
+                ClockTicksUnparseable { field: f } => StartUnread { cause: concat("the clock tick rate is not an integer: ", f) as NonEmptyStr }
+                ClockTicksNotPositive { value: v } => StartUnread { cause: concat("the clock tick rate is not positive: ", to_string(v)) as NonEmptyStr }
+                ClockTicksObserved { per_second: hz } =>
+                  match start_ticks {
+                    Absent => StartUnread { cause: "the process start time was not read" as NonEmptyStr }
+                    Present { value: ticks } =>
+                      // The clock tick rate is a frequency, so it is carried on the std.measure Hertz
+                      // carrier (never a bare scalar divisor), exactly as the sibling replica_incarnation
+                      // probe carries it; btime is an EpochSecs instant. The absolute start is the boot
+                      // instant plus start_ticks over that rate, and a boot that would fall before the
+                      // epoch is refused rather than clamped.
+                      let ticks_per_second: Hertz = hertz(count: hz)
+                      let abs = (btime as Int) + (ticks / hertz_count(h: ticks_per_second))
+                      if abs < 0 {
+                        StartUnread { cause: "the computed absolute process start precedes the epoch" as NonEmptyStr }
+                      } else {
+                        StartObserved { started_at: abs }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn observe_runner_slot_local_state_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotLocalObservation
+{
+  match read_slot_over(target: target, context: context, unit: unit) {
+    SlotReadRefused { reason: why } => SlotLocalUnobserved { unit: unit, step: "unit-read", reason: why }
+    SlotRead { reading: rd } =>
+      SlotLocalObserved { unit: unit, reading: rd, worker: read_slot_worker_over(target: target, context: context, unit: unit), main: slot_main_process_over(target: target, context: context, unit: unit) }
+  }
+}
+
+fn slot_activity_wire(a: SlotActivityObservation) -> String {
+  match a {
+    SlotHasLiveWorker => "worker=live"
+    SlotIdle => "worker=idle"
+    SlotActivityUnobserved { cause: c } => join(["worker=unobserved(", c as String, ")"], "")
+  }
+}
+
+fn slot_main_process_wire(m: RunnerUnitMainProcess) -> String {
+  match m {
+    MainProcessUnread { cause: c } => concat("main=unread(", concat(c as String, ")"))
+    NoMainProcess => "main=none"
+    MainProcessUngrounded { pid: p, cause: c } => join(["main=ungrounded(pid=", to_string(p), ": ", c as String, ")"], "")
+    MainProcess { process: p, absolute_start: _ } => join(["main=pid ", to_string(p.pid), " boot=", p.boot_id as String, " start=", p.start_time as String], "")
+  }
+}
+
+fn slot_local_observation_settled(o: SlotLocalObservation) -> Bool {
+  match o {
+    SlotLocalObserved { unit: _, reading: _, worker: w, main: m } =>
+      (match m { MainProcessUnread { cause: _ } => false NoMainProcess => true MainProcessUngrounded { pid: _, cause: _ } => true MainProcess { process: _, absolute_start: _ } => true })
+        && match w { SlotActivityUnobserved { cause: _ } => false SlotHasLiveWorker => true SlotIdle => true }
+    SlotLocalUnobserved { unit: _, step: _, reason: _ } => false
+  }
+}
+
+fn slot_local_observation_wire(o: SlotLocalObservation) -> String {
+  match o {
+    SlotLocalObserved { unit: u, reading: _, worker: w, main: m } => join(["observe ", u as String, " ", slot_main_process_wire(m: m), " ", slot_activity_wire(a: w)], "")
+    SlotLocalUnobserved { unit: u, step: st, reason: r } => join(["observe ", u as String, " UNOBSERVED step=", st, " ", r], "")
   }
 }

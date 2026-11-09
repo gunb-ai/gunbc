@@ -1,0 +1,420 @@
+module extdeps.bmc.ipmitool_mc_info
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.algebra { trim, list_at_optional }
+import std.integer { int_to_decimal_string }
+import std.render_repeat_string_bootstrap { repeat_string }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.bmc.ipmi { IpmiDeviceIdentity }
+import extdeps.bmc.ipmitool_print_read { ipmitool_labelled_value }
+
+// `ipmitool mc info`, READ BACK. The management-controller report is ipmitool's `mc info` subcommand: it
+// issues the IPMI v2.0 spec's Get Device ID command (27.1) and prints the response as labelled columns, each
+// line `<label padded to 26> : <value>`. This is the FAMILY-NEUTRAL form of the firmware identity: every
+// family answers Get Device ID — MegaRAC, ATEN, OpenBMC and Supermicro CGI boards alike — so this is the one
+// firmware-identity source that is not family-specific, and the module sits in the ipmitool layer (upstream =
+// ipmitool, the tool that renders the report) rather than beside any board. The hand-authored identities this
+// replaces lived in gunbc.machine_intake.bmc_inband_recovery_receipts; they are re-derived through this
+// parser wherever a capture exists.
+//
+// NOTHING HERE DECIDES A GUNBC OUTCOME (gunbc.design_argument::single_authority): the parser says only what the labelled report
+// says. Whether an identity is trustable — cross-source agreement, standing, the coverage obligation of a
+// read never taken — is gunbc.machine_intake.bmc_first_contact_reading's, not this module's.
+//
+// THE RENDER SIDE SITS BESIDE THE PARSE SIDE (gunbc.design_argument::minimize_redundancy: model a concept once and derive every use): render_ipmitool_mc_info below produces
+// exactly the layout parsed here, so a dry controller (gunbc.bmc_dry_realization) answers `mc info` with a
+// rendering of its own state rather than a stored string.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/ipmitool/ipmitool/blob/master/lib/ipmi_mc.c"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.bmc.ipmitool_mc_info",
+      decl_name: "IpmiMcInfoReport",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// `Firmware Revision : 1.52` — the two decimal parts ipmitool prints from the response's firmware-revision
+// bytes. A revision that is not `major.minor` of decimal parts is unreadable, never guessed.
+type IpmiMcInfoFirmwareRevision { major: Int, minor: Int }
+
+// THE REPORT'S FIELDS, EACH PARSED OR ABSENT — the intermediate the parser fills flatly, one parse per label
+// and no cross-field logic, so a body missing three fields names all three instead of whatever line a nested
+// read happened to trip on first.
+type IpmiMcInfoFields {
+  device_id: Int?
+  device_revision: Int?
+  firmware: IpmiMcInfoFirmwareRevision?
+  manufacturer_id: Int?
+  manufacturer_name: String?
+  product_id: Int?
+  product_name: String?
+  device_available: Bool?
+  provides_device_sdrs: Bool?
+}
+
+// WHAT THE `mc info` REPORT ANSWERED. `identity` is the Get Device ID response read as the board's identity
+// (extdeps.bmc.ipmi); the two Bools are the report's OWN claims, kept because each changes what a read means
+// downstream: `device_available` false is the controller saying it is mid-initialization (a consumer refuses
+// an identity taken then rather than storing it as fact), and `provides_device_sdrs` says whether the SDR
+// repository being typed is the controller's own — the distinction gunbc's sensor-typing reading carries. The
+// report's remaining lines (`Additional Device Support`, `Aux Firmware Rev Info`) are not parsed: no consumer
+// reads them yet, and a field with no consumer is a guess (gunbc.design_argument::fail_closed).
+type IpmiMcInfoReport {
+  identity: IpmiDeviceIdentity
+  device_available: Bool
+  provides_device_sdrs: Bool
+}
+
+// THE REPORT, DECODED OR REFUSED — named, never a silent empty (gunbc.design_argument::fail_closed: stop visibly, never conceal the deficit). A missing label, a value
+// that is not what its label's type requires, or a yes/no that is neither, refuses naming the labels that
+// failed.
+type IpmiMcInfoReading
+  = McInfoReported { report: IpmiMcInfoReport }
+  | McInfoUnreadable { cause: NonEmptyStr }
+
+// The label column width ipmitool pads to (lib/ipmi_mc.c prints each label in a 26-column field).
+data ipmitool_mc_info_label_columns: Int = 26
+
+// THE LABEL IS THE SUM, NOT ITS SPELLING. Every helper below takes an `IpmiMcInfoLabel`; the text spelling is
+// produced only where the wire format needs it — at the shared labelled-line lookup and at the printed line.
+// A `String` formal here would let a caller ask for a label this parser has never declared (gunbc.design_argument::minimize_redundancy: a String
+// leaf hiding named parts is anemic modeling).
+fn ipmitool_mc_info_yes_no(stdout: String, label: IpmiMcInfoLabel) -> Bool? {
+  match ipmitool_labelled_value(stdout: stdout, label: ipmitool_mc_info_label_text(label: label)) {
+    Absent => none
+    Present { value: v } =>
+      if v == "yes" {
+        Present { value: true }
+      } else {
+        if v == "no" { Present { value: false } } else { none }
+      }
+  }
+}
+
+// The value of a numeric label: ipmitool prints the decimal value and, for some fields, the same value in
+// parentheses after it (`Product ID : 6659 (0x1a03)`). The decimal head is the value; the parenthetical is
+// ipmitool's own rendering of it and is not re-parsed.
+fn ipmitool_mc_info_int(stdout: String, label: IpmiMcInfoLabel) -> Int? {
+  match ipmitool_labelled_value(stdout: stdout, label: ipmitool_mc_info_label_text(label: label)) {
+    Absent => none
+    Present { value: v } => match first(split(s: trim(s: v), delimiter: " ")) {
+      Absent => none
+      Present { value: head } => parse_int(s: head)
+    }
+  }
+}
+
+fn ipmitool_mc_info_firmware_of_text(text: String) -> IpmiMcInfoFirmwareRevision? {
+  let parts: List<String> = split(s: trim(s: text), delimiter: ".")
+  if count(parts) != 2 {
+    none
+  } else {
+    match list_at_optional(xs: parts, index: 0) {
+      Present { value: major_text } => match list_at_optional(xs: parts, index: 1) {
+        Present { value: minor_text } => match parse_int(s: trim(s: major_text)) {
+          Present { value: major } => match parse_int(s: trim(s: minor_text)) {
+            Present { value: minor } => Present { value: IpmiMcInfoFirmwareRevision { major: major, minor: minor } }
+            Absent => none
+          }
+          Absent => none
+        }
+        Absent => none
+      }
+      Absent => none
+    }
+  }
+}
+
+fn ipmitool_mc_info_firmware_revision(stdout: String) -> IpmiMcInfoFirmwareRevision? {
+  match ipmitool_labelled_value(stdout: stdout, label: ipmitool_mc_info_label_text(label: FirmwareRevision)) {
+    Absent => none
+    Present { value: v } => ipmitool_mc_info_firmware_of_text(text: v)
+  }
+}
+
+fn ipmitool_mc_info_name(stdout: String, label: IpmiMcInfoLabel) -> String? {
+  match ipmitool_labelled_value(stdout: stdout, label: ipmitool_mc_info_label_text(label: label)) {
+    Absent => none
+    Present { value: v } => if trim(s: v) == "" { none } else { Present { value: v } }
+  }
+}
+
+// THE FIELDS, READ INDEPENDENTLY. NO WHOLE-BODY ERROR HEURISTIC: a capture may be a multi-command transcript
+// whose LATER commands failed (`IPMI command failed: Invalid data field in request` appears in the ALTRAD8UD
+// in-band capture, AFTER its `mc info` section), so scanning the body for error words would refuse a report
+// that is present and whole. What is missing is decided label by label, below.
+fn ipmitool_mc_info_fields_of(stdout: String) -> IpmiMcInfoFields {
+  IpmiMcInfoFields {
+    device_id: ipmitool_mc_info_int(stdout: stdout, label: DeviceId),
+    device_revision: ipmitool_mc_info_int(stdout: stdout, label: DeviceRevision),
+    firmware: ipmitool_mc_info_firmware_revision(stdout: stdout),
+    manufacturer_id: ipmitool_mc_info_int(stdout: stdout, label: ManufacturerId),
+    manufacturer_name: ipmitool_mc_info_name(stdout: stdout, label: ManufacturerName),
+    product_id: ipmitool_mc_info_int(stdout: stdout, label: ProductId),
+    product_name: ipmitool_mc_info_name(stdout: stdout, label: ProductName),
+    device_available: ipmitool_mc_info_yes_no(stdout: stdout, label: DeviceAvailable),
+    provides_device_sdrs: ipmitool_mc_info_yes_no(stdout: stdout, label: ProvidesDeviceSdrs),
+  }
+}
+
+// THE LABELS THE REPORT PRINTS, SPELLED ONCE. ipmitool prints these labels in this order (lib/ipmi_mc.c). This
+// sum is the module's ONLY spelling of any of them: the parse side looks each one up by name, the completeness
+// check walks the rows below, and the render side prints those same rows -- so a modeled reply cannot drift
+// into a shape the reader would refuse. The label-to-field tie is spelled twice, once per direction
+// (ipmitool_mc_info_fields_of reads a label into a field, ipmitool_mc_info_rows prints a field back under its
+// label); both sides name the label through this sum, so what could differ is only the tie itself, and
+// rendered_report_parses_back_to_the_same_report round-trips it.
+type IpmiMcInfoLabel
+  = DeviceId
+  | DeviceRevision
+  | FirmwareRevision
+  | ManufacturerId
+  | ManufacturerName
+  | ProductId
+  | ProductName
+  | DeviceAvailable
+  | ProvidesDeviceSdrs
+
+fn ipmitool_mc_info_label_text(label: IpmiMcInfoLabel) -> String {
+  match label {
+    DeviceId => "Device ID"
+    DeviceRevision => "Device Revision"
+    FirmwareRevision => "Firmware Revision"
+    ManufacturerId => "Manufacturer ID"
+    ManufacturerName => "Manufacturer Name"
+    ProductId => "Product ID"
+    ProductName => "Product Name"
+    DeviceAvailable => "Device Available"
+    ProvidesDeviceSdrs => "Provides Device SDRs"
+  }
+}
+
+// THE ROWS: every label paired, ONCE, with the text its field would print (`Absent` when the field did not
+// arrive). The completeness check names labels by walking these rows, and a modeled controller's answer is
+// printed from the same rows, so the read side and the render side cannot disagree about which labels exist or
+// in what order. The order is the upstream's own, so a refusal reads in the order a human reads the report.
+type IpmiMcInfoFieldRow { label: IpmiMcInfoLabel, text: String? }
+
+fn ipmitool_mc_info_rows(fields: IpmiMcInfoFields) -> List<IpmiMcInfoFieldRow> {
+  [
+    IpmiMcInfoFieldRow { label: DeviceId, text: ipmitool_mc_info_int_text(value: fields.device_id) },
+    IpmiMcInfoFieldRow { label: DeviceRevision, text: ipmitool_mc_info_int_text(value: fields.device_revision) },
+    IpmiMcInfoFieldRow { label: FirmwareRevision, text: ipmitool_mc_info_firmware_text_of(firmware: fields.firmware) },
+    IpmiMcInfoFieldRow { label: ManufacturerId, text: ipmitool_mc_info_int_text(value: fields.manufacturer_id) },
+    IpmiMcInfoFieldRow { label: ManufacturerName, text: ipmitool_mc_info_name_text(value: fields.manufacturer_name) },
+    IpmiMcInfoFieldRow { label: ProductId, text: ipmitool_mc_info_int_text(value: fields.product_id) },
+    IpmiMcInfoFieldRow { label: ProductName, text: ipmitool_mc_info_name_text(value: fields.product_name) },
+    IpmiMcInfoFieldRow { label: DeviceAvailable, text: ipmitool_mc_info_available_text(value: fields.device_available) },
+    IpmiMcInfoFieldRow { label: ProvidesDeviceSdrs, text: ipmitool_mc_info_available_text(value: fields.provides_device_sdrs) },
+  ]
+}
+
+fn ipmitool_mc_info_missing_labels(fields: IpmiMcInfoFields) -> List<NonEmptyStr> {
+  filter(ipmitool_mc_info_rows(fields: fields), row => match row.text { Present { value: _ } => false Absent => true })
+    |> map(row => ipmitool_mc_info_label_text(label: row.label) as NonEmptyStr)
+}
+
+fn ipmitool_mc_info_cause(missing: List<NonEmptyStr>) -> NonEmptyStr {
+  join(["the report does not answer: ", join(map(missing, m => m as String), ", ")], "") as NonEmptyStr
+}
+
+// THE PARSE. The fields are walked ONCE, by ipmitool_mc_info_report_from below; a body that cannot become a
+// report is refused by name through ipmitool_mc_info_rows, so the labels that failed are all named rather than
+// only the first, and no second walk re-decides which fields are required.
+fn ipmitool_mc_info_of(stdout: String) -> IpmiMcInfoReading {
+  if string_contains(s: trim(s: stdout), pattern: " : ") == false {
+    McInfoUnreadable { cause: "the body carries no labelled field" as NonEmptyStr }
+  } else {
+    let fields = ipmitool_mc_info_fields_of(stdout: stdout)
+    match ipmitool_mc_info_report_from(fields: fields) {
+      Present { value: report } => McInfoReported { report: report }
+      Absent => McInfoUnreadable { cause: ipmitool_mc_info_cause(missing: ipmitool_mc_info_missing_labels(fields: fields)) }
+    }
+  }
+}
+
+fn ipmitool_mc_info_identity_of(
+  device_id: Int,
+  device_revision: Int,
+  firmware: IpmiMcInfoFirmwareRevision,
+  manufacturer_id: Int,
+  manufacturer_name: String,
+  product_id: Int,
+  product_name: String,
+) -> IpmiDeviceIdentity {
+  IpmiDeviceIdentity {
+    device_id: device_id,
+    device_revision: device_revision,
+    firmware_revision_major: firmware.major,
+    firmware_revision_minor: firmware.minor,
+    manufacturer_id: manufacturer_id,
+    manufacturer_name: manufacturer_name as NonEmptyStr,
+    product_id: product_id,
+    product_name: product_name as NonEmptyStr,
+  }
+}
+
+// THE REPORT, or none when a field did not arrive. This is the module's only walk over the fields' presence,
+// and its `Absent` arms carry no vocabulary of their own — they say only "not complete" — because which labels
+// are required, and what each is called, lives in ipmitool_mc_info_rows. Nothing here re-decides the check the
+// caller already ran: the caller refuses through the rows, and this walk is where the fields are actually read.
+fn ipmitool_mc_info_report_from(fields: IpmiMcInfoFields) -> IpmiMcInfoReport? {
+  match fields.device_id {
+    Absent => none
+    Present { value: device_id } => match fields.device_revision {
+      Absent => none
+      Present { value: device_revision } => match fields.firmware {
+        Absent => none
+        Present { value: firmware } => match fields.manufacturer_id {
+          Absent => none
+          Present { value: manufacturer_id } => match fields.manufacturer_name {
+            Absent => none
+            Present { value: manufacturer_name } => match fields.product_id {
+              Absent => none
+              Present { value: product_id } => match fields.product_name {
+                Absent => none
+                Present { value: product_name } => match fields.device_available {
+                  Absent => none
+                  Present { value: device_available } => match fields.provides_device_sdrs {
+                    Absent => none
+                    Present { value: provides_device_sdrs } => Present {
+                      value: IpmiMcInfoReport {
+                        identity: ipmitool_mc_info_identity_of(
+                          device_id: device_id,
+                          device_revision: device_revision,
+                          firmware: firmware,
+                          manufacturer_id: manufacturer_id,
+                          manufacturer_name: manufacturer_name,
+                          product_id: product_id,
+                          product_name: product_name,
+                        ),
+                        device_available: device_available,
+                        provides_device_sdrs: provides_device_sdrs,
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// ── THE RENDER SIDE, BESIDE THE PARSE SIDE (gunbc.design_argument::minimize_redundancy: model a concept once and derive every use). ipmitool prints each label right-padded to a
+// 26-column field followed by ` : ` and the value; the identity fields print in the upstream's order and the
+// two yes/no claims last. This is what a dry controller answers `mc info` with — a rendering of the report it
+// is given, never a stored controller reply.
+fn ipmitool_mc_info_line(label: IpmiMcInfoLabel, value: String) -> String {
+  let text = ipmitool_mc_info_label_text(label: label)
+  let pad = ipmitool_mc_info_label_columns - string_length(s: text)
+  join([text, repeat_string(s: " ", n: pad), " : ", value, "\n"], "")
+}
+
+// THE FIRMWARE TEXT, in the upstream's own spelling: the two decimal parts joined by a dot. ONE declaration
+// holds that spelling — the consumer-facing release identity, a row of a modeled answer and the rendered report
+// all reach the same text through it — so a change to how ipmitool prints a revision is an edit to the
+// declaration, not to five uses of it.
+fn ipmitool_mc_info_firmware_text_of_revision(revision: IpmiMcInfoFirmwareRevision) -> String {
+  join([int_to_decimal_string(value: revision.major), ".", int_to_decimal_string(value: revision.minor)], "")
+}
+
+// The firmware revision AS IPMITOOL PRINTS IT (`major.minor`), for a consumer that needs the version string for
+// a release identity: ipmitool's spelling rather than a re-derivation of its own.
+fn ipmitool_mc_info_firmware_text(report: IpmiMcInfoReport) -> NonEmptyStr {
+  ipmitool_mc_info_firmware_text_of_revision(revision: IpmiMcInfoFirmwareRevision {
+    major: report.identity.firmware_revision_major,
+    minor: report.identity.firmware_revision_minor,
+  }) as NonEmptyStr
+}
+
+fn ipmitool_mc_info_yes_no_text(value: Bool) -> String {
+  if value { "yes" } else { "no" }
+}
+
+fn ipmitool_mc_info_int_text(value: Int?) -> String? {
+  match value {
+    Absent => none
+    Present { value: number } => Present { value: int_to_decimal_string(value: number) }
+  }
+}
+
+fn ipmitool_mc_info_name_text(value: String?) -> String? {
+  match value {
+    Absent => none
+    Present { value: name } => Present { value: name }
+  }
+}
+
+fn ipmitool_mc_info_available_text(value: Bool?) -> String? {
+  match value {
+    Absent => none
+    Present { value: claim } => Present { value: ipmitool_mc_info_yes_no_text(value: claim) }
+  }
+}
+
+fn ipmitool_mc_info_firmware_text_of(firmware: IpmiMcInfoFirmwareRevision?) -> String? {
+  match firmware {
+    Absent => none
+    Present { value: revision } => Present { value: ipmitool_mc_info_firmware_text_of_revision(revision: revision) }
+  }
+}
+
+// A DRY CONTROLLER'S PARTIAL ANSWER. A modeled controller may claim only some of the report — the world model
+// is not obliged to know a product name it has no reason to model — and only the fields it claims are printed,
+// straight off ipmitool_mc_info_rows. What it does NOT claim stays absent, and the parser then reports the
+// report as incomplete rather than the model quietly completing it: that is the difference between a model that
+// answers and a model that invents. A world that models nothing prints nothing, and the parser calls that "no
+// labelled field".
+fn render_ipmitool_mc_info_fields(fields: IpmiMcInfoFields) -> String {
+  join(
+    map(
+      filter(ipmitool_mc_info_rows(fields: fields), row => match row.text { Present { value: _ } => true Absent => false }),
+      row => ipmitool_mc_info_line(label: row.label, value: match row.text { Present { value: text } => text Absent => "" })
+    ),
+    ""
+  )
+}
+
+// THE REPORT AS A FIELD RECORD. A report is by construction complete, so every row of it arrives; routing the
+// full render through the field record is what makes the two render sides one code path — a report and a modeled
+// field set cannot print differently, because there is only one printer.
+fn ipmitool_mc_info_fields_of_report(report: IpmiMcInfoReport) -> IpmiMcInfoFields {
+  let identity = report.identity
+  IpmiMcInfoFields {
+    device_id: Present { value: identity.device_id },
+    device_revision: Present { value: identity.device_revision },
+    firmware: Present {
+      value: IpmiMcInfoFirmwareRevision {
+        major: identity.firmware_revision_major,
+        minor: identity.firmware_revision_minor,
+      }
+    },
+    manufacturer_id: Present { value: identity.manufacturer_id },
+    manufacturer_name: Present { value: identity.manufacturer_name as String },
+    product_id: Present { value: identity.product_id },
+    product_name: Present { value: identity.product_name as String },
+    device_available: Present { value: report.device_available },
+    provides_device_sdrs: Present { value: report.provides_device_sdrs },
+  }
+}
+
+fn render_ipmitool_mc_info(report: IpmiMcInfoReport) -> String {
+  render_ipmitool_mc_info_fields(fields: ipmitool_mc_info_fields_of_report(report: report))
+}

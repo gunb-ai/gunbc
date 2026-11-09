@@ -1,12 +1,11 @@
 module extdeps.github.git_database
 
-import std.types { Int, List, NonEmptyStr, String, Secret, Bool }
+import std.types { Bearer, Int, List, NonEmptyStr, String, Secret, Bool }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.github.github { default_api_base }
 import extdeps.github.errors { GitHubErrorShape }
-import std.credentials { EnvVar }
 import std.resources { Network }
 import extdeps.transports.rest { RestResult }
 
@@ -128,7 +127,6 @@ service github.GitDatabase {
     endpoint: default_api_base
     auth: Bearer
     auth_input: auth_token
-    auth_source: EnvVar { name: "GITHUB_TOKEN" }
   }
 
   operation GetRef {

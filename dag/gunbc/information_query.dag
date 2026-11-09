@@ -40,7 +40,7 @@ import std.claim_evidence {
 // tool is a general shell command, so an agent can already reach the internet with curl. What those
 // bytes lack is not visibility but STANDING: no typed provenance, no retrieval receipt, no digest,
 // no selector, no relation to any claim. This module does not and cannot stop the shell from
-// fetching; it decides what may become admissible evidence. Stating the weaker claim is DESIGN 4b
+// fetching; it decides what may become admissible evidence. Stating the weaker claim is gunbc.design_argument::guarantee_ladder
 // rung honesty -- the stronger one (ordinary commands physically cannot reach the network) becomes
 // true only when the harness runs under default-deny egress with the retrieval realization holding
 // the only grant, and claiming it before that wall executes would be inflation.
@@ -66,9 +66,9 @@ import std.claim_evidence {
 // every reachable fetch is typed InformationEvidenceUnobservable and refuses. The verified arm is
 // exercised only over constructed receipts. Both capabilities are named rather than pointed at a
 // pull request, because a trigger naming an artifact is satisfied while the capability stays dead
-// (DESIGN 4b(3)).
+// (gunbc.design_argument::guarantee_ladder (no silent regression)).
 
-// THE DISSOLUTION CONDITION, IN A CARRIER RATHER THAN IN THE PROSE ABOVE. DESIGN 4c puts a
+// THE DISSOLUTION CONDITION, IN A CARRIER RATHER THAN IN THE PROSE ABOVE. gunbc.design_argument::source_annotations puts a
 // dissolution condition in a typed home because no Accepted program can read an annotation, and the
 // admission of this pair as a frontier rests on the trigger being real.
 //
@@ -118,7 +118,7 @@ fn search_lead_retrieval_request(lead: SearchLead) -> CitationRetrievalRequest {
 
 // THE DOMAIN'S FACT IS THE VERIFIED RECEIPT ITSELF. std.citation already carries what was requested,
 // what was observed, the digest reconciliation and the selector; restating any of that here would be
-// the second representation DESIGN section 3 forbids, so the recorded fact IS the receipt. That is
+// the second representation gunbc.design_argument::single_authority forbids, so the recorded fact IS the receipt. That is
 // also what makes the fidelity boundary honest below: the receipt names which byte domain was
 // hashed, so an excerpt taken from extracted text cannot silently claim the authority of raw bytes.
 
@@ -136,7 +136,7 @@ type InformationInference = EvidenceInference<InformationFact, InformationTempor
 // limited, a locator that does not match the pin -- produced no representation at all, so there is
 // no fact to record and no receipt to carry. Forcing it into the insufficient arm would require
 // fabricating a receipt for bytes nobody observed, which is precisely the fabricated-plausible-output
-// failure DESIGN section 5 forbids, committed by the module whose purpose is to prevent it. So the
+// failure gunbc.design_argument::fail_closed forbids, committed by the module whose purpose is to prevent it. So the
 // absence gets its own arm and carries the refusal cause std.citation already typed. This is the
 // distinction between "we looked and it was not enough" and "we could not look".
 type InformationEvidence
@@ -170,7 +170,7 @@ fn information_evidence_insufficient(
 // Every other verification outcome -- digest mismatch, incomparable identity, missing observation,
 // or an outright refusal -- becomes a typed insufficiency carrying its cause, never a weaker link.
 // A mismatch in particular must not degrade to "evidence with a caveat": that is the absorbing
-// fallback DESIGN section 5 names, and it is the exact shape by which unverified material acquires
+// fallback gunbc.design_argument::fail_closed names, and it is the exact shape by which unverified material acquires
 // the standing of verified material.
 fn information_evidence_from_verification(
   fact_id: RecordedFactId,

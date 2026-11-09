@@ -56,13 +56,13 @@ service diagnostic.edac.RasMcCtl {
 
 // ── who owns the memory controller, which is what decides whether EDAC can answer about topology ──
 
-// WHO CONSUMES THESE FOLDS (DESIGN §3c). Today: test.claim.linux_edac_topology_authority_witness
+// WHO CONSUMES THESE FOLDS (gunbc.design_argument::consumption). Today: test.claim.linux_edac_topology_authority_witness
 // exercises every arm of every fold below, including the discriminating red control on the dmesg
 // detector and the release every channel-topology reading carries. The named later consumer is the observing layer's receipt — gunbc#10965's
 // mtcollins1_edac_channel_map_unavailable_reason, which currently restates this mechanism as prose
 // inside a single unit's observation; its trigger is that PR merging, after which the receipt keeps
 // its readings (driver ghes_edac, apei_firmware_first true, csrow_node_count 0, the dmesg line) and
-// resolves the WHY against this module. The split is DESIGN §3's: an observation this repository
+// resolves the WHY against this module. The split is gunbc.design_argument::single_authority's: an observation this repository
 // produced is a receipt in the observing layer, never a fact owned by the observed upstream.
 
 // THE KERNEL RELEASE THESE TOPOLOGY ROWS WERE READ AGAINST. ExternalModelScope deliberately carries

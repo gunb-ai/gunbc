@@ -37,7 +37,6 @@ import std.roster_frontier {
 import gunbc.auth.privileged_effect_census {
   PrivilegedEffectInterlock, privileged_effect_interlocks,
 }
-import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import gunbc.machine_intake.bmc_recovery_route_frontier {
   bmc_recovery_route_consumer_frontier_rows,
   bmc_recovery_route_onboarding_consumer_frontier_rows, bmc_recovery_route_pairing_frontier_rows,
@@ -56,6 +55,7 @@ import gunbc.machine_intake.arrival_converge {
   ArrivalStepRefusal, AccessDiscoverCredentialUnknownRecoveryRouteAvailable, access_discover, access_discover_step_ref, read_mtjade1_current_manager_read,
 }
 import gunbc.fleet.convergence_fold { step_instance_key, ConvergenceRunId, StepSubjectKey }
+import std.algebra { length }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -136,7 +136,7 @@ test fn a_completion_code_beside_the_measured_one_is_not_the_refusal() -> Bool {
   }) == false
     // and the codes stay distinct as numbers -- 204 is the rejected field, 199 the length complaint.
     // Compared with == : a named equality predicate over two of these would restate == with the byte
-    // hidden behind its name and would exist for no caller but this test, which is what section 3c
+    // hidden behind its name and would exist for no caller but this test, which is what gunbc.design_argument::consumption
     // counts as dangling.
     && (ipmi_completion_code_invalid_data_field == IpmiCompletionCode { code: 204 })
     && (ipmi_completion_code_invalid_data_field == IpmiCompletionCode { code: 199 }) == false
@@ -205,9 +205,9 @@ test fn a_duplicated_catalog_reports_ambiguity_and_never_blames_the_measurement(
     CatalogAmbiguousForController { observed: o, matched: matched } =>
       o == reading
         // the refusal is COUNTABLE and locatable: it carries both rows, not a sentence about them
-        && list_length(items: matched) == 2
+        && length(xs: matched) == 2
         // every row the fold handed back is a measured refusal (none of them a NotMeasured placeholder)
-        && list_length(items: filter(matched, p => refuses_that_code(policy: p))) == list_length(items: matched)
+        && length(xs: filter(matched, p => refuses_that_code(policy: p))) == length(xs: matched)
     ControllerNeverMeasured { observed: _ } => false
     RefusalMeasuredOnThisController { refusal: _, observed: _ } => false
     CatalogIndexesDisagree { firmware: _, observed: _ } => false
@@ -268,7 +268,7 @@ fn verdict_for(wanted: String) -> SiteVerdict? {
 }
 
 test fn both_in_band_recovery_writes_are_rostered_sites_of_the_census() -> Bool {
-  list_length(items: recovery_site_verdicts()) == 2
+  length(xs: recovery_site_verdicts()) == 2
     // Each row's conformance is MATCHED. A bare `Diverges` carries no reason, which forks the authority,
     // so it is refused outright; a reasoned divergence is allowed to pass with its reason attached. The two
     // need different fixes, so they are not flattened to one false.
@@ -298,7 +298,7 @@ test fn both_in_band_recovery_writes_are_rostered_sites_of_the_census() -> Bool 
 //
 // Review 81115 #1 found both recovery rows filed against function names the module never declared -- and
 // the witness above stayed green, because comparing a site-name STRING to itself can never notice an
-// absent symbol. DESIGN §3 makes that decidable from the Node tree, so this asks the parse-only
+// absent symbol. gunbc.design_argument::single_authority makes that decidable from the Node tree, so this asks the parse-only
 // declaration census of the live corpus: for each row, the declaration its `site` names must be declared.
 // The names asked for below are written by hand and the answers come from the census of the live tree,
 // so this cannot be satisfied by the census agreeing with itself: deleting or renaming a gate, or editing
@@ -310,8 +310,8 @@ data recovery_live_decl_facts: List<DeclFact> = decl_facts(pool_roots: recovery_
 
 fn recovery_declares_gate(gate: String) -> Bool {
   // the declaration's OWN name field on a fact the census produced, never a qualified name this file
-  // assembles: a module path written as a literal here would be a second naming of the module (DESIGN
-  // section 3), and gluing two halves together would pass for a declaration that lives somewhere else
+  // assembles: a module path written as a literal here would be a second naming of the module (
+  // gunbc.design_argument::single_authority), and gluing two halves together would pass for a declaration that lives somewhere else
   // entirely. Renaming the module moves the census's own names with it. An empty census makes this false
   // rather than true, so a wrong pool root cannot pass quietly.
   any(xs: recovery_live_decl_facts, predicate: fn(d) {
@@ -343,7 +343,7 @@ test fn each_recovery_census_row_points_at_a_declaration_the_live_tree_has() -> 
 
 // BOTH ROWS LAND ON THE OPERATOR-APPROVED CAPABILITY, AND THE CLAIM SAYS SO RATHER THAN HOPING ONE
 // DOES NOT. Review 81176 found the password row realizing that pattern while its profile said the
-// selection could not produce it -- a divergence with no reason, DESIGN §3b's only red. Two ways to close
+// selection could not produce it -- a divergence with no reason, gunbc.design_argument::conformance's only red. Two ways to close
 // that fork existed: change `realized`, or make the profile honest about what the write does. The profile
 // was wrong, so both rows now select the same pattern and this claim checks the SEPARATION that actually
 // matters -- each row's own characteristics force its own selection, so neither is claiming a pattern the
@@ -457,7 +457,7 @@ test fn an_executed_write_without_byte_capture_can_prove_an_attempt_but_never_a_
 // ── 4. THE ARRIVAL SEAM HAS A CONSUMER ────────────────────────────────────────────────────────
 //
 // Review 81115 #2 found the new AccessDiscover arm produced by nothing: `access_discover` never reached
-// the recovery route, so the arm was a dangling declaration -- DESIGN §3c's "the only red, however well
+// the recovery route, so the arm was a dangling declaration -- gunbc.design_argument::consumption's "the only red, however well
 // modeled". These claims run the real step over the real capture and require the arm to be the outcome
 // when a locked recovery standing for THAT unit is present. Judged in the seam's own module would let the
 // seam vouch for its own wiring; judged only inside the route module it would miss that the consumer is on
@@ -572,7 +572,7 @@ test fn access_discover_produces_the_locked_credential_arm_when_an_in_band_route
 // standing does not purchase the recovery arm -- which a silent `none` also satisfied, and satisfying it
 // that way was the defect: the caller handed in an observation and the step behaved as though none had
 // been supplied. So the pairing gets its own refusal, and this claim asks for THAT one and for both unit
-// keys inside it. A unit-key mismatch is a defect in whoever wired the fold, and §5's "a failure arm
+// keys inside it. A unit-key mismatch is a defect in whoever wired the fold, and gunbc.design_argument::fail_closed's "a failure arm
 // refuses, never widens" means the run stops rather than continuing down the out-of-band path.
 test fn a_recovery_standing_wired_to_the_wrong_unit_refuses_naming_both_units() -> Bool {
   // one standing, two wirings: the ONLY difference between the two calls below is which unit the step
@@ -599,7 +599,7 @@ test fn a_recovery_standing_wired_to_the_wrong_unit_refuses_naming_both_units() 
     )
 }
 
-// THE CONVERGENCE-STEP ROSTER NAMES DECLARATIONS THE TREE ACTUALLY CONTAINS. §3: "a stale symbol is
+// THE CONVERGENCE-STEP ROSTER NAMES DECLARATIONS THE TREE ACTUALLY CONTAINS. gunbc.design_argument::single_authority: "a stale symbol is
 // decidable from the `Node` tree." A ref naming nothing is indistinguishable from one naming a function
 // until somebody calls it, so every ref in BOTH rosters is asked of the live tree, one at a time -- a
 // single miss fails the claim. A roster that names the module's own decision points (the two gates, the
@@ -620,7 +620,7 @@ test fn every_convergence_step_names_a_declaration_the_tree_actually_contains() 
        })
     // and the two are genuinely different lists -- the handoff requires a subset of the six the route runs.
     // Equal lengths would mean the ordering law had collapsed into one list.
-    && list_length(items: recovery_convergence_steps()) != list_length(items: recovery_proof_requires())
+    && length(xs: recovery_convergence_steps()) != length(xs: recovery_proof_requires())
 }
 
 // EVERY REFUSAL TELLS SOMEONE WHAT TO DO NEXT, AND NO TWO SAY THE SAME THING. A cause with no
@@ -660,7 +660,7 @@ test fn each_recovery_refusal_carries_its_own_next_action() -> Bool {
 
 
 // THE TWO ABSENCES ARE ROSTERED, AND THE ROSTER IS WHAT MAKES THEM VISIBLE. The route's missing production consumer and the missing hold-owning pairing used to be
-// stated only in `//` text, which DESIGN section 3c does not accept as a classification and section 4c
+// stated only in `//` text, which gunbc.design_argument::consumption does not accept as a classification and gunbc.design_argument::source_annotations
 // does not accept as evidence. They are rows now, and a row differs from a comment in one way that
 // matters: it is read by a fold, so it can turn red.
 
@@ -668,7 +668,7 @@ test fn each_recovery_refusal_carries_its_own_next_action() -> Bool {
 // of directories was tried first ("just add the module the trigger lives in") and the side chat held it:
 // a restricted census is a restricted census whether it is restricted by file or by directory, so a
 // trigger pointed at a declaration under, say, gunbc.auth would still have read "pending". What decides
-// now is the name-to-path rule itself (DESIGN §3: module `a.b.c` is stored at `<root(a)>/b/c.dag`, the
+// now is the name-to-path rule itself (gunbc.design_argument::single_authority: module `a.b.c` is stored at `<root(a)>/b/c.dag`, the
 // one authority gunbc.source_layout.layout_module_storage_path), so the population for a row is exactly
 // the directory the rule resolves THAT row's trigger module to -- the same resolution the compiler and
 // the layout check use, and nothing this file can edit. Two falsification rows found the shapes of this
@@ -721,10 +721,6 @@ fn recovery_frontier_subject_declared(row: FrontierRow) -> Bool {
   }
 }
 
-fn recovery_frontier_enrolled(row: FrontierRow) -> Bool {
-  any(xs: census_closure_frontier_rows(), predicate: fn(c) { c == row })
-}
-
 fn recovery_frontier_trigger_module(row: FrontierRow) -> String {
   match row.dissolution {
     BoundDissolution { trigger: t } => dissolution_trigger_ref(trigger: t).module_path as String
@@ -732,9 +728,7 @@ fn recovery_frontier_trigger_module(row: FrontierRow) -> String {
   }
 }
 
-// Each group yields EXACTLY ONE row (a silently-dropped row is the failure mode of a list); each is
-// enrolled in gunbc.census_closure_frontier.census_closure_frontier_rows, the roster the dissolution
-// census folds -- a row nobody concatenates is the same absence in a new file; each is pending against
+// Each group yields EXACTLY ONE row (a silently-dropped row is the failure mode of a list); each is pending against
 // the census's own declaration population; and each subject is a declaration the tree has. THREE groups
 // since the side-chat verdict: the fold's consumer, the reset pairing, and the success side's onboarding
 // consumer -- the third is what replaced the module's "re-enters onboarding" prose, and its trigger
@@ -743,29 +737,26 @@ test fn the_recovery_obligations_are_rostered_as_pending_frontiers() -> Bool {
   let consumer = bmc_recovery_route_consumer_frontier_rows()
   let pairing = bmc_recovery_route_pairing_frontier_rows()
   let onboarding = bmc_recovery_route_onboarding_consumer_frontier_rows()
-  list_length(items: consumer) == 1
-    && list_length(items: pairing) == 1
-    && list_length(items: onboarding) == 1
+  length(xs: consumer) == 1
+    && length(xs: pairing) == 1
+    && length(xs: onboarding) == 1
     && any(xs: consumer, predicate: fn(row) {
-         recovery_frontier_enrolled(row: row)
-           && recovery_frontier_pending(row: row)
+         recovery_frontier_pending(row: row)
            && recovery_frontier_subject_declared(row: row)
            // the named consumer is a future arrival entry, in the module that owns arrivals
            && recovery_frontier_trigger_module(row: row) == "gunbc.machine_intake.arrival_converge"
        })
     && any(xs: pairing, predicate: fn(row) {
-         recovery_frontier_enrolled(row: row)
-           && recovery_frontier_pending(row: row)
+         recovery_frontier_pending(row: row)
            && recovery_frontier_subject_declared(row: row)
        })
     && any(xs: onboarding, predicate: fn(row) {
-         recovery_frontier_enrolled(row: row)
-           && recovery_frontier_pending(row: row)
+         recovery_frontier_pending(row: row)
            && recovery_frontier_subject_declared(row: row)
-           // the dissolve trigger is the fold this row exists to demand: a bmc_onboard fold, which does
+           // the dissolve trigger is the fold this row exists to demand: a bmc_secure fold, which does
            // not exist today -- if someone repoints the trigger at a live declaration, this goes red and
            // the row's pending status stops being something the module can quietly wish away
-           && recovery_frontier_trigger_module(row: row) == "gunbc.tools.bmc_onboard"
+           && recovery_frontier_trigger_module(row: row) == "gunbc.machine_intake.bmc_secure"
        })
 }
 
@@ -781,7 +772,7 @@ fn recovery_reset_interlock() -> PrivilegedEffectInterlock? {
 // THE CENSUS NO LONGER CLAIMS A HOLD-OWNING ROOT THE FOLD DOES NOT ACQUIRE. The reset interlock used to
 // roster converge_in_band_recovery as acquiring the unit's durable hold at unit_hold_acquire. It does
 // not: the fold receives both write admissions as parameters and calls neither the store's acquire nor
-// either gate, so the roster attested to a pairing no code performs -- DESIGN section 4c again, a status
+// either gate, so the roster attested to a pairing no code performs -- gunbc.design_argument::source_annotations again, a status
 // in a carrier the fold never reads. The honest state is an EMPTY roster plus the obligation row, which
 // is what this asserts: no root, the hold the premise is about still named, and the pairing frontier
 // present in the same roster. A change that fills the roster without deleting the row keeps this green
@@ -790,11 +781,11 @@ test fn the_reset_interlock_rosters_no_root_the_fold_cannot_show() -> Bool {
   match recovery_reset_interlock() {
     Absent => false
     Present { value: i } =>
-      list_length(items: i.hold_owning_roots) == 0
+      length(xs: i.hold_owning_roots) == 0
         && (match i.hold {
              Absent => false
              Present { value: h } => (h.decl_name as String) == "UnitHoldProof"
            })
-        && list_length(items: bmc_recovery_route_pairing_frontier_rows()) == 1
+        && length(xs: bmc_recovery_route_pairing_frontier_rows()) == 1
   }
 }

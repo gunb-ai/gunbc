@@ -4,7 +4,7 @@ import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size_count }
 import std.optional { Present, Absent }
-import product.fabric.work { identity_frame }
+import std.content_hash { identity_frame }
 import extdeps.vllm.engine_args {
   VllmPrefixCachingRequest, PrefixCachingExplicit, vllm_serve_argv, vllm_prefix_caching_argv,
   VllmPromptTokensDetailsRequest, PromptTokensDetailsReported, vllm_prompt_tokens_details_argv,
@@ -14,7 +14,7 @@ import extdeps.vllm.engine_args {
 // bound to exactly one GPU of one rented node, serving one model whose resident weights fit that
 // card. The identity is (node, device index, served name): a second replica added to a warm node
 // differs from the first in at least the device index, so adding a replica mints a new identity and
-// can never re-key an existing owner's pool (docs/plans/serving-hardware-neutral-cutover.md).
+// can never re-key an existing owner's pool (docs/plans/serving-hardware-neutral-cutover.md (deleted 2026-11-08)).
 //
 // INVENTORY IS OBSERVED, NEVER DECLARED HERE. RentedGpuDevice is what the node reported (index, model
 // string, memory); this module does not know which cards exist. The model row is the other half --
@@ -45,7 +45,7 @@ type RentedReplicaCollection
   = ReplicasCollected { replicas: List<RentedReplica>, unfit: List<RentedGpuDevice> }
   | ReplicaCollectionRefused { cause: NonEmptyStr }
 
-// EACH COMPONENT IS LENGTH-FRAMED (product.fabric.work identity_frame), because node and served_name are
+// EACH COMPONENT IS LENGTH-FRAMED (std.content_hash identity_frame), because node and served_name are
 // unrestricted strings: delimiter-joining them lets two different replicas render one wire and alias one
 // seat pool.
 fn rented_replica_wire(id: RentedReplicaIdentity) -> String {
@@ -75,8 +75,8 @@ fn rented_device_fits(device: RentedGpuDevice, model: RentedServedModel) -> Bool
   byte_size_count(b: device.memory) >= byte_size_count(b: model.resident_bytes)
 }
 
-// DECLARED FRONTIER (DESIGN.md 3c): rented_replica_collection's consumer is the warm-trace producer
-// and the rented cohort's enrollment (the next PR of docs/plans/serving-hardware-neutral-cutover.md),
+// DECLARED FRONTIER (gunbc.design_argument::consumption): rented_replica_collection's consumer is the warm-trace producer
+// and the rented cohort's enrollment (the next PR of docs/plans/serving-hardware-neutral-cutover.md (deleted 2026-11-08)),
 // which builds the pool keys from the collected replicas and drives harness_bind_seat. Trigger: that
 // PR landing; until then only the witnesses call it.
 // ONE REPLICA PER COMPATIBLE GPU. Refuses an empty inventory and an inventory where nothing fits,

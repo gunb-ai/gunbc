@@ -30,13 +30,19 @@ import gunbc.auth.session {
   SessionCookieStanding, SessionCookieValid, SessionCookieExpired, SessionCookieAbsent,
   SessionCookieUnknown, SessionCookieUnread, SessionCookieMalformed,
 }
+import gunbc.principal_projection { PrincipalRef }
+import gunbc.deployment_risk { srv1_lab_codex_feedback_deployment, srv1_daily_workspace_deployment }
 import gunbc.auth.request_authentication {
   RequestAuthenticationEvidence, GoogleOidcSession, FabricServiceEvidence, AuthAbsent,
   SessionStandingInvalid,
   FabricServiceEvidenceSubmissionMac,
   DeploymentAccessPolicy,
   ServeActionAssignIssue, ServeActionCommentIssue, ServeActionApproveDecision, ServeActionDispatchNode,
+  ServeRouteAction,
+  ServeActionStopNode, ServeActionPublishNode,
   ServeWriteAuthorizationPolicy,
+  tracker_write_authorization_policy, write_authorization_policy_for, srv1_host_account_enrolments,
+  HostAccountPeerEvidence, host_account_evidence_of_ingress, lab_agent_principal, lab_agent_host_account,
   request_access_path_of, tailnet_transport_observation, authenticated_viewer_label,
   human_write_admission, service_write_authentication_decision,
   request_authentication_evidence_of_standing,
@@ -262,7 +268,7 @@ fn session_security(session: AuthenticatedSession) -> RequestSecurityContext<Req
 }
 
 fn open_write_policy() -> ServeWriteAuthorizationPolicy {
-  ServeWriteAuthorizationPolicy { approve_roster: [] }
+  ServeWriteAuthorizationPolicy { approve_roster: [], agent_roster: [] }
 }
 
 // THE GREEN CONTROL: a live Google session + action authorization + the CSRF proof + the
@@ -447,7 +453,7 @@ test fn login_does_not_grant_approval_authority() -> Bool {
           route_path: "/approve/abc" as NonEmptyStr,
           action: ServeActionApproveDecision,
           security: session_security(session: s),
-          authorization_policy: ServeWriteAuthorizationPolicy { approve_roster: [s.principal] },
+          authorization_policy: ServeWriteAuthorizationPolicy { approve_roster: [s.principal], agent_roster: [] },
           deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
           csrf_presented: "csrf-1",
           observed_at: fn() { "2026-09-25T00:05:00Z" },
@@ -638,4 +644,82 @@ test fn a_forged_cookie_mints_nothing_and_each_invalid_standing_refuses_with_its
         Permit => false
       }
   }
+}
+
+// ── LAB AGENT ASSIGN + DISPATCH ─────────────────────────────────────────────────────────────────
+// GRANT, operator in chat 2026-11-04: "can i make it so you can also assign/dispatch so i don't need to
+// click the button?". Each claim varies one term over SUPPLIED evidence: the policy the deployment
+// selects, the action, or the evidence presented.
+
+fn agent_security() -> RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence> {
+  RequestSecurityContext {
+    access_path: AccessPathLocalDev,
+    authentication: HostAccountPeerEvidence { account: lab_agent_host_account, principal: lab_agent_principal },
+  }
+}
+
+fn agent_admitted_under(action: ServeRouteAction, policy: ServeWriteAuthorizationPolicy, security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>) -> Bool {
+  human_write_admission(
+    route_path: "/agent-witness" as NonEmptyStr,
+    action: action,
+    security: security,
+    authorization_policy: policy,
+    deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
+    csrf_presented: "",
+    observed_at: fn() { "2026-11-04T14:30:00Z" },
+  ) == Permit
+}
+
+test fn the_lab_deployment_admits_the_authenticated_agent_to_assign() -> Bool {
+  agent_admitted_under(action: ServeActionAssignIssue, policy: write_authorization_policy_for(deployment: srv1_lab_codex_feedback_deployment), security: agent_security())
+}
+
+test fn the_lab_deployment_admits_the_authenticated_agent_to_dispatch() -> Bool {
+  agent_admitted_under(action: ServeActionDispatchNode, policy: write_authorization_policy_for(deployment: srv1_lab_codex_feedback_deployment), security: agent_security())
+}
+
+test fn a_non_lab_deployment_refuses_agent_assign_and_dispatch() -> Bool {
+  !agent_admitted_under(action: ServeActionAssignIssue, policy: write_authorization_policy_for(deployment: srv1_daily_workspace_deployment), security: agent_security())
+    && !agent_admitted_under(action: ServeActionDispatchNode, policy: write_authorization_policy_for(deployment: srv1_daily_workspace_deployment), security: agent_security())
+    && !agent_admitted_under(action: ServeActionAssignIssue, policy: tracker_write_authorization_policy, security: agent_security())
+    && !agent_admitted_under(action: ServeActionDispatchNode, policy: tracker_write_authorization_policy, security: agent_security())
+}
+
+test fn the_agent_is_refused_every_action_but_assign_and_dispatch() -> Bool {
+  let lab = write_authorization_policy_for(deployment: srv1_lab_codex_feedback_deployment)
+  !agent_admitted_under(action: ServeActionApproveDecision, policy: lab, security: agent_security())
+    && !agent_admitted_under(action: ServeActionCommentIssue, policy: lab, security: agent_security())
+    && !agent_admitted_under(action: ServeActionStopNode, policy: lab, security: agent_security())
+    && !agent_admitted_under(action: ServeActionPublishNode, policy: lab, security: agent_security())
+}
+
+test fn absent_and_unenrolled_identities_are_refused_assign_and_dispatch_on_the_lab() -> Bool {
+  let absent = RequestSecurityContext { access_path: AccessPathLocalDev, authentication: AuthAbsent }
+  let lab = write_authorization_policy_for(deployment: srv1_lab_codex_feedback_deployment)
+  !agent_admitted_under(action: ServeActionAssignIssue, policy: lab, security: absent)
+    && !agent_admitted_under(action: ServeActionDispatchNode, policy: lab, security: absent)
+    && match host_account_evidence_of_ingress(ingress: IngressAttestedPeer { peer_user: "briansrls" }, enrolments: srv1_host_account_enrolments) {
+      Present { value: _ } => false
+      Absent => true
+    }
+    && match host_account_evidence_of_ingress(ingress: IngressUnattested, enrolments: srv1_host_account_enrolments) {
+      Present { value: _ } => false
+      Absent => true
+    }
+    && match host_account_evidence_of_ingress(ingress: IngressAttestedPeer { peer_user: "gunbc-lab-agent" }, enrolments: srv1_host_account_enrolments) {
+      Present { value: _ } => true
+      Absent => false
+    }
+}
+
+test fn an_unrostered_host_account_principal_is_refused_even_on_the_lab() -> Bool {
+  let stranger = RequestSecurityContext {
+    access_path: AccessPathLocalDev,
+    authentication: HostAccountPeerEvidence { account: "someone-else" as NonEmptyStr, principal: PrincipalRef { authority: lab_agent_principal.authority, namespace: lab_agent_principal.namespace, subject: "someone-else" as NonEmptyStr } },
+  }
+  !agent_admitted_under(action: ServeActionAssignIssue, policy: write_authorization_policy_for(deployment: srv1_lab_codex_feedback_deployment), security: stranger)
+}
+
+test fn the_production_agent_roster_is_empty() -> Bool {
+  all(tracker_write_authorization_policy.agent_roster, p => false)
 }

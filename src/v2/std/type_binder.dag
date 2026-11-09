@@ -132,8 +132,8 @@ fn type_decl_wrapper(binders: Node, member: Node) -> Node {
 // bodyless declaration carrying its binders alone (type_opaque_wrapper), and a non-generic member --
 // a record or coproduct -- which is its own target. THE FIFTH ARM IS NOT A TYPE DECLARATION: an
 // import, fn, data, or module item is a Conj too, and classifying it as PlainTypeDecl because it
-// is a Conj made every consumer of the view treat imported value names as type members (DESIGN
-// section 6b). That arm is decided by the declaring carrier's production identity, never by
+// is a Conj made every consumer of the view treat imported value names as type members (
+// gunbc.design_argument::earliest_unjustified_boundary). That arm is decided by the declaring carrier's production identity, never by
 // connective. THE ALIAS AND OPAQUE ARMS ARE CARDINALITY-NEUTRAL:
 // every alias and every bodyless declaration is wrapped, and its binder Conj may be empty
 // (v2.compiler.body_lowering_fold body_lower_decl_binders), so `TypeAlias` means "this name aliases
@@ -503,8 +503,8 @@ fn type_param_bound(binder: Node) -> BinderBound {
 // enclosing declaration is now JUDGED, by the kind its binder declares resolved to the same
 // declaration the position's kind resolves to (v2.compiler.resolve
 // resolve_forwarded_parameter_kind_matches), AND THE ARM IS DELETED RATHER THAN LEFT UNPRODUCED:
-// DESIGN section 4b requires a climb to delete the lower-rung production machinery it obsoletes, and
-// a surviving arm is an attractor (section 3) -- any future producer would have got a silent admit
+// gunbc.design_argument::guarantee_ladder requires a climb to delete the lower-rung production machinery it obsoletes, and
+// a surviving arm is an attractor (gunbc.design_argument::replacement_migration) -- any future producer would have got a silent admit
 // back, with no claim watching for it. Its refusals are named separately below, so an unkinded binder,
 // a binder of a different kind and an unresolvable link are distinguishable from outside the module.
 // ArgumentLiteralUnjudged is still live and still admits: the Nat literal rule is a language-level

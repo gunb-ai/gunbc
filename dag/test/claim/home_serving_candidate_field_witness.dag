@@ -2,7 +2,7 @@ module test.claim.home_serving_candidate_field_witness
 
 // THE WITNESS FOR THE P4 SELECTION FOLD (dag/gunbc/serving/home_serving_candidate_field.dag).
 //
-// WHAT THIS IS FOR. DESIGN.md §5: "A claim is a check someone can make, and the check must be SEEN
+// WHAT THIS IS FOR. gunbc.design_argument::fail_closed: "A claim is a check someone can make, and the check must be SEEN
 // executing." The fold's comments say what it refuses; comments are not evidence. Each claim below
 // calls the fold and inspects the verdict the kernel actually returned, so a change that turns a
 // refusal into a fabricated purchase recommendation — or a refusal into a silent empty field — goes
@@ -79,7 +79,9 @@ import extdeps.gpu.types {
   GpuBoardAdmitted,
   GpuBoardRefused,
   GpuBoardCatalogFacts,
-  BoardCarriesNoGpu,
+  SeveralGpusCountBelowTwo,
+  SeveralGpus,
+  InterconnectUnread,
   admit_gpu_board,
   gpu_board_admission_facts,
   gpu_catalog_row_eq,
@@ -167,7 +169,7 @@ fn hscf_no_policy() -> SelectionPolicy = UniqueSurvivorRequired { identity: hscf
 // It deliberately does NOT assert offered == roster x ladder. That equality would fire a FALSE ALARM the
 // day someone legitimately adds a fifth card whose TDP is unpublished: the correct behaviour is to EXCLUDE
 // those cells with a cause, and a claim that punished correct data for being honest about a missing figure
-// would be paid for in pressure to invent the figure (§4d). The bookkeeping half — nothing may go missing
+// would be paid for in pressure to invent the figure (gunbc.design_argument::epistemic_humility). The bookkeeping half — nothing may go missing
 // between offered and excluded — is the partition claim's job, where it cannot punish honesty.
 test fn home_serving_field_is_never_empty_while_its_inputs_are_not() -> ProcessExit {
   if count(home_serving_add_in_card_catalog_rows) > 0
@@ -300,7 +302,7 @@ test fn home_serving_ceiling_excludes_a_read_candidate_above_the_bound() -> Proc
 // THE INVERSE: AN UNREAD CANDIDATE IS NOT OVER THE LIMIT. With the live field and a 100 W ceiling, the
 // kernel must NOT declare NoFeasibleRealization. A rung that is unread is not a rung measured above the
 // bound, and treating it as one would let a missing receipt silently mean "this card cannot be bought"
-// — the substitution §5's ladder refuses. The verdict must stay the evidence refusal.
+// — the substitution gunbc.design_argument::fail_closed refuses. The verdict must stay the evidence refusal.
 test fn home_serving_unread_cell_is_not_excluded_by_an_unread_bound() -> ProcessExit {
   match home_serving_selection_for(terms: hscf_ceiling_100) {
     NoFeasibleRealization { causes: causes, scope: _ } =>
@@ -439,7 +441,7 @@ fn hscf_difference(a: List<String>, b: List<String>) -> List<String> {
 
 // A board that publishes no power figure at all cannot lend a ceiling to any cell — its datasheet leaves
 // the figure unpublished. Excluding it says so, with the board named; offering it would mint a ceiling nobody states
-// (§4d), and dropping it silently is the defect this type exists to end.
+// (gunbc.design_argument::epistemic_humility), and dropping it silently is the defect this type exists to end.
 test fn home_serving_row_without_a_tdp_is_excluded_with_its_cause() -> ProcessExit {
   let outcomes = map(home_serving_applied_rungs, r => home_serving_candidate_entry(board: nvidia_b200_sxm_board_catalog, rung: r))
   let causes = map(outcomes, o => match o {
@@ -463,7 +465,7 @@ test fn home_serving_row_without_a_tdp_is_excluded_with_its_cause() -> ProcessEx
 // honest state of the catalog, but left alone it would make both comparison arms dead. These probes hand
 // the SAME function a rung whose standing is cited, over nvidia_rtx_pro_5000_48gb_board_catalog (cited
 // board power 300 W): 200 W must be admitted with a reading, 400 W must be refused. Same function, same row,
-// opposite verdicts — neither arm can be unreachable, and the refusal is §3d excluding a claimed
+// opposite verdicts — neither arm can be unreachable, and the refusal is gunbc.design_argument::selection_precedes_convergence excluding a claimed
 // operating point that breaks the card's own ceiling, before Pareto rather than ranked by it.
 data hscf_probe_ground: CitedFigureStanding = CitedToAuthority {
   authority: ExternalAuthority {
@@ -597,11 +599,11 @@ fn hscf_row_at_rung(row_name: String, rung_watts: Nat) -> String {
 // ── A BOARD THE CATALOG REFUSES IS EXCLUDED WITH THAT REFUSAL, NOT DROPPED ─────────────────────
 // The roster holds board ADMISSIONS, so a board extdeps.gpu.types admit_gpu_board refuses reaches the
 // fold. Every live board is admitted, so this arm is executed on a refused copy of the real RTX PRO 5000
-// 48 GB board's facts (gpu_count 0, the BoardCarriesNoGpu refusal): every rung comes back excluded, naming
+// 48 GB board's facts ("several" GPUs counting one, the SeveralGpusCountBelowTwo refusal): every rung comes back excluded, naming
 // that board and the refusal, and none is offered.
 fn hscf_without_gpus(f: GpuBoardCatalogFacts) -> GpuBoardCatalogFacts {
   GpuBoardCatalogFacts {
-    vendor: f.vendor, model: f.model, gpu: f.gpu, gpu_count: 0, attachment: f.attachment,
+    vendor: f.vendor, model: f.model, gpu: f.gpu, composition: SeveralGpus { count: 1, interconnect: InterconnectUnread { read_obligation: "fixture" } }, attachment: f.attachment,
     board_power: f.board_power, zero_power: f.zero_power, thermal: f.thermal, pci_device_id: f.pci_device_id, driver_listed_name: f.driver_listed_name,
     figure_citations: f.figure_citations,
   }
@@ -614,7 +616,7 @@ test fn home_serving_refused_board_is_excluded_with_its_refusal() -> ProcessExit
   let all_refused = all(outcomes, o => match o {
     CellExcluded { exclusion: x } =>
       gpu_catalog_row_eq(a: x.board.gpu, b: live.gpu) && (match x.cause {
-        ExcludedBoardRefused { refusal: BoardCarriesNoGpu } => true
+        ExcludedBoardRefused { refusal: SeveralGpusCountBelowTwo { count: 1 } } => true
         _ => false
       })
     CellOffered { entry: _ } => false

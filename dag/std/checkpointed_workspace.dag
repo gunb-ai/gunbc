@@ -25,7 +25,7 @@ import std.fabric_storage {
 // uploads changed content-addressed chunks and then an immutable manifest naming the complete
 // revision; the revision is COMMITTED only when the head accepts it for the current writer epoch;
 // restore always selects the last committed revision. This module is the shape of that contract and
-// nothing else. It mints no store (DESIGN 3b): chunks are std.fabric_blob objects addressed by their
+// nothing else. It mints no store (gunbc.design_argument::conformance): chunks are std.fabric_blob objects addressed by their
 // own SHA-256, the manifest is a std.fabric_storage object, and the committed-revision head is one
 // std.fabric_storage head, whose compare-and-set is the only linearization the contract needs.
 //
@@ -43,7 +43,7 @@ import std.fabric_storage {
 // store-side walk. Chunk addresses live in the body: they name blob-plane objects, which are not
 // metadata-plane objects and so are not links the metadata store may walk (std.fabric_blob).
 //
-// CONSUMERS, A DECLARED FRONTIER (DESIGN 3c). Executed today only by test.claim.std_checkpointed_workspace
+// CONSUMERS, A DECLARED FRONTIER (gunbc.design_argument::consumption). Executed today only by test.claim.std_checkpointed_workspace
 // over supplied values. The real-path consumers are, by name:
 //   * the demo stage-1 restore entry (create, edit, barrier, destroy, recreate):
 //     gunbc.fabric.workspace_checkpoint_instrument workspace_checkpoint_restore_wet, which commits
@@ -64,7 +64,7 @@ type WorkspaceWriterEpoch {
 
 // One file of the revision: its path inside the workspace, the blob holding its bytes (the chunk's
 // own SHA-256, so the fetch verifies the reading's digest equals the address), and its size. Whole
-// files are one chunk until docs/plans/fabric-storage.md step 5 (chunked objects); a file larger than
+// files are one chunk until docs/plans/fabric-storage.md (deleted 2026-11-08) step 5 (chunked objects); a file larger than
 // the placement's whole-object bound is refused by fabric_blob_put_plan, never split here.
 type WorkspaceEntry {
   path: NonEmptyStr
@@ -129,7 +129,7 @@ fn workspace_head_entry_object(entry: WorkspaceHeadEntry) -> FabricObject {
 // once, in order, and nothing is indexed or re-sliced from the start of the body, so the decode is
 // linear in the body on any text and in either realization (a fold visits each member once). A
 // field's code points are prepended as they arrive and reversed once when the field closes, so no
-// accumulator is copied; entries are prepended and reversed once at the end (DESIGN 6, bare minimum
+// accumulator is copied; entries are prepended and reversed once at the end (gunbc.design_argument::how_to_work, bare minimum
 // cost). Length prefixes count CODE POINTS, matching length() in workspace_head_entry_object, and
 // every number (a length, the epoch, a size) is read by parse_int over its own collected digits.
 // The cost control re-runs by name: gunbc.instruments.workspace_entry_decode_scaling decode_scaling.
@@ -326,7 +326,7 @@ fn workspace_head_entry_decode(object: FabricObject) -> WorkspaceHeadEntry? {
 // what the store returned (std.fabric_storage fabric_object_verified, the same pairing wall
 // FabricAddressedObject closes) and admits a decoded entry only if THAT entry's canonical object is
 // those stored bytes. So a stored entry pairing R1's ref with any other entry has no constructor:
-// the entry is re-encoded and compared, never trusted (DESIGN 5: construction over validation).
+// the entry is re-encoded and compared, never trusted (gunbc.design_argument::fail_closed: construction over validation).
 type WorkspaceStoredEntry sole_constructor {
   ref: FabricObjectRef
   entry: WorkspaceHeadEntry
@@ -458,7 +458,7 @@ fn workspace_receipt_revision(receipt: WorkspaceCommitReceipt) -> FabricObjectRe
 // (a duplicate checkpointer), retried by planning again on the observed entry. A moved head whose
 // entry the caller could not decode, whose decoded ref is not the head the store reported, or which
 // belongs to another workspace, is NOT a race: the epoch is unknown, so it is its own arm, which a
-// writer may not retry (DESIGN 5: a failure arm refuses, never widens). A store answer that is not
+// writer may not retry (gunbc.design_argument::fail_closed: a failure arm refuses, never widens). A store answer that is not
 // about this plan is WorkspaceCommitResultMismatch.
 type WorkspaceCommit
   = WorkspaceCommitted { receipt: WorkspaceCommitReceipt }
@@ -580,7 +580,7 @@ fn workspace_coverage_after_write(coverage: WorkspaceCoverage, at: ObservationIn
 // THE ORDER target < deadline < window IS CONSTRUCTED, NOT CHECKED. sole_constructor means the one
 // producer is workspace_durability_policy, which refuses any other order, so a policy whose outage
 // precedes its commit attempt, or whose window does not exceed its outage deadline, has no value
-// every consumer below could receive (DESIGN 5: construction over validation).
+// every consumer below could receive (gunbc.design_argument::fail_closed: construction over validation).
 type WorkspaceDurabilityPolicy sole_constructor {
   checkpoint_target: Nanosecond
   outage_deadline: Nanosecond
@@ -722,7 +722,7 @@ fn workspace_declare_outage(prior: WorkspaceDurabilityState, outage: DeclaredSto
 // guarantee with no observed path failure -- the instance failed to declare -- its own arm, neither
 // ordinary nor the compound failure. A clean workspace loses nothing pending, whatever the path. A loss
 // whose age cannot be computed is unclassifiable, because "within window" without an age is the
-// fabricated plausible answer DESIGN 5 forbids.
+// fabricated plausible answer gunbc.design_argument::fail_closed forbids.
 type WorkspaceCompoundCause
   = LostDuringDeclaredOutage { outage: DeclaredStorageOutage }
   | LostAfterCheckpointPathFailureBeforeOutage { failure: WorkspaceCheckpointFailure, failed_at: ObservationInstant, oldest_uncommitted_write_age: Nanosecond }

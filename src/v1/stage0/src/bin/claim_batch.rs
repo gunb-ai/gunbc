@@ -204,7 +204,7 @@ fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, Exit
 
 /// Path-valued arguments resolve against the PROCESS CWD at the CLI boundary, refusing
 /// on a nonexistent path — never falling back to the compile-time-baked workspace root
-/// (`v1_compiler::cli_run::resolve_cli_path_arg`; DESIGN §5 fail-open closed there).
+/// (`v1_compiler::cli_run::resolve_cli_path_arg`; gunbc.design_argument::fail_closed fail-open closed there).
 fn require_path_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
     let given = require_value(args, idx, flag)?;
     match v1_compiler::cli_run::resolve_cli_path_arg("claim_batch", flag, &given) {
@@ -276,7 +276,11 @@ fn validate_explicit_functions(entry_groups: &[EntryGroup]) -> Result<(), ExitCo
 fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
     let mut source_roots: Vec<String> = Vec::new();
     let mut entry_groups: Vec<EntryGroup> = Vec::new();
-    let mut execution_mode = ExecutionMode::Hermetic;
+    // The operator's explicit mode, if any (--wet/--hermetic/--record, last one wins as parsed). The
+    // DEFAULT is NOT decided here: it comes from the shared authority below, so this entrypoint and
+    // the `gunbc run` verb cannot diverge on the flag-to-mode mapping again (gunbc.design_argument::earliest_unjustified_boundary). A claim_batch
+    // run is always a claim context, so absent an explicit flag it is Hermetic.
+    let mut explicit_mode: Option<ExecutionMode> = None;
     let mut fixture_store: Option<PathBuf> = None;
     let mut eval_budget_ms: Option<u64> = None;
     let mut pre_push = false;
@@ -326,9 +330,9 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
                 }
             }
             "--claim-run" => {}
-            "--wet" => execution_mode = ExecutionMode::Wet,
-            "--hermetic" => execution_mode = ExecutionMode::Hermetic,
-            "--record" => execution_mode = ExecutionMode::Record,
+            "--wet" => explicit_mode = Some(ExecutionMode::Wet),
+            "--hermetic" => explicit_mode = Some(ExecutionMode::Hermetic),
+            "--record" => explicit_mode = Some(ExecutionMode::Record),
             "--eval-budget-ms" => {
                 i += 1;
                 let v = require_value(args, i, "--eval-budget-ms")?;
@@ -357,6 +361,16 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
         }
         i += 1;
     }
+
+    // One authority for both claim entrypoints (gunbc.design_argument::earliest_unjustified_boundary): `claim_batch` is always a claim context,
+    // so with no explicit flag the shared rule yields Hermetic; an explicit `--wet`/`--hermetic`/
+    // `--record` (last parsed) wins. Behaviour is identical to the previous inline mapping — the point
+    // is that the DEFAULT and its precedence now live in exactly one place, shared with `gunbc run`.
+    let execution_mode = v1_compiler::cli_run::execution_mode_for(
+        explicit_mode,
+        /*is_claim*/ true,
+        /*dry_run*/ false,
+    );
 
     Ok(ParsedArgs {
         source_roots,

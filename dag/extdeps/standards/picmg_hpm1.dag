@@ -21,7 +21,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // mtcollins1 2026-10-02 under BMC 0.45.3 it reports `APP 0.45 03000000` -- the patch level rides in the
 // first auxiliary byte -- and that is the fact the parser will need when it lands.
 //
-// WHAT IS NOT HERE, by DESIGN section 3's "interface, realization and policy are three facts". No
+// WHAT IS NOT HERE, by gunbc.design_argument::interface_realization_policy's "interface, realization and policy are three facts". No
 // transport: ipmitool's `hpm upgrade` argv, its `-z` block size and its `force` flag are one
 // realization's spelling of the upload, and live with the realization that binds them. No policy: which
 // image to send, in what order, under what preconditions, is a product decision and lives in gunbc.

@@ -22,7 +22,7 @@ import extdeps.ethernet.link_mode {
 // alone is an order with the contract left blank.
 //
 // This is a SPECIFICATION module: it owns the SFF-8636 field layout and what the bytes mean. It owns
-// no cable. A specific part is its own subject in its own vendor module, per DESIGN section 3's
+// no cable. A specific part is its own subject in its own vendor module, per gunbc.design_argument::single_authority's
 // external upstream decomposition, and it carries a reading of these fields rather than redefining
 // them.
 //
@@ -31,7 +31,7 @@ import extdeps.ethernet.link_mode {
 // establishes that a given assembly will carry a given mode.
 //
 // IN PARTICULAR IT OWNS NO OBSERVATION. An earlier head authored `SecondaryNotObserved` and a
-// completeness predicate here, which is the layer inversion DESIGN section 3 names outright:
+// completeness predicate here, which is the layer inversion gunbc.design_argument::single_authority names outright:
 // "Observations produced by this repository are receipts in the observing product or workflow
 // layer, not facts owned by the observed upstream. Missing observations are coverage obligations
 // downstream, never `Unobserved` properties authored inside an upstream module." Whether anyone

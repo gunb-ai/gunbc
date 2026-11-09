@@ -11,7 +11,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE FOLD ENCODING CARRIES EVERY OPERAND, AT ITS AUTHORED OCCURRENCE (MQ-5, plan S3 of
-// gunbc.plans.for_while_loop_sugar). v2.compiler.fold_lowering fold_recurrence_encoding builds
+// gunbc.plans.for_while_loop_sugar (deleted 2026-11-08)). v2.compiler.fold_lowering fold_recurrence_encoding builds
 //   Bind { acc := init, Loop { step, domain: collection, carrier: acc, bound, realized: head } }
 // and v2.compiler.body_lowering_fold body_lower_fold_encoding fills it from the lowered operands.
 //
@@ -255,7 +255,7 @@ fn piped_chain_takes_the_whole_prefix_as_its_collection_verdict() -> Bool {
 }
 
 // ---- the step's binders are binders ---------------------------------------------------------------
-// The Loop's positional child is the step as a function value (gunbc.plans.for_while_loop_sugar §2.3,
+// The Loop's positional child is the step as a function value (gunbc.plans.for_while_loop_sugar (deleted 2026-11-08) §2.3,
 // body: (acc, x) => step), so BOTH of its binders -- the carrier `found` and the element `e` -- are
 // parameters of that Arrow, named on its domain, and resolve scopes them over the step body as it
 // scopes any Arrow's parameters. The shape claim reads the two names off the Arrow's domain; the
@@ -478,7 +478,7 @@ fn fold_like_name_outside_the_roster_is_not_desugared_verdict() -> Bool {
 // ONE PRODUCER, SEVERAL READERS (v2.workflow.floor_pure_producer_share, WARM). Every claim above
 // drives the front end over a supplied snippet and inspects one verdict; the front end, not the
 // assertion, is the expense, and MQ-5's floor run 36490720680 measured each claim over the
-// new-witness budget for exactly that reason (DESIGN section 3, a witness discriminates at one
+// new-witness budget for exactly that reason (gunbc.design_argument::single_authority, a witness discriminates at one
 // interface). The claims below read one field each of this record. The stored value is eleven Bools:
 // no Node, no context, no closure, so it is portable.
 type FeOutcomes {

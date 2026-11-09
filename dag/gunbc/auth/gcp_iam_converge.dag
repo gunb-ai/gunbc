@@ -1,4 +1,5 @@
 module gunbc.auth.gcp_iam_converge
+import std.algebra { map_lookup }
 
 import gunbc.auth.branch_dispatch_federation { hetzner_cloud_control_federation, mtcollins1_boot_run_scoped_federations, fleet_run_scoped_new_federations }
 import std.types { Int, List, NonEmptyStr, String, Bool, Secret, Map }
@@ -16,7 +17,7 @@ import extdeps.cloud.gcp.iam {
   GcpPolicyAlreadyConverged, GcpPolicyDeltaRequired, GcpPolicyRepresentationLossy,
   reconcile_gcp_policy, gcp_policy_from_wire, gcp_cell_in, gcp_policy_cells,
 }
-import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestCredentialRefused, RestBodyUndecodable }
 import extdeps.cloud.gcp.secret_manager
 import extdeps.cloud.gcp.iam_admin
 import extdeps.cloud.gcp.secret_ref { gcp_secret_resource_by_number }
@@ -85,7 +86,7 @@ import gunbc.auth.gcp_iam_converge_federation {
 // ── The principals ───────────────────────────────────────────────────────────────────────────
 // iam-converge IS THE ALLOCATION OF gunbc.spark.bootstrap_provision FleetCloudGrantAdministrator,
 // not a new role: that role already states the ceiling -- read and write policy, never reach a
-// payload -- and a second name for it would be the nickname §3 refuses. What is new is only that the
+// payload -- and a second name for it would be the nickname gunbc.design_argument::single_authority refuses. What is new is only that the
 // role now has a keyless service account and a way to be reached.
 data iam_converge_service_account_id: NonEmptyStr = "iam-converge"
 
@@ -343,7 +344,7 @@ fn bmc_assimilator_grant_sets_over(c: BmcAssimilatorCells) -> List<GrantSet> {
     let member = if count(c.members) == 1 { GrantMemberResolved { member: join(c.members, "") } } else {
       GrantMemberUnresolved { cause: concat("bmc assimilator grants name more than one principal: ", join(c.members, ", ")) }
     }
-    [GrantSet { label: "bmc assimilator cells", grants: map(c.cells, x => SecretAccessGrant { target: x.target, role: x.role, condition: none }), member: member }]
+    [GrantSet { label: "bmc assimilator cells", grants: c.cells, member: member }]
   }
 }
 
@@ -548,7 +549,7 @@ fn grant_secret_names(gs: List<SecretAccessGrant>) -> List<String> {
 
 // SET EQUALITY AT IDENTITY GRAIN, ONE KEYED INDEX: neither side repeats a secret, the sides are the
 // same size, and every reading's secret is in the declared index -- which together give equality
-// without a nested scan (DESIGN §6: a quadratic fold is fixed regardless of n; review 71271).
+// without a nested scan (gunbc.design_argument::how_to_work: a quadratic fold is fixed regardless of n; review 71271).
 fn same_key_set(a: List<String>, b: List<String>) -> Bool {
   let index = fold(a, init: empty_map(), f: (acc, x) => map_insert(acc, x, 1))
   duplicated_by_key(xs: a, key: x => x).length() == 0
@@ -866,7 +867,7 @@ type GcpIamRequest
 // THE REQUEST OVER A DIGEST, split from the hashing so each has one subject: this fold decides what
 // the digest and the attempt bind (the escalation id, the intent hash), and gcp_iam_diff_digest
 // decides the digest. A witness of the binding supplies a digest rather than paying SHA-256 in the
-// interpreter for every claim (DESIGN §3, a witness discriminates at one interface).
+// interpreter for every claim (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface).
 fn gcp_iam_converge_request_over(d: GcpIamEstateDiff, g: Sha256Digest, attempt: AttemptIdentity) -> AuthorizationRequest<GcpIamEstateDiff> {
   AuthorizationRequest {
     escalation_id: gcp_iam_converge_escalation_id(d: g, attempt: attempt),
@@ -1057,7 +1058,7 @@ fn execute_policy_add(s: PolicySubject, approved_etag: String, cells: List<GcpIa
 }
 
 fn create_refusal(subject: String, o: RestRefusal) -> String {
-  if match o { RestStatusRefused { status: st, body: _ } => (st as Int) == 409  RestTransportRefused { cause: _ } => false  RestBodyUndecodable { status: _, cause: _ } => false } { join([subject, " appeared after consent; nothing further applied"], "") }
+  if match o { RestStatusRefused { status: st, body: _ } => (st as Int) == 409  RestTransportRefused { cause: _ } => false  RestCredentialRefused { refusal: _ } => false  RestBodyUndecodable { status: _, cause: _ } => false } { join([subject, " appeared after consent; nothing further applied"], "") }
   else { join([subject, ": ", rest_refusal_text(o: o)], "") }
 }
 

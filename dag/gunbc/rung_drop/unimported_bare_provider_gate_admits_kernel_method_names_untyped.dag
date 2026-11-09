@@ -21,7 +21,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // growth in K is visible per run. Measured over the whole pool at the change (6,821 judged files),
 // K was 205 across five names; the producer is the ignored census test on the probe branch
 // `calm-pike-525/bare-call-predicate-census`, `suppressed_rows_over_the_real_pool`.//
-// SUPERSEDED BY THE SOURCE LAYOUT CUTOVER (gunbc.plans.source_layout_authority, epoch C2), NOT RETIRED:
+// SUPERSEDED BY THE SOURCE LAYOUT CUTOVER (gunbc.plans.source_layout_authority (deleted 2026-11-08), epoch C2), NOT RETIRED:
 // the restoration trigger above did NOT fire. The gate, its debt roster and the seed's
 // `unimported_bare_provider_gate` were DELETED as the plan directs ("once the required native steps
 // enforce R1"), and the gate had no executing route since the floor lane was deleted on 2026-10-09, so

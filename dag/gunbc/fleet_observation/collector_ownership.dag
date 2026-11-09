@@ -29,7 +29,7 @@ import std.temporal_effect {
 // NO SECOND LEASE AUTHORITY. std.temporal_effect HeldLease/LeaseEpoch is the corpus's writable-lease
 // authority and this module CONSUMES it -- LeaseEpoch.generation IS the ownership generation, and
 // HeldLeaseObservedState is the observed standing. Minting a collector-local lease beside it would
-// be the telemetry-workaround fork DESIGN section 3 forbids, and it is explicitly out of scope.
+// be the telemetry-workaround fork gunbc.design_argument::single_authority forbids, and it is explicitly out of scope.
 
 // EXCLUSIVITY IS READ OFF THE CARRIER, AND THERE IS DELIBERATELY NO PREDICATE FOR IT.
 //
@@ -49,7 +49,7 @@ import std.temporal_effect {
 // must not pretend otherwise. An IPMI SOL payload is a single-session resource on the controller,
 // but nothing in the protocol lets THIS collector prove no other operator's client will be handed
 // the session next; the controller arbitrates, we only observe the result. Claiming structural
-// exclusivity we do not hold is the DESIGN section 4b rung-inflation defect, so the limitation is a
+// exclusivity we do not hold is the gunbc.design_argument::guarantee_ladder rung-inflation defect, so the limitation is a
 // field rather than an assumption.
 //
 // RemoteFencingEnforced must name the authority that establishes the fencing, so the claim is
@@ -112,7 +112,7 @@ fn ownership_generation(lease: HeldLease) -> Int {
 // Collins receipt most directly -- a stale collector of the observer's own held the console session
 // and the replacement never started, so the capture believed to be watching a reset was watching
 // nothing. Every other unconsumed declaration in this change states its frontier; these two did not,
-// and an unstated one reads as an oversight rather than a decision (DESIGN section 3c).
+// and an unstated one reads as an oversight rather than a decision (gunbc.design_argument::consumption).
 //
 // CONSUMER: the enrolled collector service's attach and detach steps -- the thing that actually takes
 // the endpoint before a stimulus and hands it back after, which is the realization this slice
@@ -203,7 +203,7 @@ fn release_ownership(
 // THIS REPLACES A PAIR. There used to be a Bool `may_record` here and a separate
 // `recording_owner_session` in the envelope module, and they asked the same question -- is this
 // ownership the recorder -- in two places, in two vocabularies, with the Bool throwing away the
-// answer the caller then needed anyway. That is one concept with two names (DESIGN section 3), and
+// answer the caller then needed anyway. That is one concept with two names (gunbc.design_argument::single_authority), and
 // the Bool half was the weaker one: every caller that got `true` had to re-open the carrier to find
 // out WHO was recording and under which generation. This returns that directly, so there is nothing
 // left to re-derive and no second spelling to drift.

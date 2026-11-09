@@ -6,8 +6,9 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.nat { Nat }
 import std.measure {
   Bandwidth, bandwidth, Gigabyte, gigabyte, MegatransfersPerSecond, megatransfers_per_second,
+  Micrometer, micrometer,
 }
-import extdeps.boards.types { BaseboardCatalogRow, HeldManualRevision, DimmPopulation, PopulationSupported, PopulationUnsupported, admit_population }
+import extdeps.boards.types { BaseboardCatalogRow, HeldManualRevision, DimmPopulation, PopulationSupported, PopulationUnsupported, admit_population, BoardFunction, BmcManagementFunction, BmcGraphicsController, PcieErrorFirmwareFirstHandling, OnboardEthernetPort, BoardFunctionSwitch, JumperSwitch, SwitchNotStated, OnboardEthernetPortRow, BmcSharingNotStated, PortRowsStated }
 import extdeps.vendor.supermicro { supermicro }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
@@ -24,6 +25,9 @@ import extdeps.uri { Uri, Https }
 import std.algebra { FreeSemigroup }
 import extdeps.board_soc { BoardSocEdge }
 import extdeps.cpu.amd { amd_epyc_7001_soc_family, amd_epyc_7002_soc_family }
+import extdeps.boards.types { BoardStandardLocationCorrespondence, board_location_correspondence, HoleCorrespondenceInferred, HoleNotObservedInDrawing, BoardStandardLocationRoster, board_standard_location_roster }
+import extdeps.standards.motherboard_mounting_grid { Atx22MountingGrid }
+import extdeps.standards.motherboard_mounting_location { LocA, LocC, LocF, LocG, LocH, LocJ, LocK, LocL, LocM }
 
 // AUTHORITY. "H11SSL-I/C/NC USER'S MANUAL", Revision 1.1, released November 18, 2019, copyright
 // Super Micro Computer, Inc. (title page), 130 PDF pages. Held copy: sha256
@@ -51,7 +55,91 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: []
+  further_citations: [supermicro_h11ssl_manual_rev_1_1a_authority, supermicro_h11ssl_i_product_page_authority, supermicro_h11ssl_nc_top_render_authority]
+}
+
+// THE PUBLIC MANUAL, REVISION 1.1a: "H11SSL-I/C/NC USER'S MANUAL", Revision 1.1a, release date
+// December 18, 2019, 130 pages, sha256 ec9a6b57cba938f74f555a731a0642df76ba83cdb350e51b855f6d0f9ad2dd1a
+// (fetched 2026-11-04). A later revision than the held 1.1 above. Its page 23 is Figure 2-1
+// "Motherboard Mounting Holes", which the mounting correspondence below is read from.
+data supermicro_h11ssl_manual_rev_1_1a_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.supermicro.com/manuals/motherboard/EPYC7000/MNL-2085.pdf"
+  }
+}
+
+// A SUPERMICRO TOP-VIEW PRODUCT RENDER of the -NC variant (silkscreen "H11SSL-NC"), 1280 x 1048 px,
+// sha256 45b8582ea3acf9a64652c42688ceebc6e3e4890c802dc7b03a77c59601a37f54, shared from the operator's
+// Drive 2026-11-04. Rear I/O runs
+// along the top edge (VGA, two LAN, USB, COM). It carries no dimensions, so it does not change the
+// extents or the hole standing; it is cited so the image is findable from the board's module, and it
+// is the image a scaled hole read would start from.
+data supermicro_h11ssl_nc_top_render_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "drive.google.com/file/d/17T8k8PKfccEmC5zm_4SUFsZNoUDFcU4E/view"
+  }
+}
+
+// THE -i PRODUCT PAGE, read 2026-11-04: "Form Factor ATX", "Dimensions 12" x 9.6" (30.5cm x 24.4cm)",
+// and "AMD EPYC 7002 series drop-in support requires board revision 2.x".
+data supermicro_h11ssl_i_product_page_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.supermicro.com/en/products/motherboard/h11ssl-i"
+  }
+}
+
+// WHICH STANDARD LOCATIONS THE BOARD POPULATES, read from rev 1.1a Figure 2-1 ("Motherboard Mounting
+// Holes", supermicro_h11ssl_manual_rev_1_1a_authority). The figure is a raster board image with nine
+// circles drawn over it as vector paths; their centres, read first-party from page 23's content
+// stream (2026-11-04), fall in three columns 180.0 and 227.5 points apart. That is ATX 2.2's 4.90 in
+// and 6.20 in column spacing at 36.7 pt/in, with the rear I/O edge at the top of the page and the
+// F/J/M column on the right. Against ATX 2.2's grid (extdeps.standards.atx_2_2):
+//
+//   A C F G H K L M  each within about 0.03 in of its ATX location -- HoleCorrespondenceInferred,
+//                    the same grade as the ALTRAD8UD's read of its own layout figure;
+//   J                NO circle at J. The F/J/M column's middle circle sits about 7.54 in deep, about
+//                    1.04 in behind J's 6.50 in -- below the right-hand DIMM bank, which reaches across
+//                    J's position. J is HoleNotObservedInDrawing, so no standoff is admitted there.
+//
+// So this board populates eight of ATX's nine locations plus one location ATX does not name, recorded
+// as supermicro_h11ssl_off_grid_mounting_hole below. A photograph or the fit of the operator's own
+// unit discharges these into HolePhysicallyConfirmedPresent or HolePhysicallyConfirmedAbsent.
+data supermicro_h11ssl_standard_location_correspondence: List<BoardStandardLocationCorrespondence> = [
+  board_location_correspondence(location: LocF, standing: HoleCorrespondenceInferred),
+  board_location_correspondence(location: LocJ, standing: HoleNotObservedInDrawing),
+  board_location_correspondence(location: LocM, standing: HoleCorrespondenceInferred),
+  board_location_correspondence(location: LocC, standing: HoleCorrespondenceInferred),
+  board_location_correspondence(location: LocH, standing: HoleCorrespondenceInferred),
+  board_location_correspondence(location: LocL, standing: HoleCorrespondenceInferred),
+  board_location_correspondence(location: LocA, standing: HoleCorrespondenceInferred),
+  board_location_correspondence(location: LocG, standing: HoleCorrespondenceInferred),
+  board_location_correspondence(location: LocK, standing: HoleCorrespondenceInferred),
+]
+
+// The roster binds this correspondence to ATX 2.2's grid, the only one where A, G and K exist.
+data supermicro_h11ssl_standard_location_roster: BoardStandardLocationRoster? = board_standard_location_roster(
+  grid: Atx22MountingGrid,
+  locations: supermicro_h11ssl_standard_location_correspondence,
+)
+
+// THE HOLE ATX DOES NOT NAME, at the figure's precision: in the F/J/M column (0.25 in along the rear
+// edge) and about 7.54 in deep, read from the same Figure 2-1 circle and scale. An estimate from a
+// manual figure, not a coordinate: a printed chassis may leave clearance for it but must not place a
+// standoff on it until the operator's unit is measured. No cassette consumer reads off-grid holes
+// yet; the trigger is a printed tray that places supports beyond a standard grid.
+type H11sslOffGridMountingHole {
+  along_rear_edge_estimate: Micrometer
+  depth_from_rear_edge_estimate: Micrometer
+  accuracy_note: NonEmptyStr
+}
+
+data supermicro_h11ssl_off_grid_mounting_hole: H11sslOffGridMountingHole = H11sslOffGridMountingHole {
+  along_rear_edge_estimate: micrometer(count: 6350),
+  depth_from_rear_edge_estimate: micrometer(count: 191500),
+  accuracy_note: "Figure 2-1 circle centre scaled at 36.7 pt/in from the A/C row; the other eight circles land within about 0.03 in of ATX 2.2 locations, so this estimate is good to roughly 0.05 in. Not a standoff position until measured.",
 }
 
 // What a CPU-support row is conditioned on; p.15 conditions 7002 on revision 2.x.
@@ -84,11 +172,19 @@ data supermicro_h11ssl_bmc_firmware_family_standing: CitedFigureStanding = Cited
   authority: supermicro_bmc_resources_authority,
 }
 
+// The two rear LAN ports (pp.15,17: two Intel i210 gigabit RJ45), each with its own disable jumper
+// (p.13 jumper table: "JPL1, JPL2 LAN1, LAN2 Enable/Disable, Pins 1-2 (Enabled)"; layout legend
+// "JPL1:LAN1 2-3 DISABLE", "JPL2:LAN2 2-3 DISABLE"). The manual lists an NC-SI header (JNCSI1) but
+// states no port the BMC shares, beside its dedicated IPMI_LAN.
+data supermicro_h11ssl_lan1: OnboardEthernetPortRow = OnboardEthernetPortRow { designator: "LAN1", controller: "Intel i210", bmc_sharing: BmcSharingNotStated, switch: JumperSwitch { designator: "JPL1", off_position: "pins 2-3 (pins 1-2, enabled, is the default)", citation: "manual p.13 jumper table and layout legend (JPL1:LAN1 2-3 DISABLE)" }, citation: "manual pp.15,17" }
+data supermicro_h11ssl_lan2: OnboardEthernetPortRow = OnboardEthernetPortRow { designator: "LAN2", controller: "Intel i210", bmc_sharing: BmcSharingNotStated, switch: JumperSwitch { designator: "JPL2", off_position: "pins 2-3 (pins 1-2, enabled, is the default)", citation: "manual p.13 jumper table and layout legend (JPL2:LAN2 2-3 DISABLE)" }, citation: "manual pp.15,17" }
+
 data supermicro_h11ssl_catalog: BaseboardCatalogRow = BaseboardCatalogRow {
   model: supermicro_h11ssl_board_authority,
   model_label: "Supermicro H11SSL-i/C/NC",
   vendor: supermicro,
   bmc_firmware: SupermicroAten,
+  onboard_ethernet_ports: PortRowsStated { rows: [supermicro_h11ssl_lan1, supermicro_h11ssl_lan2] },
 }
 
 // ---- Processor (Preface p.3, p.15, p.18). The manual does not name the EPYC 7702P.
@@ -430,6 +526,22 @@ data supermicro_h11ssl_bmc_reset_procedure_standing: CitedFigureStanding = Trans
   read_obligation: "The manual documents NO BMC password reset, factory reset or default BMC credential (its only default login, SuperDoctor 5 admin/admin on p.124, is not the BMC). It names IPMICFG and SMCIPMITOOL (p.16) without documenting them. Ground against Supermicro's IPMICFG user guide or BMC firmware notes for this board.",
 }
 
+// Switching a board function off. Jpg1VgaEnable above is the AST2500's graphics function alone:
+// p.13's jumper table reads "JPG1 VGA Enable/Disable, Pins 1-2 (Enabled)" and the layout legend
+// "JPG1:VGA 2-3 DISABLE", separate from JPB1, which removes the whole BMC. For PCIe error handling the
+// manual as read (rev 1.1 and 1.1a, 2026-11-01) names PCI PERR/SERR Support and no firmware-first or
+// AER item; that reading decoded the manual's literal text and not its hex-encoded strings, so the
+// silence is a fact of that reading, recorded as SwitchNotStated and nothing stronger.
+fn supermicro_h11ssl_function_switch(f: BoardFunction) -> BoardFunctionSwitch {
+  match f {
+    BmcManagementFunction => JumperSwitch { designator: "JPB1", off_position: "pins 2-3 (pins 1-2, enabled, is the default)", citation: "manual pp.13,46-48" }
+    BmcGraphicsController => JumperSwitch { designator: "JPG1", off_position: "pins 2-3 (pins 1-2, enabled, is the default)", citation: "manual pp.13,46-48" }
+    PcieErrorFirmwareFirstHandling => SwitchNotStated { coarser: Absent }
+    OnboardEthernetPort { port } => port.switch
+  }
+}
+
+
 // ---- LEDs (pp.13,49-50).
 type H11sslLed = UidLed | Ledm1BmcHeartbeat | Le1PowerOk | Le3M2Active | Joh1OverheatFan
 data supermicro_h11ssl_leds_i_variant: List<H11sslLed> = [UidLed, Ledm1BmcHeartbeat, Le1PowerOk, Le3M2Active, Joh1OverheatFan]
@@ -472,13 +584,21 @@ fn supermicro_h11ssl_lan_option_rom_choices(family: H11sslCpuFamily, lan: H11ssl
   }
 }
 
-// ---- Mechanical (p.16): 12.0" (L) x 9.6" (W); not carried as millimetres, the manual's inch figures are not converted here.
+// ---- Mechanical (p.16): 12.0" (L) x 9.6" (W). The -i product page agrees ("Form Factor ATX",
+// "12" x 9.6" (30.5cm x 24.4cm)", supermicro_h11ssl_i_product_page_authority). Neither names the
+// edges; 12 in along the rear I/O edge is ATX 2.2 section 3.1's assignment ("12" wide by 9.6" deep"),
+// applied because both state the board is ATX. The extents are carried as exact micrometres
+// (1 in = 25,400 um), so the manual's inch figures are converted without rounding.
 type SupermicroH11sslMechanical {
   board_label: NonEmptyStr
   vendor: Vendor<Hardware>
   dimm_slots: Nat
   dimms_per_channel: Nat
   lan_ports: List<H11sslLanPort>
+  form_factor_claim: NonEmptyStr
+  extent_along_rear_io: Micrometer
+  extent_depth: Micrometer
+  extents_standing: CitedFigureStanding
 }
 
 data supermicro_h11ssl_family_mechanical: SupermicroH11sslMechanical = SupermicroH11sslMechanical {
@@ -487,9 +607,13 @@ data supermicro_h11ssl_family_mechanical: SupermicroH11sslMechanical = Supermicr
   dimm_slots: 8,
   dimms_per_channel: 1,
   lan_ports: [Lan1, Lan2],
+  form_factor_claim: "ATX",
+  extent_along_rear_io: micrometer(count: 304800),
+  extent_depth: micrometer(count: 243840),
+  extents_standing: CitedToAuthority { authority: extdeps_external_authority_anchor },
 }
 
-// DESIGN section 3c declared frontier, for the cooling-zone count, the zone and slot-geometry
+// gunbc.design_argument::consumption declared frontier, for the cooling-zone count, the zone and slot-geometry
 // standings and the BIOS slot labels.
 data supermicro_h11ssl_zone_and_slot_consumer_frontier: DissolutionCondition = unbound_dissolution(
   description: "TRIGGER: a fleet placement model reads supermicro_h11ssl_header_zone_standing and supermicro_h11ssl_slot_geometry_standing and refuses to derive zone reach or slot adjacency on an H11SSL host while either is uncited. SUFFICIENT FOR: the standings have a consumer that acts on them; until then they are recorded obligations." as NonEmptyStr

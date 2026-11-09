@@ -827,7 +827,7 @@ fn step_word(r: BracketRun<BracketWaitStep>) -> String {
       // The count keeps its word so a control can still ask "how many", and the certified records are
       // appended so a control can ask "WHICH registration did the bracket certify, for WHICH unit?" -- a
       // drained verdict that reports only a count cannot be checked against the roster the join used, which
-      // is §5's located diagnostic now that the join key is a suffixed identity. Rendered through
+      // is gunbc.design_argument::fail_closed's located diagnostic now that the join key is a suffixed identity. Rendered through
       // certified_listener_line, the SAME function production renders with, so the control cannot be
       // satisfied by a format the receipt never produces.
       BracketDrained { certified: cs } =>
@@ -1006,7 +1006,7 @@ test fn the_registration_is_read_only_of_a_slot_that_needs_the_roster() -> Bool 
 }
 
 // THE REAL READER OVER THE HERMETIC ROUTE -- NOT THE INHABITANCE CLAIM, which a fixture can never be
-// (§3). What this can say is narrower and still load-bearing: PRODUCTION read_slot_registration_over, over
+// (gunbc.design_argument::single_authority). What this can say is narrower and still load-bearing: PRODUCTION read_slot_registration_over, over
 // the same ssh.Session.ExecPortableWords edge the bracket uses, issues the cat of the path the path
 // authority builds and decodes the answer into the suffixed identity the join consumes. So the supplied
 // registration_leg below is being read by the real code path, and if the integration is deleted (no cat,
@@ -1109,7 +1109,7 @@ test fn a_stopped_slot_is_drained_without_a_roster_read() -> Bool {
   step_word(r: r) == "drained:0" && list_calls(r: r) == 0
 }
 
-// §3 PAIRING: the REAL roster reader, through the same hermetic route, yields the busy shape the controls
+// gunbc.design_argument::single_authority PAIRING: the REAL roster reader, through the same hermetic route, yields the busy shape the controls
 // above supply -- the route is asserted (one organization read, one listing page), not only the answer. The
 // rows are named the way a fleet host's rows ARE named: suffixed JIT registrations, not slot names.
 test fn the_production_roster_reader_reads_the_busy_registrations_the_controls_supply() -> Bool {
@@ -1264,7 +1264,7 @@ test fn a_foreign_masked_stopped_unit_does_not_block_the_first_cap_write() -> Bo
 fn flow_run(legs: List<Leg>, roster: List<RosterAt>, owned: List<NonEmptyStr>) -> BracketRun<RunnerHostCapPhase> {
   bracket_run_over(legs: legs, roster: roster, environment: route_environment(), body: fn(target, context) {
     cap_phase_after_drain_over(
-      subject: RunnerHostFileSubject { host: "srv1" as HostIdentity, target: target, desired_units: [u(n: "01")], retired_units: [], fabric_units: [] },
+      subject: RunnerHostFileSubject { host: "srv1" as HostIdentity, target: target, desired_units: [u(n: "01")], retired_units: [], fabric_units: [], slot_trees: [] },
       context: context, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable, desired: gunbc_runner_slot_desired(),
       // What the drain certified: one typed record per admitted idle listener, the shape the bracket's own
       // verdict carries. The flow controls below assert this reaches the receipt.
@@ -1299,7 +1299,7 @@ test fn a_foreign_live_listener_after_the_drain_issues_no_cap_write_reload_or_st
 // THE RECEIPT NAMES WHAT IT CERTIFIED. A cap written for a JIT-registered listener is only provable
 // against the registration the bracket actually joined on, and that name cannot be recovered afterwards
 // from the slot: the next job re-mints it. So "caps applied" plus a unit name is not enough -- the receipt
-// has to carry the suffixed identity while the run still holds it (§5's located diagnostic, and the one
+// has to carry the suffixed identity while the run still holds it (gunbc.design_argument::fail_closed's located diagnostic, and the one
 // place apply mode can show it, since the observe-only slot-registration line is deliberately not read
 // after this run's own writes).
 //
@@ -1373,7 +1373,7 @@ test fn a_non_runner_leaf_says_the_job_is_not_on_the_subject_host() -> Bool {
   }
 }
 
-// THE EXCLUSION SET, EXPRESSED ONCE (review 86600; DESIGN §3: each fact lives in exactly one place).
+// THE EXCLUSION SET, EXPRESSED ONCE (review 86600; gunbc.design_argument::single_authority: each fact lives in exactly one place).
 // An identified holder removes exactly its own unit and nothing else; a job that is not on the subject
 // host removes nothing, so the remote converge still brackets EVERY desired unit. A pass that dropped a
 // second unit here, or dropped none for an identified holder, fails one of these two.

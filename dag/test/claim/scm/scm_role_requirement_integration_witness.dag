@@ -660,7 +660,7 @@ test fn an_empty_proposal_set_preserves_the_target() -> Bool {
 // Both arms were added to RoleRequirementIntegrationRefusal when the store grew a second kind of object, and both were
 // initially reachable only as match arms in this file's readers returning `false` -- imported to
 // satisfy exhaustiveness and never produced by any input. That is the specification-without-execution
-// shape DESIGN section 5 names, and an arm nothing constructs is indistinguishable from an arm that
+// shape gunbc.design_argument::fail_closed names, and an arm nothing constructs is indistinguishable from an arm that
 // cannot be constructed. External review of gunbc#9891 called it, correctly.
 //
 // Each claim is paired with a control that substitutes a NODE at the same position, so the refusal is

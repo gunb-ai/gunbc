@@ -117,7 +117,7 @@ type BuildCacheEnsureKind =
 // WHAT A FAILED DIGEST READ REFUSED, as the effect states it: the upstream effect's OWN refusal sum,
 // imported rather than re-declared. This site's check and gunbc.host.verified_binary_install's check are
 // the same fn (`verified_binary_install_admission`), so the refusal they produce is the same TYPE; the
-// alternative was a second near-identical sum here, which DESIGN 2 calls forked logic -- two vocabularies
+// alternative was a second near-identical sum here, which gunbc.design_argument::minimize_redundancy calls forked logic -- two vocabularies
 // that can drift apart on what counts as a corrupt download versus a swapped archive. The shape also
 // matters: it used to be one arm with a `reason: String` and an `expected_hex: String`, where the only
 // thing separating "nothing was measurable" from "the bytes are not the pinned ones" was which sentence had

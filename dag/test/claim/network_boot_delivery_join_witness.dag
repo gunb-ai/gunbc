@@ -23,7 +23,7 @@ import gunbc.machine_intake.subject {
   UnitKey,
   qualification_subject_of,
 }
-import gunbc.machine_intake.access { BootDeliveryTarget }
+import gunbc.machine_intake.access { BootDeliveryTarget, ControllerAddressedTarget }
 import gunbc.network_boot_delivery {
   ArchitectureChainloader,
   BootControlObserved,
@@ -145,12 +145,12 @@ data intake_subject: MachineIntakeSubject = MachineIntakeSubject {
   attempt_id: attempt,
 }
 
-data target: BootDeliveryTarget = BootDeliveryTarget {
+data target: BootDeliveryTarget = ControllerAddressedTarget {
   subject: intake_subject,
   endpoint: BmcControllerEndpoint { host: "192.168.9.10" },
 }
 
-data other_target: BootDeliveryTarget = BootDeliveryTarget {
+data other_target: BootDeliveryTarget = ControllerAddressedTarget {
   subject: intake_subject,
   endpoint: BmcControllerEndpoint { host: "192.168.9.11" },
 }

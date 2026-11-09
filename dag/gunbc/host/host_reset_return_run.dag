@@ -82,6 +82,7 @@ import gunbc.host.host_reset_return {
   reset_return_verdict_of_mint,
   select_reset_observer,
   subject_for_observer,
+  consumed_release_of_mint,
 }
 import gunbc.host.bmc_control_binding { bmc_control_route_account, bmc_control_route_observation }
 import gunbc.host.host_reset_subject_roster {
@@ -111,6 +112,7 @@ import gunbc.machine_intake.oob_boot_handoff {
 }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
 import extdeps.bmc.ipmi_chassis_control { chassis_observation_text }
+import gunbc.host.managed_host_boot_handoff { admitted_release_of }
 
 // THE OBSERVER'S SIDE OF ONE RESET ATTEMPT, EXECUTED. Every fold in gunbc.host.host_reset_return is pure
 // and is exercised by its witness against fixtures, which is what a fold is owed. This module is
@@ -119,7 +121,7 @@ import extdeps.bmc.ipmi_chassis_control { chassis_observation_text }
 //
 // WHAT IS DELIBERATELY NOT HERE. This module does not issue the reset. Issuing it is
 // gunbc.machine_intake.oob_boot_handoff's operation and it is already modeled, already admitted from
-// a capability row, and already refuses before any write; a second issuer here would be the §3 fork
+// a capability row, and already refuses before any write; a second issuer here would be the gunbc.design_argument::single_authority fork
 // that module's own note warns about. This is the OBSERVER, and keeping the two apart is not tidiness
 // -- the observer must be able to run on a machine that holds no controller credential at all.
 
@@ -377,7 +379,7 @@ fn acknowledgement_of_handoff(outcome: OobBootHandoffOutcome, issued_at: EpochMs
 // where std.measure already carries one -- and extdeps.tools.sleep does not merely offer the carrier,
 // it declares the flat-scalar form's own dissolution binding onto
 // sleep_delay_seconds_second_carrier_projection. Minting the duration again as a bare string was
-// therefore re-inventing a concept that already has an authority (DESIGN sections 2 and 3), on the
+// therefore re-inventing a concept that already has an authority (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority), on the
 // exact line the upstream module had marked for retirement.
 //
 // IT IS ALSO WHAT MAKES THE WATCH BOUNDS MEAN ANYTHING. The sample counts below are derived from the

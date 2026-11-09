@@ -315,7 +315,7 @@ fn jq_binding_group_argv(group: JqBindingArgumentGroup) -> List<CliArgumentSynta
 // (POSIX guideline 9: options precede operands). The three words are held as ONE JqBindingArgumentGroup
 // to enforce arity and order until final argv flattening. A repeated name is refused, never handed
 // to jq's last-wins behaviour. JqTextBinding has no live consumer this wave and refuses rather than
-// emitting a plausible guess. DESIGN section 5: a failure arm must refuse, never widen.
+// emitting a plausible guess. gunbc.design_argument::fail_closed: a failure arm must refuse, never widen.
 //
 // The `seen` map records every binding name already folded, keyed by the interned name; the VALUE
 // is the name itself (a fabricated sentinel would be a second representation of presence -- the
@@ -380,7 +380,7 @@ fn jq_bindings_lower(
 }
 
 // The lowering REFUSES the one axis this wave has no live consumer for (a text binding), rather
-// than emitting a plausible guess. A JSON binding and a file input now lower. DESIGN section 5: a
+// than emitting a plausible guess. A JSON binding and a file input now lower. gunbc.design_argument::fail_closed: a
 // failure arm must refuse, never widen -- and never fabricate.
 fn jq_invocation_lower(invocation: JqInvocation) -> JqLowering {
   match jq_bindings_lower(bindings: invocation.bindings, seen: empty_map(), groups: Empty, spellings: empty_map()) {
@@ -483,7 +483,7 @@ type JqProcessInput
 
 // The raw triple a process hands back is NOT a jq fact, so this module does not declare one.
 // extdeps.shell.exec.ProcessObservation already is that triple, and a jq-named copy of it was a
-// second name for one concept (DESIGN section 3) -- with nothing jq-specific to justify the fork,
+// second name for one concept (gunbc.design_argument::single_authority) -- with nothing jq-specific to justify the fork,
 // since exit_code, stdout and stderr are what any process returns. What IS jq's own is how those
 // codes READ, and that stays here: JqExitPolicy and jq_classify_observation below are unchanged,
 // because jq's four-code contract is a genuine property of the tool rather than of processes.
@@ -498,7 +498,7 @@ type JqProcessInput
 // mapped every nonzero exit to a refusal, which is correct under JqProgramExit and WRONG under
 // JqLastResultExit, where exit 1 means the last output was false-or-null (a legitimate value) and
 // exit 4 means no valid result (absence). Editing the policy in the invocation would have left the
-// decoder silently answering the old contract -- DESIGN section 5's tell exactly: the declaration
+// decoder silently answering the old contract -- gunbc.design_argument::fail_closed's tell exactly: the declaration
 // changes while the realization goes on lying.
 type JqAdmittedProcessPlan sole_constructor {
   surface: CliSurface

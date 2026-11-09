@@ -19,7 +19,7 @@ import std.syllogism { Argument, Axiom, NonLogicalAxiom, Proposition }
 // A proposition without a review reading (an axiom's consequence, or a program like self-hosting) is
 // still part of the argument and simply mints no reviewer.
 // HOW A REVIEWER'S ANSWER MAPS TO A VERDICT IS A PROPERTY OF THE QUESTION, NOT OF THE REVIEWER.
-// Most criteria ask a yes/no question whose yes is a defect. Conformance (DESIGN section 3b) asks a
+// Most criteria ask a yes/no question whose yes is a defect. Conformance (gunbc.design_argument::conformance) asks a
 // three-valued one, and the middle value -- a divergence with its reason stated -- is admitted, so
 // collapsing it to yes/no would either block every deliberate departure or admit every accidental
 // one. The verdict words themselves belong to gunbc.roadmap.roadmap_review_role (HeadVerdict); this
@@ -39,7 +39,7 @@ type PropositionReview
     }
 
 // A CONFORMANCE DOMAIN IS ONE CONCEPT THE CORPUS ALREADY HOMES, WITH THE DECLARATIONS THAT ARE ITS
-// HOME (DESIGN section 3b). The conformance proposition's review parts are DERIVED from these rows,
+// HOME (gunbc.design_argument::conformance). The conformance proposition's review parts are DERIVED from these rows,
 // one reviewer per domain, so the domain list has one authority and DESIGN.md renders it rather
 // than repeating it. A domain is added by adding a row; a domain whose home does not yet exist is a
 // modeling obligation, not a row; a home that does not resolve is a section-3 citation defect.
@@ -90,7 +90,7 @@ data conformance_domains: List<ConformanceDomain> = [
       "an extdeps module that carries our own policy, an observation this repository made, a coverage state, or a product-specific dispatch among upstreams",
       "a generic extdeps hub enumerating concrete products or versions instead of one module per independently versioned upstream"
     ],
-    owns: "Facts governed by an independently versioned upstream: a specification, product, implementation, vendor, protocol, unit or tool. Each such upstream has its own extdeps module (section 3, external upstream decomposition).",
+    owns: "Facts governed by an independently versioned upstream: a specification, product, implementation, vendor, protocol, unit or tool. Each such upstream has its own extdeps module (gunbc.design_argument::external_upstreams).",
     boundaries: [
       "Product policy, observations this repository makes, dispatch among upstreams and coverage state belong to the consuming layer, never to extdeps.",
     ],
@@ -153,7 +153,7 @@ data conformance_domains: List<ConformanceDomain> = [
       "a write to a shared head that does not carry the expectation it was computed against",
       "a compare-and-set slot that deletes its own generations other than through the windowed operations, or a slot whose generation history is its audit trail written through file_compare_and_set_windowed",
       "an effect performed without the grant that names who may perform it and how it is released",
-      "a privileged effect whose token source is bound at the call site (GcloudPrintToken or OperatorSuppliedToken spelled in the entry) rather than resolved by gunbc.auth.access_token_source, with no row in gunbc.auth.privileged_effect_census stating why",
+      "a privileged effect whose token source is bound at the call site (GcloudPrintToken or OperatorSuppliedToken spelled in the entry) rather than resolved by gunbc.auth.access_token_source, with no stated reason in the change",
       "a PR body, message or brief that asks the operator to paste, forward or relay an access token; a GUNBC_GCP_ACCESS_TOKEN_FILE filled from chat; a token value crossing a session boundary by any channel other than the one its issuer issued it on",
       "a one-off or irreversible effect performed by a dispatched run under the federated identity with no approval request, or a recurring effect gated on a per-run phone tap",
       "a dashboard-only or checkout-only action performed by prose instruction with no std.human_intervention row naming the step"
@@ -161,7 +161,7 @@ data conformance_domains: List<ConformanceDomain> = [
     owns: "Exclusive or bounded use of a resource, and the authorization a privileged effect requires.",
     boundaries: [
       "A slot whose generation line is an audit trail keeps it whole; a slot whose only fact is its head uses the distinct windowed operations, a separate contract rather than a mode.",
-      "Which authorization pattern performs a privileged effect is a section 3d selection, not a call-site choice; its census classifies every current site by executing the selection.",
+      "Which authorization pattern performs a privileged effect is a gunbc.design_argument::selection_precedes_convergence selection, not a call-site choice; the changed site executes the selection (a census of every current site is not required: retired by the 2026-10-30 process ruling, gunbc.design_ruling bad_process_is_worse_than_no_process).",
     ],
     home_groups: FreeSemigroup {
       head: ConformanceHomeGroup {
@@ -217,14 +217,6 @@ data conformance_domains: List<ConformanceDomain> = [
               decl_ref(module_path: "gunbc.auth.approval_capability", decl_name: "ApprovalCapability"),
               decl_ref(module_path: "gunbc.auth.approval_device_redemption", decl_name: "redeem_device_over_store"),
             ],
-          },
-        },
-        ConformanceHomeGroup {
-          label: "Coverage evidence",
-          purpose: "classifies the privileged-effect sites that exist today",
-          homes: FreeSemigroup {
-            head: decl_ref(module_path: "gunbc.auth.privileged_effect_census", decl_name: "privileged_effect_census"),
-            tail: [],
           },
         },
       ],
@@ -312,7 +304,7 @@ data conformance_domains: List<ConformanceDomain> = [
     ],
     owns: "A choice that stays attributable to its subject, candidate field, constraints, evidence and policy; this domain exposes accidental forks of that authority. Every use case that matches demand with supply or chooses how a demanded result is realized onboards here, through one interface rather than its own scoring: it supplies the required outcome, the owners' objectives and time valuations, the constraints and commitments, and each candidate's consequences as readings on declared axes, then realizes and reads back the selected plan. Fabric allocation, CI runner placement, compute sold beside internal work, standing buy orders matched against a scanned marketplace, eval realization, and the demand engine's own realization and materialization choices (execution grain and partition, fusion, batching, cache versus recompute, placement; gunbc.plans.demand_engine_program section 2.2 and M4) are named consumers. A rough estimate is an admitted reading with its standing, and improving it does not create a new choosing mechanism.",
     boundaries: [
-      "The hard selection laws stay with the section 3d reviewer.",
+      "The hard selection laws stay with the selection-precedes-convergence reviewer.",
       "Goal assessment (std.goal_assessment) checks an already chosen state; it is a boundary of this domain, not a member.",
     ],
     home_groups: FreeSemigroup {
@@ -451,7 +443,7 @@ data conformance_domains: List<ConformanceDomain> = [
     tells: [
       "none, null or another sentinel answers for DAG absence through a second typing or runtime rule rather than the declared Optional constructor or a named foreign conversion",
       "a new Absent, Missing or Unset carrier has exactly a zero-or-one-value contract and no independent cause, progress, policy or upstream meaning",
-      "a bare value is implicitly wrapped, or an optional payload is implicitly extracted, without a declared conversion satisfying section 4; the checker and realization insert different conversions",
+      "a bare value is implicitly wrapped, or an optional payload is implicitly extracted, without a declared conversion satisfying gunbc.design_argument::closed_grounded_substrate; the checker and realization insert different conversions",
       "Option types, constructors, patterns or equality are selected by leaf spelling rather than resolved declaration identity and the admitted realization",
       "nested optional layers, collection boundaries or absent-versus-empty states are collapsed as normalization rather than changed by an explicit operation",
       "a new head-and-tail NonEmpty record restates FreeSemigroup, or a validated/nonempty brand can be constructed without establishing its claimed invariant",
@@ -461,7 +453,7 @@ data conformance_domains: List<ConformanceDomain> = [
     owns: "Presence and absence, optional-layer nesting, collection emptiness and nonemptiness, and the preservation of these facts from source through typing, execution, realization and declared ingestion conversions. Cardinality belongs to a named position and measure within the value's structure. Operator rulings of 2026-10-13, applying to every layer: `gunbc.design_ruling cardinality_one_concept`, `gunbc.design_ruling dag_absence_is_one_meaning`, `gunbc.design_ruling explicit_present_is_the_authoring_policy`, `gunbc.design_ruling optional_sugar_is_declaration_bound`, `gunbc.design_ruling nonemptiness_is_constructed_or_proved`, `gunbc.design_ruling native_first_complete_cuts`.",
     boundaries: [
       "Failure causes, search progress, policy states and independently governed upstream null or missing states retain their own meanings. Factor their optional parts without erasing those distinctions; classify by contract, not by a variant-name suffix.",
-      "Conversion legality is section 4's judgment. This domain checks inhabitance and preservation; target realization cannot authorize a conversion, and a stated departure does not waive another design obligation.",
+      "Conversion legality is gunbc.design_argument::closed_grounded_substrate's judgment. This domain checks inhabitance and preservation; target realization cannot authorize a conversion, and a stated departure does not waive another design obligation.",
       "Data cardinality is not evaluation multiplicity or a termination proof. The existing bound witnesses are not a claim that general collection-interval propagation or every acceptance path is implemented.",
     ],
     home_groups: FreeSemigroup {
@@ -520,77 +512,108 @@ fn yes_no_review(part: String, question: String, tells: List<String>) -> Proposi
 // is not: an omitted reviewer is a decision, never an oversight (review 5125854144 on the first cut,
 // which had `review: PropositionReview?` and gave `none` no reason). A reviewable proposition may
 // decompose into several atomic parts, each its own reviewer; the part name is the criterion key.
+// CLAIM GRANULARITY IS NOT REVIEW GRANULARITY: every part schedules a reviewer call
+// (gunbc.roadmap.roadmap_review_criteria review_criteria), so a claim that refines another is given
+// NotReviewableOnChange naming the part that already judges it, rather than a part of its own.
 type PropositionReviewDisposition
   = ReviewableOnChange { parts: List<PropositionReview> }
   | NotReviewableOnChange { reason: String }
 
+// ONE ROW PER CLAIM OF THE ARGUMENT, AND THE ROW IS A NAMED DECLARATION. The row's name is the
+// claim's identity three ways at once: the proposition id the argument graph checks, the symbol a
+// citation names (`cite`, resolved with the generated document's other references by
+// gunbc.documentary_refs generated_document_declaration_refs), and the declaration
+// gunbc.design_document imports to render the claim's section. A section is therefore cited by
+// symbol (gunbc.design_argument::fail_closed), never by a number, so reordering the document moves
+// no citation. `statement` is the canonical wording and is rendered as the section's lead sentence;
+// the supporting prose in gunbc.design_document explains it and may not restate it differently.
 type DesignRow {
   proposition: Proposition
+  title: String
+  cite: DeclarationRef
   review: PropositionReviewDisposition
 }
 
-data design_axioms: List<Axiom> = [
-  Axiom {
-    id: "A1",
-    statement: "there is a goal: to solve a problem presupposes an agent with a goal to satisfy",
-    kind: NonLogicalAxiom
-  },
-  Axiom {
-    id: "A2",
-    statement: "time is the value: every agent intrinsically values time — time is life — the one value assumed shared",
-    kind: NonLogicalAxiom
-  },
-  Axiom {
-    id: "A3",
-    statement: "agreement is temporal: intersubjective agreement is possible only across time, on what stays stable under it",
-    kind: NonLogicalAxiom
+fn design_row(name: String, title: String, statement: String, premises: List<String>, review: PropositionReviewDisposition) -> DesignRow {
+  DesignRow {
+    proposition: Proposition { id: name, statement: statement, premises: premises },
+    title: title,
+    cite: decl_ref(module_path: "gunbc.design_argument", decl_name: name),
+    review: review,
   }
-]
-
-data design_section_1_rows: List<DesignRow> = [
-
-  DesignRow {
-    proposition: Proposition {
-      id: "s1.minimal-safe-efficient",
-      statement: "the solution is minimal, safe, efficient: a solution is good insofar as it spends less of the only thing valued, time (cost, safety, complexity)",
-      premises: ["A1", "A2"]
-    },
-    review: NotReviewableOnChange { reason: "a consequence of the axioms about what a good solution IS; the reviewable propositions below are that standard applied to a change, and a change is not decidable against the standard itself" },
-  },
-
-  DesignRow {
-    proposition: Proposition {
-      id: "s1.grounding-intersubjective",
-      statement: "grounding is intersubjective: because time is the only assumed-shared value, a fact is grounded only by pointing at a shared, time-stable framework",
-      premises: ["A2", "A3"]
-    },
-    review: NotReviewableOnChange { reason: "its checkable form on a change is conformance to the shared authority's home; that reviewer is the conformance-extdeps domain of s3b.conformance, and asking it here as well would be two authorities for one judgment" },
-  },
-
-  DesignRow {
-    proposition: Proposition {
-      id: "s1.reduce-to-physics",
-      statement: "at the limit, reduce intersubjectivity to physics: the efficient, time-bound description of interactions that satisfies a goal — A1-A2 turned on grounding itself",
-      premises: ["A1", "A2", "s1.grounding-intersubjective"]
-    },
-    review: NotReviewableOnChange { reason: "the limit the whole argument aims at; no single change is decidable against a limit" },
-  }
-]
-
-data design_section_1_argument: Argument = Argument {
-  axioms: design_axioms,
-  propositions: design_section_1_propositions
 }
 
-data design_section_2_to_7_rows: List<DesignRow> = [
+// THE COMMITMENTS. Assumed, not derived: the document states them as choices the project makes.
+data goal_safe_efficient_predictable: Axiom = Axiom {
+  id: "goal_safe_efficient_predictable",
+  statement: "gunbc exists to make complex work safe, efficient and predictable",
+  kind: NonLogicalAxiom
+}
 
-  DesignRow {
-    proposition: Proposition {
-      id: "s2.minimize-redundancy",
-      statement: "minimize redundancy is the master move for cost and complexity: redundant work loses on all three of §1's quantities at once, so a perfectly DRY process is by meaning the minimal/efficient one",
-      premises: ["s1.minimal-safe-efficient"]
-    },
-    review: ReviewableOnChange { parts: [yes_no_review(
+data time_is_the_measure: Axiom = Axiom {
+  id: "time_is_the_measure",
+  statement: "human time is the common measure of design cost, across running, recovery and change",
+  kind: NonLogicalAxiom
+}
+
+data agreement_is_temporal: Axiom = Axiom {
+  id: "agreement_is_temporal",
+  statement: "agreement between parties is possible only across time, on what stays stable under it",
+  kind: NonLogicalAxiom
+}
+
+data design_axioms: List<Axiom> = [goal_safe_efficient_predictable, time_is_the_measure, agreement_is_temporal]
+
+// ── Purpose and method ──────────────────────────────────────────────────────────────────────────
+
+data method_separate_order_compose: DesignRow = design_row(
+  name: "method_separate_order_compose",
+  title: "The method",
+  statement: "We reason from explicit goals, facts and assumptions; separate concerns that have distinct meanings or authorities; order their composition by their real dependencies; and decompose until each part has one independently meaningful responsibility and an explicit contract.",
+  premises: ["goal_safe_efficient_predictable", "time_is_the_measure"],
+  review: NotReviewableOnChange { reason: "the method as a whole; a change is judged against its applications below (minimize-redundancy, single-authority, conformance, consumption, root-generalization), never against the method directly" },
+)
+
+data atomic_concern: DesignRow = design_row(
+  name: "atomic_concern",
+  title: "Atomic concerns",
+  statement: "A concern is atomic at a boundary when its contract presents one coherent responsibility, its relevant decisions and dependencies are explicit or delegated to named authorities, and further decomposition would expose no other independently governed decision there.",
+  premises: ["method_separate_order_compose"],
+  review: NotReviewableOnChange { reason: "a definition the reviewable rows apply: an under-decomposed leaf is judged by closed-grounded-substrate (a stringly leaf hiding named parts) and an over-split one by minimize-redundancy" },
+)
+
+data explicit_composition: DesignRow = design_row(
+  name: "explicit_composition",
+  title: "Composition",
+  statement: "Separate concerns until their meanings are clear, then give their composition an explicit contract: a composition receives the decisions owned elsewhere and explicitly owns the rule that combines them.",
+  premises: ["method_separate_order_compose"],
+  review: NotReviewableOnChange { reason: "its defect, a composition that originates a decision it should receive, is a second home for that decision and is judged by single-authority" },
+)
+
+data grounding_is_intersubjective: DesignRow = design_row(
+  name: "grounding_is_intersubjective",
+  title: "Grounding",
+  statement: "A fact is grounded only by pointing at a shared, time-stable framework (mathematics, physics, a cited upstream specification), never at an internal taxonomy.",
+  premises: ["time_is_the_measure", "agreement_is_temporal"],
+  review: NotReviewableOnChange { reason: "its checkable form on a change is conformance to the shared authority's home; that reviewer is the conformance-extdeps domain of conformance, and asking it here as well would be two authorities for one judgment" },
+)
+
+data reduce_to_physics: DesignRow = design_row(
+  name: "reduce_to_physics",
+  title: "The limit: reduce convention to necessity",
+  statement: "The deepest shared framework is physics, so the aim is to replace convention with necessity until nothing arbitrary survives.",
+  premises: ["goal_safe_efficient_predictable", "time_is_the_measure", "grounding_is_intersubjective"],
+  review: NotReviewableOnChange { reason: "the limit the whole argument aims at; no single change is decidable against a limit" },
+)
+
+// ── Meaning and authority ───────────────────────────────────────────────────────────────────────
+
+data minimize_redundancy: DesignRow = design_row(
+  name: "minimize_redundancy",
+  title: "Minimize redundancy",
+  statement: "Redundant work, whether duplicated, unnecessary or irrelevant, costs more to run, widens the surface where harm hides and adds complexity to maintain; a concept is modeled once and every use derived from it.",
+  premises: ["method_separate_order_compose", "atomic_concern"],
+  review: ReviewableOnChange { parts: [yes_no_review(
       part: "minimize-redundancy",
       question: "Does the change add work that already exists somewhere in the repository: a second representation of a fact, a copied accumulator, a parallel path beside a modeled one?",
       tells: [
@@ -599,15 +622,14 @@ data design_section_2_to_7_rows: List<DesignRow> = [
         "a quadratic fold or a copied list where a single fold would do"
       ]
     )] },
-  },
+)
 
-  DesignRow {
-    proposition: Proposition {
-      id: "s3.single-authority",
-      statement: "single authority keeps §2 from being undone: minimization holds only if each fact lives in exactly one place; the recurring violation is nicknaming (a second name for one concept)",
-      premises: ["s2.minimize-redundancy"]
-    },
-    review: ReviewableOnChange { parts: [
+data single_authority: DesignRow = design_row(
+  name: "single_authority",
+  title: "Single authority",
+  statement: "Each independently governed meaning or decision has one authoritative definition at its declared scope; a second place that independently decides it is a fork, and one name carrying two materially different meanings is a meaning fork.",
+  premises: ["minimize_redundancy", "atomic_concern"],
+  review: ReviewableOnChange { parts: [
       yes_no_review(
         part: "single-authority",
         question: "Does the change give one concept a second name or a second home, or cite a position where a symbol exists?",
@@ -616,8 +638,95 @@ data design_section_2_to_7_rows: List<DesignRow> = [
           "a file:line citation in prose or a row where a module and symbol could be named",
           "the same fact now answerable from two carriers with no relation stated between them"
         ]
-      ),
-      yes_no_review(
+      )
+    ] },
+)
+
+data interface_realization_policy: DesignRow = design_row(
+  name: "interface_realization_policy",
+  title: "Interface, realization and policy",
+  statement: "A dependency's interface, the transport that realizes it, and the business policy that drives it are three facts with three homes, and the dispatch that selects a realization is itself realization.",
+  premises: ["single_authority", "explicit_composition"],
+  review: NotReviewableOnChange { reason: "a leaked literal or a per-transport fork is a second home and is judged by single-authority; which home owns an upstream fact is the conformance-extdeps domain" },
+)
+
+// ── Facts and evidence ──────────────────────────────────────────────────────────────────────────
+
+data external_upstreams: DesignRow = design_row(
+  name: "external_upstreams",
+  title: "External upstreams",
+  statement: "Each independently versioned upstream product, implementation, engine, vendor or specification has its own extdeps module, and observations this repository makes are receipts in the observing layer, never facts of the upstream.",
+  premises: ["single_authority", "grounding_is_intersubjective"],
+  review: NotReviewableOnChange { reason: "its checkable form on a change is the conformance-extdeps domain of conformance" },
+)
+
+data epistemic_humility: DesignRow = design_row(
+  name: "epistemic_humility",
+  title: "Epistemic humility",
+  statement: "Assert as deduced only what is deduced, prohibit only as much as the evidence supports, and assert what you are confident in: an inference is typed as a bet, neither deleted nor promoted.",
+  premises: ["grounding_is_intersubjective", "agreement_is_temporal"],
+  review: NotReviewableOnChange { reason: "not given a reviewer of its own in this argument; its checkable part is carried by construction, in the typed standing of extdeps.external_authority CitedFigureStanding" },
+)
+
+// ── Representation and checking ─────────────────────────────────────────────────────────────────
+
+data closed_grounded_substrate: DesignRow = design_row(
+  name: "closed_grounded_substrate",
+  title: "The closed, grounded substrate",
+  statement: "Concerns can be unified and decomposed mechanically only in a closed, grounded system, so a program is a bounded, forward dependency graph over a closed vocabulary, and operations come from inhabitance rather than per-type code.",
+  premises: ["minimize_redundancy", "single_authority", "grounding_is_intersubjective"],
+  review: ReviewableOnChange { parts: [yes_no_review(
+      part: "closed-grounded-substrate",
+      question: "Does the change leave something opaque that is not atomic, or route around the substrate: a stringly leaf hiding named parts, a heuristic where a fact was available, an annotation inside a body?",
+      tells: [
+        "a String field carrying structure a record could name",
+        "a threshold or guess standing where the richer source exists",
+        "a // annotation inside a fn or type body rather than above a module-scope declaration"
+      ]
+    )] },
+)
+
+data source_annotations: DesignRow = design_row(
+  name: "source_annotations",
+  title: "Source annotations",
+  statement: "A comment is captured authored-source data that no semantic pass can read: it is best-effort, never guaranteed documentation, and may be deleted at any time, so a fact that must survive belongs in a typed carrier.",
+  premises: ["closed_grounded_substrate"],
+  review: NotReviewableOnChange { reason: "its tell, an annotation standing where a typed carrier belongs, is judged by closed-grounded-substrate" },
+)
+
+// ── Guarantees ──────────────────────────────────────────────────────────────────────────────────
+
+data guarantee_ladder: DesignRow = design_row(
+  name: "guarantee_ladder",
+  title: "The guarantee ladder",
+  statement: "Every discovered error class sits on one ordered ladder (mitigatable, mechanically preventable, structurally guaranteed, structurally impossible) and climbs to its highest honest rung, with its ceiling and residual risk explicit.",
+  premises: ["goal_safe_efficient_predictable", "closed_grounded_substrate"],
+  review: NotReviewableOnChange { reason: "a rung claimed without its executed evidence is judged by fail-closed (a check standing where construction was available) and consumption (a witness asserting existence)" },
+)
+
+data fail_closed: DesignRow = design_row(
+  name: "fail_closed",
+  title: "Fail-closed",
+  statement: "A wrong answer is a loud, typed, located error, never a warning or a plausible fabrication; stronger than catching a wrong state is making it unwritable.",
+  premises: ["goal_safe_efficient_predictable", "guarantee_ladder"],
+  review: ReviewableOnChange { parts: [yes_no_review(
+      part: "fail-closed",
+      question: "Does any failure arm in the change widen, default, or fall silent instead of refusing with a typed, located reason; and does any check stand where a construction was available?",
+      tells: [
+        "an arm that returns a superset, an empty value, or 'proceed' when it could not compute its answer",
+        "an Option or wildcard that collapses two states with different remedies",
+        "a toggle, env var or flag whose only effect is to skip a refusal",
+        "a validator for a state the model could have made unwritable"
+      ]
+    )] },
+)
+
+data witness_one_interface: DesignRow = design_row(
+  name: "witness_one_interface",
+  title: "A witness discriminates at one interface",
+  statement: "A witness establishes what one interface returns for supplied inputs, and every supplied boundary owes one inhabitance claim that still executes the real path.",
+  premises: ["single_authority", "fail_closed"],
+  review: ReviewableOnChange { parts: [yes_no_review(
         part: "witness-one-interface",
         question: "Does a claim this change adds or edits take its subject beyond ONE interface -- deriving its inputs by executing the layers beneath the boundary instead of supplying them, folding several producers, or re-executing another module's claim functions -- or does it supply a boundary's inputs while leaving that boundary with no inhabitance claim that still runs the real path?",
         tells: [
@@ -629,45 +738,25 @@ data design_section_2_to_7_rows: List<DesignRow> = [
           "an inhabitance claim that checks only shape, which is agreement rather than evidence that the real field reached the real decision",
           "the eval-step budget refused the claim and a debt row was proposed -- the budget is the tell, not the rule, and the reach is never bought with a drop"
         ]
-      )
-    ] },
-  },
+      )] },
+)
 
-  DesignRow {
-    proposition: Proposition {
-      id: "s3b.conformance",
-      statement: "conformance is §2–§3 applied to a change: for every concept domain a change touches the corpus already homes the concept, so the change inhabits that model or states why it diverges; an unstated divergence is a fork that will be consolidated later at interest",
-      premises: ["s2.minimize-redundancy", "s3.single-authority"]
-    },
-    review: ReviewableOnChange { parts: map(conformance_domains, d => conformance_review_part(d: d)) },
-  },
+// ── Composition and execution ───────────────────────────────────────────────────────────────────
 
-  DesignRow {
-    proposition: Proposition {
-      id: "s3c.consumption",
-      statement: "consumption is the converse of conformance: every declaration a change adds is consumed by a named consumer over an executing route, or it is redundant work by §2 and specification-without-execution by §5, however well modeled it is",
-      premises: ["s2.minimize-redundancy", "s5.fail-closed"]
-    },
-    review: ReviewableOnChange { parts: [yes_no_review(
-      part: "consumption",
-      question: "Does the change add a declaration -- a type, function, data row, module or witness -- that nothing consumes by execution, or whose only consumer is a typecheck, a grep, or a witness asserting it exists? For each added declaration name the consumer and the route by which it is reached at execution, or the later change that will consume it with its trigger; a declaration with neither is dangling.",
-      tells: [
-        "a pub declaration with no call site anywhere in the closure the change compiles",
-        "a data row no fold reads, or a module no module imports",
-        "a witness that asserts a declaration exists or has a shape, rather than exercising it through its consumer",
-        "consumption described in the change's prose or PR body but absent from the diff",
-        "a frontier row naming a future consumer with no trigger beside it"
-      ]
-    )] },
-  },
+data demand_before_materialization: DesignRow = design_row(
+  name: "demand_before_materialization",
+  title: "Minimize the demand graph before materializing its answers",
+  statement: "A repeated computation is first evidence of authored duplication, then a question of whether any reuse obligation exists, then of whether a provider discharges it; a cache may discharge unavoidable recurrence, never excuse authored duplication.",
+  premises: ["minimize_redundancy", "fail_closed"],
+  review: NotReviewableOnChange { reason: "authored duplication is judged by minimize-redundancy, and a provider's faithfulness by the conformance-realization and conformance-identity domains" },
+)
 
-  DesignRow {
-    proposition: Proposition {
-      id: "s3d.selection-precedes-convergence",
-      statement: "selection precedes convergence: Pareto assessment (std.pareto) computes the frontier and realization selection (std.decision) is the policy-bound choose-one, consuming Pareto without redeclarating its algebra; goal assessment and ensure do not enumerate candidates or choose policy",
-      premises: ["s3.single-authority", "s5.fail-closed", "s1.minimal-safe-efficient"]
-    },
-    review: ReviewableOnChange { parts: [yes_no_review(
+data selection_precedes_convergence: DesignRow = design_row(
+  name: "selection_precedes_convergence",
+  title: "Selection precedes convergence",
+  statement: "Pareto assessment (std.pareto) computes the frontier, realization selection (std.decision) is the policy-bound choose-one that consumes it, and convergence (std.goal_assessment, ensure) neither enumerates candidates nor chooses policy.",
+  premises: ["single_authority", "fail_closed", "method_separate_order_compose"],
+  review: ReviewableOnChange { parts: [yes_no_review(
       part: "selection-precedes-convergence",
       question: "Does the change let a selected or settled answer outrun its candidate-field completeness, constraints, required evidence or policy; treat a Pareto front with several survivors as a chosen winner; turn missing funded evidence into a fabricated zero, a default score or a settled fact; or widen goal assessment (std.goal_assessment) / ensure into candidate generation or choice of desired policy? These are the hard laws, and a stated departure from the decision home (admitted by conformance-decision) does not excuse any of them.",
       tells: [
@@ -678,50 +767,51 @@ data design_section_2_to_7_rows: List<DesignRow> = [
         "a departure note that explains a different representation and is offered as the reason an incomplete choice may stand"
       ]
     )] },
-  },
+)
 
-  DesignRow {
-    proposition: Proposition {
-      id: "s4.closed-grounded-substrate",
-      statement: "the closed, grounded substrate makes §2–§3 decidable: you can unify and decompose mechanically only in a closed, grounded system, and grounding is intersubjective",
-      premises: ["s2.minimize-redundancy", "s3.single-authority", "s1.grounding-intersubjective"]
-    },
-    review: ReviewableOnChange { parts: [yes_no_review(
-      part: "closed-grounded-substrate",
-      question: "Does the change leave something opaque that is not atomic, or route around the substrate: a stringly leaf hiding named parts, a heuristic where a fact was available, an annotation inside a body?",
+// ── Changing the system ─────────────────────────────────────────────────────────────────────────
+
+data conformance: DesignRow = design_row(
+  name: "conformance",
+  title: "Conformance",
+  statement: "For every concept domain a change touches, the change inhabits the existing model or states why it diverges; an unstated divergence is the only red.",
+  premises: ["minimize_redundancy", "single_authority"],
+  review: ReviewableOnChange { parts: map(conformance_domains, d => conformance_review_part(d: d)) },
+)
+
+data consumption: DesignRow = design_row(
+  name: "consumption",
+  title: "Consumption",
+  statement: "Every declaration a change adds, and every dependency a system admits, is consumed by a named consumer over an executing route, or it is dangling, however well modeled.",
+  premises: ["minimize_redundancy", "fail_closed"],
+  review: ReviewableOnChange { parts: [yes_no_review(
+      part: "consumption",
+      question: "Does the change add a declaration -- a type, function, data row, module or witness -- that nothing consumes by execution, or whose only consumer is a typecheck, a grep, or a witness asserting it exists? For each added declaration name the consumer and the route by which it is reached at execution, or the later change that will consume it with its trigger; a declaration with neither is dangling. Does the change enable, install or keep on a dependency -- a package, service, port, kernel module, firmware behaviour or device -- without naming what uses it?",
       tells: [
-        "a String field carrying structure a record could name",
-        "a threshold or guess standing where the richer source exists",
-        "a // annotation inside a fn or type body rather than above a module-scope declaration"
+        "a change that enables or installs a dependency without naming the consumer that needs it, or that masks a dependency's errors where switching it off was available",
+        "a pub declaration with no call site anywhere in the closure the change compiles",
+        "a data row no fold reads, or a module no module imports",
+        "a witness that asserts a declaration exists or has a shape, rather than exercising it through its consumer",
+        "consumption described in the change's prose or PR body but absent from the diff",
+        "a frontier row naming a future consumer with no trigger beside it"
       ]
     )] },
-  },
+)
 
-  DesignRow {
-    proposition: Proposition {
-      id: "s5.fail-closed",
-      statement: "fail-closed is §1's safety axis: minimizing cost and complexity is worthless if a wrong thing passes silently; stronger than catching a wrong state is making it unwritable (correctness by construction, not validation)",
-      premises: ["s1.minimal-safe-efficient"]
-    },
-    review: ReviewableOnChange { parts: [yes_no_review(
-      part: "fail-closed",
-      question: "Does any failure arm in the change widen, default, or fall silent instead of refusing with a typed, located reason; and does any check stand where a construction was available?",
-      tells: [
-        "an arm that returns a superset, an empty value, or 'proceed' when it could not compute its answer",
-        "an Option or wildcard that collapses two states with different remedies",
-        "a toggle, env var or flag whose only effect is to skip a refusal",
-        "a validator for a state the model could have made unwritable"
-      ]
-    )] },
-  },
+data replacement_migration: DesignRow = design_row(
+  name: "replacement_migration",
+  title: "Replacement migrations cut over at the root",
+  statement: "When two structures answer one question and one is to disappear, the old authority ends in one motion at its root, and the new one never falls back to, resolves through or derives from it.",
+  premises: ["single_authority", "fail_closed"],
+  review: NotReviewableOnChange { reason: "a surviving second path is judged by how-to-work, and a leaf-upward cut leaving siblings by root-generalization" },
+)
 
-  DesignRow {
-    proposition: Proposition {
-      id: "s6.how-to-work",
-      statement: "how to work given §1–§5: model by DFS-ing the concept DAG, consume §3d (selection precedes convergence) rather than independently carrying holistic priority, denominate the benefit as displaced cost, and enforce by construction-first then lenses for the unstructurable residue",
-      premises: ["s2.minimize-redundancy", "s3.single-authority", "s3d.selection-precedes-convergence", "s4.closed-grounded-substrate", "s5.fail-closed"]
-    },
-    review: ReviewableOnChange { parts: [yes_no_review(
+data how_to_work: DesignRow = design_row(
+  name: "how_to_work",
+  title: "How to work",
+  statement: "Model by searching the concept graph before inventing vocabulary, spend no one's future time for present convenience, denominate the benefit as displaced cost, and use the cheapest evidence adequate to the decision.",
+  premises: ["minimize_redundancy", "single_authority", "selection_precedes_convergence", "closed_grounded_substrate", "fail_closed"],
+  review: ReviewableOnChange { parts: [yes_no_review(
       part: "how-to-work",
       question: "Does the change land temporary work, a workaround, or an unmarked scaffold without an operator's verdict, or a proven cost-shape defect left in place?",
       tells: [
@@ -730,46 +820,103 @@ data design_section_2_to_7_rows: List<DesignRow> = [
         "a change that routes around a substrate refusal instead of naming it"
       ]
     )] },
-  },
+)
 
-  DesignRow {
-    proposition: Proposition {
-      id: "s6b.root-generalization",
-      statement: "root generalization (anti-unification) closes breadth beside chain re-derivation's depth: when a new case needs new code, every leaf of the same shape is collected, generalized to the least general rule at the earliest unjustified boundary, and deleted; a repeated pattern is rejected until the author states why it should not be generalized or names the trigger and follow-up",
-      premises: ["s2.minimize-redundancy", "s3.single-authority", "s6.how-to-work"]
-    },
-    review: ReviewableOnChange { parts: [yes_no_review(
+data earliest_unjustified_boundary: DesignRow = design_row(
+  name: "earliest_unjustified_boundary",
+  title: "Chain re-derivation",
+  statement: "A defect is repaired at the earliest boundary of its producer-to-consumer slice whose derivation cannot be justified, and the links downstream of it are re-realized rather than patched.",
+  premises: ["single_authority", "fail_closed", "how_to_work"],
+  review: NotReviewableOnChange { reason: "not given a reviewer of its own; its class is gunbc.recurring_failure_mode symptom_link_patched_without_the_earliest_unjustified_boundary, and its breadth half is judged by root-generalization" },
+)
+
+data root_generalization: DesignRow = design_row(
+  name: "root_generalization",
+  title: "Root generalization",
+  statement: "When a new case seems to need new code, collect every sibling leaf of the same rule, generalize to the least general rule at the earliest unjustified boundary, and delete the leaves, so that a new ordinary case is data rather than control flow.",
+  premises: ["single_authority", "how_to_work", "earliest_unjustified_boundary"],
+  review: ReviewableOnChange { parts: [yes_no_review(
       part: "root-generalization",
-      question: "State what the change touches: which models, structures and behaviors, and what each does. Then look AROUND it, layer by layer up to the root of the tree: sibling arms of the same match, sibling call sites of the same general check, sibling helpers, the same rule in v1 and in v2, other stages and targets. Is the pattern the change adds or repairs REPEATED there, so that this change is one more leaf of a family rather than a single case? REPEATED means the same general question is answered by separate leaves, each taught its case in turn. The trigger is the second local implementation of one rule. List the leaves you found (the fork census). Done means a new ordinary case is data, not control flow. Failure examples. (a) Type-alias identity: node_type_compatible (v1, 04_types) takes no symbol table, so transparent_alias_identity_agrees is bolted on as a fallback at individual call sites; #13941 #14069 #13974 #14043 #14057 each taught one site, and the if-expression site, which has no fallback, broke after #13939. (b) v1 Rust trait bounds: Clone, map-key Eq+Hash and 'static each have their own seed, round, fixpoint and forwarding pipeline (v1_clone_bound_*, v1_map_key_*); #13978 #14010 #14020. (c) Qualified-call resolution: dotted names classified by string search at several sites across 04_infer and 04_lookup, patched in sequence by #13925, #14085, #14089. (d) changed_declaration_signature_consumer_unplanned (recurring_failure_mode). Generalization done well, for contrast: #14151, #14193, #13872, #14187. NOT repeated: two validations of different fields at one boundary (different questions at one site), and a corpus-wide import addition (one fact applied to every site, with no per-site logic). If it is repeated, REJECT and advise investigating generalization (DESIGN section 6b, root generalization). The author must answer with exactly one of: (1) why it should not be generalized, a stated reason (section 3b, diverges with a stated reason); or (2) it should be, but not now, naming the trigger and the follow-up (section 4b, no untracked stall). Accept or reject that answer on its merits. No answer is a reject.",
+      question: "State what the change touches: which models, structures and behaviors, and what each does. Then look AROUND it, layer by layer up to the root of the tree: sibling arms of the same match, sibling call sites of the same general check, sibling helpers, the same rule in v1 and in v2, other stages and targets. Is the pattern the change adds or repairs REPEATED there, so that this change is one more leaf of a family rather than a single case? REPEATED means the same general question is answered by separate leaves, each taught its case in turn. The trigger is the second local implementation of one rule. List the sibling leaves you found by scoped grep and source inspection, stating what you inspected and what remains unknown; a corpus-wide fork census is not required (retired by the 2026-10-30 process ruling, gunbc.design_ruling bad_process_is_worse_than_no_process). Done means a new ordinary case is data, not control flow. Failure examples. (a) Type-alias identity: node_type_compatible (v1, 04_types) takes no symbol table, so transparent_alias_identity_agrees is bolted on as a fallback at individual call sites; #13941 #14069 #13974 #14043 #14057 each taught one site, and the if-expression site, which has no fallback, broke after #13939. (b) v1 Rust trait bounds: Clone, map-key Eq+Hash and 'static each have their own seed, round, fixpoint and forwarding pipeline (v1_clone_bound_*, v1_map_key_*); #13978 #14010 #14020. (c) Qualified-call resolution: dotted names classified by string search at several sites across 04_infer and 04_lookup, patched in sequence by #13925, #14085, #14089. (d) changed_declaration_signature_consumer_unplanned (recurring_failure_mode). Generalization done well, for contrast: #14151, #14193, #13872, #14187. NOT repeated: two validations of different fields at one boundary (different questions at one site), and a corpus-wide import addition (one fact applied to every site, with no per-site logic). If it is repeated, REJECT and advise investigating generalization (gunbc.design_argument::root_generalization). The author must answer with exactly one of: (1) why it should not be generalized, a stated reason (gunbc.design_argument::conformance, diverges with a stated reason); or (2) it should be, but not now, naming the trigger and the follow-up (gunbc.design_argument::guarantee_ladder, no untracked stall). Accept or reject that answer on its merits. No answer is a reject. Then ask the converse (gunbc.design_argument::continuous_generalization): does this change expose or extend a mismatch between a shared model and its consumers -- a new requirement the incumbent model cannot express, or an incumbent obligation the newcomer drops? What must be preserved on both sides, and is the mismatch resolved here, deliberately distinguished, or durably deferred as a gunbc.integration_concern row (or an update to an existing one)? Require a disposition for a material mismatch that was raised; do not require proof that nothing else was noticed.",
       tells: [
         "a new arm, call-site fallback or helper beside siblings that answer the same general question, with the general check left unable to answer it",
         "a fix whose diff touches exactly the site named in the finding, while a sibling site, or the same rule in the other of v1 and v2, is shaped like it",
         "a second or third fix to the same family within a short time, each patching one more site or one more pipeline",
         "a parallel seed, round, fixpoint or forwarding pipeline per instance of one kind of obligation",
-        "a stated reason not to generalize that restates the instance rather than naming what differs, or a 'later' with no trigger and no follow-up"
+        "a stated reason not to generalize that restates the instance rather than naming what differs, or a 'later' with no trigger and no follow-up",
+        "a new requirement encoded as a sentinel value, flag, escape arm or adapter branch in a shared model that cannot express it",
+        "a revised shared model whose existing consumers' refusal controls were not re-run",
+        "a material mismatch raised in the PR body, a review reply or a session report with no disposition",
+        "a change touching the declarations of an open gunbc.integration_concern row that neither updates nor cites it"
       ]
     )] },
-  },
+)
 
-  DesignRow {
-    proposition: Proposition {
-      id: "s7.self-hosting",
-      statement: "self-hosting applies the principles to the compiler itself: it is an ordinary substrate fact written in itself, and because a wall is a row over a medium-agnostic substrate, language design opens up (compiler-fork × language → row + medium)",
-      premises: ["s4.closed-grounded-substrate", "s6.how-to-work", "s1.reduce-to-physics"]
-    },
-    review: NotReviewableOnChange { reason: "a program over the compiler judged by execution of emitted modules, not a property one change carries" },
-  }
+data continuous_generalization: DesignRow = design_row(
+  name: "continuous_generalization",
+  title: "Continuous generalization",
+  statement: "Reconciliation between a newcomer and an incumbent model is two-sided, and an integration concern a change has identified stays discoverable, with an explicit disposition, after the session that found it ends.",
+  premises: ["root_generalization"],
+  review: NotReviewableOnChange { reason: "judged as the converse half of the root-generalization question" },
+)
+
+// ── Self-hosting ────────────────────────────────────────────────────────────────────────────────
+
+data self_hosting: DesignRow = design_row(
+  name: "self_hosting",
+  title: "Self-hosting",
+  statement: "The compiler is an ordinary substrate fact written in itself; v2 must be better than the seed rather than resemble it, and because a wall is a row over a medium-agnostic substrate, language design opens up.",
+  premises: ["closed_grounded_substrate", "how_to_work", "reduce_to_physics"],
+  review: NotReviewableOnChange { reason: "a program over the compiler judged by execution of emitted modules, not a property one change carries" },
+)
+
+// THE ROWS IN READING ORDER. Reading order is presentation only: the argument graph is checked on its
+// premises (std.syllogism argument_form_is_valid), never on its position in this list.
+data design_purpose_rows: List<DesignRow> = [
+  method_separate_order_compose,
+  atomic_concern,
+  explicit_composition,
+  grounding_is_intersubjective,
+  reduce_to_physics,
 ]
 
-data design_section_1_propositions: List<Proposition> = map(design_section_1_rows, r => r.proposition)
+data design_body_rows: List<DesignRow> = [
+  minimize_redundancy,
+  single_authority,
+  interface_realization_policy,
+  external_upstreams,
+  epistemic_humility,
+  closed_grounded_substrate,
+  source_annotations,
+  demand_before_materialization,
+  selection_precedes_convergence,
+  guarantee_ladder,
+  fail_closed,
+  witness_one_interface,
+  conformance,
+  consumption,
+  replacement_migration,
+  how_to_work,
+  earliest_unjustified_boundary,
+  root_generalization,
+  continuous_generalization,
+  self_hosting,
+]
 
-data design_section_2_to_7_propositions: List<Proposition> = map(design_section_2_to_7_rows, r => r.proposition)
+data design_rows: List<DesignRow> = concat(design_purpose_rows, design_body_rows)
 
-data design_rows: List<DesignRow> = concat(design_section_1_rows, design_section_2_to_7_rows)
+data design_propositions: List<Proposition> = map(design_rows, r => r.proposition)
 
-data design_propositions: List<Proposition> = concat(design_section_1_propositions, design_section_2_to_7_propositions)
+data design_purpose_argument: Argument = Argument {
+  axioms: design_axioms,
+  propositions: map(design_purpose_rows, r => r.proposition)
+}
 
 data design_argument: Argument = Argument {
   axioms: design_axioms,
   propositions: design_propositions
+}
+
+fn design_row_citations() -> List<DeclarationRef> {
+  map(design_rows, r => r.cite)
 }

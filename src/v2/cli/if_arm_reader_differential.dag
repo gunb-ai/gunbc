@@ -3,19 +3,18 @@ module v2.cli.if_arm_reader_differential
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.algebra { Cons, Empty, FreeMonoid, fold_list, list_reverse, collection_concat_shape }
 import std.occurrence_identity { occurrence_id_eq }
+import v2.std.compilers.sugar { sugar_deep_unwrap_optional, sugar_unwrap_surface_shell }
 import v2.compiler.body_lowering_fold {
   IfRowArms,
-  body_lower_deep_unwrap_optional,
   body_lower_else_part_if_expr_optional,
   body_lower_find_captured,
   body_lower_if_expr_capture_optional,
   body_lower_if_row_arms_optional,
   body_lower_if_row_else_part_optional,
   body_lower_match_spine_left,
-  body_lower_match_spine_right,
-  body_lower_unwrap_surface_shell
+  body_lower_match_spine_right
 }
-import v2.compiler.parse { PreparedGrammar, parse_module_prepared }
+import v2.compiler.parse { parse_artifact_span_index, PreparedGrammar, parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.compiler.tokenize { tokenize }
@@ -50,7 +49,7 @@ import v2.std.text { String }
 // body_lower_if_fn_body_capture_optional, body_lower_if_then_arm_optional and
 // body_lower_if_then_fn_body_optional as they stood before #13029, renamed and nothing else. Every
 // helper they call is unchanged by #13029, so this is the old reader's logic exactly. They serve
-// from history as a differential oracle (DESIGN section 3, replacement migrations): only this
+// from history as a differential oracle (gunbc.design_argument::replacement_migration, replacement migrations): only this
 // module's census calls them, and nothing on a lowering route reaches this module. They are
 // deleted with it.
 //
@@ -73,7 +72,7 @@ fn iard_old_fn_body_capture_optional(spine: Node) -> Optional<Node> {
           Present { value: left } =>
             match body_lower_match_spine_right(spine: spine) {
               Present { value: right } =>
-                match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
+                match node_atom_identity_optional(node: sugar_deep_unwrap_optional(node: left)) {
                   Present { value: id } =>
                     match id == ^dag_token_kw_else {
                       true => iard_old_fn_body_capture_optional(spine: right)
@@ -98,7 +97,7 @@ fn iard_old_fn_body_capture_optional(spine: Node) -> Optional<Node> {
 }
 
 fn iard_old_then_fn_body_optional(captured: Node) -> Optional<Node> {
-  let spine = body_lower_unwrap_surface_shell(node: captured)
+  let spine = sugar_unwrap_surface_shell(node: captured)
   match iard_old_fn_body_capture_optional(spine: spine) {
     Present { value: first } =>
       match body_lower_find_captured(root: captured, emitted: ^dag_surface_fn_body) {
@@ -110,7 +109,7 @@ fn iard_old_then_fn_body_optional(captured: Node) -> Optional<Node> {
 }
 
 fn iard_old_else_capture_optional(captured: Node) -> Optional<Node> {
-  let spine = body_lower_unwrap_surface_shell(node: captured)
+  let spine = sugar_unwrap_surface_shell(node: captured)
   match is_empty_conj_root(n: spine) {
     true => Absent
     false =>
@@ -118,7 +117,7 @@ fn iard_old_else_capture_optional(captured: Node) -> Optional<Node> {
       Present { value: left } =>
         match body_lower_match_spine_right(spine: spine) {
           Present { value: right } =>
-            match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
+            match node_atom_identity_optional(node: sugar_deep_unwrap_optional(node: left)) {
               Present { value: id } =>
                 match id == ^dag_token_kw_else {
                   true =>
@@ -160,7 +159,7 @@ fn iard_old_else_capture_optional(captured: Node) -> Optional<Node> {
 }
 
 fn iard_old_then_arm_optional(captured: Node) -> Optional<Node> {
-  let spine = body_lower_unwrap_surface_shell(node: captured)
+  let spine = sugar_unwrap_surface_shell(node: captured)
   match body_lower_find_captured(root: spine, emitted: ^dag_surface_fn_body) {
     ParseSubtreeFound { captured: body } => Present { value: body }
     ParseSubtreeAbsent =>
@@ -171,7 +170,7 @@ fn iard_old_then_arm_optional(captured: Node) -> Optional<Node> {
             Present { value: left } =>
               match body_lower_match_spine_right(spine: spine) {
                 Present { value: right } =>
-                  match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
+                  match node_atom_identity_optional(node: sugar_deep_unwrap_optional(node: left)) {
                     Present { value: id } =>
                       match id == ^dag_token_kw_then {
                         true => body_lower_if_expr_capture_optional(spine: right)
@@ -284,7 +283,7 @@ fn iard_is_declaration(id: Symbol) -> Bool {
 
 // EVERY if_expr IN THE TREE, IN PRE-ORDER, WITH ITS ENCLOSING DECLARATION. Nested ifs are visited:
 // the walk does not stop at an if, because the defect's subject is exactly an if inside an if.
-// Sites are prepended and the list reversed once (DESIGN section 6, bare minimum cost).
+// Sites are prepended and the list reversed once (gunbc.design_argument::how_to_work, bare minimum cost).
 fn iard_collect(node: Node, declaration: String, acc: FreeMonoid<IardSite>) -> FreeMonoid<IardSite> {
   let here = match parse_production_emitted_identity_optional(node: node) {
     Absent => IardVisit { declaration: declaration, acc: acc }
@@ -361,7 +360,7 @@ fn iard_file(prepared: PreparedGrammar, read: DagSourceReadWitness) -> IardFileO
     Accepted { value: artifact, diagnostics: _ } =>
       IardFileRead {
         path: read.artifact.file_path,
-        spans: artifact.span_index,
+        spans: parse_artifact_span_index(artifact: artifact),
         sites: iard_sites(tree: artifact.tree)
       }
   }

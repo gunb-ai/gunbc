@@ -1,5 +1,6 @@
 module gunbc.runner.runner_microvm_slot_controller
 
+import gunbc.durable_create_once { CreateOnceRecorded, CreateOnceAlreadyRecorded, CreateOnceRefused }
 import std.optional { Absent, Present }
 import gunbc.runner.runner_microvm_network_receipt_store { read_network_receipt, NetworkReceiptAbsent, NetworkReceiptPresent, StoredNetworkReceiptUnreadable }
 
@@ -97,10 +98,13 @@ import gunbc.runner.runner_microvm_host_ready {
 import gunbc.runner.runner_microvm_slot_unit {
   microvm_slot_env_name, microvm_release_dir_env_name,
   microvm_controller_vmm_binary, microvm_controller_jailer_binary,
-  microvm_slot_controller_receipt_dir, microvm_unit_receipt_path,
+  MicrovmReceiptStoreReady, MicrovmReceiptStoreUnready, microvm_receipt_store, ControllerReceipts, microvm_receipt_record,
 }
 import gunbc.runner.runner_guest_image {
-  runner_guest_image_root, runner_guest_image_path, runner_guest_base_artifact_path, runner_guest_kernel_artifact,
+  runner_guest_image_root, runner_guest_image_path,
+}
+import gunbc.runner.microvm_guest_artifacts {
+  runner_guest_base_artifact_path, runner_guest_kernel_artifact,
 }
 import gunbc.runner.runner_microvm {
   gunbc_runner_guest_image, RunnerMicroVmShape,
@@ -139,6 +143,7 @@ import gunbc.runner.runner_attempt_launch {
 import gunbc.runner.runner_group_restriction_observation {
   MicrovmRunnerGroupStanding, RunnerGroupRestrictionNotYetObserved, microvm_shakedown_runner_group_name,
   runner_group_restriction_not_yet_observed, observe_shakedown_runner_group_restriction,
+  microvm_shakedown_selected_workflow,
 }
 import gunbc.runner.jit_registration_subject { microvm_registration_subject }
 import gunbc.runner.runner_jit_perform {
@@ -171,7 +176,7 @@ data runner_microvm_slot_controller_disposition: ConstructionMechanism = SingleA
 // by gunbc.runner.runner_microvm, the launch plan by gunbc.runner.runner_attempt_launch, the sanitation subject by
 // gunbc.runner.runner_microvm_network, and the attempt itself by the lifecycle controller. This module
 // obtains each one's INPUTS from the host and hands the outputs down in the order the world
-// requires; it adds no verdict and no second orchestration model (DESIGN section 3, replacement
+// requires; it adds no verdict and no second orchestration model (gunbc.design_argument::single_authority, replacement
 // migrations: integrate the landed controller, never stand a second one beside it).
 //
 // THE ORDER IS THE SAFETY PROPERTY. Nothing is minted before the slot is bound to this machine and
@@ -325,6 +330,10 @@ fn observe_reservation(slot: RunnerSlotIdentity) -> RequiredBuildCellObservation
 // controller-custodied key.
 fn attempt_mint_binding(binding: MicroVmCellBinding) -> JitMintBinding admit_callers: [
   decl_ref(module_path: "gunbc.runner.runner_microvm_slot_controller", decl_name: "mint_attempt_credential"),
+  // The attempt witness executes this mint on the sealed fixture binding (prod gap sweep: the
+  // function was gated to one production caller and run by NOTHING, which is how its closure
+  // broke unnoticed). The witness is the verifying caller the roster admits for it.
+  decl_ref(module_path: "test.claim.runner.runner_microvm_attempt_witness", decl_name: "attempt_mint_binding_binds_the_shakedown_lane"),
 ] {
   jit_mint_binding(
     subject: microvm_registration_subject(binding: binding),
@@ -563,14 +572,6 @@ fn slot_controller_launch(
 
 // ── the entry the unit execs, and its receipt ───────────────────────────────────────────────────
 
-fn slot_controller_receipt_prefix(instance: String) -> String {
-  join([microvm_slot_controller_receipt_dir, "/", instance, "-"], "")
-}
-
-fn slot_controller_receipt_path(instance: String, invocation_id: NonEmptyStr) -> String {
-  microvm_unit_receipt_path(prefix: slot_controller_receipt_prefix(instance: instance), invocation_id: invocation_id)
-}
-
 fn refusal_text(r: SlotControllerRefusal) -> String {
   match r {
     EnvironmentAbsent { name: n } => join(["EnvironmentAbsent ", n, " -- the unit did not set it, so the controller cannot name its slot or locus"], "")
@@ -630,7 +631,7 @@ fn controller_outcome_label(c: ControllerOutcome) -> String {
 // WRITTEN IS ITSELF A FAILURE (review 69796: the first cut discarded the write's result): the
 // receipt is the one operator-facing artifact of an incarnation, and Restart=no exists so a
 // refused slot stays refused until someone has read it -- exiting zero over an unwritten receipt
-// would be the fabricated success DESIGN section 5 forbids.
+// would be the fabricated success gunbc.design_argument::fail_closed forbids.
 fn microvm_slot_controller_main() -> ProcessExit
   uses net: Network, fs: Filesystem
 {
@@ -663,17 +664,26 @@ fn controller_exit(instance: String, invocation_id: NonEmptyStr, outcome: SlotCo
   uses fs: Filesystem
 {
   let text = outcome_text(o: outcome)
-  let path = slot_controller_receipt_path(instance: instance, invocation_id: invocation_id)
-  let w = Filesystem.Write(path: path, content: concat(text, "\n"))
-  if !w.success {
-    exit_failure(reason: join(["microvm_slot_controller ", instance, ": receipt write refused at ", path, ": ", w.error, " -- outcome was: ", text], ""))
-  } else {
-    match outcome {
-      SlotControllerRan { outcome: _ } => ExitSuccess
-      SlotControllerSettledWithoutLaunch { reason: _ } => ExitSuccess
-      SlotControllerCommissioned => ExitSuccess
-      SlotControllerRefused { refusal: _ } => exit_failure(reason: join(["microvm_slot_controller ", instance, ": ", text], ""))
-    }
+  match microvm_receipt_store(tree: host_state_tree()) {
+    MicrovmReceiptStoreUnready { detail } =>
+      exit_failure(reason: join(["microvm_slot_controller ", instance, ": the receipt store is unready: ", detail, " -- outcome was: ", text], ""))
+    MicrovmReceiptStoreReady { store } =>
+      match microvm_receipt_record(store: store, writer: ControllerReceipts { instance: instance }, invocation_id: invocation_id, content: concat(text, "\n")) {
+        CreateOnceRefused { path, cause } =>
+          exit_failure(reason: join(["microvm_slot_controller ", instance, ": receipt write refused at ", path, ": ", cause, " -- outcome was: ", text], ""))
+        CreateOnceAlreadyRecorded { path } =>
+          exit_failure(reason: join(["microvm_slot_controller ", instance, ": a receipt already exists at ", path, " and is never overwritten -- outcome was: ", text], ""))
+        CreateOnceRecorded { path: _ } => controller_exit_code(instance: instance, text: text, outcome: outcome)
+      }
+  }
+}
+
+fn controller_exit_code(instance: String, text: String, outcome: SlotControllerOutcome) -> ProcessExit {
+  match outcome {
+    SlotControllerRan { outcome: _ } => ExitSuccess
+    SlotControllerSettledWithoutLaunch { reason: _ } => ExitSuccess
+    SlotControllerCommissioned => ExitSuccess
+    SlotControllerRefused { refusal: _ } => exit_failure(reason: join(["microvm_slot_controller ", instance, ": ", text], ""))
   }
 }
 

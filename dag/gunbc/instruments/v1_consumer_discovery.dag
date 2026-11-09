@@ -135,7 +135,7 @@ fn v1cd_rows_at_node(
 
 // ONE LINEAR PASS OVER THE DECLARATION TREE, not a materialized subtree list. v2.std.node
 // node_subtree_nodes would answer the same population by concatenating a list at every node, which
-// is the copied-accumulator cost shape DESIGN section 6 rules is always fixed regardless of the
+// is the copied-accumulator cost shape gunbc.design_argument::how_to_work rules is always fixed regardless of the
 // realized n -- and n here is every declaration node in the corpus. atom_identities_in_node reads
 // the atoms among a node's immediate children, so visiting every node covers every atom; the
 // overlap is a repeat, and v1cd_push_unique already keys on the row identity.
@@ -150,7 +150,7 @@ fn v1cd_rows_in_fact(fact: DeclFact, producer: DiscoveryProducer) -> List<V1Cons
 }
 
 // THE FOLD OVER THE UNIVERSE. The universe is the declarations decl_facts answers for the supplied
-// roots -- independently discovered and closed in the sense DESIGN section 5 requires of an oracle:
+// roots -- independently discovered and closed in the sense gunbc.design_argument::fail_closed requires of an oracle:
 // this module does not choose which declarations exist, and a declaration authored tomorrow enters
 // the population without anyone editing a roster.
 
@@ -172,7 +172,7 @@ fn v1cd_fact_is_the_signature_table(fact: DeclFact) -> Bool {
 
 // THE FOLD TAKES ITS FACTS AS AN ARGUMENT, and that is what makes it testable at ordinary cost
 // rather than only at whole-corpus cost. Over the live corpus the population is every declaration
-// decl_facts answers -- independently discovered and closed in the sense DESIGN section 5 requires
+// decl_facts answers -- independently discovered and closed in the sense gunbc.design_argument::fail_closed requires
 // of an oracle, since this module does not choose which declarations exist. Over a KEYED read it is
 // one real declaration node, which is the same fold on the same shape of input and is what the
 // per-PR witness executes. The two differ in their subject, never in their mechanism, so a defect
@@ -223,7 +223,7 @@ fn v1_discovery_keys() -> List<String> {
 
 // THE JOIN, AND IT LIVES HERE RATHER THAN IN THE CENSUS ON PURPOSE. v1_consumers_undisposed takes
 // the discovered population as a PARAMETER, because a census that supplies its own denominator
-// asserts completeness by writing it down -- the change-detector shape DESIGN section 5 names,
+// asserts completeness by writing it down -- the change-detector shape gunbc.design_argument::fail_closed names,
 // where automating the literal collapses the assertion to measure() == measure(). This module is
 // the outside supplier that refusal was waiting for, so the join happens at the one place holding
 // both halves and neither half can edit the other.
@@ -251,7 +251,7 @@ fn v1_discovery_undisposed() -> List<String> {
 // walk whose cost the floor admits, which is what the long home's storage agreement exists to
 // grant and is not this lane's decision to take.
 //
-// ITS RED IS AUTHORABLE AND HAS BEEN AUTHORED, which is the question DESIGN section 4b says to ask
+// ITS RED IS AUTHORABLE AND HAS BEEN AUTHORED, which is the question gunbc.design_argument::guarantee_ladder says to ask
 // of a check before writing it: the forbidden state is an ordinary .dag declaration naming a v1
 // binary with no row beside it, expressible in the accepted corpus, and the refusal fires on the
 // real path. Re-derive both arms rather than trusting a sentence: run the command v1cd_producer
@@ -259,7 +259,7 @@ fn v1_discovery_undisposed() -> List<String> {
 //
 // THE RUNNABLE ENTRY REFUSES rather than reporting. A run that found undisposed relations has found
 // exactly the thing that blocks the cutover, so answering ExitSuccess with a list printed beside it
-// would be a green run over a red fact -- the shape DESIGN section 5 forbids in the arm it forbids
+// would be a green run over a red fact -- the shape gunbc.design_argument::fail_closed forbids in the arm it forbids
 // it in. The refusal carries the count and the keys, so a reader gets the finding from the exit.
 fn v1_discovery_gate() -> ProcessExit {
   let undisposed = v1_discovery_undisposed()

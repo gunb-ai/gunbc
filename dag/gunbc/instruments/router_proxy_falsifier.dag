@@ -2,16 +2,21 @@ module gunbc.instruments.router_proxy_falsifier
 
 import std.types { Int, List, String, Bool, NonEmptyStr, Port }
 import std.optional { Optional, Present, Absent }
+import std.algebra { skip, list_append }
 import std.measure { byte_size }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld, NativeClaimNoObservation }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.docker.cli_service { DockerCli }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, json_object_members_named }
+import extdeps.languages.json.emit { JsonValue, JsonString, JsonBool, JsonArray, JsonObject, json_int, json_string, json_object, json_kv }
+import extdeps.docker.cli_service { DockerCli, SignalHangup }
 import extdeps.container.curlimages_curl { curlimages_curl_8_11_1_image }
 import extdeps.proxy.openresty {
   NginxDirective, NginxToken, NginxVariable, WorkerProcesses, EventsBlock, HttpBlock, AccessLogOff, ServerBlock, ListenOn, LocationBlock, ExactMatch, PrefixMatch,
-  ClientMaxBodySize, ClientBodyBufferSize, LuaPhaseBlock, AccessPhase, ContentPhase, LogPhase, LuaSharedDict, nginx_token, nginx_variable, ProxyPassDirective, ProxyPassToHost, ProxyNextUpstreamDirective,
+  ClientMaxBodySize, ClientBodyBufferSize, LuaPhaseBlock, AccessPhase, ContentPhase, LogPhase, LuaSharedDict, ListenTlsOn, SslCertificate, SslCertificateKey, nginx_token, nginx_variable, ProxyPassDirective, ProxyPassToHost, ProxyNextUpstreamDirective,
   ProxyBufferingDirective, ProxyRequestBufferingDirective, render_nginx_directives, openresty_1_27_1_1_image, openresty_image_config_path,
 }
+import gunbc.serving.router_dev_policy { RouterDevSite, RouterDevConfig, RouterDevConfigRendered, RouterDevConfigRefused, router_dev_config, RouterDevUpstream, RouterUpstreamScheme, UpstreamHttp, OwnedCap, RentedCapped, RentedUncapped, NoRetention, RetentionAdmitted, EffortRewriteTo, router_dev_first_party_json, router_dev_first_party, router_dev_retiring_name_conflict, no_effort_rules, RouterDevRetention, RouterDevH11Engine, RouterDevH11Projected, RouterDevH11Refused, router_dev_h11_projection, router_dev_h11_engines, RouterDevFirstParty, RouterDevFirstPartyRows, RouterDevFirstPartyRefused, router_dev_first_party_for, router_dev_first_party_refusal }
+import gunbc.serving.serving_layout { host_6ce85c_layout, ServingLayoutResult, ServingLayoutConfigured, ServingLayoutRefused, ServingLayoutNoGroups }
 import gunbc.serving.router_proxy_config {
   RouterProxyConfig, RouterProxyConfigRendered, RouterProxyConfigRefused, router_proxy_config, router_proxy_vocabulary, router_proxy_directives,
 }
@@ -43,6 +48,7 @@ fn docker() -> NonEmptyStr { "docker" as NonEmptyStr }
 fn fixture_name() -> NonEmptyStr { "gunbc-rpf-fixture" as NonEmptyStr }
 fn router_name() -> NonEmptyStr { "gunbc-rpf-router" as NonEmptyStr }
 fn unreachable_router_name() -> NonEmptyStr { "gunbc-rpf-router-noauthz" as NonEmptyStr }
+fn dev_router_name() -> NonEmptyStr { "gunbc-rpf-dev" as NonEmptyStr }
 fn test_name() -> NonEmptyStr { "gunbc-rpf-test" as NonEmptyStr }
 fn shared_namespace() -> NonEmptyStr { "container:gunbc-rpf-fixture" as NonEmptyStr }
 fn absent_daemon() -> NonEmptyStr { "unix:///nonexistent/gunbc-router-proxy-falsifier.sock" as NonEmptyStr }
@@ -86,6 +92,56 @@ fn fixture_location(path: String, exact: Bool, lines: List<String>) -> List<Ngin
   }
 }
 
+// THE DEV-POLICY UPSTREAMS: a plain HTTP upstream and two HTTPS upstreams, each echoing which upstream it
+// is, the Authorization it was sent and the body. The certificate of the first HTTPS one is the pinned
+// bundle the dev router trusts; the second presents a certificate outside the bundle.
+fn echo_lines(name: String) -> List<String> {
+  ["ngx.req.read_body()", "ngx.say('upstream=" + name + " auth=', ngx.var.http_authorization or '', ' body=', ngx.req.get_body_data() or '')"]
+}
+
+// ?enter=1 WITH ?hold=1 PRINTS AND FLUSHES A FIRST LINE, 'entered', BEFORE SLEEPING: the fixture's own signal that the turn is
+// inside the upstream, which the router reaches only after begin_turn admitted it. A reader that waits for this
+// line establishes the hold independently of the router's active count, which it never polls.
+// THE SAME ECHO, ABLE TO HOLD A TURN: ?hold keeps the request inside the upstream for six seconds, which
+// is how a cap becomes observable from the outside -- the turn is active while it sleeps. Without this the
+// binding rules could only ever be tested against a cap of zero.
+fn echo_lines_holding_turn(name: String) -> List<String> {
+  ["ngx.req.read_body()", "if ngx.var.arg_hold then if ngx.var.arg_enter then ngx.say('entered') ngx.flush(true) end ngx.sleep(6) end", "ngx.say('upstream=" + name + " auth=', ngx.var.http_authorization or '', ' body=', ngx.req.get_body_data() or '')"]
+}
+
+// THE SAME ECHO, ABLE TO ANSWER AS A STREAM: ?sse=1 answers text/event-stream with the frames below, the
+// usage frame split across two flushes so the router's body filter sees a frame that spans chunks. The
+// frames are declared once; the fixture prints them and the case compares the client's bytes to them. They are
+// printed inside level-1 long brackets because "data: [DONE]" ends in "]", which closes a level-0 one early.
+fn sse_content_frame() -> String { "data: \{\"choices\":[\{\"delta\":\{\"content\":\"hi\"}}]}" }
+fn sse_usage_head() -> String { "data: \{\"usage\":\{\"prompt_tokens\":7001,\"completion_tokens\":3003," }
+fn sse_usage_tail() -> String { "\"prompt_tokens_details\":\{\"cached_tokens\":5001}}}" }
+fn sse_done_frame() -> String { "data: [DONE]" }
+fn sse_stream_text() -> String { sse_content_frame() + "\n\n" + sse_usage_head() + sse_usage_tail() + "\n\n" + sse_done_frame() + "\n\n" }
+
+fn echo_lines_or_sse(name: String) -> List<String> {
+  [
+    "ngx.req.read_body()",
+    "if ngx.var.arg_sse then",
+    "  ngx.header['Content-Type'] = 'text/event-stream'",
+    "  ngx.print([=[" + sse_content_frame() + "]=] .. '\\n\\n') ngx.flush(true)",
+    "  ngx.print([=[" + sse_usage_head() + "]=]) ngx.flush(true) ngx.sleep(0.2)",
+    "  ngx.print([=[" + sse_usage_tail() + "]=] .. '\\n\\n') ngx.flush(true)",
+    "  ngx.print([=[" + sse_done_frame() + "]=] .. '\\n\\n')",
+    "  return",
+    "end",
+    "ngx.say('upstream=" + name + " auth=', ngx.var.http_authorization or '', ' body=', ngx.req.get_body_data() or '')",
+  ]
+}
+
+fn tls_fixture_server(port: Port, cert: String, key: String, name: String) -> List<NginxDirective> {
+  match tok(text: "127.0.0.1") { Absent => no_directives() Present { value: host } =>
+  match tok(text: cert) { Absent => no_directives() Present { value: c } =>
+  match tok(text: key) { Absent => no_directives() Present { value: k } =>
+    [ServerBlock { body: concat([ListenTlsOn { address: host, port: port }, SslCertificate { path: c }, SslCertificateKey { path: k }], fixture_location(path: "/", exact: false, lines: echo_lines(name: name))) }]
+  } } }
+}
+
 fn fixture_server(port: Port, locations: List<NginxDirective>) -> List<NginxDirective> {
   match tok(text: "127.0.0.1") {
     Present { value: host } => [ServerBlock { body: concat([ListenOn { address: host, port: port }], locations) }]
@@ -99,6 +155,24 @@ fn fixture_server(port: Port, locations: List<NginxDirective>) -> List<NginxDire
 // address; the sink counts stream-end notices and keeps the last permit; the upstream
 // counts its hits, echoes the body and sends one SSE event, flushes, then either aborts its connection
 // (?reset) or optionally waits four seconds (?slow) before a second.
+fn dev_upstreams() -> List<NginxDirective> {
+  concat(concat(concat(concat(concat(
+      fixture_server(port: 19101, locations: fixture_location(path: "/", exact: false, lines: echo_lines_or_sse(name: "a"))),
+      tls_fixture_server(port: 19443, cert: "/etc/fake/b.crt", key: "/etc/fake/b.key", name: "b")),
+    tls_fixture_server(port: 19444, cert: "/etc/fake/o.crt", key: "/etc/fake/o.key", name: "d")),
+    // The two engines that answer m-e. e1's certificate is outside the pins, so every turn routed to it
+    // fails at the TLS handshake -- a 502 the health guard must eject -- and e2 is a healthy engine the
+    // session can only reach by MOVING, which is what the unavailable-binding case asserts.
+    tls_fixture_server(port: 19445, cert: "/etc/fake/o.crt", key: "/etc/fake/o.key", name: "e1")),
+    fixture_server(port: 19106, locations: fixture_location(path: "/", exact: false, lines: echo_lines(name: "e2"))),
+    fixture_server(port: 19105, locations: fixture_location(path: "/", exact: false, lines: echo_lines_holding_turn(name: "f1"))),
+    // f2 answers m-f too, with the SAME cap: the two rows tie on free capacity, so the pick loop keeps
+    // the row it sees first and a new session binds to f1. f2 is the engine a LOST binding would
+    // silently escape to -- which is what the at-cap case forbids.
+    fixture_server(port: 19107, locations: fixture_location(path: "/", exact: false, lines: echo_lines(name: "f2")))
+  ))
+}
+
 fn fixture_directives() -> List<NginxDirective> {
   let authz = fixture_location(path: "/authz", exact: true, lines: [
     "if ngx.var.http_x_deny then return ngx.exit(403) end",
@@ -145,7 +219,7 @@ fn fixture_directives() -> List<NginxDirective> {
   [
     WorkerProcesses { count: 1 },
     EventsBlock,
-    HttpBlock { body: concat(concat(concat(concat([AccessLogOff, ClientMaxBodySize { size: byte_size(count: 16777216) }, ClientBodyBufferSize { size: byte_size(count: 16777216) }], dict), fixture_server(port: 19001 as Port, locations: authz)), fixture_server(port: 19002 as Port, locations: concat(stream_end, ends))), fixture_server(port: 19003 as Port, locations: upstream)) },
+    HttpBlock { body: concat(concat(concat(concat(concat([AccessLogOff, ClientMaxBodySize { size: byte_size(count: 16777216) }, ClientBodyBufferSize { size: byte_size(count: 16777216) }], dict), fixture_server(port: 19001, locations: authz)), fixture_server(port: 19002, locations: concat(stream_end, ends))), fixture_server(port: 19003, locations: upstream)), dev_upstreams()) },
   ]
 }
 
@@ -174,8 +248,9 @@ fn remove_all() -> Int {
   let a = DockerCli.RemoveForce(docker: docker(), name: test_name())
   let b = DockerCli.RemoveForce(docker: docker(), name: router_name())
   let c = DockerCli.RemoveForce(docker: docker(), name: unreachable_router_name())
+  let e = DockerCli.RemoveForce(docker: docker(), name: dev_router_name())
   let d = DockerCli.RemoveForce(docker: docker(), name: fixture_name())
-  a.exit_code + b.exit_code + c.exit_code + d.exit_code
+  a.exit_code + b.exit_code + c.exit_code + e.exit_code + d.exit_code
 }
 
 fn destination(name: NonEmptyStr) -> String {
@@ -201,7 +276,433 @@ fn start_with(name: NonEmptyStr, network: NonEmptyStr, conf_path: String) -> Int
   created.exit_code + copied.exit_code + started.exit_code
 }
 
+fn start_with_command(name: NonEmptyStr, network: NonEmptyStr, conf_path: String, command: List<String>, extras: List<CopyPair>) -> Int {
+  let created = DockerCli.Create(docker: docker(), name: name, network: network, image: openresty_1_27_1_1_image, command: command)
+  let copied = DockerCli.CopyInto(docker: docker(), source: conf_path, destination: destination(name: name))
+  let extras_copied = copy_all(name: name, extras: extras, acc: 0)
+  let started = DockerCli.Start(docker: docker(), name: name)
+  created.exit_code + copied.exit_code + extras_copied + started.exit_code
+}
+
+type CopyPair {
+  source: String
+  target: String
+}
+
+fn no_copies() -> List<CopyPair> { [] }
+
+// Each copy in order, summing the exit codes into acc; tail recursion (the realization lowers it to a
+// loop) rather than a fold, because each step performs an effect that must finish before the next.
+fn copy_all(name: NonEmptyStr, extras: List<CopyPair>, acc: Int) -> Int {
+  match first(extras) {
+    Absent => acc
+    Present { value: c } => {
+      let r = DockerCli.CopyInto(docker: docker(), source: c.source, destination: concat(concat(name as String, ":"), c.target))
+      copy_all(name: name, extras: skip(extras, 1), acc: acc + r.exit_code)
+    }
+  }
+}
+
+// A self-signed certificate made inside the container before the server starts (the image carries the
+// openssl tool), so no key material is in the repository or on the host.
+fn self_signed(key: String, cert: String, cn: String) -> String {
+  "openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=" + cn + " -addext subjectAltName=DNS:" + cn + " -keyout " + key + " -out " + cert + " 2>/dev/null"
+}
+
+fn fixture_command() -> List<String> {
+  ["sh", "-c", "mkdir -p /etc/fake && " + self_signed(key: "/etc/fake/b.key", cert: "/etc/fake/b.crt", cn: "fakeb") + " && " + self_signed(key: "/etc/fake/o.key", cert: "/etc/fake/o.crt", cn: "fakeb") + " && exec openresty -g 'daemon off;'"]
+}
+
+fn dev_state_dir() -> String { "/usr/local/openresty/nginx/conf" }
+
+fn dev_router_command() -> List<String> {
+  ["sh", "-c", "mkdir -p " + dev_state_dir() + "/tls && " + self_signed(key: dev_state_dir() + "/tls/key.pem", cert: dev_state_dir() + "/tls/cert.pem", cn: "router") + " && exec openresty -g 'daemon off;'"]
+}
+
+fn dev_site() -> RouterDevSite {
+  RouterDevSite { listen_address: "127.0.0.1", listen_port: 18445, state_dir: dev_state_dir(), model_alias: "flash-next" }
+}
+
+// The dev config, or the token it refused: a refusal is reported by name in dev_world_starts, never
+// replaced by an empty configuration.
+fn dev_config() -> RouterDevConfig { router_dev_config(site: dev_site()) }
+
+fn dev_text() -> String {
+  match dev_config() { RouterDevConfigRendered { text: t } => t RouterDevConfigRefused { token: _ } => "" }
+}
+
+fn dev_refusal() -> String {
+  match dev_config() { RouterDevConfigRendered { text: _ } => "" RouterDevConfigRefused { token: k } => concat("dev config refused token ", k) }
+}
+
+// Four upstreams: a (HTTP), b (HTTPS, pinned), c (cap 0) and d (HTTPS, certificate outside the bundle).
+// a carries an effort dialect (xhigh becomes high, none drops thinking), so the in-place body rewrite runs.
+fn dev_upstreams_json() -> String { dev_upstreams_json_with(f1: dev_f1_row(cap: "1", extra: ""), r1: dev_r1_row(retain: "1"), h1: dev_h1_row(name: "h1", extra: "")) }
+
+// THE SAME FILE WITH f1 LOWERED TO CAP 0, loaded by a reload while f1 still holds a binding: the one way a
+// session can be bound to a row whose cap is 0. max_model_len 4321 is the reload's readback mark.
+fn dev_upstreams_json_f1_cap_0() -> String { dev_upstreams_json_with(f1: dev_f1_row(cap: "0", extra: ",\"max_model_len\":4321"), r1: dev_r1_row(retain: "1"), h1: dev_h1_row(name: "h1", extra: "")) }
+
+// R1 LOWERED TO retain 0 (mark 4322): every session bound there is past retain, so a trim unbinds it and a
+// new session is refused.
+fn dev_upstreams_json_r1_retain_0() -> String { dev_upstreams_json_with(f1: dev_f1_row(cap: "0", extra: ",\"max_model_len\":4322"), r1: dev_r1_row(retain: "0"), h1: dev_h1_row(name: "h1", extra: "")) }
+
+// H1 RENAMED h1b, RETIRING h1, retain 0 (mark 4323): a session bound to h1 is carried to h1b, which a new
+// session cannot enter, so only the carry lets it through.
+fn dev_upstreams_json_h1_renamed() -> String { dev_upstreams_json_with(f1: dev_f1_row(cap: "0", extra: ",\"max_model_len\":4323"), r1: dev_r1_row(retain: "1"), h1: dev_h1_row(name: "h1b", extra: ",\"retiring_names\":[\"h1\"],\"retain\":0")) }
+
+// h1 renamed AGAIN (h1b -> h1c, retain 1, mark 4324): h-1 is still stored against h1b, so it counts against
+// h1c's retain before it returns. o1 lowered to cap 0 beside the uncapped u1 (a mixed rented pool).
+fn dev_upstreams_json_h1_renamed_again() -> String {
+  dev_upstreams_json_rented(f1: dev_f1_row(cap: "0", extra: ",\"max_model_len\":4324"), r1: dev_r1_row(retain: "1"), h1: dev_h1_row(name: "h1c", extra: ",\"retiring_names\":[\"h1b\"],\"retain\":1"), o1: dev_o1_row(cap: "0"), u1: dev_u1_row(in_service: "true"))
+}
+
+// The same rows at retain 0 (mark 4325), so h-1 -- still stored against the retired h1b -- is past retain, with u1
+// out of service: the rented pool is only the cap-0 o1, which admits no turns.
+fn dev_upstreams_json_h1_retain_0_pool_zero() -> String {
+  dev_upstreams_json_rented(f1: dev_f1_row(cap: "0", extra: ",\"max_model_len\":4325"), r1: dev_r1_row(retain: "1"), h1: dev_h1_row(name: "h1c", extra: ",\"retiring_names\":[\"h1b\"],\"retain\":0"), o1: dev_o1_row(cap: "0"), u1: dev_u1_row(in_service: "false"))
+}
+
+// The renamed-again rows (mark 4326) WITH the predecessor still configured, drained: h1b stays in the file out of
+// service, h1c retiring it. Admission allows this (a drained row's name may be retired by another row), and the
+// binding h-1 stored against h1b must still be owned by h1c.
+fn dev_upstreams_json_h1_renamed_predecessor_drained() -> String {
+  dev_upstreams_json_rented(f1: dev_f1_row(cap: "0", extra: ",\"max_model_len\":4326"), r1: dev_r1_row(retain: "1"), h1: dev_h1_row(name: "h1c", extra: ",\"retiring_names\":[\"h1b\"],\"retain\":1") + dev_h1_row(name: "h1b", extra: ",\"in_service\":false"), o1: dev_o1_row(cap: "0"), u1: dev_u1_row(in_service: "true"))
+}
+
+fn dev_r1_row(retain: String) -> String {
+  "\{\"name\":\"r1\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19101,\"key\":\"kr\",\"model\":\"m-r\",\"cap\":4,\"retain\":" + retain + "},"
+}
+
+fn dev_h1_row(name: String, extra: String) -> String {
+  "\{\"name\":\"" + name + "\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19101,\"key\":\"kh\",\"model\":\"m-h\",\"cap\":4,\"effort_effects\":[\{\"client\":\"high\",\"to\":\"xhigh\"}]" + extra + "},"
+}
+
+fn dev_f1_row(cap: String, extra: String) -> String {
+  "\{\"name\":\"f1\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19105,\"key\":\"kf\",\"model\":\"m-f\",\"cap\":" + cap + extra + ",\"in_service\":true},"
+}
+
+fn dev_upstreams_json_with(f1: String, r1: String, h1: String) -> String {
+  dev_upstreams_json_rented(f1: f1, r1: r1, h1: h1, o1: dev_o1_row(cap: "1"), u1: dev_u1_row(in_service: "true"))
+}
+
+fn dev_o1_row(cap: String) -> String {
+  "\{\"name\":\"o1\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19105,\"key\":\"ko\",\"model\":\"m-o\",\"overflow\":true,\"cap\":" + cap + "},"
+}
+
+// u1 answers from the HOLDING fixture (19105), so a ?hold=1 turn on m-u stays in flight while stats are read.
+fn dev_u1_row(in_service: String) -> String {
+  "\{\"name\":\"u1\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19105,\"key\":\"ku\",\"model\":\"m-u\",\"overflow\":true,\"in_service\":" + in_service + "},"
+}
+
+fn dev_upstreams_json_rented(f1: String, r1: String, h1: String, o1: String, u1: String) -> String {
+  "[\{\"name\":\"a\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19101,\"key\":\"ka\",\"model\":\"m-a\",\"cap\":4,\"effort_effects\":[\{\"client\":\"xhigh\",\"to\":\"high\"},\{\"client\":\"none\",\"drop_thinking\":true}]},"
+    + "\{\"name\":\"b\",\"scheme\":\"https\",\"host\":\"127.0.0.1\",\"port\":19443,\"sni\":\"fakeb\",\"key\":\"kb\",\"model\":\"m-b\",\"cap\":4},"
+    + "\{\"name\":\"c\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19101,\"key\":\"kc\",\"model\":\"m-c\",\"cap\":0},"
+    + "\{\"name\":\"d\",\"scheme\":\"https\",\"host\":\"127.0.0.1\",\"port\":19444,\"sni\":\"fakeb\",\"key\":\"kd\",\"model\":\"m-d\",\"cap\":4},"
+    + "\{\"name\":\"e1\",\"scheme\":\"https\",\"host\":\"127.0.0.1\",\"port\":19445,\"sni\":\"fakeb\",\"key\":\"ke1\",\"model\":\"m-e\",\"cap\":1,\"in_service\":true},"
+    + "\{\"name\":\"e2\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19106,\"key\":\"ke2\",\"model\":\"m-e\",\"cap\":1,\"in_service\":true},"
+    + f1
+    + "\{\"name\":\"f2\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19107,\"key\":\"kf2\",\"model\":\"m-f\",\"cap\":1,\"in_service\":true},"
+    + r1
+    + o1
+    + u1
+    + h1
+    + "\{\"name\":\"s1\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19105,\"key\":\"ks1\",\"model\":\"m-s\",\"cap\":1},"
+    + "\{\"name\":\"s2\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19107,\"key\":\"ks2\",\"model\":\"m-s\",\"cap\":1},"
+    + "\{\"name\":\"g1\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19108,\"key\":\"kg\",\"model\":\"m-g\",\"cap\":1,\"in_service\":false},"
+    + "\{\"name\":\"q1\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19107,\"key\":\"kq\",\"model\":\"Qwen3.8-Flash-Next\",\"cap\":4}]"
+}
+
+fn dev_request(key: String, session: String, body: String, path: String) -> String {
+  curl(arguments: ["-k", "-sS", "--max-time", "10", "-H", concat("Authorization: Bearer ", key), "-H", concat("x-session-id: ", session), "-d", body, "-w", "\n%\{http_code\}", concat("https://127.0.0.1:18445", path)])
+}
+
+fn dev_get(key: String, path: String) -> String {
+  curl(arguments: ["-k", "-sS", "--max-time", "10", "-H", concat("Authorization: Bearer ", key), "-w", "\n%\{http_code\}", concat("https://127.0.0.1:18445", path)])
+}
+
+fn model_body(model: String) -> String { concat(concat("\{\"model\":\"", model), "\"\}") }
+
+// A body whose bytes an engine's prompt depends on: spaced, with objects whose key order is not sorted,
+// and the model between them. Any re-serialization changes these bytes; a splice changes one literal.
+fn order_body(model: String, kwargs: String) -> String {
+  "\{\"tools\": [\{\"type\": \"function\", \"function\": \{\"name\": \"t\", \"parameters\": \{\"zeta\": 1, \"alpha\": 2, \"mid\": 3}}}], \"model\": \"" + model + "\", \"chat_template_kwargs\": \{" + kwargs + "}, \"stream\": false}"
+}
+
+// Reads /v1/models until it carries the mark, at most n more times: a reload is asynchronous to the
+// signal that asks for it, so the turn after it waits for the reloaded worker to answer.
+fn await_models(mark: String, n: Int) -> String {
+  let r = dev_get(key: "ck-falsifier", path: "/v1/models")
+  if contains(s: r, p: mark) || n <= 0 { r } else { await_models(mark: mark, n: n - 1) }
+}
+
 fn contains(s: String, p: String) -> Bool { string_contains(s: s, pattern: p) }
+
+// A ROW WITH NO OPTIONALITIES SET, so a falsifier case can state the one field it is about. The guard
+// under test reads name, in_service and retiring_names only; everything else is filler.
+fn dev_row(name: String, retiring: List<String>) -> RouterDevUpstream {
+  dev_row_retaining(name: name, retiring: retiring, retention: NoRetention)
+}
+
+fn dev_row_retaining(name: String, retiring: List<String>, retention: RouterDevRetention) -> RouterDevUpstream {
+  RouterDevUpstream { name: name, scheme: UpstreamHttp, host: "127.0.0.1", port: 19101, tls_name: Absent, model: "m", capacity: OwnedCap { turns: 1 }, max_model_len: 0, path_prefix: "", retiring_names: retiring, in_service: true, retention: retention, effort_effects: no_effort_rules(), capacity_rests_on: [] }
+}
+
+// A SHIPPED ROW'S RENDERED MEMBER, compared as the JSON value the proxy reads: the typed row and the wire row
+// are two facts, and only this reads the second.
+// THE SHIPPED ROWS, read through the sum: a refused projection is a case not held, never an empty roster.
+fn shipped_rows_hold(p: fn(List<RouterDevUpstream>) -> Bool) -> Bool {
+  match router_dev_first_party() {
+    RouterDevFirstPartyRows { rows: rs } => p(rs)
+    RouterDevFirstPartyRefused { reason: _ } => false
+  }
+}
+
+fn shipped_json_holds(p: fn(String) -> Bool) -> Bool {
+  match router_dev_first_party_json(fp: router_dev_first_party()) {
+    Present { value: j } => p(j)
+    Absent => false
+  }
+}
+
+fn shipped_row_member_is(name: String, key: String, want: JsonValue) -> Bool {
+  shipped_json_holds(p: j => any(row_array(json: j), r => match r {
+    JsonObject { members } => any(json_object_members_named(members: members, key: "name"), n => n == json_string(s: name)) && any(json_object_members_named(members: members, key: key), v => v == want)
+    _ => false
+  }))
+}
+
+fn shipped_row_effort_rule_is(name: String, client: String, to: String) -> Bool {
+  shipped_json_holds(p: j => any(row_array(json: j), r => match r {
+    JsonObject { members } => any(json_object_members_named(members: members, key: "name"), n => n == json_string(s: name)) && any(json_object_members_named(members: members, key: "effort_effects"), v => match v {
+      JsonArray { elements } => any(elements, e => e == json_object(members: [json_kv(key: "client", value: json_string(s: client)), json_kv(key: "to", value: json_string(s: to))]))
+      _ => false
+    })
+    _ => false
+  }))
+}
+
+fn shipped_h11_05_renders_derived_retain_and_cap() -> Bool {
+  shipped_rows_hold(p: all_rows => shipped_h11_05_rows_hold(rows: filter(all_rows, u => u.name == "h11-05")))
+}
+
+fn shipped_h11_05_rows_hold(rows: List<RouterDevUpstream>) -> Bool {
+  count(rows) == 1 && all(rows, u => match u.retention {
+    RetentionAdmitted { conversations: n } => shipped_row_member_is(name: "h11-05", key: "retain", want: json_int(n: n as Int)) && match u.capacity {
+      OwnedCap { turns: t } => shipped_row_member_is(name: "h11-05", key: "cap", want: json_int(n: t as Int))
+      _ => false
+    }
+    _ => false
+  })
+}
+
+// THE h11 PROJECTION, SUPPLIED THE SAME NAMING POPULATION FOR EVERY CONTROL (gunbc.design_argument::single_authority: a witness discriminates
+// at one interface). The population holds the four granted engines AND two the layout no longer grants (c5, c7),
+// so a projection that ignores the grant includes them and a projection that drops a granted engine loses one.
+// The summary is name:retain for every projected row, in layout order, or REFUSED: and the reason.
+fn h11_population_with_ungranted() -> List<RouterDevH11Engine> {
+  concat(router_dev_h11_engines(), [
+    RouterDevH11Engine { name: "h11-85", bus: "c5", port: 18085, retiring: [] },
+    RouterDevH11Engine { name: "h11-87", bus: "c7", port: 18087, retiring: [] },
+  ])
+}
+
+fn h11_retain_text(r: RouterDevRetention) -> String {
+  match r {
+    RetentionAdmitted { conversations: n } => to_string(n as Int)
+    _ => "none"
+  }
+}
+
+fn h11_projection_summary(layout: ServingLayoutResult, engines: List<RouterDevH11Engine>) -> String {
+  match router_dev_h11_projection(layout: layout, engines: engines) {
+    RouterDevH11Refused { reason: r } => concat("REFUSED: ", r)
+    RouterDevH11Projected { rows: rs } => fold(rs, init: "", f: (acc, u) => concat(acc, concat(if acc == "" { "" } else { "," }, concat(u.name, concat(":", h11_retain_text(r: u.retention))))))
+  }
+}
+
+fn h11_summary_is_refused(text: String) -> Bool { contains(s: text, p: "REFUSED: ") }
+
+fn h11_without_one_granted_naming() -> List<RouterDevH11Engine> {
+  filter(h11_population_with_ungranted(), e => e.bus != "c8")
+}
+
+fn h11_with_a_duplicate_naming() -> List<RouterDevH11Engine> {
+  concat(h11_population_with_ungranted(), [RouterDevH11Engine { name: "h11-05b", bus: "85", port: 19081, retiring: [] }])
+}
+
+fn h11_refused_layout() -> ServingLayoutResult { ServingLayoutRefused { refusal: ServingLayoutNoGroups } }
+
+fn h11_refused_layout_stops_the_write() -> Bool {
+  match router_dev_first_party_refusal(fp: router_dev_first_party_for(layout: h11_refused_layout(), engines: router_dev_h11_engines())) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn shipped_pool_row_renders_its_cap() -> Bool {
+  shipped_rows_hold(p: all_rows => shipped_pool_rows_hold(rows: filter(all_rows, u => u.name == "ctrl-vast-pool")))
+}
+
+fn shipped_pool_rows_hold(rows: List<RouterDevUpstream>) -> Bool {
+  count(rows) == 1 && all(rows, u => match u.capacity {
+    RentedCapped { turns: t } => shipped_row_member_is(name: "ctrl-vast-pool", key: "cap", want: json_int(n: t as Int)) && shipped_row_member_is(name: "ctrl-vast-pool", key: "overflow", want: JsonBool { value: true })
+    _ => false
+  })
+}
+
+// HOW MANY TIMES A NEEDLE OCCURS. Some rows must count, not just spot: eleven rows carrying a field is a
+// different fact from one row carrying it, and a presence test cannot tell them apart.
+// ROW FIELDS ARE COUNTED BY PARSING, NOT BY GREPPING THE RENDER. Two emitters are in play here:
+// this repository's serialize_json writes '"key": value' and cjson (used by the running proxy) writes
+// '"key":value'. A string needle spells one of them and silently misses the other -- a count of zero
+// for a field present in every row is a test bug, not a product bug, and it is invisible unless the
+// expectation is written against the parsed value.
+fn row_array(json: String) -> List<JsonValue> {
+  match parse_json_document(s: json) {
+    JsonDocumentParsed { value: JsonArray { elements } } => elements
+    _ => []
+  }
+}
+
+fn row_string_field_count(json: String, key: String, want: String) -> Int {
+  count(filter(row_array(json: json), r => match r {
+    JsonObject { members } => any(json_object_members_named(members: members, key: key), v => match v {
+      JsonString { value } => value == want
+      _ => false
+    })
+    _ => false
+  }))
+}
+
+fn row_bool_field_count(json: String, key: String, want: Bool) -> Int {
+  count(filter(row_array(json: json), r => match r {
+    JsonObject { members } => any(json_object_members_named(members: members, key: key), v => match v {
+      JsonBool { value } => value == want
+      _ => false
+    })
+    _ => false
+  }))
+}
+
+fn row_key_count(json: String, key: String) -> Int {
+  count(filter(row_array(json: json), r => match r {
+    JsonObject { members } => count(json_object_members_named(members: members, key: key)) > 0
+    _ => false
+  }))
+}
+
+// N sequential turns of distinct sessions to one model, joined: the metering cases need a count no other row shares.
+fn turns(n: Int, model: String) -> String { turns_from(n: n, model: model, acc: "") }
+
+fn turns_from(n: Int, model: String, acc: String) -> String {
+  if n <= 0 { acc } else { turns_from(n: n - 1, model: model, acc: concat(acc, dev_request(key: "ck-falsifier", session: concat("turn-", to_string(n)), body: model_body(model: model), path: "/v1/chat/completions"))) }
+}
+
+// The modeled vLLM rows carry the rule vLLM needs: it refuses "high" with a 400, so "high" must be rewritten to "xhigh".
+// The process case above feeds the proxy a fixture row, so it proves the mechanism; this one reads the SHIPPED rows.
+fn vllm_rows_rewrite_high_to_xhigh() -> Bool {
+  shipped_rows_hold(p: all_rows => vllm_rows_hold(vllm: filter(all_rows, u => u.model == "Qwen3.8-Flash-Next")))
+}
+
+fn vllm_rows_hold(vllm: List<RouterDevUpstream>) -> Bool {
+  count(vllm) > 0 && all(vllm, u => any(u.effort_effects, r => r.client == "high" && match r.effect {
+    EffortRewriteTo { value: v } => v == "xhigh"
+    _ => false
+  }))
+}
+
+// RESPONSE READERS: a curl result is headers, a JSON body line and a status line. A claim about a value reads the
+// parsed value and the whole line, never a substring ("0.47" is also a prefix of 0.470001).
+fn text_lines(text: String) -> List<String> { split(s: text, delimiter: "\n") }
+
+fn last_line(text: String) -> String {
+  fold(text_lines(text: text), init: "", f: (acc, l) => l)
+}
+
+fn has_line(text: String, want: String) -> Bool {
+  any(text_lines(text: text), l => l == want || l == concat(want, "\r"))
+}
+
+fn body_doc(text: String, marker: String) -> JsonValue {
+  let found = filter(text_lines(text: text), l => contains(s: l, p: marker))
+  if count(found) == 1 {
+    match parse_json_document(s: fold(found, init: "", f: (acc, l) => l)) {
+      JsonDocumentParsed { value: v } => v
+      _ => JsonBool { value: false }
+    }
+  } else { JsonBool { value: false } }
+}
+
+fn doc_members(v: JsonValue, key: String) -> List<JsonValue> {
+  match v {
+    JsonObject { members } => json_object_members_named(members: members, key: key)
+    _ => []
+  }
+}
+
+fn literal_json(text: String) -> JsonValue {
+  match parse_json_document(s: text) {
+    JsonDocumentParsed { value: v } => v
+    _ => JsonBool { value: false }
+  }
+}
+
+fn member_is(v: JsonValue, key: String, literal: String) -> Bool {
+  let ms = doc_members(v: v, key: key)
+  count(ms) == 1 && all(ms, m => m == literal_json(text: literal))
+}
+
+// THE STATS READ WHILE AN UNCAPPED RENTED TURN IS IN FLIGHT: rented.active must be the one turn, the capped
+// pool's cap only the capped row's, and the pool not full (an uncapped row has no ceiling to fill).
+// THE HELD TURN IS ESTABLISHED BY THE FIXTURE'S SIGNAL, THEN STATS ARE READ. The chat turn runs in the background
+// with -N (no client buffering); the script reads stats only after 'entered' arrives in its output, which the
+// holding fixture prints once it is inside the upstream (after the router admitted the turn). If the signal never
+// arrives the script prints NOT-ENTERED and reads nothing, so the case is red rather than lucky. Stats are read
+// while the turn is outstanding (the fixture holds six seconds); then the turn is waited out and its output printed.
+// TRANSIENT SHELL, declared by gunbc.serving.router_dev_scaffold router_dev_uncapped_inflight_shell_scaffold (like self_signed, router_dev_falsifier_shell_scaffold):
+// the ordering is the fact under test and DockerCli has no logs or exec operation to model it as steps, so this sh -c
+// program is the authority until bash emission (extdeps.languages.bash.grammar) replaces it.
+fn uncapped_inflight_script() -> String {
+  "curl -k -sS -i -N --max-time 30 -H 'Authorization: Bearer ck-falsifier' -H 'x-session-id: un-1' --data-binary '\{\"model\":\"m-u\"}' -w '\n%\{http_code}\n' 'https://127.0.0.1:18445/v1/chat/completions?hold=1&enter=1' > /tmp/held.out 2>&1 & i=0; while ! grep -q '^entered' /tmp/held.out && [ $i -lt 150 ]; do sleep 0.1; i=$((i+1)); done; if ! grep -q '^entered' /tmp/held.out; then echo NOT-ENTERED; wait; exit 1; fi; curl -k -sS -i --max-time 10 -H 'Authorization: Bearer ck-falsifier' 'https://127.0.0.1:18445/router/stats'; echo; wait; cat /tmp/held.out"
+}
+
+fn rented_reports_uncapped_in_flight(text: String) -> Bool {
+  let doc = body_doc(text: text, marker: "\"usage_all\"")
+  let rs = doc_members(v: doc, key: "rented")
+  count(rs) == 1 && all(rs, r => member_is(v: r, key: "active", literal: "1") && member_is(v: r, key: "cap", literal: "1") && member_is(v: r, key: "full", literal: "false"))
+}
+
+// ONE MODEL'S PRICE, selected by id and compared as parsed values.
+fn model_entries(models: String, model: String) -> List<JsonValue> {
+  let doc = body_doc(text: models, marker: "\"data\"")
+  let all_entries = fold(doc_members(v: doc, key: "data"), init: row_none(), f: (acc, d) => match d {
+    JsonArray { elements } => list_append(left: acc, right: elements)
+    _ => acc
+  })
+  filter(all_entries, e => member_is(v: e, key: "id", literal: concat(concat("\"", model), "\"")))
+}
+
+fn row_none() -> List<JsonValue> { [] }
+
+fn price_matches(q: JsonValue, input: String, cached: String, output: String, as_of: String) -> Bool {
+  member_is(v: q, key: "input", literal: input) && member_is(v: q, key: "cached", literal: cached) && member_is(v: q, key: "output", literal: output) && member_is(v: q, key: "as_of", literal: concat(concat("\"", as_of), "\"")) && member_is(v: q, key: "estimated", literal: "true")
+}
+
+fn priced_entry_is(models: String, model: String, input: String, cached: String, output: String, as_of: String) -> Bool {
+  let entries = model_entries(models: models, model: model)
+  count(entries) == 1 && all(entries, e => count(doc_members(v: e, key: "comparison_pricing")) == 1 && all(doc_members(v: e, key: "comparison_pricing"), q => price_matches(q: q, input: input, cached: cached, output: output, as_of: as_of)))
+}
+
+fn unpriced_entry_has_no_price(models: String, model: String) -> Bool {
+  let entries = model_entries(models: models, model: model)
+  count(entries) == 1 && all(entries, e => !any(doc_members(v: e, key: "comparison_pricing"), q => count(doc_members(v: q, key: "output")) > 0))
+}
+
+fn occurrences(s: String, needle: String) -> Int {
+  if needle == "" { 0 } else { count(split(s: s, delimiter: needle)) - 1 }
+}
 
 // THE ROW CASES: what the emitted configuration's rows say, read from router_proxy_directives before any
 // container runs. The process cases below establish what the proxy does with them.
@@ -210,7 +711,7 @@ fn no_directives() -> List<NginxDirective> { [] }
 
 fn rows() -> List<NginxDirective> {
   match router_proxy_vocabulary() {
-    Present { value: v } => router_proxy_directives(v: v, listen_port: 18443 as Port, authz_port: 19001 as Port, stream_end_port: 19002 as Port)
+    Present { value: v } => router_proxy_directives(v: v, listen_port: 18443, authz_port: 19001, stream_end_port: 19002)
     Absent => no_directives()
   }
 }
@@ -266,14 +767,14 @@ fn unsafe_tokens_are_absent() -> Bool {
 fn forced_cast_renders_unescaped() -> Bool {
   let injected = render_nginx_directives(rows: [ProxyPassToHost {
     host: "127.0.0.1'; os.exit(1)" as NginxToken,
-    port: 9001 as Port,
+    port: 9001,
     path: "/" as NginxToken,
   }])
   contains(s: injected, p: "'; os.exit(1)")
 }
 
 fn emitted_text() -> String {
-  text_of(r: router_proxy_config(listen_port: 18443 as Port, authz_port: 19001 as Port, stream_end_port: 19002 as Port))
+  text_of(r: router_proxy_config(listen_port: 18443, authz_port: 19001, stream_end_port: 19002))
 }
 
 // Fixed literals per fragment, each from the concrete ports, so a mis-rendered arm goes red.
@@ -303,8 +804,8 @@ fn row_cases() -> List<FalsifierCase> {
 }
 
 fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
-  let router = text_of(r: router_proxy_config(listen_port: 18443 as Port, authz_port: 19001 as Port, stream_end_port: 19002 as Port))
-  let unreachable = text_of(r: router_proxy_config(listen_port: 18444 as Port, authz_port: 19009 as Port, stream_end_port: 19002 as Port))
+  let router = text_of(r: router_proxy_config(listen_port: 18443, authz_port: 19001, stream_end_port: 19002))
+  let unreachable = text_of(r: router_proxy_config(listen_port: 18444, authz_port: 19009, stream_end_port: 19002))
   let w1 = Filesystem.Write(path: router_conf_path(), content: router)
   let w2 = Filesystem.Write(path: unreachable_conf_path(), content: unreachable)
   let w3 = Filesystem.Write(path: broken_conf_path(), content: concat(router, "gunbc_no_such_directive on;\n"))
@@ -314,7 +815,7 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
   let t_ok = openresty_test(conf_path: router_conf_path())
   let t_broken = openresty_test(conf_path: broken_conf_path())
   let t_unreachable = openresty_test(conf_path: unreachable_conf_path())
-  let started_fixture = start_with(name: fixture_name(), network: "bridge" as NonEmptyStr, conf_path: fixture_conf_path())
+  let started_fixture = start_with_command(name: fixture_name(), network: "bridge" as NonEmptyStr, conf_path: fixture_conf_path(), command: fixture_command(), extras: no_copies())
   let started_router = start_with(name: router_name(), network: shared_namespace(), conf_path: router_conf_path())
   let started_unreachable = start_with(name: unreachable_router_name(), network: shared_namespace(), conf_path: unreachable_conf_path())
   let ready_sink = ready(port: "19002")
@@ -336,6 +837,145 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
   let bad_port_high = request(port: "18443", case_header: "x-case: badporthigh", query: "", max_seconds: "10")
   let no_authz = request(port: "18444", case_header: "x-case: noauthz", query: "", max_seconds: "10")
   let after_refusals = sink(n: "0")
+  let w5 = Filesystem.Write(path: "/tmp/gunbc-rpf-dev.conf", content: dev_text())
+  let w6 = Filesystem.Write(path: "/tmp/gunbc-rpf-dev-client-keys", content: "ck-falsifier\n")
+  let w7 = Filesystem.Write(path: "/tmp/gunbc-rpf-dev-upstreams.json", content: dev_upstreams_json())
+  let pinned = DockerCli.CopyInto(docker: docker(), source: "gunbc-rpf-fixture:/etc/fake/b.crt", destination: "/tmp/gunbc-rpf-dev-upstream-ca.pem")
+  let started_dev = start_with_command(name: dev_router_name(), network: shared_namespace(), conf_path: "/tmp/gunbc-rpf-dev.conf", command: dev_router_command(),
+    extras: [
+      CopyPair { source: "/tmp/gunbc-rpf-dev-client-keys", target: dev_state_dir() + "/client_keys" },
+      CopyPair { source: "/tmp/gunbc-rpf-dev-upstreams.json", target: dev_state_dir() + "/upstreams.json" },
+      CopyPair { source: "/tmp/gunbc-rpf-dev-upstream-ca.pem", target: dev_state_dir() + "/upstream_ca.pem" },
+    ])
+  let dev_ready = curl(arguments: ["-k", "-sS", "-o", "/dev/null", "-w", "%\{http_code\}", "--retry", "30", "--retry-delay", "1", "--retry-connrefused", "https://127.0.0.1:18445/ready"])
+  let dev_no_key = dev_request(key: "wrong", session: "s0", body: model_body(model: "m-a"), path: "/v1/chat/completions")
+  let dev_models = dev_get(key: "ck-falsifier", path: "/v1/models")
+  let dev_a = dev_request(key: "ck-falsifier", session: "s1", body: model_body(model: "m-a"), path: "/v1/chat/completions")
+  let dev_b = dev_request(key: "ck-falsifier", session: "s2", body: model_body(model: "m-b"), path: "/v1/chat/completions")
+  let dev_d = dev_request(key: "ck-falsifier", session: "s3", body: model_body(model: "m-d"), path: "/v1/chat/completions")
+  let dev_c = dev_request(key: "ck-falsifier", session: "s4", body: model_body(model: "m-c"), path: "/v1/chat/completions")
+  let dev_unknown = dev_request(key: "ck-falsifier", session: "s5", body: model_body(model: "m-none"), path: "/v1/chat/completions")
+  let alias1 = dev_request(key: "ck-falsifier", session: "z", body: model_body(model: "flash-next"), path: "/v1/chat/completions")
+  let alias2 = dev_request(key: "ck-falsifier", session: "z", body: model_body(model: "flash-next"), path: "/v1/chat/completions")
+  let alias3 = dev_request(key: "ck-falsifier", session: "z", body: model_body(model: "flash-next"), path: "/v1/chat/completions")
+  let alias_other = dev_request(key: "ck-falsifier", session: "z", body: model_body(model: "m-b"), path: "/v1/chat/completions")
+  let dev_large = curl(arguments: ["-k", "-sS", "--max-time", "30", "-H", "Authorization: Bearer ck-falsifier", "-H", "x-session-id: big", "--data-binary", "@/usr/lib/libcrypto.so.3", "-w", "\n%\{http_code\}", "https://127.0.0.1:18445/v1/chat/completions"])
+  // CACHE-LOCALITY BINDING (measured on srv1: soft binding cost the Strata engines ~77% of their
+  // prompt-cache reuse, because a session whose engine was at its cap migrated and re-read 50-115k
+  // tokens at ~215 tok/s). e1 is an engine-local row whose certificate is outside the pins, so it fails
+  // every turn; e2 is a healthy engine for the same model, reachable ONLY by moving.
+  let local_bad = dev_request(key: "ck-falsifier", session: "loc-bad", body: model_body(model: "m-e"), path: "/v1/chat/completions")
+  let local_after_eject = dev_request(key: "ck-falsifier", session: "loc-bad", body: model_body(model: "m-e"), path: "/v1/chat/completions")
+  // f1 is engine-local with cap 1. The first turn parks inside the upstream for four seconds, so the
+  // second arrives while that turn is still active and must be refused on the SAME engine -- never
+  // silently re-placed -- and the third waits behind it and is served once the first releases.
+  // ONE curl process, TWO transfers (-Z --parallel-immediate): the requests must overlap, and
+  // sequential bindings cannot overlap -- the holding turn would already have finished by the time
+  // its successor was issued. One transfer holds f1 (its engine sleeps six seconds) while the other
+  // arrives, and -i prints the status line and headers of each so the refusal is visible as a 429.
+  // TWO INVOCATION FACTS, both measured, because both made this case vacuously green:
+  // - The hold needs ?hold=1, not ?hold: nginx leaves arg_hold NIL for a query without '=', so a bare
+  //   ?hold never entered the sleep. Against the fixture on srv1: ?hold=1 sleeps 6.00s, ?hold 0.001s.
+  // - -Z ALONE DOES NOT OVERLAP TWO TRANSFERS TO THE SAME host:port over HTTP/1.1: curl opens one
+  //   connection, learns the peer cannot multiplex, and queues the second transfer behind the first.
+  //   Measured against a local server that sleeps 6s and stamps its own arrival: without
+  //   --parallel-immediate the arrivals are 6.001s apart (the second never contended anything); with
+  //   --parallel-immediate both arrive in the same millisecond. So the cap was never reached and the
+  //   429 this case exists to prove was never issued -- the client, not the router, serialized them.
+  // line and headers of each so the refusal is visible as a 429 carrying Retry-After.
+  let cap_contended = curl(arguments: ["-k", "-sS", "-i", "-Z", "--parallel-immediate", "--max-time", "30", "-H", "Authorization: Bearer ck-falsifier", "-H", "x-session-id: cap-1", "--data-binary", "\{\"model\":\"m-f\",\"q\":\"contended\"\}", "-w", "\n%\{http_code\}\n", "https://127.0.0.1:18445/v1/chat/completions?hold=1", "https://127.0.0.1:18445/v1/chat/completions?hold=1"])
+  // After the contended turn releases, the SAME session still goes to f1: the binding survived a refusal.
+  let cap_after_release = dev_request(key: "ck-falsifier", session: "cap-1", body: model_body(model: "m-f"), path: "/v1/chat/completions")
+  let drained = dev_request(key: "ck-falsifier", session: "drained-1", body: model_body(model: "m-g"), path: "/v1/chat/completions")
+  let dev_stats = dev_get(key: "ck-falsifier", path: "/router/stats")
+  let dev_stats_no_key = dev_get(key: "wrong", path: "/router/stats")
+  // BYTES IN, BYTES OUT (2026-10-30: a re-encode on the alias rewrite reordered every object, so no two
+  // turns of one h11 conversation shared a prompt prefix). Session z is bound to a, so each turn lands on
+  // a and the echo shows the bytes a received. The control sends a's own model id and nothing to rewrite.
+  let bytes_control = dev_request(key: "ck-falsifier", session: "z", body: order_body(model: "m-a", kwargs: "\"zeta\": 1"), path: "/v1/chat/completions")
+  let bytes_rewritten = dev_request(key: "ck-falsifier", session: "z", body: order_body(model: "flash-next", kwargs: "\"reasoning_effort\": \"xhigh\", \"zeta\": 1"), path: "/v1/chat/completions")
+  let bytes_dropped = dev_request(key: "ck-falsifier", session: "z", body: order_body(model: "flash-next", kwargs: "\"reasoning_effort\": \"none\", \"zeta\": 1"), path: "/v1/chat/completions")
+  let two_sites = dev_request(key: "ck-falsifier", session: "dup-1", body: "\{\"model\": \"flash-next\", \"metadata\": \{\"model\": \"flash-next\"}}", path: "/v1/chat/completions")
+  // A STREAMED TURN THROUGH THE DEV ROUTER (review of 94abf8b: the body filter's line loop restarted at
+  // the newline it had just found and never ended). The stream must arrive unchanged and complete, the
+  // usage frame split across chunks must be read, and the turn must be released.
+  let sse = dev_request(key: "ck-falsifier", session: "sse-1", body: model_body(model: "m-a"), path: "/v1/chat/completions?sse=1")
+  let sse_stats = dev_get(key: "ck-falsifier", path: "/router/stats")
+  // A ROW LOWERED TO CAP 0 UNDER A LIVE BINDING. cap-1 is bound to f1; the reload keeps the state
+  // dictionary (bindings and counters) and loads f1 at cap 0. The bound turn must be refused at the cap
+  // like any full engine-local row, and nothing it did may move f1's active count.
+  let w8 = Filesystem.Write(path: "/tmp/gunbc-rpf-dev-upstreams-f1-cap-0.json", content: dev_upstreams_json_f1_cap_0())
+  let lowered = DockerCli.CopyInto(docker: docker(), source: "/tmp/gunbc-rpf-dev-upstreams-f1-cap-0.json", destination: concat(concat(dev_router_name() as String, ":"), dev_state_dir() + "/upstreams.json"))
+  let reloaded = DockerCli.Signal(docker: docker(), name: dev_router_name(), signal: SignalHangup)
+  let reloaded_models = await_models(mark: "4321", n: 20)
+  let cap_0_bound = dev_request(key: "ck-falsifier", session: "cap-1", body: model_body(model: "m-f"), path: "/v1/chat/completions")
+  let cap_0_stats = dev_get(key: "ck-falsifier", path: "/router/stats")
+  // --- CUTOVER PARITY (plan gunbc.plans.fabric_serving_router; the live router lines are in the PR table) ---
+  // 1. NO MOVE ON CONGESTION FOR ANY OWNED ROW. s1 and s2 serve m-s with nothing but a cap, and s2 is idle:
+  // the second parallel turn of session own-1 must be refused ON s1, never moved to s2.
+  let own_contended = curl(arguments: ["-k", "-sS", "-i", "-Z", "--parallel-immediate", "--max-time", "30", "-H", "Authorization: Bearer ck-falsifier", "-H", "x-session-id: own-1", "--data-binary", "\{\"model\":\"m-s\"\}", "-w", "\n%\{http_code\}\n", "https://127.0.0.1:18445/v1/chat/completions?hold=1", "https://127.0.0.1:18445/v1/chat/completions?hold=1"])
+  // 2. RETENTION. r1 retains 1: ret-1 binds, ret-2 (new) is refused, ret-1 (bound) returns.
+  let ret_1 = dev_request(key: "ck-falsifier", session: "ret-1", body: model_body(model: "m-r"), path: "/v1/chat/completions")
+  let ret_2 = dev_request(key: "ck-falsifier", session: "ret-2", body: model_body(model: "m-r"), path: "/v1/chat/completions")
+  let ret_1_again = dev_request(key: "ck-falsifier", session: "ret-1", body: model_body(model: "m-r"), path: "/v1/chat/completions")
+  // 5. STRANDED DEMAND: both refusals are recorded; own-1's retry then succeeds and clears its record.
+  let pending_stats = dev_get(key: "ck-falsifier", path: "/router/stats")
+  let own_after = dev_request(key: "ck-falsifier", session: "own-1", body: model_body(model: "m-s"), path: "/v1/chat/completions")
+  let cleared_stats = dev_get(key: "ck-falsifier", path: "/router/stats")
+  // 6. RENTED METERING: eleven turns on the uncapped rented row, a count no owned model reaches.
+  let rented_turns = turns(n: 11, model: "m-u")
+  let rented_stats = dev_get(key: "ck-falsifier", path: "/router/stats")
+  // 6b. UNCAPPED OCCUPANCY OBSERVED NONZERO: a held turn on the uncapped row while the stats are read.
+  let uncapped_inflight = curl(arguments: ["sh", "-c", uncapped_inflight_script()])
+  // 7. OVERFLOW CAP: o1 is rented with cap 1; the second parallel turn is refused.
+  let overflow_contended = curl(arguments: ["-k", "-sS", "-i", "-Z", "--parallel-immediate", "--max-time", "30", "-H", "Authorization: Bearer ck-falsifier", "-H", "x-session-id: ov-1", "--data-binary", "\{\"model\":\"m-o\"\}", "-w", "\n%\{http_code\}\n", "https://127.0.0.1:18445/v1/chat/completions?hold=1", "https://127.0.0.1:18445/v1/chat/completions?hold=1"])
+  // 8. EFFORT: a vLLM row refuses "high"; any string effort, mapped or not, is reported in a header.
+  let effort_high = dev_request(key: "ck-falsifier", session: "h-1", body: order_body(model: "m-h", kwargs: "\"reasoning_effort\": \"high\", \"zeta\": 1"), path: "/v1/chat/completions")
+  let effort_unmapped = curl(arguments: ["-k", "-sS", "-i", "--max-time", "10", "-H", "Authorization: Bearer ck-falsifier", "-H", "x-session-id: h-2", "--data-binary", order_body(model: "m-h", kwargs: "\"reasoning_effort\": \"turbo\", \"zeta\": 1"), "-w", "\n%\{http_code\}", "https://127.0.0.1:18445/v1/chat/completions"])
+  // 4. TRIM: r1 reloaded at retain 0 holds ret-1 past retain; only a key-checked POST unbinds it.
+  let w9 = Filesystem.Write(path: "/tmp/gunbc-rpf-dev-upstreams-r1-retain-0.json", content: dev_upstreams_json_r1_retain_0())
+  let lowered_r1 = DockerCli.CopyInto(docker: docker(), source: "/tmp/gunbc-rpf-dev-upstreams-r1-retain-0.json", destination: concat(concat(dev_router_name() as String, ":"), dev_state_dir() + "/upstreams.json"))
+  let reloaded_r1 = DockerCli.Signal(docker: docker(), name: dev_router_name(), signal: SignalHangup)
+  let reloaded_r1_models = await_models(mark: "4322", n: 20)
+  let trim_no_key = dev_request(key: "wrong", session: "t", body: "\{\}", path: "/router/trim-bindings")
+  let trim_get = dev_get(key: "ck-falsifier", path: "/router/trim-bindings")
+  let trim_post = dev_request(key: "ck-falsifier", session: "t", body: "\{\}", path: "/router/trim-bindings")
+  let ret_1_after_trim = dev_request(key: "ck-falsifier", session: "ret-1", body: model_body(model: "m-r"), path: "/v1/chat/completions")
+  // 9. RETIRED NAME: h1 is renamed h1b (retain 0, retiring h1); h-1, bound to h1, is carried to h1b.
+  let w10 = Filesystem.Write(path: "/tmp/gunbc-rpf-dev-upstreams-h1-renamed.json", content: dev_upstreams_json_h1_renamed())
+  let renamed = DockerCli.CopyInto(docker: docker(), source: "/tmp/gunbc-rpf-dev-upstreams-h1-renamed.json", destination: concat(concat(dev_router_name() as String, ":"), dev_state_dir() + "/upstreams.json"))
+  let reloaded_h1 = DockerCli.Signal(docker: docker(), name: dev_router_name(), signal: SignalHangup)
+  let reloaded_h1_models = await_models(mark: "4323", n: 20)
+  let carried = dev_request(key: "ck-falsifier", session: "h-1", body: model_body(model: "m-h"), path: "/v1/chat/completions")
+  let uncarried = dev_request(key: "ck-falsifier", session: "h-new", body: model_body(model: "m-h"), path: "/v1/chat/completions")
+  // 9b. ONE OWNER PER BINDING: h1b is renamed h1c (retain 1) with h-1 still stored against h1b.
+  // A request for another model through the retired name is the model-conflict refusal, a new session meets the
+  // retain h-1 already fills, and the rented pool of a cap-0 row beside an uncapped one is not full.
+  let w11 = Filesystem.Write(path: "/tmp/gunbc-rpf-dev-upstreams-h1-renamed-again.json", content: dev_upstreams_json_h1_renamed_again())
+  let renamed_again = DockerCli.CopyInto(docker: docker(), source: "/tmp/gunbc-rpf-dev-upstreams-h1-renamed-again.json", destination: concat(concat(dev_router_name() as String, ":"), dev_state_dir() + "/upstreams.json"))
+  let reloaded_again = DockerCli.Signal(docker: docker(), name: dev_router_name(), signal: SignalHangup)
+  let reloaded_again_models = await_models(mark: "4324", n: 20)
+  let retired_other_model = dev_request(key: "ck-falsifier", session: "h-1", body: model_body(model: "m-a"), path: "/v1/chat/completions")
+  let renamed_new_session = dev_request(key: "ck-falsifier", session: "h-new2", body: model_body(model: "m-h"), path: "/v1/chat/completions")
+  let mixed_pool_stats = dev_get(key: "ck-falsifier", path: "/router/stats")
+  // 9b'. THE PREDECESSOR STAYS CONFIGURED, DRAINED (mark 4326): h-1 is still stored against h1b, which h1c retires.
+  let w13 = Filesystem.Write(path: "/tmp/gunbc-rpf-dev-upstreams-h1-predecessor-drained.json", content: dev_upstreams_json_h1_renamed_predecessor_drained())
+  let drained_copy = DockerCli.CopyInto(docker: docker(), source: "/tmp/gunbc-rpf-dev-upstreams-h1-predecessor-drained.json", destination: concat(concat(dev_router_name() as String, ":"), dev_state_dir() + "/upstreams.json"))
+  let reloaded_drained = DockerCli.Signal(docker: docker(), name: dev_router_name(), signal: SignalHangup)
+  let reloaded_drained_models = await_models(mark: "4326", n: 20)
+  let drained_other_model = dev_request(key: "ck-falsifier", session: "h-1", body: model_body(model: "m-a"), path: "/v1/chat/completions")
+  let drained_new_session = dev_request(key: "ck-falsifier", session: "h-new3", body: model_body(model: "m-h"), path: "/v1/chat/completions")
+  // 9c. TRIM counts old-name bindings under their owner, and a pool of only a cap-0 row is full.
+  let w12 = Filesystem.Write(path: "/tmp/gunbc-rpf-dev-upstreams-h1-retain-0-pool-zero.json", content: dev_upstreams_json_h1_retain_0_pool_zero())
+  let lowered_again = DockerCli.CopyInto(docker: docker(), source: "/tmp/gunbc-rpf-dev-upstreams-h1-retain-0-pool-zero.json", destination: concat(concat(dev_router_name() as String, ":"), dev_state_dir() + "/upstreams.json"))
+  let reloaded_zero = DockerCli.Signal(docker: docker(), name: dev_router_name(), signal: SignalHangup)
+  let reloaded_zero_models = await_models(mark: "4325", n: 20)
+  let zero_pool_stats = dev_get(key: "ck-falsifier", path: "/router/stats")
+  // The pricing turns run AFTER every stats read: a quoted-model turn and an m-a turn would otherwise add to the
+  // owned tallies those cases pin.
+  let priced_turn = curl(arguments: ["-k", "-sS", "-i", "--max-time", "10", "-H", "Authorization: Bearer ck-falsifier", "-H", "x-session-id: pq-1", "-d", model_body(model: "Qwen3.8-Flash-Next"), "-w", "\n%\{http_code\}", "https://127.0.0.1:18445/v1/chat/completions"])
+  let unpriced_turn = curl(arguments: ["-k", "-sS", "-i", "--max-time", "10", "-H", "Authorization: Bearer ck-falsifier", "-H", "x-session-id: pq-2", "-d", model_body(model: "m-a"), "-w", "\n%\{http_code\}", "https://127.0.0.1:18445/v1/chat/completions"])
+  let trim_old_names = dev_request(key: "ck-falsifier", session: "t", body: "\{\}", path: "/router/trim-bindings")
   let large = curl(arguments: ["-sS", "--max-time", "30", "-H", "x-case: large", "--data-binary", "@/usr/lib/libcrypto.so.3", "-w", "\n%\{http_code\}", "http://127.0.0.1:18443/v1/x"])
   let after_large = sink(n: "5")
   let removed = remove_all()
@@ -361,8 +1001,88 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
     case_of(identity: "an_answer_with_a_port_above_65535_answers_503", held: contains(s: bad_port_high, p: "\n503 exit=0"), observed: bad_port_high),
     case_of(identity: "unreachable_authz_answers_503", held: contains(s: no_authz, p: "\n503 exit=0"), observed: no_authz),
     case_of(identity: "no_refusal_forwarded_or_fired_stream_end", held: contains(s: after_refusals, p: "ends=4 last=p-reset-alpha hits=4"), observed: after_refusals),
+    case_of(identity: "dev_world_starts", held: dev_refusal() == "" && count(dev_upstreams()) == 7 && w5.success && w6.success && w7.success && dev_text() != "" && pinned.exit_code == 0 && started_dev == 0 && contains(s: dev_ready, p: "404"), observed: concat(dev_refusal(), dev_ready)),
+    case_of(identity: "dev_red_wrong_client_key_answers_401", held: contains(s: dev_no_key, p: "\n401 exit=0"), observed: dev_no_key),
+    // The row fields the binding rules read are the ones in the emitted file: a drained row is present
+    // and false, an engine-local row is not silently shared, and every row carries the fields at all.
+    case_of(identity: "rows_carry_retain_capacity_and_in_service", held: shipped_json_holds(p: j => row_key_count(json: j, key: "retain") == 8 && row_key_count(json: j, key: "cap") == 9 && row_bool_field_count(json: j, key: "overflow", want: true) == 1 && row_bool_field_count(json: j, key: "in_service", want: true) == 9 && row_bool_field_count(json: j, key: "in_service", want: false) == 0) && contains(s: dev_text(), p: "retains(") && contains(s: dev_text(), p: "u.in_service ~= false"), observed: ""),
+    // A NAME CANNOT BE BOTH LIVE AND RETIRING. The guard is a function of the rows, so it is tested on
+    // rows: clean on the shipped set, and red on each defect it exists to refuse -- a live name in
+    // another row's retiring list, and one name retired by two rows at once.
+    case_of(identity: "a_retiring_name_that_is_live_or_double_claimed_is_refused", held: shipped_rows_hold(p: rs => match router_dev_retiring_name_conflict(rows: rs) { Absent => true Present { value: why } => false }) && match router_dev_retiring_name_conflict(rows: [dev_row(name: "live-one", retiring: ["live-two"]), dev_row(name: "live-two", retiring: [])]) { Present { value: why } => string_contains(s: why, pattern: "live-two") Absent => false } && match router_dev_retiring_name_conflict(rows: [dev_row(name: "one", retiring: ["gone"]), dev_row(name: "two", retiring: ["gone"])]) { Present { value: why } => string_contains(s: why, pattern: "more than one row") Absent => false }, observed: ""),
+    // THE USAGE METER IS RENDERED AND ITS COUNTERS ARE THE STATS DOCUMENT'S SOURCE. No fixture engine
+    // reports usage, so every owned turn here must land as UNMEASURED rather than as zero tokens -- a
+    // missing count is never a zero -- and with no quote row for these models the comparison figures are
+    // absent, not invented. Owned spend is zero by construction.
+    case_of(identity: "the_meter_tallies_owned_turns_and_never_invents_tokens", held: contains(s: dev_stats, p: "\"version\":2") && occurrences(s: dev_stats, needle: "\"billing\":\"owned\"") == 20 && occurrences(s: dev_stats, needle: "\"unmeasured_requests\":") == 22 && occurrences(s: dev_stats, needle: "\"comparison_pricing\"") == 2 && contains(s: dev_stats, p: "\"actual_spend_usd\":0"), observed: one_line(s: dev_stats)),
+    // Effort is translated by the ROW dialect, per upstream model, before the body leaves the router.
+    // A DRAINED ENGINE IS UNREACHABLE, NOT MERELY UNPOPULAR. g1 is in the file with in_service false and
+    // no server behind its port: if the flag were ignored the turn would be proxied there and read 502,
+    // so 404 is what makes this row discriminate.
+    case_of(identity: "a_drained_upstream_answers_404_and_is_never_proxied", held: contains(s: drained, p: "\n404 exit=0") && contains(s: drained, p: "unknown model") && !contains(s: drained, p: "502"), observed: one_line(s: drained)),
+    case_of(identity: "effort_translation_is_a_row_not_a_lua_literal", held: occurrences(s: dev_text(), needle: "ROUTER_EFFORT") >= 3 && contains(s: dev_text(), p: "chat_template_kwargs") && contains(s: dev_text(), p: "enable_thinking"), observed: to_string(occurrences(s: dev_text(), needle: "ROUTER_EFFORT"))),
+    // The comparison price is READ FROM A QUOTE ROW (figures, reference model, authority, reading date),
+    // never written as a literal in the proxy's Lua.
+    case_of(identity: "comparison_pricing_arrives_as_cited_rows", held: occurrences(s: dev_text(), needle: "ROUTER_COMPARISON['") == 3 && contains(s: dev_text(), p: "reference_model") && contains(s: dev_text(), p: "read_on") && contains(s: dev_text(), p: "input_micro") && contains(s: dev_text(), p: "as_of") && contains(s: dev_text(), p: "X-Gunbc-Comparison-Estimated") && occurrences(s: dev_text(), needle: "0.15") == 0, observed: to_string(occurrences(s: dev_text(), needle: "ROUTER_COMPARISON["))),
+    case_of(identity: "dev_models_lists_both_models_and_the_alias", held: contains(s: dev_models, p: "m-a") && contains(s: dev_models, p: "m-b") && contains(s: dev_models, p: "flash-next") && !contains(s: dev_models, p: "m-g") && contains(s: dev_models, p: "\n200 exit=0"), observed: dev_models),
+    case_of(identity: "dev_routes_by_model_with_that_upstreams_key", held: contains(s: dev_a, p: "upstream=a auth=Bearer ka") && contains(s: dev_a, p: "\n200 exit=0"), observed: dev_a),
+    case_of(identity: "dev_https_upstream_is_verified_against_its_pin", held: contains(s: dev_b, p: "upstream=b auth=Bearer kb") && contains(s: dev_b, p: "\n200 exit=0"), observed: dev_b),
+    case_of(identity: "dev_red_certificate_outside_the_pins_answers_502", held: contains(s: dev_d, p: "\n502 exit=0") && !contains(s: dev_d, p: "upstream=d"), observed: dev_d),
+    case_of(identity: "dev_red_upstream_at_its_cap_answers_429", held: contains(s: dev_c, p: "\n429 exit=0") && !contains(s: dev_c, p: "upstream="), observed: dev_c),
+    case_of(identity: "dev_red_unknown_model_answers_404", held: contains(s: dev_unknown, p: "\n404 exit=0"), observed: dev_unknown),
+    case_of(identity: "dev_alias_is_sticky_and_rewritten_to_the_upstream_model", held: contains(s: alias1, p: "upstream=a") && contains(s: alias2, p: "upstream=a") && contains(s: alias3, p: "upstream=a") && contains(s: alias1, p: "m-a") && !contains(s: alias1, p: "flash-next"), observed: alias3),
+    case_of(identity: "dev_red_bound_session_on_another_model_answers_409", held: contains(s: alias_other, p: "\n409 exit=0") && !contains(s: alias_other, p: "upstream="), observed: alias_other),
     case_of(identity: "a_body_over_1_mib_reaches_authz_and_the_upstream_byte_identically", held: contains(s: large, p: "same_body=true len=4139216") && contains(s: large, p: "\n200 exit=0"), observed: large),
     case_of(identity: "stream_end_fires_for_the_large_body", held: contains(s: after_large, p: "ends=5 last=p-large-nobody-4139216-") && contains(s: after_large, p: "hits=5"), observed: after_large),
+    // A bound session whose engine failed moves ONCE the health guard ejected it: still the same model,
+    // and now answered by the surviving engine instead of being stranded on the dead one.
+    case_of(identity: "dev_bound_session_moves_only_when_its_upstream_is_unavailable", held: contains(s: local_bad, p: "\n502 exit=0") && !contains(s: local_bad, p: "upstream=") && contains(s: local_after_eject, p: "upstream=e2 auth=Bearer ke2") && contains(s: local_after_eject, p: "\n200 exit=0"), observed: concat(local_bad, local_after_eject)),
+    // An engine-local session at its cap is refused on the engine it is bound to: 429 with Retry-After,
+    // and no other engine is ever contacted. If binding fell through to the pick loop the refusal count
+    // would be 2 and this would go red.
+    case_of(identity: "dev_bound_engine_local_session_at_cap_answers_429_and_never_re_routes", held: contains(s: cap_contended, p: "HTTP/1.1 429") && contains(s: cap_contended, p: "Retry-After") && contains(s: cap_contended, p: "at its active-turn cap") && contains(s: cap_contended, p: "upstream=f1") && !contains(s: cap_contended, p: "upstream=f2"), observed: one_line(s: cap_contended)),
+    // The refused turn is not lost: it retries the SAME engine and is served there once capacity frees.
+    // The refusal did not cost the session its engine: with the rival idle and roomier, the next turn
+    // The refusal did not cost the session its engine: it is served by the same one it was refused on.
+    case_of(identity: "dev_bound_session_behind_the_refusal_is_served_by_the_same_engine", held: contains(s: cap_after_release, p: "upstream=f1 auth=Bearer kf") && contains(s: cap_after_release, p: "\n200 exit=0") && !contains(s: cap_after_release, p: "upstream=f2"), observed: cap_after_release),
+    case_of(identity: "dev_a_body_above_the_buffer_is_read_from_its_file", held: contains(s: dev_large, p: "\n400 exit=0") && contains(s: dev_large, p: "model required"), observed: dev_large),
+    case_of(identity: "dev_stats_tally_each_status_and_upstream", held: contains(s: dev_stats, p: "\"status:401\":1") && contains(s: dev_stats, p: "\"status:429\":2") && contains(s: dev_stats, p: "\"status:502\":2") && contains(s: dev_stats, p: "\"upstream:a:200\":4") && contains(s: dev_stats, p: "\"active:a\":0"), observed: dev_stats),
+    case_of(identity: "dev_red_stats_need_a_client_key", held: contains(s: dev_stats_no_key, p: "\n401 exit=0"), observed: dev_stats_no_key),
+    case_of(identity: "dev_forwarded_body_is_the_client_bytes_when_nothing_is_rewritten", held: contains(s: bytes_control, p: concat("upstream=a auth=Bearer ka body=", order_body(model: "m-a", kwargs: "\"zeta\": 1"))) && contains(s: bytes_control, p: "\n200 exit=0"), observed: one_line(s: bytes_control)),
+    // The alias and the effort are rewritten by splicing two literals: every other byte, spacing and key
+    // order included, is the client's. A re-encode drops the spacing and reorders the objects.
+    case_of(identity: "dev_alias_and_effort_rewrites_splice_the_client_bytes", held: contains(s: bytes_rewritten, p: concat("upstream=a auth=Bearer ka body=", order_body(model: "m-a", kwargs: "\"reasoning_effort\": \"high\", \"zeta\": 1"))) && contains(s: bytes_rewritten, p: "\n200 exit=0"), observed: one_line(s: bytes_rewritten)),
+    case_of(identity: "dev_effort_drop_splices_enable_thinking_in_place", held: contains(s: bytes_dropped, p: concat("upstream=a auth=Bearer ka body=", order_body(model: "m-a", kwargs: "\"enable_thinking\": false, \"zeta\": 1"))) && contains(s: bytes_dropped, p: "\n200 exit=0"), observed: one_line(s: bytes_dropped)),
+    // A body with two unescaped model literals has no single site to splice: it is refused before any
+    // reservation, never re-encoded and never proxied.
+    case_of(identity: "dev_red_a_body_with_two_rewrite_sites_is_refused_not_re_encoded", held: contains(s: two_sites, p: "\n400 exit=0") && contains(s: two_sites, p: "single unescaped literal") && !contains(s: two_sites, p: "upstream="), observed: one_line(s: two_sites)),
+    case_of(identity: "dev_reload_loads_f1_at_cap_0", held: w8.success && lowered.exit_code == 0 && reloaded.exit_code == 0 && contains(s: reloaded_models, p: "4321"), observed: one_line(s: reloaded_models)),
+    // A cap is the ceiling for every owned row, 0 included: the bound turn is refused at the cap
+    // and is not counted, so f1's active count stays 0. Read as an uncapped sentinel, the turn was served
+    // without a reservation and released one in the log phase, leaving active:f1 at -1.
+    case_of(identity: "dev_sse_stream_is_relayed_unchanged_and_completes", held: contains(s: sse, p: sse_stream_text() + "\n200 exit=0"), observed: one_line(s: sse)),
+    case_of(identity: "dev_sse_usage_split_across_chunks_is_observed_and_the_turn_released", held: contains(s: sse_stats, p: "\"prompt_tokens\":7001") && contains(s: sse_stats, p: "\"completion_tokens\":3003") && contains(s: sse_stats, p: "\"cached_prompt_tokens\":5001") && contains(s: sse_stats, p: "\"active:a\":0"), observed: one_line(s: sse_stats)),
+    case_of(identity: "dev_bound_session_on_a_cap_0_engine_is_refused_and_never_counted", held: contains(s: cap_0_bound, p: "\n429 exit=0") && contains(s: cap_0_bound, p: "at its active-turn cap") && !contains(s: cap_0_bound, p: "upstream=") && contains(s: cap_0_stats, p: "\"active:f1\":0") && !contains(s: cap_0_stats, p: "\"upstream:f1:429\""), observed: concat(one_line(s: cap_0_bound), one_line(s: cap_0_stats))),
+    case_of(identity: "dev_bound_session_on_any_owned_row_at_cap_answers_429_and_never_moves", held: contains(s: own_contended, p: "HTTP/1.1 429") && contains(s: own_contended, p: "Retry-After") && contains(s: own_contended, p: "upstream=f1 auth=Bearer ks1") && !contains(s: own_contended, p: "auth=Bearer ks2"), observed: one_line(s: own_contended)),
+    case_of(identity: "dev_retention_refuses_a_new_session_and_a_bound_session_returns", held: contains(s: ret_1, p: "auth=Bearer kr") && contains(s: ret_1, p: "\n200 exit=0") && contains(s: ret_2, p: "\n429 exit=0") && !contains(s: ret_2, p: "upstream=") && contains(s: ret_1_again, p: "auth=Bearer kr") && contains(s: ret_1_again, p: "\n200 exit=0"), observed: concat(one_line(s: ret_2), one_line(s: ret_1_again))),
+    case_of(identity: "dev_refused_turns_are_stranded_demand_cleared_on_success", held: contains(s: pending_stats, p: "\"m-r\":\{") && contains(s: pending_stats, p: "\"m-s\":\{") && contains(s: pending_stats, p: "\"oldest_s\"") && contains(s: own_after, p: "\n200 exit=0") && !contains(s: cleared_stats, p: "\"m-s\":\{") && contains(s: cleared_stats, p: "\"m-r\":\{"), observed: one_line(s: pending_stats)),
+    case_of(identity: "dev_rented_turns_are_metered_and_the_rented_pool_reported", held: contains(s: rented_stats, p: "\"usage_all\"") && contains(s: rented_stats, p: "\"billing\":\"rented\"") && contains(s: rented_stats, p: "\"unmeasured_requests\":11") && contains(s: rented_stats, p: "\"rented\":\{") && contains(s: rented_stats, p: "\"full\":"), observed: one_line(s: rented_stats)),
+    case_of(identity: "dev_capped_overflow_row_refuses_at_its_cap", held: contains(s: overflow_contended, p: "HTTP/1.1 429") && contains(s: overflow_contended, p: "Retry-After") && occurrences(s: overflow_contended, needle: "auth=Bearer ko") == 1, observed: one_line(s: overflow_contended)),
+    case_of(identity: "dev_shipped_vllm_rows_rewrite_high_to_xhigh", held: vllm_rows_rewrite_high_to_xhigh(), observed: ""),
+    case_of(identity: "dev_vllm_row_translates_high_to_xhigh", held: contains(s: effort_high, p: concat("upstream=a auth=Bearer kh body=", order_body(model: "m-h", kwargs: "\"reasoning_effort\": \"xhigh\", \"zeta\": 1"))), observed: one_line(s: effort_high)),
+    case_of(identity: "dev_any_string_effort_is_reported_in_the_header", held: contains(s: effort_unmapped, p: "X-Gunbc-Reasoning-Effort: turbo") && contains(s: effort_unmapped, p: "\n200 exit=0"), observed: one_line(s: effort_unmapped)),
+    case_of(identity: "dev_trim_bindings_is_key_checked_post_only_and_unbinds_past_retain", held: w9.success && lowered_r1.exit_code == 0 && reloaded_r1.exit_code == 0 && contains(s: reloaded_r1_models, p: "4322") && contains(s: trim_no_key, p: "\n401 exit=0") && contains(s: trim_get, p: "\n405 exit=0") && contains(s: trim_post, p: "\"unbound\":1") && contains(s: ret_1_after_trim, p: "\n429 exit=0"), observed: concat(one_line(s: trim_post), one_line(s: ret_1_after_trim))),
+    case_of(identity: "dev_binding_to_a_retired_name_is_carried_to_the_row_that_retires_it", held: w10.success && renamed.exit_code == 0 && reloaded_h1.exit_code == 0 && contains(s: reloaded_h1_models, p: "4323") && contains(s: carried, p: "auth=Bearer kh") && contains(s: carried, p: "\n200 exit=0") && contains(s: uncarried, p: "\n429 exit=0"), observed: concat(one_line(s: carried), one_line(s: uncarried))),
+    case_of(identity: "dev_a_retired_name_binding_is_one_owner_for_model_conflict_retention_and_trim", held: w11.success && renamed_again.exit_code == 0 && reloaded_again.exit_code == 0 && contains(s: reloaded_again_models, p: "4324") && contains(s: retired_other_model, p: "\n409 exit=0") && contains(s: renamed_new_session, p: "\n429 exit=0") && w12.success && lowered_again.exit_code == 0 && reloaded_zero.exit_code == 0 && contains(s: reloaded_zero_models, p: "4325") && contains(s: trim_old_names, p: "\"h1c\"") && contains(s: trim_old_names, p: "\"unbound\":1"), observed: concat(one_line(s: retired_other_model), concat(one_line(s: renamed_new_session), one_line(s: trim_old_names)))),
+    case_of(identity: "dev_rented_stats_count_uncapped_turns_in_flight", held: rented_reports_uncapped_in_flight(text: uncapped_inflight), observed: one_line(s: uncapped_inflight)),
+    case_of(identity: "dev_rented_pool_full_keeps_capped_zero_and_uncapped_distinct", held: contains(s: mixed_pool_stats, p: "\"full\":false") && contains(s: zero_pool_stats, p: "\"full\":true"), observed: concat(one_line(s: mixed_pool_stats), one_line(s: zero_pool_stats))),
+    case_of(identity: "shipped_rows_render_the_derived_retain_cap_and_effort_values", held: shipped_h11_05_renders_derived_retain_and_cap() && shipped_pool_row_renders_its_cap() && shipped_row_effort_rule_is(name: "srv1-vllm", client: "high", to: "xhigh"), observed: ""),
+    case_of(identity: "h11_rows_follow_the_layout_grant", held: h11_projection_summary(layout: host_6ce85c_layout, engines: h11_population_with_ungranted()) == "h11-05:2,h11-07:1,h11-08:1,h11-88:1" && shipped_json_holds(p: j => !contains(s: j, p: "h11-85") && !contains(s: j, p: "h11-87")) && shipped_row_member_is(name: "h11-05", key: "retain", want: json_int(n: 2)) && shipped_row_member_is(name: "h11-07", key: "retain", want: json_int(n: 1)) && shipped_row_member_is(name: "h11-08", key: "retain", want: json_int(n: 1)) && shipped_row_member_is(name: "h11-88", key: "retain", want: json_int(n: 1)), observed: h11_projection_summary(layout: host_6ce85c_layout, engines: h11_population_with_ungranted())),
+    case_of(identity: "bindings_keep_the_live_key_scheme_in_router_state", held: contains(s: dev_text(), p: "lua_shared_dict router_state ") && !contains(s: dev_text(), p: "router_bindings") && contains(s: dev_text(), p: "state:get('session:' .. session)") && contains(s: dev_text(), p: "state:set('session:' .. session, pick.name") && contains(s: dev_text(), p: "k:sub(1, 8) == 'session:'"), observed: ""),
+    case_of(identity: "a_refused_layout_refuses_the_h11_projection_and_stops_the_write", held: h11_summary_is_refused(text: h11_projection_summary(layout: h11_refused_layout(), engines: h11_population_with_ungranted())) && h11_refused_layout_stops_the_write(), observed: h11_projection_summary(layout: h11_refused_layout(), engines: h11_population_with_ungranted())),
+    case_of(identity: "a_granted_replica_without_or_with_two_namings_is_refused", held: h11_summary_is_refused(text: h11_projection_summary(layout: host_6ce85c_layout, engines: h11_without_one_granted_naming())) && h11_summary_is_refused(text: h11_projection_summary(layout: host_6ce85c_layout, engines: h11_with_a_duplicate_naming())), observed: concat(h11_projection_summary(layout: host_6ce85c_layout, engines: h11_without_one_granted_naming()), concat(" | ", h11_projection_summary(layout: host_6ce85c_layout, engines: h11_with_a_duplicate_naming())))),
+    case_of(identity: "comparison_rows_carry_the_cited_quote_values_and_the_live_shape", held: priced_entry_is(models: dev_models, model: "Qwen3.8-Flash-Next", input: "0.15", cached: "0.016", output: "0.47", as_of: "2026-10-26") && unpriced_entry_has_no_price(models: dev_models, model: "m-a") && has_line(text: priced_turn, want: "X-Gunbc-Comparison-Input-Per-M: 0.15") && has_line(text: priced_turn, want: "X-Gunbc-Comparison-Cached-Per-M: 0.016") && has_line(text: priced_turn, want: "X-Gunbc-Comparison-Output-Per-M: 0.47") && has_line(text: priced_turn, want: "X-Gunbc-Comparison-Estimated: true") && has_line(text: priced_turn, want: "X-Gunbc-Comparison-Read-On: 2026-10-26") && !contains(s: unpriced_turn, p: "X-Gunbc-Comparison-Output-Per-M"), observed: concat(one_line(s: priced_turn), one_line(s: unpriced_turn))),
+    case_of(identity: "dev_drained_predecessor_does_not_reclaim_a_retired_binding", held: w13.success && drained_copy.exit_code == 0 && reloaded_drained.exit_code == 0 && contains(s: reloaded_drained_models, p: "4326") && last_line(text: drained_other_model) == "409 exit=0" && last_line(text: drained_new_session) == "429 exit=0", observed: concat(one_line(s: drained_other_model), one_line(s: drained_new_session))),
     case_of(identity: "world_is_removed", held: removed == 0, observed: to_string(removed)),
   ]
 }
@@ -397,8 +1117,58 @@ fn falsifier_expected_identities() -> List<String> {
     "an_answer_with_a_port_above_65535_answers_503",
     "unreachable_authz_answers_503",
     "no_refusal_forwarded_or_fired_stream_end",
+    "dev_world_starts",
+    "dev_red_wrong_client_key_answers_401",
+    "dev_models_lists_both_models_and_the_alias",
+    "dev_routes_by_model_with_that_upstreams_key",
+    "dev_https_upstream_is_verified_against_its_pin",
+    "dev_red_certificate_outside_the_pins_answers_502",
+    "dev_red_upstream_at_its_cap_answers_429",
+    "dev_red_unknown_model_answers_404",
+    "dev_alias_is_sticky_and_rewritten_to_the_upstream_model",
+    "dev_red_bound_session_on_another_model_answers_409",
     "a_body_over_1_mib_reaches_authz_and_the_upstream_byte_identically",
     "stream_end_fires_for_the_large_body",
+    "dev_a_body_above_the_buffer_is_read_from_its_file",
+    "dev_stats_tally_each_status_and_upstream",
+    "dev_bound_session_moves_only_when_its_upstream_is_unavailable",
+    "dev_bound_engine_local_session_at_cap_answers_429_and_never_re_routes",
+    "dev_bound_session_behind_the_refusal_is_served_by_the_same_engine",
+    "rows_carry_retain_capacity_and_in_service",
+    "a_drained_upstream_answers_404_and_is_never_proxied",
+    "effort_translation_is_a_row_not_a_lua_literal",
+    "a_retiring_name_that_is_live_or_double_claimed_is_refused",
+    "the_meter_tallies_owned_turns_and_never_invents_tokens",
+    "comparison_pricing_arrives_as_cited_rows",
+    "dev_red_stats_need_a_client_key",
+    "dev_forwarded_body_is_the_client_bytes_when_nothing_is_rewritten",
+    "dev_alias_and_effort_rewrites_splice_the_client_bytes",
+    "dev_effort_drop_splices_enable_thinking_in_place",
+    "dev_red_a_body_with_two_rewrite_sites_is_refused_not_re_encoded",
+    "dev_reload_loads_f1_at_cap_0",
+    "dev_sse_stream_is_relayed_unchanged_and_completes",
+    "dev_sse_usage_split_across_chunks_is_observed_and_the_turn_released",
+    "dev_bound_session_on_a_cap_0_engine_is_refused_and_never_counted",
+    "dev_bound_session_on_any_owned_row_at_cap_answers_429_and_never_moves",
+    "dev_retention_refuses_a_new_session_and_a_bound_session_returns",
+    "dev_refused_turns_are_stranded_demand_cleared_on_success",
+    "dev_rented_turns_are_metered_and_the_rented_pool_reported",
+    "dev_capped_overflow_row_refuses_at_its_cap",
+    "dev_shipped_vllm_rows_rewrite_high_to_xhigh",
+    "dev_vllm_row_translates_high_to_xhigh",
+    "dev_any_string_effort_is_reported_in_the_header",
+    "dev_trim_bindings_is_key_checked_post_only_and_unbinds_past_retain",
+    "dev_binding_to_a_retired_name_is_carried_to_the_row_that_retires_it",
+    "dev_a_retired_name_binding_is_one_owner_for_model_conflict_retention_and_trim",
+    "dev_rented_stats_count_uncapped_turns_in_flight",
+    "dev_rented_pool_full_keeps_capped_zero_and_uncapped_distinct",
+    "shipped_rows_render_the_derived_retain_cap_and_effort_values",
+    "h11_rows_follow_the_layout_grant",
+    "bindings_keep_the_live_key_scheme_in_router_state",
+    "a_refused_layout_refuses_the_h11_projection_and_stops_the_write",
+    "a_granted_replica_without_or_with_two_namings_is_refused",
+    "comparison_rows_carry_the_cited_quote_values_and_the_live_shape",
+    "dev_drained_predecessor_does_not_reclaim_a_retired_binding",
     "world_is_removed",
   ]
 }
@@ -416,7 +1186,7 @@ fn case_row(c: FalsifierCase) -> String {
 // THE ROW CASES RUN FIRST AND ON EVERY HOST: they read the emitted rows and text and need no effect, so a
 // host without a daemon still reports them, and a red row case is not held there either. Only the process
 // cases wait on the daemon.
-// Completeness is an identity join, not a count equality (§5): the roster line is DERIVED from the cases
+// Completeness is an identity join, not a count equality (gunbc.design_argument::fail_closed): the roster line is DERIVED from the cases
 // that ran (the precedent is gunbc.instruments.native_allocation_observation), so the harness's
 // one-for-one roster/rows join can never be fed a roster that drifted from the cases. The declared
 // expected list stays the denominator: it is joined against the ran identities by set equality, and a

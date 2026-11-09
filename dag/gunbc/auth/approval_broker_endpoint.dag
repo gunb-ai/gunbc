@@ -69,7 +69,8 @@ data approval_broker_listen_port: Port = 8085
 // address a CLIENT ON THE HOST dials and the address a PHONE dials are different facts with
 // different authentication stories -- the second goes through tailscale serve, which is what
 // injects the identity header the decide route requires -- and each is asserted for its own job
-// (the same split gunbc.auth.approval_ntfy_deployment already draws for the ntfy listener).
+// (the same split the ntfy front door drew on srv1, which gunbc.fleet.approval_ntfy_retirement now
+// closes: a loopback listener published by tailscale serve, never dialed directly).
 // ── THE ADDRESS THE BROKER BINDS, AND IT IS ONE FACT WITH TWO READERS ───────────────────────
 // THE UNIT'S BIND ADDRESS AND THE URL A CLIENT DIALS MUST BE THE SAME STRING OR THE PROBE IS
 // MEANINGLESS. The stage-A run found the unit binding 0.0.0.0 because the broker's service config
@@ -177,7 +178,7 @@ fn approval_broker_status_front_door(https_port: Port, backend_port: Port) -> Ta
 //
 // The tailscale documentation this corpus cites models the mount as the configuration KEY and does
 // not state the backend-side path rewrite either way (extdeps.tailscale.serve records what the
-// `off` form establishes about the key and nothing more). DESIGN section 4d forbids asserting as
+// `off` form establishes about the key and nothing more). gunbc.design_argument::epistemic_humility forbids asserting as
 // deduced what is only inferred, so the standing is carried as a typed bet naming the reading that
 // would close it, rather than as a modeled behaviour some consumer would then trust.
 //

@@ -13,7 +13,7 @@ import extdeps.apple.xcode { XcodeRelease }
 // byte builders are CHECKED against vectors the .dag witness emits into
 // dag/test/fixture/approval_device_redemption/vectors.json, which apps/approve-ios/project.yml
 // carries into the test bundle -- one authority, read from two sides, nothing hand-copied. THE
-// STANDING OF THAT CHECK, honestly (DESIGN 4b(1)): the XCTest is AUTHORED and UN-ENROLLED. No lane
+// STANDING OF THAT CHECK, honestly (gunbc.design_argument::guarantee_ladder (rung honesty)): the XCTest is AUTHORED and UN-ENROLLED. No lane
 // in this repository compiles Swift, so it executes only when an operator runs it on a MacBook, and
 // nothing on the merge path has ever compiled the Swift under apps/approve-ios. The equivalence is
 // therefore a claim at the mitigation rung whose only evidence is operator-executed, not an
@@ -22,7 +22,7 @@ import extdeps.apple.xcode { XcodeRelease }
 // stored_request section by stored_request_specimens; the outcome envelopes through
 // redemption_response_of), so a fixture regenerated from that module carries all of it.
 //
-// WHY THE SWIFT IS NOT YET DERIVED, stated as the §7 frontier row requires. The Swift is in two
+// WHY THE SWIFT IS NOT YET DERIVED, stated as the gunbc.design_argument::self_hosting frontier row requires. The Swift is in two
 // standings (operator direction 2026-09-25: hand-concatenated text, then a modeled form that is
 // emitted, then derived -- the shell-to-argv path). Protocol.swift, Wire.swift and
 // ProtocolVectorTests.swift are the MODELED stage: symbolic syntax trees
@@ -79,8 +79,14 @@ data approve_ios_enrolment_state_frontier: List<FrontierRow> = [
   ),
 ]
 
+data approve_ios_garden_retained: FrontierRow = frontier_row_path(
+  path: "apps/approve-ios/Approve/Garden.swift",
+  reason: "SwiftUI Canvas drawing of the garden strip and the inbox's checkpoint scene; its worker is TRANSCRIBED box by box from gunbc.site.element.build_meter (body insets, antenna, shade, feet, eyes, mouth; the light rows are replaced by a two-pixel glint, a stated divergence) and its palette from the workspace's --meter-worker slots, and its wardrobe (costume x mood per request) is a pixel-grain transcription of gunbc.design.brand_mark_studio's costume and expression axes, because the Swift target cannot print either model",
+  dissolution: unbound_dissolution(description: "DISSOLVES WHEN the Swift target prints gunbc.site.element.build_meter's worker boxes and palette slots and the brand mark studio's costume and expression parts (the same rows the workspace's SVG is rendered from), SUFFICIENT FOR a change to the worker's geometry, palette or a costume part to be refused by the drift gate until Garden.swift is re-printed"),
+)
+
 data approve_ios_retained_swift_rows: List<FrontierRow> = concat(
-  [approve_ios_views_retained, approve_ios_app_entry_retained, approve_ios_device_keys_retained],
+  [approve_ios_views_retained, approve_ios_app_entry_retained, approve_ios_device_keys_retained, approve_ios_garden_retained],
   approve_ios_enrolment_state_frontier
 )
 

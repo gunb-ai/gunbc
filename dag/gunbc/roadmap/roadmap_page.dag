@@ -23,7 +23,7 @@ import gunbc.site.avatar_marks { unknown_avatar_svg, group_avatar_svg, unassigne
 import gunbc.roadmap.roadmap_nesting { RoadmapMembership, roadmap_memberships }
 import gunbc.roadmap.roadmap_project { RoadmapMembershipIndex, membership_index, project_root_for_node_in }
 import gunbc.roadmap.roadmap_lineage { lineage_lookup }
-import std.algebra { empty_map, map_insert, map_lookup }
+import std.algebra { empty_map, map_insert, map_lookup, length }
 
 import gunbc.roadmap.roadmap_issue_command { IssueFormContext }
 
@@ -42,7 +42,7 @@ import gunbc.principal_projection {
 }
 import gunbc.auth.profile_projection { PrincipalProfile }
 import gunbc.roadmap.roadmap_component { standing_chip_class }
-import std.types { list_length, Map }
+import std.types { Map }
 import gunbc.harness.harness_throughput {
   HarnessRoundLedger, RoundsUnobserved, RoundsObserved, RoundObservation,
   RoundSegment, RoundSegmentKind, ReadRound, WriteRound, UnmeasuredRound, round_segments, round_segment_kind_word, round_playback, RoundPlayback, round_remaining_flex, harness_round_budget_steps,
@@ -84,7 +84,7 @@ import gunbc.roadmap.roadmap_hierarchy_view {
   relation_summary, relation_count_text, relation_kind_label, relation_empty_text, relation_undeclared_text,
   node_status_is_closed, node_chain_refusal_text,
 }
-import gunbc.roadmap.roadmap_issue_location { issue_page_path, issue_assign_path, issue_comment_path, issue_anchor_path, issue_work_tab_anchor, issue_work_event_anchor }
+import gunbc.roadmap.roadmap_issue_location { issue_page_path, issue_assign_path, issue_comment_path, issue_close_path, issue_retire_path, issue_anchor_path, issue_work_tab_anchor, issue_work_event_anchor }
 import gunbc.roadmap.roadmap_component { activity_round_live_class, activity_round_remaining_class, round_strip_playback_ms }
 import gunbc.roadmap.roadmap_component { roadmap_dispatch_asset_path, disclosure_mark_class, disclosure_mark_glyph, workflow_controls_class, dashboard_instance_class, dashboard_instance_label_class, activity_ledger_class, activity_obligation_class, activity_evidence_class, activity_evidence_row_class, activity_located_reason_class, activity_round_strip_class, activity_round_read_class, activity_round_write_class, activity_round_unmeasured_class, activity_round_reason_class, node_attempt_stale_class, stage_strip_class, stage_segment_class, stage_live_class, activity_throughput_class, activity_line_prefix_class }
 import gunbc.site.controls { sound_toggle_class, theme_toggle_class, theme_toggle_label_prefix, theme_toggle_auto_value }
@@ -272,7 +272,7 @@ fn node_lifecycle_key(rn: RoadmapNode, merged: List<Int>) -> String {
 // legacy lines the named lead residue inside gunbc.roadmap.roadmap_presentation). A row whose LEAD is
 // itself paragraph-length defeats the disclosure — the brief stays collapsed but the summary line
 // does not, so the reader pays the full text anyway. The bound is authoring residue, not a
-// structural class: no construction forbids a long sentence, so this is the §5-sanctioned lens over
+// structural class: no construction forbids a long sentence, so this is the gunbc.design_argument::fail_closed-sanctioned lens over
 // the genuinely unstructurable part, and it is typed/located/counted (node id + measured length)
 // rather than a bare Bool, so a red says WHICH row and by how much. 300 chars is the operator's
 // declared bound (roadmap-workspace-ux-plan.md P1b); an offender is re-cut by moving its summary
@@ -442,7 +442,7 @@ data github_blob_base: String = "https://github.com/gunb-ai/gunbc/blob/main/"
 // TsProgram (gunbc.roadmap.roadmap_component.dispatch_client_program), emitted as an EXTERNAL served asset
 // (roadmap_dispatch_asset_path, served by belt B) and referenced by <script src> -- NOT a
 // hand-concatenated JS string inlined into the HTML (the former was the dispatch-button incident's
-// root class, §5, and the inline placement was a hack: an inline <script> text node escapes '>'
+// root class, gunbc.design_argument::fail_closed, and the inline placement was a hack: an inline <script> text node escapes '>'
 // under std.markup, corrupting an arrow's `=>`; external emission is escape-clean). It reads belt
 // B's `status` contract with the ok-set DERIVED from belt_dispatch_ok_status_labels; the retired
 // belt-A `ok`/`node` shape is gone and cannot return (the page witness holds a RED on `j.ok`).
@@ -1213,12 +1213,12 @@ fn round_segment_node(play: RoundPlayback, pulsing: Bool) -> Fragment {
 
 fn round_strip_nodes(ledger: HarnessRoundLedger, live: Bool) -> List<Fragment> {
   let plays = round_playback(segs: round_segments(ledger: ledger), playback_ms: round_strip_playback_ms)
-  let total = list_length(items: plays)
+  let total = length(xs: plays)
   if total == 0 {
     []
   } else {
     let nodes = fold(plays, init: [], f: (acc, p) =>
-      concat(acc, [round_segment_node(play: p, pulsing: live && list_length(items: acc) + 1 == total)]))
+      concat(acc, [round_segment_node(play: p, pulsing: live && length(xs: acc) + 1 == total)]))
     let remaining = if live { round_remaining_flex(ledger: ledger, budget_steps: harness_round_budget_steps) } else { 0 }
     let tail = if remaining > 0 {
       [ el_attrs("span", [
@@ -1280,7 +1280,7 @@ fn node_li_attributes(view: WorkRowView) -> List<Attribute> {
 // in scope) and its rows name no assignee surface — the empty roster renders every fallback
 // exactly as before.
 fn node_work_row_view(rn: RoadmapNode, graph: ReadinessGraph, merged: List<Int>, launch: LaunchRowContext) -> WorkRowView {
-  work_row_view_in(rn: rn, graph: graph, merged: merged, activity: NoActiveWork, rounds: RoundsUnobserved { reason: "no active attempt" as NonEmptyStr }, worker_alive: false, standing: none, launch: launch, attempt_stale: false, profiles: [], assignment: none)
+  work_row_view_in(rn: rn, graph: graph, merged: merged, activity: NoActiveWork, rounds: RoundsUnobserved { reason: "no active attempt" as NonEmptyStr }, worker_alive: false, standing: none, launch: launch, attempt_stale: false, profiles: [], assignment: none, standings: StandingsUnobserved { reason: "this row helper observes no live standings" as NonEmptyStr })
 }
 
 // THE TREE'S GRAPH, indexed once per rendered group: the row graph every row's readiness reads
@@ -1870,6 +1870,7 @@ fn issue_event_payload(env: RoadmapEventEnvelope) -> String {
     Progress { note } => join(["progress: ", note as String], "")
     Blocked { reason } => join(["blocked: ", reason as String], "")
     HandedBack { reason } => join(["handed back: ", reason as String], "")
+    Retired { reason } => join(["retired: ", reason as String], "")
     ReceiptReferenced { obligation, address, verdict } =>
       join(["receipt ", obligation as String, " at ", address as String, ": ", verdict as String], "")
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => "comment created"
@@ -2025,7 +2026,7 @@ type IssueStreamEntry
 
 fn issue_stream_entries(envs: List<RoadmapEventEnvelope>) -> List<IssueStreamEntry> {
   let comments = map(roadmap_issue_comments(envs: envs), c => StreamComment { comment: c })
-  let publications = map(filter(envs, e => match e.event.kind { ResultReturned { attempt: _, claim: _, outcome: _ } => true  Claimed { assignee: _, return_to: _ } => false  Released => false  Progress { note: _ } => false  Blocked { reason: _ } => false  HandedBack { reason: _ } => false  ReceiptReferenced { obligation: _, address: _, verdict: _ } => false  CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => false  CommentEdited { comment: _, body: _ } => false  CommentDeleted { comment: _ } => false }), e => StreamPublication { env: e })
+  let publications = map(filter(envs, e => match e.event.kind { ResultReturned { attempt: _, claim: _, outcome: _ } => true  Claimed { assignee: _, return_to: _ } => false  Released => false  Progress { note: _ } => false  Blocked { reason: _ } => false  HandedBack { reason: _ } => false  Retired { reason: _ } => false  ReceiptReferenced { obligation: _, address: _, verdict: _ } => false  CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => false  CommentEdited { comment: _, body: _ } => false  CommentDeleted { comment: _ } => false }), e => StreamPublication { env: e })
   issue_entries_sort_ascending(concat(comments, publications))
 }
 
@@ -2116,6 +2117,8 @@ fn issue_publication_entry_row_node(node_id: String, envs: List<RoadmapEventEnve
       el_class("div", "issue-comment-body", [ txt("") ])
     HandedBack { reason: _ } =>
       el_class("div", "issue-comment-body", [ txt("") ])
+    Retired { reason: _ } =>
+      el_class("div", "issue-comment-body", [ txt("") ])
     ReceiptReferenced { obligation: _, address: _, verdict: _ } =>
       el_class("div", "issue-comment-body", [ txt("") ])
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } =>
@@ -2185,62 +2188,6 @@ fn issue_comment_composer_node(node_id: String, expected_revision: String, profi
       attr(name: "data-action-route", value: "comment" ),
       attr(name: "data-node", value: node_id ),
     ]), [ txt("Comment") ]),
-  ])
-}
-
-// THE NEW-ISSUE COMPOSER: the form behind POST /issues (gunbc.roadmap.roadmap_serve
-// serve_issue_create_response_over). Every field is required -- a task is created READY-SHAPED or
-// refused -- and the field names are the ones gunbc.roadmap.roadmap_task_form reads. Without a session the
-// submit is disabled, exactly as the comment composer is.
-fn issue_create_field_node(name: String, label: String, long: Bool) -> Fragment {
-  el_class("label", "issue-create-field", [
-    el_class("span", "issue-create-label", [ txt(label) ]),
-    if long {
-      el_attrs("textarea", [ attr(name: "name", value: name), attr(name: "required", value: ""), attr(name: "class", value: "issue-comment-input") ], [])
-    } else {
-      el_attrs("input", [ attr(name: "name", value: name), attr(name: "type", value: "text"), attr(name: "required", value: "") ], [])
-    },
-  ])
-}
-
-fn issue_create_composer_node(command_context: IssueFormContext) -> Fragment {
-  el_attrs("form", [
-    attr(name: "class", value: "issue-create-form"),
-    attr(name: "method", value: "post"),
-    attr(name: "enctype", value: "application/x-www-form-urlencoded"),
-    attr(name: "action", value: "/issues"),
-  ], concat([
-    el_attrs("input", [ attr(name: "name", value: "key"), attr(name: "type", value: "hidden"), attr(name: "value", value: if command_context.operation == "" { "" } else { concat(command_context.operation, "-create") }) ], []),
-    el_attrs("input", [ attr(name: "name", value: "csrf"), attr(name: "type", value: "hidden"), attr(name: "value", value: command_context.csrf) ], []),
-  ], concat([
-    issue_create_field_node(name: "headline", label: "Headline", long: false),
-    issue_create_field_node(name: "brief", label: "Brief", long: true),
-    issue_create_field_node(name: "displaced_cost", label: "Displaced cost", long: true),
-    issue_create_field_node(name: "current_state", label: "Current state", long: true),
-    issue_create_field_node(name: "first_slice", label: "First slice", long: true),
-    issue_create_field_node(name: "red_control", label: "Red control", long: true),
-    issue_create_field_node(name: "out_of_scope", label: "Out of scope", long: true),
-    issue_create_field_node(name: "handback", label: "Handback", long: true),
-    issue_create_field_node(name: "authored_on", label: "Authored on (YYYY-MM-DD)", long: false),
-    issue_create_field_node(name: "parent_project", label: "Parent project", long: false),
-    issue_create_field_node(name: "parent_contribution", label: "Contribution to the parent", long: false),
-    issue_create_field_node(name: "centering", label: "Centering", long: false),
-    issue_create_field_node(name: "repo", label: "Repository", long: false),
-    issue_create_field_node(name: "plan_path", label: "Plan or design path", long: false),
-    issue_create_field_node(name: "entry", label: "Claim entry file", long: false),
-    issue_create_field_node(name: "functions", label: "Claim functions (comma separated)", long: false),
-    issue_create_field_node(name: "owner", label: "Work owner", long: false),
-  ], [
-    el_attrs("button", concat(if command_context.csrf == "" { [attr(name: "disabled", value: ""), attr(name: "title", value: "Sign in to create an issue")] } else { [] }, [
-      attr(name: "class", value: "issue-comment-submit issue-action-text"),
-      attr(name: "type", value: "submit"),
-    ]), [ txt("Create issue") ]),
-  ])))
-}
-
-fn issue_create_page(command_context: IssueFormContext) -> Fragment {
-  site_document(title: "gunbc — new issue", heading: "new issue", styles: roadmap_styles(), content: [
-    el_class("main", "issue-detail", [ issue_create_composer_node(command_context: command_context) ])
   ])
 }
 
@@ -2425,6 +2372,8 @@ fn issue_comments_tab_nodes(view: WorkRowView, events: List<RoadmapEventEnvelope
     concat(disclosure_folded_nodes(d: view.disclosure, done: work_lifecycle_key(l: view.lifecycle) == "done"), [
       issue_comments_stream_node(node_id: view.node_id, envs: events, profiles: view.profiles),
       issue_comment_composer_node(node_id: view.node_id, expected_revision: expected_revision, profiles: view.profiles, command_context: command_context),
+      issue_close_form_nodes(node_id: view.node_id, command_context: command_context),
+      issue_retire_form_nodes(node_id: view.node_id, expected_revision: expected_revision, command_context: command_context),
     ])))]
 }
 
@@ -2474,6 +2423,7 @@ fn issue_dependency_graph_status(status: NodeStatus) -> String {
     NodeStatusDerived { status: derived, closed: _ } => match derived {
       DisplayDone => "done"
       DisplaySuperseded => "superseded"
+      DisplayRetired => "retired"
       DisplayUnknown => "unknown"
       DisplayReady => issue_display_status_label(status: derived)
       DisplayActive => issue_display_status_label(status: derived)
@@ -2759,7 +2709,7 @@ el_class("main", "issue-detail", [
 fn workspace_markup(ws: DailyWorkspaceView, edges: List<RoadmapEdge>, memberships: List<RoadmapMembership> = roadmap_memberships()) -> Fragment {
   el_class("section", "roadmap-frontier", [
     el_class("div", "view-table", [
-      el_class("div", "workspace-toolbar", [issue_controls_markup(), el_attrs("a", [attr(name: "href", value: "/issues/new"), attr(name: "class", value: "issue-new-link")], [txt("New issue")])]),
+      el_class("div", "workspace-toolbar", [issue_controls_markup()]),
       el_class("div", "issue-table-scroll", [issue_table_markup(rows: ws.table, observation: ws.observation, edges: edges, memberships: memberships)])
     ])
   ])
@@ -2872,6 +2822,7 @@ fn observed_row_view(rn: RoadmapNode, obs: RowObservations) -> WorkRowView {
     worker_alive: daily_row_worker_alive(node_id: rn.node as String, attempts: obs.attempts, attempts_refused: obs.attempts_refused),
     standing: standing_for_node(standings: obs.standings, node_id: rn.node as String),
     assignment: assignment_for_node(standings: obs.standings, node_id: rn.node as String),
+    standings: obs.standings,
     launch: obs.launch,
     attempt_stale: any(obs.stale_nodes, s => s == rn.node as String),
     profiles: obs.profiles)
@@ -3030,7 +2981,7 @@ el_class("main", "daily-workspace", [
 // made every claim about BODY markup pay for it: roadmap_css() measures 157,986 eval steps against
 // ~5,800 for the node row it was actually asserting on, so four page claims each spent 96% of their
 // budget building a stylesheet none of them inspects (probe over roadmap_page_launch, claim_batch on
-// this tree). That is the DESIGN section 3 tell exactly -- a claim dominated by one call whose result
+// this tree). That is the gunbc.design_argument::single_authority tell exactly -- a claim dominated by one call whose result
 // it does not inspect -- and the substrate's whole remedy is to SUPPLY the value instead of computing
 // it. Every production caller below passes roadmap_css(), so the served page is unchanged.
 fn roadmap_page_impl_with_stylesheet(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<Fragment>, launch: LaunchHostStanding, stylesheet: SiteStyles) -> Fragment {
@@ -3041,7 +2992,7 @@ fn roadmap_page_impl_with_stylesheet(doc: RoadmapDocument, merged: List<Int>, ma
   let body_base = [
     el_class("main", "roadmap", main_children),
   ]
-  let body_children = if list_length(main_children) == 0 {
+  let body_children = if length(main_children) == 0 {
     body_base
   } else {
     concat(body_base, [ dispatch_client_script() ])
@@ -3153,7 +3104,7 @@ fn roadmap_page_for_projection_launch_with_stylesheet(proj: RoadmapAuthorityProj
 // _for_accepted form closed the route, but left the ambient-reading fold standing -- and a probe
 // cannot guard it: under the hermetic witness route the carrier read REFUSES and yields the same
 // empty set, so the defect is invisible to any witness that could be enrolled (measured: the
-// leak restored in an isolated worktree, the probe still PASSED). DESIGN 4b says a check whose RED
+// leak restored in an isolated worktree, the probe still PASSED). gunbc.design_argument::guarantee_ladder says a check whose RED
 // is not authorable is not a weak wall but a decoration, and 5 says prefer construction over
 // validation. So the fold is deleted rather than watched: nothing below the parameterized route
 // can name the public accepted set any more, and these two get the empty one, which is what their
@@ -3366,3 +3317,80 @@ fn issue_query_snapshot_for_projection(proj: RoadmapAuthorityProjection, attempt
     }
   }
 }
+
+// ══ OPERATOR CLOSE / RETIRE FORMS (2026-11-04) ════════════════════════════════════════════════
+// The daily reconciliation lives on the issue page itself — no hand-editing jsonl, no redeploy.
+// CLOSE is the acceptance act: repository + pull number are the required inputs; the server reads
+// the merge back from GitHub (a merge nobody read is not a merge), derives the criteria digest from
+// the node's own ticket, the accepted-by from the authenticated principal, and the accepted-on from
+// the clock. The red-control witness pair and the first handback artifact are the receipt fields
+// the acceptance model truly requires OF THE OPERATOR — an executed red control and a delivered
+// artifact are claims no machine can read off the PR — so they stay in the form as honest operator
+// evidence, never invented server-side. RETIRE is the operator's arbitrary end for any work item,
+// in any state: one optional reason, and the lineage goes terminal honestly ("retired by"). The
+// operation key rides the per-render form operation plus the node id, so a double submit replays
+// instead of duplicating; it is visible and editable, because the named conflict answer tells the
+// operator to change it and retry.
+fn issue_operator_hidden(name: String, value: String) -> Fragment {
+  el_attrs("input", [
+    attr(name: "name", value: name),
+    attr(name: "type", value: "hidden"),
+    attr(name: "value", value: value),
+  ], [])
+}
+
+fn issue_operator_text(name: String, label: String, value: String, placeholder: String) -> Fragment {
+  el_attrs("label", [attr(name: "class", value: "issue-operator-field")], [
+    txt(label),
+    el_attrs("input", [
+      attr(name: "name", value: name),
+      attr(name: "type", value: "text"),
+      attr(name: "value", value: value),
+      attr(name: "placeholder", value: placeholder),
+      attr(name: "required", value: ""),
+    ], []),
+  ])
+}
+
+fn issue_close_form_nodes(node_id: String, command_context: IssueFormContext) -> Fragment {
+  let key_prefill = if command_context.operation == "" { concat("close-", node_id) } else { concat(command_context.operation, "-close-", node_id) }
+  el_attrs("form", [
+    attr(name: "class", value: "issue-operator-form issue-close-form"),
+    attr(name: "method", value: "post"),
+    attr(name: "enctype", value: "application/x-www-form-urlencoded"),
+    attr(name: "action", value: issue_close_path(node_id: node_id)),
+  ], [
+    issue_operator_text(name: "key", label: "Operation key (idempotency)", value: key_prefill, placeholder: "unique per acceptance act"),
+    issue_operator_hidden(name: "csrf", value: command_context.csrf),
+    issue_operator_text(name: "repo", label: "Repository (owner/name)", value: "", placeholder: "briansrls/gunbc"),
+    issue_operator_text(name: "pr", label: "Merged pull request #", value: "", placeholder: "14189"),
+    issue_operator_text(name: "witness_module", label: "Red-control witness module", value: "", placeholder: "test/claim/..."),
+    issue_operator_text(name: "witness_fn", label: "Red-control witness fn", value: "", placeholder: "witness_executes"),
+    issue_operator_text(name: "first_artifact", label: "First handback artifact", value: "", placeholder: "commit, PR, report, or artifact name"),
+    issue_operator_text(name: "further_artifacts", label: "Further artifacts (newline-separated)", value: "", placeholder: "optional"),
+    el_attrs("button", [
+      attr(name: "class", value: "issue-operator-submit issue-action-text"),
+      attr(name: "type", value: "submit"),
+    ], [ txt("Close node (merged PR accepted)") ]),
+  ])
+}
+
+fn issue_retire_form_nodes(node_id: String, expected_revision: String, command_context: IssueFormContext) -> Fragment {
+  let key_prefill = if command_context.operation == "" { concat("retire-", node_id) } else { concat(command_context.operation, "-retire-", node_id) }
+  el_attrs("form", [
+    attr(name: "class", value: "issue-operator-form issue-retire-form"),
+    attr(name: "method", value: "post"),
+    attr(name: "enctype", value: "application/x-www-form-urlencoded"),
+    attr(name: "action", value: issue_retire_path(node_id: node_id)),
+  ], [
+    issue_operator_text(name: "key", label: "Operation key (idempotency)", value: key_prefill, placeholder: "unique per retire act"),
+    issue_operator_hidden(name: "csrf", value: command_context.csrf),
+    issue_operator_hidden(name: "expected_revision", value: expected_revision),
+    issue_operator_text(name: "reason", label: "Why (recorded honestly as the retirement reason)", value: "", placeholder: "optional"),
+    el_attrs("button", [
+      attr(name: "class", value: "issue-operator-submit issue-action-text"),
+      attr(name: "type", value: "submit"),
+    ], [ txt("Retire work item") ]),
+  ])
+}
+

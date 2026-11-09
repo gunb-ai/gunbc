@@ -103,7 +103,7 @@ data emitted_record_deserialize_gap_evidence: List<EmittedRecordDeserializeEvide
 // this comment as claiming a working gate, and that reading was fair because the sentence it read
 // was false.
 //
-// DESIGN 4b(1) sets a class's rung at the MINIMUM across its in-scope paths, so the question is not
+// gunbc.design_argument::guarantee_ladder (rung honesty) sets a class's rung at the MINIMUM across its in-scope paths, so the question is not
 // whether SOME path refuses the shape but whether EVERY path does. Measured on this branch, over the
 // 4234 modules indexed under src/v1 + dag + src/v2: the seed closure is 134 modules and the
 // emit-compile roster's closures add 5 more, for 139 covered. THE REMAINING 4095 CAN CARRY THIS
@@ -127,7 +127,7 @@ data emitted_record_deserialize_gap_rung: String = "mitigatable"
 // Measured 2026-08-28 on this branch over 4234 modules indexed under src/v1 + dag + src/v2: seed
 // closure 134, emit-compile roster closures add 5, 139 covered, 4095 uncovered. On the uncovered
 // majority the shape is accepted and nothing refuses it, which is the path that sets the rung under
-// DESIGN 4b(1) minimum-across-paths.
+// gunbc.design_argument::guarantee_ladder (rung honesty) minimum-across-paths.
 
 // THE PREMISE BEHIND THE TRIGGER WAS MEASURED, AFTER AN EARLIER REVISION ASSERTED IT.
 //
@@ -142,7 +142,7 @@ data emitted_record_deserialize_gap_rung: String = "mitigatable"
 //
 // So the phase ALREADY compiles modules the seed does not import, and isolation from the seed is
 // not the missing capability. An over-strong refusal is not the safe direction to err in: it is the
-// mirror of the DESIGN 4b(3) failure -- a trigger that cannot be satisfied while the capability is
+// mirror of the gunbc.design_argument::guarantee_ladder (no silent regression) failure -- a trigger that cannot be satisfied while the capability is
 // alive, failing as quietly as one satisfied while it is dead, because a row that never retires
 // reads as diligence.
 // Measured 2026-08-28 on this branch: of the eight entries in gunbc.ci.ci_layer_roots

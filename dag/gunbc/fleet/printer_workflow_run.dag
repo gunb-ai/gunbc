@@ -23,11 +23,25 @@ import gunbc.actions_run_binding { actions_variable_trimmed }
 import extdeps.languages.json.emit { json_object, json_kv, json_string, serialize_json }
 import gunbc.fleet.printer_selection {select_printer,PrinterSelected,PrinterSelectionRefused}
 import gunbc.fleet.printer_receipt {write_receipt}
-import gunbc.fleet.print_converge {converge_print, print_pass_ref, ReviewedMainRef, OffReviewedMainRef}
+import gunbc.host_state_root {host_state_tree}
+import gunbc.fleet.print_converge {converge_print}
+import gunbc.fleet.printer_credential_source { PrinterCredentialSource, SecretManagerCredentialSource, HostCustodyCredentialSource, read_printer_custody_version, PrinterCustodyVersionPresent, PrinterCustodyVersionRefused }
 import gunbc.fleet.print_request {PrintRequest}
+import gunbc.fleet.printer_execution_hold {printer_hold_broker_standing,printer_hold_release_request_for_tree,printer_hold_release_request_detail,HoldReleaseCardFiled,HoldReleaseCardOnFile,HoldReleaseNothingHeld,HoldReleaseRefused}
 
-// Discovery reads latest once and records the provider's numeric identity, never the code.
-// Starting is a different operation and requires that exact numeric pin.
+// Discovery records the provider's numeric identity, never the code. Starting is a different
+// operation and requires that exact numeric pin. Over Secret Manager it reads latest once; over host
+// custody (the shell route) it reads the version the custody copy was taken at.
+fn observe_credential(printer: PhysicalAssetIdentity, credential_source: PrinterCredentialSource) -> ProcessExit {
+  match credential_source {
+    SecretManagerCredentialSource { token_source: t } => observe_credential_with_source(printer: printer, token_source: t)
+    HostCustodyCredentialSource { run_id: _ } => match read_printer_custody_version(printer: printer) {
+      PrinterCustodyVersionPresent { version: v, record: _ } => write_receipt(printer: printer, standing: "credential-observed; printer not contacted", version: v as String, remote: "", digest: "", credential_source: credential_source)
+      PrinterCustodyVersionRefused { cause: c } => exit_failure(reason: c)
+    }
+  }
+}
+
 fn observe_credential_with_source(printer: PhysicalAssetIdentity, token_source: AccessTokenSource) -> ProcessExit {
   match printer_access_code_locus(printer: printer) {
     PrinterAccessCodeLocusUnknown { printer: _ } => exit_failure(reason: "Printer credential locus is absent")
@@ -37,7 +51,7 @@ fn observe_credential_with_source(printer: PhysicalAssetIdentity, token_source: 
         SecretCredentialReady { credential: c, resolved_version: version } =>
           if (c as String) == "" { exit_failure(reason: "Printer credential is empty") }
           else { match sm_resolved_version_id(identity: version) {
-            SmVersionIdProjected { version: v } => write_receipt(printer: printer, standing: "credential-observed; printer not contacted", version: v as String, remote: "", digest: "", token_source:token_source)
+            SmVersionIdProjected { version: v } => write_receipt(printer: printer, standing: "credential-observed; printer not contacted", version: v as String, remote: "", digest: "", credential_source: SecretManagerCredentialSource { token_source: token_source })
             SmVersionIdNotAVersionResource { supplied: _ } => exit_failure(reason: "Credential version identity cannot be projected")
           } }
         SecretCredentialAccessUpsertRequired { plan: _ } => exit_failure(reason: "Printer federation needs the ntfy-approved IAM converge")
@@ -48,32 +62,46 @@ fn observe_credential_with_source(printer: PhysicalAssetIdentity, token_source: 
   }
 }
 
+// THE OPERATIONS BOTH ROUTES RUN. The workflow route (run, below) and the shell route
+// (gunbc.fleet.printer_shell_run) differ only in where the run is attributed and where the printer
+// credential comes from; the operation, and the converge it calls, are one. Any ref may run any of them
+// (operator ruling 2026-11-05, gunbc.design_ruling printer_start_gate_is_the_approval_not_the_ref):
+// the bed-clear approval is the gate on a start, and the hold-release card is itself an operator decision.
+fn printer_operation(operation: String, printer: PhysicalAssetIdentity, credential_source: PrinterCredentialSource, request_id: String, root: String, recipe: String, revision: String, run_id: String) -> ProcessExit {
+  if operation == "observe" { observe_credential(printer: printer, credential_source: credential_source) }
+  // FILING THE OPERATOR'S STALE-HOLD CARD, and nothing else: it asks the Approve deck to let a
+  // human confirm that no fleet controller is driving the printer before a hold this root cannot
+  // observe is freed. It releases nothing -- the release stays behind the authorization in the
+  // converge that meets the hold.
+  else if operation == "hold-release-request" { match printer_hold_release_request_for_tree(tree: host_state_tree(), standing_of:printer_hold_broker_standing) {
+    // The receipt says WHICH of these happened. A card filed and a card already on file both leave the
+    // hold held; only the first says the operator has something new to decide.
+    HoldReleaseCardFiled { escalation_id: e } => write_receipt(printer: printer, standing: join(["hold-release-request: operator card filed under escalation ", e as String, "; no hold released by this run"], ""), version: "", remote: "", digest: "", credential_source: credential_source)
+    HoldReleaseCardOnFile { escalation_id: e, detail: d } => write_receipt(printer: printer, standing: join(["hold-release-request: ", printer_hold_release_request_detail(outcome: HoldReleaseCardOnFile { escalation_id: e, detail: d })], ""), version: "", remote: "", digest: "", credential_source: credential_source)
+    HoldReleaseNothingHeld { detail: d } => write_receipt(printer: printer, standing: join(["hold-release-request: ", d as String], ""), version: "", remote: "", digest: "", credential_source: credential_source)
+    HoldReleaseRefused { reason: r } => exit_failure(reason: r as String)
+  } }
+  else if operation != "converge" { exit_failure(reason: "Unknown printer operation; use observe, converge, or hold-release-request") }
+  else if request_id == "" || root == "" || recipe == "" || revision == "" {
+    exit_failure(reason: "Converge requires request_id, root and recipe, and an attributed revision")
+  } else { converge_print(
+    tree: host_state_tree(),
+    request: PrintRequest { request_id: request_id as NonEmptyStr, root: root as NonEmptyStr, recipe: recipe as NonEmptyStr, printer: printer },
+    source_revision: revision as NonEmptyStr, run_id: run_id, credential_source: credential_source) }
+}
+
 fn run() -> ProcessExit {
   let run_id = actions_variable_trimmed(name: "GITHUB_RUN_ID")
-  let operation = actions_variable_trimmed(name: "PRINTER_OPERATION")
   if run_id == "" || !decimal_digits_only(s: run_id) {
     exit_failure(reason: "Printer workflow requires an attributed Actions run")
   } else {
     match select_printer(name: actions_variable_trimmed(name: "PRINTER_TARGET")) {
       PrinterSelectionRefused => exit_failure(reason: "Printer identity is not in the fleet roster")
-      PrinterSelected { printer: printer } =>
-        if operation == "observe" { match print_pass_ref(github_ref: actions_variable_trimmed(name: "GITHUB_REF")) {
-          ReviewedMainRef => observe_credential_with_source(printer:printer,token_source:WorkloadIdentityToken)
-          OffReviewedMainRef { ref: _ } => exit_failure(reason: "Observing the printer credential runs only from reviewed main; a branch run holds no printer credential")
-        } }
-        else if operation != "converge" { exit_failure(reason: "Unknown printer operation; use observe or converge") }
-        else {
-          let request_id = actions_variable_trimmed(name: "PRINTER_REQUEST_ID")
-          let root = actions_variable_trimmed(name: "PRINTER_ROOT")
-          let recipe = actions_variable_trimmed(name: "PRINTER_RECIPE")
-          let revision = actions_variable_trimmed(name: "GITHUB_SHA")
-          if request_id == "" || root == "" || recipe == "" || revision == "" {
-            exit_failure(reason: "Converge requires request_id, root and recipe, and an attributed revision")
-          } else { converge_print(
-            request: PrintRequest { request_id: request_id as NonEmptyStr, root: root as NonEmptyStr, recipe: recipe as NonEmptyStr, printer: printer },
-            pass_ref: print_pass_ref(github_ref: actions_variable_trimmed(name: "GITHUB_REF")),
-            source_revision: revision as NonEmptyStr, run_id: run_id, token_source: WorkloadIdentityToken) }
-        }
+      PrinterSelected { printer: printer } => printer_operation(
+        operation: actions_variable_trimmed(name: "PRINTER_OPERATION"), printer: printer,
+        credential_source: SecretManagerCredentialSource { token_source: WorkloadIdentityToken },
+        request_id: actions_variable_trimmed(name: "PRINTER_REQUEST_ID"), root: actions_variable_trimmed(name: "PRINTER_ROOT"),
+        recipe: actions_variable_trimmed(name: "PRINTER_RECIPE"), revision: actions_variable_trimmed(name: "GITHUB_SHA"), run_id: run_id)
     }
   }
 }

@@ -2,7 +2,7 @@ module v1.compiler.emit
 
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.compiler_entry {
-  CompilerEntryDriver, RetainedHostCliKernel, DirectIngestDriver, SourceRootEvalDriver, NativeCliDriver, NativeClaimDriver, NativeServeDriver,
+  NativeEffectRoute, NativeCompilerRoute, NativeClaimRoute, NativeIngressRoute,
   NativeEffectClass, NativeEffectDeclaration, NativeOutgoingHttp, NativeEffectScope, NativeAdmitAllExcept, NativeAdmitOnly, NativeEffectDenominator
 }
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -256,7 +256,7 @@ fn emit_simple_string_interp(parts: List<StringPart>, target: RenderTarget, sour
 
 fn empty_emit_scope() -> InferScope {
   InferScope {
-    type_env: TypeEnv { module_path: "", bindings: empty_map(), str_bindings: empty_map(), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: empty_map(), intern_table: empty_intern_table(), source_visible_names: empty_map(), authored_import_names: empty_map(), symbol_index: empty_symbol_index(), unit_variant_index: empty_map(), unit_variant_index_observed: false },
+    type_env: TypeEnv { module_path: "", bindings: empty_map(), str_bindings: empty_map(), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: empty_map(), intern_table: empty_intern_table(), source_visible_names: empty_map(), authored_import_names: empty_map(), symbol_index: empty_symbol_index(), unit_variant_index: empty_map(), unit_variant_index_observed: false, equality_by_target: empty_map() },
     func_env: ResolvedFuncEnv { name: "", local: empty_map(), parents: [] },
     locals: empty_map(),
     body_locals: empty_map(),
@@ -508,7 +508,7 @@ fn emit_declared_optional_row_json(value: Node, inner_type_name: String, source_
       match pe {
         Present { value: parent } =>
           if qualified_last_segment(name: parent) == qualified_last_segment(name: inner_type_name) {
-            Refused { reason: concat("a data row declared ", inner_type_name, "? is initialized with a bare ", inner_type_name, " literal: no declared coercion lifts T into T? (DESIGN 4, 2026-09-26), so spell it Present { value: .. } or none") }
+            Refused { reason: concat("a data row declared ", inner_type_name, "? is initialized with a bare ", inner_type_name, " literal: no declared coercion lifts T into T? (gunbc.design_argument::closed_grounded_substrate, 2026-09-26), so spell it Present { value: .. } or none") }
           } else {
             match value.children |> first {
               Absent => Emitted { json: "null" }
@@ -1141,7 +1141,7 @@ fn service_field_ctors(fs: ServiceFieldSet, t: ServiceFieldTemplates) -> List<St
 //
 // A CLOSED TOTAL FUNCTION, NOT A HANDLER ROSTER. Nothing declares an independent
 // handler, so an open registration surface would be a growth surface with no
-// consumer (DESIGN section 6).
+// consumer (gunbc.design_argument::how_to_work).
 //
 // PRECEDENCE IS NOT RE-DERIVED HERE. This calls #8954's `classify_transport`
 // rather than testing rest/shell/file/local again. A second precedence authority
@@ -1176,7 +1176,7 @@ type FileVerb
 // coproduct AT THE BINDING leaves that arm with no inhabitant to write it for:
 // the wall/renderer disagreement it guards against becomes unwritable rather
 // than merely caught, and the floor DISSOLVES rather than being kept in step
-// (DESIGN section 5 -- construction over validation; section 4b(4) -- a climb
+// (gunbc.design_argument::fail_closed -- construction over validation; gunbc.design_argument::guarantee_ladder (dissolution on climb) -- a climb
 // deletes the lower-rung machinery it obsoletes).
 //
 // It is also why this cut cannot be satisfied by routing the old call through a
@@ -1325,7 +1325,7 @@ fn bind_file_operation(t: Node, op_node: Node, source_indices: Map<String, Newli
 // Resolving the key to this coproduct AT THE BINDING removes the arm's
 // inhabitant: an unmodeled key becomes a typed, located refusal before any
 // target is chosen, and the renderer matches on a closed set with no default to
-// write (DESIGN section 5 -- construction over validation, and a failure arm
+// write (gunbc.design_argument::fail_closed -- construction over validation, and a failure arm
 // refuses rather than widens).
 type ShellResultChannel
   = ShellChanStdout
@@ -1357,7 +1357,7 @@ type ShellEmissionRefusal
 // `success` and `exists` resolve to the exit-status channel because the
 // interpreter's `map_shell_outputs` answers those FIELD NAMES from the exit code
 // when no `from` key is authored -- so the two directions of the one procedure
-// (DESIGN section 4) read the same rule rather than agreeing by coincidence.
+// (gunbc.design_argument::closed_grounded_substrate) read the same rule rather than agreeing by coincidence.
 //
 // The byte-accounting and truncation channels are modeled. The rust handler
 // answers them from the declared WitnessStderrCapturePolicy (concurrent drain).
@@ -1566,8 +1566,8 @@ fn bind_operation_transport(t: Node, op_node: Node, source_indices: Map<String, 
 
 // ── NATIVE EFFECT REALIZATION ADMISSION ────────────────────────────────────────────────────────
 // `gunbc.plans.demand_engine_program` section 2.9, GAP A, carrier E3. A native entry (a
-// NativeCliDriver or NativeServeDriver main) hands its entry function one handle per effect the
-// function demands: a reference per `uses` resource and per service it reaches (the parameter list
+// NativeCliDriver, NativeClaimDriver or NativeIngressDriver main) hands each function it calls one
+// handle per effect that function demands: a reference per `uses` resource and per service it reaches (the parameter list
 // v1.compiler.emit_rust emit_func_params renders). Before this verdict existed the rendered main
 // wrote those handles by hand, and an effect it did not write was found by rustc at the handler
 // call -- or, for a resource trait with no implementor, by the linker -- which is evidence of the
@@ -1576,7 +1576,7 @@ fn bind_operation_transport(t: Node, op_node: Node, source_indices: Map<String, 
 //
 // SCOPE (two rulings, cited): the operator's 2026-09-16 ruling (plan D11) kept Clock, Network,
 // Entropy and AuthContext out of the native COMPILER route. gentle-dove-36's 2026-10-04 ruling
-// extends it for native SERVICE entries: a NativeServeDriver entry (first consumer, the approval
+// extends it for native SERVICE entries: a NativeIngressDriver program (first consumer, the approval
 // broker) needs a clock reading and outgoing HTTP. That extension adds NO transport. The broker's
 // clock is extdeps.clock Clock, a service bound to the existing shell transport, and its outgoing
 // HTTP is a `transport rest` service bound to the existing REST lowering (RestResult). So a service
@@ -1728,14 +1728,11 @@ fn native_effect_contract_label(c: NativeEffectContract) -> String {
   }
 }
 
-fn native_route_label(route: CompilerEntryDriver) -> String {
+fn native_route_label(route: NativeEffectRoute) -> String {
   match route {
-    NativeCliDriver => "NativeCliDriver"
-    NativeClaimDriver => "NativeClaimDriver"
-    NativeServeDriver => "NativeServeDriver"
-    SourceRootEvalDriver => "SourceRootEvalDriver"
-    DirectIngestDriver => "DirectIngestDriver"
-    RetainedHostCliKernel => "RetainedHostCliKernel"
+    NativeCompilerRoute => "NativeCompilerRoute"
+    NativeClaimRoute => "NativeClaimRoute"
+    NativeIngressRoute => "NativeIngressRoute"
   }
 }
 
@@ -2585,7 +2582,7 @@ fn emit_error_expr(message: String, target: RenderTarget) -> String {
 // emit_file_call, Python emit_py_file_call, Go emit_go_file_call) each fabricated
 // `read(base_path + "/" + op_name)` for EVERY operation, so a declared Write emitted a read of a
 // path the declaration never named, dropped its `content` argument, and returned a String against
-// a declared bool. That was DESIGN §5's fabricated plausible output -- below the ladder, not a
+// a declared bool. That was gunbc.design_argument::fail_closed's fabricated plausible output -- below the ladder, not a
 // low rung on it -- and #8858 replaced all three with one typed, located, counted refusal. The
 // root it named was SEMANTIC INFORMATION LOSS AT THE DISPATCH BOUNDARY: the dispatch handed the
 // renderer an operation name and an indent depth, so no renderer could read `path:` or `verb:`
@@ -2612,7 +2609,7 @@ fn emit_error_expr(message: String, target: RenderTarget) -> String {
 // THE CHANNELS ARE THE INTERPRETER'S CHANNELS. is_modeled_file_output_channel enumerates exactly
 // the keys v1_interpreter map_file_outputs answers, and the rust renderer's per-channel
 // expressions are the emitted image of that map. Emission and interpretation are one decision
-// procedure run in two directions (DESIGN §4); a channel modeled on one side and not the other is
+// procedure run in two directions (gunbc.design_argument::closed_grounded_substrate); a channel modeled on one side and not the other is
 // a behavioral fork, which is why the refusal counts an unmodeled output key rather than emitting
 // a plausible zero for it.
 //
@@ -2629,11 +2626,11 @@ fn emit_error_expr(message: String, target: RenderTarget) -> String {
 // the dispatch an answer -- a stronger reason than the one it replaces, and the difference is the
 // point of the roster.
 //
-// NEXT-RUNG TRIGGER (DESIGN §4b(2)): the remaining refusals are FileTargetNotModeled for python
+// NEXT-RUNG TRIGGER (gunbc.design_argument::guarantee_ladder (no untracked stall)): the remaining refusals are FileTargetNotModeled for python
 // and go. They climb when a consumer needs a file transport emitted for one of those targets; the
 // work is then one more realization handler bound to the same FileEmissionRefusal-clean shape,
 // never a re-fork of the predicate. The rung this class now sits at is per-path and per-target,
-// and citing the rust path while python and go stay silent would be the inflation §4b(1) names.
+// and citing the rust path while python and go stay silent would be the inflation gunbc.design_argument::guarantee_ladder (rung honesty) names.
 //
 // The interpreter realization (v1_interpreter dispatch_file) is unaffected and remains the
 // oracle: it reads the same declaration, substituting the path template and dispatching on
@@ -2651,7 +2648,7 @@ fn render_target_name(target: RenderTarget) -> String {
 // it: a transport carrying more than one key is emitted by the FIRST arm that claims it, and
 // asking only "is it file?" would refuse an operation the dispatch would in fact have emitted as
 // rest or shell. This used to re-derive the rest-then-shell-then-file ordering by hand, which is
-// two authorities for one fact agreeing by coincidence (DESIGN §3).
+// two authorities for one fact agreeing by coincidence (gunbc.design_argument::single_authority).
 fn is_file_transport_after_dispatch_precedence(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   match classify_transport(t: t, source_indices: source_indices) {
     Present { value: FileTransport } => true
@@ -2661,7 +2658,7 @@ fn is_file_transport_after_dispatch_precedence(t: Node, source_indices: Map<Stri
 
 // Moved here from v1.compiler.emit_rust so that the file-transport REFUSAL PREDICATE and the
 // Rust RENDERER read the operation's output contract through one reader rather than two that
-// happen to agree (DESIGN §3). A refusal computed from a different view of the return type than
+// happen to agree (gunbc.design_argument::single_authority). A refusal computed from a different view of the return type than
 // the renderer consumes is the way this wall would go quietly wrong: it would admit an operation
 // the renderer cannot in fact express, and the emitted output -- not a diagnostic -- would carry
 // the deficit.
@@ -2773,11 +2770,11 @@ fn operation_declares_required_stderr_capture_policy(op_node: Node, env: TypeEnv
 }
 
 // The channels the interpreter's map_file_outputs answers, read back as the emitter's obligation.
-// Emission and interpretation are one decision procedure run in two directions (DESIGN §4), so
+// Emission and interpretation are one decision procedure run in two directions (gunbc.design_argument::closed_grounded_substrate), so
 // this list is the emitted side of that map and diverging from it is a behavioral fork.
 // DERIVED from the channel resolver rather than listing the same keys a second
 // time: the set a key is ADMITTED from and the set it is RESOLVED into cannot
-// drift, because there is only one of them (DESIGN section 3).
+// drift, because there is only one of them (gunbc.design_argument::single_authority).
 fn is_modeled_file_output_channel(key: String) -> Bool {
   match file_result_channel_of_key(key: key) {
     Present { value: _ } => true
@@ -2927,7 +2924,7 @@ fn unmodeled_file_transport_operation_diagnostics(tm: TypedModule, item: Node, t
 // A REALIZING target lowers the declared interface into host effects, so "which realization
 // handler answers for `transport file`" is a question it must answer. A SERIALIZING target writes
 // the substrate's own representation of the graph -- `emit = serialize_target . translate`
-// (DESIGN §4) with the translate half at identity -- so it selects no realization for ANY
+// (gunbc.design_argument::closed_grounded_substrate) with the translate half at identity -- so it selects no realization for ANY
 // transport and there is no handler for it to be missing.
 //
 // WHY THIS IS A COPRODUCT AND NOT A SECOND BOOL BESIDE target_renders_file_transport. The two
@@ -3080,7 +3077,7 @@ fn unmodeled_file_transport_diagnostics(typed: ResolvedGraph, target: RenderTarg
 // name, ignored the declared method and path, and returned the decoded body with no status read at
 // all -- a value that is not a RestResult, handed to a caller whose match is over RestResult. So
 // they refuse by target, per operation, through the same counted diagnostic the file and shell
-// walls use, and emit no artifact. NEXT-RUNG TRIGGER (DESIGN 4b(2)): a consumer needs a REST
+// walls use, and emit no artifact. NEXT-RUNG TRIGGER (gunbc.design_argument::guarantee_ladder (no untracked stall)): a consumer needs a REST
 // operation emitted for python or go; the work is then one realization handler producing the same
 // three refusal arms and the answered arm, never a renderer that returns the bare body.
 fn target_realizes_rest_result(target: RenderTarget) -> Bool {
@@ -3175,7 +3172,7 @@ fn emit_unmodeled_file_transport_refusal_with_cause(op_name: String, target: Ren
 }
 
 // AN OPERATION WHOSE SERVICE DECLARES NO TRANSPORT HAS NO REALIZATION, AND ITS EMITTED BODY SAYS
-// SO. DESIGN section 3: extdeps owns an operation's interface and a transport is one of N handlers
+// SO. gunbc.design_argument::single_authority: extdeps owns an operation's interface and a transport is one of N handlers
 // bound to it, so an operation declared with no transport (extdeps.posix.process posix.Process,
 // gunbc.pr_digests gunbc.PrDigests) is an interface whose realization this target is not given.
 // The parser and emit_transport_node supply a bare node for that absence, and the classifier used
@@ -3263,7 +3260,7 @@ fn extract_string_interp_parts(expr: Node) -> List<StringPart> {
 // where-refinement (its base). Two sides are one representation exactly when they reach the same
 // carrier: the same kernel mint, or the same declaration.
 //
-// WHY THE RULE READS DECLARATIONS (DESIGN section 6b). It used to compare realization rows by their
+// WHY THE RULE READS DECLARATIONS (gunbc.design_argument::earliest_unjustified_boundary). It used to compare realization rows by their
 // dag_name and fall back to occurrence identity, after a walk that followed only the reference's own
 // resolved node. An alias of a refinement reached the alias declaration and stopped, so `name as
 // String` for name: extdeps.git GitRemoteName was emitted as a runtime panic. That is the same misread
@@ -3275,7 +3272,7 @@ fn extract_string_interp_parts(expr: Node) -> List<StringPart> {
 // -- `X?` and `List<X>` are different host carriers from `X` -- so the walk answers nothing there
 // rather than erasing a real conversion; such a pair is identical only when its rendering is. A type
 // variable or an unidentified reference answers nothing either: absence of identity is never read as a
-// match (DESIGN section 5). Fuel bounds a declared edge that points back at itself.
+// match (gunbc.design_argument::fail_closed). Fuel bounds a declared edge that points back at itself.
 //
 // WHAT THIS DECIDES AND WHAT IT DOES NOT. The edges are source facts, so a carrier match says the
 // target has nothing to spell; it does not judge whether the cast is admitted, which stays with
@@ -3533,7 +3530,7 @@ fn emit_typed_cast_shared(expr: Node, cast_target_node: Node, target: RenderTarg
   }
 }
 
-// THE CAST WALL (DESIGN section 5): every cast in the closure is realized or the compile refuses,
+// THE CAST WALL (gunbc.design_argument::fail_closed): every cast in the closure is realized or the compile refuses,
 // located at the cast, before any artifact is written -- the same shape as the transport walls above,
 // read from the same decision the emission reads. The walk reads each item's typed body and every
 // child expression under it.

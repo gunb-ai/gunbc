@@ -90,7 +90,7 @@ import v2.workflow.local_repo_wet_terminal { local_repo_wet_schedule }
 // THE NAME→PATH AUTHORITY, IMPORTED RATHER THAN RE-IMPLEMENTED. `module_file` is the rule,
 // `repository_storage_layout` binds it to this repository's storage policy (gunbc.source_layout), and
 // `repository_path_of_module_file` spells the repository-relative path. Re-deriving the dotted-name rule
-// here would put a second layout authority in an instrument (DESIGN 3).
+// here would put a second layout authority in an instrument (gunbc.design_argument::single_authority).
 import v2.cli.repository_layout { repository_path_of_module_file, repository_storage_layout }
 import v2.compiler.source_authority { ModuleFileDerived, ModuleNameUnderivable, module_file }
 
@@ -105,9 +105,8 @@ import v2.compiler.source_authority { ModuleFileDerived, ModuleNameUnderivable, 
 //
 // WHY A DERIVATION AND NOT A LIST. Three things are read and nothing is transcribed:
 //   - the SUBJECTS come from mapping `local_repo_wet_schedule()` (the executing lane's one accessor, the
-//     same rows `gunbc.claim_coverage_census_live` #14368 joins for its source census — read, never
-//     enumerated a second time in-tree) and `floor_expected_red_roster()` (the single enrollment
-//     authority, DESIGN 3);
+//     rows the lane runs — read, never enumerated a second time in-tree) and `floor_expected_red_roster()` (the single enrollment
+//     authority, gunbc.design_argument::single_authority);
 //   - each row's EXPECTATION is derived from enrollment, not asserted: enrolled in the roster means
 //     `ExpectedRed`, otherwise `ExpectedToHold`. That is the pair the ledger exists to keep apart —
 //     "the witness answered false" and "the witness was expected to answer false" are two facts, and
@@ -117,8 +116,8 @@ import v2.compiler.source_authority { ModuleFileDerived, ModuleNameUnderivable, 
 // So the two classes are detectable rather than declared: an enrolled identity whose executed verdict is
 // true is a stale enrolment (`KnownRedNowPassing`) and refuses the run; an identity that fails without
 // being enrolled is an unaccounted red and refuses the run. A list of known-red names typed into this
-// file could tell neither lie — `measure()` against `measure()` is a change detector, DESIGN 5's
-// rejection — and a second roster-of-record would fork the authority, DESIGN 3's rejection.
+// file could tell neither lie — `measure()` against `measure()` is a change detector, gunbc.design_argument::fail_closed's
+// rejection — and a second roster-of-record would fork the authority, gunbc.design_argument::single_authority's rejection.
 //
 // WHY THE WET LANE IS THE SUBJECT AND THE FLOOR IS A PRINTED GAP. No job executes the required-floor
 // population at this commit: `gunbc.rung_drop.v1_required_lanes_withdrawn` withdraws the lane that did,
@@ -185,7 +184,7 @@ data known_red_stderr_tail: ByteSize = byte_size(count: 65536)
 
 // THE VERDICT WORDS, IN ONE PLACE. The prefix functions below read these, the decoder's predicates
 // read the arm markers, and `known_red_print_authorities` ties both to the file that prints them -- so the
-// spelling of a verdict has exactly one author (DESIGN §3) and is checked against `claim_batch.rs` on every
+// spelling of a verdict has exactly one author (gunbc.design_argument::single_authority) and is checked against `claim_batch.rs` on every
 // run (review 83992).
 data known_red_word_pass: String = "PASS"
 data known_red_word_fail: String = "FAIL"
@@ -286,7 +285,7 @@ type KnownRedSubject {
 // the alternative — encoding 'the rule could not place this name' inside the path the rule was supposed to
 // produce — makes the discriminator in-band: the absence of a file is then the only thing that distinguishes
 // 'the name has no place' from 'the file at its place is missing', so the first is printed as the second and
-// the typed cause the rule returned is thrown away. That is the §5 in-band encoding, and the earlier draft
+// the typed cause the rule returned is thrown away. That is the gunbc.design_argument::fail_closed in-band encoding, and the earlier draft
 // of this instrument did exactly it (`"underivable:" ++ name`). Here an unplaceable name is not a path that
 // happens to be missing, it is a case with no path in it, and it is never handed to a child as argv.
 type KnownRedEntryPlacement
@@ -389,7 +388,7 @@ fn known_red_wet_subjects() -> List<KnownRedSubject> {
 }
 
 // THE ENROLLED POPULATION, READ THROUGH THE ONE AUTHORITY. `floor_expected_red` is the single roster of
-// known-red claims (DESIGN 3: a second roster would fork it), and it names each entry by qualified
+// known-red claims (gunbc.design_argument::single_authority: a second roster would fork it), and it names each entry by qualified
 // identity, so the split at the LAST '.' recovers the (module, function) pair `WitnessIdentity` carries.
 // A roster identity's claim lives in `src/<module_path with dots as slashes>.dag` — the same rule 502 of
 // the 503 schedule rows satisfy exactly, so applying it here adopts the corpus's convention instead of
@@ -604,7 +603,7 @@ fn known_red_expectation_of(s: KnownRedSubject) -> ClaimExpectation {
 // ONE CHILD'S OUTCOME, CARRIED NOT ASSERTED. This is a COPRODUCT, not a record with a flag: a child that
 // never started cannot spell `exit_code`, `stdout` or `stderr` at all, so the fabricated success value a
 // boolean-tagged record would have to carry (exit 0 for a process that never existed) is unwritable here
-// rather than merely unrecommended — DESIGN 5's correctness by construction. `stdout` is kept verbatim
+// rather than merely unrecommended — gunbc.design_argument::fail_closed's correctness by construction. `stdout` is kept verbatim
 // because the verdict parse is a function of it; a parse that could not be pointed at what the child
 // printed would be a transcription with extra steps. `exit_code` is read, not decoration: a child that
 // exited non-zero and printed no verdict lines is its own refusal (see `ChildExitedNonzeroWithoutVerdicts`).
@@ -930,11 +929,11 @@ fn known_red_verdict_lines(stdout: String) -> List<String> {
 //
 // This instrument used to hold private copies of `claim_batch`'s phrasing: the decoder keyed on strings
 // that only `src/v1/stage0/src/bin/claim_batch.rs` was authoritative for, and nothing linked the two. That
-// is DESIGN §6's "a second path beside a modeled route" — the harness's wording had a second, undeclared
+// is gunbc.design_argument::how_to_work's "a second path beside a modeled route" — the harness's wording had a second, undeclared
 // description. Two things change, and they change together:
 //
 //   (1) each dispatch marker is a `data` constant below, read by the predicate that keys on it AND by the
-//       table the run checks, so the string has exactly one author (§3); and
+//       table the run checks, so the string has exactly one author (gunbc.design_argument::single_authority); and
 //   (2) the run reads the two Rust files through the modeled `Filesystem.Read` route (readonly, a
 //       committed checkout input, so it is a real read in hermetic mode too) and refuses with exit 2 if
 //       any marker has moved out of the file that is supposed to print it.
@@ -1169,7 +1168,7 @@ fn known_red_print_markers_untied() -> List<String> {
   )
 }
 
-// THE DECLARED GENERALIZATION (DESIGN §6b), ADMITTED AS DEBT BY THE OPERATOR.
+// THE DECLARED GENERALIZATION (gunbc.design_argument::earliest_unjustified_boundary), ADMITTED AS DEBT BY THE OPERATOR.
 //
 // This module decodes a human-readable transport. Review 84069 blocked on that being a second description of
 // the harness's output; the operator then ADMITTED the scaffold on three conditions (relayed 2026-10-21):
@@ -1192,7 +1191,7 @@ data known_red_transport_decoder_dissolution: DissolutionCondition = bound_disso
 // carries nothing but its ref (`dissolution_description` of one returns the ref's display key), so the
 // capability that retires this module has to be stated somewhere a reader is forced to look: as named parts of
 // one typed row, each of which the witness reads. Putting it in a `String` would be commentary wearing a
-// type-name, which §4c refuses.
+// type-name, which gunbc.design_argument::source_annotations refuses.
 type KnownRedDecoderDeferral {
   trigger: DeclarationRef
   capability: String
@@ -1280,7 +1279,7 @@ fn known_red_terminal_of_printed(printed: KnownRedPrintedLine) -> Optional<Claim
 // sentinel standing for it: a sentinel is a second, unstated spelling of the verdict, so a rewording that
 // updates the constants would leave the classifier matching the sentinel and every line of that kind would
 // decode as 'not about this claim' -- which reports as an absent line rather than as a refusal, the one
-// outcome this decoder must not produce (review 84034, DESIGN §3).
+// outcome this decoder must not produce (review 84034, gunbc.design_argument::single_authority).
 type KnownRedPrintedLine { verdict_word: String, body: String }
 
 // STRIP THE VERDICT WORD AND THE FUNCTION NAME, or report that this line is not about this claim. The
@@ -1325,7 +1324,7 @@ fn known_red_line_body(line: String, function: String) -> Optional<KnownRedPrint
 // through `known_red_field_of`, so a marker that moves makes the line `Absent` -- a refusal with the line
 // attached -- instead of filing the whole line as `RouteGap.operation`, `HostToolUnresolved.name` or
 // `Panicked.payload`. Those three fallbacks were review 83992's softer findings: they turned a decode
-// failure into data, which is the fabricated plausible output DESIGN §5 rejects.
+// failure into data, which is the fabricated plausible output gunbc.design_argument::fail_closed rejects.
 fn known_red_terminal_of_body(body: String) -> Optional<ClaimAttemptTerminal> {
   if known_red_body_is_not_bool(body: body) {
     Present {
@@ -1491,7 +1490,7 @@ fn known_red_entry_of_resolve_failure(body: String) -> Optional<String> {
 // decodes to `Absent` and the run refuses, where the deleted fallback would have filed the whole line as
 // `RouteGap.operation` or `HostToolUnresolved.name` and called that data (review 83992). Verbatim matters
 // for the same reason: the cause a reader acts on has to survive the read, and a decode that restates it
-// invents a second author of the cause (DESIGN §3).
+// invents a second author of the cause (gunbc.design_argument::single_authority).
 fn known_red_field_of(s: String, open: String, close: String) -> Optional<String> {
   match known_red_index_of(s: s, needle: open, at: 0, limit: string_length(s: s)) {
     Absent => Absent
@@ -2031,12 +2030,12 @@ fn known_red_projection(
 // and both of them were verdicts. A claim whose line a child printed TWICE collapsed into one row, so a
 // duplicated identity went unreported -- and a line printed for something nobody planned was dropped in the
 // direction that hides an error, never the one that raises it. `LedgerReconciliation` already has a
-// `terminal_duplicated` and a `terminal_without_planned` leg (§5, "Completeness is an identity join, not a
+// `terminal_duplicated` and a `terminal_without_planned` leg (gunbc.design_argument::fail_closed, "Completeness is an identity join, not a
 // count equality"); for most of this file's life both were structurally incapable of being non-empty,
 // because everything that could have filled them had been reduced by `any` before the join ever saw it.
 //
 // So the lines are kept AS EVIDENCE, every one, and the fold is the only consumer. Nothing renders them:
-// §4b forbids a second stdout, and the ledger is a value, so this is the join's input and not another report.
+// gunbc.design_argument::guarantee_ladder forbids a second stdout, and the ledger is a value, so this is the join's input and not another report.
 type KnownRedPrintedEvidence {
   // THE ENTRY THE CHILD WAS ASKED UNDER, taken from that child's own claims -- not from the line, which
   // carries no path. Empty when no claim of that child explains the line, which is what makes the line
@@ -2191,7 +2190,7 @@ fn known_red_evidence_for(
 }
 
 // AN IDENTITY CARRIED BY MORE THAN ONE ROW, which is what `LedgerReconciliation.terminal_duplicated` means
-// (§5: 'a missing witness ... reported as covered' is the failure this leg answers). Rows are one per
+// (gunbc.design_argument::fail_closed: 'a missing witness ... reported as covered' is the failure this leg answers). Rows are one per
 // subject, so this catches the case where two populations planned the SAME identity and the join would
 // otherwise read two rows for one witness as two witnesses.
 fn known_red_duplicated_identities(rows: List<KnownRedDerivationRow>) -> List<WitnessIdentity> {
@@ -2639,7 +2638,7 @@ fn known_red_reconciliation(
     // PRINTED FOR NOBODY. The one leg that can only be answered from the multiset. A row is always built by
     // mapping over a planned subject, so 'a terminal nobody planned' is UNEXPRESSIBLE over rows: this leg
     // used to be a filter over rows and was therefore structurally always empty -- a shape that could never
-    // be filled, which is the decorative completeness check §5 warns about. The other two legs are computed
+    // be filled, which is the decorative completeness check gunbc.design_argument::fail_closed warns about. The other two legs are computed
     // over rows and were always able to fire; they are left alone.
     terminal_without_planned: known_red_foreign_evidence(subjects: subjects, evidence: evidence),
     // THE LEDGER'S OWN LEG: an identity carried by MORE THAN ONE ROW. This is the ledger's meaning -- the
@@ -3273,7 +3272,7 @@ fn known_red_is_green(d: KnownRedDerivation) -> Bool {
   known_red_exit_code_of_all(refusals: d.refusals) == 0
 }
 
-// The exit code is the run's OBSERVATION STATUS, not a pass/fail bit: DESIGN §"Building & checks"
+// The exit code is the run's OBSERVATION STATUS, not a pass/fail bit: gunbc.design_document::ci_contract_blocks
 // and README both state "Exit 0 means the observation held, 1 that it did not, 2 that there was no
 // observation". Two refusals mean completely different things and must not share a code. A run that
 // never executed its subjects, or executed them and cannot trust what came back, observed NOTHING --

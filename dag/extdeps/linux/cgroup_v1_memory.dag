@@ -33,7 +33,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // THE LEGACY HIERARCHY IS A DIFFERENT INTERFACE, NOT A SPELLING OF cgroup-v2. Its memory controller is
 // its own mount (fstype `cgroup`, super option `memory`), its hard limit file is memory.limit_in_bytes
 // rather than memory.max, and "no limit" is not the literal `max` but a very large byte count. So it is
-// its own module beside extdeps.linux.cgroup_v2_memory, not extra arms there (DESIGN §3: one
+// its own module beside extdeps.linux.cgroup_v2_memory, not extra arms there (gunbc.design_argument::single_authority: one
 // independently specified interface, one authority).
 //
 // THE LIMIT THAT BINDS IS READ, NOT WALKED. cgroup-v1 memory.rst §5.2 documents memory.stat's

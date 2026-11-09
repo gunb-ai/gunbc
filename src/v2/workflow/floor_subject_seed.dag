@@ -157,7 +157,7 @@ type InterfaceReadChannel
 // from `ModuleDeclarationRecord`; no second relation is minted). Kept apart because the two are
 // planned alike and COUNTED apart: a bare read whose candidate set is empty at this grain is the
 // flat last-writer-wins channel the namespace cut is retiring, and absorbing it into the
-// resolved population would hide the deficit that ranks it for fixing (DESIGN 5).
+// resolved population would hide the deficit that ranks it for fixing (gunbc.design_argument::fail_closed).
 type InterfaceConsumerBinding
   = BoundToDeclaringModule
   | BoundThroughFlatBareChannel
@@ -198,7 +198,7 @@ fn interface_read_disposition(
 // reach the declaration by no other route. Stated as a fold over the reads so the host's join
 // is a projection of this rule rather than a second one. THE MODULE-GRAIN ANSWER HAS ITS OWN
 // TYPE: reusing the one-read disposition here would make `ReadBoundToAnotherDeclarer` mean
-// "this module is not planned" -- one name, two contracts, the meaning fork DESIGN 3 refuses --
+// "this module is not planned" -- one name, two contracts, the meaning fork gunbc.design_argument::single_authority refuses --
 // and the host already keeps the grains apart (`InterfaceChangedConsumer.binding` vs an absent
 // consumer), so the model must not be the one place they share a name (review 65426).
 type ModuleInterfaceBinding
@@ -260,7 +260,7 @@ fn read_is_bound_to_declarer(read: InterfaceReadDisposition) -> Bool {
 // A TOUCHED FILE THAT SEEDS NOTHING IS A TYPED ROW, NEVER A COUNT. The floor's source roots
 // are `dag` and `src/v2`; the parse sweep also covers the `src/v1` `.dag` mirrors, so a diff can
 // name a module the prepared subject cannot contain. The reader must see WHICH file and the
-// module it named, because a count is what DESIGN 5 forbids as the whole of a check. The same
+// module it named, because a count is what gunbc.design_argument::fail_closed forbids as the whole of a check. The same
 // row shape carries a planned consumer outside the roots: planned, not prepared, and said so.
 type TouchedEntrySeedDisposition
   = TouchedEntrySeeded { path: String, module_path: String }
@@ -328,7 +328,7 @@ fn seed_ground_is_textual_prefix(ground: PreparedSubjectSeedGround) -> Bool {
 // that set; it never lists checker paths by hand, so a new infer helper, stage0 mirror or runtime
 // file enters the set by being compiled.
 //
-// THE ANSWER IS AN OVER-APPROXIMATION COMPUTED AS THE ANSWER, NOT A FALLBACK (DESIGN section 5's
+// THE ANSWER IS AN OVER-APPROXIMATION COMPUTED AS THE ANSWER, NOT A FALLBACK (gunbc.design_argument::fail_closed's
 // named neighbour). The observed grain is the whole binary, so an edit to any file it compiles
 // seeds every admitted module into Strict preparation. That is what the edge says at that grain,
 // and the run says which rule chose it. It is not the absorbing arm: that arm widens because

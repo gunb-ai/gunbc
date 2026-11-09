@@ -12,7 +12,7 @@ import std.durable_compare_and_set {
   CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, CasGenerationSpaceExhausted,
 }
 import gunbc.durable_cas_file_store {
-  CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable,
+  CasSlotKeysAbsent, CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable,
   CasAttemptKeyNotSlotAddressable, admit_cas_attempt, DefaultAccessCreateOnly, SlotStore, slot_observe, slot_commit, slot_keys,
   CasSlotKeysListed, CasSlotKeysListingRefused, CasSlotKeysSubjectRefused,
 }
@@ -167,7 +167,7 @@ fn attempt_state_wire(s: AttemptState) -> String {
 // between two values of one type. The unit and the epoch appear as bare numbers only at the JSON
 // boundary below, where the wire keeps its spelling (granted_kib) and the decode re-admits them.
 //
-// THE OWNER IS A TWO-ARM FACT RECORDED AT OPEN, NOT AN OPTIONAL (DESIGN 3b, cardinality: an absent
+// THE OWNER IS A TWO-ARM FACT RECORDED AT OPEN, NOT AN OPTIONAL (gunbc.design_argument::conformance, cardinality: an absent
 // owner would read as "no owner" and mean two things). DispatchOwned names the dispatch attempt
 // whose end derives this seat's discharge; DirectInvocation says why no dispatch attempt owns it (an
 // operator CLI, a test). A caller that JOINS an existing build acquires nothing and is not an owner.
@@ -227,7 +227,7 @@ fn attempt_record_with_state(r: AttemptRecord, state: AttemptState) -> AttemptRe
 
 // ── READING THE SLOT, AND UNREADABLE IS NEVER ABSENT ──────────────────────────────────────────
 //
-// This is the absorbing fallback in its purest form and DESIGN 5 makes it a hard reject: a slot
+// This is the absorbing fallback in its purest form and gunbc.design_argument::fail_closed makes it a hard reject: a slot
 // that could not be READ and a slot that holds NOTHING are opposite facts with opposite remedies,
 // and collapsing them means a recovery creates state on top of one it merely failed to observe, or
 // a producer launches because it could not tell it had been terminated. Every arm below is typed
@@ -388,13 +388,28 @@ fn attempt_payload_read<P>(store: SlotStore, reference: NonEmptyStr, codec: Atte
   }
 }
 
+// THE CENSUS READING OF THE SLOT DIRECTORY, THREE-VALUED ON PURPOSE.
+// Listed says which keys have a slot; Refused says the listing could not be read; ABSENT says the
+// store's slot directory is not there at all. The absent arm carries the SEALED STORE REF, not a root
+// string, so it joins to a lease by store identity -- the same identity the CAS-fenced transition
+// fences on -- and a witness can name which store answered absent.
+// IT IS A CENSUS ANSWER AND NEVER A RELEASE TRIGGER. A slot is released only through the CAS-fenced
+// transition on the lease reference plus the slot generation READ FROM THE SLOT. Nothing in this
+// module frees a charge, retires a lease or licenses a mint from an absent census; absence that
+// releases is hold_recovered_by_age_not_observed_holder_death on new substrate. It exists because a
+// consumer that cannot distinguish "this store was never created" from "I could not read it" cannot
+// PROVE the first case, and a lease whose slots live in a store that no longer exists needs that
+// proof in order to migrate.
 type AttemptSlotKeysReading
   = AttemptSlotKeysListed { keys: List<NonEmptyStr> }
+  | AttemptSlotKeysAbsent { store: SlotStore }
   | AttemptSlotKeysRefused { detail: String }
+
 
 fn attempt_slot_keys(store: SlotStore) -> AttemptSlotKeysReading {
   match slot_keys(store: store) {
     CasSlotKeysListed { keys: ks } => AttemptSlotKeysListed { keys: ks }
+    CasSlotKeysAbsent { root: _ } => AttemptSlotKeysAbsent { store: store }
     CasSlotKeysListingRefused { root: _, detail: d } => AttemptSlotKeysRefused { detail: join(["the attempt store could not be listed: ", d], "") }
     CasSlotKeysSubjectRefused { root: _, cause: c } => AttemptSlotKeysRefused { detail: join(["the attempt store is not admissible: ", c], "") }
   }
@@ -490,7 +505,7 @@ fn attempt_commit_bytes(
 // checkout and argv assembly, and that same declaration is what stops anyone reclaiming its seat --
 // so nothing in the mechanism as described stops a producer declaring an hour. The cost of an
 // over-long declaration does not land on the producer: it lands on every other contender on that
-// host, as a seat nobody may reclaim. That is the EXTERNALIZATION DESIGN 5 names -- an accepted
+// host, as a seat nobody may reclaim. That is the EXTERNALIZATION gunbc.design_argument::fail_closed names -- an accepted
 // risk quietly re-exported to another principal while the contract keeps its name -- and it is the
 // reason a self-declared bound needs a bound of its own.
 //

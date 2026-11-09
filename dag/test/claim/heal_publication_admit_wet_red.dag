@@ -1,0 +1,140 @@
+module test.claim.heal_publication_admit_wet_red
+
+// BASE-RED / HEAD-GREEN driver for the heal publisher ADMIT fix -- the discriminating control.
+//
+// It drives the REAL observation path, observe_candidate_world_wet, with ONE synthetic candidate whose
+// argument types are byte-identical at the base pin and this head pin, so the same driver is run under
+// both .dag trees by the same interpreter binary (the PR changes no Rust under src/v1/stage0). Run it via
+// `gunbc run --function admit_did_not_reach_auth_guard` WITHOUT --claim-run (the closure performs
+// mktemp/exec, which --claim-run refuses with HostEffectRefused), composing in /tmp.
+//
+//   * AT BASE the four authenticated reads (github.Pulls.Get, GitDatabase.GetRef/GetCommit/
+//     GetTreeRecursive, auth_token:"") all sit BEFORE admit_heal_publication is called; the first of them,
+//     the Bearer github.Pulls.Get, trips the interpreter's PRE-SEND guard and aborts the whole run with
+//     AuthDeclaredButUnwired. So at base the CANDIDATION DECISION IS UNREACHABLE -- no input can make
+//     admit_heal_publication refuse, because control never gets there. This is the defect, stated truthfully:
+//     the OBSERVATION CHAIN refuses with AuthDeclaredButUnwired before admission. The entry never returns;
+//     `gunbc run` exits non-zero with AuthDeclaredButUnwired on stderr. That is the RED, and it proves admit
+//     REACHED the auth-declaring read (a bare github.Pulls.Get probe would fire identically at base and head
+//     and only proves the guard exists -- keep that as a standing guard control, not as this discriminator).
+//   * AT HEAD the observation performs no auth-declaring op (anonymous ls-remote + fetch + local plumbing)
+//     and then CALLS admit_heal_publication. The call RETURNS a PublisherRun -- a decision, not a pre-send
+//     abort. We assert the outcome is NOT AuthDeclaredButUnwired. The candidate pins frozen MERGED #500
+//     (refs/pull/500/head -> 5e2cea07..., advertised anonymously, merged 2026-04-17 so it never moves), and
+//     its sealed sha == the live advertisement == the payload head_sha, so the three-way liveness compare
+//     AGREES and the decision is genuinely reached; the run then refuses only on a non-credential fact (the
+//     proposed blob is not laid down in the fixture dir) -- which still proves admit was reached.
+//
+// The claim asserts ONLY the discriminating property (base aborts on the guard, head reaches the decision),
+// so it cannot pass on the wrong refusal. It deliberately keeps exactly ONE control that reaches the real
+// public repository over HTTPS (this one, plus the admit inhabitance); the moved-head / wrong-repository /
+// mismatch negatives are hermetic on supplied observations in heal_publication_boundary_witness, where the
+// world cannot drift. The deeper end-to-end (a real sealed candidate with its blobs through
+// admit->publish->readback->receipt) stays UNEXECUTED and is recorded as such in the PR.
+
+import std.types { String, NonEmptyStr, Bool, Int, CommitSha, List }
+import std.content_hash { Sha1Digest, Sha1DigestHex }
+import extdeps.github.effect { RepositoryPath }
+import extdeps.github.workflow_runs { WorkflowRunConclusion, Success }
+import extdeps.git.object_store { GitObjectId, GitSha1ObjectId, GitTreeMode, GitRegularBlobMode }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.heal_publication_boundary { CandidateEntry, HealRepairCandidate, TriggeringRunFacts }
+import gunbc.heal_publication {
+  observe_candidate_world_wet, HealPublicationSubject, public_heal_publication_subject,
+  PublisherRun, PublisherRunAdmitted, PublisherRunNothingToPublish, PublisherRunRefused
+}
+
+// FROZEN MERGED #500 (measured, not assumed): refs/pull/500/head -> 5e2cea07f6ebda52b270541107695f05a3e49ea9,
+// advertised anonymously, merged 2026-04-17 so the ref never moves. sealed == live advertisement == payload
+// head_sha, so the three-way liveness compare agrees and the candidate reaches the decision.
+data driver_pull_number: Int = 500
+data driver_base_ref: String = "main"
+data driver_head_ref: String = "docs/roadmap-as-tracker"
+data driver_sealed_head_hex: String = "5e2cea07f6ebda52b270541107695f05a3e49ea9"
+data driver_base_blob_hex: String = "2222222222222222222222222222222222222222"
+data driver_proposed_hex: String = "3333333333333333333333333333333333333333"
+
+fn driver_oid(hex: String) -> GitObjectId {
+  GitSha1ObjectId { digest: Sha1Digest { hex: hex as Sha1DigestHex } }
+}
+
+fn driver_candidate() -> HealRepairCandidate {
+  HealRepairCandidate {
+    repository_full_name: "gunb-ai/gunbc",
+    pull_number: driver_pull_number,
+    head_ref: driver_head_ref as NonEmptyStr,
+    expected_head_sha: driver_sealed_head_hex as CommitSha,
+    base_ref: driver_base_ref,
+    producer_run_id: "0000000001",
+    repair_declaration: "Ledger-Repaired: DESIGN.md\n",
+    entries: [
+      CandidateEntry {
+        path: RepositoryPath { value: "DESIGN.md" },
+        mode: GitRegularBlobMode,
+        base_blob: Present { value: driver_oid(hex: driver_base_blob_hex) },
+        proposed_blob: driver_oid(hex: driver_proposed_hex)
+      }
+    ]
+  }
+}
+
+fn driver_run() -> TriggeringRunFacts {
+  TriggeringRunFacts {
+    workflow_path: ".github/workflows/heal.yml",
+    // admit_heal_publication refuses unless the triggering run's originating event is "pull_request"
+    // (heal_publication_boundary.dag:832). A heal candidate's workflow_run originates from a pull_request
+    // event, so this is the value the real flow carries -- not "workflow_run".
+    originating_event: "pull_request",
+    conclusion: Success,
+    head_sha: driver_sealed_head_hex,
+    head_branch: driver_head_ref,
+    head_repository_full_name: "gunb-ai/gunbc",
+    repository_full_name: "gunb-ai/gunbc"
+  }
+}
+
+// Record the verdict to a greppable file in the fixture dir (a sibling of the composition dir), THEN return
+// the ProcessExit. At BASE the observation aborts inside observe_candidate_world_wet (the pre-send guard),
+// so this never runs and the file is never written; the caller removes it before the head run. This lets the
+// out-of-tree runner assert the EXACT discriminating token (VERDICT:BaseBlobDisagreed) rather than infer it
+// from a bare exit code, so a degenerate Admitted or an unrelated refusal cannot masquerade as the pass.
+fn record_exit(verdict: String, code: ProcessExit) -> ProcessExit {
+  let _ = Filesystem.Write(path: "/tmp/heal-admit-wet-red.verdict", content: verdict)
+  code
+}
+
+// THE CONTROL. At base this never returns (the pre-send guard aborts); at head it returns and we assert the
+// refusal is a policy/liveness refusal, NOT AuthDeclaredButUnwired.
+fn admit_did_not_reach_auth_guard() -> ProcessExit {
+  let result = observe_candidate_world_wet(
+    subject: public_heal_publication_subject(),
+    directory: "/tmp/heal-admit-wet-red",
+    candidate: driver_candidate(),
+    run: driver_run()
+  )
+  match result {
+    PublisherRunAdmitted { admitted: _, blobs: _, pull_number: _ } =>
+      record_exit(verdict: "VERDICT:ADMITTED-unexpected", code: exit_failure(reason: "unexpected: candidate was admitted; the base blob 2222... must disagree with the frozen #500 tree"))
+    PublisherRunNothingToPublish =>
+      record_exit(verdict: "VERDICT:NothingToPublish", code: exit_failure(reason: "unexpected: no entries observed -- the credential-free route did not enumerate the sealed tree"))
+    PublisherRunRefused { cause } =>
+      if contains(haystack: cause, needle: "AuthDeclaredButUnwired") {
+        record_exit(verdict: "VERDICT:AuthDeclaredButUnwired", code: exit_failure(reason: "admit still reaches an auth-declaring read at head: AuthDeclaredButUnwired"))
+      } else if contains(haystack: cause, needle: "BaseBlobDisagreed") {
+        // The expected refusal, and the point of the whole control. BaseBlobDisagreed is produced ONLY after
+        // observe_candidate_world_wet fetched the sealed tree ANONYMOUSLY (ls-remote + fetch), enumerated it
+        // with local plumbing (read-tree/write-tree/ls-files/decode), and compared the candidate's base blob
+        // against the LIVE tree -- i.e. the real credential-free route ran end to end, used the fetched tree,
+        // and reached admit_heal_publication. The candidate's base blob (2222...) is deliberately not the
+        // real blob of DESIGN.md in frozen #500, so the comparison refuses here. Asserting THIS token, not
+        // merely "not the auth refusal", means a degenerate early `return PublisherRunRefused { ... }` at
+        // the top of the observation, or one that never consults the fetched tree, would FAIL this control.
+        // This is the gunbc.design_argument::single_authority "the ROUTE, not only the answer" requirement on the one control that
+        // reaches the real public repository.
+        record_exit(verdict: "VERDICT:BaseBlobDisagreed", code: ExitSuccess)
+      } else {
+        record_exit(verdict: concat("VERDICT:OTHER:", cause), code: exit_failure(reason: concat("admit did not reach the base-blob compare of the credential-free route against the live tree; got: ", cause)))
+      }
+  }
+}

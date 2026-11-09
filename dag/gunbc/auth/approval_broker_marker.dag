@@ -1,9 +1,8 @@
 module gunbc.auth.approval_broker_marker
 
 import std.types { String, NonEmptyStr, List }
-import std.markup { MarkupComment, serialize_fragment_with }
+import std.markup { MarkupComment, serialize_fragment_with, Serialized, Rejected }
 import extdeps.languages.html { html_markup_medium }
-import std.markup { Serialized, Rejected }
 import extdeps.http.server { MediaType, ServeResponseHeader, ServeResponseHeaderField, HttpExtensionFieldNameAdmitted, HttpExtensionFieldNameRefused, ServeWireHeader, http_extension_field_name }
 import gunbc.auth.approval_writer_authority { ApprovalServingProcess, RoadmapProcess, BrokerProcess }
 
@@ -76,7 +75,7 @@ type ApprovalBrokerMarker
 // approval_serving_process_label -- the same name, the same signature, over the same
 // ApprovalServingProcess, as gunbc.auth.approval_writer_authority's fold ONE IMPORT EDGE AWAY,
 // which returns operator prose ("the roadmap serve process (gunbc-roadmap.service)"). One name,
-// two materially different meanings: DESIGN section 3's meaning fork, the dual of nicknaming.
+// two materially different meanings: gunbc.design_argument::single_authority's meaning fork, the dual of nicknaming.
 //
 // THE STAKES WERE THIS MODULE'S OWN. approval_broker_served_token is the SOLE discriminator the
 // stage-5 probe uses to tell the broker from the roadmap -- the hole review 68539 exists to close.
@@ -103,7 +102,7 @@ fn approval_serving_process_token(p: ApprovalServingProcess) -> NonEmptyStr {
 // THESE TWO ANNOTATIONS WERE ATTACHED TO EACH OTHER'S FOLDS until review 68760 sent me back here:
 // the process-token fold was inserted above this one during the process-segment repair, and each
 // comment stayed where it was, so each described its neighbour. Recorded rather than silently
-// swapped because it is the failure mode DESIGN section 4c exists to bound -- an annotation is
+// swapped because it is the failure mode gunbc.design_argument::source_annotations exists to bound -- an annotation is
 // unreadable by any Accepted program, so nothing but a reader can notice it has drifted onto the
 // wrong declaration.
 fn approval_broker_marker_token(m: ApprovalBrokerMarker) -> NonEmptyStr {
@@ -150,7 +149,7 @@ fn approval_broker_served_token(p: ApprovalServingProcess, m: ApprovalBrokerMark
 
 // The HTML marker, built as the markup it is rather than as the characters around it. Spelling
 // "<!-- " + token + " -->" here put a language's comment delimiters in an auth module (a second copy
-// beside extdeps.languages.html's rows, §3) and interpolated an unvalidated value into the middle of
+// beside extdeps.languages.html's rows, gunbc.design_argument::single_authority) and interpolated an unvalidated value into the middle of
 // them: a token containing "-->" would close the comment early and the rest would be parsed as markup
 // in a confirmation page. Building a MarkupComment and asking the serializer for the characters takes
 // BOTH the delimiters and that check out of this module: serialize_fragment_with consults the medium's
@@ -231,7 +230,7 @@ fn approval_broker_marked_body(content_type: MediaType, body: String, m: Approva
 // THE PROBE SUPPLIES WHAT IT SAW AND THIS FOLD SAYS WHAT IT MEANS, so no caller re-implements the
 // substring test and no two callers disagree about it. It takes the body a fetch returned; it does
 // not fetch, because a fold that fetched would be observing and adjudicating in one place and the
-// cutover's whole shape is that observations are supplied to admission (DESIGN section 3d:
+// cutover's whole shape is that observations are supplied to admission (gunbc.design_argument::selection_precedes_convergence:
 // selection precedes convergence).
 // IT CARRIES THE PROCESS, and that field is the repair for review 68539 rather than extra detail.
 // An ObservedMarker holding only the fold cannot answer the question the stage asks -- which process

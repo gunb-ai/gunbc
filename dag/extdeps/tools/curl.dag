@@ -4,7 +4,7 @@ import std.optional { Absent, Present }
 import extdeps.exec.program { ProgramIdentity, cataloged_program }
 
 import std.types { String, NonEmptyStr, Bool, List, FilePath, Int, HttpStatus, http_status_of, Unit }
-import std.algebra { trim, Less, Equal, Greater, length }
+import std.algebra { trim, Less, Equal, Greater, length, list_push }
 import std.resources { Network }
 import std.measure { Second, second, second_count, Microsecond, microsecond, microsecond_count }
 import extdeps.version.semver { SemVerVersion, semver_compare, semver_core_of_dotted, semver_minimum_of_constraint }
@@ -50,9 +50,9 @@ data curl_localhost_max_time: Second = second(count: 5)
 
 // THE DOWNLOAD, WITH ITS SUCCESS SEMANTICS ATTACHED. -f is not decoration: without it curl exits 0
 // on a 404 and writes the error page to the destination, which is the fail-open class
-// gunbc.plans.transport_argv_anemia_dissolution exists to remove. -s suppresses the progress meter,
+// gunbc.plans.transport_argv_anemia_dissolution (deleted 2026-11-08) exists to remove. -s suppresses the progress meter,
 // -L follows redirects, -o names the destination. Moved here from extdeps.exec.command, which is a
-// generic hub and may not carry one product's flags (DESIGN section 3).
+// generic hub and may not carry one product's flags (gunbc.design_argument::single_authority).
 // PATH-resolved program name, deliberately: this repository has made no filesystem observation of
 // the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
 // criterion for climbing to an absolute row, and the counter-example that makes the distinction
@@ -253,6 +253,102 @@ fn classify_curl_http_code_after_newline(stdout: String) -> CurlWriteOutHttpStat
     }
     Present { value: line } => classify_curl_write_out_stdout(stdout: line)
   }
+}
+
+// ── THE COOKIE JAR FILE (-c / -b) ──────────────────────────────────────────────────────────────
+//
+// SOURCE: curl(1) "-b, --cookie" and "-c, --cookie-jar" (curl.se/docs/manpage.html, the anchor above)
+// and curl's HTTP cookie file format documentation: the Netscape layout, one cookie per line, SEVEN
+// TAB-SEPARATED FIELDS in this order: domain, include-subdomains flag (TRUE|FALSE), path, secure flag
+// (TRUE|FALSE), expiry (seconds since the epoch, 0 for a session cookie), name, value. A line whose
+// domain is prefixed `#HttpOnly_` is a cookie that carries the HttpOnly attribute; every other line
+// starting with `#` is a comment, and a blank line is skipped. The layout is curl's and not this
+// repository's, so a consumer reads it through this fold and never by field position.
+type CurlCookieJarRow {
+  domain: String
+  include_subdomains: Bool
+  path: String
+  secure: Bool
+  expiry_epoch_seconds: Int
+  name: String
+  value: String
+  http_only: Bool
+}
+
+// A row that is not a well-formed cookie record is typed and located (1-based row number among the
+// non-comment, non-blank rows); the jar as a whole is then refused, never reduced to its valid rows.
+type CurlCookieJarRead
+  = CurlCookieJarParsed { rows: List<CurlCookieJarRow> }
+  | CurlCookieJarMalformedRow { row_number: Int, cause: NonEmptyStr }
+
+data curl_cookie_jar_http_only_prefix: String = "#HttpOnly_"
+
+fn curl_cookie_jar_flag(token: String) -> Bool? {
+  if token == "TRUE" {
+    Present { value: true }
+  } else if token == "FALSE" {
+    Present { value: false }
+  } else {
+    Absent
+  }
+}
+
+// Total over a list already known to hold seven fields: the empty default is unreachable there, and a
+// short list would be refused by the count check before any field is read.
+fn curl_cookie_jar_field(fields: List<String>, at: Int) -> String {
+  match fields |> get(at) {
+    null => ""
+    token => token
+  }
+}
+
+fn curl_cookie_jar_row_of(line: String) -> CurlCookieJarRow? {
+  let fields = split(s: line, delimiter: "\t")
+  if count(fields) != 7 {
+    Absent
+  } else {
+    let http_only = starts_with(s: line, prefix: curl_cookie_jar_http_only_prefix)
+    let domain = curl_cookie_jar_field(fields: fields, at: 0)
+    match curl_cookie_jar_flag(token: curl_cookie_jar_field(fields: fields, at: 1)) {
+      Absent => Absent
+      Present { value: include_subdomains } => match curl_cookie_jar_flag(token: curl_cookie_jar_field(fields: fields, at: 3)) {
+        Absent => Absent
+        Present { value: secure } => match parse_int(s: curl_cookie_jar_field(fields: fields, at: 4)) {
+          Absent => Absent
+          Present { value: expiry } => Present { value: CurlCookieJarRow {
+            domain: if http_only { substring(s: domain, start: length(curl_cookie_jar_http_only_prefix), end: length(domain)) } else { domain },
+            include_subdomains: include_subdomains,
+            path: curl_cookie_jar_field(fields: fields, at: 2),
+            secure: secure,
+            expiry_epoch_seconds: expiry,
+            name: curl_cookie_jar_field(fields: fields, at: 5),
+            value: curl_cookie_jar_field(fields: fields, at: 6),
+            http_only: http_only,
+          } }
+        }
+      }
+    }
+  }
+}
+
+fn curl_cookie_jar_candidate_lines(jar_text: String) -> List<String> {
+  split(s: jar_text, delimiter: "\n")
+    |> filter(line => length(line) > 0)
+    |> filter(line => !starts_with(s: line, prefix: "#") || starts_with(s: line, prefix: curl_cookie_jar_http_only_prefix))
+}
+
+fn curl_cookie_jar_rows_from(lines: List<String>, at: Int, acc: List<CurlCookieJarRow>) -> CurlCookieJarRead {
+  match lines |> get(at) {
+    null => CurlCookieJarParsed { rows: acc }
+    line => match curl_cookie_jar_row_of(line: line) {
+      Absent => CurlCookieJarMalformedRow { row_number: at + 1, cause: "not seven tab-separated fields with TRUE|FALSE flags and an integer expiry" as NonEmptyStr }
+      Present { value: row } => curl_cookie_jar_rows_from(lines: lines, at: at + 1, acc: list_push(acc, row))
+    }
+  }
+}
+
+fn curl_cookie_jar_read(jar_text: String) -> CurlCookieJarRead {
+  curl_cookie_jar_rows_from(lines: curl_cookie_jar_candidate_lines(jar_text: jar_text), at: 0, acc: [])
 }
 
 // ── THE CONFIG FILE ON STDIN ───────────────────────────────────────────────────────────────────
@@ -688,9 +784,12 @@ fn curl_trace_transfer_sending(events: List<CurlTraceEvent>, text: NonEmptyStr) 
     CurlTraceRecvHeader => false
     CurlTraceOtherEvent => false
   })
-  let ids = fold(carriers, init: [], f: (acc, e) => if length(filter(acc, i => i == e.transfer as String)) > 0 { acc } else { concat(acc, [e.transfer as String]) })
-  if length(ids) != 1 { none } else {
-    match ids.first() { Present { value: i } => Present { value: i as NonEmptyStr }  Absent => none }
+  match carriers.first() {
+    Absent => none
+    Present { value: first } =>
+      if all(carriers, event => event.transfer == first.transfer) {
+        Present { value: first.transfer }
+      } else { none }
   }
 }
 
@@ -751,6 +850,14 @@ type CurlExitOutcome
   | CurlCouldNotConnect
   | CurlOperationTimedOut
   | CurlTlsHandshakeFailed
+  // THE TRUST DECISION, NOT THE NETWORK (libcurl-errors, curl.se/libcurl/c/libcurl-errors.html). At the pinned
+  // floor (>= 7.68) CURLE_PEER_FAILED_VERIFICATION is exit 60 -- CURLE_SSL_CACERT is its alias since 7.62.0, and
+  // its former value 51 is CURLE_OBSOLETE51, never emitted -- covering an untrusted chain, an expired certificate
+  // and a host name / IP SAN mismatch. CURLE_SSL_PINNEDPUBKEYNOTMATCH is exit 90. Both are kept apart from
+  // CurlTlsHandshakeFailed (35) because a caller that pins must refuse on them and never retry them as if the far
+  // side had been unreachable.
+  | CurlPeerFailedVerification
+  | CurlPinnedPubkeyMismatch
   | CurlEmptyReply
   | CurlReceiveFailed
   | CurlExitUnnamed { code: Int }
@@ -762,6 +869,8 @@ fn curl_exit_outcome(code: Int) -> CurlExitOutcome {
     7 => CurlCouldNotConnect
     28 => CurlOperationTimedOut
     35 => CurlTlsHandshakeFailed
+    60 => CurlPeerFailedVerification
+    90 => CurlPinnedPubkeyMismatch
     52 => CurlEmptyReply
     56 => CurlReceiveFailed
     _ => CurlExitUnnamed { code: code }
@@ -775,6 +884,8 @@ fn curl_exit_outcome_name(outcome: CurlExitOutcome) -> String {
     CurlCouldNotConnect => "could not connect (curl exit 7)"
     CurlOperationTimedOut => "operation timed out (curl exit 28)"
     CurlTlsHandshakeFailed => "TLS handshake failed (curl exit 35)"
+    CurlPeerFailedVerification => "the server's certificate failed verification: chain, expiry or host name (curl exit 60)"
+    CurlPinnedPubkeyMismatch => "the server's public key was not the pinned one (curl exit 90)"
     CurlEmptyReply => "server sent an empty reply (curl exit 52)"
     CurlReceiveFailed => "failure receiving data (curl exit 56)"
     CurlExitUnnamed { code: c } => join(["curl exit ", to_string(c)], "")
