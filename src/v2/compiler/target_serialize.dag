@@ -8,7 +8,7 @@ import v2.compiler.inferred_tree {
   InferredFacts,
   InferredTree
 }
-import v2.compiler.infer { infer_nullary_zero_param_coproduct_arm_use }
+import v2.compiler.infer { infer_nullary_zero_param_coproduct_arm_use, infer_nullary_zero_param_coproduct_arm_declared }
 import v2.extdeps.languages.dag {
   dag_surface_operator_canonicalization_member,
   dag_value_expression_projection,
@@ -65,6 +65,10 @@ import v2.std.diagnostic {
 }
 import v2.std.node { positional_child_target_nodes,
   Atom,
+  BranchConditionSlot,
+  BranchElseSlot,
+  BranchThenSlot,
+  branch_slot_target,
   Conj,
   Edge,
   Authored,
@@ -75,6 +79,13 @@ import v2.std.node { positional_child_target_nodes,
   TypeNode,
   declaration_reference_body_marked,
   node_subtree_count,
+  node_subtree_nodes,
+  node_same_occurrence,
+  Match,
+  MatchArmSlot,
+  MatchArmPatternEdge,
+  match_role_slots,
+  child_slot_target,
   Arrow,
   Branch,
   ComputationNode,
@@ -92,7 +103,7 @@ import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
 import v2.std.type_binder {
   type_param_names
 }
-import v2.std.node_query { find_arrow_body_child, find_named_child, find_labeled_child }
+import v2.std.node_query { find_core_child, find_arrow_body_child, find_named_child, find_labeled_child }
 import v2.std.compilers.target_model {
   ConcreteSyntaxToken,
   ConcreteSyntaxLayoutItem,
@@ -166,7 +177,7 @@ import std.optional {
   optional_absent,
   optional_present
 }
-import std.algebra { Empty, PartialFunction, list_snoc_item, fold_list, is_empty, list_tail, list_at_optional, collection_concat_shape, collection_count_shape }
+import std.algebra { list_map, list_find_first, Empty, PartialFunction, list_snoc_item, fold_list, is_empty, list_tail, list_at_optional, collection_concat_shape, collection_count_shape }
 import v2.std.text {
   String
 }
@@ -880,6 +891,93 @@ fn project_nullary_arm_binding(node: Node) -> Outcome<TargetValueExpression> {
   }
 }
 
+// WHERE A FACT IS ABSENT BY CONSTRUCTION. Inference types values, not patterns, so the only position
+// whose reference legitimately carries no facts is a match-arm pattern; anywhere else an absent fact is an
+// inference gap and stays the facts_absent refusal. The pattern occurrences of one arrow are read ONCE
+// (match_arm_pattern_nodes) and carried down the recursion, so the guard is a membership test, not a rescan.
+fn match_arm_pattern_nodes(arrow: Node) -> List<Node> {
+  fold(
+    node_subtree_nodes(root: arrow),
+    init: Empty,
+    f: fn(acc, candidate) {
+      match candidate.kind {
+        ComputationNode { behavior: Match } =>
+          fold(
+            match_role_slots(n: candidate, role: MatchArmSlot),
+            init: acc,
+            f: fn(inner, slot) {
+              match find_core_child(root: child_slot_target(slot: slot), marker: MatchArmPatternEdge) {
+                Accepted { value: arm_pattern, diagnostics: _ } => list_snoc_item(xs: inner, item: arm_pattern)
+                Rejected { diagnostics: _ } => inner
+              }
+            }
+          )
+        ComputationNode { behavior: _ } => acc
+        TypeNode { connective: _ } => acc
+      }
+    }
+  )
+}
+
+fn node_is_match_arm_pattern(patterns: List<Node>, node: Node) -> Bool {
+  match list_find_first(xs: patterns, predicate: fn(arm_pattern) { node_same_occurrence(a: arm_pattern, b: node) }) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// A NESTED VALUE REUSES THE FACTS-AWARE RULE. A marked declaration reference reached through a record
+// field or a match arm is projected by project_value_node_from_inferred_facts, the one place that
+// knows a reference is a nullary coproduct arm; every other node stays the transform projection.
+// A match-arm PATTERN has no inferred facts (inference does not type patterns), so a marked reference
+// there with no facts asks the declaration directly -- the same predicate, minus the facts hop.
+fn project_nested_node_with_facts(
+  arrow: Node,
+  node: Node,
+  target: TargetModel,
+  tree: InferredTree,
+  declarations: SymbolIndex,
+  patterns: List<Node>
+) -> Outcome<TargetValueExpression> {
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      if project_nested_pattern_without_facts(node: node, tree: tree, declarations: declarations, patterns: patterns) {
+        project_nullary_arm_binding(node: node)
+      } else {
+        project_value_node_from_inferred_facts(
+          arrow: arrow,
+          node: node,
+          target: target,
+          tree: tree,
+          declarations: declarations,
+          handle_transform: fn(a, b, t) {
+            project_nested_node_with_facts(arrow: a, node: b, target: t, tree: tree, declarations: declarations, patterns: patterns)
+          }
+        )
+      }
+    ComputationNode { behavior: _ } => translate_project_transform_in_arrow_scope(arrow: arrow, body: node, target: target)
+    TypeNode { connective: Atom { identity: _ } } => translate_project_transform_in_arrow_scope(arrow: arrow, body: node, target: target)
+    TypeNode { connective: Disj } => translate_project_transform_in_arrow_scope(arrow: arrow, body: node, target: target)
+    TypeNode { connective: Arrow } => translate_project_transform_in_arrow_scope(arrow: arrow, body: node, target: target)
+    TypeNode { connective: Instantiation } => translate_project_transform_in_arrow_scope(arrow: arrow, body: node, target: target)
+  }
+}
+
+fn project_nested_pattern_without_facts(
+  node: Node,
+  tree: InferredTree,
+  declarations: SymbolIndex,
+  patterns: List<Node>
+) -> Bool {
+  match inferred_facts_for_projected_node(tree: tree, node: node) {
+    Present { value: _ } => false
+    Absent =>
+      node_is_match_arm_pattern(patterns: patterns, node: node)
+        && declaration_reference_body_marked(target: node)
+        && infer_nullary_zero_param_coproduct_arm_declared(node: node, index: declarations)
+  }
+}
+
 fn project_value_node_from_inferred_facts(
   arrow: Node,
   node: Node,
@@ -950,6 +1048,10 @@ fn project_occupancy_carrier_from_inferred_facts(
   }
 }
 
+// The Branch's value slots are read through the v2.std.node table, not by indexing the positional list
+// beside it (DESIGN 3: the roles live at the table). This is the VALUE route, so all three slots must be
+// Present: an else-less (two-positional) Branch owes a value it cannot produce and refuses here with the
+// shape reason, exactly as the positional read refused a missing index 2.
 fn project_branch_from_inferred_facts(
   arrow: Node,
   body: Node,
@@ -958,7 +1060,7 @@ fn project_branch_from_inferred_facts(
   declarations: SymbolIndex,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
-  match list_at_optional(xs: positional_child_target_nodes(node: body), index: 0) {
+  match branch_slot_target(n: body, slot: BranchConditionSlot) {
     Absent =>
       outcome_rejected(
         d: target_value_expr_diagnostic(
@@ -967,7 +1069,7 @@ fn project_branch_from_inferred_facts(
         )
       )
     Present { value: cond } =>
-      match list_at_optional(xs: positional_child_target_nodes(node: body), index: 1) {
+      match branch_slot_target(n: body, slot: BranchThenSlot) {
         Absent =>
           outcome_rejected(
             d: target_value_expr_diagnostic(
@@ -976,11 +1078,14 @@ fn project_branch_from_inferred_facts(
             )
           )
         Present { value: then_arm } =>
-          match list_at_optional(xs: positional_child_target_nodes(node: body), index: 2) {
+          match branch_slot_target(n: body, slot: BranchElseSlot) {
+            // The condition and the then arm are read; only the else arm is missing. That is the else-less
+            // shape, which this VALUE route cannot render -- but it is not a malformed node, so it does not
+            // get the malformed-shape reason (DESIGN 5: one cause per reason).
             Absent =>
               outcome_rejected(
                 d: target_value_expr_diagnostic(
-                  reason: ^target_value_expr_reason_transform_shape_invalid,
+                  reason: ^target_value_expr_reason_branch_else_less_as_value,
                   node: body
                 )
               )
@@ -1165,6 +1270,7 @@ fn target_serialize_bodied_arrow_with_scaffolded_header(
           bind_outcome(
             o: target_value_expression_projection_from_target(target: target),
             f: fn(projection) {
+              let arm_patterns = match_arm_pattern_nodes(arrow: emitted)
               bind_outcome(
                 o: project_arrow_body_from_inferred_facts(
                   arrow: emitted,
@@ -1172,7 +1278,7 @@ fn target_serialize_bodied_arrow_with_scaffolded_header(
                   tree: tree,
                   declarations: declarations,
                   handle_transform: fn(a, b, t) {
-                    translate_project_transform_in_arrow_scope(arrow: a, body: b, target: t)
+                    project_nested_node_with_facts(arrow: a, node: b, target: t, tree: tree, declarations: declarations, patterns: arm_patterns)
                   }
                 ),
                 f: fn(expr) {
@@ -1212,7 +1318,7 @@ fn target_serialize_relation_row_from_model_bounded(
 
 // ONE ROW'S SERIALIZATION, GIVEN THE TARGET'S SPELLING INDEX. The index is a fact about the target, the
 // same for every row of one serialization, so it is built once at the entry and carried down: a
-// nonterminal inside a row re-enters here with the index it was handed, never rebuilding it (DESIGN §2).
+// nonterminal inside a row re-enters here with the index it was handed, never rebuilding it (gunbc.design_argument::minimize_redundancy).
 fn target_serialize_relation_row_with_lex_bounded(
   remaining: Int,
   target: TargetModel,
@@ -1253,7 +1359,7 @@ fn target_serialize_relation_row_with_lex_bounded(
 // SERIALIZE A ROW THE CALLER ALREADY DERIVED. A target that derives its program's row
 // (v2.std.grammar derive_grammar_relation_row_for_lhs) holds the row the serializer would otherwise
 // re-select by reverse-parsing the same program against the same productions -- a third resolution of
-// one program for one demand (DESIGN §2). This entry reads the given row's tokens directly.
+// one program for one demand (gunbc.design_argument::demand_before_materialization). This entry reads the given row's tokens directly.
 fn target_serialize_derived_row_bounded(remaining: Int, target: TargetModel, row: Node) -> Outcome<TargetText> {
   if remaining <= 0 {
     outcome_rejected(translate_serialize_recursion_limit_exhausted_diagnostic(emitted: row))

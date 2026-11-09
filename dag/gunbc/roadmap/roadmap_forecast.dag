@@ -65,7 +65,7 @@ import gunbc.roadmap.roadmap_authority {
 // A forecast projects what may happen; a CycleTimeObservation records what did happen. They are
 // separate nominal record types with no conversion in either direction. ScheduleForecast exposes
 // ForecastInstant and ForecastLowerBoundInterval; its epoch value is sealed inside ForecastInstant
-// and never appears as a bare Timestamp/EpochMs observation, RoadmapAcceptanceReceipt, Signoff, or
+// and never appears as a bare Timestamp/EpochMs observation, RoadmapAcceptanceReceipt, or
 // done/accepted stage. schedule_forecast derives only ScheduleForecastResult, and its refusal arm
 // is exhaustive. Therefore a date can neither accept a roadmap node nor inhabit the observation
 // input used to calibrate later forecasts. Estimates project; only evidence promotes.
@@ -103,7 +103,7 @@ data resource_capacity_lower_bound_method_used: ResourceCapacityLowerBoundMethod
 // only because the authored NodeSizing coproduct fused a size with the repository and the
 // acceptance route, so this module had to project the size back out of the bundle. With the
 // unbundling that projection has nothing to strip: gunbc.roadmap.roadmap_sizing NodeSizing IS the cell, and
-// keeping both would be the section 3 nickname. Calibration now keys on the DERIVED size, which is
+// keeping both would be the gunbc.design_argument::single_authority nickname. Calibration now keys on the DERIVED size, which is
 // why this module's population is empty until the deriver lands -- see the declared drop
 // gunbc.rung_drop.roadmap_sizing_authored_to_derived.
 
@@ -556,7 +556,7 @@ fn no_calibration_gap_count(result: ScheduleForecastResult) -> Int {
 // silently unioning. Minting a second authority for it was the failed decomposition DESIGN section
 // 2 names -- net concepts growing by re-invention -- so the roster is built through
 // keyed_roster_build and its KeyedRosterBuildDuplicateKey verdict is what refuses, rather than a
-// local checker standing where the construction carrier was available (section 5).
+// local checker standing where the construction carrier was available (gunbc.design_argument::fail_closed).
 //
 // THE SLUG IS NOT BANISHED, IT IS SCOPED. RoadmapNodeId remains the key of the dependency edges,
 // of the refusal payloads, and of every population this module reports, because those are the
@@ -643,9 +643,9 @@ fn node_sizing_adaptation(rn: RoadmapNode, d: NodeSizingDerivation) -> NodeSizin
 // APPEND-FREE: THE TWO LISTS ARE INDEPENDENT, SO EACH IS ONE flat_map RATHER THAN A REBUILT PAIR.
 // The first form folded a NodeSizingAdaptation and rebuilt both halves with
 // concat(acc.x, one.x) on every node -- a copied accumulator, quadratic in the active node count.
-// DESIGN section 6 fixes that shape AT ANY N: "n is small here" is not a time-stable fact, because
+// gunbc.design_argument::how_to_work fixes that shape AT ANY N: "n is small here" is not a time-stable fact, because
 // reuse changes n. It is recorded here that this repair barely moves this fold's measured cost,
-// and that is deliberately NOT a reason to skip it -- the realized-n rebuttal is the one section 6
+// and that is deliberately NOT a reason to skip it -- the realized-n rebuttal is the one gunbc.design_argument::how_to_work
 // rules out by name, and leaning on it would have made a cost-shape defect part of an
 // irreducibility argument (gunbc#10994 review 68130).
 fn derived_node_sizings(nodes: List<RoadmapNode>) -> NodeSizingAdaptation {

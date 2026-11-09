@@ -95,7 +95,7 @@ test fn the_collision_message_names_both_packages() -> Bool {
   }
 }
 
-// ── THE INHABITANCE PAIRING (DESIGN §3) ───────────────────────────────────────────────────────
+// ── THE INHABITANCE PAIRING (gunbc.design_argument::single_authority) ───────────────────────────────────────────────────────
 //
 // Every claim above supplies its inputs at one interface, so this claim feeds the fold the REAL
 // population: stage0's generated partition rows, the same rows v1.compiler.stage0_crates

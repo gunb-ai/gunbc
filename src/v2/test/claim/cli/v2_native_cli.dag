@@ -22,7 +22,7 @@ import v2.cli.compile_cli {
   CliPopulationReported,
   CliIfArmReaderDifferential,
   CliCheckLayout,
-  CliSelectSpelledModules,
+  CliCheckReferences,
   CliParsePopulation,
   cli_emit_target_spelling,
   cli_verb_if_arm_reader_differential,
@@ -31,7 +31,7 @@ import v2.cli.compile_cli {
   v2_cli_plan_source_roots,
   v2_cli_run
 }
-import v2.cli.population_verb_names { cli_verb_check_layout, cli_verb_parse_population, cli_verb_select_spelled_modules }
+import v2.cli.population_verb_names { cli_verb_check_layout, cli_verb_check_references, cli_verb_parse_population }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.std.artifact { Artifact, SourceFile }
 import extdeps.communication.medium { Lossless, Medium }
@@ -46,7 +46,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE SUBJECT IS THE V2-NATIVE CLI'S OWN DECISIONS, SUPPLIED AT ITS OWN BOUNDARY. Every argv below
 // is constructed here rather than derived by running a process, because the interface under test is
 // `argv -> plan` and `plan x ingest -> outcome`: deriving the inputs would re-execute a walk, a
-// spawn and a filesystem this claim is not about, once per claim (DESIGN section 3, a witness
+// spawn and a filesystem this claim is not about, once per claim (gunbc.design_argument::single_authority, a witness
 // discriminates at ONE interface).
 //
 // AND THE PAIRING OBLIGATION IS DISCHARGED BY THE LAST ROW, which is the reason the supplied inputs
@@ -76,7 +76,7 @@ fn plan_first_root(plan: CliPlan) -> String {
           }
         CliIfArmReaderDifferential { source_roots: _ } => ""
         CliCheckLayout { source_roots: _ } => ""
-        CliSelectSpelledModules { source_roots: _ } => ""
+        CliCheckReferences { source_roots: _ } => ""
         CliParsePopulation { source_roots: _, compiler: _, write_identity: _, receipts: _, reuse_from: _ } => ""
       }
   }
@@ -272,7 +272,7 @@ fn plan_is_target(plan: CliPlan, expected: CliEmitTarget) -> Bool {
           cli_emit_target_spelling(t: target) == cli_emit_target_spelling(t: expected)
         CliIfArmReaderDifferential { source_roots: _ } => false
         CliCheckLayout { source_roots: _ } => false
-        CliSelectSpelledModules { source_roots: _ } => false
+        CliCheckReferences { source_roots: _ } => false
         CliParsePopulation { source_roots: _, compiler: _, write_identity: _, receipts: _, reuse_from: _ } => false
       }
   }
@@ -362,7 +362,7 @@ test fn a_refused_plan_keeps_its_cause_through_the_run_holds() -> Bool {
 }
 
 // THE EMIT ARM HAS NO GREEN INHABITANCE CLAIM TODAY, AND THIS IS A DECLARED FRONTIER RATHER THAN
-// AN OMISSION (DESIGN section 3c). The rows above supply argv at this CLI's own boundary, which
+// AN OMISSION (gunbc.design_argument::consumption). The rows above supply argv at this CLI's own boundary, which
 // owes one claim that the real producer runs -- and the claim was written, ran, and went RED for a
 // reason that is not this CLI's.
 //
@@ -381,12 +381,12 @@ test fn a_refused_plan_keeps_its_cause_through_the_run_holds() -> Bool {
 // note in `gunbc.ci.ci_layer_roots` already carries the retraction that relocating a witness there is
 // precisely what stops it running; this is that retraction's next receipt.
 //
-// THE TRIGGER, NAMED AS A CAPABILITY (DESIGN section 4b(3)): `emit_compiler_import_closure_from_ingest`
+// THE TRIGGER, NAMED AS A CAPABILITY (gunbc.design_argument::guarantee_ladder (no silent regression)): `emit_compiler_import_closure_from_ingest`
 // accepts a single-module ingest whose admission names that module -- evidenced by
 // `self_host_frontier_emit_ownership_miss_accepts` going green. At that point the inhabitance claim
 // for this CLI is a one-module ingest and three lines over it, and it lands HERE with the fixture
 // it needs -- which is why no fixture is parked here now: a probe ingest with no claim executing
-// it is the dangling declaration section 3c calls red, and "ready for later" is that section's
+// it is the dangling declaration gunbc.design_argument::consumption calls red, and "ready for later" is that section's
 // own tell.
 // THE EXECUTING CONSUMER IN THE MEANTIME is `gunbc test //gunbc/instruments:v2-native-cli`, which
 // emits and compiles this module's whole closure -- that is compilation of the emit arm and not
@@ -490,7 +490,7 @@ test fn a_trailing_token_refusal_locates_its_fatal_in_the_file_holds() -> Bool {
 // token claims: v2_cli_run over a supplied ingest. The fatal stays last; the census projection rides
 // in front of it. Dropping the CLI wiring while keeping the census renderer greens every census
 // claim and reds this one.
-data cli_probe_unbound_source: String = "module test.fixture.cli_probe_unbound\n\nfn go() {\n  never_declared\n}\n"
+data cli_probe_unbound_source: String = "module test.fixture.cli_probe_unbound\n\nfn go() -> Bool {\n  never_declared\n}\n"
 
 data cli_probe_unbound_ingest: SourceRootIngest = [
   cli_probe_read(source: cli_probe_unbound_source, id: ^cli_probe_unbound_artifact, unit: ^cli_probe_unbound_cu, path: "dag/test/fixture/cli_probe_unbound.dag")
@@ -514,7 +514,8 @@ test fn an_unbound_emit_line_names_what_is_unbound_before_fatal_at_RED() -> Bool
     CliRunRefused { reason: _, detail: detail } =>
       string_contains(s: detail, pattern: "unbound_name=never_declared | FATAL AT")
     CliUsageRefused { reason: _, detail: _ } => false
-    CliEmitted { text: _, closure_size: _, refused_count: _, refusal_detail: _ } => false
+    CliEmitted { text: _, closure_size: _, refused_count: _, refusal_detail: detail } =>
+      string_contains(s: detail, pattern: "unbound_name=never_declared | FATAL AT")
     CliPopulationReported { text: _, held: _, detail: _ } => false
   }
 }
@@ -539,7 +540,7 @@ fn plan_roots_verb_label(plan: CliPlan) -> String {
         CliEmitClosure { entry: _, source_roots: _, target: _ } => "emit"
         CliIfArmReaderDifferential { source_roots: _ } => cli_verb_if_arm_reader_differential
         CliCheckLayout { source_roots: _ } => cli_verb_check_layout
-        CliSelectSpelledModules { source_roots: _ } => cli_verb_select_spelled_modules
+        CliCheckReferences { source_roots: _ } => cli_verb_check_references
         CliParsePopulation { source_roots: _, compiler: _, write_identity: _, receipts: _, reuse_from: _ } => cli_verb_parse_population
       }
   }
@@ -550,9 +551,20 @@ test fn the_check_layout_spelling_selects_its_own_verb_holds() -> Bool {
     == cli_verb_check_layout
 }
 
-test fn the_select_spelled_modules_spelling_selects_its_own_verb_holds() -> Bool {
-  plan_roots_verb_label(plan: v2_cli_parse(argv: argv_roots_verb(verb: "select-spelled-modules", root: "dag")))
-    == cli_verb_select_spelled_modules
+test fn the_check_references_spelling_selects_its_own_verb_holds() -> Bool {
+  plan_roots_verb_label(plan: v2_cli_parse(argv: argv_roots_verb(verb: "check-references", root: "dag")))
+    == cli_verb_check_references
+}
+
+// parse-population's options are its own: every other roots verb refuses them through the one
+// predicate (cli_roots_verb_takes_parse_population_options), so a verb added later refuses them too.
+data argv_check_references_with_compiler: FreeMonoid<String> = Cons {
+  head: "check-references",
+  tail: Cons { head: "--source-root", tail: Cons { head: "dag", tail: Cons { head: "--compiler", tail: Cons { head: "cid", tail: Empty } } } }
+}
+
+test fn check_references_given_a_parse_population_option_refuses_holds() -> Bool {
+  plan_refusal_reason(plan: v2_cli_parse(argv: argv_of(items: argv_check_references_with_compiler))) == ^cli_unknown_option
 }
 
 test fn the_parse_population_spelling_selects_its_own_verb_holds() -> Bool {
@@ -604,7 +616,7 @@ test fn parse_population_parses_write_identity_and_receipts_holds() -> Bool {
         CliEmitClosure { entry: _, source_roots: _, target: _ } => false
         CliIfArmReaderDifferential { source_roots: _ } => false
         CliCheckLayout { source_roots: _ } => false
-        CliSelectSpelledModules { source_roots: _ } => false
+        CliCheckReferences { source_roots: _ } => false
       }
   }
 }
@@ -630,7 +642,7 @@ test fn parse_population_parses_reuse_from_and_refuses_it_dangling_holds() -> Bo
         CliEmitClosure { entry: _, source_roots: _, target: _ } => false
         CliIfArmReaderDifferential { source_roots: _ } => false
         CliCheckLayout { source_roots: _ } => false
-        CliSelectSpelledModules { source_roots: _ } => false
+        CliCheckReferences { source_roots: _ } => false
       }
   })
     && match v2_cli_parse(argv: argv_of(items: argv_parse_population_reuse_dangling)) {
@@ -657,7 +669,7 @@ fn plan_first_root_of_roots_verb(plan: CliPlan) -> String {
 }
 
 // A POPULATION VERB WITH NO ROOT IS A REFUSAL AND NOT AN EMPTY POPULATION: it would check or parse
-// nothing and hold, which is the empty-observation narrow section 5 forbids.
+// nothing and hold, which is the empty-observation narrow gunbc.design_argument::fail_closed forbids.
 data argv_check_layout_no_root: FreeMonoid<String> = Cons { head: "check-layout", tail: Empty }
 
 data argv_parse_population_dangling_root: FreeMonoid<String> = Cons {

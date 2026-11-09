@@ -106,7 +106,7 @@ type HostDiagnostic {
 // Whether a diagnostic may be READ by a given convergence run, derived from
 // what that run can reach. An unreachable channel is not an absence of
 // errors — it is an absence of observation, and the two must never collapse
-// (DESIGN section 5: empty-observation narrow).
+// (gunbc.design_argument::fail_closed: empty-observation narrow).
 type DiagnosticChannelReachability
   = ChannelReachable
   | ChannelRequiresBmcSsh

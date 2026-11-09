@@ -8,7 +8,7 @@ import gunbc.site.document { SiteStyles, site_styles, site_styles_css, site_styl
 
 import gunbc.roadmap.roadmap_project { membership_index }
 import test.claim.roadmap.roadmap_authority_subtree_fixture { fx_authority_subtree_roadmap_page, fx_authority_subtree_daily_page, fx_multi_parent_ids, fx_live_project_ids }
-import test.claim.roadmap.roadmap_node_fixture { fx_authored, fx_authored_wi, fx_derivable_wi, fx_ticket_row, fx_ticket_wi, fx_superseded, fx_signed, fx_sign }
+import test.claim.roadmap.roadmap_node_fixture { fx_authored, fx_authored_wi, fx_derivable_wi, fx_ticket_row, fx_ticket_wi, fx_superseded }
 
 import gunbc.roadmap.roadmap_spawner { doc_all_edges }
 
@@ -214,7 +214,7 @@ fn dispatch_doc_html_for(rn: RoadmapNode) -> HtmlEmitResult {
   try_serialize_html_source(node: roadmap_page_launch(doc: doc, merged: [], launch: dispatch_doc_standing()))
 }
 
-// THE ROW CLAIMS SUPPLY THE STYLESHEET; ONE CLAIM STILL DERIVES IT (DESIGN section 3 pairing).
+// THE ROW CLAIMS SUPPLY THE STYLESHEET; ONE CLAIM STILL DERIVES IT (gunbc.design_argument::single_authority pairing).
 // Everything these claims assert lives in the BODY -- a button, its wire label, a disclosure block --
 // and the head's style text reaches none of it. Deriving roadmap_css() to read a button cost 157,986
 // of each claim's ~163,000 eval steps. witness_ready_node_doc_emits_button_and_external_script is
@@ -258,22 +258,6 @@ fn unsized_open_dispatch_node() -> RoadmapNode {
   fx_authored(identity: "rnfx_324RFH775DGZZMVETPT6", id: "disp-unsized", done: false, content: "observe-only")
 }
 
-fn signed_off_dispatch_node() -> RoadmapNode {
-  let base = ready_dispatch_node()
-  RoadmapNode {
-    identity: "rnfx_08P5JSFSS1NH1YY20PWV" as RoadmapNodeIdentity,
-    node: base.node,
-    line: base.line,
-    carriers: base.carriers,
-    dispatch: base.dispatch,
-    execution: base.execution,
-    owner: base.owner,
-    signoff: fx_signed(by: "op", works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] }, as_expected: true),
-    parent: none,
-    centering: none,
-  }
-}
-
 fn dispatch_doc_page(rn: RoadmapNode) -> Fragment {
   let sec = RoadmapSection { title: "Belt", elements: [ section_group(label: "", nodes: [rn], edges: []) ] }
   let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
@@ -282,11 +266,11 @@ fn dispatch_doc_page(rn: RoadmapNode) -> Fragment {
 
 data server_zero_furniture_note: String = "The attention rule's server half (A2): a rendered row carries NO workflow furniture — no pre-rendered stage chips, no lamp strip, no hidden progress container, no 'waiting' text. Activity DOM exists only when the client paints it from the decided /workflow.json view of a live attempt. The former version of this witness pinned the seven server-rendered pending chips as a POSITIVE; the same patterns are now the discriminating negatives, so reintroducing preloaded furniture reds here."
 
-// THIS IS THE CLAIM THAT RUNS THE REAL PAGE FOLD (DESIGN section 3 pairing obligation). The three
+// THIS IS THE CLAIM THAT RUNS THE REAL PAGE FOLD (gunbc.design_argument::witness_one_interface pairing obligation). The three
 // row claims below supply the stylesheet at roadmap_page_launch_with_stylesheet; this one renders
 // through roadmap_page_launch, which derives it, and the last pin ASSERTS THE ROUTE rather than a
 // shape: the head must carry the stylesheet gunbc.roadmap.roadmap_style actually produces, cited by calling
-// the producer instead of spelling any of its bytes (DESIGN section 3 -- cite the symbol). Stop
+// the producer instead of spelling any of its bytes (gunbc.design_argument::single_authority -- cite the symbol). Stop
 // passing roadmap_css() into the page and this reds, which is exactly what makes supplying it in
 // the sibling claims a hypothesis about a boundary rather than a hole in the evidence.
 test fn witness_ready_node_doc_emits_button_and_external_script() -> Bool {
@@ -359,14 +343,6 @@ fn rogue_src_script_page() -> Fragment {
 test fn witness_rogue_src_script_reds() -> Bool {
   let v = page_script_census(page: rogue_src_script_page())
   v.length() == 1 && all(v, x => x.kind == "unknown-src")
-}
-
-test fn witness_signed_off_node_doc_has_no_button() -> Bool {
-  match dispatch_doc_html_for(rn: signed_off_dispatch_node()) {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: h } =>
-      !string_contains(s: h, pattern: "<button class=\"dispatch-btn")
-  }
 }
 
 // RLM-1: a review row is NOT relaunchable by an ordinary click. The button renders, disabled, carrying
@@ -519,7 +495,7 @@ fn updates_fixture(updates: List<gunbc.roadmap.roadmap_status.TicketUpdate>) -> 
 // ONE ROW, NOT ONE PAGE. The ticket-row claims below ask what the ROW renderer emits for a row of a
 // given kind, so they supply the row and serialize it through nodes_ul -- the same route
 // witness_bold_title_renders_strong takes -- rather than paying for the whole authority page once per
-// claim (DESIGN section 3, a witness discriminates at one interface). The pairing obligation is held by
+// claim (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface). The pairing obligation is held by
 // witness_authority_serializes_with_structure, which asserts that the REAL authority page emits a
 // ticket-row "inspect" disclosure, a ticket brief, a disclosure field and a carrier link: the route
 // these fixtures supply is still executed for real -- by witness_real_ticket_row_renders_structured,
@@ -537,7 +513,7 @@ fn is_real_structured_ticket(rn: RoadmapNode) -> Bool {
   }
 }
 
-// THE INHABITANCE CLAIM FOR THE SUPPLIED TICKET ROWS (DESIGN section 3 pairing). It selects the first
+// THE INHABITANCE CLAIM FOR THE SUPPLIED TICKET ROWS (gunbc.design_argument::witness_one_interface pairing). It selects the first
 // authored ticket carrying a displaced cost and a carrier rather than naming one, so it follows the
 // authority as tickets are accepted; an authority with no such ticket reds here, by name.
 test fn witness_real_ticket_row_renders_structured() -> Bool {
@@ -807,7 +783,7 @@ test fn witness_parity_wire_carries_the_server_sentence() -> Bool {
     && string_contains(s: wire, pattern: "\"remaining_obligation_count\": 4")
 }
 
-// THE CLIENT ASSET, SUPPLIED BY ITS STATEMENT GROUPS (DESIGN section 3, a witness discriminates at
+// THE CLIENT ASSET, SUPPLIED BY ITS STATEMENT GROUPS (gunbc.design_argument::single_authority, a witness discriminates at
 // one interface). Serializing the whole asset to read one group's spelling cost every claim the
 // full ~108k-step serialization; each claim below serializes only the groups that emit what it
 // reads. The groups are the production functions themselves, with the arguments
@@ -1013,7 +989,7 @@ test fn witness_observation_channels_join_one_impact_region() -> Bool {
     && string_contains(s: js, pattern: "'observe-refused workflow-observe-refused'")
 }
 
-// THE STYLESHEET, SUPPLIED BY ITS PARTS (DESIGN section 3, a witness discriminates at one interface).
+// THE STYLESHEET, SUPPLIED BY ITS PARTS (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface).
 // roadmap_css() is the newline join of the root custom-property blocks, the audition swatch blocks,
 // the serialized rules and the reduced-motion block; deriving all of it to read one rule cost every
 // claim ~165k steps, ~100k of them the audition blocks no claim here reads. Each claim below reads
@@ -2219,8 +2195,8 @@ test fn witness_issue_rail_counts_unmet_prerequisites_from_readiness() -> Bool {
     && row(gunbc.roadmap.roadmap_presentation.SchedulingReady) == "<dl class=\"el-field-list\"></dl>"
     && string_contains(s: unmet, pattern: "<dt class=\"el-field-list-label\">Unmet Prerequisites</dt><dd class=\"el-field-list-value\"><button class=\"el-field-list-action\" type=\"button\" title=\"1 issue\" data-tab-chip=\"dependencies\">1 issue</button></dd>")
     && other_gap == "<dl class=\"el-field-list\"></dl>"
-    && string_contains(s: row(gunbc.roadmap.roadmap_presentation.SchedulingDone), pattern: "<dt class=\"el-field-list-label\">Prerequisites</dt><dd class=\"el-field-list-value\"><button class=\"el-field-list-action\" type=\"button\" title=\"1 issue\" data-tab-chip=\"dependencies\">1 issue</button></dd>")
-    && !string_contains(s: row(gunbc.roadmap.roadmap_presentation.SchedulingDone), pattern: "Unmet")
+    && string_contains(s: row(gunbc.roadmap.roadmap_presentation.SchedulingSuperseded), pattern: "<dt class=\"el-field-list-label\">Prerequisites</dt><dd class=\"el-field-list-value\"><button class=\"el-field-list-action\" type=\"button\" title=\"1 issue\" data-tab-chip=\"dependencies\">1 issue</button></dd>")
+    && !string_contains(s: row(gunbc.roadmap.roadmap_presentation.SchedulingSuperseded), pattern: "Unmet")
 }
 
 // The assignment mapping after the legacy-session cleanup (owner 2026-09-26): when an attempt

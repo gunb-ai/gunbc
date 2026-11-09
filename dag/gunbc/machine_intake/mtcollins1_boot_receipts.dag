@@ -1,0 +1,32 @@
+module gunbc.machine_intake.mtcollins1_boot_receipts
+
+import std.types { String }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.host.running_os_receipt { RunningOsReceiptSource }
+import gunbc.machine_intake.mtcollins1_boot_admission { mtcollins1_boot_dispatch_host }
+
+// WHERE THE mtcollins1 BOOT RUN PUBLISHES WHAT LATER JOBS READ, apart from the boot run itself
+// (gunbc.machine_intake.mtcollins1_boot_run) so that a reader -- the runner initialization, which reads the
+// running-OS receipt -- does not take the boot run's closure to learn a mode and an artifact name. The boot run's
+// artifact glob (mtcollins1_boot_artifact_glob, artifacts/mtcollins1-boot-*) covers the receipt path below.
+
+// THE BOOT RUN'S FLEET-CONVERGE MODE AND THE ARTIFACT ITS RECEIPTS ARE UPLOADED UNDER, one home each: the
+// workflow's MtCollins1Boot arm and upload step project these rows, and the running-OS receipt's reader
+// (gunbc.host.running_os_receipt_observed) selects the run by the mode and downloads by the artifact name.
+data mtcollins1_boot_mode_wire: String = "mtcollins1_boot"
+
+data mtcollins1_boot_receipts_artifact_name: String = "mtcollins1-boot-receipts"
+
+// THE RUNNING-OS RECEIPT, under the artifact glob, so the receipts upload ships it. upload-artifact roots a glob's
+// files at their least common ancestor (artifacts/), so inside the artifact the file is its own name.
+data mtcollins1_boot_running_os_receipt_file_name: String = "mtcollins1-boot-running-os-receipt.txt"
+
+data mtcollins1_boot_running_os_receipt_path: String = concat("artifacts/", mtcollins1_boot_running_os_receipt_file_name)
+
+data mtcollins1_running_os_receipt_source: RunningOsReceiptSource = RunningOsReceiptSource {
+  host: operator_host_mtcollins1,
+  producer_dispatch_host: mtcollins1_boot_dispatch_host,
+  mode: mtcollins1_boot_mode_wire,
+  artifact: mtcollins1_boot_receipts_artifact_name,
+  file_name: mtcollins1_boot_running_os_receipt_file_name,
+}

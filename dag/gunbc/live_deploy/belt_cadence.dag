@@ -39,7 +39,7 @@ data belt_exit_trigger_limit_burst: Int = 200
 // project envelope seeds the whole ~7,050-path intake base through the git bridge once (measured
 // 2026-09-21 at roughly seven minutes of bridge time per project), and verification then runs the
 // node's validations; it must stay far below the hours a wedge needs to be noticed by a human.
-// The bound names the instrument that re-derives it, never a transcribed number (DESIGN section 6):
+// The bound names the instrument that re-derives it, never a transcribed number (gunbc.design_argument::how_to_work):
 // a green tick's receipt at receipts/belt-last-tick.json carries its observed_at, and the belt's
 // own stage timings re-derive the worst honest pass. 2700s (45 minutes) is the policy row: roughly six times
 // the 2026-09-21 measured seed-bridge cost, far below the hours a wedge needs to be noticed by a
@@ -52,10 +52,10 @@ data audit_obligation_run_bound: Second = second(count: 2700)
 data publish_obligation_run_bound: Second = second(count: 2700)
 data launch_obligation_run_bound: Second = second(count: 2700)
 
-// THE VERIFICATION BOUND IS DERIVED FROM THE ENTRIES IT VERIFIES (the per-node figure is a receipt line; only the unit's outer bound kills a run) (DESIGN 6b: the 2700s row it replaces was
+// THE VERIFICATION BOUND IS DERIVED FROM THE ENTRIES IT VERIFIES (the per-node figure is a receipt line; only the unit's outer bound kills a run) (gunbc.design_argument::earliest_unjustified_boundary: the 2700s row it replaces was
 // one number for a cost that scales with the entry count). One claim_batch per entry pays one full entry
 // compile, so the obligation costs the sum of its entries' compile times. Each entry's figure is a
-// RECORDED OBSERVATION; an entry with no sample runs under a typed provisional bet (VerifyRunProvisional, below); with no sample at all it refuses typed (DESIGN 4d, 5).
+// RECORDED OBSERVATION; an entry with no sample runs under a typed provisional bet (VerifyRunProvisional, below); with no sample at all it refuses typed (gunbc.design_argument::epistemic_humility, gunbc.design_argument::fail_closed).
 type EntryCompileSample {
   entry: String
   seconds: Second
@@ -77,7 +77,7 @@ data verify_entry_compile_samples: List<EntryCompileSample> = [
   },
 ]
 
-// POLICY BUDGETS, each with its reason (DESIGN 5 explicit policy budget). The headroom is a falsifiable
+// POLICY BUDGETS, each with its reason (gunbc.design_argument::fail_closed explicit policy budget). The headroom is a falsifiable
 // operator figure: a verify unit killed at its bound for a within-ceiling node means it is wrong.
 data verify_entries_ceiling: Nat = 2
 // Reason (operator decision 2026-11-05, escalation default at timeout): srv1's compute pool holds two seats and one entry compiles in ~4143 s on one core, so the derived outer limit at 2 is 13,329 s; a node past two entries is not one attempt's verification
@@ -87,9 +87,9 @@ data verify_run_headroom_percent: Nat = 50
 data verify_run_slack: Second = second(count: 900)
 // Reason: the drain bound (event_backlog_drain_bound) is the corpus-load allowance the same unit pays once.
 
-// A PROVISIONAL BOUND IS A TYPED BET (DESIGN 4d), NOT A DEFAULT: an entry with no recorded sample runs under the
+// A PROVISIONAL BOUND IS A TYPED BET (gunbc.design_argument::epistemic_humility), NOT A DEFAULT: an entry with no recorded sample runs under the
 // slowest recorded sample as its figure, plus the same declared headroom and slack, and the arm names every
-// entry it bets on and the sample it borrowed. It is a loud, bounded interim (DESIGN 5): a node with unsampled
+// entry it bets on and the sample it borrowed. It is a loud, bounded interim (gunbc.design_argument::fail_closed): a node with unsampled
 // entries still verifies, the bet is carried to the attempt's receipt line, and it is countable there.
 // DISSOLUTION TRIGGER: the measured compile time of an unsampled entry's first run is recorded as its sample
 // (verify_entry_compile_samples is a hand-authored data row today, so the write-back is not modeled; owed
@@ -149,7 +149,7 @@ fn verify_run_bound_for(entries: List<String>, samples: List<EntryCompileSample>
 
 // The receipt line for a provisional bet; empty when no entry is unsampled (the standing of the sample rows themselves is said by the derived line). Countable by prefix.
 // The standing of the figures a bound rests on is read, not dropped: a row that is not cited or receipted is a bet
-// (DESIGN 4d) and the receipt line says how many of the rows are.
+// (gunbc.design_argument::epistemic_humility) and the receipt line says how many of the rows are.
 fn verify_uncited_sample_count(samples: List<EntryCompileSample>) -> Int {
   length(filter(samples, s => match s.standing {
     TranscribedUncited { read_obligation: _ } => true

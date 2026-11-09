@@ -120,7 +120,7 @@ fn emit_call_eval_choose_branch(
   _node: Node,
   _value: RuntimeValue,
   _env: EvaluationEnvironment
-) -> Outcome<Node> {
+) -> Outcome<Optional<Node>> {
   Rejected {
     diagnostics: diagnostics_singleton(
       d: emit_call_eval_diagnostic(

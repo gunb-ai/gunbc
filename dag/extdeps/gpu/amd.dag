@@ -13,7 +13,7 @@ import extdeps.vendor.amd { amd }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
 import extdeps.uri { Uri, Https }
 
-// AMD'S OWN GPU AND BOARD ROWS (gunbc.plans.gpu_card_host_program row N12d, "the R9700 catalog row, with
+// AMD'S OWN GPU AND BOARD ROWS (gunbc.plans.gpu_card_host_program (deleted 2026-11-08) row N12d, "the R9700 catalog row, with
 // every figure cited"). The device and the card are separate rows, as in extdeps.gpu.nvidia_a2: a GPU is a
 // device row, a card is a board row.
 //

@@ -123,7 +123,7 @@ fn boot_medium_served_join(medium: BootMedium, host: NonEmptyStr, measure: Remot
 }
 
 // STAGE-NEUTRAL CAUSE. The SUBJECT'S label is a parameter, never a spelling baked into the text. The
-// executor host is not: the readback names the host that actually took the leg (DESIGN 5, no
+// executor host is not: the readback names the host that actually took the leg (gunbc.design_argument::fail_closed, no
 // fabricated output). What the boot has and has not touched differs between the two call sites, so
 // the sentence about that is the caller's wrapper below.
 fn boot_medium_served_refusal(subject: NonEmptyStr, readback: BootMediumServedReadback) -> String? {
@@ -266,7 +266,7 @@ fn boot_medium_served_reader_after_check(medium: BootMedium, check: BootMediumSe
   }
 }
 
-// THE PRODUCER OVER THE READER KEY. CONSUMPTION (DESIGN section 3c): a declared frontier. The boot selects
+// THE PRODUCER OVER THE READER KEY. CONSUMPTION (gunbc.design_argument::consumption): a declared frontier. The boot selects
 // it when its credential source no longer holds the fleet key -- the branch account narrowed to the BMC
 // credential and this key -- which is the third change of the mtcollins1 approval-free branch boot plan
 // (work item adhoc-0abea207-7ec); until then the boot reads over the fleet key, and this producer refuses

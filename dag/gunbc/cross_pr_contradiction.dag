@@ -77,7 +77,7 @@ fn identity_extraction_rule_text(rule: IdentityExtractionRule) -> String {
         "double-quoted dotted name of at least ",
         concat(
           to_string(n),
-          " segments, read from source text with `//` annotation lines excluded (DESIGN 4c: an identity cited in an annotation is a reference, not an enrolment); the merge-target lookup runs this same extraction, with git grep only narrowing which files it reads"
+          " segments, read from source text with `//` annotation lines excluded (gunbc.design_argument::source_annotations: an identity cited in an annotation is a reference, not an enrolment); the merge-target lookup runs this same extraction, with git grep only narrowing which files it reads"
         )
       )
   }
@@ -188,7 +188,7 @@ fn is_identity_key(candidate: String, rule: IdentityExtractionRule) -> Bool {
 }
 
 // SOURCE ANNOTATIONS ARE NOT PROGRAM DATA, AND THIS READER MUST AGREE WITH THE COMPILER ABOUT THAT
-// (DESIGN 4c). A `//` block is prose the semantic passes never see: an identity CITED in one is a
+// (gunbc.design_argument::source_annotations). A `//` block is prose the semantic passes never see: an identity CITED in one is a
 // reference, not an enrolment, and this repository cites identities in annotations constantly. A
 // reader that counted them would report a pull request as net-ADDING a key it only WROTE ABOUT, and
 // -- worse, because it never expires -- would answer PRESENT-ON-TARGET for any key any annotation
@@ -397,7 +397,7 @@ type PrDiffObservation
 // The arm lives HERE rather than in a second cause coproduct because "why a pull request's diff
 // could not be observed" is one vocabulary with one set of consequences -- the observation is
 // unread, the population is incomplete, the report may not be mistaken for a clean one -- and
-// forking it per instrument would give one meaning two spellings (DESIGN section 3). This module
+// forking it per instrument would give one meaning two spellings (gunbc.design_argument::single_authority). This module
 // gains a total arm it does not construct; that is the cost of one authority, and it is smaller
 // than the cost of two.
 type PrDiffUnobservedCause
@@ -560,7 +560,7 @@ type KeyMainPresence {
 // or it is not. If it is there, the net-ADD proposes what the target already carries; if it is not,
 // the net-DELETE removes what the target already lacks. A both-genuine case would require the
 // target to simultaneously hold and not hold the key, so the arm is not merely unpopulated, it is
-// UNINHABITED. Minting it would be a decoration cited as coverage (DESIGN 4b) -- worse than absent,
+// UNINHABITED. Minting it would be a decoration cited as coverage (gunbc.design_argument::guarantee_ladder) -- worse than absent,
 // because a reader takes a permanently empty arm as evidence that genuine disagreements do not
 // happen, when it is only evidence that the arm cannot fire.
 //

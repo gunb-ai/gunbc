@@ -14,7 +14,7 @@ module gunbc.runner.runner_capability_labels
 // check on the owning side stays green. Same defect class as the fabricated installer, arriving through the
 // label axis.
 //
-// DESIGN.md §6b: "The trigger is the second local implementation of one rule," and "Done means a new
+// gunbc.design_argument::earliest_unjustified_boundary: "The trigger is the second local implementation of one rule," and "Done means a new
 // ordinary case is data, not control flow: adding it edits a row, not a branch." The second capability was
 // the trigger. The rule now lives in one fold (gunbc.runner.runner_registration_labels
 // runner_capability_registration_labels), and a capability is THIS row: a label, and the drop-in whose bytes
@@ -55,7 +55,7 @@ import gunbc.runner.runner_registration_labels {
 data browser_ready_labels_dropin_path: NonEmptyStr = runner_unit_dropin_path(file_name: "85-browser-ready-labels.conf" as NonEmptyStr)
 data gpu_docker_labels_dropin_path: NonEmptyStr = runner_unit_dropin_path(file_name: "86-gpu-docker-labels.conf" as NonEmptyStr)
 
-// WHAT IS STILL DEFERRED, stated because §6b treats an unstated deferral as a rejection and a stated one as
+// WHAT IS STILL DEFERRED, stated because gunbc.design_argument::earliest_unjustified_boundary treats an unstated deferral as a rejection and a stated one as
 // a decision. The FOLD is shared now — one function composes every capability label set, and a capability is
 // a row. What is NOT yet shared is the WRITER: each capability's converge still renders its own LABELS_JSON
 // drop-in, so filename order still decides which file is the runner's last word, and a converge that grants

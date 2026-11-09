@@ -9,6 +9,7 @@ module product.node_power_envelope
 // atomically. See gunbc.host.memory_change_evaluation.memory_change_consumer_frontiers.
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
+import extdeps.power.eighty_plus { EfficiencyRating, Plus80, Bronze, Silver, Gold, Platinum, Titanium }
 import std.nat { Nat, nat_ceil_div, nat_ceil_div_by_succ, nat_saturating_sub }
 import std.measure {
   Bandwidth,
@@ -306,7 +307,7 @@ fn memory_bandwidth(
 //   2. CLASS BOUND: product.dimm_class_power_bound, a conservative ceiling by generation,
 //      class and capacity, used when no part evidence resolves.
 // A module resolving through neither REFUSES; it never reads as zero or as a default. The reading
-// carries the figure's CitedFigureStanding so a bet is never consumed as deduced (DESIGN 4d).
+// carries the figure's CitedFigureStanding so a bet is never consumed as deduced (gunbc.design_argument::epistemic_humility).
 //
 // Consumers: node_draw below (and through it psu_adequacy and derived_wall_power). Declared later
 // consumers: P3 (host envelope) and P5 (steady-state prediction) of
@@ -398,7 +399,7 @@ fn band_extended_standing(band: SelectedRefreshBand) -> CitedFigureStanding? {
 }
 
 // THE GROUNDS OF A DIMM POWER ARE SEVERAL INDEPENDENT FACTS, each with its own standing, and none is
-// collapsed into another (DESIGN 4d): the current profile or class ceiling, the normal band row, the
+// collapsed into another (gunbc.design_argument::epistemic_humility): the current profile or class ceiling, the normal band row, the
 // extended band row (present only when the extended band was selected, since the multiplier is the
 // ratio of both rows), and the activation duty (present only on the part-current path).
 type DimmPowerGrounds {
@@ -523,7 +524,7 @@ fn dimm_power_from_class_bound(bound: DramClassPowerBound, band: SelectedRefresh
 
 // WHICH EVIDENCE MAY LOWER THE CEILING. A part-specific profile replaces the conservative class bound
 // only when its standing is CITED or OBSERVED; an uncited transcription is a bet and a bet must not
-// lower a ceiling (DESIGN 4d). Uncited part evidence beside a class bound keeps the class ceiling;
+// lower a ceiling (gunbc.design_argument::epistemic_humility). Uncited part evidence beside a class bound keeps the class ceiling;
 // uncited part evidence with no class bound refuses rather than minting a derived figure.
 fn dimm_power_from_class_selection(
   module: DramModuleCatalogRow,
@@ -722,9 +723,9 @@ fn cpu_power(cpu: CpuModelCatalogRow, load: CpuLoad, cap: Watt?) -> CpuPowerRead
 
 // --- the whole node --------------------------------------------------------------------------
 
-type EfficiencyRating = Plus80 | Bronze | Silver | Gold | Platinum | Titanium
-
-// 80 PLUS IS AN EXTERNAL PROGRAM AND THIS TABLE IS A SIMPLIFICATION OF IT. The program certifies
+// 80 PLUS IS AN EXTERNAL PROGRAM AND THIS TABLE IS A SIMPLIFICATION OF IT. Its level vocabulary is
+// extdeps.power.eighty_plus EfficiencyRating (moved there 2026-11-07 so a supply's catalog row and this
+// envelope name one level); only the one-figure-per-level table below is this module's. The program certifies
 // efficiency at FOUR load points (10, 20, 50 and 100 percent) and two input voltages, so one figure
 // per rating is at best the 50-percent-load 115 V column — the figures below arrived as uncited
 // literals with the physics relocated from the deleted product.hardware_selection.

@@ -757,7 +757,7 @@ test fn no_per_boot_pin_refuses_and_so_does_every_key_the_checked_constructor_re
   && per_boot_binding(pin_in: per_boot_pin_ok(boot_id: "boot-a", key_b64: "AAAAC3NzaC1lZDI1NTE5"), expected_boot: "boot-a" as NonEmptyStr, key_b64: key) == "anchor-absent"
 }
 
-// ══ T2: THE PROVISIONED PER-INSTALL PIN (gunbc.plans.host_trust_provisioned_key) ══
+// ══ T2: THE PROVISIONED PER-INSTALL PIN (gunbc.plans.host_trust_provisioned_key (deleted 2026-11-08)) ══
 // The claims below pin anchored_host_transport_provisioned: the comparison for an INSTALLED system,
 // where the pin is a ProvisionedInstall catalog row and the currency of the pin is decided by the
 // host's CURRENT install, supplied as the sealed CurrentInstallForHost carrier (minted only by the

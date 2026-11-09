@@ -176,7 +176,7 @@ data runner_microvm_slot_controller_disposition: ConstructionMechanism = SingleA
 // by gunbc.runner.runner_microvm, the launch plan by gunbc.runner.runner_attempt_launch, the sanitation subject by
 // gunbc.runner.runner_microvm_network, and the attempt itself by the lifecycle controller. This module
 // obtains each one's INPUTS from the host and hands the outputs down in the order the world
-// requires; it adds no verdict and no second orchestration model (DESIGN section 3, replacement
+// requires; it adds no verdict and no second orchestration model (gunbc.design_argument::single_authority, replacement
 // migrations: integrate the landed controller, never stand a second one beside it).
 //
 // THE ORDER IS THE SAFETY PROPERTY. Nothing is minted before the slot is bound to this machine and
@@ -631,7 +631,7 @@ fn controller_outcome_label(c: ControllerOutcome) -> String {
 // WRITTEN IS ITSELF A FAILURE (review 69796: the first cut discarded the write's result): the
 // receipt is the one operator-facing artifact of an incarnation, and Restart=no exists so a
 // refused slot stays refused until someone has read it -- exiting zero over an unwritten receipt
-// would be the fabricated success DESIGN section 5 forbids.
+// would be the fabricated success gunbc.design_argument::fail_closed forbids.
 fn microvm_slot_controller_main() -> ProcessExit
   uses net: Network, fs: Filesystem
 {

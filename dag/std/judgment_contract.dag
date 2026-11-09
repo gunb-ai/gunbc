@@ -49,7 +49,7 @@ import std.coercion { unicode_scalar_fold, unicode_scalar_unfold }
 // those grades are not reachable here at all; they arrive by the spine widening the KEY, not by
 // anyone passing a grade.
 
-// Relation to std.cache_interface (the shape/transport/policy cut, DESIGN section 3):
+// Relation to std.cache_interface (the shape/transport/policy cut, gunbc.design_argument::single_authority):
 // CacheLookupResult / CacheRejectReason are BACKEND-grain — what one storage backend said, with
 // producer receipts and transport faults (BackendUnavailable, TransportFaithfulnessFailure). This
 // contract is CONSUMER-grain: given what the realization found at the key (ProviderProbe), decide
@@ -60,7 +60,7 @@ import std.coercion { unicode_scalar_fold, unicode_scalar_unfold }
 
 // The artifact-completeness rule: an artifact carries ALL correctness-relevant outputs of the
 // transform it memoizes, including the compile-clean diagnostic union — a cached parse that dropped
-// its diagnostics would green a red, which is the fabricated-plausible-output arm section 5
+// its diagnostics would green a red, which is the fabricated-plausible-output arm gunbc.design_argument::fail_closed
 // forbids. The rule has TWO halves and both are load-bearing: the obligation roster is derived from
 // the request (below), and the SATISFACTION roster is derived from the payload — carried outputs
 // are digested parts whose fold IS the artifact's content digest, so a claimed-but-absent output is

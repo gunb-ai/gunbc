@@ -24,7 +24,7 @@ import v2.extdeps.runtimes.v2_effect_io_pure {
   StorageResourceBackend,
 }
 
-// P-B/P-C effect-io host grant authority (docs/plans/effect-namespace-grants.md 6): the Envelope is
+// P-B/P-C effect-io host grant authority (docs/plans/effect-namespace-grants.md (deleted 2026-11-08) 6): the Envelope is
 // the SINGLE per-grant authority for both reach (admit_effect wall) and transport-vs-replay
 // (covering_grant binding). Mode maps to bindings ONCE at runtime construction
 // (effect_io_host_envelope) and dispatch NEVER re-reads ExecutionMode (design line 27, 62 — P-C:

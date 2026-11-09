@@ -4,7 +4,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 import gunbc.guarantee_stall { GuaranteeStall, UncountedNotEnumerable, climbs_when }
 import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 
-// FILED AS A STALL AND NOT AS PROSE IN THE PLAN THAT FOUND IT (gunbc.plans.joint_incompatibility_claim_join
+// FILED AS A STALL AND NOT AS PROSE IN THE PLAN THAT FOUND IT (gunbc.plans.joint_incompatibility_claim_join (deleted 2026-11-08)
 // section 6), on the manager's 2026-09-11 ruling: an instrument that is blind to almost every module in
 // the other repository, and does not say so in a typed way, will later be cited as coverage it never had.
 //

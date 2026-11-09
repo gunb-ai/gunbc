@@ -21,6 +21,8 @@ import std.types { EpochMs }
 import gunbc.host.host_converge { gunbc_runner_per_slot_cpu_dropin_path }
 import gunbc.host.host_axis_caps {
   cap_dropin_content,
+  CapSetting,
+  cap_setting_member,
   control_shadow_residue_paths,
   runner_slot_cap_properties,
   CapMember,
@@ -37,7 +39,7 @@ import gunbc.host.host_axis_caps {
 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, RunnerSlotDesired }
 import gunbc.runner.runner_host_cap_bracket { CapWriteAdmitted, CapWriteRefused, cap_write_gate_of, BracketDrained, BracketAdmissionNotClosed, BracketBoundExceeded, BracketWaiting, BracketRefusedAdmissionNotClosed, BracketRefusedBoundExceeded, HostAdmitting, drain_until_quiescent_over, bracket_start_over, BracketStartAt, BracketStartRefused, runner_host_cap_step_budget_env_name, bracket_refusal_wire, host_left_wire, host_left_of_readmit, host_cap_drain_ticks, runner_host_cap_drain_policy, release_envelope_wire, acquire_bracket_over, BracketAcquired, BracketNotAcquired, write_bracket_obligation, read_bracket_obligation, release_decision_of, release_owned_slots_over, ReleaseDecision, release_verdict_of, release_verdict_is_settled, release_receipt_text, runner_host_cap_obligation_identity, ReleaseNothingOwed, ReleaseOwes, ReleaseAlreadyDischarged, ReleaseObligationUntrusted , stop_admitted_listener_over, listener_restart_refusal, listener_restart_unit, CertifiedListener, certified_listener_line, bracket_holder_identify, BracketHolder, bracket_units_to_bracket, HolderIdentified, HolderNotOnSubject, HolderUnidentified, holder_deferral_ledger_read, holder_ledger_after_verdict, read_slot_drain_pass_over }
-import gunbc.runner.runner_slot_cap_converge { SlotCapOutcome, SlotCapsLeftInPlace, SlotCapsRestartedAndRead, SlotCapsSelfAtDesired, SlotCapsSelfDeferred, SlotCapsHolderLedgerRefused, SlotCapsRefused, HostCapPlan, HostPendingReloads, HostNoReloadPending, HostReloadsPending, HostPopulationUnobserved, UnitPendingReload, PendingReloadKind, PendingReloadOwed, PendingReloadUnobserved, PendingReloadOwedInertUntilActivated, HostCapsLeaveInPlace, HostCapsWriteInPlace, HostCapsDrainWriteRestart, HostCapsWithheld, CapFilesState, CapFilesSettled, CapFilesDiffer, CapFilesUnreadable, host_cap_plan, read_host_cap_standings_over, activate_and_read_back_slot_caps_over, slot_cap_outcome_settled, slot_cap_outcome_host_settled, slot_cap_outcome_wire, SlotCapStanding, SlotCapsUnread, SlotCapUnitStanding, slot_cap_standing_wire, slot_cap_holder_standing_over, HolderDeferralLedger }
+import gunbc.runner.runner_slot_cap_converge { slot_cap_desired_at_unit, SlotCapOutcome, SlotCapsLeftInPlace, SlotCapsRestartedAndRead, SlotCapsSelfAtDesired, SlotCapsSelfDeferred, SlotCapsHolderLedgerRefused, SlotCapsRefused, HostCapPlan, HostPendingReloads, HostNoReloadPending, HostReloadsPending, HostPopulationUnobserved, UnitPendingReload, PendingReloadKind, PendingReloadOwed, PendingReloadUnobserved, PendingReloadOwedInertUntilActivated, HostCapsLeaveInPlace, HostCapsWriteInPlace, HostCapsDrainWriteRestart, HostCapsWithheld, CapFilesState, CapFilesSettled, CapFilesDiffer, CapFilesUnreadable, host_cap_plan, read_host_cap_standings_over, activate_and_read_back_slot_caps_over, slot_cap_outcome_settled, slot_cap_outcome_host_settled, slot_cap_outcome_wire, SlotCapStanding, SlotCapsUnread, SlotCapUnitStanding, slot_cap_standing_wire, slot_cap_holder_standing_over, HolderDeferralLedger }
 import gunbc.runner.runner_slot_actuation { activate_runner_slot_over, slot_actuation_outcome_wire, slot_current_registration_over_unit, UnitRegistrationRead, UnitRegistrationUnreadable }
 import gunbc.runner.runner_host_withdraw_record { runner_host_withdraw_observe_line_for }
 import gunbc.ci.ci_spec { gunbc_ci_runner_host_file_converge_receipt_path, gunbc_ci_runner_host_cap_release_receipt_path }
@@ -143,7 +145,7 @@ import gunbc.runner.runner_unit_file {
   runner_unit_slot_role_dropin_path,
   runner_unit_slot_role_superseded_dropin_path,
 }
-import gunbc.runner.runner_host_deploy { RunnerHostDeploy, RunnerHostDeployFound, RunnerHostDeployUnmodeled, runner_host_deploy_for, runner_job_user_env_name }
+import gunbc.runner.runner_host_deploy { RunnerHostDeploy, RunnerHostDeployFound, RunnerHostDeployZeroWidth, RunnerHostDeployUnmodeled, RunnerHostSpec, runner_host_spec_of, runner_host_deploy_for, runner_job_user_env_name }
 import extdeps.docker.endpoint { docker_host_env_var }
 import gunbc.runner.runner_slot_provision { desired_runner_slot_members, fleet_runner_slot_artifact }
 import gunbc.runner.runner_lifecycle { runner_slot_dir_path }
@@ -157,8 +159,10 @@ import gunbc.runner.runner_slot_actuation {
   activate_runner_slot_over, drain_and_mask_runner_slot_over,
   slot_actuation_settled, slot_actuation_outcome_wire,
 }
-import gunbc.runner.runner_slot_allocation { fabric_execution_slot_identities, deploy_slot_identities }
-import gunbc.runner.runner_unit { runner_slot_unit_name }
+import gunbc.runner.runner_slot_allocation { fabric_execution_slot_identities, deploy_slot_identities, committed_slot_identities, CommittedPopulationDerived, host_transitional_ci_slot_identities, identity_in_list, gunbc_runner_slot_desired_for }
+import gunbc.runner.runner_unit { runner_slot_unit_name, runner_slot_unit_dropin_path }
+import extdeps.systemd { systemd_memory_max_property, systemd_memory_high_property, systemd_memory_swap_max_property }
+import std.measure { byte_size_count }
 import gunbc.runner.runner_width_transition {
   required_retirees_for_host,
   RequiredRetirees, RetireesKnown, RetireesUnresolved,
@@ -329,8 +333,8 @@ fn runner_host_depriv_file(depriv: String) -> FleetHostFileDesired {
 // with no deploy slot owes none. A refused rendering is WITHHELD with its own cause and never skipped,
 // and what remains is delivered: the slot then keeps whatever drop-in it has, and its tenancy
 // reading (gunbc.ci.deploy_slot_tenancy deploy_slot_observed_tenancy) says what it runs as.
-fn runner_host_slot_role_file(deploy: RunnerHostDeploy, slot: RunnerSlotIdentity) -> FleetHostFileDesired? {
-  match runner_unit_slot_role_dropin_text(deploy: deploy, slot: slot) {
+fn runner_host_slot_role_file(spec: RunnerHostSpec, slot: RunnerSlotIdentity) -> FleetHostFileDesired? {
+  match runner_unit_slot_role_dropin_text(spec: spec, slot: slot) {
     Absent => Absent
     Present { value: RunnerUnitTextRefused { reason: _ } } => Absent
     Present { value: RunnerUnitText { text: text } } =>
@@ -344,8 +348,8 @@ fn runner_host_slot_role_file(deploy: RunnerHostDeploy, slot: RunnerSlotIdentity
   }
 }
 
-fn runner_host_slot_role_withheld(deploy: RunnerHostDeploy, slot: RunnerSlotIdentity) -> List<RunnerHostFileWithheld> {
-  match runner_unit_slot_role_dropin_text(deploy: deploy, slot: slot) {
+fn runner_host_slot_role_withheld(spec: RunnerHostSpec, slot: RunnerSlotIdentity) -> List<RunnerHostFileWithheld> {
+  match runner_unit_slot_role_dropin_text(spec: spec, slot: slot) {
     Present { value: RunnerUnitTextRefused { reason: r } } =>
       [RunnerHostFileWithheld { subject: "runner-slot-role-dropin" as NonEmptyStr, cause: r }]
     _ => []
@@ -503,7 +507,12 @@ fn runner_host_slot_role_files(host: HostIdentity) -> List<FleetHostFileDesired>
     RunnerHostDeployFound { deploy: d } =>
       list_flat_map(
         filter(deploy_slot_identities, s => (s.host as String) == (host as String)),
-        s => match runner_host_slot_role_file(deploy: d, slot: s) { Present { value: f } => [f] Absent => [] },
+        s => match runner_host_slot_role_file(spec: runner_host_spec_of(deploy: d), slot: s) { Present { value: f } => [f] Absent => [] },
+      )
+    RunnerHostDeployZeroWidth { spec: sp } =>
+      list_flat_map(
+        filter(deploy_slot_identities, s => (s.host as String) == (host as String)),
+        s => match runner_host_slot_role_file(spec: sp, slot: s) { Present { value: f } => [f] Absent => [] },
       )
     _ => []
   }
@@ -514,7 +523,12 @@ fn runner_host_slot_role_withheld_files(host: HostIdentity) -> List<RunnerHostFi
     RunnerHostDeployFound { deploy: d } =>
       list_flat_map(
         filter(deploy_slot_identities, s => (s.host as String) == (host as String)),
-        s => runner_host_slot_role_withheld(deploy: d, slot: s),
+        s => runner_host_slot_role_withheld(spec: runner_host_spec_of(deploy: d), slot: s),
+      )
+    RunnerHostDeployZeroWidth { spec: sp } =>
+      list_flat_map(
+        filter(deploy_slot_identities, s => (s.host as String) == (host as String)),
+        s => runner_host_slot_role_withheld(spec: sp, slot: s),
       )
     _ => []
   }
@@ -579,7 +593,7 @@ fn runner_host_files_with_optional_depriv(
 // row" would go looking for a missing declaration that is present. The width refusal's own cause
 // travels into the desired-population refusal unedited, rather than being restated here.
 //
-// THIS BLOCK SITS ON THE DECLARATION BECAUSE DESIGN SECTION 4c ADMITS NOTHING ELSE. It was first
+// THIS BLOCK SITS ON THE DECLARATION BECAUSE DESIGN gunbc.design_argument::source_annotations ADMITS NOTHING ELSE. It was first
 // written inside the match arm it describes, which the parse phase refuses -- "source annotation
 // sits inside a declaration body" -- and that refusal is the same one gunbc#8976 hit.
 // THE CPU DROP-IN JOINS EVERY ADMITTED POPULATION, uid read or not; a refused population stays refused.
@@ -629,6 +643,10 @@ fn runner_host_unit_files_desired(
         RunnerHostDeployUnmodeled { host: h } =>
           RunnerHostFilesDesiredRefused {
             cause: join(["runner_host_file_converge: ", h as String, " has no runner deploy row, so there is no fragment or depriv drop-in to deliver"], "") as NonEmptyStr,
+          }
+        RunnerHostDeployZeroWidth { spec: sp } =>
+          RunnerHostFilesDesiredRefused {
+            cause: join(["runner_file_converge: ", sp.host_label as String, " derives to zero slots, so there is no fragment or depriv drop-in to deliver and none is retired by this pass"], "") as NonEmptyStr,
           }
         RunnerHostDeployRefused { host: h, cause: c } =>
           RunnerHostFilesDesiredRefused {
@@ -712,6 +730,10 @@ fn runner_host_file_subject(host: HostIdentity) -> RunnerHostFileSubjectAdmissio
       RunnerHostFileSubjectRefused {
         cause: join(["runner_host_file_converge: ", h as String, " has no runner deploy row, so it is not a runner host"], ""),
       }
+    RunnerHostDeployZeroWidth { spec: sp } =>
+      RunnerHostFileSubjectRefused {
+        cause: join(["runner_host_file_converge: ", sp.host_label as String, " derives to zero slots, so it has no unit the teardown could be verified on and no runner file to converge"], ""),
+      }
     RunnerHostDeployRefused { host: h, cause: c } =>
       RunnerHostFileSubjectRefused {
         cause: join(["runner_host_file_converge: ", h as String, " is refused as a runner host (", c, ")"], ""),
@@ -750,7 +772,7 @@ fn runner_host_file_subject(host: HostIdentity) -> RunnerHostFileSubjectAdmissio
 // the principal is the declared administrator; neither depends on the deploy row, so a converge that
 // resolves its subject some other way -- gunbc.fleet.host_credential_custody_converge resolves custody
 // from the host SPEC, because the App key does not depend on slot width -- consumes this rather than
-// spelling the pair again (DESIGN §3).
+// spelling the pair again (gunbc.design_argument::single_authority).
 fn administrator_ssh_target(host: HostIdentity) -> SshTargetResolution {
   fleet_ssh_target_at_standard_port(endpoint: fleet_probe_endpoint_for(host: host as String), principal: executor_bootstrap_principal.login)
 }
@@ -844,7 +866,7 @@ fn classify_host_file_metadata(exit_code: Int, stdout: String, stderr: String) -
 // SILENCE. The read decides presence; when it failed, what the containing directory already said
 // about this entry decides whether nothing is there or nobody could look. The parent standing is
 // gunbc.live_deploy.member_observe `entry_presence`, the landed authority for that rule over a
-// transport, consumed rather than restated (DESIGN section 3).
+// transport, consumed rather than restated (gunbc.design_argument::single_authority).
 type FleetHostFilePathStanding
   = HostFilePathPresent
   | HostFilePathAbsent
@@ -1109,6 +1131,15 @@ type SlotRoleEnvironment {
 fn runner_host_role_environments(host: HostIdentity) -> List<SlotRoleEnvironment> {
   match runner_host_deploy_for(host: host) {
     RunnerHostDeployFound { deploy: d } =>
+      map(filter(deploy_slot_identities, s => (s.host as String) == (host as String)), s => {
+        let role = runner_slot_job_role(slot: s)
+        SlotRoleEnvironment {
+          unit: runner_unit_name_of_registration(registration_name: runner_slot_instance_name(slot: s) as NonEmptyStr),
+          job_user: runner_slot_job_user(role: role, ci_job_user: d.job_user),
+          docker_host_cleared: !runner_slot_job_role_runs_containers(role: role),
+        }
+      })
+    RunnerHostDeployZeroWidth { spec: d } =>
       map(filter(deploy_slot_identities, s => (s.host as String) == (host as String)), s => {
         let role = runner_slot_job_role(slot: s)
         SlotRoleEnvironment {
@@ -1613,6 +1644,7 @@ fn runner_host_run_legs(subject: RunnerHostFileSubject, files: List<FleetHostFil
           concat(
             match runner_host_deploy_for(host: subject.host) {
               RunnerHostDeployFound { deploy: d } => [LegJobUserPasswd { job_user: d.job_user }]
+              RunnerHostDeployZeroWidth { spec: sp } => [LegJobUserPasswd { job_user: sp.job_user }]
               RunnerHostDeployRefused { host: _, cause: _ } => []
               RunnerHostDeployUnmodeled { host: _ } => []
             },
@@ -1628,6 +1660,7 @@ fn runner_host_run_legs(subject: RunnerHostFileSubject, files: List<FleetHostFil
                 ]
               }) + match runner_host_deploy_for(host: subject.host) {
                 RunnerHostDeployFound { deploy: d } => [LegJobUserIdentity { job_user: d.job_user }]
+                RunnerHostDeployZeroWidth { spec: sp } => [LegJobUserIdentity { job_user: sp.job_user }]
                 RunnerHostDeployRefused { host: _, cause: _ } => []
                 RunnerHostDeployUnmodeled { host: _ } => []
               }
@@ -1822,9 +1855,9 @@ fn fleet_host_file_standing_of_report(report: RemoteFileComparisonReport) -> Fle
 // THE PARENT IS ENUMERATED ONLY WHEN THE READ FAILED, because that is the only outcome whose
 // meaning the parent decides. `entry_presence` is a remote leg -- `ls -1 -A --` of the parent over
 // the same transport, recursing up the ancestor chain when a listing refuses -- so asking it beside
-// a read that already answered buys a standing the classifier discards (DESIGN section 2, and
-// section 6's bare minimum cost). Both of the classifier's parent-dependent outcomes stay inhabited
-// by production, because this arm is the only route that can reach them (DESIGN section 3c).
+// a read that already answered buys a standing the classifier discards (gunbc.design_argument::minimize_redundancy, and
+// gunbc.design_argument::how_to_work's bare minimum cost). Both of the classifier's parent-dependent outcomes stay inhabited
+// by production, because this arm is the only route that can reach them (gunbc.design_argument::consumption).
 fn observe_fleet_host_file_path(
   subject: FleetHostFileSubject,
   context: FleetSshExecutionContext,
@@ -2051,6 +2084,7 @@ fn observe_runner_job_user_uid(subject: RunnerHostFileSubject, context: FleetSsh
 {
   match runner_host_deploy_for(host: subject.host) {
     RunnerHostDeployUnmodeled { host: _ } => JobUserUidUnobserved { cause: "no runner deploy row names the job user" as NonEmptyStr }
+    RunnerHostDeployZeroWidth { spec: _ } => JobUserUidUnobserved { cause: "the host derives to zero slots, so no runner fragment consumes a job user uid" as NonEmptyStr }
     RunnerHostDeployRefused { host: _, cause: c } => JobUserUidUnobserved { cause: concat("the runner deploy row refuses: ", c) as NonEmptyStr }
     RunnerHostDeployFound { deploy: d } =>
       match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegJobUserPasswd { job_user: d.job_user }) {
@@ -2168,7 +2202,7 @@ fn converge_deploy_slot_account(
 //
 // WHY A DEPLOY SLOT IS ONLY ONE ROLE OF THE SAME RULE. This fold began as the deploy slot's ownership
 // transition (a CI tree any pull request job could have rewritten is never handed over to the deploy
-// account, gunbc.plans.srv1_deploy_principal_split), and that is still its deploy arm: the account and
+// account, gunbc.plans.srv1_deploy_principal_split (deleted 2026-11-08)), and that is still its deploy arm: the account and
 // the owner-only mode are the deploy role's answers. What the deploy slot alone adds is that its
 // account must be held first (deploy_slot_account_is_held); a CI slot's account is the host's job user,
 // which the slot's unit already runs as.
@@ -2331,7 +2365,7 @@ fn runner_slot_tree_step(target: RunnerSlotTreeTarget, runner_release: ActionsRu
 // THE STAGE IS WRITABLE BY ROOT ALONE FROM BEFORE THE FETCH UNTIL AFTER THE EXTRACT, because the digest
 // is checked by one leg and the bytes are read by a later one: an archive any other account could
 // replace between them would be extracted unverified under the deploy key while the run reports it
-// verified. So the stage is not in /tmp (the CI slots' jobs share it, gunbc.plans.srv1_deploy_principal_split)
+// verified. So the stage is not in /tmp (the CI slots' jobs share it, gunbc.plans.srv1_deploy_principal_split (deleted 2026-11-08))
 // but a member of the host-state tree, which root owns and nobody else writes
 // (gunbc.host_state_root host_state_tree_root); it is removed and recreated root-owned before the
 // fetch, so nothing left in it by an earlier run survives, and the fetch itself runs as root, so the
@@ -3294,14 +3328,60 @@ fn runner_host_cpu_dropin_gate(
 // gated, and a written file is not convergence: each slot is then converged on its LIVE cgroup
 // (gunbc.runner.runner_slot_cap_converge), because the drop-in is template-level and a running slot keeps
 // the caps it started with.
-fn runner_host_cap_files() -> List<FleetHostFileDesired> {
-  map(derived_runner_slot_cap_members(), m => FleetHostFileDesired {
+// A TRANSITIONAL CI SLOT'S CAPS ARE ITS OWN INSTANCE DROP-INS, never the template's. The template drop-ins
+// (20-fleet-width.conf .. 50-fleet-tasks.conf) set the fleet row on every instance; srv1-01 is granted the
+// envelope's remainder (gunbc.runner.runner_slot_allocation transitional_ci_slot_memory_max_of_envelope), so
+// its MemoryMax, MemoryHigh and MemorySwapMax are rendered from gunbc_runner_slot_desired_for -- the same
+// grant host_runner_pool_charge charges -- into 70-transitional-*.conf under the instance's own drop-in
+// directory. LATER IS BY FILE NAME (extdeps.systemd.unit_file systemd_drop_in_applies_after): 70- sorts after
+// every template cap drop-in, so the instance value wins. Only the transitional slots COMMITTED at the host's
+// width carry one; a host with none renders the template files alone.
+fn runner_host_transitional_cap_members(host: HostIdentity) -> List<CapMember> {
+  match committed_slot_identities(host: host) {
+    CommittedPopulationDerived { members: ms } =>
+      list_flat_map(
+        filter(host_transitional_ci_slot_identities(host: host), s => identity_in_list(identity: s, members: ms)),
+        s => {
+          let grant = gunbc_runner_slot_desired_for(slot: s)
+          [
+            cap_setting_member(s: CapSetting {
+              dropin_path: runner_slot_unit_dropin_path(slot: s, file_name: "70-transitional-width.conf" as NonEmptyStr),
+              property: systemd_memory_max_property as NonEmptyStr,
+              value: to_string(byte_size_count(b: grant.memory_max)) as NonEmptyStr,
+            }),
+            cap_setting_member(s: CapSetting {
+              dropin_path: runner_slot_unit_dropin_path(slot: s, file_name: "71-transitional-high.conf" as NonEmptyStr),
+              property: systemd_memory_high_property as NonEmptyStr,
+              value: to_string(byte_size_count(b: grant.memory_high)) as NonEmptyStr,
+            }),
+            cap_setting_member(s: CapSetting {
+              dropin_path: runner_slot_unit_dropin_path(slot: s, file_name: "72-transitional-swap.conf" as NonEmptyStr),
+              property: systemd_memory_swap_max_property as NonEmptyStr,
+              value: to_string(byte_size_count(b: grant.memory_swap_max)) as NonEmptyStr,
+            }),
+          ]
+        },
+      )
+    _ => []
+  }
+}
+
+fn runner_host_cap_member_file(m: CapMember) -> FleetHostFileDesired {
+  FleetHostFileDesired {
     subject: concat("runner-cap-dropin ", m.dropin_path as String) as NonEmptyStr,
     path: m.dropin_path as FilePath,
     content: m.content,
     mode: RemoteFileModeOwnerReadWriteWorldRead,
     validation: NoValidation,
-  })
+  }
+}
+
+fn runner_host_transitional_cap_files(host: HostIdentity) -> List<FleetHostFileDesired> {
+  map(runner_host_transitional_cap_members(host: host), m => runner_host_cap_member_file(m: m))
+}
+
+fn runner_host_cap_files(host: HostIdentity) -> List<FleetHostFileDesired> {
+  concat(map(derived_runner_slot_cap_members(), m => runner_host_cap_member_file(m: m)), runner_host_transitional_cap_files(host: host))
 }
 
 fn runner_host_cap_retirement_gate(retired_units: List<NonEmptyStr>, population: RunnerSlotPopulation) -> CapRaiseStanding {
@@ -3347,7 +3427,7 @@ data runner_host_cap_phase_not_owed: RunnerHostCapPhase = CapPhaseNotOwed
 
 // THE OBSERVED PHASE IS SETTLED WHEN EVERY READING READ. A cap that could not be looked at is never a
 // settled no: SlotCapUnread / SlotCapsUnread keep the phase unsettled, so an unreadable cap cannot hide
-// behind a mode (§5). AtDesired, Drifted (ReadingsDisagree), Owed (NeedRestart) and Stopped all READ
+// behind a mode (gunbc.design_argument::fail_closed). AtDesired, Drifted (ReadingsDisagree), Owed (NeedRestart) and Stopped all READ
 // something, and reading something IS what observe mode came for -- settledness here names the quality
 // of the observation, not whether a change was applied.
 fn runner_host_cap_phase_observed_settled(readings: List<SlotCapUnitStanding>) -> Bool {
@@ -3378,7 +3458,7 @@ fn runner_host_cap_phase_settled(phase: RunnerHostCapPhase) -> Bool {
 
 // THE OBSERVE VERDICT ON THE CAP PHASE: observe succeeds only if the phase IS an observation and one
 // that was fully READ. Withheld (could not look at the population) and any Unread reading (could not
-// look at a slot) refuse -- a cap observation that could not be completed is not a success (section 5:
+// look at a slot) refuse -- a cap observation that could not be completed is not a success (gunbc.design_argument::fail_closed:
 // loud, never a pass). CapPhaseNotOwed refuses in observe too: production's observe arm cannot produce
 // it since P4, so one arriving on an observe run record was hand-fabricated -- the base defect, the
 // two-valued answer that hides "could not look". CapPhaseRan is the APPLY arm; a Ran phase riding an
@@ -3439,7 +3519,7 @@ fn runner_host_cap_extras(desired_units: List<NonEmptyStr>, retired_units: List<
 // THE CAP FILES ARE OBSERVED THROUGH THE EXISTING FILE ROUTE FIRST. Settled means files AND live limits,
 // so a missing, stale or wrong-mode drop-in is a difference even when the live caps match.
 fn runner_host_cap_files_state(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, privilege: FleetHostPrivilegeStanding) -> CapFilesState {
-  let planned = map(runner_host_cap_files(), f => fleet_host_file_result(subject: fleet_subject_of(s: subject), context: context, mode: FleetHostFilesObserveOnly, privilege: privilege, file: f))
+  let planned = map(runner_host_cap_files(host: subject.host), f => fleet_host_file_result(subject: fleet_subject_of(s: subject), context: context, mode: FleetHostFilesObserveOnly, privilege: privilege, file: f))
   let refused = filter(map(planned, r => match r.planned.action { HostFileActionRefused { reason: why } => concat(r.planned.file.path as String, concat(": ", why)) HostFileLeaveInPlace => "" HostFileWrite => "" }), c => c != "")
   if length(refused) > 0 {
     CapFilesUnreadable { cause: join(refused, "; ") }
@@ -3537,7 +3617,7 @@ fn runner_host_cap_phase_bars_reload(phase: RunnerHostCapPhase) -> Bool {
 // read_host_cap_standings_over (systemctl show + the /sys/fs/cgroup file reads, over
 // typed_argv_exec_over_fleet_ssh), for the same affected population -- and stops there. It writes no
 // drop-in, reloads no manager, drains no slot: the mode chooses the action, never whether the host was
-// looked at (§5, and the T2.2 ruling of clever-crane-830: an observation gated behind apply was the
+// looked at (gunbc.design_argument::fail_closed, and the T2.2 ruling of clever-crane-830: an observation gated behind apply was the
 // defect -- observe claiming "not owed" while nothing was read was the two-valued answer that hides
 // "could not look"). An unobservable population withholds exactly as apply does: the cause is named,
 // never a silent settled.
@@ -3551,7 +3631,7 @@ fn observe_runner_host_cap_phase(
     SlotPopulationUnobservable { reason: r } => CapPhaseWithheld { cause: concat("the slot population was not observed: ", r) }
     SlotPopulationObserved { units: _ } => {
       let affected = concat(subject.desired_units, runner_host_cap_extras(desired_units: subject.desired_units, retired_units: subject.retired_units, population: population))
-      CapPhaseObserved { readings: read_host_cap_standings_over(target: subject.target, context: context, units: affected, desired: gunbc_runner_slot_desired()) }
+      CapPhaseObserved { readings: read_host_cap_standings_over(target: subject.target, context: context, host: subject.host, units: affected, desired: gunbc_runner_slot_desired()) }
     }
   }
 }
@@ -3575,7 +3655,7 @@ fn run_runner_host_cap_phase(
           let desired = gunbc_runner_slot_desired()
           let extras = runner_host_cap_extras(desired_units: subject.desired_units, retired_units: subject.retired_units, population: population)
           let affected = concat(subject.desired_units, extras)
-          let standings = read_host_cap_standings_over(target: subject.target, context: context, units: affected, desired: desired)
+          let standings = read_host_cap_standings_over(target: subject.target, context: context, host: subject.host, units: affected, desired: desired)
           match host_cap_plan(
             standings: standings,
             files: runner_host_cap_files_state(subject: subject, context: context, privilege: privilege),
@@ -3715,19 +3795,19 @@ fn write_runner_host_caps_in_place_over(
   differing: FreeSemigroup<NonEmptyStr>,
 ) -> RunnerHostCapPhase
 {
-  let written = filter(runner_host_cap_files(), f => any(non_empty_to_list(xs: differing), d => (d as String) == (f.path as String)))
+  let written = filter(runner_host_cap_files(host: subject.host), f => any(non_empty_to_list(xs: differing), d => (d as String) == (f.path as String)))
   let named = join(map(non_empty_to_list(xs: differing), d => d as String), " ")
   match read_dropin_override_over(subject: subject, context: context, units: units, written: written, exempt: []) {
     DropinsUnread { cause: c } => CapPhaseWithheld { cause: join(["host untouched: the in-place cap write (", named, ") could not read whether a later-sorting drop-in sets a key it sets: ", c], "") }
     DropinsLaterSetter { files: fs } => CapPhaseWithheld { cause: join(["host untouched: a later-sorting drop-in sets a key the in-place cap write (", named, ") sets, so the written value might not be the one a reload loads: ", join(map(non_empty_to_list(xs: fs), f => f as String), " ")], "") }
     DropinsNoLaterSetter => {
-      let files = map(runner_host_cap_files(), f => fleet_host_file_result(subject: fleet_subject_of(s: subject), context: context, mode: mode, privilege: privilege, file: f))
+      let files = map(runner_host_cap_files(host: subject.host), f => fleet_host_file_result(subject: fleet_subject_of(s: subject), context: context, mode: mode, privilege: privilege, file: f))
       let reload = runner_host_pre_actuation_reload(subject: subject, context: context, mode: mode, privilege: privilege, results: files, also_changed: false)
       let written_ok = all(files, r => fleet_host_file_outcome_settled(outcome: r.outcome)) && runner_host_manager_reload_settled(r: reload)
       CapPhaseRan {
         files: files,
         reload: reload,
-        slots: if written_ok { map(read_host_cap_standings_over(target: subject.target, context: context, units: units, desired: desired), x => cap_in_place_readback_outcome(x: x)) } else { map(units, u => SlotCapsRefused { unit: u, step: "write", reason: "the in-place cap drop-ins did not converge or the manager reload did not settle; no slot was drained, so none is left masked" }) },
+        slots: if written_ok { map(read_host_cap_standings_over(target: subject.target, context: context, host: subject.host, units: units, desired: desired), x => cap_in_place_readback_outcome(x: x)) } else { map(units, u => SlotCapsRefused { unit: u, step: "write", reason: "the in-place cap drop-ins did not converge or the manager reload did not settle; no slot was drained, so none is left masked" }) },
         certified: [],
       }
     }
@@ -3755,7 +3835,7 @@ fn run_runner_host_cap_bracket(
     // a dispatcher or another host's slot holds no unit here, so the exclusion set is EMPTY and every
     // desired unit is bracketed exactly as before the holder work existed. Refusing here would silently
     // narrow the target -- a host could then only ever be converged from one of its own slots -- with no
-    // safety to show for it (DESIGN §5: a decidable case gets its full answer, not a refusal).
+    // safety to show for it (gunbc.design_argument::fail_closed: a decidable case gets its full answer, not a refusal).
     HolderNotOnSubject { why: w } => run_cap_bracket_excluding(subject: subject, context: context, mode: mode, privilege: privilege, desired: desired, started: started, holder: HolderNotOnSubject { why: w })
     HolderIdentified { unit: holder } => run_cap_bracket_excluding(subject: subject, context: context, mode: mode, privilege: privilege, desired: desired, started: started, holder: HolderIdentified { unit: holder })
   }
@@ -3826,10 +3906,10 @@ fn write_reload_and_restart_admitted_over(
 ) -> RunnerHostCapPhase
 {
   // WHICH units to stop-and-restart is DERIVED from what the bracket certified, not carried alongside it as
-  // a second list that would have to agree by luck (§3): each record names its own unit and the registration
+  // a second list that would have to agree by luck (gunbc.design_argument::single_authority): each record names its own unit and the registration
   // that unit was joined on, so there is one authority for the admitted set.
   let admitted = map(certified, c => c.unit)
-  let files = map(runner_host_cap_files(), f => fleet_host_file_result(subject: fleet_subject_of(s: subject), context: context, mode: mode, privilege: privilege, file: f))
+  let files = map(runner_host_cap_files(host: subject.host), f => fleet_host_file_result(subject: fleet_subject_of(s: subject), context: context, mode: mode, privilege: privilege, file: f))
   let reload = runner_host_pre_actuation_reload(subject: subject, context: context, mode: mode, privilege: privilege, results: files, also_changed: false)
   let written = all(files, r => fleet_host_file_outcome_settled(outcome: r.outcome)) && runner_host_manager_reload_settled(r: reload)
   // RE-ADMISSION ON THE FAILED-WRITE PATH TOO: a slot left masked would stay out of service.
@@ -3844,9 +3924,9 @@ fn write_reload_and_restart_admitted_over(
     match first(filter(restarts, r => listener_restart_unit(r: r) == u)) {
       Present { value: r } => match listener_restart_refusal(r: r) {
         Present { value: why } => SlotCapsRefused { unit: u, step: "listener-restart", reason: why }
-        Absent => activate_and_read_back_slot_caps_over(target: subject.target, context: context, unit: u, desired: desired)
+        Absent => activate_and_read_back_slot_caps_over(target: subject.target, context: context, unit: u, desired: slot_cap_desired_at_unit(host: subject.host, unit: u, template: desired))
       }
-      Absent => activate_and_read_back_slot_caps_over(target: subject.target, context: context, unit: u, desired: desired)
+      Absent => activate_and_read_back_slot_caps_over(target: subject.target, context: context, unit: u, desired: slot_cap_desired_at_unit(host: subject.host, unit: u, template: desired))
     }
   } else {
     SlotCapsRefused { unit: u, step: "write", reason: join(["the cap drop-ins did not converge or the manager reload did not settle; ", host_left_wire(l: host_left_of_readmit(units: owned, outcomes: readmitted)), " re-admission: ", join(map(readmitted, o => slot_actuation_outcome_wire(o: o)), " ")], "") }
@@ -3861,7 +3941,7 @@ fn write_reload_and_restart_admitted_over(
   // the fleet bound the same reading refuses red, and a converged holder clears the count. A ledger this
   // pass cannot read or write REFUSES red (review 86323, finding 1) and this pass resets it behind that
   // loud step -- see holder_ledger_after_verdict. A FAILED READ of the live cgroup is likewise a
-  // REFUSAL, not a deferral (review 86146, finding 1; DESIGN §5: a failure arm refuses, never widens).
+  // REFUSAL, not a deferral (review 86146, finding 1; gunbc.design_argument::fail_closed: a failure arm refuses, never widens).
   let holder_slots = match holder {
     // UNREACHABLE FROM THE ROUTE: the entry withholds on this arm before any bracket effect, so no drain
     // can complete with an unidentified holder. Refusing loudly here (rather than returning []) keeps the
@@ -3871,10 +3951,10 @@ fn write_reload_and_restart_admitted_over(
     HolderNotOnSubject { why: _ } => []
     HolderIdentified { unit: u } => {
   let holder_ledger = holder_deferral_ledger_read(host: subject.host as String, unit: u)
-  let holder_slot = slot_cap_holder_standing_over(target: subject.target, context: context, unit: u, desired: desired, ledger: holder_ledger)
+  let holder_slot = slot_cap_holder_standing_over(target: subject.target, context: context, unit: u, desired: slot_cap_desired_at_unit(host: subject.host, unit: u, template: desired), ledger: holder_ledger)
   // BOOKKEEPING FOLLOWS THE VERDICT: clear on converged, count on deferred, reset behind the ledger
   // refusal, untouched otherwise. A bookkeeping failure on a DEFERRAL upgrades the holder to a REFUSAL
-  // (review 86323, finding 1, same principle DESIGN §5): a deferral whose count cannot be written would
+  // (review 86323, finding 1, same principle gunbc.design_argument::fail_closed): a deferral whose count cannot be written would
   // be read back at the SAME stale number by every future pass, and a count that never advances can never
   // reach the bound -- that is a permanent green wearing a number, which is exactly the uncounted
   // degradation the bound exists to make impossible. Refusing here is loud, counted, and self-healing:
@@ -4057,7 +4137,7 @@ fn run_runner_host_files_admitted(
   // THE OBSERVATION IS NOT GATED BEHIND THE APPLY (defect of record, T2.2): BOTH modes read the live slot
   // caps through the same read_host_cap_standings_over route; the mode chooses only what the phase may DO.
   // Observe reads per-slot standings and writes nothing — a mode that answered "caps not owed" without
-  // looking was a two-valued answer hiding "could not look" (§5). The population fold is read once here and
+  // looking was a two-valued answer hiding "could not look" (gunbc.design_argument::fail_closed). The population fold is read once here and
   // shared by both arms; apply's behavior is byte-equal (same reads, same order).
   let early_population = observe_runner_slot_population(subject: subject, context: context, expect: early_expect)
   let cap_phase = match mode {
@@ -4344,7 +4424,7 @@ fn runner_host_file_converge_ci_wet() -> ProcessExit
 //
 // SO THE ONE CALLER OF THIS READ, AT THIS HEAD, IS THIS RECEIPT. No consumer exists in the bracket yet; the
 // claim made here is about the read's SHAPE, which a real host has to confirm and a witness cannot: the live
-// runner_host_file_observe receipt from a srv3/srv4 host is the §3 inhabitance evidence that the host holds
+// runner_host_file_observe receipt from a srv3/srv4 host is the gunbc.design_argument::single_authority inhabitance evidence that the host holds
 // the suffixed shape. A slot whose identity cannot be read appears as an unreadable naming the unit; the read
 // never falls back to the slot's name, so neither does the receipt.
 //

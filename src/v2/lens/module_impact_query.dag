@@ -70,7 +70,7 @@ type ImpactEdge {
 // pool-independent projection is Established AND no cause was observed; with the capability
 // Unavailable the standing is PoolIndependentProjectionUnavailable carrying the admission's OWN
 // trigger, so the reason a consumer cannot treat the answer as exact is the admission carrier's
-// fact rather than this module's opinion. DESIGN 4c: an annotation is never evidence a machine
+// fact rather than this module's opinion. gunbc.design_argument::source_annotations: an annotation is never evidence a machine
 // claim holds, so none of this lives in a note a consumer cannot read.
 
 type ImpactStandingCause
@@ -99,7 +99,7 @@ type ImpactStanding
 // supplied pool actually carries it. An edge with target_declared true whose target has no
 // ModuleDeclarationFact used to resolve to ZERO edges and vanish from adjacency, closure and cycle
 // classification, while completeness was computed from the raw flag alone - so the reading still
-// answered complete. That is the empty-observation narrow DESIGN 5 names: bottom-as-answer
+// answered complete. That is the empty-observation narrow gunbc.design_argument::fail_closed names: bottom-as-answer
 // conflated with bottom-as-ignorance, from an inconsistent pool, in a module whose own notes cite
 // the rule. Both observations now land as DISTINCT ImpactStandingCause arms and neither is inferred
 // from the other.
@@ -1083,7 +1083,7 @@ type ChangedPathSeeds {
 // Complete | Partial | Refused, so a consumer cannot read a partial answer as a whole one. Partial
 // carries the unresolved subjects rather than a flag, because the remedy differs per cause and a
 // count cannot carry that. Refused is for an input that could not be observed at all - it computes
-// no reading and widens nothing (DESIGN 5: a failure arm must refuse, never widen). Presentation is
+// no reading and widens nothing (gunbc.design_argument::fail_closed: a failure arm must refuse, never widen). Presentation is
 // NOT a safety wall: the previous revision printed a warning line about unresolved paths while the
 // typed result still said complete, and a machine consumer does not read terminal output.
 

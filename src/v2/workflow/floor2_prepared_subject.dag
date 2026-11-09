@@ -51,7 +51,7 @@ type SubjectExclusionGround
 // inventory keyed by the same file path, so every site's entry appeared exactly once and the
 // join's answer was always "exactly one" -- `ModulePathNotUnique` had no reachable producer, and
 // two complete floor runs emitted zero identity refusals. Carrying the module here is the
-// construction that makes the absent case unrepresentable rather than validated (DESIGN 4b:
+// construction that makes the absent case unrepresentable rather than validated (gunbc.design_argument::guarantee_ladder:
 // construction over validation), which is why the refusal arms below are gone rather than kept
 // "just in case".
 type WitnessSite {

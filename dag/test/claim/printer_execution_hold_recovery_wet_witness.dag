@@ -37,6 +37,7 @@ import gunbc.fleet.printer_execution_hold {
   printer_hold_observation_escalation_id, printer_hold_release_request_at,
   PrinterHoldReleaseRequest, HoldReleaseNothingHeld, HoldReleaseCardFiled, HoldReleaseCardOnFile, HoldReleaseRefused,
   printer_hold_release_request, printer_hold_release_request_for_tree, printer_legacy_hold_release, LegacyHoldReleased, LegacyHoldReleaseRefused,
+  printer_hold_observation_escalation_id_at, PrinterHoldGrantNotFiled, PrinterHoldGrantAttemptsExhausted, printer_hold_observation_attempt_limit,
   printer_hold_operator_grant, PrinterHoldOperatorGrantHeld, PrinterHoldOperatorGrantMissing, PrinterHoldGrantRefused,ApprovalIntentMismatch,ApprovalDenied, PrinterHoldGrantStillPending,
   printer_execution_hold_legacy_store, printer_execution_hold_legacy_state, LegacyHoldFenced, printer_execution_hold_fence_begin, HoldFenceBegun,
 }
@@ -45,7 +46,7 @@ import gunbc.process_hold_identity { process_hold_text, self_process_identity, S
 import gunbc.build_cache.build_cache_instance { ProcessIdentity }
 import gunbc.auth.approval_broker { BrokerApproved, ExecutionObligation }
 import gunbc.auth.approval_gate { approval_instant_now }
-import gunbc.auth.approval_request_client { ApprovalPollStanding, PollUnreadable, approval_poll_standing, PollApproved, PollDenied, PollStillPending }
+import gunbc.auth.approval_request_client { ApprovalPollStanding, PollUnreadable, approval_poll_standing, PollApproved, PollDenied, PollStillPending, PollExpired, PollNotFiled }
 import gunbc.auth.approval_request_submission { filed_status_of_slot }
 import gunbc.auth.approval_decision_store {
   observe_escalation, StoredApprovalRequest, StoreWrite, StoreWritten, approval_mac_key_id,
@@ -185,7 +186,7 @@ fn printer_recovery_revision(
   match printer_execution_hold_store(tree: isolated_host_state_tree(dir: tree_of(hold_root: hold_root) as NonEmptyStr)) {
     PrinterExecutionHoldStoreUnready { detail: d } => d as NonEmptyStr
     PrinterExecutionHoldStoreReady { store: store } => request_revision_of(request: printer_operator_observation_request(
-      store: store, holder: holder, generation: generation))
+      store: store, holder: holder, generation: generation, attempt: 1))
   }
 }
 
@@ -495,7 +496,7 @@ fn tree_at(hold_root: String) -> HostStateTree { isolated_host_state_tree(dir: t
 fn legacy_approve(approvals_root: String, hold_root: String, holder: DurableHoldOwnerRef, generation: CasGeneration) -> Bool {
   let flat = flat_of(hold_root: hold_root)
   let escalation = printer_recovery_escalation(hold_root: flat, holder: holder, generation: generation)
-  let revision = request_revision_of(request: printer_operator_observation_request(store: printer_execution_hold_legacy_store(tree: tree_at(hold_root: hold_root)), holder: holder, generation: generation))
+  let revision = request_revision_of(request: printer_operator_observation_request(store: printer_execution_hold_legacy_store(tree: tree_at(hold_root: hold_root)), holder: holder, generation: generation, attempt: 1))
   approval_written(w: file_approval_request(root: approvals_root as NonEmptyStr, request: StoredApprovalRequest {
     escalation_id: escalation,
     request_revision: revision,
@@ -608,7 +609,7 @@ test fn the_broker_standing_releases_only_on_an_approval_over_this_exact_hold() 
             let pending = (e, x) => PollStillPending
             let at = "2026-11-05T12:00:00Z" as Timestamp
             (match printer_hold_operator_grant(store: store, standing_of: approved_here, hold_slot: printer_recovery_witness_slot, holder: h, generation: g, observed_at: at) {
-              PrinterHoldOperatorGrantHeld { decision: _ } => true
+              PrinterHoldOperatorGrantHeld { decision: _, escalation_id: _ } => true
               PrinterHoldOperatorGrantMissing { cause: _ } => false
             })
             && (match printer_hold_operator_grant(store: store, standing_of: approved_other, hold_slot: printer_recovery_witness_slot, holder: h, generation: g, observed_at: at) {
@@ -621,6 +622,56 @@ test fn the_broker_standing_releases_only_on_an_approval_over_this_exact_hold() 
             })
             && (match printer_hold_operator_grant(store: store, standing_of: pending, hold_slot: printer_recovery_witness_slot, holder: h, generation: g, observed_at: at) {
               PrinterHoldOperatorGrantMissing { cause: PrinterHoldGrantStillPending { escalation_id: _ } } => true
+              _ => false
+            })
+          }
+        }
+      _ => false
+    }
+  let removed1 = shell.Remove.RecursiveForce(path: hold_root)
+  verdict && removed1.success
+}
+
+// ── (6) AN UNANSWERED CARD IS NOT AN ANSWER: AN EXPIRED ATTEMPT MOVES THE ASK TO THE NEXT NUMBER ─────────────
+// RED (main before this claim): attempt 1 expired undecided and every later ask answered ApprovalExpired and
+// filed nothing, so the stale hold could never be released (fleet-converge run 42549294025). Here an expired
+// attempt 1 makes attempt 2 the current ask -- not filed yet, so the filing arm files it under attempt 2's own
+// id -- and an approval over attempt 2 releases. Controls: a DENIED attempt 1 is an answer and never advances;
+// a stale hold whose every attempt expired refuses by its own type at the limit instead of filing again.
+test fn an_expired_card_moves_the_ask_to_the_next_attempt_and_a_denial_does_not() -> Bool {
+  let hold_root = fresh_root()
+  let legacy = "d91310fe0000000000000000000000000000000000000000000000000000000" as DurableHoldOwnerRef
+  let verdict = plant(root: hold_root, owner: legacy)
+    && match observe_file_hold(root: hold_root as NonEmptyStr, key: printer_recovery_witness_slot) {
+      HoldSlotHeld { generation: g, owner: h } =>
+        match printer_execution_hold_store(tree: isolated_host_state_tree(dir: tree_of(hold_root: hold_root) as NonEmptyStr)) {
+          PrinterExecutionHoldStoreUnready { detail: _ } => false
+          PrinterExecutionHoldStoreReady { store: store } => {
+            let first = printer_hold_observation_escalation_id_at(hold_root: hold_root as NonEmptyStr, hold_slot: printer_recovery_witness_slot, holder: h, generation: g, attempt: 1)
+            let second = printer_hold_observation_escalation_id_at(hold_root: hold_root as NonEmptyStr, hold_slot: printer_recovery_witness_slot, holder: h, generation: g, attempt: 2)
+            let revision2 = request_revision_of(request: printer_operator_observation_request(store: store, holder: h, generation: g, attempt: 2))
+            let revision1 = printer_recovery_revision(hold_root: hold_root, holder: h, generation: g)
+            let first_expired_second_unfiled = (e, x) => if (e as String) == (first as String) { PollExpired } else { PollNotFiled }
+            let first_expired_second_approved = (e, x) => if (e as String) == (first as String) { PollExpired } else { PollApproved { revision: revision2, decided_by: "operator" as NonEmptyStr, decided_at: "2026-11-05T00:00:00Z" as Timestamp, execute_by: printer_recovery_witness_execute_by } }
+            let first_denied = (e, x) => if (e as String) == (first as String) { PollDenied { revision: revision1, decided_by: "operator" as NonEmptyStr, decided_at: "2026-11-05T00:00:00Z" as Timestamp, reason: "no" as NonEmptyStr } } else { PollNotFiled }
+            let all_expired = (e, x) => PollExpired
+            let at = "2026-11-05T12:00:00Z" as Timestamp
+            ((first as String) == (printer_recovery_escalation(hold_root: hold_root, holder: h, generation: g) as String))
+            && !((second as String) == (first as String))
+            && (match printer_hold_operator_grant(store: store, standing_of: first_expired_second_unfiled, hold_slot: printer_recovery_witness_slot, holder: h, generation: g, observed_at: at) {
+              PrinterHoldOperatorGrantMissing { cause: PrinterHoldGrantNotFiled { escalation_id: e, attempt: k } } => (e as String) == (second as String) && k == 2
+              _ => false
+            })
+            && (match printer_hold_operator_grant(store: store, standing_of: first_expired_second_approved, hold_slot: printer_recovery_witness_slot, holder: h, generation: g, observed_at: at) {
+              PrinterHoldOperatorGrantHeld { decision: _, escalation_id: e } => (e as String) == (second as String)
+              PrinterHoldOperatorGrantMissing { cause: _ } => false
+            })
+            && (match printer_hold_operator_grant(store: store, standing_of: first_denied, hold_slot: printer_recovery_witness_slot, holder: h, generation: g, observed_at: at) {
+              PrinterHoldOperatorGrantMissing { cause: PrinterHoldGrantRefused { cause: ApprovalDenied { reason: _ } } } => true
+              _ => false
+            })
+            && (match printer_hold_operator_grant(store: store, standing_of: all_expired, hold_slot: printer_recovery_witness_slot, holder: h, generation: g, observed_at: at) {
+              PrinterHoldOperatorGrantMissing { cause: PrinterHoldGrantAttemptsExhausted { attempts: n } } => n == printer_hold_observation_attempt_limit
               _ => false
             })
           }

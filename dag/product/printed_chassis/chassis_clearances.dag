@@ -409,7 +409,7 @@ data power_connector_head_protrusion: ChassisGap = Measured {
 // by the duct's SIDE, not by the fan. So the direction is recorded as read (operator-reported, not calipered)
 // and the obligation is restated against what the geometry still cannot answer on its own.
 //
-// It stays NeedsMeasurement rather than becoming a Measured with a guessed depth, for the reason DESIGN.md §5
+// It stays NeedsMeasurement rather than becoming a Measured with a guessed depth, for the reason gunbc.design_argument::fail_closed
 // gives: an absence answered with a plausible number is worse than the absence. What discharged part of it is
 // a derivation, not a reading -- see card_cooling_route cable_bend_governing_wall -- and the derivation says
 // which wall to dress the cable against, which is what makes the remaining reading one number instead of a

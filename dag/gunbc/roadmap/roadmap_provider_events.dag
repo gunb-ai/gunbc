@@ -17,6 +17,7 @@ import extdeps.languages.json.grammar {
 }
 import gunbc.harness.harness_tool_kind {
   HarnessTool, RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool, ValidateWorktreeTool,
+  WaitJobsTool, ReadJobOutputTool, KillJobTool,
   ItemIsHarnessToolUse, ItemIsUnrecognizedToolUse, ItemIsNotAHarnessToolUse,
   harness_tool_item_read,
 }
@@ -56,12 +57,15 @@ type ProviderItemActivity
   | HarnessReadingFile
   | HarnessWritingFile
   | HarnessEditingFile
+  | HarnessWaitingOnJobs
+  | HarnessReadingJobOutput
+  | HarnessKillingJob
   | HarnessRefusingUnrecognizedTool
   | UnclassifiedItem
 
 // ONE SHARED EVENT VOCABULARY. Codex, Claude Code, and the gunbc harness write one JSONL
 // stream the belt reads; the kind is not a Codex type that other providers nickname into.
-// CodexProviderEventKind is deleted (DESIGN §3 replacement migration at the root).
+// CodexProviderEventKind is deleted (gunbc.design_argument::replacement_migration replacement migration at the root).
 // THE GUNBC HARNESS INTERLEAVES EVENTS OF ITS OWN in that stream: round.usage, the
 // per-round token and clock accounting the dashboard's round strip reads (gunbc.harness.harness_throughput);
 // turn.alignment_checkpoint_due, the epoch-boundary announcement a chain-carrying turn ends on;
@@ -156,7 +160,7 @@ data codex_provider_projection_detail_budget: CharacterCount = character_count(c
 // says it DID, and it is the text an operator reads to judge whether the work is any good; it is
 // the closest thing the dashboard has to the agent's answer. Sharing one number would mean a future
 // tuning of either bound silently retunes the other, which is the coincidence-not-concept trap
-// DESIGN §2 warns about — they are the same TYPE (CharacterCount, the same Measure axis) and
+// gunbc.design_argument::minimize_redundancy warns about — they are the same TYPE (CharacterCount, the same Measure axis) and
 // genuinely different FACTS.
 //
 // 8192 is chosen against the incident this whole projection exists to prevent: a single
@@ -169,8 +173,8 @@ data codex_provider_projection_detail_budget: CharacterCount = character_count(c
 
 data codex_provider_projection_message_budget: CharacterCount = character_count(count: 8192)
 
-// TRUNCATION IS REPORTED, NEVER SILENT — the one place this projection could otherwise fabricate a plausible output (DESIGN §5). Everywhere else the bounds guard a machine-read classification, where a cut string simply fails to match and refuses; here the bounded value is PROSE AN OPERATOR READS AND ACTS ON, so a report severed mid-sentence and presented as if complete is a wrong answer delivered confidently — the operator would judge the work on a fragment while the screen gave no sign anything was missing. The projected envelope therefore carries the boundedness as its own member — a `message` object pairing the bounded text with a `truncated` flag — where truncated is computed from the ORIGINAL length before slicing, so it is a statement about the provider's actual output rather than about the slice. A consumer that renders text without consulting truncated is re-opening the arm this row closes, which is why the flag is a sibling of the text and not a derived guess about whether the slice happens to sit on the budget.
-// DECLARED SCAFFOLD (review 44058, DESIGN 6). This is a jq PROGRAM assembled by join — a foreign
+// TRUNCATION IS REPORTED, NEVER SILENT — the one place this projection could otherwise fabricate a plausible output (gunbc.design_argument::fail_closed). Everywhere else the bounds guard a machine-read classification, where a cut string simply fails to match and refuses; here the bounded value is PROSE AN OPERATOR READS AND ACTS ON, so a report severed mid-sentence and presented as if complete is a wrong answer delivered confidently — the operator would judge the work on a fragment while the screen gave no sign anything was missing. The projected envelope therefore carries the boundedness as its own member — a `message` object pairing the bounded text with a `truncated` flag — where truncated is computed from the ORIGINAL length before slicing, so it is a statement about the provider's actual output rather than about the slice. A consumer that renders text without consulting truncated is re-opening the arm this row closes, which is why the flag is a sibling of the text and not a derived guess about whether the slice happens to sit on the budget.
+// DECLARED SCAFFOLD (review 44058, gunbc.design_argument::how_to_work). This is a jq PROGRAM assembled by join — a foreign
 // language built as a string. It exists ONLY to BOUND a provider JSONL line (Codex, and since
 // gunbc#13670 Claude stream-json) before the substrate reads it; every semantic decision — which
 // lines count, how a line classifies, skip versus observe versus refuse — lives in the typed
@@ -284,7 +288,7 @@ fn classify_claude_code_stream_line(line: ClaudeCodeStreamLine) -> ProviderEvent
 // item's FIRST member, so the walk's landing position is unchanged, and a report whose own text
 // quotes an item-type fragment still cannot reclassify the pane because the walk never reaches it.
 // Both anchored members have a known position and the walk either lands on it or answers false.
-// codex_envelope_member_value_start is the single step both readings share (DESIGN 2, one concept).
+// codex_envelope_member_value_start is the single step both readings share (gunbc.design_argument::minimize_redundancy, one concept).
 
 fn codex_envelope_object_first_member(raw: String, at: Int) -> Int? {
   let start = json_text_skip_ws(s: raw, i: at)
@@ -409,6 +413,9 @@ fn harness_tool_item_activity(tool: HarnessTool) -> ProviderItemActivity {
     WriteFileTool => HarnessWritingFile
     EditFileTool => HarnessEditingFile
     ValidateWorktreeTool => RunningCommand
+    WaitJobsTool => HarnessWaitingOnJobs
+    ReadJobOutputTool => HarnessReadingJobOutput
+    KillJobTool => HarnessKillingJob
   }
 }
 
@@ -457,6 +464,9 @@ fn provider_item_activity_label(activity: ProviderItemActivity) -> String {
     HarnessReadingFile => "reading file"
     HarnessWritingFile => "writing file"
     HarnessEditingFile => "editing file"
+    HarnessWaitingOnJobs => "waiting on jobs"
+    HarnessReadingJobOutput => "reading job output"
+    HarnessKillingJob => "killing a job"
     HarnessRefusingUnrecognizedTool => "refusing an undeclared tool"
     UnclassifiedItem => "provider item"
   }
@@ -873,6 +883,9 @@ fn provider_item_activity_kind(activity: ProviderItemActivity) -> ProviderItemAc
     HarnessReadingFile => ItemKindWorking
     HarnessWritingFile => ItemKindWorking
     HarnessEditingFile => ItemKindWorking
+    HarnessWaitingOnJobs => ItemKindWorking
+    HarnessReadingJobOutput => ItemKindWorking
+    HarnessKillingJob => ItemKindWorking
     HarnessRefusingUnrecognizedTool => ItemKindWorking
     UnclassifiedItem => ItemKindWorking
   }

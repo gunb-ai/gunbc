@@ -1,6 +1,6 @@
 module v2.test.claim.emit.optional_lowered_position_projection
 
-import std.algebra { Cons, Empty, length, fold_list, list_starts_with, list_tail }
+import std.algebra { Cons, Empty, length, fold_list, is_prefix_of, list_tail }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.nat { Succ, Zero }
 import std.types { List }
@@ -148,7 +148,7 @@ fn olp_contains(text: String, needle: String) -> Bool {
   let scan = fold_list(xs: text, empty: OlpScan { rest: text, found: false }, cons: fn(acc, _c) {
     OlpScan {
       rest: match list_tail(xs: acc.rest) { Present { value: t } => t Absent => Empty },
-      found: acc.found || list_starts_with(xs: acc.rest, prefix: needle, eq: fn(a, b) { a == b })
+      found: acc.found || is_prefix_of(prefix: needle, xs: acc.rest, eq: fn(a, b) { a == b })
     }
   })
   scan.found

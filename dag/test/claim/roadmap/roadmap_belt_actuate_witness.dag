@@ -39,7 +39,7 @@ import gunbc.roadmap.roadmap_model {
   PrsMerged,
   Dispatchable,
 }
-import gunbc.roadmap.roadmap_status { DerivableLine, Unsigned }
+import gunbc.roadmap.roadmap_status { DerivableLine }
 import gunbc.roadmap.roadmap_publish {
   PublicationReceiptSource,
   ReceiptSourceAbsent, ReceiptSourcePresent, ReceiptSourceUnreadable,
@@ -267,7 +267,7 @@ import gunbc.roadmap.roadmap_launch_admission {
   launch_identity_exemplar, launch_refusal_exemplars,
   LaunchHostStanding, LaunchGraphStanding, launch_graph_of_document,
 }
-import gunbc.roadmap.roadmap_readiness { ReadinessGap, GapAccepted, GapDependencies, GapContract, readiness_gap_label }
+import gunbc.roadmap.roadmap_readiness { ReadinessGap, GapInReview, GapDependencies, GapContract, readiness_gap_label }
 import test.claim.roadmap.roadmap_launch_admission_fixture {
   launch_fixture_standing_pending, launch_fixture_standing_halt_transition,
 }
@@ -323,7 +323,6 @@ fn ready_node(id: String) -> RoadmapNode {
     dispatch: Dispatchable { repo: "gunbc", acceptance: PrsMerged },
     execution: ExecutionContractUnspecified,
     owner: "",
-    signoff: Unsigned,
     parent: none,
     centering: none,
   }
@@ -681,7 +680,6 @@ fn owned_node(id: String, owner: String) -> RoadmapNode {
     dispatch: Dispatchable { repo: "gunbc", acceptance: PrsMerged },
     execution: ExecutionContractUnspecified,
     owner: owner,
-    signoff: Unsigned,
     parent: none,
     centering: none,
   }
@@ -812,7 +810,7 @@ test fn witness_dispatch_result_ok_spawned_and_live() -> Bool {
 test fn witness_dispatch_result_refusals_not_ok() -> Bool {
   !belt_dispatch_result_ok(r: not_admitted(r: LaunchInstanceActuationRefused { instance_id: "preview", reason: "observe-only" }))
     && !belt_dispatch_result_ok(r: not_admitted(r: LaunchNodeUnknown))
-    && !belt_dispatch_result_ok(r: not_admitted(r: LaunchNotReady { missing: [GapAccepted] }))
+    && !belt_dispatch_result_ok(r: not_admitted(r: LaunchNotReady { missing: [GapInReview] }))
     && !belt_dispatch_result_ok(r: not_admitted(r: LaunchSessionsUnobservable { reason: "x" }))
     && !belt_dispatch_result_ok(r: SpawnFailed { node_id: "a", step: "git", detail: "x", provider: "codex", launch: launch_identity_exemplar() })
     && !belt_dispatch_result_ok(r: not_admitted(r: LaunchNotReady { missing: [GapDependencies { blockers: ["p"] }] }))
@@ -830,7 +828,7 @@ test fn witness_dispatch_status_labels_glued_to_ok_set() -> Bool {
     && status_label_glued_to_ok(r: not_admitted(r: LaunchAlreadyLive { session_name: "s" }))
     && status_label_glued_to_ok(r: not_admitted(r: LaunchInstanceActuationRefused { instance_id: "preview", reason: "observe-only" }))
     && status_label_glued_to_ok(r: not_admitted(r: LaunchNodeUnknown))
-    && status_label_glued_to_ok(r: not_admitted(r: LaunchNotReady { missing: [GapAccepted] }))
+    && status_label_glued_to_ok(r: not_admitted(r: LaunchNotReady { missing: [GapInReview] }))
     && status_label_glued_to_ok(r: not_admitted(r: LaunchSessionsUnobservable { reason: "x" }))
     && status_label_glued_to_ok(r: SpawnFailed { node_id: "a", step: "git", detail: "x", provider: "codex", launch: launch_identity_exemplar() })
     && all(belt_dispatch_result_exemplars(), r => status_label_glued_to_ok(r: r))
@@ -841,7 +839,7 @@ test fn witness_dispatch_status_labels_pin_wire_contract() -> Bool {
     && belt_dispatch_status_label(r: not_admitted(r: LaunchAlreadyLive { session_name: "s" })) == "already_live"
     && belt_dispatch_status_label(r: not_admitted(r: LaunchInstanceActuationRefused { instance_id: "preview", reason: "observe-only" })) == "disabled"
     && belt_dispatch_status_label(r: not_admitted(r: LaunchNodeUnknown)) == "node_not_found"
-    && belt_dispatch_status_label(r: not_admitted(r: LaunchNotReady { missing: [GapAccepted] })) == "not_ready"
+    && belt_dispatch_status_label(r: not_admitted(r: LaunchNotReady { missing: [GapInReview] })) == "not_ready"
     && belt_dispatch_status_label(r: not_admitted(r: LaunchSessionsUnobservable { reason: "x" })) == "observe_refused"
     && belt_dispatch_status_label(r: not_admitted(r: LaunchAuthorityUnobserved { detail: "x" })) == "authority_refused"
     && belt_dispatch_status_label(r: SpawnFailed { node_id: "a", step: "git", detail: "x", provider: "codex", launch: launch_identity_exemplar() }) == "spawn_failed"
@@ -871,7 +869,7 @@ fn band_key_for_label(label: String) -> String {
 // COVERAGE IS AN IDENTITY JOIN OVER THE ARMS, NOT A COUNT OF THE ROWS. This witness pinned
 // `belt_dispatch_label_band_rows().length() == 22` while the roster had grown to 25 -- a count says
 // a NUMBER moved and never says WHICH vocabulary went unpinned, so the repair is always to bump the
-// literal, which is the change detector DESIGN 5 names. Joining the coproduct's own arm keys against
+// literal, which is the change detector gunbc.design_argument::fail_closed names. Joining the coproduct's own arm keys against
 // the exemplars instead means a new LaunchRefusal arm reds this by NAMING the arm that carries no
 // exemplar, and the fix is to exemplify it rather than to edit a number.
 //
@@ -1023,7 +1021,7 @@ fn d4_exemplars_missing_one() -> List<BeltSpawnOutcome> {
     not_admitted(r: LaunchAlreadyLive { session_name: "s" }),
     not_admitted(r: LaunchInstanceActuationRefused { instance_id: "preview", reason: "observe-only" }),
     not_admitted(r: LaunchNodeUnknown),
-    not_admitted(r: LaunchNotReady { missing: [GapAccepted] }),
+    not_admitted(r: LaunchNotReady { missing: [GapInReview] }),
     not_admitted(r: LaunchSessionsUnobservable { reason: "x" }),
   ]
 }
@@ -2504,18 +2502,17 @@ test fn revision_refusal_keeps_discovery_independently_recorded() -> Bool {
 }
 
 fn launch_fixture_canary_graph() -> LaunchGraphStanding {
-  launch_graph_of_document(doc: canary_doc(nodes: [canary_parent(signoff: Unsigned), canary_child()], edges: [roadmap_launch_canary_edge()]))
+  launch_graph_of_document(doc: canary_doc(nodes: [canary_parent(), canary_child()], edges: [roadmap_launch_canary_edge()]))
 }
 
 fn launch_fixture_canary_graph_child_contracted() -> LaunchGraphStanding {
   launch_graph_of_document(doc: canary_doc(
     nodes: [
-      canary_parent(signoff: Unsigned),
+      canary_parent(),
       canary_node(
         identity: roadmap_launch_canary_child_identity,
         id: roadmap_launch_canary_child_node_id(),
         execution: roadmap_launch_canary_execution_contract(),
-        signoff: Unsigned,
       ),
     ],
     edges: [roadmap_launch_canary_edge()],
@@ -2548,12 +2545,11 @@ test fn staged_post_refuses_unknown_node_without_listing_tmux() -> Bool {
 fn launch_fixture_canary_graph_child_unbound() -> LaunchGraphStanding {
   launch_graph_of_document(doc: canary_doc(
     nodes: [
-      canary_parent(signoff: Unsigned),
+      canary_parent(),
       canary_node(
         identity: roadmap_launch_canary_child_identity,
         id: roadmap_launch_canary_child_node_id(),
         execution: ExecutionContractUnspecified,
-        signoff: Unsigned,
       ),
     ],
     edges: [],

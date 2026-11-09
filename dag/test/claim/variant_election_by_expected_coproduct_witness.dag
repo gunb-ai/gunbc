@@ -30,7 +30,7 @@ import gunbc.compile_diagnostic_census {
 // AND asserts the emitted constructor, so a refusal for another reason or an emission through
 // Optional cannot satisfy it. -1 on the not-runnable arm keeps could-not-measure out of both arms.
 //
-// dissolve-on: none -- permanent regression control per DESIGN 4b(4).
+// dissolve-on: none -- permanent regression control per gunbc.design_argument::guarantee_ladder (dissolution on climb).
 
 fn blocking_count(source: String, class: String) -> Int {
   match compile_dag_diagnostic_census(source) {

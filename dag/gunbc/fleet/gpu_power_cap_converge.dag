@@ -1,0 +1,241 @@
+module gunbc.fleet.gpu_power_cap_converge
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.measure { Watt, Milliwatt, watt_count, milliwatt_count }
+import std.process { ExitSuccess, exit_failure }
+import product.host_identity { HostIdentity }
+import product.placement_supply { PhysicalAssetIdentity }
+import extdeps.nvidia.system_management_interface
+import extdeps.nvidia.system_management_interface {
+  NvidiaGpuPowerStateRead, PowerStateParsed, PowerStateUnparsed,
+  SmiReading, SmiReported, SmiWithheld, NvidiaPersistenceMode, PersistenceEnabled, PersistenceDisabled,
+  SmiEffectOutcome, SmiEffectApplied, SmiPowerLimitOutOfRange, SmiOptionUnrecognized, SmiEffectRefused,
+  parse_gpu_power_state, smi_effect_outcome,
+}
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import gunbc.fleet.fleet_host_identity { operator_hosts }
+import gunbc.fleet.board_function_converge { running_as_root }
+import gunbc.serving.gpu_power_state_policy {
+  GpuCapAdmission, GpuCapAdmitted, GpuCapOutsideDeviceRange, GpuCapDevicePending,
+  gpu_cap_admissions_on,
+}
+
+// THE GPU POWER-CAP CONVERGE: apply each ADMITTED cap, then read the limit back from the device and compare it
+// with the cap that was admitted (gunbc.serving.gpu_power_state_policy gpu_cap_admissions_on). It runs on the
+// host at every boot (gunbc.live_deploy.srv1_gpu_power_cap_unit), because `nvidia-smi -pl` lasts only until the
+// driver unloads or the host reboots.
+//
+// AN ACCEPTED COMMAND IS NOT AN OBSERVED LIMIT. Convergence is claimed only from a QUERY made after the writes,
+// a separate invocation of the modeled query (QueryGpuPowerStateOf, addressed by the GPU UUID so the row is the
+// admitted card's and no other's, read by the modeled parser parse_gpu_power_state): the limit equals the
+// admitted cap and persistence mode is enabled. Writes that exit 0 and do not show refuse. A cap already
+// observed in place is Noop and writes nothing.
+//
+// THE ARMS OF AN ADMISSION, AS THE SELECTED CONFIGURATION SEES THEM:
+// - GpuCapAdmitted: realized and read back; a mismatch or an unreadable device REFUSES.
+// - GpuCapOutsideDeviceRange: REFUSES. Nothing is clamped, because a clamp would change the decision.
+// - GpuCapDevicePending: REPORTED, never a failure. A board whose device row has not been read is no member of
+//   the configuration that serves now, and a failed unit would take the one-card service down for a card that is
+//   not part of it; the line is printed on every run. srv1 reached no pending card on 2026-11-08 -- both of its
+//   RTX PRO 6000s are read and admitted (gunbc.fleet.gpu_device_observation) -- so this arm is now reached only
+//   by a board nobody has observed yet, and its witness is a fixture admission rather than srv1's state.
+
+// ── what the host reads ─────────────────────────────────────────────────────────────────────────
+
+type GpuCapReading
+  = GpuCapRead { limit: Milliwatt, persistence: NvidiaPersistenceMode }
+  | GpuCapUnread { cause: String }
+
+// The probe names its round so the post-write query is a different demand from the pre-write one.
+type GpuCapProbe {
+  uuid: NonEmptyStr
+  round: Int
+}
+
+type GpuCapTarget {
+  uuid: NonEmptyStr
+  cap: Watt
+}
+
+fn gpu_cap_reading_of(stdout: String) -> GpuCapReading {
+  match parse_gpu_power_state(text: stdout) {
+    PowerStateUnparsed { line } => GpuCapUnread { cause: concat("nvidia-smi printed a row the parser does not read: ", line) }
+    PowerStateParsed { gpus } =>
+      match gpus {
+        Cons { head: g, tail: Empty } =>
+          match g.power_limit {
+            SmiWithheld { marker } => GpuCapUnread { cause: concat("the device withholds power.limit: ", marker as String) }
+            SmiReported { value: l } =>
+              match g.persistence {
+                SmiWithheld { marker } => GpuCapUnread { cause: concat("the device withholds persistence_mode: ", marker as String) }
+                SmiReported { value: p } => GpuCapRead { limit: l, persistence: p }
+              }
+          }
+        _ => GpuCapUnread { cause: join(["a query for one device returned ", to_string(length(gpus)), " rows"], "") }
+      }
+  }
+}
+
+fn observe_gpu_cap(uuid: NonEmptyStr) -> GpuCapReading {
+  let r = nvidia_smi.Smi.QueryGpuPowerStateOf(index: uuid)
+  if !r.success { GpuCapUnread { cause: concat("nvidia-smi could not query ", uuid as String) } }
+  else { gpu_cap_reading_of(stdout: r.value) }
+}
+
+fn effect_refusal(what: String, exit_code: Int, stdout: String) -> String? {
+  match smi_effect_outcome(exit_code: exit_code, text: stdout) {
+    SmiEffectApplied => none
+    SmiPowerLimitOutOfRange { minimum: lo, maximum: hi } => Present { value: join([what, " refused: the limit is outside the device's range ", to_string(milliwatt_count(w: lo)), "-", to_string(milliwatt_count(w: hi)), " mW"], "") }
+    SmiOptionUnrecognized { option: o } => Present { value: join([what, " refused: nvidia-smi does not recognize ", o as String], "") }
+    SmiEffectRefused { exit_code: c, text: t } => Present { value: join([what, " exited ", to_string(c), ": ", t], "") }
+  }
+}
+
+fn set_gpu_persistence(uuid: NonEmptyStr) -> String? {
+  let r = nvidia_smi.Smi.SetPersistenceMode(index: uuid, mode: "1" as NonEmptyStr)
+  effect_refusal(what: concat("nvidia-smi -pm 1 on ", uuid as String), exit_code: r.exit_code, stdout: r.stdout)
+}
+
+fn set_gpu_limit(target: GpuCapTarget) -> String? {
+  let r = nvidia_smi.Smi.SetPowerLimit(index: target.uuid, limit: to_string(watt_count(w: target.cap)) as NonEmptyStr)
+  effect_refusal(what: join(["nvidia-smi -pl ", to_string(watt_count(w: target.cap)), " on ", target.uuid as String], ""), exit_code: r.exit_code, stdout: r.stdout)
+}
+
+// ── what the readback must show ─────────────────────────────────────────────────────────────────
+
+fn cap_milliwatts(cap: Watt) -> Nat {
+  watt_count(w: cap) * 1000
+}
+
+// The expected readback is derived from the admitted cap, so changing the decision changes both the command
+// that is applied and the figure that is demanded back.
+fn reading_holds(reading: GpuCapReading, cap: Watt) -> Bool {
+  match reading {
+    GpuCapUnread { cause: _ } => false
+    GpuCapRead { limit: l, persistence: p } =>
+      milliwatt_count(w: l) == cap_milliwatts(cap: cap) && (match p { PersistenceEnabled => true PersistenceDisabled => false })
+  }
+}
+
+fn reading_text(reading: GpuCapReading) -> String {
+  match reading {
+    GpuCapUnread { cause: c } => concat("unread: ", c)
+    GpuCapRead { limit: l, persistence: p } =>
+      join(["power.limit ", to_string(milliwatt_count(w: l)), " mW, persistence ", match p { PersistenceEnabled => "enabled" PersistenceDisabled => "disabled" }], "")
+  }
+}
+
+// ── the sequence, over ports ────────────────────────────────────────────────────────────────────
+
+type GpuCapOutcome
+  = GpuCapAlreadyConverged
+  | GpuCapConvergedAfterApply
+  | GpuCapNotConverged { cause: String }
+
+type GpuCapPorts {
+  observe: fn(GpuCapProbe) -> GpuCapReading
+  set_persistence: fn(NonEmptyStr) -> String?
+  set_limit: fn(GpuCapTarget) -> String?
+}
+
+type GpuCapRun {
+  outcome: GpuCapOutcome
+  writes: List<String>
+}
+
+// Persistence first, then the limit, then a fresh read. A failed write stops before any later write and never
+// reports convergence; the readback is a separate query judged by the same predicate as the pre-read.
+fn converge_gpu_cap_over(uuid: NonEmptyStr, cap: Watt, ports: GpuCapPorts) -> GpuCapRun {
+  let observe = ports.observe
+  let set_persistence = ports.set_persistence
+  let set_limit = ports.set_limit
+  let before = observe(GpuCapProbe { uuid: uuid, round: 0 })
+  match before {
+    GpuCapUnread { cause } => GpuCapRun { outcome: GpuCapNotConverged { cause: concat("before applying, the device could not be read: ", cause) }, writes: [] }
+    GpuCapRead { limit: _, persistence: _ } =>
+      if reading_holds(reading: before, cap: cap) { GpuCapRun { outcome: GpuCapAlreadyConverged, writes: [] } }
+      else {
+        match set_persistence(uuid) {
+          Present { value: cause } => GpuCapRun { outcome: GpuCapNotConverged { cause: cause }, writes: ["persistence"] }
+          Absent =>
+            match set_limit(GpuCapTarget { uuid: uuid, cap: cap }) {
+              Present { value: cause } => GpuCapRun { outcome: GpuCapNotConverged { cause: cause }, writes: ["persistence", "limit"] }
+              Absent => {
+                let after = observe(GpuCapProbe { uuid: uuid, round: 1 })
+                if reading_holds(reading: after, cap: cap) { GpuCapRun { outcome: GpuCapConvergedAfterApply, writes: ["persistence", "limit"] } }
+                else {
+                  GpuCapRun {
+                    outcome: GpuCapNotConverged { cause: join(["the writes reported success but the readback shows ", reading_text(reading: after), ", not power.limit ", to_string(cap_milliwatts(cap: cap)), " mW with persistence enabled"], "") },
+                    writes: ["persistence", "limit"],
+                  }
+                }
+              }
+            }
+        }
+      }
+  }
+}
+
+fn host_gpu_cap_ports() -> GpuCapPorts {
+  GpuCapPorts {
+    observe: fn(p) { observe_gpu_cap(uuid: p.uuid) },
+    set_persistence: fn(u) { set_gpu_persistence(uuid: u) },
+    set_limit: fn(t) { set_gpu_limit(target: t) },
+  }
+}
+
+// ── the report, one line per admission ──────────────────────────────────────────────────────────
+
+type GpuCapLine {
+  text: String
+  refused: Bool
+}
+
+fn gpu_cap_outcome_line(board: PhysicalAssetIdentity, uuid: NonEmptyStr, cap: Watt, outcome: GpuCapOutcome) -> GpuCapLine {
+  let subject = join([board as String, " ", uuid as String, " at ", to_string(watt_count(w: cap)), " W"], "")
+  match outcome {
+    GpuCapAlreadyConverged => GpuCapLine { text: join(["gpu power cap ", subject, ": in place, read back; nothing applied"], ""), refused: false }
+    GpuCapConvergedAfterApply => GpuCapLine { text: join(["gpu power cap ", subject, ": applied persistence and limit; read back: limit matches, persistence enabled"], ""), refused: false }
+    GpuCapNotConverged { cause } => GpuCapLine { text: join(["gpu power cap ", subject, ": REFUSED: ", cause], ""), refused: true }
+  }
+}
+
+fn gpu_cap_admission_line(admission: GpuCapAdmission, ports: GpuCapPorts) -> GpuCapLine {
+  match admission {
+    GpuCapAdmitted { host: _, board: b, gpu_uuid: u, cap: c } =>
+      gpu_cap_outcome_line(board: b, uuid: u, cap: c, outcome: converge_gpu_cap_over(uuid: u, cap: c, ports: ports).outcome)
+    GpuCapOutsideDeviceRange { board: b, cap: c, minimum: lo, maximum: hi } =>
+      GpuCapLine { text: join(["gpu power cap ", b as String, " at ", to_string(watt_count(w: c)), " W: REFUSED: outside the device's reported range ", to_string(watt_count(w: lo)), "-", to_string(watt_count(w: hi)), " W; nothing is clamped"], ""), refused: true }
+    GpuCapDevicePending { board: b, cap: c, read_obligation: o } =>
+      GpuCapLine { text: join(["gpu power cap ", b as String, " at ", to_string(watt_count(w: c)), " W: pending, not part of the selected configuration, not a failure: ", o as String], ""), refused: false }
+  }
+}
+
+fn gpu_cap_lines_over(admissions: List<GpuCapAdmission>, ports: GpuCapPorts) -> List<GpuCapLine> {
+  map(admissions, a => gpu_cap_admission_line(admission: a, ports: ports))
+}
+
+fn gpu_cap_converge_refused(reason: String) -> CliWireResponse {
+  CliWirePrintable { bytes: "", exit: exit_failure(reason: reason) }
+}
+
+// THE ENTRY. `host` names the machine in operator_hosts; exit 0 means every admitted cap on it is observed in
+// place. Any refusal exits non-zero with every line printed, which fails the unit, which keeps the units that
+// Require it from starting.
+fn gpu_power_cap_converge_cli(host: NonEmptyStr) -> CliWireResponse {
+  match filter(operator_hosts, h => (h as String) == (host as String)).first() {
+    Absent => gpu_cap_converge_refused(reason: concat("gpu power-cap converge: no operator host is named ", host as String))
+    Present { value: identity } =>
+      if !running_as_root() { gpu_cap_converge_refused(reason: "gpu power-cap converge sets device limits, so it runs as root") }
+      else {
+        let lines = gpu_cap_lines_over(admissions: gpu_cap_admissions_on(host: identity), ports: host_gpu_cap_ports())
+        let text = join(map(lines, l => concat(l.text, "\n")), "")
+        if any(lines, l => l.refused) {
+          CliWirePrintable { bytes: text, exit: exit_failure(reason: "gpu power-cap converge: an admitted cap did not read back; see the REFUSED line. Units that require this one will not start") }
+        } else {
+          CliWirePrintable { bytes: text, exit: ExitSuccess }
+        }
+      }
+  }
+}

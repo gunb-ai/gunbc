@@ -39,8 +39,8 @@ import v2.compiler.self_host.generation {
 // "ancestry_build_path_unresolved" matches a literal of the same spelling whether or not any
 // declaration by that name exists (review 64013). Importing the rows makes each assertion depend
 // on the DECLARATION: a deleted or renamed row now fails to resolve at import and the file goes
-// red at typecheck, instead of passing against a string. Construction over validation, DESIGN
-// section 5 — the spelling check is still there, but it can no longer be the only thing holding.
+// red at typecheck, instead of passing against a string. Construction over validation,
+// gunbc.design_argument::fail_closed — the spelling check is still there, but it can no longer be the only thing holding.
 import v2.compiler.self_host.ancestry {
   ancestor_generation_is_not_the_one_expected,
   ancestry_artifact_not_materialized,
@@ -147,7 +147,7 @@ data anc_seed_closure: RealizedEmitterClosure = RealizedEmitterClosure {
 // earlier revision hand-listed the three module paths and asserted the identity in prose: two
 // lists that can drift, after which the centrepiece "same closure as the interpreted route"
 // evidence would quietly stop testing production while still reading as though it did (review
-// 64053, DESIGN section 3 — one fact, one place).
+// 64053, gunbc.design_argument::single_authority — one fact, one place).
 //
 // An earlier revision also called it anc_native_closure and used it as the NATIVE positive
 // control, which made "native" a label rather than a claim: the wall could not tell the routes
@@ -436,7 +436,7 @@ test fn successor_whose_closure_reaches_the_seed_interpreter_is_refused() -> Boo
 // nothing reaches no seed, no seed interpreter and no interpreted emitter, so before this
 // clause existed it minted an admitted native generation and the route-level
 // OldRouteAbsentByConstruction control would have greened on it. Absence of evidence read as
-// evidence of absence, which DESIGN section 5 forbids by name.
+// evidence of absence, which gunbc.design_argument::fail_closed forbids by name.
 test fn successor_whose_closure_names_nothing_is_refused() -> Bool {
   anc_refused_with(
     g: anc_successor(

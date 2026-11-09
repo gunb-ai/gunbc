@@ -1,0 +1,34 @@
+[
+  {
+    "sha": "0ed3acb62208babdb23702c36f15eacfb107cf8f",
+    "ref": "refs/heads/archive/keen-otter-2026-11-08/zb/browse-dup-bearer"
+  },
+  {
+    "sha": "0d9c66e81c598332ab2770bd0be655837db10010",
+    "ref": "refs/heads/archive/keen-otter-2026-11-08/zb/coercion-freemonoid-respell"
+  },
+  {
+    "sha": "20ef17bac86591c46d5590cee68210473351cf7d",
+    "ref": "refs/heads/archive/keen-otter-2026-11-08/zb/fallout-15247-imports"
+  },
+  {
+    "sha": "065ee8c96df482577263bd1450cd7988f42736e7",
+    "ref": "refs/heads/archive/keen-otter-2026-11-08/zb/infer-dead-shape-reason"
+  },
+  {
+    "sha": "74e7dc0aff7df5bba85ae5c85403ea1680e57f72",
+    "ref": "refs/heads/archive/keen-otter-2026-11-08/zb/lambda-contextual-binder"
+  },
+  {
+    "sha": "f414611afc4b6530f9a169f61164c31e3217cef0",
+    "ref": "refs/heads/archive/keen-otter-2026-11-08/zb/n2b-14266"
+  },
+  {
+    "sha": "a65d8ee983d14e2d97ad31e09216ecd03ef9826c",
+    "ref": "refs/heads/archive/keen-otter-2026-11-08/zb/roster-located-stage-refusal"
+  },
+  {
+    "sha": "1e98f70372d7463067a403e16e6e6e16debebd31",
+    "ref": "refs/heads/archive/keen-otter-2026-11-08/zb/v1-test-unacquired-bare"
+  }
+]

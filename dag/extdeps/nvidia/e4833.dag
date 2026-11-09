@@ -17,7 +17,7 @@ import extdeps.electronic_component.types { Designator, designator_of }
 //
 // Only the DC input is modelled, because the only consumer today is the question of which plug feeds
 // it. The HMC socket, the PCIe edge, the headers and the Auto Power On jumper join when a consumer
-// reads them (DESIGN 3c).
+// reads them (gunbc.design_argument::consumption).
 
 type E4833Identity {
   vendor: Vendor<Hardware>

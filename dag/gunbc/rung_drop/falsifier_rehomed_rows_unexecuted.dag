@@ -12,7 +12,7 @@ import gunbc.ci.ci_layer_roots {
 // FalsifierCadenceJob no longer counts as an executing surface
 // (gunbc.commit_workflow enrollment_is_scheduled), so the credit these rows once drew from it is
 // withdrawn and this drop states the loss instead. DRAFT: awaiting operator approval outside the
-// diff (DESIGN 5).
+// diff (gunbc.design_argument::fail_closed).
 //
 // THE POPULATION IS DERIVED, not copied: the two typed frontiers a re-homed row is declared on,
 // falsifier_rehomed_bin_wet_rows (BinWitnessWet rows) and falsifier_rehomed_roster_rows (the commit

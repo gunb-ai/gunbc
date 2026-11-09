@@ -1,5 +1,7 @@
 module gunbc.roadmap.roadmap_launch_deployment_cli
 
+import extdeps.github.auth { github_rest }
+import extdeps.units.iso8601_calendar { iso8601_utc_epoch_seconds }
 import std.types { String, Bool, NonEmptyStr, Int, List, FilePath, CommitSha }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.measure { second, second_count }
@@ -104,7 +106,7 @@ import gunbc.roadmap.roadmap_launch_deployment_observe {
   observe_healthz, HealthzServed, HealthzRefused,
   observe_instance_document, InstanceDocumentServed, InstanceDocumentRefused,
   observe_workflow_document, WorkflowDocumentServed, WorkflowDocumentRefused,
-  EventBacklogFact, EventBacklogUnobserved, EventBacklogEntry, event_backlog_judge, iso8601_utc_epoch_seconds,
+  EventBacklogFact, EventBacklogUnobserved, EventBacklogEntry, event_backlog_judge,
   observe_healthz_routed,
   observe_instance_document_routed,
   observe_workflow_document_routed,
@@ -131,7 +133,7 @@ import gunbc.roadmap.roadmap_launch_deployment_receipt {
 import gunbc.generated_artifact { artifact_path, FleetConvergeYamlArtifact }
 import gunbc.repository { gunbc_repository }
 import extdeps.github.workflow_runs { workflow_run_conclusion_wire_label }
-import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestCredentialRefused, rest_credential_refusal_cause, RestBodyUndecodable }
 import std.algebra { length }
 
 // The one fleet workflow file, named through the generated-artifact authority so the subject and
@@ -555,6 +557,10 @@ fn rlm_predecessor_run_refusal_detail(run_id: String, refusal: RestRefusal) -> S
       join(["workflow-runs API refused the read of run ", run_id, ": HTTP ", to_string(status), ": ", body], "")
     RestTransportRefused { cause } =>
       join(["workflow-runs API was not reached for run ", run_id, ": ", cause as String], "")
+    RestCredentialRefused { refusal: credential_refusal } => {
+      let cause = rest_credential_refusal_cause(refusal: credential_refusal)
+      join(["workflow-runs API was not reached for run ", run_id, ": ", cause as String], "")
+    }
     RestBodyUndecodable { status, cause } =>
       join(["workflow-runs API answered HTTP ", to_string(status), " for run ", run_id, " with a body that did not decode: ", cause as String], "")
   }
@@ -562,12 +568,12 @@ fn rlm_predecessor_run_refusal_detail(run_id: String, refusal: RestRefusal) -> S
 
 fn rlm_predecessor_run(run_id: String) -> PredecessorRunObservation
 {
-  match github.WorkflowRuns.GetRun(
-    auth_token: "",
+  match github_rest(call: token => github.WorkflowRuns.GetRun(
+    auth_token: token,
     owner: gunbc_repository.owner,
     repo: gunbc_repository.name,
     run_id: run_id,
-  ) {
+  )) {
     RestRefused { refusal } =>
       PredecessorRunUnread { detail: rlm_predecessor_run_refusal_detail(run_id: run_id, refusal: refusal) }
     RestAnswered { answer: got } =>

@@ -16,7 +16,6 @@ import gunbc.machine_intake.subject {
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.hostname_allocation { HostnameAllocation, gunbc_fleet_hostname_allocations }
 import gunbc.rung_drop { RungDrop, Standing, Retired }
-import gunbc.rung_drop.standing { standing_rung_drops }
 import gunbc.rung_drop.mtcollins1_bmc_secure_standing_predates_reflash {
   mtcollins1_bmc_secure_standing_predates_reflash,
 }
@@ -216,7 +215,7 @@ type ManagedHostMembership sole_constructor
 // admission record itself (record.covering_drop), so no roster join is needed to read a drop's
 // standing: a Retired or Superseded value cannot carry a stale subject, whatever list it came from.
 // Which drop covers which unit is the RECORD's cited fact, never a population-prose search --
-// RungDrop.population is the 4b(3) English bound for the DESIGN projection, and grepping it would
+// RungDrop.population is the gunbc.design_argument::guarantee_ladder (no silent regression) English bound for the DESIGN projection, and grepping it would
 // admit any host whose name happens to appear in a sentence.
 fn covering_drop_is_standing(drop: RungDrop) -> Bool {
   match drop.standing {
@@ -267,7 +266,7 @@ fn standings_bound_to_record_subject(record: ManagedHostAdmission) -> Bool {
   // NO well-formedness check on the SMpro arm (snappy's review-81278 delete-first): Carried holds an
   // ADMITTED SmproSite directly and a refused site got its own arm, so the states a validator would
   // reject (carried-without-a-read-site, not-carried-smuggling-a-site) are not writable at all --
-  // DESIGN §5, correctness by construction; a check that cannot fail is noise that reads as coverage.
+  // gunbc.design_argument::fail_closed, correctness by construction; a check that cannot fail is noise that reads as coverage.
   // The unit-key join that used to sit here is DELETED too -- the PhysicalMachineBinding mint refuses
   // a route whose unit differs from axis-1's, so no record can exist in which the two disagree.
   // What remains below is the join that CAN disagree: the endpoints a machine named.
@@ -504,7 +503,7 @@ fn managed_membership_for(host: HostIdentity) -> ManagedHostMembership? {
 // CURRENT subject (docs/plans/managed-host-untangle.md, cut O1c-3 PR a). mtjade1 has no record.
 // managed_hosts() is the host-row view of managed_host_memberships(); callers that read secure
 // standing, binding, reset, hold, boot, or MegaRAC admission walk the memberships and match
-// MemberUnderDeclaredDrop (DESIGN §4b(3): a declared drop may not reach consumers as silence).
+// MemberUnderDeclaredDrop (gunbc.design_argument::guarantee_ladder (no silent regression): a declared drop may not reach consumers as silence).
 fn managed_hosts() -> List<ManagedHost> {
   fold(managed_host_memberships(), init: [], f: (acc, m) => concat(acc, [membership_host(membership: m)]))
 }

@@ -3,7 +3,7 @@ module test.claim.auth.token_exchange_cleanup_witness
 import std.types { Bool }
 import gunbc.roadmap.roadmap_auth_routes { auth_token_exchange_disposition, TokenExchangeAnswered, TokenExchangeRefused }
 
-// THE STAGED TOKEN FORM'S DELETION GATES THE LOGIN, over supplied outcomes (DESIGN §3 witness rule:
+// THE STAGED TOKEN FORM'S DELETION GATES THE LOGIN, over supplied outcomes (gunbc.design_argument::single_authority witness rule:
 // the subject is the disposition, not the filesystem or Google). RED if a failed deletion ever lets
 // the exchange body through, whatever the exchange answered.
 test fn a_failed_cleanup_refuses_even_after_a_successful_exchange() -> Bool {

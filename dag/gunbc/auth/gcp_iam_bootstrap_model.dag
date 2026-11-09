@@ -240,7 +240,7 @@ fn iam_bootstrap_delta_bindings() -> List<IamBootstrapBinding> {
   iam_bootstrap_delta_bindings_over(targets: gcp_iam_converge_targets, grant_set_secrets: gcp_iam_converge_grant_set_secrets())
 }
 
-// ONE CELL, SPOKEN THE SAME WAY ON BOTH SIDES OF THE CEREMONY/DELTA SPLIT (DESIGN section 2: one
+// ONE CELL, SPOKEN THE SAME WAY ON BOTH SIDES OF THE CEREMONY/DELTA SPLIT (gunbc.design_argument::minimize_redundancy: one
 // concept has one name, so one fact has one wording). The ceremony's post-run proof and the delta's
 // ROOT CEREMONY CELLS MISSING refusal both name a cell with this phrase, so an operator who meets the
 // refusal and an engineer who reads the ceremony's refusal are looking at the same string and cannot

@@ -15,7 +15,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // THE DEMAND WALK ANSWERS WHAT THE CORPUS WALK ANSWERED, AT ONE INTERFACE. v2.lens.module_graph
 // dependency_closure_live_excluding now expands from the entry through the keyed edge read instead of
 // folding every module's edges into an adjacency first. The subject is that walk, so the pool is a
-// SUPPLIED fixture (DESIGN section 3: a witness discriminates at one interface) where the reference --
+// SUPPLIED fixture (gunbc.design_argument::witness_one_interface: a witness discriminates at one interface) where the reference --
 // dependency_closure over the population read's edges and declaration census, the fold the walk
 // replaced -- is as cheap as the walk itself. The fixture carries each edge law the walk must keep:
 // a chain (entry -> mid -> leaf), a diamond (mid and leaf both reach shared, so visited tracking must

@@ -23,7 +23,7 @@ fn site_brand_link() -> Fragment {
 // frame is scaled to 108 units and inset on the 128-unit badge.
 // Returns the EMITTER'S RESULT, not a String. The favicon is a fixed shape with no comment and no raw-text
 // element, so it never refuses today -- but the serializer can refuse, and a function that promised a String
-// would have to invent one for a refusal it cannot produce (§5: "no plausible output is fabricated"). Each
+// would have to invent one for a refusal it cannot produce (gunbc.design_argument::fail_closed: "no plausible output is fabricated"). Each
 // of the two routes that serves it says what a refusal means for it, the way serve_page_response already
 // does for pages.
 fn site_favicon_source() -> HtmlEmitResult {

@@ -446,7 +446,7 @@ test fn a_terminal_verdict_outside_the_closed_set_is_unreadable() -> Bool {
 // THE SELF-DECLARED BOUND HAS A BOUND, AND AN OVER-LONG DECLARATION REFUSES RATHER THAN BEING
 // CLAMPED. The deadline is declared by the party it protects, so nothing in the gate alone stops a
 // producer declaring an hour -- and the cost of that does not land on the producer, it lands on
-// every other contender as a seat nobody may reclaim. That is DESIGN 5's externalization: an
+// every other contender as a seat nobody may reclaim. That is gunbc.design_argument::fail_closed's externalization: an
 // accepted risk re-exported to another principal while the contract keeps its name.
 //
 // CLAMPING WOULD BE THE WIDEN. Admitting the attempt under a bound it did not ask for, and then
@@ -633,7 +633,7 @@ fn a_refused_reservation_closes_the_slot_it_was_taken_under_cell(root: String) -
   }
 }
 
-// THE REAL ROUTE, ONCE (DESIGN section 3 pairing obligation for the pure decisions in
+// THE REAL ROUTE, ONCE (gunbc.design_argument::witness_one_interface pairing obligation for the pure decisions in
 // test.claim.compute.work_request_witness). A build's record is committed through
 // compute_store_commit with its two binaries staged beside the store root, read back through
 // compute_store_read as a served success, and resolved by compute_dependency_read into two VERIFIED
@@ -949,4 +949,34 @@ test fn a_build_whose_declared_output_is_missing_commits_no_record() -> Bool {
     && (match committed { ComputeCommitRefused { detail } => string_contains(s: detail, pattern: "w.claim_batch")  _ => false })
     && (match after { ComputeStoreAbsent => true  _ => false })
     && (match recommitted { ComputeCommitted => true  _ => false })
+}
+
+// TERMINAL IS FINAL ON THE OLD PAYLOAD ROUTE. The attempt is settled once (recovered), then a second
+// terminate with a DIFFERENT verdict is presented at the CURRENT generation -- so it is not a lost
+// race, and the only thing that can refuse it is the lifecycle law. The record keeps the first verdict
+// and the generation does not move. The positive control is the first terminate on the identical path.
+test fn a_settled_attempt_refuses_a_second_terminal_on_the_payload_route() -> Bool {
+  let root = fresh_root()
+  let ok = a_settled_attempt_refuses_a_second_terminal_on_the_payload_route_cell(root: root as NonEmptyStr)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_settled_attempt_refuses_a_second_terminal_on_the_payload_route_cell(root: NonEmptyStr) -> Bool {
+  match flat_slots_at(root: root as String) {
+  Absent => false
+  Present { value: slots } => {
+  let record = record_for(reference: "attempt-terminal-final")
+  let opened = attempt_open(store: slots, record: record)
+  let g1 = attempt_slot_read(store: slots, reference: record.reference as NonEmptyStr)
+  let first = attempt_terminate(store: slots, reference: record.reference as NonEmptyStr, expected: generation_of(r: g1), verdict: AttemptRecovered, detail: "settled once")
+  let g2 = attempt_slot_read(store: slots, reference: record.reference as NonEmptyStr)
+  let rewrite = attempt_terminate(store: slots, reference: record.reference as NonEmptyStr, expected: generation_of(r: g2), verdict: AttemptWorkEnded { ending: WorkEndedFailed }, detail: "a later rewrite")
+  let g3 = attempt_slot_read(store: slots, reference: record.reference as NonEmptyStr)
+  attempt_transition_advanced(t: opened) && attempt_transition_advanced(t: first)
+    && (match rewrite { AttemptTransitionRefused { detail: _ } => true _ => false })
+    && state_word_of(r: g3) == "terminal:recovered"
+    && generation_of(r: g2) == 2 && generation_of(r: g3) == 2
+  }
+  }
 }

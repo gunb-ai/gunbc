@@ -16,7 +16,7 @@ import extdeps.rust.cargo { cargo_default_release_dir_rel }
 // reconciles the desired roster against `observed: []`, so every member is an add on every apply
 // and an already-converged host replays its whole installation -- measured 2026-09-06 at nineteen
 // minutes, of which the deploy's real mutations were seconds and the rest was five source-compiling
-// evaluators started in series by unconditional restarts. `gunbc.plans.deploy_convergence_observed_side`
+// evaluators started in series by unconditional restarts. `gunbc.plans.deploy_convergence_observed_side (deleted 2026-11-08)`
 // refutes the obvious repair (feed the same path-keyed roster an observed side): a member whose value
 // is a function of its own key cannot be seen to be stale, so a non-degenerate diff over paths would
 // report CONVERGED over a stale host. The member therefore needs a real identity -- the smallest fact
@@ -39,7 +39,7 @@ import extdeps.rust.cargo { cargo_default_release_dir_rel }
 // executable, one published tree, one serve unit -- so they are nullary. A directory root is not:
 // the deployment owns several, they differ only by path, and minting a nullary variant per root
 // (one per dispatch, compute or store directory) would be several names
-// for one concept (DESIGN section 2, one concept at every breadth). The path is the key, so it
+// for one concept (gunbc.design_argument::minimize_redundancy, one concept at every breadth). The path is the key, so it
 // lives on the variant and converged_member_label renders it -- which is also what keeps
 // converged_member_eq correct for a payload-carrying member, since that equality is defined
 // through the label.
@@ -121,7 +121,7 @@ type UnitManagerStanding
 // the service to be healthy. This arm says what was actually measured: the process answered, it was
 // in a server-error class, and its reply carried no release identity to read. It is NOT a readiness
 // verdict and decides nothing here on its own -- whether that means a replacement is the domain's
-// call, taken below over the member's own revision (DESIGN 6b, D14).
+// call, taken below over the member's own revision (gunbc.design_argument::earliest_unjustified_boundary, D14).
 type ServiceProcessIdentity
   = ProcessRunningRelease { revision: CommitSha }
   | ProcessNotRunning { active: SystemdUnitActiveState }
@@ -158,7 +158,7 @@ type OidcConfigFileIdentity {
 // g+w/g+s/+t walk restricted to the children), so a plan derived from an under-granted interior does
 // not depend on WHICH child was under-granted -- it re-walks the subtree either way. Two arms is
 // therefore enough, and adding a per-mode arm would be a second copy of a fact the repair does not
-// branch on (DESIGN 3). The observed rendering is carried only so the refusal/readback text can say
+// branch on (gunbc.design_argument::single_authority). The observed rendering is carried only so the refusal/readback text can say
 // what the host held, exactly as DirectoryRootStanding carries observed_mode for the same reason.
 type GitWorkerSubtreeStanding
   = SubtreeConverged

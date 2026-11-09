@@ -55,7 +55,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE NEW YORK ROWS' CONSUMER, AND IT EXISTS BECAUSE THE ROWS OTHERWISE HAD NONE. The carrier's
 // own witness reads the DataBank and Iron Mountain rows; the Westchester, Rockland and Long Island
-// facilities this lane added were read by nothing at all. DESIGN section 3c is
+// facilities this lane added were read by nothing at all. gunbc.design_argument::consumption is
 // explicit that a data row no fold reads is red regardless of how well it is modelled, and that
 // consumption described in a PR body rather than present in the diff is the tell of exactly that.
 // The selection fold that will eventually rank these candidates is a workflow fact being reworked
@@ -74,7 +74,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // FOLDS ARE CONSUMED RATHER THAN RE-DECLARED - review 62870 found the first cut of this file
 // carrying a byte-identical copy of the watt accessor and a second name for the single-cabinet
-// predicate, which is DESIGN section 3's nicknaming failure and would have let a later change to a
+// predicate, which is gunbc.design_argument::single_authority's nicknaming failure and would have let a later change to a
 // RetailGrainStanding arm update one witness and silently miss the other. The grain predicate is
 // now an accessor on the carrier, where its absence was what produced the fork, and the density
 // predicates below are imported from the carrier's own witness rather than lifted beside it.
@@ -232,8 +232,8 @@ test fn w_ny_unstated_grain_is_not_an_offer() -> Bool {
 
 // THE FACILITY ROWS THEMSELVES, WHICH NOTHING READ UNTIL NOW. Review 62921: the density and
 // grain rows were enrolled and the ColoFacilityRow declarations they hang off were not, so
-// `ColoFacilityRow` was a type no fold outside its own carrier modules touched. That is DESIGN
-// section 3c red - and it is the THIRD set this file has had to enrol, after its own duplicate
+// `ColoFacilityRow` was a type no fold outside its own carrier modules touched. That is
+// gunbc.design_argument::consumption red - and it is the THIRD set this file has had to enrol, after its own duplicate
 // folds and two grain rows. The pattern is worth naming rather than fixing quietly: each time I
 // enrolled the rows I was thinking about and left the ones I was not, which is why the header's
 // claim to prove "every row this lane authored" kept being false in a new place. It is now stated
@@ -286,7 +286,7 @@ test fn w_the_westbury_pair_is_one_municipality() -> Bool {
 // is the premise the grain tests above rest on, and until now it was asserted only through
 // municipality, which two different Westbury buildings would also satisfy. Comparing the two streets
 // TO EACH OTHER tests a relation between two rows rather than a row against a transcribed literal,
-// so it is not the self-comparison DESIGN section 5 warns about: nothing in this file supplies the
+// so it is not the self-comparison gunbc.design_argument::fail_closed warns about: nothing in this file supplies the
 // expected value, and if either operator's page is re-read to a different street the pair stops
 // agreeing and this reds.
 //

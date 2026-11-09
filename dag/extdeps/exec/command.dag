@@ -32,8 +32,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // THE ARGV CONSTRUCTION WALL. ArgvCommand was a plain record, so every module could write
 // `ArgvCommand { argv: ["curl", "-fsL", "-o", dest, url] }` at the call site and the flags of a tool
 // this repository does not own lived wherever someone happened to need them. That is the anemic
-// modeling DESIGN §2 names -- a String leaf hiding named parts -- and it is what made the omitted
-// `--fail` fail-open class writable (gunbc.plans.transport_argv_anemia_dissolution, Lane B).
+// modeling gunbc.design_argument::minimize_redundancy names -- a String leaf hiding named parts -- and it is what made the omitted
+// `--fail` fail-open class writable (gunbc.plans.transport_argv_anemia_dissolution (deleted 2026-11-08), Lane B).
 //
 // It is now sole_constructor: only this module may build one, and `argv_command` below is the single
 // admitted route in, caller-sealed BY NAME to the typed builders that derive an argv from a cited
@@ -46,7 +46,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // parameters, and this carrier now does the same, for the reason already recorded at
 // extdeps.shell.exec RunArgv: conflating them is a state-space collapse. It also makes the EMPTY
 // argv -- a command naming no program to execute -- unrepresentable rather than refused after the
-// fact (DESIGN §4b: structurally impossible beats mechanically preventable). The two
+// fact (gunbc.design_argument::guarantee_ladder: structurally impossible beats mechanically preventable). The two
 // `Absent => empty argv` refusal arms in gunbc.command_runner dissolve with this shape; there is
 // always a program, so there is nothing left to refuse.
 //
@@ -61,7 +61,7 @@ type ArgvCommand sole_constructor {
 // THE ONE MINT. It takes the program and its operands, and gates WHO may call it. Every admitted
 // caller is a named builder for ONE operation of ONE tool, homed in that tool's own extdeps module
 // beside its cited upstream authority -- never here: a generic hub may define the agnostic shape but
-// may not enumerate concrete products (DESIGN §3, external upstream decomposition). That is why the
+// may not enumerate concrete products (gunbc.design_argument::external_upstreams, external upstream decomposition). That is why the
 // six builders this module used to carry (curl_download_command, mkdir_p_command,
 // tar_extract_command, make_command, sed_in_place_command, cp_command) are GONE from this file and
 // live in extdeps.tools.{curl,mkdir,tar,make,sed,gnu_coreutils}: sealing the record while keeping
@@ -82,6 +82,8 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.ssh.openssh_port_forwarding", decl_name: "ssh_stdio_forward_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_file_owned_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_file_mode_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_directory_mode_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cp_copy_as_link_command"),
     decl_ref(module_path: "extdeps.exec.command", decl_name: "scp_command"),
     decl_ref(module_path: "extdeps.exec.command", decl_name: "env_prefixed_command"),
     decl_ref(module_path: "extdeps.exec.command", decl_name: "env_prefixed_command_in"),
@@ -407,6 +409,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "gunbc.claim_executor_cli", decl_name: "claim_executor_command"),
     decl_ref(module_path: "gunbc.repo.repo_local_git_config", decl_name: "reconcile_install_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_directory_owned_argv_command"),
+    decl_ref(module_path: "gunbc.harness.harness_shell_job", decl_name: "harness_backstopped_shell_command"),
   ]
   = ArgvCommand { program: program, arguments: arguments }
 
@@ -414,7 +417,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
 // operation with `transport shell { argv: [...] }` in ITS OWN extdeps module (that row is the single
 // authority for the words); the argv transports here take a sealed ArgvCommand -- a ProgramIdentity
 // beside its operand tail. Turning materialized row argv into that carrier is ONE concept, so it is
-// modeled once, here, beside the wall whose single mint it passes through (DESIGN §2: model a concept
+// modeled once, here, beside the wall whose single mint it passes through (gunbc.design_argument::minimize_redundancy: model a concept
 // once and derive every use; a per-tool copy of this match would re-mint the concept per row, and the
 // next row that needs it would make a third copy).
 //
@@ -425,7 +428,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
 // what cannot be a command at all: an argv that materialized nothing, an empty executable token, and
 // any materialization refusal from the kernel -- each a typed Refused naming its cause, so a caller
 // that cannot tell refuses before its leg runs rather than execing a plausible-looking command
-// (DESIGN §5: every path succeeds fully or fails with a typed, located diagnostic; refuse, never
+// (gunbc.design_argument::fail_closed: every path succeeds fully or fails with a typed, located diagnostic; refuse, never
 // widen). Callers keep their own row coordinates and their own domain-flavoured refusal type by
 // naming this one's cause; none may re-spell the words.
 type OperationRowArgvCommand
@@ -473,7 +476,7 @@ fn argv_words(command: ArgvCommand) -> List<String> {
 }
 
 // SshExec now carries the target's RemoteExecCommandInterpretation as a field, not an inferred
-// fact: DESIGN §5 construction-over-validation -- whether the far side hands the RFC 4254 command
+// fact: gunbc.design_argument::fail_closed construction-over-validation -- whether the far side hands the RFC 4254 command
 // string to a POSIX shell is a per-deployment implementation fact (gunbc.remote_shell_command
 // remote_exec_command_interpretation_note), so the caller who knows which deployment it is
 // targeting must declare it rather than command_over_transport guessing from the target string. A
@@ -554,7 +557,7 @@ fn command_over_transport(command: ArgvCommand, transport: CommandTransport) -> 
 // authority, and cited there against IEEE 1003.1-2017 section 2.2.2 -- split(s, delimiter: "'")
 // then join with "'\''" is the same operation as replace(s, "'", "'\''"), so this is a pure
 // internal-implementation swap: byte-identical output, unchanged signature, no diff for any of
-// shell_command_render's 13+ existing consumers. DESIGN §2/§3: one escaping fact, one authority.
+// shell_command_render's 13+ existing consumers. gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority: one escaping fact, one authority.
 
 fn shell_quote(arg: String) -> String {
   posix_single_quote(spelling: arg)
@@ -564,15 +567,15 @@ fn shell_command_render(command: ArgvCommand) -> String {
   join(map(argv_words(command: command), a => shell_quote(arg: a)), " ")
 }
 
-data program_spelling_is_an_observation_claim: String = "WHICH SPELLING OF A PROGRAM A BUILDER CARRIES IS A CLAIM, AND THE TWO FORMS ANSWER DIFFERENT QUESTIONS (still-seal-394, 2026-08-22 -- recorded here once rather than repeated at every row it governs). An ABSOLUTE PATH is a claim that this repository has OBSERVED the target's filesystem, and where that claim is true it is the STRONGER form and the one to prefer: it is what a sudoers NOPASSWD rule can name and what a preflight can test for. extdeps.tools.mkdir, extdeps.tools.chmod, extdeps.tools.stat, extdeps.tools.id, extdeps.tools.chown and extdeps.sudo.elevation carry absolute paths for exactly that reason, each with a consumer that needs the path. PATH RESOLUTION is correct where the host is UNOBSERVED -- a BMC, a fleet member, a runner image nobody has read -- because there an absolute path fabricates a host fact (DESIGN section 5), and it is what the hand-spelled call sites this seal converted were already doing. THE RULE IS NOT 'BARE IS THE SAFE DEFAULT', and an earlier revision of this lane got that backwards in both directions within one afternoon: nine new rows were first written with invented absolute paths on the reasoning that a bare name declines to say which binary, then reverted wholesale on the reasoning that PATH is safer. Neither is the rule. Each row states which question it answers, and a row is only as good as the observation behind it. THE COUNTER-EXAMPLE THAT MAKES THIS LOAD-BEARING, and it is why a wrong absolute path is not merely cosmetic: gunbc.roadmap.roadmap_dashboard_instance_apply carried /usr/bin/chmod both as the program its install step execs and in the required-executable roster its preflight tests, while extdeps.tools.chmod records /bin/chmod for the same fleet -- so the preflight gated a path no sanctioned caller runs, and passed only because those hosts are usrmerged. NEXT-RUNG TRIGGER for every PATH-resolved row this lane landed: a real filesystem observation of the target -- a preflight receipt or a provisioning fact naming the binary -- at which point that row becomes an absolute path with the observation as its citation, and the class climbs from 'we did not look' to 'we looked and this is where it is'."
+data program_spelling_is_an_observation_claim: String = "WHICH SPELLING OF A PROGRAM A BUILDER CARRIES IS A CLAIM, AND THE TWO FORMS ANSWER DIFFERENT QUESTIONS (still-seal-394, 2026-08-22 -- recorded here once rather than repeated at every row it governs). An ABSOLUTE PATH is a claim that this repository has OBSERVED the target's filesystem, and where that claim is true it is the STRONGER form and the one to prefer: it is what a sudoers NOPASSWD rule can name and what a preflight can test for. extdeps.tools.mkdir, extdeps.tools.chmod, extdeps.tools.stat, extdeps.tools.id, extdeps.tools.chown and extdeps.sudo.elevation carry absolute paths for exactly that reason, each with a consumer that needs the path. PATH RESOLUTION is correct where the host is UNOBSERVED -- a BMC, a fleet member, a runner image nobody has read -- because there an absolute path fabricates a host fact (gunbc.design_argument::fail_closed), and it is what the hand-spelled call sites this seal converted were already doing. THE RULE IS NOT 'BARE IS THE SAFE DEFAULT', and an earlier revision of this lane got that backwards in both directions within one afternoon: nine new rows were first written with invented absolute paths on the reasoning that a bare name declines to say which binary, then reverted wholesale on the reasoning that PATH is safer. Neither is the rule. Each row states which question it answers, and a row is only as good as the observation behind it. THE COUNTER-EXAMPLE THAT MAKES THIS LOAD-BEARING, and it is why a wrong absolute path is not merely cosmetic: gunbc.roadmap.roadmap_dashboard_instance_apply carried /usr/bin/chmod both as the program its install step execs and in the required-executable roster its preflight tests, while extdeps.tools.chmod records /bin/chmod for the same fleet -- so the preflight gated a path no sanctioned caller runs, and passed only because those hosts are usrmerged. NEXT-RUNG TRIGGER for every PATH-resolved row this lane landed: a real filesystem observation of the target -- a preflight receipt or a provisioning fact naming the binary -- at which point that row becomes an absolute path with the observation as its citation, and the class climbs from 'we did not look' to 'we looked and this is where it is'."
 
-// Typed ArgvCommand builders (§2): each derives the argv for one tool operation so the opaque flags
+// Typed ArgvCommand builders (gunbc.design_argument::minimize_redundancy): each derives the argv for one tool operation so the opaque flags
 // (dash-f, dash-p, --strip-components, ...) live in ONE place, not hand-spelled per call site. A
 // caller names the operation (curl_download_command, tar_extract_command, ...); the flags are the
 // derived realization, not a magic string the caller must remember. THE BUILDERS THEMSELVES ARE NOT
 // HERE: each is homed in its tool's own extdeps module beside that tool's cited upstream authority,
 // and admitted by name on argv_command above, because a generic hub may not enumerate concrete
-// products (DESIGN §3). This module owns the SHAPE and the seal; the products own their flags.
+// products (gunbc.design_argument::single_authority). This module owns the SHAPE and the seal; the products own their flags.
 
 // THE ENV-PREFIXED INVOCATION LIVES HERE, IN THE CARRIER'S OWN MODULE, AND THE DEPENDENCY RUNS ONE
 // WAY ONLY. env(1) is modeled at extdeps.tools.env -- its binary path, its NAME=VALUE and -u
@@ -589,7 +592,7 @@ data program_spelling_is_an_observation_claim: String = "WHICH SPELLING OF A PRO
 // env_absolute_program and env_path_resolved_program because an absolute path is a claim about an
 // observed filesystem, and both of this builder's call sites target hosts this repository has never
 // read -- a runner image and a machine reached over ssh. Writing /usr/bin/env for them would trade a
-// vague spelling for a confident false host fact (DESIGN section 5). A caller whose target IS
+// vague spelling for a confident false host fact (gunbc.design_argument::fail_closed). A caller whose target IS
 // observed wants the absolute row, and that is a different builder when one is needed, not a flag.
 // THE COMMAND UNDER AN EMPTY ENVIRONMENT, by the ABSOLUTE env: its callers run it on a host whose
 // layout this repository declares (the approval host's /usr/bin), and the point of the wrapper is

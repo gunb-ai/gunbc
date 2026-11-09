@@ -140,7 +140,7 @@ fn infer_receipt_call_primitive(
   Rejected { diagnostics: diagnostics_singleton(d: infer_receipt_runtime_diagnostic(n: node)) }
 }
 
-fn infer_receipt_choose_branch(node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
+fn infer_receipt_choose_branch(node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Optional<Node>> {
   Rejected { diagnostics: diagnostics_singleton(d: infer_receipt_runtime_diagnostic(n: node)) }
 }
 

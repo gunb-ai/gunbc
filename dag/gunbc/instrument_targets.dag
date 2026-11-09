@@ -8,8 +8,6 @@ import gunbc.native_serve_probe_plan {
 }
 import gunbc.target_binding {
   TargetBinding,
-  BehavioralReceiptPlanProducer, BehavioralReceiptCensusProducer,
-  BehavioralReceiptSelftestProducer,
   HeadsReadingDifferentialProducer,
   TypedGraphExclusiveBytesProducer,
   TypedGraphExclusiveBytesFloorSubjectProducer,
@@ -104,31 +102,19 @@ fn typed_graph_exclusive_bytes_floor_subject_label() -> Label {
   }
 }
 
-fn behavioral_receipt_plan_label() -> Label {
-  Label { package: instruments_package() target: TargetName { name: "behavioral-receipt-plan" } }
-}
-
-fn behavioral_receipt_census_label() -> Label {
-  Label { package: instruments_package() target: TargetName { name: "behavioral-receipt-census" } }
-}
-
-fn behavioral_receipt_selftest_label() -> Label {
-  Label { package: instruments_package() target: TargetName { name: "behavioral-receipt-selftest" } }
-}
-
 // THE SELF-HOST INSTRUMENT: THE GENERATION THIS REPOSITORY CAN PERFORM, ASKED AS ONE QUESTION.
 //
 // The seed emits v2's compiler closure, assembles it as a crate, and builds it. Pass or fail is
 // the whole verdict and WHERE IT STOPS IS THE STATUS, so there is no roster of known-good entries
 // beside it: a roster is a second representation of what this instrument demonstrates by running
-// (DESIGN sections 2 and 3), and it drifts exactly when nobody updates it.
+// (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority), and it drifts exactly when nobody updates it.
 // `required_v2_emission_entries` has changed once in repository history and that change was a
 // directory move.
 //
 // WHAT A GREEN DOES NOT ESTABLISH, named so it is not cited for more than it carries. It is
-// EMISSION AND COMPILATION, not behavioural equivalence -- DESIGN section 7 asks that the emitted
-// module also behave as the seed does on a discriminating corpus, and that half lives in the three
-// behavioral-receipt instruments beside this one. Nor is it the second generation: the BUILT binary
+// EMISSION AND COMPILATION, not behavioural equivalence -- gunbc.design_argument::self_hosting asks that the emitted
+// module also behave as the seed does on a discriminating corpus, and that half is carried by the
+// self-host behavioral witnesses, not by this instrument. Nor is it the second generation: the BUILT binary
 // emitting the same closure is the v2 -> v2 boundary, and it refuses today because
 // `v2.compiler.source_root_eval` declares `SourceRootEvalDriver`, whose rendered main answers `census` and
 // `adjudicate` and has no compile mode at all. That refusal is the honest next position and belongs
@@ -406,7 +392,7 @@ fn native_serve_startup_overrun_binding() -> TargetBinding {
   }
 }
 
-// THE UNIX-SOCKET PEER CONTROL (gunbc.plans.converged_ingress M2b): a handler declaring the kernel-attested
+// THE UNIX-SOCKET PEER CONTROL (gunbc.plans.converged_ingress (deleted 2026-11-08) M2b): a handler declaring the kernel-attested
 // peer_user, served natively on a unix socket at a path the host chooses, must answer every connection with the
 // account the host process runs as, never a value the request carries; the same binary launched on TCP must refuse
 // before it binds, because a TCP listener attests no peer. `gunbc test //gunbc/instruments:native-serve-unix`. Run by
@@ -604,7 +590,7 @@ fn heads_reading_differential_target() -> BuildTarget {
 // folds below are the live consumers: `instrument_targets()` folds LABELS and
 // `instrument_bindings()` folds BINDINGS. NEITHER READS A `BuildTarget`, so a `*_target()` earns
 // its place only if some other module reads it -- `self_host_target` does, and several siblings do
-// not. That residue is a DESIGN section 3c dangling set, recorded rather than resolved because
+// not. That residue is a gunbc.design_argument::consumption dangling set, recorded rather than resolved because
 // resolving it is a separate change.
 //
 // The population is deliberately NOT enumerated here: a hand-written list of which ones dangle
@@ -614,18 +600,6 @@ fn heads_reading_differential_target() -> BuildTarget {
 // reason.
 fn instrument_test_target(label: Label) -> BuildTarget {
   BuildTarget { label: label kind: TestRule {} dependencies: [] }
-}
-
-fn behavioral_receipt_plan_target() -> BuildTarget {
-  instrument_test_target(label: behavioral_receipt_plan_label())
-}
-
-fn behavioral_receipt_census_target() -> BuildTarget {
-  instrument_test_target(label: behavioral_receipt_census_label())
-}
-
-fn behavioral_receipt_selftest_target() -> BuildTarget {
-  instrument_test_target(label: behavioral_receipt_selftest_label())
 }
 
 fn self_host_target() -> BuildTarget {
@@ -684,6 +658,18 @@ fn roster_import_sweep_controls_entry() -> String {
 
 fn roster_import_sweep_controls_function() -> String {
   "roster_import_sweep_controls_wire"
+}
+
+// THE REAL ROUTE BEHIND THE CONTROLS' SUPPLIED INPUTS (DESIGN 3, the pairing obligation): the companion derivation, the
+// home closure and the selecting-call entry executed once over the real std sources, each line compared to the value the
+// controls label is supplied (v2.workflow.roster_import_sweep roster_import_sweep_real_route_inhabitance). Its own label so
+// the controls stay on supplied inputs; dispatched on the fleet like the controls.
+fn roster_import_sweep_real_route_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "roster-import-sweep-real-route" } }
+}
+
+fn roster_import_sweep_real_route_binding() -> TargetBinding {
+  TargetBinding { target: roster_import_sweep_real_route_label() producer: CliWireProgramProducer { entry: roster_import_sweep_controls_entry() function: "roster_import_sweep_real_route_wire" } }
 }
 
 fn roster_import_sweep_controls_binding() -> TargetBinding {
@@ -754,6 +740,21 @@ fn cons_tail_recursion_label() -> Label {
 // (gunbc.recurring_failure_mode a_cons_around_a_self_call_rebuilds_the_result_per_element).
 fn cons_tail_recursion_binding() -> TargetBinding {
   TargetBinding { target: cons_tail_recursion_label() producer: NativeClaimProgramProducer { entry: "dag/gunbc/instruments/cons_tail_recursion_native.dag" deadline: native_claim_policy_child_deadline() } }
+}
+
+fn pattern_binder_capture_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "pattern-binder-capture" } }
+}
+
+// The renamed-field-binding fixtures on the emitted path, as a regression guard for the PLAIN (non-rc)
+// renderings only: an arm that renames a field binding must bind the arm's declared name, and a body read of
+// a same-named outer variable must keep the outer value. These fixtures are non-recursive and non-shared, so
+// they do NOT reach the emitter's rc-ref pair branch and do NOT ring gunbc.recurring_failure_mode
+// emitted_pattern_field_bound_under_its_own_name_captures_an_outer_binding -- that class's rc-ref branch is
+// left rung-unclaimed, and the fixture header says why. Mechanical-by-label, executed by host runs, not
+// gate-enrolled.
+fn pattern_binder_capture_binding() -> TargetBinding {
+  TargetBinding { target: pattern_binder_capture_label() producer: NativeClaimProgramProducer { entry: "dag/gunbc/instruments/pattern_binder_capture_native.dag" deadline: native_claim_policy_child_deadline() } }
 }
 
 fn member_home_cost_label() -> Label {
@@ -904,7 +905,7 @@ fn emitted_crate_workspace_binding() -> TargetBinding {
   TargetBinding { target: emitted_crate_workspace_label() producer: EmittedCrateWorkspaceProducer {} }
 }
 
-// EXPLICIT POLICY BUDGET, dated 2026-10-12 (DESIGN section 5): 600000 ms wall after emit and
+// EXPLICIT POLICY BUDGET, dated 2026-10-12 (gunbc.design_argument::fail_closed): 600000 ms wall after emit and
 // build, shared by the five NativeClaimDriver bindings that are not the nest control
 // (native-crypto-vectors, native-app-attest, native-emission-controls,
 // dag-emit-real-grammar-round-trips, native-materialization-store-closure). It is a policy
@@ -1048,7 +1049,7 @@ fn roster_import_sweep_native_entry() -> String {
 // node.dag pass measured about 16m (sunny-bee-153), and the whole point of the native route is that
 // the child does NOT pay that front end; this starts at the policy ceiling and is tightened to
 // 2x the measured child wall -- the instrument's own rows print child_wall_ms per case, so the
-// tightening number comes from the instrument, not from a transcription (DESIGN section 5).
+// tightening number comes from the instrument, not from a transcription (gunbc.design_argument::fail_closed).
 fn roster_import_sweep_native_child_deadline() -> Millisecond {
   millisecond(count: 600000)
 }
@@ -1070,18 +1071,6 @@ fn heads_reading_differential_binding() -> TargetBinding {
     target: heads_reading_differential_label()
     producer: HeadsReadingDifferentialProducer {}
   }
-}
-
-fn behavioral_receipt_plan_binding() -> TargetBinding {
-  TargetBinding { target: behavioral_receipt_plan_label() producer: BehavioralReceiptPlanProducer {} }
-}
-
-fn behavioral_receipt_census_binding() -> TargetBinding {
-  TargetBinding { target: behavioral_receipt_census_label() producer: BehavioralReceiptCensusProducer {} }
-}
-
-fn behavioral_receipt_selftest_binding() -> TargetBinding {
-  TargetBinding { target: behavioral_receipt_selftest_label() producer: BehavioralReceiptSelftestProducer {} }
 }
 
 fn evaluation_store_address_exact_head_binding() -> TargetBinding {
@@ -1134,12 +1123,6 @@ fn self_host_source_roots() -> List<String> {
   ["dag", "src/v2"]
 }
 
-// One modeled subject shared by the three behavioral producers. The host leaf receives this
-// population; it does not decide it.
-fn behavioral_receipt_source_roots() -> List<String> {
-  ["dag", "src/v2"]
-}
-
 // THE ORPHAN, BROUGHT HOME. The host's emitted-crate-workspace instrument read a source-root list
 // that existed only in the host; the instrument's own module never stated it. Stated here so the
 // corpus it measures is the instrument's fact, rendered into the host by
@@ -1168,7 +1151,6 @@ fn instrument_source_roots_rows() -> List<InstrumentSourceRootsRow> {
     InstrumentSourceRootsRow { name: "v2_native_cli" roots: v2_native_cli_source_roots() }
     InstrumentSourceRootsRow { name: "emitted_crate_workspace" roots: emitted_crate_workspace_source_roots() }
     InstrumentSourceRootsRow { name: "bare_reference_channel" roots: bare_reference_channel_source_roots() }
-    InstrumentSourceRootsRow { name: "behavioral_receipt" roots: behavioral_receipt_source_roots() }
   ]
 }
 
@@ -1198,8 +1180,7 @@ fn instrument_targets() -> List<Label> {
 
 fn instrument_bindings() -> List<TargetBinding> {
   [
-    heads_reading_differential_binding(), behavioral_receipt_plan_binding(),
-    behavioral_receipt_census_binding(), behavioral_receipt_selftest_binding(),
+    heads_reading_differential_binding(),
     self_host_binding(), v2_native_cli_binding(), v2_native_frontier_binding(),
     evaluation_store_address_exact_head_binding(), typed_graph_exclusive_bytes_binding(), typed_graph_exclusive_bytes_floor_subject_binding(),
     bare_reference_channel_outcome_binding(),
@@ -1207,7 +1188,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     cardinality_realization_binding(),
     regen_round_cost_binding(),
     credential_acquisition_systemd_rows_binding(),
-    known_red_derivation_binding(), roster_reach_inhabitance_binding(), witness_deferral_freeze_population_binding(), append_chain_ladder_binding(), last_use_move_binding(), exit_return_ownership_binding(), cons_tail_recursion_binding(), member_home_cost_binding(), roster_import_sweep_controls_binding(), roster_rehome_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(), derived_equality_routes_binding(),
+    known_red_derivation_binding(), roster_reach_inhabitance_binding(), witness_deferral_freeze_population_binding(), append_chain_ladder_binding(), last_use_move_binding(), exit_return_ownership_binding(), cons_tail_recursion_binding(), pattern_binder_capture_binding(), member_home_cost_binding(), roster_import_sweep_controls_binding(), roster_import_sweep_real_route_binding(), roster_rehome_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(), derived_equality_routes_binding(),
     compute_dependency_wrong_capture_binding(),
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
@@ -1340,13 +1321,13 @@ fn heads_reading_differential_standing_rendered(
 // THE BARE-REFERENCE CHANNEL'S OWN SUBJECT, EXPECTATIONS, CLASSIFIER AND RENDERING
 // ---------------------------------------------------------------------------------------------
 
-// THE SUBJECT IS A FIXTURE ROOT AND THAT IS WHY THE RED IS AUTHORABLE (DESIGN section 4b).
+// THE SUBJECT IS A FIXTURE ROOT AND THAT IS WHY THE RED IS AUTHORABLE (gunbc.design_argument::guarantee_ladder).
 //
 // The corpus cannot express "this file's bare channel declined" -- the loader writes nothing when
 // it declines, which is the class this instrument governs. But a SOURCE ROOT HANDED TO THE
 // COMPILER can express every condition exactly, one per entry, and a compiler's regression probes
 // are precisely such inputs. So the forbidden behaviour is expressible where this check runs, and
-// declining to enroll it would be the specification-without-execution DESIGN section 5 names.
+// declining to enroll it would be the specification-without-execution gunbc.design_argument::fail_closed names.
 //
 // Hermetic: seven modules, no `std`, nothing imported from `dag` or `src/v2`, so a corpus-wide
 // change cannot move this reading and a moved reading means a moved gate.
@@ -1403,7 +1384,7 @@ fn bare_reference_channel_expectations() -> List<BareReferenceChannelExpectation
 // { "DISABLED" }`. That is fine for exactly as long as the carrier has two arms, and the comment
 // on `bare_channel_reading_agrees` says it is expected to gain a third when the decline carrier
 // lands -- at which point the `else` renders a NEW, DISTINCT state as `DISABLED`, which is the
-// fabricated plausible output DESIGN section 5 forbids. An exhaustive match makes that misrender
+// fabricated plausible output gunbc.design_argument::fail_closed forbids. An exhaustive match makes that misrender
 // UNWRITABLE rather than merely unlikely: a third arm fails to compile here instead of quietly
 // inheriting another state's word. This is also what the host mirror does.
 fn bare_channel_eligibility_rendered(e: BareChannelEligibility) -> String {
@@ -1417,7 +1398,7 @@ fn bare_channel_module_named(modules: List<String>, wanted: String) -> Bool {
   (modules |> filter(m => m == wanted) |> count) > 0
 }
 
-// SET EQUALITY AT IDENTITY GRAIN, NOT A COUNT (DESIGN section 5). A count equality would admit a
+// SET EQUALITY AT IDENTITY GRAIN, NOT A COUNT (gunbc.design_argument::fail_closed). A count equality would admit a
 // gate change that swapped which module was pulled for another, which is exactly the fact this
 // instrument exists to hold.
 fn bare_channel_module_sets_equal(expected: List<String>, observed: List<String>) -> Bool {

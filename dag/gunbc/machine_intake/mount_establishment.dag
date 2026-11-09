@@ -35,7 +35,7 @@ import std.content_hash { ContentHash }
 //
 // This is a workflow-layer carrier, not an extdeps one: an observation produced
 // by this repository is a receipt of OUR attempt, never a fact owned by the
-// observed upstream (DESIGN §3, external upstream decomposition). AMI owns the
+// observed upstream (gunbc.design_argument::external_upstreams, external upstream decomposition). AMI owns the
 // operation contract in extdeps.bmc.megarac; what our polling saw is ours.
 
 type RemoteMediaListing
@@ -65,7 +65,7 @@ type RemoteMediaListingObservation {
 // [requested_at, requested_at) is empty, admits no observation, and the first
 // observation is judged past the deadline. An earlier version of this annotation
 // claimed a budgetless window was unrepresentable, which was rung inflation
-// (§4b) and is withdrawn.
+// (gunbc.design_argument::guarantee_ladder) and is withdrawn.
 //
 // Milliseconds admits zero by its declared range. A second gt_zero refinement
 // would enforce decidable literal constructions but would not establish
@@ -100,7 +100,7 @@ type MountContradiction
 // A TIMEOUT MUST SAY WHAT ESTABLISHED IT, AND MUST NOT INVENT AN OBSERVATION.
 // The unobserved path used to record last_observed_at = window.requested_at,
 // but nothing was observed at the request time -- that is when the request was
-// made. A fabricated plausible timestamp is precisely what DESIGN section 5
+// made. A fabricated plausible timestamp is precisely what gunbc.design_argument::fail_closed
 // forbids, and the witness for that path ignored the field, so the fabrication
 // greened.
 //

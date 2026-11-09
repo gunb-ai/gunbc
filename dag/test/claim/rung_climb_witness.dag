@@ -7,7 +7,7 @@ import gunbc.compile_census_probe { blocking_class_census, total_blocking_census
 // A CLASS BELOW ITS CEILING CANNOT BE HANDED "CANNOT CLIMB FURTHER", AND THE COMPILER, NOT A CENSUS, IS
 // WHAT SAYS SO. gunbc.rung_climb ClimbBlocker has only the two can-climb arms, so a BelowCeiling
 // (gunbc.recurring_failure_mode RungStanding) or a GuaranteeStall carrying CannotClimbFurther has no
-// constructor to be written with (DESIGN section 4b rung 4, section 5 construction over validation).
+// constructor to be written with (gunbc.design_argument::guarantee_ladder rung 4, section 5 construction over validation).
 // The RED is fixture source handed to the compiler: it imports the retired arm and must draw exactly one
 // MissingExport. The GREEN builds the same standing with a surviving arm and must draw no more blocking
 // diagnostics than a module importing the same closure and doing nothing, so the RED reds for the arm

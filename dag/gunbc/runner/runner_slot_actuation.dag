@@ -99,7 +99,7 @@ fn slot_actuation_reading_typed(unit: NonEmptyStr, load_raw: String, file_raw: S
 // the slice as `system-actions\x2drunner.slice`, and the portability alphabet refuses the backslash),
 // so the membership is read through ps(1)'s `unit` column, which procps derives from each process's
 // /proc/<pid>/cgroup: the same kernel fact, in words the edge admits.
-// §3b DIVERGENCE, STATED: gunbc.runner.runner_local_state RunnerSlotBusyStanding answers the same question
+// gunbc.design_argument::conformance DIVERGENCE, STATED: gunbc.runner.runner_local_state RunnerSlotBusyStanding answers the same question
 // with the worker's ProcessIdentity (boot id, pid, start time). This effect needs only the busy/idle
 // answer, so it maps into the payload-free SlotActivityObservation rather than reading a boot id and a
 // start time it would discard; a caller that needs the worker's identity uses that standing.
@@ -257,7 +257,7 @@ fn slot_activation_read_back_holds(r: SlotActuationReading) -> Bool {
 //
 // IT MUST REFUSE WHERE THE STATE IS UNKNOWABLE. A slot whose load could not be read (LoadState=error),
 // that is not installed, has a bad setting, or is masked, is refused here rather than restarted blind:
-// DESIGN section 5, fail closed on Unresolved/Unreadable. The readback then proves the cycle actually
+// gunbc.design_argument::fail_closed, fail closed on Unresolved/Unreadable. The readback then proves the cycle actually
 // happened rather than trusting a systemctl exit code.
 
 type SlotRestartPlan
@@ -268,12 +268,12 @@ type SlotRestartPlan
 // the slot's busy standing BEFORE it touches anything (the RunnerSlotBusyStanding contract, gunbc.runner.
 // runner_local_state). A Detached verdict (registration offline) does NOT imply idle, so the plan refuses a
 // busy slot: only an idle standing permits; a busy standing that could not be read refuses exactly like a
-// running job (§5, could-not-see is never permission); a slot executing a job refuses UNLESS the lost-agent
+// running job (gunbc.design_argument::fail_closed, could-not-see is never permission); a slot executing a job refuses UNLESS the lost-agent
 // reading corroborates that the running job IS the orphaned one (in_progress, runner null, past timeout),
 // where killing it is the remedy.
 //
 // THE BUSY STANDING AND THE RUNNING JOB IDENTITY ARE ONE ATOMIC OBSERVATION, never two inputs. The side-chat
-// review (7a1f96ec, the §5 TOCTOU) showed that taking the busy standing from a fresh read while joining a
+// review (7a1f96ec, the gunbc.design_argument::fail_closed TOCTOU) showed that taking the busy standing from a fresh read while joining a
 // SEPARATELY SUPPLIED job id lets the two describe different moments: observe job X (the boundary says the
 // slot runs X); X finishes and job Y starts; the fresh busy read says busy; the lost evidence still says X
 // is stranded; the plan permits on the stale X and the restart kills Y. Binding them into a single value that
@@ -328,7 +328,7 @@ fn slot_main_process_pid(m: RunnerUnitMainProcess) -> Nat? {
 // THE RESTART READS BACK ONLY ON A PROCESS CYCLE: loaded, active, and a live MainPID that differs from
 // the one this leg recorded BEFORE the restart (or any live pid where there was none before). This is
 // the difference between "systemctl restart returned 0" and "a different agent process is now running"
-// — the rung DESIGN section 4c demands: an actuation return cannot mint convergence.
+// — the rung gunbc.design_argument::source_annotations demands: an actuation return cannot mint convergence.
 fn slot_restart_read_back_holds(r: SlotActuationReading, before: RunnerUnitMainProcess, after_main: RunnerUnitMainProcess) -> Bool {
   let loaded = match r.load { UnitLoaded => true UnitLoadMasked => false UnitLoadNotFound => false UnitLoadBadSetting => false UnitLoadError => false }
   let after_pid = slot_main_process_pid(m: after_main)
@@ -337,7 +337,7 @@ fn slot_restart_read_back_holds(r: SlotActuationReading, before: RunnerUnitMainP
   // MainProcessUnread (the unit was not readable -> we cannot tell a cycle from a no-op) to Absent, and
   // conflating them would let an unread before confirm a restart it never observed. A restart leg may reach
   // the actuation with an unread before only on the roster-driven Detached/Orphaned arms, which never consult
-  // main; could-not-see is therefore never a readback that a restart happened (DESIGN section 5).
+  // main; could-not-see is therefore never a readback that a restart happened (gunbc.design_argument::fail_closed).
   let before_confirms_cycle = match before {
     NoMainProcess => true
     MainProcessUnread { cause: _ } => false
@@ -669,11 +669,11 @@ fn activate_runner_slot_over(target: SshTarget, context: FleetSshExecutionContex
 // the observation grounded the slot on — so the readback can tell a cycled process from a no-op. The
 // caller (runner_lifecycle_realize) supplies it only for a verdict that says detached/orphaned/lost, and
 // supplies `lost` (the same lost-agent observation the decide used). This effect never re-reads a token and
-// never runs blind: it reads the unit, consults busy standing (read_slot_worker_over while active, the §3b
+// never runs blind: it reads the unit, consults busy standing (read_slot_worker_over while active, the gunbc.design_argument::conformance
 // payload-free currency) and REFUSES a busy slot unless the running job is corroborated orphaned, refuses on
 // an unreadable or uninstalled or masked load, restarts once, and re-reads to a process cycle.
 //
-// FRONTIER (DESIGN section 3c, declared not dangling). This is the modeled restart actuation the restart leg
+// FRONTIER (gunbc.design_argument::consumption, declared not dangling). This is the modeled restart actuation the restart leg
 // performs on a permitted verdict. Its CONSUMER is the wet realize arm that calls runner_lifecycle_restart_leg
 // above — on RestartLegPermit it invokes this with the observed main as `before`, and on the SlotActuationOutcome
 // records the readback; it is refused before it can be reached on any Unknown/Unresolved/Unreadable verdict,
@@ -685,7 +685,7 @@ fn restart_runner_slot_over(target: SshTarget, context: FleetSshExecutionContext
 {
   // The busy standing (with the running job id bound to it) is read ONCE, at the boundary, immediately
   // before this mutation -- it is not re-read here beside a separately supplied job id, which is the seam
-  // that let busy and job identity describe different moments (the §5 TOCTOU, side-chat review 7a1f96ec).
+  // that let busy and job identity describe different moments (the gunbc.design_argument::fail_closed TOCTOU, side-chat review 7a1f96ec).
   match read_slot_over(target: target, context: context, unit: unit) {
     SlotReadRefused { reason: why } => SlotActuationRefused { unit: unit, step: "read", reason: why }
     SlotRead { reading: r } => {
@@ -801,7 +801,7 @@ fn slot_registration_file_command(instance: NonEmptyStr) -> List<String> {
 
 fn slot_registration_unreadable(instance: NonEmptyStr, cause: String) -> SlotRegistrationIdentity {
   // THE CAUSE NAMES THE SLOT IT FAILED ON, not merely the typed field. A reader that cannot say which slot
-  // it could not read leaves an operator with nothing to act on, and a §5 diagnostic has to be located:
+  // it could not read leaves an operator with nothing to act on, and a gunbc.design_argument::fail_closed diagnostic has to be located:
   // this string is what reaches the observe receipt and the bracket's withheld-cap verdict verbatim.
   SlotRegistrationUnreadable { instance: instance, cause: join(["slot ", instance as String, ": ", cause], "") }
 }

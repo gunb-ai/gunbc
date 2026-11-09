@@ -8,7 +8,7 @@ import gunbc.roadmap.roadmap_model {
 }
 import gunbc.roadmap.roadmap_status {
   TicketLine, DerivableLine, TicketFields,
-  RedControlExecuted, HandbackDelivered, Signoff, Unsigned,
+  RedControlExecuted, HandbackDelivered,
 }
 import gunbc.roadmap.roadmap_execution_contract {
   ExecutionContractUnspecified, ExecutionContract,
@@ -31,7 +31,7 @@ import gunbc.roadmap.roadmap_program_view {
 
 // SMALL SYNTHETIC BUSINESS WITNESSES for gunbc.roadmap.roadmap_program_view (operator verdict 2026-08-05):
 // every oracle is PLANTED on a hand-authored fixture graph — never copied from the live roadmap
-// tree (DESIGN section 5). Covers acceptance algebra (receipt moves primary constraint; accepted
+// tree (gunbc.design_argument::fail_closed). Covers acceptance algebra (receipt moves primary constraint; accepted
 // mid-chain collapses depth), dependency hold (unmet parents block startability), duplicate receipt
 // and duplicate node identity refusal, in-flight overlay, merged-PR and contract non-acceptance,
 // misspelled finish-line/gate refusal, proposed-plane absence, and derived front/constraint facts
@@ -74,7 +74,6 @@ fn fx_node_custom(
       ExecutionContract { validations: [CargoFmtValidation], extra_capabilities: [], path_scope: PathsUnrestricted, source_roots: PublicWorktreeLayout }
     } else { ExecutionContractUnspecified },
     owner: "fixture",
-    signoff: Unsigned,
     parent: none,
     centering: none,
   }
@@ -93,7 +92,6 @@ fn fx_node(id: String, bound: Bool, sized: Bool) -> RoadmapNode {
       ExecutionContract { validations: [CargoFmtValidation], extra_capabilities: [], path_scope: PathsUnrestricted, source_roots: PublicWorktreeLayout }
     } else { ExecutionContractUnspecified },
     owner: "fixture",
-    signoff: Unsigned,
     parent: none,
     centering: none,
   }
@@ -108,7 +106,6 @@ fn fx_pr_node(id: String) -> RoadmapNode {
     dispatch: Dispatchable { repo: "gunbc", acceptance: PrsMerged },
     execution: ExecutionContract { validations: [CargoFmtValidation], extra_capabilities: [], path_scope: PathsUnrestricted, source_roots: PublicWorktreeLayout },
     owner: "fixture",
-    signoff: Unsigned,
     parent: none,
     centering: none,
   }

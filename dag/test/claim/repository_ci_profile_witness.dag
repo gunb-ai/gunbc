@@ -30,7 +30,7 @@ import gunbc.witness.witness_floor_workflow { WitnessFloorGenerated, WitnessFloo
 import std.types { Bool, List, NonEmptyStr, String, Int }
 import std.measure { byte_size, Minute, minute }
 import std.optional { Optional, Present, Absent }
-import std.algebra { list_head }
+import std.algebra { for_all, list_head, list_map }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.roster_frontier { FrontierRow, FrontierSubject, PathSubject, DeclSubject, frontier_rows_well_formed }
 import extdeps.cron.schedule_model { CronSchedule, Exact, Listed, Wildcard }
@@ -1196,7 +1196,7 @@ test fn the_seal_step_is_invoked_through_the_rows_roots() -> Bool {
 // overlay. The renderer refuses the carrier shape (v2.test.claim.bash_command_fold carries those rows); this
 // control holds the property the mirror's step needs on the bytes the emitter produces, from the isolated
 // statement AND from the emitted mirror workflow. The subshell carrier's own structural shape is a separate,
-// already recorded program row (gunbc.plans.convergence_coverage_program cc-structural-carriers, F37).
+// already recorded program row (gunbc.plans.convergence_coverage_program (deleted 2026-11-08) cc-structural-carriers, F37).
 test fn the_mirrors_compose_step_is_bash_that_parses() -> Bool {
   let assignment = match bash_emit_stmts(statements: [private_root_assign_stmt()], set_e: false) {
     Accepted { value: text, diagnostics: _ } => text
@@ -1849,7 +1849,7 @@ test fn the_publisher_refuses_a_lane_step_that_is_none_of_the_three() -> Bool {
 // THE COMPOSITION AND THE SEED ARE ONE FACT, NOT TWO FIELDS THAT NEED A RULE TO AGREE. An `OverlayIngest`
 // exists only inside the variant that also carries the seed it composes into, so the row that used to be
 // refused -- an overlay with nowhere to land, a publisher sealing a candidate from one composition and
-// admitting it against another -- has no syntax (DESIGN §5: an unwritable state beats a check for it). What
+// admitting it against another -- has no syntax (gunbc.design_argument::fail_closed: an unwritable state beats a check for it). What
 // is left to claim is the projection: an overlay answer always arrives with a seed answer, and the row that
 // builds its own compiler gets neither, however many mirror-shaped rows sit beside it.
 test fn an_overlay_is_never_carried_without_the_seed_it_composes_into() -> Bool {

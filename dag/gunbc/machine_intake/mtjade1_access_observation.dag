@@ -746,7 +746,7 @@ fn sol_session_controller(a: SolSessionAttribution) -> BmcControllerEndpoint {
 }
 
 // WHERE AN IDENTITY OBSERVATION CAME FROM. Modelled, not a provenance string parked in a field named
-// capture_path: a field a later reader would trust must mean exactly one thing (DESIGN §3, "Minimization
+// capture_path: a field a later reader would trust must mean exactly one thing (gunbc.design_argument::single_authority, "Minimization
 // holds only if each fact lives in exactly one place"), and a string saying "witness-supplied" in a path
 // slot is one name with two meanings. The precedent is gunbc.clock_read's ObserverInstantSource, which
 // "travels with every instant so a modeled instant is never read as a measured one": the two identity
@@ -757,7 +757,7 @@ fn sol_session_controller(a: SolSessionAttribution) -> BmcControllerEndpoint {
 // (SMBIOS type-2) transcript MUST name the SOL session it was read through: that attribution was a required
 // field of RecordedSmbiosObservation before this change, and carrying it as an optional field of a shared
 // source would let an omission switch arrival_converge.smbios_session_disagrees off -- a writable false
-// fact (DESIGN §5, "Stronger than catching a wrong state is making it unwritable"). An ipmitool FRU print
+// fact (gunbc.design_argument::fail_closed, "Stronger than catching a wrong state is making it unwritable"). An ipmitool FRU print
 // records no SOL transcript at all, so the FRU capture arm offers no such field to leave empty: the vendor's
 // absence is modelled as absence of the field, not as an absent value.
 type SmbiosEvidenceSource
@@ -809,7 +809,7 @@ fn witness_recorded_smbios_serial(subject: NonEmptyStr, serial: NonEmptyStr, rea
   }
 }
 
-// DISSOLUTION (DESIGN §3c -- these two mints exist only until this dissolves): the ALTRAD8UD FRU and SMBIOS
+// DISSOLUTION (gunbc.design_argument::consumption -- these two mints exist only until this dissolves): the ALTRAD8UD FRU and SMBIOS
 // READERS. Trigger: PR 2's live readers on the actual target, or a committed identity capture for
 // srv13/srv14 -- an ipmitool fru print and a UEFI `smbiosview -t 2` SOL transcript, digest-listed in a
 // SHA256SUMS, minting FruFromCommittedCapture and SmbiosFromCommittedCapture; at that point the witness
@@ -872,7 +872,7 @@ fn provisional_assembly_of_fru(fru: RecordedFruObservation) -> AssemblyManifest 
 
 
 // THE GSG'S ROWS ARE NOT RE-BOUND UNDER mtjade1_ NAMES HERE. An alias adds a second name for one
-// concept (DESIGN §3) and buys nothing: the rear management port and the rail-kit part number are
+// concept (gunbc.design_argument::single_authority) and buys nothing: the rear management port and the rail-kit part number are
 // facts about the PLATFORM that this document states, and nothing observed on unit 1 distinguishes
 // them. The aliases that used to sit here had exactly one reader, a witness asserting x == x, and
 // their existence made two chassis rows LOOK consumed and kept them off the coverage frontier

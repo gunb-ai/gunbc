@@ -53,7 +53,7 @@ import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE SOURCES ARE SUPPLIED AND THE ROUTE IS REAL, which is the split DESIGN section 3 asks for: the
+// THE SOURCES ARE SUPPLIED AND THE ROUTE IS REAL, which is the split gunbc.design_argument::single_authority asks for: the
 // boundary this claim discriminates is native_census_module_resolution, so its INPUT -- source bytes
 // -- is constructed rather than read off a disk this substrate cannot reach, and everything above
 // that boundary is the production fold. native_test_context_from_ingest is the same whole-ingest
@@ -152,7 +152,7 @@ data census_probe_ingest: SourceRootIngest = Cons {
 // v2.workflow.required_floor claim_eval_step_budget_for_identity (run 35464948266, job
 // 105955463881, cause=completed_over_cost_requirement). The cost was never what the claims
 // ASSERT -- each inspects one module's outcome -- it was one call whose result shape is all they
-// read, which is the shape DESIGN section 3's standing rule names: a claim whose evaluation is
+// read, which is the shape gunbc.design_argument::single_authority's standing rule names: a claim whose evaluation is
 // dominated by ONE call it only inspects the result of.
 //
 // THE REPAIR IS TO STOP RECOMPUTING, NOT TO RAISE THE LINE (v2.workflow.floor_pure_producer_share's
@@ -498,7 +498,7 @@ test fn census_cause_groups_key_on_fatal_not_head_holds() -> Bool {
     })
 }
 
-// THE FRONT-END HALF, AT ITS OWN INTERFACE. The rows are SUPPLIED (DESIGN section 3: a witness
+// THE FRONT-END HALF, AT ITS OWN INTERFACE. The rows are SUPPLIED (gunbc.design_argument::single_authority: a witness
 // discriminates at one interface) because the boundary under test is the grouping, and the real
 // front end's production of a head-distinct file refusal is the poison specimen above. Three rows
 // share ONE head and carry TWO fatals: grouped by head they are one group of three, grouped by fatal

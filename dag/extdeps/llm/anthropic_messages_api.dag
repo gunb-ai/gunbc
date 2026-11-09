@@ -25,7 +25,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 // THE SUBJECT IS THE SPECIFICATION, NOT THE COMPANY THAT PUBLISHES IT. The messages/tool-use wire
 // shape is a shared standard with more than one independently governed implementation, so under
-// DESIGN section 3's external-upstream-decomposition rule it gets its own module and each
+// gunbc.design_argument::single_authority's external-upstream-decomposition rule it gets its own module and each
 // implementation cites it — the extdeps.whatwg.html_navigation position, not the
 // extdeps.browser.chromium one. It keeps the publisher's real names because section 3 forbids
 // coining a neutral second name for a concept that already has one; extdeps.llm.anthropic keeps
@@ -75,7 +75,7 @@ data current_api_version: AnthropicApiVersion = {
 // the header and disregard it, and upstream says so in its own words. A request that is accepted
 // is then NOT evidence that the revision asked for is the revision served -- the caller believes it
 // has pinned something, the send succeeds, and nothing anywhere refuses. Silent success against an
-// inert control is the fail-open shape DESIGN section 5 forbids, arriving through a parameter
+// inert control is the fail-open shape gunbc.design_argument::fail_closed forbids, arriving through a parameter
 // rather than through a failure arm.
 //
 // SO THE AXIS IS A COPRODUCT AND EVERY CONFORMANCE ROW MUST STATE ITS ARM. Modeling it as one Bool,

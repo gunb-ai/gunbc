@@ -205,7 +205,7 @@ fn ingested_staging_inferred_tree_from_source(source: String) -> Outcome<Inferre
 }
 
 // Takes the ARROW, not the source: the emit claims supply the rostered
-// ingested_classical_not_arrow_with_body rather than re-ingesting per claim (DESIGN §3 witness
+// ingested_classical_not_arrow_with_body rather than re-ingesting per claim (gunbc.design_argument::single_authority witness
 // rule). ingested_classical_not_arrow_has_match_holds is the inhabitance claim over that same served
 // arrow, whose producer runs the real tokenize->parse->normalize->resolve->find-arrow path.
 fn ingested_emit_shape_frontier_tree_from_arrow(arrow: Outcome<ResolvedTree>) -> Outcome<InferredTree> {
@@ -257,7 +257,7 @@ fn ingested_wet_emit_eval_composed_tree_from_source(source: String) -> Outcome<I
 // branch's required-floor run refused the three emit claims below on exactly that (the two
 // staging claims' FAIL rows name marginal_cpu_ns 488209894/473955219 against limit_ms=500; the
 // canonical claim went INTERRUPTED-BEFORE-VERDICT at cpu_at_least=501ms). The pipeline is a pure
-// function of a module constant, so the per-claim recompute is DESIGN §2 redundant work and the
+// function of a module constant, so the per-claim recompute is gunbc.design_argument::demand_before_materialization redundant work and the
 // repair is the cross-claim pure tier's WARM arm (v2.workflow.floor_pure_producer_share), never
 // a raised ceiling. Warm and not claim-forced by the ceiling arithmetic: a claim-forced fill
 // happens inside the first touching claim's fold, and a ~370ms fill leaves under 130ms of
@@ -385,7 +385,7 @@ fn ingested_classical_not_choose_branch(
   node: Node,
   _value: RuntimeValue,
   _env: EvaluationEnvironment
-) -> Outcome<Node> {
+) -> Outcome<Optional<Node>> {
   outcome_rejected(
     d: ingested_classical_not_diagnostic(reason: ^ingested_classical_not_branch_miss, node: node)
   )

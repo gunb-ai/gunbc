@@ -14,14 +14,14 @@ import std.dissolution { unbound_dissolution }
 // its stages in host_layout, took instance_root as a String, and decided "who owns this entry" by which
 // directory it happened to be found in.
 //
-// WHY THIS IS A NEW HOME AND NOT AN EXISTING ONE (DESIGN section 2, DFS first). None of the neighbours
+// WHY THIS IS A NEW HOME AND NOT AN EXISTING ONE (gunbc.design_argument::minimize_redundancy, DFS first). None of the neighbours
 // carries a queue or claim contract:
 //   - product.capacity.event_chain / pool_events / gunbc.fabric.fabric_event_log: a hash-linked LOG under a
 //     head expectation. One total order, no per-entry state, no claim. Spool entries are independent and each
 //     is claimed exactly once.
 //   - std.durable_exclusive_hold: held/free of ONE keyed slot with an owner and a release. A queue entry is
 //     created, claimed once and then terminal; it is never freed and re-held. Stretching Hold over that
-//     lifecycle would give "release" two meanings (DESIGN section 3, meaning fork).
+//     lifecycle would give "release" two meanings (gunbc.design_argument::single_authority, meaning fork).
 //   - std.durable_compare_and_set: judges the GENERATION of a payload slot. These records have no payload and
 //     rename(2) is the election, so a CAS body would be a format change.
 //   - std.observation: occurrences for reports, not a state machine.
@@ -47,7 +47,7 @@ type SpoolKind
 // claim the_host_spool_stage_enum_is_importable_today holds it red-to-flip. The cut is the implementation PR,
 // because its consumers (durable_handoff_host, spool_stall, roadmap_attempt_exit_spool, roadmap_belt_actuate,
 // roadmap_launch_deployment_observe/_receipt) are effect code, which this model-only lane was ruled not to touch
-// (parent jolly-hawk-60, design approval). The change node://adhoc-ec4fbad6-dec deletes HostSpoolStage in the same change (DESIGN section 3).
+// (parent jolly-hawk-60, design approval). The change node://adhoc-ec4fbad6-dec deletes HostSpoolStage in the same change (gunbc.design_argument::single_authority).
 type SpoolRole
   = RolePending
   | RoleHandedOff
@@ -79,7 +79,7 @@ type SpoolStage {
 
 // HOW EXACTLY-ONE-CONSUMER IS ESTABLISHED for a spool. ExclusiveByRename: the claim rename elects one winner, so any
 // number of drainers is safe. ExclusiveByAgreement: no election exists; safety rests on a fact OUTSIDE the corpus
-// that there is one consumer. That is rung 1 of the guarantee ladder (DESIGN 4b, mitigation, by agreement), never
+// that there is one consumer. That is rung 1 of the guarantee ladder (gunbc.design_argument::guarantee_ladder, mitigation, by agreement), never
 // structural, and it is declared with the consumer it assumes and the trigger that ends the assumption.
 // consumer: PublicationServiceUnit names gunbc.live_deploy.spec deployment_publication_service_unit_name, a systemd
 // service unit; drainers_allowed is the count the assumption covers. TRIGGER: drainers observed above drainers_allowed
@@ -486,8 +486,8 @@ fn spool_requeue_assess(kind: SpoolKind, observed: SpoolEntryState, evidence: Sp
   }
 }
 
-// FRONTIERS (declared, consumed by a named later change, DESIGN 3c). Annotations, not rows: nothing reads them, and
-// a String row that no fold reads is the dead data of DESIGN 4c. The implementation change is node://adhoc-ec4fbad6-dec
+// FRONTIERS (declared, consumed by a named later change, gunbc.design_argument::consumption). Annotations, not rows: nothing reads them, and
+// a String row that no fold reads is the dead data of gunbc.design_argument::source_annotations. The implementation change is node://adhoc-ec4fbad6-dec
 // (cut HostSpoolStage, move its 7 consumer modules, wire live_deploy.emit); it gives each a typed carrier.
 //  - answers/: the reply record keyed to a request (publication and attempt-unit spools). Trigger: the publication
 //    spool migrates onto spool_queue; the answer store is then modeled as its own sealed face.

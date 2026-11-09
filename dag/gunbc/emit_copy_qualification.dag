@@ -17,7 +17,7 @@ import std.nat { Nat }
 // Expectations are DERIVED from axis relations plus existing cost facts (v2.lens.cost is the
 // symbolic-cost authority; v2.lens.complexity_accumulator_copy owns the copied-accumulator
 // shape); where a fact is missing the derivation REFUSES (ExpectationUnderivable), never
-// assumes zero. Constant-time is not zero-cost (DESIGN §6 bare-minimum-cost): a redundant
+// assumes zero. Constant-time is not zero-cost (gunbc.design_argument::how_to_work bare-minimum-cost): a redundant
 // Rc::clone fails clone minimality even though its realized cost is a refcount bump.
 // ── Axis-mapping documentation (operator-approved dedup, 2026-08-31) ─────────────────────────
 // The ruling's §4 names ten "control shapes" that overlap its ownership-pattern list almost 1:1.

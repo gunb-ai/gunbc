@@ -14,11 +14,11 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// WITNESSES FOR THE ACQUIRER'S EXACTNESS VERDICT (gunbc.plans.source_layout_authority R9: the read set
+// WITNESSES FOR THE ACQUIRER'S EXACTNESS VERDICT (gunbc.plans.source_layout_authority (deleted 2026-11-08) R9: the read set
 // of a compile is checked against the requested closure, exactly). The verdict is a pure fold over a
 // completed acquisition's receipt -- the entries, the members with the requests each one's own text made,
 // and the keys of the files that were read -- so every control here states the receipt a host would hand
-// the fold and asserts the verdict; nothing reads a file. The pairing obligation (DESIGN section 3, a
+// the fold and asserts the verdict; nothing reads a file. The pairing obligation (gunbc.design_argument::witness_one_interface, a
 // witness discriminates at one interface) is carried by the native layout and compile verbs, which run
 // the same acquirer over the real repository: deleting that integration would not fail THIS file, which is
 // why it names no repository path.
@@ -196,7 +196,7 @@ test fn a_member_is_named_by_the_host_path_it_was_read_from() -> Bool {
 // a member's import lines now, so an import line that names no module must REFUSE the member rather than
 // be skipped: a skipped import is a NARROWED CLOSURE -- the module the line meant to name is never read,
 // its declarations never reach the universe, and the run ends green over a smaller population than the
-// source asked for. DESIGN section 5 forbids exactly that arm, and narrowing is the worse direction
+// source asked for. gunbc.design_argument::fail_closed forbids exactly that arm, and narrowing is the worse direction
 // because it terminates in a pass rather than in a visible over-scan. (Review 64474 item 5; the controls
 // of 2026-09-12 were written against the text scan that this reading replaced.)
 //
@@ -386,7 +386,7 @@ test fn qualified_module_reference_does_read_named_module() -> Bool {
 // type, names a module, and is requested -- exactly as the same spelling would if the classifier had called it
 // unbound. So the classifier's new arm costs the acquirer no read (it lost none: this claim is green with the
 // fix reverted too) while the roster stops treating the name as free. The two consumers ask different questions
-// of one position fact; neither re-decides it (DESIGN 3).
+// of one position fact; neither re-decides it (gunbc.design_argument::single_authority).
 test fn a_binder_type_head_still_requests_its_module() -> Bool {
   request_verdict_of(
     content: "module v2.test.subject\n\nfn subject(x: Bool, w: x.T) -> Bool {\n  true\n}\n",
@@ -730,7 +730,7 @@ fn dag_nested_let_match_subject() -> String {
 //
 // THE SUBJECT IS acquisition_test_markers: which declarations of one member carry the authored `test`
 // marker, asked of a member whether or not it can be lowered. The paired control is the member read above:
-// a service declaration whose realization is set aside refuses ordinary normalization, so the same text
+// a type declaring one variant twice refuses ordinary normalization, so the same text
 // that member_read_of refuses is the text whose markers are still read here -- the route is asserted, not
 // only the answer. And the refusal arm is the other half: a file that does not parse is a refusal, never
 // an empty list, because an unread file read as unmarked is the absent-reads-as-false class the channel
@@ -774,11 +774,9 @@ fn first_content_named(declarations: List<AcquisitionMarkedDeclaration>, name: S
   }
 }
 
-fn service_with_a_marked_claim() -> String {
+fn unnormalizable_with_a_marked_claim() -> String {
   concat(
-    "module v2.test.subject\nservice s.Svc {\n  operation Op {\n    requires none\n    input { n: Int }\n",
-    "    output { ok: Bool from \"exit_success\" }\n    transport shell { argv: [\"true\"] }\n",
-    "    exit {\n      0 => Unit\n      nonzero => String \"failed\"\n    }\n  }\n}\n",
+    "module v2.test.subject\ntype T = A | A\n",
     "test fn a_claim() -> Bool { true }\n"
   )
 }
@@ -796,8 +794,8 @@ test fn a_member_that_does_not_parse_is_refused_not_read_as_unmarked() -> Bool {
 }
 
 test fn a_member_ordinary_normalization_refuses_still_has_its_markers_read() -> Bool {
-  starts_with(s: member_read_of(content: service_with_a_marked_claim()), prefix: refused_member_prefix())
-    && markers_of(content: service_with_a_marked_claim()) == "read|a_claim"
+  starts_with(s: member_read_of(content: unnormalizable_with_a_marked_claim()), prefix: refused_member_prefix())
+    && markers_of(content: unnormalizable_with_a_marked_claim()) == "read|a_claim"
 }
 
 // ---- the marked declaration's content, paired beside its name ----------------------------------------------
@@ -806,7 +804,7 @@ test fn a_member_ordinary_normalization_refuses_still_has_its_markers_read() -> 
 // declaration, the structural identity of its parse (v2.std.node content_hash), not its name. A job that
 // pairs only names reads a claim whose body was rewritten as preserved. The content is the declaration's
 // structure and nothing else: moving it, respacing it or annotating it does not change it (annotations ride
-// beside the tree, DESIGN 4c), and changing what it says does. The paired route is markers_of above: the names
+// beside the tree, gunbc.design_argument::source_annotations), and changing what it says does. The paired route is markers_of above: the names
 // and the content are one read of one parse.
 
 fn claim_with(body: String) -> String {

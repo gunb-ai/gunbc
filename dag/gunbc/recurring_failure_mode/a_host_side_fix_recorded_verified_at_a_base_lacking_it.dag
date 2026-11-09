@@ -1,0 +1,35 @@
+module gunbc.recurring_failure_mode.a_host_side_fix_recorded_verified_at_a_base_lacking_it
+
+import std.types { NonEmptyStr }
+import std.decl_ref { decl_ref }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
+
+data a_host_side_fix_recorded_verified_at_a_base_lacking_it: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_host_side_fix_recorded_verified_at_a_base_lacking_it" as NonEmptyStr,
+  rung: RungUnread { cause: CeilingNotStated },
+
+  receipts: [
+    "**a change to the host-side component is recorded as verified by a run whose subject tree contains it and whose EXECUTING BYTES do not** (INVALID STATE: a heal round is launched from the PR head, so every reviewer reading the command sees the fix present in the tree under test, while the round rebuilds the host component from the recorded BASE commit and re-executes that image. The verdict is then credited to the head.)",
+
+    "THE MECHANISM IS NOT A BUG AND MUST NOT BE SOLD AS ONE, AND THE NAMES OF ITS PARTS ARE THE USEFUL PART: the round's one-time bootstrap copies the host crate directory (the constant naming it is STAGE0_CRATE_REL) out of the BASE commit's tree, the seed build compiles THAT source, and the seed-handoff decision re-execs the installed image before the generation loop ever runs. Base-is-authority is load-bearing -- the subject must not be able to author its own base -- so the repair is not to weaken it. The defect is purely in WHERE THE VERDICT IS ATTRIBUTED.",
+
+    "THE TELL, AND IT IS THE ONLY ONE THAT WORKS: FINGERPRINT THE RUNNING BYTES AT THE INSTANT THE VERDICT IS TAKEN. Source-level review cannot see this, because the source under review is genuinely correct; only the binary's identity -- path, mtime, and a marker string that the change itself introduced -- distinguishes a run that tested the fix from a run that tested what the base already had.",
+
+    "A DIAGNOSTIC THAT PRINTS IS NOT EVIDENCE THAT THE CODE AROUND IT RAN: in the specimen, one cgroup-diagnostic line printed while the line FOUR LINES ABOVE IT in the same source file printed nothing, and both are unconditional. The explanation is that the printed line came from the base's build of that file and the silent line existed only in the head's build; a reviewer reasoning from 'the binary is instrumented, the instrumentation printed, therefore my instrumentation ran' is reasoning from a shared file name.",
+
+    "THE CONFIRMATION THAT LOOKS LIKE A RESULT: the refused measurement reproduced to within a few megabytes across an unmodified build and a build carrying the candidate fix, while the slot's own charged memory stayed within a few megabytes of a value the fix was predicted to lower by gigabytes. An unchanged number is the finding, and it reads as a failed experiment rather than as an experiment that did not run.",
+
+    "**THE CLASS IS WIDER THAN HEAL ROUNDS: anywhere a process re-derives and re-execs a component from a recorded base, that component's head-side changes are outside the measurement, and the harness reports the subject's identity, not the executor's.** A CI heal run against a base on main has the same shape for every host-side change, which means such a change cannot be verified by the lane that guards it until it is already on that base -- an ordering fact about verification, not a property of the change.",
+
+    "THE BOUNDARY WITH THE SEED-SUBJECT-ROLE CLASS, WHICH IS ADJACENT AND ALREADY CONTROLLED: there, the seed value flowed into the SUBJECT and was closed by a refusal that names the leak. Here the host component's own CODE is re-derived from the base and no refusal applies, because nothing illegal happens -- the round is doing exactly what it was designed to do with base bytes. Existing role discrimination is therefore not a net under this.",
+
+    "THE REMEDY, AND IT HAS A COST THAT MUST BE STATED: verify a host-side change against a base that CARRIES it (a base whose bytes include the fix, with the same subject), and print the executor fingerprint in the same breath as the verdict. Where that is impossible, the honest state is unverified-at-recorded-base, and the PR body must say so rather than cite a run that cannot see the change.",
+
+    "WHY IT IS AUTHORED RATHER THAN FIXED HERE: making the host component's participation in a round attributable to the head -- by fingerprinting it into the witness, or by refusing a round whose host bytes differ from the subject's -- is a change to the round's authority model, which this row does not have the standing to make. What it can do is refuse the reading in which a head-side diff was tested because the head was checked out.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "v2.workflow.regen_convergence_transaction", decl_name: "regen_admit_generation_begin"),
+    decl_ref(module_path: "v2.workflow.regen_convergence_transaction", decl_name: "regen_admit_candidate_generation"),
+  ],
+}

@@ -35,8 +35,8 @@ pub use crate::std_coercion::{
 };
 use crate::std_decl_ref::DeclField::{NamedField, TypeParameter, WholeDeclaration};
 pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq, DeclField, DeclarationRef};
-pub use crate::std_literal_elaboration::IntegerExtent;
-use crate::std_literal_elaboration::IntegerExtent::UnboundedIntegers;
+pub use crate::std_integer_interval::IntegerExtent;
+use crate::std_integer_interval::IntegerExtent::UnboundedIntegers;
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 use crate::std_syntax::AlgebraFieldKind::AlgAdd;
@@ -4143,7 +4143,7 @@ continue;
                                 match Rc::new({
                                     let mut __result = Vec::new();
                                     for g in kernel_grounding_rows().iter().cloned() {
-                                        if match g.extent.clone() {
+                                        if match (*g.extent.clone()).clone() {
                                             IntegerExtent::UnboundedIntegers => true,
                                             _ => false,
                                         } {

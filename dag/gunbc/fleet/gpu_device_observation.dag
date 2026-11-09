@@ -1,0 +1,147 @@
+module gunbc.fleet.gpu_device_observation
+
+import std.types { Bool, List, NonEmptyStr }
+import std.optional { Absent, Present }
+import std.measure { Watt, watt }
+import product.host_identity { HostIdentity, host_identity_eq }
+import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
+import extdeps.pci.identity { PciAddress }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4 }
+import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_04, gpu_board_05, gpu_board_06 }
+
+// WHAT THE INSTALLED GPU DEVICES REPORT: the observed half of a card, kept apart from the three facts it is
+// easily confused with (operator review of 2026-11-07, "keep four power facts distinct"):
+//   1. the vendor's specification -- extdeps.gpu.* board rows (rated board power, published ranges);
+//   2. the device's observed capability -- THIS module: the GPU UUID, the PCI function it enumerated at,
+//      and the power-limit range the driver reports for it;
+//   3. the desired setting -- gunbc.serving.gpu_power_state_policy (the operator's decision);
+//   4. the applied setting -- a readback of the current limit for this device in this boot, which is read
+//      by gunbc.fleet.gpu_power_cap_converge (gunbc.plans.gpu_card_host_program (deleted 2026-11-08) N10's
+//      readback). The power_limit_current below is NOT that readback: it is what nvidia-smi reported as the
+//      limit in force at the instant of the enumeration reading, and it is not by itself evidence that any
+//      unit applied it. What is installed to make a cap survive a boot, and what that mechanism claims in
+//      its own journal, are the two observations of gunbc.fleet.gpu_power_cap_boot_state.
+//
+// THE BINDING RUNS FROM THE PHYSICAL ASSET TO THE DEVICE, never the reverse. A board is an inventory asset
+// (gunbc.fleet.fleet_physical_inventory); a device is what one driver enumeration shows on that board. A
+// multi-GPU board (the A16) has several devices, so a board may own several rows here; NVIDIA states that
+// board serials can be shared across the GPUs of one board and that enumeration indexes can change, so a
+// device is addressed by its UUID and located by its PCI address, and no index is carried.
+//
+// INSTALLED IS NOT AVAILABLE. A card can sit in its host and not enumerate (no power cable, a disabled
+// slot, a fault). That is GpuDeviceNotEnumerated, an ordinary state with its cause, never an absent row.
+//
+// STANDING. Each row is a transcription of one reading, dated and named in read_on; no receipt module
+// reads nvidia-smi's identity and power fields on a schedule yet, so these are not sealed receipts. A row
+// is superseded by a newer reading of the same board, and the earlier reading stays in the inventory
+// annotation as history (fleet_physical_inventory gpu_board_01_asset keeps the 2026-10-30 reading).
+type GpuDeviceObservation
+  = GpuDeviceEnumerated {
+      host: HostIdentity
+      board: PhysicalAssetIdentity
+      gpu_uuid: NonEmptyStr?
+      pci_address: PciAddress
+      power_limit_minimum: Watt
+      power_limit_maximum: Watt
+      power_limit_current: Watt
+      // The factory default limit nvidia-smi reports as power.default_limit -- what the card comes back with
+      // after a boot or a reset with nobody touching it. It is a separate fact from power_limit_current:
+      // current says what is in force now (which may be somebody's cap) and default says what would be in
+      // force if nobody had capped it, and it is the only thing that can tell a cap apart from a card that
+      // simply never needed one. Optional because a survey that recorded min/max/current without a default
+      // leaves this unread -- see the srv4 rows -- and an unread default is reported as unread.
+      power_limit_default: Watt?
+      read_on: NonEmptyStr
+    }
+  | GpuDeviceNotEnumerated {
+      host: HostIdentity
+      board: PhysicalAssetIdentity
+      cause: NonEmptyStr
+      read_on: NonEmptyStr
+    }
+
+fn gpu_device_observation_board(o: GpuDeviceObservation) -> PhysicalAssetIdentity {
+  match o {
+    GpuDeviceEnumerated { host: _, board: b, gpu_uuid: _, pci_address: _, power_limit_minimum: _, power_limit_maximum: _, power_limit_current: _, power_limit_default: _, read_on: _ } => b
+    GpuDeviceNotEnumerated { host: _, board: b, cause: _, read_on: _ } => b
+  }
+}
+
+fn gpu_device_observation_host(o: GpuDeviceObservation) -> HostIdentity {
+  match o {
+    GpuDeviceEnumerated { host: h, board: _, gpu_uuid: _, pci_address: _, power_limit_minimum: _, power_limit_maximum: _, power_limit_current: _, power_limit_default: _, read_on: _ } => h
+    GpuDeviceNotEnumerated { host: h, board: _, cause: _, read_on: _ } => h
+  }
+}
+
+// The default limit, which is what a cap has to be compared against before the word "capped" means anything.
+// Absent for a board whose default was never read, and for a board that does not enumerate at all.
+fn gpu_device_observation_default(o: GpuDeviceObservation) -> Watt? {
+  match o {
+    GpuDeviceEnumerated { host: _, board: _, gpu_uuid: _, pci_address: _, power_limit_minimum: _, power_limit_maximum: _, power_limit_current: _, power_limit_default: d, read_on: _ } => d
+    GpuDeviceNotEnumerated { host: _, board: _, cause: _, read_on: _ } => Absent
+  }
+}
+
+// THE CURRENT READING OF EACH INSTALLED BOARD WHOSE DEVICE HAS BEEN LOOKED FOR.
+data current_gpu_device_observations: List<GpuDeviceObservation> = [
+  // srv1's Max-Q, re-read 2026-11-08 (nvidia-smi: name, UUID, serial 1793526019879, VBIOS 98.02.6A.00.03,
+  // pci.bus_id, power.limit/min/max/default, ecc off, 97887 MiB, driver 580.178.04). It enumerated at
+  // 0005:01:00.0 on 2026-11-07 and at 0001:01:00.0 on 2026-11-08; whether the card was moved or the
+  // platform renumbered its root-port domains is NOT read, so the inventory keeps the slot unread. Its
+  // current limit (300 W) equals its own default limit, so nothing is capped on this board.
+  GpuDeviceEnumerated {
+    host: operator_host_srv1,
+    board: gpu_board_04,
+    gpu_uuid: Present { value: "GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3" as NonEmptyStr },
+    pci_address: "0001:01:00.0" as PciAddress,
+    power_limit_minimum: watt(count: 250),
+    power_limit_maximum: watt(count: 325),
+    power_limit_current: watt(count: 300),
+    power_limit_default: Present { value: watt(count: 300) },
+    read_on: "2026-11-08 srv1 nvidia-smi" as NonEmptyStr,
+  },
+  // srv1's Workstation card, re-read 2026-11-08: it NOW ENUMERATES -- UUID
+  // GPU-96b749dc-e2ea-5b6f-2e45-ee868b1a9750, serial 1792726101367, VBIOS 98.02.81.00.07, 97887 MiB, ECC
+  // off, range 150..600 W, current limit 300 W with a default limit of 600 W. The 2026-11-07
+  // GpuDeviceNotEnumerated row (installed without its power cable, operator statement) is superseded; its
+  // history stays on gpu_board_01_asset in gunbc.fleet.fleet_physical_inventory.
+  GpuDeviceEnumerated {
+    host: operator_host_srv1,
+    board: gpu_board_01,
+    gpu_uuid: Present { value: "GPU-96b749dc-e2ea-5b6f-2e45-ee868b1a9750" as NonEmptyStr },
+    pci_address: "0004:01:00.0" as PciAddress,
+    power_limit_minimum: watt(count: 150),
+    power_limit_maximum: watt(count: 600),
+    power_limit_current: watt(count: 300),
+    power_limit_default: Present { value: watt(count: 600) },
+    read_on: "2026-11-08 srv1 nvidia-smi" as NonEmptyStr,
+  },
+  // srv4's RTX 2000 Ada pair, 2026-11-07 15:35Z (fleet survey, jolly-moth-61). The UUIDs were not read.
+  GpuDeviceEnumerated {
+    host: operator_host_srv4,
+    board: gpu_board_05,
+    gpu_uuid: Absent,
+    pci_address: "0000:01:00.0" as PciAddress,
+    power_limit_minimum: watt(count: 30),
+    power_limit_maximum: watt(count: 70),
+    power_limit_current: watt(count: 40),
+    power_limit_default: Absent,
+    read_on: "2026-11-07 srv4 nvidia-smi (fleet survey)" as NonEmptyStr,
+  },
+  GpuDeviceEnumerated {
+    host: operator_host_srv4,
+    board: gpu_board_06,
+    gpu_uuid: Absent,
+    pci_address: "0004:01:00.0" as PciAddress,
+    power_limit_minimum: watt(count: 30),
+    power_limit_maximum: watt(count: 70),
+    power_limit_current: watt(count: 40),
+    power_limit_default: Absent,
+    read_on: "2026-11-07 srv4 nvidia-smi (fleet survey)" as NonEmptyStr,
+  },
+]
+
+fn current_gpu_device_observations_of(board: PhysicalAssetIdentity) -> List<GpuDeviceObservation> {
+  filter(current_gpu_device_observations, o => physical_asset_identity_eq(a: gpu_device_observation_board(o: o), b: board))
+}

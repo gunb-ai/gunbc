@@ -97,6 +97,36 @@ fn lower_branch(condition: Node, then_arm: Node, else_arm: Node) -> Node {
   )
 }
 
+// THE ELSE-LESS Branch: two positionals, the condition and the arm that runs when it holds, the ELSE SLOT
+// ABSENT at the v2.std.node table (branch_slot_target answers Absent for BranchElseSlot). This is the one
+// encoding of "no else": no synthesized empty else arm, no Unit value standing in for the missing path. A
+// consumer that needs a value here refuses with its own else-less reason; the consumer that owes no value --
+// the statement Bind below -- reads the arm and moves on.
+fn lower_branch_else_less(condition: Node, then_arm: Node) -> Node {
+  node_synthetic(
+    kind: ComputationNode { behavior: Branch },
+    children: [
+      Edge { label: Positional, target: condition, declaration: NotADeclaration },
+      Edge { label: Positional, target: then_arm, declaration: NotADeclaration }
+    ]
+  )
+}
+
+// THE STATEMENT Bind: value and body, the BINDER SLOT ABSENT at the v2.std.node table (bind_slot_target
+// answers Absent for BindBinderSlot). It sequences a non-binding statement with what follows it: the value is
+// evaluated for its effects and NOTHING RECEIVES IT, and the body is what runs next. The absent binder is the
+// one encoding of "no binder"; no reserved discard name stands in for one, so nothing can collide with or
+// capture a name, and resolve opens no scope for it.
+fn lower_bind_statement(value: Node, body_binding: Node) -> Node {
+  node_synthetic(
+    kind: ComputationNode { behavior: Bind },
+    children: [
+      Edge { label: Positional, target: value, declaration: NotADeclaration },
+      Edge { label: Positional, target: body_binding, declaration: NotADeclaration }
+    ]
+  )
+}
+
 fn lower_loop(value: Node, bound: Node) -> Node {
   node_synthetic(
     kind: ComputationNode { behavior: Loop },

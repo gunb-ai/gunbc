@@ -1,0 +1,54 @@
+module test.claim.runner.runner_host_baked_release_build_witness
+
+import std.types { Bool, NonEmptyStr, String, List }
+import std.optional { Optional, Present, Absent }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.posix.identity { PosixOwnerNames }
+import extdeps.access.posix { FileMode, PermissionBits, file_mode_of_octal_text }
+import gunbc.host.host_effect_realize { TreeMetadataEntry, TreeRegular, TreeLink, tree_staged_archive_disagreement }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE BAKED RELEASE ARCHIVE'S READBACK at its interface (gunbc.host.host_effect_realize
+// tree_staged_archive_disagreement), over supplied tar listings. The real producer -- the staged install, the
+// reproducible pack, this readback over the archive tar really lists, and the export host's sha256 -- is executed by
+// test.claim.runner.runner_host_baked_release_build_wet_witness, which is this boundary's pairing claim.
+
+// THE ARCHIVE READBACK'S OWN REDS, over supplied listings at its interface (the real listing is the positive claim
+// above): a member owned by anyone but 0/0 is named; a group-writable member disagrees with the shared mode; a line
+// that is not a member refuses rather than being skipped. The agreeing listing is the positive control.
+fn staged_manifest() -> List<TreeMetadataEntry> {
+  [
+    TreeMetadataEntry { path: "dag/a.dag", kind: TreeRegular, mode: mode_of(text: "644"), owner: PosixOwnerNames { user: "gunbc-runner" as NonEmptyStr, group: "gunbc-runner" as NonEmptyStr } },
+    TreeMetadataEntry { path: "dag/link", kind: TreeLink { link_target: "a.dag" as NonEmptyStr }, mode: mode_of(text: "777"), owner: PosixOwnerNames { user: "gunbc-runner" as NonEmptyStr, group: "gunbc-runner" as NonEmptyStr } },
+  ]
+}
+
+fn mode_of(text: String) -> FileMode {
+  match file_mode_of_octal_text(text: text) {
+    Present { value: m } => m
+    Absent => FileMode { owner: PermissionBits { read: false, write: false, execute: false }, group: PermissionBits { read: false, write: false, execute: false }, other: PermissionBits { read: false, write: false, execute: false }, setuid: false, setgid: false, sticky: false }
+  }
+}
+
+fn listing_of(lines: List<String>) -> String {
+  concat(join(lines, "\n"), "\n")
+}
+
+data member_root: String = "drwxr-xr-x 0/0           0 1970-01-01 00:00:00 ./"
+data member_dag: String = "drwxr-xr-x 0/0           0 1970-01-01 00:00:00 ./dag/"
+data member_a: String = "-rw-r--r-- 0/0           9 1970-01-01 00:00:00 ./dag/a.dag"
+data member_link: String = "lrwxrwxrwx 0/0           0 1970-01-01 00:00:00 ./dag/link -> a.dag"
+
+test fn the_archive_readback_names_a_foreign_owner_a_widened_mode_and_an_unread_line() -> Bool {
+  let agrees = tree_staged_archive_disagreement(archive_owner: "root" as NonEmptyStr, staged: staged_manifest(), listing: listing_of(lines: [member_root, member_dag, member_a, member_link]))
+  let foreign = tree_staged_archive_disagreement(archive_owner: "root" as NonEmptyStr, staged: staged_manifest(), listing: listing_of(lines: [member_root, member_dag, "-rw-r--r-- 1000/1000       9 1970-01-01 00:00:00 ./dag/a.dag", member_link]))
+  let widened = tree_staged_archive_disagreement(archive_owner: "root" as NonEmptyStr, staged: staged_manifest(), listing: listing_of(lines: [member_root, member_dag, "-rw-rw-r-- 0/0           9 1970-01-01 00:00:00 ./dag/a.dag", member_link]))
+  let unread = tree_staged_archive_disagreement(archive_owner: "root" as NonEmptyStr, staged: staged_manifest(), listing: listing_of(lines: [member_root, "garbage", member_a, member_link]))
+  let materialized = tree_staged_archive_disagreement(archive_owner: "root" as NonEmptyStr, staged: staged_manifest(), listing: listing_of(lines: [member_root, member_dag, member_a, "-rw-r--r-- 0/0           9 1970-01-01 00:00:00 ./dag/link"]))
+  (match agrees { Absent => true  Present { value: _w } => false })
+    && (match foreign { Present { value: w } => string_contains(s: w, pattern: "1000/1000")  Absent => false })
+    && (match widened { Present { value: w } => string_contains(s: w, pattern: "dag/a.dag")  Absent => false })
+    && (match unread { Present { value: w } => string_contains(s: w, pattern: "garbage")  Absent => false })
+    && (match materialized { Present { value: w } => string_contains(s: w, pattern: "dag/link")  Absent => false })
+}

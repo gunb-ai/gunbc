@@ -8,7 +8,7 @@ module gunbc.machine_intake.mtcollins1_ui_status_asset_observation
 // so the words in the status cell come from a code-to-label lookup inside a JavaScript asset the
 // BMC itself serves. Until those bytes are in this repository, any claim about what the controller
 // displays for status 0 is a bet -- and gunbc.machine_intake.megarac_media_attach keeps it typed as
-// one (MegaRacStatusZeroRowGuessedNotPresenting, DESIGN.md §4d: "An inference is a bet: typed as a
+// one (MegaRacStatusZeroRowGuessedNotPresenting, gunbc.design_argument::epistemic_humility: "An inference is a bet: typed as a
 // bet, neither deleted nor promoted"). This module is the read that lets that bet be settled by
 // evidence instead of by an operator's memory of a page: it fetches the page, derives the asset
 // paths the page itself names, fetches the asset, and extracts the smallest span of AMI code that
@@ -32,7 +32,7 @@ module gunbc.machine_intake.mtcollins1_ui_status_asset_observation
 // NOTHING HERE CONTACTS A HOST. The pure surface is this file; the sequence that opens a session,
 // GETs, and closes it is mtcollins1_ui_status_asset_observation_wet further down, and it is the
 // operation's only caller (an operation with no caller is the dangling pub this repository refuses
-// to merge -- see the §3c frontier note beside the fan operations in extdeps.bmc.megarac).
+// to merge -- see the gunbc.design_argument::consumption frontier note beside the fan operations in extdeps.bmc.megarac).
 
 import std.types { Bool, Int, List, NonEmptyStr, String, string_non_empty }
 import std.algebra { collection_count_shape, collection_join_shape, list_push }
@@ -42,15 +42,16 @@ import std.content_hash { Sha256Digest, sha256_hex_digest, sha256_hex_of_text }
 import std.measure { ByteSize, byte_size, byte_size_count, Second, second, second_count }
 // The window octets are carried as a type that cannot hold a non-byte, so the shared base16
 // encoder can render them and no local encoder is needed.
-import std.integer { QualifiedOctets, QualifiedOctetsReady, QualifiedOctetsRefused, uint8_octets_of_ints }
-import extdeps.numeric.base16 { base16_encode_lower }
-import extdeps.whatwg.html_attribute_tokenization { HtmlAttributeReference, HtmlAttributeQuoting, AttributeValueDoubleQuoted, AttributeValueSingleQuoted, AttributeValueUnquoted, html_attribute_references_folded, html_attribute_references, html_fold_ascii_octet, html_octet_at, html_octets_match_at, html_octets_index_from }
+import std.integer { QualifiedOctets, QualifiedOctetsReady, QualifiedOctetsRefused, qualified_octet_members, uint8_octets_of_ints }
+import extdeps.numeric.base16 { base16_decode_any, base16_encode_lower }
+import extdeps.whatwg.html_attribute_tokenization { HtmlAttributeReference, HtmlAttributeQuoting, AttributeValueDoubleQuoted, AttributeValueSingleQuoted, AttributeValueUnquoted, html_attribute_references_folded, html_attribute_references, html_fold_ascii_octet, html_octet_at, html_octets_match_at, html_octets_index_from, html_octets_count_walk }
+import extdeps.uri_reference { ResolvedPathReference, EmptyPathReference, PathReferenceCarriesQueryOrFragment, PathReferenceCarriesSchemeOrAuthority, uri_resolve_path_reference }
 import std.optional { Absent, Present }
 
 import extdeps.bmc.megarac
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemReadRefused, FilesystemReadSucceeded, filesystem_read_outcome }
 import extdeps.shell
-import extdeps.tools.curl { classify_curl_http_code_after_newline, CurlWroteHttpStatus, CurlWroteNoHttpStatus }
+import extdeps.tools.curl { classify_curl_http_code_after_newline, CurlWroteHttpStatus, CurlWroteNoHttpStatus, CurlCookieJarParsed, CurlCookieJarMalformedRow, curl_cookie_jar_read }
 import gunbc.host.managed_host { managed_host_binding_for }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.machine_intake.fan_observe { FanObserveAdmitted, FanObserveRefused, fan_observe_admission, fan_observe_refusal_text }
@@ -155,6 +156,7 @@ type MegaRacUiAssetPathRefusal
   | AssetPathCarriesSchemeOrAuthority { path: String }
   | AssetPathIsNotJavaScript { path: String }
   | AssetPathNotFromTheCommittedPage { path: String }
+  | AssetPathReferenceIsEmpty { path: String }
 
 type MegaRacUiAssetPathAdmission
   = AdmittedUiAssetPath { path: NonEmptyStr }
@@ -316,7 +318,7 @@ fn ui_asset_refs_of_page(page_text: String) -> List<NonEmptyStr> {
 // The guard a caller's path must pass. Shape first (each failure names itself), then membership in
 // the derived set -- so an invented path that also looks perfectly ordinary is still refused, which
 // is the case the reviewer asked to see go red.
-fn ui_asset_path_shape_refusal(path: String) -> MegaRacUiAssetPathRefusal? {
+fn ui_path_walk_refusal(path: String) -> MegaRacUiAssetPathRefusal? {
   let path_octets = ui_octets_of(path)
   let slash = 47
   let dot_dot = ui_octets_of("..")
@@ -332,10 +334,19 @@ fn ui_asset_path_shape_refusal(path: String) -> MegaRacUiAssetPathRefusal? {
   } else if (match ui_octets_index_of(path_octets, [colon]) { Present { value: _ } => true Absent => false }) || (match ui_octets_index_of(path_octets, [slash, slash]) { Present { value: _ } => true Absent => false }) {
     // a colon could be a port or a scheme; a double slash could be an authority. Neither is a path.
     Present { value: AssetPathCarriesSchemeOrAuthority { path: path } }
-  } else if !ui_string_ends_with(path, megarac_ui_asset_path_suffix) {
-    Present { value: AssetPathIsNotJavaScript { path: path } }
   } else {
     Absent
+  }
+}
+
+fn ui_asset_path_shape_refusal(path: String) -> MegaRacUiAssetPathRefusal? {
+  match ui_path_walk_refusal(path) {
+    Present { value: cause } => Present { value: cause }
+    Absent => if !ui_string_ends_with(path, megarac_ui_asset_path_suffix) {
+      Present { value: AssetPathIsNotJavaScript { path: path } }
+    } else {
+      Absent
+    }
   }
 }
 
@@ -348,6 +359,213 @@ fn ui_asset_path_admission(path: String, derived: List<NonEmptyStr>) -> MegaRacU
       RefusedUiAssetPath { path: path, cause: AssetPathNotFromTheCommittedPage { path: path } }
     }
   }
+}
+
+// A page's reference is resolved against the page's OWN request path (RFC 3986 section 5.2,
+// extdeps.uri_reference) before the guard above sees it: "js/x.js" on "/" is "/js/x.js", and "../x.js"
+// clamps at the root. The guard and the derived-set membership then judge the RESOLVED path, so the
+// string-prefix rule that refused every page-relative reference (run 42417780361) is gone, and what
+// still refuses is a scheme, an authority, a query, a fragment or an empty reference.
+fn ui_ref_admission(base_path: String, raw: String, derived: List<NonEmptyStr>) -> MegaRacUiAssetPathAdmission {
+  match uri_resolve_path_reference(base_path: base_path, reference: raw) {
+    ResolvedPathReference { path: resolved } => ui_asset_path_admission(path: resolved, derived: derived)
+    EmptyPathReference => RefusedUiAssetPath { path: raw, cause: AssetPathReferenceIsEmpty { path: raw } }
+    PathReferenceCarriesQueryOrFragment => RefusedUiAssetPath { path: raw, cause: AssetPathCarriesQueryOrFragment { path: raw } }
+    PathReferenceCarriesSchemeOrAuthority => RefusedUiAssetPath { path: raw, cause: AssetPathCarriesSchemeOrAuthority { path: raw } }
+  }
+}
+
+// The derived set: every reference the page names, resolved. A reference that does not resolve to a
+// path contributes nothing (it is refused by name in ui_ref_admission).
+fn ui_resolved_refs(base_path: String, refs: List<NonEmptyStr>) -> List<NonEmptyStr> {
+  fold(refs, init: [], f: (acc, raw) => match uri_resolve_path_reference(base_path: base_path, reference: raw as String) {
+    ResolvedPathReference { path: resolved } => list_push(acc, resolved as NonEmptyStr)
+    EmptyPathReference => acc
+    PathReferenceCarriesQueryOrFragment => acc
+    PathReferenceCarriesSchemeOrAuthority => acc
+  })
+}
+
+// ---------------------------------------------------------------------------------------------
+// DIAGNOSTICS: WHAT THE READ SAW, PRINTED SO THE NEXT READ CAN BE PLANNED FROM IT.
+// A printed span is checked against the session's own values first (the CSRF token and every cookie),
+// and a non-printable octet withholds it: that check, not a claim about a character set, is what makes
+// printing admissible (a token is spelled in the characters a vendor name uses).
+// ---------------------------------------------------------------------------------------------
+
+data megarac_ui_ref_print_limit: Int = 64
+
+data megarac_ui_occurrence_window_limit: Int = 8
+
+data megarac_ui_occurrence_window_after: Int = 512
+
+data megarac_ui_occurrence_window_radius: Int = 256
+
+data megarac_ui_status_dotted_token_octets: List<Int> = ui_octets_of(".redirection_status")
+
+data megarac_ui_status_bare_token_octets: List<Int> = ui_octets_of("redirection_status")
+
+// Literal probes read beside the status token: how the viewer compares the status and where its label
+// text and catalog path come from. Authored constants, never fetched slices.
+type MegaRacUiProbe {
+  name: NonEmptyStr
+  octets: List<Int>
+}
+
+data megarac_ui_probes: List<MegaRacUiProbe> = [
+  MegaRacUiProbe { name: "zero_branch" as NonEmptyStr, octets: ui_octets_of("\"0\"==r") },
+  MegaRacUiProbe { name: "label_key_call" as NonEmptyStr, octets: ui_octets_of("a.t(\"lmedia:") },
+  MegaRacUiProbe { name: "lmedia_namespace" as NonEmptyStr, octets: ui_octets_of("lmedia:") },
+  MegaRacUiProbe { name: "locales_path" as NonEmptyStr, octets: ui_octets_of("locales/") },
+  MegaRacUiProbe { name: "i18n" as NonEmptyStr, octets: ui_octets_of("i18n") },
+  MegaRacUiProbe { name: "load_path" as NonEmptyStr, octets: ui_octets_of("loadPath") },
+  MegaRacUiProbe { name: "res_get_path" as NonEmptyStr, octets: ui_octets_of("resGetPath") },
+  MegaRacUiProbe { name: "status_concat" as NonEmptyStr, octets: ui_octets_of(megarac_ui_constructed_key_call_text) },
+  MegaRacUiProbe { name: "fallback_lng" as NonEmptyStr, octets: ui_octets_of("fallbackLng") },
+  MegaRacUiProbe { name: "default_ns" as NonEmptyStr, octets: ui_octets_of("defaultNs") },
+  MegaRacUiProbe { name: "lng_option" as NonEmptyStr, octets: ui_octets_of("lng:") },
+  MegaRacUiProbe { name: "ns_option" as NonEmptyStr, octets: ui_octets_of("ns:") },
+  MegaRacUiProbe { name: "i18n_init" as NonEmptyStr, octets: ui_octets_of("i18n.init(") },
+  MegaRacUiProbe { name: "set_lng" as NonEmptyStr, octets: ui_octets_of("setLng") },
+  MegaRacUiProbe { name: "preload" as NonEmptyStr, octets: ui_octets_of("preload") },
+  MegaRacUiProbe { name: "select_lang" as NonEmptyStr, octets: ui_octets_of("select_lang") },
+  MegaRacUiProbe { name: "lang_en_us" as NonEmptyStr, octets: ui_octets_of("en-us") },
+]
+
+data megarac_ui_data_main_name_octets: List<Int> = ui_octets_of("data-main")
+
+fn ui_guarded_text(text: String, session_values: List<List<Int>>) -> String {
+  let octets = ui_octets_of(text)
+  if count(session_values) == 0 {
+    "withheld_nothing_to_check_against"
+  } else if any(octets, o => o < 32 || o > 126) {
+    "withheld_non_printable"
+  } else if any(session_values, value => ui_octets_contain(hay: octets, needle: value)) {
+    "withheld_matches_session_value"
+  } else {
+    text
+  }
+}
+
+fn ui_ref_diagnostic_line(index: Int, raw: String, base_path: String, session_values: List<List<Int>>) -> NonEmptyStr {
+  let resolved = match uri_resolve_path_reference(base_path: base_path, reference: raw) {
+    ResolvedPathReference { path: path } => ui_guarded_text(text: path, session_values: session_values)
+    EmptyPathReference => "empty_reference"
+    PathReferenceCarriesQueryOrFragment => "query_or_fragment"
+    PathReferenceCarriesSchemeOrAuthority => "scheme_or_authority"
+  }
+  join(["ref index=", megarac_ui_count_text(index), " raw=", ui_guarded_text(text: raw, session_values: session_values), " resolved=", resolved], "") as NonEmptyStr
+}
+
+fn ui_page_diagnostic_lines(path: String, page_text: String, refs: List<NonEmptyStr>, session_values: List<List<Int>>) -> List<NonEmptyStr> {
+  let ref_lines = refs |> take(megarac_ui_ref_print_limit) |> enumerate |> map(p => ui_ref_diagnostic_line(index: p.first, raw: p.second as String, base_path: path, session_values: session_values))
+  let data_main = html_attribute_references(ui_octets_of(page_text), [megarac_ui_data_main_name_octets]) |> take(megarac_ui_ref_print_limit) |> enumerate |> map(p =>
+    join(["data_main index=", megarac_ui_count_text(p.first), " value=", ui_guarded_text(text: ui_octets_text(p.second.value), session_values: session_values)], "") as NonEmptyStr)
+  concat(ref_lines, data_main)
+}
+
+fn ui_window_hex(octets: List<Int>, start: Int, token_length: Int, session_values: List<List<Int>>) -> String {
+  let length = count(octets)
+  let from = if start < megarac_ui_occurrence_window_radius { 0 } else { start - megarac_ui_occurrence_window_radius }
+  let stop_raw = start + token_length + megarac_ui_occurrence_window_after
+  let stop = if stop_raw > length { length } else { stop_raw }
+  let window = ui_octets_slice(octets, from, stop - from)
+  if count(session_values) == 0 {
+    "withheld_nothing_to_check_against"
+  } else {
+    // No per-window session check: the caller withholds every window when the WHOLE asset holds a value,
+    // and a value inside a window is inside the asset, so such a check here would be unreachable.
+    match uint8_octets_of_ints(values: window) {
+      QualifiedOctetsRefused { observed: _ } => "withheld_not_octets"
+      QualifiedOctetsReady { value: qualified } => join(["from=", megarac_ui_count_text(from), " hex=", base16_encode_lower(octets: qualified)], "")
+    }
+  }
+}
+
+fn ui_window_or_withheld(withheld: Bool, octets: List<Int>, start: Int, token_length: Int, session_values: List<List<Int>>) -> String {
+  if withheld { "withheld_asset_holds_session_value" } else { ui_window_hex(octets: octets, start: start, token_length: token_length, session_values: session_values) }
+}
+
+fn ui_probe_lines(probe: MegaRacUiProbe, scan: MegaRacUiNeedleScan?, withheld: Bool, octets: List<Int>, session_values: List<List<Int>>) -> List<NonEmptyStr> {
+  let found = match scan {
+    null => 0
+    s => s.count
+  }
+  let at_list = match scan {
+    null => []
+    s => s.starts
+  }
+  concat(
+    [join(["probe name=", probe.name as String, " count=", megarac_ui_count_text(found)], "") as NonEmptyStr],
+    at_list |> enumerate |> map(p =>
+      join(["probe_window name=", probe.name as String, " index=", megarac_ui_count_text(p.first), " at=", megarac_ui_count_text(p.second), " ", ui_window_or_withheld(withheld: withheld, octets: octets, start: p.second, token_length: count(probe.octets), session_values: session_values)], "") as NonEmptyStr),
+  )
+}
+
+// Host-native search: contains and split run in Rust over the String, so no per-octet interpreter step
+// touches the asset. Counts are non-overlapping and leftmost (str::split), equal to html_octets_count_walk and html_octets_first_starts;
+// start offsets are UTF-8 octet offsets, taken from the octet length of the first `limit` pieces only.
+type MegaRacUiNeedleScan {
+  count: Int
+  starts: List<Int>
+}
+
+fn ui_text_needle_scan(text: String, needle: List<Int>, limit: Int) -> MegaRacUiNeedleScan {
+  let needle_text = ui_octets_text(needle)
+  if count(needle) == 0 || !string_contains(s: text, pattern: needle_text) {
+    MegaRacUiNeedleScan { count: 0, starts: [] }
+  } else {
+    let pieces = split(s: text, delimiter: needle_text)
+    let hits = count(pieces) - 1
+    MegaRacUiNeedleScan { count: hits, starts: ui_split_starts(pieces |> take(if hits < limit { hits } else if limit < 0 { 0 } else { limit }), count(needle)) }
+  }
+}
+
+fn ui_split_starts(pieces: List<String>, needle_length: Int) -> List<Int> {
+  fold(pieces |> enumerate, init: [], f: (acc, p) =>
+    list_push(acc, if p.first == 0 {
+      count(ui_octets_of(p.second as String))
+    } else {
+      match acc |> get(p.first - 1) {
+        null => 0
+        before => before + needle_length + count(ui_octets_of(p.second as String))
+      }
+    }))
+}
+
+// Occurrence counts of both spellings and a bounded hex window around the first few occurrences of the
+// bare spelling (which contains the dotted one). Counts are non-overlapping, windows are bounded by
+// megarac_ui_occurrence_window_limit * (radius + after + token), whatever the asset holds.
+fn ui_status_token_diagnostic_lines(asset_text: String, session_values: List<List<Int>>) -> List<NonEmptyStr> {
+  let octets = ui_octets_of(asset_text)
+  let length = count(octets)
+  let bare_length = count(megarac_ui_status_bare_token_octets)
+  // The two spellings, the probes and every session value are searched per needle, natively. The session check runs
+  // over the WHOLE asset, not the window: a value straddling a window edge would pass both windows' own
+  // checks and the two printed halves would reassemble it.
+  let probe_count = count(megarac_ui_probes)
+  let scans = concat(concat([megarac_ui_status_dotted_token_octets, megarac_ui_status_bare_token_octets], megarac_ui_probes |> map(q => q.octets)), session_values) |> map(n => ui_text_needle_scan(text: asset_text, needle: n, limit: megarac_ui_occurrence_window_limit))
+  let dotted = scans |> get(0)
+  let bare = scans |> get(1)
+  let dotted_count = match dotted {
+    null => 0
+    s => s.count
+  }
+  let bare_count = match bare {
+    null => 0
+    s => s.count
+  }
+  let starts = match bare {
+    null => []
+    s => s.starts
+  }
+  let asset_holds_secret = any(scans |> skip(2 + probe_count), s => s.count > 0)
+  let head = join(["status_token asset_octets=", megarac_ui_count_text(length), " dotted=", megarac_ui_count_text(dotted_count), " bare=", megarac_ui_count_text(bare_count)], "") as NonEmptyStr
+  let status_lines = starts |> enumerate |> map(p =>
+    join(["status_window index=", megarac_ui_count_text(p.first), " at=", megarac_ui_count_text(p.second), " ", ui_window_or_withheld(withheld: asset_holds_secret, octets: octets, start: p.second, token_length: bare_length, session_values: session_values)], "") as NonEmptyStr)
+  let probe_lines = flat_map(megarac_ui_probes |> enumerate, q =>
+    ui_probe_lines(probe: q.second, scan: scans |> get(2 + q.first), withheld: asset_holds_secret, octets: octets, session_values: session_values))
+  concat(concat([head], status_lines), probe_lines)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -478,6 +696,169 @@ fn megarac_ui_status_excerpt_of_asset(
             asset_sha256,
             feeding_site
           )
+        }
+      }
+    }
+  }
+}
+
+// THE CONSTRUCTED-KEY SHAPE. The viewer builds status 0's label key by concatenation:
+// "0"==r&&(...a.t("lmedia:status_"+r)) -- the key is NOT a literal, so the literal-label rule above
+// (ExcerptFound) rightly refuses this asset. This is a different shape with its own arm: it records
+// where the branch is and where the key prefix sits, and states the operand is a variable. It carries
+// no vendor text; the text lives in the catalog the key names. Offsets are UTF-8 octet offsets found
+// by native split, bounded to the branch (the window up to the next comparison against r).
+// A CANDIDATE, never an established binding. The marker is located by a raw split over the whole
+// asset, so it may sit inside a string or a comment; a from-start lexical scan of the bundle is not
+// affordable and would refuse the real one. The span is balanced under the restricted grammar of
+// ui_group_scan, not a proven JS branch. Catalog membership of lmedia:status_0 does NOT upgrade
+// marker_context: an attestation that status 0 maps to a label needs one more evidence edge that
+// establishes the executable binding (an extraction of the enclosing expression, or an observed
+// runtime lookup).
+type MegaRacUiMarkerContext
+  = | MarkerContextNotEstablished
+
+type MegaRacUiConstructedKey
+  = ConstructedKeyCandidate {
+      asset_path: NonEmptyStr
+      asset_sha256: Sha256Digest
+      marker_offset: Int
+      key_prefix_offset: Int
+      key_prefix_text: NonEmptyStr
+      operand_text: NonEmptyStr
+      candidate_span_length: Int
+      marker_context: MegaRacUiMarkerContext
+    }
+  | ConstructedKeyRefused { cause: MegaRacUiConstructedKeyRefusal }
+
+type MegaRacUiConstructedKeyRefusal
+  = ConstructedKeyZeroBranchAbsent
+  | ConstructedKeyAbsentInBranch { marker_offset: Int }
+  | ConstructedKeyUnsupportedLexicalForm { marker_offset: Int }
+  | ConstructedKeyNoGuardGroup { marker_offset: Int }
+  | ConstructedKeyBranchExceedsWindow { marker_offset: Int  window_limit: Int }
+  | ConstructedKeyGroupUnclosed { marker_offset: Int }
+  | ConstructedKeyDigestUnreadable { hex: String }
+
+data megarac_ui_zero_branch_text: String = "\"0\"==r"
+
+data megarac_ui_constructed_key_call_head_text: String = "a.t(\""
+
+data megarac_ui_constructed_key_call_text: String = join([megarac_ui_constructed_key_call_head_text, "lmedia:status_\"+r)"], "")
+
+data megarac_ui_constructed_key_prefix_text: NonEmptyStr = "lmedia:status_" as NonEmptyStr
+
+data megarac_ui_branch_window_text_limit: Int = 400
+
+data megarac_ui_zero_branch_guard_text: String = "&&("
+
+fn megarac_ui_constructed_key_line(key: MegaRacUiConstructedKey) -> NonEmptyStr {
+  match key {
+    ConstructedKeyCandidate { asset_path: _, asset_sha256: _, marker_offset: branch, key_prefix_offset: at, key_prefix_text: prefix, operand_text: operand, candidate_span_length: window, marker_context: _ } =>
+      join(["constructed_key candidate marker_offset=", megarac_ui_count_text(branch), " key_prefix_offset=", megarac_ui_count_text(at), " prefix=", prefix as String, " operand=", operand as String, " candidate_span_length=", megarac_ui_count_text(window), " marker_context=not_established literal=false"], "") as NonEmptyStr
+    ConstructedKeyRefused { cause: ConstructedKeyZeroBranchAbsent } => "constructed_key refused zero_branch_absent" as NonEmptyStr
+    ConstructedKeyRefused { cause: ConstructedKeyAbsentInBranch { marker_offset: at } } =>
+      join(["constructed_key refused absent_in_branch marker_offset=", megarac_ui_count_text(at)], "") as NonEmptyStr
+    ConstructedKeyRefused { cause: ConstructedKeyUnsupportedLexicalForm { marker_offset: at } } =>
+      join(["constructed_key refused unsupported_lexical_form marker_offset=", megarac_ui_count_text(at)], "") as NonEmptyStr
+    ConstructedKeyRefused { cause: ConstructedKeyNoGuardGroup { marker_offset: at } } =>
+      join(["constructed_key refused no_guard_group marker_offset=", megarac_ui_count_text(at)], "") as NonEmptyStr
+    ConstructedKeyRefused { cause: ConstructedKeyGroupUnclosed { marker_offset: at } } =>
+      join(["constructed_key refused group_unclosed marker_offset=", megarac_ui_count_text(at)], "") as NonEmptyStr
+    ConstructedKeyRefused { cause: ConstructedKeyBranchExceedsWindow { marker_offset: at, window_limit: limit } } =>
+      join(["constructed_key refused branch_exceeds_window marker_offset=", megarac_ui_count_text(at), " window_limit=", megarac_ui_count_text(limit)], "") as NonEmptyStr
+    ConstructedKeyRefused { cause: ConstructedKeyDigestUnreadable { hex: _ } } => "constructed_key refused digest_unreadable" as NonEmptyStr
+  }
+}
+
+type MegaRacUiGroupScan
+  = GroupClosed { close: Int  call_at: Int }
+  | GroupOpen
+  | GroupUnsupported
+
+// ONE lexer for the zero branch: a quote-tracking scan of the parenthesized group. It does not model JS.
+// Outside a string a slash (regex or comment) or a backtick (template) is a form this scan cannot
+// follow, so the scan refuses rather than guess; the call text counts only where the same scan is
+// outside a string. call_at is -1 until the call is seen.
+fn ui_group_scan(octets: List<Int>, call: List<Int>, at: Int, depth: Int, quote: Int, call_at: Int) -> MegaRacUiGroupScan {
+  match octets |> get(at) {
+    Absent => GroupOpen
+    Present { value: c } => if quote != 0 {
+      if c == 92 {
+        ui_group_scan(octets, call, at + 2, depth, quote, call_at)
+      } else if c == quote {
+        ui_group_scan(octets, call, at + 1, depth, 0, call_at)
+      } else {
+        ui_group_scan(octets, call, at + 1, depth, quote, call_at)
+      }
+    } else if c == 47 || c == 96 {
+      GroupUnsupported
+    } else if c == 34 || c == 39 {
+      ui_group_scan(octets, call, at + 1, depth, c, call_at)
+    } else if c == 40 {
+      ui_group_scan(octets, call, at + 1, depth + 1, 0, call_at)
+    } else if c == 41 {
+      if depth == 1 {
+        GroupClosed { close: at, call_at: call_at }
+      } else {
+        ui_group_scan(octets, call, at + 1, depth - 1, 0, call_at)
+      }
+    } else if c == 97 && call_at < 0 && ui_octets_slice(octets, at, count(call)) == call {
+      ui_group_scan(octets, call, at + 1, depth, 0, at)
+    } else {
+      ui_group_scan(octets, call, at + 1, depth, 0, call_at)
+    }
+  }
+}
+
+fn megarac_ui_constructed_key_of_asset(asset_text: String, asset_path: NonEmptyStr) -> MegaRacUiConstructedKey {
+  let asset_digest_hex = sha256_hex_of_text(text: asset_text)
+  let marker_length = count(ui_octets_of(megarac_ui_zero_branch_text))
+  match sha256_hex_digest(hex: asset_digest_hex) {
+    Absent => ConstructedKeyRefused { cause: ConstructedKeyDigestUnreadable { hex: asset_digest_hex } }
+    Present { value: asset_sha256 } => {
+      let pieces = split(s: asset_text, delimiter: megarac_ui_zero_branch_text)
+      match pieces |> get(0) {
+        Absent => ConstructedKeyRefused { cause: ConstructedKeyZeroBranchAbsent }
+        Present { value: before } => match pieces |> get(1) {
+          Absent => ConstructedKeyRefused { cause: ConstructedKeyZeroBranchAbsent }
+          Present { value: after_text } => {
+            let zero_branch_at = count(ui_octets_of(before))
+            let room = string_length(s: after_text)
+            let window = substring(s: after_text, start: 0, end: if room < megarac_ui_branch_window_text_limit { room } else { megarac_ui_branch_window_text_limit })
+            let window_octets = ui_octets_of(window)
+            let guard_length = count(ui_octets_of(megarac_ui_zero_branch_guard_text))
+            let guarded = substring(s: window, start: 0, end: if string_length(s: window) < guard_length { string_length(s: window) } else { guard_length }) == megarac_ui_zero_branch_guard_text
+            let scan = if guarded {
+              ui_group_scan(window_octets, ui_octets_of(megarac_ui_constructed_key_call_text), guard_length - 1, 0, 0, 0 - 1)
+            } else {
+              GroupOpen
+            }
+            match scan {
+              GroupOpen => if !guarded {
+                ConstructedKeyRefused { cause: ConstructedKeyNoGuardGroup { marker_offset: zero_branch_at } }
+              } else if string_length(s: window) < megarac_ui_branch_window_text_limit {
+                ConstructedKeyRefused { cause: ConstructedKeyGroupUnclosed { marker_offset: zero_branch_at } }
+              } else {
+                ConstructedKeyRefused { cause: ConstructedKeyBranchExceedsWindow { marker_offset: zero_branch_at, window_limit: megarac_ui_branch_window_text_limit } }
+              }
+              GroupUnsupported => ConstructedKeyRefused { cause: ConstructedKeyUnsupportedLexicalForm { marker_offset: zero_branch_at } }
+              GroupClosed { close: group_close, call_at: call_at } => if call_at < 0 {
+                ConstructedKeyRefused { cause: ConstructedKeyAbsentInBranch { marker_offset: zero_branch_at } }
+              } else {
+                ConstructedKeyCandidate {
+                  asset_path: asset_path,
+                  asset_sha256: asset_sha256,
+                  marker_offset: zero_branch_at,
+                  key_prefix_offset: zero_branch_at + marker_length + call_at + count(ui_octets_of(megarac_ui_constructed_key_call_head_text)),
+                  key_prefix_text: megarac_ui_constructed_key_prefix_text,
+                  operand_text: "r" as NonEmptyStr,
+                  candidate_span_length: group_close + 1,
+                  marker_context: MarkerContextNotEstablished,
+                }
+              }
+            }
+          }
         }
       }
     }
@@ -768,6 +1149,153 @@ fn ui_body_before_write_out(stdout: String) -> String {
   join(ui_lines_except_last(split(s: stdout, delimiter: "\n"), 0, []), "\n")
 }
 
+// ---------------------------------------------------------------------------------------------
+// THE CAPTURED TEXT OF THE BODY, on the no-script path only. CONTRACT: this is the UTF-8 octets of the
+// host-String projection of the response, NOT the wire bytes. The capture is a String, so any octet
+// that is not valid UTF-8 was already replaced (U+FFFD) before this file saw it; a round trip below
+// proves only that this text projection survives hex, and `replacement_characters` counts U+FFFD in the
+// text without being able to tell a decoder's insertion from a genuine U+FFFD in the page. So no field
+// here is a wire length or a wire digest, no first-octet class is a compression verdict (gzip's 1f8b is
+// undecidable from text: 0x8b is already gone), and every receipt line says `wire_bytes=not_established`.
+// Deciding stub-versus-compressed needs a byte-preserving acquisition path (a different contract, owed
+// separately). The text is written under four refusals that each write nothing:
+//   * larger than the limit: length and digest only, never a truncation;
+//   * containing a value of THIS session (CSRF token or any cookie value from its jar): refused;
+//   * no session value to check against (an unreadable jar): refused rather than written unchecked;
+//   * text the encoder or the round trip cannot reproduce exactly.
+// ---------------------------------------------------------------------------------------------
+
+data megarac_ui_page_text_limit: ByteSize = byte_size(count: 4096)
+
+data megarac_ui_replacement_sequence_octets: List<Int> = [239, 191, 189]
+
+type MegaRacUiFirstTextOctet
+  = FirstTextOctetNone
+  | FirstTextOctetControl1f
+  | FirstTextOctetByteOrderMark
+  | FirstTextOctetMarkup
+  | FirstTextOctetOther
+
+type MegaRacUiCapturedText
+  = CapturedTextNotOwed
+  | CapturedTextWritten { text_utf8_length: ByteSize, text_sha256: Sha256Digest, hex: String, hex_sha256: Sha256Digest, first_text_octet: MegaRacUiFirstTextOctet, replacement_characters: Int }
+  | CapturedTextTooLarge { text_utf8_length: ByteSize, limit: ByteSize, text_sha256: Sha256Digest? }
+  | CapturedTextMatchSecret
+  | CapturedTextNothingToCheckAgainst
+  | CapturedTextNotRenderable { observed: Int }
+  | CapturedTextHexDoesNotRoundTrip
+  | CapturedTextDigestUnreadable
+
+fn ui_first_text_octet_of(octets: List<Int>) -> MegaRacUiFirstTextOctet {
+  if count(octets) == 0 {
+    FirstTextOctetNone
+  } else if ui_octets_starts_with(hay: octets, needle: [239, 187, 191]) {
+    FirstTextOctetByteOrderMark
+  } else if ui_octets_starts_with(hay: octets, needle: [31]) {
+    FirstTextOctetControl1f
+  } else if ui_octets_starts_with(hay: octets, needle: [60]) {
+    FirstTextOctetMarkup
+  } else {
+    FirstTextOctetOther
+  }
+}
+
+fn ui_octets_contain(hay: List<Int>, needle: List<Int>) -> Bool {
+  match ui_octets_index_of(hay: hay, needle: needle) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+// The session's cookie values, read through curl's own jar model (extdeps.tools.curl). A jar that does
+// not parse refuses as a whole (Absent): a malformed row beside a valid one would otherwise leave a
+// screen set that looks complete and is not, so nothing is written. An empty value is well-formed but
+// dropped (an empty needle matches nothing, and listing it would make the check look broader).
+fn ui_cookie_values_of_jar(jar_text: String) -> List<List<Int>>? {
+  match curl_cookie_jar_read(jar_text: jar_text) {
+    CurlCookieJarMalformedRow { row_number: _, cause: _ } => none
+    CurlCookieJarParsed { rows: rows } => Present { value: rows |> map(row => ui_octets_of(row.value)) |> filter(value => count(value) > 0) }
+  }
+}
+
+fn ui_captured_text_of(body: String, session_values: List<List<Int>>) -> MegaRacUiCapturedText {
+  let octets = ui_octets_of(body)
+  let length = count(octets)
+  if count(session_values) == 0 {
+    CapturedTextNothingToCheckAgainst
+  } else if length > byte_size_count(b: megarac_ui_page_text_limit) {
+    CapturedTextTooLarge { text_utf8_length: byte_size(count: length), limit: megarac_ui_page_text_limit, text_sha256: sha256_hex_digest(hex: sha256_hex_of_text(text: body)) }
+  } else if any(session_values, value => ui_octets_contain(hay: octets, needle: value)) {
+    CapturedTextMatchSecret
+  } else {
+    match uint8_octets_of_ints(values: octets) {
+      QualifiedOctetsRefused { observed: observed } => CapturedTextNotRenderable { observed: observed }
+      QualifiedOctetsReady { value: qualified } => {
+        let hex = base16_encode_lower(octets: qualified)
+        match base16_decode_any(hex: hex) {
+          Absent => CapturedTextHexDoesNotRoundTrip
+          Present { value: decoded } => if qualified_octet_members(q: decoded) != octets {
+            CapturedTextHexDoesNotRoundTrip
+          } else {
+            match sha256_hex_digest(hex: sha256_hex_of_text(text: body)) {
+              Absent => CapturedTextDigestUnreadable
+              Present { value: body_digest } => match sha256_hex_digest(hex: sha256_hex_of_text(text: hex)) {
+                Absent => CapturedTextDigestUnreadable
+                Present { value: hex_digest } => CapturedTextWritten {
+                  text_utf8_length: byte_size(count: length),
+                  text_sha256: body_digest,
+                  hex: hex,
+                  hex_sha256: hex_digest,
+                  first_text_octet: ui_first_text_octet_of(octets: octets),
+                  replacement_characters: html_octets_count_walk(octets, megarac_ui_replacement_sequence_octets, 3, length, 0, 0, 0),
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn ui_first_text_octet_text(first: MegaRacUiFirstTextOctet) -> String {
+  match first {
+    FirstTextOctetNone => "none"
+    FirstTextOctetControl1f => "control_1f_not_a_compression_verdict"
+    FirstTextOctetByteOrderMark => "byte_order_mark_efbbbf"
+    FirstTextOctetMarkup => "markup_3c"
+    FirstTextOctetOther => "other"
+  }
+}
+
+fn ui_page_text_lines(reading: MegaRacUiPageReading) -> List<NonEmptyStr> {
+  let head = join(["page_text wire_bytes=not_established path=", reading.path as String], "")
+  match reading.captured_text {
+    CapturedTextNotOwed => []
+    CapturedTextWritten { text_utf8_length: n, text_sha256: d, hex: hex, hex_sha256: hd, first_text_octet: first, replacement_characters: r } => [join([
+      head, " text_utf8_length=", megarac_ui_count_text(byte_size_count(b: n)),
+      " text_sha256=", megarac_ui_digest_text(d),
+      " first_text_octet=", ui_first_text_octet_text(first),
+      " replacement_characters=", megarac_ui_count_text(r),
+      " hex_sha256=", megarac_ui_digest_text(hd),
+      " text_hex=", hex,
+    ], "") as NonEmptyStr]
+    CapturedTextTooLarge { text_utf8_length: n, limit: lim, text_sha256: d } => [join([
+      head, " refused=too_large text_utf8_length=", megarac_ui_count_text(byte_size_count(b: n)),
+      " limit=", megarac_ui_count_text(byte_size_count(b: lim)),
+      " text_sha256=", match d {
+        Absent => "unrenderable"
+        Present { value: digest } => megarac_ui_digest_text(digest)
+      },
+    ], "") as NonEmptyStr]
+    CapturedTextMatchSecret => [join([head, " refused=matches_session_value"], "") as NonEmptyStr]
+    CapturedTextNothingToCheckAgainst => [join([head, " refused=session_values_unavailable_unreadable_or_malformed_jar"], "") as NonEmptyStr]
+    CapturedTextNotRenderable { observed: o } => [join([head, " refused=octet_outside_byte_range observed=", megarac_ui_count_text(o)], "") as NonEmptyStr]
+    CapturedTextHexDoesNotRoundTrip => [join([head, " refused=hex_does_not_round_trip"], "") as NonEmptyStr]
+    CapturedTextDigestUnreadable => [join([head, " refused=digest_unrenderable"], "") as NonEmptyStr]
+  }
+}
+
 type MegaRacUiPageReading {
   path: NonEmptyStr
   http_status: Int
@@ -778,6 +1306,10 @@ type MegaRacUiPageReading {
   why: NonEmptyStr
   asset_refs: List<NonEmptyStr>
   shape: MegaRacUiPageShape
+  // The UTF-8 octets of the captured text projection of the body (not wire bytes), owed only on the no-script path (see ui_captured_text_of).
+  captured_text: MegaRacUiCapturedText
+  // Raw and resolved reference text, and the data-main attribute values, each guarded (ui_guarded_text).
+  diagnostic_lines: List<NonEmptyStr>
 }
 
 // THE SHAPE OF A PAGE BODY, COUNTS ONLY. `refs=0` alone cannot say why a page named no asset: a login or
@@ -807,18 +1339,7 @@ type MegaRacUiPageShape {
 
 fn ui_count_token(folded: List<Int>, folded_length: Int, token: String) -> Int {
   let needle = ui_octets_of(token)
-  ui_octets_count_walk(folded, needle, count(needle), folded_length, 0, 0)
-}
-
-// Non-overlapping occurrences. `at` only increases, so no input loops.
-fn ui_octets_count_walk(hay: List<Int>, needle: List<Int>, needle_length: Int, haystack_length: Int, at: Int, acc: Int) -> Int {
-  if needle_length == 0 || at + needle_length > haystack_length {
-    acc
-  } else if html_octets_match_at(hay, needle, needle_length, at, 0) {
-    ui_octets_count_walk(hay, needle, needle_length, haystack_length, at + needle_length, acc + 1)
-  } else {
-    ui_octets_count_walk(hay, needle, needle_length, haystack_length, at + 1, acc)
-  }
+  html_octets_count_walk(folded, needle, count(needle), folded_length, 0, 0, 0)
 }
 
 fn ui_refs_with_style(refs: List<HtmlAttributeReference>, quoting: HtmlAttributeQuoting) -> Int {
@@ -852,7 +1373,7 @@ fn ui_page_shape_of(body: String) -> MegaRacUiPageShape {
 fn ui_page_shape_line(reading: MegaRacUiPageReading) -> NonEmptyStr {
   let shape = reading.shape
   join([
-    "page_shape path=", reading.path as String,
+    "page_shape basis=captured_text_utf8 path=", reading.path as String,
     " body_length=", megarac_ui_count_text(byte_size_count(b: shape.body_length)),
     " body_sha256=", match shape.body_sha256 {
       Absent => "unrenderable"
@@ -904,14 +1425,26 @@ fn ui_no_reference_conclusion_text(conclusion: MegaRacUiNoReferenceConclusion) -
 // A page is a page when the controller answered it with 200 AND it names at least one script. A 200
 // that names no script is not the table page; refusing it here is what stops the run from concluding
 // "the UI has no status mapping" from a landing page that has no scripts in it.
-fn ui_page_reading_of(candidate: MegaRacUiPageCandidate, response: MegaRacUiHttpGet) -> MegaRacUiPageReading {
+fn ui_page_reading_of(
+  candidate: MegaRacUiPageCandidate,
+  response: MegaRacUiHttpGet,
+  session_values: List<List<Int>>
+) -> MegaRacUiPageReading {
+  let refs = ui_asset_refs_of_page(response.body)
+  let shape = ui_page_shape_of(body: response.body)
   MegaRacUiPageReading {
     path: candidate.path,
     http_status: response.http_status,
     transport_ok: response.transport_ok,
     why: candidate.why,
-    asset_refs: ui_asset_refs_of_page(response.body),
-    shape: ui_page_shape_of(body: response.body),
+    asset_refs: refs,
+    shape: shape,
+    captured_text: if response.transport_ok && response.http_status == 200 && shape.script_tags == 0 && count(refs) == 0 {
+      ui_captured_text_of(body: response.body, session_values: session_values)
+    } else {
+      CapturedTextNotOwed
+    },
+    diagnostic_lines: ui_page_diagnostic_lines(path: candidate.path as String, page_text: response.body, refs: refs, session_values: session_values),
   }
 }
 
@@ -1017,6 +1550,7 @@ fn ui_asset_path_refusal_category(cause: MegaRacUiAssetPathRefusal) -> NonEmptyS
       AssetPathCarriesSchemeOrAuthority { path: _ } => "scheme_or_authority"
       AssetPathIsNotJavaScript { path: _ } => "not_javascript"
       AssetPathNotFromTheCommittedPage { path: _ } => "not_from_committed_page"
+      AssetPathReferenceIsEmpty { path: _ } => "empty_reference"
     },
   ], "") as NonEmptyStr
 }
@@ -1047,24 +1581,328 @@ fn megarac_ui_refusal_text(cause: MegaRacUiStatusExcerptRefusal) -> NonEmptyStr 
   ], "") as NonEmptyStr
 }
 
+// ---------------------------------------------------------------------------------------------
+// THE SCRIPT-NAMED CATALOG. i18next resolves a label from a catalog file whose path the SCRIPT spells:
+// the resGetPath template with its language and namespace filled in. The namespace is the part of the
+// constructed key before the separator, and the languages are the option values of the page's own
+// language selector, which the bundle embeds as a template. This is a second derivation beside the
+// page-derived asset set, with its own admission (ui_catalog_path_admission), so the page-derived
+// admission (ui_asset_path_admission, JavaScript only) is not loosened to let a JSON path through.
+// Everything here is candidate-grade: a value read from a catalog says what the catalog holds, and
+// does not establish that the status cell is bound to it (see MegaRacUiMarkerContext).
+// Only the FIRST occurrence of each marker is read.
+// ---------------------------------------------------------------------------------------------
+
+data megarac_ui_res_get_path_marker_text: String = "resGetPath:\""
+
+data megarac_ui_catalog_template_window_limit: Int = 200
+
+data megarac_ui_lng_placeholder_text: String = "__lng__"
+
+data megarac_ui_ns_placeholder_text: String = "__ns__"
+
+data megarac_ui_catalog_suffix_text: String = ".json"
+
+data megarac_ui_lang_select_marker_text: String = "id=\"select_lang_top\""
+
+data megarac_ui_lang_region_window_limit: Int = 1200
+
+data megarac_ui_select_close_text: String = "</select>"
+
+data megarac_ui_option_value_marker_text: String = "value=\""
+
+data megarac_ui_catalog_key_text: String = "\"status_0\""
+
+data megarac_ui_namespace_separator_text: String = ":"
+
+data megarac_ui_language_token_limit: Int = 16
+
+type MegaRacUiCatalogPathRefusal
+  = CatalogTemplateAbsent
+  | CatalogTemplateUnterminated { template_offset: Int }
+  | CatalogTemplateLacksPlaceholders { template_offset: Int }
+  | CatalogLanguageListAbsent
+  | CatalogLanguageListUnclosed { language_list_offset: Int }
+  | CatalogLanguageValueRefused { value_length: Int }
+  | CatalogTemplateWalksOrEscapes { template_offset: Int }
+
+type MegaRacUiCatalogPath
+  = ScriptNamedCatalogPath { path: NonEmptyStr  lng: NonEmptyStr  ns: NonEmptyStr  template_offset: Int  language_list_offset: Int }
+  | CatalogPathUnderived { cause: MegaRacUiCatalogPathRefusal }
+
+type MegaRacUiCatalogTemplate
+  = TemplateRead { template: NonEmptyStr  template_offset: Int }
+  | TemplateRefused { cause: MegaRacUiCatalogPathRefusal }
+
+type MegaRacUiCatalogAdmission
+  = AdmittedUiCatalogPath { path: NonEmptyStr }
+  | RefusedUiCatalogPath { path: String  cause: MegaRacUiAssetPathRefusal }
+  | RefusedUiCatalogNotJson { path: String }
+
+type MegaRacUiCatalogStatus
+  = CatalogStatusValueCandidate { value_octets: List<Int>  value_offset: Int }
+  | CatalogStatusKeyAbsent
+  | CatalogStatusNotAString { at: Int }
+  | CatalogStatusValueEscaped { at: Int }
+  | CatalogStatusUnterminated { at: Int }
+
+fn megarac_ui_catalog_namespace(key: MegaRacUiConstructedKey) -> NonEmptyStr? {
+  match key {
+    ConstructedKeyRefused { cause: _ } => Absent
+    ConstructedKeyCandidate { asset_path: _, asset_sha256: _, marker_offset: _, key_prefix_offset: _, key_prefix_text: prefix, operand_text: _, candidate_span_length: _, marker_context: _ } => {
+      let pieces = split(s: prefix as String, delimiter: megarac_ui_namespace_separator_text)
+      if count(pieces) < 2 {
+        Absent
+      } else {
+        match pieces |> get(0) {
+          Absent => Absent
+          Present { value: ns } => if string_length(s: ns) == 0 { Absent } else { Present { value: ns as NonEmptyStr } }
+        }
+      }
+    }
+  }
+}
+
+fn megarac_ui_catalog_template_of_asset(asset_text: String) -> MegaRacUiCatalogTemplate {
+  let pieces = split(s: asset_text, delimiter: megarac_ui_res_get_path_marker_text)
+  match pieces |> get(0) {
+    Absent => TemplateRefused { cause: CatalogTemplateAbsent }
+    Present { value: before } => match pieces |> get(1) {
+      Absent => TemplateRefused { cause: CatalogTemplateAbsent }
+      Present { value: after } => {
+        let at = count(ui_octets_of(before)) + count(ui_octets_of(megarac_ui_res_get_path_marker_text))
+        let room = string_length(s: after)
+        let window = substring(s: after, start: 0, end: if room < megarac_ui_catalog_template_window_limit { room } else { megarac_ui_catalog_template_window_limit })
+        if !string_contains(s: window, pattern: "\"") {
+          TemplateRefused { cause: CatalogTemplateUnterminated { template_offset: at } }
+        } else {
+          match split(s: window, delimiter: "\"") |> get(0) {
+            Absent => TemplateRefused { cause: CatalogTemplateUnterminated { template_offset: at } }
+            Present { value: template } => if string_contains(s: template, pattern: megarac_ui_lng_placeholder_text) && string_contains(s: template, pattern: megarac_ui_ns_placeholder_text) {
+              TemplateRead { template: template as NonEmptyStr, template_offset: at }
+            } else {
+              TemplateRefused { cause: CatalogTemplateLacksPlaceholders { template_offset: at } }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn ui_language_token_refused(value: String) -> Bool {
+  let octets = ui_octets_of(value)
+  count(octets) == 0 || count(octets) > megarac_ui_language_token_limit || any(octets, c => !((c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 45))
+}
+
+fn megarac_ui_catalog_path_of_value(piece: String, ns: NonEmptyStr, template: NonEmptyStr, template_offset: Int, language_list_offset: Int) -> MegaRacUiCatalogPath {
+  match split(s: piece, delimiter: "\"") |> get(0) {
+    Absent => CatalogPathUnderived { cause: CatalogLanguageValueRefused { value_length: string_length(s: piece) } }
+    Present { value: lng } => if ui_language_token_refused(lng) {
+      CatalogPathUnderived { cause: CatalogLanguageValueRefused { value_length: string_length(s: lng) } }
+    } else {
+      let substituted = replace(replace(template as String, megarac_ui_lng_placeholder_text, lng), megarac_ui_ns_placeholder_text, ns as String)
+      if string_contains(s: substituted, pattern: "..") {
+        CatalogPathUnderived { cause: CatalogTemplateWalksOrEscapes { template_offset: template_offset } }
+      } else {
+        match uri_resolve_path_reference(base_path: "/", reference: substituted) {
+          ResolvedPathReference { path: resolved } => ScriptNamedCatalogPath { path: resolved as NonEmptyStr, lng: lng as NonEmptyStr, ns: ns, template_offset: template_offset, language_list_offset: language_list_offset }
+          _ => CatalogPathUnderived { cause: CatalogTemplateWalksOrEscapes { template_offset: template_offset } }
+        }
+      }
+    }
+  }
+}
+
+fn megarac_ui_catalog_paths_of_asset(asset_text: String, ns: NonEmptyStr) -> List<MegaRacUiCatalogPath> {
+  match megarac_ui_catalog_template_of_asset(asset_text) {
+    TemplateRefused { cause: cause } => [CatalogPathUnderived { cause: cause }]
+    TemplateRead { template: template, template_offset: template_offset } => {
+      let pieces = split(s: asset_text, delimiter: megarac_ui_lang_select_marker_text)
+      match pieces |> get(0) {
+        Absent => [CatalogPathUnderived { cause: CatalogLanguageListAbsent }]
+        Present { value: before } => match pieces |> get(1) {
+          Absent => [CatalogPathUnderived { cause: CatalogLanguageListAbsent }]
+          Present { value: after } => {
+            let list_at = count(ui_octets_of(before))
+            let room = string_length(s: after)
+            let window = substring(s: after, start: 0, end: if room < megarac_ui_lang_region_window_limit { room } else { megarac_ui_lang_region_window_limit })
+            if !string_contains(s: window, pattern: megarac_ui_select_close_text) {
+              [CatalogPathUnderived { cause: CatalogLanguageListUnclosed { language_list_offset: list_at } }]
+            } else {
+              match split(s: window, delimiter: megarac_ui_select_close_text) |> get(0) {
+                Absent => [CatalogPathUnderived { cause: CatalogLanguageListUnclosed { language_list_offset: list_at } }]
+                Present { value: region } => {
+                  let values = split(s: region, delimiter: megarac_ui_option_value_marker_text) |> skip(1)
+                  if count(values) == 0 {
+                    [CatalogPathUnderived { cause: CatalogLanguageListAbsent }]
+                  } else {
+                    values |> map(piece => megarac_ui_catalog_path_of_value(piece: piece, ns: ns, template: template, template_offset: template_offset, language_list_offset: list_at))
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn ui_catalog_path_admission(path: String) -> MegaRacUiCatalogAdmission {
+  match ui_path_walk_refusal(path) {
+    Present { value: cause } => RefusedUiCatalogPath { path: path, cause: cause }
+    Absent => if !ui_string_ends_with(path, megarac_ui_catalog_suffix_text) {
+      RefusedUiCatalogNotJson { path: path }
+    } else {
+      AdmittedUiCatalogPath { path: path as NonEmptyStr }
+    }
+  }
+}
+
+fn megarac_ui_catalog_status_zero(body: String) -> MegaRacUiCatalogStatus {
+  let pieces = split(s: body, delimiter: megarac_ui_catalog_key_text)
+  match pieces |> get(0) {
+    Absent => CatalogStatusKeyAbsent
+    Present { value: before } => match pieces |> get(1) {
+      Absent => CatalogStatusKeyAbsent
+      Present { value: after } => {
+        let octets = ui_octets_of(after)
+        let base = count(ui_octets_of(before)) + count(ui_octets_of(megarac_ui_catalog_key_text))
+        let colon_at = ui_skip_blanks(octets, 0)
+        match html_octet_at(octets, colon_at) {
+          Absent => CatalogStatusNotAString { at: base + colon_at }
+          Present { value: o } => if o != megarac_ui_zero_key_colon_octets {
+            CatalogStatusNotAString { at: base + colon_at }
+          } else {
+            match ui_quoted_value_after(octets, colon_at + 1) {
+              NoOpeningQuote { at: a } => CatalogStatusNotAString { at: base + a }
+              UnterminatedQuote { at: a } => CatalogStatusUnterminated { at: base + a }
+              QuotedLabel { label_octets: label, after: _ } => if any(label, c => c == 92) {
+                CatalogStatusValueEscaped { at: base + ui_skip_blanks(octets, colon_at + 1) + 1 }
+              } else {
+                CatalogStatusValueCandidate { value_octets: label, value_offset: base + ui_skip_blanks(octets, colon_at + 1) + 1 }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn megarac_ui_catalog_refusal_line(cause: MegaRacUiCatalogPathRefusal) -> NonEmptyStr {
+  match cause {
+    CatalogTemplateAbsent => "catalog_path refused template_absent" as NonEmptyStr
+    CatalogTemplateUnterminated { template_offset: at } => join(["catalog_path refused template_unterminated template_offset=", megarac_ui_count_text(at)], "") as NonEmptyStr
+    CatalogTemplateLacksPlaceholders { template_offset: at } => join(["catalog_path refused template_lacks_placeholders template_offset=", megarac_ui_count_text(at)], "") as NonEmptyStr
+    CatalogTemplateWalksOrEscapes { template_offset: at } => join(["catalog_path refused template_walks_or_escapes template_offset=", megarac_ui_count_text(at)], "") as NonEmptyStr
+    CatalogLanguageListAbsent => "catalog_path refused language_list_absent" as NonEmptyStr
+    CatalogLanguageListUnclosed { language_list_offset: at } => join(["catalog_path refused language_list_unclosed language_list_offset=", megarac_ui_count_text(at)], "") as NonEmptyStr
+    CatalogLanguageValueRefused { value_length: n } => join(["catalog_path refused language_value value_length=", megarac_ui_count_text(n)], "") as NonEmptyStr
+  }
+}
+
+fn megarac_ui_catalog_status_line(lng: NonEmptyStr, status: MegaRacUiCatalogStatus, session_values: List<List<Int>>) -> NonEmptyStr {
+  let head = join(["catalog_status_0 lng=", lng as String], "")
+  match status {
+    CatalogStatusKeyAbsent => join([head, " refused key_absent"], "") as NonEmptyStr
+    CatalogStatusNotAString { at: at } => join([head, " refused not_a_string at=", megarac_ui_count_text(at)], "") as NonEmptyStr
+    CatalogStatusValueEscaped { at: at } => join([head, " refused value_escaped at=", megarac_ui_count_text(at)], "") as NonEmptyStr
+    CatalogStatusUnterminated { at: at } => join([head, " refused unterminated at=", megarac_ui_count_text(at)], "") as NonEmptyStr
+    CatalogStatusValueCandidate { value_octets: octets, value_offset: at } => if count(session_values) == 0 {
+      join([head, " withheld_nothing_to_check_against"], "") as NonEmptyStr
+    } else if any(session_values, value => ui_octets_contain(hay: octets, needle: value)) {
+      join([head, " withheld_matches_session_value"], "") as NonEmptyStr
+    } else {
+      match uint8_octets_of_ints(values: octets) {
+        QualifiedOctetsRefused { observed: _ } => join([head, " withheld_not_octets"], "") as NonEmptyStr
+        QualifiedOctetsReady { value: qualified } => join([head, " value_offset=", megarac_ui_count_text(at), " value_length=", megarac_ui_count_text(count(octets)), " hex=", base16_encode_lower(octets: qualified), " claim=raw_status_0_shaped_occurrence_not_membership_not_binding"], "") as NonEmptyStr
+      }
+    }
+  }
+}
+
+fn ui_catalog_fetch_lines(
+  host: NonEmptyStr,
+  cookie_jar: NonEmptyStr,
+  csrf_token: NonEmptyStr,
+  session_values: List<List<Int>>,
+  paths: List<MegaRacUiCatalogPath>,
+  at: Int,
+  acc: List<NonEmptyStr>
+) -> List<NonEmptyStr> {
+  if at >= count(paths) {
+    acc
+  } else {
+    match paths |> get(at) {
+      null => acc
+      derivation => ui_catalog_fetch_lines(
+        host: host,
+        cookie_jar: cookie_jar,
+        csrf_token: csrf_token,
+        session_values: session_values,
+        paths: paths,
+        at: at + 1,
+        acc: concat(acc, match derivation {
+          CatalogPathUnderived { cause: cause } => [megarac_ui_catalog_refusal_line(cause: cause)]
+          ScriptNamedCatalogPath { path: path, lng: lng, ns: ns, template_offset: template_offset, language_list_offset: language_list_offset } => {
+            let named = join(["catalog_path script_named lng=", lng as String, " ns=", ns as String, " path=", path as String, " template_offset=", megarac_ui_count_text(template_offset), " language_list_offset=", megarac_ui_count_text(language_list_offset)], "") as NonEmptyStr
+            match ui_catalog_path_admission(path: path as String) {
+              RefusedUiCatalogPath { path: _, cause: cause } => [named, join(["catalog_path admission_refused lng=", lng as String, " category=", ui_asset_path_refusal_category(cause) as String], "") as NonEmptyStr]
+              RefusedUiCatalogNotJson { path: _ } => [named, join(["catalog_path admission_refused lng=", lng as String, " category=not_json"], "") as NonEmptyStr]
+              AdmittedUiCatalogPath { path: admitted } => {
+                let response = megarac.Media.GetUiResource(
+                  bmc_host: host,
+                  cookie_jar: cookie_jar,
+                  csrf_token: csrf_token,
+                  path: admitted,
+                  max_time: megarac_media_read_max_time_operand(),
+                )
+                let http = ui_http_of(get_body: response.body, get_succeeded: response.success)
+                let read = join(["catalog_read lng=", lng as String, " http_status=", megarac_ui_count_text(http.http_status), " transport_ok=", if http.transport_ok { "true" } else { "false" }], "") as NonEmptyStr
+                if http.transport_ok && http.http_status == 200 {
+                  [named, read, megarac_ui_catalog_status_line(lng: lng, status: megarac_ui_catalog_status_zero(body: http.body), session_values: session_values)]
+                } else {
+                  [named, read]
+                }
+              }
+            }
+          }
+        }),
+      )
+    }
+  }
+}
+
+type MegaRacUiAssetTry {
+  attempt: MegaRacUiAssetAttempt
+  diagnostic_lines: List<NonEmptyStr>
+}
+
 fn ui_try_one_asset(
   host: NonEmptyStr,
   cookie_jar: NonEmptyStr,
   csrf_token: NonEmptyStr,
   derived: List<NonEmptyStr>,
+  base_path: String,
   path: NonEmptyStr,
+  session_values: List<List<Int>>,
   served_release: NonEmptyStr,
   read_release: NonEmptyStr
-) -> MegaRacUiAssetAttempt {
-  match ui_asset_path_admission(path: path as String, derived: derived) {
-    RefusedUiAssetPath { path: refused_path, cause: cause } => MegaRacUiAssetAttempt {
-      path: refused_path,
-      path_refusal: Present { value: cause },
-      http_status: 0,
-      // No request was made for this path, so nothing may be claimed about its contents: the cause
-      // this arm carried said "the asset never reads the status", which is a statement about bytes
-      // nobody fetched. The refusal is about the path, and path_refusal above is where that is said.
-      excerpt: ExcerptRefused { cause: AssetNotFetchedPathRefused },
+) -> MegaRacUiAssetTry {
+  match ui_ref_admission(base_path: base_path, raw: path as String, derived: derived) {
+    RefusedUiAssetPath { path: refused_path, cause: cause } => MegaRacUiAssetTry {
+      attempt: MegaRacUiAssetAttempt {
+        path: refused_path,
+        path_refusal: Present { value: cause },
+        http_status: 0,
+        // No request was made for this path, so nothing may be claimed about its contents: the cause
+        // this arm carried said "the asset never reads the status", which is a statement about bytes
+        // nobody fetched. The refusal is about the path, and path_refusal above is where that is said.
+        excerpt: ExcerptRefused { cause: AssetNotFetchedPathRefused },
+      },
+      diagnostic_lines: [],
     }
     AdmittedUiAssetPath { path: admitted_path } => {
       let response = megarac.Media.GetUiResource(
@@ -1083,11 +1921,33 @@ fn ui_try_one_asset(
         http_status: http.http_status,
         transport_ok: http.transport_ok,
       )
-      MegaRacUiAssetAttempt {
-        path: admitted_path as String,
-        path_refusal: Absent,
-        http_status: http.http_status,
-        excerpt: excerpt,
+      let key = megarac_ui_constructed_key_of_asset(asset_text: http.body, asset_path: admitted_path)
+      MegaRacUiAssetTry {
+        attempt: MegaRacUiAssetAttempt {
+          path: admitted_path as String,
+          path_refusal: Absent,
+          http_status: http.http_status,
+          excerpt: excerpt,
+        },
+        diagnostic_lines: if http.transport_ok && http.http_status == 200 {
+          concat(
+            concat(ui_status_token_diagnostic_lines(asset_text: http.body, session_values: session_values), [megarac_ui_constructed_key_line(key: key)]),
+            match megarac_ui_catalog_namespace(key: key) {
+              Absent => []
+              Present { value: ns } => ui_catalog_fetch_lines(
+                host: host,
+                cookie_jar: cookie_jar,
+                csrf_token: csrf_token,
+                session_values: session_values,
+                paths: megarac_ui_catalog_paths_of_asset(asset_text: http.body, ns: ns),
+                at: 0,
+                acc: [],
+              )
+            },
+          )
+        } else {
+          []
+        },
       }
     }
   }
@@ -1101,6 +1961,7 @@ fn ui_page_ladder(
   host: NonEmptyStr,
   cookie_jar: NonEmptyStr,
   csrf_token: NonEmptyStr,
+  session_values: List<List<Int>>,
   candidates: List<MegaRacUiPageCandidate>,
   at: Int,
   acc: List<MegaRacUiPageReading>
@@ -1123,9 +1984,10 @@ fn ui_page_ladder(
           host: host,
           cookie_jar: cookie_jar,
           csrf_token: csrf_token,
+          session_values: session_values,
           candidates: candidates,
           at: at + 1,
-          acc: list_push(acc, ui_page_reading_of(candidate: candidate, response: http)),
+          acc: list_push(acc, ui_page_reading_of(candidate: candidate, response: http, session_values: session_values)),
         )
       }
     }
@@ -1165,12 +2027,14 @@ fn ui_attempt_assets(
   cookie_jar: NonEmptyStr,
   csrf_token: NonEmptyStr,
   derived: List<NonEmptyStr>,
+  base_path: String,
+  session_values: List<List<Int>>,
   refs: List<NonEmptyStr>,
   at: Int,
   served_release: NonEmptyStr,
   read_release: NonEmptyStr,
-  acc: List<MegaRacUiAssetAttempt>
-) -> List<MegaRacUiAssetAttempt> {
+  acc: List<MegaRacUiAssetTry>
+) -> List<MegaRacUiAssetTry> {
   if at >= count(refs) {
     acc
   } else {
@@ -1181,6 +2045,8 @@ fn ui_attempt_assets(
         cookie_jar: cookie_jar,
         csrf_token: csrf_token,
         derived: derived,
+        base_path: base_path,
+        session_values: session_values,
         refs: refs,
         at: at + 1,
         served_release: served_release,
@@ -1190,7 +2056,9 @@ fn ui_attempt_assets(
           cookie_jar: cookie_jar,
           csrf_token: csrf_token,
           derived: derived,
+          base_path: base_path,
           path: reference,
+          session_values: session_values,
           served_release: served_release,
           read_release: read_release
         )),
@@ -1228,7 +2096,7 @@ fn ui_excerpt_window_count(attempts: List<MegaRacUiAssetAttempt>, at: Int) -> In
 // construction site in megarac_ui_window_receipt, and carried on the record. A local encoder was the
 // alternative and is the wrong one: it has to accept raw Int members, so it either invents a stand-in
 // for an out-of-range member (a fabricated default that still renders) or refuses at a site that has
-// no refusal channel. review 90945 named the same defect; §5 -- "correctness by construction, not
+// no refusal channel. review 90945 named the same defect; gunbc.design_argument::fail_closed -- "correctness by construction, not
 // validation" -- settles it.
 
 // THE DECODER IS NOT HERE. extdeps.numeric.base16 owns base16_decode_any, a checked RFC 4648 base16
@@ -1287,10 +2155,27 @@ fn megarac_ui_asset_observation_run(
         }
       }
       Present { value: csrf_token } => {
+        // The session's own values, read once and carried: a page body is checked against them before
+        // its octets are written (ui_captured_text_of). A jar that cannot be read yields no
+        // values, and the check then refuses to write rather than writing unchecked.
+        let jar_read = Filesystem.Read(path: cookie_jar as String)
+        let jar_values = match filesystem_read_outcome(
+          content: jar_read.content,
+          success: jar_read.success,
+          error: jar_read.error,
+        ) {
+          FilesystemReadSucceeded { content: jar_text } => match ui_cookie_values_of_jar(jar_text: jar_text) {
+            Present { value: values } => values
+            Absent => []
+          }
+          FilesystemReadRefused { error: _ } => []
+        }
+        let session_values = if count(jar_values) == 0 { [] } else { concat([ui_octets_of(csrf_token as String)], jar_values) }
         let pages = ui_page_ladder(
           host: host,
           cookie_jar: cookie_jar,
           csrf_token: csrf_token,
+          session_values: session_values,
           candidates: mtcollins1_ui_page_candidates,
           at: 0,
           acc: [],
@@ -1313,11 +2198,17 @@ fn megarac_ui_asset_observation_run(
           }
           Present { value: page } => {
             let refs = ui_take_refs(refs: page.asset_refs, at: 0, limit: megarac_ui_asset_fetch_limit, acc: [])
-            let attempts = ui_attempt_assets(
+            let partial = Filesystem.Write(
+              path: mtcollins1_ui_status_asset_observation_receipt_path,
+              content: ui_partial_receipt_text(pages: pages, page: page),
+            )
+            let tries = ui_attempt_assets(
               host: host,
               cookie_jar: cookie_jar,
               csrf_token: csrf_token,
-              derived: page.asset_refs,
+              derived: ui_resolved_refs(base_path: page.path as String, refs: page.asset_refs),
+              base_path: page.path as String,
+              session_values: session_values,
               refs: refs,
               at: 0,
               served_release: read_release,
@@ -1333,8 +2224,10 @@ fn megarac_ui_asset_observation_run(
             let head = ui_pages_lines(pages: pages, at: 0, acc: []) |> list_push(
               join(["page chosen: ", page.path as String], "") as NonEmptyStr
             )
-            let body = ui_attempt_lines(attempts: attempts, at: 0, acc: [])
+            let attempts = tries |> map(t => t.attempt)
+            let body = ui_try_lines(tries: tries)
             let tail = [
+              join(["partial_receipt_written=", to_string(value: if partial.success { 1 } else { 0 })], "") as NonEmptyStr,
               join(["session closed=", to_string(value: if closed.success { 1 } else { 0 })], "") as NonEmptyStr,
               join(["jar: ", cookie_jar as String], "") as NonEmptyStr,
             ]
@@ -1360,20 +2253,13 @@ fn ui_pages_lines(pages: List<MegaRacUiPageReading>, at: Int, acc: List<NonEmpty
   } else {
     match pages |> get(at) {
       null => acc
-      page => ui_pages_lines(pages: pages, at: at + 1, acc: list_push(list_push(acc, ui_page_line(reading: page)), ui_page_shape_line(reading: page)))
+      page => ui_pages_lines(pages: pages, at: at + 1, acc: concat(concat(list_push(list_push(acc, ui_page_line(reading: page)), ui_page_shape_line(reading: page)), page.diagnostic_lines), ui_page_text_lines(reading: page)))
     }
   }
 }
 
-fn ui_attempt_lines(attempts: List<MegaRacUiAssetAttempt>, at: Int, acc: List<NonEmptyStr>) -> List<NonEmptyStr> {
-  if at >= count(attempts) {
-    acc
-  } else {
-    match attempts |> get(at) {
-      null => acc
-      attempt => ui_attempt_lines(attempts: attempts, at: at + 1, acc: list_push(acc, ui_asset_line(attempt: attempt)))
-    }
-  }
+fn ui_try_lines(tries: List<MegaRacUiAssetTry>) -> List<NonEmptyStr> {
+  fold(tries, init: [], f: (acc, t) => concat(list_push(acc, ui_asset_line(attempt: t.attempt)), t.diagnostic_lines))
 }
 
 // EVERY OUTCOME LEAVES AN ARTIFACT. A run that refused at a gate BEFORE any request is precisely the
@@ -1403,6 +2289,19 @@ fn ui_refuse_with_receipt(stage: NonEmptyStr, reason: String) -> ProcessExit {
   } else {
     exit_failure(reason: reason)
   }
+}
+
+// Written before any asset is fetched and replaced whole by the final write, so a run that dies in an
+// asset leaves the page and reference lines. The first line says it is partial; a partial file is not an
+// observation of the mapping and nothing in it may be cited as one.
+fn ui_partial_receipt_text(pages: List<MegaRacUiPageReading>, page: MegaRacUiPageReading) -> String {
+  join(
+    concat(
+      ["mtcollins1 MegaRAC UI status-mapping observation" as NonEmptyStr, "partial=1 the run had not finished when this file was written; no asset had been read; this is not a full observation" as NonEmptyStr],
+      concat(ui_pages_lines(pages: pages, at: 0, acc: []), [join(["page chosen: ", page.path as String], "") as NonEmptyStr]),
+    ),
+    "\n",
+  )
 }
 
 fn ui_receipt_text(outcome: MegaRacUiRunOutcome, credential_env: NonEmptyStr) -> String {
