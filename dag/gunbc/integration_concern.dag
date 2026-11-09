@@ -1697,7 +1697,136 @@ data host_effect_apply_witness_import_block_absent: IntegrationConcern = Integra
   disposition: Open,
 }
 
-data integration_concerns: List<IntegrationConcern> = [controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim]
+// CONVERGE RETIRES A WORKING SLOT BEFORE ITS REPLACEMENT HAS RUN A JOB. Surfaced by
+// gunbc.design_ruling::srv3_srv4_fabric_slots_serve_ci (2026-11-09), which moved srv3-06/07 and
+// srv4-06/07 from fabric execution to GitHub Actions: the live hosts then carry CI slots 01-05 and
+// 08-20 (19 and 20 started by hand to deliver the promised 18) while the model commits 01-18. One pass
+// of the converge entry therefore asks for 06 and 07 to be provisioned AND for 19 and 20 to be retired,
+// in the same plan -- so the two runners that are serving today stop before the two that are meant to
+// replace them have registered, let alone completed a job. Nothing in the ordering is wrong in the
+// model; what is missing is the ORDER ITSELF: converge has no phase that reads back a completed job on
+// a newly provisioned slot before it lets the retirement side of the same transition fire.
+//
+// This row is where that invariant is owned, not a caller's discipline. The operator is not running
+// converge on srv3/srv4 while it stands.
+data converge_retires_before_replacement_has_run: IntegrationConcern = IntegrationConcern {
+  identity: "converge_retires_before_replacement_has_run",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "runner_host_file_converge_ci_wet"),
+    requirement: "a converge pass must not retire a slot that is serving while the slot meant to replace it has neither registered nor completed a job: provision, read back one completed job on the replacement, then retire",
+    standing: RequirementEstablished {
+      by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv3_srv4_fabric_slots_serve_ci") },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "runner_host_file_converge_ci_wet"),
+    tail: [
+      decl_ref(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "classify_runner_slot_population_with_fabric"),
+      decl_ref(module_path: "gunbc.runner.runner_slot_provision", decl_name: "desired_runner_slot_members"),
+      decl_ref(module_path: "gunbc.runner.runner_width_transition", decl_name: "required_retirees_for_host"),
+    ],
+  },
+  question: "Where does the ordering live -- a phase in the converge pass that holds retirements until every provisioned replacement has registered and completed one job, a standing the plan carries and the caller must satisfy, or separate passes with a readback between them? And what exactly is the readback: registration alone, a completed job on the new slot, or a completed job plus the old slot's queue draining?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "8ca9a3a44194e713da051e7b764b501e93436cd2",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv3_srv4_fabric_slots_serve_ci") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_slot_provision", decl_name: "desired_runner_slot_members") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_width_transition", decl_name: "required_retirees_for_host") },
+        ],
+      },
+      account: "Read on 2026-11-09 while implementing that ruling: srv3 and srv4 carry install trees for slots 01-05 and 08-20 (19 and 20 started by hand once 06/07 were released from fabric duty, which left the hosts with 18 serving runners), while the committed population after the ruling is 01-18. The provisioning side keys on desired_runner_slot_members and would build 06/07 from nothing -- the same path that brought up 01-05, so it is supported -- and the retirement side, driven by required_retirees_for_host over the same width, names 19 and 20 as observed-but-unexpected in the same pass. Both halves are correct against the model; running them together is what loses two runners before the replacements exist. No host was touched while this was read.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome {
+      model: decl_ref(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "runner_host_file_converge_ci_wet"),
+    },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "runner_host_file_converge_ci_wet"),
+        control: Absent,
+        statement: "a converge pass over a width transition emits retirements only for slots whose replacement has registered and completed at least one job; it goes red if a plan can retire a serving slot in the same pass that provisions its replacement, which is exactly what it can do today",
+      },
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.runner.runner_width_transition", decl_name: "required_retirees_for_host"),
+        control: Absent,
+        statement: "the retirement side stays derivable from the width alone -- the two-phase ordering gates WHEN a derived retirement may be executed, it does not make the retiree list a caller's opinion",
+      },
+    ],
+    next: climbs_when(capability: "converge becomes a two-phase transition -- provision, readback of one completed job on each replacement, then retire -- so the ordering is enforced in the pass rather than left to the caller's discipline"),
+  },
+}
+
+// THE FCI-1 INSTRUMENT STILL BUILDS LABELS FROM AN UNBOUND SUBJECT. The 2026-11-09 review of the
+// srv3/srv4 fabric-slot ruling found that gunbc.instruments.fabric_control_plane_live_probe::cp_probe_slot()
+// was a TOTAL function over the refusal arms of its own subject gate, and ~29 call sites used it to build
+// allocation keys, /opt/fabric-cells paths and systemctl unit names -- so "the caller checked the gate
+// first" was the only thing between a refusal and an effect. That is what gunbc.design_argument::fail_closed
+// forbids ("a failure arm refuses, never widens"; "making it unwritable" beats catching the wrong state).
+// The effect surface is closed: the legs that mutate -- market reservation, the CAS attempt, the release
+// commit, the host preconditions, the live cell observation, the systemctl read -- now take
+// cp_probe_authorized_slot and act only on the identity BOUND by the roster's Selected arm, and a refusal
+// projects a marker that names no host and no committed index, so it cannot name a cell.
+// What remains is the label half: about twenty key/path/report builders still read the projection. Under a
+// refusal they build marker-shaped labels, which is safe today only because the effects no longer consume
+// them -- a fact about the callers, not about the types. Carrying the bound identity down those builders and
+// deleting the total projection is the rung; it was not taken here because it changes the signature of
+// nearly every observation helper in a ~4,000-line instrument whose wet paths cannot be exercised hermetically.
+data cp_probe_labels_are_built_from_an_unbound_subject: IntegrationConcern = IntegrationConcern {
+  identity: "cp_probe_labels_are_built_from_an_unbound_subject",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_slot"),
+    requirement: "a refused subject must be unable to produce a label that a leg can carry forward: every key, path and unit builder takes the RunnerSlotIdentity bound by the subject gate's Selected arm, and the total projection over the refusal arms is deleted",
+    standing: RequirementEstablished {
+      by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.design_argument", decl_name: "fail_closed") },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_slot"),
+    tail: [
+      decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_authorized_slot"),
+      decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_no_subject_marker"),
+    ],
+  },
+  question: "Do the key/path builders take the bound RunnerSlotIdentity as a parameter (the shape fci1_bounded_controls_legs already uses), or does the label surface collapse into a single builder that is handed the selection once per instrument run? And once no caller remains, can cp_probe_slot be deleted rather than documented?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "8ca9a3a44194e713da051e7b764b501e93436cd2",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.design_argument", decl_name: "fail_closed") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv3_srv4_fabric_slots_serve_ci") },
+        ],
+      },
+      account: "Raised by the 2026-11-09 review of the srv3/srv4 ruling, which counted the call sites and quoted the new comment admitting the value 'can only reach a caller that skipped the gate'. The review is right that the comment was not a fix. The same review's remedy -- bind the Selected identity in the helpers -- is now carried by every mutating leg and is witnessed in test.claim.fabric.fabric_ci_fci1_allocation_lifecycle_witness; the builders are what is left.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome {
+      model: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_slot"),
+    },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_authorized_slot"),
+        control: Absent,
+        statement: "no leg that mutates the market, the allocation store or the host may obtain a slot except through the identity bound by the subject gate's Selected arm; a row that lets a mutating leg read the projection instead goes red here",
+      },
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_no_subject_marker"),
+        control: Absent,
+        statement: "a refusal projects a marker that names no fleet host and no committed index, so a label built on a refusal cannot name a real cell -- the property that keeps the remaining builder uses from being a hazard while this rung stands",
+      },
+    ],
+    next: climbs_when(capability: "the key, path and report builders take the Selected-bound identity and gunbc.instruments.fabric_control_plane_live_probe::cp_probe_slot is deleted, so no function in the instrument can name a slot the roster did not select"),
+  },
+}
+
+data integration_concerns: List<IntegrationConcern> = [controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))

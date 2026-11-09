@@ -331,19 +331,51 @@ fn cp_probe_subject() -> CpProbeSubject {
 // not a plausible slot: it names its own absence, is not a host the fleet has, and can only reach a
 // caller that skipped the gate. Today the roster commits srv1's members, so this projects the
 // machinery-unavailable arm's derived slot, and the gate refuses before anything runs.
+// THE MARKER, and the only thing a refusal projects. It is deliberately NOT a slot: committed indices
+// start at 1, and its host names no host the fleet has. So a key, path or unit built from a refusal cannot
+// name a real cell -- which is the property the reviewer asked for, since a projection that handed back a
+// real committed identity on a refusal would let a caller that skipped the gate act on srv1-13/14, the very
+// failure this file exists to close. Asserted in
+// test.claim.fabric.fabric_ci_fci1_allocation_lifecycle_witness.
+fn cp_probe_no_subject_marker() -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: "no-fabric-execution-slot-committed", slot_index: 0 }
+}
+
 fn cp_probe_slot_from(subject: CpProbeSubject) -> RunnerSlotIdentity {
   match subject {
     CpProbeSubjectSelected { slot } => slot
-    CpProbeSubjectHostMachineryUnavailable { cause } => cause.derived
-    CpProbeSubjectNoFabricExecutionSlot { _ } => RunnerSlotIdentity {
-      host: "no-fabric-execution-slot-committed",
-      slot_index: 0,
-    }
+    CpProbeSubjectHostMachineryUnavailable { cause: _ } => cp_probe_no_subject_marker()
+    CpProbeSubjectNoFabricExecutionSlot { cause: _ } => cp_probe_no_subject_marker()
   }
 }
 
+// For LABELS ONLY -- allocation keys, report strings, receipt detail. It is not the route to an effect:
+// anything that mutates the market, the allocation store or the host must take cp_probe_authorized_slot
+// and act on the identity BOUND by the Selected arm. The remaining label uses are a declared, bounded rung
+// (gunbc.integration_concern::cp_probe_labels_are_built_from_an_unbound_subject), not a comment.
 fn cp_probe_slot() -> RunnerSlotIdentity {
   cp_probe_slot_from(subject: cp_probe_subject())
+}
+
+type CpProbeAuthorized
+  = CpProbeAuthorizedSlot { slot: RunnerSlotIdentity }
+  | CpProbeAuthorizedRefused { detail: String }
+
+// THE ONLY ROUTE TO AN EFFECT. Every leg that mutates -- market reservation, CAS attempt, cell
+// observation, systemctl read, host preconditions -- asks this and acts only on the identity BOUND by the
+// roster's Selected arm; the refused arm carries the located cause and the leg returns its own typed
+// refusal. Caller discipline is therefore not what keeps an unauthorized slot from being acted on: the
+// effect functions cannot obtain a slot except through the selection.
+fn cp_probe_authorized_from(roster: List<RunnerSlotIdentity>, served_host: HostIdentity) -> CpProbeAuthorized {
+  let subject = cp_probe_subject_from(roster: roster, served_host: served_host)
+  match subject {
+    CpProbeSubjectSelected { slot } => CpProbeAuthorizedSlot { slot: slot }
+    _ => CpProbeAuthorizedRefused { detail: cp_probe_subject_refusal(subject: subject) }
+  }
+}
+
+fn cp_probe_authorized_slot() -> CpProbeAuthorized {
+  cp_probe_authorized_from(roster: fabric_execution_slot_identities(), served_host: cp_probe_served_host())
 }
 
 // A refusal is a reason for whoever runs the instrument, not a stack trace: it names the cause and the
@@ -487,7 +519,13 @@ fn fci1_path_owner_matches(path: NonEmptyStr, expected: PosixOwnerSpec) -> Bool 
 // owner is derived from a separate exact-path observation of the ghrunner home rather than a UID/GID
 // literal. Mode is consumed only as the explicit unobserved boundary; it is not promoted to evidence.
 fn fci1_assert_host_preconditions() -> ProcessExit {
-  let slot = cp_probe_slot()
+  match cp_probe_authorized_slot() {
+    CpProbeAuthorizedRefused { detail } => exit_failure(reason: detail)
+    CpProbeAuthorizedSlot { slot } => fci1_assert_host_preconditions_on(slot: slot)
+  }
+}
+
+fn fci1_assert_host_preconditions_on(slot: RunnerSlotIdentity) -> ProcessExit {
   let cell_root = fabric_cell_root_path(slot: slot) as NonEmptyStr
   let attempts = fabric_cell_attempt_root_path(slot: slot) as NonEmptyStr
   let mode = fci1_directory_mode_unobserved(path: cell_root, desired_mode: "0755")
@@ -585,13 +623,23 @@ fn fci1_probe_demand() -> Fci1DemandBinding {
 // FCI-1 instrument leaves the complete typed producer outputs visible. These are functions rather
 // than receipt rows: every invocation re-reads the live CAS slot and cell substrate.
 fn fci1_live_reserve(store: FabricAllocationStore) -> CellReservation {
+  match cp_probe_authorized_slot() {
+    CpProbeAuthorizedRefused { detail } => AttemptRefused {
+      slot_key: fabric_cell_allocation_key(slot: cp_probe_no_subject_marker()),
+      detail: detail as NonEmptyStr,
+    }
+    CpProbeAuthorizedSlot { slot } => fci1_live_reserve_on(store: store, slot: slot)
+  }
+}
+
+fn fci1_live_reserve_on(store: FabricAllocationStore, slot: RunnerSlotIdentity) -> CellReservation {
   match fci1_probe_demand() {
     Fci1DemandRefused => AttemptRefused { slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()), detail: "FCI-0 Work construction refused" }
     Fci1DemandBound { demand: demand } => broker_reserve_for_demand(
       store: store,
       demand: demand,
-      roster: cp_probe_roster(executor: "srv3-06", work: demand.work),
-      sanctions: [fleet_cell_sanction(slot: cp_probe_slot())],
+      roster: cp_probe_roster(executor: "srv3-06", work: demand.work, slot: slot),
+      sanctions: [fleet_cell_sanction(slot: slot)],
       account: cp_probe_account(),
       maximum_buy_order: money_amount_micro(count: 1000000),
       delay_valuation: MoneyPerSecond { amount: money_amount_micro(count: 0), currency: Usd },
@@ -613,7 +661,14 @@ type Fci1HeldGenerationMutation
   | Fci1HeldGenerationMutationRefused { detail: NonEmptyStr }
 
 fn fci1_live_replace_held(store: FabricAllocationStore) -> Fci1HeldGenerationMutation {
-  let slot_key = fabric_cell_allocation_key(slot: cp_probe_slot())
+  match cp_probe_authorized_slot() {
+    CpProbeAuthorizedRefused { detail } => Fci1HeldGenerationMutationRefused { detail: detail as NonEmptyStr }
+    CpProbeAuthorizedSlot { slot } => fci1_live_replace_held_on(store: store, slot: slot)
+  }
+}
+
+fn fci1_live_replace_held_on(store: FabricAllocationStore, slot: RunnerSlotIdentity) -> Fci1HeldGenerationMutation {
+  let slot_key = fabric_cell_allocation_key(slot: slot)
   match fci1_allocation_slot_observation(store: store) {
     Fci1SlotHeld { path: _, generation: generation, reservation_identity: holder, payload: _, content: _ } =>
       match admit_cas_attempt_for_derived_payload(
@@ -1596,6 +1651,13 @@ type Fci1CellReceiptObservation
   | Fci1CellReceiptRefused { detail: String }
 
 fn fci1_cell_receipt_observation() -> Fci1CellReceiptObservation {
+  match cp_probe_authorized_slot() {
+    CpProbeAuthorizedRefused { detail } => Fci1CellReceiptRefused { detail: detail }
+    CpProbeAuthorizedSlot { slot: _ } => fci1_cell_receipt_observation_on()
+  }
+}
+
+fn fci1_cell_receipt_observation_on() -> Fci1CellReceiptObservation {
   let reading = fabric_cell_probe_reading_wet(host: "srv3")
   let decision = admit_fabric_cell_probe(probe: fabric_cell_probe_reading_probe(reading: reading))
   match fabric_cell_observation_outcome(decision: decision) {
@@ -1790,7 +1852,14 @@ fn fci1_zero_work_observation() -> Fci1ZeroWorkObservation {
 // literal "fabric-cell-srv3-06.slice" it used to carry, so a subject change cannot leave the systemctl
 // leg pointing at the old slot.
 fn fci1_zero_work_observation_unchecked() -> Fci1ZeroWorkObservation {
-  let unit = fabric_cell_slice_name(slot: cp_probe_slot()) as NonEmptyStr
+  match cp_probe_authorized_slot() {
+    CpProbeAuthorizedRefused { detail } => Fci1ZeroWorkRefused { cause: detail as NonEmptyStr }
+    CpProbeAuthorizedSlot { slot } => fci1_zero_work_observation_on(slot: slot)
+  }
+}
+
+fn fci1_zero_work_observation_on(slot: RunnerSlotIdentity) -> Fci1ZeroWorkObservation {
+  let unit = fabric_cell_slice_name(slot: slot) as NonEmptyStr
   match systemctl_show_property_read(transport: LocalShell, unit: unit, property: ControlGroup) {
     SystemdPropertyCaptureRefused { reason: why } => Fci1ZeroWorkRefused { cause: join(["ControlGroup observation refused: ", why], "") }
     SystemdPropertyBlank => Fci1ZeroWorkRefused { cause: "ControlGroup observation empty" }
@@ -2060,11 +2129,11 @@ fn cp_probe_field(executor: NonEmptyStr, work: FabricIdentity<NonEmptyStr, WorkK
   )
 }
 
-fn cp_probe_roster(executor: NonEmptyStr, work: FabricIdentity<NonEmptyStr, WorkKey>) -> List<FabricCellCandidate> {
+fn cp_probe_roster(executor: NonEmptyStr, work: FabricIdentity<NonEmptyStr, WorkKey>, slot: RunnerSlotIdentity) -> List<FabricCellCandidate> {
   flat_map(
     cp_probe_field(executor: executor, work: work).admitted,
     c =>
-      match bind_fabric_cell_candidate(slot: cp_probe_slot(), candidate: c) {
+      match bind_fabric_cell_candidate(slot: slot, candidate: c) {
         CellCandidateBound { bound: b } => [b]
         OfferExecutorIsNotTheCell { slot_key: _, executor: _ } => []
       },
@@ -2072,17 +2141,22 @@ fn cp_probe_roster(executor: NonEmptyStr, work: FabricIdentity<NonEmptyStr, Work
 }
 
 fn cp_live_broker_reserves_the_cell_the_market_chose_in(store: FabricAllocationStore) -> Int {
-  cp_probe_code(
-    r: broker_reserve_for_demand(
+  match cp_probe_authorized_slot() {
+    // Refused before the market is touched: the code is the reservation-arm code for an attempt that was
+    // never made, and no store is written.
+    CpProbeAuthorizedRefused { detail: _ } => 4
+    CpProbeAuthorizedSlot { slot } => cp_probe_code(
+      r: broker_reserve_for_demand(
       store: store,
       demand: cp_probe_demand(),
-      roster: cp_probe_roster(executor: "srv3-06", work: cp_probe_demand().work),
-      sanctions: [fleet_cell_sanction(slot: cp_probe_slot())],
+      roster: cp_probe_roster(executor: "srv3-06", work: cp_probe_demand().work, slot: slot),
+      sanctions: [fleet_cell_sanction(slot: slot)],
       account: cp_probe_account(),
       maximum_buy_order: money_amount_micro(count: 1000000),
       delay_valuation: MoneyPerSecond { amount: money_amount_micro(count: 0), currency: Usd },
+      ),
     )
-  )
+  }
 }
 
 // THE RELEASE COMMIT IS THE ONE ARM NO HERMETIC ROW CAN REACH. Every refusal in
@@ -2154,6 +2228,14 @@ fn fci1_observed_hold_generation(store: FabricAllocationStore) -> Int {
 // decision agrees with itself; this row exists to establish that the store's
 // own answer flows through the holder comparison and reaches a commit.
 fn cp_probe_release_for(store: FabricAllocationStore, reservation: ReservationRef) -> Int {
+  match cp_probe_authorized_slot() {
+    // The release is a store commit; refused before it, with the code an unattempted release reports.
+    CpProbeAuthorizedRefused { detail: _ } => 2
+    CpProbeAuthorizedSlot { slot } => cp_probe_release_for_on(store: store, reservation: reservation, slot: slot)
+  }
+}
+
+fn cp_probe_release_for_on(store: FabricAllocationStore, reservation: ReservationRef, slot: RunnerSlotIdentity) -> Int {
   fold(
     cp_probe_held_account_for(reservation: reservation),
     init: 0,
@@ -2161,7 +2243,7 @@ fn cp_probe_release_for(store: FabricAllocationStore, reservation: ReservationRe
       cp_probe_release_code(
         r: release_reserved_cell_at(
           store: store,
-          slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()),
+          slot_key: fabric_cell_allocation_key(slot: slot),
           acquired_generation: fci1_observed_hold_generation(store: store),
           lease: LeaseIdentity {
             lease_key: "cell-lease-probe",
@@ -2208,15 +2290,25 @@ fn fci1_cell_hold_end_wire(outcome: CellHoldEnd) -> String {
 data fci1_release_identity: NonEmptyStr = "FCI-1 instrument release"
 
 fn fci1_live_release_outcome(store: FabricAllocationStore) -> CellHoldEnd {
+  match cp_probe_authorized_slot() {
+    CpProbeAuthorizedRefused { detail } => HoldEndAttemptRefused {
+      slot_key: fabric_cell_allocation_key(slot: cp_probe_no_subject_marker()),
+      detail: detail as NonEmptyStr,
+    }
+    CpProbeAuthorizedSlot { slot } => fci1_live_release_outcome_on(store: store, slot: slot)
+  }
+}
+
+fn fci1_live_release_outcome_on(store: FabricAllocationStore, slot: RunnerSlotIdentity) -> CellHoldEnd {
   match cp_probe_held_account() {
     Empty => HoldEndAttemptRefused {
-      slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()),
+      slot_key: fabric_cell_allocation_key(slot: slot),
       detail: "instrument could not derive the held money account",
     }
     Cons { head: account, tail: rest } => match rest {
       Empty => release_reserved_cell_at(
         store: store,
-        slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()),
+        slot_key: fabric_cell_allocation_key(slot: slot),
         acquired_generation: fci1_observed_hold_generation(store: store),
         lease: LeaseIdentity {
           lease_key: "cell-lease-probe",
@@ -2229,7 +2321,7 @@ fn fci1_live_release_outcome(store: FabricAllocationStore) -> CellHoldEnd {
         account: account,
       )
       Cons { head: _, tail: _ } => HoldEndAttemptRefused {
-        slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()),
+        slot_key: fabric_cell_allocation_key(slot: slot),
         detail: "instrument derived a non-singleton held money account",
       }
     }

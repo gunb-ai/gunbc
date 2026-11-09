@@ -1848,6 +1848,12 @@ type RunnerSlotMembership
 // converge spine creates their cells and slices from this list, and the slot controller's attempt is
 // derived from a reservation on each cell. Nothing here re-derives the width: srv1's committed width comes
 // from gunbc_runner_committed_width like every other host's, and these two indices are members of it.
+// AND THEY ARE THE SAME TWO SLOTS THE MICROVM STANDING PRICES, NOT A THIRD FAMILY. srv1-13 is the bounded
+// microVM shakedown slot and srv1-14 the revision job slot -- the same identities the microVM realization
+// standing weighs for memory. "Fabric execution member" is a ROLE those two slots also hold, which is what
+// makes them the fleet's execution population; it is not a third kind of slot, and nothing here should be
+// read as re-labelling srv1's microVM slots as fabric-only. When that standing gates a charge it is
+// talking about these same identities, and the two readings must not be allowed to drift apart.
 fn fabric_execution_slot_identities() -> List<RunnerSlotIdentity> {
   [
     srv1_microvm_shakedown_slot(),

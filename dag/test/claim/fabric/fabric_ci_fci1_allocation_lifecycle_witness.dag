@@ -10,8 +10,9 @@ import gunbc.fabric.fabric_required_build_cell {
 import gunbc.instruments.fabric_control_plane_live_probe {
   Fci1CheckpointAfterCanonicalCommitBeforeTransport,
   cp_probe_served_host, cp_probe_subject, cp_probe_subject_from, cp_probe_slot_from,
+  cp_probe_authorized_from, cp_probe_authorized_slot, cp_probe_no_subject_marker,
   CpProbeSubjectSelected, CpProbeSubjectNoFabricExecutionSlot, CpProbeSubjectHostMachineryUnavailable,
-  CpProbeSubject,
+  CpProbeSubject, CpProbeAuthorized, CpProbeAuthorizedSlot, CpProbeAuthorizedRefused,
   Fci1CheckpointAfterReleaseBeforeGrading,
   Fci1CheckpointGenerationHeldTwo,
   fci1_checkpoint_token,
@@ -181,4 +182,51 @@ test fn witness_fci1_cannot_take_a_slot_the_operator_returned_to_ci_as_its_subje
     // projection falls back to is one of them -- the concrete failure the literal subject would have
     // caused on srv3, where the instrument still runs its legs.
     && fci1_roster_names_none(roster: [cp_probe_slot()], none_of: returned)
+}
+
+// THE EFFECT SURFACE CANNOT OBTAIN A SLOT THE ROSTER DID NOT SELECT (2026-11-09 review).
+// The reviewer's point was exact: a total projection over the refusal arms put safety on "every one of
+// those 30 callers having checked cp_probe_subject() first", and DESIGN.md's fail-closed standing
+// (gunbc.design_argument::fail_closed) refuses exactly that -- "a failure arm refuses, never widens",
+// "making it unwritable" beats catching the wrong state. So the legs that mutate (market reservation,
+// CAS attempt, release commit, host preconditions, cell observation, the systemctl read) take
+// cp_probe_authorized_slot and act on the identity BOUND by the Selected arm, and a refusal projects a
+// MARKER that is not a slot at all. These rows are the discriminator: the same function, fed rosters it
+// has never seen, selects on one and refuses on the others -- an always-refusing helper would fail the
+// first clause, and a projection that widened would fail the last two.
+test fn witness_fci1_effect_legs_act_only_on_the_roster_selected_subject() -> Bool {
+  let srv3_six = RunnerSlotIdentity { host: "srv3", slot_index: 6 }
+  let srv1_thirteen = RunnerSlotIdentity { host: "srv1", slot_index: 13 }
+  // Committed on the host whose legs the instrument carries: the effect may proceed, ON THAT IDENTITY.
+  match cp_probe_authorized_from(roster: [srv3_six], served_host: cp_probe_served_host()) {
+    CpProbeAuthorizedSlot { slot } => runner_slot_identity_equal(a: slot, b: srv3_six)
+    CpProbeAuthorizedRefused { detail: _ } => false
+  }
+    // Committed nowhere: refused, and the refusal carries the cause rather than a value.
+    && match cp_probe_authorized_from(roster: [], served_host: cp_probe_served_host()) {
+      CpProbeAuthorizedRefused { detail } => detail != ""
+      CpProbeAuthorizedSlot { slot: _ } => false
+    }
+    // Committed on a host whose legs it does not carry: refused too, NOT adopted. This is the clause that
+    // would go green-by-luck if the instrument quietly took srv1-13 as its fixture.
+    && match cp_probe_authorized_from(roster: [srv1_thirteen], served_host: cp_probe_served_host()) {
+      CpProbeAuthorizedRefused { detail } => detail != ""
+      CpProbeAuthorizedSlot { slot: _ } => false
+    }
+}
+
+test fn witness_fci1_refusal_projection_is_no_slot_at_all() -> Bool {
+  let marker = cp_probe_no_subject_marker()
+  // A refusal cannot name a cell: the marker is not a committed fabric identity and sits on no host the
+  // fleet has, so a key, path or systemctl unit built from it refers to nothing that exists.
+  !fci1_roster_names(roster: fabric_execution_slot_identities(), want: marker)
+    && (marker.host as String) != "srv1"
+    && (marker.host as String) != "srv2"
+    && (marker.host as String) != "srv3"
+    && (marker.host as String) != "srv4"
+    && marker.slot_index == 0
+    // And today's projection -- the roster commits srv1's members, which the srv3 legs do not serve --
+    // is that marker, not srv1-13.
+    && !fci1_roster_names(roster: [cp_probe_slot()], want: RunnerSlotIdentity { host: "srv1", slot_index: 13 })
+    && !fci1_roster_names(roster: [cp_probe_slot()], want: RunnerSlotIdentity { host: "srv1", slot_index: 14 })
 }
