@@ -9,8 +9,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Optional, Present, Absent }
 import std.algebra { string_contains }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_identity }
-import std.interval { degenerate_interval }
-import std.pareto { AxisGap, AxisReading, ParetoEntry, SelectionAxis }
+import std.pareto { axis_point_reading, AxisGap, AxisReading, ParetoEntry, SelectionAxis }
 import std.decision {
   CausalModelEstablished, ConstraintSatisfied, DecisionAssessment, FleetObservedCoupling, MonotoneIncreasing,
   ParameterBound, PhysicalModelEstablished, SelectedWithin, SelectionNeedsEvidence, VariesAlong,
@@ -142,18 +141,17 @@ fn fixture_identity(name: String) -> DeclarationRef {
   decl_ref(module_path: "gunbc.serving.serving_replica_choice", decl_name: name)
 }
 
-fn reading(axis: DeclarationRef, v: Int) -> AxisReading { AxisReading { axis: axis, interval_micro: degenerate_interval(point: v) } }
 
 fn better_entry() -> ParetoEntry {
   ParetoEntry {
     identity: fixture_identity(name: "rsc-candidate-fixture-better"),
     display_label: "fixture-better" as NonEmptyStr,
     readings: [
-      reading(axis: ax_throughput_200k, v: 600),
-      reading(axis: ax_host_ram_bytes, v: 20000000000),
-      reading(axis: ax_host_disk_bytes, v: 100000000000),
-      reading(axis: ax_save_cost_bytes, v: 1000000000),
-      reading(axis: ax_restart_cost_ms, v: 156),
+      axis_point_reading(axis: ax_throughput_200k, point_micro: 600),
+      axis_point_reading(axis: ax_host_ram_bytes, point_micro: 20000000000),
+      axis_point_reading(axis: ax_host_disk_bytes, point_micro: 100000000000),
+      axis_point_reading(axis: ax_save_cost_bytes, point_micro: 1000000000),
+      axis_point_reading(axis: ax_restart_cost_ms, point_micro: 156),
     ],
     missing_inputs: [],
   }
@@ -164,11 +162,11 @@ fn worse_entry() -> ParetoEntry {
     identity: fixture_identity(name: "rsc-candidate-fixture-worse"),
     display_label: "fixture-worse" as NonEmptyStr,
     readings: [
-      reading(axis: ax_throughput_200k, v: 300),
-      reading(axis: ax_host_ram_bytes, v: 90000000000),
-      reading(axis: ax_host_disk_bytes, v: 400000000000),
-      reading(axis: ax_save_cost_bytes, v: 4000000000),
-      reading(axis: ax_restart_cost_ms, v: 900000),
+      axis_point_reading(axis: ax_throughput_200k, point_micro: 300),
+      axis_point_reading(axis: ax_host_ram_bytes, point_micro: 90000000000),
+      axis_point_reading(axis: ax_host_disk_bytes, point_micro: 400000000000),
+      axis_point_reading(axis: ax_save_cost_bytes, point_micro: 4000000000),
+      axis_point_reading(axis: ax_restart_cost_ms, point_micro: 900000),
     ],
     missing_inputs: [],
   }
@@ -179,10 +177,10 @@ fn better_entry_missing_ram() -> ParetoEntry {
     identity: fixture_identity(name: "rsc-candidate-fixture-better"),
     display_label: "fixture-better" as NonEmptyStr,
     readings: [
-      reading(axis: ax_throughput_200k, v: 600),
-      reading(axis: ax_host_disk_bytes, v: 100000000000),
-      reading(axis: ax_save_cost_bytes, v: 1000000000),
-      reading(axis: ax_restart_cost_ms, v: 156),
+      axis_point_reading(axis: ax_throughput_200k, point_micro: 600),
+      axis_point_reading(axis: ax_host_disk_bytes, point_micro: 100000000000),
+      axis_point_reading(axis: ax_save_cost_bytes, point_micro: 1000000000),
+      axis_point_reading(axis: ax_restart_cost_ms, point_micro: 156),
     ],
     missing_inputs: [AxisGap { axis: ax_host_ram_bytes, cause: "fixture: the host-RAM charge was not read" as NonEmptyStr }],
   }

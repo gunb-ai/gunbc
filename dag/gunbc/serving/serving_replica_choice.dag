@@ -48,8 +48,8 @@ import std.measure {
 import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import std.nat { Nat }
-import std.interval { OrderedClosedInterval, degenerate_interval }
-import std.pareto { AxisGap, AxisReading, HigherIsBetter, LowerIsBetter, ParetoEntry, SelectionAxis }
+import std.interval { OrderedClosedInterval }
+import std.pareto { axis_point_reading, AxisGap, AxisReading, HigherIsBetter, LowerIsBetter, ParetoEntry, SelectionAxis }
 import std.decision {
   CausalModelUnestablished, ChoiceDomain, ContextParameter, DecisionAssessment, DecisionConstraint,
   DecisionRegion, DecisionSubject, DecisionVariable, ObjectiveMeasure, ObjectiveTerm,
@@ -165,7 +165,6 @@ fn funded_axes() -> List<SelectionAxis> {
 
 fn rsc_policy() -> SelectionPolicy { UniqueSurvivorRequired { identity: id_policy } }
 
-fn reading(axis: DeclarationRef, v: Int) -> AxisReading { AxisReading { axis: axis, interval_micro: degenerate_interval(point: v) } }
 
 fn gap(axis: DeclarationRef, cause: String) -> AxisGap {
   AxisGap { axis: axis, cause: cause as NonEmptyStr }
@@ -370,11 +369,11 @@ fn configuration_entry(c: ReplicaConfiguration) -> ParetoEntry {
   let disk = disk_axis(c: c)
   let saves = configuration_save_bytes(c: c)
   let restarts = configuration_restart_ms(c: c)
-  let readings0: List<AxisReading> = match decode { Absent => [] as List<AxisReading> Present { value: v } => [reading(axis: ax_throughput_200k, v: v)] }
-  let readings1: List<AxisReading> = match ram { Absent => [] as List<AxisReading> Present { value: v } => [reading(axis: ax_host_ram_bytes, v: v)] }
-  let readings2: List<AxisReading> = match disk { Absent => [] as List<AxisReading> Present { value: v } => [reading(axis: ax_host_disk_bytes, v: v)] }
-  let readings3: List<AxisReading> = match saves { Absent => [] as List<AxisReading> Present { value: v } => [reading(axis: ax_save_cost_bytes, v: v)] }
-  let readings4: List<AxisReading> = match restarts { Absent => [] as List<AxisReading> Present { value: v } => [reading(axis: ax_restart_cost_ms, v: v)] }
+  let readings0: List<AxisReading> = match decode { Absent => [] as List<AxisReading> Present { value: v } => [axis_point_reading(axis: ax_throughput_200k, point_micro: v)] }
+  let readings1: List<AxisReading> = match ram { Absent => [] as List<AxisReading> Present { value: v } => [axis_point_reading(axis: ax_host_ram_bytes, point_micro: v)] }
+  let readings2: List<AxisReading> = match disk { Absent => [] as List<AxisReading> Present { value: v } => [axis_point_reading(axis: ax_host_disk_bytes, point_micro: v)] }
+  let readings3: List<AxisReading> = match saves { Absent => [] as List<AxisReading> Present { value: v } => [axis_point_reading(axis: ax_save_cost_bytes, point_micro: v)] }
+  let readings4: List<AxisReading> = match restarts { Absent => [] as List<AxisReading> Present { value: v } => [axis_point_reading(axis: ax_restart_cost_ms, point_micro: v)] }
   let gaps0: List<AxisGap> = match decode { Absent => [decode_gap(c: c)] Present { value: _ } => [] as List<AxisGap> }
   let gaps1: List<AxisGap> = match ram { Absent => [charge_gap(c: c, axis: ax_host_ram_bytes, what: "the host RAM charge")] Present { value: _ } => [] as List<AxisGap> }
   let gaps2: List<AxisGap> = match disk { Absent => [charge_gap(c: c, axis: ax_host_disk_bytes, what: "the host disk charge")] Present { value: _ } => [] as List<AxisGap> }
