@@ -80,6 +80,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // fleet_locus_ssh_target over the managed-host join, wrapped whole into the fleet arm. The address is
 // what binds (gunbc.host.host_bound_transport), so nothing here hand-names a host the binding does not.
 fn fleet_transport_to(host: HostIdentity) -> HostEffectTransport? admit_callers: [
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "per_boot_bound"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "per_boot_binding"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_wrong_presented_key_refuses_the_transport"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_unanchored_host_refuses_the_transport"),
@@ -163,6 +164,7 @@ test fn a_wrong_presented_key_refuses_the_transport() -> Bool {
 
 // (helper) the fixture row's anchor, which the fixture construction above guarantees Present.
 fn the_present_anchor(row: AnchoredHostRow) -> KnownHostKeyRow admit_callers: [
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "per_boot_bound"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_per_boot_pin_carries_its_own_provenance_arm"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "per_boot_binding"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_wrong_presented_key_refuses_the_transport"),
