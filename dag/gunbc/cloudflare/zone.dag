@@ -2,7 +2,7 @@ module gunbc.cloudflare.zone
 
 // THE gunb.ai ZONE STANDING, THE COPY THE BIND DEPENDS ON, AND THE GAPS THAT HOLD THE BIND.
 //
-// B1 of gunbc.plans.boot_origin_bmc_media asks for the boot origin's gunb.ai hostname to be allocated,
+// B1 of gunbc.plans.boot_origin_bmc_media (deleted 2026-11-08) asks for the boot origin's gunb.ai hostname to be allocated,
 // which extdeps.cloudflare.zone shows is admissible only inside an ACTIVE zone in the SAME account as
 // gunbai-fabric-boot. Three things had to be OBSERVED before any of that could be written down, and all
 // three are here as receipts rather than as claims:

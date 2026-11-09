@@ -232,7 +232,7 @@ data gunbc_fleet_hostname_allocations: List<HostnameAllocation> = [
     name: LegacyHostname { label: "h11-a16" as DnsLabel },
   },
   // THE FIVE DRAWN ROWS (2026-10-27), drawn by the P2 model step of
-  // gunbc.plans.fleet_naming_reach_access. srv9-srv12 keep their identity slot as a LEGACY spelling and
+  // gunbc.plans.fleet_naming_reach_access (deleted 2026-11-08). srv9-srv12 keep their identity slot as a LEGACY spelling and
   // mtjade1 keeps its historical one: those spellings are how the operator has always addressed them, and
   // withdrawing them to make a row look drawn would have replaced a recorded fact with a prettier one.
   // Each `draw.entropy` is the ticket the allocator indexes the naming corpora with, and the recorded

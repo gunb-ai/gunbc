@@ -52,7 +52,7 @@ fn release_revision_execstart_text(binding: ReleaseRevisionBinding) -> String {
 // approval_broker_* while the microVM controller, the attempt units and workspace commissioning
 // already resolved their release directories through them: one concept carrying one consumer's name
 // (gunbc.design_argument::single_authority). The dashboard and belt move onto the same locus under
-// gunbc.plans.deploy_convergence_observed_side (staged release generations), so the name is the
+// gunbc.plans.deploy_convergence_observed_side (deleted 2026-11-08) (staged release generations), so the name is the
 // locus's own before a second service family reads it.
 data release_locus_dir_unbound_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ the release locus was asked for a path under RevisionNotInstalled. A release directory is named by the candidate sha, so there is no directory this could mean; emitting this marker fails the stage rather than installing a release into a path named after a diagnostic (gunbc.design_argument::fail_closed)."
 

@@ -1,0 +1,13 @@
+module product.fabric.serving_throughput
+
+import std.nat { Nat }
+import std.measure { TokensPerSecond }
+import extdeps.external_authority { CitedFigureStanding }
+
+// ── A SERVING THROUGHPUT READING: an aggregate decode rate at a concurrency, with its standing ─────────
+// An operator reading, never a constant. Its own module so that a recipe (product.fabric.serving_recipe) and a
+// deployment's capacity anchor (gunbc.serving.serving_capacity_anchor) read one type without the anchor
+// importing the recipe's whole closure.
+type ServingThroughput
+  = ThroughputOperatorReading { tokens_per_second: TokensPerSecond, at_concurrency: Nat, standing: CitedFigureStanding }
+  | ThroughputUnread

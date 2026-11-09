@@ -73,10 +73,10 @@ import gunbc.live_deploy.release_locus { HelperLocus }
 import gunbc.live_deploy.retract_legs { retract_remove_files, RetractDisableIfLoaded }
 import product.host_identity { host_identity_eq }
 import gunbc.live_deploy.srv1_serving_engine_unit {
-  srv1_serving_engine_unit_name, srv1_serving_engine_unit_path, srv1_serving_engine_unit_file,
-  srv1_serving_engine_wrapper_dir, srv1_serving_engine_wrapper_path, srv1_serving_engine_wrapper_text,
-  srv1_serving_engine_hosted_on, srv1_serving_engine_retired_hand_units,
+  srv1_serving_engine_hosted_on, srv1_serving_engine_retired_hand_units, srv1_replica_boot_unit_names,
+  srv1_boot_outcome_admitted, srv1_boot_outcome_units, srv1_boot_outcome_refusal,
 }
+import gunbc.serving.srv1_serving_replica_layout { srv1_admitted_launch_config }
 import gunbc.live_deploy.srv1_gpu_power_cap_unit {
   srv1_gpu_power_cap_unit_name, srv1_gpu_power_cap_unit_path, srv1_gpu_power_cap_unit_file, srv1_gpu_power_cap_hosted_on,
   Srv1GpuPowerCapUnitReady, Srv1GpuPowerCapUnitRefused,
@@ -1022,28 +1022,47 @@ fn deploy_apply_srv1_gpu_power_cap_plan(spec: DeploymentSpec, revision: ReleaseR
   }
 }
 
-// SRV1'S SERVING ENGINE AT BOOT (gunbc.live_deploy.srv1_serving_engine_unit), installed by the deployment that
-// holds srv1's role singletons, on every apply. The order: the wrapper from the model; the unit; the retirement
-// of the hand-installed unit it replaces; a reload; enable. NO LEG STOPS, STARTS OR RESTARTS ANYTHING: the
-// wrapper's first act is `docker rm -f` on the running engine, so the apply converges what happens at the
-// NEXT boot and never touches the engine now. The hand unit is retired by removing its unit file and its
-// WantedBy link -- removing the link is what a plain disable does -- and never by RetractDisableIfLoaded,
-// whose `disable --now` is a stop: a stop runs the unit's effective stop hooks and kills what remains in its
-// cgroup, and nothing here reads either (side-chat review of #15684).
+// SRV1'S SERVING BOOT PATH (gunbc.live_deploy.srv1_serving_engine_unit), converged by the deployment that
+// holds srv1's role singletons, on every apply. THE LEGACY SINGLETON IS NO LONGER INSTALLED. Since
+// 2026-11-08 srv1 serves from TWO TP=1 replicas owned by the operator's systemd template lil-replica@.service
+// (enabled @0 and @1); the old single gpu=all container that this leg used to install -- whose retained
+// wrapper's first act is `docker rm -f lil-flash-next` -- would collide with that layout, so its install legs
+// (wrapper-dir / wrapper / unit / enable-singleton) are GONE. What this leg does now:
+//   (1) RETIRE the legacy singleton by path only -- its unit file, its WantedBy enablement link and its
+//       wrapper -- plus the older hand unit. Removing files is a disable-without-stop; it is NEVER done with
+//       RetractDisableIfLoaded, whose `disable --now` is a stop that runs the unit's stop hooks and kills what
+//       remains in its cgroup (side-chat review of #15684). This is the guard: convergence is the authority
+//       that KEEPS the gpu=all launch off srv1, not merely one that stopped installing it.
+//   (2) a reload, then ENABLE the two replica instances, their names derived from the SAME roster the router
+//       rows derive from (srv1_serving_replica_roster via srv1_replica_boot_unit_names).
+// NO LEG STOPS, STARTS OR RESTARTS ANYTHING and NO LEG CARRIES `--now`: `systemctl enable` arms the next boot
+// only, so the apply never touches a running engine; and the replica unit files/helper themselves are the
+// operator's ADOPTED hand install (recorded on srv1_replica_unit_contract), not staged here while the operator
+// configures live serving.
 fn deploy_apply_srv1_serving_engine_plan(spec: DeploymentSpec) -> DeployApplyPlan {
   if !deployment_owns_the_host_approval_broker(spec: spec) || !srv1_serving_engine_hosted_on(host: spec.target.host.identity) { ApplyPlanReady { legs: [] } } else {
-    let retire = flat_map(filter(srv1_serving_engine_retired_hand_units, r => host_identity_eq(a: r.host, b: spec.target.host.identity)), r => match r.paths {
-      Empty => []
-      Cons { head: h, tail: rest } => [ApplyLegRetract { step: "serving-engine-hand-unit-remove", leg: retract_remove_files(head: h, rest: rest) }]
-    })
-    ApplyPlanReady { legs: concat(concat([
-      apply_root_leg(step: "serving-engine-wrapper-dir", argv: coreutils_install_directory_argv(mode: install_d_shared_mode, path: srv1_serving_engine_wrapper_dir as String)),
-      apply_staged_leg(step: "serving-engine-wrapper", dest: srv1_serving_engine_wrapper_path as String, payload: apply_unit_text(file_text: srv1_serving_engine_wrapper_text())),
-      apply_staged_leg(step: "serving-engine-unit", dest: srv1_serving_engine_unit_path() as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: srv1_serving_engine_unit_file()))),
-    ], retire), [
-      apply_root_leg(step: "serving-engine-reload", argv: systemctl_daemon_reload_argv()),
-      apply_root_leg(step: "serving-engine-enable", argv: systemctl_enable_argv(unit: srv1_serving_engine_unit_name)),
-    ]) }
+    // ONE route through the admission guard: the boot outcome is the guard's typed verdict over the
+    // declared launch configuration. A REFUSAL stops the whole leg -- ApplyPlanRefused carries the defect
+    // identity and cause -- rather than proceeding with the retire legs and no enables while reporting
+    // green (fail_closed: a refusal that fires stops the line; proceeding as if it had not is an escape
+    // hatch, and an already-enabled lil-replica@ would have stayed armed unnoticed).
+    let boot = srv1_replica_boot_unit_names(config: srv1_admitted_launch_config)
+    if srv1_boot_outcome_admitted(outcome: boot) {
+      // (1) Retirement: every retired unit's files (the legacy singleton's unit, enablement link and wrapper;
+      // the older hand unit) removed by path. One retract leg per retired removal, stepped by its unit name.
+      let retire = flat_map(filter(srv1_serving_engine_retired_hand_units, r => host_identity_eq(a: r.host, b: spec.target.host.identity)), r => match r.paths {
+        Empty => []
+        Cons { head: h, tail: rest } => [ApplyLegRetract { step: join(["serving-engine-retire-", r.unit as String], "") as String, leg: retract_remove_files(head: h, rest: rest) }]
+      })
+      // (2) Enable the two replica boot instances, derived from the roster. `systemctl enable` (no --now): arms
+      // the next boot, never starts the running engine.
+      let enable_replicas = map(srv1_boot_outcome_units(outcome: boot), name => apply_root_leg(step: join(["serving-replica-enable-", name as String], "") as String, argv: systemctl_enable_argv(unit: name)))
+      ApplyPlanReady { legs: concat(concat(retire, [
+        apply_root_leg(step: "serving-engine-reload", argv: systemctl_daemon_reload_argv()),
+      ]), enable_replicas) }
+    } else {
+      ApplyPlanRefused { step: "serving-replica-boot", reason: join(["launch admission refused -- boot is not armed and the apply stops: ", srv1_boot_outcome_refusal(outcome: boot)], "") as String }
+    }
   }
 }
 

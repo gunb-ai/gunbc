@@ -4,7 +4,6 @@ import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock, MarkdownTableRow, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
-import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 import std.types { List, String }
 
 // THE WORKING DESIGN FOR "srv3 AND srv4 RUN TOO HOT" (gunbc-private#287, 2026-11-05), worked from that
@@ -346,5 +345,5 @@ data host_thermal_operating_point_plan: Plan = Plan {
   retirement: PlanRetiresWhen {
     condition: unbound_dissolution(description: "Retire when the section 6 terminal condition holds for every owned identity: none awaiting a hardware fact or a selection policy, none in commissioning; every active, locally managed identity has passed the section 9 acceptance run (cited limits, measured host and workload evidence, an operating point chosen per host by the one power and thermal decision subject that consolidates product.fleet_operating_point and product.mt_collins_power_policy, no DIMM above 85 °C less margin under the host's declared admitted worst-case workload at the declared worst-case inlet, settings converged per actuator group with independent readback); every provider-managed identity is covered by an observed and qualified provider policy; every stored identity sits behind an enforced admission gate that refuses work until it qualifies; placement refuses work beyond a host's thermal headroom; one fan policy has replaced the overlapping ones; every active locally managed identity has an admitted tier 1 and tier 2 observation path and every provider-managed identity an admitted provider-specific observation route; observation and readback run without an administrator credential and changes only through the modeled convergence route."),
   },
-  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  projection: PlanIsAuthorityOnly,
 }

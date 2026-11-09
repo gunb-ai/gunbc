@@ -51,8 +51,11 @@ import gunbc.instruments.known_red_derivation {
   known_red_marker_ground_unpublished_mock, known_red_marker_ground_filesystem_removal,
   known_red_marker_ground_no_mock_response,
   known_red_word_pass, known_red_word_fail, known_red_word_panicked, known_red_word_unobserved,
-  known_red_terminal_of_line
+  known_red_terminal_of_line,
+  known_red_floor_uncovered_cause
 }
+// The witness MAY import the ledger row the instrument cites; the instrument itself must not.
+import gunbc.rung_drop.v1_required_lanes_withdrawn { v1_required_lanes_withdrawn }
 import std.dissolution { dissolution_is_bound }
 import std.decl_ref { declaration_ref_display_key }
 import gunbc.dissolution_observation { dissolution_census_pool_roots }
@@ -2043,4 +2046,15 @@ test fn the_bound_decoder_trigger_is_unobservable_in_the_census_pool() -> Bool {
       xs: pool,
       predicate: fn(root) { starts_with(s: known_red_transport_source_claim_batch, prefix: root) }
     )
+}
+// THE FLOOR CAUSE CITES THE WITHDRAWAL ROW BY ITS IDENTITY, AND A RENAME TURNS THIS RED. The instrument does
+// not import the ledger row (a ledger row is a design record), so its printed citation is a spelling; this
+// claim is what keeps that spelling honest. The pattern is built FROM the row's own identity, so renaming
+// the row's identity, or the instrument's citation drifting from it, fails here; moving the row module fails
+// the import above.
+test fn the_floor_uncovered_cause_cites_the_withdrawal_row_by_its_identity() -> Bool {
+  string_contains(
+    s: known_red_floor_uncovered_cause(),
+    pattern: concat("rung drop gunbc.rung_drop.", v1_required_lanes_withdrawn.identity as String),
+  )
 }

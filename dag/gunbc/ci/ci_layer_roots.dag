@@ -357,6 +357,10 @@ data excl_observed_unhealthy_probe_reason: String = "SUBSTANTIATED per-row: the 
 
 data excl_observed_unhealthy_probe_dissolve: DissolutionCondition = unbound_dissolution(description: "a published mock case for extdeps.http.client GetWithinWithStatus that still requires the curl exit bit and the -w write-out line to come from a real curl process against a real listener re-checks these assertions without a live socket; until then a replayed stdout is the supplied value the dry witness already supplies, and the inhabitation would be fabricated.")
 
+data excl_harness_shell_job_wet_reason: String = "SUBSTANTIATED: test.claim.harness_shell_job_wet_witness starts a real shell under posix.Process.StartDetached, holds, reaps, waits, and kills the process group. StartDetached/Reap/TerminateProcessGroup have no mock_response; a hermetic replay of a pid is a fabricated job."
+
+data excl_harness_shell_job_wet_dissolve: DissolutionCondition = unbound_dissolution(description: "the shell-job spawn/wait/group-kill path becomes an ExecutionWitnessKind row under the execution-corpus prefix; then this exclusion and its wet schedule rows delete together. Mocking StartDetached does not discharge it.")
+
 // bin-execution witness class re-homed to the falsifier wet cadence (CI floor endgame D6): the
 // file's enrolled fn(s) exceed bin_witness_wet_per_row_wall_budget_seconds, so they are CLASSIFIED
 // as falsifier batch 5 via falsifier_rehomed_bin_wet_entries (typed frontier rows in
@@ -1129,11 +1133,6 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
-    pattern: "roadmap_task_store_wet_witness.dag",
-    classification: LocalRepoWetLane,
-    reason: excl_local_repo_wet_tempdir_write_reason,
-    dissolution: excl_local_repo_wet_dissolve},
-  WitnessExclusionRow {
     pattern: "workspace_request_consumer_witness.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
@@ -1183,6 +1182,16 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     classification: LocalRepoWetLane,
     reason: excl_observed_unhealthy_probe_reason,
     dissolution: excl_observed_unhealthy_probe_dissolve},
+  WitnessExclusionRow {
+    pattern: "harness_shell_job_wet_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_harness_shell_job_wet_reason,
+    dissolution: excl_harness_shell_job_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "harness_shell_job_process_wet_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_harness_shell_job_wet_reason,
+    dissolution: excl_harness_shell_job_wet_dissolve},
   WitnessExclusionRow {
     pattern: "repo_local_git_config_real_execution.dag",
     classification: BinWitnessWet,

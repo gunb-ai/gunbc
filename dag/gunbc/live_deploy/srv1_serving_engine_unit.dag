@@ -1,94 +1,74 @@
 module gunbc.live_deploy.srv1_serving_engine_unit
 
-import std.types { List, NonEmptyStr, String }
-import std.measure { Second, second, second_count }
+import std.types { Bool, List, NonEmptyStr, String }
 import product.host_identity { HostIdentity, host_identity_eq }
-import extdeps.systemd.unit_file {
-  SystemdUnitFile, ServiceUnitFile,
-  Description, After, Requires, Wants,
-  ServiceType, OneshotMode, RemainAfterExit, ExecStart, TimeoutStartSec,
-  ServiceUser, ServiceGroup, Environment,
-  Installable, WantedBy,
-}
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
-import gunbc.host.host_layout { operator_home_root }
-import gunbc.live_deploy.spec { gunbc_service_user }
 import gunbc.live_deploy.board_function_converge_unit { RetiredHandInstalledRemoval }
-import gunbc.live_deploy.srv1_gpu_power_cap_unit { srv1_gpu_power_cap_unit_name }
-import gunbc.serving.srv1_serving_launch { srv1_serving_wrapper }
+import gunbc.serving.srv1_serving_replica_layout {
+  Srv1ServingReplicaSpec, Srv1LaunchConfig, Srv1LaunchAdmission, srv1_serving_replica_roster,
+  srv1_admitted_launch_config, srv1_launch_admission,
+}
 
-// SRV1'S SERVING ENGINE COMES BACK AT BOOT (operator, 2026-11-02, after the 15:50Z outage left the router
-// routing to an engine nothing restarted). The engine is the lil-flash-next container that
-// gunbc.serving.srv1_serving_launch models, launched by its retained wrapper srv1_serving_wrapper, which keeps
-// `--restart no`: this unit, not docker's restart policy, decides when the container starts, so it starts
-// only once docker is up -- and docker is gated on the board-function converge
-// (gunbc.live_deploy.board_function_converge_unit), so the engine never starts on a host whose PCIe removals
-// did not read back.
+// SRV1'S SERVING BOOT PATH: TWO REPLICA INSTANCES, NOT THE SINGLETON.
 //
-// IT REQUIRES THE GPU POWER-CAP UNIT (gunbc.live_deploy.srv1_gpu_power_cap_unit), not only waits for it: a cap or
-// readback that fails fails that unit, and Requires= refuses this one's start.
+// This unit used to be the canonical owner of srv1's serving boot: it installed
+// gunbc-srv1-serving-engine.service, whose retained wrapper's first act was `docker rm -f lil-flash-next`
+// and which then started a single `--device nvidia.com/gpu=all` TP=1 container on :18000. On 2026-11-08 the
+// operator moved srv1 to TWO TP=1 replicas, one per RTX PRO 6000 (GPU0 :18000 lil-flash-next/srv1-vllm,
+// GPU1 :18001 lil-flash-next-1/srv1-vllm-1; srv1 has no GPU P2P, and 2xTP=1 measured 679 tok/s vs TP=2's
+// 298 at 8 warm 150k sessions -- see srv1_topology_comparison on #16104). Running that wrapper on today's
+// srv1 would rm -f replica 0 and start a gpu=all container that collides with the two-replica layout.
 //
-// WHAT IT DOES NOT DO. It has no ExecStop and the apply never starts or restarts it: the wrapper begins with
-// `docker rm -f lil-flash-next`, so running it while the engine serves would drop every bound session and
-// the engine's cache. Stopping or relaunching a RUNNING engine stays the operator's maintenance procedure
-// (gunbc.serving.srv1_serving_launch srv1_serving_unmodeled_frontier_rows); this unit only covers a boot,
-// when nothing is bound. A shutdown stops the container through docker.
+// THE CANONICAL BOOT OWNER IS NOW THE OPERATOR's systemd template: lil-replica@.service (helper
+// /usr/local/sbin/lil-replica start|stop %i), enabled @0 and @1 -- modeled in
+// gunbc.serving.srv1_serving_replica_layout srv1_replica_unit_contract and adopted from the roster
+// srv1_serving_replica_roster. Ordinary convergence must NOT reinstall the legacy singleton: the install
+// legs (wrapper-dir / wrapper / unit / enable-singleton) are GONE from apply_legs, so there is no code
+// path that puts the gpu=all launch back. What this module now owns is the RETIREMENT of that legacy unit
+// and the ENABLEMENT of the two replica instances, and it does neither by stopping a running engine.
 //
-// The wrapper is installed from the model, not from the host's hand copy: its bytes are
-// srv1_serving_wrapper.body, whose sha256 the launch witness pins to the startup receipt's reading of the
-// script the running container was launched from.
+// WHAT RETIREMENT DOES NOT DO: it removes files only (retract_remove_files), never `disable --now`
+// (RetractDisableIfLoaded), because that is a stop -- it would run the unit's stop hooks and kill what
+// remains in its cgroup. Removing a unit file and its WantedBy link is a disable-without-stop. The enable
+// of lil-replica@0/@1 is `systemctl enable` with no `--now`, so it arms the next boot and touches nothing
+// that is running now.
+//
+// DESIRED vs CONFIGURED (gunbc.plans.fleet_hardware_fact_consumption vocabulary): the replica unit files
+// and helper are the operator's hand install (ADOPTED: sha256 recorded on the contract, not staged by this
+// apply), so convergence does not overwrite them while the operator configures live serving. Canonical
+// installation of the unit/helper by convergence is a separate, deferred step (a frontier row on the
+// contract). Durability (boot + crash) is UNVERIFIED until the boot and crash tests run.
 
+// The legacy singleton boot path, retained ONLY as the target of retirement: its unit name, unit file,
+// enablement link and wrapper are the files this apply removes from srv1 so convergence cannot leave (or
+// put back) the gpu=all launch.
 data srv1_serving_engine_unit_name: NonEmptyStr = "gunbc-srv1-serving-engine.service"
 
 fn srv1_serving_engine_unit_path() -> NonEmptyStr {
   join(["/etc/systemd/system/", srv1_serving_engine_unit_name as String], "") as NonEmptyStr
 }
 
-data srv1_serving_engine_wrapper_dir: NonEmptyStr = "/usr/local/libexec/gunbc"
+// The legacy enablement link (the singleton was WantedBy=multi-user.target alone); removing it is the
+// disable-without-stop that `disable --now` would otherwise perform as a destructive stop.
+fn srv1_serving_engine_enable_link_path() -> NonEmptyStr {
+  join(["/etc/systemd/system/multi-user.target.wants/", srv1_serving_engine_unit_name as String], "") as NonEmptyStr
+}
+
 data srv1_serving_engine_wrapper_path: NonEmptyStr = "/usr/local/libexec/gunbc/srv1-serving-engine-launch.sh"
 
-// The wrapper's start: the docker removal wait (up to 120 s), the run, and its own readback; image pulls
-// never happen here because the image is a local build pinned by digest.
-data srv1_serving_engine_start_timeout: Second = second(count: 300)
-
-fn srv1_serving_engine_wrapper_text() -> String {
-  srv1_serving_wrapper.body
-}
-
-fn srv1_serving_engine_unit_file() -> SystemdUnitFile {
-  ServiceUnitFile {
-    unit: [
-      Description { text: "srv1 serving engine (lil-flash-next) at boot (gunbc.live_deploy.srv1_serving_engine_unit)" as NonEmptyStr },
-      Requires { target: "docker.service" as NonEmptyStr },
-      After { target: "docker.service" as NonEmptyStr },
-      Requires { target: srv1_gpu_power_cap_unit_name },
-      After { target: srv1_gpu_power_cap_unit_name },
-      After { target: "nvidia-cdi-refresh.service" as NonEmptyStr },
-      Wants { target: "network-online.target" as NonEmptyStr },
-      After { target: "network-online.target" as NonEmptyStr },
-    ],
-    service: [
-      ServiceType { mode: OneshotMode },
-      RemainAfterExit { active: true },
-      TimeoutStartSec { duration: to_string(second_count(s: srv1_serving_engine_start_timeout)) as NonEmptyStr },
-      ServiceUser { name: gunbc_service_user },
-      ServiceGroup { name: gunbc_service_user },
-      Environment { assignment: join(["HOME=", operator_home_root as String], "") as NonEmptyStr },
-      ExecStart { command: join(["/bin/bash ", srv1_serving_engine_wrapper_path as String], "") as NonEmptyStr },
-    ],
-    install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
-  }
-}
-
-// The engine lives on srv1 only: the launch row is srv1's (its hardware row, its image, its slice).
+// The engine (and its retirement, and its replica enablement) lives on srv1 only: the launch row is srv1's
+// (its hardware row, its image, its slice, its cards).
 fn srv1_serving_engine_hosted_on(host: HostIdentity) -> Bool {
   host_identity_eq(a: host, b: operator_host_srv1)
 }
 
-// The unit installed by hand on 2026-11-02 16:20Z to bring the engine back before this landed. It runs the
-// same wrapper from the operator's copy. It is retired by removing these paths -- the unit file and its only
-// enablement link, since it is WantedBy=multi-user.target alone -- so retiring it never stops it.
+// THE LEGACY SINGLETON, RETIRED. The unit file, its WantedBy link and the wrapper that started the gpu=all
+// container. Removed by path (retract_remove_files), never by disable --now, so retiring it cannot take a
+// running engine down. This is the retirement half of the boot-path migration; it is safe to run even
+// though the operator already removed these files by hand (a rm of absent files is a no-op).
 data srv1_serving_engine_retired_hand_units: List<RetiredHandInstalledRemoval> = [
+  // The hand unit installed 2026-11-02 16:20Z to bring the engine back before the old canonical unit
+  // landed; it ran the same wrapper from the operator's copy. Retired alongside the singleton.
   RetiredHandInstalledRemoval {
     host: operator_host_srv1,
     unit: "srv1-lil-serve.service",
@@ -97,4 +77,66 @@ data srv1_serving_engine_retired_hand_units: List<RetiredHandInstalledRemoval> =
       "/etc/systemd/system/multi-user.target.wants/srv1-lil-serve.service",
     ],
   },
+  // The legacy convergence-owned singleton itself: unit, enablement link, wrapper. Retiring this is what
+  // makes convergence the authority that KEEPS the gpu=all launch off srv1, not just one that stopped
+  // installing it.
+  RetiredHandInstalledRemoval {
+    host: operator_host_srv1,
+    unit: srv1_serving_engine_unit_name,
+    paths: [
+      srv1_serving_engine_unit_path(),
+      srv1_serving_engine_enable_link_path(),
+      srv1_serving_engine_wrapper_path,
+    ],
+  },
 ]
+
+// THE BOOT PATH, DERIVED FROM THE ROSTER (one systemd instance per card). The instance number is the
+// replica index, which the gpu.sh launcher also takes as its 0|1 argument; the router upstream label is the
+// same replica's label, so the boot instances and the router rows come from ONE definition.
+fn srv1_replica_boot_unit_name(replica: Srv1ServingReplicaSpec) -> NonEmptyStr {
+  join(["lil-replica@", to_string(replica.index), ".service"], "") as NonEmptyStr
+}
+
+// The boot instances for a launch CONFIGURATION, as a TYPED OUTCOME: a refusal is carried upward, never
+// collapsed to an empty list. This is the launch admission guard's single production route (apply_legs'
+// deploy_apply_srv1_serving_engine_plan arms boot ONLY from here and reports ApplyPlanRefused on refusal),
+// so a launch shape an active lil/vLLM defect makes unsafe stops the apply loudly -- it does not converge
+// to "nothing enabled while the plan reports green". Scope, stated exactly: what this gates is what
+// CONVERGENCE arms at boot and what the modeled engine command (srv1_replica_engine_argv) can carry; the
+// LIVE boot path is the operator's adopted unit/helper/gpu.sh (srv1_serving_gpu_launcher, sha-pinned, its
+// literals tied to the typed rows by witnesses), and the residual gap that its ExecStart is not yet the
+// modeled render is declared -- not concealed -- by the srv1_boot_path_executes_rendered_argv frontier row.
+type Srv1BootUnitsOutcome
+  = BootUnitsAdmitted { units: List<NonEmptyStr> }
+  | BootUnitsRefused { cause: NonEmptyStr, defect_identity: NonEmptyStr }
+
+fn srv1_replica_boot_unit_names(config: Srv1LaunchConfig) -> Srv1BootUnitsOutcome {
+  match srv1_launch_admission(config: config) {
+    Srv1LaunchAdmitted { layout: _ } => BootUnitsAdmitted { units: map(srv1_serving_replica_roster, r => srv1_replica_boot_unit_name(replica: r)) }
+    Srv1LaunchRefused { cause: c, defect_identity: d } => BootUnitsRefused { cause: c, defect_identity: d }
+  }
+}
+
+// Consumers ask questions instead of naming constructors (module-internal): a refused outcome has no units
+// and reports its cause; an admitted one carries the roster's instances.
+fn srv1_boot_outcome_admitted(outcome: Srv1BootUnitsOutcome) -> Bool {
+  match outcome {
+    BootUnitsAdmitted { units: _ } => true
+    BootUnitsRefused { cause: _, defect_identity: _ } => false
+  }
+}
+
+fn srv1_boot_outcome_units(outcome: Srv1BootUnitsOutcome) -> List<NonEmptyStr> {
+  match outcome {
+    BootUnitsAdmitted { units: u } => u
+    BootUnitsRefused { cause: _, defect_identity: _ } => []
+  }
+}
+
+fn srv1_boot_outcome_refusal(outcome: Srv1BootUnitsOutcome) -> NonEmptyStr {
+  match outcome {
+    BootUnitsAdmitted { units: _ } => "no refusal: the configuration is admitted"
+    BootUnitsRefused { cause: c, defect_identity: d } => concat(d, concat(": ", c)) as NonEmptyStr
+  }
+}

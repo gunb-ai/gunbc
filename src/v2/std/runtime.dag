@@ -438,8 +438,12 @@ type TransformInterpreter {
   identity: Symbol
 }
 
+// THE CHOOSER ANSWERS WITH THE ARM IT SELECTS, OR WITH NOTHING. A Branch with no else arm, on the path
+// where the condition does not select the then arm, has no arm to continue with: that is a well-formed
+// answer (v2.std.node answers the absent else slot), not a refusal. The consumers decide what an absent
+// answer means -- the binder-absent Bind proceeds without a value; a consumer that owes a value refuses.
 type BranchInterpreter {
-  choose_branch: fn(Node, RuntimeValue, EvaluationEnvironment) -> Outcome<Node>
+  choose_branch: fn(Node, RuntimeValue, EvaluationEnvironment) -> Outcome<Optional<Node>>
   identity: Symbol
 }
 

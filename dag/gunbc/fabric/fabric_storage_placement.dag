@@ -37,7 +37,7 @@ import extdeps.access.posix { FileMode, PermissionBits, PosixUser, file_mode_bit
 //
 // ONE PLACEMENT, NOT A REPLICA SET (operator approval 2026-09-19): a head needs exactly one
 // linearization point, and an unreachable placement refuses acquisitions rather than failing over.
-// Replication is docs/plans/fabric-storage.md.
+// Replication is docs/plans/fabric-storage.md (deleted 2026-11-08).
 
 type FabricStoragePlacement
   = FabricStorageUnplaced

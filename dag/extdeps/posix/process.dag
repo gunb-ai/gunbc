@@ -74,6 +74,25 @@ type ProcessSpawnOutcome
   = Spawned { pid: Int }
   | SpawnRefused { program: NonEmptyStr, cause: NonEmptyStr }
 
+// A process-group leader this lifecycle itself started. StartDetached spawns with POSIX_SPAWN_SETPGROUP
+// and pgid 0, so the child's pgid equals the Spawned pid (posix_spawnattr_setpgroup(3)). kill(2) reads a
+// pid of 1 as "every process the caller may signal" and 0 as the caller's own group, so a group signal
+// is only ever aimed at a pid above 1. The type is sole_constructor, so that refusal is not a check a
+// caller may skip: process_group_leader is the ONLY mint, and it refuses 0, 1 and negatives with Absent.
+// posix.Signal.TerminateProcessGroup takes THIS type as its input rather than a bare string, so no
+// caller can aim `kill -TERM -<pgid>` at a pid of its own choosing.
+type ProcessGroupLeader sole_constructor {
+  pgid: NonEmptyStr
+}
+
+fn process_group_leader(spawned_pid: Int) -> ProcessGroupLeader? {
+  if spawned_pid > 1 {
+    Present { value: ProcessGroupLeader { pgid: to_string(value: spawned_pid) as NonEmptyStr } }
+  } else {
+    none
+  }
+}
+
 // The closed lifecycle of one waitpid observation (POSIX waitpid(2) / wait(2)): WNOHANG returning
 // 0 is StillRunning; WIFEXITED is Exited with the raw exit code; WIFSIGNALED is Signaled with the
 // fatal signal number — a killed child is NOT an exit, and folding 15 into 143 would make SIGTERM
