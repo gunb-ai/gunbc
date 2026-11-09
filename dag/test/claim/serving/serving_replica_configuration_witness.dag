@@ -71,7 +71,7 @@ test fn the_ram_only_variant_is_the_pair_without_its_disk_tier() -> Bool {
   srv1_pair_l1_l2_configuration.warm_ladder.length() == 2
     && srv1_pair_l1_only_configuration.warm_ladder.length() == 1
     && match srv1_pair_l1_only_configuration.warm_ladder.first() {
-      Present { value: r } => match r.rung {
+      Present { value: r } => match r {
         WarmSwapRestores { tier: SwapTierHostRam } => true
         _ => false
       }

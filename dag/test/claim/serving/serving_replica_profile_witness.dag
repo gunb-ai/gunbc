@@ -75,7 +75,7 @@ test fn srv4_spans_two_cards_and_says_so() -> Bool {
 test fn srv1_replicas_and_h11_run_one_device_each() -> Bool {
   match srv1_vllm_replica_0_profile.parallelism {
     ReplicaOnOneDevice => match srv1_vllm_replica_1_profile.parallelism {
-      ReplicaOnOneDevice => every(filter(serving_replica_roster, r => host_identity_eq(a: r.host, b: operator_host_6ce85c)),
+      ReplicaOnOneDevice => all(filter(serving_replica_roster, r => host_identity_eq(a: r.host, b: operator_host_6ce85c)),
         r => match r.parallelism { ReplicaOnOneDevice => true ReplicaAcrossDevices { devices: _ } => false })
       ReplicaAcrossDevices { devices: _ } => false
     }
@@ -143,9 +143,10 @@ test fn warm_mechanisms_come_off_the_rungs() -> Bool {
 // reading an Absent-or-gapped axis, never a number lifted from a 100k run. (The selector's own refusal is
 // pinned in test.claim.serving.serving_replica_choice_witness.)
 test fn no_row_measures_at_the_fleet_cap() -> Bool {
-  every(serving_replica_roster, r => match r.figures {
+  all(serving_replica_roster, r => match r.figures {
     FiguresOnRow { context: c } => token_count_value(t: c) < token_count_value(t: serving_fleet_context_cap)
-    FiguresAtCoordinate { } => true
+    FiguresAtCoordinate { } => true,
+    FiguresUnmeasured { } => true
   })
 }
 
@@ -162,7 +163,7 @@ test fn srv4_assumptions_are_written_out_not_baked_in() -> Bool {
   replica_assumed_admission(p: srv4_strata_profile).length() == 1
     && replica_assumed_admission(p: srv1_vllm_replica_0_profile).length() == 0
     && replica_assumed_admission(p: srv3_strata_profile).length() == 0
-    && every(srv4_strata_profile.warm_ladder, r => match r {
+    && all(srv4_strata_profile.warm_ladder, r => match r {
       WarmSwapRestores { standing: s } => match s {
         TranscribedUncited { read_obligation: _ } => true
         _ => false
@@ -174,7 +175,7 @@ test fn srv4_assumptions_are_written_out_not_baked_in() -> Bool {
 // ENGINE KIND IS THE DISCRIMINATOR the row keys on: the two vLLM rows say vLLM, every Strata row says
 // Strata, and each row's model carries its checkpoint or artifact -- no row is a string about an engine.
 test fn engine_kind_is_typed_per_row() -> Bool {
-  every(serving_replica_roster, r => match r.engine_kind {
+  all(serving_replica_roster, r => match r.engine_kind {
     LilVllm => match r.model { LilModel { } => true StrataModel { } => false }
     StrataEngine => match r.model { StrataModel { } => true LilModel { } => false }
   }) && match srv1_vllm_replica_0_profile.engine_kind { LilVllm => true StrataEngine => false }
