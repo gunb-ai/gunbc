@@ -61,8 +61,12 @@ import gunbc.roadmap.roadmap_event_carrier {
   SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed,
 }
 import gunbc.roadmap.roadmap_issue_command { IssueCommandSubject, AcceptNode, issue_command_apply }
-import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
-import gunbc.roadmap.roadmap_principal_ref { principal_ref_parse_label }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  HostDashboardInstance, dashboard_instance_for_repo_root, DashboardInstanceLookup, DashboardInstanceResolved, DashboardInstanceRootUnknown,
+}
+import gunbc.roadmap.roadmap_event_log { RoadmapEventEnvelope, roadmap_event_kind_word, roadmap_retired_node_ids_of, RoadmapRetiredNodeIds, RetiredNodeIdsLoaded, RetiredNodeIdsRefused }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapAcceptanceReceipt, AcceptanceRecorded, AcceptanceRevoked, roadmap_node_ids_contain, revocation_reopens_active_frontier }
+import gunbc.principal_projection { principal_ref_parse_label }
 import gunbc.roadmap.roadmap_acceptance_history_carrier {
   RoadmapAcceptanceEventHistoryLoad, RoadmapAcceptanceEventHistoryLoaded, RoadmapAcceptanceEventHistoryLoadRefused,
   load_roadmap_acceptance_event_history_from_carrier_text
@@ -707,4 +711,141 @@ fn roadmap_operator_date_from_epoch_secs(secs: EpochSecs) -> Iso8601CivilDate {
 // the calendar's, and this is the one place the civil date becomes text.
 fn roadmap_operator_render_civil_date(date: Iso8601CivilDate) -> NonEmptyStr {
   join([to_string(value: date.year), "-", iso8601_two_digits(n: date.month), "-", iso8601_two_digits(n: date.day)], "") as NonEmptyStr
+}
+
+// ──────────────────────────────────────────────────────────────────────────────────────────────
+// THE MIGRATION'S OWN WITNESS: WHAT THE ONE HOME MUST HOLD BEFORE IT MAY SERVE.
+//
+// A readable empty log is NOT proof that the old acceptance history arrived in it (review of
+// gunb-ai/gunbc#16189). So the migration is not finished when the appends stop answering with
+// success — it is finished when this function, run over the LIVE carrier, says the facts it must hold
+// are the facts it holds. It is the activation gate: the new roadmap service starts only after it
+// prints MIGRATION VERIFIED, and refuses to start when it prints MIGRATION REFUSED.
+//
+// THREE SEPARATE COMPARISONS, BECAUSE THEY FAIL DIFFERENTLY:
+//   1. the manifest's facts against the log's facts, by identity (node | receipt digest | kind |
+//      disposition). The manifest is the exported text of the old carriers — the seed jsonl and the
+//      fabric tail's own lines — so the comparison is between what WAS recorded and what IS held, not
+//      between two readings of one source; a missing line, an extra line, or a count that does not
+//      agree refuses, each named;
+//   2. the closed-ness each node should have, folded from the MANIFEST's own sequence, against what
+//      the log's reader answers for it (roadmap_operator_node_closed). Two independent folds over two
+//      sources: an acceptance the log lost, or a revocation the log never took, shows here rather than
+//      as a silent absence;
+//   3. the retired roster: every node named must be in the log's retired set, and an unorderable lane
+//      REFUSES rather than answering "nothing is retired" (RoadmapRetiredNodeIds is a fail-closed sum).
+//
+// The per-event ids are printed because a receipt is an identity, not a count: the runbook's receipts
+// are these ids, read out of the carrier the same reader production uses.
+// ──────────────────────────────────────────────────────────────────────────────────────────────
+fn roadmap_acceptance_migration_verify(
+  repo_root: String, expected_manifest: String, retired_roster: String
+) -> String {
+  match dashboard_instance_for_repo_root(repo_root: repo_root) {
+    DashboardInstanceRootUnknown { repo_root: r } =>
+      join(["MIGRATION REFUSED: no dashboard instance is registered at ", r, " — the migration runs over a registered instance's carrier, never an arbitrary path"], "")
+    DashboardInstanceResolved { instance } => roadmap_acceptance_migration_verify_instance(
+      instance: instance, expected_manifest: expected_manifest, retired_roster: retired_roster)
+  }
+}
+
+fn roadmap_acceptance_migration_verify_instance(
+  instance: HostDashboardInstance, expected_manifest: String, retired_roster: String
+) -> String {
+  let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
+  match roadmap_all_events_after_snapshot_close(read: roadmap_events_read_all(layout: layout)) {
+    AllEventsReadRefused { step, reason } =>
+      join(["MIGRATION REFUSED: the event log read failed at ", step, ": ", reason], "")
+    AllEventsRead { envelopes } =>
+      match roadmap_operator_acceptance_history_of(envelopes: envelopes) {
+        OperatorAcceptanceHistoryRefused { detail: d } =>
+          join(["MIGRATION REFUSED: the event log does not replay: ", d as String], "")
+        OperatorAcceptanceHistoryLoaded { events: log_events, replayed: _, rows: _ } =>
+          match roadmap_operator_acceptance_parse_tail(
+            lines: filter(split(s: expected_manifest, delimiter: "\n"), l => count(l) > 0)) {
+            RoadmapAcceptanceTailBad { line_index: i, detail: d } =>
+              join(["MIGRATION REFUSED: manifest line ", to_string(value: i), " is not a valid acceptance event: ", d as String], "")
+            RoadmapAcceptanceTailOk { events: wanted } =>
+              match roadmap_retired_node_ids_of(envs: envelopes) {
+                RetiredNodeIdsRefused { detail: d } =>
+                  join(["MIGRATION REFUSED: the retired lane does not order: ", d as String], "")
+                RetiredNodeIdsLoaded { ids: retired_ids } =>
+                  roadmap_acceptance_migration_verdict(
+                    wanted: wanted, log_events: log_events, envelopes: envelopes,
+                    layout: layout, retired_ids: retired_ids, retired_roster: retired_roster)
+              }
+          }
+      }
+  }
+}
+
+fn roadmap_acceptance_migration_identity(e: RoadmapAcceptanceEvent) -> String {
+  match e {
+    AcceptanceRecorded { receipt } =>
+      join(["acceptance|", receipt.node as String, "|", roadmap_operator_receipt_digest_text(receipt: receipt)], "")
+    AcceptanceRevoked { exact_prior_receipt, disposition, reason: _, revoked_by: _, revoked_on: _ } =>
+      join(["revocation|", exact_prior_receipt.node as String, "|",
+            roadmap_operator_receipt_digest_text(receipt: exact_prior_receipt), "|",
+            if revocation_reopens_active_frontier(disposition: disposition) { "reopens" } else { "remains" }], "")
+  }
+}
+
+fn roadmap_operator_receipt_digest_text(receipt: RoadmapAcceptanceReceipt) -> String {
+  serialize_content_hash(hash: Fnv1a64(receipt.criteria_digest)) as String
+}
+
+fn roadmap_acceptance_migration_verdict(
+  wanted: List<RoadmapAcceptanceEvent>, log_events: List<RoadmapAcceptanceEvent>,
+  envelopes: List<RoadmapEventEnvelope>, layout: RoadmapEventCarrierLayout,
+  retired_ids: List<RoadmapNodeId>, retired_roster: String
+) -> String {
+  let wanted_ids = map(wanted, e => roadmap_acceptance_migration_identity(e: e))
+  let held_ids = map(log_events, e => roadmap_acceptance_migration_identity(e: e))
+  let missing = filter(wanted_ids, i => !any(held_ids, h => h == i))
+  let extra = filter(held_ids, h => !any(wanted_ids, i => i == h))
+  let history = roadmap_operator_close_history(layout: layout)
+  // What the manifest's OWN sequence says should be closed, folded independently of the log: the
+  // receipts the manifest leaves live. Two folds over two sources — a lost acceptance or an
+  // un-applied revocation shows up as a disagreement here, not as a silent absence.
+  let should_be_closed = match replay_acceptance_history(events: wanted) {
+    Absent => [] as List<String>
+    Present { value: state } => map(state.live, r => r.node as String)
+  }
+  let not_closed = filter(should_be_closed, n =>
+    roadmap_operator_node_closed(node: n as NonEmptyStr as RoadmapNodeId, history: history) != AcceptanceFound)
+  let roster = filter(split(s: retired_roster, delimiter: ","), n => count(n) > 0)
+  let not_retired = filter(roster, n => !roadmap_node_ids_contain(ids: retired_ids, node: n as NonEmptyStr as RoadmapNodeId))
+  let event_lines = map(
+    filter(envelopes, env => match env.event.kind {
+      AcceptanceRecordedEvent { receipt: _, pr_url: _, merged_at: _, head_sha: _ } => true
+      AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => true
+      _ => false }),
+    env => join(["  EVENT ", env.id as String, " ", env.event.node as String, " ", roadmap_event_kind_word(k: env.event.kind)], ""))
+  let problems = concat(
+    map(missing, i => join(["missing from the log: ", i], "")),
+    concat(
+      map(extra, h => join(["in the log but not in the manifest: ", h], "")),
+      concat(
+        map(not_closed, n => join(["the manifest leaves ", n, " closed on a live receipt; the log does not say so", ""], "")),
+        map(not_retired, n => join(["the log does not hold ", n, " retired", ""], "")))))
+  if count(problems) > 0 {
+    join(concat([join(["MIGRATION REFUSED: ", to_string(value: count(wanted)), " manifest events, ",
+      to_string(value: count(held_ids)), " held, ", to_string(value: count(problems)), " disagreement(s):"], "")],
+      concat(map(problems, pr => join(["  ", pr], "")), event_lines))), "\n")
+  } else {
+    join(concat([join(["MIGRATION VERIFIED: ", to_string(value: count(wanted)), " manifest events (",
+      to_string(value: count(filter(wanted, e => match e { AcceptanceRecorded { receipt: _ } => true AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } => false }))), " acceptances, ",
+      to_string(value: count(filter(wanted, e => match e { AcceptanceRecorded { receipt: _ } => false AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } => true }))), " revocations), ",
+      to_string(value: count(roster)), " retired node(s) named, all held; ",
+      to_string(value: count(held_ids)), " acceptance events held in the log:"], "")], event_lines), "\n")
+  }
+}
+
+// The node an acceptance event is about — the receipt's own field, never a second naming of it.
+fn roadmap_acceptance_migration_event_node(e: RoadmapAcceptanceEvent) -> String {
+  match e {
+    AcceptanceRecorded { receipt } => receipt.node as String
+    AcceptanceRevoked { exact_prior_receipt, disposition: _, reason: _, revoked_by: _, revoked_on: _ } =>
+      exact_prior_receipt.node as String
+  }
 }

@@ -48,6 +48,8 @@ import test.claim.fabric.fabric_storage_fixture {
 import extdeps.shell
 import gunbc.roadmap.roadmap_event_carrier { RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance, CarrierClosed }
 import gunbc.roadmap.roadmap_issue_command { IssueCommand, RetireNode, AcceptNode, IssueCommandSubject, issue_command_apply }
+import gunbc.roadmap.roadmap_event_cli { AcceptanceCommandChoice, BuildAcceptCommand, BuildRevokeCommand, roadmap_acceptance_operation_identity }
+import gunbc.roadmap.roadmap_model { RoadmapAcceptanceRevocationFacts, AcceptanceRevocationDisposition, AcceptanceNodeReopensActiveFrontier }
 import gunbc.fabric.fabric_event_log { EventAppended, EventAppendRefused }
 import gunbc.fabric.fabric_storage_file_store { FabricStorageOperations, fabric_storage_slots }
 import gunbc.roadmap.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
@@ -888,4 +890,41 @@ test fn an_unknown_node_is_refused_before_anything_is_written() -> Bool {
       _ => claim("an unknown node closed", false)
     }
   })
+}
+
+// ──────────────────────────────────────────────────────────────────────────────────────────────
+// THE OPERATION IDENTITY IS THE FACT, NOT THE NODE (review of gunb-ai/gunbc#16189, finding 2).
+// The carrier keeps an operation create-once, so an identity naming only the node would let a node be
+// accepted ONCE IN ITS LIFE: the acceptance and the revocation that later takes it back would collide
+// at operations/<node>/<operation>.json, and the migration could never replay the history of
+// entry-graph-union-construction — its acceptance, its revocation, its retirement. Three controls:
+// the SAME command retries as the SAME operation (a retry replays rather than writing twice); an
+// acceptance and the revocation of that same receipt are TWO operations; and the same receipt under a
+// different node is a different operation, so an identity is never accidentally shared.
+// ──────────────────────────────────────────────────────────────────────────────────────────────
+test fn an_acceptance_and_its_revocation_are_two_operations_and_a_retry_is_one() -> Bool {
+  let receipt = sample_receipt("node-operation")
+  let accept = BuildAcceptCommand {
+    receipt: receipt, pr_url: "https://github.com/briansrls/gunbc/pull/14189",
+    merged_at: "2026-11-03T04:15:00Z", head_sha: "0123456789abcdef0123456789abcdef01234567",
+  }
+  let revoke = BuildRevokeCommand {
+    facts: RoadmapAcceptanceRevocationFacts {
+      receipt: receipt, disposition: AcceptanceNodeReopensActiveFrontier,
+      reason: "the receipt did not survive its own witness" as NonEmptyStr,
+      revoked_by: "briansrls" as NonEmptyStr, revoked_on: "2026-11-04" as NonEmptyStr,
+    },
+  }
+  let retry = BuildAcceptCommand {
+    receipt: receipt, pr_url: "https://github.com/briansrls/gunbc/pull/14189",
+    merged_at: "2026-11-03T04:15:00Z", head_sha: "0123456789abcdef0123456789abcdef01234567",
+  }
+  let accept_id = roadmap_acceptance_operation_identity(node: "node-operation", choice: accept)
+  let retry_id = roadmap_acceptance_operation_identity(node: "node-operation", choice: retry)
+  let revoke_id = roadmap_acceptance_operation_identity(node: "node-operation", choice: revoke)
+  let other_node_id = roadmap_acceptance_operation_identity(node: "node-operation-two", choice: accept)
+  claim("the same command is the same operation, so a retry replays", accept_id == retry_id)
+    && claim("an acceptance and the revocation of that receipt are distinct operations", accept_id != revoke_id)
+    && claim("a receipt is never shared across nodes by an identity", accept_id != other_node_id)
+    && claim("the identity names the node it acts on", string_contains(s: accept_id, pattern: "node-operation"))
 }

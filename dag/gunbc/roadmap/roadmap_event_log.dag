@@ -896,7 +896,32 @@ fn roadmap_standing_step_acc(acc: RoadmapStandingAcc, env: RoadmapEventEnvelope,
   // operator's retirement is the last word the history gets from the fold; the route that would
   // append past it refuses already-terminal, and this guard makes the standing agree even if a
   // pre-retirement event was recorded out of causal order.
-  if roadmap_standing_is_terminal(standing: acc.standing) { acc }
+  // A TERMINAL standing absorbs the ORDINARY record of work: a claim, a progress note, a blocked, a
+  // handback, a returned result or a comment's effect cannot reopen what an acceptance closed
+  // (witness: a_terminal_standing_absorbs_later_work_events). But terminal is not shut to EVERY hand,
+  // and the two events that ARE authorized over an accepted node pass this gate on purpose, each under
+  // its own authority:
+  //   * the operator's RETIREMENT — gunbc.design_ruling.operator_may_arbitrarily_retire_any_work_item
+  //     says the operator may retire any work item in any state, so a closed node that later turns out
+  //     to be dead work retires like any other (witness:
+  //     a_retired_node_leaves_the_plan_the_way_an_accepted_one_does); and
+  //   * an ADMITTED REVOCATION — the one event authorized to end an acceptance. It is not authorized
+  //     here by the fold but at the append, where roadmap_revocation_names_live_acceptance refuses a
+  //     revocation whose receipt is not the live one (witness:
+  //     a_revocation_names_a_live_receipt_or_refuses). The fold only honours the disposition the
+  //     operator wrote: reopens-active-frontier returns the node to the frontier, remains-superseded
+  //     leaves it closed (witness: a_revocations_disposition_decides_whether_the_node_returns).
+  // A RETIREMENT is final for both of them: nothing un-retires a node from a fold, and the guard for
+  // the retired case stays the plain one — including for an out-of-order acceptance read after it.
+  if roadmap_standing_is_retired(standing: acc.standing) { acc }
+  else if roadmap_standing_is_accepted(standing: acc.standing) {
+    match e.kind {
+      Retired { reason } => RoadmapStandingAcc { standing: NodeRetired { by: e.author, reason: reason }, assignment: acc.assignment }
+      AcceptanceRevokedEvent { receipt: _, disposition, revoked_by: _, revoked_on: _, reason: _ } =>
+        if revocation_reopens_active_frontier(disposition: disposition) { roadmap_standing_acc_empty() } else { acc }
+      _ => acc
+    }
+  }
   else {
   match e.kind {
     Claimed { assignee, return_to } => RoadmapStandingAcc {
@@ -906,8 +931,9 @@ fn roadmap_standing_step_acc(acc: RoadmapStandingAcc, env: RoadmapEventEnvelope,
     Progress { note } => RoadmapStandingAcc { standing: NodeInProgress { by: e.author, last_note: note }, assignment: acc.assignment }
     Blocked { reason } => RoadmapStandingAcc { standing: NodeBlocked { by: e.author, reason: reason }, assignment: acc.assignment }
     HandedBack { reason } => RoadmapStandingAcc { standing: NodeHandedBack { by: e.author, reason: reason }, assignment: acc.assignment }
-    // The operator's retirement, from ANY standing: any work item, any state. The fold records it
-    // as stated — by the authenticated author, with the reason — and the guard above keeps it final.
+    // The operator's retirement, from ANY standing: any work item, any state (the accepted branch
+    // above admits it over a closed node too). The fold records it as stated — by the authenticated
+    // author, with the reason — and the retired guard above keeps it final.
     Retired { reason } => RoadmapStandingAcc { standing: NodeRetired { by: e.author, reason: reason }, assignment: acc.assignment }
     ResultReturned { attempt: _, claim, outcome } => match outcome {
       ResultPublished { pr, head } => match roadmap_claim_return_to(envs: envs, claim: claim) {

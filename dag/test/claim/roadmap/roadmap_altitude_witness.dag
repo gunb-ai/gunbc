@@ -88,7 +88,7 @@ fn routine_node() -> RoadmapNode {
 }
 
 fn open_node() -> RoadmapNode {
-  fx_authored(identity: "rnfx_140ZV0QZTY3R9PTENK99", id: "alt-open"content: "working item")
+  fx_authored(identity: "rnfx_140ZV0QZTY3R9PTENK99", id: "alt-open", content: "working item")
 }
 
 // The fold decision proven over the RENDERED page, not the predicate alone: an all-routine section

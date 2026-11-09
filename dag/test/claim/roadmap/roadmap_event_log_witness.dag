@@ -121,6 +121,8 @@ test fn a_v2_claimed_event_decodes_as_a_legacy_email_principal_never_auto_matche
           Released => false
           Progress { note: _ } => false
           Blocked { reason: _ } => false
+          AcceptanceRecordedEvent { receipt: _, pr_url: _, merged_at: _, head_sha: _ } => false
+          AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => false
           HandedBack { reason: _ } => false
           Retired { reason: _ } => false
           ReceiptReferenced { obligation: _, address: _, verdict: _ } => false
@@ -150,6 +152,8 @@ test fn a_v1_claimed_event_still_reads_as_a_legacy_self_claim() -> Bool {
           Released => false
           Progress { note: _ } => false
           Blocked { reason: _ } => false
+          AcceptanceRecordedEvent { receipt: _, pr_url: _, merged_at: _, head_sha: _ } => false
+          AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => false
           HandedBack { reason: _ } => false
           Retired { reason: _ } => false
           ReceiptReferenced { obligation: _, address: _, verdict: _ } => false
@@ -671,7 +675,49 @@ test fn a_revocations_disposition_decides_whether_the_node_returns() -> Bool {
   let accepted = acceptance_event(parent: none, at: "2026-11-09T00:00:00Z")
   let stays = ev(kind: revocation_kind(receipt: receipt_fixture(), disposition: AcceptanceNodeRemainsSuperseded),
     parent: Present { value: accepted.id }, author: human_principal(), at: "2026-11-10T00:00:00Z")
-  roadmap_standing_is_terminal(standing: roadmap_node_standing(envs: [accepted, stays]))
+  let reopened = ev(kind: revocation_kind(receipt: receipt_fixture(), disposition: AcceptanceNodeReopensActiveFrontier),
+    parent: Present { value: accepted.id }, author: human_principal(), at: "2026-11-10T00:00:00Z")
+  let open_lane = ev(kind: Progress { note: "work continues" as NonEmptyStr },
+    parent: Present { value: reopened.id }, author: human_principal(), at: "2026-11-11T00:00:00Z")
+  let accepted_standing = roadmap_node_standing(envs: [accepted])
+  let stays_standing = roadmap_node_standing(envs: [accepted, stays])
+  let reopened_standing = roadmap_node_standing(envs: [accepted, reopened])
+  // POSITIVE CONTROLS FOR BOTH DISPOSITIONS (review of gunb-ai/gunbc#16189, finding 1): the word the
+  // operator wrote is what moves the node — remains-superseded keeps it closed, reopens-active-frontier
+  // returns it to the frontier, and a node back on the frontier takes the ordinary record of work
+  // again. Neither disposition is inferred, defaulted, or read from the standing.
+  roadmap_standing_is_terminal(standing: accepted_standing)
+    && roadmap_standing_is_accepted(standing: accepted_standing)
+    && roadmap_standing_is_terminal(standing: stays_standing)
+    && roadmap_standing_is_accepted(standing: stays_standing)
+    && !roadmap_standing_is_terminal(standing: reopened_standing)
+    && !roadmap_standing_is_accepted(standing: reopened_standing)
+    && roadmap_standing_is_accepted(standing: roadmap_node_standing(envs: [accepted, reopened, open_lane]))
+}
+
+// THE SEED'S OWN HISTORY, END TO END (review finding 2): acceptance, then the revocation that took it
+// back leaving the node superseded, then the operator's retirement — the recorded order of
+// entry-graph-union-construction in the deleted seed jsonl. Each step leaves the plan, and the
+// acceptance never puts the node beyond the operator's reach: retirement is admitted over a CLOSED
+// node, because gunbc.design_ruling.operator_may_arbitrarily_retire_any_work_item says any work item
+// in any state. An ordinary record after the retirement is absorbed, not obeyed.
+test fn the_recorded_history_of_one_node_folds_to_a_retirement_through_its_acceptance() -> Bool {
+  let accepted = acceptance_event(parent: none, at: "2026-11-09T00:00:00Z")
+  let stays = ev(kind: revocation_kind(receipt: receipt_fixture(), disposition: AcceptanceNodeRemainsSuperseded),
+    parent: Present { value: accepted.id }, author: human_principal(), at: "2026-11-10T00:00:00Z")
+  let retired = ev(kind: Retired { reason: "the floor cut retired the work" as NonEmptyStr },
+    parent: Present { value: stays.id }, author: human_principal(), at: "2026-11-11T00:00:00Z")
+  let absorbed = ev(kind: Progress { note: "a note nobody should have to read" as NonEmptyStr },
+    parent: Present { value: retired.id }, author: human_principal(), at: "2026-11-12T00:00:00Z")
+  let lane = [accepted, stays, retired]
+  roadmap_standing_is_accepted(standing: roadmap_node_standing(envs: [accepted]))
+    && roadmap_standing_is_accepted(standing: roadmap_node_standing(envs: [accepted, stays]))
+    && roadmap_standing_is_retired(standing: roadmap_node_standing(envs: lane))
+    && roadmap_node_standing(envs: concat(lane, [absorbed])) == roadmap_node_standing(envs: lane)
+    && match roadmap_retired_node_ids_of(envs: lane) {
+         RetiredNodeIdsLoaded { ids } => any(ids, i => (i as String) == (node() as String))
+         RetiredNodeIdsRefused { detail: _ } => false
+       }
 }
 
 // DISCRIMINATING: a retired node is READ the way an accepted one is — a terminal standing, and the

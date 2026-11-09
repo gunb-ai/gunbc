@@ -51,8 +51,6 @@ import gunbc.roadmap.roadmap_model {
   Closes,
 }
 import gunbc.roadmap.roadmap_acceptance_history_carrier {
-  roadmap_acceptance_event_history_carrier_repo_path,
-  load_roadmap_acceptance_event_history,
   RoadmapAcceptanceEventHistoryLoad,
   RoadmapAcceptanceEventHistoryLoaded,
   RoadmapAcceptanceEventHistoryLoadRefused,

@@ -5,6 +5,7 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.algebra { trim }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import std.content_hash { serialize_content_hash, Fnv1a64 }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_for_repo_root, DashboardInstanceResolved, DashboardInstanceRootUnknown }
 import gunbc.principal_projection { principal_ref_parse_label }
 import gunbc.roadmap.roadmap_event_log {
@@ -173,7 +174,29 @@ fn roadmap_acceptance_revoke_cli(repo_root: String, revocation_line: String, aut
 // operator's line carried.
 type AcceptanceCommandChoice
   = BuildAcceptCommand { receipt: RoadmapAcceptanceReceipt, pr_url: String, merged_at: String, head_sha: String }
-  | BuildRevokeCommand { facts: OperatorAcceptanceRevocationFacts }
+  | BuildRevokeCommand { facts: RoadmapAcceptanceRevocationFacts }
+
+// THE OPERATION IDENTITY IS THE FACT, NOT THE NODE. The carrier keeps an operation create-once, so an
+// identity naming only the node would let a node be accepted ONCE IN ITS LIFE: the acceptance and the
+// revocation that later takes it back (and any re-acceptance on new criteria) would collide at
+// operations/<node>/<operation>.json and the second command would be refused for a collision that is not
+// a duplicate of anything. The identity is the node, the KIND of fact, and the digest of the receipt it
+// acts on — stable, so retrying the same command is the same operation and replays instead of writing
+// twice, and distinct, so a revocation is never mistaken for the acceptance it revokes
+// (witness: acceptance_then_revocation_of_one_node_are_two_operations).
+fn roadmap_acceptance_operation_identity(node: String, choice: AcceptanceCommandChoice) -> String {
+  match choice {
+    BuildAcceptCommand { receipt, pr_url: _, merged_at: _, head_sha: _ } =>
+      join([node, "-acceptance-", roadmap_acceptance_receipt_digest_text(receipt: receipt)], "")
+    BuildRevokeCommand { facts } =>
+      join([node, "-revocation-", roadmap_acceptance_receipt_digest_text(receipt: facts.receipt)], "")
+  }
+}
+
+// The receipt's own digest, in the hex text the member law already writes into the event.
+fn roadmap_acceptance_receipt_digest_text(receipt: RoadmapAcceptanceReceipt) -> String {
+  serialize_content_hash(hash: Fnv1a64(receipt.criteria_digest)) as String
+}
 
 fn roadmap_acceptance_built_command(subject: IssueCommandSubject, choice: AcceptanceCommandChoice) -> IssueCommand {
   match choice {
@@ -219,7 +242,9 @@ fn roadmap_acceptance_command(repo_root: String, author: String, node: String, w
                   let subject = IssueCommandSubject {
                     node: node_id,
                     author: EventPrincipalAuthenticated { ref: author_ref },
-                    operation: node as NonEmptyStr,
+                    // NOT `node`: see roadmap_acceptance_operation_identity — an operation named for the
+                    // node alone would let a node be accepted exactly once in its life.
+                    operation: roadmap_acceptance_operation_identity(node: node, choice: choice) as NonEmptyStr,
                     expected: expected,
                   }
                   let applied = issue_command_apply(layout: layout, command: roadmap_acceptance_built_command(subject: subject, choice: choice), recorded_at: match clock_now_probed_at() { Present { value: t } => t as String  Absent => "" })
