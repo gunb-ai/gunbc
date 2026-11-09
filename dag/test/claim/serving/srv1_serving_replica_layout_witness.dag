@@ -13,10 +13,11 @@ import gunbc.serving.srv1_serving_replica_layout {
   srv1_launch_admission,
   srv1_replica_unit_contract, srv1_disk_guard_contract,
   srv1_serving_gpu_launcher, srv1_replica_engine_argv, srv1_replica_device_words,
-  srv1_replica_helper, Srv1AdoptionField, Srv1AdoptionMismatchAction, Srv1RestartPolicy,
-  ContainerName, GpuUuid, ImageDigest, PortBinding, Mounts, MemoryLimit, ShmSize, CgroupParent,
-  ReportDrift, ExitNonZero, DestroyAndRelaunch, OnFailure,
-  srv1_adoption_field_in, srv1_mismatch_action_in, srv1_restart_policy_eq,
+  srv1_replica_helper,
+  srv1_contract_verifies_container_name, srv1_contract_verifies_gpu_uuid, srv1_contract_verifies_image_digest,
+  srv1_contract_verifies_port_binding, srv1_contract_verifies_mounts, srv1_contract_verifies_memory_limit,
+  srv1_contract_verifies_shm_size, srv1_contract_verifies_cgroup_parent,
+  srv1_contract_reports_drift, srv1_contract_exits_nonzero, srv1_contract_may_destroy, srv1_contract_restarts_on_failure,
   Srv1ServingReplicaSpec,
 }
 import extdeps.container.nvidia_container_toolkit { nvidia_cdi_device_selector_of, nvidia_cdi_device_name_prefix }
@@ -134,7 +135,7 @@ test fn the_disk_guard_reserve_is_positive() -> Bool {
 // The systemd contract carries the unit file's semantics as TYPED carriers (review 92396): restart policy,
 // exit status, and the power-cap ordering edge are machine-readable, not English.
 test fn the_systemd_contract_matches_the_unit_file() -> Bool {
-  srv1_restart_policy_eq(a: srv1_replica_unit_contract.restart, b: OnFailure)
+  srv1_contract_restarts_on_failure(c: srv1_replica_unit_contract)
     && srv1_replica_unit_contract.success_exit_status == 143
     && (srv1_replica_unit_contract.power_cap_unit.name as String) == "gpu-power-limit.service"
 }
@@ -145,18 +146,18 @@ test fn the_systemd_contract_matches_the_unit_file() -> Bool {
 test fn the_adoption_policy_never_destroys_a_healthy_engine() -> Bool {
   let c = srv1_replica_unit_contract
   let verifies_all =
-    srv1_adoption_field_in(fields: c.adoption_verifies, f: ContainerName)
-    && srv1_adoption_field_in(fields: c.adoption_verifies, f: GpuUuid)
-    && srv1_adoption_field_in(fields: c.adoption_verifies, f: ImageDigest)
-    && srv1_adoption_field_in(fields: c.adoption_verifies, f: PortBinding)
-    && srv1_adoption_field_in(fields: c.adoption_verifies, f: Mounts)
-    && srv1_adoption_field_in(fields: c.adoption_verifies, f: MemoryLimit)
-    && srv1_adoption_field_in(fields: c.adoption_verifies, f: ShmSize)
-    && srv1_adoption_field_in(fields: c.adoption_verifies, f: CgroupParent)
+    srv1_contract_verifies_container_name(c: c)
+    && srv1_contract_verifies_gpu_uuid(c: c)
+    && srv1_contract_verifies_image_digest(c: c)
+    && srv1_contract_verifies_port_binding(c: c)
+    && srv1_contract_verifies_mounts(c: c)
+    && srv1_contract_verifies_memory_limit(c: c)
+    && srv1_contract_verifies_shm_size(c: c)
+    && srv1_contract_verifies_cgroup_parent(c: c)
   let safe_outcomes =
-    srv1_mismatch_action_in(actions: c.on_mismatch, a: ReportDrift)
-    && srv1_mismatch_action_in(actions: c.on_mismatch, a: ExitNonZero)
-    && !srv1_mismatch_action_in(actions: c.on_mismatch, a: DestroyAndRelaunch)
+    srv1_contract_reports_drift(c: c)
+    && srv1_contract_exits_nonzero(c: c)
+    && !srv1_contract_may_destroy(c: c)
   let helper_has_no_destroy = !string_contains(s: srv1_replica_helper.body as String, pattern: "docker rm")
   verifies_all && safe_outcomes && helper_has_no_destroy
 }

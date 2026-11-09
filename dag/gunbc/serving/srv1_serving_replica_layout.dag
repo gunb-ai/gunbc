@@ -309,6 +309,34 @@ fn srv1_restart_policy_eq(a: Srv1RestartPolicy, b: Srv1RestartPolicy) -> Bool {
   }
 }
 
+// Named predicates over the contract's policy (sum alternatives are only constructible inside THIS module;
+// consumers ask these questions rather than naming constructors).
+fn srv1_contract_verifies(c: Srv1ReplicaUnitContract, f: Srv1AdoptionField) -> Bool {
+  srv1_adoption_field_in(fields: c.adoption_verifies, f: f)
+}
+
+fn srv1_contract_verifies_container_name(c: Srv1ReplicaUnitContract) -> Bool { srv1_contract_verifies(c: c, f: ContainerName) }
+fn srv1_contract_verifies_gpu_uuid(c: Srv1ReplicaUnitContract) -> Bool { srv1_contract_verifies(c: c, f: GpuUuid) }
+fn srv1_contract_verifies_image_digest(c: Srv1ReplicaUnitContract) -> Bool { srv1_contract_verifies(c: c, f: ImageDigest) }
+fn srv1_contract_verifies_port_binding(c: Srv1ReplicaUnitContract) -> Bool { srv1_contract_verifies(c: c, f: PortBinding) }
+fn srv1_contract_verifies_mounts(c: Srv1ReplicaUnitContract) -> Bool { srv1_contract_verifies(c: c, f: Mounts) }
+fn srv1_contract_verifies_memory_limit(c: Srv1ReplicaUnitContract) -> Bool { srv1_contract_verifies(c: c, f: MemoryLimit) }
+fn srv1_contract_verifies_shm_size(c: Srv1ReplicaUnitContract) -> Bool { srv1_contract_verifies(c: c, f: ShmSize) }
+fn srv1_contract_verifies_cgroup_parent(c: Srv1ReplicaUnitContract) -> Bool { srv1_contract_verifies(c: c, f: CgroupParent) }
+
+fn srv1_contract_reports_drift(c: Srv1ReplicaUnitContract) -> Bool {
+  srv1_mismatch_action_in(actions: c.on_mismatch, a: ReportDrift)
+}
+fn srv1_contract_exits_nonzero(c: Srv1ReplicaUnitContract) -> Bool {
+  srv1_mismatch_action_in(actions: c.on_mismatch, a: ExitNonZero)
+}
+fn srv1_contract_may_destroy(c: Srv1ReplicaUnitContract) -> Bool {
+  srv1_mismatch_action_in(actions: c.on_mismatch, a: DestroyAndRelaunch)
+}
+fn srv1_contract_restarts_on_failure(c: Srv1ReplicaUnitContract) -> Bool {
+  srv1_restart_policy_eq(a: c.restart, b: OnFailure)
+}
+
 // The unit's ordering/dependency edge onto the power-cap oneshot, named as a declaration so the edge has
 // ONE authority (review 92396 context; the cap's apply/readback ownership is lane A / #16047, NOT here —
 // this row only states that the replica unit is ordered after the on-host enabled unit).
