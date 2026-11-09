@@ -43,24 +43,27 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // Two positions in the corpus hand a statement let to the VALUE reader, and both sit in the whole-corpus
 // census on plain main, each keeping its file on the wave's fallback:
 //
-//   dag/gunbc/instruments/fabric_control_plane_live_probe.dag:1053 — the LAST statement of
-//     fci1_canonical_cleanup_disposition's body is a statement let (`let disposition = match ...`, with
+//   fci1_canonical_cleanup_disposition, in dag/gunbc/instruments/fabric_control_plane_live_probe.dag —
+//     the LAST statement of its body is a statement let (`let disposition = match ...`, with
 //     no following expression). A spine with no following statement leaves body_lower_stmt_spine through
 //     its Absent arm to body_lower_tail_statement_read, which reads the statement as a VALUE: the let
 //     reaches the dispatcher and refuses.
-//   dag/gunbc/instruments/compute_run_unit_cold.dag:97 — the braced arm block of
-//     path_is_under_production_instance_root's `ProdRoleRealizedBy { holder }` arm begins with a
+//   path_is_under_production_instance_root, in dag/gunbc/instruments/compute_run_unit_cold.dag — the
+//     braced arm block of its `ProdRoleRealizedBy { holder }` arm begins with a
 //     statement let (`let root = holder.instance.instance_root`) and ends with the arm's value
 //     expression, which READS that binding. The arm's body reaches the same value reader and refuses at
 //     the let, before its rest is ever read.
 //
 // THE REDS are the two positions and their siblings, each varying one thing; THE CONTROLS are the same
 // shapes that the spine already owns — a body-top-level let with a following statement, a braced arm with
-// one expression, a let in an if-branch — and must resolve. The `_und` fixtures put an undeclared name in
-// the position the lowering must not skip: a tail let's VALUE and an arm block's REST must both be read,
-// and refuse unbound at their own atoms; and the arm-block let's binder must stay readable from its rest,
-// which is what the plain `is_accepted` claim for that shape checks. A fix that dropped the binding, or
-// dropped either half, would flip one of these four.
+// one expression, a let in an if-branch — and must resolve. The three `_und` fixtures put an undeclared
+// name in a position the lowering either reads or refuses before reading, and which one it is differs by
+// position: a SPINE let's value (`lst_let_und_reachable`) and an ARM BLOCK'S rest (`lst_arm_rest_und`) are
+// read, so each must refuse unbound AT ITS OWN ATOM; a TAIL let's value (`lst_tail_let_und`) is the one
+// place the lowering door-holder answers first, so that row expects the tail-position refusal and NO unbound
+// atom — it pins which door answers first, not that the value is reached. And the arm-block let's binder
+// must stay readable from its rest, which is what the plain `is_accepted` claim for that shape checks. A
+// fix that dropped the binding, or dropped either half, would flip one of those rows.
 // FIXTURE SOURCES LIVE IN THIS CLAIM, NOT ON DISK. Each row's module is carried inline as the `source` of
 // a DagSourceReadWitness, and the `path` argument is an artifact LABEL, not a repository file. This branch
 // once also materialized each fixture under src/v2/test/fixture/namespace_xl0/ and added a
@@ -155,10 +158,8 @@ fn lst_ingest() -> SourceRootIngest {
     tail: Cons {
     head: lst_read(source: lst_last_arm_block_source, id: ^lst_last_arm_block_artifact, unit: ^lst_last_arm_block_cu, path: "src/v2/test/fixture/namespace_xl0/lst_last_arm_block.dag"),
     tail: Cons {
-    tail: Cons {
     head: lst_read(source: lst_let_und_reachable_source, id: ^lst_let_und_reachable_artifact, unit: ^lst_let_und_reachable_cu, path: "src/v2/test/fixture/namespace_xl0/lst_let_und_reachable.dag"),
     tail: Empty
-  }
   }
   }
   }
