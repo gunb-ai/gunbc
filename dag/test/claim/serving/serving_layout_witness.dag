@@ -160,7 +160,9 @@ fn sl_all_grow_to_ceiling(r: ServingLayoutResult) -> Bool {
 }
 
 // h11 AS GRANTED (A-prime): four independent replicas, five conversations guaranteed to the ceiling (2,1,1,1), the
-// budget verdict Fits with its five assumptions named (three allowances, the extrapolated ceiling snapshot, the page charging), the backend supports the topology, and nothing is
+// budget verdict Fits with its SIX assumptions named -- three allowances, the extrapolated ceiling snapshot, the page
+// charging, and now the engine swap bound (serving_engine_swap_bound), which is charged per replica and is Assumed, so
+// it must be listed and not read as measured (review 92488). The backend supports the topology, and nothing is
 // qualified live yet.
 test fn witness_h11_layout_is_derived_and_fits_under_named_assumptions() -> Bool {
   match host_6ce85c_layout {
@@ -169,7 +171,7 @@ test fn witness_h11_layout_is_derived_and_fits_under_named_assumptions() -> Bool
         && rs.all(c => c.admitted_conversations >= 1 && c.active_slots == 1)
         && sl_admitted_total(r: host_6ce85c_layout) == 5
         && (match e.budget { ServingMemoryFits { spare: _ } => true  _ => false })
-        && e.assumptions.length() == 5
+        && e.assumptions.length() == 6
         && (match e.backend { ServingBackendSupportsTopology => true  _ => false })
         && (match e.live { ServingLiveStandingUnqualified { obligation: _ } => true  _ => false })
         && sl_all_grow_to_ceiling(r: host_6ce85c_layout)
@@ -588,6 +590,38 @@ test fn witness_srv3_derivation_carries_the_grants_swap_label() -> Bool {
         }
         Absent => false
       }
+    ServingLayoutRefused { refusal: _ } => false
+  }
+}
+
+// THE CHARGED ASSUMPTIONS ARE LISTED AS ASSUMPTIONS, NOT PROMOTED TO OBSERVED (review 92488). srv3 fills its swap
+// bound (from srv4) and its shared artifact's host-RAM rung (the 46.84 GiB arena, srv4's file) with borrowed assumed
+// figures that the budget CHARGES. serving_layout_assumptions folds the profile, the devices, the swap bound and each
+// artifact's charged reading, so the derived identity cannot present a borrowed number as observed
+// (gunbc.design_argument::epistemic_humility). The reasons are read from their SOURCE rows, not retyped: removing the
+// swap or artifact fold from serving_layout_assumptions drops that reason from the derived list and this goes RED.
+fn ca_reason_listed(r: ServingMemoryReading, list: List<NonEmptyStr>) -> Bool {
+  match r {
+    ServingMemoryAssumed { bytes: _, reason: x } => list.any(a => a == x)
+    _ => false
+  }
+}
+
+test fn witness_srv3_charged_assumptions_are_listed_not_promoted() -> Bool {
+  match srv3_layout {
+    ServingLayoutConfigured { replicas: _, unallocated_ram: _, evidence: e } => {
+      // The swap bound is charged per replica and srv3 fills it with a borrowed srv4 figure (Assumed); the disk rung
+      // holds the 46 GiB arena figure borrowed from srv4's file (Assumed) -- not billed (srv3 has a host-RAM rung too)
+      // but still a bet a reader must not take as measured. Both reasons are read from their SOURCE rows, so removing
+      // either the swap or the artifact fold from serving_layout_assumptions drops that reason from the derived list
+      // and this goes RED. (srv3's host-RAM rung is a measured Read -- 47,964 MiB read over ssh -- so it is correctly
+      // NOT an assumption, and this test does not ask for it.)
+      let disk_assumed = match srv3_routed_expert_artifact.disk {
+        Present { value: r } => ca_reason_listed(r: r.bytes, list: e.assumptions)
+        Absent => false
+      }
+      ca_reason_listed(r: srv3_grant.swap_bound, list: e.assumptions) && disk_assumed
+    }
     ServingLayoutRefused { refusal: _ } => false
   }
 }

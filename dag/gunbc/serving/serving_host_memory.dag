@@ -401,7 +401,7 @@ data srv1_vllm_engine_memory: ServingEngineMemory = ServingEngineMemory {
 data srv3_strata_engine_memory: ServingEngineMemory = ServingEngineMemory {
   name: "srv3-strata" as NonEmptyStr,
   memory_cap: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 110)), provenance: "strata-pool.service engine log 'memory guard: limit 110.0 GiB (source: cgroup)', read over ssh 2026-11-08 by bold-wren-111" as NonEmptyStr },
-  swap_cap: ServingMemoryUnread { reason: "strata.slice MemorySwapMax has not been read; ssh access exists (read 2026-11-08), so this is unread and not unreachable. srv4's serving slice was read to have none" as NonEmptyStr },
+  swap_cap: ServingMemoryAssumed { bytes: byte_size(count: 0), reason: "the fleet's no-swap convention for serving slices: srv4's gunbc-srv4-daily.slice was read to MemorySwapMax=0 (2026-10-30) and h11's engines carry only 2 GiB, so srv3's strata.slice is budgeted at no swap. UNREAD on srv3 -- read obligation: systemctl show strata-pool.service -p MemorySwapMax; the figure is taken as 0 until that read lands. This row is srv3's swap limit's ONLY home; srv3_grant reads it rather than writing its own value (review 92498, single authority)" as NonEmptyStr },
   // The engine's OWN memory, with the 46.84 GiB private expert arena taken out: srv3 runs the same shape srv4's
   // pre-mmap engine was read in — same cards, same model, same 24/24 layer split, experts in the engine's own
   // anon — and that base read 52 GiB (2026-10-30); 52 GiB less the 46.84 GiB arena the artifact charges is 5284

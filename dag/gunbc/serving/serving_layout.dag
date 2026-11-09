@@ -172,6 +172,29 @@ fn serving_artifact_charged_host_ram(a: ServingSharedArtifact) -> ServingMemoryR
   }
 }
 
+// Every SERVING_MEMORY_READING an artifact carries, across all its rungs and the floor an evictable host-RAM rung
+// states. A rung whose reading is Assumed is a bet on the configuration -- the device cache, the host-RAM rung and
+// the disk tier alike -- and must surface in the layout's assumptions, not just the rung the budget happens to bill.
+// (The assumptions list has never been only-what-is-billed: the device VRAM readings below are listed though they are
+// not in `reserved` either. srv3's 46 GiB disk rung is such a bet -- borrowed from srv4's file, not billed because
+// srv3 also has a host-RAM rung, but still a number a reader must not take as observed. review 92488.)
+fn serving_artifact_rung_assumptions(rung: ServingArtifactRung?) -> List<NonEmptyStr> {
+  match rung {
+    Absent => [] as List<NonEmptyStr>
+    Present { value: r } => match r.holds {
+      ArtifactHeldPinned { mechanism: _ } => serving_reading_assumption(r: r.bytes)
+      ArtifactHeldEvictable { bound_by: _, floor: f } => concat(serving_reading_assumption(r: r.bytes), serving_reading_assumption(r: f))
+    }
+  }
+}
+
+fn serving_artifact_assumptions(a: ServingSharedArtifact) -> List<NonEmptyStr> {
+  concat(
+    serving_artifact_rung_assumptions(rung: a.device),
+    concat(serving_artifact_rung_assumptions(rung: a.host_ram), serving_artifact_rung_assumptions(rung: a.disk))
+  )
+}
+
 // charging: what the per-replica caps assume about which cgroup pays for shared pages. Linux charges a page to
 // the cgroup that first touches it, so a shared artifact counted once in the host budget is only absent from
 // each replica's cap if its owner faulted it in first; a stated, unverified ordering is an assumption.
@@ -360,7 +383,18 @@ fn serving_layout_assumptions(g: ServingResourceGrant, b: ServingBackendProfile)
     _ => [] as List<NonEmptyStr>
   }
   let backend_figures = flat_map(serving_profile_readings(b: b), x => serving_reading_assumption(r: x))
-  concat(overhead, concat(backend_figures, flat_map(g.devices, d => serving_reading_assumption(r: d.vram))))
+  // Every figure the derived layout RESTS ON that is assumed must show up as an assumption, not just the profile and
+  // device readings. swap_bound is charged per replica and each shared artifact's rungs (device cache, host-RAM rung,
+  // disk tier, evictable floor) carry their own readings; srv3 fills several with borrowed Assumed figures (swap bound
+  // and the 46 GiB arena/disk, both srv4's readings). If they were absent here, srv3's identity would read those
+  // borrowed numbers as observed -- the same silent promotion the unread guard refuses for Unread
+  // (gunbc.design_argument::epistemic_humility, gunbc.design_argument::root_generalization). Review 92488: the sibling
+  // check the unread guard was generalized over had to gain the same cases, and the artifact's bets include its disk
+  // rung, which the budget does not bill (srv3 also has a host-RAM rung) but a reader still must not take as measured.
+  let swap_assumptions = serving_reading_assumption(r: g.swap_bound)
+  let artifact_assumptions = flat_map(g.shared, a => serving_artifact_assumptions(a: a))
+  let device_assumptions = flat_map(g.devices, d => serving_reading_assumption(r: d.vram))
+  concat(overhead, concat(backend_figures, concat(device_assumptions, concat(swap_assumptions, artifact_assumptions))))
 }
 
 fn serving_device_named(g: ServingResourceGrant, name: NonEmptyStr) -> ServingDevice? {
@@ -867,10 +901,10 @@ data srv3_grant: ServingResourceGrant = ServingResourceGrant {
   // reads MemorySwapMax=0 and h11's engines are granted only 2 GiB, so 0 is the working figure pending a read --
   // an Assumption with its read obligation, not a measurement. The engine row's own swap_cap stays Unread: the
   // engine has not reported its slice's limit; only the layout's BUDGET assumes one. (review 38602/92384)
-  swap_bound: ServingMemoryAssumed {
-    bytes: byte_size(count: 0),
-    reason: "the fleet's no-swap convention for serving slices: srv4's gunbc-srv4-daily.slice was read to MemorySwapMax=0 (2026-10-30) and h11's engines carry only 2 GiB, so srv3's strata.slice is budgeted at no swap. UNREAD on srv3 -- read obligation: systemctl show strata-pool.service -p MemorySwapMax; the figure is taken as 0 until that read lands." as NonEmptyStr,
-  },
+  // THE SWAP LIMIT, READ FROM THE ROW THAT OWNS IT (review 92498): srv3_strata_engine_memory.swap_cap is srv3's swap
+  // limit's single literal; the grant reads it exactly as srv4's grant reads srv4_serving_engine_memory.swap_cap, so the
+  // layout's budget and the memory model's verdict never disagree about it (single authority).
+  swap_bound: srv3_strata_engine_memory.swap_cap,
   charging: [
     "the routed experts are the engine's OWN private anonymous memory on srv3 (no --mmap-experts, no shared file): the arena is charged inside this grant and to nobody else, and nothing about it is reclaimable — which is why its rung is pinned and charged whole" as NonEmptyStr,
     "one copy per host, charged once: srv3 runs ONE engine across both cards, so the arena is that engine's own and there is no second copy to charge (bold-wren-111, 2026-11-09); its bytes live once, in the artifact's pinned rung" as NonEmptyStr,
