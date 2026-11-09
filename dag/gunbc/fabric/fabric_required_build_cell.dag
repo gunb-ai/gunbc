@@ -143,6 +143,9 @@ fn fci1_exact_allocation_restoration(
       AllocationSlotHeld { path: _, generation: _ } => AllocationStoreRestorationRefused { path: p }
       AllocationSlotUnreadable { path: _ } => AllocationStoreRestorationRefused { path: p }
       AllocationSlotUndecodable { path: _, generation: _ } => AllocationStoreRestorationRefused { path: p }
+      // The FIRST read had a subject and the second did not: there is no pair of reads of one
+      // directory to call a restoration, and the cause belongs to the read that refused.
+      AllocationSlotNoSubject { why: why } => AllocationStoreRestorationRefusedNoSubject { why: why }
     }
     AllocationSlotFree { path: p, generation: pre } => match poststate {
       AllocationSlotFree { path: q, generation: post } =>
@@ -158,6 +161,9 @@ fn fci1_exact_allocation_restoration(
       AllocationSlotHeld { path: _, generation: _ } => AllocationStoreRestorationRefused { path: p }
       AllocationSlotUnreadable { path: _ } => AllocationStoreRestorationRefused { path: p }
       AllocationSlotUndecodable { path: _, generation: _ } => AllocationStoreRestorationRefused { path: p }
+      // The FIRST read had a subject and the second did not: there is no pair of reads of one
+      // directory to call a restoration, and the cause belongs to the read that refused.
+      AllocationSlotNoSubject { why: why } => AllocationStoreRestorationRefusedNoSubject { why: why }
     }
     AllocationSlotHeld { path: p, generation: _ } => AllocationStoreRestorationRefused { path: p }
     AllocationSlotUnreadable { path: p } => AllocationStoreRestorationRefused { path: p }
