@@ -16,6 +16,7 @@ import extdeps.cloud.gcp.iam {
   role_secretmanager_secret_accessor,
   admit_token_lifetime,
   hermetic_generate_access_token,
+  hermetic_generate_access_token_expire_time,
 }
 import gunbc.auth.optional_impersonation {
   optional_impersonation,
@@ -239,10 +240,35 @@ test fn witness_the_api_model_refuses_an_illegal_lifetime_before_any_call() -> B
     },
     lifetime: second(count: 3600)
   ) {
-    OptionalImpersonationToken { token: minted } =>
+    OptionalImpersonationToken { token: minted, expire_time: observed } =>
       (minted as String) == (hermetic_generate_access_token as String)
+        // ...and it keeps the mint's own observation. DESIGN's worked example counts "returns the token
+        // while discarding `expire_time`" as part of this defect; a caller that cannot see when a
+        // credential dies cannot tell whether it will still be alive when it is spent, which is exactly
+        // how `heal-publish` failed (456 s of dead time against a 300 s lifetime).
+        && (match observed {
+             Present { value: expiry } =>
+               expiry == hermetic_generate_access_token_expire_time
+             Absent => false
+           })
+    _ => false
+  }
+  // The other direction of the same rule: with no service account to impersonate no mint runs, so no
+  // expiry was observed -- and the pattern must say so rather than invent one.
+  let unimpersonated_arm_observed_no_expiry = match optional_impersonation(
+    access_token: "witness-operator-token" as Secret,
+    service_account: Absent,
+    lifetime: second(count: 3600)
+  ) {
+    OptionalImpersonationToken { token: passed_through, expire_time: observed } =>
+      (passed_through as String) == ("witness-operator-token" as String)
+        && (match observed {
+             Absent => true
+             Present { value: _ } => false
+           })
     _ => false
   }
   refused_above_max && refused_unset && admitted_at_the_ordinary_maximum
     && refused_one_second_above && admitted_leg_mints_through_the_api_model
+    && unimpersonated_arm_observed_no_expiry
 }

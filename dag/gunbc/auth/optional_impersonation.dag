@@ -11,8 +11,17 @@ import std.optional { Absent, Present }
 // only when GenerateAccessToken answered, and its refusal is carried as the transport reported it.
 // The third case is local, not upstream: a lifetime the API would not accept is refused before any
 // request is sent, so no bounded mint is ever planned with an illegal duration on the wire.
+//
+// `expire_time` is the mint's OWN observation, carried rather than dropped. DESIGN's worked example on
+// this very record names "returns the token while discarding `expire_time`" as part of the defect, and a
+// caller that cannot see when a credential dies cannot reason about whether it will still be alive at the
+// moment it is spent -- which is the class of failure that took out `heal-publish`: a token minted 456 s
+// before its first use against a 300 s lifetime. It is `Absent` exactly when no mint ran: the
+// unimpersonated arm hands back the caller's own token, whose expiry this pattern never observed, and
+// inventing one would present an unobserved fact as an observed one
+// (`gunbc.design_argument::epistemic_humility`).
 type OptionalImpersonation
-  = OptionalImpersonationToken { token: Secret }
+  = OptionalImpersonationToken { token: Secret, expire_time: String? }
   | OptionalImpersonationRefused { refusal: RestRefusal }
   | OptionalImpersonationLifetimeRefused { lifetime: Second }
 
@@ -55,9 +64,13 @@ pattern optional_impersonation_admitted(
   return match service_account {
     Present { value: _sa } =>
       match impersonated {
-        RestAnswered { answer } => OptionalImpersonationToken { token: answer.access_token }
+        RestAnswered { answer } => OptionalImpersonationToken {
+          token: answer.access_token,
+          expire_time: Present { value: answer.expire_time }
+        }
         RestRefused { refusal } => OptionalImpersonationRefused { refusal: refusal }
       }
-    Absent => OptionalImpersonationToken { token: access_token }
+    // No mint ran on this arm, so no expiry was observed: the absence is reported, not guessed.
+    Absent => OptionalImpersonationToken { token: access_token, expire_time: Absent }
   }
 }
