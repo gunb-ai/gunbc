@@ -1,0 +1,47 @@
+module gunbc.recurring_failure_mode.juxtaposed_bare_value_lowers_to_the_last_at_body_lowering
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { NonEmptyStr }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// THE CLASS, ACROSS ITS IN-SCOPE PATHS (gunbc.design_argument::guarantee_ladder: a class rung is the
+// MINIMUM across its in-scope paths). The invalid state is a function body whose statement sequence
+// leaves a non-final bare value -- the observed instance being two juxtaposed bracketed list literals --
+// silently lowering to the LAST value and dropping the earlier one, with no diagnostic. Two lowering
+// paths can carry it and they stand at DIFFERENT rungs, so the class is not climbed:
+//   - the v2 body lowering STRUCTURALLY REFUSES it (at the ceiling for that path): the statement
+//     authority reads the body and answers a statement that precedes another with the typed located cause
+//     body_lowering_reason_statement_precedes_without_binding. Pinned green by the standing control
+//     v2.test.claim.body_lowering.juxtaposed_bare_value.
+//   - the v1 SEED fold (the frontend that compiles and RUNS dag/gunbc/harness today) still keeps the last
+//     literal silently. That path is below the floor, so the class stands below the floor until it too
+//     refuses. The seed miscompiles what it lowers, so a silent last-wins there can miscompile v2 sources
+//     too -- this is why the un-climbed seed path keeps the whole class below the ladder.
+data juxtaposed_bare_value_lowers_to_the_last_at_body_lowering: RecurringFailureMode = RecurringFailureMode {
+  identity: "juxtaposed_bare_value_lowers_to_the_last_at_body_lowering" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundBelowTheLadder,
+      ceiling: StructurallyGuaranteed,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "the v1 seed fold refuses a function body whose statement sequence leaves a non-final bare value, with the same typed located cause",
+    },
+  },
+
+  receipts: [
+    "**a function body whose statement sequence leaves a non-final bare value lowers to the LAST value, silently** (INVALID STATE: a body of two bracketed list literals written one under the other -- `[a, b, c]` then `[d, e]` -- lowers to `[d, e]`. The first literal is gone and there is no diagnostic; a juxtaposed bracketed literal reads as an append but is not one.) The author wrote an enumeration and got a shorter one; a name living only in the dropped literal never reaches resolve, and the value the body denotes is not the value its statements compute. This is the harm the v1 SEED fold still inflicts on whatever it compiles (it is what built the live tool enumeration); the v2 path no longer does it -- it refuses.",
+    "WHERE, cited by symbol, and the earliest unjustified boundary is the FOLD, not the grammar (gunbc.design_argument::earliest_unjustified_boundary, ruled by gunbc.design_ruling::chain_re_derivation). The grammar is correct to make a bracketed literal on the next line a new STATEMENT and not an index suffix (`v2.extdeps.languages.dag` `dag_grammar_index_lbracket_head_expr` guards `not_predicate(after_line_break)` on the `[`, pinned by `v2.test.claim.parse.index_suffix`); a count read confirms two juxtaposed literals are exactly two statements, so a body holding a sequence of statements is a legitimate parse and the grammar is NOT the unjustified step. The unjustified step is a fold that keeps one literal and drops the other. The v2 fold does NOT take that step: `v2.compiler.body_lowering_fold` `body_lower_try_statement_spine` hands a body to `body_lower_stmt_spine`, which binds a let, takes the last statement as the value, and REFUSES any other statement that precedes another with `body_lowering_reason_statement_precedes_without_binding` -- measured to fire on both juxtaposed bracketed literals and juxtaposed bare names, and to keep accepting a single literal and a let-then-tail. The fold that still takes that step is the v1 seed, which is why the class stays below the floor.",
+    "RECEIPTS. The dispatcher receipt is gunb-ai/gunbc #16148: at the restore base, `gunbc.harness.harness_tool_kind` `all_harness_tools` was the five core tools as the first list and the three shell-job tools as a juxtaposed second list, so the fold kept only the last list -- `wait`, `job_output`, `job_kill` were recognized and `run_command`, `read_file`, `write_file`, `edit_file`, `validate_worktree` came back `HarnessToolUnrecognized` (the two red rows: `each_harness_tool_wire_name_reads_back_as_its_own_tool`, `each_harness_tool_item_kind_reads_back_as_its_own_tool`). Executed by quick-newt-573 at origin/main 85758c1ab612: the SEED fold (`gunbc run`) returned `[WaitJobsTool, ReadJobOutputTool, KillJobTool]` (the last list) and a probe body `[1, 2, 3]` then `[4, 5]` returned `[4, 5]`, length 2. The SAME reads show the v2 path already refuses: `body_lower_body_subtree_lower` on the fn body rejects both juxtaposed literals and juxtaposed names and accepts the single-literal and let-then-tail controls (claim_batch, invocation d563eb97-5979-4348-9e97-7aaa1aa9c762), and `conserved_normalize` refuses with reason `body_lowering_reason_statement_precedes_without_binding` at a NodeLocus (gunbc, invocation 7fbe5f57-5ebe-4ac5-8ebd-cc1b862cc0eb). #16148 repairs the one corpus instance at the data level; this row names the class and the open path. DISTINGUISHING FACTS: not the index suffix (a next-line `[` is a statement, not an index); not `match_arm_statement_body_lowers_to_its_first_expression_at_v2_body_lowering` (that is a match arm read to its FIRST expr; here an fn body reads to its LAST, and neither the arm nor the index is involved).",
+    "RUNG FOUND AT: below the floor (silent wrongness on the seed path -- the body lowers, no diagnostic, the value is wrong). CURRENT RUNG: still below the floor -- the v2 body lowering stands at the ceiling (structurally refuses; standing control `v2.test.claim.body_lowering.juxtaposed_bare_value`), but the class rung is the MINIMUM across its in-scope paths and the v1 seed fold is still silent, so the class is NOT climbed. CEILING: structurally guaranteed -- every body-lowering path refuses a non-final bare value located (or lowers a value it cannot silently drop). NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: the v1 SEED fold refuses a function body whose statement sequence leaves a non-final bare value, with the same typed located cause, so a juxtaposed bracketed literal can no longer silently ship through the bootstrap; then the last in-scope path is at the ceiling and the class climbs to structurally guaranteed. That seed refusal, with a fixture red at base and green at head, is the follow-up in this lane. The v2 standing control `v2.test.claim.body_lowering.juxtaposed_bare_value` is green at base and head (the refusal cells `juxtaposed_bracketed_literals_refuse_the_non_final_bare_value_holds`, `juxtaposed_bare_value_refusal_is_located_at_a_node_holds` and `juxtaposed_bare_names_refuse_under_the_same_cause_holds`). The positive-control axis -- that the refusal is CONFINED to a non-final bare value and does not over-refuse well-formed bodies -- is measured at the lowering authority: `v2.compiler.body_lowering_fold::body_lower_body_subtree_lower` refuses two juxtaposed statements but accepts a single-statement body and a `let`-then-tail body (paired head-vs-base run, BuildBuddy invocation d563eb97). It is deliberately NOT carried as a standing `v2.compiler.reference_conservation_admission::conserved_normalize` accept cell in this PR: that route returns `conservation_reason_unmeasured` for a non-enrolled claim module, so neither this module's nor `v2.test.claim.body_lowering.statement_let_bind`'s accept cells can go green on it until an enrolled producer feeds the measured population. That is recorded here as a known gap for the floor/drift lane, not asserted as green (gunbc.design_argument::minimize_redundancy: the accept axis is not duplicated here; gunbc.design_argument::fail_closed: an unexecuted accept is never claimed).",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.test.claim.body_lowering.juxtaposed_bare_value", decl_name: "juxtaposed_bracketed_literals_refuse_the_non_final_bare_value_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.body_lowering.juxtaposed_bare_value", decl_name: "juxtaposed_bare_value_refusal_is_located_at_a_node_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.body_lowering.juxtaposed_bare_value", decl_name: "juxtaposed_bare_names_refuse_under_the_same_cause_holds", field: WholeDeclaration },
+  ],
+}
