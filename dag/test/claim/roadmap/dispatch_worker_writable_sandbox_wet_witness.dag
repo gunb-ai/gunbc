@@ -1231,6 +1231,19 @@ fn wet_root_launcher_is_available() -> Bool {
 // the claim's own labels (unit_key, entry name), which is what makes the shared file readable.
 data wet_stage_trail: NonEmptyStr = "/tmp/gunbc-sandbox-witness-stages.log" as NonEmptyStr
 
+// A STAGE SPELLING THAT A CLAIM ASSERTS IS DECLARED HERE, ONCE, and read by BOTH the emitter and the
+// conjunct that reads the trail for it. Before this, the same sentence was written twice -- once where the
+// stage is emitted, once inside `string_contains` in the claim -- and at 8384a7613e43 they had already
+// diverged: the emitter had been re-spelled to `exit-record-check-absent:` (so a trail line names one call
+// site) while the claim kept searching for the old sentence, so a refusal that had happened exactly as
+// designed read as FALSIFIED and only a full run found out. One declaration makes them one fact: a mutant
+// that renames THIS line moves both sides and the claim stays green, which is the control that shows the
+// single authority is real rather than decorative. A spelling no claim asserts is NOT declared here -- an
+// unconsumed declaration would itself be the defect (DESIGN: every declaration is consumed by a named
+// consumer), and grep over this file finds exactly one such pair: `string_contains(s: r.content, ...)`
+// appears once, at the conjunct below.
+data witness_stage_exit_record_check_absent: NonEmptyStr = "exit-record-check-absent: no record at " as NonEmptyStr
+
 fn wet_stage(stage: String, ok: Bool) -> Bool {
   let note = join([stage, if ok { " ok" } else { " FAILED" }], "")
   let trail = wet_stage_trail as String
@@ -3219,7 +3232,7 @@ fn wet_unit_exited_with_its_record(instance_root: String, unit: WetLaunchedUnit,
     // exactly like an exhausted 240-beat wait, and the adjudication read it as a PASS absorbing a timeout.
     // The trail is the adjudication's authority only if a line names one site.
     WetUnitExitRecordAbsent { inbox: inbox } => wet_stage(
-      stage: join(["exit-record-check-absent: no record at ", inbox, " for attempt ", unit.attempt_key], ""),
+      stage: join([witness_stage_exit_record_check_absent as String, inbox, " for attempt ", unit.attempt_key], ""),
       ok: false,
     )
     WetUnitExitRecordUnreadable { inbox: inbox } => wet_stage(
@@ -3261,7 +3274,7 @@ fn wet_inner_exit_status_poll(instance_root: String, attempt_key: String, seen: 
                 attempt_exit_inbox_dir(instance_root: instance_root),
                 " for attempt ",
                 attempt_key,
-                if wait_beats > 0 { join([" after ", to_string(wait_beats), " beats"], "") } else { " (this site declares no wait: an empty answer is the designed condition)", "" },
+                if wait_beats > 0 { join([" after ", to_string(wait_beats), " beats"], "") } else { " (this site declares no wait: an empty answer is the designed condition)" },
               ], ""),
               ok: false,
             )
@@ -4039,7 +4052,7 @@ test fn a_unit_that_exited_without_its_exit_record_refuses_before_the_probe_chec
          // this readback kept searching for the OLD sentence and the claim went false on a corpus where the
          // refusal had happened exactly as designed. A trail-text assertion and the stage it asserts must be
          // changed together, or the claim tests a sentence that no longer exists.
-         r => r.success && string_contains(s: r.content, pattern: join(["exit-record-check-absent: no record at ", inbox, " for attempt ", unit.attempt_key], ""))
+         r => r.success && string_contains(s: r.content, pattern: join([witness_stage_exit_record_check_absent as String, inbox, " for attempt ", unit.attempt_key], ""))
        })
     // THE READBACK DISCRIMINATES: the same check, with the record planted for the SAME identity, is
     // true. Without this arm the claim would be satisfied by a check that always refuses.
