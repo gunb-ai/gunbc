@@ -11721,7 +11721,6 @@ fn affected_set_entry(source_roots: &[String]) -> Result<String, String> {
 /// the bound's own run and for the partition-move decision that consumes the typed bound.
 fn affected_set_model_args(
     ctx: &crate::v1_interpreter::InterpContext,
-    non_module_paths: &[String],
     edited: &[String],
     unlocatable: &[String],
     edges: &[(String, String)],
@@ -11756,7 +11755,6 @@ fn affected_set_model_args(
     };
     let reached_list: Vec<String> = reached.iter().cloned().collect();
     let args = vec![
-        (Some("non_module_paths".to_string()), strs(non_module_paths)),
         (Some("edited".to_string()), strs(edited)),
         (Some("unlocatable".to_string()), strs(unlocatable)),
         (
@@ -11792,8 +11790,19 @@ pub fn render_affected_set_bound(
     })?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
 
-    let args =
-        affected_set_model_args(&ctx, non_module_paths, edited, unlocatable, edges, compared);
+    // The bound over a whole change takes the model's shared arguments plus the change's other paths
+    // (`regen_affected_set_over_change`); the partition-move explanation reads the shared ones alone.
+    let mut args = affected_set_model_args(&ctx, edited, unlocatable, edges, compared);
+    args.push((
+        Some("non_module_paths".to_string()),
+        Value::List(Rc::new(
+            non_module_paths
+                .iter()
+                .map(str_value)
+                .collect::<Vec<Value>>()
+                .into(),
+        )),
+    ));
     let bound = v1_interpreter::with_active_context(&ctx, || {
         v1_interpreter::run_in_context_with_args(
             &ctx,
