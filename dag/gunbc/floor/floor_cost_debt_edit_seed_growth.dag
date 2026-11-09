@@ -8,6 +8,11 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // claim build (operator ruling, 2026-09-19). The modeled authority is
 // v2.workflow.floor_cost_debt_edit cost_debt_changed_witness_ceilings_at_base; the declaration below
 // is its seed-side reader at the claim-build boundary, not a second policy.
+// ROUTE DEFUNCT (2026-11-09, read-set convergence P0 tranche 2, D1): the .dag ceiling family
+// (cost_debt_changed_witness_ceilings_at_base and siblings) and the Rust readers named below had
+// no caller on any executing route and were deleted as dead. The row is retained as the historical
+// forward-freeze receipt for the operator ruling; re-establish the route from the ruling before
+// citing the chain as live.
 data floor_cost_debt_edit_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "cost_debt_changed_witness_ceiling", field: WholeDeclaration }
