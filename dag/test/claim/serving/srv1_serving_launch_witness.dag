@@ -20,7 +20,7 @@ import std.bytes { bytes_octets, utf8_encode_bytes }
 import gunbc.serving.strata_ada_pair_cell { srv3_strata_flags }
 import std.measure { token_count_value }
 import gunbc.retained_shell_script { RetainedShellScript }
-import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_04 }
+import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_04, gpu_board_05 }
 import product.placement_supply { PhysicalAssetIdentity }
 import gunbc.serving.srv1_serving_launch {
   srv1_serving_wrapper, srv1_serving_launch, srv1_serving_launch_for_port, srv1_serving_launch_argv,
@@ -394,15 +394,21 @@ fn wrapper_is_refused(w: Srv1ServingWrapper) -> Bool {
 
 // A GROUP THAT DOES NOT RESOLVE HAS NO WRAPPER BODY AT ALL. Review 92228: a refused group used to render a
 // valid-looking `docker run` with no `--device`, kept out only by a gate beside it. Now the body is built only in
-// the Installable arm, so a refused selection — the TP=2 group with the Workstation card pending, or any refused
-// selection (an empty group cannot be declared at all: Srv1ServingGpuGroup names its served board) — yields Srv1ServingWrapperRefused, which carries a reason and no script to hash, stage or install.
+// the Installable arm, so a refused selection — or any refused selection (an empty group cannot be declared at
+// all: Srv1ServingGpuGroup names its served board) — yields Srv1ServingWrapperRefused, which carries a reason and
+// no script to hash, stage or install.
+//
+// The unresolved member used to be the Workstation card, which did not enumerate. It enumerates now (read on the
+// host 2026-11-08, carried by gunbc.fleet.gpu_device_observation), so the fixture's second member is a board srv1's
+// power-cap intent covers no device for -- the same Refused arm, reached through a member that is genuinely not
+// bringable on this host rather than through a reading this repository no longer holds.
 test fn a_group_that_does_not_resolve_has_no_wrapper_body() -> Bool {
   let tp2 = Srv1ServingGpuGroup {
     decider: "witness" as NonEmptyStr,
-    decided_on: "2026-11-08" as NonEmptyStr,
-    basis: "witness: a hypothetical two-card tensor-parallel configuration (the Workstation card still pending)" as NonEmptyStr,
+    decided_on: "2026-11-09" as NonEmptyStr,
+    basis: "witness: a hypothetical two-card configuration whose second member is a board srv1's power-cap intent does not cover" as NonEmptyStr,
     served_board: gpu_board_04,
-    further_boards: [gpu_board_01],
+    further_boards: [gpu_board_05],
   }
   wrapper_is_refused(w: srv1_serving_wrapper_of(selection: srv1_serving_group_selection(group: tp2)))
     && wrapper_is_refused(w: srv1_serving_wrapper_of(selection: Srv1ServingDevicesRefused { tensor_parallel: Zero, pending: ["witness: a refused selection" as NonEmptyStr] }))
@@ -425,15 +431,21 @@ test fn srv1_serving_one_card_group_is_evaluable_while_the_workstation_is_pendin
   }
 }
 
-// A TP=2 configuration REQUIRES both members. With the Workstation card installed-but-unpowered (pending),
-// the two-board group REFUSES and NEVER yields a one-device selection — it cannot silently degrade to TP=1.
+// A TP=2 configuration REQUIRES both members: the group REFUSES rather than yielding a one-device selection,
+// so it can never silently degrade to TP=1 with one device flag where two were declared.
+//
+// The pending member is a board srv1's power-cap intent covers no device for. It was the Workstation card until
+// 2026-11-08, when the card was read enumerating and admitted at 300 W; keeping the OLD board here would have
+// asserted a host state this repository no longer records, which is the failure the whole device-observation
+// split exists to prevent. The guard is over the mechanism -- an unresolvable member must refuse the group --
+// and the next test covers the other side of it.
 test fn srv1_serving_tensor_parallel_two_refuses_rather_than_degrading_to_one() -> Bool {
   let tp2 = Srv1ServingGpuGroup {
     decider: "witness" as NonEmptyStr,
-    decided_on: "2026-11-07" as NonEmptyStr,
-    basis: "witness: a hypothetical two-card tensor-parallel configuration (the Workstation card still pending)" as NonEmptyStr,
+    decided_on: "2026-11-09" as NonEmptyStr,
+    basis: "witness: a hypothetical two-card configuration whose second member is a board srv1's power-cap intent does not cover" as NonEmptyStr,
     served_board: gpu_board_04,
-    further_boards: [gpu_board_01],
+    further_boards: [gpu_board_05],
   }
   match srv1_serving_group_selection(group: tp2) {
     Srv1ServingDevicesRefused { tensor_parallel: tp, pending: ps } =>
@@ -458,4 +470,32 @@ test fn srv1_serving_served_device_rank_is_derived_from_the_declared_group() -> 
   }
   srv1_serving_served_device_rank() == group_rank
     && (match srv1_serving_served_device_rank() { Zero => true _ => false })
+}
+
+// THE OTHER SIDE OF THAT GUARD, AND THE NEWEST FACT ON THE HOST: with both cards enumerated and both admitted at
+// 300 W by gunbc.serving.gpu_power_state_policy, a two-board group over the two REAL srv1 boards resolves to two
+// selected devices with distinct UUIDs and ranks 0 and 1 -- which is exactly what it could not do while the
+// Workstation card did not enumerate. This is a statement about how the group mechanism RESOLVES device flags,
+// not an operator declaration of tensor parallelism: the declared group stays srv1_serving_gpu_group (TP=1), and
+// whether TP=2 may be adopted at all is the topology-and-benchmark row of
+// gunbc.plans.fleet_hardware_fact_consumption, still open.
+test fn both_enumerated_srv1_cards_resolve_a_two_device_group() -> Bool {
+  let real_tp2 = Srv1ServingGpuGroup {
+    decider: "witness" as NonEmptyStr,
+    decided_on: "2026-11-09" as NonEmptyStr,
+    basis: "witness: both srv1 cards read enumerating on 2026-11-08 and admitted at 300 W each" as NonEmptyStr,
+    served_board: gpu_board_04,
+    further_boards: [gpu_board_01],
+  }
+  match srv1_serving_group_selection(group: real_tp2) {
+    Srv1ServingDevicesSelected { tensor_parallel: tp, members: ms } =>
+      match tp { Succ { prev: z } => match z { Succ { prev: zz } => match zz { Zero => true _ => false } _ => false } _ => false }
+      && length(xs: ms) == 2
+      && match ms.first() {
+        Present { value: Srv1ServingDeviceSelected { board: _, gpu_uuid: u, rank: r } } =>
+          u == maxq_uuid && match r { Zero => true _ => false }
+        _ => false
+      }
+    Srv1ServingDevicesRefused { tensor_parallel: _, pending: _ } => false   // two admitted cards must resolve
+  }
 }
