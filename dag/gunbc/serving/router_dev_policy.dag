@@ -1046,8 +1046,31 @@ fn router_dev_shaped(shape: ServingCapacityShape, row: fn(RouterDevCapacity, Rou
 
 // WHICH ANCHOR A PROJECTED ROW'S CAP AND RETAIN ARE DERIVED FROM, chosen by the naming row and nowhere else. The
 // projection never picks a capacity formula; a naming that names no anchor the anchor module has a formula for is
-// refused, never defaulted to a plausible number (gunbc.design_argument::fail_closed).
-type RouterDevReplicaAnchor = AnchorH11Strata | AnchorSrv3Strata | AnchorSrv4Strata
+// refused, never defaulted to a plausible number (gunbc.design_argument::fail_closed). The bus lives INSIDE the h11
+// arm: an h11 row is addressed by bus and needs one, srv3/srv4 carry none, so the state "an h11 row with no bus"
+// (which the projection had to refuse at run time) cannot be written -- construction where a check used to stand.
+type RouterDevReplicaAnchor = AnchorH11Strata { bus: String } | AnchorSrv3Strata | AnchorSrv4Strata
+
+// h11's group is the bus, prefixed -- the layout names its h11 device groups "h11-strata@<bus>", so deriving the
+// group from the bus keeps the two from drifting apart (review 92443): the bus is stated once, on the anchor.
+fn router_dev_h11_group(bus: String) -> String {
+  concat("h11-strata@", bus)
+}
+
+// An h11 replica naming, built from the bus ONCE: the group and the anchor's bus are both derived from that one
+// figure, so a row cannot say one bus in its group and another in its anchor.
+fn router_dev_h11_naming(name: String, port: Nat, bus: String, retiring: List<String>) -> RouterDevReplicaNaming {
+  RouterDevReplicaNaming {
+    group: router_dev_h11_group(bus: bus),
+    name: name,
+    scheme: UpstreamHttp,
+    host: "192.168.1.202",
+    port: port,
+    tls_name: Absent,
+    anchor: AnchorH11Strata { bus: bus },
+    retiring: retiring,
+  }
+}
 
 // The anchor, at the admission the JOINED REPLICA has. h11's needs the bus (its warm store is that card's engine
 // memory row) and the replica's own admitted conversations (one replica per card, so the join gives it exactly
@@ -1055,10 +1078,7 @@ type RouterDevReplicaAnchor = AnchorH11Strata | AnchorSrv3Strata | AnchorSrv4Str
 // replica's identity and admission arrive and are not needed — the join is still what makes the row exist.
 fn router_dev_replica_shape(n: RouterDevReplicaNaming, admitted: Nat) -> ServingCapacityShape {
   match n.anchor {
-    AnchorH11Strata => match n.bus {
-      Present { value: b } => h11_strata_shape(deployment: n.name, bus: b, admitted: admitted)
-      Absent => ServingShapeRefused { deployment: n.name as NonEmptyStr, reason: "an h11 row needs the bus its engine memory row is read under" as NonEmptyStr }
-    }
+    AnchorH11Strata { bus: b } => h11_strata_shape(deployment: n.name, bus: b, admitted: admitted)
     AnchorSrv3Strata => srv3_strata_shape()
     AnchorSrv4Strata => srv4_strata_shape()
   }
@@ -1097,7 +1117,6 @@ type RouterDevReplicaNaming {
   host: String
   port: Port
   tls_name: String?
-  bus: String?
   anchor: RouterDevReplicaAnchor
   retiring: List<String>
 }
@@ -1106,10 +1125,10 @@ type RouterDevReplicaNaming {
 // bus c8), and the port follows the engine, not the name. The bus is what its anchor needs for the warm store.
 fn router_dev_h11_namings() -> List<RouterDevReplicaNaming> {
   [
-    RouterDevReplicaNaming { group: "h11-strata@85", name: "h11-05", scheme: UpstreamHttp, host: "192.168.1.202", port: 18081, tls_name: Absent, bus: Present { value: "85" }, anchor: AnchorH11Strata, retiring: ["h11-a16-0"] },
-    RouterDevReplicaNaming { group: "h11-strata@87", name: "h11-07", scheme: UpstreamHttp, host: "192.168.1.202", port: 18083, tls_name: Absent, bus: Present { value: "87" }, anchor: AnchorH11Strata, retiring: ["h11-a16-2"] },
-    RouterDevReplicaNaming { group: "h11-strata@88", name: "h11-08", scheme: UpstreamHttp, host: "192.168.1.202", port: 18084, tls_name: Absent, bus: Present { value: "88" }, anchor: AnchorH11Strata, retiring: ["h11-a16-3"] },
-    RouterDevReplicaNaming { group: "h11-strata@c8", name: "h11-88", scheme: UpstreamHttp, host: "192.168.1.202", port: 18088, tls_name: Absent, bus: Present { value: "c8" }, anchor: AnchorH11Strata, retiring: [] },
+    router_dev_h11_naming(name: "h11-05", port: 18081, bus: "85", retiring: ["h11-a16-0"]),
+    router_dev_h11_naming(name: "h11-07", port: 18083, bus: "87", retiring: ["h11-a16-2"]),
+    router_dev_h11_naming(name: "h11-08", port: 18084, bus: "88", retiring: ["h11-a16-3"]),
+    router_dev_h11_naming(name: "h11-88", port: 18088, bus: "c8", retiring: []),
   ]
 }
 
@@ -1119,7 +1138,7 @@ fn router_dev_h11_namings() -> List<RouterDevReplicaNaming> {
 // that anchor's grant is srv3_layout's admitted retention — the hand-typed "OwnedCap turns 4" that stood here is
 // gone, and the reason it was wrong is in the frontier below.
 fn router_dev_srv3_namings() -> List<RouterDevReplicaNaming> {
-  [RouterDevReplicaNaming { group: "strata-pool", name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, bus: Absent, anchor: AnchorSrv3Strata, retiring: ["h11-c1"] }]
+  [RouterDevReplicaNaming { group: "strata-pool", name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, anchor: AnchorSrv3Strata, retiring: ["h11-c1"] }]
 }
 
 // srv4's naming, and THE ANSWER TO "TWO ENGINES, WHICH ENDPOINT?" (the operator-route question the original brief
@@ -1130,7 +1149,7 @@ fn router_dev_srv3_namings() -> List<RouterDevReplicaNaming> {
 // projection makes a silent answer impossible because the row set is then no longer one. Its engine serves TLS
 // with CN=srv4 on 18443.
 fn router_dev_srv4_namings() -> List<RouterDevReplicaNaming> {
-  [RouterDevReplicaNaming { group: "gunbc-srv4-daily-engine", name: "srv4-strata", scheme: UpstreamHttps, host: "192.168.1.196", port: 18443, tls_name: Present { value: "srv4" }, bus: Absent, anchor: AnchorSrv4Strata, retiring: [] }]
+  [RouterDevReplicaNaming { group: "gunbc-srv4-daily-engine", name: "srv4-strata", scheme: UpstreamHttps, host: "192.168.1.196", port: 18443, tls_name: Present { value: "srv4" }, anchor: AnchorSrv4Strata, retiring: [] }]
 }
 
 // THE PROJECTION READS THE CONFIGURED LAYOUT ONCE and joins each granted replica to its router naming by group,

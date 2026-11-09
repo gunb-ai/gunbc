@@ -15,7 +15,7 @@ import extdeps.proxy.openresty {
   ClientMaxBodySize, ClientBodyBufferSize, LuaPhaseBlock, AccessPhase, ContentPhase, LogPhase, LuaSharedDict, ListenTlsOn, SslCertificate, SslCertificateKey, nginx_token, nginx_variable, ProxyPassDirective, ProxyPassToHost, ProxyNextUpstreamDirective,
   ProxyBufferingDirective, ProxyRequestBufferingDirective, render_nginx_directives, openresty_1_27_1_1_image, openresty_image_config_path,
 }
-import gunbc.serving.router_dev_policy { RouterDevSite, RouterDevConfig, RouterDevConfigRendered, RouterDevConfigRefused, router_dev_config, RouterDevUpstream, RouterUpstreamScheme, UpstreamHttp, UpstreamHttps, AnchorH11Strata, AnchorSrv3Strata, OwnedCap, RentedCapped, RentedUncapped, NoRetention, RetentionAdmitted, EffortRewriteTo, router_dev_first_party_json, router_dev_first_party, router_dev_retiring_name_conflict, no_effort_rules, RouterDevRetention, RouterDevReplicaNaming, RouterDevReplicaProjected, RouterDevReplicaRefused, router_dev_replica_projection, router_dev_h11_namings, router_dev_srv3_namings, router_dev_srv4_namings, RouterDevFirstParty, RouterDevFirstPartyRows, RouterDevFirstPartyRefused, router_dev_first_party_for, router_dev_first_party_refusal }
+import gunbc.serving.router_dev_policy { RouterDevSite, RouterDevConfig, RouterDevConfigRendered, RouterDevConfigRefused, router_dev_config, RouterDevUpstream, RouterUpstreamScheme, UpstreamHttp, UpstreamHttps, AnchorSrv3Strata, OwnedCap, RentedCapped, RentedUncapped, NoRetention, RetentionAdmitted, EffortRewriteTo, router_dev_first_party_json, router_dev_first_party, router_dev_retiring_name_conflict, no_effort_rules, RouterDevRetention, RouterDevReplicaNaming, RouterDevReplicaProjected, RouterDevReplicaRefused, router_dev_replica_projection, router_dev_h11_namings, router_dev_h11_naming, router_dev_srv3_namings, router_dev_srv4_namings, RouterDevFirstParty, RouterDevFirstPartyRows, RouterDevFirstPartyRefused, router_dev_first_party_for, router_dev_first_party_refusal }
 import gunbc.serving.serving_layout { host_6ce85c_layout, srv3_layout, srv4_layout, ServingLayoutResult, ServingLayoutConfigured, ServingLayoutRefused, ServingLayoutNoGroups, ServingReplicaConfig }
 import gunbc.serving.serving_host_memory { ServingMemoryUnread }
 import gunbc.serving.router_proxy_config {
@@ -504,8 +504,8 @@ fn shipped_h11_05_rows_hold(rows: List<RouterDevUpstream>) -> Bool {
 // The summary is name:retain for every projected row, in layout order, or REFUSED: and the reason.
 fn h11_population_with_ungranted() -> List<RouterDevReplicaNaming> {
   concat(router_dev_h11_namings(), [
-    RouterDevReplicaNaming { group: "h11-strata@c5", name: "h11-85", scheme: UpstreamHttp, host: "192.168.1.202", port: 18085, tls_name: Absent, bus: Present { value: "c5" }, anchor: AnchorH11Strata, retiring: [] },
-    RouterDevReplicaNaming { group: "h11-strata@c7", name: "h11-87", scheme: UpstreamHttp, host: "192.168.1.202", port: 18087, tls_name: Absent, bus: Present { value: "c7" }, anchor: AnchorH11Strata, retiring: [] },
+    router_dev_h11_naming(name: "h11-85", port: 18085, bus: "c5", retiring: []),
+    router_dev_h11_naming(name: "h11-87", port: 18087, bus: "c7", retiring: []),
   ])
 }
 
@@ -530,7 +530,7 @@ fn h11_without_one_granted_naming() -> List<RouterDevReplicaNaming> {
 }
 
 fn h11_with_a_duplicate_naming() -> List<RouterDevReplicaNaming> {
-  concat(h11_population_with_ungranted(), [RouterDevReplicaNaming { group: "h11-strata@85", name: "h11-05b", scheme: UpstreamHttp, host: "192.168.1.202", port: 19081, tls_name: Absent, bus: Present { value: "85" }, anchor: AnchorH11Strata, retiring: [] }])
+  concat(h11_population_with_ungranted(), [router_dev_h11_naming(name: "h11-05b", port: 19081, bus: "85", retiring: [])])
 }
 
 fn h11_refused_layout() -> ServingLayoutResult { ServingLayoutRefused { refusal: ServingLayoutNoGroups } }
@@ -586,7 +586,7 @@ fn srv3_with_a_second_replica() -> ServingLayoutResult {
 // RED: a srv3 naming whose group is not the group the layout grants — a renamed unit, a stale table — refuses
 // rather than dropping the host from the router.
 fn srv3_naming_for_a_group_nothing_grants() -> Bool {
-  h11_summary_is_refused(text: h11_projection_summary(layout: srv3_layout, engines: [RouterDevReplicaNaming { group: "strata-pool-old", name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, bus: Absent, anchor: AnchorSrv3Strata, retiring: [] }]))
+  h11_summary_is_refused(text: h11_projection_summary(layout: srv3_layout, engines: [RouterDevReplicaNaming { group: "strata-pool-old", name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, anchor: AnchorSrv3Strata, retiring: [] }]))
 }
 
 // ONE ROW, not one per card: the layout's single replica lists BOTH cards, and a projection that read devices as
@@ -1157,7 +1157,7 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
     // fronts. The first three are the REDs a hand-typed srv3 row would sail through.
     case_of(identity: "srv3_rows_come_from_srv3_layout: a refused srv3 layout stops the write", held: srv3_refused_layout_stops_the_write(), observed: h11_projection_summary(layout: h11_refused_layout(), engines: router_dev_srv3_namings())),
     case_of(identity: "a_second_srv3_replica_without_its_own_naming_refuses_the_write", held: srv3_second_replica_without_a_naming_refuses(), observed: h11_projection_summary(layout: srv3_with_a_second_replica(), engines: router_dev_srv3_namings())),
-    case_of(identity: "a_srv3_naming_whose_group_nothing_grants_refuses_the_write", held: srv3_naming_for_a_group_nothing_grants(), observed: h11_projection_summary(layout: srv3_layout, engines: [RouterDevReplicaNaming { group: "strata-pool-old", name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, bus: Absent, anchor: AnchorSrv3Strata, retiring: [] }])),
+    case_of(identity: "a_srv3_naming_whose_group_nothing_grants_refuses_the_write", held: srv3_naming_for_a_group_nothing_grants(), observed: h11_projection_summary(layout: srv3_layout, engines: [RouterDevReplicaNaming { group: "strata-pool-old", name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, anchor: AnchorSrv3Strata, retiring: [] }])),
     case_of(identity: "srv3_projects_one_row_for_its_one_replica_across_both_cards", held: srv3_one_row_for_two_devices(), observed: srv3_projection_summary()),
     case_of(identity: "srv4_projects_one_tls_endpoint_because_its_layout_grants_one_replica", held: srv4_one_row_one_tls_endpoint(), observed: h11_projection_summary(layout: srv4_layout, engines: router_dev_srv4_namings())),
     case_of(identity: "comparison_rows_carry_the_cited_quote_values_and_the_live_shape", held: priced_entry_is(models: dev_models, model: "Qwen3.8-Flash-Next", input: "0.15", cached: "0.016", output: "0.47", as_of: "2026-10-26") && unpriced_entry_has_no_price(models: dev_models, model: "m-a") && has_line(text: priced_turn, want: "X-Gunbc-Comparison-Input-Per-M: 0.15") && has_line(text: priced_turn, want: "X-Gunbc-Comparison-Cached-Per-M: 0.016") && has_line(text: priced_turn, want: "X-Gunbc-Comparison-Output-Per-M: 0.47") && has_line(text: priced_turn, want: "X-Gunbc-Comparison-Estimated: true") && has_line(text: priced_turn, want: "X-Gunbc-Comparison-Read-On: 2026-10-26") && !contains(s: unpriced_turn, p: "X-Gunbc-Comparison-Output-Per-M"), observed: concat(one_line(s: priced_turn), one_line(s: unpriced_turn))),
