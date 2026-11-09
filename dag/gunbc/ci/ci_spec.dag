@@ -1864,7 +1864,37 @@ fn gunbc_ci_multi_principal_probe_invoke() -> String {
 data gunbc_ci_auth_header_format: String = "Authorization: Bearer %s\\n"
 
 fn gunbc_ci_auth_header_file_write_command() -> String {
-  join(["printf '", gunbc_ci_auth_header_format, "' \"$WIF_ACCESS_TOKEN\" > \"$HDR_FILE\""], "")
+  gunbc_ci_auth_header_file_write_command_to(header_file: "HDR_FILE")
+}
+
+/// The same write into a caller-named header file, so a step whose file is not `$HDR_FILE` still
+/// takes the header from `gunbc_ci_auth_header_format` rather than re-spelling it.
+fn gunbc_ci_auth_header_file_write_command_to(header_file: String) -> String {
+  join(["printf '", gunbc_ci_auth_header_format, "' \"$WIF_ACCESS_TOKEN\" > \"$", header_file, "\""], "")
+}
+
+// THE SAME RULE AS A NODE BUILDER, so a step assembled from bash_build nodes takes the same
+// authority as a string-built one: the header reaches its file through the shell's own printf
+// builtin — a builtin forks nothing, so the token never becomes an argv word of any process — and
+// the consumer reads it back with `-H @<file>`. A caller takes the pair: the write statement
+// before the consumer, and the argument pair where the consumer's '-H' word belongs. Removal is
+// the caller's, because only the caller knows both outcomes of its own fetch.
+fn gunbc_ci_auth_header_file_write_statement(header_path: Node, token_env: String) -> Node {
+  bash_build_with_redir_to_file(
+    inner: bash_build_command_with_words(words: [
+      bash_build_word_lit(text: "printf"),
+      bash_build_word_lit(text: gunbc_ci_auth_header_format),
+      bash_build_word_var(name: token_env),
+    ]),
+    path: header_path,
+  )
+}
+
+fn gunbc_ci_auth_header_file_args(header_path: Node) -> List<Node> {
+  [
+    bash_build_word_lit(text: "-H"),
+    bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: "@"), header_path]),
+  ]
 }
 
 fn gunbc_ci_fleet_key_agent_prelude() -> List<PipelineStep> {
@@ -2982,7 +3012,7 @@ fn gunbc_ci_app_jwt_prelude() -> List<PipelineStep> {
       )
     },
     Do { run: ci_retry_body_run(command: "trap app_jwt_cleanup EXIT") },
-    Do { run: ci_retry_body_run(command: "printf 'Authorization: Bearer %s\\n' \"$WIF_ACCESS_TOKEN\" > \"$APP_SM_HDR\"") },
+    Do { run: ci_retry_body_run(command: gunbc_ci_auth_header_file_write_command_to(header_file: "APP_SM_HDR")) },
     Do {
       run: ci_retry_body_run(
         command: join([
