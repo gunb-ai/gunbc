@@ -495,17 +495,21 @@ test fn a_lost_race_whose_winner_record_is_final_answers_already_final() -> Bool
   let launches = [MeteredWorker {}]
   let digest = metering_roster_digest(launches: launches)
   fx_sealed_attempt(instance: instance, key: key)
-    && match metering_persist_for_attempt(instance: instance, node_id: fx_node(), attempt_key: key, departed: true) {
-        MeteringPersisted { path: _, standing: _ } => match fx_store(instance: instance, key: key) {
-          Absent => false
-          Present { value: store } => match metering_commit_at_head(
+    && match fx_store(instance: instance, key: key) {
+        Absent => false
+        Present { value: store } => match metering_commit_at_head(
+          store: store, node_id: fx_node(), attempt_key: key,
+          record: fx_final_record(key: key, digest: digest),
+          launches: launches, seal: Present { value: digest }, expected: ExpectSlotAbsent) {
+          // The departed belt wins first: its Final record becomes the head.
+          MeteringPersisted { path: _, standing: _ } => match metering_commit_at_head(
             store: store, node_id: fx_node(), attempt_key: key,
             record: fx_final_record(key: key, digest: digest),
             launches: launches, seal: Present { value: digest }, expected: ExpectSlotAbsent) {
             MeteringAlreadyFinal => true
             _ => false
           }
+          _ => false
         }
-        _ => false
       }
 }
