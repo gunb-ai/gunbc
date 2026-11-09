@@ -1491,6 +1491,44 @@ fn is_value_variant_type_arg(generic_param_names: List<String>, variant_to_enum:
   }
 }
 
+// PER-FILE CONSTRUCTOR NAMESPACE FILTER for variant_to_enum. A name collapses to `()` at a type
+// position only if it IS a unit arm of a coproduct in THAT FILE'S constructor namespace. The
+// closure-global map answers "this name is an arm SOMEWHERE in the closure"; this filter narrows
+// it to "this name is an arm accessible in THIS file" by asking what the name binds to in the
+// module being rendered: unbound or kernel means nothing else claims it (variant only); a
+// declaration that is the owning coproduct with this unit arm means the name IS the variant;
+// anything else (a struct, a different type) means the name denotes a type, not an arm.
+// gunbc.recurring_failure_mode.emitter_keyed_container_lowering_is_keyed_by_leaf_spelling.
+fn variant_to_enum_scoped_to_module(variant_to_enum: Map<String, String>, module_reference: Node, type_decl_items: TypeDeclIndex, source_indices: Map<String, NewlineIndex>) -> Map<String, String> {
+  map_keys(variant_to_enum) |> fold(init: empty_map(), f: (acc, name) =>
+    match map_get(variant_to_enum, name) {
+      Absent => acc
+      Present { value: owner } =>
+        if name_is_variant_in_module(name: name, module_reference: module_reference, type_decl_items: type_decl_items, source_indices: source_indices) {
+          map_insert(acc, name, owner)
+        } else { acc }
+    }
+  )
+}
+
+fn name_is_variant_in_module(name: String, module_reference: Node, type_decl_items: TypeDeclIndex, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match type_decl_occurrence_binding(index: type_decl_items, leaf: name, reference: module_reference) {
+    OccurrenceUnbound => true
+    OccurrenceIsKernelName => true
+    OccurrenceUndecided => true
+    OccurrenceDeclaredHere { identity: identity } => identity_is_owning_unit_coproduct(identity: identity, name: name, type_decl_items: type_decl_items, source_indices: source_indices)
+    OccurrenceImported { identity: identity } => identity_is_owning_unit_coproduct(identity: identity, name: name, type_decl_items: type_decl_items, source_indices: source_indices)
+  }
+}
+
+fn identity_is_owning_unit_coproduct(identity: String, name: String, type_decl_items: TypeDeclIndex, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match type_decl_resolution_at_identity(index: type_decl_items, identity: identity) {
+    TypeDeclResolved { identity: _, decl: decl } =>
+      decl.connective == Disj && (decl.children |> any(c => (c.children |> count) == 0 && authored_name_at(source_indices: source_indices, node: c) == name))
+    _ => true
+  }
+}
+
 fn type_leaf_name_for_collapse(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
   let a = authored_name_at(source_indices: source_indices, node: n)
   if a == "" { n.name } else { a }
@@ -5828,7 +5866,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     moved_argument_index: emit_info.moved_argument_index,
     movable: emit_info.movable,
     moved_argument_occurrences: emit_info.moved_argument_occurrences,
-    variant_to_enum: emit_info.variant_to_enum,
+    variant_to_enum: variant_to_enum_scoped_to_module(variant_to_enum: emit_info.variant_to_enum, module_reference: m, type_decl_items: emit_info.type_decl_items, source_indices: scope.type_env.source_indices),
     owned_bindings: emit_info.owned_bindings,
     read_only_params_index: emit_info.read_only_params_index,
     read_only_params: emit_info.read_only_params,

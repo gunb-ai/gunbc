@@ -1,0 +1,14 @@
+module test.fixture.variant_type_collapse_per_file.both_entry
+
+import test.fixture.variant_type_collapse_per_file.coproduct_owner { GizmoKind }
+import test.fixture.variant_type_collapse_per_file.struct_owner { Widget, WidgetPair, widget_label, widget_pair }
+
+type Both {
+  kind: GizmoKind
+  widget: Widget
+  pair: WidgetPair
+}
+
+fn describe_widget(w: Widget) -> String {
+  widget_label(widget: w)
+}

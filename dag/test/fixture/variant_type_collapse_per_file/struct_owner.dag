@@ -1,0 +1,22 @@
+module test.fixture.variant_type_collapse_per_file.struct_owner
+
+// Declares a record type also spelled `Widget` - the same leaf name the sibling
+// fixture uses for a coproduct unit arm. The emitter must render this record's
+// TYPE uses as `Widget`; they are not the GizmoKind arm.
+type Widget {
+  id: Int
+  label: String
+}
+
+fn widget_label(widget: Widget) -> String {
+  widget.label
+}
+
+fn widget_pair() -> WidgetPair {
+  WidgetPair { left: Widget { id: 0, label: "" }, right: none }
+}
+
+type WidgetPair {
+  left: Widget
+  right: Widget?
+}

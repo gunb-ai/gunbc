@@ -1,0 +1,11 @@
+module test.fixture.variant_type_collapse_per_file.coproduct_owner
+
+// Declares a coproduct whose unit arm is spelled `Widget`. The collision
+// requires that no module in this fixture also DECLARES a unit arm `Widget`
+// on a different coproduct - `derive_variant_to_enum` records "" for such an
+// ambiguous leaf and `is_value_variant_type_arg` refuses the collapse on "",
+// hiding the defect. This coproduct stays the closure's unique owner.
+type GizmoKind =
+  | Bearing
+  | Widget
+  | GizmoKindUnread { detail: String }
