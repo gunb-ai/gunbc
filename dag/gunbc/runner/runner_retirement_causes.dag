@@ -11,8 +11,9 @@ module gunbc.runner.runner_retirement_causes
 // renderers are pure data with no authority of their own, so they live here, on two leaf imports and nothing
 // else. A decision type that can only be carried by dragging in the whole runner fleet is a type nobody can
 // carry, and a module that is both judge and carrier is the cycle this prevents.
+import std.optional { Absent, Present }
 import std.types { Bool, List, NonEmptyStr, String }
-import extdeps.github.workflow_runs { WorkflowRun, WorkflowJobRun }
+import extdeps.github.workflow_runs { WorkflowRun, WorkflowJobRun, WorkflowRunConclusion }
 
 // ─────────────────────────── LEG 1: THE REGISTRATION READBACK ───────────────────────────
 // WHY `RegisteredOffline` IS ITS OWN ARM RATHER THAN `NotRegistered`. A runner that is registered but
@@ -156,5 +157,88 @@ fn retire_refusal_cause_wire(cause: RetireRefusalCause) -> String {
       )
     DrainCandidateUnaccountedFor { unit: unit } =>
       concat((unit as String), " is a drain candidate with nothing declaring it: desired by nobody, retired by nobody, not a fabric slot, and not running")
+  }
+}
+
+// ONE STEP OF THE DRAIN LEG, PURELY -- and it lives here for the same reason the causes do: the leg that
+// ASKS (gunbc.runner.runner_host_file_converge) and the gate that ANSWERS
+// (gunbc.runner.runner_replacement_readback) must speak through one type, and neither may import the other.
+// The apply route acts only on `DrainNow`; everything else is a report. Every arm is a function of data the
+// leg already holds, so the fail-closed behaviour is decidable by a claim without an SSH session.
+type RunnerHostDrainStep
+  = DrainNow { unit: NonEmptyStr }
+  // THE CAUSES TRAVEL TYPED AS FAR AS THE OUTCOME AND ARE RENDERED ONLY IN
+  // gunbc.runner.runner_slot_actuation's wire. The gate's decision is a fact that must survive the leg that
+  // made it (DESIGN.md, Source: "a fact that must survive belongs in a typed carrier"); turning it into
+  // prose here would put a second representation of the decision in front of anyone reading the leg.
+  | DrainHeld { unit: NonEmptyStr, cause: RetirePendingCause }
+  | DrainRefusedByStanding { unit: NonEmptyStr, cause: RetireRefusalCause }
+  | DrainUndecided { unit: NonEmptyStr, cause: RetireUndecidedCause }
+
+// THE ONE LOOKUP THE DRAIN LEG AND THE WITNESS SHARE. Review 92516: the leg used to do its own
+// `first(filter(...))` while the module kept a separate `retire_drain_is_authorized` that only the test
+// called -- so a leg that matched every candidate to the WRONG decision would have kept the witness green
+// while draining working capacity, and the predicate the test trusted was not the one the route ran. There
+// is now exactly one lookup, it is what the route calls, and the arm that the leg used to invent (`Absent`
+// -> `NoDecisionFor`) is produced here where a claim can reach it.
+fn retire_drain_leg_step(unit: NonEmptyStr, decisions: List<RetireDrainDecision>) -> RunnerHostDrainStep {
+  let found = filter(decisions, d => match d {
+    RetireDrainAuthorized { unit: u, over: _ } => (u as String) == (unit as String)
+    RetireDrainWithheld { unit: u, cause: _ } => (u as String) == (unit as String)
+    RetireDrainRefused { unit: u, cause: _ } => (u as String) == (unit as String)
+  })
+  match first(found) {
+    Absent => DrainUndecided { unit: unit, cause: NoDecisionFor { candidate: unit } }
+    Present { value: RetireDrainAuthorized { unit: u, over: _ } } => DrainNow { unit: u }
+    Present { value: RetireDrainWithheld { unit: u, cause: cause } } => DrainHeld { unit: u, cause: cause }
+    Present { value: RetireDrainRefused { unit: u, cause: cause } } =>
+      DrainRefusedByStanding { unit: u, cause: cause }
+  }
+}
+
+// THE JOB LEG'S INPUT, WITHOUT THE DISPATCH MODULE IN THE GRAPH.
+// WHAT THIS IS JUDGED ON IS gunbc.runner.runner_qualification_dispatch::QualificationRunVerdict -- the
+// existing observation, not a new instrument: `FloorJobCollected` carries that verdict's own three fields
+// (`run`, `floor_job`, `conclusion`) plus the slot the caller asked about, and `FloorJobRefused` carries the
+// reason that verdict's refusal already states. It is a PROJECTION, not a second authority: the only producer
+// is gunbc.runner.runner_qualification_dispatch::replacement_job_evidence_of -- the module that owns the
+// verdict -- and the gate can construct neither arm itself, so no caller can hand the gate a job that was
+// never collected.
+//
+// WHY THE GATE CANNOT SIMPLY IMPORT THE VERDICT IT JUDGES. The qualification dispatch module reaches
+// gunbc.fleet.fleet_converge_workflow -> gunbc.host.host_primary_network_apply ->
+// gunbc.runner.runner_host_file_converge, and `runner_host_file_converge` is the caller that asks this gate
+// whether a drain is authorized. Importing the verdict from the dispatch module therefore closes a cycle over
+// the very route that consumes the answer (the compiler refuses it: "circular dependency detected"). The
+// projection keeps the direction honest: the observation's owner translates its own fact into the shape the
+// gate can read, and the gate stays free to decide without naming the machinery that produced its inputs.
+//
+// THE ARMS ARE NAMED AFTER WHAT THEY CARRY, not after the verdict's own `RunVerdictCollected` /
+// `RunVerdictRefused`. Same fact, one naming surface is what
+// gunbc.design_argument::single_authority asks for; reusing those two names here would put two unrelated
+// constructors with the same spelling on the tree, which is how a reader spends an hour deciding which
+// `Collected` a `match` was written against.
+type ReplacementJobEvidence
+  = FloorJobCollected {
+      slot: NonEmptyStr,
+      run: WorkflowRun,
+      floor_job: WorkflowJobRun,
+      conclusion: WorkflowRunConclusion,
+    }
+  | FloorJobRefused { slot: NonEmptyStr, reason: String }
+
+// WHICH SLOT THIS EVIDENCE IS ABOUT IS A FACT ABOUT THE JOB, NOT ABOUT THE CALLER'S LABEL. The verdict is
+// spent on the runner the floor job actually ran on -- `WorkflowJobRun.runner_name`, the same field
+// `decide_floor_job` checked against the registration -- so a collected run for srv3-06 can never be spent
+// on srv3-07, and a refused verdict, which names no runner, is spent on nobody. An absent `runner_name` is
+// not a match: a job that does not say who ran it has proved nothing about who ran it.
+fn floor_job_ran_on(evidence: ReplacementJobEvidence, slot: NonEmptyStr) -> Bool {
+  match evidence {
+    FloorJobCollected { slot: _, run: _, floor_job: job, conclusion: _ } =>
+      match job.runner_name {
+        Absent => false
+        Present { value: name } => name == (slot as String)
+      }
+    FloorJobRefused { slot: _, reason: _ } => false
   }
 }

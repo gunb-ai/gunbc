@@ -174,9 +174,9 @@ import gunbc.runner.runner_replacement_readback {
 }
 
 import gunbc.runner.runner_retirement_causes {
-  RetireDrainDecision, RetireDrainAuthorized, RetireDrainWithheld, RetireDrainRefused, RetirePendingCause, RetireRefusalCause, RetireUndecidedCause, NoDecisionFor
+  RetireDrainDecision, RunnerHostDrainStep, DrainNow, DrainHeld, DrainRefusedByStanding, DrainUndecided,
+  retire_drain_leg_step, ReplacementJobEvidence,
 }
-import gunbc.runner.runner_qualification_dispatch { QualificationRunVerdict }
 import gunbc.runner.runner_throughput_qualification { RouteLegStanding, LegAuthorityImplemented }
 import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_live_read }
 import gunbc.fleet.fleet_runner_connectivity { OrganizationRunnerRosterEvidence }
@@ -3335,7 +3335,7 @@ fn runner_host_slot_actuations(
 // reads, so the replacement set and the retiree set cannot be built from different worlds.
 type RunnerRetirementReadback sole_constructor {
   roster: OrganizationRunnerRosterEvidence?
-  qualification_verdicts: List<QualificationRunVerdict>
+  qualification_verdicts: List<ReplacementJobEvidence>
   pass: RetirementReadbackPass
 }
 
@@ -3364,7 +3364,7 @@ fn runner_retirement_readback_observe_pass() -> RunnerRetirementReadback {
 // is a frontier's evidence and not an oversight.
 fn runner_retirement_readback_of(
   roster: OrganizationRunnerRosterEvidence?,
-  qualification_verdicts: List<QualificationRunVerdict>,
+  qualification_verdicts: List<ReplacementJobEvidence>,
 ) -> RunnerRetirementReadback {
   RunnerRetirementReadback { roster: roster, qualification_verdicts: qualification_verdicts, pass: ConvergeApplyReadLive }
 }
@@ -3389,19 +3389,6 @@ data converge_replacement_job_proof_leg: RouteLegStanding = LegAuthorityImplemen
   authority: decl_ref(module_path: "gunbc.runner.runner_replacement_readback", decl_name: "replacement_proven_of_host"),
   wiring_owed: "the converge entry supplies qualification_verdicts: []; the landing is the qualification attempt route's collected QualificationRunVerdict per incoming slot fed into runner_retirement_readback_of, triggered by the first runner_host_file_converge APPLY dispatch over a host with an open width transition whose incoming slots have collected qualification verdicts",
 }
-
-// ONE STEP OF THE DRAIN LEG, PURELY. The apply route acts only on `DrainNow`; everything else reports. The
-// leg is a function of the subject, the host's own unit reading and the readback, so the whole invariant --
-// including the fail-closed arm -- is decidable by a claim without an SSH session.
-type RunnerHostDrainStep
-  = DrainNow { unit: NonEmptyStr }
-  // THE CAUSES TRAVEL TYPED AS FAR AS THE OUTCOME AND ARE RENDERED ONLY IN
-  // gunbc.runner.runner_slot_actuation's wire. The gate's decision is a fact that must survive the leg that
-  // made it (DESIGN.md, Source: "a fact that must survive belongs in a typed carrier"); turning it into
-  // prose here would put a second representation of the decision in front of anyone reading the leg.
-  | DrainHeld { unit: NonEmptyStr, cause: RetirePendingCause }
-  | DrainRefusedByStanding { unit: NonEmptyStr, cause: RetireRefusalCause }
-  | DrainUndecided { unit: NonEmptyStr, cause: RetireUndecidedCause }
 
 // THE DECISIONS FOR THE HOST'S DRAIN CANDIDATES. `live` comes from the host's OWN unit reading (the
 // population fold's loaded units), which is what makes a hand-started slot visible at all: it is in no
@@ -3450,25 +3437,7 @@ fn runner_host_drain_leg_decided(
     population: population,
     readback: readback,
   )
-  map(
-    runner_host_drain_units(subject: subject),
-    u =>
-      match first(filter(decisions, d => (retire_drain_decision_unit(d: d) as String) == (u as String))) {
-        Absent => DrainUndecided { unit: u, cause: NoDecisionFor { candidate: u } }
-        Present { value: RetireDrainAuthorized { unit: _, over: _ } } => DrainNow { unit: u }
-        Present { value: RetireDrainWithheld { unit: _, cause: cause } } => DrainHeld { unit: u, cause: cause }
-        Present { value: RetireDrainRefused { unit: _, cause: cause } } =>
-          DrainRefusedByStanding { unit: u, cause: cause }
-      },
-  )
-}
-
-fn retire_drain_decision_unit(d: RetireDrainDecision) -> NonEmptyStr {
-  match d {
-    RetireDrainAuthorized { unit: u, over: _ } => u
-    RetireDrainWithheld { unit: u, cause: _ } => u
-    RetireDrainRefused { unit: u, cause: _ } => u
-  }
+  map(runner_host_drain_units(subject: subject), u => retire_drain_leg_step(unit: u, decisions: decisions))
 }
 
 // THE HAND-STARTED UNITS OF THIS HOST: live on the host, and in NO derived list -- not desired, not a

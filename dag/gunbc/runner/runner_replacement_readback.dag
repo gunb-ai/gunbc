@@ -26,10 +26,13 @@ module gunbc.runner.runner_replacement_readback
 //     carrier is gunbc.fleet.fleet_runner_connectivity::OrganizationRunnerRosterEvidence). The slot's
 //     runner name appears there, online. A PARTIAL roster read cannot support "not registered", so it
 //     yields an unreadable standing rather than a negative one -- an absent page is not an absent runner.
-//   * A COMPLETED JOB: the qualification run readback (gunbc.runner.runner_qualification_dispatch).
-//     `RunVerdictCollected` says the registered runner was handed the floor job and STARTED it; it does
-//     not say the job PASSED, so this join requires the collected conclusion to be Success. A collected
-//     run that concluded Failure is `JobNotConcluded`, not a proof.
+//   * A COMPLETED JOB: the qualification run readback (gunbc.runner.runner_qualification_dispatch::
+//     QualificationRunVerdict), which arrives as this module's `ReplacementJobEvidence` through that
+//     module's OWN projection, `replacement_job_evidence_of` -- the only producer, because the gate may not
+//     import the dispatch module without closing a cycle over the route that consumes this answer.
+//     `FloorJobCollected` carries the verdict's own fields and says the registered runner was handed the
+//     floor job and STARTED it; it does not say the job PASSED, so this join requires the collected
+//     conclusion to be Success. A collected run that concluded Failure is `JobNotConcluded`, not a proof.
 // Absent or unreadable evidence in either leg is its own typed arm and keeps the retiree running: the
 // absence of an observation is never read as a negative observation.
 //
@@ -55,9 +58,6 @@ import extdeps.github.workflow_runs {
 import gunbc.fleet.fleet_runner_connectivity {
   OrganizationRunnerRosterEvidence, RosterObserved, RosterObservedPartial, RosterReadUnavailable,
 }
-import gunbc.runner.runner_qualification_dispatch {
-  QualificationRunVerdict, RunVerdictCollected, RunVerdictRefused, QualificationRunRefusal, optional_text_is,
-}
 import gunbc.runner.runner_slot_allocation {
   RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, runner_width_unresolved_cause_text,
   gunbc_runner_committed_width,
@@ -75,6 +75,7 @@ import gunbc.runner.runner_retirement_causes {
   RetireRefusalCause, StillDesiredUnit, HandStartedOutsideTheDerivedPopulation, DrainCandidateUnaccountedFor,
   RetireDrainDecision, RetireDrainAuthorized, RetireDrainWithheld, RetireDrainRefused,
   RetireUndecidedCause, NoDecisionFor, pending_cause_text,
+  ReplacementJobEvidence, FloorJobCollected, FloorJobRefused, floor_job_ran_on,
 }
 
 // THE ROSTER IS SUPPLIED, NOT READ HERE, so the join is decidable by a claim. `Absent` is "nobody read the
@@ -130,10 +131,10 @@ fn registration_from_entries(
 // This is the discriminating corner of the whole module: a witness that passes a concluded-Failure verdict
 // through here and still sees a drain has caught a capacity-destroying bug, and the same witness with a
 // Success verdict is the witness that the gate is not a blanket refusal.
-fn replacement_job_standing_of(slot: NonEmptyStr, verdict: QualificationRunVerdict?) -> ReplacementJobStanding {
+fn replacement_job_standing_of(slot: NonEmptyStr, verdict: ReplacementJobEvidence?) -> ReplacementJobStanding {
   match verdict {
     Absent => JobUnreadable { slot: slot, cause: "no qualification run readback exists for this slot" }
-    Present { value: RunVerdictCollected { run: run, floor_job: job, conclusion: conclusion } } =>
+    Present { value: FloorJobCollected { run: run, floor_job: job, conclusion: conclusion } } =>
       match conclusion {
         Success => JobConcluded { slot: slot, run: run, floor_job: job }
         Failure => JobNotConcluded { slot: slot, cause: "the floor job concluded Failure" }
@@ -144,37 +145,7 @@ fn replacement_job_standing_of(slot: NonEmptyStr, verdict: QualificationRunVerdi
         ActionRequired => JobNotConcluded { slot: slot, cause: "the floor job is waiting for action" }
         StartupFailure => JobNotConcluded { slot: slot, cause: "the floor job failed to start" }
       }
-    Present { value: RunVerdictRefused { refusal: refusal } } =>
-      JobUnreadable { slot: slot, cause: qualification_run_refusal_cause(refusal: refusal) }
-  }
-}
-
-// WHY A CAUSE STRING AND NOT THE REFUSAL ITSELF. The refusal carries the pinned revision and the observed
-// one, the token's app and installation -- material that belongs in a refusal report, not in a plan line a
-// host converges against. The arms are named so the operator can act on the cause alone; the full refusal
-// stays one `match` away in the module that produced it.
-fn qualification_run_refusal_cause(refusal: QualificationRunRefusal) -> String {
-  match refusal {
-    RunReadUnreadable { refusal: _ } => "the qualification run could not be read"
-    RunCollectedUnderAnotherInstallation { token_app: _, token_installation: _ } =>
-      "the qualification run belongs to another GitHub App installation"
-    RunSubjectMismatch { observed_run_id: _, observed_event: _, observed_path: _, foreign_jobs: _ } =>
-      "the qualification run is not the dispatched one"
-    RunAdvancedPastDispatchedAttempt { observed_attempt: _ } => "the workflow run advanced past the dispatched attempt"
-    RunRevisionNotPinned { pinned: _, observed: _ } => "the qualification run is not on the pinned revision"
-    RunOnAnotherBranch { pinned: _, observed: _ } => "the qualification run is on another branch"
-    RunNotCompleted { status: _ } => "the qualification run has not completed"
-    RunCompletedWithoutConclusion => "the qualification run completed without a conclusion"
-    RunJobsUnreadable { refusal: _ } => "the qualification run's jobs could not be read"
-    RunJobsTruncated { returned: _, total: _ } => "the qualification run's job list is truncated"
-    RunFloorJobNotUnique { floor_job_name: _, matching: _ } => "the floor job is not unique in the run"
-    RunNeverReachedAttemptRunner { registered_runner_id: _, runner_ids_seen: _ } =>
-      "no job of the qualification run ran on the registered runner"
-    RunRunnerNameDisagrees { registered_runner_id: _, registered_runner: _, observed_runner_name: _ } =>
-      "the job's runner name disagrees with the registration"
-    RunRegisteredRunnerRanAnotherJob { registered_runner: _, job_name: _ } =>
-      "the registered runner ran a job other than the floor job"
-    RunFloorJobNotStarted { job_id: _ } => "the floor job never started"
+    Present { value: FloorJobRefused { reason: reason } } => JobUnreadable { slot: slot, cause: reason }
   }
 }
 
@@ -209,7 +180,7 @@ fn replacement_proven_of(
 fn replacement_proven_of_host(
   incoming: List<NonEmptyStr>,
   roster: OrganizationRunnerRosterEvidence?,
-  verdicts: List<QualificationRunVerdict>,
+  verdicts: List<ReplacementJobEvidence>,
 ) -> List<ReplacementProven> {
   map(
     incoming,
@@ -226,16 +197,8 @@ fn replacement_proven_of_host(
 // never be spent on srv3-07, and the first-to-prove order the operator sees is the order the plan asked
 // for. A refused verdict names no runner and so is spent on nobody: it stays visible to the caller's
 // report, and it proves nothing for any slot.
-fn verdict_for(verdicts: List<QualificationRunVerdict>, slot: NonEmptyStr) -> QualificationRunVerdict? {
-  let matching = filter(
-    verdicts,
-    v =>
-      match v {
-        RunVerdictCollected { run: _, floor_job: job, conclusion: _ } =>
-          optional_text_is(o: job.runner_name, expected: (slot as String))
-        RunVerdictRefused { refusal: _ } => false
-      },
-  )
+fn verdict_for(verdicts: List<ReplacementJobEvidence>, slot: NonEmptyStr) -> ReplacementJobEvidence? {
+  let matching = filter(verdicts, v => floor_job_ran_on(evidence: v, slot: slot))
   match first(matching) {
     Present { value: v } => Present { value: v }
     Absent => Absent
@@ -320,6 +283,7 @@ fn replacement_incoming_for_host(host: HostIdentity) -> ReplacementIncoming {
 fn retire_drain_decision(
   standing: DrainCandidateStanding,
   incoming: ReplacementIncoming,
+  provisioning: List<NonEmptyStr>,
   proven: List<ReplacementProven>,
 ) -> RetireDrainDecision {
   match standing {
@@ -336,13 +300,40 @@ fn retire_drain_decision(
     ModelDeclaredFabricMember { unit: unit, live_on_host: _ } => RetireDrainAuthorized { unit: unit, over: [] }
     DeclaredRetiree { unit: unit, live_on_host: _ } =>
       match incoming {
-        ShrunkOnly => RetireDrainAuthorized { unit: unit, over: [] }
+        // A PURE SHRINK STILL ASKS WHO IS COMING UP. `ShrunkOnly` says the model is giving capacity up
+        // rather than handing it to a named slot, and that is the one case where no incoming slot exists to
+        // prove. It does NOT license stopping a runner while the slots the host is KEEPING have never run a
+        // job: gunb-ai/gunbc#16144 moves srv1's committed width to 8 and srv1-03..06 have no install trees
+        // at all, so a plan that retired the live units past the width before 03..06 had registered and
+        // concluded a floor job would leave the host with less working capacity than it had, not the same
+        // capacity moved. `provisioning` is that set -- desired, and absent from the host's own reading --
+        // and every one of them must be proven here too. When the kept slots are all up and proven, the list
+        // is empty and the shrink proceeds as it always did: this is a gate on the transition, not a veto on
+        // shrinking.
+        ShrunkOnly =>
+          match first_unproven(slots: provisioning, proven: proven) {
+            Absent => RetireDrainAuthorized { unit: unit, over: [] }
+            Present { value: slot } =>
+              RetireDrainWithheld {
+                unit: unit,
+                cause: awaiting(slots: provisioning, proven: proven, unit: unit, replacement: slot),
+              }
+          }
         IncomingUnresolved { cause: why } =>
           RetireDrainWithheld { unit: unit, cause: IncomingUnprovable { cause: why } }
         ReplacedBy { incoming: slots } =>
           match first_unproven(slots: slots, proven: proven) {
-            Absent => RetireDrainAuthorized { unit: unit, over: slots }
-            Present { value: slot } => RetireDrainWithheld { unit: unit, cause: awaiting(slots: slots, proven: proven, unit: unit, replacement: slot) }
+            Present { value: slot } =>
+              RetireDrainWithheld { unit: unit, cause: awaiting(slots: slots, proven: proven, unit: unit, replacement: slot) }
+            Absent =>
+              match first_unproven(slots: provisioning, proven: proven) {
+                Absent => RetireDrainAuthorized { unit: unit, over: slots }
+                Present { value: slot } =>
+                  RetireDrainWithheld {
+                    unit: unit,
+                    cause: awaiting(slots: provisioning, proven: proven, unit: unit, replacement: slot),
+                  }
+              }
           }
       }
   }
@@ -420,6 +411,7 @@ fn retire_drain_decisions(
   incoming: ReplacementIncoming,
   proven: List<ReplacementProven>,
 ) -> List<RetireDrainDecision> {
+  let provisioning = provisioning_slots(desired: desired, live: live)
   map(
     candidates,
     unit =>
@@ -432,21 +424,21 @@ fn retire_drain_decisions(
           live: live,
         ),
         incoming: incoming,
+        provisioning: provisioning,
         proven: proven,
       )
   )
 }
 
-fn retire_drain_is_authorized(decisions: List<RetireDrainDecision>, unit: NonEmptyStr) -> Bool {
-  any(
-    decisions,
-    d =>
-      match d {
-        RetireDrainAuthorized { unit: u, over: _ } => (u as String) == (unit as String)
-        RetireDrainWithheld { unit: _, cause: _ } => false
-        RetireDrainRefused { unit: _, cause: _ } => false
-      },
-  )
+// THE SLOTS THE HOST IS BRINGING UP, AS THE HOST ITSELF ANSWERS. A desired unit with no live unit behind it
+// is being provisioned by this very converge -- no install tree, no registration, no job -- and it is the
+// capacity a retirement would be handed to. It is derived from the two lists the leg already carries rather
+// than authored, so a plan cannot describe away its own new slots by leaving the list empty; and a unit that
+// IS live is not in it, which is what keeps a steady-state shrink (every kept slot already up) from being
+// held forever by slots that will never produce a new job. An unobservable host reading makes the live set
+// empty, so it makes EVERY kept slot unproven and the retirements wait: the fail-closed direction.
+fn provisioning_slots(desired: List<NonEmptyStr>, live: List<NonEmptyStr>) -> List<NonEmptyStr> {
+  filter(desired, d => !any(live, l => (l as String) == (d as String)))
 }
 
 // ─────────────────────────── THE SIGNAL THE OPERATOR GETS INSTEAD OF A SILENT HAND RUNNER ───────────────────────────
