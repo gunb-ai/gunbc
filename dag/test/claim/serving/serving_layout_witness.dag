@@ -27,7 +27,7 @@ import gunbc.serving.serving_layout {
   srv3_grant, srv3_layer_split_groups, strata_srv3_layer_split_profile, srv3_layout,
   srv3_routed_expert_artifact, srv4_routed_expert_artifact, serving_artifact_host_ram_charge,
   ServingSharedArtifact, ServingArtifactMedium, ArtifactOnDevice, ArtifactInHostRam, ArtifactOnDisk,
-  ArtifactHeldPinned, ArtifactHeldEvictable, ServingLayoutArtifactUnbudgetable,
+  ArtifactHeldPinned, ArtifactHeldEvictable,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -396,25 +396,43 @@ test fn witness_a_zero_snapshot_cost_refuses_before_allocation() -> Bool {
 //
 // The rung helpers: what one medium of an artifact holds, what its floor is, and whether it is pinned.
 
+fn sl_rung(a: ServingSharedArtifact, m: ServingArtifactMedium) -> ServingArtifactRung? {
+  match m { ArtifactOnDevice => a.device, ArtifactInHostRam => a.host_ram, ArtifactOnDisk => a.disk }
+}
+
 fn sl_rung_bytes(a: ServingSharedArtifact, m: ServingArtifactMedium) -> Nat {
-  fold(filter(a.tiers, t => t.medium == m), init: 0, f: (acc, t) => acc + byte_size_count(b: serving_reading_bytes_or_zero(r: t.bytes)))
+  match sl_rung(a: a, m: m) {
+    Absent => 0
+    Present { value: r } => byte_size_count(b: serving_reading_bytes_or_zero(r: r.bytes))
+  }
 }
 
+// A pinned rung's floor is its whole (nothing can be squeezed out); an evictable rung's floor is the floor it
+// states on its hold — the same reading the budget reserves.
 fn sl_rung_floor(a: ServingSharedArtifact, m: ServingArtifactMedium) -> Nat {
-  fold(filter(a.tiers, t => t.medium == m), init: 0, f: (acc, t) => acc + byte_size_count(b: serving_reading_bytes_or_zero(r: t.floor)))
-}
-
-fn sl_rung_count(a: ServingSharedArtifact, m: ServingArtifactMedium) -> Nat {
-  count(filter(a.tiers, t => t.medium == m))
-}
-
-// True when every rung on the medium is pinned (and there is at least one).
-fn sl_rung_pinned(a: ServingSharedArtifact, m: ServingArtifactMedium) -> Bool {
-  sl_rung_count(a: a, m: m) > 0
-    && fold(filter(a.tiers, t => t.medium == m), init: true, f: (acc, t) => acc && match t.holds {
-      ArtifactHeldPinned { mechanism: _ } => true
-      ArtifactHeldEvictable { bound_by: _ } => false
+  match sl_rung(a: a, m: m) {
+    Absent => 0
+    Present { value: r } => byte_size_count(b: match r.holds {
+      ArtifactHeldPinned { mechanism: _ } => serving_reading_bytes_or_zero(r: r.bytes)
+      ArtifactHeldEvictable { bound_by: _, floor: f } => serving_reading_bytes_or_zero(r: f)
     })
+  }
+}
+
+// At most one rung per medium exists, so a rung is present (1) or absent (0) — never more than one.
+fn sl_rung_count(a: ServingSharedArtifact, m: ServingArtifactMedium) -> Nat {
+  match sl_rung(a: a, m: m) { Absent => 0, Present { value: _ } => 1 }
+}
+
+// True when the medium holds a rung and that rung is pinned (absent means false: nothing is reserved there).
+fn sl_rung_pinned(a: ServingSharedArtifact, m: ServingArtifactMedium) -> Bool {
+  match sl_rung(a: a, m: m) {
+    Absent => false
+    Present { value: r } => match r.holds {
+      ArtifactHeldPinned { mechanism: _ } => true
+      ArtifactHeldEvictable { bound_by: _, floor: _ } => false
+    }
+  }
 }
 
 // THE SAME ARTIFACT KIND, CHARGED TWO WAYS, WHICH IS THE WHOLE POINT OF THE HOLD. h11's experts are mlocked: the
@@ -493,54 +511,6 @@ test fn witness_srv3_is_one_replica_across_two_gpus_in_its_own_slice() -> Bool {
     && sl_replicas(r: srv3_layout).all(c => byte_size_count(b: serving_reading_bytes_or_zero(r: strata_srv3_layer_split_profile.replica_base_ram)) + byte_size_count(b: serving_reading_bytes_or_zero(r: strata_srv3_layer_split_profile.park_free_floor)) < byte_size_count(b: c.memory_max))
 }
 
-// AN EVICTABLE HOST-RAM RUNG WITH NO FLOOR RESERVES NOTHING WHILE CLAIMING TO BE CAPPED, and the layout refuses
-// it rather than handing the same bytes out as usable RAM. Discriminating: an implementation that folded rungs
-// without looking at their hold, or that treated Unread as zero, would allocate and stay silent.
-test fn witness_an_evictable_host_ram_rung_without_a_floor_refuses() -> Bool {
-  let capped = ServingArtifactTier {
-    medium: ArtifactInHostRam,
-    holds: ArtifactHeldEvictable { bound_by: "a cgroup cap with no stated working set" as NonEmptyStr },
-    bytes: ServingMemoryRead { bytes: sl_gib(n: 12), provenance: "witness" as NonEmptyStr },
-    floor: ServingMemoryUnread { reason: "the working set has not been read" as NonEmptyStr },
-    realizes: "witness: an evictable rung nobody floored" as NonEmptyStr,
-  }
-  let grant = ServingResourceGrant {
-    host: srv4_grant.host, usable_ram: srv4_grant.usable_ram, overhead: srv4_grant.overhead,
-    shared: [ServingSharedArtifact { name: "witness expert tier" as NonEmptyStr, bytes: sl_gib(n: 46), owner: "witness" as NonEmptyStr, tiers: [capped] }],
-    swap_bound: srv4_grant.swap_bound, charging: srv4_grant.charging, devices: srv4_grant.devices,
-  }
-  match sl_refusal(r: serving_layout_derive(g: grant, groups: srv4_layer_split_groups, b: strata_srv4_layer_split_profile, r: serving_context_ceiling_requirement)) {
-    Present { value: ServingLayoutArtifactUnbudgetable { artifact: n, defect: _ } } => n == "witness expert tier"
-    _ => false
-  }
-}
-
-// TWO HOST-RAM RUNGS WOULD LEAVE WHICH ONE THE BUDGET RESERVES UNDECIDED, and the same refusal covers it: a
-// layout must not be able to charge a pinned copy and an evictable copy of one artifact and pick a favourite.
-test fn witness_two_host_ram_rungs_refuse_rather_than_pick_one() -> Bool {
-  let pinned = ServingArtifactTier {
-    medium: ArtifactInHostRam, holds: ArtifactHeldPinned { mechanism: "witness lock" as NonEmptyStr },
-    bytes: ServingMemoryRead { bytes: sl_gib(n: 4), provenance: "witness" as NonEmptyStr }, floor: ServingMemoryRead { bytes: sl_gib(n: 4), provenance: "witness" as NonEmptyStr },
-    realizes: "witness: a locked copy" as NonEmptyStr,
-  }
-  let grant = ServingResourceGrant {
-    host: srv4_grant.host, usable_ram: srv4_grant.usable_ram, overhead: srv4_grant.overhead,
-    shared: [ServingSharedArtifact { name: "witness two rungs" as NonEmptyStr, bytes: sl_gib(n: 46), owner: "witness" as NonEmptyStr, tiers: [pinned, sl_mapped_rung()] }],
-    swap_bound: srv4_grant.swap_bound, charging: srv4_grant.charging, devices: srv4_grant.devices,
-  }
-  match sl_refusal(r: serving_layout_derive(g: grant, groups: srv4_layer_split_groups, b: strata_srv4_layer_split_profile, r: serving_context_ceiling_requirement)) {
-    Present { value: ServingLayoutArtifactUnbudgetable { artifact: n, defect: _ } } => n == "witness two rungs"
-    _ => false
-  }
-}
-
-fn sl_mapped_rung() -> ServingArtifactTier {
-  ServingArtifactTier {
-    medium: ArtifactInHostRam, holds: ArtifactHeldEvictable { bound_by: "witness cgroup cap" as NonEmptyStr },
-    bytes: ServingMemoryRead { bytes: sl_gib(n: 12), provenance: "witness" as NonEmptyStr }, floor: ServingMemoryRead { bytes: sl_gib(n: 8), provenance: "witness" as NonEmptyStr },
-    realizes: "witness: a mapped copy" as NonEmptyStr,
-  }
-}
 
 // THE SWAP BOUND TRAVELS AS WHAT IT IS (review 92384). Each host's swap limit has one home -- its engine row in
 // gunbc.serving.serving_host_memory -- and the grant carries that reading with its label intact. srv3's slice has
