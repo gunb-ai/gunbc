@@ -1116,6 +1116,7 @@ data user_work_slice_admission_deferral_has_no_visible_count: IntegrationConcern
       },
       account: "Raised while repairing srv1 #15822 row 29 (#16013): the goal-audit reviewer was memcg-OOM-killed because the belt admitted it into gunbc-user-work.slice on slot count and liveness alone. The repair adds a pre-launch memory-fit admission that returns ReviewDeferred when the slice cannot hold the unit. The row-30 owner noted that a deferral holds forever by design (no expiry) and asked that the refusal count be surfaced somewhere visible; the belt spawn is per-tick and holds no cross-tick store, and the deferral never reaches the reconciliation standings fold, so neither the belt nor the attempt record persists a count today. This row records that gap rather than inventing cross-tick state in #16013.",
     },
+    tail: [],
   },
   disposition: Open,
 }
@@ -1143,6 +1144,7 @@ data user_work_slice_admission_check_races_within_a_tick: IntegrationConcern = I
       },
       account: "Raised on the #16013 review of the srv1 #15822 row-29 repair: the pre-launch memory-fit admission reads the slice and then launches as separate steps, so two spawns admitted in one tick can both observe enough free room. A per-tick reservation of already-admitted bounded bytes would make the check exact. The check still prevents the incident (launching a reviewer into a slice the standing daemons already fill); this row records the remaining race, not a defect in the incident repair.",
     },
+    tail: [],
   },
   disposition: Open,
 }
