@@ -11983,10 +11983,11 @@ pub fn operation_requires_declaration(
 
 pub fn requires_word_is(member: Rc<Node>, word: String) -> bool {
     match (*member.expr_data.clone()).clone() {
-        ExprData::ExprLiteral { ref value, .. }
-            if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
-        {
-            let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
+        ExprData::ExprLiteral {
+            value: ref __rc_value,
+            ..
+        } if matches!(__rc_value.as_ref(), LiteralValue::LitStr { value: _, .. }) => {
+            let LiteralValue::LitStr { value: s, .. } = __rc_value.as_ref() else {
                 unreachable!()
             };
             (s.clone() == word.clone())

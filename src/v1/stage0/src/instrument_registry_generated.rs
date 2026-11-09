@@ -172,6 +172,15 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
         (
             Label {
                 package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "pattern-binder-capture".to_string(),
+            },
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/pattern_binder_capture_native.dag",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
                 target: "member-home-cost".to_string(),
             },
             TargetProducer::NativeClaimProgram {
@@ -470,8 +479,4 @@ pub fn emitted_crate_workspace_source_roots() -> Vec<String> {
 
 pub fn bare_reference_channel_source_roots() -> Vec<String> {
     vec!["fixtures/bare_reference_channel".to_string()]
-}
-
-pub fn behavioral_receipt_source_roots() -> Vec<String> {
-    vec!["dag".to_string(), "src/v2".to_string()]
 }
