@@ -74,7 +74,8 @@ import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, ya
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import extdeps.github.actions {
   Workflow, Job, Step, UsesStep, RunStep, WorkflowPermissions, PermRead, RunnerSpec, HostedRunner,
-  SelfHosted, RunsOnExpression, github_event_name_pull_request
+  SelfHosted, RunsOnExpression, github_event_name_pull_request,
+  WorkflowCall, WorkflowCallInput, CallInputBoolean
 }
 import gunbc.action_use_admission {
   admit_workflow_checkout_refs, checkout_ref_entry, WorkflowCheckoutRefsAdmitted,
@@ -101,7 +102,7 @@ import gunbc.witness.witness_floor_workflow {
 }
 import gunbc.ci.ci_runner_target { ci_runner_target_spec }
 import gunbc.ci.repository_ci_profile {
-  gunbc_roster_gate, gunbc_repository_ci_profile, RepositoryCiProfile, repository_ci_profile_refusal,
+  gunbc_roster_gate, gunbc_repository_ci_profile, RepositoryCiProfile, repository_ci_profile_refusal, gunbc_repository_name,
   profile_runs_roster_in_composed_root
 }
 import gunbc.fleet.fleet_workflow_steps { ci_cache_cargo_step_under }
@@ -302,7 +303,107 @@ fn compiler_gate_fleet_checkout_step() -> Step {
       ]
     },
     env: none,
-    if_condition: none,
+    if_condition: Present { value: compiler_gate_not_called_condition },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// THE CALLED FORM: ANOTHER REPOSITORY'S dag/ JUDGED BY THIS GATE, UNCHANGED
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// A repository that carries .dag modules and no compiler (the private mirror) does not get a gate of
+// its own. It calls this workflow (`uses: gunb-ai/gunbc/.github/workflows/witnesses.yml@main`) with
+// `compose_caller_dag: true`, and the job judges gunbc's default branch with the caller's dag/ copied
+// into it. Every step after the composition is the step gunbc runs on itself, so a change to this gate
+// reaches the caller on its next run with no edit and no regeneration there.
+//
+// WHY THE CALLED CHECKOUT CARRIES NO `ref`. When a workflow is called, every `github.*` value names the
+// CALLER's event, and no context names the commit this workflow was read from, so there is no commit
+// expression to put here. Without a `ref`, actions/checkout takes gunbc's default branch at step time.
+// The job is the workflow's only job, so no sibling can build a different tree; the next step prints
+// the commit it got, and the contract-stamp guard (two steps on) still refuses a tree whose committed
+// workflow is not the instruction running it.
+data compiler_gate_compose_caller_input_name: String = "compose_caller_dag"
+
+data compiler_gate_compose_caller_input: WorkflowCallInput = WorkflowCallInput {
+  name: compiler_gate_compose_caller_input_name,
+  description: Present {
+    value: "Judge gunb-ai/gunbc's default branch with the calling repository's dag/ copied into it"
+  },
+  required: false,
+  type: CallInputBoolean
+}
+
+data compiler_gate_called_condition: String = concat("inputs.", compiler_gate_compose_caller_input_name)
+
+data compiler_gate_not_called_condition: String = concat("!inputs.", compiler_gate_compose_caller_input_name)
+
+data compiler_gate_caller_checkout_path: String = ".gunbc-caller"
+
+fn compiler_gate_called_gunbc_checkout_step() -> Step {
+  UsesStep {
+    name: Present { value: "Checkout gunbc's default branch for a calling repository" },
+    id: none,
+    uses: checkout_action,
+    with: Present {
+      value: [
+        kv(key: "repository", value: yaml_string(s: gunbc_repository_name())),
+        kv(key: "fetch-depth", value: yaml_int(n: 0)),
+        kv(key: "persist-credentials", value: yaml_bool(b: false))
+      ]
+    },
+    env: none,
+    if_condition: Present { value: compiler_gate_called_condition },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn compiler_gate_caller_checkout_step() -> Step {
+  UsesStep {
+    name: Present { value: "Checkout the calling repository's commit" },
+    id: none,
+    uses: checkout_action,
+    with: Present {
+      value: [
+        kv(key: "path", value: yaml_string(s: compiler_gate_caller_checkout_path)),
+        kv(key: "persist-credentials", value: yaml_bool(b: false))
+      ]
+    },
+    env: none,
+    if_condition: Present { value: compiler_gate_called_condition },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// THE COMPOSITION: the caller's dag/ is added to gunbc's, file by file, and a path both trees hold is
+// refused rather than overwritten -- module a.b.c has one storage path, so a clash is two modules
+// claiming one name, and neither silently wins.
+data compiler_gate_compose_caller_script: String = join([
+  "set -euo pipefail",
+  concat(concat("CALLER='", compiler_gate_caller_checkout_path), "/dag'"),
+  "GUNBC_HEAD=$(git rev-parse HEAD)",
+  concat(concat("echo \"judging $GITHUB_REPOSITORY@$GITHUB_SHA composed onto ", gunbc_repository_name()), "@$GUNBC_HEAD\""),
+  "test -d \"$CALLER\" || { echo \"::error::the calling repository has no dag/ directory, so there is nothing to compose\"; exit 1; }",
+  "CLASH=$(cd \"$CALLER\" && find . -type f -printf '%P\\n' | while IFS= read -r f; do if [ -e \"$GITHUB_WORKSPACE/dag/$f\" ]; then echo \"dag/$f\"; fi; done)",
+  "if [ -n \"$CLASH\" ]; then echo \"::error::these paths exist in both trees, so two modules claim one name:\"; echo \"$CLASH\"; exit 1; fi",
+  "cp -a \"$CALLER/.\" dag/",
+  concat(concat("rm -rf -- '", compiler_gate_caller_checkout_path), "'"),
+  "echo \"composed $(find dag -name '*.dag' | wc -l) .dag files under dag/\""
+], "\n")
+
+fn compiler_gate_compose_caller_step() -> Step {
+  RunStep {
+    name: Present { value: "Compose the calling repository's dag/ into gunbc's" },
+    id: none,
+    run: compiler_gate_compose_caller_script,
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: compiler_gate_called_condition },
     continue_on_error: none,
     timeout_minutes: none
   }
@@ -320,6 +421,21 @@ fn compiler_gate_fleet_judged_head_bound_steps() -> List<CompilerGateBoundStep> 
       step: compiler_gate_fleet_checkout_step(),
       role: capability_neutral,
       step_name: "Checkout the commit this lane judges",
+    },
+    CompilerGateBoundStep {
+      step: compiler_gate_called_gunbc_checkout_step(),
+      role: capability_neutral,
+      step_name: "Checkout gunbc's default branch for a calling repository",
+    },
+    CompilerGateBoundStep {
+      step: compiler_gate_caller_checkout_step(),
+      role: capability_neutral,
+      step_name: "Checkout the calling repository's commit",
+    },
+    CompilerGateBoundStep {
+      step: compiler_gate_compose_caller_step(),
+      role: capability_neutral,
+      step_name: "Compose the calling repository's dag/ into gunbc's",
     },
     // THE STAMP GUARD IS THE SECOND STEP IN THE JOB, ahead of the toolchain install and of every step
     // that invokes a binary built from this checkout. It belongs there because what it refuses -- a
@@ -924,7 +1040,7 @@ fn compiler_gate_workflow_of(profile: RepositoryCiProfile) -> Workflow {
   Workflow {
   name: witness_floor_workflow_name,
   run_name: none,
-  on: witness_floor_triggers(),
+  on: list_append(left: witness_floor_triggers(), right: [WorkflowCall { inputs: [compiler_gate_compose_caller_input] }]),
   concurrency: Present {
     value: concurrency_of_policy(policy: compiler_gate_concurrency_policy, group: witness_floor_concurrency_group())
   },

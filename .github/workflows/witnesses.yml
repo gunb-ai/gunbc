@@ -14,6 +14,12 @@ on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened]
+  workflow_call:
+    inputs:
+      compose_caller_dag:
+        description: Judge gunb-ai/gunbc's default branch with the calling repository's dag/ copied into it
+        required: false
+        type: boolean
 permissions:
   contents: read
 concurrency:
@@ -37,6 +43,33 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.sha }}
           persist-credentials: false
+        if: "!inputs.compose_caller_dag"
+      - name: Checkout gunbc's default branch for a calling repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          repository: gunb-ai/gunbc
+          fetch-depth: 0
+          persist-credentials: false
+        if: inputs.compose_caller_dag
+      - name: Checkout the calling repository's commit
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          path: .gunbc-caller
+          persist-credentials: false
+        if: inputs.compose_caller_dag
+      - name: Compose the calling repository's dag/ into gunbc's
+        run: |-
+          set -euo pipefail
+          CALLER='.gunbc-caller/dag'
+          GUNBC_HEAD=$(git rev-parse HEAD)
+          echo "judging $GITHUB_REPOSITORY@$GITHUB_SHA composed onto gunb-ai/gunbc@$GUNBC_HEAD"
+          test -d "$CALLER" || { echo "::error::the calling repository has no dag/ directory, so there is nothing to compose"; exit 1; }
+          CLASH=$(cd "$CALLER" && find . -type f -printf '%P\n' | while IFS= read -r f; do if [ -e "$GITHUB_WORKSPACE/dag/$f" ]; then echo "dag/$f"; fi; done)
+          if [ -n "$CLASH" ]; then echo "::error::these paths exist in both trees, so two modules claim one name:"; echo "$CLASH"; exit 1; fi
+          cp -a "$CALLER/." dag/
+          rm -rf -- '.gunbc-caller'
+          echo "composed $(find dag -name '*.dag' | wc -l) .dag files under dag/"
+        if: inputs.compose_caller_dag
       - name: Refuse a subject older than the instruction running it
         run: |
           # dissolve-on: compiler_gate_contract_stamp_guard_statements -- bash-node carrier that reads the tree's own committed workflow stamp BEFORE any binary is built and refuses a subject older than the instruction running it; dissolves when a pre-build reader of a committed workflow member exists that does not run tree code (GitHub's own workflow_sha on the check run, or a runner-side typed reader). The awk program remains a single typed string argument until an awk-rule node grammar lands.
