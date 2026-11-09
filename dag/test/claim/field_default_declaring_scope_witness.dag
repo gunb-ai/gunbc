@@ -6,7 +6,9 @@ import std.types { Bool }
 // constructor visible only in the declaring module is reached through a default here. Naming the arm
 // would make this file resolve the name in its own scope and the witness would judge nothing — the
 // hotfix #16185 did exactly that at one call site, which is why the class stayed open beneath it.
-import test.claim.field_default_declaring_scope_fixture { field_default_is_bearer, field_default_is_opaque }
+import test.claim.field_default_declaring_scope_fixture {
+  field_default_is_bearer, field_default_is_opaque, field_default_named_import_is_ack,
+}
 
 // THE WITNESS: `gunbc.recurring_failure_mode::a_field_default_is_evaluated_in_the_callers_scope`.
 //
@@ -25,4 +27,14 @@ test fn field_default_omitted_argument_resolves_in_the_declaring_module() -> Boo
 // or one omission route cannot pass.
 test fn second_field_default_omitted_argument_resolves_in_the_declaring_module() -> Bool {
   field_default_is_opaque()
+}
+
+// THE IMPORTED-ARM HALF. This default names an arm of a coproduct the DECLARING module does not declare
+// — it reaches it through a named import from `test.claim.field_default_declaring_scope_carrier`. Base
+// refuses it the same way (`undefined variable: FieldDefaultCarrierAck`), and a fix that resolved only
+// the declaring module's own coproducts would pass the two claims above and die here. At head it is
+// answered by the same authority the ambiguous-read census uses: the arm the declaring site can name,
+// own or imported — never the corpus pool, and never the caller.
+test fn imported_arm_field_default_omitted_argument_resolves_in_the_declaring_module() -> Bool {
+  field_default_named_import_is_ack()
 }

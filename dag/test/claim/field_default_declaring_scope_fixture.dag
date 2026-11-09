@@ -1,6 +1,11 @@
 module test.claim.field_default_declaring_scope_fixture
 
 import std.types { Bool }
+// THE SECOND HALF OF THE MOVED POPULATION: an arm this module does NOT declare, which it reaches in a
+// default through a named import. The witness caller names neither the carrier type nor its arms.
+import test.claim.field_default_declaring_scope_carrier {
+  FieldDefaultCarrierToken, FieldDefaultCarrierAck, FieldDefaultCarrierNack,
+}
 
 // THE DECLARING MODULE OF THE WITNESS (`test.claim.field_default_declaring_scope_witness`).
 //
@@ -35,6 +40,16 @@ fn field_default_is_opaque(token: FieldDefaultToken = FieldDefaultOpaque) -> Boo
   match token {
     FieldDefaultBearer => false
     FieldDefaultOpaque => true
+  }
+}
+
+// The same default on an arm this module only IMPORTS, so the fix is pinned to "the arm the declaring
+// site can name" rather than to "the arms declared in this file". A fix that bound only this module's
+// own coproducts would pass the two claims above and die here.
+fn field_default_named_import_is_ack(token: FieldDefaultCarrierToken = FieldDefaultCarrierAck) -> Bool {
+  match token {
+    FieldDefaultCarrierAck => true
+    FieldDefaultCarrierNack => false
   }
 }
 
