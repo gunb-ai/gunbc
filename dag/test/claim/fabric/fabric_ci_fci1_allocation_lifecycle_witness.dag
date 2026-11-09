@@ -2,6 +2,7 @@ module test.claim.fabric.fabric_ci_fci1_allocation_lifecycle_witness
 
 import gunbc.fabric.fabric_required_build_cell {
   AllocationSlotAbsent, AllocationSlotFree, AllocationSlotHeld, AllocationSlotUnreadable,
+  AllocationSlotNoSubject, AllocationSlotRefusedNoSubject,
   AllocationStoreRestorationRefused,
   AllocationSlotAbsentReturnedFree, AllocationSlotFreeReturnedFree,
   AllocationSlotAdmitted, AllocationSlotRefusedHeld, AllocationSlotRefusedUnreadable,
@@ -11,6 +12,10 @@ import gunbc.instruments.fabric_control_plane_live_probe {
   Fci1CheckpointAfterCanonicalCommitBeforeTransport,
   cp_probe_served_host, cp_probe_subject, cp_probe_subject_from, cp_probe_slot_from,
   cp_probe_authorized_from, cp_probe_authorized_slot, cp_probe_no_subject_marker,
+  Fci1SlotNoSubject, Fci1SlotHeld, Fci1AuthorityExpected, Fci1AuthorityMismatch,
+  Fci1ReservationCleanupAuthority, fci1_authority_matches_held, fci1_authority_matches_exact_free,
+  fci1_allocation_prestate_wire, fci1_decode_allocation_prestate, fci1_expected_held_generation,
+  fabric_cell_allocation_key,
   CpProbeSubjectSelected, CpProbeSubjectNoFabricExecutionSlot, CpProbeSubjectHostMachineryUnavailable,
   CpProbeSubject, CpProbeAuthorized, CpProbeAuthorizedSlot, CpProbeAuthorizedRefused,
   Fci1CheckpointAfterReleaseBeforeGrading,
@@ -229,4 +234,71 @@ test fn witness_fci1_refusal_projection_is_no_slot_at_all() -> Bool {
     // is that marker, not srv1-13.
     && !fci1_roster_names(roster: [cp_probe_slot()], want: RunnerSlotIdentity { host: "srv1", slot_index: 13 })
     && !fci1_roster_names(roster: [cp_probe_slot()], want: RunnerSlotIdentity { host: "srv1", slot_index: 14 })
+}
+
+// ─── A REFUSAL MUST NOT WEAR A CELL STATE ──────────────────────────────────────────────────────
+// review 92425 (PR #16137) found that the instrument's readers answered "no fabric execution slot is
+// committed" with arms that are real observations of a cell: fci1_allocation_prestate returned
+// AllocationSlotAbsent, which fci1_live_reserve_and_observe_available_in reads as "the slot is free" and
+// reserves over, and fci1_live_binding_observation called the host observer with a made-up identity. Both
+// now report their own arm. These rows are what keeps that from quietly collapsing back into Absent:
+// Absent and Free are ADMITTED (the contrast clauses below are deliberately not tautologies -- they
+// state what those arms mean, so a future edit that routes a refusal through either one goes red), while
+// the no-subject arm is admitted by nothing, grants no generation, restores nothing, matches no
+// authority, and does not survive a wire round-trip as a cell state.
+test fn witness_fci1_no_subject_is_admitted_by_nothing_grants_no_generation() -> Bool {
+  let why = "no fabric execution slot is committed -- srv3-06/07 and srv4-06/07 serve GitHub Actions (gunbc.design_ruling::srv3_srv4_fabric_slots_serve_ci)"
+  match fci1_allocation_slot_admission(prestate: AllocationSlotAbsent { path: "/fixture/store" }) {
+    AllocationSlotAdmitted { path: p } => p == "/fixture/store"
+    _ => false
+  } && match fci1_allocation_slot_admission(prestate: AllocationSlotFree { path: "/fixture/store", generation: 3 }) {
+    AllocationSlotAdmitted { path: p } => p == "/fixture/store"
+    _ => false
+  } && match fci1_allocation_slot_admission(prestate: AllocationSlotNoSubject { why: why }) {
+    AllocationSlotRefusedNoSubject { why: reported } => reported == why
+    _ => false
+  } && fci1_expected_held_generation(prestate: AllocationSlotNoSubject { why: why }) == -1
+    && match fci1_exact_allocation_restoration(
+      prestate: AllocationSlotNoSubject { why: why },
+      held_generation: 1,
+      poststate: AllocationSlotFree { path: "/fixture/store", generation: 2 },
+    ) {
+      AllocationStoreRestorationRefused { path: p } => p == "no-fabric-execution-slot-committed"
+      _ => false
+    }
+}
+
+// A refusal that can be decoded back into a cell state is a refusal that will be acted on. The wire tag
+// is its own, and the decoder -- which knows only slot-absent / slot-free / slot-held -- refuses it
+// rather than defaulting to the absent arm.
+test fn witness_fci1_no_subject_wire_never_decodes_as_a_cell_state() -> Bool {
+  let why = "no fabric execution slot is committed"
+  let wire = fci1_allocation_prestate_wire(prestate: AllocationSlotNoSubject { why: why })
+  wire == join(["no-subject\n", why], "") as NonEmptyStr
+    && match fci1_decode_allocation_prestate(wire: wire as String) {
+      AllocationSlotUnreadable { path: _ } => true
+      _ => false
+    }
+}
+
+// THE CLEANUP AUTHORITY COMPARATORS MUST NOT MATCH A READ THAT NEVER HAPPENED. The fixture's slot_key is
+// the current subject's key -- the marker's key today, since the projection is what the comparator still
+// reads (gunbc.integration_concern::cp_probe_labels_are_built_from_an_unbound_subject) -- so the only
+// thing varying below is the observation arm: a genuine held observation for the same key MATCHES, and
+// the no-subject observation does not. That rules out a comparator that simply returns false.
+test fn witness_fci1_no_subject_observation_matches_no_cleanup_authority() -> Bool {
+  let authority = Fci1ReservationCleanupAuthority {
+    root: "/fixture/store",
+    slot_key: fabric_cell_allocation_key(slot: cp_probe_no_subject_marker()),
+    generation: 2,
+    reservation_identity: "reserved-by-fci1",
+    reservation_payload: "payload",
+    reservation_content: "content",
+  }
+  !fci1_authority_matches_held(authority: authority, observed: Fci1SlotNoSubject { why: "no subject" })
+    && !fci1_authority_matches_exact_free(authority: authority, observed: Fci1SlotNoSubject { why: "no subject" })
+    && fci1_authority_matches_held(authority: authority, observed: Fci1SlotHeld {
+      path: "/fixture/store", generation: 2, reservation_identity: "reserved-by-fci1",
+      payload: "payload", content: "content",
+    })
 }

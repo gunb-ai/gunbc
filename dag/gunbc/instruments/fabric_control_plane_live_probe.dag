@@ -100,7 +100,7 @@ import gunbc.fabric.fabric_required_build_cell {
   FabricCellPreReservationStanding, FabricCellPreReservationClean, FabricCellPreReservationAbsent,
   FabricCellPreReservationRefused,
   AllocationSlotPrestate, AllocationSlotAbsent, AllocationSlotFree, AllocationSlotHeld,
-  AllocationSlotUnreadable, AllocationSlotUndecodable,
+  AllocationSlotUnreadable, AllocationSlotUndecodable, AllocationSlotNoSubject,
   AllocationStoreRestoration, AllocationSlotAbsentReturnedFree, AllocationSlotFreeReturnedFree,
   AllocationStoreRestorationRefused,
   AllocationSlotAdmitted, AllocationSlotRefusedHeld, AllocationSlotRefusedUnreadable,
@@ -448,10 +448,24 @@ fn cp_probe_account() -> MoneyAccount {
 }
 
 fn cp_probe_reserve(store: FabricAllocationStore) -> Int {
+  // THE RESERVATION IS THE WRITE. It addresses the store by the subject's key, so with no subject there
+  // is nothing to reserve: the code reported is the refusal code, never the reserved code.
+  match cp_probe_authorized_slot() {
+    CpProbeAuthorizedRefused { detail } => cp_probe_code(
+      r: AttemptRefused {
+        slot_key: fabric_cell_allocation_key(slot: cp_probe_no_subject_marker()),
+        detail: detail,
+      }
+    )
+    CpProbeAuthorizedSlot { slot } => cp_probe_reserve_on(store: store, slot: slot)
+  }
+}
+
+fn cp_probe_reserve_on(store: FabricAllocationStore, slot: RunnerSlotIdentity) -> Int {
   cp_probe_code(
     r: reserve_selected_cell(
       store: store,
-      slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()),
+      slot_key: fabric_cell_allocation_key(slot: slot),
       demand_id: cp_probe_demand_id(key: "demand-7"),
       offer_id: cp_probe_offer_id(key: "offer-1"),
       account: cp_probe_account(),
@@ -635,7 +649,7 @@ fn fci1_live_reserve(store: FabricAllocationStore) -> CellReservation {
 
 fn fci1_live_reserve_on(store: FabricAllocationStore, slot: RunnerSlotIdentity) -> CellReservation {
   match fci1_probe_demand() {
-    Fci1DemandRefused => AttemptRefused { slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()), detail: "FCI-0 Work construction refused" }
+    Fci1DemandRefused => AttemptRefused { slot_key: fabric_cell_allocation_key(slot: slot), detail: "FCI-0 Work construction refused" }
     Fci1DemandBound { demand: demand } => broker_reserve_for_demand(
       store: store,
       demand: demand,
@@ -805,13 +819,32 @@ fn fci1_assert_replace_held_in(
   } } }
 }
 
-fn fci1_live_binding_observation(store: FabricAllocationStore) -> RequiredBuildCellObservation {
+// THE BINDING READ WAS NOT PERFORMED, as distinct from a binding that was read and found wanting. Every
+// other arm of RequiredBuildCellObservation is a claim about the store or the cell -- absent, unreadable,
+// undecodable, mismatched -- and a refusal may not borrow one of them: a caller that has selected no
+// subject must not be handed an observation-shaped answer (fail_closed).
+type Fci1BindingObservation
+  = Fci1BindingObserved { observation: RequiredBuildCellObservation }
+  | Fci1BindingNoSubject { why: NonEmptyStr }
+
+fn fci1_live_binding_observation(store: FabricAllocationStore) -> Fci1BindingObservation {
+  match cp_probe_authorized_slot() {
+    CpProbeAuthorizedRefused { detail } => Fci1BindingNoSubject { why: detail }
+    CpProbeAuthorizedSlot { slot } => Fci1BindingObserved {
+      observation: fci1_live_binding_observation_on(store: store, slot: slot),
+    }
+  }
+}
+
+fn fci1_live_binding_observation_on(store: FabricAllocationStore, slot: RunnerSlotIdentity) -> RequiredBuildCellObservation {
   match fci1_probe_demand() {
-    Fci1DemandRefused => ReservationPayloadWorkMismatch { slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()) }
+    Fci1DemandRefused => ReservationPayloadWorkMismatch { slot_key: fabric_cell_allocation_key(slot: slot) }
     Fci1DemandBound { demand: demand } => observe_required_build_cell_wet(
       store: store,
-      host: "srv3",
-      slot: cp_probe_slot(),
+      // THE HOST IS THE SUBJECT'S HOST, not a literal: the leg touches the machine that carries the
+      // selected member, which is the same fact the actuator's hostname gate compares against.
+      host: slot.host as String,
+      slot: slot,
       demand: demand,
       offer: cp_probe_offer_for(executor: "srv3-06"),
     )
@@ -903,6 +936,12 @@ fn fci1_live_reserve_and_observe_available_in(
   checkpoint: NonEmptyStr,
   checkpoint_path: String,
 ) -> ProcessExit {
+  // NO SUBJECT, NO EFFECT: this leg writes a cleanup authority into the host before it consults the
+  // allocation store, so the subject gate has to sit above the write, not below it. Without it a
+  // refusal still touched the filesystem and then reported a prestate refusal.
+  match cp_probe_authorized_slot() {
+    CpProbeAuthorizedRefused { detail } => exit_failure(reason: join(["Fci1NoFabricExecutionSubject: ", detail as String], ""))
+    CpProbeAuthorizedSlot { slot: _ } => {
   let prestate = fci1_allocation_prestate(store: store)
   let expected_generation = fci1_expected_held_generation(prestate: prestate)
   let authority = fci1_cleanup_authority(store: store, generation: expected_generation)
@@ -918,6 +957,7 @@ fn fci1_live_reserve_and_observe_available_in(
     AllocationSlotHeld { path: _, generation: _ } => ReservationLost { slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()) }
     AllocationSlotUnreadable { path: _ } => AttemptRefused { slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()), detail: "cleanup-authority prestate unreadable" }
     AllocationSlotUndecodable { path: _, generation: _ } => AttemptRefused { slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()), detail: "cleanup-authority prestate undecodable" }
+    AllocationSlotNoSubject { why: why } => AttemptRefused { slot_key: fabric_cell_allocation_key(slot: cp_probe_no_subject_marker()), detail: why }
   }
   match reserved {
     CellReserved { offer: _, slot_key: _, generation: generation, account: _ } => {
@@ -927,10 +967,17 @@ fn fci1_live_reserve_and_observe_available_in(
           ExitSuccess => ExitFailure { code: 86, reason: "FCI1InjectedFailureAfterCommitBeforeTransport" }
           ExitFailure { code: _, reason: why } => exit_failure(reason: why)
         }
-      } else { match required_build_cell_lifetime_sample(observation: fci1_live_binding_observation(store: store)) {
+      // The binding is observed only for a selected subject. A refusal is not an unreadable store,
+      // an absent reservation or a payload mismatch: the leg stops with the located cause instead of
+      // reporting a cell state that was never read.
+      match fci1_live_binding_observation(store: store) {
+        Fci1BindingNoSubject { why: why } => exit_failure(reason: join(["Fci1BindingObservationNoSubject: ", why as String], ""))
+        Fci1BindingObserved { observation: observation } =>
+        match required_build_cell_lifetime_sample(observation: observation) {
         RequiredBuildCellLifetimeSampleUndecodable => exit_failure(reason: "RequiredBuildCellObservationRefused")
         RequiredBuildCellLifetimeSampleDecoded { sample: sample } => fabric_ci_write_wire(
           path: path,
+      }
           wire: fabric_ci_evidence_wire(value: required_build_cell_lifetime_sample_wire(sample: sample) as NonEmptyStr),
         )
       }
@@ -942,21 +989,41 @@ fn fci1_live_reserve_and_observe_available_in(
     ReservationLost { slot_key: _ } => exit_failure(reason: fci1_cell_reservation_wire(reservation: reserved))
     StoreUnavailable { slot_key: _, cause: _ } => exit_failure(reason: fci1_cell_reservation_wire(reservation: reserved))
     AttemptRefused { slot_key: _, detail: _ } => exit_failure(reason: fci1_cell_reservation_wire(reservation: reserved))
+  }
   } }
 }
 
 fn fci1_live_binding_sample_wire_in(store: FabricAllocationStore, path: String) -> ProcessExit {
-  match required_build_cell_lifetime_sample(observation: fci1_live_binding_observation(store: store)) {
+  // The binding is observed only for a selected subject. A refusal is not an unreadable store,
+  // an absent reservation or a payload mismatch: the leg stops with the located cause instead of
+  // reporting a cell state that was never read.
+  match fci1_live_binding_observation(store: store) {
+    Fci1BindingNoSubject { why: why } => exit_failure(reason: join(["Fci1BindingObservationNoSubject: ", why as String], ""))
+    Fci1BindingObserved { observation: observation } =>
+    match required_build_cell_lifetime_sample(observation: observation) {
     RequiredBuildCellLifetimeSampleUndecodable => exit_failure(reason: "RequiredBuildCellObservationRefused")
     RequiredBuildCellLifetimeSampleDecoded { sample: sample } => fabric_ci_write_wire(
       path: path,
+  }
       wire: fabric_ci_evidence_wire(value: required_build_cell_lifetime_sample_wire(sample: sample) as NonEmptyStr),
     )
   }
 }
 
 fn fci1_allocation_prestate(store: FabricAllocationStore) -> AllocationSlotPrestate {
-  match fabric_allocation_observe_slot(store: store, key: fabric_cell_allocation_key(slot: cp_probe_slot())) {
+  // READING THE ALLOCATION STORE IS AN EFFECT, and the key it addresses is the subject's. With no fabric
+  // execution slot committed there is no key to read -- and the answer may not be AllocationSlotAbsent,
+  // which is a real observation of an empty directory that fci1_live_reserve_and_observe_available_in
+  // reads as "the slot is free" and reserves over. A refusal is its own arm: fail_closed, "no plausible
+  // output is fabricated". The store is not opened at all on this path.
+  match cp_probe_authorized_slot() {
+    CpProbeAuthorizedRefused { detail } => AllocationSlotNoSubject { why: detail }
+    CpProbeAuthorizedSlot { slot } => fci1_allocation_prestate_on(store: store, slot: slot)
+  }
+}
+
+fn fci1_allocation_prestate_on(store: FabricAllocationStore, slot: RunnerSlotIdentity) -> AllocationSlotPrestate {
+  match fabric_allocation_observe_slot(store: store, key: fabric_cell_allocation_key(slot: slot)) {
     CasObservedUnreadable { cause: _ } => AllocationSlotUnreadable { path: store.root }
     CasObservedReadable { readable: CasReadableAbsent } => AllocationSlotAbsent { path: store.root }
     CasObservedReadable { readable: CasReadablePresent { version: version } } =>
@@ -988,9 +1055,21 @@ type Fci1AllocationSlotObservation
     }
   | Fci1SlotUnreadable { path: NonEmptyStr }
   | Fci1SlotUndecodable { path: NonEmptyStr, generation: Int, payload: NonEmptyStr, content: NonEmptyStr }
+  // The read never happened because no subject was selected. Not a state of the slot -- see
+  // AllocationSlotNoSubject in gunbc.fabric.fabric_required_build_cell for why this is not Absent.
+  | Fci1SlotNoSubject { why: NonEmptyStr }
 
 fn fci1_allocation_slot_observation(store: FabricAllocationStore) -> Fci1AllocationSlotObservation {
-  match fabric_allocation_observe_slot(store: store, key: fabric_cell_allocation_key(slot: cp_probe_slot())) {
+  // Same discipline as fci1_allocation_prestate: retained evidence about a cell is only ever read for a
+  // subject that was selected, and a refusal is an arm of its own rather than an empty directory.
+  match cp_probe_authorized_slot() {
+    CpProbeAuthorizedRefused { detail } => Fci1SlotNoSubject { why: detail }
+    CpProbeAuthorizedSlot { slot } => fci1_allocation_slot_observation_on(store: store, slot: slot)
+  }
+}
+
+fn fci1_allocation_slot_observation_on(store: FabricAllocationStore, slot: RunnerSlotIdentity) -> Fci1AllocationSlotObservation {
+  match fabric_allocation_observe_slot(store: store, key: fabric_cell_allocation_key(slot: slot)) {
     CasObservedUnreadable { cause: _ } => Fci1SlotUnreadable { path: store.root }
     CasObservedReadable { readable: CasReadableAbsent } => Fci1SlotAbsent { path: store.root }
     CasObservedReadable { readable: CasReadablePresent { version: version } } => {
@@ -1015,6 +1094,7 @@ fn fci1_allocation_slot_observation(store: FabricAllocationStore) -> Fci1Allocat
 
 fn fci1_slot_observation_prestate(observed: Fci1AllocationSlotObservation) -> AllocationSlotPrestate {
   match observed {
+    Fci1SlotNoSubject { why: why } => AllocationSlotNoSubject { why: why }
     Fci1SlotAbsent { path: p } => AllocationSlotAbsent { path: p }
     Fci1SlotFree { path: p, generation: g, released_by: _, payload: _, content: _ } => AllocationSlotFree { path: p, generation: g }
     Fci1SlotHeld { path: p, generation: g, reservation_identity: _, payload: _, content: _ } => AllocationSlotHeld { path: p, generation: g }
@@ -1025,6 +1105,7 @@ fn fci1_slot_observation_prestate(observed: Fci1AllocationSlotObservation) -> Al
 
 fn fci1_allocation_prestate_wire(prestate: AllocationSlotPrestate) -> NonEmptyStr {
   match prestate {
+    AllocationSlotNoSubject { why: why } => join(["no-subject\n", why as String], "") as NonEmptyStr
     AllocationSlotAbsent { path: p } => join(["slot-absent\n", p as String], "") as NonEmptyStr
     AllocationSlotFree { path: p, generation: g } => join(["slot-free\n", p as String, "\n", to_string(g)], "") as NonEmptyStr
     AllocationSlotHeld { path: p, generation: g } => join(["slot-held\n", p as String, "\n", to_string(g)], "") as NonEmptyStr
@@ -1151,6 +1232,8 @@ fn fci1_expected_held_generation(prestate: AllocationSlotPrestate) -> Int {
     AllocationSlotHeld { path: _, generation: g } => g
     AllocationSlotUnreadable { path: _ } => -1
     AllocationSlotUndecodable { path: _, generation: _ } => -1
+    // No subject, no generation to expect: the reservation that would consume it is refused.
+    AllocationSlotNoSubject { why: _ } => -1
   }
 }
 
@@ -1189,6 +1272,7 @@ fn fci1_authority_matches_held(
     } => authority.root == path && authority.slot_key == fabric_cell_allocation_key(slot: cp_probe_slot())
       && authority.generation == generation && authority.reservation_identity == reservation
       && authority.reservation_payload == payload && authority.reservation_content == content
+    Fci1SlotNoSubject { why: _ } => false
     Fci1SlotAbsent { path: _ } => false
     Fci1SlotFree { path: _, generation: _, released_by: _, payload: _, content: _ } => false
     Fci1SlotUnreadable { path: _ } => false
@@ -1204,6 +1288,7 @@ fn fci1_authority_matches_exact_free(
     Fci1SlotFree { path: path, generation: generation, released_by: released, payload: _, content: _ } =>
       authority.root == path && authority.slot_key == fabric_cell_allocation_key(slot: cp_probe_slot())
         && generation == authority.generation + 1 && released == fci1_release_identity
+    Fci1SlotNoSubject { why: _ } => false
     Fci1SlotAbsent { path: _ } => false
     Fci1SlotHeld { path: _, generation: _, reservation_identity: _, payload: _, content: _ } => false
     Fci1SlotUnreadable { path: _ } => false
@@ -1654,11 +1739,11 @@ type Fci1CellReceiptObservation
 fn fci1_cell_receipt_observation() -> Fci1CellReceiptObservation {
   match cp_probe_authorized_slot() {
     CpProbeAuthorizedRefused { detail } => Fci1CellReceiptRefused { detail: detail }
-    CpProbeAuthorizedSlot { slot: _ } => fci1_cell_receipt_observation_on()
+    CpProbeAuthorizedSlot { slot } => fci1_cell_receipt_observation_on(slot: slot)
   }
 }
 
-fn fci1_cell_receipt_observation_on() -> Fci1CellReceiptObservation {
+fn fci1_cell_receipt_observation_on(slot: RunnerSlotIdentity) -> Fci1CellReceiptObservation {
   let reading = fabric_cell_probe_reading_wet(host: "srv3")
   let decision = admit_fabric_cell_probe(probe: fabric_cell_probe_reading_probe(reading: reading))
   match fabric_cell_observation_outcome(decision: decision) {
@@ -1668,11 +1753,11 @@ fn fci1_cell_receipt_observation_on() -> Fci1CellReceiptObservation {
       match srv3_observe_path_owner(transport: LocalShell, path: fabric_cell_base_dir as NonEmptyStr) {
         PathOwnerUnobserved { reason: why } => Fci1CellReceiptRefused { detail: why }
         PathOwnerObserved { owner: base_owner } => match srv3_observe_path_owner(
-          transport: LocalShell, path: fabric_cell_root_path(slot: cp_probe_slot()) as NonEmptyStr,
+          transport: LocalShell, path: fabric_cell_root_path(slot: slot) as NonEmptyStr,
         ) {
           PathOwnerUnobserved { reason: why } => Fci1CellReceiptRefused { detail: why }
           PathOwnerObserved { owner: cell_owner } => match srv3_observe_path_owner(
-            transport: LocalShell, path: fabric_cell_attempt_root_path(slot: cp_probe_slot()) as NonEmptyStr,
+            transport: LocalShell, path: fabric_cell_attempt_root_path(slot: slot) as NonEmptyStr,
           ) {
             PathOwnerUnobserved { reason: why } => Fci1CellReceiptRefused { detail: why }
             PathOwnerObserved { owner: attempt_owner } => match fabric_cell_probe_reading_boundaries(reading: reading).first() {
@@ -1738,7 +1823,19 @@ fn fci1_assert_cell_admitted() -> ProcessExit {
 // Admission entails the exact expected cell population: absent members, foreign artifacts,
 // unreadable namespaces, and unexpected members take non-admitted arms and refuse here.
 fn fci1_cell_pre_reservation_standing() -> FabricCellPreReservationStanding {
-  let cell = fabric_cell_id_for_slot(slot: cp_probe_slot())
+  // A CLEAN PRE-STATE AUTHORIZES the reservation that follows, so it cannot be produced for a subject
+  // that was never selected: the refusal arm is returned with the marker cell identity, which names its
+  // own absence, and the cell substrate is never probed on this path.
+  match cp_probe_authorized_slot() {
+    CpProbeAuthorizedRefused { detail } => FabricCellPreReservationRefused {
+      cell: fabric_cell_id_for_slot(slot: cp_probe_no_subject_marker()),
+    }
+    CpProbeAuthorizedSlot { slot } => fci1_cell_pre_reservation_standing_on(slot: slot)
+  }
+}
+
+fn fci1_cell_pre_reservation_standing_on(slot: RunnerSlotIdentity) -> FabricCellPreReservationStanding {
+  let cell = fabric_cell_id_for_slot(slot: slot)
   match fabric_cell_observation_outcome(decision: admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: "srv3"))) {
     FabricCellObservationAdmitted { population: population } => {
       let members = fabric_cell_observed_population_members(population: population)

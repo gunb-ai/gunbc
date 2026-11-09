@@ -67,6 +67,12 @@ type AllocationSlotPrestate
   | AllocationSlotHeld { path: NonEmptyStr, generation: Int }
   | AllocationSlotUnreadable { path: NonEmptyStr }
   | AllocationSlotUndecodable { path: NonEmptyStr, generation: Int }
+  // NO SUBJECT WAS EVER SELECTED, so no allocation directory was ever addressed. This is NOT a state of
+  // the cell and must never be read as one: AllocationSlotAbsent above is a true observation of an empty
+  // allocation directory, which downstream code reads as "the slot is free" and reserves over. Handing
+  // that arm back when the fabric roster commits no execution slot would turn a refusal into a plausible
+  // answer (gunbc.design_argument::fail_closed: "no plausible output is fabricated"; PR #16137 review).
+  | AllocationSlotNoSubject { why: NonEmptyStr }
 
 type AllocationStoreRestoration
   = AllocationSlotAbsentReturnedFree { path: NonEmptyStr, held_generation: Int, post_generation: Int }
@@ -89,6 +95,10 @@ type AllocationSlotAdmission
   | AllocationSlotRefusedHeld { path: NonEmptyStr, generation: Int }
   | AllocationSlotRefusedUnreadable { path: NonEmptyStr }
   | AllocationSlotRefusedUndecodable { path: NonEmptyStr, generation: Int }
+  // Refused because there is NO SUBJECT, not because the slot was held, unreadable or undecodable.
+  // It carries a cause instead of a path: no directory was addressed, and a path here would be a
+  // claim about a cell that was never looked at.
+  | AllocationSlotRefusedNoSubject { why: NonEmptyStr }
 
 fn fci1_allocation_slot_admission(prestate: AllocationSlotPrestate) -> AllocationSlotAdmission {
   match prestate {
@@ -97,6 +107,7 @@ fn fci1_allocation_slot_admission(prestate: AllocationSlotPrestate) -> Allocatio
     AllocationSlotHeld { path: p, generation: g } => AllocationSlotRefusedHeld { path: p, generation: g }
     AllocationSlotUnreadable { path: p } => AllocationSlotRefusedUnreadable { path: p }
     AllocationSlotUndecodable { path: p, generation: g } => AllocationSlotRefusedUndecodable { path: p, generation: g }
+    AllocationSlotNoSubject { why: why } => AllocationSlotRefusedNoSubject { why: why }
   }
 }
 
@@ -109,6 +120,10 @@ fn fci1_exact_allocation_restoration(
   poststate: AllocationSlotPrestate,
 ) -> AllocationStoreRestoration {
   match prestate {
+    // A restoration is a claim about two reads of the SAME directory. With no subject there was no
+    // first read, so it cannot be granted -- the marker root names the absence rather than inventing
+    // a path the caller can act on.
+    AllocationSlotNoSubject { why: _ } => AllocationStoreRestorationRefused { path: "no-fabric-execution-slot-committed" }
     AllocationSlotAbsent { path: p } => match poststate {
       AllocationSlotFree { path: q, generation: post } =>
         if p == q && held_generation == 1 && post == 2 {

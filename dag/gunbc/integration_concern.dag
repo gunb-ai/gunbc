@@ -1814,15 +1814,15 @@ data cp_probe_labels_are_built_from_an_unbound_subject: IntegrationConcern = Int
       PreservedObligation {
         holder: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_authorized_slot"),
         control: Absent,
-        statement: "no leg that mutates the market, the allocation store or the host may obtain a slot except through the identity bound by the subject gate's Selected arm; a row that lets a mutating leg read the projection instead goes red here",
+        statement: "no leg that mutates OR READS the market, the allocation store or the host may obtain a slot, or an answer about a cell, except through the identity bound by the subject gate's Selected arm -- a refusal is an arm of its own type (AllocationSlotNoSubject, Fci1SlotNoSubject, Fci1BindingNoSubject, AllocationSlotRefusedNoSubject), never the arm that a real observation of an empty directory produces; a row that lets a mutating leg read the projection instead goes red here",
       },
       PreservedObligation {
         holder: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_no_subject_marker"),
         control: Absent,
-        statement: "a refusal projects a marker that names no fleet host and no committed index, so a label built on a refusal cannot name a real cell -- the property that keeps the remaining builder uses from being a hazard while this rung stands",
+        statement: "a refusal projects a marker that names no fleet host and no committed index, so a label built on a refusal cannot name a real cell, and no reader or writer may answer a refusal with the marker-shaped identity either -- only the pure builders in the residual scope may -- the property that keeps the remaining builder uses from being a hazard while this rung stands",
       },
     ],
-    next: climbs_when(capability: "the key, path and report builders take the Selected-bound identity and gunbc.instruments.fabric_control_plane_live_probe::cp_probe_slot is deleted, so no function in the instrument can name a slot the roster did not select"),
+    next: climbs_when(capability: "the RESIDUAL key, path and report builders -- pure label and wire sites only, since every effectful reader and writer was gated on the selection on 2026-11-09 (review 92425) -- take the Selected-bound identity and gunbc.instruments.fabric_control_plane_live_probe::cp_probe_slot is deleted, so no function in the instrument can name a slot the roster did not select"),
   },
 }
 
