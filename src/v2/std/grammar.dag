@@ -343,6 +343,23 @@ fn grammar_expr_not_predicate(element: GrammarExpr) -> GrammarExpr {
   NotPredicate { element: element }
 }
 
+// POSITIVE LOOKAHEAD (`e / e` in Ford's notation, the dual of not_predicate, derived as `!!e`
+// exactly as the comment above prescribes -- two NotPredicate nodes, named here so the site
+// reads as intent). `and_predicate(e)` succeeds exactly when `e` would succeed and consumes
+// nothing either way: v2.compiler.parse parse_expr_not_predicate returns Accepted with the
+// token stream unchanged on both arms, so the double inversion lands accept-on-accept and
+// reject-on-reject without touching input. The probe runs under the FIRST gate of `e`'s own
+// element, so a token that can never start `e` rejects the peek outright.
+// WHERE THE GRAMMAR MUST ADMIT a subproduction only when what FOLLOWS it continues a larger
+// shape, this is the node: dag_grammar_condition_ident_suffix_expr admits a record at a condition
+// head only when its residue continues with a head the ordinary chain actually takes (block
+// brace, infix rows, postfix suffix heads; the `-` and `[` heads carry the newline guards,
+// #12817), never when a new statement begins after it -- the seed's condition separation
+// (v1 02_parse parse_expr_bp_no_brace), realized in the grammar instead of a parser retry.
+fn grammar_expr_and_predicate(element: GrammarExpr) -> GrammarExpr {
+  grammar_expr_not_predicate(element: grammar_expr_not_predicate(element: element))
+}
+
 fn grammar_expr_expect(element: GrammarExpr, reason: ParseRefusalReason) -> GrammarExpr {
   Expect { element: element, reason: reason }
 }

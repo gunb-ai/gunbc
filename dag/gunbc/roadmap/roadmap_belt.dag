@@ -30,7 +30,7 @@ import extdeps.languages.json.emit {
   json_kv,
 }
 
-// RLM-1 (docs/plans/roadmap-launch-mvp-plan.md section 3): the belt's run state and the launch
+// RLM-1 (docs/plans/roadmap-launch-mvp-plan.md (deleted 2026-11-08) section 3): the belt's run state and the launch
 // admission's spawn mode were ONE concept, migrated at the root (gunbc.design_argument::replacement_migration replacement migration) --
 // BeltRunState = Running | Paused is gone and SpawnMode stands where it stood. Paused: no cause may
 // start work and the reconciler emits nothing. ManualReady (PRODUCTION): the operator may start a

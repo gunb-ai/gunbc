@@ -20,7 +20,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // P-B discriminating witnesses for v2.extdeps.runtimes.effect_io_host_grant
-// (docs/plans/effect-namespace-grants.md 6). Write admission consults the construction-time
+// (docs/plans/effect-namespace-grants.md (deleted 2026-11-08) 6). Write admission consults the construction-time
 // Envelope only (never re-reads ExecutionMode). Hermetic envelopes refuse every write through a
 // located std.access.Deny; wet envelopes permit writes on the declared backend subtree.
 // Backend/locator mismatch is a typed evidence refusal before admit_effect (review 40162).

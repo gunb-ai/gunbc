@@ -1807,7 +1807,7 @@ fn write_host_facts(
 /// and requires it to accept a well-formed root and refuse a malformed one — and it is still not
 /// behavioural equivalence: gunbc.design_argument::self_hosting asks that the emitted
 /// module also behave as the seed does on a discriminating corpus, and that half
-/// (`--behavioral-receipt-*`) is a declared drop that no required run performs. Nor is it the
+/// (the removed `--behavioral-receipt-*` entry points) is a declared drop that no required run performs. Nor is it the
 /// second generation: the built binary emitting the same closure is the v2 -> v2 boundary, and it
 /// refuses today because `v2.compiler.source_root_eval` declares `SourceRootEvalDriver`, whose rendered main
 /// answers `census` and `adjudicate` and has no compile mode at all. That refusal is the honest next
@@ -3726,6 +3726,11 @@ fn parse_compiler_identity_digest(
             )
         })?;
         feed_identity_file(&mut hasher, rel, &bytes);
+        // The parse compiler identity hashes exactly these closure files, so they are inputs of
+        // the operation a reuse decision would skip (gunbc.design_ruling seed_read_set_receipt_is_admitted).
+        // The module-graph build that FOUND the closure walks the pool, but closure membership is a
+        // function of the members' own import lines under the layout rule, so the files are the read set.
+        super::demand_acquire::read_set_record("file", rel);
         if let Some(emitted) = emitted {
             let Some(module_name) = dag_module_name_from_path(rel) else {
                 return Err(format!(

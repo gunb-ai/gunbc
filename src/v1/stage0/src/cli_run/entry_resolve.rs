@@ -3058,24 +3058,16 @@ pub(crate) fn reference_pool_names(pool_roots: &[String]) -> Rc<ReferencePoolNam
     names
 }
 
-/// The heads reading of one pool file, `None` on a heads-grammar refusal.
+/// The heads reading of one pool file, `None` on a heads-grammar refusal. It is the pooled
+/// file-local reading (`pool_acquire::heads_reading_for`): the same parse over the same tokens,
+/// newline index and empty intern table this function used to run itself, so it is served rather
+/// than parsed again -- and, since a heads-only lex is no longer pinned, rather than re-lexed.
 fn parse_module_heads_tolerant(rel: &str, content: &str) -> Option<Rc<crate::v1_std_core::Node>> {
-    let filename = rel.to_string();
-    let tokens = super::pool_acquire::tokens_for(&filename, content);
-    let source_index = super::pool_acquire::newline_index_for(&filename, content);
-    let mut source_indices = HashMap::new();
-    source_indices.insert(filename, source_index);
-    let result = crate::v1_compiler_parse::parse_heads_with_table(
-        tokens,
-        Rc::new(source_indices),
-        crate::v1_std_core::empty_intern_table(),
-    )
-    .result
-    .clone();
-    if result.error.is_some() {
+    let reading = super::pool_acquire::heads_reading_for(rel, content);
+    if reading.error.is_some() {
         return None;
     }
-    result.module.clone()
+    reading.module.clone()
 }
 
 const REFERENCE_SELECTION_EXCLUDE: &[String] = &[];

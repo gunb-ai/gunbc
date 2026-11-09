@@ -34,7 +34,6 @@ type NamespaceCutStage
   | StageAct0ActivationGate
   | StageXL5Waves
   | StageXL6AtomicCutover
-  | StageXL7GrammarDeletion
 
 fn namespace_cut_stage_label(s: NamespaceCutStage) -> NonEmptyStr {
   match s {
@@ -47,15 +46,15 @@ fn namespace_cut_stage_label(s: NamespaceCutStage) -> NonEmptyStr {
     StageAct0ActivationGate => "ACT-0: activation gate -- collecting activation evidence may BEGIN once XL-4 delivers; RELEASING the waves additionally requires the interlock triple and every digest re-executed against the pinned base B" as NonEmptyStr
     StageXL5Waves => "XL-5: the semantic waves -- exact occurrence and import-declaration rewrites under the wave-admission wall, while the legacy semantic root still stands" as NonEmptyStr
     StageXL6AtomicCutover => "XL-6: atomic cutover -- every root authority deleted in ONE motion, the whole semantic transition" as NonEmptyStr
-    StageXL7GrammarDeletion => "XL-7: grammar deletion, LAST -- import becomes a typed, located parse error (gunbc.namespace_cut.namespace_cut_landing_order namespace_cut_grammar_last_ruling)" as NonEmptyStr
   }
 }
 
 // DIRECT EDGES ONLY; the closure is derived, never restated. The chain is serial by operator
 // design -- each stage's evidence is an input to the next -- so each row names its predecessor
-// and nothing else. StageXL7GrammarDeletion last realizes the grammar-last ruling structurally:
-// its position in this chain is DERIVED from these edges, and a reordering is an edit to exactly
-// one row rather than a prose migration.
+// and nothing else: a stage's position in this chain is DERIVED from these edges, and a reordering
+// is an edit to exactly one row rather than a prose migration. The chain ends at the cutover: the
+// grammar-deletion stage (XL-7) was deleted when imports were ruled the terminal name mechanism
+// (gunbc.design_ruling::imports_are_the_terminal_name_mechanism).
 fn stage_prerequisites(s: NamespaceCutStage) -> List<NamespaceCutStage> {
   match s {
     StageF0 => []
@@ -67,7 +66,6 @@ fn stage_prerequisites(s: NamespaceCutStage) -> List<NamespaceCutStage> {
     StageAct0ActivationGate => [StageXL4ReferenceDerivedGraph]
     StageXL5Waves => [StageAct0ActivationGate]
     StageXL6AtomicCutover => [StageXL5Waves]
-    StageXL7GrammarDeletion => [StageXL6AtomicCutover]
   }
 }
 
@@ -92,8 +90,8 @@ fn stage_prerequisites(s: NamespaceCutStage) -> List<NamespaceCutStage> {
 // whole-population baseline, so no baseline milestone joins this roster.
 //
 // The roster is DATA and not a per-stage total function, because exactly one stage has this join
-// and a total function over the chain would have returned the empty list for nine stages -- a
-// fold permanently green on nine of ten inputs, which gunbc.design_argument::guarantee_ladder calls a decoration rather
+// and a total function over the chain would have returned the empty list for eight stages -- a
+// fold permanently green on eight of nine inputs, which gunbc.design_argument::guarantee_ladder calls a decoration rather
 // than a weak wall. The stage it belongs to is named in its own name.
 data act0_release_milestones: List<ProgramMilestone> = [
   SelfHostRatchetGateEnrolled,
@@ -110,7 +108,6 @@ data namespace_cut_stages: List<NamespaceCutStage> = [
   StageAct0ActivationGate,
   StageXL5Waves,
   StageXL6AtomicCutover,
-  StageXL7GrammarDeletion,
 ]
 
 fn namespace_cut_stage_is(a: NamespaceCutStage, b: NamespaceCutStage) -> Bool {

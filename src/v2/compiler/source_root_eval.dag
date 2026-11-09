@@ -606,6 +606,9 @@ fn native_infer_not_derived_site_counts(tree: InferredTree) -> List<NativeInferS
           match facts.grounding {
             GroundingNotDerived { node: _, site: s } =>
               native_infer_site_counts_add(acc: acc, site: s)
+            // THE NO-VALUE ARM IS NOT A FRONTIER ROW: it is a DECIDED answer, not counted ignorance, so it
+            // must not join the not-derived census (DESIGN 5; ruling keen-heron-809).
+            GroundingNoValue { node: _ } => acc
             DerivedGrounding { grounding: _ } => acc
           }
       }

@@ -12,7 +12,7 @@ import std.frame_boundary {
 }
 
 // The network-boundary precondition for a hermetic-native host run
-// (docs/plans/effect-namespace-grants.md 6, owned silent-ibex-417): the CONSUMER that makes
+// (docs/plans/effect-namespace-grants.md (deleted 2026-11-08) 6, owned silent-ibex-417): the CONSUMER that makes
 // std.frame_boundary a live decision rather than an inert spec. build_workspace_grant already makes
 // the transport's DECLARED effects fail-closed by the absence of a UriTree grant -- but design line
 // 81 is explicit that an ABSENT grant is not ENFORCED isolation: a build subprocess (cargo/cc) can

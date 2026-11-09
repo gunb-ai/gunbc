@@ -128,7 +128,7 @@ type NativeClaimReport {
 }
 
 // NativeIngressDriver -- a NATIVELY EMITTED REALIZATION OF ONE HTTP INGRESS BINDING
-// (gunbc.http_ingress, gunbc.plans.converged_ingress M2a). Serving is not a kind of program: an
+// (gunbc.http_ingress, gunbc.plans.converged_ingress (deleted 2026-11-08) M2a). Serving is not a kind of program: an
 // ordinary timeless handler is served by a deployment binding, and gunbc run realizes that binding
 // by interpretation. This arm is the binding's OTHER realization, chosen by the binding module rather
 // than by the handler: the module that declares the binding constructor carries this row, and

@@ -1,4 +1,5 @@
 module v2.test.claim.generated.idempotent_operation_conformance
+import std.optional { optional_present }
 
 
 import std.types { List, Map }
@@ -94,8 +95,8 @@ fn idempotent_operation_call_primitive(node: Node, _args: List<RuntimeValue>, _e
   }
 }
 
-fn idempotent_operation_choose_branch(node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
-  Accepted { value: node, diagnostics: None }
+fn idempotent_operation_choose_branch(node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Optional<Node>> {
+  Accepted { value: optional_present(value: node), diagnostics: None }
 }
 
 fn idempotent_operation_step_loop(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {

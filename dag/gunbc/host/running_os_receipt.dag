@@ -12,7 +12,7 @@ import product.host_identity { HostIdentity }
 import gunbc.host.host_boot_id { HostBootId, host_boot_id_of_kernel_text }
 import gunbc.host.running_os { RunningOs, RunningDeliveredArtifact, RunningOsReading, RunningOsObserved, RunningOsUnobserved }
 
-// A RUNNING-OS READING CARRIED ACROSS JOBS (gunbc.plans.physical_machine_boot_program, the initialized-host
+// A RUNNING-OS READING CARRIED ACROSS JOBS (gunbc.plans.physical_machine_boot_program (deleted 2026-11-08), the initialized-host
 // contract; merry-fox-82's B2 decision A, 2026-11-02). The reading is produced where the boot's console capture
 // is read (for the Ephemeral runner medium, gunbc.runner.runner_host_medium runner_host_running_os, inside the
 // boot run); a consumer in another job (the qualification attempt) needs the same reading to initialize the host.

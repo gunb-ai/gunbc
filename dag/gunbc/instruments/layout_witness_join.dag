@@ -19,7 +19,7 @@ import v2.workflow.floor_discovery_source_authority { FloorDiscoveryAccepted, Fl
 import std.integer { int_to_decimal_string }
 
 
-// THE WITNESS-SET IDENTITY JOIN (gunbc.plans.source_layout_authority, C4 admission). A layout sweep
+// THE WITNESS-SET IDENTITY JOIN (gunbc.plans.source_layout_authority (deleted 2026-11-08), C4 admission). A layout sweep
 // changes where witness files live and what their modules are called, and it must change nothing about
 // WHICH witnesses the floor discovers. A count cannot say that: a sweep that dropped a marker from a
 // thousand files and added a thousand elsewhere leaves the total where it was. So the admission is an

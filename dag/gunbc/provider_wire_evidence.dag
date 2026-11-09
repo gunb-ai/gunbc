@@ -23,7 +23,7 @@ import extdeps.tools.sha512sum {
 // std.process.ProcessExit (ExitSuccess | ExitFailure with code and reason). Press receipt exit
 // semantics live in gunbc.codex_app_server_press.ProviderProcessExit (parsed sentinel mux vs
 // observation-failed). Converge on shell→intent typed stdio transport
-// (docs/plans/shell-intent-emit-realization-design.md) — this observation carrier deletes when
+// (docs/plans/shell-intent-emit-realization-design.md (deleted 2026-11-08)) — this observation carrier deletes when
 // typed stdio replaces sentinel reparsing.
 
 type PrivateEvidenceRef {

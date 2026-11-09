@@ -33,7 +33,7 @@ import gunbc.cloudflare.r2_staged_transfer {
 }
 import gunbc.fabric.fabric_storage_wire { reading_words, decode_reading }
 
-// A std.fabric_storage HEAD WHOSE STORE IS ONE R2 OBJECT (docs/plans/fabric-storage.md step 4B). One head
+// A std.fabric_storage HEAD WHOSE STORE IS ONE R2 OBJECT (docs/plans/fabric-storage.md (deleted 2026-11-08) step 4B). One head
 // is one R2 object; its body is the head reading in the fabric wire's own words
 // (gunbc.fabric.fabric_storage_wire reading_words), so the R2 head and the served file store spell a head one
 // way. The compare-and-set is R2's conditional PutObject (extdeps.cloudflare.r2

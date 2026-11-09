@@ -22,6 +22,11 @@
 //! which file wins a duplicate module path -- a behaviour decision, not a cleanup. Every walk
 //! keeps its own order, key and policy and simply stops re-lexing what another walk already lexed.
 //!
+//! WHAT IS RETAINED, AND FOR WHOM. The heads reading and the newline index are retained per
+//! acquisition, because whole-pool consumers read them. The token artifact is retained only once a
+//! full-parse consumer asks for it, because only closure-scale consumers do; a lex taken for the
+//! heads parse alone is dropped after it (see `Acquired::artifact`).
+//!
 //! WHY THE KEY IS (SPELLING, CONTENT) AND NOT A PATH. A memo keyed on a path asserts that the
 //! file has not changed, which is a claim about the world this process cannot make -- that is the
 //! `cache_impurity` failure mode. The key here is the ACTUAL INPUT: the spelling, plus a hash of
@@ -96,7 +101,17 @@ fn content_fingerprint(content: &str) -> (usize, u64) {
 
 struct Acquired {
     content: Rc<String>,
-    artifact: Rc<V1LexArtifact>,
+    /// The lexical artifact, RETAINED ONLY ONCE A FULL-PARSE CONSUMER HAS DEMANDED IT
+    /// (`tokens_for` / `artifact_for`). A lex taken only to produce the heads reading is dropped
+    /// when that reading is built: the module path index demands the heads of EVERY pool file,
+    /// while full parses demand the tokens of the files a closure reaches, so pinning every pool
+    /// file's tokens kept a whole-pool population alive for a closure-scale consumer. Measured on
+    /// the c16038d attempt (#16038 comment 6723422964): the shared index build reached 6.62 GiB
+    /// VmRSS over 10,149 files (146 MB of source, ~14.7M tokens, each an `Rc<Token>` with its own
+    /// `Rc<SourceSpan>` and file-path `String`), and the 8 GiB memcg killed the run 14 s later.
+    /// The cost of not pinning: a file whose heads were read before its tokens were demanded is
+    /// lexed twice, once per consumer kind -- bounded by the closure, never by the pool.
+    artifact: RefCell<Option<Rc<V1LexArtifact>>>,
     newline_index: Rc<NewlineIndex>,
     /// The heads reading of these bytes, parsed in a FILE-LOCAL space (empty intern table,
     /// occurrence ordinals from zero), filled on first demand. See `heads_reading_for`.
@@ -139,19 +154,12 @@ fn acquire(file: &str, content: &str) -> Rc<Acquired> {
             return hit;
         }
     }
-    let lex_started = std::time::Instant::now();
-    let artifact = crate::v1_compiler_tokenize::tokenize_artifact(
-        content.to_string(),
-        file.to_string(),
-        crate::extdeps_languages_dag_syntax::dag_parse_environment(),
-    );
-    attribute("pool_source_tokenize", lex_started.elapsed());
     let newline_started = std::time::Instant::now();
     let newline_index = build_newline_index(file.to_string(), content.to_string());
     attribute("pool_source_newline_index", newline_started.elapsed());
     let acquired = Rc::new(Acquired {
         content: Rc::new(content.to_string()),
-        artifact,
+        artifact: RefCell::new(None),
         newline_index,
         heads: RefCell::new(None),
     });
@@ -159,14 +167,53 @@ fn acquire(file: &str, content: &str) -> Rc<Acquired> {
     acquired
 }
 
-/// The tokens `tokenize(content, file)` would produce, computed once per (spelling, bytes).
+/// One lex of `content` under the spelling `file`, recorded at the producer.
+fn lex(file: &str, content: &str) -> Rc<V1LexArtifact> {
+    let lex_started = std::time::Instant::now();
+    let artifact = crate::v1_compiler_tokenize::tokenize_artifact(
+        content.to_string(),
+        file.to_string(),
+        crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+    );
+    attribute("pool_source_tokenize", lex_started.elapsed());
+    #[cfg(test)]
+    LEXES.with(|l| *l.borrow_mut().entry(file.to_string()).or_default() += 1);
+    artifact
+}
+
+/// The artifact for a FULL-PARSE consumer: retained on the acquisition, so every later full-parse
+/// demand for these bytes is served, not re-lexed.
+fn retained_artifact(file: &str, content: &str) -> Rc<V1LexArtifact> {
+    let acquired = acquire(file, content);
+    if let Some(hit) = acquired.artifact.borrow().clone() {
+        return hit;
+    }
+    let artifact = lex(file, content);
+    *acquired.artifact.borrow_mut() = Some(artifact.clone());
+    artifact
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Lexes per spelling: the control for which demands lex and which are served.
+    pub(crate) static LEXES: RefCell<HashMap<String, usize>> = RefCell::new(HashMap::new());
+}
+
+/// Whether the acquisition of these bytes currently pins a lexical artifact.
+#[cfg(test)]
+pub(crate) fn pins_artifact(file: &str, content: &str) -> bool {
+    acquire(file, content).artifact.borrow().is_some()
+}
+
+/// The tokens `tokenize(content, file)` would produce, computed once per (spelling, bytes) for
+/// full-parse consumers (see `Acquired::artifact`).
 pub fn tokens_for(file: &str, content: &str) -> Rc<RtVec<Rc<Token>>> {
-    acquire(file, content).artifact.tokens.clone()
+    retained_artifact(file, content).tokens.clone()
 }
 
 /// The lexical artifact (tokens plus the annotation channel), same contract as `tokens_for`.
 pub fn artifact_for(file: &str, content: &str) -> Rc<V1LexArtifact> {
-    acquire(file, content).artifact.clone()
+    retained_artifact(file, content)
 }
 
 /// The newline index `build_newline_index(file, content)` would produce, computed once.
@@ -232,9 +279,13 @@ pub fn heads_reading_for(file: &str, content: &str) -> Rc<HeadsReading> {
     }
     let mut indices = im::HashMap::new();
     indices.insert(file.to_string(), acquired.newline_index.clone());
+    // A pinned artifact is reused; otherwise this lex lives only for the heads parse. The lex is
+    // recorded as its own row by `lex`, so the heads timer starts after it.
+    let pinned = acquired.artifact.borrow().clone();
+    let artifact = pinned.unwrap_or_else(|| lex(file, content));
     let heads_started = std::time::Instant::now();
     let parsed = crate::v1_compiler_parse::parse_heads_with_table(
-        acquired.artifact.tokens.clone(),
+        artifact.tokens.clone(),
         Rc::new(indices),
         crate::v1_std_core::empty_intern_table(),
     );
@@ -251,4 +302,63 @@ pub fn heads_reading_for(file: &str, content: &str) -> Rc<HeadsReading> {
     });
     *acquired.heads.borrow_mut() = Some(reading.clone());
     reading
+}
+
+#[cfg(test)]
+mod retention_tests {
+    use super::*;
+
+    fn lexes(file: &str) -> usize {
+        LEXES.with(|l| l.borrow().get(file).copied().unwrap_or(0))
+    }
+
+    // Each test uses its own spelling: the pool is thread-local and the test harness may reuse a
+    // thread, so a shared spelling would read another test's acquisitions.
+    const SRC: &str =
+        "module ret.a\n\ntype Shape = Circle | Square\n\nfn area(s: Shape) -> Int {\n  1\n}\n";
+
+    /// The red this policy exists for: the module path index demands every pool file's heads, and
+    /// a heads demand must not leave that file's tokens pinned for the life of the process.
+    #[test]
+    fn a_heads_demand_does_not_pin_the_tokens() {
+        let file = "dag/test/fixture/ret_heads_only.dag";
+        let reading = heads_reading_for(file, SRC);
+        assert!(reading.module.is_some() && reading.error.is_none());
+        assert_eq!(lexes(file), 1);
+        assert!(!pins_artifact(file, SRC), "a heads-only lex was retained");
+        // The reading itself is retained: a second heads demand neither parses nor lexes.
+        assert!(Rc::ptr_eq(&reading, &heads_reading_for(file, SRC)));
+        assert_eq!(lexes(file), 1);
+    }
+
+    /// The positive control: full-parse consumers still share one lex per (spelling, bytes), and
+    /// a heads demand after them reuses the pinned artifact rather than lexing again.
+    #[test]
+    fn full_parse_demands_share_one_pinned_lex() {
+        let file = "dag/test/fixture/ret_full.dag";
+        let tokens = tokens_for(file, SRC);
+        let artifact = artifact_for(file, SRC);
+        assert!(Rc::ptr_eq(&tokens, &artifact.tokens));
+        assert!(pins_artifact(file, SRC));
+        heads_reading_for(file, SRC);
+        assert_eq!(lexes(file), 1);
+    }
+
+    /// A full-parse demand after a heads-only one lexes again (the bounded cost of not pinning)
+    /// and receives exactly the tokens a fresh lex produces.
+    #[test]
+    fn tokens_after_a_heads_demand_equal_a_fresh_lex() {
+        let file = "dag/test/fixture/ret_heads_then_full.dag";
+        heads_reading_for(file, SRC);
+        let served = tokens_for(file, SRC);
+        assert_eq!(lexes(file), 2);
+        let fresh = crate::v1_compiler_tokenize::tokenize_artifact(
+            SRC.to_string(),
+            file.to_string(),
+            crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+        );
+        assert_eq!(*served, *fresh.tokens);
+        assert!(Rc::ptr_eq(&served, &tokens_for(file, SRC)));
+        assert_eq!(lexes(file), 2);
+    }
 }

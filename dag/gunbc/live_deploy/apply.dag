@@ -1079,7 +1079,7 @@ fn approval_broker_dark_install_readback_exit(spec: DeploymentSpec, candidate: C
 // divergence this install declares.
 //
 // ITS ROOT WRITES ARE NOT THE JOB USER'S (operator rulings 2026-10-25 and 2026-10-26; plan
-// gunbc.plans.srv1_deploy_principal_split D1, D5). Run 39284886844 and run 40704727549 died at the first
+// gunbc.plans.srv1_deploy_principal_split (deleted 2026-11-08) D1, D5). Run 39284886844 and run 40704727549 died at the first
 // `sudo -n dd` because no job-user grant names it, and granting it would make the job user
 // root-equivalent. So the install is admitted three ways, and every elevated leg runs as the fleet
 // administrator over its SSH edge (HostEffectElevationRoute):

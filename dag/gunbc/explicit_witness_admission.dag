@@ -35,7 +35,7 @@ import std.witness_admission {
 import std.types { NonEmptyStr, String, List, Bool, Int }
 import std.algebra { Cons, Empty, non_empty_to_list }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import gunbc.rung_drop.transitional_admission_exception { transitional_admission_exception_identities }
+import gunbc.transitional_admission_exception_identities { transitional_admission_exception_identities }
 
 // THE function-grain authority for exact witness admission. One row per admitted witness, carrying
 // the witness identity, the cadence that executes it, and its own reason and dissolve_on.
@@ -843,8 +843,9 @@ fn known_red_probe_execution_roster() -> List<ScheduleWitnessEntry> {
 // std.witness_admission witness_cadence_has_scheduled_route (gunbc.design_argument::single_authority single authority), so all
 // five falsifier-family cadences whose workflow was deleted at #8283 are refused correctly
 // — no hand-edit can drift. Exempted rows on three cadences
-// (QuarantineProbeExpectRed, FalsifierSubstrateLongLane, BinWitnessWet) are rostered in
-// gunbc.rung_drop.transitional_admission_exception and consumed here as the single authority
+// (QuarantineProbeExpectRed, FalsifierSubstrateLongLane, BinWitnessWet) are listed in
+// gunbc.transitional_admission_exception_identities (the population of the rung drop
+// gunbc.rung_drop.transitional_admission_exception) and consumed here as the single authority
 // (gunbc.design_argument::single_authority) — the exception is bounded by identity, not cadence (gunbc.design_argument::guarantee_ladder (no silent regression)).
 // FalsifierRehomedBinWet has zero admission rows and returns false via delegation.
 // Without the extra policy refusals an author could write an admission whose cadence runs nothing
@@ -873,8 +874,8 @@ fn explicit_witness_admission_cadence_executes(cadence: WitnessConsumerCadence) 
 // See module `gunbc.rung_drop.transitional_admission_exception`, symbol `transitional_admission_exception`.
 // TRIGGER: each named identity carries a cadence with a live scheduled route.
 // Remove an identity from this list when its row migrates to a scheduled-route cadence.
-// The population list is owned by gunbc.rung_drop.transitional_admission_exception
-// and consumed here as the single authority (gunbc.design_argument::single_authority). Do not re-mint.
+// The population list is owned by the code module gunbc.transitional_admission_exception_identities
+// (the ledger row imports it; this gate does not import the row) and consumed here as the single authority (gunbc.design_argument::single_authority). Do not re-mint.
 
 fn is_transitional_admission_row(entry: String, function: String) -> Bool {
   fold(

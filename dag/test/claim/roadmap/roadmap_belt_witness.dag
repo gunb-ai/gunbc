@@ -7,7 +7,7 @@ import gunbc.roadmap.roadmap_model {
   PrsMerged,
   Dispatchable,
 }
-import gunbc.roadmap.roadmap_status { DerivableLine, Unsigned }
+import gunbc.roadmap.roadmap_status { DerivableLine }
 import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified }
 import gunbc.roadmap.roadmap_spawner { SpawnFrontier }
 import gunbc.roadmap.roadmap_belt {
@@ -40,14 +40,13 @@ fn ready_node(id: String) -> RoadmapNode {
     dispatch: Dispatchable { repo: "gunbc", acceptance: PrsMerged },
     execution: ExecutionContractUnspecified,
     owner: "",
-    signoff: Unsigned,
     parent: none,
     centering: none,
   }
 }
 
 fn frontier_ready(ids: List<String>) -> SpawnFrontier {
-  SpawnFrontier { ready: map(ids, id => ready_node(id: id)), upcoming: [], done: [], superseded: [] }
+  SpawnFrontier { ready: map(ids, id => ready_node(id: id)), upcoming: [], superseded: [] }
 }
 
 fn cap(n: Int) -> BeltCapacity { BeltCapacity { max_concurrent: n } }
