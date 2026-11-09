@@ -1010,7 +1010,7 @@ test fn a_resolution_naming_a_decided_finding_refuses_holds() -> Bool {
 // A DUPLICATE RESOLVE LINE is a defect of the input at the moment the file is parsed, before any plan:
 // two lines answering one question, possibly with two targets, is not a choice this migration makes.
 test fn a_duplicate_resolve_line_is_a_rules_file_defect_holds() -> Bool {
-  let input = reference_migration_rules_parse(content: "resolve x@1-2 sha256:a => gunbc.migration_cited::migration_cited_function\nresolve x@1-2 sha256:b => gunbc.migration_cited::migration_cited_other\n")
+  let input = reference_migration_rules_parse(content: "resolve x@1-2 f38a4edff9595f33e6fb83e24530f2839b3de6f7714e0261f103676ce8b826df => gunbc.migration_cited::migration_cited_function\nresolve x@1-2 6c59bd538cd85e424ba55c108950475a930211f5a82984509b832b82eb34ffda => gunbc.migration_cited::migration_cited_other\n")
   length(xs: input.rules) == 0 && length(xs: input.resolutions) == 1 && length(xs: input.defects) == 1
     && string_contains(s: migration_rules_defect_text(defects: input.defects), pattern: "duplicate resolve id")
 }

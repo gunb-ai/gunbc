@@ -2580,7 +2580,9 @@ fn migration_rules_input_resolution(acc: MigrationRulesInput, resolution: Migrat
 // A digest is 64 hex characters, because that is what the plan renders beside every file. A resolve line
 // carrying anything else is a MALFORMED LINE, refused when the file is parsed rather than carried into the
 // plan: a typo'd digest matches no file, and a resolution that matches nothing and is quietly dropped is
-// the exact silence the refusal law above exists to prevent.
+// the exact silence the refusal law above exists to prevent. There is ONE spelling: the plan renders bare
+// hex beside every file and a resolve line copies those bytes. A `sha256:` prefix is not accepted — a
+// second spelling of one value is a second way to be wrong, and nothing renders that prefix to copy.
 fn migration_digest_is_well_formed(digest: String) -> Bool {
   string_all_chars_in(s: digest, alphabet: "0123456789abcdef") && migration_digest_char_count(digest: digest) == 64
 }
