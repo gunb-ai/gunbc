@@ -36,7 +36,6 @@ import gunbc.serving.rented_replica { RentedReplicaIdentity }
 import gunbc.serving.serving_enrollment { ServingRoute, CeilingByDeclaredPolicy, serving_replica_route }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, render_ipv4_address }
 import gunbc.serving.lil_serving_defects { LilServingDefect, LilServeComponent, B12xPcieAllReduce, LilLauncher, LmCacheRecurrentConnector, LilReplicaProxy, srv1_lil_serving_defect_rows, defect_by_identity }
-import std.algebra { string_contains }
 import extdeps.container.nvidia_container_toolkit { nvidia_cdi_device_selector_of }
 
 // ── the per-replica identity ─────────────────────────────────────────────────────────────────────────
@@ -172,6 +171,11 @@ data srv1_serving_gpu_launcher: RetainedShellScript = RetainedShellScript {
 type Srv1ReplicaUnitContract {
   unit_template: NonEmptyStr
   helper_path: NonEmptyStr
+  // The engine command the unit launches, CONSTRUCTED from the typed launch config (srv1_replica_engine_argv).
+  // The modeled boot realization is this render, NOT the operator's gpu.sh plus a runtime EXTRA -- so EXTRA is an
+  // operator-manual path outside convergence (srv1_boot_path_executes_rendered_argv frontier). The helper_path and
+  // adoption_verifies are the live adopt-or-launch mechanism (the helper's own modeling is the parent's follow-up).
+  exec_start_argv: List<NonEmptyStr>
   adoption_verifies: List<NonEmptyStr>
   on_mismatch: NonEmptyStr
   restart: NonEmptyStr
@@ -190,6 +194,7 @@ type Srv1ReplicaUnitContract {
 data srv1_replica_unit_contract: Srv1ReplicaUnitContract = Srv1ReplicaUnitContract {
   unit_template: "lil-replica@.service" as NonEmptyStr,
   helper_path: "/usr/local/sbin/lil-replica" as NonEmptyStr,
+  exec_start_argv: srv1_replica_engine_argv(config: srv1_admitted_launch_config),
   adoption_verifies: [
     "container_name" as NonEmptyStr,
     "gpu_uuid" as NonEmptyStr,
@@ -394,6 +399,22 @@ data srv1_legacy_launcher_guard_frontier: FrontierRow = frontier_row_decl(
   dissolution: unbound_dissolution(description: "the retained wrapper is retired from the host or its module row dissolves per its own dissolves_to; a guard in gunbc.live_deploy.apply_legs refuses to install the legacy boot path while lil-replica@ is enabled. SUFFICIENT for dissolving this row."),
 )
 
+// THE MODELED BOOT PATH EXECUTES THE RENDERED ARGV, NOT gpu.sh + EXTRA. Convergence arms the replica units whose
+// realization is srv1_replica_engine_argv (constructed from the typed srv1_admitted_launch_config): the engine
+// flags, LMCache tiers, KV dtype and max-model-len all come from typed rows, and the boot path execs that render
+// (or an args file rendered from it) -- it does NOT exec srv1_serving_gpu_launcher with a runtime EXTRA= environment
+// variable. That keeps EXTRA an operator-MANUAL path outside convergence (the operator editing gpu.sh and passing
+// EXTRA by hand is a manual relaunch, not what the boot path runs), rather than a hole the model pretends to close.
+// STANDING (drift, stated plainly): the LIVE srv1 lil-replica@ helper currently still invokes ~/strata-test/
+// srv1_lil_serve_gpu.sh (gpu.sh) with an optional runtime EXTRA, so the live boot path does NOT run the modeled
+// render -- the modeled unit and the live unit have diverged. This is not edited from this PR (the live unit is the
+// operator's; per the parent it must not be edited here without asking).
+data srv1_boot_path_executes_rendered_argv: FrontierRow = frontier_row_decl(
+  ref: decl_ref(module_path: "gunbc.serving.srv1_serving_replica_layout", decl_name: "srv1_replica_engine_argv"),
+  reason: "the boot realization is constructed from typed rows by srv1_replica_engine_argv and the modeled unit execs it (no EXTRA); the live srv1 unit still execs gpu.sh with an optional runtime EXTRA, so live != modeled. fail_closed: the guard must not gain a safe-by-absence scrape over the operator script, so live-execution fidelity is tracked here, not asserted.",
+  dissolution: unbound_dissolution(description: "reconcile the live srv1 lil-replica@ unit (and its helper) to exec the rendered argv (or a rendered args file), OR model the helper's adopt-or-launch command -- the latter is the parent's follow-up generic-profile PR, deliberately NOT in this one. Re-scan the gpu.sh sha receipt on any live-file edit. Neither is done from this PR (the live unit is the operator's; ask the parent before editing)."),
+)
+
 // ── launch admission: refusing configurations the image cannot deliver (Addendum 2, consumes #16110) ─
 //
 // THE ADMITTED LAYOUT on srv1 is two independent TP=1 containers (this module's roster), each with its
@@ -431,6 +452,17 @@ type Srv1LaunchConfig {
   kv_cache_dtype: Srv1KvCacheDtype
   // The model profile name (the lil-serve --profile value; qwen38-flash-next on srv1).
   profile: NonEmptyStr
+  // The hardware target (the lil-serve --hardware value; rtx-pro-6000-pcie on srv1).
+  hardware: NonEmptyStr
+  // The LMCache L1 (RAM / shm) tier size in GiB.
+  lmcache_l1_gb: Nat
+  // The LMCache L2 (NVMe) tier size in GiB. Typed here so the tier is not only in the launcher string;
+  // gunbc.serving.serving_host_memory::srv1_lmcache_l2_configured is the host-memory receipt for the same tier.
+  lmcache_l2_gb: Nat
+  // The engine --max-model-len value.
+  max_model_len: Nat
+  // The image digest the container runs (typed so the image is not only in the launcher string).
+  image_digest: NonEmptyStr
   // The lil REPLICAS environment value: how many in-process replicas the launcher should run.
   // Two INDEPENDENT CONTAINERS each with REPLICAS=1 is the admitted layout; REPLICAS>1 is the single-
   // process multi-replica mode that F26a/F26b bind on.
@@ -451,6 +483,11 @@ data srv1_admitted_launch_config: Srv1LaunchConfig = Srv1LaunchConfig {
   tensor_parallel_size: 1,
   kv_cache_dtype: Fp8E4m3,
   profile: "qwen38-flash-next" as NonEmptyStr,
+  hardware: "rtx-pro-6000-pcie" as NonEmptyStr,
+  lmcache_l1_gb: 12,
+  lmcache_l2_gb: 125,
+  max_model_len: 229376,
+  image_digest: "sha256:2ad6245e058de7b4d0b973b08d60f67b18f563e4bd63d6a0e9b0406222a098e9" as NonEmptyStr,
   lil_replicas: 1,
   host_gpu_p2p: false,
 }
@@ -528,29 +565,44 @@ fn srv1_replica_device_words(replica: Srv1ServingReplicaSpec) -> List<NonEmptySt
   ["--device" as NonEmptyStr, nvidia_cdi_device_selector_of(uuid: replica.gpu_uuid)]
 }
 
-// The engine shape the launcher starts each container with, READ BACK from its body. The three defect-bound
-// parameters are detected by the flag text the script passes; an absent flag means the admitted default
-// (TP=1, FP8 E4M3 KV, one in-process replica), which is what the retained script runs. host_gpu_p2p is srv1's
-// fleet fact (NCCL reports 0 GB/s between its two cards).
-fn srv1_launcher_effective_config(body: NonEmptyStr) -> Srv1LaunchConfig {
-  Srv1LaunchConfig {
-    tensor_parallel_size: if string_contains(s: body as String, pattern: "--tensor-parallel-size 2") { 2 } else { 1 },
-    kv_cache_dtype: if string_contains(s: body as String, pattern: "--kv-cache-dtype nvfp4") { NvFp4 } else { Fp8E4m3 },
-    profile: "qwen38-flash-next" as NonEmptyStr,
-    lil_replicas: if string_contains(s: body as String, pattern: "REPLICAS=2") { 2 } else { 1 },
-    host_gpu_p2p: false,
+// The engine command the boot path runs, CONSTRUCTED from the typed launch configuration (construction, not
+// validation): the same typed rows the admission guard reads are what render the realization, so there is no
+// scraped script the guard ignores. The modeled boot unit execs THIS render (or an args file rendered from it),
+// NEVER the operator's gpu.sh plus its runtime EXTRA -- so EXTRA is an operator-manual path OUTSIDE convergence,
+// not a hole in the boot path (see the srv1_boot_path_executes_rendered_argv frontier row). FP8 E4M3 is the engine
+// default, so the admitted layout emits no --kv-cache-dtype flag; a non-default dtype emits it explicitly, and a
+// refused dtype is caught by srv1_launch_admission before this is used to arm boot.
+fn srv1_replica_engine_argv(config: Srv1LaunchConfig) -> List<NonEmptyStr> {
+  let kv = match config.kv_cache_dtype {
+    NvFp4 => ["--kv-cache-dtype" as NonEmptyStr, "nvfp4" as NonEmptyStr]
+    Fp8 => ["--kv-cache-dtype" as NonEmptyStr, "fp8" as NonEmptyStr]
+    Bf16 => ["--kv-cache-dtype" as NonEmptyStr, "bf16" as NonEmptyStr]
+    Auto => ["--kv-cache-dtype" as NonEmptyStr, "auto" as NonEmptyStr]
+    Fp8E4m3 => []
   }
+  let tp = if config.tensor_parallel_size > 1 { ["--tensor-parallel-size" as NonEmptyStr, to_string(config.tensor_parallel_size) as NonEmptyStr] } else { [] }
+  let l1 = concat("LMCACHE_L1_GB=", to_string(config.lmcache_l1_gb)) as NonEmptyStr
+  let l2 = concat("LMCACHE_L2_GB=", to_string(config.lmcache_l2_gb)) as NonEmptyStr
+  let head = [
+    "lil-serve" as NonEmptyStr,
+    "--profile" as NonEmptyStr, config.profile,
+    "--hardware" as NonEmptyStr, config.hardware,
+    "--env" as NonEmptyStr, "LMCACHE_MODE=ram-disk" as NonEmptyStr,
+    "--env" as NonEmptyStr, l1,
+    "--env" as NonEmptyStr, l2,
+    "--" as NonEmptyStr,
+    "--port" as NonEmptyStr, "18000" as NonEmptyStr,
+  ]
+  let tail = concat(tp, ["--max-model-len" as NonEmptyStr, to_string(config.max_model_len) as NonEmptyStr])
+  concat(concat(head, kv), tail)
 }
-
-// The configuration the boot path admits: read back from the retained launcher body, so there is one launch
-// fact, not a constant that can drift from the script it is supposed to describe.
-data srv1_launcher_effective_launch_config: Srv1LaunchConfig = srv1_launcher_effective_config(body: srv1_serving_gpu_launcher.body)
 
 // ── what this module does NOT model, keyed ─────────────────────────────────────────────────────────
 
 data srv1_serving_replica_layout_frontier: List<FrontierRow> = [
   srv1_disk_free_space_guard_frontier,
   srv1_legacy_launcher_guard_frontier,
+  srv1_boot_path_executes_rendered_argv,
   srv1_replica_boot_path_guard,
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.serving.srv1_serving_replica_layout", decl_name: "srv1_serving_gpu_launcher"),

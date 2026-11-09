@@ -6,7 +6,7 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.live_deploy.board_function_converge_unit { RetiredHandInstalledRemoval }
 import gunbc.serving.srv1_serving_replica_layout {
   Srv1ServingReplicaSpec, Srv1LaunchConfig, Srv1LaunchAdmission, srv1_serving_replica_roster,
-  srv1_launcher_effective_launch_config, srv1_launch_admission,
+  srv1_admitted_launch_config, srv1_launch_admission,
 }
 
 // SRV1'S SERVING BOOT PATH: TWO REPLICA INSTANCES, NOT THE SINGLETON.
@@ -114,9 +114,9 @@ fn srv1_replica_boot_unit_names_for(config: Srv1LaunchConfig) -> List<NonEmptySt
 
 // The boot instances convergence will enable: derived from the roster and gated on the ADMITTED srv1 launch
 // configuration (so the boot path and the admission guard are one route -- an unadmitted configuration arms
-// nothing). The configuration is READ BACK from the retained launcher (srv1_launcher_effective_launch_config),
-// not a written-down constant, so enablement tracks the flags the launcher actually runs (fail_closed:
-// construction over validation). This is what apply_legs consumes.
+// nothing). The configuration is the typed srv1_admitted_launch_config, and the realization (the engine command)
+// is CONSTRUCTED from those same typed rows by srv1_replica_engine_argv -- the guard validates a construction,
+// not a scraped script (fail_closed). This is what apply_legs consumes.
 fn srv1_replica_boot_unit_names() -> List<NonEmptyStr> {
-  srv1_replica_boot_unit_names_for(config: srv1_launcher_effective_launch_config)
+  srv1_replica_boot_unit_names_for(config: srv1_admitted_launch_config)
 }

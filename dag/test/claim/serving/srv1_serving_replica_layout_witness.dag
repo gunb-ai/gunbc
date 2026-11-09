@@ -12,7 +12,7 @@ import gunbc.serving.srv1_serving_replica_layout {
   Srv1KvCacheDtype,
   srv1_launch_admission,
   srv1_replica_unit_contract, srv1_disk_guard_contract,
-  srv1_serving_gpu_launcher, srv1_launcher_effective_config, srv1_launcher_effective_launch_config, srv1_replica_device_words,
+  srv1_serving_gpu_launcher, srv1_replica_engine_argv, srv1_replica_device_words,
   Srv1ServingReplicaSpec,
 }
 import gunbc.serving.lil_serving_defects { srv1_lil_serving_defect_rows, defect_by_identity, LilServingDefect }
@@ -26,6 +26,24 @@ import extdeps.container.nvidia_container_toolkit { nvidia_cdi_device_selector_o
 // removed (upstream fixes the defect and the row dissolves), the refusal stops and the test must change.
 
 // THE ADMITTED CONFIGURATION is admitted. If this goes red, the guard is over-refusing.
+// Builds a srv1 launch config for the admission/render tests, varying only the shape under test; the engine
+// rows (profile, hardware, LMCache tiers, max-model-len, image) are the srv1 constants so a test discriminates
+// on exactly one field (tensor_parallel_size / kv_cache_dtype / lil_replicas / host_gpu_p2p).
+fn witness_cfg(tp: Nat, kv: Srv1KvCacheDtype, reps: Nat, p2p: Bool) -> Srv1LaunchConfig {
+  Srv1LaunchConfig {
+    tensor_parallel_size: tp,
+    kv_cache_dtype: kv,
+    profile: "qwen38-flash-next" as NonEmptyStr,
+    hardware: "rtx-pro-6000-pcie" as NonEmptyStr,
+    lmcache_l1_gb: 12,
+    lmcache_l2_gb: 125,
+    max_model_len: 229376,
+    image_digest: "sha256:2ad6245e058de7b4d0b973b08d60f67b18f563e4bd63d6a0e9b0406222a098e9" as NonEmptyStr,
+    lil_replicas: reps,
+    host_gpu_p2p: p2p,
+  }
+}
+
 test fn the_admitted_config_is_admitted() -> Bool {
   match srv1_launch_admission(config: srv1_admitted_launch_config) {
     Srv1LaunchAdmitted { layout: _ } => true
@@ -36,13 +54,7 @@ test fn the_admitted_config_is_admitted() -> Bool {
 // (a) TP=2 on a P2P-less host → refused, citing F24. Discriminates on tensor_parallel_size: the only
 // difference from srv1_admitted_launch_config is TP=2 instead of TP=1.
 test fn tp2_without_p2p_is_refused_by_f24() -> Bool {
-  let request = Srv1LaunchConfig {
-    tensor_parallel_size: 2,
-    kv_cache_dtype: Fp8E4m3,
-    profile: "qwen38-flash-next" as NonEmptyStr,
-    lil_replicas: 1,
-    host_gpu_p2p: false,
-  }
+  let request = witness_cfg(tp: 2, kv: Fp8E4m3, reps: 1, p2p: false)
   match srv1_launch_admission(config: request) {
     Srv1LaunchRefused { cause: _, defect_identity: id } => (id as String) == "srv1-f24-b12x-pcie-allreduce-tp2-hang"
     Srv1LaunchAdmitted { layout: _ } => false
@@ -52,13 +64,7 @@ test fn tp2_without_p2p_is_refused_by_f24() -> Bool {
 // (a') TP=2 WITH P2P is not refused by F24 (the defect is specifically about no-P2P; with P2P, TP=2
 // works). Discriminates on host_gpu_p2p: the only difference from the refusal test is p2p=true.
 test fn tp2_with_p2p_passes_f24_check() -> Bool {
-  let request = Srv1LaunchConfig {
-    tensor_parallel_size: 2,
-    kv_cache_dtype: Fp8E4m3,
-    profile: "qwen38-flash-next" as NonEmptyStr,
-    lil_replicas: 1,
-    host_gpu_p2p: true,
-  }
+  let request = witness_cfg(tp: 2, kv: Fp8E4m3, reps: 1, p2p: true)
   match srv1_launch_admission(config: request) {
     Srv1LaunchAdmitted { layout: _ } => true
     Srv1LaunchRefused { cause: _, defect_identity: _ } => false
@@ -68,13 +74,7 @@ test fn tp2_with_p2p_passes_f24_check() -> Bool {
 // (b) nvfp4 kv_cache_dtype → refused, citing F25. Discriminates on kv_cache_dtype: the only difference
 // from the admitted config is kv_cache_dtype="nvfp4".
 test fn nvfp4_kv_cache_is_refused_by_f25() -> Bool {
-  let request = Srv1LaunchConfig {
-    tensor_parallel_size: 1,
-    kv_cache_dtype: NvFp4,
-    profile: "qwen38-flash-next" as NonEmptyStr,
-    lil_replicas: 1,
-    host_gpu_p2p: false,
-  }
+  let request = witness_cfg(tp: 1, kv: NvFp4, reps: 1, p2p: false)
   match srv1_launch_admission(config: request) {
     Srv1LaunchRefused { cause: _, defect_identity: id } => (id as String) == "srv1-f25-nvfp4-main-kv-unsupported"
     Srv1LaunchAdmitted { layout: _ } => false
@@ -84,13 +84,7 @@ test fn nvfp4_kv_cache_is_refused_by_f25() -> Bool {
 // (c) lil REPLICAS=2 (single-process multi-replica) → refused, citing F26a (first standing defect).
 // Discriminates on lil_replicas: the only difference from the admitted config is replicas=2.
 test fn lil_replicas_2_is_refused_by_f26a() -> Bool {
-  let request = Srv1LaunchConfig {
-    tensor_parallel_size: 1,
-    kv_cache_dtype: Fp8E4m3,
-    profile: "qwen38-flash-next" as NonEmptyStr,
-    lil_replicas: 2,
-    host_gpu_p2p: false,
-  }
+  let request = witness_cfg(tp: 1, kv: Fp8E4m3, reps: 2, p2p: false)
   match srv1_launch_admission(config: request) {
     Srv1LaunchRefused { cause: _, defect_identity: id } => (id as String) == "srv1-f26a-lmcache-replica-checkpoint-dma-crash"
     Srv1LaunchAdmitted { layout: _ } => false
@@ -144,43 +138,38 @@ test fn both_replica_instances_are_enabled() -> Bool {
   length(xs: srv1_replica_unit_contract.enabled_instances) == 2
 }
 
-// ── the boot guard reads the launcher, not a constant (review 92292 F1; fail_closed) ────────────────
+// ── the engine command is CONSTRUCTED from typed rows (review 92292 F1 + 92314 F1/F2; fail_closed) ──
 //
-// Discriminating: the retained launcher's actual engine shape derives to an ADMITTED config, while a body
-// flipped to a refused shape (nvfp4 KV / TP=2 on the no-P2P host / lil REPLICAS=2) derives to a config the
-// SAME guard REFUSES by the matching defect. Delete srv1_launch_admission's checks and the refused-shape
-// arms go red; the guard cannot be kept green by editing a declaration while the script lies.
-test fn the_boot_config_is_derived_from_the_launcher_not_a_constant() -> Bool {
-  let admitted_real = match srv1_launch_admission(config: srv1_launcher_effective_launch_config) {
-    Srv1LaunchAdmitted { layout: _ } => true
-    Srv1LaunchRefused { cause: _, defect_identity: _ } => false
-  }
-  let nvfp4 = match srv1_launch_admission(config: srv1_launcher_effective_config(body: "--kv-cache-dtype nvfp4" as NonEmptyStr)) {
+// The realization is RENDERED from the typed srv1_admitted_launch_config (construction), not scraped from the
+// launcher string. The admitted config renders the full engine argv (profile, hardware, LMCache tiers,
+// max-model-len) with no --kv-cache-dtype (FP8 E4M3 is the engine default); a config set to a refused shape BOTH
+// renders that flag AND is refused by the matching defect -- so realization and guard track one typed source, and
+// no string's absence can silently default the guard to safe (review 92314; fail_closed).
+test fn the_engine_argv_is_constructed_from_typed_rows() -> Bool {
+  let admitted = srv1_replica_engine_argv(config: srv1_admitted_launch_config)
+  let has = any(admitted, t => (t as String) == "229376")
+    && any(admitted, t => (t as String) == "LMCACHE_L2_GB=125")
+    && any(admitted, t => (t as String) == "qwen38-flash-next")
+    && any(admitted, t => (t as String) == "rtx-pro-6000-pcie")
+    && !any(admitted, t => (t as String) == "--kv-cache-dtype")
+  let nv = witness_cfg(tp: 1, kv: NvFp4, reps: 1, p2p: false)
+  let nv_renders = any(srv1_replica_engine_argv(config: nv), t => (t as String) == "nvfp4")
+  let nv_refused = match srv1_launch_admission(config: nv) {
     Srv1LaunchRefused { cause: _, defect_identity: id } => (id as String) == "srv1-f25-nvfp4-main-kv-unsupported"
     Srv1LaunchAdmitted { layout: _ } => false
   }
-  let tp2 = match srv1_launch_admission(config: srv1_launcher_effective_config(body: "--tensor-parallel-size 2" as NonEmptyStr)) {
+  let tp = witness_cfg(tp: 2, kv: Fp8E4m3, reps: 1, p2p: false)
+  let tp_renders = any(srv1_replica_engine_argv(config: tp), t => (t as String) == "--tensor-parallel-size")
+  let tp_refused = match srv1_launch_admission(config: tp) {
     Srv1LaunchRefused { cause: _, defect_identity: id } => (id as String) == "srv1-f24-b12x-pcie-allreduce-tp2-hang"
     Srv1LaunchAdmitted { layout: _ } => false
   }
-  let reps = match srv1_launch_admission(config: srv1_launcher_effective_config(body: "REPLICAS=2" as NonEmptyStr)) {
+  let rp = witness_cfg(tp: 1, kv: Fp8E4m3, reps: 2, p2p: false)
+  let rp_refused = match srv1_launch_admission(config: rp) {
     Srv1LaunchRefused { cause: _, defect_identity: id } => (id as String) == "srv1-f26a-lmcache-replica-checkpoint-dma-crash"
     Srv1LaunchAdmitted { layout: _ } => false
   }
-  // The retained launcher's derived shape equals the module's declared admitted intent: the constant is the
-  // SPEC and the derived config is the READ-BACK realization; a launcher that drifts from the intent goes red.
-  let intent = srv1_admitted_launch_config
-  let derived = srv1_launcher_effective_launch_config
-  let matches_intent = derived.tensor_parallel_size == intent.tensor_parallel_size
-    && derived.lil_replicas == intent.lil_replicas
-    && (derived.profile as String) == (intent.profile as String)
-    && !srv1_launcher_kv_is_nvfp4(body: srv1_serving_gpu_launcher.body)
-  admitted_real && nvfp4 && tp2 && reps && matches_intent
-}
-
-// Whether a launcher body asks for the nvfp4 KV dtype (the shape F25 refuses). Exported for the intent tie.
-fn srv1_launcher_kv_is_nvfp4(body: NonEmptyStr) -> Bool {
-  string_contains(s: body as String, pattern: "--kv-cache-dtype nvfp4")
+  has && nv_renders && nv_refused && tp_renders && tp_refused && rp_refused
 }
 
 // ── the launcher's per-index case is tied to the roster (review 92292 F2: no silent drift) ───────────
