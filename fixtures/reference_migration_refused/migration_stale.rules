@@ -1,0 +1,6 @@
+# A RESOLVE LINE FROM ANOTHER STATE OF THE FILE. The id is the one this fixture's plan renders, the
+# digest is not the one the plan read: the run refuses, writes nothing, and says why. An id whose bytes
+# have moved is not a licence to rewrite whichever occurrence now happens to sit at that extent — which
+# is the failure the digest is here for, because the id alone is positional and an edit above the
+# occurrence moves every id below it.
+resolve fixtures/reference_migration_refused/dag/gunbc/reference_migration_unresolved_citer.dag@437-446 sha256:stale => gunbc.reference_migration_unresolved_citer::reference_migration_unresolved_citer_value

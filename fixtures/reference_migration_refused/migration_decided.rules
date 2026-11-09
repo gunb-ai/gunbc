@@ -1,0 +1,6 @@
+# A RESOLVE LINE NAMING SOMETHING ALREADY DECIDED. The rule answers the citation, so its finding is a
+# proposed edit; the line beneath it answers a question nobody asked. A resolution is legal only against
+# an unresolved finding — against anything else it is an input that was meant to mean something, and the
+# run refuses rather than riding along.
+rule cite DESIGN 4b => gunbc.reference_migration_unresolved_citer::reference_migration_unresolved_citer_value
+resolve fixtures/reference_migration_refused/dag/gunbc/reference_migration_unresolved_citer.dag@437-446 ee3e8423c4a5c8446607bea804479ac1d6dd20308b276a348e5bca758af46a26 => gunbc.reference_migration_unresolved_citer::reference_migration_unresolved_citer_value

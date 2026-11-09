@@ -1,0 +1,3 @@
+# A LINE THAT IS NOT A RULE. The file is read whole or not at all: nothing here is skipped and hoped for.
+rule cite DESIGN 3 => gunbc.reference_migration_fixture_home::reference_migration_fixture_value
+rules cite DESIGN 2026 => delete sentence
