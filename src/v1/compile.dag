@@ -208,8 +208,14 @@ fn extract_ownership_proofs(typed: ResolvedGraph) -> List<OwnershipProof> {
     |> flat_map(m => module_ownership_proofs(m: m))
 }
 
+// Ownership facts and the test-reference gate are compile/emit/witness analyses. A run that only
+// settles an entry for the interpreter reads neither result and must not pay the whole-closure
+// cost nor gain a diagnostic the interpreter does not enforce, so both are modeled switches
+// (default on; the run settle opts them out) rather than an unmodeled bypass of a stage.
 type CompilePipelineOptions {
   analyze_complexity: Bool
+  analyze_ownership: Bool
+  analyze_test_references: Bool
 }
 
 // TEST CODE IS ENTERED ONLY BY THE WITNESS RUNNER. A `test` marker (v1.std.core DeclarationMarker)
@@ -447,7 +453,16 @@ fn test_reference_diagnostics(typed: ResolvedGraph, source_indices: Map<String, 
 }
 
 fn default_compile_pipeline_options() -> CompilePipelineOptions {
-  CompilePipelineOptions { analyze_complexity: false }
+  CompilePipelineOptions { analyze_complexity: false, analyze_ownership: true, analyze_test_references: true }
+}
+
+// The options the `run` entry-settle consumes: it hands the settled graph to the interpreter and
+// reads no ownership facts and no complexity report, and the interpreter does not enforce the
+// test-reference gate (a `test` declaration is entered only by the witness runner). So the settle
+// skips all three analyses -- matching exactly the resolve stage its consumer's contract covers --
+// while the compile/emit/witness path keeps them via default_compile_pipeline_options.
+fn run_settle_compile_options() -> CompilePipelineOptions {
+  CompilePipelineOptions { analyze_complexity: false, analyze_ownership: false, analyze_test_references: false }
 }
 
 fn run_complexity_analysis(typed: ResolvedGraph, source_indices: Map<String, NewlineIndex>) -> ComplexityReport {
@@ -1640,8 +1655,13 @@ fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompileP
         []
       }
       let all_diags = concat(typed_diags, complexity_diags)
-      let ownership = extract_ownership_proofs(typed: typed)
-      let test_reference_diags = test_reference_diagnostics(typed: typed, source_indices: source_indices)
+      let ownership = if options.analyze_ownership { extract_ownership_proofs(typed: typed) } else { [] }
+      let test_reference_diags =
+        if options.analyze_test_references {
+          test_reference_diagnostics(typed: typed, source_indices: source_indices)
+        } else {
+          []
+        }
       let _ = trace_mark("compile.analyses.done")
       ResolvedPipelineResult {
         graph: typed,

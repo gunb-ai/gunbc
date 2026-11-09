@@ -1,7 +1,7 @@
 module gunbc.fleet.fleet_physical_inventory
 
 import std.types { NonEmptyStr, String, List, Int }
-import std.measure { RackUnit, rack_unit, measure_add }
+import std.measure { RackUnit, rack_unit, measure_add, measure_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply {
   PhysicalAssetIdentity,
@@ -28,7 +28,7 @@ import extdeps.rack.navepoint { navepoint_18u_open_frame_catalog }
 import extdeps.power.eaton_tripp_lite { eaton_tripp_lite_rs_1215_family_catalog }
 import extdeps.cooling.dynatron { dynatron_w1_catalog }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
-import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_03, dgx_spark_01, dgx_spark_02, dgx_spark_03, dgx_spark_04, dgx_spark_05, dgx_spark_06, dgx_spark_07, dgx_spark_08, chassis_srv1, chassis_srv2, chassis_srv3, chassis_srv4, switch_01, printer_01, printer_02, ams_01, pdu_01, pi_controller, cooler_srv3, cooler_srv4 }
+import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_03, gpu_board_04, gpu_board_05, gpu_board_06, dgx_spark_01, dgx_spark_02, dgx_spark_03, dgx_spark_04, dgx_spark_05, dgx_spark_06, dgx_spark_07, dgx_spark_08, chassis_srv1, chassis_srv2, chassis_srv3, chassis_srv4, switch_01, printer_01, printer_02, ams_01, pdu_01, pi_controller, cooler_srv3, cooler_srv4 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import gunbc.fleet.fleet_intent { srv3_baseboard, srv4_baseboard, srv4_memory_population }
 import product.cooling_qualification { InstalledCoolingRealization }
@@ -274,7 +274,11 @@ data installed_cooler_containments: List<PhysicalContainment> = [
 // the annotation beside the row they belong to.
 
 // srv1's RTX PRO 6000 Blackwell Workstation Edition, read on srv1 2026-10-30 (nvidia-smi: name, serial
-// 1792726101367, 97887 MiB, power limit 600 W, VBIOS 98.02.81.00.07, PCI 0005:01:00.0). The operator's
+// 1792726101367, 97887 MiB, power limit 600 W, VBIOS 98.02.81.00.07, PCI 0005:01:00.0). IT NO LONGER SITS
+// AT 0005:01:00.0: on 2026-11-07 that address read the Max-Q below (gpu_board_04), and the operator stated
+// the Workstation card is installed beside it but has no power cable, so it does not enumerate and its
+// current slot is unread. Its containment in srv1 stands (it is in the chassis); the slot facts that
+// follow are the 2026-10-30 reading of the slot it then occupied. The operator's
 // purchase is PNY VCNRTXPRO6000B-PB, PNY's SKU of this NVIDIA board. THE SLOT RUNS IT AT PCIe 4.0: the card
 // advertises 32 GT/s x16 (PCIe 5.0), its upstream port 0005:00:01.0 is an Ampere Altra root port whose
 // LnkCap is 16 GT/s x16 (lspci -vv), so the link can train no higher than PCIe 4.0 x16 on this host.
@@ -315,12 +319,61 @@ data gpu_board_03_asset: PhysicalAsset = PhysicalAsset {
   procurement: none,
 }
 
-data gpu_board_assets: List<PhysicalAsset> = [gpu_board_01_asset, gpu_board_02_asset, gpu_board_03_asset]
+// srv1's RTX PRO 6000 Blackwell Max-Q Workstation Edition, read on srv1 2026-11-07 (nvidia-smi: name
+// "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition", serial 1793526019879, 97887 MiB, VBIOS
+// 98.02.6A.00.03). Its device binding -- UUID, PCI function, power-limit range -- is the typed reading in
+// gunbc.fleet.gpu_device_observation, not restated here. Installed by the operator
+// 2026-11-07 in the slot the Workstation card left; the same PCIe 4.0 x16 ceiling applies (dmesg: "limited
+// by 16.0 GT/s PCIe x16 link at 0005:00:01.0"). Not the rented Vast Max-Q of gunbc.plans.gpu_card_host_program
+// (that census row stays OutsideBound): this one is owned. Its procurement is unrecorded.
+data gpu_board_04_asset: PhysicalAsset = PhysicalAsset {
+  identity: gpu_board_04,
+  catalog: DeclarationRef {
+    module_path: "extdeps.gpu.nvidia",
+    decl_name: "nvidia_rtx_pro_6000_max_q_board_catalog",
+    field: WholeDeclaration,
+  },
+  physical_serial: Present { value: "1793526019879" },
+  procurement: none,
+}
+
+// srv4's two RTX 2000 Ada Generation cards, read on srv4 2026-11-07 15:35Z by the fleet survey
+// (jolly-moth-61; nvidia-smi over ssh from srv1): serial 1423925043073 at 00000000:01:00.0 (VBIOS
+// 95.07.4D.00.05) and serial 1794724026635 at 00000004:01:00.0 (VBIOS 95.07.47.00.19), each power limit
+// 40 W, min 30 W, max 70 W, default 70 W (typed in gunbc.fleet.gpu_device_observation). This discharges the census row's unconfirmed host for these two
+// cards (gpu_card_host_program decision D0, for this row). Procurement unrecorded.
+data gpu_board_05_asset: PhysicalAsset = PhysicalAsset {
+  identity: gpu_board_05,
+  catalog: DeclarationRef {
+    module_path: "extdeps.gpu.nvidia",
+    decl_name: "nvidia_rtx_2000_ada_board_catalog",
+    field: WholeDeclaration,
+  },
+  physical_serial: Present { value: "1423925043073" },
+  procurement: none,
+}
+
+data gpu_board_06_asset: PhysicalAsset = PhysicalAsset {
+  identity: gpu_board_06,
+  catalog: DeclarationRef {
+    module_path: "extdeps.gpu.nvidia",
+    decl_name: "nvidia_rtx_2000_ada_board_catalog",
+    field: WholeDeclaration,
+  },
+  physical_serial: Present { value: "1794724026635" },
+  procurement: none,
+}
+
+data gpu_board_assets: List<PhysicalAsset> = [gpu_board_01_asset, gpu_board_02_asset, gpu_board_03_asset, gpu_board_04_asset, gpu_board_05_asset, gpu_board_06_asset]
 
 // Only installed cards are contained; an owned card with no row here is in inventory, not in a host.
 data installed_gpu_board_containments: List<PhysicalContainment> = [
   HostContainsComponent { host: operator_host_srv1, component: gpu_board_01 },
+  HostContainsComponent { host: operator_host_srv1, component: gpu_board_04 },
+  HostContainsComponent { host: operator_host_srv4, component: gpu_board_05 },
+  HostContainsComponent { host: operator_host_srv4, component: gpu_board_06 },
 ]
+
 
 // srv1/srv2 carry no cooler asset row: their installed cooling is UNOBSERVED — not absent, and
 // not assumed compatible. installed_cooling_verdict_for_host reaches InstalledCoolingUnobserved
@@ -364,7 +417,10 @@ fn fleet_nominal_rackmount_arithmetic_holds() -> Bool {
     ),
     b: eaton_tripp_lite_rs_1215_family_catalog.rack_units,
   )
-  declared == nominal_rackmount_units_declared && rack_01_catalog_units == navepoint_18u_open_frame_catalog.rack_units
+  // RackUnit is a Measure<_,_,Nat>, on which structural '==' is refused by the equality plan; compare the
+  // magnitudes with the std.measure idiom (as elsewhere, e.g. materialization_store). Semantics preserved.
+  measure_count(m: declared) == measure_count(m: nominal_rackmount_units_declared)
+    && measure_count(m: rack_01_catalog_units) == measure_count(m: navepoint_18u_open_frame_catalog.rack_units)
 }
 
 // ---------------------------------------------------------------------------
@@ -640,6 +696,7 @@ data fleet_lot_allocator_after_dgx_spark_micro_center: InventoryLotAllocator = m
 data dgx_spark_ebay_pair_lot_identity: InventoryLotIdentity = mint_inventory_lot_identity(alloc: fleet_lot_allocator_after_dgx_spark_micro_center).id
 
 data fleet_lot_allocator_after_dgx_spark_ebay: InventoryLotAllocator = mint_inventory_lot_identity(alloc: fleet_lot_allocator_after_dgx_spark_micro_center).alloc
+
 
 // An exact catalog citation is scoped to its evidenced acquisition.
 data dgx_spark_micro_center_catalog_reference: DeclarationRef = DeclarationRef {

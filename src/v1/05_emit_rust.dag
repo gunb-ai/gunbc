@@ -17617,8 +17617,8 @@ fn cursor_walk_join(a: CursorWalk, b: CursorWalk) -> CursorWalk {
 // that is neither the scrutinee of its own list match nor `p` handed back at its own self-call
 // position needs the VALUE of `p`: the unchanged base minus the consumed prefix, `base.skip(cursor)`
 // (emit_rust_expr_var renders it). That costs one skip at the use instead of one per step, which is
-// what admits a walk whose exit appends the rest of a list (std.algebra sort_merge_into,
-// `Empty => list_append(left: acc, right: left)`) or hands a list back unchanged at its own position,
+// what admits a walk whose exit appends the rest of a list (the shape the std.algebra stable merge had before
+// it became an index cursor: `Empty => list_append(left: acc, right: left)`) or hands a list back unchanged at its own position,
 // an advance of 0. Admitted only when no tail binder is mentioned (a tail is an index, never a value)
 // and every mention of `p` is a plain occurrence that runs once per iteration and means the param:
 // not inside a lambda or a for-each body, and not under a binder that rebinds the spelling.
@@ -19026,7 +19026,15 @@ fn emit_exit_arm(prop: Node, result_fields: List<ShellResultField>, source_indic
   let code_str = substring(s: name, start: 5, end: string_length(s: name))
   let pattern = if code_str == "nonzero" { "_" }
     else { code_str }
-  let is_success = code_str == "0"
+  // A NON-ZERO ARM DECLARED `Unit` IS AN ANSWER, NOT A FAILURE. `1 => Unit "Variable not set"`
+  // (extdeps.shell shell.Env.Get), `1 => Unit "pattern not found"` (extdeps.tools.grep) and their
+  // siblings say what the status MEANS; the interpreter returns the operation's result for them, with
+  // its optional stdout and stderr fields Absent because the command did not succeed. This arm used to
+  // emit an error return for every non-zero code, so on the emitted route an unset variable raised
+  // before a caller could refuse it typed (side chat review of gunbc#16076) -- one declaration, two
+  // meanings. An arm declaring any other type keeps the error return.
+  let declares_answer = authored_name_at(source_indices: source_indices, node: field_init_node_value(n: prop)) == "Unit"
+  let is_success = code_str == "0" || declares_answer
   if is_success {
     concat("    ", pattern, " => { ", emit_shell_return(result_fields: result_fields), " },")
   } else {
@@ -19388,7 +19396,17 @@ fn emit_shell_channel_expr(channel: ShellResultChannel, is_optional: Bool) -> St
     ShellChanStderrTotalBytes => "stderr_total_bytes"
     ShellChanStderrRetainedBytes => "stderr_retained_bytes"
   }
-  if is_optional { concat("Some(", base, ")") } else { base }
+  // An optional stdout or stderr field is present only when the command succeeded, as the
+  // interpreter's map_shell_outputs reads it: a declared answer arm for a non-zero status (above) has
+  // no captured value to offer, so it is None rather than the text the failed command printed.
+  let captured_stream = match channel {
+    ShellChanStdout => true
+    ShellChanStderr => true
+    _ => false
+  }
+  if is_optional && captured_stream { concat("if output.status.success() { Some(", base, ") } else { None }") }
+  else if is_optional { concat("Some(", base, ")") }
+  else { base }
 }
 
 // THE SECOND HALF OF THE REFUSAL, and deliberately not the only half. The blocking

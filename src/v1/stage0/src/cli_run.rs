@@ -201,9 +201,7 @@ mod phase_profile;
 pub(crate) mod pool_acquire;
 mod provider_acquire;
 pub(crate) mod source_layout_lookup;
-pub use demand_acquire::{
-    resolve_entry_graph_demand_acquired, resolve_entry_graph_demand_acquired_with_diagnostics,
-};
+pub use demand_acquire::resolve_entry_graph_demand_acquired;
 #[path = "required_regen_host.rs"]
 mod required_regen_host;
 // The `gunbc test <label>` seam. Wired by `#[path] mod` rather than as a `pub mod` in lib.rs so
@@ -11717,14 +11715,6 @@ pub struct MultiEntryIndex {
     /// Opaque identity of THIS index, minted at construction (see `next_index_generation`).
     generation: u64,
     source_files: ModuleSourceIndex,
-    /// THE DEMAND-ACQUIRED PATH'S SOURCE LAYOUT, for generated providers (`provider_acquire`): the
-    /// layout's typed answer for a module this index's acquired closure does not hold. Set only by
-    /// `demand_acquire`; every index that already holds its whole pool leaves it empty.
-    provider_layout: RefCell<Option<Rc<dyn Fn(&str) -> entry_resolve::ProviderLayoutAnswer>>>,
-    /// The source each Holds answer read, kept so the rebuild acquires those exact bytes and never
-    /// reads the provider a second time.
-    provider_snapshots:
-        RefCell<std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>>>,
     module_graph_facts: ModuleGraphFactsLive,
     /// Per-index typed results, keyed by the typed-module CONTENT key
     /// (`std.interface_summary.typed_module_key`: module source hash ⊕ direct-import
