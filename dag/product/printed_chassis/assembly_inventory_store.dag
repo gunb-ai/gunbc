@@ -15,8 +15,7 @@ import std.integer { int_to_decimal_string }
 // THE CASSETTE INVENTORY STORE, SEALED. The prototype has one inventory slot; it lives in its own member of the
 // printer-starts parent, declared once here, and the mint takes the host state tree and nothing else, so a caller
 // cannot reset reservations by choosing a different output directory or root. The slot key is unchanged from the
-// flat layout, so the generations the old code wrote are read back verbatim after gunbc.fleet.printer_state_layout
-// moves them.
+// flat layout; the flat layout itself was retired on 2026-11-09 and its entries removed by hand.
 type CassetteInventoryDeclaration { member: NonEmptyStr, mode: DeclaredDirectoryMode }
 data cassette_inventory_slots: CassetteInventoryDeclaration = CassetteInventoryDeclaration {
  member: "cassette-inventory" as NonEmptyStr,
@@ -33,7 +32,7 @@ fn cassette_inventory_legacy_entry(name:String) -> Bool { starts_with(s:name,pre
 fn cassette_inventory_store(tree:HostStateTree) -> CassetteInventoryStoreReading {
  match printer_starts_legacy_scan(tree:tree,owns:n=>cassette_inventory_legacy_entry(name:n)) {
  PrinterStartsUnreadable {detail:d}=>CassetteInventoryStoreUnready {detail:d}
- PrinterStartsLegacyEntries {names:n}=>CassetteInventoryStoreUnready {detail:join(["printer-starts still holds the flat layout (",join(n,", "),"); gunbc.fleet.printer_state_layout moves it"],"")}
+ PrinterStartsLegacyEntries {names:n}=>CassetteInventoryStoreUnready {detail:join(["printer-starts still holds the flat layout (",join(n,", "),"); the flat layout is retired, so these entries must be removed by hand"],"")}
  PrinterStartsClean=>match listed_slot_store(member:cassette_inventory_slots.member as String,root:cassette_inventory_path(tree:tree)) {
  SlotStoreAbsent {member:m,root:r}=>CassetteInventoryStoreUnready {detail:slot_store_absent_detail(member:m,root:r)}
  SlotStoreRefused {detail:d}=>CassetteInventoryStoreUnready {detail:d}

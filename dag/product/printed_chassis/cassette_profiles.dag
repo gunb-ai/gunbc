@@ -29,7 +29,7 @@ fn declared_altra_gauges() -> List<FittedGauge> {
 }
 data altra_profile:CassetteProfile = CassetteProfile {
  id:"altrad8ud",requested_hardware:"ASRock Rack ALTRAD8UD-1L2T",
- outline:BoardOutlineKnown {width:asrock_altrad8ud_extent_along_rear_io,depth:asrock_altrad8ud_extent_depth,standing:CitedToAuthority {authority:extdeps_external_authority_anchor}},
+ outline:BoardOutlineKnown {width:asrock_altrad8ud_extent_along_rear_io,depth:asrock_altrad8ud_extent_depth,standing:CitedToAuthority {authority:extdeps.boards.asrock_rack.extdeps_external_authority_anchor}},
  mounting:fit_confirmed_location_reference(confirmation:fit_confirmation_for(roster:asrock_altrad8ud_standard_location_roster,record:altra_fit_gauge_set_fit.value,current:declared_altra_gauges())),
  power:IndependentPowerCassette,retain:[],open:transplant_obligations
 }

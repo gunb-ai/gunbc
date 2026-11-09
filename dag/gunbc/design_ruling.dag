@@ -30,6 +30,13 @@ type DesignRuling {
   provenance: String
 }
 
+data thermal_runner_cap_lifted_2026_11_08: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "thermal_runner_cap_lifted_2026_11_08"),
+  decided: "2026-11-08",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "selection_precedes_convergence"),
+  provenance: "Operator, to bold-wren-111 on 2026-11-08, verbatim: \"could you please help me bring up the stopped urnners on srv3/4, and srv1 - i think we have a lot of stranded capacity right now.\" then \"we had heat concerns but this outweighs them\" and \"we'll also need to record that in convergence/allocation int he repo\". ENDS the 2026-11-05 incident override that held srv3 and srv4 at 12 runners per box (gunbc.plans.host_thermal_operating_point B0 and section 10 decision 1, which recommended keeping 12 until P5). The override was never a model row -- it lived only as hand drop-ins on the hosts -- so no allocation literal changes: the committed width stays the one gunbc.runner.runner_slot_allocation gunbc_runner_committed_width derives (18 on srv3 and srv4 at this revision), and the operator then directed an EMERGENCY HAND RESTORE (\"can we not run this by hand? its a bit of an emergency - you can get to srv3/srv4 thru srv1\"), overriding for this one action the 2026-08-07 ruling that host mutation goes through the apply workflow; the queued converge run 42534959803 was cancelled because its bracket would have drained the restored slots. Hand actions, 2026-11-08 ~23:30 UTC, mirroring runner_slot_actuation slot_activation_plan (unmask, enable, start) over the committed population 1..18 minus the fabric slots 6 and 7: srv4 unmask --runtime 01-05 and 08-14, enable and start 01-05 and 08-18; srv3 enable and start 15-18 and remove the hand drop-in 95-overnight-cap.conf (Restart=no) from 15-18. srv4 15-18 kept that drop-in until the operator answered (\"i'm not concerned about memory errors on these machines\"), after which it was removed from srv4 15-18 the same way; 19-21 on both hosts are outside the committed width and untouched. A later runner_host_file_converge apply is the route that reconciles the hosts to the model. srv4 CARRIES A SECOND, SEPARATE DRAIN this ruling does not lift by itself: 96-ecc-drain-note.conf on srv4 01-05 and 08-14 records a 2026-11-07 ECC drain (decision cool-badger-99 msg_ada8ac0b): a hard reset after 18,717 corrected DRAM ECC errors in one boot and a prior fatal hardware error on 10-30, undo after an operator DIMM/SEL check. Read at restore: EDAC mc0 ce_count 181 and ue_count 0 about 25 h into the current boot. The operator then judged corrected memory errors normal for these boards and kept srv4 in admission; the 96-ecc-drain-note.conf files remain as stale comments with no directive. srv1 needed no hand action: its actions-runner population (srv1-01 transitional, srv1-02 deploy) already equals the model, and its microVM slots 13 and 14 are a controller bring-up, not a unit start. Observed before the restore (runner names on in-progress jobs and systemctl, 2026-11-08 ~23:20 UTC): srv3 ran 12 slots, srv1 ran srv1-01 and srv1-02, srv4 ran none. STATED TENSION, NOT A WAIVER OF ANYTHING ELSE: the 2026-11-05 decision that DIMMs stay at or below 85 C is not restated or withdrawn by this ruling; the operator judged the throughput loss to outweigh the heat risk at full width, and the lasting operating point still comes from the plan's P5 selection."
+}
+
 data printer_start_gate_is_the_approval_not_the_ref: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "printer_start_gate_is_the_approval_not_the_ref"),
   decided: "2026-11-05",
@@ -49,6 +56,13 @@ data machine_width_composition_has_an_intersection_carrier: DesignRuling = Desig
   decided: "2026-11-01",
   governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "closed_grounded_substrate"),
   provenance: "Operator CARRIER ruling relayed by quick-newt-573 to bold-dove-340, message msg_0cf79c9c-cc1f-4002-a6ed-79dae1ec7547; operator intersection intent relayed in msg_dcf2da48-1255-435d-b210-690732972a9f. Compose<A,C> denotes intersection: for Int/UInt and MachineWidth<N>, the carrier is the algebra value restricted to the machine interval, with the width retained in its type. This is NOT Compose<A,C> = A, the transparent alias rejected by the arithmetic ledger. Real crossings motivating the ruling are git.object_store, MAC qualified_octet_members, openssl, OIDC DER and roadmap auth hex. CORRECTION to the escalation: v2.std.node_minimal SpanRef.file_id was cited as a core-node example but is a declared scaffold outside the self-host and v2-native-cli import closures; it is not executed evidence. The ruling supersedes std.integer's no-inhabitant prescription for this integer-width intersection only, not arbitrary Compose applications. Model first; emitter changes follow only after model review. No current runtime or emitted-width guarantee is claimed by recording this ruling.",
+}
+
+data printer_execution_hold_deleted: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "printer_execution_hold_deleted"),
+  decided: "2026-11-09",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "consumption"),
+  provenance: "Operator, direct to sleek-wren-619 on 2026-11-09, after the stale-hold release refused with permission_denied on the root-owned printer-starts parent: \"we need to make the prints idempotent - i would just delete the concept of the printer hold, it was well intended but not designed/implemented correctly, and clean up all of that state - its supposed to protect against duplicate prints on the same printer, but i'll just do that manually for now until it becomes an issue\". The printer execution hold (gunbc.fleet.printer_execution_hold), its operator-observation release route (the hold-release-request printer operation) and the flat-layout cutover step that depended on it (gunbc.fleet.printer_state_layout printer_state_move) are deleted, and the flat entries left in /var/lib/gunbc/printer-starts are removed by hand. A print start stays idempotent per attempt through the create-once start claim (gunbc.fleet.printer_actuation printer_start_claim_commit, ExpectSlotAbsent) and stays gated by the bed-clear approval; exclusion of two concurrent controllers on one printer is held by the operator by hand until it becomes an issue. Supersedes the release route named in printer_start_hold_lifted_2026_11_04.",
 }
 
 data printer_start_hold_lifted_2026_11_04: DesignRuling = DesignRuling {
@@ -772,8 +786,10 @@ data plans_reset_and_audit_recommendations_2026_11_08: DesignRuling = DesignRuli
 
 fn design_rulings() -> List<DesignRuling> {
   [
+    thermal_runner_cap_lifted_2026_11_08,
     dispatch_is_continue_or_start_fresh,
     printer_start_gate_is_the_approval_not_the_ref,
+    printer_execution_hold_deleted,
     printer_credential_is_held_in_host_custody,
     slot_memory_overrun_crashes_not_throttles,
     srv1_transitional_ci_slot_is_kept_until_the_deploy_slot_serves,

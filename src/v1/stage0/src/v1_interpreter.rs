@@ -1578,6 +1578,21 @@ pub enum InterpError {
         declared: usize,
         defects: Vec<(String, crate::coproduct_reflection::PoolRootDefect)>,
     },
+    /// A keyed declaration read could not look at a file the asked key DERIVES — the file that
+    /// carries the module the name is spelled from.
+    ///
+    /// Its own variant, not a `TypeError`: the file and the parse's reason are the refusal's whole
+    /// content, and a sentence cannot be told apart from any other type error by a caller or a
+    /// witness classifier (`PoolRootContributesNothing` above states the same law one layer up).
+    /// Before this variant existed the failure was not even a refusal: the unparseable file
+    /// contributed no rows and the read answered from the files it did read — a silent miss, the
+    /// zero an absent declaration also produces (DESIGN: fail_closed).
+    ///
+    /// The variant CARRIES the classification as a type; `Display` renders it through
+    /// `decl_facts_keyed_refusal_sentence`, the one direction that cannot lose the file or the why.
+    DeclFactsKeyedReadRefused {
+        refusal: crate::coproduct_reflection::DeclFactsKeyedRefusal,
+    },
     PatternMatchFailure {
         value: String,
     },
@@ -1921,6 +1936,13 @@ impl fmt::Display for InterpError {
                     crate::coproduct_reflection::pool_root_refusal_message(
                         defects, *declared, caller
                     )
+                )
+            }
+            InterpError::DeclFactsKeyedReadRefused { refusal } => {
+                write!(
+                    f,
+                    "{}",
+                    crate::coproduct_reflection::decl_facts_keyed_refusal_sentence(refusal)
                 )
             }
             InterpError::PatternMatchFailure { value } => {

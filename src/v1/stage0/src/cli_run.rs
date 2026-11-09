@@ -10780,6 +10780,11 @@ pub enum WitnessRuntimeCause {
     StringRealizationStraddle,
     VariantRealizationRefused,
     PoolRootContributesNothing,
+    /// A keyed declaration read could not look at a file the asked key derives
+    /// (`v1_interpreter::InterpError::DeclFactsKeyedReadRefused`). Its own cause, not
+    /// `Type`: which file and what the parse said are the refusal, and a witness that classifies a
+    /// red claim by cause must be able to name it.
+    DeclFactsKeyedReadRefused,
     PatternMatchFailure,
     /// A REST response value did not inhabit its declared coproduct (see
     /// `v1_interpreter::RestResponseDecodeRefusal`).
@@ -10825,6 +10830,7 @@ impl WitnessRuntimeCause {
             WitnessRuntimeCause::StringRealizationStraddle => "string-realization-straddle",
             WitnessRuntimeCause::VariantRealizationRefused => "variant-realization-refused",
             WitnessRuntimeCause::PoolRootContributesNothing => "pool-root-contributes-nothing",
+            WitnessRuntimeCause::DeclFactsKeyedReadRefused => "decl-facts-keyed-read-refused",
             WitnessRuntimeCause::PatternMatchFailure => "pattern-match-failure",
             WitnessRuntimeCause::RestResponseUndecodable => "rest-response-undecodable",
             WitnessRuntimeCause::DivisionByZero => "division-by-zero",
@@ -10865,6 +10871,7 @@ impl WitnessRuntimeCause {
             E::StringRealizationStraddle { .. } => WitnessRuntimeCause::StringRealizationStraddle,
             E::VariantRealizationRefused { .. } => WitnessRuntimeCause::VariantRealizationRefused,
             E::PoolRootContributesNothing { .. } => WitnessRuntimeCause::PoolRootContributesNothing,
+            E::DeclFactsKeyedReadRefused { .. } => WitnessRuntimeCause::DeclFactsKeyedReadRefused,
             E::PatternMatchFailure { .. } => WitnessRuntimeCause::PatternMatchFailure,
             // A non-Bool guard is a type error at a located site; the variant carries the location,
             // the cause token classifies it with its kind.
