@@ -22203,10 +22203,11 @@ pub fn pattern_string_binding_name(path: Rc<Vec<String>>) -> String {
 
 pub fn positional_payload_string_guard(fb_pat: Rc<MatchPattern>, bind_name: String) -> String {
     match (*fb_pat.clone()).clone() {
-        MatchPattern::LitPattern { ref value, .. }
-            if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
-        {
-            let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
+        MatchPattern::LitPattern {
+            value: ref __rc_value,
+            ..
+        } if matches!(__rc_value.as_ref(), LiteralValue::LitStr { value: _, .. }) => {
+            let LiteralValue::LitStr { value: s, .. } = __rc_value.as_ref() else {
                 unreachable!()
             };
             v1_rt::concat(
@@ -22306,14 +22307,16 @@ pub fn collect_pattern_string_guards(
                                 let fb_pat = crate::v1_std_core::field_binding_pattern(fb.clone());
                                 if is_string_lit_pattern(fb_pat.clone()) {
                                     match (*fb_pat.clone()).clone() {
-                                        MatchPattern::LitPattern { ref value, .. }
-                                            if matches!(
-                                                value.as_ref(),
-                                                LiteralValue::LitStr { value: _, .. }
-                                            ) =>
+                                        MatchPattern::LitPattern {
+                                            value: ref __rc_value,
+                                            ..
+                                        } if matches!(
+                                            __rc_value.as_ref(),
+                                            LiteralValue::LitStr { value: _, .. }
+                                        ) =>
                                         {
                                             let LiteralValue::LitStr { value: s, .. } =
-                                                value.as_ref()
+                                                __rc_value.as_ref()
                                             else {
                                                 unreachable!()
                                             };
@@ -23572,6 +23575,13 @@ pub fn analyze_rc_match(
     }
 }
 
+pub fn rc_field_binder_name(field_name: String) -> String {
+    v1_rt::concat(
+        "__rc_".to_string(),
+        crate::v1_compiler_emit::emit_ident(field_name, RenderTarget::Rust),
+    )
+}
+
 pub fn emit_pattern_rc_aware(
     pattern: Rc<MatchPattern>,
     path_prefix: Rc<Vec<String>>,
@@ -23833,13 +23843,19 @@ pub fn emit_resolved_variant_pattern_rc_aware(
                                         v1_rt::concat(
                                             v1_rt::concat(
                                                 v1_rt::concat(
-                                                    qualified.clone(),
-                                                    " { ref ".to_string(),
+                                                    v1_rt::concat(
+                                                        v1_rt::concat(
+                                                            qualified.clone(),
+                                                            " { ".to_string(),
+                                                        ),
+                                                        crate::v1_compiler_emit::emit_ident(
+                                                            fb_name.clone(),
+                                                            RenderTarget::Rust,
+                                                        ),
+                                                    ),
+                                                    ": ref ".to_string(),
                                                 ),
-                                                crate::v1_compiler_emit::emit_ident(
-                                                    fb_name.clone(),
-                                                    RenderTarget::Rust,
-                                                ),
+                                                rc_field_binder_name(fb_name.clone()),
                                             ),
                                             ", .. }".to_string(),
                                         )
@@ -23949,7 +23965,11 @@ if (fb_name.clone() == "0".to_string()) {
 }
                                     } else {
                                         if field_needs_rc_ref(fb_name.clone(), rc_analysis.clone()) {
-                                            v1_rt::concat("ref ".to_string(), crate::v1_compiler_emit::emit_ident(fb_name.clone(), RenderTarget::Rust))
+                                            if (fb_name.clone() == "0".to_string()) {
+                                                v1_rt::concat("ref ".to_string(), crate::v1_compiler_emit::emit_ident(fb_name.clone(), RenderTarget::Rust))
+                                            } else {
+                                                v1_rt::concat(v1_rt::concat(crate::v1_compiler_emit::emit_ident(fb_name.clone(), RenderTarget::Rust), ": ref ".to_string()), rc_field_binder_name(fb_name.clone()))
+                                            }
                                         } else {
                                             {
                                                 let is_shorthand = match (*fb_pat.clone()).clone() {
@@ -24321,10 +24341,7 @@ pub fn rc_field_selection_test(
                     v1_rt::concat(
                         v1_rt::concat(
                             "matches!(".to_string(),
-                            crate::v1_compiler_emit::emit_ident(
-                                field_name.clone(),
-                                RenderTarget::Rust,
-                            ),
+                            rc_field_binder_name(field_name.clone()),
                         ),
                         ".as_ref(), ".to_string(),
                     ),
@@ -24515,9 +24532,8 @@ pub fn rc_pattern_preludes(
                                                                     ),
                                                                     " = ".to_string(),
                                                                 ),
-                                                                crate::v1_compiler_emit::emit_ident(
+                                                                rc_field_binder_name(
                                                                     fb_name.clone(),
-                                                                    RenderTarget::Rust,
                                                                 ),
                                                             ),
                                                             ".as_ref()".to_string(),
@@ -26804,10 +26820,16 @@ pub fn emit_rust_expr_string_interp(
                 let mut __result = Vec::new();
                 for child in expr.children.clone().iter().cloned() {
                     __result.push(match (*child.expr_data.clone()).clone() {
-                        ExprData::ExprLiteral { ref value, .. }
-                            if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
+                        ExprData::ExprLiteral {
+                            value: ref __rc_value,
+                            ..
+                        } if matches!(
+                            __rc_value.as_ref(),
+                            LiteralValue::LitStr { value: _, .. }
+                        ) =>
                         {
-                            let LiteralValue::LitStr { value: text, .. } = value.as_ref() else {
+                            let LiteralValue::LitStr { value: text, .. } = __rc_value.as_ref()
+                            else {
                                 unreachable!()
                             };
                             Rc::new(StringPart::Text {
@@ -33327,10 +33349,7 @@ pub fn emit_rc_grouped_match_arm(
                             v1_rt::concat("    ".to_string(), plan.pat_str.clone()),
                             " => { match ".to_string(),
                         ),
-                        crate::v1_compiler_emit::emit_ident(
-                            plan.ref_field.clone(),
-                            RenderTarget::Rust,
-                        ),
+                        rc_field_binder_name(plan.ref_field.clone()),
                     ),
                     ".as_ref() {\n".to_string(),
                 ),
@@ -39548,10 +39567,7 @@ pub fn emit_rc_grouped_tco_match_arm(
                             v1_rt::concat("    ".to_string(), plan.pat_str.clone()),
                             " => { match ".to_string(),
                         ),
-                        crate::v1_compiler_emit::emit_ident(
-                            plan.ref_field.clone(),
-                            RenderTarget::Rust,
-                        ),
+                        rc_field_binder_name(plan.ref_field.clone()),
                     ),
                     ".as_ref() {\n".to_string(),
                 ),
@@ -40945,13 +40961,16 @@ pub fn emit_service_new_method(
                                 source_indices.clone(),
                             ) {
                                 Some(bu) => match (*bu.expr_data.clone()).clone() {
-                                    ExprData::ExprLiteral { ref value, .. }
-                                        if matches!(
-                                            value.as_ref(),
-                                            LiteralValue::LitStr { value: _, .. }
-                                        ) =>
+                                    ExprData::ExprLiteral {
+                                        value: ref __rc_value,
+                                        ..
+                                    } if matches!(
+                                        __rc_value.as_ref(),
+                                        LiteralValue::LitStr { value: _, .. }
+                                    ) =>
                                     {
-                                        let LiteralValue::LitStr { value: s, .. } = value.as_ref()
+                                        let LiteralValue::LitStr { value: s, .. } =
+                                            __rc_value.as_ref()
                                         else {
                                             unreachable!()
                                         };
@@ -41062,7 +41081,7 @@ pub fn emit_auth_source_ctor(
     Some(variant) => if (variant.clone() == "EnvVar".to_string()) {
         match source_expr.children.clone().first().cloned() {
     Some(fi) => match (*crate::v1_std_core::field_init_node_value(fi.clone()).expr_data.clone()).clone() {
-    ExprData::ExprLiteral { ref value, .. } if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) => { let LiteralValue::LitStr { value: env_name, .. } = value.as_ref() else { unreachable!() }; v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("        auth_token: std::env::var(\"".to_string(), env_name.clone()), "\").expect(\"missing credential: ".to_string()), env_name.clone()), "\"),\n".to_string()) },
+    ExprData::ExprLiteral { value: ref __rc_value, .. } if matches!(__rc_value.as_ref(), LiteralValue::LitStr { value: _, .. }) => { let LiteralValue::LitStr { value: env_name, .. } = __rc_value.as_ref() else { unreachable!() }; v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("        auth_token: std::env::var(\"".to_string(), env_name.clone()), "\").expect(\"missing credential: ".to_string()), env_name.clone()), "\"),\n".to_string()) },
     _ => "        auth_token: compile_error!(\"EnvVar.name must be a string literal\"),\n".to_string(),
 },
     std::option::Option::None => "        auth_token: compile_error!(\"EnvVar requires a name field\"),\n".to_string(),
@@ -41752,12 +41771,13 @@ pub fn emit_rest_url_line(
     match crate::v1_std_core::transport_path_template(transport, source_indices.clone()) {
         Some(path_node) => {
             match (*path_node.expr_data.clone()).clone() {
-                ExprData::ExprLiteral { ref value, .. }
-                    if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
-                {
+                ExprData::ExprLiteral {
+                    value: ref __rc_value,
+                    ..
+                } if matches!(__rc_value.as_ref(), LiteralValue::LitStr { value: _, .. }) => {
                     let LiteralValue::LitStr {
                         value: path_str, ..
-                    } = value.as_ref()
+                    } = __rc_value.as_ref()
                     else {
                         unreachable!()
                     };
@@ -41768,13 +41788,16 @@ pub fn emit_rest_url_line(
                         let mut __result = Vec::new();
                         for child in path_node.children.clone().iter().cloned() {
                             __result.push(match (*child.expr_data.clone()).clone() {
-                                ExprData::ExprLiteral { ref value, .. }
-                                    if matches!(
-                                        value.as_ref(),
-                                        LiteralValue::LitStr { value: _, .. }
-                                    ) =>
+                                ExprData::ExprLiteral {
+                                    value: ref __rc_value,
+                                    ..
+                                } if matches!(
+                                    __rc_value.as_ref(),
+                                    LiteralValue::LitStr { value: _, .. }
+                                ) =>
                                 {
-                                    let LiteralValue::LitStr { value: text, .. } = value.as_ref()
+                                    let LiteralValue::LitStr { value: text, .. } =
+                                        __rc_value.as_ref()
                                     else {
                                         unreachable!()
                                     };
@@ -41926,7 +41949,7 @@ pub fn emit_rest_auth_line(
     ExprData::ExprCall { .. } => {
                 let header_name = match auth.children.clone().first().cloned() {
     Some(arg_node) => match (*crate::v1_std_core::arg_value(arg_node.clone()).expr_data.clone()).clone() {
-    ExprData::ExprLiteral { ref value, .. } if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) => { let LiteralValue::LitStr { value: s, .. } = value.as_ref() else { unreachable!() }; s.clone() },
+    ExprData::ExprLiteral { value: ref __rc_value, .. } if matches!(__rc_value.as_ref(), LiteralValue::LitStr { value: _, .. }) => { let LiteralValue::LitStr { value: s, .. } = __rc_value.as_ref() else { unreachable!() }; s.clone() },
     _ => crate::v1_compiler_emit::emit_simple_expr(crate::v1_std_core::arg_value(arg_node.clone()), RenderTarget::Rust, source_indices.clone()),
 },
     std::option::Option::None => "x-api-key".to_string(),
@@ -43352,10 +43375,11 @@ pub fn shell_argv_element_is_string_word(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match (*arg.expr_data.clone()).clone() {
-        ExprData::ExprLiteral { ref value, .. }
-            if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
-        {
-            let LiteralValue::LitStr { value: _, .. } = value.as_ref() else {
+        ExprData::ExprLiteral {
+            value: ref __rc_value,
+            ..
+        } if matches!(__rc_value.as_ref(), LiteralValue::LitStr { value: _, .. }) => {
+            let LiteralValue::LitStr { value: _, .. } = __rc_value.as_ref() else {
                 unreachable!()
             };
             true
@@ -43396,10 +43420,11 @@ pub fn emit_shell_argv_element(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*arg.expr_data.clone()).clone() {
-        ExprData::ExprLiteral { ref value, .. }
-            if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
-        {
-            let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
+        ExprData::ExprLiteral {
+            value: ref __rc_value,
+            ..
+        } if matches!(__rc_value.as_ref(), LiteralValue::LitStr { value: _, .. }) => {
+            let LiteralValue::LitStr { value: s, .. } = __rc_value.as_ref() else {
                 unreachable!()
             };
             v1_rt::concat(
@@ -43415,10 +43440,16 @@ pub fn emit_shell_argv_element(
                 let mut __result = Vec::new();
                 for child in arg.children.clone().iter().cloned() {
                     __result.push(match (*child.expr_data.clone()).clone() {
-                        ExprData::ExprLiteral { ref value, .. }
-                            if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
+                        ExprData::ExprLiteral {
+                            value: ref __rc_value,
+                            ..
+                        } if matches!(
+                            __rc_value.as_ref(),
+                            LiteralValue::LitStr { value: _, .. }
+                        ) =>
                         {
-                            let LiteralValue::LitStr { value: text, .. } = value.as_ref() else {
+                            let LiteralValue::LitStr { value: text, .. } = __rc_value.as_ref()
+                            else {
                                 unreachable!()
                             };
                             Rc::new(StringPart::Text {
@@ -43762,12 +43793,13 @@ pub fn emit_file_path_line(
     {
         let path_node = path_template.clone();
         match (*path_node.expr_data.clone()).clone() {
-            ExprData::ExprLiteral { ref value, .. }
-                if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
-            {
+            ExprData::ExprLiteral {
+                value: ref __rc_value,
+                ..
+            } if matches!(__rc_value.as_ref(), LiteralValue::LitStr { value: _, .. }) => {
                 let LiteralValue::LitStr {
                     value: path_str, ..
-                } = value.as_ref()
+                } = __rc_value.as_ref()
                 else {
                     unreachable!()
                 };
@@ -43786,13 +43818,15 @@ pub fn emit_file_path_line(
                     let mut __result = Vec::new();
                     for child in path_node.children.clone().iter().cloned() {
                         __result.push(match (*child.expr_data.clone()).clone() {
-                            ExprData::ExprLiteral { ref value, .. }
-                                if matches!(
-                                    value.as_ref(),
-                                    LiteralValue::LitStr { value: _, .. }
-                                ) =>
+                            ExprData::ExprLiteral {
+                                value: ref __rc_value,
+                                ..
+                            } if matches!(
+                                __rc_value.as_ref(),
+                                LiteralValue::LitStr { value: _, .. }
+                            ) =>
                             {
-                                let LiteralValue::LitStr { value: text, .. } = value.as_ref()
+                                let LiteralValue::LitStr { value: text, .. } = __rc_value.as_ref()
                                 else {
                                     unreachable!()
                                 };
