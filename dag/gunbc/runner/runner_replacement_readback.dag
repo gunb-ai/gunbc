@@ -45,7 +45,8 @@ module gunbc.runner.runner_replacement_readback
 // (runner_host_cap_extras); here it is a type, so it can only be violated by deleting it.
 
 import std.optional { Absent, Present }
-import std.types { Bool, HostIdentity, Int, List, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import product.host_identity { HostIdentity }
 import extdeps.github.ci_runner { GitHubSelfHostedRunnerRegistration, github_runner_registration_is_online }
 import extdeps.github.workflow_runs {
   WorkflowRun, WorkflowJobRun, Success, Failure, Cancelled, Neutral, Skipped,

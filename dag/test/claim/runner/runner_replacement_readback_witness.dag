@@ -13,7 +13,7 @@ module test.claim.runner.runner_replacement_readback_witness
 // with capacity that has never executed anything.
 
 import std.optional { Present }
-import std.types { Bool, HostIdentity, List, NonEmptyStr, String }
+import std.types { Bool, List, NonEmptyStr, String }
 import extdeps.github.ci_runner { GitHubSelfHostedRunnerRegistration, GitHubRunnerOnline, GitHubRunnerOffline }
 import extdeps.github.workflow_runs {
   WorkflowRun, WorkflowJobRun, Completed, Success, Failure,
