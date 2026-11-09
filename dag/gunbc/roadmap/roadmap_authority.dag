@@ -503,18 +503,25 @@ fn v1_test_migration_execution_contract() -> WorkItemExecutionContract {
   )
 }
 
-// THE CLOSING CHECK FOR roadmap-receipt-continuity. Acceptance history is append-only JSONL carrier
-// dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl; roadmap_acceptance_receipts is a replay
-// projection only. Authored seal count/digest are deleted. Merge-base prior_history parses carrier
-// content via git.Core.Show — never prior_history = [] on a changed carrier
-// (PriorHistoryRevisionEvaluationRequired dissolved). The bound contract is the inhabitance leaf
+// THE CLOSING CHECK FOR roadmap-receipt-continuity. Acceptance history is the ROADMAP EVENT LOG:
+// one chain per node, appended only through gunbc.roadmap.roadmap_issue_command, and
+// roadmap_acceptance_receipts is a replay projection of those recorded/revoked events only. The
+// authored JSONL carrier and its seal count/digest are deleted with it, and so is the merge-base
+// prior_history read (git.Core.Show over the carrier file): there is no prior revision of a mutable
+// log to address — a chain's parent is an event id in the same log, and the reader REFUSES rather
+// than answer with an empty history (PriorHistoryRevisionEvaluationRequired dissolved with the
+// carrier it guarded). The bound contract is the inhabitance leaf
 // witness_deleted_history_event_refuses (a removed record with no withdrawal refuses). The other
 // operator reds named in red_control — prefix law on non-empty observed prior, empty-prior bypass
 // discriminant, digest-omitted field mutation, wrong prior digest, revocation while live, duplicate
 // revocations, exact revocation admit, criteria rewrite, git-refusal observation, and typed
 // load/projection refusal chain — are separate test fns in the same entry, discovered by the floor,
-// not re-executed by this contract. Live git-observed integrity executes in
-// test.claim.roadmap.roadmap_receipt_continuity_live_witness (ReadsLiveTree, bin_witness_wet_entries).
+// not re-executed by this contract. The live git-observed integrity witness
+// (test.claim.roadmap.roadmap_receipt_continuity_live_witness) goes with the authority-level
+// integrity wrappers it called: they read the PRIOR acceptance history out of the deleted
+// observation carrier, revision-addressed through git. The event log has no such prior — a
+// chain's parent is an event id in the same log — so the honest replacement is the log's own fold
+// law plus roadmap_acceptance_migration_verify, not a live git witness of a carrier that is gone.
 
 // SHELL→DAG MIGRATION BATCH 1 execution contracts. The ten shell-dag-* nodes were authored
 // without contracts, so launch admission refused them execution_contract_missing; these ten rows
@@ -5094,8 +5101,10 @@ fn roadmap_retired_node_ids_load() -> RoadmapRetiredNodeIds {
   }
 }
 
-// roadmap_acceptance_event_history_load is the single authority for acceptance facts, loading from
-// dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl (append-only JSONL carrier).
+// roadmap_acceptance_event_history_load is the single authority for acceptance facts, loading every
+// node's chain from the roadmap event-log carrier (gunbc.roadmap.roadmap_event_carrier, one durable
+// chain per node). An empty readable log is a valid empty history; a log that cannot be read is a
+// typed refusal, never an empty history.
 // roadmap_acceptance_receipts projects the live receipt set by replaying recorded and revoked
 // events only — never a second editable receipt list; LoadRefused is a typed
 // RoadmapAcceptanceReceiptsProjectionRefused, never an empty receipt list. Withheld node ids
