@@ -14,7 +14,7 @@ import extdeps.linux.boot_console { linux_banner_prefix, linux_kernel_panic_pref
 // own lines with a "[ seconds ]" timestamp, and on mtcollins1 the stub's first line follows GRUB's
 // screen-drawing escape sequences on the same serial line (run 37069907299).
 //
-// WHAT IS NOT CLAIMED (DESIGN section 4d). A capture with no stub line says nothing about whether
+// WHAT IS NOT CLAIMED (gunbc.design_argument::epistemic_humility). A capture with no stub line says nothing about whether
 // the stub ran: the console may have been lost first. So every reading below that is not a stated
 // line is "not printed", never "did not happen".
 

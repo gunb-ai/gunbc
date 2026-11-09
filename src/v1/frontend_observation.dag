@@ -10,7 +10,7 @@ import v1.compiler.compile { SourceFile, FrontendResult, front_end_sources }
 // occurrences the occurrence walk allocated, and graph_present says whether the
 // resolve arm returned a graph. A producer that ran nothing cannot report a
 // nonzero count, which is exactly the property a hand-written
-// stages_executed list does not have (DESIGN §4b: the reported rung must equal
+// stages_executed list does not have (gunbc.design_argument::guarantee_ladder: the reported rung must equal
 // the rung executed evidence establishes).
 type FrontendPhaseReceipt {
   module_count: Int
@@ -42,7 +42,7 @@ fn frontend_phase_receipt(frontend: FrontendResult) -> FrontendPhaseReceipt {
 
 // The single producer. Which phases ran is a fact about THIS function's body —
 // it calls front_end_sources and nothing downstream of it — so the observation
-// never has to assert that resolve-and-beyond did not run (§5: construction
+// never has to assert that resolve-and-beyond did not run (gunbc.design_argument::fail_closed: construction
 // over validation).
 fn observe_ordinary_frontend(sources: List<SourceFile>) -> OrdinaryFrontendObservation {
   let frontend = front_end_sources(sources: sources)

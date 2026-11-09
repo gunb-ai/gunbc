@@ -1,7 +1,7 @@
 module std.host_text
 
 import std.types { Char, List }
-import std.algebra { fold_list, list_head, skip }
+import std.algebra { Cons, Empty, fold_list, list_head, list_reverse, skip }
 import std.nat { Nat, Zero, Succ }
 import std.optional { Absent, Optional, Present }
 
@@ -35,7 +35,7 @@ fn chars(text: HostText) -> List<Char> {
   chars(text: text)
 }
 
-// THE STRUCTURAL-TO-HOST CROSSING: THE DECLARED INVERSE OF chars (operator ruling H4; DESIGN section 4,
+// THE STRUCTURAL-TO-HOST CROSSING: THE DECLARED INVERSE OF chars (operator ruling H4; gunbc.design_argument::closed_grounded_substrate,
 // ruling text_crossings_go_through_the_unfold). The host text whose Unicode scalar values, in order, are
 // `scalars`, so text_of_chars(scalars: chars(text: t)) is t for every host text t, and chars of
 // text_of_chars(scalars: xs) is xs for every list of scalars. Total: every Char is a Unicode scalar
@@ -83,13 +83,49 @@ fn string_length(text: HostText) -> Nat {
   fold_list(xs: chars(text: text), empty: Zero, cons: fn(n, _) { Succ { prev: n } })
 }
 
+// THE WINDOW OF A HOST TEXT BETWEEN TWO SCALAR POSITIONS (tidy-ant-251 ruling msg_870db9ee, 2026-11-07, the
+// family of string_length and char_at above: host-text layer, positions typed Nat). The host text of the
+// Unicode scalars of `text` at CODE-POINT positions [start, end), never bytes, UTF-16 code units or grapheme
+// clusters. The semantics are the ambient operation's, stated EXACTLY as src/v1/runtime_rust.dag
+// v1_rt::substring behaves and NOT changed here (a semantic change is its own ruling):
+//   - end <= start is the EMPTY text;
+//   - start at or past the scalar count is the EMPTY text;
+//   - end past the scalar count is clamped to the count;
+//   - a negative start or end clamps to 0 in the realization. That arm has no input here: start and end are
+//     std.nat Nat, so a negative position is not expressible at this boundary, as for char_at's pos.
+// The answer is total: every pair of positions has one window, possibly empty. There is no absence arm, because
+// the ambient operation has none (an empty window is a window), unlike char_at's single-scalar read.
+//
+// A HOST SEAM, LIKE string_length AND char_at: the realization binds by THIS declaration's identity
+// (std.primitive_projection primitive_substring, a HostRealizedSeam row added with this declaration), and a
+// target without that realization refuses at realization rather than falling back to a name.
+// THE BODY IS DEAD UNTIL THE ROW IS ON MAIN, as string_length's was: heal round 1 builds its generator from
+// main's stage0 mirrors, which carry no primitive_substring row until this lands, so a self-call here would
+// emit as bare Rust recursion. The fold keeps the emitted body total meanwhile; every call routes through the
+// row, so nothing executes it. It is LINEAR anyway (DESIGN section 6: a cost-shape defect is fixed regardless of
+// reach; review 91819): the count still to keep travels in the accumulator rather than being re-measured, kept
+// scalars are prepended, and the one reverse at the end restores source order. Trigger: primitive_substring is
+// on main; the follow-up replaces the body with the self-call substring(text: text, start: start, end: end), and
+// drops SubstringWindow and the fold's imports (Cons, Empty, list_reverse).
+type SubstringWindow {
+  left: Int
+  kept: List<Char>
+}
+
+fn substring(text: HostText, start: Nat, end: Nat) -> HostText {
+  let window = fold_list(xs: skip(xs: chars(text: text), n: start as Int), empty: SubstringWindow { left: (end as Int) - (start as Int), kept: Empty }, cons: fn(acc, c) {
+    if acc.left > 0 { SubstringWindow { left: acc.left - 1, kept: Cons { head: c, tail: acc.kept } } } else { acc }
+  })
+  text_of_chars(scalars: list_reverse(xs: window.kept))
+}
+
 // THE INDEXED READ OF A HOST TEXT, WITH ABSENCE TYPED (tidy-ant-251 ruling, 2026-11-01, the F5 row of the
 // primitive-egress family). The one-code-point host text at code-point position `pos` of `text`, or Absent
 // when `pos` is at or past the end. `pos` is a CODE-POINT position, never a byte offset: for the text whose
 // scalars are [a, e-acute, b], position 1 is the single scalar e-acute and position 3 is Absent --
 // v2.test.claim.char_at_unicode_witness measures both.
 //
-// ABSENCE IS TYPED, NOT INVENTED (DESIGN section 5; gunbc.recurring_failure_mode
+// ABSENCE IS TYPED, NOT INVENTED (gunbc.design_argument::fail_closed; gunbc.recurring_failure_mode
 // absence_carried_by_a_second_representation). The ambient operation refuses nothing today: it returns the
 // EMPTY TEXT at or past the end and clamps a negative position to index 0, so an absent read is
 // indistinguishable from an empty one and a negative position reads as the first character. This
@@ -105,7 +141,7 @@ fn string_length(text: HostText) -> Nat {
 // body is the same self-call -- so the seam yields a declared Optional value instead of a value plus a
 // special case for "nothing there".
 //
-// COST (DESIGN section 6, bare minimum cost). The realization is constant-time on the ASCII path and
+// COST (gunbc.design_argument::how_to_work, bare minimum cost). The realization is constant-time on the ASCII path and
 // position-proportional on the general path (src/v1/runtime_rust.dag, v1_rt::char_at; the contract row
 // std.primitives char_at_contract records work "pos" and says nothing carrier-sensitive -- making it
 // carrier-sensitive is a named follow-up, not this change). A .dag body here, a guard over chars then a

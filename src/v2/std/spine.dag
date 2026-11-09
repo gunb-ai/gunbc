@@ -22,8 +22,8 @@ import v2.std.materialize {
 // profile[d] = count of node occurrences at depth d below the root; a DAG-shared subtree is counted
 // once per parent here (that is exactly the redundancy materialize's Share collapses — the two
 // readings are complementary, not a fork). critical_path_depth = number of levels (longest
-// dependency chain, the reduce spine, §5); independence_width = max nodes at any one level (what
-// parallelizes to hardware width, §5). Discriminating RED: a single chain A→B→C has depth 3 / width
+// dependency chain, the reduce spine, gunbc.design_argument::fail_closed); independence_width = max nodes at any one level (what
+// parallelizes to hardware width, gunbc.design_argument::fail_closed). Discriminating RED: a single chain A→B→C has depth 3 / width
 // 1; a root over N independent leaves has depth 2 / width N (§9 discriminating RED).
 
 type SpineReceipt {

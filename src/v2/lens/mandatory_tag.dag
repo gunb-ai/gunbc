@@ -68,7 +68,7 @@ import v2.extdeps.languages.dag {
 // required_compile_lens_roster, so a
 // violating module FAILS COMPILATION with a typed, located diagnostic - the
 // missing/misnamed/misvalued tag is unwritable at definition admission, not flagged post-hoc by a
-// corpus scan (DESIGN 5: construction over validation). First region: extdeps external-authority
+// corpus scan (gunbc.design_argument::fail_closed: construction over validation). First region: extdeps external-authority
 // anchors - this row is the dissolution of v2.lens.extdeps_external_authority and its cli_run.rs
 // host text-scan scaffold (that lens's WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
 // boundary, discharged). The shadow-mask sub-check dissolved with it onto its own SingleAuthority
@@ -78,8 +78,8 @@ import v2.extdeps.languages.dag {
 // declaration subtree, never a per-node subtree re-walk (the required_lens_grain_note O(n^2) bar).
 // Door grain (validate_then_compile / compile_source_root_ingest_with_admission) still
 // refuses a trivial module at member_not_a_binder on the unmarked QN spine. That is
-// not claimed green here (DESIGN §4b(1); review 77921). find_witness_reason_no_candidate
-// is infer, before lenses, and is not inhabitance (DESIGN §3). The member-kind channel
+// not claimed green here (gunbc.design_argument::guarantee_ladder (rung honesty); review 77921). find_witness_reason_no_candidate
+// is infer, before lenses, and is not inhabitance (gunbc.design_argument::single_authority). The member-kind channel
 // that would classify the spine is gunbc#13513.
 // Corpus grain: the same fold is consumed at parse grain by the live witness in
 // src/v2/test/claim/long/mandatory_tag_extdeps_corpus.dag over dag/extdeps/** via
@@ -87,13 +87,13 @@ import v2.extdeps.languages.dag {
 // supersedes the host module parse (the dissolution trigger named by the deleted cli_run.rs
 // scaffold block).
 //
-// NATIVE-EVAL PREPARE DOES NOT OWE THIS GATE PER MODULE (valiant-ram-872, DESIGN section 6b).
+// NATIVE-EVAL PREPARE DOES NOT OWE THIS GATE PER MODULE (valiant-ram-872, gunbc.design_argument::earliest_unjustified_boundary).
 // CompileLensRoot is a compile-door obligation: the single gate surface is
 // validate_then_compile (v2.compiler.compile required_lens_grain_note). Its production
 // callers are compile_ingest_with_admission, compile_source_root_ingest_with_admission and
 // stage_translate. The native floor prepare path (native_lane_module_inference ->
 // native_test_infer_resolved) is infer-for-eval, not compilation; it does not call that
-// door. Wiring the required roster there would be a second gate surface (DESIGN section 3)
+// door. Wiring the required roster there would be a second gate surface (gunbc.design_argument::single_authority)
 // that multiplies whole-tree root-lens cost by the test population. Region coverage of
 // dag/extdeps/** that has not entered the compile door is the corpus grain above (and,
 // until that witness runs at native speed, the host corpus_scan scaffold). Native

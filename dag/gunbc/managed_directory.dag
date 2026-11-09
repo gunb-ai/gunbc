@@ -55,7 +55,7 @@ import gunbc.fleet.fleet_posix_accounts { fleet_posix_operator_user }
 // directories, and gunbc.fleet.host_credential_custody_converge declared "0750" and "0700" again for
 // the custody rows -- one of which ensured THE SAME DIRECTORY as the ntfy config member, until the
 // retirement of 2026-10-30 removed that member (gunbc.fleet.approval_ntfy_retirement). Two converges asserting a mode on one directory would flap it on every run, and the
-// repair reached for was a witness holding the two strings equal, which is §5's validation standing
+// repair reached for was a witness holding the two strings equal, which is gunbc.design_argument::fail_closed's validation standing
 // where construction was available.
 //
 // SO THE ARM IS CLOSED AND THE OCTAL IS DERIVED. A named arm, never a caller-supplied octal, so no
@@ -92,6 +92,8 @@ type DeclaredDirectoryMode
   | DirectoryOwnerAllGroupTraverse
   | DirectoryOwnerAllGroupTraverseSetgid
   | DirectoryOwnerAllEveryoneTraverse
+  | DirectoryOwnerOnlySetgid
+  | DirectoryOwnerAllEveryoneTraverseSetgid
   | DirectoryOwnerGroupWritableSetgid
   | DirectoryOwnerGroupWritableSetgidSticky
 
@@ -127,6 +129,26 @@ fn declared_directory_mode(m: DeclaredDirectoryMode) -> FileMode {
       other: PermissionBits { read: true, write: false, execute: true },
       setuid: false,
       setgid: false,
+      sticky: false,
+    }
+    // THE SETGID FORMS OF THE OWNER-ONLY (2700) AND EVERYONE-TRAVERSE (2755) ARMS. They exist so that a
+    // child of a setgid parent has a DERIVED mode (declared_directory_mode_inheriting_setgid): the
+    // kernel hands the setgid bit to a directory made inside a setgid one, so the mode a child is
+    // observed at is its declared mode plus that bit, and the bit is never re-declared per child.
+    DirectoryOwnerOnlySetgid => FileMode {
+      owner: PermissionBits { read: true, write: true, execute: true },
+      group: PermissionBits { read: false, write: false, execute: false },
+      other: PermissionBits { read: false, write: false, execute: false },
+      setuid: false,
+      setgid: true,
+      sticky: false,
+    }
+    DirectoryOwnerAllEveryoneTraverseSetgid => FileMode {
+      owner: PermissionBits { read: true, write: true, execute: true },
+      group: PermissionBits { read: true, write: false, execute: true },
+      other: PermissionBits { read: true, write: false, execute: true },
+      setuid: false,
+      setgid: true,
       sticky: false,
     }
     // THE WORKER-SHARED DIRECTORY (2770): the owner and one named group read, write and traverse, nobody
@@ -170,6 +192,21 @@ fn declared_directory_mode(m: DeclaredDirectoryMode) -> FileMode {
 
 fn declared_directory_mode_octal(m: DeclaredDirectoryMode) -> String {
   file_mode_octal(mode: declared_directory_mode(m: m))
+}
+
+// THE MODE A CHILD OF A SETGID PARENT IS OBSERVED AT: its declared mode with the setgid bit the kernel
+// hands down. Total over the closed arms; an arm already setgid is its own inheriting form.
+fn declared_directory_mode_inheriting_setgid(m: DeclaredDirectoryMode) -> DeclaredDirectoryMode {
+  match m {
+    DirectoryOwnerOnly => DirectoryOwnerOnlySetgid
+    DirectoryOwnerAllGroupTraverse => DirectoryOwnerAllGroupTraverseSetgid
+    DirectoryOwnerAllEveryoneTraverse => DirectoryOwnerAllEveryoneTraverseSetgid
+    DirectoryOwnerOnlySetgid => DirectoryOwnerOnlySetgid
+    DirectoryOwnerAllGroupTraverseSetgid => DirectoryOwnerAllGroupTraverseSetgid
+    DirectoryOwnerAllEveryoneTraverseSetgid => DirectoryOwnerAllEveryoneTraverseSetgid
+    DirectoryOwnerGroupWritableSetgid => DirectoryOwnerGroupWritableSetgid
+    DirectoryOwnerGroupWritableSetgidSticky => DirectoryOwnerGroupWritableSetgidSticky
+  }
 }
 
 // THE GROUP LEG READ OFF THE SAME ARM, so a consumer asking whether a group may traverse a

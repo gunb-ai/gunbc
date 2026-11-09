@@ -7,14 +7,22 @@ import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolate
 import gunbc.roadmap.roadmap_attempt_state_store { AttemptDirectoryRoot, AttemptDirectoryPublication, attempt_state_directory_text }
 import gunbc.roadmap.dispatch_worker_unit_confinement { CodexDispatchProvider, dispatch_worktree_path_for_instance }
 import gunbc.roadmap.roadmap_session_placement { SessionPlacementAbsent }
+import gunbc.roadmap.roadmap_session_attempt_slots_cutover {
+  AttemptSlotsCutoverNotRun, AttemptSlotsCutoverRecorded, AttemptSlotsCutoverStoresUnresolved,
+  AttemptSlotsCutoverPassRecord, AttemptSlotsCensusSourceProvenAbsent, AttemptSlotsCarrySourceProvenAbsent,
+  attempt_slots_cutover_record_mint,
+}
 import gunbc.roadmap.roadmap_nesting { roadmap_memberships }
 import extdeps.filesystem.filesystem_io { filesystem_read_outcome, filesystem_file_observation, filesystem_listing_observation, FilesystemReadRefused, FilesystemFileObservation }
 import gunbc.roadmap.roadmap_belt_actuate {
   belt_spawn_outcome_with_release, belt_commit_git_argv,
   belt_commit_gitfile_points_at, belt_commit_commondir_points_at,
   attempt_process_for_node, BeltAttemptPanesObserved,
-  belt_seat_discharge_pass_outcome_from,
+    belt_seat_discharge_pass_outcome_from, belt_tick_receipt_json_value, belt_tick_receipt_identity_text,
+    belt_validation_units, belt_claims_of_entry, belt_claim_passed, belt_claim_stdout,
+    belt_covered_claims_all_passed,
 }
+import gunbc.roadmap.roadmap_execution_contract { GunbcClaimValidation, CargoFmtValidation }
 import gunbc.compute.compute_seat_ensure { SeatDischargeRan, SeatDischargeRefused, SeatDischargeSkipped, SeatEnsureNoop, SeatEnsureRefused, SeatEnsureRed }
 
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
@@ -31,7 +39,7 @@ import gunbc.roadmap.roadmap_model {
   PrsMerged,
   Dispatchable,
 }
-import gunbc.roadmap.roadmap_status { DerivableLine, Unsigned }
+import gunbc.roadmap.roadmap_status { DerivableLine }
 import gunbc.roadmap.roadmap_publish {
   PublicationReceiptSource,
   ReceiptSourceAbsent, ReceiptSourcePresent, ReceiptSourceUnreadable,
@@ -135,6 +143,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
   belt_spawn_session_uuid,
   belt_oracle_refs_for_contract,
   belt_verify_attempt_for_instance,
+  belt_verify_terminal_attempt,
   belt_workflow_attempt_presentation_json,
   belt_workflow_attempt_presentation_json_with_tick_read,
   belt_verification_presentation_detail,
@@ -255,10 +264,10 @@ import gunbc.roadmap.roadmap_launch_admission {
   LaunchCensusRow,
   LaunchGateVerdict, GatePassed, GateRefused, GateNotReached,
   launch_gate_live, launch_gate_revision, launch_gate_landed,
-  launch_identity_exemplar,
+  launch_identity_exemplar, launch_refusal_exemplars,
   LaunchHostStanding, LaunchGraphStanding, launch_graph_of_document,
 }
-import gunbc.roadmap.roadmap_readiness { ReadinessGap, GapAccepted, GapDependencies, GapContract, readiness_gap_label }
+import gunbc.roadmap.roadmap_readiness { ReadinessGap, GapInReview, GapDependencies, GapContract, readiness_gap_label }
 import test.claim.roadmap.roadmap_launch_admission_fixture {
   launch_fixture_standing_pending, launch_fixture_standing_halt_transition,
 }
@@ -278,6 +287,10 @@ import gunbc.fleet.origin_main_revision_observe {
   TreeLandedOnAdmitted, TreeNotLandedOnAdmitted, TreeLandedUnobserved,
 }
 import extdeps.languages.json.emit { serialize_json }
+import gunbc.roadmap.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
+import extdeps.languages.json.emit { json_string }
+import gunbc.roadmap.roadmap_attempt_continuation { attempt_origin_turn }
+import gunbc.roadmap.roadmap_launch_admission { launch_refusal_reason }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.roadmap.roadmap_verification_receipt {
   VerificationSubject,
@@ -310,7 +323,6 @@ fn ready_node(id: String) -> RoadmapNode {
     dispatch: Dispatchable { repo: "gunbc", acceptance: PrsMerged },
     execution: ExecutionContractUnspecified,
     owner: "",
-    signoff: Unsigned,
     parent: none,
     centering: none,
   }
@@ -647,6 +659,18 @@ test fn witness_find_node_misses() -> Bool {
   !is_node_found(l: belt_find_node_in(nodes: [ready_node(id: "a"), ready_node(id: "b")], node_id: "z"))
 }
 
+// Pairing claim for verify_without_observable_subject_defers_instead_of_rerunning: that witness SUPPLIES
+// NodeMissing at belt_verify_terminal_attempt. This asserts the real producer of the node answer, the
+// pure lookup belt_lookup_node folds the projection through, yields exactly NodeMissing (not the refusal arm,
+// not a found node) for an id absent from a bounded real node list, so the supplied value cannot drift unseen.
+test fn witness_find_node_absent_id_is_exactly_node_missing() -> Bool {
+  match belt_find_node_in(nodes: [ready_node(id: "a"), ready_node(id: "b")], node_id: "belt-verify-probe-node") {
+    NodeMissing => true
+    NodeFound { node: _ } => false
+    AuthorityProjectionRefused { detail: _ } => false
+  }
+}
+
 fn owned_node(id: String, owner: String) -> RoadmapNode {
   RoadmapNode {
     identity: "rnfx_F2RWDMNTDKS0ZR1P4VNZ" as RoadmapNodeIdentity,
@@ -656,7 +680,6 @@ fn owned_node(id: String, owner: String) -> RoadmapNode {
     dispatch: Dispatchable { repo: "gunbc", acceptance: PrsMerged },
     execution: ExecutionContractUnspecified,
     owner: owner,
-    signoff: Unsigned,
     parent: none,
     centering: none,
   }
@@ -787,7 +810,7 @@ test fn witness_dispatch_result_ok_spawned_and_live() -> Bool {
 test fn witness_dispatch_result_refusals_not_ok() -> Bool {
   !belt_dispatch_result_ok(r: not_admitted(r: LaunchInstanceActuationRefused { instance_id: "preview", reason: "observe-only" }))
     && !belt_dispatch_result_ok(r: not_admitted(r: LaunchNodeUnknown))
-    && !belt_dispatch_result_ok(r: not_admitted(r: LaunchNotReady { missing: [GapAccepted] }))
+    && !belt_dispatch_result_ok(r: not_admitted(r: LaunchNotReady { missing: [GapInReview] }))
     && !belt_dispatch_result_ok(r: not_admitted(r: LaunchSessionsUnobservable { reason: "x" }))
     && !belt_dispatch_result_ok(r: SpawnFailed { node_id: "a", step: "git", detail: "x", provider: "codex", launch: launch_identity_exemplar() })
     && !belt_dispatch_result_ok(r: not_admitted(r: LaunchNotReady { missing: [GapDependencies { blockers: ["p"] }] }))
@@ -805,7 +828,7 @@ test fn witness_dispatch_status_labels_glued_to_ok_set() -> Bool {
     && status_label_glued_to_ok(r: not_admitted(r: LaunchAlreadyLive { session_name: "s" }))
     && status_label_glued_to_ok(r: not_admitted(r: LaunchInstanceActuationRefused { instance_id: "preview", reason: "observe-only" }))
     && status_label_glued_to_ok(r: not_admitted(r: LaunchNodeUnknown))
-    && status_label_glued_to_ok(r: not_admitted(r: LaunchNotReady { missing: [GapAccepted] }))
+    && status_label_glued_to_ok(r: not_admitted(r: LaunchNotReady { missing: [GapInReview] }))
     && status_label_glued_to_ok(r: not_admitted(r: LaunchSessionsUnobservable { reason: "x" }))
     && status_label_glued_to_ok(r: SpawnFailed { node_id: "a", step: "git", detail: "x", provider: "codex", launch: launch_identity_exemplar() })
     && all(belt_dispatch_result_exemplars(), r => status_label_glued_to_ok(r: r))
@@ -816,7 +839,7 @@ test fn witness_dispatch_status_labels_pin_wire_contract() -> Bool {
     && belt_dispatch_status_label(r: not_admitted(r: LaunchAlreadyLive { session_name: "s" })) == "already_live"
     && belt_dispatch_status_label(r: not_admitted(r: LaunchInstanceActuationRefused { instance_id: "preview", reason: "observe-only" })) == "disabled"
     && belt_dispatch_status_label(r: not_admitted(r: LaunchNodeUnknown)) == "node_not_found"
-    && belt_dispatch_status_label(r: not_admitted(r: LaunchNotReady { missing: [GapAccepted] })) == "not_ready"
+    && belt_dispatch_status_label(r: not_admitted(r: LaunchNotReady { missing: [GapInReview] })) == "not_ready"
     && belt_dispatch_status_label(r: not_admitted(r: LaunchSessionsUnobservable { reason: "x" })) == "observe_refused"
     && belt_dispatch_status_label(r: not_admitted(r: LaunchAuthorityUnobserved { detail: "x" })) == "authority_refused"
     && belt_dispatch_status_label(r: SpawnFailed { node_id: "a", step: "git", detail: "x", provider: "codex", launch: launch_identity_exemplar() }) == "spawn_failed"
@@ -846,7 +869,7 @@ fn band_key_for_label(label: String) -> String {
 // COVERAGE IS AN IDENTITY JOIN OVER THE ARMS, NOT A COUNT OF THE ROWS. This witness pinned
 // `belt_dispatch_label_band_rows().length() == 22` while the roster had grown to 25 -- a count says
 // a NUMBER moved and never says WHICH vocabulary went unpinned, so the repair is always to bump the
-// literal, which is the change detector DESIGN 5 names. Joining the coproduct's own arm keys against
+// literal, which is the change detector gunbc.design_argument::fail_closed names. Joining the coproduct's own arm keys against
 // the exemplars instead means a new LaunchRefusal arm reds this by NAMING the arm that carries no
 // exemplar, and the fix is to exemplify it rather than to edit a number.
 //
@@ -998,7 +1021,7 @@ fn d4_exemplars_missing_one() -> List<BeltSpawnOutcome> {
     not_admitted(r: LaunchAlreadyLive { session_name: "s" }),
     not_admitted(r: LaunchInstanceActuationRefused { instance_id: "preview", reason: "observe-only" }),
     not_admitted(r: LaunchNodeUnknown),
-    not_admitted(r: LaunchNotReady { missing: [GapAccepted] }),
+    not_admitted(r: LaunchNotReady { missing: [GapInReview] }),
     not_admitted(r: LaunchSessionsUnobservable { reason: "x" }),
   ]
 }
@@ -1318,9 +1341,10 @@ test fn attempt_wire_carries_decided_activity() -> Bool {
 }
 
 test fn verify_without_observable_subject_defers_instead_of_rerunning() -> Bool {
-  match belt_verify_attempt_for_instance(
+  match belt_verify_terminal_attempt(
     instance: srv2_preview_dashboard_instance(),
     progress: completed_attempt_progress(node_id: "belt-verify-probe-node"),
+    lookup: NodeMissing,
   ) {
     VerifyDeferred { node_id, reason } =>
       node_id == "belt-verify-probe-node"
@@ -1431,6 +1455,7 @@ test fn observe_refused_spawn_does_not_zero_the_discovery_pass() -> Bool {
     teardown_outcomes: [],
     seat_discharge: SeatDischargeSkipped { why: "witness" },
     discovery: BeltDiscovered { owed: 1, enqueues: [BeltObligationStarted { unit: "gunbc-obligation-attempt-n-k.service" as NonEmptyStr }] },
+    slots_cutover: AttemptSlotsCutoverNotRun { reason: "witness tick: the cutover pass is not what this row is about" },
   }
   let receipt = belt_tick_receipt_from_result(
     result: result,
@@ -1451,6 +1476,7 @@ test fn an_unreadable_ledger_refuses_discovery_and_a_refused_handoff_fails_it() 
       teardown_outcomes: [],
       seat_discharge: SeatDischargeSkipped { why: "witness" },
       discovery: BeltDiscoveryRefused { reason: "the attempts ledger is unobservable" },
+      slots_cutover: AttemptSlotsCutoverNotRun { reason: "witness tick: the cutover pass is not what this row is about" },
     },
     observed_at: "2026-08-02T02:00:00Z",
     execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
@@ -1467,6 +1493,7 @@ test fn an_unreadable_ledger_refuses_discovery_and_a_refused_handoff_fails_it() 
         BeltObligationHeld { unit: "gunbc-obligation-attempt-a-1.service" as NonEmptyStr },
         BeltObligationEnqueueRefused { unit: "gunbc-obligation-attempt-b-2.service" as NonEmptyStr, reason: "systemd-run exited 1" },
       ] },
+      slots_cutover: AttemptSlotsCutoverNotRun { reason: "witness tick: the cutover pass is not what this row is about" },
     },
     observed_at: "2026-08-02T02:00:00Z",
     execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
@@ -1515,6 +1542,7 @@ test fn verification_presentation_reads_the_attempts_own_verify_step() -> Bool {
     teardown_pass: BeltPassRecorded,
     seat_discharge_pass: BeltPassRecorded,
     discovery_pass: BeltPassRefused { reason: "the attempts ledger is unobservable" },
+    slots_cutover_pass: BeltPassDeferred { reason: "witness tick: the cutover pass did not run" },
   }
   let blocked = belt_verification_presentation_detail(
     progress: completed_attempt_progress(node_id: "pres-own-node"),
@@ -1607,6 +1635,7 @@ test fn malformed_pass_reason_makes_receipt_unreadable() -> Bool {
     "\"spawn_pass\":{\"outcome\":\"recorded\"},",
     "\"teardown_pass\":{\"outcome\":\"recorded\"},",
     "\"seat_discharge_pass\":{\"outcome\":\"recorded\"},",
+    "\"slots_cutover_pass\":{\"outcome\":\"recorded\"},",
     "\"discovery_pass\":{\"outcome\":\"refused\"}}",
   ], "")
   match belt_tick_receipt_decode(raw: raw) {
@@ -2039,7 +2068,7 @@ fn belt_pub_fresh_instance(tag: String) -> HostDashboardInstance {
     listen_port: 18099,
     source_anchor_ref: "refs/heads/main" as NonEmptyStr,
     actuation: DashboardActuating,
-    provision_transport: DashboardLocalProvision,
+    actuator_host: srv1_host_layout().host_identity,
   )
 }
 
@@ -2430,6 +2459,7 @@ fn all_passes_refused_with(receipt: BeltTickReceipt, pattern: String) -> Bool {
   pass_refused_with(o: receipt.spawn_pass, pattern: pattern)
     && pass_refused_with(o: receipt.teardown_pass, pattern: pattern)
     && pass_refused_with(o: receipt.discovery_pass, pattern: pattern)
+    && pass_refused_with(o: receipt.slots_cutover_pass, pattern: pattern)
 }
 
 test fn transition_halted_tick_refuses_every_pass() -> Bool {
@@ -2443,6 +2473,7 @@ test fn transition_halted_tick_refuses_every_pass() -> Bool {
       teardown_outcomes: [],
       seat_discharge: SeatDischargeSkipped { why: "witness" },
       discovery: BeltDiscoveryRefused { reason: launch_refusal_reason(r: refusal) },
+      slots_cutover: AttemptSlotsCutoverNotRun { reason: "the tick's passes are withheld: deployment transition in force on this host" },
     },
     observed_at: "2026-08-30T02:00:00Z",
     execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
@@ -2460,6 +2491,7 @@ test fn revision_refusal_keeps_discovery_independently_recorded() -> Bool {
       teardown_outcomes: [],
       seat_discharge: SeatDischargeSkipped { why: "witness" },
       discovery: BeltDiscovered { owed: 0, enqueues: [] },
+      slots_cutover: AttemptSlotsCutoverNotRun { reason: "witness tick: the cutover pass is not what this row is about" },
     },
     observed_at: "2026-08-30T02:00:00Z",
     execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
@@ -2470,18 +2502,17 @@ test fn revision_refusal_keeps_discovery_independently_recorded() -> Bool {
 }
 
 fn launch_fixture_canary_graph() -> LaunchGraphStanding {
-  launch_graph_of_document(doc: canary_doc(nodes: [canary_parent(signoff: Unsigned), canary_child()], edges: [roadmap_launch_canary_edge()]))
+  launch_graph_of_document(doc: canary_doc(nodes: [canary_parent(), canary_child()], edges: [roadmap_launch_canary_edge()]))
 }
 
 fn launch_fixture_canary_graph_child_contracted() -> LaunchGraphStanding {
   launch_graph_of_document(doc: canary_doc(
     nodes: [
-      canary_parent(signoff: Unsigned),
+      canary_parent(),
       canary_node(
         identity: roadmap_launch_canary_child_identity,
         id: roadmap_launch_canary_child_node_id(),
         execution: roadmap_launch_canary_execution_contract(),
-        signoff: Unsigned,
       ),
     ],
     edges: [roadmap_launch_canary_edge()],
@@ -2514,12 +2545,11 @@ test fn staged_post_refuses_unknown_node_without_listing_tmux() -> Bool {
 fn launch_fixture_canary_graph_child_unbound() -> LaunchGraphStanding {
   launch_graph_of_document(doc: canary_doc(
     nodes: [
-      canary_parent(signoff: Unsigned),
+      canary_parent(),
       canary_node(
         identity: roadmap_launch_canary_child_identity,
         id: roadmap_launch_canary_child_node_id(),
         execution: ExecutionContractUnspecified,
-        signoff: Unsigned,
       ),
     ],
     edges: [],
@@ -3608,4 +3638,120 @@ test fn the_seat_discharge_pass_reaches_the_tick_receipt_typed_and_counted() -> 
     && (match belt_seat_discharge_pass_outcome_from(pass: SeatDischargeRan { outcomes: [noop, refused] }) { BeltPassRefused { reason: r } => string_contains(s: r, pattern: "r2") && string_contains(s: r, pattern: "charge kept")  _ => false })
     && (match belt_seat_discharge_pass_outcome_from(pass: SeatDischargeRan { outcomes: [refused, red, noop] }) { BeltPassFailed { reason: r } => string_contains(s: r, pattern: "r3")  _ => false })
     && (match belt_seat_discharge_pass_outcome_from(pass: SeatDischargeRefused { reason: "stage unreadable" }) { BeltPassRefused { reason: r } => string_contains(s: r, pattern: "stage unreadable")  _ => false })
+}
+
+// A TICK RECEIPT THAT DOES NOT NAME THE ATTEMPT-SLOT CUTOVER PASS IS UNREADABLE, NOT A RECEIPT WHERE THE
+// PASS DID NOT HAPPEN. The member is read first and a missing one is a refusal, so a writer cannot omit the
+// pass it did not run: the v9 schema and this decode are one authority over "this tick ran the cutover pass
+// and here is its outcome", and a v8 receipt (no such member) decodes as unreadable for the same reason.
+test fn a_belt_tick_receipt_without_the_cutover_member_is_unreadable() -> Bool {
+  let raw = join([
+    "{\"schema\":\"", belt_tick_receipt_schema, "\",",
+    "\"observed_at\":\"2026-08-02T02:00:00Z\",",
+    "\"spawn_pass\":{\"outcome\":\"recorded\"},",
+    "\"teardown_pass\":{\"outcome\":\"recorded\"},",
+    "\"seat_discharge_pass\":{\"outcome\":\"recorded\"},",
+    "\"discovery_pass\":{\"outcome\":\"recorded\"}}",
+  ], "")
+  match belt_tick_receipt_decode(raw: raw) {
+    BeltTickReceiptUnreadable { reason: r } => string_contains(s: r, pattern: "slots_cutover_pass is missing")
+    BeltTickReceiptPresent { receipt: _ } => false
+    BeltTickReceiptAbsent => false
+  }
+}
+
+// THE CUTOVER PASS MEMBER DISTINGUISHES THE OUTCOMES IT CAN HAVE, AND SURVIVES THE RECEIPT'S OWN JSON. A
+// pass that ran and wrote its record is Recorded; a pass whose instance has no capacity binding is Refused
+// with the reason the placement stores route gave, not Deferred and not silent; the member round-trips
+// through belt_tick_receipt_json_value and belt_tick_receipt_decode; and the identity text moves when the
+// member moves, so a receipt cannot claim a different cutover outcome than the one it was cut from.
+test fn the_cutover_pass_member_distinguishes_recorded_from_stores_unresolved() -> Bool {
+  let old_root = "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/attempt-state/session-attempts"
+  let record = attempt_slots_cutover_record_mint(
+    instance_id: "srv1-live" as NonEmptyStr,
+    census: AttemptSlotsCensusSourceProvenAbsent { old_root: old_root as NonEmptyStr },
+    carry: AttemptSlotsCarrySourceProvenAbsent { old_root: old_root as NonEmptyStr },
+  )
+  let ran = belt_tick_receipt_from_result(
+    result: BeltTickResult {
+      wholesale: TickPassesRun,
+      host_refusal: Absent,
+      reconcile: belt_tick_empty_reconcile(state: ManualReady),
+      spawn_outcomes: [],
+      teardown_outcomes: [],
+      seat_discharge: SeatDischargeSkipped { why: "witness" },
+      discovery: BeltDiscovered { owed: 0, enqueues: [] },
+      slots_cutover: AttemptSlotsCutoverRecorded {
+        path: "/var/lib/gunbc/instances/srv1-live/records/attempt-slots-cutover-srv1-live.json",
+        record: record,
+      },
+    },
+    observed_at: "2026-08-30T02:00:00Z",
+    execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
+  )
+  let unresolved = belt_tick_receipt_from_result(
+    result: BeltTickResult {
+      wholesale: TickPassesRun,
+      host_refusal: Absent,
+      reconcile: belt_tick_empty_reconcile(state: ManualReady),
+      spawn_outcomes: [],
+      teardown_outcomes: [],
+      seat_discharge: SeatDischargeSkipped { why: "witness" },
+      discovery: BeltDiscovered { owed: 0, enqueues: [] },
+      slots_cutover: AttemptSlotsCutoverStoresUnresolved { detail: "the instance has no declared capacity binding" },
+    },
+    observed_at: "2026-08-30T02:00:00Z",
+    execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
+  )
+  (match ran.slots_cutover_pass { BeltPassRecorded => true  _ => false })
+    && (match unresolved.slots_cutover_pass {
+      BeltPassRefused { reason: r } => string_contains(s: r, pattern: "no declared capacity binding")
+      _ => false
+    })
+    && string_contains(s: serialize_json(v: belt_tick_receipt_json_value(receipt: ran)), pattern: "\"slots_cutover_pass\": {\"outcome\": \"recorded\"}")
+    && (match belt_tick_receipt_decode(raw: serialize_json(v: belt_tick_receipt_json_value(receipt: unresolved))) {
+      BeltTickReceiptPresent { receipt: back } =>
+        match back.slots_cutover_pass {
+          BeltPassRefused { reason: r } => string_contains(s: r, pattern: "no declared capacity binding")
+          _ => false
+        }
+      _ => false
+    })
+    && (belt_tick_receipt_identity_text(receipt: ran) != belt_tick_receipt_identity_text(receipt: unresolved))
+}
+
+// ONE ENTRY IS ONE RUN, EACH CLAIM ITS OWN VERDICT. Three claims of entry e plus one of entry g and a non-claim
+// collapse to three units (first claim of e, g, the non-claim); the e unit covers all three e claims. In a
+// claim_batch document where `a` passes, `b` fails and `c` printed no line, only `a` passed: b's FAIL cannot
+// be read as a's, c's absence is not a pass, and the group as a whole is not passed.
+test fn claims_of_one_entry_are_one_unit_and_each_keeps_its_own_verdict() -> Bool {
+  let e = "dag/test/claim/e.dag" as FilePath
+  let g = "dag/test/claim/g.dag" as FilePath
+  let a = GunbcClaimValidation { entry: e, function: "a" as NonEmptyStr }
+  let b = GunbcClaimValidation { entry: e, function: "b" as NonEmptyStr }
+  let c = GunbcClaimValidation { entry: e, function: "c" as NonEmptyStr }
+  let other = GunbcClaimValidation { entry: g, function: "a" as NonEmptyStr }
+  let all = [a, b, other, c, CargoFmtValidation]
+  let doc = "PASS a\nFAIL b (returned `false`)\nPASS other_fn"
+  count(belt_validation_units(validations: all)) == 3
+    && count(belt_claims_of_entry(validations: all, entry: e)) == 3
+    && belt_claim_passed(document: doc, function: "a" as NonEmptyStr)
+    && !belt_claim_passed(document: doc, function: "b" as NonEmptyStr)
+    && !belt_claim_passed(document: doc, function: "c" as NonEmptyStr)
+    && string_contains(s: belt_claim_stdout(document: doc, function: "b" as NonEmptyStr), pattern: "FAIL b")
+    && !string_contains(s: belt_claim_stdout(document: doc, function: "b" as NonEmptyStr), pattern: "PASS a")
+    && !belt_covered_claims_all_passed(covered: belt_claims_of_entry(validations: all, entry: e), document: doc)
+    && belt_covered_claims_all_passed(covered: [a], document: doc)
+    && belt_claim_passes_beside_a_longer_name_that_fails()
+}
+
+// A claim whose name is the prefix of a sibling's keeps its own verdict: `holds` passed, `holds_after_merge`
+// failed, and neither line belongs to the other (the bare FAIL form included).
+fn belt_claim_passes_beside_a_longer_name_that_fails() -> Bool {
+  let doc = "PASS holds\nFAIL holds_after_merge (returned `false`)\nFAIL bare\nPASS bare_two"
+  belt_claim_passed(document: doc, function: "holds" as NonEmptyStr)
+    && !belt_claim_passed(document: doc, function: "holds_after_merge" as NonEmptyStr)
+    && !belt_claim_passed(document: doc, function: "bare" as NonEmptyStr)
+    && belt_claim_passed(document: doc, function: "bare_two" as NonEmptyStr)
+    && !string_contains(s: belt_claim_stdout(document: doc, function: "holds" as NonEmptyStr), pattern: "FAIL")
 }

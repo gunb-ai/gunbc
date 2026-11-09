@@ -4,7 +4,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 import gunbc.guarantee_stall { GuaranteeStall, UncountedNotEnumerable, climbs_when }
 import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared, GroundingDeclared }
 
-// A §4b(2) STALL, NOT A §4b(3) DROP: no control has ever parsed real corpus files on a grammar
+// A gunbc.design_argument::guarantee_ladder (no untracked stall) STALL, NOT A gunbc.design_argument::guarantee_ladder (no silent regression) DROP: no control has ever parsed real corpus files on a grammar
 // change, so nothing fell and there is no previous rung to name (gunbc.rung_drop's own header
 // routes a never-held class here). Declared under sharp-raven-357's ruling of 2026-10-03 on
 // gunbc#13126, after gunbc#13056 broke src/v2/std/node.dag, dag/gunbc/scm/object_store.dag and

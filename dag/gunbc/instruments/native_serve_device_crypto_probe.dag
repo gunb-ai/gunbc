@@ -17,7 +17,7 @@ import gunbc.auth.approval_device_crypto_self_check {
 }
 import gunbc.auth.approval_device_wire { WireDecoded, WireRefused }
 import gunbc.native_serve_probe_plan {
-  NativeServePhase, native_serve_phase_refusals, NativeServeWire, native_serve_wire_parse, no_observation, native_serve_probe_not_held_code,
+  NativeServePhase, native_serve_phase_refusals, NativeServeWire, native_serve_wire_parse, no_observation, native_serve_probe_not_held_code, native_serve_probe_launch,
 }
 import extdeps.crypto.signature { SignatureVerified, SignatureInvalid }
 import gunbc.auth.approval_device_crypto_realization {
@@ -35,7 +35,7 @@ import gunbc.auth.approval_device_crypto_wire {
 // THE READER FOR `gunbc test //gunbc/instruments:native-serve-device-crypto`. The seed host emits and
 // builds gunbc.auth.approval_device_crypto_serve, starts it, writes each request below to a real TCP
 // connection and hands back what came off the wire, unjudged; every verdict is made here. It is the
-// inhabitance claim of the verifier service (DESIGN section 3, a witness discriminates at one
+// inhabitance claim of the verifier service (gunbc.design_argument::witness_one_interface, a witness discriminates at one
 // interface): the real emitted binary, over real TCP, answering the folds' own verdicts -- not a
 // supplied verdict beside a fold that never ran.
 //
@@ -71,15 +71,15 @@ fn native_serve_probe_phases_refused(declared: List<String>) -> List<String> {
   native_serve_phase_refusals(declared: declared, judged: native_serve_probe_phases())
 }
 
+// Generous: the verifier's P-256 and P-384 arithmetic is native but a cold first request pays for it,
+// and no case here is a budget case. (That startup does not inherit the request deadline is judged by
+// //gunbc/instruments:native-serve-startup-slow, whose startup is a declared, ratio-bounded spin.)
 fn native_serve_probe_release_revision() -> String {
   "0123456789abcdef0123456789abcdef01234567"
 }
 
-// Generous: the verifier's P-256 and P-384 arithmetic is native but a cold first request pays for it,
-// and no case here is a budget case. (That startup does not inherit the request deadline is judged by
-// //gunbc/instruments:native-serve-startup-slow, whose startup is a declared, ratio-bounded spin.)
-fn native_serve_probe_request_deadline_ms() -> String {
-  "30000"
+fn native_serve_probe_launch_argv() -> List<String> {
+  native_serve_probe_launch(handler: "approval_device_crypto_handle", release_revision: native_serve_probe_release_revision(), cpu_limit_ms: 30000, wall_limit_ms: 30000)
 }
 
 // ── The cases ────────────────────────────────────────────────────────────────────────────────
@@ -347,7 +347,7 @@ fn crypto_case_failures(cases: List<DeviceCryptoProbeCase>, responses: List<Stri
   }
 }
 
-fn native_serve_probe_standing(announcement: String, peer_announcement: String, peer_port: Int, responses: List<String>, refused_status: Int, refused_stderr: String, served_exit_status: Int) -> ProcessExit {
+fn native_serve_probe_standing(announcement: String, peer_announcement: String, peer_port: Int, responses: List<String>, refused_statuses: List<Int>, refused_stderrs: List<String>, deadline_announcements: List<String>, deadline_responses: List<String>, deadline_exit_statuses: List<Int>, unix_peer_account: String, unix_contended_statuses: List<Int>, unix_contended_stderrs: List<String>, unix_contended_kept: List<Bool>) -> ProcessExit {
   if !starts_with(s: announcement, prefix: "native-serve listening on ") {
     no_observation(reason: concat("the service did not announce a bound address: ", announcement))
   } else {

@@ -1,0 +1,123 @@
+module test.claim.runner.runner_qualification_attempt_dispatch_witness
+
+import std.types { String, Bool, Int, List, NonEmptyStr, Map }
+import std.optional { Present, Absent }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.github.actions { DispatchInput, InputString }
+import gunbc.fleet.fleet_converge_workflow {
+  fleet_converge_dispatch_inputs, fleet_converge_dispatch_values, fleet_converge_dispatch_value_names, fleet_converge_required_inputs_unsupplied,
+  fleet_converge_expected_revision_input, FleetConvergeDispatchSpec, DispatchInputValue, fleet_converge_mode_input, fleet_converge_host_input,
+  fleet_converge_subject_host_input, FleetConvergeDispatchValuesRendered, FleetConvergeDispatchInputRepeated,
+}
+import gunbc.runner.runner_qualification_attempt_dispatch {
+  mtcollins1_qualification_attempt_dispatch, AttemptWaitsOnAnchoredBoot, AttemptWaitsOnQualificationGroup, AttemptWaitsOnOperatorGo,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// LEG G'S DISPATCH SPEC, rendered by the one fleet-converge dispatch builder and admitted against the generated
+// workflow's declared inputs. This is the spec's only executing reader in this change; the dispatch itself is the
+// operator's, on merry-fox-82's go.
+
+fn spec() -> FleetConvergeDispatchSpec {
+  mtcollins1_qualification_attempt_dispatch.dispatch
+}
+
+// THE SPEC'S RENDERED MAP, or absent when the builder refused it: every claim below that reads a value requires the
+// rendered arm, so a refusal cannot satisfy an absence claim by accident.
+fn rendered_map() -> Map<String, String>? {
+  match fleet_converge_dispatch_values(spec: spec()) {
+    FleetConvergeDispatchValuesRendered { values: v } => Present { value: v }
+    FleetConvergeDispatchInputRepeated { name: _, first_value: _, repeated_value: _ } => none
+  }
+}
+
+fn rendered(key: String) -> String {
+  match rendered_map() {
+    Present { value: m } => match map_get(m, key) {
+      Present { value: v } => v
+      Absent => ""
+    }
+    Absent => ""
+  }
+}
+
+test fn the_spec_renders_the_attempt_mode_on_srv1_acting_on_mtcollins1() -> Bool {
+  rendered(key: "mode") == "qualification_attempt"
+    && rendered(key: "host") == "srv1"
+    && rendered(key: "subject_host") == "mtcollins1"
+    && (match rendered_map() {
+      Present { value: m } => count(map_keys(m)) == 3
+      Absent => false
+    })
+}
+
+// The revision is the dispatch's event sha, admitted by the attempt itself; the spec names none.
+test fn the_spec_names_no_revision_and_dispatches_at_the_default_branch() -> Bool {
+  (match rendered_map() {
+    Present { value: m } => match map_get(m, fleet_converge_expected_revision_input.name) {
+      Present { value: _ } => false
+      Absent => true
+    }
+    Absent => false
+  }) && (mtcollins1_qualification_attempt_dispatch.git_ref as String) == "refs/heads/main"
+}
+
+// ADMITTED AGAINST THE GENERATED WORKFLOW: every name it supplies is a declared input, and no required input is missing.
+test fn the_generated_workflow_declares_every_supplied_input_and_requires_nothing_more() -> Bool {
+  let supplied = fleet_converge_dispatch_value_names(spec: spec())
+  (supplied |> all(n => any(fleet_converge_dispatch_inputs, i => i.name == n)))
+    && length(fleet_converge_required_inputs_unsupplied(declared: fleet_converge_dispatch_inputs, supplied: supplied)) == 0
+}
+
+// RED for the admission above: a workflow that also required an input the spec does not carry names it.
+test fn a_required_input_the_spec_does_not_carry_is_named() -> Bool {
+  let extra = DispatchInput { name: "printer", description: Present { value: "a required input no qualification dispatch supplies" }, required: true, default: none, type: InputString }
+  fleet_converge_required_inputs_unsupplied(declared: concat(fleet_converge_dispatch_inputs, [extra]), supplied: fleet_converge_dispatch_value_names(spec: spec())) == ["printer"]
+}
+
+// The mode refuses an executor equal to its subject before any drain; the spec does not ask for that.
+test fn the_executor_is_not_the_subject() -> Bool {
+  rendered(key: "host") != rendered(key: "subject_host")
+    && (mtcollins1_qualification_attempt_dispatch.subject as String) == rendered(key: "subject_host")
+}
+
+test fn the_spec_waits_on_the_anchored_boot_the_qualification_group_and_the_go() -> Bool {
+  let w = mtcollins1_qualification_attempt_dispatch.waits_on
+  length(w) == 3
+    && any(w, x => match x { AttemptWaitsOnAnchoredBoot => true _ => false })
+    && any(w, x => match x { AttemptWaitsOnQualificationGroup => true _ => false })
+    && any(w, x => match x { AttemptWaitsOnOperatorGo => true _ => false })
+}
+
+// A REPEATED INPUT NAME REFUSES, NAMING THE INPUT AND BOTH VALUES (merry-fox-82's side-chat follow-up to #15266). The
+// mode and executor are the spec's typed fields; a caller row naming either, or two caller rows naming one input,
+// would otherwise reach one map key twice and the later value would win. Each RED below is that spec with one row
+// added; the positive control is the real spec above, rendered.
+fn with_extra_row(row: DispatchInputValue) -> FleetConvergeDispatchSpec {
+  FleetConvergeDispatchSpec { mode: spec().mode, executor: spec().executor, inputs: concat(spec().inputs, [row]) }
+}
+
+test fn a_caller_row_naming_the_mode_refuses_rather_than_reselecting_the_mode() -> Bool {
+  match fleet_converge_dispatch_values(spec: with_extra_row(row: DispatchInputValue { input: fleet_converge_mode_input, value: "qualification_floor" })) {
+    FleetConvergeDispatchInputRepeated { name: n, first_value: f, repeated_value: r } =>
+      n == "mode" && f == "qualification_attempt" && r == "qualification_floor"
+    FleetConvergeDispatchValuesRendered { values: _ } => false
+  }
+}
+
+test fn a_caller_row_naming_the_host_refuses_rather_than_repinning_the_executor() -> Bool {
+  match fleet_converge_dispatch_values(spec: with_extra_row(row: DispatchInputValue { input: fleet_converge_host_input, value: "mtcollins1" })) {
+    FleetConvergeDispatchInputRepeated { name: n, first_value: f, repeated_value: r } =>
+      n == "host" && f == "srv1" && r == "mtcollins1"
+    FleetConvergeDispatchValuesRendered { values: _ } => false
+  }
+}
+
+test fn two_caller_rows_naming_one_input_refuse() -> Bool {
+  match fleet_converge_dispatch_values(spec: with_extra_row(row: DispatchInputValue { input: fleet_converge_subject_host_input, value: "srv2" })) {
+    FleetConvergeDispatchInputRepeated { name: n, first_value: f, repeated_value: r } =>
+      n == "subject_host" && f == "mtcollins1" && r == "srv2"
+    FleetConvergeDispatchValuesRendered { values: _ } => false
+  }
+}

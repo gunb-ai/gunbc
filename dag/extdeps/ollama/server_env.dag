@@ -11,7 +11,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // `OLLAMA_HOST` and `OLLAMA_MODELS` are part of the dependency's configuration surface. Before this
 // module they appeared in the tree exactly once, inside a prose comment, so any consumer needing to
 // configure a server had no choice but to spell the literals itself -- and a consumer that spells an
-// upstream's identifier is a second authority for it (§3), which is how one typo becomes a server
+// upstream's identifier is a second authority for it (gunbc.design_argument::single_authority), which is how one typo becomes a server
 // that silently binds the wrong address.
 //
 // The variables are modeled as an assignment-producing surface rather than as bare name constants,

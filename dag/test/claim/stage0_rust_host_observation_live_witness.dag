@@ -59,7 +59,7 @@ test fn scaffold_host_observation_is_live_and_observed() -> Bool {
 // Cargo target nobody dispositioned, and total classification -- so the witness was green whatever
 // the tree said. Measured at 026a709a71 under claim_batch --wet it passed with 137 paths
 // unclassified, and it would have passed identically at zero. A disjunction over contradictory
-// states is a green that asserts nothing (DESIGN section 5: no fabricated plausible output), and
+// states is a green that asserts nothing (gunbc.design_argument::fail_closed: no fabricated plausible output), and
 // the two arms dropped here are the ones that made it vacuous: Ok is a DIFFERENT finish line, not
 // a pass for this one, and a missing Cargo disposition is a defect rather than an alternative
 // success.

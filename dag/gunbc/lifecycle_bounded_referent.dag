@@ -25,15 +25,15 @@ import gunbc.dashboard_node_uri { dashboard_node_uri_scheme }
 // WHY THE ID IS REUSED AND NOT RE-MINTED. `gunbc.roadmap.roadmap_model` `RoadmapNodeId` is this
 // repository's single authority for a dashboard work item's minted, durable identity, and its own
 // law states that the identity must outlive the graph it is read from. A second brand for the same
-// concept spelled `node://...` would be the nickname DESIGN section 3 forbids, and would fork the
+// concept spelled `node://...` would be the nickname gunbc.design_argument::single_authority forbids, and would fork the
 // one fact -- which node -- across two naming schemes.
 //
 // ONE REFERENT KIND, DELIBERATELY, AND NOT A COPRODUCT WITH ONE ARM. A dashboard work item is the
 // only lifecycle-bounded referent this repository actually cites inside a modeled carrier today.
-// A single-variant coproduct reads as a type alias and is the hollow shape DESIGN section 3 names,
+// A single-variant coproduct reads as a type alias and is the hollow shape gunbc.design_argument::single_authority names,
 // so the kind is carried by the record's own name; a SECOND referent kind -- a session, a CI run
 // attempt, a workflow job -- makes the coproduct real at the moment one is actually cited, which
-// is where DESIGN section 6's just-in-time rule puts it.
+// is where gunbc.design_argument::how_to_work's just-in-time rule puts it.
 type DashboardWorkItemReferent {
   node: RoadmapNodeId
 }

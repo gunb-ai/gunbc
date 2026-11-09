@@ -1,9 +1,7 @@
 module gunbc.fleet.mtcollins_firmware_converge
 
-import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, list_length }
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import std.decl_ref { decl_ref }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import std.realization_reconcile { Applied, classify_reconciled, EffectConverged, EffectNotConverged }
 import std.decision { SelectionReceipt }
@@ -67,12 +65,13 @@ import gunbc.machine_intake.ampere_smpro_observation { SmproProbeOutcome, smpro_
 import gunbc.fleet.mtcollins_firmware_baseline {
   FirmwareBaseline, BaselineAdmissionRefusal, baseline_release_for, baseline_admission_refusal,
 }
+import std.algebra { length }
 
 // ── MT. COLLINS FIRMWARE UPDATE AS A CONVERGENCE ─────────────────────────────────────────────────
 //
 // On 2026-10-02 mtcollins1 was updated by hand from srv1, following Foxconn's SOPs step by step. This
 // module is that session as a convergence: handed a baseline chosen by gunbc.fleet.mtcollins_firmware_baseline
-// (§3d: selection precedes convergence), it reads what is installed, decides Noop / Apply(step) /
+// (gunbc.design_argument::selection_precedes_convergence: selection precedes convergence), it reads what is installed, decides Noop / Apply(step) /
 // Refuse per target through gunbc.ensure ensure_decide, and grounds each applied step on an
 // INDEPENDENT readback through ensure_reconcile. It invents no decision vocabulary of its own: the step
 // decision is std.upsert_decision's, the grounding is std.realization_reconcile's.
@@ -95,7 +94,7 @@ import gunbc.fleet.mtcollins_firmware_baseline {
 //
 // EVERY FAILURE ARM REFUSES, AND NOTHING RETRIES. A digest that does not match, an hpm upgrade the BMC
 // reported failed, a readback that disagrees, a BMC that stops answering: each is a typed
-// FirmwareConvergenceRefusal and the line stops (DESIGN §5). A retry would absorb exactly the signal an
+// FirmwareConvergenceRefusal and the line stops (gunbc.design_argument::fail_closed). A retry would absorb exactly the signal an
 // operator needs on a machine whose next failure may be a brick.
 
 // ── What is observed ───────────────────────────────────────────────────────────────────────────
@@ -124,9 +123,9 @@ type BmcAnswer
 //   - the window in which only the factory credential works is a typed state: the fold returns
 //     FirmwareCredentialReprovisionDue there and refuses any later step recorded inside it.
 //   - reaching the BMC in that window needs the factory credential, which is a privileged use and is
-//     classified by gunbc.auth.authorization_pattern_selection like any other (DESIGN §3b grants row).
+//     classified by gunbc.auth.authorization_pattern_selection like any other (gunbc.design_argument::conformance grants row).
 //
-// WHAT THE STANDING DOES NOT COVER, typed as a bet (§4d): MegaRAC keeps one user table for IPMI, Redfish
+// WHAT THE STANDING DOES NOT COVER, typed as a bet (gunbc.design_argument::epistemic_humility): MegaRAC keeps one user table for IPMI, Redfish
 // and the web UI, so the reset presumably also ends the web-UI and KVM sessions the boot workflow
 // opens. BmcSecured is established from IPMI LAN probes only; a web-session probe is not part of it.
 // THE RE-ESTABLISHMENT COVERS EVERY CHANNEL AND EVERY ROLE (mtcollins1, 2026-10-02, second pass). After
@@ -282,7 +281,7 @@ fn readback_route_of(t: FirmwareTarget) -> VersionReadbackRoute {
   }
 }
 
-// THE SCP DECODE IS A TYPED BET, NOT A PUBLIC FACT (§4d). No public SMpro source defines register 0x01
+// THE SCP DECODE IS A TYPED BET, NOT A PUBLIC FACT (gunbc.design_argument::epistemic_humility). No public SMpro source defines register 0x01
 // or its layout. Two self-observed points fit "minor in the high byte, major in the low byte" -- 0x0801
 // read while the installed SCP was 1.08 and 0x0a02 after 2.10 -- so the decode is carried with that
 // standing, and a readback through it is never an unqualified observation: the converged verdict names
@@ -377,16 +376,6 @@ fn hpm_component_projection(name: NonEmptyStr, rendering: NonEmptyStr) -> HpmVer
       }
   }
 }
-
-// THE PRODUCTION hpm check READ FOR CONVERGENCE IS NOT BUILT: the converge renders hpm check as a dry
-// argv, and nothing executes it and hands the table to this readback. The consumer is declared here.
-data hpm_check_converge_reader_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.fleet.mtcollins_firmware_converge", decl_name: "hpm_check_version_readback"),
-    reason: "hpm_check_version_readback reads a target's version from a parsed hpm check table through readback_route_of and hpm_component_named, and is executed only by test.claim.fleet.mtcollins_firmware_readback_route_witness over retained captures. No production effect runs `ipmitool hpm check` after a flash step and passes its table here: the converge's hpm check is a rendered dry argv (dry_step_commands), and its readbacks are supplied.",
-    dissolution: unbound_dissolution(description: "NAMED CONSUMER: the wet realization of gunbc.fleet.mtcollins_firmware_converge's post-step readback. TRIGGER, every part required: (a) an extdeps.bmc.ipmi HpmCheck execution bound to the managed host's admitted controller endpoint and account, authenticated, and bounded by a deadline; (b) a process standing that admits the read only on a successful exit; (c) the exact raw stdout retained as evidence with a SHA-256 identity; (d) ordered after the step it verifies -- after the flash for steps that need no AC cycle, after the AC cycle for those that do; (e) hpm_check_table_of applied to exactly those retained bytes; and (f) hpm_check_version_readback for the step's selected target producing the step's VersionReadback. A nonzero exit, a timeout, unreadable output, or a read whose controller or target does not match the step must yield an inaccessible or refused readback, never a version. SUFFICIENT FOR deleting this row. NOT satisfied by a fixture or retained capture, by a supplied table or supplied readback, by a witness, or by the power-on account's pre-power hpm check read (slice B2, a different consumer of the same table)"),
-  ),
-]
 
 fn hpm_check_version_readback(table: HpmCheckTable, component: NonEmptyStr, observed_at: EpochMs) -> VersionReadback {
   match hpm_check_version_projection(table: table, component: component) {
@@ -695,7 +684,7 @@ fn step_for(p: MtCollinsHpmStepProcedure) -> FirmwareFlashStep {
 // which every required right reads granted exactly once.
 fn right_refusal(t: FirmwareTarget, receipt: ManagedRightsReceipt, right: ManagedAccountRight) -> FirmwareConvergenceRefusal? {
   let readings = filter(receipt.rights, x => (x.right == right))
-  match list_length(readings) {
+  match length(readings) {
     0 => Present { value: ManagedRightMissingFromReceipt { target: t, right: right } }
     1 =>
       match readings.first() {
@@ -1027,15 +1016,15 @@ fn pending_step_verdict(
 // already recorded. Gating either check on "no record yet" let a history of four records converge over
 // an empty CPU inventory and no retained image.
 fn count_installed(world: MtCollinsFirmwareWorld, t: FirmwareTarget) -> Int {
-  list_length(filter(world.installed, i => (i.target == t)))
+  length(filter(world.installed, i => (i.target == t)))
 }
 
 fn count_rollback(world: MtCollinsFirmwareWorld, t: FirmwareTarget) -> Int {
-  list_length(filter(world.rollback_images, r => (rollback_target(r: r) == t)))
+  length(filter(world.rollback_images, r => (rollback_target(r: r) == t)))
 }
 
 fn count_records(records: List<FlashStepRecord>, t: FirmwareTarget) -> Int {
-  list_length(filter(records, r => (r.target == t)))
+  length(filter(records, r => (r.target == t)))
 }
 
 // THE INVENTORY IS ONE ROW PER SOCKET, NOT A ROW COUNT (review on 76e6f8c). Sockets are 0 up to the
@@ -1047,12 +1036,12 @@ fn cpu_inventory_refusal(world: MtCollinsFirmwareWorld) -> FirmwareConvergenceRe
   match (filter(world.cpus, c => (c.socket as Int) >= expected)).first() {
     Present { value: c } => Present { value: CpuSocketOutOfRange { socket: c.socket, socket_count: expected } }
     Absent =>
-      match (filter(world.cpus, c => list_length(filter(world.cpus, x => (x.socket as Int) == (c.socket as Int))) > 1)).first() {
+      match (filter(world.cpus, c => length(filter(world.cpus, x => (x.socket as Int) == (c.socket as Int))) > 1)).first() {
         Present { value: c } => Present { value: CpuSocketReadTwice { socket: c.socket } }
         Absent =>
-          match list_length(world.cpus) == expected {
+          match length(world.cpus) == expected {
             true => Absent
-            false => Present { value: CpuInventoryIncomplete { observed: list_length(world.cpus), expected: expected } }
+            false => Present { value: CpuInventoryIncomplete { observed: length(world.cpus), expected: expected } }
           }
       }
   }

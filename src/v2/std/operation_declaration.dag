@@ -31,10 +31,10 @@ import v2.compiler.dependency_demand { RequirementClass, RequiresNone, RequiresR
 // read: it joins std.primitive_projection on the SAME key (std.decl_ref DeclarationRef) and adds the
 // facts that half cannot carry. PrimitiveExecutionSemantics and EffectOperationDisposition are
 // relocated HERE VERBATIM from v2.compiler.primitive_execution_semantics, which this change deletes:
-// this is that roster relocated and re-keyed, not a second one (DESIGN 2).
+// this is that roster relocated and re-keyed, not a second one (gunbc.design_argument::minimize_redundancy).
 //
 // WHO OWES A ROW (D13 section 2.4: a transparent body's facts are DERIVED from its closure; a second
-// statement of a derivable fact is the fork DESIGN 2 forbids). Rows are owed only at OPAQUE
+// statement of a derivable fact is the fork gunbc.design_argument::minimize_redundancy forbids). Rows are owed only at OPAQUE
 // operation boundaries: the declarations std.primitive_projection projects as HostRealizedSeam (and
 // the capability members the demand census synthesizes by path under std.resources). A row on a
 // TRANSPARENT fn carries no row: the claim every_declaration_row_is_a_projected_host_seam
@@ -427,7 +427,7 @@ data operation_declaration_index: Map<QualifiedName, List<OperationDeclaration>>
 
 // THE HOST-SEAM POPULATION, indexed once by declaration path: the paths std.primitive_projection
 // projects at HostRealizedSeam. D13's seam test is a keyed read of this value, so asking N walked
-// declarations costs N keyed reads, never N folds of the projection roster (DESIGN.md section 6).
+// declarations costs N keyed reads, never N folds of the projection roster (gunbc.design_argument::how_to_work).
 data host_seam_projection_index: Map<QualifiedName, DeclarationRef> = fold_list(
   xs: primitive_projection_roster(),
   empty: empty_map(),
@@ -550,7 +550,7 @@ fn operation_declaration_m2v_population() -> List<OperationDeclaration> {
 // PRIMITIVE-IDENTITY SLUG to the DECLARATION. The census's derivations read row.disposition exactly
 // as before, so the blocked/implementable split is unchanged; what changed is that the key is the path
 // D13 joins by, making the two keyings of one concept into one. This is the deleted roster's data as a
-// view over operation_declaration_roster, not a second roster (DESIGN 2, delete-first).
+// view over operation_declaration_roster, not a second roster (gunbc.design_argument::minimize_redundancy, delete-first).
 type EffectOperationClassification {
   declaration: DeclarationRef
   semantics: PrimitiveExecutionSemantics

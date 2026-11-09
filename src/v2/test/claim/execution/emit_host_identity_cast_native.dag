@@ -20,7 +20,7 @@ import v2.test.claim.coercion.identity_cast_emission_route {
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE ADMITTED IDENTITY CAST, BUILT AND RUN. One native control reads the REAL member text from
-// identity_cast_route_verdict and every runtime case builds and runs that artifact (DESIGN section 3
+// identity_cast_route_verdict and every runtime case builds and runs that artifact (gunbc.design_argument::single_authority
 // pairing). The last merge-time execution of the door on the required gate is still
 // v2.test.claim.coercion.identity_cast_emission_route.an_admitted_identity_cast_emits_through_the_closure_route_holds.
 //

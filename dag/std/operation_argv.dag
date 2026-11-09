@@ -7,7 +7,7 @@ import std.template { Template }
 // An operation's transport argv is materialized by binding THAT OPERATION'S OWN DECLARED INPUTS, by
 // name, from the declaration. The seed's prior materializer carried a fixed five-name vocabulary
 // (package, bin, args, unit, property) hardwired in Rust: a second, impoverished representation of
-// a fact the operation row already declares (DESIGN 3), which left 95 of the corpus's 139
+// a fact the operation row already declares (gunbc.design_argument::single_authority), which left 95 of the corpus's 139
 // shell-transport operations unmaterializable (they reference an input outside those five names)
 // and silently injected all five names into every operation regardless of what it declared. This
 // module is the single authority for the binding vocabulary; the seed builtin
@@ -16,7 +16,7 @@ import std.template { Template }
 // The executable position (argv[0]) is NOT bindable: it must be a string literal in the operation's
 // own declaration. A generic binder that let a declared input decide WHICH PROGRAM RUNS would be
 // strictly worse than the hardcoded list it replaces, so the class is refused, never sanitized and
-// never escaped (DESIGN 5 construction-over-validation: the refusal has no arm that proceeds).
+// never escaped (gunbc.design_argument::fail_closed construction-over-validation: the refusal has no arm that proceeds).
 // Corpus-measured at authoring time: argv[0] is a declaration literal in 139 of 139 shell-transport
 // operations, so the wall is zero-false-positive today.
 
@@ -24,7 +24,7 @@ import std.template { Template }
 // element it cannot EVALUATE (ArgvExpressionUnsupported): they name different work and would be one
 // state-space conflation if fused. A bindings argument that is not a list refuses here too --
 // reading it as `no bindings` would silently turn a caller error into a DeclaredInputUnbound
-// refusal against the wrong subject (DESIGN 5).
+// refusal against the wrong subject (gunbc.design_argument::fail_closed).
 
 data operation_argv_expression_residue_note: String = "Materialization binds names; it does not EVALUATE argv element expressions. An argv element that is a call or a field access (7 operations at authoring time, e.g. git.Core.DiffUnified0's git_diff_range_argv(..) element) is refused as ArgvExpressionUnsupported -- typed, located, and counted, never absorbed into a fabricated argv. Those operations never materialized through the seed builtin before this module either; they execute through the interpreter's service-invocation path (dispatch_shell), which evaluates argv expressions in the full evaluator and is untouched here. Dissolves when argv element evaluation lands, which is a separate lane."
 
@@ -51,7 +51,7 @@ fn operation_ref_label(at: OperationRef) -> String {
 
 // The identity of one declared operation input. Every place this module names an input -- a
 // binding, a refusal cause, a declared-input row, a template hole -- carries this type, so a hole
-// and a binding compare as one identity rather than as two spellings (DESIGN 3).
+// and a binding compare as one identity rather than as two spellings (gunbc.design_argument::single_authority).
 // In production, operation_argv_bind_text / operation_argv_bind_text_list are the only places that
 // mint it from a String; a fixture may cast a literal with `as OperationInputName` directly.
 type OperationInputName = String where brand("OperationInputName")
@@ -95,6 +95,27 @@ type ArgvRefusalCause
   | TokenListInStringPosition { name: OperationInputName }
   | ArgvExpressionUnsupported { detail: String }
   | BindingMalformed { detail: String }
+
+// THE GRAIN OF A REFUSAL: which unit it makes unrealizable. Only these two causes say the OPERATION's argv is
+// beyond what the lowering evaluates (its consumer sets that one operation aside); every other cause is an
+// authoring defect of the service. A cause added to ArgvRefusalCause must be placed here: the match is closed.
+type ArgvRefusalGrain
+  = OperationGrain
+  | ServiceGrain
+
+fn argv_refusal_cause_grain(cause: ArgvRefusalCause) -> ArgvRefusalGrain {
+  match cause {
+    ExecutablePositionNotLiteral { detail: _ } => OperationGrain
+    ArgvExpressionUnsupported { detail: _ } => OperationGrain
+    OperationNotFound => ServiceGrain
+    ArgvEmpty => ServiceGrain
+    UndeclaredInputBound { name: _ } => ServiceGrain
+    DuplicateInputBinding { name: _ } => ServiceGrain
+    DeclaredInputUnbound { name: _ } => ServiceGrain
+    TokenListInStringPosition { name: _ } => ServiceGrain
+    BindingMalformed { detail: _ } => ServiceGrain
+  }
+}
 
 // A transport string that interpolates a declared input, as a value: holes are OperationInputName, resolved
 // against the operation's declared inputs by its consumer (XL-2 3b-ii). An expression in a hole is

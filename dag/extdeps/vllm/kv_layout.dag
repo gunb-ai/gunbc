@@ -76,7 +76,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 // A CACHE GROUP WITH A ZERO BLOCK SIZE IS NOT A DEGENERATE GROUP, IT IS NOT A GROUP. The seed's
 // `where range` checker only decides an int literal, not a Measure constructed by `token_count`,
-// so a refinement alias is not a wall (DESIGN section 4b(1): a type name establishes nothing). The
+// so a refinement alias is not a wall (gunbc.design_argument::guarantee_ladder (rung honesty): a type name establishes nothing). The
 // cost fold therefore refuses a zero block size or a zero layer count rather than dividing by zero
 // or charging nothing and calling the request free.
 
@@ -86,7 +86,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // it and silently charged full-attention cost, so a malformed layout produced a plausible number
 // instead of a refusal, and that number would then have been reproduced against the printed lines
 // and possibly agreed. Moving the window into the arm deletes both states rather than checking for
-// them (DESIGN section 4b: construction over validation).
+// them (gunbc.design_argument::guarantee_ladder: construction over validation).
 //
 // KPoolIndex IS THE FOURTH GROWTH SHAPE, and it exists because GLM-5.3-Flash's sparse-attention
 // layers keep a compressed index that grows once per pool_every TOKENS, not once per token
@@ -132,7 +132,7 @@ type KvGroupLayout {
 
 // THE RESOLVED LAYOUT OF ONE ENGINE. It carries no incarnation: this is the upstream SHAPE, and
 // binding a shape to the launch that exhibited it is a receipt, which is an observation this
-// repository produces and therefore lives in the observing layer, not in extdeps (DESIGN section 3,
+// repository produces and therefore lives in the observing layer, not in extdeps (gunbc.design_argument::single_authority,
 // external upstream decomposition). Putting the incarnation here would author it in two places,
 // because the receipt has to name it anyway.
 type ResolvedKvLayout sole_constructor {
@@ -281,7 +281,7 @@ fn recovered_blocks_per_max_length_request(
 // so the replay tests the two PRINTED LINES against each other and never touches the inventory A.
 // It is therefore green for any inventory whatsoever -- including one lifted from a different
 // engine -- and shipping it as an inventory check would be a permanently-green wall cited as
-// coverage (DESIGN section 4b: ask whether the RED is authorable before writing the check). It was
+// coverage (gunbc.design_argument::guarantee_ladder: ask whether the RED is authorable before writing the check). It was
 // written that way first, and the witness that was supposed to prove it discriminating is what
 // caught it.
 //
@@ -1067,7 +1067,7 @@ fn kv_allocation_plan_assemble(capture: KvAllocationPlanCapture, groups: List<Kv
 // THIS IS THE ONLY CHECK THE DOCTRINE ASKS OF THE PLAN. It is deliberately not a re-derivation
 // from group rules: the plan's claim is that IT carries the engine's own arithmetic, and a control
 // that silently recomputed the arithmetic from kind and block size would be comparing the model
-// with itself -- permanently green, establishing nothing (DESIGN section 4b: ask whether the RED
+// with itself -- permanently green, establishing nothing (gunbc.design_argument::guarantee_ladder: ask whether the RED
 // is authorable before writing the check).
 type AllocationPlanReproduction
   = AllocationPlanReproducesPrinted { blocks_per_max_request: AllocatorBlockCount, predicted_concurrency_hundredths: Nat }

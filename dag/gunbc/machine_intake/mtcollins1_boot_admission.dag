@@ -1,6 +1,7 @@
 module gunbc.machine_intake.mtcollins1_boot_admission
 
 import std.types { Bool, String }
+import product.host_identity { HostIdentity }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
@@ -27,8 +28,14 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 // success (review 70894) -- by mtcollins1_boot_admit_executor, a credential-free step before the WIF
 // token and the fleet key. The wet entry (gunbc.machine_intake.mtcollins1_boot_run
 // mtcollins1_boot_wet) re-runs the same fold, so neither seam can drift.
+// THE HOST THE BOOT RUN IS DISPATCHED WITH (fleet-converge's `host` input, which the run's title renders), one row: the
+// admission below compares the input to it, and a reader that selects a boot run by its title
+// (gunbc.machine_intake.mtcollins1_boot_receipts mtcollins1_running_os_receipt_source) names it as the producer's
+// dispatch host. The boot's SUBJECT is mtcollins1; its EXECUTOR is this host.
+data mtcollins1_boot_dispatch_host: HostIdentity = operator_host_srv1
+
 fn mtcollins1_boot_host_must_be_srv1(host: String) -> Bool {
-  host == operator_host_srv1 as String
+  host == mtcollins1_boot_dispatch_host as String
 }
 
 fn mtcollins1_boot_refuses_off_srv1(host: String) -> ProcessExit {

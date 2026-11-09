@@ -2,7 +2,7 @@ module test.claim.roadmap.roadmap_presentation_witness
 
 import gunbc.roadmap.roadmap_project { membership_index }
 import gunbc.roadmap.roadmap_readiness { ReadinessGap, GapDependencies, GapCentering }
-import test.claim.roadmap.roadmap_node_fixture { fx_authored, fx_authored_wi, fx_derivable_wi, fx_ticket_row, fx_ticket_wi, fx_superseded, fx_signed, fx_sign }
+import test.claim.roadmap.roadmap_node_fixture { fx_authored, fx_authored_wi, fx_derivable_wi, fx_ticket_row, fx_ticket_wi, fx_superseded }
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.harness.harness_throughput {
@@ -18,7 +18,7 @@ import gunbc.roadmap.roadmap_model {
 import gunbc.roadmap.roadmap_status {
   AuthoredLine,
   RedControlExecuted, HandbackDelivered,
-  TicketLine, TicketFields, Unsigned,
+  TicketLine, TicketFields,
 }
 import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified }
 import gunbc.roadmap.roadmap_page {
@@ -64,8 +64,8 @@ import gunbc.roadmap.roadmap_presentation {
   WorkActionKind, DispatchAction, ClearSessionAction,
   WorkAction, ActionView,
   WorkLifecycle, OpenLifecycle, ReviewLifecycle, DoneLifecycle, SupersededLifecycle,
-  work_lifecycle, work_lifecycle_key,
-  WorkScheduling, SchedulingReady, SchedulingNotReady, SchedulingDone, SchedulingSuperseded, row_is_shown,
+  work_lifecycle, work_lifecycle_key, omitted_node_lifecycle,
+  WorkScheduling, SchedulingReady, SchedulingNotReady, SchedulingSuperseded, row_is_shown,
   work_scheduling, work_scheduling_key,
   TaskBarView, TaskBarFill, BarFillNone, BarFillStages, BarFillProject, BarFillClosed,
   task_bar_view_of, stage_count_label,
@@ -194,7 +194,7 @@ test fn witness_agent_running_reads_as_working_not_completed() -> Bool {
 }
 
 // A refusal is a first-class presentation state with its LOCATED reason, never a styling variant of
-// progress (DESIGN 5: typed, located). The discriminating fixture puts the refusal mid-ledger; the
+// progress (gunbc.design_argument::fail_closed: typed, located). The discriminating fixture puts the refusal mid-ledger; the
 // view must surface a LABEL — the state word plus the short reason — as the summary, keep the full
 // (here short) reason as the located reason behind the disclosure, and rank a failed segment as
 // anomalous ActiveWork — distinct states with distinct remedies, and a refused ledger outranks a
@@ -455,23 +455,20 @@ test fn witness_session_facts_line_and_detail_are_decided() -> Bool {
     && bare.detail == "provider codex (configured codex, readiness ready) — gunbc-belt-a2-row"
 }
 
-// Lifecycle discriminates on the node's own facts, distinct from frontier scheduling: an Unsigned
-// node with unmerged evidence is open; merged evidence without signoff is review — implementation
-// artifacts never accept (roadmap_acceptance_boundary_note); an accepting signoff is done; a
-// superseded line outranks everything and carries its forwarding pointer.
+// Lifecycle discriminates on the node's own facts, distinct from frontier scheduling: a node with
+// unmerged evidence is open; merged evidence without acceptance is review — implementation
+// artifacts never accept (roadmap_acceptance_boundary_note); a node the acceptance history lists as
+// accepted is done (omitted_node_lifecycle, the only route to DoneLifecycle: a node definition
+// carries no acceptance); a superseded line outranks everything and carries its forwarding pointer.
 
 test fn witness_lifecycle_axes_discriminate() -> Bool {
   let open_node = fx_authored(identity: "rnfx_A2PRES0000000000000003", id: "a2-open", done: false, content: "open work")
   let done_line_node = fx_authored(identity: "rnfx_A2PRES0000000000000004", id: "a2-review", done: true, content: "review work")
-  let signed_node = fx_sign(rn: open_node, s: fx_signed(
-    by: "operator",
-    works: RedControlExecuted { witness_module: "test.claim.roadmap.roadmap_presentation_witness", witness_fn: "witness_lifecycle_axes_discriminate", executed_on: "2026-08-01" },
-    scope_equivalent: HandbackDelivered { first_artifact: "receipt", further_artifacts: [] },
-    as_expected: true))
   let superseded_node = fx_superseded(identity: "rnfx_A2PRES0000000000000005", id: "a2-sup", by: "a2-open", content: "old shape")
   work_lifecycle_key(l: work_lifecycle(rn: open_node, merged: [])) == "open"
     && work_lifecycle_key(l: work_lifecycle(rn: done_line_node, merged: [])) == "review"
-    && work_lifecycle_key(l: work_lifecycle(rn: signed_node, merged: [])) == "done"
+    && work_lifecycle_key(l: omitted_node_lifecycle(rn: open_node, merged: [], accepted: true)) == "done"
+    && work_lifecycle_key(l: omitted_node_lifecycle(rn: open_node, merged: [], accepted: false)) == "open"
     && work_lifecycle_key(l: work_lifecycle(rn: superseded_node, merged: [])) == "superseded"
 }
 
@@ -541,7 +538,6 @@ test fn witness_work_row_view_composes_from_fixture() -> Bool {
             _ => false
           })
       SchedulingReady => false
-      SchedulingDone => false
       SchedulingSuperseded => false
     })
     && work_lifecycle_key(l: row.lifecycle) == "open"
@@ -660,6 +656,7 @@ fn fx_family_member_row(node_id: String, headline: String, activity: ActivityVie
     standing: none,
     attempt_stale: false,
     profiles: base.profiles,
+      retired_blockers: [] as List<String>,
   }
 }
 
@@ -930,13 +927,9 @@ fn fx_hier_view(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEd
 fn fx_hier_nodes() -> List<RoadmapNode> {
   [
     fx_sized(id: "hier-project", content: "project headline — project brief"),
-    fx_sign(
-      rn: fx_sized(id: "hier-task-done", content: "done task"),
-      s: fx_signed(
-        by: "op",
-        works: RedControlExecuted { witness_module: "test.claim.roadmap.roadmap_presentation_witness", witness_fn: "witness_project_progress_counts_accepted_or_superseded_only", executed_on: "2026-09-20" },
-        scope_equivalent: HandbackDelivered { first_artifact: "receipt", further_artifacts: [] },
-        as_expected: true)),
+    // A closed task: a node definition carries no acceptance (an accepted node leaves the plan via
+    // the acceptance history), so the closed shape a definition can state is a superseded line.
+    fx_superseded(identity: "rnfx-hier-task-done", id: "hier-task-done", by: "hier-task-open", content: "done task"),
     fx_superseded(identity: "rnfx-hier-task-superseded", id: "hier-task-superseded", by: "hier-task-done", content: "old shape"),
     fx_derivable_wi(
       identity: "rnfx-hier-task-review", id: "hier-task-review",
@@ -1017,9 +1010,10 @@ test fn witness_project_tasks_are_prerequisites() -> Bool {
     && !row_is_project(rows: rows, edges: edges, members: [], row: fx_row_of(rows: rows, node_id: "hier-task-open"), memberships: membership_index(memberships: fixture_nesting_relation(edges: edges)))
 }
 
-// PROGRESS COUNTS CLOSURE, NEVER IMPLEMENTATION EVIDENCE: closed = accepted or superseded
-// (node_closes_dependency), so the done and superseded tasks close and the review task — a merged
-// PR without an accepting signoff — does not. A derivation that counted "has a PR" as closed
+// PROGRESS COUNTS CLOSURE, NEVER IMPLEMENTATION EVIDENCE: closed = superseded within the plan
+// (node_closes_dependency; an accepted node has already left the plan via the acceptance history),
+// so the two superseded tasks close and the review task — a merged PR without an acceptance — does
+// not. A derivation that counted "has a PR" as closed
 // would report 3 of 4 here; the correct answer is 2 of 4. The project itself is upcoming (two
 // unmet prerequisites) and carries its four tasks nested in edge declaration order; the bands the
 // tasks left behind are empty because every one of them renders exactly once, inside the tree.
@@ -1245,13 +1239,7 @@ test fn witness_chain_end_tasks_count_in_top_row() -> Bool {
     fx_sized(id: "hier-cc-g", content: "gate analogue"),
     fx_sized(id: "hier-cc-e", content: "effectplan analogue"),
     fx_sized(id: "hier-cc-arc", content: "arc analogue"),
-    fx_sign(
-      rn: fx_sized(id: "hier-cc-t1", content: "done task"),
-      s: fx_signed(
-        by: "op",
-        works: RedControlExecuted { witness_module: "test.claim.roadmap.roadmap_presentation_witness", witness_fn: "witness_chain_end_tasks_count_in_top_row", executed_on: "2026-09-21" },
-        scope_equivalent: HandbackDelivered { first_artifact: "receipt", further_artifacts: [] },
-        as_expected: true)),
+    fx_superseded(identity: "rnfx-hier-cc-t1", id: "hier-cc-t1", by: "hier-cc-t2", content: "done task"),
     fx_sized(id: "hier-cc-t2", content: "open task"),
   ]
   let edges = [
@@ -1506,7 +1494,7 @@ test fn witness_bar_content_per_situation_class() -> Bool {
   let failed = fx_hier_view(rn: first(underway_nodes).value, nodes: underway_nodes, edges: fx_row_edges(), merged: [], activity: fx_failed_activity(), standing: none)
   let done_nodes = fx_hier_nodes()
   let completed = fx_hier_view(rn: first(underway_nodes).value, nodes: underway_nodes, edges: fx_row_edges(), merged: [], activity: fx_completed_activity(), standing: none)
-  let accepted_bar = task_bar_view_of(view: fx_hier_view(rn: first(done_nodes |> filter(n => (n.node as String) == "hier-task-done")).value, nodes: done_nodes, edges: fx_hier_edges(), merged: [], activity: NoActiveWork, standing: none), observation: ObservationsNominal)
+  let closed_bar = task_bar_view_of(view: fx_hier_view(rn: first(done_nodes |> filter(n => (n.node as String) == "hier-task-done")).value, nodes: done_nodes, edges: fx_hier_edges(), merged: [], activity: NoActiveWork, standing: none), observation: ObservationsNominal)
   let stale = task_bar_view_of(view: fx_hier_view_stale(rn: first(underway_nodes).value, nodes: underway_nodes, edges: fx_row_edges(), activity: fx_specimen_activity()), observation: ObservationsNominal)
   let underway_bar = task_bar_view_of(view: underway, observation: ObservationsNominal)
   let refused_bar = task_bar_view_of(view: refused, observation: ObservationsNominal)
@@ -1526,8 +1514,8 @@ test fn witness_bar_content_per_situation_class() -> Bool {
     && completed_bar.signal == "All obligations complete"
     && completed_bar.signal_class == "done"
     && completed_bar.count == "2 of 2 stages"
-    && accepted_bar.signal == "accepted"
-    && fx_bar_fill_key(bar: accepted_bar) == "closed"
+    && closed_bar.signal == "superseded → hier-task-open"
+    && fx_bar_fill_key(bar: closed_bar) == "none"
     && stale.signal == "earlier attempt · superseded revision"
     && fx_bar_fill_key(bar: stale) == "none"
     && !stale.attention
@@ -1700,6 +1688,7 @@ fn fx_explanation_view(scheduling: WorkScheduling, activity: ActivityView) -> Wo
     standing: Present { value: NodeOpen },
     attempt_stale: false,
     profiles: [],
+      retired_blockers: [] as List<String>,
   }
 }
 
@@ -1707,7 +1696,6 @@ test fn witness_issue_status_label_present_tense_cases() -> Bool {
   issue_status_label(view: fx_explanation_view(scheduling: SchedulingReady, activity: NoActiveWork)) == "Ready"
     && issue_status_label(view: fx_explanation_view(scheduling: SchedulingNotReady { missing: [GapDependencies { blockers: ["a", "b"] }] }, activity: NoActiveWork)) == "Blocked"
     && issue_status_label(view: fx_explanation_view(scheduling: SchedulingNotReady { missing: [GapCentering] }, activity: NoActiveWork)) == "Blocked"
-    && issue_status_label(view: fx_explanation_view(scheduling: SchedulingDone, activity: NoActiveWork)) == "Review"
     && issue_status_label(view: fx_explanation_view(scheduling: SchedulingReady, activity: ActivityUnobservable { reason: "attempts ledger refused" })) == "Unknown"
     && issue_status_label(view: fx_explanation_view(scheduling: SchedulingReady, activity: CompletedWork { outcome: "All obligations complete", evidence: [], obligations: [] })) == "Ready"
     && issue_status_label(view: fx_explanation_view(scheduling: SchedulingReady, activity: ActiveWork {
@@ -1766,7 +1754,6 @@ fn fx_aln_ticket(id: String, headline: String, brief: String) -> RoadmapNode {
     dispatch: NotDispatchable,
     execution: ExecutionContractUnspecified,
     owner: "presentation-fixture",
-    signoff: Unsigned,
     parent: none,
     centering: none,
   }
@@ -1785,7 +1772,6 @@ fn fx_aln_with_parent(n: RoadmapNode, memberships: List<gunbc.roadmap.roadmap_ne
     dispatch: n.dispatch,
     execution: n.execution,
     owner: n.owner,
-    signoff: n.signoff,
     parent: match mine.first() {
       Present { value: m } => Present { value: gunbc.roadmap.roadmap_model.MemberOf { project: m.project, contribution: m.contribution as NonEmptyStr } }
       Absent => if (n.node as String) == "gunbc-project-root" { Present { value: gunbc.roadmap.roadmap_model.AdmittedRoot } } else { none }
@@ -1977,6 +1963,7 @@ fn fx_visibility_row(scheduling: WorkScheduling, activity: ActivityView, node_id
     standing: base.standing,
     attempt_stale: base.attempt_stale,
     profiles: base.profiles,
+      retired_blockers: [] as List<String>,
   }
 }
 

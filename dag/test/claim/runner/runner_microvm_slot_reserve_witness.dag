@@ -1,5 +1,6 @@
 module test.claim.runner.runner_microvm_slot_reserve_witness
 
+import gunbc.runner.runner_host_deploy { runner_host_spec_of }
 import std.types { String, NonEmptyStr, Bool, List }
 import std.process { ProcessExit }
 import gunbc.fabric.fabric_allocation_store { FabricAllocationStore }
@@ -142,7 +143,7 @@ test fn a_second_reserve_of_the_held_shakedown_cell_refuses() -> Bool {
   held_refuses && absent_admits
 }
 
-// THE CANDIDATE IS SUPPLIED, NOT PRODUCED (DESIGN 3, a witness discriminates at one interface): its
+// THE CANDIDATE IS SUPPLIED, NOT PRODUCED (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface): its
 // permit comes from the shared provider-use fixture, because the production permit's producer -- the
 // fleet CI cell's first-party posture -- is not this claim's subject.
 fn candidate_executed_by(executor: NonEmptyStr) -> List<CandidateOffer<NonEmptyStr>> {
@@ -262,8 +263,8 @@ fn deploy_on(host: NonEmptyStr) -> RunnerHostDeploy {
 // THE GRANT IS ONE EXACT START, ON THE SHAKEDOWN SLOT'S HOST ONLY. The rendered sudoers command is the
 // full argv for this one unit; another host (srv3) derives no such line.
 test fn the_broker_start_grant_is_exact_and_on_the_shakedown_host_only() -> Bool {
-  let on_srv1 = microvm_slot_reserve_start_operations(deploy: deploy_on(host: srv1_microvm_shakedown_slot().host as NonEmptyStr))
-  let on_srv3 = microvm_slot_reserve_start_operations(deploy: deploy_on(host: "srv3"))
+  let on_srv1 = microvm_slot_reserve_start_operations(spec: runner_host_spec_of(deploy: deploy_on(host: srv1_microvm_shakedown_slot().host as NonEmptyStr)))
+  let on_srv3 = microvm_slot_reserve_start_operations(spec: runner_host_spec_of(deploy: deploy_on(host: "srv3")))
   on_srv1.length() == 1
     && on_srv3.length() == 0
     && (executor_privileged_operation_sudoers_command(op: SystemdStartUnit { unit: microvm_slot_reserve_unit_name }) as String)

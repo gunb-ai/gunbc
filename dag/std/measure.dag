@@ -528,7 +528,7 @@ type Milliwatt = Measure<Power, Milli, Nat>
 // INLINE with no alias must be ACCEPTED. The last two are the load-bearing pair: identical markers
 // refusing rules out the marker being sufficient, and distinct markers accepting rules out its being
 // necessary, so the equality decision reads the NOMINAL HEAD and does not consult the argument. Run
-// that witness for the current answer rather than trusting this paragraph; per DESIGN section 4c no
+// that witness for the current answer rather than trusting this paragraph; per gunbc.design_argument::source_annotations no
 // Accepted program can read an annotation, so this sentence is rationale and the witness is evidence.
 //
 // SO THE SEPARATION THIS PARAGRAPH ARGUES FOR IS REAL AND IS WORTH KEEPING -- apparent power genuinely
@@ -575,7 +575,7 @@ type Ohm = Measure<Resistance, One, Nat>
 // A LENGTH FINER THAN THE MICROMETRE, because a mesh chord error is genuinely sub-micrometre and
 // rounding it into micrometres would report the safest possible value -- zero -- for exactly the
 // deviations small enough to round away. The carrier is the same Length axis one decade down, not a
-// new quantity: DESIGN section 2's horizontal move, the way CubicMillimeter already reuses Nano.
+// new quantity: gunbc.design_argument::minimize_redundancy's horizontal move, the way CubicMillimeter already reuses Nano.
 type Nanometer = Measure<Length, Nano, Nat>
 
 type Micrometer = Measure<Length, Micro, Nat>
@@ -896,7 +896,7 @@ fn gibibyte_grain() -> FiniteByteSize {
 // This is the corpus's one rounder. It replaced gunbc.floor.floor_demand's gibibyte-fixed
 // round_up_to_gibibyte_grain, which now binds this function to gibibyte_grain: a policy whose grain
 // is one of its declared inputs could not reuse a rounder that fixed the grain, and minting a second
-// one beside it was the DESIGN 3 fork. The grain is a FiniteByteSize so the modulus is never zero
+// one beside it was the gunbc.design_argument::single_authority fork. The grain is a FiniteByteSize so the modulus is never zero
 // -- a zero grain is not a finer grain, it is the absence of one, and division by it has no answer
 // to refuse with.
 //
@@ -911,7 +911,7 @@ fn gibibyte_grain() -> FiniteByteSize {
 // grain and computed without leaving the range; the one comparison, n > int_inclusive_max() - pad,
 // is exactly "does the ceiling fit", and n + pad is evaluated only after it has been established
 // to. That is the same subtraction construction gunbc.runner.runner_microvm guest_memory_fits uses and
-// DESIGN 4b names as rung 4 over a checked-add guard at rung 1. The refusal still carries an
+// gunbc.design_argument::guarantee_ladder names as rung 4 over a checked-add guard at rung 1. The refusal still carries an
 // IntegerOverflow cause, and it names the operation that was NOT performed: the add of n and pad.
 type GrainRounding
   = GrainRounded { bytes: ByteSize }
@@ -1147,7 +1147,7 @@ fn signed_money_amount_micro_count(m: SignedMoneyAmountMicro) -> Int {
 // A whole-dollar monetary amount in USD, on the Currency axis at the One scale (cf. MoneyAmountMicro
 // at Micro). Defined here alongside MoneyAmountMicro because a second consumer (extdeps.sec.facts
 // and now extdeps.network.mikrotik_crs812) independently needed the same shape; defining it once
-// in std prevents the fork DESIGN §3 names and the SEC module can import from here rather than
+// in std prevents the fork gunbc.design_argument::single_authority names and the SEC module can import from here rather than
 // defining its own copy. Added 2026-09-03.
 type UsdWholeDollars = MoneyAmount<One>
 
@@ -1213,7 +1213,7 @@ type MoneyPerKilowattHour = MoneyRate<PerKilowattHour>
 
 type MoneyPerSquareFootYear = MoneyRate<PerSquareFootYear>
 
-// MoneyRate<P> is the §2-horizontal carrier for vendor billing period: one parameterized record (P
+// MoneyRate<P> is the gunbc.design_argument::minimize_redundancy-horizontal carrier for vendor billing period: one parameterized record (P
 // = PerMinute | PerHour | PerMonth | Once phantom markers), not four structurally-identical records
 // — same move as MoneyAmount<S> = Measure<Currency, S, Nat> and Vendor<Domain>. Not a
 // Measure<Q,S,M> row: billing period is a categorical vendor unit axis, not an SI Scale on a single
@@ -1233,11 +1233,11 @@ fn money_per_hour_micros(q: MoneyPerHour) -> Nat {
 }
 
 // DECLARED ExactDecimal → micro conversion. RFC 8259 numbers are exact decimals; MoneyAmountMicro
-// is Nat micros of a dollar. Implicit Int/Float coercion is refused (DESIGN §4). Bids and
+// is Nat micros of a dollar. Implicit Int/Float coercion is refused (gunbc.design_argument::closed_grounded_substrate). Bids and
 // liabilities ROUND UP: understating a min_bid or a tariff would admit a cash obligation the
 // wire did not cover. Consumers in this change: extdeps.cloud.vast_ai vast_ai_min_bid_money_per_hour
 // and vast_ai_dph_total_money_per_hour, and product.fabric.flex_policy flex_bid_admission (those
-// three have a declared §3c frontier; their executing route today is the flex admission witness).
+// three have a declared gunbc.design_argument::consumption frontier; their executing route today is the flex admission witness).
 data money_micro_fraction_digits: Int = 6
 
 type DecimalMoneyConversion
@@ -1324,7 +1324,7 @@ fn money_per_sqft_year_micros(q: MoneyPerSquareFootYear) -> Nat {
 // same way MoneyRate carries currency: CreditRate<P> stays period-parameterized, and two
 // sellers' credits are not the same quantity because their AccountCredit issuer
 // DeclarationRefs differ. A module-path string is a second name for the seller already
-// cited as DeclarationRef (DESIGN §3).
+// cited as DeclarationRef (gunbc.design_argument::single_authority).
 type AccountCredit {
   issuer: DeclarationRef
 }
@@ -1460,7 +1460,7 @@ fn character_count_value(c: CharacterCount) -> Nat {
 // member of an existing family, not a new point in the type space. It lives HERE, beside its
 // siblings, because Measure of Count at One over Nat takes only arguments std.measure already owns:
 // an instantiation declared downstream would be a fourth name for a shape this module already names
-// three times, which is the DESIGN section 3 fork. That is the distinction from
+// three times, which is the gunbc.design_argument::single_authority fork. That is the distinction from
 // extdeps.pricing.billing_units, whose MoneyRate aliases introduce their own phantom markers and
 // are therefore genuinely new instantiations that CANNOT be written here without importing vendor
 // vocabulary. Landed by review 48816 on gunbc#7851, which caught the alias minted in
@@ -1613,6 +1613,15 @@ fn tokens_per_second(count: Nat) -> TokensPerSecond {
 
 fn tokens_per_second_count(r: TokensPerSecond) -> Nat {
   measure_count(r)
+}
+
+// HOW LONG A COUNT OF TOKENS TAKES AT A TOKEN RATE, rounded up to the millisecond so a duration is never
+// understated. A zero rate has no duration: absent, and the caller says what that means in its domain.
+fn token_count_duration_at(tokens: TokenCount, rate: TokensPerSecond) -> Millisecond? {
+  match nat_ceil_div(a: token_count_value(t: tokens) * milliseconds_per_second(), b: tokens_per_second_count(r: rate)) {
+    Present { value: ms } => Present { value: millisecond(count: ms) }
+    Absent => Absent
+  }
 }
 
 // The same token rate at Milli: a count of N is N/1000 tokens per second, so a client figure quoted
@@ -1909,7 +1918,7 @@ fn percent_count(p: Percent) -> Nat {
 // printed hundredth count (11.22x = 1122) needs no rescaling. It was aliased on the
 // Dimensionless axis beside Percent, which made a concurrency reading and a utilization ratio ONE
 // STRUCTURAL TYPE: 1122 concurrent requests passed for 1122% utilization at every formal and at
-// measure_add, which is nicknaming (DESIGN 3), not a unit. Nor is it Dimensionless-at-One or
+// measure_add, which is nicknaming (gunbc.design_argument::single_authority), not a unit. Nor is it Dimensionless-at-One or
 // -at-Milli: at One the count 1122 reads as 1122 REQUESTS (wrong magnitude), and at Milli it is
 // structurally identical to ConcurrentRequestThousandths — the same fork twice. Scale.Centi is the
 // existing SI hundredths row (scale_exponent answers Centi => -2), minted alongside the other

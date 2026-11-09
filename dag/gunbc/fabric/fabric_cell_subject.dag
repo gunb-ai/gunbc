@@ -13,7 +13,7 @@ data fabric_cell_subject_authority_disposition: ConstructionMechanism = SingleAu
 // (gunbc.fabric.fabric_cell_host_root) must answer ownership from the SAME function, or adding a subject
 // kind fails to compile in one of them and silently inherits a default in the other. Putting the
 // subject in either family would make the other import it and the first import it back, which
-// DESIGN section 3's acyclicity law forbids -- so the shared fact lives upstream of both and
+// gunbc.design_argument::single_authority's acyclicity law forbids -- so the shared fact lives upstream of both and
 // neither depends on its sibling.
 //
 // IT IS NOT A SPELLING OF FabricCellNamespace, AND THE DIFFERENCE IS DECIDABLE RATHER THAN

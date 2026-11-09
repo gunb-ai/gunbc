@@ -1,11 +1,9 @@
 module gunbc.serving.router_dev_scaffold
 
-import std.dissolution { DissolutionCondition, bound_dissolution }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-// THE SRV1 DEV DEPLOYMENT'S TRACKED DEBT. Authority (DESIGN section 5: operator approval outside the diff):
+// THE SRV1 DEV DEPLOYMENT'S TRACKED DEBT. Authority (gunbc.design_argument::fail_closed: operator approval outside the diff):
 // the operator's decision of 2026-10-25, option B, to serve the pool from the S1 OpenResty proxy on srv1
 // before S3 exists, relayed by calm-crab-645 (msg_9e44dfaa, msg_cb0938f9, msg_d9aa02e2), under the
 // standing ruling of 2026-10-24 ("its fine to hand write something as long as the debt is tracked").
@@ -21,7 +19,7 @@ import std.roster_frontier { FrontierRow, frontier_row_decl }
 //   - forwarding without a permit: admission is the client key and the cap, no front-door seat permit.
 // Also against the S1 contract that the proxy holds no policy (plan gunbc.plans.fabric_serving_router).
 // Dissolves when the S3 callout service (gunbc.serving.serving_router) lands and the dev site's proxy is
-// re-rendered from gunbc.serving.router_proxy_config. Trigger: router_dev_frontier_rows below.
+// re-rendered from gunbc.serving.router_proxy_config.
 data router_dev_policy_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
@@ -78,7 +76,7 @@ data router_dev_upstream_rows_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
     module_path: "gunbc.serving.router_dev_policy",
-    decl_name: "router_dev_first_party_upstreams",
+    decl_name: "router_dev_first_party",
     field: WholeDeclaration
   }
 }
@@ -107,42 +105,17 @@ data router_dev_falsifier_shell_scaffold: Disposition = Scaffold {
   }
 }
 
-// THE FIVE DEBTS AS FRONTIER ROWS, each subject the declaration that carries it and each trigger bound to a
-// declaration that does not exist yet, so each row stays pending until its replacement lands. Nothing
-// aggregates them any more: the repo-wide fold that used to enroll these (gunbc.census_closure_frontier) was
-// retired by #15531 at aac228c337f3, so a row is read, if at all, by the module that declares it -- the route
-// gunbc.fleet.fleet_endpoint and four other modules take, running std.roster_frontier's frontier_rows_well_formed
-// in their own claim. These five are not checked that way today, and this module does not claim they are.
-// The S3 trigger names the plan's callout module (plan gunbc.plans.fabric_serving_router S3,
-// gunbc.serving.serving_router) and a declaration only that service will carry, not a generic entry-point name.
-data router_dev_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_config"),
-    reason: "Router policy in the proxy (row 1): key check, stickiness, active-turn caps, model routing and tallies decided in OpenResty Lua (router_dev_init_lines, router_dev_access_lines, router_dev_models_lines, router_dev_stats_lines, router_dev_header_lines, router_dev_log_lines, all rendered by router_dev_config).",
-    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.serving.serving_router", decl_name: "serving_router_authz_callout"))
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_srv1_write_config"),
-    reason: "Hand-run deploy (row 2): the operator account renders, writes state and starts the container on srv1.",
-    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.live_deploy.apply_legs", decl_name: "serving_router_proxy_leg"))
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_first_party_upstreams"),
-    reason: "Hand-maintained upstream list (row 3): literal first-party rows and the ctrl rented-pool overflow gateway.",
-    // Bound to the PRODUCTION-FED fold, not to the derivation itself: bound_dissolution is
-    // std.dissolution DeclarationAppears, so a ref to rented_cohort_enrollments_from_allocations would be
-    // satisfied by the PR that writes that fold, dissolving this debt while the roster it feeds is still
-    // empty. The name below appears only when the fleet's held allocations are actually folded.
-    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.serving.rented_enrollment_from_allocations", decl_name: "rented_cohort_enrollments_from_production_allocations"))
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_location"),
-    reason: "Pins as one trust bundle (row 4): verification checks membership in the pinned set, not each upstream's own pin.",
-    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.live_deploy.apply_legs", decl_name: "serving_router_proxy_leg"))
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.instruments.router_proxy_falsifier", decl_name: "self_signed"),
-    reason: "Hand-written shell in the falsifier's container commands (row 5): mkdir, openssl and exec openresty joined as an sh -c and-list.",
-    dissolution: bound_dissolution(ref: decl_ref(module_path: "extdeps.languages.bash.grammar", decl_name: "bash_and_list_production"))
-  ),
-]
+
+// 6. HAND-WRITTEN SHELL IN THE FALSIFIER'S UNCAPPED IN-FLIGHT CASE. uncapped_inflight_script runs a held turn in
+// the background, waits for the fixture's 'entered' line, reads stats, then collects the turn, as one sh -c
+// program. Transient: the order is the fact under test, and DockerCli has no logs or exec operation to model it
+// as steps yet, so the shell text is the authority until bash emission replaces it. Dissolves when
+// extdeps.languages.bash.grammar carries bash_and_list_production and the script is emitted from argv nodes.
+data router_dev_uncapped_inflight_shell_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.instruments.router_proxy_falsifier",
+    decl_name: "uncapped_inflight_script",
+    field: WholeDeclaration
+  }
+}

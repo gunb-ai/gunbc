@@ -9,7 +9,7 @@ module test.claim.runner.runner_user_session_label_witness
 // wrote. The composition (gunbc.runner.runner_registration_labels
 // runner_evidence_gated_registration_labels) grants the label only when the host is rostered
 // AND the supplied receipt parses, is ABOUT that host, and every reading in it holds. There is no receipt
-// data in-tree (reviews 87051/87054/87126/87136/87155: hand-copied rows are DESIGN 6's transcribed
+// data in-tree (reviews 87051/87054/87126/87136/87155: hand-copied rows are gunbc.design_argument::how_to_work's transcribed
 // output, and a row cannot re-read a host): production supplies ReceiptAbsent until the follow-up named
 // in the PR body of gunbc#15253 wires the fleet-converge leg to run the receipt read
 // (runner_user_session_converge_receipt_read_argv) and parse the bytes. THE LABEL IS OFF IN PRODUCTION
@@ -40,7 +40,7 @@ module test.claim.runner.runner_user_session_label_witness
 //      principal) does not inherit the host's capability even when a receipt is handed to the entry.
 //   7. THE CONSUMER -- the label's consumer is the runs-on selector of the jobs that run a command under
 //      the job account's user manager: gunbc#14972's credential-acquisition rows, the pool the roster is
-//      waiting on (DESIGN 3c: the frontier is recorded beside the row, in gunbc.runner.runner_host_deploy
+//      waiting on (gunbc.design_argument::consumption: the frontier is recorded beside the row, in gunbc.runner.runner_host_deploy
 //      runner_job_user_session_hosts). The control builds the selector the way the emitter builds a
 //      host-pinned CI spec and checks satisfaction against what each registration advertises, with and
 //      without a receipt.
@@ -50,7 +50,7 @@ module test.claim.runner.runner_user_session_label_witness
 // A REFUSAL IS NOT AN ABSENCE, AND NO HELPER HIDES ONE. There is no labels_of with a Refused => []
 // default: every control matches the RunnerRegistrationLabelsResolution directly, so a host whose facts
 // stopped resolving makes that control FALSE rather than vacuously green (reviews 86935 and 87051;
-// DESIGN 5: "no plausible output is fabricated" -- a folded-in empty list is exactly the fabricated
+// gunbc.design_argument::fail_closed: "no plausible output is fabricated" -- a folded-in empty list is exactly the fabricated
 // default a later control would inherit).
 
 import std.types { String, Bool, Int, NonEmptyStr, List }
@@ -89,7 +89,6 @@ import gunbc.runner.runner_user_session_receipt {
   runner_user_session_converge_receipt_staleness,
   runner_user_session_converge_receipt_artifact_name,
   runner_user_session_converge_receipt_names_host,
-  RunnerUserSessionProducerRunSelection, ProducerRunSelected, ProducerRunNone, runner_user_session_producer_run_select,
 }
 import std.roster_frontier { frontier_rows_well_formed, DeclSubject, PathSubject }
 import std.dissolution { BoundDissolution, UnboundDissolution, dissolution_trigger_ref }
@@ -99,8 +98,14 @@ import gunbc.fleet.fleet_converge_run_name { fleet_converge_run_title }
 import gunbc.fleet.fleet_converge_workflow { fleet_converge_workflow, fleet_converge_workflow_mode_wire, RunnerUserSessionConverge, RunnerBrowserToolchainConverge }
 import extdeps.github.actions { Workflow }
 import gunbc.runner.runner_user_session_receipt_observed { runner_user_session_receipt_observed_with, runner_user_session_receipt_unreadable }
-import gunbc.runner.runner_user_session_receipt { RunnerUserSessionRunScan, RunScanSelected, RunScanNone, RunScanContinues, RunScanCapReached, runner_user_session_run_scan_step }
-import gunbc.runner.runner_slot_job_role { srv1_deploy_slot }
+import gunbc.runner.runner_user_session_receipt { runner_user_session_converge_mode_wire }
+import gunbc.fleet.fleet_converge_producer_run {
+  ProducerRunSelected, ProducerRunNone, fleet_converge_producer_run_select,
+  ProducerRunWindow, ProducerWalkSelected, ProducerWalkAbsent, ProducerWalkUnreadable, fleet_converge_producer_run_walk, producer_run_walk_from,
+  fleet_converge_producer_run_horizon, fleet_converge_producer_run_window,
+}
+import gunbc.runner.runner_slot_allocation { srv1_deploy_slot }
+import gunbc.superseded_run_starvation_census { CollectionComplete, RunListingRefused }
 import gunbc.ci.ci_fleet { srv4_offer }
 import gunbc.runner.runner_spec_from_offer { runner_spec_from_offer }
 import gunbc.runner.runner_slot_allocation { runner_labels_satisfy_selector }
@@ -302,6 +307,14 @@ test fn the_parser_reads_the_document_and_refuses_to_guess() -> Bool {
 // gunbc.runner.runner_user_session_receipt_observed (the production one).
 // RED control: turn the route back into cat of a path, drop --name/--repo/--dir, or rename the artifact
 // on one side only, and this goes red.
+// RED: each field is read only when it occurs exactly once (std.list sole_where). A holding document with a
+// second linger line saying "no" appended does not parse to the first ("yes"); it does not parse at all. The
+// same holding bytes without the extra line parse, so the refusal is caused by the repeat and nothing else.
+test fn a_document_stating_a_field_twice_does_not_parse_to_the_first() -> Bool {
+  (match parse_runner_user_session_converge_receipt(text: srv4_holding_bytes()) { Present { value: _ } => true  Absent => false })
+    && (match parse_runner_user_session_converge_receipt(text: concat(srv4_holding_bytes(), "linger=no\n")) { Absent => true  Present { value: _ } => false })
+}
+
 test fn the_consumer_reads_this_spec() -> Bool {
   let words = runner_user_session_converge_receipt_read_argv(run: GitHubWorkflowRunId { value: 40270496735 }, into: "receipts")
   words
@@ -325,7 +338,7 @@ test fn the_consumer_reads_this_spec() -> Bool {
 // header's probed_at, so any document on disk granted forever -- the stale-grant defect the rows were
 // deleted for, back through the reader). The parser's job is SHAPE: an instant is kept VERBATIM, canonical
 // or not, because WHETHER it can be aged is a question with a located answer at the gate that spends the
-// evidence (DESIGN 5), not a reason to throw the document away at the mouth. This control pins the
+// evidence (gunbc.design_argument::fail_closed), not a reason to throw the document away at the mouth. This control pins the
 // preservation and drives the age function on both sides of the declared bound.
 // RED control: drop probed_at from the receipt type, or age at the parse instead of the grant.
 test fn the_parser_keeps_the_instant_and_the_grant_ages_it() -> Bool {
@@ -515,7 +528,7 @@ fn header_line_is_the_document_head() -> Bool {
     == "runner_user_session_converge host=srv4 job_user=ghrunner probed_at=2026-10-28T00:00:00Z"
 }
 
-// THE FRONTIER THIS WITNESS ONCE CARRIED IS DISSOLVED, AND ITS RED STAYS (DESIGN 4b, dissolution on climb:
+// THE FRONTIER THIS WITNESS ONCE CARRIED IS DISSOLVED, AND ITS RED STAYS (gunbc.design_argument::guarantee_ladder, dissolution on climb:
 // the production machinery goes, the discriminating control remains). The two FrontierRows that named the
 // receipt-read leg as their dissolution were deleted when gunbc.runner.runner_user_session_receipt_observed
 // landed, so (1) no enrolled frontier subject names an entry of gunbc.runner.runner_registration_labels, and
@@ -750,17 +763,18 @@ fn user_session_title(host: String, nonce: String) -> String {
 // RED control: let the fold accept any conclusion, any status, any mode or any host and an arm goes red.
 test fn no_successful_run_for_this_mode_and_host_refuses() -> Bool {
   let other_mode = fleet_converge_run_title(mode: fleet_converge_workflow_mode_wire(mode: RunnerBrowserToolchainConverge), host: "srv4", nonce: "n3")
-  match runner_user_session_producer_run_select(
+  match fleet_converge_producer_run_select(
     runs: [
       producer_run(id: 1, title: user_session_title(host: "srv4", nonce: "n1"), completed: true, conclusion: Present { value: false }, created_at: "2026-10-28T00:00:00Z"),
       producer_run(id: 2, title: user_session_title(host: "srv4", nonce: "n2"), completed: false, conclusion: Absent, created_at: "2026-10-28T01:00:00Z"),
       producer_run(id: 3, title: other_mode, completed: true, conclusion: Present { value: true }, created_at: "2026-10-28T02:00:00Z"),
       producer_run(id: 4, title: user_session_title(host: "srv1", nonce: "n4"), completed: true, conclusion: Present { value: true }, created_at: "2026-10-28T03:00:00Z"),
     ],
+    mode: runner_user_session_converge_mode_wire,
     host: "srv4",
   ) {
     ProducerRunNone { cause: c } => string_contains(s: c, pattern: "srv4") && string_contains(s: c, pattern: fleet_converge_workflow_mode_wire(mode: RunnerUserSessionConverge))
-    ProducerRunSelected { run: _, created_at: _ } => false
+    ProducerRunSelected { run: _, attempt: _, created_at: _ } => false
   }
 }
 
@@ -770,14 +784,15 @@ test fn no_successful_run_for_this_mode_and_host_refuses() -> Bool {
 // the grant is RosteredUnconverged naming the age, never Granted.
 // RED control: pick the first listed run (the older id wins) or drop the staleness gate and an arm goes red.
 test fn the_newest_run_is_read_and_a_stale_newest_receipt_refuses() -> Bool {
-  match runner_user_session_producer_run_select(
+  match fleet_converge_producer_run_select(
     runs: [
       producer_run(id: 20, title: user_session_title(host: "srv4", nonce: "new"), completed: true, conclusion: Present { value: true }, created_at: "2026-10-28T00:00:00Z"),
       producer_run(id: 10, title: user_session_title(host: "srv4", nonce: "old"), completed: true, conclusion: Present { value: true }, created_at: "2026-10-01T00:00:00Z"),
     ],
+    mode: runner_user_session_converge_mode_wire,
     host: "srv4",
   ) {
-    ProducerRunSelected { run: r, created_at: at } =>
+    ProducerRunSelected { run: r, attempt: _, created_at: at } =>
       github_workflow_run_id_wire_text(id: r) == "20" && at == "2026-10-28T00:00:00Z"
         && match runner_user_session_grant_of_roster(
           host: operator_host_srv4,
@@ -793,7 +808,7 @@ test fn the_newest_run_is_read_and_a_stale_newest_receipt_refuses() -> Bool {
   }
 }
 
-// THE INHABITANCE CLAIM ON THE REAL PRODUCER ROUTE (DESIGN 3: supplying inputs above may not remove the last
+// THE INHABITANCE CLAIM ON THE REAL PRODUCER ROUTE (gunbc.design_argument::witness_one_interface: supplying inputs above may not remove the last
 // execution of the real path). The producer is the fleet-converge workflow: its run_name is the title the
 // listing returns for a dispatch, and fleet_converge_workflow_mode_wire is the mode word its input carries. The
 // title the PRODUCER's run_name renders -- read from the workflow data, its three placeholders resolved to the
@@ -807,19 +822,21 @@ test fn the_producer_run_name_is_a_title_the_selection_qualifies() -> Bool {
   match fleet_converge_workflow.run_name {
     Present { value: rendered } =>
       rendered == placeholder
-        && match runner_user_session_producer_run_select(
+        && match fleet_converge_producer_run_select(
           runs: [producer_run(id: 7, title: user_session_title(host: "srv4", nonce: "abc"), completed: true, conclusion: Present { value: true }, created_at: "2026-10-28T00:00:00Z")],
+          mode: runner_user_session_converge_mode_wire,
           host: "srv4",
         ) {
-          ProducerRunSelected { run: r, created_at: _ } => github_workflow_run_id_wire_text(id: r) == "7"
+          ProducerRunSelected { run: r, attempt: _, created_at: _ } => github_workflow_run_id_wire_text(id: r) == "7"
           ProducerRunNone { cause: _ } => false
         }
-        && match runner_user_session_producer_run_select(
+        && match fleet_converge_producer_run_select(
           runs: [producer_run(id: 8, title: "fleet converge runner_user_session_converge srv4 nonce=abc", completed: true, conclusion: Present { value: true }, created_at: "2026-10-28T00:00:00Z")],
+          mode: runner_user_session_converge_mode_wire,
           host: "srv4",
         ) {
           ProducerRunNone { cause: _ } => true
-          ProducerRunSelected { run: _, created_at: _ } => false
+          ProducerRunSelected { run: _, attempt: _, created_at: _ } => false
         }
     Absent => false
   }
@@ -847,54 +864,23 @@ test fn the_read_route_refuses_a_rostered_host_without_a_credential_and_skips_an
     }
 }
 
-// ABSENCE IS ESTABLISHED, NOT ASSUMED FROM AN INCOMPLETE LISTING (DESIGN 5; the side chat, PR 15431). The runs are
-// supplied values at the scan-step boundary; the real fold judges them. No age or page-local fact ends the scan:
-// a FULL page holding an OLD run continues, and the FRESH qualifying run on the next (underfull) page is selected;
-// the newest qualifying run is chosen across all pages scanned; a still-full page at the cap is RunScanCapReached
-// even when a qualifying run was already seen, which the read maps to ReceiptUnreadable (readback Unjudged, no
-// replace action); an underfull page with no qualifying run is the only RunScanNone.
-// RED control: end the scan on an old run or on the first page and the cross-page arms go red.
+// ABSENCE IS ESTABLISHED, NOT ASSUMED FROM AN INCOMPLETE LISTING (gunbc.design_argument::fail_closed; the side chat, PR 15431). The user
+// session's producer is found by the shared creation-window walk (gunbc.fleet.fleet_converge_producer_run; its own
+// witness, test.claim.fleet.fleet_converge_producer_run_witness, holds the >1,000-run history). Here the window read
+// is supplied: the newest window refuses, so the walk is unreadable even though an older window holds a qualifying
+// run, and that cause, handed to this reader, is ReceiptUnreadable -- readback Unjudged, no replace action.
+// RED control: let the walk skip a refused window and the first arm selects run 4 instead of refusing.
 test fn a_full_page_without_a_qualifying_run_does_not_establish_absence() -> Bool {
-  let recent = producer_run(id: 1, title: "unrelated", completed: true, conclusion: Present { value: true }, created_at: "2026-10-28T00:00:00Z")
-  let old = producer_run(id: 2, title: "unrelated", completed: true, conclusion: Present { value: true }, created_at: "2026-09-01T00:00:00Z")
-  let fresh_qualifying = producer_run(id: 3, title: user_session_title(host: "srv4", nonce: "n9"), completed: true, conclusion: Present { value: true }, created_at: "2026-10-28T01:00:00Z")
   let older_qualifying = producer_run(id: 4, title: user_session_title(host: "srv4", nonce: "n8"), completed: true, conclusion: Present { value: true }, created_at: "2026-10-27T01:00:00Z")
-  match runner_user_session_run_scan_step(scanned: [], page_runs: [recent, old, old], host: "srv4", page: 1, max_pages: 2, page_size: 3) {
-    RunScanContinues { scanned: seen } =>
-      match runner_user_session_run_scan_step(scanned: seen, page_runs: [fresh_qualifying], host: "srv4", page: 2, max_pages: 2, page_size: 3) {
-        RunScanSelected { run: r, created_at: _ } => github_workflow_run_id_wire_text(id: r) == "3"
-        RunScanNone { cause: _ } => false
-        RunScanContinues { scanned: _ } => false
-        RunScanCapReached { cause: _ } => false
-      }
-    RunScanSelected { run: _, created_at: _ } => false
-    RunScanNone { cause: _ } => false
-    RunScanCapReached { cause: _ } => false
+  let start = producer_run_walk_from(now: 1761699600, width: fleet_converge_producer_run_window, horizon: fleet_converge_producer_run_horizon())
+  let refuse_newest = fn(w) {
+    if w.through == 1761699600 { RunListingRefused { cause: "HTTP 502" as NonEmptyStr } } else { CollectionComplete { runs: [older_qualifying] } }
   }
-    && match runner_user_session_run_scan_step(scanned: [], page_runs: [older_qualifying, old, old], host: "srv4", page: 1, max_pages: 2, page_size: 3) {
-      RunScanContinues { scanned: seen } =>
-        match runner_user_session_run_scan_step(scanned: seen, page_runs: [fresh_qualifying], host: "srv4", page: 2, max_pages: 2, page_size: 3) {
-          RunScanSelected { run: r, created_at: _ } => github_workflow_run_id_wire_text(id: r) == "3"
-          RunScanNone { cause: _ } => false
-          RunScanContinues { scanned: _ } => false
-          RunScanCapReached { cause: _ } => false
-        }
-      RunScanSelected { run: _, created_at: _ } => false
-      RunScanNone { cause: _ } => false
-      RunScanCapReached { cause: _ } => false
-    }
-    && match runner_user_session_run_scan_step(scanned: [recent, recent, recent], page_runs: [fresh_qualifying, recent, recent], host: "srv4", page: 2, max_pages: 2, page_size: 3) {
-      RunScanCapReached { cause: c } => capped_is_unjudged_with_no_replace(cause: c)
-      RunScanSelected { run: _, created_at: _ } => false
-      RunScanNone { cause: _ } => false
-      RunScanContinues { scanned: _ } => false
-    }
-    && match runner_user_session_run_scan_step(scanned: [recent, recent, recent], page_runs: [recent], host: "srv4", page: 2, max_pages: 2, page_size: 3) {
-      RunScanNone { cause: _ } => true
-      RunScanSelected { run: _, created_at: _ } => false
-      RunScanContinues { scanned: _ } => false
-      RunScanCapReached { cause: _ } => false
-    }
+  match fleet_converge_producer_run_walk(st: start, mode: runner_user_session_converge_mode_wire, host: "srv4", read: refuse_newest) {
+    ProducerWalkUnreadable { cause: c } => string_contains(s: c, pattern: "HTTP 502") && capped_is_unjudged_with_no_replace(cause: c)
+    ProducerWalkSelected { run: _, attempt: _, window: _ } => false
+    ProducerWalkAbsent { cause: _ } => false
+  }
 }
 
 fn capped_is_unjudged_with_no_replace(cause: String) -> Bool {
@@ -902,7 +888,6 @@ fn capped_is_unjudged_with_no_replace(cause: String) -> Bool {
   match runner_evidence_gated_registration_labels(host: operator_host_srv4, receipt: srv4_holding_input()) {
     RegistrationLabelsResolved { labels: with_label } =>
       unjudged(verdict: runner_slot_labels_conform(slot: srv4_ci_slot(), observed: with_label, receipt: input))
-        && string_contains(s: cause, pattern: "not established")
     RegistrationLabelsRefused { host: _, cause: _ } => false
   }
 }
@@ -915,19 +900,19 @@ test fn a_branch_dispatched_run_is_never_the_producer() -> Bool {
   let title = user_session_title(host: "srv4", nonce: "nb")
   let branch_run = producer_run_on(id: 7, title: title, completed: true, conclusion: Present { value: true }, created_at: "2026-10-28T05:00:00Z", branch: "evil-branch")
   let main_run = producer_run_on(id: 5, title: title, completed: true, conclusion: Present { value: true }, created_at: "2026-10-28T01:00:00Z", branch: "main")
-  match runner_user_session_producer_run_select(runs: [branch_run, main_run], host: "srv4") {
-    ProducerRunSelected { run: r, created_at: _ } => github_workflow_run_id_wire_text(id: r) == "5"
+  match fleet_converge_producer_run_select(runs: [branch_run, main_run], mode: runner_user_session_converge_mode_wire, host: "srv4") {
+    ProducerRunSelected { run: r, attempt: _, created_at: _ } => github_workflow_run_id_wire_text(id: r) == "5"
     ProducerRunNone { cause: _ } => false
   }
-    && match runner_user_session_producer_run_select(runs: [branch_run], host: "srv4") {
+    && match fleet_converge_producer_run_select(runs: [branch_run], mode: runner_user_session_converge_mode_wire, host: "srv4") {
       ProducerRunNone { cause: _ } => true
-      ProducerRunSelected { run: _, created_at: _ } => false
+      ProducerRunSelected { run: _, attempt: _, created_at: _ } => false
     }
 }
 
 // THE CONTROL CENSUS, IN THE ORDER THE FOLD READS THEM. Each control above answers Bool (the claim lane's
 // shape); this vocabulary names them so the fold below can carry the FIRST failing control's name into
-// the refusal -- DESIGN 5: every path fails with a typed, located diagnostic, so a red receipt says where
+// the refusal -- gunbc.design_argument::fail_closed: every path fails with a typed, located diagnostic, so a red receipt says where
 // to look instead of listing every possible cause. A named-step sum type folded through a dispatch fn,
 // not a List<thunk>: the interpreter runs folded zero-argument thunks but the Rust emission refuses them
 // (extdeps.apple.app_attest records that around gunbc#11989), and this witness must emit as cleanly as it

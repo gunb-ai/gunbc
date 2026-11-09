@@ -76,7 +76,7 @@ import gunbc.review_sheet_values_actuator {
 // deliberately no render field on the record: a field that can hold RenderFormula can hold
 // RenderFormattedValue, and a consumer would have to check it.
 //
-// WHAT IS ESTABLISHED, AT ITS ACTUAL STANDING (DESIGN 4b(1)), because the two things above are
+// WHAT IS ESTABLISHED, AT ITS ACTUAL STANDING (gunbc.design_argument::guarantee_ladder (rung honesty)), because the two things above are
 // not established the same way. (a) That an occupied admission never becomes the carrier is
 // EXECUTED: formula_reading_from_admission is discriminated with a supplied FormulaGridOccupied,
 // and the planner-level ignore-the-grid of the first cut is unwritable (the planner holds no
@@ -98,7 +98,7 @@ import gunbc.review_sheet_values_actuator {
 // values.get spells a tab with no values). FormulaGridEmpty is an ordinary record: it confers
 // nothing, and the planner (gunbc.review_sheet_header_init) takes only the carrier.
 //
-// RUNG HONESTY (DESIGN 4b). Native v2 refuses a foreign literal via v2.compiler.infer
+// RUNG HONESTY (gunbc.design_argument::guarantee_ladder). Native v2 refuses a foreign literal via v2.compiler.infer
 // infer_sole_constructor_diags. On the v1 seed's acceptance path the wall is structural for
 // record literal and cast: SoleConstructorViolation, measured by
 // test.claim.review_sheet_header_init_refusal_probe_witness against

@@ -21,6 +21,7 @@ use super::entry_resolve::{
     new_multi_entry_index_acquired, parsed_file_references, resolve_entry_with_index,
     ReferenceSelectionTier,
 };
+use super::format_error_node;
 use super::source_layout_lookup::module_storage_relative;
 use super::{
     extract_import_paths, extract_module_path, workspace_relative_repo_path, workspace_root,
@@ -28,12 +29,72 @@ use super::{
     MultiEntryIndex,
 };
 use crate::v1_compiler_compile;
-use crate::v1_std_core::NewlineIndex;
+use crate::v1_std_core::{
+    is_error_diagnostic, is_interpreter_blocking_diagnostic, ErrorNode, NewlineIndex,
+};
 use im::HashMap;
 use std::collections::{HashSet, VecDeque};
 use std::path::Path;
 use std::rc::Rc;
 
+// THE READ-SET RECEIPT: the one seed addition the operator admitted for the planning fast lane
+// (@ref(gunbc.design_ruling::seed_read_set_receipt_is_admitted)). Every filesystem fact demand acquisition
+// consumes is recorded: a file it read, a path it probed and found absent (or could not admit), and a
+// directory it enumerated. A change to any recorded path -- or under any recorded directory -- can change
+// what this process acquires; a change to no recorded path cannot. When `GUNBC_READ_SET_OUT` names a file,
+// each new fact is appended to it as one `<kind> <workspace-relative path>` line (kinds: file, probe, dir);
+// unset, nothing is recorded or written. Appending as facts arrive (rather than at exit) keeps the receipt
+// complete on every exit route, including process::exit and a refusal.
+thread_local! {
+    static READ_SET_SEEN: std::cell::RefCell<HashSet<String>> = std::cell::RefCell::new(HashSet::new());
+}
+
+pub(crate) fn read_set_record(kind: &str, path: &str) {
+    read_set_record_to(std::env::var("GUNBC_READ_SET_OUT").ok(), kind, path);
+}
+
+/// The recorder with its destination passed in, so a test never touches the process-wide variable.
+fn read_set_record_to(out: Option<String>, kind: &str, path: &str) {
+    let Some(out) = out.filter(|o| !o.is_empty()) else {
+        return;
+    };
+    let line = format!("{kind} {path}");
+    let fresh = READ_SET_SEEN.with(|seen| seen.borrow_mut().insert(format!("{out}\t{line}")));
+    if !fresh {
+        return;
+    }
+    use std::io::Write;
+    let written = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&out)
+        .and_then(|mut f| writeln!(f, "{line}"));
+    if let Err(e) = written {
+        // A receipt that silently lost a fact would let a skip decision trust an incomplete read set.
+        eprintln!("error: read-set receipt {out} could not record `{line}`: {e}");
+        std::process::exit(2);
+    }
+}
+
+/// THE ONE PROVIDER-SETTLING LOOP FOR `gunbc run`. `gunbc run` settles its entry closure through the
+/// SAME authority the entry compile uses -- `demand_acquired_entry_resolved` -> the complete `.dag`
+/// compile, every generated provider joining the closure each round -- and consumes that settled
+/// graph. There is no second, lossy resolve: the old `demand_acquired_provider_fixed_point` loop
+/// resolved through an empty occurrence transport and is deleted here.
+///
+/// DIAGNOSTIC BOUNDARY (the correctness condition this preserves): the lossy core refused
+/// parse / resolve / normalize / typed-blocking failures BEFORE a graph was ever handed to the
+/// interpreter. The `.dag` pipeline instead returns those failures as DATA -- and some live OUTSIDE
+/// `graph.diagnostics`, only in `ResolvedPipelineResult.diagnostics` (front-end and normalize diags).
+/// So the COMPLETE settled set is classified here, in the lossy stage order, and an absent graph is
+/// refused -- before any interpreter effect or listener is created. run's own downstream gate (on
+/// `graph.diagnostics` alone) cannot see the front-end / normalize diags; this wrapper must.
+///
+/// The run-settle option set (complexity / ownership / test-reference off) keeps run's diagnostic set
+/// and cost equal to the loop it replaces: run's consumer reads no ownership facts and no complexity
+/// report, and the interpreter does not enforce the test-reference gate (a `test` declaration is
+/// entered only by the witness runner), so none of the three may be added to a run.
+#[allow(clippy::type_complexity)]
 pub fn resolve_entry_graph_demand_acquired(
     source_roots: &[String],
     entry_file: &str,
@@ -44,55 +105,163 @@ pub fn resolve_entry_graph_demand_acquired(
     ),
     String,
 > {
-    resolve_entry_graph_demand_acquired_with_diagnostics(source_roots, entry_file)
-        .map(|(graph, si, _)| (graph, si))
+    let (_sources, resolved) = demand_acquired_entry_resolved(
+        source_roots,
+        entry_file,
+        CustomRootDuplicate::Refuse,
+        v1_compiler_compile::run_settle_compile_options(),
+    )?;
+
+    let graph = match resolved.graph.clone() {
+        Some(graph) => graph,
+        // No settled graph: a front-end failure (parse / resolve / occurrence). Reproduce the lossy
+        // parse / resolve refusal text. Rebuild the source-index map from the front-end's newline
+        // indices so locations still carry line:column even with no graph.
+        None => {
+            let source_indices = Rc::new(
+                resolved
+                    .newline_indices
+                    .iter()
+                    .map(|nl| (nl.file.clone(), nl.clone()))
+                    .collect::<HashMap<String, Rc<NewlineIndex>>>(),
+            );
+            return Err(super::format_error_nodes(
+                &resolved.diagnostics,
+                &source_indices,
+            ));
+        }
+    };
+    // The pipeline carries a `std` source-index map; the run contract carries an `im` map, as before.
+    let source_indices: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new(
+        resolved
+            .source_indices
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect::<HashMap<String, Rc<NewlineIndex>>>(),
+    );
+    // Resolve / normalize / front-end errors: settled diagnostics that are errors but are NOT part of
+    // the typed graph (front-end + normalize diags live only on the pipeline result). The lossy core
+    // refused these with `is_error_diagnostic` BEFORE its typed stage -- reproduce that ordering.
+    let pre_typed: Vec<&Rc<ErrorNode>> = resolved
+        .diagnostics
+        .iter()
+        .filter(|d| is_error_diagnostic(d.diagnostic.clone()))
+        .filter(|d| !graph.diagnostics.iter().any(|g| Rc::ptr_eq(g, d)))
+        .collect();
+    if !pre_typed.is_empty() {
+        return Err(pre_typed
+            .iter()
+            .map(|d| format_error_node(d, &source_indices))
+            .collect::<Vec<_>>()
+            .join("\n"));
+    }
+    // Typed stage: the interpreter-blocking typecheck diagnostics -- exactly the lossy typed branch
+    // (filter `is_interpreter_blocking_diagnostic`, one `format_error_node` each, joined).
+    let typed_blocking: Vec<String> = graph
+        .diagnostics
+        .iter()
+        .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
+        .map(|d| format_error_node(d, &source_indices))
+        .collect();
+    if !typed_blocking.is_empty() {
+        return Err(typed_blocking.join("\n"));
+    }
+    // No blocking diagnostic (clean, or advisory-only): run may evaluate -- it re-gates on
+    // `graph.diagnostics` downstream, which now carries the full typed set the interpreter enforces.
+    Ok((graph, source_indices))
 }
 
-/// The demand-acquired resolve with the compile-clean diagnostics the core produced. `gunbc serve`
-/// gates on them (`is_interpreter_blocking_diagnostic`); `gunbc run` gates on the graph's own. One
-/// resolve, two consumers: the closure is the layout closure for both, never the whole-tree index.
-pub fn resolve_entry_graph_demand_acquired_with_diagnostics(
+/// What an ENTRY COMPILE emits from: the final ordered closure and the ONE complete `.dag` resolution
+/// of it. Generated providers the entry demands join the closure exactly as `gunbc run` acquires
+/// them (same layout answers, same snapshot-seeded rebuild for a provider outside the acquired
+/// index), but every provider round is a complete `.dag` compile and the round that settles is the
+/// result emission starts from: the settled closure is never resolved a second time.
+pub(crate) fn demand_acquired_entry_resolved(
     source_roots: &[String],
     entry_file: &str,
+    duplicates: CustomRootDuplicate,
+    options: v1_compiler_compile::CompilePipelineOptions,
 ) -> Result<
     (
-        Rc<v1_compiler_compile::ResolvedGraph>,
-        Rc<HashMap<String, Rc<NewlineIndex>>>,
-        Rc<im::Vector<Rc<crate::v1_std_core::ErrorNode>>>,
+        Vec<Rc<v1_compiler_compile::SourceFile>>,
+        Rc<v1_compiler_compile::ResolvedPipelineResult>,
     ),
     String,
 > {
-    // GENERATED PROVIDERS ON THE DEMAND-ACQUIRED PATH. The acquired closure holds only what the entry's
-    // authored references reach, so a provider a generated reference demands is outside it. The index
-    // carries the layout's answer for such a module (provider_layout); the resolve core records every
-    // provider the model asks to acquire that the layout holds and the index does not, and this loop
-    // rebuilds the closure seeded with them. The seeds only grow and the layout is finite, so the loop
-    // ends at a resolve that needs nothing outside, or at a refusal that names nothing new.
-    let custom = Rc::new(custom_root_module_census(source_roots)?);
-    let mut seeds: Vec<(String, Rc<v1_compiler_compile::SourceFile>)> = Vec::new();
-    loop {
-        let index = build_demand_acquired_index(source_roots, entry_file, &custom, &seeds)?;
-        let roots = source_roots.to_vec();
-        let census = custom.clone();
-        *index.provider_layout.borrow_mut() = Some(Rc::new(move |module: &str| {
-            layout_provider_answer(&roots, &census, module)
-        }));
-        match super::entry_resolve::resolve_entry_typed(&index, entry_file)? {
-            super::entry_resolve::CoreResolve::Resolved(graph, si, diags) => {
-                return Ok((graph, si, diags))
-            }
-            super::entry_resolve::CoreResolve::NeedsAcquisition(providers) => {
-                let fresh: Vec<_> = providers
-                    .into_iter()
-                    .filter(|(m, _)| !seeds.iter().any(|(s, _)| s == m))
-                    .collect();
-                if fresh.is_empty() {
-                    return Err("generated provider acquisition made no progress on the demand-acquired path: every provider it asked for is already seeded".to_string());
+    use super::provider_acquire::{ClosureOfError, PoolAnswer};
+    use std::cell::RefCell;
+    let custom = Rc::new(custom_root_module_census_under(source_roots, duplicates)?);
+    struct Acquired {
+        index: Rc<MultiEntryIndex>,
+        seeds: Vec<(String, Rc<v1_compiler_compile::SourceFile>)>,
+        snapshots: std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>>,
+    }
+    let entry_sources = |index: &Rc<MultiEntryIndex>,
+                         seeds: &[(String, Rc<v1_compiler_compile::SourceFile>)]|
+     -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+        let mut sources =
+            super::entry_resolve::load_sources_for_entry_with_pool(index, entry_file)?;
+        for (module, _) in seeds {
+            let closure = super::entry_resolve::provider_closure_of(index, module)
+                .map_err(|e| format!("acquired provider {module}: {e:?}"))?;
+            for s in closure {
+                if !sources.iter().any(|x| x.path == s.path) {
+                    sources.push(s);
                 }
-                seeds.extend(fresh);
             }
         }
-    }
+        Ok(sources)
+    };
+    let index = build_demand_acquired_index(source_roots, entry_file, &custom, &[], duplicates)?;
+    let sources = entry_sources(&index, &[])?;
+    let state = RefCell::new(Acquired {
+        index,
+        seeds: Vec::new(),
+        snapshots: std::collections::HashMap::new(),
+    });
+    // A module the index holds was read when the index was built. Outside it only the layout has an
+    // answer, and a Holds keeps the bytes it read so the rebuild acquires exactly those.
+    let pool = |m: &str| {
+        if state.borrow().index.source_files.contains_key(m) {
+            return PoolAnswer::Holds;
+        }
+        match layout_provider_answer(source_roots, &custom, m, duplicates) {
+            super::entry_resolve::ProviderLayoutAnswer::Holds(source) => {
+                state.borrow_mut().snapshots.insert(m.to_string(), source);
+                PoolAnswer::Holds
+            }
+            super::entry_resolve::ProviderLayoutAnswer::Unreadable => PoolAnswer::Unreadable,
+            super::entry_resolve::ProviderLayoutAnswer::Lacks => PoolAnswer::Lacks,
+        }
+    };
+    let closure_of = |m: &str| -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, ClosureOfError> {
+        let index = state.borrow().index.clone();
+        super::entry_resolve::provider_closure_of(&index, m)
+    };
+    let rebuild = |outside: &[String], _current: &[Rc<v1_compiler_compile::SourceFile>]| {
+        let mut st = state.borrow_mut();
+        let fresh: Vec<_> = outside
+            .iter()
+            .filter(|m| !st.seeds.iter().any(|(s, _)| s == *m))
+            .filter_map(|m| st.snapshots.get(m).map(|src| (m.clone(), src.clone())))
+            .collect();
+        if fresh.is_empty() {
+            return Err("generated provider acquisition made no progress on the demand-acquired path: every provider it asked for is already seeded".to_string());
+        }
+        st.seeds.extend(fresh);
+        let index =
+            build_demand_acquired_index(source_roots, entry_file, &custom, &st.seeds, duplicates)?;
+        let sources = entry_sources(&index, &st.seeds)?;
+        st.index = index;
+        Ok(sources)
+    };
+    super::provider_acquire::compile_to_provider_fixed_point_with(
+        sources.clone(),
+        options,
+        &pool,
+        &closure_of,
+        &rebuild,
+    )
 }
 
 fn build_demand_acquired_index(
@@ -100,12 +269,21 @@ fn build_demand_acquired_index(
     entry_file: &str,
     custom: &std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>>,
     provider_seeds: &[(String, Rc<v1_compiler_compile::SourceFile>)],
+    duplicates: CustomRootDuplicate,
 ) -> Result<Rc<MultiEntryIndex>, String> {
     super::pre_entry_phase::mark_demand_acquired_path();
     let source_files = super::pre_entry_phase::timed(
         "demand_layout_acquire",
         super::pre_entry_phase::PhaseScale::Closure,
-        || acquire_layout_closure_seeded(source_roots, entry_file, custom, provider_seeds),
+        || {
+            acquire_layout_closure_seeded(
+                source_roots,
+                entry_file,
+                custom,
+                provider_seeds,
+                duplicates,
+            )
+        },
     )?;
     super::pre_entry_phase::record_demand_acquired_modules(source_files.len());
     let facts = module_graph_facts_from_acquired(&source_files, source_roots);
@@ -123,8 +301,9 @@ pub(crate) fn layout_provider_answer(
     source_roots: &[String],
     custom: &std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>>,
     module: &str,
+    duplicates: CustomRootDuplicate,
 ) -> super::entry_resolve::ProviderLayoutAnswer {
-    match read_layout_module(source_roots, custom, module) {
+    match read_layout_module(source_roots, custom, module, duplicates) {
         Ok(Some(source)) => super::entry_resolve::ProviderLayoutAnswer::Holds(source),
         Ok(None) => super::entry_resolve::ProviderLayoutAnswer::Lacks,
         Err(_) => super::entry_resolve::ProviderLayoutAnswer::Unreadable,
@@ -136,7 +315,13 @@ pub(crate) fn acquire_layout_closure(
     entry_file: &str,
 ) -> Result<ModuleSourceIndex, String> {
     let custom = custom_root_module_census(source_roots)?;
-    acquire_layout_closure_seeded(source_roots, entry_file, &custom, &[])
+    acquire_layout_closure_seeded(
+        source_roots,
+        entry_file,
+        &custom,
+        &[],
+        CustomRootDuplicate::Refuse,
+    )
 }
 
 /// The entry's layout closure, also closing over `provider_seeds` -- providers generated references
@@ -149,8 +334,10 @@ pub(crate) fn acquire_layout_closure_seeded(
     entry_file: &str,
     custom: &std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>>,
     provider_seeds: &[(String, Rc<v1_compiler_compile::SourceFile>)],
+    duplicates: CustomRootDuplicate,
 ) -> Result<ModuleSourceIndex, String> {
     let path = Path::new(entry_file);
+    read_set_record("file", &workspace_relative_repo_path(entry_file));
     if !path.is_file() {
         return Err(format!(
             "entry file does not exist or is not a file: {entry_file}"
@@ -191,7 +378,8 @@ pub(crate) fn acquire_layout_closure_seeded(
             if index.contains_key(&name) {
                 continue;
             }
-            let Some(acquired) = read_layout_module(source_roots, &custom, &name)? else {
+            let Some(acquired) = read_layout_module(source_roots, &custom, &name, duplicates)?
+            else {
                 continue;
             };
             known.insert(name.clone());
@@ -233,7 +421,7 @@ fn demanded_module_names(
 
 /// `dag` and `src/v2` are the layout trees. Every other `--source-root` is a custom
 /// tree whose files are not at `<root(a)>/b/c.dag` under the workspace.
-fn source_root_is_governed_layout(root: &str) -> bool {
+pub(super) fn source_root_is_governed_layout(root: &str) -> bool {
     let spelling = root.trim_end_matches('/');
     if spelling == "dag" || spelling == "src/v2" {
         return true;
@@ -255,8 +443,25 @@ fn source_root_is_governed_layout(root: &str) -> bool {
 
 /// Walk only non-governed roots. A wet `gunbc run --source-root dag --source-root src/v2`
 /// never enters this walk.
-fn custom_root_module_census(
+/// WHAT A MODULE DECLARED IN TWO NON-GOVERNED ROOTS MEANS. `gunbc run` has no precedence policy, so
+/// it refuses. A compile whose request declares `primary_precedence` keeps the FIRST root's
+/// declaration, which is what the whole-tree index did for it (review 90897): the acquired route
+/// honours the field the caller declared rather than silently changing its meaning.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CustomRootDuplicate {
+    Refuse,
+    FirstRootWins,
+}
+
+pub(super) fn custom_root_module_census(
     source_roots: &[String],
+) -> Result<std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>>, String> {
+    custom_root_module_census_under(source_roots, CustomRootDuplicate::Refuse)
+}
+
+fn custom_root_module_census_under(
+    source_roots: &[String],
+    duplicates: CustomRootDuplicate,
 ) -> Result<std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>>, String> {
     let mut by_module: std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>> =
         std::collections::HashMap::new();
@@ -264,11 +469,12 @@ fn custom_root_module_census(
         if source_root_is_governed_layout(root) {
             continue;
         }
-        let anchored = super::anchor_source_root(root);
+        // A ROOT THAT IS NOT A DIRECTORY REFUSES; IT IS NOT SKIPPED. Skipping dropped a typo'd or
+        // uncommitted root from the population silently (review 90892); the admission is the
+        // whole-tree builder's own (`admit_source_root`).
+        let anchored = super::admit_source_root(root)?;
+        read_set_record("dir", &workspace_relative_repo_path(&anchored));
         let root_path = Path::new(&anchored);
-        if !root_path.is_dir() {
-            continue;
-        }
         let mut files = Vec::new();
         super::collect_dag_files_result(root_path, &mut files)?;
         for acquired in files {
@@ -285,10 +491,15 @@ fn custom_root_module_census(
             });
             if let Some(existing) = by_module.get(&name) {
                 if existing.path != src.path {
-                    return Err(format!(
-                        "module {name} is declared in both {} and {}",
-                        existing.path, src.path
-                    ));
+                    match duplicates {
+                        CustomRootDuplicate::Refuse => {
+                            return Err(format!(
+                                "module {name} is declared in both {} and {}",
+                                existing.path, src.path
+                            ))
+                        }
+                        CustomRootDuplicate::FirstRootWins => continue,
+                    }
                 }
             }
             by_module.insert(name, src);
@@ -308,9 +519,11 @@ fn layout_module_file_exists(name: &str) -> bool {
         if let Some(hit) = c.get(name) {
             return *hit;
         }
-        let exists = module_storage_relative(name)
-            .ok()
-            .is_some_and(|rel| workspace_root().join(&rel).is_file());
+        let exists = module_storage_relative(name).ok().is_some_and(|rel| {
+            let found = workspace_root().join(&rel).is_file();
+            read_set_record(if found { "file" } else { "probe" }, &rel);
+            found
+        });
         c.insert(name.to_string(), exists);
         exists
     })
@@ -332,33 +545,96 @@ fn longest_layout_module_prefix(
     None
 }
 
+/// ONE MODULE'S SOURCE UNDER THE POOL ROOTS, BY SOURCE-ROOT AUTHORITY: each root, in order, is asked
+/// whether it holds `name` -- a governed root through the layout path (`read_governed_layout_module`),
+/// a custom root through the custom census (only a file that lies under that root). The first root
+/// that holds it owns it under `FirstRootWins`; under `Refuse` a second DISTINCT file in another root
+/// is the duplicate refusal, whichever kinds the two roots are. This is the whole-tree builders'
+/// meaning (`try_build_module_index[_primary_precedence]`), which the census-first read had changed:
+/// the custom census skips governed roots, so a governed/custom duplicate was never seen and custom
+/// won silently under either policy and either root order. `gunbc run` (Refuse) shares the rule.
 fn read_layout_module(
     source_roots: &[String],
     custom: &std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>>,
     name: &str,
-) -> Result<Option<Rc<v1_compiler_compile::SourceFile>>, String> {
+    duplicates: CustomRootDuplicate,
+) -> Result<Option<std::rc::Rc<crate::v1_compiler_compile::SourceFile>>, String> {
     if let Some(derived) = read_derived_roster_module(name)? {
         return Ok(Some(derived));
     }
-    if let Some(custom_src) = custom.get(name) {
-        return Ok(Some(custom_src.clone()));
+    let mut owner: Option<Rc<v1_compiler_compile::SourceFile>> = None;
+    for root in source_roots {
+        let held = if source_root_is_governed_layout(root) {
+            read_governed_layout_module(std::slice::from_ref(root), name)?
+        } else {
+            custom
+                .get(name)
+                .filter(|src| {
+                    let path = Path::new(&src.path);
+                    let abs = if path.is_absolute() {
+                        path.to_path_buf()
+                    } else {
+                        workspace_root().join(path)
+                    };
+                    under_source_roots(std::slice::from_ref(root), &abs)
+                })
+                .cloned()
+        };
+        let Some(held) = held else { continue };
+        match &owner {
+            None => {
+                if duplicates == CustomRootDuplicate::FirstRootWins {
+                    return Ok(Some(held));
+                }
+                owner = Some(held);
+            }
+            Some(first) if first.path == held.path => {}
+            Some(first) => {
+                return Err(format!(
+                    "module {name} is declared in both {} and {}",
+                    first.path, held.path
+                ))
+            }
+        }
     }
-    if !source_roots
-        .iter()
-        .any(|root| source_root_is_governed_layout(root))
-    {
+    Ok(owner)
+}
+
+/// The layout-path read of a governed module, admitted only when its file lies under one of `roots`.
+fn read_governed_layout_module(
+    source_roots: &[String],
+    name: &str,
+) -> Result<Option<std::rc::Rc<crate::v1_compiler_compile::SourceFile>>, String> {
+    let Some((_, rel, content)) =
+        read_layout_file(name, |abs| under_source_roots(source_roots, abs))?
+    else {
         return Ok(None);
-    }
+    };
+    Ok(Some(Rc::new(v1_compiler_compile::SourceFile {
+        path: workspace_relative_repo_path(&rel),
+        content,
+    })))
+}
+
+/// THE ONE PATH-DERIVED READ of a layout module: `gunbc.source_layout` maps `name` to its file,
+/// the file is read, and its own `module` line must say `name` (a misfiled file is a refusal, never
+/// a quiet miss). `None` when the name has no layout path or no file stands there. `admit` is asked before the read (a file outside the roots is never opened). Shared by
+/// `read_layout_module` (closure acquisition) and the keyed module/declaration reads
+/// (`keyed_module_lookup`): the name-to-path mapping is applied in one place. Returns the absolute
+/// path, the workspace-relative layout path, and the content.
+pub(super) fn read_layout_file(
+    name: &str,
+    admit: impl Fn(&Path) -> bool,
+) -> Result<Option<(std::path::PathBuf, String, String)>, String> {
     let Ok(rel) = module_storage_relative(name) else {
         return Ok(None);
     };
     let abs = workspace_root().join(&rel);
-    if !abs.is_file() {
+    if !abs.is_file() || !admit(&abs) {
+        read_set_record("probe", &rel);
         return Ok(None);
     }
-    if !under_source_roots(source_roots, &abs) {
-        return Ok(None);
-    }
+    read_set_record("file", &rel);
     let content = std::fs::read_to_string(&abs).map_err(|e| {
         format!(
             "failed to read layout module {name} at {}: {e}",
@@ -373,18 +649,15 @@ fn read_layout_module(
             declared.unwrap_or_else(|| "<no module line>".to_string())
         ));
     }
-    Ok(Some(Rc::new(v1_compiler_compile::SourceFile {
-        path: workspace_relative_repo_path(&rel),
-        content,
-    })))
+    Ok(Some((abs, rel, content)))
 }
 
 /// The `DERIVED_ROW_ROSTERS` modules (`gunbc.rung_drop.roster`, `gunbc.recurring_failure_mode.roster`,
 /// `gunbc.guarantee_stall.roster`) have no file;
 /// the tree walk mints them in memory (`derived_row_roster::acquire_dir_files`).
-fn read_derived_roster_module(
+pub(super) fn read_derived_roster_module(
     name: &str,
-) -> Result<Option<Rc<v1_compiler_compile::SourceFile>>, String> {
+) -> Result<Option<std::rc::Rc<crate::v1_compiler_compile::SourceFile>>, String> {
     let Some(roster) = super::derived_row_roster::DERIVED_ROW_ROSTERS
         .iter()
         .copied()
@@ -393,6 +666,7 @@ fn read_derived_roster_module(
         return Ok(None);
     };
     let dir = workspace_root().join("dag").join(roster.row_dir_rel);
+    read_set_record("dir", &format!("dag/{}", roster.row_dir_rel));
     if !dir.is_dir() {
         return Ok(None);
     }
@@ -419,7 +693,7 @@ fn read_derived_roster_module(
     })))
 }
 
-fn under_source_roots(source_roots: &[String], abs: &Path) -> bool {
+pub(super) fn under_source_roots(source_roots: &[String], abs: &Path) -> bool {
     let ws = workspace_root();
     source_roots.iter().any(|root| {
         let anchored = super::anchor_source_root(root);
@@ -483,9 +757,39 @@ fn module_graph_facts_from_acquired(
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_entry_graph_demand_acquired;
+    // THE READ-SET RECEIPT records each fact once, in arrival order, as `<kind> <path>`; with no
+    // destination it writes nothing (the control: no file appears). The destination is passed in, so
+    // this test never sets GUNBC_READ_SET_OUT and cannot race a sibling test's acquisition.
+    #[test]
+    fn read_set_receipt_records_each_fact_once_and_only_when_asked() {
+        let dir = std::env::temp_dir().join(format!("gunbc-read-set-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let out = dir.join("read-set.txt");
+        let _ = std::fs::remove_file(&out);
+        let dest = Some(out.to_string_lossy().into_owned());
+        super::read_set_record_to(None, "file", "dag/never/recorded.dag");
+        super::read_set_record_to(Some(String::new()), "file", "dag/never/recorded.dag");
+        assert!(!out.exists(), "no destination must write nothing");
+        super::read_set_record_to(dest.clone(), "file", "dag/a.dag");
+        super::read_set_record_to(dest.clone(), "probe", "dag/b.dag");
+        super::read_set_record_to(dest.clone(), "file", "dag/a.dag");
+        super::read_set_record_to(dest, "dir", "dag/gunbc/rung_drop");
+        let text = std::fs::read_to_string(&out).expect("receipt written");
+        assert_eq!(
+            text,
+            "file dag/a.dag\nprobe dag/b.dag\ndir dag/gunbc/rung_drop\n"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    use super::{
+        build_demand_acquired_index, custom_root_module_census_under,
+        demand_acquired_entry_resolved, resolve_entry_graph_demand_acquired, CustomRootDuplicate,
+    };
+    use crate::v1_compiler_compile;
     use std::fs;
     use std::path::PathBuf;
+    use std::rc::Rc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     static FIXTURE: AtomicUsize = AtomicUsize::new(0);
@@ -754,7 +1058,7 @@ mod tests {
     #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
     fn layout_provider_answer_keeps_unreadable_distinct_from_absent() {
         use super::super::entry_resolve::ProviderLayoutAnswer;
-        let ws = super::super::process_workspace_root();
+        let ws = crate::cli_run::process_workspace_root();
         let roots = vec![ws.join("dag").to_string_lossy().to_string()];
         let custom = std::collections::HashMap::new();
         let name = format!("test.fixture.gp_layout_probe_{}", std::process::id());
@@ -767,15 +1071,25 @@ mod tests {
             format!("module {name}\n\nfn probe() -> Int {{ 1 }}\n"),
         )
         .expect("probe file");
-        let holds = matches!(super::layout_provider_answer(&roots, &custom, &name), ProviderLayoutAnswer::Holds(src) if src.content.contains("fn probe"));
+        let holds = matches!(super::layout_provider_answer(&roots, &custom, &name, super::CustomRootDuplicate::Refuse), ProviderLayoutAnswer::Holds(src) if src.content.contains("fn probe"));
         std::fs::write(&file, [0xffu8, 0xfe, 0xfd]).expect("corrupt the probe");
         let unreadable = matches!(
-            super::layout_provider_answer(&roots, &custom, &name),
+            super::layout_provider_answer(
+                &roots,
+                &custom,
+                &name,
+                super::CustomRootDuplicate::Refuse
+            ),
             ProviderLayoutAnswer::Unreadable
         );
         let _ = std::fs::remove_file(&file);
         let lacks = matches!(
-            super::layout_provider_answer(&roots, &custom, &name),
+            super::layout_provider_answer(
+                &roots,
+                &custom,
+                &name,
+                super::CustomRootDuplicate::Refuse
+            ),
             ProviderLayoutAnswer::Lacks
         );
         assert!(holds, "a readable module must be Holds with its bytes");
@@ -784,6 +1098,110 @@ mod tests {
             "an unreadable module must be Unreadable, not Lacks"
         );
         assert!(lacks, "an absent module must be Lacks");
+    }
+
+    /// A MODULE DECLARED IN TWO CUSTOM ROOTS: `gunbc run` (Refuse) refuses and names both files; an
+    /// entry compile declaring primary precedence (FirstRootWins) keeps the FIRST root's file, as the
+    /// whole-tree index did (review 90897). RED: drop the FirstRootWins arm and the second assertion
+    /// fails with the duplicate refusal.
+    #[test]
+    fn a_module_in_two_custom_roots_refuses_on_run_and_keeps_the_first_root_under_precedence() {
+        let first = fixture_dir();
+        let second = fixture_dir();
+        std::fs::write(
+            first.join("m.dag"),
+            "module dup_probe\n\nfn which() -> Int { 1 }\n",
+        )
+        .expect("first");
+        std::fs::write(
+            second.join("m.dag"),
+            "module dup_probe\n\nfn which() -> Int { 2 }\n",
+        )
+        .expect("second");
+        let roots = vec![
+            first.to_string_lossy().to_string(),
+            second.to_string_lossy().to_string(),
+        ];
+        let refused =
+            super::custom_root_module_census_under(&roots, super::CustomRootDuplicate::Refuse);
+        assert!(
+            matches!(&refused, Err(cause) if cause.contains("module dup_probe is declared in both")),
+            "run must refuse a module declared in two roots: {refused:?}"
+        );
+        let kept = super::custom_root_module_census_under(
+            &roots,
+            super::CustomRootDuplicate::FirstRootWins,
+        )
+        .expect("primary precedence admits the duplicate");
+        assert!(
+            kept.get("dup_probe")
+                .is_some_and(|src| src.content.contains("{ 1 }")),
+            "primary precedence keeps the first root's declaration"
+        );
+    }
+
+    /// GOVERNED/CUSTOM DUPLICATE, BOTH ROOT ORDERS x BOTH POLICIES (operator finding 2): the module
+    /// `test.fixture.gc_dup_<pid>` is declared under the governed `dag` root AND in a custom root.
+    /// Whole-tree meaning: FirstRootWins keeps the first root's file; Refuse refuses either order.
+    /// RED: the census-first read picked custom in all four cells.
+    #[test]
+    fn a_governed_custom_duplicate_obeys_root_order_and_policy() {
+        let ws = crate::cli_run::process_workspace_root();
+        let pid = std::process::id();
+        let name = format!("test.fixture.gc_dup_{pid}");
+        let gfile = ws.join(format!("dag/test/fixture/gc_dup_{pid}.dag"));
+        std::fs::write(
+            &gfile,
+            format!("module {name}\n\nfn which() -> Int {{ 1 }}\n"),
+        )
+        .expect("gov");
+        let dir = fixture_dir();
+        std::fs::write(
+            dir.join("c.dag"),
+            format!("module {name}\n\nfn which() -> Int {{ 2 }}\n"),
+        )
+        .expect("custom");
+        let dag = ws.join("dag").to_string_lossy().to_string();
+        let cust = dir.to_string_lossy().to_string();
+        let read = |roots: &Vec<String>, d| {
+            let census = super::custom_root_module_census_under(roots, d).expect("census");
+            super::read_layout_module(roots, &census, &name, d)
+        };
+        let gov_first = vec![dag.clone(), cust.clone()];
+        let cust_first = vec![cust, dag];
+        let which =
+            |r: Result<Option<std::rc::Rc<crate::v1_compiler_compile::SourceFile>>, String>| {
+                r.expect("admitted")
+                    .expect("held")
+                    .content
+                    .contains("{ 1 }")
+            };
+        let outcome = (
+            which(read(&gov_first, super::CustomRootDuplicate::FirstRootWins)),
+            !which(read(&cust_first, super::CustomRootDuplicate::FirstRootWins)),
+            read(&gov_first, super::CustomRootDuplicate::Refuse).err(),
+            read(&cust_first, super::CustomRootDuplicate::Refuse).err(),
+        );
+        let _ = std::fs::remove_file(&gfile);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(outcome.0, "[dag, custom] primary precedence: governed wins");
+        assert!(outcome.1, "[custom, dag] primary precedence: custom wins");
+        assert!(
+            outcome
+                .2
+                .as_deref()
+                .is_some_and(|c| c.contains("declared in both")),
+            "[dag, custom] strict refuses: {:?}",
+            outcome.2
+        );
+        assert!(
+            outcome
+                .3
+                .as_deref()
+                .is_some_and(|c| c.contains("declared in both")),
+            "[custom, dag] strict refuses: {:?}",
+            outcome.3
+        );
     }
 
     /// The seeded rebuild under a custom source root uses the retained snapshot: the provider's file
@@ -803,9 +1221,12 @@ mod tests {
         )
         .expect("provider");
         let custom = super::custom_root_module_census(&roots).expect("census");
-        let ProviderLayoutAnswer::Holds(snapshot) =
-            super::layout_provider_answer(&roots, &custom, "probe_provider")
-        else {
+        let ProviderLayoutAnswer::Holds(snapshot) = super::layout_provider_answer(
+            &roots,
+            &custom,
+            "probe_provider",
+            super::CustomRootDuplicate::Refuse,
+        ) else {
             panic!("the custom-root provider must be Holds");
         };
         std::fs::write(&provider, [0xffu8, 0xfe, 0xfd]).expect("corrupt the provider");
@@ -814,6 +1235,7 @@ mod tests {
             &entry.to_string_lossy(),
             &custom,
             &[("probe_provider".to_string(), snapshot)],
+            super::CustomRootDuplicate::Refuse,
         );
         let _ = std::fs::remove_dir_all(&dir);
         let index = rebuilt.expect("the seeded rebuild must not read the provider again");
@@ -821,5 +1243,60 @@ mod tests {
             index["probe_provider"].content.contains("fn route"),
             "the rebuild must hold the snapshot's bytes"
         );
+    }
+
+    /// CONTROL FOR THE COMPILE PROVIDER LOOP: `host_text_crossing_entry_witness` imports only
+    /// `v2.std.text`, so its authored closure lacks the coercion route its text crossing demands;
+    /// only the provider loop acquires it. RED: the unseeded authored closure (what the entry
+    /// compile resolved over before it shared run's loop) is strictly smaller and lacks the route.
+    #[test]
+    fn an_entry_compile_acquires_the_generated_provider_a_crossing_demands() {
+        let ws = crate::cli_run::process_workspace_root();
+        let entry = ws
+            .join("dag/test/claim/host_text_crossing_entry_witness.dag")
+            .to_string_lossy()
+            .to_string();
+        let roots = vec![
+            ws.join("dag").to_string_lossy().to_string(),
+            ws.join("src/v2").to_string_lossy().to_string(),
+        ];
+        let (acquired, resolved) = demand_acquired_entry_resolved(
+            &roots,
+            &entry,
+            CustomRootDuplicate::FirstRootWins,
+            v1_compiler_compile::default_compile_pipeline_options(),
+        )
+        .expect("the loop settles");
+        // The returned resolution IS the compile of the returned ordered closure: emission starts
+        // from it with no second resolve, so its module set is exactly the closure's.
+        let graph = resolved
+            .graph
+            .clone()
+            .expect("the settled closure resolves");
+        assert_eq!(graph.modules.len(), acquired.len());
+        let custom = custom_root_module_census_under(&roots, CustomRootDuplicate::FirstRootWins)
+            .expect("census");
+        let unseeded_index = build_demand_acquired_index(
+            &roots,
+            &entry,
+            &custom,
+            &[],
+            CustomRootDuplicate::FirstRootWins,
+        )
+        .expect("index");
+        let unseeded = crate::cli_run::entry_resolve::load_sources_for_entry_with_pool(
+            &unseeded_index,
+            &entry,
+        )
+        .expect("authored closure");
+        let has_route = |v: &[Rc<v1_compiler_compile::SourceFile>]| {
+            v.iter().any(|s| s.path.ends_with("coercion.dag"))
+        };
+        assert!(
+            !has_route(&unseeded),
+            "authored closure must lack the route"
+        );
+        assert!(has_route(&acquired), "the provider loop must acquire it");
+        assert!(acquired.len() > unseeded.len());
     }
 }

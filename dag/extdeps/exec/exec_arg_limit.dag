@@ -26,7 +26,7 @@ fn host_exec_arg_max_strlen_from_page(page: ByteSize, page_factor: Nat) -> ByteS
 // argv or envp string longer than this makes execve fail with E2BIG ("Argument list too long") —
 // the opaque os error 7 the srv1 deploy hit when a >128KB script was embedded in one sh -c argv
 // element. Distinct from ARG_MAX (~2 MiB total argv+envp; getconf ARG_MAX) — not modeled here
-// (using MAX_ARG_STRLEN as ARG_MAX would be an over-approximation, §5). Consumer seam:
+// (using MAX_ARG_STRLEN as ARG_MAX would be an over-approximation, gunbc.design_argument::fail_closed). Consumer seam:
 // extdeps.shell shell.Exec.Check embeds the command input as one argv token (sh -c); shell.Exec.Run
 // routes payload via stdin (sh -s) and does not hit this ceiling. The v1 interpreter shell dispatch
 // (dispatch_shell) realizes the wall: refuse with InterpError::ArgvExceedsHostArgMax before spawn.

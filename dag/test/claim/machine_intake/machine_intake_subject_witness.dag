@@ -1,6 +1,7 @@
 module test.claim.machine_intake.machine_intake_subject_witness
 
-import std.types { Bool, List, NonEmptyStr, String, list_length }
+import std.types { Bool, List, NonEmptyStr, String }
+import std.algebra { length }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash { content_hash_of_value }
 import extdeps.bmc.endpoint { BmcEndpoint, Redfish }
@@ -95,7 +96,7 @@ test fn changed_dimm_manifest_invalidates_prior_subject() -> Bool {
   let observed = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_after_dimm_swap, firmware: firmware_v1)
   match compare_qualification_subject(admitted: admitted, observed: observed) {
     SubjectStale { axes: axes } =>
-      list_length(items: axes.further_axes) == 0 && axes.first_axis == AssemblyManifestStale
+      length(xs: axes.further_axes) == 0 && axes.first_axis == AssemblyManifestStale
     SubjectCurrent => false
   }
 }
@@ -112,7 +113,7 @@ test fn changed_bios_version_is_a_new_firmware_subject() -> Bool {
   let observed = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_before, firmware: firmware_v2)
   match compare_qualification_subject(admitted: admitted, observed: observed) {
     SubjectStale { axes: axes } =>
-      list_length(items: axes.further_axes) == 0 && axes.first_axis == FirmwareManifestStale
+      length(xs: axes.further_axes) == 0 && axes.first_axis == FirmwareManifestStale
     SubjectCurrent => false
   }
 }
@@ -149,7 +150,7 @@ test fn contradictory_board_serial_refuses() -> Bool {
   match bind_unit_key(inputs: UnitIdentityInputs { bmc_endpoint: endpoint_one, board_serial_observations: observations }, other_units: []) {
     UnitKeyRefused { cause: c } =>
       match c {
-        BoardSerialContradictory { observations: o } => list_length(items: o) == 2
+        BoardSerialContradictory { observations: o } => length(xs: o) == 2
         _ => false
       }
     UnitKeyBound { key: _ } => false
@@ -214,7 +215,7 @@ test fn merging_two_one_axis_standings_is_the_canonical_ordered_union() -> Bool 
     && match merge_subject_currency(left: assembly_only, right: assembly_only) {
       SubjectCurrent => false
       SubjectStale { axes: axes } =>
-        list_length(items: axes.further_axes) == 0 && axes.first_axis == AssemblyManifestStale
+        length(xs: axes.further_axes) == 0 && axes.first_axis == AssemblyManifestStale
     }
     && merge_subject_currency(left: SubjectCurrent, right: assembly_only) == assembly_only
     && merge_subject_currency(left: assembly_only, right: SubjectCurrent) == assembly_only
@@ -244,7 +245,7 @@ test fn the_mint_canonicalizes_whatever_a_caller_supplies() -> Bool {
     && match duplicated_single {
       SubjectCurrent => false
       SubjectStale { axes: axes } =>
-        list_length(items: axes.further_axes) == 0 && axes.first_axis == UnitKeyStale
+        length(xs: axes.further_axes) == 0 && axes.first_axis == UnitKeyStale
     }
     && subject_currency_of_axes(axes: [] as List<StaleAxis>) == SubjectCurrent
 }

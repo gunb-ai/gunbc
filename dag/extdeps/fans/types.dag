@@ -276,7 +276,7 @@ fn fan_evidence_is_anchored(evidence: FanAcousticEvidence) -> Bool {
 // right scope while the only consumer was a cooling-qualification verdict. A printed chassis has to
 // bolt a fan to a plate, and the facts that decides are the frame footprint, the square mounting
 // pattern, and the screw clearance. None of them were declared: the Arctic P8 row records its
-// 80 x 80 x 25 mm frame only inside an annotation, which DESIGN section 4c names as program data in
+// 80 x 80 x 25 mm frame only inside an annotation, which gunbc.design_argument::source_annotations names as program data in
 // the wrong place -- a measurement stated in prose, mechanically indistinguishable from commentary
 // and unreadable by any consumer.
 //
@@ -373,6 +373,15 @@ type RadialBlowerOutlet {
   opening_across_thickness: Micrometer
   frame_along_edge: Micrometer
   frame_along_edge_tolerance: Micrometer
+}
+
+// A MOUNTING HOLE, located from the outlet: its centre's distance from the outlet edge (into the housing) and
+// from the corner the outlet runs from, measured along the outlet edge. A drawing that dimensions a hole from
+// the impeller centre is carried here after adding the centre's own offsets.
+type RadialBlowerMountingHole {
+  from_outlet_edge: Micrometer
+  from_outlet_corner: Micrometer
+  position_tolerance: Micrometer
 }
 
 // THE PUBLISHED RATING, each figure on its std.measure carrier. Flow and pressure are carried at the

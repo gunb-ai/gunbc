@@ -33,7 +33,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // INPUTS went unhashed; here the path IS the input hash). Layering: this module is one transport
 // handler bound to the pure spec (std.artifact_store, the single authority); a second handler (e.g.
 // remote CAS) binds the same shape. Grant refusals surface as typed ArtifactFs*Refused variants
-// (verb, target, frame) — never widened to miss/false/[] (DESIGN 5). SCOPE (corrected 2026-07-29,
+// (verb, target, frame) — never widened to miss/false/[] (gunbc.design_argument::fail_closed). SCOPE (corrected 2026-07-29,
 // operator-flagged on PR 7385): this sentence previously claimed the cited Filesystem service
 // exposed no Delete/List and that SpacePacked enforcement was therefore unrealizable. That was
 // FALSE and had been for a long time - extdeps.filesystem.filesystem_io declares both operations,

@@ -20,6 +20,7 @@ import extdeps.os.ubuntu_autoinstall {
   StoragePolicyAbsent,
   StoragePolicyDirectLayout,
   UbuntuAutoinstallLiveCommands,
+  AutoinstallSshServer,
 }
 import extdeps.ssh.keys { SshPublicKey, ssh_public_key_canonical_line, ssh_public_key_line }
 import extdeps.languages.yaml.types {
@@ -88,7 +89,7 @@ fn cloudinit_user_entries(user: CloudInitUserEntry) -> List<YamlKeyValue> {
 //   srv3's seeded ISO. Those volumes are not published, and the fleet's own live installs (srv3_ubuntu_autoinstall,
 //   srv3_ubuntu_autoinstall_on_iso, srv4_ubuntu_autoinstall_on_iso — all WithIdentity, all with an ssh section)
 //   have ALWAYS carried the commented line. Canonicalizing there would have been a quiet edit to documents
-//   live installs consume, stripping their key comments with nothing recording it — DESIGN.md §4b, no silent
+//   live installs consume, stripping their key comments with nothing recording it — gunbc.design_argument::guarantee_ladder, no silent
 //   regression. The witness test the_identity_route_still_writes_commented_authorized_keys pins those bytes.
 //
 // So this is not "two renderers for the same thing": the posture is the fact that determines the rules, and
@@ -98,6 +99,26 @@ fn autoinstall_authorized_key_line(posture: AutoinstallIdentityPosture, k: SshPu
     UserDataOnly { users: _ } => ssh_public_key_canonical_line(k: k)
     WithIdentity { identity: _, user_data: _ } => ssh_public_key_line(k: k)
   }
+}
+
+// ONE RULE, ONE PLACE (gunbc.design_argument::root_generalization, minimize_redundancy). The upstream
+// `ssh` section -- install-server true, authorized-keys from the caller's roster, allow-pw from the
+// posture -- is laid out HERE and nowhere else, so a new upstream key or a changed allow-pw default
+// cannot land in one renderer and miss the other. It differs from a plain key list on exactly ONE thing:
+// how a key line is spelled, and that difference is already a declared fact on the coproduct
+// (autoinstall_authorized_key_line). So the caller SUPPLIES `line` rather than the section builder
+// guessing from a flag: the installed route passes the posture-chosen line (canonical for a user-data-only
+// seed where a public key comment must not ride into a distributed volume, the comment-bearing line for an
+// identity seed). This is the INSTALLED-system ssh section -- a Subiquity target-system feature. The
+// diskless runner medium does not reach it (it never installs); its fleet keys go through the live-session
+// boot stage in gunbc.runner.runner_host_medium, not through here.
+fn autoinstall_ssh_section(ssh: AutoinstallSshServer, line: fn(SshPublicKey) -> String) -> YamlKeyValue {
+  kv(key: "ssh", value: yaml_mapping(entries: [
+    kv(key: "install-server", value: yaml_bool(b: true)),
+    kv(key: "authorized-keys", value: yaml_sequence(elements: map(ssh.authorized_keys, k =>
+      yaml_string(s: line(k))))),
+    kv(key: "allow-pw", value: yaml_bool(b: ssh.password_auth)),
+  ]))
 }
 
 fn autoinstall_inner_entries(payload: UbuntuAutoinstallPayload) -> List<YamlKeyValue> {
@@ -144,12 +165,8 @@ fn autoinstall_inner_entries(payload: UbuntuAutoinstallPayload) -> List<YamlKeyV
   }
   let with_ssh = match payload.ssh {
     Present { value: ssh } => append(with_user_data, items: [
-      kv(key: "ssh", value: yaml_mapping(entries: [
-        kv(key: "install-server", value: yaml_bool(b: true)),
-        kv(key: "authorized-keys", value: yaml_sequence(elements: map(ssh.authorized_keys, k =>
-          yaml_string(s: autoinstall_authorized_key_line(posture: payload.identity_posture, k: k))))),
-        kv(key: "allow-pw", value: yaml_bool(b: ssh.password_auth)),
-      ])),
+      autoinstall_ssh_section(ssh: ssh, line: k =>
+        autoinstall_authorized_key_line(posture: payload.identity_posture, k: k)),
     ])
     Absent => with_user_data
   }

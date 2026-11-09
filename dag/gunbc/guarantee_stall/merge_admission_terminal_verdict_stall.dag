@@ -5,16 +5,16 @@ import gunbc.guarantee_stall { GuaranteeStall, UncountedNotEnumerable, climbs_wh
 import gunbc.rung_climb { ClimbableButUnbuilt }
 
 // FILED AS A STALL AND NOT AS A RUNG DROP, WHICH IS A CORRECTION TO THIS SUBJECT'S FIRST FILING
-// ON THIS BRANCH (2026-09-03). A section 4b(3) drop ASSERTS A REGRESSION -- a change lowered a rung
+// ON THIS BRANCH (2026-09-03). A gunbc.design_argument::guarantee_ladder (no silent regression) drop ASSERTS A REGRESSION -- a change lowered a rung
 // that was held -- and nothing here regressed. GitHub's required-status-checks rule has evaluated
 // reported check runs the same way since ruleset 16178731 was created, so the capability below was
 // NEVER held and declaring a previous rung of `MechanicallyPreventable` would be inventing a rung
 // to drop from, exactly as `gunbc.rung_drop` `floor_cost_claim_qualification_unavailable` refused
-// to do for its own subject. What actually existed was section 4b(1) rung INFLATION: this
+// to do for its own subject. What actually existed was gunbc.design_argument::guarantee_ladder (rung honesty) rung INFLATION: this
 // repository's "required lane" vocabulary, and `gunbc.merge_lifecycle`'s own prose naming
 // `PerPrGateOnly` the live policy, described a wall that does not stand for an unreported context.
 // The inflation is corrected in `gunbc.merge_admission` by making the live policy representable;
-// what remains is a class below its ceiling, which is a 4b(2) stall and belongs here.
+// what remains is a class below its ceiling, which is a gunbc.design_argument::guarantee_ladder (no untracked stall) stall and belongs here.
 //
 // THE OPERATOR HAS RULED, AND THAT IS WHY THE BLOCKER IS `ClimbableButUnbuilt` RATHER THAN A
 // MISSING CAPABILITY. Escalated 2026-09-03 with three options -- enable the merge queue, make

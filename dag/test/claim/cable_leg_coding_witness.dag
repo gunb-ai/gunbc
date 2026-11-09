@@ -35,7 +35,7 @@ import product.cable_leg_observation {
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // GREEN BY EXECUTION FOR THE CABLE-CODING SUBJECT, and the reason it exists rather than being
-// implied by a typecheck: DESIGN section 5 says a typecheck is not a consumer. Without this module
+// implied by a typecheck: gunbc.design_argument::fail_closed says a typecheck is not a consumer. Without this module
 // `hundred_gig_aggregate_collision` and `sff8636_assess_leg_coding` are functions nothing calls --
 // specification without execution, which is the shape that looks finished and proves nothing.
 //
@@ -396,7 +396,7 @@ test fn an_ordinary_byte140_is_read_as_a_symbol_rate() -> Bool {
 // AN ESCAPE NOBODY FOLLOWED IS AN UNREAD FIELD, and this is the fixture that keeps that arm honest.
 // Every other leg in this file now carries the byte 222 that was actually read off the fleet on
 // 2026-09-08, so without this one `ExtendedRateNotObserved` would be a variant nothing exercises --
-// the dangling declaration DESIGN section 3c names -- and the coverage census could stop reporting
+// the dangling declaration gunbc.design_argument::consumption names -- and the coverage census could stop reporting
 // it without any witness noticing.
 data escape_never_followed_leg: CableLegObservation = cable_leg_observation(
   identifier: transceiver_identifier_from_byte(code: 17),

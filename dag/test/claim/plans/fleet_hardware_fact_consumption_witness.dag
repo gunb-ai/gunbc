@@ -1,0 +1,34 @@
+module test.claim.plans.fleet_hardware_fact_consumption_witness
+
+import std.types { Bool, List, String }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.plan { Plan }
+import gunbc.plan_registry { all_plans }
+import gunbc.plans.fleet_hardware_fact_consumption {
+  fleet_hardware_consumer_migrations, fleet_hardware_fact_consumption_plan,
+  MigrationUnstarted, MigrationStartedHere, MigrationOwnedByProgram,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE CARRIER IS A REGISTERED PLAN, so its rows reach the plan projection rather than sitting unread.
+test fn the_carrier_is_registered() -> Bool {
+  any(all_plans, p => p.slug == fleet_hardware_fact_consumption_plan.slug)
+}
+
+// EVERY CONSUMER IN THE OPERATOR'S REVIEW HAS ONE ROW, and no consumer is listed twice.
+test fn every_consumer_has_exactly_one_row() -> Bool {
+  fleet_hardware_consumer_migrations.length() == 12
+    && all(fleet_hardware_consumer_migrations, r => count(filter(fleet_hardware_consumer_migrations, q => (q.consumer as String) == (r.consumer as String))) == 1)
+}
+
+// A ROW OWNED BY ANOTHER PROGRAM NAMES A PLAN SYMBOL, never a consumer module, so it cannot restate that
+// program's design here; the two rows the thermal program owns are runner width and cooling adoption.
+test fn rows_owned_elsewhere_point_at_a_plan() -> Bool {
+  let owned = filter(fleet_hardware_consumer_migrations, r => match r.standing { MigrationOwnedByProgram { program: _ } => true  _ => false })
+  owned.length() == 2
+    && all(owned, r => match r.standing {
+      MigrationOwnedByProgram { program: d } => (d.module_path as String) == "gunbc.plans.host_thermal_operating_point"
+      _ => false
+    })
+}

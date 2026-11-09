@@ -24,10 +24,11 @@ use crate::v1_compiler_infer_env::UnitVariantPhantomLookup::{
 pub use crate::v1_compiler_infer_env::{
     authored_name, bare_name_miss_diagnostic, declaration_ref_of_declaration_node,
     env_with_type_variable_bindings, is_recursive_type, is_recursive_type_by_name,
-    is_recursive_type_for, lookup_type, lookup_type_by_name, lookup_type_for,
-    lookup_unit_variant_phantom_type, substitute_type_slots, substitute_type_slots_scoped,
-    symbol_index_lookup, type_ref_measure_binding_authority, width_resolution_declaration,
-    TypeBinding, TypeEnv, TypeRefMeasureBinding, UnitVariantContribution, UnitVariantPhantomLookup,
+    is_recursive_type_for, lookup_binding_by_name, lookup_type, lookup_type_by_name,
+    lookup_type_for, lookup_unit_variant_phantom_type, substitute_type_slots,
+    substitute_type_slots_scoped, symbol_index_lookup, type_ref_measure_binding_authority,
+    width_resolution_declaration, TypeBinding, TypeEnv, TypeRefMeasureBinding,
+    UnitVariantContribution, UnitVariantPhantomLookup,
 };
 pub use crate::v1_compiler_infer_types::{
     child_type_node, is_declared_container_alias_spelling, is_type_expr_annotation,
@@ -465,6 +466,45 @@ pub fn node_is_type_parameter_reference(n: Rc<Node>) -> bool {
     }
 }
 
+pub fn ground_ungrounded_alias_leaf(
+    resolved: Rc<Node>,
+    brand: String,
+    env: Rc<TypeEnv>,
+    module_name: String,
+) -> Rc<Node> {
+    {
+        let ground = resolve_node_bounded(resolved, env.clone(), module_name.clone(), 0, false)
+            .resolved
+            .clone();
+        if (ground.connective.clone() != Connective::NoConnective) {
+            ground
+        } else {
+            match crate::v1_compiler_infer_env::lookup_binding_by_name(env.clone(), brand) {
+                Some(b) => match b.alias_rhs.clone() {
+                    Some(rhs) => {
+                        let expanded = resolve_node_bounded(
+                            rhs.clone(),
+                            env.clone(),
+                            module_name.clone(),
+                            0,
+                            false,
+                        )
+                        .resolved
+                        .clone();
+                        if (expanded.connective.clone() != Connective::NoConnective) {
+                            expanded
+                        } else {
+                            ground
+                        }
+                    }
+                    _ => ground,
+                },
+                _ => ground,
+            }
+        }
+    }
+}
+
 pub fn expand_nominal_alias_rhs(n: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<Node> {
     if node_is_type_parameter_reference(n.clone()) {
         n.clone()
@@ -508,15 +548,12 @@ pub fn expand_nominal_alias_rhs_by_name(
                         .clone(),
                     }
                 } else {
-                    resolve_node_bounded(
+                    ground_ungrounded_alias_leaf(
                         resolved.clone(),
+                        brand.clone(),
                         env.clone(),
                         module_name.clone(),
-                        0,
-                        false,
                     )
-                    .resolved
-                    .clone()
                 };
                 if ((((brand.clone() != "".to_string())
                     && (brand.clone()
@@ -961,7 +998,7 @@ pub fn resolve_nominal_alias_rhs(
 pub fn resolve_node_bounded_masked_boundary() -> String {
     thread_local! {
         static CACHED: String = {
-            "Selective-import fail-closed (§5): 'masked' is TRUE at the resolve_node source entry and INHERITS through structural recursions (product base :391, product child rt :406, optional inner :426, variant field rt :444, generic args :477, map k/v :519/:522, list elem :538), so every use-site type-argument reaches the leaf mask check masked. It flips FALSE only into GROUNDING recursions (expand_nominal_alias_rhs :150/:151/:154/:163, resolve_alias_target :342, parameterized-alias target :494, resolved-name grounding :561, and the field-access alias peel — v1.compiler.infer peel_alias_once_for_field_access, added 2026-09-09 after the census measured it charging definer-tree names to importers), which descend into DEFINING-module structure (the import responsibility of that module, not the use-site). INVARIANT (reviewed lively-raven-355 2026-07-06): grounding recursions must only ever descend into defining-module structure; the :561 arm relies on the resolved.children==0 leaf guard AND the :550-552 coproduct-container short-circuit — if a future refactor lets a parameterized use reach :561, a use-site arg could be inlined into grounding and skipped (a false-NEGATIVE / missing diagnostic once this is a hard refusal, not an availability bug in diagnostic-collect). Mask check (:568 Present arm) emits UnlistedImportUse when masked && name NOT in env.source_visible_names; keeps 'resolved' intact (diagnostic-collect, advisory). source_visible_names = locals + kernel + selective specific_names + is_all-module exports + type-params (:971). SCAFFOLD dissolve-on (§6): the advisory/non-erroring posture (is_error_diagnostic=false, 00_core.dag) is diagnostic-collect, NOT the final wall. Dissolves when (a) family-closure SVN lands — each imported name resolves to its whole coproduct family (owner + ALL siblings, lively-raven-355 ruling 2026-07-06) so the variant-owner-reverse false-positive class (import variant B then use owner E, or sibling A) is gone, AND (b) the corpus burndown of genuine unlisted uses (Symbol in v2/std/diagnostic.dag, NonEmptyStr in gcp, ...) reaches zero — at which point UnlistedImportUse promotes to a hard UnresolvedType/Refused joining §5's fail-closed wall, and the empty-source_visible_names guard (:345 count>0, a §3 dual-signal with 'masked' — flagged by claude-opus-4-7) collapses so 'masked' is the sole authority.".to_string()
+            "Selective-import fail-closed (gunbc.design_argument::fail_closed): 'masked' is TRUE at the resolve_node source entry and INHERITS through structural recursions (product base :391, product child rt :406, optional inner :426, variant field rt :444, generic args :477, map k/v :519/:522, list elem :538), so every use-site type-argument reaches the leaf mask check masked. It flips FALSE only into GROUNDING recursions (expand_nominal_alias_rhs :150/:151/:154/:163, resolve_alias_target :342, parameterized-alias target :494, resolved-name grounding :561, and the field-access alias peel — v1.compiler.infer peel_alias_once_for_field_access, added 2026-09-09 after the census measured it charging definer-tree names to importers), which descend into DEFINING-module structure (the import responsibility of that module, not the use-site). INVARIANT (reviewed lively-raven-355 2026-07-06): grounding recursions must only ever descend into defining-module structure; the :561 arm relies on the resolved.children==0 leaf guard AND the :550-552 coproduct-container short-circuit — if a future refactor lets a parameterized use reach :561, a use-site arg could be inlined into grounding and skipped (a false-NEGATIVE / missing diagnostic once this is a hard refusal, not an availability bug in diagnostic-collect). Mask check (:568 Present arm) emits UnlistedImportUse when masked && name NOT in env.source_visible_names; keeps 'resolved' intact (diagnostic-collect, advisory). source_visible_names = locals + kernel + selective specific_names + is_all-module exports + type-params (:971). SCAFFOLD dissolve-on (gunbc.design_argument::how_to_work): the advisory/non-erroring posture (is_error_diagnostic=false, 00_core.dag) is diagnostic-collect, NOT the final wall. Dissolves when (a) family-closure SVN lands — each imported name resolves to its whole coproduct family (owner + ALL siblings, lively-raven-355 ruling 2026-07-06) so the variant-owner-reverse false-positive class (import variant B then use owner E, or sibling A) is gone, AND (b) the corpus burndown of genuine unlisted uses (Symbol in v2/std/diagnostic.dag, NonEmptyStr in gcp, ...) reaches zero — at which point UnlistedImportUse promotes to a hard UnresolvedType/Refused joining gunbc.design_argument::fail_closed's fail-closed wall, and the empty-source_visible_names guard (:345 count>0, a gunbc.design_argument::single_authority dual-signal with 'masked' — flagged by claude-opus-4-7) collapses so 'masked' is the sole authority.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -3244,6 +3281,7 @@ pub fn resolve_expr_types(
                 op,
                 algebra_field: af,
                 operand: od,
+                derived: eqp,
                 ..
             } => {
                 let ch = texpr.children.clone();
@@ -3268,6 +3306,7 @@ pub fn resolve_expr_types(
                             op: op.clone(),
                             algebra_field: af.clone(),
                             operand: od.clone(),
+                            derived: eqp.clone(),
                         }),
                         Rc::new(vec![lr.expr.clone(), rr.expr.clone()]),
                         texpr.inferred.clone(),

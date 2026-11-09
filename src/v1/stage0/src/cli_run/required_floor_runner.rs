@@ -237,6 +237,24 @@ pub(crate) fn floor_git_diff_range() -> Result<String, String> {
             Some(Value::Str(r)) => Err(r.to_string()),
             _ => Err("git diff observation failed (no reason)".to_string()),
         },
+        // THE BASE COULD NOT BE NAMED: the model refused, and the refusal is carried to the
+        // caller verbatim rather than folded into the catch-all below. The round stops here --
+        // this arm is reached before the scope has selected a mirror, so nothing has been
+        // written. gunbc.design_argument::fail_closed: a missing input is a located refusal, never a scope.
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "UnifiedBaseRefUnresolvable") => {
+            match ctx.field(fields, "reason") {
+                Some(Value::Str(r)) => Err(r.to_string()),
+                _ => Err(
+                    "the changed-mirror scope's base ref could not be resolved in this clone; \
+                     the round refuses rather than computing a scope from a base it cannot name"
+                        .to_string(),
+                ),
+            }
+        }
         other => Err(format!(
             "floor_observe_git_diff_unified_for_ci returned `{}`, expected FloorUnifiedDiffResult",
             ctx.format_value(other)
@@ -418,6 +436,22 @@ pub(crate) fn floor_git_diff_name_status_range() -> Result<(Vec<String>, HashSet
             Some(Value::Str(r)) => Err(r.to_string()),
             _ => Err("git diff --name-status observation failed (no reason)".to_string()),
         },
+        // THE BASE COULD NOT BE NAMED (see the unified sibling above): the located refusal is
+        // carried through, and the round stops before it selects or writes anything.
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "NameStatusBaseRefUnresolvable") => {
+            match ctx.field(fields, "reason") {
+                Some(Value::Str(r)) => Err(r.to_string()),
+                _ => Err(
+                    "the changed-mirror scope's base ref could not be resolved in this clone; \
+                     the round refuses rather than computing a scope from a base it cannot name"
+                        .to_string(),
+                ),
+            }
+        }
         other => Err(format!(
             "floor_observe_git_diff_name_status_for_ci returned `{}`, expected FloorNameStatusDiffResult",
             ctx.format_value(other)
@@ -484,8 +518,8 @@ pub(crate) fn floor_diff_edits_from_diff_text_with_base_names_and_sources(
     )
 }
 
-// Host realization under a declared scaffold: the governing row is the `SCAFFOLD (DESIGN
-// §6–§7)` declaration above `FloorDiffEdits` in `cli_run`, which owns this function's
+// Host realization under a declared scaffold: the governing row is the `SCAFFOLD (
+// gunbc.design_argument::how_to_work, gunbc.design_argument::self_hosting)` declaration above `FloorDiffEdits` in `cli_run`, which owns this function's
 // reason, dissolve-on trigger and census. Read it there; it is not restated here.
 pub(crate) fn floor_diff_edits_from_line_ranges(
     index: &MultiEntryIndex,
@@ -520,7 +554,7 @@ fn read_working_tree_source(file_norm: &str) -> Result<Option<String>, String> {
 
 /// Attribution over a supplied reader of each changed path's new-side content. The
 /// interface is diff + census + content -> edits, so a witness supplies the content as a
-/// value (DESIGN §3 witness rule) rather than reading whatever the live tree now holds.
+/// value (gunbc.design_argument::single_authority witness rule) rather than reading whatever the live tree now holds.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn floor_diff_edits_from_line_ranges_reading(
     index: &MultiEntryIndex,
@@ -654,7 +688,7 @@ pub(crate) fn floor_diff_edits_from_line_ranges_reading(
         //
         // THIS NARROWS NOTHING AND WIDENS NOTHING BEYOND THE PATH'S OWN DECLARATIONS: the
         // universe is this file's parsed decl list, not the corpus, so it is the precise answer
-        // to "what does this path declare", never an absorbing "rerun everything" (DESIGN §5).
+        // to "what does this path declare", never an absorbing "rerun everything" (gunbc.design_argument::fail_closed).
         let charged: HashSet<usize> = if added_paths.contains(&file_norm) {
             (0..decls.len()).collect()
         } else {
@@ -736,7 +770,7 @@ struct DeclarationTextAttribution {
 }
 
 /// A declaration's OWN text, ANNOTATION-ERASED: from its first line up to the next declaration,
-/// with every `//` annotation line removed and the trailing blank lines dropped. DESIGN §4c:
+/// with every `//` annotation line removed and the trailing blank lines dropped. gunbc.design_argument::source_annotations:
 /// semantic passes receive only the annotation-erased projection, so adding, deleting, editing or
 /// moving a `//` block never changes this text and never charges the declaration. Whitespace is
 /// otherwise compared as is.
@@ -1001,7 +1035,7 @@ fn local_repo_wet_schedule(
         let identity = format!("{module_path}.{identity_function}");
         // THE ENTRY MODULE IS READ FROM THE IDENTITY, NOT PARSED OUT OF IT. `WitnessIdentity`
         // carries `module_path` as its own field, so what used to be a suffix-strip is now a
-        // projection (DESIGN §3 — a path is a discriminator, the authored module name is the fact).
+        // projection (gunbc.design_argument::single_authority — a path is a discriminator, the authored module name is the fact).
         //
         // THE AGREEMENT WALL SURVIVES AND GOT STRONGER RATHER THAN WEAKER. The old check inferred
         // disagreement from a failed suffix-strip, which could only notice it when the spelled
@@ -1175,13 +1209,8 @@ pub(crate) fn floor_ts() -> String {
 /// witnesses, touched entries, changed-interface consumers) are NOT here: they are a fact about one run's
 /// diff, and this is the part of the subject that holds for every run.
 ///
-/// ONE PRODUCER, TWO CONSUMERS, and that is the reason it is a function rather than a block in
-/// `run_required_floor`. The floor consumes it to seed preparation; the required-lane resolution
-/// census (`gunbc.required_lane_resolution_census`, `gunbc test
-/// //gunbc/instruments:required-lane-resolution-census`) consumes it to answer, for every module
-/// under the source roots, whether the floor's nominal subject resolves it. A census that
-/// re-derived the seed list from the roster would be a second authority for what the floor
-/// prepares, and it would drift the first time a seed kind was added here and not there.
+/// A function rather than a block in `run_required_floor`, so the seed list has one authority for
+/// what the floor prepares.
 pub struct RequiredFloorNominalSubjectSeeds {
     pub required_gate_prefixes: Vec<String>,
     pub required_gate_authored_modules: Vec<String>,
@@ -1275,7 +1304,7 @@ pub fn floor_prepared_subject_exclusions() -> Vec<String> {
         // MUST-NOT-RESOLVE PROBES. Every module under dag/test/probe/ declares in its header that
         // it must not resolve: each is a designed refusal, consumed BY CLASS AND SUBJECT through
         // `gunbc.compile_diagnostic_census` `census_of(source: probe_source(name))` -- the source
-        // text handed to the compiler by a fixture (DESIGN 4b), never a module in a closure.
+        // text handed to the compiler by a fixture (gunbc.design_argument::guarantee_ladder), never a module in a closure.
         // They stayed out of the prepared subject before gunbc#11256 only by accident: no
         // importer, no gate prefix. The touched-entry seed (`module_seeds_from_touched_entry_files`)
         // seeds the authored module of every edited non-data, non-test-fn declaration, so a PR

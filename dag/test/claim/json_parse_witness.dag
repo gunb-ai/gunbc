@@ -8,7 +8,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // parse_json is the forward reading of RFC 8259 and serialize_json is the backward one, so the
 // claims below are stated as round-trips over one JsonValue rather than against golden bytes
-// (DESIGN 4). The escape claims are the discriminating ones: three plain round-trips pass without
+// (gunbc.design_argument::closed_grounded_substrate). The escape claims are the discriminating ones: three plain round-trips pass without
 // the escape decoding being right at all, which is exactly how a plausible-but-wrong unescaper
 // survives. The \u claims fail against an unescaper that passes \u through, which is what this
 // parser did before it carried json_hex4_at - a receipt detail field carrying a control character
@@ -207,7 +207,7 @@ test fn a_forged_verdict_escape_does_not_survive_into_a_string() -> Bool {
 // RFC 8259 section 7 writes a character above U+FFFF as a UTF-16 surrogate pair. The kernel used
 // to decode each \u on its own through from_code_point, which answers "" for any surrogate, so the
 // pair below came back as the empty string and the parse still succeeded: the character was
-// silently gone (reviews 73243/73540/73709/73856, DESIGN 5). The positive control pins the pair
+// silently gone (reviews 73243/73540/73709/73856, gunbc.design_argument::fail_closed). The positive control pins the pair
 // decoding to its one scalar; the refusal claim pins every unpaired shape to a refusal rather than
 // a dropped character. Both answer false against the old kernel.
 

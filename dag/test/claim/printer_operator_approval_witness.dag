@@ -11,17 +11,19 @@ import extdeps.tools.mosquitto_pub { mosquitto_pub_help_observation_admitted }
 
 
 import std.types { Bool,String }
+import std.algebra { string_contains }
 import gunbc.fleet.printer_actuation { print_subject, report_allows_start, printer_state_generation, attempt_claim_key, printer_start_claim_path }
 import gunbc.fleet.printer_job_monitor { observe_job, JobCompletedAwaitingInspection, JobUnresolved }
 import gunbc.fleet.fleet_asset_identity { printer_01, printer_02 }
 
 test fn approval_subject_changes_with_device_bytes_version_or_attempt() -> Bool {
-  let base = print_subject(printer: printer_01, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "1", attempt: "batch-a", printer_state: "s")
+  let base = print_subject(printer: printer_01, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "1", attempt: "batch-a", printer_state: "s", ams_slot: 4)
   let variants = [
-    print_subject(printer: printer_02, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "1", attempt: "batch-a", printer_state: "s"),
-    print_subject(printer: printer_01, digest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", version: "1", attempt: "batch-a", printer_state: "s"),
-    print_subject(printer: printer_01, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "2", attempt: "batch-a", printer_state: "s"),
-    print_subject(printer: printer_01, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "1", attempt: "batch-b", printer_state: "s"),
+    print_subject(printer: printer_02, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "1", attempt: "batch-a", printer_state: "s", ams_slot: 4),
+    print_subject(printer: printer_01, digest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", version: "1", attempt: "batch-a", printer_state: "s", ams_slot: 4),
+    print_subject(printer: printer_01, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "2", attempt: "batch-a", printer_state: "s", ams_slot: 4),
+    print_subject(printer: printer_01, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "1", attempt: "batch-b", printer_state: "s", ams_slot: 4),
+    print_subject(printer: printer_01, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "1", attempt: "batch-a", printer_state: "s", ams_slot: 1),
   ]
   all(variants, changed => base != changed)
 }
@@ -74,8 +76,8 @@ test fn the_approval_subject_carries_the_printer_state() -> Bool {
   match (printer_state_generation(text: finish_report(name: "gunbc-a.3mf"))) {
     Present { value: a } => match printer_state_generation(text: finish_report(name: "manual.3mf")) {
       Present { value: b } => a != b &&
-        print_subject(printer: printer_01, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "1", attempt: "x", printer_state: a) !=
-        print_subject(printer: printer_01, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "1", attempt: "x", printer_state: b)
+        print_subject(printer: printer_01, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "1", attempt: "x", printer_state: a, ams_slot: 4) !=
+        print_subject(printer: printer_01, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "1", attempt: "x", printer_state: b, ams_slot: 4)
       Absent => false
     }
     Absent => false
@@ -91,4 +93,12 @@ test fn a_finished_job_is_found_by_subtask_name() -> Bool {
 // One start claim per attempt, whatever approval is filed for it.
 test fn the_start_claim_is_keyed_by_attempt() -> Bool {
   attempt_claim_key(attempt: "a") == attempt_claim_key(attempt: "a") && attempt_claim_key(attempt: "a") != attempt_claim_key(attempt: "b")
+}
+
+// The subject names the tray the start uses, not a constant (was hard-coded ams-slot-1 while the start
+// used the slot select_ams_tray chose, PETG = 4): red if the subject goes back to slot 1.
+test fn approval_subject_names_the_selected_ams_slot() -> Bool {
+  let d = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  string_contains(s: print_subject(printer: printer_01, digest: d, version: "1", attempt: "a", printer_state: "s", ams_slot: 4), pattern: "ams-slot-4") &&
+  !string_contains(s: print_subject(printer: printer_01, digest: d, version: "1", attempt: "a", printer_state: "s", ams_slot: 4), pattern: "ams-slot-1")
 }

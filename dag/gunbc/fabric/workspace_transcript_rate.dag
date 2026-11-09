@@ -41,7 +41,7 @@ import gunbc.fabric.workspace_source {
 // need of it.
 //
 // WHAT ONE RUN IS: one window, on one host, during whatever agent activity happened to be live. It
-// is ONE SAMPLE OF THE WORKLOAD, NOT THE WORKLOAD, and every receipt says so (DESIGN 4d: the figure
+// is ONE SAMPLE OF THE WORKLOAD, NOT THE WORKLOAD, and every receipt says so (gunbc.design_argument::epistemic_humility: the figure
 // is a typed reading of one occasion, and a consumer that quotes it as the operator's rate is the
 // defect).
 
@@ -373,7 +373,7 @@ fn workspace_transcript_rate_interval(before: List<TranscriptFileStat>, after: L
 // is stated, not filled here: the receipt's rates are DERIVED from these pairs as Bandwidth (see
 // workspace_transcript_rate_bandwidth), and a consumer derives what it needs from the pairs.
 //
-// THE CONSUMER IS A DECLARED FRONTIER (DESIGN 3c): the stage-0 churn phase (step 2 of the
+// THE CONSUMER IS A DECLARED FRONTIER (gunbc.design_argument::consumption): the stage-0 churn phase (step 2 of the
 // workspace stage-0 sequence, a later change under still-dove-673) appends to the synthetic
 // transcript placeholders of gunbc.fabric.workspace_source at this observed rate, and the 10 s /
 // 60 s checkpoint-lag verdicts are quotable only over a run that carries that churn. Its trigger is

@@ -1,7 +1,7 @@
 module v2.extdeps.formats.spice
 
 import std.types { List }
-import std.algebra { Cons, Empty, list_append, list_snoc_item, fold_list }
+import std.algebra { Cons, Empty, list_append, list_snoc_item, fold_list, length }
 import std.optional {
   Optional,
   Absent,
@@ -64,7 +64,7 @@ data spice_forbidden_identifier_characters: List<String> = [
 
 fn spice_identifier_contains_forbidden(spelling: String) -> Bool {
   fold(spice_forbidden_identifier_characters, init: false, f: fn(acc, ch) {
-    acc || list_length(items: split(s: spelling, delimiter: ch)) > 1
+    acc || length(xs: split(s: spelling, delimiter: ch)) > 1
   })
 }
 

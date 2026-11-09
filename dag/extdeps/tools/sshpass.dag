@@ -19,7 +19,7 @@ import extdeps.exec.command { sshpass_authority, sshpass_program }
 // builders call argv_command from there. So exec.command cannot reach CliTool at all, in either
 // direction, and the attempt closed a real cycle (measured: `circular dependency detected:
 // extdeps.exec.command -> extdeps.tools -> extdeps.tools.gnu_coreutils -> extdeps.tools.npm ->
-// extdeps.tools.sshpass -> gunbc.host.host_cli_dependency`). §4's one structural law on the import
+// extdeps.tools.sshpass -> gunbc.host.host_cli_dependency`). gunbc.design_argument::closed_grounded_substrate's one structural law on the import
 // graph is acyclicity, so the edge runs the only way it can: this module imports the name and the
 // authority from exec.command rather than exec.command importing the row from here.
 //

@@ -15,6 +15,9 @@ import extdeps.linux.cgroup_v2_memory {
   CgroupMemoryLimitUnparseable,
 }
 import gunbc.runner.runner_slot_desired { RunnerSlotDesired }
+import gunbc.runner.runner_slot_allocation { host_transitional_ci_slot_identities, gunbc_runner_slot_desired_for }
+import gunbc.runner.runner_unit { runner_slot_unit_name }
+import gunbc.fleet.fleet_host_identity { HostIdentity }
 import gunbc.runner.runner_slot_retirement { retirement_cgroup_unescaped_root }
 import gunbc.runner.runner_slot_actuation {
   SlotActuationOutcome,
@@ -491,7 +494,7 @@ type SlotCapRead
 // what the exec EFFECT answers -- refused (never attempted), or a result. Splitting exec from judgement
 // is what makes the REAL route controllable: read_slot_cap_live_over and the scripted controls both
 // pass their exec answers through slot_cap_read_of_answers -- ONE decision core -- so a scripted
-// control and the live route cannot drift apart (§6b: script the world the route reads, never the
+// control and the live route cannot drift apart (gunbc.design_argument::earliest_unjustified_boundary: script the world the route reads, never the
 // judgement it makes).
 type SlotCapExecAnswer
   = SlotCapExecRefused { reason: String }
@@ -545,7 +548,7 @@ fn slot_cap_read_of_answers(show: SlotCapExecAnswer, cgroup: SlotCapExecAnswer?)
 }
 
 // THE LIVE READ: both exec legs fire through typed_argv_exec_over_fleet_ssh (admission at the exec
-// boundary, §4b); the cgroup leg fires only when the show leg reached a non-empty ControlGroup, exactly
+// boundary, gunbc.design_argument::guarantee_ladder); the cgroup leg fires only when the show leg reached a non-empty ControlGroup, exactly
 // as before. The judgement is the shared core below.
 fn read_slot_cap_live_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotCapRead
 {
@@ -620,7 +623,7 @@ fn slot_cap_live_cgroup_at_desired(live: SlotCapLive, desired: RunnerSlotDesired
 }
 
 // THE HOLDER'S DEFERRAL, WITH THE READING THAT DEFEATED IT NAMED IN THE DETAIL. A deferral that cannot
-// say which value disagreed is a §5 diagnostic with nothing to act on: the wire already shouts
+// say which value disagreed is a gunbc.design_argument::fail_closed diagnostic with nothing to act on: the wire already shouts
 // DEFERRED-SELF, and this string is what tells the operator whether to wait for the next pass or to look
 // at the manager.
 fn slot_cap_holder_standing_detail(live: SlotCapLive, desired: RunnerSlotDesired) -> String {
@@ -643,8 +646,8 @@ fn slot_cap_holder_standing_detail(live: SlotCapLive, desired: RunnerSlotDesired
 // judge: all three values the drop-in sets, not the two the envelope check reads).
 data slot_cap_holder_cgroup_files: List<NonEmptyStr> = ["memory.max" as NonEmptyStr, "memory.swap.max" as NonEmptyStr, "memory.high" as NonEmptyStr]
 
-// THE DEFERRAL, BOUNDED BY WHAT THIS PASS OWED (review 86146, finding 2; DESIGN §4b meta-obligation 2:
-// a class below ceiling names its next-rung trigger; §5: a degradation is typed, located and COUNTABLE).
+// THE DEFERRAL, BOUNDED BY WHAT THIS PASS OWED (review 86146, finding 2; gunbc.design_argument::guarantee_ladder meta-obligation 2:
+// a class below ceiling names its next-rung trigger; gunbc.design_argument::fail_closed: a degradation is typed, located and COUNTABLE).
 // Value-disagreement with the live cgroup is DEFERRED (parent ruling 2026-10-24: only a pass dispatched
 // from ANOTHER slot can stop/start the holder; srv1/srv2 never prove the reload path), but a deferral
 // that never ends is success quietly turned into failure-by-placement, so the count rides in from the
@@ -683,7 +686,7 @@ fn slot_cap_holder_deferral_outcome(ledger: HolderDeferralLedger, unit: NonEmpty
         SlotCapsSelfDeferred { unit: unit, detail: join([detail, next_rung, " (host-tracked deferral pass ", to_string(p + 1), " of ", to_string(slot_cap_holder_deferral_bound), ")"], "") }
       }
     LedgerFresh => SlotCapsSelfDeferred { unit: unit, detail: join([detail, next_rung, " (host-tracked deferral pass 1 of ", to_string(slot_cap_holder_deferral_bound), ")"], "") }
-    // AN UNREADABLE LEDGER IS RED, NOT A FREE PASS (review 86323, finding 1; DESIGN §5: a degradation is
+    // AN UNREADABLE LEDGER IS RED, NOT A FREE PASS (review 86323, finding 1; gunbc.design_argument::fail_closed: a degradation is
     // countable; an uncounted degradation or escape hatch is a hard reject). A deferral here would settle
     // green forever: the file that cannot be read is never rewritten by the pass that failed to read it,
     // so the same unreadable bytes would be read on every future pass and the bound below could never fire.
@@ -709,7 +712,7 @@ fn slot_cap_holder_verdict(unit: NonEmptyStr, live: SlotCapLive, desired: Runner
 fn slot_cap_holder_standing_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr, desired: RunnerSlotDesired, ledger: HolderDeferralLedger) -> SlotCapOutcome
 {
   match read_slot_cap_live_files_over(target: target, context: context, unit: unit, file_names: slot_cap_holder_cgroup_files) {
-    // A FAILED OBSERVATION IS NOT A DEFERRAL BY DESIGN (review 86146; DESIGN §5: a failure arm refuses,
+    // A FAILED OBSERVATION IS NOT A DEFERRAL BY DESIGN (review 86146; gunbc.design_argument::fail_closed: a failure arm refuses,
     // never widens). The deferral arm is reserved for the one thing the holder physically cannot do -- be
     // stopped and started by the job running on it -- and it is a CLAIM ABOUT VALUES THAT WERE READ. When
     // the host cannot be read at all, nothing may be claimed either way: a REFUSAL, typed with its step,
@@ -740,7 +743,18 @@ fn activate_and_read_back_slot_caps_over(target: SshTarget, context: FleetSshExe
   }
 }
 
-fn read_host_cap_standings_over(target: SshTarget, context: FleetSshExecutionContext, units: List<NonEmptyStr>, desired: RunnerSlotDesired) -> List<SlotCapUnitStanding>
+// WHAT ONE UNIT'S CAPS ARE JUDGED AGAINST: the fleet template, except a transitional CI slot, whose grant is
+// the envelope's remainder (gunbc.runner.runner_slot_allocation gunbc_runner_slot_desired_for). The live
+// cgroup of srv1-01 is read against the SAME grant the pool is charged and its drop-in renders, so the
+// rendered cap, the charge and the reading cannot name three numbers.
+fn slot_cap_desired_at_unit(host: HostIdentity, unit: NonEmptyStr, template: RunnerSlotDesired) -> RunnerSlotDesired {
+  match first(filter(host_transitional_ci_slot_identities(host: host), s => (runner_slot_unit_name(slot: s) as String) == (unit as String))) {
+    Present { value: s } => gunbc_runner_slot_desired_for(slot: s)
+    Absent => template
+  }
+}
+
+fn read_host_cap_standings_over(target: SshTarget, context: FleetSshExecutionContext, host: HostIdentity, units: List<NonEmptyStr>, desired: RunnerSlotDesired) -> List<SlotCapUnitStanding>
 {
-  map(units, u => SlotCapUnitStanding { unit: u, standing: slot_cap_standing_over(target: target, context: context, unit: u, desired: desired) })
+  map(units, u => SlotCapUnitStanding { unit: u, standing: slot_cap_standing_over(target: target, context: context, unit: u, desired: slot_cap_desired_at_unit(host: host, unit: u, template: desired)) })
 }

@@ -1,6 +1,6 @@
 module gunbc.machine_intake.host_interface_inventory
 
-// THE PER-HostIdentity INTERFACE INVENTORY. Plan gunbc.plans.site_segment_anchor_bmc_reach named
+// THE PER-HostIdentity INTERFACE INVENTORY. Plan gunbc.plans.site_segment_anchor_bmc_reach (deleted 2026-11-08) named
 // this in its own discovery: "MACs are scattered across intake observations", with no per-host
 // carrier, so nothing in the corpus could answer, for one machine, which of its permanent addresses
 // belongs to an interface that answers the HOST versus one that answers the CONTROLLER. The plan's
@@ -16,7 +16,7 @@ module gunbc.machine_intake.host_interface_inventory
 //   function            gunbc.machine_intake.ethernet EthernetFunction -- the vocabulary ethernet.dag
 //                       grew because "Bool is dedicated management" could not hold a dedicated BMC
 //                       RJ45, a BMC sharing a host port, and a host data port at once. Re-declaring a
-//                       host-OS / dedicated-BMC / shared-BMC triad here would be the §3 second home:
+//                       host-OS / dedicated-BMC / shared-BMC triad here would be the gunbc.design_argument::single_authority second home:
 //                       two carriers for one distinction, disagreeing in silence whenever one is
 //                       corrected. The task's three functions ARE this vocabulary: host OS is
 //                       HostData, dedicated BMC is BmcDedicated, shared BMC is BmcNcsi; a controller NIC enumerated on the host's bus is BmcHostBus.
@@ -128,7 +128,7 @@ data mtcollins1_dedicated_bmc_interface: HostNetworkInterface = HostNetworkInter
 // controller and not a host is the vendor class in the capture, but whether it is NCSI sharing a host
 // port or a second PHY is unobserved (the platform observation's own port attachment says so). An
 // earlier cut of this module typed `BmcNcsi` on the row beside a lan that said otherwise -- two answers
-// for one fact (DESIGN.md section 3). Deriving the function from the lan removes the disagreement, and
+// for one fact (gunbc.design_argument::single_authority). Deriving the function from the lan removes the disagreement, and
 // the consequence is stated rather than hidden: this interface is NOT counted by
 // host_controller_dedicated_interface until a reading classifies it. The correction lands on the lan.
 data mtcollins1_shared_bmc_interface: HostNetworkInterface = HostNetworkInterface {

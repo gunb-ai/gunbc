@@ -42,7 +42,7 @@ import gunbc.host.anchored_host_transport { mtcollins1_host_key_anchor }
 //
 // WHY THE LEAVES SPEAK THE CORE'S VOCABULARY (review 88082). An earlier shape of this PR kept a parallel
 // Host* vocabulary per key -- a type per core type and functions whose only body converted back and forth --
-// which is §3's nicknaming with a runtime excuse attached: in this language `type Alias = Core` typechecks,
+// which is gunbc.design_argument::single_authority's nicknaming with a runtime excuse attached: in this language `type Alias = Core` typechecks,
 // and a match naming aliased arm spellings typechecks too, and then the run dies with PatternMatchFailure
 // because coproduct arm membership is never checked across an alias (recorded as
 // gunbc.recurring_failure_mode coproduct_alias_arm_membership_untouched_by_the_typechecker). The answer to

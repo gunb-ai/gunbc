@@ -18,7 +18,7 @@ import v2.std.node { Atom, Authored, Conj, Edge, EdgeLabel, Node, Symbol, TypeNo
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE SUBJECT IS sugar_all_coproduct_variants, the collector that lowers a `type X = A | B | C ...`
-// pipe chain, with the chain's SEQUENCE NODES SUPPLIED at that boundary (DESIGN section 3: a witness
+// pipe chain, with the chain's SEQUENCE NODES SUPPLIED at that boundary (gunbc.design_argument::single_authority: a witness
 // discriminates at one interface; the real parser is not re-run here). The chain shape is the one
 // v2.extdeps.languages.dag parses: a sequence whose left is the head variant and whose right is a
 // spine of sequences (pipe-token sequence, rest), ended by an empty Conj. The expected list is the

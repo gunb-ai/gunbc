@@ -1,6 +1,6 @@
 module extdeps.printing.bambu_lab_lan_protocol
 
-import std.types { Bool, String, NonEmptyStr, Port }
+import std.types { Bool, Int, String, NonEmptyStr, Port }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -10,7 +10,7 @@ import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_obje
 // THE LAN CONTROL PROTOCOL OF BAMBU LAB PRINTERS IN LAN-ONLY MODE, modeled because the delivery leg
 // already speaks FTPS and the leg that STARTS a job speaks MQTT -- and that second leg was
 // previously actuated by a hand-written client outside the substrate, which is the out-of-band
-// actuation DESIGN section 6 names.
+// actuation gunbc.design_argument::how_to_work names.
 //
 // THIS IS NOT A PUBLISHED SPECIFICATION AND THE CITATION SAYS SO. Bambu documents LAN mode as a
 // feature; the request topic and command payloads are established by the community-maintained
@@ -69,9 +69,24 @@ fn bambu_lan_mqtt_endpoint(host: NonEmptyStr) -> MqttEndpoint {
 // meaningless unless delivery has completed, and the sequencing is a real dependency rather than a
 // convention.
 //
-// Operator confirmed AMS physical slot 1 on both printers on 2026-10-03.
-// The single project filament maps to zero-indexed tray 0.
+// THE TRAY IS A FIELD OF THE COMMAND, NEVER A CONSTANT OF THE PAYLOAD. An earlier revision emitted
+// ams_mapping [0] for every start on the strength of one operator reading of slot 1 (2026-10-03),
+// which started a PETG recipe from whatever PLA sat in slot 1 the day the loading changed. Which tray
+// to name is a SELECTION over what each printer's AMS holds (gunbc.fleet.printer_ams_loading); this
+// module owns only the wire shape: the single project filament maps to one zero-indexed tray.
+type BambuAmsTray sole_constructor {
+  index: Int
+}
+
+// The AMS lite has four slots. The operator speaks in 1-based slots and the wire in 0-based trays;
+// this checked constructor is the one place the off-by-one lives, and a slot outside the four has no
+// tray rather than a clamped one.
+fn bambu_ams_tray_of_slot(slot: Int) -> BambuAmsTray? {
+  if slot >= 1 && slot <= 4 { Present { value: BambuAmsTray { index: slot - 1 } } } else { none }
+}
+
 type BambuPrintStartCommand {
+  ams_tray: BambuAmsTray
   file_url: NonEmptyStr
   plate_gcode: NonEmptyStr
   subtask_name: NonEmptyStr
@@ -90,8 +105,9 @@ data bambu_first_plate_gcode: NonEmptyStr = "Metadata/plate_1.gcode"
 
 data bambu_project_file_command: NonEmptyStr = "project_file"
 
-fn bambu_start_command(remote_name: NonEmptyStr) -> BambuPrintStartCommand {
+fn bambu_start_command(remote_name: NonEmptyStr, ams_tray: BambuAmsTray) -> BambuPrintStartCommand {
   BambuPrintStartCommand {
+    ams_tray: ams_tray,
     file_url: bambu_sd_file_url(remote_name: remote_name),
     plate_gcode: bambu_first_plate_gcode,
     subtask_name: remote_name,
@@ -133,7 +149,7 @@ data bambu_start_command_qos: MqttQos = AtLeastOnce
 // with a local bool_json re-implementing boolean rendering beside it. That was a SECOND AUTHORITY for
 // how JSON is produced, in a repository that already owns the medium: extdeps.languages.json.emit
 // declares JsonValue, json_object, json_string and json_bool, and serialize_json carries a real
-// escape_json_string. DESIGN section 3 names this exactly -- a second name for one concept -- and
+// escape_json_string. gunbc.design_argument::single_authority names this exactly -- a second name for one concept -- and
 // section 2's test is that net concepts must not grow by re-invention. bool_json was the tell: a
 // four-line function whose whole content already existed one import away.
 //
@@ -154,7 +170,7 @@ fn bambu_start_payload_json(command: BambuPrintStartCommand, sequence_id: NonEmp
       json_kv(key: "url", value: json_string(s: command.file_url as String)),
       json_kv(key: "subtask_name", value: json_string(s: command.subtask_name as String)),
       json_kv(key: "use_ams", value: json_bool(b: command.use_ams)),
-      json_kv(key: "ams_mapping", value: json_array(elements: [json_int(n: 0)])),
+      json_kv(key: "ams_mapping", value: json_array(elements: [json_int(n: command.ams_tray.index)])),
       json_kv(key: "bed_leveling", value: json_bool(b: command.bed_leveling)),
       json_kv(key: "flow_cali", value: json_bool(b: false)),
       json_kv(key: "vibration_cali", value: json_bool(b: true)),

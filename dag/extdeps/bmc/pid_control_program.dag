@@ -60,7 +60,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // SITE RATHER THAN BEHIND A LOCAL ALIAS. Five aliases stood here (DecimalCelsius, DecimalSeconds
 // and friends); review 56966 ruled them parallel Measure aliases minted outside the canonical
 // authority, which is the re-minted-shared-concept rule, and it is right -- an alias is a second
-// name for a type std.measure already expresses, and a second name is what §3 forbids however
+// name for a type std.measure already expresses, and a second name is what gunbc.design_argument::single_authority forbids however
 // convenient it reads.
 //
 // THE RULING OFFERED TWO REMEDIES AND THE OTHER ONE WAS MEASURED BEFORE THIS ONE WAS CHOSEN.
@@ -80,7 +80,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // So the QUANTITY authority is reused unchanged and only the magnitude parameter differs: these
 // are std.measure's own quantities at std.measure's own scale, over a magnitude that can carry
 // what the document carries. Minting a fresh temperature or ratio type here would have been the
-// §3 nicknaming violation; changing M is what the type parameter is for.
+// gunbc.design_argument::single_authority nicknaming violation; changing M is what the type parameter is for.
 // THE ZONE'S OUTPUT UNITS ARE NOT UNIVERSALLY PERCENT, so they are carried as their own named
 // value rather than as a dimensionless percentage. Upstream describes the zone's thermal output as
 // commonly fan RPM and does not require the setpoint to be RPM either; this deployment's demand
@@ -314,7 +314,7 @@ type BmcFanControlProgram {
 
 // RELATION TO THE PARTIAL AUTHORITY THAT ALREADY EXISTS, DECLARED RATHER THAN LEFT FOR A REVIEWER
 // TO FIND. extdeps.bmc.openbmc_fan_control OpenBmcStepwiseController models a subset of this same
-// upstream concept, and two authorities for one fact is what DESIGN §3 forbids -- so the relation
+// upstream concept, and two authorities for one fact is what gunbc.design_argument::single_authority forbids -- so the relation
 // is stated with its cutover rather than the two being left to drift.
 //
 // WHAT THAT ONE CANNOT REPRESENT, measured against the captured documents rather than asserted:
@@ -326,7 +326,7 @@ type BmcFanControlProgram {
 //
 // WHY IT IS NOT DELETED HERE. It has an actuation consumer (extdeps.bmc.openbmc_operation), and
 // actuation is a separate lane under its own operator decision -- so this is the gap-intolerant
-// boundary carve-out DESIGN §3 names: the replacement is built in shadow and the cutover switches
+// boundary carve-out gunbc.design_argument::replacement_migration names: the replacement is built in shadow and the cutover switches
 // the root once, rather than main hosting a dual-authority interval with a half-migrated writer.
 // Until then that type is FROZEN: no new fields, no new coefficients, no new callers. A change
 // that would widen it is a change that belongs here instead.

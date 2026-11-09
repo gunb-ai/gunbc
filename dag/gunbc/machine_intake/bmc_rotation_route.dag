@@ -1183,7 +1183,7 @@ fn admit_rotation_apply(
   }
 }
 
-// ── WHO CONSUMES THE ADMISSION, AND BY WHAT ROUTE (DESIGN §3c) ────────────────────────────────
+// ── WHO CONSUMES THE ADMISSION, AND BY WHAT ROUTE (gunbc.design_argument::consumption) ────────────────────────────────
 //
 // THIS MODULE SITS BELOW gunbc.machine_intake.bmc_secure AND IMPORTS NOTHING FROM IT. Cut O1b supplies
 // the consumer's CODE: gunbc.machine_intake.bmc_secure plan_bmc_account_action computes each write's
@@ -1303,7 +1303,7 @@ fn admit_forced_first_rotation(
 // it was admitted against (endpoint and build), the write it licenses, the attempt the approval was
 // granted under, and who decided. This exists so a consumer can bind a write transition to THE row
 // admission that licensed it, instead of letting two records that merely agree with each other stand in
-// for that join (DESIGN §3: one fact, one place; §5: the join is made, not asserted).
+// for that join (gunbc.design_argument::single_authority: one fact, one place; gunbc.design_argument::fail_closed: the join is made, not asserted).
 fn admitted_forced_first_rotation_eq(a: AdmittedForcedFirstRotation, b: AdmittedForcedFirstRotation) -> Bool {
   (a.forced.message_id as String) == (b.forced.message_id as String)
     && (a.forced.endpoint.host as String) == (b.forced.endpoint.host as String)

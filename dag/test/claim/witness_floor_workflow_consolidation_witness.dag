@@ -336,7 +336,7 @@ test fn w_RED_neither_lane_waits_on_the_other() -> Bool {
 // THE NEGATIVE CLAUSE IS NEW AND IT IS THE LOAD-BEARING ONE. gunbc#9339 landed a job-level
 // exclusion of cancelled lanes here -- `always() && needs.build.result != 'cancelled' && ...` --
 // under a declared rung drop whose own restoration trigger named this construction. That
-// exclusion is dissolved in the same change that lands this clause, and DESIGN 4b(4) says the
+// exclusion is dissolved in the same change that lands this clause, and gunbc.design_argument::guarantee_ladder (dissolution on climb) says the
 // EVIDENCE stays enrolled when the production machinery beside it goes: so this witness is
 // RE-POINTED rather than deleted, and becomes the regression control that the exclusion does not
 // return. Asserting the presence of `always()` alone would not do that -- the excluded form

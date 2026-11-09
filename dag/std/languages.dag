@@ -3,11 +3,11 @@ module std.languages
 import std.types { LanguageId }
 import std.optional { Absent, Present }
 // READ, not restated. The HTML comment spelling is governed by the WHATWG tokenizer, so its home is
-// extdeps.languages.html (§3b, External facts: a fact governed by an independently versioned upstream
+// extdeps.languages.html (gunbc.design_argument::conformance, External facts: a fact governed by an independently versioned upstream
 // has its home with that upstream, not in std).
 // The four block-delimiter fields below used to carry their OWN "<!-- " / " -->" literals, which made
 // std.languages a second home for characters whose authority sits elsewhere — review 82209 on #14351
-// called that "a second authority, not a read of the first" (§2: "net concepts must not grow by
+// called that "a second authority, not a read of the first" (gunbc.design_argument::minimize_redundancy: "net concepts must not grow by
 // re-invention"). It is now a read, and in the direction the layering supports: a language-target row
 // describing what to emit consults the spec-governed spelling rather than the reverse.
 import extdeps.languages.html { html_comment_open_sequence, html_comment_close_sequence }

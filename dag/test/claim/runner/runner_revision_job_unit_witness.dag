@@ -1,5 +1,6 @@
 module test.claim.runner.runner_revision_job_unit_witness
 
+import gunbc.runner.runner_host_deploy { runner_host_spec_of }
 import std.types { String, NonEmptyStr, Bool, List }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
@@ -45,8 +46,8 @@ fn deploy_on(host: NonEmptyStr) -> RunnerHostDeploy {
 
 // THE START GRANT IS ONE EXACT ARGV PER DECLARED REVISION-JOB SLOT, ON THAT SLOT'S HOST ONLY.
 test fn the_start_grant_is_exact_and_on_the_revision_job_host_only() -> Bool {
-  let on_srv1 = revision_job_start_operations(deploy: deploy_on(host: srv1_revision_job_slot().host as NonEmptyStr))
-  let on_srv3 = revision_job_start_operations(deploy: deploy_on(host: "srv3"))
+  let on_srv1 = revision_job_start_operations(spec: runner_host_spec_of(deploy: deploy_on(host: srv1_revision_job_slot().host as NonEmptyStr)))
+  let on_srv3 = revision_job_start_operations(spec: runner_host_spec_of(deploy: deploy_on(host: "srv3")))
   on_srv1.length() == 1
     && on_srv3.length() == 0
     && (executor_privileged_operation_sudoers_command(op: SystemdStartUnit { unit: revision_job_runner_unit_instance_name(slot_instance: "srv1-14") }) as String)

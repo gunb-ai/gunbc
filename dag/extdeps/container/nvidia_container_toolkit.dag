@@ -130,7 +130,7 @@ data nvidia_container_toolkit_sources_list_path: NonEmptyStr = "/etc/apt/sources
 // the check that certifies it cannot disagree about which file they mean.
 data nvidia_cdi_spec_path: NonEmptyStr = "/etc/cdi/nvidia.yaml"
 
-// The `--output=` operand, DERIVED from the path row rather than respelled beside it — §3 puts each
+// The `--output=` operand, DERIVED from the path row rather than respelled beside it — gunbc.design_argument::single_authority puts each
 // fact in exactly one place, and a literal here would be a second source for the same fact: change
 // one and generate would write a file the readback never looks at. The builder is the shape
 // extdeps.docker docker_hub_https uses for its `https://` word; the row-calls-builder shape is
@@ -164,6 +164,23 @@ data nvidia_ctk_cdi_list_argv: List<NonEmptyStr> = ["cdi", "list"]
 // measuring host (srv1 2026-10-25: `nvidia-ctk cdi list` prints nvidia.com/gpu=0,
 // =GPU-96b749dc-…, and =all) is the citation.
 data nvidia_cdi_all_gpu_device: NonEmptyStr = "nvidia.com/gpu=all"
+
+// A DEVICE-SPECIFIC CDI NAME SELECTS EXACTLY ONE GPU BY ITS UUID. nvidia-ctk's own list output on
+// the measuring host spells each per-device row `nvidia.com/gpu=GPU-96b749dc-…` (srv1 2026-10-25);
+// this is the ONLY declaration of that `nvidia.com/gpu=` prefix for a single device, so a launch
+// that names its GPUs one by one derives every selector from here rather than spelling the prefix
+// itself. The `all` wildcard above is a different name for a different thing — it is the CI job's
+// "every GPU on the host", and it is exactly what a SERVING launch must not pass: adding a card to
+// the host silently grows `all` to two devices under a one-card engine (fleet hardware-fact
+// consumption #16045, deliverable 3). A per-device selector cannot silently grow.
+data nvidia_cdi_device_name_prefix: NonEmptyStr = "nvidia.com/gpu="
+
+// `nvidia.com/gpu=<UUID>`, the device-selector form, from a device UUID (gunbc.fleet.gpu_device_observation
+// GpuDeviceObserved.uuid). One device; the caller supplies one selector per member of its declared device
+// group, so nothing here knows about groups, TP degrees, or which host — it only names the CDI form.
+fn nvidia_cdi_device_selector_of(uuid: NonEmptyStr) -> NonEmptyStr {
+  join([nvidia_cdi_device_name_prefix as String, uuid as String], "") as NonEmptyStr
+}
 
 // THE BINARY ROW THE TYPED ARGV BOUNDARY ASKS FOR. extdeps.exec.command argv_command admits a
 // program whose identity is a row in the corpus, and nothing had ever declared nvidia-ctk — the

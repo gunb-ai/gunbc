@@ -10,7 +10,7 @@ import std.algebra { empty_map, map_insert, map_lookup }
 import std.optional { Present, Absent }
 import gunbc.roadmap.roadmap_belt { BeltCapacity }
 import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified }
-import gunbc.roadmap.roadmap_status { PlainLine, Unsigned }
+import gunbc.roadmap.roadmap_status { PlainLine }
 import gunbc.roadmap.roadmap_model {
   RoadmapNodeId,
   RoadmapNodeIdentity,
@@ -120,7 +120,6 @@ fn fixture_node(id: String) -> RoadmapNode {
     dispatch: Dispatchable { repo: "gunbc", acceptance: ManualAcceptance },
     execution: ExecutionContractUnspecified,
     owner: "fixture",
-    signoff: Unsigned,
     parent: none,
     centering: none,
   }
@@ -535,7 +534,7 @@ test fn witness_forecast_cannot_promote_into_observation_position() -> Bool {
 // retires on its trigger and on nothing else.
 // WHAT THE SINGLE FOLD ACTUALLY SHARES IS THE ACCEPTED SET, AND NOTHING MORE. Binding the
 // projection once and passing it to both sides removes a second derivation of the same value --
-// the authored duplication DESIGN 2 names, since both folds sat inside one claim body. It does NOT
+// the authored duplication gunbc.design_argument::minimize_redundancy names, since both folds sat inside one claim body. It does NOT
 // make the two populations one value: active_node_ids_for_plan and roadmap_schedule_forecast_over
 // both match RoadmapAuthorityProjected { doc: _, accepted, withheld }, DISCARD the doc, and select from
 // declared_roadmap_nodes() -- the PUBLIC authority -- using that accepted set. Two projected plans

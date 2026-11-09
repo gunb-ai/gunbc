@@ -18,7 +18,8 @@ import v2.workflow.floor_compile_clean_predicates {
   compile_clean_departed_paths_outside_docs,
   compile_clean_touched_path_selectable
 }
-import std.types { String, Bool, List, list_length }
+import std.types { String, Bool, List }
+import std.algebra { length }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -86,7 +87,7 @@ fn compile_clean_scope_disposition_probe(
   roster: List<String>,
   pool_roots: List<String>
 ) -> CompileCleanScopeDisposition {
-  if list_length(items: touched_paths) == 0 {
+  if length(xs: touched_paths) == 0 {
     RequireWholeTree {
       reason: "empty touched-path set — a diff that observed nothing is indistinguishable from a diff that could not be observed, so the whole tree is the only sound baseline (a main-push squash merge lands here)"
     }
@@ -108,7 +109,7 @@ fn compile_clean_scope_disposition_probe(
       touched_paths: touched_paths,
       roster: roster
     )
-    if list_length(items: affected) > 0 {
+    if length(xs: affected) > 0 {
       ScopedRun { entry_paths: affected }
     } else {
       RequireWholeTree {

@@ -14,7 +14,7 @@ data cli_wire_host_receipt_disposition: Disposition = Terminal {
 //
 // gunbc.cli_dispatch_surface already carried a row saying the scm family REFUSES UNWIRED: the
 // modeled command surface computed an answer and no route existed to deliver it. So every scm
-// entry was a value the host discarded -- specification without execution, DESIGN section 5's
+// entry was a value the host discarded -- specification without execution, gunbc.design_argument::fail_closed's
 // deepest trap, and flagged by the compiler's OWN surface model rather than discovered by review.
 // Five production declarations sit below. THREE ARE THE ROUTE -- classify a returned value as a
 // CliWireResponse or refuse to call it one, decide what the host must DO about it, and exit
@@ -35,7 +35,7 @@ data cli_wire_host_receipt_disposition: Disposition = Terminal {
 // process-exit path gained nothing here and was only made callable from the wire path beside it.
 //
 // This was a `data ... : String` row until review 58455 named it: a String declaration whose only
-// purpose is commentary is the state DESIGN section 4c quarantines, because nothing distinguishes it
+// purpose is commentary is the state gunbc.design_argument::source_annotations quarantines, because nothing distinguishes it
 // from program data. It is authored rationale about why the roster has the shape it has, so it is an
 // annotation. The fact it carried -- that one of the five is a relocation -- is stated inside the
 // justification's own `reason`, where a consumer reading the receipt can see it.

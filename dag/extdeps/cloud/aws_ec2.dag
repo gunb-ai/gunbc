@@ -123,7 +123,7 @@ data aws_ec2_instance_market_options_request_page: ExternalAuthority = ExternalA
 }
 
 // THE SUBJECT IS THE SERVICE, not its version: aws_ec2_api_version below is the revision fact of the
-// Query API these shapes are read at (DESIGN 3; extdeps.external_authority ExternalModelScope carries no
+// Query API these shapes are read at (gunbc.design_argument::single_authority; extdeps.external_authority ExternalModelScope carries no
 // revision).
 data amazon_ec2_api: NonEmptyStr = "Amazon EC2 API"
 
@@ -164,8 +164,8 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 data aws_ec2_api_version: NonEmptyStr = "2016-11-15"
 
-// DECLARED FRONTIER (DESIGN 3c): nothing imports this module yet. Its consumer is the AWS supplier row of
-// the flex loop, PR 4 of gunbc.plans.flex_supplier_generalization (the offer screen reads
+// DECLARED FRONTIER (gunbc.design_argument::consumption): nothing imports this module yet. Its consumer is the AWS supplier row of
+// the flex loop, PR 4 of gunbc.plans.flex_supplier_generalization (deleted 2026-11-08) (the offer screen reads
 // DescribeInstanceTypes / DescribeSpotPriceHistory / DescribeInstanceTypeOfferings, the roster reads
 // DescribeInstances, the write builds RunInstances / TerminateInstances); the launch template of PR 3
 // consumes CreateLaunchTemplate and the interruption-notice members.
@@ -281,7 +281,7 @@ type AwsEc2Placement {
 }
 
 // The RunInstances members the loop sets. MinCount = MaxCount = 1: one selected candidate per call
-// (plan gunbc.plans.flex_supplier_generalization, D1). client_token makes the call idempotent across a
+// (plan gunbc.plans.flex_supplier_generalization (deleted 2026-11-08), D1). client_token makes the call idempotent across a
 // retry of the same intent (RunInstances reference, ClientToken).
 type AwsEc2RunInstancesRequest {
   launch_template: AwsEc2LaunchTemplateRef

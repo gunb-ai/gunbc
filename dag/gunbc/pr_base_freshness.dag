@@ -1,5 +1,6 @@
 module gunbc.pr_base_freshness
 
+import extdeps.github.auth { github_rest }
 import std.types { String, Bool, Int, List, CommitSha, Timestamp }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal }
@@ -235,13 +236,13 @@ type PullRequestRunStart
   | PullRequestRunsReadRefused { refusal: RestRefusal }
 
 fn pull_request_run_started_at(owner: String, repo: String, head_sha: CommitSha) -> PullRequestRunStart {
-  match github.WorkflowRuns.ListForRef(
-    auth_token: "",
+  match github_rest(call: token => github.WorkflowRuns.ListForRef(
+    auth_token: token,
     owner: owner,
     repo: repo,
     head_sha: head_sha,
     event: github_event_name_pull_request,
-  ) {
+  )) {
     RestRefused { refusal } => PullRequestRunsReadRefused { refusal: refusal }
     RestAnswered { answer } =>
       match answer.runs.workflow_runs {
@@ -279,12 +280,12 @@ fn observe_pull_request_base_freshness(
   pull_number: Int,
   merge_target: CommitSha,
 ) -> BaseFreshness {
-  match github.Pulls.Get(
-    auth_token: "",
+  match github_rest(call: token => github.Pulls.Get(
+    auth_token: token,
     owner: owner,
     repo: repo,
     pull_number: pull_number,
-  ) {
+  )) {
     RestRefused { refusal } => BaseUnknown { reason: ForgeReadRefused { read: PullRequestRead, refusal: refusal } }
     RestAnswered { answer: pr } =>
       match pull_request_run_started_at(owner: owner, repo: repo, head_sha: pr.pr.head.sha) {
@@ -294,23 +295,23 @@ fn observe_pull_request_base_freshness(
           match pr.pr.merge_commit_sha {
             Absent {} => BaseUnknown { reason: MergeCommitNotComputed }
             Present { value: merge_commit } =>
-              match github.Commits.Get(
-                auth_token: "",
+              match github_rest(call: token => github.Commits.Get(
+                auth_token: token,
                 owner: owner,
                 repo: repo,
                 ref: merge_commit as String,
-              ) {
+              )) {
                 RestRefused { refusal } => BaseUnknown { reason: ForgeReadRefused { read: MergeCommitRead, refusal: refusal } }
                 RestAnswered { answer: detail } =>
                   match first_parent(parents: detail.detail.parents) {
                     Absent {} => BaseUnknown { reason: MergeCommitHasNoParents }
                     Present { value: tested_base } =>
-                      match github.Commits.Compare(
-                        auth_token: "",
+                      match github_rest(call: token => github.Commits.Compare(
+                        auth_token: token,
                         owner: owner,
                         repo: repo,
                         basehead: join([tested_base as String, "...", merge_target as String], ""),
-                      ) {
+                      )) {
                         RestRefused { refusal } => BaseUnknown { reason: ForgeReadRefused { read: BaseComparisonRead, refusal: refusal } }
                         RestAnswered { answer: comparison } =>
                           match parse_comparison_status(raw: comparison.comparison.status) {

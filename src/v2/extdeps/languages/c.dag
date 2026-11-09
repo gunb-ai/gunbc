@@ -462,7 +462,7 @@ fn c_type_definition_body(row: ModuleTypeDefinitionRow) -> Node {
 // home (v2.std.compilers.compilation_unit resolve_member_interfaces) refuses to produce when a
 // module_dag.type_definitions lookup is rejected. A rejected lookup therefore never reads as "this
 // module owns no types", so c_validate_partition_r4 cannot answer PartitionR4Valid over a map it
-// failed to read (DESIGN section 5); the R4 refusal carries the home's cause rather than a C-local
+// failed to read (gunbc.design_argument::fail_closed); the R4 refusal carries the home's cause rather than a C-local
 // restatement of it.
 fn c_resolved_modules(module_dag: ModuleDag) -> MembersResolve {
   resolve_member_interfaces(module_dag: module_dag, members: module_dag.modules)
@@ -881,7 +881,7 @@ fn c_bool_literal_host_runtime_row(literal: String) -> TargetEmitHostRuntimeRow 
 // (38+ fns) while c_target_model owns the C Stage-0 fn-add grammar + cc runtime_row. Intended
 // end-state: C is the base realization; C++ extends/reuses the C bundle for shared C-syntax rows
 // rather than forking parallel spellings (cpp_source_text and c_source_text currently agree on add
-// — a §3 nicknaming risk until C++ dispatches through c rows or a shared c_subset home). DISSOLVES
+// — a gunbc.design_argument::single_authority nicknaming risk until C++ dispatches through c rows or a shared c_subset home). DISSOLVES
 // WHEN cpp_target_model re-homes shared C-syntax translation rules onto c_target_model (or a lifted
 // c_subset authority) and cpp keeps only C++-only extensions.
 

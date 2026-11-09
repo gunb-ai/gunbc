@@ -41,7 +41,7 @@ test fn a_refused_intent_marker_carries_the_serializers_reason() -> Bool {
 
 // THE SERIALIZER REFUSES AN OVER-ARITY LIST: a bare `if` node standing where a statement list is
 // expected has more than the (prefix, statement) children; the fold must refuse with the shape
-// reason rather than keep children 0/1 and drop the rest (DESIGN section 5).
+// reason rather than keep children 0/1 and drop the rest (gunbc.design_argument::fail_closed).
 test fn the_serializer_refuses_an_over_arity_statement_list_with_its_reason() -> Bool {
   let colon = bash_build_stmt_list_from_nodes(stmts: [bash_build_command_from_lits(lits: [":"])])
   let inner = bash_build_if_else(cond: bash_build_command_from_lits(lits: ["true"]), then_body: colon, else_body: colon)

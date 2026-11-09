@@ -1,6 +1,7 @@
 module gunbc.fabric.fabric_cell_observation_admission
 
-import std.types { String, List, Bool, list_length }
+import std.types { String, List, Bool }
+import std.algebra { length }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import product.host_identity { HostIdentity }
 import gunbc.fabric.fabric_cell_converge {
@@ -56,7 +57,7 @@ import gunbc.fabric.fabric_cell_observe {
 // not resolve, and the required floor prepares ONE subject over the whole corpus -- an unresolvable
 // module refuses preparation for everything, rather than failing one row. So the evidence exists as
 // a measurement and not as a standing control, which is strictly weaker. NEXT-RUNG TRIGGER: the
-// multi-module compile fixture DESIGN section 4b already names as missing, which is the same harness
+// multi-module compile fixture gunbc.design_argument::guarantee_ladder already names as missing, which is the same harness
 // every construction-refusal probe in this repository is waiting on.
 type FabricCellObservedPopulation sole_constructor {
   host: HostIdentity
@@ -147,7 +148,7 @@ fn admit_fabric_cell_probe(probe: FabricCellHostProbe) -> FabricCellObservationD
     ),
   )
   let canonical_blocked = fabric_cell_canonical_refusals(refusals: blocked)
-  if list_length(items: canonical_blocked) > 0 {
+  if length(xs: canonical_blocked) > 0 {
     FabricCellObservationDecision {
       outcome: FabricCellObservationDenied { host: readback.host, blocked: canonical_blocked },
     }
@@ -192,7 +193,7 @@ fn admit_fabric_cell_probe(probe: FabricCellHostProbe) -> FabricCellObservationD
 // constructor at the `gunbc.fleet.fleet_converge_plan_cli` call sites, at which point the host is genuinely
 // read and no placeholder is minted at all.
 fn fabric_cell_observation_unobserved(host: HostIdentity) -> FabricCellObservationDecision {
-  if list_length(items: fabric_cell_expected_slots(host: host)) == 0 {
+  if length(xs: fabric_cell_expected_slots(host: host)) == 0 {
     FabricCellObservationDecision { outcome: FabricCellObservationNotApplicable { host: host } }
   } else {
     FabricCellObservationDecision {

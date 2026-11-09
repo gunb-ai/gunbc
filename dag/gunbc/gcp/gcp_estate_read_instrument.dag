@@ -21,7 +21,7 @@ import gunbc.gcp.gcp_estate_observation {
 }
 
 // Named instruments that re-derive estate observation rows. These are not facts in
-// extdeps.cloud.gcp (DESIGN §3: observations and their refresh live in the observing layer).
+// extdeps.cloud.gcp (gunbc.design_argument::single_authority: observations and their refresh live in the observing layer).
 // A human can execute the argv today. A credentialed runner executing the same argv is what
 // flips HandObserved to MachineObserved without rewriting the receipt types.
 //

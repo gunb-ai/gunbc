@@ -25,7 +25,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   srv1_live_dashboard_instance,
 }
 import gunbc.roadmap.roadmap_model { RoadmapNode, RoadmapNodeIdentity, PrsMerged, Dispatchable }
-import gunbc.roadmap.roadmap_status { DerivableLine, Unsigned }
+import gunbc.roadmap.roadmap_status { DerivableLine }
 import gunbc.roadmap.roadmap_execution_contract { gunbc_claim_execution_contract }
 import gunbc.roadmap.roadmap_belt { DesiredMember }
 import gunbc.roadmap.roadmap_launch_admission { launch_identity_exemplar }
@@ -48,7 +48,7 @@ fn control_instance() -> HostDashboardInstance {
     listen_port: 18131,
     source_anchor_ref: "refs/heads/main" as NonEmptyStr,
     actuation: DashboardActuating,
-    provision_transport: DashboardLocalProvision,
+    actuator_host: srv1_host_layout().host_identity,
   )
 }
 
@@ -66,7 +66,6 @@ fn control_node() -> RoadmapNode {
       function: "the_timer_route_spawn_probes_the_instance_it_was_handed" as NonEmptyStr,
     ),
     owner: "",
-    signoff: Unsigned,
     parent: none,
     centering: none,
   }

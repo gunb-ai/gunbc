@@ -6,7 +6,7 @@ import gunbc.rung_drop {
 }
 
 // ONE CAPABILITY, N DROPS, AND THE JOIN THAT MAKES PARTIAL RETIREMENT UNWRITEABLE AS A QUIET STATE.
-// DESIGN 4b(3) retires a drop BY ITS TRIGGER AND BY NOTHING ELSE. When several drops wait on the
+// gunbc.design_argument::guarantee_ladder (no silent regression) retires a drop BY ITS TRIGGER AND BY NOTHING ELSE. When several drops wait on the
 // SAME capability, that sentence is false unless the waiters are one subject: landing the
 // capability fires every trigger at once, and an author who watches one row retires one row.
 // The other waiters then stand on a trigger that has already fired.
@@ -16,7 +16,7 @@ import gunbc.rung_drop {
 // restoration capability: its waiters are an identity list, standing is joined against
 // gunbc.rung_drop.roster, and a split is a typed verdict rather than a paragraph.
 //
-// RUNG HONESTY (DESIGN 4b(1)), stated rather than implied by the join existing. The class this
+// RUNG HONESTY (gunbc.design_argument::guarantee_ladder (rung honesty)), stated rather than implied by the join existing. The class this
 // module actually closes is SPLIT RETIREMENT AMONG ENROLLED WAITERS: waiter_rows filters the
 // roster BY the hand-authored waiter_identities list, and the verdict has no arm for "this drop
 // waits on the capability and nobody listed it". WaiterAbsent is LISTED-BUT-ABSENT, the opposite
@@ -32,7 +32,7 @@ import gunbc.rung_drop {
 // CURRENT RUNG: 2, mechanically preventable -- and only over the enrolled set. Safety depends on
 // the witness executing and on an author remembering to append waiter_identities. It is not
 // structurally guaranteed: the unenrolled-waiter state remains perfectly writable. Claiming
-// completeness of the waiter population would be the 4b(1) inflation this paragraph exists to
+// completeness of the waiter population would be the gunbc.design_argument::guarantee_ladder (rung honesty) inflation this paragraph exists to
 // refuse.
 //
 // CEILING: 3, structurally guaranteed. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY AND NOT A PR
@@ -144,7 +144,7 @@ fn every_shared_capability_holds(caps: List<SharedCapability>, ds: List<RungDrop
 // private trigger again. Typed waiters cite in restoration_trigger. Prose waiters have no such
 // field: authored is the only carrier, so the same identity string must appear there. Skipping
 // the prose arm as `true` made the check permanently green for floor_cut_falsifier_cadence
-// (DESIGN 4b: a RED that cannot be authored is a decoration). Membership in waiter_identities is
+// (gunbc.design_argument::guarantee_ladder: a RED that cannot be authored is a decoration). Membership in waiter_identities is
 // still the join; this predicate is the citation, not a second population. A prose waiter that
 // also admits an operator-withdrawal arm must name delisting from waiter_identities on that arm,
 // or the join treats a legitimate single-row retirement as SplitRetirement.

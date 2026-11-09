@@ -10,7 +10,7 @@ import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 // point `run_rostered_row_join` has no caller anywhere in the checkout, as
 // `gunbc.recurring_failure_mode.a_drops_rederivation_instrument_sits_in_the_population_it_measures`
 // already records. A `MechanicallyPreventable` reading needs the gate to execute (DESIGN section
-// 4b(1)), so it was inflation, and the paragraphs below are kept as the record of what was claimed.
+// gunbc.design_argument::guarantee_ladder (rung honesty)), so it was inflation, and the paragraphs below are kept as the record of what was claimed.
 // What does hold: for the three derived rosters an author cannot forget a row FILED IN THE ROW
 // DIRECTORY, because the list has no author. A row of an enrolled type declared anywhere else is not
 // in the roster and nothing refuses it. A row under a stem that is not its declaration name is
@@ -24,14 +24,14 @@ import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 // WHY THE BLOCKER IS `AwaitsOneGrounding` TODAY AND WAS `ClimbableButUnbuilt` BEFORE, which is the
 // one thing a reader of this row is likeliest to read as a contradiction against the paragraphs
 // below, since several of them were written while the earlier classification held. DESIGN section
-// 4b(2) obliges a stall to separate "cannot climb further" from "can climb after one grounding"
+// gunbc.design_argument::guarantee_ladder (no untracked stall) obliges a stall to separate "cannot climb further" from "can climb after one grounding"
 // from "can climb NOW but unbuilt", and that classification is about THIS ROW'S STANDING STATE --
 // whether it can move off the rung it sits on -- not about the last step to its ceiling. The class
 // sat OUTSIDE THE LADDER and the climb off it needed no capability that did not exist, so it was
 // climbable and unbuilt; that climb has now been taken (the join described further down), the row
 // stands at `MechanicallyPreventable`, and the ONLY remaining climb is the one to the ceiling, which
 // does await a grounding. So the blocker changed because the standing state changed, not because
-// the reading of section 4b(2) did.
+// the reading of gunbc.design_argument::guarantee_ladder (no untracked stall) did.
 //
 // THE DISTINCTION THAT PARAGRAPH PRESERVES IS STILL LOAD-BEARING and is why it is rewritten rather
 // than deleted: while an affordable climb was outstanding, calling the blocker `AwaitsOneGrounding`
@@ -56,8 +56,8 @@ import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 // constructor because there is no list to omit it from. Stated as BINDING and not as introspection
 // deliberately: a trigger naming discovery would be satisfied by `data_decl_type_facts`, which
 // already exists, while the capability it is meant to restore stayed dead -- the DESIGN section
-// 4b(3) failure of a trigger naming less than it restores. This paragraph is not evidence that
-// anything holds; no Accepted program reads it (section 4c). It is the honest home for a fact the
+// gunbc.design_argument::guarantee_ladder (no silent regression) failure of a trigger naming less than it restores. This paragraph is not evidence that
+// anything holds; no Accepted program reads it (gunbc.design_argument::source_annotations). It is the honest home for a fact the
 // type cannot carry, and if a later lane gives the ceiling its own grounding field, this is the row
 // whose prose moves into it.
 //

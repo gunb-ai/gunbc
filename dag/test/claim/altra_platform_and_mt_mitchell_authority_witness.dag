@@ -1,7 +1,7 @@
 module test.claim.altra_platform_and_mt_mitchell_authority_witness
 
 import std.logic { Bool }
-import std.types { list_length }
+import std.algebra { length }
 import std.measure { hertz_count, micrometer_count, rack_unit_count }
 import extdeps.memory.types { dram_generation_eq, dram_generation_ddr4, dram_generation_ddr5 }
 import extdeps.cpu.ampere_altra_package { altra_max_dimms_per_socket, altra_pcie_gen4_lane_count, altra_package_body_width, altra_package_body_height, altra_package_pad_pitch_dx, altra_package_pad_pitch_dy }
@@ -140,7 +140,7 @@ test fn w_platform_facts_hang_off_the_subject_declarations() -> Bool {
 // dissolution deleted -- one arm true, the rest false, and no production consumer, this witness
 // being its only caller -- and it is the third place that one `is_current` concept had been
 // spelled. That it PRE-EXISTED and this change merely widened its match to the new arm is not a
-// defence: DESIGN section 2 says net concepts must not grow by re-invention, and a concept
+// defence: gunbc.design_argument::minimize_redundancy says net concepts must not grow by re-invention, and a concept
 // surviving in a third home is exactly that growth.
 //
 // EXHAUSTIVENESS IS PRESERVED AND MOVES NOWHERE. It belonged to the match, never to the name in
@@ -275,7 +275,7 @@ test fn w_a_public_layout_document_would_read_as_reachable() -> Bool {
 // --- OCP Mt. Mitchell motherboard specification, revision 0.80 ---
 
 test fn w_mt_mitchell_revision_table_ends_at_the_modelled_revision() -> Bool {
-  list_length(items: mt_mitchell_revision_table) == 3
+  length(xs: mt_mitchell_revision_table) == 3
     && match mt_mitchell_revision_table.last() {
       Present { value: latest } =>
         latest.revision == "0.80"
@@ -291,7 +291,7 @@ test fn w_mt_mitchell_revision_table_ends_at_the_modelled_revision() -> Bool {
 }
 
 test fn w_mt_mitchell_architecture_options_divide_into_whole_dimms_per_channel() -> Bool {
-  list_length(items: mt_mitchell_architecture_options) == 3
+  length(xs: mt_mitchell_architecture_options) == 3
     && all(mt_mitchell_architecture_options, o => architecture_slot_count_divides_channels(option: o))
     && architecture_dimms_per_channel(option: mt_mitchell_two_socket_eight_channel) == 2
     && architecture_dimms_per_channel(option: mt_mitchell_two_socket_twelve_channel) == 1
@@ -317,9 +317,9 @@ test fn w_mt_mitchell_ocp_nic_modes_separate_width_from_host_count() -> Bool {
 
 test fn w_mt_mitchell_inter_processor_links_split_evenly_across_sockets() -> Bool {
   let ports = mt_mitchell_inter_processor_link_ports
-  list_length(items: ports) == 4
-    && list_length(items: ports |> filter(p => inter_processor_link_socket(port: p) == 0)) == 2
-    && list_length(items: ports |> filter(p => inter_processor_link_socket(port: p) == 1)) == 2
+  length(xs: ports) == 4
+    && length(xs: ports |> filter(p => inter_processor_link_socket(port: p) == 0)) == 2
+    && length(xs: ports |> filter(p => inter_processor_link_socket(port: p) == 1)) == 2
 }
 
 test fn w_mt_mitchell_board_dimensions_are_exact_in_micrometres() -> Bool {

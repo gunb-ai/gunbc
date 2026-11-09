@@ -225,10 +225,6 @@ pub type Set<Element> = Rc<BTreeSet<Element>>;
 
 pub type Map<Key, Value> = Rc<HashMap<Key, Value>>;
 
-pub fn list_length<T: Clone>(items: Rc<Vec<T>>) -> i64 {
-    items.iter().fold(0, |acc: i64, _| v1_rt::int_add(acc, 1))
-}
-
 pub type CommitSha = String;
 
 pub fn commit_sha_text_holds(head: String) -> bool {
@@ -388,7 +384,7 @@ pub type PathSegment = String;
 pub fn path_segment_safety_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "WHAT MAKES A STRING SAFE TO USE AS ONE PATH SEGMENT — the law, held once, so every branded id that becomes a directory name tests the same thing. The brand alone never carried it: a branded NonEmptyStr accepts \"..\", \"a/b\", and an embedded newline, so a value that typechecked as a segment could still escape its parent directory, alias a sibling, or split a line-oriented file written under that name. The refused set is exactly the characters that change what a concatenated path MEANS — `/` and `\\` introduce a level, `.` and `..` navigate, CR and LF terminate a record in every line-oriented format this repo writes, NUL terminates the string at the syscall boundary. Callers REFUSE on false rather than sanitizing, because a sanitized segment silently denotes something other than what the caller named (§5: a failure arm must refuse, never widen). Percent- or hex-encoding is the reversible alternative and is deliberately not offered until a caller needs a segment it cannot rename.\n\nThis is a PREDICATE, not a constructor, and that is a modeling choice rather than a limitation worked around. A generic `path_segment(raw) -> PathSegment?` would put the branding cast in this module, and each caller would then re-cast the generic segment into its own brand anyway — two casts and two authorities for one law. Holding the law here and letting each branded id (gunbc.merge_admission.walk_attempt_id is the first) construct itself through it keeps one authority for what is hostile and one constructor per brand, which is what §3 asks for. A generic constructor earns its place when a second caller wants a bare PathSegment rather than a brand of its own; none does today.".to_string()
+            "WHAT MAKES A STRING SAFE TO USE AS ONE PATH SEGMENT — the law, held once, so every branded id that becomes a directory name tests the same thing. The brand alone never carried it: a branded NonEmptyStr accepts \"..\", \"a/b\", and an embedded newline, so a value that typechecked as a segment could still escape its parent directory, alias a sibling, or split a line-oriented file written under that name. The refused set is exactly the characters that change what a concatenated path MEANS — `/` and `\\` introduce a level, `.` and `..` navigate, CR and LF terminate a record in every line-oriented format this repo writes, NUL terminates the string at the syscall boundary. Callers REFUSE on false rather than sanitizing, because a sanitized segment silently denotes something other than what the caller named (gunbc.design_argument::fail_closed: a failure arm must refuse, never widen). Percent- or hex-encoding is the reversible alternative and is deliberately not offered until a caller needs a segment it cannot rename.\n\nThis is a PREDICATE, not a constructor, and that is a modeling choice rather than a limitation worked around. A generic `path_segment(raw) -> PathSegment?` would put the branding cast in this module, and each caller would then re-cast the generic segment into its own brand anyway — two casts and two authorities for one law. Holding the law here and letting each branded id (gunbc.merge_admission.walk_attempt_id is the first) construct itself through it keeps one authority for what is hostile and one constructor per brand, which is what gunbc.design_argument::single_authority asks for. A generic constructor earns its place when a second caller wants a bare PathSegment rather than a brand of its own; none does today.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -520,23 +516,6 @@ pub enum AuthScheme {
     Header { name: String },
     Basic { username: String },
     ApiKey,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct AccessToken {
-    pub token: String,
-    pub scheme: Rc<AuthScheme>,
-    pub expires_at: Option<Timestamp>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct Credential {
-    pub token: String,
-    pub scheme: Rc<AuthScheme>,
-    pub header_name: Option<String>,
-    pub source_id: String,
-    pub required_scopes: Rc<Vec<String>>,
-    pub expires_in: Option<i64>,
 }
 
 pub type FilesystemHandle = String;

@@ -12,7 +12,7 @@ import extdeps.uri { Uri, Https }
 // THE OBVIOUS NAME WOULD HAVE BEEN A MEANING FORK. Upstream has no single `memory_monitor` any more:
 // `src/ray/common/monitors/` holds THREE implementations -- threshold, pressure and event -- behind
 // `memory_monitor_factory.h`. A module called `extdeps.ray.memory_monitor` would be one name over
-// three materially different behaviours, which is exactly what DESIGN section 3 forbids, and the
+// three materially different behaviours, which is exactly what gunbc.design_argument::single_authority forbids, and the
 // reader would have no way to tell which one a cited default belongs to.
 //
 // AND THE PRESSURE MONITOR IS NOT REACHABLE THROUGH THAT FACTORY AT ALL, which is the second and

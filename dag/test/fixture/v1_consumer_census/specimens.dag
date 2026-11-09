@@ -19,7 +19,7 @@ import gunbc.v1.v1_consumer_census {
 // with blocking rows, so it makes the admission gate false today -- and an assertion that reads
 // false on the live tree cannot tell 'the gate refuses correctly' from 'the gate is stuck off'. The
 // fixture supplies the ADMITTED case, which exists nowhere in this repository yet and has no other
-// way to be executed before the cutover. DESIGN section 4b: a state unrepresentable in the accepted
+// way to be executed before the cutover. gunbc.design_argument::guarantee_ladder: a state unrepresentable in the accepted
 // corpus may still be representable as source handed to the compiler by a fixture, and where it
 // is, declining the evidence is specification-without-execution.
 

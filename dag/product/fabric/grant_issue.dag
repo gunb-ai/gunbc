@@ -108,7 +108,7 @@ import std.algebra { Cons, Empty }
 // FALSE - the witness held it only as a fold init over a permit list the fixture always filled, so
 // the value was constructed and never reached, which is the unreachable-seed defect this module's
 // neighbours spent three review rounds removing. Keeping it would have been decoration later cited
-// as coverage (DESIGN section 4b), the same reason TransferOrLocationUnresolved and
+// as coverage (gunbc.design_argument::guarantee_ladder), the same reason TransferOrLocationUnresolved and
 // ProviderAccessPathUnsupported were deleted from provider_admission rather than left standing.
 //
 // Absence of a permit is therefore not spelled as a refusal here. It is the caller's fact: a
@@ -512,7 +512,7 @@ fn issue_grant<P, Q: Quantity, S: Scale>(
   }
 }
 
-// DECLARED FRONTIER (DESIGN 3c). grant_authorizes_reservation is consumed by
+// DECLARED FRONTIER (gunbc.design_argument::consumption). grant_authorizes_reservation is consumed by
 // gunbc.runner.runner_attempt_launch plan_attempt_launch, which is the agreement half of FCI-3's
 // re-read: an absent, corrupt, or disagreeing Grant yields zero jailer argv. The durable re-read
 // for a cell-backed grant is gunbc.fabric.fabric_cell_grant: the cell's hold owner is the grant key,
@@ -542,7 +542,7 @@ fn issue_grant<P, Q: Quantity, S: Scale>(
 // IT TAKES THE COORDINATES RATHER THAN A SNAPSHOT, AND THAT IS WHAT MAKES ITS RED AUTHORABLE.
 // RequiredBuildCellSnapshot is sole_constructor, so no witness outside its module can build a
 // DISAGREEING one; a rule reading the snapshot directly would have an unauthorable RED and be a
-// DESIGN 4b decoration -- permanently green and cited as coverage. FabricIdentity is an ordinary
+// gunbc.design_argument::guarantee_ladder decoration -- permanently green and cited as coverage. FabricIdentity is an ordinary
 // record, so over coordinates the disagreement is writable, and four claims write it.
 
 // WHAT THIS DOES NOT ESTABLISH, stated because the name would otherwise read as more than it is:

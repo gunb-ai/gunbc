@@ -1,5 +1,7 @@
 module test.claim.machine_word_witness
 
+import std.algebra { length }
+
 // THIS FILE IMPORTS NOTHING, AND THE ONE TYPE IT NAMES ACROSS A MODULE BOUNDARY IS WRITTEN OUT IN
 // FULL. It briefly imported std.machine_word Octet, and a bare Octet was ambiguous against
 // extdeps.network.ipv4's -- which is what made its 60 claims fail to resolve on srv1. The octet is
@@ -113,7 +115,7 @@ test fn width8_and_width16_are_realizable_holds() -> Bool {
 // "the code is broken" and whose actual cause is the oracle. It was one digit.
 //
 // A comment stating the intended hex would not have caught it, because no machine reads a comment
-// (DESIGN section 4c). What catches it is claiming the transcription against an operation that
+// (gunbc.design_argument::source_annotations). What catches it is claiming the transcription against an operation that
 // already has its own pinned vectors: a ten-digit decimal is unverifiable by eye, but the four
 // octets it unpacks to are four two-or-three-digit numbers a reader can check against the hex in
 // one glance. Mistype the decimal again and THIS claim reds and names the constant, instead of the
@@ -696,7 +698,7 @@ test fn negative_octet_count_refuses_holds() -> Bool {
 
 test fn zero_octet_count_renders_nothing_for_zero_holds() -> Bool {
   match int_to_octets(value: 0, count: 0, endianness: BigEndian) {
-    RawOctetsReady { octets: o } => list_length(items: o) == 0
+    RawOctetsReady { octets: o } => length(xs: o) == 0
     RawOctetsRefused { cause: _ } => false
   }
 }
