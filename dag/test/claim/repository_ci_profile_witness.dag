@@ -465,6 +465,11 @@ fn publisher_row_on_undeclared_group() -> RepositoryCiProfile {
 // THE SHAPE ALL FOUR CONTROLS SHARE: the row is refused BY THE PROFILE CHECK for the group reason, the
 // emitter refuses too and reports the check's own words (not its own paraphrase, not a different
 // conjunct), and gunbc's untouched row still composes through the same emitter.
+// THE PHRASE EVERY GROUP-DECLARATION REFUSAL MUST CARRY: the profile refusal and every emitter's refusal
+// name the runner group by this one phrase, so the claims below can check the emitter refused for the row's
+// reason and not for some other.
+data emitter_group_refusal_phrase: String = "runner group that gunbc.runner.runner_group_restriction_ensure does not declare"
+
 fn emitter_refuses_where_the_row_is_refused(
   row: RepositoryCiProfile,
   emitter_refused: Bool,
