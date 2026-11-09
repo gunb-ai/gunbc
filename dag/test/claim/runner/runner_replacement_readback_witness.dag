@@ -208,11 +208,43 @@ test fn retirement_is_authorized_once_every_replacement_has_registered_and_compl
     desired: target_population(),
     obligation: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr),
     fabric: [],
-    live: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr),
+    live: ["srv3-01", "srv3-02", "srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr),
     incoming: incoming(),
     proven: proven,
   )
     == RetireDrainAuthorized { unit: retiree("srv3-19"), over: ["srv3-06", "srv3-07"] |> map(u => u as NonEmptyStr) }
+}
+
+// A KEPT SLOT THE HOST HAS NEVER REPORTED LIVE IS BEING BROUGHT UP TOO, and it is capacity a retirement
+// would be handed to. Both incoming slots have registered and run -- the claim above's world -- and yet the
+// host has not reported srv3-01/srv3-02 at all, which is srv1 of gunb-ai/gunbc#16144 before its trees
+// exist: a plan that retired here would stop a working runner and hand its work to a slot that has never
+// executed anything. The withhold names the slot it is waiting on and says no readback was produced for it.
+test fn a_kept_slot_the_host_has_never_reported_live_holds_the_retirement_too() -> Bool {
+  let entries = [registration("srv3-06", true), registration("srv3-07", true)]
+  let verdicts = [
+    collected(runner: "srv3-06", concluded: true),
+    collected(runner: "srv3-07", concluded: true),
+  ]
+  let proven = replacement_proven_of_host(incoming: ["srv3-06", "srv3-07"] |> map(u => u as NonEmptyStr), roster: Present { value: roster(entries: entries) }, verdicts: verdicts)
+  decide(
+    unit: retiree("srv3-19"),
+    desired: target_population(),
+    obligation: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr),
+    fabric: [],
+    // THE HOST ANSWERED WITH ONLY THE UNITS THAT LEAVE: the kept slots are not reported, so they are among
+    // the slots this converge is bringing up, and they have no registration and no job of their own.
+    live: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr),
+    incoming: incoming(),
+    proven: proven,
+  )
+    == RetireDrainWithheld {
+         unit: retiree("srv3-19"),
+         cause: ReplacementProofMissing {
+           replacement: retiree("srv3-01"),
+           cause: "no readback was produced for this replacement slot",
+         },
+       }
 }
 
 // ONE OF TWO IS NOT ALL OF TWO. The move is not complete until every incoming slot has proven itself; a
@@ -410,7 +442,7 @@ test fn a_pure_shrink_needs_no_replacement_readback() -> Bool {
     desired: ["srv3-01", "srv3-02"] |> map(u => u as NonEmptyStr),
     obligation: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr),
     fabric: [],
-    live: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr),
+    live: ["srv3-01", "srv3-02", "srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr),
     incoming: shrink(),
     proven: [],
   )
@@ -524,7 +556,7 @@ test fn the_authority_is_per_unit_and_not_per_host() -> Bool {
     desired: target_population(),
     obligation: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr),
     fabric: [],
-    live: ["srv3-19", "srv3-20", "srv3-21"] |> map(u => u as NonEmptyStr),
+    live: ["srv3-01", "srv3-02", "srv3-19", "srv3-20", "srv3-21"] |> map(u => u as NonEmptyStr),
     incoming: incoming(),
     proven: proven,
   )

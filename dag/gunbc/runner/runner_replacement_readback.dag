@@ -476,7 +476,7 @@ fn hand_retirement_notice(
           concat(head, concat("replacement ", join(map(slots, u => (u as String)), ", "))),
           " were not consulted: an observe-only pass reads no roster and collects no job, so it cannot say a hand retirement is safe. The converge run reports it per slot.",
         )
-      } else if all(map(slots, k => is_proven(slots_of: proven, slot: k))) {
+      } else if all(slots, k => is_proven(slots_of: proven, slot: k)) {
         concat(
           concat(head, concat("replacement ", join(map(slots, u => (u as String)), ", "))),
           " registered and completed a job; hand retirement is now safe for the operator to decide.",
