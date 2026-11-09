@@ -1527,6 +1527,61 @@ data operator_route_unit_chosen_by_hand: IntegrationConcern = IntegrationConcern
   },
 }
 
+// THE FLEET AUTOMATION PRINCIPAL HAS TWO NAMES (recorded 2026-11-08, PR 16079). The automation identity is
+// spelled by two declarations that never import each other: gunbc.fleet.fleet_posix_accounts
+// fleet_automation_user (name "gunbc-fleet", uid/gid 1001, the srv automation allocations) and
+// gunbc.fleet.fleet_ssh_locus fleet_automation_principal_login ("gunbc-automation", the login the fleet SSH
+// transport authenticates as and whose authorized_keys hold the fleet roster). They coexisted as separate
+// standing notes until 16079 gave the diskless runner boot stage a REAL login account under the transport's
+// name on every boot, which makes the divergence material: two routes could create two accounts or write the
+// fleet keys to the wrong home. It is recorded UNRESOLVED -- which name is THE fleet automation principal is
+// NOT decided by this row (gunbc.design_argument::single_authority).
+data fleet_automation_principal_has_two_names: IntegrationConcern = IntegrationConcern {
+  identity: "fleet_automation_principal_has_two_names",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "gunbc.fleet.fleet_posix_accounts", decl_name: "fleet_automation_user"),
+      second: decl_ref(module_path: "gunbc.fleet.fleet_ssh_locus", decl_name: "fleet_automation_principal_login"),
+      rest: [],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.fleet.fleet_posix_accounts", decl_name: "fleet_automation_user"),
+    tail: [
+      decl_ref(module_path: "gunbc.fleet.fleet_ssh_locus", decl_name: "fleet_automation_principal_login"),
+      decl_ref(module_path: "gunbc.runner.runner_host_medium", decl_name: "runner_host_fleet_authorized_keys_command"),
+    ],
+  },
+  question: "Which declaration is the fleet automation principal's ONE authoritative POSIX identity -- fleet_automation_user (name gunbc-fleet, uid/gid 1001, the srv automation allocations) or fleet_automation_principal_login (gunbc-automation, the login the fleet SSH transport authenticates as and whose authorized_keys hold the fleet roster)? If they are one principal, one of these is a fork of the other; if they are two accounts, the boot stage that realizes a login account and the SSH locus that authenticates it must agree on which one, and the fleet keys must land in exactly one home.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "29452aa0398d504c37ec856acafe5caa7c304e35",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.fleet_posix_accounts", decl_name: "fleet_automation_user") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.fleet_ssh_locus", decl_name: "fleet_automation_principal_login") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_host_medium", decl_name: "runner_host_fleet_authorized_keys_command") },
+        ],
+      },
+      account: "PR 16079's diskless runner boot stage (gunbc.runner.runner_host_medium runner_host_fleet_authorized_keys_command) was given the transport login fleet_automation_principal_login (gunbc-automation) -- it creates that account and writes the fleet authorized_keys into its home on every boot -- while the same automation identity is modelled elsewhere as fleet_automation_user (gunbc-fleet, uid/gid 1001) in fleet_posix_accounts, which owns the srv automation allocations and its login shell. The two names had coexisted as separate standing notes with no import between them; a boot-time account creation and authorized_keys write makes the divergence material rather than cosmetic, so it is recorded unresolved instead of the boot stage silently adopting one name.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: HomeUnresolved {
+      question: "Which module owns the fleet automation principal's single POSIX identity -- gunbc.fleet.fleet_posix_accounts (fleet_automation_user, gunbc-fleet) or gunbc.fleet.fleet_ssh_locus (fleet_automation_principal_login, gunbc-automation)? Neither imports the other's name today; resolving names one authoritative declaration and makes the boot stage, the SSH-transport login, and the srv automation allocations all read it.",
+    },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.runner.runner_host_medium", decl_name: "runner_host_fleet_authorized_keys_command"),
+        control: Present { value: decl_ref(module_path: "test.claim.runner.runner_host_medium_fleet_keys_witness", decl_name: "the_fleet_boot_stage_authorizes_exactly_the_fleet_roster") },
+        statement: "the boot stage writes exactly the fleet roster (gunbc.fleet.fleet_ssh_access fleet_authorized_keys) into ONE automation login's authorized_keys and no other principal; whichever name is designated authoritative, that witness must still pin the same login and the same two keys -- a resolution may not silently move the fleet keys to a different account or add a third identity",
+      },
+    ],
+    next: climbs_when(capability: "one of fleet_automation_user and fleet_automation_principal_login is designated the authoritative fleet automation principal, the other is aliased to it or removed, and the boot stage, the SSH-transport login, and the srv automation allocations all read the surviving name -- proven by an existing witness that changes if either name is renamed, so the two cannot silently diverge again"),
+  },
+}
+
 data equality_wall_three_site_measure_stopgap_interim: IntegrationConcern = IntegrationConcern {
   identity: "equality_wall_three_site_measure_stopgap_interim",
   kind: SuspectedCapabilityGap {
@@ -1582,7 +1637,7 @@ data host_effect_apply_witness_import_block_absent: IntegrationConcern = Integra
   },
 }
 
-data integration_concerns: List<IntegrationConcern> = [controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim]
+data integration_concerns: List<IntegrationConcern> = [controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))
