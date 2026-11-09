@@ -549,10 +549,16 @@ fn retire_refusal_cause_wire(cause: RetireRefusalCause) -> String {
 // (and on what, and why), proven (retire when you decide), or nothing pending proof at all. A plan that
 // refused silently would leave the host carrying two populations with no line anywhere saying which one the
 // operator can now let go of.
+// READ_LIVE IS WHETHER THE PASS THAT ASKED EVER READ THE PROOF. The converge (apply) entry reads the org
+// roster and answers honestly; the observe entry does not and cannot (no installation token for an org
+// read), and a plan-only receipt that said "replacement srv3-06 registered and completed a job" on the
+// strength of an empty list would be the exact opposite of what this predicate exists to prevent. So the
+// observe pass is told what was not asked, in the same per-slot line, rather than a verdict it did not earn.
 fn hand_retirement_notice(
   unit: NonEmptyStr,
   incoming: ReplacementIncoming,
   proven: List<ReplacementProven>,
+  read_live: Bool,
 ) -> String {
   let head = concat(
     (unit as String),
@@ -564,7 +570,12 @@ fn hand_retirement_notice(
     IncomingUnresolved { cause: why } =>
       concat(head, concat("the incoming population is unknowable (", concat(why, "); no retirement is safe to take yet.")))
     ReplacedBy { incoming: slots } =>
-      if all(map(slots, k => is_proven(slots_of: proven, slot: k))) {
+      if !read_live {
+        concat(
+          concat(head, concat("replacement ", join(map(slots, u => (u as String)), ", "))),
+          " were not consulted: an observe-only pass reads no roster and collects no job, so it cannot say a hand retirement is safe. The converge run reports it per slot.",
+        )
+      } else if all(map(slots, k => is_proven(slots_of: proven, slot: k))) {
         concat(
           concat(head, concat("replacement ", join(map(slots, u => (u as String)), ", "))),
           " registered and completed a job; hand retirement is now safe for the operator to decide.",

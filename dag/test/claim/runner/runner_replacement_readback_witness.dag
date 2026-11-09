@@ -472,7 +472,7 @@ test fn the_hand_notice_says_the_retirement_is_now_safe_once_the_replacements_ar
     RunVerdictCollected { run: workflow_run(), floor_job: floor_job(runner: "srv3-07", concluded: true), conclusion: Success },
   ]
   let proven = replacement_proven_of_host(incoming: ["srv3-06", "srv3-07"] |> map(u => u as NonEmptyStr), roster: Present { value: roster(entries: entries) }, verdicts: verdicts)
-  let text = hand_retirement_notice(unit: retiree("srv3-19"), incoming: incoming(), proven: proven)
+  let text = hand_retirement_notice(unit: retiree("srv3-19"), incoming: incoming(), proven: proven, read_live: true)
   contains(text, "srv3-19")
     && contains(text, "will not drain it")
     && contains(text, "replacement srv3-06, srv3-07")
@@ -482,7 +482,7 @@ test fn the_hand_notice_says_the_retirement_is_now_safe_once_the_replacements_ar
 test fn the_hand_notice_names_the_replacement_and_the_reason_while_it_is_unproven() -> Bool {
   let entries = [registration("srv3-06", true), registration("srv3-07", true)]
   let proven = replacement_proven_of_host(incoming: ["srv3-06", "srv3-07"] |> map(u => u as NonEmptyStr), roster: Present { value: roster(entries: entries) }, verdicts: [])
-  let text = hand_retirement_notice(unit: retiree("srv3-19"), incoming: incoming(), proven: proven)
+  let text = hand_retirement_notice(unit: retiree("srv3-19"), incoming: incoming(), proven: proven, read_live: true)
   contains(text, "waiting on srv3-06")
     && contains(text, "no qualification run readback exists for this slot")
     && contains(text, "no retirement is safe to take yet")
@@ -524,4 +524,18 @@ test fn the_authority_is_per_unit_and_not_per_host() -> Bool {
   retire_drain_is_authorized(decisions: decisions, unit: retiree("srv3-19"))
     && retire_drain_is_authorized(decisions: decisions, unit: retiree("srv3-20"))
     && !retire_drain_is_authorized(decisions: decisions, unit: retiree("srv3-21"))
+}
+
+// THE OBSERVE PASS MAY NOT CLAIM WHAT IT DID NOT READ. An observe-only run holds no installation token for
+// the org roster, so its carrier is `ObservePassDidNotRead` and its proof list is empty by construction --
+// and a receipt that then printed "replacement srv3-06 registered and completed a job; hand retirement is
+// now safe" would be a plan-only run telling the operator to retire working capacity on the strength of
+// nobody having looked. The same per-slot line has to say the proof was not consulted.
+test fn the_observe_pass_notice_never_announces_a_retirement_it_did_not_read() -> Bool {
+  let proven: List<ReplacementProven> = []
+  let text = hand_retirement_notice(unit: retiree("srv3-19"), incoming: incoming(), proven: proven, read_live: false)
+  contains(text, "srv3-19")
+    && contains(text, "will not drain it")
+    && contains(text, "were not consulted")
+    && !contains(text, "now safe")
 }

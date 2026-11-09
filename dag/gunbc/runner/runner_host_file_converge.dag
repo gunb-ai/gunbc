@@ -3330,54 +3330,35 @@ fn runner_host_slot_actuations(
 type RunnerRetirementReadback sole_constructor {
   roster: OrganizationRunnerRosterEvidence?
   qualification_verdicts: List<QualificationRunVerdict>
+  pass: RetirementReadbackPass
 }
 
-// THE READBACK A ROUTE BRINGS WHEN IT HAS READ NEITHER LEG. It is the value the converge apply route
-// passes today, and it is not a placeholder: the route dispatches no qualification floor job and reads no
-// org roster, so it has no proof that any incoming slot has run anything, and the gate's answer to that
-// is to withhold every declared retirement. The route that DOES hold the proofs -- the qualification route,
-// which dispatches the floor job and collects the verdict, and whoever holds the roster read -- builds the
-// carrier with `runner_retirement_readback_of` and the retirement proceeds.
-fn runner_retirement_readback_unreadable() -> RunnerRetirementReadback {
-  RunnerRetirementReadback { roster: none, qualification_verdicts: [] }
+// WHICH PASS PRODUCED THE CARRIER, said rather than inferred. The registration leg is an ORG REST READ, and
+// the two CI entries do not have the same standing to make it: the converge (apply) step mints an
+// org-scoped installation token in its prelude (gunbc.ci.ci_spec gunbc_ci_runner_host_file_converge_invoke,
+// whose comment names the roster as the reason) and the observe step mints none. So the roster read lives in
+// the APPLY ENTRY and nowhere else, and an observe carrier says so instead of presenting an empty roster as
+// though it had looked and found nothing -- which is the difference between "the replacement never
+// registered" and "this pass did not ask".
+data RetirementReadbackPass = ConvergeApplyReadLive | ObservePassDidNotRead
+
+// THE OBSERVE PASS BRINGS NOTHING, AND SAYS SO. No roster, no verdicts: an observe run has no
+// installation token for an org read and dispatches no floor job. Every declared retirement it reports is
+// therefore WITHHELD -- which an observe run must do anyway, since it drains nothing -- and each hand
+// notice says the proof was not read by this pass rather than implying the replacement failed to appear.
+fn runner_retirement_readback_observe_pass() -> RunnerRetirementReadback {
+  RunnerRetirementReadback { roster: none, qualification_verdicts: [], pass: ObservePassDidNotRead }
 }
 
+// THE CARRIER THE APPLY ENTRY BUILDS. The roster is the registration leg, read by the converge entry (the
+// only place with the token for it); the qualification verdicts are the completed-job leg, which is a leg a
+// converge run cannot read at all -- declared below as a frontier with its trigger, so the empty list there
+// is a frontier's evidence and not an oversight.
 fn runner_retirement_readback_of(
   roster: OrganizationRunnerRosterEvidence?,
   qualification_verdicts: List<QualificationRunVerdict>,
 ) -> RunnerRetirementReadback {
-  RunnerRetirementReadback { roster: roster, qualification_verdicts: qualification_verdicts }
-}
-
-// THE ROUTE'S OWN READING OF THE CARRIER, LAZILY. The org runner roster is a leg this route CAN read and
-// does: the registration standing of every incoming slot comes from the existing observation, so a withheld
-// retirement distinguishes "not registered" from "registered and idle" instead of guessing. It is read only
-// when the gate is actually ENGAGED -- a host with no required retiree, or a pure shrink, costs no REST read
-// and no roster page. The qualification verdicts are the leg this route cannot read, declared below: the
-// empty list there is a frontier's evidence, not an oversight.
-fn runner_retirement_readback_for_run(subject: RunnerHostFileSubject) -> RunnerRetirementReadback {
-  if runner_host_retirement_gate_is_engaged(subject: subject) {
-    runner_retirement_readback_of(
-      roster: Present { value: organization_runner_roster_live_read() },
-      qualification_verdicts: [],
-    )
-  } else {
-    runner_retirement_readback_unreadable()
-  }
-}
-
-// ENGAGED MEANS: THIS HOST HAS A REQUIRED RETIREE *AND* SOMETHING IS ENTERING ITS POPULATION. Those two
-// facts are exactly the case the invariant speaks to; either one alone leaves the gate inert -- a shrink has
-// no replacement to prove, and an incoming population with no retiree has no retirement to stop. The test is
-// derived from the same authorities the gate consults, so the lazy read cannot skip a case the gate would
-// have judged.
-fn runner_host_retirement_gate_is_engaged(subject: RunnerHostFileSubject) -> Bool {
-  length(subject.retired_units) > 0
-    && match replacement_incoming_for_host(host: subject.host) {
-      ReplacedBy { incoming: slots } => length(slots) > 0
-      ShrunkOnly => false
-      IncomingUnresolved { cause: _ } => true
-    }
+  RunnerRetirementReadback { roster: roster, qualification_verdicts: qualification_verdicts, pass: ConvergeApplyReadLive }
 }
 
 // THE DECLARED FRONTIER FOR PHASE TWO, with its trigger (gunbc.design_argument::consumption: an authority
@@ -3389,7 +3370,7 @@ fn runner_host_retirement_gate_is_engaged(subject: RunnerHostFileSubject) -> Boo
 // (gunbc.runner.runner_qualification_attempt_run, whose collect stage calls
 // gunbc.runner.runner_qualification_dispatch::collect_qualification_run) handing its collected
 // `QualificationRunVerdict` for each incoming slot into `runner_retirement_readback_of`'s
-// `qualification_verdicts` at `runner_retirement_readback_for_run`. A converge run cannot dispatch a floor
+// `qualification_verdicts` at the converge entry's `runner_retirement_readback_of`. A converge run cannot dispatch a floor
 // job itself without turning a file converge into a nine-minute job queue.
 //
 // TRIGGER: the first `runner_host_file_converge` APPLY dispatch over a host with an open width transition
@@ -3398,7 +3379,7 @@ fn runner_host_retirement_gate_is_engaged(subject: RunnerHostFileSubject) -> Boo
 // withhold is the fail-closed direction, so the owed wiring delays retirements rather than authorizing them.
 data converge_replacement_job_proof_leg: RouteLegStanding = LegAuthorityImplemented {
   authority: decl_ref(module_path: "gunbc.runner.runner_replacement_readback", decl_name: "replacement_proven_of_host"),
-  wiring_owed: "runner_retirement_readback_for_run supplies qualification_verdicts: []; the landing is the qualification attempt route's collected QualificationRunVerdict per incoming slot fed into runner_retirement_readback_of, triggered by the first runner_host_file_converge APPLY dispatch over a host with an open width transition whose incoming slots have collected qualification verdicts",
+  wiring_owed: "the converge entry supplies qualification_verdicts: []; the landing is the qualification attempt route's collected QualificationRunVerdict per incoming slot fed into runner_retirement_readback_of, triggered by the first runner_host_file_converge APPLY dispatch over a host with an open width transition whose incoming slots have collected qualification verdicts",
 }
 
 // ONE STEP OF THE DRAIN LEG, PURELY. The apply route acts only on `DrainNow`; everything else reports. The
@@ -3515,9 +3496,13 @@ fn runner_host_hand_capacity_notices(
     roster: readback.roster,
     verdicts: readback.qualification_verdicts,
   )
+  let read_live = match readback.pass {
+    ConvergeApplyReadLive => true
+    ObservePassDidNotRead => false
+  }
   map(
     runner_host_hand_started_units(subject: subject, population: population),
-    u => SlotHandCapacityHeld { unit: u, notice: hand_retirement_notice(unit: u, incoming: incoming, proven: proven) },
+    u => SlotHandCapacityHeld { unit: u, notice: hand_retirement_notice(unit: u, incoming: incoming, proven: proven, read_live: read_live) },
   )
 }
 
@@ -4561,7 +4546,10 @@ data runner_host_file_converge_attempt_raw: String = "runner-host-file-converge-
 // ONE HOST PER RUN, NAMED BY THE DISPATCH. The fleet-converge workflow already carries the operator's
 // chosen host in FLEET_CONVERGE_EXPECTED_HOST; an unset host refuses rather than fanning a root-file
 // write across the fleet from an empty variable.
-fn runner_host_file_ci_wet(mode: FleetHostFileConvergeMode) -> ProcessExit
+fn runner_host_file_ci_wet(
+  mode: FleetHostFileConvergeMode,
+  retirement: RunnerRetirementReadback,
+) -> ProcessExit
 {
   // THE SPLIT APPLIES TO THE ACT MODE, NOT THE OBSERVER (operator ruling 2026-10-24, run 40085967610).
   // In OBSERVE mode the run reports on the host the job is pinned to -- reading one's own host is not a
@@ -4575,16 +4563,25 @@ fn runner_host_file_ci_wet(mode: FleetHostFileConvergeMode) -> ProcessExit
         ActionsVariablePresent { value: v } => Present { value: v }
         ActionsVariableAbsent => none
       },
+      retirement: retirement,
     )
     FleetHostFilesApply => match fleet_converge_split_read() {
       SplitRefused { reason: why } => exit_failure(reason: fleet_converge_split_refusal_line(reason: why))
       SplitOk { executor_runner_name: _, subject_host: subject } =>
-        runner_host_file_ci_wet_hosted(mode: mode, host: Present { value: subject })
+        runner_host_file_ci_wet_hosted(
+          mode: mode,
+          host: Present { value: subject },
+          retirement: retirement,
+        )
     }
   }
 }
 
-fn runner_host_file_ci_wet_hosted(mode: FleetHostFileConvergeMode, host: String?) -> ProcessExit
+fn runner_host_file_ci_wet_hosted(
+  mode: FleetHostFileConvergeMode,
+  host: String?,
+  retirement: RunnerRetirementReadback,
+) -> ProcessExit
 {
   match host {
     Absent =>
@@ -4604,11 +4601,12 @@ fn runner_host_file_ci_wet_hosted(mode: FleetHostFileConvergeMode, host: String?
                   match runner_slot_cpu_desired(host: raw_host as HostIdentity) {
                     SlotCpuRefused { cause: c } => exit_failure(reason: c as String)
                     SlotCpuDesired { per_slot: per_slot, file: _ } => {
-                  // THE RETIREMENT GATE IS READ HERE, AT THE APPLY ROUTE'S OWN READ TIME: the org roster is
-                  // the registration leg, and the qualification verdicts are the completed-job leg. The
-                  // verdicts are SUPPLIED BY THE CALLER and are empty for this route -- the qualification
-                  // route that dispatches the floor job owns that readback -- so a bare
-                  // `runner_host_file_converge` apply WITHHOLDS every declared retirement rather than
+                  // THE RETIREMENT GATE IS FED HERE FROM THE ENTRY THAT RAN: the carrier arrives from the
+                  // CI entry, which is the only place allowed to read the org roster (it is the step with
+                  // the org-scoped installation token; the observe step has none, and its carrier says
+                  // `ObservePassDidNotRead`). The qualification verdicts are supplied by nobody yet -- the
+                  // route that dispatches the floor job owns that leg, declared as a frontier above -- so a
+                  // bare `runner_host_file_converge` apply WITHHOLDS every declared retirement rather than
                   // destroying capacity it cannot prove is replaced. That is the standing the operator
                   // asked for on 2026-11-09, and it is a behaviour, not a TODO: the arms below say why.
                   let run = run_runner_host_files(
@@ -4618,7 +4616,7 @@ fn runner_host_file_ci_wet_hosted(mode: FleetHostFileConvergeMode, host: String?
                     withheld: withheld,
                     mode: mode,
                     per_slot: per_slot,
-                    retirement: runner_retirement_readback_for_run(subject: subject),
+                    retirement: retirement,
                   )
                   let body = join([
                     "runner_host_file_converge probed_at=", probed_at_word(reading: clock_now_probed_at()) as String, "\n",
@@ -4646,14 +4644,33 @@ fn runner_host_file_ci_wet_hosted(mode: FleetHostFileConvergeMode, host: String?
   }
 }
 
+// THE OBSERVE ENTRY NEVER READS THE ROSTER. It reports on the host the job is pinned to and drains nothing,
+// so it needs no proof of a replacement -- and it MUST NOT reach the org read: `gunbc.ci.ci_spec`'s
+// `gunbc_ci_runner_host_file_observe_invoke` mints no installation token for it (only the converge step's
+// prelude does), and `gunbc.instruments.roster_reach_inhabitance` holds that EXACTLY ONE run-step target
+// reaches `organization_runner_roster_live_read`, and that it is the converge target. Keeping the read on
+// this entry alone is what makes both of those statements stay true.
 fn runner_host_file_observe_ci_wet() -> ProcessExit
 {
-  runner_host_file_ci_wet(mode: FleetHostFilesObserveOnly)
+  runner_host_file_ci_wet(
+    mode: FleetHostFilesObserveOnly,
+    retirement: runner_retirement_readback_observe_pass(),
+  )
 }
 
+// THE APPLY ENTRY READS THE REGISTRATION LEG, because it is the only step with the token to read it. One
+// org roster read per converge dispatch, paid before any leg runs: the alternative -- letting the shared
+// route read it -- would put a REST call the observe step cannot authorize behind an operator's plan-only
+// run, and would make the roster-reach instrument red by giving it a second roster-reading target.
 fn runner_host_file_converge_ci_wet() -> ProcessExit
 {
-  runner_host_file_ci_wet(mode: FleetHostFilesApply)
+  runner_host_file_ci_wet(
+    mode: FleetHostFilesApply,
+    retirement: runner_retirement_readback_of(
+      roster: Present { value: organization_runner_roster_live_read() },
+      qualification_verdicts: [],
+    ),
+  )
 }
 
 // THE CURRENT REGISTRATION IDENTITY EACH SLOT'S LISTENER IS RUNNING UNDER, read from the host by
