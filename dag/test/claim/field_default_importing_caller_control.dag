@@ -1,0 +1,14 @@
+module test.claim.field_default_importing_caller_control
+
+import std.types { Bool }
+// THE HOTFIX CONTROL. This caller does what #16185 did at `gunbc.heal_publication`: it names the arm
+// in its import clause. Green at base (that is what the hotfix bought) and green at head; it exists so
+// the witness pair in `field_default_declaring_scope_witness` is read as "the default is read in the
+// caller's scope" rather than "defaults of coproduct-typed parameters never work".
+import test.claim.field_default_declaring_scope_fixture {
+  field_default_is_bearer, field_default_is_opaque, FieldDefaultBearer, FieldDefaultOpaque,
+}
+
+test fn importing_caller_omitted_argument_still_binds() -> Bool {
+  field_default_is_bearer() && field_default_is_opaque()
+}

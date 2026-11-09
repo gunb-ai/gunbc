@@ -7870,6 +7870,13 @@ impl InterpContext {
         self.indexes.ambiguous_bare_function_names.contains(name)
     }
 
+    /// Which module a source file DECLARES -- the anchor for reading a piece of that file's source in
+    /// the scope that wrote it. `declaring_scope_env` needs it because a default travels with its
+    /// declaration but is evaluated at a call site, and the call site's file is the wrong answer.
+    pub(crate) fn module_of_site(&self, site_file: &str) -> Option<String> {
+        self.indexes.file_module_paths.get(site_file).cloned()
+    }
+
     /// [`lookup_fn`], but a BARE name claimed by more than one module resolves through the
     /// referring file's own declarations, then its explicit imports, before the shared bare slot
     /// — the `local`-then-declared-source order the type layer applies in `lookup_resolved_sig`.
@@ -8301,6 +8308,119 @@ fn call_function_dispatch(
     result
 }
 
+/// THE SCOPE A DEFAULT IS READ IN: the module that WROTE the declaration, never the module that is
+/// calling it.
+///
+/// WHY THE CALLER'S ENVIRONMENT IS THE WRONG SCOPE. A parameter or field default is part of the
+/// DECLARATION, so its names belong to the scope that wrote the declaration — which is exactly how the
+/// callee's body is already read, a few frames below, in `Env::extend(&lexical_base_env(env),
+/// bindings)`. The default was the one piece of a declaration still read in the caller's chain, so one
+/// declaration meant two things depending on who called it: a caller that happens to bind the spelling
+/// got its own value, and a caller that never imported it got `NoSuchVariable`. The second half is
+/// what stopped heal-publish on every candidate — `extdeps.cloud.gcp.sts` declares
+/// `subject_token_type: SubjectTokenType = Jwt` in the `gcp.STS.Exchange` input block,
+/// `gunbc.heal_publication` imported the module but not the arm, and the run died with
+/// `undefined variable: Jwt` (`gunbc.recurring_failure_mode::a_field_default_is_evaluated_in_the_callers_scope`);
+/// #16185 (e4112bea) passed that field explicitly at the one call site and the class stayed open under
+/// it. Witnessed by `test.claim.field_default_declaring_scope_witness`.
+///
+/// WHAT IS ADDED ON TOP OF THE BASE ENVIRONMENT, AND WHY ONLY THAT. A bare constructor read is the one
+/// read the runtime cannot answer any other way: `Value::Variant` carries spellings rather than
+/// declarations, so `eval_var` answers a bare arm from the type layer's `binding_kind` stamp or from
+/// the environment, and a default naming a constructor only its declaring module can name has neither
+/// at a caller that never imported it. So the declaring module's OWN unit arms are bound, by spelling,
+/// over the base environment. NOTHING HERE REACHES THE CORPUS POOL: an arm is bound only when the
+/// module that owns the default owns the coproduct, only when that spelling denotes exactly one unit
+/// arm there, and never when a native realization could claim it — so a name the declaring module
+/// itself cannot name is still `NoSuchVariable`, which is what the unimported-bare-name floor
+/// (`unimported_bare_name_floor_test`) demands. An already-bound parameter is deliberately NOT
+/// reachable, which is today's behaviour: defaults are evaluated before any binding exists.
+fn declaring_scope_env(
+    ctx: &InterpContext,
+    fn_node: &Rc<Node>,
+    default_node: &Rc<Node>,
+    caller_env: &Rc<Env>,
+) -> Rc<Env> {
+    let base = lexical_base_env(caller_env);
+    let Some(module) = ctx.module_of_site(fn_node.span.file.as_str()) else {
+        return base;
+    };
+    let mut reads = Vec::new();
+    collect_bare_read_names(ctx, default_node, &mut reads, 64);
+    let mut bindings: HashMap<Symbol, Value> = HashMap::new();
+    for name in reads {
+        // A dotted read already has its own answer (the qualified item and coproduct-arm paths), and
+        // an arm a native realization could claim must keep the answer `eval_var` gives it.
+        if name.is_empty() || name.contains('.') {
+            continue;
+        }
+        if crate::v1_compiler_coercion::rust_variant_arm_is_bound_somewhere(name.clone()) {
+            continue;
+        }
+        let mut owners = ctx
+            .variant_arm_declarers(&name)
+            .into_iter()
+            .filter(|(owner, _)| *owner == module);
+        let Some((owner_module, coproduct)) = owners.next() else {
+            continue;
+        };
+        // Two coproducts of this module spell the same arm: no answer here, and none from the pool.
+        if owners.next().is_some() {
+            continue;
+        }
+        if !is_unit_arm(ctx, &owner_module, &coproduct, &name) {
+            continue;
+        }
+        bindings.insert(
+            ctx.sym(&name),
+            Value::Variant {
+                type_name: ctx.sym(&coproduct),
+                variant_name: ctx.sym(&name),
+                fields: Rc::new(vec![]),
+            },
+        );
+    }
+    if bindings.is_empty() {
+        base
+    } else {
+        Env::extend(&base, bindings)
+    }
+}
+
+/// The bare spellings a default expression reads, bounded: defaults are small and this runs per
+/// omitted argument, so the walk is capped rather than exhaustive — an over-large default simply gets
+/// today's resolution rather than a surprise one.
+fn collect_bare_read_names(
+    ctx: &InterpContext,
+    node: &Rc<Node>,
+    out: &mut Vec<String>,
+    budget: u32,
+) {
+    if budget == 0 || out.len() >= 32 {
+        return;
+    }
+    if let ExprData::ExprVar { .. } = &*node.expr_data {
+        out.push(expr_var_name_at(node.clone(), ctx.si()));
+        return;
+    }
+    for child in node.children.iter() {
+        collect_bare_read_names(ctx, child, out, budget - 1);
+    }
+}
+
+/// Is `arm` an arm of `module.coproduct` that carries no fields? A parameterized arm is built by a
+/// constructor with arguments, never spelled alone, so it is not what a bare default read denotes.
+fn is_unit_arm(ctx: &InterpContext, module: &str, coproduct: &str, arm: &str) -> bool {
+    let qualified = format!("{module}.{coproduct}");
+    let Some(node) = ctx.lookup_fn_node(&qualified) else {
+        return false;
+    };
+    node.children
+        .iter()
+        .find(|child| authored_name_at(ctx.si(), (*child).clone()) == arm)
+        .is_some_and(|child| child.children.is_empty())
+}
+
 fn call_function_inner(
     ctx: &InterpContext,
     fn_node: &Rc<Node>,
@@ -8438,7 +8558,9 @@ fn call_function_inner(
         let pname = &all_param_names[i];
         if !bindings.contains_key(&ctx.sym(pname)) {
             if let Some(default_node) = param_node_default_value(param.clone()) {
-                let default_val = eval_expr(&default_node, env, ctx)?;
+                // Read where it was written, not where it is called from: `declaring_scope_env`.
+                let default_env = declaring_scope_env(ctx, fn_node, &default_node, env);
+                let default_val = eval_expr(&default_node, &default_env, ctx)?;
                 bindings.insert(ctx.sym(pname), default_val);
             }
         }
@@ -15871,7 +15993,9 @@ fn build_service_param_env(
         let name = param_node_name_at(param.clone(), ctx.si());
         if !bindings.contains_key(&ctx.sym(&name)) {
             if let Some(default_node) = param_node_default_value(param.clone()) {
-                let default_val = eval_expr(&default_node, env, ctx)?;
+                // Read where it was written, not where it is called from: `declaring_scope_env`.
+                let default_env = declaring_scope_env(ctx, op_node, &default_node, env);
+                let default_val = eval_expr(&default_node, &default_env, ctx)?;
                 bindings.insert(ctx.sym(&name), default_val);
             }
         }
