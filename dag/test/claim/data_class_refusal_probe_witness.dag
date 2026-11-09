@@ -21,7 +21,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // dag/test/probe/ is under the "/test/" whole-tree strict-resolve exclusion
 // (gunbc.ci.ci_layer_roots whole_tree_strict_resolve_exclusion_substrings), so the floor's own
 // resolve never sees these modules as members of the accepted corpus; they reach the compiler
-// only through this witness, which is the boundary DESIGN 4b names for a compiler's regression
+// only through this witness, which is the boundary gunbc.design_argument::guarantee_ladder names for a compiler's regression
 // probes.
 //
 // THE FIFTH PROBE IS AN EXPECTING-RED HOLE, NOT A RED. personal_identity_to_log_channel_probe

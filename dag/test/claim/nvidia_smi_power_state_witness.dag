@@ -30,7 +30,7 @@ import extdeps.nvidia.system_management_interface {
 // host on 2026-10-26T02:21:55Z, nvidia-smi / driver 595.91.07, CUDA 13.2, by the session that holds
 // that host, and pasted verbatim. The operations' argv in extdeps.nvidia.system_management_interface
 // are the commands that produced them. So each claim reads the shape the real path emits rather
-// than a shape this file invented (DESIGN section 3, a witness discriminates at one interface).
+// than a shape this file invented (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface).
 
 data h11_power_state_capture: String = "0, 00000000:85:00.0, P0, 45.62, 48.75, 48.75, 62.50, 1642, 6251, Enabled, 87, 0x0000000000000024
 1, 00000000:86:00.0, P0, 37.10, 48.75, 48.75, 62.50, 622, 6251, Enabled, 87, 0x0000000000000020

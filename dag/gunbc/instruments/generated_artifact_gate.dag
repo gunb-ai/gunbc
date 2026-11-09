@@ -16,7 +16,8 @@ import gunbc.generated_artifact_observation {
   observe_generated_artifact_population
 }
 import std.algebra { fold_list, length }
-import gunbc.ledger_row_coherence { render_ledger_repair_trailers, ledger_row_coherence, artifact_is_ledger, heal_repair_declaration_artifact_path }
+import gunbc.ledger_row_coherence { render_ledger_repair_trailers, ledger_row_coherence, artifact_is_ledger }
+import gunbc.heal_repair_declaration { heal_repair_declaration_artifact_path }
 import gunbc.generated_artifact_assessment {
   GeneratedArtifactObservation,
   GeneratedArtifactObserved,
@@ -143,7 +144,7 @@ fn generated_artifact_drift_failure_receipt() -> String {
 // attempt whose only outcome is an rc=137 twenty minutes in. At 8.37 GiB against 7.32 GiB
 // the requirement is a full gigabyte OUTSIDE the whole VM and the question stops being
 // tempting. A documented ceiling that UNDERSTATES the measured peak is worse than an
-// unmeasured one, because it gets cited as the reason a thing is safe to try -- the §4b
+// unmeasured one, because it gets cited as the reason a thing is safe to try -- the gunbc.design_argument::guarantee_ladder
 // decoration shape pointed at a resource limit rather than at a check.
 //
 // gunbc.host.memory_stall_refusal bounds the same runner class from the other two sides: a
@@ -253,8 +254,8 @@ fn main_wet() -> ProcessExit {
 
 // THE COMPLETING ACTUATOR FOR UNCOMMITTED PROJECT DOCUMENTATION. After those rows left
 // committed_generated_artifacts(), main_wet no longer writes them and docs regen still writes
-// only the docs/-located subset. This fold is the registry remainder: Roadmap, the docs
-// ledgers/onboarding, and every PlanIsAuthorityOnly projection. It uses the same generate-and-
+// only the docs/-located subset. This fold is the registry remainder: the docs ledgers and
+// onboarding (plan and roadmap markdown render from gunbc.plan_documentation). It uses the same generate-and-
 // write as main_wet; it does not enlarge the committed roster.
 fn documentation_wet() -> ProcessExit {
   fold(uncommitted_project_documentation_artifacts(), init: ExitSuccess, f: fn(acc, a) {
@@ -307,7 +308,7 @@ fn documentation_wet() -> ProcessExit {
 // in the silent state: the commit would carry no trailer and nothing would say the record is missing
 // rather than empty.
 // A LEDGER THAT COULD NOT BE JUDGED IS A REFUSAL, NOT A SKIPPED ROW (review 60099). These two arms
-// previously returned the accumulator unchanged, which is the uncounted degradation DESIGN section 5
+// previously returned the accumulator unchanged, which is the uncounted degradation gunbc.design_argument::fail_closed
 // hard-rejects: a refused observation or an absent committed file means NO VERDICT WAS REACHED for
 // that ledger, and returning `acc` made that indistinguishable from a ledger judged and found whole.
 //

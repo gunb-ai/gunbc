@@ -34,7 +34,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // fn, precedence of a module's own declaration over an imported one of the same name, and a
 // reference from a parameter default -- which v2 cannot express at all (it refuses at parse).
 //
-// WHY THE ROOTS ARE SUPPLIED (DESIGN section 3). Producing two roots from source costs two tokenize,
+// WHY THE ROOTS ARE SUPPLIED (gunbc.design_argument::single_authority). Producing two roots from source costs two tokenize,
 // parse and normalize passes (about 120k eval steps for two one-line modules) before resolution
 // starts, and resolution itself is about 67k, so a from-source claim exceeds the floor's 72,300-step
 // new-witness budget by roughly three times while its assertions inspect only the resolution verdict.
@@ -514,7 +514,7 @@ test fn an_imported_test_fn_is_refused_holds() -> Bool {
 // refuses the collision. So a fixture cannot hand resolution an origin map that admission never saw.
 // These three rows are that measurement, and they are why this PR carries no
 // shadow-aware origin lookup -- a lookup guarding a state admission has already made unwritable would
-// be validation restating a constraint the model carries (DESIGN section 5, correctness by
+// be validation restating a constraint the model carries (gunbc.design_argument::fail_closed, correctness by
 // construction over validation), and its red would not be authorable.
 
 // RED: a subject that declares `peer_leaf` AND imports a peer exporting `peer_leaf` is refused at
@@ -536,7 +536,7 @@ test fn a_local_declaration_shadowing_an_imported_test_fn_is_refused_at_admissio
 
 // RED, THE OTHER DIRECTION, and the one the review called silent: the subject's own declaration is
 // TEST-MARKED and the peer's is ordinary. Admission refuses this too, so no reference to test code is
-// accepted without a diagnostic -- the arm DESIGN section 5 forbids is closed upstream of the wall.
+// accepted without a diagnostic -- the arm gunbc.design_argument::fail_closed forbids is closed upstream of the wall.
 test fn a_local_test_fn_shadowing_an_imported_ordinary_declaration_is_refused_at_admission_holds() -> Bool {
   wall_resolve_importing_peer(
     subject_segment: ^serving,

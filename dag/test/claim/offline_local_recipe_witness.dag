@@ -45,7 +45,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // WITHOUT executing anything -- shape, and the join to the exclusion frontier that makes
 // a local recipe the consumer of record. They deliberately do NOT claim that a recipe
 // runs; that needs an executor, which offline_recipe_graduation_arm_note names as the
-// next-rung trigger. Reporting shape as coverage would be the inflation DESIGN.md 4b(1)
+// next-rung trigger. Reporting shape as coverage would be the inflation gunbc.design_argument::guarantee_ladder (rung honesty)
 // forbids, so every claim below is named for what it actually decides.
 //
 // Every RED control plants its own two-row fixtures and moves exactly ONE fact between

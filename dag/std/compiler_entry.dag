@@ -21,10 +21,10 @@ import std.algebra { collection_map_shape }
 // matching a second literal -- is the same defect twice: it breaks at the next generation and it
 // hard-codes into the tool a fact about the corpus the tool reads.
 //
-// The question is DECIDABLE and FULLY MODELLED, so DESIGN section 5 puts it at wall-now:
+// The question is DECIDABLE and FULLY MODELLED, so gunbc.design_argument::fail_closed puts it at wall-now:
 // construction over validation, and the construction is that the entry module says so itself.
 //
-// THE DRIVER SHAPE IS A SECOND FACT AND IS NOT DERIVABLE FROM THE FIRST. DESIGN section 3 separates
+// THE DRIVER SHAPE IS A SECOND FACT AND IS NOT DERIVABLE FROM THE FIRST. gunbc.design_argument::single_authority separates
 // interface, realization and policy: "this module is the compiler pipeline entry" is the interface
 // fact, and WHICH DRIVER REALIZES IT is realization. Three realizations exist in the tree today and
 // all are load-bearing, so the sum below is closed at three rather than opened for futures nobody
@@ -104,7 +104,7 @@ import std.algebra { collection_map_shape }
 // no other door: the required-v2-native lane runs v2.test.* claims inside the emitted compiler's own
 // evaluator, which interprets the claim's closure rather than emitting it, and NativeCliDriver's main
 // is the compile CLI's (source-root walk and plan folds), so reusing it would give one arm two
-// meanings (DESIGN section 3). First consumer: gunbc.instruments.native_crypto_vectors, run by
+// meanings (gunbc.design_argument::single_authority). First consumer: gunbc.instruments.native_crypto_vectors, run by
 // `gunbc test //gunbc/instruments:native-crypto-vectors`, which executes the emitted .dag verifiers
 // over their published vectors.
 // WHAT A NativeClaimDriver ENTRY HANDS ITS RENDERED MAIN: the text to write and the decided terminal,
@@ -128,7 +128,7 @@ type NativeClaimReport {
 }
 
 // NativeIngressDriver -- a NATIVELY EMITTED REALIZATION OF ONE HTTP INGRESS BINDING
-// (gunbc.http_ingress, gunbc.plans.converged_ingress M2a). Serving is not a kind of program: an
+// (gunbc.http_ingress, gunbc.plans.converged_ingress (deleted 2026-11-08) M2a). Serving is not a kind of program: an
 // ordinary timeless handler is served by a deployment binding, and gunbc run realizes that binding
 // by interpretation. This arm is the binding's OTHER realization, chosen by the binding module rather
 // than by the handler: the module that declares the binding constructor carries this row, and
@@ -228,7 +228,7 @@ fn native_effect_declared(module_path: String, decl_name: String) -> NativeEffec
 // before that binding exists would open the ambient-cwd class this PR files as
 // gunbc.recurring_failure_mode.admitted_shell_effect_spawned_at_an_ambient_working_root: the emitted
 // handler takes only a dry-run mode, the emitted main passes Default::default(), the emitted constructor
-// sets working_dir to None and the spawn renders current_dir(unwrap_or(".")). DESIGN 5 says a failure arm
+// sets working_dir to None and the spawn renders current_dir(unwrap_or(".")). gunbc.design_argument::fail_closed says a failure arm
 // refuses and never widens, and a dissolution condition does not authorize creating the debt -- so the
 // effect stays OUT of this list and the refusal that already executes is the guard. The claim module
 // dag/test/claim/cargo_build_native_route_witness.dag asserts exactly that refusal against the REAL module,
@@ -353,7 +353,7 @@ data native_claim_route_denominator: NativeEffectDenominator = NativeEffectDenom
 // DEFINING IT AS "whatever is left" WOULD HAVE BEEN THE FABRICATION, not the fix: a row equal to
 // parent minus the others makes the sum identically equal to the parent, the residual identically
 // zero, and NativeDriverCostRemainderExceedsTolerance unfireable by construction -- a check that
-// cannot fail, which DESIGN section 5 calls worse than absent because it will be cited as
+// cannot fail, which gunbc.design_argument::fail_closed calls worse than absent because it will be cited as
 // coverage. So the driver times the serialize-and-write span with its own clock reads, the
 // residual is measured again afterwards, and if a residual still exceeds the tolerance the answer
 // is to NAME THE NEXT UNATTRIBUTED SPAN, never to widen the tolerance to fit.
@@ -366,7 +366,7 @@ data native_claim_route_denominator: NativeEffectDenominator = NativeEffectDenom
 // edit with nothing that forced the fourteen to be found, and three separate runs were spent on
 // exactly that: a partial record the seed admits (.dag does not require construction totality)
 // refused only later as rustc error[E0063] at the emitted driver. Nine parallel fields of one type
-// is DESIGN section 2's horizontal case -- one axis modelled as N declarations -- and section 5
+// is gunbc.design_argument::minimize_redundancy's horizontal case -- one axis modelled as N declarations -- and section 5
 // asks for construction over validation, which is what this is.
 //
 // WHAT THIS CLOSES, AND WHAT IT DOES NOT -- CORRECTED, BECAUSE THE FIRST VERSION OF THIS PARAGRAPH
@@ -377,7 +377,7 @@ data native_claim_route_denominator: NativeEffectDenominator = NativeEffectDenom
 // variant from it still typechecks -- native_driver_exclusive_row_name and every measure match
 // stay exhaustive because they are matches over the KEY TYPE and never see the missing key. So the
 // hole did not close; it MOVED, from fourteen construction sites to one roster, and calling that
-// structural would be the rung inflation DESIGN section 4b(1) names.
+// structural would be the rung inflation gunbc.design_argument::guarantee_ladder (rung honesty) names.
 //
 // RUNG HELD: 3, mechanically preventable, and the mechanism is a discriminating witness rather
 // than construction. test.claim.native_driver_cost_partition exclusive_sum_is_every_row_the_law_folds
@@ -428,7 +428,7 @@ data native_claim_route_denominator: NativeEffectDenominator = NativeEffectDenom
 // ExclusiveDriverCollection IS THE DRIVER'S OWN WORK AFTER THE CALL, NAMED FOR WHAT IT IS: copying the
 // run's rows into the population, collecting the prepare and eval samples and reading the run's
 // counters. It is not scheduling -- the engine has returned -- and folding it into that row would
-// change the row's meaning under the model's name (DESIGN section 3).
+// change the row's meaning under the model's name (gunbc.design_argument::single_authority).
 type NativeDriverExclusiveRowKey
   = ExclusiveLoad
   | ExclusiveUniverseDerivation
@@ -521,7 +521,7 @@ type NativeDriverCostAccounting
 // the rows partition the driver's OWN work. It was once read on the monotonic wall, and a wall span
 // also holds every interval the host descheduled the thread -- work no phase performed and no row
 // could ever name -- so the residual, and therefore the verdict, varied with host contention for one
-// fixed subject (DESIGN section 5: a verdict is determined by its subject). The repair was the
+// fixed subject (gunbc.design_argument::fail_closed: a verdict is determined by its subject). The repair was the
 // measure, not this tolerance: on thread CPU the residual is uninstrumented driver work and only
 // that, so a busy loop outside every span still refuses here while a stall or sleep does not.
 data native_driver_cost_remainder_tolerance_nanos: Nanosecond = millisecond_to_nanosecond(m: millisecond(count: 50))
@@ -558,12 +558,12 @@ fn native_driver_cost_account(
   }
 }
 
-// DECLARED FRONTIER (DESIGN §3c) — not a live bind on this head.
+// DECLARED FRONTIER (gunbc.design_argument::consumption) — not a live bind on this head.
 // native_driver_cost_row_standing has no executing consumer here: planted witnesses
 // prove the fold; they do not exercise the spawn. Consumer: native_lane_runner
 // run_native_binary. Route: after the child exits, that spawn reads the relayed
 // stderr into NativeDriverChildExited and folds native_driver_cost_row_standing,
-// refusing NativeDriverCostRowsUnobserved. Trigger (DESIGN §4b(3) capability, not
+// refusing NativeDriverCostRowsUnobserved. Trigger (gunbc.design_argument::guarantee_ladder (no silent regression) capability, not
 // an artifact): the host relays the child's stderr on successful exit
 // (native_lane_runner run_native_binary as changed by #10940). Kill condition: if
 // that relay lands and this standing is still unread, the row is dangling. Until

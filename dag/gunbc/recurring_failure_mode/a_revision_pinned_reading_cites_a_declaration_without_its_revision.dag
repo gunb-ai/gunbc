@@ -14,7 +14,7 @@ data a_revision_pinned_reading_cites_a_declaration_without_its_revision: Recurri
   receipts: [
     "INVALID STATE: an observation of the repository at a pinned revision (gunbc.realization_census_rows, pinned by realization_census_pin, an inhabitant of gunbc.repository_census_observation) cites its evidence as EvidenceDeclaration { ref: DeclarationRef }, and DeclarationRef names a module and declaration but no revision. The reading is true of the pin, while its citation resolves against whatever tree it is read in.",
 
-    "HARM: a later, correct deletion of a cited declaration leaves the pinned reading citing a symbol that does not exist at HEAD. The specimen: #14432 deletes gunbc.owned_process owned_process_launch_script, which the 1dd3eda5 census cites from one module row and one finding row. Nothing refused; review read the citation as stale and asked for the observation to be amended, which would make it assert that the pinned revision lacked a finding it had (DESIGN 4d).",
+    "HARM: a later, correct deletion of a cited declaration leaves the pinned reading citing a symbol that does not exist at HEAD. The specimen: #14432 deletes gunbc.owned_process owned_process_launch_script, which the 1dd3eda5 census cites from one module row and one finding row. Nothing refused; review read the citation as stale and asked for the observation to be amended, which would make it assert that the pinned revision lacked a finding it had (gunbc.design_argument::epistemic_humility).",
 
     "DISTINGUISHING FACT: the reading is not stale and the deletion is not wrong; the defect is the citation's missing coordinate. Regenerating the rows from their receipt reproduces the same citation, so no edit to the generated rows or the deleting change is the repair.",
 

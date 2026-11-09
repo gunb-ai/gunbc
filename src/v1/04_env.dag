@@ -1112,7 +1112,7 @@ fn global_bare_lookup(env: TypeEnv, name: String) -> TypeBinding? {
 
 // A pool entry declared once corpus-wide answers a bare occurrence only when its declarer sits on
 // the referencing module's containment chain, or the module IMPORTS that declarer and the name is
-// visible through the import (DESIGN 4b "names resolve"; the unique arm obeys the same chain test as
+// visible through the import (gunbc.design_argument::guarantee_ladder "names resolve"; the unique arm obeys the same chain test as
 // the homonym arm). The import arm is the author's own binding: a callee whose signature the import
 // closure cannot carry (a generic fold_list, optional_absent) still has its identity established by
 // the import, never by corpus coincidence. env.parents is built from the resolved imports, one
@@ -1124,7 +1124,26 @@ fn global_bare_lookup(env: TypeEnv, name: String) -> TypeBinding? {
 fn global_bare_declarer_in_scope(env: TypeEnv, name: String, declarer: String) -> Bool {
   let declarer_segs = module_path_segments(path: declarer)
   segment_lcp_len(a: declarer_segs, b: module_path_segments(path: env.module_path)) == (declarer_segs |> count)
-    || (import_visible_name(env: env, name: name) && env.parents |> any(p => p.module_path == declarer))
+    || (import_visible_name(env: env, name: name)
+      && (env.parents |> any(p => p.module_path == declarer) || named_import_chain_declares(env: env, name: name, declarer: declarer)))
+}
+
+// THE AUTHOR'S NAMED IMPORT IS FOLLOWED TO THE MODULE THAT DECLARES THE NAME, because a module that
+// imports a name by name re-exports it and the direct parents are one hop only. Without the chain, a
+// name reached through a re-export (c imports b { d }, b imports a { d }) has its declarer `a` outside
+// the direct parents, the census answers NotFound, and declaring_module_for_local_binding falls back to
+// the IMPORTER as owner -- an identity no registry row can carry, so the effect join refuses with
+// "names no registry row". bare_occurrence_import_terminal is the one answer to "which module declares
+// this imported name" (declaration_named_in_module asks it for types); this asks it for values.
+fn named_import_chain_declares(env: TypeEnv, name: String, declarer: String) -> Bool {
+  match symbol_index_named_import_source(index: env.symbol_index, module_path: env.module_path, name: name) {
+    Absent => false
+    Present { value: from_module } =>
+      match bare_occurrence_import_terminal(index: env.symbol_index, module_path: from_module, name: name, fuel: 16) {
+        BareOccurrenceImportedByName { module_path: declaring, declaration: _ } => declaring == declarer
+        _ => false
+      }
+  }
 }
 
 fn global_bare_lookup_candidates(env: TypeEnv, name: String) -> TypeBinding? {
@@ -1232,7 +1251,7 @@ fn lookup_type_by_name(env: TypeEnv, name: String) -> Node? {
 // Primitive(T). No consumer may reconstruct this distinction through the caller environment.
 // THE ROSTER IS THE WHOLE TEST. A second disjunct used to stamp any bare, unqualified,
 // non-kernel leaf that lookup_binding_by_name_local missed, which read absence from a lookup as
-// positive evidence of generic ownership (DESIGN section 5's absorbing fallback) and, at the
+// positive evidence of generic ownership (gunbc.design_argument::fail_closed's absorbing fallback) and, at the
 // census caller whose declaration env carries no bindings at all, was total over every concrete
 // type name a parameter mentions. generic_names is the authority for this question and is now
 // the only one consulted; a leaf that is not on it and resolves nowhere is UNRESOLVED, which is
@@ -1475,7 +1494,7 @@ fn inductive_fields_for(env: TypeEnv, type_name: String) -> List<InductiveField>
   }
 }
 
-data put_inductive_field_guard_note: String = "M1a base-case guard (PR #6528 review commitment): the merge layer (merge_inductive_fields below) keeps lists duplicate-free by induction, but its base case - the local collection through these two put functions - was OBSERVED duplicate-free, not constructed (a source declaring the same (variant, field, shape, element) fact twice within one module would seed a duplicate the merge then faithfully preserves). The guarded append closes the last hand-concat site of the class: a fact already present by identity is a skip, so duplicate-freedom holds by construction at every layer (DESIGN §5 - construction, not validation). Local lists are per-(module, type) and small, so the linear any-scan per insert is bounded by per-type field count."
+data put_inductive_field_guard_note: String = "M1a base-case guard (PR #6528 review commitment): the merge layer (merge_inductive_fields below) keeps lists duplicate-free by induction, but its base case - the local collection through these two put functions - was OBSERVED duplicate-free, not constructed (a source declaring the same (variant, field, shape, element) fact twice within one module would seed a duplicate the merge then faithfully preserves). The guarded append closes the last hand-concat site of the class: a fact already present by identity is a skip, so duplicate-freedom holds by construction at every layer (gunbc.design_argument::fail_closed - construction, not validation). Local lists are per-(module, type) and small, so the linear any-scan per insert is bounded by per-type field count."
 
 fn append_inductive_field_absent(existing: List<InductiveField>, incoming: InductiveField) -> List<InductiveField> {
   if existing |> any(f => inductive_field_key(f: f) == inductive_field_key(f: incoming)) {
@@ -1741,7 +1760,7 @@ fn operand_declaration_from_qualified_name(qualified: String, env: TypeEnv) -> O
 // v1's ONE type-identity derivation FOR PRODUCTION READERS. The Optional below is a PROJECTION of the
 // typed reading, so the unidentified population a census counts and the population a classifier
 // sees are one set by construction, and every Absent carries the cause it was declined for.
-// ITS REPLACEMENT IS BUILT IN SHADOW (§3's staged form for a gap-intolerant boundary; neat-boar-16,
+// ITS REPLACEMENT IS BUILT IN SHADOW (gunbc.design_argument::replacement_migration's staged form for a gap-intolerant boundary; neat-boar-16,
 // 2026-09-29). Resolve records identity on Node.declaration (v1.compiler.infer_resolve
 // field_inferred_with_declaration), a separate slot from `inferred`, because consumers read
 // `inferred` as resolved structure. NO READER IN THIS MODULE CONSUMES Node.declaration YET, so the
@@ -2145,7 +2164,7 @@ fn text_representations_cross(a: TextRepresentation, b: TextRepresentation) -> B
 // declaration of Boxed with the argument Int. A side that identifies no declaration, an alias whose
 // right-hand side is not retained does not settle (resolve retains alias_rhs only for a non-parameterized
 // alias, so a node of an alias head carries the alias's expansion, never its own arguments): the
-// relation answers false and the spelling comparison keeps its refusal (fail closed, DESIGN 5).
+// relation answers false and the spelling comparison keeps its refusal (fail closed, gunbc.design_argument::fail_closed).
 // gunbc.recurring_failure_mode carrier_alias_refuses_its_own_carriers_constructor.
 type SettledType {
   head: DeclarationRef
@@ -2284,7 +2303,7 @@ fn is_unsolved_type_variable(n: Node) -> Bool {
 // type_declaration_use_census.dag over an empty [] refused 'no field on type empty_list_element', ten
 // sites). Keep the slot then, as the pre-arm code did for every shape, and let deferral proceed; the
 // is_unsolved_type_variable guard is the SAME predicate v1.compiler.infer uses at its lambda-parameter
-// binding for the same purpose, so one rule governs both unsolved reads (DESIGN 6b, no second leaf).
+// binding for the same purpose, so one rule governs both unsolved reads (gunbc.design_argument::earliest_unjustified_boundary, no second leaf).
 // THE MOVE CHANGED NO BEHAVIOUR: the infer-side body called child_type_node(ch: slot) (v1.compiler.
 // infer_types); this one reads r directly, and they are the same value. child_type_node answers
 // resolved_type(ch) when ch.inferred != none && ch.connective != Arrow, and resolved_type answers the

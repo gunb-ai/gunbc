@@ -57,7 +57,7 @@ fn healthz_surface_members(
 // CANNOT DRIFT. The served /healthz body is these members PLUS the running process's release
 // identity (gunbc.running_release_identity); the bundle's retained healthz_body is these members
 // alone. One member list, two documents differing by exactly the launch-identity members — never
-// two spellings of the surface, which is the dual-representation DESIGN section 3 forbids and which
+// two spellings of the surface, which is the dual-representation gunbc.design_argument::single_authority forbids and which
 // would let the deploy's freshness comparison go green against a document the route does not serve.
 
 fn healthz_body_from_surface_artifacts(

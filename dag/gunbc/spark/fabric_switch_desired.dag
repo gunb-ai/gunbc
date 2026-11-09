@@ -36,7 +36,7 @@ import gunbc.spark.fabric_switch_observed {
 // correctly configured for as long as the wrong cables stayed in it.
 //
 // AND THE NOT-CONVERGED ARM REFUSES RATHER THAN DEGRADES. The tempting shape is "if the plant does
-// not converge, ask for the speed it can do" -- which is the absorbing fallback DESIGN section 5
+// not converge, ask for the speed it can do" -- which is the absorbing fallback gunbc.design_argument::fail_closed
 // names: it always produces an answer, so the cable defect stops being visible at this layer and
 // the switch quietly converges onto a configuration nobody chose. An undecidable desired state is
 // refused with the plant's own refusal carried through, so exactly one place in the tree reports
@@ -121,7 +121,7 @@ fn crs812_desired_lane_speed() -> Crs812DesiredLaneSpeed {
 // FORCED MODE IS THE CABLE CLASS'S REQUIREMENT, NOT A TUNING KNOB, so it is read from the extdeps
 // row that records the RouterOS behaviour rather than restated as a local constant.
 //
-// Fec91 IS A CANDIDATE, NOT A DEDUCED FACT, AND THE HISTORY HERE IS TWO §4d ERRORS TO AVOID REPEATING.
+// Fec91 IS A CANDIDATE, NOT A DEDUCED FACT, AND THE HISTORY HERE IS TWO gunbc.design_argument::epistemic_humility ERRORS TO AVOID REPEATING.
 // An earlier head justified Fec91 as "the FEC the 100GBASE-CR2 attestation is conditional on" -- true
 // of the pre-recode 0x0B coding (ieee_50gbase_cr2 RequiresClause91Fec), false post-recode where a3ee
 // attests ieee_100gbase_cr2 FecUnconditional. A second head over-corrected: it claimed 100GBASE-CR2
@@ -132,7 +132,7 @@ fn crs812_desired_lane_speed() -> Crs812DesiredLaneSpeed {
 // fec91 today (at their current 50G mode; docs/plans/fabric-switch-actuation-log.md). So Fec91 is
 // returned as the DESIRED-FEC CANDIDATE -- the FEC the plant already runs -- and whether it is the
 // FEC 100GBASE-CR2 needs to TRAIN is NOT established here; the converge test decides, and the converge
-// intent keeps a FEC-capability refusal arm rather than assuming this candidate is correct (§4d).
+// intent keeps a FEC-capability refusal arm rather than assuming this candidate is correct (gunbc.design_argument::epistemic_humility).
 // THE DESIRED-FEC CANDIDATE AS A NAMED ROW, GROUNDED IN AN OBSERVATION AND NOT A BARE LITERAL. Its
 // grounding is what THIS repository read off the switch -- the eight fabric legs run fec-mode fec91
 // today (docs/plans/fabric-switch-actuation-log.md) -- which is citable, unlike a MikroTik codeword

@@ -40,7 +40,7 @@ import gunbc.compiler_frontend_program_status {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// The fold is judged over SUPPLIED receipts and a supplied two-module roster (DESIGN section 3: a
+// The fold is judged over SUPPLIED receipts and a supplied two-module roster (gunbc.design_argument::single_authority: a
 // witness discriminates at one interface), so no claim here runs the wet emit-and-drive a real
 // receipt records. The last claim is the inhabitance claim for the real route: the live milestone
 // reads the persisted series through the same standing, and is no longer NotDerivable.

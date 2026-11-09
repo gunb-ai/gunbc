@@ -162,8 +162,8 @@ test fn cont_empty_eq_fn_decl_refuses_holds() -> Bool {
 // to remove. Both halves ARE this row's subject, which is "the declaration this parser produces still
 // carries its arrow body after normalize", so there is nothing here to supply that would not sever the
 // link being claimed. A hand-built parse tree handed to normalize would reach the same verdict through
-// a shape this file designed rather than the one the parser emits, which is the failure DESIGN
-// section 3 names as a fixture passing after the world it was built against moved. The isolating row is
+// a shape this file designed rather than the one the parser emits, which is the failure
+// gunbc.design_argument::single_authority names as a fixture passing after the world it was built against moved. The isolating row is
 // not retained, because it answered its question once and would otherwise stand as one more
 // over-margin witness for a split that is now known.
 // EACH SOURCE'S PARSE-THEN-NORMALIZE RUNS ONCE, in a nullary producer the floor serves WARM
@@ -215,7 +215,7 @@ test fn cont_the_arrow_body_search_answers_false_for_a_leaf_holds() -> Bool {
 // saving: this claim's subject is one interface -- what cont_tree_has_arrow_body answers for a tree
 // whose arrow body sits below the root -- and it used to obtain that tree by running
 // dag_prepared_grammar, tokenize, parse_module_prepared and normalize, re-executing four stages whose
-// results it never inspected (DESIGN section 3, a witness discriminates at one interface). The
+// results it never inspected (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface). The
 // diagnostic was exact: the row's cost did not move when its assertions changed, because the
 // assertions were never the expense.
 //
@@ -281,7 +281,7 @@ fn cont_agrees_with_subject(mine: Outcome<Node>, theirs: Outcome<Node>) -> Bool 
 //
 // ONE SOURCE PER ROW. The three agreements are independent cases over three different texts, so
 // folding them into one row forced six parses through one enrolment budget and lost no coverage when
-// split -- which is the conjunction tell DESIGN section 3 names beside the reach it is a symptom of.
+// split -- which is the conjunction tell gunbc.design_argument::single_authority names beside the reach it is a symptom of.
 test fn cont_the_continuation_parses_the_same_tree_as_the_subject_holds() -> Bool {
   cont_agrees_with_subject(
     mine: cont_expression_bodied_parsed(),

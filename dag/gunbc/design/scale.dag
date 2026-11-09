@@ -19,9 +19,9 @@ import extdeps.fonts.google_fonts { roboto_source }
 // the unthemed-color census excludes). D3 grounding: a token's value is a TYPED CssLength
 // (magnitude x unit, extdeps.languages.css.values, cited CSS Values and Units) or a typed
 // CssFontStack (a list of families) — the fused "4px"/'Noto Sans, ...' strings are decompressed
-// (DESIGN section 2), and the value-encoded token NAME is DERIVED from the magnitude by the
+// (gunbc.design_argument::minimize_redundancy), and the value-encoded token NAME is DERIVED from the magnitude by the
 // length_token constructor (space-4 from px 4), so name and value can no longer diverge — the fork
-// is UNWRITABLE by construction, not caught by a witness (DESIGN section 5). A semantic re-tuning
+// is UNWRITABLE by construction, not caught by a witness (gunbc.design_argument::fail_closed). A semantic re-tuning
 // of the step values (a rhythm, not a per-value alias) is a named follow-on; today the axis's job
 // is DRY (each value lives once) + census-ability + no magnitude-vs-name fork, all served now.
 // Spacing/type/font are the three axes the brief names; dimension_scale is their companion so 'no

@@ -9,8 +9,8 @@ import gunbc.compile_diagnostic_census {
 }
 
 // A WHERE-REFINEMENT OF A KERNEL IS STILL THE KERNEL'S REPRESENTATION, so it must refuse where a
-// structured value is declared exactly as the bare kernel does (DESIGN 4b floor: values inhabit
-// declared types; DESIGN 4: host text reaches a structural carrier only through the declared unfold).
+// structured value is declared exactly as the bare kernel does (gunbc.design_argument::guarantee_ladder floor: values inhabit
+// declared types; gunbc.design_argument::closed_grounded_substrate: host text reaches a structural carrier only through the declared unfold).
 // Class row: gunbc.recurring_failure_mode.declared_type_wall_keyed_on_the_value_being_a_kernel.
 // Receipt: v2.std.text string_replace(source: t, needle: "{ x }" as NonEmptyStr, ..) resolved clean
 // and the seed interpreter then threw `cannot access field 'head' on String` inside string_split,
@@ -22,7 +22,7 @@ import gunbc.compile_diagnostic_census {
 // parameter (refused before and after, so the red is not a new blanket rule), and the refinement
 // at a plain String parameter (the peel must not refuse the base it peels to).
 //
-// dissolve-on: none -- permanent regression control per DESIGN 4b(4).
+// dissolve-on: none -- permanent regression control per gunbc.design_argument::guarantee_ladder (dissolution on climb).
 
 // THE ORACLE NAMES THE CLASS, NOT THE OUTCOME: -1 on the not-runnable arm keeps could-not-measure
 // out of both >= 1 and == 0.

@@ -8,7 +8,7 @@ import std.process { ProcessExit }
 // construct the compiler currently REFUSES TO RESOLVE, so writing it directly here would make
 // the module fail to resolve -- and a resolve failure takes the whole module with it, including
 // the cells that pass. The accepted positive controls would become casualties rather than
-// controls, and DESIGN 4b(4) requires the discriminating RED and an accepted positive control to
+// controls, and gunbc.design_argument::guarantee_ladder (dissolution on climb) requires the discriminating RED and an accepted positive control to
 // stand together. Compiling the construct as a String keeps this module resolvable, so every
 // assertion RUNS and returns a real verdict.
 //

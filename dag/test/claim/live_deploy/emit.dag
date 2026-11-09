@@ -173,7 +173,7 @@ data witness_script_producers_note: String = "THE COMMITTED SCRIPT ARTIFACTS ARE
 
 // ONE RENDER, NOT ONE PER CLAIM. Every claim below that reads the apply script reads the SAME bytes,
 // so rendering it inside a fn made the module pay for the emitter once per call site — fifteen full
-// renders of one artifact, which is the copied-accumulator cost shape §6 rules is always fixed
+// renders of one artifact, which is the copied-accumulator cost shape gunbc.design_argument::how_to_work rules is always fixed
 // regardless of the realized n. As module-scope data the FIRST claim to touch it pays the render and
 // every later one reads it. Measured over the module's 59 witnesses, hoisting moved
 // witness_apply_script_contains_systemd_and_tailscale from 5131ms to 1052ms and
@@ -225,7 +225,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // against mutating the live route while staging the idle slot. With no staging step there is no
 // pre-flip window to protect — the deploy's only mapping write is its own, on the only slot. The
 // guarantee is not weakened here, it is vacuous, and a claim kept alive over a vacuous subject is
-// the specification-without-execution shape DESIGN section 5 names.
+// the specification-without-execution shape gunbc.design_argument::fail_closed names.
 //
 // Retired with them, and MISSED on the first pass: spec_artifact_kind_count, the helper all three
 // read through. The receipt below enumerated the other dead helper and not this one, which is the
@@ -919,7 +919,7 @@ type UnitFileOrderScan
 // THE SUBJECT IS THE STEP LIST, NOT THE RENDERED SCRIPT, and that is a correction the floor forced:
 // the first cut rendered a whole second apply script per claim to grep it for a unit name, which
 // cost about 200k eval steps each against a 72300 budget. Rendering an entire deploy program to ask
-// whether four steps were produced is DESIGN section 3's claim-reaches-too-far in its plainest
+// whether four steps were produced is gunbc.design_argument::single_authority's claim-reaches-too-far in its plainest
 // form -- the claim's subject was one interface and its cost was the whole emitter's. Asking the
 // producers directly is cheaper AND stronger: an empty list cannot be serialized into a script that
 // happens not to mention the unit.
@@ -1143,7 +1143,7 @@ test fn the_untouched_lab_twin_collides_with_nothing_under_the_law() -> Bool {
       a_owned: spec_owned_identities(spec: live), b_owned: spec_owned_identities(spec: twin)))
 }
 
-// MEASURED, INSTRUMENT RETIRED (DESIGN section 2). The nineteen conjuncts of the twin claim were each
+// MEASURED, INSTRUMENT RETIRED (gunbc.design_argument::minimize_redundancy). The nineteen conjuncts of the twin claim were each
 // lifted into their own claim to find the false one; exactly one measured red -- the OIDC member,
 // legitimately changed by the 2026-11-04 Stage OAuth delivery -- and its permanent control stays
 // below; the rest duplicated the law and are gone.
@@ -1160,7 +1160,7 @@ test fn the_srv1_instances_carry_their_oidc_config_members() -> Bool {
 // claim below starts from a twin mutated away from live on EVERY surface (the all-distinct control
 // says such a pair collides with nothing) and restores EXACTLY ONE surface to live's own value --
 // the pair must then collide. Deleting that disjunct from spec_same_host_surface_collision turns
-// exactly one claim red and no other: the §4b rung this suite exists to hold. The mutation values
+// exactly one claim red and no other: the gunbc.design_argument::guarantee_ladder rung this suite exists to hold. The mutation values
 // are live's own fields read off the admitted row, so no witness invents a second spelling of a
 // surface name. The owned-identity axis is fed through the law's owned-list parameters directly,
 // which is where the model already gets them (deployment_owned_identities_retract_order).

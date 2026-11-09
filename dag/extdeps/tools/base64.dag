@@ -40,14 +40,14 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // coreutils encoder: `-w 0` disables line wrapping (the whole encoding is one line, no newline
 // to strip) and `--` ends option parsing so a path beginning with a dash is read as a path. This is
 // INTERFACE SHAPE only: the digest of the file, and whether the far side decoded the same bytes,
-// are observations the consuming layer makes (DESIGN 3, shape vs observation); nothing here
+// are observations the consuming layer makes (gunbc.design_argument::single_authority, shape vs observation); nothing here
 // compares anything.
 //
 // A missing or unreadable path exits non-zero with base64's own diagnostic on stderr, and this
 // operation does not decide what that means beyond the status table below. PRECEDENT: the shape and
 // transport class are extdeps.tools.sha256sum DigestFile (a shell-transport read of a path),
 // whose consumer is the chainloader placement step of
-// gunbc.fleet.site_pxe_edge_converge. CONSUMER STATUS (DESIGN 3c): consumed by a NAMED LATER CHANGE, a declared
+// gunbc.fleet.site_pxe_edge_converge. CONSUMER STATUS (gunbc.design_argument::consumption): consumed by a NAMED LATER CHANGE, a declared
 // frontier. Trigger: the placement-step PR that stages the pinned chainloader onto srv4, which cannot land
 // before the srv4 install is released by the operator; until then this module has no importer.
 service base64.Encode {

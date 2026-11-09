@@ -1,0 +1,376 @@
+module std.annotation_reference
+
+import std.types { Char, List, NonEmptyStr, String }
+import std.algebra { Cons, Empty, FreeMonoid, length, list_at_optional, list_map, list_reverse, list_snoc_item }
+import std.coercion { unicode_scalar_fold, unicode_scalar_unfold }
+import std.optional { Absent, Optional, Present }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, TypeParameter }
+import std.unicode.char_class { unicode_char_code_point }
+import std.unicode.types { unicode_scalar_utf8_octet_count }
+
+// AN EXPLICIT DECLARATION REFERENCE INSIDE A SOURCE ANNOTATION. A comment stays best-effort prose
+// (DESIGN 4c): nothing here reads what it claims. What an author deliberately MARKS is a reference
+// to a declaration, and a marked reference is an obligation the comment carries until it resolves
+// or the comment is deleted. Unmarked text -- examples, external spec section signs, qualified names
+// written as code -- is never a reference, so the marker is what makes intent decidable rather than
+// a guess about which `a::b` spans were meant.
+//
+// THE GRAMMAR. `\@ref(` COORDINATE `)` (written here escaped, as every literal marker in a comment must be) where COORDINATE is
+//   module.path::decl              a whole declaration
+//   module.path::decl::field       a named field of decl
+//   module.path::decl::<T>         a type parameter of decl
+// and each segment is an ASCII identifier. `\@ref(` is the literal spelling and is not a reference.
+// The coordinate is parsed straight into the std.decl_ref carrier; it is NOT the inverse of
+// `declaration_ref_display_key`, which is a presentation and can give two refs one string. Here a
+// decl or field segment cannot contain `::`, so each accepted coordinate has exactly one reading.
+//
+// THE SEGMENT ALPHABET is ASCII identifier characters. A declaration whose name lies outside it is
+// not citable by marker today; such a marker reports CoordinateMalformed rather than a guessed target.
+//
+// EVERY UNESCAPED MARKER IS ACCOUNTED FOR: it is a parsed reference or a located finding. A marker
+// whose body breaks before `)` is reported and scanning RESUMES AT THE CHARACTER THAT BROKE IT, so a
+// malformed marker cannot swallow a later valid one.
+//
+// OFFSETS ARE UTF-8 OCTETS, the unit every lexer offset uses (v2.compiler.tokenize advances by
+// std.unicode.types unicode_scalar_utf8_octet_count), so `start` of the scanned text plus an offset
+// within it is an absolute source position on non-ASCII text too.
+
+type AnnotationReference {
+  reference: DeclarationRef
+  start: Int
+  end: Int
+}
+
+type MalformedReferenceCause
+  = MarkerUnterminated
+  | CoordinateMalformed
+
+type MalformedReferenceMarker {
+  cause: MalformedReferenceCause
+  text: String
+  start: Int
+  end: Int
+}
+
+type AnnotationReferenceExtraction {
+  references: List<AnnotationReference>
+  malformed: List<MalformedReferenceMarker>
+}
+
+fn code_point_is_ascii_letter(cp: Int) -> Bool {
+  (cp >= 65 && cp <= 90) || (cp >= 97 && cp <= 122)
+}
+
+fn code_point_is_ascii_digit(cp: Int) -> Bool {
+  cp >= 48 && cp <= 57
+}
+
+fn code_point_is_identifier_continue(cp: Int) -> Bool {
+  code_point_is_ascii_letter(cp: cp) || code_point_is_ascii_digit(cp: cp) || cp == 95
+}
+
+// What may appear between the marker and `)`: identifier characters and the coordinate punctuation.
+// Anything else ends the marker as unterminated.
+fn code_point_is_coordinate_body(cp: Int) -> Bool {
+  code_point_is_identifier_continue(cp: cp) || cp == 46 || cp == 58 || cp == 60 || cp == 62
+}
+
+// THE MARKER'S SPELLING, ONCE. The scan reads it a scalar at a time, the check's spelling test and
+// every rendered finding read it whole; none spells it again.
+data annotation_reference_marker: String = "@ref("
+
+data annotation_reference_marker_scalars: List<Int> = list_map(xs: unicode_scalar_unfold(s: annotation_reference_marker), f: fn(c) { unicode_char_code_point(c: c) })
+
+data marker_length: Int = length(xs: annotation_reference_marker_scalars)
+
+fn marker_code_point_at(k: Int) -> Int {
+  match list_at_optional(xs: annotation_reference_marker_scalars, index: k) {
+    Present { value: cp } => cp
+    Absent => 0 - 1
+  }
+}
+
+type ReferenceScanMode
+  = Seeking { progress: Int, marker_start: Int, escaped: Bool }
+  | InCoordinate { marker_start: Int, body: FreeMonoid<Char> }
+
+type ReferenceScan {
+  mode: ReferenceScanMode
+  position: Int
+  previous: Int
+  references: List<AnnotationReference>
+  malformed: List<MalformedReferenceMarker>
+}
+
+fn reference_scan_initial(start: Int) -> ReferenceScan {
+  ReferenceScan {
+    mode: Seeking { progress: 0, marker_start: start, escaped: false },
+    position: start,
+    previous: 0,
+    references: [],
+    malformed: [],
+  }
+}
+
+// ---- coordinate parsing ------------------------------------------------------------------------
+
+// The body split on `::`. A single `:` not followed by another is a malformed coordinate, caught by
+// the segment check (`:` is not an identifier character).
+type CoordinateSplit {
+  segments: List<FreeMonoid<Char>>
+  current: FreeMonoid<Char>
+  pending_colon: Bool
+  broken: Bool
+}
+
+fn coordinate_split_step(acc: CoordinateSplit, c: Char) -> CoordinateSplit {
+  let cp = unicode_char_code_point(c: c)
+  if acc.broken {
+    acc
+  } else if cp == 58 {
+    if acc.pending_colon {
+      CoordinateSplit { segments: list_snoc_item(xs: acc.segments, item: list_reverse(xs: acc.current)), current: Empty, pending_colon: false, broken: false }
+    } else {
+      CoordinateSplit { segments: acc.segments, current: acc.current, pending_colon: true, broken: false }
+    }
+  } else if acc.pending_colon {
+    CoordinateSplit { segments: acc.segments, current: acc.current, pending_colon: false, broken: true }
+  } else {
+    CoordinateSplit { segments: acc.segments, current: Cons { head: c, tail: acc.current }, pending_colon: false, broken: false }
+  }
+}
+
+fn coordinate_segments(body: FreeMonoid<Char>) -> Optional<List<FreeMonoid<Char>>> {
+  let split = fold(body, init: CoordinateSplit { segments: [], current: Empty, pending_colon: false, broken: false }, f: (acc, c) => coordinate_split_step(acc: acc, c: c))
+  if split.broken || split.pending_colon {
+    Absent
+  } else {
+    Present { value: list_snoc_item(xs: split.segments, item: list_reverse(xs: split.current)) }
+  }
+}
+
+fn segment_is_identifier(segment: FreeMonoid<Char>) -> Bool {
+  match segment {
+    Empty => false
+    Cons { head: h, tail: t } =>
+      !code_point_is_ascii_digit(cp: unicode_char_code_point(c: h))
+        && fold(segment, init: true, f: (ok, c) => ok && code_point_is_identifier_continue(cp: unicode_char_code_point(c: c)))
+  }
+}
+
+// A module path: one or more identifiers joined by `.`.
+type ModulePathCheck {
+  current_empty: Bool
+  ok: Bool
+}
+
+fn segment_is_module_path(segment: FreeMonoid<Char>) -> Bool {
+  let checked = fold(segment, init: ModulePathCheck { current_empty: true, ok: true }, f: (acc, c) =>
+    let cp = unicode_char_code_point(c: c)
+    if cp == 46 {
+      ModulePathCheck { current_empty: true, ok: acc.ok && !acc.current_empty }
+    } else if acc.current_empty {
+      ModulePathCheck { current_empty: false, ok: acc.ok && code_point_is_identifier_continue(cp: cp) && !code_point_is_ascii_digit(cp: cp) }
+    } else {
+      ModulePathCheck { current_empty: false, ok: acc.ok && code_point_is_identifier_continue(cp: cp) }
+    })
+  checked.ok && !checked.current_empty
+}
+
+// `<T>` -> T, when the segment is a bracketed identifier.
+fn segment_type_parameter(segment: FreeMonoid<Char>) -> Optional<FreeMonoid<Char>> {
+  match segment {
+    Empty => Absent
+    Cons { head: open, tail: rest } =>
+      if unicode_char_code_point(c: open) != 60 {
+        Absent
+      } else {
+        match list_reverse(xs: rest) {
+          Empty => Absent
+          Cons { head: close, tail: inner_reversed } =>
+            if unicode_char_code_point(c: close) != 62 {
+              Absent
+            } else {
+              let inner = list_reverse(xs: inner_reversed)
+              if segment_is_identifier(segment: inner) { Present { value: inner } } else { Absent }
+            }
+        }
+      }
+  }
+}
+
+fn segment_text(segment: FreeMonoid<Char>) -> NonEmptyStr {
+  unicode_scalar_fold(xs: segment) as NonEmptyStr
+}
+
+fn coordinate_field(segment: FreeMonoid<Char>) -> Optional<DeclField> {
+  if segment_is_identifier(segment: segment) {
+    Present { value: NamedField { field_name: segment_text(segment: segment) } }
+  } else {
+    match segment_type_parameter(segment: segment) {
+      Present { value: inner } => Present { value: TypeParameter { name: segment_text(segment: inner) } }
+      Absent => Absent
+    }
+  }
+}
+
+fn coordinate_reference_of(module: FreeMonoid<Char>, decl: FreeMonoid<Char>, field: Optional<DeclField>) -> Optional<DeclarationRef> {
+  if !segment_is_module_path(segment: module) || !segment_is_identifier(segment: decl) {
+    Absent
+  } else {
+    match field {
+      Absent => Absent
+      Present { value: f } =>
+        Present { value: DeclarationRef { module_path: segment_text(segment: module), decl_name: segment_text(segment: decl), field: f } }
+    }
+  }
+}
+
+// THE COORDINATE, parsed into the reference carrier, or Absent when it is not one of the three forms.
+fn annotation_reference_coordinate(body: FreeMonoid<Char>) -> Optional<DeclarationRef> {
+  match coordinate_segments(body: body) {
+    Absent => Absent
+    Present { value: segments } =>
+      match segments {
+        Cons { head: module, tail: Cons { head: decl, tail: Empty } } =>
+          coordinate_reference_of(module: module, decl: decl, field: Present { value: WholeDeclaration })
+        Cons { head: module, tail: Cons { head: decl, tail: Cons { head: field, tail: Empty } } } =>
+          coordinate_reference_of(module: module, decl: decl, field: coordinate_field(segment: field))
+        _ => Absent
+      }
+  }
+}
+
+// ---- the scan ----------------------------------------------------------------------------------
+
+fn marker_text(body_reversed: FreeMonoid<Char>, closed: Bool) -> String {
+  let body = unicode_scalar_fold(xs: list_reverse(xs: body_reversed))
+  if closed { concat(annotation_reference_marker, concat(body, ")")) } else { concat(annotation_reference_marker, body) }
+}
+
+fn reference_scan_unterminated(scan: ReferenceScan, marker_start: Int, body: FreeMonoid<Char>) -> ReferenceScan {
+  ReferenceScan {
+    mode: Seeking { progress: 0, marker_start: scan.position, escaped: false },
+    position: scan.position,
+    previous: scan.previous,
+    references: scan.references,
+    malformed: list_snoc_item(xs: scan.malformed, item: MalformedReferenceMarker {
+      cause: MarkerUnterminated,
+      text: marker_text(body_reversed: body, closed: false),
+      start: marker_start,
+      end: scan.position,
+    }),
+  }
+}
+
+// Advance the octet position past `cp` and remember it as the previous code point.
+fn reference_scan_advanced(scan: ReferenceScan, mode: ReferenceScanMode, cp: Int) -> ReferenceScan {
+  ReferenceScan {
+    mode: mode,
+    position: scan.position + unicode_scalar_utf8_octet_count(code_point: cp),
+    previous: cp,
+    references: scan.references,
+    malformed: scan.malformed,
+  }
+}
+
+fn reference_scan_seek(scan: ReferenceScan, progress: Int, marker_start: Int, escaped: Bool, c: Char) -> ReferenceScan {
+  let cp = unicode_char_code_point(c: c)
+  if cp == marker_code_point_at(k: progress) {
+    let started = if progress == 0 { scan.position } else { marker_start }
+    let is_escaped = if progress == 0 { scan.previous == 92 } else { escaped }
+    if progress + 1 == marker_length {
+      if is_escaped {
+        reference_scan_advanced(scan: scan, mode: Seeking { progress: 0, marker_start: started, escaped: false }, cp: cp)
+      } else {
+        reference_scan_advanced(scan: scan, mode: InCoordinate { marker_start: started, body: Empty }, cp: cp)
+      }
+    } else {
+      reference_scan_advanced(scan: scan, mode: Seeking { progress: progress + 1, marker_start: started, escaped: is_escaped }, cp: cp)
+    }
+  } else if cp == 64 {
+    reference_scan_advanced(scan: scan, mode: Seeking { progress: 1, marker_start: scan.position, escaped: scan.previous == 92 }, cp: cp)
+  } else {
+    reference_scan_advanced(scan: scan, mode: Seeking { progress: 0, marker_start: scan.position, escaped: false }, cp: cp)
+  }
+}
+
+fn reference_scan_close(scan: ReferenceScan, marker_start: Int, body: FreeMonoid<Char>, cp: Int) -> ReferenceScan {
+  let end = scan.position + unicode_scalar_utf8_octet_count(code_point: cp)
+  let seeking = Seeking { progress: 0, marker_start: end, escaped: false }
+  match annotation_reference_coordinate(body: list_reverse(xs: body)) {
+    Present { value: reference } =>
+      ReferenceScan {
+        mode: seeking,
+        position: end,
+        previous: cp,
+        references: list_snoc_item(xs: scan.references, item: AnnotationReference { reference: reference, start: marker_start, end: end }),
+        malformed: scan.malformed,
+      }
+    Absent =>
+      ReferenceScan {
+        mode: seeking,
+        position: end,
+        previous: cp,
+        references: scan.references,
+        malformed: list_snoc_item(xs: scan.malformed, item: MalformedReferenceMarker {
+          cause: CoordinateMalformed,
+          text: marker_text(body_reversed: body, closed: true),
+          start: marker_start,
+          end: end,
+        }),
+      }
+  }
+}
+
+fn reference_scan_step(scan: ReferenceScan, c: Char) -> ReferenceScan {
+  match scan.mode {
+    Seeking { progress: progress, marker_start: marker_start, escaped: escaped } =>
+      reference_scan_seek(scan: scan, progress: progress, marker_start: marker_start, escaped: escaped, c: c)
+    InCoordinate { marker_start: marker_start, body: body } =>
+      let cp = unicode_char_code_point(c: c)
+      if cp == 41 {
+        reference_scan_close(scan: scan, marker_start: marker_start, body: body, cp: cp)
+      } else if code_point_is_coordinate_body(cp: cp) {
+        reference_scan_advanced(scan: scan, mode: InCoordinate { marker_start: marker_start, body: Cons { head: c, tail: body } }, cp: cp)
+      } else {
+        // The breaking character is scanned again from Seeking, so it may itself open the next marker.
+        let reported = reference_scan_unterminated(scan: scan, marker_start: marker_start, body: body)
+        reference_scan_seek(scan: reported, progress: 0, marker_start: reported.position, escaped: false, c: c)
+      }
+  }
+}
+
+fn reference_scan_finish(scan: ReferenceScan) -> AnnotationReferenceExtraction {
+  let closed = match scan.mode {
+    Seeking { progress: _, marker_start: _, escaped: _ } => scan
+    InCoordinate { marker_start: marker_start, body: body } =>
+      reference_scan_unterminated(scan: scan, marker_start: marker_start, body: body)
+  }
+  AnnotationReferenceExtraction { references: closed.references, malformed: closed.malformed }
+}
+
+// THE ONE EXTRACTOR. `text` is the annotation's RAW lexeme (delimiter included), `start` its octet
+// offset in the source, so every reported start/end is a source offset. Every realization that
+// captures annotations calls this, the way both tokenizers call
+// std.source_annotation advance_line_prefix_indent_only.
+fn annotation_references(text: FreeMonoid<Char>, start: Int) -> AnnotationReferenceExtraction {
+  reference_scan_finish(scan: fold(text, init: reference_scan_initial(start: start), f: (acc, c) => reference_scan_step(scan: acc, c: c)))
+}
+
+// The host-text form, for a caller holding kernel text: the same scan over the unfold, never a
+// second grammar.
+fn annotation_references_text(text: String, start: Int) -> AnnotationReferenceExtraction {
+  annotation_references(text: unicode_scalar_unfold(s: text), start: start)
+}
+
+fn annotation_reference_extraction_empty() -> AnnotationReferenceExtraction {
+  AnnotationReferenceExtraction { references: [], malformed: [] }
+}
+
+fn annotation_reference_extraction_concat(left: AnnotationReferenceExtraction, right: AnnotationReferenceExtraction) -> AnnotationReferenceExtraction {
+  AnnotationReferenceExtraction {
+    references: concat(left.references, right.references),
+    malformed: concat(left.malformed, right.malformed),
+  }
+}

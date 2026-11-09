@@ -215,11 +215,11 @@ fn wrap_decisions_equal(a: WrapDecision, c: WrapDecision) -> Bool {
 // worth not making: this is two traversals of one catalog, not one traversal, and what it rules
 // out is a divergent authority rather than a repeated read. The repeated read is a real cost shape
 // — two folds over the row list where a per-carrier policy built once would serve both ends — and
-// it is named here rather than dismissed as small, per DESIGN section 6's rule that a proven cost
+// it is named here rather than dismissed as small, per gunbc.design_argument::how_to_work's rule that a proven cost
 // shape is fixed regardless of the realized n. It is not fixed in this change because the policy
 // carrier is the same carrier change the next rung needs, and building half of it here to save one
 // fold would fork the thing the transition work has to own; the trigger is that carrier landing.
-// RUNG (DESIGN 4b), stated honestly because the distance to the ceiling is the point: this moves
+// RUNG (gunbc.design_argument::guarantee_ladder), stated honestly because the distance to the ceiling is the point: this moves
 // the class from silent wrongness (outside the ladder — emitted, compiled, wrong, discovered only
 // if rustc happens to catch it downstream) to MITIGATABLE — the line stops with a located refusal
 // naming the carrier. It does NOT reach structural impossibility and must not be read as doing so:

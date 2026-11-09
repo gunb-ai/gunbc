@@ -43,10 +43,10 @@ fn reconcile_step(observation:StartObservation,remaining:Int) -> ReconcileStep {
 // Persist every response beside the durable start claim. Eight single MQTT reads
 // (15 s each) and at most seven 5 s delays bound the MQTT observation budget; CA and
 // filesystem operations add their own runtime. Cleanup faults never become success.
-fn reconcile_start(session:PrinterCredentialSession,remote:NonEmptyStr,version:String,digest:String,token_source:AccessTokenSource,evidence_prefix:String,evidence_store:StartEvidenceStore,claim_key:NonEmptyStr,publish_standing:String,cleanup_issue:String) -> ProcessExit {
- reconcile_reads(session:session,remote:remote,version:version,digest:digest,token_source:token_source,evidence_prefix:evidence_prefix,evidence_store:evidence_store,claim_key:claim_key,publish_standing:publish_standing,cleanup_issue:cleanup_issue,remaining:8)
+fn reconcile_start(session:PrinterCredentialSession,remote:NonEmptyStr,version:String,digest:String,credential_source:PrinterCredentialSource,evidence_prefix:String,evidence_store:StartEvidenceStore,claim_key:NonEmptyStr,publish_standing:String,cleanup_issue:String) -> ProcessExit {
+ reconcile_reads(session:session,remote:remote,version:version,digest:digest,credential_source:credential_source,evidence_prefix:evidence_prefix,evidence_store:evidence_store,claim_key:claim_key,publish_standing:publish_standing,cleanup_issue:cleanup_issue,remaining:8)
 }
-fn reconcile_reads(session:PrinterCredentialSession,remote:NonEmptyStr,version:String,digest:String,token_source:AccessTokenSource,evidence_prefix:String,evidence_store:StartEvidenceStore,claim_key:NonEmptyStr,publish_standing:String,cleanup_issue:String,remaining:Int) -> ProcessExit {
+fn reconcile_reads(session:PrinterCredentialSession,remote:NonEmptyStr,version:String,digest:String,credential_source:PrinterCredentialSource,evidence_prefix:String,evidence_store:StartEvidenceStore,claim_key:NonEmptyStr,publish_standing:String,cleanup_issue:String,remaining:Int) -> ProcessExit {
  let response=report_once_using_session(session:session)
  let text=match response {ProcessOutputPresent {text:t}=>t ProcessOutputAbsent=>"" ProcessRefused {exit_code:_,stderr:e}=>serialize_json(v:json_object(members:[json_kv(key:"read_refused",value:json_string(s:e))]))}
  let read=9-remaining
@@ -57,18 +57,18 @@ fn reconcile_reads(session:PrinterCredentialSession,remote:NonEmptyStr,version:S
  }
  match reconcile_step(observation:observe_start(text:text,remote:remote as String),remaining:remaining) {
   ReadAgain {remaining:n}=>{
-   if !sleep.Delay.Seconds(seconds:"5").success {return finish_reconciliation(session:session,remote:remote,version:version,digest:digest,token_source:token_source,evidence:evidence,publish_standing:publish_standing,cleanup_issue:cleanup_issue,outcome:"uncertain: observation delay failed",confirmed:false,evidence_prefix:evidence_prefix)}
-   reconcile_reads(session:session,remote:remote,version:version,digest:digest,token_source:token_source,evidence_prefix:evidence_prefix,evidence_store:evidence_store,claim_key:claim_key,publish_standing:publish_standing,cleanup_issue:cleanup_issue,remaining:n)
+   if !sleep.Delay.Seconds(seconds:"5").success {return finish_reconciliation(session:session,remote:remote,version:version,digest:digest,credential_source:credential_source,evidence:evidence,publish_standing:publish_standing,cleanup_issue:cleanup_issue,outcome:"uncertain: observation delay failed",confirmed:false,evidence_prefix:evidence_prefix)}
+   reconcile_reads(session:session,remote:remote,version:version,digest:digest,credential_source:credential_source,evidence_prefix:evidence_prefix,evidence_store:evidence_store,claim_key:claim_key,publish_standing:publish_standing,cleanup_issue:cleanup_issue,remaining:n)
   }
-  ConfirmRunning=>finish_reconciliation(session:session,remote:remote,version:version,digest:digest,token_source:token_source,evidence:evidence,publish_standing:publish_standing,cleanup_issue:cleanup_issue,outcome:"running-confirmed",confirmed:true,evidence_prefix:evidence_prefix)
-  StopBlocked=>finish_reconciliation(session:session,remote:remote,version:version,digest:digest,token_source:token_source,evidence:evidence,publish_standing:publish_standing,cleanup_issue:cleanup_issue,outcome:"expected-project-blocked",confirmed:false,evidence_prefix:evidence_prefix)
-  StopUncertain=>finish_reconciliation(session:session,remote:remote,version:version,digest:digest,token_source:token_source,evidence:evidence,publish_standing:publish_standing,cleanup_issue:cleanup_issue,outcome:"uncertain: observation budget exhausted",confirmed:false,evidence_prefix:evidence_prefix)
+  ConfirmRunning=>finish_reconciliation(session:session,remote:remote,version:version,digest:digest,credential_source:credential_source,evidence:evidence,publish_standing:publish_standing,cleanup_issue:cleanup_issue,outcome:"running-confirmed",confirmed:true,evidence_prefix:evidence_prefix)
+  StopBlocked=>finish_reconciliation(session:session,remote:remote,version:version,digest:digest,credential_source:credential_source,evidence:evidence,publish_standing:publish_standing,cleanup_issue:cleanup_issue,outcome:"expected-project-blocked",confirmed:false,evidence_prefix:evidence_prefix)
+  StopUncertain=>finish_reconciliation(session:session,remote:remote,version:version,digest:digest,credential_source:credential_source,evidence:evidence,publish_standing:publish_standing,cleanup_issue:cleanup_issue,outcome:"uncertain: observation budget exhausted",confirmed:false,evidence_prefix:evidence_prefix)
  }
 }
-fn finish_reconciliation(session:PrinterCredentialSession,remote:NonEmptyStr,version:String,digest:String,token_source:AccessTokenSource,evidence:String,publish_standing:String,cleanup_issue:String,outcome:String,confirmed:Bool,evidence_prefix:String) -> ProcessExit {
+fn finish_reconciliation(session:PrinterCredentialSession,remote:NonEmptyStr,version:String,digest:String,credential_source:PrinterCredentialSource,evidence:String,publish_standing:String,cleanup_issue:String,outcome:String,confirmed:Bool,evidence_prefix:String) -> ProcessExit {
  let standing=join([outcome,"; publisher: ",publish_standing,"; cleanup: ",cleanup_issue,"; evidence: ",evidence],"")
- match write_receipt_at(path:concat(evidence_prefix,".receipt.json"),printer:session_printer(s:session),standing:standing,version:version,remote:remote as String,digest:digest,token_source:token_source) {
-  ExitSuccess=>if confirmed && cleanup_issue=="" {write_receipt(printer:session_printer(s:session),standing:standing,version:version,remote:remote as String,digest:digest,token_source:token_source)} else {exit_failure(reason:concat(standing,"; claim retained, DO NOT REPLAY"))}
+ match write_receipt_at(path:concat(evidence_prefix,".receipt.json"),printer:session_printer(s:session),standing:standing,version:version,remote:remote as String,digest:digest,credential_source:credential_source) {
+  ExitSuccess=>if confirmed && cleanup_issue=="" {write_receipt(printer:session_printer(s:session),standing:standing,version:version,remote:remote as String,digest:digest,credential_source:credential_source)} else {exit_failure(reason:concat(standing,"; claim retained, DO NOT REPLAY"))}
   other=>other
  }
 }

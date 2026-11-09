@@ -344,7 +344,7 @@ fn cbor_array_items(v: CborValue) -> List<CborValue>? {
   }
 }
 
-// CONSUMED BY A NAMED LATER CHANGE (DESIGN section 3c): the App Attest verifier fold
+// CONSUMED BY A NAMED LATER CHANGE (gunbc.design_argument::consumption): the App Attest verifier fold
 // (gunbc#11989, extdeps.apple.app_attest validation_category_refusal) reads the validation
 // category through this accessor; no reader exists at step 1.
 fn cbor_unsigned_value(v: CborValue) -> Int? {

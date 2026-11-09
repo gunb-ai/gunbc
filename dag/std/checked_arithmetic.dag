@@ -24,7 +24,7 @@ import std.algebra { collection_concat_shape }
 //
 // WHY THIS MODULE EXISTS RATHER THAN std.integer, which is where the integer authority otherwise
 // lives: std.integer imports std.induction (for int_pow_bounded), and the import graph's one
-// structural law is acyclicity (DESIGN section 3), so the checked operations cannot live in
+// structural law is acyclicity (gunbc.design_argument::single_authority), so the checked operations cannot live in
 // std.integer while std.induction consumes them. Homing them apart is what lets BOTH reach them,
 // which is the reachability half of being an authority at all - a concept half the corpus cannot
 // import is not a single authority (std.measure clock_basis_authority_reachability_note records
@@ -36,7 +36,7 @@ import std.algebra { collection_concat_shape }
 // The bound is stated as i64's inclusive range because that is what the seed and the emitted Rust
 // actually use. It is one literal pair here, replacing the six copies that were open-coded inside
 // std.induction's checked operations - the same constant repeated per call site is the redundancy
-// DESIGN section 2 names, and a repeated bound is worse than most because a single stale copy is a
+// gunbc.design_argument::minimize_redundancy names, and a repeated bound is worse than most because a single stale copy is a
 // silently wrong answer rather than a compile error. GROUNDING FRONTIER, stated rather than
 // implied: extdeps.languages.rust.primitives already carries i64's range as a cited row
 // (range_min_inclusive / range_max_inclusive), and extdeps.languages.go.primitives carries the same
@@ -74,7 +74,7 @@ type CheckedIntOperands
 // downstream results carry it verbatim: a spatial operation that refuses because one component
 // crossed the bound reports THIS cause, not a re-spelling of it. An arm is not a type, so an
 // inlined pair would have forced every consumer to redeclare the two fields - the second
-// representation DESIGN section 3 forbids, appearing at exactly the seam where the fact travels.
+// representation gunbc.design_argument::single_authority forbids, appearing at exactly the seam where the fact travels.
 type IntegerOverflow {
   operation: IntegerArithmeticOperation
   operands: CheckedIntOperands
@@ -220,7 +220,7 @@ fn checked_int_optional(r: CheckedInt) -> Int? {
 //
 // It replaces int_to_nat_nonnegative in std.euclidean_geometry, which read `if value < 0 { 0 } else
 // { value }` under a comment saying that clamping a negative to zero would fabricate an answer. It
-// clamped anyway - the absorbing fallback DESIGN section 5 forbids, sitting directly beneath its own
+// clamped anyway - the absorbing fallback gunbc.design_argument::fail_closed forbids, sitting directly beneath its own
 // description, and reachable by any caller rather than only by the squaring paths whose comment
 // claimed to justify it.
 //

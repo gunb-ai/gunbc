@@ -198,7 +198,7 @@ data mtcollins1_published_probes: List<PublishedCredentialLanProbe> = [
 // USER-3 ROUTE ESTABLISHED DisabledNotRetired (firmware reset restores admin). That is a
 // receipt of the 2026-09-13T00:20Z census, not the live standing: #11234 rotated user 2 so
 // the published password no longer authenticates. Asserting Retired from the user-3 file
-// alone is forbidden (DESIGN §4d). The live observation therefore carries Retired with
+// alone is forbidden (gunbc.design_argument::epistemic_humility). The live observation therefore carries Retired with
 // the user-2 retire artifact as account evidence. Bootstrap evidence is the 2026-09-12
 // prerotation probe (factory still accepted); 00:16:25Z on the user-3 artifact is the
 // same-day confirmation bound as rotation/census evidence, not a second bootstrap.

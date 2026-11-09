@@ -94,7 +94,7 @@ test fn the_brief_carries_the_criterion_the_diff_range_and_the_check_and_the_ver
     Present { value: c } => {
       let b = review_brief(criterion: c, node_id: "n1", headline: "H", boundary: "B", out_of_scope: "O", red_control: "R", acceptance_command: "gunbc run x", base_sha: "aaa", head_sha: "bbb", verification_detail: "passed")
       string_contains(s: b, pattern: "git diff aaa..bbb")
-        && string_contains(s: b, pattern: "Criterion (fail-closed, grounded on DESIGN proposition s5.fail-closed)")
+        && string_contains(s: b, pattern: "Criterion (fail-closed, grounded on DESIGN proposition fail_closed)")
         && string_contains(s: b, pattern: "Acceptance command: gunbc run x")
         && !string_contains(s: b, pattern: "Write your verdict")
         && string_contains(s: review_verdict_instruction(verdict_path: "/v.json"), pattern: "Write your verdict to /v.json")
@@ -102,8 +102,8 @@ test fn the_brief_carries_the_criterion_the_diff_range_and_the_check_and_the_ver
   }
 }
 
-// THE CONFORMANCE ANSWER IS THREE-VALUED AND ONLY THE UNSTATED DIVERGENCE REQUESTS CHANGES (DESIGN
-// section 3b). The stated divergence is admitted and keeps its reason; the instruction rendered for a
+// THE CONFORMANCE ANSWER IS THREE-VALUED AND ONLY THE UNSTATED DIVERGENCE REQUESTS CHANGES (
+// gunbc.design_argument::conformance). The stated divergence is admitted and keeps its reason; the instruction rendered for a
 // conformance criterion says all three, while the yes/no instruction says neither.
 test fn a_stated_divergence_is_admitted_and_an_unstated_one_requests_changes() -> Bool {
   let stated = conformance_answer_verdict(a: DivergesStated { reason: "the lease home cannot express a sub-second deadline" })
@@ -119,7 +119,7 @@ test fn a_stated_divergence_is_admitted_and_an_unstated_one_requests_changes() -
 // EVERY CONFORMANCE DOMAIN IS A REVIEWER WITH ITS HOMES IN THE BRIEF; no yes/no criterion carries a
 // home, and the discriminating half is the negation: the fail-closed brief names no home at all.
 // EVERY CONFORMANCE DOMAIN CARRIES A NON-EMPTY LABEL AND OWNS LINE FOR THE DESIGN.MD PROJECTION, AND
-// AT LEAST ONE BOUNDARY. The §3b roster is projected from these rows rather than hand-authored, so an
+// AT LEAST ONE BOUNDARY. The gunbc.design_argument::conformance roster is projected from these rows rather than hand-authored, so an
 // empty label would produce a blank heading, an empty owns line would leave the reader without the
 // domain's responsibility, and a domain with no stated boundary gives the reader no way to tell it
 // from its neighbours.
@@ -185,7 +185,7 @@ fn rendered_domain(d: ConformanceDomain) -> String {
   serialize_markdown_source(doc: MarkdownDocument { blocks: conformance_domain_section(d: d) })
 }
 
-// THE DESIGN.MD §3B ROSTER IS PROJECTED FROM CONFORMANCE_DOMAINS, NOT HAND-AUTHORED. The
+// THE gunbc.design_argument::conformance ROSTER IS PROJECTED FROM CONFORMANCE_DOMAINS, NOT HAND-AUTHORED. The
 // synthetic-domain proof constructs a domain that does not exist in the production roster and proves
 // the renderer produces exactly the expected output for it: one ConformanceDomain row → exactly one
 // DESIGN subsection, with its homes grouped and one per line, rather than the weaker "today's
@@ -207,7 +207,7 @@ test fn a_synthetic_conformance_domain_produces_exactly_one_design_section() -> 
 // REVIEW CRITERION, AND CHANGING A HOME CHANGES BOTH.
 test fn production_conformance_domains_appear_in_generated_design() -> Bool {
   let md = expected_design_md()
-  string_contains(s: md, pattern: "3b. Conformance")
+  string_contains(s: md, pattern: "## Reference: conformance domains")
     && all(conformance_domains, d =>
       string_contains(s: md, pattern: concat("### ", d.label))
         && all(conformance_domain_homes(d: d), h => string_contains(s: md, pattern: concat("`", concat(review_home_text(h: h), "`"))))
@@ -223,8 +223,8 @@ test fn label_and_owns_change_projection_but_not_criterion_identity() -> Bool {
   let domain_b = synthetic_domain(label: "label B", owns: "owns B")
   let block_a = rendered_domain(d: domain_a)
   let block_b = rendered_domain(d: domain_b)
-  let criterion_a = conformance_criterion_from_domain(domain: domain_a, proposition_id: "s3b.conformance")
-  let criterion_b = conformance_criterion_from_domain(domain: domain_b, proposition_id: "s3b.conformance")
+  let criterion_a = conformance_criterion_from_domain(domain: domain_a, proposition_id: "conformance")
+  let criterion_b = conformance_criterion_from_domain(domain: domain_b, proposition_id: "conformance")
   block_a != block_b
     && review_criterion_identity_text(c: criterion_a) == review_criterion_identity_text(c: criterion_b)
     && string_contains(s: block_a, pattern: "label A")

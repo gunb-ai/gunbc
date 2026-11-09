@@ -66,7 +66,7 @@ test fn w_listing_carries_the_fourteen_observed_rows() -> Bool {
 
 // EACH FIGURE MATCHES THE OPERATOR'S READING OF THE LISTING. These are vendor prices, so a pinned
 // literal here is an oracle grounded in an external authority rather than a measurement of our own
-// tree - the distinction DESIGN section 5 draws between an oracle and a change detector.
+// tree - the distinction gunbc.design_argument::fail_closed draws between an oracle and a change detector.
 test fn w_row_figures_match_the_cited_listing() -> Bool {
   hetzner_listed_monthly_micros(row: hetzner_ax41_listed) == 59000000
     && hetzner_listed_setup_micros(row: hetzner_ax41_listed) == 0

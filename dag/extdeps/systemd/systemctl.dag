@@ -182,6 +182,7 @@ fn systemctl_user_daemon_reload_argv(uid: Int) -> List<String> {
 data systemctl_enable_verb: NonEmptyStr = "enable" as NonEmptyStr
 
 data systemctl_start_verb: NonEmptyStr = "start" as NonEmptyStr
+data systemctl_stop_verb: NonEmptyStr = "stop" as NonEmptyStr
 
 // IS-ACTIVE AND IS-ENABLED ARE READS, NOT TRANSITIONS, and they are hoisted to rows for the same reason
 // the transitions are: a second module now asks the same question, and a verb authored twice in two
@@ -219,6 +220,16 @@ fn systemctl_enable_argv(unit: NonEmptyStr) -> List<String> {
 // on the service surface; this is its argv authority for the shell-body realization edge.
 fn systemctl_start_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", systemctl_start_verb as String, unit as String]
+}
+
+// `is-active UNIT`: exit 0 iff the unit is running NOW. This is the READ-BACK a converger ends its command
+// with -- the property to check, not the command that was meant to establish it (gunbc.design_argument::fail_closed).
+// The user-scope sibling already existed; the system-scope one is added here because the diskless runner's
+// boot stage now needs it to prove ssh.service actually came up before the capture reports success
+// (gunbc.runner.runner_host_medium runner_host_fleet_authorized_keys_command). Verbs live ONLY in this module
+// (gunbc.design_argument::single_authority), so it is spelled once.
+fn systemctl_is_active_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", systemctl_is_active_verb as String, unit as String]
 }
 
 // `reset-failed` drops a failed unit's failed state, including a path unit that hit its trigger limit,

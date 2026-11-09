@@ -61,7 +61,7 @@ type GuestReachability {
 // observation, not gunbc.runner.runner_microvm_network's slot-derived 172.30.slot.{1,2} -- that module is
 // the fleet authority; this row records what the probe actually used.
 //
-// §3b DIVERGENCE, MEASURED RATHER THAN CAUSED. This row has zero consuming files on the
+// gunbc.design_argument::conformance DIVERGENCE, MEASURED RATHER THAN CAUSED. This row has zero consuming files on the
 // gunbc#10921 branch: no import, no fold, no executing route. #10818 never closed that. It
 // asserted closure via folds whose results nothing read -- an open gap with a lid on it. This
 // change removes the lid. It does not close the gap. TRIGGER for the honest close: a consumer

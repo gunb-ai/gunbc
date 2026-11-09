@@ -311,7 +311,7 @@ test fn host_numeric_operand_keeps_the_host_operator() -> Bool {
 }
 
 // AN OPERAND WHOSE DECLARATION COULD NOT BE READ REFUSES, carrying what the caller saw. The seed's
-// host-token fallback here was an absorbing arm (DESIGN section 5): it rendered `a < b` on a Peano
+// host-token fallback here was an absorbing arm (gunbc.design_argument::fail_closed): it rendered `a < b` on a Peano
 // operand as the host `<` with no signature, and the lane's own emitted-path rows went red on a
 // token rustc refuses later. This row pins that the unknown arm is a refusal, not a widen.
 test fn operand_without_a_readable_declaration_refuses() -> Bool {

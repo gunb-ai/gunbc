@@ -208,7 +208,7 @@ fn bash_fold_if_stmt(node: Node) -> BashEmitStmt {
 
 // THE SAME SUBSTITUTION, ON EVERY PATH TO THE BYTES. Where the substitution's own text spelling is used -- a
 // word in a statement, an assignment value, a redirection target -- the valid spaced form RENDERS: the space is
-// a spelling matter and the language module owns it, so nothing is forbidden (DESIGN §4d). Where the bytes come
+// a spelling matter and the language module owns it, so nothing is forbidden (gunbc.design_argument::epistemic_humility). Where the bytes come
 // from a GRAMMAR ROW -- a command, a concatenation -- `$(` and the body are separate tokens that no rule can
 // separate, and the row renderer refuses that operand with one typed reason: the only bytes it could emit are
 // ones bash rejects. The rows then hold both halves to their evidence: non-colliding substitutions, including

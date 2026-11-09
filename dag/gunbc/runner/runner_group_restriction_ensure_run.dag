@@ -70,7 +70,7 @@ data microvm_runner_group_prelude_allowance: Second = second(count: 120)
 data microvm_runner_group_effect_allowance: Second = second(count: 120)
 
 // THIS WAIT IS DELIBERATELY SHORTER THAN THE MODEL'S APPROVAL WINDOW, AND THAT IS A DIVERGENCE
-// WITH A STATED REASON, NOT AN OVERSIGHT (DESIGN §3b; raised by the review of gunbc#15901, review
+// WITH A STATED REASON, NOT AN OVERSIGHT (gunbc.design_argument::conformance; raised by the review of gunbc#15901, review
 // 91180, which found this row as the second local implementation of the wait).
 //
 // THE ROW SAYS FOUR HOURS. gunbc.auth.approval_gate approval_request_window is how long a filed
@@ -100,7 +100,7 @@ data microvm_runner_group_effect_allowance: Second = second(count: 120)
 // gate's ApprovalExpired, which is true of the wait and false of the request. The follow-up below
 // replaces it with a typed cause that says so.
 //
-// THE FOLLOW-UP, NAMED (§4b): make that argument load-bearing instead of incidental — stop the
+// THE FOLLOW-UP, NAMED (gunbc.design_argument::guarantee_ladder): make that argument load-bearing instead of incidental — stop the
 // poll at the run's remaining job budget and refuse with a typed cause naming the still-open
 // escalation ("still decidable, continue on the next dispatch"), so this module can consume
 // approval_request_window directly with no 970-minute step; or fan the roster out to one dispatch

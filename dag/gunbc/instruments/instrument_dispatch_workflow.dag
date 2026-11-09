@@ -150,7 +150,7 @@ data instrument_dispatch_group_prefix: String = "instrument-dispatch"
 // no expression syntax exists as string fragments in this model (the typed-template rule). The
 // sibling string-fragment sites this replaced -- the label display/if values, the runner.temp
 // upload path, and the heal_workflow group/env reads -- are converted through the same carrier in
-// this PR (review 85263, DESIGN section 6b: the same rule at sibling sites). Fragment sites in
+// this PR (review 85263, gunbc.design_argument::root_generalization: the same rule at sibling sites). Fragment sites in
 // other models (fleet_*, runner_*, witness_floor, compiler_gate, heal_publisher) are pre-existing
 // main-side debt of the same kind, untouched here and named for routing, not permission to repeat.
 data instrument_dispatch_concurrency_group_template: ExpressionTemplate = {
@@ -278,7 +278,7 @@ data instrument_dispatch_stage0_regen_memory_demand: ByteSize = byte_size(171798
 
 // Derived from gunbc.instruments.compute_run_unit_cold compute_run_unit_cold_job_memory_demand:
 // unit grant plus declared launcher headroom. Not a second 16 GiB literal, and not the regen row
-// (DESIGN §3 meaning fork).
+// (gunbc.design_argument::single_authority meaning fork).
 data instrument_dispatch_compute_run_unit_cold_memory_demand: ByteSize = compute_run_unit_cold_job_memory_demand()
 
 fn instrument_dispatch_memory_demands() -> List<InstrumentDispatchMemoryDemand> {
@@ -289,16 +289,16 @@ fn instrument_dispatch_memory_demands() -> List<InstrumentDispatchMemoryDemand> 
     InstrumentDispatchMemoryDemand { label: compute_wrong_capture_label(), demand: instrument_dispatch_compute_run_unit_cold_memory_demand },
     // The dependency arm is the same subject at the same price: two clean release builds of the
     // same work_default_build() operation and two captures. It shares the compute row, not the
-    // whole-tree row (DESIGN §3 meaning fork).
+    // whole-tree row (gunbc.design_argument::single_authority meaning fork).
     InstrumentDispatchMemoryDemand { label: compute_dependency_wrong_capture_label(), demand: instrument_dispatch_compute_run_unit_cold_memory_demand },
     InstrumentDispatchMemoryDemand { label: self_host_frontier_label(), demand: instrument_dispatch_whole_tree_memory_demand },
     // The known-red derivation's subject is the whole corpus resolved claim by claim: the same price
     // class as the whole-tree censuses, and it shares their row rather than inventing a number of its
-    // own (DESIGN §3 meaning fork). Its own receipt: a pooled 502-claim wet child peaked at 9.1 GiB
+    // own (gunbc.design_argument::single_authority meaning fork). Its own receipt: a pooled 502-claim wet child peaked at 9.1 GiB
     // VmHWM and a per-entry claim_batch shard at 8.7 GiB, on top of the instrument host's resolve.
     InstrumentDispatchMemoryDemand { label: known_red_derivation_label(), demand: instrument_dispatch_whole_tree_memory_demand },
     // One fn_arrow_decl_facts_live pass over the pool plus the resolve of ci_spec's closure: measured RSS 12-13.6 GB
-    // on srv1 (sleek-owl-397, 2026-10-22), the whole-tree row's class, not a number of its own (DESIGN §3).
+    // on srv1 (sleek-owl-397, 2026-10-22), the whole-tree row's class, not a number of its own (gunbc.design_argument::single_authority).
     InstrumentDispatchMemoryDemand { label: roster_reach_inhabitance_label(), demand: instrument_dispatch_whole_tree_memory_demand },
   ]
 }

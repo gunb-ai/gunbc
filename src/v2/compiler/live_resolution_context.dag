@@ -25,8 +25,8 @@ import v2.std.resolution_policy { NameResolutionPolicy }
 // itself (not a fixture population) resolves its citations in. It is built from exactly the modules
 // the caller names, each reached by one lookup in `by_name` (module name to the read that declares
 // it) and one normalize, never from a corpus-wide pass. `by_name` is a PARAMETER: where the reads
-// come from (a native ingest today) stays the caller's fact, so this module imports no layout and
-// no reader. A module absent from `by_name`, or whose read does not normalize, is simply not in
+// come from stays the caller's fact, so this module imports no layout and no reader, and every step
+// here is pure. A module absent from `by_name`, or whose read does not normalize, is simply not in
 // `roots`, which is what makes the resolver answer ModuleAbsent for it
 // (v2.std.decl_ref_resolution: the arm is decided by the ingest's own module roots).
 //
@@ -36,6 +36,11 @@ import v2.std.resolution_policy { NameResolutionPolicy }
 // is loaded too, once and not transitively: a chain
 // of relays longer than one hop is a module absent from the roots, which the resolver already
 // answers as ModuleAbsent rather than a wrong resolution.
+//
+// THE STEPS ARE EXPOSED because a caller that READS its modules (v2.cli.reference_check) learns the hop
+// homes only after the targets normalize: it loads the targets, asks live_context_hop_homes, reads
+// those modules itself, loads them and finishes. The reads stay in the caller, outside any closure
+// here; live_resolution_context is the same steps for a caller holding every read up front.
 
 type LiveContextLoad {
   roots: FreeMonoid<NormalizedTree>
@@ -49,6 +54,10 @@ type LiveResolutionContext {
   context: Outcome<ResolutionContext>
   target_count: Int
   refused_files: List<String>
+}
+
+fn live_context_load_empty(seed: OccurrenceIdAllocator) -> LiveContextLoad {
+  LiveContextLoad { roots: Empty, index: source_root_index_empty(), alloc: seed, refused_files: [], attempted: empty_map() }
 }
 
 fn live_context_load_target(
@@ -96,6 +105,22 @@ fn live_context_load_unattempted(
   }
 }
 
+// Every module in `modules` loaded into `load` from `by_name`, in order.
+fn live_context_load_modules(
+  load: LiveContextLoad,
+  by_name: Map<String, DagSourceReadWitness>,
+  modules: List<String>,
+  lex: PreparedLexRules,
+  prepared: PreparedGrammar,
+  ingest_scope: Fnv1a64Structural
+) -> LiveContextLoad {
+  fold_list(
+    xs: modules,
+    empty: load,
+    cons: fn(acc, m) { live_context_load_target(load: acc, by_name: by_name, lex: lex, prepared: prepared, ingest_scope: ingest_scope, module: m) }
+  )
+}
+
 fn live_context_hop_home(acc: List<String>, row: AliasBindingRow, homes: FreeMonoid<QualifiedName>, names: Map<String, Bool>) -> List<String> {
   match map_lookup(m: names, key: symbol_lexeme(sym: row.binding)) {
     Absent => acc
@@ -104,6 +129,35 @@ fn live_context_hop_home(acc: List<String>, row: AliasBindingRow, homes: FreeMon
         Absent => acc
         Present { value: home } => list_snoc_item(xs: acc, item: qualified_name_to_dotted_string(qn: home))
       }
+  }
+}
+
+// THE HOP HOMES of the loaded roots: the home module of each import that binds a cited name.
+fn live_context_hop_homes(load: LiveContextLoad, names: Map<String, Bool>) -> List<String> {
+  let no_homes: List<String> = []
+  fold_list(
+    xs: load.roots,
+    empty: no_homes,
+    cons: fn(acc, root) {
+      let homes = fold_list(
+        xs: normalized_tree_imported_modules(tree: root),
+        empty: Empty,
+        cons: fn(h, imp) { list_snoc_item(xs: h, item: imp.target) }
+      )
+      fold_list(
+        xs: normalized_tree_import_bindings(tree: root),
+        empty: acc,
+        cons: fn(inner, row) { live_context_hop_home(acc: inner, row: row, homes: homes, names: names) }
+      )
+    }
+  )
+}
+
+fn live_context_finish(load: LiveContextLoad, lm: LanguageModel, active_roots: FreeMonoid<SourceRootRef>, policy: NameResolutionPolicy) -> LiveResolutionContext {
+  LiveResolutionContext {
+    context: resolution_context(lm: lm, roots: load.roots, index: load.index, active_roots: active_roots, policy: policy),
+    target_count: length(xs: load.roots),
+    refused_files: load.refused_files
   }
 }
 
@@ -119,35 +173,7 @@ fn live_resolution_context(
   active_roots: FreeMonoid<SourceRootRef>,
   policy: NameResolutionPolicy
 ) -> LiveResolutionContext {
-  let named = fold_list(
-    xs: targets,
-    empty: LiveContextLoad { roots: Empty, index: source_root_index_empty(), alloc: seed, refused_files: [], attempted: empty_map() },
-    cons: fn(acc, m) { live_context_load_target(load: acc, by_name: by_name, lex: lex, prepared: prepared, ingest_scope: ingest_scope, module: m) }
-  )
-  let hops = fold_list(
-    xs: named.roots,
-    empty: [],
-    cons: fn(acc, root) {
-      let homes = fold_list(
-        xs: normalized_tree_imported_modules(tree: root),
-        empty: Empty,
-        cons: fn(h, imp) { list_snoc_item(xs: h, item: imp.target) }
-      )
-      fold_list(
-        xs: normalized_tree_import_bindings(tree: root),
-        empty: acc,
-        cons: fn(inner, row) { live_context_hop_home(acc: inner, row: row, homes: homes, names: names) }
-      )
-    }
-  )
-  let loaded = fold_list(
-    xs: hops,
-    empty: named,
-    cons: fn(acc, m) { live_context_load_target(load: acc, by_name: by_name, lex: lex, prepared: prepared, ingest_scope: ingest_scope, module: m) }
-  )
-  LiveResolutionContext {
-    context: resolution_context(lm: lm, roots: loaded.roots, index: loaded.index, active_roots: active_roots, policy: policy),
-    target_count: length(xs: loaded.roots),
-    refused_files: loaded.refused_files
-  }
+  let named = live_context_load_modules(load: live_context_load_empty(seed: seed), by_name: by_name, modules: targets, lex: lex, prepared: prepared, ingest_scope: ingest_scope)
+  let loaded = live_context_load_modules(load: named, by_name: by_name, modules: live_context_hop_homes(load: named, names: names), lex: lex, prepared: prepared, ingest_scope: ingest_scope)
+  live_context_finish(load: loaded, lm: lm, active_roots: active_roots, policy: policy)
 }

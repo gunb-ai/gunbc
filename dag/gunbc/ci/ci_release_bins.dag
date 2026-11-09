@@ -55,7 +55,7 @@ FIFTH REMOVAL (source layout cutover, 2026-10-10), justified per bin: discover_s
 // locus, and a deploy that copies "gunbc" while the pack verifies a differently-spelled name would
 // install a file that does not exist -- a silent no-op at install time, a restart loop at start
 // time. One row, read by both, is what makes those two spellings the same fact rather than two
-// literals that happen to agree (DESIGN section 3).
+// literals that happen to agree (gunbc.design_argument::single_authority).
 data gunbc_release_bin_name: String = "gunbc"
 
 data ci_floor_invoked_bins: List<String> = [

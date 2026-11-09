@@ -5,14 +5,14 @@ import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, Repla
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_dag_emit_round_trip_rows }
 
-// DECLARED 4b(3) DROP (gunbc#12878, 2026-10-01). The DECLARATION lives here; the POPULATION's
+// DECLARED gunbc.design_argument::guarantee_ladder (no silent regression) DROP (gunbc#12878, 2026-10-01). The DECLARATION lives here; the POPULATION's
 // authority is `v2.workflow.floor_eval_step_cost_drop` `floor_eval_step_cost_drop_dag_emit_round_trip_rows`.
 //
 // WHAT IS LOST IS ONE WALL, AND THE CLAIM ITSELF IS UNTOUCHED. The identity is still planned,
 // executed and measured; a semantic red and a wall-clock crossing still block. Only an eval-step
 // overrun is reported under this drop rather than refusing. The budget is not raised.
 //
-// WHY A DROP AND NOT A SUPPLIED TREE. DESIGN section 3's witness rule lets every other dag-emit claim
+// WHY A DROP AND NOT A SUPPLIED TREE. gunbc.design_argument::single_authority's witness rule lets every other dag-emit claim
 // supply its input only while ONE claim still runs the real path, and this claim is that one: the
 // floor's only execution of ingest -> emit -> re-ingest over dag_grammar_root. Supplying the tree
 // here would remove the last execution of the real path. Its cost is two real parses, which is what

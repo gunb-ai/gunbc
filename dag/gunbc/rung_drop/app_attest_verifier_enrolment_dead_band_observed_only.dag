@@ -6,7 +6,7 @@ import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, Repla
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // THE DECLARED RUNG DROP for the enrolment margin over EXACTLY TWO App Attest verifier claims whose
-// honest CPU lies in the gate's dead band (margin, per-subject line] (DESIGN 4b(3); side-chat ruling on
+// honest CPU lies in the gate's dead band (margin, per-subject line] (gunbc.design_argument::guarantee_ladder (no silent regression); side-chat ruling on
 // gunbc#11989, PR comment 5795659115; precedent `long_home_enrolment_margin_observed_only`).
 //
 // WHAT IS LOST IS THE ENROLMENT-MARGIN DECISION, AND ONLY THAT. The two claims stay test fns and

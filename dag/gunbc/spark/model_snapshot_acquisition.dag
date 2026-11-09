@@ -196,7 +196,7 @@ data model_snapshot_hub_source_identity: NonEmptyStr = "huggingface-hub-cli" as 
 // 2026-09-05 -- over the rail, for exactly this reason. This module models that decision rather than
 // re-deriving it per apply.
 //
-// IT IS TWO HANDLERS ON ONE INTERFACE SHAPE, NOT TWO ACQUISITION PATHS (DESIGN section 3). The
+// IT IS TWO HANDLERS ON ONE INTERFACE SHAPE, NOT TWO ACQUISITION PATHS (gunbc.design_argument::witness_one_interface). The
 // combinator already walks an ORDERED source list with per-source identity and typed per-source
 // refusals, so a replica's sources are literally [rail-peer, hub]: try the fast local path, fall back
 // to upstream, and let the fold say which answered. Nothing about the algorithm changes.

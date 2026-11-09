@@ -6,7 +6,7 @@ import std.measure { ByteSize, byte_size, byte_size_count, second, second_count 
 
 // HOW A SERVE BINARY IS BUILT FROM THE ADMITTED REVISION (live_deploy models install and verify, never the
 // build; member_observe and member_identity assume "the deploying checkout's build"). The admitted revision is
-// the single authority for WHICH binary (DESIGN section 3): the build runs IN PLACE in the instance source
+// the single authority for WHICH binary (gunbc.design_argument::single_authority): the build runs IN PLACE in the instance source
 // repo after convergence has reset it to that revision. No worktree (a linked worktree of the lab source repo
 // trips tree-sync) and no `git archive` copy (a second copy of the source, section 2). The cargo target dir is
 // outside the repo, under the instance root, so a build never dirties the checkout and stays incremental.
@@ -28,6 +28,9 @@ type ServeBinaryBuild {
   target_dir: String,
   install_path: String,
   source_identity: BuildSourceIdentity,
+  // THE TOOLCHAIN'S DECLARED HOME, never the caller's PATH (loyal-deer-449's srv1 run: a bare `cargo` resolved from
+  // ambient PATH). The apply passes instance.toolchain.cargo, the machine-level fact the execution environment also reads.
+  cargo_path: String,
 }
 
 // The target dir hangs under the instance root, outside the repo.
@@ -44,7 +47,7 @@ fn serve_binary_identity_env(build: ServeBinaryBuild) -> List<String> {
 
 // MEMORY BOUND: the 16 GiB scope loyal-deer-449's measured srv1 build ran under (BUILD_RC=0, about 556 s wall,
 // cold 9-10 min). The peak resident set was NOT measured, so the bound is an admitted ceiling, not a fit;
-// swap is denied so an overrun is refused rather than paged (DESIGN Building & checks, the memory envelope).
+// swap is denied so an overrun is refused rather than paged (gunbc.design_document::ci_contract_blocks, the memory envelope).
 data serve_binary_build_memory_max: ByteSize = byte_size(17179869184)
 data serve_binary_build_memory_swap_max: ByteSize = byte_size(0)
 
@@ -84,7 +87,7 @@ fn serve_binary_build_argv(build: ServeBinaryBuild) -> List<String> {
       serve_binary_identity_env(build: build),
     ),
     [
-      "cargo", "build", "--release", "--manifest-path", join([build.repo_root, "/Cargo.toml"], ""),
+      build.cargo_path, "build", "--release", "--manifest-path", join([build.repo_root, "/Cargo.toml"], ""),
       "-p", "v1-compiler", "--bin", "gunbc",
     ],
   )
@@ -108,19 +111,27 @@ type ServeBinaryBuildVerdict
   = ServeBinaryReadyToInstall
   | ServeBinaryBuilt { revision: String }
   | ServeBinaryRefusedHeadDriftBefore { found: String }
-  | ServeBinaryRefusedBuildFailed
+  | ServeBinaryRefusedBuildFailed { stderr_tail: String }
   | ServeBinaryRefusedHeadDriftAfter { found: String }
   | ServeBinaryRefusedDigestUnread
   | ServeBinaryRefusedInstalledDigestDiffers
   | ServeBinaryRefusedVersionDoesNotNameRevision { version_text: String }
 
+// THE LAST 2000 CHARACTERS of the build's stderr, where cargo and rustc put the cause; a refusal that drops it is
+// "failed" with no location (DESIGN section 5). Empty stderr stays empty and is stated as such by the detail.
+fn serve_binary_stderr_tail(stderr: String) -> String {
+  let t = trim(s: stderr)
+  let n = length(t)
+  if n <= 2000 { t } else { substring(s: t, start: n - 2000, end: n) }
+}
+
 // Before the install: HEAD == the admitted revision immediately before and after the build, and the build
 // succeeded. A refusal here leaves the old bin untouched because nothing has been staged.
-fn serve_binary_pre_install_verdict(build: ServeBinaryBuild, head_before: String, build_succeeded: Bool, head_after: String) -> ServeBinaryBuildVerdict {
+fn serve_binary_pre_install_verdict(build: ServeBinaryBuild, head_before: String, build_succeeded: Bool, build_stderr: String, head_after: String) -> ServeBinaryBuildVerdict {
   if trim(s: head_before) != build.revision {
     ServeBinaryRefusedHeadDriftBefore { found: trim(s: head_before) }
   } else if !build_succeeded {
-    ServeBinaryRefusedBuildFailed
+    ServeBinaryRefusedBuildFailed { stderr_tail: serve_binary_stderr_tail(stderr: build_stderr) }
   } else if trim(s: head_after) != build.revision {
     ServeBinaryRefusedHeadDriftAfter { found: trim(s: head_after) }
   } else {
@@ -177,7 +188,7 @@ fn serve_binary_refusal_detail(verdict: ServeBinaryBuildVerdict) -> String {
     ServeBinaryReadyToInstall => "ready"
     ServeBinaryBuilt { revision } => join(["built ", revision], "")
     ServeBinaryRefusedHeadDriftBefore { found } => join(["serve build refused: HEAD ", found, " is not the admitted revision before the build"], "")
-    ServeBinaryRefusedBuildFailed => "serve build refused: the build failed; the previously installed binary is untouched"
+    ServeBinaryRefusedBuildFailed { stderr_tail } => join(["serve build refused: the build failed; the previously installed binary is untouched; stderr tail: ", stderr_tail], "")
     ServeBinaryRefusedHeadDriftAfter { found } => join(["serve build refused: HEAD moved to ", found, " during the build"], "")
     ServeBinaryRefusedDigestUnread => "serve build refused: a sha256 read failed, so the built and installed binaries cannot be compared"
     ServeBinaryRefusedInstalledDigestDiffers => "serve build refused: the installed binary's digest differs from the built one"

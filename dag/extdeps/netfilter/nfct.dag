@@ -37,7 +37,7 @@ fn nfct_program() -> ProgramIdentity = cataloged_program(invocation: "nfct")
 // NO ArgvCommand BUILDER HERE, DELIBERATELY. The only consumer in this repository reaches this
 // program through a privileged read projection that prepends its own sudo binary path, so it needs
 // the ARGUMENT WORDS and not a command whose program field it would discard. Adding a builder
-// nothing calls would be the dangling declaration DESIGN 3c refuses; it belongs here the day a
+// nothing calls would be the dangling declaration gunbc.design_argument::consumption refuses; it belongs here the day a
 // direct invocation exists to consume it.
 //
 // `helper list` PRINTS THE REGISTERED USERSPACE HELPERS, one stanza per helper, and an empty stdout

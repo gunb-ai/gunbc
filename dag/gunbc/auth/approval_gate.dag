@@ -39,7 +39,7 @@ import gunbc.auth.approval_status_wire { parse_filed_approval_status, FiledAppro
 // approval over the exact request revision into the ScopedAuthorization<Subject> it acts under.
 // Every ingredient of that route is already generic over the subject (std.scoped_authorization,
 // gunbc.auth.approval_decision_store), so the gate is too: the Mt. Collins boot and the pair-serving
-// D0 transaction each rebind it to their subject rather than carrying a copy (DESIGN 2: net concepts
+// D0 transaction each rebind it to their subject rather than carrying a copy (gunbc.design_argument::minimize_redundancy: net concepts
 // must not grow by re-invention -- the second adopter is when the shared fold becomes payable).
 //
 // A gate is a reading of the broker's standing joined to one request. It names, distinctly, every
@@ -288,8 +288,8 @@ type ApprovalFiling
 // was missing -- and the call site below read the body alone: the run believed it had filed, spent
 // its whole poll window waiting for a decision nobody had been asked to make, and died on its step
 // timeout. A status the transport reports as a refusal is a refusal whatever its body says, so the
-// body is consulted only over a 2xx (DESIGN 5: no plausible output is fabricated). This is the
-// caller-side half of the fail-open class gunbc.plans.transport_argv_anemia_dissolution names.
+// body is consulted only over a 2xx (gunbc.design_argument::fail_closed: no plausible output is fabricated). This is the
+// caller-side half of the fail-open class gunbc.plans.transport_argv_anemia_dissolution (deleted 2026-11-08) names.
 fn approval_filing_from_post(success: Bool, body: String) -> ApprovalFiling {
   if !success {
     // The two ways a POST fails are told apart in the reason: an answer the transport reports as a

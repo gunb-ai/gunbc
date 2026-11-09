@@ -10,7 +10,7 @@ import extdeps.tailscale.serve { TailscaleServeEndpoint }
 // emitter witnesses and the collision-law witnesses both need to hold every other deployment
 // member fixed and vary ONLY the admitted binary (its path, its provenance arm); spelled once per
 // witness file the two suites could drift on which fields they preserved, which is the dual
-// representation DESIGN section 3 forbids. Lives under dag/test/ so it cannot reach production.
+// representation gunbc.design_argument::single_authority forbids. Lives under dag/test/ so it cannot reach production.
 fn spec_with_serve_binary(base: DeploymentSpec, binary: AdmittedFixedServeBinary) -> DeploymentSpec {
   match base {
     DeploymentSpec { target: t, steps: s, names: n, service: svc, approval_broker: ab, instance_id: iid } =>

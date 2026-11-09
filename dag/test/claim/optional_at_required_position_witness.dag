@@ -8,7 +8,7 @@ import gunbc.compile_diagnostic_census {
   census_total_count,
 }
 
-// AN OPTIONAL WHERE A REQUIRED VALUE IS DECLARED MUST REFUSE (DESIGN 4b floor: values inhabit
+// AN OPTIONAL WHERE A REQUIRED VALUE IS DECLARED MUST REFUSE (gunbc.design_argument::guarantee_ladder floor: values inhabit
 // declared types). Class row: gunbc.recurring_failure_mode.optional_admitted_where_a_required_value_is_declared.
 // Receipt gunbc#11626: join([prefix, base64_encode(..)], "") with base64_encode returning String?
 // compiled clean and the interpreter rendered `id-Present { value: ... }`.
@@ -21,7 +21,7 @@ import gunbc.compile_diagnostic_census {
 // String parameter, the Optional matched before join, and the LIFT direction (a String at a
 // String? parameter), which stays outside this wall.
 //
-// dissolve-on: none -- permanent regression control per DESIGN 4b(4).
+// dissolve-on: none -- permanent regression control per gunbc.design_argument::guarantee_ladder (dissolution on climb).
 
 // THE ORACLE NAMES THE CLASS, NOT THE OUTCOME. A compiles/does-not-compile boolean stays red
 // through ANY refusal, so a RED here would keep reporting the wall while

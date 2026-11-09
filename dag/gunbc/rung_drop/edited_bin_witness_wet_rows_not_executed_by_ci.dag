@@ -5,7 +5,7 @@ import std.algebra { FreeSemigroup }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, LostAsPassenger }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
-// THE DECLARED RUNG DROP for an EDITED BinWitnessWet witness (DESIGN 4b(3)), landed with the
+// THE DECLARED RUNG DROP for an EDITED BinWitnessWet witness (gunbc.design_argument::guarantee_ladder (no silent regression)), landed with the
 // required floor's `DeclinedNoCiWetLane` changed-witness standing (floor owner deep-ferret-305,
 // ruling via jolly-boar-500, 2026-09-30).
 //

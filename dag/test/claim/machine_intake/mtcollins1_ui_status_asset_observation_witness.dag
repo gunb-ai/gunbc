@@ -17,11 +17,14 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { collection_count_shape, collection_join_shape, string_contains }
 import std.bytes { octets_bytes }
 import std.integer { QualifiedOctets, QualifiedOctetsReady, QualifiedOctetsRefused, qualified_octet_members, uint8_octets_of_ints }
-import extdeps.numeric.base16 { base16_decode_any }
+import extdeps.numeric.base16 { base16_decode_any, base16_encode_lower }
 import std.content_hash { Sha256Digest, sha256_hex_digest, sha256_hex_of_text }
 import std.encoding { utf8_decode_bytes }
 import std.measure { byte_size, byte_size_count, second_count }
 import gunbc.machine_intake.megarac_media_attach { megarac_media_read_max_time }
+import extdeps.whatwg.html_attribute_tokenization { html_index_of_octet, html_octets_index_from, html_octets_count_walk, html_octets_first_starts }
+import extdeps.tools.curl { CurlCookieJarParsed, CurlCookieJarMalformedRow, CurlCookieJarRow, curl_cookie_jar_read }
+import extdeps.uri_reference { ResolvedPathReference, EmptyPathReference, PathReferenceCarriesQueryOrFragment, PathReferenceCarriesSchemeOrAuthority, uri_resolve_path_reference, uri_remove_dot_segments }
 import std.optional { Absent, Present }
 import gunbc.machine_intake.mtcollins1_ui_status_asset_observation {
   AdmittedUiAssetPath,
@@ -51,7 +54,24 @@ import gunbc.machine_intake.mtcollins1_ui_status_asset_observation {
   megarac_ui_cd_row_marker_token, megarac_ui_status_feeding_token, megarac_ui_count_text,
   megarac_ui_status_excerpt_of_asset,
   ui_asset_path_admission,
+  ui_text_needle_scan,
+  ConstructedKeyCandidate,
+  MarkerContextNotEstablished,
+  ConstructedKeyRefused,
+  ConstructedKeyZeroBranchAbsent,
+  ConstructedKeyAbsentInBranch,
+  ConstructedKeyUnsupportedLexicalForm,
+  ConstructedKeyNoGuardGroup,
+  ConstructedKeyBranchExceedsWindow,
+  ConstructedKeyGroupUnclosed,
+  megarac_ui_constructed_key_of_asset,
+  MegaRacUiConstructedKey,
   ui_asset_path_shape_refusal,
+  ui_ref_admission,
+  ui_resolved_refs,
+  ui_ref_diagnostic_line,
+  ui_page_diagnostic_lines,
+  ui_status_token_diagnostic_lines,
   ui_asset_refs_of_page,
   ui_page_shape_of,
   ui_page_shape_line,
@@ -77,6 +97,27 @@ import gunbc.machine_intake.mtcollins1_ui_status_asset_observation {
   ui_page_line,
   ui_page_reading_of,
   ui_receipt_text,
+  MegaRacUiCapturedText,
+  CapturedTextNotOwed,
+  CapturedTextWritten,
+  CapturedTextTooLarge,
+  CapturedTextMatchSecret,
+  CapturedTextNothingToCheckAgainst,
+  CapturedTextNotRenderable,
+  CapturedTextHexDoesNotRoundTrip,
+  CapturedTextDigestUnreadable,
+  FirstTextOctetNone,
+  FirstTextOctetControl1f,
+  FirstTextOctetByteOrderMark,
+  FirstTextOctetMarkup,
+  FirstTextOctetOther,
+  ui_first_text_octet_of,
+  ui_first_text_octet_text,
+  ui_octets_text,
+  ui_cookie_values_of_jar,
+  ui_captured_text_of,
+  ui_page_text_lines,
+  megarac_ui_page_text_limit,
   MegaRacUiRunOutcome,
 }
 
@@ -216,6 +257,8 @@ fn witness_page_transport(path: NonEmptyStr, status: Int, body: String, transpor
     why: "witness fixture page" as NonEmptyStr,
     asset_refs: ui_asset_refs_of_page(page_text: body),
     shape: ui_page_shape_of(body: body),
+    captured_text: CapturedTextNotOwed,
+    diagnostic_lines: [],
   }
 }
 
@@ -808,7 +851,7 @@ test fn w_a_page_body_carrying_a_cookie_and_token_leaves_nothing_of_them_in_the_
     "<html><head><script src=\"/js/redirection_status.js\"></script></head>",
     "<body data-cookie=\"SESSIONJARSENTINELdd8f\" data-xsrf=\"XSRFTOKENSENTINEL71ab\">ready</body></html>\n200")
   let http = ui_http_of(get_body: get_body, get_succeeded: true)
-  let reading = ui_page_reading_of(candidate: mtcollins1_ui_page_web_root, response: http)
+  let reading = ui_page_reading_of(candidate: mtcollins1_ui_page_web_root, response: http, session_values: [ui_octets_of("witness-session-value")])
   let outcome = MegaRacUiRunOutcome {
     lines: [ui_page_line(reading)],
     attempts: [],
@@ -1281,7 +1324,7 @@ test fn w_an_alphanumeric_credential_in_an_admissible_script_name_never_reaches_
   let risky_path = "/ui/session_token_aB3xQ7pZr0.js"
   let page_body = concat("<html><head><script src=\"", concat(risky_path, "\"></script></head><body>ready</body></html>\n200"))
   let http = ui_http_of(get_body: page_body, get_succeeded: true)
-  let reading = ui_page_reading_of(candidate: mtcollins1_ui_page_web_root, response: http)
+  let reading = ui_page_reading_of(candidate: mtcollins1_ui_page_web_root, response: http, session_values: [ui_octets_of("witness-session-value")])
   match ui_first_page_reading(readings: [reading], at: 0) {
     Absent => false
     Present { value: page } => match ui_asset_path_admission(path: risky_path, derived: page.asset_refs) {
@@ -1398,4 +1441,530 @@ test fn w_the_page_ladder_names_viewer_html_and_the_probe_bound_counts_one_read_
     string_contains(s: mtcollins1_ui_page_viewer_html.why as String, pattern: "37102391062") &&
     string_contains(s: mtcollins1_ui_page_index_html.why as String, pattern: "42219034455") &&
     (second_count(s: mtcollins1_ui_status_asset_probe_bound()) as Int) == (second_count(s: megarac_media_read_max_time) as Int) * (1 + count(mtcollins1_ui_page_candidates) + megarac_ui_asset_fetch_limit + 1)
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE BODY'S OWN OCTETS. A page that names no script is written whole (under the limit, after the
+// session-value check); every refusal writes nothing. The fixtures below are the discriminating set:
+// a round trip, the CSRF token and a cookie value each in a body (red) beside the same body without
+// them (positive control), the limit's two sides, no value to check against, and the script path.
+// ---------------------------------------------------------------------------------------------
+
+fn witness_body_reading(body: String, session_values: List<List<Int>>) -> MegaRacUiPageReading {
+  ui_page_reading_of(
+    candidate: mtcollins1_ui_page_web_root,
+    response: ui_http_of(get_body: concat(body, "\n200"), get_succeeded: true),
+    session_values: session_values,
+  )
+}
+
+fn witness_body_kind(o: MegaRacUiCapturedText) -> String {
+  match o {
+    CapturedTextNotOwed => "not_owed"
+    CapturedTextWritten { text_utf8_length: _, text_sha256: _, hex: _, hex_sha256: _, first_text_octet: _, replacement_characters: _ } => "written"
+    CapturedTextTooLarge { text_utf8_length: _, limit: _, text_sha256: _ } => "too_large"
+    CapturedTextMatchSecret => "match_secret"
+    CapturedTextNothingToCheckAgainst => "nothing_to_check"
+    CapturedTextNotRenderable { observed: _ } => "not_renderable"
+    CapturedTextHexDoesNotRoundTrip => "no_round_trip"
+    CapturedTextDigestUnreadable => "digest_unreadable"
+  }
+}
+
+fn witness_lines_text(reading: MegaRacUiPageReading) -> String {
+  join(map(ui_page_text_lines(reading: reading), l => l as String), "\n")
+}
+
+fn witness_session_values() -> List<List<Int>> {
+  [ui_octets_of("CSRFTOKENVALUE9z"), ui_octets_of("jarcookievalue42")]
+}
+
+fn base16_encode_lower_of_text(text: String) -> String {
+  match uint8_octets_of_ints(values: ui_octets_of(text)) {
+    QualifiedOctetsReady { value: q } => base16_encode_lower(octets: q)
+    QualifiedOctetsRefused { observed: _ } => ""
+  }
+}
+
+test fn w_the_written_text_decodes_back_to_the_captured_text_octets() -> Bool {
+  let body = "<html><body>\"login\"\n</body></html>"
+  let reading = witness_body_reading(body: body, session_values: witness_session_values())
+  match reading.captured_text {
+    CapturedTextWritten { text_utf8_length: n, text_sha256: _, hex: hex, hex_sha256: hex_digest, first_text_octet: first, replacement_characters: r } =>
+      match base16_decode_any(hex: hex) {
+        Absent => false
+        Present { value: decoded } =>
+          qualified_octet_members(q: decoded) == ui_octets_of(body) &&
+            byte_size_count(b: n) == count(ui_octets_of(body)) &&
+            r == 0 &&
+            ui_first_text_octet_text(first: first) == "markup_3c" &&
+            (match sha256_hex_digest(hex: sha256_hex_of_text(text: hex)) {
+              Absent => false
+              Present { value: recomputed } => recomputed == hex_digest
+            }) &&
+            string_contains(s: witness_lines_text(reading: reading), pattern: concat(" text_hex=", hex))
+      }
+    CapturedTextNotOwed => false
+    CapturedTextTooLarge { text_utf8_length: _, limit: _, text_sha256: _ } => false
+    CapturedTextMatchSecret => false
+    CapturedTextNothingToCheckAgainst => false
+    CapturedTextNotRenderable { observed: _ } => false
+    CapturedTextHexDoesNotRoundTrip => false
+    CapturedTextDigestUnreadable => false
+  }
+}
+
+test fn w_a_body_carrying_the_csrf_token_never_reaches_the_receipt() -> Bool {
+  let clean = "<html><body>static landing</body></html>"
+  let dirty = "<html><body>static landing CSRFTOKENVALUE9z</body></html>"
+  let control = witness_body_reading(body: clean, session_values: witness_session_values())
+  let red = witness_body_reading(body: dirty, session_values: witness_session_values())
+  let token_hex = base16_encode_lower_of_text(text: "CSRFTOKENVALUE9z")
+  witness_body_kind(o: control.captured_text) == "written" &&
+    witness_body_kind(o: red.captured_text) == "match_secret" &&
+    !string_contains(s: witness_lines_text(reading: red), pattern: "CSRFTOKENVALUE9z") &&
+    !string_contains(s: witness_lines_text(reading: red), pattern: token_hex) &&
+    !string_contains(s: witness_lines_text(reading: red), pattern: " text_hex=") &&
+    string_contains(s: witness_lines_text(reading: red), pattern: "refused=matches_session_value")
+}
+
+test fn w_a_body_carrying_a_cookie_value_never_reaches_the_receipt() -> Bool {
+  let red = witness_body_reading(body: "<html><body>x jarcookievalue42 y</body></html>", session_values: witness_session_values())
+  witness_body_kind(o: red.captured_text) == "match_secret" &&
+    !string_contains(s: witness_lines_text(reading: red), pattern: "jarcookievalue42") &&
+    !string_contains(s: witness_lines_text(reading: red), pattern: " text_hex=")
+}
+
+test fn w_the_body_limit_refuses_without_truncating_and_admits_the_boundary() -> Bool {
+  let at_limit = witness_body_reading(body: concat("<p>", witness_fill(n: 4093, acc: "")), session_values: witness_session_values())
+  let over = witness_body_reading(body: concat("<p>", witness_fill(n: 4094, acc: "")), session_values: witness_session_values())
+  witness_body_kind(o: at_limit.captured_text) == "written" &&
+    witness_body_kind(o: over.captured_text) == "too_large" &&
+    string_contains(s: witness_lines_text(reading: over), pattern: "refused=too_large text_utf8_length=4097 limit=4096") &&
+    !string_contains(s: witness_lines_text(reading: over), pattern: " text_hex=")
+}
+
+test fn w_no_session_value_to_check_against_writes_nothing() -> Bool {
+  let r = witness_body_reading(body: "<html><body>x</body></html>", session_values: [])
+  witness_body_kind(o: r.captured_text) == "nothing_to_check" &&
+    !string_contains(s: witness_lines_text(reading: r), pattern: " text_hex=")
+}
+
+test fn w_a_page_that_names_a_script_or_failed_owes_no_body_octets() -> Bool {
+  let scripted = witness_body_reading(body: "<html><script src=\"/ui/a.js\"></script></html>", session_values: witness_session_values())
+  let missing = ui_page_reading_of(
+    candidate: mtcollins1_ui_page_web_root,
+    response: ui_http_of(get_body: "<html>x</html>\n404", get_succeeded: false),
+    session_values: witness_session_values(),
+  )
+  witness_body_kind(o: scripted.captured_text) == "not_owed" &&
+    witness_body_kind(o: missing.captured_text) == "not_owed" &&
+    count(ui_page_text_lines(reading: scripted)) == 0 &&
+    count(ui_page_text_lines(reading: missing)) == 0
+}
+
+test fn w_the_cookie_jar_parser_reads_cookie_lines_and_skips_comments() -> Bool {
+  let valid_http = "#HttpOnly_192.168.1.228\tFALSE\t/\tFALSE\t0\tSID\thttponlyvalue1"
+  let valid_plain = "192.168.1.228\tFALSE\t/\tFALSE\t0\tOTHER\tplainvalue2"
+  let jar = concat("# Netscape HTTP Cookie File\n", concat(valid_http, concat("\n", concat(valid_plain, "\n# comment\n\n"))))
+  witness_jar_summary(jar: jar) == "httponlyvalue1,plainvalue2" &&
+    witness_jar_summary(jar: "") == ""
+}
+
+// FAIL CLOSED: a malformed row beside a valid one makes the jar refuse (Absent), and the reading built
+// from it writes no text. Positive control: the same valid row alone yields its value and a written text.
+test fn w_a_malformed_jar_row_beside_a_valid_one_writes_nothing() -> Bool {
+  let valid_plain = "192.168.1.228\tFALSE\t/\tFALSE\t0\tOTHER\tplainvalue2"
+  let bad = concat(valid_plain, "\nshort\tline\n")
+  let refused = witness_jar_values(jar: bad)
+  let session_values = match refused {
+    Absent => []
+    Present { value: values } => values
+  }
+  let reading = witness_body_reading(body: "<html><body>x</body></html>", session_values: session_values)
+  witness_jar_summary(jar: concat(valid_plain, "\n")) == "plainvalue2" &&
+    witness_jar_summary(jar: bad) == "REFUSED" &&
+    witness_body_kind(o: reading.captured_text) == "nothing_to_check" &&
+    !string_contains(s: witness_lines_text(reading: reading), pattern: " text_hex=")
+}
+
+fn witness_jar_values(jar: String) -> List<List<Int>>? {
+  ui_cookie_values_of_jar(jar_text: jar)
+}
+
+// The jar's values as one comma-joined String, or REFUSED: compared as a String because the seed cannot
+// admit == on an Optional<List<List<Int>>> literal.
+fn witness_jar_summary(jar: String) -> String {
+  match witness_jar_values(jar: jar) {
+    Absent => "REFUSED"
+    Present { value: values } => join(map(values, v => ui_octets_text(octets: v)), ",")
+  }
+}
+
+// The scans over a page or script are not recursive per octet: run 42383617138 died with
+// CallDepthExceeded { limit: 100000 } inside a decompressed script. 131072 octets (2^17) of "a", then
+// "xyz" twice, exceeds that limit; each scan still answers, and the answers are exact (the index of the
+// first needle, the byte index of a single target, two non-overlapping needles).
+fn witness_doubled(octets: List<Int>, times: Int) -> List<Int> {
+  if times <= 0 { octets } else { witness_doubled(concat(octets, octets), times - 1) }
+}
+
+test fn w_the_octet_scans_read_a_page_longer_than_the_call_depth() -> Bool {
+  let filler = witness_doubled([97], 17)
+  let hay = concat(concat(filler, [120, 121, 122]), concat([97, 97], [120, 121, 122]))
+  let total = count(hay)
+  count(filler) == 131072 &&
+    (match html_octets_index_from(hay, [120, 121, 122], 0) { Present { value: i } => i == 131072 Absent => false }) &&
+    (match html_octets_index_from(hay, [120, 121, 123], 0) { Present { value: _ } => false Absent => true }) &&
+    (match html_index_of_octet(hay, 122, 0) { Present { value: i } => i == 131074 Absent => false }) &&
+    html_octets_count_walk(hay, [120, 121, 122], 3, total, 0, 0, 0) == 2 &&
+    html_octets_count_walk(hay, [97, 97], 2, total, 0, 0, 0) == 65537
+}
+
+test fn w_the_first_octet_classes_are_distinguished() -> Bool {
+  witness_first_class(octets: []) == "none" &&
+    witness_first_class(octets: [31, 239, 191, 189]) == "control_1f_not_a_compression_verdict" &&
+    witness_first_class(octets: [239, 187, 191, 60]) == "byte_order_mark_efbbbf" &&
+    witness_first_class(octets: [60, 104]) == "markup_3c" &&
+    witness_first_class(octets: [123]) == "other"
+}
+
+fn witness_first_class(octets: List<Int>) -> String {
+  ui_first_text_octet_text(first: ui_first_text_octet_of(octets: octets))
+}
+
+// The receipt names its basis: every captured-text line says the wire bytes are not established, and
+// no line offers a compression verdict (a 0x1f lead is a control octet of the TEXT, nothing more).
+test fn w_the_captured_text_lines_state_that_wire_bytes_are_not_established() -> Bool {
+  let written = witness_body_reading(body: "<html><body>x</body></html>", session_values: witness_session_values())
+  let refused = witness_body_reading(body: "<p>CSRFTOKENVALUE9z</p>", session_values: witness_session_values())
+  let too_large = witness_body_reading(body: concat("<p>", witness_fill(n: 4094, acc: "")), session_values: witness_session_values())
+  string_contains(s: witness_lines_text(reading: written), pattern: "wire_bytes=not_established") &&
+    string_contains(s: witness_lines_text(reading: too_large), pattern: "wire_bytes=not_established") &&
+    string_contains(s: witness_lines_text(reading: refused), pattern: "wire_bytes=not_established") &&
+    !string_contains(s: witness_lines_text(reading: written), pattern: "gzip") &&
+    string_contains(s: join([ui_page_shape_line(reading: written) as String], ""), pattern: "basis=captured_text_utf8")
+}
+
+// The jar layout is curl's, modeled in extdeps.tools.curl: the HttpOnly prefix is a typed flag and not
+// part of the domain, flags and expiry are typed, and a bad row is located by its 1-based row among the
+// cookie rows (comments and blanks do not count). A flag that is neither TRUE nor FALSE is malformed.
+test fn w_the_curl_cookie_jar_model_types_the_row_and_locates_a_bad_one() -> Bool {
+  let http_only_row = "#HttpOnly_192.168.1.228\tFALSE\t/\tTRUE\t1700000000\tSID\tabc"
+  let plain_row = "192.168.1.228\tTRUE\t/x\tFALSE\t0\tOTHER\tdef"
+  let parsed = match curl_cookie_jar_read(jar_text: concat("# c\n", concat(http_only_row, concat("\n\n", plain_row)))) {
+    CurlCookieJarParsed { rows: rows } =>
+      count(rows) == 2 &&
+        witness_first_row_is_http_only(rows: rows) &&
+        count(rows |> filter(r => !r.http_only && r.include_subdomains && r.path == "/x" && r.expiry_epoch_seconds == 0 && r.name == "OTHER" && r.value == "def")) == 1
+    CurlCookieJarMalformedRow { row_number: _, cause: _ } => false
+  }
+  let located = match curl_cookie_jar_read(jar_text: concat(plain_row, "\nshort\tline")) {
+    CurlCookieJarParsed { rows: _ } => false
+    CurlCookieJarMalformedRow { row_number: n, cause: _ } => n == 2
+  }
+  let bad_flag = match curl_cookie_jar_read(jar_text: "192.168.1.228\tMAYBE\t/\tFALSE\t0\tN\tv") {
+    CurlCookieJarParsed { rows: _ } => false
+    CurlCookieJarMalformedRow { row_number: n, cause: _ } => n == 1
+  }
+  parsed && located && bad_flag
+}
+
+fn witness_first_row_is_http_only(rows: List<CurlCookieJarRow>) -> Bool {
+  count(rows |> filter(r => r.http_only && r.domain == "192.168.1.228" && r.secure && r.expiry_epoch_seconds == 1700000000 && r.name == "SID" && r.value == "abc")) == 1
+}
+
+// ---------------------------------------------------------------------------------------------
+// REFERENCE RESOLUTION (RFC 3986 section 5.2, extdeps.uri_reference) AND THE DIAGNOSTIC LINES
+// ---------------------------------------------------------------------------------------------
+
+fn witness_resolved(base: String, raw: String) -> String {
+  match uri_resolve_path_reference(base_path: base, reference: raw) {
+    ResolvedPathReference { path: path } => path
+    EmptyPathReference => "empty"
+    PathReferenceCarriesQueryOrFragment => "query_or_fragment"
+    PathReferenceCarriesSchemeOrAuthority => "scheme_or_authority"
+  }
+}
+
+fn witness_admitted_path(base: String, raw: String, derived: List<NonEmptyStr>) -> String {
+  match ui_ref_admission(base_path: base, raw: raw, derived: derived) {
+    AdmittedUiAssetPath { path: path } => path as String
+    RefusedUiAssetPath { path: _, cause: _ } => "refused"
+  }
+}
+
+// RFC 3986 section 5.4.1's normal examples against its own base "/b/c/d;p", and 5.2.4's two worked
+// remove_dot_segments inputs.
+test fn w_the_resolver_reproduces_the_rfc_3986_worked_examples() -> Bool {
+  witness_resolved("/b/c/d;p", "g") == "/b/c/g" &&
+    witness_resolved("/b/c/d;p", "./g") == "/b/c/g" &&
+    witness_resolved("/b/c/d;p", "g/") == "/b/c/g/" &&
+    witness_resolved("/b/c/d;p", "../g") == "/b/g" &&
+    witness_resolved("/b/c/d;p", "../..") == "/" &&
+    witness_resolved("/b/c/d;p", "../../g") == "/g" &&
+    witness_resolved("/b/c/d;p", "/g") == "/g" &&
+    uri_remove_dot_segments("/a/b/c/./../../g") == "/a/g" &&
+    uri_remove_dot_segments("/mid/content=5/../6") == "/mid/6"
+}
+
+test fn w_a_parent_reference_clamps_at_the_root_instead_of_leaving_it() -> Bool {
+  witness_resolved("/", "../x.js") == "/x.js" &&
+    witness_resolved("/a/b/c.html", "../../../../x.js") == "/x.js" &&
+    witness_resolved("/", "./a/../b.js") == "/b.js"
+}
+
+test fn w_a_page_relative_reference_resolves_against_the_pages_own_path_and_is_admitted() -> Bool {
+  witness_admitted_path("/", "js/x.js", ["/js/x.js" as NonEmptyStr]) == "/js/x.js" &&
+    witness_admitted_path("/index.html", "js/x.js", ["/js/x.js" as NonEmptyStr]) == "/js/x.js" &&
+    witness_admitted_path("/ui/page.html", "js/x.js", ["/ui/js/x.js" as NonEmptyStr]) == "/ui/js/x.js" &&
+    witness_admitted_path("/", "../x.js", ["/x.js" as NonEmptyStr]) == "/x.js"
+}
+
+test fn w_a_reference_naming_another_origin_a_query_or_nothing_still_refuses() -> Bool {
+  witness_admitted_path("/", "https://attacker.example/x.js", ["/x.js" as NonEmptyStr]) == "refused" &&
+    witness_admitted_path("/", "//attacker.example/x.js", ["/x.js" as NonEmptyStr]) == "refused" &&
+    witness_admitted_path("/", "js/x.js?v=1", ["/js/x.js" as NonEmptyStr]) == "refused" &&
+    witness_admitted_path("/", "", ["/x.js" as NonEmptyStr]) == "refused" &&
+    witness_resolved("/", "https://attacker.example/x.js") == "scheme_or_authority" &&
+    witness_resolved("/", "js/x.js#a") == "query_or_fragment"
+}
+
+// A reference that resolves is still admitted only if the page named it: the membership check judges the
+// RESOLVED path, so an invented page-relative reference is refused as before.
+test fn w_a_resolved_path_the_page_did_not_name_is_refused() -> Bool {
+  witness_admitted_path("/", "js/x.js", ["/js/other.js" as NonEmptyStr]) == "refused" &&
+    witness_admitted_path("/", "js/x.js", []) == "refused"
+}
+
+test fn w_the_derived_set_holds_the_resolved_paths_and_drops_the_unresolvable() -> Bool {
+  join(ui_resolved_refs(base_path: "/", refs: ["js/x.js" as NonEmptyStr, "https://e.example/x.js" as NonEmptyStr, "../y.js" as NonEmptyStr]) |> map(p => p as String), ",") == "/js/x.js,/y.js"
+}
+
+test fn w_a_ref_line_prints_the_raw_text_and_the_resolved_path() -> Bool {
+  let line = ui_ref_diagnostic_line(index: 2, raw: "js/x.js", base_path: "/", session_values: witness_session_values()) as String
+  string_contains(s: line, pattern: "ref index=2 raw=js/x.js resolved=/js/x.js")
+}
+
+test fn w_a_ref_carrying_a_session_value_is_withheld_not_printed() -> Bool {
+  let raw = "js/CSRFTOKENVALUE9z.js"
+  let line = ui_ref_diagnostic_line(index: 0, raw: raw, base_path: "/", session_values: witness_session_values()) as String
+  let nothing = ui_ref_diagnostic_line(index: 0, raw: "js/x.js", base_path: "/", session_values: []) as String
+  !string_contains(s: line, pattern: "CSRFTOKENVALUE9z") &&
+    string_contains(s: line, pattern: "raw=withheld_matches_session_value") &&
+    string_contains(s: line, pattern: "resolved=withheld_matches_session_value") &&
+    string_contains(s: nothing, pattern: "raw=withheld_nothing_to_check_against")
+}
+
+test fn w_the_data_main_value_is_printed_beside_the_refs() -> Bool {
+  let page = "<script data-main=\"app/main\" src=\"lib/require.js\"></script>"
+  let lines = ui_page_diagnostic_lines(path: "/", page_text: page, refs: ui_asset_refs_of_page(page_text: page), session_values: witness_session_values()) |> map(l => l as String)
+  count(lines |> filter(l => l == "data_main index=0 value=app/main")) == 1 &&
+    count(lines |> filter(l => l == "ref index=0 raw=lib/require.js resolved=/lib/require.js")) == 1
+}
+
+test fn w_the_status_token_lines_count_both_spellings_and_window_every_occurrence_to_the_limit() -> Bool {
+  let asset = "x.redirection_status;redirection_status;a.redirection_status;redirection_status;.redirection_status"
+  let lines = ui_status_token_diagnostic_lines(asset_text: asset, session_values: witness_session_values()) |> map(l => l as String)
+  let joined = join(lines, "\n")
+  string_contains(s: joined, pattern: "dotted=3 bare=5") &&
+    string_contains(s: joined, pattern: "status_window index=0 at=2 from=0 hex=") &&
+    string_contains(s: joined, pattern: "status_window index=4 at=") &&
+    !string_contains(s: joined, pattern: "status_window index=5") &&
+    string_contains(s: joined, pattern: base16_encode_lower_of_text(asset))
+}
+
+test fn w_the_probes_report_the_zero_branch_and_the_label_call_with_trailing_context() -> Bool {
+  let asset = join(["var r=this.model.get(\"redirection_status\"),l=!1;\"0\"==r&&(l=!0,this.$(\".x\").html(a.t(\"lmedia:KEYNAME\")))", witness_x(300)], "")
+  let joined = join(ui_status_token_diagnostic_lines(asset_text: asset, session_values: witness_session_values()) |> map(l => l as String), "\n")
+  string_contains(s: joined, pattern: "probe name=zero_branch count=1") &&
+    string_contains(s: joined, pattern: "probe name=label_key_call count=1") &&
+    string_contains(s: joined, pattern: "probe name=locales_path count=0") &&
+    string_contains(s: joined, pattern: "probe_window name=zero_branch index=0 at=") &&
+    string_contains(s: joined, pattern: base16_encode_lower_of_text("lmedia:KEYNAME"))
+}
+
+test fn w_a_status_window_holding_a_session_value_is_withheld() -> Bool {
+  let asset = "x.redirection_status=jarcookievalue42;"
+  let joined = join(ui_status_token_diagnostic_lines(asset_text: asset, session_values: witness_session_values()) |> map(l => l as String), "\n")
+  string_contains(s: joined, pattern: "status_window index=0 at=2 withheld_asset_holds_session_value") &&
+    !string_contains(s: joined, pattern: base16_encode_lower_of_text("jarcookievalue42"))
+}
+
+fn witness_x(n: Int) -> String {
+  witness_x_walk(n, "")
+}
+
+fn witness_x_walk(n: Int, acc: String) -> String {
+  if n <= 0 { acc } else { witness_x_walk(n - 1, concat(acc, "x")) }
+}
+
+// A value straddling a window edge: each window alone holds only a piece, so a per-window check passes
+// both. The whole-asset check withholds every window.
+test fn w_a_session_value_straddling_a_window_edge_withholds_every_window() -> Bool {
+  let asset = join(["redirection_status", witness_x(252), "jarcookievalue42", witness_x(244), "redirection_status"], "")
+  let joined = join(ui_status_token_diagnostic_lines(asset_text: asset, session_values: witness_session_values()) |> map(l => l as String), "\n")
+  !string_contains(s: joined, pattern: " hex=") &&
+    string_contains(s: joined, pattern: "status_window index=1 at=530 withheld_asset_holds_session_value") &&
+    !string_contains(s: joined, pattern: base16_encode_lower_of_text("jarc")) &&
+    !string_contains(s: joined, pattern: base16_encode_lower_of_text("ookievalue42"))
+}
+
+test fn w_a_session_value_straddling_a_window_edge_is_withheld() -> Bool {
+  let before = join(["redirection_status", witness_x(100), "CSRFTOKENVALUE9z", witness_x(100), "redirection_status"], "")
+  let after = join(["redirection_status", witness_x(300), "CSRFTOKENVALUE9z", "redirection_status"], "")
+  let lines_before = join(ui_status_token_diagnostic_lines(asset_text: before, session_values: witness_session_values()) |> map(l => l as String), "\n")
+  let lines_after = join(ui_status_token_diagnostic_lines(asset_text: after, session_values: witness_session_values()) |> map(l => l as String), "\n")
+  !string_contains(s: lines_before, pattern: " hex=") && !string_contains(s: lines_after, pattern: " hex=")
+}
+
+// The host-native search against the per-needle octet walks: overlap, empty, absent, a hit at 0 and at the end, and a
+// multi-octet character before the hits (offsets are UTF-8 octets, not code points).
+test fn w_the_native_search_equals_the_octet_fold_oracle() -> Bool {
+  let texts = ["redirection_status;aaaa;é.redirection_status;redirection_status", "aaaaa", "xx"]
+  let needles = [ui_octets_of(".redirection_status"), ui_octets_of("redirection_status"), ui_octets_of("aa"), [], ui_octets_of("absent")]
+  all(texts, t => {
+    let hay = ui_octets_of(t)
+    all(needles, n => {
+      let native = ui_text_needle_scan(text: t, needle: n, limit: 2)
+      native.count == html_octets_count_walk(hay, n, count(n), count(hay), 0, 0, 0) &&
+        native.starts == html_octets_first_starts(hay, n, 2)
+    })
+  })
+}
+
+// The observed shape (receipt 42492171400): status 0's key is built by concatenation. The fixture puts a
+// multi-octet character before the branch so the offsets are shown to be octets, and a literal-looking
+// decoy key in the NEXT branch that must not be bound.
+data witness_constructed_asset: String = "é;x=1,\"1\"==r&&(l=!0,a.t(\"lmedia:started\")),\"0\"==r&&(l=!0,this.$(\".s\").html(a.t(\"lmedia:status_\"+r))),\"100\"==r&&(a.t(\"lmedia:status_\"+r))"
+
+test fn w_the_constructed_status_zero_key_is_found_with_octet_offsets() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: witness_constructed_asset, asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: _ } => false
+    ConstructedKeyCandidate { asset_path: _, asset_sha256: _, marker_offset: branch, key_prefix_offset: key, key_prefix_text: prefix, operand_text: operand, candidate_span_length: _, marker_context: _ } =>
+      branch == 44 && key == 81 && prefix as String == "lmedia:status_" && operand as String == "r" &&
+        slice_text_at(witness_constructed_asset, key, 14) == "lmedia:status_"
+  }
+}
+
+test fn w_a_branch_without_the_constructed_call_is_refused_not_bound_to_the_next_branch() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==r&&(l=!0,a.t(\"lmedia:started\")),\"100\"==r&&(a.t(\"lmedia:status_\"+r))", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyAbsentInBranch { marker_offset: at } } => at == 2
+    _ => false
+  }
+}
+
+test fn w_an_asset_without_the_zero_branch_is_refused() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "nothing here", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyZeroBranchAbsent } => true
+    _ => false
+  }
+}
+
+test fn w_a_call_in_a_later_comparison_is_not_the_zero_branch() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==r&&(l=!0,a.t(\"lmedia:started\")),1==r&&(a.t(\"lmedia:status_\"+r))", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyAbsentInBranch { marker_offset: _ } } => true
+    _ => false
+  }
+}
+
+test fn w_a_call_after_a_string_comparison_is_not_the_zero_branch() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==r&&(l=!0),r==\"1\"&&(a.t(\"lmedia:status_\"+r))", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyAbsentInBranch { marker_offset: _ } } => true
+    _ => false
+  }
+}
+
+test fn w_a_call_in_a_separate_statement_is_not_the_zero_branch() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==r&&(l=!0);a.t(\"lmedia:status_\"+r)", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyAbsentInBranch { marker_offset: _ } } => true
+    _ => false
+  }
+}
+
+test fn w_a_longer_identifier_is_not_the_zero_marker() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==result&&(a.t(\"lmedia:status_\"+r))", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyNoGuardGroup { marker_offset: _ } } => true
+    _ => false
+  }
+}
+
+test fn w_a_regex_literal_in_the_zero_branch_is_an_unsupported_form() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==r&&(/[(]/.test(s)),1==r&&(a.t(\"lmedia:status_\"+r))", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyUnsupportedLexicalForm { marker_offset: _ } } => true
+    _ => false
+  }
+}
+
+test fn w_a_comment_in_the_zero_branch_is_an_unsupported_form() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==r&&(l=!0/*x*/)", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyUnsupportedLexicalForm { marker_offset: _ } } => true
+    _ => false
+  }
+}
+
+test fn w_call_shaped_text_inside_a_string_is_not_a_call() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==r&&(s='a.t(\"lmedia:status_\"+r)')", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyAbsentInBranch { marker_offset: _ } } => true
+    _ => false
+  }
+}
+
+data witness_long_branch_text: String = "x,\"0\"==r&&(pppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp,a.t(\"lmedia:status_\"+r))"
+
+test fn w_a_branch_longer_than_the_window_is_not_reported_as_call_absent() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: witness_long_branch_text, asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyBranchExceedsWindow { marker_offset: _, window_limit: limit } } => limit == 400
+    _ => false
+  }
+}
+
+test fn w_an_unterminated_group_at_the_end_of_the_asset_is_unclosed() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==r&&(a.t(\"lmedia:status_\"+r)", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyGroupUnclosed { marker_offset: _ } } => true
+    _ => false
+  }
+}
+
+test fn w_a_marker_inside_a_string_literal_is_only_a_candidate() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,s='\"0\"==r&&(a.t(\"lmedia:status_\"+r))'", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyCandidate { asset_path: _, asset_sha256: _, marker_offset: _, key_prefix_offset: _, key_prefix_text: _, operand_text: _, candidate_span_length: _, marker_context: MarkerContextNotEstablished } => true
+    _ => false
+  }
+}
+
+test fn w_a_marker_inside_a_comment_is_only_a_candidate() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,/*\"0\"==r&&(a.t(\"lmedia:status_\"+r))*/", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyCandidate { asset_path: _, asset_sha256: _, marker_offset: _, key_prefix_offset: _, key_prefix_text: _, operand_text: _, candidate_span_length: _, marker_context: MarkerContextNotEstablished } => true
+    _ => false
+  }
+}
+
+fn slice_text_at(text: String, octet_offset: Int, n: Int) -> String {
+  ui_octets_text(ui_octets_slice(ui_octets_of(text), octet_offset, n))
+}
+
+fn witness_text_doubled(text: String, times: Int) -> String {
+  if times <= 0 { text } else { witness_text_doubled(concat(text, text), times - 1) }
+}
+
+// A 3 MiB asset through the real diagnostics: the run that timed out (42460112450) held a 3.18 MB asset.
+test fn w_the_diagnostics_read_a_three_mebibyte_asset() -> Bool {
+  let asset = join([witness_text_doubled("a", 21), witness_text_doubled("a", 20), "redirection_status"], "")
+  let joined = join(ui_status_token_diagnostic_lines(asset_text: asset, session_values: witness_session_values()) |> map(l => l as String), "\n")
+  string_contains(s: joined, pattern: "asset_octets=3145746 dotted=0 bare=1") &&
+    string_contains(s: joined, pattern: "status_window index=0 at=3145728 from=")
+}
+
+// Minified-JS-looking text, so the octets the probes start with ('l', 'i', 'a', 'r', '"') are common, as in the
+// served bundle; an all-'a' filler takes the cheapest path and proves only completion.
+data witness_js_block: String = "var a=this.model.get(\"x\"),l=i18n.load(\"locales/en\"),r=a.length;if(r>0&&\"1\"==r)\{this.$(\".t\").html(a.t(\"lmedia:started\"))}else\{loadPath:resGetPath}return l;"
+
+test fn w_the_diagnostics_read_two_and_a_half_mebibytes_of_js_shaped_text() -> Bool {
+  let asset = join([witness_text_doubled(witness_js_block, 14), "var r=this.model.get(\"redirection_status\"),l=!1;\"0\"==r&&(l=!0,a.t(\"lmedia:KEYNAME\"))"], "")
+  let joined = join(ui_status_token_diagnostic_lines(asset_text: asset, session_values: witness_session_values()) |> map(l => l as String), "\n")
+  string_contains(s: joined, pattern: "probe name=zero_branch count=1") &&
+    string_contains(s: joined, pattern: "probe name=load_path count=16384") &&
+    string_contains(s: joined, pattern: "probe name=label_key_call count=16385") &&
+    string_contains(s: joined, pattern: "bare=1")
 }

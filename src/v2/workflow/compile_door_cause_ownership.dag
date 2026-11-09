@@ -14,7 +14,7 @@ import v2.std.integer { Int }
 // native compiler (the required-v2-native lane's admission), whose entry is v2.compiler.compile
 // itself: importing the ledger there would have been a cycle, and carrying the ledger's closure
 // would have made the emitted crate the whole corpus. Ownership is one fact with two readers, so
-// the fact moves to a module both can import (DESIGN section 3: a fact's home is its LAYER, not
+// the fact moves to a module both can import (gunbc.design_argument::single_authority: a fact's home is its LAYER, not
 // its file) rather than being forked. The ledger imports this.
 
 // ONE OWNERSHIP AUTHORITY, KEYED BY CAUSE (advisories steps 3+4). A rejection is a LIST whose
@@ -117,7 +117,7 @@ data known_frontier_causes: List<CauseOwnership> = [
   CauseOwnership {
     cause: ^service_realization_argv_refused,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "a shell argv that is empty, not a list, whose executable is not a literal, or that binds an undeclared input refuses at the argv node (v2.compiler.service_realization shell_argv_refusal). Wall over authored input; flips only if that shape becomes unwritable"
+    flip_trigger: "a shell argv that is empty, not a list, malformed, or that binds an undeclared input refuses the service at the argv node (v2.compiler.service_realization shell_argv_refusal). A non-literal executable and an unsupported argv expression are NOT this cause: they are operation-grain (std.operation_argv argv_refusal_cause_grain), lower as an unrealizable marker entry and refuse at each call (infer_reason_service_operation_unrealizable). Wall over authored input; flips only if that shape becomes unwritable"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_service_member_unread,
@@ -127,7 +127,7 @@ data known_frontier_causes: List<CauseOwnership> = [
   CauseOwnership {
     cause: ^body_lowering_reason_resource_capability_realization_unconsumed,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "a resource capability that authored realization facts (transport, config, exit, response, mock, from) refuses at the capability (v2.compiler.body_lowering_fold body_lower_resource_with_capability). A resource is not a service (DESIGN section 3); those facts have no resource carrier. Flips when a resource capability has its own realization sibling, or the grammar cannot write those members on a capability"
+    flip_trigger: "a resource capability that authored realization facts (transport, config, exit, response, mock, from) refuses at the capability (v2.compiler.body_lowering_fold body_lower_resource_with_capability). A resource is not a service (gunbc.design_argument::single_authority); those facts have no resource carrier. Flips when a resource capability has its own realization sibling, or the grammar cannot write those members on a capability"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_unrecognised_lowered_shape,
@@ -298,7 +298,7 @@ data known_frontier_causes: List<CauseOwnership> = [
   CauseOwnership {
     cause: ^resolve_anonymous_map_key_kind_mismatch,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "a map literal whose declared key type K is not the type a string literal denotes (the unbound kernel String, v2.extdeps.languages.dag dag_kernel_string_type_spelling), so a literal key would cross into K with no declared route (DESIGN section 4). Refused at the first key; flips when K is the kernel String or a declared unfold route is written"
+    flip_trigger: "a map literal whose declared key type K is not the type a string literal denotes (the unbound kernel String, v2.extdeps.languages.dag dag_kernel_string_type_spelling), so a literal key would cross into K with no declared route (gunbc.design_argument::closed_grounded_substrate). Refused at the first key; flips when K is the kernel String or a declared unfold route is written"
   },
   CauseOwnership {
     cause: ^resolve_anonymous_map_key_text_unavailable,
@@ -308,7 +308,7 @@ data known_frontier_causes: List<CauseOwnership> = [
   CauseOwnership {
     cause: ^resolve_anonymous_map_entry_malformed,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "a map literal pair that does not carry both its key and its value field, refused at the pair by v2.compiler.resolve's map arm rather than substituting a node for the missing field (DESIGN 5). Body lowering always writes both, so this names a lowering defect if it ever fires; not a frontier, and expected to stay at zero"
+    flip_trigger: "a map literal pair that does not carry both its key and its value field, refused at the pair by v2.compiler.resolve's map arm rather than substituting a node for the missing field (gunbc.design_argument::fail_closed). Body lowering always writes both, so this names a lowering defect if it ever fires; not a frontier, and expected to stay at zero"
   },
   CauseOwnership {
     cause: ^resolve_anonymous_map_duplicate_key,
@@ -395,7 +395,7 @@ fn cause_ownership_lookup(cause: Symbol) -> Optional<CauseOwnership> {
 
 // A CAUSE WHOSE GROWTH IS A CORRECTNESS FLIP, DECLARED BY ITS OWNER. Some causes grow the refused
 // population because the change that introduced them made a silent wrong acceptance refuse at a
-// located site (DESIGN section 5): the identities were never correct, they were only accepted. The
+// located site (gunbc.design_argument::fail_closed): the identities were never correct, they were only accepted. The
 // native frontier ratchet (v2.workflow.native_frontier_ratchet) reads a new refusal under such a cause as
 // owned baseline debt rather than as a frontier loss, and it reads nothing else that way.
 //

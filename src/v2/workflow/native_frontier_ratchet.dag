@@ -219,7 +219,7 @@ fn native_frontier_row_advanced(
 
 // AN ADDED IDENTITY WHOSE DEBT IS AN OWNED CORRECTNESS FLIP. The roster is closed to growth, and
 // this is the one way it grows: a change made a silently wrong acceptance refuse at a located site
-// (DESIGN section 5), so the identity was never correct, only accepted. Reading that as a frontier
+// (gunbc.design_argument::fail_closed), so the identity was never correct, only accepted. Reading that as a frontier
 // loss would punish the correction and invite reverting it. So an added identity (agreed at the
 // mint and refusing now, or new to the universe and refusing) is admitted when, and only when, the
 // cause it refused with has a fatal-grain row in v2.workflow.compile_door_cause_ownership

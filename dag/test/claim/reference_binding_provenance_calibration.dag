@@ -366,7 +366,7 @@ test fn a_production_refused_twin_yields_refused_or_incomplete() -> Bool {
 // THE AXIS-DEGENERACY REDS, AUTHORABLE ONLY BECAUSE THE AXES ARE PARAMETERS. Every one of these
 // three states was UNREPRESENTABLE while `traversal_is_complete` read the module-level axis lists
 // directly: a fixture had no way to hand it a short, empty, or colliding axis, so the conjuncts
-// guarding them could never be shown to bite. DESIGN section 4b says to ask whether a check's RED
+// guarding them could never be shown to bite. gunbc.design_argument::guarantee_ladder says to ask whether a check's RED
 // is authorable before writing the check, and to ask it at the FIXTURE boundary rather than the
 // accepted corpus -- these are that question answered by execution.
 

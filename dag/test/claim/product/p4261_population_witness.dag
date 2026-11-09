@@ -341,7 +341,7 @@ test fn a_component_is_bound_only_to_its_own_boards_revision() -> Bool {
   // at 191 parts. A DesignatorReading is a sighting of printed text; an InstalledComponent is an observation
   // of a body. Binding the two is what admit_correspondence does, so it must refuse the readings whose
   // part this board has never been shown -- giving such a row an InstalledComponent would assert an
-  // installation nobody observed (DESIGN §4d). The numbers are pinned, not derived from the code under test:
+  // installation nobody observed (gunbc.design_argument::epistemic_humility). The numbers are pinned, not derived from the code under test:
   // if a future edit starts binding unobserved parts, this claim goes red rather than following along.
   // The 2026-11-03 body sightings move exactly 66 of them from refused to admitted, so 191 + 66 = 257 and
   // 71 - 66 = 5 -- until the 2026-11-04 C3_F1 correction deleted that position's DesignatorReading, which
@@ -356,7 +356,9 @@ test fn a_component_is_bound_only_to_its_own_boards_revision() -> Bool {
   // whose bodies were never resolved to anything. All five are held as UnresolvedPart rows in
   // product.p4261.e1_b with an obligation naming what would settle them, so a refusal never deletes a
   // reading -- see what_was_refused_is_held_with_an_obligation in p4261_atlas_pass_witness.
-  count(e1.admitted) == 256 && count(e1.refused) == 5 && all(e1.refused, r => refused_as(r: r, want: 4))
+  // The U483/Y360 follow-up adds two DesignatorReadings (sd004) for positions whose parts this board has never
+  // been shown an InstalledComponent for, so both are refused as unobserved: refused + 2, admitted unchanged.
+  count(e1.admitted) == 257 && count(e1.refused) == 6 && all(e1.refused, r => refused_as(r: r, want: 4))
     && count(k1.refused) == 0 && count(k1.admitted) == count(p4261_k1_layout.designator_readings)
     && count(foreign.admitted) == 0 && count(foreign.refused) == 1 && all(foreign.refused, r => refused_as(r: r, want: 0))
     && count(not_seen.admitted) == 0 && count(not_seen.refused) == 1 && all(not_seen.refused, r => refused_as(r: r, want: 4))

@@ -11,7 +11,7 @@ import std.types { Bool }
 // options. Measured on the production compile-and-run path on 2026-08-11, it is false: a
 // `Point3<RoomFrame>` and a `Point3<BuildingFrame>` flowed through `displacement_between3` and the
 // program compiled clean and returned 9. Not a refusal, not a crash - a plausible number for a
-// question with no answer, precisely the fabricated output DESIGN 5 forbids.
+// question with no answer, precisely the fabricated output gunbc.design_argument::fail_closed forbids.
 //
 // The cause is a v1 seed limitation, not a modelling slip. `v1.compiler.infer`'s argument-position
 // judge compares nominal HEAD NAMES; applied type arguments live in the type node's children and
@@ -29,7 +29,7 @@ import std.types { Bool }
 // operation compares the identities its operands carry and returns a typed mismatch refusal -
 // which survives a lying return annotation, because the value still says where it came from.
 //
-// WHY NOT KEEP THE PHANTOM TOO. Two authorities for one fact is the DESIGN 3 violation whichever
+// WHY NOT KEEP THE PHANTOM TOO. Two authorities for one fact is the gunbc.design_argument::single_authority violation whichever
 // is right, and the weaker here is the one the compiler cannot enforce end-to-end. A phantom
 // retained beside an authoritative carried identity invites exactly the reading that just cost a
 // merged PR its central claim: that the type parameter is doing work. It is removed, not demoted.
@@ -39,7 +39,7 @@ import std.types { Bool }
 //
 // IDENTITY IS MINTED AND DECLARATION-OWNED, never derived from a name, a path, or the frame's
 // contents, following the ruling recorded for `gunbc.host.host_resource` `HostResourceIdentity`: a
-// content-derived key makes two coincidentally-identical frames one frame, the heuristic DESIGN 4
+// content-derived key makes two coincidentally-identical frames one frame, the heuristic gunbc.design_argument::closed_grounded_substrate
 // rules unnecessary in a closed system. A frame's human-facing name is a display fact belonging on
 // whatever registers frames; it is deliberately absent here so it cannot be mistaken for identity.
 type CoordinateFrameIdentity {

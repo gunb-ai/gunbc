@@ -89,7 +89,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // thousands. The figure is not written here: census_for_paths below re-derives it on the host that
 // asks, and population_for_root re-derives the denominator, which is what a reader needs rather
 // than a digit that decays. That is not a scheduling inconvenience to be waited out; it is the same
-// displaced cost DESIGN section 1 prices, and it is why the lens has stood roster-bound rather than
+// displaced cost gunbc.design_argument::goal_safe_efficient_predictable prices, and it is why the lens has stood roster-bound rather than
 // corpus-bound since it was written.
 //
 // SO THIS FILE DECLARES NO WITNESS, AND THAT IS THE POINT RATHER THAN AN OMISSION. It was first
@@ -98,7 +98,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // floor refused both times, correctly. A CHANGED witness is admitted to the required floor
 // regardless of any exclusion (cause=ChangedWitnessOutsidePreparedSubject, run 34018018622), which
 // is exactly right: an exclusion that a new witness could opt into on the change that introduces it
-// would be the escape hatch DESIGN section 5 forbids. A corpus-priced assertion therefore cannot be
+// would be the escape hatch gunbc.design_argument::fail_closed forbids. A corpus-priced assertion therefore cannot be
 // authored as a witness at all, and pretending otherwise buys a roster row that never runs. What
 // lives here are entry points, run by a person, whose output belongs in a run.
 //
@@ -152,7 +152,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 //
 // THE NEXT-RUNG TRIGGER FOR THIS CLASS, AND WHAT IT MUST BE SUFFICIENT FOR. Enrolled in nothing is
 // the honest standing for these entry points today, and it is also the standing that rots without a
-// red ever appearing, so DESIGN section 4b's second meta-obligation applies: this is can-climb-
+// red ever appearing, so gunbc.design_argument::guarantee_ladder's second meta-obligation applies: this is can-climb-
 // after-one-grounding, not cannot-climb, and the grounding is named here rather than left as "when
 // someone runs it".
 //
@@ -195,7 +195,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // discovers. What is NOT claimed is that the tracked corpus is free of copied accumulators. Reading
 // the absence of a red here as that verdict is the specific misreading this row exists to refuse.
 
-// THE THREE INSTRUMENTS BELOW ARE ENTRY POINTS, NOT RESULTS. DESIGN section 6 asks that a
+// THE THREE INSTRUMENTS BELOW ARE ENTRY POINTS, NOT RESULTS. gunbc.design_argument::how_to_work asks that a
 // measurement be cited by naming the producer that re-derives it. population_for_root answers how
 // many subjects a root contributes; census_for_root and census_for_paths answer what the lens finds
 // over a discovered root and over an explicit subject list respectively. Their output belongs in a
@@ -308,7 +308,7 @@ fn corpus_subtree_gate_reports_its_unreadable_population() -> Bool {
 // The consequence is the lane's shape. The copied-accumulator walker wants exactly this production
 // tree -- it reads the grammar captures -- so it runs on real modules today. The budget gate's
 // subjects are semantic Arrows, so feeding it a real module needs resolve / infer / fold_lowering,
-// which is the compile-graph capability gunbc.plans.structural_quadratic_wall_coverage_audit names
+// which is the compile-graph capability gunbc.plans.structural_quadratic_wall_coverage_audit (deleted 2026-11-08) names
 // as the blocker. That blocker is real for the asymptotic path and is NOT a blocker for the shape
 // detector; conflating the two is what makes the audit's stale prose read as if nothing can move.
 //

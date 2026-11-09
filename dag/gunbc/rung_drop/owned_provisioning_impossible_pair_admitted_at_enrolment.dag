@@ -5,7 +5,7 @@ import std.algebra { FreeSemigroup }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
 import gunbc.guarantee_rung { StructurallyImpossible, MechanicallyPreventable }
 
-// THE DECLARED RUNG DROP for an owned machine whose OS is installed over virtual media with no BMC (DESIGN 4b(3)).
+// THE DECLARED RUNG DROP for an owned machine whose OS is installed over virtual media with no BMC (gunbc.design_argument::guarantee_ladder (no silent regression)).
 // The old fused OwnedProvisioning arms made that state unwritable: BmcVirtualMediaInstall implied the BMC. The
 // ruling to decompose control route from OS delivery (merry-fox-82, 2026-10-22) made them two independent
 // fields, so the pair is now spellable and `gunbc.fleet.fleet_enrollment admit_enrollment` (one call of

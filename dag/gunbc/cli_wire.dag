@@ -54,7 +54,7 @@ import extdeps.render.terminal {
 // NOTHING and reported SUCCESS. It was reachable, not theoretical: a commit message is an
 // unrestricted `String` on `CommitLogRow`, rendered directly into a log row, so a message carrying an
 // ESC byte makes `project_terminal_write` refuse while the read itself answered fine. Silent success
-// at the output boundary is the fail-open DESIGN section 5 forbids outright. (review 57275)
+// at the output boundary is the fail-open gunbc.design_argument::fail_closed forbids outright. (review 57275)
 //
 // WHAT THE OLD SHAPE GOT RIGHT AND WHERE IT OVERREACHED. Bytes and exit status ARE two facts, and a
 // refused repository must still print its diagnostic AND exit nonzero -- that is why `CliWirePrintable`

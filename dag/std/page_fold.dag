@@ -23,7 +23,7 @@ import std.algebra { fold_list }
 // WHAT IS DELIBERATELY NOT HERE: the effect that fetches a page. This module is the pure driver --
 // it decides, given what a page said, whether another request is owed, whether the fold is closed,
 // or whether it must refuse. The transport that performs the request is a realization bound at the
-// caller's boundary (DESIGN section 3: the dispatch that selects a realization is itself
+// caller's boundary (gunbc.design_argument::single_authority: the dispatch that selects a realization is itself
 // realization). The driver is total and executable against a recorded page sequence, which is what
 // page_fold_run consumes.
 
@@ -31,7 +31,7 @@ import std.algebra { fold_list }
 //
 // An external listing has no modeled length. A fold that follows continuations until the authority
 // stops is an unbounded external read, and an unbounded external read is the absorbing fallback
-// DESIGN section 5 forbids: a serving side that keeps answering `next` -- through a defect, a
+// gunbc.design_argument::fail_closed forbids: a serving side that keeps answering `next` -- through a defect, a
 // cursor that does not advance, or a corpus larger than anyone budgeted -- turns a read into a
 // non-terminating one, and the honest arms are exhaustion or refusal, never a truncated result
 // wearing the shape of a complete one.
@@ -148,7 +148,7 @@ type PageFoldSubject {
 }
 
 // EVERY REFUSAL ARM CARRIES ITS SUBJECT AND ITS POSITION, and none of them carries a partial
-// result. That absence is the wall: DESIGN section 5 requires the failure arm to refuse rather
+// result. That absence is the wall: gunbc.design_argument::fail_closed requires the failure arm to refuse rather
 // than widen, and a refusal that also handed back the items read so far would let a caller use a
 // truncated listing by reading one field and ignoring the other.
 //
@@ -326,7 +326,7 @@ fn continuation_shape_admission(seen: ContinuationShapeSeen, offered: NonEmptySt
 // CURRENT ONE, and the difference is a defect this module shipped with. Comparing only the current
 // cursor catches page 1 -> page 1 and misses page 1 -> page 2 -> page 1: every individual step
 // advances, so the cycle runs until the budget stops it and reports `PageBudgetExhausted`. That is
-// the wrong diagnosis for a cycling authority and it is a §5 widen -- the fold terminated, so
+// the wrong diagnosis for a cycling authority and it is a gunbc.design_argument::fail_closed widen -- the fold terminated, so
 // nothing was unsafe, but the refusal named a budget that was adequate rather than the cursor
 // sequence that never converged, and those have different remedies. Immediate non-advancement is
 // the length-one case of revisiting, so ONE arm covers both rather than two arms splitting a
@@ -513,7 +513,7 @@ fn page_fold_run<I>(
 //
 // `fetch` IS THE EFFECT AND IT IS THE CALLER'S. This module performs no read of its own and names
 // no transport: which operation is invoked, over which protocol, under which credential, is a
-// realization fact that belongs at the caller's boundary (DESIGN section 3 -- the dispatch that
+// realization fact that belongs at the caller's boundary (gunbc.design_argument::single_authority -- the dispatch that
 // selects a realization is itself realization). What lives here is the bound, the advance and the
 // closure, which are the same whatever the transport.
 //

@@ -68,7 +68,24 @@ type SymbolIndex {
   namespace_bodies: Map<QualifiedName, NamespaceBodyDeclared>
   module_roots: Map<QualifiedName, ModuleRootDeclared>
   primitive_contracts: Map<QualifiedName, PrimitiveContractDeclared>
+  // THE REALIZATION FACT OF EACH SERVICE OPERATION, keyed by the identity `entries` uses for the
+  // operation's declaration. Written by v2.compiler.symbol_index_fill, the one pass that recognises the
+  // <realization> edge; it binds no name and shadows nothing (the mirror still indexes no declaration).
+  // Read by v2.compiler.infer: a callee that is a service operation with no entry here is
+  // realization-unknown, never realizable.
+  realization_entries: Map<QualifiedName, OperationRealization>
+  // THE PATHS THAT DECLARE A SERVICE'S OPERATIONS, read from the declaration's own mark (the service
+  // payload leaf carries v2.extdeps.languages.dag service_payload_identity), never from its Conj shape: a
+  // resource declaration lowers to the same shape and has no mirror. Written once per service by
+  // v2.compiler.symbol_index_fill; read by v2.compiler.infer.
+  service_payloads: Map<QualifiedName, ServicePayloadDeclared>
 }
+
+type ServicePayloadDeclared {}
+
+type OperationRealization
+  = OperationRealizable
+  | OperationUnrealizable { reason: Symbol, at: Node }
 
 // WHICH KIND OF DECLARED PAYLOAD A PATH DENOTES, stored as the map's value so the map cannot hold a
 // non-payload (review 70323): a `Map<QualifiedName, Bool>` could record `false` and a presence read
@@ -130,7 +147,9 @@ fn empty_symbol_index() -> SymbolIndex {
     declared_resources: empty_map(),
     namespace_bodies: empty_map(),
     module_roots: empty_map(),
-    primitive_contracts: empty_map()
+    primitive_contracts: empty_map(),
+    realization_entries: empty_map(),
+    service_payloads: empty_map()
   }
 }
 
@@ -211,7 +230,9 @@ fn symbol_index_track_global_bare(
               declared_resources: index.declared_resources,
               namespace_bodies: index.namespace_bodies,
               module_roots: index.module_roots,
-              primitive_contracts: index.primitive_contracts
+              primitive_contracts: index.primitive_contracts,
+              realization_entries: index.realization_entries,
+              service_payloads: index.service_payloads
             }
           Present { value: GlobalBareUnique { node: existing, path: existing_path } } =>
             if existing_path == qualified_path && node_same_occurrence(a: existing, b: resolved) {
@@ -233,7 +254,9 @@ fn symbol_index_track_global_bare(
                 declared_resources: index.declared_resources,
                 namespace_bodies: index.namespace_bodies,
                 module_roots: index.module_roots,
-                primitive_contracts: index.primitive_contracts
+                primitive_contracts: index.primitive_contracts,
+                realization_entries: index.realization_entries,
+                service_payloads: index.service_payloads
               }
             }
           Absent =>
@@ -251,7 +274,9 @@ fn symbol_index_track_global_bare(
               declared_resources: index.declared_resources,
               namespace_bodies: index.namespace_bodies,
               module_roots: index.module_roots,
-              primitive_contracts: index.primitive_contracts
+              primitive_contracts: index.primitive_contracts,
+              realization_entries: index.realization_entries,
+              service_payloads: index.service_payloads
             }
         }
         Rejected { diagnostics: _ } => index
@@ -284,7 +309,9 @@ fn symbol_index_insert(index: SymbolIndex, qualified_path: QualifiedName, resolv
     declared_resources: index.declared_resources,
     namespace_bodies: index.namespace_bodies,
     module_roots: index.module_roots,
-    primitive_contracts: index.primitive_contracts
+    primitive_contracts: index.primitive_contracts,
+    realization_entries: index.realization_entries,
+    service_payloads: index.service_payloads
   }
   symbol_index_track_global_bare(
     index: with_entry,
@@ -316,14 +343,16 @@ fn symbol_index_mark_declared_payload(index: SymbolIndex, qualified_path: Qualif
     declared_resources: index.declared_resources,
     namespace_bodies: index.namespace_bodies,
     module_roots: index.module_roots,
-    primitive_contracts: index.primitive_contracts
+    primitive_contracts: index.primitive_contracts,
+    realization_entries: index.realization_entries,
+    service_payloads: index.service_payloads
   }
 }
 
 // WHAT THE PATH DENOTES, WITH NO FAILURE ARM TO WIDEN (review 70226). The first cut read this
 // through map_get_checked, whose Outcome carries a Rejected arm, and answered binder there -- which matches
 // every value, so a lookup that could not answer would have widened the arm silently, the fail-open
-// shape DESIGN section 5 forbids. map_lookup is the total read underneath map_get_checked (which is
+// shape gunbc.design_argument::fail_closed forbids. map_lookup is the total read underneath map_get_checked (which is
 // `outcome_accepted(map_lookup(..))`, so its refusal arm is unreachable by construction): the kind,
 // or Absent for a path that denotes no declared payload. The caller matches on it.
 fn symbol_index_declared_payload_at(index: SymbolIndex, qualified_path: QualifiedName) -> Optional<DeclaredPayloadKind> {
@@ -349,7 +378,9 @@ fn symbol_index_mark_declared_resource(index: SymbolIndex, qualified_path: Quali
     declared_resources: map_insert(m: index.declared_resources, key: qualified_path, value: ResourceDeclared {}),
     namespace_bodies: index.namespace_bodies,
     module_roots: index.module_roots,
-    primitive_contracts: index.primitive_contracts
+    primitive_contracts: index.primitive_contracts,
+    realization_entries: index.realization_entries,
+    service_payloads: index.service_payloads
   }
 }
 
@@ -364,7 +395,9 @@ fn symbol_index_mark_namespace_body(index: SymbolIndex, qualified_path: Qualifie
     declared_resources: index.declared_resources,
     namespace_bodies: map_insert(m: index.namespace_bodies, key: qualified_path, value: NamespaceBodyDeclared {}),
     module_roots: index.module_roots,
-    primitive_contracts: index.primitive_contracts
+    primitive_contracts: index.primitive_contracts,
+    realization_entries: index.realization_entries,
+    service_payloads: index.service_payloads
   }
 }
 
@@ -379,7 +412,9 @@ fn symbol_index_mark_module_root(index: SymbolIndex, qualified_path: QualifiedNa
     declared_resources: index.declared_resources,
     namespace_bodies: index.namespace_bodies,
     module_roots: map_insert(m: index.module_roots, key: qualified_path, value: ModuleRootDeclared {}),
-    primitive_contracts: index.primitive_contracts
+    primitive_contracts: index.primitive_contracts,
+    realization_entries: index.realization_entries,
+    service_payloads: index.service_payloads
   }
 }
 
@@ -451,7 +486,9 @@ fn symbol_index_mark_declared_type_params(index: SymbolIndex, qualified_path: Qu
     declared_resources: index.declared_resources,
     namespace_bodies: index.namespace_bodies,
     module_roots: index.module_roots,
-    primitive_contracts: index.primitive_contracts
+    primitive_contracts: index.primitive_contracts,
+    realization_entries: index.realization_entries,
+    service_payloads: index.service_payloads
   }
 }
 
@@ -585,7 +622,9 @@ fn symbol_index_bind_at(
       declared_resources: index.declared_resources,
       namespace_bodies: index.namespace_bodies,
       module_roots: index.module_roots,
-      primitive_contracts: index.primitive_contracts
+      primitive_contracts: index.primitive_contracts,
+      realization_entries: index.realization_entries,
+      service_payloads: index.service_payloads
     }
     if is_empty(xs: prior) {
       SymbolIndex {
@@ -598,7 +637,9 @@ fn symbol_index_bind_at(
         declared_resources: recorded.declared_resources,
         namespace_bodies: recorded.namespace_bodies,
         module_roots: recorded.module_roots,
-        primitive_contracts: recorded.primitive_contracts
+        primitive_contracts: recorded.primitive_contracts,
+        realization_entries: recorded.realization_entries,
+        service_payloads: recorded.service_payloads
       }
     } else {
       recorded
@@ -709,7 +750,7 @@ fn symbol_index_lexical_collect(
 // chain walk that produces that population is a separate, legitimately layered concern
 // (symbol_index_lexical_collect). They were one function, so the trichotomy could only be reached
 // by executing the walk -- which makes every claim about the SELECTION a claim about the walk too
-// (DESIGN section 3, the witness standing rule: a witness discriminates at ONE interface with its
+// (gunbc.design_argument::witness_one_interface, the witness standing rule: a witness discriminates at ONE interface with its
 // inputs supplied at that boundary). Nothing about the answer changes: symbol_index_lexical_lookup
 // below is the same composition it always was.
 fn symbol_index_lexical_selection(
@@ -833,7 +874,7 @@ fn type_decl_member_child_walk(shape: TypeDeclMemberShape) -> TypeDeclChildWalk 
 
 // KIND ELIGIBILITY BEFORE NONE/ONE/MANY. The candidate already carries its declaration node
 // (LexicalBindingCandidate.node); classify that node, never re-lookup the path. Re-asking
-// symbol_index_entry_at could miss and then mint a kind (DESIGN section 5). Payload, resource
+// symbol_index_entry_at could miss and then mint a kind (gunbc.design_argument::fail_closed). Payload, resource
 // and namespace-body facts are stored beside the node because the node cannot answer them.
 fn symbol_index_candidate_category(index: SymbolIndex, candidate: LexicalBindingCandidate) -> OccurrenceCategory {
   match symbol_index_declared_payload_at(index: index, qualified_path: candidate.path) {
@@ -917,7 +958,7 @@ fn symbol_index_lexical_eligible_declared_payload(
 // is the wrong kind of declaration (a variant where a type is required), the second binds nothing.
 // Both were LexicalUnbound, so a caller that wanted to tell the author which it was had to
 // re-lookup the name under another category -- a second derivation of what this step already knew
-// (DESIGN section 2). The excluded candidates and the category each was excluded for are carried
+// (gunbc.design_argument::minimize_redundancy). The excluded candidates and the category each was excluded for are carried
 // here, once; symbol_index_lexical_lookup_for is this verdict's projection onto LexicalLookup, so a
 // caller that does not ask the question sees the answer it always had. A genuinely empty set stays
 // EligibleLookup { LexicalUnbound }. Nothing here admits an excluded candidate: exclusion is
@@ -995,10 +1036,56 @@ fn symbol_index_mark_primitive_contract(index: SymbolIndex, qualified_path: Qual
     declared_resources: index.declared_resources,
     namespace_bodies: index.namespace_bodies,
     module_roots: index.module_roots,
-    primitive_contracts: map_insert(m: index.primitive_contracts, key: qualified_path, value: PrimitiveContractDeclared {})
+    primitive_contracts: map_insert(m: index.primitive_contracts, key: qualified_path, value: PrimitiveContractDeclared {}),
+    realization_entries: index.realization_entries,
+    service_payloads: index.service_payloads
   }
 }
 
 fn symbol_index_declares_primitive_contract_at(index: SymbolIndex, qualified_path: QualifiedName) -> Bool {
   map_contains_key(m: index.primitive_contracts, key: qualified_path)
+}
+
+fn symbol_index_mark_operation_realization(index: SymbolIndex, qualified_path: QualifiedName, realization: OperationRealization) -> SymbolIndex {
+  SymbolIndex {
+    entries: index.entries,
+    global_bare: index.global_bare,
+    bound_declarings: index.bound_declarings,
+    declared_payloads: index.declared_payloads,
+    renaming_aliases: index.renaming_aliases,
+    declared_type_params: index.declared_type_params,
+    declared_resources: index.declared_resources,
+    namespace_bodies: index.namespace_bodies,
+    module_roots: index.module_roots,
+    primitive_contracts: index.primitive_contracts,
+    realization_entries: map_insert(m: index.realization_entries, key: qualified_path, value: realization),
+    service_payloads: index.service_payloads
+  }
+}
+
+// The realization recorded for this operation path, Absent when the fill saw none (a callee that is a
+// service operation and answers Absent here is realization-unknown, never realizable).
+fn symbol_index_operation_realization_at(index: SymbolIndex, qualified_path: QualifiedName) -> Optional<OperationRealization> {
+  map_lookup(m: index.realization_entries, key: qualified_path)
+}
+
+fn symbol_index_mark_service_payload(index: SymbolIndex, qualified_path: QualifiedName) -> SymbolIndex {
+  SymbolIndex {
+    entries: index.entries,
+    global_bare: index.global_bare,
+    bound_declarings: index.bound_declarings,
+    declared_payloads: index.declared_payloads,
+    renaming_aliases: index.renaming_aliases,
+    declared_type_params: index.declared_type_params,
+    declared_resources: index.declared_resources,
+    namespace_bodies: index.namespace_bodies,
+    module_roots: index.module_roots,
+    primitive_contracts: index.primitive_contracts,
+    realization_entries: index.realization_entries,
+    service_payloads: map_insert(m: index.service_payloads, key: qualified_path, value: ServicePayloadDeclared {})
+  }
+}
+
+fn symbol_index_declares_service_payload_at(index: SymbolIndex, qualified_path: QualifiedName) -> Bool {
+  map_contains_key(m: index.service_payloads, key: qualified_path)
 }

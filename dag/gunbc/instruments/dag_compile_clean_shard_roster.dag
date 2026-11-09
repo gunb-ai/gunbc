@@ -106,7 +106,7 @@ fn compile_clean_shard_entry_paths_from(
 //
 // A consumer that wants to record WHICH universe it folded over previously had to name the roots
 // itself, from a constant it believed the discoverer also read. That belief is exactly the shape
-// DESIGN §5 calls validation standing where construction was available: the roots the discovery
+// gunbc.design_argument::fail_closed calls validation standing where construction was available: the roots the discovery
 // scanned and the roots a consumer printed were two representations of one fact, and nothing but a
 // witness comparing two constants held them together — a witness that goes green when the
 // declaration is edited and the discovery still scans somewhere else.

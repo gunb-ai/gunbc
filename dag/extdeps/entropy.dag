@@ -56,7 +56,7 @@ data entropy_read_password_shell_emit_dissolution_trigger: DissolutionCondition 
 //
 // The argv was `head -c {count} /dev/urandom | base64 -w 0`, so a failing `head` was reported
 // as EXIT 0 WITH EMPTY OUTPUT -- a successful entropy draw that drew nothing, and the `nonzero`
-// arm could never fire for the stage that actually knows. That is DESIGN section 5's fabricated
+// arm could never fire for the stage that actually knows. That is gunbc.design_argument::fail_closed's fabricated
 // plausible output on the one operation whose fake is indistinguishable from the real one by
 // inspection: a consumer cannot tell an empty draw from a short one.
 //

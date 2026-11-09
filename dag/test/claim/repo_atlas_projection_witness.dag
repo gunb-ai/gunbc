@@ -69,7 +69,7 @@ import extdeps.git {
 // THE FIXTURES ARE AUTHORED, THE POPULATIONS ARE CONTROLLED, AND THE ORACLES ARE INDEPENDENT OF THE
 // MEASUREMENT. Every count asserted below comes from a planted input — one planted collision, one
 // path planted at two modules, one departed path — not from measuring the live tree and pinning
-// what it happened to say (DESIGN 5, the test-oracle ruling). The live corpus appears in exactly
+// what it happened to say (gunbc.design_argument::fail_closed, the test-oracle ruling). The live corpus appears in exactly
 // one claim, and there the subject IS the live population's breadth, which is the one case that
 // ruling admits.
 

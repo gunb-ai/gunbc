@@ -83,7 +83,7 @@ test fn a_host_probe_refuses_rather_than_answering_from_the_declaration_route() 
 //
 // The load-bearing pair is the last two. A scanned file with no matching item is ABSENT (the cut's
 // success state); a file the population never covered is UNOBSERVABLE. Collapsing the second into
-// the first is the absorbing fallback DESIGN section 5 forbids -- an unread file silently joining
+// the first is the absorbing fallback gunbc.design_argument::fail_closed forbids -- an unread file silently joining
 // the deleted -- and it is one `else` away at all times, so it is asserted rather than argued.
 // ---------------------------------------------------------------------------------------------
 fn host_fixture_probe() -> NamespaceCutSubjectProbe {

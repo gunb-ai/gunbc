@@ -115,7 +115,7 @@ fn admit_state_method(method: StateEstablishmentMethod, evidence: Reconstruction
 // prefill beside active decoding) is EXCLUDED before Pareto, never ranked. Missing performance
 // evidence is never zero: an unread net axis is a gap, so the economic move is NOT ESTABLISHED
 // (SelectionNeedsEvidence), never free.
-// THE EVIDENCE IS AN INPUT, NEVER MINTED HERE (DESIGN 4d, 5). No relocation performance has been read
+// THE EVIDENCE IS AN INPUT, NEVER MINTED HERE (gunbc.design_argument::epistemic_humility, gunbc.design_argument::fail_closed). No relocation performance has been read
 // on the fleet, so this module owns only the honest arm, rloc_unread_assessment: the objective term is
 // TranscribedUncited and the physical and causal models are Unestablished, so select_realization
 // answers SelectionNeedsEvidence and nothing moves. A caller that HAS readings supplies its own
@@ -232,7 +232,7 @@ fn decide_relocation(field: List<ParetoEntry>, assessment: DecisionAssessment) -
     // required margin into the net reading, so a marginal benefit ties and does not dominate). The
     // UniqueSurvivorElsePrefer arm selects the sole survivor on its own merit (a dominating move wins),
     // and falls to the preferred stay identity only when several nondominated alternatives survive.
-    // This keeps the whole choice inside std.decision (DESIGN 3d): there is no caller-side second
+    // This keeps the whole choice inside std.decision (gunbc.design_argument::selection_precedes_convergence): there is no caller-side second
     // decision, and the SelectionReceipt records the arm and its preferred parameter.
     policy: UniqueSurvivorElsePrefer { identity: id_policy_stay, preferred: id_stay },
     evidence_snapshot: id_evidence,
@@ -304,7 +304,7 @@ fn decide_with_retain_promise(source_over_promise: Bool, field: List<ParetoEntry
 // intent that is posted to the router: conversation, current placement revision, destination, method,
 // authorization, bounded transition allowance, and the SelectionReceipt identities that tie the intent
 // to a real selection. The realization is to verify the intent's SHAPE and its PLACEMENT REVISION and
-// never re-decide (DESIGN 3d: one decision authority). Its falsifier is to obtain this payload by calling
+// never re-decide (gunbc.design_argument::selection_precedes_convergence: one decision authority). Its falsifier is to obtain this payload by calling
 // render_move_intent, so supplying inputs never removes the last execution of the real path.
 // The transition allowance is what the plan's first ResourceBudgetPolicy trial declares: one bounded
 // reconstruction plus one handoff's temporary overlap -- a count of operations the trial may spend, not a
@@ -466,7 +466,7 @@ fn prepare_handoff(record: ServingSessionRecord, current_launch: NonEmptyStr, ho
 // (already dispatched, or interrupted mid-dispatch) is RECOVERED rather than blindly sent elsewhere; a
 // committed or retired handoff is never dispatched again; an unprepared or refused one never dispatches.
 // The phase alone says whether a dispatch is on record (Dispatched/Interrupted and after), so there is
-// no separate count that could disagree with it (correctness by construction, DESIGN 5).
+// no separate count that could disagree with it (correctness by construction, gunbc.design_argument::fail_closed).
 // There is no speculative warm-up.
 type DispatchOutcome = SentOnce | RecoveredRecordedAttempt | DispatchNotPrepared | DispatchAfterCommitRefused
 

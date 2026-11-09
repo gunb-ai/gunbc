@@ -130,7 +130,7 @@ data us_medicare_employer_2025: ContributionSpec = ContributionSpec {
 // 200,000 dollars, WITHOUT REGARD TO FILING STATUS, and there is no employer share. The
 // employee's eventual liability on their own return is a different rule with different
 // thresholds - 250,000 married filing jointly, 125,000 married filing separately, 200,000
-// otherwise - and it is not modeled here. DESIGN 3 forbids one name carrying two materially
+// otherwise - and it is not modeled here. gunbc.design_argument::single_authority forbids one name carrying two materially
 // different contracts, so the withholding rule is named as the withholding rule; a future
 // final-liability authority gets its own row and its own name rather than widening this one.
 //

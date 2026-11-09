@@ -26,7 +26,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-// WHY THIS MODULE EXISTS SEPARATELY FROM extdeps.memory.samsung (DESIGN 3).
+// WHY THIS MODULE EXISTS SEPARATELY FROM extdeps.memory.samsung (gunbc.design_argument::single_authority).
 // Cisco resells a Samsung module under its own PID and part number, with its own lifecycle and
 // its own published description. That is a second independently governed entity inhabiting the
 // same shape, not a second name for the Samsung row -- so it gets its own module authority and

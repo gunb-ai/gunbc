@@ -48,7 +48,7 @@ fn rustup_component_eq(a: RustupComponent, b: RustupComponent) -> Bool {
 // RUSTUP_HOME IS RUSTUP'S FACT, NOT CARGO'S, and the split is the whole reason this sits here
 // rather than beside CARGO_HOME in extdeps.rust.cargo. The two are routinely set together at one call
 // site, which is what makes the merge tempting -- but they are governed by two independently
-// versioned upstream products (DESIGN section 3, external upstream decomposition), and a single
+// versioned upstream products (gunbc.design_argument::external_upstreams, external upstream decomposition), and a single
 // enumeration would mean a rustup release editing cargo's module.
 //
 // What the variable selects is the toolchain ROOT, which is why it is load-bearing for a build
@@ -65,7 +65,7 @@ data rustup_environment_variables_authority: ExternalAuthority = ExternalAuthori
 
 // STATED AS ONE NAME RATHER THAN A COPRODUCT OF ONE. Cargo's variables next door are a closed
 // enumeration because cargo genuinely offers several that this repository sets; rustup offers one
-// that it does. An axis with a single inhabitant is a nickname for a fixed fact (DESIGN section 3)
+// that it does. An axis with a single inhabitant is a nickname for a fixed fact (gunbc.design_argument::single_authority)
 // and the .dag front end reads a one-arm coproduct as a type alias besides, so the fact is stated
 // directly. A second rustup variable arriving is what turns this into an enumeration.
 data rustup_home_env_name: NonEmptyStr = "RUSTUP_HOME"
