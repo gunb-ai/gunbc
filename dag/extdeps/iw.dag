@@ -8,7 +8,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 
 // iw, the nl80211 configuration utility for Linux wireless devices. Its own upstream (kernel.org,
-// maintained with the Linux wireless tree), so it owns its module (DESIGN §3).
+// maintained with the Linux wireless tree), so it owns its module (gunbc.design_argument::single_authority).
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https

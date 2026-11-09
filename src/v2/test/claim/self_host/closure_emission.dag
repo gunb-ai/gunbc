@@ -3,11 +3,13 @@ module v2.test.claim.self_host.closure_emission
 import extdeps.communication.medium { Lossless, Medium }
 import extdeps.languages.json.emit { JsonArray, JsonValue }
 import v2.std.integer { Int }
+import v2.std.provenance { SpanIndex }
 import extdeps.languages.json.parse {
   FieldRead,
   JsonDocumentParsed,
   JsonDocumentUnreadable,
   json_field,
+  json_field_int,
   json_field_string,
   json_field_string_list,
   parse_json_document
@@ -65,6 +67,17 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data ce_entry_source: String = "module v2.test.ce_entry\n\nimport std.types { Bool }\n\nfn ce_entry_fn(p: Bool) -> Bool { v2.test.ce_member.ce_member_fn(p: p) }\n"
 
 data ce_member_source: String = "module v2.test.ce_member\n\nimport std.types { Bool }\n\nfn ce_member_fn(p: Bool) -> Bool { p }\n"
+
+// F1/F2: an importer over a module that IS in the closure (import-free, non-generic), and one over a
+// module that is NOT. Both import by name, so import admission must find (or fail to find) the target
+// among the closure's roots.
+data ce_base_source: String = "module v2.test.ce_base\n\ntype CeBase = CeBaseA | CeBaseB\n"
+
+data ce_importer_source: String = "module v2.test.ce_importer\n\nimport v2.test.ce_base { CeBase }\n\nfn ce_importer_fn(p: CeBase) -> CeBase { p }\n"
+
+data ce_absent_importer_source: String = "module v2.test.ce_absent_importer\n\nimport v2.test.ce_absent { CeAbsent }\n\nfn ce_absent_importer_fn(p: CeAbsent) -> CeAbsent { p }\n"
+
+data ce_unbound_name_source: String = "module v2.test.ce_unbound_name\n\nimport v2.test.ce_base { CeBase }\n\nfn ce_unbound_name_fn(p: CeBase) -> CeBase { ce_no_such_fn(p: p) }\n"
 
 data ce_logic_source: String = "module v2.std.logic\n\ntype Bool = True | False\n"
 
@@ -166,6 +179,38 @@ fn ce_emission_unbound_name() -> ClosureEmissionLocated {
   )
 }
 
+fn ce_emission_import_present() -> ClosureEmissionLocated {
+  ce_emit(
+    ingest: [
+      ce_logic_read(),
+      ce_read(source: ce_base_source, id: ^ce_base_read, path: "src/v2/test/ce_base.dag"),
+      ce_read(source: ce_importer_source, id: ^ce_importer_read, path: "src/v2/test/ce_importer.dag")
+    ],
+    entry: "v2.test.ce_importer"
+  )
+}
+
+fn ce_emission_import_absent() -> ClosureEmissionLocated {
+  ce_emit(
+    ingest: [
+      ce_logic_read(),
+      ce_read(source: ce_absent_importer_source, id: ^ce_absent_importer_read, path: "src/v2/test/ce_absent_importer.dag")
+    ],
+    entry: "v2.test.ce_absent_importer"
+  )
+}
+
+fn ce_emission_unbound_symbol() -> ClosureEmissionLocated {
+  ce_emit(
+    ingest: [
+      ce_logic_read(),
+      ce_read(source: ce_base_source, id: ^ce_base_read, path: "src/v2/test/ce_base.dag"),
+      ce_read(source: ce_unbound_name_source, id: ^ce_unbound_name_read, path: "src/v2/test/ce_unbound_name.dag")
+    ],
+    entry: "v2.test.ce_unbound_name"
+  )
+}
+
 fn ce_qn_eq(a: QualifiedName, b: QualifiedName) -> Bool {
   a == b
 }
@@ -201,6 +246,13 @@ fn ce_arm_count(e: ClosureEmission, name: String) -> Int {
 // The arm a member's identity carries, if the carrier holds one.
 fn ce_arm_of(e: ClosureEmission, name: String) -> Optional<ClosureMemberEmission> {
   list_find_first(xs: e.modules, predicate: fn(m) { ce_arm_module(m: m) == name })
+}
+
+fn ce_arm_of_is_emitted(arm: Optional<ClosureMemberEmission>) -> Bool {
+  match arm {
+    Absent => false
+    Present { value: found } => ce_arm_is_emitted(m: found)
+  }
 }
 
 fn ce_arm_is_refused_with(arm: Optional<ClosureMemberEmission>, reason: Symbol) -> Bool {
@@ -347,6 +399,28 @@ test fn a_name_the_ingest_does_not_bind_refuses_its_member_and_never_widens_the_
   }
 }
 
+// F1 (T4 S2). An importer over a module the closure holds resolves its import against the CLOSURE's
+// roots and is emitted; the import-free base is its own arm. Before the closure-wide context every
+// importer answered resolve_module_not_found whatever it imported.
+test fn an_importer_over_a_module_the_closure_holds_is_emitted_holds() -> Bool {
+  match ce_emission_import_present().outcome {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: e, diagnostics: _ } =>
+      ce_arm_of_is_emitted(arm: ce_arm_of(e: e, name: "v2.test.ce_importer"))
+        && ce_arm_count(e: e, name: "v2.test.ce_base") == 1
+  }
+}
+
+// F2 (control). An import of a module absent from the closure still refuses resolve_module_not_found,
+// at that member: sharing the closure's roots must not widen what an import may bind.
+test fn an_import_of_a_module_absent_from_the_closure_still_refuses_resolve_module_not_found_holds() -> Bool {
+  match ce_emission_import_absent().outcome {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: e, diagnostics: _ } =>
+      ce_arm_is_refused_with(arm: ce_arm_of(e: e, name: "v2.test.ce_absent_importer"), reason: ^resolve_module_not_found)
+  }
+}
+
 // ONE PARSED ROW AGAINST ONE CARRIER ARM: the same module identity, and exactly one of `emitted` /
 // `refused`, the one the arm is.
 fn ce_row_matches(row: JsonValue, arm: ClosureMemberEmission) -> Bool {
@@ -391,8 +465,8 @@ fn ce_names_match(names: FreeMonoid<String>, members: FreeMonoid<QualifiedName>)
 // direction, the entry and the ORDERED member identities come back equal, and row by row the modules
 // come back as the same identities, each with exactly one of emitted/refused matching its arm. A
 // serializer that repeated one name, dropped an arm, or swapped emitted for refused reds here.
-fn ce_round_trip_holds(e: ClosureEmission) -> Bool {
-  match parse_json_document(s: closure_emission_json(emission: e)) {
+fn ce_round_trip_holds(e: ClosureEmission, spans: SpanIndex) -> Bool {
+  match parse_json_document(s: closure_emission_json(emission: e, spans: spans)) {
     JsonDocumentUnreadable { gap: _ } => false
     JsonDocumentParsed { value: doc } =>
       (match json_field_string(obj: doc, key: "entry") {
@@ -411,8 +485,160 @@ fn ce_round_trip_holds(e: ClosureEmission) -> Bool {
 }
 
 test fn the_emission_renders_through_its_codec_and_reads_back_the_same_identities_holds() -> Bool {
-  match ce_emission_clean().outcome {
+  let located = ce_emission_clean()
+  match located.outcome {
     Rejected { diagnostics: _ } => false
-    Accepted { value: e, diagnostics: _ } => ce_round_trip_holds(e: e)
+    Accepted { value: e, diagnostics: _ } => ce_round_trip_holds(e: e, spans: located.spans)
+  }
+}
+
+// The parsed row the rendering holds for one module identity, if any.
+fn ce_row_of(located: ClosureEmissionLocated, name: String) -> Optional<JsonValue> {
+  match located.outcome {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: e, diagnostics: _ } =>
+      match parse_json_document(s: closure_emission_json(emission: e, spans: located.spans)) {
+        JsonDocumentUnreadable { gap: _ } => Absent
+        JsonDocumentParsed { value: doc } =>
+          match json_field(obj: doc, key: "modules") {
+            FieldRead { value: JsonArray { elements: rows } } =>
+              list_find_first(xs: rows, predicate: fn(r) {
+                match json_field_string(obj: r, key: "module") {
+                  FieldRead { value: m } => m == name
+                  _ => false
+                }
+              })
+            _ => Absent
+          }
+      }
+  }
+}
+
+fn ce_field_string_is(obj: JsonValue, key: String, expected: String) -> Bool {
+  match json_field_string(obj: obj, key: key) {
+    FieldRead { value: v } => v == expected
+    _ => false
+  }
+}
+
+fn ce_field_int_present(obj: JsonValue, key: String) -> Bool {
+  match json_field_int(obj: obj, key: key) {
+    FieldRead { value: _ } => true
+    _ => false
+  }
+}
+
+// RED (emit per-module diagnostic). A member refused on an unbound name renders, beside the unchanged
+// `refused` reason, a `diagnostic` carrying the reason, the SPELLING the author wrote, and the authored
+// file and byte range -- as fields, so a population of refusals groups by spelling without parsing a sentence.
+test fn a_refused_row_carries_the_unbound_spelling_and_its_authored_position_holds() -> Bool {
+  match ce_row_of(located: ce_emission_unbound_symbol(), name: "v2.test.ce_unbound_name") {
+    Absent => false
+    Present { value: row } =>
+      ce_field_string_is(obj: row, key: "refused", expected: "resolve_reason_unbound_symbol")
+        && (match json_field(obj: row, key: "diagnostic") {
+          FieldRead { value: d } =>
+            ce_field_string_is(obj: d, key: "reason", expected: "resolve_reason_unbound_symbol")
+              && ce_field_string_is(obj: d, key: "unbound_ref", expected: "ce_no_such_fn")
+              && ce_field_string_is(obj: d, key: "file", expected: "ce_unbound_name_read")
+              && ce_field_int_present(obj: d, key: "start")
+              && ce_field_int_present(obj: d, key: "end")
+          _ => false
+        })
+  }
+}
+
+// A refusal with no unbound mention says so with an explicit absence, not an invented spelling.
+test fn a_refused_row_without_an_unbound_mention_has_an_explicit_absent_spelling_holds() -> Bool {
+  match ce_row_of(located: ce_emission_import_absent(), name: "v2.test.ce_absent_importer") {
+    Absent => false
+    Present { value: row } =>
+      match json_field(obj: row, key: "diagnostic") {
+        FieldRead { value: d } =>
+          ce_field_string_is(obj: d, key: "reason", expected: "resolve_module_not_found")
+            && (match json_field_string(obj: d, key: "unbound_ref") { FieldAbsent => true
+              _ => false })
+        _ => false
+      }
+  }
+}
+
+// CONTROL. An emitting member's row is unchanged: `emitted` and no `diagnostic`.
+test fn an_emitted_row_carries_no_diagnostic_holds() -> Bool {
+  match ce_row_of(located: ce_emission_import_present(), name: "v2.test.ce_importer") {
+    Absent => false
+    Present { value: row } =>
+      (match json_field_string(obj: row, key: "emitted") { FieldRead { value: _ } => true
+        _ => false })
+        && (match json_field(obj: row, key: "diagnostic") { FieldAbsent => true
+          _ => false })
+  }
+}
+
+// NESTED NULLARY COPRODUCT ARMS (R1). A marked declaration reference reached through a record field or a
+// match arm is projected by the same facts-aware rule as an arrow body, so a nullary arm spells as its
+// parent's arm there too. The arrow-body spelling `CeTsiScheme::Https` is the oracle for the nested ones.
+data ce_nested_arm_record_source: String = "module v2.test.ce_nested_arm_record\n\ntype CeTsiScheme = Https | Http\n\ntype CeTsiUri { scheme: CeTsiScheme }\n\ndata ce_nested_arm_record_uri: CeTsiUri = CeTsiUri { scheme: Https }\n"
+
+data ce_nested_arm_match_source: String = "module v2.test.ce_nested_arm_match\n\ntype CeTsiScheme = Https | Http\n\nfn ce_nested_arm_flip(s: CeTsiScheme) -> CeTsiScheme { match s { Https => Http Http => Https } }\n"
+
+data ce_nested_arm_const_source: String = "module v2.test.ce_nested_arm_const\n\ntype CeTsiScheme = Https | Http\n\ntype CeTsiUri { scheme: CeTsiScheme }\n\nfn ce_nested_arm_k() -> CeTsiScheme { Https }\n\nfn ce_nested_arm_red() -> CeTsiUri { CeTsiUri { scheme: ce_nested_arm_k } }\n"
+
+fn ce_nested_arm_emitted_contains(source: String, id: Symbol, path: String, module: String, pattern: String) -> Bool {
+  match ce_row_of(located: ce_emit(ingest: [ce_read(source: source, id: id, path: path)], entry: module), name: module) {
+    Absent => false
+    Present { value: row } =>
+      match json_field_string(obj: row, key: "emitted") {
+        FieldRead { value: text } => string_contains(s: text, pattern: pattern)
+        _ => false
+      }
+  }
+}
+
+test fn a_nested_nullary_arm_in_a_record_field_emits_its_parents_arm_holds() -> Bool {
+  ce_nested_arm_emitted_contains(
+    source: ce_nested_arm_record_source,
+    id: ^ce_nested_arm_record_read,
+    path: "src/v2/test/ce_nested_arm_record.dag",
+    module: "v2.test.ce_nested_arm_record",
+    pattern: "CeTsiScheme::Https"
+  )
+}
+
+// DECLARED PIN of today's production behaviour, not the target one. A match whose arm pattern is a
+// nullary coproduct arm refuses `target_lex_rule_literal_not_found`: the production Rust lex
+// (`rust_production_lex_rules`) has no rule for `rust_token_unwired_match` or `rust_token_unwired_fat_arrow`;
+// those exist only in `rust_staging_match_additional_lex_rules`. The pattern-position recognition itself is
+// held by `v2.test.claim.emit.nested_arm_pattern_position`. TRIGGER: the production match-emission wiring
+// (rustc-validated rules), which flips this to the positive assertion that the emission contains
+// `CeTsiScheme::Https =>`; this pin then goes red on purpose and is rewritten, not deleted.
+test fn a_match_with_a_nullary_arm_pattern_refuses_for_want_of_production_match_tokens_holds() -> Bool {
+  match ce_emit(
+    ingest: [ce_read(source: ce_nested_arm_match_source, id: ^ce_nested_arm_match_read, path: "src/v2/test/ce_nested_arm_match.dag")],
+    entry: "v2.test.ce_nested_arm_match"
+  ).outcome {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: e, diagnostics: _ } =>
+      ce_arm_is_refused_with(arm: ce_arm_of(e: e, name: "v2.test.ce_nested_arm_match"), reason: ^target_lex_rule_literal_not_found)
+  }
+}
+
+// RED. A marked reference to a nullary ARROW constant is not an arm: the facts-aware rule must not spell it
+// `CeTsiScheme::ce_nested_arm_k`. The row either refuses or spells something else; it never becomes an arm.
+test fn a_nested_reference_to_a_nullary_arrow_constant_is_not_spelled_as_an_arm_holds() -> Bool {
+  let module = "v2.test.ce_nested_arm_const"
+  match ce_row_of(
+    located: ce_emit(
+      ingest: [ce_read(source: ce_nested_arm_const_source, id: ^ce_nested_arm_const_read, path: "src/v2/test/ce_nested_arm_const.dag")],
+      entry: module
+    ),
+    name: module
+  ) {
+    Absent => false
+    Present { value: row } =>
+      match json_field_string(obj: row, key: "emitted") {
+        FieldRead { value: text } => !string_contains(s: text, pattern: "::ce_nested_arm_k")
+        _ => true
+      }
   }
 }

@@ -44,7 +44,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // roster-to-source and source-to-roster checks below have no continuous consumer; review is the
 // only mechanism that reaches them. DO NOT RELABEL THIS MODULE TO GET IT ADMITTED: the disposition
 // is a true statement about what the code does, and editing the declaration to change the routing
-// is the §5 tell that a check was satisfied by editing its declaration rather than its subject. THE
+// is the gunbc.design_argument::fail_closed tell that a check was satisfied by editing its declaration rather than its subject. THE
 // INCENTIVE THIS CREATES IS THE LOAD-BEARING PART, and it is inverted: the zero-target acceptance
 // (test.claim.observation_raw_print_retirement_acceptance) declares SubstrateInputsOnly, DOES
 // execute on the required floor, and asks only whether observation_emit_frontier_count is zero --
@@ -235,7 +235,7 @@ test fn w_post_snapshot_live_tags_are_rostered_bidirectional() -> Bool {
   emit_site_is_frontier(site: witness_row_cost_site)
 }
 
-// THE REVERSAL PROBE FLIPPED TO ITS REGRESSION CONTROL (2026-09-11, DESIGN 4b(4)). Until the
+// THE REVERSAL PROBE FLIPPED TO ITS REGRESSION CONTROL (2026-09-11, gunbc.design_argument::guarantee_ladder (dissolution on climb)). Until the
 // restoration this asserted the mirror ABSENT and the raw tag PRESENT -- green meant "the
 // regression is still here" -- and its own note said it must red when the debt was paid. It did,
 // and it does not retire: the same three conjuncts now hold the restored state, so a second
@@ -294,10 +294,10 @@ test fn w_producer_presence_check_discriminates() -> Bool {
 // evidence that a projection had replaced a dump. #9228 deleted both: measured across all of src/,
 // there is no [floor-memory] occurrence and no render_heartbeat_line_mirror occurrence, only one
 // doc comment naming the mirror. So the negative half is now vacuously true and the positive half
-// is false, and neither states anything about a site that exists. THIS IS NOT THE §4b(4) CASE THAT
+// is false, and neither states anything about a site that exists. THIS IS NOT THE gunbc.design_argument::guarantee_ladder (dissolution on climb) CASE THAT
 // KEEPS EVIDENCE AFTER A CLIMB: nothing climbed. The site left the seed, so there is no rung to
 // hold and no production machinery whose dissolution this evidence would witness -- keeping a probe
-// over a deleted subject is a permanently-green decoration, which is the failure §4b names as worse
+// over a deleted subject is a permanently-green decoration, which is the failure gunbc.design_argument::guarantee_ladder names as worse
 // than absent.
 
 // THE TWO HALVES OF A RAW-SHAPE PROBE HAVE DIFFERENT SCOPES, AND CONFLATING THEM IS WHAT ROTTED.

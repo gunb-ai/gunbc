@@ -123,7 +123,7 @@ fn ubicloud_unobserved_isolation() -> IsolationProfile {
 // citing it, and provider_route_eq compares declaration references and would match happily. One
 // added row and every Ubicloud offer is admitted under a sanction for "unobserved", whatever
 // region it actually runs in, with a fully populated evidence record. Safety contingent on a
-// roster nobody has written yet is not safety; DESIGN section 5 asks for the state to be
+// roster nobody has written yet is not safety; gunbc.design_argument::fail_closed asks for the state to be
 // UNWRITABLE, not for the currently-empty set of writers to be pointed at.
 //
 // So the observation is its own coproduct and a ProviderRoute is minted ONLY in the read arm.

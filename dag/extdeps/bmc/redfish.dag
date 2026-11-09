@@ -4,10 +4,10 @@ module extdeps.bmc.redfish
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.firmware.types { FirmwareSemanticVersion }
 import extdeps.uri { Uri, Https }
+import std.measure { ByteSize, Gibibyte, HardwareThreadCount, Second, gibibyte_to_byte_size, second, watt, watt_count }
 import extdeps.bmc.types { BmcGroundedHostObservations, BmcTelemetrySnapshot, FanTachSensor, RedfishAccountRole, RedfishMemorySummary, RedfishPowerControl, RedfishPowerState, RedfishPowerSubsystem, RedfishProcessorSummary, RedfishSensorReading, RedfishSystemInventory, TemperatureSensor, redfish_account_role_from_wire, redfish_account_role_wire }
-import std.measure { ByteSize, Gibibyte, HardwareThreadCount, gibibyte_to_byte_size, watt, watt_count }
-import std.types { Bool, Int, List, NonEmptyStr, String, list_length, range }
-import std.algebra { list_head, skip }
+import std.types { Bool, Int, List, NonEmptyStr, String, range }
+import std.algebra { list_head, skip, length }
 import std.optional { Present, Absent }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.languages.json.parse {
@@ -160,13 +160,13 @@ fn redfish_system_total_memory_bytes(inv: RedfishSystemInventory) -> ByteSize {
 //   - it names the message, and the id it names TRAVELS with the arm. A verdict that reports "the message
 //     was named" and then lets the consumer re-type the id is a verdict that invites a copy of a string
 //     somebody else wrote; the only reading of this arm that says anything about a particular response is
-//     the id the response itself contained (§4c: an annotation is never evidence that a machine claim holds,
+//     the id the response itself contained (gunbc.design_argument::source_annotations: an annotation is never evidence that a machine claim holds,
 //     and neither is a comment quoting a registry version).
 //   - it was read, and does not name it.
 //   - it could not be read at all. That is NOT the arm above: "the body is truncated", "the transport
 //     returned nothing", "the JSON has a gap" are facts about the CAPTURE, and a consumer that reads them as
 //     "the service did not ask for a password change" is drawing a conclusion about a service from the state
-//     of its own notebook (§4d: do not assert as deduced what is only inferred). This module used to fold the
+//     of its own notebook (gunbc.design_argument::epistemic_humility: do not assert as deduced what is only inferred). This module used to fold the
 //     unreadable case into RedfishPasswordChangeNotIndicated, which is exactly that inference, made silently,
 //     by a function whose name promises a verdict about the service.
 // A BUILD THAT FORCES THE PUBLISHED CREDENTIAL'S CHANGE ON FIRST LOGIN, as the vendor's catalogue
@@ -227,7 +227,7 @@ fn redfish_extended_info_message_id(holder: JsonValue) -> RedfishExtendedInfoSca
             }
           }) {
             Present { value: found } => RedfishExtendedInfoNamesTheMessage { message_id: found }
-            Absent => RedfishExtendedInfoHoldsNothing { scanned: list_length(items: elements) }
+            Absent => RedfishExtendedInfoHoldsNothing { scanned: length(xs: elements) }
           }
         JsonNull => RedfishExtendedInfoHoldsNothing { scanned: 0 }
         JsonBool { value: _ } => RedfishExtendedInfoUnreadable { cause: "the annotation is a boolean, not the array the registry publishes" }
@@ -299,7 +299,7 @@ type RedfishExtendedInfoScan
 //
 // WHY THIS LIVES HERE AND NOT IN WHICHEVER MODULE HAPPENS TO ACTUATE A RESET. The three arms below are
 // not a workflow's vocabulary: they are the members DMTF publishes for the Manager's ResetToDefaults
-// action, and they are versioned by DMTF, not by this repository. DESIGN §3 requires an independently
+// action, and they are versioned by DMTF, not by this repository. gunbc.design_argument::single_authority requires an independently
 // versioned upstream to be declared in its own extdeps module, with its source cited and its real names
 // kept -- which is also what makes it reusable: a second Redfish consumer (a fleet-wide factory-reset job,
 // a network-configuration audit) would otherwise have to import a machine-intake route, or re-mint the
@@ -315,7 +315,7 @@ type RedfishExtendedInfoScan
 //   * The action's parameter is spelled `ResetType`, NOT `ResetToDefaultsType` -- the latter is the NAME OF
 //     THE TYPE, not of the field. An implementation that puts the type's name in the body has not read the
 //     action, and a firmware that demands it has not published it; that difference is a reported device
-//     observation and lives in the observing layer, never here (§3: an observation this repository makes
+//     observation and lives in the observing layer, never here (gunbc.design_argument::single_authority: an observation this repository makes
 //     is a receipt downstream, not a property of the upstream).
 //   * `SensorThresholds` appears in some vendor implementations' generated enum (bmcweb's
 //     redfish-core/include/generated/enums/manager.hpp) but is NOT in DMTF's published enum for this
@@ -366,7 +366,7 @@ type RedfishResetToDefaultsType
 // default for any of them: each is read as a `JsonFieldRead` whose `FieldAbsent` means "the served
 // resource did not carry it" and whose `FieldMalformed` means "it carried something that is not the
 // property." Turning an absent `Enabled` into `false`, or an absent `RoleId` into `ReadOnly`, is the
-// fabricated default DESIGN §5 forbids; the reader hands the distinction up and lets the caller decide
+// fabricated default gunbc.design_argument::fail_closed forbids; the reader hands the distinction up and lets the caller decide
 // what an unread field means for its claim. Only the collection member's `@odata.id` is read as
 // REQUIRED of a member, because a collection member with no identity could not be matched to anything.
 //
@@ -446,7 +446,7 @@ type RedfishAccountCollectionRead
 
 // THE MEMBERS ARRAY IS THE CENSUS, read in one pass, and the reading REFUSES (no partial census) the
 // moment any member fails to carry its single string `@odata.id`. There is no fill-in default and no
-// pre-check that a later reader re-does (DESIGN §5: correctness by construction, not validation) -- the
+// pre-check that a later reader re-does (gunbc.design_argument::fail_closed: correctness by construction, not validation) -- the
 // fold accumulates a `List<String>?` and, once it has seen a member it cannot name, stays `Absent`, so an
 // unreadable census can never be assembled from partially-missing members. A malformed `@odata.id` is
 // refused exactly as an absent one is: a member whose identity is not a string cannot be named.
@@ -501,7 +501,7 @@ fn redfish_manager_account_collection_from_json(body: String) -> RedfishAccountC
 // account name, and inventing one would name an account the device never listed.
 fn redfish_manager_account_name_from_odata_id(id: String) -> String? {
   let segments = split(s: id, delimiter: "/")
-  let count = list_length(items: segments)
+  let count = length(xs: segments)
   if count == 0 {
     Absent
   } else {
@@ -565,7 +565,7 @@ fn redfish_manager_account_collection_body(member_odata_ids: List<String>) -> St
     json_kv(key: "Members", value: json_array(elements: map(member_odata_ids, id =>
       json_object(members: [json_kv(key: "@odata.id", value: json_string(s: id))])
     ))),
-    json_kv(key: "Members@odata.count", value: json_int(n: list_length(items: member_odata_ids))),
+    json_kv(key: "Members@odata.count", value: json_int(n: length(xs: member_odata_ids))),
   ]))
 }
 
@@ -686,7 +686,7 @@ type RedfishAccountLockoutThresholdReading
 // and not in whatever module ends up comparing them with a timestamp. An absent
 // property is Absent: no window is invented for it. A product layer that carried
 // this as a bare Int would be re-inventing a unit std.measure already owns
-// (DESIGN.md section 2, "net concepts must not grow by re-invention").
+// (gunbc.design_argument::minimize_redundancy, "net concepts must not grow by re-invention").
 // CONSUMER: bmc_failed_attempt_window in gunbc.machine_intake.bmc_secure.
 fn redfish_account_lockout_counter_reset_window(served: RedfishAccountServiceLockoutServed) -> Optional<Second> {
   match served.account_lockout_counter_reset_after {

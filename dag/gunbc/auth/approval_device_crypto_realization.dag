@@ -2,7 +2,9 @@ module gunbc.auth.approval_device_crypto_realization
 
 import std.types { NonEmptyStr, String, List, HttpStatus }
 import std.logic { Bool }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
+import std.compiler_entry { NativeIngressProgram, NativeIngressStartup }
+import gunbc.native_serve { native_serve_startup_deadline }
 import std.native_realization_proof { NativeRealizationProof, native_realization_proof }
 
 // ── WHICH REALIZATION RUNS THE DEVICE VERIFIERS IS PART OF ROUTE ADMISSION ───────────────────
@@ -13,10 +15,10 @@ import std.native_realization_proof { NativeRealizationProof, native_realization
 // would realize that frontier as the evaluator. That frontier is therefore not an annotation beside
 // the routes: every verifier-dependent route in gunbc.auth.approval_device_routes asks
 // device_crypto_gate FIRST and refuses 503 with the typed cause before any decode, store read
-// or verifier call when the native handler is not bound (DESIGN section 5: a frontier that is only
+// or verifier call when the native handler is not bound (gunbc.design_argument::fail_closed: a frontier that is only
 // an annotation is not a wall).
 //
-// Selecting the realization is itself realization (DESIGN section 3), so this module sits beside
+// Selecting the realization is itself realization (gunbc.design_argument::single_authority), so this module sits beside
 // the routes, never inside the verifier interface.
 //
 // THE RECEIPT COVERS A NAMED POPULATION, NOT "THE VERIFIER RUNS NATIVELY". A bound handler is
@@ -46,9 +48,28 @@ fn device_crypto_obligation_evidence(o: DeviceCryptoObligation) -> NonEmptyStr {
   }
 }
 
-// The one handler a bound receipt may name: the natively emitted verifier (gunbc.auth.approval_device_crypto_serve). It
-// lives with the receipt type so both the sidecar that mints a receipt and the broker that joins an echo to it read one fact.
-data device_crypto_handler_identity: NonEmptyStr = "gunbc.auth.approval_device_crypto_serve native_serve_handle"
+// THE NATIVE PROGRAM OF THE VERIFIER SIDECAR (std.compiler_entry NativeIngressProgram): the exact binding constructor
+// the natively emitted binary calls, the exact handler it serves, and its startup self-check with that self-check's
+// bound. It lives here, with the receipt type, so the sidecar that mints a receipt, the broker that joins an echo to it,
+// and the emitter that renders the sidecar's main all read one fact; it names those declarations by reference and
+// imports none of their modules, so no import cycle arises (gunbc.plans.converged_ingress (deleted 2026-11-08) M2a).
+data device_crypto_native_ingress: NativeIngressProgram = NativeIngressProgram {
+  binding: DeclarationRef { module_path: "gunbc.auth.approval_device_crypto_ingress", decl_name: "approval_device_crypto_ingress", field: WholeDeclaration },
+  handler: DeclarationRef { module_path: "gunbc.auth.approval_device_crypto_serve", decl_name: "approval_device_crypto_handle", field: WholeDeclaration },
+  startup: Present { value: NativeIngressStartup {
+    fold: DeclarationRef { module_path: "gunbc.auth.approval_device_crypto_serve", decl_name: "approval_device_crypto_startup", field: WholeDeclaration },
+    bound: native_serve_startup_deadline,
+  } },
+}
+
+// A declaration's identity as a receipt names it: its module and its name.
+fn device_crypto_declaration_identity(d: DeclarationRef) -> NonEmptyStr {
+  concat(d.module_path as String, concat(" ", d.decl_name as String)) as NonEmptyStr
+}
+
+// The one handler a bound receipt may name: the program descriptor's handler, rendered through one function, so the
+// identity a receipt carries cannot drift from the handler the emitted sidecar actually serves.
+data device_crypto_handler_identity: NonEmptyStr = device_crypto_declaration_identity(d: device_crypto_native_ingress.handler)
 
 type DeviceCryptoHandlerReceipt {
   handler_identity: NonEmptyStr

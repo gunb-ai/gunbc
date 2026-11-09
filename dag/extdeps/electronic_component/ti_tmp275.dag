@@ -5,7 +5,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import extdeps.vendor.texas_instruments { texas_instruments }
 import std.measure { millivolt }
-import extdeps.electronic_component.types { ElectronicComponentRow, TemperatureSensorSpec, TemperatureSensorSpecification, MillivoltRange, I2cOrSmbus, SensorPin, SerialData, SerialClock, AlertOutput, GroundReturn, SupplyInput, AddressSelect }
+import extdeps.electronic_component.types { MarkStructured, ListedOnly, MarkLine, FixedGlyphs, ElectronicComponentRow, TemperatureSensorSpec, TemperatureSensorSpecification, MillivoltRange, I2cOrSmbus, SensorPin, SerialData, SerialClock, AlertOutput, GroundReturn, SupplyInput, AddressSelect }
 
 // TI's TMP275 datasheet, SBOS363F (June 2006, revised May 2018), read 2026-10-15: the title "TMP275
 // +/-0.5 C Temperature Sensor With I2C and SMBus Interface in Industry Standard LM75 Form Factor and
@@ -34,7 +34,7 @@ data tmp275_dgk: ElectronicComponentRow = ElectronicComponentRow {
   vendor: texas_instruments,
   ordering_code: "TMP275AIDGKR",
   package: "VSSOP-8 (DGK)",
-  top_marking: "T275",
+  top_marking: Present { value: MarkStructured { lines: [MarkLine { segments: [FixedGlyphs { text: "T275" }] }], coverage: ListedOnly } },
   specification: TemperatureSensorSpec { sensor: TemperatureSensorSpecification {
     supply: MillivoltRange { minimum: millivolt(count: 2700), maximum: millivolt(count: 5500) },
     bus: I2cOrSmbus,

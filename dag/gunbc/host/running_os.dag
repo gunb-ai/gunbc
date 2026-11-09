@@ -1,0 +1,33 @@
+module gunbc.host.running_os
+
+import std.types { String, NonEmptyStr }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import product.host_identity { HostIdentity }
+import gunbc.host.host_boot_id { HostBootId }
+
+// WHAT OS IS RUNNING ON A BOOTED HOST, keyed on OS persistence and never inferred from the delivery route
+// (gunbc.plans.physical_machine_boot_program (deleted 2026-11-08), the initialized-host contract; ruling
+// boot_delivery_persistence_and_role_are_independent_axes). Ephemeral runs the delivered artifact, so its proof is
+// that artifact's digest. The installed arm (UseInstalled and InstallThenUse prove an installed-system identity)
+// is not declared here: its identity type belongs to the persistence axis (Gap P), which owns it, and declaring a
+// placeholder for it first would be the conflicting cross-route type the plan forbids.
+type RunningOs
+  = RunningDeliveredArtifact { digest: NonEmptyStr }
+
+// A RUNNING-OS FACT IS AN OBSERVATION OF ONE BOOT OF ONE HOST. The boot is the one the terminal readback observed,
+// so a host that rebooted after it is not credited with what that earlier boot ran; the host is the one the
+// readback's capture was bound to, so a reading of another machine is never credited to the host a transport
+// authenticated, even when the two boot ids agree (gunbc.host.initialized_host refuses both disagreements).
+type RunningOsReading
+  = RunningOsObserved { running: RunningOs, observed_host: HostIdentity, observed_on: HostBootId }
+  | RunningOsUnobserved { cause: String }
+
+fn running_os_text(running: RunningOs) -> String {
+  match running {
+    RunningDeliveredArtifact { digest: d } => concat("the delivered artifact ", d as String)
+  }
+}
+
+data running_os_installed_arm_frontier: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: gunbc.host.initialized_host, whose OS identity is this sum. NOT DECLARED: RunningInstalledSystem { identity } for UseInstalled and InstallThenUse. TRIGGER: the persistence axis (Gap P of gunbc.plans.physical_machine_boot_program, owned by merry-fox-82, after the delivery census) lands the installed-system identity; the arm and its producer (the installed-root readback, gunbc.provisioning.network_install_receipt InstalledRootReading) land with it." as NonEmptyStr,
+)

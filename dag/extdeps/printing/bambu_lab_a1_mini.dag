@@ -26,7 +26,7 @@ import extdeps.uri { Uri, Https }
 //
 // fdm owns the agnostic shapes — an envelope, a nozzle diameter, a material and a suitability
 // grading. It enumerates no machine and grades no material, because a generic hub that named
-// products would be the external-decomposition violation DESIGN section 3 describes. This module is
+// products would be the external-decomposition violation gunbc.design_argument::single_authority describes. This module is
 // the other half: one independently versioned product, owning its own facts.
 //
 // WHY IT EXISTS AT ALL, stated because its absence was a real defect rather than a gap. The coupon
@@ -91,7 +91,7 @@ data a1_mini_max_build_plate_temperature: Celsius = celsius(count: 80)
 // THE RATING IS RMS, AND SAYING SO IS NOT PEDANTRY. "100-240 VAC" is a root-mean-square rating; the
 // peak is about 1.41x it, so a 240 V rating implies roughly 340 V of insulation stress. Nothing in
 // this program consumes that distinction today, so no separate RMS carrier is minted -- a type with
-// no consumer is the experimental residue DESIGN section 6 names. It is recorded here so that the
+// no consumer is the experimental residue gunbc.design_argument::how_to_work names. It is recorded here so that the
 // first consumer which cares about peak stress reads a stated assumption rather than inferring one
 // from a bare number.
 //

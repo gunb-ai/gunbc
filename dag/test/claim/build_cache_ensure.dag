@@ -237,7 +237,7 @@ test fn witness_our_unit_holding_a_dead_socket_is_not_converged() -> Bool {
 // The second half of the same wall, the one that fails toward the wrong answer if left out. A
 // path that could not be READ is not a path being served; answering converged from ownership
 // alone would report a host converged on evidence never obtained -- the fabricated plausible
-// output DESIGN section 5 forbids, not merely a weaker check. Its sibling above differs in one
+// output gunbc.design_argument::fail_closed forbids, not merely a weaker check. Its sibling above differs in one
 // field: a path state that WAS read and says not-listening.
 
 test fn witness_an_unreadable_path_under_our_own_unit_is_not_converged() -> Bool {

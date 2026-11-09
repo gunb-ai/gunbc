@@ -23,6 +23,7 @@ import gunbc.host.bmc_control_binding {
   BmcControlNotSecured,
   BmcControlEndpointMismatch,
   bmc_control_binding,
+  bmc_control_route_observation,
 }
 import gunbc.machine_intake.subject { MachineIntakeSubject }
 import gunbc.rung_drop { RungDrop }
@@ -41,7 +42,7 @@ import gunbc.host.managed_host_unit_hold { UnitHoldAdmission, UnitHoldUndecided,
 // DERIVED SUBSET of gunbc.host.managed_host managed_hosts() rather than a list anyone maintains.
 //
 // "MAY HAVE ITS POWER DRIVEN OUT OF BAND" IS NOT "IS AN EXECUTOR FLEET HOST", and conflating the two
-// is the §3 meaning fork this module exists to avoid. gunbc.fleet.fleet_runner_connectivity fleet_hosts()
+// is the gunbc.design_argument::single_authority meaning fork this module exists to avoid. gunbc.fleet.fleet_runner_connectivity fleet_hosts()
 // means "commits runner slots" -- its consumers fold it as an eligible host set and to gather
 // committed slot identities -- so a host reachable only through its BMC does not belong in it, and a
 // host with runner slots is not thereby drivable out of band. Two predicates, two rosters, one

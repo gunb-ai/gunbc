@@ -13,7 +13,7 @@ import std.occurrence_binding_resolve { OccurrenceCategoryBindingAdmissible, Occ
 import v2.extdeps.languages.dag { dag_kernel_string_type_spelling, dag_string_literal_value_optional, dag_kernel_type_binding_optional, dag_kernel_type_declaration_binding_optional, dag_kernel_type_foreign_declaration, ForeignDeclarationBinds, ForeignDeclarationRefuses, dag_node_is_float_literal_atom, dag_node_is_int_literal_atom, dag_symbol_literal_name_optional, dag_string_literal_value_symbol_optional, dag_node_is_module_root_conj, dag_resolve_preserve_module_metadata_subtree, dag_surface_module_header_metadata_edge, dag_surface_operator_canonicalization_lookup, namespace_graft_spine_body_optional, qualified_name_from_module_node }
 import v2.compiler.parse { parse_tree_projection_edge }
 import v2.std.anonymous_binder { is_anonymous_param_label }
-import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item, fold_list, length, list_find_first, skip, PointwisePower, empty_map, list_at_optional, map_insert, map_lookup, collection_concat_shape, collection_count_shape }
+import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item, fold_list, length, list_find_first, skip, PointwisePower, empty_map, list_at_optional, map_insert, map_lookup, collection_concat_shape, collection_count_shape, list_map }
 import v2.std.witness { map_get_checked }
 import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_identity_optional }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
@@ -26,7 +26,7 @@ import v2.std.resolution_policy { ImportScoped, NameResolutionPolicy, NamespaceO
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_declarations, symbol_index_edge_introduces_no_declarations }
 import v2.std.symbol_index { symbol_index_candidate_category, ExcludedCandidate, symbol_index_enclosing_declaration_paths, symbol_index_entry_at, LexicalAmbiguous, LexicalBindingCandidate, LexicalHit, LexicalLookup, LexicalUnbound, SymbolIndex, empty_symbol_index, GlobalBareHit, GlobalBareLookupAmbiguous, GlobalBareLookupUnbound, symbol_index_absolute_candidates, RecordTypePayload, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declares_resource_at, symbol_index_global_unique_lookup, MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, symbol_index_declaring_path_of, symbol_index_lexical_eligible, symbol_index_lexical_eligible_declared_payload, symbol_index_lexical_lookup, symbol_index_lexical_lookup_for, symbol_index_lexical_lookup_for_declared_payload, symbol_index_declared_binders_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_lookup, symbol_index_renaming_alias_at, type_decl_member_shape, type_decl_member_child_walk, TypeDeclChildrenInherited, TypeDeclChildrenTypeOccurrence, TypeDeclChildWalk, symbol_index_owning_module_of, EligibleLookup, ExcludedByCategory, LexicalEligibility, symbol_index_lexical_eligibility }
 import v2.std.node { node_same_occurrence, node_equal_ignoring_provenance, positional_child_target_nodes, BinderTypeEdge, core_edge, MapLiteralEntriesEdge, labeled_core_is, named_edges, positional_child_count, positional_edges, Arrow, Atom, Bind, Branch, Instantiation, Loop, Value, ComputationNode, Conj, Disj, Edge, Match, Authored, Node, NodeFold, Positional, Symbol, Transform, TypeNode, fold_node, LoopCarrierBinder, LoopRealizedDeclaration, loop_edge_role, symbol_intern_lexeme, symbol_lexeme, arrow_domain_binds_a_name, AdmitCallersEdge, edge_label_of, node_with_occurrence_id, symbol_eq, labeled_named_is, well_formed, LoopBoundMeasure, MatchArmPatternEdge, MatchArmScopeExitEdge, ArrowSignatureOrderEdge, edge_is_core, StructuralLabel, label_sort_key, ConstructTagEdge, ArrowBodyEdge, BinderDefaultEdge, BindBinderSlot, BindBodySlot, BindValueSlot, ChildSlot, LabeledChild, MatchArmSlot, MatchScrutineeSlot, PositionalOrdinal, bind_positional_slot, match_positional_slot, node_child_slots }
-import v2.std.type_binder { ArgumentInhabitsKind, ArgumentLiteralUnjudged, ArgumentOutsideKind, ArgumentForwardedKindDiffers, ArgumentForwardedUnkinded, ArgumentForwardedUnresolved, KindInhabitance, KindUnresolved, TypeApplicationArityMismatch, TypeApplicationConformance, TypeApplicationConforms, TypeApplicationKindNotInhabited, TypeApplicationKindUnresolved, TypeApplicationForwardedParameterUnkinded, TypeApplicationForwardedParameterKindDiffers, TypeApplicationForwardedParameterUnresolved, TypeApplicationBinderOrderMalformed, type_application_conformance, type_binder_atom_identity_optional, type_param_kind_optional, GenericTypeDecl, PlainTypeDecl, type_decl_view, edge_is_cast_target, edge_is_type_annotation, edge_is_type_alias, edge_is_type_body, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names, binder_conj_names, kinded_type_param_names, type_binder_target_of }
+import v2.std.type_binder { ArgumentInhabitsKind, ArgumentLiteralUnjudged, ArgumentOutsideKind, ArgumentForwardedKindDiffers, ArgumentForwardedUnkinded, ArgumentForwardedUnresolved, KindInhabitance, KindUnresolved, TypeApplicationArityMismatch, TypeApplicationConformance, TypeApplicationConforms, TypeApplicationKindNotInhabited, TypeApplicationKindUnresolved, TypeApplicationForwardedParameterUnkinded, TypeApplicationForwardedParameterKindDiffers, TypeApplicationForwardedParameterUnresolved, TypeApplicationBinderOrderMalformed, type_application_conformance, type_binder_atom_identity_optional, type_param_kind_optional, GenericTypeDecl, PlainTypeDecl, type_decl_view, edge_is_cast_target, edge_is_type_annotation, edge_is_type_alias, edge_is_type_body, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names, binder_conj_names, kinded_type_param_names, type_binder_target_of, type_param_order }
 import v2.std.node_query { declared_field_list, node_is_coproduct, field_projection_edge_field_optional, field_projection_optional, binder_node_edge, binder_node_parts, declared_field_from_edge, member_edge_type_node, NamedChildAmbiguous, NamedChildFound, NamedChildMissing, named_child_lookup, construct_tag_reading, ConstructTagAuthored, ConstructTagElided, NotAConstruct, construct_tag_optional, field_projection_node, construct_tag_path_optional, declared_field_named, find_named_child, is_wildcard_pattern, pattern_wildcard_name, find_core_child }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.map_introduction { MapIntroductionEntryNodes, MapIntroductionKeyRepeated, MapIntroductionKeysDistinct, MapLiteralEntriesMalformed, MapLiteralEntriesNone, MapLiteralEntriesPresent, map_literal_entries, lower_map_introduction, map_introduction_duplicate_key, map_introduction_expected_head_is_map }
@@ -581,7 +581,7 @@ type FrameKind
 // unwritable. LexicalOwedFormal is a match-arm payload field typed by the DECLARING coproduct's own
 // formal: resolve cannot know the scrutinee's arguments, so it records the obligation and
 // v2.compiler.infer discharges it from the scrutinee's settled type at arm entry or refuses it
-// located. Minting the formal as the binder's type would fabricate one (DESIGN 5), and recording
+// located. Minting the formal as the binder's type would fabricate one (gunbc.design_argument::fail_closed), and recording
 // the binder untyped would let the match frontier accept the arm (fail-open); the distinct case is
 // what keeps both unwritable.
 type LexicalBinderStanding
@@ -1422,7 +1422,7 @@ fn unbound_symbol_diagnostic(n: Node) -> Diagnostic {
   }
 }
 
-// THE DECLARER FACT IS BORN HERE (DESIGN 6b): the four sites below hold the provider whose lookup
+// THE DECLARER FACT IS BORN HERE (gunbc.design_argument::earliest_unjustified_boundary): the four sites below hold the provider whose lookup
 // refused this reference, and this is the only constructor of the reason. The fix is in that
 // declaration, so the correction names it; a census joins on the identity, never on the chain's text.
 fn declarer_refused_diagnostic(n: Node, provider: ClosureProviderRefusal) -> Diagnostic {
@@ -1483,7 +1483,7 @@ fn unbound_symbol_diagnostics(ctx: ResolveContext, n: Node, name: Symbol) -> Non
 // chain that binds a reference -- scope, imports, the module's own declarations -- and an absence there
 // is the whole answer: a lookup that reached past the chain to say where else the spelling is declared
 // would need an index of modules the compile was never asked to read (R9 of
-// gunbc.plans.source_layout_authority: a compile reads the requested closure and builds no whole-tree
+// gunbc.plans.source_layout_authority (deleted 2026-11-08): a compile reads the requested closure and builds no whole-tree
 // index on any path, success or refusal), so the explanation would exist on the failing path only.
 fn unbound_symbol_diagnostics_of_value_name(n: Node) -> NonEmptyDiagnostics {
   NonEmptyDiagnostics { head: unbound_symbol_diagnostic(n: n), tail: [] }
@@ -1528,7 +1528,7 @@ fn ambiguous_lookup_class_diagnostic(n: Node, reason: Symbol) -> Diagnostic {
 // A COMPETING DECLARATION IS NAMED BY ITS QUALIFIED IDENTITY, NOT CARRIED AS ITS NODE. The index
 // holds each binder's declaration node, and locating the row there would drag the binder's whole
 // body into every persisted row that reports the ambiguity; DeclarationLocus is the citation form
-// (DESIGN section 3: name the symbol, not the position), and it is all a reader needs to find it.
+// (gunbc.design_argument::single_authority: name the symbol, not the position), and it is all a reader needs to find it.
 fn ambiguous_competing_declaration_diagnostic(path: QualifiedName) -> Diagnostic {
   Diagnostic {
     reason: ^resolve_ambiguous_competing_declaration,
@@ -1632,7 +1632,7 @@ fn resolved_reference_identity(ctx: ResolveContext, path: QualifiedName) -> Reso
 // THE ONE PRODUCER OF A RESOLVED CORPUS REFERENCE. Both doors that bind a module-level name -- the
 // bare door (resolve_atom_bound) and the qualified door (try_resolve_qualified_name_node) -- mint
 // through here, so the carrier cannot differ by how the reference was spelled. The rung this buys
-// (DESIGN section 4b) is structurally guaranteed, not impossible: an Atom naming a corpus
+// (gunbc.design_argument::guarantee_ladder) is structurally guaranteed, not impossible: an Atom naming a corpus
 // declaration is still constructible by a fixture or a hand-built node, but no Accepted resolved
 // body contains one, because this module is the only producer of resolved bodies and its remaining
 // canonical_atom sites are the frame-local binder, the literal, and the kernel arm above.
@@ -1692,7 +1692,7 @@ fn lookup_symbol_index_atom_identity(
 // A HIT IS NEVER STAMPED WITH A REFUSAL REASON, AND IT IS NOT MINTED FROM A LEAF EITHER. This
 // arm's fallback identity used to be ^resolve_reason_unbound_symbol, so a qualified path that FOUND
 // a non-atom declaration (an Arrow -- every fn) was Accepted carrying a diagnostic symbol as its
-// canonical identity: a fabricated plausible output (DESIGN section 5) that no witness could have
+// canonical identity: a fabricated plausible output (gunbc.design_argument::fail_closed) that no witness could have
 // caught, because no v2 route produced the qualified spine this arm consumes until body lowering
 // began to (see body_lower_dotted_reference_optional). One revision of gunbc#11582 replaced the
 // reason with the path's last segment; the side-chat ruling on that head found the leaf equally
@@ -1701,7 +1701,7 @@ fn lookup_symbol_index_atom_identity(
 // until resolution carried exact declaring identity. It now does: the hit is minted through
 // resolved_reference_node as the declaration's path, the same producer the bare door uses, and the
 // interim refusal is deleted with nothing left for it to guard -- every index hit IS a path, so a
-// control for a refusal with no authorable red would be a decoration (DESIGN section 4b). Measured:
+// control for a refusal with no authorable red would be a decoration (gunbc.design_argument::guarantee_ladder). Measured:
 // a cross-module reference to a fn came back Accepted with identity resolve_reason_unbound_symbol
 // before the first repair.
 // THE HALF OF UNIQUE-ON-CHAIN THAT CAN BE HONEST BEFORE THE PROJECTION EXISTS (review 67651 on
@@ -1736,7 +1736,7 @@ fn lookup_symbol_index_atom_identity(
 //
 // WHAT JUSTIFIES THE CHANGE IS THE READING ITSELF, which needs no incident: one Bool cannot carry a
 // discriminator its consumer must make between two readings, and a consumer forced to re-derive what it was
-// handed is DESIGN section 5's validation standing where construction was available. The controls in
+// handed is gunbc.design_argument::fail_closed's validation standing where construction was available. The controls in
 // v2.test.claim.field_projection.field_projection_stages establish the rule; no claim is made here about the
 // eight, about wall 3d, or about any native refusal consuming this arm.
 //
@@ -1896,7 +1896,7 @@ fn resolve_projection_base(ctx: ResolveContext, head_segment: Node) -> Optional<
 // on_chain's own header said what it was: "the half of unique-on-chain that can be honest BEFORE THE
 // PROJECTION EXISTS", refusing AmbiguousQualifiedHeadShadowsAbsolute precisely because this arm could
 // not project and therefore must not let the absolute read silently win. The projection now exists
-// (resolve_bound_head_projection), so the guard DISSOLVES rather than weakens -- DESIGN section 4b(4),
+// (resolve_bound_head_projection), so the guard DISSOLVES rather than weakens -- gunbc.design_argument::guarantee_ladder (dissolution on climb),
 // which also says the evidence does not retire: its discriminating control stays enrolled, flipped to
 // assert that a bound head answers with its binder's projection.
 //
@@ -1995,12 +1995,12 @@ fn resolve_dotted_path_reading(
 
 // A DECLARATION PATH THAT NAMES NOTHING REFUSES, AND MAY NOT WIDEN TO THE PROJECTION READING. This arm
 // held a fallback -- no candidate for the path, so re-read it as a field projection off the root binding --
-// and that fallback is the absorbing arm DESIGN section 5 forbids, written into the very repair that was
+// and that fallback is the absorbing arm gunbc.design_argument::fail_closed forbids, written into the very repair that was
 // meant to remove a misreading.
 //
 // WHY A FALLBACK IS FORBIDDEN HERE, STATED AS THE RULE AND NOT AS AN INCIDENT. When the declaration
 // reading cannot be established, the tempting arm substitutes the other reading, so nothing is ever
-// reported as unresolvable. That is DESIGN section 5's absorbing fallback: the precise answer was
+// reported as unresolvable. That is gunbc.design_argument::fail_closed's absorbing fallback: the precise answer was
 // unavailable and the arm widened to a superset reading, which both fabricates a derivation the source does
 // not support and destroys the signal that the declaration evidence was missing. An earlier revision of
 // this change shipped exactly that fallback and then attributed a native refusal to it; the attribution was
@@ -2091,7 +2091,7 @@ fn resolve_generated_declaration_reference(ctx: ResolveContext, n: Node, path: Q
 }
 
 // ONE CANDIDATE IS THE ANSWER AND SEVERAL ARE AMBIGUOUS. Factored out because both arms above reach it and
-// a second copy of an ambiguity refusal is the duplicated authority DESIGN section 2 prices -- the two arms
+// a second copy of an ambiguity refusal is the duplicated authority gunbc.design_argument::minimize_redundancy prices -- the two arms
 // differ in what they do with an EMPTY candidate list, not in how they read a non-empty one.
 fn resolve_declared_path_candidates(
   ctx: ResolveContext,
@@ -2663,7 +2663,7 @@ fn resolve_atom_unscoped_unbound(ctx: ResolveContext, n: Node, identity: Symbol,
 // A NAME THE INDEX BINDS ONLY AS A KIND THE POSITION EXCLUDES refuses as the category mismatch it is,
 // derived directly from the one eligibility verdict (v2.std.symbol_index ExcludedByCategory): no replay
 // of the unbound tiers and no rewrite of their diagnostic. The verdict's required category and excluded
-// candidates are carried for the diagnostic that will name them. FRONTIER (DESIGN 3c, declared): consumed by the capability a Diagnostic field carrying the excluded candidate (std.diagnostic Diagnostic has only reason, at and correction today, and Suggested names a replacement node, not a found one); until then they are read by no route, and that change owns reading them or shrinking this arm.
+// candidates are carried for the diagnostic that will name them. FRONTIER (gunbc.design_argument::consumption, declared): consumed by the capability a Diagnostic field carrying the excluded candidate (std.diagnostic Diagnostic has only reason, at and correction today, and Suggested names a replacement node, not a found one); until then they are read by no route, and that change owns reading them or shrinking this arm.
 fn resolve_atom_category_mismatch(n: Node, pending: Diagnostics) -> Outcome<ResolvedAtom> {
   Rejected { diagnostics: rejected_with_pending(pending: pending, rejected: diagnostics_singleton(d: Diagnostic {
     reason: ^resolve_reason_reference_category_mismatch,
@@ -3114,8 +3114,8 @@ fn resolve_transform_children(
 // DELETING IT, the retirement this marker used to promise, would be the wrong move: with
 // `LexicalUnbound => namespace_has_canonical_symbol(..)`, an unimported constructor spelling
 // (`None` with no import of it) becomes a fresh binder that matches every value. That is Accepted,
-// wrong, and silent, which DESIGN section 5 forbids. The cost of keeping it is an
-// over-prohibition, stated so it can be priced (DESIGN section 4d): a genuinely fresh binder whose
+// wrong, and silent, which gunbc.design_argument::fail_closed forbids. The cost of keeping it is an
+// over-prohibition, stated so it can be priced (gunbc.design_argument::epistemic_humility): a genuinely fresh binder whose
 // spelling is a variant declared somewhere in the corpus refuses, loudly, and the author renames
 // it. The branch retires when an unbound pattern atom that spells a declared constructor has its
 // own typed refusal that does not consult the corpus-wide census.
@@ -3345,7 +3345,7 @@ fn resolve_declared_payload_candidates(ctx: ResolveContext, paths: FreeMonoid<Qu
 }
 
 // An ambiguous tag must not name an arm by candidate order: a binder typed by the first of several
-// declared payloads fabricates a plausible output (DESIGN §5 -- a failure arm refuses, never
+// declared payloads fabricates a plausible output (gunbc.design_argument::fail_closed -- a failure arm refuses, never
 // widens). Exactly one declared-payload candidate names the arm; a wider set leaves the binder
 // untyped, the behaviour that preceded binder typing. The arm the binder means is settled by the
 // scrutinee's coproduct at infer, not by name order here.
@@ -3719,7 +3719,7 @@ fn resolve_map_key_text_optional(key: Node) -> Optional<String> {
 
 // THE PAIRS, READ TOTALLY. A pair is a tag-elided construct carrying `key` and `value` (body lowering
 // body_lower_map_literal_entry_edge). Either every pair carries both, and the entries come back typed
-// (key, value, source), or the first pair that does not is named -- never substituted: DESIGN 5 forbids
+// (key, value, source), or the first pair that does not is named -- never substituted: gunbc.design_argument::fail_closed forbids
 // a fabricated default, so a missing field is a located refusal
 // (resolve_anonymous_map_entry_malformed), however unlikely lowering is to produce one.
 type ResolveMapPairs
@@ -4673,7 +4673,7 @@ fn resolve_kind_inhabitance(ctx: ResolveContext, declaration: QualifiedName, arg
     // declared resolves elsewhere and refuses; an UNKINDED binder has no annotation to resolve and
     // refuses; a binder of a DIFFERENT kind resolves to another path and refuses. Nothing is
     // admitted by spelling alone, and "is a type parameter" is no longer sufficient by itself, which
-    // is the widen DESIGN section 5 forbids.
+    // is the widen gunbc.design_argument::fail_closed forbids.
     resolve_forwarded_parameter_kind_matches(ctx: ctx, required_from: declaration, argument: argument, kind: kind)
   } else {
     match resolve_kind_variant_paths_optional(ctx: ctx, declaration: declaration, kind: kind) {
@@ -4735,7 +4735,7 @@ fn resolve_kind_declaring_path_optional(ctx: ResolveContext, from: QualifiedName
 // THE REQUIRED KIND IS RESOLVED FROM THE APPLIED DECLARATION'S POSITION (required_from), not from
 // the module being resolved: the kind a declaration asks for is authored where THAT declaration is,
 // so re-looking it up by spelling here could fail or bind a different same-named coproduct -- the
-// identity-by-spelling hazard DESIGN section 3 keeps out. The parameter's own kind is resolved from
+// identity-by-spelling hazard gunbc.design_argument::single_authority keeps out. The parameter's own kind is resolved from
 // the declaration that binds it, which is the symmetric reading, not a second opinion on the first.
 fn resolve_forwarded_parameter_kind_matches(ctx: ResolveContext, required_from: QualifiedName, argument: Node, kind: Node) -> KindInhabitance {
   match type_binder_atom_identity_optional(n: argument) {
@@ -4785,7 +4785,7 @@ fn resolve_forwarded_parameter_kind_matches(ctx: ResolveContext, required_from: 
 // owner that resolve_type_param_frame recorded when it opened the frame, which is the one place the
 // owning path is known from the walk itself rather than re-derived afterwards. A name no frame binds
 // answers Absent, and the judgment turns that into a refusal -- a parameter with no established binder
-// has no established kind, and an unproven claim refuses rather than admits (DESIGN section 2).
+// has no established kind, and an unproven claim refuses rather than admits (gunbc.design_argument::minimize_redundancy).
 fn resolve_type_parameter_owning_declaration(ctx: ResolveContext, name: Symbol) -> Optional<QualifiedName> {
   match resolve_scope_type_parameter_owner(s: ctx.type_scope, name: name) {
     Present { value: owner } => optional_present(value: owner)
@@ -4912,9 +4912,9 @@ fn resolve_kind_variant_paths_optional(ctx: ResolveContext, declaration: Qualifi
 // already bound, and this lane's own value-binder admission refused it as hiding a visible binding. That is
 // what the native eight reported at a synthetic occurrence, and what reds five of #12550's own claims.
 // So the repair was correct for a structure that no longer exists and is DELETED rather than guarded -- a
-// guard would have been this walk encoding a fact about which producer built the Loop (DESIGN section 6b),
+// guard would have been this walk encoding a fact about which producer built the Loop (gunbc.design_argument::earliest_unjustified_boundary),
 // and the dissolution-on-climb rule asks for the obsolete production handling to go while the evidence
-// stays (section 4b(4)).
+// stays (gunbc.design_argument::guarantee_ladder (dissolution on climb)).
 fn resolve_loop_node(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
   child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
     match loop_edge_role(e: e) {

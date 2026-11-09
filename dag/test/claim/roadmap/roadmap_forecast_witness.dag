@@ -535,7 +535,7 @@ test fn witness_forecast_cannot_promote_into_observation_position() -> Bool {
 // retires on its trigger and on nothing else.
 // WHAT THE SINGLE FOLD ACTUALLY SHARES IS THE ACCEPTED SET, AND NOTHING MORE. Binding the
 // projection once and passing it to both sides removes a second derivation of the same value --
-// the authored duplication DESIGN 2 names, since both folds sat inside one claim body. It does NOT
+// the authored duplication gunbc.design_argument::minimize_redundancy names, since both folds sat inside one claim body. It does NOT
 // make the two populations one value: active_node_ids_for_plan and roadmap_schedule_forecast_over
 // both match RoadmapAuthorityProjected { doc: _, accepted, withheld }, DISCARD the doc, and select from
 // declared_roadmap_nodes() -- the PUBLIC authority -- using that accepted set. Two projected plans

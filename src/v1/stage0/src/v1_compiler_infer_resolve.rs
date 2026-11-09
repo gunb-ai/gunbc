@@ -24,10 +24,11 @@ use crate::v1_compiler_infer_env::UnitVariantPhantomLookup::{
 pub use crate::v1_compiler_infer_env::{
     authored_name, bare_name_miss_diagnostic, declaration_ref_of_declaration_node,
     env_with_type_variable_bindings, is_recursive_type, is_recursive_type_by_name,
-    is_recursive_type_for, lookup_type, lookup_type_by_name, lookup_type_for,
-    lookup_unit_variant_phantom_type, substitute_type_slots, substitute_type_slots_scoped,
-    symbol_index_lookup, type_ref_measure_binding_authority, width_resolution_declaration,
-    TypeBinding, TypeEnv, TypeRefMeasureBinding, UnitVariantContribution, UnitVariantPhantomLookup,
+    is_recursive_type_for, lookup_binding_by_name, lookup_type, lookup_type_by_name,
+    lookup_type_for, lookup_unit_variant_phantom_type, substitute_type_slots,
+    substitute_type_slots_scoped, symbol_index_lookup, type_ref_measure_binding_authority,
+    width_resolution_declaration, TypeBinding, TypeEnv, TypeRefMeasureBinding,
+    UnitVariantContribution, UnitVariantPhantomLookup,
 };
 pub use crate::v1_compiler_infer_types::{
     child_type_node, is_declared_container_alias_spelling, is_type_expr_annotation,
@@ -55,7 +56,7 @@ use crate::v1_std_core::ParsedModuleItemKind::{ModuleItemFunction, ModuleItemTyp
 use crate::v1_std_core::StringPart::{Interpolation, Text};
 pub use crate::v1_std_core::{
     arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, default_ident_span,
-    expr_call_func_at, expr_literal_int_optional, expr_method_name_at,
+    divergent_type, expr_call_func_at, expr_literal_int_optional, expr_method_name_at,
     field_from_key_property_name, field_init_node_name_at, field_init_node_value,
     field_node_cardinality, field_node_default_value, field_node_from_key, field_node_name_at,
     field_node_type_expr, find_property, foreach_variable_at, generic_param_name_at, intern,
@@ -465,6 +466,45 @@ pub fn node_is_type_parameter_reference(n: Rc<Node>) -> bool {
     }
 }
 
+pub fn ground_ungrounded_alias_leaf(
+    resolved: Rc<Node>,
+    brand: String,
+    env: Rc<TypeEnv>,
+    module_name: String,
+) -> Rc<Node> {
+    {
+        let ground = resolve_node_bounded(resolved, env.clone(), module_name.clone(), 0, false)
+            .resolved
+            .clone();
+        if (ground.connective.clone() != Connective::NoConnective) {
+            ground
+        } else {
+            match crate::v1_compiler_infer_env::lookup_binding_by_name(env.clone(), brand) {
+                Some(b) => match b.alias_rhs.clone() {
+                    Some(rhs) => {
+                        let expanded = resolve_node_bounded(
+                            rhs.clone(),
+                            env.clone(),
+                            module_name.clone(),
+                            0,
+                            false,
+                        )
+                        .resolved
+                        .clone();
+                        if (expanded.connective.clone() != Connective::NoConnective) {
+                            expanded
+                        } else {
+                            ground
+                        }
+                    }
+                    _ => ground,
+                },
+                _ => ground,
+            }
+        }
+    }
+}
+
 pub fn expand_nominal_alias_rhs(n: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<Node> {
     if node_is_type_parameter_reference(n.clone()) {
         n.clone()
@@ -508,15 +548,12 @@ pub fn expand_nominal_alias_rhs_by_name(
                         .clone(),
                     }
                 } else {
-                    resolve_node_bounded(
+                    ground_ungrounded_alias_leaf(
                         resolved.clone(),
+                        brand.clone(),
                         env.clone(),
                         module_name.clone(),
-                        0,
-                        false,
                     )
-                    .resolved
-                    .clone()
                 };
                 if ((((brand.clone() != "".to_string())
                     && (brand.clone()
@@ -656,6 +693,7 @@ pub fn generic_declaration_application(
             }
         };
         let expanded_node = Rc::new(Node {
+            ident: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: type_name.clone(),
             span: n.span.clone(),
@@ -677,9 +715,9 @@ pub fn generic_declaration_application(
             declaration_marker: n.declaration_marker.clone(),
             declaration: applied_declaration.clone(),
             expr_data: n.expr_data.clone(),
-            ident: None,
         });
         Rc::new(Node {
+            ident: std::option::Option::None,
             occurrence_identity: n.occurrence_identity.clone(),
             name: type_name.clone(),
             span: n.span.clone(),
@@ -703,7 +741,6 @@ pub fn generic_declaration_application(
             declaration_marker: n.declaration_marker.clone(),
             declaration: applied_declaration.clone(),
             expr_data: n.expr_data.clone(),
-            ident: None,
         })
     }
 }
@@ -961,7 +998,7 @@ pub fn resolve_nominal_alias_rhs(
 pub fn resolve_node_bounded_masked_boundary() -> String {
     thread_local! {
         static CACHED: String = {
-            "Selective-import fail-closed (§5): 'masked' is TRUE at the resolve_node source entry and INHERITS through structural recursions (product base :391, product child rt :406, optional inner :426, variant field rt :444, generic args :477, map k/v :519/:522, list elem :538), so every use-site type-argument reaches the leaf mask check masked. It flips FALSE only into GROUNDING recursions (expand_nominal_alias_rhs :150/:151/:154/:163, resolve_alias_target :342, parameterized-alias target :494, resolved-name grounding :561, and the field-access alias peel — v1.compiler.infer peel_alias_once_for_field_access, added 2026-09-09 after the census measured it charging definer-tree names to importers), which descend into DEFINING-module structure (the import responsibility of that module, not the use-site). INVARIANT (reviewed lively-raven-355 2026-07-06): grounding recursions must only ever descend into defining-module structure; the :561 arm relies on the resolved.children==0 leaf guard AND the :550-552 coproduct-container short-circuit — if a future refactor lets a parameterized use reach :561, a use-site arg could be inlined into grounding and skipped (a false-NEGATIVE / missing diagnostic once this is a hard refusal, not an availability bug in diagnostic-collect). Mask check (:568 Present arm) emits UnlistedImportUse when masked && name NOT in env.source_visible_names; keeps 'resolved' intact (diagnostic-collect, advisory). source_visible_names = locals + kernel + selective specific_names + is_all-module exports + type-params (:971). SCAFFOLD dissolve-on (§6): the advisory/non-erroring posture (is_error_diagnostic=false, 00_core.dag) is diagnostic-collect, NOT the final wall. Dissolves when (a) family-closure SVN lands — each imported name resolves to its whole coproduct family (owner + ALL siblings, lively-raven-355 ruling 2026-07-06) so the variant-owner-reverse false-positive class (import variant B then use owner E, or sibling A) is gone, AND (b) the corpus burndown of genuine unlisted uses (Symbol in v2/std/diagnostic.dag, NonEmptyStr in gcp, ...) reaches zero — at which point UnlistedImportUse promotes to a hard UnresolvedType/Refused joining §5's fail-closed wall, and the empty-source_visible_names guard (:345 count>0, a §3 dual-signal with 'masked' — flagged by claude-opus-4-7) collapses so 'masked' is the sole authority.".to_string()
+            "Selective-import fail-closed (gunbc.design_argument::fail_closed): 'masked' is TRUE at the resolve_node source entry and INHERITS through structural recursions (product base :391, product child rt :406, optional inner :426, variant field rt :444, generic args :477, map k/v :519/:522, list elem :538), so every use-site type-argument reaches the leaf mask check masked. It flips FALSE only into GROUNDING recursions (expand_nominal_alias_rhs :150/:151/:154/:163, resolve_alias_target :342, parameterized-alias target :494, resolved-name grounding :561, and the field-access alias peel — v1.compiler.infer peel_alias_once_for_field_access, added 2026-09-09 after the census measured it charging definer-tree names to importers), which descend into DEFINING-module structure (the import responsibility of that module, not the use-site). INVARIANT (reviewed lively-raven-355 2026-07-06): grounding recursions must only ever descend into defining-module structure; the :561 arm relies on the resolved.children==0 leaf guard AND the :550-552 coproduct-container short-circuit — if a future refactor lets a parameterized use reach :561, a use-site arg could be inlined into grounding and skipped (a false-NEGATIVE / missing diagnostic once this is a hard refusal, not an availability bug in diagnostic-collect). Mask check (:568 Present arm) emits UnlistedImportUse when masked && name NOT in env.source_visible_names; keeps 'resolved' intact (diagnostic-collect, advisory). source_visible_names = locals + kernel + selective specific_names + is_all-module exports + type-params (:971). SCAFFOLD dissolve-on (gunbc.design_argument::how_to_work): the advisory/non-erroring posture (is_error_diagnostic=false, 00_core.dag) is diagnostic-collect, NOT the final wall. Dissolves when (a) family-closure SVN lands — each imported name resolves to its whole coproduct family (owner + ALL siblings, lively-raven-355 ruling 2026-07-06) so the variant-owner-reverse false-positive class (import variant B then use owner E, or sibling A) is gone, AND (b) the corpus burndown of genuine unlisted uses (Symbol in v2/std/diagnostic.dag, NonEmptyStr in gcp, ...) reaches zero — at which point UnlistedImportUse promotes to a hard UnresolvedType/Refused joining gunbc.design_argument::fail_closed's fail-closed wall, and the empty-source_visible_names guard (:345 count>0, a gunbc.design_argument::single_authority dual-signal with 'masked' — flagged by claude-opus-4-7) collapses so 'masked' is the sole authority.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -1087,6 +1124,7 @@ pub fn resolve_node_bounded(
                 };
                 Rc::new(NodeResolveResult {
                     resolved: Rc::new(Node {
+                        ident: std::option::Option::None,
                         occurrence_identity: n.occurrence_identity.clone(),
                         name: n.name.clone(),
                         span: n.span.clone(),
@@ -1108,7 +1146,6 @@ pub fn resolve_node_bounded(
                         declaration_marker: n.declaration_marker.clone(),
                         declaration: n.declaration.clone(),
                         expr_data: n.expr_data.clone(),
-                        ident: None,
                     }),
                     diagnostics: v1_rt::concat(param_diags.clone(), return_diags.clone()),
                 })
@@ -1132,6 +1169,7 @@ pub fn resolve_node_bounded(
                                     let base_diags = base_result.diagnostics.clone();
                                     Rc::new(NodeResolveResult {
                                         resolved: Rc::new(Node {
+                                            ident: std::option::Option::None,
                                             occurrence_identity: n.occurrence_identity.clone(),
                                             name: n.name.clone(),
                                             span: n.span.clone(),
@@ -1153,7 +1191,6 @@ pub fn resolve_node_bounded(
                                             declaration_marker: n.declaration_marker.clone(),
                                             declaration: n.declaration.clone(),
                                             expr_data: Rc::new(ExprData::NoExprData),
-                                            ident: None,
                                         }),
                                         diagnostics: base_diags.clone(),
                                     })
@@ -1181,6 +1218,7 @@ let rt_resolved = rt_result.resolved.clone();
 let rt_diags = rt_result.diagnostics.clone();
 Rc::new(NodeResolveResult {
     resolved: Rc::new(Node {
+    ident: std::option::Option::None,
     occurrence_identity: child.occurrence_identity.clone(),
     name: child.name.clone(),
     span: child.span.clone(),
@@ -1204,7 +1242,6 @@ Rc::new(NodeResolveResult {
     declaration_marker: child.declaration_marker.clone(),
     declaration: child.declaration.clone(),
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: None,
 }),
     diagnostics: rt_diags.clone(),
 })
@@ -1229,6 +1266,7 @@ Rc::new(NodeResolveResult {
                                 });
                                 Rc::new(NodeResolveResult {
                                     resolved: Rc::new(Node {
+                                        ident: std::option::Option::None,
                                         occurrence_identity: n.occurrence_identity.clone(),
                                         name: n.name.clone(),
                                         span: n.span.clone(),
@@ -1250,7 +1288,6 @@ Rc::new(NodeResolveResult {
                                         declaration_marker: n.declaration_marker.clone(),
                                         declaration: n.declaration.clone(),
                                         expr_data: Rc::new(ExprData::NoExprData),
-                                        ident: None,
                                     }),
                                     diagnostics: all_diags.clone(),
                                 })
@@ -1307,6 +1344,7 @@ let rt_resolved = rt_result.resolved.clone();
 let rt_diags = rt_result.diagnostics.clone();
 Rc::new(NodeResolveResult {
     resolved: Rc::new(Node {
+    ident: std::option::Option::None,
     occurrence_identity: field_child.occurrence_identity.clone(),
     name: field_child.name.clone(),
     span: field_child.span.clone(),
@@ -1330,7 +1368,6 @@ Rc::new(NodeResolveResult {
     declaration_marker: field_child.declaration_marker.clone(),
     declaration: field_child.declaration.clone(),
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: None,
 }),
     diagnostics: rt_diags.clone(),
 })
@@ -1340,6 +1377,7 @@ let resolved_fields = Rc::new({ let mut __result = Vec::new(); for fr in field_r
 let field_diags = Rc::new({ let mut __result = Vec::new(); for fr in field_results.iter().cloned() { __result.extend((*fr.diagnostics.clone()).iter().cloned()); } __result });
 Rc::new(NodeResolveResult {
     resolved: Rc::new(Node {
+    ident: std::option::Option::None,
     occurrence_identity: variant_child.occurrence_identity.clone(),
     name: variant_child.name.clone(),
     span: variant_child.span.clone(),
@@ -1361,7 +1399,6 @@ Rc::new(NodeResolveResult {
     declaration_marker: variant_child.declaration_marker.clone(),
     declaration: variant_child.declaration.clone(),
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: None,
 }),
     diagnostics: field_diags.clone(),
 })
@@ -1386,6 +1423,7 @@ Rc::new(NodeResolveResult {
                                     });
                                     Rc::new(NodeResolveResult {
                                         resolved: Rc::new(Node {
+                                            ident: std::option::Option::None,
                                             occurrence_identity: n.occurrence_identity.clone(),
                                             name: n.name.clone(),
                                             span: n.span.clone(),
@@ -1407,7 +1445,6 @@ Rc::new(NodeResolveResult {
                                             declaration_marker: n.declaration_marker.clone(),
                                             declaration: n.declaration.clone(),
                                             expr_data: Rc::new(ExprData::NoExprData),
-                                            ident: None,
                                         }),
                                         diagnostics: all_diags.clone(),
                                     })
@@ -1586,6 +1623,7 @@ Rc::new(NodeResolveResult {
                                         type_name.clone(),
                                     );
                                 let expanded_node = Rc::new(Node {
+                                    ident: std::option::Option::None,
                                     occurrence_identity: Rc::new(
                                         NodeOccurrenceIdentity::OccurrenceSynthetic,
                                     ),
@@ -1609,9 +1647,9 @@ Rc::new(NodeResolveResult {
                                     declaration_marker: n.declaration_marker.clone(),
                                     declaration: n.declaration.clone(),
                                     expr_data: n.expr_data.clone(),
-                                    ident: None,
                                 });
                                 let resolved_node = Rc::new(Node {
+                                    ident: std::option::Option::None,
                                     occurrence_identity: n.occurrence_identity.clone(),
                                     name: type_name.clone(),
                                     span: n.span.clone(),
@@ -1635,7 +1673,6 @@ Rc::new(NodeResolveResult {
                                     declaration_marker: n.declaration_marker.clone(),
                                     declaration: n.declaration.clone(),
                                     expr_data: n.expr_data.clone(),
-                                    ident: None,
                                 });
                                 Rc::new(NodeResolveResult {
                                     resolved: resolved_node.clone(),
@@ -1756,6 +1793,7 @@ Rc::new(NodeResolveResult {
                                     }
                                 };
                                 let resolved_key_child = Rc::new(Node {
+                                    ident: std::option::Option::None,
                                     occurrence_identity: key_child_node.occurrence_identity.clone(),
                                     name: key_param_name.clone(),
                                     span: key_child_node.span.clone(),
@@ -1779,9 +1817,9 @@ Rc::new(NodeResolveResult {
                                     declaration_marker: DeclarationMarker::Unmarked,
                                     declaration: std::option::Option::None,
                                     expr_data: Rc::new(ExprData::NoExprData),
-                                    ident: None,
                                 });
                                 let resolved_val_child = Rc::new(Node {
+                                    ident: std::option::Option::None,
                                     occurrence_identity: val_child_node.occurrence_identity.clone(),
                                     name: val_param_name.clone(),
                                     span: val_child_node.span.clone(),
@@ -1805,10 +1843,10 @@ Rc::new(NodeResolveResult {
                                     declaration_marker: DeclarationMarker::Unmarked,
                                     declaration: std::option::Option::None,
                                     expr_data: Rc::new(ExprData::NoExprData),
-                                    ident: None,
                                 });
                                 Rc::new(NodeResolveResult {
                                     resolved: stamp_kernel_collection(Rc::new(Node {
+                                        ident: std::option::Option::None,
                                         occurrence_identity: n.occurrence_identity.clone(),
                                         name: type_name.clone(),
                                         span: n.span.clone(),
@@ -1833,7 +1871,6 @@ Rc::new(NodeResolveResult {
                                         declaration_marker: n.declaration_marker.clone(),
                                         declaration: n.declaration.clone(),
                                         expr_data: Rc::new(ExprData::NoExprData),
-                                        ident: None,
                                     })),
                                     diagnostics: v1_rt::concat(
                                         key_diags.clone(),
@@ -1885,6 +1922,7 @@ Rc::new(NodeResolveResult {
                                                 }
                                             };
                                             let resolved_child = Rc::new(Node {
+                                                ident: std::option::Option::None,
                                                 occurrence_identity: child_node
                                                     .occurrence_identity
                                                     .clone(),
@@ -1911,12 +1949,12 @@ Rc::new(NodeResolveResult {
                                                 declaration_marker: DeclarationMarker::Unmarked,
                                                 declaration: std::option::Option::None,
                                                 expr_data: Rc::new(ExprData::NoExprData),
-                                                ident: None,
                                             });
                                             Rc::new(NodeResolveResult {
                                                 resolved: stamp_kernel_collection(
                                                     reference_with_declaration(
                                                         Rc::new(Node {
+                                                            ident: std::option::Option::None,
                                                             occurrence_identity: n
                                                                 .occurrence_identity
                                                                 .clone(),
@@ -1953,7 +1991,6 @@ Rc::new(NodeResolveResult {
                                                             expr_data: Rc::new(
                                                                 ExprData::NoExprData,
                                                             ),
-                                                            ident: None,
                                                         }),
                                                         env.clone(),
                                                     ),
@@ -2238,6 +2275,7 @@ pub fn resolve_optional_node(
             }),
             InferredNode::TypeVariable { id: tv, .. } => Rc::new(NodeResolveResult {
                 resolved: Rc::new(Node {
+                    ident: std::option::Option::None,
                     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: tv.clone(),
                     span: crate::v1_std_core::kernel_span(tv.clone()),
@@ -2259,7 +2297,6 @@ pub fn resolve_optional_node(
                     declaration_marker: DeclarationMarker::Unmarked,
                     declaration: std::option::Option::None,
                     expr_data: Rc::new(ExprData::NoExprData),
-                    ident: None,
                 }),
                 diagnostics: Rc::new(vec![]),
             }),
@@ -2329,6 +2366,7 @@ pub fn resolve_field(
 
 pub fn stamp_kernel_collection(n: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: n.occurrence_identity.clone(),
         name: n.name.clone(),
         span: n.span.clone(),
@@ -2350,13 +2388,13 @@ pub fn stamp_kernel_collection(n: Rc<Node>) -> Rc<Node> {
         declaration_marker: n.declaration_marker.clone(),
         declaration: n.declaration.clone(),
         expr_data: n.expr_data.clone(),
-        ident: None,
     })
 }
 
 pub fn rendered_use_site_type(authored: Rc<Node>, resolved: Rc<Node>) -> Rc<Node> {
     if ((authored.children.clone().len() as i64) > 0) {
         Rc::new(Node {
+            ident: std::option::Option::None,
             occurrence_identity: authored.occurrence_identity.clone(),
             name: authored.name.clone(),
             span: authored.span.clone(),
@@ -2380,10 +2418,10 @@ pub fn rendered_use_site_type(authored: Rc<Node>, resolved: Rc<Node>) -> Rc<Node
             declaration_marker: authored.declaration_marker.clone(),
             declaration: authored.declaration.clone(),
             expr_data: authored.expr_data.clone(),
-            ident: None,
         })
     } else {
         Rc::new(Node {
+            ident: std::option::Option::None,
             occurrence_identity: authored.occurrence_identity.clone(),
             name: resolved.name.clone(),
             span: resolved.span.clone(),
@@ -2405,7 +2443,6 @@ pub fn rendered_use_site_type(authored: Rc<Node>, resolved: Rc<Node>) -> Rc<Node
             declaration_marker: resolved.declaration_marker.clone(),
             declaration: resolved.declaration.clone(),
             expr_data: resolved.expr_data.clone(),
-            ident: None,
         })
     }
 }
@@ -3095,6 +3132,7 @@ pub fn resolve_expr_types(
                     }
                 };
                 let let_node = Rc::new(Node {
+                    ident: std::option::Option::None,
                     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: crate::v1_std_core::let_binding_name_at(
                         texpr.clone(),
@@ -3125,7 +3163,6 @@ pub fn resolve_expr_types(
                     declaration_marker: DeclarationMarker::Unmarked,
                     declaration: std::option::Option::None,
                     expr_data: Rc::new(ExprData::ExprLet),
-                    ident: None,
                 });
                 Rc::new(ExprResolveResult {
                     expr: let_node.clone(),
@@ -3244,6 +3281,7 @@ pub fn resolve_expr_types(
                 op,
                 algebra_field: af,
                 operand: od,
+                derived: eqp,
                 ..
             } => {
                 let ch = texpr.children.clone();
@@ -3268,6 +3306,7 @@ pub fn resolve_expr_types(
                             op: op.clone(),
                             algebra_field: af.clone(),
                             operand: od.clone(),
+                            derived: eqp.clone(),
                         }),
                         Rc::new(vec![lr.expr.clone(), rr.expr.clone()]),
                         texpr.inferred.clone(),
@@ -3907,6 +3946,7 @@ pub fn reference_with_declaration(n: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> {
 
 pub fn node_with_declaration(n: Rc<Node>, declaration: Rc<DeclarationRef>) -> Rc<Node> {
     Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: n.occurrence_identity.clone(),
         name: n.name.clone(),
         span: n.span.clone(),
@@ -3928,7 +3968,6 @@ pub fn node_with_declaration(n: Rc<Node>, declaration: Rc<DeclarationRef>) -> Rc
         declaration_marker: n.declaration_marker.clone(),
         declaration: Some(declaration.clone()),
         expr_data: n.expr_data.clone(),
-        ident: None,
     })
 }
 
@@ -4094,6 +4133,7 @@ pub fn node_with_children_params_inferred(
     inferred: Option<Rc<InferredNode>>,
 ) -> Rc<Node> {
     Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: n.occurrence_identity.clone(),
         name: n.name.clone(),
         span: n.span.clone(),
@@ -4115,7 +4155,6 @@ pub fn node_with_children_params_inferred(
         declaration_marker: n.declaration_marker.clone(),
         declaration: n.declaration.clone(),
         expr_data: n.expr_data.clone(),
-        ident: None,
     })
 }
 
@@ -4343,6 +4382,7 @@ pub fn resolve_item_types(
                         );
                         Rc::new(ItemResolveResult {
                             item: Rc::new(Node {
+                                ident: std::option::Option::None,
                                 occurrence_identity: child.occurrence_identity.clone(),
                                 name: child.name.clone(),
                                 span: child.span.clone(),
@@ -4374,7 +4414,6 @@ pub fn resolve_item_types(
                                 declaration_marker: child.declaration_marker.clone(),
                                 declaration: child.declaration.clone(),
                                 expr_data: Rc::new(ExprData::NoExprData),
-                                ident: None,
                             }),
                             diagnostics: type_diags.clone(),
                         })
@@ -4411,6 +4450,7 @@ pub fn resolve_item_types(
                                         );
                                         Rc::new(ItemResolveResult {
                                             item: Rc::new(Node {
+                                                ident: std::option::Option::None,
                                                 occurrence_identity: field
                                                     .occurrence_identity
                                                     .clone(),
@@ -4448,7 +4488,6 @@ pub fn resolve_item_types(
                                                     .clone(),
                                                 declaration: field.declaration.clone(),
                                                 expr_data: Rc::new(ExprData::NoExprData),
-                                                ident: None,
                                             }),
                                             diagnostics: type_diags.clone(),
                                         })
@@ -4472,6 +4511,7 @@ pub fn resolve_item_types(
                             });
                             Rc::new(ItemResolveResult {
                                 item: Rc::new(Node {
+                                    ident: std::option::Option::None,
                                     occurrence_identity: variant.occurrence_identity.clone(),
                                     name: variant.name.clone(),
                                     span: variant.span.clone(),
@@ -4493,7 +4533,6 @@ pub fn resolve_item_types(
                                     declaration_marker: variant.declaration_marker.clone(),
                                     declaration: variant.declaration.clone(),
                                     expr_data: Rc::new(ExprData::NoExprData),
-                                    ident: None,
                                 }),
                                 diagnostics: field_diags.clone(),
                             })
@@ -4591,6 +4630,7 @@ pub fn resolve_item_types(
             binder_marked_inferred(stamped_ret, owner.clone(), tp_names.clone(), env.clone());
         Rc::new(ItemResolveResult {
             item: Rc::new(Node {
+                ident: std::option::Option::None,
                 occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 name: item.name.clone(),
                 span: item.span.clone(),
@@ -4612,7 +4652,6 @@ pub fn resolve_item_types(
                 declaration_marker: item.declaration_marker.clone(),
                 declaration: item.declaration.clone(),
                 expr_data: Rc::new(ExprData::NoExprData),
-                ident: None,
             }),
             diagnostics: v1_rt::concat(
                 v1_rt::concat(

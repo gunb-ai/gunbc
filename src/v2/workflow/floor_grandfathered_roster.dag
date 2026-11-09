@@ -14,7 +14,7 @@ import std.algebra { Cons, Empty, list_flat_map, length, contains }
 // equivalent budget it was living under, and an identity NOT in it is judged against the
 // 100ms-equivalent budget for new work.
 //
-// IT IS A MONOTONE DEBT CONTRACT IN THE SENSE DESIGN SECTION 5 REQUIRES, AND ALL THREE OF ITS
+// IT IS A MONOTONE DEBT CONTRACT IN THE SENSE DESIGN gunbc.design_argument::fail_closed REQUIRES, AND ALL THREE OF ITS
 // CONDITIONS ARE MET RATHER THAN ASSERTED. (i) The subject universe is INDEPENDENTLY DISCOVERED
 // AND CLOSED: it is not authored, it is the required floor's own discovery producer output at the
 // cut commit -- every identity the floor PLANNED, read from the run's `required_floor_disposition`
@@ -41,15 +41,15 @@ import std.algebra { Cons, Empty, list_flat_map, length, contains }
 // THAT DISTINCTION IS NOT PEDANTIC, AND THIS CHANGE IS THE PROOF. Three witnesses THIS LANE ADDED
 // were enrolled as grandfathered by the cut and left the roster only because a human review
 // caught them -- not because any wall fired. Asserting the refusal as established would have been
-// the rung inflation DESIGN section 4b(1) names: the reported rung must equal the rung executed
+// the rung inflation gunbc.design_argument::guarantee_ladder (rung honesty) names: the reported rung must equal the rung executed
 // evidence establishes, and a modeled verdict with no acceptance-path caller establishes nothing
 // at corpus scale. The class is filed at `gunbc.recurring_failure_mode`
 // `prose_repealed_by_the_change_that_wrote_it`.
 //
 // WHY A GROWING ROSTER WOULD DESTROY THE MECHANISM, stated because it is the whole point: the new
 // tier only bites if new work cannot join the old tier. A roster that admitted rows would let every
-// expensive new witness be grandfathered on the day it landed, which is the escape hatch DESIGN
-// section 5 forbids -- a toggle whose only effect is "proceed as if the refusal had not fired".
+// expensive new witness be grandfathered on the day it landed, which is the escape hatch
+// gunbc.design_argument::fail_closed forbids -- a toggle whose only effect is "proceed as if the refusal had not fired".
 //
 // A RENAME IS A DELETION PLUS AN ADDITION, so a renamed witness is NEW. That is a consequence of
 // identity-grain membership rather than a rule layered on top of it, and it is deliberate: it
@@ -60,7 +60,7 @@ import std.algebra { Cons, Empty, list_flat_map, length, contains }
 // commit this lane lands on. A later edit that wants to change the population must change what the
 // floor discovers, not this file.
 
-// THE TYPED DISPOSITION A REMOVAL CARRIES. DESIGN section 5: a monotone debt contract is legitimate
+// THE TYPED DISPOSITION A REMOVAL CARRIES. gunbc.design_argument::fail_closed: a monotone debt contract is legitimate
 // only when "every removal carries a typed disposition" -- an untyped shrink is indistinguishable
 // from a row quietly going missing, which is the state the contract exists to make impossible.
 //
@@ -86,7 +86,7 @@ type GrandfatheredRemoval =
 // module states the same rule about the third of them by name, recording that the specimen was
 // REDUCED so it would sit under the new-witness ceiling because "grandfathering would have granted
 // exactly that exemption". It was granted anyway. Two paragraphs asserting the rule did not stop
-// the mechanism from breaking it, which is the whole reason DESIGN section 5 prefers construction
+// the mechanism from breaking it, which is the whole reason gunbc.design_argument::fail_closed prefers construction
 // over prose.
 //
 // STRIKING THEM IS A CORRECTION TO THE ROSTER'S CONSTRUCTION AND NOT A REMOVAL UNDER THE MONOTONE
@@ -173,7 +173,7 @@ data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
   },
   WitnessDeleted {
     identity: "test.claim.self_host_peano_literal_operator_realization_witness.w_kernel_bool_at_structural_bool_spelling_boundary_stays_the_keyword" as NonEmptyStr,
-    deleted_in: "the Bool de-fork (gunbc.defork_type_name_census ResolvedByDeletingV2): it pinned v2.std.logic Bool winning over the kernel Bool by ancestry leak; that declaration is deleted, so the leak has nothing to leak from and the red is unwritable (DESIGN 4b(4) dissolution). Not re-subjected to a user-declared structural Bool, which is the separately tracked local_bool_coproduct_probe class; the host control w_kernel_bool_at_native_bool_boundary_stays_the_keyword stays enrolled" as NonEmptyStr
+    deleted_in: "the Bool de-fork (gunbc.defork_type_name_census ResolvedByDeletingV2): it pinned v2.std.logic Bool winning over the kernel Bool by ancestry leak; that declaration is deleted, so the leak has nothing to leak from and the red is unwritable (gunbc.design_argument::guarantee_ladder (dissolution on climb) dissolution). Not re-subjected to a user-declared structural Bool, which is the separately tracked local_bool_coproduct_probe class; the host control w_kernel_bool_at_native_bool_boundary_stays_the_keyword stays enrolled" as NonEmptyStr
   },
   WitnessDeleted {
     identity: "v2.test.claim.compiler.kernel_value_type_roster_witness.kvr_a_named_calls_bool_formal_is_counted_not_judged_holds" as NonEmptyStr,
@@ -387,7 +387,7 @@ data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
   },
   WitnessDeleted {
     identity: "v2.test.claim_pipeline.translate.spine_translate_accepts_rust_add_inferred_tree" as NonEmptyStr,
-    deleted_in: "gunbc#11591: after the lower_stage witness was repointed at the supplied rust_emit_small_add_translate_target, this claim made the identical translate call on the identical inputs and asserted strictly less (Accepted, without well_formed) -- DESIGN section 3, two claims making the same call on the same input where one assertion implies the other. Its subject survives whole in v2.test.compiler.pipeline.lower_stage.pipeline_lower_add_fixture_relationship_green; the production-model inhabitance stays with v2.test.claim.translate_underived_refusal translate_accepts_derived_corpus_module_holds" as NonEmptyStr,
+    deleted_in: "gunbc#11591: after the lower_stage witness was repointed at the supplied rust_emit_small_add_translate_target, this claim made the identical translate call on the identical inputs and asserted strictly less (Accepted, without well_formed) -- gunbc.design_argument::single_authority, two claims making the same call on the same input where one assertion implies the other. Its subject survives whole in v2.test.compiler.pipeline.lower_stage.pipeline_lower_add_fixture_relationship_green; the production-model inhabitance stays with v2.test.claim.translate_underived_refusal translate_accepts_derived_corpus_module_holds" as NonEmptyStr,
   },
   WitnessDeleted {
     identity: "v2.test.claim.realize_advisory_soundness_test.witness_exact_bound_is_sound" as NonEmptyStr,
@@ -991,7 +991,7 @@ fn floor_grandfathered_chunk_047() -> List<String> {
 }
 
 fn floor_grandfathered_chunk_048() -> List<String> {
-  Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_live_classification_splits_one_and_six", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_live_compiler_origin_is_not_promotable", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_local_gate_admits_complete_evidence", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_local_gate_refuses_an_empty_left_root_set", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_local_gate_refuses_an_empty_root_set", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_local_gate_refuses_an_incomplete_subject", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_local_gate_refuses_one_producer_twice", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_local_gate_refuses_the_modeled_producer_twice", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_local_gate_refuses_unresolved_indirect_edges", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_lower_bound_admits_no_promotion", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_mode_discriminates_the_key", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_modeled_only_is_not_an_unmodeled_boundary", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_no_projected_primitive_holds_exactly_of_the_unrostered_rows", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_one_commit_over_two_trees_refuses_on_the_tree", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_producers_agree_on_identical_populations", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_realization_keys_on_the_projected_primitive", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_realized_only_is_an_unmodeled_boundary", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_receipt_count_is_derived_from_identities", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_registry_binds_each_realized_seam_to_its_cited_bridge", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_retired_row_survives_absent_demand", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_roster_realization_comes_from_the_registry", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_stale_row_refuses", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_the_authored_registry_binds_at_most_one_bridge_per_seam", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_the_two_unrealized_populations_are_disjoint_by_projection", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_two_bridges_for_one_primitive_select_none", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } }
+  Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_live_classification_splits_one_and_fourteen", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_live_compiler_origin_is_not_promotable", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_local_gate_admits_complete_evidence", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_local_gate_refuses_an_empty_left_root_set", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_local_gate_refuses_an_empty_root_set", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_local_gate_refuses_an_incomplete_subject", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_local_gate_refuses_one_producer_twice", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_local_gate_refuses_the_modeled_producer_twice", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_local_gate_refuses_unresolved_indirect_edges", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_lower_bound_admits_no_promotion", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_mode_discriminates_the_key", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_modeled_only_is_not_an_unmodeled_boundary", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_no_projected_primitive_holds_exactly_of_the_unrostered_rows", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_one_commit_over_two_trees_refuses_on_the_tree", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_producers_agree_on_identical_populations", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_realization_keys_on_the_projected_primitive", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_realized_only_is_an_unmodeled_boundary", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_receipt_count_is_derived_from_identities", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_registry_binds_each_realized_seam_to_its_cited_bridge", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_retired_row_survives_absent_demand", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_roster_realization_comes_from_the_registry", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_stale_row_refuses", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_the_authored_registry_binds_at_most_one_bridge_per_seam", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_the_two_unrealized_populations_are_disjoint_by_projection", tail: Cons { head: "v2.test.claim.effect_demand.effect_demand_census.effect_demand_witness_two_bridges_for_one_primitive_select_none", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } }
 }
 
 fn floor_grandfathered_chunk_049() -> List<String> {
@@ -1415,7 +1415,7 @@ fn floor_grandfathered_chunks() -> List<List<String>> {
 // Before removals subtracted, "roster" and "cut" were the same population and one name served both.
 // They are now different: the roster is the cut MINUS the declared removals. Leaving this producer
 // called `floor_grandfathered_roster` would have left two surfaces named for the roster answering
-// differently about membership, which is the meaning fork DESIGN section 3 forbids.
+// differently about membership, which is the meaning fork gunbc.design_argument::single_authority forbids.
 fn floor_grandfathered_cut() -> List<String> {
   list_flat_map(xs: floor_grandfathered_chunks(), f: fn(c) { c })
 }
@@ -1457,8 +1457,8 @@ fn floor_grandfathered_cut() -> List<String> {
 // measurement cited. When it lands, this descent is replaced by the map-backed join and the numbers
 // above are the baseline it must beat. An earlier revision of this comment presented the descent as
 // the considered design and offered authors an n-dependent rule for choosing between the two; both
-// were refused, because pricing a per-site exception around a cost-shape defect is the move DESIGN
-// section 6 forbids by name.
+// were refused, because pricing a per-site exception around a cost-shape defect is the move
+// gunbc.design_argument::how_to_work forbids by name.
 //
 // MEMBERSHIP IS AT IDENTITY GRAIN in every spelling: whole-identity equality, never a prefix and
 // never a count. A prefix test would grandfather every future witness in an already-enrolled
@@ -1466,10 +1466,10 @@ fn floor_grandfathered_cut() -> List<String> {
 // MEMBERSHIP IS THE FROZEN CUT MINUS THE DECLARED REMOVALS, AND THAT SUBTRACTION IS THE WHOLE
 // MONOTONE CONTRACT (review 65986). An earlier revision read the chunks alone, so a declared
 // removal DOCUMENTED a departure without causing one: the universe could never shrink, and the
-// fold cited as executing the removal half asserted the removed row was STILL A MEMBER. DESIGN
-// section 5 is explicit that a disposition list which cannot shrink the subject universe is not a
+// fold cited as executing the removal half asserted the removed row was STILL A MEMBER.
+// gunbc.design_argument::fail_closed is explicit that a disposition list which cannot shrink the subject universe is not a
 // removal mechanism, and claiming that half executed while the only acceptance-path fold asserted
-// the opposite is the rung inflation section 4b(1) forbids.
+// the opposite is the rung inflation gunbc.design_argument::guarantee_ladder (rung honesty) forbids.
 //
 // THE CUT STAYS FROZEN AND THE REMOVALS SUBTRACT, WHICH IS WHY THE CHUNK ROWS ARE NOT DELETED
 // INSTEAD. The chunks are what the floor's discovery producer OBSERVED at the cut commit; editing
@@ -1539,14 +1539,14 @@ fn grandfathered_in_chunks(name: String, chunks: List<List<String>>) -> Bool {
 // THE DISPOSITION IS THE ONE THIS LANE ARGUES FOR ELSEWHERE, WHICH IS WHY IT IS STATED AND NOT
 // USED AS A LICENCE. `gunbc.recurring_failure_mode` `nested_membership_scan_where_a_map_primitive_exists`
 // says in terms that the repair is ONE REPAIR IN THE PRIMITIVE RATHER THAN A RULE IN EVERY
-// CONSUMER, and DESIGN section 6 says to root-cause to the language layer because a local
+// CONSUMER, and gunbc.design_argument::how_to_work says to root-cause to the language layer because a local
 // subsystem patch is the forked-logic trap. A hand-rolled descent in every hot consumer IS that
 // trap; retaining exactly one, with its cost measured and its exit named, is the bounded form.
 //
 // NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: the collection-roster `any`
 // (`std.algebra.collection_any_shape`, CallbackAnyByOr) stops traversing once a predicate has
 // answered true -- at which point `contains` short-circuits, this function is DELETED, and
-// `grandfathered_in_chunks` calls the canonical surface directly (DESIGN section 4b(4), dissolution
+// `grandfathered_in_chunks` calls the canonical surface directly (gunbc.design_argument::guarantee_ladder (dissolution on climb), dissolution
 // on climb). A trigger naming a faster chunk size, a memoised roster, or a second short-circuiting
 // helper beside this one does NOT discharge it: each keeps a second membership spelling, which is
 // the condition being retired.
@@ -1580,7 +1580,7 @@ fn grandfathered_in_chunk(name: String, rows: List<String>) -> Bool {
 //
 // THIS IS THE LIST FORM OF `floor_grandfathered_holds` AND NOT A SECOND MEMBERSHIP RULE. Both
 // subtract the same declared removals from the same cut; if they could disagree this would be the
-// section 3 fork, which is why the predicate is not re-implemented here.
+// gunbc.design_argument::single_authority fork, which is why the predicate is not re-implemented here.
 fn floor_grandfathered_members() -> List<String> {
   filter(
     xs: floor_grandfathered_cut(),
@@ -1598,7 +1598,7 @@ fn floor_grandfathered_cut_size() -> Int {
 
 // ── THE MONOTONE CONTRACT, AS AN EXECUTING VERDICT RATHER THAN AS THE PROSE ABOVE ──────────
 //
-// DESIGN section 5 admits a monotone debt contract only when the subject universe is independently
+// gunbc.design_argument::fail_closed admits a monotone debt contract only when the subject universe is independently
 // discovered and closed, membership is checked at identity grain, and EVERY REMOVAL CARRIES A TYPED
 // DISPOSITION. The first two are properties of how this file was generated; the third is a property
 // of how it CHANGES, and a property of change cannot be established by a file that only describes
@@ -1614,7 +1614,7 @@ fn floor_grandfathered_cut_size() -> Int {
 // exemption the new-witness tier exists to deny. So an addition REFUSES -- it is not reported, not
 // warned about, and not admitted with a note.
 //
-// DECLARED FRONTIER (DESIGN section 3c): the executing consumer today is
+// DECLARED FRONTIER (gunbc.design_argument::consumption): the executing consumer today is
 // `test.claim.floor_eval_step_budget_witness`. The consumer that lands next is the roster's
 // own regeneration gate, which must run this verdict against the discovery producer's current
 // output before writing the file -- so that a regen which would ADD a row refuses instead of

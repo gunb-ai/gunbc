@@ -1,13 +1,14 @@
 module test.claim.regen_receipt_witness
 
 import std.types { Bool, String, List }
-import gunbc.regen_receipt { RegenReceipt, FirstGeneration, Refused, refusal_reason }
+import gunbc.regen_receipt { RegenReceipt, FirstGeneration, Refused, RegenSurfaceRoles, RegenSurfaceOwner, RegenGeneratedProductRole, refusal_reason }
+import gunbc.regen_affected_set { AggregateGenerationInput, AggregateOutsideSeed }
 
 // THE REFUSED VARIANT, AND WHAT THESE WITNESSES CAN AND CANNOT ESTABLISH.
 //
 // The wall is the TYPE's shape, not these tests: Refused declares no digest fields and no
 // first_generation_equal, so a refusal has nothing to invent and the invalid receipt has no
-// constructor -- DESIGN 4b structural impossibility, needing no witness: writing the fabricated
+// constructor -- gunbc.design_argument::guarantee_ladder structural impossibility, needing no witness: writing the fabricated
 // Bool does not typecheck, so there is no runtime state for an assertion to catch.
 //
 // What these witnesses ARE for is what the shape alone does not give: executing evidence that the
@@ -48,7 +49,15 @@ test fn a_first_generation_receipt_carries_no_refusal_cause() -> Bool {
       candidate_generated_digest: "digest-candidate",
       first_generation_equal: true,
       changed_paths: [],
-      candidate_artifact: "target/stage0-regen-candidate"
+      candidate_artifact: "target/stage0-regen-candidate",
+      surface_roles: RegenSurfaceRoles {
+        basename_to_module: [RegenSurfaceOwner { basename: "std_measure.rs", module: "std.measure" }],
+        generation_modules: ["std.measure"],
+        bootstrap_sources: [],
+        bootstrap_products: [],
+        seed_embedded_basenames: ["std_measure.rs"],
+        generated_product_roles: [RegenGeneratedProductRole { product: "Cargo.toml", generation_role: AggregateGenerationInput, seed_membership: AggregateOutsideSeed }]
+      }
     }
   ) == ""
 }

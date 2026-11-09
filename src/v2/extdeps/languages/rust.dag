@@ -229,6 +229,7 @@ import v2.std.compilers.target_model { EmitSpellingEscape,
   TargetTypeExpressionProjection,
   ValueBoolLiteral,
   ValueCharUnicodeScalar,
+  ValueStringLiteral,
   ValueSymbolToOwnedString,
   char_kernel_type_node,
   symbol_kernel_type_node,
@@ -330,6 +331,7 @@ import v2.std.node {
   TypeNode,
   Instantiation,
   fold_list_node,
+  host_text_type_node,
   NotADeclaration
 }
 import v2.std.node_query { binder_edge }
@@ -353,7 +355,7 @@ import v2.std.host_transport {
   target_emit_host_runtime_row_unconfigured
 }
 import v2.std.integer {
-  IntegerIntervalSpec,
+  IntegerExtent,
   int8_interval_spec,
   int16_interval_spec,
   int32_interval_spec,
@@ -738,7 +740,7 @@ fn rust_integer_carrier_as_scalar(carrier: RustIntegerCarrier) -> RustScalar {
   IntScalar { kind: carrier.kind, width: carrier.width }
 }
 
-fn rust_integer_carrier_interval_spec(carrier: RustIntegerCarrier) -> IntegerIntervalSpec {
+fn rust_integer_carrier_interval_spec(carrier: RustIntegerCarrier) -> IntegerExtent {
   match carrier.kind {
     Signed => match carrier.width {
       Bits8 => int8_interval_spec
@@ -2304,6 +2306,23 @@ data rust_target_atom_realization_symbol: TargetAtomRealization = TargetAtomReal
   display_name: ^symbol_kernel_type_atom
 }
 
+// HOST TEXT'S RUST REALIZATION, keyed on the kernel host-text carrier (v2.std.node host_text_type_node, the
+// roster row of v2.extdeps.languages.dag dag_kernel_value_type_roster that std.host_text HostText and
+// v2.std.node String both name) and on nothing else. The lookup is by the carrier node's content hash, so a
+// String declaration the author reaches (v2.std.text String, the structural FreeMonoid<Char>) is a different
+// node and does not match: representation is decided by declaration identity, never the spelling. Rust's
+// owned host text is `String` (the same surface symbol the Symbol row's type form names). The value form is
+// the target's string-literal template; emitting a string literal expression is a separate engine
+// obligation (rust_literal_emit_string_refusal_note), not claimed here.
+data rust_target_atom_realization_host_text: TargetAtomRealization = TargetAtomRealization {
+  source_carrier: host_text_type_node(),
+  target_model: rust_target_model_staging(),
+  type_form: rust_target_atom_type_form(spelling: ^rust_target_atom_type_spelling_string),
+  value_form: target_value_template_for_kind(kind: ValueStringLiteral),
+  constructor_form: optional_absent(),
+  display_name: ^string_node_symbol
+}
+
 data rust_target_atom_realization_bool: TargetAtomRealization = TargetAtomRealization {
   source_carrier: bool_node(),
   target_model: rust_target_model_staging(),
@@ -2324,6 +2343,7 @@ data rust_target_atom_realization_char: TargetAtomRealization = TargetAtomRealiz
 
 data rust_target_atom_realization_catalog: List<TargetAtomRealization> = [
   rust_target_atom_realization_symbol,
+  rust_target_atom_realization_host_text,
   rust_target_atom_realization_bool,
   rust_target_atom_realization_char
 ]
@@ -3300,7 +3320,7 @@ fn rust_catalog_surface_symbol(sym: Symbol) -> Bool {
 
 // The token-class membership map for rust_fn_add_lex_rules(), built ONCE and read by key: the
 // membership of a class is a pure function of this module-literal rule set, so per-query
-// rebuilds of the set and linear scans of it were authored duplication (DESIGN.md §2,
+// rebuilds of the set and linear scans of it were authored duplication (gunbc.design_argument::minimize_redundancy,
 // gunbc.recurring_failure_mode.nested_membership_scan_where_a_map_primitive_exists).
 data rust_fn_add_lex_token_class_membership: Map<Symbol, Bool> = lex_rule_set_token_class_map(rules: rust_fn_add_lex_rules())
 
@@ -4599,7 +4619,7 @@ fn rust_grammar() -> ParseGrammar {
 
 // The token-class membership map for rust_lex_rules(), built ONCE and read by key: the
 // membership of a class is a pure function of this module-literal rule set, so per-query
-// rebuilds of the set and linear scans of it were authored duplication (DESIGN.md §2,
+// rebuilds of the set and linear scans of it were authored duplication (gunbc.design_argument::minimize_redundancy,
 // gunbc.recurring_failure_mode.nested_membership_scan_where_a_map_primitive_exists).
 data rust_lex_token_class_membership: Map<Symbol, Bool> = lex_rule_set_token_class_map(rules: rust_lex_rules())
 

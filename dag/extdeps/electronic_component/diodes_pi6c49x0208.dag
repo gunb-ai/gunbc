@@ -1,0 +1,110 @@
+module extdeps.electronic_component.diodes_pi6c49x0208
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor.diodes_incorporated { diodes_incorporated }
+import std.measure { millivolt }
+import extdeps.electronic_component.types { MarkDescribedNotStructured,
+  ElectronicComponentRow,
+  ClockFanoutSpec,
+  ClockFanoutSpecification,
+  MillivoltRange,
+}
+
+// Diodes' PI6C49X0208 data sheet, DS45889 Rev 1-2 (August 2023), fetched from
+// www.diodes.com/assets/Datasheets/PI6C49X0208.pdf and read 2026-11-03. What this row takes from it:
+//   - the Features list and Description: "8 single-ended outputs fanout buffer", "Up to 200MHz output
+//     frequency", "Selectable reference inputs support Xtal (10~50MHz), single-ended and
+//     differential", "2.5V/3.3V operation", "Industrial temperature range: -40C to +85C", and "a high
+//     performance multi-voltage 8-outputs CMOS Fanout Buffer with internal Crystal Oscillator";
+//   - the pin table, transcribed as the table gives it (number, name, type): CLK0-7 on 1,3,5,7,18,20,
+//     22,24; VDDO on 2,6,19,23; GNDO on 4,9,16,21,25,32; NC on 8,17; GND on 15,26; VDD on 10; XIN 11
+//     and XOUT 12 (crystal); IN0 13 with IN0# 14; IN1 28 with IN1# 27; IN_SEL[0:1] on 29,30, which
+//     the table says "select XTAL, IN1/1# and IN0/IN0#"; ENABLE 31, "Synchronous Active High Output
+//     Enable". Three selectable reference sources, hence `inputs: 3`;
+//   - the part-marking diagram: three lines, "PI6C49X" / "0208ZHIE" / "YYWWXX";
+//   - the ordering table: PI6C49X0208ZHIEX, package ZH, "W-QFN5050-32", 1000 per reel.
+//
+// WHY `supplies` ARE TWO DEGENERATE RANGES. The document names two core operating voltages, 2.5 V and
+// 3.3 V, and the tolerance table was not read. Recording each as min == max says exactly what was
+// read -- a named operating voltage -- and not that anything between them is sanctioned.
+//
+// WHY OUR BOARD'S U501 IS A CANDIDATE HERE. The E1's U501 was read as "PI6C49X / 0208" (see
+// product.p4261.e1_b for the frame and the box). The first line is complete and names the family; the
+// second line of the vendor's marking is "0208ZHIE", and the read did not capture the suffix -- which
+// is the part of the marking that carries the exact orderable. So the family is established and the
+// SKU is not, which is the standing the operator's ruling of 2026-11-03 asks for. A legible frame of
+// the second marking line closes it; until then this row is a candidate, not an identification.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.diodes.com/assets/Datasheets/PI6C49X0208.pdf"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.electronic_component.diodes_pi6c49x0208",
+      decl_name: "pi6c49x0208_zhie",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data pi6c49x0208_zhie: ElectronicComponentRow = ElectronicComponentRow {
+  vendor: diodes_incorporated,
+  ordering_code: "PI6C49X0208ZHIEX",
+  package: "W-QFN5050-32 (ZH), 32 pins",
+  top_marking: Present { value: MarkDescribedNotStructured { text: "PI6C49X / 0208ZHIE / YYWWXX", why: "the document's legend for the third line was not read" } },
+  specification: ClockFanoutSpec { clock: ClockFanoutSpecification {
+    inputs: 3,
+    outputs: 8,
+    supplies: [
+      MillivoltRange { minimum: millivolt(count: 2500), maximum: millivolt(count: 2500) },
+      MillivoltRange { minimum: millivolt(count: 3300), maximum: millivolt(count: 3300) },
+    ],
+    pins: Present { value: [
+      "1 CLK0 (Output) clock output",
+      "3 CLK1 (Output) clock output",
+      "5 CLK2 (Output) clock output",
+      "7 CLK3 (Output) clock output",
+      "18 CLK4 (Output) clock output",
+      "20 CLK5 (Output) clock output",
+      "22 CLK6 (Output) clock output",
+      "24 CLK7 (Output) clock output",
+      "2 VDDO (Power) output power supply",
+      "6 VDDO (Power) output power supply",
+      "19 VDDO (Power) output power supply",
+      "23 VDDO (Power) output power supply",
+      "4 GNDO (Power) ground",
+      "9 GNDO (Power) ground",
+      "16 GNDO (Power) ground",
+      "21 GNDO (Power) ground",
+      "25 GNDO (Power) ground",
+      "32 GNDO (Power) ground",
+      "8 NC (Not connected)",
+      "17 NC (Not connected)",
+      "15 GND (Power) ground",
+      "26 GND (Power) ground",
+      "10 VDD (Power) core power supply",
+      "11 XIN (Input) crystal interface",
+      "12 XOUT (Output) crystal interface",
+      "13 IN0 (Input) differential or single-ended reference",
+      "14 IN0# (Input) complement of IN0",
+      "27 IN1# (Input) complement of IN1",
+      "28 IN1 (Input) REF1, differential or single-ended reference",
+      "29 IN_SEL0 (Input) reference select, trigger level Vdd/2",
+      "30 IN_SEL1 (Input) reference select, trigger level Vdd/2",
+      "31 ENABLE (Input) synchronous active-high output enable",
+    ] },
+  } },
+  vendor_application_statements: [
+    "Selectable reference inputs support Xtal (10~50MHz), single-ended and differential",
+    "User configurable output VDDO in different banks: mixed 3.3V core with 2.5V, 1.8V or 1.5V output supply; mixed 2.5V core with 1.8V, 1.5V or 1.2V output supply",
+    "Industrial temperature range: -40C to +85C",
+  ],
+}

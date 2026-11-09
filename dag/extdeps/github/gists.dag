@@ -1,4 +1,5 @@
 module extdeps.github.gists
+import std.types { Bearer }
 
 import extdeps.github.github { GitHubUser, default_api_base }
 import std.types { Timestamp, GistId, NonEmptyStr, AuthScheme }

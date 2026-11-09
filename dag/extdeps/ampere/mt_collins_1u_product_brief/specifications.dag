@@ -105,7 +105,7 @@ data mt_collins_1u_processors: MtCollins1UProcessorConfiguration = MtCollins1UPr
 // of ECC, not a 72-bit datapath, so a consumer sizing bandwidth from this figure must divide by
 // 64 and not by 72. Carried as std.measure BitWidth rather than a bare Nat because a count of
 // bits is a unit-bearing quantity and the shared carrier already exists - minting a second
-// spelling for it at this field is the re-invention DESIGN section 2 forbids.
+// spelling for it at this field is the re-invention gunbc.design_argument::minimize_redundancy forbids.
 type MtCollins1UMemoryConfiguration {
   channels_per_socket: Nat
   channel_width: BitWidth

@@ -10,7 +10,7 @@ import gunbc.spark.host_effect_quiescence { ArgvRun }
 
 // ── WHAT IS AT A PATH ON A HOST, AND A BOUNDED READ OF IT, AS TYPED LEGS ─────────────────────
 //
-// DECLARED FRONTIER (DESIGN section 3c): host_path_kind and small_file_read have no executing consumer
+// DECLARED FRONTIER (gunbc.design_argument::consumption): host_path_kind and small_file_read have no executing consumer
 // on main in this change. Their consumer is gunbc.spark.arm_convergence, whose rank observe reads the
 // committed-arm record and the retired transaction files through them and deletes
 // arm_rank_observe_script; it lands in gunbc#13365. Trigger: #13365's next head after this change
@@ -20,7 +20,7 @@ import gunbc.spark.host_effect_quiescence { ArgvRun }
 // THE CONSUMER THIS EXISTS FOR (valiant-crab-775, after review 76640 on #13365): the arm convergence
 // observe reads, on each rank, whether a record file is present and what it says, and whether retired
 // transaction files remain. It did so in a string-assembled shell body, which is the unmodeled
-// realization DESIGN section 6 names; this module is the typed route that body is replaced by. Each
+// realization gunbc.design_argument::how_to_work names; this module is the typed route that body is replaced by. Each
 // question is one HostOperation run through the caller's ArgvRun, so the privileged transport is the
 // caller's (the same seam gunbc.compute.host_occupancy read_unit_activity uses), and each answer is
 // decided here, in .dag, from the exit code and the operation's own output.
@@ -28,7 +28,7 @@ import gunbc.spark.host_effect_quiescence { ArgvRun }
 // THREE ANSWERS, NEVER TWO. A path is present (of a stat-decoded kind), or is absent -- and when the
 // read itself fails for any other reason it is UNREAD, which is not absent. Collapsing unread into
 // absent would answer "no record" for a host whose read was refused, which is the fabricated default
-// DESIGN section 5 forbids.
+// gunbc.design_argument::fail_closed forbids.
 
 // THE KIND ITSELF IS extdeps.tools.stat StatFileKind, decoded there by stat_file_type_reading -- the one
 // decoder of stat's %F for every consumer (gunbc.fabric.fabric_cell_acquire reads it too). What this

@@ -16,11 +16,14 @@ type IssueDisplayStatus
   | DisplayReturned
   | DisplayDone
   | DisplaySuperseded
+  // The operator's retirement (operator ruling 2026-11-04): ended by the operator, from any state,
+  // recorded as 'retired by <principal>'. Closed — and, unlike Done, it satisfies no dependency.
+  | DisplayRetired
   | DisplayUnknown
 
 data issue_display_statuses: List<IssueDisplayStatus> = [
   DisplayReady, DisplayAssigned, DisplayActive, DisplayReview, DisplayBlocked,
-  DisplayReturned, DisplayDone, DisplaySuperseded, DisplayUnknown,
+  DisplayReturned, DisplayDone, DisplaySuperseded, DisplayRetired, DisplayUnknown,
 ]
 
 fn issue_display_status_label(status: IssueDisplayStatus) -> String {
@@ -33,6 +36,7 @@ fn issue_display_status_label(status: IssueDisplayStatus) -> String {
     DisplayReturned => "Returned"
     DisplayDone => "Done"
     DisplaySuperseded => "Superseded"
+    DisplayRetired => "Retired"
     DisplayUnknown => "Unknown"
   }
 }
@@ -50,6 +54,7 @@ fn issue_display_status_sort_rank(status: IssueDisplayStatus) -> Int {
     DisplayUnknown => 3
     DisplayDone => 2
     DisplaySuperseded => 1
+    DisplayRetired => 0
   }
 }
 
@@ -60,6 +65,7 @@ fn issue_display_status_is_closed(status: IssueDisplayStatus) -> Bool {
   match status {
     DisplayDone => true
     DisplaySuperseded => true
+    DisplayRetired => true
     DisplayReady => false
     DisplayAssigned => false
     DisplayActive => false

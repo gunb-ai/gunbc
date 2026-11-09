@@ -220,6 +220,7 @@ pub fn filesystem_read_result_type() -> Rc<Node> {
 
 pub fn type_variable_node(id: String) -> Rc<Node> {
     Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "".to_string(),
         span: crate::v1_std_core::no_span(),
@@ -241,7 +242,6 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
 }
 
@@ -1353,10 +1353,6 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     })]),
         returns: crate::v1_compiler_infer_types::nominal_type_ref("gunbc.evaluation_store_address_census.ResolvedCallEdgeCensus".to_string()),
     }));
-                __m.insert("builtin_function_registry_keys".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![]),
-        returns: list_of_element(string_type()),
-    }));
                 __m.insert("compile_dag_operation_requires".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
         name: "source".to_string(),
@@ -1375,87 +1371,6 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     }),
     })]),
         returns: list_of_element(string_type()),
-    }));
-                __m.insert("compile_dag_primitive_call_edges".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![Rc::new(BuiltinParam {
-        name: "exclude_substrings".to_string(),
-        ty: Rc::new(AlgebraTypeTemplate::ContainerOf {
-        source: Rc::new(ContainerSource::Named {
-        name: "List".to_string(),
-    }),
-        element: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-        name: "String".to_string(),
-    }),
-    }),
-    }), Rc::new(BuiltinParam {
-        name: "pool_roots".to_string(),
-        ty: Rc::new(AlgebraTypeTemplate::ContainerOf {
-        source: Rc::new(ContainerSource::Named {
-        name: "List".to_string(),
-    }),
-        element: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-        name: "String".to_string(),
-    }),
-    }),
-    }), Rc::new(BuiltinParam {
-        name: "entry_prefixes".to_string(),
-        ty: Rc::new(AlgebraTypeTemplate::ContainerOf {
-        source: Rc::new(ContainerSource::Named {
-        name: "List".to_string(),
-    }),
-        element: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-        name: "String".to_string(),
-    }),
-    }),
-    })]),
-        returns: crate::v1_compiler_infer_types::nominal_type_ref("gunbc.primitive_egress.census.PrimitiveCallEdgeCensus".to_string()),
-    }));
-                __m.insert("source_root_ingest_module_identities".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![Rc::new(BuiltinParam {
-        name: "source_roots".to_string(),
-        ty: Rc::new(AlgebraTypeTemplate::ContainerOf {
-        source: Rc::new(ContainerSource::Named {
-        name: "List".to_string(),
-    }),
-        element: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-        name: "String".to_string(),
-    }),
-    }),
-    })]),
-        returns: crate::v1_compiler_infer_types::nominal_type_ref("gunbc.required_lane_resolution_census.ModuleIdentityPopulation".to_string()),
-    }));
-                __m.insert("required_floor_nominal_subject_module_identities".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![Rc::new(BuiltinParam {
-        name: "source_roots".to_string(),
-        ty: Rc::new(AlgebraTypeTemplate::ContainerOf {
-        source: Rc::new(ContainerSource::Named {
-        name: "List".to_string(),
-    }),
-        element: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-        name: "String".to_string(),
-    }),
-    }),
-    })]),
-        returns: crate::v1_compiler_infer_types::nominal_type_ref("gunbc.required_lane_resolution_census.ModuleIdentityPopulation".to_string()),
-    }));
-                __m.insert("entry_closure_module_identities".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![Rc::new(BuiltinParam {
-        name: "source_roots".to_string(),
-        ty: Rc::new(AlgebraTypeTemplate::ContainerOf {
-        source: Rc::new(ContainerSource::Named {
-        name: "List".to_string(),
-    }),
-        element: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-        name: "String".to_string(),
-    }),
-    }),
-    }), Rc::new(BuiltinParam {
-        name: "entry_path".to_string(),
-        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-        name: "String".to_string(),
-    }),
-    })]),
-        returns: crate::v1_compiler_infer_types::nominal_type_ref("gunbc.required_lane_resolution_census.ModuleIdentityPopulation".to_string()),
     }));
                 __m.insert("compile_dag_call_form_leaf_guard".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {

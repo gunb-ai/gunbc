@@ -1,0 +1,398 @@
+module test.claim.product.p4261_netlist_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import extdeps.external_authority { TranscribedUncited }
+import extdeps.nvidia.p4261 { p4261_e1 }
+import extdeps.nvidia.p4261.connectors { AwayFromLatchRow }
+import extdeps.nvidia.p4261.population { p4261_position }
+import extdeps.nvidia.p4261.netlist { P4261NetProposition, RowReachesPosition, SpansInput }
+import extdeps.electronic_component.ti_sn74lv165a { sn74lv165a_pw }
+import extdeps.electronic_component.ti_lm5066i { lm5066i_pwp }
+import extdeps.electronic_component.types { ElectronicComponentRow, LogicPin, ShiftRegisterSpec, ShiftRegisterSpecification }
+import gunbc.fleet.fleet_asset_identity { gh200_dv5_b, p4261_e1_b }
+import product.electrical.connectivity { ElectricalTerminalRef, terminal_ref_equal }
+import product.electrical.continuity { BenchConditions, BeforeIncidents, BetweenIncidents, BuzzerAsserted, BuzzerNotAsserted, ContinuityObservation, ContinuityResult, ModuleInstalled, ReadingOrder, Unpowered, both_points_recorded }
+import product.electrical.identification { numbered_pins, pin_number_name }
+import product.p4261.carrier { CarrierLayoutObservation, ConnectorHousing, InputConnector, MeasuredBoard, admit_correspondence, away_side }
+import product.p4261.evidence {
+  ConnectorNotMappedWhole,
+  InputClassesNotEstablished,
+  InputNotTheProposedConnector,
+  NetAttributionGap,
+  NetGap,
+  NetPositionNotAdmitted,
+  NetRevisionNotEstablishedOnBoard,
+  NoMeasuredBoard,
+  PartNotPlaced,
+  RowContactNotReached,
+  NetCounterevidence,
+  NetEvidenceConflict,
+  NetPositionOfAnotherRevision,
+  NetPropositionAssessment,
+  NetRevisionConflict,
+  NetRevisionCounterevidence,
+  NetRevisionNotAttributable,
+  NetRevisionOutcome,
+  NetRevisionSupported,
+  NetRevisionUnresolved,
+  NetStateAssessment,
+  NetStateOutcome,
+  NetSupported,
+  NetUnresolved,
+  OccupantNotPresentInState,
+  assess_net_proposition,
+  net_assessment,
+}
+import product.p4261.findings { J20Polarity, NetPropositionJudged, RevisionNetPropositionSupported, finding_established, judge_finding }
+import product.p4261.e1_b { e1_bench, e1_bridge_incident, e1_d2_far, e1_f1_far, e1_f1_near, e1_fuse_ends_said, e1_inductor_short_incident, e1_j20_at, e1_j24, e1_photo_part_2_removal, e1_rail_ref, e1_u10p2_lift, p4261_e1_layout }
+import product.p4261.k1_a { p4261_k1_layout }
+
+// THE NETLIST IS NVIDIA'S, THE ASSESSMENT IS OURS (Stage B3). Each control supplies the E1's own record
+// with exactly one thing changed -- a reading added or removed, the input swapped or unrecorded, a
+// proposition retargeted -- and reads the typed assessment, never the report's words.
+
+fn rank(o: NetRevisionOutcome) -> Nat {
+  match o {
+    NetRevisionSupported => 1
+    NetRevisionCounterevidence => 2
+    NetRevisionConflict => 3
+    NetRevisionUnresolved => 4
+    NetRevisionNotAttributable { gap: _ } => 5
+  }
+}
+
+fn state_rank(o: NetStateOutcome) -> Nat {
+  match o {
+    NetSupported { terminals: _, readings: _ } => 1
+    NetCounterevidence { terminals: _, readings: _ } => 2
+    NetEvidenceConflict { readings: _, occupants: _ } => 3
+    NetUnresolved { gap: _ } => 4
+  }
+}
+
+fn gap_rank(g: NetGap) -> Nat {
+  match g {
+    OccupantNotPresentInState => 1
+    ConnectorNotMappedWhole => 2
+    RowContactNotReached => 3
+    InputClassesNotEstablished => 4
+    PartNotPlaced { gap: _ } => 5
+  }
+}
+
+fn attribution_rank(g: NetAttributionGap) -> Nat {
+  match g {
+    NetPositionOfAnotherRevision => 1
+    NetRevisionNotEstablishedOnBoard => 2
+    NetPositionNotAdmitted { designator: _ } => 3
+    InputNotTheProposedConnector => 4
+    NoMeasuredBoard => 5
+  }
+}
+
+fn unresolved_by(o: NetStateOutcome, gap: Nat) -> Bool {
+  match o {
+    NetSupported { terminals: _, readings: _ } => false
+    NetCounterevidence { terminals: _, readings: _ } => false
+    NetEvidenceConflict { readings: _, occupants: _ } => false
+    NetUnresolved { gap: g } => gap_rank(g: g) == gap
+  }
+}
+
+fn unattributed_by(o: NetRevisionOutcome, gap: Nat) -> Bool {
+  match o {
+    NetRevisionSupported => false
+    NetRevisionCounterevidence => false
+    NetRevisionConflict => false
+    NetRevisionUnresolved => false
+    NetRevisionNotAttributable { gap: g } => attribution_rank(g: g) == gap
+  }
+}
+
+fn revision_rank(layout: CarrierLayoutObservation, key: NonEmptyStr) -> Nat {
+  match net_assessment(layout: layout, key: key) { Present { value: a } => rank(o: a.revision), Absent => 0 }
+}
+
+fn supported_terminals(a: NetPropositionAssessment) -> List<ElectricalTerminalRef> {
+  flat_map(a.states, s => match s.outcome {
+    NetSupported { terminals, readings: _ } => terminals
+    NetCounterevidence { terminals: _, readings: _ } => no_terminals()
+    NetEvidenceConflict { readings: _, occupants: _ } => no_terminals()
+    NetUnresolved { gap: _ } => no_terminals()
+  })
+}
+
+fn no_terminals() -> List<ElectricalTerminalRef> {
+  []
+}
+
+fn received_states(a: NetPropositionAssessment) -> List<NetStateAssessment> {
+  filter(a.states, s => count(s.state.after) == 0)
+}
+
+fn later_states(a: NetPropositionAssessment) -> List<NetStateAssessment> {
+  filter(a.states, s => count(s.state.after) > 0)
+}
+
+fn f1_key() -> NonEmptyStr { "e1-j20-away-row-reaches-f1" }
+
+// The E1's record with its continuity replaced and its input supplied.
+fn e1_with(continuity: List<ContinuityObservation>, input: InputConnector?) -> CarrierLayoutObservation {
+  let b = p4261_e1_layout
+  let m = match b.measured { Present { value: x } => Present { value: MeasuredBoard {
+    analysis: x.analysis, asset: x.asset, continuity: continuity, diode_readings: x.diode_readings, source_draws: x.source_draws,
+    bench: x.bench, phases: x.phases, transitions: x.transitions, pole_closures: x.pole_closures,
+  } }, Absent => Absent }
+  CarrierLayoutObservation { ambiguous_designators: [],
+    asset: b.asset, design: b.design, revision: b.revision, markings: b.markings, module_receptacles: b.module_receptacles, backplane_connectors: b.backplane_connectors,
+    j20: b.j20, j20_calipers: b.j20_calipers, edge_high_speed_connectors: b.edge_high_speed_connectors, management_io_survey: b.management_io_survey,
+    management_io: b.management_io, components: b.components, measured: m, input: input, unresolved: b.unresolved, designator_readings: b.designator_readings,
+  }
+}
+
+fn e1_continuity() -> List<ContinuityObservation> {
+  match p4261_e1_layout.measured { Present { value: x } => x.continuity, Absent => no_readings() }
+}
+
+fn no_readings() -> List<ContinuityObservation> {
+  []
+}
+
+fn with_readings(extra: List<ContinuityObservation>) -> CarrierLayoutObservation {
+  e1_with(continuity: concat(e1_continuity(), extra), input: p4261_e1_layout.input)
+}
+
+fn received_order() -> ReadingOrder {
+  BeforeIncidents { keys: [e1_bridge_incident.key, e1_inductor_short_incident.key, e1_u10p2_lift.key, e1_photo_part_2_removal.key] }
+}
+
+fn post_short_order() -> ReadingOrder {
+  BetweenIncidents { after: [e1_bridge_incident.key, e1_inductor_short_incident.key], before: [e1_u10p2_lift.key, e1_photo_part_2_removal.key] }
+}
+
+fn post_lift_order() -> ReadingOrder {
+  BetweenIncidents { after: [e1_bridge_incident.key, e1_inductor_short_incident.key, e1_u10p2_lift.key], before: [e1_photo_part_2_removal.key] }
+}
+
+fn read(a: ElectricalTerminalRef, b: ElectricalTerminalRef, conditions: BenchConditions, result: ContinuityResult, order: ReadingOrder) -> ContinuityObservation {
+  ContinuityObservation { asset: p4261_e1_b, first: a, second: b, record: both_points_recorded, conditions: conditions, result: result, order: order, evidence: e1_fuse_ends_said }
+}
+
+fn unpowered_removed() -> BenchConditions {
+  e1_bench
+}
+
+fn module_installed() -> BenchConditions {
+  BenchConditions { power: Unpowered, module: ModuleInstalled { asset: gh200_dv5_b } }
+}
+
+// Away-row position 2 read silent to F1's near end, though it beeps there.
+fn silent_to_f1(order: ReadingOrder) -> ContinuityObservation {
+  read(a: e1_j20_at(side: away_side(), index: 2), b: e1_f1_near, conditions: unpowered_removed(), result: BuzzerNotAsserted, order: order)
+}
+
+fn e1_proposition(key: NonEmptyStr, relation_designator: NonEmptyStr) -> P4261NetProposition {
+  P4261NetProposition {
+    key: key,
+    relation: SpansInput { component: p4261_position(revision: p4261_e1, designator: relation_designator), input: p4261_position(revision: p4261_e1, designator: "J20") },
+    standing: TranscribedUncited { read_obligation: "supplied" },
+  }
+}
+
+fn row_to(designator: NonEmptyStr) -> P4261NetProposition {
+  P4261NetProposition {
+    key: "supplied-row-reach",
+    relation: RowReachesPosition { connector: p4261_position(revision: p4261_e1, designator: "J20"), row: AwayFromLatchRow, target: p4261_position(revision: p4261_e1, designator: designator) },
+    standing: TranscribedUncited { read_obligation: "supplied" },
+  }
+}
+
+fn assess(prop: P4261NetProposition, layout: CarrierLayoutObservation) -> NetPropositionAssessment {
+  assess_net_proposition(prop: prop, layout: layout, admitted: admit_correspondence(layout: layout).admitted)
+}
+
+// THE REAL RECORDS INHABIT THE ASSESSMENT (the pairing claim for every supplied control below). On the
+// E1 as recorded: the away row reaches F1, and D2 and D5 span the input, each supported in its one
+// received state; C10 and C12 are unresolved; F300 has both ends in one class -- counterevidence. The
+// K1's J20 is of another revision's proposition, so nothing is attributed; a key with no row has no
+// assessment; the judgment established is exactly the supported one.
+test fn the_real_records_answer_each_proposition() -> Bool {
+  revision_rank(layout: p4261_e1_layout, key: f1_key()) == 1
+    && revision_rank(layout: p4261_e1_layout, key: "e1-d2-spans-j20-input") == 1
+    && revision_rank(layout: p4261_e1_layout, key: "e1-d5-spans-j20-input") == 1
+    && revision_rank(layout: p4261_e1_layout, key: "e1-c10-spans-j20-input") == 4
+    && revision_rank(layout: p4261_e1_layout, key: "e1-c12-spans-j20-input") == 4
+    && revision_rank(layout: p4261_e1_layout, key: "e1-f300-spans-j20-input") == 2
+    && match net_assessment(layout: p4261_k1_layout, key: f1_key()) { Present { value: a } => unattributed_by(o: a.revision, gap: 1), Absent => false }
+    && revision_rank(layout: p4261_e1_layout, key: "no-such-proposition") == 0
+    && finding_established(j: judge_finding(layout: p4261_e1_layout, f: RevisionNetPropositionSupported { key: f1_key() }))
+    && !finding_established(j: judge_finding(layout: p4261_e1_layout, f: RevisionNetPropositionSupported { key: "e1-f300-spans-j20-input" }))
+}
+
+// A ROW NAMES NO ROW OF THE TABLE ANY LONGER: the judgment of a key with no proposition is unavailable,
+// not refuted, and the specimen's own findings are untouched.
+test fn a_missing_revision_row_judges_unavailable() -> Bool {
+  match judge_finding(layout: p4261_e1_layout, f: RevisionNetPropositionSupported { key: "no-such-proposition" }) {
+    NetPropositionJudged { key: _, assessment } => match assessment { Absent => true, Present { value: _ } => false }
+    _ => false
+  }
+    && !finding_established(j: judge_finding(layout: p4261_e1_layout, f: RevisionNetPropositionSupported { key: "no-such-proposition" }))
+    && finding_established(j: judge_finding(layout: p4261_e1_layout, f: J20Polarity))
+}
+
+// THE RELATION ASKS THE QUESTION, NOT THE KEY. One key retargeted from D2 to F300 changes the answer
+// from support to counterevidence.
+test fn retargeting_changes_the_question() -> Bool {
+  rank(o: assess(prop: e1_proposition(key: "e1-d2-spans-j20-input", relation_designator: "D2"), layout: p4261_e1_layout).revision) == 1
+    && rank(o: assess(prop: e1_proposition(key: "e1-d2-spans-j20-input", relation_designator: "F300"), layout: p4261_e1_layout).revision) == 2
+}
+
+// ROW REACHABILITY NEEDS NO POLARITY. With the input unrecorded, the away row still reaches F1, while a
+// span across the input is unresolved for want of its classes -- not unattributable.
+test fn row_reachability_is_supported_without_polarity() -> Bool {
+  let unrecorded = e1_with(continuity: e1_continuity(), input: Absent)
+  revision_rank(layout: unrecorded, key: f1_key()) == 1
+    && revision_rank(layout: unrecorded, key: "e1-d2-spans-j20-input") == 4
+    && match net_assessment(layout: unrecorded, key: "e1-d2-spans-j20-input") {
+      Present { value: a } => all(a.states, s => unresolved_by(o: s.outcome, gap: 4)) && count(a.states) > 0
+      Absent => false
+    }
+}
+
+// THE PROPOSED CONNECTOR, OR NOTHING. An input observed on another housing is not this proposition's
+// input: the span is not attributable; the row reach, which names no input, is unaffected.
+test fn a_wrong_input_is_not_attributable() -> Bool {
+  let swapped = match p4261_e1_layout.input {
+    Present { value: i } => e1_with(continuity: e1_continuity(), input: Present { value: InputConnector {
+      housing: ConnectorHousing { component: e1_j24, positions: i.housing.positions, coverage: i.housing.coverage, sides_evidence: i.housing.sides_evidence },
+      fuse_terminal: i.fuse_terminal,
+    } })
+    Absent => p4261_e1_layout
+  }
+  match net_assessment(layout: swapped, key: "e1-d2-spans-j20-input") {
+    Present { value: a } => unattributed_by(o: a.revision, gap: 4)
+    Absent => false
+  }
+    && revision_rank(layout: swapped, key: f1_key()) == 1
+}
+
+// A CONTRADICTED READING IS A CONFLICT, NOT COUNTEREVIDENCE: a silence where a beep was read is
+// recorded as conflicting, never as the relation's refutation.
+test fn a_contradicted_reading_is_conflict() -> Bool {
+  let contradicted = with_readings(extra: [silent_to_f1(order: received_order())])
+  revision_rank(layout: contradicted, key: f1_key()) == 3
+}
+
+// A LATER STATE IS ITS OWN SCOPE. A beep and a silence on one pair, placed by their ReadingOrder after
+// the inductor short, open a second state that conflicts; the received state's support stands, and the
+// revision verdict reads only the received state.
+test fn a_post_short_state_leaves_received_support_intact() -> Bool {
+  let post_short = [
+    read(a: e1_j20_at(side: away_side(), index: 2), b: e1_f1_near, conditions: unpowered_removed(), result: BuzzerAsserted, order: post_short_order()),
+    silent_to_f1(order: post_short_order()),
+  ]
+  match net_assessment(layout: with_readings(extra: post_short), key: f1_key()) {
+    Present { value: a } => rank(o: a.revision) == 1 && count(a.states) == 2 && count(later_states(a: a)) == 1
+      && all(later_states(a: a), s => state_rank(o: s.outcome) == 3)
+    Absent => false
+  }
+}
+
+// TWO RECEIVED CONFIGURATIONS: one supporting and one conflicting is a conflict, not a vote.
+test fn one_conflicting_received_configuration_is_conflict() -> Bool {
+  let installed = [
+    read(a: e1_j20_at(side: away_side(), index: 3), b: e1_f1_near, conditions: module_installed(), result: BuzzerAsserted, order: received_order()),
+    read(a: e1_j20_at(side: away_side(), index: 3), b: e1_f1_near, conditions: module_installed(), result: BuzzerNotAsserted, order: received_order()),
+  ]
+  match net_assessment(layout: with_readings(extra: installed), key: f1_key()) {
+    Present { value: a } => rank(o: a.revision) == 3 && count(received_states(a: a)) == 2
+      && any(a.states, s => state_rank(o: s.outcome) == 1)
+    Absent => false
+  }
+}
+
+// RECEIVED CONFIGURATIONS THAT DISAGREE ARE A CONFLICT. The E1's own readings repeated with the module
+// installed, except that D2's far tab beeps to the rail instead of to ground: that configuration refutes
+// the span while the module-removed one supports it, and the revision verdict is a conflict -- not
+// counterevidence, and not support.
+fn installed_with_d2_on_one_side() -> List<ContinuityObservation> {
+  concat(
+    map(filter(e1_continuity(), o => !terminal_ref_equal(a: o.first, b: e1_d2_far)), o => ContinuityObservation {
+      asset: o.asset, first: o.first, second: o.second, record: o.record, conditions: module_installed(), result: o.result, order: o.order, evidence: o.evidence,
+    }),
+    [read(a: e1_d2_far, b: e1_rail_ref, conditions: module_installed(), result: BuzzerAsserted, order: received_order())])
+}
+
+test fn received_configurations_that_disagree_are_a_conflict() -> Bool {
+  match net_assessment(layout: with_readings(extra: installed_with_d2_on_one_side()), key: "e1-d2-spans-j20-input") {
+    Present { value: a } => rank(o: a.revision) == 3 && count(received_states(a: a)) == 2
+      && any(a.states, s => state_rank(o: s.outcome) == 1) && any(a.states, s => state_rank(o: s.outcome) == 2)
+    Absent => false
+  }
+}
+
+// SAME CLASS WITHOUT ISOLATION IS UNRESOLVED. Drop every silence: the classes are no longer shown
+// distinct, so F300's two ends in one of them refute nothing.
+test fn same_class_without_isolation_is_unresolved() -> Bool {
+  let beeps_only = e1_with(continuity: filter(e1_continuity(), o => match o.result { BuzzerAsserted => true, BuzzerNotAsserted => false }), input: p4261_e1_layout.input)
+  revision_rank(layout: beeps_only, key: "e1-f300-spans-j20-input") == 4
+    && revision_rank(layout: p4261_e1_layout, key: "e1-f300-spans-j20-input") == 2
+}
+
+// EVERY QUALIFYING TERMINAL IS KEPT. The row reaches both of F1's ends, and both are named; without the
+// far-end readings, only the near end qualifies.
+test fn both_qualifying_terminals_are_kept() -> Bool {
+  let near_only = e1_with(continuity: filter(e1_continuity(), o => !terminal_ref_equal(a: o.second, b: e1_f1_far)), input: p4261_e1_layout.input)
+  match net_assessment(layout: p4261_e1_layout, key: f1_key()) {
+    Present { value: a } => count(supported_terminals(a: a)) == 2
+      && any(supported_terminals(a: a), t => terminal_ref_equal(a: t, b: e1_f1_near)) && any(supported_terminals(a: a), t => terminal_ref_equal(a: t, b: e1_f1_far))
+    Absent => false
+  }
+    && match net_assessment(layout: near_only, key: f1_key()) {
+      Present { value: a } => count(supported_terminals(a: a)) == 1 && any(supported_terminals(a: a), t => terminal_ref_equal(a: t, b: e1_f1_near))
+      Absent => false
+    }
+}
+
+// THE OCCUPANT IS READ PER STATE. U10_P2's converter was lifted: a state after the lift has no part at
+// the position, while the received state does (and is answered on its readings).
+test fn the_occupant_is_resolved_per_state() -> Bool {
+  let after_lift = with_readings(extra: [read(a: e1_j20_at(side: away_side(), index: 1), b: e1_f1_near, conditions: unpowered_removed(), result: BuzzerAsserted, order: post_lift_order())])
+  let a = assess(prop: row_to(designator: "U10_P2"), layout: after_lift)
+  count(later_states(a: a)) == 1
+    && all(later_states(a: a), s => unresolved_by(o: s.outcome, gap: 1))
+    && count(received_states(a: a)) == 1 && all(received_states(a: a), s => !unresolved_by(o: s.outcome, gap: 1))
+}
+
+// TI'S PIN TABLE IS THE AUTHORITY FOR THE NAMES. The LV165A's sixteen pins and the LM5066I's twenty-eight
+// plus its unnumbered pad are TI's rows read through; a table one pin shorter yields one name fewer.
+fn lv165a_less_pin_16() -> ElectronicComponentRow {
+  let r = sn74lv165a_pw
+  match r.specification {
+    ShiftRegisterSpec { register } => ElectronicComponentRow { vendor: r.vendor, ordering_code: r.ordering_code, package: r.package, top_marking: r.top_marking, vendor_application_statements: r.vendor_application_statements,
+      specification: ShiftRegisterSpec { register: ShiftRegisterSpecification { bits: register.bits, supply: register.supply, pins: filter(register.pins, p => p.number != 16) } } }
+    _ => r
+  }
+}
+
+// A FACT ABOUT THE PART, not about any specimen: TI numbers sixteen pins on the SN74LV165A and
+// twenty-nine terminals on the LM5066I, and that stays true whether or not a marking on our board has
+// settled. What may NOT happen is writing this numbering onto a specimen row: a specimen's body is the
+// positions the bench probed, counted on the body, and carrier_layout's
+// a_specimens_body_is_what_was_probed_and_not_a_named_parts_numbering is the check that holds that line.
+test fn the_pin_names_follow_the_manufacturers_table() -> Bool {
+  // The manufacturers' numberings taken AT THE POINT OF USE, from each row's own pin table. They were
+  // free-standing data here and in product.p4261.carrier until this PR: nothing else read them, and a
+  // datasheet numbering sitting in a board file is the route by which one sized a specimen's body (the
+  // two rows are gone; this is what a part fact looks like when it is actually consulted, gunbc.design_argument::consumption).
+  // The LM5066I count is TI's twenty-eight numbered leads -- twenty-nine with its exposed pad, which the
+  // table does not number: that name belongs to the reading that read it, never to a part fact.
+  let lv165a_names = map(numbered_pins(row: sn74lv165a_pw), n => pin_number_name(number: n))
+  let lm5066i_names = map(numbered_pins(row: lm5066i_pwp), n => pin_number_name(number: n))
+  count(lv165a_names) == 16 && any(lv165a_names, n => (n as String) == "pin 16")
+    && count(lm5066i_names) == 28 && any(lm5066i_names, n => (n as String) == "pin 28")
+    && !any(lm5066i_names, n => (n as String) == "pin 29")
+    && count(map(numbered_pins(row: lv165a_less_pin_16()), n => pin_number_name(number: n))) == 15
+    && !any(map(numbered_pins(row: lv165a_less_pin_16()), n => pin_number_name(number: n)), n => (n as String) == "pin 16")
+}

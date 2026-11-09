@@ -70,7 +70,7 @@ import gunbc.clock_read { clock_now_probed_at_or_unknown }
 // diagnostic that names the operation and not the missing import.
 //
 // MEASURED, NOT ANTICIPATED: fleet-converge run 35401192650 died exactly there, on the first
-// dispatch of this lane, after 30 green witnesses and a green corpus resolve. That is DESIGN §5's
+// dispatch of this lane, after 30 green witnesses and a green corpus resolve. That is gunbc.design_argument::fail_closed's
 // specification-without-execution in its purest form - the suite proved the decode, the standing
 // and the refusals, and could not prove that the program reaches a controller at all, because the
 // only thing that establishes it is running it. gunbc.host.managed_host_boot_handoff's own
@@ -162,7 +162,7 @@ type FanObservationRound {
 // What makes it worth this much prose is that the correct reasoning was already written twenty
 // lines below, for chassis power, and simply not applied here: a machine whose controller did not
 // answer is a machine we know nothing about, and answering with the benign arm puts every such
-// sample where full-duty fans are expected and unremarkable. That is DESIGN §5's absorbing
+// sample where full-duty fans are expected and unremarkable. That is gunbc.design_argument::fail_closed's absorbing
 // fallback - a failure arm must refuse, never widen - and the module that refuses it in one field
 // and commits it in the next is the specimen worth keeping.
 //
@@ -183,7 +183,7 @@ type FanObservationRound {
 // a baseboard temperature before POST, and a posted host could have every thermal sensor fail.
 //
 // So this is typed as an inference at the one place a reader would otherwise take it as a fact
-// (DESIGN §4d, do not assert as deduced what is only inferred). The consuming standing does not get
+// (gunbc.design_argument::epistemic_humility, do not assert as deduced what is only inferred). The consuming standing does not get
 // to launder it: a FailsafeHeldAfterPost finding derived through this function is a finding about a
 // host that was powered on and publishing thermals, which is what the series can support, and any
 // stronger claim needs a POST observation from a channel that actually sees one - SOL or the SEL
@@ -355,7 +355,7 @@ fn thermal_observation(success: Bool, results: List<SdrLineResult>) -> ThermalOb
 //
 // AND THE INTERVAL IS A Second, NOT AN Int NAMED "SECONDS". An earlier revision took
 // interval_seconds: Int and wrapped it into Second two lines later, which is the unit spelled into
-// a name beside a carrier that already exists and is already imported here - DESIGN §3's second
+// a name beside a carrier that already exists and is already imported here - gunbc.design_argument::single_authority's second
 // name for one concept. std.measure owns the quantity; second_count unwraps it at the one place a
 // transport needs a scalar.
 fn observe_fan_series(
@@ -438,7 +438,7 @@ fn samples_of_round(host: HostIdentity, round: FanObservationRound) -> List<FanP
 // while the run was shorter than its window, and that is exactly what made it dangerous - lengthen
 // the series, which this module's own note says a FailsafeHeldAfterPost finding requires, and every
 // sample crosses the window at once, including the ones inside it. A reading would get an answer it
-// did not earn, which is the fabricated output DESIGN §5 forbids, in the arm this lane exists to
+// did not earn, which is the fabricated output gunbc.design_argument::fail_closed forbids, in the arm this lane exists to
 // report.
 //
 // The round already carries what is needed: its own index. Elapsed at a round is its distance from
@@ -587,15 +587,120 @@ fn round_verbose_render_lines(round: FanObservationRound) -> List<String> {
     SdrVerboseNotRequired => [join(["  round=", to_string(round.round_index), " verbose_sdr=not_required"], "")]
     SdrVerboseCaptured { readout: ro } => match ro {
       SdrVerboseUnreadable => [join(["  round=", to_string(round.round_index), " verbose_sdr=unread"], "")]
-      SdrVerboseRead { records: recs } => flat_map(recs, rec =>
-        [join(["  round=", to_string(round.round_index), " verbose_record=[", rec.record_line, "]"], "")]
-          .concat(map(rec.detail_lines, d => join(["  round=", to_string(round.round_index), " verbose_detail=[", d, "]"], ""))))
+      // An empty repository is its OWN state (manager msg_d6bce079): a read that parsed nothing is not
+      // a read that typed anything, and a gate that could not tell them apart would admit rows nobody typed.
+      SdrVerboseEmptyRepository => [join(["  round=", to_string(round.round_index), " verbose_sdr=empty"], "")]
+      SdrVerboseRead { records: recs } => [join(["  round=", to_string(round.round_index), " verbose_sdr=captured(", to_string(recs.length()), ")"], "")]
+        .concat(flat_map(recs, rec =>
+          [join(["  round=", to_string(round.round_index), " verbose_record=[", rec.name, " (", rec.number_hex, ")]"], "")]
+            .concat(map(rec.detail_lines, d => join(["  round=", to_string(round.round_index), " verbose_detail=[", d, "]"], "")))))
     }
   }
 }
 
 fn render_series(rounds: List<FanObservationRound>) -> String {
   join(map(rounds, r => render_round_block(round: r)), "\n")
+}
+
+// THE RUN-SCOPE VERBOSE CAPTURE (M2a, manager msg_cdf72bcc/msg_abffa482). This is NOT the round's
+// conditional read: the standalone observe mode reads the SDR repository ONCE per run, unconditionally,
+// because the repository is BMC-side and is readable with the host powered OFF. The boot phase does not
+// take it (it keeps #15562's per-round conditional), and that asymmetry is what the witness pins -- so
+// the two states are spelled apart by TYPE, not by a flag a caller could pass wrongly.
+//
+// The capture carries the transport's raw stdout, stderr and exit status ALONGSIDE the parsed readout:
+// PR-B grounds the fan admission rule on BYTES, and a receipt holding only our parse would let the rule
+// be grounded on bytes nobody received (manager msg_abffa482). Parsing is a convenience here, never the
+// record of what the controller said.
+//
+// THE ARM IS NAMED FOR THE ATTEMPT, NOT FOR THE OUTCOME (review 89921, gunbc.design_argument::single_authority: a materially different
+// contract needs a materially different name). RunVerboseAttempted means "the read was ISSUED"; whether
+// the records ARRIVED is a property of `readout`, and the rendered verbose_sdr= marker is derived from
+// it -- never asserted from the arm. An earlier draft named this arm ...Captured while emitting
+// `verbose_sdr=captured` unconditionally, which put "attempted" and "arrived" on one marker and made a
+// timed-out read greppable as a successful capture.
+type RunVerboseCapture
+  = RunVerboseNotTaken
+  | RunVerboseAttempted { readout: SdrVerboseReadout, exit_code: Int, raw_stdout: String, raw_stderr: String }
+
+// ONE READ, UNCONDITIONALLY, READ-ONLY (extdeps.bmc.ipmi SdrElistVerbose is readonly; it issues
+// `ipmitool sdr elist -v` and touches nothing). The deadline/kill-after bounds are the same pair every
+// round read in this module uses, so a controller that stops answering ends the capture as unreadable
+// instead of stalling the run.
+fn observe_verbose_repository(
+  bmc_host: NonEmptyStr,
+  username: NonEmptyStr,
+  password_file: NonEmptyStr,
+  cipher_suite: IpmiCipherSuite?,
+) -> RunVerboseCapture {
+  let verbose_read = diagnostic.ipmi.Tool.SdrElistVerbose(
+    bmc_host: bmc_host,
+    username: username,
+    password_file: password_file,
+    deadline: coreutils_duration_operand(d: fan_round_ipmi_read_deadline) as NonEmptyStr,
+    kill_after: coreutils_duration_operand(d: fan_round_ipmi_kill_after) as NonEmptyStr,
+    cipher_suite_argv: ipmi_cipher_suite_argv(suite: cipher_suite),
+  )
+  return RunVerboseAttempted {
+    readout: sdr_verbose_readout(success: verbose_read.success, stdout: verbose_read.stdout),
+    exit_code: verbose_read.exit_code,
+    raw_stdout: verbose_read.stdout,
+    raw_stderr: verbose_read.transport_stderr,
+  }
+}
+
+// THE RUN-SCOPE SEGMENT OF THE RENDER. Same field spellings as the round-scope segment
+// (verbose_sdr=, verbose_record=[..], verbose_detail=[..]) under a run= key instead of round=, so a
+// reader can tell a run-scope capture from a round-scope conditional one and the commit tooling still
+// greps. THE THREE STATES ARE NEVER COLLAPSED: not_taken (this lane never read the repository), unread
+// (the read was issued and the repository could not be read) and captured (records rendered). An
+// attempted-but-unreadable read is NOT a repository that is empty -- #15562's lesson, and RED 3 here.
+//
+// run=0 because there is exactly one run-scope capture per run; the key is spelled with its index so a
+// future multi-run receipt does not have to rename the field.
+fn render_run_verbose_block(capture: RunVerboseCapture) -> String {
+  join(render_run_verbose_lines(capture: capture), "\n")
+}
+
+fn render_run_verbose_lines(capture: RunVerboseCapture) -> List<String> {
+  match capture {
+    RunVerboseNotTaken => [join(["run=0 verbose_sdr=not_taken"], "")]
+    RunVerboseAttempted { readout: readout, exit_code: exit_code, raw_stdout: raw_stdout, raw_stderr: raw_stderr } => {
+      // THE STATE MARKER IS DERIVED FROM THE READOUT, never asserted by the arm (review 89921). The arm
+      // means "the read was ATTEMPTED"; the marker must say whether the records ARRIVED. Emitting
+      // `captured` unconditionally and `unread` afterwards put two contradictory markers in one receipt,
+      // and PR-B greps THIS field to ground the fan admission rule -- a reader searching for
+      // `verbose_sdr=captured` would have treated a timed-out read as a successful capture.
+      //
+      // An ISSUED-and-FAILED read is `unread`: not the not_taken line above (that lane never read the
+      // repository), and not the zero-records case below (an empty repository, read successfully).
+      // #15562's lesson -- a repository that could not be read is not a repository that is empty.
+      // The count rides the marker (manager msg_d6bce079): "captured" alone was readable as "the
+      // repository was parsed" when the row-keyed parser of #15562 in fact produced ZERO records from
+      // real `sdr elist -v` output. A reader can now see 0 records without trusting the word.
+      let state_marker = match readout {
+        SdrVerboseUnreadable => join(["run=0 verbose_sdr=unread"], "")
+        SdrVerboseEmptyRepository => join(["run=0 verbose_sdr=empty"], "")
+        SdrVerboseRead { records: records } => join(["run=0 verbose_sdr=captured(", to_string(records.length()), ")"], "")
+      }
+      // The transport's OWN exit status and the bytes it said ride in BOTH arms: the parse is derived
+      // output and is rendered alongside them, never instead of them (manager msg_abffa482), and a
+      // failed read is exactly the case whose bytes an operator needs.
+      let run_lines = [
+        state_marker,
+        join(["run=0 verbose_exit=", to_string(exit_code)], ""),
+        join(["run=0 verbose_raw=[", raw_stdout, "]"], ""),
+        join(["run=0 verbose_stderr=[", raw_stderr, "]"], ""),
+      ]
+      run_lines.concat(match readout {
+        SdrVerboseUnreadable => []
+        SdrVerboseEmptyRepository => []
+        SdrVerboseRead { records: records } => flat_map(records, rec =>
+          [join(["run=0 verbose_record=[", rec.name, " (", rec.number_hex, ")]"], "")]
+            .concat(map(rec.detail_lines, d => join(["run=0 verbose_detail=[", d, "]"], ""))))
+      })
+    }
+  }
 }
 
 // WHAT THIS PRODUCER RETURNS IS THE SERIES, NOT A VERDICT, AND THAT BOUNDARY IS THE MODULE'S WHOLE

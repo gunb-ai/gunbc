@@ -145,7 +145,7 @@ fn a_clean_accumulating_fold_spelled_with_an_arrow_lambda_stays_clean() -> Bool 
 // unseen, because `acc` is not the carrier the lens was handed.
 //
 // That is worse than the invisibility this lane repaired: an invisible site is silent, and this
-// one ANSWERS, confidently, about the wrong accumulator (DESIGN section 5, no fabricated
+// one ANSWERS, confidently, about the wrong accumulator (gunbc.design_argument::fail_closed, no fabricated
 // plausible output). Measured 0 on main AND 0 on this lane's first cut, 1 once the step form is
 // read from the `f:` argument and descends only the captured-child chain. It is the discriminator
 // for the search GRAIN, which no fixture differing only in lambda spelling can reach.
@@ -279,7 +279,7 @@ test fn a_truncated_sweep_refuses_rather_than_reporting_its_survivors() -> Bool 
 // THE JOIN IS ON IDENTITY, AND THIS IS THE WITNESS THAT SAYS SO RATHER THAN THE COMMENT. Same
 // discovered population, same NUMBER of rows, one subject analysed twice and the other never --
 // the shape a batched sweep produces when a batch is re-run after a death. A count comparison is
-// green here, which is why DESIGN section 5 says completeness is an identity join.
+// green here, which is why gunbc.design_argument::fail_closed says completeness is an identity join.
 test fn a_report_of_the_right_size_over_the_wrong_subjects_still_refuses() -> Bool {
   is_coverage_incomplete(
     d: disposition_over(

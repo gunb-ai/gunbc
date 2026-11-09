@@ -16,7 +16,7 @@ module test.claim.import_shadowed_by_local_definition_witness
 //
 // WHY A REFUSAL RATHER THAN A SHADOWING RULE: the harm is not that two bindings exist, it is that
 // the one the author WROTE DOWN loses to one they did not, in silence. Membership is decidable from
-// the module's own text, so this is a wall and not a ratchet (DESIGN section 5).
+// the module's own text, so this is a wall and not a ratchet (gunbc.design_argument::fail_closed).
 //
 // SCOPE, MEASURED RATHER THAN ASSUMED. The refusal fires on explicitly named imports only. A GLOB
 // import (`import M` with no brace list) followed by a local definition of an exported name still

@@ -1,7 +1,7 @@
 module v2.compiler.effect_demand
 
 import std.decl_ref { DeclarationRef }
-import v2.compiler.primitive_execution_semantics {
+import v2.std.operation_declaration {
   BoundCompilerInput, EffectOperationClassification, NativeDerivedComputation, NativeHostActuation, NativeHostObservation,
   OperationDispositionUnclassified, OperationRetired, effect_demand_operation_classifications
 }
@@ -21,7 +21,7 @@ import v2.std.text { String }
 //
 // WHY THIS IS A CENSUS AND NOT A ROSTER. The acceptance bar XL-1 states is that
 // Unrealized is empty and that every retained effectful test is native. A hand roster
-// answering that bar is satisfied by editing the roster, which is DESIGN section 5's
+// answering that bar is satisfied by editing the roster, which is gunbc.design_argument::fail_closed's
 // tell that a check was validation standing where construction was available. So the
 // disposition is not authored per row: a row may CLAIM NativeV2, and the census
 // refuses the claim unless the operation appears in the independently supplied
@@ -31,8 +31,8 @@ import v2.std.text { String }
 // WHY THE OPERATION KEY IS PrimitiveIdentity AND NOT A NEW VOCABULARY. std.primitive_projection
 // already owns "which callable is this" at slug grain, and std.primitive_identity already
 // keys per-primitive facts (cost, traversal order, realization) on it. Minting an
-// effect-operation name beside it would be the second name for one concept DESIGN
-// section 3 forbids, and it would fork the join that PrimitiveRealization already performs.
+// effect-operation name beside it would be the second name for one concept
+// gunbc.design_argument::single_authority forbids, and it would fork the join that PrimitiveRealization already performs.
 // This module therefore CONSTRUCTS identities through the shared constructor and adds no
 // row to the registry: which callable a slug names is XL-0's fact, and this module never
 // answers it.
@@ -83,7 +83,7 @@ type EffectDemandKey {
 // the key. RetiredWithConsumer carries the consumer that accounts for the retirement, because XL-1
 // requires every old effectful test identity to be accounted for even when replaced -- an unnamed
 // retirement is a deletion wearing a disposition. Unrealized carries a reason Symbol and no
-// realization, and it is the counted debt rather than a refusal arm: DESIGN section 4b(2) separates
+// realization, and it is the counted debt rather than a refusal arm: gunbc.design_argument::guarantee_ladder (no untracked stall) separates
 // cannot-climb from can-climb-now-but-unbuilt, and fabricating a plausible realization claim for an
 // unbuilt effect would be rung inflation in exactly the place the acceptance bar reads.
 // THE NATIVE CLAIM NAMES THE RUNTIME IT CLAIMS, because the arm that checks it joins on that runtime.
@@ -170,7 +170,7 @@ fn effect_demand_subject_eq(left: EffectDemandSubject, right: EffectDemandSubjec
   }
 }
 
-// Equality is at FULL KEY IDENTITY, on all four fields. DESIGN section 5 rules that completeness is an
+// Equality is at FULL KEY IDENTITY, on all four fields. gunbc.design_argument::fail_closed rules that completeness is an
 // identity join and not a count equality, and a key comparison that dropped mode or origin would let a
 // hermetic realization answer for a wet demand -- the precise conflation this key exists to prevent.
 fn effect_demand_key_eq(left: EffectDemandKey, right: EffectDemandKey) -> Bool {
@@ -186,7 +186,7 @@ fn effect_demand_key_in(key: EffectDemandKey, keys: List<EffectDemandKey>) -> Bo
 
 // EVERY accumulator in this module CONSES AND REVERSES ONCE rather than appending. Appending by
 // concatenating the accumulator with a one-item list copies the whole accumulator per item, which is
-// the quadratic fold DESIGN section 6's bare-minimum-cost rule says is always fixed regardless of the
+// the quadratic fold gunbc.design_argument::how_to_work's bare-minimum-cost rule says is always fixed regardless of the
 // realized n -- gunbc.repo.repo_atlas_projection atlas_accumulate_cell records the same idiom
 // costing a lane an OOM and then 900 seconds. list_reverse of a cons-accumulated fold is exactly the
 // append-accumulated order, so every population below is in observation order by construction and
@@ -258,7 +258,7 @@ type EffectDemandCensus {
 // THE ROSTER, THE OBSERVED POPULATION AND THE REALIZATION POPULATION ARE ALL PARAMETERS, which is what
 // makes the three refusals executable rather than specified. A census closed over the live roster
 // could only be probed with a fixture enumerating the current tree's reachable effects -- a
-// measurement copied from the same tree, which DESIGN section 5 rejects as an oracle, and which would
+// measurement copied from the same tree, which gunbc.design_argument::fail_closed rejects as an oracle, and which would
 // go red on every unrelated corpus edit. Parameterized, each discriminating RED is authored over a
 // small synthetic world: the probe supplies the demands, the roster and the realizations, plants
 // exactly one defect, and the assertion has a reachable opposite answer.
@@ -328,7 +328,7 @@ fn effect_demand_census(
 
 // The conjunct is the three refusal populations being EMPTY, never a count of the dispositioned ones.
 // A count equality would be satisfied by two errors cancelling -- one effect leaving the closure and
-// another entering it -- and DESIGN section 5 rules that completeness is an identity join. Every
+// another entering it -- and gunbc.design_argument::fail_closed rules that completeness is an identity join. Every
 // disagreement here is at full key identity. NOTE what this predicate does NOT assert: it does not
 // require Unrealized to be empty. A correctly dispositioned Unrealized demand is an honest, counted
 // debt and passes here; XL-1's acceptance bar that the population be empty is a SEPARATE predicate,
@@ -449,7 +449,7 @@ fn effect_demand_operations_are_grounded(
 // a measured-and-empty origin are different facts with opposite consequences -- the first must block a
 // promotion gate and the second must pass it -- and a bare List cannot tell them apart, so every
 // downstream consumer would have to re-read a note to know which it held. That is the state-space
-// conflation this repository names as a recurring class, and DESIGN section 5's construction-over-
+// conflation this repository names as a recurring class, and gunbc.design_argument::fail_closed's construction-over-
 // validation rule says the fix is to make the undistinguished state unwritable rather than to document
 // it. PopulationMeasuredComplete carries the digest of the subject roster it was measured against, so
 // a completeness claim is bound to WHAT was enumerated and cannot silently outlive it;
@@ -676,7 +676,7 @@ fn effect_demand_unmodeled_host_boundary(
 // of the module name -- so the path-derived v2.compiler.00_compile names nothing. The error was not
 // silent for want of a signal: the emitted file is v2_compiler_compile.rs, which was read and used to
 // seed a reachability walk in this same slice, and the row was still not corrected. A module identity
-// is exactly the class DESIGN section 3 rules on, a path being a discriminator and never gospel. THE
+// is exactly the class gunbc.design_argument::single_authority rules on, a path being a discriminator and never gospel. THE
 // RESIDUAL IS THAT THIS IS STILL A COPIED NAME: nothing joins it to the declaration it quotes, so it
 // rots if the module is renamed. Next rung is a derived binding rather than a literal; until then the
 // discriminating check is that a reachability walk seeded on this identity has a non-empty root set,
@@ -687,7 +687,7 @@ data effect_demand_compiler_entry_module: String = "v2.compiler.compile"
 // NOT A ZERO. The carrier below says so in its constructor -- PopulationMeasuredLowerBound with its
 // missing_basis -- and this block says it here too, because the earlier revision of this annotation
 // opened with THE COMPILE PATH'S HOST-EFFECT DEMAND IS ZERO while the carrier underneath it recorded a
-// bound, which is DESIGN section 4b rung inflation in the one place the module was written to prevent
+// bound, which is gunbc.design_argument::guarantee_ladder rung inflation in the one place the module was written to prevent
 // it: an empty lower-bound population licenses `none observed by this instrument`, never `none exists`.
 // The excluded basis is named in the constructor and is not incidental -- the seam population omits
 // every whole-body self-call seam, which has no runtime bridge and so cannot appear in a bridge-callee
@@ -699,7 +699,7 @@ data effect_demand_compiler_entry_module: String = "v2.compiler.compile"
 // reachability walk over the same emitted tree, seeded from every function the compiler entry module
 // owns, asking which of the nine host call sites it reaches. IT REACHES NONE OF THEM. THE WALK'S SPAN
 // IS DELIBERATELY NOT TRANSCRIBED HERE: an earlier revision copied its reached-function, total-function
-// and module counts into this block, and DESIGN section 6 rules that a measurement is cited by naming
+// and module counts into this block, and gunbc.design_argument::how_to_work rules that a measurement is cited by naming
 // the producer that re-derives it, never by copying its numbers -- a transcribed figure is unreachable
 // from the thing that owns it, so it rots without either end being touched. The producer is the
 // modeled call-reachability walk, carried on a DemandReceipt as ModeledCallReachability with its root
@@ -799,11 +799,11 @@ fn effect_demand_live_census(observed: List<EffectDemandKey>) -> EffectDemandCen
 }
 
 fn effect_demand_blocked_operation_count() -> Int {
-  length(xs: effect_demand_blocked_operations(classifications: effect_demand_operation_classifications))
+  length(xs: effect_demand_blocked_operations(classifications: effect_demand_operation_classifications()))
 }
 
 fn effect_demand_implementable_operation_count() -> Int {
-  length(xs: effect_demand_implementable_operations(classifications: effect_demand_operation_classifications))
+  length(xs: effect_demand_implementable_operations(classifications: effect_demand_operation_classifications()))
 }
 
 // WHAT A MEASUREMENT IS CURRENTLY STANDING ON, named so that a single-instrument result cannot be
@@ -947,8 +947,8 @@ type SeamProjection
 // AMBIGUITY IS A FOURTH ARM, NOT A LOSING SIDE OF A BOOLEAN. Two registry rows naming one projected
 // primitive is a defect in the realization authority, and the tempting fold takes the last match and
 // returns a realized standing -- which answers confidently while the authority disagrees with itself,
-// and picks the winner by list order, a fact no authority states. That is the absorbing arm DESIGN
-// section 5 forbids: it cannot compute the answer, so it substitutes one. The arm therefore selects NO
+// and picks the winner by list order, a fact no authority states. That is the absorbing arm
+// gunbc.design_argument::fail_closed forbids: it cannot compute the answer, so it substitutes one. The arm therefore selects NO
 // bridge and constructs NO realized standing; it carries the primitive and every bridge that claimed
 // it, so the refusal is located and countable rather than silent. Realized and unrealized both remain
 // positive answers, and ambiguous is neither -- which is why every consumer folds this coproduct
@@ -999,7 +999,7 @@ type SeamRuntimeBinding {
 // authored. A mutation that made the derivation resolve an unrostered projection left the roster-level
 // law green, which is precisely the tell that a check was validating authored data rather than testing
 // a derivation. The column is therefore gone: SeamStanding carries the projection and the registry
-// answers, so a row disagreeing with the registry has no spelling. DESIGN section 5 prefers the single
+// answers, so a row disagreeing with the registry has no spelling. gunbc.design_argument::fail_closed prefers the single
 // authority from which the realization is derived over the check that flags the mismatch afterwards.
 type SeamStanding {
   declaration: String
@@ -1015,7 +1015,7 @@ type SeamStanding {
 // whose bridge is rc_empty_map, and a census keyed on the declaration name reports it unrealized --
 // which is exactly the defect that made a wall refuse an already-realized seam for a day. Keying on
 // the declaration is therefore not a slightly worse join, it is a join over the wrong identity, and
-// DESIGN section 5 prefers a construction from which the realization is derived over a check that
+// gunbc.design_argument::fail_closed prefers a construction from which the realization is derived over a check that
 // flags the bad state after the fact. An unrostered seam has no projected primitive at all, so it
 // cannot be looked up rather than being looked up and missed.
 fn seam_realization_for(

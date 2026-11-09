@@ -63,7 +63,7 @@ import extdeps.systems.nvidia_dgx_spark_setup {
 // THE LAYER BOUNDARY IS THE WHOLE REASON THIS MODULE EXISTS SEPARATELY FROM
 // extdeps.systems.nvidia_dgx_spark_setup. That module owns the vendor's DOCUMENTED setup
 // surface and is cited to docs.nvidia.com. Everything here is a RECEIPT PRODUCED BY US by
-// driving one physical unit, and DESIGN section 3 (external upstream decomposition) is
+// driving one physical unit, and gunbc.design_argument::external_upstreams (external upstream decomposition) is
 // explicit that observations produced by this repository are receipts in the observing
 // layer, never facts authored into the observed upstream's module. Writing an observed
 // screen into the extdeps module would make our measurement masquerade as vendor
@@ -80,7 +80,7 @@ import extdeps.systems.nvidia_dgx_spark_setup {
 // data-testid. That is the ADDRESS WE OBSERVED, so it is what this model names -- a CSS path
 // or an nth-child index would be a second, positional naming scheme for something the
 // document already names, and it decays the moment NVIDIA reflows the layout (the same
-// objection DESIGN section 3's standing rule makes against file:line citations).
+// objection gunbc.design_argument::single_authority's standing rule makes against file:line citations).
 //
 // TestIdAddress is NOT a claim that the testid is a stable NVIDIA contract. It is a claim
 // about what we saw. If a future image renames these, the witness that reads this model goes
@@ -132,7 +132,7 @@ data account_route_direct_navigation: ObservedDirectRouteNavigation = ObservedDi
 // UNOBSERVED BY US, and this module must not be read as saying they do not exist or that the
 // flow ends here.
 //
-// The distinction is the one DESIGN section 4b keeps off the ladder: a screen we have not
+// The distinction is the one gunbc.design_argument::guarantee_ladder keeps off the ladder: a screen we have not
 // watched is outside the modeled guarantee, not a screen we have proven absent. Recording the
 // prefix as if it were the population is the failure mode this repository already names
 // (selection_view_read_as_population), and it would be especially cheap to commit here
@@ -143,7 +143,7 @@ data account_route_direct_navigation: ObservedDirectRouteNavigation = ObservedDi
 // fine while one run produced every screen. A second run breaks that: a hand-listed union would
 // let a screen be observed by no run, or a run to claim a screen it never watched, with both
 // tables staying type-correct while they disagree. So the runs are the authority and the prefix
-// is folded out of them (DESIGN section 3).
+// is folded out of them (gunbc.design_argument::single_authority).
 // THE UNION OF WHAT THE RUNS WATCHED -- A POPULATION, NOT A ROUTE. It was named ..._prefix, which
 // asserted an order across two runs that never composed into one walk. Coverage folds want exactly
 // this union; nothing may read it as a sequence.
@@ -297,7 +297,7 @@ type OobePortalObservationEnvironment {
 //
 // PortalReachUnrecorded is for run 1 and is not a claim that it was direct. That run recorded
 // the unit's address as the origin and did not record the mechanism, so the mechanism is
-// unobserved -- the column DESIGN section 4b keeps off the ladder, declared rather than
+// unobserved -- the column gunbc.design_argument::guarantee_ladder keeps off the ladder, declared rather than
 // backfilled from what seems likely now.
 type OobePortalReach
   = PortalReachUnrecorded

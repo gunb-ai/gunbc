@@ -1,5 +1,6 @@
 module gunbc.repo.repo_ruleset
 
+import extdeps.github.auth { github_rest }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { HttpStatus, NonEmptyStr }
 import std.error_primitives { Never }
@@ -95,7 +96,7 @@ import extdeps.transports.rest {
   RestRefused,
   RestRefusal,
   RestStatusRefused,
-  RestTransportRefused,
+  RestTransportRefused, RestCredentialRefused, rest_credential_refusal_cause,
   RestBodyUndecodable,
 }
 import std.optional { Absent, Present }
@@ -111,7 +112,7 @@ import std.goal_assessment {
 
 // WHAT THIS MODULE IS FOR, AND WHY IT IS NOT A DOCUMENTATION FIX.
 //
-// DESIGN's Building & checks section states, as the fact the whole two-lane split turns on, that
+// gunbc.design_document::ci_contract_blocks states, as the fact the whole two-lane split turns on, that
 // this repository's `passing CI` ruleset is active, carries no bypass actors, and names exactly one
 // required status check -- gunbc.required_ci_contract_epoch required_ci_context_name. Until this
 // module, that sentence was the ONLY place the fact lived on our side of the boundary. The setting
@@ -121,7 +122,7 @@ import std.goal_assessment {
 // JOB and a second job's check is not required -- which means the safety of that whole design rests
 // on a value nobody in this repository could observe.
 //
-// That is the specification-without-execution failure DESIGN section 5 names, at the outermost
+// That is the specification-without-execution failure gunbc.design_argument::fail_closed names, at the outermost
 // boundary the project has: a claim about the world, typed nowhere, checked by nothing. A prose
 // sentence is not a consumer. If someone adds a second required context, removes the one that
 // gates, flips enforcement to `evaluate`, or grants a bypass role, every gate inside this
@@ -146,7 +147,7 @@ import std.goal_assessment {
 // uses as its id (compiler_gate_required_job_id / witness_floor_workflow_job_id). Before this
 // module those were two strings that happened to agree; now they are one fact read in two
 // directions, so renaming the job cannot leave the ruleset naming a context nothing publishes
-// (DESIGN section 3). That failure mode is specifically quiet: a required context that no job
+// (gunbc.design_argument::single_authority). That failure mode is specifically quiet: a required context that no job
 // publishes leaves the check permanently pending rather than red.
 
 // WHY THE RULESET IS ADDRESSED BY ID RATHER THAN BY NAME. GitHub's update endpoint is
@@ -275,7 +276,7 @@ fn desired_ruleset_conditions() -> RulesetConditionsWire {
 // from the projection rather than leaving a web-form queue as desired-by-omission.
 // EVERY PARAMETER GITHUB REQUIRES, NOT A BOOLEAN. A `merge_queue_required: Bool` would say "queue
 // on" while seven unmodeled parameters decided what the queue DOES -- provider defaults standing as
-// a second authority beside our own declaration, which is the fork DESIGN section 3 forbids. So the
+// a second authority beside our own declaration, which is the fork gunbc.design_argument::single_authority forbids. So the
 // policy is the complete documented parameter set of the merge_queue rule; there is no field left
 // to a default.
 type MergeQueuePolicy {
@@ -486,6 +487,10 @@ fn read_refusal_of_outcome(outcome: RestRefusal) -> RulesetReadRefusal {
       RulesetReadStatusRefused { status: s, body: b }
     RestTransportRefused { cause: c } =>
       RulesetReadTransportRefused { cause: c }
+    RestCredentialRefused { refusal: credential_refusal } => {
+      let c = rest_credential_refusal_cause(refusal: credential_refusal)
+      RulesetReadTransportRefused { cause: c }
+    }
     RestBodyUndecodable { status: s, cause: c } =>
       RulesetReadBodyUndecodable { status: s, cause: c }
   }
@@ -503,12 +508,12 @@ fn render_read_refusal(cause: RulesetReadRefusal) -> String {
 }
 
 fn observe_repo_ruleset(owner: String, repo: String, ruleset_id: Int) -> RulesetObservation {
-  let read = github.Rulesets.Get(
-    auth_token: "",
+  let read = github_rest(call: token => github.Rulesets.Get(
+    auth_token: token,
     owner: owner,
     repo: repo,
     ruleset_id: ruleset_id,
-  )
+  ))
   match read {
     RestRefused { refusal } => RulesetUnreadable { cause: read_refusal_of_outcome(outcome: refusal) }
     RestAnswered { answer: r } => RulesetObserved {
@@ -699,7 +704,7 @@ fn bypass_actor_unexpected_divergences(roster: BypassActorRosterObservation) -> 
 // with the wrong strategy, or with a parameter missing, carries the right type and the wrong queue.
 //
 // So the subject is the rule list, and it is read with `merge_queue_standing` -- THE SAME READER
-// THAT INTERPRETS THE LIVE GET. That is DESIGN section 4's one-grammar-both-directions applied to
+// THAT INTERPRETS THE LIVE GET. That is gunbc.design_argument::closed_grounded_substrate's one-grammar-both-directions applied to
 // this module: the projection is judged by the identical procedure that judges the live ruleset, so
 // "the signed policy is in force" and "the signed policy will be sent" cannot drift into two
 // different questions with two different answers. Every arm of the reader becomes a located
@@ -846,7 +851,7 @@ fn signed_desire_projection_refusal_for(
 // each answering "may converge actuate at all" with one refusal. Both already recorded, in their
 // own annotations, that no production path called them: their consumer was the whole-ruleset
 // actuate root, and world convergence had already replaced it. They were kept alive by the claims
-// that read them, which is the unconsumed-declaration state DESIGN section 3c reds, and this
+// that read them, which is the unconsumed-declaration state gunbc.design_argument::consumption reds, and this
 // migration deletes the last thing that could be mistaken for their consumer.
 //
 // THE FACT THEY CARRIED IS NOT DELETED WITH THEM. `desired_ruleset_rules` still does not
@@ -1200,7 +1205,7 @@ type RulesetReadRequest sole_constructor {
 // every arm was a refusal, and the refusal vocabulary grew to carry the reasons that actuator
 // declined: an unbound realization, a live rule a PUT would delete, a bypass roster a PUT would
 // overwrite. Those are facts about a WRITE THAT DOES NOT EXIST. Modelling read-only policy as an
-// actuator that always refuses is the parallel-authority tell DESIGN section 6 names, and it cost
+// actuator that always refuses is the parallel-authority tell gunbc.design_argument::how_to_work names, and it cost
 // a real distinction: because the hold arms were ordered above the drift, an unreadable bypass
 // roster SUPPRESSED the drift list, so an operator was told the roster could not be read and never
 // told the enforcement had also changed.
@@ -1391,7 +1396,7 @@ fn render_unknowns(us: List<RulesetUnknown>) -> String {
 // assessment instantiates AssessRefusal at std.error_primitives Never, which has no constructor
 // anywhere, so no value can arrive there. It is written because the coproduct is CLOSED -- the
 // property that makes a fifth assessment arm a compile error rather than a silent fall-through --
-// and its reason is stated here rather than beside it because DESIGN section 4c models annotations
+// and its reason is stated here rather than beside it because gunbc.design_argument::source_annotations models annotations
 // at module-item grain only. An annotation inside a body is a parse refusal, which is how this
 // note came to be here.
 fn verify() -> ProcessExit {
@@ -1690,8 +1695,8 @@ fn repo_ruleset_ensure_decision_for(
 }
 
 fn apply_repo_ruleset_plan(plan: RepoRulesetApplyPlan) -> RulesetReadRefusal? {
-  match github.Rulesets.Update(
-    auth_token: "",
+  match github_rest(call: token => github.Rulesets.Update(
+    auth_token: token,
     owner: gunbc_repository.owner,
     repo: gunbc_repository.name,
     ruleset_id: plan.ruleset_id,
@@ -1701,7 +1706,7 @@ fn apply_repo_ruleset_plan(plan: RepoRulesetApplyPlan) -> RulesetReadRefusal? {
     conditions: desired_ruleset_conditions(),
     rules: plan.rules,
     bypass_actors: plan.bypass_actors,
-  ) {
+  )) {
     RestAnswered { answer: _ } => none
     RestRefused { refusal } => Present { value: read_refusal_of_outcome(outcome: refusal) }
   }

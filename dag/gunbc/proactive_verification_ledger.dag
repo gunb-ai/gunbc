@@ -15,7 +15,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // recorded only after a real run — never fabricated. Spine rows carry hand-declared disposition
 // (BlockedOnCiFloorCutover until cutover). Family disposition is DERIVED by projecting
 // gunbc.ci.ci_layer_roots known_red_probe_roster (derived from the gunbc.explicit_witness_admission
-// rows) — never hand-declared (§3 single authority). Spine: (1) whole-corpus cold v1-vs-v2 witness
+// rows) — never hand-declared (gunbc.design_argument::single_authority single authority). Spine: (1) whole-corpus cold v1-vs-v2 witness
 // parity — falsifier predict-only cadence, zero unexplained divergence; (2) compile-clean parity;
 // (3) regen behavioral fixed point. Families: nine #6879 partition families as equals_eval receipts
 // (meet_join contributes meet + join peer primaries — review 43336). Dissolve-on: ci_floor_cutover

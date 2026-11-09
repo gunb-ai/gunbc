@@ -11,7 +11,7 @@ data restored_bytes_reviewed_as_authorship: RecurringFailureMode = RecurringFail
   receipts: [
     "**restored bytes reviewed as authorship** (a clobber repair returns content a prior PR already merged and a prior reviewer already accepted, but a diff has no way to say so: the restored lines are ADDED LINES, so a reviewer attributes them to the repairing PR and reviews them as new work.",
 
-    "Specimen: gunbc#9937 restored two rows that gunbc#9868 had reverted off a stale base, and review 58203 filed REQUEST_CHANGES against a DESIGN section 6 transcribed-count defect in bytes that are character-for-character gunbc#9888's merged row -- a finding correct on its merits and misaddressed by one PR.",
+    "Specimen: gunbc#9937 restored two rows that gunbc#9868 had reverted off a stale base, and review 58203 filed REQUEST_CHANGES against a gunbc.design_argument::how_to_work transcribed-count defect in bytes that are character-for-character gunbc#9888's merged row -- a finding correct on its merits and misaddressed by one PR.",
 
     "**THE SECOND-ORDER EFFECT IS WHY THIS IS A CLASS AND NOT AN ANECDOTE: it makes clobber repairs EXPENSIVE TO LAND, which biases the fleet toward leaving clobbers standing.** The repairing lane inherits review debt for content it did not write, and the only way to discharge it inside the repair is to edit another lane's cells from a base lacking their context -- which is precisely the failure the repair exists to undo, committed a second time with better manners.",
 
@@ -23,7 +23,7 @@ data restored_bytes_reviewed_as_authorship: RecurringFailureMode = RecurringFail
 
     "A finding against restored bytes is well-formed and BINDS THE DESTINATION: provenance decides who answers it and in which diff, and never whether it is answered.",
 
-    "**THE WRONG READING OF THIS ROW WAS AUTHORED AND REFUSED IN ITS OWN FILING** (review 58220): an earlier revision said such a finding 'belongs in its own diff', which reads as licence to merge a known defect behind an authorship argument -- DESIGN section 5's hard reject, and inverted, since a restoration is exactly the motion that puts the bytes back on main.",
+    "**THE WRONG READING OF THIS ROW WAS AUTHORED AND REFUSED IN ITS OWN FILING** (review 58220): an earlier revision said such a finding 'belongs in its own diff', which reads as licence to merge a known defect behind an authorship argument -- gunbc.design_argument::fail_closed's hard reject, and inverted, since a restoration is exactly the motion that puts the bytes back on main.",
 
     "What actually happened on the specimen is the rule: the reviewer's section 6 finding was correct, the repairing lane argued for routing it elsewhere, the owning manager OVERRULED that, and the defect was repaired inside the restoration under a ruling -- which is what made the edit a decision rather than one lane rewriting another's cells.",
 

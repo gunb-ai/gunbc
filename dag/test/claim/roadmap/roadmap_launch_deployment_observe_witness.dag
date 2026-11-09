@@ -1,4 +1,5 @@
 module test.claim.roadmap.roadmap_launch_deployment_observe_witness
+import extdeps.units.iso8601_calendar { iso8601_utc_epoch_seconds }
 import std.optional { Absent, Optional, Present }
 import std.types { Bool, NonEmptyStr, String }
 import std.nat { Nat }
@@ -19,14 +20,17 @@ import gunbc.roadmap.roadmap_belt_actuate {
   belt_tick_receipt_decode, belt_tick_receipt_identity_hex, belt_tick_receipt_json_value,
   belt_tick_receipt_wire_json_from_read,
 }
-import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+
+import gunbc.roadmap.roadmap_session_attempt_slots_cutover {
+  AttemptSlotsCutoverNotRun,
+}import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.roadmap.roadmap_serve { dashboard_instance_json }
 import gunbc.roadmap.roadmap_launch_deployment_receipt { TickExecuted, StaleBacklog, EventSpoolStalled }
 import gunbc.roadmap.roadmap_launch_deployment_observe {
   EventBacklogClear, EventBacklogEntry, InstanceDocumentRefused, InstanceDocumentServed,
   WorkflowDocumentRefused, WorkflowDocumentServed,
   dashboard_instance_document_decode, event_backlog_drain_bound, event_backlog_judge,
-  event_backlog_queued_bound, event_backlog_text, iso8601_utc_epoch_seconds,
+  event_backlog_queued_bound, event_backlog_text,
   roadmap_workflow_document_decode,
 }
 
@@ -43,6 +47,7 @@ fn fixture_v4_tick() -> BeltTickReceipt {
     teardown_pass: BeltPassRecorded,
     seat_discharge_pass: BeltPassRecorded,
     discovery_pass: BeltPassRecorded,
+    slots_cutover_pass: BeltPassDeferred { reason: "witness fixture: the cutover pass did not run" },
   }
 }
 

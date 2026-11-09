@@ -1,0 +1,654 @@
+module extdeps.bmc.redfish_network_boot
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.integer { int_to_decimal_string }
+import std.optional { Present, Absent, Optional }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.network.mac {
+  Eui48Address, MacParsed, MacParseFailed, parse_mac_address_any_case, parse_packed_mac_address,
+  render_mac_address, mac_addresses_are_equal, mac_parse_error_text,
+}
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, json_kv, json_string, json_array, json_object, json_int, serialize_json }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
+  FieldAbsent, FieldRead, FieldMalformed, json_field, json_field_string, json_field_bool, json_field_int,
+}
+
+// THE Redfish NIC AND BOOT-OPTION RESOURCES, READ (DMTF EthernetInterface and BootOption schemas).
+//
+// WHY THIS MODULE EXISTS. No extdeps reader consumes `Systems/<id>/EthernetInterfaces` or
+// `Systems/<id>/BootOptions`, so the committed captures of both sat unread in the tree (the gap table's
+// `EthernetInterfaces U` and srv13's `Systems_system_BootOptions.json`). They are the only BMC-side evidence
+// that names a boot NIC at all: the IPMI boot-parameters have no NIC field, so "which port did the firmware
+// boot from" is answerable from the Redfish service or not at all. Reading them here — and nowhere else — is
+// what lets the boot-NIC reading in gunbc.machine_intake.bmc_first_contact_reading be a read rather than an
+// inference.
+//
+// WHAT THIS MODULE DOES NOT DECIDE (gunbc.design_argument::single_authority): it says what the service published, per member. Which
+// member is the boot NIC, whether an ambiguity refuses, and what standing the answer carries belong to gunbc.
+// In particular this module never selects an interface: a collection of members is returned as the members it
+// is, and picking one is a decision with a named owner downstream.
+//
+// THE RENDER SIDE SITS BESIDE THE PARSE SIDE (gunbc.design_argument::minimize_redundancy: model a concept once and derive every use): the two render functions below emit exactly
+// the shapes parsed here, so a dry controller (gunbc.bmc_dry_realization) can answer these GETs from state.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "redfish.dmtf.org/schemas/v1/EthernetInterface.json"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.bmc.redfish_network_boot",
+      decl_name: "RedfishEthernetInterfaceRead",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// ONE EthernetInterface RESOURCE. `Id` is required (a resource that does not name itself is unreadable, not
+// anonymous); `Name`, `MACAddress` and `LinkStatus` are kept as absent when the service omits them — an
+// omitted MAC is not a zeroed MAC, and an omitted link state is not LinkDown. The MAC is kept as the string
+// published: no re-formatting, no case folding, no validation. Two resources that print the same address
+// differently are the caller's join problem, and normalizing here would hide that.
+// THE UPSTREAM'S OWN KEY VOCABULARY, SPELLED ONCE. The readers look these keys up and the render side prints
+// the same keys, so a modeled body can never be written in a shape the reader would refuse (gunbc.design_argument::single_authority:
+// each fact lives in exactly one place). Keys a body is read for but never rendered (`Boot`,
+// `BootSourceOverride*`, `message`) stay at their site: they are read once, by one reader.
+data redfish_key_id: String = "Id"
+data redfish_key_members: String = "Members"
+data redfish_key_members_odata_count: String = "Members@odata.count"
+data redfish_key_uefi_device_path: String = "UefiDevicePath"
+data redfish_key_odata_type: String = "@odata.type"
+data redfish_key_name: String = "Name"
+data redfish_key_mac_address: String = "MACAddress"
+data redfish_key_link_status: String = "LinkStatus"
+data redfish_key_error: String = "error"
+data redfish_key_display_name: String = "DisplayName"
+data redfish_key_code: String = "code"
+data redfish_key_boot_option_enabled: String = "BootOptionEnabled"
+
+// THE MAC IS A VALUE, NOT A STRING. Six octets, parsed once here: the Redfish schema publishes them
+// colon-separated and uppercase, a UEFI device path publishes them packed and lowercase, and the two spellings
+// have to meet somewhere -- meeting them as text is what made one physical port look like two (a comparison
+// that misses on case, or matches digits that sit outside any `MAC(...)` node, answers "no boot option names
+// this NIC" with confidence). `extdeps.network.mac` owns the address, its parse errors and its canonical
+// rendering; this module only reads the two wire spellings.
+//
+// `link_status` is the DMTF `Resource.v1_0_0.LinkStatus` enum, whose schema lists exactly three members. An
+// open String there would accept a spelling the schema does not define and hand it to a consumer as a fact
+// about the port; the fourth arm is a decode refusal instead, naming what arrived.
+type RedfishEthernetInterfaceRead {
+  id: NonEmptyStr
+  name: String?
+  mac_address: Eui48Address?
+  link_status: RedfishLinkStatus?
+}
+
+// THE DMTF LinkStatus ENUM, spelled once. The renderer and the parser both read these spellings from here, so
+// a service that answers `LinkOn` is refused rather than stored.
+type RedfishLinkStatus
+  = LinkUp
+  | NoLink
+  | LinkDown
+
+fn redfish_link_status_text(status: RedfishLinkStatus) -> String {
+  match status {
+    LinkUp => "LinkUp"
+    NoLink => "NoLink"
+    LinkDown => "LinkDown"
+  }
+}
+
+fn redfish_link_status_of(text: String) -> RedfishLinkStatus? {
+  match filter([LinkUp, NoLink, LinkDown], status => redfish_link_status_text(status: status) == text) |> first() {
+    Present { value: status } => Present { value: status }
+    Absent => none
+  }
+}
+
+// WHAT A UEFI DEVICE PATH SAYS ABOUT THE NIC. The address is read out of the `MAC(...)` NODE and nowhere else
+// in the path: a path that carries hex digits somewhere else (a PCI function number, an ACS parameter) is not
+// naming a NIC, and a path whose `MAC(...)` node does not parse is a decode failure rather than "no MAC here".
+type RedfishDevicePathMac
+  = PathNamesMac { address: Eui48Address }
+  | PathNamesNoMac
+  | PathMacUndecodable { text: String }
+
+// One BootOption: the UEFI device path is the only member that can name hardware, and it is kept verbatim for
+// the same reason the MAC is. `BootOptionEnabled` absent is "the service did not say", not disabled.
+type RedfishBootOptionRead {
+  id: NonEmptyStr
+  display_name: String?
+  uefi_device_path: String?
+  enabled: Bool?
+}
+
+// The BootOptions collection answered, or the service's own refusal. srv13's committed capture IS the second
+// arm — `Systems_system_BootOptions.json` carries the Base.1.16.0.ResourceNotFound error envelope — and a
+// service that says the resource does not exist has answered a question; it has not failed to answer it.
+// Keeping the two apart is what lets gunbc record an ESTABLISHED negative instead of a missing read.
+type RedfishBootOptionsRead
+  = BootOptionsListed { options: List<RedfishBootOptionRead> }
+  | BootOptionsNotServed { message: NonEmptyStr }
+
+fn redfish_network_boot_document(body: String, what: String) -> ObservationAttempt<JsonValue, NonEmptyStr> {
+  match parse_json_document(s: body) {
+    JsonDocumentParsed { value: v } => ObservationEstablished { observed: v }
+    JsonDocumentUnreadable { gap: g } => ObservationRefused {
+      cause: concat("the ", what, " body is unreadable JSON: ", json_document_gap_text(gap: g)) as NonEmptyStr
+    }
+  }
+}
+
+// The optional string member, kept absent when the service omits it.
+// AN OPTIONAL PROPERTY, AS THE WIRE REPORTS IT. Three outcomes, not two: the service did not publish the
+// property; it published it with a value this reader can read; or it published it in a shape this reader cannot
+// read. The third is NOT the first. A property that is present and undecodable is a failed decode of the
+// resource that carried it, and the reader above refuses that resource rather than reporting it as though the
+// property had not been there (gunbc.design_argument::fail_closed: stop visibly, never conceal the deficit). An empty string is a
+// PUBLISHED value: this module reports what the service sent and does not decide whether "" is meaningful for a
+// given property -- that is the reader above's judgement, and it is stated there.
+type RedfishOptionalProperty<T>
+  = PropertyAbsent
+  | PropertyPublished { value: T }
+  | PropertyUndecodable { key: String, cause: String }
+
+// PUBLISHED STRING -> PARSED VALUE, KEEPING THE THREE ARMS. Absent stays absent; a published value that does
+// not parse becomes `PropertyUndecodable` carrying the parser's own reason, so the refusal that reaches the
+// consumer says which property failed and why, not merely that something was wrong.
+fn redfish_mac_property(property: RedfishOptionalProperty<String>) -> RedfishOptionalProperty<Eui48Address> {
+  match property {
+    PropertyAbsent => PropertyAbsent
+    PropertyUndecodable { key: key, cause: cause } => PropertyUndecodable { key: key, cause: cause }
+    PropertyPublished { value: value } => match parse_mac_address_any_case(text: value) {
+      MacParsed { address: address } => PropertyPublished { value: address }
+      MacParseFailed { error: error } => PropertyUndecodable {
+        key: redfish_key_mac_address,
+        cause: mac_parse_error_text(error: error) as String,
+      }
+    }
+  }
+}
+
+fn redfish_link_status_property(property: RedfishOptionalProperty<String>) -> RedfishOptionalProperty<RedfishLinkStatus> {
+  match property {
+    PropertyAbsent => PropertyAbsent
+    PropertyUndecodable { key: key, cause: cause } => PropertyUndecodable { key: key, cause: cause }
+    PropertyPublished { value: value } => match redfish_link_status_of(text: value) {
+      Present { value: status } => PropertyPublished { value: status }
+      Absent => PropertyUndecodable {
+        key: redfish_key_link_status,
+        cause: concat("LinkStatus ", concat(value, " is not one of the DMTF enum members (LinkUp, NoLink, LinkDown)")) as String,
+      }
+    }
+  }
+}
+
+// THE `MAC(...)` NODE OF A UEFI DEVICE PATH. EDK2 prints a path as
+// `PciRoot(0x0)/Pci(0x1C,0x4)/MAC(ac1f6be3f6b0,0x0)`, so the node name is the delimiter and the address runs to
+// the next `,` or `)`. Some firmware prints the colon form inside the node instead, and both are accepted; what
+// is NOT accepted is a match on hex digits that sit outside a `MAC(...)` node, which is how a PCI function
+// number could otherwise be read as a NIC.
+fn redfish_device_path_mac(path: String) -> RedfishDevicePathMac {
+  let nodes = split(s: path, delimiter: "MAC(")
+  if count(nodes) < 2 {
+    PathNamesNoMac
+  } else {
+    match redfish_path_mac_node(nodes: nodes) {
+      Present { value: token } => match redfish_mac_token(token: token) {
+        Present { value: address } => PathNamesMac { address: address }
+        Absent => PathMacUndecodable { text: token }
+      }
+      Absent => PathNamesNoMac
+    }
+  }
+}
+
+// THE FIRST `MAC(` NODE'S ADDRESS TOKEN. The node is closed by `,` (the interface/ VLAN qualifier) or by `)`.
+fn redfish_path_mac_node(nodes: List<String>) -> String? {
+  match nodes |> get(1) {
+    Absent => none
+    Present { value: node } => match split(s: node, delimiter: ",") |> first() {
+      Absent => none
+      Present { value: before_comma } => match split(s: before_comma, delimiter: ")") |> first() {
+        Absent => none
+        Present { value: token } => Present { value: token }
+      }
+    }
+  }
+}
+
+// EITHER WIRE SPELLING INSIDE THE NODE: packed twelve hex digits, or the colon-separated six.
+fn redfish_mac_token(token: String) -> Eui48Address? {
+  match parse_packed_mac_address(text: token) {
+    MacParsed { address: address } => Present { value: address }
+    MacParseFailed { error: error } => match parse_mac_address_any_case(text: token) {
+      MacParsed { address: address } => Present { value: address }
+      MacParseFailed { error: error2 } => none
+    }
+  }
+}
+
+fn redfish_network_boot_optional_string(obj: JsonValue, key: String) -> RedfishOptionalProperty<String> {
+  match json_field_string(obj: obj, key: key) {
+    FieldAbsent => PropertyAbsent
+    FieldMalformed { cause: c } => PropertyUndecodable { key: key, cause: c }
+    FieldRead { value: s } => PropertyPublished { value: s }
+  }
+}
+
+fn redfish_network_boot_optional_bool(obj: JsonValue, key: String) -> RedfishOptionalProperty<Bool> {
+  match json_field_bool(obj: obj, key: key) {
+    FieldAbsent => PropertyAbsent
+    FieldMalformed { cause: c } => PropertyUndecodable { key: key, cause: c }
+    FieldRead { value: b } => PropertyPublished { value: b }
+  }
+}
+
+// The same three answers for a JSON number. Reading a numeric field as a string silently yields nothing, and
+// reading a malformed one as absent silently yields the absence -- `Members@odata.count` is the case that
+// matters: the count is what stops one committed member standing in for a whole fleet.
+fn redfish_network_boot_optional_int(obj: JsonValue, key: String) -> RedfishOptionalProperty<Int> {
+  match json_field_int(obj: obj, key: key) {
+    FieldAbsent => PropertyAbsent
+    FieldMalformed { cause: c } => PropertyUndecodable { key: key, cause: c }
+    FieldRead { value: n } => PropertyPublished { value: n }
+  }
+}
+
+// The property's value, once the undecodable case has been refused by the caller: absent and published fill the
+// record's own Optional. The undecodable arm reaching this function is unreachable by contract, and it reports
+// nothing there -- the refusal is what carries that fact.
+fn redfish_optional_value<T>(property: RedfishOptionalProperty<T>) -> T? {
+  match property {
+    PropertyPublished { value: v } => Present { value: v }
+    PropertyAbsent => none
+    PropertyUndecodable { key: k, cause: c } => none
+  }
+}
+
+// What an undecodable property is worth to a refusal: the property's own name and what the wire said, so the
+// refusal names the field that failed rather than the whole document.
+fn redfish_undecodable_detail<T>(property: RedfishOptionalProperty<T>) -> String? {
+  match property {
+    PropertyUndecodable { key: k, cause: c } => Present { value: concat(k as String, concat(": ", c as String)) }
+    PropertyPublished { value: v } => none
+    PropertyAbsent => none
+  }
+}
+
+// Every undecodable property of one resource, named together: a document with two bad fields reports both,
+// because a reader that stops at the first one makes the author fix the document twice.
+fn redfish_undecoded_details(details: List<String?>) -> String? {
+  let found = filter(details, detail => match detail {
+    Present { value: t } => true
+    Absent => false
+  })
+  if count(found) == 0 {
+    none
+  } else {
+    Present {
+      value: join(map(found, detail => match detail {
+        Present { value: t } => t
+        Absent => ""
+      }), "; ") as NonEmptyStr
+    }
+  }
+}
+
+
+
+// ONE EthernetInterface resource body. A resource with no `Id` is refused rather than anonymous: an
+// anonymous member cannot be joined to a boot option, and a silent default `Id` would fabricate the join key.
+fn redfish_ethernet_interface_of(body: String) -> ObservationAttempt<RedfishEthernetInterfaceRead, NonEmptyStr> {
+  match redfish_network_boot_document(body: body, what: "EthernetInterface") {
+    ObservationRefused { cause: c } => ObservationRefused { cause: c }
+    ObservationEstablished { observed: doc } => match json_field_string(obj: doc, key: redfish_key_id) {
+      FieldAbsent => ObservationRefused { cause: "the EthernetInterface resource carries no Id" as NonEmptyStr }
+      FieldMalformed { cause: c } => ObservationRefused { cause: c as NonEmptyStr }
+      FieldRead { value: id } =>
+        if id == "" {
+          ObservationRefused { cause: "the EthernetInterface resource has an empty Id" as NonEmptyStr }
+        } else {
+          let name = redfish_network_boot_optional_string(obj: doc, key: redfish_key_name)
+          // The two typed properties are read THROUGH their wire spelling: the string is what the service
+          // published, and the value is what this reader can prove from it. A published string that is not a
+          // MAC address, or not one of the three LinkStatus members, is an undecodable property -- the same arm
+          // as a wrong JSON type, because in both cases the service answered and this reader could not
+          // understand the answer.
+          let mac = redfish_mac_property(property: redfish_network_boot_optional_string(obj: doc, key: redfish_key_mac_address))
+          let link = redfish_link_status_property(property: redfish_network_boot_optional_string(obj: doc, key: redfish_key_link_status))
+          match redfish_undecoded_details(details: [
+            redfish_undecodable_detail(property: name),
+            redfish_undecodable_detail(property: mac),
+            redfish_undecodable_detail(property: link),
+          ]) {
+            Present { value: detail } => ObservationRefused { cause: concat(
+              "the EthernetInterface ", concat(id as String, concat(" publishes a property this reader cannot decode: ", detail as String))
+            ) as NonEmptyStr }
+            Absent => ObservationEstablished { observed: RedfishEthernetInterfaceRead {
+              id: id as NonEmptyStr,
+              name: redfish_optional_value(property: name),
+              mac_address: redfish_optional_value(property: mac),
+              link_status: redfish_optional_value(property: link),
+            } }
+          }
+        }
+    }
+  }
+}
+
+// THE ERROR ENVELOPE a Redfish service returns for a resource it does not serve: `error.code` beside an
+// `@Message.ExtendedInfo` list whose first entry carries the `MessageId`. Both spellings are read because
+// services publish both. THREE answers, kept apart: no envelope at all (the resource was served, so the
+// caller goes on to read Members); an envelope whose `code` the reader can name (the service's own refusal,
+// an established negative); and an envelope that is present but unreadable — not an object, or carrying no
+// `code`, or an empty one. The Redfish error object REQUIRES `code`, so those last three are a failed read,
+// not "no refusal code": collapsing them is what lets a service that answered badly read as a resource that
+// is simply not there.
+fn redfish_network_boot_error_code(doc: JsonValue) -> RedfishOptionalProperty<String> {
+  match json_field(obj: doc, key: redfish_key_error) {
+    FieldAbsent => PropertyAbsent
+    FieldMalformed { cause: c } => PropertyUndecodable { key: redfish_key_error, cause: c }
+    FieldRead { value: error } => match json_field_string(obj: error, key: redfish_key_code) {
+      FieldRead { value: code } =>
+        if code == "" {
+          PropertyUndecodable { key: redfish_key_code, cause: "the error envelope publishes an empty code" }
+        } else {
+          PropertyPublished { value: code }
+        }
+      FieldAbsent => PropertyUndecodable { key: redfish_key_code, cause: "the error envelope carries no code" }
+      FieldMalformed { cause: c } => PropertyUndecodable { key: redfish_key_code, cause: c }
+    }
+  }
+}
+
+// THE BOOT OPTIONS COLLECTION. An error envelope refuses as NOT SERVED with the service's own code; a body
+// without a Members array is unreadable rather than empty, because "no boot options" is a claim a service
+// makes by publishing an empty Members array, not by omitting one.
+fn redfish_boot_options_of(body: String) -> ObservationAttempt<RedfishBootOptionsRead, NonEmptyStr> {
+  match redfish_network_boot_document(body: body, what: "BootOptions") {
+    ObservationRefused { cause: c } => ObservationRefused { cause: c }
+    ObservationEstablished { observed: doc } => match redfish_network_boot_error_code(doc: doc) {
+      PropertyPublished { value: code } => ObservationEstablished { observed: BootOptionsNotServed { message: code as NonEmptyStr } }
+      // AN ENVELOPE THAT CANNOT BE READ IS NOT AN ABSENCE OF AN ENVELOPE. The service answered; the reader
+      // could not understand the answer, and that is the acquisition-level refusal, not the established
+      // negative "not served" and not "no boot options".
+      PropertyUndecodable { key: k, cause: c } => ObservationRefused { cause: concat(
+        "the BootOptions error envelope is unreadable: ", concat(k as String, concat(": ", c as String))
+      ) as NonEmptyStr }
+      PropertyAbsent => match json_field(obj: doc, key: redfish_key_members) {
+        FieldAbsent => ObservationRefused { cause: "the BootOptions collection carries no Members array" as NonEmptyStr }
+        FieldMalformed { cause: c } => ObservationRefused { cause: c as NonEmptyStr }
+        FieldRead { value: members } => match members {
+          JsonArray { elements: elements } =>
+            match redfish_boot_options_of_members(elements: elements) {
+              ObservationRefused { cause: c } => ObservationRefused { cause: c }
+              ObservationEstablished { observed: options } => ObservationEstablished {
+                observed: BootOptionsListed { options: options }
+              }
+            }
+          other => ObservationRefused { cause: "the BootOptions Members value is not an array" as NonEmptyStr }
+        }
+      }
+    }
+  }
+}
+
+fn redfish_boot_option_of_member(member: JsonValue) -> ObservationAttempt<RedfishBootOptionRead, NonEmptyStr> {
+  match json_field_string(obj: member, key: redfish_key_id) {
+    FieldAbsent => ObservationRefused { cause: "a BootOption member carries no Id" as NonEmptyStr }
+    FieldMalformed { cause: c } => ObservationRefused { cause: c as NonEmptyStr }
+    FieldRead { value: id } =>
+      if id == "" {
+        ObservationRefused { cause: "a BootOption member has an empty Id" as NonEmptyStr }
+      } else {
+        let display = redfish_network_boot_optional_string(obj: member, key: redfish_key_display_name)
+        let path = redfish_network_boot_optional_string(obj: member, key: redfish_key_uefi_device_path)
+        let enabled = redfish_network_boot_optional_bool(obj: member, key: redfish_key_boot_option_enabled)
+        match redfish_undecoded_details(details: [
+          redfish_undecodable_detail(property: display),
+          redfish_undecodable_detail(property: path),
+          redfish_undecodable_detail(property: enabled),
+        ]) {
+          Present { value: detail } => ObservationRefused { cause: concat(
+            "the BootOption ", concat(id as String, concat(" carries a property this reader cannot decode: ", detail as String))
+          ) as NonEmptyStr }
+          Absent => ObservationEstablished { observed: RedfishBootOptionRead {
+            id: id as NonEmptyStr,
+            display_name: redfish_optional_value(property: display),
+            uefi_device_path: redfish_optional_value(property: path),
+            enabled: redfish_optional_value(property: enabled),
+          } }
+        }
+      }
+  }
+}
+
+fn redfish_boot_options_of_members(elements: List<JsonValue>) -> ObservationAttempt<List<RedfishBootOptionRead>, NonEmptyStr> {
+  let empty: List<RedfishBootOptionRead> = []
+  let initial: ObservationAttempt<List<RedfishBootOptionRead>, NonEmptyStr> = ObservationEstablished { observed: empty }
+  fold(elements, init: initial, f: (acc, member) => match acc {
+    ObservationRefused { cause: c } => ObservationRefused { cause: c }
+    ObservationEstablished { observed: read } => match redfish_boot_option_of_member(member: member) {
+      ObservationRefused { cause: c } => ObservationRefused { cause: c }
+      ObservationEstablished { observed: option } => ObservationEstablished { observed: concat(read, [option]) }
+    }
+  })
+}
+
+// ── THE RENDER SIDE, BESIDE THE PARSE SIDE (gunbc.design_argument::minimize_redundancy: model a concept once and derive every use). The corpus' own emitter writes both this
+// dry controller's body and, elsewhere, a real service's recorded one, so the two cannot drift in spelling.
+
+// The optional members are emitted only when present — a dry controller that has no MAC to report omits the
+// member, exactly as a service would, rather than publishing `null` and making the parse side invent absence.
+fn redfish_network_boot_optional(key: String, value: String?) -> List<JsonKeyValue> {
+  match value {
+    Present { value: v } => [json_kv(key: key, value: json_string(s: v))]
+    Absent => []
+  }
+}
+
+// THE RENDER SIDE, and what owes it. These four print the shapes above in the upstream's own envelope, from
+// the same key vocabulary the readers look up -- so a body written by this module is always a body this module
+// can read back. Their consumer is the modeled arm of the first-contact battery:
+// `gunbc.machine_intake.bmc_first_contact_reading`'s `bmc_modeled_responses_of_world` renders a simulated
+// controller's modeled network-boot state through them, and the battery parses that body back with the readers
+// above, so R5's dry arm runs the same render-then-parse route a committed capture runs. This module's
+// round-trip claims in `test.claim.bmc.redfish_network_boot_witness`
+// (rendered_ethernet_interface_reads_back_as_the_same_resource,
+// rendered_collection_reads_back_as_the_same_collection,
+// rendered_not_served_envelope_reads_back_as_not_served) pin that the reader and the writer of this vocabulary
+// cannot drift apart.
+data redfish_collection_odata_type: String = "#Redfish.EthernetInterfaceCollection"
+fn redfish_mac_rendered(address: Eui48Address?) -> String? {
+  match address {
+    Present { value: value } => Present { value: render_mac_address(addr: value) as String }
+    Absent => none
+  }
+}
+
+fn redfish_link_status_rendered(status: RedfishLinkStatus?) -> String? {
+  match status {
+    Present { value: value } => Present { value: redfish_link_status_text(status: value) }
+    Absent => none
+  }
+}
+
+fn render_redfish_ethernet_interface(read: RedfishEthernetInterfaceRead) -> String {
+  serialize_json(v: json_object(members: concat(
+    [
+      json_kv(key: redfish_key_odata_type, value: json_string(s: "#EthernetInterface.v1_5_1.EthernetInterface")),
+      json_kv(key: redfish_key_id, value: json_string(s: read.id as String)),
+    ],
+    concat(
+      redfish_network_boot_optional(key: redfish_key_name, value: read.name),
+      concat(
+        // The rendered spelling is the codec's canonical one and the enum's own text -- the SAME functions the
+        // parser reads through, so a rendered body parses back to the same value and no second spelling of a
+        // MAC or a LinkStatus can enter the tree.
+        redfish_network_boot_optional(key: redfish_key_mac_address, value: redfish_mac_rendered(address: read.mac_address)),
+        redfish_network_boot_optional(key: redfish_key_link_status, value: redfish_link_status_rendered(status: read.link_status))
+      )
+    )
+  )))
+}
+
+fn redfish_boot_option_json(option: RedfishBootOptionRead) -> JsonValue {
+  json_object(members: concat(
+    [json_kv(key: redfish_key_id, value: json_string(s: option.id as String))],
+    concat(
+      redfish_network_boot_optional(key: redfish_key_display_name, value: option.display_name),
+      concat(
+        redfish_network_boot_optional(key: redfish_key_uefi_device_path, value: option.uefi_device_path),
+        match option.enabled {
+          Present { value: e } => [json_kv(key: redfish_key_boot_option_enabled, value: JsonBool { value: e })]
+          Absent => []
+        }
+      )
+    )
+  ))
+}
+
+fn render_redfish_boot_options(options: List<RedfishBootOptionRead>) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: redfish_key_odata_type, value: json_string(s: "#BootOptionCollection.BootOptionCollection")),
+    json_kv(key: redfish_key_members, value: json_array(elements: map(options, o => redfish_boot_option_json(option: o)))),
+  ]))
+}
+
+// What the service says when it does not serve the collection at all: the same envelope shape the parse side
+// reads the refusal out of, so the dry arm and the committed arm are the same wire fact.
+fn render_redfish_boot_options_not_served(code: String) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: redfish_key_error, value: json_object(members: [
+      json_kv(key: redfish_key_code, value: json_string(s: code)),
+    ])),
+  ]))
+}
+
+// The collection envelope, printed from the modeled collection: the members it names by id, and how many ports
+// the service says it has. `Members@odata.count` is what makes a collection read that returns fewer members
+// than it announced a refusal rather than a short list, so the render side prints it from the same field the
+// reader fills.
+fn render_redfish_ethernet_interface_collection(read: RedfishEthernetInterfaceCollectionRead) -> String {
+  let count_value: JsonValue = match read.announced_count {
+    Present { value: count } => json_int(n: count)
+    Absent => JsonNull {}
+  }
+  let member_entries: List<JsonValue> = map(read.member_ids, m =>
+    json_object(members: [json_kv(key: redfish_key_id, value: json_string(s: m as String))]))
+  serialize_json(v: json_object(members: [
+    json_kv(key: redfish_key_odata_type, value: json_string(s: redfish_collection_odata_type)),
+    json_kv(key: redfish_key_members_odata_count, value: count_value),
+    json_kv(key: redfish_key_members, value: json_array(elements: member_entries)),
+  ]))
+}
+// THE COLLECTION, AS DISTINCT FROM ITS MEMBERS. `Members@odata.count` is the service saying how many ports it
+// has; the member resources are what name them. Reading one and reporting the other is how a board ends up with
+// "the" boot NIC picked out of a collection the service said was longer than what was read — which is why the
+// count is read here, kept distinct, and never used to invent a member.
+type RedfishEthernetInterfaceCollectionRead {
+  member_ids: List<NonEmptyStr>
+  announced_count: Int?
+}
+
+fn redfish_ethernet_interface_collection_of(body: String) -> ObservationAttempt<RedfishEthernetInterfaceCollectionRead, NonEmptyStr> {
+  match redfish_network_boot_document(body: body, what: "EthernetInterfaces collection") {
+    ObservationRefused { cause: c } => ObservationRefused { cause: c }
+    ObservationEstablished { observed: doc } => match json_field(obj: doc, key: redfish_key_members) {
+      FieldAbsent => ObservationRefused { cause: "the EthernetInterfaces collection carries no Members array" as NonEmptyStr }
+      FieldMalformed { cause: c } => ObservationRefused { cause: c as NonEmptyStr }
+      FieldRead { value: members } => match members {
+        JsonArray { elements: elements } =>
+          // THE ANNOUNCED COUNT IS AN OPTIONAL INT, and the three arms stay three answers. Absent is a fact
+          // (a collection may announce no count and still be a collection); a count that is published but is
+          // not a number is a decode refusal naming the property, because a collection whose announced count
+          // went unread would let a single committed member stand in for the whole fleet.
+          let ids = bmc_redfish_member_ids_of(elements: elements)
+          let count = redfish_network_boot_optional_int(obj: doc, key: redfish_key_members_odata_count)
+          match ids {
+            ObservationRefused { cause: c } => ObservationRefused { cause: concat(
+              "the EthernetInterfaces collection publishes a member this reader cannot decode: ", c as String
+            ) as NonEmptyStr }
+            ObservationEstablished { observed: member_ids } => match redfish_undecodable_detail(property: count) {
+              Present { value: detail } => ObservationRefused { cause: concat(
+                "the EthernetInterfaces collection publishes a property this reader cannot decode: ", detail as String
+              ) as NonEmptyStr }
+              Absent => ObservationEstablished { observed: RedfishEthernetInterfaceCollectionRead {
+                member_ids: member_ids,
+                announced_count: redfish_optional_value(property: count),
+              } }
+            }
+          }
+        other => ObservationRefused { cause: "the EthernetInterfaces Members value is not an array" as NonEmptyStr }
+      }
+    }
+  }
+}
+
+// WHICH MEMBERS THE COLLECTION NAMES. A Redfish collection member is a NAVIGATION LINK: the committed
+// captures publish `{"@odata.id": "/redfish/v1/Systems/1/EthernetInterfaces/1"}` and no `Id` at all
+// (h11ssl-unit1's `redfish_v1_Systems_1_EthernetInterfaces.json`, srv13's `Managers_bmc_EthernetInterfaces.json`),
+// so an absent `Id` is the normal shape and names nothing -- which is exactly why the reader keeps the
+// announced count beside the list instead of treating an empty list as an empty fleet. A member that DOES
+// publish an `Id` and publishes one this reader cannot read is a different external fact: a property arrived
+// and did not decode. That refuses the collection naming the property; the member does not vanish into `acc`.
+fn bmc_redfish_member_ids_of(elements: List<JsonValue>) -> ObservationAttempt<List<NonEmptyStr>, NonEmptyStr> {
+  fold(elements, init: ObservationEstablished { observed: [] }, f: (acc, member) => match acc {
+    ObservationRefused { cause: c } => ObservationRefused { cause: c }
+    ObservationEstablished { observed: ids } => match json_field_string(obj: member, key: redfish_key_id) {
+      FieldRead { value: id } =>
+        if id == "" {
+          ObservationRefused { cause: "a collection member publishes an empty Id" as NonEmptyStr }
+        } else {
+          ObservationEstablished { observed: concat(ids, [id as NonEmptyStr]) }
+        }
+      FieldAbsent => ObservationEstablished { observed: ids }
+      FieldMalformed { cause: c } => ObservationRefused { cause: c as NonEmptyStr }
+    }
+  })
+}
+
+// THE SYSTEMS RESOURCE'S BOOT OBJECT, READ. A ComputerSystem's `Boot` says which source the firmware was TOLD
+// to use — `BootSourceOverrideEnabled` and `BootSourceOverrideTarget`. It names no interface and no MAC, so it
+// can never BE a boot NIC: the boot NIC is a network fact joined from EthernetInterfaces (DESIGN), and the boot
+// source is a controller fact that mints no capability. A resource that carries no Boot object says so; an
+// empty or partial Boot object is a fact about the controller, not a failure to have read it.
+type RedfishBootOverrideRead
+  = BootOverrideReported { enabled: NonEmptyStr, target: NonEmptyStr }
+  | BootOverrideAbsent { message: NonEmptyStr }
+  | BootOverrideUnreadable { cause: NonEmptyStr }
+
+fn redfish_boot_override_field(obj: JsonValue, key: NonEmptyStr, what: NonEmptyStr) -> ObservationAttempt<NonEmptyStr, NonEmptyStr> {
+  match json_field_string(obj: obj, key: key as String) {
+    FieldRead { value: text } => ObservationEstablished { observed: text as NonEmptyStr }
+    FieldAbsent => ObservationRefused { cause: concat("the Boot object carries no ", what) as NonEmptyStr }
+    FieldMalformed { cause: cause } => ObservationRefused { cause: concat("the Boot object's ", concat(what, " is malformed")) as NonEmptyStr }
+  }
+}
+
+fn redfish_boot_override_of(body: String) -> RedfishBootOverrideRead {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: gap } => BootOverrideUnreadable { cause: concat("the Systems response is not a JSON document (", concat(json_document_gap_text(gap: gap), ")")) as NonEmptyStr }
+    JsonDocumentParsed { value: value } => match json_field(obj: value, key: "Boot") {
+      FieldAbsent => BootOverrideAbsent { message: "the Systems resource carries no Boot object" as NonEmptyStr }
+      FieldMalformed { cause: cause } => BootOverrideUnreadable { cause: concat("the Systems Boot object is malformed (", concat(cause as String, ")")) as NonEmptyStr }
+      FieldRead { value: boot } => match redfish_boot_override_field(obj: boot, key: "BootSourceOverrideEnabled", what: "BootSourceOverrideEnabled" as NonEmptyStr) {
+        ObservationRefused { cause: cause } => BootOverrideUnreadable { cause: cause }
+        ObservationEstablished { observed: enabled } => match redfish_boot_override_field(obj: boot, key: "BootSourceOverrideTarget", what: "BootSourceOverrideTarget" as NonEmptyStr) {
+          ObservationRefused { cause: cause } => BootOverrideUnreadable { cause: cause }
+          ObservationEstablished { observed: target } => BootOverrideReported { enabled: enabled, target: target }
+        }
+      }
+    }
+  }
+}

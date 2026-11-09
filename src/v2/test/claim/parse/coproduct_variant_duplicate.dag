@@ -32,7 +32,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // enclosing type name is threaded down the normalize recursion from the type_decl (a Node carries
 // no parent pointer), so the fold at the type_decl's rhs can name the declaration in its diagnostic.
 //
-// THE PAIRED PROBE IS THE DISCRIMINATING TEST (DESIGN section 5, "Done means executed"):
+// THE PAIRED PROBE IS THE DISCRIMINATING TEST (gunbc.design_argument::fail_closed, "Done means executed"):
 //   duplicate_variant_duplicate_name_is_refused_with_a_typed_located_diagnostic  (RED pre-fix)
 //     -- pre-fix the refusal only said ^sugar_reason_malformed over a node locus, so this claim
 //        failed before the diagnostic was made typed and located.
@@ -95,7 +95,7 @@ test fn prefix_shared_variant_names_are_accepted() -> Bool {
 // (3) AN UNNAMED VARIANT IS NOT A DUPLICATE, ON THE PUBLIC ROUTE: a coproduct arm with no authored
 // name (a record-shaped arm in variant position) is refused, and the reason is a malformed-shape
 // reason -- NOT ^sugar_reason_duplicate_variant_name. There is no repeated name to report here, so
-// reporting one would fabricate a subject (DESIGN section 5: no plausible output is fabricated).
+// reporting one would fabricate a subject (gunbc.design_argument::fail_closed: no plausible output is fabricated).
 test fn unnamed_variant_is_refused_as_malformed_not_as_duplicate() -> Bool {
   match cvd_lower(text: "type T = { x: Int } | B") {
     Accepted { value: _, diagnostics: _ } => false
@@ -110,7 +110,7 @@ test fn unnamed_variant_is_refused_as_malformed_not_as_duplicate() -> Bool {
 // nameless arm (sugar_malformed_diagnostic) before the LabeledEdges check, and
 // v2.std.node_query variant_declaration_edge_optional yields an edge only for an Authored label.
 // So probe the diagnostic ITSELF at that boundary rather than routing four stages to reach an arm
-// that is refused upstream (DESIGN section 3: discriminate at the one interface that answers).
+// that is refused upstream (gunbc.design_argument::witness_one_interface: discriminate at the one interface that answers).
 // A pairwise-DISTINCT edge list -- no repeated name -- must NOT be given the duplicate reason.
 fn cvd_disj_over(edges: List<Edge>) -> Node {
   Node {

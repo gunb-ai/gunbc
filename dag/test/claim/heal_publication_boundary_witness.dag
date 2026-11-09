@@ -5,6 +5,7 @@ import std.optional { Present, Absent }
 import std.types { String, NonEmptyStr, Bool, Int, CommitSha, List }
 import std.content_hash { Sha1Digest, Sha1DigestHex }
 import extdeps.github.effect { RepositoryPath }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import test.claim.heal_witness_fixture_paths { heal_fixture_committed_paths }
 import extdeps.github.workflow_runs { WorkflowRunConclusion, Success, Failure }
 import extdeps.github.git_database { GitTreeItemWire }
@@ -16,12 +17,20 @@ import gunbc.heal_publication_boundary {
   CandidateEntry, HealRepairCandidate,
   encode_heal_repair_candidate, decode_heal_repair_candidate, CandidateDecode, CandidateDecoded, CandidateUndecodable,
   PublisherPathPolicy, publisher_path_policy, PathAdmission, PathAdmitted, PathAdmissionRefused, publisher_path_admission,
-  TriggeringRunFacts, PullRequestFacts, ProposedBlobObservation, ProposedBlobComputed, ProposedBlobReadRefused,
+  TriggeringRunFacts, ProposedBlobObservation, ProposedBlobComputed, ProposedBlobReadRefused,
   PublisherObservations, AdmittedHealPublication, HealPublicationAdmission, HealPublicationAdmitted, HealPublicationRefused,
   admit_heal_publication, heal_publication_refusal_token,
   HealPublicationRefusal,
+  PullRequestNotOpen,
   PublicationReadback, HealPublicationOutcome, HealPublished, HealPublicationWriteRefused, HealPublicationUnverified,
   publication_readback_verdict, heal_publication_is_published
+}
+import gunbc.heal_publication {
+  classify_publish_pull_request, PublishPullRequestState,
+  PublishPrObserved, PublishPrStateUnreadable, PublishPrCredentialAbsent,
+  PullRequestOpenCheck, PullRequestOpenCheckPassed, PullRequestOpenCheckRefused,
+  classify_write_tree_completion, WriteTreeCompletion, WriteTreeCompleted, WriteTreeRejected,
+  refusal_line
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -82,9 +91,6 @@ fn good_run() -> TriggeringRunFacts {
   }
 }
 
-fn good_pull() -> PullRequestFacts {
-  PullRequestFacts { number: 11493, open: true, head_ref: branch, base_ref: "main" }
-}
 
 fn design_base_item(mode: String) -> GitTreeItemWire {
   GitTreeItemWire { path: "DESIGN.md", mode: mode, type: "blob", sha: base_blob_hex, size: Present { value: 10 } }
@@ -92,7 +98,6 @@ fn design_base_item(mode: String) -> GitTreeItemWire {
 
 fn observations_with(
   run: TriggeringRunFacts,
-  pull: PullRequestFacts,
   branch_head: String,
   base_tree: List<GitTreeItemWire>,
   blobs: List<ProposedBlobObservation>
@@ -102,7 +107,6 @@ fn observations_with(
     default_branch: "main",
     candidate_producer_workflow_path: ".github/workflows/heal.yml",
     run: run,
-    pull_request: pull,
     branch_head_sha: branch_head,
     base_tree_sha: "7777777777777777777777777777777777777777",
     base_tree_truncated: false,
@@ -116,7 +120,7 @@ fn good_blobs() -> List<ProposedBlobObservation> {
 }
 
 fn good_observations() -> PublisherObservations {
-  observations_with(run: good_run(), pull: good_pull(), branch_head: head_hex, base_tree: [design_base_item(mode: "100644")], blobs: good_blobs())
+  observations_with(run: good_run(), branch_head: head_hex, base_tree: [design_base_item(mode: "100644")], blobs: good_blobs())
 }
 
 fn refusal_of(a: HealPublicationAdmission) -> String {
@@ -266,7 +270,7 @@ test fn witness_a_run_of_another_workflow_is_refused() -> Bool {
   let run = good_run()
   admit_with(c: good_candidate(), o: observations_with(
     run: TriggeringRunFacts { workflow_path: ".github/workflows/evil.yml", originating_event: run.originating_event, conclusion: run.conclusion, head_sha: run.head_sha, head_branch: run.head_branch, head_repository_full_name: run.head_repository_full_name, repository_full_name: run.repository_full_name },
-    pull: good_pull(), branch_head: head_hex, base_tree: [design_base_item(mode: "100644")], blobs: good_blobs()
+    branch_head: head_hex, base_tree: [design_base_item(mode: "100644")], blobs: good_blobs()
   )) == "TriggeringRunNotTheCandidateProducer"
 }
 
@@ -277,7 +281,7 @@ test fn witness_an_abandoned_producing_run_is_refused() -> Bool {
   let run = good_run()
   admit_with(c: good_candidate(), o: observations_with(
     run: TriggeringRunFacts { workflow_path: run.workflow_path, originating_event: run.originating_event, conclusion: Cancelled, head_sha: run.head_sha, head_branch: run.head_branch, head_repository_full_name: run.head_repository_full_name, repository_full_name: run.repository_full_name },
-    pull: good_pull(), branch_head: head_hex, base_tree: [design_base_item(mode: "100644")], blobs: good_blobs()
+    branch_head: head_hex, base_tree: [design_base_item(mode: "100644")], blobs: good_blobs()
   )) == "TriggeringRunReachedNoVerdict"
 }
 
@@ -289,7 +293,7 @@ test fn witness_a_failed_producing_run_still_publishes_its_repair() -> Bool {
     candidate: good_candidate(),
     observations: observations_with(
       run: TriggeringRunFacts { workflow_path: run.workflow_path, originating_event: run.originating_event, conclusion: Failure, head_sha: run.head_sha, head_branch: run.head_branch, head_repository_full_name: run.head_repository_full_name, repository_full_name: run.repository_full_name },
-      pull: good_pull(), branch_head: head_hex, base_tree: [design_base_item(mode: "100644")], blobs: good_blobs()
+      branch_head: head_hex, base_tree: [design_base_item(mode: "100644")], blobs: good_blobs()
     ),
     policy: main_policy()
   ) {
@@ -303,7 +307,7 @@ test fn witness_a_candidate_for_a_head_its_run_did_not_judge_is_refused() -> Boo
   let run = good_run()
   admit_with(c: good_candidate(), o: observations_with(
     run: TriggeringRunFacts { workflow_path: run.workflow_path, originating_event: run.originating_event, conclusion: run.conclusion, head_sha: other_hex, head_branch: run.head_branch, head_repository_full_name: run.head_repository_full_name, repository_full_name: run.repository_full_name },
-    pull: good_pull(), branch_head: head_hex, base_tree: [design_base_item(mode: "100644")], blobs: good_blobs()
+    branch_head: head_hex, base_tree: [design_base_item(mode: "100644")], blobs: good_blobs()
   )) == "TriggeringRunSubjectDisagreed"
 }
 
@@ -312,28 +316,38 @@ test fn witness_a_run_from_another_head_repository_is_refused() -> Bool {
   let run = good_run()
   admit_with(c: good_candidate(), o: observations_with(
     run: TriggeringRunFacts { workflow_path: run.workflow_path, originating_event: run.originating_event, conclusion: run.conclusion, head_sha: run.head_sha, head_branch: run.head_branch, head_repository_full_name: "someone/fork", repository_full_name: run.repository_full_name },
-    pull: good_pull(), branch_head: head_hex, base_tree: [design_base_item(mode: "100644")], blobs: good_blobs()
+    branch_head: head_hex, base_tree: [design_base_item(mode: "100644")], blobs: good_blobs()
   )) == "TriggeringRunRepositoryDisagreed"
 }
 
-test fn witness_a_closed_pull_request_is_refused() -> Bool {
-  admit_with(c: good_candidate(), o: observations_with(
-    run: good_run(), pull: PullRequestFacts { number: 11493, open: false, head_ref: branch, base_ref: "main" },
-    branch_head: head_hex, base_tree: [design_base_item(mode: "100644")], blobs: good_blobs()
-  )) == "PullRequestNotOpen"
-}
+// "The pull request is still OPEN" no longer lives at admit: it is not a ref, so no git transport
+// can answer it credential-free. It is checked at PUBLISH (which holds the job token and sits closer
+// to the write) by gunbc.heal_publication's classify_publish_pull_request -- and the closed case is
+// covered HERE, offline, by the publish arms in the "publish openness decision" section at the foot
+// of this module (a supplied PublishPrObserved refuses with the canonical PullRequestNotOpen spelling,
+// on values, no network/token), with the live-route pairing in
+// test.claim.heal_publication_publish_open_check_inhabitance. The LIVE cross-check of the pull request's
+// NUMBER, HEAD REF and BASE REF against the sealed candidate is likewise publish-side (the same classifier);
+// admit no longer holds an arm for them, because its only source for those facts was the sealed candidate
+// itself -- comparing them there compared a value with itself.
 
-test fn witness_a_pull_request_into_another_base_is_refused() -> Bool {
-  admit_with(c: good_candidate(), o: observations_with(
-    run: good_run(), pull: PullRequestFacts { number: 11493, open: true, head_ref: branch, base_ref: "release" },
-    branch_head: head_hex, base_tree: [design_base_item(mode: "100644")], blobs: good_blobs()
-  )) == "BaseRefNotTheDefaultBranch"
+test fn witness_a_candidate_targeting_a_non_default_base_is_refused() -> Bool {
+  // The surviving base check: the SEALED CANDIDATE's own base_ref must name the default branch. A
+  // candidate sealed against a non-default base is refused at admit; a pull request RETARGETED after
+  // sealing is caught at publish (the live base_ref arm in classify_publish_pull_request).
+  let c = good_candidate()
+  let targeted = HealRepairCandidate {
+    repository_full_name: c.repository_full_name, pull_number: c.pull_number, head_ref: c.head_ref,
+    expected_head_sha: c.expected_head_sha, base_ref: "release", producer_run_id: c.producer_run_id,
+    repair_declaration: c.repair_declaration, entries: c.entries
+  }
+  admit_with(c: targeted, o: good_observations()) == "BaseRefNotTheDefaultBranch"
 }
 
 // THE COMPARE-AND-SWAP'S FIRST HALF. The fast-forward-only reference write is its second.
 test fn witness_a_moved_branch_head_is_refused() -> Bool {
   admit_with(c: good_candidate(), o: observations_with(
-    run: good_run(), pull: good_pull(), branch_head: other_hex, base_tree: [design_base_item(mode: "100644")], blobs: good_blobs()
+    run: good_run(), branch_head: other_hex, base_tree: [design_base_item(mode: "100644")], blobs: good_blobs()
   )) == "HeadMoved"
 }
 
@@ -345,7 +359,6 @@ test fn witness_a_branch_name_that_would_misaddress_a_rest_path_is_refused() -> 
   }
   admit_with(c: hashed, o: observations_with(
     run: TriggeringRunFacts { workflow_path: run.workflow_path, originating_event: run.originating_event, conclusion: run.conclusion, head_sha: run.head_sha, head_branch: "lane#1", head_repository_full_name: run.head_repository_full_name, repository_full_name: run.repository_full_name },
-    pull: PullRequestFacts { number: 11493, open: true, head_ref: "lane#1", base_ref: "main" },
     branch_head: head_hex, base_tree: [design_base_item(mode: "100644")], blobs: good_blobs()
   )) == "HeadRefNotAddressable"
 }
@@ -386,11 +399,11 @@ test fn witness_a_mode_change_is_refused() -> Bool {
 test fn witness_an_absent_path_may_be_added_only_as_a_regular_file() -> Bool {
   let added_regular = admit_with(
     c: candidate_with(entries: [design_entry(mode: GitRegularBlobMode, base: none, proposed: proposed_hex)], declaration: "Ledger-Repaired: DESIGN.md\n"),
-    o: observations_with(run: good_run(), pull: good_pull(), branch_head: head_hex, base_tree: [], blobs: good_blobs())
+    o: observations_with(run: good_run(), branch_head: head_hex, base_tree: [], blobs: good_blobs())
   )
   let added_executable = admit_with(
     c: candidate_with(entries: [design_entry(mode: GitExecutableBlobMode, base: none, proposed: proposed_hex)], declaration: "Ledger-Repaired: DESIGN.md\n"),
-    o: observations_with(run: good_run(), pull: good_pull(), branch_head: head_hex, base_tree: [], blobs: good_blobs())
+    o: observations_with(run: good_run(), branch_head: head_hex, base_tree: [], blobs: good_blobs())
   )
   added_regular == "admitted" && added_executable == "FileModeNotAdmitted"
 }
@@ -398,7 +411,7 @@ test fn witness_an_absent_path_may_be_added_only_as_a_regular_file() -> Bool {
 test fn witness_an_entry_that_changes_nothing_is_refused() -> Bool {
   admit_with(
     c: candidate_with(entries: [design_entry(mode: GitRegularBlobMode, base: Present { value: oid(hex: base_blob_hex) }, proposed: base_blob_hex)], declaration: "Ledger-Repaired: DESIGN.md\n"),
-    o: observations_with(run: good_run(), pull: good_pull(), branch_head: head_hex, base_tree: [design_base_item(mode: "100644")],
+    o: observations_with(run: good_run(), branch_head: head_hex, base_tree: [design_base_item(mode: "100644")],
       blobs: [ProposedBlobComputed { blob_hex: base_blob_hex, computed_hex: base_blob_hex }])
   ) == "EntryProposesNoChange"
 }
@@ -406,14 +419,14 @@ test fn witness_an_entry_that_changes_nothing_is_refused() -> Bool {
 // THE BYTES MUST HASH TO THE ID THEY CLAIM. A single changed byte changes the recomputed id.
 test fn witness_bytes_that_do_not_hash_to_the_claimed_blob_are_refused() -> Bool {
   admit_with(c: good_candidate(), o: observations_with(
-    run: good_run(), pull: good_pull(), branch_head: head_hex, base_tree: [design_base_item(mode: "100644")],
+    run: good_run(), branch_head: head_hex, base_tree: [design_base_item(mode: "100644")],
     blobs: [ProposedBlobComputed { blob_hex: proposed_hex, computed_hex: other_hex }]
   )) == "ProposedBlobDisagreed"
 }
 
 test fn witness_an_unreadable_proposed_blob_is_refused() -> Bool {
   admit_with(c: good_candidate(), o: observations_with(
-    run: good_run(), pull: good_pull(), branch_head: head_hex, base_tree: [design_base_item(mode: "100644")],
+    run: good_run(), branch_head: head_hex, base_tree: [design_base_item(mode: "100644")],
     blobs: [ProposedBlobReadRefused { blob_hex: proposed_hex, detail: "absent" }]
   )) == "ProposedBlobUnreadable"
 }
@@ -485,4 +498,128 @@ test fn witness_a_changed_population_wider_than_the_admission_is_unverified() ->
 test fn witness_a_published_path_holding_another_blob_is_unverified() -> Bool {
   verdict_token(readback: readback_with(branch_head: created_commit_hex, parents: [head_hex], tree: created_tree_hex, changed: ["DESIGN.md"],
     head_tree: [GitTreeItemWire { path: "DESIGN.md", mode: "100644", type: "blob", sha: other_hex, size: Present { value: 12 } }])) == "unverified"
+}
+
+// ── publish pull-request decision (offline): closed RED, identity cross-check, fail-closed ─────
+//
+// Where the closed-pull RED now lives (publish, Option D) plus the LIVE identity cross-check that the
+// credential-free admit cannot perform. classify_publish_pull_request is the pure decision the wet reader
+// (which feeds it from a real github.Pulls.Get answer made under the job token) reduces to, so every arm is
+// checked on supplied PublishPullRequestState values -- no network, no token, no live PR number. It asserts
+// the ROUTE: the observed number and head ref must equal the sealed candidate's, else a DIFFERENT pull
+// request would be fast-forwarded. The live-route pairing (the job token really authenticates the read; the
+// reader really produces these states) is test.claim.heal_publication_publish_open_check_inhabitance.
+
+test fn witness_a_closed_pull_request_is_refused_at_publish() -> Bool {
+  match classify_publish_pull_request(
+    obs: PublishPrObserved { number: 11493, head_ref: branch, base_ref: "main", open: false }, pull_number: 11493, expected_head_ref: branch, expected_base_ref: "main"
+  ) {
+    PullRequestOpenCheckRefused { reason } => reason == refusal_line(refusal: PullRequestNotOpen { pull_number: 11493 })
+    PullRequestOpenCheckPassed => false
+  }
+}
+
+test fn witness_an_open_matching_pull_request_is_admitted_at_publish() -> Bool {
+  // The positive control: the arms below must not be satisfied by a predicate that always refuses.
+  classify_publish_pull_request(
+    obs: PublishPrObserved { number: 11493, head_ref: branch, base_ref: "main", open: true }, pull_number: 11493, expected_head_ref: branch, expected_base_ref: "main"
+  ) == PullRequestOpenCheckPassed
+}
+
+test fn witness_a_pull_request_whose_number_is_not_the_candidate_is_refused_at_publish() -> Bool {
+  // The live read answered a DIFFERENT pull request than the sealed candidate -> refuse (identity).
+  match classify_publish_pull_request(
+    obs: PublishPrObserved { number: 999, head_ref: branch, base_ref: "main", open: true }, pull_number: 11493, expected_head_ref: branch, expected_base_ref: "main"
+  ) {
+    PullRequestOpenCheckRefused { reason } => contains(haystack: reason, needle: "PullRequestNumberDisagreed")
+    PullRequestOpenCheckPassed => false
+  }
+}
+
+test fn witness_a_pull_request_whose_head_ref_is_not_the_candidate_is_refused_at_publish() -> Bool {
+  // The live read answered the right number but a different head ref -> refuse (identity).
+  match classify_publish_pull_request(
+    obs: PublishPrObserved { number: 11493, head_ref: "someone-elses-lane", base_ref: "main", open: true }, pull_number: 11493, expected_head_ref: branch, expected_base_ref: "main"
+  ) {
+    PullRequestOpenCheckRefused { reason } => contains(haystack: reason, needle: "PullRequestHeadRefDisagreed")
+    PullRequestOpenCheckPassed => false
+  }
+}
+
+test fn witness_a_pull_request_retargeted_after_sealing_is_refused_at_publish() -> Bool {
+  // The live read answered the right number and head ref, but the pull request was RETARGETED to a
+  // different base after the candidate was sealed -> refuse. Without this arm a retargeted pull request
+  // (whose candidate-side base_ref still names main) would be fast-forwarded onto the new base.
+  match classify_publish_pull_request(
+    obs: PublishPrObserved { number: 11493, head_ref: branch, base_ref: "release/other", open: true }, pull_number: 11493, expected_head_ref: branch, expected_base_ref: "main"
+  ) {
+    PullRequestOpenCheckRefused { reason } => contains(haystack: reason, needle: "PullRequestBaseRefDisagreed")
+    PullRequestOpenCheckPassed => false
+  }
+}
+
+test fn witness_an_unreadable_pull_request_refuses_rather_than_passes() -> Bool {
+  // Rate-limited / unreachable is NOT a pass. Fail-closed: a publish that cannot read the pull request must not write.
+  match classify_publish_pull_request(
+    obs: PublishPrStateUnreadable { detail: "403 rate limit" }, pull_number: 11493, expected_head_ref: branch, expected_base_ref: "main"
+  ) {
+    PullRequestOpenCheckRefused { reason } => contains(haystack: reason, needle: "could not be read")
+    PullRequestOpenCheckPassed => false
+  }
+}
+
+test fn witness_an_absent_publish_credential_refuses_rather_than_passes() -> Bool {
+  match classify_publish_pull_request(obs: PublishPrCredentialAbsent, pull_number: 11493, expected_head_ref: branch, expected_base_ref: "main") {
+    PullRequestOpenCheckRefused { reason } => contains(haystack: reason, needle: "token is absent")
+    PullRequestOpenCheckPassed => false
+  }
+}
+
+// BOUNDED CONTROLS FOR THE WRITE-TREE COMPLETION GATE (stern-bat item 1). Both sides carry the IDENTICAL parseable
+// stdout AND the IDENTICAL nonempty stderr; the ONLY input that differs is exit_code. That shared stderr is what
+// gives the pair its power: a classifier that rejected on NONEMPTY STDERR and ignored exit_code would have kept
+// an earlier pair (empty stderr on the pass side) both green, but here the stderr-keyed mutant must reject the
+// SUCCESSFUL completion too, turning witness_a_successful_write_tree_with_the_same_output_passes RED. So the pair
+// forces the decision onto exit_code, not stderr and not a constant. The failure detail must still carry the
+// stderr, proving the refusal preserves the git diagnostic rather than a canned string.
+test fn witness_a_failed_write_tree_with_parseable_output_refuses() -> Bool {
+  match classify_write_tree_completion(exit_code: 128, stdout: head_hex, stderr: "fatal: cannot lock ref 'HEAD'") {
+    WriteTreeRejected { detail } => contains(haystack: detail, needle: "cannot lock ref")
+    WriteTreeCompleted { tree_hex } => false
+  }
+}
+
+test fn witness_a_successful_write_tree_with_the_same_output_passes() -> Bool {
+  // The SAME nonempty stderr as the refusal case, exit_code 0 -> the tree is accepted and its hex round-trips.
+  // Because stderr is nonempty on BOTH sides, only an exit_code-gated classifier passes both controls; a
+  // stderr-keyed predicate rejects this success case too and turns it red. The positive arm also kills an
+  // always-refuse predicate.
+  match classify_write_tree_completion(exit_code: 0, stdout: head_hex, stderr: "fatal: cannot lock ref 'HEAD'") {
+    WriteTreeCompleted { tree_hex } => tree_hex == head_hex
+    WriteTreeRejected { detail } => false
+  }
+}
+
+// ── gated structural guard for the credential-free admit route (gunbc.design_argument::single_authority pairing, gated half) ──
+//
+// The real-path EXECUTION of the credential-free ls-remote/fetch/read-tree route lives in the WET
+// controls -- test.claim.heal_publication_admit_wet_red's base-RED/head-GREEN driver (drives the real
+// observe_candidate_world_wet, base aborts on AuthDeclaredButUnwired, head reaches the decision) and the
+// admit inhabitance. Those run off-gate on the srv2 build because no merge gate on main executes wet
+// claims (the wet-claim executor run_required_floor is deleted; the brief freezes the job roster). This
+// claim is the GATED half: it reads this checkout's own source and refuses if the credential-free
+// observation is not wired in -- so DELETING the integration turns the required job red, and so does
+// re-introducing the empty-credential reads (the AuthDeclaredButUnwired defect class). It is a structural
+// claim about the source, not a claim the network works (that is the wet driver's job); the two together
+// are the pairing obligation, per gunbc.design_argument::witness_one_interface.
+
+test fn the_admit_observation_is_wired_credential_free() -> Bool {
+  let src = Filesystem.Read(path: "dag/gunbc/heal_publication.dag")
+  if !src.success { return false }
+  let body = src.content
+  contains(haystack: body, needle: "git.Core.LsRemoteRefInRepo")
+    && contains(haystack: body, needle: "git.Core.FetchForcedRefInRepo")
+    && contains(haystack: body, needle: "git.Plumbing.ReadTreeIntoIndex")
+    && contains(haystack: body, needle: "git.Plumbing.WriteTreeFromIndex")
+    && !contains(haystack: body, needle: "auth_token: \"\"")
 }

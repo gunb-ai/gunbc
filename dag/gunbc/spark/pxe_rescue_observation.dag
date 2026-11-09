@@ -29,7 +29,7 @@ type SparkBootOrder
 // THE LAYER BOUNDARY IS THE WHOLE REASON THIS MODULE EXISTS SEPARATELY FROM
 // extdeps.systems.nvidia_dgx_spark_pxe. That module owns the vendor's DOCUMENTED PXE surface
 // and is cited to docs.nvidia.com/dgx/dgx-spark/pxe.html. Everything here is a RECEIPT
-// PRODUCED BY US by driving one physical unit, and DESIGN section 3 (external upstream
+// PRODUCED BY US by driving one physical unit, and gunbc.design_argument::external_upstreams (external upstream
 // decomposition) is explicit that observations produced by this repository are receipts in
 // the observing layer, never facts authored into the observed upstream's module. Writing an
 // observed measurement into the extdeps module would make our measurement masquerade as

@@ -24,7 +24,11 @@ import gunbc.host.managed_host_boot_phase_timing { BootPhaseTiming, boot_phase_t
 import std.optional { Present }
 import extdeps.bmc.ipmi
 import extdeps.bmc.ipmi { ipmi_cipher_suite_argv, IpmiCipherSuite }
-import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection, IpmiBootFlagsReading, ipmi_boot_flags_reading_of_bootparam_get }
+import extdeps.bmc.ipmi_boot_selection {
+  IpmiBootSelection, IpmiBootFlagsReading, ipmi_boot_flags_reading_of_bootparam_get,
+  ipmi_boot_flag_data_1_clear, ipmi_boot_flag_data_2_clear, ipmi_boot_flag_data_3_clear,
+  ipmi_boot_flag_data_4_clear, ipmi_boot_flag_data_5_clear,
+}
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, chassis_observation, chassis_observation_text }
 import gunbc.machine_intake.post_power_fan_gate_outcome { PostPowerFanGateReading, PostPowerFanGateNotReached, post_power_fan_gate_text }
 import gunbc.machine_intake.oob_boot_handoff { BootReadbackConfirmed, boot_readback_verdict }
@@ -216,7 +220,7 @@ import gunbc.host.boot_attempt {
 // operator can diagnose a failed or degraded boot from the run's artifact alone (operator,
 // 2026-09-23: run 35793279839 came up with socket 1 absent and nothing in its receipts said why).
 //
-// DESIGN section 3b, observability row, and the four responsibilities it names. The owning
+// gunbc.design_argument::conformance, observability row, and the four responsibilities it names. The owning
 // domains establish the facts: the SEL record formats are extdeps.bmc.ipmi_sel and their
 // before/after reading is gunbc.machine_intake.sel_stimulus_listener; the per-slot and
 // per-socket inventory is extdeps.bmc.redfish_memory_inventory; the firmware's pre-OS statement
@@ -224,7 +228,7 @@ import gunbc.host.boot_attempt {
 // observation model of ONE attempt (BootDiagnosticBundle), and megarac_boot_bundle_text
 // renders it. It does not decode anything those authorities do not.
 //
-// THE BUNDLE NEVER DECIDES THE VERDICT (brief, and DESIGN section 5's separation of observation
+// THE BUNDLE NEVER DECIDES THE VERDICT (brief, and gunbc.design_argument::fail_closed's separation of observation
 // from judgment). megarac_boot_outcome_with_findings only appends what was found to a refusal
 // reason. WHAT WAS FOUND IS TYPED, TWO WAYS: what the MACHINE did is the power-on fold's
 // PowerOnAccount (gunbc.machine_intake.mtcollins1_power_on_account; docs/plans/power-on-sequence-model.md),
@@ -232,8 +236,8 @@ import gunbc.host.boot_attempt {
 // credential -- is a HarnessFinding. Neither is a list of strings. It never turns a success into a failure or a failure into a success, and the witness
 // asserts both directions.
 //
-// A READ THAT FAILS IS A TYPED, LOCATED READING IN THE BUNDLE, NEVER A MISSING SECTION (DESIGN
-// section 5). Every section has an arm for "read", one for "the read failed, and why, at which
+// A READ THAT FAILS IS A TYPED, LOCATED READING IN THE BUNDLE, NEVER A MISSING SECTION (
+// gunbc.design_argument::fail_closed). Every section has an arm for "read", one for "the read failed, and why, at which
 // endpoint, at what instant", and one for "the attempt ended before this could be read, and
 // why". A BMC that does not answer (operator, 2026-09-23: 192.168.1.228 unreachable after a DIMM
 // reseat) is itself a diagnosis, so it has its own arm.
@@ -243,7 +247,7 @@ import gunbc.host.boot_attempt {
 // 401/403 on stderr (authentication refused). ipmitool's lanplus session setup CANNOT tell an
 // unreachable controller from one that refused the credential: both render "Unable to establish
 // IPMI v2 / RMCP+ session". So that reading is BmcSessionUnestablished and is not split into
-// either, which would be a guess (DESIGN section 4d).
+// either, which would be a guess (gunbc.design_argument::epistemic_humility).
 type BmcReadCause
   = BmcUnreachable { endpoint: NonEmptyStr, at: NonEmptyStr, detail: String }
   | BmcTimeout { endpoint: NonEmptyStr, at: NonEmptyStr, detail: String }
@@ -745,7 +749,7 @@ type BootParam5Reading
 // was read off the power arm's NAME, so flipping census_ended changed nothing. Now the neutral
 // classifier pairs this carrier with the record's own terminal field, which is the single home of the
 // terminal fact: "powered off" and "no terminal" can combine, and "off after a terminal" together with
-// "no terminal" cannot be written (DESIGN §3 one fact one home; §5 construction over validation).
+// "no terminal" cannot be written (gunbc.design_argument::single_authority one fact one home; gunbc.design_argument::fail_closed construction over validation).
 // ─── THE MEDIA ATTACH, AS THIS ATTEMPT'S RECORD ─────────────────────────────────────────────────
 //
 // THE HANDOFF IS GATED ON THIS RECORD, AND THE BUNDLE CARRIES THE SAME RECORD (side chat on
@@ -847,14 +851,21 @@ fn presentation_evidence_text(e: MegaRacPresentationEvidence) -> String {
     " cd_error_code before any write=", cd_reading_text(r: e.cd_before_any_write),
     " at ready=", cd_reading_text(r: e.cd_at_ready),
     " general settings at ready ", raw_read_text(r: e.general_at_ready),
+    // THE IN-INTERVAL LOOK IS PRINTED, because the wait's ready path prints no look anywhere else: the
+    // document between the StartMedia write and the started reading exists in the corpus only if this line
+    // carries it.
+    " in-interval look ", readiness_look_text(l: e.in_interval),
   ], "")
 }
 
 fn readiness_reading_text(r: AttachReadiness) -> String {
   match r {
-    ReadinessStarted { row: w } => concat("started, session_index ", optional_text(v: w.session_index))
-    ReadinessConnecting { row: w } => concat("connecting (status ", concat(to_string(w.redirection_wire), concat("), session_index ", optional_text(v: w.session_index))))
-    ReadinessStartedUnbound { row: w } => concat("started with no bound session, session_index ", optional_text(v: w.session_index))
+    ReadinessStarted { row: w, configurations: c } =>
+      join(["started, session_index ", optional_text(v: w.session_index), " configurations: ", c], "")
+    ReadinessConnecting { row: w, configurations: c } =>
+      join(["connecting (status ", to_string(w.redirection_wire), "), session_index ", optional_text(v: w.session_index), " configurations: ", c], "")
+    ReadinessStartedUnbound { row: w, configurations: c } =>
+      join(["started with no bound session, session_index ", optional_text(v: w.session_index), " configurations: ", c], "")
     ReadinessNotPresented { configurations: c } => concat("not presented: ", c)
     ReadinessUnanswered { detail: d } => concat("configurations GET unanswered: ", d)
     ReadinessUncatalogued { image_name: n, unread: u, configurations: c } => join(["UNCATALOGUED ", redirection_unread_text(unread: u), " on '", n, "': ", c], "")
@@ -1301,9 +1312,9 @@ type BootParam5Clear
 // standings are the core's (one decision, one home); the readings ride beside them because a standing
 // nobody can re-check is exactly how the boot-5 pair became dead information: parameter 5 read
 // 'Boot parameter data: a014000000' before AND after the set, and the classification returned on the first
-// without ever looking at the second. A derived stdout is never in here -- the vendor's echo of the clear
-// is logged at most, never believed (extdeps.bmc.ipmitool_observed_output
-// ipmitool_bootdev_none_reply_standing).
+// without ever looking at the second. And there is no echo to believe either: the clear is a raw Set System
+// Boot Options, which prints nothing (extdeps.bmc.ipmi ChassisBootOptionsClear), so a write's own words
+// cannot become a verdict here even by accident.
 type BootOverrideClears {
   stale: StaleOverrideClearance
   stale_read: BootParam5Reading
@@ -1341,8 +1352,8 @@ fn boot_override_clears_none_found(reason: NonEmptyStr) -> BootOverrideClears {
 // all have to match, and `boot_override_pending` below answers it through the handoff's own verdict.
 // 'Is ANY override in force?' is the CLEAR's question: a pxe override an earlier run left, or an operator's
 // persistent setting, is not pending for a cdrom/EFI/next-boot attempt, and a route that asked only its own
-// question would report 'none found' while the controller held a valid flag -- a fabricated output (DESIGN
-// §5), and the bytes a set would silently write over. This asks the flag-valid bit, at the byte grain
+// question would report 'none found' while the controller held a valid flag -- a fabricated output (
+// gunbc.design_argument::fail_closed), and the bytes a set would silently write over. This asks the flag-valid bit, at the byte grain
 // (extdeps.bmc.ipmi_boot_selection ipmi_boot_flags_reading_of_bootparam_get: data-1 bit 7), because that is
 // the bit that means 'a boot override is in force' whatever device it names. Unreadable bytes are not
 // evidence that nothing is pending: no reading is answered as pending, so a clear is issued for it and its
@@ -1420,7 +1431,7 @@ fn boot_param5_unread_reason(r: BootParam5Reading, which: String) -> NonEmptyStr
   }
 }
 
-// ORDER IS THE ARGUMENT, AND "CONSUMED" NEEDS A DISCRIMINATOR (DESIGN §4d; review 71115). An
+// ORDER IS THE ARGUMENT, AND "CONSUMED" NEEDS A DISCRIMINATOR (gunbc.design_argument::epistemic_humility; review 71115). An
 // override already pending before this attempt set it cannot be attributed; one still pending after
 // was not consumed. One NO LONGER pending is only that: the BMC also clears the valid bit on its own
 // (the IPMI boot-flag valid-bit timeout), a power-off or another writer can clear it, and a changed
@@ -1435,7 +1446,7 @@ fn boot_param5_unread_reason(r: BootParam5Reading, which: String) -> NonEmptyStr
 // accepts as the discriminator that consumption by THIS attempt is established (the caller passes
 // booted_through_override_device, which for this row means the census END marker: the IPMI boot-flag
 // valid bit times out on its own, a power-off or another writer clears it, and a changed rendering can
-// stop matching, so ORDER IS THE ARGUMENT -- DESIGN §4d, review 71115).
+// stop matching, so ORDER IS THE ARGUMENT -- gunbc.design_argument::epistemic_humility, review 71115).
 //
 // Everything after that -- already-pending before, still pending after, consumed, no longer pending,
 // unread -- is the core's decision: boot_override_consumption. This module no longer makes it, holds a
@@ -1547,7 +1558,7 @@ fn boot_param5_standing_established(read: BootParam5Reading) -> Bool {
 }
 
 // DOES THIS BEFORE-READ OWE A CLEAR? Asked BEFORE any write is issued, and fail-closed on all three arms
-// (side-chat REQUEST_CHANGES at 3a890b02, §5): a clear is owed when the read says a flag is in force for ANY
+// (side-chat REQUEST_CHANGES at 3a890b02, gunbc.design_argument::fail_closed): a clear is owed when the read says a flag is in force for ANY
 // device (review 87528), AND when the read never established a standing at all -- answering 'no clear owed'
 // there is how an unreadable initial parameter 5 lets a set go in over an unknown controller, which is the
 // same defect the pending-override check exists to close. The route's invariant is not 'clear what is
@@ -2489,27 +2500,35 @@ fn megarac_boot_sensors(row: MegaRacBootRow, password_file: NonEmptyStr, sdr: Sd
   }
 }
 
-// CLEAR BOOT PARAMETER 5'S OVERRIDE AND READ IT BACK. The write is `ipmitool chassis bootdev none` --
-// extdeps.bmc.ipmi Tool.ChassisBootDev, the plain operation, whose only device this model carries is the
-// clear word (extdeps.bmc.ipmi_boot_selection ipmi_boot_device_none; gunbc.bmc_dry_realization
-// bmc_bootdev_clear_reply binds it to the world). The read is the SAME parameter-5 read every other
-// override standing in this module comes from, so the clear is judged by exactly the bytes the set was.
-// The write's own stdout is carried for the log and believed for nothing: on this firmware the vendor's
-// echo of the device word is a derived row and not a capture (extdeps.bmc.ipmitool_observed_output
-// ipmitool_bootdev_none_reply_standing), and the only thing that says a clear landed is the readback. Both
-// calls go out on every arm, including a refused write -- an attempt that leaves without knowing what
-// parameter 5 now says is precisely the exposure the release exists to close.
+// CLEAR BOOT PARAMETER 5'S OVERRIDE AND READ IT BACK. The write is Set System Boot Options, parameter 5,
+// with the valid bit clear -- `ipmitool raw 0x00 0x08 0x05 0x01 0x00 0x00 0x00 0x00 0x00`, extdeps.bmc.ipmi
+// Tool.ChassisBootOptionsClear, whose data bytes are the model's own (extdeps.bmc.ipmi_boot_selection
+// ipmi_boot_flag_data_*_clear, cited to the IPMI v2.0 rev 1.1 boot option parameter 5 table; the dry world
+// gunbc.bmc_dry_realization bmc_boot_options_clear_reply refuses any other). It REPLACES `chassis bootdev
+// none`: that command clears the SELECTOR and leaves the VALID bit set, and boot run 41573858366 read
+// precisely that state back -- 'Boot parameter data: 8000000000' beside 'Boot Device Selector : No override'
+// (extdeps.bmc.ipmitool_observed_output ipmitool_bootparam5_valid_after_bootdev_none) -- so the override a
+// previous attempt left stayed pending and the handoff was withheld for it. The read is the SAME
+// parameter-5 read every other override standing in this module comes from, so the clear is judged by
+// exactly the bytes the set was; `ipmitool raw` echoes nothing, so the write's stdout is carried for the log
+// and believed for nothing, and the only thing that says a clear landed is that readback. Both calls go out
+// on every arm, including a refused write -- an attempt that leaves without knowing what parameter 5 now
+// says is precisely the exposure the release exists to close.
 fn megarac_boot_param5_clear(row: MegaRacBootRow, username: NonEmptyStr, password_file: NonEmptyStr) -> BootParam5Clear
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_param5_clear_under_hold"),
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_param5_release"),
   ]
 {
-  let r = diagnostic.ipmi.Tool.ChassisBootDev(
+  let r = diagnostic.ipmi.Tool.ChassisBootOptionsClear(
     bmc_host: row.controller.host,
     username: username,
     password_file: password_file,
-    device: ipmi_boot_device_none,
+    boot_flag_data_1: ipmi_boot_flag_data_1_clear as String,
+    boot_flag_data_2: ipmi_boot_flag_data_2_clear as String,
+    boot_flag_data_3: ipmi_boot_flag_data_3_clear as String,
+    boot_flag_data_4: ipmi_boot_flag_data_4_clear as String,
+    boot_flag_data_5: ipmi_boot_flag_data_5_clear as String,
     cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
   )
   BootParam5ClearIssued {
@@ -2650,7 +2669,7 @@ fn redfish_collection_assembly(pages: List<RedfishCollectionPage>, member_bound:
       match first.member_count {
         Absent => CollectionRefused { detail: "the first page carries no Members@odata.count, so completeness cannot be established" }
         Present { value: total } => {
-          let links = fold(pages, init: [], f: (acc, p) => concat(acc, p.member_links))
+          let links: List<String> = fold(pages, init: [], f: (acc, p) => concat(acc, p.member_links))
           let last_has_next = match reverse(pages).first() { Absent => false Present { value: p } => p.next_link != none }
           let refused_links = filter(links, l => match redfish_same_origin_link(link: l) { RedfishLinkRefused { cause: _ } => true RedfishLinkSameOrigin { path: _ } => false })
           let disagreeing = filter(pages, p => p.member_count != Present { value: total })
@@ -3081,9 +3100,10 @@ fn megarac_boot_hpm_check(row: MegaRacBootRow, username: NonEmptyStr, password_f
 // artifacts/bmc/ and names in a MegaRacVersionFromFirmwareRead standing. This reads that file BACK and runs
 // the catalogue's one derivation over it (gunbc.host.bmc_release_capability_catalog
 // megarac_version_establishment, component APP), so what the receipt reports is what those bytes establish,
-// not a second reading of the tool. It is evidence for the restoration trigger of
-// gunbc.rung_drop.megarac_operations_admitted_through_a_superseded_build_observation and changes no
-// admission: production still admits operations through the observed build until that cutover lands.
+// not a second reading of the tool. It was the evidence for the restoration trigger of
+// gunbc.rung_drop.megarac_operations_admitted_through_a_superseded_build_observation, and it changes no
+// admission by itself: the readback grounds the build the ledger names, and the transition that switched
+// production onto it is the cutover in gunbc#15591, which moved the observation and every caller together.
 // THE FILE IS NAMED BY THE RUN THAT READ IT. The runner's work tree outlives a run, so a fixed name could
 // hand this run's readback a previous run's bytes after a failed read; keyed by GITHUB_RUN_ID (the
 // run_attempt the boot passes, and the attempt identity the conclusion reads), a run reads back only what

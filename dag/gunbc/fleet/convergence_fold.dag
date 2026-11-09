@@ -47,10 +47,10 @@ import gunbc.host_convergence_census {
 // instance whose receipt declares that authorization was required (the Apply arm) refuses without a
 // discharge for that (run, step, subject); Noop does not require one (parent D4). A discharge's
 // principal is NonEmptyStr at the sole constructor, so the fold does not re-check emptiness.
-// The pattern itself is selected before the fold (DESIGN §3d); the fold only checks discharge.
+// The pattern itself is selected before the fold (gunbc.design_argument::selection_precedes_convergence); the fold only checks discharge.
 //
 // WHAT IT STILL DOES NOT CARRY, because no consumer exercises it yet and a designed fixture is not an
-// inhabitant (DESIGN §3 pairing obligation): pending with re-attach across runs, subject quantifiers
+// inhabitant (gunbc.design_argument::witness_one_interface pairing obligation): pending with re-attach across runs, subject quantifiers
 // (all-of / any-of over a subject set), the domain-declared cheap readback, and order derived from
 // preconditions alone where no order authority exists. Each lands with its first real consumer: the
 // Spark arm.
@@ -611,6 +611,7 @@ type LegBudget sole_constructor {
 fn leg_budget(leg: DeclarationRef, budget: PositiveMillisecond) -> LegBudget
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "prior_life_archive_write_budget"),
+    decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "prior_life_forced_write_budget"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_a_budget_that_differs_only_in_its_duration_flips_completed_to_elapsed"),
   ]
 {
@@ -629,6 +630,7 @@ type LegDeadline sole_constructor {
 fn effect_leg_deadline(budget: LegBudget, started: ObserverClockInstant) -> LegDeadline
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "dry_write_archive"),
+    decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "forced_first_rotation_write_leg"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_a_budget_that_differs_only_in_its_duration_flips_completed_to_elapsed"),
   ]
 {
@@ -663,6 +665,7 @@ type LegCompletion
 fn complete_effect_leg(deadline: LegDeadline, finished: ObserverClockRead) -> LegCompletion
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "dry_write_archive"),
+    decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "forced_first_rotation_write_leg"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_a_budget_that_differs_only_in_its_duration_flips_completed_to_elapsed"),
   ]
 {

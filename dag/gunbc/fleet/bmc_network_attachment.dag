@@ -1,0 +1,41 @@
+module gunbc.fleet.bmc_network_attachment
+
+import std.types { List, NonEmptyStr }
+import product.host_identity { HostIdentity, host_identity_eq }
+import extdeps.boards.types { OnboardEthernetPortRow }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+
+// WHICH REAR PORT EACH HOST'S BMC REACHES THE NETWORK THROUGH, AS READ. A board whose manual marks a host
+// port as shared lets the BMC reach the network through that port (NC-SI) instead of, or beside, its own
+// dedicated management port, so the BMC is a possible consumer of the shared port. This row is what settles
+// it for one host: gunbc.fleet.board_function_admission reads it when it judges an Ethernet port no host
+// network uses. It is an observation of this fleet, held in the observing layer (gunbc.design_argument::single_authority), and a host with
+// no row stays unread there rather than defaulting either way.
+type BmcNetworkAttachment
+  = BmcOnDedicatedPort { grounds: NonEmptyStr }
+  | BmcOnSharedPort { port: OnboardEthernetPortRow, grounds: NonEmptyStr }
+
+type BmcNetworkAttachmentRow {
+  host: HostIdentity
+  attachment: BmcNetworkAttachment
+}
+
+// The ALTRAD8UD-1L2T rear panel, left to right (extdeps.boards.asrock_rack asrock_altrad8ud_rear_io_ports):
+// VGA, LAN2, LAN1, USB, LAN3, USB, IPMI LAN, UID switch -- so the rightmost RJ-45 is the dedicated IPMI LAN.
+data altrad8ud_operator_reading: NonEmptyStr = "the operator read on 2026-11-02 that every ALTRAD8UD-1L2T host's BMC cable is in the rightmost rear RJ-45, which the manual's panel order (extdeps.boards.asrock_rack asrock_altrad8ud_rear_io_ports) makes the dedicated IPMI LAN"
+
+data bmc_network_attachment_rows: List<BmcNetworkAttachmentRow> = [
+  BmcNetworkAttachmentRow {
+    host: operator_host_srv1,
+    attachment: BmcOnDedicatedPort {
+      grounds: "the operator's panel reading, and srv1's in-band read of 2026-11-02 (ipmitool lan print over /dev/ipmi0, no credential): LAN channel 1 holds the BMC's DHCP lease 192.168.1.183 at MAC 48:21:0b:81:c5:03, the MAC srv1's neighbour table holds for that address on enP3p6s0, while channel 2 holds no address (0.0.0.0, MAC 48:21:0b:81:c4:37); the BMC reports only these two channels",
+    },
+  },
+  BmcNetworkAttachmentRow { host: operator_host_srv2, attachment: BmcOnDedicatedPort { grounds: altrad8ud_operator_reading } },
+  BmcNetworkAttachmentRow { host: operator_host_srv3, attachment: BmcOnDedicatedPort { grounds: altrad8ud_operator_reading } },
+  BmcNetworkAttachmentRow { host: operator_host_srv4, attachment: BmcOnDedicatedPort { grounds: altrad8ud_operator_reading } },
+]
+
+fn bmc_network_attachment(host: HostIdentity) -> BmcNetworkAttachment? {
+  map(filter(bmc_network_attachment_rows, r => host_identity_eq(a: r.host, b: host)), r => r.attachment).first()
+}

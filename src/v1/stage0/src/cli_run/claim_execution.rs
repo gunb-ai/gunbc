@@ -10,6 +10,43 @@ use crate::v1_interpreter::Value;
 use im::HashMap;
 use std::rc::Rc;
 
+/// THE SINGLE authority that maps a caller's flags to an [`ExecutionMode`].
+///
+/// gunbc.design_argument::root_generalization root generalization. `claim_batch` and the `gunbc run` verb both EVALUATE CLAIMS, and
+/// each used to decide the mode at its own site: `claim_batch` defaulted to Hermetic and took
+/// Wet/Record only by explicit flag, while `gunbc run` derived the mode from `--dry-run` alone and
+/// let `--claim-run` fall to Wet. Two authorities for one decision drifted, and that divergence WAS
+/// the defect: a `--claim-run` without `--dry-run` ran WET, so a claim whose mocked effect had no
+/// bound mock silently dispatched the REAL effect against the host (the mocked journalctl ran live
+/// against srv1's journal — a gunbc.design_argument::fail_closed fail-open with a live side effect). One total function now
+/// owns the mapping; both entrypoints call it.
+///
+/// The rule, in priority order:
+///  1. An EXPLICIT mode (last `--wet` / `--hermetic` / `--record` the caller parsed) always wins —
+///     that is the operator's positive authority to perform or record a real effect.
+///  2. Otherwise `--dry-run` means Hermetic (its incumbent meaning).
+///  3. Otherwise a CLAIM run (`--claim-run`, or `claim_batch`, which is always a claim context)
+///     means Hermetic: a claim verifies against declared mocks and is never the operator's authority
+///     to run a host effect. Fail-closed — a mocked effect with no bound mock refuses typed rather
+///     than dispatching live.
+///  4. Otherwise (an ordinary `gunbc run` with no claim/dry flag) it is Wet: an ordinary run
+///     legitimately performs real effects (witnesses, the required-floor route).
+///
+/// Wet claims are NOT lost: they take the declared Wet carrier, `claim_batch --wet` (or an ordinary
+/// `gunbc run` with no `--claim-run`), which lands in (1)/(4).
+pub fn execution_mode_for(
+    explicit: Option<v1_interpreter::ExecutionMode>,
+    is_claim: bool,
+    dry_run: bool,
+) -> v1_interpreter::ExecutionMode {
+    match explicit {
+        Some(mode) => mode,
+        None if dry_run => v1_interpreter::ExecutionMode::Hermetic,
+        None if is_claim => v1_interpreter::ExecutionMode::Hermetic,
+        None => v1_interpreter::ExecutionMode::Wet,
+    }
+}
+
 pub fn make_eval_context(
     graph: &v1_compiler_compile::ResolvedGraph,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -53,7 +90,7 @@ pub fn make_eval_context_with_runtime_options(
 ///
 /// THE OPERATIONS ARE CARRIED, NOT JUST THE ARM. A reader asking "why could the deadline not
 /// fire here" needs the operation name to act, and re-deriving it from the claim body is the
-/// positional citation DESIGN §3 forbids. They are joined with `+` because a claim may reach
+/// positional citation gunbc.design_argument::single_authority forbids. They are joined with `+` because a claim may reach
 /// more than one opaque arm and reporting only the first would under-state the surface a repair
 /// has to cover.
 pub(crate) fn preemption_reachability_label(reach: &v1_interpreter::OpaqueHostCallReach) -> String {
@@ -204,7 +241,7 @@ pub fn run_claim_measured(
 /// Run a witness companion that returns `String` divergence detail (Lane B agreement loudness).
 /// Empty string = no divergence detail (clean companion **or** companion not declared).
 /// Non-empty refusal sentinel on wrong type / non-missing interpreter error — never silent
-/// None when a companion *is* declared (review 41847, §5). A missing companion
+/// None when a companion *is* declared (review 41847, gunbc.design_argument::fail_closed). A missing companion
 /// (`NoSuchFunction` from the `_holds` → `_failure_receipt` naming convention) is
 /// "not declared", not a refused receipt — the auto-derived name must not invent a
 /// required loudness hook for every Bool(false) witness. This arm used to name a second
@@ -245,4 +282,79 @@ pub(crate) fn run_claim_evaluation(
         v1_interpreter::run_in_context(ctx, function, false)
     }))
     .map_err(|payload| panic_payload_text(&payload))
+}
+
+#[cfg(test)]
+mod execution_mode_for_tests {
+    use super::execution_mode_for;
+    use crate::v1_interpreter::ExecutionMode;
+
+    // --- the `gunbc run` verb: (explicit=None, is_claim=claim_run, dry_run) ---
+
+    // THE BOUNDARY RED (the defect): a claim run with neither --dry-run nor an explicit mode must
+    // be Hermetic. Pre-fix, `run --claim-run` fell to Wet and dispatched a mocked effect live.
+    #[test]
+    fn claim_run_defaults_hermetic() {
+        assert!(matches!(
+            execution_mode_for(None, true, false),
+            ExecutionMode::Hermetic
+        ));
+    }
+
+    // DISCRIMINATING CONTROL against an over-broad repair: an ordinary run (no claim, no dry-run)
+    // stays Wet, so genuine wet execution (witnesses, the required-floor route) is not refused.
+    #[test]
+    fn ordinary_run_stays_wet() {
+        assert!(matches!(
+            execution_mode_for(None, false, false),
+            ExecutionMode::Wet
+        ));
+    }
+
+    // --dry-run keeps its incumbent meaning; --claim-run and --dry-run agree on Hermetic.
+    #[test]
+    fn dry_run_is_hermetic() {
+        assert!(matches!(
+            execution_mode_for(None, false, true),
+            ExecutionMode::Hermetic
+        ));
+        assert!(matches!(
+            execution_mode_for(None, true, true),
+            ExecutionMode::Hermetic
+        ));
+    }
+
+    // --- claim_batch: always a claim context, mode by explicit flag (last parsed wins upstream) ---
+
+    // The default (no --wet/--hermetic/--record) is Hermetic — claims verify against mocks.
+    #[test]
+    fn claim_batch_default_is_hermetic() {
+        assert!(matches!(
+            execution_mode_for(None, true, false),
+            ExecutionMode::Hermetic
+        ));
+    }
+
+    // An explicit operator mode wins over the claim default and over --dry-run: this is what keeps
+    // the declared Wet route (claim_batch --wet) and the record route expressible after the fix.
+    #[test]
+    fn explicit_mode_wins() {
+        assert!(matches!(
+            execution_mode_for(Some(ExecutionMode::Wet), true, false),
+            ExecutionMode::Wet
+        ));
+        assert!(matches!(
+            execution_mode_for(Some(ExecutionMode::Record), true, false),
+            ExecutionMode::Record
+        ));
+        assert!(matches!(
+            execution_mode_for(Some(ExecutionMode::Hermetic), true, false),
+            ExecutionMode::Hermetic
+        ));
+        // explicit --wet beats --dry-run (operator's positive authority to run the effect).
+        assert!(matches!(
+            execution_mode_for(Some(ExecutionMode::Wet), true, true),
+            ExecutionMode::Wet
+        ));
+    }
 }

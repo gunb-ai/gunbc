@@ -97,7 +97,7 @@ fn first_run(xs: List<GitHubWorkflowRunId>) -> GitHubWorkflowRunId? {
 
 // PAGINATION CLOSURE IS NOT MODELLED HERE. std.page_fold already owns it -- page budget, cursor
 // advance, continuation shape and the PagesClosed / PagesRefused outcome -- and the first draft of
-// this module re-derived a PagesDidNotClose arm beside it. That was the DESIGN section 3 violation
+// this module re-derived a PagesDidNotClose arm beside it. That was the gunbc.design_argument::single_authority violation
 // this very program's standing rule forbids: identify the canonical authority BEFORE authoring.
 // It is consumed instead, and PagesUnclosed simply carries its refusal key through.
 //

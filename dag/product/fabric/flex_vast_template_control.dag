@@ -1,12 +1,13 @@
 module product.fabric.flex_vast_template_control
 
 import std.integer { int_to_decimal_string }
-import std.types { String, NonEmptyStr, Bool, Int, List, Secret, list_length }
+import std.types { String, NonEmptyStr, Bool, Int, List, Secret }
+import std.algebra { length }
 import std.optional { Present, Absent }
 import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.transports.rest { RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestCredentialRefused, RestBodyUndecodable }
 import product.fabric.flex_vast_loop { flex_vast_disk_gigabytes }
 import extdeps.cloud.vast_ai
 import extdeps.cloud.vast_ai { vast_ai_wire_mb, vast_ai_wire_mbps, VastAiTemplateRow, VastAiTemplateList, VastAiTemplateCreateResult }
@@ -43,8 +44,10 @@ fn flex_template_list(api_key: Secret, filter: String) -> FlexTemplateListing us
   match vast_ai.Templates.Search(api_key: api_key, select_filters: filter, select_cols: "[\"*\"]") {
     RestAnswered { answer: a } => FlexTemplateListed { rows: a.templates }
     RestRefused { refusal: RestStatusRefused { status: status, body: _ } } =>
-      FlexTemplateListRefused { cause: concat("the template list answered status ", status as String) }
+      FlexTemplateListRefused { cause: concat("the template list answered status ", int_to_decimal_string(status)) }
     RestRefused { refusal: RestTransportRefused { cause: _ } } =>
+      FlexTemplateListRefused { cause: "the template list was not reached" }
+    RestRefused { refusal: RestCredentialRefused { refusal: _ } } =>
       FlexTemplateListRefused { cause: "the template list was not reached" }
     RestRefused { refusal: RestBodyUndecodable { status: _, cause: _ } } =>
       FlexTemplateListRefused { cause: "the template list answer did not decode" }
@@ -100,10 +103,10 @@ fn flex_template_outcome(spec: FlexTemplateSpec, after: FlexTemplateListing, ret
           match retired {
             FlexTemplateListRefused { cause: c } => FlexTemplateNotEnsured { reason: concat("retired: UNREAD ", c) }
             FlexTemplateListed { rows: rr } =>
-              if list_length(rr) == 1 {
+              if length(rr) == 1 {
                 FlexTemplateEnsured { hash: h }
               } else {
-                FlexTemplateNotEnsured { reason: concat("retired: rows=", int_to_decimal_string(value: list_length(rr))) }
+                FlexTemplateNotEnsured { reason: concat("retired: rows=", int_to_decimal_string(value: length(rr))) }
               }
           }
       }

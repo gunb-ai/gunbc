@@ -1,11 +1,10 @@
 module gunbc.runner.runner_host_cap_bracket
 
-import std.types { String, List, Bool, Int, NonEmptyStr }
+import std.types { String, List, Bool, Int, NonEmptyStr, EpochMs }
 import std.optional { Absent, Present }
 import std.algebra { list_flat_map, trim }
 import std.measure { Second, second, second_count }
 import extdeps.github.actions { cancelled_job_always_step_timeout }
-import std.types { EpochMs }
 import gunbc.clock_read { observer_clock_read, ObserverClockObserved, ObserverClockUnreadable, observer_instant_millis }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import gunbc.runner.runner_slot_actuation {
@@ -60,7 +59,7 @@ import gunbc.runner.runner_slot_cap_converge { HolderDeferralLedger, LedgerFresh
 
 // THE DRAIN BRACKET OVER ONE HOST, AS A PURE STEP MACHINE PLUS THE THREE EFFECTS IT SEQUENCES.
 //
-// WHY IT EXISTS (chain re-derivation, DESIGN 6b). The cap drop-ins are template-level, so write +
+// WHY IT EXISTS (chain re-derivation, gunbc.design_argument::earliest_unjustified_boundary). The cap drop-ins are template-level, so write +
 // daemon-reload re-applies the caps to every running slot and can OOM-kill a busy slot's live job. The
 // route used to read idleness FIRST, with admission still open, and refuse on any busy slot. "Idle" read
 // with admission open is a point-in-time fact that decays, and about half of a loaded host's slots are
@@ -73,7 +72,7 @@ import gunbc.runner.runner_slot_cap_converge { HolderDeferralLedger, LedgerFresh
 // ORDER: close admission (mask) -> wait, bounded, for every slot to be drained -> (the caller writes,
 // reloads, activates, reads back from the cgroup files) -> re-admit (activate + read back).
 //
-// COULD-NOT-TELL IS NOT IDLE (DESIGN 5). An unreadable process listing or unit reading, and a slot that is
+// COULD-NOT-TELL IS NOT IDLE (gunbc.design_argument::fail_closed). An unreadable process listing or unit reading, and a slot that is
 // not masked, are UNPROVEN: they hold the wait and, at the bound, refuse the host. They never authorize
 // the write.
 //
@@ -289,7 +288,7 @@ type SlotAdmissionState
 // absent from the roster, a partial or unavailable roster, or two registrations of one name disagreeing on
 // busy are never read as not-busy (could-not-tell is not idle).
 // EVERY ROSTER READING NAMES THE REGISTRATION IT WAS JOINED ON. The join key is a JIT-minted suffixed
-// identity, so a verdict that says only "the roster says busy" is not yet a located diagnostic (§5): an
+// identity, so a verdict that says only "the roster says busy" is not yet a located diagnostic (gunbc.design_argument::fail_closed): an
 // operator looking at a withheld cap cannot tell which of the slot's mints the bracket examined, and a
 // slot re-mints per job. The name is carried forward from the one place it is read
 // (listener_roster_reading_of, where the host's answer is in scope), not re-derived here -- it is the same
@@ -297,7 +296,7 @@ type SlotAdmissionState
 //
 // `joined` is a NonEmptyStr, not a String: it arrives from ListenerRegistrationObserved.name, which is
 // already established non-empty by the decoder that produced it. Widening it to String here would discard
-// a fact the source had already proven (§3b's preservation of facts from source through typing).
+// a fact the source had already proven (gunbc.design_argument::conformance's preservation of facts from source through typing).
 type ListenerRosterReading
   = RosterNotBusy { joined: NonEmptyStr }
   | RosterBusy { joined: NonEmptyStr }
@@ -367,9 +366,9 @@ type BracketWaitStep
   // `certified` IS the drained set: one typed record per admitted listener, pairing the unit with the
   // JIT-minted registration the roster was joined on. There is deliberately no separate `listeners` list --
   // the units are read out of these records, so the two cannot be computed by different routes and drift
-  // apart while agreeing by luck (§3). Typed rather than a positional pairing, and rather than a
+  // apart while agreeing by luck (gunbc.design_argument::single_authority). Typed rather than a positional pairing, and rather than a
   // "unit=registration" String: the unit travels INSIDE the record, so no ordering can misattribute an
-  // identity to the wrong unit, and neither part has to be recovered by parsing (§2: a String leaf hiding
+  // identity to the wrong unit, and neither part has to be recovered by parsing (gunbc.design_argument::minimize_redundancy: a String leaf hiding
   // named parts is anemic modeling). It travels with the verdict instead of being re-read, so the cap phase
   // and the receipt can say what was certified without asking the host again -- and in apply mode this is
   // the ONLY place that identity can reach an operator.
@@ -1059,7 +1058,7 @@ type BracketAcquisition
 // A slot added after the last converge, or one whose registration moved under the job, fails leg 3 and
 // withholds: an unverifiable holder is an unverifiable exclusion, and a wrong exclusion lets the bracket
 // unmask or restart a slot it never drained -- the accident class this whole module is built to refuse.
-// WHO THE BRACKET MUST LEAVE ALONE, as three arms (review 86600; DESIGN §5: every path succeeds fully or
+// WHO THE BRACKET MUST LEAVE ALONE, as three arms (review 86600; gunbc.design_argument::fail_closed: every path succeeds fully or
 // fails with a typed, located diagnostic -- a case whose answer is DECIDABLE is not a failure):
 //  - HolderIdentified: the job provably runs on this named desired slot of the subject host, so THAT unit
 //    is excluded from the bracket and judged by its live cgroup read-back.
@@ -1076,7 +1075,7 @@ type BracketHolder
   | HolderNotOnSubject { why: String }
   | HolderUnidentified { cause: String }
 
-// THE ONE EXPRESSION OF THE EXCLUSION SET (review 86600, §3): which units the bracket may touch. An
+// THE ONE EXPRESSION OF THE EXCLUSION SET (review 86600, gunbc.design_argument::single_authority): which units the bracket may touch. An
 // identified holder removes exactly its own unit; a job not on the subject host removes nothing, so the
 // remote converge keeps bracketing EVERY desired unit. Nothing else in the route may re-derive this list.
 fn bracket_units_to_bracket(units: List<NonEmptyStr>, holder: BracketHolder) -> List<NonEmptyStr>
@@ -1188,8 +1187,8 @@ fn acquire_bracket_over(target: SshTarget, context: FleetSshExecutionContext, ho
 
 // ── The holder deferral ledger ─────────────────────────────────────────────────────────────────
 
-// THE COUNT THAT BOUNDS THE HOLDER'S DEFERRAL (review 86146, finding 2; DESIGN §4b meta-obligation 2: a
-// class below ceiling names its next-rung trigger; §5: a degradation is countable, never quietly success).
+// THE COUNT THAT BOUNDS THE HOLDER'S DEFERRAL (review 86146, finding 2; gunbc.design_argument::guarantee_ladder meta-obligation 2: a
+// class below ceiling names its next-rung trigger; gunbc.design_argument::fail_closed: a degradation is countable, never quietly success).
 // A DEFERRED-SELF holder is owed a bracket from a pass dispatched on ANOTHER slot; if placement keeps
 // landing every pass on this same slot, the deferral must not be a permanent green. The count lives on
 // the HOST, in the holder's own slot directory (see holder_deferral_ledger_path: a per-run file could

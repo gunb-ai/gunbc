@@ -183,7 +183,7 @@ pub(crate) fn external_authority_anchor_from_data_body(
     // and reading that as Absent conflates "this module declares no anchor" with "this module
     // declares one I did not follow" -- two states with opposite remedies, one an authoring defect
     // and one a defect in this reader. Resolving the local home removes the second state rather
-    // than reporting it (DESIGN section 5).
+    // than reporting it (gunbc.design_argument::fail_closed).
     let local_key = format!("{module_path}::{symbol}");
     if !visited.insert(local_key) {
         return ExternalAuthorityAnchorProjection::Refused {

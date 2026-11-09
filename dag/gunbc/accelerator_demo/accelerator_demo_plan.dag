@@ -1,4 +1,10 @@
 module gunbc.accelerator_demo.accelerator_demo_plan
+import std.realization_schedule { cost_account_predicted_zero }
+import std.numerical_contract { float_contract, integer_exact_contract }
+import extdeps.languages.simd.kernel { witness_relu_mul_add_kernel_surface_shape }
+import std.realization_schedule { RunnableKernelWorkload }
+import extdeps.communication.medium { DecodeFidelity }
+import std.measure { Nano }
 
 import std.numerical_contract { FmaContractionRefused }
 import std.realization { LocalAccelerator }
@@ -133,7 +139,9 @@ fn recognize_float_fma_fused_kernel_when_contraction_refused() -> AcceleratorRec
 }
 
 fn demo_plan_fused_op_count(plan: RealizationPlan<Nano>) -> Int {
-  let batch = plan.schedule.first()
+  match plan.schedule.first() {
+    Absent => 0
+    Present { value: batch } =>
   match batch.first() {
     Absent => 0
     Present { value: runnable } => match runnable {
@@ -141,6 +149,7 @@ fn demo_plan_fused_op_count(plan: RealizationPlan<Nano>) -> Int {
       RunnableSingleClaim { entry: _, function: _, profile: _ } => 0
       RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => 0
     }
+  }
   }
 }
 

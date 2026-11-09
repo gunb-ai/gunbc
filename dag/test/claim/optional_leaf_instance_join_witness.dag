@@ -35,7 +35,7 @@ test fn an_optional_leaf_joins_the_optional_instance_at_the_same_payload_and_onl
 // optional_nullary_arm_of: expected_deciding_variant_owner elects only the kernel Optional under an
 // Optional expectation (kernel_optional_owner_declaring), so a user coproduct never reaches the
 // shortcut and the identity check there is defensive. Its RED is not authorable while that election
-// holds (DESIGN.md 4b); if the election ever widens, this pair is the control that goes red.
+// holds (gunbc.design_argument::guarantee_ladder); if the election ever widens, this pair is the control that goes red.
 data optional_nullary_accept_source: String = "module probe_nullary_optional_arm\nfn pick() -> Int? {\n  Absent\n}\n"
 data optional_nullary_refuse_source: String = "module probe_nullary_user_arm\ntype Color = Red | Green\nfn pick() -> Color? {\n  Red\n}\n"
 

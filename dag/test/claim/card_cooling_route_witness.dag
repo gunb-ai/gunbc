@@ -128,7 +128,7 @@ test fn w_straight_back_is_refused_by_the_chassis_itself() -> Bool {
 // both under the 70 they allowed. The over-the-row and beside-the-row
 // homes still refuse on gaps nobody has ruled on, and they must keep refusing: the operator's words were
 // about the rear and the sides, and a rule that admitted those two as well would be a rule the quotes do
-// not support (DESIGN.md 4d, "do not over-forbid" has a twin -- do not over-admit either).
+// not support (gunbc.design_argument::epistemic_humility, "do not over-forbid" has a twin -- do not over-admit either).
 test fn w_plane_on_end_is_admitted_on_the_operators_bounds_and_the_rest_still_refuse() -> Bool {
   is_admitted_on_operator_bound(a: admit_home(s: a16_route_subject(), home: PlaneOnEnd))
     // The other two homes no longer refuse for want of a reading. The operator's 2026-10-27 figures put
@@ -203,9 +203,9 @@ test fn w_the_margin_is_the_governing_readings_and_the_report_says_which_row_gov
 // The margin is recomputed from the same parts the duct uses, so a change to the wall, the tolerance or the
 // governing room moves this witness rather than quietly moving the verdict.
 test fn w_the_plugged_head_fits_the_relief_window_and_the_margin_is_derived() -> Bool {
-  plugged_head_admits()
+  plugged_head_admits(s: a16_route_subject())
     && um(m: plugged_head_reach()) == 7000
-    && um(m: plugged_head_margin()) == 18500
+    && um(m: plugged_head_margin(s: a16_route_subject())) == 18500
     // and the head would still fit against the OLDER, looser allowance -- the check is not tuned to barely
     // pass on the tightest number by leaving no slack anywhere
     && plane_on_end_connector_protrusion_admits(reach: plugged_head_reach(), b: a16_blower_duct_design(), d: a16_wall_design(), rear_bound: micrometer(count: 70000))
@@ -248,22 +248,22 @@ test fn w_the_cable_bend_keepout_is_still_unmeasured_and_still_owed() -> Bool {
 // depth meets the PRINTED SEAT at the seat's depth; and a run deeper than the relief's reach meets the fan,
 // which is purchased material no cut can move.
 test fn w_the_cable_bend_is_discharged_by_the_relief_and_names_the_surface_it_would_meet() -> Bool {
-  cable_bend_is_discharged_by_geometry()
-    && match cable_bend_path(depth: plugged_head_reach(), stays_across_the_window: true) {
+  cable_bend_is_discharged_by_geometry(s: a16_route_subject())
+    && match cable_bend_path(depth: plugged_head_reach(), s: a16_route_subject(), stays_across_the_window: true) {
          ClearOfPrintedMaterial {cable_depth_behind_face: d, cleared_to: c, why: _} =>
            um(m: d) == 7000 && um(m: c) == um(m: plane_on_end_relief_back_reach(a16_wall_design())) && um(m: c) > um(m: d)
          _ => false
        }
-    && match cable_bend_path(depth: micrometer(count: 3000), stays_across_the_window: true) {
+    && match cable_bend_path(depth: micrometer(count: 3000), s: a16_route_subject(), stays_across_the_window: true) {
          ClearOfPrintedMaterial {cable_depth_behind_face: _, cleared_to: _, why: _} => true
          _ => false
        }
-    && match cable_bend_path(depth: micrometer(count: 3000), stays_across_the_window: false) {
+    && match cable_bend_path(depth: micrometer(count: 3000), s: a16_route_subject(), stays_across_the_window: false) {
          MeetsPrintedSeat {cable_depth_behind_face: d, seat_surface_behind_face: f, relief_edge_from_face_centre: e, which_wall: _} =>
            um(m: d) == 3000 && um(m: f) == um(m: plane_on_end_blower_bottom_standoff(d: a16_wall_design())) && um(m: f) == 7500 && um(m: e) == 22920
          _ => false
        }
-    && match cable_bend_path(depth: micrometer(count: 12000), stays_across_the_window: true) {
+    && match cable_bend_path(depth: micrometer(count: 12000), s: a16_route_subject(), stays_across_the_window: true) {
          PastTheReliefEdge {cable_depth_behind_face: d, relief_edge_from_face_centre: _, which_wall: _} => um(m: d) == 12000
          _ => false
        }
@@ -279,16 +279,16 @@ test fn w_the_cable_bend_is_discharged_by_the_relief_and_names_the_surface_it_wo
 // What the fit print still owns is the fit itself: the head under the seat, the seating on the shoulder, and
 // the blower's bottom face over the open window.
 test fn w_the_plugged_head_clears_the_built_seat_and_the_seat_is_affordable() -> Bool {
-  plane_on_end_plugged_head_clears_blower()
+  plane_on_end_plugged_head_clears_blower(s: a16_route_subject())
     // the overlap there was, and the seat that removes it: sized past the reach by printed allowances, never
     // flush, because at exactly 3 mm it is flush and flush on a +/-0.5 mm print is zero clearance
-    && um(m: plane_on_end_head_vs_blower_overlap_without_the_seat()) == 5000
-    && um(m: plane_on_end_fan_standoff_required()) == 5500
+    && um(m: plane_on_end_head_vs_blower_overlap_without_the_seat(s: a16_route_subject())) == 5000
+    && um(m: plane_on_end_fan_standoff_required(s: a16_route_subject())) == 5500
     && um(m: plane_on_end_blower_bottom_standoff(d: a16_wall_design())) == 7500
-    && um(m: plane_on_end_head_clearance()) == 500
-    && um(m: plane_on_end_head_clearance()) > 0
+    && um(m: plane_on_end_head_clearance(s: a16_route_subject())) == 500
+    && um(m: plane_on_end_head_clearance(s: a16_route_subject())) > 0
     // affordable: 41.0 mm of stack inside the 59 mm the tightest reading leaves, 18 mm to spare
-    && plane_on_end_standoff_admits()
+    && plane_on_end_standoff_admits(s: a16_route_subject())
     && um(m: plane_on_end_duct_run_back(b: a16_blower_duct_design, d: a16_wall_design())) <= um(m: rear_of_end_governing_room())
     && um(m: rear_of_end_governing_room()) - um(m: plane_on_end_duct_run_back(b: a16_blower_duct_design, d: a16_wall_design())) == 18000
     // and the print's own build notes say to fit-test PLUGGED -- the instrument has to be named where the
@@ -315,7 +315,7 @@ test fn w_the_head_window_is_set_by_the_stack_not_by_the_shoulder() -> Bool {
 
 // THE SUPERSESSION IS VISIBLE IN THE REPORT. The print is admitted on the operator's 2026-10-26 allowance;
 // the margin comes from the 2026-10-29 re-read. Both must appear, named -- a report that quietly showed
-// "32.5 mm to spare (70 mm declared)" after the re-read would be the §5 fabrication this whole file exists
+// "32.5 mm to spare (70 mm declared)" after the re-read would be the gunbc.design_argument::fail_closed fabrication this whole file exists
 // to prevent.
 test fn w_the_admission_report_shows_both_the_authorizing_bound_and_the_governing_reading() -> Bool {
   let report = route_admission_display(a: admit_home(s: a16_route_subject(), home: PlaneOnEnd))
@@ -346,10 +346,11 @@ test fn w_the_printable_part_budgets_exactly_the_admitted_run_back() -> Bool {
 
 // THE SHARP OPEN POINT, PINNED AS AN ARITHMETIC FACT AND NOT AS A PARAGRAPH. The A16 end face is 97.84 mm;
 // the 8-pin connector claims a 26.0 mm band at its top end (2.56 mm from the edge to the connector's near
-// pin, 23.44 mm past its outer pin), leaving 71.84 mm of face clear of it. The BFB1012M housing is 94.4 mm
-// at its SHORTER edge. So the flat-on-end housing lies over the connector's keep-out band in either
-// orientation and at any placement on this face -- this is a size fact about this card and this fan, not a
-// placement mistake to be slid out of. Pinned so that a future change to either figure is noticed: if the
+// pin, 23.44 mm past its outer pin), leaving 71.84 mm of face clear of it. The BFB1012M housing's bounding
+// rectangle is 94.4 mm on its shorter side. So the rectangle lies over the connector's keep-out band in
+// either orientation and at any placement on this face -- a fact about this card and the fan's overall
+// extents, not a placement mistake to be slid out of. It is not a claim about the scroll's real outline,
+// which Delta's drawing does not dimension. Pinned so that a future change to either figure is noticed: if the
 // clearance ever becomes real, this witness fails and says so, rather than the part quietly becoming legal.
 test fn w_the_housing_cannot_be_placed_clear_of_the_power_keepout_on_this_card() -> Bool {
   um(m: plane_on_end_face_clear_of_keepout(f: a16_end_face, d: a16_wall_design())) == 71840
@@ -471,7 +472,7 @@ test fn w_the_admitted_home_reports_everything_it_spends() -> Bool {
 
 // THREE OPERATOR-FACING VERDICTS, NOT TWO. A caliper admission, an admission on a declared bound and a
 // proposal are three different things, rendered with different words; a reader who could read "ADMITTED"
-// off an estimate is exactly the defect DESIGN.md 4d names.
+// off an estimate is exactly the defect gunbc.design_argument::epistemic_humility names.
 test fn w_the_verdicts_stay_distinguishable_in_text() -> Bool {
   let report = a16_route_report()
   length(list: report) == 4
@@ -558,12 +559,12 @@ test fn w_two_ducted_cards_clear_the_gap_between_them_and_the_arithmetic_is_the_
   // overhang against the 46 mm gap alone would refuse this and would be wrong; the margin is pinned so a
   // future edit cannot swap the comparison without failing here.
   micrometer_count(m: flat_on_end_pair_need(fan: a16_blower_duct_design)) == 56560
-    && room_ok(r: flat_on_end_pair_span(), at_most: micrometer(count: 81640))
+    && room_ok(r: flat_on_end_pair_span(s: a16_route_subject()), at_most: micrometer(count: 81640))
     // The report is checked against the SAME carriers the arithmetic used, not against a number typed into
     // this witness: the margin is 81640 - 56560 = 25.08 mm, and mm_text renders that as 25.1. Pinning the
     // literal "25 mm" here would have pinned a truncation, and would have gone red the day the formatter got
     // more honest -- which is exactly backwards.
-    && string_contains(s: flat_on_end_twin_verdict(), pattern: join(["clear, with ", mm_text(m: micrometer(count: 81640 - 56560)), " to spare"], ""))
+    && string_contains(s: flat_on_end_twin_verdict(s: a16_route_subject()), pattern: join(["clear, with ", mm_text(m: micrometer(count: 81640 - 56560)), " to spare"], ""))
 }
 
 // THE LARGEST PLANFORM A HOME MAY DRAW, with the cap that binds it NAMED and an extent no reading reaches
@@ -571,9 +572,9 @@ test fn w_two_ducted_cards_clear_the_gap_between_them_and_the_arithmetic_is_the_
 // plus the declared side lane on each side; the two-card case is its own verdict, because the pair of
 // overhangs faces each other across one gap rather than each spending a full lane.
 test fn w_the_largest_planform_reports_its_cap_and_never_invents_an_unread_extent() -> Bool {
-  let d = a16_wall_design()
-  let beside = shape_max_for_home(home: BesideTheRow, d: d, riser: micrometer(count: 6000))
-  let plane = shape_max_for_home(home: PlaneOnEnd, d: d, riser: micrometer(count: 6000))
+  let s = a16_route_subject()
+  let beside = shape_max_for_home(home: BesideTheRow, s: s, riser: micrometer(count: 6000))
+  let plane = shape_max_for_home(home: PlaneOnEnd, s: s, riser: micrometer(count: 6000))
   // Beside the row: the lane leaves 50000 after its own 10 mm estimate width, less two 2 mm duct walls and
   // two 1 mm band clearances = 44000 across the lane; and the extent no reading reaches (fan thickness
   // toward a lid that was never read at deck height) says "no cap" rather than offering a number.
@@ -598,16 +599,16 @@ test fn w_the_largest_planform_reports_its_cap_and_never_invents_an_unread_exten
 // geometry underneath it changes, which is the opposite of a witness.
 test fn w_only_the_fore_aft_wheel_axis_admits_and_the_reference_images_pose_refuses() -> Bool {
   let poses = fan_poses(fan: a16_blower(), d: a16_wall_design())
-  let admits = admitting_fan_poses()
-  let sideways = sideways_fan_poses()
+  let admits = admitting_fan_poses(s: a16_route_subject())
+  let sideways = sideways_fan_poses(s: a16_route_subject())
   // Six poses; exactly the two with the 33 mm wheel axis fore-aft clear; all four sideways poses refused,
   // and refused on the FORE-AFT check (behind the plug end) rather than on anyone's reading of the row.
   length(list: poses) == 6
     && length(list: admits) == 2
     && length(list: sideways) == 4
     && all(admits, p => match p.wheel_axis { ForeAft => true _ => false })
-    && all(sideways, p => !fan_pose_admits(fit: fan_pose_checks(pose: p, d: a16_wall_design())))
-    && all(sideways, p => match fan_pose_checks(pose: p, d: a16_wall_design()).rear.room { FullySubscribed {short_by: _, capped_by: _} => true _ => false })
+    && all(sideways, p => !fan_pose_admits(fit: fan_pose_checks(pose: p, s: a16_route_subject())))
+    && all(sideways, p => match fan_pose_checks(pose: p, s: a16_route_subject()).rear.room { FullySubscribed {short_by: _, capped_by: _} => true _ => false })
 }
 
 // The pose in the list whose rear spend is `extent`, found rather than indexed: a witness that reaches for
@@ -629,7 +630,7 @@ fn pose_with_reach(poses: List<FanPose>, extent: Micrometer) -> FanPose? {
 }
 
 fn shortfall_of(pose: FanPose?) -> Int {
-  match pose { Present {value: p} => micrometer_count(m: fan_pose_rear_shortfall(pose: p)) Absent => 0 - 1 }
+  match pose { Present {value: p} => micrometer_count(m: fan_pose_rear_shortfall(pose: p, s: a16_route_subject())) Absent => 0 - 1 }
 }
 
 test fn w_a_refused_pose_names_its_rear_shortfall_in_micrometres() -> Bool {
@@ -638,7 +639,7 @@ test fn w_a_refused_pose_names_its_rear_shortfall_in_micrometres() -> Bool {
   // -- short by 42.7 mm and 39.9 mm. Positive, typed shortfalls a reader
   // never has to subtract; the pose that admits reports zero instead of inventing one, and the headline figure
   // is the BEST of the four (the most favourable reading anyone could honestly give the idea), not the worst.
-  let sideways = sideways_fan_poses()
+  let sideways = sideways_fan_poses(s: a16_route_subject())
   // The four sideways poses come from fan_poses' own enumeration; two stand the axis across the row and
   // two along the end face, each pair differing by which disc dimension goes behind the end. Checked by
   // what each actually spends, so a reordering of the enumeration cannot quietly swap which is which.
@@ -650,8 +651,8 @@ test fn w_a_refused_pose_names_its_rear_shortfall_in_micrometres() -> Bool {
   // 2026-10-26 allowance allowed -- the tighter reading governs the poses too, so both shortfalls grew 11 mm.
   shortfall_of(pose: deep_behind) == 42700
     && shortfall_of(pose: shallow_behind) == 39900
-    && micrometer_count(m: best_sideways_rear_shortfall()) == 39900
-    && micrometer_count(m: fan_pose_rear_shortfall(pose: printed_pose())) == 0
+    && micrometer_count(m: best_sideways_rear_shortfall(s: a16_route_subject())) == 39900
+    && micrometer_count(m: fan_pose_rear_shortfall(pose: printed_pose(s: a16_route_subject()), s: a16_route_subject())) == 0
 }
 
 test fn w_the_admitted_pose_is_the_one_the_printable_duct_uses() -> Bool {
@@ -660,12 +661,12 @@ test fn w_the_admitted_pose_is_the_one_the_printable_duct_uses() -> Bool {
   // rests on = 41000, with the 97.2 mm flow path across the row and the 94.4 mm disc dimension along the end
   // face -- those are gpu_duct plane_on_end_duct_parts' own placements (housing_x = the smaller, housing_y =
   // the larger), and the receding dimension is the seat, not the pocket's two walls.
-  let pose = printed_pose()
+  let pose = printed_pose(s: a16_route_subject())
   micrometer_count(m: pose.behind_end.extent) == 41000
     && micrometer_count(m: pose.across_row.extent) == 97200
     && micrometer_count(m: pose.along_end_face.extent) == 94400
     && match pose.wheel_axis { ForeAft => true _ => false }
-    && fan_pose_admits(fit: fan_pose_checks(pose: pose, d: a16_wall_design()))
+    && fan_pose_admits(fit: fan_pose_checks(pose: pose, s: a16_route_subject()))
     // the enumeration CONTAINS it, so this fn is naming a pose rather than inventing a seventh
     && any(fan_poses(fan: a16_blower(), d: a16_wall_design()), p => micrometer_count(m: p.behind_end.extent) == 41000 && match p.wheel_axis { ForeAft => true _ => false })
 }
@@ -733,11 +734,11 @@ fn gap_at(g: ChassisGap, at: Int) -> Bool {
 // The report renders those same facts. This witness checks the RENDERING only where a fact could be lost --
 // the count of poses and which verdict each carries -- so rewording cannot hide a change to the model.
 test fn w_the_pose_report_says_what_the_types_say() -> Bool {
-  let lines = fan_pose_displays()
+  let lines = fan_pose_displays(s: a16_route_subject())
   length(list: lines) == 6
     && string_contains(s: lines[0], pattern: "ADMITTED")
     && string_contains(s: lines[2], pattern: "REFUSED")
-    && string_contains(s: scroll_is_not_a_second_geometry(), pattern: "one geometry, not two")
+    && string_contains(s: scroll_is_not_a_second_geometry(s: a16_route_subject()), pattern: "one geometry, not two")
 }
 
 test fn w_the_air_the_a16_needs_is_derived_and_checked_back_through_the_forward_direction() -> Bool {

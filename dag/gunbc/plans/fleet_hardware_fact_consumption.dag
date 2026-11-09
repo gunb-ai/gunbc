@@ -1,0 +1,208 @@
+module gunbc.plans.fleet_hardware_fact_consumption
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { unbound_dissolution }
+import std.markdown { MarkdownBlock, MarkdownTableRow, TableBlock, AlignNone }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import gunbc.plans.md_helpers { h2, p, li, ul, cell, row }
+
+// FLEET HARDWARE FACTS, CONSUMED (operator, 2026-11-07). The operator's intent, in their words: changing
+// the installed hardware or an operating decision should change the generated configuration, admission
+// decision or capacity calculation it bears on, and the repository should retain that intent. srv1's
+// two-card configuration (an RTX PRO 6000 Max-Q beside an RTX PRO 6000 Workstation card, both capped at
+// 300 W by the operator, on an ASRock PG-1600G) is the first complete example.
+//
+// THIS CARRIER OWNS NO FACT. Each fact already has a home (the assembly, the inventory, the device
+// observation, the cap policy, the extdeps rows); each consumer already has an owner module. What this
+// carrier holds is the MIGRATION between them: one row per consumer that must come to read the hardware
+// authority instead of an independent authoring or a bypass, naming the owner, the inputs, what is
+// superseded, what the row waits on, and the evidence that closes it. Where another program already owns
+// a consumer (host_thermal_operating_point owns runner thermal restrictions and fan adoption), the row
+// points at that program and does not restate its design.
+//
+// Rows were read against gunbc main 613e59301a78 and the operator's design review of the same day.
+
+// The four completion states the review asks to keep separate, per row: the fact is modeled; the
+// decision is adopted; the host matches (an independent readback); the setting survives the relevant
+// lifecycle (reboot, device reinitialization, a device appearing). A row closes only on the evidence
+// its closure names, never on a merged model alone.
+type MigrationStanding
+  = MigrationUnstarted
+  | MigrationStartedHere { what: NonEmptyStr }
+  | MigrationOwnedByProgram { program: DeclarationRef }
+
+type ConsumerMigrationRow {
+  consumer: NonEmptyStr
+  owner: DeclarationRef
+  inputs: NonEmptyStr
+  superseded: NonEmptyStr
+  waits_on: List<NonEmptyStr>
+  closes_on: NonEmptyStr
+  standing: MigrationStanding
+}
+
+fn migration_standing_text(s: MigrationStanding) -> String {
+  match s {
+    MigrationUnstarted => "unstarted"
+    MigrationStartedHere { what: w } => join(["started: ", w as String], "")
+    MigrationOwnedByProgram { program: d } => join(["owned by ", d.module_path as String], "")
+  }
+}
+
+fn owner_text(d: DeclarationRef) -> String {
+  join([d.module_path as String, "::", d.decl_name as String], "")
+}
+
+data thermal_program: DeclarationRef = decl_ref(module_path: "gunbc.plans.host_thermal_operating_point", decl_name: "host_thermal_operating_point_plan")
+
+data fleet_hardware_consumer_migrations: List<ConsumerMigrationRow> = [
+  ConsumerMigrationRow {
+    consumer: "assembly, inventory and GPU card census",
+    owner: decl_ref(module_path: "gunbc.fleet.fleet_host_assembly", decl_name: "srv_assembly_components"),
+    inputs: "canonical asset identities, installation, lifecycle, catalog binding, procurement lot",
+    superseded: "unread psu_srv1..psu_srv4 catalog rows; the census row naming the Max-Q only as a rental; RTX 2000 Ada with no host",
+    waits_on: ["operator: srv2..srv4 and every other host's supply", "operator: owned T10 / spare module counts"],
+    closes_on: "one current answer per physical unit, partial installations representable, every installed board bound to its host",
+    standing: MigrationStartedHere { what: "srv1 PSU catalog, Max-Q and srv4 Ada assets and census rows (this change)" },
+  },
+  ConsumerMigrationRow {
+    consumer: "GPU power-cap realization",
+    owner: decl_ref(module_path: "gunbc.serving.gpu_power_state_policy", decl_name: "installed_gpu_cap_intents"),
+    inputs: "asset-to-device binding (gunbc.fleet.gpu_device_observation), the selected cap, the device range, the policy revision",
+    superseded: "caps set by hand with nvidia-smi -pl, lost at reboot or device reinitialization",
+    waits_on: ["the srv1 boot run of gunbc.fleet.gpu_power_cap_converge (the owed inhabitance receipt)", "re-realization on device reinitialization and on a device appearing (named obligations at gunbc.live_deploy.srv1_gpu_power_cap_unit srv1_gpu_power_cap_realization_triggers)"],
+    closes_on: "changing the desired cap changes the applied command and the expected readback; a mismatch refuses; the cap is re-applied after reboot and on a device appearing",
+    standing: MigrationStartedHere { what: "the 300 W decision, its admission, a boot unit applying and independently reading back power.limit per UUID, and the engine Requires=/After= on it (gunbc.live_deploy.apply_legs deploy_apply_srv1_gpu_power_cap_plan); reinitialization and device-appearance re-realization owed" },
+  },
+  ConsumerMigrationRow {
+    consumer: "boot and serving launch device selection",
+    owner: decl_ref(module_path: "gunbc.serving.srv1_serving_launch", decl_name: "srv1_serving_launch"),
+    inputs: "the declared GPU group and its resolved device identities; the cap readbacks the group requires",
+    superseded: "--device nvidia.com/gpu=all and route device_index 0, which silently change meaning when a card is added",
+    waits_on: ["GPU power-cap realization"],
+    closes_on: "the engine starts only after its own devices qualify (Requires= and After= on a cap step that fails on refusal); a one-card configuration stays evaluable while a second card is pending; TP=2 requires both members and never degrades to TP=1",
+    standing: MigrationStartedHere { what: "gunbc.serving.srv1_serving_launch now declares srv1_serving_gpu_group (the one powered card, gpu_board_04) and CONSTRUCTS the installed wrapper's `--device` from it: srv1_serving_docker_device_words_of renders one `--device nvidia.com/gpu=<UUID>` per member (the UUID resolved through gunbc.fleet.gpu_device_observation current_gpu_device_observations_of, admitted through gunbc.fleet.gpu_power_state_policy admit_gpu_cap_against), and builds the wrapper body (the script the boot unit installs for the next boot) only inside srv1_serving_wrapper's Installable arm, where the group resolved to a non-empty admitted set; a group that does not resolve is Srv1ServingWrapperRefused and has NO body, so neither `nvidia.com/gpu=all` nor a GPU-less `docker run` is writable, and the deploy's install leg matches that same value. The route's served device ordinal is derived from the declared group (srv1_serving_served_device_rank), no longer the literal 0. The host copy the RUNNING container was launched from (still `all`) is retained as history in srv1_serving_wrapper_running_body and pinned by gunbc.host.srv1_serving_startup_receipt; srv1_serving_wrapper_adoption types the installed-vs-running gap PendingOperatorRelaunch — a DECLARED relaunch obligation the OPERATOR performs, never an auto-restart. The power-limit readback that lets a device run stays owned by gunbc.fleet.gpu_power_cap_converge, enforced on the real path by the engine unit's Requires= on the cap unit. Readiness belongs to the selected configuration: the one-card group resolves while gpu_board_01 (Workstation) is pending, and a TP=2 group refuses rather than degrading to TP=1 (asserted in test.claim.serving.srv1_serving_launch_witness and test.claim.live_deploy.live_deploy_apply_plan_witness)." },
+  },
+  ConsumerMigrationRow {
+    consumer: "host power qualification",
+    owner: decl_ref(module_path: "product.node_power_envelope", decl_name: "psu_adequacy"),
+    inputs: "the installed supply (assembly), supply paths (port, cable, connector), component budgets incl. accelerators, operating mode",
+    superseded: "the frozen aggregate envelope, which has no accelerator term and admits no new host",
+    waits_on: ["the MemoryConfiguration cutover (gunbc.host.memory_change_evaluation memory_change_consumer_frontiers)"],
+    closes_on: "an insufficient or unresolved supply term changes the qualification it bears on; DC output and AC draw kept distinct; unknown terms stay local",
+    standing: MigrationUnstarted,
+  },
+  ConsumerMigrationRow {
+    consumer: "runner admission width",
+    owner: decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "derived_runner_slots_of"),
+    inputs: "the existing CPU, memory and disk axes plus the host's adopted operating restrictions (thermal ceiling, clock cap)",
+    superseded: "runner caps set outside the canonical width (the srv3/srv4 12-runner restriction of 2026-11-05)",
+    waits_on: [],
+    closes_on: "a thermal runner ceiling changes the canonical admitted width, and the settings it depends on are read back",
+    standing: MigrationOwnedByProgram { program: thermal_program },
+  },
+  ConsumerMigrationRow {
+    consumer: "cooling policy adoption and qualification",
+    owner: decl_ref(module_path: "gunbc.bmc.bmc_fan_alignment_standing", decl_name: "host_alignment_admission"),
+    inputs: "installed cooling, fan wiring, zone reach, workload and thermal evidence",
+    superseded: "a CPU-cooler catalog compatibility verdict standing in for GPU or DIMM thermal qualification",
+    waits_on: [],
+    closes_on: "modeled, adopted, matching and durable are separately visible per host; no catalog verdict clears a thermal incident",
+    standing: MigrationOwnedByProgram { program: thermal_program },
+  },
+  ConsumerMigrationRow {
+    consumer: "serving memory and host budget",
+    owner: decl_ref(module_path: "gunbc.serving.serving_host_memory", decl_name: "serving_host_memory_consumer_frontier"),
+    inputs: "the engine and cache allowance, the effective cgroup hierarchy, shared-host claims",
+    superseded: "srv1-inference.slice MemoryMax=80G beside a container --memory=130g, each authored separately",
+    waits_on: ["a read of srv1's effective cgroup hierarchy"],
+    closes_on: "the allowance used to launch is the allowance charged to the host, once; a smaller parent limit refuses the larger child claim",
+    standing: MigrationUnstarted,
+  },
+  ConsumerMigrationRow {
+    consumer: "topology and benchmark applicability",
+    owner: decl_ref(module_path: "gunbc.serving.flash_next_maxq_fork_measurements", decl_name: "flash_next_maxq_fork_measurements_frontier"),
+    inputs: "the exact device group, placement, interconnect, software, caps and workload a reading was taken on",
+    superseded: "readings from a rented two-card PCIe 5 host read as if they described srv1's PCIe 4 pair",
+    waits_on: ["the Workstation card powered and enumerated"],
+    closes_on: "evidence from another configuration cannot qualify this one; srv1's own P2P, NCCL and serving readings exist before TP=2 is admitted",
+    standing: MigrationUnstarted,
+  },
+  ConsumerMigrationRow {
+    consumer: "router admission ceiling",
+    owner: decl_ref(module_path: "gunbc.serving.serving_enrollment", decl_name: "serving_replica_route"),
+    inputs: "applicable serving evidence and the operator's explicit ceiling",
+    superseded: "capacity raised because a card was installed",
+    waits_on: ["topology and benchmark applicability"],
+    closes_on: "capacity changes follow qualified configuration changes only; the operator ceiling stays explicit policy",
+    standing: MigrationUnstarted,
+  },
+  ConsumerMigrationRow {
+    consumer: "mechanical and card-cooling artifacts",
+    owner: decl_ref(module_path: "product.printed_chassis.duct_card_catalog", decl_name: "duct_card_catalog_consumer_frontier"),
+    inputs: "the selected card's geometry, installation envelope, cable bend clearance, fan geometry",
+    superseded: "card-cooling route reports on A16-specific inputs",
+    waits_on: [],
+    closes_on: "card-dependent outputs derive from the selected subject; catalog candidates are not presented as installed",
+    standing: MigrationStartedHere { what: "card_cooling_route reports now take a RouteSubject built from duct_card_dims (route_subject_of), so card-dependent outputs derive from the selected card and route_report_for refuses an unread card by naming its reading, never substituting the A16 (this change)" },
+  },
+  ConsumerMigrationRow {
+    consumer: "energy and cost",
+    owner: decl_ref(module_path: "gunbc.fleet.fleet_work_energy_cost", decl_name: "work_energy_cost"),
+    inputs: "an applicable observed power reading, its measurement scope, workload attribution",
+    superseded: "gunbc.fleet.fleet_host_power srv1_power (94 W, 2026-09-05) selected by host name for a materially changed assembly",
+    waits_on: [],
+    closes_on: "a reading carries the assembly it applies to and a changed assembly refuses the old reading; a configured cap is never used as a measured draw",
+    standing: MigrationStartedHere { what: "(this change): each HostPowerProfile now carries the configuration it applies to (its applies_to, naming the single-authority installed units), and work_energy_cost joins it against gunbc.fleet.fleet_host_assembly host_installed_components -- which joins the assembly authority's own containment edges with gunbc.fleet.fleet_physical_inventory installed_gpu_board_containments. srv1's 94 W of 2026-09-05 (taken on psu_srv1, no accelerator) is REFUSED against srv1's rebuilt assembly with a ReadingAppliesToSupersededAssembly cause naming the measurement needed. srv2 and srv3 keep pricing: their declared configurations agree with their current assemblies (srv3's added liquid cooler is power-immaterial). srv4 also REFUSES: its 94 W is inferred from srv1's accelerator-free build while srv4's own build carries the accelerator boards gunbc.fleet.fleet_physical_inventory installed_gpu_board_containments places in it (gpu_board_05, gpu_board_06), so its applies_to names that accelerator-free basis and the join does not cover its current assembly -- an inferred figure never describes accelerators it was not taken against. The by-host-name pricing bypass is removed and no configured power ceiling is ever substituted for a measured draw." },
+  },
+  ConsumerMigrationRow {
+    consumer: "owned-hardware population and dispositions",
+    owner: decl_ref(module_path: "gunbc.fleet.fleet_host_identity", decl_name: "operator_hosts"),
+    inputs: "physical units, assemblies, ownership and lifecycle (installed, pending qualification, spare, retired or disposed, provider-managed)",
+    superseded: "the identity roster read as a count of machines (srv13 and srv15 name one board; provider guests are rows)",
+    waits_on: ["operator: addresses or access for srv3, srv13..srv16, mtcollins1, mtjade1, the host-* machines and the Sparks"],
+    closes_on: "every consumer's population is derived from physical units with an explicit disposition per unit",
+    standing: MigrationUnstarted,
+  },
+]
+
+fn migration_row_markdown(r: ConsumerMigrationRow) -> MarkdownTableRow {
+  row(cells: [
+    cell(text: r.consumer as String),
+    cell(text: owner_text(d: r.owner)),
+    cell(text: r.superseded as String),
+    cell(text: r.closes_on as String),
+    cell(text: migration_standing_text(s: r.standing)),
+  ])
+}
+
+fn fleet_hardware_fact_consumption_body() -> List<MarkdownBlock> {
+  [
+    p(text: "The operator's intent (2026-11-07): changing installed hardware or an operating decision changes the configuration, admission or capacity it bears on, and the repository keeps that intent. srv1's two RTX PRO 6000 cards at the operator's 300 W cap on an ASRock PG-1600G are the first complete example."),
+    h2(text: "Consumer migrations"),
+    p(text: "One row per consumer that must come to read the hardware authority instead of an independent value or a bypass. A row closes on its stated evidence only: a merged model, an adopted decision, a matching host and a setting that survives its lifecycle are four separate states."),
+    TableBlock {
+      header: row(cells: [cell(text: "consumer"), cell(text: "owner"), cell(text: "superseded"), cell(text: "closes on"), cell(text: "standing")]),
+      alignments: [AlignNone, AlignNone, AlignNone, AlignNone, AlignNone],
+      rows: map(fleet_hardware_consumer_migrations, r => migration_row_markdown(r: r)),
+    },
+    h2(text: "Sequence"),
+    ul(items: [
+      li(text: "1. Reconcile facts and persist decisions already made: assembly, GPU assets and device observations, procurement, the 300 W decision, census, population dispositions, and these rows."),
+      li(text: "2. One real path for manual GPU policy: resolve devices, validate, apply, read back independently, gate the selected serving configuration on it, re-realize after lifecycle changes."),
+      li(text: "3. Migrate the remaining consumers across the fleet, removing each superseded authoring as its consumer moves; historical readings stay as history and stop serving as current evidence."),
+      li(text: "4. Qualify the mixed-card TP=2 configuration once the second card is powered, then transition through the existing maintenance path."),
+    ]),
+  ]
+}
+
+data fleet_hardware_fact_consumption_plan: Plan = Plan {
+  slug: "fleet-hardware-fact-consumption",
+  title: "Fleet hardware facts, consumed: every installed-hardware fact and operating decision read by the configuration, admission and capacity derivations it bears on",
+  body: fleet_hardware_fact_consumption_body(),
+  retirement: PlanRetiresWhen {
+    condition: unbound_dissolution(description: "Retire when every row of fleet_hardware_consumer_migrations has closed on its stated evidence (or moved to the program that owns it and closed there), each superseded independent authoring or bypass is removed, and the owned-hardware population carries an explicit disposition for every physical unit."),
+  },
+  projection: PlanIsAuthorityOnly,
+}

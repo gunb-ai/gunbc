@@ -52,7 +52,7 @@ data runner_activation_scope_disposition: ConstructionMechanism = SingleAuthorit
 // had type BuildCacheServerPlacement and a receipt holding ServerRunnerOwned was perfectly
 // constructible — the compiler said so, refusing a match on the field as non-exhaustive over all
 // five arms. The note claiming unrepresentability would have shipped as a false statement about a
-// wall, which is rung inflation (DESIGN section 4b) in the carrier that exists to prevent exactly
+// wall, which is rung inflation (gunbc.design_argument::guarantee_ladder) in the carrier that exists to prevent exactly
 // that.
 //
 // So the receipt does not hold a placement at all. A managed unit name is the ONLY ownership fact

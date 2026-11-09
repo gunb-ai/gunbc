@@ -17,7 +17,8 @@ import extdeps.boards.asrock_rack_arlington_mb { asrock_rack_arlington_mb }
 import product.p4261.carrier { CarrierLayoutObservation }
 import product.p4261.k1_a { p4261_k1_layout }
 import product.p4261.e1_b { p4261_e1_layout }
-import product.p4261.report { carrier_input_reading, carrier_label_text, management_io_text, edge_connector_text }
+import product.p4261.report { carrier_input_reading, carrier_label_text, management_io_text, edge_connector_text, population_comparison_text }
+import product.p4261.comparison { p4261_comparison }
 
 // GH200-1 (2026-10-03). WHAT IT TAKES TO QUALIFY ONE MODULE-ON-CARRIER ASSEMBLY. The operator bought
 // two PG530 modules and one P4261 carrier and will qualify that pair before duplicating it -- and
@@ -44,7 +45,7 @@ import product.p4261.report { carrier_input_reading, carrier_label_text, managem
 
 // ── WHAT WAS OBSERVED, NOT WHAT NVIDIA PUBLISHES ──────────────────────────────────────────────
 //
-// Listing transcriptions the operator supplied. These are receipts in this layer (DESIGN §3,
+// Listing transcriptions the operator supplied. These are receipts in this layer (gunbc.design_argument::single_authority,
 // external upstream decomposition): NVIDIA publishes the GH200 product family, and nothing about any
 // particular unit, revision suffix or carrier board. Three facts are kept apart because each settles a
 // different question: the PUBLISHED family configuration (extdeps.systems.nvidia_gh200), the SELLER'S
@@ -458,7 +459,7 @@ fn scope_mismatches(scope: ReceiptScope, a: SuperchipAssembly, aspects: List<Con
 // starts NotYetRead, and that is what makes the ladder honest in both directions: an unread slot is an
 // open requirement whose obligation text is derived from the parts, and a read slot -- verified or
 // contradicted, for THIS assembly's scope -- is what moves it. Without these slots the requirements
-// could never be satisfied, and a gate whose green is unauthorable is decoration (DESIGN §4b).
+// could never be satisfied, and a gate whose green is unauthorable is decoration (gunbc.design_argument::guarantee_ladder).
 type BenchReading
   = NotYetRead
   | ReadVerified { evidence: NonEmptyStr, scope: ReceiptScope }
@@ -660,6 +661,7 @@ fn power_path_obligation(a: SuperchipAssembly) -> String {
     ": rail voltages, connector pinout and orientation, standby rail, enable and power-good signals and sequencing, then AC supply, PSU, any distribution or conversion board and the exact harness, sized for this module's startup and default power behavior (not documented for this qualification sample) and the intended operating point within the cited ",
     to_string(watt_count(w: a.row.module_power_floor)), "-", to_string(watt_count(w: a.row.module_power_ceiling)),
     " W configurable range plus carrier, fan and storage load. What the photographs bound: ", carrier_input_reading(layout: a.carrier.layout),
+    ". What the two P4261 revisions held read ", population_comparison_text(c: p4261_comparison()),
     ". What the module suggests: ", module_rail_lead(unit: a.unit),
     ". ", reference_supply_pattern(server: asrock_rack_mecai_gh200),
     ". No P4261 power-input pinout or power-on sequence has been established: obtain the original system's PSU, distribution board and harness part numbers with connection photographs, connect nothing because its housing fits, and transfer no controller, pin function, signal level or timing from another NVIDIA platform",

@@ -36,7 +36,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // kernel_value_declared_type_mismatch. A second answer to either question authored here would
 // be the nicknaming failure at the level of judgments.
 //
-// PATH SCOPE, per DESIGN 4b's rung-per-path rule: this asserts source -> .dag acceptance only.
+// PATH SCOPE, per gunbc.design_argument::guarantee_ladder's rung-per-path rule: this asserts source -> .dag acceptance only.
 // The refusal sits in inference, so nothing reaches emission with a non-inhabiting list
 // element -- but that is a consequence of where the wall sits, not a second measurement, and
 // it is not claimed as one.
@@ -52,7 +52,7 @@ fn violation_count(source: String, wanted: String) -> Int {
 // is in this file because the FIRST wiring of the carrier ACCEPTED it: the relation consulted
 // only the payload-at-parent predicate, so RefusedKernelAtStructured was a declared verdict
 // variant that no code path could produce. A variant nothing constructs is a decoration that
-// reads as coverage, which is the rung inflation DESIGN 4b names. This arm exists so that
+// reads as coverage, which is the rung inflation gunbc.design_argument::guarantee_ladder names. This arm exists so that
 // deleting the kernel route from the relation goes red rather than quiet.
 data kernel_at_structured_source: String = "module probe_inhabit_nega\nimport std.types { Int }\ntype Inner { v: Int }\ntype Rel = | Wrapped(Inner) | SameRev\nfn probe() -> List<Rel> { [7] }\n"
 

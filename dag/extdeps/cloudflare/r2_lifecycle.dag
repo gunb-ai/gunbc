@@ -1,4 +1,5 @@
 module extdeps.cloudflare.r2_lifecycle
+import std.types { Bearer }
 import std.resources { Network }
 
 import std.types { NonEmptyStr, List, Secret, Int, Bool, Json }
@@ -16,7 +17,7 @@ import extdeps.languages.json.parse {
   JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text,
   json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
 }
-import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestCredentialRefused, rest_credential_refusal_cause, RestBodyUndecodable }
 
 // THE R2 BUCKET LIFECYCLE RESOURCE OF THE client/v4 API, one module per API resource as
 // extdeps.cloudflare.r2_buckets is (and for its reason: a `service cloudflare.*` binds the name
@@ -409,6 +410,10 @@ fn r2_lifecycle_read(outcome: RestResult<String>) -> R2LifecycleRead {
       RestStatusRefused { status: status, body: b } =>
         R2LifecycleReadRefused { cause: join(["the lifecycle read was refused with status ", to_string(status), ": ", b], "") as NonEmptyStr }
       RestTransportRefused { cause: cause } => R2LifecycleReadRefused { cause: concat("no response: ", cause as String) as NonEmptyStr }
+      RestCredentialRefused { refusal: credential_refusal } => {
+        let cause = rest_credential_refusal_cause(refusal: credential_refusal)
+        R2LifecycleReadRefused { cause: cause as NonEmptyStr }
+      }
       RestBodyUndecodable { status: status, cause: cause } =>
         R2LifecycleReadRefused { cause: join(["status ", to_string(status), " body did not decode: ", cause as String], "") as NonEmptyStr }
     }

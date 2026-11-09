@@ -42,7 +42,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // them into dag/gunbc/machine_intake or dag/gunbc/bmc turns the live wall red - that is the
 // authorable RED the ruling asks for.
 //
-// DECLARED REACH AND ITS TRIGGERS, so the rung is honest (DESIGN 4b). The grain was MEASURED
+// DECLARED REACH AND ITS TRIGGERS, so the rung is honest (gunbc.design_argument::guarantee_ladder). The grain was MEASURED
 // on the live pool (onboarding_quarantine_report renders it), not assumed. What the parse-only
 // census carries: every field-type atom of a type declaration (BmcLifecycleState renders
 // BmcOnboardingPhase,BmcCredentialPosture,Int,Bool), and the callee or constructor spelling of

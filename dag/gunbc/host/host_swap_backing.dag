@@ -20,7 +20,7 @@ import product.host_identity { HostIdentity }
 // because MemorySwapMax is a CEILING: systemd accepts it, reports it, and matches it byte-for-byte
 // on a host with zero swap devices. The knob converges green over a resource that does not exist.
 // That is the presupposition failure this module makes representable — a cap is evidence about a
-// resource only once the resource is observed present — and it is the shape DESIGN §5 calls a
+// resource only once the resource is observed present — and it is the shape gunbc.design_argument::fail_closed calls a
 // fabricated plausible output: not a wrong value, a value whose meaning was assumed. What is NOT
 // minted here: no swap-specific verdict enum (std.upsert_decision.ObservationVerdict already spans
 // Converged/Absent/Drifted/Conflict/Inaccessible/UnknownRefused) and no swap observation carrier

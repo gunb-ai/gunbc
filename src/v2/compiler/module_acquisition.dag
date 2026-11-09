@@ -66,7 +66,7 @@ import extdeps.communication.medium { Lossless, Medium }
 // cross-tree direction, the `module` line agreement); this module drives them through the filesystem
 // handler it is bound to, so the read set is exactly the probes the decisions asked for. A probe that
 // finds the file absent is not a read of any module and falls back to a shorter prefix; a probe that
-// finds the file unreadable refuses the request and never falls back (DESIGN section 5). Under the
+// finds the file unreadable refuses the request and never falls back (gunbc.design_argument::fail_closed). Under the
 // storage rule every module file is `<name>.dag` and every directory is a bare segment, so a probe
 // never walks THROUGH a file: a not-a-directory answer is a real anomaly of the tree and refuses
 // with the host's kind named, never an absence.
@@ -159,7 +159,7 @@ type AcquisitionEnv {
 
 // WHAT A CLOSURE MEMBER IS ASKED TO REQUEST. The compiler's closure is the full front end of every member (normalize,
 // reference sites, imported members, qualified references). A consumer whose question is only the IMPORT graph
-// (is there an import path from A to B; the import graph's one structural law is acyclicity, DESIGN section 3) needs the
+// (is there an import path from A to B; the import graph's one structural law is acyclicity, gunbc.design_argument::single_authority) needs the
 // parse and the module's import rows: nothing normalized, no reference site collected.
 type AcquisitionDepth
   = AcquireFullClosure
@@ -1340,7 +1340,7 @@ fn acquire_closure(layout: SourceStorageLayout, bindings: List<SourceRootBinding
 // The refusal is carried WHOLE -- its arm is its meaning (R3); this door adds no classification of
 // its own beyond whether a refusal is local to one member, local to one edge, or ends the run.
 // The refusals local to one member, and only those: a member block cannot hold an edge's or a
-// run's refusal (DESIGN 5, unwritable). Each arm is the AcquisitionRefusal arm of the same name less
+// run's refusal (gunbc.design_argument::fail_closed, unwritable). Each arm is the AcquisitionRefusal arm of the same name less
 // the module, which the block carries once.
 type CensusMemberRefusal
   = CensusMemberFrontEndRefused { file: ModuleFileRef, diagnostics: NonEmptyDiagnostics }
@@ -1348,7 +1348,7 @@ type CensusMemberRefusal
   | CensusMemberIdentityDisagrees { file: ModuleFileRef, declared: String }
 
 // The three refusals local to one edge, and only those: an edge block cannot hold a member's or a
-// run's refusal (DESIGN 5). Each arm is the AcquisitionRefusal arm of the same name and fields.
+// run's refusal (gunbc.design_argument::fail_closed). Each arm is the AcquisitionRefusal arm of the same name and fields.
 type CensusEdgeRefusal
   = CensusEdgeUnknownModule { request: AcquisitionRequest }
   | CensusEdgeLookupRefused { request: AcquisitionRequest, lookup: ReferenceLookup }
@@ -1583,11 +1583,17 @@ fn acquire_census_closure_of(layout: SourceStorageLayout, bindings: List<SourceR
 
 // ---- the acquired set as the compiler's source ingest ----------------------------------------------
 
-// The host path an acquired member was read from. It is the artifact id, the artifact path and the
-// compilation unit of the member's witness, so a consumer that names the member's file (a discovery
-// row's entry, a diagnostic locus) names this path and no second spelling of it.
+// The host path an acquired member was read from. It is the artifact id and the artifact path of the
+// member's witness; the witness's compilation unit (what a diagnostic locus names) is the
+// root-relative module_file_key, so a located diagnostic does not depend on where the root is mounted.
 fn acquisition_module_path(module: AcquiredModule) -> String {
   source_root_child_path(directory: module.host_directory, name: module.file.relative_path)
+}
+
+// THE ONE SPELLING OF A MEMBER'S FILE IN A LOCUS: the witness's compilation unit, and so the key every
+// file-refusal index and every consumer that joins a path to a located diagnostic uses.
+fn acquisition_compilation_unit(file: ModuleFileRef) -> Symbol {
+  symbol_intern_lexeme(lexeme: module_file_key(file: file))
 }
 
 fn acquisition_witness(module: AcquiredModule) -> DagSourceReadWitness {
@@ -1596,13 +1602,15 @@ fn acquisition_witness(module: AcquiredModule) -> DagSourceReadWitness {
 
 // ONE WITNESS SHAPE FOR EVERY READ THE ACQUIRER MADE, admitted or blocked: the path is the host path
 // the bytes came from, and the bytes are the ones read, so a census reporting a blocked member reports
-// it from acquisition's read and never from a second one.
+// it from acquisition's read and never from a second one. The COMPILATION UNIT is the root-relative
+// source identity (module_file_key), not the host path, so a located diagnostic names the same file
+// whatever directory the root is mounted at.
 fn acquisition_read_witness(file: ModuleFileRef, host_directory: String, content: String) -> DagSourceReadWitness {
   let path = source_root_child_path(directory: host_directory, name: file.relative_path)
   DagSourceReadWitness {
     source: Medium { carried: content, fidelity: Lossless },
     artifact: Artifact { kind: SourceFile, id: symbol_intern_lexeme(lexeme: path), file_path: path },
-    compilation_unit: symbol_intern_lexeme(lexeme: path),
+    compilation_unit: acquisition_compilation_unit(file: file),
     source_root: file.tree
   }
 }
@@ -1735,13 +1743,22 @@ fn acquisition_reach_go(members: Map<String, AcquiredModule>, reach: Acquisition
 
 // Every name the entries reach through the members' requests. A name that is not a member is reached and
 // expands to nothing; whether an exact request owed it a read is acquisition_exactness_requests' question.
-fn acquisition_reached(entries: List<String>, modules: List<AcquiredModule>) -> Map<String, Bool> {
+fn acquisition_members_of(modules: List<AcquiredModule>) -> Map<String, AcquiredModule> {
+  fold_list(xs: modules, empty: empty_map(), cons: fn(acc, member) { map_insert(m: acc, key: member.name, value: member) })
+}
+
+// The reach over a member table built once: a caller asking many entries' reaches builds the table once and reads it per entry.
+fn acquisition_reached_in(members: Map<String, AcquiredModule>, entries: List<String>) -> Map<String, Bool> {
   acquisition_reach_go(
-    members: fold_list(xs: modules, empty: empty_map(), cons: fn(acc, member) { map_insert(m: acc, key: member.name, value: member) }),
+    members: members,
     reach: fold_list(xs: entries, empty: AcquisitionReach { reached: empty_map(), pending: [] }, cons: fn(acc, entry) {
       acquisition_reach_visit(reach: acc, name: entry)
     })
   )
+}
+
+fn acquisition_reached(entries: List<String>, modules: List<AcquiredModule>) -> Map<String, Bool> {
+  acquisition_reached_in(members: acquisition_members_of(modules: modules), entries: entries)
 }
 
 fn acquisition_first_duplicate(pending: List<String>, seen: Map<String, Bool>) -> Optional<String> {
@@ -2055,7 +2072,7 @@ fn namespace_walk_under(namespace: String, root: String, relative: String) -> Na
 // namespace test.zzz) would otherwise enter the population. This route reads by path and never through the
 // storage lookup, so the membership judgment the lookup asks before a crossing
 // (v2.std.cross_tree.import_model namespace_declared over the layout's namespace_rows, the one read both make) is asked here, of every
-// member: a file outside gunbc.source_layout is not compilable on either route (DESIGN section 3).
+// member: a file outside gunbc.source_layout is not compilable on either route (gunbc.design_argument::single_authority).
 type BoundModules
   = BoundModulesListed { modules: List<String> }
   | BoundModulesRefused { subject: String, cause: String }

@@ -318,7 +318,7 @@ fn gpu_listing_price_ranges(observations: List<GpuListingObservation>, window: G
   fold(observations |> map(o => gpu_listing_join(o: o)), init: [], f: (acc, j) => listing_range_add(ranges: acc, j: j, w: window))
 }
 
-// DESIGN section 3c declared frontier.
+// gunbc.design_argument::consumption declared frontier.
 data gpu_listing_sold_data_frontier: DissolutionCondition = unbound_dissolution(
   description: "TRIGGER: a dated sold-listing observation lands from a producer this repository runs: an eBay Marketplace Insights reader (an access grant eBay restricts, then a model beside extdeps.ebay.browse), or a typed import of the operator's own sold-listing export. SUFFICIENT FOR: gpu_listing_price_ranges has real sold rows to range over; until then its executing route is test.claim.gpu_market_listing_witness over supplied observations, and the one real producer, gpu_listing_from_browse, yields only active listings." as NonEmptyStr
 )

@@ -19,10 +19,10 @@ import gunbc.rung_climb {
 }
 import gunbc.lifecycle_bounded_referent { DashboardWorkItemReferent, dashboard_work_item_referent_uri }
 
-// THE CARRIER FOR A DESIGN section 4b(2) STALL, and it is a different fact from a section 4b(3)
+// THE CARRIER FOR A gunbc.design_argument::guarantee_ladder (no untracked stall) STALL, and it is a different fact from a gunbc.design_argument::guarantee_ladder (no silent regression)
 // DROP (gunbc.rung_drop) rather than a variant of it. A DROP is an event: something that held a
 // rung stopped holding it, and the fields record what was lost. A STALL is a standing state: a class sits
-// below its attainable ceiling and has not moved, and section 4b(2) obliges it to say WHY it has
+// below its attainable ceiling and has not moved, and gunbc.design_argument::guarantee_ladder (no untracked stall) obliges it to say WHY it has
 // not -- separating "cannot climb further" from "can climb after one grounding" from "can climb
 // now but unbuilt", because only the first is permanent. Nothing was lost when a stall begins, so
 // a drop's previous/temporary/reason fields have no answer, and forcing one would fabricate an
@@ -32,13 +32,13 @@ import gunbc.lifecycle_bounded_referent { DashboardWorkItemReferent, dashboard_w
 // observed in PROSE: a corpus sweep found 133 sites across 95 modules naming a next-rung or
 // restoration trigger, of which 79 sit inside `//` annotations and 54 inside String bodies. Not
 // one of them is reachable by a fold. The annotation half is out of reach of any PROGRAM CLAIM --
-// DESIGN section 4c is explicit that an annotation is never evidence a machine claim holds, because
+// gunbc.design_argument::source_annotations is explicit that an annotation is never evidence a machine claim holds, because
 // no Accepted program reads one -- and the String half has no identity to key on, so a count over
 // it counts phrase occurrences rather than classes. Stated precisely rather than as a blanket
 // impossibility, because the overclaim would be checkable and wrong: annotations ARE captured, into
 // std.source_annotation SourceAnnotationGraph, so an annotation lens could in principle scan their
 // text. That does not rescue the population. Such a lens matches the literal phrase "NEXT-RUNG
-// TRIGGER", which is the grep DESIGN section 6 says a lens replaces; it cannot tell a class from a
+// TRIGGER", which is the grep gunbc.design_argument::how_to_work says a lens replaces; it cannot tell a class from a
 // mention of one; and every row it read would be modeling debt by that carrier's own standing law.
 // The only route to a countable population is authoring the fact as data from here forward.
 //
@@ -51,7 +51,7 @@ import gunbc.lifecycle_bounded_referent { DashboardWorkItemReferent, dashboard_w
 //
 // WHAT THIS CARRIER ACTUALLY GUARANTEES, at its honest rung and no higher. next_rung_trigger is a
 // REQUIRED field, so a stall declared through this type WITHOUT a trigger has no spelling -- for
-// rows that use it, section 4b(2) is structurally impossible to violate rather than checked. It
+// rows that use it, gunbc.design_argument::guarantee_ladder (no untracked stall) is structurally impossible to violate rather than checked. It
 // makes nothing unwritable about prose: a class stalling in an annotation stays exactly as
 // writable as it was, and nothing detects one. That is a scope statement, not a climb, and stating
 // it here is what keeps a reader from counting this module as coverage it does not provide.
@@ -85,7 +85,7 @@ type StallPopulation
 
 // THE TRIGGER IS TWO FACTS AND WAS ONE FIELD, which is the whole of this carrier's exposure to
 // `gunbc.recurring_failure_mode.stale_claim_survives_its_own_correct_edit`. `capability` is the
-// OPERATIVE half -- the condition section 4b(2) obliges the row to name, and the only half a later
+// OPERATIVE half -- the condition gunbc.design_argument::guarantee_ladder (no untracked stall) obliges the row to name, and the only half a later
 // reader can re-measure. `awaiting` is the PROVENANCE half: the lifecycle-bounded lanes that were
 // asked to deliver it, carried as modeled referents so that a lane closing is a fact a consumer
 // can join against rather than a word inside a sentence.
@@ -135,7 +135,7 @@ fn stall_is_below_ceiling(s: GuaranteeStall) -> Bool {
 
 // NO `GuaranteeStall -> Bool` PERMANENCE ACCESSOR LIVES HERE, AND ITS ABSENCE IS THE POINT.
 // `stall_is_permanent` stood here until gunbc#10106 and was a second, weaker spelling of the arm
-// the row already carries: DESIGN section 5 prices a check that re-states a constraint the model
+// the row already carries: gunbc.design_argument::fail_closed prices a check that re-states a constraint the model
 // carries as a second representation of it, and the practical cost is that every later caller
 // reaches for the Bool instead of the variant it came from, so "why is this permanent" stops being
 // answerable at the use site. Consumers match `ClimbBlocker` themselves -- exhaustively, which is
@@ -207,7 +207,7 @@ fn every_stall_trigger_is_admitted(ss: List<GuaranteeStall>) -> Bool {
   )
 }
 
-// SECTION 4b(2) IS WHAT THIS ENFORCES: a class below its ceiling must NAME its next-rung trigger,
+// gunbc.design_argument::guarantee_ladder (no untracked stall) IS WHAT THIS ENFORCES: a class below its ceiling must NAME its next-rung trigger,
 // so "cannot climb further" stays separable from "unbuilt". An empty trigger is the untracked
 // stall that clause forbids, and it becomes decidable here rather than left to review diligence.
 fn every_stall_names_a_trigger(ss: List<GuaranteeStall>) -> Bool {

@@ -37,6 +37,7 @@ import gunbc.serving.serving_benchmark_cell_plan { ServingBenchmarkCellPlan, Eng
 import gunbc.serving.serving_benchmark_run_receipt { ServingEngineBuild }
 import gunbc.fleet.fleet_job_principal { job_principal_reading, JobPrincipalAdmitted, JobPrincipalRefused }
 import gunbc.serving.strata_ada_pair_cell { srv3_strata_ada_pair_plan }
+import extdeps.http.client { http_client_probe_status_arguments }
 
 // ONE RUN OF serving-benchmark/1 ON ONE SERVING CELL (work item node://adhoc-ffb4b5c7-4a5).
 // `gunbc test //gunbc/instruments:serving-benchmark-run` emits this closure, builds it and runs it on a
@@ -317,7 +318,7 @@ fn sb_engine_ready() -> Bool {
   // The probe arguments come from extdeps.http.client, rendered from the cell plan's carriers: the
   // retry count, retry delay and per-request bound are policy the plan pins, not argv literals.
   // Readiness is an EXACT status: -w prints only %{http_code}, so stdout is the status itself and a
-  // substring match would let a 2000 or a 42000 answer the question (review 86842; §5 fail-closed).
+  // substring match would let a 2000 or a 42000 answer the question (review 86842; gunbc.design_argument::fail_closed fail-closed).
   let r = DockerCli.RunRemoved(docker: sb_docker(), network: sb_host_network(), image: curlimages_curl_8_11_1_image,
     arguments: http_client_probe_status_arguments(url: concat(sb_engine_url(), "/v1/models"), attempts: serving_benchmark_run_plan.readiness_attempts, delay: serving_benchmark_run_plan.readiness_delay, max_time: serving_benchmark_run_plan.readiness_max_time))
   r.exit_code == 0 && trim(s: r.stdout) == "200"

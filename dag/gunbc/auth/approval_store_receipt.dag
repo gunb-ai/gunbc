@@ -24,8 +24,9 @@ import gunbc.auth.approval_decision_store {
   StoredApprovalRequest, EscalationSlot, EscalationNotFiled, EscalationPending, EscalationDecided, EscalationUnreadable,
   observe_escalation, approval_decision_store_root, parse_stored_record, StoredRequestParsed, StoredDecisionParsed, StoredRecordUnreadable,
   ApprovalKeyringRead, ApprovalKeyLoaded, ApprovalKeyringRefused, ApprovalKeyringRefusal, read_mac_keyring,
-  approval_capability_issuer, approval_capability_authority, approval_mac_key_suite,
+  approval_capability_issuer, approval_capability_authority,
 }
+import gunbc.auth.mac_keyring { approval_mac_key_suite }
 
 // ── THE STORE RECEIPT KEY ─────────────────────────────────────────────────────────────────────
 //
@@ -320,7 +321,7 @@ fn store_receipt_issuance_answer(issuance: StoreReceiptIssuance) -> StoreReceipt
 // THE ROUTE. The three escalation readings (the slot, its generation-1 filing, the receipt keyring)
 // are performed HERE, in the authenticated arm and nowhere else, and handed to the pure mint as
 // values. The decision-store root and the submission keyring are SUPPLIED: a witness discriminates
-// at this interface (DESIGN §3) without a second copy of the fold, and production binds the
+// at this interface (gunbc.design_argument::single_authority) without a second copy of the fold, and production binds the
 // declared root and the real keyring read.
 fn store_receipt_answer(escalation_id: NonEmptyStr, body: String, root: NonEmptyStr, submission_keyring: ApprovalKeyringRead) -> StoreReceiptAnswer {
   match authenticate_store_receipt_asker(escalation_id: escalation_id, body: body, submission_keyring: submission_keyring) {

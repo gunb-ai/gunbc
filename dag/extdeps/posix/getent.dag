@@ -29,6 +29,19 @@ fn getent_passwd_command(key: NonEmptyStr) -> ArgvCommand {
 // absent entry reads this value instead of treating every non-zero exit as absence.
 data getent_key_not_found_exit: Int = 2
 
+// getent group <key> answers the group database entry for key, one line: name:passwd:gid:members.
+// gunbc.fleet.approval_ntfy_retirement reads it for the group a retired service account leaves
+// behind: userdel(8) removes the identity, and a group of the same name that has any OTHER member
+// survives, so a retirement that stops at the account leaves a member of the roster on the host.
+// The invocation is the database and the key, and nothing else; field selection, if a caller wants
+// one, happens in the corpus. THE SAME NOT-FOUND CODE ANSWERS FOR EVERY DATABASE: getent(1) exits 2
+// when "one or more supplied key could not be found in the database", so getent_key_not_found_exit
+// above is the value a group read compares against too -- verified on srv1, where `getent group` on a
+// name no database resolves exited 2 and printed nothing.
+fn getent_group_command(key: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: getent_program(), arguments: ["group", key as String])
+}
+
 // getent shadow <login> is how the boot medium reader probe reads whether the reader account's password
 // field is ACTUALLY locked, rather than inferring it from the `--system` account being created with
 // `useradd --system` (gunbc.executor_privileged_operation EnsureSystemAccount). The inference is what the

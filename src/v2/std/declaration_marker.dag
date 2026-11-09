@@ -10,7 +10,7 @@ import v2.std.qualified_name { QualifiedName, qualified_name_snoc }
 // name resolution CONSUMES it: a reference to a marked declaration is refused there. What it must not
 // touch is the semantic tree -- a marked declaration's semantic graph and content hash are identical
 // to an unmarked one's -- so it rides this channel beside the tree rather than as a child edge. It
-// borrows the SHAPE of the DESIGN section 4c annotation channel (captured beside the semantic result,
+// borrows the SHAPE of the gunbc.design_argument::source_annotations annotation channel (captured beside the semantic result,
 // as annotations ride beside AuthoredParseArtifact.semantic), not its non-interference rule: 4c
 // governs `//` prose, which may alter nothing downstream, while `test` is a declaration marker whose
 // whole purpose is a refusal. v1 carries the same fact as v1.std.core DeclarationMarker on the Node

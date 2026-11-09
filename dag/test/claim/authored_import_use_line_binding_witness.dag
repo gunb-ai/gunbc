@@ -55,7 +55,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // An earlier cut carried a `test fn` conjoining all six arms. It asserted nothing the six
 // individually do not -- each already answers its own pole -- while paying every
 // compile_dag_rust_emit_check a second time, twelve production compiles for six facts, at the
-// single most expensive primitive in the corpus (review 70115; DESIGN section 3, "two claims
+// single most expensive primitive in the corpus (review 70115; gunbc.design_argument::single_authority, "two claims
 // making the same call on the same input where one assertion implies the other, each paying the
 // call in full"). The purpose it served was a READER'S, not a discriminator's: stopping someone
 // from taking the expecting-red arm for a claim that dropping use-lines is correct. That purpose
@@ -91,7 +91,7 @@ test fn a_singly_declared_phantom_import_emits_its_use_line() -> Bool {
 // this module ever mentioning it. That is the shape every real occurrence has --
 // extdeps.numeric.base16 never mentioned v2.std.integer either.
 //
-// THE FLIP, AS A MEASURED TRANSITION RATHER THAN AN ASSUMED ONE (DESIGN section 4b(4)). This arm was
+// THE FLIP, AS A MEASURED TRANSITION RATHER THAN AN ASSUMED ONE (gunbc.design_argument::guarantee_ladder (dissolution on climb)). This arm was
 // enrolled asserting the std_integer use-line ABSENT. On 2026-09-22 (bold-boar-16) the string moved
 // from excludes to includes and the arm was run on the PRE-REPAIR emitter: it returned false, RED.
 // After v1.compiler.emit_rust authored_import_binds_provider_declaration it returns true. It stays
@@ -136,7 +136,7 @@ test fn a_consumer_that_names_both_providers_keeps_its_use_line() -> Bool {
 // violated. Its green was fully explained by term (3) and said nothing about nominality, while
 // the failure-mode row leaned on it to keep 34 forked spellings out of the population (review
 // 70079). A permanently-green arm whose verdict is decided by a different term is decoration,
-// which DESIGN section 4b forbids by name.
+// which gunbc.design_argument::guarantee_ladder forbids by name.
 //
 // It now takes the arm-C shape: the second declarer arrives through v2.extdeps.languages.ptx, a
 // module imported for an unrelated symbol (StateSpace) that itself imports
@@ -174,7 +174,7 @@ test fn a_forked_nominal_record_keeps_its_authored_use_line() -> Bool {
 // term 1 if the second declaration really reaches the crate in one and not the other.
 //
 // THIS COMPILES THE SAME SOURCE AS THE ARM ABOVE AND READS A DIFFERENT EMITTED FILE, which is one
-// compile paid twice and is a real cost defect (review 70115; DESIGN section 2, minimize the
+// compile paid twice and is a real cost defect (review 70115; gunbc.design_argument::minimize_redundancy, minimize the
 // demand graph before materializing its answers). It is kept because the primitive takes ONE
 // output path per call, so two readings of one emission cannot be expressed today; the modeled
 // fix is compile_dag_rust_emit_check admitting a path SET, which is a seed change -- builtin

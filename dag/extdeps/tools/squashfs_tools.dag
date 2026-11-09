@@ -31,7 +31,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // `unsquashfs` together and versions them together, so one module is one independently governed
 // upstream rather than a hub over a filesystem format. Only the extract direction is modeled: this
 // repository consumes a published squashfs image and has never authored one, and a builder with no
-// caller is an unconsumed surface (DESIGN section 5).
+// caller is an unconsumed surface (gunbc.design_argument::fail_closed).
 // PATH-resolved program name, for the reason recorded once at extdeps.exec.command
 // program_spelling_is_an_observation_claim: no filesystem observation of the host has been made here.
 fn unsquashfs_program() -> ProgramIdentity = uncataloged_program(invocation: "unsquashfs")

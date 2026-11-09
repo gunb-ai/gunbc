@@ -1,6 +1,7 @@
 module test.claim.machine_intake.machine_intake_disposition_witness
 
-import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, list_length }
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
+import std.algebra { length }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash { ContentHash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable, compare_content_hash, content_hash_of_value, content_hash_equal }
 import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
@@ -253,7 +254,7 @@ test fn every_current_phase_has_exactly_one_rank() -> Bool {
       Absent => acc
     },
   )
-  list_length(items: all) == 22 && ranked == 22 && list_length(items: distinct) == 22 && list_length(items: fleet_admission_required_phases) == 22
+  length(xs: all) == 22 && ranked == 22 && length(xs: distinct) == 22 && length(xs: fleet_admission_required_phases) == 22
 }
 
 fn phase_rank_or_neg(phase: IntakePhase) -> Int {
@@ -306,7 +307,7 @@ fn admitted(standing: FleetAdmissionStanding?) -> Bool {
   match standing {
     Present { value: a } =>
       match a {
-        FleetAdmissible { receipt: r } => list_length(items: r.satisfied) == list_length(items: fleet_admission_required_phases)
+        FleetAdmissible { receipt: r } => length(xs: r.satisfied) == length(xs: fleet_admission_required_phases)
         FleetNotAdmissible { missing: _, refused: _, subject_mismatched: _, subject_currency: _ } => false
         FleetPolicyBarMismatch { ledger_digest: _, bar: _ } => false
       }
@@ -318,7 +319,7 @@ fn not_admissible_missing_count(standing: FleetAdmissionStanding?) -> Int {
   match standing {
     Present { value: a } =>
       match a {
-        FleetNotAdmissible { missing: m, refused: _, subject_mismatched: _, subject_currency: _ } => list_length(items: m)
+        FleetNotAdmissible { missing: m, refused: _, subject_mismatched: _, subject_currency: _ } => length(xs: m)
         FleetAdmissible { receipt: _ } => -1
         FleetPolicyBarMismatch { ledger_digest: _, bar: _ } => -1
       }
@@ -349,7 +350,7 @@ test fn one_missing_phase_blocks_admission_and_is_named() -> Bool {
     Present { value: a } =>
       match a {
         FleetNotAdmissible { missing: m, refused: _, subject_mismatched: _, subject_currency: _ } =>
-          list_length(items: m) == 1 && (m |> any(p => p == omitted))
+          length(xs: m) == 1 && (m |> any(p => p == omitted))
         FleetAdmissible { receipt: _ } => false
         FleetPolicyBarMismatch { ledger_digest: _, bar: _ } => false
       }
@@ -365,7 +366,7 @@ test fn prior_admission_does_not_survive_a_dimm_swap() -> Bool {
     Present { value: a } =>
       match a {
         FleetNotAdmissible { missing: m, refused: _, subject_mismatched: s, subject_currency: _ } =>
-          list_length(items: m) == 0 && list_length(items: s) == list_length(items: fleet_admission_required_phases)
+          length(xs: m) == 0 && length(xs: s) == length(xs: fleet_admission_required_phases)
         FleetAdmissible { receipt: _ } => false
         FleetPolicyBarMismatch { ledger_digest: _, bar: _ } => false
       }
@@ -399,7 +400,7 @@ test fn stale_currency_names_the_axes_that_moved() -> Bool {
     Present { value: c } =>
       match c {
         SubjectStale { axes: axes } =>
-          list_length(items: axes.further_axes) == 0 && axes.first_axis == FirmwareManifestStale
+          length(xs: axes.further_axes) == 0 && axes.first_axis == FirmwareManifestStale
         SubjectCurrent => false
       }
     Absent => false
@@ -408,7 +409,7 @@ test fn stale_currency_names_the_axes_that_moved() -> Bool {
     Present { value: c } =>
       match c {
         SubjectStale { axes: axes } =>
-          list_length(items: axes.further_axes) == 1
+          length(xs: axes.further_axes) == 1
             && axes.first_axis == AssemblyManifestStale
             && (axes.further_axes |> any(x => x == FirmwareManifestStale))
         SubjectCurrent => false
@@ -589,7 +590,7 @@ test fn disconnected_genesis_receipts_are_refused() -> Bool {
 test fn broken_link_is_refused() -> Bool {
   let linked = chain(receipts: full_ledger(subject: subject_before))
   let tampered = fold(linked, init: [], f: fn(acc, r) {
-    if list_length(items: acc) == 3 {
+    if length(xs: acc) == 3 {
       concat(acc, [IntakeReceiptEnvelope { schema: r.schema, subject: r.subject, phase: r.phase, producer: r.producer, policy_digest: r.policy_digest, started_at: r.started_at, ended_at: r.ended_at, observations: r.observations, result: r.result, previous_receipt: Present { value: content_hash_of_value(value: "forged-link") } }])
     } else {
       concat(acc, [r])
@@ -608,7 +609,7 @@ test fn broken_link_is_refused() -> Bool {
 test fn reordered_receipts_are_refused() -> Bool {
   let linked = chain(receipts: full_ledger(subject: subject_before))
   let rewound = fold(linked, init: [], f: fn(acc, r) {
-    if list_length(items: acc) == 2 {
+    if length(xs: acc) == 2 {
       concat(acc, [IntakeReceiptEnvelope { schema: r.schema, subject: r.subject, phase: r.phase, producer: r.producer, policy_digest: r.policy_digest, started_at: 1787000000000, ended_at: 1787000001000, observations: r.observations, result: r.result, previous_receipt: r.previous_receipt }])
     } else {
       concat(acc, [r])
@@ -653,7 +654,7 @@ test fn later_refusal_supersedes_earlier_success() -> Bool {
     Present { value: a } =>
       match a {
         FleetNotAdmissible { missing: m, refused: r, subject_mismatched: _, subject_currency: _ } =>
-          list_length(items: m) == 0 && list_length(items: r) == 1
+          length(xs: m) == 0 && length(xs: r) == 1
         FleetAdmissible { receipt: _ } => false
         FleetPolicyBarMismatch { ledger_digest: _, bar: _ } => false
       }
@@ -697,7 +698,7 @@ test fn immediate_same_rank_retry_validates_and_binds_the_retry() -> Bool {
             && hashes_equal(left: r.ledger_terminal_fingerprint, right: l.terminal_fingerprint)
             && hashes_equal(left: r.policy_digest, right: policy_digest)
             && r.admits == TestRisk
-            && list_length(items: r.satisfied) == list_length(items: fleet_admission_required_phases)
+            && length(xs: r.satisfied) == length(xs: fleet_admission_required_phases)
         }
       }
   }
@@ -728,7 +729,7 @@ test fn fresh_access_discover_after_complete_lifecycle_is_refused() -> Bool {
   match ledger_refusal(receipts: chain(receipts: appended)) {
     Present { value: c } =>
       match c {
-        LedgerPhaseRegression { index: i } => i == list_length(items: full)
+        LedgerPhaseRegression { index: i } => i == length(xs: full)
         _ => false
       }
     Absent => false
@@ -740,7 +741,7 @@ test fn fresh_access_discover_after_complete_lifecycle_is_refused() -> Bool {
 test fn inverted_receipt_interval_is_refused() -> Bool {
   let linked = chain(receipts: full_ledger(subject: subject_before))
   let inverted = fold(linked, init: [], f: fn(acc, r) {
-    let here = list_length(items: acc) == 3
+    let here = length(xs: acc) == 3
     if here {
       concat(acc, [IntakeReceiptEnvelope { schema: r.schema, subject: r.subject, phase: r.phase, producer: r.producer, policy_digest: r.policy_digest, started_at: r.started_at, ended_at: r.started_at - 1, observations: r.observations, result: r.result, previous_receipt: r.previous_receipt }])
     } else {
@@ -762,7 +763,7 @@ test fn inverted_receipt_interval_is_refused() -> Bool {
 test fn policy_digest_change_across_attempt_is_refused() -> Bool {
   let linked = chain(receipts: full_ledger(subject: subject_before))
   let changed = fold(linked, init: [], f: fn(acc, r) {
-    let here = list_length(items: acc) == 2
+    let here = length(xs: acc) == 2
     if here {
       concat(acc, [IntakeReceiptEnvelope { schema: r.schema, subject: r.subject, phase: r.phase, producer: r.producer, policy_digest: content_hash_of_value(value: "policy-revised-midway"), started_at: r.started_at, ended_at: r.ended_at, observations: r.observations, result: r.result, previous_receipt: r.previous_receipt }])
     } else {
@@ -786,7 +787,7 @@ test fn producer_change_across_attempt_is_refused() -> Bool {
   let linked = chain(receipts: full_ledger(subject: subject_before))
   let other = IntakeProducerIdentity { intake_binary: content_hash_of_value(value: "intake-binary-upgraded"), staging_service_identity: "intake-staging", agent_artifact: none }
   let changed = fold(linked, init: [], f: fn(acc, r) {
-    let here = list_length(items: acc) == 2
+    let here = length(xs: acc) == 2
     if here {
       concat(acc, [IntakeReceiptEnvelope { schema: r.schema, subject: r.subject, phase: r.phase, producer: other, policy_digest: r.policy_digest, started_at: r.started_at, ended_at: r.ended_at, observations: r.observations, result: r.result, previous_receipt: r.previous_receipt }])
     } else {
@@ -889,7 +890,7 @@ fn agent_receipt_on(nonce: NonEmptyStr, artifact: NonEmptyStr, serial: NonEmptyS
 test fn no_observed_callback_does_not_establish_absence() -> Bool {
   match attest_diagnostic_boot(issued: issued, unit_key: unit, observed: observed_population(callbacks: []), supporting: [NfsReadPlateau, ImageRedirectionSessionActive]) {
     DiagnosticBootCompletenessUnestablished { observed_callbacks: n, population_evidence: e, supporting: s } =>
-      n == 0 && e.label == "callback-endpoint-log" && list_length(items: s) == 2
+      n == 0 && e.label == "callback-endpoint-log" && length(xs: s) == 2
     DiagnosticBootNotAttested { cause: _, population_evidence: _ } => false
     DiagnosticBootAttested { attempt_id: _, receipt: _, population_evidence: _ } => false
   }
@@ -959,7 +960,7 @@ test fn an_agent_on_the_wrong_architecture_does_not_attest_the_boot() -> Bool {
 
 // RED CONTROL — the nonce is a ONE-TIME callback token. A second callback on
 // the same issuance is a replay and is refused even when it is identical to
-// the first: honouring one of two would be an absorbing fallback (§5).
+// the first: honouring one of two would be an absorbing fallback (gunbc.design_argument::fail_closed).
 test fn a_second_callback_on_one_nonce_is_a_replay_not_a_boot() -> Bool {
   let one = agent_receipt(nonce: "nonce-7f3a", artifact: "intake-iso-aarch64", serial: "BRD-000123")
   let replay = attest_diagnostic_boot(issued: issued, unit_key: unit, observed: observed_population(callbacks: [one, one]), supporting: [])
@@ -1046,7 +1047,7 @@ test fn an_outcome_carries_the_acquiring_record_it_was_read_from() -> Bool {
 // while the four field-mismatch refusals discarded it -- and the annotation
 // claiming "every outcome names the population" greened anyway, because the only
 // control exercised the unestablished path. A claim about paths, with an oracle
-// blind to those paths, is this repository's own §5 trap. This control reads the
+// blind to those paths, is this repository's own gunbc.design_argument::fail_closed trap. This control reads the
 // arm that was actually lying: two DEFINITE mismatch refusals, identical in every
 // respect except which acquisition record they were observed in, each preserving
 // its own. Replacing the wrapper's population_evidence with a constant reds the

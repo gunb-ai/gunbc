@@ -194,7 +194,7 @@ test fn witness_agent_running_reads_as_working_not_completed() -> Bool {
 }
 
 // A refusal is a first-class presentation state with its LOCATED reason, never a styling variant of
-// progress (DESIGN 5: typed, located). The discriminating fixture puts the refusal mid-ledger; the
+// progress (gunbc.design_argument::fail_closed: typed, located). The discriminating fixture puts the refusal mid-ledger; the
 // view must surface a LABEL — the state word plus the short reason — as the summary, keep the full
 // (here short) reason as the located reason behind the disclosure, and rank a failed segment as
 // anomalous ActiveWork — distinct states with distinct remedies, and a refused ledger outranks a
@@ -660,6 +660,7 @@ fn fx_family_member_row(node_id: String, headline: String, activity: ActivityVie
     standing: none,
     attempt_stale: false,
     profiles: base.profiles,
+      retired_blockers: [] as List<String>,
   }
 }
 
@@ -1700,6 +1701,7 @@ fn fx_explanation_view(scheduling: WorkScheduling, activity: ActivityView) -> Wo
     standing: Present { value: NodeOpen },
     attempt_stale: false,
     profiles: [],
+      retired_blockers: [] as List<String>,
   }
 }
 
@@ -1977,6 +1979,7 @@ fn fx_visibility_row(scheduling: WorkScheduling, activity: ActivityView, node_id
     standing: base.standing,
     attempt_stale: base.attempt_stale,
     profiles: base.profiles,
+      retired_blockers: [] as List<String>,
   }
 }
 

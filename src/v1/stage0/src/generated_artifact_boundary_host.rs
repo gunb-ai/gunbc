@@ -15,7 +15,7 @@
 //! of the twelve most recent commits touching it, six changed the artifact with no authority
 //! change. gunbc#9392 found the result by hand while doing something else and recorded it in
 //! the artifact: 2198 characters in `DESIGN.md` that no authority held — the
-//! parallel-representation debt DESIGN §2/§3 names, in the document that names it. It could
+//! parallel-representation debt gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority names, in the document that names it. It could
 //! accumulate because the drift gates went out with the 2026-08-15 floor cut and this family sat
 //! on that cut's re-add queue.
 //!
@@ -151,7 +151,7 @@ fn authority_entry_path() -> std::path::PathBuf {
 ///
 /// COST SHAPE is why this takes a CONTEXT rather than `source_roots`: resolving the closure in a
 /// per-path loop makes the unit of computation the corpus while the unit of fact is one path —
-/// DESIGN §6's cost-shape defect, fixed regardless of realized n. The caller resolves once; each
+/// gunbc.design_argument::how_to_work's cost-shape defect, fixed regardless of realized n. The caller resolves once; each
 /// path is one interpreter call against that context.
 pub fn generated_artifact_body_for_path(
     ctx: &InterpContext,
@@ -207,7 +207,7 @@ pub fn generated_artifact_body_for_path(
 ///
 /// `committed_generated_artifact_paths` is `map(artifact_path)` over
 /// `committed_generated_artifacts`, so this roster and the one `main_wet` writes are one fold
-/// over one registry. A path list here would be the second roster DESIGN §3 forbids, stale on
+/// over one registry. A path list here would be the second roster gunbc.design_argument::single_authority forbids, stale on
 /// the first artifact added.
 fn committed_generated_artifact_paths(ctx: &InterpContext) -> Result<Vec<String>, String> {
     let out = crate::v1_interpreter::run_in_context_with_args(
@@ -329,7 +329,7 @@ pub fn boundary_divergent(o: &GeneratedArtifactBoundaryOutcome) -> Vec<&Adjudica
 /// first cut (caught in review of gunbc#9415). Zero adjudicated and zero unadjudicated satisfies
 /// "every verdict matched" VACUOUSLY, so asking about nothing rendered like asking about seventy
 /// paths and finding all correct — the empty-observation narrow DESIGN names, bottom-as-answer
-/// conflated with bottom-as-ignorance, strictly worse than the widen §5 forbids: a widen is
+/// conflated with bottom-as-ignorance, strictly worse than the widen gunbc.design_argument::fail_closed forbids: a widen is
 /// merely expensive, a narrow is silently uncovered.
 ///
 /// Checked HERE as well as at the producer below, not redundantly: the producer refuses an
@@ -463,7 +463,7 @@ mod tests {
     /// the crate directory as its cwd, which is exactly the non-root cwd that reproduces the
     /// production dependence: before the entry was anchored, `generated_artifact_ctx` refused
     /// here with `entry file does not exist` while succeeding from the root. The claim is at the
-    /// anchoring interface, not over a whole-closure resolve (DESIGN section 3, a witness
+    /// anchoring interface, not over a whole-closure resolve (gunbc.design_argument::single_authority, a witness
     /// discriminates at one interface); the real route stays executed by the behavioural-receipt
     /// and generated-artifact phases that call `generated_artifact_ctx`.
     /// Class: `gunbc.recurring_failure_mode` `workspace_relative_corpus_key_handed_to_a_cwd_relative_reader`.

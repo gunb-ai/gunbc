@@ -1,20 +1,24 @@
 module test.claim.printable_assembly_selection_witness
 
 import std.types { Bool, List, String }
+import std.algebra { length }
 import extdeps.languages.json.emit { serialize_json }
 import product.printed_chassis.assembly_geometry { Clearance, Printed, Purchased, Metal }
 import product.printed_chassis.cassette { rear_socket_bolt_clearances }
 import product.printed_chassis.printable_assembly {
   PrintedAssemblyRoot, ResidentialCassette, CassetteRackReview, DuctRootKind, duct_root_kinds,
   PlugDuct, SleeveDuct, PlugFitRing, SleeveFitRing, BlowerDuct, BlowerFlatOnEndDuct, PrintableAssembly,
-  PrintableAssemblyReady, PrintableAssemblyRefused, PrintableAssemblySelection, printable_manifest, printed_assembly_root_wire,
+  PrintableAssemblyReady, PrintableAssemblyRefused, PrintableAssemblySelection, printable_manifest, printed_assembly_root_wire, group_root_kinds,
 }
 import product.printed_chassis.printable_assembly_selection {
   select_printable_assembly, duct_selection, blower_selection, plane_on_end_selection,
   duct_card_root, printed_assembly_root_from_wire, printed_assembly_roots,
 }
+import product.printed_chassis.group_duct { group_duct_plans }
 import product.printed_chassis.duct_card_catalog { DuctCard, a16_duct_card, t4_duct_card, a2_duct_card, t10_duct_card, duct_cards, duct_card_unread_reason }
-import product.printed_chassis.gpu_duct { PlugAndFlange, FullDuct }
+import product.printed_chassis.gpu_duct { PlugAndFlange, FullDuct, CardFitRing }
+import extdeps.gpu.passive_card_row { CardRow, NeedsReading }
+import extdeps.gpu.nvidia_a16 { a16_card_row }
 import product.printed_chassis.preparation_identity { manifest_identity }
 
 fn selected(root: PrintedAssemblyRoot) -> PrintableAssembly? {
@@ -39,7 +43,7 @@ fn is_clearance(a: PrintableAssembly, id: String) -> Bool {
 test fn w_residential_cassette_keeps_its_socket_keepouts() -> Bool {
   match selected(root: ResidentialCassette) {
     Present { value: a } =>
-      length(list: a.required_keepouts) == length(list: rear_socket_bolt_clearances())
+      length(xs: a.required_keepouts) == length(xs: rear_socket_bolt_clearances())
         && all(rear_socket_bolt_clearances(), k => any(a.required_keepouts, r => r == k.id))
         && all(a.required_keepouts, k => is_clearance(a: a, id: k))
     Absent => false
@@ -49,9 +53,9 @@ test fn w_residential_cassette_keeps_its_socket_keepouts() -> Bool {
 fn a16_selects(root: PrintedAssemblyRoot, printed: String, with_fan: Bool) -> Bool {
   match selected(root: root) {
     Present { value: a } =>
-      length(list: a.parts) == (if with_fan { 4 } else { 3 })
+      length(xs: a.parts) == (if with_fan { 4 } else { 3 })
         && all(concat([printed, "CARD", "POWER-KEEPOUT"], if with_fan { ["FAN"] } else { [] }), i => any(ids(a: a), x => x == i))
-        && length(list: a.required_keepouts) == 1 && any(a.required_keepouts, k => k == "POWER-KEEPOUT")
+        && length(xs: a.required_keepouts) == 1 && any(a.required_keepouts, k => k == "POWER-KEEPOUT")
         && is_clearance(a: a, id: "POWER-KEEPOUT")
         && !any(a.assembly_members, m => m == "POWER-KEEPOUT")
         && a.package == printed_assembly_root_wire(root: root)
@@ -99,7 +103,7 @@ test fn w_root_wire_round_trips_and_unknown_refuses() -> Bool {
 // reading still HAS roots (t10-plug-fit-ring decodes), which is what lets it refuse by naming its reading
 // instead of not existing; and an id that is not on the roster decodes to nothing.
 test fn w_the_duct_roots_are_enumerated_from_the_card_roster() -> Bool {
-  list_length(items: printed_assembly_roots) == 2 + list_length(items: duct_cards) * list_length(items: duct_root_kinds)
+  length(xs: printed_assembly_roots) == 2 + length(xs: duct_cards) * length(xs: duct_root_kinds) + length(xs: group_duct_plans) * length(xs: group_root_kinds)
     && all(duct_cards, c => all(duct_root_kinds, k =>
       match printed_assembly_root_from_wire(s: printed_assembly_root_wire(root: duct_card_root(card: c, kind: k))) {
         Present { value: back } => printed_assembly_root_wire(root: back) == printed_assembly_root_wire(root: duct_card_root(card: c, kind: k))
@@ -158,11 +162,35 @@ fn refuses_naming(s: PrintableAssemblySelection, card: DuctCard) -> Bool {
 // rather than falling back to the A16's geometry. The three direct calls below keep the claim pinned to the
 // geometry producers as well as to the selection.
 test fn w_an_unread_card_refuses_every_shape_by_naming_its_reading() -> Bool {
-  all([t4_duct_card, a2_duct_card, t10_duct_card], c =>
+  all([t4_duct_card, t10_duct_card], c =>
     all(duct_root_kinds, k => refuses_naming(s: select_printable_assembly(root: duct_card_root(card: c, kind: k)), card: c))
     && refuses_naming(s: duct_selection(root: duct_card_root(card: c, kind: PlugDuct), card: c, mount: PlugAndFlange, extent: FullDuct), card: c)
       && refuses_naming(s: blower_selection(root: duct_card_root(card: c, kind: BlowerDuct), card: c), card: c)
       && refuses_naming(s: plane_on_end_selection(root: duct_card_root(card: c, kind: BlowerFlatOnEndDuct), card: c), card: c))
+}
+
+// A READ CARD WITHOUT THE A16'S FASTENING FEATURES: the A2's face is read (2026-11-02) and has no end-cap
+// inserts and no end-face header, so every single-card shape -- all of which screw into inserts -- refuses it
+// naming those features as observed absent, not as unread, and not with placeholder inserts.
+test fn w_a_read_card_without_inserts_refuses_every_single_card_shape_by_naming_them() -> Bool {
+  all(duct_root_kinds, k => match select_printable_assembly(root: duct_card_root(card: a2_duct_card, kind: k)) {
+    PrintableAssemblyReady { assembly: _ } => false
+    PrintableAssemblyRefused { reason: r } => r == duct_card_unread_reason(card: a2_duct_card) && string_contains(s: r, pattern: "end-cap inserts: the card has none (observed)")
+  })
+}
+
+// THE A2 ROW IS SELECTABLE AS A GROUP: the group fit plate root decodes from its wire spelling and selects
+// through the same function as every other root, with one printed plate and one envelope per installed card.
+test fn w_the_a2_row_fit_plate_selects_through_the_same_function() -> Bool {
+  match printed_assembly_root_from_wire(s: "a2-altra-row-fit-plate") {
+    Absent => false
+    Present { value: r } => match select_printable_assembly(root: r) {
+      PrintableAssemblyRefused { reason: _ } => false
+      PrintableAssemblyReady { assembly: a } => count(filter(a.parts, p => match p.kind { Printed => true _ => false })) == 1
+        && count(filter(a.parts, p => match p.kind { Purchased => true _ => false })) == 4
+        && printed_assembly_root_wire(root: a.root) == "a2-altra-row-fit-plate"
+    }
+  }
 }
 
 // CONTROL: the read card selects through the same function.
@@ -194,4 +222,40 @@ test fn w_the_a16_plug_fit_ring_is_the_geometry_that_was_printed_and_fitted() ->
     }
     Absent => false
   }
+}
+
+// SUPPLIED CARD ROW (not a catalogue row): the A16's row with its end face read (a16_duct_card's) and its length
+// stated, but its slot count unread. Only the blower shapes read the slot pitch, so only they may refuse on it.
+data slot_count_unread_card: DuctCard = DuctCard {
+  row: CardRow {
+    id: a16_card_row.id, product: a16_card_row.product, height_class: a16_card_row.height_class,
+    slot_count: NeedsReading { read_obligation: "supplied by the witness: the card's slot count" },
+    length: a16_card_row.length, height: a16_card_row.height, brackets: a16_card_row.brackets,
+    auxiliary_power: a16_card_row.auxiliary_power, board_power: a16_card_row.board_power,
+    required_airflow: a16_card_row.required_airflow, airflow_direction: a16_card_row.airflow_direction,
+    sources: a16_card_row.sources,
+  },
+  end_face: a16_duct_card.end_face,
+}
+
+fn ready(s: PrintableAssemblySelection) -> Bool {
+  match s { PrintableAssemblyReady { assembly: _ } => true PrintableAssemblyRefused { reason: _ } => false }
+}
+
+fn refused_naming_slot_count(s: PrintableAssemblySelection) -> Bool {
+  match s { PrintableAssemblyReady { assembly: _ } => false PrintableAssemblyRefused { reason: r } => string_contains(s: r, pattern: "slot count") }
+}
+
+// An unread slot count refuses only the shapes that read the slot pitch, and names that reading.
+test fn w_an_unread_slot_count_refuses_only_the_blower_shapes() -> Bool {
+  let c = slot_count_unread_card
+  ready(s: duct_selection(root: duct_card_root(card: c, kind: PlugFitRing), card: c, mount: PlugAndFlange, extent: CardFitRing))
+    && ready(s: duct_selection(root: duct_card_root(card: c, kind: PlugDuct), card: c, mount: PlugAndFlange, extent: FullDuct))
+    && refused_naming_slot_count(s: blower_selection(root: duct_card_root(card: c, kind: BlowerDuct), card: c))
+    && refused_naming_slot_count(s: plane_on_end_selection(root: duct_card_root(card: c, kind: BlowerFlatOnEndDuct), card: c))
+}
+
+// CONTROL: the A16 (slot count read) still admits the blower shape through the same function.
+test fn w_the_read_slot_count_admits_the_blower_shape() -> Bool {
+  ready(s: blower_selection(root: duct_card_root(card: a16_duct_card, kind: BlowerDuct), card: a16_duct_card))
 }

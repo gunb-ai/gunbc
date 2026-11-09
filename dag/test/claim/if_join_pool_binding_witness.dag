@@ -21,7 +21,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // gunbc.recurring_failure_mode binding_chosen_by_pool_membership_rather_than_by_the_declared_rule
 // committed its isolating synthetic rather than describing it. This file is the routing, and it
 // adds no new specimen: the bytes it compiles are read from those four files, so the fixture stays
-// the single authority for the specimen and this row is its consumer (DESIGN section 3, section 3c).
+// the single authority for the specimen and this row is its consumer (gunbc.design_argument::single_authority, section 3c).
 //
 // WHAT IT WITNESSES IS THE INVARIANT, NOT A MESSAGE. The row names it IRRELEVANT-SCOPE EXTENSION
 // INVARIANCE: for source S with resolved closure C, an environment E1 derived from C and an E2

@@ -4,11 +4,11 @@ import std.types { Bool, CommitSha, EpochMs, FilePath, Int, List, Milliseconds, 
 import std.claim_evidence { Claim, ClaimId, RecordedFact }
 import std.decl_ref { DeclarationRef, decl_ref }
 
-// DESIGN 4d: a citation grounds the factual basis, not the prediction derived from it.
-// DESIGN 4b is an independent axis: this module does not assign compiler guarantee rungs.
+// gunbc.design_argument::epistemic_humility: a citation grounds the factual basis, not the prediction derived from it.
+// gunbc.design_argument::guarantee_ladder is an independent axis: this module does not assign compiler guarantee rungs.
 // Scope is a conjunction. Narrowing adds a restriction; it cannot silently widen the old scope.
 //
-// DESIGN 3b boundary with std.claim_evidence: Claim and RecordedFact are shared identities.
+// gunbc.design_argument::conformance boundary with std.claim_evidence: Claim and RecordedFact are shared identities.
 // This carrier replays a prediction's test protocol over supplied observations; its receipts do
 // not admit those observations as descriptive evidence under an EvidenceAdmissionPolicy.
 // EvidenceLink requires an inference rule, PROV entity/activity/agent, exact maximum conclusion,

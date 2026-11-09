@@ -1,6 +1,7 @@
 module test.claim.fabric.fabric_cell_host_root_witness
 
-import std.types { Bool, String, NonEmptyStr, Int, List, list_length }
+import std.types { Bool, String, NonEmptyStr, Int, List }
+import std.algebra { length }
 import gunbc.ownership { Ownership, Owned, Ensured }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
@@ -55,7 +56,7 @@ test fn witness_an_undesired_host_root_refuses_teardown_rather_than_removing_it(
 // forward even though it never converges backward.
 test fn witness_an_absent_host_root_is_still_established() -> Bool {
   let desired = fabric_cell_host_desired_members(host: operator_host_srv3)
-  list_length(items: desired) == 1
+  length(xs: desired) == 1
     && fabric_cell_host_write_count(desired: desired, observed: []) == 1
     && fabric_cell_host_refusal_count(desired: desired, observed: []) == 0
     && fabric_cell_host_removal_count(desired: desired, observed: []) == 0
@@ -76,7 +77,7 @@ test fn witness_teardown_eligibility_is_projected_from_the_subject_both_ways() -
   )
   !fabric_cell_subject_is_teardown_eligible(subject: host_subject)
     && every_slot_is_owned
-    && list_length(items: slots) > 0
+    && length(xs: slots) > 0
 }
 
 // THE HOST IS PART OF THE MEMBER IDENTITY, so two hosts' base directories are two members rather
@@ -120,7 +121,7 @@ test fn witness_base_directory_state_is_the_declared_path() -> Bool {
 // not. It does not assert that the projection's match is EXHAUSTIVE, which is enforced by the
 // compiler at the definition: a fourth subject kind reddens the compile, not this row.
 //
-// THAT IS A SCOPE LIMIT AND NOT A PERMANENT CEILING, and the difference is what DESIGN 4b(2) calls
+// THAT IS A SCOPE LIMIT AND NOT A PERMANENT CEILING, and the difference is what gunbc.design_argument::guarantee_ladder (no untracked stall) calls
 // an untracked stall. The question to ask before declaring a ceiling is whether the RED is
 // authorable at the FIXTURE boundary, which is not the accepted-corpus boundary: a regression probe
 // is an invalid program by definition, so a three-arm match over a four-arm coproduct is perfectly
@@ -156,6 +157,6 @@ test fn witness_both_cell_families_read_ownership_from_one_projection() -> Bool 
       })
   )
   every_slot_member_is_owned
-    && list_length(items: slots) > 0
+    && length(xs: slots) > 0
     && !fabric_cell_subject_is_teardown_eligible(subject: FabricCellHostScope { host: operator_host_srv3 })
 }

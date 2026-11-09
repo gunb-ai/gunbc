@@ -13,7 +13,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // carrier roster replaced them -- kernel_algebra_profile in std.algebra and
 // container_template_algebra_rows, container_template_alias_rows, container_type_arity and
 // canonical_container_names in std.types, at gunbc main 9180ecb174. That is a versioned prior
-// authority in the sense DESIGN.md section 5 requires of a merge-blocking literal, and the
+// authority in the sense gunbc.design_argument::fail_closed requires of a merge-blocking literal, and the
 // assertion is an identity join over key/value pairs rather than a count: a derivation that
 // produced the right NUMBER of rows with a wrong key still fails here.
 //
@@ -31,7 +31,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // -- a membership flipped while adjusting a neighbouring field, a spelling renamed on one row and
 // not another. The baseline is not a snapshot of whatever the tree currently produces; re-deriving
 // it from the current tree would collapse it to measure() == measure(), which is the change
-// detector DESIGN.md section 5 names and rejects.
+// detector gunbc.design_argument::fail_closed names and rejects.
 
 fn expected_profile_keys() -> List<String> {
   ["Bool", "FinitePowerSet", "FinitelySupportedFunction", "Float", "Int", "List", "Map", "PartialFunction", "Set", "String"]

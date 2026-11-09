@@ -1,0 +1,32 @@
+module gunbc.recurring_failure_mode.a_unit_memory_peak_is_read_from_a_cgroup_the_work_escapes
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+
+data a_unit_memory_peak_is_read_from_a_cgroup_the_work_escapes: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_unit_memory_peak_is_read_from_a_cgroup_the_work_escapes" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "INVALID STATE: a work-class peak sample (gunbc.compute.work_class_grant WorkClassPeakSample) is taken from the Memory peak line of the compute unit's systemd-run summary, but the workload ran in a different cgroup, so the sample reads a fraction of the real peak. A grant row sized from such samples would reserve about 0.5 MiB for a run that needs about 20 GiB.",
+
+    "HARM: a sized grant below the real working set admits runs the host cannot hold (an OOM kill, or a stall under memory.high), and the GrantExceeded counter that falsifies a row cannot fire because the same reading feeds both. The reading is wrong silently: a plausible number, no refusal.",
+
+    "SPECIMEN, srv1 2026-11-05 04:45Z (read by loyal-deer-449): 32 class=claims attempt records report peak_upper_kib 513 (x25) and 257 (x6), the log reading 512.0K / 256.0K and once 0B, while the same runs last 3m23s to 12m53s and peak near 20 GiB when run by hand (the launch witness peaked at most 20.3 GiB at 220a8212). Eight class=build-release records read 4.2G to 4.3G over about 5 minutes and look sound. 14 of 54 records have an empty consumption file and were never settled.",
+
+    "DISTINGUISHING FACT: the unit's reported peak is orders of magnitude below the wall-clock cost of the work. The suspected cause (not yet verified) is a user_work_scope wrapper or delegated child that moves the process out of the gunbc-compute-<id>.service cgroup.",
+
+    "RUNG FOUND AT: silently wrong (below the ladder, gunbc.design_argument::guarantee_ladder), because the sample is accepted as an observation. The mitigation in place is that work_class_grant_rows is empty, so every class reserves the ceiling; no grant is sized from the claims class until the peak is read from the cgroup the work occupies.",
+
+    "CEILING: structurally guaranteed for the decidable half: a sample whose unit cgroup does not contain the workload's processes is refused at the sample, a typed PeakSampleNotTaken.",
+
+    "NEXT-RUNG TRIGGER, A CAPABILITY: reading memory.peak from the cgroup that holds the workload (or proving the workload ran inside the unit cgroup), so work_class_peak_sample can refuse a mismatched reading. Fresh compile-entry samples under that reading are requested from loyal-deer-449 (2026-11-05).",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "gunbc.compute.work_class_grant", decl_name: "work_class_peak_sample"),
+    decl_ref(module_path: "gunbc.compute.work_class_grant", decl_name: "work_class_grant_rows"),
+  ],
+}

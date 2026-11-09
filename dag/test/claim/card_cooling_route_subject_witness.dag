@@ -1,0 +1,146 @@
+module test.claim.card_cooling_route_subject_witness
+
+// These REDs pin one property the A16 could never show: a card_cooling_route report must measure the SUBJECT it is
+// shown, never fall back to the product.printed_chassis.card_cooling_route a16_end_face / a16_duct_design /
+// a16_blower_duct_design constants. Each test feeds a report a RouteSubject that is NOT the A16 -- a face of a
+// different length, a card from the roster -- and asserts the report's number moves with the subject. If a report
+// still reached for the A16 constant, the non-A16 subject would come back with the A16's number and the test would
+// fail. The A16 half of each pair is the control: it keeps reporting its own byte-identical numbers, so only the
+// subject can have moved the output. @ref(gunbc.design_argument::single_authority) @ref(gunbc.design_argument::fail_closed)
+//
+// This file is kept separate from test.claim.card_cooling_route_witness because that file does not resolve on main
+// today: a test whose effect summary reaches the #15992 module graph (cable_bend_is_discharged_by_geometry,
+// fan_pose_displays, a16_route_report, and anything through admit_home) fails to join its effects. A RED that cannot
+// run proves nothing, so the subject-derivation REDs live here. They deliberately call only reports that stay out of
+// that graph (shape_max_for_home, fan_pose_checks, printed_pose, cable_bend_path) and the card-facing refusal, which
+// is route_subject_of (an unread card yields no subject) plus route_refusal_of (it names the reading, never the A16).
+
+import std.types { Bool, NonEmptyStr, String }
+import std.measure { micrometer, micrometer_count }
+import std.optional { Present, Absent }
+import product.printed_chassis.card_cooling_route {
+  PlaneOnEnd, PlaneAcrossRowStanding, ShapeExtent, RouteSubject, a16_route_subject,
+  shape_um, shape_max_for_home, fan_pose_checks, fan_pose_admits, printed_pose,
+  cable_bend_path, MeetsPrintedSeat, extent_display,
+  route_subject_of, route_refusal_of,
+}
+import product.printed_chassis.duct_card_catalog { a2_duct_card, t4_duct_card }
+import product.printed_chassis.gpu_duct { um, EndFaceMeasurement, BlowerDuctDesign }
+
+// A ShapeExtent read as a number; only a subscribed (Fits) extent yields a count, everything else fails the test.
+fn extent_count(e: ShapeExtent) -> Int {
+  match e { Fits { at_most: v, capped_by: _ } => micrometer_count(m: v) _ => 0 - 1 }
+}
+
+// A face that stands in only for these tests: only face_length matters to the three reports below, so the other
+// readings are placeholders. A subject that is NOT the A16.
+fn a_face_only_at(face_length: Int) -> EndFaceMeasurement {
+  EndFaceMeasurement {
+    source: "test.claim.card_cooling_route_subject_witness: a subject shown only to prove the report reads it, not the A16",
+    face_length: micrometer(count: face_length),
+    face_thickness: micrometer(count: 1000), window_length: micrometer(count: 1000), window_depth: micrometer(count: 1000),
+    window_from_top: micrometer(count: 1000), window_from_back: micrometer(count: 1000), fin_setback: micrometer(count: 1000),
+    insert_spacing: micrometer(count: 1000), insert_near_edge_from_back: micrometer(count: 1000),
+    upper_insert_near_edge_from_top: micrometer(count: 1000), lower_insert_near_edge_from_bottom: micrometer(count: 1000),
+    connector_from_top: micrometer(count: 1000),
+  }
+}
+
+fn a_subject_at(face_length: Int) -> RouteSubject {
+  RouteSubject { face: a_face_only_at(face_length: face_length), wall: a16_route_subject().wall, fan: a16_route_subject().fan }
+}
+
+// A blower design on the subject's OWN slot pitch (80 mm here -- a pitch the A16 never has). The envelope and
+// edges are reused from the A16 fan only because they are card-independent while blower_duct_design_of fixes the
+// Delta row; the pitch -- the number whose provenance is under test -- is the synthetic subject's own.
+fn a_fan_at_pitch(pitch: Int) -> BlowerDuctDesign {
+  let f = a16_route_subject().fan
+  BlowerDuctDesign { blower: f.blower, outlet_edge: f.outlet_edge, socket_clearance: f.socket_clearance,
+    socket_depth: f.socket_depth, screw_tool_clearance_radius: f.screw_tool_clearance_radius,
+    card_count: 1, slot_pitch: micrometer(count: pitch) }
+}
+fn a_subject_at_pitch(face_length: Int, pitch: Int) -> RouteSubject {
+  RouteSubject { face: a_face_only_at(face_length: face_length), wall: a16_route_subject().wall, fan: a_fan_at_pitch(pitch: pitch) }
+}
+
+// shape_max_for_home measures the subject it is shown. A face 120 mm across the row must come back 120 mm; the A16
+// half is the control (still its own 97.84 mm), so the only thing that moved the number is the subject. If
+// shape_max_for_home still read a16_end_face it would return 97.84 mm for this face too, and this test would fail.
+test fn w_shape_max_for_home_measures_the_subject_it_is_shown_not_the_a16() -> Bool {
+  let tall = a_subject_at(face_length: 120000)
+  extent_count(e: shape_max_for_home(home: PlaneOnEnd, s: tall, riser: shape_um(m: 6000)).along_the_row) == 120000
+    && extent_count(e: shape_max_for_home(home: PlaneOnEnd, s: a16_route_subject(), riser: shape_um(m: 6000)).along_the_row) == 97840
+}
+
+// fan_pose_checks measures the subject it is shown, not the A16. The printed pose clears the A16's 97.84 mm end
+// face; shown a face only 20 mm long it must refuse that axis on the subject's own height. If fan_pose_checks still
+// read a16_end_face its end_face room would stay 97.84 mm and it would admit -- and this test would fail.
+test fn w_fan_pose_checks_measures_the_subject_it_is_shown_not_the_a16() -> Bool {
+  let pose = printed_pose(s: a16_route_subject())
+  fan_pose_admits(fit: fan_pose_checks(pose: pose, s: a16_route_subject()))
+    && !fan_pose_admits(fit: fan_pose_checks(pose: pose, s: a_subject_at(face_length: 20000)))
+}
+
+// cable_bend_path's relief edge is the subject's own face, not the A16's. The A16 puts the relief's inboard edge at
+// 22.92 mm; a face twice the A16's length puts it elsewhere. If cable_bend_path still read a16_end_face the edge
+// would stay 22.92 mm for the taller face too, and this test would fail.
+test fn w_cable_bend_path_measures_the_subject_it_is_shown_not_the_a16() -> Bool {
+  let on_a16 = match cable_bend_path(depth: micrometer(count: 3000), s: a16_route_subject(), stays_across_the_window: false) {
+    MeetsPrintedSeat { cable_depth_behind_face: _, seat_surface_behind_face: _, relief_edge_from_face_centre: e, which_wall: _ } => um(m: e) == 22920
+    _ => false
+  }
+  let on_tall = match cable_bend_path(depth: micrometer(count: 3000), s: a_subject_at(face_length: 120000), stays_across_the_window: false) {
+    MeetsPrintedSeat { cable_depth_behind_face: _, seat_surface_behind_face: _, relief_edge_from_face_centre: e, which_wall: _ } => um(m: e) != 22920
+    _ => false
+  }
+  on_a16 && on_tall
+}
+
+// An unread card has no route subject at all -- route_subject_of is built only from duct_card_dims, so a card with
+// no read end face gets nothing -- and it is refused by naming the reading it owes, never with the A16's numbers
+// standing in. The refusal must name the card and its end face, and carry none of the A16's caliper numbers
+// (97.84 mm face, 40.64 mm slot pitch). @ref(gunbc.design_argument::fail_closed) @ref(gunbc.design_argument::epistemic_humility)
+test fn w_an_unread_card_gets_no_subject_and_is_refused_naming_its_reading_never_the_a16() -> Bool {
+  match route_subject_of(card: t4_duct_card) {
+    Absent =>
+      string_contains(s: route_refusal_of(card: t4_duct_card), pattern: "NVIDIA T4")
+        && string_contains(s: route_refusal_of(card: t4_duct_card), pattern: "end face")
+        && !string_contains(s: route_refusal_of(card: t4_duct_card), pattern: "97.84")
+        && !string_contains(s: route_refusal_of(card: t4_duct_card), pattern: "40.64")
+    Present { value: _ } => false
+  }
+}
+
+// The A2's end face IS caliper-read (product.printed_chassis.card_end_interface a2_card_end, operator 2026-11-02),
+// but it carries no end-cap inserts and no power header (its CardEndInterface fields inserts/connector are
+// FeatureAbsentObserved), so screwed_end_cap_of refuses it and duct_card_dims -- the single authority for a card's
+// duct dimensions -- has nothing to build from. route_subject_of therefore gives the A2 NO subject. Fail-closed:
+// a caliper-read-but-unfastened card is NOT answered with the A16's face standing in for the end-cap features it was
+// not read with; the refusal names the card (row id "a2") and carries none of the A16's caliper numbers.
+// @ref(gunbc.design_argument::fail_closed) @ref(gunbc.design_argument::single_authority)
+test fn w_the_caliper_read_but_unscrewed_a2_gets_no_route_subject_never_the_a16() -> Bool {
+  match route_subject_of(card: a2_duct_card) {
+    Absent =>
+      string_contains(s: route_refusal_of(card: a2_duct_card), pattern: "a2")
+        && !string_contains(s: route_refusal_of(card: a2_duct_card), pattern: "97.84")
+        && !string_contains(s: route_refusal_of(card: a2_duct_card), pattern: "40.64")
+    Present { value: _ } => false
+  }
+}
+
+// A card_cooling_route report's SOURCE LABEL travels with the subject, not with the A16. Shown a subject whose own
+// slot pitch is 80 mm and whose end-face source is this test's marker string, shape_max_for_home's provenance must
+// name that subject (its pitch shows as "80 mm", its face by its own source) and must NOT cite "a16_end_face" or the
+// A16's "40.64" pitch. This is a card-dependent output too (room_of stores the from: text as the origin a reader
+// checks a number back to), so a label naming a reading the report never used is fabrication.
+// @ref(gunbc.design_argument::epistemic_humility)
+test fn w_a_non_a16_subject_is_labelled_with_its_own_reading_not_the_a16() -> Bool {
+  let synth = a_subject_at_pitch(face_length: 120000, pitch: 80000)
+  let along = extent_display(e: shape_max_for_home(home: PlaneOnEnd, s: synth, riser: shape_um(m: 6000)).along_the_row)
+  let across = extent_display(e: shape_max_for_home(home: PlaneAcrossRowStanding, s: synth, riser: shape_um(m: 6000)).across_the_binding_gap)
+  let text = join([along, " ", across], "")
+  string_contains(s: text, pattern: "80 mm")
+    && string_contains(s: text, pattern: "test.claim.card_cooling_route_subject_witness")
+    && !string_contains(s: text, pattern: "a16_end_face")
+    && !string_contains(s: text, pattern: "40.64")
+}

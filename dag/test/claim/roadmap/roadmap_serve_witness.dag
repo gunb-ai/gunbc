@@ -1,18 +1,17 @@
 module test.claim.roadmap.roadmap_serve_witness
 import gunbc.site.document { site_styles }
 import std.access { Permit, Deny }
-import gunbc.auth.request_authentication { human_write_admission, tracker_write_authorization_policy, roadmap_deployment_access_policy, ServeActionSaveOwnView, ServeActionDispatchNode }
-import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession, AccessPathLocalDev, RequestAccessPath, IngressUnattested }
+import gunbc.auth.request_authentication { human_write_admission, tracker_write_authorization_policy, roadmap_deployment_access_policy, ServeActionSaveOwnView, ServeActionDispatchNode, RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession, AccessPathLocalDev, RequestAccessPath, IngressUnattested, HostAccountPeerEvidence, lab_agent_host_account, lab_agent_principal }
 
 import gunbc.roadmap.roadmap_serve {
-  RoadmapServeHandler, IssueQueryHandler, serve_issue_query,
+  RoadmapServeHandler, IssueQueryHandler, authenticated_write_author_principal, serve_issue_query,
   roadmap_serve_handle_over,
   RoadmapDailyPageHandler,
   DispatchJsonHandler, HealthzHandler, DashboardInstanceHandler,
   BeltDispatchHandler, DispatchAssetHandler,
   SessionsJsonHandler, AttemptsJsonHandler, WorkflowJsonHandler, BeltStopHandler,
   BeltPublishHandler,
-  IssueDetailPageHandler, IssueAssignHandler, IssueCommentHandler, IssueAssignmentContextHandler, IssueCreateHandler, IssueCreatePageHandler,
+  IssueDetailPageHandler, IssueAssignHandler, IssueCommentHandler, IssueAssignmentContextHandler,
   serve_issue_assignment_context_over, serve_issue_view_preferences_over,
   serve_issue_assign_response_over,
   serve_dispatch_handler_response_over,
@@ -52,7 +51,7 @@ import gunbc.roadmap.roadmap_launch_admission {
 }
 import gunbc.roadmap.roadmap_readiness { GapAccepted, GapDependencies, GapContract, GapNotAgentWork }
 import gunbc.roadmap.roadmap_execution_contract { OperatorExclusiveMode }
-import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance, srv2_preview_dashboard_instance }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, srv1_live_dashboard_instance, srv2_preview_dashboard_instance, srv1_lab_dashboard_instance }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
 import gunbc.roadmap.roadmap_component { roadmap_dispatch_asset_path, dispatch_client_js_source }
 import extdeps.http.server {
@@ -81,7 +80,7 @@ import gunbc.roadmap.roadmap_runtime_plan { roadmap_plan_projection }
 import gunbc.roadmap.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap.roadmap_page { roadmap_daily_workspace_page_for_projection_observed_stale_with_stylesheet }
 import gunbc.roadmap.roadmap_nesting { roadmap_memberships }
-import gunbc.roadmap.roadmap_event_log { StandingsUnobserved }
+import gunbc.roadmap.roadmap_event_log { StandingsUnobserved, IssueComment, EventPrincipalAuthenticated, LegacyEmailPrincipal }
 import gunbc.auth.session {
   AuthenticatedSession, AuthMethodGoogleOidc, SessionClientTrackerWeb, CsrfToken,
   SessionProfile, SessionCookieAbsent,
@@ -89,7 +88,6 @@ import gunbc.auth.session {
 import extdeps.uri { Uri, Https }
 import gunbc.principal_projection {
   PrincipalRef, principal_ref_label, principal_ref_eq, fabric_workflow_principal }
-import gunbc.roadmap.roadmap_event_log { IssueComment, EventPrincipalAuthenticated, LegacyEmailPrincipal }
 import gunbc.roadmap.roadmap_launch_admission { launch_host_unobserved_static_render }
 import gunbc.roadmap.roadmap_site_surface_render { roadmap_site_dispatch_url_path, roadmap_site_daily_url_path }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
@@ -268,6 +266,45 @@ test fn assign_without_csrf_refuses_without_the_clock() -> Bool {
     params: [PathParamBinding { name: "node_id", value: "demo-node" }],
   )
   r.status == 403 && string_contains(s: r.body, pattern: "CSRF token")
+}
+
+// THE AGENT DOOR THROUGH THE REAL ASSIGN ROUTE (pairing obligation for the request_authentication
+// admission): an attested lab-agent host-account peer on the LAB instance passes the write law and
+// reaches the handler's own lookup (the 404 is AFTER Permit, and the fixture plan has no such node,
+// which keeps the route off every host effect); the same request on a non-lab instance is 403 at the action axis.
+// The admitted write's author is the agent principal, never an operator.
+fn agent_door_assign(instance: HostDashboardInstance) -> ServeHttpResponse {
+  serve_issue_assign_response_over(
+    instance: instance,
+    plan: fn() { caller_supplied_plan_fixture() },
+    request: ServeHttpRequest {
+      method: POST,
+      path: "/issue/demo-node/assign",
+      body: "",
+      security: RequestSecurityContext {
+        access_path: AccessPathLocalDev,
+        authentication: HostAccountPeerEvidence { account: lab_agent_host_account, principal: lab_agent_principal },
+      },
+    },
+    params: [PathParamBinding { name: "node_id", value: "demo-node" }],
+  )
+}
+
+test fn the_lab_agent_door_reaches_the_assign_handler_and_a_non_lab_instance_refuses() -> Bool {
+  let lab = agent_door_assign(instance: srv1_lab_dashboard_instance())
+  let other = agent_door_assign(instance: srv2_preview_dashboard_instance())
+  let live = agent_door_assign(instance: srv1_live_dashboard_instance())
+  lab.status == 404 && string_contains(s: lab.body, pattern: "issue not found")
+    && other.status == 403 && live.status == 403
+}
+
+test fn the_admitted_agent_write_is_authored_by_the_agent_principal() -> Bool {
+  match authenticated_write_author_principal(security: RequestSecurityContext {
+    access_path: AccessPathLocalDev,
+    authentication: HostAccountPeerEvidence { account: lab_agent_host_account, principal: lab_agent_principal } }) {
+    Present { value: who } => principal_ref_eq(a: who, b: lab_agent_principal)
+    Absent => false
+  }
 }
 
 test fn unauthenticated_cleanup_refuses_before_actuation() -> Bool {
@@ -631,7 +668,7 @@ test fn witness_an_unrouted_path_is_refused_not_answered() -> Bool {
 // input reachable from here distinguishes the two, so the RED is not authorable and no stronger
 // assertion could have made it so.
 //
-// DESIGN 4b: a check whose RED cannot be authored is not a weak wall, it is a decoration, and worse
+// gunbc.design_argument::guarantee_ladder: a check whose RED cannot be authored is not a weak wall, it is a decoration, and worse
 // than absent because it gets cited as coverage. So the defect was closed by CONSTRUCTION instead
 // (gunbc.roadmap.roadmap_page: the ambient-reading fold is deleted, and every caller supplies its accepted
 // set), and this block says plainly what it still earns: that both arms render, that a refused plan
@@ -664,7 +701,7 @@ fn daily_page_html_over_plan(plan: RoadmapAuthorityProjection) -> String {
 
 // ── The route the plan parameter CANNOT reach refuses instead of answering ───────────────────────
 //
-// DESIGN 4b puts silent wrongness outside the ladder and forbids it outright, so the plan parameter
+// gunbc.design_argument::guarantee_ladder puts silent wrongness outside the ladder and forbids it outright, so the plan parameter
 // may not create a path where / answers 200 from a body rendered under an authority nobody can
 // name. The agreement is a declared fact of the call, and a caller that cannot declare it is
 // refused on that ONE route (review 63390). This is the executing evidence for that arm, and for
@@ -703,12 +740,6 @@ test fn witness_issue_detail_route_selects() -> Bool {
     && selects(method: GET, path: "/issue/some-node/assignment", want: IssueAssignmentContextHandler)
     && selects(method: POST, path: "/issue/some-node/assign", want: IssueAssignHandler)
     && selects(method: POST, path: "/issue/some-node/comment", want: IssueCommentHandler)
-}
-
-// THE CREATE ROUTES: POST /issues is the write, GET /issues/new is the composer page.
-test fn witness_issue_create_routes_select() -> Bool {
-  selects(method: POST, path: "/issues", want: IssueCreateHandler)
-    && selects(method: GET, path: "/issues/new", want: IssueCreatePageHandler)
 }
 
 // ── The durable assign route: validation, concurrency, and the fabric execution entry point ──────

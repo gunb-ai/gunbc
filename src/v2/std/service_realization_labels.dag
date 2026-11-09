@@ -20,3 +20,10 @@ fn realization_arm_pattern_label() -> Symbol { symbol_intern_lexeme(lexeme: "<ar
 fn realization_arm_payload_label() -> Symbol { symbol_intern_lexeme(lexeme: "<arm-payload>") }
 fn realization_status_code_label() -> Symbol { symbol_intern_lexeme(lexeme: "<status-code>") }
 fn realization_arm_doc_label() -> Symbol { symbol_intern_lexeme(lexeme: "<arm-doc>") }
+
+// An operation whose argv this lowering does not evaluate lowers as a MARKER entry instead of a
+// transport entry: Conj { <realization-unrealizable> -> the offending element, <unrealizable-reason> ->
+// Atom of the refusal reason }. The service and its other operations still lower; a call to the
+// operation refuses at the call site (v2.compiler.infer).
+fn realization_unrealizable_label() -> Symbol { symbol_intern_lexeme(lexeme: "<realization-unrealizable>") }
+fn realization_unrealizable_reason_label() -> Symbol { symbol_intern_lexeme(lexeme: "<unrealizable-reason>") }

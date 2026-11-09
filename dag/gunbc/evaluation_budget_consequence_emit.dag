@@ -20,7 +20,7 @@ import std.types { NonEmptyStr, String }
 // WHY A DEDICATED ARTIFACT AND NOT A LINE IN AN EXISTING ONE. `v1_interpreter_dispatch_generated.rs`
 // already reaches hand-written seed call sites, so hitchhiking there would have worked. Its SUBJECT
 // is interpreter primitive dispatch; mixing a second authority into one generated file for
-// convenience is the DESIGN section 3 fork wearing a generated file's clothes.
+// convenience is the gunbc.design_argument::single_authority fork wearing a generated file's clothes.
 //
 // THE LITERAL BELOW IS NOT AUTHORED HERE. This emitter EVALUATES evaluation_budget_refusal_code()
 // and escapes the result; the string "evaluation_budget_exceeded" appears nowhere in this module.

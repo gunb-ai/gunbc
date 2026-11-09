@@ -70,8 +70,8 @@ type FanRotationAbsence
 // `GoalDiverged` carries `FreeSemigroup<Deviation>`. Handing that parameter a single seven-arm
 // verdict would let a divergence list hold `RotationObserved` -- a healthy reading filed as a
 // mismatch -- which is the exact edit that algebra's own annotation says nothing in the type would
-// stop. Splitting the carriers makes that state unwritable rather than merely unwritten (DESIGN
-// section 4b: construction over validation).
+// stop. Splitting the carriers makes that state unwritable rather than merely unwritten (
+// gunbc.design_argument::guarantee_ladder: construction over validation).
 type FanTachHealthy
   = RotationObserved { header: NonEmptyStr, speed: RevolutionsPerMinute }
   | RotationCorrectlyAbsent { header: NonEmptyStr }
@@ -103,8 +103,8 @@ type FanTachDeviation
 type FanTachUnknown
   = ExpectedHeaderObservationMissing { header: NonEmptyStr, role: FanHeaderRole }
 
-// The per-header judgement, minted once so the classification logic stays one authority (DESIGN
-// section 2). The three extractors below are projections of this sum, never a second fold that
+// The per-header judgement, minted once so the classification logic stays one authority (
+// gunbc.design_argument::minimize_redundancy). The three extractors below are projections of this sum, never a second fold that
 // re-derives the same decision.
 type FanTachJudgement
   = JudgedHealthy { healthy: FanTachHealthy }
@@ -145,7 +145,7 @@ type FanTachReceipt sole_constructor {
 // assembly was unwritable. It was not: a mismatched pair was constructible, `inspect_fan_tach`
 // labelled the receipt from the subject's copy and `assess_fan_tach` joined windows against the
 // expectation's, so an inspection could be filed under a host that was never assessed. The host is
-// one fact, so it lives in one place (DESIGN section 3) and the inspection subject is DERIVED from
+// one fact, so it lives in one place (gunbc.design_argument::single_authority) and the inspection subject is DERIVED from
 // it -- which is construction rather than an equality check bolted on afterwards.
 type FanTachSubject sole_constructor {
   expectation: HostFanTachExpectation,
@@ -157,7 +157,7 @@ type FanTachAssessment = GoalAssessment<FanTachReceipt, FanTachDeviation, FanTac
 
 // THE CONSTRUCTORS LIVE HERE BECAUSE THE TYPES ARE `sole_constructor`: one authority mints them, so
 // no caller can assemble a subject that skips a field or pairs a goal with a floor the row did not
-// declare (DESIGN section 4b -- the invalid state has no constructor rather than a validator).
+// declare (gunbc.design_argument::guarantee_ladder -- the invalid state has no constructor rather than a validator).
 fn fan_tach_subject(
   expectation: HostFanTachExpectation,
   minimum_rotating: Int,

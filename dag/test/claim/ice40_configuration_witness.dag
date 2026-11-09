@@ -38,6 +38,7 @@ import extdeps.programmable_logic.ice40.supply {
   SlaveSpiConfiguration,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.algebra { length }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -126,7 +127,7 @@ test fn w_the_withdrawn_configuration_time_is_not_a_missing_one() -> Bool {
   }
   let high_is_withdrawn = match hx1k_configuration_time(c: HighFrequency) {
     ConfigurationTimeWithdrawnByVendor { note: n } =>
-      list_length(items: split(s: n as String, delimiter: "deleting")) > 1
+      length(xs: split(s: n as String, delimiter: "deleting")) > 1
     ConfigurationTimeTypical { elapsed: _ } => false
   }
   low == 53 && medium == 25 && high_is_withdrawn

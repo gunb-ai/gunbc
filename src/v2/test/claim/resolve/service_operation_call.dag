@@ -4,7 +4,7 @@ import std.algebra { empty_map, Cons, Empty, FreeMonoid }
 import std.occurrence_identity { LexicalValueOccurrence, OccurrenceSynthetic }
 import v2.compiler.resolve { empty_module_outcome_index, Namespace, NotDeclaring, ResolveContext, empty_canonical_symbol_set, resolve_node, scope_from_namespace }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
-import v2.extdeps.languages.dag { dag_grammar_atom, dag_language_model_surface_empty_prelude, dag_surface_edge, namespace_graft_namespace_body_node }
+import v2.extdeps.languages.dag { service_payload_node, dag_grammar_atom, dag_language_model_surface_empty_prelude, dag_surface_edge, namespace_graft_namespace_body_node }
 import v2.std.arrow_signature { declared_signature }
 import std.types { List }
 import v2.std.declaration_marker { test_code_index_empty }
@@ -23,7 +23,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // declared at <module>.<service segments...>.<Op>; a call names that path, and its callee resolves through
 // the same door as any qualified reference -- there is no second resolver.
 //
-// WHERE EACH PART OF THE ROUTE RUNS FOR REAL (DESIGN section 3: a witness supplies the inputs of the one
+// WHERE EACH PART OF THE ROUTE RUNS FOR REAL (gunbc.design_argument::single_authority: a witness supplies the inputs of the one
 // interface it discriminates, and the real path keeps executing):
 //   - a dotted CALL reaching the qualified-reference door: v2.test.claim.reference_closure resolves
 //     `v2.test.rc_dotted.rc_dotted_fn(p: p)` end to end through ingest, normalize and resolve;
@@ -71,7 +71,7 @@ fn soc_service_root() -> Node {
         label: Authored { name: ^s },
         target: namespace_graft_namespace_body_node(
           edges: [
-            Edge { label: Authored { name: ^F }, target: soc_payload(edges: [soc_operation(name: ^Run)]), declaration: NotADeclaration },
+            Edge { label: Authored { name: ^F }, target: service_payload_node(edges: [soc_operation(name: ^Run)], source: soc_atom(sym: ^F)), declaration: NotADeclaration },
             Edge { label: Authored { name: ^E }, target: soc_payload(edges: [soc_operation(name: ^Get)]), declaration: NotADeclaration }
           ],
           source: soc_atom(sym: ^s)

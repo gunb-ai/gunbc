@@ -41,9 +41,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // WHAT THIS DOES AND DOES NOT ANSWER, because the distinction is the whole point. It witnesses THE
 // CLASS: an undeclared bare type reference refuses under a narrower closure, and the SAME source
 // with the import line added compiles clean. It does NOT witness the repair of any particular
-// corpus module -- that is a per-module subject, and the sizing of what remains is recorded at
-// gunbc.compile_clean_diagnostic_policy unlisted_import_use_burndown_sizing beside the enforcement
-// row that consumes it.
+// corpus module -- that is a per-module subject.
 //
 // THE DEFINER IS SUPPLIED IN BOTH MANIFESTS AND DELETING IT IS NOT A SIMPLIFICATION. The unimported
 // name is a REAL declaration of a module present in the same manifest, so the only thing missing
@@ -254,7 +252,7 @@ test fn qualified_use_of_a_listed_import_charges_no_unlisted_import_use() -> Boo
 // THE GATE STILL GATES: the same qualified spelling with NO import edge is precisely the genuine
 // class -- the dependency is real and undeclared -- and must keep firing after the fix. This is
 // the control that keeps the visibility-map change from widening into "qualified names are always
-// fine", which would be the absorbing-fallback arm (DESIGN 5) wearing a repair's clothes.
+// fine", which would be the absorbing-fallback arm (gunbc.design_argument::fail_closed) wearing a repair's clothes.
 test fn qualified_use_without_any_import_still_charges_unlisted_import_use() -> Bool {
   ubtr_diagnosed_as(ubtr_qualified_run(ubtr_qualified_user_unlisted_source), "UnlistedImportUse")
 }
@@ -265,7 +263,7 @@ test fn qualified_use_without_any_import_still_charges_unlisted_import_use() -> 
 // The three repair arms above prove the selected false-positive rows disappear. They say nothing
 // about the boundary the repair must NOT cross: each repair widens an exclusion, and a widened
 // exclusion that also swallows the nearby true-positive population is the absorbing fallback
-// (DESIGN 5) wearing a repair's clothes. The arms below hold that boundary, one per repair, and
+// (gunbc.design_argument::fail_closed) wearing a repair's clothes. The arms below hold that boundary, one per repair, and
 // each names the mutation it exists to red.
 // ----------------------------------------------------------------------------------------------
 

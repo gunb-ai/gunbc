@@ -1,9 +1,9 @@
 module gunbc.heal_candidate
 
+import std.bytes { utf8_encode_bytes }
 import std.types { NonEmptyStr, String, List, Int, Bool, CommitSha, FilePath }
 import std.integer { UInt8 }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.bytes { utf8_encode_bytes }
 import std.algebra { trim }
 import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -18,7 +18,7 @@ import extdeps.git { git_pathspec_literal }
 import extdeps.git.plumbing
 import extdeps.git.inspect
 import extdeps.shell
-import gunbc.ledger_row_coherence { heal_repair_declaration_artifact_path }
+import gunbc.heal_repair_declaration { heal_repair_declaration_artifact_path }
 import gunbc.heal_publication_boundary {
   CandidateEntry, HealRepairCandidate,
   encode_heal_repair_candidate, decode_heal_repair_candidate, CandidateDecoded, CandidateUndecodable,

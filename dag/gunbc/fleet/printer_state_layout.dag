@@ -9,11 +9,8 @@ import gunbc.fleet.printer_workflow_artifact { printer_starts_path, printer_star
 import gunbc.fleet.print_record_stores { print_request_directory_target, print_completion_directory_target, print_completion_path, completion_record_name, legacy_completed_suffix }
 import gunbc.fleet.printer_actuation { printer_start_claim_directory_target, printer_start_claim_path, printer_start_claim_slots }
 import gunbc.fleet.printer_start_evidence_store { start_evidence_legacy_entry, start_evidence_name_from_legacy, start_evidence_path, start_evidence_directory_target }
-import gunbc.fleet.printer_execution_hold { printer_execution_hold_directory_target, printer_execution_hold_path, hold_key, printer_execution_hold_legacy_entry, printer_execution_hold_legacy_state, LegacyHoldAbsent, LegacyHoldFenced, LegacyHoldLive, LegacyHoldUnreadable, printer_execution_hold_fence_begin, HoldFenceBegun, HoldFenceRefused, printer_execution_hold_fence_entry, printer_execution_hold_fence_handover, HoldHandedOver, HoldHandoverRefused }
+import gunbc.fleet.printer_execution_hold { printer_hold_broker_standing, printer_execution_hold_directory_target, printer_execution_hold_path, hold_key, printer_execution_hold_legacy_entry, printer_execution_hold_legacy_state, LegacyHoldAbsent, LegacyHoldFenced, LegacyHoldLive, LegacyHoldUnreadable, printer_execution_hold_fence_begin, HoldFenceBegun, HoldFenceRefused, printer_execution_hold_fence_entry, printer_execution_hold_fence_handover, HoldHandedOver, HoldHandoverRefused, printer_legacy_hold_release, LegacyHoldReleased, LegacyHoldReleaseRefused }
 import product.printed_chassis.assembly_inventory_store { cassette_inventory_directory_target, cassette_inventory_path }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { bound_dissolution }
-import std.decl_ref { decl_ref }
 
 // THE PRINTER STATE TREE'S LAYOUT: what directories a printer pass demands (printer_state_directories) and the one
 // step that carries the flat layout the printer-starts directory held until 2026-10-30 onto the per-store members
@@ -40,19 +37,6 @@ import std.decl_ref { decl_ref }
 data legacy_claimed_suffix: String = ".claimed"
 data legacy_claim_evidence_marker: String = ".claimed."
 data legacy_inventory_prefix: String = "cassette-prototype-inventory."
-
-// THE MOVE IS ADMITTED DEBT WITH AN END: printer_state_move runs on every print pass only while some printing host may
-// still hold a flat printer-starts entry. Its trigger is the typed drain evidence (every printing host's legacy
-// inventory read as clean), which does not exist yet; when it does, the move, legacy_target, retire_hold and the
-// store mints' permanent legacy refusals are deleted together. Until then it is not removed, because a host with
-// a legacy entry would then refuse permanently with nothing to carry it forward.
-data printer_state_move_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.fleet.printer_state_layout", decl_name: "printer_state_move"),
-    reason: "the one-time carry of the flat printer-starts layout onto per-store members runs on every print pass with no end condition until every printing host's legacy inventory is read as drained",
-    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.fleet.printer_state_layout", decl_name: "printer_state_hosts_drained"))
-  )
-]
 
 type PrinterStateMove = PrinterStateMoved | PrinterStateMoveRefused { cause: String }
 
@@ -125,7 +109,6 @@ fn legacy_target(tree: HostStateTree, name: String) -> String? {
   }
   none
 }
-
 
 // THE HOLD'S ENTRIES, LISTED AFTER THE OLD HOLD WAS PROVEN FREE: acquiring and releasing it wrote new generations
 // into the parent, so the list taken before the proof is stale and moving only it would leave those behind.
@@ -232,7 +215,10 @@ fn legacy_writer_exclusion_causes(tree: HostStateTree) -> List<String> {
     LegacyHoldAbsent => fence_taken(tree: tree)
     LegacyHoldUnreadable { detail: d } => [d]
     LegacyHoldFenced { generation: _ } => fence_taken(tree: tree)
-    LegacyHoldLive { names: _ } => fence_taken(tree: tree)
+    LegacyHoldLive { names: _ } => match printer_legacy_hold_release(tree: tree, standing_of:printer_hold_broker_standing) {
+      LegacyHoldReleased => fence_taken(tree: tree)
+      LegacyHoldReleaseRefused { cause: c } => [join(["the legacy printer controller is not excluded; nothing was moved: ", c], "")]
+    }
   }
 }
 

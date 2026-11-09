@@ -18,7 +18,7 @@ import extdeps.uri { Uri, Https }
 // THE DATASHEET LOCATORS ARE CONSUMED, NOT RE-AUTHORED (review 52024). Both
 // Ampere datasheet anchors already exist in extdeps.cpu.ampere, so these are
 // bindings to those declarations rather than second copies of the same URIs —
-// a re-typed locator is the parallel authority DESIGN section 3 forbids, and it
+// a re-typed locator is the parallel authority gunbc.design_argument::single_authority forbids, and it
 // rots independently the day Ampere moves an asset.
 data extdeps_external_authority_anchor: ExternalAuthority = ampere_altra_max_rev_a1_datasheet_authority
 
@@ -31,7 +31,7 @@ data ocp_mt_jade_specification_authority: ExternalAuthority = mt_jade_subject_au
 // Ampere's Altra processor datasheets and the OCP Mt. Jade motherboard
 // specification — so it is a shared subject rather than a property of either
 // document, and repeating it inside both of their modules would be the fork
-// DESIGN section 3 forbids. What the designator NAMES is deliberately left
+// gunbc.design_argument::single_authority forbids. What the designator NAMES is deliberately left
 // open: ILM most plausibly expands to Independent Loading Mechanism, which is
 // retention hardware, while the datasheet wording is 'seated in ILM4926
 // socket' and a socket body is a different part that may come from a different
@@ -41,7 +41,7 @@ data ocp_mt_jade_specification_authority: ExternalAuthority = mt_jade_subject_au
 // be closing by our guess a question no cited document answers.
 // The folder deliberately does not say socket. Placing this under a socket
 // path would decide by directory the exact question the referent axis leaves
-// open, and paths are discriminators rather than gospel (DESIGN section 3).
+// open, and paths are discriminators rather than gospel (gunbc.design_argument::single_authority).
 // 'cpu_attachment' names what the designation is FOR — how a processor is
 // attached to a board — which every candidate referent has in common.
 type ProcessorAttachmentDesignation {
@@ -318,7 +318,7 @@ type DesignationResolutionStanding
 // THE LAND PATTERN IS A FIELD OF THE SOCKET BODY AND OF NOTHING ELSE. It is the board-side
 // termination of the part the processor lands in, so ConstituentStanding deliberately has no
 // such field: attaching a land pattern to a retention assembly or to mounting hardware has no
-// representation rather than being caught by a witness after the fact (DESIGN section 4b --
+// representation rather than being caught by a witness after the fact (gunbc.design_argument::guarantee_ladder --
 // construction over validation). The 4,926 processor contacts do not derive it either; they
 // are the package's side of a connection whose other side is the socket's own geometry.
 type ConstituentStanding {
@@ -399,7 +399,7 @@ fn attachment_footprint_may_emit(a: AttachmentStanding) -> Bool {
 // wrong: the gaps are a fact about ONE part, so folding them into a predicate over an arbitrary
 // AttachmentStanding made that predicate false for EVERY input including its own synthetic
 // positive control. A gate no input can turn green is not a strict gate, it is a decoration --
-// permanently red by construction, carrying no information (DESIGN section 4b).
+// permanently red by construction, carrying no information (gunbc.design_argument::guarantee_ladder).
 //
 // So the two questions are separated: does a standing describe an identified socket body with an
 // established land pattern (above, flippable, and its RED and GREEN controls stay authorable),

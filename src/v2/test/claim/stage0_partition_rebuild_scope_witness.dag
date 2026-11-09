@@ -29,6 +29,7 @@ import gunbc.stage0_partition_rebuild_scope {
   stage0_partition_rebuild_decision,
   stage0_partition_rebuild_decision_line,
   stage0_partition_rebuild_decision_today,
+  stage0_partition_rebuild_requires_whole_compiler_today,
   stage0_partition_rebuild_excluded_today,
   stage0_partition_rebuild_packages_today,
   stage0_partition_rebuild_release_scope_empty_today,
@@ -620,4 +621,29 @@ test fn witness_layout_module_storage_path_honours_namespace_root_holds() -> Boo
     && layout_module_storage_path(module: "gunbc.source_layout") == Present { value: "dag/gunbc/source_layout.dag" }
     && layout_module_storage_path(module: "v2") == Absent
     && layout_module_storage_path(module: "gunbc") == Absent
+}
+
+// The host consumes this exact projection when choosing the rebuild callback. The old host
+// asked only whether a partition moved, so this shared-input-only drift reached a refusal.
+test fn witness_shared_layout_input_selects_whole_build_holds() -> Bool {
+  stage0_partition_rebuild_requires_whole_compiler_today(
+    changed_mirrors: ["gunbc_stage0_stage0_crate_layout_generated.rs"],
+    unlocatable: [], host_shell_modules: [])
+}
+
+test fn witness_partition_owned_drift_keeps_partition_build_holds() -> Bool {
+  let decision = stage0_partition_rebuild_decision_today(
+    changed_mirrors: ["std_effects.rs"], unlocatable: [], host_shell_modules: [])
+  match decision {
+    PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: _ } =>
+      !stage0_partition_rebuild_requires_whole_compiler_today(
+        changed_mirrors: ["std_effects.rs"], unlocatable: [], host_shell_modules: [])
+    _ => false
+  }
+}
+
+test fn witness_unlocatable_drift_cannot_select_whole_build_holds() -> Bool {
+  !stage0_partition_rebuild_requires_whole_compiler_today(
+    changed_mirrors: ["gunbc_stage0_stage0_crate_layout_generated.rs"],
+    unlocatable: ["unknown"], host_shell_modules: [])
 }
