@@ -86,6 +86,44 @@ legacy hold entries in the parent (write the dissolution on the carrier, like `p
    on main), plus the store-unavailable fact pinned at the fence primitive. Green half exercises the
    injected publisher per the re-own DI convention.
 
+## Revision after fierce-bee-888's two questions (repo-only evidence; srv1 untouched)
+
+Q: does a runnable FLAT-layout printer controller still exist that could re-acquire `fleet-print-controller.<n>`
+in the parent? **No**, per the repo's deployed-unit records:
+- The current controller acquires its controller hold ONLY in the SPLIT store —
+  `printer_execution_hold.dag:62` (`printer_execution_hold_path` = `execution-hold` member) and `:156-159`
+  (`printer_execution_hold_store` -> `PrinterExecutionHoldStore { root: execution-hold }`); the runtime dance
+  (`:338-360`) acquires at `store.root`, never the flat parent.
+- The ONLY current acquirer of the flat parent slot is the migration fence itself (`:113`
+  `file_hold_acquire(root: printer_starts_path, ...)`). No other non-test code acquires the flat slot.
+- No print/fleet-controller `.service` or `.timer` exists anywhere in the repo (only
+  `gunbc-site-pxe-edge(.http).service`, `gunbc-ghrunner`, `gunbc-microvm-slot@<slot>.service`, and a BMC
+  `phosphor-pid-control.service`). `provisioning/srv1/` holds only `gunbc-ghrunner.sudoers`.
+- The controller is per-actuation, not resident (`printer_workflow_run.dag:73-81` files an OPERATOR card to
+  confirm "no fleet controller is driving the printer" before a hold is released).
+=> srv1's `fleet-print-controller.1/.2` are inert pre-split residues; no runnable unit re-acquires them, and a
+non-root principal cannot re-create them now the parent is root-only. **The fence protects against nothing that
+can run.**
+
+Revised repair (preferred; pending fierce-bee-888 go / operator confirmation of srv1 unit state):
+**rm-after-copy.** Once the legacy generations are copied + byte-verified into the SPLIT store, retire the
+legacy parent entries with the ALREADY-GRANTED privileged `rm` (`executor_privileged_operation.dag`
+`RemoveDirectoryTree` -> `sudo rm -rf`, `:79/:172-174/:456`, RunsAsRoot), and drop the fence's parent
+create-new for the root-only-parent case. This needs NO new sudoers grant, NO edit to the shared
+`durable_cas_file_store` write path, and NO create-new primitive. It is symlink-safe: `unlink` does not follow
+a symlink, so `rm` of a legacy entry removes the link, never its target.
+
+Rejected realization (mv -n): `rename(2)` moves a symlink source AS a symlink, and the store's read-back
+`Filesystem.Read` FOLLOWS it, so a symlinked staged source can "verify" while the persisted slot is a symlink —
+re-opening the #15908 symlink hole. Non-job-writable staging is the only guard, but the unprivileged fence then
+cannot populate it, so `mv -n` from staging is not sound without a second privileged act. mv -n is dropped.
+
+Residual risk: dropping the fence's active exclusion is justified only by "no runnable flat-layout controller."
+Repo records are the allowed lens; if srv1 runs a controller unit not captured in the repo/provisioning, the
+protection is lost — the operator should confirm srv1 has no enabled printer-controller unit/timer before the
+fence is dropped. Otherwise keep the fence and pursue a root-owned O_EXCL publish of model-derived bytes (the
+security-owner's call).
+
 ## Blockers (both are above this session's authority; neither is guessable)
 
 - **Blocker A — sudoers grant row (operator's call).** A new sudoers-granted privileged operation is the
