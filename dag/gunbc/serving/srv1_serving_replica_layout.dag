@@ -775,3 +775,82 @@ data srv1_serving_replica_layout_frontier: List<FrontierRow> = [
     dissolution: unbound_dissolution(description: "a witness on srv1 reads the PLE allocation from the process's smaps or the nvidia driver's proc entry and asserts it equals 26.8 GiB; the fleet_host_budget srv1 claim imports this row. SUFFICIENT for dissolving this row and marking the budget as independently matched."),
   ),
 ]
+
+// ── fleet boot-survival audit (D20, read-only observations) ────────────────────────────────
+//
+// Durability's sibling question: do the NEIGHBOURING services that share these hosts survive a
+// reboot? Observed read-only 2026-11-09 via `systemctl is-enabled` (srv1 direct; srv2/srv3/srv4
+// through the fleet key) — no host touched; findings are reported, and fixes land only in .dag per
+// the lane's brief. The verdict vocabulary keeps UNKNOWN honest: an unreadable host is Unreadable,
+// never a fabricated EnabledAtBoot.
+
+type Srv1BootSurvival
+  = EnabledAtBoot
+  | UserScopeUnit
+  | RestartUnlessStopped
+  | NotInstalled
+  | Unreadable
+
+type BootSurvivalObservation {
+  host: NonEmptyStr
+  unit: NonEmptyStr
+  verdict: Srv1BootSurvival
+  evidence: NonEmptyStr
+}
+
+fn srv1_boot_survival_eq(a: Srv1BootSurvival, b: Srv1BootSurvival) -> Bool {
+  match a {
+    EnabledAtBoot => match b { EnabledAtBoot => true, _ => false }
+    UserScopeUnit => match b { UserScopeUnit => true, _ => false }
+    RestartUnlessStopped => match b { RestartUnlessStopped => true, _ => false }
+    NotInstalled => match b { NotInstalled => true, _ => false }
+    Unreadable => match b { Unreadable => true, _ => false }
+  }
+}
+
+// Consumers ask the question instead of naming constructors (constructors are module-internal).
+fn srv1_boot_survival_verdict_is(o: BootSurvivalObservation, v: Srv1BootSurvival) -> Bool {
+  srv1_boot_survival_eq(a: o.verdict, b: v)
+}
+
+fn srv1_audit_entry_is_unreadable(o: BootSurvivalObservation) -> Bool { srv1_boot_survival_eq(a: o.verdict, b: Unreadable) }
+fn srv1_audit_entry_is_enabled_at_boot(o: BootSurvivalObservation) -> Bool { srv1_boot_survival_eq(a: o.verdict, b: EnabledAtBoot) }
+fn srv1_audit_entry_is_user_scope(o: BootSurvivalObservation) -> Bool { srv1_boot_survival_eq(a: o.verdict, b: UserScopeUnit) }
+fn srv1_audit_entry_is_restart_unless_stopped(o: BootSurvivalObservation) -> Bool { srv1_boot_survival_eq(a: o.verdict, b: RestartUnlessStopped) }
+
+data srv1_fleet_boot_survival_audit: List<BootSurvivalObservation> = [
+  BootSurvivalObservation { host: "srv3", unit: "strata-pool.service", verdict: EnabledAtBoot, evidence: "systemctl is-enabled reports enabled (2026-11-09)" },
+  BootSurvivalObservation { host: "srv4", unit: "gunbc-srv4-daily-engine.service", verdict: EnabledAtBoot, evidence: "systemctl is-enabled reports enabled (2026-11-09)" },
+  BootSurvivalObservation { host: "srv4", unit: "gunbc-srv4-tls.service", verdict: EnabledAtBoot, evidence: "systemctl is-enabled reports enabled (2026-11-09)" },
+  BootSurvivalObservation { host: "srv2", unit: "ctrl-vast-pool (tcp :3737)", verdict: UserScopeUnit, evidence: "it is the dashboard's user-scope unit, not a system unit: a reboot with no logged-in user leaves the vast pool down until the user session starts" },
+  BootSurvivalObservation { host: "h11-05", unit: "not read (ssh refused the fleet key from srv1)", verdict: Unreadable, evidence: "2026-11-09: no verdict; must NOT be reported as healthy" },
+  BootSurvivalObservation { host: "h11-07", unit: "not read (ssh refused the fleet key from srv1)", verdict: Unreadable, evidence: "2026-11-09: no verdict; must NOT be reported as healthy" },
+  BootSurvivalObservation { host: "h11-08", unit: "not read (ssh refused the fleet key from srv1)", verdict: Unreadable, evidence: "2026-11-09: no verdict; must NOT be reported as healthy" },
+  BootSurvivalObservation { host: "h11-88", unit: "not read (ssh refused the fleet key from srv1)", verdict: Unreadable, evidence: "2026-11-09: no verdict; must NOT be reported as healthy" },
+  BootSurvivalObservation { host: "srv1", unit: "gunbc-router", verdict: RestartUnlessStopped, evidence: "docker restart policy unless-stopped: survives dockerd restart and boot; the brief records this as fine" },
+  BootSurvivalObservation { host: "srv1", unit: "session-dashboard", verdict: UserScopeUnit, evidence: "user-scope unit by design (the brief records this as fine)" },
+]
+
+// ── srv1 test-only artifacts (F27) ─────────────────────────────────────────────────────────
+//
+// lil's image contract (launcher.py + image-contract.json, mounted into the container) hashes the
+// runtime it ships; these six host paths are the TEST-ONLY extras that accumulated under ~/lil during
+// the two-replica work and belong to no module. NONE is deleted: adoption into the repo or an explicit
+// operator deletion is the only ending (deleting without asking is the failure mode this row exists to
+// prevent). nccl_test.py may be consumed by lane A (its nccl_probe.py rides #16116) — a deletion would
+// need lane A's and the operator's sign-off first.
+
+data srv1_test_only_artifacts: List<NonEmptyStr> = [
+  "/home/briansrls/lil/patch/",
+  "/home/briansrls/lil/serve_test*.sh",
+  "/home/briansrls/lil/warm150k.py",
+  "/home/briansrls/lil/run_arm.sh",
+  "/home/briansrls/lil/dmon_sum.py",
+  "/home/briansrls/lil/nccl_test.py",
+]
+
+data srv1_test_only_artifacts_frontier: FrontierRow = frontier_row_decl(
+  ref: decl_ref(module_path: "gunbc.serving.srv1_serving_replica_layout", decl_name: "srv1_test_only_artifacts"),
+  reason: "six test-only artifacts sit on srv1 under ~/lil owned by no module: no receipt pins their bytes, no witness reads them, and any of them could be deleted or edited unnoticed. Each must either be adopted into the repo as a hash-pinned receipt owned by a module, or deleted by an explicit operator decision. nccl_test.py additionally may be consumed by lane A (nccl_probe.py on #16116), so its disposition needs lane A's input too.",
+  dissolution: unbound_dissolution(description: "every member of srv1_test_only_artifacts has a disposition: a repo module owns an adopted, hash-pinned copy, or the operator recorded a deletion. SUFFICIENT when the inventory is empty with a recorded disposition per member."),
+)

@@ -19,6 +19,10 @@ import gunbc.serving.srv1_serving_replica_layout {
   srv1_contract_verifies_shm_size, srv1_contract_verifies_cgroup_parent,
   srv1_contract_reports_drift, srv1_contract_exits_nonzero, srv1_contract_may_destroy, srv1_contract_restarts_on_failure,
   Srv1ServingReplicaSpec,
+  srv1_fleet_boot_survival_audit, srv1_audit_entry_is_unreadable, srv1_audit_entry_is_enabled_at_boot,
+  srv1_audit_entry_is_user_scope, srv1_audit_entry_is_restart_unless_stopped,
+  srv1_test_only_artifacts,
+  BootSurvivalObservation,
 }
 import extdeps.container.nvidia_container_toolkit { nvidia_cdi_device_selector_of, nvidia_cdi_device_name_prefix }
 import gunbc.serving.serving_host_memory { srv1_lmcache_l2_configured }
@@ -292,4 +296,29 @@ test fn the_boot_installer_drop_is_rostered_typed() -> Bool {
     Superseded { ruling: _, decision_record: _, loss_holder: _, declaration: _ } => false
     Dissolved { removal: _, declaration: _ } => false
   }
+}
+
+// ── D20: the boot-survival audit keeps UNKNOWN honest ─────────────────────────────────────
+// An unreadable host must read Unreadable, never a fabricated healthy verdict; the enabled services
+// the audit claims (srv3/srv4) must carry the enabled verdict, srv2's pool the user-scope one.
+test fn the_boot_survival_audit_keeps_unknown_unreadable() -> Bool {
+  let a = srv1_fleet_boot_survival_audit in
+    any(a, o => o.host == "h11-05" && srv1_audit_entry_is_unreadable(o))
+      && any(a, o => o.host == "h11-07" && srv1_audit_entry_is_unreadable(o))
+      && any(a, o => o.host == "h11-08" && srv1_audit_entry_is_unreadable(o))
+      && any(a, o => o.host == "h11-88" && srv1_audit_entry_is_unreadable(o))
+      && !any(a, o => string_contains(s: o.host, pattern: "h11") && srv1_audit_entry_is_enabled_at_boot(o))
+      && any(a, o => o.host == "srv3" && o.unit == "strata-pool.service" && srv1_audit_entry_is_enabled_at_boot(o))
+      && any(a, o => o.host == "srv2" && string_contains(s: o.unit, pattern: "ctrl-vast-pool") && srv1_audit_entry_is_user_scope(o))
+      && any(a, o => o.host == "srv1" && o.unit == "gunbc-router" && srv1_audit_entry_is_restart_unless_stopped(o))
+}
+
+// ── F27: the test-only artifact inventory is the complete six-path list ───────────────────
+test fn the_test_artifact_inventory_covers_the_six_paths() -> Bool {
+  let arts = srv1_test_only_artifacts in
+    length(xs: arts) == 6
+      && any(arts, p => string_contains(s: p, pattern: "nccl_test.py"))
+      && any(arts, p => string_contains(s: p, pattern: "serve_test"))
+      && any(arts, p => string_contains(s: p, pattern: "warm150k"))
+      && any(arts, p => string_contains(s: p, pattern: "/patch/"))
 }
