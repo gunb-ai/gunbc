@@ -8341,13 +8341,15 @@ fn call_function_dispatch(
 /// `Jwt` shape, and the shape this class was reported with. Also moved, as a consequence of the base:
 /// a default no longer sees the CALLING frame's locals, only the program's entry environment — which
 /// is the rule the callee's body already lives under, and the reason a default cannot spell a caller's
-/// local. LEFT ALONE: every other read in a default — a function, a data row, an arm of a coproduct
-/// the declaring module IMPORTED — is still answered by that same entry environment, because a v1
-/// runtime has no per-module value environment to relocate it into; only the source (the fn node's
-/// span file, `module_of_site`) says which module wrote the declaration. That residual half is the
-/// latent population `gunbc.recurring_failure_mode::a_field_default_is_evaluated_in_the_callers_scope`
-/// carries on its row as the climb to `StructurallyGuaranteed`, and the witness pair names which
-/// half it tests: `test.claim.field_default_declaring_scope_witness` covers the moved half, and
+/// local. LEFT ALONE, because it was never broken: every other read keeps the answer it has today. A
+/// `data` row answers from the program-wide eager data environment (which is why
+/// `extdeps.cloud.gcp.sts`'s `scope: NonEmptyStr = cloud_platform_scope`, a default reading a row from
+/// ANOTHER module, was never among the failures while `Jwt` was), and a call resolves through
+/// `lookup_fn`, which is already anchored to the referring file. So this change touches exactly the
+/// arm population — the one read the runtime can answer no other way — and the latent remainder of the
+/// class is what `gunbc.recurring_failure_mode::a_field_default_is_evaluated_in_the_callers_scope`
+/// carries on its row as the climb to `StructurallyGuaranteed`. The witness pair names which half it
+/// tests: `test.claim.field_default_declaring_scope_witness` covers the moved half, and
 /// `test.claim.field_default_importing_caller_control` is green on both sides to prove the moved
 /// half does not disturb a caller that DOES import the arm.
 fn declaring_scope_env(
