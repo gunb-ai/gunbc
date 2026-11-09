@@ -977,9 +977,9 @@ fn fci1_live_reserve_and_observe_available_in(
         RequiredBuildCellLifetimeSampleUndecodable => exit_failure(reason: "RequiredBuildCellObservationRefused")
         RequiredBuildCellLifetimeSampleDecoded { sample: sample } => fabric_ci_write_wire(
           path: path,
-      }
           wire: fabric_ci_evidence_wire(value: required_build_cell_lifetime_sample_wire(sample: sample) as NonEmptyStr),
         )
+      }
       }
     } }
     NoCellAdmissible { considered: _, refused: _ } => exit_failure(reason: fci1_cell_reservation_wire(reservation: reserved))
@@ -992,6 +992,7 @@ fn fci1_live_reserve_and_observe_available_in(
   }
   } }
 }
+  }
 
 fn fci1_live_binding_sample_wire_in(store: FabricAllocationStore, path: String) -> ProcessExit {
   // The binding is observed only for a selected subject. A refusal is not an unreadable store,
@@ -1004,9 +1005,9 @@ fn fci1_live_binding_sample_wire_in(store: FabricAllocationStore, path: String) 
     RequiredBuildCellLifetimeSampleUndecodable => exit_failure(reason: "RequiredBuildCellObservationRefused")
     RequiredBuildCellLifetimeSampleDecoded { sample: sample } => fabric_ci_write_wire(
       path: path,
-  }
       wire: fabric_ci_evidence_wire(value: required_build_cell_lifetime_sample_wire(sample: sample) as NonEmptyStr),
     )
+      }
   }
 }
 
