@@ -128,6 +128,18 @@ type SlotActuationOutcome
   | SlotNotInstalled { unit: NonEmptyStr }
   | SlotDrainedAndMasked { unit: NonEmptyStr }
   | SlotDrainPending { unit: NonEmptyStr, cause: SlotDrainPendingCause }
+  // THE RETIREMENT IS WITHHELD BY THE REPLACEMENT GATE: the unit is a required retiree whose replacement
+  // has not proven itself -- registered in the org roster AND one job completed -- on this run's readback.
+  // Nothing was touched: the unit keeps running, which is the fail-closed direction, and the cause names
+  // the replacement the plan is waiting on. NOT settled, because while this stands the committed width is
+  // not the live population and the host's quota must not be sized as if it were.
+  | SlotRetirementWithheld { unit: NonEmptyStr, cause: String }
+  // THE RETIREMENT IS REFUSED: the unit is not this plan's to take at all -- hand-started working capacity
+  // outside every derived population, a unit the committed population still desires while a retiree list
+  // claims it, or a drain candidate nothing declares. No readback on a replacement moves this; the cause
+  // says what the operator has to decide. Nothing was touched, and it is NOT settled: a plan carrying a
+  // refusal has not reached its declared population either.
+  | SlotRetirementRefused { unit: NonEmptyStr, cause: String }
   | SlotActuationRefused { unit: NonEmptyStr, step: String, reason: String }
 
 fn slot_actuation_settled(o: SlotActuationOutcome) -> Bool {
@@ -137,6 +149,8 @@ fn slot_actuation_settled(o: SlotActuationOutcome) -> Bool {
     SlotNotInstalled { unit: _ } => true
     SlotDrainedAndMasked { unit: _ } => true
     SlotDrainPending { unit: _, cause: _ } => false
+    SlotRetirementWithheld { unit: _, cause: _ } => false
+    SlotRetirementRefused { unit: _, cause: _ } => false
     SlotActuationRefused { unit: _, step: _, reason: _ } => false
   }
 }
@@ -148,6 +162,8 @@ fn slot_actuation_outcome_wire(o: SlotActuationOutcome) -> String {
     SlotNotInstalled { unit: u } => join(["actuation ", u as String, " not-installed (LoadState=not-found: nothing to drain)"], "")
     SlotDrainedAndMasked { unit: u } => join(["actuation ", u as String, " drained-masked-and-read-back"], "")
     SlotDrainPending { unit: u, cause: c } => join(["actuation ", u as String, " DRAIN-PENDING ", slot_drain_pending_cause_wire(c: c)], "")
+    SlotRetirementWithheld { unit: u, cause: why } => join(["actuation ", u as String, " RETIRE-WITHHELD ", why], "")
+    SlotRetirementRefused { unit: u, cause: why } => join(["actuation ", u as String, " RETIRE-REFUSED ", why], "")
     SlotActuationRefused { unit: u, step: st, reason: r } => join(["actuation ", u as String, " REFUSED step=", st, " ", r], "")
   }
 }

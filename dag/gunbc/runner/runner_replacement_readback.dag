@@ -1,0 +1,542 @@
+module gunbc.runner.runner_replacement_readback
+
+// THE SECOND PHASE OF A POPULATION MOVE: NOTHING IS RETIRED UNTIL ITS REPLACEMENT HAS RUN A JOB.
+//
+// WHY THIS EXISTS (operator brief 2026-11-09; gunb-ai/gunbc#16137 recorded the case). A committed width
+// move changes BOTH ends of a host's runner population in one plan: the slots that leave the population
+// become required retirees, and the slots that enter it are provisioned by the same run. `converge_plan`
+// emitted both action kinds together, which means a run against srv3/srv4 would have stopped the two
+// hand-started runners holding that host's capacity (19/20) in the same minute it created slots 06/07 --
+// slots with no install tree, no registration and no job. The capacity that was serving work would be
+// gone, and the capacity meant to replace it would not yet exist. gunbc.design_argument::fail_closed
+// decides the direction: an unproven replacement keeps the OLD runner running, because the two failure
+// directions are not symmetric -- a withheld retirement is a plan that says "not yet" and is retried,
+// while a premature drain is a host that stopped serving builds until an operator notices.
+//
+// TWO PHASES, AND THE PLAN IS ALLOWED TO SAY SO. Phase one provisions. Phase two retires, and it may
+// only be entered on an INDEPENDENT READBACK that the replacing slot registered and then completed a
+// job. This module owns the join and the per-unit decision; the consumer is the converge drain leg
+// (`runner_host_drain_leg_decided` in gunbc.runner.runner_host_file_converge). The decision is
+// deliberately TOTAL over the candidates: a candidate the gate never decided is drained by nobody,
+// because the consumer's own arm is fail-closed -- so forgetting to consult this gate stops retirements
+// rather than authorizing them. A gate whose default is "act" is not a gate.
+//
+// THE READBACK IS JOINED FROM OBSERVATIONS THAT ALREADY EXIST -- nothing here invents an instrument:
+//   * REGISTRATION: the org runner roster read (gunbc.fleet.organization_runner_roster_read, whose
+//     carrier is gunbc.fleet.fleet_runner_connectivity::OrganizationRunnerRosterEvidence). The slot's
+//     runner name appears there, online. A PARTIAL roster read cannot support "not registered", so it
+//     yields an unreadable standing rather than a negative one -- an absent page is not an absent runner.
+//   * A COMPLETED JOB: the qualification run readback (gunbc.runner.runner_qualification_dispatch).
+//     `RunVerdictCollected` says the registered runner was handed the floor job and STARTED it; it does
+//     not say the job PASSED, so this join requires the collected conclusion to be Success. A collected
+//     run that concluded Failure is `JobNotConcluded`, not a proof.
+// Absent or unreadable evidence in either leg is its own typed arm and keeps the retiree running: the
+// absence of an observation is never read as a negative observation.
+//
+// THE HAND-STARTED SLOTS ARE WORKING CAPACITY, NOT UNKNOWN OCCUPANTS. srv3/srv4 19/20 and srv1 07-09 are
+// runners an operator started that sit OUTSIDE the derived population. The model has never admitted them,
+// so it has no evidence about what they are running -- and the only honest reading of that is that they
+// may be carrying work. They are therefore never an unknown occupant to kill: a drain candidate that is
+// live on the host while desired by nobody and retired by nobody is classified `HandStartedWorkingCapacity`
+// and REFUSED, not withheld. Withholding would let the same plan drain it as soon as an unrelated
+// replacement proved its first job; refusing says this unit is not this plan's to take, and the operator's
+// decision -- which `retire_refusal_cause_wire` states -- is the only thing that moves it. This is the
+// rule the cap phase already states in prose for units outside the two declared lists
+// (runner_host_cap_extras); here it is a type, so it can only be violated by deleting it.
+
+import std.optional { Absent, Present }
+import std.algebra { length }
+import std.types { Bool, HostIdentity, Int, List, NonEmptyStr, String }
+import extdeps.github.ci_runner { GitHubSelfHostedRunnerRegistration, github_runner_registration_is_online }
+import extdeps.github.workflow_runs {
+  WorkflowRun, WorkflowJobRun, Success, Failure, Cancelled, Neutral, Skipped,
+  TimedOut, ActionRequired, StartupFailure,
+}
+import gunbc.fleet.fleet_runner_connectivity {
+  OrganizationRunnerRosterEvidence, RosterObserved, RosterObservedPartial, RosterReadUnavailable,
+}
+import gunbc.runner.runner_qualification_dispatch {
+  QualificationRunVerdict, RunVerdictCollected, RunVerdictRefused, QualificationRunRefusal, optional_text_is,
+}
+import gunbc.runner.runner_slot_allocation {
+  RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, runner_width_unresolved_cause_text,
+  gunbc_runner_committed_width,
+}
+import gunbc.runner.runner_slot_population_census { committed_unit_names_at }
+import gunbc.runner.runner_width_transition { transition_row_for_host }
+
+// ─────────────────────────── LEG 1: THE REGISTRATION READBACK ───────────────────────────
+// WHY `RegisteredOffline` IS ITS OWN ARM RATHER THAN `NotRegistered`. A runner that is registered but
+// offline is a slot that has been created and has failed to hold a connection: it tells the operator to
+// look at the runner, while `NotRegistered` tells them to look at the provisioning. Folding them would
+// make an offline replacement look like an unprovisioned one, and the plan would provision a second tree
+// over a slot that only needs its runner restarted.
+type ReplacementRegistration
+  = Registered { slot: NonEmptyStr }
+  | RegisteredOffline { slot: NonEmptyStr }
+  | NotRegistered { slot: NonEmptyStr }
+  | RegistrationUnreadable { slot: NonEmptyStr, cause: String }
+
+// THE ROSTER IS SUPPLIED, NOT READ HERE, so the join is decidable by a claim. `Absent` is "nobody read the
+// roster this run", which is an unreadable standing and not a statement that the slot is missing.
+fn replacement_registration_of(
+  slot: NonEmptyStr,
+  roster: OrganizationRunnerRosterEvidence?,
+) -> ReplacementRegistration {
+  match roster {
+    Absent => RegistrationUnreadable { slot: slot, cause: "the org runner roster was not read this run" }
+    Present { value: RosterReadUnavailable { reason: why } } =>
+      RegistrationUnreadable { slot: slot, cause: concat("the org runner roster read failed: ", why) }
+    Present { value: RosterObserved { observed_on: _, registrations: regs } } =>
+      registration_from_entries(slot: slot, entries: regs, complete: true)
+    Present { value: RosterObservedPartial { observed_on: _, registrations: regs, observed_count: _, authority_total: _ } } =>
+      registration_from_entries(slot: slot, entries: regs, complete: false)
+  }
+}
+
+// A FOUND ENTRY IS A FOUND ENTRY EVEN ON A PARTIAL READ -- the page that shows a runner is the page that
+// shows it. A MISSING ENTRY on a partial read is not a missing runner: the roster is paginated and the
+// runner may be on a page this read did not reach, so the standing is unreadable, with the reason naming
+// the completeness of the read as the cause.
+fn registration_from_entries(
+  slot: NonEmptyStr,
+  entries: List<GitHubSelfHostedRunnerRegistration>,
+  complete: Bool,
+) -> ReplacementRegistration {
+  let found = filter(entries, r => (r.name as String) == (slot as String))
+  match first(found) {
+    Absent =>
+      if complete {
+        NotRegistered { slot: slot }
+      } else {
+        RegistrationUnreadable {
+          slot: slot,
+          cause: "the org runner roster read is partial: this runner is on a page the read did not reach",
+        }
+      }
+    Present { value: r } =>
+      if github_runner_registration_is_online(reg: r) {
+        Registered { slot: slot }
+      } else {
+        RegisteredOffline { slot: slot }
+      }
+  }
+}
+
+// ─────────────────────────── LEG 2: THE COMPLETED-JOB READBACK ───────────────────────────
+type ReplacementJobStanding
+  = JobConcluded { slot: NonEmptyStr, run: WorkflowRun, floor_job: WorkflowJobRun }
+  | JobNotConcluded { slot: NonEmptyStr, cause: String }
+  | JobUnreadable { slot: NonEmptyStr, cause: String }
+
+// THE VERDICT IS THE EXISTING OBSERVATION; `Absent` IS THE ABSENCE OF ONE. `decide_floor_job` hands back a
+// collected verdict once the floor job has STARTED on the registered runner, so the CONCLUSION has to be
+// read here: a run that completed as Failure, was cancelled, or timed out is a slot that has been handed
+// work and cannot take it -- which is a reason to keep the retiree running, not a reason to retire it.
+// This is the discriminating corner of the whole module: a witness that passes a concluded-Failure verdict
+// through here and still sees a drain has caught a capacity-destroying bug, and the same witness with a
+// Success verdict is the witness that the gate is not a blanket refusal.
+fn replacement_job_standing_of(slot: NonEmptyStr, verdict: QualificationRunVerdict?) -> ReplacementJobStanding {
+  match verdict {
+    Absent => JobUnreadable { slot: slot, cause: "no qualification run readback exists for this slot" }
+    Present { value: RunVerdictCollected { run: run, floor_job: job, conclusion: conclusion } } =>
+      match conclusion {
+        Success => JobConcluded { slot: slot, run: run, floor_job: job }
+        Failure => JobNotConcluded { slot: slot, cause: "the floor job concluded Failure" }
+        Cancelled => JobNotConcluded { slot: slot, cause: "the floor job was cancelled" }
+        Neutral => JobNotConcluded { slot: slot, cause: "the floor job concluded Neutral" }
+        Skipped => JobNotConcluded { slot: slot, cause: "the floor job was skipped" }
+        TimedOut => JobNotConcluded { slot: slot, cause: "the floor job timed out" }
+        ActionRequired => JobNotConcluded { slot: slot, cause: "the floor job is waiting for action" }
+        StartupFailure => JobNotConcluded { slot: slot, cause: "the floor job failed to start" }
+      }
+    Present { value: RunVerdictRefused { refusal: refusal } } =>
+      JobUnreadable { slot: slot, cause: qualification_run_refusal_cause(refusal: refusal) }
+  }
+}
+
+// WHY A CAUSE STRING AND NOT THE REFUSAL ITSELF. The refusal carries the pinned revision and the observed
+// one, the token's app and installation -- material that belongs in a refusal report, not in a plan line a
+// host converges against. The arms are named so the operator can act on the cause alone; the full refusal
+// stays one `match` away in the module that produced it.
+fn qualification_run_refusal_cause(refusal: QualificationRunRefusal) -> String {
+  match refusal {
+    RunReadUnreadable { refusal: _ } => "the qualification run could not be read"
+    RunCollectedUnderAnotherInstallation { token_app: _, token_installation: _ } =>
+      "the qualification run belongs to another GitHub App installation"
+    RunSubjectMismatch { observed_run_id: _, observed_event: _, observed_path: _, foreign_jobs: _ } =>
+      "the qualification run is not the dispatched one"
+    RunAdvancedPastDispatchedAttempt { observed_attempt: _ } => "the workflow run advanced past the dispatched attempt"
+    RunRevisionNotPinned { pinned: _, observed: _ } => "the qualification run is not on the pinned revision"
+    RunOnAnotherBranch { pinned: _, observed: _ } => "the qualification run is on another branch"
+    RunNotCompleted { status: _ } => "the qualification run has not completed"
+    RunCompletedWithoutConclusion => "the qualification run completed without a conclusion"
+    RunJobsUnreadable { refusal: _ } => "the qualification run's jobs could not be read"
+    RunJobsTruncated { returned: _, total: _ } => "the qualification run's job list is truncated"
+    RunFloorJobNotUnique { floor_job_name: _, matching: _ } => "the floor job is not unique in the run"
+    RunNeverReachedAttemptRunner { registered_runner_id: _, runner_ids_seen: _ } =>
+      "no job of the qualification run ran on the registered runner"
+    RunRunnerNameDisagrees { registered_runner_id: _, registered_runner: _, observed_runner_name: _ } =>
+      "the job's runner name disagrees with the registration"
+    RunRegisteredRunnerRanAnotherJob { registered_runner: _, job_name: _ } =>
+      "the registered runner ran a job other than the floor job"
+    RunFloorJobNotStarted { job_id: _ } => "the floor job never started"
+  }
+}
+
+// ─────────────────────────── THE JOIN: REGISTERED *AND* COMPLETED A JOB ───────────────────────────
+// ONE ARM PER REASON, BECAUSE THE OPERATOR'S NEXT ACTION DIFFERS BY ARM. `AwaitingFirstJob` means the slot
+// is up and idle -- wait, or dispatch the floor job. `NotRegistered` means the tree exists and the runner
+// never appeared. Both are "not yet", and both keep the retiree running, but only one of them is fixed by
+// waiting.
+type ReplacementPendingCause
+  = RegistrationUnreadable { cause: String }
+  | NotRegistered
+  | RegisteredOffline
+  | JobUnreadable { cause: String }
+  | JobNotConcluded { cause: String }
+
+type ReplacementProven
+  = ReplacementProven { slot: NonEmptyStr, run: WorkflowRun, floor_job: WorkflowJobRun }
+  | ReplacementPending { slot: NonEmptyStr, cause: ReplacementPendingCause }
+
+fn replacement_proven_of(
+  registration: ReplacementRegistration,
+  job: ReplacementJobStanding,
+) -> ReplacementProven {
+  match registration {
+    RegistrationUnreadable { slot: slot, cause: why } =>
+      ReplacementPending { slot: slot, cause: RegistrationUnreadable { cause: why } }
+    NotRegistered { slot: slot } => ReplacementPending { slot: slot, cause: NotRegistered }
+    RegisteredOffline { slot: slot } => ReplacementPending { slot: slot, cause: RegisteredOffline }
+    Registered { slot: slot } =>
+      match job {
+        JobConcluded { slot: _, run: run, floor_job: job } =>
+          ReplacementProven { slot: slot, run: run, floor_job: job }
+        JobNotConcluded { slot: _, cause: why } =>
+          ReplacementPending { slot: slot, cause: JobNotConcluded { cause: why } }
+        JobUnreadable { slot: _, cause: why } =>
+          ReplacementPending { slot: slot, cause: JobUnreadable { cause: why } }
+      }
+  }
+}
+
+// THE JOIN AT A HOST'S SCALE: one roster read, one verdict per replacement slot, in the caller's order. A
+// slot with no verdict at all still gets an arm -- `replacement_job_standing_of` reads `Absent` as
+// unreadable, which is the point: a plan that forgets to collect a verdict retires nothing.
+fn replacement_proven_of_host(
+  incoming: List<NonEmptyStr>,
+  roster: OrganizationRunnerRosterEvidence?,
+  verdicts: List<QualificationRunVerdict>,
+) -> List<ReplacementProven> {
+  map(
+    incoming,
+    slot =>
+      replacement_proven_of(
+        registration: replacement_registration_of(slot: slot, roster: roster),
+        job: replacement_job_standing_of(slot: slot, verdict: verdict_for(verdicts: verdicts, slot: slot)),
+      )
+  )
+}
+
+// A VERDICT IS SPENT ON THE SLOT ITS JOB ACTUALLY RAN ON, matched by the runner name the job carried --
+// the same field `decide_floor_job` already checked against the registration. So a verdict for srv3-06 can
+// never be spent on srv3-07, and the first-to-prove order the operator sees is the order the plan asked
+// for. A refused verdict names no runner and so is spent on nobody: it stays visible to the caller's
+// report, and it proves nothing for any slot.
+fn verdict_for(verdicts: List<QualificationRunVerdict>, slot: NonEmptyStr) -> QualificationRunVerdict? {
+  let matching = filter(
+    verdicts,
+    v =>
+      match v {
+        RunVerdictCollected { run: _, floor_job: job, conclusion: _ } =>
+          optional_text_is(o: job.runner_name, expected: (slot as String))
+        RunVerdictRefused { refusal: _ } => false
+      },
+  )
+  match first(matching) {
+    Present { value: v } => Present { value: v }
+    Absent => Absent
+  }
+}
+
+// ─────────────────────────── WHOSE CAPACITY IS THIS: THE DRAIN CANDIDATE'S STANDING ───────────────────────────
+// THE FOUR ANSWERS A DRAIN CANDIDATE CAN GET, IN THE ORDER THEY ARE ASKED. `StillDesired` is asked first
+// on purpose: a unit the model still desires is not this plan's to retire even when an obligation lists
+// it, because two authorities disagreeing is exactly the case where draining destroys live capacity.
+// `live_on_host` is carried and not consulted for the two declared arms: a retiree the host does not
+// report is still a retiree (the drain is a no-op), and a fabric member the host reports is still the
+// model's fabric slot -- what changes with liveness is the operator's urgency, not the model's authority.
+type DrainCandidateStanding
+  = StillDesired { unit: NonEmptyStr }
+  | DeclaredRetiree { unit: NonEmptyStr, live_on_host: Bool }
+  | ModelDeclaredFabricMember { unit: NonEmptyStr, live_on_host: Bool }
+  | HandStartedWorkingCapacity { unit: NonEmptyStr }
+  | DrainCandidateUnexplained { unit: NonEmptyStr }
+
+fn drain_candidate_standing(
+  unit: NonEmptyStr,
+  desired: List<NonEmptyStr>,
+  obligation: List<NonEmptyStr>,
+  fabric: List<NonEmptyStr>,
+  live: List<NonEmptyStr>,
+) -> DrainCandidateStanding {
+  let is_desired = any(desired, d => (d as String) == (unit as String))
+  let is_retired = any(obligation, d => (d as String) == (unit as String))
+  let is_fabric = any(fabric, d => (d as String) == (unit as String))
+  let is_live = any(live, d => (d as String) == (unit as String))
+  if is_desired {
+    StillDesired { unit: unit }
+  } else if is_retired {
+    DeclaredRetiree { unit: unit, live_on_host: is_live }
+  } else if is_fabric {
+    ModelDeclaredFabricMember { unit: unit, live_on_host: is_live }
+  } else if is_live {
+    HandStartedWorkingCapacity { unit: unit }
+  } else {
+    DrainCandidateUnexplained { unit: unit }
+  }
+}
+
+// ─────────────────────────── WHAT REPLACES A RETIREE ───────────────────────────
+// DERIVED FROM THE TWO POPULATIONS, NEVER HAND-WRITTEN, so a witness cannot make a retirement look safe
+// by asserting a convenient replacement. `incoming` is what the target population has that the prior one
+// did not: those are the slots whose first job the retiree's drain is waiting for. An EMPTY incoming set
+// is a pure shrink -- the operator narrowed the committed width and nothing replaces the retiree; that is
+// the one case the invariant does not cover, and it is covered by the width authority that produced it
+// (the same rows `required_retirees_of` reads). `IncomingUnresolved` is its own arm because a target
+// population that will not resolve leaves `incoming` unknowable, and an unknowable incoming set must not
+// read as an empty one -- the same trap `RequiredRetirees` records for the retiree side in
+// gunbc.runner.runner_width_transition.
+type ReplacementIncoming
+  = ReplacedBy { incoming: List<NonEmptyStr> }
+  | ShrunkOnly
+  | IncomingUnresolved { cause: String }
+
+// BOTH ENDS COME FROM THE WIDTH AUTHORITIES, exactly as `transition_required_retirees_at` takes both ends
+// from them: the prior population is the open transition's own `prior_width`, the target is the committed
+// width the allocation derives. THE TARGET RESOLUTION IS SUPPLIED and read from the authority by the
+// wrapper below, for the same reason that function supplies it -- `RunnerWidthTransition` is
+// sole_constructor, so a claim cannot author a transition whose target will not resolve, and without the
+// supplied parameter the `IncomingUnresolved` arm would have no discriminating red, only a type to point
+// at. A width that will not resolve is NOT read as an empty incoming set: the drain would then proceed on
+// a replacement population nobody has seen.
+fn replacement_incoming_at(host: HostIdentity, prior_width: Int, target: RunnerWidthResolution) -> ReplacementIncoming {
+  match target {
+    RunnerWidthUnresolved { cause: c } => IncomingUnresolved { cause: runner_width_unresolved_cause_text(cause: c) }
+    RunnerWidthDerived { slots: width } =>
+      match first(incoming_names(host: host, prior_width: prior_width, width: width)) {
+        Absent => ShrunkOnly
+        Present { value: _ } => ReplacedBy { incoming: map(incoming_names(host: host, prior_width: prior_width, width: width), t => t as NonEmptyStr) }
+      }
+  }
+}
+
+fn incoming_names(host: HostIdentity, prior_width: Int, width: Int) -> List<String> {
+  let prior = committed_unit_names_at(host: host, committed: prior_width)
+  filter(committed_unit_names_at(host: host, committed: width), t => !any(prior, p => p == t))
+}
+
+// THE WRAPPER, reading both ends from their authorities: the open transition row for this host if one is
+// open, and the committed width the allocation derives. A host with NO open transition has no incoming
+// population -- nothing is entering, so a retiree's drain is a shrink and no replacement is waiting to be
+// proven. `first` over no rows is Absent, and an Absent row is the model saying nothing moved on this host.
+fn replacement_incoming_for_host(host: HostIdentity) -> ReplacementIncoming {
+  match first(transition_row_for_host(host: host)) {
+    Absent => ShrunkOnly
+    Present { value: t } =>
+      replacement_incoming_at(host: host, prior_width: t.prior_width, target: gunbc_runner_committed_width(host: host))
+  }
+}
+
+// ─────────────────────────── THE DECISION ───────────────────────────
+// ONE ARM PER WAY A RETIREMENT CAN BE STOPPED, BECAUSE THEY ARE NOT THE SAME SENTENCE. `RetireDrainWithheld`
+// is "not yet": the replacement exists in the model and has not proven itself, and a later run may retire.
+// `RetireDrainRefused` is "not yours": the unit is not this plan's to take at all, and no amount of
+// waiting on a replacement changes that. A consumer that collapsed the two would drain a hand-started
+// runner the moment an unrelated slot proved its first job.
+type RetirePendingCause
+  = AwaitingIncomingUnreadable { replacement: NonEmptyStr, cause: String }
+  | AwaitingNotRegistered { replacement: NonEmptyStr }
+  | AwaitingOfflineRegistration { replacement: NonEmptyStr }
+  | AwaitingFirstJob { replacement: NonEmptyStr, cause: String }
+  | IncomingUnprovable { cause: String }
+
+type RetireRefusalCause
+  = StillDesiredUnit { unit: NonEmptyStr }
+  | HandStartedOutsideTheDerivedPopulation { unit: NonEmptyStr }
+  | DrainCandidateUnaccountedFor { unit: NonEmptyStr }
+
+type RetireDrainDecision
+  = RetireDrainAuthorized { unit: NonEmptyStr, over: List<NonEmptyStr> }
+  | RetireDrainWithheld { unit: NonEmptyStr, cause: RetirePendingCause }
+  | RetireDrainRefused { unit: NonEmptyStr, cause: RetireRefusalCause }
+
+fn retire_drain_decision(
+  standing: DrainCandidateStanding,
+  incoming: ReplacementIncoming,
+  proven: List<ReplacementProven>,
+) -> RetireDrainDecision {
+  match standing {
+    StillDesired { unit: unit } => RetireDrainRefused { unit: unit, cause: StillDesiredUnit { unit: unit } }
+    HandStartedWorkingCapacity { unit: unit } =>
+      RetireDrainRefused { unit: unit, cause: HandStartedOutsideTheDerivedPopulation { unit: unit } }
+    DrainCandidateUnexplained { unit: unit } =>
+      RetireDrainRefused { unit: unit, cause: DrainCandidateUnaccountedFor { unit: unit } }
+    // THE FABRIC ARM IS AUTHORIZED WITHOUT A READBACK, AND THAT IS A DECISION RATHER THAN AN OMISSION: the
+    // model has reassigned the SLOT to fabric execution, so there is no CI capacity replacing it to prove
+    // -- the fabric workload's own admission is gated where it is admitted (the cap raise gate reads the
+    // surplus for exactly this). A runner unit occupying a slot the model gave to fabric is masked, and the
+    // mask is the existing stop-with-honoured-job machinery, not a kill.
+    ModelDeclaredFabricMember { unit: unit, live_on_host: _ } => RetireDrainAuthorized { unit: unit, over: [] }
+    DeclaredRetiree { unit: unit, live_on_host: _ } =>
+      match incoming {
+        ShrunkOnly => RetireDrainAuthorized { unit: unit, over: [] }
+        IncomingUnresolved { cause: why } =>
+          RetireDrainWithheld { unit: unit, cause: IncomingUnprovable { cause: why } }
+        ReplacedBy { incoming: slots } =>
+          match first_unproven(slots: slots, proven: proven) {
+            Absent => RetireDrainAuthorized { unit: unit, over: slots }
+            Present { value: slot } => RetireDrainWithheld { unit: unit, cause: awaiting(slots: slots, proven: proven, unit: unit, replacement: slot) }
+          }
+      }
+  }
+}
+
+// THE FIRST UNPROVEN REPLACEMENT, IN THE ORDER THE CALLER GAVE. `ReplacedBy` is never built with an empty
+// list (`replacement_incoming_of` puts an empty set in `ShrunkOnly`), so an authorized decision always
+// names at least one replacement the operator can go and look at.
+fn first_unproven(slots: List<NonEmptyStr>, proven: List<ReplacementProven>) -> NonEmptyStr? {
+  let unproven = filter(slots, k => !is_proven(slots_of: proven, slot: k))
+  match first(unproven) {
+    Present { value: s } => Present { value: s }
+    Absent => Absent
+  }
+}
+
+// A REPLACEMENT IS PROVEN ONLY BY ITS OWN PROVEN ARM. The negative is spelled as "no proven standing
+// names this slot" rather than "some standing says pending", so a replacement the caller produced no
+// standing for at all is unproven -- the absence of a readback blocks, it does not authorize.
+fn is_proven(slots_of: List<ReplacementProven>, slot: NonEmptyStr) -> Bool {
+  any(
+    slots_of,
+    p =>
+      match p {
+        ReplacementProven { slot: s, run: _, floor_job: _ } => (s as String) == (slot as String)
+        ReplacementPending { slot: _, cause: _ } => false
+      },
+  )
+}
+
+// THE PENDING CAUSE IS READ FROM THE REPLACEMENT'S OWN STANDING, so what the plan reports is the reason
+// that replacement is not proven -- not a generic "not ready". A replacement with NO standing at all (the
+// caller never produced one for it) reads as unreadable, which is the fail-closed direction: an
+// unconsidered replacement blocks the retirement instead of waving it through.
+fn awaiting(
+  slots: List<NonEmptyStr>,
+  proven: List<ReplacementProven>,
+  unit: NonEmptyStr,
+  replacement: NonEmptyStr,
+) -> RetirePendingCause {
+  let standing =
+    first(
+      filter(
+        proven,
+        p =>
+          match p {
+            ReplacementPending { slot: s, cause: _ } => (s as String) == ((replacement as String))
+            ReplacementProven { slot: s, run: _, floor_job: _ } => (s as String) == ((replacement as String))
+          },
+      ),
+    )
+  match standing {
+    Absent => AwaitingIncomingUnreadable { replacement: replacement, cause: "no readback was produced for this replacement slot" }
+    Present { value: ReplacementPending { slot: _, cause: cause } } =>
+      match cause {
+        RegistrationUnreadable { cause: why } =>
+          AwaitingIncomingUnreadable { replacement: replacement, cause: why }
+        NotRegistered => AwaitingNotRegistered { replacement: replacement }
+        RegisteredOffline => AwaitingOfflineRegistration { replacement: replacement }
+        JobUnreadable { cause: why } => AwaitingFirstJob { replacement: replacement, cause: why }
+        JobNotConcluded { cause: why } => AwaitingFirstJob { replacement: replacement, cause: why }
+      }
+    // UNREACHABLE BY CONSTRUCTION: `first_unproven` hands back a slot that is either pending or has no
+    // standing, never a proven one. The arm is spelled because a match that relies on a filter's behaviour
+    // to be total is a comment, not a checked one.
+    Present { value: ReplacementProven { slot: _, run: _, floor_job: _ } } =>
+      AwaitingIncomingUnreadable { replacement: replacement, cause: "the unproven filter handed back a proven replacement" }
+  }
+}
+
+// THE HOST'S DECISIONS, one per drain candidate, in the candidate's order. `live` is the host's own unit
+// reading (the population fold's loaded units), `obligation` is the width transition's required retirees
+// and `desired` the committed target -- all three SUPPLIED, so the classification is decidable by a claim
+// and cannot quietly disagree with the authority that produced the list it is judging.
+fn retire_drain_decisions(
+  candidates: List<NonEmptyStr>,
+  desired: List<NonEmptyStr>,
+  obligation: List<NonEmptyStr>,
+  fabric: List<NonEmptyStr>,
+  live: List<NonEmptyStr>,
+  incoming: ReplacementIncoming,
+  proven: List<ReplacementProven>,
+) -> List<RetireDrainDecision> {
+  map(
+    candidates,
+    unit =>
+      retire_drain_decision(
+        standing: drain_candidate_standing(
+          unit: unit,
+          desired: desired,
+          obligation: obligation,
+          fabric: fabric,
+          live: live,
+        ),
+        incoming: incoming,
+        proven: proven,
+      )
+  )
+}
+
+fn retire_drain_is_authorized(decisions: List<RetireDrainDecision>, unit: NonEmptyStr) -> Bool {
+  any(
+    decisions,
+    d =>
+      match d {
+        RetireDrainAuthorized { unit: u, over: _ } => (u as String) == (unit as String)
+        RetireDrainWithheld { unit: _, cause: _ } => false
+        RetireDrainRefused { unit: _, cause: _ } => false
+      },
+  )
+}
+
+// THE CAUSES RENDERED FOR A PLAN LINE, so a withheld retirement reads as a next action and not as a
+// refusal with no direction. Every withheld arm names the replacement it is waiting on -- that is the
+// difference between "converge refused" and "converge is waiting on srv3-06's first job".
+fn retire_pending_cause_wire(cause: RetirePendingCause) -> String {
+  match cause {
+    AwaitingIncomingUnreadable { replacement: slot, cause: why } =>
+      concat("waiting on ", concat((slot as String), concat(": the replacement's readback is unreadable (", concat(why, ")"))))
+    AwaitingNotRegistered { replacement: slot } =>
+      concat("waiting on ", concat((slot as String), ": the replacement is not registered in the org runner roster"))
+    AwaitingOfflineRegistration { replacement: slot } =>
+      concat("waiting on ", concat((slot as String), ": the replacement is registered in the org runner roster but offline"))
+    AwaitingFirstJob { replacement: slot, cause: why } =>
+      concat("waiting on ", concat((slot as String), concat(": the replacement has not completed a job (", concat(why, ")"))))
+    IncomingUnprovable { cause: why } => concat("the replacement population is unknowable: ", why)
+  }
+}
+
+fn retire_refusal_cause_wire(cause: RetireRefusalCause) -> String {
+  match cause {
+    StillDesiredUnit { unit: unit } =>
+      concat((unit as String), " is still desired by the committed population: the retiree list and the population disagree")
+    HandStartedOutsideTheDerivedPopulation { unit: unit } =>
+      concat(
+        (unit as String),
+        " is running on the host and is in no derived population: it is hand-started working capacity, not an unknown occupant, and this plan will not drain it",
+      )
+    DrainCandidateUnaccountedFor { unit: unit } =>
+      concat((unit as String), " is a drain candidate with nothing declaring it: desired by nobody, retired by nobody, not a fabric slot, and not running")
+  }
+}

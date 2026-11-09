@@ -167,6 +167,13 @@ import gunbc.runner.runner_width_transition {
   required_retirees_for_host,
   RequiredRetirees, RetireesKnown, RetireesUnresolved,
 }
+import gunbc.runner.runner_replacement_readback {
+  OrganizationRunnerRosterEvidence, ReplacementIncoming, ReplacedBy, ShrunkOnly, IncomingUnresolved,
+  RetireDrainDecision, RetireDrainAuthorized, RetireDrainWithheld, RetireDrainRefused,
+  replacement_incoming_for_host, replacement_proven_of_host, retire_drain_decisions,
+  retire_pending_cause_wire, retire_refusal_cause_wire,
+}
+import gunbc.runner.runner_qualification_dispatch { QualificationRunVerdict }
 import gunbc.runner.runner_slot_retirement {
   RunnerRetirementStanding,
   RetirementComplete,
@@ -3268,6 +3275,8 @@ fn runner_host_slot_actuations(
   mode: FleetHostFileConvergeMode,
   privilege: FleetHostPrivilegeStanding,
   trees: List<RunnerSlotTreeStanding>,
+  population: RunnerSlotPopulation,
+  retirement: RunnerRetirementReadback,
 ) -> List<SlotActuationOutcome>
 {
   match mode {
@@ -3283,9 +3292,133 @@ fn runner_host_slot_actuations(
                 Present { value: held_back } => held_back
                 Absent => activate_runner_slot_over(target: subject.target, context: context, unit: u)
               }),
-            map(runner_host_drain_units(subject: subject), u => drain_and_mask_runner_slot_over(target: subject.target, context: context, unit: u)),
+            map(
+              runner_host_drain_leg_decided(subject: subject, population: population, readback: retirement),
+              step =>
+                match step {
+                  DrainNow { unit: u } => drain_and_mask_runner_slot_over(target: subject.target, context: context, unit: u)
+                  DrainHeld { unit: u, cause: why } => SlotRetirementWithheld { unit: u, cause: why }
+                  DrainRefusedByStanding { unit: u, cause: why } => SlotRetirementRefused { unit: u, cause: why }
+                  // THE GATE NEVER SPOKE ABOUT THIS CANDIDATE: nobody drains it. A drain leg whose gate was
+                  // skipped reports instead of acting, which is what makes the gate impossible to bypass.
+                  DrainUndecided { unit: u } =>
+                    SlotRetirementRefused { unit: u, cause: "the retirement gate produced no decision for this candidate; nothing was drained" }
+                },
+            ),
           )
       }
+  }
+}
+
+// WHAT THE RETIREMENT GATE IS HANDED. SUPPLIED, NOT READ HERE, in the same style as every other readback
+// in this module (the population, the trees, the privilege are all handed in by the caller): the org roster
+// read is gunbc.fleet.organization_runner_roster_read's, and the qualification verdicts are
+// gunbc.runner.runner_qualification_dispatch's. A caller that brings NEITHER retires nothing -- which is the
+// fail-closed default, and the reason a route cannot forget the gate by forgetting to wire it.
+// `prior_committed` is the committed population BEFORE the open width transition's move, from
+// gunbc.runner.runner_slot_allocation -- the same authority `required_retirees_for_host` reads, so the
+// replacement set and the retiree set cannot be built from different worlds.
+type RunnerRetirementReadback sole_constructor {
+  roster: OrganizationRunnerRosterEvidence?
+  qualification_verdicts: List<QualificationRunVerdict>
+}
+
+// THE READBACK A ROUTE BRINGS WHEN IT HAS READ NEITHER LEG. It is the value the converge apply route
+// passes today, and it is not a placeholder: the route dispatches no qualification floor job and reads no
+// org roster, so it has no proof that any incoming slot has run anything, and the gate's answer to that
+// is to withhold every declared retirement. The route that DOES hold the proofs -- the qualification route,
+// which dispatches the floor job and collects the verdict, and whoever holds the roster read -- builds the
+// carrier with `runner_retirement_readback_of` and the retirement proceeds.
+fn runner_retirement_readback_unreadable() -> RunnerRetirementReadback {
+  RunnerRetirementReadback { roster: none, qualification_verdicts: [] }
+}
+
+fn runner_retirement_readback_of(
+  roster: OrganizationRunnerRosterEvidence?,
+  qualification_verdicts: List<QualificationRunVerdict>,
+) -> RunnerRetirementReadback {
+  RunnerRetirementReadback { roster: roster, qualification_verdicts: qualification_verdicts }
+}
+
+// ONE STEP OF THE DRAIN LEG, PURELY. The apply route acts only on `DrainNow`; everything else reports. The
+// leg is a function of the subject, the host's own unit reading and the readback, so the whole invariant --
+// including the fail-closed arm -- is decidable by a claim without an SSH session.
+type RunnerHostDrainStep
+  = DrainNow { unit: NonEmptyStr }
+  | DrainHeld { unit: NonEmptyStr, cause: String }
+  | DrainRefusedByStanding { unit: NonEmptyStr, cause: String }
+  | DrainUndecided { unit: NonEmptyStr }
+
+fn runner_host_drain_step_authorized(step: RunnerHostDrainStep) -> Bool {
+  match step { DrainNow { unit: _ } => true _ => false }
+}
+
+// THE DECISIONS FOR THE HOST'S DRAIN CANDIDATES. `live` comes from the host's OWN unit reading (the
+// population fold's loaded units), which is what makes a hand-started slot visible at all: it is in no
+// derived list, so the only place it can be seen is the host. The four lists the standing is judged
+// against are all taken from the subject -- the same lists that produced the candidate -- so the
+// classification cannot disagree with the authority that asked for the drain.
+fn runner_host_retire_drain_decisions(
+  subject: RunnerHostFileSubject,
+  population: RunnerSlotPopulation,
+  readback: RunnerRetirementReadback,
+) -> List<RetireDrainDecision> {
+  // THE LIVE UNITS COME FROM THE HOST'S OWN READING, and an unobservable reading is an EMPTY live set --
+  // never "everything" and never "nothing is running". A hand-started unit is only visible through this
+  // list, so the empty case is the fail-closed case: with no reading a candidate that is in no derived
+  // list cannot be claimed as working capacity either, and it lands in `DrainCandidateUnexplained`, which
+  // is refused rather than drained.
+  let live = match population {
+    SlotPopulationObserved { units: us } => map(us, r => r.unit)
+    SlotPopulationUnobservable { reason: _ } => []
+  }
+  let incoming = replacement_incoming_for_host(host: subject.host)
+  let slots = match incoming { ReplacedBy { incoming: s } => s ShrunkOnly => [] IncomingUnresolved { cause: _ } => [] }
+  retire_drain_decisions(
+    candidates: runner_host_drain_units(subject: subject),
+    desired: subject.desired_units,
+    obligation: subject.retired_units,
+    fabric: subject.fabric_units,
+    live: live,
+    incoming: incoming,
+    proven: replacement_proven_of_host(
+      incoming: slots,
+      roster: readback.roster,
+      verdicts: readback.qualification_verdicts,
+    ),
+  )
+}
+
+// THE LEG THE APPLY ROUTE MAPS OVER: one step per drain candidate, in the candidate's order.
+fn runner_host_drain_leg_decided(
+  subject: RunnerHostFileSubject,
+  population: RunnerSlotPopulation,
+  readback: RunnerRetirementReadback,
+) -> List<RunnerHostDrainStep> {
+  let decisions = runner_host_retire_drain_decisions(
+    subject: subject,
+    population: population,
+    readback: readback,
+  )
+  map(
+    runner_host_drain_units(subject: subject),
+    u =>
+      match first(filter(decisions, d => (retire_drain_decision_unit(d: d) as String) == (u as String))) {
+        Absent => DrainUndecided { unit: u }
+        Present { value: RetireDrainAuthorized { unit: _, over: _ } } => DrainNow { unit: u }
+        Present { value: RetireDrainWithheld { unit: _, cause: cause } } =>
+          DrainHeld { unit: u, cause: retire_pending_cause_wire(cause: cause) }
+        Present { value: RetireDrainRefused { unit: _, cause: cause } } =>
+          DrainRefusedByStanding { unit: u, cause: retire_refusal_cause_wire(cause: cause) }
+      },
+  )
+}
+
+fn retire_drain_decision_unit(d: RetireDrainDecision) -> NonEmptyStr {
+  match d {
+    RetireDrainAuthorized { unit: u, over: _ } => u
+    RetireDrainWithheld { unit: u, cause: _ } => u
+    RetireDrainRefused { unit: u, cause: _ } => u
   }
 }
 
@@ -4093,13 +4226,14 @@ fn run_runner_host_files(
   withheld: List<RunnerHostFileWithheld>,
   mode: FleetHostFileConvergeMode,
   per_slot: HardwareThreadCount,
+  retirement: RunnerRetirementReadback,
 ) -> RunnerHostFileRun
 {
   let privilege = observe_fleet_host_administrator_privilege(subject: fleet_subject_of(s: subject), context: context)
   let account = converge_deploy_slot_account(subject: subject, context: context, mode: mode, privilege: privilege)
   let trees = converge_runner_slot_trees(subject: subject, context: context, mode: mode, privilege: privilege, account: account)
   let admitted = admit_files_for_deploy_slot(files: files, withheld: withheld, bar: deploy_slot_role_dropin_bar(account: account, trees: deploy_role_slot_trees(subject: subject, trees: trees)))
-  run_runner_host_files_admitted(subject: subject, context: context, files: admitted.files, withheld: admitted.withheld, mode: mode, per_slot: per_slot, privilege: privilege, account: account, trees: trees)
+  run_runner_host_files_admitted(subject: subject, context: context, files: admitted.files, withheld: admitted.withheld, mode: mode, per_slot: per_slot, privilege: privilege, account: account, trees: trees, retirement: retirement)
 }
 
 // THE DEPLOY SLOT'S ROLE DROP-IN WAITS ON THE DEPLOY SLOT'S TREE ALONE: a CI slot still draining toward the
@@ -4120,6 +4254,7 @@ fn run_runner_host_files_admitted(
   privilege: FleetHostPrivilegeStanding,
   account: DeploySlotAccountStanding,
   trees: List<RunnerSlotTreeStanding>,
+  retirement: RunnerRetirementReadback,
 ) -> RunnerHostFileRun
 {
   // ORDER (review on ff67e67949): every file but the CPU drop-in is written first and the manager
@@ -4157,7 +4292,7 @@ fn run_runner_host_files_admitted(
     FleetHostFilesApply => runner_host_actuation_admission(results: unit_results, pre_reload: pre_reload)
   }
   let actuations = match admission {
-    ActuationAdmitted => runner_host_slot_actuations(subject: subject, context: context, mode: mode, privilege: privilege, trees: trees)
+    ActuationAdmitted => runner_host_slot_actuations(subject: subject, context: context, mode: mode, privilege: privilege, trees: trees, population: early_population, retirement: retirement)
     ActuationSkipped { cause: _ } => []
   }
   let gated = runner_host_cpu_dropin_gate(files: files, withheld: withheld, actuations: actuations, admission: admission)
@@ -4370,7 +4505,22 @@ fn runner_host_file_ci_wet_hosted(mode: FleetHostFileConvergeMode, host: String?
                   match runner_slot_cpu_desired(host: raw_host as HostIdentity) {
                     SlotCpuRefused { cause: c } => exit_failure(reason: c as String)
                     SlotCpuDesired { per_slot: per_slot, file: _ } => {
-                  let run = run_runner_host_files(subject: subject, context: context, files: files, withheld: withheld, mode: mode, per_slot: per_slot)
+                  // THE RETIREMENT GATE IS READ HERE, AT THE APPLY ROUTE'S OWN READ TIME: the org roster is
+                  // the registration leg, and the qualification verdicts are the completed-job leg. The
+                  // verdicts are SUPPLIED BY THE CALLER and are empty for this route -- the qualification
+                  // route that dispatches the floor job owns that readback -- so a bare
+                  // `runner_host_file_converge` apply WITHHOLDS every declared retirement rather than
+                  // destroying capacity it cannot prove is replaced. That is the standing the operator
+                  // asked for on 2026-11-09, and it is a behaviour, not a TODO: the arms below say why.
+                  let run = run_runner_host_files(
+                    subject: subject,
+                    context: context,
+                    files: files,
+                    withheld: withheld,
+                    mode: mode,
+                    per_slot: per_slot,
+                    retirement: runner_retirement_readback_unreadable(),
+                  )
                   let body = join([
                     "runner_host_file_converge probed_at=", probed_at_word(reading: clock_now_probed_at()) as String, "\n",
                     context_receipt,
