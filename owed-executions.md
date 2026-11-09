@@ -24,3 +24,9 @@ Maintained by silent-bee-845, the daily integration manager. CI's required job (
 - #16038: ControllerCapacityWaiting/Cancel silent overwrite; DurableHoldSubject's two wire forms; the witness lease() helper bypasses LeaseNotObserved. Remote-build PR 4/5 are tracked by concern controller_executor_fence_handoff.
 - #16020: thread-bind admission (d080f31e) waits on #15804; hand-in coupling (main has no HandInTool).
 - #15710: gh-api stderr passthrough; raw-body sites heal_publisher_provision::rest_refusal_text and printer_credential_migration (left alone).
+
+## Added 2026-11-09 (after batch 1 was requested)
+- #15876 (97138503): its claim modules (else-less-if statement lowering).
+- #15894 (2e18b541): src/v2/test/claim/service_operation_unrealizable.dag (if batch 1 did not cover it).
+- #16124 (9ab54645): dag/gunbc/live_deploy/user_work_slice_admission_witness.dag. CI typechecks only std.measure here, NOT slice_bounds, roadmap_belt_actuate or the witness, so a green run proves nothing about those types. HOST ACTION (the operator's): re-activate the srv1 belt so the gate goes live. The drain check plus `systemctl --user restart` are in the #16124 body; run them only with 0 review/audit workers in flight.
+- Continuation stack: #16124 changed roadmap_belt_actuate.dag, which the stack's roadmap_belt_actuate_witness exercises. The stack's next main sync must re-run that witness against #16124.
