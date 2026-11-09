@@ -43,3 +43,11 @@ Maintained by silent-bee-845, the daily integration manager. CI's required job (
 - FALSE rows: host_effect_apply 3, closure_emission 2, service_realization_lowering 1, printable_assembly_selection 1, harness_tool_kind 2, occurrence_file_attribution 1. Repair lane: adhoc-2968bab0-fd3.
 - UNOBSERVED (needs wet): durable_attempt_controller 16 rows (DirWithTemplate). NOT RUN: the four *_wet witnesses.
 - LESSON: archived branches assumed names (list_length, concat) that main does not provide. Seed compile plus file-overlap checks cannot see this; only a claim run can.
+
+## BATCH 1 RESULT: continuation stack tip 1f18312b (quick-newt-573, msg_f2bd22a1)
+- PASS (all claims) in 11 modules: claude_code_dispatch 22, credential_snapshot_seal 7, supervisor_guidance 4, throughput 22, worker_turn_dispatch 4, append_log_store_seal 7, dispatch_replay 8, exit_spool 27, attempt_occurrence 8, dispatch_actuator 58, result_returned 20.
+- Refused by MAIN's list_length (#16020): 8 modules, 267 claims unrun. Waits on adhoc-2968bab0-fd3.
+- Stack-own load refusals (4): transport_retry (Int vs Second), roadmap_alignment (declared_roadmap_nodes identity), attempt_continuation (missing verification_retry), verification_evidence_addressing (wakes_at). Routed to smart-ferret-84.
+- FALSE rows: belt_actuate 2 (fix 6ec056ba), component_dispatch_button 1, launch_admission 1.
+- INCOMPLETE: durable_append_log 25/31; the_raw_events_initializer_is_gone hangs or runs very slowly at the 45-minute limit.
+- UNOBSERVED/wet: append_log_srv1_host_shape 4, belt_actuate 9, and the four *_wet witnesses.
