@@ -37,6 +37,7 @@ import std.scoped_authorization { AttemptIdentity }
 import extdeps.github.deployment_protection_rule {
   // THE RULE-ID CARRIER (review 83825); wrap at constructions, .value at reports.
   GitHubDeploymentProtectionRuleId,
+  rule_gate_approval_ceiling,
   InstallationAccessToken,
   OAuthClassicWithRepoScope,
   DeploymentProtectionRuleReview,

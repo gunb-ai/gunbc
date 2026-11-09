@@ -3,7 +3,8 @@ module extdeps.cloud.gcp.sts
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.types { Int, NonEmptyStr, Secret }
+import extdeps.cloud.gcp.gcp { cloud_platform_scope }
+import std.types { Int, NonEmptyStr, Secret, Bearer }
 import extdeps.ietf.http_semantics { GET, POST }
 import std.resources { Network }
 import extdeps.transports.rest { RestResult }
@@ -43,6 +44,29 @@ data jwt_subject_token_type: String = "urn:ietf:params:oauth:token-type:jwt"
 
 data access_token_type: String = "urn:ietf:params:oauth:token-type:access_token"
 
+// RFC 8693 section 3.2.2 URNs, the remaining members the CLOSED types above already name. They were
+// declared with no consumer because nothing in the fleet federated until now; these mappers are what
+// makes `SubjectTokenType` and `RequestedTokenType` load-bearing instead of decorative.
+data id_token_subject_token_type: String = "urn:ietf:params:oauth:token-type:id_token"
+
+data saml2_subject_token_type: String = "urn:ietf:params:oauth:token-type:saml2"
+
+fn sts_subject_token_type_wire(t: SubjectTokenType) -> String {
+  match t {
+    Jwt => jwt_subject_token_type
+    StsAccessToken => access_token_type
+    IdToken => id_token_subject_token_type
+    Saml2 => saml2_subject_token_type
+  }
+}
+
+fn sts_requested_token_type_wire(t: RequestedTokenType) -> String {
+  match t {
+    RequestAccessToken => access_token_type
+    RequestIdToken => id_token_subject_token_type
+  }
+}
+
 service gcp.STS {
   config {
     endpoint: "https://sts.googleapis.com"
@@ -52,7 +76,20 @@ service gcp.STS {
     requires Network
     input {
       subject_token: Secret
+      // The full resource name of the workload identity provider, e.g.
+      // //iam.googleapis.com/projects/<n>/locations/global/workloadIdentityPools/<pool>/providers/<p>.
+      // THE REQUEST IS CAMEL-CASE AND THE RESPONSE IS SNAKE-CASE, and that asymmetry is the upstream
+      // contract, not a typo to harmonise: v1.token's request schema GoogleIdentityStsV1ExchangeTokenRequest
+      // names grantType / subjectToken / subjectTokenType / requestedTokenType / audience / scope
+      // (sts.googleapis.com $discovery/rest?version=v1, revision 20261022), while the response names
+      // access_token / expires_in / issued_token_type / token_type. The output block below already read
+      // the snake_case spelling; the body clause is the half that was missing.
       audience: NonEmptyStr
+      // The default reads the one authority for this URI (extdeps.cloud.gcp.gcp::cloud_platform_scope)
+      // rather than restating it; cloud-platform is what the publisher's single Secret Manager read needs.
+      scope: NonEmptyStr = cloud_platform_scope
+      subject_token_type: SubjectTokenType = Jwt
+      requested_token_type: RequestedTokenType = RequestAccessToken
     }
     output {
       access_token: Secret from "access_token"
@@ -60,7 +97,24 @@ service gcp.STS {
     }
 
     idempotent
-    transport rest { method: POST, path: "/v1/token" }
+    // No body clause meant NOTHING was sent: the transport reads a body only when one is declared
+    // (v1_interpreter.rs, body_json = find_property(transport, "body"), None otherwise), so the two
+    // declared inputs above never reached the wire. Same repair gcp.IAM.GenerateAccessToken already
+    // records in dag/extdeps/cloud/gcp/iam.dag. The spelling is JSON, which is what the endpoint's own
+    // discovery contract documents and what the pinned google-github-actions/auth (7c6bc770dae815cd3e89ee6cdf493a5fab2cc093,
+    // src/client/workload_identity_federation.ts:87-104, postJson) posts today.
+    transport rest {
+      method: POST,
+      path: "/v1/token",
+      body: {
+        grantType: default_grant_type,
+        audience: audience,
+        scope: scope,
+        subjectToken: subject_token,
+        subjectTokenType: sts_subject_token_type_wire(subject_token_type),
+        requestedTokenType: sts_requested_token_type_wire(requested_token_type)
+      }
+    }
     response {
       200 => StsTokenResponse
       400 => GcpOAuth2ErrorShape
@@ -73,17 +127,35 @@ service gcp.STS {
 }
 
 service github.OIDC {
+  // The runner's OIDC sidecar, whose URL and request token ARRIVE PER RUN in the environment the
+  // Actions runner exports (extdeps.github.actions oidc_request_url_env and oidc_request_token_env).
+  // So the endpoint cannot be a static constant the way every other service in extdeps declares one:
+  // it is declared as an input name, which the transport resolves in the operation's own parameter
+  // environment (v1_interpreter.rs: base_url = eval_expr(config value, param_env, ctx), the same
+  // environment that substitutes a transport path template). It previously declared NO config block at
+  // all, and the transport refuses a missing endpoint rather than defaulting it (ServiceConfigMissing),
+  // so this operation could not be called by anything. Its path is "" because the URL is complete as
+  // supplied; a "/" here would append a byte the sidecar does not expect.
+  config {
+    endpoint: request_url
+    auth: Bearer
+    auth_input: request_token
+  }
 
   operation GetToken {
     requires Network
     input {
+      // Appended as a query parameter, which is what the pinned action does with the same three
+      // values (7c6bc770dae815cd3e89ee6cdf493a5fab2cc093, src/client/workload_identity_federation.ts:180-186:
+      // requestURL.searchParams.set('audience', ...); Authorization: Bearer <request token>; response
+      // field named subject_token_field_name: value).
       audience: NonEmptyStr
       request_url: String
       request_token: Secret
     }
     output { subject_token: Secret from "value" }
     readonly
-    transport rest { method: GET, path: "/\{audience\}" }
+    transport rest { method: GET, path: "", query: { audience: audience } }
     response {
       200 => GitHubOidcToken200Body
       401 => GitHubErrorShape
