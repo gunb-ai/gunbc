@@ -97,31 +97,32 @@ fn to_axis_reading(r: BuildAxisReading) -> AxisReading {
   AxisReading { axis: r.axis, interval_micro: degenerate_interval(point: magnitude_scalar(m: r.magnitude)) }
 }
 
-// THE FUNDED AXES, each named by the declaration it projects rather than by a
-// label, so renaming a display string cannot move a candidate.
+// THE FUNDED AXES, each named by its own declaration rather than by a label (the convention
+// product.fleet_operating_point follows), so renaming a display string cannot move a candidate and the
+// identity resolves to a declaration that exists.
 data capacity_axis: DeclarationRef = decl_ref(
   module_path: "product.build_selection",
-  decl_name: "build_memory_capacity_axis",
+  decl_name: "capacity_axis",
 )
 
 data cash_axis: DeclarationRef = decl_ref(
   module_path: "product.build_selection",
-  decl_name: "build_incremental_cash_axis",
+  decl_name: "cash_axis",
 )
 
 data ceiling_axis: DeclarationRef = decl_ref(
   module_path: "product.build_selection",
-  decl_name: "build_constructible_ceiling_axis",
+  decl_name: "ceiling_axis",
 )
 
 data wall_power_axis: DeclarationRef = decl_ref(
   module_path: "product.build_selection",
-  decl_name: "build_wall_power_axis",
+  decl_name: "wall_power_axis",
 )
 
 data bandwidth_axis: DeclarationRef = decl_ref(
   module_path: "product.build_selection",
-  decl_name: "build_memory_bandwidth_axis",
+  decl_name: "bandwidth_axis",
 )
 
 fn build_selection_axes() -> List<SelectionAxis> {

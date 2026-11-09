@@ -56,7 +56,7 @@ type CapacityClassEvidence
 // does not count" is a stronger claim than "no hits" and survives someone re-running the grep.
 data no_class_carrier: CapacityClassEvidence = NoClassCarrierAnywhere {
   searched_modules: [
-    decl_ref(module_path: "product.fabric.supply", decl_name: "Offer"),
+    decl_ref(module_path: "product.fabric.supply", decl_name: "SupplierOffer"),
     decl_ref(module_path: "product.fabric.identity", decl_name: "OfferKey"),
     decl_ref(module_path: "product.fabric.work", decl_name: "Shape"),
     decl_ref(module_path: "gunbc.dispatch_selection", decl_name: "declared_provider_inventory_for_instance"),
@@ -79,8 +79,8 @@ data plausible_carrier_is_untyped: CapacityClassEvidence = PlausibleCarrierIsUnt
 data protection_has_no_reach: CapacityClassEvidence = ProtectionHasNoReachAcrossSeam {
   protection: decl_ref(module_path: "gunbc.fabric.fabric_control_plane_charge", decl_name: "host_fabric_control_plane_claim"),
   protection_consumers: [
-    decl_ref(module_path: "gunbc.ci.ci_runner_placement", decl_name: "ci_runner_placement_authority"),
-    decl_ref(module_path: "gunbc.fleet.fleet_host_budget", decl_name: "fleet_host_budget_authority"),
+    decl_ref(module_path: "gunbc.ci.ci_runner_placement", decl_name: "host_standing_at_width"),
+    decl_ref(module_path: "gunbc.fleet.fleet_host_budget", decl_name: "host_allocation_tree"),
   ],
   unreached_layer: "product.fabric — zero references to fabric_control_plane_charge or fleet_host_budget anywhere under product/" as NonEmptyStr,
 }
