@@ -53,7 +53,7 @@ test fn exact_structural_comparison_roots_differ_at_a_nested_argument_holds() ->
 
 // The arity arm also names where: an inner application with a different number of arguments.
 test fn exact_structural_comparison_argument_count_differs_at_a_nested_argument_holds() -> Bool {
-  match exact_structural_comparison(source_facts: list_application(of: pair_application(left: atom(name: ^Int), right: atom(name: ^String))), algebra: list_application(of: pair_application(left: atom(name: ^Int), right: atom(name: ^String))), candidate: list_application(of: pair_application(left: atom(name: ^Int))), type_variables: []) {
+  match exact_structural_comparison(source_facts: list_application(of: pair_application(left: atom(name: ^Int), right: atom(name: ^String))), algebra: list_application(of: pair_application(left: atom(name: ^Int), right: atom(name: ^String))), candidate: list_application(of: pair_application_one(left: atom(name: ^Int))), type_variables: []) {
     ComparisonArgumentCountDiffers { source_arity: source_arity, candidate_arity: candidate_arity, argument_ordinal_path: path } =>
       source_arity == 2 && candidate_arity == 1 && path_is_first(path: path)
     _ => false
@@ -134,6 +134,19 @@ fn pair_application(left: Node, right: Node) -> Node {
   )
 }
 
+// The arity claim needs the SAME head on both sides with a DIFFERENT number of argument slots, which a
+// two-parameter helper cannot express: a call with one argument named is a call-shape error, not a
+// one-argument application. This is the same constructor-first shape with one argument slot.
+fn pair_application_one(left: Node) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Instantiation },
+    children: [
+      Edge { label: Positional, target: atom(name: ^Pair), declaration: NotADeclaration },
+      Edge { label: Positional, target: left, declaration: NotADeclaration }
+    ]
+  )
+}
+
 fn list_application(of: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Instantiation },
@@ -160,7 +173,7 @@ fn comparison_is_holds(a: Node, b: Node) -> Bool {
 
 fn comparison_refuses_at_path(comparison: ExactStructuralComparison, named: fn(List<Nat>) -> Bool) -> Bool {
   match comparison {
-    ComparisonRootsDiffer { argument_ordinal_path: path } => named(path: path)
+    ComparisonRootsDiffer { argument_ordinal_path: path } => named(path)
     _ => false
   }
 }
