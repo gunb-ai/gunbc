@@ -33,7 +33,7 @@ type LocusAnchor<T> {
 // DECLARED HERE, NOT IN v2.std.inhabitance. The InhabitanceJudgmentLocus arm below carries this type,
 // and v2.std.diagnostic is imported BY v2.std.inhabitance: importing the type back down would invert
 // that edge into a cycle, and acyclicity is the import graph's only structural law, gunbc.design_argument::closed_grounded_substrate.
-// One declaration, every importer re-pointed, never a second copy (keen-heron-809's ruling on this PR).
+// One declaration, every importer re-pointed, never a second copy.
 // `argument_ordinal_path` on the two arms whose subject is a TYPE says which argument of that type the
 // answer was really about, outermost argument first, [] being this position itself; the path is
 // PRODUCED by the one descent in v2.std.exact_structural_equality_zip_fold_predicate, never re-derived
@@ -56,9 +56,9 @@ type Locus
   // the reason list (a reader asking "has_reason(^position_declared_return)" would get true for a
   // diagnostic that refuses nothing about returns), and it is not an edge, because the two arms that need
   // one carry no node to target. The node stays reachable through `anchor`, so nothing that reads a locus
-  // loses it. Read it through ONE accessor, diagnostic_inhabitance_position (keen-heron-809, who also
-  // rejected a fourth field on Diagnostic: an inhabitance fact does not belong on the universal record at
-  // 1152 construction sites). RequestedModuleMissing is the precedent for a typed fact carried where a
+  // loses it. Read it through ONE accessor, diagnostic_inhabitance_position. A fourth field on Diagnostic
+  // was rejected and that rejection stands: an inhabitance fact does not belong on the universal record at
+  // 1152 construction sites. RequestedModuleMissing is the precedent for a typed fact carried where a
   // caller cannot overwrite it.
   | InhabitanceJudgmentLocus { position: DeclaredTypePosition, anchor: LocusAnchor<Node> }
   | NodeLocus { anchor: LocusAnchor<NodeOccurrence> }

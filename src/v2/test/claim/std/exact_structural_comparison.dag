@@ -69,7 +69,7 @@ test fn exact_structural_comparison_arguments_differ_by_child_label_holds() -> B
   }
 }
 
-// A TYPE VARIABLE IS NOT A ROOT (keen-heron-809's ruling on this PR). `K` against `Int` is undecided at
+// A TYPE VARIABLE IS NOT A ROOT. `K` against `Int` is undecided at
 // the argument that carries it, and the refusal class is not a structural mismatch.
 test fn exact_structural_comparison_a_type_variable_undecides_only_its_own_position_holds() -> Bool {
   match exact_structural_comparison(source_facts: pair_application(left: atom(name: ^K), right: atom(name: ^String)), algebra: pair_application(left: atom(name: ^K), right: atom(name: ^String)), candidate: pair_application(left: atom(name: ^Int), right: atom(name: ^String)), type_variables: [^K]) {

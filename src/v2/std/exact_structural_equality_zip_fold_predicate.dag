@@ -11,7 +11,7 @@ import std.optional {
   optional_prefer_first_present
 }
 import std.algebra { contains, length, list_head, list_snoc_item, skip, zip_map }
-import v2.std.node { Edge, Node, NodeKind, Symbol, node_equal_ignoring_provenance, well_formed }
+import v2.std.node { Edge, Node, Symbol, node_equal_ignoring_provenance, well_formed }
 
 // WHY THE EXACT STRUCTURAL COMPARISON REFUSED IS PART OF THE ANSWER. This predicate is what
 // v2.std.find_witness folds, and a Bool answered five different questions with one word: a malformed
@@ -24,7 +24,7 @@ import v2.std.node { Edge, Node, NodeKind, Symbol, node_equal_ignoring_provenanc
 // fold and the reason cannot disagree about which question was asked.
 //
 // THE VERDICT'S ARMS FALL INTO TWO REFUSAL CLASSES, and the class is chosen in v2.std.inhabitance, not
-// here (ruling by keen-heron-809 on this PR). `ComparisonRootsDiffer`,
+// here. `ComparisonRootsDiffer`,
 // `ComparisonArgumentCountDiffers` and `ComparisonArgumentsDiffer` are the arms that ANSWER the
 // inhabitance question: the comparison ran and the produced type does not inhabit the declared one. The
 // rest -- `ComparisonSourceFactsMalformed`, `ComparisonAlgebraMalformed`,
@@ -45,8 +45,8 @@ type ExactStructuralComparison
   | ComparisonArgumentCountDiffers { source_arity: Int, candidate_arity: Int, argument_ordinal_path: List<Nat> }
   | ComparisonArgumentsDiffer { argument_ordinal_path: List<Nat> }
   // A TYPE VARIABLE IS NOT A ROOT. Answering "the roots differ" about `K` against `Int` refuses a type the
-  // relation holds no instance for, in the one decision, for the wrong reason (keen-heron-809's ruling B on
-  // this PR). The scan keeps looking past this arm: a DECIDED disagreement anywhere in the pair wins, and
+  // relation holds no instance for, in the one decision, for the wrong reason. The scan keeps looking past
+  // this arm: a DECIDED disagreement anywhere in the pair wins, and
   // this arm is the answer only when nothing decided -- "a disagreeing sibling beats an undecided one",
   // stated inside the decision rather than in each caller. Two occurrences of the SAME binder are equal by
   // node identity and never reach here; distinct binders, and a variable against a concrete type, do.
@@ -58,8 +58,8 @@ type ExactStructuralComparison
 // argument 0. It is produced in the same branch that decides the arm, by the single descent below, so no
 // consumer re-derives it -- `Foo<A>` versus `Foo<B>` is decided as
 // `ComparisonRootsDiffer { argument_ordinal_path: [0] }` at the argument pair, and the outer level
-// propagates THAT arm instead of flattening it to `ComparisonArgumentsDiffer` (ruling by keen-heron-809
-// on this PR). The malformed and algebra-mismatch arms carry no path: they refuse before any pair is
+// propagates THAT arm instead of flattening it to `ComparisonArgumentsDiffer`. The malformed and
+// algebra-mismatch arms carry no path: they refuse before any pair is
 // compared, so there is no position to name.
 
 // One scan step: the verdict held so far and the ordinal of the child pair under examination. This corpus
@@ -112,14 +112,14 @@ fn exact_structural_comparison(
 // and args = skip(children, 1). An ordinal that names an ARGUMENT is therefore counted over the children
 // after the constructor; counting child slots instead is off by one on every application and would name
 // the constructor edge as if it were an argument.
+// The consumer matches the connective directly: the v2 corpus reads an application the same way wherever
+// it needs one (`TypeNode { connective: Instantiation }` in body_lowering_fold, infer, and here), and a
+// Bool-shaped predicate over the `NodeKind` sum would be a second, weaker name for one arm of that sum --
+// it cannot carry the arm's payload, and callers that DO need the payload would have to re-match anyway.
 fn exact_structural_argument_children(node: Node) -> List<Edge> {
-  if exact_structural_is_application(kind: node.kind) { skip(xs: node.children, n: 1) } else { node.children }
-}
-
-fn exact_structural_is_application(kind: NodeKind) -> Bool {
-  match kind {
-    TypeNode { connective: Instantiation } => true
-    _ => false
+  match node.kind {
+    TypeNode { connective: Instantiation } => skip(xs: node.children, n: 1)
+    _ => node.children
   }
 }
 
@@ -141,11 +141,8 @@ fn exact_structural_head_verdict(
   argument_ordinal_path: List<Nat>,
   type_variables: List<Symbol>
 ) -> ExactStructuralComparison {
-  if !exact_structural_is_application(kind: source_facts.kind) {
-    // a non-application has no head child: its root already lived in `kind`, which the caller checked
-    ComparisonHolds
-  } else {
-    match list_head(xs: source_facts.children) {
+  match source_facts.kind {
+    TypeNode { connective: Instantiation } => match list_head(xs: source_facts.children) {
       Absent => match list_head(xs: candidate.children) {
         // neither side carries a head edge: both children lists are empty, which the whole-tree equality
         // also calls equal, so nothing is decided here
@@ -167,6 +164,8 @@ fn exact_structural_head_verdict(
         }
       }
     }
+    // a non-application has no head child: its root already lived in `kind`, which the caller checked
+    _ => ComparisonHolds
   }
 }
 
@@ -189,8 +188,8 @@ fn exact_structural_root_is_type_variable(node: Node, type_variables: List<Symbo
 // reported -- the head before any argument of it. Once a verdict is held the scan stops comparing: it still
 // walks the remaining pairs to advance the ordinal, but does no comparison work on them. This NEVER calls
 // the whole-tree `exact_structural_equality_zip_fold` per level: a whole-tree equality test at every level
-// and then a recursion into the differing child is quadratic in depth times size, the cost keen-heron-809
-// put on this PR. The pair-wise identity tested here is the same one that Bool tests -- equal label, then
+// and then a recursion into the differing child is quadratic in depth times size, which is the cost this
+// descent avoids. The pair-wise identity tested here is the same one that Bool tests -- equal label, then
 // equal targets, `declaration` ignored -- over the SAME pairs the Bool's whole-tree test walks, the head
 // child included, so the verdict and the Bool the witness fold uses cannot disagree about which pair
 // holds. All pairs holding IS the pair holding; no arm is invented for the case the scan cannot reach.

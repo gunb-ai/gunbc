@@ -161,11 +161,10 @@ type InhabitanceVerdict
   // refusal by position is what let one symbol stand for nine different mechanisms. See
   // v2.std.exact_structural_equality_zip_fold_predicate.
   // `refusal_class` is set once, by the decision that produced `find_witness_reason` -- never re-derived
-  // from the symbol afterwards, so there is one authority for which class a refusal is (keen-heron-809's
-  // condition on this PR).
+  // from the symbol afterwards, so there is one authority for which class a refusal is.
   // `position` is the judgment site, its OWN field: the reason says what answered no, the position says
-  // where, and neither is inferred from the other (keen-heron-809's ruling on this PR, which deleted the
-  // position-named reason symbols for exactly that reason). It carries the argument ordinal path of the
+  // where, and neither is inferred from the other -- the position-named reason symbols were deleted for
+  // exactly that reason. It carries the argument ordinal path of the
   // decision that refused, so a nested mismatch says which argument it was decided at.
   | InhabitanceRefused { find_witness_reason: Symbol, refusal_class: InhabitanceRefusalClass, position: DeclaredTypePosition }
   | InhabitanceUndecidable { reason: InhabitanceUndecidableReason }
@@ -796,8 +795,8 @@ fn declared_type_inhabitance_refusal_decision(
   }
 }
 
-// WHICH CLASS A REFUSAL BELONGS TO, decided exhaustively over every arm the verdict can have
-// (keen-heron-809's condition on this PR). A closed set of symbols plus a default would let the next arm
+// WHICH CLASS A REFUSAL BELONGS TO, decided exhaustively over every arm the verdict can have.
+// A closed set of symbols plus a default would let the next arm
 // anyone adds inherit "does not inhabit" silently; this match has no default, so adding an arm to
 // ExactStructuralComparison breaks the build until its class is named.
 type InhabitanceRefusalClass
@@ -813,8 +812,8 @@ type InhabitanceStructuralDecision { refusal_class: InhabitanceRefusalClass, rea
 // A nested pair's decision, reported at the pair that contains it: the mechanism and the arm are the
 // nested one's, and the path grows by the ordinal of the argument it came through. This is the ONLY way a
 // containment level touches a decision, and it never changes which arm answered no -- the level above does
-// not get to relabel a roots-differ as its own `arguments_differ` symptom (keen-heron-809: `Foo<A>` versus
-// `Foo<B>` is roots_differ at [0], propagated, not flattened).
+// not get to relabel a roots-differ as its own `arguments_differ` symptom: `Foo<A>` versus `Foo<B>` is
+// roots_differ at [0], propagated, not flattened.
 // THE CONTAINING ORDINAL GOES AT THE FRONT, because `argument_ordinal_path` is outermost-first everywhere
 // it is read: the structural comparison grows the path on the way DOWN, appending each ordinal to its
 // parent's path (exact_structural_equality_zip_fold_predicate exact_structural_child_pair), and
