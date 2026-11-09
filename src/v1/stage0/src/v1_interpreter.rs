@@ -8335,6 +8335,21 @@ fn call_function_dispatch(
 /// itself cannot name is still `NoSuchVariable`, which is what the unimported-bare-name floor
 /// (`unimported_bare_name_floor_test`) demands. An already-bound parameter is deliberately NOT
 /// reachable, which is today's behaviour: defaults are evaluated before any binding exists.
+///
+/// WHAT THIS MOVES, AND WHAT IT LEAVES (review 92681 asked the scope be stated rather than
+/// inferred). MOVED: a bare read of a fieldless arm of a coproduct the DECLARING module owns — the
+/// `Jwt` shape, and the shape this class was reported with. Also moved, as a consequence of the base:
+/// a default no longer sees the CALLING frame's locals, only the program's entry environment — which
+/// is the rule the callee's body already lives under, and the reason a default cannot spell a caller's
+/// local. LEFT ALONE: every other read in a default — a function, a data row, an arm of a coproduct
+/// the declaring module IMPORTED — is still answered by that same entry environment, because a v1
+/// runtime has no per-module value environment to relocate it into; only the source (the fn node's
+/// span file, `module_of_site`) says which module wrote the declaration. That residual half is the
+/// latent population `gunbc.recurring_failure_mode::a_field_default_is_evaluated_in_the_callers_scope`
+/// carries on its row as the climb to `StructurallyGuaranteed`, and the witness pair names which
+/// half it tests: `test.claim.field_default_declaring_scope_witness` covers the moved half, and
+/// `test.claim.field_default_importing_caller_control` is green on both sides to prove the moved
+/// half does not disturb a caller that DOES import the arm.
 fn declaring_scope_env(
     ctx: &InterpContext,
     fn_node: &Rc<Node>,
@@ -8346,7 +8361,7 @@ fn declaring_scope_env(
         return base;
     };
     let mut reads = Vec::new();
-    collect_bare_read_names(ctx, default_node, &mut reads, 64);
+    collect_bare_read_names(ctx, default_node, &mut reads);
     let mut bindings: HashMap<Symbol, Value> = HashMap::new();
     for name in reads {
         // A dotted read already has its own answer (the qualified item and coproduct-arm paths), and
@@ -8387,24 +8402,19 @@ fn declaring_scope_env(
     }
 }
 
-/// The bare spellings a default expression reads, bounded: defaults are small and this runs per
-/// omitted argument, so the walk is capped rather than exhaustive — an over-large default simply gets
-/// today's resolution rather than a surprise one.
-fn collect_bare_read_names(
-    ctx: &InterpContext,
-    node: &Rc<Node>,
-    out: &mut Vec<String>,
-    budget: u32,
-) {
-    if budget == 0 || out.len() >= 32 {
-        return;
-    }
+/// The bare spellings a default expression reads. The walk is EXHAUSTIVE over the default's own
+/// subtree: it is finite (the parser built it), it is the same subtree `eval_expr` walks a few lines
+/// later to evaluate the default, and the cost is paid once per OMITTED argument. There is no cap and
+/// therefore no silent fallback: a capped walk would hand a name past the cap back to the caller's
+/// scope, which is the defect this function exists to close, and a defect that degrades by size rather
+/// than refusing is uncounted (`gunbc.design_argument::fail_closed`).
+fn collect_bare_read_names(ctx: &InterpContext, node: &Rc<Node>, out: &mut Vec<String>) {
     if let ExprData::ExprVar { .. } = &*node.expr_data {
         out.push(expr_var_name_at(node.clone(), ctx.si()));
         return;
     }
     for child in node.children.iter() {
-        collect_bare_read_names(ctx, child, out, budget - 1);
+        collect_bare_read_names(ctx, child, out);
     }
 }
 
