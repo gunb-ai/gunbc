@@ -1,0 +1,40 @@
+module gunbc.recurring_failure_mode.a_declaration_ref_names_no_declaration_and_is_admitted
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, NamedField, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_declaration_ref_names_no_declaration_and_is_admitted: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_declaration_ref_names_no_declaration_and_is_admitted" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "resolve judges a DeclarationRef literal the way it judges an import: it refuses one whose module_path is not a module in the closure, or whose decl_name is not declared in that module, so a row's evidence cannot name nothing by construction. A ref assembled at runtime from strings stays outside that check, which is why the trigger is a judgement on the literal and not a validator fn." } },
+
+  receipts: [
+    "INVALID STATE: a DeclarationRef is three strings and a DeclField (std.decl_ref DeclarationRef: module_path, decl_name, field), and nothing at authoring, resolve, or heal reads those strings against the namespace tree. A carrier that holds List<DeclarationRef> -- gunbc.recurring_failure_mode RecurringFailureMode's evidence field is one -- is admitted with an element that names no module or no declaration. Resolve judges the element's TYPE: an element of the wrong product is refused, an element of the right product naming nothing is not.",
+
+    "HARM: evidence is the only part of a recurring-failure-mode row that points at code. receipts is prose a reader can discount; evidence is what a reader assumes is checkable, and the row's own trigger_capability is written against the declarations it names. A ref naming nothing makes the row unfindable from the code it describes, and sends anyone who opens the named declaration to read the measurement to a symbol that does not exist, where they must re-derive it or conclude the row is stale.",
+
+    "RECEIPT, 2026-11-09, keen-crane-53 on gunbc#15794, head 0bae08f6fc9a. In the row a_wet_claim_that_cannot_observe_reads_green I wrote an evidence element naming the_install_fold_alone_over_the_whole_planted_tree_reports_its_cost; the witness declares the_install_fold_alone_over_the_whole_tree_reports_its_cost, and no declaration with the name I wrote exists anywhere in dag/. Measured: a scratch probe entry importing the three recurring-failure-mode rows that lane touches, run against a clean clone of that head with a private CARGO_TARGET_DIR (claim_batch sha256 18b57df47de38716420d06458e32bda3eda9f489fc3b493c1aa69bd2ff6dd9a6), returned rc 0 with 0 resolve errors and 0 closure diagnostics WHILE that element named nothing. The same probe returns 4 resolve errors when the element's type is wrong, so the instrument sees the type and not the name.",
+
+    "WHAT CAUGHT IT, AND WHY THAT IS RUNG MITIGATABLE: a grep of each ref against its module file, done by the same author who wrote the wrong one -- 13 refs across three rows, one wrong. That is a per-row manual act with no carrier, so it does not survive the next author, and nothing in the corpus was searched harder than a name match: a ref can also name a real declaration in the WRONG module, which a name-only grep passes.",
+
+    "NOT COVERED, STATED RATHER THAN IMPLIED: no claim of gunbc#15794, and no claim found by searching the corpus, goes red on a ref that names nothing. The probe above is a harness artifact and is not committed, because on its own it would be permanently green -- it asserts only that the rows build, which they do.",
+
+    "DISTINCT FROM rung_drop_population_is_unresolved_free_text: there the population is declared List<String>, so the free text IS the declared type and the climb is a check that reads a String list against the namespace tree. Here the carrier is already typed and the strings sit INSIDE the product, so the type check that exists stops at the product boundary and never descends. Same loss, one level down, and a different repair.",
+
+    "DISTINCT FROM a_revision_pinned_reading_cites_a_declaration_without_its_revision: there the ref resolves, and the harm is that it resolves against a different tree than the reading describes -- a missing revision coordinate. Here the ref never resolved to anything; there is no tree it is true of.",
+
+    "NO CHECK IS WRITTEN HERE, on the ruling of the lane's manager (2026-11-09): the judgement belongs at resolve, over every DeclarationRef literal, not beside one consumer. A witness that read one row's evidence would fire on one specimen and on nothing else, which is the decoration gunbc.design_argument::guarantee_ladder names.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "std.decl_ref", decl_name: "DeclarationRef", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.decl_ref", decl_name: "DeclField", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.recurring_failure_mode", decl_name: "RecurringFailureMode", field: NamedField { field_name: "evidence" } },
+    DeclarationRef { module_path: "gunbc.recurring_failure_mode.a_wet_claim_that_cannot_observe_reads_green", decl_name: "a_wet_claim_that_cannot_observe_reads_green", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.recurring_failure_mode.rung_drop_population_is_unresolved_free_text", decl_name: "rung_drop_population_is_unresolved_free_text", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", decl_name: "the_install_fold_alone_over_the_whole_tree_reports_its_cost", field: WholeDeclaration },
+  ],
+}
