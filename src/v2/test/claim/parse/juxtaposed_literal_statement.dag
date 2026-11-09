@@ -1,0 +1,107 @@
+module v2.test.claim.parse.juxtaposed_literal_statement
+
+// A BODY THAT SILENTLY FOLDS A NON-FINAL BARE VALUE IS THE OBSERVED HARM. gunb-ai/gunbc#16148 repaired
+// the live instance: dag/gunbc/harness/harness_tool_kind.dag's `all_harness_tools` was written as two
+// juxtaposed bracketed list literals, so the fold kept ONE list and `harness_execute_tool_use` refused
+// the tools the dropped list carried (the dispatcher red), and `harness_tool_use_item_events` mislabelled
+// them in the roadmap event stream. This row is the STANDING CONTROL on the v2 path: the load-bearing v2
+// body lowering refuses a fn body whose statement sequence leaves a non-final bare value, with the typed
+// located cause `body_lowering_reason_statement_precedes_without_binding` -- never a silent last-wins.
+//
+// THE DISCRIMINATOR IS THE FIRST CLAIM. Two juxtaposed bracketed literals are a two-statement body (the
+// grammar makes a next-line `[` a new statement, not an index suffix --
+// v2.extdeps.languages.dag::dag_grammar_index_lbracket_head_expr guards `not_predicate(after_line_break)`
+// on the `[`), so the first list is a bare value with a successor and must refuse. The accepted siblings
+// are the positive controls: a SINGLE bracketed literal (no successor) and a `let`-bound value followed by
+// its tail (the non-final statement IS a binding) lower -- the refusal is specific to a bare value that
+// precedes another statement, not to bracketed literals in general. The paired cause at a node (not a
+// silent fold) is the second claim.
+//
+// WHY THESE ARE GREEN AT BASE AND STAY GREEN. v2 body lowering already refuses this shape (the statement
+// authority v2.compiler.body_lowering_fold::body_lower_stmt_spine answers a statement that precedes
+// another with `statement_precedes_without_binding`), exactly as the sibling standing control
+// v2.test.claim.body_lowering.statement_let_bind::unbound_statement_prefix_refuses_holds pins the same
+// cause for the bare non-list literals `{ 1 \n 2 }`. These rows are the regression lock that the refusal
+// stays honest -- a lowering that reverted to keeping one value and dropping the other would fail both
+// the refusal cells AND the accept controls. The class's open path is the v1 seed fold (still silent),
+// recorded on the row gunbc.recurring_failure_mode::juxtaposed_bare_value_lowers_to_the_last_at_body_lowering;
+// its claim (red at base, green after the seed refuses) is the follow-up, not this cell.
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.text { String }
+import v2.compiler.reference_conservation { ReferenceConservationSubject }
+import v2.compiler.reference_conservation_admission { conserved_normalize, conservation_subject_of_text }
+import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
+import v2.std.node { symbol_lexeme }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The observed instance: two juxtaposed bracketed list literals. No external references, so the refusal
+// can only come from the statement sequence, not from a dropped reference.
+data juxtaposed_lists_source: String = "module m\nfn juxtaposed_lists() -> Int {\n  [1, 2, 3]\n  [4, 5]\n}\n"
+
+// A SINGLE bracketed literal: no successor, so no non-final bare value. Must lower (accept).
+data single_literal_source: String = "module m\nfn single_literal() -> Int {\n  [1, 2, 3]\n}\n"
+
+// A `let`-bound value followed by its tail: the non-final statement is a binding, which is exactly what
+// must keep lowering. Must lower (accept) -- this is what stops the refusal from being over-broad.
+data let_then_tail_source: String = "module m\nfn let_then_tail() -> Int {\n  let xs = [1, 2, 3]\n  xs\n}\n"
+
+// Two juxtaposed bare NAMES (a bound param read as a value, then the tail): the same rule, not
+// list-specific. Must refuse under the same cause.
+data juxtaposed_names_source: String = "module m\nfn juxtaposed_names(a: Int) -> Int {\n  a\n  a\n}\n"
+
+fn subject_of(text: String) -> ReferenceConservationSubject {
+  conservation_subject_of_text(path: "src/m.dag", text: text)
+}
+
+// THE FATAL CAUSE, by lexeme, or "accepted" when normalize conserved the tree. A silent last-wins would
+// show here as "accepted" -- which is precisely what the two refusal cells forbid.
+fn fatal_cause(text: String) -> String {
+  match conserved_normalize(subject: subject_of(text: text)) {
+    Accepted { value: _, diagnostics: _ } => "accepted"
+    Rejected { diagnostics: ds } => symbol_lexeme(sym: ds.head.reason)
+  }
+}
+
+fn refuses_at_a_node(text: String) -> Bool {
+  match conserved_normalize(subject: subject_of(text: text)) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: ds } =>
+      match ds.head.at {
+        NodeLocus { anchor: _ } => true
+        _ => false
+      }
+  }
+}
+
+// THE RED / STANDING CONTROL. A body of two juxtaposed bracketed literals is a two-statement body whose
+// first statement is a bare value with a successor: v2 body lowering refuses it under the non-final
+// bare-value cause, never folds it to the last literal.
+test fn juxtaposed_bracketed_literals_refuse_the_non_final_bare_value_holds() -> Bool {
+  fatal_cause(juxtaposed_lists_source) == "body_lowering_reason_statement_precedes_without_binding"
+}
+
+// THE REFUSAL IS TYPED AND LOCATED, not a silent fold: the fatal diagnostic's locus is a node, so a
+// reader that dropped the earlier value and accepted would fail this (it would report "accepted", no node).
+test fn juxtaposed_bare_value_refusal_is_located_at_a_node_holds() -> Bool {
+  refuses_at_a_node(juxtaposed_lists_source)
+}
+
+// THE RULE IS NOT LIST-SPECIFIC. Two juxtaposed bare names refuse under the same cause; a name is a bare
+// value the same way a bracketed list is.
+test fn juxtaposed_bare_names_refuse_under_the_same_cause_holds() -> Bool {
+  fatal_cause(juxtaposed_names_source) == "body_lowering_reason_statement_precedes_without_binding"
+}
+
+// POSITIVE CONTROL. A single bracketed literal has no successor, so it is not a non-final bare value; it
+// must lower, else the refusal is over-broad and would refuse every bracketed-literal body.
+test fn a_single_bracketed_literal_body_is_accepted_holds() -> Bool {
+  fatal_cause(single_literal_source) == "accepted"
+}
+
+// POSITIVE CONTROL. A `let`-bound value followed by its tail is the bind-and-continue form: the non-final
+// statement is a binding, so it must keep lowering to the tail. This is the shape the rule must NOT touch.
+test fn a_let_then_tail_body_is_accepted_holds() -> Bool {
+  fatal_cause(let_then_tail_source) == "accepted"
+}
