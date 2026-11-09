@@ -32,17 +32,29 @@ import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimR
 //                         and after the fix -- a regression guard, expected 5*100 + 2*10 + 1 = 521 on both
 //                         legs.
 //
-// WHAT THIS LABEL DOES NOT REACH (verified by reading the gate, not by running): an arm is lowered by
-// emit_pattern_rc_aware only when rc_pattern_analysis_with_box_fields leaves needs_rc_pattern true -- that
-// is, when analyze_rc_pattern finds a field whose PATTERN is a variant pattern over a shared (Rc) type, or
-// box_bound_fields_for_pattern finds a field whose declared TYPE needs a Box (a recursive type). Every
-// fixture type here (ProbeResult, ProbePayload, ProbeSelector, ProbeTable) is non-recursive and
-// non-shared, and a renamed Bind leaf never enters ref_bound_fields on its own, so all three arms take the
-// ordinary emit_pattern path, which already bound the renamed field under the arm's declared name BEFORE
-// the fix. So this label pins the renamed/shorthand/nested renderings at the value level; it is NOT the
-// witness for the `field_needs_rc_ref` branch the fix changed. A fixture that reaches that branch needs a
-// renamed field whose declared type is recursive (Box-wrapped) or nested over a shared type -- the shape the
-// seed instance had (parse_expr_not_predicate_attempt over the Rc-shared parse types).
+// WHAT THIS LABEL IS: a REGRESSION GUARD FOR THE PLAIN (non-rc) RENAMED RENDERINGS, nothing more. It does
+// NOT ring gunbc.recurring_failure_mode emitted_pattern_field_bound_under_its_own_name_captures_an_outer_binding,
+// and this change leaves that class's rc-ref branch RUNG-UNCLAIMED: no sentinel at any head goes red on it.
+//
+// WHY IT CANNOT REACH THE BRANCH THE FIX CHANGED (read off the gate, not run): an arm is lowered by
+// emit_pattern_rc_aware only when rc_pattern_analysis_with_box_fields leaves needs_rc_pattern true, and the
+// fixed branch fires only for a field that is IN rc_analysis.ref_bound_fields. A plain renamed Bind leaf
+// (`table: table1`) enters ref_bound_fields only through box_bound_fields_for_pattern, i.e. only when its
+// declared type satisfies needs_box_wrapping -- recursive AND NOT in shared_types. Every fixture type here
+// (ProbeResult, ProbePayload, ProbeSelector, ProbeTable) is non-recursive, so no field is box-bound and the
+// arms' renamed leaves render through emit_pattern, which already honored renames before the fix. (The
+// nested_variant_rename arm does reach emit_pattern_rc_aware -- a nested variant pattern over the shared
+// coproduct ProbePayload puts `captured` in ref_bound_fields -- but it reaches the rc path on the NESTED
+// field, not on the renamed leaf the fix changed.)
+//
+// WHY NO FIXTURE FOR THAT BRANCH IS ADDED HERE: the shape needs a declared type that is recursive yet
+// unshared -- the emitter marks every recursive record/coproduct shared for the Rust target, so the gap is
+// the `shared_by_every_declarer` rule (one spelling, two declarations, one of them type-constant). The seed
+// instance (v2.compiler.parse parse_expr_not_predicate_attempt, field `table: ParseTable`) proves such a
+// shape exists, but certifying that a hand-authored fixture lands in that gap needs both legs BUILT: the
+// entry at the pre-fix seed exiting NOT-HELD and at the fix exiting HELD. Asserting a shape without that is
+// the same decoration this review rejects, so the branch is left rung-unclaimed rather than fenced by a
+// claim.
 //
 // MISSING EVIDENCE (restore): the two legs -- entry built at the PRE-FIX seed (the seed emission whose
 // v2_compiler_parse.rs carries sha 188439f2, pre-fix src/v1/05_emit_rust.dag) exiting NOT-HELD (1), and at

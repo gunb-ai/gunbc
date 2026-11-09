@@ -760,10 +760,13 @@ fn pattern_binder_capture_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "pattern-binder-capture" } }
 }
 
-// The renamed-field-binding fixtures on the emitted path: an arm that renames a field binding while the
-// body reads a same-named outer variable must read the OUTER value in the emitted code
-// (gunbc.recurring_failure_mode emitted_pattern_field_bound_under_its_own_name_captures_an_outer_binding).
-// Mechanical-by-label, executed by host runs, not gate-enrolled.
+// The renamed-field-binding fixtures on the emitted path, as a regression guard for the PLAIN (non-rc)
+// renderings only: an arm that renames a field binding must bind the arm's declared name, and a body read of
+// a same-named outer variable must keep the outer value. These fixtures are non-recursive and non-shared, so
+// they do NOT reach the emitter's rc-ref pair branch and do NOT ring gunbc.recurring_failure_mode
+// emitted_pattern_field_bound_under_its_own_name_captures_an_outer_binding -- that class's rc-ref branch is
+// left rung-unclaimed, and the fixture header says why. Mechanical-by-label, executed by host runs, not
+// gate-enrolled.
 fn pattern_binder_capture_binding() -> TargetBinding {
   TargetBinding { target: pattern_binder_capture_label() producer: NativeClaimProgramProducer { entry: "dag/gunbc/instruments/pattern_binder_capture_native.dag" deadline: native_claim_policy_child_deadline() } }
 }
