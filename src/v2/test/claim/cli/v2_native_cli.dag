@@ -3,7 +3,6 @@ import std.optional { Absent, Optional, Present }
 
 
 import std.algebra { Cons, Empty, FreeMonoid, length, list_head }
-import std.process { ExitSuccess, ProcessExit, exit_failure }
 import std.process { ExitFailure, ExitSuccess }
 import extdeps.process.gnu_bash_exit { exit_code_misuse }
 import extdeps.process.posix_exit { exit_code_general_error }
@@ -792,6 +791,7 @@ fn argv_reference_migration(verb: String, case: String) -> FreeMonoid<String> {
   }
 }
 
+
 test fn the_plan_reference_migration_spelling_selects_its_own_verb_holds() -> Bool {
   let plan = v2_cli_parse(argv: argv_of(items: argv_reference_migration(verb: "plan-reference-migration", case: "given")))
   plan_roots_verb_label(plan: plan) == cli_verb_plan_reference_migration
@@ -821,19 +821,4 @@ test fn a_reference_migration_verb_with_a_dangling_rules_option_refuses_holds() 
       argv: argv_of(items: argv_reference_migration(verb: "plan-reference-migration", case: "dangling")),
     ),
   ) == ^cli_rules_missing_value
-}
-
-// TEMPORARY — deleted before the commit. `gunbc run` needs a ProcessExit entry; the claims answer Bool.
-fn native_cli_migration_claims_gate() -> ProcessExit {
-  if !the_plan_reference_migration_spelling_selects_its_own_verb_holds() {
-    exit_failure(reason: "claim red: the_plan_reference_migration_spelling_selects_its_own_verb_holds")
-  } else if !the_apply_reference_migration_spelling_selects_its_own_verb_holds() {
-    exit_failure(reason: "claim red: the_apply_reference_migration_spelling_selects_its_own_verb_holds")
-  } else if !a_reference_migration_verb_without_a_rules_file_refuses_holds() {
-    exit_failure(reason: "claim red: a_reference_migration_verb_without_a_rules_file_refuses_holds")
-  } else if !a_reference_migration_verb_with_a_dangling_rules_option_refuses_holds() {
-    exit_failure(reason: "claim red: a_reference_migration_verb_with_a_dangling_rules_option_refuses_holds")
-  } else {
-    ExitSuccess
-  }
 }

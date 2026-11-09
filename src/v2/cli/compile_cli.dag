@@ -213,7 +213,7 @@ type CliRootsVerb
   | CliRootsApplyReferenceMigration
   | CliRootsParsePopulation
 
-data cli_roots_verbs: List<CliRootsVerb> = [CliRootsDifferential, CliRootsCheckLayout, CliRootsCheckReferences, CliRootsParsePopulation]
+data cli_roots_verbs: List<CliRootsVerb> = [CliRootsDifferential, CliRootsCheckLayout, CliRootsCheckReferences, CliRootsPlanReferenceMigration, CliRootsApplyReferenceMigration, CliRootsParsePopulation]
 
 fn cli_roots_verb_spelling(kind: CliRootsVerb) -> String {
   match kind {
@@ -235,7 +235,6 @@ fn cli_roots_verb_usage(kind: CliRootsVerb) -> String {
     CliRootsCheckLayout =>
       concat("usage: <binary> ", cli_roots_verb_spelling(kind: kind), " --source-root <dir> [--source-root <dir>]...")
     CliRootsCheckReferences =>
-      concat("usage: <binary> ", cli_roots_verb_spelling(kind: kind), " --source-root <dir> [--source-root <dir>]...")
       concat("usage: <binary> ", cli_roots_verb_spelling(kind: kind), " --source-root <dir> [--source-root <dir>]...")
     CliRootsPlanReferenceMigration =>
       concat("usage: <binary> ", cli_roots_verb_spelling(kind: kind), " --source-root <dir> [--source-root <dir>]... --rules <path>")
