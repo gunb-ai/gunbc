@@ -1,0 +1,233 @@
+module test.claim.read_set_restore_witness
+
+import std.types { Bool, List, String }
+import std.optional { Absent, Present }
+import std.algebra { trim }
+import gunbc.source_layout { layout_module_storage_path }
+import gunbc.read_set_schema { fast_lane_skip_output, fast_lane_skip_true, fast_lane_compiler_identity_output }
+import gunbc.read_set_restore {
+  FastLanePathRule, FastLaneExactPath, FastLanePathPrefix,
+  FastLaneRuleSource, FastLaneFixedInput, FastLaneDecisionImplementation, FastLaneRecordedRead,
+  FastLaneInputRule,
+  FastLaneUnitObservation, FastLaneUnitAbsent, FastLaneUnitRestored,
+  FastLaneDiffObservation, FastLaneDiffRead, FastLaneDiffUnanswered,
+  FastLaneFullRunCause, FastLaneNoUnitRestored, FastLaneReceiptEmpty, FastLaneBinaryNotExecutable,
+  FastLaneIdentityMalformed, FastLaneReceiptLineUnreadable, FastLaneDiffUnreadable,
+  FastLaneChangedPathUndecidable, FastLaneInputChanged,
+  FastLaneVerdict, FastLaneReuse, FastLaneFullRun,
+  fast_lane_decide,
+  fast_lane_declared_rules,
+  fast_lane_decision_implementation_modules,
+  fast_lane_rule_exact_paths,
+  fast_lane_rule_prefixes,
+  fast_lane_decision_script,
+  fast_lane_decision_script_is_renderable,
+  fast_lane_decision_unemittable_marker,
+  fast_lane_check_command,
+}
+import extdeps.github.actions { Step, RunStep, UsesStep }
+import extdeps.languages.yaml.types { YamlString }
+import v2.cli.population_verb_names { cli_verb_check_layout }
+import gunbc.parse_verdict_publish { native_cli_bin, parse_verdict_compiler_expr, parse_verdict_fresh_compiler_expr, parse_verdict_generation_one_bin, parse_verdict_publish_command }
+import gunbc.parse_verdict_restore { parse_verdict_reuse_command, parse_verdict_restore_receipts_key }
+import gunbc.read_set_publish { fast_lane_stage_step }
+
+// THE PLANNING FAST LANE'S DECISION, EXECUTED ON SUPPLIED OBSERVATIONS (gunbc.read_set_restore
+// fast_lane_decide). Each claim hands the rule one restored unit and one diff and reads which arm it took,
+// so a claim that a change forces the full run names WHY, and a claim that a change skips is the same rule
+// answering reuse. The fixture receipt has one line of each kind the seed writes.
+
+data fixture_identity: String = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+data fixture_receipt: List<String> = [
+  "file dag/gunbc/instrument_targets.dag",
+  "file src/v2/compiler/parse.dag",
+  "probe dag/gunbc/not_yet_written.dag",
+  "dir dag/gunbc/rung_drop",
+]
+
+fn fixture_unit() -> FastLaneUnitObservation {
+  FastLaneUnitRestored { receipt_lines: fixture_receipt, binary_executable: true, identity_lines: [fixture_identity] }
+}
+
+fn decide_paths(paths: List<String>) -> FastLaneVerdict {
+  fast_lane_decide(unit: fixture_unit(), diff: FastLaneDiffRead { changed_paths: paths })
+}
+
+// THE ARM A VERDICT TOOK, as one word, so a claim compares the reason and not only skip-or-not.
+fn verdict_tag(v: FastLaneVerdict) -> String {
+  match v {
+    FastLaneReuse => "reuse"
+    FastLaneFullRun { cause: c } => cause_tag(c: c)
+  }
+}
+
+fn cause_tag(c: FastLaneFullRunCause) -> String {
+  match c {
+    FastLaneNoUnitRestored => "no-unit"
+    FastLaneReceiptEmpty => "receipt-empty"
+    FastLaneBinaryNotExecutable => "binary-not-executable"
+    FastLaneIdentityMalformed => "identity-malformed"
+    FastLaneReceiptLineUnreadable { line: _ } => "receipt-line-unreadable"
+    FastLaneDiffUnreadable => "diff-unreadable"
+    FastLaneChangedPathUndecidable { path: _ } => "path-undecidable"
+    FastLaneInputChanged { path: _, rule: r } => input_rule_tag(r: r)
+  }
+}
+
+fn input_rule_tag(r: FastLaneInputRule) -> String {
+  concat(source_tag(s: r.source), match r.rule {
+    FastLaneExactPath { path: _ } => "-exact"
+    FastLanePathPrefix { prefix: _ } => "-prefix"
+  })
+}
+
+fn source_tag(s: FastLaneRuleSource) -> String {
+  match s {
+    FastLaneFixedInput => "fixed"
+    FastLaneDecisionImplementation => "implementation"
+    FastLaneRecordedRead => "recorded"
+  }
+}
+
+// ═══ SKIPS ═══
+
+// An edit to a plan, a ledger row outside every recorded directory, and a document: nothing any guarded step
+// read. The empty diff (a branch identical to the ancestor) skips too.
+test fn an_unrelated_planning_edit_skips() -> Bool {
+  verdict_tag(v: decide_paths(paths: ["dag/gunbc/plans/demand_engine_program.dag", "docs/plans/notes.md", "dag/gunbc/rung_drop_index_note.dag"])) == "reuse"
+    && verdict_tag(v: decide_paths(paths: [])) == "reuse"
+}
+
+// ═══ FULL RUNS, EACH FOR ITS OWN REASON ═══
+
+test fn an_edit_to_a_recorded_file_forces_the_full_run() -> Bool {
+  verdict_tag(v: decide_paths(paths: ["docs/x.md", "dag/gunbc/instrument_targets.dag"])) == "recorded-exact"
+}
+
+// A path acquisition probed and found absent is now written: the closure may grow by it.
+test fn a_newly_satisfied_probe_forces_the_full_run() -> Bool {
+  verdict_tag(v: decide_paths(paths: ["dag/gunbc/not_yet_written.dag"])) == "recorded-exact"
+}
+
+// A file added under an enumerated directory changes the enumeration. The prefix is the directory plus `/`,
+// so a sibling whose name merely starts with the directory's name is not under it.
+test fn a_directory_membership_change_forces_the_full_run() -> Bool {
+  verdict_tag(v: decide_paths(paths: ["dag/gunbc/rung_drop/new_row.dag"])) == "recorded-prefix"
+    && verdict_tag(v: decide_paths(paths: ["dag/gunbc/rung_drop_sibling.dag"])) == "reuse"
+}
+
+// THE DIFF HAS RENAME DETECTION OFF, so a rename arrives as its deletion and its addition. Moving a recorded
+// file away is caught by its OLD path -- the new path alone would have skipped, which is why both sides
+// reach the rule.
+test fn a_rename_touching_a_recorded_path_forces_the_full_run() -> Bool {
+  verdict_tag(v: decide_paths(paths: ["dag/gunbc/compiler_parse_moved.dag", "src/v2/compiler/parse.dag"])) == "recorded-exact"
+    && verdict_tag(v: decide_paths(paths: ["dag/gunbc/compiler_parse_moved.dag"])) == "reuse"
+}
+
+test fn a_fixed_input_edit_forces_the_full_run() -> Bool {
+  verdict_tag(v: decide_paths(paths: ["src/v1/stage0/src/cli_run.rs"])) == "fixed-prefix"
+    && verdict_tag(v: decide_paths(paths: ["Cargo.lock"])) == "fixed-exact"
+    && verdict_tag(v: decide_paths(paths: ["rust-toolchain.toml"])) == "fixed-prefix"
+    && verdict_tag(v: decide_paths(paths: [".github/workflows/witnesses.yml"])) == "fixed-prefix"
+    && verdict_tag(v: decide_paths(paths: ["fixtures/annotation_reference_holds/dag/x.dag"])) == "fixed-prefix"
+}
+
+// The decision does not judge its own change, nor a change to the layout policy its checks read.
+test fn a_decision_implementation_edit_forces_the_full_run() -> Bool {
+  verdict_tag(v: decide_paths(paths: ["dag/gunbc/read_set_restore.dag"])) == "implementation-exact"
+    && verdict_tag(v: decide_paths(paths: ["dag/gunbc/witness/compiler_gate_workflow.dag"])) == "implementation-exact"
+    && verdict_tag(v: decide_paths(paths: ["dag/gunbc/source_layout_namespaces.dag"])) == "implementation-exact"
+}
+
+test fn an_absent_unit_forces_the_full_run() -> Bool {
+  verdict_tag(v: fast_lane_decide(unit: FastLaneUnitAbsent, diff: FastLaneDiffRead { changed_paths: [] })) == "no-unit"
+}
+
+// A corrupt unit is never read as a covering one, whatever the diff says.
+test fn a_corrupt_unit_forces_the_full_run() -> Bool {
+  let clean = FastLaneDiffRead { changed_paths: [] }
+  verdict_tag(v: fast_lane_decide(unit: FastLaneUnitRestored { receipt_lines: [], binary_executable: true, identity_lines: [fixture_identity] }, diff: clean)) == "receipt-empty"
+    && verdict_tag(v: fast_lane_decide(unit: FastLaneUnitRestored { receipt_lines: fixture_receipt, binary_executable: false, identity_lines: [fixture_identity] }, diff: clean)) == "binary-not-executable"
+    && verdict_tag(v: fast_lane_decide(unit: FastLaneUnitRestored { receipt_lines: fixture_receipt, binary_executable: true, identity_lines: [] }, diff: clean)) == "identity-malformed"
+    && verdict_tag(v: fast_lane_decide(unit: FastLaneUnitRestored { receipt_lines: fixture_receipt, binary_executable: true, identity_lines: [fixture_identity, fixture_identity] }, diff: clean)) == "identity-malformed"
+    && verdict_tag(v: fast_lane_decide(unit: FastLaneUnitRestored { receipt_lines: fixture_receipt, binary_executable: true, identity_lines: ["0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"] }, diff: clean)) == "identity-malformed"
+}
+
+// A receipt line the rule cannot read as a path it can compare against the diff is distrust, not a gap.
+test fn an_unreadable_receipt_line_forces_the_full_run() -> Bool {
+  let clean = FastLaneDiffRead { changed_paths: [] }
+  all(
+    ["blob dag/x.dag", "file /abs/x.dag", "file ", "dir dag/gunbc/", "dir dag/../src", "file dag//x.dag", "probe ./x.dag"],
+    bad => verdict_tag(v: fast_lane_decide(
+      unit: FastLaneUnitRestored { receipt_lines: concat(fixture_receipt, [bad]), binary_executable: true, identity_lines: [fixture_identity] },
+      diff: clean
+    )) == "receipt-line-unreadable"
+  )
+}
+
+test fn an_unanswered_diff_or_an_undecidable_path_forces_the_full_run() -> Bool {
+  verdict_tag(v: fast_lane_decide(unit: fixture_unit(), diff: FastLaneDiffUnanswered)) == "diff-unreadable"
+    && verdict_tag(v: decide_paths(paths: ["docs/a\nb.md"])) == "path-undecidable"
+}
+
+// ═══ THE RULE ROWS AND THEIR REALIZATION ═══
+
+// Every module of the decision's implementation has a layout path, so none fell back to the empty prefix that
+// switches the fast lane off; and the path is the layout's, not a spelling kept beside it.
+test fn every_implementation_module_has_its_layout_path() -> Bool {
+  all(fast_lane_decision_implementation_modules, m => layout_module_storage_path(module: m) != Absent)
+    && all(fast_lane_rule_prefixes(rules: fast_lane_declared_rules()), q => q != "")
+    && layout_module_storage_path(module: "gunbc.read_set_restore") == Present { value: "dag/gunbc/read_set_restore.dag" }
+}
+
+// THE SCRIPT IS BUILT FROM THE SAME ROWS: every declared exact path and prefix is a word of the emitted
+// script, the diff is the rename-free NUL-delimited one from the restored ancestor, and skip=true is written
+// once, after everything else, so a step that dies earlier never answers skip.
+test fn the_emitted_decision_carries_the_rule_rows_and_answers_skip_last() -> Bool {
+  let script = fast_lane_decision_script()
+  let skip_line = join(["'", fast_lane_skip_output, "=''", fast_lane_skip_true, "'"], "")
+  fast_lane_decision_script_is_renderable()
+    && (string_contains(s: script, pattern: fast_lane_decision_unemittable_marker) == false)
+    && all(fast_lane_rule_exact_paths(rules: fast_lane_declared_rules()), p => string_contains(s: script, pattern: join(["'", p, "'"], "")))
+    && all(fast_lane_rule_prefixes(rules: fast_lane_declared_rules()), q => string_contains(s: script, pattern: join(["'", q, "'"], "")))
+    && string_contains(s: script, pattern: "'--no-renames' '-z' \"$FAST_LANE_ANCESTOR\" 'HEAD'")
+    && (length(xs: split(s: script, delimiter: skip_line)) == 2)
+    && (string_contains(s: trim(split(s: script, delimiter: skip_line) |> fold(init: "", f: (acc, part) => part)), pattern: "\n") == false)
+    && string_contains(s: script, pattern: join([fast_lane_compiler_identity_output, "="], ""))
+}
+
+// ═══ ONE NATIVE-CLI EXPRESSION FOR EVERY CONSUMER, AND THE FRESH ONE FOR THE SAVE ═══
+
+// Every step that runs the native CLI or keys on its identity reads the shared expressions, which choose the
+// restored unit's binary and identity only under skip == 'true' and the fresh product otherwise; none of them
+// reads the emit step's output on its own, so no consumer depends on a step a reused run skips.
+test fn the_native_cli_consumers_read_one_shared_expression() -> Bool {
+  string_contains(s: parse_verdict_compiler_expr(), pattern: "steps.fast_lane.outputs.skip == 'true' && steps.fast_lane.outputs.compiler_identity")
+    && string_contains(s: parse_verdict_compiler_expr(), pattern: "steps.emit_build_v2_native_cli.outputs.compiler_identity")
+    && string_contains(s: parse_verdict_restore_receipts_key(ordinal: 0), pattern: parse_verdict_compiler_expr())
+    && string_contains(s: parse_verdict_reuse_command(), pattern: native_cli_bin())
+    && string_contains(s: parse_verdict_reuse_command(), pattern: parse_verdict_compiler_expr())
+    && string_contains(s: parse_verdict_publish_command(), pattern: native_cli_bin())
+    && string_contains(s: fast_lane_check_command(verb: cli_verb_check_layout), pattern: native_cli_bin())
+    && string_contains(s: native_cli_bin(), pattern: "steps.fast_lane.outputs.skip == 'true'")
+}
+
+fn run_step_env_value(step: Step, key: String) -> String {
+  match step {
+    RunStep { name: _, id: _, run: _, shell: _, env: e, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match e {
+        Present { value: kvs } => fold(kvs, init: "", f: fn(acc, k) { if k.key == key { match k.value { YamlString { value: v } => v  _ => acc } } else { acc } })
+        Absent => ""
+      }
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => ""
+  }
+}
+
+// THE UNIT MAIN SAVES HOLDS ONLY WHAT MAIN'S OWN RUN BUILT: the stage step reads the fresh binary path and the
+// emit step's identity, never the shared expressions, so a restored binary is never saved under a new sha.
+test fn the_stage_step_saves_only_the_fresh_product() -> Bool {
+  (run_step_env_value(step: fast_lane_stage_step(), key: "COMPILER") == parse_verdict_fresh_compiler_expr())
+    && (run_step_env_value(step: fast_lane_stage_step(), key: "GEN_ONE") == parse_verdict_generation_one_bin())
+    && (string_contains(s: parse_verdict_fresh_compiler_expr(), pattern: "fast_lane") == false)
+}
