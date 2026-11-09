@@ -51,7 +51,7 @@ fn enumerated(uuid: NonEmptyStr?) -> GpuDeviceObservation? {
   Present { value: GpuDeviceEnumerated {
     host: operator_host_srv1, board: gpu_board_04, gpu_uuid: uuid, pci_address: "0005:01:00.0" as PciAddress,
     power_limit_minimum: watt(count: 250), power_limit_maximum: watt(count: 325), power_limit_current: watt(count: 300),
-    read_on: "fixture" as NonEmptyStr,
+    power_limit_default: Present { value: watt(count: 300) }, read_on: "fixture" as NonEmptyStr,
   } }
 }
 

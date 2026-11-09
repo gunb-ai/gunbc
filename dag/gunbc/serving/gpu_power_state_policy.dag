@@ -65,7 +65,7 @@ fn admit_gpu_cap_against(intent: InstalledGpuCapIntent, observation: GpuDeviceOb
         board: intent.board, cap: cap,
         read_obligation: join(["the board does not enumerate (", c as String, "); once it does, read its GPU UUID and power-limit range"], "") as NonEmptyStr,
       }
-      GpuDeviceEnumerated { host: _, board: _, gpu_uuid: u, pci_address: _, power_limit_minimum: lo, power_limit_maximum: hi, power_limit_current: _, read_on: _ } =>
+      GpuDeviceEnumerated { host: _, board: _, gpu_uuid: u, pci_address: _, power_limit_minimum: lo, power_limit_maximum: hi, power_limit_current: _, power_limit_default: _, read_on: _ } =>
         if watt_count(w: cap) < watt_count(w: lo) || watt_count(w: cap) > watt_count(w: hi) {
           GpuCapOutsideDeviceRange { board: intent.board, cap: cap, minimum: lo, maximum: hi }
         } else {

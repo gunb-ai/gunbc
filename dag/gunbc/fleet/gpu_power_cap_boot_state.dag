@@ -41,7 +41,9 @@ import product.host_identity { HostIdentity, host_identity_eq }
 import product.placement_supply { PhysicalAssetIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.fleet.gpu_device_observation {
-  GpuDeviceEnumerated, GpuDeviceNotEnumerated, current_gpu_device_observations_of,
+  GpuDeviceObservation, GpuDeviceEnumerated, GpuDeviceNotEnumerated,
+  current_gpu_device_observations, current_gpu_device_observations_of,
+  gpu_device_observation_board, gpu_device_observation_default,
 }
 
 // A LINE AS SYSTEMD WILL RUN IT, with the two prefixes recorded as the separate facts they are. systemd gives
@@ -137,7 +139,7 @@ fn device_uuid_of(host: HostIdentity, board: PhysicalAssetIdentity) -> NonEmptyS
   match current_gpu_device_observations_of(board: board).first() {
     Absent => Absent
     Present { value: o } => match o {
-      GpuDeviceEnumerated { host: h, board: _, gpu_uuid: u, pci_address: _, power_limit_minimum: _, power_limit_maximum: _, power_limit_current: _, read_on: _ } =>
+      GpuDeviceEnumerated { host: h, board: _, gpu_uuid: u, pci_address: _, power_limit_minimum: _, power_limit_maximum: _, power_limit_current: _, power_limit_default: _, read_on: _ } =>
         if host_identity_eq(a: h, b: host) { u } else { Absent }
       GpuDeviceNotEnumerated { host: _, board: _, cause: _, read_on: _ } => Absent
     }
@@ -260,3 +262,114 @@ data srv1_cap_application_claims: List<CapApplicationClaim> = [
     read_on: "2026-11-08 srv1 journalctl -u gpu-power-limit.service" as NonEmptyStr,
   },
 ]
+
+
+// THE DEFAULT LIMIT IS WHAT MAKES "CAPPED" MEAN ANYTHING, so these joins compare against it rather than
+// leaving the comparison in prose. Each can fail: a unit that caps a card at or above its own default is not
+// capping it, and a board whose current limit is not its default is not resting on its default.
+
+// Which board presents the device this unit addresses? Searched through the device rows, because the unit
+// addresses a UUID and a board is not a UUID.
+fn board_addressed_by(unit: PowerCapBootUnit, uuid: NonEmptyStr) -> PhysicalAssetIdentity? {
+  match current_gpu_device_observations.filter(o => device_row_is_this_device(o: o, host: unit.host, uuid: uuid)).first() {
+    Absent => Absent
+    Present { value: o } => Present { value: gpu_device_observation_board(o: o) }
+  }
+}
+
+// Does the device row name this host and this UUID? Split out so the searches above read as one question each.
+fn device_row_is_this_device(o: GpuDeviceObservation, host: HostIdentity, uuid: NonEmptyStr) -> Bool {
+  match o {
+    GpuDeviceEnumerated { host: h, board: _, gpu_uuid: u, pci_address: _, power_limit_minimum: _, power_limit_maximum: _, power_limit_current: _, power_limit_default: _, read_on: _ } =>
+      host_identity_eq(a: h, b: host) && match u {
+        Present { value: uu } => (uu as String) == (uuid as String)
+        Absent => false
+      }
+    GpuDeviceNotEnumerated { host: _, board: _, cause: _, read_on: _ } => false
+  }
+}
+
+// The default the device row carries for the device this unit addresses by this UUID. Absent when no device row
+// carries that UUID, and Absent when the row exists but the default was never read -- a survey that recorded
+// min/max/current without a default leaves this unread.
+fn installed_cap_boot_unit_device_default(unit: PowerCapBootUnit, uuid: NonEmptyStr) -> Watt? {
+  match board_addressed_by(unit: unit, uuid: uuid) {
+    Absent => Absent
+    Present { value: b } => match current_gpu_device_observations_of(board: b).first() {
+      Absent => Absent
+      Present { value: o } => gpu_device_observation_default(o: o)
+    }
+  }
+}
+
+// Does this unit's cap actually LOWER the card it addresses? True only when the device row for that UUID
+// reports a default AND every cap command sits strictly below it. Without a read default the answer is false:
+// "capped" is not licensed by the number looking small.
+fn boot_cap_actually_reduces_the_device_default(unit: PowerCapBootUnit) -> Bool {
+  unit.cap_commands.all(c => match installed_cap_boot_unit_device_default(unit: unit, uuid: c.addressed_gpu_uuid) {
+    Absent => false
+    Present { value: d } => watt_count(w: c.target_watts) < watt_count(w: d)
+  })
+}
+
+// A board rests on its OWN DEFAULT when the device row says current equals default AND no installed boot
+// mechanism addresses its UUID. This is the checkable form of "nothing is capped on this board" for the Max-Q:
+// both halves must hold, so a stray cap command, or a current limit that has drifted from the default, makes
+// it false.
+fn board_rests_on_its_own_default(board: PhysicalAssetIdentity) -> Bool {
+  match current_gpu_device_observations_of(board: board).first() {
+    Absent => false
+    Present { value: o } => match o {
+      GpuDeviceEnumerated { host: h, board: _, gpu_uuid: u, pci_address: _, power_limit_minimum: _, power_limit_maximum: _, power_limit_current: c, power_limit_default: d, read_on: _ } =>
+        match u {
+          Absent => false
+          Present { value: uu } => match d {
+            Absent => false
+            Present { value: dv } =>
+              watt_count(w: c) == watt_count(w: dv)
+                && !srv1_power_cap_boot_units.any(unit => boot_unit_has_command_for(unit: unit, uuid: uu) && host_identity_eq(a: unit.host, b: h))
+          }
+        }
+      GpuDeviceNotEnumerated { host: _, board: _, cause: _, read_on: _ } => false
+    }
+  }
+}
+
+// Does this unit issue a cap command addressing this UUID? Written as a match rather than an `is Present` so
+// the answer is the same shape everywhere it is asked.
+fn boot_unit_has_command_for(unit: PowerCapBootUnit, uuid: NonEmptyStr) -> Bool {
+  match boot_unit_addresses(unit: unit, gpu_uuid: uuid) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+// The journal's own "set to 300.00 W FROM 600.00 W" is compared, here and only here, against the default the
+// DEVICE ROW carries for that card. Two rows read by two instruments agreeing is a corroboration; one row
+// agreeing with itself, as cap_realization used to do, is not a check.
+fn cap_application_claim_starts_from_the_device_default(claim: CapApplicationClaim) -> Bool {
+  match default_for_pci(host: claim.host, pci: claim.addressed_pci) {
+    Absent => false
+    Present { value: dv } => watt_count(w: claim.from_watts) == watt_count(w: dv)
+  }
+}
+
+// The default limit reported for the device at this PCI function. The journal names a PCI function and the
+// device row names one too, so this is the only join that can line them up -- but the two instruments print the
+// SAME function at different widths: nvidia-smi's set-limit line says 00000004:01:00.0 (full 8-digit domain)
+// and --query-gpu prints pci.bus_id as 0004:01:00.0. The containment test is therefore on purpose, not a
+// shortcut: an exact string_eq here would report "no such device" for the device it is looking for.
+fn default_for_pci(host: HostIdentity, pci: NonEmptyStr) -> Watt? {
+  match current_gpu_device_observations.filter(o => device_row_is_on_host_at_pci(o: o, host: host, pci: pci)).first() {
+    Absent => Absent
+    Present { value: o } => gpu_device_observation_default(o: o)
+  }
+}
+
+fn device_row_is_on_host_at_pci(o: GpuDeviceObservation, host: HostIdentity, pci: NonEmptyStr) -> Bool {
+  match o {
+    GpuDeviceEnumerated { host: h, board: _, gpu_uuid: _, pci_address: p, power_limit_minimum: _, power_limit_maximum: _, power_limit_current: _, power_limit_default: _, read_on: _ } =>
+      host_identity_eq(a: h, b: host) && string_contains(s: pci as String, pattern: p as String)
+    GpuDeviceNotEnumerated { host: _, board: _, cause: _, read_on: _ } => false
+  }
+}

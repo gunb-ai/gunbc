@@ -175,8 +175,13 @@ test fn agreeing_numbers_do_not_become_an_act_this_module_didnt_record() -> Bool
   let max_q_reports_300 = match current_gpu_device_observations_of(board: gpu_board_04).first() {
     Absent => false
     Present { value: o } => match o {
-      GpuDeviceEnumerated { host: _, board: _, gpu_uuid: _, pci_address: _, power_limit_minimum: _, power_limit_maximum: _, power_limit_current: c, read_on: _ } =>
-        watt_count(w: c) == 300
+      GpuDeviceEnumerated { host: _, board: _, gpu_uuid: _, pci_address: _, power_limit_minimum: _, power_limit_maximum: _, power_limit_current: c, power_limit_default: d, read_on: _ } =>
+        // The Max-Q's 300 W is its OWN DEFAULT, not a cap: current equals default here, which is what makes
+        // "nothing is capped on this board" a checked claim instead of an inference from a round number.
+        watt_count(w: c) == 300 && match d {
+          Present { value: dv } => watt_count(w: dv) == 300
+          Absent => false
+        }
       GpuDeviceNotEnumerated { host: _, board: _, cause: _, read_on: _ } => false
     }
   }
