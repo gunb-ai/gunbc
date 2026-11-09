@@ -291,7 +291,7 @@ test fn a_collected_run_that_concluded_failure_is_not_a_completed_job() -> Bool 
 test fn a_completed_job_on_another_slot_proves_nothing_for_this_one() -> Bool {
   let entries = [registration("srv3-06", true), registration("srv3-07", true)]
   let proven = replacement_proven_of_host(
-    incoming: ["srv3-06"] |> map(u => u as NonEmptyStr),
+    slots: ["srv3-06"] |> map(u => u as NonEmptyStr),
     roster: Present { value: roster(entries: entries) },
     verdicts: [collected(runner: "srv3-07", concluded: true)],
   )
