@@ -6,7 +6,7 @@ import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref, declaration_ref_display_key, declaration_ref_identity }
 import std.measure { ByteSize, byte_size, byte_size_count, token_count, mebibyte, mebibyte_to_byte_size, gibibyte, gibibyte_to_byte_size }
-import gunbc.host.host_memory_carrier { HostUsableRamMeasured }
+import gunbc.host.host_memory_carrier { HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured }
 import gunbc.serving.serving_host_memory {
   ServingMemoryReading, ServingMemoryRead, ServingMemoryAssumed, ServingMemoryUnread, ServingMemoryFits,
   conversation_snapshot_bytes, ConversationSnapshotCost, host_6ce85c_serving_memory_observed, srv3_strata_engine_memory,
@@ -23,7 +23,7 @@ import gunbc.serving.serving_layout {
   serving_layout_derive, serving_layout_with_qualification, serving_configuration_identity, serving_replica_identity, serving_replica_admit,
   host_6ce85c_grant, host_6ce85c_independent_groups, strata_iq3_s_a16_profile, serving_context_ceiling_requirement, host_6ce85c_layout,
   srv4_grant, srv4_layer_split_groups, strata_srv4_layer_split_profile, srv4_layout,
-  srv3_layer_split_groups, strata_srv3_layer_split_profile, srv3_layout,
+  srv3_grant, srv3_layer_split_groups, strata_srv3_layer_split_profile, srv3_layout,
   srv3_routed_expert_artifact, srv4_routed_expert_artifact, serving_artifact_host_ram_charge,
   ServingSharedArtifact, ServingArtifactMedium, ArtifactOnDevice, ArtifactInHostRam, ArtifactOnDisk,
   ArtifactHeldPinned, ArtifactHeldEvictable, ServingLayoutArtifactUnbudgetable,
@@ -61,6 +61,16 @@ fn sl_profile_with(b: ServingBackendProfile, most: Nat, floor: ServingMemoryRead
 
 fn sl_profile_retaining_across(b: ServingBackendProfile, most: Nat) -> ServingBackendProfile {
   sl_profile_with(b: b, most: most, floor: b.park_free_floor)
+}
+
+// What a grant says the host may count on, whatever its epistemic arm. Unmeasured is zero, so a grant that lost its
+// cap cannot satisfy the witness below by agreeing with an unread memory row.
+fn sl_grant_ram(g: ServingResourceGrant) -> Nat {
+  match g.usable_ram {
+    HostUsableRamMeasured { bytes: b, provenance: _ } => byte_size_count(b: b)
+    HostUsableRamConservativeLowerBound { bytes: b, basis: _ } => byte_size_count(b: b)
+    HostUsableRamUnmeasured { reason: _ } => 0
+  }
 }
 
 fn sl_replicas(r: ServingLayoutResult) -> List<ServingReplicaConfig> {
@@ -212,6 +222,16 @@ test fn witness_park_floor_is_charged_to_each_replica() -> Bool {
   // snapshot and not two, so dropping the floor admits nothing more here; the charge shows in the caps, 512 MiB each.
   sl_admitted_total(r: unfloored) == sl_admitted_total(r: host_6ce85c_layout)
     && sl_cap_total(r: host_6ce85c_layout) == sl_cap_total(r: unfloored) + sl_replicas(r: host_6ce85c_layout).length() * byte_size_count(b: mebibyte_to_byte_size(m: mebibyte(count: 512)))
+}
+
+// THE CAP IS READ, NOT RETYPED (review 38602). Each grant's usable RAM is the engine memory row's own cap, so the
+// layout cannot budget against a copy that a cap change left behind -- the failure this pins is the two figures
+// disagreeing, which is exactly what happened when srv4's cap moved and a stale figure stayed in an obligation.
+test fn witness_each_grants_cap_is_the_engine_rows_cap() -> Bool {
+  sl_grant_ram(g: srv4_grant) == byte_size_count(b: serving_reading_bytes_or_zero(r: srv4_serving_engine_memory.memory_cap))
+    && sl_grant_ram(g: srv3_grant) == byte_size_count(b: serving_reading_bytes_or_zero(r: srv3_strata_engine_memory.memory_cap))
+    && 0 < sl_grant_ram(g: srv4_grant)
+    && 0 < sl_grant_ram(g: srv3_grant)
 }
 
 // srv4 AS GRANTED TODAY: one replica holding both GPUs, EIGHT maximum-context conversations inside the 56 GiB

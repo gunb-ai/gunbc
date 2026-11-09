@@ -717,7 +717,10 @@ data srv4_grant: ServingResourceGrant = ServingResourceGrant {
   // in this comment rather than deleted, with the config it replaced kept on the host as
   // engine.json.bak-20261109-pre-mmap. No speed ratio against the old private-arena configuration is recorded:
   // no same-prompt baseline under that configuration exists (its 35-41 tok/s figures were real long-context turns).
-  usable_ram: HostUsableRamConservativeLowerBound { bytes: gibibyte_to_byte_size(g: gibibyte(count: 56)), basis: "gunbc-srv4-daily-engine.service MemoryHigh=56G (MemoryMax=64G), drop-in 60-expert-l1-cap.conf raised in place 2026-11-09 after the 40G cap starved the ~22 GB expert working set; measured at this cap: 24.5/25.1/29.1 tok/s decode warm, 1.26/0.81/1.35 GB read per request, MemoryCurrent 46.5 GB" as NonEmptyStr },
+  // THE CAP, READ FROM THE ROW THAT OWNS IT. srv4_serving_engine_memory.memory_cap is the single literal for this
+  // cgroup limit (review 38602); the basis narrates where it came from and what was measured under it and states no
+  // number of its own, so a cap change lands in one place and the layout can never budget against a stale copy.
+  usable_ram: HostUsableRamConservativeLowerBound { bytes: serving_reading_bytes_or_zero(r: srv4_serving_engine_memory.memory_cap), basis: "the MemoryHigh of the daily engine unit's cgroup (its drop-in, raised in place 2026-11-09 after the previous cap starved the expert working set); measured under it: warm decode in the mid-20s tok/s with about a gigabyte read per request and MemoryCurrent just under the limit. gunbc.serving.serving_host_memory srv4_serving_engine_memory.memory_cap is that reading" as NonEmptyStr },
   overhead: HostFixedOverheadAllowance { bytes: byte_size(count: 0), reason: "the grant is the engine service's own cgroup cap: the TLS front, journald and the CI runners live outside it, so nothing else is reserved inside it" as NonEmptyStr },
   shared: [srv4_routed_expert_artifact],
   swap_bound: byte_size(count: 0),
@@ -848,7 +851,9 @@ fn srv3_rtx_2000_ada_device(slot: String) -> ServingDevice {
 // Nothing is shared on srv3 today: its experts are the engine's private anonymous arena (see the artifact).
 data srv3_grant: ServingResourceGrant = ServingResourceGrant {
   host: operator_host_srv3,
-  usable_ram: HostUsableRamConservativeLowerBound { bytes: gibibyte_to_byte_size(g: gibibyte(count: 110)), basis: "the strata.slice cgroup limit srv3's engine memory guard reads ('memory guard: limit 110.0 GiB (source: cgroup)', strata-pool.service, read over ssh 2026-11-08); the host has 502 GiB but shares it with CI runners, so the slice limit is what serving may count on" as NonEmptyStr },
+  // THE CAP, READ FROM THE ROW THAT OWNS IT (review 38602): srv3_strata_engine_memory.memory_cap is the single literal
+  // for the limit the engine guard reads, so the grant cannot drift from what the engine reports about itself.
+  usable_ram: HostUsableRamConservativeLowerBound { bytes: serving_reading_bytes_or_zero(r: srv3_strata_engine_memory.memory_cap), basis: "the strata.slice cgroup limit srv3's engine memory guard reads from its own cgroup (strata-pool.service, read over ssh 2026-11-08); the host has far more but shares it with CI runners, so the slice limit is what serving may count on. gunbc.serving.serving_host_memory srv3_strata_engine_memory.memory_cap is that reading" as NonEmptyStr },
   overhead: HostFixedOverheadAllowance { bytes: byte_size(count: 0), reason: "the grant is the engine's own cgroup limit: the pool's other processes, sshd and the CI runners live outside it, so nothing else is reserved inside it" as NonEmptyStr },
   shared: [srv3_routed_expert_artifact],
   // The slice's MemorySwapMax is unread. 0 says "no swap", which is what srv4's serving slice was READ to have;
@@ -945,7 +950,7 @@ data strata_srv3_layer_split_profile: ServingBackendProfile = ServingBackendProf
 
 data srv3_layout: ServingLayoutResult = serving_layout_with_qualification(
   result: serving_layout_derive(g: srv3_grant, groups: srv3_layer_split_groups, b: strata_srv3_layer_split_profile, r: serving_context_ceiling_requirement),
-  q: ServingLiveUnqualified { obligation: "srv3 has never been laid out, so nothing in this configuration has been run through it: read memory.current and memory.peak on strata-pool.service through real turns at the ceiling (its base, its active-slot RAM and its per-card fixed VRAM are all assumptions now), read its binary's --version and its slice's MemorySwapMax, and read whether ITS build answers slot save/restore with 501 under --batch 8 the way srv4's does. The realization step is a separate change owned by bold-wren-111 — moving srv3 onto --mmap-experts under a capped cgroup, which turns this artifact into srv4's evictable shape — and it is held until srv4's decode reading under its 40 GiB cap says whether the miss path is affordable." as NonEmptyStr },
+  q: ServingLiveUnqualified { obligation: "srv3 has never been laid out, so nothing in this configuration has been run through it: read memory.current and memory.peak on strata-pool.service through real turns at the ceiling (its base, its active-slot RAM and its per-card fixed VRAM are all assumptions now), read its binary's --version and its slice's MemorySwapMax, and read whether ITS build answers slot save/restore with 501 under --batch 8 the way srv4's does. The realization step is a separate change owned by bold-wren-111 — moving srv3 onto --mmap-experts under a capped cgroup, which turns this artifact into srv4's evictable shape — and it is held until srv4's decode reading under the cap its memory row reports says whether the miss path is affordable." as NonEmptyStr },
 )
 
 // CONSUMER, declared frontier (gunbc.design_argument::consumption): the h11 engine units' MemoryMax, MemorySwapMax,
