@@ -38,14 +38,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // The observed instance: two juxtaposed bracketed list literals. No external references, so the refusal
 // can only come from the statement sequence, not from a dropped reference.
-data juxtaposed_lists_source: String = "module m\nfn juxtaposed_lists() -> Int {\n  [1, 2, 3]\n  [4, 5]\n}\n"
+data juxtaposed_lists_source: String = "module m\nfn juxtaposed_lists() -> List<Int> {\n  [1, 2, 3]\n  [4, 5]\n}\n"
 
 // A SINGLE bracketed literal: no successor, so no non-final bare value. Must lower (accept).
-data single_literal_source: String = "module m\nfn single_literal() -> Int {\n  [1, 2, 3]\n}\n"
+data single_literal_source: String = "module m\nfn single_literal() -> List<Int> {\n  [1, 2, 3]\n}\n"
 
 // A `let`-bound value followed by its tail: the non-final statement is a binding, which is exactly what
 // must keep lowering. Must lower (accept) -- this is what stops the refusal from being over-broad.
-data let_then_tail_source: String = "module m\nfn let_then_tail() -> Int {\n  let xs = [1, 2, 3]\n  xs\n}\n"
+data let_then_tail_source: String = "module m\nfn let_then_tail() -> List<Int> {\n  let xs = [1, 2, 3]\n  xs\n}\n"
 
 // Two juxtaposed bare NAMES (a bound param read as a value, then the tail): the same rule, not
 // list-specific. Must refuse under the same cause.
