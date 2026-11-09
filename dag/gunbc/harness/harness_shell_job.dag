@@ -23,9 +23,10 @@ import gunbc.harness.harness_shell_job_policy {
 //
 // Discharge of leftover jobs at attempt end is the attempt unit's cgroup: systemd stops every
 // process in the unit's control group when the unit ends. That is the authority; there is no
-// second roster function here. Hand-in refuses while any job is still Running, because
-// gunbc.plans.harness_session_lifecycle requires the candidate not be mutated while acceptance
-// checks it.
+// second roster function here. Hand-in refuses while any job is still Running: the candidate
+// must not be mutated while acceptance checks it. (This rule came from the
+// harness-session-lifecycle plan, deleted by main's planning consolidation #16107; the rule is
+// carried here and by this module's witnesses, not by a plan document.)
 
 type HarnessShellJobOutcome
   = JobExitedOutcome { code: Int }
