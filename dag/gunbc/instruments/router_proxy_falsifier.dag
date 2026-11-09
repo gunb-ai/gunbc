@@ -3,7 +3,7 @@ module gunbc.instruments.router_proxy_falsifier
 import std.types { Int, List, String, Bool, NonEmptyStr, Port }
 import std.optional { Optional, Present, Absent }
 import std.algebra { skip, list_append }
-import std.measure { byte_size }
+import std.measure { byte_size, token_count }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld, NativeClaimNoObservation }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, json_object_members_named }
@@ -15,8 +15,8 @@ import extdeps.proxy.openresty {
   ClientMaxBodySize, ClientBodyBufferSize, LuaPhaseBlock, AccessPhase, ContentPhase, LogPhase, LuaSharedDict, ListenTlsOn, SslCertificate, SslCertificateKey, nginx_token, nginx_variable, ProxyPassDirective, ProxyPassToHost, ProxyNextUpstreamDirective,
   ProxyBufferingDirective, ProxyRequestBufferingDirective, render_nginx_directives, openresty_1_27_1_1_image, openresty_image_config_path,
 }
-import gunbc.serving.router_dev_policy { RouterDevSite, RouterDevConfig, RouterDevConfigRendered, RouterDevConfigRefused, router_dev_config, RouterDevUpstream, RouterUpstreamScheme, UpstreamHttp, OwnedCap, RentedCapped, RentedUncapped, NoRetention, RetentionAdmitted, EffortRewriteTo, router_dev_first_party_json, router_dev_first_party, router_dev_retiring_name_conflict, no_effort_rules, RouterDevRetention, RouterDevH11Engine, RouterDevH11Projected, RouterDevH11Refused, router_dev_h11_projection, router_dev_h11_engines, RouterDevFirstParty, RouterDevFirstPartyRows, RouterDevFirstPartyRefused, router_dev_first_party_for, router_dev_first_party_refusal }
-import gunbc.serving.serving_layout { host_6ce85c_layout, ServingLayoutResult, ServingLayoutConfigured, ServingLayoutRefused, ServingLayoutNoGroups }
+import gunbc.serving.router_dev_policy { RouterDevSite, RouterDevConfig, RouterDevConfigRendered, RouterDevConfigRefused, router_dev_config, RouterDevUpstream, RouterUpstreamScheme, UpstreamHttp, UpstreamHttps, AnchorH11Strata, AnchorSrv3Strata, OwnedCap, RentedCapped, RentedUncapped, NoRetention, RetentionAdmitted, EffortRewriteTo, router_dev_first_party_json, router_dev_first_party, router_dev_retiring_name_conflict, no_effort_rules, RouterDevRetention, RouterDevReplicaNaming, RouterDevReplicaProjected, RouterDevReplicaRefused, router_dev_replica_projection, router_dev_h11_namings, router_dev_srv3_namings, router_dev_srv4_namings, RouterDevFirstParty, RouterDevFirstPartyRows, RouterDevFirstPartyRefused, router_dev_first_party_for, router_dev_first_party_refusal }
+import gunbc.serving.serving_layout { host_6ce85c_layout, srv3_layout, srv4_layout, ServingLayoutResult, ServingLayoutConfigured, ServingLayoutRefused, ServingLayoutNoGroups, ServingReplicaConfig }
 import gunbc.serving.router_proxy_config {
   RouterProxyConfig, RouterProxyConfigRendered, RouterProxyConfigRefused, router_proxy_config, router_proxy_vocabulary, router_proxy_directives,
 }
@@ -497,14 +497,14 @@ fn shipped_h11_05_rows_hold(rows: List<RouterDevUpstream>) -> Bool {
   })
 }
 
-// THE h11 PROJECTION, SUPPLIED THE SAME NAMING POPULATION FOR EVERY CONTROL (gunbc.design_argument::single_authority: a witness discriminates
+// THE LAYOUT PROJECTION, SUPPLIED THE SAME NAMING POPULATION FOR EVERY CONTROL (gunbc.design_argument::single_authority: a witness discriminates
 // at one interface). The population holds the four granted engines AND two the layout no longer grants (c5, c7),
 // so a projection that ignores the grant includes them and a projection that drops a granted engine loses one.
 // The summary is name:retain for every projected row, in layout order, or REFUSED: and the reason.
-fn h11_population_with_ungranted() -> List<RouterDevH11Engine> {
-  concat(router_dev_h11_engines(), [
-    RouterDevH11Engine { name: "h11-85", bus: "c5", port: 18085, retiring: [] },
-    RouterDevH11Engine { name: "h11-87", bus: "c7", port: 18087, retiring: [] },
+fn h11_population_with_ungranted() -> List<RouterDevReplicaNaming> {
+  concat(router_dev_h11_namings(), [
+    RouterDevReplicaNaming { group: "h11-strata@c5", name: "h11-85", scheme: UpstreamHttp, host: "192.168.1.202", port: 18085, tls_name: Absent, bus: Present { value: "c5" }, anchor: AnchorH11Strata, retiring: [] },
+    RouterDevReplicaNaming { group: "h11-strata@c7", name: "h11-87", scheme: UpstreamHttp, host: "192.168.1.202", port: 18087, tls_name: Absent, bus: Present { value: "c7" }, anchor: AnchorH11Strata, retiring: [] },
   ])
 }
 
@@ -515,29 +515,98 @@ fn h11_retain_text(r: RouterDevRetention) -> String {
   }
 }
 
-fn h11_projection_summary(layout: ServingLayoutResult, engines: List<RouterDevH11Engine>) -> String {
-  match router_dev_h11_projection(layout: layout, engines: engines) {
-    RouterDevH11Refused { reason: r } => concat("REFUSED: ", r)
-    RouterDevH11Projected { rows: rs } => fold(rs, init: "", f: (acc, u) => concat(acc, concat(if acc == "" { "" } else { "," }, concat(u.name, concat(":", h11_retain_text(r: u.retention))))))
+fn h11_projection_summary(layout: ServingLayoutResult, engines: List<RouterDevReplicaNaming>) -> String {
+  match router_dev_replica_projection(host: "h11", layout: layout, namings: engines) {
+    RouterDevReplicaRefused { reason: r } => concat("REFUSED: ", r)
+    RouterDevReplicaProjected { rows: rs } => fold(rs, init: "", f: (acc, u) => concat(acc, concat(if acc == "" { "" } else { "," }, concat(u.name, concat(":", h11_retain_text(r: u.retention))))))
   }
 }
 
 fn h11_summary_is_refused(text: String) -> Bool { contains(s: text, p: "REFUSED: ") }
 
-fn h11_without_one_granted_naming() -> List<RouterDevH11Engine> {
-  filter(h11_population_with_ungranted(), e => e.bus != "c8")
+fn h11_without_one_granted_naming() -> List<RouterDevReplicaNaming> {
+  filter(h11_population_with_ungranted(), e => e.group != "h11-strata@c8")
 }
 
-fn h11_with_a_duplicate_naming() -> List<RouterDevH11Engine> {
-  concat(h11_population_with_ungranted(), [RouterDevH11Engine { name: "h11-05b", bus: "85", port: 19081, retiring: [] }])
+fn h11_with_a_duplicate_naming() -> List<RouterDevReplicaNaming> {
+  concat(h11_population_with_ungranted(), [RouterDevReplicaNaming { group: "h11-strata@85", name: "h11-05b", scheme: UpstreamHttp, host: "192.168.1.202", port: 19081, tls_name: Absent, bus: Present { value: "85" }, anchor: AnchorH11Strata, retiring: [] }])
 }
 
 fn h11_refused_layout() -> ServingLayoutResult { ServingLayoutRefused { refusal: ServingLayoutNoGroups } }
 
 fn h11_refused_layout_stops_the_write() -> Bool {
-  match router_dev_first_party_refusal(fp: router_dev_first_party_for(layout: h11_refused_layout(), engines: router_dev_h11_engines())) {
+  match router_dev_first_party_refusal(fp: router_dev_first_party_for(h11: h11_refused_layout(), srv3: srv3_layout, srv4: srv4_layout)) {
     Present { value: _ } => true
     Absent => false
+  }
+}
+
+// ---- SRV3: THE SAME PROJECTION, A LAYOUT THAT GRANTS ONE REPLICAC ACROSS BOTH CARDS
+//
+// srv3's row used to be typed here by hand — one row, "OwnedCap turns 4", a retention nobody derived, and no
+// layout behind any of it (the frontier the brief this case serves closes). These cases are what a hand-typed row
+// CANNOT survive: a srv3 layout that refuses must stop the write, a replica whose group no naming covers must stop
+// the write, and the one replica spanning two cards must yield ONE row and not two.
+
+// The same projection, the same summary, srv3's layout and srv3's naming: one row, named for the deployment, at
+// the port its engine listens on, its retention its anchor's at its replica's own admission.
+fn srv3_projection_summary() -> String {
+  h11_projection_summary(layout: srv3_layout, engines: router_dev_srv3_namings())
+}
+
+// RED, and it discriminates: if srv3's row were still hand-written, a refused srv3 layout would leave it standing
+// and the write would go out with srv3 in the roster and no layout granting it.
+fn srv3_refused_layout_stops_the_write() -> Bool {
+  h11_summary_is_refused(text: h11_projection_summary(layout: h11_refused_layout(), engines: router_dev_srv3_namings()))
+}
+
+// RED: a SECOND replica on srv3 — a second engine, the case the operator-route question was about — with no
+// naming of its own must REFUSE the write, not quietly share the first engine's endpoint. Two engines on one port
+// is exactly the silence this case forbids.
+fn srv3_second_replica_without_a_naming_refuses() -> Bool {
+  h11_summary_is_refused(text: h11_projection_summary(layout: srv3_with_a_second_replica(), engines: router_dev_srv3_namings()))
+}
+
+fn srv3_with_a_second_replica() -> ServingLayoutResult {
+  match srv3_layout {
+    ServingLayoutConfigured { replicas: rs, unallocated_ram: u, evidence: e } =>
+      if count(rs) == 1 {
+        let c = fold(rs, init: ServingReplicaConfig { group: "witness" as NonEmptyStr, devices: [] as List<NonEmptyStr>, memory_max: byte_size(count: 0), swap_max: byte_size(count: 0), retention_budget: byte_size(count: 0), admitted_conversations: 0, active_slots: 0, max_context: token_count(count: 0) }, f: (acc, r) => r)
+        ServingLayoutConfigured { replicas: concat(rs, [ServingReplicaConfig {
+          group: "strata-pool-2" as NonEmptyStr, devices: c.devices, memory_max: c.memory_max, swap_max: c.swap_max,
+          retention_budget: c.retention_budget, admitted_conversations: c.admitted_conversations,
+          active_slots: c.active_slots, max_context: c.max_context,
+        }]), unallocated_ram: u, evidence: e }
+      } else { srv3_layout }
+    _ => srv3_layout
+  }
+}
+
+// RED: a srv3 naming whose group is not the group the layout grants — a renamed unit, a stale table — refuses
+// rather than dropping the host from the router.
+fn srv3_naming_for_a_group_nothing_grants() -> Bool {
+  h11_summary_is_refused(text: h11_projection_summary(layout: srv3_layout, engines: [RouterDevReplicaNaming { group: "strata-pool-old", name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, bus: Absent, anchor: AnchorSrv3Strata, retiring: [] }]))
+}
+
+// ONE ROW, not one per card: the layout's single replica lists BOTH cards, and a projection that read devices as
+// replicas would emit two upstreams for one engine and route twice the traffic to one port.
+fn srv3_one_row_for_two_devices() -> Bool {
+  match router_dev_replica_projection(host: "srv3", layout: srv3_layout, namings: router_dev_srv3_namings()) {
+    RouterDevReplicaRefused { reason: _ } => false
+    RouterDevReplicaProjected { rows: rs } => count(rs) == 1 && all(rs, u => u.name == "srv3-strata" && u.port == 18080 && count(u.retiring_names) == 1)
+  }
+}
+
+// SRV4 by the same rule: one replica across both cards, one TLS endpoint. This is the row the operator route fronts
+// (gunbc.harness.harness_operator_route), and it is one endpoint because the LAYOUT says so, not because a
+// hand-written row happened to list one.
+fn srv4_one_row_one_tls_endpoint() -> Bool {
+  match router_dev_replica_projection(host: "srv4", layout: srv4_layout, namings: router_dev_srv4_namings()) {
+    RouterDevReplicaRefused { reason: _ } => false
+    RouterDevReplicaProjected { rows: rs } => count(rs) == 1 && all(rs, u => u.name == "srv4-strata" && u.port == 18443 && match u.scheme {
+      UpstreamHttps => true
+      _ => false
+    })
   }
 }
 
@@ -1081,6 +1150,15 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
     case_of(identity: "bindings_keep_the_live_key_scheme_in_router_state", held: contains(s: dev_text(), p: "lua_shared_dict router_state ") && !contains(s: dev_text(), p: "router_bindings") && contains(s: dev_text(), p: "state:get('session:' .. session)") && contains(s: dev_text(), p: "state:set('session:' .. session, pick.name") && contains(s: dev_text(), p: "k:sub(1, 8) == 'session:'"), observed: ""),
     case_of(identity: "a_refused_layout_refuses_the_h11_projection_and_stops_the_write", held: h11_summary_is_refused(text: h11_projection_summary(layout: h11_refused_layout(), engines: h11_population_with_ungranted())) && h11_refused_layout_stops_the_write(), observed: h11_projection_summary(layout: h11_refused_layout(), engines: h11_population_with_ungranted())),
     case_of(identity: "a_granted_replica_without_or_with_two_namings_is_refused", held: h11_summary_is_refused(text: h11_projection_summary(layout: host_6ce85c_layout, engines: h11_without_one_granted_naming())) && h11_summary_is_refused(text: h11_projection_summary(layout: host_6ce85c_layout, engines: h11_with_a_duplicate_naming())), observed: concat(h11_projection_summary(layout: host_6ce85c_layout, engines: h11_without_one_granted_naming()), concat(" | ", h11_projection_summary(layout: host_6ce85c_layout, engines: h11_with_a_duplicate_naming())))),
+    // SRV3 AND SRV4 ARE PROJECTED BY THE SAME RULE (2026-11-09): one row per granted replica, from the layout that
+    // grants it. A refused srv3 layout, an unnamed replica and a stale naming each stop the write; the one
+    // layer-split replica yields one row for two devices; srv4's single endpoint is the one the operator route
+    // fronts. The first three are the REDs a hand-typed srv3 row would sail through.
+    case_of(identity: "srv3_rows_come_from_srv3_layout: a refused srv3 layout stops the write", held: srv3_refused_layout_stops_the_write(), observed: h11_projection_summary(layout: h11_refused_layout(), engines: router_dev_srv3_namings())),
+    case_of(identity: "a_second_srv3_replica_without_its_own_naming_refuses_the_write", held: srv3_second_replica_without_a_naming_refuses(), observed: h11_projection_summary(layout: srv3_with_a_second_replica(), engines: router_dev_srv3_namings())),
+    case_of(identity: "a_srv3_naming_whose_group_nothing_grants_refuses_the_write", held: srv3_naming_for_a_group_nothing_grants(), observed: h11_projection_summary(layout: srv3_layout, engines: [RouterDevReplicaNaming { group: "strata-pool-old", name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, bus: Absent, anchor: AnchorSrv3Strata, retiring: [] }])),
+    case_of(identity: "srv3_projects_one_row_for_its_one_replica_across_both_cards", held: srv3_one_row_for_two_devices(), observed: srv3_projection_summary()),
+    case_of(identity: "srv4_projects_one_tls_endpoint_because_its_layout_grants_one_replica", held: srv4_one_row_one_tls_endpoint(), observed: h11_projection_summary(layout: srv4_layout, engines: router_dev_srv4_namings())),
     case_of(identity: "comparison_rows_carry_the_cited_quote_values_and_the_live_shape", held: priced_entry_is(models: dev_models, model: "Qwen3.8-Flash-Next", input: "0.15", cached: "0.016", output: "0.47", as_of: "2026-10-26") && unpriced_entry_has_no_price(models: dev_models, model: "m-a") && has_line(text: priced_turn, want: "X-Gunbc-Comparison-Input-Per-M: 0.15") && has_line(text: priced_turn, want: "X-Gunbc-Comparison-Cached-Per-M: 0.016") && has_line(text: priced_turn, want: "X-Gunbc-Comparison-Output-Per-M: 0.47") && has_line(text: priced_turn, want: "X-Gunbc-Comparison-Estimated: true") && has_line(text: priced_turn, want: "X-Gunbc-Comparison-Read-On: 2026-10-26") && !contains(s: unpriced_turn, p: "X-Gunbc-Comparison-Output-Per-M"), observed: concat(one_line(s: priced_turn), one_line(s: unpriced_turn))),
     case_of(identity: "dev_drained_predecessor_does_not_reclaim_a_retired_binding", held: w13.success && drained_copy.exit_code == 0 && reloaded_drained.exit_code == 0 && contains(s: reloaded_drained_models, p: "4326") && last_line(text: drained_other_model) == "409 exit=0" && last_line(text: drained_new_session) == "429 exit=0", observed: concat(one_line(s: drained_other_model), one_line(s: drained_new_session))),
     case_of(identity: "world_is_removed", held: removed == 0, observed: to_string(removed)),

@@ -17,6 +17,7 @@ import gunbc.serving.serving_host_memory {
   serving_host_memory_verdict, serving_reading_bytes_or_zero, serving_reading_assumption, serving_reading_missing,
   ConversationSnapshotCost, conversation_snapshot_bytes, strata_iq3_s_snapshot_cost, serving_engine_swap_bound,
   host_6ce85c_serving_memory_observed, srv4_serving_engine_memory, srv4_strata_snapshot_cost,
+  srv3_strata_engine_memory, srv3_strata_snapshot_cost,
 }
 
 // HOW A SERVING HOST IS LAID OUT, DERIVED FROM WHAT IT HAS, HOW ITS DEVICES ARE GROUPED, AND WHAT THE ENGINE
@@ -52,10 +53,103 @@ type ServingDevice {
   vram: ServingMemoryReading
 }
 
+// WHERE AN ARTIFACT'S BYTES SIT, and what holds them there. ONE PLACEMENT VOCABULARY FOR EVERY HOST (operator,
+// 2026-11-09, relayed by gentle-swift-129: "model the expert tier so it can sit in a per-profile ladder (GPU ->
+// host RAM capped bytes -> disk capped bytes, with the realizing mechanism) rather than as a Strata-specific
+// special case, because h11 (experts mlocked in RAM today) should become a row edit, not a redesign"). A rung is
+// one medium holding some number of the artifact's bytes, with the mechanism that realizes it; the rungs are
+// ordered fastest-first, and one artifact's rungs hold different amounts of it — the same routed experts sit
+// 22.9 GiB on the cards, 13.2 GiB of that resident in host RAM, and all of it on the drive.
+//
+// THE HOST BUDGET RESERVES THE HOST-RAM RUNG ONLY: the device rung is VRAM, which the per-card terms already
+// budget (ServingBackendProfile.device_fixed_vram and device_min_elastic_vram — this is that same
+// fixed-plus-elastic-floor shape lifted to the host tiers), and the disk rung is disk, charged where the snapshot
+// pool is budgeted, not against the engine's RAM. The rungs below the one the budget reserves exist to say what
+// a miss costs, which is the whole reason they are modelled.
+type ServingArtifactMedium = ArtifactOnDevice | ArtifactInHostRam | ArtifactOnDisk
+
+// HOW A RUNG HOLDS ITS BYTES, which decides whether the host may count on them being gone. A rung held PINNED —
+// mlocked by a unit, or privately allocated by the engine itself — is charged WHOLE and stays charged: nobody can
+// squeeze it, so the budget must reserve all of it. A rung held EVICTABLY, as a page cache or a cache under a
+// replacement policy, is BOUNDED: it grows into whatever its budget leaves free and is reclaimed first under
+// pressure, so the budget reserves its FLOOR only — the part that must stay or the rung is pointless. The same
+// file under --mlock and under --mmap-experts is the same bytes and a different charge.
+//
+// Durability is NOT part of this pair: an expert tier's bytes are always re-readable from the model file, while a
+// parked conversation's KV is not (gunbc.serving.serving_host_memory records that Strata's slot save/restore is
+// unsupported under --layer-split --batch, so KV that is not persisted is LOST). Experts and conversation KV
+// share this placement vocabulary and never share its mechanics or its durability.
+type ServingArtifactHold = ArtifactHeldPinned { mechanism: NonEmptyStr } | ArtifactHeldEvictable { bound_by: NonEmptyStr }
+
+// One rung. `bytes` is what the rung holds; `floor` is what must stay there, and is the figure the host budget
+// reserves when the hold is evictable. An evictable host-RAM rung with no floor reserves nothing at all, which is
+// a hole rather than a gap, so the layout REFUSES it: state the floor, or state it as an assumption whose reason
+// is the reading that would replace it.
+type ServingArtifactTier {
+  medium: ServingArtifactMedium
+  holds: ServingArtifactHold
+  bytes: ServingMemoryReading
+  floor: ServingMemoryReading
+  realizes: NonEmptyStr
+}
+
+// WHAT EVERY ENGINE ON THE HOST USES INSTEAD OF CARRYING ITS OWN COPY: a resident artifact the host budget
+// charges ONCE. The bytes are the host's own figure for what the copy occupies (the model file's size is a
+// separate fact, carried by the artifact row itself); whose copy it is, is `owner`; where and how it is held is
+// `tiers`. One engine per host still means one copy per host: a shared artifact names the copy the host pays for,
+// not a count of processes sharing it (srv3 and srv4 each run ONE engine, so their 46.84 GiB arena is one copy,
+// not two — bold-wren-111's correction of 2026-11-09).
 type ServingSharedArtifact {
   name: NonEmptyStr
   bytes: ByteSize
   owner: NonEmptyStr
+  tiers: List<ServingArtifactTier>
+}
+
+// The rung's medium and its hold, as identity text. A rung that moves bytes between media, or a pinned rung that
+// becomes evictable, is a different configuration and must requalify; these two names are how the identity sees it.
+fn serving_artifact_medium_text(m: ServingArtifactMedium) -> String {
+  match m { ArtifactOnDevice => "device" , ArtifactInHostRam => "host-ram" , ArtifactOnDisk => "disk"  }
+}
+
+fn serving_artifact_hold_text(h: ServingArtifactHold) -> String {
+  match h { ArtifactHeldPinned { mechanism: _ } => "pinned" , ArtifactHeldEvictable { bound_by: _ } => "evictable"  }
+}
+
+// THE HOST-RAM RUNGS OF AN ARTIFACT, in the order they are written.
+fn serving_artifact_host_ram_rungs(a: ServingSharedArtifact) -> List<ServingArtifactTier> {
+  filter(a.tiers, t => t.medium == ArtifactInHostRam)
+}
+
+// WHAT THE HOST MUST RESERVE FOR AN ARTIFACT: the whole of a pinned host-RAM rung, the floor of an evictable one.
+// Nothing else is charged against the host's memory — the device rung is VRAM, budgeted per card, and the disk
+// rung is disk. An artifact with no host-RAM rung reserves nothing, which is right: a disk-only artifact is real.
+fn serving_artifact_host_ram_charge(a: ServingSharedArtifact) -> ByteSize {
+  byte_size(count: serving_bytes_sum(xs: map(serving_artifact_host_ram_rungs(a: a), t => match t.holds {
+    ArtifactHeldPinned { mechanism: _ } => serving_reading_bytes_or_zero(r: t.bytes)
+    ArtifactHeldEvictable { bound_by: _ } => serving_reading_bytes_or_zero(r: t.floor)
+  })))
+}
+
+// WHY AN ARTIFACT CANNOT BE BUDGETED, or Absent when it can. Two host-RAM rungs would leave which one the budget
+// reserves undecided; an evictable one with no stated floor would reserve nothing while claiming to be capped.
+fn serving_artifact_budget_defect(a: ServingSharedArtifact) -> String? {
+  let rungs = serving_artifact_host_ram_rungs(a: a)
+  let hold = fold(rungs, init: ArtifactHeldPinned { mechanism: "no host-RAM rung" as NonEmptyStr }, f: (acc, t) => t.holds)
+  let floor = fold(rungs, init: ServingMemoryUnread { reason: "no host-RAM rung" as NonEmptyStr }, f: (acc, t) => t.floor)
+  if count(rungs) > 1 {
+    Present { value: concat("artifact ", concat(a.name as String, " has more than one host-RAM rung; the budget cannot tell which one it reserves")) }
+  } else if count(rungs) == 0 {
+    Absent
+  } else {
+    match hold {
+      ArtifactHeldPinned { mechanism: _ } => Absent
+      ArtifactHeldEvictable { bound_by: b } => match floor {
+        ServingMemoryUnread { reason: r } => Present { value: concat("artifact ", concat(a.name as String, concat(" is evictable under ", concat(b as String, concat(" but states no floor; the read obligation must become a floor: ", r))))) }
+        _ => Absent
+      }
+    }
+  }
 }
 
 // charging: what the per-replica caps assume about which cgroup pays for shared pages. Linux charges a page to
@@ -156,6 +250,7 @@ type ServingLayoutRefusal
   | ServingLayoutSnapshotCostNotPositive { context: TokenCount }
   | ServingLayoutBackendCannotRetain { group: NonEmptyStr, devices: Nat, most: Nat }
   | ServingLayoutDeviceTooSmall { device: NonEmptyStr, needed: ByteSize, has: ByteSize }
+  | ServingLayoutArtifactUnbudgetable { artifact: NonEmptyStr, defect: NonEmptyStr }
   | ServingLayoutRamShort { needed: ByteSize, available: ByteSize }
 
 type ServingLayoutResult
@@ -287,6 +382,19 @@ fn serving_retention_fault(groups: List<ServingDeviceGroup>, b: ServingBackendPr
   })
 }
 
+// WHY THE GRANT'S ARTIFACTS CANNOT BE BUDGETED, or Absent. An evictable host-RAM rung with no floor would
+// reserve nothing while claiming to be capped, and the grant would hand the same bytes out as usable RAM; two
+// host-RAM rungs would leave which one is reserved undecided. Refused, never guessed at.
+fn serving_artifact_fault(g: ServingResourceGrant) -> ServingLayoutRefusal? {
+  fold(g.shared, init: Absent, f: (acc, a) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent => match serving_artifact_budget_defect(a: a) {
+      Present { value: d } => Present { value: ServingLayoutArtifactUnbudgetable { artifact: a.name, defect: d as NonEmptyStr } }
+      Absent => Absent
+    }
+  })
+}
+
 // What one replica needs beside its retention budget: its base, its active slots, and the free headroom the
 // engine demands before it will park.
 fn serving_replica_fixed_ram(b: ServingBackendProfile) -> Nat {
@@ -320,7 +428,7 @@ fn serving_dealt(index: Nat, replicas: Nat, base: Nat, extra: Nat) -> Nat {
 fn serving_allocate(g: ServingResourceGrant, groups: List<ServingDeviceGroup>, b: ServingBackendProfile, r: ServingRequirement) -> ServingLayoutResult {
   let n = groups.length()
   let pool_total = serving_grant_ram(g: g)
-  let reserved = serving_grant_overhead(g: g) + serving_bytes_sum(xs: map(g.shared, a => a.bytes))
+  let reserved = serving_grant_overhead(g: g) + serving_bytes_sum(xs: map(g.shared, a => serving_artifact_host_ram_charge(a: a)))
   let snapshot = byte_size_count(b: conversation_snapshot_bytes(cost: b.retention, context: r.max_context))
   let per_replica_min = serving_replica_fixed_ram(b: b) + r.min_retained_per_replica * snapshot + serving_roundings_per_replica() * byte_size_count(b: serving_cap_granule())
   let needed = reserved + n * per_replica_min
@@ -350,7 +458,7 @@ fn serving_allocate(g: ServingResourceGrant, groups: List<ServingDeviceGroup>, b
 fn serving_layout_host_memory(g: ServingResourceGrant, b: ServingBackendProfile, configs: List<ServingReplicaConfig>) -> ServingDedicatedHostMemory {
   ServingDedicatedHostMemory {
     host: g.host, usable_ram: g.usable_ram, overhead: g.overhead,
-    shared_resident: byte_size(count: serving_bytes_sum(xs: map(g.shared, a => a.bytes))),
+    shared_resident: byte_size(count: serving_bytes_sum(xs: map(g.shared, a => serving_artifact_host_ram_charge(a: a)))),
     swap_bound: g.swap_bound,
     engines: map(configs, c => ServingEngineMemory {
       name: c.group,
@@ -384,7 +492,10 @@ fn serving_layout_derive(g: ServingResourceGrant, groups: List<ServingDeviceGrou
             Present { value: f } => ServingLayoutRefused { refusal: f }
             Absent => match serving_device_fault(g: g, b: b) {
               Present { value: f } => ServingLayoutRefused { refusal: f }
-              Absent => serving_allocate(g: g, groups: groups, b: b, r: r)
+              Absent => match serving_artifact_fault(g: g) {
+                Present { value: f } => ServingLayoutRefused { refusal: f }
+                Absent => serving_allocate(g: g, groups: groups, b: b, r: r)
+              }
             }
           }
         }
@@ -425,7 +536,7 @@ fn serving_grant_identity(g: ServingResourceGrant, replicas: List<ServingReplica
   concat(identity_frame(label: "usable-ram", value: to_string(serving_grant_ram(g: g))),
     concat(identity_frame(label: "overhead", value: to_string(serving_grant_overhead(g: g))),
     concat(identity_frame(label: "shared", value: to_string(g.shared.length())),
-    concat(fold(g.shared, init: "", f: (acc, a) => concat(acc, concat(identity_frame(label: "artifact", value: a.name as String), concat(identity_frame(label: "artifact-bytes", value: to_string(byte_size_count(b: a.bytes))), identity_frame(label: "artifact-owner", value: a.owner as String))))),
+    concat(fold(g.shared, init: "", f: (acc, a) => concat(acc, concat(identity_frame(label: "artifact", value: a.name as String), concat(identity_frame(label: "artifact-bytes", value: to_string(byte_size_count(b: a.bytes))), concat(identity_frame(label: "artifact-owner", value: a.owner as String), fold(a.tiers, init: "", f: (inner, t) => concat(inner, concat(identity_frame(label: "artifact-rung-medium", value: serving_artifact_medium_text(m: t.medium)), concat(identity_frame(label: "artifact-rung-hold", value: serving_artifact_hold_text(h: t.holds)), concat(identity_frame(label: "artifact-rung-bytes", value: to_string(byte_size_count(b: serving_reading_bytes_or_zero(r: t.bytes)))), concat(identity_frame(label: "artifact-rung-floor", value: to_string(byte_size_count(b: serving_reading_bytes_or_zero(r: t.floor)))), identity_frame(label: "artifact-rung-realizes", value: t.realizes as String)))))))))))),
     concat(identity_frame(label: "charging", value: to_string(g.charging.length())),
     concat(fold(g.charging, init: "", f: (acc, c) => concat(acc, identity_frame(label: "assumption", value: c as String))),
       fold(replicas, init: "", f: (acc, c) => concat(acc, fold(c.devices, init: "", f: (inner, d) => concat(inner, match serving_device_named(g: g, name: d) {
@@ -507,6 +618,27 @@ data host_6ce85c_grant: ServingResourceGrant = ServingResourceGrant {
     name: "Qwen3.8-Flash-Next IQ3_S routed-expert GGUF part 1" as NonEmptyStr,
     bytes: host_6ce85c_serving_memory_observed.shared_resident,
     owner: "strata-expert-lock.service (mlock, one page-cache copy mapped by every engine)" as NonEmptyStr,
+    // h11's residency, spelled in the ladder every host now uses, with its charge UNCHANGED: a pinned host-RAM
+    // rung reserves its whole figure, which is what this artifact charged before rungs existed. Moving h11 onto
+    // evictable mapped experts is its OWN modelled transition — the lock service's ownership, the grant, the
+    // launch and the qualification all move with it (bold-wren-111 and gentle-swift-129, 2026-11-09) — and is
+    // deliberately NOT taken here.
+    tiers: [
+      ServingArtifactTier {
+        medium: ArtifactInHostRam,
+        holds: ArtifactHeldPinned { mechanism: "strata-expert-lock.service mlocks the file; engines start After= it, so no engine pays for it and nothing can reclaim it" as NonEmptyStr },
+        bytes: ServingMemoryRead { bytes: host_6ce85c_serving_memory_observed.shared_resident, provenance: "the lock service's resident copy as the host charges it (host_6ce85c_serving_memory_observed.shared_resident)" as NonEmptyStr },
+        floor: ServingMemoryRead { bytes: host_6ce85c_serving_memory_observed.shared_resident, provenance: "pinned: the whole rung stays, so its floor is its whole" as NonEmptyStr },
+        realizes: "one page-cache copy, mlocked, mapped by every engine on the host" as NonEmptyStr,
+      },
+      ServingArtifactTier {
+        medium: ArtifactOnDisk,
+        holds: ArtifactHeldPinned { mechanism: "the GGUF shard on h11's drive, the copy every rung above is a copy of" as NonEmptyStr },
+        bytes: ServingMemoryRead { bytes: host_6ce85c_serving_memory_observed.shared_resident, provenance: "the GGUF part-1 file on h11's drive, the same bytes the locked copy holds" as NonEmptyStr },
+        floor: ServingMemoryRead { bytes: host_6ce85c_serving_memory_observed.shared_resident, provenance: "the whole file sits on the drive; none of it can be reclaimed from it" as NonEmptyStr },
+        realizes: "re-readable from the model file; an expert miss is a re-read, never a loss" as NonEmptyStr,
+      },
+    ],
   }],
   swap_bound: serving_engine_swap_bound,
   charging: ["shared expert pages are charged to strata-expert-lock, not the engines: 47,784 MiB of the 51.05 GiB file read unevictable in its cgroup on 2026-10-30T19:20Z, and engines start After= it from that date; the remaining ~3.3 GiB's charge is unread" as NonEmptyStr],
@@ -553,27 +685,101 @@ data host_6ce85c_layout: ServingLayoutResult = serving_layout_with_qualification
 
 // ---- srv4 AS GRANTED: ONE REPLICA ACROSS TWO GPUs
 
-fn srv4_rtx_2000_ada_device(bus: String) -> ServingDevice {
+// ONE BOARD, NAMED AND SIZED BY WHOSE READING IT IS. Both srv hosts run this card; what differs is the name the
+// read gives it and whether its size was read there or assumed from the other host.
+fn rtx_2000_ada_device(name: String, vram: ServingMemoryReading) -> ServingDevice {
   ServingDevice {
-    device: ("rtx2000ada-" + bus) as NonEmptyStr,
+    device: name as NonEmptyStr,
     board: decl_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_2000_ada_board_catalog"),
-    vram: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 16380)), provenance: "srv4 nvidia-smi memory.total 16380 MiB, both RTX 2000 Ada GPUs, read 2026-10-30" as NonEmptyStr },
+    vram: vram,
   }
 }
 
-// THE GRANT is the serving slice, not the host: srv4 also runs CI runners, so serving holds what
-// gunbc-srv4-daily.slice grants. Its MemoryHigh (96 GiB) is the grant, because above it the kernel throttles and
-// reclaims the engine; MemoryMax (120 GiB) is the hard edge beyond that. The engine service's own front end is
-// inside its measured base, and the TLS front runs outside the slice, so the overhead is a small allowance.
-// Nothing is shared: the routed experts are in the engine's own memory. The slice has no swap.
+fn srv4_rtx_2000_ada_device(bus: String) -> ServingDevice {
+  rtx_2000_ada_device(name: "rtx2000ada-" + bus, vram: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 16380)), provenance: "srv4 nvidia-smi memory.total 16380 MiB, both RTX 2000 Ada GPUs, read 2026-10-30" as NonEmptyStr })
+}
+
+// THE GRANT is the engine service's own cgroup, not the host and no longer the slice: srv4 also runs CI runners,
+// and since 2026-11-09 the operator's hand change caps the ENGINE (/etc/systemd/system/gunbc-srv4-daily-engine
+// .service.d/60-expert-l1-cap.conf: MemoryHigh=40G MemoryMax=48G), which its own memory guard reports back as
+// "memory guard: limit 40.0 GiB (source: cgroup)". MemoryHigh is the grant because above it the kernel throttles
+// and reclaims; MemoryMax is the hard edge. The withdrawn 96 GiB row (gunbc-srv4-daily.slice MemoryHigh, read
+// 2026-10-30) no longer describes srv4 and is named here so its deletion is traceable; the config it replaced is
+// kept on the host as engine.json.bak-20261109-pre-mmap. Overhead is nothing: the grant IS the engine's cgroup,
+// and the TLS front, journald and the CI runners are all outside it. The slice still has no swap.
 data srv4_grant: ServingResourceGrant = ServingResourceGrant {
   host: operator_host_srv4,
-  usable_ram: HostUsableRamConservativeLowerBound { bytes: gibibyte_to_byte_size(g: gibibyte(count: 96)), basis: "gunbc-srv4-daily.slice MemoryHigh=103079215104 (MemoryMax 120 GiB), read 2026-10-30: the RAM serving is granted on a host it shares with CI runners" as NonEmptyStr },
-  overhead: HostFixedOverheadAllowance { bytes: mebibyte_to_byte_size(m: mebibyte(count: 256)), reason: "srv4 slice overhead: a 256 MiB allowance; the engine's front end is inside its base and the TLS front is outside the slice" as NonEmptyStr },
-  shared: [] as List<ServingSharedArtifact>,
+  // The cap was RAISED the same day it was set: at MemoryHigh=40G the engine sat at its cap with ~19 GB of experts
+  // page-cached against a ~22 GB per-request working set, and a cold first request decoded at 5.1 tok/s (41.5 GB
+  // read from the drive) where warm requests managed 15.6 (3.1 GB read). At MemoryHigh=56G/MemoryMax=64G three warm
+  // requests gave 24.5 / 25.1 / 29.1 tok/s with 1.26 / 0.81 / 1.35 GB read per request and MemoryCurrent 46.5 GB
+  // (bold-wren-111, 2026-11-09 ~01:10Z, 500-token test requests). The 40/48 GiB reading is WITHDRAWN here and named
+  // in this comment rather than deleted, with the config it replaced kept on the host as
+  // engine.json.bak-20261109-pre-mmap. No speed ratio against the old private-arena configuration is recorded:
+  // no same-prompt baseline under that configuration exists (its 35-41 tok/s figures were real long-context turns).
+  usable_ram: HostUsableRamConservativeLowerBound { bytes: gibibyte_to_byte_size(g: gibibyte(count: 56)), basis: "gunbc-srv4-daily-engine.service MemoryHigh=56G (MemoryMax=64G), drop-in 60-expert-l1-cap.conf raised in place 2026-11-09 after the 40G cap starved the ~22 GB expert working set; measured at this cap: 24.5/25.1/29.1 tok/s decode warm, 1.26/0.81/1.35 GB read per request, MemoryCurrent 46.5 GB" as NonEmptyStr },
+  overhead: HostFixedOverheadAllowance { bytes: byte_size(count: 0), reason: "the grant is the engine service's own cgroup cap: the TLS front, journald and the CI runners live outside it, so nothing else is reserved inside it" as NonEmptyStr },
+  shared: [srv4_routed_expert_artifact],
   swap_bound: byte_size(count: 0),
-  charging: [] as List<NonEmptyStr>,
+  charging: [
+    "the routed experts are the ENGINE's cgroup's own page cache: --mmap-experts maps the GGUF shards in place (no experts.bin), so their pages are charged to the engine that touches them and are reclaimed first under the cap — unlike h11, where strata-expert-lock holds them and the engines are charged nothing" as NonEmptyStr,
+    "one copy per host, charged once: srv4 runs ONE engine across both cards, so the artifact is that engine's mapping and there is no second copy to charge (bold-wren-111, 2026-11-09)" as NonEmptyStr,
+    "base and expert tier are charged SEPARATELY and must stay that way: the base is the engine's own anon and shmem (2.5 + 3.8 GiB), the 13.2 GiB of file-backed RSS is the expert rung. Charging base 52 GiB (the 2026-10-30 memory.current, when the experts were private anon inside the engine) on top of a mapped expert tier would bill the same bytes twice" as NonEmptyStr,
+  ] as List<NonEmptyStr>,
   devices: [srv4_rtx_2000_ada_device(bus: "0000-01"), srv4_rtx_2000_ada_device(bus: "0004-01")],
+}
+
+// THE ROUTED EXPERTS, as one artifact on three rungs, every figure read on srv4 2026-11-09 00:18Z from
+// gunbc-srv4-daily-engine (release 406c9de18cef, which is the build the mmap was read on — gentle-swift-129's
+// qualification rule: an mmap'd expert tier is only as good as the installed build's --mmap-experts, and this
+// build's log says "experts via mmap (--mmap-experts; the GGUF shards in place, no experts.bin)").
+//
+// THE ARITHMETIC THAT MAKES THE RUNGS ONE ARTIFACT, not three facts: the engine's prefill plan reads "46.8 GiB
+// experts, 22.9 GiB in the GPU caches, 0.0 GiB RAM copy, file tier 24.0 GiB" — 22.9 + 24.0 = 46.9, the file
+// partitions across the rungs; the 13.2 GiB of resident file RSS is the part of that 24.0 GiB the page cache is
+// holding, and the plan itself says "35.2 GiB available for the page cache". A witness pins that partition.
+//
+// THE HOST-RAM RUNG IS ELASTIC, NOT A RESERVATION (bold-wren-111, 2026-11-09): the page cache grows into
+// whatever the cap leaves free and is reclaimed first under pressure, so what the budget reserves is its FLOOR —
+// the working set a turn touches — and not the 13.2 GiB snapshot taken at load. It is the RAM analogue of the
+// device rung (device_fixed_vram + device_min_elastic_vram), and the floor is the top of the 4-8 GiB range
+// bold-wren set for it: reserving the top is the conservative direction, because a grant is a lower bound.
+data srv4_routed_expert_artifact: ServingSharedArtifact = ServingSharedArtifact {
+  name: "Qwen3.8-Flash-Next iq3_s routed-expert GGUF, mmap'd by the engine under its cgroup cap" as NonEmptyStr,
+  bytes: gibibyte_to_byte_size(g: gibibyte(count: 46)),
+  owner: "the engine's own mmap (--mmap-experts; the GGUF shards in place, no experts.bin), held as the engine cgroup's page cache under MemoryHigh=40G MemoryMax=48G" as NonEmptyStr,
+  tiers: [
+    ServingArtifactTier {
+      medium: ArtifactOnDevice,
+      holds: ArtifactHeldEvictable { bound_by: "Strata's on-card expert cache, bounded per card by ServingBackendProfile.device_min_elastic_vram" as NonEmptyStr },
+      bytes: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 23450)), provenance: "engine.log prefill plan '22.9 GiB in the GPU caches', 2026-11-09" as NonEmptyStr },
+      // The floor the cache may be squeezed to is a PER-CARD figure and lives once in the profile
+      // (device_min_elastic_vram); repeating it here would be a second authority over it, so this rung records
+      // what sits on the cards and points at its home for the floor.
+      floor: ServingMemoryUnread { reason: "lives once in strata_srv4_layer_split_profile.device_min_elastic_vram, per card; a device rung does not reserve host RAM" as NonEmptyStr },
+      realizes: "Strata's expert caches on both cards, filled by the routing-aware prefetcher ahead of the walk" as NonEmptyStr,
+    },
+    ServingArtifactTier {
+      medium: ArtifactInHostRam,
+      holds: ArtifactHeldEvictable { bound_by: "the engine service's cgroup: MemoryHigh=56G, MemoryMax=64G (drop-in 60-expert-l1-cap.conf, raised 2026-11-09)" as NonEmptyStr },
+      // What this rung HOLDS is the file tier's 24.0 GiB — everything not already on the cards, which is what the
+      // page cache would keep if nothing bounded it (the plan read "35.2 GiB available for the page cache"). What it
+      // must KEEP is the per-request expert working set, now READ rather than guessed: ~22 GB, from the engine's own
+      // "file tier I/O this request ... page cache held" lines at 500-token requests (2026-11-09 01:10Z). An earlier
+      // reading of this rung — 13.2 GiB of file-backed VmRSS at load, under the 40 GiB cap — is withdrawn along with
+      // that cap and named in srv4_grant, not deleted.
+      bytes: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 24576)), provenance: "the 24.0 GiB of shards not resident on the cards — the same figure as the disk rung, because this rung is the page cache OF that tier (engine prefill plan, 2026-11-09)" as NonEmptyStr },
+      floor: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 22)), provenance: "the per-request expert working set, ~22 GB, read from the engine's 'file tier I/O this request' lines at 500-token requests (2026-11-09 01:10Z): at a 40 GiB cap the cache held only ~19 GB and cold decode fell to 5.1 tok/s on 41.5 GB of drive reads, which is the failure this floor exists to prevent" as NonEmptyStr },
+      realizes: "the page cache under the engine's cgroup cap: it grows into what the cap leaves free, and cold experts are evicted and re-read from the disk rung — 1.26 / 0.81 / 1.35 GB read per warm request at the 56 GiB cap" as NonEmptyStr,
+    },
+    ServingArtifactTier {
+      medium: ArtifactOnDisk,
+      holds: ArtifactHeldPinned { mechanism: "the GGUF shards on srv4's NVMe, in place: the copy every rung above is a copy of" as NonEmptyStr },
+      bytes: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 24576)), provenance: "engine.log prefill plan 'file tier 24.0 GiB', 2026-11-09 — the shard bytes not resident in the GPU caches (46.8 - 22.9)" as NonEmptyStr },
+      floor: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 24576)), provenance: "the whole file tier sits on the drive; none of it can be reclaimed from it" as NonEmptyStr },
+      realizes: "Strata's file tier with io prefetch (8 I/O threads) and routing-aware prefetch, on a drive measured at 2.50 GB/s; an expert miss is a re-read, never a loss" as NonEmptyStr,
+    },
+  ],
 }
 
 // ONE GROUP OF TWO: the engine splits its layers across both GPUs (--layer-split 24: CUDA0 runs layers 0-23,
@@ -592,7 +798,20 @@ data strata_srv4_layer_split_profile: ServingBackendProfile = ServingBackendProf
   backend: "strata 406c9de18cef qwen3.8-flash-next-iq3_s, layer split 24" as NonEmptyStr,
   device_fixed_vram: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 4529)), provenance: "srv4 nvidia-smi memory.used 15216 MiB on CUDA1 less its expert cache 10687 MiB (/metrics expert_cache_mib 23300 less expert_cache_primary_mib 12613), 2026-10-30" as NonEmptyStr },
   device_min_elastic_vram: ServingMemoryAssumed { bytes: gibibyte_to_byte_size(g: gibibyte(count: 2)), reason: "least expert cache srv4's engine is run with: a 2 GiB assumption until a run below it is read" as NonEmptyStr },
+  // THE ENGINE'S OWN MEMORY, read from its row (one authority for a figure two consumers need): anon + shmem,
+  // with the file-backed part of its RSS belonging to the expert artifact's host-RAM rung above, not here. The
+  // pre-mmap reading of 52 GiB included the private expert arena; charging it here as well as in the artifact
+  // would bill the same bytes twice.
   replica_base_ram: srv4_serving_engine_memory.base,
+  // THE ONE BATCH INPUT. parallel/--batch is read live (engine.json parallel 1, 2026-11-09), and every figure
+  // that follows — fixed RAM, retention, the router's admission through the anchor's grant — derives from this
+  // number and nothing else. bold-wren-111's batch 1/2/4 run under the mmap expert cap will replace it; until
+  // then it is what is running, not a target. A srv4 winner is a CANDIDATE reading, not a fleet recommendation:
+  // srv4 runs with DIMM A1 degraded (UE 262,144), so its batch numbers are conditioned on that host health
+  // (gentle-swift-129, 2026-11-09) — and batch above 1 is a capability TRADE, not a free knob: this release
+  // answers a slot save/restore with 501 while parallel requests are on (/opt/gunbc-serving/srv4-daily/engine/
+  // serve/server.py:4091), which is the checkpoint transfer consumer gunbc.serving.strata_checkpoint_transfer
+  // depends on. The selector that weighs batch must see that trade; the layer split itself does not block save.
   active_slots: 1,
   active_slot_ram: ServingMemoryAssumed { bytes: mebibyte_to_byte_size(m: mebibyte(count: 512)), reason: "RAM a request needs above srv4's base, including snapshot capture and restore peaks: a 512 MiB assumption until memory.peak is read through real turns" as NonEmptyStr },
   retention: srv4_strata_snapshot_cost,
@@ -603,7 +822,130 @@ data strata_srv4_layer_split_profile: ServingBackendProfile = ServingBackendProf
 
 data srv4_layout: ServingLayoutResult = serving_layout_with_qualification(
   result: serving_layout_derive(g: srv4_grant, groups: srv4_layer_split_groups, b: strata_srv4_layer_split_profile, r: serving_context_ceiling_requirement),
-  q: ServingLiveUnqualified { obligation: "srv4 has not run this configuration: its live cache is 32 GiB in 8 slots; apply the derived cap and cache, read memory.peak through real turns at the ceiling, and bind the receipt to this configuration's identity" as NonEmptyStr },
+  q: ServingLiveUnqualified { obligation: "srv4 has been read at its cap only through 500-token test requests (24.5/25.1/29.1 tok/s warm, 1.26/0.81/1.35 GB of drive reads each, MemoryCurrent 46.5 GB); what is still unread is THIS configuration at the CEILING. bold-wren-111's batch 1/2/4 run at 100k+ context is the measurement that settles the batch input and this receipt, along with memory.peak with the experts mapped and the expert rung's resident low-water through real turns - read them at the ceiling and bind the receipt to this configuration's identity. Every figure here is a CANDIDATE, not a fleet recommendation: srv4's DIMM A1 is degraded (UE 262,144). And no speed ratio between the mmap realization and the private-arena one may be quoted: no same-prompt baseline under the arena exists." as NonEmptyStr },
+)
+
+// ---- srv3 AS GRANTED: THE SAME PAIR OF CARDS, THE SAME TOPOLOGY, ITS OWN READINGS
+//
+// srv3 ran with NO layout at all: its router row was typed by hand, capacity and all. It runs the same model on
+// the same two RTX 2000 Ada cards in the same 24/24 layer split as srv4, so it is modelled the same way, from its
+// OWN live profile (bold-wren-111's revised brief, 2026-11-09: "model what is live, do not invent the target
+// batch"). What srv3 has not been read to is typed as an assumption with the reading that replaces it — never as
+// srv4's figure wearing a provenance it was not given.
+
+// srv3's cards are named for their CUDA ordinals, which is how the live read identifies them (the engine runs
+// CUDA0 and CUDA1 as one layer-split replica); srv4's are named for their PCI buses because that is what was read
+// there. nvidia-smi -L and memory.total on srv3 replace both names and the assumed VRAM, and change the
+// configuration's identity when they do.
+fn srv3_rtx_2000_ada_device(slot: String) -> ServingDevice {
+  rtx_2000_ada_device(name: "rtx2000ada-" + slot, vram: ServingMemoryAssumed { bytes: mebibyte_to_byte_size(m: mebibyte(count: 16380)), reason: "the same RTX 2000 Ada board srv4 reads at 16380 MiB total (nvidia-smi memory.total, 2026-10-30); srv3's own memory.total replaces it" as NonEmptyStr })
+}
+
+// THE GRANT is the strata.slice the serving runs in, not the host: srv3's 502 GiB is shared with the CI runners,
+// and the figure that binds serving is the limit the engine's OWN memory guard reports — "limit 110.0 GiB
+// (source: cgroup)", read over ssh 2026-11-08 by bold-wren-111. Overhead is nothing inside that grant, because
+// the grant is the engine's own cgroup: the pool's other processes, sshd and the CI runners live outside it.
+// Nothing is shared on srv3 today: its experts are the engine's private anonymous arena (see the artifact).
+data srv3_grant: ServingResourceGrant = ServingResourceGrant {
+  host: operator_host_srv3,
+  usable_ram: HostUsableRamConservativeLowerBound { bytes: gibibyte_to_byte_size(g: gibibyte(count: 110)), basis: "the strata.slice cgroup limit srv3's engine memory guard reads ('memory guard: limit 110.0 GiB (source: cgroup)', strata-pool.service, read over ssh 2026-11-08); the host has 502 GiB but shares it with CI runners, so the slice limit is what serving may count on" as NonEmptyStr },
+  overhead: HostFixedOverheadAllowance { bytes: byte_size(count: 0), reason: "the grant is the engine's own cgroup limit: the pool's other processes, sshd and the CI runners live outside it, so nothing else is reserved inside it" as NonEmptyStr },
+  shared: [srv3_routed_expert_artifact],
+  // The slice's MemorySwapMax is unread. 0 says "no swap", which is what srv4's serving slice was READ to have;
+  // srv3's is an assumption in the charging note and an obligation on the layout, not a reading.
+  swap_bound: byte_size(count: 0),
+  charging: [
+    "the routed experts are the engine's OWN private anonymous memory on srv3 (no --mmap-experts, no shared file): the arena is charged inside this grant and to nobody else, and nothing about it is reclaimable — which is why its rung is pinned and charged whole" as NonEmptyStr,
+    "one copy per host, charged once: srv3 runs ONE engine across both cards, so the 46.84 GiB arena is that engine's own and there is no second copy to charge (bold-wren-111, 2026-11-09)" as NonEmptyStr,
+    "base and expert tier are charged SEPARATELY and must stay that way: the base excludes the arena, because the arena is the artifact's pinned rung. Charging a 52 GiB base on top of a 46.84 GiB pinned rung would bill the same bytes twice (52 - 46.84 = 5.16 GiB is what is left for the engine itself)" as NonEmptyStr,
+    "the slice's swap limit is unread: 0 is what srv4's serving slice was read to have (MemorySwapMax=0), taken here until MemorySwapMax on srv3's strata.slice is read" as NonEmptyStr,
+  ] as List<NonEmptyStr>,
+  devices: [srv3_rtx_2000_ada_device(slot: "cuda0"), srv3_rtx_2000_ada_device(slot: "cuda1")],
+}
+
+// THE ROUTED EXPERTS AS SRV3 ACTUALLY HOLDS THEM: private anonymous memory inside one engine process, not a
+// mapped file. Same placement vocabulary as srv4 and h11, opposite mechanics: nothing maps it, so nothing can
+// evict it, and the whole 46.84 GiB must be reserved. Moving srv3 onto --mmap-experts under a cap turns this
+// artifact into srv4's shape (a device rung, an evictable host-RAM rung with a floor, a disk rung) — which is the
+// realization the qualification's obligation names, deliberately not taken until srv4's decode reading under the
+// cap says whether the miss path is affordable at all.
+data srv3_routed_expert_artifact: ServingSharedArtifact = ServingSharedArtifact {
+  name: "Qwen3.8-Flash-Next iq3_s routed experts, in the engine's private anonymous arena (not mapped, not shared)" as NonEmptyStr,
+  bytes: mebibyte_to_byte_size(m: mebibyte(count: 47964)),
+  owner: "the engine process itself (strata-pool.service, user ubuntu, /home/ubuntu/strata-test): the arena is private anonymous memory — there is no second process to share it with today, and no unit that could reclaim it" as NonEmptyStr,
+  tiers: [
+    ServingArtifactTier {
+      medium: ArtifactOnDevice,
+      holds: ArtifactHeldEvictable { bound_by: "Strata's on-card expert cache, bounded per card by ServingBackendProfile.device_min_elastic_vram" as NonEmptyStr },
+      bytes: ServingMemoryUnread { reason: "srv3's per-card expert cache has not been read; its cache held ~7,822 experts against srv4's ~12,054 on 2026-11-08, so it is smaller than srv4's 22.9 GiB and by how much is unread" as NonEmptyStr },
+      floor: ServingMemoryUnread { reason: "lives once in strata_srv3_layer_split_profile.device_min_elastic_vram, per card; a device rung does not reserve host RAM" as NonEmptyStr },
+      realizes: "Strata's expert caches on both cards; what they cannot hold is served from the arena below" as NonEmptyStr,
+    },
+    ServingArtifactTier {
+      medium: ArtifactInHostRam,
+      holds: ArtifactHeldPinned { mechanism: "private anonymous memory allocated by the engine itself (no --mmap-experts, no experts.bin, no shared file): it is not a page cache, so the kernel cannot reclaim it" as NonEmptyStr },
+      bytes: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 47964)), provenance: "the engine's expert arena, 46.84 GiB of private anon per engine, read over ssh 2026-11-08 by bold-wren-111 (NOT shared, NOT mapped)" as NonEmptyStr },
+      floor: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 47964)), provenance: "the whole arena is resident: nothing evicts private anon, so its floor is its whole" as NonEmptyStr },
+      realizes: "one private copy in the one engine the host runs; an expert miss is served from it, and it is the reason srv3's base is 52 GiB where srv4's mapped engine sits at 6.3 GiB" as NonEmptyStr,
+    },
+    ServingArtifactTier {
+      medium: ArtifactOnDisk,
+      holds: ArtifactHeldPinned { mechanism: "the two GGUF shards under /home/ubuntu/strata-test, the copy the arena was filled from" as NonEmptyStr },
+      bytes: ServingMemoryAssumed { bytes: gibibyte_to_byte_size(g: gibibyte(count: 46)), reason: "srv3's own shard sizes have not been read; 46 GiB is the same model's routed-expert file as srv4's engine plans against ('46.8 GiB experts', 2026-11-09). du on the shards replaces it" as NonEmptyStr },
+      floor: ServingMemoryAssumed { bytes: gibibyte_to_byte_size(g: gibibyte(count: 46)), reason: "the whole file sits on the drive; none of it can be reclaimed from it" as NonEmptyStr },
+      realizes: "the backing store: re-readable, so an expert miss is never a loss. srv3's drive has not been timed (srv4's reads 2.50 GB/s)" as NonEmptyStr,
+    },
+  ],
+}
+
+// ONE GROUP OF TWO: the engine splits its layers across both cards (--layer-split 24: CUDA0 runs layers 0-23,
+// CUDA1 24-47), so the two devices are ONE replica — srv4's topology, and the reason srv3 gets one router row and
+// not two. The group is named for the unit that runs it (strata-pool.service today, hand-run from
+// /home/ubuntu/strata-test); the realization step keeps the name and the unit.
+data srv3_layer_split_groups: List<ServingDeviceGroup> = [
+  ServingDeviceGroup { name: "strata-pool" as NonEmptyStr, devices: ["rtx2000ada-cuda0", "rtx2000ada-cuda1"] },
+]
+
+// SRV3'S PROFILE: the same engine family as srv4's, at what srv3 is READ to be running — --batch 8 (parallel 8),
+// its conversation cache 64 GiB in 24 slots, nvidia-smi -pl 40 per card. Every figure srv3 has not been read to
+// is an assumption naming the reading that replaces it, and none of them is srv4's figure without saying so.
+//
+// THE ARITHMETIC THAT CLOSES, and is the reason the base may be assumed at all: srv4's pre-mmap engine read
+// 52 GiB of memory.current with the experts in its own anon (2026-10-30); srv3's engine today is that same shape
+// with the same 46.84 GiB private arena. 52 GiB less the arena is 5284 MiB, which the same build's mmap'd
+// VmRSS on srv4 corroborates at 6451 MiB of anon+shmem. Base and expert rung together must always re-sum to what
+// memory.current reads on srv3; that sum is a witness.
+data strata_srv3_layer_split_profile: ServingBackendProfile = ServingBackendProfile {
+  backend: "strata qwen3.8-flash-next-iq3_s, layer split 24, --batch 8 on strata-pool.service (the binary's --version is unread; the fleet's srv3 image row records strata-main master@7045b8d0)" as NonEmptyStr,
+  device_fixed_vram: ServingMemoryAssumed { bytes: mebibyte_to_byte_size(m: mebibyte(count: 4529)), reason: "srv3's per-card fixed VRAM is unread; 4529 MiB is the larger of srv4's two cards measured beside its expert caches (nvidia-smi 15216 MiB less 10687 MiB of cache, 2026-10-30) on the same board, model and 24/24 split. nvidia-smi and /metrics on srv3 replace it" as NonEmptyStr },
+  device_min_elastic_vram: ServingMemoryAssumed { bytes: gibibyte_to_byte_size(g: gibibyte(count: 2)), reason: "srv3's least expert cache is unread; 2 GiB is what srv4's engine is run with, and srv3's own live read shows only ~0.4 GiB free on CUDA0 — the elastic cache is running near its floor, so a run below srv4's 2 GiB is expected. /metrics expert_cache_primary_mib on srv3 replaces it" as NonEmptyStr },
+  replica_base_ram: srv3_strata_engine_memory.base,
+  // THE ONE BATCH INPUT, and it is what is RUNNING (parallel 8 / --batch 8, read over ssh 2026-11-08), not a
+  // target: fixed RAM, retention and the router's admission through the anchor's grant all follow from this
+  // number alone. What the live batch is BUYING is in srv3's own engine log, and it is not throughput: one turn
+  // at 100-125k decodes at ~30 tok/s while windows with two groups in flight run ~26 tok/s in AGGREGATE (the
+  // medians behind srv3's anchor, 3,657 windows, 2026-11-08) — so the eight configured slots are paying RAM for
+  // less work than one slot would, which is precisely the figure bold-wren-111's measurement is about to settle.
+  // It carries a capability trade the selector must see, not a tuning knob: on this release line
+  // batch above 1 answers a slot save/restore with 501 "slot save/restore is not available with parallel
+  // requests" (read at /opt/gunbc-serving/srv4-daily/engine/serve/server.py:4091 on srv4's 406c9de18cef), and
+  // slot save/restore is what gunbc.serving.strata_checkpoint_transfer consumes. srv3's own build's behaviour
+  // under batch is an obligation on srv3_layout, and the layer split itself is not shown to block save.
+  active_slots: 8,
+  active_slot_ram: ServingMemoryAssumed { bytes: mebibyte_to_byte_size(m: mebibyte(count: 512)), reason: "RAM a request needs above srv3's base, including snapshot capture and restore peaks: 512 MiB is what srv4's profile assumes; srv3's memory.peak through real turns at the ceiling replaces it" as NonEmptyStr },
+  retention: srv3_strata_snapshot_cost,
+  // srv3's /metrics has never been read, so its conversation_cache_min_free_mib is unknown; 2560 MiB is srv4's
+  // read floor on the same engine family (2026-10-30). The floor is not decoration: an engine skips parking below
+  // its cache budget plus this figure, so a wrong one makes the retention budget unusable — /metrics on
+  // strata-pool.service replaces it.
+  park_free_floor: ServingMemoryAssumed { bytes: mebibyte_to_byte_size(m: mebibyte(count: 2560)), reason: "srv3's conversation_cache_min_free_mib is unread (its /metrics has never been read); 2560 MiB is srv4's read floor on the same engine family, same release line (2026-10-30)" as NonEmptyStr },
+  max_devices_with_retention: 2,
+  max_context: token_count(count: 229376),
+}
+
+data srv3_layout: ServingLayoutResult = serving_layout_with_qualification(
+  result: serving_layout_derive(g: srv3_grant, groups: srv3_layer_split_groups, b: strata_srv3_layer_split_profile, r: serving_context_ceiling_requirement),
+  q: ServingLiveUnqualified { obligation: "srv3 has never been laid out, so nothing in this configuration has been run through it: read memory.current and memory.peak on strata-pool.service through real turns at the ceiling (its base, its active-slot RAM and its per-card fixed VRAM are all assumptions now), read its binary's --version and its slice's MemorySwapMax, and read whether ITS build answers slot save/restore with 501 under --batch 8 the way srv4's does. The realization step is a separate change owned by bold-wren-111 — moving srv3 onto --mmap-experts under a capped cgroup, which turns this artifact into srv4's evictable shape — and it is held until srv4's decode reading under its 40 GiB cap says whether the miss path is affordable." as NonEmptyStr },
 )
 
 // CONSUMER, declared frontier (gunbc.design_argument::consumption): the h11 engine units' MemoryMax, MemorySwapMax,
