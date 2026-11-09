@@ -12,9 +12,8 @@ import gunbc.roadmap.roadmap_page { roadmap_page_launch_with_stylesheet }
 import gunbc.roadmap.roadmap_launch_admission { launch_host_unobserved_static_render }
 import gunbc.roadmap.roadmap_model { RoadmapNode, section_group }
 import gunbc.roadmap.roadmap_document { RoadmapDocument, RoadmapSection }
-import test.claim.roadmap.roadmap_node_fixture { fx_authored, fx_signed }
+import test.claim.roadmap.roadmap_node_fixture { fx_authored, fx_superseded }
 import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified }
-import gunbc.roadmap.roadmap_status { RedControlExecuted, HandbackDelivered }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -81,20 +80,11 @@ fn doc_html(nodes: List<RoadmapNode>) -> String {
   }
 }
 
-fn done_signed_node() -> RoadmapNode {
-  let base = fx_authored(identity: "rnfx_WA4EZDD0ZGMCQMTKQA21", id: "alt-done", done: true, content: "finished work")
-  RoadmapNode {
-    identity: "rnfx_2K15QJ1CVZY55K15AHJK" as RoadmapNodeIdentity,
-    node: base.node,
-    line: base.line,
-    carriers: base.carriers,
-    dispatch: base.dispatch,
-    execution: base.execution,
-    owner: base.owner,
-    signoff: fx_signed(by: "op", works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] }, as_expected: true),
-    parent: none,
-    centering: none,
-  }
+// The routine fixture is a superseded row: a node definition carries no acceptance, so an accepted
+// node never reaches this renderer (the acceptance history removes it from the plan first), and
+// superseded is the routine status a definition can still state.
+fn routine_node() -> RoadmapNode {
+  fx_superseded(identity: "rnfx_2K15QJ1CVZY55K15AHJK", id: "alt-done", by: "alt-successor", content: "finished work")
 }
 
 fn open_node() -> RoadmapNode {
@@ -106,22 +96,22 @@ fn open_node() -> RoadmapNode {
 // counts, so nothing is hidden silently), and adding one working member to the same section flips
 // the SAME serialization to open. The two fixtures differ by exactly that member, so the
 // discrimination is located in the status data — hand-curation has no input to reach. Fixture
-// lesson, kept: a done-but-UNSIGNED node renders review (the sign-off gate), and review is WORKING
-// under the law — the operator's pending gesture holds a section open, which is the attention law
-// agreeing with the sign-off discipline rather than a coincidence. Routine therefore requires the
-// signed fixture.
+// lesson, kept: a done-but-unaccepted node renders review (the acceptance gate), and review is
+// WORKING under the law — the operator's pending gesture holds a section open, which is the
+// attention law agreeing with the acceptance discipline rather than a coincidence. Routine therefore
+// requires a closed fixture, and the one closed status a node definition states is superseded.
 
 test fn altitude_routine_section_folds() -> Bool {
-  let folded = doc_html(nodes: [done_signed_node()])
+  let folded = doc_html(nodes: [routine_node()])
   return string_contains(s: folded, pattern: "<details class=\"section-fold\">")
     && !string_contains(s: folded, pattern: "<details class=\"section-fold\" open=\"\">")
-    && string_contains(s: folded, pattern: "1 done")
+    && string_contains(s: folded, pattern: "1 superseded")
 }
 
 test fn altitude_working_member_holds_section_open() -> Bool {
-  let held = doc_html(nodes: [done_signed_node(), open_node()])
+  let held = doc_html(nodes: [routine_node(), open_node()])
   return string_contains(s: held, pattern: "<details class=\"section-fold\" open=\"\">")
-    && string_contains(s: held, pattern: "1 open · 1 done")
+    && string_contains(s: held, pattern: "1 open · 1 superseded")
 }
 
 // The client chain proven derived, both directions: the derived key set is exactly the anomaly bands (order from the wire rows), the emitted asset carries the chain over those keys plus the disclosure flip, and the negative arm pins that no non-expanding band appears in an expand test — the exact defect a hand-authored chain would plant.

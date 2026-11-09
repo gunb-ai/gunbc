@@ -49,7 +49,7 @@ import gunbc.roadmap.roadmap_launch_admission {
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
   LaunchNoCapacity,
 }
-import gunbc.roadmap.roadmap_readiness { GapAccepted, GapDependencies, GapContract, GapNotAgentWork }
+import gunbc.roadmap.roadmap_readiness { GapInReview, GapDependencies, GapContract, GapNotAgentWork }
 import gunbc.roadmap.roadmap_execution_contract { OperatorExclusiveMode }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, srv1_live_dashboard_instance, srv2_preview_dashboard_instance, srv1_lab_dashboard_instance }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
@@ -363,7 +363,7 @@ test fn witness_dispatch_status_total() -> Bool {
     && belt_dispatch_status(r: na(r: LaunchAlreadyLive { session_name: "s" })) == 200
     && belt_dispatch_status(r: na(r: LaunchInstanceActuationRefused { instance_id: "i", reason: "r" })) == 403
     && belt_dispatch_status(r: na(r: LaunchNodeUnknown)) == 404
-    && belt_dispatch_status(r: na(r: LaunchNotReady { missing: [GapAccepted] })) == 409
+    && belt_dispatch_status(r: na(r: LaunchNotReady { missing: [GapInReview] })) == 409
     && belt_dispatch_status(r: na(r: LaunchSessionsUnobservable { reason: "r" })) == 503
     && belt_dispatch_status(r: na(r: LaunchAuthorityUnobserved { detail: "d" })) == 503
     && belt_dispatch_status(r: SpawnFailed { node_id: "n", step: "git", detail: "d", provider: "codex", launch: launch_identity_exemplar() }) == 502

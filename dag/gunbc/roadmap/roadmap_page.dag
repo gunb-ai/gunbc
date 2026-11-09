@@ -100,7 +100,7 @@ import gunbc.roadmap.roadmap_presentation {
   row_filter_band_key,
   WorkLifecycle, OpenLifecycle, ReviewLifecycle, DoneLifecycle, SupersededLifecycle,
   work_lifecycle, work_lifecycle_key,
-  WorkScheduling, SchedulingReady, SchedulingNotReady, SchedulingDone, SchedulingSuperseded, hidden_not_ready_summary,
+  WorkScheduling, SchedulingReady, SchedulingNotReady, SchedulingSuperseded, hidden_not_ready_summary,
   ActivityView, NoActiveWork, ActiveWork, ActiveWorkRefused, LegacySupersedableAttempt, CompletedWork, ActivityUnobservable,
   ActivityAttention, activity_attention_key, activity_arm_key,
   ActivityEvidenceRow,
@@ -910,7 +910,7 @@ data a1_composition_provisional_note: String = "SCOPE STATEMENT for the A1 pass 
 // The row composition, on the declared archetype. The head line retains three derived tracks: status chip; node-mid title/meta flow; and one workflow-controls realization of ActuatorRegion carrying actions only (workflow_controls_actions_only_note). Activity — what is happening to the work — is the separate UnderHead ActivityRegion: the client creates it below this head when the decided /workflow.json view says an attempt exists, and removes it when the view says none, so the intrinsic-width third track can never again starve the title (the A2 falsifier). The li owns stable data-node identity independently of actuator presence; client observations locate the row first and only then its regions.
 // The view-only row renderer (operator blocker 1, 2026-08-01; recomposed as the taskbar on
 // 2026-09-21): render_task_row and its helpers receive WorkRowView ALONE — no RoadmapNode, no
-// RoadmapItem, no merged list, no frontier edges, no signoff or sizing constructors. Every fact
+// RoadmapItem, no merged list, no frontier edges, no sizing constructors. Every fact
 // they paint (bar fill, title, signal, count, second line, dispatch action, supporting facts,
 // disclosure body, inspection evidence) arrives already decided by gunbc.roadmap.roadmap_presentation;
 // what remains here is serialization: markdown-inline expansion, class assembly, element nesting.
