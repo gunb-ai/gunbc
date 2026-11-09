@@ -730,18 +730,21 @@ fn decide_qualification_run(
 // gunbc.host.host_primary_network_apply -> gunbc.runner.runner_host_file_converge, which is the route that
 // ASKS the gate whether a drain is authorized, so the import would close a cycle over its own consumer
 // ("circular dependency detected"). The owner of a fact translating it into the shape a downstream judge can
-// read is the direction that keeps the graph one-way: nothing outside this module can build a
-// `FloorJobCollected`, so the gate cannot be handed a job nobody collected. It is a projection of
+// read is the direction that keeps the graph one-way: nothing outside this module can mint a
+// `CollectedFloorJobReading`, so the gate cannot be handed a job nobody collected. It is a projection of
 // `QualificationRunVerdict`, not a second model of the qualification readback -- the verdict stays the
 // authority, and gunbc.design_argument::minimize_redundancy is honoured by deriving the view rather than
 // copying the record.
+//
+// `slot` is the label the CALLER asked about, and it is carried by the refused arm only: a readback that was
+// refused names no runner, so the label is its only identity. A collected reading carries no label at all --
+// which slot it belongs to is `WorkflowJobRun.runner_name`, the field decide_floor_job checked the
+// registration against, and gunbc.runner.runner_retirement_causes::floor_job_ran_on is the one matcher. A
+// label stored beside it would be a second identity for one fact that nothing reads.
 fn replacement_job_evidence_of(slot: NonEmptyStr, verdict: QualificationRunVerdict) -> ReplacementJobEvidence {
   match verdict {
     RunVerdictCollected { run: run, floor_job: job, conclusion: conclusion } =>
-      FloorJobCollected {
-        slot: slot,
-        collected: collected_floor_job_reading(run: run, floor_job: job, conclusion: conclusion),
-      }
+      FloorJobCollected { collected: collected_floor_job_reading(run: run, floor_job: job, conclusion: conclusion) }
     RunVerdictRefused { refusal: refusal } =>
       FloorJobRefused { slot: slot, reason: qualification_run_refusal_cause(refusal: refusal) }
   }

@@ -202,7 +202,7 @@ fn qualification_attempt_run_verdict(run: QualificationAttemptRun) -> Qualificat
                   Absent => not_qualified(cause: "the collected floor job does not name the runner that took it")
                   Present { value: evidence } =>
                     match evidence {
-                      FloorJobCollected { slot: _, collected: reading } =>
+                      FloorJobCollected { collected: reading } =>
                         match reading.conclusion {
                           Success => AttemptQualified
                           _ => not_qualified(cause: "the collected floor run did not conclude in success")

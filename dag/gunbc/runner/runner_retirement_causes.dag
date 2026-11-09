@@ -255,7 +255,15 @@ type CollectedFloorJobReading sole_constructor {
 // constructors with the same spelling on the tree, which is how a reader spends an hour deciding which
 // `Collected` a `match` was written against.
 type ReplacementJobEvidence
-  = FloorJobCollected { slot: NonEmptyStr, collected: CollectedFloorJobReading }
+  // THE COLLECTED ARM CARRIES NO SLOT LABEL, ONLY THE READING ITSELF. Which slot a floor job belongs to is
+  // a fact the job carries -- WorkflowJobRun.runner_name, the same field
+  // gunbc.runner.runner_qualification_dispatch::decide_floor_job checked against the registration -- and
+  // `floor_job_ran_on` below is the one matcher. A second `slot` field beside it would be a second identity
+  // for one fact that the matching code never reads: exactly the fork
+  // gunbc.design_argument::single_authority refuses, because the two can disagree and only one of them
+  // decides. The REFUSED arm keeps the caller's label, because a readback that was refused names no runner at
+  // all -- there the label is the only identity there is, not a copy of one.
+  = FloorJobCollected { collected: CollectedFloorJobReading }
   | FloorJobRefused { slot: NonEmptyStr, reason: String }
 
 // THE ONE MINT OF THAT READING, and the one caller it admits. A mint whose admit list is a single
@@ -280,7 +288,7 @@ fn collected_floor_job_reading(
 // not a match: a job that does not say who ran it has proved nothing about who ran it.
 fn floor_job_ran_on(evidence: ReplacementJobEvidence, slot: NonEmptyStr) -> Bool {
   match evidence {
-    FloorJobCollected { slot: _, collected: collected } =>
+    FloorJobCollected { collected: collected } =>
       match collected.floor_job.runner_name {
         Absent => false
         Present { value: name } => name == (slot as String)

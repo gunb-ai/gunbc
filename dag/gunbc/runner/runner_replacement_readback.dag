@@ -134,7 +134,7 @@ fn registration_from_entries(
 fn replacement_job_standing_of(slot: NonEmptyStr, verdict: ReplacementJobEvidence?) -> ReplacementJobStanding {
   match verdict {
     Absent => JobUnreadable { slot: slot, cause: "no qualification run readback exists for this slot" }
-    Present { value: FloorJobCollected { slot: _, collected: collected } } =>
+    Present { value: FloorJobCollected { collected: collected } } =>
       match collected.conclusion {
         Success => JobConcluded { slot: slot, run: collected.run, floor_job: collected.floor_job }
         Failure => JobNotConcluded { slot: slot, cause: "the floor job concluded Failure" }
