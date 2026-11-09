@@ -1,9 +1,10 @@
 module v2.test.claim.parse.juxtaposition_shape_probe
 
 import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
+import v2.compiler.body_lowering_fold { body_lower_stmt_spine_has_successor }
 import v2.std.diagnostic { Accepted, Rejected }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.optional { Absent, Optional, Present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.node { Node, Symbol, node_subtree_nodes }
 import v2.std.grammar { parse_production_emitted_identity_optional }
 
@@ -64,6 +65,44 @@ test fn jp_one_stmt_at_least_two() -> Bool { count_stmts(tag: "one", text: one_s
 // at_least_three false) -- the trustworthy two-statement reference the juxtaposition is compared to.
 test fn jp_line_stmt_at_least_two() -> Bool { count_stmts(tag: "line", text: one_line_list_source()) >= 2 }
 test fn jp_line_stmt_at_least_three() -> Bool { count_stmts(tag: "line", text: one_line_list_source()) >= 3 }
+
+// THE decisive lowering read. body_lower_stmt_spine_head_optional / _rest_optional use find_named_child,
+// which searches the SUBTREE recursively. A list literal `[a, b, c]` is itself an element sequence with
+// left/right projections, so a SINGLE list-literal statement could be mis-read as having a statement
+// successor -- spuriously routing a one-statement body through the spine and reading the last operand.
+// If jp_one_spine_has_successor PASSes on a single-literal body, the spine successor recognition is
+// matching the list literal's INTERNAL element sequence, not a real following statement => LOWERING fix
+// (restrict the spine projections to the statement spine, not the expression subtree).
+fn first_stmt_seq(root: Node) -> Optional<Node> {
+  fold(node_subtree_nodes(root: root), init: optional_absent(), f: fn(acc, m) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match parse_production_emitted_identity_optional(node: m) {
+          Present { value: id } => if id == ^dag_surface_stmt_seq { optional_present(value: m) } else { optional_absent() }
+          Absent => optional_absent()
+        }
+    }
+  })
+}
+
+fn spine_successor(tag: String, text: String) -> Bool {
+  match parse_tree(tag: tag, text: text) {
+    Present { value: t } =>
+      match first_stmt_seq(root: t) {
+        Present { value: spine } => body_lower_stmt_spine_has_successor(spine: spine)
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// A one-statement body must report NO successor. If juxtap_one reports a successor, the spine matched
+// the list's internal element sequence (the recursive-projection bug).
+test fn jp_one_spine_has_successor() -> Bool { spine_successor(tag: "one", text: one_source()) }
+test fn jp_two_spine_has_successor() -> Bool { spine_successor(tag: "two", text: two_source()) }
+// Reference: the let-then-tail body has TWO statements, so a successor is expected here.
+test fn jp_line_spine_has_successor() -> Bool { spine_successor(tag: "line", text: one_line_list_source()) }
 
 fn emitted_is(n: Node, sym: Symbol) -> Bool {
   match parse_production_emitted_identity_optional(node: n) {
