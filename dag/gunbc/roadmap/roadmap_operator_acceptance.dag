@@ -40,7 +40,6 @@ import std.content_hash { serialize_content_hash, Fnv1a64 }
 import std.decimal { decimal_digit_char }
 import extdeps.units.iso8601_calendar { Iso8601CivilDate, iso8601_civil_from_days, iso8601_floor_div, iso8601_seconds_per_day, iso8601_two_digits }
 import extdeps.github.pulls { PullRequestViewState, PullRequestViewOpen, PullRequestViewClosed, PullRequestViewMerged, PullRequestViewUnknown, github_pull_request_view_state_text }
-import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
 // The capacity constant the close's own growth guard uses — the same budget the log's readers enforce.
 import gunbc.fabric.fabric_event_log { event_log_read_budget }
 import gunbc.roadmap.roadmap_model {

@@ -31,7 +31,6 @@ import gunbc.roadmap.roadmap_operator_acceptance { roadmap_operator_close_histor
 import gunbc.roadmap.roadmap_node_terminality { BeltNodeLineageTerminal, LineageOpen, LineageTerminal, LineageRetired, LineageTerminalUnreadable, belt_node_lineage_terminal_read }
 import gunbc.roadmap.roadmap_event_carrier { RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance, roadmap_events_read, CarrierClosed, RoadmapEventsRead, EventsRead, EventsReadRefused }
 import gunbc.roadmap.roadmap_event_log { RoadmapEventEnvelope, RoadmapNodeStanding, roadmap_issue_state, roadmap_standing_is_retired }
-import gunbc.fabric.fabric_storage_binding { fabric_state_storage_binding }
 import gunbc.roadmap.roadmap_spawner { SpawnFrontier, spawn_frontier, doc_all_nodes }
 import gunbc.roadmap.roadmap_status { line_ticket, node_title }
 import gunbc.roadmap.roadmap_review_role {

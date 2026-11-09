@@ -88,7 +88,6 @@ import gunbc.principal_projection {
 import std.access { access_refusal_reason, Permit, Deny }
 import gunbc.clock_read { clock_now_probed_at }
 import extdeps.clock { ClockUnixMillisObserved, ClockUnixMillisRefused, clock_unix_millis_read, epoch_secs_of_millis }
-import gunbc.fabric.fabric_storage_binding { fabric_state_storage_binding }
 import std.algebra { trim }
 import std.types { String, Int, Bool, List, NonEmptyStr, Email, CommitSha, HttpStatus, Timestamp }
 import extdeps.uri_path { PathParamBinding, path_param_value, uri_query_param }
@@ -155,7 +154,6 @@ import gunbc.roadmap.roadmap_operator_acceptance {
   roadmap_operator_date_from_epoch_secs,
   AcceptanceFound, AcceptanceAbsent, ClosedStatusUnreadable,
 }
-import gunbc.roadmap.roadmap_acceptance_history_carrier { roadmap_acceptance_event_history_carrier_repo_path }
 import gunbc.roadmap.roadmap_status { TicketFields, line_ticket }
 import gunbc.roadmap.roadmap_spawner { doc_all_nodes }
 import gunbc.roadmap.roadmap_model { RoadmapNode }
@@ -1184,8 +1182,7 @@ fn serve_close_answer(instance: HostDashboardInstance, node_id: String, inputs: 
       content_type: text_plain_utf8,
       body: join(["close refused: node lane unavailable at ", s, ": ", r, "\n"], ""))
     EventsRead { node: _, envelopes: envs } => match roadmap_operator_close(
-    path: roadmap_acceptance_event_history_carrier_repo_path,
-    store: fabric_state_storage_binding(),
+    instance: instance,
     inputs: inputs,
     readback: readback,
     standing: if count(envs) == 0 { none } else { Present { value: roadmap_issue_state(envs: envs).standing } }

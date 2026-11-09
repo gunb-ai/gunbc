@@ -61,7 +61,6 @@ import gunbc.roadmap.roadmap_operator_acceptance { roadmap_operator_close_histor
 import gunbc.roadmap.roadmap_event_log { RoadmapRetiredNodeIds, RetiredNodeIdsLoaded, RetiredNodeIdsRefused, roadmap_retired_node_ids_of }
 import gunbc.roadmap.roadmap_event_carrier { roadmap_event_carrier_layout_for_instance }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
-import gunbc.fabric.fabric_storage_binding { fabric_state_storage_binding }
 import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified, closing_contract_authoring_contract, gunbc_claim_execution_contract, gunbc_claims_execution_contract }
 import gunbc.roadmap.roadmap_status {
   TicketLine,
