@@ -1,0 +1,28 @@
+module test.claim.field_default_declaring_scope_witness
+
+import std.types { Bool }
+// THE CALLER IMPORTS THE TWO FUNCTIONS AND NOTHING ELSE. `FieldDefaultToken`, `FieldDefaultBearer`
+// and `FieldDefaultOpaque` are deliberately absent from this import clause: the whole point is that a
+// constructor visible only in the declaring module is reached through a default here. Naming the arm
+// would make this file resolve the name in its own scope and the witness would judge nothing — the
+// hotfix #16185 did exactly that at one call site, which is why the class stayed open beneath it.
+import test.claim.field_default_declaring_scope_fixture { field_default_is_bearer, field_default_is_opaque }
+
+// THE WITNESS: `gunbc.recurring_failure_mode::a_field_default_is_evaluated_in_the_callers_scope`.
+//
+// `call_function_inner` evaluated a parameter/field default with the CALLER's environment, so the arm
+// spelling was looked up here, where no import introduces it, instead of in the module that wrote the
+// declaration. At base these two claims refuse with `undefined variable: FieldDefaultBearer` /
+// `FieldDefaultOpaque` — the same `undefined variable: Jwt` that stopped heal-publish on every
+// candidate before #16185 papered over one call site. The supplied-argument control lives in the
+// declaring module (`field_default_supplied_argument_binds_as_declared`), where it is green at base
+// too: the two claims below fail on the default, not on the declarations around them.
+test fn field_default_omitted_argument_resolves_in_the_declaring_module() -> Bool {
+  field_default_is_bearer()
+}
+
+// The same defect on a second declaration and a second arm, so a fix that special-cased one spelling
+// or one omission route cannot pass.
+test fn second_field_default_omitted_argument_resolves_in_the_declaring_module() -> Bool {
+  field_default_is_opaque()
+}

@@ -1,0 +1,46 @@
+module test.claim.field_default_declaring_scope_fixture
+
+import std.types { Bool }
+
+// THE DECLARING MODULE OF THE WITNESS (`test.claim.field_default_declaring_scope_witness`).
+//
+// Everything here is visible ONLY in this module. `FieldDefaultBearer` and `FieldDefaultOpaque` are
+// arms of a coproduct this module declares, and the witness caller names none of these members in an
+// import clause — it imports the two functions it calls, and nothing else. So the arms are reached
+// ONLY through the parameter defaults below. That is the shape of the specimen
+// (`gunbc.recurring_failure_mode::a_field_default_is_evaluated_in_the_callers_scope`):
+// `extdeps.cloud.gcp.sts` declares `subject_token_type: SubjectTokenType = Jwt` in the
+// `gcp.STS.Exchange` input block, `gunbc.heal_publication` imported the module but never the arm, and
+// every candidate CI publisher died at run time with `undefined variable: Jwt`.
+//
+// A default is part of the DECLARATION, so its names belong to the scope that wrote the declaration,
+// exactly as the body's names do. Evaluating it in the CALLER's environment instead makes one
+// declaration mean two things depending on who calls it: a caller that happens to bind the spelling
+// gets its own value, and a caller that never imported it gets NoSuchVariable. Both are wrong; the
+// second is what stopped heal-publish on every candidate.
+type FieldDefaultToken
+  = FieldDefaultBearer
+  | FieldDefaultOpaque
+
+// Reached by omitting the argument entirely (the named-omission route of the default evaluation).
+fn field_default_is_bearer(token: FieldDefaultToken = FieldDefaultBearer) -> Bool {
+  match token {
+    FieldDefaultBearer => true
+    FieldDefaultOpaque => false
+  }
+}
+
+// The same default shape on a second declaration, so the witness does not pass on one lucky name.
+fn field_default_is_opaque(token: FieldDefaultToken = FieldDefaultOpaque) -> Bool {
+  match token {
+    FieldDefaultBearer => false
+    FieldDefaultOpaque => true
+  }
+}
+
+// THE CONTROL, green at base and green at head: the supplied-argument route does not evaluate a
+// default at all, so this is the half that proves the two claims below fail on the DEFAULT and not on
+// the declarations, the match, or the caller.
+test fn field_default_supplied_argument_binds_as_declared() -> Bool {
+  field_default_is_bearer(token: FieldDefaultBearer) && field_default_is_opaque(token: FieldDefaultOpaque)
+}
