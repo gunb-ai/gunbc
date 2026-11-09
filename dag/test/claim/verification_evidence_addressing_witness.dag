@@ -78,6 +78,8 @@ import gunbc.roadmap.roadmap_validation_oracle {
   validation_verdict_key,
 }
 import gunbc.roadmap.roadmap_verification_receipt {
+  VerificationReceiptPresent,
+  VerificationReceiptFileSource,
   VerificationSubject,
   VerificationSubjectObserved,
   VerificationSubjectUnobserved,
@@ -116,6 +118,13 @@ import gunbc.roadmap.roadmap_verification_receipt {
   LegacyReceiptVerdictMemberMissing,
 }
 import gunbc.roadmap.roadmap_belt_actuate {
+  belt_verify_one_recorded_route,
+  BeltVerifyOneRecordedRoute,
+  RecordedAnswers,
+  RecordedReruns,
+  VerifyAsBelt,
+  VerifyAsOperatorResume,
+  VerifyOneAlreadyRecorded,
   belt_verification_receipt_source,
   belt_verification_subject_from_selection,
   belt_verify_pass_outcome_from,
@@ -925,6 +934,41 @@ test fn resume_never_re_runs_a_passed_or_failed_verdict() -> Bool {
       BeltVerificationDefer { reason: _ } => true
       _ => false
     })
+}
+
+fn resume_file_source(verdict: ValidationVerdict) -> VerificationReceiptFileSource {
+  VerificationReceiptPresent {
+    text: verification_receipt_json(receipt: fixture_receipt(window: fixture_window_w1, verdict: verdict)),
+  }
+}
+
+fn answers_already_recorded(route: BeltVerifyOneRecordedRoute, verdict_key: String) -> Bool {
+  match route {
+    RecordedAnswers { result } =>
+      match result {
+        VerifyOneAlreadyRecorded { verdict_key: k, detail: d } => k == verdict_key && d == "recorded-detail"
+        _ => false
+      }
+    RecordedReruns => false
+  }
+}
+
+// THE RESUME CLI'S ANSWER FOR A RECORDED VERDICT (review 91883). belt_verify_resume_for_instance routes a
+// recorded receipt through belt_verify_one_recorded_route: a passed or failed verdict answers
+// VerifyOneAlreadyRecorded with that verdict -- never a VerifyOneVerdictRecorded carrying a deferral --
+// and only a refused cause re-runs. RED: the belt mode answers already-recorded on the same refused
+// receipt, so a resume that routed like the belt (the pre-fix shape) fails the first conjunct.
+test fn the_resume_cli_answers_already_recorded_for_a_passed_or_failed_verdict() -> Bool {
+  let refused = ValidationRefused { cause: ValidationCommandRefused { program: "gunbc-compute", reason: "the claim run ended refused_by_infrastructure" } }
+  let passed = ValidationPassed { command: "fixture-command", oracle_identity: content_hash_of_value(value: "oracle-fixture") }
+  let failed = ValidationFailed { command: "fixture-command", exit_code: 1, detail: "assertion failed" }
+  (match belt_verify_one_recorded_route(mode: VerifyAsOperatorResume, verdict_key: "refused", detail: "recorded-detail", source: resume_file_source(verdict: refused)) {
+    RecordedReruns => true
+    RecordedAnswers { result: _ } => false
+  })
+    && answers_already_recorded(route: belt_verify_one_recorded_route(mode: VerifyAsBelt, verdict_key: "refused", detail: "recorded-detail", source: resume_file_source(verdict: refused)), verdict_key: "refused")
+    && answers_already_recorded(route: belt_verify_one_recorded_route(mode: VerifyAsOperatorResume, verdict_key: "pass", detail: "recorded-detail", source: resume_file_source(verdict: passed)), verdict_key: "pass")
+    && answers_already_recorded(route: belt_verify_one_recorded_route(mode: VerifyAsOperatorResume, verdict_key: "fail", detail: "recorded-detail", source: resume_file_source(verdict: failed)), verdict_key: "fail")
 }
 
 fn wakes_at(n: Int) -> Bool {

@@ -10414,6 +10414,24 @@ fn belt_verification_file_refused_cause(source: VerificationReceiptFileSource) -
   }
 }
 
+// WHAT A RECORDED RECEIPT ANSWERS, per mode. The belt answers already-recorded for every recorded
+// verdict; the operator's resume re-runs only a recorded REFUSED cause, and a passed or failed verdict
+// answers already-recorded there too (review 91883: the resume CLI's receipt for a pass or fail).
+type BeltVerifyOneRecordedRoute
+  = RecordedAnswers { result: BeltVerifyOneResult }
+  | RecordedReruns
+
+fn belt_verify_one_recorded_route(mode: BeltVerifyMode, verdict_key: String, detail: String, source: VerificationReceiptFileSource) -> BeltVerifyOneRecordedRoute {
+  match mode {
+    VerifyAsBelt => RecordedAnswers { result: VerifyOneAlreadyRecorded { verdict_key: verdict_key, detail: detail } }
+    VerifyAsOperatorResume =>
+      match belt_verification_file_refused_cause(source: source) {
+        Present { value: _ } => RecordedReruns
+        Absent => RecordedAnswers { result: VerifyOneAlreadyRecorded { verdict_key: verdict_key, detail: detail } }
+      }
+  }
+}
+
 fn belt_verify_one_gated(instance: HostDashboardInstance, node_id: String, attempt_key: String, mode: BeltVerifyMode) -> BeltVerifyOneResult {
   let nid = node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
   let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: nid, attempt_key: attempt_key)
@@ -10441,13 +10459,9 @@ fn belt_verify_one_gated(instance: HostDashboardInstance, node_id: String, attem
                   evidence: verification_file_evidence_for(expected: subject, source: receipt_source)
                 )) {
                   VerifyOneNoOp { verdict_key, detail } =>
-                    match mode {
-                      VerifyAsBelt => VerifyOneAlreadyRecorded { verdict_key: verdict_key, detail: detail }
-                      VerifyAsOperatorResume =>
-                        match belt_verification_file_refused_cause(source: receipt_source) {
-                          Present { value: _ } => belt_verify_one_run(instance: instance, node_id: node_id, attempt_key: attempt_key, mode: mode)
-                          Absent => VerifyOneAlreadyRecorded { verdict_key: verdict_key, detail: detail }
-                        }
+                    match belt_verify_one_recorded_route(mode: mode, verdict_key: verdict_key, detail: detail, source: receipt_source) {
+                      RecordedAnswers { result } => result
+                      RecordedReruns => belt_verify_one_run(instance: instance, node_id: node_id, attempt_key: attempt_key, mode: mode)
                     }
                   VerifyOneRefuse { reason } => VerifyOneRefused { reason: reason }
                   VerifyOneRun => belt_verify_one_run(instance: instance, node_id: node_id, attempt_key: attempt_key, mode: mode)
