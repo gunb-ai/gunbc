@@ -245,11 +245,12 @@ data host_effect_converge_loop_evidence: IdempotencyEvidence = NonIdempotent {
 }
 
 // Structural '=='. IdempotencyEvidence carries EffectShape<KeySource>, whose CreateCause<K> member is a
-// generic application: the equality plan judges an applied generic by the arguments its PARAMETERS OCCUPY
-// (v1.compiler.infer equality_applied_arguments_by_target), so KeySource is judged where K occurs and the
-// phantom positions impose nothing. The stopgap that read this by construction is gone (gunbc#15175 interim,
-// #16099); the discriminating controls for the generic forms are
-// test.claim.self_host_equality_admission_witness.
+// generic application. The argument written there is K, a parameter of the declaration this walk is inside, and
+// v1.compiler.infer::equality_argument_by_target admits exactly that: the roster reaches the walk through
+// equality_scope_with_params and is the same roster the plan's own member rule reads. That is the condition the
+// emitted derive answers, because a derived impl bounds every parameter of the carrier. The stopgap that read
+// this by construction (gunbc#15175 interim, #16099) is gone; the discriminating controls for the generic forms
+// are in test.claim.self_host_equality_admission_witness.
 fn host_effect_is_converge_loop_evidence(evidence: IdempotencyEvidence) -> Bool {
   evidence == host_effect_converge_loop_evidence
 }

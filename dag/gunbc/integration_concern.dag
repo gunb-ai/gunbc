@@ -1673,7 +1673,7 @@ data equality_wall_three_site_measure_stopgap_interim: IntegrationConcern = Inte
           head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_argument_by_target") },
           tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "is_unit_variant_phantom_argument") }],
         },
-        account: "Closing read, measured with a compiler built from this seed. The three entries that used to refuse each resolve with zero equality rows and zero resolve-failed headers; at 3d34fc61ca6e the same entries refused at host_effect_is_converge_loop_evidence, seat_fell_by and fleet_nominal_rackmount_arithmetic_holds. The self-host instrument builds under rustc with zero E0369 where the previous head failed v2-bootstrap with E0369, and the eight nested and demand-shape controls run 8 PASS 0 FAIL.",
+        account: "Closing read, measured with a compiler built from this seed at the merged head. The three entries that used to refuse each resolve with zero equality rows and zero resolve-failed headers; at 3d34fc61ca6e the same entries refused at host_effect_is_converge_loop_evidence, seat_fell_by and fleet_nominal_rackmount_arithmetic_holds. The self-host instrument builds under rustc with zero E0369 where the previous head failed v2-bootstrap with E0369. The whole equality witness module runs 76 PASS and 4 FAIL, and those four fail identically under a compiler built from origin/main, so the repair admits the structural shapes without moving any refusal.",
       },
     ],
   },
@@ -1699,14 +1699,14 @@ data equality_wall_three_site_measure_stopgap_interim: IntegrationConcern = Inte
     executions: FreeSemigroup {
       head: RetainedExecutionResult {
         control: decl_ref(module_path: "gunbc.host.host_effect", decl_name: "host_effect_is_converge_loop_evidence"),
-        run: "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/host/host_effect.dag --function \"\" with a compiler built from the seed carried by 926a1e009c1d",
-        conclusion: "PASS: NoSuchFunction for the empty function name, zero equality rows, zero resolve-failed headers, 5.81 GiB peak. The same entry refused at 3d34fc61ca6e with the refusal at gunbc.host.host_effect::host_effect_is_converge_loop_evidence over CreateCause.",
+        run: "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/host/host_effect.dag --function \"\" with a compiler built from this seed at the merged head e810fb31514f",
+        conclusion: "PASS: NoSuchFunction for the empty function name, zero equality rows, zero resolve-failed headers, 825 modules, 5.53 GiB peak. At 3d34fc61ca6e the same entry refused at gunbc.host.host_effect::host_effect_is_converge_loop_evidence.",
       },
       tail: [
         RetainedExecutionResult {
           control: decl_ref(module_path: "gunbc.compute.compute_seat_ensure", decl_name: "seat_fell_by"),
-          run: "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/compute/compute_seat_ensure.dag --function \"\" with the same compiler",
-          conclusion: "PASS: zero equality rows, zero resolve-failed headers, 7.63 GiB peak. The same entry refused at 3d34fc61ca6e at gunbc.compute.compute_seat_ensure::seat_fell_by over the Measure.",
+          run: "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/compute/compute_seat_ensure.dag --function \"\" with the same compiler at the merged head",
+          conclusion: "PASS: zero equality rows, zero resolve-failed headers, 1042 modules, 7.28 GiB peak -- no OOM, which is what #16115 bought. At 3d34fc61ca6e the same entry refused at gunbc.compute.compute_seat_ensure::seat_fell_by over the Measure.",
         },
         RetainedExecutionResult {
           control: decl_ref(module_path: "gunbc.fleet.fleet_physical_inventory", decl_name: "fleet_nominal_rackmount_arithmetic_holds"),
@@ -1716,12 +1716,12 @@ data equality_wall_three_site_measure_stopgap_interim: IntegrationConcern = Inte
         RetainedExecutionResult {
           control: decl_ref(module_path: "v2.compiler.source_root_eval", decl_name: "source_root_eval"),
           run: "gunbc test //gunbc/instruments:self-host with the same compiler",
-          conclusion: "exit_status=0 warning_count=0 wall_s=795, zero E0369, zero E0277, 9.37 GiB peak: the emitted self-host closure that failed with E0369 in v2-bootstrap run 42575201140 builds under rustc.",
+          conclusion: "exit_status=0 warning_count=0 wall_s=740, zero E0369, zero E0277, 10.6 GiB peak inside a 16 GiB envelope: the emitted self-host closure that failed with E0369 in v2-bootstrap run 42575201140 builds under rustc.",
         },
         RetainedExecutionResult {
           control: decl_ref(module_path: "test.claim.self_host_equality_admission_witness", decl_name: "nested_structural_argument_equality_admits_at_the_use"),
-          run: "claim_batch --wet --entry dag/test/claim/self_host_equality_admission_witness.dag over the eight nested and demand-shape controls, with the same compiler",
-          conclusion: "8 PASS, 0 FAIL: the structural shapes admit (Engine<LeafVal>, DqEngine<DqPlain>, the nested parameter shapes) while the routed and function-bearing shapes refuse (Engine<Node>, Engine<Value>, DqEngine<DqValue>, the routed argument).",
+          run: "claim_batch --wet --entry dag/test/claim/self_host_equality_admission_witness.dag over all 80 controls of the module, with the same compiler",
+          conclusion: "76 PASS, 4 FAIL, 168.8 s of resolve, 8.2 GiB peak. The four failures are the optional/Present controls, and they fail the same way under a compiler built from origin/main -- one of them is enrolled as an expected red in v2.workflow.floor_expected_red, the three others are reported to their own item. No control that was green on main goes red. Within the module the structural shapes admit (Engine<LeafVal>, DqEngine<DqPlain>, the nested parameter shapes, an unresolved type name still refuses) while the routed and function-bearing shapes refuse (Engine<Node>, Engine<Value>, DqEngine<DqValue>, the routed argument, a function-typed argument in a phantom position).",
         },
       ],
     },

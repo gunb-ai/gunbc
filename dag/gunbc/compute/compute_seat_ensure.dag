@@ -152,11 +152,12 @@ fn seat_granted_of(reading: AttemptSlotReading) -> Kibibyte {
 
 fn seat_fell_by(before: Kibibyte, after: Kibibyte, granted: Kibibyte) -> Bool {
   match measure_sub(a: before, b: after) {
-    // Structural '==' on a Measure. Measure<Q,S,M> is judged by the arguments its parameters OCCUPY:
-    // Q and S are phantom in Measure's body (the single field is `count: M`), so they impose no
-    // equality obligation, and M=Nat is judged by the same by-target table that decides the emitted
-    // carrier's PartialEq. The measure_count stopgap (gunbc#15175 interim, #16099) is gone; the
-    // discriminating controls are test.claim.self_host_equality_admission_witness.
+    // Structural '==' on Kibibyte = Measure<Memory, Kibi, Nat>. The rule judges the arguments written at
+    // that use (v1.compiler.infer::equality_argument_by_target) and admits them for the reason the emitted
+    // derive covers them: Memory and Kibi are unit-variant markers, which the emitter gives the full derive
+    // roster (v1.compiler.infer::is_unit_variant_phantom_argument), and Nat is a by-target scalar. The
+    // measure_count stopgap (gunbc#15175 interim, #16099) is gone; the discriminating controls are
+    // test.claim.self_host_equality_admission_witness.
     MeasureDifference { value: d } => d == granted
     MeasureSubtrahendExceedsMinuend => false
   }
