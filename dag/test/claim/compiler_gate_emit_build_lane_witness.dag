@@ -18,6 +18,7 @@ import std.algebra { length, list_head, skip, string_contains }
 import gunbc.action_use_admission { cache_save_action }
 import extdeps.github.action_release { action_release_uses_text }
 import extdeps.filesystem.filesystem_io
+import gunbc.output_policy { ExpectSuccess }
 import gunbc.instrument_targets { self_host_entry, v2_native_cli_entry }
 import gunbc.repo.repo_self_build { repo_self_seed_build_step_run, repo_self_test_typecheck_command }
 import gunbc.read_set_restore { fast_lane_full_run_if, fast_lane_reused_if, fast_lane_decision_step_name, fast_lane_layout_check_step_name, fast_lane_reference_check_step_name }
