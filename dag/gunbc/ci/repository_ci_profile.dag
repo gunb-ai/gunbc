@@ -28,6 +28,7 @@ import gunbc.ci.ci_runner_target {
 import gunbc.runner.runner_group_restriction_ensure { restricted_runner_groups }
 import gunbc.required_ci_contract_epoch { required_ci_context_name }
 import gunbc.repo.repo_identity { gunbc_default_branch_name }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import extdeps.github.hosted_runners { github_hosted_ubuntu_2404_arm_public_catalog }
 
 // ONE CI PROFILE ROW PER REPOSITORY, AND WHY THE ROW IS THE UNIT THAT SHARED CI MUST BE CUT FROM.
@@ -86,6 +87,7 @@ type RosterGate {
   required_context: NonEmptyStr
   runner: CiRunnerTarget
   timeout: Minute
+  source_roots: List<String>
 }
 
 // THE PROJECTION-DRIFT JOB: check every committed generated file against the bytes its authority emits,
@@ -176,7 +178,9 @@ type PublisherCompilerSource
   = PublisherBuildsItsOwnCheckout { required_bins: List<NonEmptyStr> }
 
 // THE ONE READING of that projection. Every well-formed profile builds its own checkout, so the publisher
-// always runs under it.
+// always runs under it. The Optional is kept because the emitters match on it as the single place a
+// publisher with no buildable compiler would be refused; with one source there is no value that reaches that
+// arm, but the refusal shape stays so a future source that lacks a publisher consumer has one home.
 fn profile_publisher_compiler_source(profile: RepositoryCiProfile) -> Optional<PublisherCompilerSource> {
   match profile.source {
     Own_checkout_under_witness_floor { required_bins: bins } =>
@@ -213,7 +217,8 @@ fn gunbc_repository_ci_profile() -> RepositoryCiProfile {
       job_display_name: required_ci_context_name,
       required_context: required_ci_context_name,
       runner: selected_ci_runner_target(),
-      timeout: minute(90)
+      timeout: minute(90),
+      source_roots: witness_layer_roots
     },
     // GUNBC IS THE COMPILER'S HOME: no repository to check out beside itself, no overlay to compose, and the
     // witness floor says which binary its own checkout has to produce.
@@ -530,7 +535,8 @@ fn profile_with_roster_runner(profile: RepositoryCiProfile, runner: CiRunnerTarg
       job_display_name: profile.roster.job_display_name,
       required_context: profile.roster.required_context,
       runner: runner,
-      timeout: profile.roster.timeout
+      timeout: profile.roster.timeout,
+      source_roots: profile.roster.source_roots
     },
     source: profile.source,
     heal: profile.heal,
@@ -553,7 +559,8 @@ fn profile_with_required_context(profile: RepositoryCiProfile, name: NonEmptyStr
       job_display_name: profile.roster.job_display_name,
       required_context: name,
       runner: profile.roster.runner,
-      timeout: profile.roster.timeout
+      timeout: profile.roster.timeout,
+      source_roots: profile.roster.source_roots
     },
     source: profile.source,
     heal: profile.heal,
