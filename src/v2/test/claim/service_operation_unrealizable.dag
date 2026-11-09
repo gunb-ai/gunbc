@@ -3,11 +3,11 @@ module v2.test.claim.service_operation_unrealizable
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrencePending, OccurrenceSynthetic }
 import v2.compiler.infer { infer_service_operation_reference_diags }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
-import v2.std.symbol_index { symbol_index_declares_service_payload_at, symbol_index_lookup, symbol_index_operation_realization_at, OperationRealization, OperationRealizable, OperationUnrealizable, SymbolIndex, empty_symbol_index, symbol_index_mark_operation_realization, symbol_index_mark_service_payload }
+import v2.std.symbol_index { symbol_index_bind_at, symbol_index_declares_service_payload_at, symbol_index_lookup, symbol_index_operation_realization_at, OperationRealization, OperationRealizable, OperationUnrealizable, SymbolIndex, empty_symbol_index, symbol_index_mark_operation_realization, symbol_index_mark_service_payload }
 import v2.std.qualified_name { qualified_name_from_dotted_string, declaration_reference_path_optional, qualified_name_init, QualifiedName }
 import v2.extdeps.languages.dag { service_payload_node, dag_grammar_atom, dag_surface_edge, namespace_graft_namespace_body_node }
 import v2.std.service_realization_labels { realization_root_label, realization_unrealizable_label, realization_unrealizable_reason_label }
-import v2.std.node { StructuralLabel, CoreMarker, DeclarationReferenceEdge, Arrow, Authored, Edge, NotADeclaration, fold_list_node, Atom, Conj, Node, Symbol, TypeNode }
+import v2.std.node { StructuralLabel, CoreMarker, DeclarationReferenceEdge, Arrow, Authored, Edge, NotADeclaration, fold_list_node, Atom, Conj, Node, Symbol, TypeNode, node_equal_ignoring_provenance }
 import v2.test.claim.caller_admission_native_wall { wall_decl_ref_target }
 import std.optional { Absent, Present }
 // `concat` is the built-in two-list append, not a std.algebra declaration; `Empty` is.
@@ -168,7 +168,7 @@ fn suo_path(dotted: String) -> QualifiedName { qualified_name_from_dotted_string
 fn suo_same_binding(dotted: String) -> Bool {
   match symbol_index_lookup(index: suo_filled(with_realization: true), qualified_path: suo_path(dotted: dotted)) {
     Absent => match symbol_index_lookup(index: suo_filled(with_realization: false), qualified_path: suo_path(dotted: dotted)) { Absent => true, Present { value: _ } => false }
-    Present { value: a } => match symbol_index_lookup(index: suo_filled(with_realization: false), qualified_path: suo_path(dotted: dotted)) { Absent => false, Present { value: b } => a == b }
+    Present { value: a } => match symbol_index_lookup(index: suo_filled(with_realization: false), qualified_path: suo_path(dotted: dotted)) { Absent => false, Present { value: b } => node_equal_ignoring_provenance(a: a, b: b) }
   }
 }
 
