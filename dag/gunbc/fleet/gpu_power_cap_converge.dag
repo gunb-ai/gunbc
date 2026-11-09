@@ -35,9 +35,11 @@ import gunbc.serving.gpu_power_state_policy {
 // THE ARMS OF AN ADMISSION, AS THE SELECTED CONFIGURATION SEES THEM:
 // - GpuCapAdmitted: realized and read back; a mismatch or an unreadable device REFUSES.
 // - GpuCapOutsideDeviceRange: REFUSES. Nothing is clamped, because a clamp would change the decision.
-// - GpuCapDevicePending: REPORTED, never a failure. The card does not enumerate (srv1's Workstation card,
-//   unpowered on 2026-11-07), so it is no member of the configuration that serves now, and a failed unit
-//   would take the one-card service down for a card that is not part of it. The line is printed on every run.
+// - GpuCapDevicePending: REPORTED, never a failure. A board whose device row has not been read is no member of
+//   the configuration that serves now, and a failed unit would take the one-card service down for a card that is
+//   not part of it; the line is printed on every run. srv1 reached no pending card on 2026-11-08 -- both of its
+//   RTX PRO 6000s are read and admitted (gunbc.fleet.gpu_device_observation) -- so this arm is now reached only
+//   by a board nobody has observed yet, and its witness is a fixture admission rather than srv1's state.
 
 // ── what the host reads ─────────────────────────────────────────────────────────────────────────
 
