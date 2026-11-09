@@ -6295,7 +6295,7 @@ fn repo_paths_match_touched(closure_path: &str, touched_path: &str) -> bool {
 ///
 /// AUTHORITY: `v2.lens.module_graph.entry_affected_by_touched_paths` — the consolidated gunbc.design_argument::single_authority
 /// survivor per the 2026-09-05 replacement migration (see
-/// `v2.lens.affected_set.entry_selection`). This host rendering is certified against the
+/// `v2.lens.affected_set.entry_selection`, since deleted in the read-set convergence P0). This host rendering is certified against the
 /// `.dag` authority by execution on real merged diffs via the module-grain receipt harness
 /// (`affected_decision_module_grain` section below).
 ///
@@ -10951,6 +10951,11 @@ pub enum WitnessRuntimeCause {
     StringRealizationStraddle,
     VariantRealizationRefused,
     PoolRootContributesNothing,
+    /// A keyed declaration read could not look at a file the asked key derives
+    /// (`v1_interpreter::InterpError::DeclFactsKeyedReadRefused`). Its own cause, not
+    /// `Type`: which file and what the parse said are the refusal, and a witness that classifies a
+    /// red claim by cause must be able to name it.
+    DeclFactsKeyedReadRefused,
     PatternMatchFailure,
     /// A REST response value did not inhabit its declared coproduct (see
     /// `v1_interpreter::RestResponseDecodeRefusal`).
@@ -10996,6 +11001,7 @@ impl WitnessRuntimeCause {
             WitnessRuntimeCause::StringRealizationStraddle => "string-realization-straddle",
             WitnessRuntimeCause::VariantRealizationRefused => "variant-realization-refused",
             WitnessRuntimeCause::PoolRootContributesNothing => "pool-root-contributes-nothing",
+            WitnessRuntimeCause::DeclFactsKeyedReadRefused => "decl-facts-keyed-read-refused",
             WitnessRuntimeCause::PatternMatchFailure => "pattern-match-failure",
             WitnessRuntimeCause::RestResponseUndecodable => "rest-response-undecodable",
             WitnessRuntimeCause::DivisionByZero => "division-by-zero",
@@ -11036,6 +11042,7 @@ impl WitnessRuntimeCause {
             E::StringRealizationStraddle { .. } => WitnessRuntimeCause::StringRealizationStraddle,
             E::VariantRealizationRefused { .. } => WitnessRuntimeCause::VariantRealizationRefused,
             E::PoolRootContributesNothing { .. } => WitnessRuntimeCause::PoolRootContributesNothing,
+            E::DeclFactsKeyedReadRefused { .. } => WitnessRuntimeCause::DeclFactsKeyedReadRefused,
             E::PatternMatchFailure { .. } => WitnessRuntimeCause::PatternMatchFailure,
             // A non-Bool guard is a type error at a located site; the variant carries the location,
             // the cause token classifies it with its kind.
@@ -21081,7 +21088,7 @@ fn list_value_from_vec(items: Vec<v1_interpreter::Value>) -> v1_interpreter::Val
 // `entry_file_touched` axis is decided by `entry_file_touched_via_import_closure`
 // (host rendering of `v2.lens.module_graph.entry_affected_by_touched_paths` — the
 // consolidated gunbc.design_argument::replacement_migration survivor per the 2026-09-05 replacement migration).
-// Dissolve-on: `affected_set_reading_from_git_diff_provenance` + floor-runtime provenance ingest
+// Dissolve-on: `affected_set_reading_from_git_diff_provenance` (deleted in read-set P0) + floor-runtime provenance ingest
 // expose edit-locus → delete `floor_diff_edits_from_line_ranges`, `rerun_frontier_nodes_for_entry`,
 // `entry_touches_rerun_frontier`, and the inline floor-runner `resolve_entry_with_index` (census:
 // `rg 'floor_diff_edits_from_line_ranges|rerun_frontier_nodes_for_entry' src/v1/stage0/src/cli_run.rs`
@@ -21123,7 +21130,7 @@ const MODULE_GRAPH_ENTRY: &str = "src/v2/lens/module_graph.dag";
 // typed refusal on a facts gap). `call_entry_affected_by_dependency_view` was deleted
 // 2026-07-16 when its last consumer (compile-clean scoping) regrounded onto the same
 // import-closure realization; the fn-arrow chain stays in `.dag`
-// (`v2.lens.affected_set.entry_selection`) as the decl-level candidate for when the
+// (`v2.lens.affected_set.entry_selection`, since deleted in read-set P0) as the decl-level candidate for when the
 // namespace-only terminal step re-decides the grain.
 
 fn call_floor_kernel_would_skip(
@@ -23004,7 +23011,7 @@ new file mode 100644
 // LIVE decision pair again. Between #6274 and the unwind this block was honestly labeled
 // an orphan scaffold ("does NOT certify production selection after slice 2"); that
 // framing dissolved with the unwind receipt (the `entry_file_touched_grain_interim_note` annotation,
-// v2.lens.affected_set.entry_selection). A divergence here is a production selection bug.
+// v2.lens.affected_set.entry_selection, since deleted in read-set P0). A divergence here is a production selection bug.
 //
 // SCAFFOLD: dissolves into a .dag execution witness when the discovery/diff seed plumbing
 // migrates off the v1 host layer (same trigger as `node_frontier_plumbing_controls` below,

@@ -208,40 +208,6 @@ fn resolve_edit_locus_from_provenance(
   )
 }
 
-fn affected_set_reading_from_git_diff(
-  edit_read: EditLocusRead,
-  graph: InferredTree,
-  git_diff: GitDiffNameOnly,
-  bindings: FreeMonoid<EditLocusBinding>
-) -> Witness<AffectedSetReading> {
-  match resolve_edit_locus(
-    read: edit_read,
-    git_diff: git_diff,
-    bindings: bindings
-  ) {
-    Holds { value: locus } =>
-      Holds { value: affected_set_reading(graph: graph, edit_locus: locus) }
-    Violates { diagnostic: d } =>
-      Violates { diagnostic: d }
-  }
-}
-
-fn affected_set_reading_from_git_diff_provenance(
-  graph: InferredTree,
-  git_diff: GitDiffNameOnly,
-  provenance: FreeMonoid<NodeArtifactProvenance>
-) -> Witness<AffectedSetReading> {
-  match resolve_edit_locus_from_provenance(
-    git_diff: git_diff,
-    provenance: provenance
-  ) {
-    Holds { value: locus } =>
-      Holds { value: affected_set_reading(graph: graph, edit_locus: locus) }
-    Violates { diagnostic: d } =>
-      Violates { diagnostic: d }
-  }
-}
-
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

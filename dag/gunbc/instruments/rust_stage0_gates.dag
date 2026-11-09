@@ -43,7 +43,8 @@ data declared_consumed_input_units: List<ConsumedInputUnit> = [
 // so the question has no referent.
 //
 // THIS PRESERVES THE BEHAVIOUR THIS GATE ACTUALLY HAD, and the receipt for that is not this file's:
-// v2.lens.affected_set.entry_selection records a 2026-07-10 probe measuring the predicate FALSE on
+// the now-deleted v2.lens.affected_set.entry_selection (retired by gunbc.plans.read_set_convergence P0,
+// gunb-ai/gunbc#16173; its text is in git history) recorded a 2026-07-10 probe measuring the predicate FALSE on
 // a pristine main clone, which is the arm below. So the selection call was already unreachable in
 // practice; making it unconditional would not have restored a live selection, it would have newly
 // enrolled a whole-corpus dependency walk in a per-PR gate that has never run one.

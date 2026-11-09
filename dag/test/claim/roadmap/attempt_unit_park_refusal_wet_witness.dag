@@ -1,0 +1,98 @@
+module test.claim.roadmap.attempt_unit_park_refusal_wet_witness
+
+import extdeps.shell
+import std.optional { Present, Absent }
+import std.types { Bool, String, List, FilePath }
+import gunbc.spool_queue {
+  SpoolAttemptUnit, RolePending, RoleDeferred, SpoolRole, spool_open, spool_role_path, spool_declared_roles,
+}
+import gunbc.roadmap.attempt_system_unit_launch {
+  AttemptUnitEntryOutcome, AttemptUnitEntryUnmovable, AttemptUnitEntrySkipped, AttemptUnitEntryWaiting,
+  attempt_system_unit_defer_entry, attempt_system_unit_undefer_entry,
+}
+
+// A REFUSED PARK IS A STALL, NEVER SKIPPED (wet). An entry occupying two stages, or a sibling stage that cannot be
+// observed, makes gunbc.spool_queue spool_park_over answer ParkRefused. Defer and undefer must surface it as
+// AttemptUnitEntryUnmovable (the drain's stall arm); mapping it to Skipped or to an empty list hides the entry.
+data unit_entry: String = "wet-node+feedfacefeedface"
+
+fn role_dir(root: String, role: SpoolRole) -> String {
+  match spool_role_path(store: spool_open(kind: SpoolAttemptUnit, instance_root: root), role: role) {
+    Present { value: d } => d
+    Absent => "/nonexistent-role-dir"
+  }
+}
+
+fn make_dirs(root: String) -> Bool {
+  spool_declared_roles(kind: SpoolAttemptUnit) |> all(r => shell.Mkdir.Parents(path: role_dir(root: root, role: r) as FilePath).success)
+}
+
+fn put(root: String, role: SpoolRole) -> Bool {
+  shell.Mkdir.Parents(path: join([role_dir(root: root, role: role), "/", unit_entry], "") as FilePath).success
+}
+
+fn is_unmovable(o: AttemptUnitEntryOutcome) -> Bool {
+  match o {
+    AttemptUnitEntryUnmovable { entry: _, step: _, cause: _ } => true
+    AttemptUnitEntrySkipped => false
+    AttemptUnitEntryWaiting { entry: _ } => false
+    other => false
+  }
+}
+
+fn only_unmovable(os: List<AttemptUnitEntryOutcome>) -> Bool {
+  count(os) == 1 && all(os, is_unmovable)
+}
+
+test fn an_entry_in_two_stages_is_unmovable_on_defer() -> Bool {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_park.XXXXXX").path
+  if root == "" { false } else {
+    make_dirs(root: root) && put(root: root, role: RolePending) && put(root: root, role: RoleDeferred)
+      && is_unmovable(o: attempt_system_unit_defer_entry(instance_root: root, entry: unit_entry))
+  }
+}
+
+test fn an_entry_in_two_stages_is_unmovable_on_undefer() -> Bool {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_park.XXXXXX").path
+  if root == "" { false } else {
+    make_dirs(root: root) && put(root: root, role: RolePending) && put(root: root, role: RoleDeferred)
+      && only_unmovable(os: attempt_system_unit_undefer_entry(store: spool_open(kind: SpoolAttemptUnit, instance_root: root), entry: unit_entry))
+  }
+}
+
+// The sibling stage is a regular file where a directory belongs: its observation is unavailable, not absent.
+test fn an_unobservable_sibling_stage_is_unmovable_on_defer() -> Bool {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_park.XXXXXX").path
+  if root == "" { false } else {
+    let dd = role_dir(root: root, role: RoleDeferred)
+    make_dirs(root: root) && put(root: root, role: RolePending)
+      && shell.Remove.RecursiveForce(path: dd as FilePath).success
+      && shell.Copy.File(source: "/etc/hostname" as FilePath, destination: dd as FilePath).success
+      && is_unmovable(o: attempt_system_unit_defer_entry(instance_root: root, entry: unit_entry))
+  }
+}
+
+// Controls: a lawful single-stage entry still parks and returns, and an absent entry is still a skip.
+test fn a_lawfully_pending_entry_still_defers_and_returns() -> Bool {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_park.XXXXXX").path
+  if root == "" { false } else {
+    let store = spool_open(kind: SpoolAttemptUnit, instance_root: root)
+    make_dirs(root: root) && put(root: root, role: RolePending)
+      && (match attempt_system_unit_defer_entry(instance_root: root, entry: unit_entry) {
+        AttemptUnitEntryWaiting { entry: _ } => true
+        other => false
+      })
+      && count(attempt_system_unit_undefer_entry(store: store, entry: unit_entry)) == 0
+  }
+}
+
+test fn an_absent_entry_is_still_skipped_on_defer() -> Bool {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_park.XXXXXX").path
+  if root == "" { false } else {
+    make_dirs(root: root)
+      && (match attempt_system_unit_defer_entry(instance_root: root, entry: unit_entry) {
+        AttemptUnitEntrySkipped => true
+        other => false
+      })
+  }
+}
