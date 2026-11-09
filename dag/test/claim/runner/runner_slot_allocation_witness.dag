@@ -902,13 +902,13 @@ fn microvm_realized_row(slot: RunnerSlotIdentity, reading: String) -> MicrovmSlo
 fn srv1_realized_rows() -> List<MicrovmSlotRealizationRow> {
   [
     microvm_realized_row(slot: srv1_microvm_shakedown_slot(), reading: "controller unit active and gunbc-microvm-slot@<instance> live on srv1"),
-    microvm_realized_row(slot: srv1_microvm_revision_job_slot(), reading: "controller unit active and gunbc-microvm-slot@<instance> live on srv1"),
+    microvm_realized_row(slot: srv1_revision_job_slot(), reading: "controller unit active and gunbc-microvm-slot@<instance> live on srv1"),
   ]
 }
 
 test fn the_srv1_microvm_slot_rows_read_not_realized_and_name_their_dissolution() -> Bool {
   srv1_microvm_shakedown_slot_realization.slot == srv1_microvm_shakedown_slot()
-    && srv1_microvm_revision_job_slot_realization.slot == srv1_microvm_revision_job_slot()
+    && srv1_microvm_revision_job_slot_realization.slot == srv1_revision_job_slot()
     && match microvm_slot_realization(slot: srv1_microvm_shakedown_slot()) {
       // The positive read, in the carrier: no controller unit, no slot instance, only the ruleset active.
       MicrovmSlotNotRealized { observed_at: at, reading: _, invalidated_by: by } =>
@@ -916,7 +916,7 @@ test fn the_srv1_microvm_slot_rows_read_not_realized_and_name_their_dissolution(
           && by == decl_ref("gunbc.live_deploy.apply", "microvm_controller_install_wet")
       _ => false
     }
-    && match microvm_slot_realization(slot: srv1_microvm_revision_job_slot()) {
+    && match microvm_slot_realization(slot: srv1_revision_job_slot()) {
       MicrovmSlotNotRealized { observed_at: at, reading: _, invalidated_by: by } =>
         at == "2026-11-09T01:20Z"
           && by == decl_ref("gunbc.live_deploy.apply", "microvm_controller_install_wet")
@@ -942,9 +942,9 @@ test fn an_unobserved_microvm_realization_keeps_the_charge_and_only_a_positive_a
     && microvm_slot_charge_is_owed_for(slot: srv1_microvm_shakedown_slot()) == false
     && microvm_slot_charge_is_owed(standing: microvm_slot_realization_over(rows: [], slot: srv1_microvm_shakedown_slot()))
     && byte_size_count(b: authored_microvm_slots_charge_over(
-      slots: [srv1_microvm_shakedown_slot(), srv1_microvm_revision_job_slot()], rows: []))
+      slots: [srv1_microvm_shakedown_slot(), srv1_revision_job_slot()], rows: []))
       == byte_size_count(b: gunbc_microvm_shakedown_slot_charge())
-        + byte_size_count(b: authored_microvm_slot_charge(slot: srv1_microvm_revision_job_slot()))
+        + byte_size_count(b: authored_microvm_slot_charge(slot: srv1_revision_job_slot()))
     && byte_size_count(b: authored_microvm_slots_charge(slots: host_authored_microvm_slots(host: operator_host_srv1))) == 0
 }
 
@@ -959,6 +959,13 @@ test fn a_live_microvm_controller_restores_the_charge_and_srv1s_width_falls_back
   let authored = host_authored_microvm_slots(host: operator_host_srv1)
   let realized = srv1_realized_rows()
   let fleet = byte_size_count(b: gunbc_runner_slot_memory_max)
+  // The grant is spelled from the model's OWN charge functions, never from the fold under test: the
+  // charged arm pays the shakedown cell + controller slice and the revision-job cell + controller slice
+  // and admits one whole fleet row; the released arm pays nothing and admits five.
+  let shakedown_charge = byte_size_count(b: gunbc_microvm_shakedown_slot_charge())
+  let revision_charge = byte_size_count(b: authored_microvm_slot_charge(slot: srv1_revision_job_slot()))
+  let grant_charged = envelope - shakedown_charge - revision_charge - 1 * fleet
+  let grant_released = envelope - 5 * fleet
   memory_admitted_width_of_envelope_over(envelope: byte_size(envelope), authored_slots: authored, rows: realized) == 3
     && host_memory_admitted_width(host: operator_host_srv1) == 7
     && match committed_width_of_over(f: f, rows: realized) {
@@ -971,12 +978,11 @@ test fn a_live_microvm_controller_restores_the_charge_and_srv1s_width_falls_back
     }
     && byte_size_count(b: transitional_ci_slot_memory_max_of_envelope_over(
       envelope: byte_size(envelope), authored_slots: authored, transitional_count: 1, rows: realized))
-      == envelope - byte_size_count(b: gunbc_microvm_shakedown_slot_charge())
-        - byte_size_count(b: authored_microvm_slot_charge(slot: srv1_microvm_revision_job_slot()))
-        - 1 * fleet
+      == grant_charged
     && byte_size_count(b: transitional_ci_slot_memory_max_of_envelope_over(
       envelope: byte_size(envelope), authored_slots: authored, transitional_count: 1, rows: microvm_slot_realization_rows))
-      == envelope - 5 * fleet
+      == grant_released
+    && grant_charged != grant_released
 }
 
 // THE ZERO-REMAINDER REFUSAL IS REACHED THROUGH committed_width_of WITH SUPPLIED FACTS. srv1 declares a
