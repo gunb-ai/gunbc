@@ -11,7 +11,7 @@ import gunbc.harness.harness_reasoning_wire { DeepseekV4FlashOnVllm, ReasoningOf
 import gunbc.harness.harness_wire { harness_context_budget_for }
 import gunbc.harness.harness_tool { HarnessToolEnvironment, harness_tool_environment, ValidationNotOffered }
 import gunbc.harness.harness_turn {
-  harness_run_turn, harness_event_type_only, HarnessTurnConfig, BackendAdmittedBySeat, CompletesOnProviderStop, harness_event_placement_waiting, harness_events_prior, HarnessEventsPriorRead, HarnessEventsPriorUnreadable, harness_events_append, HarnessEventsWritten, HarnessEventsUnwritable,
+  harness_run_turn, harness_event_type_only, HarnessTurnConfig, Unsupervised, BackendAdmittedBySeat, CompletesOnProviderStop, harness_event_placement_waiting, harness_events_prior, HarnessEventsPriorRead, HarnessEventsPriorUnreadable, harness_events_append, HarnessEventsWritten, HarnessEventsUnwritable,
 }
 
 // THE LOST-UPDATE CLAIM for the attempt events file (gunbc.recurring_failure_mode
@@ -114,6 +114,7 @@ test fn harness_run_turn_seeds_turn_started_onto_the_prior_wait_lines() -> Bool 
       reasoning_mode: ReasoningOff,
       wire_shape: harness_default_wire_shape,
       system_prompt: "wet",
+      supervision: Unsupervised,
       request_scratch_path: join([dir, "/request.json"], "") as FilePath,
       events_path: path as FilePath,
       context_budget: harness_context_budget_for(unit: DeepseekV4FlashOnVllm),

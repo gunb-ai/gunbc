@@ -1131,6 +1131,7 @@ fn harness_turn_config_with_environment(config: HarnessTurnConfig, environment: 
     reasoning_mode: config.reasoning_mode,
     wire_shape: config.wire_shape,
     system_prompt: config.system_prompt,
+    supervision: config.supervision,
     request_scratch_path: config.request_scratch_path,
     events_path: config.events_path,
     context_budget: config.context_budget,
