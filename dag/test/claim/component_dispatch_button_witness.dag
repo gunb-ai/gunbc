@@ -40,9 +40,11 @@ test fn witness_scale_well_formed() -> Bool {
 // LaunchRevisionNotLanded (#13703, wire label revision_not_landed_on_main, which landed without
 // moving this pin), and 20 -> 21 WITH SpawnLaunchPending (wire label launch_pending, the start
 // request enqueued on the attempt-unit spool with no answer read yet). BandInProgress now MEANS that
-// result: before this change no wire result carried it. 21 = Spawned + SupervisorConvened +
-// SpawnLaunchPending + SpawnFailed + one SpawnNotAdmitted
-// per launch_refusal_exemplars. Maintenance rather than a loosening: the roster is one exemplar
+// result: before this change no wire result carried it. 21 -> 20 WITH the deletion of
+// SupervisorConvened (the separate-unit supervisor lane, cut by the continuation-model migration),
+// and 20 -> 21 WITH LaunchNodeRetired (wire label node_retired, a retired node refuses dispatch).
+// 21 = Spawned + SpawnLaunchPending + SpawnFailed + one SpawnNotAdmitted
+// per launch_refusal_exemplars (18). Maintenance rather than a loosening: the roster is one exemplar
 // per outcome variant over a CLOSED coproduct, so the literal pins a hand-enumerated fixture's
 // size and not a measured population. The two clauses above it are the ones with the failure
 // mode -- both directions of totality, derived on each side -- and they held through this

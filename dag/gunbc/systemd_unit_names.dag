@@ -43,10 +43,6 @@ fn dispatch_audit_unit_name(node_id: String, attempt_key: String) -> NonEmptyStr
   join(["gunbc-audit-", node_id, "-", attempt_key, ".service"], "") as NonEmptyStr
 }
 
-fn dispatch_supervisor_unit_name(node_id: String, attempt_key: String, turn: Int) -> NonEmptyStr {
-  join(["gunbc-supervisor-", node_id, "-", attempt_key, "-t", to_string(value: turn), ".service"], "") as NonEmptyStr
-}
-
 fn belt_attempt_obligation_unit_name(node_id: String, attempt_key: String) -> NonEmptyStr {
   join(["gunbc-obligation-attempt-", node_id, "-", attempt_key, ".service"], "") as NonEmptyStr
 }

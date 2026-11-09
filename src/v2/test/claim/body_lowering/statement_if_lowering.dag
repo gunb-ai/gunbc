@@ -44,21 +44,32 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // arm's consequences belong to the Branch (ruling keen-heron-809: the effect control was withdrawn as
 // presuming a lattice that does not exist; nothing here claims effect soundness).
 //
-// `let_binder` and `tail` are the two REDS the fact must keep: a Bind that NAMES a binder owes that
-// binder a value, and a function's return demand owes a value to its tail. Both refuse with
-// infer_branch_else_less_as_value -- the same reason at both sites, coming from the fact's consumers, not
-// from a shape check that would report a well-formed node as malformed. The third RED (a no-value node
-// applied as a callee) is pinned at the fact reader in v2.compiler.infer
-// infer_application_callee_arrow_with_facts; a surface spelling of applying an if-expression is not
-// surface syntax.
+// `let_binder` and `tail` are the two value-position shapes the fold must ADMIT: a Bind that NAMES a
+// binder, and a function's return demand on its tail, each to an else-less `if` with an expression arm.
+// On this native-census resolve route the fold LOWERS them to the else-less Branch and the module RESOLVES;
+// the value they owe is refused by the value-owing CONSUMER on the target/serialize route, NOT here -- that
+// consumer refusal is guarded by the closure-emission member row
+// @ref(v2.test.claim.self_host.closure_emission::a_closure_member_whose_body_does_not_lower_is_its_own_typed_refusal_holds)
+// (its `ce_refusing_fn` is the SAME SHAPE as `tail`: a value-position else-less `if` with an expression arm,
+// `if p { p }`, refused with `target_value_expr_reason_branch_else_less_as_value`). `let_binder` is the
+// let-BINDER VARIANT (binder value, not fn tail): its value-owing consumer (the named binder) refuses at
+// the INFER stage during emission, guarded by the closure-emission member row
+// @ref(v2.test.claim.self_host.closure_emission::a_closure_member_whose_let_binder_is_an_else_less_if_is_its_own_typed_refusal_holds)
+// (its `ce_binder_fn` is the same shape, `let x = if p { p }; x`, refused with `infer_branch_else_less_as_value`).
+// The two consumer guards sit at different stages (tail at target, binder at infer) because the tail value is
+// consumed at realization while the binder value is consumed at typing. Each row asserts the module RESOLVES,
+// so it goes red if the fold ever refuses one of these well-formed shapes again -- a real discriminant, not a
+// tautology. The third RED (a no-value node applied as a callee) is pinned at the fact
+// reader in v2.compiler.infer infer_application_callee_arrow_with_facts; a surface spelling of applying an
+// if-expression is not surface syntax.
 
-data sil_fallthrough_source: String = "module v2.test.sil_fallthrough\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn sil_probe(c: Bool, i: Int) -> Int {\n  if c { i }\n  i\n}\n"
+data sil_fallthrough_source: String = "module v2.test.sil_fallthrough\n\nfn sil_probe(c: Bool, i: Int) -> Int {\n  if c { i }\n  i\n}\n"
 
-data sil_arm_und_source: String = "module v2.test.sil_arm_und\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn sil_probe(c: Bool, i: Int) -> Int {\n  if c { sil_undeclared_arm }\n  i\n}\n"
+data sil_arm_und_source: String = "module v2.test.sil_arm_und\n\nfn sil_probe(c: Bool, i: Int) -> Int {\n  if c { sil_undeclared_arm }\n  i\n}\n"
 
-data sil_let_binder_source: String = "module v2.test.sil_let_binder\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn sil_probe(c: Bool, i: Int) -> Int {\n  let x = if c { i }\n  i\n}\n"
+data sil_let_binder_source: String = "module v2.test.sil_let_binder\n\nfn sil_probe(c: Bool, i: Int) -> Int {\n  let x = if c { i }\n  i\n}\n"
 
-data sil_tail_source: String = "module v2.test.sil_tail\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn sil_probe(c: Bool, i: Int) -> Int {\n  if c { i }\n}\n"
+data sil_tail_source: String = "module v2.test.sil_tail\n\nfn sil_probe(c: Bool, i: Int) -> Int {\n  if c { i }\n}\n"
 
 fn sil_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -117,7 +128,7 @@ fn sil_verdict_of(context: NativeTestContext, unit: Symbol, outcome: NativeCensu
       SilRefused {
         reason: d.head.reason,
         at_atom: match d.head.at {
-          NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at)
+          NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at.node)
           _ => optional_absent()
         }
       }
@@ -159,18 +170,6 @@ fn sil_outcomes() -> SilOutcomes {
   }
 }
 
-// A REFUSAL BY REASON, AT EITHER STAGE. The lowering refusals the namespace_xl0 claims pin arrive as file
-// refusals; the infer refusals this change adds arrive wherever the fold that produced them is driven. The
-// claim pins the CAUSE, which is what the change decides, and stays silent about the stage, which it does
-// not.
-fn sil_refuses_as(v: SilVerdict, reason: Symbol) -> Bool {
-  match v {
-    SilRefused { reason: r, at_atom: _ } => r == reason
-    SilFileRefused { fatal_reason: Present { value: r } } => r == reason
-    _ => false
-  }
-}
-
 fn sil_unbound_at(v: SilVerdict, atom: Symbol) -> Bool {
   match v {
     SilRefused { reason: r, at_atom: Present { value: id } } => (r == ^resolve_reason_unbound_symbol) && (id == atom)
@@ -192,16 +191,16 @@ test fn the_else_less_if_arm_is_folded_and_its_refusal_reaches_the_function() ->
   }
 }
 
-test fn an_else_less_if_as_a_named_binders_value_refuses_with_the_no_value_reason() -> Bool {
+test fn an_else_less_if_as_a_named_binders_value_is_admitted_at_lowering() -> Bool {
   match sil_outcomes() {
-    SilOutcomesDecided { fallthrough: _, arm_und: _, let_binder: v, tail: _ } => sil_refuses_as(v: v, reason: ^infer_branch_else_less_as_value)
+    SilOutcomesDecided { fallthrough: _, arm_und: _, let_binder: v, tail: _ } => v == SilResolved
     SilContextRefused => false
   }
 }
 
-test fn an_else_less_if_as_the_function_tail_refuses_with_the_no_value_reason() -> Bool {
+test fn an_else_less_if_as_the_function_tail_is_admitted_at_lowering() -> Bool {
   match sil_outcomes() {
-    SilOutcomesDecided { fallthrough: _, arm_und: _, let_binder: _, tail: v } => sil_refuses_as(v: v, reason: ^infer_branch_else_less_as_value)
+    SilOutcomesDecided { fallthrough: _, arm_und: _, let_binder: _, tail: v } => v == SilResolved
     SilContextRefused => false
   }
 }

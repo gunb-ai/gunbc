@@ -60,8 +60,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
 import gunbc.roadmap.roadmap_attempt_occurrence { UnitLaunchManagerRoute, UnitRunOnSystemManager, UnitRunOnUserManager }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptExitRecordObservation, AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable,
-  attempt_exit_record_observe, attempt_exit_record_matching, attempt_exit_stage_listings,
-  AttemptWorkerRole, attempt_unit_role_token,
+  attempt_exit_record_observe, attempt_exit_worker_record_matching, attempt_exit_stage_listings,
   AttemptExitEntrySubject, RoadmapEntrySubject, ComputeEntrySubject, OtherEntrySubject,
 }
 import extdeps.filesystem.filesystem_io {
@@ -1411,21 +1410,12 @@ fn session_worker_unit_lifecycle_with_standing(instance: HostDashboardInstance, 
         unit: unit,
         loaded: loaded,
         evidence: evidence,
-        record: attempt_exit_record_matching(
-          matches: s => match s {
-            RoadmapEntrySubject { node_id: n, attempt_key: a, role: r, invocation_id: _ } =>
-              r == attempt_unit_role_token(role: AttemptWorkerRole) && (match dispatch_attempt_unit_name(node_id: n, attempt_key: a) {
-                SystemdUnitNameAdmitted { name } => (systemd_unit_name_wire(name: name) as String) == (unit as String)
-                SystemdUnitNameStemEmpty => false
-                SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => false
-                SystemdUnitNameOverlong { length: _ } => false
-              })
-            // A COMPUTE SEAT'S RECORD IS NOT THIS ATTEMPT'S WORKER, and an entry too broken to say which
-            // route wrote it cannot be attributed to this unit. Both answer "not mine", so neither can
-            // make a seat's exit stand in for a worker's -- the confusion this split exists to make
-            // unrepresentable.
-            ComputeEntrySubject { identity: _, invocation_id: _ } => false
-            OtherEntrySubject { parts: _ } => false
+        record: attempt_exit_worker_record_matching(
+          subject: (n, a) => match dispatch_attempt_unit_name(node_id: n, attempt_key: a) {
+            SystemdUnitNameAdmitted { name } => (systemd_unit_name_wire(name: name) as String) == (unit as String)
+            SystemdUnitNameStemEmpty => false
+            SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => false
+            SystemdUnitNameOverlong { length: _ } => false
           },
           listings: attempt_exit_stage_listings(instance_root: instance.instance_root as String),
         ),
@@ -1493,7 +1483,7 @@ fn attempt_worker_unit_observe_for_instance(instance: HostDashboardInstance, nod
   let loaded = attempt_unit_observation(unit: unit)
   match loaded {
     AttemptUnitAbsent => {
-      let record = attempt_exit_record_observe(instance_root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key, role: AttemptWorkerRole)
+      let record = attempt_exit_worker_record_matching(subject: (n, a) => n == node_id && a == attempt_key, listings: attempt_exit_stage_listings(instance_root: instance.instance_root as String))
       match record {
         AttemptExitRecordNone =>
           attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: session_worker_start_standing(observation: session_placement_observe_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key)))

@@ -3,10 +3,11 @@ module extdeps.cloud.gcp.iam
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail, GcpOperation, GoogleRpcStatus }
+import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail, GcpOperation, GoogleRpcStatus, cloud_platform_scope }
 import std.types { Bearer, Bool, Int, Json, List, NonEmptyStr, Secret, String }
 import std.algebra { fold_list }
 import std.optional { Absent, Present }
+import std.measure { Second, second, second_count }
 import extdeps.ietf.http_semantics { GET, POST }
 import std.resources { Network }
 import extdeps.transports.rest { RestResult }
@@ -379,14 +380,49 @@ type ImpersonationChain {
   delegates: List<String>
 }
 
+// THE FOUR FACTS Google's generateAccessToken contract actually carries, kept APART. Upstream held one
+// conflated pair (default_seconds 3600 beside an unconditioned max_seconds 43200), which is what
+// DESIGN's token-lifetime worked example and the open concern
+// gunbc.integration_concern::gcp_token_lifetime_condition_and_expiry_unconsumed both question: the twelve-hour
+// figure is reachable ONLY for a service account the named organization-policy constraint allows, so storing
+// it bare let a consumer treat it as the ceiling. Durations are Second, not a bare second-count: a `Nat`
+// `*_seconds` field is the re-invention that concern's own account names ("restates 3600 as a bare literal"),
+// and this module already owns the measure.
 type TokenLifetime {
-  default_seconds: Int
-  max_seconds: Int
+  // What Google issues when a request asks for no lifetime at all.
+  default_lifetime: Second
+  // The ceiling Google applies UNCONDITIONALLY. The only one decidable without observing org policy, so the
+  // only one a predicate may claim.
+  ordinary_maximum: Second
+  // The ceiling reachable ONLY under `extended_maximum_condition`. Not a ceiling on its own: a request above
+  // ordinary_maximum is refused for an account the constraint does not name.
+  extended_maximum: Second
+  // The constraint that alone makes extended_maximum reachable, named rather than assumed away. This tree
+  // represents no allowlist, so nothing may conclude a lifetime is grantable from extended_maximum.
+  extended_maximum_condition: NonEmptyStr
 }
 
 data default_token_lifetime: TokenLifetime = {
-  default_seconds: 3600,
-  max_seconds: 43200
+  default_lifetime: second(count: 3600),
+  ordinary_maximum: second(count: 3600),
+  extended_maximum: second(count: 43200),
+  extended_maximum_condition: "constraints/iam.allowServiceAccountCredentialLifetimeExtension",
+}
+
+// The protobuf Duration spelling ("Ns") of a lifetime is upstream's wire form and lives only here; callers
+// hold a Second. It encodes; it deliberately does not rule -- whether a lifetime may be ASKED FOR is
+// token_lifetime_within_ordinary_maximum's job, because only the ordinary maximum is decidable without
+// observing org policy (see default_token_lifetime's extended_maximum_condition).
+fn token_lifetime_wire(s: Second) -> String {
+  to_string(second_count(s: s)) + "s"
+}
+
+// Named for what it checks, and reading the ceiling from the record that owns it rather than restating a
+// number. Exceeding the ordinary maximum is not invalidity -- such a lifetime is valid for a service account
+// `default_token_lifetime.extended_maximum_condition` does name -- so this refuses nothing by itself; it is
+// the bound a consumer states when it will not depend on org policy it cannot observe.
+fn token_lifetime_within_ordinary_maximum(s: Second) -> Bool {
+  second_count(s: s) <= second_count(s: default_token_lifetime.ordinary_maximum)
 }
 
 type GcpGenerateAccessToken200Body {
@@ -411,7 +447,9 @@ service gcp.IAM {
     input {
       access_token: Secret
       target_sa: ServiceAccountEmail
-      scope: List<String> = ["https://www.googleapis.com/auth/cloud-platform"]
+      // Read from the authority row, not restated: this default and the publisher's binding check must be
+      // the SAME scope by construction, or the presentation refuses every publish (see cloud_platform_scope).
+      scope: List<String> = [cloud_platform_scope as String]
       lifetime: String = "3600s"
     }
     output {
@@ -1003,6 +1041,14 @@ fn gcp_impersonated_presentation(
     decl_ref(module_path: "test.claim.credential_validity_witness", decl_name: "presentation_releases_the_secret_only_when_admitted"),
     decl_ref(module_path: "test.claim.credential_validity_witness", decl_name: "a_stale_credential_is_refused_and_the_operation_never_runs"),
     decl_ref(module_path: "test.claim.credential_validity_witness", decl_name: "a_wrong_binding_is_refused_and_the_operation_never_runs"),
+    // WHY THIS CALLER QUALIFIES: it is the credential's ONLY consumer, it matches CredentialPresented and
+    // sends in the same arm -- the released secret goes straight into the one Secret Manager read (inside
+    // mint_publisher_installation_token) that the mint exists to authorize, with no binding, no retention
+    // and no second send -- and it asks for the SAME service account and scopes the credential was minted
+    // for, so admission judges the request that actually follows. The purpose it serves is the publisher's
+    // own: mint at use, spend immediately, never park a credential across the reconcile pass that expired
+    // the runner-step token this replaces (run 41951465805: 456 s against a 300 s lifetime).
+    decl_ref(module_path: "gunbc.heal_publication", decl_name: "heal_publication_publish_for"),
   ]
 {
   present_credential(
