@@ -886,8 +886,8 @@ fn classify_write_tree_completion(exit_code: Int, stdout: String, stderr: String
 // wet path builds the STS request. Consumed by the paired witness claim
 // (test.claim.heal_publication_sts_default_scope_witness).
 fn sts_exchange_defaults_resolve() -> Bool {
-  match Jwt {
-    Jwt => match RequestAccessToken {
+  match (Jwt) {
+    Jwt => match (RequestAccessToken) {
       RequestAccessToken => true
     }
   }
