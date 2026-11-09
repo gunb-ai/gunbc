@@ -28,6 +28,7 @@ import gunbc.serving.serving_replica_profile {
   ReplicaRunIdentityMatch, ReplicaExpertRung, ExpertInHostRam, ExpertOnDevice, ExpertOnDisk,
   replica_expert_ram_charge, replica_expert_rungs, replica_expert_placement_obligation,
   replica_host_charges, replica_run_identity, replica_run_identity_match, srv1_replica_profile_as,
+  warm_ram_charge, warm_disk_charge, expert_charge_component, anonymous_base_charge, configuration_charges,
   replica_figures_resolved, replica_figures_refusal,
 }
 import gunbc.serving.srv1_topology_comparison { ServingTopology, srv1_layout, srv1_topology_reading, Srv1TopologyReading }
@@ -344,6 +345,41 @@ test fn srv4_batch1_config_ram_is_present() -> Bool {
 
 test fn srv4_batch8_config_ram_is_present() -> Bool {
   match configuration_host_charges(c: srv4_batch8_ram_only_configuration).ram {
+    Present { value: b } => byte_size_count(b: b) > 0
+    Absent => false
+  }
+}
+
+test fn srv4_warm_ram_rung_is_read() -> Bool {
+  match warm_ram_charge(ladder: srv4_strata_profile.warm_ladder).bytes {
+    Present { value: b } => byte_size_count(b: b) > 0
+    Absent => false
+  }
+}
+
+test fn srv4_expert_ram_component_is_read() -> Bool {
+  match expert_charge_component(expert_artifact: srv4_strata_profile.expert_artifact).bytes {
+    Present { value: b } => byte_size_count(b: b) > 0
+    Absent => false
+  }
+}
+
+test fn srv4_anonymous_base_is_read() -> Bool {
+  match anonymous_base_charge(engine_memory: srv4_strata_profile.engine_memory).bytes {
+    Present { value: b } => byte_size_count(b: b) > 0
+    Absent => false
+  }
+}
+
+// The same charges the roster row computes, from the batch1 configuration's OWN field copies: if these two
+// disagree, a field copy in the configuration row drifted from the roster it copies.
+test fn srv4_charges_from_explicit_roster_fields() -> Bool {
+  match configuration_charges(
+    ladder: srv4_strata_profile.warm_ladder,
+    expert_artifact: srv4_strata_profile.expert_artifact,
+    engine_memory: srv4_strata_profile.engine_memory,
+    replica_count: 1,
+  ).ram {
     Present { value: b } => byte_size_count(b: b) > 0
     Absent => false
   }
