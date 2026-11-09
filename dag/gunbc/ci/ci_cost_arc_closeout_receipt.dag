@@ -14,15 +14,11 @@ import std.measure {
 type HarvestKind
   = HandHarvestedDatedAudit {}
 
-type AffectedSelection
-  = SelectionApplied {}
-
 type AffectedCiCostAuditSubject {
   harvest: HarvestKind,
   github_actions_run_id: Nat,
   head_commit: NonEmptyStr,
   job_name: NonEmptyStr,
-  selection: AffectedSelection,
 }
 
 type FullCorpusSubjectHarvest
@@ -63,7 +59,6 @@ fn affected_ci_cost_audit_subject() -> AffectedCiCostAuditSubject {
     github_actions_run_id: 30863019228,
     head_commit: "ed9785817ed8" as NonEmptyStr,
     job_name: "ci" as NonEmptyStr,
-    selection: SelectionApplied {},
   }
 }
 
