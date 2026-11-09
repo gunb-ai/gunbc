@@ -23,6 +23,7 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_mtcollins1_fan_observe_step,
   fleet_converge_mtcollins1_ui_status_asset_observe_step,
   fleet_converge_gunbc_run_step_timeout_minutes,
+  fleet_converge_mtcollins1_fan_series_step_timeout_minutes,
 }
 import extdeps.languages.yaml.types { YamlString }
 import gunbc.ci.ci_spec {
@@ -468,4 +469,13 @@ test fn the_ui_status_step_runs_after_a_failed_fan_step_but_not_a_cancelled_run(
 // flat figure that the resolve alone exceeded is not it.
 test fn the_fan_step_budget_is_the_resolve_plus_the_series_fold() -> Bool {
   witness_step_timeout(s: fleet_converge_mtcollins1_fan_observe_step()) == fleet_converge_gunbc_run_step_timeout_minutes(phases: [gunbc_ci_sm_max_time, mtcollins1_fan_observe_probe_bound()])
+}
+
+// THE BOOT JOB'S FAN STEP PAYS THE SAME PHASES (run 42639090978: the flat 5 minutes went to resolve and the
+// step died before the boot it gates). Both fan steps carry the one budget, and that budget is the fold. RED on
+// the pre-fix tree: the boot step read the flat aux figure (5) while the fan_observe step read the fold.
+test fn both_fan_steps_carry_the_one_fan_series_budget() -> Bool {
+  witness_step_timeout(s: fleet_converge_fan_policy_phase_step()) == witness_step_timeout(s: fleet_converge_mtcollins1_fan_observe_step())
+    && witness_step_timeout(s: fleet_converge_fan_policy_phase_step()) == fleet_converge_mtcollins1_fan_series_step_timeout_minutes()
+    && fleet_converge_mtcollins1_fan_series_step_timeout_minutes() == fleet_converge_gunbc_run_step_timeout_minutes(phases: [gunbc_ci_sm_max_time, mtcollins1_fan_observe_probe_bound()])
 }

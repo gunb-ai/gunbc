@@ -1,0 +1,30 @@
+module test.claim.heal_publication_refusal_redaction_witness
+
+// THE PUBLISH PATH'S REFUSAL TEXT CARRIES NO BODY AND NO CAUSE (redaction hardening, gunbc#15710).
+// gunbc.heal_publication rest_refusal_text is the one text every publish-path REST refusal reaches
+// stderr through (exit_failure, via refused_exit, the readback refusals, the PR-state read and the
+// receipt comment), including the not-fast-forward arm, which used to print the raw body directly.
+// FAKE-SECRET-MARKER is planted where a credential or echoed request could sit.
+import std.types { Bool, String }
+import std.algebra { string_contains }
+import extdeps.transports.rest { RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import gunbc.heal_publication { rest_refusal_text }
+
+fn marker() -> String { "FAKE-SECRET-MARKER" }
+
+fn carries_no_marker(text: String) -> Bool { !string_contains(s: text, pattern: marker()) }
+
+test fn witness_a_status_refusal_keeps_only_its_status() -> Bool {
+  let t = rest_refusal_text(o: RestStatusRefused { status: 422, body: "{\"message\":\"Update is not a fast forward FAKE-SECRET-MARKER\"}" })
+  t == "status 422" && carries_no_marker(text: t)
+}
+
+test fn witness_a_transport_refusal_withholds_its_cause() -> Bool {
+  let t = rest_refusal_text(o: RestTransportRefused { cause: "https://api.github.com/?token=FAKE-SECRET-MARKER: connection reset" })
+  t == "transport refused (cause withheld on a credential path)" && carries_no_marker(text: t)
+}
+
+test fn witness_an_undecodable_answer_withholds_its_cause() -> Bool {
+  let t = rest_refusal_text(o: RestBodyUndecodable { status: 201, cause: "expected sha near FAKE-SECRET-MARKER" })
+  t == "status 201 undecodable (cause withheld on a credential path)" && carries_no_marker(text: t)
+}

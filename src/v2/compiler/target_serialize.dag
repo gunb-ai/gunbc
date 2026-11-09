@@ -28,6 +28,10 @@ import v2.std.compilers.target_model {
   canonical_operation_from_wire_node,
   target_bodied_arrow_compose_statement_tokens,
   target_project_arrow_body_to_value_expression,
+  target_project_realized_closure,
+  target_project_bind_let,
+  arrow_domain_binder_names,
+  FunctionTypeAtItemReturn,
   target_value_expr_project_body_subexpression,
   target_value_expression_binding_ref,
   target_value_expression_conditional,
@@ -65,6 +69,10 @@ import v2.std.diagnostic {
 }
 import v2.std.node { positional_child_target_nodes,
   Atom,
+  BranchConditionSlot,
+  BranchElseSlot,
+  BranchThenSlot,
+  branch_slot_target,
   Conj,
   Edge,
   Authored,
@@ -86,7 +94,17 @@ import v2.std.node { positional_child_target_nodes,
   Branch,
   ComputationNode,
   Disj,
+  ComputationBody,
+  Bind,
+  DeclarationReferenceBody,
+  DirectAtomBody,
+  FunctionValueBody,
+  LexicalReferenceBody,
+  ParameterReferenceBody,
+  RecordConstructBody,
+  UnsupportedArrowBody,
   Instantiation,
+  classify_arrow_body_form,
   symbol_intern_lexeme,
   symbol_lexeme
 }
@@ -1044,6 +1062,10 @@ fn project_occupancy_carrier_from_inferred_facts(
   }
 }
 
+// The Branch's value slots are read through the v2.std.node table, not by indexing the positional list
+// beside it (DESIGN 3: the roles live at the table). This is the VALUE route, so all three slots must be
+// Present: an else-less (two-positional) Branch owes a value it cannot produce and refuses here with the
+// shape reason, exactly as the positional read refused a missing index 2.
 fn project_branch_from_inferred_facts(
   arrow: Node,
   body: Node,
@@ -1052,7 +1074,7 @@ fn project_branch_from_inferred_facts(
   declarations: SymbolIndex,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
-  match list_at_optional(xs: positional_child_target_nodes(node: body), index: 0) {
+  match branch_slot_target(n: body, slot: BranchConditionSlot) {
     Absent =>
       outcome_rejected(
         d: target_value_expr_diagnostic(
@@ -1061,7 +1083,7 @@ fn project_branch_from_inferred_facts(
         )
       )
     Present { value: cond } =>
-      match list_at_optional(xs: positional_child_target_nodes(node: body), index: 1) {
+      match branch_slot_target(n: body, slot: BranchThenSlot) {
         Absent =>
           outcome_rejected(
             d: target_value_expr_diagnostic(
@@ -1070,11 +1092,14 @@ fn project_branch_from_inferred_facts(
             )
           )
         Present { value: then_arm } =>
-          match list_at_optional(xs: positional_child_target_nodes(node: body), index: 2) {
+          match branch_slot_target(n: body, slot: BranchElseSlot) {
+            // The condition and the then arm are read; only the else arm is missing. That is the else-less
+            // shape, which this VALUE route cannot render -- but it is not a malformed node, so it does not
+            // get the malformed-shape reason (DESIGN 5: one cause per reason).
             Absent =>
               outcome_rejected(
                 d: target_value_expr_diagnostic(
-                  reason: ^target_value_expr_reason_transform_shape_invalid,
+                  reason: ^target_value_expr_reason_branch_else_less_as_value,
                   node: body
                 )
               )
@@ -1215,14 +1240,58 @@ fn project_arrow_body_from_inferred_facts(
   match find_arrow_body_child(root: arrow) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: body, diagnostics: _ } =>
-      project_value_node_from_inferred_facts(
-        arrow: arrow,
-        node: body,
-        target: target,
-        tree: tree,
-        declarations: declarations,
-        handle_transform: handle_transform
-      )
+      // A BODY THAT IS A FUNCTION VALUE IS NOT PROJECTED BY KIND HERE. Its shape is decided
+      // by the target's FunctionTypeRealizationRow for the item's return position — the row
+      // carries the capture mode (`move`, which a capture by value needs to outlive this frame)
+      // and the boxing (`Box::new(` ... `)` over a boxed return) — and only the realized-closure
+      // route reads that row. The structural dispatch below answers from the node's kind alone,
+      // and the kind it sees on a returned closure is the kind a closure in any OTHER position
+      // (an argument, a let) also has; that projection deliberately leaves a closure unreleased,
+      // so routing a RETURNED closure through it emitted `|x| { ... }` where the target's row
+      // says `move |x| { ... }`, dropping the capture and the box and emitting Rust that will not
+      // typecheck. The classifier is the same one the value-expression admission and the sibling
+      // target_project_arrow_body_to_value_expression dispatch on, so the produced-declaration
+      // route no longer holds its own answer to which forms project as returned closures.
+      match classify_arrow_body_form(target: body) {
+        FunctionValueBody =>
+          target_project_realized_closure(
+            closure: body,
+            position: FunctionTypeAtItemReturn,
+            enclosing: arrow_domain_binder_names(arrow: arrow),
+            target: target,
+            source_bool_form: dag_value_expression_projection().bool_literal_form,
+            handle_transform: handle_transform
+          )
+        DirectAtomBody => project_value_node_from_inferred_facts(arrow: arrow, node: body, target: target, tree: tree, declarations: declarations, handle_transform: handle_transform)
+        RecordConstructBody => project_value_node_from_inferred_facts(arrow: arrow, node: body, target: target, tree: tree, declarations: declarations, handle_transform: handle_transform)
+        DeclarationReferenceBody => project_value_node_from_inferred_facts(arrow: arrow, node: body, target: target, tree: tree, declarations: declarations, handle_transform: handle_transform)
+        ParameterReferenceBody => project_value_node_from_inferred_facts(arrow: arrow, node: body, target: target, tree: tree, declarations: declarations, handle_transform: handle_transform)
+        LexicalReferenceBody => project_value_node_from_inferred_facts(arrow: arrow, node: body, target: target, tree: tree, declarations: declarations, handle_transform: handle_transform)
+        ComputationBody { behavior: Bind } =>
+          // A `let` whose TAIL is the returned closure is the same item-return position as a body
+          // that is a bare closure: binding a value first does not change the item's declared
+          // return type, so the tail closure still owes the target's FunctionTypeRealizationRow its
+          // capture and boxing. The classifier answers FunctionValueBody only when the body's OWN
+          // kind is an arrow, so a Bind body reaches the form dispatch below -- and that route
+          // carries NO position: v2.std.compilers.target_model
+          // target_value_expr_project_body_subexpression hardwires the Bind tail to Absent, and
+          // target_project_bind_tail then projects the tail as a closure in an ordinary value
+          // position, which by design leaves it unreleased -- no `move`, no box. The position is
+          // already a parameter of the authority (target_project_bind_let takes it and threads it
+          // down through nested `let`s); what was missing was a caller at the item body SAYING it,
+          // exactly as the sibling item-body route in target_model says it. A `let` in any other
+          // position still passes Absent, so the distinction stays where it belongs.
+          target_project_bind_let(
+            arrow: arrow,
+            body: body,
+            tail_return: optional_present(value: FunctionTypeAtItemReturn),
+            target: target,
+            source_bool_form: dag_value_expression_projection().bool_literal_form,
+            handle_transform: handle_transform
+          )
+        ComputationBody { behavior: _ } => project_value_node_from_inferred_facts(arrow: arrow, node: body, target: target, tree: tree, declarations: declarations, handle_transform: handle_transform)
+        UnsupportedArrowBody => project_value_node_from_inferred_facts(arrow: arrow, node: body, target: target, tree: tree, declarations: declarations, handle_transform: handle_transform)
+      }
   }
 }
 

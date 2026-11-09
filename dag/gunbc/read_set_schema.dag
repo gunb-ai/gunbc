@@ -1,0 +1,34 @@
+module gunbc.read_set_schema
+
+import std.types { String, List }
+
+// THE NAMES BOTH SIDES OF THE PLANNING FAST LANE READ, AND NOTHING ELSE (the parse-verdict lane's
+// gunbc.parse_verdict_schema is the same split). gunbc.read_set_publish saves the unit on main;
+// gunbc.read_set_restore restores it on a pull request and decides whether it covers the change. The
+// identity and binary expressions the job's native-CLI consumers share live in gunbc.parse_verdict_publish,
+// and they read the decision step's id and outputs from here, so this module imports nothing a consumer
+// could close a cycle through.
+
+// THE UNIT'S FILES. The receipt is what the seed's demand acquisition appends while the emit steps run
+// (GUNBC_READ_SET_OUT); the binary and its compiler identity are copied out of the emit step's product so the
+// cache action saves them at workspace-relative paths (gunbc.parse_verdict_publish
+// parse_verdict_cache_working_directory says why the path is part of the entry's version).
+data read_set_request_family: String = "fast-lane"
+data read_set_receipt_basename: String = "gunbc-read-set.txt"
+data read_set_env_name: String = "GUNBC_READ_SET_OUT"
+data fast_lane_native_cli_basename: String = "gunbc-fast-lane-native-cli"
+data fast_lane_compiler_identity_basename: String = "gunbc-fast-lane-compiler-identity"
+
+// THE RECEIPT'S LINE FORMAT (kinds and separator) is v2.std.read_set's: the recording format of the file-grain
+// read set (gunbc.plans.read_set_convergence section 2.1), written by v1_compiler.cli_run.demand_acquire
+// read_set_record.
+
+// THE DECISION STEP AND ITS OUTPUTS. `skip` is written `true` only as the step's last act, after every
+// check held; `compiler_identity` is the restored unit's identity, written before it. Every consumer reads
+// `compiler_identity` only together with `skip == 'true'`, so an identity left behind by a step that died
+// before deciding is never read.
+data fast_lane_decision_step_id: String = "fast_lane"
+data fast_lane_skip_output: String = "skip"
+data fast_lane_compiler_identity_output: String = "compiler_identity"
+data fast_lane_skip_true: String = "true"
+data fast_lane_skip_false: String = "false"

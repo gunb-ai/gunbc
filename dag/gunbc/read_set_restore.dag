@@ -1,0 +1,580 @@
+module gunbc.read_set_restore
+
+import std.types { Bool, Int, List, String }
+import std.algebra { fold_list, list_map, list_append, list_find_first }
+import std.integer { int_to_decimal_string }
+import std.optional { Optional, Present, Absent }
+import std.content_hash { lower_hex_64, sha256_hex_digit_count }
+import v2.std.node { Node }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.workflow.bash_emit { bash_emit_stmts }
+import v2.extdeps.languages.bash_build {
+  bash_build_word_lit, bash_build_word_var, bash_build_word_cmdsubst, bash_build_word_concat_from_nodes,
+  bash_build_assign, bash_build_pipe, bash_build_command_with_words, bash_build_or_else, bash_build_exit,
+  bash_build_negation, bash_build_if_from_stmts, bash_build_test_bracket,
+  bash_build_with_redir_to_file, bash_build_with_redir_from_file,
+}
+import extdeps.languages.yaml.types { yaml_string, kv }
+import extdeps.github.actions { Step, RunStep, UsesStep }
+import extdeps.github.expressions {
+  Expression,
+  ContextAccess,
+  Steps,
+  ExpressionTemplate,
+  Interpolation,
+  NotEquals,
+  StringLiteral,
+  serialize_expression,
+  serialize_template,
+}
+import gunbc.source_layout { layout_module_storage_path }
+import gunbc.instrument_targets { v2_native_cli_source_roots }
+import v2.cli.population_verb_names { cli_verb_check_layout, cli_verb_check_references }
+import v2.cli.parse_verdict_invocation { parse_verdict_invocation_command, parse_verdict_invocation_source_root_args }
+import gunbc.parse_verdict_schema { parse_verdict_restore_ancestor_ordinals }
+import gunbc.read_set_schema {
+  read_set_receipt_basename,
+  fast_lane_native_cli_basename,
+  fast_lane_compiler_identity_basename,
+  fast_lane_decision_step_id,
+  fast_lane_skip_output,
+  fast_lane_skip_true,
+  fast_lane_skip_false,
+  fast_lane_compiler_identity_output,
+}
+import v2.std.read_set {
+  ReadSetMember, ReadSetFile, ReadSetDir,
+  ReadSetOrigin, ReadSetDeclared, ReadSetEntry,
+  ReadSetChangeObservation, ReadSetUnestablishedCause, ReadSetRecordingLineUnreadable,
+  ReadSetValidity, ReadSetValid, ReadSetInvalidated, ReadSetUnestablished,
+  ReadSetRecordingRead, ReadSetRecordingUnreadable,
+  read_set_recording_of_lines, validate_read_set, read_set_exact_paths, read_set_dir_prefixes,
+  read_set_kind_dir, read_set_exact_kinds, read_set_kind_separator,
+}
+import gunbc.read_set_publish { fast_lane_unit_path, fast_lane_unit_cache_key }
+import gunbc.parse_verdict_publish {
+  native_cli_bin,
+  native_cli_reused_expression,
+  parse_verdict_publish_memory_env,
+}
+import gunbc.parse_verdict_restore {
+  materialization_restore_step_id,
+  materialization_restore_chain_condition,
+  materialization_restored_ancestor_expression,
+  parse_verdict_ancestor_sha_expr,
+  parse_verdict_cache_restore_step,
+  parse_verdict_restore_if,
+  parse_verdict_tee_append,
+}
+
+// THE PULL-REQUEST SIDE OF THE PLANNING FAST LANE (gunbc.read_set_publish is the main side; the operator
+// admitted the receipt it consumes in @ref(gunbc.design_ruling::seed_read_set_receipt_is_admitted), "so the
+// required job can skip the emit and build when a pull request changes nothing that acquisition reads").
+//
+// ONE UNIT, ONE DECISION, THE FULL PATH AS THE FALLBACK. Early in the required job, a pull-request run
+// restores the fast-lane unit main saved for the nearest first-parent ancestor of the base (the same located
+// ancestors and selection policy as the parse-verdict chain, gunbc.parse_verdict_restore), and one step
+// decides whether that unit covers the change. The unit is saved as main's LAST step, so its presence for a
+// sha means every step of that sha's run went green; it holds the seed's read-set receipt for both emitted
+// products, the native CLI that run built, and that binary's compiler identity. If no changed path since the
+// restored ancestor is an input of that run, the closure-dependent steps (the seed build and
+// both emit-and-build subjects) would compute what they computed there, so the run
+// reuses that verdict and runs only the whole-tree checks over the pull request's tree with the restored
+// binary. Anything else -- no unit, an incomplete or malformed unit, a diff git cannot answer, a changed input,
+// a failure inside the step -- is the full path, unchanged.
+//
+// THE RULE IS fast_lane_decide; THE STEP IS ITS REALIZATION. The pure function below is what the witness
+// (test.claim.read_set_restore_witness) executes. The emitted script is built from the same rule rows
+// (fast_lane_declared_entries, the recording kinds of v2.std.read_set, std.content_hash
+// sha256_hex_digit_count) and checks the same conditions in the same order; the two realizations of the
+// matching itself (list membership and prefix tests here, grep there) are kept equal by construction of the
+// rows, not by a shared executor -- that residue is stated, not hidden.
+//
+// THE DIFF IS FROM THE RESTORED ANCESTOR, NOT FROM THE BASE, so commits main gained after the restored
+// ancestor are judged too. Rename detection is OFF (`--no-renames`), so a rename is reported as the deletion
+// of its old path and the addition of its new one: both sides are tested against the rules with no parsing of
+// rename records. The diff is NUL-delimited; a path carrying a newline cannot be decided line-wise and forces
+// the full run.
+//
+// A RESTORED BINARY IS NOT CALLED FRESH. The emit steps that pass GUNBC_NATIVE_PRODUCT_REUSE=fresh do not run
+// on a reused run, and the decision prints which ancestor's binary it reuses. The fresh-product label keeps
+// its meaning: where it is passed, this run built the product.
+
+// ═══ THE RULE ═══
+//
+// THE VALIDITY QUESTION IS v2.std.read_set's (validate_read_set, its one matcher and the recording format);
+// this lane is its required-job consumer (gunbc.plans.read_set_convergence section 2.4): it adds the checks on
+// the restored realization product (receipt present, binary executable, identity well formed), declares the
+// inputs the recorder does not observe, and maps every outcome that is not valid to a full run with its cause.
+
+// WHY AN INPUT IS DECLARED rather than observed.
+type FastLaneDeclaredInput
+  = FastLaneFixedInput
+  | FastLaneDecisionImplementation
+
+// THE FIXED INPUTS: what the guarded steps consume that the receipt does not record. The seed's own source
+// (src/v1) builds the binary every guarded step runs, and stays an invalidating input until the current seed
+// identity can be established independently of the restored binary (gunbc.plans.read_set_convergence, A1);
+// the workspace manifests, lockfile, toolchain pin and cargo configuration decide how both the seed and the
+// emitted crates are built; the native CLI's control walks read fixture roots; and .github holds the workflow
+// that is executing, including this decision's own emitted script.
+data fast_lane_fixed_input_members: List<ReadSetMember> = [
+  ReadSetDir { path: "src/v1" },
+  ReadSetDir { path: "fixtures" },
+  ReadSetFile { path: "Cargo.toml" },
+  ReadSetFile { path: "Cargo.lock" },
+  ReadSetFile { path: "rust-toolchain" },
+  ReadSetFile { path: "rust-toolchain.toml" },
+  ReadSetDir { path: ".cargo" },
+  ReadSetDir { path: ".github" },
+]
+
+// THE DECISION'S OWN IMPLEMENTATION, AND THE LAYOUT POLICY THE CHECKS READ. Running a changed decision to
+// judge whether its own change may skip is circular, so a change to any of these modules is a full run. The
+// machinery they import reaches the job only through the regenerated workflow, which .github/ already covers.
+// Named by module, so the path is the layout's (gunbc.source_layout layout_module_storage_path). A module the
+// layout cannot place is a full run in the rule and refuses emission of the step (fast_lane_decision_script),
+// so the lane switches itself off rather than miss its own implementation.
+data fast_lane_decision_implementation_modules: List<String> = [
+  "v2.std.read_set",
+  "gunbc.read_set_schema",
+  "gunbc.read_set_publish",
+  "gunbc.read_set_restore",
+  "gunbc.parse_verdict_schema",
+  "gunbc.parse_verdict_publish",
+  "gunbc.parse_verdict_restore",
+  "gunbc.witness.compiler_gate_workflow",
+  "gunbc.source_layout",
+  "gunbc.source_layout_namespaces",
+]
+
+fn fast_lane_unplaceable_modules() -> List<String> {
+  filter(fast_lane_decision_implementation_modules, m => layout_module_storage_path(module: m) == Absent)
+}
+
+fn fast_lane_declared_entries() -> List<ReadSetEntry<FastLaneDeclaredInput>> {
+  list_append(
+    left: list_map(xs: fast_lane_fixed_input_members, f: fn(m) { ReadSetEntry { member: m, origin: ReadSetDeclared { reason: FastLaneFixedInput } } }),
+    right: fold_list(xs: fast_lane_decision_implementation_modules, empty: [], cons: fn(acc, m) {
+      match layout_module_storage_path(module: m) {
+        Present { value: p } => concat(acc, [ReadSetEntry { member: ReadSetFile { path: p }, origin: ReadSetDeclared { reason: FastLaneDecisionImplementation } }])
+        Absent => acc
+      }
+    })
+  )
+}
+
+type FastLaneUnitObservation
+  = FastLaneUnitAbsent
+  | FastLaneUnitRestored { receipt_lines: List<String>, binary_executable: Bool, identity_text: String }
+
+type FastLaneFullRunCause
+  = FastLaneNoUnitRestored
+  | FastLaneReceiptEmpty
+  | FastLaneBinaryNotExecutable
+  | FastLaneIdentityMalformed
+  | FastLaneImplementationUnplaceable { module: String }
+  | FastLaneReadSetUnestablished { cause: ReadSetUnestablishedCause }
+  | FastLaneInputChanged { path: String, entry: ReadSetEntry<FastLaneDeclaredInput> }
+
+type FastLaneVerdict
+  = FastLaneReuse
+  | FastLaneFullRun { cause: FastLaneFullRunCause }
+
+// THE WHOLE IDENTITY FILE IS VALIDATED, not a line of it: exactly the digest followed by one newline, as the
+// stage step writes it, so a valid line followed by an unterminated tail is malformed. The script checks the
+// same three facts: the byte count, a single newline, and the first sha256_hex_digit_count bytes being the
+// digest -- together they leave the newline nowhere but last.
+fn fast_lane_identity_file_bytes() -> Int { sha256_hex_digit_count + 1 }
+
+fn fast_lane_identity_is_well_formed(identity_text: String) -> Bool {
+  string_length(s: identity_text) == fast_lane_identity_file_bytes()
+    && substring(s: identity_text, start: sha256_hex_digit_count, end: fast_lane_identity_file_bytes()) == "\n"
+    && lower_hex_64(value: substring(s: identity_text, start: 0, end: sha256_hex_digit_count))
+}
+
+// THE CONSUMER'S MAPPING: valid reuses; anything else is the full run, carrying why.
+fn fast_lane_verdict_of_validity(validity: ReadSetValidity<FastLaneDeclaredInput>) -> FastLaneVerdict {
+  match validity {
+    ReadSetValid => FastLaneReuse
+    ReadSetInvalidated { path: p, entry: e } => FastLaneFullRun { cause: FastLaneInputChanged { path: p, entry: e } }
+    ReadSetUnestablished { cause: c } => FastLaneFullRun { cause: FastLaneReadSetUnestablished { cause: c } }
+  }
+}
+
+// THE DECISION. Reuse only when a unit was restored, it is complete and well formed, the decision's own
+// modules are placed, every receipt line is readable, git answered the diff, and no changed path is covered
+// by a declared input (fixed or implementation) or a recorded file, probe or directory. The order is the
+// emitted script's order.
+fn fast_lane_decide(unit: FastLaneUnitObservation, changes: ReadSetChangeObservation) -> FastLaneVerdict {
+  match unit {
+    FastLaneUnitAbsent => FastLaneFullRun { cause: FastLaneNoUnitRestored }
+    FastLaneUnitRestored { receipt_lines: receipt, binary_executable: executable, identity_text: identity } =>
+      if length(xs: receipt) == 0 {
+        FastLaneFullRun { cause: FastLaneReceiptEmpty }
+      } else if !executable {
+        FastLaneFullRun { cause: FastLaneBinaryNotExecutable }
+      } else if !fast_lane_identity_is_well_formed(identity_text: identity) {
+        FastLaneFullRun { cause: FastLaneIdentityMalformed }
+      } else {
+        match fast_lane_unplaceable_modules() |> first {
+          Present { value: m } => FastLaneFullRun { cause: FastLaneImplementationUnplaceable { module: m } }
+          Absent =>
+            match read_set_recording_of_lines(lines: receipt) {
+              ReadSetRecordingUnreadable { line: l } =>
+                FastLaneFullRun { cause: FastLaneReadSetUnestablished { cause: ReadSetRecordingLineUnreadable { line: l } } }
+              ReadSetRecordingRead { entries: recorded } =>
+                fast_lane_verdict_of_validity(validity: validate_read_set(entries: list_append(left: fast_lane_declared_entries(), right: recorded), changes: changes))
+            }
+        }
+      }
+  }
+}
+
+data fast_lane_restore_id_prefix: String = "fast_lane_unit_"
+data fast_lane_decision_step_name: String = "Decide whether the fast-lane unit covers this change"
+data fast_lane_layout_check_step_name: String = "Check the layout with the restored native CLI (fast lane)"
+data fast_lane_reference_check_step_name: String = "Check marked references with the restored native CLI (fast lane)"
+data fast_lane_decision_unemittable_marker: String = "__GUNBC_FAST_LANE_DECISION_UNEMITTABLE__"
+data fast_lane_ancestor_env: String = "FAST_LANE_ANCESTOR"
+
+fn fast_lane_restore_step_name(ordinal: Int) -> String {
+  join(["Restore fast-lane unit for base ancestor ", int_to_decimal_string(value: ordinal)], "")
+}
+
+fn fast_lane_restore_key(ordinal: Int) -> String {
+  fast_lane_unit_cache_key(commit: parse_verdict_ancestor_sha_expr(ordinal: ordinal))
+}
+
+fn fast_lane_restore_step(ordinal: Int) -> Step {
+  parse_verdict_cache_restore_step(
+    name: fast_lane_restore_step_name(ordinal: ordinal),
+    id: Present { value: materialization_restore_step_id(id_prefix: fast_lane_restore_id_prefix, ordinal: ordinal) },
+    path: fast_lane_unit_path(),
+    cache_key: fast_lane_restore_key(ordinal: ordinal),
+    condition: materialization_restore_chain_condition(id_prefix: fast_lane_restore_id_prefix, ordinal: ordinal)
+  )
+}
+
+fn fast_lane_restore_steps() -> List<Step> {
+  list_map(xs: parse_verdict_restore_ancestor_ordinals, f: fn(o) { fast_lane_restore_step(ordinal: o) })
+}
+
+fn fast_lane_restored_ancestor_template() -> String {
+  serialize_template(template: ExpressionTemplate {
+    segments: [Interpolation { expression: materialization_restored_ancestor_expression(id_prefix: fast_lane_restore_id_prefix) }]
+  })
+}
+
+// THE RECEIPT GRAMMAR AS EXTENDED REGULAR EXPRESSIONS, rendered from the kinds in v2.std.read_set. A
+// readable line starts with a kind, the separator and a character that is not `/`; an abnormal path has a
+// `.` or `..` segment, a doubled slash or a trailing slash (fast_lane_receipt_path_is_normal).
+fn fast_lane_receipt_kind_alternation() -> String {
+  join(["(", join(concat(read_set_exact_kinds, [read_set_kind_dir]), "|"), ")"], "")
+}
+
+fn fast_lane_receipt_readable_regex() -> String {
+  join(["^", fast_lane_receipt_kind_alternation(), read_set_kind_separator, "[^/]"], "")
+}
+
+fn fast_lane_receipt_abnormal_regex() -> String {
+  join(["^", fast_lane_receipt_kind_alternation(), read_set_kind_separator, "\\.\\.?(/|$)|/\\.\\.?(/|$)|//|/$"], "")
+}
+
+fn fast_lane_receipt_exact_sed() -> String {
+  join(["s/^(", join(read_set_exact_kinds, "|"), ")", read_set_kind_separator, "//p"], "")
+}
+
+fn fast_lane_receipt_dir_sed() -> String {
+  join(["s/^", read_set_kind_dir, read_set_kind_separator, "(.*)$/\\1\\//p"], "")
+}
+
+fn fast_lane_identity_regex() -> String {
+  join(["[0-9a-f]{", int_to_decimal_string(value: sha256_hex_digit_count), "}"], "")
+}
+
+fn fl_lit(t: String) -> Node { bash_build_word_lit(text: t) }
+fn fl_var(n: String) -> Node { bash_build_word_var(name: n) }
+fn fl_cmd(ws: List<Node>) -> Node { bash_build_command_with_words(words: ws) }
+fn fl_test(ws: List<Node>) -> Node { bash_build_test_bracket(words: ws) }
+
+fn fl_scratch(basename: String) -> Node {
+  bash_build_word_concat_from_nodes(parts: [fl_var(n: "RUNNER_TEMP"), fl_lit(t: join(["/gunbc-fast-lane-", basename], ""))])
+}
+
+fn fl_output(name: String, value: Node) -> Node {
+  parse_verdict_tee_append(
+    line: bash_build_word_concat_from_nodes(parts: [fl_lit(t: join([name, "="], "")), value]),
+    path: fl_var(n: "GITHUB_OUTPUT")
+  )
+}
+
+fn fl_say(text: String) -> Node { fl_cmd(ws: [fl_lit(t: "echo"), fl_lit(t: join(["fast lane: ", text], ""))]) }
+
+fn fl_decline(reason: String) -> List<Node> {
+  [
+    fl_say(text: join(["full run -- ", reason], "")),
+    fl_output(name: fast_lane_skip_output, value: fl_lit(t: fast_lane_skip_false)),
+    bash_build_exit(code: "0")
+  ]
+}
+
+fn fl_decline_when(cond: Node, reason: String) -> Node {
+  bash_build_if_from_stmts(cond: cond, then_stmts: fl_decline(reason: reason))
+}
+
+fn fl_decline_listing(cond: Node, reason: String, listing: Node) -> Node {
+  bash_build_if_from_stmts(
+    cond: cond,
+    then_stmts: [
+      fl_say(text: join(["full run -- ", reason], "")),
+      fl_cmd(ws: [fl_lit(t: "cat"), listing]),
+      fl_output(name: fast_lane_skip_output, value: fl_lit(t: fast_lane_skip_false)),
+      bash_build_exit(code: "0")
+    ]
+  )
+}
+
+// A grep whose "no line selected" (status 1) is an answer and whose error (status 2) is not: the selected
+// lines go to `out`, and only an error fails the statement, which under `bash -e` ends the step before it can
+// write skip=true.
+fn fl_grep_into(words: List<Node>, out: Node) -> Node {
+  bash_build_or_else(
+    left: bash_build_with_redir_to_file(inner: fl_cmd(ws: words), path: out),
+    right: fl_test(ws: [fl_var(n: "?"), fl_lit(t: "="), fl_lit(t: "1")])
+  )
+}
+
+fn fl_append_lines(lines: List<String>, file: Node) -> Node {
+  bash_build_with_redir_to_file(
+    inner: bash_build_pipe(
+      left: fl_cmd(ws: concat([fl_lit(t: "printf"), fl_lit(t: "%s\\n")], list_map(xs: lines, f: fn(l) { fl_lit(t: l) }))),
+      right: fl_cmd(ws: [fl_lit(t: "tee"), fl_lit(t: "-a"), file])
+    ),
+    path: fl_lit(t: "/dev/null")
+  )
+}
+
+fn fast_lane_decision_statements() -> List<Node> {
+  let receipt = fl_lit(t: read_set_receipt_basename)
+  let identity = fl_lit(t: fast_lane_compiler_identity_basename)
+  let changed_z = fl_scratch(basename: "changed.z")
+  let changed = fl_scratch(basename: "changed.txt")
+  let exact = fl_scratch(basename: "exact.txt")
+  let prefixes = fl_scratch(basename: "prefixes.txt")
+  let prefix_patterns = fl_scratch(basename: "prefix-patterns.txt")
+  [
+    fl_decline_when(
+      cond: fl_test(ws: [fl_lit(t: "-z"), fl_var(n: fast_lane_ancestor_env)]),
+      reason: "no fast-lane unit was restored for any located first-parent ancestor of the base"
+    ),
+    fl_decline_when(
+      cond: fl_test(ws: [fl_lit(t: "!"), fl_lit(t: "-s"), receipt]),
+      reason: "the restored read-set receipt is empty or absent"
+    ),
+    fl_decline_when(
+      cond: fl_test(ws: [fl_lit(t: "!"), fl_lit(t: "-x"), fl_lit(t: fast_lane_native_cli_basename)]),
+      reason: "the restored native CLI is not an executable file"
+    ),
+    fl_decline_when(
+      cond: fl_test(ws: [fl_lit(t: "!"), fl_lit(t: "-s"), identity]),
+      reason: "the restored compiler identity is empty or absent"
+    ),
+    bash_build_assign(
+      name: "IDENTITY_BYTES",
+      value: bash_build_word_cmdsubst(body: bash_build_with_redir_from_file(inner: fl_cmd(ws: [fl_lit(t: "wc"), fl_lit(t: "-c")]), path: identity))
+    ),
+    bash_build_assign(
+      name: "IDENTITY_NEWLINES",
+      value: bash_build_word_cmdsubst(body: bash_build_with_redir_from_file(inner: fl_cmd(ws: [fl_lit(t: "wc"), fl_lit(t: "-l")]), path: identity))
+    ),
+    fl_decline_when(
+      cond: fl_test(ws: [fl_var(n: "IDENTITY_BYTES"), fl_lit(t: "!="), fl_lit(t: int_to_decimal_string(value: fast_lane_identity_file_bytes()))]),
+      reason: "the restored compiler identity file is not exactly one digest and its newline"
+    ),
+    fl_decline_when(
+      cond: fl_test(ws: [fl_var(n: "IDENTITY_NEWLINES"), fl_lit(t: "!="), fl_lit(t: "1")]),
+      reason: "the restored compiler identity file is not exactly one digest and its newline"
+    ),
+    fl_decline_when(
+      cond: bash_build_negation(inner: bash_build_pipe(
+        left: fl_cmd(ws: [fl_lit(t: "head"), fl_lit(t: "-c"), fl_lit(t: int_to_decimal_string(value: sha256_hex_digit_count)), identity]),
+        right: fl_cmd(ws: [fl_lit(t: "grep"), fl_lit(t: "-Eqx"), fl_lit(t: fast_lane_identity_regex())])
+      )),
+      reason: "the restored compiler identity is not a lowercase hex sha256 digest"
+    ),
+    fl_grep_into(words: [fl_lit(t: "grep"), fl_lit(t: "-Ev"), fl_lit(t: fast_lane_receipt_readable_regex()), receipt], out: fl_scratch(basename: "unreadable.txt")),
+    fl_decline_listing(
+      cond: fl_test(ws: [fl_lit(t: "-s"), fl_scratch(basename: "unreadable.txt")]),
+      reason: "these receipt lines have no recorded kind or name an empty or absolute path:",
+      listing: fl_scratch(basename: "unreadable.txt")
+    ),
+    fl_grep_into(words: [fl_lit(t: "grep"), fl_lit(t: "-E"), fl_lit(t: fast_lane_receipt_abnormal_regex()), receipt], out: fl_scratch(basename: "abnormal.txt")),
+    fl_decline_listing(
+      cond: fl_test(ws: [fl_lit(t: "-s"), fl_scratch(basename: "abnormal.txt")]),
+      reason: "these receipt paths are not normalized (an empty, . or .. segment):",
+      listing: fl_scratch(basename: "abnormal.txt")
+    ),
+    fl_decline_when(
+      cond: bash_build_negation(inner: bash_build_with_redir_to_file(
+        inner: fl_cmd(ws: [
+          fl_lit(t: "git"), fl_lit(t: "diff"), fl_lit(t: "--name-only"), fl_lit(t: "--no-renames"), fl_lit(t: "-z"),
+          fl_var(n: fast_lane_ancestor_env), fl_lit(t: "HEAD")
+        ]),
+        path: changed_z
+      )),
+      reason: "git could not diff the restored ancestor against the judged commit"
+    ),
+    bash_build_with_redir_to_file(
+      inner: bash_build_with_redir_from_file(inner: fl_cmd(ws: [fl_lit(t: "tr"), fl_lit(t: "\\0"), fl_lit(t: "\\n")]), path: changed_z),
+      path: changed
+    ),
+    bash_build_with_redir_to_file(
+      inner: bash_build_with_redir_from_file(inner: fl_cmd(ws: [fl_lit(t: "tr"), fl_lit(t: "-cd"), fl_lit(t: "\\n")]), path: changed_z),
+      path: fl_scratch(basename: "newlines.txt")
+    ),
+    fl_decline_when(
+      cond: fl_test(ws: [fl_lit(t: "-s"), fl_scratch(basename: "newlines.txt")]),
+      reason: "a changed path contains a newline, so no line-wise rule can decide it"
+    ),
+    bash_build_with_redir_to_file(inner: fl_cmd(ws: [fl_lit(t: "sed"), fl_lit(t: "-En"), fl_lit(t: fast_lane_receipt_exact_sed()), receipt]), path: exact),
+    fl_append_lines(lines: read_set_exact_paths(entries: fast_lane_declared_entries()), file: exact),
+    bash_build_with_redir_to_file(inner: fl_cmd(ws: [fl_lit(t: "sed"), fl_lit(t: "-En"), fl_lit(t: fast_lane_receipt_dir_sed()), receipt]), path: prefixes),
+    fl_append_lines(lines: read_set_dir_prefixes(entries: fast_lane_declared_entries()), file: prefixes),
+    bash_build_with_redir_to_file(
+      inner: fl_cmd(ws: [fl_lit(t: "sed"), fl_lit(t: "-e"), fl_lit(t: "s/[.[\\*^$]/\\\\&/g"), fl_lit(t: "-e"), fl_lit(t: "s/^/^/"), prefixes]),
+      path: prefix_patterns
+    ),
+    fl_grep_into(words: [fl_lit(t: "grep"), fl_lit(t: "-Fx"), fl_lit(t: "-f"), exact, changed], out: fl_scratch(basename: "exact-hits.txt")),
+    fl_grep_into(words: [fl_lit(t: "grep"), fl_lit(t: "-f"), prefix_patterns, changed], out: fl_scratch(basename: "prefix-hits.txt")),
+    fl_decline_listing(
+      cond: fl_test(ws: [fl_lit(t: "-s"), fl_scratch(basename: "exact-hits.txt")]),
+      reason: "these changed paths are recorded reads, fixed inputs or the decision's own implementation:",
+      listing: fl_scratch(basename: "exact-hits.txt")
+    ),
+    fl_decline_listing(
+      cond: fl_test(ws: [fl_lit(t: "-s"), fl_scratch(basename: "prefix-hits.txt")]),
+      reason: "these changed paths are under a recorded directory or a fixed input prefix:",
+      listing: fl_scratch(basename: "prefix-hits.txt")
+    ),
+    bash_build_assign(name: "IDENTITY", value: bash_build_word_cmdsubst(body: fl_cmd(ws: [fl_lit(t: "cat"), identity]))),
+    fl_cmd(ws: [
+      fl_lit(t: "echo"),
+      bash_build_word_concat_from_nodes(parts: [
+        fl_lit(t: "fast lane: reuse -- no path changed since "),
+        fl_var(n: fast_lane_ancestor_env),
+        fl_lit(t: " is an input of its unit; the closure-dependent steps are skipped and the whole-tree checks run with the native CLI main built at that commit (REUSED, not fresh), compiler identity "),
+        fl_var(n: "IDENTITY")
+      ])
+    ]),
+    fl_output(name: fast_lane_compiler_identity_output, value: fl_var(n: "IDENTITY")),
+    fl_output(name: fast_lane_skip_output, value: fl_lit(t: fast_lane_skip_true))
+  ]
+}
+
+fn fast_lane_decision_script_outcome() -> Optional<String> {
+  match bash_emit_stmts(statements: fast_lane_decision_statements(), set_e: true) {
+    Accepted { value: v, diagnostics: _ } => Present { value: v }
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn fast_lane_decision_script_is_renderable() -> Bool {
+  fast_lane_decision_script_outcome() != Absent
+}
+
+// A DECISION MODULE THE LAYOUT CANNOT PLACE REFUSES EMISSION: the marker is not a command, so the step fails,
+// `skip` is never written, and every guarded step runs -- the rule's FastLaneImplementationUnplaceable, realized.
+fn fast_lane_decision_script() -> String {
+  if length(xs: fast_lane_unplaceable_modules()) > 0 {
+    fast_lane_decision_unemittable_marker
+  } else {
+    match fast_lane_decision_script_outcome() {
+      Present { value: v } => v
+      Absent => fast_lane_decision_unemittable_marker
+    }
+  }
+}
+
+// CONTINUE-ON-ERROR IS THE FAIL-CLOSED ARM, NOT A SOFTENING. `skip=true` is the script's last act; any
+// failure before it leaves the output unwritten, and every guarded step runs on `skip != 'true'`, so a
+// decision that errors is a full run and the job's verdict comes from the full path. Failing the job
+// instead would make a broken shortcut a red pull request that the full path would have judged.
+fn fast_lane_decision_step() -> Step {
+  RunStep {
+    name: Present { value: fast_lane_decision_step_name },
+    id: Present { value: fast_lane_decision_step_id },
+    run: fast_lane_decision_script(),
+    shell: none,
+    env: Present { value: [kv(key: fast_lane_ancestor_env, value: yaml_string(s: fast_lane_restored_ancestor_template()))] },
+    working_directory: none,
+    if_condition: Present { value: parse_verdict_restore_if() },
+    continue_on_error: Present { value: true },
+    timeout_minutes: none
+  }
+}
+
+// THE GUARD OF A CLOSURE-DEPENDENT STEP: it runs unless the decision answered skip. A step that already
+// carries its own condition is left as it is -- running it on every run is the conservative reading -- and the
+// witness asserts every guarded step of the job carries exactly this guard.
+fn fast_lane_full_run_expression() -> Expression {
+  NotEquals {
+    left: ContextAccess { context: Steps, path: [fast_lane_decision_step_id, "outputs", fast_lane_skip_output] },
+    right: StringLiteral { value: fast_lane_skip_true }
+  }
+}
+
+fn fast_lane_full_run_if() -> String { serialize_expression(expression: fast_lane_full_run_expression()) }
+
+fn fast_lane_reused_if() -> String { serialize_expression(expression: native_cli_reused_expression()) }
+
+fn fast_lane_unless_reused(step: Step) -> Step {
+  match step {
+    RunStep { name: n, id: i, run: r, shell: sh, env: e, working_directory: w, if_condition: c, continue_on_error: co, timeout_minutes: t } =>
+      match c {
+        Present { value: _ } => step
+        Absent => RunStep { name: n, id: i, run: r, shell: sh, env: e, working_directory: w, if_condition: Present { value: fast_lane_full_run_if() }, continue_on_error: co, timeout_minutes: t }
+      }
+    UsesStep { name: n, id: i, uses: u, with: wi, env: e, if_condition: c, continue_on_error: co, timeout_minutes: t } =>
+      match c {
+        Present { value: _ } => step
+        Absent => UsesStep { name: n, id: i, uses: u, with: wi, env: e, if_condition: Present { value: fast_lane_full_run_if() }, continue_on_error: co, timeout_minutes: t }
+      }
+  }
+}
+
+// THE WHOLE-TREE CHECKS A REUSED RUN STILL OWES, with the restored binary over the pull request's tree: the
+// two live-root walks the native CLI's control run carries (v1_compiler.cli_run.native_lane_runner
+// walk_population_controls and walk_reference_controls), with the same verbs and roots. The third,
+// parse-population over the live roots, is the parse-verdict reuse walk that already runs on every pull
+// request (gunbc.parse_verdict_restore parse_verdict_reuse_walk_step), reading the shared native-CLI
+// expressions. On a full run these checks are inside the emit step's control run, so these steps do not run.
+fn fast_lane_check_command(verb: String) -> String {
+  parse_verdict_invocation_command(
+    bin: native_cli_bin(),
+    verb: verb,
+    args: parse_verdict_invocation_source_root_args(roots: v2_native_cli_source_roots())
+  )
+}
+
+fn fast_lane_check_step(name: String, verb: String) -> Step {
+  RunStep {
+    name: Present { value: name },
+    id: none,
+    run: concat(fast_lane_check_command(verb: verb), "\n"),
+    shell: none,
+    env: Present { value: parse_verdict_publish_memory_env() },
+    working_directory: none,
+    if_condition: Present { value: fast_lane_reused_if() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn fast_lane_layout_check_step() -> Step {
+  fast_lane_check_step(name: fast_lane_layout_check_step_name, verb: cli_verb_check_layout)
+}
+
+fn fast_lane_reference_check_step() -> Step {
+  fast_lane_check_step(name: fast_lane_reference_check_step_name, verb: cli_verb_check_references)
+}

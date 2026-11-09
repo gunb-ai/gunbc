@@ -1,0 +1,192 @@
+module test.claim.fleet.gpu_power_cap_boot_state_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import std.measure { watt, watt_count }
+import std.algebra { string_contains }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_04, gpu_board_05 }
+import gunbc.fleet.gpu_device_observation {
+  GpuDeviceEnumerated, GpuDeviceNotEnumerated, current_gpu_device_observations_of,
+}
+import gunbc.fleet.gpu_power_cap_boot_state {
+  BootCapCommand, BootCommandLine, PowerCapBootUnit,
+  GunbcCapUnitAbsent, GunbcCapUnitPresent, GunbcCapUnitUnread,
+  srv1_power_cap_boot_units, srv1_gunbc_cap_unit_presence,
+  boot_unit_addresses, cap_application_claims_on, cap_boot_unit_for, device_uuid_of,
+  gunbc_cap_unit_is_installed, installed_unit_addresses_board, unit_lines_can_fail,
+  unit_lines_run_with_full_privileges,
+}
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHAT THE INSTALLED MECHANISM COVERS, and what it does not. The operator's unit caps one card by UUID; the
+// other card's 300 W is its factory default and none of this unit's doing. Read together, these four lines are
+// the whole of what this module is allowed to say about coverage -- any broader claim would be the converge's.
+test fn the_installed_unit_caps_the_workstation_card_by_uuid_and_not_the_max_q() -> Bool {
+  match cap_boot_unit_for(host: operator_host_srv1) {
+    Absent => false
+    Present { value: u } =>
+      srv1_power_cap_boot_units.length() == 1
+        && installed_unit_addresses_board(host: operator_host_srv1, board: gpu_board_01)
+        && !installed_unit_addresses_board(host: operator_host_srv1, board: gpu_board_04)
+        && u.cap_commands.length() == 1
+        && match u.cap_commands.first() {
+          Absent => false
+          Present { value: c } => watt_count(w: c.target_watts) == 300
+            && string_contains(s: c.addressed_gpu_uuid as String, pattern: "GPU-96b749dc-e2ea-5b6f-2e45-ee868b1a9750")
+            && !string_contains(s: c.addressed_gpu_uuid as String, pattern: "GPU-7b58568e")
+            && string_contains(s: c.line.as_written as String, pattern: "-pl 300")
+            && string_contains(s: c.line.as_written as String, pattern: "GPU-96b749dc")
+            && !c.line.tolerates_failure
+            && !c.line.runs_with_full_privileges
+        }
+        // The join is driven by the UUID the device row carries, not by a literal typed into the test: the
+        // point of the assertion is that the unit's own line matches the card the READING named, which a
+        // literal cannot show -- it would pass with the unit pointing at any card whose UUID someone
+        // happened to type. The other card's UUID must find nothing.
+        && match device_uuid_of(host: operator_host_srv1, board: gpu_board_01) {
+          Absent => false
+          Present { value: uuid } => match boot_unit_addresses(unit: u, gpu_uuid: uuid) {
+            Absent => false
+            Present { value: c } => watt_count(w: c.target_watts) == 300
+          }
+        }
+        && match device_uuid_of(host: operator_host_srv1, board: gpu_board_04) {
+          Absent => true
+          Present { value: uuid } => match boot_unit_addresses(unit: u, gpu_uuid: uuid) {
+            Absent => true
+            Present { value: _ } => false
+          }
+        }
+        && match device_uuid_of(host: operator_host_srv1, board: gpu_board_05) {
+          Absent => true
+          Present { value: _ } => false
+        }
+  }
+}
+
+// THE PREFIXES, ASSERTED AS READ. The host shows three unprefixed lines, so the oneshot CAN fail and nothing
+// about it escapes a sandbox. The two fixtures are what stop this test from passing on an edit that simply
+// hardcodes true: a line written with systemd's `-` prefix must make the unit unable to fail, and a line
+// written with `+` must show up as running with full privileges. Both prefixes are recorded per line precisely
+// so that a paraphrase of the unit file cannot quietly change which of the two it was.
+fn line(text: NonEmptyStr, tolerates: Bool, privileged: Bool) -> BootCommandLine {
+  BootCommandLine {
+    as_written: text,
+    tolerates_failure: tolerates,
+    runs_with_full_privileges: privileged,
+  }
+}
+
+fn unit_with(pre: BootCommandLine, cap: BootCapCommand) -> PowerCapBootUnit {
+  PowerCapBootUnit {
+    host: operator_host_srv1,
+    unit_path: "/etc/systemd/system/a-fixture.service" as NonEmptyStr,
+    content_sha256: "0" as NonEmptyStr,
+    description: "fixture" as NonEmptyStr,
+    unit_type: "oneshot" as NonEmptyStr,
+    wants: [],
+    after: [],
+    wanted_by: [],
+    pre_commands: [pre],
+    persistence_requested: false,
+    cap_commands: [cap],
+    enabled: true,
+    active_state: "active (exited)" as NonEmptyStr,
+    since: "n/a" as NonEmptyStr,
+    read_on: "fixture" as NonEmptyStr,
+  }
+}
+
+test fn the_installed_unit_can_fail_and_no_line_runs_privileged() -> Bool {
+  let installed = match cap_boot_unit_for(host: operator_host_srv1) {
+    Absent => false
+    Present { value: u } => unit_lines_can_fail(unit: u) && !unit_lines_run_with_full_privileges(unit: u)
+      && u.pre_commands.length() == 2 && u.cap_commands.length() == 1
+  }
+  let tolerated = unit_with(
+    pre: line(text: "/usr/bin/nvidia-smi -pm 1" as NonEmptyStr, tolerates: true, privileged: false),
+    cap: BootCapCommand {
+      addressed_gpu_uuid: "GPU-96b749dc-e2ea-5b6f-2e45-ee868b1a9750" as NonEmptyStr,
+      target_watts: watt(count: 300),
+      line: line(text: "/usr/bin/nvidia-smi -i GPU-96b749dc-e2ea-5b6f-2e45-ee868b1a9750 -pl 300" as NonEmptyStr,
+        tolerates: false, privileged: false),
+    },
+  )
+  let privileged = unit_with(
+    pre: line(text: "/sbin/modprobe nvidia" as NonEmptyStr, tolerates: false, privileged: false),
+    cap: BootCapCommand {
+      addressed_gpu_uuid: "GPU-96b749dc-e2ea-5b6f-2e45-ee868b1a9750" as NonEmptyStr,
+      target_watts: watt(count: 300),
+      line: line(text: "/usr/bin/nvidia-smi -pl 300" as NonEmptyStr, tolerates: false, privileged: true),
+    },
+  )
+  installed && !unit_lines_can_fail(unit: tolerated) && unit_lines_run_with_full_privileges(unit: privileged)
+}
+
+// TWO RECORDS, NOT ONE. The unit row says what is installed (read from the file, by sha256sum and systemctl);
+// the claim row says what nvidia-smi printed in the unit's journal during the boot it ran. They describe one
+// act and are kept as two rows, because the second is the applying side's own word and the first is silent
+// about whether any limit arrived. This test fails if either record is quietly merged into the other.
+test fn the_units_own_record_and_its_journals_claim_stay_apart() -> Bool {
+  let claims = cap_application_claims_on(host: operator_host_srv1)
+  let u = cap_boot_unit_for(host: operator_host_srv1)
+  claims.length() == 1
+    && match claims.first() {
+      Absent => false
+      Present { value: c } => watt_count(w: c.to_watts) == 300 && watt_count(w: c.from_watts) == 600
+        && string_contains(s: c.said_by as String, pattern: "was set to 300.00 W from 600.00 W")
+        && string_contains(s: c.read_on as String, pattern: "journalctl")
+    }
+    && match u {
+      Absent => false
+      Present { value: unit } => string_contains(s: unit.read_on as String, pattern: "sha256sum")
+        && !string_contains(s: unit.read_on as String, pattern: "journalctl")
+        && string_contains(s: unit.content_sha256 as String, pattern: "47337218")
+    }
+}
+
+// THE MECHANISM GUNBC DESIGNS IS NOT THE ONE INSTALLED. srv1 runs the operator's hand-written unit; the
+// converge-backed gunbc-srv1-gpu-power-cap.service is absent, which is why the cap row in
+// gunbc.plans.fleet_hardware_fact_consumption still waits on the converge's first boot run. The three arms are
+// told apart here: presence reads true only for presence, and an unread directory is not read as absence of a
+// problem.
+test fn gunbs_own_converge_backed_cap_unit_is_recorded_absent() -> Bool {
+  !gunbc_cap_unit_is_installed(p: srv1_gunbc_cap_unit_presence)
+    && match srv1_gunbc_cap_unit_presence {
+      GunbcCapUnitAbsent { observed_by: o, read_on: _ } => string_contains(s: o as String, pattern: "gunbc-srv1-gpu-power-cap.service")
+      GunbcCapUnitPresent { observed_by: _, read_on: _ } => false
+      GunbcCapUnitUnread { read_obligation: _ } => false
+    }
+    && gunbc_cap_unit_is_installed(p: GunbcCapUnitPresent {
+      observed_by: "fixture" as NonEmptyStr, read_on: "fixture" as NonEmptyStr })
+    && !gunbc_cap_unit_is_installed(p: GunbcCapUnitUnread {
+      read_obligation: "fixture" as NonEmptyStr })
+}
+
+// THE REFUSAL THIS MODULE EXISTS TO MAKE. The Max-Q reports 300 W (that number is
+// gunbc.fleet.gpu_device_observation's) and the decided cap is 300 W, and yet this module says the installed
+// mechanism issued no command for that card. Agreeing numbers are not the same record as an act: a module that
+// fused them would report the operator's unit as the reason for a factory default. The realization question is
+// gunbc.fleet.gpu_power_cap_converge's to answer, from a query it makes after its own writes.
+test fn agreeing_numbers_do_not_become_an_act_this_module_didnt_record() -> Bool {
+  let max_q_reports_300 = match current_gpu_device_observations_of(board: gpu_board_04).first() {
+    Absent => false
+    Present { value: o } => match o {
+      GpuDeviceEnumerated { host: _, board: _, gpu_uuid: _, pci_address: _, power_limit_minimum: _, power_limit_maximum: _, power_limit_current: c, power_limit_default: d, read_on: _ } =>
+        // The Max-Q's 300 W is its OWN DEFAULT, not a cap: current equals default here, which is what makes
+        // "nothing is capped on this board" a checked claim instead of an inference from a round number.
+        watt_count(w: c) == 300 && match d {
+          Present { value: dv } => watt_count(w: dv) == 300
+          Absent => false
+        }
+      GpuDeviceNotEnumerated { host: _, board: _, cause: _, read_on: _ } => false
+    }
+  }
+  max_q_reports_300
+    && !installed_unit_addresses_board(host: operator_host_srv1, board: gpu_board_04)
+    && installed_unit_addresses_board(host: operator_host_srv1, board: gpu_board_01)
+}
+

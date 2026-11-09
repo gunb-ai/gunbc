@@ -27,7 +27,9 @@ import product.host_identity { HostIdentity }
 import gunbc.actions_run_binding { actions_variable_trimmed, fleet_converge_subject_host_env_name }
 import gunbc.host.host_effect { HostEffectTransport }
 import gunbc.host.host_effect_realize { run_argv_over_host_effect_transport, run_argv_posix_quoted_over_host_effect_transport, RunArgvTransportObserved, RunArgvTransportRefused }
-import gunbc.host.anchored_host_transport { anchored_host_transport_for_run, AnchoredBindingBound, anchored_host_binding_refusal_reason }
+import gunbc.host.anchored_host_transport { AnchoredBindingBound, anchored_host_binding_refusal_reason }
+import gunbc.runner.runner_initialization { runner_host_pinned_binding }
+import extdeps.shell.credentials { env_credential }
 import gunbc.host.host_boot_id { HostBootId }
 import gunbc.runner.runner_host_unit_slot { current_service_population, CurrentServicePopulationDerived, CurrentServicePopulationRefused }
 import gunbc.runner.runner_lost_boot_sweep_run {
@@ -240,14 +242,14 @@ fn service_slot_revision_observed(revision_text: String, wif: Secret, key_path: 
 }
 
 // EVERY MEMBER OF THE CURRENT POPULATION IS STARTED AND READ BACK. A refusal before the population exists starts nothing.
-fn service_slot_start_over(host: String, revision: CommitSha) -> ServiceSlotStartRun
+fn service_slot_start_over(host: String, revision: CommitSha, token: Secret) -> ServiceSlotStartRun
   uses net: Network
   admit_callers: [decl_ref(module_path: "gunbc.runner.runner_service_slot_start", decl_name: "service_slot_start_wet")]
 {
   match sweep_host_standing(host: host as NonEmptyStr) {
     SweepHostNotManaged { host: h } => ServiceSlotStartRefused { cause: concat("host is not a managed_host row: ", h) }
     SweepHostBound { host: identity, standing: standing } =>
-      match anchored_host_transport_for_run(host: identity, prefix: service_slot_start_attempt_prefix) {
+      match runner_host_pinned_binding(host: identity, prefix: service_slot_start_attempt_prefix, token: token) {
         AnchoredBindingBound { bound: b, anchor: _ } =>
           match lost_boot_observe_current_boot(transport: Present { value: b }) {
             CurrentBootUnobserved { cause: c } => ServiceSlotStartRefused { cause: concat("the current boot is unobserved: ", c) }
@@ -265,6 +267,9 @@ fn service_slot_start_over(host: String, revision: CommitSha) -> ServiceSlotStar
 
 data service_slot_start_wif_env_name: NonEmptyStr = "WIF_ACCESS_TOKEN"
 data service_slot_start_runner_temp_env_name: NonEmptyStr = "RUNNER_TEMP"
+// the run's GITHUB_TOKEN reads the host's running-OS receipt, which carries its per-boot pin
+// (gunbc.runner.runner_initialization runner_host_pinned_binding).
+data service_slot_start_github_token_env_name: NonEmptyStr = "GITHUB_TOKEN"
 data service_slot_start_key_file_name: String = "service-slot-start-app-key"
 
 fn service_slot_start_wet() -> ProcessExit
@@ -274,19 +279,25 @@ fn service_slot_start_wet() -> ProcessExit
   let revision = actions_variable_trimmed(name: "GITHUB_SHA")
   let wif = actions_variable_trimmed(name: service_slot_start_wif_env_name)
   let temp = actions_variable_trimmed(name: service_slot_start_runner_temp_env_name)
+  let github_token = env_credential(env_var: service_slot_start_github_token_env_name).token
   if host == "" || revision == "" || wif == "" || temp == "" {
     exit_failure(reason: "service-slot start: the subject host, GITHUB_SHA, the run's federation token or RUNNER_TEMP is unset")
   } else {
-    let admitted = service_slot_revision_observed(revision_text: revision, wif: wif as Secret, key_path: join([temp, "/", service_slot_start_key_file_name], "") as NonEmptyStr)
-    let run = service_slot_start_admitted(revision: admitted, start: r => service_slot_start_over(host: host, revision: r))
-    let lines = service_slot_start_lines(run: run)
-    let kept = Filesystem.Write(path: service_slot_start_receipt_path, content: concat(join(lines, "\n"), "\n"))
-    if !kept.success {
-      exit_failure(reason: concat("service-slot start: receipt write refused: ", kept.error))
-    } else if service_slot_start_held(run: run) {
-      ExitSuccess
-    } else {
-      exit_failure(reason: concat("service-slot start: not every slot is active; see the receipt:\n", join(lines, "\n")))
+    match github_token {
+      Absent => exit_failure(reason: concat("service-slot start: ", concat(service_slot_start_github_token_env_name as String, " is unset, so the host's running-OS receipt, which carries its per-boot pin, cannot be read")))
+      Present { value: gt } => {
+        let admitted = service_slot_revision_observed(revision_text: revision, wif: wif as Secret, key_path: join([temp, "/", service_slot_start_key_file_name], "") as NonEmptyStr)
+        let run = service_slot_start_admitted(revision: admitted, start: r => service_slot_start_over(host: host, revision: r, token: gt))
+        let lines = service_slot_start_lines(run: run)
+        let kept = Filesystem.Write(path: service_slot_start_receipt_path, content: concat(join(lines, "\n"), "\n"))
+        if !kept.success {
+          exit_failure(reason: concat("service-slot start: receipt write refused: ", kept.error))
+        } else if service_slot_start_held(run: run) {
+          ExitSuccess
+        } else {
+          exit_failure(reason: concat("service-slot start: not every slot is active; see the receipt:\n", join(lines, "\n")))
+        }
+      }
     }
   }
 }

@@ -33,8 +33,8 @@ import gunbc.compute.compute_producer_lease {
   ComputeProducerLeaseReleased, ComputeProducerLeaseKept, compute_producer_lease_standing, compute_producer_lease_release_observed,
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
-  AttemptUnitRole, AttemptWorkerRole,
-  AttemptExitStageListing, AttemptExitStageNames, AttemptExitStageUnreadable, attempt_exit_stage_listings,
+  AttemptUnitRole, AttemptWorkerRole, attempt_worker_invocation_of,
+  attempt_exit_stage_listings,
   AttemptExitEntryDecoded, AttemptExitEntryMalformed, attempt_exit_entry_decode,
   AttemptExitSubject, RoadmapAttemptExit, ComputeAttemptExit,
 }
@@ -57,6 +57,8 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
 // Readback is independent of the door's own report: the ledger's committed figure is read before and
 // after, and a release only counts when committed fell by exactly the attempt's grant.
 // RecoverySettledButHeld, or a release the readback does not confirm, is SeatEnsureRed -- never success.
+import gunbc.spool_queue { SpoolListing, SpoolListed, SpoolListingUnreadable }
+
 type SeatEnsureOutcome
   = SeatEnsureNoop { reference: String, why: String }
   | SeatEnsureReleased { reference: String, committed_before: Kibibyte, committed_after: Kibibyte }
@@ -430,20 +432,21 @@ type SeatOwnerKey {
   attempt_key: String
 }
 
-fn seat_worker_exit_owners(listings: List<AttemptExitStageListing>) -> List<SeatOwnerKey> {
+fn seat_worker_exit_owners(listings: List<SpoolListing>) -> List<SeatOwnerKey> {
   distinct_by_key(
     xs: listings |> flat_map(l => match l {
-      AttemptExitStageNames { names } => names
-      AttemptExitStageUnreadable { reason: _ } => [] as List<String>
+      SpoolListed { names } => names
+      SpoolListingUnreadable { reason: _ } => [] as List<String>
     }) |> flat_map(name => match attempt_exit_entry_decode(entry_name: name) {
       AttemptExitEntryDecoded { record } => match record.subject {
         // A SEAT IS OWNED BY A ROADMAP ATTEMPT. A compute seat's exit record carries the provider's own
         // execution identity, which is not an attempt coordinate: it names no owner here, and the compute
-        // provider discharges its own seats at its own door.
+        // provider discharges its own seats at its own door. Any worker invocation (the first or a resume)
+        // owns the seat; a reviewer, auditor or obligation does not.
         RoadmapAttemptExit { node_id, attempt_key, role } =>
-          match role {
-            AttemptWorkerRole => [SeatOwnerKey { node_id: node_id, attempt_key: attempt_key }]
-            other_role => [] as List<SeatOwnerKey>
+          match attempt_worker_invocation_of(role: role) {
+            Present { value: _ } => [SeatOwnerKey { node_id: node_id, attempt_key: attempt_key }]
+            Absent => [] as List<SeatOwnerKey>
           }
         ComputeAttemptExit { identity: _ } => [] as List<SeatOwnerKey>
       }
@@ -452,10 +455,10 @@ fn seat_worker_exit_owners(listings: List<AttemptExitStageListing>) -> List<Seat
     key: fn(o) { join([o.node_id, "\n", o.attempt_key], "") })
 }
 
-fn seat_exit_listings_unreadable(listings: List<AttemptExitStageListing>) -> List<String> {
+fn seat_exit_listings_unreadable(listings: List<SpoolListing>) -> List<String> {
   listings |> flat_map(l => match l {
-    AttemptExitStageUnreadable { reason: r } => [r]
-    AttemptExitStageNames { names: _ } => [] as List<String>
+    SpoolListingUnreadable { reason: r } => [r]
+    SpoolListed { names: _ } => [] as List<String>
   })
 }
 
@@ -473,14 +476,14 @@ type SeatUndecodableExitEntry {
   reason: String
 }
 
-fn seat_exit_entries_undecodable(listings: List<AttemptExitStageListing>) -> List<SeatUndecodableExitEntry> {
+fn seat_exit_entries_undecodable(listings: List<SpoolListing>) -> List<SeatUndecodableExitEntry> {
   listings |> flat_map(l => match l {
-    AttemptExitStageNames { names } =>
+    SpoolListed { names } =>
       names |> flat_map(name => match attempt_exit_entry_decode(entry_name: name) {
         AttemptExitEntryDecoded { record: _ } => [] as List<SeatUndecodableExitEntry>
         AttemptExitEntryMalformed { entry_name, reason } => [SeatUndecodableExitEntry { entry_name: entry_name, reason: reason }]
       })
-    AttemptExitStageUnreadable { reason: _ } => [] as List<SeatUndecodableExitEntry>
+    SpoolListingUnreadable { reason: _ } => [] as List<SeatUndecodableExitEntry>
   })
 }
 

@@ -31,7 +31,7 @@ import gunbc.roadmap.roadmap_belt { DesiredMember }
 import gunbc.roadmap.roadmap_launch_admission { launch_identity_exemplar }
 import gunbc.roadmap.roadmap_belt_actuate {
   belt_tick_spawn_decided, BeltLaunchDecided,
-  BeltSpawnOutcome, Spawned, SupervisorConvened, SpawnFailed, SpawnNotAdmitted, SpawnLaunchPending,
+  BeltSpawnOutcome, Spawned, SpawnFailed, SpawnNotAdmitted, SpawnLaunchPending,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -76,7 +76,6 @@ fn admission_detail(o: BeltSpawnOutcome) -> String {
     SpawnFailed { node_id: _, step, detail, provider: _, launch: _ } =>
       if step == "environment-admission" { detail } else { "" }
     Spawned { node_id: _, session_name: _, provider: _, launch: _ } => ""
-    SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } => ""
     SpawnNotAdmitted { node_id: _, refusal: _ } => ""
     SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch: _, entry: _ } => ""
   }

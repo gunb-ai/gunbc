@@ -5047,8 +5047,12 @@ pub(crate) fn admit_source_root(root: &str) -> Result<String, String> {
 }
 
 /// The fallible core. Every filesystem condition and every corpus-authority violation
-/// returns a located `Err` instead of unwinding.
-fn try_build_module_index(source_roots: &[String]) -> Result<ModuleSourceIndex, String> {
+/// returns a located `Err` instead of unwinding. A missing root, an unreadable directory, a
+/// non-UTF-8 source or a directory named like a `.dag` is an ordinary, user-caused condition
+/// that owes a typed, located refusal (gunbc.design_argument::fail_closed). This is LIBRARY
+/// code, so it RETURNS the refusal rather than terminating the process; only the CLI boundary
+/// (`refuse_module_index_build`) turns a refusal into the located exit-1 diagnostic.
+pub(crate) fn try_build_module_index(source_roots: &[String]) -> Result<ModuleSourceIndex, String> {
     let mut index = ModuleSourceIndex::new();
     for root in source_roots.iter() {
         let anchored_root = admit_source_root(root)?;
@@ -5086,7 +5090,11 @@ fn try_build_module_index(source_roots: &[String]) -> Result<ModuleSourceIndex, 
     Ok(index)
 }
 
-fn try_build_module_index_primary_precedence(
+/// `primary-precedence` pool indexing: the first root is authoritative; later roots fill only
+/// modules not already present (matches `gunbc compile --dependency-pool-index
+/// primary-precedence` in `dag_compile_clean_transport`). Returns the typed refusal like
+/// `try_build_module_index`.
+pub(crate) fn try_build_module_index_primary_precedence(
     source_roots: &[String],
 ) -> Result<ModuleSourceIndex, String> {
     let mut index = ModuleSourceIndex::new();
@@ -10943,6 +10951,11 @@ pub enum WitnessRuntimeCause {
     StringRealizationStraddle,
     VariantRealizationRefused,
     PoolRootContributesNothing,
+    /// A keyed declaration read could not look at a file the asked key derives
+    /// (`v1_interpreter::InterpError::DeclFactsKeyedReadRefused`). Its own cause, not
+    /// `Type`: which file and what the parse said are the refusal, and a witness that classifies a
+    /// red claim by cause must be able to name it.
+    DeclFactsKeyedReadRefused,
     PatternMatchFailure,
     /// A REST response value did not inhabit its declared coproduct (see
     /// `v1_interpreter::RestResponseDecodeRefusal`).
@@ -10988,6 +11001,7 @@ impl WitnessRuntimeCause {
             WitnessRuntimeCause::StringRealizationStraddle => "string-realization-straddle",
             WitnessRuntimeCause::VariantRealizationRefused => "variant-realization-refused",
             WitnessRuntimeCause::PoolRootContributesNothing => "pool-root-contributes-nothing",
+            WitnessRuntimeCause::DeclFactsKeyedReadRefused => "decl-facts-keyed-read-refused",
             WitnessRuntimeCause::PatternMatchFailure => "pattern-match-failure",
             WitnessRuntimeCause::RestResponseUndecodable => "rest-response-undecodable",
             WitnessRuntimeCause::DivisionByZero => "division-by-zero",
@@ -11028,6 +11042,7 @@ impl WitnessRuntimeCause {
             E::StringRealizationStraddle { .. } => WitnessRuntimeCause::StringRealizationStraddle,
             E::VariantRealizationRefused { .. } => WitnessRuntimeCause::VariantRealizationRefused,
             E::PoolRootContributesNothing { .. } => WitnessRuntimeCause::PoolRootContributesNothing,
+            E::DeclFactsKeyedReadRefused { .. } => WitnessRuntimeCause::DeclFactsKeyedReadRefused,
             E::PatternMatchFailure { .. } => WitnessRuntimeCause::PatternMatchFailure,
             // A non-Bool guard is a type error at a located site; the variant carries the location,
             // the cause token classifies it with its kind.
@@ -11059,7 +11074,11 @@ impl WitnessRuntimeCause {
             // Raised only inside a witness frame, whose evaluation converts it into a
             // WitnessRefused / WitnessInterrupted value: reaching this classifier is a leak.
             | E::ModeledOperationRefused { .. }
-            | E::ModeledWorkerKilled { .. } => WitnessRuntimeCause::MappedOutcomeEscaped,
+            | E::ModeledWorkerKilled { .. }
+            // Raised only on the wet/record REST and record dispatch paths; a claim runs
+            // Hermetic (`execution_mode_for`), so reaching this classifier is a leak too.
+            | E::RecordRefusedCredentialOperation { .. }
+            | E::RestUrlRefusedCredentialPosition { .. } => WitnessRuntimeCause::MappedOutcomeEscaped,
         }
     }
 }
@@ -11847,7 +11866,15 @@ pub struct MultiEntryIndex {
 pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
     #[cfg(test)]
     yield_live_pool_before_building_another();
-    new_multi_entry_index_shell(build_module_index_or_refuse(source_roots), source_roots)
+    // Infallible CLI-boundary consumer: `try_build_module_index` returns the located refusal,
+    // and only `refuse_module_index_build` chooses exit 1. `new_multi_entry_index_shell` is
+    // called directly from this `#[track_caller]` frame so the construction record keeps the
+    // original caller's location.
+    new_multi_entry_index_shell(
+        try_build_module_index(source_roots)
+            .unwrap_or_else(|refusal| refuse_module_index_build(&refusal)),
+        source_roots,
+    )
 }
 
 /// Primary-precedence `MultiEntryIndex` — the index shape the compile-clean gate
@@ -11861,7 +11888,8 @@ fn build_multi_entry_index_primary_precedence(source_roots: &[String]) -> MultiE
     #[cfg(test)]
     yield_live_pool_before_building_another();
     new_multi_entry_index_shell(
-        build_module_index_primary_precedence_or_refuse(source_roots),
+        try_build_module_index_primary_precedence(source_roots)
+            .unwrap_or_else(|refusal| refuse_module_index_build(&refusal)),
         source_roots,
     )
 }
@@ -12539,7 +12567,8 @@ fn build_v1_attribution_multi_entry_index() -> MultiEntryIndex {
         "src/v1".to_string(),
     ];
     new_multi_entry_index_shell(
-        build_module_index_primary_precedence_or_refuse(&roots),
+        try_build_module_index_primary_precedence(&roots)
+            .unwrap_or_else(|refusal| refuse_module_index_build(&refusal)),
         &roots,
     )
 }
@@ -16419,7 +16448,7 @@ pub fn precompute_whole_tree_published_mock_keys(
         return Ok(std::collections::HashSet::new());
     }
     let t2a = std::time::Instant::now();
-    let index = build_module_index_or_refuse(&dag_roots);
+    let index = try_build_module_index(&dag_roots)?;
     eprintln!(
         "[floor-phase] phase=module-index state=completed wall_ms={} modules={}",
         t2a.elapsed().as_millis(),
@@ -23341,8 +23370,8 @@ mod module_grain_affected_equivalence_tests {
 #[cfg(test)]
 mod underlay_identity_proof_tests {
     use super::{
-        build_module_index_or_refuse, default_source_roots, new_multi_entry_index_scratch_over,
-        new_multi_entry_index_shell, scratch_underlay_if_proven,
+        default_source_roots, new_multi_entry_index_scratch_over, new_multi_entry_index_shell,
+        scratch_underlay_if_proven, try_build_module_index,
     };
     use std::rc::Rc;
 
@@ -23370,7 +23399,8 @@ mod underlay_identity_proof_tests {
     #[test]
     fn underlay_identity_proof_refuses_drift_and_permits_the_proven_scratch() {
         let roots = default_source_roots();
-        let map = build_module_index_or_refuse(&roots);
+        let map = try_build_module_index(&roots)
+            .expect("test fixture: default_source_roots must build a module index");
         let base = Rc::new(new_multi_entry_index_shell(map.clone(), &roots));
 
         let scratch = new_multi_entry_index_scratch_over(base.source_files.clone(), &roots);
@@ -31007,12 +31037,11 @@ fn serialize_untagged_variant(
 #[cfg(test)]
 mod import_closure_equivalence_tests {
     use super::{
-        build_module_graph_facts_live, build_module_index_or_refuse, build_multi_entry_index,
-        closure_subject_for_entry, default_source_roots, import_closure_live_paths,
-        load_sources_for_entry_with_index, module_graph_facts_build_count_for_test,
-        reset_module_graph_facts_build_count_for_test, resolve_entry_with_index,
-        resolve_transitively, resolve_transitively_bfs_legacy, witness_layer_roots,
-        workspace_relative_repo_path,
+        build_module_graph_facts_live, build_multi_entry_index, closure_subject_for_entry,
+        default_source_roots, import_closure_live_paths, load_sources_for_entry_with_index,
+        module_graph_facts_build_count_for_test, reset_module_graph_facts_build_count_for_test,
+        resolve_entry_with_index, resolve_transitively, resolve_transitively_bfs_legacy,
+        try_build_module_index, witness_layer_roots, workspace_relative_repo_path,
     };
     use im::HashMap;
     use std::collections::BTreeSet;
@@ -31074,7 +31103,8 @@ mod import_closure_equivalence_tests {
     }
 
     fn assert_bfs_matches_import_closure_live(entry_rel: &str, pool_roots: &[String]) {
-        let index = build_module_index_or_refuse(pool_roots);
+        let index = try_build_module_index(pool_roots)
+            .expect("test fixture: pool_roots must build a module index");
         let facts = super::build_module_graph_facts_live(pool_roots);
         assert_bfs_matches_import_closure_live_with_facts(entry_rel, &index, &facts);
     }
@@ -31146,6 +31176,13 @@ mod peel_alias_fixpoint_termination {
     // shape (e.g. `List`) from the strip-tree measurement. Rc types are !Send,
     // so the worker thread builds everything itself and reports a projection;
     // the timeout converts a regression from a suite hang into a located red.
+    //
+    // COVERAGE GAP, INHERITED (side-chat review of #16084): since #13939 stamps the one-child
+    // resolver result's `inferred` field, this fixture leaves the peel after ONE resolver call
+    // and never reaches the `once == n` guard, so deleting that guard would leave this test
+    // green. What it still discriminates is the child-refusal conservation asserted below. The
+    // guard's discriminating RED needs a fixture whose resolve is a true fixed point with an
+    // unstamped result; until one exists, this test is not evidence for the guard.
     #[test]
     fn peel_terminates_at_resolve_fixpoint() {
         let (tx, rx) = std::sync::mpsc::channel();
@@ -31289,12 +31326,27 @@ mod peel_alias_fixpoint_termination {
             );
             let quiet_diagnostic_count = quiet.diagnostics.len();
 
+            // The refusal count alone is only a change-detector; pin WHICH typed
+            // refusal the peel must keep so a regression that drops the genuine
+            // child refusal cannot pass on a coincidental count. The fixture's one
+            // genuinely unresolvable name is the child `PeelFixpointElem` (it is not
+            // a global bare name), so it must surface as the unobserved-marker-census
+            // refusal. The head `PeelFixpointProbe` resolves via `global_bare` to
+            // itself (the fixpoint) and must not fire a refusal at all.
+            let keeps_child_phantom = out.diagnostics.iter().any(|d| {
+                matches!(
+                    &*d.diagnostic,
+                    crate::v1_std_core::CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { name, .. }
+                        if name == "PeelFixpointElem"
+                )
+            });
             let _ = tx.send((
                 termination_probe,
                 quiet_diagnostic_count,
                 refusal_count,
                 unavailable_evidence_count,
                 retired_count,
+                keeps_child_phantom,
             ));
         });
         let (
@@ -31303,9 +31355,10 @@ mod peel_alias_fixpoint_termination {
             refusal_count,
             unavailable_evidence_count,
             retired_count,
+            keeps_child_phantom,
         ) = rx.recv_timeout(std::time::Duration::from_secs(30)).expect(
             "peel_alias_once_for_field_access did not terminate within 30s — the \
-                 fixpoint guard regressed (pre-guard this fixture spins forever)",
+                 peel stopped terminating (see the coverage-gap note: this fixture no longer reaches the once == n guard)",
         );
         assert_eq!(name, "PeelFixpointProbe");
         assert_eq!(
@@ -31313,12 +31366,28 @@ mod peel_alias_fixpoint_termination {
             "a legitimate non-alias probe miss must stay quiet"
         );
         assert_eq!(
-            refusal_count, 2,
-            "a resolver refusal during speculative peel must remain typed and countable"
+            refusal_count, 1,
+            "the fixture has exactly one genuinely unresolvable name — the child \
+             PeelFixpointElem (not a global bare name) — so exactly one typed resolver \
+             refusal must survive the speculative peel and remain countable. The head \
+             PeelFixpointProbe resolves via global_bare to itself (the fixpoint) and must \
+             NOT fire a refusal. (Before #13939 the one-child resolver arm returned the \
+             child's diagnostics on an UNSTAMPED result, so the peel iterated again, resolved \
+             the child a second time and concatenated a DUPLICATE child refusal; the former \
+             literal 2 pinned that double resolution. #13939 stamps the result's inferred \
+             field, so the peel finishes after one resolver call and the child refusal is \
+             counted once.)"
         );
         assert_eq!(
-            unavailable_evidence_count, 2,
-            "an unobserved marker census must remain a distinct typed refusal"
+            unavailable_evidence_count, 1,
+            "the single surviving resolver refusal is the unobserved marker census \
+             (UnitVariantPhantomIdentityEvidenceUnavailable) for PeelFixpointElem and must \
+             remain a distinct typed refusal"
+        );
+        assert!(
+            keeps_child_phantom,
+            "the refusal the peel must keep is the UnitVariantPhantomIdentityEvidenceUnavailable \
+             for the unresolvable child PeelFixpointElem"
         );
         assert_eq!(
             retired_count, 0,
@@ -32597,7 +32666,13 @@ pub struct SourceCorpusRead {
 }
 
 pub fn read_source_corpus_once(source_roots: &[String]) -> SourceCorpusRead {
-    let index = build_module_index_or_refuse(source_roots);
+    // Infallible corpus consumer (floor runner / target-invocation host / repository fold):
+    // a scan refusal is fatal here and the consumer boundary chooses exit 1. The library
+    // build (`try_build_module_index`) only returns the refusal; this is where a
+    // consumer decides to stop. It is not on the unit-test path — unit tests use
+    // `try_build_module_index`, which returns the refusal instead of exiting.
+    let index = try_build_module_index(source_roots)
+        .unwrap_or_else(|refusal| refuse_module_index_build(&refusal));
     let inventory = floor_source_inventory(&index);
     SourceCorpusRead { index, inventory }
 }

@@ -1,6 +1,6 @@
 module test.claim.compiler_gate_emit_build_lane_witness
 
-import std.types { Bool, List, String }
+import std.types { Bool, Int, List, String }
 import std.optional { Present, Absent }
 import gunbc.shell_command_text { shell_command_text_refusal_marker }
 import extdeps.github.actions { Step, RunStep, UsesStep, WorkflowPermissions }
@@ -18,8 +18,12 @@ import std.algebra { length, list_head, skip, string_contains }
 import gunbc.action_use_admission { cache_save_action }
 import extdeps.github.action_release { action_release_uses_text }
 import extdeps.filesystem.filesystem_io
+import gunbc.output_policy { ExpectSuccess }
 import gunbc.instrument_targets { self_host_entry, v2_native_cli_entry }
 import gunbc.repo.repo_self_build { repo_self_seed_build_step_run, repo_self_test_typecheck_command }
+import gunbc.read_set_restore { fast_lane_full_run_if, fast_lane_reused_if, fast_lane_decision_step_name, fast_lane_layout_check_step_name, fast_lane_reference_check_step_name }
+import gunbc.witness.compiler_gate_contract_stamp { compiler_gate_contract_stamp_step_name, compiler_gate_contract_stamp_evidence_step_name }
+import gunbc.parse_verdict_restore { parse_verdict_locate_step_name }
 
 // WHAT THIS FILE DISCRIMINATES, after the operator ruling of 2026-10-09 collapsed the emit-build
 // lane and the aggregate that read it into ONE required job (now `v2-bootstrap`): that the workflow
@@ -587,6 +591,7 @@ test fn the_v1_unit_test_harness_is_compiled_on_the_required_job() -> Bool {
   names_include(names: names, needle: compiler_gate_v1_unit_test_step_name)
     && (order_code == 1)
     && v1_unit_test_step_operates_unconditionally(step: compiler_gate_v1_unit_test_compile_step())
+    && v1_unit_test_step_operates_unconditionally(step: job_step_named(name: compiler_gate_v1_unit_test_step_name))
     && string_contains(s: run_text, pattern: repo_self_test_typecheck_command())
     && string_contains(s: run_text, pattern: "cargo check")
     && string_contains(s: run_text, pattern: "--lib")
@@ -650,6 +655,51 @@ fn v1_unit_test_step_operates_unconditionally(step: Step) -> Bool {
       timeout_minutes: _,
     } => false
   }
+}
+
+// THE JOB'S COPY IS READ, NOT ONLY THE DECLARATION: the planning fast lane guards other steps of this job, and
+// the typecheck must not be one of them -- with cfg(test) on, rustc reads committed files outside src/v1
+// (include_str! of tools/ and dag/ fixtures) that no fast-lane input records (side-chat review of 0d2b831).
+
+fn job_step_named(name: String) -> Step {
+  compiler_gate_emit_build_bound_steps() |> fold(init: compiler_gate_emit_build_notice_step(), f: (acc, b) => if b.step_name == name { b.step } else { acc })
+}
+
+fn job_step_position(name: String) -> Int {
+  compiler_gate_emit_build_bound_steps() |> fold(init: 0 - 1, f: (acc, b) => if acc < 0 && b.step_name == name { 0 - acc - 1 } else { if acc < 0 { acc - 1 } else { acc } })
+}
+
+// THE CLOSURE-DEPENDENT STEPS RUN UNLESS THE FAST LANE REUSED; THE REST RUN ON EVERY RUN. Read from the job's
+// own bound steps by name: the seed build and every subject step carry exactly the full-run guard, and the
+// stamp guard, its evidence, the cargo cache, the homes guard, the v1 unit-test typecheck and the failure
+// notice carry no fast-lane condition at all, so a reused run still checks its subject, still typechecks the
+// harness, and still says why it is red.
+test fn the_closure_dependent_steps_run_unless_the_fast_lane_reused() -> Bool {
+  let guarded = concat(
+    ["Build the compiler"],
+    map(xs: emitted_subject_build_rows(), f: r => emitted_subject_build_step_name(row: r))
+  )
+  let always = [
+    compiler_gate_contract_stamp_step_name, compiler_gate_contract_stamp_evidence_step_name,
+    "Cache Cargo", "Require isolated toolchain homes", compiler_gate_v1_unit_test_step_name,
+    "Why this lane is red, and what would be a real finding"
+  ]
+  all(guarded, n => step_if_condition(step: job_step_named(name: n)) == fast_lane_full_run_if())
+    && all(always, n => names_include(names: map(xs: compiler_gate_emit_build_bound_steps(), f: b => b.step_name), needle: n)
+      && (string_contains(s: step_if_condition(step: job_step_named(name: n)), pattern: "fast_lane") == false))
+    && step_if_condition(step: job_step_named(name: fast_lane_layout_check_step_name)) == fast_lane_reused_if()
+    && step_if_condition(step: job_step_named(name: fast_lane_reference_check_step_name)) == fast_lane_reused_if()
+}
+
+// THE DECISION IS EARLY: after the stamp guard and its evidence, before the toolchain is installed, and the
+// one ancestor locator precedes it.
+test fn the_fast_lane_decides_behind_the_stamp_guard_and_before_the_toolchain() -> Bool {
+  let evidence = job_step_position(name: compiler_gate_contract_stamp_evidence_step_name)
+  let locate = job_step_position(name: parse_verdict_locate_step_name)
+  let decide = job_step_position(name: fast_lane_decision_step_name)
+  let isolate = job_step_position(name: "Isolate toolchain homes")
+  (evidence >= 0) && (evidence < locate) && (locate < decide) && (decide < isolate)
+    && (length(xs: filter(xs: compiler_gate_emit_build_bound_steps(), predicate: fn(b) { b.step_name == parse_verdict_locate_step_name })) == 1)
 }
 
 // THE MUTATED COPY: the same step, made a passenger -- fleet-conditioned and non-blocking. This is the

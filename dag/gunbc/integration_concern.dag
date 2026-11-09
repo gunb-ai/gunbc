@@ -564,19 +564,16 @@ data broker_status_decision_is_unreceipted: IntegrationConcern = IntegrationConc
     standing: RequirementUnestablished { decided_by: "approval_store_receipt_mac_key_secret_ref is not yet minted, and a verifier holding the current single key could also mint receipts, so a verify-only half must exist first" },
   },
   affected: FreeSemigroup {
-    head: decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_broker_standing"),
-    tail: [
-      decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_operator_grant"),
-      decl_ref(module_path: "gunbc.fleet.printer_operator_approval", decl_name: "approve_and_print"),
-    ],
+    head: decl_ref(module_path: "gunbc.fleet.printer_operator_approval", decl_name: "approve_and_print"),
+    tail: [],
   },
-  question: "How does a runner job verify that a decision read from the broker's loopback escalation-status route is the operator's recorded decision? Residual until then: a loopback-reachable forger of the status response can present Approved for the printer hold release and for the bed-clear approval, which both read that route at the same trust.",
+  question: "How does a runner job verify that a decision read from the broker's loopback escalation-status route is the operator's recorded decision? Residual until then: a loopback-reachable forger of the status response can present Approved for the bed-clear approval, which reads that route. (The printer hold release that also read it was deleted on 2026-11-09.)",
   sightings: FreeSemigroup {
     head: ConcernSighting {
       revision: "b79423bb29e6b7a2804dc0bd0d3db629eb5688f4",
       evidence: FreeSemigroup {
         head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.auth.approval_gate", decl_name: "approval_standing_read") },
-        tail: [CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_broker_standing") }],
+        tail: [],
       },
       account: "The printer job runs as the plain CI runner and cannot read the operator-only approval store, so the printer hold release reads the decision through the broker's unauthenticated loopback status route, the same route and trust as the converge's bed-clear approval. The MAC-receipted store route exists but its key is unminted.",
     },
@@ -586,12 +583,12 @@ data broker_status_decision_is_unreceipted: IntegrationConcern = IntegrationConc
     home: ExistingHome { model: decl_ref(module_path: "gunbc.auth.approval_gate", decl_name: "approval_standing_read") },
     preserve: [
       PreservedObligation {
-        holder: decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_operator_grant"),
+        holder: decl_ref(module_path: "gunbc.fleet.printer_operator_approval", decl_name: "approve_and_print"),
         control: Absent,
-        statement: "a hold releases only on an approved decision over this exact hold and generation; Denied, Expired, Pending and mismatched intent refuse",
+        statement: "a print starts only on an approved decision over this exact attempt; Denied, Expired, Pending and mismatched intent refuse",
       },
     ],
-    next: climbs_when(capability: "the store-receipt MAC key is minted and pinned with a verify-only half the runner holds, and approval_standing_read verifies the receipt before returning a standing for both the printer hold and bed-clear consumers"),
+    next: climbs_when(capability: "the store-receipt MAC key is minted and pinned with a verify-only half the runner holds, and approval_standing_read verifies the receipt before returning a standing for the bed-clear consumer"),
   },
 }
 
@@ -1092,6 +1089,64 @@ data entry_closure_provider_settling_has_two_loops: IntegrationConcern = Integra
   } },
 }
 
+// srv1 #15822 row 29 (#16013): the pre-launch memory-fit admission refuses a review that cannot fit the
+// user-work slice, returning ReviewDeferred rather than launching a unit the kernel would memcg-OOM. A
+// deferral is cheap (retries each tick) but, by design, has no expiry -- so a slice that never drains
+// wedges the review with no signal that it is stuck. This row records that missing signal.
+data user_work_slice_admission_deferral_has_no_visible_count: IntegrationConcern = IntegrationConcern {
+  identity: "user_work_slice_admission_deferral_has_no_visible_count",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_review_spawn"),
+    requirement: "A review or audit that the user-work-slice memory-fit admission keeps deferring must expose a cumulative, visible refusal count. A deferral retries each tick and never expires, so a slice that cannot drain wedges the review with no signal distinguishing 'briefly full' from 'permanently full'. The per-deferral reason carries the requested/available byte counts, but nothing counts deferrals across ticks.",
+    standing: RequirementEstablished {
+      by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_audit_spawn") },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_review_spawn"),
+    tail: [decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_audit_spawn")],
+  },
+  question: "Where is a chronically-deferred review made visible? belt_review_spawn and belt_audit_spawn now refuse before launch (typed memory-fit admission, #16013) when gunbc-user-work.slice cannot hold the work. Each refusal carries its byte counts in the ReviewDeferred.reason, but a single reason per tick does not reveal that the same review has been refused for hundreds of ticks while the standing obligation daemons keep the slice full. A cumulative count must live where the belt already records per-tick outcomes (a tick outcome record/journal) -- not in the attempt record, which must not carry a belt-lifecycle fact it does not own (the row-30 boundary, confirmed with the row-30 owner).",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "50652e0777329a585efa6919ef5ab9a0c81222ae",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_review_spawn") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_audit_spawn") }],
+      },
+      account: "Raised while repairing srv1 #15822 row 29 (#16013): the goal-audit reviewer was memcg-OOM-killed because the belt admitted it into gunbc-user-work.slice on slot count and liveness alone. The repair adds a pre-launch memory-fit admission that returns ReviewDeferred when the slice cannot hold the unit. The row-30 owner noted that a deferral holds forever by design (no expiry) and asked that the refusal count be surfaced somewhere visible; the belt spawn is per-tick and holds no cross-tick store, and the deferral never reaches the reconciliation standings fold, so neither the belt nor the attempt record persists a count today. This row records that gap rather than inventing cross-tick state in #16013.",
+    },
+  },
+  disposition: Open,
+}
+
+data user_work_slice_admission_check_races_within_a_tick: IntegrationConcern = IntegrationConcern {
+  identity: "user_work_slice_admission_check_races_within_a_tick",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_user_work_slice_fit"),
+    requirement: "A pre-launch memory-fit admission must account for units already admitted in the same tick, so two spawns cannot both pass a fit check against the same free room. belt_user_work_slice_fit reads the slice MemoryCurrent and the belt then launches separately; the read and the launch are not one atomic step, so simultaneous admissions may jointly overcommit the ceiling before the kernel's accounting reflects either launch.",
+    standing: RequirementEstablished {
+      by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_audit_spawn") },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_user_work_slice_fit"),
+    tail: [decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_review_spawn"), decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_audit_spawn")],
+  },
+  question: "When several reviewers or auditors are admitted in one belt tick, what prevents them from each passing belt_user_work_slice_fit against the same slice MemoryCurrent reading before any of their launches is reflected in the kernel's accounting? A per-tick reservation -- subtracting the bounded bytes of units already admitted this tick from the free room before each subsequent fit check -- would close the window. The check already removes the dominant failure (launching into an already-full slice); this row records the residual within-a-tick window rather than claiming it closed.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "50652e0777329a585efa6919ef5ab9a0c81222ae",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_user_work_slice_fit") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_review_spawn") }, CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_audit_spawn") }],
+      },
+      account: "Raised on the #16013 review of the srv1 #15822 row-29 repair: the pre-launch memory-fit admission reads the slice and then launches as separate steps, so two spawns admitted in one tick can both observe enough free room. A per-tick reservation of already-admitted bounded bytes would make the check exact. The check still prevents the incident (launching a reviewer into a slice the standing daemons already fill); this row records the remaining race, not a defect in the incident repair.",
+    },
+  },
+  disposition: Open,
+}
+
 // RAISED BY WORK ITEM adhoc-d9a8b550-3f7 (2026-11-07), from a regen round observed 2026-11-06 06:18Z.
 // The round printed git's refusal to resolve a bare `main` and CONTINUED to exit 0. Nothing here was
 // built or executed: the trace is source reading plus one read-only scratch repo used to match git's
@@ -1370,7 +1425,6 @@ data approval_submit_deadline_restated_per_caller: IntegrationConcern = Integrat
         decl_ref(module_path: "gunbc.runner.runner_group_restriction_ensure_run", decl_name: "microvm_runner_group_submit_timeout"),
         decl_ref(module_path: "gunbc.auth.approved_gcp_access", decl_name: "approved_gcp_file_request"),
         decl_ref(module_path: "gunbc.auth.branch_run_grant", decl_name: "branch_run_grant_request_wet"),
-        decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_release_request_filing"),
         decl_ref(module_path: "gunbc.fleet.printer_operator_approval", decl_name: "approve_and_print"),
       ],
     },
@@ -1383,11 +1437,10 @@ data approval_submit_deadline_restated_per_caller: IntegrationConcern = Integrat
       decl_ref(module_path: "gunbc.runner.runner_group_restriction_ensure_run", decl_name: "microvm_runner_group_submit_timeout"),
       decl_ref(module_path: "gunbc.auth.approved_gcp_access", decl_name: "approved_gcp_file_request"),
       decl_ref(module_path: "gunbc.auth.branch_run_grant", decl_name: "branch_run_grant_request_wet"),
-      decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_release_request_filing"),
       decl_ref(module_path: "gunbc.fleet.printer_operator_approval", decl_name: "approve_and_print"),
     ],
   },
-  question: "Is the 30 s submit_timeout every caller passes to approval_file_stored_request one decision -- how long any caller waits for the approval broker to accept a submission -- or several? It is 30 s at seven sites: three per-module rows and four inline literals. Equal values are a reason to ask, not a finding: if the broker's admission latency changed, would all seven change together? If so the decision gets one owner, and callers may still pass it explicitly, including a tighter remaining budget.",
+  question: "Is the 30 s submit_timeout every caller passes to approval_file_stored_request one decision -- how long any caller waits for the approval broker to accept a submission -- or several? It is 30 s at six sites: three per-module rows and three inline literals (a seventh, the printer hold release, was deleted on 2026-11-09). Equal values are a reason to ask, not a finding: if the broker's admission latency changed, would all six change together? If so the decision gets one owner, and callers may still pass it explicitly, including a tighter remaining budget.",
   sightings: FreeSemigroup {
     head: ConcernSighting {
       revision: "8d22701ad6ca9edf3e98ad5562efcd04031f4f36",
@@ -1608,6 +1661,7 @@ data equality_wall_three_site_measure_stopgap_interim: IntegrationConcern = Inte
     },
     tail: [],
   },
+  disposition: Open,
 }
 
 data host_effect_apply_witness_import_block_absent: IntegrationConcern = IntegrationConcern {
@@ -1635,9 +1689,10 @@ data host_effect_apply_witness_import_block_absent: IntegrationConcern = Integra
     },
     tail: [],
   },
+  disposition: Open,
 }
 
-data integration_concerns: List<IntegrationConcern> = [controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim]
+data integration_concerns: List<IntegrationConcern> = [controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))
