@@ -261,7 +261,7 @@ fn work_order() -> List<MarkdownBlock> {
     p(text: "One list for both workstreams. A nodes are defined in section 5, P nodes in section 7; B nodes are defined here. A phase starts when the nodes it depends on have landed; nodes inside a phase are independent unless stated."),
     h3(text: "Phase 0: holding in place (done, temporary)"),
     ul(items: [
-      li(text: "B0. Record the overnight mitigations as incident overrides, each with an end condition: runners capped at 12 per box (survives reboot), clocks capped at 2.2 GHz (lost on reboot; record before a reboot drops it), CPU fan 50% and chassis fans 100% (untested across a BMC reset). Each ends when B6 applies the chosen point."),
+      li(text: "B0. Record the overnight mitigations as incident overrides, each with an end condition: runners capped at 12 per box (survives reboot), clocks capped at 2.2 GHz (lost on reboot; record before a reboot drops it), CPU fan 50% and chassis fans 100% (untested across a BMC reset). Each ends when B6 applies the chosen point. The runner cap ENDED EARLY on 2026-11-08 by operator decision (gunbc.design_ruling thermal_runner_cap_lifted_2026_11_08): srv3 and srv4 were restored toward their derived committed width by an operator-directed emergency hand action (recorded in that ruling), and a later fleet-converge runner_host_file_converge apply is the route that reconciles them to the model; the clock and fan overrides are unchanged by it."),
     ]),
     h3(text: "Phase 1: see the machines"),
     ul(items: [
@@ -320,7 +320,7 @@ fn decisions() -> List<MarkdownBlock> {
     h2(text: "10. Operator decisions"),
     p(text: "The incident's five questions with a recommendation each. Every answer is interim until P5 can produce a measured one."),
     ol(items: [
-      li(text: "Runner cap (keep 12, change, restore 19): keep 12 as a recorded incident override with an end condition; the lasting number comes from P5."),
+      li(text: "Runner cap (keep 12, change, restore 19): keep 12 as a recorded incident override with an end condition; the lasting number comes from P5. Decided 2026-11-08 against the recommendation: restore the derived committed width now, because the stranded throughput outweighs the heat concern (gunbc.design_ruling thermal_runner_cap_lifted_2026_11_08). The lasting number still comes from P5."),
       li(text: "Clock cap (make 2.2 GHz permanent, change, revert): the same. It works but is lost on reboot and was never tested alone; record it before a reboot drops it."),
       li(text: "Airflow (physical check?): yes. DIMMs near 100 °C with chassis fans at 100% means air is not reaching them. Confirm remotely that every chassis fan reaches its expected speed, then inspect shroud, fan direction and blockage, and measure room temperature."),
       li(text: "CPU fan at 50%: not as policy. 35% was too little at full load and 3.0 GHz; the CPU group should follow its own curve and the DIMMs should be cooled by the chassis group."),

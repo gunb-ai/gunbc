@@ -438,7 +438,6 @@ data gunbc_tree: LayoutNamespaceRow = LayoutNamespaceRow {
     "v2.extdeps.languages.swift",
     "v2.extdeps.runtimes",
     "v2.lens",
-    "v2.lens.affected_set",
     "v2.lens.common",
     "v2.lens.complexity_accumulator_copy",
     "v2.lens.cost",
