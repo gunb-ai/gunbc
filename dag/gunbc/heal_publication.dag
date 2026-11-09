@@ -9,6 +9,7 @@ import std.bytes { utf8_encode_bytes }
 import std.optional { Present, Absent }
 import std.resources { Network }
 import extdeps.cloud.gcp.sts
+import extdeps.cloud.gcp.gcp { cloud_platform_scope }
 import extdeps.cloud.gcp.iam
 import extdeps.cloud.gcp.iam {
   token_lifetime_wire, acquire_impersonated_access, gcp_impersonated_presentation,
@@ -631,12 +632,17 @@ type PublisherCloudCredential
   = PublisherCloudCredentialMinted { credential: GcpImpersonatedAccessCredential }
   | PublisherCloudCredentialNotMinted { cause: String }
 
-// THE SCOPE THIS PUBLISHER'S ONE REQUEST NEEDS, declared by the consumer that makes the request, not lifted
-// from the provider: the minted credential is spent on exactly one Secret Manager accessVersion read, and
-// that read lives under the cloud-platform scope. It is stated here because the binding judgment compares it
-// (an access token minted for a different axis is refused before the read), and it is the same value the API
-// model already defaults to, so the wire request this replaces is unchanged.
-data heal_publisher_cloud_scope: String = "https://www.googleapis.com/auth/cloud-platform"
+// THE SCOPE THIS PUBLISHER'S ONE REQUEST NEEDS, declared by the consumer that makes the request: the minted
+// credential is spent on exactly one Secret Manager accessVersion read, and that read lives under the
+// cloud-platform scope. It is stated here because the binding judgment compares it (an access token minted
+// for a different axis is refused before the read), and because BOTH sides of that comparison name this one
+// row -- the `scopes` sent on the mint and the `required_scopes` checked at the spend -- so they cannot be
+// edited apart. What is decided here is WHICH scope the publisher needs; the URI's spelling is not decided
+// here, it is read from `extdeps.cloud.gcp.gcp::cloud_platform_scope`, the same row the STS exchange default
+// and the impersonation default read, so no leg can drift out of agreement with the others
+// (gunbc.design_argument::single_authority). `as String` because the mint input and the binding record hold
+// `List<String>`; the authority itself is NonEmptyStr.
+data heal_publisher_cloud_scope: String = cloud_platform_scope as String
 
 // WHAT THE ONE SECRET-MANAGER READ NEEDS, declared by the operation that makes it.
 // required_remaining = 30 s: the credential must still have that much life at the instant of dispatch, which

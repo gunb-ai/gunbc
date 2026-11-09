@@ -3,6 +3,7 @@ module extdeps.cloud.gcp.sts
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.cloud.gcp.gcp { cloud_platform_scope }
 import std.types { Int, NonEmptyStr, Secret, Bearer }
 import extdeps.ietf.http_semantics { GET, POST }
 import std.resources { Network }
@@ -84,7 +85,9 @@ service gcp.STS {
       // access_token / expires_in / issued_token_type / token_type. The output block below already read
       // the snake_case spelling; the body clause is the half that was missing.
       audience: NonEmptyStr
-      scope: NonEmptyStr = "https://www.googleapis.com/auth/cloud-platform"
+      // The default reads the one authority for this URI (extdeps.cloud.gcp.gcp::cloud_platform_scope)
+      // rather than restating it; cloud-platform is what the publisher's single Secret Manager read needs.
+      scope: NonEmptyStr = cloud_platform_scope
       subject_token_type: SubjectTokenType = Jwt
       requested_token_type: RequestedTokenType = RequestAccessToken
     }

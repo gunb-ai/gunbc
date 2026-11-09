@@ -3,7 +3,7 @@ module extdeps.cloud.gcp.iam
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail, GcpOperation, GoogleRpcStatus }
+import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail, GcpOperation, GoogleRpcStatus, cloud_platform_scope }
 import std.types { Bearer, Bool, Int, Json, List, NonEmptyStr, Secret, String }
 import std.algebra { fold_list }
 import std.optional { Absent, Present }
@@ -447,7 +447,9 @@ service gcp.IAM {
     input {
       access_token: Secret
       target_sa: ServiceAccountEmail
-      scope: List<String> = ["https://www.googleapis.com/auth/cloud-platform"]
+      // Read from the authority row, not restated: this default and the publisher's binding check must be
+      // the SAME scope by construction, or the presentation refuses every publish (see cloud_platform_scope).
+      scope: List<String> = [cloud_platform_scope as String]
       lifetime: String = "3600s"
     }
     output {
