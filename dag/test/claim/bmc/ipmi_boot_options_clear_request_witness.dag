@@ -1,0 +1,131 @@
+module test.claim.bmc.ipmi_boot_options_clear_request_witness
+
+// THE CLEAR'S REQUEST IS JUDGED BY ITS BYTES, AND THE OLD SIX-BYTE FORM GOES RED.
+//
+// extdeps.bmc.ipmi ChassisBootOptionsClear once sent `raw 0x00 0x08 0x05 0x01 d1..d5`: a stray 0x01
+// "revision" byte between the parameter selector and the five boot-flag data bytes, which Set System Boot
+// Options does not have (ipmitool lib/ipmi_chassis.c ipmi_chassis_set_bootparam and go-ipmi
+// SetSystemBootOptionsParamRequest.Pack both build selector-then-data). The dry world read only the five data
+// INPUTS, so it accepted that request as a clear and the boot lane's witnesses stayed green over it while the
+// live controller left parameter 5 unchanged (boot run 42663208460). These claims hold the dry world to the
+// request the argv actually carries:
+//   - the RED: the old operation, kept below as a fixture declaration with its original argv, run through the
+//     PRODUCTION reply (gunbc.bmc_dry_realization bmc_boot_options_clear_reply) is answered as a controller
+//     answers a request of the wrong length -- exit nonzero, "rsp=0xc7" on stderr, the world unchanged -- and
+//     that answer reads back, through the production parse and verdict, as a write the controller REFUSED;
+//   - the positive control: the same reply over the real declaration's argv clears the override.
+// Deleting the length check in the reply turns the RED green-by-accident and this claim red.
+
+import std.types { Bool, Int, List, NonEmptyStr, String, Unit }
+import std.optional { Absent, Present }
+import std.algebra { string_contains }
+import std.resources { Network }
+import std.measure { second }
+import std.operation_argv { BoundOperationInvocation, OperationRef, operation_argv_bind_text, operation_argv_bind_text_list }
+import v2.std.operation_realization { OperationCall }
+import extdeps.bmc.ipmi { ipmi_cipher_suite_argv }
+import extdeps.bmc.ipmi_boot_selection {
+  ipmi_boot_flag_data_1_clear, ipmi_boot_flag_data_2_clear, ipmi_boot_flag_data_3_clear,
+  ipmi_boot_flag_data_4_clear, ipmi_boot_flag_data_5_clear,
+}
+import extdeps.bmc.ipmitool_raw_reply { ipmitool_raw_stderr_completion }
+import extdeps.bmc.ipmitool_observed_output { ipmitool_bootparam5_valid_after_bootdev_none }
+import gunbc.bmc_model { BmcWorld, bmc_world, BmcPowerOff, bmc_with_override, BootOverrideNone, BootOverrideCdromEfiNextBoot }
+import gunbc.bmc_dry_realization { bmc_boot_options_clear_reply, bmc_ipmi_operation, BmcReplied, BmcRefused, BmcReplyFault }
+import gunbc.host.boot_attempt { StaleOverrideWouldNotClear, ClearWriteRefused }
+import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
+  BootParamRead, ClearSetRefused, ClearSetAccepted, boot_param5_clear_write_of, stale_clear_verdict,
+}
+
+// THE OLD OPERATION, VERBATIM BUT FOR ITS SERVICE NAME: the argv the lane dispatched before this change.
+service fixture.ipmi.SixByteClear {
+  operation ChassisBootOptionsClear {
+    requires Network
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, boot_flag_data_1: String, boot_flag_data_2: String, boot_flag_data_3: String, boot_flag_data_4: String, boot_flag_data_5: String, cipher_suite_argv: List<String> }
+    output { stdout: String from "stdout", success: Bool from "exit_success" }
+    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "-U", "{username}", "-f", "{password_file}", "raw", "0x00", "0x08", "0x05", "0x01", "{boot_flag_data_1}", "{boot_flag_data_2}", "{boot_flag_data_3}", "{boot_flag_data_4}", "{boot_flag_data_5}"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool raw set system boot options failed"
+    }
+  }
+}
+
+data six_byte_clear_operation: OperationRef = OperationRef {
+  path: "dag/test/claim/bmc/ipmi_boot_options_clear_request_witness.dag",
+  service: "fixture.ipmi.SixByteClear",
+  operation: "ChassisBootOptionsClear",
+}
+
+fn clear_call(at: OperationRef) -> OperationCall {
+  OperationCall {
+    invocation: BoundOperationInvocation {
+      at: at,
+      bindings: [
+        operation_argv_bind_text(name: "bmc_host", text: "bmc.test.invalid"),
+        operation_argv_bind_text(name: "username", text: "operator"),
+        operation_argv_bind_text(name: "password_file", text: "/nonexistent/credential"),
+        operation_argv_bind_text(name: "boot_flag_data_1", text: ipmi_boot_flag_data_1_clear as String),
+        operation_argv_bind_text(name: "boot_flag_data_2", text: ipmi_boot_flag_data_2_clear as String),
+        operation_argv_bind_text(name: "boot_flag_data_3", text: ipmi_boot_flag_data_3_clear as String),
+        operation_argv_bind_text(name: "boot_flag_data_4", text: ipmi_boot_flag_data_4_clear as String),
+        operation_argv_bind_text(name: "boot_flag_data_5", text: ipmi_boot_flag_data_5_clear as String),
+        operation_argv_bind_text_list(name: "cipher_suite_argv", items: ipmi_cipher_suite_argv(suite: Absent)),
+      ],
+    },
+    now: second(count: 0),
+  }
+}
+
+// A controller holding an override the clear is meant to remove.
+fn seeded() -> BmcWorld {
+  bmc_with_override(world: bmc_world(power: BmcPowerOff), over: BootOverrideCdromEfiNextBoot)
+}
+
+// RED: the six-byte request is refused 0xC7 and the override stays.
+test fn the_six_byte_clear_is_refused_as_the_wrong_length_and_changes_nothing() -> Bool {
+  match bmc_boot_options_clear_reply(world: seeded(), call: clear_call(at: six_byte_clear_operation)) {
+    BmcRefused { exit_code: code, stderr: err, world: after } =>
+      code != 0
+        && string_contains(s: err, pattern: "rsp=0xc7")
+        && string_contains(s: err, pattern: "Request data length invalid")
+        && after.boot_override == BootOverrideCdromEfiNextBoot
+        && ipmitool_raw_stderr_completion(stderr: err) == Present { value: 199 }
+    BmcReplied { stdout: _, world: _ } => false
+    BmcReplyFault { reason: _ } => false
+  }
+}
+
+// AND THE REFUSAL READS BACK AS ONE: the production classification of the write's answer, and the production
+// verdict over a readback that still shows the flag (boot 7's own `bootdev none` bytes), name a write the
+// controller REFUSED -- not one it took.
+test fn the_refusal_reads_back_as_a_refused_write_not_an_accepted_one() -> Bool {
+  match bmc_boot_options_clear_reply(world: seeded(), call: clear_call(at: six_byte_clear_operation)) {
+    BmcRefused { exit_code: code, stderr: err, world: _ } => {
+      let write = boot_param5_clear_write_of(success: false, exit_code: code, stderr: err)
+      match write {
+        ClearSetRefused { completion: c, stderr: _ } => c == 199
+        _ => false
+      }
+      && match stale_clear_verdict(
+        before: BootParamRead { readback: ipmitool_bootparam5_valid_after_bootdev_none, at: "before" },
+        write: write,
+        readback: ipmitool_bootparam5_valid_after_bootdev_none,
+      ) {
+        StaleOverrideWouldNotClear { write: ClearWriteRefused { cause: c } } => string_contains(s: c as String, pattern: "0xc7")
+        _ => false
+      }
+    }
+    _ => false
+  }
+}
+
+// POSITIVE CONTROL: the real declaration's argv -- selector then five data bytes -- clears the override, and an
+// accepted write is classified as accepted.
+test fn the_real_clear_is_the_parameters_length_and_clears_the_override() -> Bool {
+  match bmc_boot_options_clear_reply(world: seeded(), call: clear_call(at: bmc_ipmi_operation(operation: "ChassisBootOptionsClear"))) {
+    BmcReplied { stdout: out, world: after } => out == "" && after.boot_override == BootOverrideNone
+    _ => false
+  }
+  && boot_param5_clear_write_of(success: true, exit_code: 0, stderr: "") == ClearSetAccepted
+}

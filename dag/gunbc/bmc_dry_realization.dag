@@ -3,7 +3,7 @@ module gunbc.bmc_dry_realization
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { list_snoc_item }
 import std.measure { Second, second }
-import std.operation_argv { OperationRef }
+import std.operation_argv { OperationRef, ArgvMaterialized, ArgvMaterializationRefused, shell_materialize_operation_argv }
 import v2.std.operation_realization {
   OperationRealization, OperationBinding, OperationCall, OperationStep,
   OperationObserved, OperationHarnessFault, ShellObserved,
@@ -17,7 +17,10 @@ import extdeps.bmc.ipmi_sdr { sdr_type_line_text }
 import extdeps.bmc.ipmi_boot_selection {
   ipmi_boot_flag_data_1_clear, ipmi_boot_flag_data_2_clear, ipmi_boot_flag_data_3_clear,
   ipmi_boot_flag_data_4_clear, ipmi_boot_flag_data_5_clear, ipmi_boot_flags_clear_data_states_invalid,
+  ipmi_boot_flags_parameter_selector, ipmi_boot_flags_parameter_data_octets,
 }
+import extdeps.bmc.ipmi { ipmi_completion_code_request_data_length_invalid, ipmi_completion_code_request_data_length_invalid_name }
+import extdeps.bmc.ipmitool_raw_reply { IpmitoolRawRequest, ipmitool_raw_request_of_argv, ipmitool_raw_refusal_stderr }
 import gunbc.bmc_model {
   BmcWorld, bmc_chassis_control, bmc_power_is_on, bmc_advance, bmc_with_override,
   BootOverrideNone, BootOverrideCdromEfiNextBoot,
@@ -80,8 +83,13 @@ fn bmc_ipmi_operation(operation: String) -> OperationRef {
 // mtcollins1_boot_acceptance_matrix `a_lying_bootdev_echo_moves_no_verdict` runs the real route with the
 // clear's echo replaced by a hostile one -- a raw Set System Boot Options prints nothing at all, so every
 // byte that row prints is an invention -- and shows no outcome, receipt, or verdict moves.
+// A CONTROLLER REFUSAL IS AN OBSERVATION, NOT A HARNESS FAULT (v2.std.operation_realization: "a device
+// refusal ... is simply an observation (a nonzero exit, an error body)"). BmcRefused is the controller
+// answering and declining, rendered the way the client renders it; BmcReplyFault is a scenario the model does
+// not carry, which stops the frame.
 type BmcReply
   = BmcReplied { stdout: String, world: BmcWorld }
+  | BmcRefused { exit_code: Int, stderr: String, world: BmcWorld }
   | BmcReplyFault { reason: NonEmptyStr }
 
 fn bmc_chassis_status_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
@@ -114,8 +122,15 @@ fn bmc_bootparam_get_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
       },
       world: world,
     }
+  } else if input_is(call: call, name: "parameter", expected: "3") {
+    // PARAMETER 3 (valid-bit clearing) HAS NO CAPTURE OF THIS CONTROLLER'S ANSWER, and synthesizing its bytes
+    // would fabricate the evidence the read exists to collect (the SdrElistVerbose precedent below). The read
+    // is diagnostic -- no verdict consumes it -- so the model declines it as an unanswered read, in words that
+    // say it is the model declining, and the lane records it UNREAD. Trigger to model it: the first live read
+    // of parameter 3 is committed (boot 10's stale-clear prints it).
+    BmcRefused { exit_code: 1, stderr: "gunbc dry world: boot parameter 3 has no committed capture of this controller's answer; the model does not answer it", world: world }
   } else {
-    BmcReplyFault { reason: "the model answers boot parameter 5 only" as NonEmptyStr }
+    BmcReplyFault { reason: "the model answers boot parameters 5 and 3 only" as NonEmptyStr }
   }
 }
 
@@ -141,11 +156,41 @@ fn bmc_bootdev_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
 // moves to BootOverrideNone, which is what a controller answers when the valid bit is clear --
 // bmc_bootparam_get_reply then prints 'Boot parameter data: 0000000000', 'Boot Flag Invalid' and 'Boot
 // Device Selector : No override' from ipmitool_bootparam5_no_override, bytes that are a capture.
+//
+// THE REQUEST'S LENGTH IS JUDGED ON THE BYTES THE ARGV CARRIES, NOT ON THE INPUTS. The netfn, command and
+// selector are argv literals of the operation, so no input reveals them -- and an earlier revision of the
+// operation carried a stray 0x01 between the selector and the data that this world, reading only the five
+// data inputs, accepted as a clear. So the request is materialized from the operation's own declaration with
+// the call's bindings (std.operation_argv shell_materialize_operation_argv, the argv the real transport would
+// run) and read as ipmitool reads it; a Set System Boot Options for the boot-flags selector whose data is not
+// that parameter's length is answered as a controller answers a request of the wrong length -- completion
+// code 0xC7, rendered on stderr as ipmitool renders it, the world unchanged -- so the clearance verdict above
+// sees exactly what a live refusal would give it.
 fn bmc_boot_options_clear_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
-  if !bmc_boot_options_clear_call_is_the_clear(call: call) {
-    BmcReplyFault { reason: "ChassisBootOptionsClear was dispatched with boot-flag data other than the invalid flag bytes (data 1 with the valid bit clear, data 2 selector 0, data 3-5 reserved): setting an override is ChassisBootDevWithOptions's operation" as NonEmptyStr }
-  } else {
-    BmcReplied { stdout: "", world: bmc_with_override(world: world, over: BootOverrideNone) }
+  match bmc_call_raw_request(call: call) {
+    Absent => BmcReplyFault { reason: "ChassisBootOptionsClear's argv did not materialize as an ipmitool raw request" as NonEmptyStr }
+    Present { value: req } =>
+      if req.netfn != 0 || req.cmd != 8 || req.data.first() != Present { value: ipmi_boot_flags_parameter_selector } {
+        BmcReplyFault { reason: "ChassisBootOptionsClear's argv is not a Set System Boot Options request for the boot-flags parameter" as NonEmptyStr }
+      } else if count(req.data) != 1 + ipmi_boot_flags_parameter_data_octets {
+        BmcRefused {
+          exit_code: 1,
+          stderr: ipmitool_raw_refusal_stderr(netfn: req.netfn, cmd: req.cmd, completion: ipmi_completion_code_request_data_length_invalid.code, completion_name: ipmi_completion_code_request_data_length_invalid_name),
+          world: world,
+        }
+      } else if !bmc_boot_options_clear_call_is_the_clear(call: call) {
+        BmcReplyFault { reason: "ChassisBootOptionsClear was dispatched with boot-flag data other than the invalid flag bytes (data 1 with the valid bit clear, data 2 selector 0, data 3-5 reserved): setting an override is ChassisBootDevWithOptions's operation" as NonEmptyStr }
+      } else {
+        BmcReplied { stdout: "", world: bmc_with_override(world: world, over: BootOverrideNone) }
+      }
+  }
+}
+
+// THE RAW REQUEST A CALL WOULD PUT ON THE WIRE, from the operation's declaration and the call's own bindings.
+fn bmc_call_raw_request(call: OperationCall) -> IpmitoolRawRequest? {
+  match shell_materialize_operation_argv(call.invocation.at.path, call.invocation.at.service, call.invocation.at.operation, call.invocation.bindings) {
+    ArgvMaterialized { argv: a } => ipmitool_raw_request_of_argv(argv: a)
+    ArgvMaterializationRefused { at: _, cause: _ } => none
   }
 }
 
@@ -224,6 +269,11 @@ fn bmc_lift<S>(get: fn(S) -> BmcWorld, put: fn(S, BmcWorld) -> S, reply: fn(BmcW
       BmcReplyFault { reason: r } => OperationHarnessFault { reason: r }
       BmcReplied { stdout: out, world: w } => OperationObserved {
         observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: out, stderr: "" } },
+        state: put(state, w),
+        elapsed: second(count: 1),
+      }
+      BmcRefused { exit_code: code, stderr: err, world: w } => OperationObserved {
+        observation: ShellObserved { observation: ShellProcessExited { exit_code: code, stdout: "", stderr: err } },
         state: put(state, w),
         elapsed: second(count: 1),
       }

@@ -7,11 +7,11 @@ import std.optional { Present, Absent }
 import extdeps.bmc.ipmi
 import extdeps.bmc.ipmi { ipmi_cipher_suite_argv, IpmiCipherSuite }
 import extdeps.tools.gnu_coreutils { coreutils_duration_operand, coreutils_timeout_expired_exit_code }
-import extdeps.bmc.ipmitool_raw_reply { ipmitool_raw_byte_text, ipmitool_raw_byte_report, ipmitool_raw_reply_bytes }
+import extdeps.bmc.ipmitool_raw_reply { ipmitool_raw_byte_text, ipmitool_raw_byte_report, ipmitool_raw_reply_bytes, ipmitool_raw_stderr_completion }
 import extdeps.bmc.ipmi_master_write_read {
   MasterWriteReadBus, PrivateBus, PublicBus, MasterWriteReadCompletion,
   master_write_read_bus_byte, master_write_read_slave_byte,
-  master_write_read_completion_of, master_write_read_completion_text, master_write_read_stderr_completion,
+  master_write_read_completion_of, master_write_read_completion_text,
 }
 import extdeps.ampere.smpro_register {
   SmproRegister, SmproBootStage, SmproStageReading,
@@ -256,7 +256,7 @@ fn smpro_probe_outcome(raw: SmproProbeRaw) -> SmproProbeOutcome {
       }
     }
   } else {
-    match master_write_read_stderr_completion(stderr: raw.stderr) {
+    match ipmitool_raw_stderr_completion(stderr: raw.stderr) {
       Present { value: c } => SmproControllerRefused { raw: raw, completion: master_write_read_completion_of(code: c) }
       Absent => SmproTransportFailed { raw: raw, timed_out: raw.exit_code == coreutils_timeout_expired_exit_code }
     }
