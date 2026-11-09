@@ -25,7 +25,7 @@ module test.claim.product.p4261_near_u4_converter_sheet_witness
 import std.types { Bool, List }
 import std.nat { Nat }
 import std.algebra { string_contains }
-import gunbc.fleet.fleet_asset_identity { p4261_k1_a }
+import gunbc.fleet.fleet_asset_identity { p4261_e1_c, p4261_k1_a }
 import product.electrical.connectivity { ElectricalTerminalRef, terminal_ref, terminal_ref_equal, TerminalIdentity }
 import product.electrical.bench_session {
   AutoRanging,
@@ -300,7 +300,7 @@ test fn every_read_names_a_target_an_observable_and_outcomes() -> Bool {
 fn with_layout_and_asks(layout: SheetLayout, asks: List<BenchAsk>) -> PartialSheet {
   PartialSheet {
     source: near_u4_converter_sheet.source, title: near_u4_converter_sheet.title, layout: layout, aliases: near_u4_converter_sheet.aliases,
-    states: near_u4_converter_sheet.states, nodes: near_u4_converter_sheet.nodes, links: near_u4_converter_sheet.links,
+    states: near_u4_converter_sheet.states, nodes: near_u4_converter_sheet.nodes, links: near_u4_converter_sheet.links, propositions: [],
     roles: near_u4_converter_sheet.roles, voltages: near_u4_converter_sheet.voltages, disputes: near_u4_converter_sheet.disputes,
     removals: near_u4_converter_sheet.removals, hypotheses: near_u4_converter_sheet.hypotheses, asks: asks,
   }
@@ -312,8 +312,8 @@ fn with_asks(asks: List<BenchAsk>) -> PartialSheet {
 
 // RED CONTROLS: a read whose target the sheet does not carry, and one with a single possible outcome.
 test fn a_read_on_an_unnamed_target_or_with_one_outcome_is_refused() -> Bool {
-  !asks_settle_named_targets(s: with_asks(asks: [BenchAsk { key: "stray", on: "control", procedure: "control", settles: [Settlement { target: "a-node-nobody-drew", observable: "control", outcomes: ["a", "b"] }] }]))
-    && !asks_settle_named_targets(s: with_asks(asks: [BenchAsk { key: "one-way", on: "control", procedure: "control", settles: [Settlement { target: "sw", observable: "control", outcomes: ["only one"] }] }]))
+  !asks_settle_named_targets(s: with_asks(asks: [BenchAsk { key: "stray", asset: p4261_e1_c, on: "control", procedure: "control", settles: [Settlement { target: "a-node-nobody-drew", observable: "control", outcomes: ["a", "b"] }] }]))
+    && !asks_settle_named_targets(s: with_asks(asks: [BenchAsk { key: "one-way", asset: p4261_e1_c, on: "control", procedure: "control", settles: [Settlement { target: "sw", observable: "control", outcomes: ["only one"] }] }]))
 }
 
 test fn the_fault_set_reaches_beyond_the_photograph() -> Bool {
@@ -377,7 +377,7 @@ test fn a_sheet_with_a_refused_connection_is_refused_at_export() -> Bool {
     source: near_u4_converter_sheet.source, title: near_u4_converter_sheet.title, states: near_u4_converter_sheet.states,
     layout: near_u4_layout, aliases: near_u4_converter_sheet.aliases,
     nodes: concat([SheetNode { key: sheet_sw_node.key, anchor: sheet_sw_node.anchor, connections: [with_observed(os: k1_near_converter_lead_resistances)], by_datasheet: sheet_sw_node.by_datasheet, candidates: [], continuations: [] }], filter(sheet_nodes, n => n.key != sheet_sw_node.key)),
-    links: [], roles: [], voltages: [], disputes: near_u4_converter_sheet.disputes, removals: near_u4_converter_sheet.removals,
+    links: [], propositions: [], roles: [], voltages: [], disputes: near_u4_converter_sheet.disputes, removals: near_u4_converter_sheet.removals,
     hypotheses: near_u4_converter_sheet.hypotheses, asks: near_u4_converter_sheet.asks,
   }
   match export_sheet(s: bad) {
