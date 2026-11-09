@@ -92,15 +92,17 @@ test fn srv4_candidates_differ_on_the_disk_axis_and_agree_on_ram() -> Bool {
         Present { value: b } =>
           byte_size_count(b: a) == byte_size_count(b: b)
             && byte_size_count(b: a) > 0
-            && match with_rung.disk {
-              Present { value: disk } =>
-                match without.disk {
-                  // The batched candidate holds NO warm disk: the tier is refused at batch >1, so its absence
-                  // is a fact about the configuration, not an unread figure.
-                  Present { value: zeroed } => byte_size_count(b: disk) > 0 && byte_size_count(b: zeroed) == 0
-                  Absent => false
-                }
+            // The batched candidate holds NO warm disk and says so with a zero: no rung, no obligation.
+            && match without.disk {
+              Present { value: zeroed } => byte_size_count(b: zeroed) == 0
               Absent => false
+            }
+            // The slot-file candidate's disk axis REFUSES -- srv4's parked budget is declared, not read -- and
+            // the refusal is an obligation naming the budget, not a quiet zero. That gap is the difference
+            // between the two configurations, stated honestly.
+            && match with_rung.disk {
+              Absent => with_rung.obligations.length() > 0
+              Present { value: _ } => false
             }
         Absent => false
       }
@@ -108,9 +110,6 @@ test fn srv4_candidates_differ_on_the_disk_axis_and_agree_on_ram() -> Bool {
   }
 }
 
-// h11's engine base has never been read, so its RAM axis is unread for BOTH of its candidates -- the four
-// engines and the two. It is not zero, and the obligations say what to read: an unread component fails its
-// whole axis, and the same gap must not be papered over for the candidate that "looks" cheaper.
 test fn h11_candidates_refuse_to_charge_ram_they_have_not_read() -> Bool {
   let four = configuration_host_charges(c: h11_four_engines_configuration)
   let two = configuration_host_charges(c: h11_two_engines_configuration)

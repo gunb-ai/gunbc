@@ -209,7 +209,7 @@ data srv3_batch1_slotfile_configuration: ReplicaConfiguration = ReplicaConfigura
   expert_artifact: Present { value: srv3_routed_expert_artifact },
   engine_memory: Present { value: srv3_strata_engine_memory },
   figures: FiguresUnmeasured {
-    obligation: "read srv3 at --batch 1 with the slot-file tier: aggregate decode tok/s at the fleet's 200k window, and the save and restore milliseconds of one ~200k conversation" as NonEmptyStr,
+    obligation: "read srv3 at --batch 1 with the slot-file tier: aggregate decode tok/s at the fleet's 229376-token window, and the save and restore milliseconds of one ~200k conversation" as NonEmptyStr,
   },
   provenance: "never launched on srv3; composed from srv3's own refusal rows (the slot endpoint becomes admissible at batch 1) and from the shape srv4 runs, and neither is a reading of srv3" as NonEmptyStr,
 }
@@ -241,7 +241,7 @@ data srv4_batch8_ram_only_configuration: ReplicaConfiguration = ReplicaConfigura
   expert_artifact: Present { value: srv4_routed_expert_artifact },
   engine_memory: Present { value: srv4_serving_engine_memory },
   figures: FiguresUnmeasured {
-    obligation: "read srv4 at --batch 8 with no disk tier: aggregate decode tok/s at the fleet's 200k window" as NonEmptyStr,
+    obligation: "read srv4 at --batch 8 with no disk tier: aggregate decode tok/s at the fleet's 229376-token window" as NonEmptyStr,
   },
   provenance: "never launched on srv4 batched; composed from srv4's own refusal rows for batch >1" as NonEmptyStr,
 }

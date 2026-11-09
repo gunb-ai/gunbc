@@ -27,6 +27,7 @@ import gunbc.serving.serving_replica_profile {
   ReplicaRunIdentityMatch, ReplicaExpertRung, ExpertInHostRam, ExpertOnDevice, ExpertOnDisk,
   replica_expert_ram_charge, replica_expert_rungs, replica_expert_placement_obligation,
   replica_host_charges, replica_run_identity, replica_run_identity_match, srv1_replica_profile_as,
+  replica_figures_resolved, replica_figures_refusal,
 }
 import gunbc.serving.srv1_topology_comparison { ServingTopology, srv1_layout, srv1_topology_reading, Srv1TopologyReading }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4, operator_host_6ce85c }
