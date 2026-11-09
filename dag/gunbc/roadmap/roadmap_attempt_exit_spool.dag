@@ -10,6 +10,7 @@ import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerAllEveryon
 import gunbc.spool_queue {
   SpoolAttemptExit, RolePending, RoleHandedOff, RoleClaimed, RoleDone, RoleRefused,
   SpoolListing, SpoolListed, SpoolListingUnreadable, spool_open, spool_queue_list, spool_directory_listing, spool_role_path, spool_entry_key_of_name, SpoolKeyMinted, SpoolKeyRefused,
+  spool_root_name, spool_role_dir,
 }
 import extdeps.systemd.service_exec {
   ServiceStopVariable, InvocationIdVariable, ServiceResultVariable, ExitCodeVariable, ExitStatusVariable,
@@ -311,13 +312,41 @@ fn attempt_exit_hook(instance_root: String, node_id: String, attempt_key: String
   }
 }
 
+// THE SEALED SEAT-EXIT SPOOL STORE: one record per (compute_root, uid) partition, minted from the
+// SpoolAttemptExit declaration. The done-directory path is DERIVED from the declaration's root name and
+// terminal role directory -- never spelled by a caller -- and `sole_constructor` seals the record against
+// a forged path. A caller names WHERE the spool lives (its compute root) and WHICH partition (the launching
+// uid); it cannot name the path.
+type ComputeExitSpool sole_constructor {
+  done_directory: String
+}
+
+type ComputeExitSpoolVerdict
+  = ComputeExitSpoolReady { store: ComputeExitSpool }
+  | ComputeExitSpoolUnready { cause: String }
+
+// THE MINT: takes the compute root and the launching uid, derives the done-directory path from the
+// SpoolAttemptExit declaration, and refuses if the declaration does not name a Done terminal directory.
+// The path components come from the declaration: spool_root_name gives the spool root directory,
+// spool_role_dir gives the terminal role directory, and the uid is the caller's partition.
+fn compute_exit_spool(compute_root: String, uid: Int) -> ComputeExitSpoolVerdict {
+  match spool_role_dir(kind: SpoolAttemptExit, role: RoleDone) {
+    Absent => ComputeExitSpoolUnready { cause: "SpoolAttemptExit declares no Done terminal directory" }
+    Present { value: done_name } => {
+      let root_name = spool_root_name(kind: SpoolAttemptExit)
+      let path = join([compute_root, "/", root_name, "/", to_string(value: uid), "/", done_name], "")
+      ComputeExitSpoolReady { store: ComputeExitSpool { done_directory: path } }
+    }
+  }
+}
+
 // A SEAT'S STOP HOOK, in the same machinery as an attempt's: the stop variables are the manager's words,
 // never literals this file interpolated, and the hook is refused rather than rendered if a part would be
 // read as command-line syntax. A seat runs one unit, so its record names its identity and the invocation --
 // there is no role part, and no attempt coordinate to forge.
-fn compute_attempt_exit_entry_parts(done_dir: String, identity: String) -> List<ExecWordPart> {
+fn compute_attempt_exit_entry_parts(store: ComputeExitSpool, identity: String) -> List<ExecWordPart> {
   [
-    ExecLiteral { text: join([done_dir, "/", identity, attempt_exit_entry_separator], "") },
+    ExecLiteral { text: join([store.done_directory, "/", identity, attempt_exit_entry_separator], "") },
     ExecVariable { variable: InvocationIdVariable },
     ExecLiteral { text: attempt_exit_entry_separator },
     ExecVariable { variable: ServiceResultVariable },
@@ -333,8 +362,8 @@ fn compute_attempt_exit_entry_parts(done_dir: String, identity: String) -> List<
 // record, so a hook whose variables were never substituted would leave a directory literally named
 // "...+${INVOCATION_ID}+..." -- which attempt_exit_record_put_mkdir_name refuses to write and
 // attempt_exit_entry_decode refuses to read, at the two ends of the only routes that touch it.
-fn compute_attempt_exit_hook(done_dir: String, identity: String, record_owner: PosixOwnerNames) -> AttemptExitHook {
-  match exec_word_render(parts: compute_attempt_exit_entry_parts(done_dir: done_dir, identity: identity)) {
+fn compute_attempt_exit_hook(store: ComputeExitSpool, identity: String, record_owner: PosixOwnerNames) -> AttemptExitHook {
+  match exec_word_render(parts: compute_attempt_exit_entry_parts(store: store, identity: identity)) {
     ExecWordRefused { reason } => AttemptExitHookRefused { reason: reason }
     // THE RECORD IS CREATED OWNED BY THE PROVIDER THAT READS IT BACK -- the same owner the deploy route
     // gave the spool root -- and the reader only ever reads its own uid's directory, so ownership and
@@ -350,8 +379,8 @@ fn compute_attempt_exit_hook(done_dir: String, identity: String, record_owner: P
 // WHAT THE SEAT'S DOOR CAN SEE: its own uid's done directory, listed once. An unreadable spool is
 // UNREADABLE, never empty -- "there is no record" is a claim about the seat's end that a failed listing
 // cannot support, and the door keeps the seat on it.
-fn compute_attempt_exit_record_listing(done_dir: String) -> SpoolListing {
-  spool_directory_listing(directory: done_dir)
+fn compute_attempt_exit_record_listing(store: ComputeExitSpool) -> SpoolListing {
+  spool_directory_listing(directory: store.done_directory)
 }
 
 // ONE DECODED RECORD. The process END is a closed pair: an exit with a status, or a signal. They are
