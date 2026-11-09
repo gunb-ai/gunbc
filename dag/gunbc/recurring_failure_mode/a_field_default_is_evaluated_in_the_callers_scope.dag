@@ -1,12 +1,22 @@
 module gunbc.recurring_failure_mode.a_field_default_is_evaluated_in_the_callers_scope
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data a_field_default_is_evaluated_in_the_callers_scope: RecurringFailureMode = RecurringFailureMode {
   identity: "a_field_default_is_evaluated_in_the_callers_scope" as NonEmptyStr,
 
-  rung: RungUnread { cause: NoRungStated },
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundBelowTheLadder,
+      ceiling: StructurallyGuaranteed,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "call_function_inner in v1_interpreter.rs must evaluate field defaults in the declaring module's environment (resolved from fn_node's module binding), not the caller's env. A claim would demonstrate that a constructor visible ONLY in the declaring module is reachable via a default at a caller that does not import it."
+    }
+  },
 
   receipts: [
     "a field default is evaluated in the CALLER'S environment, not the declaring module's. A field whose default expression references a constructor (or any name) bound only in the declaring module fails with NoSuchVariable at every call site that omits that field. The caller sees no diagnostic connecting the failure to the default; the variable name is all the error carries. The declaring module compiled clean, the operation declaration typechecked, and the failure is invisible until the operation is CALLED without that argument.",
@@ -15,9 +25,9 @@ data a_field_default_is_evaluated_in_the_callers_scope: RecurringFailureMode = R
 
     "THE LANGUAGE-LAYER DEFECT: this is a scoping violation at the evaluator level. Field defaults are part of the operation's declaration and their names should resolve in the declaring module's scope. The evaluator instead threads the caller's environment, coupling every operation's defaults to what its callers happen to import. The consequence is a fragility class: any default expression that references an unexported or differently-scoped name fails at every call site that omits the field, with a misleading NoSuchVariable naming a constructor the caller has never seen.",
 
-    "THE INTERIM REMEDY (this hotfix, #16183): import the constructors by name at the call site's module AND pass them explicitly, so the default is never evaluated. This is per-call-site, does not fix the class, and leaves every other default built from an unimported constructor latent for the next caller to trip over.",
+    "THE INTERIM REMEDY (this hotfix, PR #16185): import the constructors by name at the caller's module AND pass them explicitly at the call site, so the default is never evaluated. This is per-call-site, does not fix the class, and leaves every other default built from an unimported constructor latent for the next caller to trip over. No claim guards this: the import is load-bearing (removing it fails module resolution before any witness runs), and with explicit arguments at the call site the default path is no longer exercised there. The executing proof is the live heal-publish run on CI (heal-generated-artifacts publishing stage0 mirrors for the PR).",
 
-    "THE PROPER FIX (language layer, NOT in this hotfix): v1_interpreter.rs call_function_inner should evaluate field defaults in the declaring module's environment (resolved from fn_node's module binding), not the caller's env. A claim would need to demonstrate that a constructor visible ONLY in the declaring module is reachable via a default at a caller that does not import it."
+    "THE PROPER FIX (language layer, NOT in this hotfix): call_function_inner in v1_interpreter.rs should evaluate field defaults in the declaring module's environment (resolved from fn_node's module binding), not the caller's env. A claim would need to demonstrate that a constructor visible ONLY in the declaring module is reachable via a default at a caller that does not import it."
   ],
 
   evidence: [],
