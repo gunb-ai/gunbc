@@ -114,7 +114,6 @@ test fn harness_run_turn_seeds_turn_started_onto_the_prior_wait_lines() -> Bool 
       reasoning_mode: ReasoningOff,
       wire_shape: harness_default_wire_shape,
       system_prompt: "wet",
-      alignment_chain_fingerprint: "",
       request_scratch_path: join([dir, "/request.json"], "") as FilePath,
       events_path: path as FilePath,
       context_budget: harness_context_budget_for(unit: DeepseekV4FlashOnVllm),
