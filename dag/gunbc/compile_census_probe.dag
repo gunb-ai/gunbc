@@ -61,8 +61,8 @@ fn total_rows_census(source: String) -> CompileDiagnosticCensus {
 // THE BLOCKING FILTER APPLIED TO AN ALREADY-OBSERVED CENSUS. This is the ONE implementation of the blocking
 // filter: total_blocking_census composes it with a single compile, and a probe that has already paid for a
 // source's census applies it to that census instead of paying for a second, byte-identical nested compile
-// (gunbc.design_argument::one_time_facts, gunbc.design_argument::minimize_redundancy -- many consumers of one
-// fact materialize it once on their common dominator). The CensusNotRunnable arm is carried through verbatim,
+// (@ref(gunbc.design_argument::demand_before_materialization), @ref(gunbc.design_argument::minimize_redundancy) -- many
+// consumers of one fact materialize it once on their common dominator). The CensusNotRunnable arm is carried through verbatim,
 // so a census that could not run still refuses here exactly as it did inline -- the union is never collapsed
 // to a raw row list, which is the sentinel soundness this module exists to keep.
 fn blocking_census_from(census: CompileDiagnosticCensus) -> CompileDiagnosticCensus {
@@ -288,7 +288,7 @@ fn deleted_callable_route_verdicts(census: CompileDiagnosticCensus, baseline: St
 
 // ONE COMPILE OF THE PROBE SOURCE, READ BY BOTH CONSUMERS. The census of `source` has two consumers here
 // -- the subject-keyed MissingExport count and the total-blocking delta -- so the materialization ladder
-// (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::one_time_facts) materializes it once on
+// (@ref(gunbc.design_argument::demand_before_materialization), @ref(gunbc.design_argument::minimize_redundancy)) materializes it once on
 // their common dominator: total_rows_census(source) compiles `source` a SINGLE time and the result is handed
 // to deleted_callable_route_verdicts as a parameter. Before this, the body called blocking_subject_census(source)
 // AND total_blocking_census(source): each ran its own full nested compile of the IDENTICAL source string, so one
