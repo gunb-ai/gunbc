@@ -1,0 +1,107 @@
+module v2.test.claim.parse.juxtaposed_literal_statement
+
+import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
+import v2.std.diagnostic { Accepted, NodeLocus, Rejected, diagnostics_fatal }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Absent, Optional, Present }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A BODY WHOSE STATEMENT SEQUENCE LEAVES A NON-FINAL BARE VALUE IS REFUSED (the juxtaposed-bracketed-
+// literal class, gunbc.recurring_failure_mode
+// juxtaposed_bare_value_lowers_to_the_last_at_v2_body_lowering). Two bracketed list literals written
+// one under the other in a body were accepted and the fold kept only the LAST, silently: it is not an
+// append. The grammar makes a next-line `[` a new statement, not an index suffix
+// (v2.extdeps.languages.dag::dag_grammar_index_lbracket_head_expr), so a body may legitimately hold a
+// sequence of statements; the unjustified step is lowering keeping one value and dropping the other
+// instead of refusing. body_lower_stmt_spine (v2.compiler.body_lowering_fold) already refuses a
+// non-final bare value with body_lowering_reason_statement_precedes_without_binding once the pair is
+// seen as a statement sequence with a successor; this claim pins that the juxtaposed pair reaches that
+// authority rather than the expression readers, which read the last literal and drop the first.
+
+// RED: two juxtaposed bracketed literals, no binding between them. Refused, located.
+data juxtaposed_source: String = "module probe.juxtap\n\nfn juxtap_two() -> List<Int> {\n  [1, 2, 3]\n  [4, 5]\n}\n"
+
+// CONTROL 1: a single literal body is the normal case, accepted.
+data single_source: String = "module probe.juxtap\n\nfn juxtap_one() -> List<Int> {\n  [1, 2, 3]\n}\n"
+
+// CONTROL 2: a binding then a tail value is the legitimate two-statement body; it MUST stay accepted,
+// so the refusal is confined to a NON-FINAL BARE value, not any second statement.
+data let_then_tail_source: String = "module probe.juxtap\n\nfn pair(value: Int) -> List<Int> {\n  let wire = value\n  [wire, wire]\n}\n"
+
+// CONTROL 3: a tail value then... no -- a non-final bare value that is NOT a list literal (a bare
+// name) must refuse under the SAME reason, proving the rule is about the non-final bare value, not the
+// bracket spelling specifically.
+data juxtaposed_names_source: String = "module probe.juxtap\n\nfn two_names(a: Int, b: Int) -> Int {\n  a\n  b\n}\n"
+
+fn normalize_outcome(tag: String, text: String) -> Optional<Bool> {
+  match conservation_subject_of_text(path: "probe_" + tag + ".dag", text: text).normalized {
+    Accepted { value: _, diagnostics: _ } => Present { value: true }
+    Rejected { diagnostics: d } => Present { value: false }
+  }
+}
+
+fn parses(tag: String, text: String) -> Bool {
+  match conservation_subject_of_text(path: "probe_" + tag + ".dag", text: text).parsed {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn accepted(tag: String, text: String) -> Bool {
+  match normalize_outcome(tag: tag, text: text) {
+    Present { value: ok } => ok
+    Absent => false
+  }
+}
+
+fn refused_as(tag: String, text: String, reason: Symbol) -> Bool {
+  match conservation_subject_of_text(path: "probe_" + tag + ".dag", text: text).normalized {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal(d: d).reason == reason
+  }
+}
+
+// The refusal carries the location of the offending statement (a NodeLocus, not a token/position
+// only), so it is located at a node in the authored tree.
+fn refused_is_located(tag: String, text: String) -> Bool {
+  match conservation_subject_of_text(path: "probe_" + tag + ".dag", text: text).normalized {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      match diagnostics_fatal(d: d).at {
+        NodeLocus { anchor: _ } => true
+        _ => false
+      }
+  }
+}
+
+// RED: the juxtaposed pair is refused by the existing non-final-bare-value authority, located, and it
+// still PARSES (so the refusal is a lowering refusal, not a parse failure).
+test fn juxtaposed_bare_value_lowers_to_the_last_refuses_holds() -> Bool {
+  parses(tag: "juxtap_two", text: juxtaposed_source)
+    && refused_as(tag: "juxtap_two", text: juxtaposed_source, reason: ^body_lowering_reason_statement_precedes_without_binding)
+}
+
+// RED: a bare name followed by a bare name refuses under the SAME reason -- the rule is the non-final
+// bare value, not the bracket spelling.
+test fn juxtaposed_bare_names_refuse_under_the_same_reason_holds() -> Bool {
+  refused_as(tag: "two_names", text: juxtaposed_names_source, reason: ^body_lowering_reason_statement_precedes_without_binding)
+}
+
+// The refusal is located at the offending statement.
+test fn juxtaposed_bare_value_refusal_is_located_holds() -> Bool {
+  refused_is_located(tag: "juxtap_two", text: juxtaposed_source)
+}
+
+// POSITIVE CONTROL: a single literal body is accepted.
+test fn single_literal_body_is_accepted_holds() -> Bool {
+  accepted(tag: "juxtap_one", text: single_source)
+}
+
+// POSITIVE CONTROL: a binding followed by a tail value is accepted -- the refusal is confined to a
+// non-final BARE value, it does not refuse any second statement.
+test fn let_then_tail_is_accepted_holds() -> Bool {
+  accepted(tag: "let_then_tail", text: let_then_tail_source)
+}
