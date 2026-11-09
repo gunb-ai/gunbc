@@ -31,11 +31,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // reaches INFER, and the Rust closure-emit door renders a function-typed declared return (`impl
 // Fn` / `Box<dyn Fn>`, the last two claims below) with the body as returned `move` closures. Removing the FunctionValueBody arm makes the module ill-formed at normalize, so
 // every positive claim here goes red with it.
-data fvb_direct_source: String = "module v2.test.fvb_direct\n\nimport std.types { Bool }\n\nfn fvb_direct(p: Bool) -> fn(Bool) -> Bool { fn(q) { p } }\n"
+data fvb_direct_source: String = "module v2.test.fvb_direct\n\nfn fvb_direct(p: Bool) -> fn(Bool) -> Bool { fn(q) { p } }\n"
 
-data fvb_curried_source: String = "module v2.test.fvb_curried\n\nimport std.types { Bool }\n\nfn fvb_apply(f: Bool, v: Bool) -> Bool { v }\n\nfn fvb_curried(p: Bool) -> Bool { fvb_apply(f: x => y => x, v: p) }\n"
+data fvb_curried_source: String = "module v2.test.fvb_curried\n\nfn fvb_apply(f: Bool, v: Bool) -> Bool { v }\n\nfn fvb_curried(p: Bool) -> Bool { fvb_apply(f: x => y => x, v: p) }\n"
 
-data fvb_curried_undeclared_source: String = "module v2.test.fvb_curried_undeclared\n\nimport std.types { Bool }\n\nfn fvb_apply(f: Bool, v: Bool) -> Bool { v }\n\nfn fvb_curried(p: Bool) -> Bool { fvb_apply(f: x => y => fvb_undeclared_inner, v: p) }\n"
+data fvb_curried_undeclared_source: String = "module v2.test.fvb_curried_undeclared\n\nfn fvb_apply(f: Bool, v: Bool) -> Bool { v }\n\nfn fvb_curried(p: Bool) -> Bool { fvb_apply(f: x => y => fvb_undeclared_inner, v: p) }\n"
 
 fn fvb_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -143,11 +143,11 @@ test fn an_undeclared_name_inside_a_curried_lambda_refuses_at_its_atom() -> Bool
 // binding_spellings, which carries Int (i32) and not Bool; Bool's spelling there is the separate
 // TargetAtomRealization lane stage0_production_target names, not this one.
 //
-// Neither specimen imports Int: kernel vocabulary is never imported (CLAUDE.md, "the kernel-vocab
-// imports" rule), and in an inline-ingest specimen `import v2.std.integer { Int }` refused with
-// resolve_module_not_found BEFORE the emitter ran -- which is exactly how the defect these goldens
-// pin stayed invisible, since a row that refuses at resolve never reaches the emission it means to
-// check. The specimen must reach the emitter for the golden to compare anything.
+// Neither specimen imports Int, and neither may regain such an import: Int is a kernel primitive,
+// an inline-ingest specimen carries only its own fixture modules so a std import cannot resolve,
+// and the refusal lands BEFORE the emitter runs -- which is exactly how the defect these goldens
+// pin stayed invisible for as long as it did. A row that refuses at resolve never reaches the
+// emission it means to check, so it reports red for the wrong reason and guards nothing.
 data fvb_emit_source: String = "module fvb_emit_probe\n\nfn fvb_curried_emit(p: Int) -> fn(Int) -> fn(Int) -> Int { x => y => x }\n"
 
 data fvb_emit_direct_source: String = "module fvb_emit_probe\n\nfn fvb_direct(p: Int) -> fn(Int) -> Int { fn(q) { p } }\n"
@@ -212,9 +212,9 @@ test fn a_fn_returning_fn_emits_impl_fn_with_a_move_closure() -> Bool {
 // outer one; the value-binder gate refused it as hiding all the same (v2.compiler.resolve
 // admit_one_value_binder, first bad #12506). The negative control is the wall that must stay: an
 // AUTHORED binder hiding an outer parameter still refuses.
-data fvb_typed_curried_source: String = "module v2.test.fvb_typed_curried\n\nimport std.types { Bool }\n\nfn fvb_typed_curried(p: Bool) -> fn(Bool) -> fn(Bool) -> Bool { x => y => x }\n"
+data fvb_typed_curried_source: String = "module v2.test.fvb_typed_curried\n\nfn fvb_typed_curried(p: Bool) -> fn(Bool) -> fn(Bool) -> Bool { x => y => x }\n"
 
-data fvb_named_hiding_source: String = "module v2.test.fvb_named_hiding\n\nimport std.types { Bool }\n\nfn fvb_named_hiding(x: Bool) -> fn(Bool) -> Bool { x => x }\n"
+data fvb_named_hiding_source: String = "module v2.test.fvb_named_hiding\n\nfn fvb_named_hiding(x: Bool) -> fn(Bool) -> Bool { x => x }\n"
 
 type FvbHidingOutcomes
   = FvbHidingContextRefused { reason: Symbol }
