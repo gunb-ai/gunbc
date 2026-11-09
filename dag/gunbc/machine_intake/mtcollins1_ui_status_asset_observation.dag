@@ -411,6 +411,14 @@ data megarac_ui_probes: List<MegaRacUiProbe> = [
   MegaRacUiProbe { name: "i18n" as NonEmptyStr, octets: ui_octets_of("i18n") },
   MegaRacUiProbe { name: "load_path" as NonEmptyStr, octets: ui_octets_of("loadPath") },
   MegaRacUiProbe { name: "res_get_path" as NonEmptyStr, octets: ui_octets_of("resGetPath") },
+  MegaRacUiProbe { name: "status_concat" as NonEmptyStr, octets: ui_octets_of(megarac_ui_constructed_key_call_text) },
+  MegaRacUiProbe { name: "fallback_lng" as NonEmptyStr, octets: ui_octets_of("fallbackLng") },
+  MegaRacUiProbe { name: "default_ns" as NonEmptyStr, octets: ui_octets_of("defaultNs") },
+  MegaRacUiProbe { name: "lng_option" as NonEmptyStr, octets: ui_octets_of("lng:") },
+  MegaRacUiProbe { name: "ns_option" as NonEmptyStr, octets: ui_octets_of("ns:") },
+  MegaRacUiProbe { name: "i18n_init" as NonEmptyStr, octets: ui_octets_of("i18n.init(") },
+  MegaRacUiProbe { name: "set_lng" as NonEmptyStr, octets: ui_octets_of("setLng") },
+  MegaRacUiProbe { name: "preload" as NonEmptyStr, octets: ui_octets_of("preload") },
 ]
 
 data megarac_ui_data_main_name_octets: List<Int> = ui_octets_of("data-main")
@@ -498,7 +506,7 @@ fn ui_text_needle_scan(text: String, needle: List<Int>, limit: Int) -> MegaRacUi
   } else {
     let pieces = split(s: text, delimiter: needle_text)
     let hits = count(pieces) - 1
-    MegaRacUiNeedleScan { count: hits, starts: ui_split_starts(pieces |> take(if hits < limit { hits } else { limit }), count(needle)) }
+    MegaRacUiNeedleScan { count: hits, starts: ui_split_starts(pieces |> take(if hits < limit { hits } else if limit < 0 { 0 } else { limit }), count(needle)) }
   }
 }
 
@@ -521,7 +529,7 @@ fn ui_status_token_diagnostic_lines(asset_text: String, session_values: List<Lis
   let octets = ui_octets_of(asset_text)
   let length = count(octets)
   let bare_length = count(megarac_ui_status_bare_token_octets)
-  // ONE pass: the two spellings and every session value are needles together. The session check runs
+  // The two spellings, the probes and every session value are searched per needle, natively. The session check runs
   // over the WHOLE asset, not the window: a value straddling a window edge would pass both windows' own
   // checks and the two printed halves would reassemble it.
   let probe_count = count(megarac_ui_probes)
@@ -677,6 +685,169 @@ fn megarac_ui_status_excerpt_of_asset(
             asset_sha256,
             feeding_site
           )
+        }
+      }
+    }
+  }
+}
+
+// THE CONSTRUCTED-KEY SHAPE. The viewer builds status 0's label key by concatenation:
+// "0"==r&&(...a.t("lmedia:status_"+r)) -- the key is NOT a literal, so the literal-label rule above
+// (ExcerptFound) rightly refuses this asset. This is a different shape with its own arm: it records
+// where the branch is and where the key prefix sits, and states the operand is a variable. It carries
+// no vendor text; the text lives in the catalog the key names. Offsets are UTF-8 octet offsets found
+// by native split, bounded to the branch (the window up to the next comparison against r).
+// A CANDIDATE, never an established binding. The marker is located by a raw split over the whole
+// asset, so it may sit inside a string or a comment; a from-start lexical scan of the bundle is not
+// affordable and would refuse the real one. The span is balanced under the restricted grammar of
+// ui_group_scan, not a proven JS branch. Catalog membership of lmedia:status_0 does NOT upgrade
+// marker_context: an attestation that status 0 maps to a label needs one more evidence edge that
+// establishes the executable binding (an extraction of the enclosing expression, or an observed
+// runtime lookup).
+type MegaRacUiMarkerContext
+  = | MarkerContextNotEstablished
+
+type MegaRacUiConstructedKey
+  = ConstructedKeyCandidate {
+      asset_path: NonEmptyStr
+      asset_sha256: Sha256Digest
+      marker_offset: Int
+      key_prefix_offset: Int
+      key_prefix_text: NonEmptyStr
+      operand_text: NonEmptyStr
+      candidate_span_length: Int
+      marker_context: MegaRacUiMarkerContext
+    }
+  | ConstructedKeyRefused { cause: MegaRacUiConstructedKeyRefusal }
+
+type MegaRacUiConstructedKeyRefusal
+  = ConstructedKeyZeroBranchAbsent
+  | ConstructedKeyAbsentInBranch { marker_offset: Int }
+  | ConstructedKeyUnsupportedLexicalForm { marker_offset: Int }
+  | ConstructedKeyNoGuardGroup { marker_offset: Int }
+  | ConstructedKeyBranchExceedsWindow { marker_offset: Int  window_limit: Int }
+  | ConstructedKeyGroupUnclosed { marker_offset: Int }
+  | ConstructedKeyDigestUnreadable { hex: String }
+
+data megarac_ui_zero_branch_text: String = "\"0\"==r"
+
+data megarac_ui_constructed_key_call_head_text: String = "a.t(\""
+
+data megarac_ui_constructed_key_call_text: String = join([megarac_ui_constructed_key_call_head_text, "lmedia:status_\"+r)"], "")
+
+data megarac_ui_constructed_key_prefix_text: NonEmptyStr = "lmedia:status_" as NonEmptyStr
+
+data megarac_ui_branch_window_text_limit: Int = 400
+
+data megarac_ui_zero_branch_guard_text: String = "&&("
+
+fn megarac_ui_constructed_key_line(key: MegaRacUiConstructedKey) -> NonEmptyStr {
+  match key {
+    ConstructedKeyCandidate { asset_path: _, asset_sha256: _, marker_offset: branch, key_prefix_offset: at, key_prefix_text: prefix, operand_text: operand, candidate_span_length: window, marker_context: _ } =>
+      join(["constructed_key candidate marker_offset=", megarac_ui_count_text(branch), " key_prefix_offset=", megarac_ui_count_text(at), " prefix=", prefix as String, " operand=", operand as String, " candidate_span_length=", megarac_ui_count_text(window), " marker_context=not_established literal=false"], "") as NonEmptyStr
+    ConstructedKeyRefused { cause: ConstructedKeyZeroBranchAbsent } => "constructed_key refused zero_branch_absent" as NonEmptyStr
+    ConstructedKeyRefused { cause: ConstructedKeyAbsentInBranch { marker_offset: at } } =>
+      join(["constructed_key refused absent_in_branch marker_offset=", megarac_ui_count_text(at)], "") as NonEmptyStr
+    ConstructedKeyRefused { cause: ConstructedKeyUnsupportedLexicalForm { marker_offset: at } } =>
+      join(["constructed_key refused unsupported_lexical_form marker_offset=", megarac_ui_count_text(at)], "") as NonEmptyStr
+    ConstructedKeyRefused { cause: ConstructedKeyNoGuardGroup { marker_offset: at } } =>
+      join(["constructed_key refused no_guard_group marker_offset=", megarac_ui_count_text(at)], "") as NonEmptyStr
+    ConstructedKeyRefused { cause: ConstructedKeyGroupUnclosed { marker_offset: at } } =>
+      join(["constructed_key refused group_unclosed marker_offset=", megarac_ui_count_text(at)], "") as NonEmptyStr
+    ConstructedKeyRefused { cause: ConstructedKeyBranchExceedsWindow { marker_offset: at, window_limit: limit } } =>
+      join(["constructed_key refused branch_exceeds_window marker_offset=", megarac_ui_count_text(at), " window_limit=", megarac_ui_count_text(limit)], "") as NonEmptyStr
+    ConstructedKeyRefused { cause: ConstructedKeyDigestUnreadable { hex: _ } } => "constructed_key refused digest_unreadable" as NonEmptyStr
+  }
+}
+
+type MegaRacUiGroupScan
+  = GroupClosed { close: Int  call_at: Int }
+  | GroupOpen
+  | GroupUnsupported
+
+// ONE lexer for the zero branch: a quote-tracking scan of the parenthesized group. It does not model JS.
+// Outside a string a slash (regex or comment) or a backtick (template) is a form this scan cannot
+// follow, so the scan refuses rather than guess; the call text counts only where the same scan is
+// outside a string. call_at is -1 until the call is seen.
+fn ui_group_scan(octets: List<Int>, call: List<Int>, at: Int, depth: Int, quote: Int, call_at: Int) -> MegaRacUiGroupScan {
+  match octets |> get(at) {
+    Absent => GroupOpen
+    Present { value: c } => if quote != 0 {
+      if c == 92 {
+        ui_group_scan(octets, call, at + 2, depth, quote, call_at)
+      } else if c == quote {
+        ui_group_scan(octets, call, at + 1, depth, 0, call_at)
+      } else {
+        ui_group_scan(octets, call, at + 1, depth, quote, call_at)
+      }
+    } else if c == 47 || c == 96 {
+      GroupUnsupported
+    } else if c == 34 || c == 39 {
+      ui_group_scan(octets, call, at + 1, depth, c, call_at)
+    } else if c == 40 {
+      ui_group_scan(octets, call, at + 1, depth + 1, 0, call_at)
+    } else if c == 41 {
+      if depth == 1 {
+        GroupClosed { close: at, call_at: call_at }
+      } else {
+        ui_group_scan(octets, call, at + 1, depth - 1, 0, call_at)
+      }
+    } else if c == 97 && call_at < 0 && ui_octets_slice(octets, at, count(call)) == call {
+      ui_group_scan(octets, call, at + 1, depth, 0, at)
+    } else {
+      ui_group_scan(octets, call, at + 1, depth, 0, call_at)
+    }
+  }
+}
+
+fn megarac_ui_constructed_key_of_asset(asset_text: String, asset_path: NonEmptyStr) -> MegaRacUiConstructedKey {
+  let asset_digest_hex = sha256_hex_of_text(text: asset_text)
+  let marker_length = count(ui_octets_of(megarac_ui_zero_branch_text))
+  match sha256_hex_digest(hex: asset_digest_hex) {
+    Absent => ConstructedKeyRefused { cause: ConstructedKeyDigestUnreadable { hex: asset_digest_hex } }
+    Present { value: asset_sha256 } => {
+      let pieces = split(s: asset_text, delimiter: megarac_ui_zero_branch_text)
+      match pieces |> get(0) {
+        Absent => ConstructedKeyRefused { cause: ConstructedKeyZeroBranchAbsent }
+        Present { value: before } => match pieces |> get(1) {
+          Absent => ConstructedKeyRefused { cause: ConstructedKeyZeroBranchAbsent }
+          Present { value: after_text } => {
+            let zero_branch_at = count(ui_octets_of(before))
+            let room = string_length(s: after_text)
+            let window = substring(s: after_text, start: 0, end: if room < megarac_ui_branch_window_text_limit { room } else { megarac_ui_branch_window_text_limit })
+            let window_octets = ui_octets_of(window)
+            let guard_length = count(ui_octets_of(megarac_ui_zero_branch_guard_text))
+            let guarded = substring(s: window, start: 0, end: if string_length(s: window) < guard_length { string_length(s: window) } else { guard_length }) == megarac_ui_zero_branch_guard_text
+            let scan = if guarded {
+              ui_group_scan(window_octets, ui_octets_of(megarac_ui_constructed_key_call_text), guard_length - 1, 0, 0, 0 - 1)
+            } else {
+              GroupOpen
+            }
+            match scan {
+              GroupOpen => if !guarded {
+                ConstructedKeyRefused { cause: ConstructedKeyNoGuardGroup { marker_offset: zero_branch_at } }
+              } else if string_length(s: window) < megarac_ui_branch_window_text_limit {
+                ConstructedKeyRefused { cause: ConstructedKeyGroupUnclosed { marker_offset: zero_branch_at } }
+              } else {
+                ConstructedKeyRefused { cause: ConstructedKeyBranchExceedsWindow { marker_offset: zero_branch_at, window_limit: megarac_ui_branch_window_text_limit } }
+              }
+              GroupUnsupported => ConstructedKeyRefused { cause: ConstructedKeyUnsupportedLexicalForm { marker_offset: zero_branch_at } }
+              GroupClosed { close: group_close, call_at: call_at } => if call_at < 0 {
+                ConstructedKeyRefused { cause: ConstructedKeyAbsentInBranch { marker_offset: zero_branch_at } }
+              } else {
+                ConstructedKeyCandidate {
+                  asset_path: asset_path,
+                  asset_sha256: asset_sha256,
+                  marker_offset: zero_branch_at,
+                  key_prefix_offset: zero_branch_at + marker_length + call_at + count(ui_octets_of(megarac_ui_constructed_key_call_head_text)),
+                  key_prefix_text: megarac_ui_constructed_key_prefix_text,
+                  operand_text: "r" as NonEmptyStr,
+                  candidate_span_length: group_close + 1,
+                  marker_context: MarkerContextNotEstablished,
+                }
+              }
+            }
+          }
         }
       }
     }
@@ -1453,7 +1624,7 @@ fn ui_try_one_asset(
           excerpt: excerpt,
         },
         diagnostic_lines: if http.transport_ok && http.http_status == 200 {
-          ui_status_token_diagnostic_lines(asset_text: http.body, session_values: session_values)
+          concat(ui_status_token_diagnostic_lines(asset_text: http.body, session_values: session_values), [megarac_ui_constructed_key_line(key: megarac_ui_constructed_key_of_asset(asset_text: http.body, asset_path: admitted_path))])
         } else {
           []
         },
