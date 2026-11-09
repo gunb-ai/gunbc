@@ -339,7 +339,7 @@ test fn a_closure_member_whose_body_does_not_lower_is_its_own_typed_refusal_hold
     Accepted { value: e, diagnostics: _ } =>
       length(xs: e.modules) == 3
         && ce_arm_count(e: e, name: "v2.test.ce_refusing_member") == 1
-        && ce_arm_is_refused_with(arm: ce_arm_of(e: e, name: "v2.test.ce_refusing_member"), reason: ^body_lowering_reason_else_less_if_unlowered)
+        && ce_arm_is_refused_with(arm: ce_arm_of(e: e, name: "v2.test.ce_refusing_member"), reason: ^target_value_expr_reason_branch_else_less_as_value)
   }
 }
 
