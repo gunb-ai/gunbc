@@ -25,6 +25,7 @@ import gunbc.fleet.printer_job_start {
 import gunbc.fleet.fleet_printer_access { PrinterCredentialSession, read_existing_printer_session, PrinterSessionReady, PrinterSessionRefused, session_printer, session_credential }
 import gunbc.secret_provision { secret_ref_pin_version }
 import extdeps.cloud.gcp.secret_manager { sm_version_id_is_number }
+import gunbc.fleet.printer_credential_source { SecretManagerCredentialSource }
 import gunbc.auth.access_token_source { AccessTokenSource, OperatorSuppliedToken, read_supplied_access_token, SuppliedTokenReady, SuppliedTokenUnavailable }
 import gunbc.auth.secret_ref_credential { fetch_secret_ref_credential, SecretCredentialReady }
 import gunbc.auth.mosquitto_options_binding {
@@ -36,7 +37,7 @@ import gunbc.auth.mosquitto_options_binding {
 // Read-only status request/response. Topic/endpoint/credential all join through the same fleet identity.
 // It observes current state, not causality or an acknowledgement of a particular start.
 fn report(printer: PhysicalAssetIdentity, version: NonEmptyStr, token_source: AccessTokenSource) -> ProcessOutcome {
-  match read_existing_printer_session(printer:printer,version:version,token_source:token_source) {
+  match read_existing_printer_session(printer:printer,version:version,credential_source:SecretManagerCredentialSource {token_source:token_source}) {
    PrinterSessionRefused {cause:c}=>ProcessRefused {exit_code:1,stderr:c as String}
    PrinterSessionReady {session:s}=>report_using_session(session:s)
   }

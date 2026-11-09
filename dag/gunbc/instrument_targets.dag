@@ -406,7 +406,7 @@ fn native_serve_startup_overrun_binding() -> TargetBinding {
   }
 }
 
-// THE UNIX-SOCKET PEER CONTROL (gunbc.plans.converged_ingress M2b): a handler declaring the kernel-attested
+// THE UNIX-SOCKET PEER CONTROL (gunbc.plans.converged_ingress (deleted 2026-11-08) M2b): a handler declaring the kernel-attested
 // peer_user, served natively on a unix socket at a path the host chooses, must answer every connection with the
 // account the host process runs as, never a value the request carries; the same binary launched on TCP must refuse
 // before it binds, because a TCP listener attests no peer. `gunbc test //gunbc/instruments:native-serve-unix`. Run by

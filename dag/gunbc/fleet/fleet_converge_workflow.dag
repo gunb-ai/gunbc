@@ -4255,7 +4255,7 @@ fn fleet_converge_service_runner_lost_boot_sweep_step() -> Step {
 }
 
 // THE LOST-BOOT SWEEP'S DRY RUN (gunbc.runner.runner_lost_boot_sweep_run lost_boot_sweep_dry_run_wet;
-// gunbc.plans.mtcollins1_ci_service_legs F4). A mode value rather than a dispatch input on the deleting mode, because the
+// gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) F4). A mode value rather than a dispatch input on the deleting mode, because the
 // workflow already declares GitHub's limit of 25 workflow_dispatch inputs; it adds no job. It admits sweep_host's
 // current boot over the anchored fleet SSH transport (hence FleetSshKeyConsumed), plans against the real organization
 // runner listing under the gunbai-ci installation token it mints, and records the admitted boot and the selection; it
@@ -4297,7 +4297,7 @@ fn fleet_converge_service_runner_lost_boot_sweep_dry_run_receipt_upload_step() -
   }
 }
 
-// THE SERVICE-SLOT START (gunbc.runner.runner_service_slot_start; gunbc.plans.mtcollins1_ci_service_legs F1). It starts the
+// THE SERVICE-SLOT START (gunbc.runner.runner_service_slot_start; gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) F1). It starts the
 // subject host's service-slot controllers over the anchored fleet SSH transport (hence FleetSshKeyConsumed) from the
 // release the image baked. It federates for one read: the run's revision is admitted before any unit starts, with a
 // gunbai-ci installation token minted from the App key it stages over this run's identity (WIF_ACCESS_TOKEN, the
@@ -4342,7 +4342,7 @@ fn fleet_converge_service_slot_start_receipt_upload_step() -> Step {
   }
 }
 
-// THE QUALIFICATION ATTEMPT (gunbc.runner.runner_qualification_attempt_run; gunbc.plans.mtcollins1_ci_service_legs G1b): the
+// THE QUALIFICATION ATTEMPT (gunbc.runner.runner_qualification_attempt_run; gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) G1b): the
 // driver that binds the real effects to the G2 pass. It qualifies the subject_host input under that host's unit hold, so
 // the executor must be the hold store's host; it reaches the subject over the anchored fleet SSH transport (hence
 // FleetSshKeyConsumed) and signs from the gunbai-ci App key it stages over this run's federated identity. The workflow
@@ -6503,7 +6503,7 @@ fn fleet_converge_job_needs(id: NonEmptyStr) -> List<String> {
   }
 }
 
-// THE QUALIFICATION FLOOR (gunbc.plans.mtcollins1_ci_service_legs G1): its own job, on exactly the runner the attempt
+// THE QUALIFICATION FLOOR (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) G1): its own job, on exactly the runner the attempt
 // registered (the attempt label is its runs-on), so no fleet slot serves it. It runs the required job's own floor
 // under that job's bound, and only on a dispatch selecting its mode; who dispatches it, and to which registration, is
 // gunbc.runner.runner_qualification_dispatch's. GitHub workflow here is transport only

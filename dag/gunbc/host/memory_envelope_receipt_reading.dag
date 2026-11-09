@@ -9,7 +9,7 @@ import extdeps.linux.cgroup_v2_memory {
 }
 import gunbc.host.memory_envelope { MemoryEnvelopeVerdict, EnvelopeHeld, EnvelopeViolated, memory_envelope_verdict }
 
-// THE MEMORY RECEIPT A `gunbc test` SUBJECT STEP PRINTS, READ BACK (gunbc.plans.mtcollins1_ci_service_legs G3a). The
+// THE MEMORY RECEIPT A `gunbc test` SUBJECT STEP PRINTS, READ BACK (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) G3a). The
 // envelope's requirement, grain and verdict are gunbc.host.memory_envelope's; the seed prints the line at step exit
 // (v1_compiler.target_invocation_host memory_envelope_receipt):
 //

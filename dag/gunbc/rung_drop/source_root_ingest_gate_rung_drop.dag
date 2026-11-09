@@ -37,7 +37,7 @@ import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable }
 // DECLARED 2026-08-28 IN gunbc.instruments.ci_gates AND ROSTERED NOWHERE UNTIL THIS FILE.
 // It was read by that module's SourceRootIngestGate arm, which refused with this row's own rendering.
 //
-// SUPERSEDED BY THE SOURCE LAYOUT CUTOVER (gunbc.plans.source_layout_authority), NOT RETIRED: the
+// SUPERSEDED BY THE SOURCE LAYOUT CUTOVER (gunbc.plans.source_layout_authority (deleted 2026-11-08)), NOT RETIRED: the
 // restoration trigger above did NOT fire -- no live workflow reaches the gate, because the gate, its
 // three transports, the host manifest stubs and the seed bin that fed them were DELETED. Whole-
 // repository ingest was abolished on purpose: a compile reads the modules it requested and nothing

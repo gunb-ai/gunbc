@@ -51,7 +51,7 @@ import v2.compiler.source_authority {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// WITNESSES FOR THE GENERIC STORAGE LOOKUP AND LAYOUT CHECK (gunbc.plans.source_layout_authority).
+// WITNESSES FOR THE GENERIC STORAGE LOOKUP AND LAYOUT CHECK (gunbc.plans.source_layout_authority (deleted 2026-11-08)).
 // Both are folds over SUPPLIED observations -- a probe per candidate file, a header per
 // enumerated file -- so each control states the shape the host would hand the fold and asserts the
 // fold's decision; nothing here walks a tree. The pairing obligation (gunbc.design_argument::witness_one_interface, a witness

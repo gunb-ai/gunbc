@@ -1,6 +1,6 @@
 module test.claim.machine_intake.mtcollins1_virtual_media_readout_observation_witness
 
-// B0 (gunbc.plans.boot_origin_bmc_media), AND THE DISCRIMINATION ITS OWN PREMISE NEEDS.
+// B0 (gunbc.plans.boot_origin_bmc_media (deleted 2026-11-08)), AND THE DISCRIMINATION ITS OWN PREMISE NEEDS.
 //
 // Every test below is a fact ONLY this phase's reading can change, and each is written so a wrong
 // selector or a padded receipt FAILS it: the plan's rule is one arm per branch, and the arms are

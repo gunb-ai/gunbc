@@ -1,6 +1,6 @@
 module test.claim.runner.runner_qualification_subject_readings_witness
 
-// THE SUBJECT READINGS OF TODAY'S FLOOR (gunbc.plans.mtcollins1_ci_service_legs G3, operator decision A). The pairing
+// THE SUBJECT READINGS OF TODAY'S FLOOR (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) G3, operator decision A). The pairing
 // claim decodes a RECORDED required run (test.fixture.recorded_v2_bootstrap_receipts): the real receipt printer's lines
 // and GitHub's real step record. The REDs supply the shapes the decoder must refuse: a missing receipt, a receipt that
 // says the envelope was violated or whose numbers show an OOM kill or swap, a receipt bounded outside the slot, a

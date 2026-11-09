@@ -25,7 +25,7 @@ import gunbc.runner.runner_slot_allocation {
 //
 // RunnerHostDeploy.job_user is one value per host, and the depriv drop-in that renders it is a
 // template-level file, so every slot of a host ran its jobs as one account. That is the gap the
-// srv1 deploy-principal split names (gunbc.plans.srv1_deploy_principal_split, D3): a same-repository
+// srv1 deploy-principal split names (gunbc.plans.srv1_deploy_principal_split (deleted 2026-11-08), D3): a same-repository
 // pull_request job and the fleet-converge deploy share one uid, so the deploy's ssh-agent and mux
 // sockets are reachable by PR code. A group cannot close it, because a group gates which workflow
 // is SCHEDULED onto a runner and not which processes share a uid.

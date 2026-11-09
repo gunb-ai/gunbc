@@ -35,7 +35,7 @@ import extdeps.languages.json.parse {
   JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
 }
 
-// RLM-1 (docs/plans/roadmap-launch-mvp-plan.md section 3): THE ONE ANSWER to `may THIS cause start
+// RLM-1 (docs/plans/roadmap-launch-mvp-plan.md (deleted 2026-11-08) section 3): THE ONE ANSWER to `may THIS cause start
 // THIS node NOW?`. Before this module the daily-workspace action derivation, POST
 // /dispatch/<node_id> and the periodic belt tick each derived launch eligibility on their own --
 // the page and the belt read the Ready frontier, the manual route ignored dependencies entirely
