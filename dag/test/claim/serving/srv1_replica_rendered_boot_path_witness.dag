@@ -92,16 +92,44 @@ test fn the_rendered_engine_argv_is_the_captured_container_command() -> Bool {
 // The container command still sets up its serve directory, its event log and its TLS guard exactly as the
 // running container does. These three lines are the whole of what the container itself does before exec'ing
 // the engine, so pinning them pins the boot behaviour that the crash and cold-start tests then exercise.
+// THE CONTAINER COMMAND HEAD, LINE FOR LINE. Executed on 2026-11-09 the first rendered container exited 2
+// within a second: the START line had gained a trailing `)` from being CONCATENATED with the args-file guard,
+// and every control on that line asked whether the captured line appeared INSIDE it -- a question a line made
+// of the captured line plus one extra token answers yes. So this control compares LINES: a captured line must
+// occur as a whole line of the render, and the START line must be the only one of its kind.
 test fn the_container_command_head_is_the_captured_command() -> Bool {
-  let cmd0 = string_concat_join(srv1_replica_container_command_lines(replica: srv1_replica_0, config: srv1_admitted_launch_config), "\n")
-  let cmd1 = string_concat_join(srv1_replica_container_command_lines(replica: srv1_replica_1, config: srv1_admitted_launch_config), "\n")
-  string_contains(s: cmd0, pattern: golden_command_logger_line)
-    && string_contains(s: cmd1, pattern: golden_command_logger_line)
-    && string_contains(s: cmd0, pattern: golden_command_tls_line)
-    && string_contains(s: cmd1, pattern: golden_command_tls_line)
-    && string_contains(s: cmd0, pattern: golden_start_line_gpu0)
-    && string_contains(s: cmd1, pattern: golden_start_line_gpu1)
+  let l0 = srv1_replica_container_command_lines(replica: srv1_replica_0, config: srv1_admitted_launch_config)
+  let l1 = srv1_replica_container_command_lines(replica: srv1_replica_1, config: srv1_admitted_launch_config)
+  let logger0 = filter(l0, x => x == golden_command_logger_line)
+  let logger1 = filter(l1, x => x == golden_command_logger_line)
+  let tls0 = filter(l0, x => x == golden_command_tls_line)
+  let tls1 = filter(l1, x => x == golden_command_tls_line)
+  let start0 = filter(l0, x => string_contains(s: x, pattern: "ev \"START srv1"))
+  let start1 = filter(l1, x => string_contains(s: x, pattern: "ev \"START srv1"))
+  length(logger0) == 1 && length(logger1) == 1
+    && length(tls0) == 1 && length(tls1) == 1
+    && length(start0) == 1 && length(start1) == 1
+    && string_concat_join(start0, "") == golden_start_line_gpu0
+    && string_concat_join(start1, "") == golden_start_line_gpu1
+    && !string_contains(s: string_concat_join(start0, ""), pattern: "TLS)\";")
+    && !string_contains(s: string_concat_join(start1, ""), pattern: "TLS)\";")
 }
+
+// THE ARGS-FILE REFUSAL IS ITS OWN LINE, spelled exactly. It exists so a replica whose rendered argv file did
+// not install refuses instead of starting an engine with an empty argv; gluing it to another line made it
+// untestable, which is the bug above.
+data golden_args_guard_line: String =
+  "[ -s /root/engine.args ] || { ev \"FATAL rendered engine argv file missing: /root/engine.args\"; exit 3; }"
+
+test fn the_args_file_refusal_is_a_line_of_the_container_command() -> Bool {
+  let l0 = srv1_replica_container_command_lines(replica: srv1_replica_0, config: srv1_admitted_launch_config)
+  let l1 = srv1_replica_container_command_lines(replica: srv1_replica_1, config: srv1_admitted_launch_config)
+  length(filter(l0, x => x == golden_args_guard_line)) == 1
+    && length(filter(l1, x => x == golden_args_guard_line)) == 1
+    && length(filter(l0, x => string_contains(s: x, pattern: "mapfile -t ENGINE_ARGS < /root/engine.args"))) == 1
+    && length(filter(l0, x => string_contains(s: x, pattern: "exec \"$\{ENGINE_ARGS[@]}\""))) == 1
+}
+
 
 // THE TWO DOCUMENTED DIFFERENCES, asserted rather than described. The engine is exec'd from the mounted args
 // file (so the inline flag list is gone), and the bearer key is gone from every artifact the host can read.
@@ -462,6 +490,25 @@ test fn the_helper_name_table_comes_from_the_roster() -> Bool {
     && string_contains(s: line, pattern: "case $IDX in 0) NAME=lil-flash-next ;; 1) NAME=lil-flash-next-1 ;;")
     && string_contains(s: line, pattern: "unknown GPU index")
     && all(srv1_serving_replica_roster, r => string_contains(s: line, pattern: concat("NAME=", r.container_name)))
+}
+
+// THE RECEIPTS ABOUT THE INSTALL AND THE RUNS ARE THEMSELVES CHECKABLE. Every artifact row must claim the
+// digest the interpreter computed and the digest the host read back as the SAME value -- a row that says the
+// install succeeded while the two differ cannot be written without failing this. And the executed-runs list
+// must not be allowed to overstate: four runs (two cold starts, two crashes), every one inside the 10-minute
+// readiness deadline the brief set, and no run may describe itself as a reboot, because no reboot was run.
+test fn the_install_and_run_receipts_hold_their_own_claim() -> Bool {
+  let arts = srv1_installed_boot_path_artifacts_2026_11_09
+  let runs = srv1_boot_path_runs_executed_2026_11_09
+  length(arts) == 4
+    && all(arts, a => lower_hex_64(value: a.render_sha256) && a.render_sha256 == a.installed_sha256_computed_on_host)
+    && length(runs) == 4
+    && all(runs, r => r.engine_ready_seconds >= 1 && r.engine_ready_seconds <= 600)
+    && all(filter(runs, r => string_contains(s: r.kind, pattern: "cold start")), r => string_contains(s: r.kind, pattern: "NOT a host reboot"))
+    && all(filter(runs, r => string_contains(s: r.kind, pattern: "crash")), r => r.container_created_seconds >= 30)
+    && length(filter(runs, r => string_contains(s: r.kind, pattern: "cold start"))) == 2
+    && length(filter(runs, r => string_contains(s: r.kind, pattern: "crash:"))) == 2
+    && !string_contains(s: srv1_boot_path_incident_2026_11_09, pattern: "no downtime")
 }
 
 // ONE CERTIFICATE IDENTITY FOR BOTH REPLICAS, enforced by the render rather than by the operator remembering

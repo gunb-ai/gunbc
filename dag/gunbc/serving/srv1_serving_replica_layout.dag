@@ -144,7 +144,7 @@ data srv1_serving_shared_pool_key: NonEmptyStr = "/home/briansrls/lil/pool_key"
 data srv1_serving_gpu_launcher: RetainedShellScript = RetainedShellScript {
   body: "#!/bin/bash\n# srv1: one TP=1 Qwen3.8-Flash-Next replica per GPU (2026-11-08: two RTX PRO 6000s; 2xTP1 measured 679 vs TP2 298 tok/s\n# aggregate at 8 warm 150k sessions on srv1 -- no GPU P2P across Altra root complexes, so TP2 runs on NCCL via host memory).\n# Same container recipe as srv1_lil_serve.sh (lil-serve qwen38-flash-next / rtx-pro-6000-pcie, LMCache ram-disk, TLS, API key),\n# one instance per GPU, each with its own port, LMCache disk tier and serve/state dir; the TLS cert and pool key are shared so\n# the router verifies both the same way. Disk-first KV (2026-11-08, operator): small 12 GiB RAM tier L1, 125 GB NVMe tier L2 each;\n# RAM per replica ~ L1 12 + PLE table 26.8 (pinned host, outside the cgroup) + ~6 process. No automatic restart.\n# usage: srv1_lil_serve_gpu.sh 0|1     (EXTRA=\"...\" passes extra lil/vLLM options after \"--\")\nset -eu\nIDX=$\{1:?usage: $0 0|1}\ncase $IDX in\n  0) GPU=GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3; NAME=lil-flash-next;   PORT=18000; KV=kv;      SERVE=serve ;;        # Max-Q, 0001:01:00.0\n  1) GPU=GPU-96b749dc-e2ea-5b6f-2e45-ee868b1a9750; NAME=lil-flash-next-1; PORT=18001; KV=kv-gpu1; SERVE=serve-gpu1 ;;   # Workstation (300 W cap), 0004:01:00.0\n  *) echo \"GPU index must be 0 or 1\" >&2; exit 2 ;;\nesac\nEXTRA=$\{EXTRA:-}\nIMG=sha256:2ad6245e058de7b4d0b973b08d60f67b18f563e4bd63d6a0e9b0406222a098e9\nB=$HOME/lil; mkdir -p $B/hf $B/$KV $B/$SERVE $B/jit; umask 077\n[ -s $B/pool_key ] || head -c 24 /dev/urandom | base64 | tr -d \"/+=\" > $B/pool_key\n# one TLS identity for both replicas (the router pins it via upstream_ca.pem)\nfor f in tls.key tls.crt; do [ -s $B/$SERVE/$f ] || { sudo -n cp -p $B/serve/$f $B/$SERVE/$f; }; done\numask 022\ndocker rm -f $NAME >/dev/null 2>&1 || true\nfor i in $(seq 1 150); do docker container inspect $NAME >/dev/null 2>&1 || break; docker rm -f $NAME >/dev/null 2>&1 || true; sleep 2; done\ndocker run -d --name $NAME --restart no --device nvidia.com/gpu=$GPU --cgroup-parent=srv1-inference.slice --memory=32g --memory-swap=32g \\\n  --shm-size 16g -p $PORT:18000 -e PORT=18000 -e HF_HOME=/root/.cache/huggingface \\\n  -v $B/hf:/root/.cache/huggingface -v $B/$KV:/cache/kv -v $B/jit:/cache/jit -v $B/$SERVE:/root/serve -v $B/pool_key:/root/.pool_key:ro \\\n  --entrypoint bash $IMG -lc \"\nD=/root/serve; ev(){ echo \\\"\\$(date -u +%FT%TZ) \\$*\\\" >> \\$D/events.log; }\n[ -s \\$D/tls.key ] && [ -s \\$D/tls.crt ] || openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes \\\n  -days 3650 -subj /CN=pool-card -keyout \\$D/tls.key -out \\$D/tls.crt >> \\$D/events.log 2>&1\nev \\\"START srv1 gpu$IDX $GPU (driver \\$(nvidia-smi --query-gpu=driver_version --format=csv,noheader), TP1, cache ram-disk, L1 12G, L2 125G, disk-first, TLS)\\\"\nexec /usr/local/bin/lil-serve --profile qwen38-flash-next --hardware rtx-pro-6000-pcie \\\n  --env LMCACHE_MODE=ram-disk --env LMCACHE_L1_GB=12 --env LMCACHE_L2_GB=125 --env LMCACHE_L2_ROOT=/cache/kv --env LMCACHE_L2_WORKERS=16 --env LMCACHE_L2_ODIRECT=1 --env LMCACHE_CHECKPOINT_PROTECTED_SHARE=0.5 --env LMCACHE_CHECKPOINT_PROTECTION_WINDOW_SECONDS=1800 \\\n  -- --port 18000 $EXTRA --ssl-keyfile \\$D/tls.key --ssl-certfile \\$D/tls.crt --api-key \\\"\\$(cat /root/.pool_key)\\\" --max-model-len 229376 >> \\$D/serve.log 2>&1\"\necho \"started $NAME on GPU $IDX ($GPU) port $PORT\"; docker ps --filter name=^/$NAME\\$ --format \"{.Status}\"\n",
   reason: "the per-replica launcher on srv1 (sha256 c486a841250e4a2b0a86b794150867eb72190f42f8d48b72361fc7fd52e26cf, read from ~/strata-test/srv1_lil_serve_gpu.sh 2026-11-08 21:36 UTC): maps the operator's 0|1 argument to the correct GPU UUID, container name, port, KV dir and serve dir, then runs one TP=1 container with UUID-selected device, 32 GiB memory, 16 GiB shm, srv1-inference.slice, LMCache ram-disk L1=12/L2=125. The removal loop retries docker rm -f because LMCache flush can fail the first removal; the TLS identity is copied from replica 0's serve dir (shared across both). The systemd helper (lil-replica@.service) invokes this; direct operator invocation is the manual-relaunch route." as NonEmptyStr,
-  dissolves_to: decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_run_foreground_argv"),
+  dissolves_to: decl_ref(module_path: "extdeps.docker.cli RESTORE PATH ONLY since 2026-11-09T21:44:07Z: no systemd path reaches this file any more -- the installed helper now points LAUNCH= at /usr/local/sbin/lil-replica-launch, which renders docker from these rows. The sha above was computed with sha256sum ON srv1 (not relayed). This script still puts the pool bearer key in the engine argv and accepts an unbound EXTRA, which is precisely what the switch removed; it is kept so the window has a rollback target.", decl_name: "docker_run_foreground_argv"),
 }
 
 // The counted bash-emit scaffold marker for the retained launcher (the hand-shell gate). This is the
@@ -170,7 +170,7 @@ data srv1_serving_gpu_launcher_bash_emit_dissolution: DissolutionCondition = unb
 data srv1_replica_helper: RetainedShellScript = RetainedShellScript {
   body: "#!/bin/bash\n# lil-replica start|stop <gpu-index> -- systemd helper for lil-replica@.service (srv1, 2026-11-08).\n# start: adopt the replica container if it is already running (no relaunch), else launch it with\n#        srv1_lil_serve_gpu.sh; then block on the container and exit with ITS status\n#        (143 = stopped by SIGTERM = success; anything else -> systemd Restart=on-failure).\n# stop:  docker stop with a long grace period so LMCache can flush its disk tier.\nset -u\nACTION=${1:?start|stop}; IDX=${2:?gpu index}\ncase $IDX in 0) NAME=lil-flash-next ;; 1) NAME=lil-flash-next-1 ;; *) echo \"unknown GPU index $IDX\" >&2; exit 2 ;; esac\nLAUNCH=/home/briansrls/strata-test/srv1_lil_serve_gpu.sh\ncase $ACTION in\n  start)\n    if [ \"$(docker container inspect -f '{{.State.Running}}' \"$NAME\" 2>/dev/null)\" = true ]; then\n      echo \"adopting running container $NAME\"\n    else\n      \"$LAUNCH\" \"$IDX\" || exit 1\n    fi\n    rc=$(docker wait \"$NAME\") || exit 1\n    echo \"$NAME exited with status $rc\"; exit \"$rc\" ;;\n  stop)\n    exec docker stop -t 240 \"$NAME\" ;;\n  *) echo \"usage: $0 start|stop <idx>\" >&2; exit 2 ;;\nesac\n",
   reason: "the systemd helper /usr/local/sbin/lil-replica on srv1 (sha256 e2822634a23aea3f45019369cbfbfede120e1ca3de6bd0dc34818263886f6a6d, read from the host 2026-11-09): the unit's ExecStart/ExecStop verb handler — adopt-or-launch by roster name, docker-wait to propagate the container exit status to systemd, docker stop -t 240 for the LMCache disk flush. Adoption today checks only the running flag by name; the contract's verification set is the requirement, tracked as srv1_helper_adoption_verification_gap." as NonEmptyStr,
-  dissolves_to: decl_ref(module_path: "v2.workflow.bash_emit", decl_name: "bash_emit_stmts"),
+  dissolves_to: decl_ref(module_path: "v2.workflow.bash_emit AS OF 2026-11-09T21:44:07Z THIS BODY IS THE RESTORE PATH, NOT THE LIVE FILE: /usr/local/sbin/lil-replica now holds srv1_render_replica_helper (sha256 8ced9f2ab4bfc8a46fac7a93324b0ec24ec66043f9ceb1942a0bd7c42d2f484e, computed on the host and equal to the digest the interpreter printed), which is this body with the LAUNCH= line repointed at the rendered launcher and the three comment lines that named gpu.sh rewritten -- 3 lines out, 4 in, and the installer refuses any other diff. The sha256 above was recomputed on the host from the backup copy, so the earlier relayed-digest caveat on this row is retired", decl_name: "bash_emit_stmts"),
 }
 
 // The counted scaffold marker authorizing the retained helper, mirroring the launcher's
@@ -188,7 +188,7 @@ data srv1_replica_helper_bash_emit_dissolution: DissolutionCondition = unbound_d
 data srv1_helper_adoption_verification_gap: FrontierRow = frontier_row_decl(
   ref: decl_ref(module_path: "gunbc.serving.srv1_serving_replica_layout", decl_name: "srv1_replica_helper"),
   reason: "srv1_replica_unit_contract.adoption_verifies names eight aspects (container name, GPU UUID, image digest, port binding, mounts, memory limit, shm size, cgroup parent); the retained helper (srv1_replica_helper, sha256 e2822634...6a6d) inspects only '{{.State.Running}}' by container name. A container that carries the roster name but drifts on any other aspect is adopted silently today. Declared, not hidden: the helper has no destroy path (so a healthy container is never destroyed), but also no drift report.",
-  dissolution: unbound_dissolution(description: "the helper's start verb checks every srv1_replica_unit_contract.adoption_verifies field on the running container (docker inspect of Config.Image, HostConfig.Memory / MemorySwap / ShmSize / CgroupParent, HostConfig.PortBindings, Mounts, and the nvidia device env for the GPU UUID) and prints a typed drift report, exiting non-zero without destroying or restarting the container; witnessed on srv1 against the roster rows."),
+  dissolution: unbound_dissolution(description: "EXECUTED SO FAR 2026-11-09: the crash tests (docker kill on each replica) and both cold starts exercised the helper's LAUNCH branch and its `docker wait` exit-status contract -- systemd restarted the unit and the rendered launcher produced a ready engine -- but the ADOPT branch (a container already running when the unit starts) has still never been executed, because every start in this window began from a removed container. The remaining condition is unchanged: the helper's start verb checks every srv1_replica_unit_contract.adoption_verifies field on the running container (docker inspect of Config.Image, HostConfig.Memory / MemorySwap / ShmSize / CgroupParent, HostConfig.PortBindings, Mounts, and the nvidia device env for the GPU UUID) and prints a typed drift report, exiting non-zero without destroying or restarting the container; witnessed on srv1 against the roster rows."),
 )
 
 // ── the systemd management (lil-replica@.service) ───────────────────────────────────────────────────
@@ -202,7 +202,9 @@ data srv1_helper_adoption_verification_gap: FrontierRow = frontier_row_decl(
 //     then execs `docker wait` (blocking until the container exits), so systemd sees a running unit for
 //     the container's lifetime and exits with the container's exit code.
 //   Restart: on-failure (systemd restarts the unit when docker wait returns non-zero, which means the
-//     container crashed). RestartSec=5.
+//     container crashed). RestartSec: the file says 30 (`systemctl show -p RestartUSec` = 30s measured
+//     2026-11-09; an earlier read of this module said 5, which was wrong and is what made a crash-restart
+//     latency of 38-39 s look like a failure -- 30 s is the unit's own floor, not the observed time).
 //   SuccessExitStatus: 143 (SIGTERM = 128+15: docker stop sends SIGTERM; exit 143 is the expected
 //     "clean stop by signal" — systemd treats it as success, preventing spurious restarts on stop).
 //   StartLimitBurst: 3, StartLimitIntervalSec: 3600 (3 restarts per hour before systemd gives up — a
@@ -570,8 +572,8 @@ data srv1_legacy_launcher_guard_frontier: FrontierRow = frontier_row_decl(
 // operator's; per the parent it must not be edited here without asking).
 data srv1_boot_path_executes_rendered_argv: FrontierRow = frontier_row_decl(
   ref: decl_ref(module_path: "gunbc.serving.srv1_serving_replica_layout", decl_name: "srv1_replica_engine_argv"),
-  reason: "the boot realization is constructed from typed rows by srv1_replica_engine_argv and the modeled unit execs it (no EXTRA); the live srv1 unit still execs gpu.sh with an optional runtime EXTRA, so live != modeled. fail_closed: the guard must not gain a safe-by-absence scrape over the operator script, so live-execution fidelity is tracked here, not asserted.",
-  dissolution: unbound_dissolution(description: "reconcile the live srv1 lil-replica@ unit (and its helper) to exec the rendered argv (or a rendered args file), OR model the helper's adopt-or-launch command -- the latter is the parent's follow-up generic-profile PR, deliberately NOT in this one. Re-scan the gpu.sh sha receipt on any live-file edit. Neither is done from this PR (the live unit is the operator's; ask the parent before editing)."),
+  reason: "RECONCILED AND EXECUTED 2026-11-09 (operator window): both lil-replica@ instances now run the rendered launcher, the rendered args file and the rendered helper (digests in srv1_installed_boot_path_artifacts_2026_11_09, verified by sha256sum on the host against the digests the interpreter computed). The engine command no longer carries the pool bearer key: `docker inspect .Config.Cmd` shows no --api-key and the engine's environment carries VLLM_API_KEY from a 0600 env file, with authentication still enforced (401 without the key, 200 with it). The start path was then EXECUTED on both replicas -- cold start (stop, container removed, start) and a crash (docker kill) -- with the timings in srv1_boot_path_runs_executed_2026_11_09. What remains unexecuted is a host boot: nothing here shows the path survives a reboot. fail_closed unchanged: the guard still refuses to scrape the engine's argv off a live container, so the two sides are reconciled by rendering forward and re-reading digests, never by reading the live host back into the model.",
+  dissolution: unbound_dissolution(description: "the remaining half is boot: reboot srv1 (or bring the units up from a cold boot by any other means) and show each replica becomes ready with the rendered path, with the boot-time container creation attributable to the unit rather than to a relaunch. The unit is enabled (systemctl is-enabled = enabled, read 2026-11-09) and the start path is executed; enablement is not durability. Re-scan the artifact digests on any live-file edit, and re-run the pre-install gates (parse the emitted container command with the serving image's bash, dry-run the engine argv against the capture) before any further switch."),
 )
 
 // ── launch admission: refusing configurations the image cannot deliver (Addendum 2, consumes #16110) ─
@@ -1108,28 +1110,31 @@ fn srv1_replica_container_command_lines(replica: Srv1ServingReplicaSpec, config:
               concat(
                 concat(
                   concat(
-                    concat(
-                      concat(
-                        concat(concat("ev \"START srv1 gpu", to_string(replica.index)), " "),
-                        replica.gpu_uuid as String
-                      ),
-                      " (driver $(nvidia-smi --query-gpu=driver_version --format=csv,noheader), TP"
-                    ),
-                    to_string(config.tensor_parallel_size)
+                    concat(concat("ev \"START srv1 gpu", to_string(replica.index)), " "),
+                    replica.gpu_uuid as String
                   ),
-                  ", cache ram-disk,"
+                  " (driver $(nvidia-smi --query-gpu=driver_version --format=csv,noheader), TP"
                 ),
-                concat(concat(" L1 ", l1_gib), "G,")
+                to_string(config.tensor_parallel_size)
               ),
-              concat(concat(" L2 ", l2_gib), "G, disk-first, TLS)\")")
+              ", cache ram-disk,"
             ),
-            "; [ -s "
+            concat(concat(" L1 ", l1_gib), "G,")
           ),
-          args_path
-        ),
+          concat(concat(" L2 ", l2_gib), "G, disk-first, TLS)\"")
+        )
+      )
+    ),
+    // 3b. The args-file refusal, on its OWN line. It was glued onto the end of the START line, which is how a
+    //     stray `)` survived: the line it produced was the captured line plus a suffix, and every control on
+    //     that line asked "does the capture appear inside it?" -- which a line carrying one extra token
+    //     answers yes. A line that must equal a captured line gets its own element, so equality is the test.
+    concat(
+      concat(
+        concat("[ -s ", args_path),
         " ] || { ev \"FATAL rendered engine argv file missing: "
       ),
-      concat(concat(args_path, "\"; exit 3; }"), "")
+      concat(args_path, "\"; exit 3; }")
     ),
     // 4. Read the RENDERED argv into the array the exec below expands. `mapfile` rather than word-splitting
     //    a string: one token per line means no token can be re-split by a stray space, which is the failure
@@ -1484,6 +1489,135 @@ fn srv1_render_replica_helper_sha256() -> String {
   sha256_hex_of_text(text: srv1_render_replica_helper())
 }
 
+// ── the boot path as INSTALLED and as EXECUTED (srv1, 2026-11-09) ──────────────────────────────────
+//
+// The rows below are the receipts for the maintenance window that replaced the systemd boot path from the
+// operator's ~/strata-test/srv1_lil_serve_gpu.sh with the bytes these renderers emit. Three separate things
+// are recorded and must not be collapsed into one "verified" verdict: what is INSTALLED (bytes and digests
+// read back on the host), what was EXECUTED (the runs below, with timings), and what remains UNEXECUTED
+// (a host reboot -- nothing here shows that boot works).
+
+// One install: the bytes a renderer emitted, what the host now holds, and how the two were compared. The
+// printed channel that carries a render out of the interpreter is a human-readable channel, so the digest
+// computed inside the interpreter (render_sha256) is what the host's sha256sum is checked against; the
+// install is only true when they are equal.
+type Srv1InstalledArtifact {
+  host_path: NonEmptyStr,
+  rendered_by: NonEmptyStr,
+  bytes: Nat,
+  render_sha256: NonEmptyStr,
+  installed_sha256_computed_on_host: NonEmptyStr,
+}
+
+data srv1_installed_boot_path_artifacts_2026_11_09: List<Srv1InstalledArtifact> = [
+  Srv1InstalledArtifact {
+    host_path: "/usr/local/sbin/lil-replica-launch" as NonEmptyStr,
+    rendered_by: "srv1_render_replica_launcher" as NonEmptyStr,
+    bytes: 5771,
+    render_sha256: "c4ef731472a71c78d8e9ae24b306decd4c683934a8d76ff2e5d70020614925a9" as NonEmptyStr,
+    installed_sha256_computed_on_host: "c4ef731472a71c78d8e9ae24b306decd4c683934a8d76ff2e5d70020614925a9" as NonEmptyStr,
+  },
+  Srv1InstalledArtifact {
+    host_path: "/usr/local/etc/lil-replica/replica-0.args" as NonEmptyStr,
+    rendered_by: "srv1_render_replica_engine_args" as NonEmptyStr,
+    bytes: 453,
+    render_sha256: "972103406df3cede0104bd8847f5902b57095cfa54c4b7ec88be68633cc41fce" as NonEmptyStr,
+    installed_sha256_computed_on_host: "972103406df3cede0104bd8847f5902b57095cfa54c4b7ec88be68633cc41fce" as NonEmptyStr,
+  },
+  Srv1InstalledArtifact {
+    host_path: "/usr/local/etc/lil-replica/replica-1.args" as NonEmptyStr,
+    rendered_by: "srv1_render_replica_engine_args" as NonEmptyStr,
+    bytes: 453,
+    render_sha256: "972103406df3cede0104bd8847f5902b57095cfa54c4b7ec88be68633cc41fce" as NonEmptyStr,
+    installed_sha256_computed_on_host: "972103406df3cede0104bd8847f5902b57095cfa54c4b7ec88be68633cc41fce" as NonEmptyStr,
+  },
+  Srv1InstalledArtifact {
+    host_path: "/usr/local/sbin/lil-replica" as NonEmptyStr,
+    rendered_by: "srv1_render_replica_helper" as NonEmptyStr,
+    bytes: 1222,
+    render_sha256: "8ced9f2ab4bfc8a46fac7a93324b0ec24ec66043f9ceb1942a0bd7c42d2f484e" as NonEmptyStr,
+    installed_sha256_computed_on_host: "8ced9f2ab4bfc8a46fac7a93324b0ec24ec66043f9ceb1942a0bd7c42d2f484e" as NonEmptyStr,
+  },
+]
+
+// The unit file itself was NOT changed by this window, so its digest is recorded to say the change is in
+// the helper and the launcher and nowhere else. The unit is unchanged from the read of 2026-11-09.
+data srv1_replica_unit_unchanged_2026_11_09: NonEmptyStr =
+  "/etc/systemd/system/lil-replica@.service sha256 1372a94f3ea1c2787566d5f75a7c482d50128e89f3359166f2eafc94fadb336c (recorded at backup 20261109T184850Z); ExecStart and ExecStop still run /usr/local/sbin/lil-replica start|stop %i, which is now the rendered helper" as NonEmptyStr
+
+// One executed run of the start path or the crash path, with the numbers the scripts measured on the host.
+// `kind` is deliberately not a bool: a cold start and a crash are different claims about the boot path and
+// a reboot would be a third that nobody has run.
+type Srv1BootPathRun {
+  replica_index: Nat,
+  kind: NonEmptyStr,
+  window_start_utc: NonEmptyStr,
+  window_end_utc: NonEmptyStr,
+  container_created_seconds: Nat,
+  engine_ready_seconds: Nat,
+  restarts_observed: Nat,
+  verdict: NonEmptyStr,
+}
+
+data srv1_boot_path_runs_executed_2026_11_09: List<Srv1BootPathRun> = [
+  Srv1BootPathRun {
+    replica_index: 1,
+    kind: "cold start: systemctl stop, container removed, systemctl start on the rendered path (NOT a host reboot)" as NonEmptyStr,
+    window_start_utc: "2026-11-09T21:51:38Z" as NonEmptyStr,
+    window_end_utc: "2026-11-09T21:59:21Z" as NonEmptyStr,
+    container_created_seconds: 46,
+    engine_ready_seconds: 463,
+    restarts_observed: 0,
+    verdict: "ready inside the 10-minute deadline; engine argv carries no --api-key (count 0) and the engine's environment carries VLLM_API_KEY (count 1); router upstream srv1-vllm-1 served six /v1/chat/completions probes at 200 with zero new 502s" as NonEmptyStr,
+  },
+  Srv1BootPathRun {
+    replica_index: 1,
+    kind: "crash: docker kill the container while the replica is serving (systemd Restart=on-failure, RestartSec=30s)" as NonEmptyStr,
+    window_start_utc: "2026-11-09T22:11:08Z" as NonEmptyStr,
+    window_end_utc: "2026-11-09T22:19:33Z" as NonEmptyStr,
+    container_created_seconds: 39,
+    engine_ready_seconds: 512,
+    restarts_observed: 1,
+    verdict: "systemd did restart it, but NOT within the 30 s the brief set as the bar: the unit's own RestartSec=30 makes 30 s the FLOOR, and the measured replacement container appeared 39 s after the kill (22:11:39Z, written by the rendered launcher's own START event). Engine ready 512 s. Auth held: 401 without the key, 200 with it. No --api-key in .Config.Cmd; VLLM_API_KEY present in the engine environment." as NonEmptyStr,
+  },
+  Srv1BootPathRun {
+    replica_index: 0,
+    kind: "cold start: systemctl stop, container removed, systemctl start on the rendered path (NOT a host reboot)" as NonEmptyStr,
+    window_start_utc: "2026-11-09T22:24:35Z" as NonEmptyStr,
+    window_end_utc: "2026-11-09T22:31:38Z" as NonEmptyStr,
+    container_created_seconds: 46,
+    engine_ready_seconds: 423,
+    restarts_observed: 0,
+    verdict: "ready inside the deadline; `ps` on the host shows zero processes carrying --api-key once both replicas are on this path (previously the engine's own argv named the key)" as NonEmptyStr,
+  },
+  Srv1BootPathRun {
+    replica_index: 0,
+    kind: "crash: docker kill the container while the replica is serving (systemd Restart=on-failure, RestartSec=30s)" as NonEmptyStr,
+    window_start_utc: "2026-11-09T22:32:21Z" as NonEmptyStr,
+    window_end_utc: "2026-11-09T22:39:23Z" as NonEmptyStr,
+    container_created_seconds: 38,
+    engine_ready_seconds: 422,
+    restarts_observed: 1,
+    verdict: "replacement container 38 s after the kill (again above the 30 s bar, which the unit's RestartSec=30 sets); engine ready 422 s; auth held (401 without key, 200 with); no --api-key in .Config.Cmd" as NonEmptyStr,
+  },
+]
+
+// The disruption the window cost, counted from the router's own counters rather than estimated. The counters
+// are cumulative since the router started, so the cost is a difference between two snapshots taken on srv1.
+// The window is every action taken against the serving replicas on 2026-11-09: the first (failed) switch
+// attempt, the two cold-start switches, the two crash tests and the NCCL re-run with both replicas stopped.
+data srv1_boot_path_window_router_counting_2026_11_09: NonEmptyStr =
+  "status:502 13 at 2026-11-09T20:38:24Z (before anything was touched) -> 64 at 22:47:37Z (after the whole window): +51 total, of which upstream srv1-vllm +24 and srv1-vllm-1 +24. By phase: the failed first attempt and manual recovery (21:04:54Z..21:34:50Z) +7; replica 1 switch +4; replica 1 crash +2; replica 0 switch +4; replica 0 crash +6; the NCCL window with BOTH replicas down (22:39:48Z..22:47:37Z, 469 s, measurement itself 16 s) +28. status:200 over the same span went 27150 -> 29727, so every 502 is a slice of real traffic, not a dry run. The NCCL window is the honest bulk of it: stopping both replicas is what the re-run required, and no rollback protects against that." as NonEmptyStr
+
+// The outage this window cost, in its own row rather than folded into the success rows. It is the price of
+// the switch and the PR must not read as if the switch were free.
+data srv1_boot_path_incident_2026_11_09: NonEmptyStr =
+  "replica 1 was down 2026-11-09T21:04:54Z..21:17:30Z (756 s) on the FIRST switch attempt. Cause: the rendered container command had one stray `)` -- the args-file refusal was concatenated onto the end of the captured START line -- so the container's `bash -lc` exited 2 within a second, four times, until lil-replica@1 exhausted its restart burst ('Start request repeated too after 5 attempts') and failed. Recovery was manual (restore the backed-up helper, daemon-reload, reset-failed, start), which is why the switch script now carries its own rollback: on any failure inside the deadline it reinstalls the backup, resets the counter and starts the old path, and reports the total outage. Router-attributed cost of the window is counted from the upstream counters, not from this log." as NonEmptyStr
+
+// What a witness cannot see, said plainly: no host reboot has been run, so the boot path is executed but
+// not shown to survive a boot. The unit's enablement (systemctl is-enabled = enabled, read 2026-11-09) is
+// the only evidence about boot, and enablement is not durability.
+
 // ── what this module does NOT model, keyed ─────────────────────────────────────────────────────────
 
 data srv1_serving_replica_layout_frontier: List<FrontierRow> = [
@@ -1562,6 +1696,8 @@ fn srv1_audit_entry_is_user_scope_with_linger(o: BootSurvivalObservation) -> Boo
 fn srv1_audit_entry_is_restart_unless_stopped(o: BootSurvivalObservation) -> Bool { srv1_boot_survival_eq(a: o.verdict, b: RestartUnlessStopped) }
 
 data srv1_fleet_boot_survival_audit: List<BootSurvivalObservation> = [
+  BootSurvivalObservation { host: "srv1" as NonEmptyStr, unit: "lil-replica@0.service" as NonEmptyStr, verdict: EnabledAtBoot, evidence: "systemctl is-enabled = enabled, read on srv1 2026-11-09. SEPARATELY, and NOT the same claim: the START path on this instance was EXECUTED the same day -- cold start 2026-11-09T22:24:35Z..22:31:38Z (container created 46 s, engine ready 423 s) and a crash 22:32:21Z (replacement container 38 s, ready 422 s). A host reboot has NOT been executed, so boot-time creation of the container by the unit remains unobserved." as NonEmptyStr, },
+  BootSurvivalObservation { host: "srv1" as NonEmptyStr, unit: "lil-replica@1.service" as NonEmptyStr, verdict: EnabledAtBoot, evidence: "systemctl is-enabled = enabled, read on srv1 2026-11-09; start path EXECUTED 2026-11-09 (cold start 21:51:38Z..21:59:21Z, container 46 s, ready 463 s; crash 22:11:08Z, replacement 39 s, ready 512 s); host reboot NOT executed. The failed first attempt here (21:04:54Z..21:17:30Z, four exit-2 starts, then 'Start request repeated too quickly') is the unit's StartLimitBurst=3 per 3600 s actually biting -- a property the model carried only as a number." as NonEmptyStr, },
   BootSurvivalObservation { host: "srv3", unit: "strata-pool.service", verdict: EnabledAtBoot, evidence: "systemctl is-enabled reports enabled (2026-11-09)" },
   BootSurvivalObservation { host: "srv4", unit: "gunbc-srv4-daily-engine.service", verdict: EnabledAtBoot, evidence: "systemctl is-enabled reports enabled (2026-11-09)" },
   BootSurvivalObservation { host: "srv4", unit: "gunbc-srv4-tls.service", verdict: EnabledAtBoot, evidence: "systemctl is-enabled reports enabled (2026-11-09)" },

@@ -546,7 +546,167 @@ data srv1_collective_transport_readings: List<CollectiveTransportReading> = [
 // ONE OBLIGATION LEFT ON THIS READING, and it is not a missing cell: the arms differ by about 2x at 256 KiB
 // and above while naming the same transport, on a machine whose GPUs were serving. Re-running both arms with
 // neither lil-flash-next replica loaded settles whether the delta is NCCL's SHM path or the load.
-data srv1_collective_read_obligation: NonEmptyStr = "re-run both arms with the exact command in each row's instrument, with neither lil-flash-next replica loaded (operator window), and keep the four printed lines of each arm; the claim under test is the 2x delta at 256 KiB and above" as NonEmptyStr
+data srv1_collective_read_obligation: NonEmptyStr = "EXECUTED 2026-11-09T22:40:35Z..22:40:51Z in the operator window (both lil-replica units stopped; window 22:39:48Z..22:47:37Z; rows in srv1_collective_transport_readings_unloaded_2026_11_09). The claim under test was the 2x delta at 256 KiB and above: it does NOT survive an unloaded host. Unloaded, default reaches 4.61 / 11.99 / 12.21 GB/s at 256 KiB / 4 MiB / 64 MiB and NCCL_P2P_DISABLE=1 reaches 4.02 / 12.11 / 12.42 GB/s -- within a few percent, and at 4 MiB and 64 MiB the disabled arm is marginally FASTER. Both arms still print every channel via SHM/direct with isAllDirectP2p 0 directMode 0 isAllCudaP2p 0. So the loaded pair read 2026-11-08T22:22Z was measuring something about the machine at that moment, not about the NCCL_P2P_DISABLE switch; what that something was is still unexplained."
+
+// THE SAME TWO ARMS, RE-RUN UNLOADED (2026-11-09, operator window). The instrument differs from the loaded
+// run in one respect only -- both lil-replica units were stopped, so no serving load competes for the two
+// cards. The command below is the command that ran, and it fixes an ambiguity in `nccl_arm_instrument`
+// above: that builder renders the arm label into `-e ARM=<arm>` and nothing else, so as written it cannot
+// have set NCCL_P2P_DISABLE at all, while the printed line those rows carry ("p2pdisabled allreduce ...")
+// is what the script prints FROM ARM. The only way both are true is that the earlier run also passed
+// -e NCCL_P2P_DISABLE=1 explicitly; this arm does, and says so.
+fn nccl_unloaded_arm_instrument(arm: NonEmptyStr, port: NonEmptyStr, printed: NonEmptyStr) -> NonEmptyStr {
+  string_concat_join(
+    fields: [
+      "docker run --rm --network host --ipc host --shm-size=2g --device nvidia.com/gpu=GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3 --device nvidia.com/gpu=GPU-96b749dc-e2ea-5b6f-2e45-ee868b1a9750 -v /home/briansrls/lil:/lil:ro -e ARM=",
+      arm as String,
+      " -e MASTER_ADDR=127.0.0.1 -e MASTER_PORT=",
+      port as String,
+      " -e NCCL_DEBUG=INFO -e NCCL_DEBUG_SUBSYS=INIT,P2P,SHM,NET ",
+      printed as String,
+    ],
+    separator: ""
+  ) as NonEmptyStr
+}
+
+// RUN IDENTITY for the unloaded pair: host srv1, both lil-replica@0 and lil-replica@1 stopped and their
+// containers removed for the whole measurement (confirmed `inactive inactive` and no lil-flash container in
+// `docker ps` before the first arm); driver 580.178.04; image 2ad6245e058de7b4d0b973b08d60f67b18f563e4bd63d6a0e9b0406222a098e9;
+// instrument /home/briansrls/lil/nccl_test.py sha256 702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc
+// (same file, unmodified); window 2026-11-09T22:39:48Z..22:47:37Z, measurement 22:40:35Z..22:40:51Z; the
+// full captured log is /home/briansrls/jh_nccl_results_20261109T224035Z.log sha256
+// 8788e3353eb939847982a51053aefd9f6aa1c32b2705417cdc078e720238b6e1. THE ANSWER THE OBLIGATION ASKED FOR: the
+// 2x delta at 256 KiB and above does NOT survive -- unloaded, the two arms are within a few percent of each
+// other at every size, and both still print every channel "via SHM/direct" with isAllDirectP2p 0.
+data srv1_collective_transport_readings_unloaded_2026_11_09: List<CollectiveTransportReading> = [
+  CollectiveTransportReading {
+    host: operator_host_srv1,
+    instrument_path: "/home/briansrls/lil/nccl_test.py" as NonEmptyStr,
+    instrument_sha256: "702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc" as NonEmptyStr,
+    sizes: [byte_size(16 * 1024), byte_size(256 * 1024), byte_size(4 * 1024 * 1024), byte_size(64 * 1024 * 1024)],
+    env_arm: "default" as NonEmptyStr,
+    transport: "SHM/direct" as NonEmptyStr,
+    message_bytes: byte_size(16 * 1024),
+    elapsed: microsecond(count: 55),
+    bus_bandwidth: bandwidth(300000000),
+    warrant: ReadByThisSession {
+      read_on: "2026-11-09T22:40:35Z..22:40:51Z (both lil replicas stopped)" as NonEmptyStr,
+      instrument: nccl_unloaded_arm_instrument(arm: "default" as NonEmptyStr, port: "29611" as NonEmptyStr, printed: "default allreduce 16 KiB: 55.2 us busbw= 0.30 GB/s" as NonEmptyStr),
+    },
+  },
+
+  CollectiveTransportReading {
+    host: operator_host_srv1,
+    instrument_path: "/home/briansrls/lil/nccl_test.py" as NonEmptyStr,
+    instrument_sha256: "702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc" as NonEmptyStr,
+    sizes: [byte_size(16 * 1024), byte_size(256 * 1024), byte_size(4 * 1024 * 1024), byte_size(64 * 1024 * 1024)],
+    env_arm: "default" as NonEmptyStr,
+    transport: "SHM/direct" as NonEmptyStr,
+    message_bytes: byte_size(256 * 1024),
+    elapsed: microsecond(count: 57),
+    bus_bandwidth: bandwidth(4610000000),
+    warrant: ReadByThisSession {
+      read_on: "2026-11-09T22:40:35Z..22:40:51Z (both lil replicas stopped)" as NonEmptyStr,
+      instrument: nccl_unloaded_arm_instrument(arm: "default" as NonEmptyStr, port: "29611" as NonEmptyStr, printed: "default allreduce 256 KiB: 56.9 us busbw= 4.61 GB/s" as NonEmptyStr),
+    },
+  },
+
+  CollectiveTransportReading {
+    host: operator_host_srv1,
+    instrument_path: "/home/briansrls/lil/nccl_test.py" as NonEmptyStr,
+    instrument_sha256: "702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc" as NonEmptyStr,
+    sizes: [byte_size(16 * 1024), byte_size(256 * 1024), byte_size(4 * 1024 * 1024), byte_size(64 * 1024 * 1024)],
+    env_arm: "default" as NonEmptyStr,
+    transport: "SHM/direct" as NonEmptyStr,
+    message_bytes: byte_size(4 * 1024 * 1024),
+    elapsed: microsecond(count: 350),
+    bus_bandwidth: bandwidth(11990000000),
+    warrant: ReadByThisSession {
+      read_on: "2026-11-09T22:40:35Z..22:40:51Z (both lil replicas stopped)" as NonEmptyStr,
+      instrument: nccl_unloaded_arm_instrument(arm: "default" as NonEmptyStr, port: "29611" as NonEmptyStr, printed: "default allreduce 4096 KiB: 349.9 us busbw= 11.99 GB/s" as NonEmptyStr),
+    },
+  },
+
+  CollectiveTransportReading {
+    host: operator_host_srv1,
+    instrument_path: "/home/briansrls/lil/nccl_test.py" as NonEmptyStr,
+    instrument_sha256: "702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc" as NonEmptyStr,
+    sizes: [byte_size(16 * 1024), byte_size(256 * 1024), byte_size(4 * 1024 * 1024), byte_size(64 * 1024 * 1024)],
+    env_arm: "default" as NonEmptyStr,
+    transport: "SHM/direct" as NonEmptyStr,
+    message_bytes: byte_size(64 * 1024 * 1024),
+    elapsed: microsecond(count: 5495),
+    bus_bandwidth: bandwidth(12210000000),
+    warrant: ReadByThisSession {
+      read_on: "2026-11-09T22:40:35Z..22:40:51Z (both lil replicas stopped)" as NonEmptyStr,
+      instrument: nccl_unloaded_arm_instrument(arm: "default" as NonEmptyStr, port: "29611" as NonEmptyStr, printed: "default allreduce 65536 KiB: 5495.3 us busbw= 12.21 GB/s" as NonEmptyStr),
+    },
+  },
+
+  CollectiveTransportReading {
+    host: operator_host_srv1,
+    instrument_path: "/home/briansrls/lil/nccl_test.py" as NonEmptyStr,
+    instrument_sha256: "702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc" as NonEmptyStr,
+    sizes: [byte_size(16 * 1024), byte_size(256 * 1024), byte_size(4 * 1024 * 1024), byte_size(64 * 1024 * 1024)],
+    env_arm: "p2pdisabled" as NonEmptyStr,
+    transport: "SHM/direct" as NonEmptyStr,
+    message_bytes: byte_size(16 * 1024),
+    elapsed: microsecond(count: 52),
+    bus_bandwidth: bandwidth(310000000),
+    warrant: ReadByThisSession {
+      read_on: "2026-11-09T22:40:35Z..22:40:51Z (both lil replicas stopped)" as NonEmptyStr,
+      instrument: nccl_unloaded_arm_instrument(arm: "p2pdisabled" as NonEmptyStr, port: "29602" as NonEmptyStr, printed: "p2pdisabled allreduce 16 KiB: 52.4 us busbw= 0.31 GB/s" as NonEmptyStr),
+    },
+  },
+
+  CollectiveTransportReading {
+    host: operator_host_srv1,
+    instrument_path: "/home/briansrls/lil/nccl_test.py" as NonEmptyStr,
+    instrument_sha256: "702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc" as NonEmptyStr,
+    sizes: [byte_size(16 * 1024), byte_size(256 * 1024), byte_size(4 * 1024 * 1024), byte_size(64 * 1024 * 1024)],
+    env_arm: "p2pdisabled" as NonEmptyStr,
+    transport: "SHM/direct" as NonEmptyStr,
+    message_bytes: byte_size(256 * 1024),
+    elapsed: microsecond(count: 65),
+    bus_bandwidth: bandwidth(4020000000),
+    warrant: ReadByThisSession {
+      read_on: "2026-11-09T22:40:35Z..22:40:51Z (both lil replicas stopped)" as NonEmptyStr,
+      instrument: nccl_unloaded_arm_instrument(arm: "p2pdisabled" as NonEmptyStr, port: "29602" as NonEmptyStr, printed: "p2pdisabled allreduce 256 KiB: 65.2 us busbw= 4.02 GB/s" as NonEmptyStr),
+    },
+  },
+
+  CollectiveTransportReading {
+    host: operator_host_srv1,
+    instrument_path: "/home/briansrls/lil/nccl_test.py" as NonEmptyStr,
+    instrument_sha256: "702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc" as NonEmptyStr,
+    sizes: [byte_size(16 * 1024), byte_size(256 * 1024), byte_size(4 * 1024 * 1024), byte_size(64 * 1024 * 1024)],
+    env_arm: "p2pdisabled" as NonEmptyStr,
+    transport: "SHM/direct" as NonEmptyStr,
+    message_bytes: byte_size(4 * 1024 * 1024),
+    elapsed: microsecond(count: 346),
+    bus_bandwidth: bandwidth(12110000000),
+    warrant: ReadByThisSession {
+      read_on: "2026-11-09T22:40:35Z..22:40:51Z (both lil replicas stopped)" as NonEmptyStr,
+      instrument: nccl_unloaded_arm_instrument(arm: "p2pdisabled" as NonEmptyStr, port: "29602" as NonEmptyStr, printed: "p2pdisabled allreduce 4096 KiB: 346.5 us busbw= 12.11 GB/s" as NonEmptyStr),
+    },
+  },
+
+  CollectiveTransportReading {
+    host: operator_host_srv1,
+    instrument_path: "/home/briansrls/lil/nccl_test.py" as NonEmptyStr,
+    instrument_sha256: "702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc" as NonEmptyStr,
+    sizes: [byte_size(16 * 1024), byte_size(256 * 1024), byte_size(4 * 1024 * 1024), byte_size(64 * 1024 * 1024)],
+    env_arm: "p2pdisabled" as NonEmptyStr,
+    transport: "SHM/direct" as NonEmptyStr,
+    message_bytes: byte_size(64 * 1024 * 1024),
+    elapsed: microsecond(count: 5404),
+    bus_bandwidth: bandwidth(12420000000),
+    warrant: ReadByThisSession {
+      read_on: "2026-11-09T22:40:35Z..22:40:51Z (both lil replicas stopped)" as NonEmptyStr,
+      instrument: nccl_unloaded_arm_instrument(arm: "p2pdisabled" as NonEmptyStr, port: "29602" as NonEmptyStr, printed: "p2pdisabled allreduce 65536 KiB: 5404.0 us busbw= 12.42 GB/s" as NonEmptyStr),
+    },
+  },
+]
 
 // WHAT IS NOT A FACT HERE. Every row names the observation that would settle it, and none of them is allowed
 // to be read as a premise by a consumer (and see the note above the standing joins: there is no `is_fact`
@@ -558,7 +718,7 @@ data srv1_interconnect_explanations: List<InterconnectExplanation> = [
     subject: "missing peer access explains the whole TP=2 vs 2xTP=1 margin" as NonEmptyStr,
     standing: Hypothesis {
       claim: "the absence of GPU-to-GPU peer access on srv1 is what puts the whole difference between TP=2 and 2xTP=1 there, and what reverses the fork's TP=2-wins rows; the claim is about the chipset, not about NCCL, because NCCL never had a P2P path here to lose (both arms print SHM/direct), and the relayed assertion that the two NCCL arms behave identically did NOT survive the 22:22 UTC run" as NonEmptyStr,
-      would_be_settled_by: "a host where the same two boards DO have peer access, measured with this same harness (the same engine revision, prompt, 8 warm sessions and 150k pool, gunbc.serving.srv1_serving_bench), showing TP=2 ahead; and the two NCCL arms above re-run with neither serving replica loaded, which is the window `srv1_collective_read_obligation` names" as NonEmptyStr,
+      would_be_settled_by: "STILL OPEN, and this re-run did not settle it: what the unloaded 2026-11-09 pair settles is the SEPARATE question of whether NCCL_P2P_DISABLE=1 is expensive here (it is not). This claim is about the chipset -- that the absence of peer access is what puts the TP=2 vs 2xTP=1 margin there -- and the only reading that could move it is the same harness on a host where these two boards DO answer the peer-access query yes, showing TP=2 ahead. Both arms on srv1 print SHM/direct with or without the flag, which is consistent with the claim and does not confirm it." as NonEmptyStr,
     },
   },
   InterconnectExplanation {
@@ -578,8 +738,8 @@ data srv1_interconnect_explanations: List<InterconnectExplanation> = [
     host: operator_host_srv1,
     subject: "why NCCL_P2P_DISABLE=1 costs about half the bandwidth when neither arm has P2P" as NonEmptyStr,
     standing: Hypothesis {
-      claim: "with the chipset already refusing peer access, NCCL_P2P_DISABLE=1 still changes which copy path NCCL takes -- the default arm reaches 4.79/12.24/12.45 GB/s at 256 KiB/4 MiB/64 MiB and the disabled arm 1.79/5.17/5.83 GB/s, while both print every channel as SHM/direct" as NonEmptyStr,
-      would_be_settled_by: "both arms re-run with neither lil-flash-next replica loaded (srv1_collective_read_obligation), and if the delta survives, the NCCL debug log at NCCL_DEBUG_SUBSYS=TRANSPORT for each arm showing what each channel actually opened" as NonEmptyStr,
+      claim: "AS REFINED BY THE UNLOADED RE-RUN OF 2026-11-09T22:40Z, this no longer claims the switch is expensive. Loaded (2026-11-08T22:22Z) the default arm reached 4.79/12.24/12.45 GB/s at 256 KiB/4 MiB/64 MiB and the disabled arm 1.79/5.17/5.83 GB/s; unloaded (srv1_collective_transport_readings_unloaded_2026_11_09) the same arms reach 4.61/11.99/12.21 and 4.02/12.11/12.42 GB/s -- a few percent apart, the disabled arm marginally faster at the two large sizes. So NCCL_P2P_DISABLE=1 does NOT cost half the bandwidth on this host: the 2026-11-08 delta was a property of the machine at that moment (both cards serving a replica, arms run seconds apart in a fixed order), not of the flag. What remains unexplained is the loaded delta itself." as NonEmptyStr,
+      would_be_settled_by: "the loaded pair re-run with the arms in the REVERSED order (the cheaper experiment than any new instrument: order is the one thing the 2026-11-08 pair did not vary), plus NCCL_DEBUG_SUBSYS=TRANSPORT on both arms, which is the only reading that shows what each channel actually opened. The unloaded half of the original condition is now executed and answered: the delta does not survive it." as NonEmptyStr,
     },
   },
 ]
