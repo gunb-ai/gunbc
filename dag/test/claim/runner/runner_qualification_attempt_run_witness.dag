@@ -12,7 +12,7 @@ import std.algebra { string_contains }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.exec.command { argv_words }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
-import gunbc.host.anchored_host_transport { anchored_host_transport_live, AnchoredBindingAnchorAbsent }
+import gunbc.host.anchored_host_transport { anchored_host_transport_live_per_boot, AnchoredBindingAnchorAbsent }
 import gunbc.runner.runner_host_unit_slot { host_unit_listener_wait, HostUnitListenerReady, HostUnitListenerUnbuilt, ListenerOwnLifetime }
 import gunbc.runner.runner_service_slot_controller { ListenerRun, ListenerExited, ListenerEndedUnclean, ListenerOutcomeUnobserved, ListenerNotLaunched }
 import gunbc.runner.runner_qualification_attempt_run {
@@ -96,10 +96,11 @@ test fn the_attempt_label_is_one_per_run_and_attempt() -> Bool {
   })
 }
 
-// THE REAL ROUTE: mtcollins1's anchored row has no anchor until a live readback, so the live transport refuses with
-// the anchor absent -- before the operator's go is read and before any SSH context, scan or connection exists.
+// THE REAL ROUTE: mtcollins1 is trusted only by the per-boot pin its boot's running-OS receipt carries, so with no
+// host key the live transport refuses with the anchor absent -- before the operator's go is read and before any SSH
+// context, scan or connection exists.
 test fn the_live_transport_to_mtcollins1_refuses_without_an_anchor_and_contacts_nothing() -> Bool {
-  match anchored_host_transport_live(host: operator_host_mtcollins1, attempt_raw: "q-1") {
+  match anchored_host_transport_live_per_boot(host: operator_host_mtcollins1, attempt_raw: "q-1", host_key: none, expected_boot_id: "aaaaaaaa-0000-4000-8000-000000000001" as NonEmptyStr) {
     AnchoredBindingAnchorAbsent { cause: c } => string_contains(s: c, pattern: "nothing contacted")
     _ => false
   }

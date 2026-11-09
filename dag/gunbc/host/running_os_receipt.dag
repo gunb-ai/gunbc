@@ -11,6 +11,7 @@ import extdeps.github.workflow_runs { GitHubWorkflowRunId, github_workflow_run_i
 import product.host_identity { HostIdentity }
 import gunbc.host.host_boot_id { HostBootId, host_boot_id_of_kernel_text }
 import gunbc.host.running_os { RunningOs, RunningDeliveredArtifact, RunningOsReading, RunningOsObserved, RunningOsUnobserved }
+import gunbc.host.per_boot_console_pin { CheckedHostKey, checked_host_key }
 
 // A RUNNING-OS READING CARRIED ACROSS JOBS (gunbc.plans.physical_machine_boot_program (deleted 2026-11-08), the initialized-host
 // contract; merry-fox-82's B2 decision A, 2026-11-02). The reading is produced where the boot's console capture
@@ -19,6 +20,15 @@ import gunbc.host.running_os { RunningOs, RunningDeliveredArtifact, RunningOsRea
 // The boot run writes it as this receipt and uploads it as an artifact of ITS OWN RUN; the consumer selects that
 // producer run (gunbc.fleet.fleet_converge_producer_run) and downloads the artifact from it, never from a
 // hand-supplied value or a path in a working tree.
+//
+// THE RECEIPT ALSO CARRIES THE BOOT'S HOST KEY (operator decision 2026-11-08: mtcollins1's host trust is the
+// per-boot pin, gunbc.host.per_boot_console_pin): the checked key the boot run read off the same console envelope
+// (gunbc.runner.runner_host_medium RunnerHostUp host_key) -- type, blob, fingerprint -- inside the content digest.
+// The key states NO boot id of its own: its boot is the receipt's one observed_boot_id, so a receipt cannot carry
+// a key from another boot than the one it observed. The reader re-checks the key through checked_host_key (type,
+// blob, fingerprint naming the blob, boot id a kernel boot id), so a receipt whose key does not check refuses
+// here, and the consumer mints the pin from that checked key and nothing else
+// (gunbc.host.anchored_host_transport anchored_host_transport_live_per_boot).
 //
 // WHAT THE RECEIPT DOES NOT CARRY IS TRUST. It names its producer and its content digest, so a document that is
 // not what its producer wrote, or that came from another run, refuses here. That the host is STILL on the boot
@@ -66,6 +76,9 @@ data running_os_receipt_attempt_prefix: String = "producer_attempt="
 data running_os_receipt_host_prefix: String = "host="
 data running_os_receipt_delivered_artifact_prefix: String = "delivered_artifact_digest="
 data running_os_receipt_boot_prefix: String = "observed_boot_id="
+data running_os_receipt_host_key_type_prefix: String = "host_key_type="
+data running_os_receipt_host_key_base64_prefix: String = "host_key_base64="
+data running_os_receipt_host_key_sha256_prefix: String = "host_key_sha256="
 data running_os_receipt_content_digest_prefix: String = "content_sha256="
 
 // THE CONTENT DIGEST is the sha256 of every byte before the content_sha256 line (FIPS 180-4, extdeps.crypto.sha2,
@@ -74,7 +87,7 @@ fn running_os_receipt_content_digest(body: String) -> String {
   sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: body)))
 }
 
-fn running_os_receipt_body(producer: RunningOsReceiptProducer, host: HostIdentity, running: RunningOs, boot: HostBootId) -> String {
+fn running_os_receipt_body(producer: RunningOsReceiptProducer, host: HostIdentity, running: RunningOs, boot: HostBootId, host_key: CheckedHostKey) -> String {
   let delivered = match running { RunningDeliveredArtifact { digest: d } => d as String }
   concat(join([
     running_os_receipt_header,
@@ -83,18 +96,42 @@ fn running_os_receipt_body(producer: RunningOsReceiptProducer, host: HostIdentit
     concat(running_os_receipt_host_prefix, host as String),
     concat(running_os_receipt_delivered_artifact_prefix, delivered),
     concat(running_os_receipt_boot_prefix, boot.boot_id as String),
+    concat(running_os_receipt_host_key_type_prefix, host_key.key_type),
+    concat(running_os_receipt_host_key_base64_prefix, host_key.public_key_base64),
+    concat(running_os_receipt_host_key_sha256_prefix, host_key.sha256_fingerprint),
   ], "\n"), "\n")
 }
 
-// THE WRITER: only an observed reading has a receipt. An unobserved one is not written, so a consumer finds no
-// receipt rather than one stating nothing.
-fn running_os_receipt_text(producer: RunningOsReceiptProducer, reading: RunningOsReading) -> String? {
+// WHAT THE WRITER COMPOSED: the document, or the one reason there is none. The two reasons are different
+// anomalies (the running OS was never read, versus a console that printed a key on another boot than the one
+// read), so each keeps its own arm and its facts rather than one absence a caller has to guess between.
+type RunningOsReceiptComposition
+  = RunningOsReceiptComposed { text: String }
+  | RunningOsReceiptReadingUnobserved { cause: String }
+  | RunningOsReceiptKeyOfAnotherBoot { observed_on: String, key_checked_on: String }
+
+fn running_os_receipt_composition_text(c: RunningOsReceiptComposition) -> String {
+  match c {
+    RunningOsReceiptComposed { text: _ } => "composed"
+    RunningOsReceiptReadingUnobserved { cause: x } => concat("the running OS was not observed: ", x)
+    RunningOsReceiptKeyOfAnotherBoot { observed_on: o, key_checked_on: k } =>
+      join(["the host key was checked on boot ", k, ", not the observed boot ", o], "")
+  }
+}
+
+// THE WRITER: only an observed reading with its boot's own checked host key has a receipt. An unobserved reading,
+// or a key checked on another boot than the one observed, is not written, so a consumer finds no receipt rather
+// than one stating nothing or one pairing a running OS with another boot's key.
+fn running_os_receipt_text(producer: RunningOsReceiptProducer, reading: RunningOsReading, host_key: CheckedHostKey) -> RunningOsReceiptComposition {
   match reading {
-    RunningOsUnobserved { cause: _ } => none
-    RunningOsObserved { running: r, observed_host: h, observed_on: b } => {
-      let body = running_os_receipt_body(producer: producer, host: h, running: r, boot: b)
-      Present { value: join([body, running_os_receipt_content_digest_prefix, running_os_receipt_content_digest(body: body), "\n"], "") }
-    }
+    RunningOsUnobserved { cause: c } => RunningOsReceiptReadingUnobserved { cause: c }
+    RunningOsObserved { running: r, observed_host: h, observed_on: b } =>
+      if (host_key.boot_id as String) != (b.boot_id as String) {
+        RunningOsReceiptKeyOfAnotherBoot { observed_on: b.boot_id as String, key_checked_on: host_key.boot_id as String }
+      } else {
+        let body = running_os_receipt_body(producer: producer, host: h, running: r, boot: b, host_key: host_key)
+        RunningOsReceiptComposed { text: join([body, running_os_receipt_content_digest_prefix, running_os_receipt_content_digest(body: body), "\n"], "") }
+      }
   }
 }
 
@@ -113,9 +150,14 @@ type RunningOsReceiptRefusal
   | RunningOsReceiptDigestMismatch { stated: String, computed: String }
   // the document names another run than the one it was downloaded from.
   | RunningOsReceiptOfAnotherRun { stated: String, fetched_from: RunningOsReceiptProducer }
+  // the stated host key does not check on the stated boot (gunbc.host.per_boot_console_pin checked_host_key): not
+  // ed25519, a blob that does not parse, or a fingerprint that does not name the blob.
+  | RunningOsReceiptHostKeyUnchecked { key_type: String, fingerprint: String }
 
+// An admitted receipt is a running-OS reading AND the checked host key of the boot it observed; the key's boot id is
+// the reading's, by construction of the reader.
 type RunningOsReceiptReading
-  = RunningOsReceiptAdmitted { reading: RunningOsReading }
+  = RunningOsReceiptAdmitted { reading: RunningOsReading, host_key: CheckedHostKey }
   | RunningOsReceiptRefused { refusal: RunningOsReceiptRefusal }
 
 fn running_os_receipt_refusal_text(refusal: RunningOsReceiptRefusal) -> String {
@@ -126,6 +168,7 @@ fn running_os_receipt_refusal_text(refusal: RunningOsReceiptRefusal) -> String {
     RunningOsReceiptFieldRepeated { prefix: p, occurrences: n } => join(["the running-OS receipt has ", int_to_decimal_string(value: n), " ", p, " lines; each field is stated exactly once"], "")
     RunningOsReceiptDigestMismatch { stated: s, computed: c } => join(["the running-OS receipt states content_sha256 ", s, " but its content digests to ", c], "")
     RunningOsReceiptOfAnotherRun { stated: s, fetched_from: f } => join(["the running-OS receipt names ", s, " but was downloaded from ", running_os_receipt_producer_text(p: f)], "")
+    RunningOsReceiptHostKeyUnchecked { key_type: t, fingerprint: fp } => join(["the running-OS receipt's host key (", t, " ", fp, ") does not check on its observed boot"], "")
   }
 }
 
@@ -181,6 +224,9 @@ data running_os_receipt_field_prefixes: List<String> = [
   running_os_receipt_host_prefix,
   running_os_receipt_delivered_artifact_prefix,
   running_os_receipt_boot_prefix,
+  running_os_receipt_host_key_type_prefix,
+  running_os_receipt_host_key_base64_prefix,
+  running_os_receipt_host_key_sha256_prefix,
 ]
 
 fn running_os_receipt_line_is_field(line: String) -> Bool {
@@ -244,13 +290,36 @@ fn running_os_receipt_facts(lines: List<String>) -> RunningOsReceiptReading {
             if host == "" || digest == "" {
               running_os_receipt_malformed(cause: "an empty host or delivered artifact digest")
             } else {
-              RunningOsReceiptAdmitted { reading: RunningOsObserved {
+              running_os_receipt_keyed(lines: lines, reading: RunningOsObserved {
                 running: RunningDeliveredArtifact { digest: digest as NonEmptyStr },
                 observed_host: host as HostIdentity,
                 observed_on: boot,
-              } }
+              }, boot: boot)
             }
         }
+      }
+    }
+  }
+}
+
+// THE HOST KEY, read after the running OS: each of its three fields exactly once, then checked on the receipt's
+// observed boot -- the key states no boot of its own, so the pin a consumer mints from it names this boot.
+fn running_os_receipt_keyed(lines: List<String>, reading: RunningOsReading, boot: HostBootId) -> RunningOsReceiptReading {
+  match running_os_receipt_field(lines: lines, prefix: running_os_receipt_host_key_type_prefix) {
+    RunningOsReceiptFieldRefused { refusal: r } => RunningOsReceiptRefused { refusal: r }
+    RunningOsReceiptFieldRead { value: key_type } => match running_os_receipt_field(lines: lines, prefix: running_os_receipt_host_key_base64_prefix) {
+      RunningOsReceiptFieldRefused { refusal: r } => RunningOsReceiptRefused { refusal: r }
+      RunningOsReceiptFieldRead { value: key_b64 } => match running_os_receipt_field(lines: lines, prefix: running_os_receipt_host_key_sha256_prefix) {
+        RunningOsReceiptFieldRefused { refusal: r } => RunningOsReceiptRefused { refusal: r }
+        RunningOsReceiptFieldRead { value: fingerprint } =>
+          if key_type == "" || key_b64 == "" || fingerprint == "" {
+            running_os_receipt_malformed(cause: "an empty host key type, blob or fingerprint")
+          } else {
+          match checked_host_key(boot_id: (boot.boot_id as String) as NonEmptyStr, key_type: key_type, key_b64: key_b64, fingerprint: fingerprint) {
+            Absent => RunningOsReceiptRefused { refusal: RunningOsReceiptHostKeyUnchecked { key_type: key_type, fingerprint: fingerprint } }
+            Present { value: key } => RunningOsReceiptAdmitted { reading: reading, host_key: key }
+          }
+          }
       }
     }
   }
