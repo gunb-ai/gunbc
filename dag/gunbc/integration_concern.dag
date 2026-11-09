@@ -1761,24 +1761,31 @@ data host_effect_apply_witness_import_block_absent: IntegrationConcern = Integra
 // EqualityMemberUnjudgeable wall classes and so does NOT discriminate this arm; fail-closed holds
 // by source construction only.
 data equality_missing_helper_census_refusal_unwitnessed: IntegrationConcern = IntegrationConcern {
-  identity: "gunbc.integration_concern.equality_missing_helper_census_refusal_unwitnessed",
+  identity: "equality_missing_helper_census_refusal_unwitnessed",
   kind: SuspectedCapabilityGap {
-    model: Declared { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_body_block_reason") },
+    model: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_body_block_reason"),
     requirement: "When a derived equality body needs a helper that no module declares, the closure REFUSES at the use door with the located reason naming the helper, and no call to the undeclared helper is emitted - witnessed by execution, not by construction alone",
     standing: RequirementUnestablished { decided_by: "the independent exact-tree review of the #15992 root fix (2026-11-06) found no discriminating witness for this arm: no census fixture can make a pool-declared helper census-absent by omission, because omission also drops realization" },
   },
-  affected: AffectedScope {
-    head: [decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_helper_declared")],
-    tail: [decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_body_block_reason"), decl_ref(module_path: "gunbc.compile_diagnostic_census", decl_name: "CompileDiagnosticCensus")],
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_helper_declared"),
+    tail: [
+      decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_body_block_reason"),
+      decl_ref(module_path: "gunbc.compile_diagnostic_census", decl_name: "CompileDiagnosticCensus"),
+    ],
   },
   question: "Can the census-absent refusal be witnessed? DESIGN ONLY; UNEXECUTED; instrument implementation is a separate scope decision. FEASIBILITY IS NOW DISTINGUISHED, on the traced closure (compile_dag_diagnostic_census, src/v1/stage0/src/cli_run/emit_host.rs -> resolve_virtual_source_with_imports, src/v1/stage0/src/cli_run.rs: the census corpus is the probed source plus the fixture_imported_corpus_sources / close_fixture_imported_corpus closure of ITS OWN import statements over the live tree, ReadsLiveTree). (A) CURRENT-PRIMITIVE POSSIBLE: an absent-realization control -- the refusing fixture names NO module that reaches the helper modules, so the closure omits std.algebra entirely and the helpers are census-absent BEFORE census construction; its positive is the SAME source plus the realization edge import std.types, which imports std.algebra (dag/std/types.dag:4). List/Map are declared in std.types (type List = FreeMonoid and type Map = FinitelySupportedFunction, dag/std/types.dag:160/:199) with kernel_type_set entries (:7), and v1.compiler.infer_types consults their kernel forms through container_param_name, DECLARED IN std.types (dag/std/types.dag:54), so the absent-realization fixture is EXPECTED (design level, unexecuted) to compile without std.types. (B) STILL INSTRUMENT-SCOPED: selectively deleting ONE ACTUAL helper declaration (std.algebra.map_values_eq) while everything else is realized -- the builtin takes only the probed source and reads the live tree, so this needs a separately scoped instrument variant, not made here. EXPECTATIONS PREPARED FROM CURRENT CODE (not from the internal constructor): the runtime census row is diagnostic class EqualityMemberUnjudgeable -- the consumer arm of equality_derived_target in v1.compiler.infer emits EqualityMemberUnjudgeable at the authored compared operand as subject (fixture: Bag), with the member text being the internal EqualityRootRefused reason (the derived equality body for same in <module> is not emitted: no module declares the helper std.algebra.map_values_eq that the synthesized body binds it to) plus the compared-in census-declaration suffix; EqualityRootRefused is the INTERNAL constructor name and is NOT a census class. Controls: (a) same-source positive with the realization edge admitted, proving the population otherwise reaches the arm; (b) the refusing cell located at the Map-bearing subject with the exact helper reason naming std.algebra.map_values_eq; (c) irrelevant-zip_eq control: a Map-only subject produces no zip_eq reason; (d) zero-competing-wall: no other blocking class at the subject and the census is CensusObserved (a CensusNotRunnable census refuses the whole comparison, it does not count as the arm). A pool-local helper declaration cannot serve as a positive control: the gate looks up std.algebra.map_values_eq by that exact qualified name. The census is CHECKOUT-DEPENDENT at the pinned revision and its imported-corpus closure cost is UNMEASURED. OPEN design question on this row: a helper module NO source names currently refuses at the gate, though derived equality over Map/List is defined by language design over these std.algebra helpers -- whether such helpers should be realized by construction (prelude-like) instead is a compiler decision outside this row's witness mandate.",
-  sightings: [
-    ConcernSighting {
-      revision: "02569a6da785",
-      evidence: FreeSemigroup(head: SightingEvidence(artifact: CitesArtifact(path: "src/v1/04_infer.dag", locator: "equality_helper_declared false branch")), tail: FreeSemigroup(head: SightingEvidence(artifact: CitesArtifact(path: "dag/test/claim/self_host_equality_admission_witness.dag", locator: "unexecuted-obligation comment above nested_skipped_sibling_via_container_red_source")), tail: FreeSemigroupEmpty())),
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "5a56f80166d92326509921eb3033c0343f7f4f4e",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_helper_declared") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_body_block_reason") }],
+      },
       account: "Filed by the author at the consolidated-correction revision, from the independent review finding that the function-member red does not discriminate the census-absent arm. UNEXECUTED: no run exists for this refusal, and none is claimed. Instrument change (a census variant that can withhold a corpus declaration before census construction) awaits its own scope decision; the existing primitive reads the live tree and cannot express the withhold. CORPUS IMPACT UNESTABLISHED: module import edges are traced by the source analysis; corpus-wide declaration REALIZATION, EMISSION, and EXECUTION of these helpers are NOT traced and ride the open executed validation.",
     },
-  ],
+    tail: [],
+  },
   disposition: Open,
 }
 
