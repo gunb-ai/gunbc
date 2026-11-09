@@ -1,0 +1,14 @@
+module gunbc.rung_drop_amendment.v1_lanes_withdrawn_reach_a_calling_repository
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop_amendment { RungDropAmendment }
+
+data v1_lanes_withdrawn_reach_a_calling_repository: RungDropAmendment = RungDropAmendment {
+  drop_identity: "v1_required_lanes_withdrawn" as NonEmptyStr,
+
+  amended: "2026-11-09",
+
+  later_event: "gunbc.witness.compiler_gate_workflow gained a called form (workflow_call with compose_caller_dag): a repository that carries .dag modules and no compiler calls gunbc's gate, its dag/ is composed into gunbc's, and every step after the composition is the step gunbc runs on itself. The operator ruled on 2026-11-09 that the private mirror's CI is gunbc's gate 1:1 and that its own witness evaluation may be skipped ('private running witnesses is fine, or its fine to skip'). That mirror's former gate evaluated a roster of its witnesses and must-not-compile probes through the v1 interpreter; it is deleted. Its first run under the called gate (gunb-ai/gunbc-private run 42640489209) refused its modules at the native layout check, so the caller's tree is judged, at the grain gunbc's own modules outside the two emitted closures are.",
+
+  bearing: "the drop's population widens from gunbc's tree to gunbc's tree plus every calling repository's tree. A caller's modules are natively parsed (parse-population) and held to the namespace layout, and nothing on the required path resolves, typechecks or evaluates them unless an emitted closure imports them -- exactly the loss this drop already declares for gunbc's own modules, and no further. The previous rung of the caller's witnesses was a v1-interpreted roster on its own gate; the temporary rung is unjudged beyond parse and layout. The restoration trigger is unchanged and covers the caller without a separate row: the native compiler judging the population the drop declares judges the composed tree, because the composed tree is that population."
+}
