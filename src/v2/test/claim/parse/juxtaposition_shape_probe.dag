@@ -1,0 +1,104 @@
+module v2.test.claim.parse.juxtaposition_shape_probe
+
+import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
+import v2.std.diagnostic { Accepted, Rejected }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Absent, Optional, Present }
+import v2.std.node { Node, Symbol, node_subtree_nodes }
+import v2.std.grammar { parse_production_emitted_identity_optional }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SHAPE PROBE (investigation only; not a claim cell for the PR). It answers the DESIGN 6b boundary
+// question for the juxtaposed-literal class: when a fn body is two juxtaposed bracketed literals
+// on separate lines, does the PARSE tree emit a dag_surface_stmt_seq (two statements -> lowering is
+// the boundary) or not (the second literal did not become a statement -> grammar is the boundary)?
+// Run at origin/main 85758c1ab612 with claim_batch and report each test fn's value.
+
+fn two_source() -> String {
+  "module probe.juxtap_two\n\nimport v2.std.list { List }\nimport v2.std.integer { Int }\n\nfn juxtap_two() -> List<Int> {\n  [1, 2, 3]\n  [4, 5]\n}\n"
+}
+
+fn one_source() -> String {
+  "module probe.juxtap_one\n\nimport v2.std.list { List }\nimport v2.std.integer { Int }\n\nfn juxtap_one() -> List<Int> {\n  [1, 2, 3]\n}\n"
+}
+
+// A list literal, one bracketed literal, on its own line as the body's only statement.
+fn one_line_list_source() -> String {
+  "module probe.juxtap_line\n\nimport v2.std.list { List }\nimport v2.std.integer { Int }\n\nfn pair(value: Int) -> List<Int> {\n  let wire = value\n  [wire, wire]\n}\n"
+}
+
+fn parse_tree(tag: String, text: String) -> Optional<Node> {
+  match conservation_subject_of_text(path: "probe_" + tag + ".dag", text: text).parsed {
+    Accepted { value: artifact, diagnostics: _ } => Present { value: artifact.tree }
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn emitted_is(n: Node, sym: Symbol) -> Bool {
+  match parse_production_emitted_identity_optional(node: n) {
+    Present { value: id } => id == sym
+    Absent => false
+  }
+}
+
+fn subtree_has_emitted(root: Node, sym: Symbol) -> Bool {
+  fold(node_subtree_nodes(root: root), init: false, f: fn(acc, m) { acc || emitted_is(n: m, sym: sym) })
+}
+
+fn two_parses() -> Bool {
+  match parse_tree(tag: "two", text: two_source()) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// THE decisive read: does juxtaposing two bracketed literals emit a statement sequence?
+fn two_has_stmt_seq() -> Bool {
+  match parse_tree(tag: "two", text: two_source()) {
+    Present { value: t } => subtree_has_emitted(root: t, sym: ^dag_surface_stmt_seq)
+    Absent => false
+  }
+}
+
+fn two_has_stmt() -> Bool {
+  match parse_tree(tag: "two", text: two_source()) {
+    Present { value: t } => subtree_has_emitted(root: t, sym: ^dag_surface_stmt)
+    Absent => false
+  }
+}
+
+fn one_has_stmt_seq() -> Bool {
+  match parse_tree(tag: "one", text: one_source()) {
+    Present { value: t } => subtree_has_emitted(root: t, sym: ^dag_surface_stmt_seq)
+    Absent => false
+  }
+}
+
+// Positive control: the let-then-list shape already normalizes on main (index_suffix claim); it must
+// still report a statement sequence here, so the probe's dag_surface_stmt_seq read is trustworthy.
+fn line_has_stmt_seq() -> Bool {
+  match parse_tree(tag: "line", text: one_line_list_source()) {
+    Present { value: t } => subtree_has_emitted(root: t, sym: ^dag_surface_stmt_seq)
+    Absent => false
+  }
+}
+
+// How many stmt_seq nodes does the juxtaposed body emit? Encoded as Bool reads using only || / && /
+// match (the constructs proven in sibling claims). 0 = the juxtaposition never became a statement
+// sequence; a spine holding both statements = the parse made a stmt_seq and lowering failed to refuse.
+fn two_has_two_stmt_seqs() -> Bool {
+  match parse_tree(tag: "two", text: two_source()) {
+    Present { value: t } =>
+      fold(node_subtree_nodes(root: t), init: false, f: fn(seen_any, m) {
+        if seen_any { seen_any } else { emitted_is(n: m, sym: ^dag_surface_stmt_seq) }
+      })
+    Absent => false
+  }
+}
+
+test fn jp_two_parses() -> Bool { two_parses() }
+test fn jp_two_has_stmt_seq() -> Bool { two_has_stmt_seq() }
+test fn jp_two_has_stmt() -> Bool { two_has_stmt() }
+test fn jp_one_has_stmt_seq() -> Bool { one_has_stmt_seq() }
+test fn jp_line_has_stmt_seq() -> Bool { line_has_stmt_seq() }
