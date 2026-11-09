@@ -3340,7 +3340,9 @@ type RunnerRetirementReadback sole_constructor {
 // the APPLY ENTRY and nowhere else, and an observe carrier says so instead of presenting an empty roster as
 // though it had looked and found nothing -- which is the difference between "the replacement never
 // registered" and "this pass did not ask".
-data RetirementReadbackPass = ConvergeApplyReadLive | ObservePassDidNotRead
+type RetirementReadbackPass
+  = ConvergeApplyReadLive
+  | ObservePassDidNotRead
 
 // THE OBSERVE PASS BRINGS NOTHING, AND SAYS SO. No roster, no verdicts: an observe run has no
 // installation token for an org read and dispatches no floor job. Every declared retirement it reports is
