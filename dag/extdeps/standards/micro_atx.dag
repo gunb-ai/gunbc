@@ -6,6 +6,7 @@ import std.measure { Micrometer, micrometer, Millimeter, millimeter }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.climbing_holds.types { DimensionEvidence, OperatorRelayedDocument }
+import extdeps.standards.motherboard_mounting_location { MountingLocation, mounting_location, LocB, LocC, LocF, LocH, LocJ, LocL, LocM, LocR, LocS }
 
 // MICROATX IS ITS OWN SPECIFICATION, NOT A SECTION OF ATX 2.2, and an earlier revision of this
 // corpus got that wrong by putting the microATX envelope, location population and coordinates inside
@@ -15,14 +16,12 @@ import extdeps.climbing_holds.types { DimensionEvidence, OperatorRelayedDocument
 // Specification independently defines its own motherboard/chassis interface, its own maximum
 // envelope, its own B/C/F/H/J/L/M/R/S population, the R and S requirements, and the rule that
 // extraneous chassis standoffs be removable or absent. A change to microATX must not require editing
-// the ATX module, which is precisely the external-decomposition test DESIGN section 3 states.
+// the ATX module, which is precisely the external-decomposition test gunbc.design_argument::single_authority states.
 //
-// NO NEUTRAL SHARED MODULE IS EXTRACTED YET, deliberately. MountingLocationId and MountingLocation
-// are shapes a second standard could eventually share, but there is no multi-standard consumer today
-// -- the ATX 2.2 spec carries no location population in this corpus -- and extracting a hub for one consumer
-// would be inventing an authority to hold a symbol rather than to answer a question. They live here,
-// with the standard that actually enumerates. The extraction becomes correct when a second standard
-// enumerates, and not before.
+// THE SHARED SHAPES NOW LIVE IN extdeps.standards.motherboard_mounting_location. This module said the
+// extraction would become correct when a second standard enumerated; ATX 2.2 now does
+// (extdeps.standards.atx_2_2 atx_mounting_locations), so MountingLocationId and MountingLocation
+// moved there. The microATX population and coordinates below stay here.
 //
 // THE CITED DOCUMENT IS NOW THE RIGHT ONE, AND AN EARLIER REVISION CITED A DIFFERENT DOCUMENT THAN
 // THE ONE ITS OWN PROVENANCE ROW NAMED.
@@ -91,8 +90,8 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // is not a coincidence available to invented numbers. Corroboration of a board correspondence is not
 // a provenance upgrade for the standard reading, and this row does not claim otherwise.
 // THIS WAS A STRING AND THAT WAS A SECOND NAME FOR AN EXISTING CONCEPT. It read
-// "cited-via-relay: ..." as an ordinary NonEmptyStr, which is §4c misplaced data -- a CITATION
-// STATUS is exactly the kind of fact that belongs in a typed carrier -- and §3 nicknaming, because
+// "cited-via-relay: ..." as an ordinary NonEmptyStr, which is gunbc.design_argument::source_annotations misplaced data -- a CITATION
+// STATUS is exactly the kind of fact that belongs in a typed carrier -- and gunbc.design_argument::single_authority nicknaming, because
 // `DimensionEvidence` already closes this vocabulary and `OperatorRelayedDocument` is already the
 // arm for a document read by someone other than the authoring session. Nothing could consume the
 // string; the grade was invisible to every lens that reads the tree.
@@ -100,7 +99,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // ON THE CARRIER'S HOME: it lives in `extdeps.climbing_holds.types`, which is a misleading address
 // for a general concept, and the type's OWN annotation says so without meaning to -- it records that
 // the arm exists because "a board's power-header inventory was asserted from memory", a failure with
-// no climbing hold anywhere in it. Provenance grade is domain-agnostic and §3 says a fact's home is
+// no climbing hold anywhere in it. Provenance grade is domain-agnostic and gunbc.design_argument::single_authority says a fact's home is
 // its LAYER rather than its file, so importing across is correct and re-minting a parallel grade
 // here would be the nicknaming this row just stopped doing. RELOCATION TRIGGER: a third consumer
 // outside climbing_holds, at which point the carrier moves to a neutral extdeps home and both
@@ -121,9 +120,14 @@ data micro_atx_coordinate_provenance: DimensionEvidence = OperatorRelayedDocumen
 // THE MICRO-ATX AND DEEP-MICRO-ATX RELATION, stated because it is the fact a chassis actually needs
 // and because this session got it BACKWARDS once and shipped the error.
 //
-// micro-ATX is 9.6 x 9.6 in: it reduces full-size ATX along the DEPTH axis and leaves the rear-I/O
-// width alone. "Deep micro-ATX" restores some of that depth while keeping the same 9.6 in width. So
-// a deep-micro-ATX board is NOT a wider micro-ATX board — it is exactly as wide, and deeper.
+// micro-ATX is 9.6 x 9.6 in. Full-size ATX is 12 in along the rear I/O edge by 9.6 in deep (ATX 2.2
+// section 3.1, and its Figure 3 outline: the edge carrying B and C at 0.4 in is the 12 in edge), so
+// micro-ATX SHORTENS THE REAR EDGE to 9.6 in -- fewer expansion slots, four at most per ATX 2.2
+// Figure 2 -- and keeps ATX's 9.6 in depth. An earlier revision of this paragraph said the reverse
+// (micro-ATX reduces depth and keeps the rear width); it was wrong, and extdeps.standards.atx_2_2
+// carried the same transposition in its outline rows until they were corrected beside this note.
+// "Deep micro-ATX" boards keep the 9.6 in rear edge and extend the depth past 9.6 in. So a
+// deep-micro-ATX board is NOT a wider micro-ATX board — it is exactly as wide, and deeper.
 //
 // The error worth recording: an earlier revision of extdeps.boards.asrock_rack read the ALTRAD8UD's
 // 9.6 x 10.5 in as 267 mm WIDE against micro-ATX's 244 mm, and concluded that a micro-ATX hole
@@ -140,7 +144,10 @@ data micro_atx_coordinate_provenance: DimensionEvidence = OperatorRelayedDocumen
 // than a coincidence of numbers.
 //
 // Coordinates are in the board frame used throughout this corpus: x ALONG THE REAR I/O EDGE, y DEPTH
-// FROM THAT EDGE, micrometres. They are exact standard values, not readings.
+// FROM THAT EDGE, micrometres. They are the relayed standard values (provenance above); a first-party
+// read of ATX 2.2 Figure 3's drawn hole centres (extdeps.standards.atx_2_2) lands on the six shared
+// locations C F H J L M within 0.01 in, and on B, which ATX 2.2 still draws though it no longer
+// requires it.
 //
 // THE DATUM CORRECTION THAT MAKES THE FRONT ROW MAKE SENSE, and it killed a wrong claim of ours.
 // The specification's figure gives the front row as 8.950 in — measured FROM DATUM B, which itself
@@ -149,19 +156,6 @@ data micro_atx_coordinate_provenance: DimensionEvidence = OperatorRelayedDocumen
 // PUSHED this row outward from a nominal 8.95; it does not. L and M sit at the ordinary micro-ATX
 // location on a deep board and on a standard-depth board alike. What the extra depth does is extend
 // the board PAST them.
-type MountingLocationId
-  = LocB | LocC | LocF | LocH | LocJ | LocL | LocM | LocR | LocS
-
-type MountingLocation sole_constructor {
-  id: MountingLocationId
-  along_rear_edge: Micrometer
-  depth_from_rear_edge: Micrometer
-}
-
-fn mounting_location(id: MountingLocationId, along_rear_edge: Micrometer, depth_from_rear_edge: Micrometer) -> MountingLocation {
-  MountingLocation { id: id, along_rear_edge: along_rear_edge, depth_from_rear_edge: depth_from_rear_edge }
-}
-
 // The micro-ATX population the specification names: B, C, F, H, J, L, M, R, S.
 data micro_atx_mounting_locations: List<MountingLocation> = [
   mounting_location(id: LocF, along_rear_edge: micrometer(count: 6350), depth_from_rear_edge: micrometer(count: 33020)),

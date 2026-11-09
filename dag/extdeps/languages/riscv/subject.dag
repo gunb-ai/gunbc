@@ -27,7 +27,7 @@ data riscv_isa_further_authority_1: ExternalAuthority = ExternalAuthority {
 // available through the ratified specification library at docs.riscv.org. WHY THIS SUBJECT EXISTS
 // ALONE AMONG THE THREE ISAs: v2.extdeps.languages.machine_code carries one Isa coproduct with
 // three arms — X86_64Isa, Aarch64Isa, RiscV64Isa — which are three independently governed upstreams
-// fused into one surface, the exact shape DESIGN section 3 forbids a generic hub from taking.
+// fused into one surface, the exact shape gunbc.design_argument::single_authority forbids a generic hub from taking.
 // RISC-V is registered because its specification authority verified; x86-64 and Aarch64 are NOT
 // registered because their authorities refused this fetch, and that refusal is recorded rather than
 // papered over with a plausible locator.

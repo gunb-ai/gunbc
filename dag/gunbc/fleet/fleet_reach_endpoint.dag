@@ -21,7 +21,7 @@ import gunbc.fleet.fleet_host_identity { operator_host_183527, operator_host_3dd
 // 'srv5'/'srv6' as resolvable names. A probe that resolves HOSTNAMES therefore fails for
 // every Spark forever regardless of host state; the fix is consuming the modeled
 // endpoint. SlotAssigned projects the reservation's address; SlotUnassigned projects NO
-// endpoint — never a placeholder (a fabricated address would be the §5 plausible-output
+// endpoint — never a placeholder (a fabricated address would be the gunbc.design_argument::fail_closed plausible-output
 // trap aimed at the network).
 fn spark_endpoint_for_binding(binding: DgxSparkRouterBinding) -> String? {
   match binding {
@@ -40,7 +40,7 @@ fn spark_endpoint_for_binding(binding: DgxSparkRouterBinding) -> String? {
 // r.ipv4_address) as String`, so one concept — a binding's transport address — had two
 // implementations inside a single file, and the NAMED one was the dead one
 // (spark_endpoint_for_binding had zero callers in the corpus; the only occurrence was its own
-// declaration). That is the §2 failure at its smallest scale, and its cost is specific rather
+// declaration). That is the gunbc.design_argument::minimize_redundancy failure at its smallest scale, and its cost is specific rather
 // than stylistic: the refusal guarantee spark_endpoint_for_binding states in its header — an
 // unassigned slot yields NO endpoint, never a placeholder — was enforced only in the copy
 // nothing called, so tightening it there would have left the probe path untouched. The fold now
@@ -105,7 +105,7 @@ fn fleet_owned_probe_endpoint_for(host: String) -> String {
 // consumer closes that fork into a cycle, and the compiler REFUSES one — measured on a
 // minimal two-module pair (2026-08-22): the acyclic direction compiles with 0
 // diagnostics, adding the back-edge refuses with `circular dependency detected` naming
-// both modules. So this placement is enforced by the acyclicity law of §3, not advice a
+// both modules. So this placement is enforced by the acyclicity law of gunbc.design_argument::single_authority, not advice a
 // later author weighs.
 //
 // NO WITNESS PINS THIS, AND THE REASON IS THE FIXTURE HARNESS RATHER THAN THE CORPUS. The tempting

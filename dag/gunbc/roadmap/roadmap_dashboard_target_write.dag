@@ -37,7 +37,7 @@ import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
 //   4. rm -f    -- removes the staging name on every arm, success included.
 // The payload crosses only as stdin, so no byte of it is shell-parsed or an argv element.
 //
-// CONSUMED (DESIGN §3c): DashboardMoveAttemptStateEntries (gunbc.roadmap.roadmap_dashboard_instance_apply)
+// CONSUMED (gunbc.design_argument::consumption): DashboardMoveAttemptStateEntries (gunbc.roadmap.roadmap_dashboard_instance_apply)
 // writes every moved attempt-state entry through this function and removes the flat entry only on
 // CreateNewWritten. The declared frontier row this function carried is discharged by that consumer.
 //

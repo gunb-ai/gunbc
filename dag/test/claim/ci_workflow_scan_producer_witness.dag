@@ -55,7 +55,7 @@ import gunbc.ci_workflow_scan_producer {
 // scan_partition, which calls the same folds against perform_code_search_page: the real route still
 // executes" -- and that sentence was doing the work of a claim while being prose. No claim in this
 // module invokes scan_partition, nothing else in the corpus invokes it either, and an annotation is
-// never evidence that a machine claim holds (DESIGN section 4c). The test the obligation actually
+// never evidence that a machine claim holds (gunbc.design_argument::source_annotations). The test the obligation actually
 // sets is that DELETING THE INTEGRATION MUST MAKE A CONTROL FAIL; delete perform_code_search_page's
 // call site today and every claim below stays green, which is the definition of the gap rather than
 // a quibble about wording.

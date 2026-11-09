@@ -73,7 +73,7 @@ fn project_direct_rust_door_observation(
   }
 }
 
-// Total over DirectRustDoorObservation with no wildcard arm (DESIGN 6 non-fold residue). A `_ => false` arm here would make the coproduct grow in silence: a tenth observation variant would land as false and read as an honest negative rather than an unhandled case.
+// Total over DirectRustDoorObservation with no wildcard arm (gunbc.design_argument::how_to_work non-fold residue). A `_ => false` arm here would make the coproduct grow in silence: a tenth observation variant would land as false and read as an honest negative rather than an unhandled case.
 fn direct_rust_door_observation_establishes(o: DirectRustDoorObservation) -> Bool {
   match o {
     AssemblyRefused { reason: _ } => false

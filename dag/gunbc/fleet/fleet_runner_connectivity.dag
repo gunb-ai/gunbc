@@ -1,6 +1,8 @@
 module gunbc.fleet.fleet_runner_connectivity
 
-import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.types { String, NonEmptyStr, Bool, Int, List, EpochSecs }
+import std.measure { Second, second, second_count }
+import std.checked_arithmetic { checked_int_to_nat }
 import std.nat { Nat, nat_range_inclusive }
 import std.disposition { Disposition, Terminal }
 import product.host_identity { HostIdentity }
@@ -29,7 +31,7 @@ import gunbc.runner.runner_registration_labels {
 import gunbc.runner.runner_lifecycle { runner_slot_instance_name }
 import gunbc.runner.runner_user_session_receipt { RunnerUserSessionReceiptInput }
 import gunbc.runner.runner_incarnation { LocalRunnerSlotIncarnation, runner_slot_incarnation, JitRegistrationName, parse_jit_registration_name }
-import gunbc.runner.runner_local_state { RunnerUnitMainProcess, MainProcessUnread, NoMainProcess, MainProcessUngrounded, MainProcess }
+import gunbc.runner.runner_local_state { RunnerUnitMainProcess, MainProcessUnread, NoMainProcess, MainProcessUngrounded, MainProcess, ProcessAbsoluteStart, StartObserved, StartUnread }
 
 data fleet_runner_connectivity_authority_disposition: Disposition = Terminal {
   reason: "Single authority for GITHUB REGISTRATION CONNECTIVITY versus LOCAL RUNNER INCARNATIONS. It joins one org-level registration roster (remote ground truth from the GitHub Actions runners API) to per-slot stable identities (host, index) and their local systemd incarnations. It does NOT repair wedged runners — that is PR B. It refuses to fold connected width into desired width, and it refuses to treat a roster read failure as 'everything detached' (empty-observation narrow)."
@@ -45,7 +47,7 @@ data fleet_runner_connectivity_authority_disposition: Disposition = Terminal {
 // organization_roster_is_one_org_read_note, which asserted that the API 'returns every self-hosted
 // registration for the organization in one response'. That was false and is now decided by
 // OrganizationRunnerRosterEvidence rather than claimed here; a corrected sentence beside a carrier
-// that decides the same question would be a second authority for it (DESIGN section 3). The three
+// that decides the same question would be a second authority for it (gunbc.design_argument::single_authority). The three
 // facts above are the surviving contents of that row, enumerated rather than swept away with it --
 // a prose row deleted for one reason takes everything in it unless its contents are named first.
 
@@ -72,7 +74,7 @@ type OrganizationRunnerRosterEvidence
 // succeeds is not thereby a read that saw everything. A caller cannot hand this constructor a
 // prefix and have it enter as RosterObserved: the only way to that variant is for the observed
 // length to equal the authority's own total, so "I saw all of it" is a computed fact about the
-// response, not a claim about the request (DESIGN section 5, construction over validation).
+// response, not a claim about the request (gunbc.design_argument::fail_closed, construction over validation).
 fn organization_runner_roster_from_page(
   observed_on: NonEmptyStr,
   registrations: List<GitHubSelfHostedRunnerRegistration>,
@@ -129,7 +131,7 @@ type RegistrationSlotDecoding
 // naming authority read in the opposite direction from the first, and the two could disagree
 // undetected. The committed population is finite and enumerable, so decoding is a total decision
 // over it: which committed identity's own name equals this registration's name. That is the
-// forward naming authority read backward (DESIGN section 4, one grammar in both directions), not
+// forward naming authority read backward (gunbc.design_argument::closed_grounded_substrate, one grammar in both directions), not
 // an inverse re-implemented beside it, and a name matching nothing is not a parse failure -- it is
 // the answer RegistrationNamesNoCommittedSlot, a fact about the fleet rather than about text.
 // The one parse it does take is the JIT incarnation grammar, owned by gunbc.runner.runner_incarnation
@@ -683,12 +685,59 @@ fn newest_registration(regs: List<GitHubSelfHostedRunnerRegistration>, incarnati
     })
 }
 
-fn jit_registration_for_pid(jit: List<GitHubSelfHostedRunnerRegistration>, incarnation: LocalRunnerSlotIncarnation, pid: Int) -> SlotIncarnationRegistration {
+// HOW FAR AROUND THE BOOT A PID IS TRUSTED. A JIT wrapper bakes its OWN start epoch into its name
+// (<instance>-<epoch>-<pid>) just before it execs the agent, so the row's minted epoch and the main
+// process's absolute start should agree to within the wrapper's fork-to-exec window. A pid-matched row
+// minted AFTER the process started cannot be that process (a name outlives a pid it never owned); a row
+// minted more than this bound BEFORE the process started is a pid recycled across a reboot. The bound is
+// declared with its reason, not tuned: two minutes comfortably covers a wrapper minting its name and
+// then exec-ing config.sh under any load, while staying far under the hours a stale registration survives.
+data jit_wrapper_mint_to_exec_bound: Second = second(count: 120)
+
+// THE GAP between the running process's observed start and a pid-matched row's mint, as a Second;
+// none when the mint is at or after the start (that case is the recycled-pid arm above, and a negative
+// elapsed time is refused rather than clamped to zero — the same instant/displacement discipline as
+// provider_token_age, which returns none on a clock that stepped back).
+fn mint_to_exec_gap(started_at: EpochSecs, minted_epoch: EpochSecs) -> Second? {
+  match checked_int_to_nat(n: started_at - minted_epoch) {
+    Absent => none
+    Present { value: g } => Present { value: second(count: g) }
+  }
+}
+
+fn jit_registration_for_pid(jit: List<GitHubSelfHostedRunnerRegistration>, incarnation: LocalRunnerSlotIncarnation, pid: Int, abs: ProcessAbsoluteStart) -> SlotIncarnationRegistration {
   match newest_registration(regs: filter(jit, r => match registration_jit_name(reg: r, incarnation: incarnation) {
       Present { value: n } => n.wrapper_pid == pid
       Absent => false
     }), incarnation: incarnation) {
-    Present { value: reg } => IncarnationRegistrationFound { registration: reg }
+    Present { value: reg } =>
+      // A PID-MATCHED ROW IS ONLY THE CURRENT INCARNATION IF IT AGREES WITH THE RUNNING PROCESS'S START.
+      // The pid match alone cannot survive a reboot: the roster keeps a dead boot's row, GitHub has not
+      // pruned it, and its pid now belongs to an unrelated (or next-boot) process. The absolute start is
+      // observed at the boundary; the comparison is pure and refuses to guess when it is absent.
+      match abs {
+        StartUnread { cause: c } => IncarnationRegistrationUnresolved {
+          reason: concat("the pid-matched registration cannot be trusted against the running process because its absolute start is unread: ", c as String)
+        }
+        StartObserved { started_at: s } =>
+          match registration_jit_name(reg: reg, incarnation: incarnation) {
+            Absent => IncarnationRegistrationUnresolved { reason: "the pid-matched registration does not carry this incarnation's name" }
+            Present { value: n } =>
+              if n.minted_epoch > s {
+                IncarnationRegistrationUnresolved { reason: "the pid-matched registration was minted AFTER the running process started: a recycled pid, not this incarnation" }
+              } else if match mint_to_exec_gap(started_at: s, minted_epoch: n.minted_epoch) {
+                  // The minted-after-start case is already taken above, so the gap is non-negative here;
+                  // a none (unreachable in this arm) is NOT read as "within the bound" — it falls through
+                  // to the same found path only because it cannot occur, never because a gap was guessed.
+                  Absent => false
+                  Present { value: gap } => second_count(s: gap) > second_count(s: jit_wrapper_mint_to_exec_bound)
+                } {
+                IncarnationRegistrationUnresolved { reason: "the pid-matched registration was minted far BEFORE the running process started: a pid recycled across a reboot, not this incarnation" }
+              } else {
+                IncarnationRegistrationFound { registration: reg }
+              }
+          }
+      }
     Absent => IncarnationRegistrationNone
   }
 }
@@ -722,7 +771,7 @@ fn slot_incarnation_registration(
         Empty => IncarnationRegistrationNone
         Cons { head: _, tail: _ } =>
           match main {
-            MainProcess { process: p } => jit_registration_for_pid(jit: jit, incarnation: incarnation, pid: p.pid as Int)
+            MainProcess { process: p, absolute_start: a } => jit_registration_for_pid(jit: jit, incarnation: incarnation, pid: p.pid as Int, abs: a)
             MainProcessUnread { cause: c } => jit_registration_without_pid(jit: jit, why: concat("the unit's main process was not read: ", c as String))
             NoMainProcess => jit_registration_without_pid(jit: jit, why: "the unit has no main process")
             MainProcessUngrounded { pid: _, cause: c } => jit_registration_without_pid(jit: jit, why: concat("the unit's main pid is ungrounded: ", c as String))
@@ -733,7 +782,7 @@ fn slot_incarnation_registration(
 }
 
 // THE REFUSAL IS PER-QUESTION, NOT PER-ROSTER. A truncated read still answers exactly about every
-// slot INSIDE the prefix, so refusing the whole roster would be a widen (DESIGN section 5: a
+// slot INSIDE the prefix, so refusing the whole roster would be a widen (gunbc.design_argument::fail_closed: a
 // failure arm must refuse, never widen) and would stop reconciliation on hosts this read covered
 // perfectly well. Only the ABSENT arm changes: a slot missing from a prefix was never observed to
 // be missing, and rendering it Orphaned is the empty-observation narrow -- could-not-see reported
@@ -845,7 +894,7 @@ fn fleet_hosts() -> List<HostIdentity> {
 // incident_2026_08_06_roster_note and its witness both say 22 — a pinned corpus contradicting
 // itself because it was only half pinned.
 //
-// DESIGN section 5's test-oracle discipline is the authority: a historical measurement compared
+// gunbc.design_argument::fail_closed's test-oracle discipline is the authority: a historical measurement compared
 // against a literal is legitimate only when the measurement is independently fixed, and half of
 // this one was live. The widths below are what the fleet committed ON 2026-08-06 (srv1 5, srv2 5,
 // srv3 7, srv4 5 with its then-live disk row-pin), summing to the 22 the roster note records.

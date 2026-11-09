@@ -72,7 +72,7 @@ import v2.workflow.floor_terminal_ledger {
 // name" and carries "a footer with the row count and a digest over the rows". Until this module
 // there was no such artifact: the rows were consumed in-process and the sentence described an
 // intention. This is the wire form, and it is authored ONCE and read in both directions per
-// DESIGN §4 -- `render_*` selects a production forward, `parse_*` selects from the same
+// gunbc.design_argument::closed_grounded_substrate -- `render_*` selects a production forward, `parse_*` selects from the same
 // productions backward. A second, separately-authored reader would be the N x M adapter pair that
 // section exists to refuse, and it would also be undetectable: two hand-written halves of one
 // grammar agree until the day they do not.
@@ -102,7 +102,7 @@ import v2.workflow.floor_terminal_ledger {
 // This was `/1` while the route-gap tag widened from one spelling to three. Nothing published today
 // carries the old tag -- the publish target lives under `target/`, no tracked file holds it in field
 // position, and no consumer reads a ledger back -- but an EMPTY POPULATION DOES NOT MAKE THE NAME
-// HONEST. DESIGN section 3: within one naming surface and one declared effective version, holding
+// HONEST. gunbc.design_argument::single_authority: within one naming surface and one declared effective version, holding
 // the name constant may not silently change the obligations; a materially different contract needs a
 // materially different name. A `/1` ledger written before this change and read after it would be
 // FORMAT-ADMITTED and then refused at its rows, which reports the wrong defect.
@@ -198,7 +198,7 @@ fn ledger_wire_field_is_clean(field: String) -> Bool {
 
 // A DELIMITER JOIN WRITTEN LOCALLY, which is the corpus idiom rather than a nickname: there is no
 // single `join` authority in `std` to reuse -- `extdeps/github/expressions`, the TypeScript and
-// JSON emitters and several witnesses each carry their own. Minting the shared one is a real §2
+// JSON emitters and several witnesses each carry their own. Minting the shared one is a real gunbc.design_argument::minimize_redundancy
 // consolidation and it is not this change's subject, so this stays local and stays small.
 fn ledger_wire_join(fields: List<String>) -> String {
   match fields.first() {
@@ -1111,7 +1111,7 @@ type OutcomeRefusal {
 
 // THE ROW BECOMES A `ClaimAttemptTerminal`, the one terminal sum, and tag and detail are then
 // rendered by `render_terminal_tag` / `render_terminal_detail` -- no second outcome-to-tag mapping
-// lives here (DESIGN section 3, review 85191 on gunbc#14933). `ExitFailure` maps by its code: 1 is
+// lives here (gunbc.design_argument::single_authority, review 85191 on gunbc#14933). `ExitFailure` maps by its code: 1 is
 // the process's own "did not hold" (verdict false), 2 is the harness's no-observation exit
 // (unrepresentable), and any other code has no arm in the sum and refuses typed.
 type OutcomeTerminalDerivation

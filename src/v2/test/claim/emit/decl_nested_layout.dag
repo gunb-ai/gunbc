@@ -18,7 +18,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE DECL ROUTE KEEPS A NESTED BLOCK AND ITS UNIT (DESIGN 5: a declared grammar fact is never dropped). The
+// THE DECL ROUTE KEEPS A NESTED BLOCK AND ITS UNIT (gunbc.design_argument::fail_closed: a declared grammar fact is never dropped). The
 // items are SUPPLIED at the serializer boundary over the Swift decl target's own lex rows, with the profile this
 // claim states: the unit ^dnl_indent spelled as four spaces, a line break before the colon and rbrace token
 // classes. The profile is the claim's, so the goldens do not depend on the Swift rows' layout choices; the

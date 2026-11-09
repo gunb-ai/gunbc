@@ -3,7 +3,7 @@ module extdeps.cloudflare.zone
 // THE CLOUDFLARE ZONE: the unit a custom domain must live in. gunbc.cloudflare.boot_origin refuses an
 // r2.dev boot origin and needs its hostname bound as an R2 custom domain; that bind is admissible only
 // inside an ACTIVE zone in the SAME account as the bucket. Cloudflare states the rule itself, so the open
-// item of gunbc.plans.boot_origin_bmc_media closes at its own citation below rather than at inference.
+// item of gunbc.plans.boot_origin_bmc_media (deleted 2026-11-08) closes at its own citation below rather than at inference.
 // This module carries the vendor's interface SHAPE and nothing else: no transport, no effect, no policy.
 // Every write belongs to a gunbc.cloudflare.* fold behind the gunbc.auth authorization pattern.
 
@@ -38,7 +38,7 @@ data r2_custom_domain_requires_zone_authority: ExternalAuthority = ExternalAutho
 // ONE ROW PER URI, ALIASED UNDER THE CONVENTION NAME (review 87750): every extdeps module carries
 // extdeps_external_authority_anchor, and this module's anchor is now an ALIAS of the requirement page's
 // row rather than a second ExternalAuthority literal for the same locator — two literals for one page can
-// drift apart independently, which is §3's nicknaming (a second name for one concept was fine; a second
+// drift apart independently, which is gunbc.design_argument::single_authority's nicknaming (a second name for one concept was fine; a second
 // FACT for one thing is not). The sibling precedent is extdeps.cloudflare.r2_buckets
 // (anchor = r2_get_bucket_authority), and the canonical row keeps the descriptive name because the
 // citation and the model scope both address it as the requirement authority.
@@ -220,11 +220,11 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 // The two identities a bind is addressed by. Both are vendor-issued 32-lowercase-hex strings, and
 // neither is derivable here. They are NOMINAL RECORDS with a checked constructor, not `where brand`
-// aliases: DESIGN section 4 retires where-refinements in favour of constructors that return Optional,
+// aliases: gunbc.design_argument::closed_grounded_substrate retires where-refinements in favour of constructors that return Optional,
 // and extdeps.posix.identity (posix_user_id_from_text) is the corpus pattern. A `where brand` alias
 // only rejects a LITERAL at typecheck — a String that flows in from a read casts straight through, so
 // the wall would be decorative exactly where a vendor response arrives. The 32-hex alphabet is reused
-// from std.content_hash rather than re-invented (DESIGN section 2).
+// from std.content_hash rather than re-invented (gunbc.design_argument::minimize_redundancy).
 type CloudflareAccountId {
   value: NonEmptyStr
 }
@@ -306,7 +306,7 @@ fn cloudflare_zone_status_wire(status: CloudflareZoneStatus) -> NonEmptyStr {
 // zone_hold model, whose `hold` field is a boolean (developers.cloudflare.com/api/resources/zones/
 // subresources/hold/). Two states, because the vendor publishes two — and deliberately NOTHING for "the
 // read has not happened": a missing observation is a coverage obligation of the LAYER THAT OBSERVES
-// (DESIGN §3, External upstream decomposition), never a property of the upstream type. The rule below
+// (gunbc.design_argument::external_upstreams, External upstream decomposition), never a property of the upstream type. The rule below
 // therefore receives the hold as an Optional from the observing module, and refuses for its own reason
 // when the read has not been made, instead of this file inventing a stand-in for it.
 //
@@ -515,7 +515,7 @@ type CloudflareR2CustomDomainStatus {
 
 // zone_id is Optional (review 87415): the vendor's list response carries it ONLY once the binding
 // exists, so "the read has not happened" has exactly one spelling — Absent — and no in-band value can
-// pretend to be a zone nobody read. The §3b absence ruling (dag_absence_is_one_meaning) with
+// pretend to be a zone nobody read. The gunbc.design_argument::conformance absence ruling (dag_absence_is_one_meaning) with
 // std.optional::Optional as the existing authority; the type, not a comment, is the protection.
 type CloudflareR2CustomDomainBinding {
   domain: HostName
@@ -569,7 +569,7 @@ type R2CustomDomainZoneStanding
   | ZoneMissingForHostname { hostname: HostName, reason: NonEmptyStr, basis: FactCitation }
 
 // hold arrives as the CALLER's observation (Optional<ZoneHold>): the hold lives on its own endpoint, so
-// whether it has been read is a fact about the READER, carried by the observing layer (§3 External
+// whether it has been read is a fact about the READER, carried by the observing layer (gunbc.design_argument::single_authority External
 // upstream decomposition), never a property of the zone type (review 87475). The rule still names the
 // vendor's consequence — the hold page says a held zone blocks adding a custom domain even in the same
 // account — and refuses for each input state with its OWN arm, because the next action differs:

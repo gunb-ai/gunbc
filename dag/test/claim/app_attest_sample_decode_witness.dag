@@ -23,7 +23,7 @@ import extdeps.apple.app_attest_sample_ios_14_4 {
   sample_assertion_counter,
 }
 
-// THE INHABITANCE CLAIMS for the three decoders (DESIGN §3, the pairing obligation): the RFC 8949
+// THE INHABITANCE CLAIMS for the three decoders (gunbc.design_argument::witness_one_interface, the pairing obligation): the RFC 8949
 // Appendix A vectors, the COSE label reads and the authenticator-data layout are each claimed over
 // designed bytes elsewhere; here the SAME folds run over an object Apple's service actually
 // issued, and what they read is compared to the facts the corpus publishes beside it. Deleting

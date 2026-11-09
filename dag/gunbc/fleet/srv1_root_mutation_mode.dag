@@ -18,8 +18,8 @@ import std.list { first_where }
 // ruling 2026-10-31: declare it per mode.
 //
 // WHY A COPRODUCT, AND WHY IT SITS HERE RATHER THAN AS FOUR ARMS OF FleetConvergeWorkflowMode:
-// the rule has to be UNWRITABLE-BY-CONSTRUCTION, not validated (DESIGN section 5). A roster keyed on
-// strings re-spells each wire name a second time (DESIGN section 3: nicknaming -- a second name for
+// the rule has to be UNWRITABLE-BY-CONSTRUCTION, not validated (gunbc.design_argument::fail_closed). A roster keyed on
+// strings re-spells each wire name a second time (gunbc.design_argument::single_authority: nicknaming -- a second name for
 // one concept) and leaves drift to a test. So the family is its own sum, the big dispatch vocabulary
 // carries it as ONE constructor (gunbc.fleet.fleet_converge_workflow
 // FleetConvergeWorkflowMode Srv1RootMutation), and the authority below is a TOTAL match over it: a
@@ -79,7 +79,7 @@ fn srv1_root_mutation_mode_authority(mode: Srv1RootMutationMode) -> Srv1RootMuta
     }
     ApprovalNtfyRetire => Srv1RootMutationModeAuthority {
       destructive: true,
-      purpose_note: "Run one srv1 ntfy retirement on the selection below: it stops and disables the gunbc-ntfy unit BY NAME, removes the gunbc-ntfy ACCOUNT, deletes the unit file, the config directory /etc/gunbc-ntfy, the state root /var/lib/gunbc-ntfy and the hand-installed binary /usr/local/bin/ntfy, and takes the tailscale front door off 8443; these deletions are not undone by any later step of this run." as NonEmptyStr,
+      purpose_note: "Run one srv1 ntfy retirement on the selection below: it stops and disables the gunbc-ntfy unit BY NAME, removes the gunbc-ntfy ACCOUNT and the gunbc-ntfy GROUP the account leaves behind, deletes the unit file, the config directory /etc/gunbc-ntfy, the state root /var/lib/gunbc-ntfy and the hand-installed binary /usr/local/bin/ntfy, and takes the tailscale front door off 8443; these deletions are not undone by any later step of this run." as NonEmptyStr,
     }
   }
 }

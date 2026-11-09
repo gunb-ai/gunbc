@@ -303,7 +303,7 @@ test fn the_row_admits_the_endpoint_its_receipts_were_measured_on() -> Bool {
 // collection may walk, how large a collection may be -- and no external or versioned authority fixes
 // those numbers: they are EXPLICIT POLICY BUDGETS the row sets for itself. That is admissible only if
 // they are grounded and their effect on refusal is decidable, so the claims below compare each bound
-// against the census receipts on the SAME row (DESIGN §5: a bounding literal must be grounded in a
+// against the census receipts on the SAME row (gunbc.design_argument::fail_closed: a bounding literal must be grounded in a
 // controlled fixture, an external authority, or an explicit policy budget). The refusal paths
 // themselves -- a page bound hit with a nextLink pending, a count over the member bound -- are claimed
 // in megarac_boot_diagnostic_bundle_witness, which builds those refusals out of the row's own numbers;

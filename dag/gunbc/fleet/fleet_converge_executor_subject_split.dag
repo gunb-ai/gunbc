@@ -99,7 +99,7 @@ fn fleet_converge_split_refusal_line(reason: SplitRefusalReason) -> String {
 // shell here shipped three syntax errors past the controls: a missing space before `]`, a stray `]`,
 // and an echo whose quote never closed, so bash died on a parse error before the refusal marker ever
 // printed -- review 38602 and review 386096 both caught it. String-built shell has no type to get
-// wrong; a syntax error is neither success nor a typed diagnostic, so DESIGN.md §5 forbids it; the
+// wrong; a syntax error is neither success nor a typed diagnostic, so gunbc.design_argument::fail_closed forbids it; the
 // fold admits only statements its grammar parses, and the generation gate refuses emission when the
 // fold refuses (fleet_converge_split_gate_script_admitted).)
 //

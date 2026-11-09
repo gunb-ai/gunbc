@@ -23,7 +23,7 @@ module v2.compiler.activation_dependency
 // admits `match (n) { }` on an uninhabited scrutinee, so zero alternatives are meaningful and their validity is
 // inference's judgment, never inferred here from the absence of arms.
 //
-// A MALFORMED SITE IS A TYPED ROW, NEVER A SKIP OR A DEFAULT (DESIGN section 5). Lowering emits only
+// A MALFORMED SITE IS A TYPED ROW, NEVER A SKIP OR A DEFAULT (gunbc.design_argument::fail_closed). Lowering emits only
 // three-positional Branches (lower_branch), and branch_view refuses any other shape; a Branch of another
 // arity, a Match with no scrutinee, or an arm without exactly one pattern and one body marker is returned as
 // ActivationNotDerived. Every Branch and Match of the tree is in exactly one of the three populations.

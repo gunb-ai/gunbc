@@ -6,7 +6,7 @@ import extdeps.ietf.http_semantics { HttpRetryAfter, RetryAfterSeconds, RetryAft
 
 // HttpRetryAfter is an upstream HINT into std.retry_law, never a second retry authority.
 // Absent is RetryHintNone. An HTTP-date or unread header is RetryHintUnresolved: the
-// law refuses rather than treating the unknown bound as no bound (DESIGN §5).
+// law refuses rather than treating the unknown bound as no bound (gunbc.design_argument::fail_closed).
 fn retry_hint_from_http(after: HttpRetryAfter) -> RetryHint {
   match after {
     RetryAfterSeconds { seconds: s } => retry_hint_from_delta(delay: s)

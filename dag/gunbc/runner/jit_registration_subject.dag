@@ -39,7 +39,7 @@ type JitRegistrationSubjectStanding
   | JitRegistrationSubjectRefused { refusal: JitRegistrationSubjectRefusal }
 
 // THE RUNNER NAME IS THE UNIT NAME, not a fresh identifier minted beside it. A second naming scheme
-// for one attempt is a nickname (DESIGN §3), and it is the expensive kind: an orphaned GitHub runner
+// for one attempt is a nickname (gunbc.design_argument::single_authority), and it is the expensive kind: an orphaned GitHub runner
 // registration can only be reconciled against a host by name, so a name that does not appear on the
 // host makes the orphan unattributable.
 fn jit_runner_name_for(attempt: MicroVmAttempt) -> JitRunnerName {

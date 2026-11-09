@@ -35,15 +35,15 @@ import gunbc.runner.runner_host_deploy { fleet_runner_host_deploys }
 //                                                     run them directly, outside
 //                                                     RunnerActivationAdmission entirely.
 //
-// So the admission is VALIDATION at the host boundary in DESIGN section 5's exact sense: the invalid
+// So the admission is VALIDATION at the host boundary in gunbc.design_argument::fail_closed's exact sense: the invalid
 // state remains writable by the principal the grant is installed for. Saying otherwise would be the
-// rung inflation section 4b(1) names -- a carrier claiming the top rung while occupying a lower one --
+// rung inflation gunbc.design_argument::guarantee_ladder (rung honesty) names -- a carrier claiming the top rung while occupying a lower one --
 // in the module whose whole job is to stop an unadmitted activation.
 //
 // IT IS NAMED FOR THE STALL IT IS, NOT FOR THE GUARANTEE IT WITHHOLDS. This row was
 // runner_activation_safety_guarantee, and the fields were already honest while the NAME asserted the
 // rung they deny -- so a grep for what this repository guarantees about activation returned a symbol
-// saying guarantee whose value says Mitigatable. That is section 4b(1)'s tell verbatim, a carrier
+// saying guarantee whose value says Mitigatable. That is gunbc.design_argument::guarantee_ladder (rung honesty)'s tell verbatim, a carrier
 // named for the top rung while occupying a lower one, and it is worse than sitting low because an
 // inflated class never ranks for climbing. The sibling reachability row was right the first time.
 //

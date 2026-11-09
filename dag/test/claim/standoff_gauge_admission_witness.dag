@@ -4,10 +4,10 @@ import std.types { Bool, List }
 import std.measure { Micrometer, micrometer, micrometer_count, millimeter }
 import extdeps.printing.fdm { BuildEnvelope, build_envelope, PartFits, PartExceedsEnvelope }
 import extdeps.printing.bambu_lab_a1_mini { a1_mini_build_envelope }
-import extdeps.standards.micro_atx {
+import extdeps.standards.motherboard_mounting_location {
   MountingLocation, MountingLocationId, mounting_location, LocB, LocC, LocF, LocH, LocJ, LocL, LocM, LocR, LocS,
-  micro_atx_mounting_locations, micro_atx_standard_hole_diameter,
 }
+import extdeps.standards.micro_atx { micro_atx_mounting_locations, micro_atx_standard_hole_diameter }
 import product.printed_chassis.coupon { OpThroughHole }
 import product.printed_chassis.standoff_gauge {
   LocationLookup, LocationFound, LocationAbsent, LocationDuplicated, location_scan,

@@ -6,7 +6,7 @@ import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, Delet
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // ============================================================================================
-// THE DECLARED RUNG DROP for both fleet-global values above (DESIGN 4b(3)).
+// THE DECLARED RUNG DROP for both fleet-global values above (gunbc.design_argument::guarantee_ladder (no silent regression)).
 // ============================================================================================
 //
 // WHY ONE ROW AND NOT TWO. The context ceiling and the slot count are the same defect in two

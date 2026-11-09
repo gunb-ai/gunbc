@@ -1,5 +1,7 @@
 module v2.test.claim.manual.typescript_bind_let_iife_emit
 
+import v2.std.compilers.target_model { ValueProducing }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

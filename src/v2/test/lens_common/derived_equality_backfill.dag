@@ -3,7 +3,7 @@ module v2.test.lens_common.derived_equality_backfill
 // D1 derived-equality backfill: the four hand structural-equality folds
 // (idempotency_verdict_eq, ownership_mode_eq, parallelism_relation_eq, lens_id_v0_eq) are deleted
 // and every call site now uses the derived structural == over the type's own constructors
-// (DESIGN section 3/4, dag/std/algebra). These claims are the discriminating RED + positive-control
+// (gunbc.design_argument::single_authority, gunbc.design_argument::closed_grounded_substrate, dag/std/algebra). These claims are the discriminating RED + positive-control
 // the payoff requires: for each type, distinct variants (and, where the type carries a payload
 // field, distinct field values) compare UNEQUAL, while equal values compare EQUAL. Each RED is the
 // case that would fail if == were wrong (e.g. an equality that ignored a payload field would make

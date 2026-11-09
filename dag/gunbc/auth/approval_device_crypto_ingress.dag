@@ -1,0 +1,27 @@
+module gunbc.auth.approval_device_crypto_ingress
+
+import std.types { String, Int }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.compiler_entry { CompilerEntryDriver, NativeIngressDriver }
+import gunbc.http_ingress { HttpIngressAdmission, http_ingress_binding }
+// The handler module is imported so the emitted closure contains the handler the descriptor names.
+import gunbc.auth.approval_device_crypto_serve { approval_device_crypto_handle }
+import gunbc.auth.approval_device_crypto_realization { device_crypto_native_ingress }
+
+// THE DEVICE-CRYPTO VERIFIER'S DEPLOYMENT BINDING (gunbc.plans.converged_ingress (deleted 2026-11-08) M2a). The handler is an
+// ordinary module (gunbc.auth.approval_device_crypto_serve); this binding names it and selects its NATIVE
+// realization: the row below names the program descriptor (gunbc.auth.approval_device_crypto_realization
+// device_crypto_native_ingress), and the emitter renders a main that calls this exact constructor with its
+// argv, checks that the binding it returns names the descriptor's handler, and serves it. The constructor
+// takes the same per-host values every binding takes (gunbc.http_ingress http_ingress_binding_arguments)
+// and its handler's module is the descriptor's, so the identity is written once.
+data compiler_pipeline_entry: CompilerEntryDriver = NativeIngressDriver {
+  program: DeclarationRef { module_path: "gunbc.auth.approval_device_crypto_realization", decl_name: "device_crypto_native_ingress", field: WholeDeclaration },
+}
+
+fn approval_device_crypto_ingress(handler: String, listener: String, release_revision: String, cpu_limit_ms: Int, wall_limit_ms: Int) -> HttpIngressAdmission {
+  http_ingress_binding(
+    handler_module: device_crypto_native_ingress.handler.module_path as String, handler: handler, listener: listener,
+    release_revision: release_revision, cpu_limit_ms: cpu_limit_ms, wall_limit_ms: wall_limit_ms,
+  )
+}

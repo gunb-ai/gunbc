@@ -1,7 +1,8 @@
 module test.claim.runner.runner_lifecycle_witness
 
 import std.logic { Bool }
-import std.types { list_length, NonEmptyStr }
+import std.types { NonEmptyStr }
+import std.algebra { length }
 import std.measure { byte_size, byte_size_count }
 import gunbc.runner.runner_unit { runner_slot_unit_name }
 import gunbc.runner.runner_slot_allocation { srv3_fabric_first_slot, srv4_fabric_first_slot }
@@ -47,7 +48,7 @@ test fn witness_add_sequence_caps_before_start() -> Bool {
     && runner_slot_add_step_index(step: AddStepMemoryCaps) == 8
     && runner_slot_add_step_index(step: AddStepDaemonReload) == 9
     && runner_slot_add_step_index(step: AddStepStartUnit) == 10
-    && list_length(items: runner_slot_add_steps_ordered()) == 12
+    && length(xs: runner_slot_add_steps_ordered()) == 12
 }
 
 test fn witness_disk_preflight_sufficient_at_apply_width() -> Bool {
@@ -95,7 +96,7 @@ test fn witness_disk_preflight_unobservable_refuses_not_width_five() -> Bool {
 // conjuncts; the 26/25 GiB row took the managed hosts to 17, so every conjunct was false and the
 // row had stopped being a check of anything -- its own comment says the width was renamed off six
 // for exactly this reason one width earlier, which is the tell that the LITERAL was the defect and
-// not its value (DESIGN 6: name the instrument, never transcribe its output).
+// not its value (gunbc.design_argument::how_to_work: name the instrument, never transcribe its output).
 //
 // What this row actually checks is that the materialized per-host allocation rows and the function
 // that derives width have not drifted apart. That is a relation and it is asserted as one, so it
@@ -160,7 +161,7 @@ test fn witness_slot_identity_formats_zero_padded_unit() -> Bool {
 
 fn sequence_registers_with_github(seq: RunnerSlotAddSequence) -> Bool {
   match seq {
-    GitHubRunnerAddSequence { steps: s } => list_length(items: s) == 12
+    GitHubRunnerAddSequence { steps: s } => length(xs: s) == 12
     FabricSlotHasNoGitHubAddSequence { reason: _ } => false
     SlotIsNotACommittedMember { reason: _ } => false
   }

@@ -10,12 +10,12 @@ import gunbc.host.smpro_platform_capability {
   SmproNotTaken
 }
 import gunbc.host.host_boot_attempt_admission { attempt_configuration_not_recorded }
-import std.optional { Present }
+import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.actions_runner { actions_runner_release_2_337_0 }
 import extdeps.provisioning.ubuntu_seeded_install_media_remaster { seed_artifact_readback_holds }
 import extdeps.provisioning.ubuntu_seeded_install_media {
-  NoCloudSeedArtifact, UbuntuSeededInstallMediaBuildInput, seeded_install_media_build_key,
+  NoCloudSeedArtifact, SeedArtifactFetchedFrom, UbuntuSeededInstallMediaBuildInput, seeded_install_media_build_key,
   seeded_install_media_seed_artifact_admission, SeedArtifactsAdmitted, SeedArtifactsRefused,
   SeedArtifactNameNotABasename, SeedArtifactNameReserved, SeedArtifactNameCollidesWithSeedFile, SeedArtifactNameDuplicated,
 }
@@ -27,18 +27,34 @@ import gunbc.machine_intake.post_power_fan_gate_outcome { PostPowerFanGateAbando
 import gunbc.machine_intake.mtcollins1_boot_run {
   MtCollins1BootTerminalVerdict, TerminalAccepted, TerminalRunnerHostAccepted, TerminalRefused, TerminalPending,
   WatchRunnerHostAccepted, watch_tick, SolChannelLive,
-  TerminalWatch, actuation_watch_of, actuation_after_watch, actuation_with_outcome, actuation_not_powered_on, mtcollins1_boot_attempt_of, BmcAccessNotReached,
+  TerminalWatch, MtCollins1RunnerHostTerminal, actuation_watch_of, actuation_after_watch, actuation_with_outcome, actuation_not_powered_on, mtcollins1_boot_attempt_of, BmcAccessNotReached,
   mtcollins1_boot_terminal_verdict, mtcollins1_boot_terminal_cause_text, mtcollins1_boot_medium_refusal,
 }
 import gunbc.host.megarac_managed_host { megarac_operation_evidence }
+import gunbc.executor_privileged_operation { EnsureSystemAccount, ensure_system_account_converge_command_as_root, executor_privileged_operation_converge_command }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_nologin_shell_path }
+import extdeps.posix.shell_command_language { posix_single_quote }
 import gunbc.runner.runner_host_medium {
+  RunnerHostBakedRelease,
   RunnerHostMediumHost, RunnerHostMediumImage, RunnerHostMediumImageDerived, RunnerHostMediumRunnerUnpublished, RunnerHostMediumUserDataRefused,
-  RunnerHostUp, RunnerHostUpReadback, RunnerHostUpPending, RunnerHostUpRefused, RunnerHostUpObserved,
+  RunnerHostUp, RunnerHostUpReadback, RunnerHostUpPending, RunnerHostUpRefused, RunnerHostUpObserved, runner_host_running_os_of_up,
   RunnerHostSectionFailed, RunnerHostTarballDigestDiffers, RunnerHostMachineNotAarch64, RunnerHostMachineUnrecognized, RunnerHostSectionAbsent, RunnerHostLabelAbsent,
-  runner_host_medium_image, runner_host_boot_medium, runner_host_up_readback, runner_host_medium_volume_id,
+  runner_host_medium_image, runner_host_boot_medium, runner_host_up_readback, runner_host_medium_volume_id, runner_host_medium_runner_account,
+  RunnerHostKeyObserved, RunnerHostKeyNotObserved, runner_host_key_observation,
+  runner_host_key_gen_command, runner_host_key_pub_command, runner_host_key_fingerprint_command, runner_host_key_file, runner_host_key_public_file,
 }
+import gunbc.host.anchored_host_transport { mtcollins1_anchored_host_row }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A BAKED RELEASE AS THE PUBLISH RUN WOULD STAGE IT: supplied at the interface, its digest a fixture pin.
+fn fixture_baked_release() -> RunnerHostBakedRelease {
+  RunnerHostBakedRelease {
+    revision: "1111111111111111111111111111111111111111",
+    digest: sha256_digest(hex: "2222222222222222222222222222222222222222222222222222222222222222" as NonEmptyStr),
+    staged_path: "/var/tmp/gunbc-image-staging/gunbc-release-1111111111111111111111111111111111111111.tar" as NonEmptyStr,
+  }
+}
 
 data mtcollins1_runner_host: RunnerHostMediumHost = RunnerHostMediumHost {
   machine: mtcollins1_census_machine,
@@ -73,6 +89,19 @@ fn sections(install_exit: String, machine: String) -> String {
 }
 
 fn sections_with_digest(install_exit: String, machine: String, tarball_digest: String) -> String {
+  sections_full(install_exit: install_exit, machine: machine, tarball_digest: tarball_digest, account_exit: "0")
+}
+
+data pub_body: String = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIErU2itxhvGPRx1UxiuCYkikYIV9DtuXiELy64bQpAXL gunbc-runner-host-per-boot
+"
+data fingerprint_body: String = "256 SHA256:hIxG0YT2jIxXbxs4XGqwehgoA63kxD4xKP2j6YjG86w gunbc-runner-host-per-boot (ED25519)
+"
+
+fn sections_full(install_exit: String, machine: String, tarball_digest: String, account_exit: String) -> String {
+  sections_keyed(install_exit: install_exit, machine: machine, tarball_digest: tarball_digest, account_exit: account_exit, key_exit: "0", pub_body: pub_body, fingerprint_body: fingerprint_body)
+}
+
+fn sections_keyed(install_exit: String, machine: String, tarball_digest: String, account_exit: String, key_exit: String, pub_body: String, fingerprint_body: String) -> String {
   concat(
     section(name: "boot-media", argv: "ls -1 /dev/disk/by-label", body: "GUNBC_RUNNER_HOST_2404_3\nEFI\n", exit_code: "0"),
     section(name: "runner-tarball-digest", argv: "sha256sum -- (the tarball on the medium)", body: concat(tarball_digest, "  /cdrom/gunbc-runner/actions-runner-linux-arm64-2.337.0.tar.gz\n"), exit_code: "0"),
@@ -80,6 +109,12 @@ fn sections_with_digest(install_exit: String, machine: String, tarball_digest: S
     section(name: "runner-dir", argv: "mkdir -p /opt/actions-runner", body: "", exit_code: "0"),
     section(name: "runner-extract", argv: "(the rendered extract)", body: "", exit_code: install_exit),
     section(name: "runner-listener", argv: "test -x /opt/actions-runner/bin/Runner.Listener", body: "", exit_code: "0"),
+    section(name: "runner-account", argv: "useradd --system --no-create-home --shell /usr/sbin/nologin gunbc-runner", body: "", exit_code: account_exit),
+    section(name: "release-dir", argv: "mkdir -p (the release locus)", body: "", exit_code: "0"),
+    section(name: "release-extract", argv: "(the rendered release extract)", body: "", exit_code: "0"),
+    section(name: "host-key-gen", argv: "(the rendered keygen)", body: "", exit_code: key_exit),
+    section(name: "host-key-pub", argv: "cat (the public key file)", body: pub_body, exit_code: "0"),
+    section(name: "host-key-fingerprint", argv: "ssh-keygen -l -f (the public key file)", body: fingerprint_body, exit_code: "0"),
     section(name: "systemd-manager", argv: "test -d /run/systemd/system", body: "", exit_code: "0"),
     section(name: "meminfo", argv: "cat /proc/meminfo", body: meminfo_body, exit_code: "0"),
     section(name: "nproc", argv: "nproc", body: "80\n", exit_code: "0"),
@@ -100,10 +135,10 @@ fn readback(capture: String) -> RunnerHostUpReadback? {
 
 // THE DERIVATION INHABITS THE SEEDED-MEDIA BUILD INPUT WITH THE RUNNER PAYLOAD: the arm64 artifact of
 // the host-unit slot's release as a seed ARTIFACT under its cited arm64 digest (the boot fetches
-// nothing), a seed program that verifies it off the medium and RETURNS
+// nothing), the baked gunbc release as the second, under its supplied digest and extracted to its release locus, a seed program that verifies it off the medium and RETURNS
 // (no power-off, nothing written to a disk), and the medium's own volume id.
 test fn the_runner_image_derives_with_the_slot_runner_and_a_program_that_never_halts() -> Bool {
-  match runner_host_medium_image(host: mtcollins1_runner_host) {
+  match runner_host_medium_image(host: mtcollins1_runner_host, baked: fixture_baked_release()) {
     RunnerHostMediumImageDerived { input: input, runner: runner } => {
       let program = fold(input.seed_files, init: "", f: (acc, f) => concat(acc, f.content as String))
       (runner.binary_release.version as String) == (actions_runner_release_2_337_0.version as String)
@@ -111,8 +146,11 @@ test fn the_runner_image_derives_with_the_slot_runner_and_a_program_that_never_h
         && string_contains(s: program, pattern: "sha256sum")
         && !string_contains(s: program, pattern: "set -e")
         && !string_contains(s: program, pattern: "curl")
-        && count(input.seed_artifacts) == 1
-        && all(input.seed_artifacts, a => (a.digest.hex as String) == (actions_runner_release_2_337_0.digest_aarch64.hex as String))
+        && count(input.seed_artifacts) == 2
+        && any(input.seed_artifacts, a => (a.digest.hex as String) == (actions_runner_release_2_337_0.digest_aarch64.hex as String))
+        && any(input.seed_artifacts, a => (a.name as String) == "gunbc-release-1111111111111111111111111111111111111111.tar"
+          && (a.digest.hex as String) == "2222222222222222222222222222222222222222222222222222222222222222")
+        && string_contains(s: program, pattern: "/releases/1111111111111111111111111111111111111111")
         && string_contains(s: program, pattern: "Runner.Listener")
         && !string_contains(s: program, pattern: "poweroff")
         && string_contains(s: input.grub_kernel_cmdline as String, pattern: mtcollins1_census_console_arg as String)
@@ -235,10 +273,10 @@ fn with_artifacts(input: UbuntuSeededInstallMediaBuildInput, artifacts: List<NoC
 // pre-artifact key: the census build key claim in test.claim.host.boot_medium_served_readback_witness
 // pins c001ac127d718e72.)
 test fn the_seed_artifact_digest_keys_the_build_and_its_url_does_not() -> Bool {
-  match runner_host_medium_image(host: mtcollins1_runner_host) {
+  match runner_host_medium_image(host: mtcollins1_runner_host, baked: fixture_baked_release()) {
     RunnerHostMediumImageDerived { input: input, runner: _ } => {
-      let moved = map(input.seed_artifacts, a => NoCloudSeedArtifact { name: a.name, source_url: "https://mirror.invalid/runner.tar.gz", digest: a.digest })
-      let other = map(input.seed_artifacts, a => NoCloudSeedArtifact { name: a.name, source_url: a.source_url, digest: actions_runner_release_2_337_0.digest_x86_64 })
+      let moved = map(input.seed_artifacts, a => NoCloudSeedArtifact { name: a.name, source: SeedArtifactFetchedFrom { url: "https://mirror.invalid/runner.tar.gz" }, digest: a.digest })
+      let other = map(input.seed_artifacts, a => NoCloudSeedArtifact { name: a.name, source: a.source, digest: actions_runner_release_2_337_0.digest_x86_64 })
       let key = seeded_install_media_build_key(input: input) as String
       key == (seeded_install_media_build_key(input: with_artifacts(input: input, artifacts: moved)) as String)
         && key != (seeded_install_media_build_key(input: with_artifacts(input: input, artifacts: other)) as String)
@@ -266,11 +304,11 @@ fn admission_refuses_with(input: UbuntuSeededInstallMediaBuildInput, extra: NoCl
 }
 
 fn artifact_named(n: String) -> NoCloudSeedArtifact {
-  NoCloudSeedArtifact { name: n as NonEmptyStr, source_url: "https://example.invalid/x", digest: sha256_digest(hex: supplied_digest) }
+  NoCloudSeedArtifact { name: n as NonEmptyStr, source: SeedArtifactFetchedFrom { url: "https://example.invalid/x" }, digest: sha256_digest(hex: supplied_digest) }
 }
 
 test fn seed_artifact_names_are_admitted_only_as_fresh_basenames() -> Bool {
-  match runner_host_medium_image(host: mtcollins1_runner_host) {
+  match runner_host_medium_image(host: mtcollins1_runner_host, baked: fixture_baked_release()) {
     RunnerHostMediumImageDerived { input: input, runner: _ } => {
       let own = map(input.seed_artifacts, a => a.name as String)
       (match seeded_install_media_seed_artifact_admission(input: input) {
@@ -294,12 +332,19 @@ fn reading_is_the_capture(up: RunnerHostUp) -> Bool {
 }
 
 fn through(subject: AdmittedBootSubject, reading: RunnerHostUp?) -> RunnerHostUp? {
-  let watch = TerminalWatch { outcome: ExitSuccess, census_ended: false, smpro_census: SmproNotTaken { reason: "supplied" }, screen_reported: [], runner_host: reading }
+  let terminal = match reading {
+    Present { value: up } => Present { value: MtCollins1RunnerHostTerminal { up: up, running: runner_host_running_os_of_up(up: up, subject: subject) } }
+    Absent => none
+  }
+  let watch = TerminalWatch { outcome: ExitSuccess, census_ended: false, smpro_census: SmproNotTaken { reason: "supplied" }, screen_reported: [], runner_host: terminal }
   let aw = actuation_watch_of(watch: watch, selection: subject.selection, at_power_on: SmproNotTaken { reason: "supplied" }, smpro_read: UptimeRefused { detail: "supplied" }, terminal_read: UptimeRefused { detail: "supplied" }, fan_gate: PostPowerFanGateAbandoned { reason: "supplied" as NonEmptyStr, stop: FanGateSafeStopReceipt { first: FanGatePowerDownAttempt { command_success: true, command_stdout: "", command_exit_code: 0, command_stderr: "", readbacks: [] }, repeat: FanGateRepeatNotNeeded } })
   let base = actuation_not_powered_on(outcome: aw.outcome, reason: "supplied")
   let act = actuation_after_watch(observed: aw, admitted: none, media: base.media, handoff_media: base.handoff_media, end_media: base.end_media, override_before: base.override_before, override_after: base.override_after, override_clears: base.override_clears, power_after: base.power_after, outcome: aw.outcome, screen: base.screen, timing: base.timing)
   let held = actuation_with_outcome(act: act, outcome: ExitSuccess)
-  mtcollins1_boot_attempt_of(act: held, bmc: BmcAccessNotReached { reason: "supplied" }, configuration: attempt_configuration_not_recorded(host: "mtcollins1", attempt: "supplied", reason: "supplied"), mc_info: Absent, fru: Absent).runner_host
+  match mtcollins1_boot_attempt_of(act: held, bmc: BmcAccessNotReached { reason: "supplied" }, configuration: attempt_configuration_not_recorded(host: "mtcollins1", attempt: "supplied", reason: "supplied"), mc_info: Absent, fru: Absent).runner_host {
+    Present { value: t } => Present { value: t.up }
+    Absent => none
+  }
 }
 
 // THE READING REACHES THE COMPLETED ATTEMPT, through every real post-watch projection the production
@@ -347,10 +392,10 @@ test fn an_unrecognized_machine_spelling_refuses_as_unrecognized() -> Bool {
 // THE PIN CARRIES ITS ALGORITHM: the same hex under Sha512 is another artifact (another build key) and
 // can never satisfy the sha256sum readback, while a Sha256 pin holds only on its own hex.
 test fn a_seed_artifact_pin_is_judged_with_its_algorithm_not_by_hex_alone() -> Bool {
-  match runner_host_medium_image(host: mtcollins1_runner_host) {
+  match runner_host_medium_image(host: mtcollins1_runner_host, baked: fixture_baked_release()) {
     RunnerHostMediumImageDerived { input: input, runner: _ } => {
       let hex = actions_runner_release_2_337_0.digest_aarch64.hex
-      let as_512 = map(input.seed_artifacts, a => NoCloudSeedArtifact { name: a.name, source_url: a.source_url, digest: sha512_digest(hex: hex) })
+      let as_512 = map(input.seed_artifacts, a => NoCloudSeedArtifact { name: a.name, source: a.source, digest: sha512_digest(hex: hex) })
       (seeded_install_media_build_key(input: input) as String) != (seeded_install_media_build_key(input: with_artifacts(input: input, artifacts: as_512)) as String)
         && seed_artifact_readback_holds(read_back_sha256_hex: hex as String, pin: sha256_digest(hex: hex))
         && !seed_artifact_readback_holds(read_back_sha256_hex: hex as String, pin: sha512_digest(hex: hex))
@@ -359,4 +404,109 @@ test fn a_seed_artifact_pin_is_judged_with_its_algorithm_not_by_hex_alone() -> B
     RunnerHostMediumRunnerUnpublished { binary_release: _ } => false
     RunnerHostMediumUserDataRefused { reason: _ } => false
   }
+}
+
+// THE IMAGE CREATES THE ACCOUNT ITS LISTENERS RUN AS, AND THE READBACK GATES ON IT (operator decision B,
+// 2026-10-27). The seed program runs useradd for exactly the declared account; a boot whose runner-account section
+// failed (useradd exits 1 when it cannot update the password file; the stage's AccountExistsCheck keeps an existing
+// name from reaching useradd's 9) is refused naming that section, never reported up with an account the slots would
+// then fail to find.
+test fn the_image_creates_its_runner_account_and_a_boot_without_it_is_refused() -> Bool {
+  let created = match runner_host_medium_image(host: mtcollins1_runner_host, baked: fixture_baked_release()) {
+    RunnerHostMediumImageDerived { input: input, runner: _ } =>
+      string_contains(s: fold(input.seed_files, init: "", f: (acc, f) => concat(acc, f.content as String)), pattern: "useradd")
+        && string_contains(s: fold(input.seed_files, init: "", f: (acc, f) => concat(acc, f.content as String)), pattern: runner_host_medium_runner_account as String)
+    _ => false
+  }
+  let failed = concat(begin_line, concat(sections_full(install_exit: "0", machine: "aarch64", tarball_digest: actions_runner_release_2_337_0.digest_aarch64.hex as String, account_exit: "9"), end_line))
+  created && (match readback(capture: failed) {
+    Present { value: RunnerHostUpRefused { refusals: rs } } => rs |> any(r => match r {
+      RunnerHostSectionFailed { name: n, exit_code: c } => (n as String) == "runner-account" && c == "9"
+      _ => false
+    })
+    _ => false
+  })
+}
+
+// THE SOL READER (S4(c)). The pin is read from the CLOSED envelope bound to the machine, its expected boot id is the
+// envelope's own run identity, and every section the pin depends on must have exited 0. The inhabitance obligation
+// (gunbc.design_argument::single_authority: the real image emits exactly this line) is NOT discharged here: the capture below is SUPPLIED;
+// the open frontier row is anchored_host_transport_per_boot in anchored_host_transport_frontier_rows.
+fn observed_boot(capture: String) -> String {
+  match runner_host_key_observation(capture: capture, machine: "mtcollins1" as NonEmptyStr, row: mtcollins1_anchored_host_row) {
+    RunnerHostKeyObserved { boot_id: b, pin: p } => if (p.boot_id as String) == (b as String) { b as String } else { "pin-boot-differs" }
+    RunnerHostKeyNotObserved { cause: _ } => "not-observed"
+  }
+}
+
+fn keyed_capture(key_exit: String, pub: String, fp: String) -> String {
+  concat(begin_line, concat(sections_keyed(install_exit: "0", machine: "aarch64", tarball_digest: actions_runner_release_2_337_0.digest_aarch64.hex as String, account_exit: "0", key_exit: key_exit, pub_body: pub, fingerprint_body: fp), end_line))
+}
+
+test fn the_sol_reader_takes_the_pin_and_the_boot_id_from_the_bound_closed_envelope() -> Bool {
+  observed_boot(capture: keyed_capture(key_exit: "0", pub: pub_body, fp: fingerprint_body)) == "aaaaaaaa-0000-4000-8000-000000000001"
+}
+
+// RED: a key whose generation failed, is not a pin; neither is an absent line,
+// a malformed line, an open envelope, or an envelope for another machine.
+test fn the_sol_reader_refuses_a_failed_section_a_missing_or_malformed_line_an_open_envelope_and_another_machine() -> Bool {
+  observed_boot(capture: keyed_capture(key_exit: "1", pub: pub_body, fp: fingerprint_body)) == "not-observed"
+  && observed_boot(capture: keyed_capture(key_exit: "0", pub: "", fp: fingerprint_body)) == "not-observed"
+  && observed_boot(capture: keyed_capture(key_exit: "0", pub: pub_body, fp: "")) == "not-observed"
+  && observed_boot(capture: keyed_capture(key_exit: "0", pub: "ssh-ed25519\n", fp: fingerprint_body)) == "not-observed"
+  && observed_boot(capture: concat(begin_line, sections_keyed(install_exit: "0", machine: "aarch64", tarball_digest: actions_runner_release_2_337_0.digest_aarch64.hex as String, account_exit: "0", key_exit: "0", pub_body: pub_body, fingerprint_body: fingerprint_body))) == "not-observed"
+  && (match runner_host_key_observation(capture: keyed_capture(key_exit: "0", pub: pub_body, fp: fingerprint_body), machine: "othermachine" as NonEmptyStr, row: mtcollins1_anchored_host_row) {
+    RunnerHostKeyObserved { boot_id: _, pin: _ } => false
+    RunnerHostKeyNotObserved { cause: _ } => true
+  })
+}
+
+// The stages' rendered commands: the key lives only on tmpfs under the declared path, the public half and its
+// fingerprint are read by single structured commands (no shell composition), and no sshd is started.
+test fn the_host_key_stages_render_single_commands_on_the_declared_path() -> Bool {
+  let gen = runner_host_key_gen_command()
+  let pubcmd = runner_host_key_pub_command()
+  let fp = runner_host_key_fingerprint_command()
+  string_contains(s: gen, pattern: "ssh-keygen") && string_contains(s: gen, pattern: runner_host_key_file as String)
+  && string_contains(s: pubcmd, pattern: "cat") && string_contains(s: pubcmd, pattern: runner_host_key_public_file as String)
+  && string_contains(s: fp, pattern: "ssh-keygen") && string_contains(s: fp, pattern: runner_host_key_public_file as String)
+ 
+  && !string_contains(s: gen, pattern: "&&") && !string_contains(s: pubcmd, pattern: "$(") && !string_contains(s: fp, pattern: "$(")
+}
+
+// THE ACCOUNT STAGE IS EnsureSystemAccount'S OWN OPERATION, NOT A SECOND useradd SPELLING (review 90833). An installer
+// stage already runs as root, so it takes the operation unelevated: the same argv the sudo route runs (the binary from
+// the fleet roster, the nologin shell from fleet_posix_nologin_shell_path) behind the same AccountExistsCheck, with
+// only the sudo prefix gone. The expected line is spelled out from useradd(8) and id(1) as a fixture, and the image
+// must carry exactly that line as a stage, so the route from the operation to the seed program is executed here.
+test fn the_runner_account_stage_is_ensure_system_account_without_sudo() -> Bool {
+  let as_root = ensure_system_account_converge_command_as_root(login: runner_host_medium_runner_account, shell: fleet_posix_nologin_shell_path) as String
+  let elevated = executor_privileged_operation_converge_command(op: EnsureSystemAccount { login: runner_host_medium_runner_account, shell: fleet_posix_nologin_shell_path })
+  let operation_words = "'/usr/sbin/useradd' '--system' '--no-create-home' '--shell' '/usr/sbin/nologin' 'gunbc-runner'"
+  as_root == concat("'id' '-u' 'gunbc-runner' >/dev/null 2>&1 || ", operation_words)
+    && string_contains(s: elevated, pattern: operation_words)
+    && string_contains(s: elevated, pattern: "sudo")
+    && !string_contains(s: as_root, pattern: "sudo")
+    && (match runner_host_medium_image(host: mtcollins1_runner_host, baked: fixture_baked_release()) {
+      RunnerHostMediumImageDerived { input: input, runner: _ } =>
+        string_contains(s: fold(input.seed_files, init: "", f: (acc, f) => concat(acc, f.content as String)), pattern: posix_single_quote(spelling: as_root))
+      _ => false
+    })
+}
+
+// THE ROSTER CARRIES THE KEY STAGES (the roster half of the inhabitance claim, whose executing half is
+// test.claim.runner.runner_host_key_stage_real_execution_witness): the image's seed carries exactly the rendering of
+// the commands that witness runs, so deleting or rewiring a stage fails here while the real run fails there.
+fn image_carries_stage(command: String) -> Bool {
+  match runner_host_medium_image(host: mtcollins1_runner_host, baked: fixture_baked_release()) {
+    RunnerHostMediumImageDerived { input: input, runner: _ } =>
+      string_contains(s: fold(input.seed_files, init: "", f: (acc, f) => concat(acc, f.content as String)), pattern: posix_single_quote(spelling: command))
+    _ => false
+  }
+}
+
+test fn the_image_carries_the_three_host_key_stages_as_rendered() -> Bool {
+  image_carries_stage(command: runner_host_key_gen_command())
+    && image_carries_stage(command: runner_host_key_pub_command())
+    && image_carries_stage(command: runner_host_key_fingerprint_command())
 }

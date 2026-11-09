@@ -91,7 +91,7 @@ data lumen_retail_grain: RetailGrainStanding = SingleCabinetOffered {
   citation: "lumen.com/en-us/edge-cloud/data-centers.html, read 2026-09-08. Operator-level product wording; it names cabinets as a purchasable unit but states no minimum and is not broken out per facility.",
 }
 
-// DECLARED FRONTIER, AND THE WHOLE CLASS IS ONE (DESIGN 3c). Nothing reads this row. That is not
+// DECLARED FRONTIER, AND THE WHOLE CLASS IS ONE (gunbc.design_argument::consumption). Nothing reads this row. That is not
 // local to Lumen: EVERY *_retail_rates row in this census is referenced exactly once, its own
 // declaration, because the coverage fold carries a facility axis and a density axis and no RATES
 // axis. Adding a row to an unconsumed class is still adding an unconsumed row, so it is declared

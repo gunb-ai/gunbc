@@ -113,7 +113,7 @@ type ModuleFilenameOwners {
 // the same path and the second silently overwrites the first -- a wrong artifact with no
 // diagnostic. The mapping cannot be made injective without changing every emitted path and
 // every cross-module reference derived from it, so the residue is refused rather than absorbed
-// (DESIGN.md section 5: a failure arm refuses, never widens). Every target emitter calls this
+// (gunbc.design_argument::fail_closed: a failure arm refuses, never widens). Every target emitter calls this
 // over the whole module population before it emits, since the collision is a fact about the
 // module set and not about any one target's rendering.
 fn module_filename_collision_diagnostics(typed: ResolvedGraph) -> List<ErrorNode> {
@@ -379,14 +379,14 @@ fn is_type_alias_return_node(n: Node, source_indices: Map<String, NewlineIndex>)
 }
 
 // THE ITEM-KIND PREDICATES THAT STOOD HERE ARE GONE, NOT REWRITTEN. Five of them --
-// is_service_item, is_service_def_item (byte-identical to it, a section 3 nickname with two
+// is_service_item, is_service_def_item (byte-identical to it, a gunbc.design_argument::single_authority nickname with two
 // exports and two consumer sets), is_function_item, is_data_def_item and is_resource_def_item --
 // decided WHICH KIND OF ITEM a node was by which of its optional fields happened to be absent.
 // That question now has a single authority: v1.std.core Node carries module_item_kind, stamped by
 // the parse constructor that already knew the answer, so a consumer asking the question compares
 // against the coproduct and no longer re-derives it. is_resource_def_item's second disjunct --
 // children == 0 && properties > 0 && body == none -- was the resource-exclusion validator family
-// that made this a section 5 finding: exclusion by name repairs each KNOWN collision and can never
+// that made this a gunbc.design_argument::fail_closed finding: exclusion by name repairs each KNOWN collision and can never
 // become a positive authority. Its live defect is the evidence for the climb and stays enrolled:
 // `resource Network` and `resource AuthContext` in std.resources declare no capabilities and no
 // properties, satisfied NEITHER disjunct, and reached is_type_alias_item first in every emitter's
@@ -417,8 +417,8 @@ fn is_leaf_type_item(item: Node) -> Bool {
 // "what a resource item is" had ONE definition and these predicates were two consumers of it
 // rather than a second place to keep in sync. That was the correct move available at the time, and
 // codex review 60254 named its limit in the same breath: an exclusion is a VALIDATOR, it grows one
-// conjunct per collision discovered, and it can never become a positive authority -- DESIGN
-// section 5, validation standing where construction was available. The row it filed
+// conjunct per collision discovered, and it can never become a positive authority --
+// gunbc.design_argument::fail_closed, validation standing where construction was available. The row it filed
 // (gunbc.recurring_failure_mode dispatch_correctness_resting_on_arm_order) named the trigger as a
 // positive item kind carried on the emit side. That is what module_item_kind is, so both the
 // exclusion and the authority it derived from are deleted rather than kept beside it.
@@ -472,7 +472,7 @@ fn emitted_symbol_bindings_for_item(item: Node, source_indices: Map<String, Newl
 // sanitize_service_name is MANY-TO-ONE across kinds: `type GitWorktree` and `service git.Worktree`
 // both render the emitted type `GitWorktree`. DuplicateDeclaration does not fire — the authored
 // names differ — so rustc reports E0428 after a silent emit. The mapping cannot be made injective
-// without renaming every emitted service, so the residue is refused (DESIGN.md section 5). Every
+// without renaming every emitted service, so the residue is refused (gunbc.design_argument::fail_closed). Every
 // target emitter calls this over the module population before it emits.
 fn emitted_symbol_collision_diagnostics(typed: ResolvedGraph) -> List<ErrorNode> {
   typed.modules |> flat_map(tm => {

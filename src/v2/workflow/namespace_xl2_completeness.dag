@@ -11,7 +11,7 @@ import v2.workflow.namespace_xl2_rehearsal_census { Xl2UnobservedScope }
 // prerequisites (gunbc.compiler_frontend_program_status). Keeping the decision out of the producer
 // keeps that status hub out of the producer's emitted closure -- importing it for one list dragged
 // the hub's whole import graph into the native build -- and removes the producer's second reading of
-// a fact the carrier already owns (DESIGN section 2).
+// a fact the carrier already owns (gunbc.design_argument::minimize_redundancy).
 
 // WHY COMPLETENESS IS REFUSED: ONE CAUSE PER OUTSTANDING XL-2 PREREQUISITE. The lowering
 // undercounts that keep this census from being complete are not minted here; their one home is

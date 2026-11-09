@@ -9,7 +9,7 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2,
 // port as shared lets the BMC reach the network through that port (NC-SI) instead of, or beside, its own
 // dedicated management port, so the BMC is a possible consumer of the shared port. This row is what settles
 // it for one host: gunbc.fleet.board_function_admission reads it when it judges an Ethernet port no host
-// network uses. It is an observation of this fleet, held in the observing layer (DESIGN §3), and a host with
+// network uses. It is an observation of this fleet, held in the observing layer (gunbc.design_argument::single_authority), and a host with
 // no row stays unread there rather than defaulting either way.
 type BmcNetworkAttachment
   = BmcOnDedicatedPort { grounds: NonEmptyStr }

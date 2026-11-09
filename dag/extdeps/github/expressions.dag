@@ -5,7 +5,7 @@ import std.optional { Absent, Optional, Present }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.communication.medium { Lossless }
-import std.algebra { fold_list, list_head, skip, length }
+import std.algebra { fold_list, list_head, skip, length, trim }
 import std.types { Bool, List, String, Int }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -66,6 +66,24 @@ type Expression
   | Equals { left: Expression, right: Expression }
   | NotEquals { left: Expression, right: Expression }
   | LogicalNot { operand: Expression }
+  | LessThan { left: Expression, right: Expression }
+  | LessOrEqual { left: Expression, right: Expression }
+  | GreaterThan { left: Expression, right: Expression }
+  | GreaterOrEqual { left: Expression, right: Expression }
+  | BoolLiteral { value: Bool }
+  | NullLiteral
+  | NumberLiteral { text: String }
+  | FilteredContextAccess { context: ExpressionContext, path: List<FilterSegment> }
+
+// THE OBJECT FILTER IS A SEGMENT KIND, NOT A KEY. github_expression_operators_authority lists
+// `*` ("object filter") beside `.` and `[ ]`; its example is `fruits.*.name`. A `*` spelled as a
+// plain key would be the same text as the literal key `['*']`, which reads a property named `*`
+// and not a filter, so the filter is its own constructor and an ordinary ContextAccess path can
+// never mean one. A path holding any filter is FilteredContextAccess; one holding none is always
+// ContextAccess, so no existing consumer's reading of a plain path moves.
+type FilterSegment
+  = FilterKey { name: String }
+  | FilterAll
 
 type TemplateSegment
   = LiteralText { text: String }
@@ -126,6 +144,14 @@ type ExpressionSpellings {
   index_close: String
   group_open: String
   group_close: String
+  lt_op: String
+  le_op: String
+  gt_op: String
+  ge_op: String
+  wildcard: String
+  true_literal: String
+  false_literal: String
+  null_literal: String
 }
 
 data default_expression_spellings: ExpressionSpellings = {
@@ -145,6 +171,14 @@ data default_expression_spellings: ExpressionSpellings = {
   index_close: "']",
   group_open: "(",
   group_close: ")",
+  lt_op: " < ",
+  le_op: " <= ",
+  gt_op: " > ",
+  ge_op: " >= ",
+  wildcard: "*",
+  true_literal: "true",
+  false_literal: "false",
+  null_literal: "null",
 }
 
 // THIS WRITER HAS A CANONICAL SPELLING FOR PATH SEGMENTS, AND THE CHOICE IS OURS RATHER THAN
@@ -174,8 +208,8 @@ data default_expression_spellings: ExpressionSpellings = {
 //
 // WHY IT IS MODELED HERE AND NOT AT A CALL SITE. The production is a fact about the upstream
 // language, so a consumer hand-spelling `['...']` for its own case would be a second account of
-// the grammar (DESIGN 3). Choosing the form from the SEGMENT means a caller cannot spell it
-// wrong -- construction rather than a rule callers must remember (DESIGN 5).
+// the grammar (gunbc.design_argument::single_authority). Choosing the form from the SEGMENT means a caller cannot spell it
+// wrong -- construction rather than a rule callers must remember (gunbc.design_argument::fail_closed).
 //
 // THE PREDICATE IS NARROWER THAN THE PRODUCTION, DELIBERATELY, and its name says which question
 // it answers. `path_segment_takes_dot_form` is THIS WRITER'S canonical choice; it is not
@@ -217,6 +251,18 @@ fn join_path_with(path: List<String>, sp: ExpressionSpellings) -> String {
     concat(acc, render_path_segment_with(segment: segment, sp: sp)))
 }
 
+fn render_filter_segment_with(segment: FilterSegment, sp: ExpressionSpellings) -> String {
+  match segment {
+    FilterKey { name: n } => render_path_segment_with(segment: n, sp: sp)
+    FilterAll => concat(sp.path_sep, sp.wildcard)
+  }
+}
+
+fn join_filter_path_with(path: List<FilterSegment>, sp: ExpressionSpellings) -> String {
+  fold(path, init: "", f: (acc, segment) =>
+    concat(acc, render_filter_segment_with(segment: segment, sp: sp)))
+}
+
 fn serialize_args_with(args: List<Expression>, sp: ExpressionSpellings) -> String {
   join(map(args, a => serialize_expression_with(expression: a, sp: sp)), sp.arg_sep)
 }
@@ -228,7 +274,20 @@ fn serialize_expression_with(expression: Expression, sp: ExpressionSpellings) ->
     FunctionCall { function: f, args: a } =>
       join([function_name(function: f), sp.call_open, serialize_args_with(args: a, sp: sp), sp.call_close], "")
     StringLiteral { value: v } =>
-      join([sp.string_quote, v, sp.string_quote], "")
+      join([sp.string_quote, replace(v, sp.string_quote, concat(sp.string_quote, sp.string_quote)), sp.string_quote], "")
+    BoolLiteral { value: b } => if b { sp.true_literal } else { sp.false_literal }
+    NullLiteral => sp.null_literal
+    NumberLiteral { text: t } => t
+    FilteredContextAccess { context: c, path: p } =>
+      concat(context_name(context: c), join_filter_path_with(path: p, sp: sp))
+    LessThan { left: l, right: r } =>
+      join([serialize_operand_with(operand: l, parent: ComparisonPrecedence, sp: sp), serialize_operand_with(operand: r, parent: ComparisonPrecedence, sp: sp)], sp.lt_op)
+    LessOrEqual { left: l, right: r } =>
+      join([serialize_operand_with(operand: l, parent: ComparisonPrecedence, sp: sp), serialize_operand_with(operand: r, parent: ComparisonPrecedence, sp: sp)], sp.le_op)
+    GreaterThan { left: l, right: r } =>
+      join([serialize_operand_with(operand: l, parent: ComparisonPrecedence, sp: sp), serialize_operand_with(operand: r, parent: ComparisonPrecedence, sp: sp)], sp.gt_op)
+    GreaterOrEqual { left: l, right: r } =>
+      join([serialize_operand_with(operand: l, parent: ComparisonPrecedence, sp: sp), serialize_operand_with(operand: r, parent: ComparisonPrecedence, sp: sp)], sp.ge_op)
     LogicalOr { left: l, right: r } =>
       join([serialize_expression_with(expression: l, sp: sp), serialize_expression_with(expression: r, sp: sp)], sp.or_op)
     LogicalAnd { left: l, right: r } =>
@@ -271,10 +330,18 @@ fn expression_precedence(expression: Expression) -> ExpressionPrecedence {
     LogicalAnd { left: _, right: _ } => AndPrecedence
     Equals { left: _, right: _ } => ComparisonPrecedence
     NotEquals { left: _, right: _ } => ComparisonPrecedence
+    LessThan { left: _, right: _ } => ComparisonPrecedence
+    LessOrEqual { left: _, right: _ } => ComparisonPrecedence
+    GreaterThan { left: _, right: _ } => ComparisonPrecedence
+    GreaterOrEqual { left: _, right: _ } => ComparisonPrecedence
     LogicalNot { operand: _ } => NotPrecedence
     ContextAccess { context: _, path: _ } => AtomPrecedence
+    FilteredContextAccess { context: _, path: _ } => AtomPrecedence
     FunctionCall { function: _, args: _ } => AtomPrecedence
     StringLiteral { value: _ } => AtomPrecedence
+    BoolLiteral { value: _ } => AtomPrecedence
+    NullLiteral => AtomPrecedence
+    NumberLiteral { text: _ } => AtomPrecedence
   }
 }
 
@@ -350,113 +417,503 @@ fn function_from_name(name: String) -> ExpressionFunction? {
   })
 }
 
-fn expr_is_string_literal(s: String, sp: ExpressionSpellings) -> Bool {
-  starts_with(s: s, prefix: sp.string_quote)
-    && ends_with(s: s, suffix: sp.string_quote)
-    && (s.length() >= (2 * sp.string_quote.length()))
+// THE PARSER IS A TOKENIZER PLUS A PRECEDENCE PARSER OVER THE UPSTREAM GRAMMAR, READ FROM THE SAME
+// ExpressionSpellings ROWS THE WRITER USES (gunbc.design_argument::closed_grounded_substrate: one grammar, both directions).
+//
+// Upstream (github_expression_operators_authority, "Operators") tabulates, tightest first: logical
+// grouping `( )`, index `[ ]`, property dereference `.`, `!`, `<` `<=` `>` `>=` `==` `!=`, `&&`,
+// `||`. Comparison operators share one level and associate left, as `&&` and `||` do. Literals
+// (same page, "Literals"): `true`, `false`, `null`, "any number format supported by JSON", and
+// strings in single quotes with `''` as the escape; "wrapping with double quotes (`"`) will throw
+// an error", so a double quote is not a token here and the input is refused. Whitespace between
+// tokens is insignificant. The page states no case rule for context or property names (it says
+// only that string COMPARISON and contains/startsWith/endsWith ignore case), so names are matched
+// exactly, as before; this module does not invent a case-folding the cited page does not state.
+//
+// WHAT IS REFUSED, AS A TYPED Absent AND NEVER A PARTIAL PARSE: any unrecognized character, an
+// unterminated string, unbalanced grouping, trailing tokens, a numeric or expression index
+// (`a[0]`, `a[b.c]`), `[*]`, a dot followed by a non-name, an unknown context or function.
+type ExpressionToken
+  = TokName { text: String }
+  | TokString { value: String }
+  | TokNumber { text: String }
+  | TokOr
+  | TokAnd
+  | TokEq
+  | TokNeq
+  | TokLt
+  | TokLe
+  | TokGt
+  | TokGe
+  | TokNot
+  | TokDot
+  | TokStar
+  | TokComma
+  | TokOpenParen
+  | TokCloseParen
+  | TokOpenBracket
+  | TokCloseBracket
+
+type PunctRow {
+  spelling: String
+  token: ExpressionToken
 }
 
-fn expr_is_call(s: String, sp: ExpressionSpellings) -> Bool {
-  ends_with(s: s, suffix: sp.call_close) && string_contains(s, sp.call_open)
+type PunctMatch {
+  token: ExpressionToken
+  width: Int
 }
 
-fn parse_args_with(args_str: String, sp: ExpressionSpellings) -> List<Expression>? {
-  if args_str == "" {
-    Present { value: [] }
+type StringScan {
+  value: String
+  next: Int
+}
+
+fn punct_rows(sp: ExpressionSpellings) -> List<PunctRow> {
+  [
+    PunctRow { spelling: trim(s: sp.or_op), token: TokOr },
+    PunctRow { spelling: trim(s: sp.and_op), token: TokAnd },
+    PunctRow { spelling: trim(s: sp.neq_op), token: TokNeq },
+    PunctRow { spelling: trim(s: sp.eq_op), token: TokEq },
+    PunctRow { spelling: trim(s: sp.le_op), token: TokLe },
+    PunctRow { spelling: trim(s: sp.ge_op), token: TokGe },
+    PunctRow { spelling: trim(s: sp.lt_op), token: TokLt },
+    PunctRow { spelling: trim(s: sp.gt_op), token: TokGt },
+    PunctRow { spelling: trim(s: sp.not_op), token: TokNot },
+    PunctRow { spelling: sp.path_sep, token: TokDot },
+    PunctRow { spelling: sp.wildcard, token: TokStar },
+    PunctRow { spelling: trim(s: sp.arg_sep), token: TokComma },
+    PunctRow { spelling: trim(s: sp.call_open), token: TokOpenParen },
+    PunctRow { spelling: trim(s: sp.call_close), token: TokCloseParen },
+    PunctRow { spelling: "[", token: TokOpenBracket },
+    PunctRow { spelling: "]", token: TokCloseBracket },
+  ]
+}
+
+fn code_at(s: String, i: Int) -> Int {
+  match substring(s: s, start: i, end: i + 1).chars().first() {
+    Absent => 0 - 1
+    Present { value: c } => c
+  }
+}
+
+fn is_digit_code(c: Int) -> Bool {
+  c >= 48 && c <= 57
+}
+
+fn is_letter_code(c: Int) -> Bool {
+  (c >= 65 && c <= 90) || (c >= 97 && c <= 122)
+}
+
+fn is_name_code(c: Int) -> Bool {
+  dot_form_code_point(c: c) || c == 45
+}
+
+fn is_number_run_code(c: Int) -> Bool {
+  is_digit_code(c: c) || is_letter_code(c: c) || c == 46 || c == 43 || c == 45
+}
+
+fn is_space_code(c: Int) -> Bool {
+  c == 32 || c == 9 || c == 10 || c == 13
+}
+
+// A spelling that begins with a letter (a word operator) only matches as a whole word; a symbolic
+// one matches wherever it starts.
+fn punct_row_matches(rest: String, row: PunctRow, allow_words: Bool) -> Bool {
+  let w = string_length(s: row.spelling)
+  if w == 0 || !starts_with(s: rest, prefix: row.spelling) {
+    false
+  } else if is_letter_code(c: code_at(s: row.spelling, i: 0)) {
+    allow_words && (string_length(s: rest) == w || is_space_code(c: code_at(s: rest, i: w)))
   } else {
-    fold(split(s: args_str, delimiter: sp.arg_sep), init: Present { value: [] }, f: (acc, part) => match acc {
-      Absent => none
-      Present { value: sofar } => match parse_atom_with(s: part, sp: sp) {
-        Absent => none
-        Present { value: e } => Present { value: concat(sofar, [e]) }
+    true
+  }
+}
+
+fn punct_match(rest: String, sp: ExpressionSpellings, allow_words: Bool) -> PunctMatch? {
+  fold(punct_rows(sp: sp), init: none, f: (acc, row) => match acc {
+    Present { value: m } => Present { value: m }
+    Absent =>
+      if punct_row_matches(rest: rest, row: row, allow_words: allow_words) {
+        Present { value: PunctMatch { token: row.token, width: string_length(s: row.spelling) } }
+      } else {
+        none
       }
-    })
-  }
+  })
 }
 
-fn parse_string_literal_atom(s: String, sp: ExpressionSpellings) -> Expression? {
-  if expr_is_string_literal(s: s, sp: sp) {
-    Present { value: StringLiteral {
-      value: substring(s: s, start: sp.string_quote.length(), end: s.length() - sp.string_quote.length()),
-    } }
+fn name_run_end(s: String, j: Int, n: Int, sp: ExpressionSpellings) -> Int {
+  if j >= n {
+    n
+  } else if !is_name_code(c: code_at(s: s, i: j)) {
+    j
   } else {
-    none
-  }
-}
-
-fn parse_function_call_atom(s: String, sp: ExpressionSpellings) -> Expression? {
-  if !expr_is_call(s: s, sp: sp) {
-    none
-  } else {
-    let segs = split(s: s, delimiter: sp.call_open)
-    let after = join(segs.skip(n: 1), sp.call_open)
-    let args_str = if ends_with(s: after, suffix: sp.call_close) {
-      substring(s: after, start: 0, end: after.length() - sp.call_close.length())
-    } else {
-      after
+    match punct_match(rest: substring(s: s, start: j, end: n), sp: sp, allow_words: false) {
+      Present { value: _ } => j
+      Absent => name_run_end(s: s, j: j + 1, n: n, sp: sp)
     }
-    match segs.first() {
-      Absent => none
-      Present { value: fn_name } => match function_from_name(name: fn_name) {
+  }
+}
+
+fn number_run_end(s: String, j: Int, n: Int) -> Int {
+  if j >= n || !is_number_run_code(c: code_at(s: s, i: j)) {
+    j
+  } else {
+    number_run_end(s: s, j: j + 1, n: n)
+  }
+}
+
+fn all_digit_codes(text: String) -> Bool {
+  text != "" && all(text.chars(), c => is_digit_code(c: c))
+}
+
+fn all_hex_codes(text: String) -> Bool {
+  text != "" && all(text.chars(), c => is_digit_code(c: c) || (c >= 65 && c <= 70) || (c >= 97 && c <= 102))
+}
+
+fn unsigned_exponent_digits(text: String) -> String {
+  if starts_with(s: text, prefix: "+") || starts_with(s: text, prefix: "-") {
+    substring(s: text, start: 1, end: string_length(s: text))
+  } else {
+    text
+  }
+}
+
+fn decimal_mantissa_admitted(text: String) -> Bool {
+  let parts = split(s: text, delimiter: ".")
+  if parts.length() == 1 {
+    all_digit_codes(text: text)
+  } else if parts.length() == 2 {
+    match parts.first() {
+      Absent => false
+      Present { value: whole } =>
+        match parts.skip(n: 1).first() {
+          Absent => false
+          Present { value: frac } => all_digit_codes(text: whole) && all_digit_codes(text: frac)
+        }
+    }
+  } else {
+    false
+  }
+}
+
+// The cited page: "any number format supported by JSON", and its examples add hexadecimal.
+// Admitted: `-?(0[xX]hex+ | digits(.digits)?([eE][+-]?digits)?)`.
+fn number_text_admitted(text: String) -> Bool {
+  let body = if starts_with(s: text, prefix: "-") { substring(s: text, start: 1, end: string_length(s: text)) } else { text }
+  if starts_with(s: body, prefix: "0x") || starts_with(s: body, prefix: "0X") {
+    all_hex_codes(text: substring(s: body, start: 2, end: string_length(s: body)))
+  } else {
+    let parts = split(s: replace(body, "E", "e"), delimiter: "e")
+    if parts.length() == 1 {
+      decimal_mantissa_admitted(text: body)
+    } else if parts.length() == 2 {
+      match parts.first() {
+        Absent => false
+        Present { value: mant } =>
+          match parts.skip(n: 1).first() {
+            Absent => false
+            Present { value: exp } => decimal_mantissa_admitted(text: mant) && all_digit_codes(text: unsigned_exponent_digits(text: exp))
+          }
+      }
+    } else {
+      false
+    }
+  }
+}
+
+// Single-quoted string with `''` as the escape for one quote; none other.
+fn scan_string_body(s: String, j: Int, n: Int, q: String, acc: String) -> StringScan? {
+  let qw = string_length(s: q)
+  if j >= n {
+    none
+  } else {
+    let rest = substring(s: s, start: j, end: n)
+    if starts_with(s: rest, prefix: concat(q, q)) {
+      scan_string_body(s: s, j: j + 2 * qw, n: n, q: q, acc: concat(acc, q))
+    } else if starts_with(s: rest, prefix: q) {
+      Present { value: StringScan { value: acc, next: j + qw } }
+    } else {
+      scan_string_body(s: s, j: j + 1, n: n, q: q, acc: concat(acc, substring(s: s, start: j, end: j + 1)))
+    }
+  }
+}
+
+fn tokenize_from(s: String, i: Int, n: Int, sp: ExpressionSpellings, acc: List<ExpressionToken>) -> List<ExpressionToken>? {
+  if i >= n {
+    Present { value: acc }
+  } else if is_space_code(c: code_at(s: s, i: i)) {
+    tokenize_from(s: s, i: i + 1, n: n, sp: sp, acc: acc)
+  } else {
+    let rest = substring(s: s, start: i, end: n)
+    if starts_with(s: rest, prefix: sp.string_quote) {
+      match scan_string_body(s: s, j: i + string_length(s: sp.string_quote), n: n, q: sp.string_quote, acc: "") {
         Absent => none
-        Present { value: fn_variant } => match parse_args_with(args_str: args_str, sp: sp) {
-          Absent => none
-          Present { value: args } => Present { value: FunctionCall { function: fn_variant, args: args } }
+        Present { value: scan } => tokenize_from(s: s, i: scan.next, n: n, sp: sp, acc: concat(acc, [TokString { value: scan.value }]))
+      }
+    } else {
+      match punct_match(rest: rest, sp: sp, allow_words: true) {
+        Present { value: m } => tokenize_from(s: s, i: i + m.width, n: n, sp: sp, acc: concat(acc, [m.token]))
+        Absent => {
+          let c = code_at(s: s, i: i)
+          if is_digit_code(c: c) || (c == 45 && is_digit_code(c: code_at(s: s, i: i + 1))) {
+            let stop = number_run_end(s: s, j: i + 1, n: n)
+            let text = substring(s: s, start: i, end: stop)
+            if number_text_admitted(text: text) {
+              tokenize_from(s: s, i: stop, n: n, sp: sp, acc: concat(acc, [TokNumber { text: text }]))
+            } else {
+              none
+            }
+          } else if dot_form_leading_code_point(c: c) {
+            let stop = name_run_end(s: s, j: i + 1, n: n, sp: sp)
+            tokenize_from(s: s, i: stop, n: n, sp: sp, acc: concat(acc, [TokName { text: substring(s: s, start: i, end: stop) }]))
+          } else {
+            none
+          }
         }
       }
     }
   }
 }
 
-// THE PARSE READS THE SAME TWO FORMS THE SERIALIZER WRITES, which is what keeps this module one
-// grammar read in both directions (DESIGN 4) rather than an emitter with a narrower reader
-// beside it. Index segments are normalized back to the dot form before splitting, so
-// `needs['a-b'].result` and `needs.a_b.result` both yield an ordinary segment list and a
-// serialize-then-ingest round trip returns the identical value.
-//
-// WHAT THE NORMALIZATION DOES NOT ADMIT, named rather than left to be discovered: a segment
-// whose own text contains the path separator or the index delimiters. No such segment can be
-// produced by the serializer above, so the round trip is total over what this module writes;
-// a hand-authored expression carrying one is outside what this reader claims.
-fn parse_context_access_atom(s: String, sp: ExpressionSpellings) -> Expression? {
-  let dotted = replace(replace(s, sp.index_open, sp.path_sep), sp.index_close, "")
-  let segs = split(s: dotted, delimiter: sp.path_sep)
-  match segs.first() {
+fn tokenize_expression_with(s: String, sp: ExpressionSpellings) -> List<ExpressionToken>? {
+  tokenize_from(s: s, i: 0, n: string_length(s: s), sp: sp, acc: [])
+}
+
+type ParsedExpression {
+  expression: Expression
+  rest: List<ExpressionToken>
+}
+
+type ParsedArgs {
+  args: List<Expression>
+  rest: List<ExpressionToken>
+}
+
+type ParsedPath {
+  path: List<FilterSegment>
+  rest: List<ExpressionToken>
+}
+
+// The keys of a path that holds no `*` filter; a path with one has no plain reading: Absent.
+fn plain_path_keys(path: List<FilterSegment>) -> List<String>? {
+  match path.first() {
+    Absent => Present { value: [] }
+    Present { value: FilterAll } => none
+    Present { value: FilterKey { name: n } } =>
+      match plain_path_keys(path: path.skip(n: 1)) {
+        Absent => none
+        Present { value: rest } => Present { value: concat([n], rest) }
+      }
+  }
+}
+
+fn context_access_from_path(ctx: ExpressionContext, path: List<FilterSegment>) -> Expression {
+  match plain_path_keys(path: path) {
+    Present { value: keys } => ContextAccess { context: ctx, path: keys }
+    Absent => FilteredContextAccess { context: ctx, path: path }
+  }
+}
+
+fn parse_path_tail(toks: List<ExpressionToken>, sofar: List<FilterSegment>) -> ParsedPath? {
+  match toks.first() {
+    Present { value: TokDot } =>
+      match toks.skip(n: 1).first() {
+        Present { value: TokName { text: name } } =>
+          parse_path_tail(toks: toks.skip(n: 2), sofar: concat(sofar, [FilterKey { name: name }]))
+        Present { value: TokStar } =>
+          parse_path_tail(toks: toks.skip(n: 2), sofar: concat(sofar, [FilterAll]))
+        _ => none
+      }
+    Present { value: TokOpenBracket } =>
+      match toks.skip(n: 1).first() {
+        Present { value: TokString { value: key } } =>
+          match toks.skip(n: 2).first() {
+            Present { value: TokCloseBracket } =>
+              parse_path_tail(toks: toks.skip(n: 3), sofar: concat(sofar, [FilterKey { name: key }]))
+            _ => none
+          }
+        _ => none
+      }
+    _ => Present { value: ParsedPath { path: sofar, rest: toks } }
+  }
+}
+
+fn parse_call_args(toks: List<ExpressionToken>, sofar: List<Expression>, sp: ExpressionSpellings) -> ParsedArgs? {
+  match parse_or_level(toks: toks, sp: sp) {
     Absent => none
-    Present { value: ctx_name } => match context_from_name(name: ctx_name) {
-      Absent => none
-      Present { value: ctx } => Present { value: ContextAccess { context: ctx, path: segs.skip(n: 1) } }
+    Present { value: p } => {
+      let args = concat(sofar, [p.expression])
+      match p.rest.first() {
+        Present { value: TokComma } => parse_call_args(toks: p.rest.skip(n: 1), sofar: args, sp: sp)
+        Present { value: TokCloseParen } => Present { value: ParsedArgs { args: args, rest: p.rest.skip(n: 1) } }
+        _ => none
+      }
     }
   }
 }
 
-fn parse_atom_with(s: String, sp: ExpressionSpellings) -> Expression? {
-  match parse_string_literal_atom(s: s, sp: sp) {
-    Present { value: e } => Present { value: e }
-    Absent =>
-      match parse_function_call_atom(s: s, sp: sp) {
-        Present { value: e } => Present { value: e }
-        Absent => parse_context_access_atom(s: s, sp: sp)
+fn parse_call(fn_variant: ExpressionFunction, toks: List<ExpressionToken>, sp: ExpressionSpellings) -> ParsedExpression? {
+  match toks.first() {
+    Present { value: TokCloseParen } =>
+      Present { value: ParsedExpression { expression: FunctionCall { function: fn_variant, args: [] }, rest: toks.skip(n: 1) } }
+    _ =>
+      match parse_call_args(toks: toks, sofar: [], sp: sp) {
+        Absent => none
+        Present { value: a } =>
+          Present { value: ParsedExpression { expression: FunctionCall { function: fn_variant, args: a.args }, rest: a.rest } }
       }
+  }
+}
+
+fn parse_name_primary(name: String, toks: List<ExpressionToken>, sp: ExpressionSpellings) -> ParsedExpression? {
+  if name == sp.true_literal {
+    Present { value: ParsedExpression { expression: BoolLiteral { value: true }, rest: toks } }
+  } else if name == sp.false_literal {
+    Present { value: ParsedExpression { expression: BoolLiteral { value: false }, rest: toks } }
+  } else if name == sp.null_literal {
+    Present { value: ParsedExpression { expression: NullLiteral, rest: toks } }
+  } else {
+    match toks.first() {
+      Present { value: TokOpenParen } =>
+        match function_from_name(name: name) {
+          Absent => none
+          Present { value: fn_variant } => parse_call(fn_variant: fn_variant, toks: toks.skip(n: 1), sp: sp)
+        }
+      _ =>
+        match context_from_name(name: name) {
+          Absent => none
+          Present { value: ctx } =>
+            match parse_path_tail(toks: toks, sofar: []) {
+              Absent => none
+              Present { value: p } =>
+                Present { value: ParsedExpression { expression: context_access_from_path(ctx: ctx, path: p.path), rest: p.rest } }
+            }
+        }
+    }
+  }
+}
+
+fn parse_primary(toks: List<ExpressionToken>, sp: ExpressionSpellings) -> ParsedExpression? {
+  match toks.first() {
+    Absent => none
+    Present { value: TokString { value: v } } =>
+      Present { value: ParsedExpression { expression: StringLiteral { value: v }, rest: toks.skip(n: 1) } }
+    Present { value: TokNumber { text: t } } =>
+      Present { value: ParsedExpression { expression: NumberLiteral { text: t }, rest: toks.skip(n: 1) } }
+    Present { value: TokName { text: name } } => parse_name_primary(name: name, toks: toks.skip(n: 1), sp: sp)
+    Present { value: TokOpenParen } =>
+      match parse_or_level(toks: toks.skip(n: 1), sp: sp) {
+        Absent => none
+        Present { value: inner } =>
+          match inner.rest.first() {
+            Present { value: TokCloseParen } =>
+              Present { value: ParsedExpression { expression: inner.expression, rest: inner.rest.skip(n: 1) } }
+            _ => none
+          }
+      }
+    _ => none
+  }
+}
+
+fn parse_unary_level(toks: List<ExpressionToken>, sp: ExpressionSpellings) -> ParsedExpression? {
+  match toks.first() {
+    Present { value: TokNot } =>
+      match parse_unary_level(toks: toks.skip(n: 1), sp: sp) {
+        Absent => none
+        Present { value: p } =>
+          Present { value: ParsedExpression { expression: LogicalNot { operand: p.expression }, rest: p.rest } }
+      }
+    _ => parse_primary(toks: toks, sp: sp)
+  }
+}
+
+fn comparison_node(token: ExpressionToken, left: Expression, right: Expression) -> Expression? {
+  match token {
+    TokEq => Present { value: Equals { left: left, right: right } }
+    TokNeq => Present { value: NotEquals { left: left, right: right } }
+    TokLt => Present { value: LessThan { left: left, right: right } }
+    TokLe => Present { value: LessOrEqual { left: left, right: right } }
+    TokGt => Present { value: GreaterThan { left: left, right: right } }
+    TokGe => Present { value: GreaterOrEqual { left: left, right: right } }
+    _ => none
+  }
+}
+
+fn parse_comparison_tail(left: Expression, toks: List<ExpressionToken>, sp: ExpressionSpellings) -> ParsedExpression? {
+  match toks.first() {
+    Present { value: op } =>
+      match comparison_node(token: op, left: left, right: left) {
+        Absent => Present { value: ParsedExpression { expression: left, rest: toks } }
+        Present { value: _ } =>
+          match parse_unary_level(toks: toks.skip(n: 1), sp: sp) {
+            Absent => none
+            Present { value: r } =>
+              match comparison_node(token: op, left: left, right: r.expression) {
+                Absent => none
+                Present { value: node } => parse_comparison_tail(left: node, toks: r.rest, sp: sp)
+              }
+          }
+      }
+    Absent => Present { value: ParsedExpression { expression: left, rest: toks } }
+  }
+}
+
+fn parse_comparison_level(toks: List<ExpressionToken>, sp: ExpressionSpellings) -> ParsedExpression? {
+  match parse_unary_level(toks: toks, sp: sp) {
+    Absent => none
+    Present { value: l } => parse_comparison_tail(left: l.expression, toks: l.rest, sp: sp)
+  }
+}
+
+fn parse_and_tail(left: Expression, toks: List<ExpressionToken>, sp: ExpressionSpellings) -> ParsedExpression? {
+  match toks.first() {
+    Present { value: TokAnd } =>
+      match parse_comparison_level(toks: toks.skip(n: 1), sp: sp) {
+        Absent => none
+        Present { value: r } => parse_and_tail(left: LogicalAnd { left: left, right: r.expression }, toks: r.rest, sp: sp)
+      }
+    _ => Present { value: ParsedExpression { expression: left, rest: toks } }
+  }
+}
+
+fn parse_and_level(toks: List<ExpressionToken>, sp: ExpressionSpellings) -> ParsedExpression? {
+  match parse_comparison_level(toks: toks, sp: sp) {
+    Absent => none
+    Present { value: l } => parse_and_tail(left: l.expression, toks: l.rest, sp: sp)
+  }
+}
+
+fn parse_or_tail(left: Expression, toks: List<ExpressionToken>, sp: ExpressionSpellings) -> ParsedExpression? {
+  match toks.first() {
+    Present { value: TokOr } =>
+      match parse_and_level(toks: toks.skip(n: 1), sp: sp) {
+        Absent => none
+        Present { value: r } => parse_or_tail(left: LogicalOr { left: left, right: r.expression }, toks: r.rest, sp: sp)
+      }
+    _ => Present { value: ParsedExpression { expression: left, rest: toks } }
+  }
+}
+
+fn parse_or_level(toks: List<ExpressionToken>, sp: ExpressionSpellings) -> ParsedExpression? {
+  match parse_and_level(toks: toks, sp: sp) {
+    Absent => none
+    Present { value: l } => parse_or_tail(left: l.expression, toks: l.rest, sp: sp)
   }
 }
 
 fn parse_expression_with(s: String, sp: ExpressionSpellings) -> Expression? {
-  let parts = split(s: s, delimiter: sp.or_op)
-  if parts.length() == 1 {
-    parse_atom_with(s: s, sp: sp)
-  } else {
-    let head_atom = match parts.first() {
-      Absent => none
-      Present { value: head } => parse_atom_with(s: head, sp: sp)
-    }
-    fold(parts.skip(n: 1), init: head_atom, f: (acc, part) => match acc {
-      Absent => none
-      Present { value: left } => match parse_atom_with(s: part, sp: sp) {
+  match tokenize_expression_with(s: s, sp: sp) {
+    Absent => none
+    Present { value: toks } =>
+      match parse_or_level(toks: toks, sp: sp) {
         Absent => none
-        Present { value: e } => Present { value: LogicalOr { left: left, right: e } }
+        Present { value: p } =>
+          match p.rest.first() {
+            Absent => Present { value: p.expression }
+            Present { value: _ } => none
+          }
       }
-    })
   }
 }
 
@@ -468,38 +925,57 @@ fn ingest_expression(src: String) -> Expression? {
   ingest_expression_with(src: src, sp: default_expression_spellings)
 }
 
-fn ingest_template_with(src: String, sp: ExpressionSpellings) -> ExpressionTemplate? {
-  let parts = split(s: src, delimiter: sp.interp_open)
+// Index of the closing delimiter at or after j that lies outside every string literal, so a
+// `}}` inside a quoted string does not close the interpolation. No close: Absent.
+fn find_interpolation_close(s: String, j: Int, n: Int, close: String, q: String) -> Int? {
+  if j >= n {
+    none
+  } else {
+    let rest = substring(s: s, start: j, end: n)
+    if starts_with(s: rest, prefix: q) {
+      match scan_string_body(s: s, j: j + string_length(s: q), n: n, q: q, acc: "") {
+        Absent => none
+        Present { value: scan } => find_interpolation_close(s: s, j: scan.next, n: n, close: close, q: q)
+      }
+    } else if starts_with(s: rest, prefix: close) {
+      Present { value: j }
+    } else {
+      find_interpolation_close(s: s, j: j + 1, n: n, close: close, q: q)
+    }
+  }
+}
+
+fn literal_segments(text: String) -> List<TemplateSegment> {
+  if text == "" { [] } else { [ LiteralText { text: text } ] }
+}
+
+// The delimiters are upstream's bare `${{` and `}}`: the spaces a writer puts inside them are
+// whitespace the tokenizer skips, not part of the delimiter. A `${{` with no close is Absent.
+fn ingest_segments_from(s: String, i: Int, n: Int, sp: ExpressionSpellings, open: String, close: String, acc: List<TemplateSegment>) -> List<TemplateSegment>? {
+  let parts = split(s: substring(s: s, start: i, end: n), delimiter: open)
   let lead = match parts.first() {
     Present { value: l } => l
     Absent => ""
   }
-  let lead_segs = if lead == "" { [] } else { [ LiteralText { text: lead } ] }
-  let built = fold(parts.skip(n: 1), init: Present { value: lead_segs }, f: (acc, part) => match acc {
-    Absent => none
-    Present { value: sofar } => {
-      let halves = split(s: part, delimiter: sp.interp_close)
-      if halves.length() < 2 {
-        none
-      } else {
-        let trailing = join(halves.skip(n: 1), sp.interp_close)
-        let head_expression = match halves.first() {
+  if parts.length() < 2 {
+    Present { value: concat(acc, literal_segments(text: lead)) }
+  } else {
+    let body_start = i + string_length(s: lead) + string_length(s: open)
+    match find_interpolation_close(s: s, j: body_start, n: n, close: close, q: sp.string_quote) {
+      Absent => none
+      Present { value: c } =>
+        match parse_expression_with(s: substring(s: s, start: body_start, end: c), sp: sp) {
           Absent => none
-          Present { value: head } => parse_expression_with(s: head, sp: sp)
+          Present { value: e } =>
+            ingest_segments_from(s: s, i: c + string_length(s: close), n: n, sp: sp, open: open, close: close,
+              acc: concat(concat(acc, literal_segments(text: lead)), [ Interpolation { expression: e } ]))
         }
-        match head_expression {
-          Absent => none
-          Present { value: e } => {
-            let with_interp = concat(sofar, [ Interpolation { expression: e } ])
-            Present {
-              value: if trailing == "" { with_interp } else { concat(with_interp, [ LiteralText { text: trailing } ]) },
-            }
-          }
-        }
-      }
     }
-  })
-  match built {
+  }
+}
+
+fn ingest_template_with(src: String, sp: ExpressionSpellings) -> ExpressionTemplate? {
+  match ingest_segments_from(s: src, i: 0, n: string_length(s: src), sp: sp, open: trim(s: sp.interp_open), close: trim(s: sp.interp_close), acc: []) {
     Absent => none
     Present { value: segs } => Present { value: ExpressionTemplate { segments: segs } }
   }
@@ -558,8 +1034,24 @@ fn expression_accesses_runner_var_via_env(expression: Expression) -> Bool {
     NotEquals { left: l, right: r } =>
       expression_accesses_runner_var_via_env(expression: l) ||
         expression_accesses_runner_var_via_env(expression: r)
+    LessThan { left: l, right: r } =>
+      expression_accesses_runner_var_via_env(expression: l) ||
+        expression_accesses_runner_var_via_env(expression: r)
+    LessOrEqual { left: l, right: r } =>
+      expression_accesses_runner_var_via_env(expression: l) ||
+        expression_accesses_runner_var_via_env(expression: r)
+    GreaterThan { left: l, right: r } =>
+      expression_accesses_runner_var_via_env(expression: l) ||
+        expression_accesses_runner_var_via_env(expression: r)
+    GreaterOrEqual { left: l, right: r } =>
+      expression_accesses_runner_var_via_env(expression: l) ||
+        expression_accesses_runner_var_via_env(expression: r)
     LogicalNot { operand: o } => expression_accesses_runner_var_via_env(expression: o)
+    FilteredContextAccess { context: _, path: _ } => false
     StringLiteral { value: _ } => false
+    BoolLiteral { value: _ } => false
+    NullLiteral => false
+    NumberLiteral { text: _ } => false
   }
 }
 
@@ -580,8 +1072,24 @@ fn expression_uses_context(expression: Expression, target: ExpressionContext) ->
     NotEquals { left: l, right: r } =>
       expression_uses_context(expression: l, target: target) ||
         expression_uses_context(expression: r, target: target)
+    LessThan { left: l, right: r } =>
+      expression_uses_context(expression: l, target: target) ||
+        expression_uses_context(expression: r, target: target)
+    LessOrEqual { left: l, right: r } =>
+      expression_uses_context(expression: l, target: target) ||
+        expression_uses_context(expression: r, target: target)
+    GreaterThan { left: l, right: r } =>
+      expression_uses_context(expression: l, target: target) ||
+        expression_uses_context(expression: r, target: target)
+    GreaterOrEqual { left: l, right: r } =>
+      expression_uses_context(expression: l, target: target) ||
+        expression_uses_context(expression: r, target: target)
     LogicalNot { operand: o } => expression_uses_context(expression: o, target: target)
+    FilteredContextAccess { context: c, path: _ } => context_name(context: c) == context_name(context: target)
     StringLiteral { value: _ } => false
+    BoolLiteral { value: _ } => false
+    NullLiteral => false
+    NumberLiteral { text: _ } => false
   }
 }
 
@@ -613,7 +1121,7 @@ fn template_uses_context(template: ExpressionTemplate, target: ExpressionContext
 // on the strongest possible ground: this module is READ IN BOTH DIRECTIONS — parse_expression_with
 // is the inverse of serialize_expression_with — and the change added a construct to emission that
 // ingest could not read, so `(a || b)` serialized out and would not parse back. That is precisely
-// the one-grammar-both-directions invariant DESIGN §4 states, broken by editing one direction
+// the one-grammar-both-directions invariant gunbc.design_argument::closed_grounded_substrate states, broken by editing one direction
 // alone. Three round-trip witnesses and an emission golden would have caught it; they were not run,
 // and the earlier claim on the PR that they had been was wrong.
 //
@@ -624,15 +1132,10 @@ fn template_uses_context(template: ExpressionTemplate, target: ExpressionContext
 // B && d)`. Adding parentheses to this grammar remains legitimate future work, but it is a change
 // to BOTH directions plus the goldens that pin them, not a serializer edit.
 //
-// DECLARED ASYMMETRY, NAMED RATHER THAN LEFT IMPLIED (review 49460): parse_expression_with reads
-// Or, calls, context accesses and string literals; it does NOT read &&, ==, or !=. So those
-// operators remain UNPARSED from surface syntax. That is a real §4 ingest asymmetry. A
-// structural evaluator over an already-constructed Expression AST is not that trigger: it
-// does not ingest operator text, so it does not fire the "ingest arms plus round-trip witnesses
-// land before a parse consumer" row. The trigger remains a consumer that parses &&, ==, or !=
-// from a string. This PR's concurrency-group fixture resolver is the first in-tree consumer
-// that reads the AST back by evaluation; it is not a re-ingestion of serialized operator
-// spellings. NotEquals is emitted and evaluated; it is still not ingested from text.
+// ASYMMETRY CLOSED: parse_expression_with now reads the full documented grammar (the ingest
+// direction of the same ExpressionSpellings rows the serializer writes): &&, ||, comparisons, !,
+// parentheses, literals, calls and context paths. Parentheses are ingest-only; the serializer
+// still emits a grouping-free spelling, so a right-nested tree reads back left-associated.
 
 fn any_template_accesses_runner_var_via_env(templates: List<ExpressionTemplate>) -> Bool {
   fold(templates, init: false, f: (acc, template) =>
@@ -676,6 +1179,7 @@ type ExpressionEvaluationRefusal
   = UnmodeledContext { context: ExpressionContext, path: List<String> }
   | UnmodeledFunction { function: ExpressionFunction }
   | UnmodeledFormat { cause: FormatEvaluationRefusal }
+  | UnmodeledNonStringForm
 
 type ExpressionEvaluation
   = ExpressionValue { value: String }
@@ -722,6 +1226,22 @@ fn eval_format_args(args: List<Expression>, github_path: fn(List<String>) -> Git
           NotEquals { left: _, right: _ } =>
             ExpressionEvaluationRefused { cause: UnmodeledFormat { cause: FormatTemplateNotLiteral } }
           LogicalNot { operand: _ } =>
+            ExpressionEvaluationRefused { cause: UnmodeledFormat { cause: FormatTemplateNotLiteral } }
+          LessThan { left: _, right: _ } =>
+            ExpressionEvaluationRefused { cause: UnmodeledFormat { cause: FormatTemplateNotLiteral } }
+          LessOrEqual { left: _, right: _ } =>
+            ExpressionEvaluationRefused { cause: UnmodeledFormat { cause: FormatTemplateNotLiteral } }
+          GreaterThan { left: _, right: _ } =>
+            ExpressionEvaluationRefused { cause: UnmodeledFormat { cause: FormatTemplateNotLiteral } }
+          GreaterOrEqual { left: _, right: _ } =>
+            ExpressionEvaluationRefused { cause: UnmodeledFormat { cause: FormatTemplateNotLiteral } }
+          FilteredContextAccess { context: _, path: _ } =>
+            ExpressionEvaluationRefused { cause: UnmodeledFormat { cause: FormatTemplateNotLiteral } }
+          BoolLiteral { value: _ } =>
+            ExpressionEvaluationRefused { cause: UnmodeledFormat { cause: FormatTemplateNotLiteral } }
+          NullLiteral =>
+            ExpressionEvaluationRefused { cause: UnmodeledFormat { cause: FormatTemplateNotLiteral } }
+          NumberLiteral { text: _ } =>
             ExpressionEvaluationRefused { cause: UnmodeledFormat { cause: FormatTemplateNotLiteral } }
         }
     }
@@ -794,5 +1314,13 @@ fn evaluate_expression(expression: Expression, github_path: fn(List<String>) -> 
         ExpressionEvaluationRefused { cause: c } => ExpressionEvaluationRefused { cause: c }
         ExpressionValue { value: v } => if gha_value_is_truthy(s: v) { ExpressionValue { value: "" } } else { ExpressionValue { value: "true" } }
       }
+    LessThan { left: _, right: _ } => ExpressionEvaluationRefused { cause: UnmodeledNonStringForm }
+    LessOrEqual { left: _, right: _ } => ExpressionEvaluationRefused { cause: UnmodeledNonStringForm }
+    GreaterThan { left: _, right: _ } => ExpressionEvaluationRefused { cause: UnmodeledNonStringForm }
+    GreaterOrEqual { left: _, right: _ } => ExpressionEvaluationRefused { cause: UnmodeledNonStringForm }
+    FilteredContextAccess { context: _, path: _ } => ExpressionEvaluationRefused { cause: UnmodeledNonStringForm }
+    BoolLiteral { value: _ } => ExpressionEvaluationRefused { cause: UnmodeledNonStringForm }
+    NullLiteral => ExpressionEvaluationRefused { cause: UnmodeledNonStringForm }
+    NumberLiteral { text: _ } => ExpressionEvaluationRefused { cause: UnmodeledNonStringForm }
   }
 }

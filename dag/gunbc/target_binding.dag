@@ -21,7 +21,7 @@ import gunbc.native_serve_probe_plan { NativeServeProbe }
 // native_claim_program_standing. An Optional or omitted budget is how a hang returns, so the field
 // is required. The next program of this shape is one more BINDING ROW naming entry and deadline,
 // never another producer arm.
-// NativeServeProgramProducer is the same shape for std.compiler_entry NativeServeDriver: it emits and
+// NativeServeProgramProducer is the same shape for std.compiler_entry NativeIngressDriver: it emits and
 // builds the named service entry, starts it, writes the requests of the row's probe reader to real
 // TCP connections and hands what came back to that reader's native_serve_probe_standing. The reader
 // module and the phases the run performs (gunbc.native_serve_probe_plan) are fields of the row, so a
@@ -47,13 +47,9 @@ type TargetProducer
   | EvaluationStoreAddressExactHeadProducer
   | TypedGraphExclusiveBytesProducer
   | TypedGraphExclusiveBytesFloorSubjectProducer
-  | RequiredLaneResolutionCensusProducer
   | BareReferenceChannelOutcomeProducer
   | SelfHostBehavioralEquivalenceProducer
   | SelfHostFrontierProducer
-  | GenericIdentityCensusProducer
-  | InterpolationHoleCensusProducer
-  | SharedTypeLeafCollisionCensusProducer
   | CardinalityRealizationProducer
   | RegenRoundCostProducer
   | NativeClaimProgramProducer { entry: String, deadline: Millisecond }
@@ -83,13 +79,9 @@ fn native_claim_deadline_if_entry(producer: TargetProducer, want: String) -> Opt
     EvaluationStoreAddressExactHeadProducer {} => optional_absent()
     TypedGraphExclusiveBytesProducer {} => optional_absent()
     TypedGraphExclusiveBytesFloorSubjectProducer {} => optional_absent()
-    RequiredLaneResolutionCensusProducer {} => optional_absent()
     BareReferenceChannelOutcomeProducer {} => optional_absent()
     SelfHostBehavioralEquivalenceProducer {} => optional_absent()
     SelfHostFrontierProducer {} => optional_absent()
-    GenericIdentityCensusProducer {} => optional_absent()
-    InterpolationHoleCensusProducer {} => optional_absent()
-    SharedTypeLeafCollisionCensusProducer {} => optional_absent()
     CardinalityRealizationProducer {} => optional_absent()
     RegenRoundCostProducer {} => optional_absent()
     NativeServeProgramProducer { entry: _, probe: _ } => optional_absent()
@@ -362,7 +354,7 @@ type HeadsReadingDifferentialStanding
 // row's fact and has exactly one home -- `gunbc.recurring_failure_mode`
 // `bare_reference_channel_declines_a_pull_in_silence`, which reports 1 and says why. An earlier
 // revision of this annotation claimed rung 2 here; that was a second statement of one fact on the
-// carrier a reader meets first, which is the DESIGN section 3 fork, and it was wrong on the
+// carrier a reader meets first, which is the gunbc.design_argument::single_authority fork, and it was wrong on the
 // merits besides: a gate that changes behaviour turns this target red for whoever RUNS it and
 // blocks no landing, and section 4b rung 2 is a mechanism that exposes AND blocks. Read the rung
 // from the row.

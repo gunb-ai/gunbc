@@ -31,7 +31,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // with the member's resolution supplied by the real resolver over the inline corpus below, answers
 // that a closure holding every module the entry's resolved references and import rows point into owns
 // them, and answers the located ownerless target where a module is missing. That is a SUPPLIED-INPUT
-// claim at the check's interface (DESIGN section 3): which modules a closure holds is the acquirer's
+// claim at the check's interface (gunbc.design_argument::single_authority): which modules a closure holds is the acquirer's
 // fact (v2.compiler.module_acquisition), and the claim that the acquirer's closure and the resolver's
 // references agree over the real corpus is the route's, held by the emission of the two native entries
 // (gunbc test //gunbc/instruments:self-host and //gunbc/instruments:v2-native-cli), where every member

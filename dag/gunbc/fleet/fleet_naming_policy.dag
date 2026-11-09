@@ -2,7 +2,7 @@ module gunbc.fleet.fleet_naming_policy
 
 // THE FLEET NAMING-POLICY REGISTRY: THE ONE ROW THAT DECIDES WHAT A MEMBER IS CALLED.
 //
-// WHY A REGISTRY RATHER THAN AN INLINE RULE. gunbc.plans.fleet_naming_reach_access P2 requires that
+// WHY A REGISTRY RATHER THAN AN INLINE RULE. gunbc.plans.fleet_naming_reach_access (deleted 2026-11-08) P2 requires that
 // "every hostname construction passes through a policy that names the allocation". What a member is
 // called is a FACT ABOUT THE FLEET -- it is what makes a name legal -- and such a fact belongs in the
 // ledger beside the roster it governs, not inside the function that reads it. Two consumers that each
@@ -20,7 +20,7 @@ module gunbc.fleet.fleet_naming_policy
 //
 // WHAT THIS ROW IS NOT: it is not a second roster and holds no per-host fact. Per-host truth stays in
 // gunbc.hostname_allocation's roster, where allocation identity lives. A policy row that named a single
-// host would be a second source for that host's name, which is the defect DESIGN 3 forbids.
+// host would be a second source for that host's name, which is the defect gunbc.design_argument::single_authority forbids.
 
 import std.types { Bool, Int, NonEmptyStr, String, brand }
 import std.optional { Absent, Optional, Present }

@@ -1,0 +1,69 @@
+module test.claim.runner.runner_lifecycle_realize_registration_witness
+
+import std.types { Bool, NonEmptyStr }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import extdeps.github.effect { GitHubOrganizationRef }
+import gunbc.fleet.fleet_runner_connectivity { OrganizationRunnerRosterEvidence, RosterObserved, RosterObservedPartial, RosterReadUnavailable }
+import gunbc.runner.runner_lifecycle_realize {
+  RegistrationRealizeOutcome, RegistrationConverged, RegistrationNotConverged,
+  runner_lifecycle_registration_realize_outcome, runner_lifecycle_registration_roster_refusal,
+}
+import gunbc.auth.access_token_source { AccessTokenSourceSelected, AccessTokenSourceUnavailable, WorkloadIdentityToken }
+
+// Boundary values, supplied here; no other test file is imported. This witnesses the registration-observe
+// realization's decide: it CONVERGES on a roster that settles the slot and refuses, located, when the
+// roster is unavailable or partial -- the capability review 90917 asked for -- and the admitted-source gate
+// can never fabricate a roster from itself.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn slot(idx: Int) -> RunnerSlotIdentity { RunnerSlotIdentity { host: operator_host_srv1, slot_index: idx } }
+fn org() -> NonEmptyStr { "gunbai" as NonEmptyStr }
+
+// POSITIVE CONTROL: a roster observed at the boundary settles the slot, so the arm converges. Before this
+// change the arm always handed observe_slot_registrations RosterReadUnavailable and could never reach
+// this arm.
+test fn an_observed_roster_converges_the_registration_observe() -> Bool {
+  match runner_lifecycle_registration_realize_outcome(slot: slot(idx: 1), roster: RosterObserved { observed_on: "2026-11-05" as NonEmptyStr, registrations: [] }) {
+    RegistrationConverged { wire: _ } => true
+    RegistrationNotConverged { reason: _ } => false
+  }
+}
+
+// DISCRIMINATING RED (unavailable): with the roster unavailable the arm must NOT converge -- it refuses
+// located, citing the reason, never a converged receipt.
+test fn an_unavailable_roster_never_converges_the_registration_observe() -> Bool {
+  match runner_lifecycle_registration_realize_outcome(slot: slot(idx: 1), roster: RosterReadUnavailable { reason: "no admitted org runners:read source" as NonEmptyStr }) {
+    RegistrationConverged { wire: _ } => false
+    RegistrationNotConverged { reason: r } => r != ""
+  }
+}
+
+// DISCRIMINATING RED (partial): a partial roster is not a settle either.
+test fn a_partial_roster_never_converges_the_registration_observe() -> Bool {
+  match runner_lifecycle_registration_realize_outcome(slot: slot(idx: 1), roster: RosterObservedPartial { observed_on: "2026-11-05" as NonEmptyStr, registrations: [], observed_count: 100, authority_total: 2028 }) {
+    RegistrationConverged { wire: _ } => false
+    RegistrationNotConverged { reason: _ } => true
+  }
+}
+
+// POSITIVE CONTROL on the admitted-source gate: whether or not a source is admitted, the PURE gate yields
+// only RosterReadUnavailable. It is handed the boundary-resolved source (the same selector the wet observe
+// entry gates on, gunbc.auth.access_token_source) and NEVER reads the environment or mints a token itself,
+// so it can never fabricate an observed roster or converge on its own -- which is exactly what keeps this
+// realization and its witnesses hermetic (no shell.Env.Get, no ad-hoc token file). The roster arrives only
+// from the wet boundary that reads it over the REST route under an admitted org runners:read source.
+test fn the_admitted_source_gate_never_yields_an_observed_roster() -> Bool {
+  let refused_when_unavailable = match runner_lifecycle_registration_roster_refusal(organization: org(), source: AccessTokenSourceUnavailable { cause: "witness supplies no admitted source" }) {
+    RosterReadUnavailable { reason: r } => r != ""
+    RosterObserved { observed_on: _, registrations: _ } => false
+    RosterObservedPartial { observed_on: _, registrations: _, observed_count: _, authority_total: _ } => false
+  }
+  let refused_when_selected = match runner_lifecycle_registration_roster_refusal(organization: org(), source: AccessTokenSourceSelected { source: WorkloadIdentityToken }) {
+    RosterReadUnavailable { reason: r } => r != ""
+    RosterObserved { observed_on: _, registrations: _ } => false
+    RosterObservedPartial { observed_on: _, registrations: _, observed_count: _, authority_total: _ } => false
+  }
+  if refused_when_unavailable && refused_when_selected { true } else { false }
+}

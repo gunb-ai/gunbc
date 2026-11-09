@@ -106,7 +106,7 @@ type PartitionInterfaceClosureState {
 // `CompilationUnit { id: "unit-a", artifact: "unit-b" }` was writable and made one unit claim two
 // target identities (review 2026-08-01). Removing the field makes that specimen unwritable rather
 // than merely refused; the retained evidence is the compile-refusal witness over the removed field,
-// not a runtime falsifier (§4b dissolution-on-climb keeps the evidence, deletes the machinery).
+// not a runtime falsifier (gunbc.design_argument::guarantee_ladder dissolution-on-climb keeps the evidence, deletes the machinery).
 // interface carries declaration CONTENT as Node carriers (not name lists), including the transitive
 // by-value type-definition closure needed to render cross-unit boundaries (Rust crate visibility, C
 // header struct layout). Default: home supplies the full referenced-declaration set; each target R3
@@ -144,7 +144,7 @@ type PartitionInterfaceClosureState {
 // ByValueTypeCycle | PartitionInputRejected) — never a string tag discriminator or a hardcoded
 // acyclic check here. PartitionInputRejected carries a PartitionFoldRefusalCause unchanged: a
 // realization that cannot READ the module DAG has not established validity, and it restates the
-// home's cause rather than minting a realization-local nickname for it (DESIGN section 3).
+// home's cause rather than minting a realization-local nickname for it (gunbc.design_argument::single_authority).
 
 // partition_fold_outcome is the ONLY entry for derived interface/deps: map lookup Rejected and
 // interface-closure saturation without fixpoint return PartitionFoldRefused with a typed cause —
@@ -153,7 +153,7 @@ type PartitionInterfaceClosureState {
 // partition_boundary_dep_targets, partition_unit_deps, module_export_declarations,
 // module_type_definition_rows) collapsed a refusal into [] or into an empty-shell
 // CompilationUnit; they are DELETED rather than fixed, because a surviving wrapper is the
-// attractor DESIGN section 3 names -- every nearby question keeps being answered in its
+// attractor gunbc.design_argument::replacement_migration names -- every nearby question keeps being answered in its
 // vocabulary. There is no unwrapping surface to reach for: a caller that wants units matches
 // PartitionFoldOk and answers PartitionFoldRefused itself.
 
@@ -325,10 +325,10 @@ fn module_type_definition_rows_outcome(
 // Resolve each member's exports and type-definition rows ONCE and CARRY them. The shape this
 // replaces asked the two Maps again at every step of the interface closure through
 // `module_export_declarations` / `module_type_definition_rows`, whose Rejected arm answered [] --
-// a refusal widened into an empty interface on a production route (DESIGN section 5: a failure arm
+// a refusal widened into an empty interface on a production route (gunbc.design_argument::fail_closed: a failure arm
 // must refuse, never widen). A pre-pass walked every member to detect exactly that rejection and
 // then discarded both values, so the closure below it re-established a fact its predecessor already
-// had (DESIGN section 6b). With the rows carried, no map lookup runs inside the closure at all:
+// had (gunbc.design_argument::earliest_unjustified_boundary). With the rows carried, no map lookup runs inside the closure at all:
 // the swallowing arm has no site to exist at rather than being refused at one, and the repeated
 // map_get_checked is gone with it.
 fn resolve_module_interface(

@@ -305,7 +305,7 @@ test fn disjoint_ranges_do_not_collide() -> Bool {
 // defined as render(rows) cannot fail, and it failed to fail exactly once -- the renderer once joined the
 // rows with "\n" and stopped, and every witness still passed while the real file ended in a newline, so
 // each converge would have rewritten an UNCHANGED /etc/subuid by one byte. Supplying bytes literally and
-// rows through the parser is what DESIGN §5 asks of an independent oracle and what §3 forbids pairing.
+// rows through the parser is what gunbc.design_argument::fail_closed asks of an independent oracle and what gunbc.design_argument::single_authority forbids pairing.
 fn subordinate_read_of_file(path: String, stdout: String) -> SubordinateFileReading {
   parse_subordinate_file(path: path, exit_code: 0, stdout: stdout, stderr: "")
 }
@@ -1459,7 +1459,7 @@ test fn the_written_content_carries_the_terminated_file_and_the_moved_row() -> B
 // dangling declaration making a meaning claim the apply does not honour. What this write does is bound its
 // own wait and give a conflict an exit code a caller can recognise: 75 is EX_TEMPFAIL from sysexits.h, the
 // "temporary condition, retrying is the remedy" convention the corpus also cites in
-// codex_harness_turn_busy_exit and native_serve_stuck_exit_code -- cited, not imported, because an exit
+// codex_harness_turn_busy_exit and native_serve_deadline_exit_code -- cited, not imported, because an exit
 // contract belongs to the subsystem that reports it and a GPU runner converge's exit status has no
 // business depending on the codex harness. A contention here also means the host-mutation concurrency
 // group failed to keep the two actuators off one host, which is a reason to stop, not to wait longer.

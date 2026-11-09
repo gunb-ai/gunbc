@@ -3,7 +3,7 @@ module gunbc.machine_intake.megarac_media_row_reading
 // WHAT ONE READ OF A MEGARAC CD/DVD MEDIA ROW SAID, KEPT AS A RECEIPT OF THAT READ. The boot lanes print
 // the rows they read; this module keeps the row a read carried, with the artifact the line lives in and
 // the digest that file is committed under, so a claim about what a status MEANS can point at the read
-// instead of at a sentence in a comment. These are receipts of reads THIS repository made (DESIGN.md §3):
+// instead of at a sentence in a comment. These are receipts of reads THIS repository made (gunbc.design_argument::single_authority):
 // the codes are recorded exactly as the controller answered them, and what they mean is established once,
 // in extdeps.bmc.megarac, keyed to these run ids.
 //
@@ -135,7 +135,7 @@ data boot_run_40258937016_started_session_marker: MegaRacSessionMarkerReceipt = 
 // Ejected", with no value in its detail column ("N/A"). It is typed as an attestation because no artifact
 // bytes stand behind it and no reader in this corpus produced it; it is dated because an undated UI
 // reading is unfalsifiable; and it is kept HERE, in the observing layer, because a person reading a vendor
-// page is an observation this repository makes, not a fact of the upstream product (DESIGN.md §3). What it
+// page is an observation this repository makes, not a fact of the upstream product (gunbc.design_argument::single_authority). What it
 // can do is corroborate: it says the vendor's own name for this row's state is stopped and ejected, i.e.
 // NOT PRESENTING. It cannot supply the code, the index, or the release -- those come only from the reads
 // above.

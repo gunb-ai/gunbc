@@ -30,7 +30,7 @@ fn r_refused_with(folded: RentedCohortFold, wanted: NonEmptyStr) -> Bool {
 // THE INDEX IS BUILT FROM THE FOLD AT EACH CALL SITE, ON PURPOSE. The module offers no one-call
 // "allocations -> index" route, because such a route can only return the index, and RentedEnrollmentIndex has
 // no place for a refusal: it would let a refused allocation vanish while the result still looked well-formed
-// (DESIGN section 5). Building the index here keeps both halves of the fold in scope at the point of use. The
+// (gunbc.design_argument::fail_closed). Building the index here keeps both halves of the fold in scope at the point of use. The
 // rows that expect a refusal assert it BESIDE the routes they resolve; the rows that expect none assert that
 // the two lists together still account for the population handed in (count enrollments + count refusals ==
 // count held), which is the claim that nothing was dropped on the way to the index.

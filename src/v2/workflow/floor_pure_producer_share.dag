@@ -32,7 +32,7 @@ import std.optional { Absent, Present, Optional }
 //
 // ADMISSION IS DERIVED, NOT AUTHORED. Until this revision admission was a hand-authored roster of
 // several hundred qualified spellings, appended one row per measured incident. That roster was a
-// second authority over a fact the demand graph already carries (section 3): a witness module
+// second authority over a fact the demand graph already carries (gunbc.design_argument::single_authority): a witness module
 // whose claims re-ran a module-constant producer had to hand-restructure itself, or hand-append a
 // row, before it fit its enrolment margin. The roster is deleted. Admission is now the fold
 // below, over one observation row per COMPUTATION IDENTITY reached by the run's PLANNED claims:
@@ -40,7 +40,7 @@ import std.optional { Absent, Present, Optional }
 // nothing else is -- save the five-member frozen residual below, whose identity exists only at run time. Because the observation is over the planned claims' reach, the admitted set
 // is also exactly what this run can demand -- a producer no planned claim reaches is never filled.
 //
-// THE KEY IS THE FULL COMPUTATION IDENTITY (std.computation_identity, DESIGN section 3b keys
+// THE KEY IS THE FULL COMPUTATION IDENTITY (std.computation_identity, gunbc.design_argument::conformance keys
 // row): the callee's resolved declaration plus the canonical preimage of its CLOSED argument row.
 // A call whose argument row is not a closed constant has no identity the floor can know before
 // the claims run, so it is not a fill candidate; it is COUNTED under a typed cause
@@ -218,7 +218,7 @@ fn cross_claim_share_provider(identities: List<String>) -> CacheProvider {
 }
 
 // THE LADDER JUDGMENT FOR ONE CLOSED IDENTITY (std.materialization_ladder, the structural
-// authority DESIGN section 2 names). Each demanding planned claim is one FrameDemand at its claim
+// authority gunbc.design_argument::demand_before_materialization names). Each demanding planned claim is one FrameDemand at its claim
 // frame under preparation. Two or more claims put the obligation's least common ancestor at the
 // SHARED-STATE preparation frame, which the ladder judges AuthoredDuplication: the repair is to
 // carry the first value to preparation, and the derived warm is that carry. One claim is
@@ -243,7 +243,7 @@ fn closed_demand_ladder_verdict(identity: String, claims: List<String>) -> Ladde
 // claims demand the identity. `SingleClaimFillDebt` is NOT sharing and is named so it cannot be
 // read as sharing: one declared claim demands the identity, that claim is an ACTIVE member of
 // `floor_single_claim_fill_debt`, and admitting the identity nets the claim's own fixture fill from
-// its budget -- a cost transfer exposed per claim (DESIGN section 5's honest arm), never a silent one.
+// its budget -- a cost transfer exposed per claim (gunbc.design_argument::fail_closed's honest arm), never a silent one.
 type ShareBasis
   = SharedByDeclaredDemand
   | SingleClaimFillDebt { claim: String }
@@ -351,7 +351,7 @@ fn closed_demand_decline(
 // demanding one closed identity owe a carry only if they demand the SAME computed value. A
 // producer that bundles distinct work into one record, each claim reading its own field, is not
 // one shared value: admitting it nets every claim's own slice out of that claim's budget, which is
-// DESIGN section 5's cost externalization performed by authoring pattern. So a claim demands a
+// gunbc.design_argument::fail_closed's cost externalization performed by authoring pattern. So a claim demands a
 // projection when it reads that field off the call or reads the whole value (the whole value
 // contains every field), and the identity is admitted only when EVERY projected field is demanded
 // by at least two declared claims. Decided explicitly for the mixed case: a whole-value reader
@@ -373,13 +373,13 @@ fn unobserved_read_causes(reads: List<ClaimConsumerRead>) -> List<ConsumerReadCa
   list_flat_map(xs: reads, f: fn(r) { read_unobserved_cause(read: r.read) })
 }
 
-// LINEAR IN THE READS (review 75571: DESIGN section 6, a quadratic fold is always fixed). Three
+// LINEAR IN THE READS (review 75571: gunbc.design_argument::how_to_work, a quadratic fold is always fixed). Three
 // passes: the whole-value readers as a set, then per field the projecting claims that are NOT
 // whole-value readers, then each projected field whose demand -- whole readers plus those
 // projecting claims -- is exactly one. The seed emits each (claim, read) once, so a field's
 // projecting rows are distinct claims and a sole field appears once.
 //
-// A refused map lookup is NEVER a count and NEVER a miss (review 77161, DESIGN section 5:
+// A refused map lookup is NEVER a count and NEVER a miss (review 77161, gunbc.design_argument::fail_closed:
 // a failure arm refuses, never widens). `share_map_lookup_causes` is the one match: Rejected
 // is ShareMapLookupUnreadable, Absent is a miss, Present is a hit. Count arithmetic runs
 // only after every lookup on the pass is Accepted.
@@ -592,8 +592,8 @@ fn derive_cross_claim_share(
   }
 }
 
-// THE COST FLOOR: DESIGN section 2's economic realization, chosen only after the ladder has ruled a
-// carry lawful ("only after both hold does section 6 choose the economically optimal realization").
+// THE COST FLOOR: gunbc.design_argument::minimize_redundancy's economic realization, chosen only after the ladder has ruled a
+// carry lawful ("only after both hold does gunbc.design_argument::how_to_work choose the economically optimal realization").
 // It is NOT the ladder's AcceptedBelowCostFloor exemption, which the ladder applies only below an
 // isolated least common ancestor; at the shared-state preparation frame the ladder owes the carry
 // whatever it costs, so the floor is a policy of the BOUNDED provider about which carried values to
@@ -703,7 +703,7 @@ fn derived_share_producers(derivation: CrossClaimShareDerivation) -> List<String
 //
 // WHAT THIS IS, AND WHY IT IS NOT SHARING. Most rows of the deleted hand roster were never shared:
 // each named a fixture producer exactly ONE declared claim demands, and warming it in preparation
-// moved that claim's own cost outside its budget. That is a cost transfer, and DESIGN section 5
+// moved that claim's own cost outside its budget. That is a cost transfer, and gunbc.design_argument::fail_closed
 // admits only two honest arms for one: absorb it, or expose it as a separately named contract.
 // Withholding the claims would have dropped their verdicts from the floor (rejected: a safety
 // regression bought to make a cost figure look honest); holding the derivation until every owning
@@ -712,7 +712,7 @@ fn derived_share_producers(derivation: CrossClaimShareDerivation) -> List<String
 // own fill is netted from its budget, and every such admission is reported with basis
 // SingleClaimFillDebt naming the claim (sharp-raven-357 ruling A, 2026-10-03).
 //
-// A MONOTONE DEBT CONTRACT (DESIGN section 5), AT IDENTITY GRAIN. The set is closed: membership is
+// A MONOTONE DEBT CONTRACT (gunbc.design_argument::fail_closed), AT IDENTITY GRAIN. The set is closed: membership is
 // by claim identity (module plus claim), the fill identities it covers are DERIVED from the run's
 // observation (the closed identities whose only declared demander is that claim) rather than
 // authored, and the seed joins the two by identity each run -- an ACTIVE member the run observes
@@ -720,7 +720,7 @@ fn derived_share_producers(derivation: CrossClaimShareDerivation) -> List<String
 // fixture became shared, and the row must say which). A member leaves only by a typed disposition;
 // a member is added only with a declared source. No count is asserted anywhere.
 //
-// THE TRIGGER, PER MODULE: the DESIGN section 3 witness rule -- the module supplies each claim's
+// THE TRIGGER, PER MODULE: the gunbc.design_argument::single_authority witness rule -- the module supplies each claim's
 // judged subject at the interface the claim inspects and keeps ONE inhabitance claim on the real
 // front-end path -- after which its claims fit their budget unaided and retire as
 // RestructuredPerWitnessRule.
@@ -802,16 +802,16 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // COMPLETED-OVER-COST-REQUIREMENT as a single-claim demander: v2.test.claim.native_census.infer_cascade
 // census_infer_provider_cascade_is_one_root_with_fan_out_one_holds, the one real-route inhabitance
 // claim; assemble + resolve + infer of the cascade fixture. Its module's other controls supply values
-// at the folds they judge (DESIGN section 3 witness rule) and are not members. Trigger: assemble + infer
+// at the folds they judge (gunbc.design_argument::single_authority witness rule) and are not members. Trigger: assemble + infer
 // of a one-module fixture under the per-claim budget.
 // Re-derive with that probe; do not extend by hand.
-// gunbc#13320 (XL-2): its ONE real-path inhabitance claim, kept per the DESIGN section 3 witness rule (every
+// gunbc#13320 (XL-2): its ONE real-path inhabitance claim, kept per the gunbc.design_argument::witness_one_interface witness rule (every
 // other claim in the module supplies its input; sharp-raven-357 approved this member). Over the 72,300
 // new-witness budget on its floor run at a2485f0 by the pipeline's per-claim fixed
 // cost of assembling and inferring a one-module fixture, not the test's own work. Trigger: assemble plus infer
 // of a one-module fixture runs under the per-claim budget (gunbc.recurring_failure_mode
 // shared_precondition_re_derived_once_per_claim_frame).
-// gunbc#13307 (XL-2): its ONE real-path inhabitance claim, kept per the DESIGN section 3 witness rule (every
+// gunbc#13307 (XL-2): its ONE real-path inhabitance claim, kept per the gunbc.design_argument::witness_one_interface witness rule (every
 // other claim in the module supplies its input; sharp-raven-357 approved this member). Over the 72,300
 // new-witness budget on that PR's floor run 37240332005 (886,357 steps) by the pipeline's per-claim fixed cost
 // of assembling and inferring a one-module fixture, not the test's own work. Trigger: assemble plus infer of a
@@ -837,14 +837,14 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // each claim is the one demander of a nullary parse producer that change had added to the hand
 // roster before main deleted it (door_data_literal_normalized, ulsh_route_postfix), and each is that
 // module's ONE inhabitance claim on the real front-end path, so supplying its subject is not available
-// without removing the last real execution (DESIGN section 3, the pairing obligation). These two were
+// without removing the last real execution (gunbc.design_argument::witness_one_interface, the pairing obligation). These two were
 // written in the change itself rather than read from a probe pair, because the change and the
 // roster's deletion met only at the merge; re-derive them with the probe like every other member.
 // One more for gunbc#13325, from floor run 37247019357 (930,914 eval steps): the ONE real-path
 // inhabitance claim of v2.test.claim.compiler.declared_return_result, whose other five claims supply
-// their inputs at the result-type interface (DESIGN section 3). Its fixture program, drr_route_source,
+// their inputs at the result-type interface (gunbc.design_argument::single_authority). Its fixture program, drr_route_source,
 // has no other demander, so derived sharing cannot cover it.
-// gunbc#13207 (XL-2 collection concat): its ONE real-path inhabitance claim, kept per the DESIGN section 3
+// gunbc#13207 (XL-2 collection concat): its ONE real-path inhabitance claim, kept per the gunbc.design_argument::witness_one_interface
 // witness rule (every other claim in the module supplies its input; sharp-raven-357 approved this member).
 // Measured on that PR's floor run 37238836376: 902,997 eval steps against the 72,300 new-witness budget -- the
 // pipeline's per-claim fixed cost of assembling and inferring a one-module fixture, not the test's own work.
@@ -857,7 +857,7 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // 46da0c8fa0; red with the join deleted, BuildBuddy 50c58a76, and with input-only recognition, BuildBuddy 2002ea86).
 // Trigger: shared_precondition_re_derived_once_per_claim_frame, as above.
 // gunbc#13621 (a data reference uses its value): its ONE real-path inhabitance claim,
-// drv_a_data_reference_is_typed_at_its_declared_type_and_evaluates_to_its_value, kept per the DESIGN section 3
+// drv_a_data_reference_is_typed_at_its_declared_type_and_evaluates_to_its_value, kept per the gunbc.design_argument::single_authority
 // witness rule (the module's other six claims supply their input; sharp-raven-357 approved this member). Measured
 // by that PR's required floor (claim_executor --required-ci --required-lane witnesses) on run 37941635939 at
 // 315f7ec8: 86,566 eval steps against the 72,300 new-witness budget, after the fixture was reduced to one
@@ -1771,7 +1771,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
 // same script statements and grammar rows are demanded by many claims -- but it is a fact about
 // runtime argument values, and no argument row is fixed before the claim runs.
 //
-// DISPOSITION (sharp-raven-357, 2026-10-03): kept as a FROZEN residual, DESIGN section 3's
+// DISPOSITION (sharp-raven-357, 2026-10-03): kept as a FROZEN residual, gunbc.design_argument::single_authority's
 // frozen-X carve-out -- no Y can hold this boundary yet, so X stays and takes no new rows. The
 // population is CLOSED: the members are the arms of `FrozenRuntimeIdentityProducer`, the data row
 // is derived from every arm, and the witness joins it by identity, so a sixth member is a refusal
@@ -1784,7 +1784,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
 // caller's (std.computation_identity; the hand roster served these the same way -- keyed by
 // declaration and arguments, never by name alone).
 //
-// TRIGGER (the capability, DESIGN section 4b(3)): per-call runtime-argument demand identity
+// TRIGGER (the capability, gunbc.design_argument::guarantee_ladder (no silent regression)): per-call runtime-argument demand identity
 // available to .dag (demand-engine M1.b). With it the observation carries these sites' identities
 // like any closed site, the fold decides them, and this residual is deleted whole.
 type FrozenRuntimeIdentityProducer
@@ -1843,7 +1843,7 @@ fn floor_cross_claim_runtime_identity_residual_producers() -> List<String> {
 // structured, recurring fact with an identity, a verdict, the claims the refusal was measured
 // over, a citation, and a next trigger.
 //
-// AND THE PROSE COULD NOT DO THE JOB IT WAS DOING. DESIGN section 4c is explicit that semantic
+// AND THE PROSE COULD NOT DO THE JOB IT WAS DOING. gunbc.design_argument::source_annotations is explicit that semantic
 // passes receive only the annotation-erased projection and that no `Accepted` program can read an
 // annotation, so the paragraph that said it "stands in the withdrawn row's place so the next
 // reader does not re-propose it" was asking a reader to do what no mechanism could. A paragraph
@@ -1851,7 +1851,7 @@ fn floor_cross_claim_runtime_identity_residual_producers() -> List<String> {
 // execution.
 //
 // WHAT THESE ROWS DELIBERATELY DO NOT CARRY: the measurements. Not the normalised deltas, not the
-// consumer-claim counts, not the per-identity cpu figures. DESIGN section 6 says to name the
+// consumer-claim counts, not the per-identity cpu figures. gunbc.design_argument::how_to_work says to name the
 // instrument and never transcribe its output, and moving seventy numbers out of an erased comment
 // channel into typed fields would be transcription with a schema -- the same rot, now
 // type-checked. `measurement` names the run pair and the artifact that re-derives the verdict;
@@ -1868,7 +1868,7 @@ fn floor_cross_claim_runtime_identity_residual_producers() -> List<String> {
 // evidence, because the objection is that serving would be WRONG. The memo key is
 // `(fn_node, args_hash)` and `args_hash` covers the DECLARED arguments only, so a producer whose
 // value also depends on the resolving context can be served a value computed under a different
-// context -- silently, with a plausible result. DESIGN section 5 puts that outside the ladder
+// context -- silently, with a plausible result. gunbc.design_argument::fail_closed puts that outside the ladder
 // rather than low on it.
 //
 // `undeclared_input` NAMES WHAT THE KEY CANNOT SEE, so the row says which fact would have to become
@@ -1893,16 +1893,16 @@ type RefusedShareCandidate {
 
 // ONE DECLARATION, TWO READERS. Both refused rows below ask the same question of the corpus, so it
 // is answered once here rather than in a paragraph copied into each `measurement` string -- which is
-// what an earlier revision did, and the copies could then drift apart on a one-line edit (DESIGN
-// section 2).
+// what an earlier revision did, and the copies could then drift apart on a one-line edit (
+// gunbc.design_argument::minimize_redundancy).
 //
 // WHY THE ANNOTATION SAYS NO MORE THAN THAT: the declaration below IS prose, so an annotation
-// restating its claims would be the same fork one level up, in the copy no consumer reads (DESIGN
-// section 4c -- an annotation must not restate what the declaration structurally says). The grain,
+// restating its claims would be the same fork one level up, in the copy no consumer reads (
+// gunbc.design_argument::source_annotations -- an annotation must not restate what the declaration structurally says). The grain,
 // the frontier and the no-figure rule are stated once, in the string, where the rows actually read
 // them. Found by review 65532.
 fn homonym_census_note() -> String {
-  "THE HOMONYM EVIDENCE IS CITED AT REFERENCE GRAIN AND IS A DECLARED FRONTIER. The refusal below fires on a bare spelling RESOLVED through a claim scope that carries two declarers, so the population that ranks this class is (referencing module, bare spelling, candidate declaring modules) -- not a count of homonymous DECLARATIONS, which is a different question a corpus can answer loudly while having no ambiguous reference at all. The reference-grain census is owned by `witty-otter-157` under the `swift-bat-902` reflection lane and is NOT YET AN ENTRY POINT; this row names no census symbol until it is, because a citation that resolves to nothing is worse than an admitted gap. NO CORPUS ROW RECORDS THIS POPULATION TODAY EITHER, AND AN EARLIER REVISION OF THIS SENTENCE SAID ONE DID (review 65792). It cited `gunbc.bare_name_identity_consumer_census` as carrying a row sited at `v2.std.node_reflection` `resolve_type_node` with a `ReachabilityUnmeasured` reach. That row does not exist at this head -- every site in that roster is a v1 emitter module -- so the citation resolved to nothing, in the same sentence that calls a citation resolving to nothing worse than an admitted gap. It came from relaying a peer lane's description of its own UNLANDED PR as though it were a fact about the tree, which is the failure mode `gunbc.recurring_failure_mode` `prose_repealed_by_the_change_that_wrote_it` names one step removed: not a claim this change falsified, but a claim no change had yet made true. The row and the reference-grain census are both PROPOSED in gunbc#11291 by `witty-otter-157` under the `swift-bat-902` reflection lane; neither has landed, and this row cites the symbol when one does. NO FIGURE IS CARRIED HERE IN EITHER DIRECTION (DESIGN section 6: name the instrument, never transcribe its output -- which governs a qualitative claim exactly as it governs a number). WHAT THE ANSWER WOULD MEAN, since that is what does not age: a NON-EMPTY reference population means the class has live specimens and the upstream repair ranks against a real one; an EMPTY population means these rows are UNGUARDED rather than harmful. NEITHER ANSWER CHANGES THE REFUSAL -- the census ranks the repair, it does not decide the enrolment, and a key that omits an input the value depends on may not be enrolled whatever the population is (DESIGN section 5: construction, not validation)."
+  "THE HOMONYM EVIDENCE IS CITED AT REFERENCE GRAIN AND IS A DECLARED FRONTIER. The refusal below fires on a bare spelling RESOLVED through a claim scope that carries two declarers, so the population that ranks this class is (referencing module, bare spelling, candidate declaring modules) -- not a count of homonymous DECLARATIONS, which is a different question a corpus can answer loudly while having no ambiguous reference at all. The reference-grain census is owned by `witty-otter-157` under the `swift-bat-902` reflection lane and is NOT YET AN ENTRY POINT; this row names no census symbol until it is, because a citation that resolves to nothing is worse than an admitted gap. NO CORPUS ROW RECORDS THIS POPULATION TODAY EITHER, AND AN EARLIER REVISION OF THIS SENTENCE SAID ONE DID (review 65792). It cited `gunbc.bare_name_identity_consumer_census` as carrying a row sited at `v2.std.node_reflection` `resolve_type_node` with a `ReachabilityUnmeasured` reach. That row does not exist at this head -- every site in that roster is a v1 emitter module -- so the citation resolved to nothing, in the same sentence that calls a citation resolving to nothing worse than an admitted gap. It came from relaying a peer lane's description of its own UNLANDED PR as though it were a fact about the tree, which is the failure mode `gunbc.recurring_failure_mode` `prose_repealed_by_the_change_that_wrote_it` names one step removed: not a claim this change falsified, but a claim no change had yet made true. The row and the reference-grain census are both PROPOSED in gunbc#11291 by `witty-otter-157` under the `swift-bat-902` reflection lane; neither has landed, and this row cites the symbol when one does. NO FIGURE IS CARRIED HERE IN EITHER DIRECTION (gunbc.design_argument::how_to_work: name the instrument, never transcribe its output -- which governs a qualitative claim exactly as it governs a number). WHAT THE ANSWER WOULD MEAN, since that is what does not age: a NON-EMPTY reference population means the class has live specimens and the upstream repair ranks against a real one; an EMPTY population means these rows are UNGUARDED rather than harmful. NEITHER ANSWER CHANGES THE REFUSAL -- the census ranks the repair, it does not decide the enrolment, and a key that omits an input the value depends on may not be enrolled whatever the population is (gunbc.design_argument::fail_closed: construction, not validation)."
 }
 
 data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = [
@@ -1949,7 +1949,7 @@ data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = [
       "test.claim.self_host_compile_phase_frontier_witness",
       "test.claim.self_host_compile_phase_live_gate_witness"
     ],
-    measurement: "gunbc#10094 measured this enrolment as a large WIN and withdrew it anyway; the refusal is DESIGN section 3, not cost -- gunbc#10108 removes the receipt-series argument instead of paying to reify and verify it per consuming frame, so one fact gets one row at the declaration that makes it cheap",
+    measurement: "gunbc#10094 measured this enrolment as a large WIN and withdrew it anyway; the refusal is gunbc.design_argument::single_authority, not cost -- gunbc#10108 removes the receipt-series argument instead of paying to reify and verify it per consuming frame, so one fact gets one row at the declaration that makes it cheap",
     next_trigger: "none that restores THIS spelling: the general declaration takes the series as an argument and is meant to keep taking it. The row retires when its repair lands, and re-proposing this producer means proposing to serve the argument-taking shape again"
   },
   RefusedShareCandidate {
@@ -1963,8 +1963,8 @@ data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = [
       "v2.test.claim.manual.value_null_split_witness",
       "v2.test.claim.manual.coproduct_reflection_conformance"
     ],
-    measurement: concat("The refusal is a SOUNDNESS verdict and does not rest on the cost figures, which are reported because the census is what named the producer: required floor run 34742966153, artifact required-floor-cross-claim-demand (required_floor_cross_claim_demand.tsv), the row keyed producer=coproduct_arm_keys arg_shape=keyed, decl_site src/v2/std/node_reflection.dag. ITS COST COLUMNS ARE NOT COPIED HERE (DESIGN section 6: name the instrument, never transcribe its output). The run, the artifact and the row key above ARE the citation; a figure copied into this prose is unreachable from the producer that owns it and rots without anyone touching either end. THE DECIDING OBSERVATION IS IN THE SAME ARTIFACT AND IS NOT A COST FIGURE: that file carries SEVERAL keyed rows for this producer, one per distinct type_name, and one of them reports a consumer-module count ABOVE ONE, over v2.test.claim.generated_conformance_floor and v2.test.claim.manual.value_null_split_witness. Claims of different modules carry different scopes (claim_scope_for prepares per module), so that row is the shape a cross-SCOPE serve would take if this producer were enrolled. IT IS NOT A SERVE TODAY AND THIS ROW DOES NOT CLAIM ONE: cross_claim_pure_admitted gates storing on the roster, so an unenrolled producer is re-derived and never served, and the census column reports cross-claim DEMAND rather than sharing. An earlier revision of this sentence said the cross-scope serve was ALREADY OCCURRING; that was wrong in the direction that flatters the refusal, and is corrected here rather than deleted. The refusal is therefore PREVENTIVE and the harm is unobserved: enrolling is what would make the key load-bearing, and the failure mode it would admit is not a refusal. WHAT THE SEAM ACTUALLY DOES WAS EXECUTED RATHER THAN READ OFF THE RUST, and the two specimens do not behave alike (witty-otter-157, 2026-09-13): for one it ANSWERS from one of several candidate declarations -- a coproduct in one module and a record in another, with an enrolled claim green on main over the arm list it returned -- and for the other it FAILS UNTYPED with an unknown-closed-type host error rather than picking between two disjoint arm sets. So the mechanism is: answers from one of several, or fails untyped, NEVER refuses. An earlier revision of this row said first-match-wins serves a plausible wrong arm set; that is true of the first shape only, and was read from the Rust rather than run. Neither shape is a typed located refusal, which is why the defect and this refusal both stand unchanged ", homonym_census_note()),
-    next_trigger: "REFLECTION KEYED BY QUALIFIED OR SCOPED IDENTITY, as a capability and not as a witness. Either type_item_by_name resolves a QUALIFIED name so the value is a function of its arguments alone, or the reflection carries the resolving scope into the key so the memo can tell two resolutions apart. A scope-invariance witness is explicitly NOT the trigger: it is validation standing where construction is available (DESIGN section 5), the value would still be computed from an input the key cannot see, and a witness over today's corpus says nothing about tomorrow's homonym. Bare-name resolution is a namespace-layer subject (gunbc.rung_drop bare_name_fork_lens and the namespace cut), so this trigger is an upstream obligation rather than work this roster can do. When it lands, this producer and the two rows below return as enrolments with the ordinary present-versus-absent receipt" as String
+    measurement: concat("The refusal is a SOUNDNESS verdict and does not rest on the cost figures, which are reported because the census is what named the producer: required floor run 34742966153, artifact required-floor-cross-claim-demand (required_floor_cross_claim_demand.tsv), the row keyed producer=coproduct_arm_keys arg_shape=keyed, decl_site src/v2/std/node_reflection.dag. ITS COST COLUMNS ARE NOT COPIED HERE (gunbc.design_argument::how_to_work: name the instrument, never transcribe its output). The run, the artifact and the row key above ARE the citation; a figure copied into this prose is unreachable from the producer that owns it and rots without anyone touching either end. THE DECIDING OBSERVATION IS IN THE SAME ARTIFACT AND IS NOT A COST FIGURE: that file carries SEVERAL keyed rows for this producer, one per distinct type_name, and one of them reports a consumer-module count ABOVE ONE, over v2.test.claim.generated_conformance_floor and v2.test.claim.manual.value_null_split_witness. Claims of different modules carry different scopes (claim_scope_for prepares per module), so that row is the shape a cross-SCOPE serve would take if this producer were enrolled. IT IS NOT A SERVE TODAY AND THIS ROW DOES NOT CLAIM ONE: cross_claim_pure_admitted gates storing on the roster, so an unenrolled producer is re-derived and never served, and the census column reports cross-claim DEMAND rather than sharing. An earlier revision of this sentence said the cross-scope serve was ALREADY OCCURRING; that was wrong in the direction that flatters the refusal, and is corrected here rather than deleted. The refusal is therefore PREVENTIVE and the harm is unobserved: enrolling is what would make the key load-bearing, and the failure mode it would admit is not a refusal. WHAT THE SEAM ACTUALLY DOES WAS EXECUTED RATHER THAN READ OFF THE RUST, and the two specimens do not behave alike (witty-otter-157, 2026-09-13): for one it ANSWERS from one of several candidate declarations -- a coproduct in one module and a record in another, with an enrolled claim green on main over the arm list it returned -- and for the other it FAILS UNTYPED with an unknown-closed-type host error rather than picking between two disjoint arm sets. So the mechanism is: answers from one of several, or fails untyped, NEVER refuses. An earlier revision of this row said first-match-wins serves a plausible wrong arm set; that is true of the first shape only, and was read from the Rust rather than run. Neither shape is a typed located refusal, which is why the defect and this refusal both stand unchanged ", homonym_census_note()),
+    next_trigger: "REFLECTION KEYED BY QUALIFIED OR SCOPED IDENTITY, as a capability and not as a witness. Either type_item_by_name resolves a QUALIFIED name so the value is a function of its arguments alone, or the reflection carries the resolving scope into the key so the memo can tell two resolutions apart. A scope-invariance witness is explicitly NOT the trigger: it is validation standing where construction is available (gunbc.design_argument::fail_closed), the value would still be computed from an input the key cannot see, and a witness over today's corpus says nothing about tomorrow's homonym. Bare-name resolution is a namespace-layer subject (gunbc.rung_drop bare_name_fork_lens and the namespace cut), so this trigger is an upstream obligation rather than work this roster can do. When it lands, this producer and the two rows below return as enrolments with the ordinary present-versus-absent receipt" as String
   },
   RefusedShareCandidate {
     producer: "v2.lens.affected_set.ci_gate_processes",
@@ -2013,7 +2013,7 @@ fn refused_share_producers(refused: List<RefusedShareCandidate>) -> List<String>
 // overlap is present in the main-vintage run 33671317370, so it is a standing property of the
 // corpus rather than one run's accident.
 //
-// `SupersededBySingleAuthorityRepair` is a DESIGN section 3 ruling about one spelling, not a cost
+// `SupersededBySingleAuthorityRepair` is a gunbc.design_argument::single_authority ruling about one spelling, not a cost
 // that travels with consumers; the repair takes the series as an argument and other producers
 // serving the same witnesses inherit nothing from it.
 //
@@ -2074,13 +2074,13 @@ fn refused_row_carriers_transfer(verdict: ShareRefusalVerdict) -> Bool {
 // ITS REFUSAL NAMES THE SUBJECT, BECAUSE IT DOES NOT FIRE ON THE RUN THAT CAUSED IT. An overlap
 // is created by the diff that WITHDRAWS a wide row and hands its consumers to a narrower one, so
 // the red lands on the withdrawer, not on whoever proposed the surviving key. Charging a cost to
-// a principal that did not cause it is DESIGN section 5 externalization unless the transfer is
+// a principal that did not cause it is gunbc.design_argument::fail_closed externalization unless the transfer is
 // visible, so the diagnostic names three things: the admitted key that now overlaps, the refused
 // row it inherited the carriers from, and -- in its own sentence -- that what changed is the
 // roster and not that key's own cost.
 //
 // AND THE CLASS'S RUNG IS THE MINIMUM ACROSS ITS PATHS, NOT THE STRONGER WALL'S. DESIGN section
-// 4b(1) is explicit that a class's current rung is the minimum over its in-scope paths. The class
+// gunbc.design_argument::guarantee_ladder (rung honesty) is explicit that a class's current rung is the minimum over its in-scope paths. The class
 // is "a producer this roster has measured and refused is re-admitted", and it has two paths:
 // literal re-proposal of the same spelling, which `derive_cross_claim_share` declines by construction (its
 // `RefusedByMeasurement` arm), and re-admission through a second identity that inherits the refused row's
@@ -2141,7 +2141,7 @@ fn refused_row_carriers_transfer(verdict: ShareRefusalVerdict) -> Bool {
 // NO STALE SERVE IS UNWRITABLE RATHER THAN GUARDED. The carried value IS the key material: a
 // changed carrier content produces a different portable argument row, the stored row fails to
 // match, and the producer recomputes. There is no staleness check to forget to run, which is
-// DESIGN section 5's construction-over-validation in the one place a cache usually gets it
+// gunbc.design_argument::fail_closed's construction-over-validation in the one place a cache usually gets it
 // backwards.
 //
 // THE FLOOR NEVER READS A DOMAIN TYPE. When an acquisition SUCCEEDS and returns its own
@@ -2155,7 +2155,7 @@ fn refused_row_carriers_transfer(verdict: ShareRefusalVerdict) -> Bool {
 // the carrier refused is diagnosable rather than silent — the floor's phase line carries the
 // carried value's outermost variant name and content digest for exactly that reason).
 //
-// SECTION 2's LADDER, WHICH IS THE STRUCTURAL AUTHORITY HERE AND IS CITED IN SOURCE RATHER THAN
+// gunbc.design_argument::minimize_redundancy's LADDER, WHICH IS THE STRUCTURAL AUTHORITY HERE AND IS CITED IN SOURCE RATHER THAN
 // IN A PLAN DOC. `std.materialization_ladder` is the authority this row kind answers to, and the
 // answer is stated at its own vocabulary: the demand's identity is the resolved declaration; the
 // obligation LCA is required-floor PREPARATION, which is the least common visible ancestor of
@@ -2163,15 +2163,15 @@ fn refused_row_carriers_transfer(verdict: ShareRefusalVerdict) -> Bool {
 // boundary and only a STORE tier may discharge it — `std.materialization_ladder.tier_axes`
 // derives that, this module does not restate it); the provider is the cross-claim tier, a
 // `MemoTier { keying: ContentKeyed }` whose coverage is the enrolled identities below and whose
-// retention is released at its scope's exit with an exact byte ceiling. The section 2 ordering is
+// retention is released at its scope's exit with an exact byte ceiling. The gunbc.design_argument::minimize_redundancy ordering is
 // respected in the direction the text writes it: the demand graph is MINIMIZED FIRST — the
 // repetition has a shared-state least common ancestor, so it is authored duplication whose repair
 // is to CARRY the first value, and the tier is merely where the carried value is held. The typed
 // THE FOUR OBLIGATIONS, EACH AS A TYPED VALUE DERIVED FROM THE ROW, and deliberately NOT as four
 // more String fields beside it. A row already carries its computation identity — the resolved
 // declaration in `acquisition` / `producer` — and the other three are properties of the provider,
-// not of the row, so copying them per row would be one fact in two places (section 3) and the
-// transcription section 6 forbids. They are derived and named here instead:
+// not of the row, so copying them per row would be one fact in two places (gunbc.design_argument::single_authority) and the
+// transcription gunbc.design_argument::how_to_work forbids. They are derived and named here instead:
 //   computation identity -> the row's own `acquisition` / `producer`, consumed as the ladder
 //     demand's `identity` by `floor_prepared_effect_input_ladder.acquisition_demand` and
 //     `producer_demand`;
@@ -2181,7 +2181,7 @@ fn refused_row_carriers_transfer(verdict: ShareRefusalVerdict) -> Bool {
 //   provider scope       -> `floor_prepared_effect_input_ladder.floor_preparation_frame`, the
 //     obligation LCA of the consuming claims — and the ladder's verdict at a SHARED-STATE LCA is
 //     AuthoredDuplication rather than Discharged, which is the ladder refusing to let a provider
-//     stand in for the carry: section 2's repair there is to carry the first value, so the pair
+//     stand in for the carry: gunbc.design_argument::minimize_redundancy's repair there is to carry the first value, so the pair
 //     `every_carried_identity_is_authored_duplication_before_the_carry` /
 //     `every_carried_identity_is_a_single_demand_after_the_carry` states the transition this row
 //     kind performs instead of claiming a discharge the ladder would not give;
@@ -2297,7 +2297,7 @@ fn prepared_effect_input_acquisitions(inputs: List<PreparedEffectInput>) -> List
 // A row whose `input` matches no `PreparedEffectInput.acquisition` declares a dependence on a
 // value that will never be bound. The floor refuses it at install, so this fold is the same fact
 // stated where a fixture can redden it: over the live rosters it is green and could be reddened
-// only by editing the corpus it guards, which DESIGN section 4b calls a decoration — as a
+// only by editing the corpus it guards, which gunbc.design_argument::guarantee_ladder calls a decoration — as a
 // function of both populations the forbidden state is writable in a fixture and the live tree is
 // the positive control.
 fn carried_input_rows_without_a_prepared_input(

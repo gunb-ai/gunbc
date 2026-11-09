@@ -27,7 +27,7 @@ data floor_cold_build_receipt_disposition: ConstructionMechanism = SingleAuthori
 // isolation step, sccache is on the host's network and not the guest's, and the object code is
 // arm64. So the guest's first floor is also a measurement, and this module says in advance what it
 // measures, from where, and what answer would refuse the shape -- so the receipt is read against a
-// verdict written before the run rather than fitted to it afterwards (DESIGN 6b: measurement as
+// verdict written before the run rather than fitted to it afterwards (gunbc.design_argument::earliest_unjustified_boundary: measurement as
 // adversary, the prediction stated first).
 //
 // THREE READINGS, ALL FROM THE HOST. The rule the lifecycle controller lives under is that a guest
@@ -116,7 +116,7 @@ fn cold_build_receipt_verdict(
 // the verdict fold above is its acceptance -- with production inputs, through
 // gunbc_floor_cold_build_verdict below.
 //
-// THE INSTRUMENTS ARE NAMED PRODUCERS, NOT DESCRIPTIONS (DESIGN 6; review 68382). Each reading
+// THE INSTRUMENTS ARE NAMED PRODUCERS, NOT DESCRIPTIONS (gunbc.design_argument::how_to_work; review 68382). Each reading
 // cites the declaration that re-derives it: the whole-job wall is the Actions job record's own
 // started_at/completed_at (extdeps.github.workflow_runs WorkflowJobRun); the memory peak is the
 // attempt cell's memory.peak file (extdeps.linux.cgroup_v2_memory CgroupMemoryInterfaceFile, the

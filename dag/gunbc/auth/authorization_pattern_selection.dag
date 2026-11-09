@@ -36,7 +36,7 @@ import extdeps.uri { Uri, Https }
 // which one an author reaches for. Each lane improvised, and the improvisation that is cheapest to
 // type -- paste the operator's token -- is the one with the widest blast radius and no receipt.
 //
-// THIS IS §3d REALIZATION SELECTION AND NOT A NEW DECISION ALGEBRA. The privileged effect is the
+// THIS IS gunbc.design_argument::selection_precedes_convergence REALIZATION SELECTION AND NOT A NEW DECISION ALGEBRA. The privileged effect is the
 // subject; the authorization patterns are the candidate field; the effect's characteristics are
 // the bound context parameters; the laws ("a workflow run must never hold an operator credential",
 // "an irreversible effect is witnessed") are hard constraints that exclude a candidate BEFORE
@@ -78,7 +78,7 @@ type WorkloadIdentityStanding
 // there, so it is wider than any one resource and owes the same witness as a wide mint. Without the
 // arm such an effect had to be filed under a cloud reach it does not have, or under MintsNoCredential,
 // and the selection then either refused it silently or named a pattern whose reach is not its own
-// (gunbc.plans.srv1_deploy_principal_split).
+// (gunbc.plans.srv1_deploy_principal_split (deleted 2026-11-08)).
 type MintedCredentialReach
   = MintsNoCredential
   | MintsResourceScopedCredential
@@ -201,7 +201,7 @@ type PrivilegedEffect {
 // A HUMAN MUST WITNESS an effect that cannot be undone, mints a credential wider than one
 // resource, bills a third party, or is break-glass by declaration. This is derived
 // rather than a field because a field named `needs_witness: false` is the cheapest edit in the
-// file, and §5 says a check that can be satisfied by editing the declaration while the realization
+// file, and gunbc.design_argument::fail_closed says a check that can be satisfied by editing the declaration while the realization
 // still lies was validation standing where construction was available.
 fn witness_required(e: PrivilegedEffect) -> Bool {
   let irreversible_undischarged = match e.reversibility {

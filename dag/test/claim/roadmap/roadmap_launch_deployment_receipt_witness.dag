@@ -77,7 +77,10 @@ import gunbc.roadmap.roadmap_belt_actuate {
   TickExecuted,
   belt_tick_receipt_decode,
 }
-import gunbc.roadmap.roadmap_launch_deployment_cli {
+
+import gunbc.roadmap.roadmap_session_attempt_slots_cutover {
+  AttemptSlotsCutoverNotRun,
+}import gunbc.roadmap.roadmap_launch_deployment_cli {
   rlm1_contract_digest_frozen,
   rlm1_merge_commit,
   rlm_workflow_file_path,
@@ -125,6 +128,7 @@ import gunbc.roadmap.roadmap_launch_deployment_receipt {
   roadmap_launch_deployment_verdict,
   verdict_receipt_identity,
 }
+import std.algebra { length }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -268,6 +272,7 @@ fn rlm_tick(instance_id: String, revision: String, mode: SpawnMode, observed_at:
     teardown_pass: BeltPassRecorded,
     seat_discharge_pass: BeltPassRecorded,
     discovery_pass: BeltPassRecorded,
+    slots_cutover_pass: BeltPassDeferred { reason: "witness fixture: the cutover pass did not run" },
   }
 }
 
@@ -561,7 +566,7 @@ test fn witness_two_substitutions_retain_both_blockers() -> Bool {
   match roadmap_launch_deployment_verdict(subject: rlm_subject(), facts: facts) {
     DeploymentComplete { subject: _, facts: _, proof: _ } => false
     DeploymentIncomplete { subject: _, facts: _, first_blocker: b, further_blockers: rest } =>
-      b.member == "principal" && list_length(items: rest) == 1
+      b.member == "principal" && length(xs: rest) == 1
         && (match list_head(xs: rest) { Present { value: r } => r.member == "observed_host"  Absent => false })
   }
 }

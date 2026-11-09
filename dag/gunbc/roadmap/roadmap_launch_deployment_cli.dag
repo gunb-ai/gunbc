@@ -1,5 +1,7 @@
 module gunbc.roadmap.roadmap_launch_deployment_cli
 
+import extdeps.github.auth { github_rest }
+import extdeps.units.iso8601_calendar { iso8601_utc_epoch_seconds }
 import std.types { String, Bool, NonEmptyStr, Int, List, FilePath, CommitSha }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.measure { second, second_count }
@@ -73,6 +75,7 @@ import gunbc.live_deploy.emit {
   live_deploy_serve_unit_emission,
   LiveDeployServeUnitEmitted,
   LiveDeployServeUnitOidcReadbackRefused,
+  LiveDeployServeUnitGrammarRefused,
   live_deploy_belt_service_unit_file,
   live_deploy_belt_exit_path_unit_file,
   live_deploy_belt_answer_path_unit_file,
@@ -103,7 +106,7 @@ import gunbc.roadmap.roadmap_launch_deployment_observe {
   observe_healthz, HealthzServed, HealthzRefused,
   observe_instance_document, InstanceDocumentServed, InstanceDocumentRefused,
   observe_workflow_document, WorkflowDocumentServed, WorkflowDocumentRefused,
-  EventBacklogFact, EventBacklogUnobserved, EventBacklogEntry, event_backlog_judge, iso8601_utc_epoch_seconds,
+  EventBacklogFact, EventBacklogUnobserved, EventBacklogEntry, event_backlog_judge,
   observe_healthz_routed,
   observe_instance_document_routed,
   observe_workflow_document_routed,
@@ -130,7 +133,8 @@ import gunbc.roadmap.roadmap_launch_deployment_receipt {
 import gunbc.generated_artifact { artifact_path, FleetConvergeYamlArtifact }
 import gunbc.repository { gunbc_repository }
 import extdeps.github.workflow_runs { workflow_run_conclusion_wire_label }
-import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestCredentialRefused, rest_credential_refusal_cause, RestBodyUndecodable }
+import std.algebra { length }
 
 // The one fleet workflow file, named through the generated-artifact authority so the subject and
 // every witness cite the same path.
@@ -409,6 +413,13 @@ fn unit_standing_fact(spec: DeploymentSpec, revision: String) -> LaunchUnitStand
           expected: "LiveDeployServeUnitEmitted",
           observed: cause as String,
         }
+      LiveDeployServeUnitGrammarRefused { binary_path: bp, reason: r } =>
+        DashboardServiceRefused {
+          unit: spec.names.unit_name as String,
+          property: "serve-binary-grammar",
+          expected: "LiveDeployServeUnitEmitted",
+          observed: join([bp as String, ": ", r as String], ""),
+        }
     },
     exit_path: observe_belt_event_path_standing(
       unit: deployment_belt_exit_path_unit_name(names: spec.names),
@@ -546,6 +557,10 @@ fn rlm_predecessor_run_refusal_detail(run_id: String, refusal: RestRefusal) -> S
       join(["workflow-runs API refused the read of run ", run_id, ": HTTP ", to_string(status), ": ", body], "")
     RestTransportRefused { cause } =>
       join(["workflow-runs API was not reached for run ", run_id, ": ", cause as String], "")
+    RestCredentialRefused { refusal: credential_refusal } => {
+      let cause = rest_credential_refusal_cause(refusal: credential_refusal)
+      join(["workflow-runs API was not reached for run ", run_id, ": ", cause as String], "")
+    }
     RestBodyUndecodable { status, cause } =>
       join(["workflow-runs API answered HTTP ", to_string(status), " for run ", run_id, " with a body that did not decode: ", cause as String], "")
   }
@@ -553,12 +568,12 @@ fn rlm_predecessor_run_refusal_detail(run_id: String, refusal: RestRefusal) -> S
 
 fn rlm_predecessor_run(run_id: String) -> PredecessorRunObservation
 {
-  match github.WorkflowRuns.GetRun(
-    auth_token: "",
+  match github_rest(call: token => github.WorkflowRuns.GetRun(
+    auth_token: token,
     owner: gunbc_repository.owner,
     repo: gunbc_repository.name,
     run_id: run_id,
-  ) {
+  )) {
     RestRefused { refusal } =>
       PredecessorRunUnread { detail: rlm_predecessor_run_refusal_detail(run_id: run_id, refusal: refusal) }
     RestAnswered { answer: got } =>
@@ -725,7 +740,7 @@ fn rlm_launch_deployment_receipt_bound(
         DeploymentIncomplete { subject: _, facts: _, first_blocker: _, further_blockers: _ } =>
           exit_failure(reason: join([
             document,
-            "\nrlm_launch_deployment_receipt: DeploymentIncomplete — ", to_string(list_length(items: verdict_blockers(v: verdict))), " blocker(s); receipt persisted at ", hp, " sha256=", digest,
+            "\nrlm_launch_deployment_receipt: DeploymentIncomplete — ", to_string(length(xs: verdict_blockers(v: verdict))), " blocker(s); receipt persisted at ", hp, " sha256=", digest,
           ], ""))
         DeploymentComplete { subject: _, facts: _, proof: _ } => {
         let summary = Filesystem.Write(

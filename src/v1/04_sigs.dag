@@ -57,7 +57,7 @@ type CallEdge {
   callee: String
 }
 
-// Cost shape (§6 bare-minimum cost): ResolvedFuncEnv.parents is the module's transitive import
+// Cost shape (gunbc.design_argument::how_to_work bare-minimum cost): ResolvedFuncEnv.parents is the module's transitive import
 // closure held FLAT — precedence-ordered (first = highest precedence: the last direct import's
 // closure first, then earlier imports'; own local always wins before any parent), deduped by env
 // name keeping the first occurrence. The prior shape nested each parent env recursively and lookup
@@ -133,7 +133,7 @@ type ParentSigScan {
 // DeclaredCallableIdentity IS NOT DECLARED HERE ANY MORE. It moved to v1.std.core because
 // CallTargetIdentity -- which lives there, below this module -- now carries one, and a second
 // spelling of the pair in this file to break the import direction would be the nicknaming defect
-// DESIGN section 3 names. The reasoning for the record itself travels with the declaration.
+// gunbc.design_argument::single_authority names. The reasoning for the record itself travels with the declaration.
 
 type CallableIdentity
   = DeclaredCallable { identity: DeclaredCallableIdentity }
@@ -142,7 +142,7 @@ type CallableIdentity
 // `is_builtin` used to sit beside `identity` here. It was a second representation of the fact
 // the identity variant already carries, and the decision below now reads the variant, so the
 // two could no longer disagree only because nothing consulted the Bool. Deleted rather than
-// kept in sync (DESIGN section 2/3).
+// kept in sync (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority).
 type CallableCandidate {
   identity: CallableIdentity
   sig: ResolvedFuncSig
@@ -226,7 +226,7 @@ type CallTargetOutcome
 // currently unreachable -- and it is represented rather than absorbed precisely because that
 // agreement is a property of today's writers, not of the type. Folding it into CallableUnresolved
 // would report a scope-construction defect as an ordinary missing declaration, which is the
-// absorbing fallback DESIGN section 5 refuses: a failure arm must refuse, never widen.
+// absorbing fallback gunbc.design_argument::fail_closed refuses: a failure arm must refuse, never widen.
 
 // The declaration-bound signature, and ONLY when one exists. Every other constructor answers
 // Absent HERE ON PURPOSE -- consumers that need to distinguish builtin from local from missing

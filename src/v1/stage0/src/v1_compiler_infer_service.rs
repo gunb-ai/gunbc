@@ -5,12 +5,15 @@ use self::CalleeEdge::*;
 use self::CalleeEdgeDedup::*;
 use self::EffectIncompleteness::*;
 use self::ServiceEffectAnalysis::*;
+use self::ServiceEndpointSupply::*;
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
+pub use crate::std_syntax::LiteralValue;
+use crate::std_syntax::LiteralValue::LitStr;
 pub use crate::std_types::SourceSpan;
 use crate::v1_compiler_infer_items::ItemKind::*;
 pub use crate::v1_compiler_infer_items::{inferred_to_outputs, ItemInfo, ItemKind, TypedModule};
-pub use crate::v1_compiler_infer_types::{emit_map_has, nominal_type_ref};
+pub use crate::v1_compiler_infer_types::{emit_map_has, nominal_type_ref, type_is_kernel_string};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CallSemantics::FunctionValueCallSemantics;
@@ -21,19 +24,19 @@ use crate::v1_std_core::Cardinality::Required;
 use crate::v1_std_core::Connective::{Conj, NoConnective};
 use crate::v1_std_core::DeclarationMarker::Unmarked;
 use crate::v1_std_core::ExprData::{
-    ExprCall, ExprFieldAccess, ExprMethodCall, ExprVar, NoExprData,
+    ExprCall, ExprFieldAccess, ExprLiteral, ExprMethodCall, ExprVar, NoExprData,
 };
 use crate::v1_std_core::InferredNode::Resolved;
-use crate::v1_std_core::ParsedModuleItemKind::*;
+use crate::v1_std_core::ParsedModuleItemKind::ModuleItemDataValue;
+pub use crate::v1_std_core::VarBindingKind;
 use crate::v1_std_core::VarBindingKind::*;
 pub use crate::v1_std_core::{
     authored_name_at, call_semantics_target, callable_identity, expr_call_func_at,
     expr_var_name_at, field_access_base, field_access_field_at, is_rest_transport, method_receiver,
-    no_span, param_node_type_expr, unit_type, CallSemantics, CallTargetIdentity, Cardinality,
-    Connective, DeclarationMarker, DeclaredCallableIdentity, ExprData, InferredNode, NewlineIndex,
-    Node,
+    no_span, param_node_name_at, param_node_type_expr, service_config_endpoint, unit_type,
+    CallSemantics, CallTargetIdentity, Cardinality, Connective, DeclarationMarker,
+    DeclaredCallableIdentity, ExprData, InferredNode, NewlineIndex, Node, ParsedModuleItemKind,
 };
-pub use crate::v1_std_core::{ParsedModuleItemKind, VarBindingKind};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -974,6 +977,327 @@ pub fn service_operation_is_rest(
         std::option::Option::None => match service.transport.clone() {
             Some(t) => crate::v1_std_core::is_rest_transport(t.clone(), source_indices.clone()),
             std::option::Option::None => false,
+        },
+    }
+}
+
+pub fn service_operation_items(service: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
+    service.children.clone()
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum ServiceEndpointSupply {
+    EndpointNotDeclared,
+    EndpointLiteral {
+        value: String,
+    },
+    EndpointOperationParameter {
+        name: String,
+        declared_type: Rc<Node>,
+    },
+    EndpointModuleDataLiteral {
+        name: String,
+        value: String,
+    },
+    EndpointModuleExpression,
+    EndpointParameterNameUnbound,
+}
+
+pub fn operation_input_string_type(
+    op: Rc<Node>,
+    name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    match Rc::new({
+        let mut __result = Vec::new();
+        for p in op.params.clone().iter().cloned() {
+            if (crate::v1_std_core::param_node_name_at(p.clone(), source_indices.clone())
+                == name.clone())
+            {
+                __result.push(p);
+            }
+        }
+        __result
+    })
+    .first()
+    .cloned()
+    {
+        Some(p) => {
+            let declared = crate::v1_std_core::param_node_type_expr(p.clone());
+            if crate::v1_compiler_infer_types::type_is_kernel_string(
+                declared.clone(),
+                source_indices.clone(),
+            ) {
+                Some(declared.clone())
+            } else {
+                std::option::Option::None
+            }
+        }
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn service_data_values(items: Rc<Vec<Rc<Node>>>) -> Rc<Vec<Rc<Node>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for i in items.iter().cloned() {
+            if (i.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemDataValue) {
+                __result.push(i);
+            }
+        }
+        __result
+    })
+}
+
+pub fn service_endpoint_answer(
+    service: Rc<Node>,
+    operations: Rc<Vec<Rc<Node>>>,
+    data_values: Rc<Vec<Rc<Node>>>,
+    imported_data_values: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<ServiceEndpointSupply> {
+    {
+        let probe_name = endpoint_reader_probe_name(service.clone(), source_indices.clone());
+        let rest_total = (Rc::new({
+            let mut __result = Vec::new();
+            for op in operations.iter().cloned() {
+                if service_operation_is_rest(op.clone(), service.clone(), source_indices.clone()) {
+                    __result.push(op);
+                }
+            }
+            __result
+        })
+        .len() as i64);
+        let rest_unbound = (Rc::new({
+            let mut __result = Vec::new();
+            for op in operations.iter().cloned() {
+                if (service_operation_is_rest(op.clone(), service.clone(), source_indices.clone())
+                    && (operation_input_string_type(
+                        op.clone(),
+                        probe_name.clone(),
+                        source_indices.clone(),
+                    ) == std::option::Option::None))
+                {
+                    __result.push(op);
+                }
+            }
+            __result
+        })
+        .len() as i64);
+        service_endpoint_supply(
+            service.clone(),
+            operations.clone(),
+            (rest_total.clone() > 0),
+            (rest_unbound.clone() > 0),
+            (rest_total.clone() == rest_unbound.clone()),
+            data_values,
+            imported_data_values,
+            source_indices.clone(),
+        )
+    }
+}
+
+pub fn endpoint_reader_probe_name(
+    service: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match crate::v1_std_core::service_config_endpoint(service, source_indices.clone()) {
+        std::option::Option::None => "".to_string(),
+        Some(endpoint_node) => match (*endpoint_node.expr_data.clone()).clone() {
+            ExprData::ExprVar {
+                binding_kind: _, ..
+            } => {
+                crate::v1_std_core::expr_var_name_at(endpoint_node.clone(), source_indices.clone())
+            }
+            _ => "".to_string(),
+        },
+    }
+}
+
+pub fn module_data_string_literal(
+    data_values: Rc<Vec<Rc<Node>>>,
+    imported_data_values: Rc<Vec<Rc<Node>>>,
+    name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    match Rc::new({
+        let mut __result = Vec::new();
+        for d in data_values.iter().cloned() {
+            if (crate::v1_std_core::authored_name_at(source_indices.clone(), d.clone())
+                == name.clone())
+            {
+                __result.push(d);
+            }
+        }
+        __result
+    })
+    .first()
+    .cloned()
+    {
+        Some(d) => data_string_literal_text(d.clone()),
+        std::option::Option::None => {
+            imported_data_string_literal(imported_data_values, name.clone(), source_indices.clone())
+        }
+    }
+}
+
+pub fn imported_data_string_literal(
+    imported_data_values: Rc<Vec<Rc<Node>>>,
+    name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    match Rc::new({
+        let mut __result = Vec::new();
+        for d in imported_data_values.iter().cloned() {
+            if (crate::v1_std_core::authored_name_at(source_indices.clone(), d.clone())
+                == name.clone())
+            {
+                __result.push(d);
+            }
+        }
+        __result
+    })
+    .first()
+    .cloned()
+    {
+        Some(d) => data_string_literal_text(d.clone()),
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn data_string_literal_text(d: Rc<Node>) -> Option<String> {
+    match d.body.clone() {
+        Some(v) => match (*v.expr_data.clone()).clone() {
+            ExprData::ExprLiteral { ref value, .. }
+                if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
+            {
+                let LiteralValue::LitStr { value: text, .. } = value.as_ref() else {
+                    unreachable!()
+                };
+                if (text.clone() == "".to_string()) {
+                    std::option::Option::None
+                } else {
+                    Some(text.clone())
+                }
+            }
+            _ => std::option::Option::None,
+        },
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn service_endpoint_supply(
+    service: Rc<Node>,
+    operations: Rc<Vec<Rc<Node>>>,
+    has_rest_operations: bool,
+    has_unbound_inputs: bool,
+    binds_in_no_operation: bool,
+    data_values: Rc<Vec<Rc<Node>>>,
+    imported_data_values: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<ServiceEndpointSupply> {
+    match crate::v1_std_core::service_config_endpoint(service.clone(), source_indices.clone()) {
+        std::option::Option::None => Rc::new(ServiceEndpointSupply::EndpointNotDeclared),
+        Some(endpoint_node) => match (*endpoint_node.expr_data.clone()).clone() {
+            ExprData::ExprLiteral { ref value, .. }
+                if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
+            {
+                let LiteralValue::LitStr { value: text, .. } = value.as_ref() else {
+                    unreachable!()
+                };
+                if (text.clone() == "".to_string()) {
+                    Rc::new(ServiceEndpointSupply::EndpointNotDeclared)
+                } else {
+                    Rc::new(ServiceEndpointSupply::EndpointLiteral {
+                        value: text.clone(),
+                    })
+                }
+            }
+            ExprData::ExprVar {
+                binding_kind: _, ..
+            } => {
+                let name = crate::v1_std_core::expr_var_name_at(
+                    endpoint_node.clone(),
+                    source_indices.clone(),
+                );
+                if (has_rest_operations.clone() == false) {
+                    match module_data_string_literal(
+                        data_values.clone(),
+                        imported_data_values.clone(),
+                        name.clone(),
+                        source_indices.clone(),
+                    ) {
+                        Some(text) => Rc::new(ServiceEndpointSupply::EndpointModuleDataLiteral {
+                            name: name.clone(),
+                            value: text.clone(),
+                        }),
+                        std::option::Option::None => {
+                            Rc::new(ServiceEndpointSupply::EndpointModuleExpression)
+                        }
+                    }
+                } else {
+                    if has_unbound_inputs.clone() {
+                        match module_data_string_literal(
+                            data_values.clone(),
+                            imported_data_values.clone(),
+                            name.clone(),
+                            source_indices.clone(),
+                        ) {
+                            Some(text) => {
+                                if binds_in_no_operation.clone() {
+                                    Rc::new(ServiceEndpointSupply::EndpointModuleDataLiteral {
+                                        name: name.clone(),
+                                        value: text.clone(),
+                                    })
+                                } else {
+                                    Rc::new(ServiceEndpointSupply::EndpointParameterNameUnbound)
+                                }
+                            }
+                            std::option::Option::None => {
+                                Rc::new(ServiceEndpointSupply::EndpointParameterNameUnbound)
+                            }
+                        }
+                    } else {
+                        {
+                            let rest_operations = Rc::new({
+                                let mut __result = Vec::new();
+                                for op in operations.iter().cloned() {
+                                    if service_operation_is_rest(
+                                        op.clone(),
+                                        service.clone(),
+                                        source_indices.clone(),
+                                    ) {
+                                        __result.push(op);
+                                    }
+                                }
+                                __result
+                            });
+                            match rest_operations.clone().first().cloned() {
+                                Some(first_rest) => match operation_input_string_type(
+                                    first_rest.clone(),
+                                    name.clone(),
+                                    source_indices.clone(),
+                                ) {
+                                    Some(declared) => {
+                                        Rc::new(ServiceEndpointSupply::EndpointOperationParameter {
+                                            name: name.clone(),
+                                            declared_type: declared.clone(),
+                                        })
+                                    }
+                                    std::option::Option::None => {
+                                        Rc::new(ServiceEndpointSupply::EndpointModuleExpression)
+                                    }
+                                },
+                                std::option::Option::None => {
+                                    Rc::new(ServiceEndpointSupply::EndpointModuleExpression)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            _ => Rc::new(ServiceEndpointSupply::EndpointModuleExpression),
         },
     }
 }

@@ -1,7 +1,8 @@
 module test.claim.approve_ios_enrolment_machine_witness
 
 import std.logic { Bool }
-import std.types { String, list_length }
+import std.types { String }
+import std.algebra { length }
 import gunbc.approve_ios_enrolment_machine {
   EnrolmentPhase, PhaseSignedOut, PhaseEnrolled, PhaseRevoked,
   EnrolmentAnswer, AnswerSignedIn, AnswerRefused, AnswerUnanswered, AnswerServerReportsRevoked, NewKey, SameKey,
@@ -41,5 +42,5 @@ test fn a_failed_sign_in_does_not_undo_an_enrolment() -> Bool {
 
 // The product is closed at three phases and five answers; a new one owes this witness a ruling.
 test fn the_machine_is_the_three_phase_product() -> Bool {
-  list_length(items: enrolment_phases()) == 3 && list_length(items: enrolment_answers()) == 5
+  length(xs: enrolment_phases()) == 3 && length(xs: enrolment_answers()) == 5
 }

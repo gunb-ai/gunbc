@@ -24,13 +24,13 @@ import v2.std.inhabitance { TypeVariableInstance }
 // Split out per the v2.compiler.normalized_tree precedent (03_resolve.dag's
 // pass is v2.compiler.resolve; ResolvedTree's own shape carrier is separate).
 // v2.compiler.infer imports these back; this is a relocation of one
-// authority, never a second declaration of it (DESIGN.md §3).
+// authority, never a second declaration of it (gunbc.design_argument::single_authority).
 
 // THE SITE THAT LEFT A NODE ON THE GROUNDING FRONTIER, one arm per producer of GroundingNotDerived. The
 // advisory stays ONE reason (^infer_grounding_not_derived) so its counts and every gate keyed on it are
-// unchanged; what the single reason hid is WHICH of unlike causes produced it (DESIGN section 4b), and
+// unchanged; what the single reason hid is WHICH of unlike causes produced it (gunbc.design_argument::guarantee_ladder), and
 // the located node plus this site is the cause identity. inferred_facts_not_derived takes the site, so a
-// new producer must add an arm and an untagged one does not compile (DESIGN section 6b, root
+// new producer must add an arm and an untagged one does not compile (gunbc.design_argument::earliest_unjustified_boundary, root
 // generalization: one rule for the leaves that each answered 'not derived').
 type NotDerivedSite
   = BinderTypeNodeUnfacted
@@ -133,7 +133,7 @@ type RefinementObligation {
 // except v2.compiler.refinement_discharge discharge_refinement_obligations, so an obligation infer
 // recorded has no route to emit, eval or a lens gate that skips its decision: InferredTree has no
 // obligations field, and this form is not an InferredTree. A hand-built InferredTree remains a
-// legitimate supplied input (DESIGN section 3 witness rule); it simply records no obligation.
+// legitimate supplied input (gunbc.design_argument::witness_one_interface witness rule); it simply records no obligation.
 type ObligatedInferredTree {
   root: Node
   facts: PartialFunction<Node, InferredFacts>
@@ -141,7 +141,7 @@ type ObligatedInferredTree {
 }
 
 // WHETHER AN AUTHORED OCCURRENCE IDENTIFIES ONE NODE IN A TREE. Infer's facts table is Node-keyed. The
-// proposed derived subject for a fact (DESIGN section 3b, keys/hashing) is the node's AUTHORED
+// proposed derived subject for a fact (gunbc.design_argument::conformance, keys/hashing) is the node's AUTHORED
 // occurrence (std.occurrence_identity NodeOccurrenceIdentity, minted or projected arm), with scope one
 // tree infer is handed, equality OccurrenceId value equality, and collision disposition refusal. It is
 // sound only if no tree holds two DIFFERENT nodes under one authored occurrence. This walk measures

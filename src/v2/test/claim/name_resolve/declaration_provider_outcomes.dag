@@ -7,7 +7,8 @@ import v2.compiler.source_root_eval {
   NativeTestContext,
   NativeModuleResolveVerdict,
   NativeModuleResolveAccepted,
-  NativeModuleResolveRefused
+  NativeModuleResolveRefused,
+  NativeModuleResolveImportTargetFileRefused
 }
 import v2.compiler.name_resolve { closure_declarations_demand }
 import v2.compiler.resolve {
@@ -19,10 +20,12 @@ import v2.compiler.resolve {
   ModuleUnavailable
 }
 import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.compiler.native_test_vocabulary { FileRefusalAtLine, FileRefusalLink, native_test_file_refusal_fatal_link }
 import v2.std.artifact { Artifact, SourceFile }
-import v2.std.cross_tree.import_model { DagTree, SourceRootRef, V2Tree }
+import v2.std.cross_tree.import_model { DagTree, SourceRootRef }
 import v2.std.diagnostic {
   Accepted,
+  DeclarerRefused,
   Diagnostic,
   NonEmptyDiagnostics,
   Outcome,
@@ -68,11 +71,13 @@ data dpo_uses_gone_source: String = "module v2.test.dpo.uses_gone\n\nimport v2.t
 
 data dpo_ghost_user_source: String = "module v2.test.dpo.ghost_user\n\nimport v2.test.dpo.missing { Ghost }\ntype UsesGhost = Ghost\ntype Solo = Int\n"
 
-data dpo_v2lib_source: String = "module v2.test.dpo.v2lib\n\ntype Lib = L\n"
+// An AMBIGUOUS header: the module line twice. The front end refuses the file at the second header line
+// (parse_g0_tokens_remain), so it never becomes a root; the module it declares is read from its first
+// header line and carried as a blocked member. A malformed NAME is not used: the header scan would then
+// name a different module and the importer would get module-not-found, which does not discriminate.
+data dpo_broken_source: String = "module v2.test.dpo.broken\nmodule v2.test.dpo.broken\n\ntype X = Int\n"
 
-data dpo_xtree_source: String = "module v2.test.dpo.xtree\n\nimport v2.test.dpo.v2lib { Lib }\ntype Rec { value: Lib }\ntype Plain = Int\n"
-
-data dpo_xtree_user_source: String = "module v2.test.dpo.xtree_user\n\nimport v2.test.dpo.xtree { Plain }\nfn xp(x: Plain) -> Plain { x }\n"
+data dpo_broken_user_source: String = "module v2.test.dpo.broken_user\n\nimport v2.test.dpo.broken { X }\nfn b(x: X) -> X { x }\n"
 
 fn dpo_read(text: String, id: Symbol, path: String, root: SourceRootRef) -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -97,9 +102,8 @@ fn dpo_ingest() -> List<DagSourceReadWitness> {
     dpo_read(text: dpo_gone_other_user_source, id: ^dpo_gone_other_user, path: "src/v2/test/fixture/dpo/gone_other_user.dag", root: DagTree),
     dpo_read(text: dpo_uses_gone_source, id: ^dpo_uses_gone, path: "src/v2/test/fixture/dpo/uses_gone.dag", root: DagTree),
     dpo_read(text: dpo_ghost_user_source, id: ^dpo_ghost_user, path: "src/v2/test/fixture/dpo/ghost_user.dag", root: DagTree),
-    dpo_read(text: dpo_v2lib_source, id: ^dpo_v2lib, path: "src/v2/test/fixture/dpo/v2lib.dag", root: V2Tree),
-    dpo_read(text: dpo_xtree_source, id: ^dpo_xtree, path: "src/v2/test/fixture/dpo/xtree.dag", root: DagTree),
-    dpo_read(text: dpo_xtree_user_source, id: ^dpo_xtree_user, path: "src/v2/test/fixture/dpo/xtree_user.dag", root: DagTree)
+    dpo_read(text: dpo_broken_source, id: ^dpo_broken, path: "src/v2/test/fixture/dpo/broken.dag", root: DagTree),
+    dpo_read(text: dpo_broken_user_source, id: ^dpo_broken_user, path: "src/v2/test/fixture/dpo/broken_user.dag", root: DagTree)
   ]
 }
 
@@ -309,7 +313,7 @@ test fn dpo_one_namespace_per_module() -> Bool {
       match context.resolution {
         Rejected { diagnostics: _ } => false
         Accepted { value: shared, diagnostics: _ } =>
-          closure_declarations_demand(shared: shared).context.namespaces_built == 15
+          closure_declarations_demand(shared: shared).context.namespaces_built == 13
       }
   }
 }
@@ -347,9 +351,8 @@ test fn dpo_listed_import_of_ghost_module_refuses_the_module() -> Bool {
   }
 }
 
-// The module-wide arm, produced by the real resolver: a DagTree module importing a V2Tree one is refused at
-// namespace admission (cross-tree policy), so every declaration of it is unavailable, including the one that
-// demands nothing cross-tree. The outcome row is ModuleUnavailable as the closure produced it.
+// Is this module a ModuleUnavailable row of the roster? Read by the gone and ghost controls, which carry the
+// module-wide arm through real admission refusals.
 fn dpo_is_module_unavailable(outcomes: List<ModuleOutcome>, module: QualifiedName) -> Bool {
   fold(outcomes, init: false, f: fn(found, o) {
     found || match o {
@@ -359,19 +362,94 @@ fn dpo_is_module_unavailable(outcomes: List<ModuleOutcome>, module: QualifiedNam
   })
 }
 
-test fn dpo_real_module_unavailable_is_module_wide() -> Bool {
-  match dpo_outcomes() {
-    Absent => false
-    Present { value: outcomes } =>
-      dpo_is_module_unavailable(outcomes: outcomes, module: dpo_path(dotted: "v2.test.dpo.xtree"))
-        && !dpo_is_module_unavailable(outcomes: outcomes, module: dpo_path(dotted: "v2.test.dpo.mixed"))
-        && !declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.xtree.Plain"))
-        && !declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.xtree.Rec"))
-        && match dpo_verdict(module: "v2.test.dpo.xtree_user", path: ^dpo_xtree_user) {
-          Absent => false
-          Present { value: v } =>
-            dpo_refuses_with(v: v, reason: ^resolve_reason_declarer_refused)
-              && dpo_chain_names(v: v, reason: ^resolve_cross_tree_import_denied)
-        }
+// red_control "a malformed header ... makes every declaration unavailable", on the ambiguous header above.
+// The refusal is the HEADER's (the file's fatal link is parse_g0_tokens_remain at line 2, the second module
+// line), broken.X is not available, and the importer refuses as NativeModuleResolveImportTargetFileRefused naming broken's row, its
+// resolver chain naming resolve_imported_module_refused.
+// broken itself is PUBLISHED as ModuleUnavailable carrying the front end's own refusal, whose fatal reason is
+// the header's parse_g0_tokens_remain (residue C of the node). Before that row existed broken.X read
+// unavailable only because no row named it, so `!declaration_available` alone could not tell a published
+// refusal from an absence; dpo_broken_published_with_header_refusal is the assertion that can.
+// The importer's chain reaches that cause by JOIN, not by copy: its resolve_imported_module_refused link
+// names broken as DeclarerRefused { declarer }, and that declarer's published row is the one asserted here.
+fn dpo_is_header_refusal_of_broken(path: Symbol, fatal: FileRefusalLink) -> Bool {
+  path == ^dpo_broken && fatal.reason == ^parse_g0_tokens_remain && match fatal.at {
+    FileRefusalAtLine { line: n, byte_column: _ } => n == 2
+    _ => false
   }
 }
+
+fn dpo_broken_refused_at_header() -> Bool {
+  match dpo_context() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: context, diagnostics: _ } =>
+      fold(context.file_refusals, init: false, f: fn(found, r) {
+        found || dpo_is_header_refusal_of_broken(path: r.path, fatal: native_test_file_refusal_fatal_link(fr: r))
+      })
+  }
+}
+
+// The importer is told its import TARGET's file was refused (the verdict names broken's own refusal row),
+// and the resolver chain it carries names resolve_imported_module_refused.
+fn dpo_import_target_is_broken(v: NativeModuleResolveVerdict) -> Bool {
+  match v {
+    NativeModuleResolveImportTargetFileRefused { target: t, first: d, rest: _, observation: _ } =>
+      t.path == ^dpo_broken
+        && ((d.head.reason == ^resolve_imported_module_refused) || diagnostics_list_has_reason(xs: d.tail, reason: ^resolve_imported_module_refused))
+    _ => false
+  }
+}
+
+fn dpo_published_refusal(outcomes: List<ModuleOutcome>, module: QualifiedName) -> Optional<NonEmptyDiagnostics> {
+  fold(outcomes, init: optional_absent(), f: fn(found, o) {
+    match found {
+      Present { value: _ } => found
+      Absent => match o {
+        ModuleUnavailable { module: m, refusal: r } => if m == module { optional_present(value: r) } else { found }
+        ModuleObserved { module: _, declarations: _ } => found
+      }
+    }
+  })
+}
+
+fn dpo_broken_published_with_header_refusal(outcomes: List<ModuleOutcome>) -> Bool {
+  match dpo_published_refusal(outcomes: outcomes, module: dpo_path(dotted: "v2.test.dpo.broken")) {
+    Absent => false
+    Present { value: r } => diagnostics_fatal_reason(d: r) == ^parse_g0_tokens_remain
+  }
+}
+
+// Does this importer link name `declarer` as the refused module it depends on?
+fn dpo_link_names_declarer(d: Diagnostic, declarer: QualifiedName) -> Bool {
+  d.reason == ^resolve_imported_module_refused && match d.correction {
+    Unavailable { reason: DeclarerRefused { declarer: m } } => m == declarer
+    _ => false
+  }
+}
+
+// The importer's resolve_imported_module_refused link joins, by its declarer, to a published row.
+fn dpo_importer_joins_published_row(v: NativeModuleResolveVerdict, outcomes: List<ModuleOutcome>) -> Bool {
+  let broken = dpo_path(dotted: "v2.test.dpo.broken")
+  match v {
+    NativeModuleResolveImportTargetFileRefused { target: _, first: d, rest: _, observation: _ } =>
+      (dpo_link_names_declarer(d: d.head, declarer: broken)
+        || fold(d.tail, init: false, f: fn(found, l) { found || dpo_link_names_declarer(d: l, declarer: broken) }))
+        && dpo_broken_published_with_header_refusal(outcomes: outcomes)
+    _ => false
+  }
+}
+
+test fn dpo_ambiguous_header_makes_every_declaration_unavailable() -> Bool {
+  dpo_broken_refused_at_header()
+    && match dpo_outcomes() {
+      Absent => false
+      Present { value: outcomes } =>
+        !declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.broken.X"))
+          && dpo_broken_published_with_header_refusal(outcomes: outcomes)
+          && match dpo_verdict(module: "v2.test.dpo.broken_user", path: ^dpo_broken_user) {
+            Absent => false
+            Present { value: v } => dpo_import_target_is_broken(v: v) && dpo_importer_joins_published_row(v: v, outcomes: outcomes)
+          }
+    }
+}
+

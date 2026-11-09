@@ -269,7 +269,7 @@ fn no_resource_declarations() -> FreeMonoid<Symbol> {
 // (all of which take NormalizedTree) can be handed one. Rung: structurally impossible to emit a
 // census-grade module -- the carrier has no route to the emitter. It carries no test-marker channel:
 // census mode leaves test fn declarations unlowered and runs none of a non-member's tests.
-// CONSUMER, A DECLARED FRONTIER (DESIGN section 3c). Production callers land in the gen-two door's
+// CONSUMER, A DECLARED FRONTIER (gunbc.design_argument::consumption). Production callers land in the gen-two door's
 // two sibling changes, both owned by the self-host closure frontier lane: PR-a's reference-derived
 // closure producer builds ONE SymbolIndex with symbol_index_fill_module_roots over the members'
 // normalized_tree_roots_to_binding_sources ++ census_tree_binding_source of every non-member, and
@@ -289,7 +289,7 @@ type CensusTree sole_constructor {
 // (v2.compiler.normalize normalize_census). Census mode never visits a fn body, so retention there
 // can only be DECLARATION-level -- a signature, type or spine the lowering could not read -- and a
 // declaration census that silently dropped one would answer resolution with a confident "not
-// declared" (DESIGN section 5). A declaration that failed to PARSE never reaches this door: the
+// declared" (gunbc.design_argument::fail_closed). A declaration that failed to PARSE never reaches this door: the
 // census entry takes a ParseTree.
 fn admit_census_tree(
   root: Node,

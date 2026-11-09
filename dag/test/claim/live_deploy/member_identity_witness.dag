@@ -190,7 +190,7 @@ test fn an_observation_of_another_member_is_refused() -> Bool {
 // was mapped from and there is nothing for it to be filed under.
 //
 // THE WITNESS IS DELETED RATHER THAN KEPT AS A REGRESSION CONTROL, which is the opposite of what a
-// climb usually calls for (DESIGN section 4b: a climb deletes the production machinery and KEEPS the
+// climb usually calls for (gunbc.design_argument::guarantee_ladder: a climb deletes the production machinery and KEEPS the
 // discriminating red). The rule turns on whether the red stays authorable, and here it does not --
 // not in the corpus and not in a fixture either, because expressing it requires handing the
 // derivation a decision list, which is precisely the call that no longer exists. A witness whose red

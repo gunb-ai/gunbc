@@ -7,7 +7,7 @@ module test.claim.bmc.bmc_model_redfish_account_service_witness
 // the one-store invariant for a build whose policy grounds Redfish and IPMI sharing, and the failed-login
 // counter locking under a typed threshold (Never / After) rather than a sentinel.
 //
-// RUNG (DESIGN 4b): every check here is a claim about the dry WORLD's transitions, evaluated on the real
+// RUNG (gunbc.design_argument::guarantee_ladder): every check here is a claim about the dry WORLD's transitions, evaluated on the real
 // functions gunbc.bmc_model declares -- not on a re-implementation. The positive control runs the full
 // cycle on the real path; each RED is a case that must NOT pass, discriminating a world that merely looks
 // secured from one that is. The inhabitance ties the world's emitted 403 body to the committed srv13
@@ -36,6 +36,7 @@ import extdeps.bmc.redfish {
   redfish_password_change_verdict, RedfishPasswordChangeRequired,
   redfish_manager_account_collection_from_json, RedfishAccountCollection, RedfishAccountCollectionUnreadable,
 }
+import std.algebra { length }
 
 data factory_password: String = "openbmc"
 data managed_password: String = "correct-horse-battery-staple"
@@ -281,14 +282,14 @@ test fn the_typed_surface_read_keeps_unmodeled_separate_from_serving_none() -> B
     Present { value: _ } => false
   }
   let serves_none = match bmc_redfish_surface(world: world_with([])) {
-    Present { value: accounts } => list_length(items: accounts) == 0
+    Present { value: accounts } => length(xs: accounts) == 0
     Absent => false
   }
   let the_two_are_distinguishable = bmc_redfish_surface(world: bmc_world(power: BmcPowerOn))
     != bmc_redfish_surface(world: world_with([]))
   // the RED: the plain census collapses them -- proves WHY the surface read must be the consumed surface.
-  let census_cannot_distinguish = list_length(items: bmc_redfish_census(world: bmc_world(power: BmcPowerOn))) == 0
-    && list_length(items: bmc_redfish_census(world: world_with([]))) == 0
+  let census_cannot_distinguish = length(xs: bmc_redfish_census(world: bmc_world(power: BmcPowerOn))) == 0
+    && length(xs: bmc_redfish_census(world: world_with([]))) == 0
   unmodeled && serves_none && the_two_are_distinguishable && census_cannot_distinguish
 }
 
@@ -318,7 +319,7 @@ test fn a_shared_password_write_to_an_absent_ipmi_user_changes_nothing() -> Bool
 
 // RED (review 87866): an UNMODELED Redfish surface (the world field is none) must NOT be answered as "no such
 // account" / "401 bad credentials". That would fabricate a credential verdict for a controller that serves no
-// account service (DESIGN 5). The typed surface is read first: authorize returns RedfishAuthSurfaceUnmodeled and
+// account service (gunbc.design_argument::fail_closed). The typed surface is read first: authorize returns RedfishAuthSurfaceUnmodeled and
 // the write is blocked with the SurfaceUnmodeled reason -- DISTINCT from a modeled-but-empty surface, which
 // answers 401 (no such account) and is blocked NoSuchAccount. Positive controls are the modeled-empty answers on
 // the same lines below; the discriminating pair is unmodeled-vs-modeled-empty for both authorize and the change.
@@ -371,7 +372,7 @@ test fn a_failed_login_against_an_unmodeled_surface_or_unknown_account_is_refuse
     && !locked_now_of(step: on_unknown)
 }
 
-// THE INHABITANCE CLAIM FOR THE RENDERED CENSUS (DESIGN §3: a supplied boundary owes one inhabitance claim
+// THE INHABITANCE CLAIM FOR THE RENDERED CENSUS (gunbc.design_argument::witness_one_interface: a supplied boundary owes one inhabitance claim
 // that the real producer emits the shape the model reads). The dry census parses bytes the simulated controller
 // renders with `bmc_redfish_account_collection_body` and reads back with `redfish_manager_account_collection_from_json`.
 // Those bytes are only honest if the REAL controller serves that shape. The ONE committed capture of that

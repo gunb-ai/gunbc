@@ -120,7 +120,7 @@ type DockerInspectRestartPolicy {
 // THIS type as it stood would have inspected those containers, found `cap_add` agreeing with a plan
 // that asked for nothing, and reported agreement while `Devices=[]` stayed invisible, because there
 // was no field for the reading to land in. A readback that cannot see a field cannot disagree about
-// it, which is the silent-wrongness of DESIGN section 5 one layer below where anyone was looking.
+// it, which is the silent-wrongness of gunbc.design_argument::fail_closed one layer below where anyone was looking.
 //
 // THEY ARE STRUCTURED AND NOT `List<String>?`, unlike the anemic leaves the frontier row below
 // already rosters. The wire shape is an object per entry, so flattening it to a string would mint a
@@ -312,7 +312,7 @@ data structural_coverage_gap_container_state_codec_hand_rolled: List<String> = [
 //
 // IT REFUSES RATHER THAN NARROWING. A member that is present with the WRONG SHAPE is a typed
 // refusal, never a silent `Absent`: reading "the daemon answered something I did not understand" as
-// "the daemon did not set this" is the absorbing arm of DESIGN section 5, and it would make exactly
+// "the daemon did not set this" is the absorbing arm of gunbc.design_argument::fail_closed, and it would make exactly
 // the incident field read as legitimately unset.
 //
 // JSON `null` IS ABSENT AND AN EMPTY ARRAY IS NOT, and the difference is load-bearing on the very

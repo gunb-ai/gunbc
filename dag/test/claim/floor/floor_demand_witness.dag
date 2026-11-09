@@ -418,7 +418,7 @@ test fn a_peak_beat_without_a_seam_refuses_rather_than_naming_a_phase() -> Bool 
   a && b2 && c
 }
 
-// THE FLIP HAS HAPPENED, AND THIS IS THE REGRESSION CONTROL IT BECAME (DESIGN 4b(4)). This claim
+// THE FLIP HAS HAPPENED, AND THIS IS THE REGRESSION CONTROL IT BECAME (gunbc.design_argument::guarantee_ladder (dissolution on climb)). This claim
 // was written expecting RED: it asserted that the standing receipt could NOT attribute its peak,
 // because every beat of the 2026-09-19 receipt was transcribed from a line printed before the
 // instrument carried a seam. Its stated trigger was a dated successor taken under the
@@ -426,7 +426,7 @@ test fn a_peak_beat_without_a_seam_refuses_rather_than_naming_a_phase() -> Bool 
 // is gunbc_floor_memory_stat_receipt_2026_09_21, and it landed, so the claim does not retire --
 // it changes polarity and now asserts that the standing receipt IS attributable.
 //
-// WHAT MOVED, cited on the flip as 4b(4) requires: the standing's input, from the 2026-09-19
+// WHAT MOVED, cited on the flip as gunbc.design_argument::guarantee_ladder (dissolution on climb) requires: the standing's input, from the 2026-09-19
 // receipt to the 2026-09-21 one, taken on CI run 35652545009 -- and again on 2026-09-23 to
 // gunbc_floor_memory_stat_receipt_2026_09_23 (run 35815214135), whose peak lands during
 // publication rather than the claim fold. The 2026-09-21 attribution stays asserted below it, so
@@ -460,7 +460,7 @@ test fn the_standing_receipt_attributes_its_peak_to_a_named_seam() -> Bool {
 // PeakIsUncensoredSampledMaximum on its real rows is evidence that the peak beat's own leaf swap
 // reading decided it. Asserting the ROUTE as well as the answer: the same receipt with the peak
 // beat's swap unread falls back to the policy, which alone answers the censoring cause, so a green here
-// cannot come from some other mechanism reaching the same verdict (DESIGN 3's pairing rule).
+// cannot come from some other mechanism reaching the same verdict (gunbc.design_argument::single_authority's pairing rule).
 test fn the_2026_09_23_receipt_reads_an_uncensored_sampled_maximum_through_its_leaf_swap() -> Bool {
   let real = match receipt_peak_reading_standing(r: gunbc_floor_memory_stat_receipt_2026_09_23) {
     PeakIsUncensoredSampledMaximum => true
@@ -609,7 +609,7 @@ test fn a_peak_beat_whose_stall_did_not_read_is_not_a_demand() -> Bool {
 // THE TWO SWAP ARMS, WHICH DIFFER IN HOW THE CEILING WAS OBTAINED AND NOT ONLY IN ITS VALUE.
 // SwapMaxDeclaredUnread cites a row; SwapMaxRead is an instrument that read the file. Both censor
 // a peak, and each reports its own cause, so a reader is told whether the ceiling behind the
-// censoring was READ or merely DECLARED -- which is the distinction DESIGN 4d exists to keep.
+// censoring was READ or merely DECLARED -- which is the distinction gunbc.design_argument::epistemic_humility exists to keep.
 // A read ceiling of zero is not censoring at all, and that boundary is driven here too.
 test fn both_swap_arms_censor_and_a_read_zero_ceiling_does_not() -> Bool {
   let declared = FloorHeldSetReceipt {

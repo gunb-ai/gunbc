@@ -40,7 +40,7 @@ data incremental_floor_authority_disposition: Disposition = Terminal {
 //                                 carry them, so they are recomputed at head every run or the
 //                                 incremental verdict is silent about them.
 //
-// WHY THE FAILURE ARM REFUSES INSTEAD OF RUNNING EVERYTHING (DESIGN section 5, the absorbing
+// WHY THE FAILURE ARM REFUSES INSTEAD OF RUNNING EVERYTHING (gunbc.design_argument::fail_closed, the absorbing
 // fallback -- and this module's subject is the textbook specimen DESIGN names: "can't compute the
 // affected set -> rerun everything"). Widening is not free just because it is safe on the verdict
 // axis. It destroys the only signal that the closure has a deficit, so the deficit never ranks
@@ -57,7 +57,7 @@ data incremental_floor_authority_disposition: Disposition = Terminal {
 // trusted. `gunbc.regen_affected_set` is the sibling shape one layer over -- the same reverse
 // closure with the same refuse-never-widen arm, for regen mirrors rather than witness rows.
 //
-// RUNG HONESTY (DESIGN section 4b, meta-obligation 1). This class -- an incremental floor verdict
+// RUNG HONESTY (gunbc.design_argument::guarantee_ladder, meta-obligation 1). This class -- an incremental floor verdict
 // standing over a head it did not measure -- is at MECHANICALLY PREVENTABLE IN FIXTURE AND
 // UNENROLLED IN PRODUCTION. The law executes: the witness beside this module drives every
 // conjunct to a discriminating RED and the conjunction to an accepted positive control. No
@@ -135,7 +135,7 @@ fn floor_base_receipt_valid(base: FloorBaseReceipt) -> Bool {
 // Conjunct 2 -- the complete input delta.
 
 // THE MEDIUM ROSTER IS PART OF THE QUERY, NEVER A FOLLOW-UP PASS. The floor cut measured this
-// directly (docs/plans/floor-cut-replacement-plan.md, step 2 bound 3): a reach measurement over
+// directly (docs/plans/floor-cut-replacement-plan.md (deleted 2026-11-08), step 2 bound 3): a reach measurement over
 // one medium reads exactly like a reach measurement, and nothing in the answer announces the media
 // it omitted. A delta computed over the source tree alone is not a small delta -- it is an
 // unknown one, and every carried row rests on it.
@@ -219,7 +219,7 @@ fn floor_changed_inputs(delta: FloorInputDelta) -> List<String> {
 // ---------------------------------------------------------------------------------------------
 // Conjunct 3 -- the affected closure.
 
-// TWO ADMISSIBLE KINDS AND ONE INADMISSIBLE ONE, and the split is DESIGN section 5's own: a
+// TWO ADMISSIBLE KINDS AND ONE INADMISSIBLE ONE, and the split is gunbc.design_argument::fail_closed's own: a
 // structural OVER-APPROXIMATION computed AS the answer is a legitimate neighbour of the absorbing
 // fallback -- it is what the closure believes, stated honestly and bounded by structure.
 // `ClosureUnestablished` is the state that must never become an answer: it is the closure failing
@@ -284,7 +284,7 @@ type FloorGlobalInvariantRow {
 }
 
 // NOT ROW-LOCAL, SO NOT CARRIABLE. Each row names the authority that owns the obligation rather
-// than restating it (DESIGN section 3 -- cite the symbol). The roster is deliberately about the
+// than restating it (gunbc.design_argument::single_authority -- cite the symbol). The roster is deliberately about the
 // SHAPE of the obligation: a property whose subject is the corpus has no witness row to attach a
 // carried verdict to, so an incremental run that does not recompute it has not answered it.
 data floor_global_invariants: List<FloorGlobalInvariantRow> = [
@@ -358,7 +358,7 @@ fn floor_recomputed_rows_passed(attempt: FloorIncrementalAttempt) -> Bool {
 
 // CONJUNCT 5, AND THE DIGESTS ARE READ FROM THE ROSTERS RATHER THAN FROM THE CARRY ITSELF. A
 // carried row asserting its own two digests is an oracle compared against a copy of itself
-// (DESIGN section 5); the assertion only means something joined to the base roster at base and
+// (gunbc.design_argument::fail_closed); the assertion only means something joined to the base roster at base and
 // the head roster at head.
 fn floor_carried_digests_identical(attempt: FloorIncrementalAttempt) -> Bool {
   attempt.carried |> all(c =>
@@ -367,7 +367,7 @@ fn floor_carried_digests_identical(attempt: FloorIncrementalAttempt) -> Bool {
       && floor_roster_has_digest(roster: attempt.head_roster, id: c.id, digest: c.head_input_digest))
 }
 
-// CONJUNCT 6 -- AN IDENTITY JOIN, NOT A COUNT EQUALITY (DESIGN section 5). Both directions are
+// CONJUNCT 6 -- AN IDENTITY JOIN, NOT A COUNT EQUALITY (gunbc.design_argument::fail_closed). Both directions are
 // checked because they fail differently: a head row in neither set is a witness that silently did
 // not participate; a reported row that is not in the head roster is a verdict about a subject that
 // no longer exists. Disjointness is the third, and it is what stops one row carrying a green while
@@ -441,7 +441,7 @@ data floor_proof_conjuncts: List<FloorProofConjunct> = [
 ]
 
 // EVERY UNMET CONJUNCT IS REPORTED, not the first one. A stop that names one cause invites a fix
-// that restarts into the next cause; the analysis that precedes a restart (DESIGN section 5, the
+// that restarts into the next cause; the analysis that precedes a restart (gunbc.design_argument::fail_closed, the
 // factory model) needs the whole ledger of the stop.
 fn floor_unmet_conjuncts(attempt: FloorIncrementalAttempt) -> List<UnmetConjunct> {
   fold(floor_proof_conjuncts, init: [], f: fn(acc, conjunct) {
@@ -486,7 +486,7 @@ fn floor_whole_head_corpus_execution(roster: FloorRoster) -> FloorExecutionDispo
 // FAIL-CLOSED, STRUCTURALLY. The verdict standing is a total match over the disposition, and the
 // unestablished arm has no path to `VerdictEstablished` -- there is no constructor that takes a
 // list of unmet conjuncts to a verdict, so "proceed as if the refusal had not fired" is not an
-// expressible state rather than a discouraged one (DESIGN section 4b rung 4, section 5 no escape
+// expressible state rather than a discouraged one (gunbc.design_argument::guarantee_ladder rung 4, gunbc.design_argument::fail_closed no escape
 // hatches).
 type FloorVerdictSource =
     VerdictFromWholeHeadCorpusRun { head_tree: String, rows: Int }
@@ -550,7 +550,7 @@ fn floor_proof_unestablished_receipt(head_tree: String, unmet: List<UnmetConjunc
 //   input medium was never observed, the closure did not compute, the head roster cannot be
 //   partitioned at identity. Nothing has been claimed yet, so answering "then this run judges the
 //   whole population" is a structural over-approximation computed AS THE ANSWER at a declared
-//   boundary -- DESIGN section 5's named NON-pattern, the legitimate neighbour of the absorbing
+//   boundary -- gunbc.design_argument::fail_closed's named NON-pattern, the legitimate neighbour of the absorbing
 //   fallback. It is loud, typed, and counted.
 //
 //   AFTER an incremental attempt whose proof fails, the same widening would be the absorbing
@@ -565,7 +565,7 @@ fn floor_proof_unestablished_receipt(head_tree: String, unmet: List<UnmetConjunc
 //
 // WHY THE CAUSE IS A COPRODUCT AND NOT A `String` reason: the census below counts PER CAUSE, and
 // a cause whose count never falls is the located modeling deficit. That is the anemia signal
-// DESIGN section 5 says absorption destroys, and it only survives if the cause is a value the
+// gunbc.design_argument::fail_closed says absorption destroys, and it only survives if the cause is a value the
 // census can group by rather than prose a reader must classify.
 type WholePopulationCause =
     NoBaseReceiptAvailable
@@ -700,8 +700,8 @@ fn whole_population_escalation_receipt(escalation: WholePopulationEscalation) ->
   )
 }
 
-// THE IDENTITY PRODUCERS THIS MODULE BINDS TO RATHER THAN MINTS (DESIGN section 3 -- cite the
-// symbol, and section 2 -- a fresh authority for an existing concept is a failed decomposition).
+// THE IDENTITY PRODUCERS THIS MODULE BINDS TO RATHER THAN MINTS (gunbc.design_argument::single_authority -- cite the
+// symbol, and gunbc.design_argument::minimize_redundancy -- a fresh authority for an existing concept is a failed decomposition).
 // `FloorWitnessRow.input_digest` is the closure subject digest already produced by
 // `v1_compiler.closure_identity subject_digest_for_closure`, reached per entry by
 // `v1_compiler.cli_run closure_subject_for_entry`; the per-row work key that joins a digest to a

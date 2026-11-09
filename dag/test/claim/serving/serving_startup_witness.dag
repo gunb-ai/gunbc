@@ -1,6 +1,7 @@
 module test.claim.serving.serving_startup_witness
 
-import std.types { String, Bool, NonEmptyStr, List, list_length }
+import std.types { String, Bool, NonEmptyStr, List }
+import std.algebra { length }
 import std.measure { byte_size }
 import std.content_hash { Sha256Digest }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -163,7 +164,7 @@ test fn the_full_sequence_refuses_at_the_launch_leg_with_no_earlier_leg_skipped(
   )
   (match p.launch { ServingLaunchRefusedUnmetCauses { key_grant: _, detach: _ } => true  _ => false })
     && !serving_sequence_endangers(commands: placement_commands_of(p: p), protected: w_protected)
-    && list_length(items: placement_commands_of(p: p)) == 2
+    && length(xs: placement_commands_of(p: p)) == 2
 }
 
 // THE RECEIPT TEXT on the real producer: it names the unmet key grant and the rendered detach and carries the link switch it emitted.
@@ -235,7 +236,7 @@ test fn the_detach_leg_renders_setsid_fork_with_the_serve_log_redirect() -> Bool
   }
 }
 
-// A REFUSED RENDER NAMES ITS CAUSE in the text (DESIGN 5: every degradation is typed and located), not only that it refused.
+// A REFUSED RENDER NAMES ITS CAUSE in the text (gunbc.design_argument::fail_closed: every degradation is typed and located), not only that it refused.
 test fn a_refused_detach_render_text_names_its_cause() -> Bool {
   string_contains(s: serving_detach_text(detach: ServingDetachRefusedRender { cause: RemoteExecInterpretationUnknown }), pattern: "RemoteExecCommandInterpretation is Unknown")
 }

@@ -13,7 +13,7 @@ data window_rendered_subject_misattribution: RecurringFailureMode = RecurringFai
 
     "INVALID STATE: a change identity taken from material the renderer placed near the change rather than derived from the change itself.",
 
-    "HARM: DESIGN section 5 silent wrongness in its most confident form -- the reader gets a SPECIFIC, PLAUSIBLE, WRONG subject, and nothing in the rendering marks the difference between a row that was shown and a row that was changed.",
+    "HARM: gunbc.design_argument::fail_closed silent wrongness in its most confident form -- the reader gets a SPECIFIC, PLAUSIBLE, WRONG subject, and nothing in the rendering marks the difference between a row that was shown and a row that was changed.",
 
     "DISCOVERED AND ANALYSED BY cool-koi-623; the mechanism was reproduced by tidy-swift-334 before routing and the diff figures below were re-executed by this author against the pull request rather than relayed.",
 
@@ -23,7 +23,7 @@ data window_rendered_subject_misattribution: RecurringFailureMode = RecurringFai
 
     "That filter IS the instrument -- one predicate over the diff, re-derivable by anyone against that pull request -- and it is the whole repair as well as the whole evidence.",
 
-    "The row identities above are SYMBOLS and not measurements, which is why they are carried; the hunk's line numbers and the changed row's character width are neither carried nor needed, since DESIGN section 3 forbids citing a position where a symbol exists to name and section 6 forbids copying a counter where its producer can be named.",
+    "The row identities above are SYMBOLS and not measurements, which is why they are carried; the hunk's line numbers and the changed row's character width are neither carried nor needed, since gunbc.design_argument::single_authority forbids citing a position where a symbol exists to name and section 6 forbids copying a counter where its producer can be named.",
 
     "What matters structurally is that the carrier's rows are single lines far wider than a screen, so the changed row's own text is off the right-hand edge while its untouched neighbours are the first thing read.",
 
@@ -55,7 +55,7 @@ data window_rendered_subject_misattribution: RecurringFailureMode = RecurringFai
 
     "They stay separate on the repair-crossing test that row states as its own boundary method: filtering a diff to lines beginning `+data` or `-data` repairs THIS row completely and does nothing for a reading whose instrument resolved to the wrong version or the wrong name, while establishing that the instrument resolved to the subject you meant repairs THAT row and leaves this one untouched, because here it resolved correctly and the identity was taken from material rendered alongside the answer.",
 
-    "DESIGN section 4b keys rows on the REPAIR, and these two repairs do not transfer in either direction.",
+    "gunbc.design_argument::guarantee_ladder keys rows on the REPAIR, and these two repairs do not transfer in either direction.",
 
     "RUNG FOUND AT: below the ladder, silent wrongness -- the wrong subject was adjudicated and nothing anywhere refused.",
 

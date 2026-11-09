@@ -1,6 +1,6 @@
 // THE FIXTURE-BOUNDARY RED FOR THE INGESTION-TIME DECLARATION INDEX.
 //
-// DESIGN §4b asks BEFORE the check is written whether the forbidden state is authorable
+// gunbc.design_argument::guarantee_ladder asks BEFORE the check is written whether the forbidden state is authorable
 // anywhere the check can run, and says the FIXTURE boundary decides it, not the CORPUS
 // boundary. That is why this file exists. On the live tree all three arms are green: every
 // top-level lens carries `construction_justification`, every import member resolves, every
@@ -185,7 +185,7 @@ fn import_member_present_stays_clean() {
 // So this pair asserts the hole's SHAPE, not its absence: the planted claim produces NO finding
 // (the seed's rule, mirrored) and a count of exactly one. The count is the point: a bare
 // `continue` would satisfy the first assertion and zero the second — the absorbing-fallback
-// shape DESIGN §5 names, the deficit's frequency zeroed by construction so it never ranks for
+// shape gunbc.design_argument::fail_closed names, the deficit's frequency zeroed by construction so it never ranks for
 // fixing. This test goes RED if anyone re-silences it, a red no corpus measurement could
 // produce, since the corpus is exactly where the class is invisible.
 #[test]
@@ -380,7 +380,7 @@ fn missing_export_names(dir: &Path, basenames: &[&str]) -> Vec<String> {
 }
 
 // ARM 2 — the cited-symbol wall. A citation naming a declaration its module does not
-// carry is §3's stale-citation class, and it refuses here.
+// carry is gunbc.design_argument::single_authority's stale-citation class, and it refuses here.
 #[test]
 fn stale_citation_is_refused() {
     let dir = scratch_root("citation");
@@ -403,13 +403,13 @@ fn stale_citation_is_refused() {
 // refusal arm of the cited-symbol wall with no controlled fixture: its only evidence was a
 // PLANTED_CONTROL_CITATIONS row whose citation was authored inside
 // `v2.lens.cited_symbol_resolution`. Deleting that lens deleted the citation, the row stopped
-// reproducing, and nothing would execute against the arm — the §4b(4) failure of deleting
+// reproducing, and nothing would execute against the arm — the gunbc.design_argument::guarantee_ladder (dissolution on climb) failure of deleting
 // evidence with the machinery it outlived. Measured: before this test the string
 // `CitedFieldAbsent` did not occur in this file.
 //
 // A controlled fixture is the STRONGER replacement: the planted row asserted one hand-authored
 // corpus citation still refuses; this authors both input and expected population, the oracle
-// DESIGN §5 asks for.
+// gunbc.design_argument::fail_closed asks for.
 //
 // THE PAIR IS THE POINT: `absent_field` must refuse and `present_field` must NOT, in one
 // fixture. A wall refusing every `NamedField` citation would satisfy the red alone.
@@ -471,7 +471,7 @@ fn citation_to_a_deleted_module_is_refused_and_a_foreign_namespace_is_not() {
     assert!(found[0].1.contains("probe.deleted"), "{}", found[0].1);
 
     // AND THE ONE THAT IS NOT REFUSED IS COUNTED, never silently dropped: a green that
-    // cannot say what it did not cover is the instrument failure DESIGN §5 names.
+    // cannot say what it did not cover is the instrument failure gunbc.design_argument::fail_closed names.
     let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
     let population = index_population(&sweep.index);
     assert_eq!(population.citations, 2);
@@ -668,7 +668,7 @@ fn lens_with_construction_justification_stays_clean() {
 //
 // `review 55817` found that folding the debt arm into `index_findings` gave every fixture here
 // 42 findings it did not plant — the production roster joined against a tree of `probe.*`
-// modules where all 42 rows are trivially absent — falsifying the §4b evidence in place: the
+// modules where all 42 rows are trivially absent — falsifying the gunbc.design_argument::guarantee_ladder evidence in place: the
 // planted-red and positive-control assertions could not pass.
 //
 // The repair splits the arm into `corpus_findings` (denominator: this repository) and gives the
@@ -1458,7 +1458,7 @@ fn a_roster_row_exempts_its_own_citer_and_no_other() {
 //
 // It was: `record_from_module` already iterates top-level items to build `declared`, so the
 // enclosing declaration's name costs one string at extraction and is a NAME, not an offset —
-// reachable from the containment tree, not the positional citation DESIGN §3 forbids.
+// reachable from the containment tree, not the positional citation gunbc.design_argument::single_authority forbids.
 //
 // The fixture is the reviewer's scenario: one module, one enrolled citation, a second dangling
 // citation of the SAME target in a DIFFERENT declaration. Under the module grain this reports

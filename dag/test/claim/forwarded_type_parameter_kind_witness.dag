@@ -142,4 +142,4 @@ test fn a_parameter_forwarded_into_an_unkinded_slot_is_not_repudiated() -> Bool 
 // deleted here (matching-kind admitted; different-kind refused with resolve_reason_forwarded_parameter_kind_differs)
 // become authorable and must be reinstated and run. The Arrow push branch is NOT deleted for being
 // uncovered: the specimen reaches it and decides there, which is what the exact-reason measurement proves,
-// so DESIGN section 3c's deletion does not apply to a branch that is live and merely unobservable.
+// so gunbc.design_argument::consumption's deletion does not apply to a branch that is live and merely unobservable.

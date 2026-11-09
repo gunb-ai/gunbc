@@ -62,7 +62,7 @@ test fn srv3_actuator_host_failover_fixture_selects_srv2() -> Bool {
 // DISCRIMINATING RED CONTROL for the fabricated-default fail-open this lane closed. Before the
 // repair, srv3_os_install_actuator_host answered srv1_host on the ActuatorUnsatisfiable arm, so an
 // unsatisfiable selection actuated an OS install against a DIFFERENT machine with no diagnostic
-// (DESIGN section 5, fabricated default). The declaration is deleted; these witnesses assert that
+// (gunbc.design_argument::fail_closed, fabricated default). The declaration is deleted; these witnesses assert that
 // the two consumers which reach real hardware now refuse under an unsatisfiable selection rather
 // than naming any host at all.
 data unsatisfiable_actuator_selection_fixture: OsInstallActuatorSelection = ActuatorUnsatisfiable {
@@ -126,7 +126,7 @@ test fn satisfiable_selection_still_yields_the_selected_actuator_target() -> Boo
 
 // The third consumer that reaches real hardware. Collapsing an unsatisfiable selection into an
 // Optional made this path answer "host absent from compute inventory", inventing a cause with a
-// different remedy for a failure it did not have; DESIGN section 5 asks for a typed and LOCATED
+// different remedy for a failure it did not have; gunbc.design_argument::fail_closed asks for a typed and LOCATED
 // diagnostic, and a located one names the selection. This asserts the reason survives the reach.
 test fn unsatisfiable_selection_names_the_selection_not_the_inventory() -> Bool {
   match host_toolchain_ensure_reach_under(

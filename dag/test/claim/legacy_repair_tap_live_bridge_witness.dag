@@ -1,6 +1,7 @@
 module test.claim.legacy_repair_tap_live_bridge_witness
 
-import std.types { String, Bool, List, list_length }
+import std.types { String, Bool, List }
+import std.algebra { length }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.optional { Present, Absent }
 import std.content_hash { structural_content_hash }
@@ -64,8 +65,8 @@ test fn a_measured_fixture_root_reaches_the_observed_arm_with_rows_and_bindings(
       occurrence_transport: _,
       binding_rows: bindings
     } =>
-      list_length(items: rows) > 0
-        && list_length(items: bindings) > 0
+      length(xs: rows) > 0
+        && length(xs: bindings) > 0
         && root == "dag/test/fixture/reference_derived_graph"
   }
 }

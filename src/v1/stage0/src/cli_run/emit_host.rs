@@ -135,7 +135,7 @@ pub fn reset_compile_dag_diagnostic_census_cost_counts() -> (u64, u64, u64, u64,
 /// THIS IS THE BUILTIN'S ONLY ENTRY POINT, and there is no separate uncached body. It used to be
 /// a memoized wrapper over a `pub(crate)` `_uncached` function, and BOTH halves of that split are
 /// gone: the memo is deleted (see the deletion story below), and a wrapper that only forwards is
-/// authored duplication (§3, one fact one home; the sibling `compile_dag_rust_emit_check` keeps
+/// authored duplication (gunbc.design_argument::single_authority, one fact one home; the sibling `compile_dag_rust_emit_check` keeps
 /// its split for a reason this one never had -- its `_uncached` returns `EmitCheckRead`, a
 /// different type, while these two had identical signatures).
 ///
@@ -189,7 +189,7 @@ pub fn reset_compile_dag_diagnostic_census_cost_counts() -> (u64, u64, u64, u64,
 /// discards class identity, severity, and every advisory — the three facts a guarantee probe needs
 /// in order to state which judgment fired rather than merely that something refused.
 ///
-/// Scope, stated so a receipt cannot claim coverage it does not have (DESIGN §4b): this is the v1
+/// Scope, stated so a receipt cannot claim coverage it does not have (gunbc.design_argument::guarantee_ladder): this is the v1
 /// pipeline to the Rust render target over a synthetic single-module source — `SyntheticProgram` ×
 /// `CompileAccept` × `V1Pipeline` in `GuaranteePath` axes — **with**
 /// [`crate::v1_rt::with_type_ref_hit_ne_bind_measure`] armed for the nested compile (N1a). That
@@ -396,7 +396,7 @@ pub fn claim_scope_dag_multi_module_fixture(
     // should read that before trusting a green. The receipt is the required floor's own
     // `required-witnesses-floor` job on this branch, whose control rows re-derive it; it is named
     // rather than transcribed, because a copied observation rots without anyone touching either
-    // end (DESIGN §6).
+    // end (gunbc.design_argument::how_to_work).
     //
     // The Err that survives here is `ExprVarReconciliationMismatch`, which IS about the supplied
     // graph, so it is reported as a scope refusal rather than an instrument one.
@@ -455,7 +455,7 @@ pub fn claim_scope_dag_multi_module_fixture(
 /// That is the property control 5 of the witness pins, and it is what makes the instrument usable
 /// for resolution questions at all.
 ///
-/// SCOPE, stated so a receipt cannot claim coverage it does not have (DESIGN §4b): the v1 pipeline
+/// SCOPE, stated so a receipt cannot claim coverage it does not have (gunbc.design_argument::guarantee_ladder): the v1 pipeline
 /// to the Rust render target over an authored multi-module subject. It observes nothing about the
 /// interpreter's disposition of the same program, nothing about other emission targets, and
 /// nothing about corpus-grain prevalence. Unlike the census it does NOT arm
@@ -599,12 +599,12 @@ pub fn compile_dag_multi_module_fixture(
 /// Why omit: `expand_transitive_services` writes only the bare-name-merged `graph.item_registry`,
 /// and `emit_func_def` resolves services via `lookup_item` on that same merged map (no module
 /// check). Publishing the loser's un-expanded local row would report missing `service_names`
-/// while the emitter still binds the survivor's services — a silent wrong answer (§5). Both
+/// while the emitter still binds the survivor's services — a silent wrong answer (gunbc.design_argument::fail_closed). Both
 /// present/absent consumers already treat `Absent` as false on both polarities, so omission is
 /// fail-closed. Service-name overlay for non-colliding names: use the expanded graph row when it
 /// still names this module under that bare name.
 ///
-/// Below ceiling on ORDER and MEMBERSHIP (§3b middle value — deliberate divergence with stated
+/// Below ceiling on ORDER and MEMBERSHIP (gunbc.design_argument::conformance middle value — deliberate divergence with stated
 /// reason on `ResolvedRustFnSignature`): second walk over ItemInfo, not a consumption of
 /// `emit_func_params`. Resource arm reads `info.resource_names`; emit folds `uses` via
 /// `resource_use_name_at` — nothing refuses on disagreement. Next-rung trigger: derive from the
@@ -1483,7 +1483,7 @@ pub(crate) fn observed_occurrence_transport_and_bindings(
         // path was recorded in the same loop, and every occurrence in the transport carries a
         // projection with an authored name. A miss therefore means the walk changed under this
         // instrument, and a sentinel module or an empty spelling would enter the denominator as a
-        // FABRICATED row: exactly the class this census refuses to publish (DESIGN section 5 -- a
+        // FABRICATED row: exactly the class this census refuses to publish (gunbc.design_argument::fail_closed -- a
         // failure arm must refuse, never widen). So the miss stops the line and says which
         // occurrence it was, rather than being absorbed into a row that reads as an observation.
         let Some(consumer_module) = consumer_by_occurrence
@@ -1537,7 +1537,7 @@ pub(crate) fn observed_occurrence_transport_and_bindings(
                     // yielded an EMPTY import list, which makes `listed` false, which stamps the row
                     // PoolCoincidence -- a fabricated semantic disposition produced by a failed
                     // lookup and indistinguishable in the output from an observed one. That is the
-                    // absorbing fallback of DESIGN section 5 at its most expensive, because this
+                    // absorbing fallback of gunbc.design_argument::fail_closed at its most expensive, because this
                     // exact field is what the census reports about. The module is in the same graph
                     // the reference was walked from, so a miss is a broken invariant, not a case.
                     let Some(module) = graph
@@ -1644,7 +1644,7 @@ pub(crate) fn compile_dag_rust_emit_check_memo_key(
 /// `includes` and none of `excludes`, with zero **compile-clean hard** diagnostics
 /// (`compile_clean_diagnostic_is_hard` — the same authority as the CI compile-clean gate).
 /// Advisory diagnostics (including `WhereRefinementUnenforced` deferrals) do not fail this
-/// check. A real, green-by-execution consumer of the v1 Rust emitter (DESIGN §5) — not a
+/// check. A real, green-by-execution consumer of the v1 Rust emitter (gunbc.design_argument::fail_closed) — not a
 /// re-derivation of the emitter's own formula, so it can go red on a real emission regression.
 /// THE PARSED `requires` MEMBERS OF ONE OPERATION, as the seed parser carried them (D13 step b0).
 /// Parses the supplied source with the seed's own tokenizer and parser, finds the named service
@@ -1764,7 +1764,7 @@ pub(crate) const FIXTURE_SOURCE_PATH: &str = "test.dag";
 /// their subject and is unchanged. Up to this commit they then rendered Rust for EVERY module of
 /// the closure (`RenderEveryModule`). The emit check reads ONE emitted file, and the census reads
 /// diagnostics, among them the per-module emit refusals of the modules it renders. So every
-/// closure module rendered beyond the read set was demanded by no consumer. That is §2 redundant
+/// closure module rendered beyond the read set was demanded by no consumer. That is gunbc.design_argument::demand_before_materialization redundant
 /// demand, not a cost to cache: rendering is a pure function of (graph, module), and a module
 /// nobody reads owes no rendering at all.
 ///
@@ -1778,7 +1778,7 @@ pub(crate) const FIXTURE_SOURCE_PATH: &str = "test.dag";
 /// Crate-level files (`Cargo.toml`, `src/lib.rs`, `src/main.rs`, ...) are emitted under every
 /// selection, so a read of one needs no module selected.
 ///
-/// WHAT NARROWS, stated so no receipt claims more than this reads (DESIGN §4b): a corpus module
+/// WHAT NARROWS, stated so no receipt claims more than this reads (gunbc.design_argument::guarantee_ladder): a corpus module
 /// in the fixture's closure is no longer rendered, so ITS per-module emit refusal no longer
 /// reaches the census rows or the emit check's hard-diagnostic gate. Whole-graph emit checks
 /// (anonymous records, effectful recursion, file-name and symbol collisions) run before
@@ -1788,7 +1788,7 @@ pub(crate) const FIXTURE_SOURCE_PATH: &str = "test.dag";
 ///
 /// REFUSES, NEVER WIDENS. If the graph holds no module spanned in the fixture source, there is
 /// no subject to render, and the answer is a typed refusal. It is never a fall back to
-/// `RenderEveryModule`, which would re-buy the work and hide the deficit (DESIGN §5, absorbing
+/// `RenderEveryModule`, which would re-buy the work and hide the deficit (gunbc.design_argument::fail_closed, absorbing
 /// fallback).
 ///
 /// The control that the selected bytes equal the full render's is
@@ -1969,7 +1969,7 @@ pub(crate) struct RenderSelectionAgreementFixture {
 /// told nothing. That happened once: gunbc#12846 retired `std.magnitude`, the receipt's first
 /// choice, and the floor refused on main+PR with `unresolved import`. That refusal is the
 /// receipt working: a fixture whose world moved stops the line rather than passing on some other
-/// mechanism (DESIGN §3). The two modules are chosen so that retiring them is a visible
+/// mechanism (gunbc.design_argument::single_authority). The two modules are chosen so that retiring them is a visible
 /// cascade: `std.logic` is imported across the corpus, and `std.error_primitives` by
 /// `std.algebra`. They are not chosen for being small. One reads the fixture's own module, one reads a module the fixture
 /// IMPORTS (the read-path arm of [`fixture_render_selection`]), and one is import-free (the red).
@@ -1997,7 +1997,7 @@ pub(crate) const RENDER_SELECTION_AGREEMENT_FIXTURES: &[RenderSelectionAgreement
 /// THE CONTROL FOR [`compile_fixture_rendering_only_what_is_read`], run by the required floor on
 /// every run (`required_floor_runner`, `[floor-receipt] receipt=render-selection-agreement`). It
 /// is also the one execution of the FULL render that the fixture instruments no longer perform:
-/// DESIGN §3's pairing obligation keeps one execution of the real path, and DESIGN §4b(4) keeps
+/// gunbc.design_argument::witness_one_interface's pairing obligation keeps one execution of the real path, and gunbc.design_argument::guarantee_ladder (dissolution on climb) keeps
 /// the discriminating red and the positive control enrolled.
 ///
 /// For each of [`RENDER_SELECTION_AGREEMENT_FIXTURES`] it compiles once at this revision, renders
@@ -2423,7 +2423,7 @@ pub(crate) fn compile_xl1_primary_root_tap(
 /// same process, where every fixture call may be a hit.
 ///
 /// One path recorded with two different byte contents is not unioned by picking one: it is kept as
-/// a conflict, and the receipt refuses on it (DESIGN §5, refuse rather than widen or choose).
+/// a conflict, and the receipt refuses on it (gunbc.design_argument::fail_closed, refuse rather than widen or choose).
 #[derive(Default)]
 pub(crate) struct FixtureClosureUnion {
     pub members: BTreeMap<String, String>,
@@ -2780,7 +2780,7 @@ pub(crate) fn fixture_closure_union_control_union(
 }
 
 /// THE ENROLLED CONTROLS FOR [`fixture_closure_union_emit_receipt`], run by the required floor on
-/// every run before the union renders (review 76399; DESIGN §4b(4): the discriminating red and the
+/// every run before the union renders (review 76399; gunbc.design_argument::guarantee_ladder (dissolution on climb): the discriminating red and the
 /// positive control stay enrolled on the acceptance path, not only in cargo unit tests, which run on
 /// no CI path). The red member must refuse as `FixtureClosureUnionEmitRefused` located at
 /// `module=efr_member`; the clean member must hold. Either failing refuses the floor, so a later

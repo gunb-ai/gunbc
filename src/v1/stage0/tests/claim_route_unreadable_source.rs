@@ -108,7 +108,7 @@ fn the_rust_renderer_matches_the_dag_carrier_for_every_cause() {
     );
     assert_eq!(
         r("p", &C::ModuleCollision { other: "q".into() }),
-        "claim source refused: p: declares a module also declared by q; one module, one authority (DESIGN section 3), so de-fork or rename one side"
+        "claim source refused: p: declares a module also declared by q; one module, one authority (gunbc.design_argument::single_authority), so de-fork or rename one side"
     );
     assert_eq!(
         r("p", &C::DirectoryNamedDag),

@@ -10,7 +10,7 @@ import std.process { ProcessExit }
 // floor does not use: gunbc.ci.ci_layer_roots already records that entries there "have NO
 // executing consumer", and the floor prints "floor changed-witness selections outside
 // discovery: 4 identity(ies) declined" naming exactly those four. A witness that asserts
-// correctly and is discovered nowhere is DESIGN section 3c's declaration with no consumer, and
+// correctly and is discovered nowhere is gunbc.design_argument::consumption's declaration with no consumer, and
 // it is worse than absent because three reviews cited it as this change's executed evidence.
 //
 // The subject is asked through the same source-string surface the sibling probes use, so it
@@ -36,7 +36,7 @@ test fn expansion_receiver_raises_the_evidence_diagnostic() -> ProcessExit {
   census_exit(census_verdict(census: any_class_census(source: expansion_receiver_source, wanted_class: "AlgebraApplicationEvidenceUnavailable"), holds: fn(n) { n >= 1 }))
 }
 
-// ACCEPTED POSITIVE CONTROL, enrolled beside the red per DESIGN 4b(4). Same fold, same lambda,
+// ACCEPTED POSITIVE CONTROL, enrolled beside the red per gunbc.design_argument::guarantee_ladder (dissolution on climb). Same fold, same lambda,
 // same helper -- the ONLY variable is that the receiver is the declared List<Symbol> parameter
 // rather than a literal rebuilt from its binders, so the nominal application survives and
 // there is nothing to recover positionally. A zero here means the diagnostic is specific to

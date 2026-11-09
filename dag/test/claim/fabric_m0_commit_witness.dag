@@ -388,7 +388,7 @@ test fn a_precondition_failure_with_no_object_is_absence() -> Bool {
 // the bytes and the digest are identical and only the SOURCE separates them. Reading our own
 // manifest back off the node that is about to be lost must not publish success.
 //
-// THIS WITNESS CHANGED SHAPE WITH THE REPAIR AND STAYS ENROLLED (DESIGN 4b(4)). It used to hand the
+// THIS WITNESS CHANGED SHAPE WITH THE REPAIR AND STAYS ENROLLED (gunbc.design_argument::guarantee_ladder (dissolution on climb)). It used to hand the
 // fold a ManifestRead stamped DisposableCacheRead and check that the fold refused it -- a check that
 // could be satisfied by editing the stamp. There is no stamp now: cache_manifest_read is the ONLY
 // thing a cache read can produce and it cannot produce a confirming read at all, so what this

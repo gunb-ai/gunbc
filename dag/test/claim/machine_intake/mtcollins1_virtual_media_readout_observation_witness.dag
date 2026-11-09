@@ -1,6 +1,6 @@
 module test.claim.machine_intake.mtcollins1_virtual_media_readout_observation_witness
 
-// B0 (gunbc.plans.boot_origin_bmc_media), AND THE DISCRIMINATION ITS OWN PREMISE NEEDS.
+// B0 (gunbc.plans.boot_origin_bmc_media (deleted 2026-11-08)), AND THE DISCRIMINATION ITS OWN PREMISE NEEDS.
 //
 // Every test below is a fact ONLY this phase's reading can change, and each is written so a wrong
 // selector or a padded receipt FAILS it: the plan's rule is one arm per branch, and the arms are
@@ -17,7 +17,7 @@ module test.claim.machine_intake.mtcollins1_virtual_media_readout_observation_wi
 // committed receipt, so every arm is driven by the same data the fleet will consume and cannot
 // drift from it.
 
-import std.types { Bool, List, String, NonEmptyStr, list_length }
+import std.types { Bool, List, String, NonEmptyStr }
 import std.optional { Present, Absent }
 import std.algebra { length, string_contains }
 import std.content_hash { ContentHash, Sha256Hash, lower_hex_64 }
@@ -184,7 +184,7 @@ test fn b0_readout_is_the_refused_arm() -> Bool {
 test fn b0_empty_admitted_list_is_a_different_state_from_unread() -> Bool {
   (match with_readout(readout: ReadoutRead { protocols: [] }).transfer_protocol_readout {
     ReadoutRefusedUnauthenticated { challenge: _ } => false
-    ReadoutRead { protocols: p } => list_length(items: p) == 0
+    ReadoutRead { protocols: p } => length(xs: p) == 0
     ReadoutNeverAttempted => false
   })
     && (match b0_media_route_admission(readout: admitted(protocols: [])) {
@@ -412,7 +412,7 @@ test fn b0_deleting_a_ladder_row_fails_every_door_rather_than_passing_one() -> B
   }
   // The row really is gone from the copy, or the test below proves nothing.
   ladder_answered(readout: mtcollins1_b0_virtual_media_readout, path: path)
-    && list_length(items: without.ladder) == list_length(items: b0_ladder) - 1
+    && length(xs: without.ladder) == length(xs: b0_ladder) - 1
     // ...and none of the three doors accepts the absence.
     && !ladder_answered(readout: without, path: path)
     && !ladder_answered_with(readout: without, path: path, status: 401)

@@ -427,11 +427,11 @@ fn cost_graph_linear(v_param: String, e_param: String) -> CostBound {
 // carries a degree and a log count, so an ordering can be computed from numbers that mean nothing,
 // and that is precisely how sqrt(n) came to be ordered as cheaper than n and an unbounded cost came
 // to compare equal to a constant. Both were caught by a gate ADDED AFTER the numbers were compared,
-// which is validation standing where construction was available (DESIGN section 5). So the rank and
+// which is validation standing where construction was available (gunbc.design_argument::fail_closed). So the rank and
 // the refusal are two constructors: `param_growth_order` takes GrowthRank, an unorderable growth has
 // no rank to hand it, and the comparison the flag existed to prevent has no way to be written.
 // The unorderable arm carries no payload, deliberately: a body count on a growth no consumer can
-// place is a field nothing reads (DESIGN section 3c).
+// place is a field nothing reads (gunbc.design_argument::consumption).
 type GrowthRank {
   degree: Int
   logs: Int
@@ -606,7 +606,7 @@ fn cost_bound_params(b: CostBound) -> List<String> {
 // cost_bound_is_orderable, atomic_factors_are_orderable and atomic_cost_is_orderable re-walked
 // CostBound's arms in parallel with cost_bound_growth_in_param, which already decides orderability
 // per parameter and already recurses SumBound. Two walks over one storage shape is one authority
-// too many (DESIGN section 5), and the second one drifts silently because nothing forces them to
+// too many (gunbc.design_argument::fail_closed), and the second one drifts silently because nothing forces them to
 // agree.
 //
 // WHAT THE PREDICATES ACTUALLY COVERED that the fold did not: only the bound with NO PARAMETERS,

@@ -7,7 +7,7 @@ import gunbc.claim_executor_cli { claim_executor_relative_path }
 // THE MERGE DRIVER FOR merge=generated-artifact PATHS, AND WHY IT REFUSES INSTEAD OF ANSWERING
 // `true`. The binding was `merge.generated-artifact.driver=true` — the shell builtin, which leaves
 // the ours side in place and exits 0. Git then records the merge as CLEAN and the other side's
-// bytes are gone with no signal. That is the absorbing fallback of DESIGN section 5 at the
+// bytes are gone with no signal. That is the absorbing fallback of gunbc.design_argument::fail_closed at the
 // integration boundary: the driver's failure arm answered instead of refusing, and it destroyed the
 // one fact worth keeping — that a provisional choice was made at all — so the deficit's frequency
 // was zero by construction and nothing ranked it for fixing. MEASURED CLASS: PR #7836, twice in one
@@ -27,7 +27,7 @@ import gunbc.claim_executor_cli { claim_executor_relative_path }
 // verbatim — clean bytes, NO conflict markers — and marks the path unmerged. The regenerators can
 // therefore run against the worktree immediately, and a writer that would sweep the tree cannot
 // commit marker text (there is none to sweep); the unmerged index stage is what the landed
-// commit-writer admission already refuses on. RUNG (DESIGN section 4b), stated at its honest
+// commit-writer admission already refuses on. RUNG (gunbc.design_argument::guarantee_ladder), stated at its honest
 // ceiling: this class moves from mitigatable — the regen gate detecting the bad transition a CI
 // cycle after it exists — to MECHANICALLY PREVENTABLE at the merge boundary. It is NOT structural:
 // the invalid state stays writable, because a resolver can still `git add` the provisional bytes
@@ -77,12 +77,12 @@ data generated_artifact_merge_driver_shell_program: String = "bash"
 // row for the reason review 45175 gave the pre-push sibling: a family trigger tracked once lets each
 // member inherit it implicitly, which is the shape the medium gate asks not to rely on.
 //
-// THE TRIGGER NAMES THE CAPABILITY AND NOT AN ARTIFACT, per DESIGN section 4b(3). Emitting THIS
+// THE TRIGGER NAMES THE CAPABILITY AND NOT AN ARTIFACT, per gunbc.design_argument::guarantee_ladder (no silent regression). Emitting THIS
 // script through the grammar path retires nothing on its own; what retires the row is the bash
 // medium being modeled well enough that a diagnostic line's variable references and quoting are
 // DECLARED rather than spelled -- which is also the ceiling this module's own defect class names,
 // since every defect repaired here is a rendering the author could not see in the authored string.
-data generated_artifact_merge_driver_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: expected_generated_artifact_merge_driver_sh — concat-built foreign-executor (git merge driver) diagnostic script whose recipe lines are shell text with an escaping pass applied at emit time; DISSOLVES WHEN the bash medium is read forward from GrammarRelationRow rows (DESIGN section 4, one grammar in both directions) such that a diagnostic line's variable references and shell-active characters are declared rather than spelled, and this module emits through that path with no concat-built shell literal and no emit-time escaping arm")
+data generated_artifact_merge_driver_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: expected_generated_artifact_merge_driver_sh — concat-built foreign-executor (git merge driver) diagnostic script whose recipe lines are shell text with an escaping pass applied at emit time; DISSOLVES WHEN the bash medium is read forward from GrammarRelationRow rows (gunbc.design_argument::closed_grounded_substrate, one grammar in both directions) such that a diagnostic line's variable references and shell-active characters are declared rather than spelled, and this module emits through that path with no concat-built shell literal and no emit-time escaping arm")
 
 fn generated_artifact_merge_driver_config_value_at(script_path: String) -> String {
   concat(
@@ -195,7 +195,7 @@ fn generated_artifact_merge_driver_common_diagnostic_lines() -> List<String> {
 // bash_escape_for_double_quotes is the literal-line form and escapes $ as well, which is exactly
 // wrong for a template whose whole job is to name the path git handed the driver. So that function
 // is now composed from bash_escape_double_quote_specials_except_expansion, and this module calls the
-// same shared arm rather than authoring a second implementation of one concept (DESIGN section 3).
+// same shared arm rather than authoring a second implementation of one concept (gunbc.design_argument::single_authority).
 fn emit_driver_stderr_echo(line: String) -> String {
   concat(concat("echo \"", bash_escape_double_quote_specials_except_expansion(s: line)), "\" >&2\n")
 }

@@ -16,7 +16,7 @@ import gunbc.integration_concern {
   concern_text, integration_concerns, fork_rows_have_distinct_authorities,
 }
 
-// SUPPLIED ROWS (DESIGN section 3, a witness discriminates at one interface): the relevance and
+// SUPPLIED ROWS (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface): the relevance and
 // closure rules are judged over rows built here, and the last two claims run the same functions over
 // the real register, so the supplied boundary is paired with an inhabitance reading.
 
@@ -167,4 +167,12 @@ test fn the_real_register_answers_a_scoped_reading_by_identity() -> Bool {
     && names(rows: concerns_for(s: scope(changed: ["gunbc.site.build_meter_client"], referenced: []), rows: integration_concerns), identity: "target_syntax_built_by_hand_in_application_modules")
     && names(rows: concerns_for(s: scope(changed: ["gunbc.approve_ios_swift_operation_errors"], referenced: []), rows: integration_concerns), identity: "target_syntax_built_by_hand_in_application_modules")
     && !names(rows: concerns_for(s: scope(changed: ["gunbc.site.element.build_meter"], referenced: []), rows: integration_concerns), identity: "target_syntax_built_by_hand_in_application_modules")
+
+    // THE BYTE-SEQUENCE-SEARCH FORK ROW, sighted by the Mt. Collins UI asset observer. Its authorities
+    // sit in seven modules, so a change to any one of them makes it relevant, and the reading is exact:
+    // the module path above the machine_intake module is NOT relevant, because relevance compares whole
+    // module paths and never walks namespace ancestry.
+    && names(rows: concerns_for(s: scope(changed: ["gunbc.machine_intake.mtcollins1_ui_status_asset_observation"], referenced: []), rows: integration_concerns), identity: "byte_sequence_search_reimplemented_per_module")
+    && names(rows: concerns_for(s: scope(changed: [], referenced: ["extdeps.version.semver"]), rows: integration_concerns), identity: "byte_sequence_search_reimplemented_per_module")
+    && !names(rows: concerns_for(s: scope(changed: ["gunbc.machine_intake"], referenced: []), rows: integration_concerns), identity: "byte_sequence_search_reimplemented_per_module")
 }

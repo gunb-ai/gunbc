@@ -5,7 +5,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import extdeps.vendor.diodes_incorporated { diodes_incorporated }
 import std.measure { millivolt }
-import extdeps.electronic_component.types { BusMultiplexerSpec, BusMultiplexerSpecification, ElectronicComponentRow, MillivoltRange }
+import extdeps.electronic_component.types { MarkDescribedNotStructured, BusMultiplexerSpec, BusMultiplexerSpecification, ElectronicComponentRow, MillivoltRange }
 
 // Diodes Incorporated's PI3CH480 data sheet, Document Number DS40329 Rev 5.2, December 2021, fetched from
 // www.diodes.com/assets/Datasheets/PI3CH480.pdf and read 2026-11-03. Four of the five body styles this
@@ -20,24 +20,22 @@ import extdeps.electronic_component.types { BusMultiplexerSpec, BusMultiplexerSp
 // WHERE THE BOARD OBSERVATIONS LIVE. The four bodies this repository holds were read as "PI3CH" over
 // "480QE" over a traceability code. Those are observations THIS REPOSITORY made, so they are receipts on
 // the observing side -- product.p4261.e1_b records each as an InstalledComponent's MarkingReading, citing
-// the frame and the box it was read from -- and not facts of this module (DESIGN §3). What this module
+// the frame and the box it was read from -- and not facts of this module (gunbc.design_argument::single_authority). What this module
 // contributes is the document's half of the match: "PI3CH480" is the part number this document publishes,
 // and "QE" is the package/finish field of its ordering code, whose Q entry is the QSOP-16 body listed as
 // PI3CH480QEX.
 //
-// WHAT THIS ROW OWES A RE-READ, AND WHERE THAT IS CARRIED. Two things, both named rather than papered
-// over. Both are coverage obligations on the CLAIMS that use this row, carried in their TranscribedUncited
-// standing in extdeps.nvidia.p4261.population (the four e1_part_owing rows name them), not properties of
-// this upstream row. (1) This document's customer-marking table has NOT been read: its runs are set in a
-// font the extractor available here cannot decode. So `top_marking` below is `Absent` -- a row states a
-// mark only where the cited document publishes one, never what our own bodies print -- and closing the gap
-// means reading that table and filling the field, or correcting the row. (2) The attribution to the Q
-// (QSOP) body rests on the ordering-code field and on the observed body style, not on a marking table; if
-// the re-read shows the TSSOP (LEX) part carries the same mark, the four positions become one of a
-// constrained set (PopulatedPart.PartConstrainedToRows) rather than this single row. The prose sections
-// (description, features) are in the same undecodable font, so nothing is quoted from them; the two
-// sentences under `vendor_application_statements` are the enable description, which DID extract,
-// reassembled across the column break in the pin table.
+// THE MARKING TABLE (page 8, PDF SHA-256 c20c7fd8360c046a93c2886d68175913b5f6f97ace1ac31e574040c7d9fa6e3b)
+// publishes the Q-package top mark "PI3CH / 480QE_ / ZYWXX": line 2 is the part number with the
+// package/finish code, whose final character is printed with a bar over the fab code in the figure and is
+// written "_" here; line 3 is Z (assembly site), YW (year, week), XX (internal). `top_marking` carries
+// that string in the vendor's notation. The ZHD (UQFN) entry of the same table reads "Top mark is not
+// available at this time": that is the documented trigger to widen `top_marking` to NoMarkingPublished,
+// held back because no ZHD row exists and nothing would consume it. The prose sections remain in an
+// undecodable font, so the two sentences under `vendor_application_statements` are the enable
+// description only. The consumer of the mark is the post-marking-PR identification join (a declared
+// frontier); the Q attribution rests on this table's Q entry, and the obligation text in
+// extdeps.nvidia.p4261.population still names the re-read it was written for.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -61,7 +59,7 @@ data pi3ch480_qex: ElectronicComponentRow = ElectronicComponentRow {
   vendor: diodes_incorporated,
   ordering_code: "PI3CH480QEX",
   package: "QSOP-16 (Q), 150 mil body; exposed pad tied to GND",
-  top_marking: Absent,
+  top_marking: Present { value: MarkDescribedNotStructured { text: "PI3CH / 480QE_ / ZYWXX", why: "the final underscore stands for a character printed with a bar over the fab code, which is not a glyph run" } },
   specification: BusMultiplexerSpec { multiplexer: BusMultiplexerSpecification {
     channels: 4,
     inputs_per_channel: 2,

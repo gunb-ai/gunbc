@@ -1,0 +1,11 @@
+module gunbc.migration_citer
+
+// THE POST-IMAGE, in the form the migration leaves behind: what was the legacy citation `DESIGN §3`
+// is now the marked reference @ref(gunbc.migration_cited::migration_cited_function) below. check-references
+// over this root is the end of the migration's own control — an applied edit whose result the
+// population's checker will not accept is not an applied edit, it is a string that happens to look
+// like a reference.
+
+fn migration_citer_value() -> Int {
+  3
+}

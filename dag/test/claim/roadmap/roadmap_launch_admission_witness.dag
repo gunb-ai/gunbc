@@ -22,7 +22,10 @@ import gunbc.roadmap.roadmap_belt_actuate {
   BeltPassRecorded,
   belt_capacity_of_instance,
 }
-import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string }
+
+import gunbc.roadmap.roadmap_session_attempt_slots_cutover {
+  AttemptSlotsCutoverNotRun,
+}import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string }
 import gunbc.roadmap.roadmap_presentation {
   WorkAction, ActionAvailable, ActionUnavailable, PrimaryAction, SecondaryAction, DiagnosticAction,
   OpenLifecycle, DoneLifecycle, dispatch_action,
@@ -74,7 +77,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// RLM-1 red controls (docs/plans/roadmap-launch-mvp-plan.md section 3, RLM-1 falsifiers), each
+// RLM-1 red controls (docs/plans/roadmap-launch-mvp-plan.md (deleted 2026-11-08) section 3, RLM-1 falsifiers), each
 // enrolled as a permanent regression control over the RLM-0 synthetic canary graph and the fixture
 // host: (a) the blocked child is refused DependenciesBlocked and the tick fold over it produces no
 // actuation outcome at all -- SpawnNotAdmitted is the only arm a refusal can reach, and Spawned /
@@ -827,6 +830,7 @@ test fn witness_tick_receipt_round_trips_launch_identities() -> Bool {
     teardown_pass: BeltPassRecorded,
     seat_discharge_pass: BeltPassRecorded,
     discovery_pass: BeltPassRecorded,
+    slots_cutover_pass: BeltPassDeferred { reason: "witness fixture: the cutover pass did not run" },
   }
   match belt_tick_receipt_decode(raw: serialize_json(v: belt_tick_receipt_json_value(receipt: receipt))) {
     BeltTickReceiptPresent { receipt: back } =>

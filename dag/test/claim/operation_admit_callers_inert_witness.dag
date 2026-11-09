@@ -71,7 +71,7 @@ test fn fn_form_admission_refuses_unadmitted_caller() -> ProcessExit {
 // THE FINDING, EXPECTED-RED. Identical question at operation grain: a sealed operation whose
 // admit_callers list does not name the caller. This asserts the refusal that OUGHT to occur, so it
 // fails today and is enrolled as known-red rather than left to take the floor down as unexplained
-// breakage. Per DESIGN 4b it does NOT get deleted when the resolver gains operation-grain
+// breakage. Per gunbc.design_argument::guarantee_ladder it does NOT get deleted when the resolver gains operation-grain
 // enforcement -- it flips to a permanent regression control, because deleting the evidence on the
 // climb recreates specification-without-execution one rung up.
 test fn operation_form_admission_refuses_unadmitted_caller() -> ProcessExit {

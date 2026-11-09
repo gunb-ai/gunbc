@@ -5,7 +5,7 @@ import std.types { String, List, Bool }
 // THE AFFECTED SET OF ONE EDIT: which committed mirrors can change when these .dag modules
 // change. This is the bound gunbc.regen_round_cost regen_affected_set_disposition scoped
 // (DerivableNow, with its residual), made into an authority a regen can consume, and it is a
-// BOUND -- a structural over-approximation computed AS the answer (DESIGN section 5) -- never an
+// BOUND -- a structural over-approximation computed AS the answer (gunbc.design_argument::fail_closed) -- never an
 // exact set: exactness needs the per-module emit itself.
 //
 // THREE SOURCES, ALL DECLARED, NONE A FILENAME EXCEPTION.
@@ -39,7 +39,7 @@ import std.types { String, List, Bool }
 // whose module name is no longer readable from the tree, or a .dag under no source root -- the
 // answer is EditedSetUnlocatable naming the paths. It does not fall back to WholePopulation:
 // "whole rebuild required" and "the selection could not answer" are different states, and
-// collapsing them would erase the only signal that the locator has a deficit (DESIGN section 5,
+// collapsing them would erase the only signal that the locator has a deficit (gunbc.design_argument::fail_closed,
 // the absorbing fallback; operator ruling 2026-08-30).
 
 type DependencyEdge {
@@ -174,7 +174,7 @@ fn regen_reverse_step(reached: List<String>, edges: List<DependencyEdge>) -> Lis
 
 // THE REVERSE CLOSURE, as a bounded iteration: a path in a graph of n modules has at most n
 // edges, so n steps reach the fixpoint by construction (execution is bounded and forward,
-// DESIGN section 4). The host realizes the same walk over its edge index; the lockstep test
+// gunbc.design_argument::closed_grounded_substrate). The host realizes the same walk over its edge index; the lockstep test
 // holds the two to one answer on a fixture graph.
 fn regen_reverse_closure(edited: List<String>, edges: List<DependencyEdge>, modules: List<String>) -> List<String> {
   fold(modules, init: edited, f: fn(acc, m) { regen_reverse_step(reached: acc, edges: edges) })

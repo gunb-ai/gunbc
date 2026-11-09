@@ -25,13 +25,13 @@ import gunbc.target_binding { NativeClaimProgramProducer }
 // row goes red when the route it guards rots: a manifest that accepts a malformed row, a diff that
 // stops naming the first disagreeing byte, or a binding row retargeted away from
 // NativeClaimProgramProducer -- the last is the control that goes red if the native route is
-// REMOVED or FALLS BACK, because the producer IS the route (DESIGN section 3: the label's binding
+// REMOVED or FALLS BACK, because the producer IS the route (gunbc.design_argument::single_authority: the label's binding
 // is the single authority for how it runs; a fallback here would silently hand the sweep back to
 // the interpreter while still printing rows).
 // THE ROUTE CONTROL. The binding row names the emit+build+exec producer, the entry module and a
 // host deadline. Remove the row, or re-point the producer at any other arm, and these go red --
 // this is the control that goes red if the native route is REMOVED or FALLS BACK, because the
-// producer IS the route (DESIGN section 3: the label's binding is the single authority for how it
+// producer IS the route (gunbc.design_argument::single_authority: the label's binding is the single authority for how it
 // runs; a fallback here would silently hand the sweep back to the interpreter while still printing
 // rows).
 test fn the_binding_row_binds_the_entry_to_the_native_claim_program_producer() -> Bool {
