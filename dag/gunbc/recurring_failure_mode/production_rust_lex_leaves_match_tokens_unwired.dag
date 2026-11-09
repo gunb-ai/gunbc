@@ -1,0 +1,18 @@
+module gunbc.recurring_failure_mode.production_rust_lex_leaves_match_tokens_unwired
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
+
+data production_rust_lex_leaves_match_tokens_unwired: RecurringFailureMode = RecurringFailureMode {
+  identity: "production_rust_lex_leaves_match_tokens_unwired" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
+
+  receipts: [
+    "INVALID STATE: the Rust `match_form` (`v2.extdeps.languages.rust` `rust_value_expression_projection`) names `^rust_token_unwired_match` and `^rust_token_unwired_fat_arrow`, but only `rust_staging_match_additional_lex_rules` carries their lex rules; `rust_production_lex_rules` has none. Any match serialized on the production Rust route therefore refuses `target_lex_rule_literal_not_found`, unlocated (no file).",
+    "DISTINGUISHING FACTS: the refusal is typed and loud, so no silent wrongness; it is independent of pattern position and of the nullary-arm qualifier spelling. Read on srv2 at 36d781f2 (probe on 06c50c6c). Held as a declared pin by `v2.test.claim.self_host.closure_emission` `a_match_with_a_nullary_arm_pattern_refuses_for_want_of_production_match_tokens_holds`.",
+    "RUNG FOUND AT: mitigated (typed refusal). CEILING: structurally guaranteed once the rules are wired and rustc-validated. NEXT-RUNG TRIGGER (a capability): production Rust match emission is wired with rustc-validated `match ` / ` => ` / scrutinee and arm-separator rules; the pin then flips to the positive `CeTsiScheme::Https =>` assertion.",
+  ],
+
+  evidence: [],
+}
