@@ -59,3 +59,8 @@ Maintained by silent-bee-845, the daily integration manager. CI's required job (
 - return_tail_position: 3 PASS / 14 FAIL; fixtures resolve-refused upstream.
 - let_match_early_return: 12/18 false; same resolve-refused pattern as #15363's accepted controls (the reason lies outside every resolve/infer reason symbol).
 - #15868 CLOSED, not restored (2026-11-09). The archived head ffd4e4ec's claim files never compiled (inv 93657c61), and its own code turns main-green infer_declared_return_inhabitance_witness::declared_return_list_of_bool_with_an_int_list_body_refuses_holds red (inv 6d869732). The argument-path verdict machinery (~656 lines of production change) is unexecuted, scoring 4/15 at the call-shape-fixed head 8770fe01. The closed-sum reason naming is re-authoring, not a subtraction from that diff, and nothing is filed for it. Archive: pr-15868 plus branch v2/inhabitance-decision-reasons @ 8770fe01.
+
+## CONTINUATION STACK LANDED: #15804 (39d43604), 2026-11-09
+- Owed-wet: the real supervised session (verdict written, read back, acted on; needs a stub backend of scripted tool calls, which does not exist yet); 25 UNOBSERVED rows (belt_actuate 9, operator_close_retire 15, roadmap_serve 1); the *_wet stack modules, including harness_events_lost_update_wet_witness.
+- COST DEFECT on main: durable_append_log_witness::the_raw_events_initializer_is_gone exceeds a 600 s CPU budget at about 4,100 eval steps, so the time is inside a builtin (the nested in-process compile of deleted_callable_route_is_gone).
+- Declared frontier: 0b-2, the wake that fires at redeliver_at. Not built.
