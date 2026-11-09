@@ -1,0 +1,43 @@
+module test.claim.roadmap.ld449_lab_cutover_off_witness
+
+// LAB-ONLY (srv1 lab candidate ld449-lab-r4; never main or integration). The lab tick does not run the
+// attempt-slots cutover: belt_tick_slots_cutover, the binding the tick calls, answers the typed not-run arm for a
+// complete isolated instance rooted in this witness's own mktemp directory. RED at the commit where the binding
+// still calls belt_attempt_slots_cutover_pass (the r4 witness commit before the 2/2 guard): the pass runs and
+// answers Recorded or StoresUnresolved, never NotRun. Standalone because main's session_placement_wet_witness
+// does not resolve at 4aad92f8 (SlotStore vs SessionAttemptSlotsStore at its lines 1270/1288).
+
+import std.types { Bool, String, NonEmptyStr, FilePath }
+import extdeps.shell
+import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating }
+import gunbc.roadmap.roadmap_session_attempt_slots_cutover { AttemptSlotsCutoverPassOutcome, AttemptSlotsCutoverRecorded, AttemptSlotsCutoverRecordUnwritten, AttemptSlotsCutoverStoresUnresolved, AttemptSlotsCutoverNotRun }
+import gunbc.roadmap.roadmap_belt_actuate { belt_tick_slots_cutover }
+
+fn off_dir() -> String {
+  shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_ld449_cutover_off.XXXXXX").path
+}
+
+fn off_instance(dir: String) -> HostDashboardInstance {
+  isolated_dashboard_instance(
+    deployment: deployment_id(name: "session-wet" as NonEmptyStr),
+    instance_id: "session-wet" as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: dir as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18099,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    actuator_host: srv1_host_layout().host_identity,
+  )
+}
+
+test fn the_lab_tick_binds_the_slots_cutover_as_not_run_and_writes_no_record() -> Bool {
+  match belt_tick_slots_cutover(instance: off_instance(dir: off_dir())) {
+    AttemptSlotsCutoverNotRun { reason: _ } => true
+    AttemptSlotsCutoverRecorded { path: _, record: _ } => false
+    AttemptSlotsCutoverRecordUnwritten { path: _, error: _, record: _ } => false
+    AttemptSlotsCutoverStoresUnresolved { detail: _ } => false
+  }
+}
