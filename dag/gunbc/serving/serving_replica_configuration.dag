@@ -96,7 +96,7 @@ fn warm_rungs_without_disk(ladder: List<ServingWarmSwap>) -> List<ServingWarmSwa
 }
 
 fn rung_is_host_ram(rung: ServingWarmSwap) -> Bool {
-  match rung.rung {
+  match rung {
     WarmSwapRestores { tier: tier } => match tier {
       SwapTierHostRam => true,
       _ => false,

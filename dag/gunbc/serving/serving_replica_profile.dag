@@ -936,7 +936,7 @@ fn replica_power_cap_each_walk(gpu: List<ReplicaGpuCard>, cap: Optional<Watt>) -
           match cap {
             Absent => replica_power_cap_each_walk(gpu: gpu.skip(n: 1), cap: Present { value: watt }),
             Present { value: seen } =>
-              if watt_count(a: watt) == watt_count(a: seen) {
+              if watt_count(w: watt) == watt_count(w: seen) {
                 replica_power_cap_each_walk(gpu: gpu.skip(n: 1), cap: cap)
               } else {
                 Absent
@@ -976,31 +976,25 @@ fn replica_power_cap_match(want: ReplicaRunIdentity, taken: Srv1TopologyRunIdent
     // to have been taken at this replica's cap.
     Absent => no_match(reasons: one_plain_reason(text: "this replica states no single per-card power cap, so no reading can be shown to share its cap")),
     Present { value: cap } =>
-      if watt_count(a: cap) == watt_count(a: taken.power_cap_each) {
-        match taken.weights_quant {
-          // A run identity that carries no weight-quantization axis: the axis goes unchecked, NAMED. The
-          // reading still has to match on everything its record can state.
+      if watt_count(w: cap) == watt_count(w: taken.power_cap_each) {
+        // The weight quantization is the ONE axis the reading's own record cannot carry: Srv1TopologyRunIdentity
+        // has no such field, so there is nothing on the reading's side to compare against. That is reported as
+        // an UNCHECKED axis -- named, with the read that would close it -- rather than passed as an agreement.
+        // When the run identity gains the field, the pair against the reading's stated quantization goes here.
+        match want.weights_quant {
           Absent => ReplicaRunIdentityMatch {
             agrees: true,
             reasons: [] as List<NonEmptyStr>,
-            unchecked: [
-              "the reading's run identity carries no weight-quantization field, so only the KV dtype was checked; read the weight quantization into the run identity" as NonEmptyStr,
-            ] as List<NonEmptyStr>,
+            unchecked: ["neither this replica nor the reading's run identity states a weight quantization, so the axis is unchecked on both sides" as NonEmptyStr] as List<NonEmptyStr>,
           },
-          Present { value: taken_quant } =>
-            match want.weights_quant {
-              Absent => no_match(reasons: one_reason(field: "weight quantization", own: "(unstated)", taken: taken_quant as String)),
-              Present { value: own_quant } =>
-                if (own_quant as String) == (taken_quant as String) {
-                  ReplicaRunIdentityMatch {
-                    agrees: true,
-                    reasons: [] as List<NonEmptyStr>,
-                    unchecked: [] as List<NonEmptyStr>,
-                  }
-                } else {
-                  no_match(reasons: one_reason(field: "weight quantization", own: own_quant as String, taken: taken_quant as String))
-                },
-            },
+          Present { value: own_quant } => ReplicaRunIdentityMatch {
+            agrees: true,
+            reasons: [] as List<NonEmptyStr>,
+            unchecked: [concat(
+              concat("this replica runs weights quantized as ", own_quant),
+              " and the reading's run identity carries no weight-quantization field to compare; only the KV dtype was checked -- read the weight quantization into the run identity" as NonEmptyStr
+            ) as NonEmptyStr] as List<NonEmptyStr>,
+          },
         }
       } else {
         no_match(reasons: one_plain_reason(text: "per-card power cap differs between this replica and the run the reading was taken under"))
@@ -1217,7 +1211,7 @@ fn warm_charge_walk(ladder: List<ServingWarmSwap>, want_disk: Bool, best: Option
           },
       },
     Present { value: head } =>
-      match head.rung {
+      match head {
         WarmSwapRestores { tier: tier, cache: cache } =>
           if tier_is_disk(tier: tier) == want_disk {
             match cache {
@@ -1249,7 +1243,7 @@ fn bigger(a: Optional<ByteSize>, b: ByteSize) -> Optional<ByteSize> {
   match a {
     Absent => Present { value: b },
     Present { value: seen } =>
-      if byte_size_count(a: b) > byte_size_count(a: seen) {
+      if byte_size_count(b: b) > byte_size_count(b: seen) {
         Present { value: b }
       } else {
         Present { value: seen }
@@ -1308,24 +1302,39 @@ fn scale_component(base: Optional<ByteSize>, times: Nat) -> Optional<ByteSize> {
       if times == 0 {
         Present { value: byte_size(count: 0) }
       } else {
-        Present { value: byte_size(count: byte_size_count(a: bytes) * times) }
+        Present { value: byte_size(count: byte_size_count(b: bytes) * times) }
       },
   }
 }
 
-// The sum, or nothing: an unread part makes the whole axis unread, and the obligations already say which part.
+// The sum, or nothing: an unread part makes the whole axis unread, and the obligations already say which
+// part. Written as a read-check and a total rather than a fold of Optionals, because the resolver flattens
+// nested Optionals and will not type a List<Optional<ByteSize>> element back through a match.
+fn parts_are_read(parts: List<Optional<ByteSize>>) -> Bool {
+  fold(parts, init: true, f: (acc, part) =>
+    if acc {
+      match part {
+        Present { value: _ } => true,
+        Absent => false,
+      }
+    } else {
+      false
+    })
+}
+
+fn parts_total_read(parts: List<Optional<ByteSize>>) -> ByteSize {
+  fold(parts, init: byte_size(count: 0), f: (acc, part) =>
+    match part {
+      Absent => acc,
+      Present { value: bytes } => byte_size(count: byte_size_count(b: acc) + byte_size_count(b: bytes)),
+    })
+}
+
 fn sum_or_absent(parts: List<Optional<ByteSize>>) -> Optional<ByteSize> {
-  match parts.first() {
-    Absent => Present { value: byte_size(count: 0) },
-    Present { value: head } =>
-      match head {
-        Absent => Absent,
-        Present { value: bytes } =>
-          match sum_or_absent(parts: parts.skip(n: 1)) {
-            Absent => Absent,
-            Present { value: tail } => Present { value: byte_size(count: byte_size_count(a: bytes) + byte_size_count(a: tail)) },
-          },
-      },
+  if parts_are_read(parts: parts) {
+    Present { value: parts_total_read(parts: parts) }
+  } else {
+    Absent
   }
 }
 

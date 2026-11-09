@@ -238,14 +238,14 @@ fn gap3(axis: DeclarationRef, head: NonEmptyStr, tail: NonEmptyStr) -> AxisGap {
 fn ram_axis(c: ReplicaConfiguration) -> Optional<Int> {
   match configuration_host_charges(c: c).ram {
     Absent => Absent,
-    Present { value: bytes } => Present { value: byte_size_count(a: bytes) },
+    Present { value: bytes } => Present { value: byte_size_count(b: bytes) },
   }
 }
 
 fn disk_axis(c: ReplicaConfiguration) -> Optional<Int> {
   match configuration_host_charges(c: c).disk {
     Absent => Absent,
-    Present { value: bytes } => Present { value: byte_size_count(a: bytes) },
+    Present { value: bytes } => Present { value: byte_size_count(b: bytes) },
   }
 }
 
@@ -267,7 +267,7 @@ fn charge_gap(c: ReplicaConfiguration, axis: DeclarationRef, what: String) -> Ax
 // tier, so a full save pays the COLDEST rung's bytes, which is the max across rungs rather than their sum. A
 // rung that is absent or refused leaves the save unpriced for the configuration, which is a gap, not a zero.
 fn configuration_save_bytes(c: ReplicaConfiguration) -> Optional<Int> {
-  fold(c.warm_ladder, init: no_total(), f: (acc, r) => match r.rung {
+  fold(c.warm_ladder, init: no_total(), f: (acc, r) => match r {
     WarmSwapRestores { cost: cost } =>
       match acc {
         Absent => Absent,
@@ -286,7 +286,7 @@ fn configuration_save_bytes(c: ReplicaConfiguration) -> Optional<Int> {
 // is never zero, because "restarts are free" has to be a reading rather than an absence of data.
 fn configuration_restart_ms(c: ReplicaConfiguration) -> Optional<Int> {
   if configuration_survives_restart(c) {
-    fold(c.warm_ladder, init: no_total(), f: (acc, r) => match r.rung {
+    fold(c.warm_ladder, init: no_total(), f: (acc, r) => match r {
       WarmSwapRestores { durability: SurvivesProcessRestart, restore: ms } =>
         match acc {
           Absent => Absent,
@@ -308,7 +308,7 @@ fn configuration_restart_ms(c: ReplicaConfiguration) -> Optional<Int> {
 }
 
 fn configuration_survives_restart(c: ReplicaConfiguration) -> Bool {
-  c.warm_ladder.any(r => match r.rung {
+  c.warm_ladder.any(r => match r {
     WarmSwapRestores { durability: SurvivesProcessRestart } => true,
     _ => false,
   })

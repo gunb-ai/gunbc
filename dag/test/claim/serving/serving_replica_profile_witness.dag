@@ -216,7 +216,7 @@ test fn srv1_l1_tier_is_the_12_gib_it_boots_with() -> Bool {
   match srv1_vllm_replica_0_profile.warm_ladder.first() {
     Present { value: r } => match r.rung {
       WarmSwapRestores { cache: ServingMemoryRead { bytes: bytes, provenance: _ } } =>
-        byte_size_count(a: bytes) == byte_size_count(a: gibibyte_to_byte_size(g: gibibyte(count: 12)))
+        byte_size_count(b: bytes) == byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 12)))
       _ => false
     }
     Absent => false
@@ -230,7 +230,7 @@ test fn srv1_disk_tier_did_not_move_when_l1_joined() -> Bool {
   match srv1_vllm_replica_0_profile.warm_ladder.skip(n: 1).first() {
     Present { value: r } => match r.rung {
       WarmSwapRestores { cache: ServingMemoryRead { bytes: bytes, provenance: _ } } =>
-        byte_size_count(a: bytes) == byte_size_count(a: gibibyte_to_byte_size(g: gibibyte(count: 100)))
+        byte_size_count(b: bytes) == byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 100)))
       _ => false
     }
     Absent => false
@@ -252,7 +252,7 @@ test fn h11_experts_are_pinned_in_host_ram() -> Bool {
     && match rungs.first() {
       Present { value: rung } => match rung {
         ExpertInHostRam { bytes: bytes, holds: ArtifactHeldPinned { mechanism: mechanism }, mechanism: words } =>
-          byte_size_count(a: bytes) > 0 && string_contains(s: words as String, pattern: "mlock" as String)
+          byte_size_count(b: bytes) > 0 && string_contains(s: words as String, pattern: "mlock" as String)
         _ => false
       }
       Absent => false
@@ -276,11 +276,11 @@ test fn srv4_experts_are_capped_and_disk_backed() -> Bool {
 test fn srv3_experts_are_charged_whole_in_host_ram() -> Bool {
   let rungs = replica_expert_rungs(p: srv3_strata_profile)
   rungs.any(r => match r {
-      ExpertInHostRam { bytes: bytes, holds: holds, mechanism: _ } => byte_size_count(a: bytes) > 0
+      ExpertInHostRam { bytes: bytes, holds: holds, mechanism: _ } => byte_size_count(b: bytes) > 0
       _ => false
     })
     && match replica_expert_ram_charge(p: srv3_strata_profile) {
-      Present { value: bytes } => byte_size_count(a: bytes) > 0
+      Present { value: bytes } => byte_size_count(b: bytes) > 0
       Absent => false
     }
 }
@@ -308,7 +308,7 @@ test fn host_charges_fail_closed_component_by_component() -> Bool {
   let srv1 = replica_host_charges(p: srv1_vllm_replica_0_profile)
   match srv4.ram {
     Present { value: bytes } =>
-      byte_size_count(a: bytes) > byte_size_count(a: gibibyte_to_byte_size(g: gibibyte(count: 16)))
+      byte_size_count(b: bytes) > byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 16)))
         && match srv3.ram { Absent => srv3.obligations.length() > 0 Present { value: _ } => false }
         && match h11.ram { Absent => h11.obligations.length() > 0 Present { value: _ } => false }
         && match srv1.ram { Absent => srv1.obligations.length() >= 2 Present { value: _ } => false }
