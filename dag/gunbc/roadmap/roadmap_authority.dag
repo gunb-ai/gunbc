@@ -5114,10 +5114,16 @@ fn roadmap_retired_node_ids_load() -> RoadmapRetiredNodeIds {
 // from the same carrier refuse the same way: LoadRefused is WithheldNodeIdsProjectionRefused,
 // never [] (empty withheld would widen the active frontier). New acceptance appends
 // AcceptanceRecorded to the carrier; withdrawal appends AcceptanceRevoked naming the exact prior
-// receipt, a disposition, and audit fields. Authored seal count/digest are deleted: prefix law is
-// enforced by gunbc.roadmap.roadmap_acceptance_history_observation parsing merge-base carrier content via
-// git.Core.Show — a changed carrier without valid merge-base parse refuses
-// AcceptanceHistoryIntegrityRefusedPriorHistoryObservation, never prior_history = [].
+// receipt, a disposition, and audit fields — both only through gunbc.roadmap.roadmap_issue_command,
+// which is the one route that writes an event at all.
+//
+// What enforces append-only integrity now is the chain itself. issue_command_apply writes each event
+// as a link whose parent is the id of the event it extends, and roadmap_event_causal_chain walks a
+// node's events from its tip and yields nothing unless one chain covers every stored event for that
+// node — so a removed, rewritten or forked event makes the load refuse, never replay a shorter
+// history. The merge-base guard this comment used to cite is deleted with the file and the module it
+// watched (roadmap_acceptance_history_observation, 250 lines, and the JSONL carrier under it); nothing
+// re-creates it, because there is no longer a mutable file whose prior revision could be addressed.
 
 // The single route from a loaded event history to a receipts projection. Both wrappers below
 // call it, so a loaded-but-unreplayable history cannot fabricate an affirmative empty on one
