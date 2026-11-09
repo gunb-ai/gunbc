@@ -53,6 +53,26 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // projects std.primitive_projection. Each was edited by hand in the same change as its authority
 // because the seed cannot build the emitter that regenerates it without them -- the ordinary
 // stage0 bootstrap seam, not new hand growth.
+// AN UNPARSEABLE DERIVED FILE IS A REFUSAL, NOT AN EMPTY ANSWER (this session's change to the
+// hand layer, carried here because this is the keyed read's receipt). keyed_decl_facts folded each
+// file the key derives through decl_facts_of_source and used `if let Some(rows)`, so a file the
+// module index located and the parser rejected contributed NOTHING: the read answered from the files
+// it did read, and its zero was the zero a declaration that does not exist also produces. Nothing
+// above it -- not eval_decl_facts_at, not the citation that asked -- could tell the two apart, which
+// is DESIGN's silent miss, the worst answer the seed gives. It now returns
+// Result<Vec<DeclFactRaw>, DeclFactsKeyedRefusal>: the file, the module the key spelled it from, and
+// the parse's own words, propagated to every caller and carried by the interpreter as
+// InterpError::DeclFactsKeyedReadRefused (its own variant, and its own WitnessRuntimeCause, for the
+// reason PoolRootContributesNothing states one layer up: the file and the why ARE the refusal, and a
+// sentence cannot be classified). The CENSUS keeps reading the same failure as absence -- it counts a
+// population and names its denominator, which is what makes its skip mean something; the keyed read
+// answers a named key and has no such licence. parse_dag_content's Option signature is untouched, as
+// its own ruling requires: the keyed fold goes through the typed sibling parse_dag_content_checked,
+// which is what that ruling said a converting caller should do. Design input was the archived keyed
+// read layer of PR #15607 (DeclFactsKeyedRefusal); it predates this shape, where the per-file fold is
+// SHARED with the census, so it is cited rather than applied -- in particular its
+// ModuleHeaderDisagrees arm belonged to a lookup this keyed read does not have.
+//
 // A THIRD ITEM JOINED THIS RECEIPT LATER (gunbc#11291) AND LEFT IT AGAIN. eval_type_declarer_qualified_names was the
 // BARE-NAME sibling of eval_decl_facts_at: same census, same memo, same line-stop, filtering on bare name and TypeItem
 // kind because a qualified key cannot express a bare spelling. It is DELETED, not renamed: eval_decl_facts_at now takes

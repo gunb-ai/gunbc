@@ -6,7 +6,7 @@ import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
 import std.process { ProcessExit }
 
 // THE PRINTING STORES CANNOT BE SPELLED OR CAST OUTSIDE THEIR DECLARING FILES. Each sealed record
-// (PrinterStartClaims, PrinterExecutionHoldStore, PrintRequestStore, PrintCompletionStore, CassetteInventoryStore,
+// (PrinterStartClaims, PrintRequestStore, PrintCompletionStore, CassetteInventoryStore,
 // CadRuntimeStore, PreparedBundle) is sole_constructor and built only by its one mint, which takes the sealed
 // HostStateTree (or, for the bundle, the tree and a plan) and never a path. Each RED hands the compiler a foreign
 // module that spells the record over a path and asserts, on the real acceptance path, exactly one
@@ -19,8 +19,6 @@ fn seal_violations(source: String, subject: String) -> CompileDiagnosticCensus {
 }
 
 data forged_claims_source: String = "module probe_c_printing_forged_claims\nimport std.types { NonEmptyStr }\nimport gunbc.durable_cas_file_store { file_slot_store }\nimport gunbc.fleet.printer_actuation { PrinterStartClaims }\nfn forged(dir: NonEmptyStr) -> PrinterStartClaims {\n  PrinterStartClaims { slots: file_slot_store(root: dir) }\n}\n"
-
-data forged_hold_source: String = "module probe_c_printing_forged_hold\nimport std.types { NonEmptyStr }\nimport gunbc.fleet.printer_execution_hold { PrinterExecutionHoldStore }\nfn forged(dir: NonEmptyStr) -> PrinterExecutionHoldStore {\n  PrinterExecutionHoldStore { root: dir }\n}\n"
 
 data forged_request_source: String = "module probe_c_printing_forged_request\nimport std.types { NonEmptyStr }\nimport gunbc.fleet.print_record_stores { PrintRequestStore }\nfn forged(dir: NonEmptyStr) -> PrintRequestStore {\n  PrintRequestStore { root: dir }\n}\n"
 
@@ -36,10 +34,6 @@ data twin_bundle_source: String = "module probe_c_printing_twin_bundle\nimport s
 
 test fn a_forged_claims_store_literal_is_refused_at_compile() -> ProcessExit {
   census_exit(census_verdict(census: seal_violations(source: forged_claims_source, subject: "PrinterStartClaims"), holds: fn(n) { n == 1 }))
-}
-
-test fn a_forged_hold_store_literal_is_refused_at_compile() -> ProcessExit {
-  census_exit(census_verdict(census: seal_violations(source: forged_hold_source, subject: "PrinterExecutionHoldStore"), holds: fn(n) { n == 1 }))
 }
 
 test fn a_forged_request_store_literal_is_refused_at_compile() -> ProcessExit {

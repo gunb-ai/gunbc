@@ -2016,8 +2016,7 @@ fn bmc_all_reads_failed(row: MegaRacBootRow, bundle: BootDiagnosticBundle) -> Fr
   }
 }
 
-// A List to a FreeSemigroup, total only where a head exists. Cited shape:
-// gunbc.source_admission_selection.nonempty_source_keys_from_list, which does the same by first/skip.
+// A List to a FreeSemigroup, total only where a head exists.
 // Kept local rather than minted in std.algebra because std.algebra already has the constructors
 // (non_empty_singleton, non_empty_to_list) and this is the only place in the tree needing this direction.
 fn non_empty_failed_reads(failed: List<BmcChannelRead>) -> FreeSemigroup<BmcChannelRead>? {

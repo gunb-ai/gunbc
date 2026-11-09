@@ -9,6 +9,7 @@ import std.bytes { utf8_encode_bytes }
 import std.optional { Present, Absent }
 import std.resources { Network }
 import extdeps.cloud.gcp.sts
+import extdeps.cloud.gcp.sts { Jwt, RequestAccessToken }
 import extdeps.cloud.gcp.gcp { cloud_platform_scope }
 import extdeps.cloud.gcp.iam
 import extdeps.cloud.gcp.iam {
@@ -723,6 +724,8 @@ fn heal_publisher_cloud_credential_exchange() -> PublisherCloudCredential uses n
               match gcp.STS.Exchange(
                 subject_token: answer.subject_token,
                 audience: heal_publisher_exchange_audience(),
+                subject_token_type: Jwt,
+                requested_token_type: RequestAccessToken,
               ) {
                 RestRefused { refusal } =>
                   PublisherCloudCredentialNotMinted { cause: concat("HealPublisherFederationRefused: Cloud STS refused the assertion: ", rest_refusal_text(o: refusal)) }
