@@ -32,7 +32,7 @@ fn bhr_parse(text: String, file: Symbol, production: Symbol) -> Optional<Node> {
       match prepared {
         PreparedVoidGrammar => Absent
         PreparedModeled { modeled: modeled } =>
-          match tokenize(text: text, file: file, rules: dag_lex()) {
+          match tokenize_prepared(text: text, file: file, prepared: dag_prepared_lex()) {
             Rejected { diagnostics: _ } => Absent
             Accepted { value: token_stream, diagnostics: _ } =>
               match parse_production_prepared(
