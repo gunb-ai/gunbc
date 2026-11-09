@@ -196,14 +196,14 @@ test fn srv1_ladder_is_l1_then_l2_with_l2_inclusive() -> Bool {
   let rungs = srv1_vllm_replica_0_profile.warm_ladder
   rungs.length() == 2
     && match rungs.first() {
-      Present { value: r } => match r.rung {
+      Present { value: r } => match r {
         WarmSwapRestores { tier: SwapTierHostRam, durability: LostWithProcess } => true
         _ => false
       }
       Absent => false
     }
     && match rungs.skip(n: 1).first() {
-      Present { value: r } => match r.rung {
+      Present { value: r } => match r {
         WarmSwapRestores { tier: SwapTierDisk, durability: SurvivesProcessRestart, sharing: Present { value: RungInclusiveOfHotter } } => true
         _ => false
       }
@@ -215,7 +215,7 @@ test fn srv1_ladder_is_l1_then_l2_with_l2_inclusive() -> Bool {
 // 2026-10-30 engine-memory figure of 100 GB that the profile used to call srv1's warm tier.
 test fn srv1_l1_tier_is_the_12_gib_it_boots_with() -> Bool {
   match srv1_vllm_replica_0_profile.warm_ladder.first() {
-    Present { value: r } => match r.rung {
+    Present { value: r } => match r {
       WarmSwapRestores { cache: ServingMemoryRead { bytes: bytes, provenance: _ } } =>
         byte_size_count(b: bytes) == byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 12)))
       _ => false
@@ -229,7 +229,7 @@ test fn srv1_l1_tier_is_the_12_gib_it_boots_with() -> Bool {
 // hotter rung is the smaller one, the fold takes the max, and the colder rung is the figure it always was.
 test fn srv1_disk_tier_did_not_move_when_l1_joined() -> Bool {
   match srv1_vllm_replica_0_profile.warm_ladder.skip(n: 1).first() {
-    Present { value: r } => match r.rung {
+    Present { value: r } => match r {
       WarmSwapRestores { cache: ServingMemoryRead { bytes: bytes, provenance: _ } } =>
         byte_size_count(b: bytes) == byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 100)))
       _ => false

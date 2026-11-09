@@ -97,7 +97,7 @@ test fn srv4_candidates_differ_on_the_disk_axis_and_agree_on_ram() -> Bool {
                 match without.disk {
                   // The batched candidate holds NO warm disk: the tier is refused at batch >1, so its absence
                   // is a fact about the configuration, not an unread figure.
-                  Present { value: none } => byte_size_count(b: disk) > 0 && byte_size_count(b: none) == 0
+                  Present { value: zeroed } => byte_size_count(b: disk) > 0 && byte_size_count(b: zeroed) == 0
                   Absent => false
                 }
               Absent => false

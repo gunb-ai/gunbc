@@ -272,7 +272,7 @@ fn configuration_save_bytes(c: ReplicaConfiguration) -> Optional<Int> {
       match acc {
         Absent => Absent,
         Present { value: seen } =>
-          Present { value: max_int(a: seen, b: byte_size_count(b: conversation_snapshot_bytes(cost: cost, context: serving_fleet_context_cap))) }
+          Present { value: std.realization_width.int_max(a: seen, b: byte_size_count(b: conversation_snapshot_bytes(cost: cost, context: serving_fleet_context_cap))) }
       },
     _ => Absent,
   })
@@ -290,7 +290,7 @@ fn configuration_restart_ms(c: ReplicaConfiguration) -> Optional<Int> {
       WarmSwapRestores { durability: SurvivesProcessRestart, restore: ms } =>
         match acc {
           Absent => Absent,
-          Present { value: seen } => Present { value: max_int(a: seen, b: millisecond_count(m: ms)) }
+          Present { value: seen } => Present { value: std.realization_width.int_max(a: seen, b: millisecond_count(m: ms)) }
         },
       _ => acc,
     })
