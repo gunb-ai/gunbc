@@ -36,3 +36,10 @@ Maintained by silent-bee-845, the daily integration manager. CI's required job (
 - branch_slot_readers.dag:268 refuses at LOAD (equality admission for generic LocusAnchor; v1.compiler.infer equality walk; concern equality_wall_three_site_measure_stopgap_interim; root #15992). It is the same at #16139's head and base. Suspected: every claim file that writes `== node_locus(...)` (at least 8 on main) is unloadable. A load-only check is pending on quick-newt-573.
 - Class evidence for test_claim_module_is_not_compiled_by_required_ci: #15363's new claim module passed two CI cycles with a headless Cons, then with a Node/NodeOccurrence type error.
 - SILENT MISS on main (found during the #15607 skip): seed keyed_decl_facts (src/v1/stage0/src/coproduct_reflection.rs, from #15930) uses `if let Some(rows) = decl_facts_of_source(...)`, so an unparseable derived file contributes nothing without any refusal. Archived #15607 carried a typed-refusal layer (DeclFactsKeyedRefusal) for exactly this, but no longer applies; it needs a new change.
+
+## BATCH 1 RESULT: main @ 8ca9a3a4 (quick-newt-573, msg_603b3f87)
+- PASS: condition_position_record_parse 15/15, nested_arm_pattern_position 2/2, service_operation_call 5/5, lex_prefix_door 10/10, lex_window_beyond 17/17, openai_text_completion_wire 3/3, fabric_terminal_contract 17/17, harness_shell_job_policy 8/8, optional_lowered_position_projection 8/8, github_effect_perform_redaction 12/12, heal_publication_refusal_redaction 3/3.
+- REFUSED at load: harness_shell_job (+tool_route), because of `list_length` (from #16020); service_operation_unrealizable, because of `concat` (from #15894). Repair lane: adhoc-2968bab0-fd3.
+- FALSE rows: host_effect_apply 3, closure_emission 2, service_realization_lowering 1, printable_assembly_selection 1, harness_tool_kind 2, occurrence_file_attribution 1. Repair lane: adhoc-2968bab0-fd3.
+- UNOBSERVED (needs wet): durable_attempt_controller 16 rows (DirWithTemplate). NOT RUN: the four *_wet witnesses.
+- LESSON: archived branches assumed names (list_length, concat) that main does not provide. Seed compile plus file-overlap checks cannot see this; only a claim run can.
