@@ -10,9 +10,7 @@ import v2.std.service_realization_labels { realization_root_label, realization_u
 import v2.std.node { StructuralLabel, CoreMarker, DeclarationReferenceEdge, Arrow, Authored, Edge, NotADeclaration, fold_list_node, Atom, Conj, Node, Symbol, TypeNode }
 import v2.test.claim.caller_admission_native_wall { wall_decl_ref_target }
 import std.optional { Absent, Present }
-// `Empty` is std.algebra's (the FreeMonoid empty constructor); `concat` is the built-in two-list
-// append and is not a std.algebra declaration, so it stays ambient here (as in the sibling v2 claim
-// modules) — naming it in this import list refused the module's load.
+// `concat` is the built-in two-list append, not a std.algebra declaration; `Empty` is.
 import std.algebra { Empty }
 import v2.std.diagnostic { None, Some, Suggested, Unavailable, diagnostics_has_reason }
 import v2.std.logic { Bool }

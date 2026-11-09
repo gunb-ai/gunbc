@@ -282,9 +282,7 @@ fn harness_command_table_line(obs: HarnessShellJobObservation) -> String {
 }
 
 fn harness_command_table(jobs: List<HarnessShellJob>) -> String {
-  // Authority: std.algebra `length` (the ONE carrier-size authority; std.types list_length was its
-  // duplicate and is deleted, and `list_length` is not a declared callee anywhere on main — the bare
-  // call here refused to load). Named by module path, not by bare name.
+  // @ref(std.algebra::length) is the one size authority over a FreeMonoid carrier.
   if std.algebra.length(xs: jobs) == 0 {
     "COMMAND TABLE: (no jobs)"
   } else {
@@ -398,7 +396,6 @@ fn harness_wait_until_any(jobs: List<HarnessShellJob>, remaining: Second) -> Har
   match harness_first_running_now_finished(before: jobs, after: stamped) {
     Present { value: obs } => WaitLoopFinished { jobs: stamped, observation: obs }
     Absent =>
-      // Authority: std.algebra `length` (see harness_command_table above; same single authority).
       if std.algebra.length(xs: filter(stamped, j => harness_job_is_running(job: j))) == 0 {
         WaitLoopNoRunningJob { jobs: stamped }
       } else if measure_le(a: remaining, b: second(count: 0)) {
