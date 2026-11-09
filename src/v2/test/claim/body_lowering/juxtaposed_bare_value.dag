@@ -1,4 +1,4 @@
-module v2.test.claim.parse.juxtaposed_literal_statement
+module v2.test.claim.body_lowering.juxtaposed_bare_value
 
 // A BODY THAT SILENTLY FOLDS A NON-FINAL BARE VALUE IS THE OBSERVED HARM. gunb-ai/gunbc#16148 repaired
 // the live instance: dag/gunbc/harness/harness_tool_kind.dag's `all_harness_tools` was written as two
