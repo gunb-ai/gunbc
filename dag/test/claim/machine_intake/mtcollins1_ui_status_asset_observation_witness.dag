@@ -27,6 +27,26 @@ import extdeps.tools.curl { CurlCookieJarParsed, CurlCookieJarMalformedRow, Curl
 import extdeps.uri_reference { ResolvedPathReference, EmptyPathReference, PathReferenceCarriesQueryOrFragment, PathReferenceCarriesSchemeOrAuthority, uri_resolve_path_reference, uri_remove_dot_segments }
 import std.optional { Absent, Present }
 import gunbc.machine_intake.mtcollins1_ui_status_asset_observation {
+  AdmittedUiCatalogPath,
+  CatalogLanguageListAbsent,
+  CatalogLanguageListUnclosed,
+  CatalogLanguageValueRefused,
+  CatalogPathUnderived,
+  CatalogStatusKeyAbsent,
+  CatalogStatusNotAString,
+  CatalogStatusUnterminated,
+  CatalogStatusValue,
+  CatalogStatusValueEscaped,
+  CatalogTemplateAbsent,
+  CatalogTemplateLacksPlaceholders,
+  RefusedUiCatalogNotJson,
+  RefusedUiCatalogPath,
+  ScriptNamedCatalogPath,
+  TemplateRefused,
+  megarac_ui_catalog_namespace,
+  megarac_ui_catalog_paths_of_asset,
+  megarac_ui_catalog_status_zero,
+  ui_catalog_path_admission,
   AdmittedUiAssetPath,
   AssetHttpNotOkay,
   AssetNotFetchedPathRefused,
@@ -1967,4 +1987,124 @@ test fn w_the_diagnostics_read_two_and_a_half_mebibytes_of_js_shaped_text() -> B
     string_contains(s: joined, pattern: "probe name=load_path count=16384") &&
     string_contains(s: joined, pattern: "probe name=label_key_call count=16385") &&
     string_contains(s: joined, pattern: "bare=1")
+}
+
+test fn w_the_catalog_paths_come_from_the_script_template_and_the_page_language_list() -> Bool {
+  let derived = megarac_ui_catalog_paths_of_asset(asset_text: "x,resGetPath:\"locales/__lng__/__ns__.json\",y,<select id=\"select_lang_top\" class=\"f\"><option id=\"en-US\" value=\"en-US\">A</option><option id=\"zh-CN\" value=\"zh-CN\">B</option></select>,z", ns: "lmedia" as NonEmptyStr)
+  count(derived) == 2 && (match derived |> get(0) {
+    null => false
+    first => match first {
+      ScriptNamedCatalogPath { path: path, lng: lng, ns: ns, template_offset: template_offset, language_list_offset: language_list_offset } => (path as String) == "/locales/en-US/lmedia.json" && (lng as String) == "en-US" && (ns as String) == "lmedia" && template_offset == 14 && language_list_offset == 53
+      CatalogPathUnderived { cause: _ } => false
+    }
+  }) && (match derived |> get(1) {
+    null => false
+    second => match second {
+      ScriptNamedCatalogPath { path: path, lng: _, ns: _, template_offset: _, language_list_offset: _ } => (path as String) == "/locales/zh-CN/lmedia.json"
+      CatalogPathUnderived { cause: _ } => false
+    }
+  })
+}
+
+test fn w_a_language_value_that_could_leave_the_locales_directory_is_refused() -> Bool {
+  match megarac_ui_catalog_paths_of_asset(asset_text: "x,resGetPath:\"locales/__lng__/__ns__.json\",y,<select id=\"select_lang_top\"><option value=\"../x\">A</option></select>", ns: "lmedia" as NonEmptyStr) |> get(0) {
+    null => false
+    first => match first {
+      CatalogPathUnderived { cause: CatalogLanguageValueRefused { value_length: n } } => n == 4
+      other => false
+    }
+  }
+}
+
+test fn w_an_asset_without_the_language_selector_derives_no_catalog_path() -> Bool {
+  match megarac_ui_catalog_paths_of_asset(asset_text: "x,resGetPath:\"locales/__lng__/__ns__.json\",y,z", ns: "lmedia" as NonEmptyStr) |> get(0) {
+    null => false
+    first => match first {
+      CatalogPathUnderived { cause: CatalogLanguageListAbsent } => true
+      other => false
+    }
+  }
+}
+
+test fn w_a_language_selector_never_closed_derives_no_catalog_path() -> Bool {
+  match megarac_ui_catalog_paths_of_asset(asset_text: "x,resGetPath:\"locales/__lng__/__ns__.json\",y,<select id=\"select_lang_top\"><option value=\"en-US\">A</option>", ns: "lmedia" as NonEmptyStr) |> get(0) {
+    null => false
+    first => match first {
+      CatalogPathUnderived { cause: CatalogLanguageListUnclosed { language_list_offset: _ } } => true
+      other => false
+    }
+  }
+}
+
+test fn w_a_template_without_both_placeholders_derives_no_catalog_path() -> Bool {
+  match megarac_ui_catalog_paths_of_asset(asset_text: "x,resGetPath:\"locales/en-US/lmedia.json\",y", ns: "lmedia" as NonEmptyStr) |> get(0) {
+    null => false
+    first => match first {
+      CatalogPathUnderived { cause: CatalogTemplateLacksPlaceholders { template_offset: _ } } => true
+      other => false
+    }
+  }
+}
+
+test fn w_an_asset_without_a_template_derives_no_catalog_path() -> Bool {
+  match megarac_ui_catalog_paths_of_asset(asset_text: "nothing here", ns: "lmedia" as NonEmptyStr) |> get(0) {
+    null => false
+    first => match first {
+      CatalogPathUnderived { cause: CatalogTemplateAbsent } => true
+      other => false
+    }
+  }
+}
+
+test fn w_the_catalog_admission_takes_json_and_refuses_javascript_and_traversal() -> Bool {
+  (match ui_catalog_path_admission(path: "/locales/en-US/lmedia.json") {
+    AdmittedUiCatalogPath { path: p } => (p as String) == "/locales/en-US/lmedia.json"
+    other => false
+  }) && (match ui_catalog_path_admission(path: "/x.js") {
+    RefusedUiCatalogNotJson { path: _ } => true
+    other => false
+  }) && (match ui_catalog_path_admission(path: "/locales/../x.json") {
+    RefusedUiCatalogPath { path: _, cause: AssetPathCarriesParentTraversal { path: _ } } => true
+    other => false
+  })
+}
+
+test fn w_the_page_derived_admission_still_refuses_a_json_path() -> Bool {
+  match ui_asset_path_admission(path: "/locales/en-US/lmedia.json", derived: ["/locales/en-US/lmedia.json" as NonEmptyStr]) {
+    RefusedUiAssetPath { path: _, cause: AssetPathIsNotJavaScript { path: _ } } => true
+    other => false
+  }
+}
+
+test fn w_the_catalog_status_zero_value_is_read_with_its_octet_offset() -> Bool {
+  match megarac_ui_catalog_status_zero(body: "{\"status_0\":\"Stopped\"}") {
+    CatalogStatusValue { value_octets: octets, value_offset: at } => octets == [83, 116, 111, 112, 112, 101, 100] && at == 13
+    other => false
+  }
+}
+
+test fn w_a_catalog_without_status_zero_or_with_a_non_string_or_escaped_value_is_refused() -> Bool {
+  (match megarac_ui_catalog_status_zero(body: "{\"status_1\":\"Started\"}") {
+    CatalogStatusKeyAbsent => true
+    other => false
+  }) && (match megarac_ui_catalog_status_zero(body: "{\"status_0\":5}") {
+    CatalogStatusNotAString { at: _ } => true
+    other => false
+  }) && (match megarac_ui_catalog_status_zero(body: "{\"status_0\":\"a\\\\nb\"}") {
+    CatalogStatusValueEscaped { at: _ } => true
+    other => false
+  }) && (match megarac_ui_catalog_status_zero(body: "{\"status_0\":\"Stop") {
+    CatalogStatusUnterminated { at: _ } => true
+    other => false
+  })
+}
+
+test fn w_the_catalog_namespace_is_the_constructed_key_prefix_before_the_separator() -> Bool {
+  (match megarac_ui_catalog_namespace(key: megarac_ui_constructed_key_of_asset(asset_text: witness_constructed_asset, asset_path: "/source.min.js" as NonEmptyStr)) {
+    Present { value: ns } => (ns as String) == "lmedia"
+    Absent => false
+  }) && (match megarac_ui_catalog_namespace(key: megarac_ui_constructed_key_of_asset(asset_text: "nothing", asset_path: "/source.min.js" as NonEmptyStr)) {
+    Present { value: _ } => false
+    Absent => true
+  })
 }
