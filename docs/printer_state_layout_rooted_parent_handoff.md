@@ -1,11 +1,20 @@
 # Printer converge: legacy-hold fence vs. the root:root parent re-own (srv1)
 
-Work item `node://adhoc-0dbfbe96-bf6`. Receipt: fleet-converge run `42692296757` (main `b882c902`,
-mode=printer, host=srv1, printer-01). This document records the verified diagnosis, the repair
-derivation, the implementation plan, and the two decisions that gate landing the code. It is NOT a
-design authority; DESIGN.md is. It is a hand-off.
+**FINAL SCOPE (per fierce-bee-888):** this PR is fix **(A) only** — `legacy_writer_exclusion_causes`
+`LegacyHoldAbsent => []`, agreeing with `finish_move`. Root cause of the srv1 refusal: the move's FIRST gate
+fences (a parent create-new) even on a CLEAN parent; on the root-only parent that create-new cannot land, so a
+parent with NOTHING to move refuses. An absent slot needs no exclusion: no runnable flat-layout controller exists
+(repo + stern-bat-401 srv1 readback: only static printer.target + gunbc-microvm-controller.slice; the current
+controller acquires only in the split store; the module itself says "the printer's old writer has no declared
+unit"), and the root:root 0755 parent already blocks a non-root create outright. **(B)** (copy + privileged rm of
+legacy entries for hosts that still carry them) is NOT built: srv1 is the only printer host and its parent is
+clean, so it would have no consumer — dangling by DESIGN's consumption rule. An entries-present root-only parent
+keeps today's loud typed refusal. Deleting the legacy fence/move arm altogether is a follow-up candidate, not
+this PR. Witness: `w_a_clean_root_owned_parent_converges_as_a_noop` (RED on main, GREEN on fix),
+`w_a_root_owned_parent_with_a_legacy_hold_keeps_the_typed_refusal` (green on main and fix), and the
+store-unavailable pin.
 
-## Diagnosis (verified in code, not just the hypothesis)
+## Verified diagnosis (root cause, in code)
 
 Pass order — `gunbc.fleet.print_converge.converge_print`:
 1. `ensure_printer_state_directories`

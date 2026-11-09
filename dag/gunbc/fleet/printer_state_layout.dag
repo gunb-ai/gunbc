@@ -200,19 +200,34 @@ fn claims_evidence_residue_causes(tree: HostStateTree) -> List<String> {
 
 // PER STORE: the entries of every store but the hold move first and unconditionally; the hold retires after (above).
 //
-// THE LEGACY WRITER IS EXCLUDED BEFORE ANY ENTRY MOVES. The old controller writes post-start evidence only inside a pass, and a
-// pass runs only while it holds the legacy slot fleet-print-controller.<n>; the move therefore takes that slot as the declared
-// fence owner FIRST (the exclusion the writer itself must pass, printer_execution_hold_fence_begin), and refuses with nothing
-// touched when a live legacy holder occupies it. The fence then stays held through every relocation and is handed over by
-// retire_hold. An ABSENT slot is not exclusion: the observation is stale the moment it is made, and the old controller may acquire
-// the slot after it and write evidence mid-move, so the fence is acquired on an absent slot too (the hold library decides the
-// outcome) and stays held as the slot's head after the handover. This is not the
-// roadmap LegacyWriterFence (declared systemd units observed stopped and masked): the printer's old writer has no declared unit,
-// its mutual exclusion IS the hold slot. Residual: a person who deletes the slot entries out of band is not prevented
+// THE LEGACY WRITER IS EXCLUDED ONLY WHEN THERE IS A WRITER TO EXCLUDE. The old controller writes post-start
+// evidence only inside a pass, and a pass runs only while it holds the legacy slot fleet-print-controller.<n>;
+// so when the parent still carries that slot (held by a live controller, or fenced by an interrupted pass) the
+// move takes it as the declared fence owner FIRST (the exclusion the writer itself must pass,
+// printer_execution_hold_fence_begin) and refuses with nothing touched while a live holder occupies it; the
+// fence then stays held through every relocation and is handed over by retire_hold. But an ABSENT slot needs no
+// exclusion: there is no legacy hold to exclude and nothing for an old controller to inherit. The prior code
+// fenced on an absent slot too, "because the observation is stale and the old controller may acquire the slot
+// mid-move" -- that reasoning presupposed a runnable legacy flat-layout writer. None exists: no repo deployment
+// and no srv1 unit/timer (static printer.target + gunbc-microvm-controller.slice only) runs a controller that
+// acquires the flat parent slot -- the current controller acquires only in the split execution-hold store, and
+// this module's own text says "the printer's old writer has no declared unit." And the parent is now root:root
+// 0755 (#15908/#15948), where a non-root principal cannot create the slot at all: the structural lock already
+// supplies the exclusion the absent-slot fence re-created by hand, and on a root-only parent that fence's
+// create-new could never land, wedging a parent that has NOTHING to move. So an absent slot now yields no fence,
+// agreeing with finish_move's LegacyHoldAbsent => [] and with this module's header ("Noop when the parent is
+// clean"): a clean parent is the intended no-op. This is not the roadmap LegacyWriterFence (declared systemd
+// units observed stopped and masked); there is no declared writer unit to stop. Residual (unchanged, and out of
+// scope here): a person who deletes slot entries out of band is not prevented
 // (gunbc.recurring_failure_mode runner_admission_closed_by_mask_alone names the same class for the units fence).
+// A host that still carries legacy hold entries in a root-only parent keeps today's loud typed refusal; removing
+// the legacy fence/move arm entirely is a follow-up candidate, not this change.
 fn legacy_writer_exclusion_causes(tree: HostStateTree) -> List<String> {
   match printer_execution_hold_legacy_state(tree: tree) {
-    LegacyHoldAbsent => fence_taken(tree: tree)
+    // No legacy hold -> no exclusion. Agrees with finish_move's LegacyHoldAbsent => []; an absent slot is
+    // nothing to exclude, and fencing it would force a parent create-new that cannot land on the root-only
+    // parent, wedging a clean parent that the module header already declares a no-op.
+    LegacyHoldAbsent => []
     LegacyHoldUnreadable { detail: d } => [d]
     LegacyHoldFenced { generation: _ } => fence_taken(tree: tree)
     LegacyHoldLive { names: _ } => match printer_legacy_hold_release(tree: tree, standing_of:printer_hold_broker_standing) {

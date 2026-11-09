@@ -2,33 +2,38 @@ module test.claim.printer_state_layout_rooted_parent_witness
 
 // PRINTER STATE LAYOUT, DRIVEN AGAINST A ROOT-OWNED (NON-WRITABLE-TO-THE-JOB-USER) PARENT.
 //
-// This is the srv1 state the receipt describes (fleet-converge run 42692296757, main b882c902).
-// gunbc.fleet.printer_state_parent_reown (#15948, the security ruling of 2026-11-05, closing the
-// writable-parent symlink-swap hole of #15908) re-owns the printer-starts PARENT to root:root 00755,
-// and gunbc.fleet.print_converge.ensure_printer_state_directories runs that -- and the fold that
-// ensures the parent at its declared identity -- AHEAD of gunbc.fleet.printer_state_layout.printer_state_move.
-// So by the time the layout move runs, the parent is ALWAYS the declared root:root 00755 identity:
-// readable and traversable by the job user, but NOT writable by it. Every other write into that parent
-// (the re-own's install, each child-directory ensure, the parent read) already goes through the
-// privileged grant projection (gunbc.executor_privileged_operation). The legacy-hold fence's create-new
-// in the parent does not: printer_execution_hold_fence_begin -> file_hold_acquire -> the CAS commit's
-// unprivileged Filesystem.WriteCreateNew. On a root-owned parent that write cannot land, so
-// FileHoldAcquireStoreUnavailable follows, and a host that still carries legacy hold entries in the
-// parent can NEVER finish the layout move. That is the contradiction this witness drives.
+// The srv1 state (fleet-converge run 42692296757, main b882c902). gunbc.fleet.printer_state_parent_reown
+// (#15948, the security ruling of 2026-11-05, closing the writable-parent symlink-swap hole of #15908)
+// re-owns the printer-starts PARENT to root:root 00755, and gunbc.fleet.print_converge.ensure_printer_state_directories
+// runs that -- and the fold that ensures the parent at its declared identity -- AHEAD of
+// gunbc.fleet.printer_state_layout.printer_state_move. So when the layout move runs, the parent is the declared
+// root:root 00755 identity: readable and traversable by the job user, NOT writable by it. Every other write into
+// that parent (the re-own's install, each child-directory ensure, the parent read) goes through the privileged
+// grant projection (gunbc.executor_privileged_operation). The legacy-hold fence's create-new in the parent did
+// not.
 //
-// The parent is modelled by chmod-ing a throwaway directory to 00555: the acting (non-root) user then
-// keeps read and traverse but loses write, exactly the effect root:root 00755 has on the job user. The
-// child stores are left writable, so ONLY the parent-side write is denied -- the same asymmetry srv1 has.
+// THE ACTUAL WEDGE (the srv1 parent is CLEAN -- stern-bat-401's readback shows only the six member dirs, no
+// fleet-print-controller.<n>): printer_state_move's FIRST gate, legacy_writer_exclusion_causes, took the parent
+// fence EVEN ON AN ABSENT/CLEAN hold (LegacyHoldAbsent => fence_taken -> file_hold_acquire(root=parent) -> a
+// create-new in the parent). On the root-only parent that create-new cannot land (FileHoldAcquireStoreUnavailable),
+// so the move refused on a parent that has NOTHING to move -- against this module's own header ("Noop when the
+// parent is clean") and against finish_move, which already answers LegacyHoldAbsent => [].
 //
-// RED ON MAIN: the fence/release must write in the parent, is refused, and the move never completes.
-// GREEN ON THE FIX (the privileged-grant-projection repair of the fence's parent write, option (b)):
-// the same move completes once the parent-side create-new goes through the privileged grant projection
-// like every other parent-internal write already does.
+// THE FIX (option A, the earliest unjustified boundary): an absent slot needs no exclusion -- no runnable flat-layout
+// controller exists (repo + srv1 readback) and a non-root principal cannot create in a root:root 0755 parent
+// anyway. So legacy_writer_exclusion_causes now answers LegacyHoldAbsent => [] like finish_move. A clean root-only
+// parent is the intended no-op. An ENTRIES-PRESENT root-only parent keeps today's loud typed refusal (the fence
+// cannot take a held slot in a parent the job user cannot write); srv1 is the only printer host and is clean, so
+// auto-moving a legacy-bearing parent would be a dangling path (DESIGN's consumption rule) and is left for a
+// follow-up.
+//
+// The parent is modelled by chmod-ing a throwaway directory to 00555: the acting (non-root) user keeps read and
+// traverse but loses write -- exactly the effect root:root 00755 has on the job user. The child stores stay
+// writable, so ONLY the parent-side write is denied, the same asymmetry srv1 has.
 
 import extdeps.shell
 import std.types { Bool, String, NonEmptyStr, FilePath }
 import std.option { Present, Absent }
-import extdeps.filesystem.filesystem_io { Filesystem }
 import std.durable_exclusive_hold { DurableHoldOwnerRef }
 import gunbc.durable_exclusive_hold_file_store { file_hold_acquire, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost, FileHoldAcquireStoreUnavailable, FileHoldSlotUndecodable, FileHoldKeyNotSlotAddressable }
 import gunbc.host_state_root { HostStateTree, isolated_host_state_tree }
@@ -60,42 +65,66 @@ fn acquire_legacy_hold(root: NonEmptyStr, owner: String) -> Bool {
 fn lock_parent(path: String) -> Bool { shell.Exec.RunArgv(program: "chmod", arguments: ["0555", "--", path]).exit_code == 0 }
 fn unlock_parent(path: String) -> Bool { shell.Exec.RunArgv(program: "chmod", arguments: ["0755", "--", path]).exit_code == 0 }
 
-// THE ACCEPTANCE CONTRACT (RED ON MAIN, GREEN ON THE FIX): a host whose printer-starts parent is already at
-// the declared root:root identity, still carrying a legacy controller hold in the parent, MUST be able to
-// finish the layout move. The move reads the parent (allowed) and writes its child stores (allowed); the
-// only thing it must do that the root-owned parent resists is the fence/release create-new of the held
-// legacy slot IN THE PARENT -- and that is exactly the write that goes through the privileged grant
-// projection for every other entry into this parent. The move must not be wedged by the parent's declared
-// mode: the earliest unjustified boundary is the fence assuming the job user can still write the parent.
-test fn w_a_root_owned_parent_with_a_legacy_hold_still_converges_the_move() -> Bool {
+// ENTRIES-PRESENT STAYS A LOUD TYPED REFUSAL (GREEN ON MAIN AND GREEN ON THE FIX): a host whose printer-starts
+// parent is at the declared root:root identity AND still carries a legacy controller hold is NOT auto-moved by
+// this change. srv1 is the only printer host and its parent is clean, so a path that copies the generations out
+// and rm's the legacy entries would have no consumer (dangling by DESIGN's consumption rule). The correct, loud
+// behaviour is what this change leaves in place: the fence cannot take the held legacy slot in a parent the job
+// user cannot write, so the move refuses with a typed cause and nothing is moved. (A) only changes the
+// no-legacy-hold path; a live/fenced legacy slot still routes through the fence and still refuses here. Deleting
+// the legacy fence/move arm altogether is a follow-up candidate, not this change.
+test fn w_a_root_owned_parent_with_a_legacy_hold_keeps_the_typed_refusal() -> Bool {
   match tree() {
     Absent => false
     Present { value: t } => {
       let parent = printer_starts_path(tree: t)
       let planted = acquire_legacy_hold(root: parent, owner: "old-controller")
       let locked = lock_parent(path: parent as String)
-      let moved = match printer_state_move(tree: t) { PrinterStateMoved => true PrinterStateMoveRefused { cause: _ } => false }
+      let refused = match printer_state_move(tree: t) { PrinterStateMoved => false PrinterStateMoveRefused { cause: _ } => true }
       // Leave the scratch tree removable for whoever cleans up (rm -rf over a 0555 parent is quietly
       // incomplete); the parent's locked state is what was under test, not its residue.
       let unlocked = unlock_parent(path: parent as String)
-      planted && locked && moved && unlocked
+      planted && locked && refused && unlocked
     }
   }
 }
 
-// THE BUG, PINNED (GREEN TODAY): with the parent locked and a legacy hold present, the unprivileged
-// acquire the fence performs reports the parent store unavailable rather than taking the slot. This is the
-// fact that wedges srv1, asserted directly at the fence library's own primitive so the contradiction is
-// recorded even before the move reaches it. It stays green through the fix: the unprivileged acquire is
-// kept (the fix ADDS the privileged-projection path for the parent write and does not widen this one).
+// THE TRUE SRV1 STATE (RED ON MAIN, GREEN ON THE FIX): the parent is CLEAN -- only the member dirs, no
+// fleet-print-controller.<n>, no flat entry -- yet it is at the declared root:root identity. The module
+// header says the move is a "Noop when the parent is clean", and finish_move already answers
+// LegacyHoldAbsent => []. But the FIRST gate, legacy_writer_exclusion_causes, routes LegacyHoldAbsent to
+// fence_taken, which does a create-new in the parent through the hold library. On the root-only parent that
+// create-new cannot land, so the move REFUSES on a parent that has nothing to move. The earliest unjustified
+// boundary: fencing on an absent/clean parent, justified only by "the old controller may acquire the slot
+// mid-move" -- a controller that (a) has no runnable flat-layout deployment (repo + srv1 readback) and (b)
+// could not create in a root:root 0755 parent anyway. The fix makes that first gate agree with finish_move
+// (no legacy hold => no fence), so a clean parent is the intended no-op and srv1 converges with nothing to
+// fence and nothing to rm.
+test fn w_a_clean_root_owned_parent_converges_as_a_noop() -> Bool {
+  match tree() {
+    Absent => false
+    Present { value: t } => {
+      let parent = printer_starts_path(tree: t)
+      // NO legacy entry is planted: the parent holds only the member dirs.
+      let locked = lock_parent(path: parent as String)
+      let moved = match printer_state_move(tree: t) { PrinterStateMoved => true PrinterStateMoveRefused { cause: _ } => false }
+      let unlocked = unlock_parent(path: parent as String)
+      locked && moved && unlocked
+    }
+  }
+}
+
+// THE BUG, PINNED (GREEN TODAY AND GREEN ON THE FIX): with the parent locked, the unprivileged acquire the
+// fence performs reports the parent store unavailable rather than taking the slot. This is the primitive fact
+// behind the wedge, asserted directly at the hold library's own acquire. Fix (A) does not touch the acquire
+// primitive at all (it stops the move from calling the fence on a clean parent), so this stays green.
 test fn w_a_root_owned_parent_makes_the_plain_acquire_report_store_unavailable() -> Bool {
   match tree() {
     Absent => false
     Present { value: t } => {
       let parent = printer_starts_path(tree: t)
-      let planted = acquire_legacy_hold(root: parent, owner: "old-controller-2")
       let locked = lock_parent(path: parent as String)
-      let unavailable = match file_hold_acquire(root: parent, slot_key: hold_key, requested_owner: "a-third" as NonEmptyStr as DurableHoldOwnerRef) {
+      let unavailable = match file_hold_acquire(root: parent, slot_key: hold_key, requested_owner: "a-first" as NonEmptyStr as DurableHoldOwnerRef) {
         FileHoldAcquireStoreUnavailable { slot_key: _, cause: _ } => true
         FileHoldAcquired { slot_key: _, owner: _, generation: _ } => false
         FileHoldOccupied { slot_key: _, holder: _, generation: _ } => false
@@ -104,7 +133,7 @@ test fn w_a_root_owned_parent_makes_the_plain_acquire_report_store_unavailable()
         FileHoldKeyNotSlotAddressable { slot_key: _ } => false
       }
       let unlocked = unlock_parent(path: parent as String)
-      planted && locked && unavailable && unlocked
+      locked && unavailable && unlocked
     }
   }
 }
