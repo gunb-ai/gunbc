@@ -9522,18 +9522,22 @@ fn body_lower_try_if_from_captured(captured: Node) -> Outcome<Optional<Node>> {
     Present { value: condition_capture } =>
       match body_lower_if_then_arm_optional(captured: captured) {
         Present { value: then_capture } =>
-          match body_lower_if_else_capture_optional(captured: captured) {
-            Present { value: else_capture } =>
-              match body_lower_if_condition_lowered(condition_capture: condition_capture) {
-                Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                Accepted { value: condition_opt, diagnostics: _ } =>
-                  match condition_opt {
-                    Present { value: condition } =>
-                      match body_lower_if_arm_lowered(arm_capture: then_capture) {
-                        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                        Accepted { value: then_opt, diagnostics: _ } =>
-                          match then_opt {
-                            Present { value: then_arm } =>
+          // Condition and then arm lower ONCE; the else capture is the only thing that decides
+          // between the three-way lower_branch and the else-less lower_branch_else_less. Keeping the
+          // shared lowering in one place (rather than a copy per else-arm shape) is the model-once
+          // rule (gunbc.design_argument::minimize_redundancy / root_generalization).
+          match body_lower_if_condition_lowered(condition_capture: condition_capture) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: condition_opt, diagnostics: _ } =>
+              match condition_opt {
+                Present { value: condition } =>
+                  match body_lower_if_arm_lowered(arm_capture: then_capture) {
+                    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                    Accepted { value: then_opt, diagnostics: _ } =>
+                      match then_opt {
+                        Present { value: then_arm } =>
+                          match body_lower_if_else_capture_optional(captured: captured) {
+                            Present { value: else_capture } =>
                               match body_lower_if_arm_lowered(arm_capture: else_capture) {
                                 Rejected { diagnostics: r } => Rejected { diagnostics: r }
                                 Accepted { value: else_opt, diagnostics: _ } =>
@@ -9551,13 +9555,25 @@ fn body_lower_try_if_from_captured(captured: Node) -> Outcome<Optional<Node>> {
                                     Absent => body_lower_if_navigation_reject(captured: else_capture)
                                   }
                               }
-                            Absent => body_lower_if_navigation_reject(captured: then_capture)
+                            // No else capture: an ELSE-LESS `if` reached through the value reader. Per the
+                            // fold's contract (see body_lower_if_expr: an else-less `if` in a value
+                            // position LOWERS to the else-less Branch and every value-owing consumer
+                            // refuses it with its own else-less reason), build the else-less Branch and let
+                            // the per-member consumer (infer_and_discharge) in the closure's emit phase
+                            // refuse it as that member's typed refusal. Hard-rejecting here (the previous
+                            // behaviour) short-circuited the whole-closure normalize instead.
+                            Absent =>
+                              outcome_accepted(
+                                value: optional_present(
+                                  value: lower_branch_else_less(condition: condition, then_arm: then_arm)
+                                )
+                              )
                           }
+                        Absent => body_lower_if_navigation_reject(captured: then_capture)
                       }
-                    Absent => body_lower_if_navigation_reject(captured: condition_capture)
                   }
+                Absent => body_lower_if_navigation_reject(captured: condition_capture)
               }
-            Absent => body_lower_if_navigation_reject(captured: captured)
           }
         Absent => body_lower_if_navigation_reject(captured: captured)
       }

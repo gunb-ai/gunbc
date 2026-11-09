@@ -3526,11 +3526,18 @@ fn fleet_converge_mtcollins1_fan_observe_step() -> Step {
     working_directory: none,
     if_condition: Present { value: fleet_converge_mtcollins1_fan_observe_step_if },
     continue_on_error: none,
-    // A FOLD, NEVER THE FLAT AUX FIGURE: the resolve of this entry's closure, the credential prelude's one
-    // bounded Secret Manager read, then the series' declared duration. The flat 5 minutes was ~94% spent in
-    // pre-entry resolve on run 42184429821 and killed the step mid-series.
-    timeout_minutes: Present { value: fleet_converge_gunbc_run_step_timeout_minutes(phases: [gunbc_ci_sm_max_time, mtcollins1_fan_observe_probe_bound()]) }
+    timeout_minutes: Present { value: fleet_converge_mtcollins1_fan_series_step_timeout_minutes() }
   }
+}
+
+// THE ONE BUDGET OF THE MT. COLLINS FAN SERIES STEP, whichever job carries it: the fan_observe mode's step and
+// the boot job's fan_policy_phase step run the same entry (gunbc.machine_intake.mtcollins1_fan_observe) over
+// the same policy and series, so they pay the same phases. A FOLD, NEVER THE FLAT AUX FIGURE: the resolve of
+// the entry's closure, the credential prelude's one bounded Secret Manager read, then the series' declared
+// duration. The flat 5 minutes was ~94% spent in pre-entry resolve on run 42184429821 (fan_observe) and
+// killed the boot job's step outright on run 42639090978 (284 s of resolve), before the boot it gates.
+fn fleet_converge_mtcollins1_fan_series_step_timeout_minutes() -> Int {
+  fleet_converge_gunbc_run_step_timeout_minutes(phases: [gunbc_ci_sm_max_time, mtcollins1_fan_observe_probe_bound()])
 }
 
 // A READ-ONLY MT. COLLINS PROBE STEP'S BUDGET IS A FOLD, NEVER A LITERAL, over the step's phases in
@@ -5884,9 +5891,10 @@ fn fleet_converge_fan_policy_phase_step() -> Step {
     // step, located. continue-on-error absorbed exactly those, and the job still finished green: the
     // operator addendum this step exists for forbids a machine sitting on a controller default
     // unobserved after boot, and that flag let an unobserved boot pass. gunbc.design_argument::fail_closed: an escape hatch is
-    // a hard reject. timeout_minutes stays - a hang dies loudly at this step, not in the runner.
+    // a hard reject. timeout_minutes stays - a hang dies loudly at this step, not in the runner - and it is
+    // the fan series' one budget, the fold the fan_observe step uses, never the flat aux figure.
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+    timeout_minutes: Present { value: fleet_converge_mtcollins1_fan_series_step_timeout_minutes() }
   }
 }
 

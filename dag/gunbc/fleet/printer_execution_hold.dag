@@ -39,7 +39,7 @@ import gunbc.auth.approval_gate {
   ApprovalPending,ApprovalNotFiled,ApprovalDenied,ApprovalExpired,ApprovalIntentMismatch,ApprovalStoreUnreadable,ApprovalAuthorizeRefused,ApprovalGateRefusal,approval_refusal_text,
 }
 import gunbc.auth.approval_request_client {stored_request_from_authorization,ApprovalPollStanding,PollUnreadable}
-import std.measure {second}
+import std.measure {second,seconds_per_day}
 import extdeps.crypto.sha2 {sha256_hex}
 import std.bytes {bytes_octets,utf8_encode_bytes}
 
@@ -551,20 +551,19 @@ fn printer_hold_enter(store:PrinterExecutionHoldStore,escalation_id:NonEmptyStr,
 // budget: 90 ticks at a 10 s cadence.
 data printer_operator_approval_window:Second = second(count:900)
 
-// HOW LONG THE OPERATOR'S ANSWER TO THE STALE-HOLD CARD STAYS GOOD FOR. This is its OWN policy, not
-// a copy of the two 1800 s figures elsewhere: gunbc.auth.branch_run_grant.branch_run_grant_file_window
-// and gunbc.auth.gcp_iam_converge_run.gcp_iam_converge_file_window are how long a run that FILES a card
-// and then POLLS for it stays alive (both spend the figure as a poll budget, window/cadence), whereas
-// nothing here polls -- the card is filed by one dispatch and REDEEMED by a later one, so the figure
-// has to cover an operator's phone, a CI queue, a build and the next dispatch reaching the hold arm.
-// Same magnitude as those two on purpose: it is the longest human-answer window the fleet already
-// runs, and inventing a new magnitude for a third route would be a number with no precedent. It is
-// deliberately NOT the 3600 s of branch_run_grant_window, because this consent attests to a physical
-// state -- nobody is driving the printer -- and the longer it lives, the more the world can move
-// behind it. The pin that makes even 1800 s safe is the subject: it names (root, slot, holder,
-// generation), so if any controller takes the slot in the meantime the generation moves, the derived
-// escalation moves with it, and the old answer cannot reach the new hold.
-data printer_hold_observation_file_window:Second = second(count:1800)
+// HOW LONG THE OPERATOR'S ANSWER TO THE STALE-HOLD CARD STAYS GOOD FOR: ONE DAY, the operator's
+// ruling of 2026-11-09 that it be as long as possible. Nothing here polls -- the card is filed by one
+// dispatch and REDEEMED by a later one -- so no job timeout bounds the figure the way
+// extdeps.github.actions max_job_timeout_minutes bounds gunbc.auth.approval_gate approval_request_window.
+// What bounds it is the redeeming side: the window has to cover an operator's phone, a CI queue, a build
+// and the next dispatch reaching the hold arm, and 1800 s did not -- runs 42564358072 and 42628650841
+// both reached the arm 19-29 min after the card was filed, so the card lapsed or was about to before a
+// human answer could land. One day is the longest window the fleet already runs
+// (gunbc.fleet.fleet_converge_producer_run_window). The pin that keeps a long-lived answer safe is the
+// subject: it names (root, slot, holder, generation), so if any controller takes the slot in the
+// meantime the generation moves, the derived escalation moves with it, and the old answer cannot reach
+// the new hold. The cost is the re-ask cadence: an undecided card is re-asked only once it expires.
+data printer_hold_observation_file_window:Second = second(count:seconds_per_day())
 
 // WHAT ASKING THE OPERATOR ENDED UP DOING, as a type rather than an exit code. The caller has to know
 // WHICH of these happened -- a card was filed, a card was already on file, nothing is held, or the

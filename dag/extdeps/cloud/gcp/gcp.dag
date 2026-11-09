@@ -141,8 +141,21 @@ type OAuth2Scope {
   description: String
 }
 
+// THE CLOUD-PLATFORM SCOPE, decided once. This row is its only definition: the `common_scopes` entry
+// below, the STS token-exchange default (`extdeps.cloud.gcp.sts`), the impersonation default
+// (`extdeps.cloud.gcp.iam` GenerateAccessToken) and the heal publisher's credential-binding check
+// (`gunbc.heal_publication`) all read it. Four hand-typed copies of the URI is not four agreements but
+// four independent decisions, and the failure mode of a copy drifting on its own is not a wrong scope
+// -- it is `gcp_impersonated_presentation` refusing every publish, because the binding judgment
+// compares the scope the publisher holds against the scope the credential was actually minted with.
+// Loud, but visible only from the diff that drifted, which is what
+// gunbc.design_argument::single_authority refuses: "a second place that independently decides it is a
+// fork." Typed NonEmptyStr because every leg that carries it requires it non-blank; the two String
+// positions say `as String` at the use, the way `extdeps.google.drive`'s scopes do.
+data cloud_platform_scope: NonEmptyStr = "https://www.googleapis.com/auth/cloud-platform"
+
 data common_scopes: List<OAuth2Scope> = [
-  { scope: "https://www.googleapis.com/auth/cloud-platform", description: "Full access to all GCP resources" },
+  { scope: cloud_platform_scope as String, description: "Full access to all GCP resources" },
   { scope: "https://www.googleapis.com/auth/devstorage.read_write", description: "Read/write access to GCS" },
   { scope: "https://www.googleapis.com/auth/iam", description: "IAM management" },
   { scope: "https://www.googleapis.com/auth/pubsub", description: "Pub/Sub access" },
