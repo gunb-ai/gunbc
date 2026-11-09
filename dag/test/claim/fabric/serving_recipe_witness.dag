@@ -29,8 +29,9 @@ import product.fabric.selection {
   NoTransitionRequired, OperatingCostBorneBySupplier, NoFeasibleAlternativeUse,
   SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved, select_supply,
 }
+import product.fabric.serving_throughput { ServingThroughput, ThroughputOperatorReading, ThroughputUnread }
 import product.fabric.serving_recipe {
-  ServingRecipe, ThroughputUnread, EngineNinfer, EngineVllm, serving_recipe_qwen3_8_27b_nvfp4_ninfer, serving_recipe_flash_next_lab_vllm, serving_recipes_interchangeable,
+  ServingRecipe, EngineNinfer, EngineVllm, serving_recipe_qwen3_8_27b_nvfp4_ninfer, serving_recipe_flash_next_lab_vllm, serving_recipes_interchangeable,
   serving_recipe_frontier, ServingCardFacts, ServingCardVerdict, CardAccepted, CardRefusedWrongCard,
   CardRefusedDriverBelowFloor, CardRefusedDriverUnread, CardScreenedOnUncitedFloor, serving_recipe_accepts_card,
   ServingCardSupply, RentedCardSupply, OwnedCardSupply, ServingDiskRate,
@@ -38,7 +39,7 @@ import product.fabric.serving_recipe {
   serving_card_hourly,
   ServingUnitCost, UnitCostQuoted, UnitCostEstimated, UnitCostThroughputUnread, UnitCostHourlyUnavailable, serving_cost_per_million_tokens,
   ServingSelectionQuote, SelectionQuoteEstablished, SelectionQuoteRefusedEstimated, SelectionQuoteRefusedUnavailable, serving_unit_cost_for_selection,
-  ServingSettingStanding, SettingOperatorPolicy, SettingReading, ServingSettingStandings, ServingThroughput, ThroughputOperatorReading,
+  ServingSettingStanding, SettingOperatorPolicy, SettingReading, ServingSettingStandings,
   ServingStartRoute, StartFromPlacedWeights, StartFromObjectStoreObserved, StartFromHubPinned, StartRouteUnread,
   ServingStartSource, StartSourcePlaced, StartSourceObserved, StartSourceHubPinned, StartSourcePlacementMissing, StartSourceUnread, serving_start_source,
   ServingWeightsSource, WeightsPinnedAtHub,

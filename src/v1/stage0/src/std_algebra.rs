@@ -2544,84 +2544,19 @@ pub fn list_last<T: Clone>(xs: Rc<FreeMonoid<T>>) -> Option<T> {
     })
 }
 
-pub fn skip<T: Clone>(
-    mut __tco_loop_xs: Rc<FreeMonoid<T>>,
-    mut __tco_loop_n: i64,
-) -> Rc<FreeMonoid<T>> {
-    {
-        let mut __tco_cursor_xs: usize = 0;
-        #[allow(unused_labels)]
-        let __tco_result = '__tco_rebase: loop {
-            let __tco_base_xs = __tco_loop_xs.clone();
-            #[allow(unused_mut, unused_variables)]
-            let mut __tco_focus_xs = __tco_base_xs.focus();
-            break loop {
-                #[allow(unused_mut)]
-                let mut n = __tco_loop_n;
-                if (n.clone() <= 0) {
-                    break Rc::new(__tco_base_xs.skip(__tco_cursor_xs));
-                } else {
-                    {
-                        let __fm = __tco_base_xs.clone();
-                        if (__fm.len() - __tco_cursor_xs) == 0 {
-                            break Rc::new(vec![]);
-                        } else {
-                            {
-                                let __tco_0 = __tco_cursor_xs + 1;
-                                let __tco_1 = v1_rt::int_sub(n, 1);
-                                __tco_cursor_xs = __tco_0;
-                                __tco_loop_n = __tco_1;
-                                continue;
-                            }
-                        }
-                    }
-                }
-            };
-        };
-        __tco_result
+pub fn skip<T: Clone>(xs: Rc<FreeMonoid<T>>, n: i64) -> Rc<FreeMonoid<T>> {
+    if (n.clone() <= 0) {
+        xs.clone()
+    } else {
+        Rc::new(v1_rt::list_skip(&xs.clone(), n.clone()))
     }
 }
 
-pub fn take_prefix<T: Clone>(
-    mut __tco_loop_xs: Rc<FreeMonoid<T>>,
-    mut __tco_loop_n: i64,
-) -> Rc<FreeMonoid<T>> {
-    {
-        let mut __trmc_out = Rc::new(vec![]);
-        let mut __tco_cursor_xs: usize = 0;
-        #[allow(unused_labels)]
-        let __tco_result = '__tco_rebase: loop {
-            let __tco_base_xs = __tco_loop_xs.clone();
-            #[allow(unused_mut, unused_variables)]
-            let mut __tco_focus_xs = __tco_base_xs.focus();
-            break loop {
-                #[allow(unused_mut)]
-                let mut n = __tco_loop_n;
-                if (n.clone() <= 0) {
-                    break v1_rt::rc_list_concat(__trmc_out, Rc::new(vec![]));
-                } else {
-                    {
-                        let __fm = __tco_base_xs.clone();
-                        if (__fm.len() - __tco_cursor_xs) == 0 {
-                            break v1_rt::rc_list_concat(__trmc_out, Rc::new(vec![]));
-                        } else {
-                            let h = __tco_focus_xs.index(__tco_cursor_xs + 0).clone();
-                            {
-                                __trmc_out = v1_rt::rc_list_push(__trmc_out, h.clone());
-                                {
-                                    let __tco_0 = __tco_cursor_xs + 1;
-                                    let __tco_1 = v1_rt::int_sub(n, 1);
-                                    __tco_cursor_xs = __tco_0;
-                                    __tco_loop_n = __tco_1;
-                                    continue;
-                                }
-                            }
-                        }
-                    }
-                }
-            };
-        };
-        __tco_result
+pub fn take_prefix<T: Clone>(xs: Rc<FreeMonoid<T>>, n: i64) -> Rc<FreeMonoid<T>> {
+    if (n.clone() <= 0) {
+        Rc::new(vec![])
+    } else {
+        Rc::new(v1_rt::list_take(&xs.clone(), n.clone()))
     }
 }
 
@@ -2637,85 +2572,95 @@ pub fn sort_merge_runs<T: Clone, K: Clone>(
     right: Rc<FreeMonoid<Rc<SortKeyed<T, K>>>>,
     order: Rc<TotalOrder<K>>,
 ) -> Rc<FreeMonoid<Rc<SortKeyed<T, K>>>> {
-    sort_merge_into(left, right, order, Rc::new(vec![]))
+    sort_merge_cursor(left, right, 0, 0, order, Rc::new(vec![]))
 }
 
-pub fn sort_merge_into<T: Clone, K: Clone>(
+pub fn sort_merge_cursor<T: Clone, K: Clone>(
     mut __tco_loop_left: Rc<FreeMonoid<Rc<SortKeyed<T, K>>>>,
     mut __tco_loop_right: Rc<FreeMonoid<Rc<SortKeyed<T, K>>>>,
+    mut __tco_loop_i: i64,
+    mut __tco_loop_j: i64,
     mut __tco_loop_order: Rc<TotalOrder<K>>,
     mut __tco_loop_acc: Rc<FreeMonoid<Rc<SortKeyed<T, K>>>>,
 ) -> Rc<FreeMonoid<Rc<SortKeyed<T, K>>>> {
     {
-        let mut __tco_cursor_left: usize = 0;
-        let mut __tco_cursor_right: usize = 0;
-        #[allow(unused_labels)]
-        let __tco_result = '__tco_rebase: loop {
-            let __tco_base_left = __tco_loop_left.clone();
-            #[allow(unused_mut, unused_variables)]
-            let mut __tco_focus_left = __tco_base_left.focus();
-            let __tco_base_right = __tco_loop_right.clone();
-            #[allow(unused_mut, unused_variables)]
-            let mut __tco_focus_right = __tco_base_right.focus();
-            break loop {
-                #[allow(unused_mut)]
-                let mut order = __tco_loop_order;
-                #[allow(unused_mut)]
-                let mut acc = __tco_loop_acc;
-                {
-                    let __fm = __tco_base_left.clone();
-                    if (__fm.len() - __tco_cursor_left) == 0 {
+        loop {
+            #[allow(unused_mut)]
+            let mut left = __tco_loop_left;
+            #[allow(unused_mut)]
+            let mut right = __tco_loop_right;
+            #[allow(unused_mut)]
+            let mut i = __tco_loop_i;
+            #[allow(unused_mut)]
+            let mut j = __tco_loop_j;
+            #[allow(unused_mut)]
+            let mut order = __tco_loop_order;
+            #[allow(unused_mut)]
+            let mut acc = __tco_loop_acc;
+            match v1_rt::list_get_optional(&left, i.clone()) {
+                std::option::Option::None => {
+                    break list_append(
+                        acc.clone(),
+                        Rc::new(v1_rt::list_skip(&right.clone(), j.clone())),
+                    );
+                }
+                Some(l) => match v1_rt::list_get_optional(&right, j.clone()) {
+                    std::option::Option::None => {
                         break list_append(
                             acc.clone(),
-                            Rc::new(__tco_base_right.skip(__tco_cursor_right)),
+                            Rc::new(v1_rt::list_skip(&left.clone(), i.clone())),
                         );
-                    } else {
-                        let l = __tco_focus_left.index(__tco_cursor_left + 0).clone();
-                        {
-                            let __fm = __tco_base_right.clone();
-                            if (__fm.len() - __tco_cursor_right) == 0 {
-                                break list_append(
-                                    acc.clone(),
-                                    Rc::new(__tco_base_left.skip(__tco_cursor_left)),
-                                );
-                            } else {
-                                let r = __tco_focus_right.index(__tco_cursor_right + 0).clone();
-                                match (order.compare)(l.key.clone(), r.key.clone()) {
-                                    Ordering::Greater => {
-                                        let __tco_0 = __tco_cursor_right + 1;
-                                        let __tco_1 = order;
-                                        let __tco_2 = v1_rt::rc_list_push(acc, r.clone());
-                                        __tco_cursor_right = __tco_0;
-                                        __tco_loop_order = __tco_1;
-                                        __tco_loop_acc = __tco_2;
-                                        continue;
-                                    }
-                                    Ordering::Less => {
-                                        let __tco_0 = __tco_cursor_left + 1;
-                                        let __tco_1 = order;
-                                        let __tco_2 = v1_rt::rc_list_push(acc, l.clone());
-                                        __tco_cursor_left = __tco_0;
-                                        __tco_loop_order = __tco_1;
-                                        __tco_loop_acc = __tco_2;
-                                        continue;
-                                    }
-                                    Ordering::Equal => {
-                                        let __tco_0 = __tco_cursor_left + 1;
-                                        let __tco_1 = order;
-                                        let __tco_2 = v1_rt::rc_list_push(acc, l.clone());
-                                        __tco_cursor_left = __tco_0;
-                                        __tco_loop_order = __tco_1;
-                                        __tco_loop_acc = __tco_2;
-                                        continue;
-                                    }
-                                }
-                            }
-                        }
                     }
-                }
-            };
-        };
-        __tco_result
+                    Some(r) => match (order.compare)(l.key.clone(), r.key.clone()) {
+                        Ordering::Greater => {
+                            let __tco_0 = left;
+                            let __tco_1 = right;
+                            let __tco_2 = i;
+                            let __tco_3 = v1_rt::int_add(j, 1);
+                            let __tco_4 = order;
+                            let __tco_5 = v1_rt::rc_list_push(acc, r.clone());
+                            __tco_loop_left = __tco_0;
+                            __tco_loop_right = __tco_1;
+                            __tco_loop_i = __tco_2;
+                            __tco_loop_j = __tco_3;
+                            __tco_loop_order = __tco_4;
+                            __tco_loop_acc = __tco_5;
+                            continue;
+                        }
+                        Ordering::Less => {
+                            let __tco_0 = left;
+                            let __tco_1 = right;
+                            let __tco_2 = v1_rt::int_add(i, 1);
+                            let __tco_3 = j;
+                            let __tco_4 = order;
+                            let __tco_5 = v1_rt::rc_list_push(acc, l.clone());
+                            __tco_loop_left = __tco_0;
+                            __tco_loop_right = __tco_1;
+                            __tco_loop_i = __tco_2;
+                            __tco_loop_j = __tco_3;
+                            __tco_loop_order = __tco_4;
+                            __tco_loop_acc = __tco_5;
+                            continue;
+                        }
+                        Ordering::Equal => {
+                            let __tco_0 = left;
+                            let __tco_1 = right;
+                            let __tco_2 = v1_rt::int_add(i, 1);
+                            let __tco_3 = j;
+                            let __tco_4 = order;
+                            let __tco_5 = v1_rt::rc_list_push(acc, l.clone());
+                            __tco_loop_left = __tco_0;
+                            __tco_loop_right = __tco_1;
+                            __tco_loop_i = __tco_2;
+                            __tco_loop_j = __tco_3;
+                            __tco_loop_order = __tco_4;
+                            __tco_loop_acc = __tco_5;
+                            continue;
+                        }
+                    },
+                },
+            }
+        }
     }
 }
 
@@ -2730,12 +2675,12 @@ pub fn sort_keyed_runs<T: Clone, K: Clone>(
         } else {
             sort_merge_runs(
                 sort_keyed_runs(
-                    take_prefix(xs.clone(), v1_rt::int_div(n.clone(), 2)),
+                    Rc::new(v1_rt::list_take(&xs.clone(), v1_rt::int_div(n.clone(), 2))),
                     v1_rt::int_div(n.clone(), 2),
                     order.clone(),
                 ),
                 sort_keyed_runs(
-                    skip(xs.clone(), v1_rt::int_div(n.clone(), 2)),
+                    Rc::new(v1_rt::list_skip(&xs.clone(), v1_rt::int_div(n.clone(), 2))),
                     v1_rt::int_sub(n.clone(), v1_rt::int_div(n.clone(), 2)),
                     order.clone(),
                 ),

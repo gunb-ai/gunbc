@@ -18,7 +18,7 @@ import v2.std.host_transport {
   InvocationArg, LiteralArg, WorkspacePath, ProducedArtifact,
 }
 
-// P-B enforcement decision (docs/plans/effect-namespace-grants.md 6, owned silent-ibex-417):
+// P-B enforcement decision (docs/plans/effect-namespace-grants.md (deleted 2026-11-08) 6, owned silent-ibex-417):
 // whether a build transport may run in the replay/hermetic lane is DERIVED from its own declared
 // structure, not a mode bit. build_transport_admissible projects each declared effect of a
 // HostTransportDescriptor onto a NamespacePosition and runs std.effect_grant.admit_effect against

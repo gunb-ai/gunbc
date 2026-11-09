@@ -18,7 +18,7 @@ import extdeps.git { git_pathspec_literal }
 import extdeps.git.plumbing
 import extdeps.git.inspect
 import extdeps.shell
-import gunbc.ledger_row_coherence { heal_repair_declaration_artifact_path }
+import gunbc.heal_repair_declaration { heal_repair_declaration_artifact_path }
 import gunbc.heal_publication_boundary {
   CandidateEntry, HealRepairCandidate,
   encode_heal_repair_candidate, decode_heal_repair_candidate, CandidateDecoded, CandidateUndecodable,

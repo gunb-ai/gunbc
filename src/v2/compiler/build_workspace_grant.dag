@@ -9,7 +9,7 @@ import std.effect_grant {
 }
 import std.materialization_ladder { Frame }
 
-// FLAG A interim (docs/plans/effect-namespace-grants.md 6, owned silent-ibex-417): the FIRST
+// FLAG A interim (docs/plans/effect-namespace-grants.md (deleted 2026-11-08) 6, owned silent-ibex-417): the FIRST
 // envelope row, dissolving the undecidable 'can a build run hermetically?' question into a SHAPE
 // over the landed std.effect_grant model -- a row, not a mode exception. A build is admissible in a
 // replay-lane run when its envelope is: Read under the substrate closure, the pinned toolchain

@@ -3726,6 +3726,11 @@ fn parse_compiler_identity_digest(
             )
         })?;
         feed_identity_file(&mut hasher, rel, &bytes);
+        // The parse compiler identity hashes exactly these closure files, so they are inputs of
+        // the operation a reuse decision would skip (gunbc.design_ruling seed_read_set_receipt_is_admitted).
+        // The module-graph build that FOUND the closure walks the pool, but closure membership is a
+        // function of the members' own import lines under the layout rule, so the files are the read set.
+        super::demand_acquire::read_set_record("file", rel);
         if let Some(emitted) = emitted {
             let Some(module_name) = dag_module_name_from_path(rel) else {
                 return Err(format!(
