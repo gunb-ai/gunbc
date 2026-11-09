@@ -1994,7 +1994,7 @@ test fn w_a_data_main_that_already_names_javascript_is_not_extended_and_an_unnam
 }
 
 test fn w_the_resource_store_probes_count_their_spellings() -> Bool {
-  let joined = join(ui_status_token_diagnostic_lines(asset_text: "x resStore y resources z res:{lmedia:{a}} \"lmedia\":{b} \"res_\" w", session_values: witness_session_values()) |> map(l => l as String), "\n")
+  let joined = join(ui_status_token_diagnostic_lines(asset_text: "x resStore y resources z res:\{lmedia:\{a}} \"lmedia\":\{b} \"res_\" w", session_values: witness_session_values()) |> map(l => l as String), "\n")
   string_contains(s: joined, pattern: "probe name=res_store count=1") &&
     string_contains(s: joined, pattern: "probe name=resources count=1") &&
     string_contains(s: joined, pattern: "probe name=res_option count=1") &&
