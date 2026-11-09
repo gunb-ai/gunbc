@@ -35,6 +35,36 @@ fn parse_tree(tag: String, text: String) -> Optional<Node> {
   }
 }
 
+// Count the dag_surface_stmt nodes in the body. claim_batch reports PASS/FAIL, so expose the count
+// as Bool thresholds. This is the load-bearing read: a genuine TWO-statement juxtaposition has 2 stmt
+// children (and both lowering authorities would already refuse it); a body that lowering ACCEPTS but
+// that folds to the last literal must have collapsed to ONE recognized statement, which localizes the
+// boundary to the grammar absorbing the second bracket.
+fn count_stmts(tag: String, text: String) -> Int {
+  match parse_tree(tag: tag, text: text) {
+    Present { value: t } =>
+      fold(node_subtree_nodes(root: t), init: 0, f: fn(acc, m) {
+        if emitted_is(n: m, sym: ^dag_surface_stmt) { acc + 1 } else { acc }
+      })
+    Absent => 0
+  }
+}
+
+// juxtap_two: how many statements does the parser recognize? 2 => lowering recognition gap; 1 => grammar
+// absorbed the second bracket into one statement.
+test fn jp_two_stmt_at_least_one() -> Bool { count_stmts(tag: "two", text: two_source()) >= 1 }
+test fn jp_two_stmt_at_least_two() -> Bool { count_stmts(tag: "two", text: two_source()) >= 2 }
+test fn jp_two_stmt_at_least_three() -> Bool { count_stmts(tag: "two", text: two_source()) >= 3 }
+
+// juxtap_one control: a single-literal body must be exactly ONE statement (so at_least_two is false).
+test fn jp_one_stmt_at_least_one() -> Bool { count_stmts(tag: "one", text: one_source()) >= 1 }
+test fn jp_one_stmt_at_least_two() -> Bool { count_stmts(tag: "one", text: one_source()) >= 2 }
+
+// let-then-tail control: a binding plus a tail value is exactly TWO statements (at_least_two true,
+// at_least_three false) -- the trustworthy two-statement reference the juxtaposition is compared to.
+test fn jp_line_stmt_at_least_two() -> Bool { count_stmts(tag: "line", text: one_line_list_source()) >= 2 }
+test fn jp_line_stmt_at_least_three() -> Bool { count_stmts(tag: "line", text: one_line_list_source()) >= 3 }
+
 fn emitted_is(n: Node, sym: Symbol) -> Bool {
   match parse_production_emitted_identity_optional(node: n) {
     Present { value: id } => id == sym
