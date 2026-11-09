@@ -1,0 +1,180 @@
+module product.e4833.unit_a
+
+import std.types { List, NonEmptyStr }
+import std.nat { Nat }
+import std.optional { Absent, Present }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import product.placement_supply { PhysicalAssetIdentity }
+import product.electrical.photograph { BytesNotInStore, InStore, PhotographCitation, PixelRegion }
+import gunbc.fleet.fleet_asset_identity { e4833_a }
+import extdeps.electronic_component.types { Designator, designator_eq, designator_of }
+import extdeps.nvidia.e4833 {
+  AutoPowerOn, E4833Interface, HostAccess, HostAccessUnread, HostTool, NotAHostInterface, ReachedBy,
+  auto_power_on_when, e4833_auto_power_on, host_access,
+}
+
+// THE E4833 THE OPERATOR HOLDS (gunbc.fleet.fleet_asset_identity e4833_a): WHAT IS FITTED, BROKEN AND SET
+// AT ITS INTERFACES. extdeps.nvidia.e4833 says what the card's print puts at each position; this module
+// says what this one card has there, read off the operator's photographs, and folds the two into the
+// bench question: which tool reaches this card through which position, and what is owed first. A second
+// E4833 is on order; its readings bind to its own identity, which is also how a position without a pin
+// here gets told apart from the maker's key.
+//
+// THE FRAMES. Five were hashed from the bytes the operator sent on 2026-11-09 and are cited by digest and
+// box; they are not yet in a photograph store, so a store check reports them as a gap until they are
+// archived, and the digest is what a later reader re-hashes. Seven close-ups sent later the same evening
+// were not kept as bytes and are cited as such.
+data unit_a_frame_61: Sha256Digest = Sha256Digest { hex: "f858ba516c17093a2cead28fb8866ff7c7322497522246d9a5eee67e5f0b9987" as Sha256DigestHex }
+data unit_a_frame_62: Sha256Digest = Sha256Digest { hex: "7ff36597e99af42c88537c2552e6fe6dcd992b8191030a15a8c0f8fc2cc30369" as Sha256DigestHex }
+data unit_a_frame_63: Sha256Digest = Sha256Digest { hex: "244834b4e307871f79a8d5a879a900bd6f7438ec12860e922763944b8971cfea" as Sha256DigestHex }
+data unit_a_frame_64: Sha256Digest = Sha256Digest { hex: "211b79b627ce49e1c69b12ed9f2f50b713bcfd5bce56c145eaba0aa3ee9a2273" as Sha256DigestHex }
+data unit_a_frame_65: Sha256Digest = Sha256Digest { hex: "1dbaf491759ab7b1667677f1f6e7a879fa3944744ee224c9bc9f485f38fec47d" as Sha256DigestHex }
+
+fn boxed(frame: Sha256Digest, left: Nat, top: Nat, width: Nat, height: Nat) -> PhotographCitation {
+  InStore { content: frame, region: Present { value: PixelRegion { left: left, top: top, width: width, height: height } } }
+}
+
+fn close_up(shows: NonEmptyStr) -> PhotographCitation {
+  BytesNotInStore {
+    taken_on: "2026-11-09",
+    locator: "the operator's close-up of " + shows + ", sent into the bench conversation of 2026-11-09 after the five hashed frames",
+    obligation: "the frame's bytes were not kept; archiving the operator's original makes this citation checkable",
+  }
+}
+
+// WHAT ONE POSITION HAS ON THIS CARD. Absent receptacle and absent pin are separate arms because they
+// close differently: a receptacle is re-fitted, using a position on the same card whose fitted part has
+// the same footprint as the reference; a pin may be the maker's key and close by comparison alone.
+type PositionState
+  = PartFitted { marking: NonEmptyStr }
+  | ReceptacleAbsent { pads: NonEmptyStr, refit_like: Designator }
+  | PinAbsent { where_missing: NonEmptyStr }
+  | JumperOpen { note: NonEmptyStr }
+  | JumperShorted { note: NonEmptyStr }
+
+type PositionReading {
+  designator: Designator
+  state: PositionState
+  seen_in: PhotographCitation
+}
+
+data unit_a_positions: List<PositionReading> = [
+  PositionReading {
+    designator: designator_of(verbatim: "J20"),
+    state: ReceptacleAbsent {
+      pads: "the micro-USB receptacle is gone; its five signal pads are present and tinned with no lifted pad seen, and its four anchor pads carry leftover solder, the two inner ones showing copper at their edges",
+      refit_like: designator_of(verbatim: "J19"),
+    },
+    seen_in: close_up(shows: "J20's pads"),
+  },
+  PositionReading {
+    designator: designator_of(verbatim: "J19"),
+    state: PartFitted { marking: "WIESON on the receptacle's shell" },
+    seen_in: close_up(shows: "J19's shell and leads"),
+  },
+  PositionReading {
+    designator: designator_of(verbatim: "J6"),
+    state: JumperOpen { note: "no shunt on the two pins; red adhesive around the header's base" },
+    seen_in: boxed(frame: unit_a_frame_63, left: 840, top: 500, width: 250, height: 280),
+  },
+  PositionReading {
+    designator: designator_of(verbatim: "J7"),
+    state: PinAbsent { where_missing: "in the row nearest the triangle printed at the housing's corner, the second position from the end away from the triangle" },
+    seen_in: boxed(frame: unit_a_frame_65, left: 535, top: 240, width: 290, height: 330),
+  },
+]
+
+fn position_reading(record: CardInterfaceRecord, designator: Designator) -> PositionReading? {
+  filter(record.positions, r => designator_eq(a: r.designator, b: designator)).first()
+}
+
+// WHICH TOOL REACHES THIS CARD THROUGH A POSITION. The card's design answer (extdeps.nvidia.e4833
+// host_access), unless this card's own state at that position stops it or adds to what is owed.
+type UnitAccess
+  = Reachable { tool: HostTool, owed: List<NonEmptyStr> }
+  | BlockedOnThisCard { reason: NonEmptyStr, refit_like: Designator }
+  | NotAHostPosition
+  | UnitAccessUnread { read_obligation: NonEmptyStr }
+
+fn state_owed(state: PositionState) -> List<NonEmptyStr> {
+  match state {
+    PartFitted { marking } => [],
+    ReceptacleAbsent { pads, refit_like } => [],
+    PinAbsent { where_missing } => ["whether the position without a pin is the maker's key or a pin broken off this card; the second E4833 shows which, and a broken pin is a signal the probe cannot reach"],
+    JumperOpen { note } => [],
+    JumperShorted { note } => [],
+  }
+}
+
+fn design_access(design: HostAccess, extra: List<NonEmptyStr>) -> UnitAccess {
+  match design {
+    ReachedBy { tool, owed } => Reachable { tool: tool, owed: concat(owed, extra) },
+    NotAHostInterface => NotAHostPosition,
+    HostAccessUnread { read_obligation } => UnitAccessUnread { read_obligation: read_obligation },
+  }
+}
+
+fn access_on_unit(i: E4833Interface, positions: List<PositionReading>) -> UnitAccess {
+  match filter(positions, r => designator_eq(a: r.designator, b: i.designator)).first() {
+    Absent => design_access(design: host_access(i: i), extra: []),
+    Present { value: reading } => match reading.state {
+      ReceptacleAbsent { pads, refit_like } => match host_access(i: i) {
+        NotAHostInterface => NotAHostPosition,
+        _ => BlockedOnThisCard { reason: pads, refit_like: refit_like },
+      },
+      _ => design_access(design: host_access(i: i), extra: state_owed(state: reading.state)),
+    },
+  }
+}
+
+fn access_on_card(i: E4833Interface, record: CardInterfaceRecord) -> UnitAccess {
+  access_on_unit(i: i, positions: record.positions)
+}
+
+// THE AUTO POWER ON SETTING A CARD IS IN, from its J6 reading and the legend beside J6 (open means
+// enabled). Absent when the card has no J6 reading.
+fn auto_power_on_setting(record: CardInterfaceRecord) -> AutoPowerOn? {
+  match position_reading(record: record, designator: e4833_auto_power_on.designator) {
+    Absent => Absent,
+    Present { value: reading } => match reading.state {
+      JumperOpen { note } => auto_power_on_when(i: e4833_auto_power_on, shorted: false),
+      JumperShorted { note } => auto_power_on_when(i: e4833_auto_power_on, shorted: true),
+      _ => Absent,
+    },
+  }
+}
+
+// THE PART MARKINGS READ BESIDE THE INTERFACES, verbatim, line by line, legible lines only. They name no
+// part yet: the consumer is the first identification fold for the E4833's parts (as product.p4261's
+// identify_by_marking is for the P4261's), and until it exists these rows are the reading it will start
+// from, so nobody re-photographs a part to read what is already read.
+type MarkingReading {
+  designator: Designator
+  lines: List<NonEmptyStr>
+  seen_in: PhotographCitation
+}
+
+data unit_a_markings: List<MarkingReading> = [
+  MarkingReading { designator: designator_of(verbatim: "U37"), lines: ["FTDI", "FT4222HQ"], seen_in: close_up(shows: "J19, J20 and U37") },
+  MarkingReading { designator: designator_of(verbatim: "U28"), lines: ["RC512T", "E12228", "212"], seen_in: boxed(frame: unit_a_frame_61, left: 60, top: 585, width: 240, height: 300) },
+  MarkingReading { designator: designator_of(verbatim: "U30"), lines: ["RC512T", "E12228", "212"], seen_in: boxed(frame: unit_a_frame_61, left: 540, top: 585, width: 240, height: 300) },
+  MarkingReading { designator: designator_of(verbatim: "U34"), lines: ["YE08", "TI 38K", "ACFX"], seen_in: close_up(shows: "J16, J18 and U34") },
+  MarkingReading { designator: designator_of(verbatim: "D11"), lines: ["M5"], seen_in: close_up(shows: "J20's pads") },
+  MarkingReading { designator: designator_of(verbatim: "D12"), lines: ["M5"], seen_in: close_up(shows: "J20's pads") },
+  MarkingReading { designator: designator_of(verbatim: "D13"), lines: ["M5"], seen_in: close_up(shows: "J19's shell and leads") },
+  MarkingReading { designator: designator_of(verbatim: "D14"), lines: ["M5"], seen_in: close_up(shows: "J19's shell and leads") },
+]
+
+// ONE CARD'S RECORD. The readings are bound to the card they were taken on, so the second E4833 gets a
+// record of its own and the access fold is asked of a card, never of "the E4833".
+type CardInterfaceRecord {
+  card: PhysicalAssetIdentity
+  positions: List<PositionReading>
+  markings: List<MarkingReading>
+}
+
+data unit_a_record: CardInterfaceRecord = CardInterfaceRecord {
+  card: e4833_a,
+  positions: unit_a_positions,
+  markings: unit_a_markings,
+}

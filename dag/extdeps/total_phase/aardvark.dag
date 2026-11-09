@@ -1,0 +1,81 @@
+module extdeps.total_phase.aardvark
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { Micrometer, micrometer }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// TOTAL PHASE'S AARDVARK I2C/SPI HOST ADAPTER: ITS 10-POSITION TARGET CONNECTOR. A board that prints
+// "Aardvark" beside a header is claiming this pinout, so the pinout lives here, once, under its maker,
+// and a board names it rather than restating it (gunbc.design_argument::single_authority). Read
+// 2026-11-09 from Total Phase's user manual page (HTTP 200): "The ribbon cable connector is a standard
+// 0.100" (2.54 mm) pitch IDC type connector. This connector will mate with a standard keyed boxed
+// header", and the "Order of Leads" 1 SCL, 2 GND, 3 SDA, 4 NC/+5V, 5 MISO, 6 NC/+5V, 7 SCLK, 8 MOSI,
+// 9 SS, 10 GND, positions 4 and 6 being the adapter's I2C and SPI target power.
+data aardvark_user_manual: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.totalphase.com/support/articles/200468316-aardvark-i2c-spi-host-adapter-user-manual/"
+  }
+}
+
+// What a position carries, as the manual names it. Target power is its own arm because it is the one
+// position an adapter can drive into a board: a consumer has to decide about it, not read past it.
+type AardvarkSignal
+  = I2cClock
+  | I2cData
+  | SpiMasterInSlaveOut
+  | SpiClock
+  | SpiMasterOutSlaveIn
+  | SpiSlaveSelect
+  | SignalGround
+  | TargetPowerOrNoConnect
+
+type AardvarkPosition {
+  position: Nat
+  signal: AardvarkSignal
+}
+
+type AardvarkTargetConnector {
+  pitch: Micrometer
+  positions: List<AardvarkPosition>
+  authority: ExternalAuthority
+}
+
+data aardvark_target_connector: AardvarkTargetConnector = AardvarkTargetConnector {
+  pitch: micrometer(count: 2540),
+  positions: [
+    AardvarkPosition { position: 1, signal: I2cClock },
+    AardvarkPosition { position: 2, signal: SignalGround },
+    AardvarkPosition { position: 3, signal: I2cData },
+    AardvarkPosition { position: 4, signal: TargetPowerOrNoConnect },
+    AardvarkPosition { position: 5, signal: SpiMasterInSlaveOut },
+    AardvarkPosition { position: 6, signal: TargetPowerOrNoConnect },
+    AardvarkPosition { position: 7, signal: SpiClock },
+    AardvarkPosition { position: 8, signal: SpiMasterOutSlaveIn },
+    AardvarkPosition { position: 9, signal: SpiSlaveSelect },
+    AardvarkPosition { position: 10, signal: SignalGround },
+  ],
+  authority: aardvark_user_manual,
+}
+
+fn aardvark_signal_eq(a: AardvarkSignal, b: AardvarkSignal) -> Bool {
+  match a {
+    I2cClock => match b { I2cClock => true, _ => false },
+    I2cData => match b { I2cData => true, _ => false },
+    SpiMasterInSlaveOut => match b { SpiMasterInSlaveOut => true, _ => false },
+    SpiClock => match b { SpiClock => true, _ => false },
+    SpiMasterOutSlaveIn => match b { SpiMasterOutSlaveIn => true, _ => false },
+    SpiSlaveSelect => match b { SpiSlaveSelect => true, _ => false },
+    SignalGround => match b { SignalGround => true, _ => false },
+    TargetPowerOrNoConnect => match b { TargetPowerOrNoConnect => true, _ => false },
+  }
+}
+
+// The positions that carry a signal, in the manual's order. A host wired to a board through this
+// connector needs these and ground; the target-power positions are left open unless the board is shown
+// to take power there.
+fn positions_carrying(connector: AardvarkTargetConnector, signal: AardvarkSignal) -> List<Nat> {
+  map(filter(connector.positions, p => aardvark_signal_eq(a: p.signal, b: signal)), p => p.position)
+}

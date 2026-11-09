@@ -1,0 +1,186 @@
+module test.claim.product.e4833_interfaces_witness
+
+// THE E4833'S INTERFACES AND THE ONE QUESTION THEY ANSWER: which tool reaches the held card through which
+// position, and what is owed first. Each claim below runs the fold on the real rows and, where the claim
+// is a refusal, on the same rows with one fact changed, so a fold that ignored that fact would go red.
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.optional { Absent, Present }
+import extdeps.electronic_component.types { Designator, designator_eq, designator_of }
+import extdeps.total_phase.aardvark {
+  I2cClock, I2cData, SignalGround, SpiClock, SpiMasterInSlaveOut, SpiMasterOutSlaveIn, SpiSlaveSelect,
+  TargetPowerOrNoConnect, aardvark_target_connector, positions_carrying,
+}
+import extdeps.nvidia.e4833 {
+  AutoPowerOn, AutoPowerOnDisabled, AutoPowerOnEnabled, E4833Interface, HostTool, I2cSpiHostAdapter,
+  JtagProbe, LogicUartAdapter, MicroUsbDataCable, Rs232ConsoleCable,
+  e4833_aardvark, e4833_auto_power_on, e4833_dc_input_position, e4833_fan1, e4833_fan2, e4833_ft4222_usb,
+  e4833_hmc_socket, e4833_interfaces, e4833_j9, e4833_j10, e4833_j11, e4833_jtag, e4833_nvme,
+  e4833_pm342_usb, e4833_rs232, e4833_rtc, e4833_uart,
+}
+import product.electrical.photograph { BytesNotInStore }
+import product.e4833.unit_a {
+  BlockedOnThisCard, CardInterfaceRecord, JumperShorted, NotAHostPosition, PositionReading, Reachable,
+  UnitAccess, UnitAccessUnread, access_on_card, auto_power_on_setting, unit_a_record,
+}
+
+fn tool_eq(a: HostTool, b: HostTool) -> Bool {
+  match a {
+    MicroUsbDataCable => match b { MicroUsbDataCable => true, _ => false },
+    Rs232ConsoleCable => match b { Rs232ConsoleCable => true, _ => false },
+    LogicUartAdapter => match b { LogicUartAdapter => true, _ => false },
+    I2cSpiHostAdapter => match b { I2cSpiHostAdapter => true, _ => false },
+    JtagProbe => match b { JtagProbe => true, _ => false },
+    _ => false,
+  }
+}
+
+// Reached by this tool with exactly this many figures owed first.
+fn reached_owing(access: UnitAccess, tool: HostTool, owed: Nat) -> Bool {
+  match access {
+    Reachable { tool: t, owed: o } => tool_eq(a: t, b: tool) && count(o) == owed,
+    _ => false,
+  }
+}
+
+fn not_a_way_in(access: UnitAccess) -> Bool {
+  match access {
+    NotAHostPosition => true,
+    _ => false,
+  }
+}
+
+fn unread(access: UnitAccess) -> Bool {
+  match access {
+    UnitAccessUnread { read_obligation } => true,
+    _ => false,
+  }
+}
+
+fn on_held_card(i: E4833Interface) -> UnitAccess {
+  access_on_card(i: i, record: unit_a_record)
+}
+
+// The held card's record with the reading at one position removed: the same card as if that position
+// had nothing to report.
+fn without_reading(record: CardInterfaceRecord, designator: Designator) -> CardInterfaceRecord {
+  CardInterfaceRecord {
+    card: record.card,
+    positions: filter(record.positions, r => !designator_eq(a: r.designator, b: designator)),
+    markings: record.markings,
+  }
+}
+
+fn with_reading(record: CardInterfaceRecord, reading: PositionReading) -> CardInterfaceRecord {
+  CardInterfaceRecord { card: record.card, positions: concat([reading], without_reading(record: record, designator: reading.designator).positions), markings: record.markings }
+}
+
+fn is_only(xs: List<Nat>, n: Nat) -> Bool {
+  count(xs) == 1 && any(xs, x => x == n)
+}
+
+fn is_pair(xs: List<Nat>, a: Nat, b: Nat) -> Bool {
+  count(xs) == 2 && any(xs, x => x == a) && any(xs, x => x == b)
+}
+
+fn auto_power_on_is(setting: AutoPowerOn?, enabled: Bool) -> Bool {
+  match setting {
+    Absent => false,
+    Present { value } => match value {
+      AutoPowerOnEnabled => enabled,
+      AutoPowerOnDisabled => !enabled,
+    },
+  }
+}
+
+// J20's receptacle is gone on the held card: the way in is blocked there, and the refit names J19, the
+// fitted receptacle on the same card. The same card with J20 fitted is reached by a micro-USB data
+// cable, owing only what the FT4222H gives a host.
+test fn the_held_cards_j20_is_blocked_and_refits_like_j19() -> Bool {
+  match on_held_card(i: e4833_ft4222_usb) {
+    BlockedOnThisCard { reason, refit_like } => designator_eq(a: refit_like, b: designator_of(verbatim: "J19")),
+    _ => false,
+  }
+}
+
+test fn the_same_card_with_j20_fitted_is_reached_by_a_micro_usb_data_cable() -> Bool {
+  reached_owing(access: access_on_card(i: e4833_ft4222_usb, record: without_reading(record: unit_a_record, designator: designator_of(verbatim: "J20"))), tool: MicroUsbDataCable, owed: 1)
+}
+
+// J16's print names the Aardvark, so its pitch and pinout are the Aardvark's, cited to Total Phase:
+// nothing is owed before an I2C/SPI adapter is plugged in, and the positions are the manual's.
+test fn j16_is_reached_by_an_i2c_spi_adapter_with_nothing_owed() -> Bool {
+  reached_owing(access: on_held_card(i: e4833_aardvark), tool: I2cSpiHostAdapter, owed: 0)
+}
+
+test fn the_aardvark_positions_are_the_manuals() -> Bool {
+  is_only(xs: positions_carrying(connector: aardvark_target_connector, signal: I2cClock), n: 1)
+    && is_only(xs: positions_carrying(connector: aardvark_target_connector, signal: I2cData), n: 3)
+    && is_only(xs: positions_carrying(connector: aardvark_target_connector, signal: SpiMasterInSlaveOut), n: 5)
+    && is_only(xs: positions_carrying(connector: aardvark_target_connector, signal: SpiClock), n: 7)
+    && is_only(xs: positions_carrying(connector: aardvark_target_connector, signal: SpiMasterOutSlaveIn), n: 8)
+    && is_only(xs: positions_carrying(connector: aardvark_target_connector, signal: SpiSlaveSelect), n: 9)
+    && is_pair(xs: positions_carrying(connector: aardvark_target_connector, signal: SignalGround), a: 2, b: 10)
+    && is_pair(xs: positions_carrying(connector: aardvark_target_connector, signal: TargetPowerOrNoConnect), a: 4, b: 6)
+}
+
+// The consoles. J2 owes only its RJ45 pin assignment; J4 owes its level, its assignment, its pitch and
+// its key; J19 owes what it enumerates as.
+test fn j2_is_an_rs232_console_owing_its_rj45_assignment() -> Bool {
+  reached_owing(access: on_held_card(i: e4833_rs232), tool: Rs232ConsoleCable, owed: 1)
+}
+
+test fn j4_is_a_logic_uart_owing_level_assignment_pitch_and_key() -> Bool {
+  reached_owing(access: on_held_card(i: e4833_uart), tool: LogicUartAdapter, owed: 4)
+}
+
+test fn j19_is_reached_by_a_micro_usb_data_cable_owing_what_it_enumerates_as() -> Bool {
+  reached_owing(access: on_held_card(i: e4833_pm342_usb), tool: MicroUsbDataCable, owed: 1)
+}
+
+// J7 on the held card owes one more figure than the design does: whether its missing pin is the maker's
+// key. A card with nothing to report at J7 owes only the design's three.
+test fn j7_on_the_held_card_owes_whether_its_missing_pin_is_the_key() -> Bool {
+  reached_owing(access: on_held_card(i: e4833_jtag), tool: JtagProbe, owed: 4)
+    && reached_owing(access: access_on_card(i: e4833_jtag, record: without_reading(record: unit_a_record, designator: designator_of(verbatim: "J7"))), tool: JtagProbe, owed: 3)
+}
+
+// Power, fans, the RTC cell, the jumper, the HMC socket and the M.2 socket are not ways in; J9 to J11
+// carry no print, and say their function is unread rather than vanishing from the list.
+test fn power_fans_rtc_jumper_and_sockets_are_not_ways_in() -> Bool {
+  not_a_way_in(access: on_held_card(i: e4833_dc_input_position))
+    && not_a_way_in(access: on_held_card(i: e4833_fan1))
+    && not_a_way_in(access: on_held_card(i: e4833_fan2))
+    && not_a_way_in(access: on_held_card(i: e4833_rtc))
+    && not_a_way_in(access: on_held_card(i: e4833_auto_power_on))
+    && not_a_way_in(access: on_held_card(i: e4833_hmc_socket))
+    && not_a_way_in(access: on_held_card(i: e4833_nvme))
+}
+
+test fn the_unprinted_headers_say_their_function_is_unread() -> Bool {
+  unread(access: on_held_card(i: e4833_j9)) && unread(access: on_held_card(i: e4833_j10)) && unread(access: on_held_card(i: e4833_j11))
+}
+
+// J6 is open on the held card and the legend says open means enabled. The same card with J6 shorted
+// reads disabled, and a card with no J6 reading says nothing.
+test fn the_held_card_is_set_to_auto_power_on() -> Bool {
+  auto_power_on_is(setting: auto_power_on_setting(record: unit_a_record), enabled: true)
+}
+
+test fn shorting_j6_reads_disabled_and_no_reading_says_nothing() -> Bool {
+  auto_power_on_is(setting: auto_power_on_setting(record: with_reading(record: unit_a_record, reading: PositionReading { designator: designator_of(verbatim: "J6"), state: JumperShorted { note: "a shunt fitted" }, seen_in: BytesNotInStore { taken_on: "fixture", locator: "a shunt fitted on J6, for this claim only", obligation: "none: a fixture, not a reading" } })), enabled: false)
+    && match auto_power_on_setting(record: without_reading(record: unit_a_record, designator: designator_of(verbatim: "J6"))) {
+      Absent => true,
+      Present { value } => false,
+    }
+}
+
+// Every position is listed once, and every reading on the held card names a listed position.
+test fn every_position_is_listed_once() -> Bool {
+  all(e4833_interfaces, i => count(filter(e4833_interfaces, j => designator_eq(a: i.designator, b: j.designator))) == 1)
+}
+
+test fn every_held_card_reading_names_a_listed_position() -> Bool {
+  all(unit_a_record.positions, r => any(e4833_interfaces, i => designator_eq(a: i.designator, b: r.designator)))
+}

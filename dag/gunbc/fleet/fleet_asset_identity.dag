@@ -70,3 +70,7 @@ data p4261_e1_b: PhysicalAssetIdentity = "p4261-e1-b" as PhysicalAssetIdentity
 // boards; and the allocation attaches nothing retroactively -- an earlier lot observation that named no
 // board stays unattributed rather than becoming this asset's.
 data p4261_e1_c: PhysicalAssetIdentity = "p4261-e1-c" as PhysicalAssetIdentity
+// The E4833 controller carrier the operator holds, bought second-hand about 2026-10-17 with no HMC in
+// its J5 socket. A second E4833 was ordered on 2026-11-09 and takes its own identity when it arrives, so a
+// reading binds to the card it was taken on (product.e4833.unit_a holds this one's).
+data e4833_a: PhysicalAssetIdentity = "e4833-a" as PhysicalAssetIdentity

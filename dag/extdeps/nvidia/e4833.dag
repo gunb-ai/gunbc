@@ -1,12 +1,15 @@
 module extdeps.nvidia.e4833
 
-import std.types { List, NonEmptyStr }
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.optional { Absent, Present }
 import std.measure { Micrometer, micrometer }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.vendor.nvidia { nvidia }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import extdeps.electronic_component.types { Designator, designator_of }
+import extdeps.total_phase.aardvark { AardvarkTargetConnector, aardvark_target_connector }
 
 // NVIDIA'S E4833, THE CONTROLLER CARRIER: a full-height PCIe x16 card that takes an HGX HMC module in
 // its J5 socket and exposes the HMC's VGA, Ethernet, UART, M.2 and debug headers. It is the card sold
@@ -15,9 +18,11 @@ import extdeps.electronic_component.types { Designator, designator_of }
 // the PCB print and the silkscreen of the unit this repository holds, and grounded only when an NVIDIA
 // source names it. What a held unit reads and does is that unit's record; a row here holds no reading.
 //
-// Only the DC input is modelled, because the only consumer today is the question of which plug feeds
-// it. The HMC socket, the PCIe edge, the headers and the Auto Power On jumper join when a consumer
-// reads them (gunbc.design_argument::consumption).
+// The DC input is modelled for the question of which plug feeds it, and the positions the held unit's
+// print and fitted parts show (THE CARD'S INTERFACES, below) for the question of which tool reaches
+// the card through which position: product.e4833.unit_a folds them with that unit's own state. The
+// PCIe edge and the bracket's Ethernet/USB stack and VGA join when they are photographed with their
+// designators (gunbc.design_argument::consumption).
 
 type E4833Identity {
   vendor: Vendor<Hardware>
@@ -89,5 +94,250 @@ fn plug_for_dc_input(jack: DcBarrelJack) -> DcPlugRequirement {
       CentrePositive => PlugNamed { outer_diameter: jack.outer_diameter, pin_diameter: diameter, polarity: CentrePositive },
       CentreNegative => PlugNamed { outer_diameter: jack.outer_diameter, pin_diameter: diameter, polarity: CentreNegative },
     },
+  }
+}
+
+// THE CARD'S INTERFACES, AS ITS PRINT AND FITTED PARTS SHOW THEM. Read 2026-11-09 from the operator's
+// photographs of the held unit (product.e4833.unit_a cites each frame), J4 and J5 from the operator's
+// earlier frames, cropped 2026-11-05. A row says what is fitted at a position and what the card's own silkscreen says it is for. It
+// holds no continuity reading: a function the print names is the print's claim, and a position with no
+// print says so rather than being guessed. A pitch is read by caliper or taken from the maker of the
+// part the print names as its mate -- never scaled off a photograph, where a tall housing's parallax
+// makes its positions look wider apart than the board-level parts it is measured against.
+
+type PitchReading
+  = PitchOfNamedMate { pitch: Micrometer, mate: NonEmptyStr }
+  | PitchUnread { read_obligation: NonEmptyStr }
+
+// How a header refuses a plug turned the wrong way. A position without a pin on one unit is that unit's
+// observation (product.e4833.unit_a), not a key, until a second unit shows the maker left it out.
+type HeaderKey
+  = KeyedByShroudNotch
+  | NoKeyNeeded
+  | KeyUnread { read_obligation: NonEmptyStr }
+
+type InterfaceForm
+  = HmcCardEdgeSocket
+  | BarrelJack { jack: DcBarrelJack }
+  | MicroUsbBReceptacle
+  | Rj45Jack
+  | M2Socket
+  | PinHeader { rows: Nat, positions_per_row: Nat, shrouded: Bool, key: HeaderKey, pitch: PitchReading }
+
+type AutoPowerOn
+  = AutoPowerOnEnabled
+  | AutoPowerOnDisabled
+
+// What the print beside a position names it for. Each arm is one claim the silkscreen makes; the arms
+// carry only what the print or a fitted part's own marking adds.
+type InterfaceFunction
+  = HmcModule
+  | DcPowerInput
+  | UsbToSpiI2cBridge { bridge: Designator, bridge_marking: NonEmptyStr }
+  | UsbPortNamedForPm342
+  | Rs232Serial
+  | LogicLevelUart
+  | NvmeStorage
+  | AardvarkI2cSpi { connector: AardvarkTargetConnector }
+  | Jtag
+  | Espi
+  | Peci
+  | FanHeader { index: Nat }
+  | RtcBattery
+  | AutoPowerOnJumper { when_open: AutoPowerOn, when_shorted: AutoPowerOn }
+  | FunctionUnprinted { read_obligation: NonEmptyStr }
+
+type E4833Interface {
+  designator: Designator
+  print: List<NonEmptyStr>
+  form: InterfaceForm
+  function: InterfaceFunction
+  standing: CitedFigureStanding
+}
+
+data e4833_print_obligation: NonEmptyStr = "an NVIDIA drawing or schematic of the E4833 naming this position; until then the row is the held unit's silkscreen and fitted part as photographed, and the function is what the print claims, with no continuity read behind it"
+
+fn header(rows: Nat, positions_per_row: Nat, key: HeaderKey, pitch_obligation: NonEmptyStr) -> InterfaceForm {
+  PinHeader { rows: rows, positions_per_row: positions_per_row, shrouded: true, key: key, pitch: PitchUnread { read_obligation: pitch_obligation } }
+}
+
+fn printed(designator: NonEmptyStr, print: List<NonEmptyStr>, form: InterfaceForm, function: InterfaceFunction) -> E4833Interface {
+  E4833Interface {
+    designator: designator_of(verbatim: designator),
+    print: print,
+    form: form,
+    function: function,
+    standing: TranscribedUncited { read_obligation: e4833_print_obligation },
+  }
+}
+
+data e4833_hmc_socket: E4833Interface = printed(designator: "J5", print: ["BMC"], form: HmcCardEdgeSocket, function: HmcModule)
+
+data e4833_dc_input_position: E4833Interface = E4833Interface {
+  designator: e4833_dc_input.designator,
+  print: [e4833_dc_input.label],
+  form: BarrelJack { jack: e4833_dc_input },
+  function: DcPowerInput,
+  standing: e4833_dc_input.standing,
+}
+
+data e4833_rs232: E4833Interface = printed(designator: "J2", print: ["RS232"], form: Rj45Jack, function: Rs232Serial)
+
+data e4833_uart: E4833Interface = printed(designator: "J4", print: ["UART"], form: header(rows: 1, positions_per_row: 4, key: KeyUnread { read_obligation: "whether J4's housing has a latch ramp or polarizing wall, from a side-on frame" }, pitch_obligation: "J4's position pitch by caliper"), function: LogicLevelUart)
+
+// The legend is printed beside J6 with an arrow to it. It was read in full from a seller's photograph of
+// an E4833 of this layout; the held unit's frame shows the same table with the ends of its three cells.
+data e4833_auto_power_on: E4833Interface = E4833Interface {
+  designator: designator_of(verbatim: "J6"),
+  print: ["Auto Power On", "Open: Enable", "Short: Disable"],
+  form: PinHeader { rows: 1, positions_per_row: 2, shrouded: false, key: NoKeyNeeded, pitch: PitchUnread { read_obligation: "J6's pitch by caliper, which names the shunt that fits" } },
+  function: AutoPowerOnJumper { when_open: AutoPowerOnEnabled, when_shorted: AutoPowerOnDisabled },
+  standing: TranscribedUncited { read_obligation: "one straight-down frame of the held unit's legend in full; the held unit's frame of 2026-11-09 shows its cells ending '...r ON', '...ble' and '...able', and the full words are from a seller's photograph of another E4833" },
+}
+
+data e4833_jtag: E4833Interface = printed(designator: "J7", print: ["JTAG"], form: header(rows: 2, positions_per_row: 5, key: KeyUnread { read_obligation: "whether the position without a pin on the held unit is the maker's key: a second E4833 shows it, and a 2x5 header keyed that way is Arm's 10-position debug connector, whose documentation did not render on 2026-11-09" }, pitch_obligation: "J7's pitch by caliper; 1.27 mm would match Arm's 10-position debug connector"), function: Jtag)
+
+data e4833_espi: E4833Interface = printed(designator: "J8", print: ["ESPI"], form: header(rows: 2, positions_per_row: 5, key: KeyUnread { read_obligation: "J8's polarization, from a side-on frame" }, pitch_obligation: "J8's pitch by caliper"), function: Espi)
+
+data e4833_four_position_key: HeaderKey = KeyUnread { read_obligation: "the housing's latch ramp or polarizing wall, from a side-on frame" }
+
+data e4833_j9: E4833Interface = printed(designator: "J9", print: [], form: header(rows: 1, positions_per_row: 4, key: e4833_four_position_key, pitch_obligation: "J9's pitch by caliper"), function: FunctionUnprinted { read_obligation: "J9 to J11 carry no print beside them; continuity from each position to a part whose pins are known, or an NVIDIA drawing, says what they are" })
+
+data e4833_j10: E4833Interface = printed(designator: "J10", print: [], form: header(rows: 1, positions_per_row: 4, key: e4833_four_position_key, pitch_obligation: "J10's pitch by caliper"), function: FunctionUnprinted { read_obligation: "J9 to J11 carry no print beside them; continuity from each position to a part whose pins are known, or an NVIDIA drawing, says what they are" })
+
+data e4833_j11: E4833Interface = printed(designator: "J11", print: [], form: header(rows: 1, positions_per_row: 4, key: e4833_four_position_key, pitch_obligation: "J11's pitch by caliper"), function: FunctionUnprinted { read_obligation: "J9 to J11 carry no print beside them; continuity from each position to a part whose pins are known, or an NVIDIA drawing, says what they are" })
+
+data e4833_peci: E4833Interface = printed(designator: "J12", print: ["PECI"], form: header(rows: 1, positions_per_row: 4, key: e4833_four_position_key, pitch_obligation: "J12's pitch by caliper"), function: Peci)
+
+// The M.2 socket's own designator is not printed beside its body. 'J13' is printed between its 'NVMe'
+// print and J9, and each four-position header already has its own designator, so J13 is attributed to
+// the socket by placement; a continuity or drawing reading that names J13 otherwise falsifies the row.
+data e4833_nvme: E4833Interface = E4833Interface {
+  designator: designator_of(verbatim: "J13"),
+  print: ["NVMe"],
+  form: M2Socket,
+  function: NvmeStorage,
+  standing: TranscribedUncited { read_obligation: "the socket's designator: 'J13' is printed between the 'NVMe' print and J9 and is attributed to the socket by placement only; an NVIDIA drawing, or a frame showing J13's outline around the socket, settles it, and the socket's key position is unread" },
+}
+
+data e4833_fan1: E4833Interface = printed(designator: "J14", print: ["FAN1"], form: header(rows: 1, positions_per_row: 4, key: e4833_four_position_key, pitch_obligation: "J14's pitch by caliper"), function: FanHeader { index: 1 })
+
+data e4833_fan2: E4833Interface = printed(designator: "J15", print: ["FAN2"], form: header(rows: 1, positions_per_row: 4, key: e4833_four_position_key, pitch_obligation: "J15's pitch by caliper"), function: FanHeader { index: 2 })
+
+// The print names Total Phase's Aardvark, so its pitch and its pinout are the Aardvark's and live in
+// extdeps.total_phase.aardvark. That J16 is wired to that pinout is still the print's claim.
+data e4833_aardvark: E4833Interface = E4833Interface {
+  designator: designator_of(verbatim: "J16"),
+  print: ["Aardvark", "SPI/I2C"],
+  form: PinHeader { rows: 2, positions_per_row: 5, shrouded: true, key: KeyedByShroudNotch, pitch: PitchOfNamedMate { pitch: aardvark_target_connector.pitch, mate: "Total Phase Aardvark 10-position IDC cable" } },
+  function: AardvarkI2cSpi { connector: aardvark_target_connector },
+  standing: TranscribedUncited { read_obligation: "continuity from J16's positions to the card's I2C and SPI parts: the print claims the Aardvark pinout and nothing has checked the card against it" },
+}
+
+data e4833_rtc: E4833Interface = printed(designator: "J18", print: ["RTC"], form: header(rows: 1, positions_per_row: 2, key: KeyUnread { read_obligation: "J18's latch side, from a side-on frame" }, pitch_obligation: "J18's pitch by caliper, which names the cell lead that fits"), function: RtcBattery)
+
+data e4833_pm342_usb: E4833Interface = printed(designator: "J19", print: ["PM342 USB"], form: MicroUsbBReceptacle, function: UsbPortNamedForPm342)
+
+data e4833_ft4222_usb: E4833Interface = E4833Interface {
+  designator: designator_of(verbatim: "J20"),
+  print: ["FT4222 USB"],
+  form: MicroUsbBReceptacle,
+  function: UsbToSpiI2cBridge { bridge: designator_of(verbatim: "U37"), bridge_marking: "FT4222HQ" },
+  standing: TranscribedUncited { read_obligation: "FTDI's FT4222H datasheet for what the bridge gives a host (ftdichip.com refused an automated fetch on 2026-11-09), and continuity from J20's D+ and D- pads to U37: the print reads 'FT4222 USB' and U37's package 'FT4222HQ', and the pairing is by name" },
+}
+
+data e4833_interfaces: List<E4833Interface> = [
+  e4833_rs232,
+  e4833_uart,
+  e4833_hmc_socket,
+  e4833_auto_power_on,
+  e4833_jtag,
+  e4833_espi,
+  e4833_j9,
+  e4833_j10,
+  e4833_j11,
+  e4833_peci,
+  e4833_nvme,
+  e4833_fan1,
+  e4833_fan2,
+  e4833_aardvark,
+  e4833_dc_input_position,
+  e4833_rtc,
+  e4833_pm342_usb,
+  e4833_ft4222_usb,
+]
+
+// WHICH TOOL REACHES THE CARD THROUGH A POSITION, AND WHAT MUST BE READ BEFORE IT IS PLUGGED IN. The
+// tool is named by class, from the function the print claims; every unread figure the connection
+// depends on is carried, so one bench visit can close them together. A position whose function is
+// unread says so rather than being dropped from the list of ways in.
+type HostTool
+  = MicroUsbDataCable
+  | Rs232ConsoleCable
+  | LogicUartAdapter
+  | I2cSpiHostAdapter
+  | JtagProbe
+  | EspiProbe
+  | PeciProbe
+
+type HostAccess
+  = ReachedBy { tool: HostTool, owed: List<NonEmptyStr> }
+  | NotAHostInterface
+  | HostAccessUnread { read_obligation: NonEmptyStr }
+
+fn pitch_reading_owed(reading: PitchReading) -> List<NonEmptyStr> {
+  match reading {
+    PitchOfNamedMate { pitch, mate } => [],
+    PitchUnread { read_obligation } => [read_obligation],
+  }
+}
+
+fn key_owed(key: HeaderKey) -> List<NonEmptyStr> {
+  match key {
+    KeyedByShroudNotch => [],
+    NoKeyNeeded => [],
+    KeyUnread { read_obligation } => [read_obligation],
+  }
+}
+
+fn form_owed(form: InterfaceForm) -> List<NonEmptyStr> {
+  match form {
+    PinHeader { rows, positions_per_row, shrouded, key, pitch } => concat(pitch_reading_owed(reading: pitch), key_owed(key: key)),
+    _ => [],
+  }
+}
+
+data e4833_assignment_owed: NonEmptyStr = "which position carries which signal, by continuity to a part whose pins are known or from an NVIDIA drawing"
+
+fn reached_by(tool: HostTool, form: InterfaceForm, owed: List<NonEmptyStr>) -> HostAccess {
+  ReachedBy { tool: tool, owed: concat(owed, form_owed(form: form)) }
+}
+
+fn host_access(i: E4833Interface) -> HostAccess {
+  match i.function {
+    HmcModule => NotAHostInterface,
+    DcPowerInput => NotAHostInterface,
+    UsbToSpiI2cBridge { bridge, bridge_marking } => reached_by(tool: MicroUsbDataCable, form: i.form, owed: ["what the FT4222H gives a host, from FTDI's datasheet: the print names an SPI/I2C bridge, not a serial port"]),
+    UsbPortNamedForPm342 => reached_by(tool: MicroUsbDataCable, form: i.form, owed: ["what J19 enumerates as on a host: the print names NVIDIA's PM342 debug adapter, and no part behind J19 is identified"]),
+    Rs232Serial => reached_by(tool: Rs232ConsoleCable, form: i.form, owed: ["the RJ45's pin assignment: a rollover console cable fits only the Cisco-style one"]),
+    LogicLevelUart => reached_by(tool: LogicUartAdapter, form: i.form, owed: ["the UART's signal level, read in volts at its transmit position with the card powered", e4833_assignment_owed]),
+    NvmeStorage => NotAHostInterface,
+    AardvarkI2cSpi { connector } => reached_by(tool: I2cSpiHostAdapter, form: i.form, owed: []),
+    Jtag => reached_by(tool: JtagProbe, form: i.form, owed: [e4833_assignment_owed]),
+    Espi => reached_by(tool: EspiProbe, form: i.form, owed: [e4833_assignment_owed]),
+    Peci => reached_by(tool: PeciProbe, form: i.form, owed: [e4833_assignment_owed]),
+    FanHeader { index } => NotAHostInterface,
+    RtcBattery => NotAHostInterface,
+    AutoPowerOnJumper { when_open, when_shorted } => NotAHostInterface,
+    FunctionUnprinted { read_obligation } => HostAccessUnread { read_obligation: read_obligation },
+  }
+}
+
+// What the Auto Power On legend says a jumper state means; a position that is not that jumper says
+// nothing.
+fn auto_power_on_when(i: E4833Interface, shorted: Bool) -> AutoPowerOn? {
+  match i.function {
+    AutoPowerOnJumper { when_open, when_shorted } => if shorted { Present { value: when_shorted } } else { Present { value: when_open } },
+    _ => Absent,
   }
 }
