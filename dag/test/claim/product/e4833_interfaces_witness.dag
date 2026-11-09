@@ -108,10 +108,20 @@ test fn the_same_card_with_j20_fitted_is_reached_by_a_micro_usb_data_cable() -> 
   reached_owing(access: access_on_card(i: e4833_ft4222_usb, record: without_reading(record: unit_a_record, designator: designator_of(verbatim: "J20"))), tool: MicroUsbDataCable, owed: 1)
 }
 
-// J16's print names the Aardvark, so its pitch and pinout are the Aardvark's, cited to Total Phase:
-// nothing is owed before an I2C/SPI adapter is plugged in, and the positions are the manual's.
-test fn j16_is_reached_by_an_i2c_spi_adapter_with_nothing_owed() -> Bool {
-  reached_owing(access: on_held_card(i: e4833_aardvark), tool: I2cSpiHostAdapter, owed: 0)
+// J16's print names the Aardvark, so its pitch and positions are the Aardvark's, cited to Total Phase.
+// The print is not clearance to connect: the card's wiring against that assignment, its logic level and
+// what it does with the two target-power positions are owed before an adapter drives it.
+test fn j16_takes_an_i2c_spi_adapter_and_owes_wiring_level_and_target_power() -> Bool {
+  reached_owing(access: on_held_card(i: e4833_aardvark), tool: I2cSpiHostAdapter, owed: 3)
+}
+
+// No position that a tool can drive is cleared by its print alone: every way in on the held card owes
+// at least one reading.
+test fn no_way_in_is_cleared_by_its_print_alone() -> Bool {
+  all(e4833_interfaces, i => match on_held_card(i: i) {
+    Reachable { tool, owed } => count(owed) > 0,
+    _ => true,
+  })
 }
 
 test fn the_aardvark_positions_are_the_manuals() -> Bool {

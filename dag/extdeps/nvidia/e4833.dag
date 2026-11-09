@@ -269,7 +269,8 @@ data e4833_interfaces: List<E4833Interface> = [
 
 // WHICH TOOL REACHES THE CARD THROUGH A POSITION, AND WHAT MUST BE READ BEFORE IT IS PLUGGED IN. The
 // tool is named by class, from the function the print claims; every unread figure the connection
-// depends on is carried, so one bench visit can close them together. A position whose function is
+// depends on is carried, so one bench visit can close them together. A printed function is never by
+// itself clearance to connect: each arm that lets a tool drive the card carries what must be read first. A position whose function is
 // unread says so rather than being dropped from the list of ways in.
 type HostTool
   = MicroUsbDataCable
@@ -307,6 +308,16 @@ fn form_owed(form: InterfaceForm) -> List<NonEmptyStr> {
   }
 }
 
+// The print beside J16 names the Aardvark's assignment; the card has not been checked against it. An
+// adapter drives these positions, and on two of them an Aardvark can put out 5 V, so the print alone
+// never clears the connection: the card's wiring, its logic level and what it does with the two power
+// positions are each owed first.
+data e4833_aardvark_owed: List<NonEmptyStr> = [
+  "the card's wiring against the printed assignment, unpowered: positions 2 and 10 to the card's ground, and positions 1, 3, 5, 7, 8 and 9 each to a part on the card's I2C or SPI nets",
+  "the voltage J16's signal positions idle at with the card powered, which is the logic level an adapter must match",
+  "what the card does with positions 4 and 6, where an Aardvark can drive 5 V: an adapter's target power stays off, and those two positions unconnected, until that is read",
+]
+
 data e4833_assignment_owed: NonEmptyStr = "which position carries which signal, by continuity to a part whose pins are known or from an NVIDIA drawing"
 
 fn reached_by(tool: HostTool, form: InterfaceForm, owed: List<NonEmptyStr>) -> HostAccess {
@@ -322,7 +333,7 @@ fn host_access(i: E4833Interface) -> HostAccess {
     Rs232Serial => reached_by(tool: Rs232ConsoleCable, form: i.form, owed: ["the RJ45's pin assignment: a rollover console cable fits only the Cisco-style one"]),
     LogicLevelUart => reached_by(tool: LogicUartAdapter, form: i.form, owed: ["the UART's signal level, read in volts at its transmit position with the card powered", e4833_assignment_owed]),
     NvmeStorage => NotAHostInterface,
-    AardvarkI2cSpi { connector } => reached_by(tool: I2cSpiHostAdapter, form: i.form, owed: []),
+    AardvarkI2cSpi { connector } => reached_by(tool: I2cSpiHostAdapter, form: i.form, owed: e4833_aardvark_owed),
     Jtag => reached_by(tool: JtagProbe, form: i.form, owed: [e4833_assignment_owed]),
     Espi => reached_by(tool: EspiProbe, form: i.form, owed: [e4833_assignment_owed]),
     Peci => reached_by(tool: PeciProbe, form: i.form, owed: [e4833_assignment_owed]),
