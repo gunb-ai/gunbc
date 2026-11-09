@@ -1,49 +1,68 @@
 module test.claim.live_deploy.srv1_serving_engine_unit_witness
 
-import std.types { Bool, String }
-import extdeps.systemd.unit_file { serialize_systemd_unit_file }
+import std.types { Bool, String, NonEmptyStr }
+import std.algebra { length }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
 import gunbc.live_deploy.srv1_serving_engine_unit {
-  srv1_serving_engine_unit_file, srv1_serving_engine_wrapper_path, srv1_serving_engine_hosted_on, srv1_serving_engine_retired_hand_units,
+  srv1_serving_engine_hosted_on, srv1_serving_engine_retired_hand_units, srv1_replica_boot_unit_names,
+  srv1_replica_boot_unit_name, srv1_replica_boot_unit_names_for,
+  srv1_serving_engine_unit_name, srv1_serving_engine_unit_path,
+  srv1_serving_engine_enable_link_path, srv1_serving_engine_wrapper_path,
 }
-import gunbc.live_deploy.srv1_gpu_power_cap_unit { srv1_gpu_power_cap_unit_name }
+import gunbc.serving.srv1_serving_replica_layout {
+  srv1_serving_replica_roster, srv1_admitted_launch_config, Srv1LaunchConfig, Srv1KvCacheDtype,
+}
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn unit_text() -> String { serialize_systemd_unit_file(file: srv1_serving_engine_unit_file()) }
-
-// A boot oneshot after docker (and so after the board-function converge docker requires), as the service
-// user with its home, running the modeled wrapper -- and with no ExecStop, so neither stopping it nor
-// retiring it can take the running engine down.
-test fn the_engine_unit_starts_after_docker_and_has_no_stop() -> Bool {
-  let t = unit_text()
-  contains(t, "Requires=docker.service")
-    && contains(t, "After=docker.service")
-    && contains(t, "After=nvidia-cdi-refresh.service")
-    && contains(t, "Type=oneshot")
-    && contains(t, "RemainAfterExit=yes")
-    && contains(t, "User=briansrls")
-    && contains(t, "Environment=HOME=/home/briansrls")
-    && contains(t, concat("ExecStart=/bin/bash ", srv1_serving_engine_wrapper_path as String))
-    && contains(t, "TimeoutStartSec=300")
-    && !contains(t, "ExecStop")
-    && !contains(t, "Restart=")
-    && contains(t, "WantedBy=multi-user.target")
-}
-
-// The engine is srv1's only, and so is the hand unit it retires.
-test fn the_engine_is_hosted_on_srv1_only() -> Bool {
+// The engine boot path is srv1's only: it is gated on srv1 and every retirement is srv1's.
+test fn the_engine_boot_path_is_hosted_on_srv1_only() -> Bool {
   srv1_serving_engine_hosted_on(host: operator_host_srv1)
     && !srv1_serving_engine_hosted_on(host: operator_host_srv2)
-    && all(srv1_serving_engine_retired_hand_units, r => (r.host as String) == (operator_host_srv1 as String) && (r.unit as String) == "srv1-lil-serve.service")
+    && all(srv1_serving_engine_retired_hand_units, r => (r.host as String) == (operator_host_srv1 as String))
 }
 
-// THE ENGINE DEPENDS ON THE GPU POWER-CAP UNIT, not merely follows it: Requires= refuses its start when the
-// cap or its readback failed, After= orders it behind. Either alone is the rejected form (After= alone starts
-// the engine on a failed cap; Requires= alone races it).
-test fn the_engine_requires_and_follows_the_gpu_power_cap_unit() -> Bool {
-  let t = unit_text()
-  let cap = srv1_gpu_power_cap_unit_name as String
-  contains(t, concat("Requires=", cap)) && contains(t, concat("After=", cap))
+// THE LEGACY SINGLETON IS RETIRED BY PATH: an entry whose unit is the legacy singleton retires its unit file,
+// its WantedBy enablement link and the wrapper that started the gpu=all container -- so an apply removes any
+// that remain, and because apply_legs installs nothing there is no leg that could put them back. The older
+// hand unit (srv1-lil-serve.service) is retired alongside it.
+test fn the_legacy_singleton_and_hand_unit_are_retired() -> Bool {
+  let retired = srv1_serving_engine_retired_hand_units
+  let singleton_retired = any(retired, r => (r.unit as String) == (srv1_serving_engine_unit_name as String)
+    && any(r.paths, p => (p as String) == (srv1_serving_engine_unit_path() as String))
+    && any(r.paths, p => (p as String) == (srv1_serving_engine_enable_link_path() as String))
+    && any(r.paths, p => (p as String) == (srv1_serving_engine_wrapper_path as String)))
+  let hand_retired = any(retired, r => (r.unit as String) == "srv1-lil-serve.service")
+  singleton_retired && hand_retired
+}
+
+// THE BOOT INSTANCES DERIVE FROM THE ROSTER: one lil-replica@<index>.service per card, the instance number the
+// replica index -- the same roster the router rows and the gpu.sh launcher argument come from, so the boot
+// path and the router are one fact.
+test fn the_boot_instances_derive_from_the_roster() -> Bool {
+  let names = srv1_replica_boot_unit_names()
+  let all_present = all(srv1_serving_replica_roster, r => any(names, n => (n as String) == (srv1_replica_boot_unit_name(replica: r) as String)))
+  let count_ok = length(names) == length(srv1_serving_replica_roster)
+  let matches_roster = any(names, n => (n as String) == "lil-replica@0.service")
+    && any(names, n => (n as String) == "lil-replica@1.service")
+  all_present && count_ok && matches_roster
+}
+
+// THE ADMISSION GUARD GATES WHAT BOOT ENABLES (the guard's production consumer): with the admitted srv1
+// launch configuration convergence arms both replica instances; with a shape an active defect refuses (here
+// TP=2 on a P2P-less host + nvfp4) it arms NONE -- the refused launch is never converged to boot. This is the
+// executing route (apply_legs -> srv1_replica_boot_unit_names -> srv1_replica_boot_unit_names_for ->
+// srv1_launch_admission), so the guard is not witness-only: a refusal has a real consequence on the boot plan.
+test fn the_admission_guard_gates_what_boot_enables() -> Bool {
+  let admitted = srv1_replica_boot_unit_names_for(config: srv1_admitted_launch_config)
+  let refused_shape = Srv1LaunchConfig {
+    tensor_parallel_size: 2,
+    kv_cache_dtype: NvFp4,
+    profile: "qwen38-flash-next" as NonEmptyStr,
+    lil_replicas: 1,
+    host_gpu_p2p: false,
+  }
+  let refused = srv1_replica_boot_unit_names_for(config: refused_shape)
+  length(admitted) == length(srv1_serving_replica_roster) && length(refused) == 0
 }

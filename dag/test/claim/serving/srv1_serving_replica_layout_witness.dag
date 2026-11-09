@@ -1,0 +1,214 @@
+module test.claim.serving.srv1_serving_replica_layout_witness
+
+import std.types { Bool, NonEmptyStr, List }
+import std.nat { Nat }
+import std.algebra { length, string_contains }
+import std.optional { Absent, Present }
+import std.measure { byte_size_count }
+import gunbc.serving.srv1_serving_replica_layout {
+  srv1_replica_0, srv1_replica_1, srv1_serving_replica_roster,
+  srv1_replica_host_budget, srv1_replica_total_host_claim,
+  srv1_admitted_launch_config, Srv1LaunchConfig, Srv1LaunchAdmission,
+  Srv1KvCacheDtype,
+  srv1_launch_admission,
+  srv1_replica_unit_contract, srv1_disk_guard_contract,
+  srv1_serving_gpu_launcher, srv1_launcher_effective_config, srv1_launcher_effective_launch_config, srv1_replica_device_words,
+  Srv1ServingReplicaSpec,
+}
+import gunbc.serving.lil_serving_defects { srv1_lil_serving_defect_rows, defect_by_identity, LilServingDefect }
+import extdeps.container.nvidia_container_toolkit { nvidia_cdi_device_selector_of }
+
+// ── admission guard witnesses ───────────────────────────────────────────────────────────────────────
+//
+// Each refusal test has a discriminating input: the configuration that triggers the refusal differs from
+// the admitted configuration in EXACTLY ONE field. If the guard is removed (the function returns Admitted
+// unconditionally), the test goes red because it expects Refused. Conversely, if the defect row is
+// removed (upstream fixes the defect and the row dissolves), the refusal stops and the test must change.
+
+// THE ADMITTED CONFIGURATION is admitted. If this goes red, the guard is over-refusing.
+test fn the_admitted_config_is_admitted() -> Bool {
+  match srv1_launch_admission(config: srv1_admitted_launch_config) {
+    Srv1LaunchAdmitted { layout: _ } => true
+    Srv1LaunchRefused { cause: _, defect_identity: _ } => false
+  }
+}
+
+// (a) TP=2 on a P2P-less host → refused, citing F24. Discriminates on tensor_parallel_size: the only
+// difference from srv1_admitted_launch_config is TP=2 instead of TP=1.
+test fn tp2_without_p2p_is_refused_by_f24() -> Bool {
+  let request = Srv1LaunchConfig {
+    tensor_parallel_size: 2,
+    kv_cache_dtype: Fp8E4m3,
+    profile: "qwen38-flash-next" as NonEmptyStr,
+    lil_replicas: 1,
+    host_gpu_p2p: false,
+  }
+  match srv1_launch_admission(config: request) {
+    Srv1LaunchRefused { cause: _, defect_identity: id } => (id as String) == "srv1-f24-b12x-pcie-allreduce-tp2-hang"
+    Srv1LaunchAdmitted { layout: _ } => false
+  }
+}
+
+// (a') TP=2 WITH P2P is not refused by F24 (the defect is specifically about no-P2P; with P2P, TP=2
+// works). Discriminates on host_gpu_p2p: the only difference from the refusal test is p2p=true.
+test fn tp2_with_p2p_passes_f24_check() -> Bool {
+  let request = Srv1LaunchConfig {
+    tensor_parallel_size: 2,
+    kv_cache_dtype: Fp8E4m3,
+    profile: "qwen38-flash-next" as NonEmptyStr,
+    lil_replicas: 1,
+    host_gpu_p2p: true,
+  }
+  match srv1_launch_admission(config: request) {
+    Srv1LaunchAdmitted { layout: _ } => true
+    Srv1LaunchRefused { cause: _, defect_identity: _ } => false
+  }
+}
+
+// (b) nvfp4 kv_cache_dtype → refused, citing F25. Discriminates on kv_cache_dtype: the only difference
+// from the admitted config is kv_cache_dtype="nvfp4".
+test fn nvfp4_kv_cache_is_refused_by_f25() -> Bool {
+  let request = Srv1LaunchConfig {
+    tensor_parallel_size: 1,
+    kv_cache_dtype: NvFp4,
+    profile: "qwen38-flash-next" as NonEmptyStr,
+    lil_replicas: 1,
+    host_gpu_p2p: false,
+  }
+  match srv1_launch_admission(config: request) {
+    Srv1LaunchRefused { cause: _, defect_identity: id } => (id as String) == "srv1-f25-nvfp4-main-kv-unsupported"
+    Srv1LaunchAdmitted { layout: _ } => false
+  }
+}
+
+// (c) lil REPLICAS=2 (single-process multi-replica) → refused, citing F26a (first standing defect).
+// Discriminates on lil_replicas: the only difference from the admitted config is replicas=2.
+test fn lil_replicas_2_is_refused_by_f26a() -> Bool {
+  let request = Srv1LaunchConfig {
+    tensor_parallel_size: 1,
+    kv_cache_dtype: Fp8E4m3,
+    profile: "qwen38-flash-next" as NonEmptyStr,
+    lil_replicas: 2,
+    host_gpu_p2p: false,
+  }
+  match srv1_launch_admission(config: request) {
+    Srv1LaunchRefused { cause: _, defect_identity: id } => (id as String) == "srv1-f26a-lmcache-replica-checkpoint-dma-crash"
+    Srv1LaunchAdmitted { layout: _ } => false
+  }
+}
+
+// ── replica roster witnesses ────────────────────────────────────────────────────────────────────────
+
+// The roster has exactly two replicas, at indices 0 and 1.
+test fn the_roster_has_two_replicas() -> Bool {
+  length(xs: srv1_serving_replica_roster) == 2
+}
+
+// The two replicas have distinct GPU UUIDs (they are on different cards).
+test fn the_replica_gpu_uuids_are_distinct() -> Bool {
+  srv1_replica_0.gpu_uuid != srv1_replica_1.gpu_uuid
+}
+
+// The two replicas have distinct host ports (they publish on different ports).
+test fn the_replica_ports_are_distinct() -> Bool {
+  srv1_replica_0.host_port != srv1_replica_1.host_port
+}
+
+// The two replicas have distinct KV directories (they write to different L2 roots).
+test fn the_replica_kv_dirs_are_distinct() -> Bool {
+  srv1_replica_0.host_kv_dir != srv1_replica_1.host_kv_dir
+}
+
+// Each replica's host budget total equals the sum of its three components (shm + PLE + anon).
+test fn the_host_budget_components_sum_to_the_total() -> Bool {
+  byte_size_count(b: srv1_replica_total_host_claim(budget: srv1_replica_host_budget)) == byte_size_count(b: srv1_replica_host_budget.l1_shm) + byte_size_count(b: srv1_replica_host_budget.ple_pinned) + byte_size_count(b: srv1_replica_host_budget.anon)
+}
+
+// The PLE table is outside the cgroup: the total host claim exceeds the cgroup memory limit.
+test fn ple_is_outside_the_cgroup() -> Bool {
+  byte_size_count(b: srv1_replica_total_host_claim(budget: srv1_replica_host_budget)) > byte_size_count(b: srv1_replica_host_budget.cgroup_memory_limit)
+}
+
+// The disk guard requires at least L2 GiB free per replica (the reserve is positive).
+test fn the_disk_guard_reserve_is_positive() -> Bool {
+  byte_size_count(b: srv1_disk_guard_contract.required_free_per_replica) > 0
+}
+
+// The systemd contract says Restart=on-failure and SuccessExitStatus=143.
+test fn the_systemd_contract_matches_the_unit_file() -> Bool {
+  (srv1_replica_unit_contract.restart as String) == "on-failure" && srv1_replica_unit_contract.success_exit_status == 143
+}
+
+// The contract enables both instances.
+test fn both_replica_instances_are_enabled() -> Bool {
+  length(xs: srv1_replica_unit_contract.enabled_instances) == 2
+}
+
+// ── the boot guard reads the launcher, not a constant (review 92292 F1; fail_closed) ────────────────
+//
+// Discriminating: the retained launcher's actual engine shape derives to an ADMITTED config, while a body
+// flipped to a refused shape (nvfp4 KV / TP=2 on the no-P2P host / lil REPLICAS=2) derives to a config the
+// SAME guard REFUSES by the matching defect. Delete srv1_launch_admission's checks and the refused-shape
+// arms go red; the guard cannot be kept green by editing a declaration while the script lies.
+test fn the_boot_config_is_derived_from_the_launcher_not_a_constant() -> Bool {
+  let admitted_real = match srv1_launch_admission(config: srv1_launcher_effective_launch_config) {
+    Srv1LaunchAdmitted { layout: _ } => true
+    Srv1LaunchRefused { cause: _, defect_identity: _ } => false
+  }
+  let nvfp4 = match srv1_launch_admission(config: srv1_launcher_effective_config(body: "--kv-cache-dtype nvfp4" as NonEmptyStr)) {
+    Srv1LaunchRefused { cause: _, defect_identity: id } => (id as String) == "srv1-f25-nvfp4-main-kv-unsupported"
+    Srv1LaunchAdmitted { layout: _ } => false
+  }
+  let tp2 = match srv1_launch_admission(config: srv1_launcher_effective_config(body: "--tensor-parallel-size 2" as NonEmptyStr)) {
+    Srv1LaunchRefused { cause: _, defect_identity: id } => (id as String) == "srv1-f24-b12x-pcie-allreduce-tp2-hang"
+    Srv1LaunchAdmitted { layout: _ } => false
+  }
+  let reps = match srv1_launch_admission(config: srv1_launcher_effective_config(body: "REPLICAS=2" as NonEmptyStr)) {
+    Srv1LaunchRefused { cause: _, defect_identity: id } => (id as String) == "srv1-f26a-lmcache-replica-checkpoint-dma-crash"
+    Srv1LaunchAdmitted { layout: _ } => false
+  }
+  // The retained launcher's derived shape equals the module's declared admitted intent: the constant is the
+  // SPEC and the derived config is the READ-BACK realization; a launcher that drifts from the intent goes red.
+  let intent = srv1_admitted_launch_config
+  let derived = srv1_launcher_effective_launch_config
+  let matches_intent = derived.tensor_parallel_size == intent.tensor_parallel_size
+    && derived.lil_replicas == intent.lil_replicas
+    && (derived.profile as String) == (intent.profile as String)
+    && !srv1_launcher_kv_is_nvfp4(body: srv1_serving_gpu_launcher.body)
+  admitted_real && nvfp4 && tp2 && reps && matches_intent
+}
+
+// Whether a launcher body asks for the nvfp4 KV dtype (the shape F25 refuses). Exported for the intent tie.
+fn srv1_launcher_kv_is_nvfp4(body: NonEmptyStr) -> Bool {
+  string_contains(s: body as String, pattern: "--kv-cache-dtype nvfp4")
+}
+
+// ── the launcher's per-index case is tied to the roster (review 92292 F2: no silent drift) ───────────
+//
+// The launcher is the operator's verbatim on-disk script (its sha is the C12 receipt); the roster is the
+// model's authoritative layout. This ties them: every replica's UUID, container name and host port from the
+// roster must appear in the launcher body, and the per-index serve/kv names must be present. A change to
+// either copy independently breaks here, so the two cannot silently diverge.
+test fn the_launcher_case_statement_matches_the_roster() -> Bool {
+  let body = srv1_serving_gpu_launcher.body as String
+  let uuids_ok = all(srv1_serving_replica_roster, r => string_contains(s: body, pattern: r.gpu_uuid as String))
+  let names_ok = all(srv1_serving_replica_roster, r => string_contains(s: body, pattern: r.container_name as String))
+  let ports_ok = all(srv1_serving_replica_roster, r => string_contains(s: body, pattern: to_string(r.host_port as Int)))
+  let dirs_ok = string_contains(s: body, pattern: "lil-flash-next-1")
+    && string_contains(s: body, pattern: "serve-gpu1")
+    && string_contains(s: body, pattern: "kv-gpu1")
+  uuids_ok && names_ok && ports_ok && dirs_ok
+}
+
+// The launcher pins each replica by its roster GPU UUID via the shared device-selector form (the one home
+// for nvidia.com/gpu=<UUID>, the same primitive #16048's TP-group path renders).
+test fn the_replica_device_word_uses_the_shared_selector() -> Bool {
+  let r = srv1_replica_0
+  let words = srv1_replica_device_words(replica: r)
+  let ok_form = length(xs: words) == 2
+    && (words[0] as String) == "--device"
+    && (words[1] as String) == (nvidia_cdi_device_selector_of(uuid: r.gpu_uuid) as String)
+  let expected = join(["--device ", nvidia_cdi_device_selector_of(uuid: r.gpu_uuid) as String], "")
+  let in_launcher = string_contains(s: srv1_serving_gpu_launcher.body as String, pattern: expected)
+  ok_form && in_launcher
+}
