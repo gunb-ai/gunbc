@@ -379,6 +379,45 @@ type BlockInferState {
   typed_stmts: List<Node>
 }
 
+// WHY THE BLOCK FOLD REFUSES A NON-FINAL BARE VALUE, AND THE GRAMMAR DOES NOT.
+// Two value expressions written one under the other inside a block are TWO STATEMENTS, and the
+// grammar is right to say so: `v1.compiler.parse::parse_stmts` separates statements by lines, and
+// `v1.extdeps.languages.dag::dag_grammar_index_lbracket_head_expr` refuses to read a next-line `[`
+// as an index suffix. The unjustified step is THIS fold: it threads `last_type` through every
+// statement, so a bare value that merely PRECEDES another statement has its value silently
+// overwritten and dropped -- the block evaluates to the last literal and the earlier one vanishes
+// with no diagnostic. That is the class recorded at
+// gunbc.recurring_failure_mode::juxtaposed_bare_value_lowers_to_the_last_at_body_lowering; the harm
+// instance was the harness tool enumeration that shipped five of eight tools, repaired at the data
+// level by PR #16148. The earliest unjustified boundary is therefore the FOLD and not the grammar
+// (gunbc.design_argument::earliest_unjustified_boundary, ruled by gunbc.design_ruling::chain_re_derivation),
+// so the refusal lives HERE and the grammar stays untouched. The v2 fold refuses the same shape at
+// `v2.compiler.body_lowering_fold::body_lower_stmt_spine` with the cause
+// `body_lowering_reason_statement_precedes_without_binding`; the seed refuses it with the same cause
+// lexeme carried in the message, reusing the seed's own refusal carriers `semantic_expr_error_node`
+// and `inference_error` instead of minting a third one (gunbc.design_argument::minimize_redundancy).
+// A fold that went back to keeping the last value would compile the fixture, leave the located
+// diagnostic unsaid, and turn the standing control
+// `v1.tests.claim.juxtaposed_bare_value_seed_refusal_test` red.
+//
+// WHICH STATEMENTS REFUSE: value forms ONLY -- a statement that evaluates and binds nothing. Calls,
+// control forms and bindings pass: they either effect or bind, so a dropped value there is not this
+// class. `let` remains THE admitted binding (`let x = [1, 2, 3]` followed by `x` is well-formed),
+// which is why this is a whitelist of value shapes and not a blacklist of statements.
+data block_bare_value_refusal_message: String = "a bare value statement precedes another statement in the same block, so its value would be silently dropped; bind it with `let` or delete it: statement_precedes_without_binding"
+
+fn stmt_is_bare_value(stmt: Node) -> Bool {
+  match stmt.expr_data {
+    ExprLiteral { value: _ } => true
+    ExprElaboratedLiteral { value: _, elaboration: _ } => true
+    ExprVar { binding_kind: _ } => true
+    ExprFieldAccess { summary: _ } => true
+    ExprListLit => true
+    ExprRecordLit { parent_enum: _ } => true
+    _ => false
+  }
+}
+
 fn infer_block_stmts(remaining: List<Node>, remaining_count: Int, scope: InferScope,
     typed_stmts: List<Node>, emission_chunks: List<InferEmissions>,
     last_type: Node, expected: Node?) -> BlockInferState {
@@ -388,7 +427,12 @@ fn infer_block_stmts(remaining: List<Node>, remaining_count: Int, scope: InferSc
     Present { value: stmt } =>
       let is_last = remaining_count == 1
       let stmt_expected = if is_last { expected } else { none }
-      let stmt_result = infer_expr(texpr: stmt, scope: scope, expected: stmt_expected)
+      let stmt_result = if !is_last && stmt_is_bare_value(stmt: stmt) {
+        InferResult {
+          typed: semantic_expr_error_node(message: block_bare_value_refusal_message, span: stmt.span),
+          emissions: infer_emissions_of_diagnostics(diagnostics: [inference_error(message: block_bare_value_refusal_message, span: stmt.span, module_name: scope.module_name)])
+        }
+      } else { infer_expr(texpr: stmt, scope: scope, expected: stmt_expected) }
       let stmt_typed = stmt_result.typed
       let stmt_emissions = stmt_result.emissions
       let stmt_rt = resolved_type(n: stmt_typed)
