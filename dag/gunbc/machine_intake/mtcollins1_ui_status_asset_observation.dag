@@ -1639,7 +1639,7 @@ type MegaRacUiCatalogAdmission
   | RefusedUiCatalogNotJson { path: String }
 
 type MegaRacUiCatalogStatus
-  = CatalogStatusValue { value_octets: List<Int>  value_offset: Int }
+  = CatalogStatusValueCandidate { value_octets: List<Int>  value_offset: Int }
   | CatalogStatusKeyAbsent
   | CatalogStatusNotAString { at: Int }
   | CatalogStatusValueEscaped { at: Int }
@@ -1700,9 +1700,14 @@ fn megarac_ui_catalog_path_of_value(piece: String, ns: NonEmptyStr, template: No
     Present { value: lng } => if ui_language_token_refused(lng) {
       CatalogPathUnderived { cause: CatalogLanguageValueRefused { value_length: string_length(s: lng) } }
     } else {
-      match uri_resolve_path_reference(base_path: "/", reference: replace(replace(template as String, megarac_ui_lng_placeholder_text, lng), megarac_ui_ns_placeholder_text, ns as String)) {
-        ResolvedPathReference { path: resolved } => ScriptNamedCatalogPath { path: resolved as NonEmptyStr, lng: lng as NonEmptyStr, ns: ns, template_offset: template_offset, language_list_offset: language_list_offset }
-        _ => CatalogPathUnderived { cause: CatalogLanguageValueRefused { value_length: string_length(s: lng) } }
+      let substituted = replace(replace(template as String, megarac_ui_lng_placeholder_text, lng), megarac_ui_ns_placeholder_text, ns as String)
+      if string_contains(s: substituted, pattern: "..") {
+        CatalogPathUnderived { cause: CatalogLanguageValueRefused { value_length: string_length(s: lng) } }
+      } else {
+        match uri_resolve_path_reference(base_path: "/", reference: substituted) {
+          ResolvedPathReference { path: resolved } => ScriptNamedCatalogPath { path: resolved as NonEmptyStr, lng: lng as NonEmptyStr, ns: ns, template_offset: template_offset, language_list_offset: language_list_offset }
+          _ => CatalogPathUnderived { cause: CatalogLanguageValueRefused { value_length: string_length(s: lng) } }
+        }
       }
     }
   }
@@ -1775,7 +1780,7 @@ fn megarac_ui_catalog_status_zero(body: String) -> MegaRacUiCatalogStatus {
               QuotedLabel { label_octets: label, after: _ } => if any(label, c => c == 92) {
                 CatalogStatusValueEscaped { at: base + ui_skip_blanks(octets, colon_at + 1) + 1 }
               } else {
-                CatalogStatusValue { value_octets: label, value_offset: base + ui_skip_blanks(octets, colon_at + 1) + 1 }
+                CatalogStatusValueCandidate { value_octets: label, value_offset: base + ui_skip_blanks(octets, colon_at + 1) + 1 }
               }
             }
           }
@@ -1803,14 +1808,14 @@ fn megarac_ui_catalog_status_line(lng: NonEmptyStr, status: MegaRacUiCatalogStat
     CatalogStatusNotAString { at: at } => join([head, " refused not_a_string at=", megarac_ui_count_text(at)], "") as NonEmptyStr
     CatalogStatusValueEscaped { at: at } => join([head, " refused value_escaped at=", megarac_ui_count_text(at)], "") as NonEmptyStr
     CatalogStatusUnterminated { at: at } => join([head, " refused unterminated at=", megarac_ui_count_text(at)], "") as NonEmptyStr
-    CatalogStatusValue { value_octets: octets, value_offset: at } => if count(session_values) == 0 {
+    CatalogStatusValueCandidate { value_octets: octets, value_offset: at } => if count(session_values) == 0 {
       join([head, " withheld_nothing_to_check_against"], "") as NonEmptyStr
     } else if any(session_values, value => ui_octets_contain(hay: octets, needle: value)) {
       join([head, " withheld_matches_session_value"], "") as NonEmptyStr
     } else {
       match uint8_octets_of_ints(values: octets) {
         QualifiedOctetsRefused { observed: _ } => join([head, " withheld_not_octets"], "") as NonEmptyStr
-        QualifiedOctetsReady { value: qualified } => join([head, " value_offset=", megarac_ui_count_text(at), " value_length=", megarac_ui_count_text(count(octets)), " hex=", base16_encode_lower(octets: qualified), " claim=catalog_value_not_binding"], "") as NonEmptyStr
+        QualifiedOctetsReady { value: qualified } => join([head, " value_offset=", megarac_ui_count_text(at), " value_length=", megarac_ui_count_text(count(octets)), " hex=", base16_encode_lower(octets: qualified), " claim=raw_status_0_shaped_occurrence_not_membership_not_binding"], "") as NonEmptyStr
       }
     }
   }

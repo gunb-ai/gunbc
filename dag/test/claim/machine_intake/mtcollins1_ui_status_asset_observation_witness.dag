@@ -35,7 +35,7 @@ import gunbc.machine_intake.mtcollins1_ui_status_asset_observation {
   CatalogStatusKeyAbsent,
   CatalogStatusNotAString,
   CatalogStatusUnterminated,
-  CatalogStatusValue,
+  CatalogStatusValueCandidate,
   CatalogStatusValueEscaped,
   CatalogTemplateAbsent,
   CatalogTemplateLacksPlaceholders,
@@ -2076,9 +2076,26 @@ test fn w_the_page_derived_admission_still_refuses_a_json_path() -> Bool {
   }
 }
 
+test fn w_a_template_carrying_parent_traversal_derives_no_catalog_path() -> Bool {
+  match megarac_ui_catalog_paths_of_asset(asset_text: "x,resGetPath:\"locales/../private/__lng__/__ns__.json\",y,<select id=\"select_lang_top\"><option value=\"en-US\">A</option></select>", ns: "lmedia" as NonEmptyStr) |> get(0) {
+    null => false
+    first => match first {
+      CatalogPathUnderived { cause: _ } => true
+      other => false
+    }
+  }
+}
+
+test fn w_a_decoy_status_zero_member_is_only_a_candidate() -> Bool {
+  match megarac_ui_catalog_status_zero(body: "{\"other\":{\"status_0\":\"Fake\"},\"status_0\":\"Stopped\"}") {
+    CatalogStatusValueCandidate { value_octets: octets, value_offset: _ } => octets == [70, 97, 107, 101]
+    other => false
+  }
+}
+
 test fn w_the_catalog_status_zero_value_is_read_with_its_octet_offset() -> Bool {
   match megarac_ui_catalog_status_zero(body: "{\"status_0\":\"Stopped\"}") {
-    CatalogStatusValue { value_octets: octets, value_offset: at } => octets == [83, 116, 111, 112, 112, 101, 100] && at == 13
+    CatalogStatusValueCandidate { value_octets: octets, value_offset: at } => octets == [83, 116, 111, 112, 112, 101, 100] && at == 13
     other => false
   }
 }
