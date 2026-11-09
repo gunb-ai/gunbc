@@ -31,6 +31,7 @@ import gunbc.runner.runner_replacement_readback {
 
 import gunbc.runner.runner_host_file_converge {
   runner_host_drain_leg_decided, runner_host_hand_capacity_notices, runner_host_drain_units,
+  runner_host_hand_started_units,
   runner_retirement_readback_of, runner_retirement_readback_observe_pass, runner_host_file_subject,
   RunnerHostFileSubjectAdmitted, RunnerSlotPopulation, RunnerSlotUnitResult, SlotPopulationObserved,
   SlotPopulationUnobservable, RunnerSlotUnitStanding, SlotRetiredAsDeclared, SlotReloadStatus,
@@ -44,7 +45,7 @@ import gunbc.runner.runner_slot_actuation {
 import gunbc.runner.runner_retirement_causes {
   RunnerHostDrainStep, DrainNow, DrainHeld, DrainRefusedByStanding, DrainUndecided, NoDecisionFor,
   retire_drain_leg_step, ReplacementJobEvidence,
-  RegistrationUnreadable, RetireDrainDecision, RetireDrainAuthorized, RetireDrainWithheld, RetireDrainRefused, WaitingOnReplacement, ReplacementProofMissing, RegistrationPending, JobPending, NotRegistered, RegisteredOffline, JobUnreadable, IncomingUnprovable, StillDesiredUnit, HandStartedOutsideTheDerivedPopulation, DrainCandidateUnaccountedFor, retire_pending_cause_wire, retire_refusal_cause_wire, Registered
+  RegistrationUnreadable, RetireDrainDecision, RetireDrainAuthorized, RetireDrainWithheld, RetireDrainRefused, WaitingOnReplacement, ReplacementProofMissing, RegistrationPending, JobPending, NotRegistered, RegisteredOffline, JobUnreadable, IncomingUnprovable, StillDesiredUnit, HandStartedOutsideTheDerivedPopulation, DrainCandidateUnaccountedFor, retire_pending_cause_wire, retire_refusal_cause_wire, pending_cause_text, Registered
 }
 
 // THE FIXTURES ARE THE SHAPE OF THE SCENARIO, AND EVERY ONE OF THEM IS MEANT TO BE READ AS A FACT ABOUT
@@ -799,8 +800,8 @@ test fn the_hand_capacity_route_reports_the_unit_and_never_drains_it() -> Bool {
         && match first(outcomes) {
              Present { value: SlotHandCapacityHeld { unit: u, notice: notice } } =>
                (u as String) == hand
-                 && contains(haystack: notice, needle: hand)
-                 && contains(haystack: notice, needle: "will not drain it")
+                 && contains(notice, hand)
+                 && contains(notice, "will not drain it")
              _ => false
            }
         && !any(candidates, u => (u as String) == hand)
@@ -821,8 +822,8 @@ test fn the_wire_names_the_slots_that_cover_a_retirement() -> Bool {
   }
   match decision {
     RetireDrainAuthorized { unit: unit, over: over } =>
-      contains(haystack: pending_cause_text(pending: RegistrationPending { standing: NotRegistered { slot: retiree("srv3-06") } }), needle: "srv3-06")
-        && contains(haystack: slot_actuation_outcome_wire(o: SlotHandCapacityHeld { unit: unit, notice: "hand capacity" }), needle: "srv3-19")
+      contains(pending_cause_text(pending: RegistrationPending { standing: NotRegistered { slot: retiree("srv3-06") } }), "srv3-06")
+        && contains(slot_actuation_outcome_wire(o: SlotHandCapacityHeld { unit: unit, notice: "hand capacity" }), "srv3-19")
         && length(over) == 2
     _ => false
   }
