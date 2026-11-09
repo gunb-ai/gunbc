@@ -1,6 +1,9 @@
 module gunbc.ci.ci_input_envelope
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-
+import std.types { List }
+import std.nat { Nat }
+import std.measure { Measure, Count, One }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
 
 type InputSizeAxis
   = WitnessCount
@@ -9,7 +12,7 @@ type InputSizeAxis
 
 type InputBound {
   axis: InputSizeAxis
-  max: Measure<Count, One, std.nat.Nat>
+  max: Measure<Count, One, Nat>
 }
 
 type InputEnvelope
