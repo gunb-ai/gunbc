@@ -292,6 +292,27 @@ fn measure_le<Q, S>(a: Measure<Q, S, Nat>, b: Measure<Q, S, Nat>) -> Bool {
   a.count <= b.count
 }
 
+// THE ONE FIT RULE, homed once (DESIGN 6b: a second local copy of one rule is the trigger for a root
+// generalization; 2: net concepts must not grow by re-invention). Given a room `available` and a
+// `requested`, it is the single answer to "does this request fit the room?" -- Fits carries the room so
+// the caller can see what was free; Below carries both the request and the room it did not fit, which is
+// the diagnostic both the compute build pool (ComputeHostBelowFloor) and the user-work slice carry. Every
+// pool that admits work against an already-charged ceiling consumes THIS; none re-writes the comparison.
+// It is generic over the unit (Q, S) so a host-capacity KiB pool and a cgroup byte slice share one rule
+// without a noun change. A zero `available` is a finite room nothing fits under (Below), NOT "unbounded"
+// -- unboundedness is a different fact the caller represents in its own type, never as the number zero.
+type MeasureFit<Q, S>
+  = Fits { available: Measure<Q, S, Nat> }
+  | Below { requested: Measure<Q, S, Nat>, available: Measure<Q, S, Nat> }
+
+fn measure_fits<Q, S>(requested: Measure<Q, S, Nat>, available: Measure<Q, S, Nat>) -> MeasureFit<Q, S> {
+  if measure_le(a: requested, b: available) {
+    Fits { available: available }
+  } else {
+    Below { requested: requested, available: available }
+  }
+}
+
 fn time_measure<S>(count: Nat) -> Measure<Time, S, Nat> {
   Measure { count: count }
 }

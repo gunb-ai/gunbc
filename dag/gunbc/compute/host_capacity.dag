@@ -3,7 +3,7 @@ module gunbc.compute.host_capacity
 import std.types { String, Bool, Int, NonEmptyStr, EpochSecs }
 import std.algebra { empty_map, map_insert, map_lookup }
 import std.nat { Nat }
-import std.measure { Measure, Memory, Kibi, Kibibyte, kibibyte, kibibyte_count, kibibyte_from_byte_size_floor, ByteSize, byte_size_count }
+import std.measure { Measure, Memory, Kibi, Kibibyte, kibibyte, kibibyte_count, kibibyte_from_byte_size_floor, ByteSize, byte_size_count, measure_fits, Fits, Below }
 import extdeps.linux.procfs
 import extdeps.linux.proc_meminfo { MeminfoRead, MeminfoParsed, MeminfoFieldAbsent, parse_proc_meminfo }
 import product.capacity.pool { Pool, pool_of, NoReplenishment, PoolReading, PoolRead, PoolReadingRefused, pool_reading_at }
@@ -525,17 +525,18 @@ fn compute_reserve_against(
         " KiB installed, so the share was never backed by the machine",
       ], ""),
     }
-  } else if kibibyte_count(k: available) < kibibyte_count(k: request) {
-    ComputeHostBelowFloor { requested: request, available: available }
-  } else {
-    match compute_capacity_store(subject: subject) {
-      ComputeCapacityStoreUnready { area: a, detail: d } => ComputeReservationRefused { detail: join(["the capacity ledger is not standing at ", a, ": ", d], "") }
-      ComputeCapacityStoreReady { store: store } =>
-        match now_epoch_seconds() {
-          Absent => ComputeReservationRefused { detail: "the clock could not be read as epoch seconds" }
-          Present { value: now } => compute_seat(subject: subject, store: store, request: request, reference: reference, now: now, term_seconds: term_seconds, ceiling: compute_backing_ceiling(appropriation: appropriation, available: available))
-        }
-    }
+  } else match measure_fits(requested: request, available: available) {
+    // The one fit rule (std.measure measure_fits) decides; this pool names its refusal ComputeHostBelowFloor.
+    Below { requested: r, available: a } => ComputeHostBelowFloor { requested: r, available: a }
+    Fits { available: _ } =>
+      match compute_capacity_store(subject: subject) {
+        ComputeCapacityStoreUnready { area: a, detail: d } => ComputeReservationRefused { detail: join(["the capacity ledger is not standing at ", a, ": ", d], "") }
+        ComputeCapacityStoreReady { store: store } =>
+          match now_epoch_seconds() {
+            Absent => ComputeReservationRefused { detail: "the clock could not be read as epoch seconds" }
+            Present { value: now } => compute_seat(subject: subject, store: store, request: request, reference: reference, now: now, term_seconds: term_seconds, ceiling: compute_backing_ceiling(appropriation: appropriation, available: available))
+          }
+      }
   }
 }
 
