@@ -437,19 +437,32 @@ test fn census_drift_watch_uses_are_modeled_and_executed_exactly() -> Bool {
     && any(c.admitted_texts, t => t == action_release_uses_text(action_release: setup_rust_action))
 }
 
-// HEAL-PUBLISH IS THE ONLY WORKFLOW THAT DOWNLOADS AND AUTHENTICATES. It carries the heal artifact's
-// publish path (#13641): checkout, the download-artifact step the heal job's upload is paired with,
-// the pinned toolchain, and google-github-actions/auth in front of the push. All four are admitted
-// releases (gunbc.action_use_admission download_artifact_action, google_auth_action); pinning them
-// here is what makes this file's per-file claim its own census -- dropping any one of the four from
-// the admission set reds exactly this claim, and no other.
+// HEAL-PUBLISH IS THE ONLY WORKFLOW THAT DOWNLOADS. It carries the heal artifact's publish path
+// (#13641): checkout, the download-artifact step the heal job's upload is paired with, and the
+// pinned toolchain. All three are admitted releases (gunbc.action_use_admission
+// download_artifact_action); pinning them here is what makes this file's per-file claim its own
+// census -- dropping any one of the three from the admission set reds exactly this claim, and no
+// other.
+//
+// IT NO LONGER AUTHENTICATES BY ACTION, AND THAT IS CHECKED RATHER THAN ASSUMED. This file used to
+// carry google-github-actions/auth in front of the push, which minted the publisher's short-lived
+// cloud credential in a step and handed it down by environment variable; the mint now happens in the
+// seed, immediately before the one read that consumes it, because a step-level mint cannot be timed
+// against a use ~12 minutes later and was the cause of the ACCESS_TOKEN_EXPIRED failures (#16091).
+// So the row below asserts that release is ABSENT from the realized bytes, not merely unmentioned.
+// The two sides are not redundant: gunbc.test.claim.repository_ci_profile_witness reads the EMITTER's
+// model, this reads the committed artifact, and only together do they catch the credential being
+// handed back to an action -- whether by the emitter or by a hand-edit of a generated file.
+// google_auth_action itself remains an admitted release with live consumers
+// (gunbc.fleet.fleet_converge_workflow, gunbc.assimilate.bmc_token_federation), so nothing here
+// orphans it.
 test fn census_heal_publish_uses_are_modeled_and_executed_exactly() -> Bool {
   let c = census_file(name: "heal-publish.yml")
   census_holds(c: c)
     && any(c.admitted_texts, t => t == action_release_uses_text(action_release: checkout_action))
     && any(c.admitted_texts, t => t == action_release_uses_text(action_release: download_artifact_action))
     && any(c.admitted_texts, t => t == action_release_uses_text(action_release: setup_rust_action))
-    && any(c.admitted_texts, t => t == action_release_uses_text(action_release: google_auth_action))
+    && !any(c.admitted_texts, t => t == action_release_uses_text(action_release: google_auth_action))
 }
 
 // ADMITTED IS NOT SELECTED. Swatinem/rust-cache v2.9.1 declares node24 and is admitted exactly, but

@@ -36,14 +36,20 @@ import gunbc.read_set_schema {
   read_set_receipt_basename,
   fast_lane_native_cli_basename,
   fast_lane_compiler_identity_basename,
-  read_set_kind_dir,
-  read_set_exact_kinds,
-  read_set_kind_separator,
   fast_lane_decision_step_id,
   fast_lane_skip_output,
   fast_lane_skip_true,
   fast_lane_skip_false,
   fast_lane_compiler_identity_output,
+}
+import v2.std.read_set {
+  ReadSetMember, ReadSetFile, ReadSetDir,
+  ReadSetOrigin, ReadSetDeclared, ReadSetEntry,
+  ReadSetChangeObservation, ReadSetUnestablishedCause, ReadSetRecordingLineUnreadable,
+  ReadSetValidity, ReadSetValid, ReadSetInvalidated, ReadSetUnestablished,
+  ReadSetRecordingRead, ReadSetRecordingUnreadable,
+  read_set_recording_of_lines, validate_read_set, read_set_exact_paths, read_set_dir_prefixes,
+  read_set_kind_dir, read_set_exact_kinds, read_set_kind_separator,
 }
 import gunbc.read_set_publish { fast_lane_unit_path, fast_lane_unit_cache_key }
 import gunbc.parse_verdict_publish {
@@ -79,7 +85,7 @@ import gunbc.parse_verdict_restore {
 //
 // THE RULE IS fast_lane_decide; THE STEP IS ITS REALIZATION. The pure function below is what the witness
 // (test.claim.read_set_restore_witness) executes. The emitted script is built from the same rule rows
-// (fast_lane_declared_rules, the receipt kinds of gunbc.read_set_schema, std.content_hash
+// (fast_lane_declared_entries, the recording kinds of v2.std.read_set, std.content_hash
 // sha256_hex_digit_count) and checks the same conditions in the same order; the two realizations of the
 // matching itself (list membership and prefix tests here, grep there) are kept equal by construction of the
 // rows, not by a shared executor -- that residue is stated, not hidden.
@@ -95,43 +101,42 @@ import gunbc.parse_verdict_restore {
 // its meaning: where it is passed, this run built the product.
 
 // ═══ THE RULE ═══
+//
+// THE VALIDITY QUESTION IS v2.std.read_set's (validate_read_set, its one matcher and the recording format);
+// this lane is its required-job consumer (gunbc.plans.read_set_convergence section 2.4): it adds the checks on
+// the restored realization product (receipt present, binary executable, identity well formed), declares the
+// inputs the recorder does not observe, and maps every outcome that is not valid to a full run with its cause.
 
-type FastLanePathRule
-  = FastLaneExactPath { path: String }
-  | FastLanePathPrefix { prefix: String }
-
-type FastLaneRuleSource
+// WHY AN INPUT IS DECLARED rather than observed.
+type FastLaneDeclaredInput
   = FastLaneFixedInput
   | FastLaneDecisionImplementation
-  | FastLaneRecordedRead
-
-type FastLaneInputRule {
-  rule: FastLanePathRule
-  source: FastLaneRuleSource
-}
 
 // THE FIXED INPUTS: what the guarded steps consume that the receipt does not record. The seed's own source
-// (src/v1) builds the binary every guarded step runs; the
-// workspace manifests, lockfile, toolchain pin and cargo configuration decide how both the seed and the
+// (src/v1) builds the binary every guarded step runs, and stays an invalidating input until the current seed
+// identity can be established independently of the restored binary (gunbc.plans.read_set_convergence, A1);
+// the workspace manifests, lockfile, toolchain pin and cargo configuration decide how both the seed and the
 // emitted crates are built; the native CLI's control walks read fixture roots; and .github holds the workflow
 // that is executing, including this decision's own emitted script.
-data fast_lane_fixed_input_rules: List<FastLanePathRule> = [
-  FastLanePathPrefix { prefix: "src/v1/" },
-  FastLanePathPrefix { prefix: "fixtures/" },
-  FastLaneExactPath { path: "Cargo.toml" },
-  FastLaneExactPath { path: "Cargo.lock" },
-  FastLanePathPrefix { prefix: "rust-toolchain" },
-  FastLanePathPrefix { prefix: ".cargo/" },
-  FastLanePathPrefix { prefix: ".github/" },
+data fast_lane_fixed_input_members: List<ReadSetMember> = [
+  ReadSetDir { path: "src/v1" },
+  ReadSetDir { path: "fixtures" },
+  ReadSetFile { path: "Cargo.toml" },
+  ReadSetFile { path: "Cargo.lock" },
+  ReadSetFile { path: "rust-toolchain" },
+  ReadSetFile { path: "rust-toolchain.toml" },
+  ReadSetDir { path: ".cargo" },
+  ReadSetDir { path: ".github" },
 ]
 
 // THE DECISION'S OWN IMPLEMENTATION, AND THE LAYOUT POLICY THE CHECKS READ. Running a changed decision to
 // judge whether its own change may skip is circular, so a change to any of these modules is a full run. The
 // machinery they import reaches the job only through the regenerated workflow, which .github/ already covers.
-// Named by module, so the path is the layout's (gunbc.source_layout layout_module_storage_path); a module the
-// layout cannot place becomes the empty prefix, which matches every path -- the fast lane switches itself off
-// rather than miss its own implementation.
+// Named by module, so the path is the layout's (gunbc.source_layout layout_module_storage_path). A module the
+// layout cannot place is a full run in the rule and refuses emission of the step (fast_lane_decision_script),
+// so the lane switches itself off rather than miss its own implementation.
 data fast_lane_decision_implementation_modules: List<String> = [
+  "v2.std.read_set",
   "gunbc.read_set_schema",
   "gunbc.read_set_publish",
   "gunbc.read_set_restore",
@@ -145,80 +150,34 @@ data fast_lane_decision_implementation_modules: List<String> = [
   "gunbc.layout_namespace_row.gunbc_tree",
 ]
 
-fn fast_lane_decision_implementation_rule(module: String) -> FastLanePathRule {
-  match layout_module_storage_path(module: module) {
-    Present { value: p } => FastLaneExactPath { path: p }
-    Absent => FastLanePathPrefix { prefix: "" }
-  }
+fn fast_lane_unplaceable_modules() -> List<String> {
+  filter(fast_lane_decision_implementation_modules, m => layout_module_storage_path(module: m) == Absent)
 }
 
-fn fast_lane_declared_rules() -> List<FastLaneInputRule> {
+fn fast_lane_declared_entries() -> List<ReadSetEntry<FastLaneDeclaredInput>> {
   list_append(
-    left: list_map(xs: fast_lane_fixed_input_rules, f: fn(r) { FastLaneInputRule { rule: r, source: FastLaneFixedInput } }),
-    right: list_map(
-      xs: fast_lane_decision_implementation_modules,
-      f: fn(m) { FastLaneInputRule { rule: fast_lane_decision_implementation_rule(module: m), source: FastLaneDecisionImplementation } }
-    )
+    left: list_map(xs: fast_lane_fixed_input_members, f: fn(m) { ReadSetEntry { member: m, origin: ReadSetDeclared { reason: FastLaneFixedInput } } }),
+    right: fold_list(xs: fast_lane_decision_implementation_modules, empty: [], cons: fn(acc, m) {
+      match layout_module_storage_path(module: m) {
+        Present { value: p } => concat(acc, [ReadSetEntry { member: ReadSetFile { path: p }, origin: ReadSetDeclared { reason: FastLaneDecisionImplementation } }])
+        Absent => acc
+      }
+    })
   )
-}
-
-fn fast_lane_rule_matches(rule: FastLanePathRule, path: String) -> Bool {
-  match rule {
-    FastLaneExactPath { path: p } => path == p
-    FastLanePathPrefix { prefix: q } => starts_with(s: path, prefix: q)
-  }
-}
-
-// A RECEIPT PATH IS NORMAL when it is relative and every segment is a name: no empty segment (which also
-// excludes a leading or trailing slash and a doubled one) and no `.` or `..`. A path that is not normal could
-// name a file the diff spells differently, so a receipt carrying one is not trusted.
-fn fast_lane_receipt_path_is_normal(path: String) -> Bool {
-  all(split(s: path, delimiter: "/"), seg => seg != "" && seg != "." && seg != "..")
-}
-
-fn fast_lane_receipt_kind_head(kind: String) -> String { concat(kind, read_set_kind_separator) }
-
-fn fast_lane_after(line: String, head: String) -> String {
-  substring(s: line, start: string_length(s: head), end: string_length(s: line))
-}
-
-// ONE RECEIPT LINE AS A RULE: a `file` or `probe` line is its exact path, a `dir` line is every path under
-// it. Absent when the line has no recorded kind or its path is not normal.
-fn fast_lane_receipt_line_rule(line: String) -> Optional<FastLanePathRule> {
-  match list_find_first(xs: read_set_exact_kinds, predicate: fn(k) { starts_with(s: line, prefix: fast_lane_receipt_kind_head(kind: k)) }) {
-    Present { value: k } =>
-      if fast_lane_receipt_path_is_normal(path: fast_lane_after(line: line, head: fast_lane_receipt_kind_head(kind: k))) {
-        Present { value: FastLaneExactPath { path: fast_lane_after(line: line, head: fast_lane_receipt_kind_head(kind: k)) } }
-      } else {
-        Absent
-      }
-    Absent =>
-      if starts_with(s: line, prefix: fast_lane_receipt_kind_head(kind: read_set_kind_dir))
-        && fast_lane_receipt_path_is_normal(path: fast_lane_after(line: line, head: fast_lane_receipt_kind_head(kind: read_set_kind_dir))) {
-        Present { value: FastLanePathPrefix { prefix: concat(fast_lane_after(line: line, head: fast_lane_receipt_kind_head(kind: read_set_kind_dir)), "/") } }
-      } else {
-        Absent
-      }
-  }
 }
 
 type FastLaneUnitObservation
   = FastLaneUnitAbsent
   | FastLaneUnitRestored { receipt_lines: List<String>, binary_executable: Bool, identity_text: String }
 
-type FastLaneDiffObservation
-  = FastLaneDiffRead { changed_paths: List<String> }
-  | FastLaneDiffUnanswered
-
 type FastLaneFullRunCause
   = FastLaneNoUnitRestored
   | FastLaneReceiptEmpty
   | FastLaneBinaryNotExecutable
   | FastLaneIdentityMalformed
-  | FastLaneReceiptLineUnreadable { line: String }
-  | FastLaneDiffUnreadable
-  | FastLaneChangedPathUndecidable { path: String }
-  | FastLaneInputChanged { path: String, rule: FastLaneInputRule }
+  | FastLaneImplementationUnplaceable { module: String }
+  | FastLaneReadSetUnestablished { cause: ReadSetUnestablishedCause }
+  | FastLaneInputChanged { path: String, entry: ReadSetEntry<FastLaneDeclaredInput> }
 
 type FastLaneVerdict
   = FastLaneReuse
@@ -236,54 +195,20 @@ fn fast_lane_identity_is_well_formed(identity_text: String) -> Bool {
     && lower_hex_64(value: substring(s: identity_text, start: 0, end: sha256_hex_digit_count))
 }
 
-fn fast_lane_receipt_rules(receipt_lines: List<String>) -> List<FastLanePathRule> {
-  fold_list(xs: receipt_lines, empty: [], cons: fn(acc, line) {
-    match fast_lane_receipt_line_rule(line: line) {
-      Present { value: r } => concat(acc, [r])
-      Absent => acc
-    }
-  })
-}
-
-fn fast_lane_input_rules(receipt_lines: List<String>) -> List<FastLaneInputRule> {
-  list_append(
-    left: fast_lane_declared_rules(),
-    right: list_map(xs: fast_lane_receipt_rules(receipt_lines: receipt_lines), f: fn(r) { FastLaneInputRule { rule: r, source: FastLaneRecordedRead } })
-  )
-}
-
-fn fast_lane_changed_input(changed_paths: List<String>, rules: List<FastLaneInputRule>) -> Optional<FastLaneFullRunCause> {
-  fold_list(xs: changed_paths, empty: Absent, cons: fn(acc, p) {
-    match acc {
-      Present { value: _ } => acc
-      Absent =>
-        match list_find_first(xs: rules, predicate: fn(r) { fast_lane_rule_matches(rule: r.rule, path: p) }) {
-          Present { value: r } => Present { value: FastLaneInputChanged { path: p, rule: r } }
-          Absent => Absent
-        }
-    }
-  })
-}
-
-fn fast_lane_decide_diff(receipt_lines: List<String>, diff: FastLaneDiffObservation) -> FastLaneVerdict {
-  match diff {
-    FastLaneDiffUnanswered => FastLaneFullRun { cause: FastLaneDiffUnreadable }
-    FastLaneDiffRead { changed_paths: paths } =>
-      match list_find_first(xs: paths, predicate: fn(p) { string_contains(s: p, pattern: "\n") }) {
-        Present { value: p } => FastLaneFullRun { cause: FastLaneChangedPathUndecidable { path: p } }
-        Absent =>
-          match fast_lane_changed_input(changed_paths: paths, rules: fast_lane_input_rules(receipt_lines: receipt_lines)) {
-            Present { value: c } => FastLaneFullRun { cause: c }
-            Absent => FastLaneReuse
-          }
-      }
+// THE CONSUMER'S MAPPING: valid reuses; anything else is the full run, carrying why.
+fn fast_lane_verdict_of_validity(validity: ReadSetValidity<FastLaneDeclaredInput>) -> FastLaneVerdict {
+  match validity {
+    ReadSetValid => FastLaneReuse
+    ReadSetInvalidated { path: p, entry: e } => FastLaneFullRun { cause: FastLaneInputChanged { path: p, entry: e } }
+    ReadSetUnestablished { cause: c } => FastLaneFullRun { cause: FastLaneReadSetUnestablished { cause: c } }
   }
 }
 
-// THE DECISION. Reuse only when a unit was restored, it is complete and well formed, every receipt line is
-// readable, git answered the diff, and no changed path is a fixed input, the decision's implementation, a
-// recorded file or probe, or under a recorded directory. The order is the emitted script's order.
-fn fast_lane_decide(unit: FastLaneUnitObservation, diff: FastLaneDiffObservation) -> FastLaneVerdict {
+// THE DECISION. Reuse only when a unit was restored, it is complete and well formed, the decision's own
+// modules are placed, every receipt line is readable, git answered the diff, and no changed path is covered
+// by a declared input (fixed or implementation) or a recorded file, probe or directory. The order is the
+// emitted script's order.
+fn fast_lane_decide(unit: FastLaneUnitObservation, changes: ReadSetChangeObservation) -> FastLaneVerdict {
   match unit {
     FastLaneUnitAbsent => FastLaneFullRun { cause: FastLaneNoUnitRestored }
     FastLaneUnitRestored { receipt_lines: receipt, binary_executable: executable, identity_text: identity } =>
@@ -294,15 +219,19 @@ fn fast_lane_decide(unit: FastLaneUnitObservation, diff: FastLaneDiffObservation
       } else if !fast_lane_identity_is_well_formed(identity_text: identity) {
         FastLaneFullRun { cause: FastLaneIdentityMalformed }
       } else {
-        match list_find_first(xs: receipt, predicate: fn(l) { fast_lane_receipt_line_rule(line: l) == Absent }) {
-          Present { value: l } => FastLaneFullRun { cause: FastLaneReceiptLineUnreadable { line: l } }
-          Absent => fast_lane_decide_diff(receipt_lines: receipt, diff: diff)
+        match fast_lane_unplaceable_modules() |> first {
+          Present { value: m } => FastLaneFullRun { cause: FastLaneImplementationUnplaceable { module: m } }
+          Absent =>
+            match read_set_recording_of_lines(lines: receipt) {
+              ReadSetRecordingUnreadable { line: l } =>
+                FastLaneFullRun { cause: FastLaneReadSetUnestablished { cause: ReadSetRecordingLineUnreadable { line: l } } }
+              ReadSetRecordingRead { entries: recorded } =>
+                fast_lane_verdict_of_validity(validity: validate_read_set(entries: list_append(left: fast_lane_declared_entries(), right: recorded), changes: changes))
+            }
         }
       }
   }
 }
-
-// ═══ THE REALIZATION ═══
 
 data fast_lane_restore_id_prefix: String = "fast_lane_unit_"
 data fast_lane_decision_step_name: String = "Decide whether the fast-lane unit covers this change"
@@ -339,25 +268,7 @@ fn fast_lane_restored_ancestor_template() -> String {
   })
 }
 
-fn fast_lane_rule_exact_paths(rules: List<FastLaneInputRule>) -> List<String> {
-  fold_list(xs: rules, empty: [], cons: fn(acc, r) {
-    match r.rule {
-      FastLaneExactPath { path: p } => concat(acc, [p])
-      FastLanePathPrefix { prefix: _ } => acc
-    }
-  })
-}
-
-fn fast_lane_rule_prefixes(rules: List<FastLaneInputRule>) -> List<String> {
-  fold_list(xs: rules, empty: [], cons: fn(acc, r) {
-    match r.rule {
-      FastLaneExactPath { path: _ } => acc
-      FastLanePathPrefix { prefix: q } => concat(acc, [q])
-    }
-  })
-}
-
-// THE RECEIPT GRAMMAR AS EXTENDED REGULAR EXPRESSIONS, rendered from the kinds in gunbc.read_set_schema. A
+// THE RECEIPT GRAMMAR AS EXTENDED REGULAR EXPRESSIONS, rendered from the kinds in v2.std.read_set. A
 // readable line starts with a kind, the separator and a character that is not `/`; an abnormal path has a
 // `.` or `..` segment, a doubled slash or a trailing slash (fast_lane_receipt_path_is_normal).
 fn fast_lane_receipt_kind_alternation() -> String {
@@ -529,9 +440,9 @@ fn fast_lane_decision_statements() -> List<Node> {
       reason: "a changed path contains a newline, so no line-wise rule can decide it"
     ),
     bash_build_with_redir_to_file(inner: fl_cmd(ws: [fl_lit(t: "sed"), fl_lit(t: "-En"), fl_lit(t: fast_lane_receipt_exact_sed()), receipt]), path: exact),
-    fl_append_lines(lines: fast_lane_rule_exact_paths(rules: fast_lane_declared_rules()), file: exact),
+    fl_append_lines(lines: read_set_exact_paths(entries: fast_lane_declared_entries()), file: exact),
     bash_build_with_redir_to_file(inner: fl_cmd(ws: [fl_lit(t: "sed"), fl_lit(t: "-En"), fl_lit(t: fast_lane_receipt_dir_sed()), receipt]), path: prefixes),
-    fl_append_lines(lines: fast_lane_rule_prefixes(rules: fast_lane_declared_rules()), file: prefixes),
+    fl_append_lines(lines: read_set_dir_prefixes(entries: fast_lane_declared_entries()), file: prefixes),
     bash_build_with_redir_to_file(
       inner: fl_cmd(ws: [fl_lit(t: "sed"), fl_lit(t: "-e"), fl_lit(t: "s/[.[\\*^$]/\\\\&/g"), fl_lit(t: "-e"), fl_lit(t: "s/^/^/"), prefixes]),
       path: prefix_patterns
@@ -574,10 +485,16 @@ fn fast_lane_decision_script_is_renderable() -> Bool {
   fast_lane_decision_script_outcome() != Absent
 }
 
+// A DECISION MODULE THE LAYOUT CANNOT PLACE REFUSES EMISSION: the marker is not a command, so the step fails,
+// `skip` is never written, and every guarded step runs -- the rule's FastLaneImplementationUnplaceable, realized.
 fn fast_lane_decision_script() -> String {
-  match fast_lane_decision_script_outcome() {
-    Present { value: v } => v
-    Absent => fast_lane_decision_unemittable_marker
+  if length(xs: fast_lane_unplaceable_modules()) > 0 {
+    fast_lane_decision_unemittable_marker
+  } else {
+    match fast_lane_decision_script_outcome() {
+      Present { value: v } => v
+      Absent => fast_lane_decision_unemittable_marker
+    }
   }
 }
 

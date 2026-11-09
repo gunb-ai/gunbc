@@ -804,6 +804,29 @@ fn fixture_human_ref() -> PrincipalRef {
   PrincipalRef { authority: "google-oidc" as NonEmptyStr, namespace: "accounts" as NonEmptyStr, subject: "sub-human" as NonEmptyStr }
 }
 
+// CONTROL 3b, the assign=ownership-only RED control: a FABRIC assignee ALSO never dispatches. Before
+// the ruling, assigning to the fabric workflow principal launched a worker through this follow-through
+// (the assign-as-launch coupling); now ASSIGN is ownership only and the body carries no launch
+// vocabulary at all -- no admitted session, no Work tab, no waiting-on-fabric. Launch belongs to the
+// CONTINUE/START FRESH verb behind ServeActionDispatchNode, not to ServeActionAssignIssue.
+test fn witness_fabric_assignment_never_dispatches() -> Bool {
+  let r = serve_assignment_launch_follow_through_over(
+    instance: srv2_preview_dashboard_instance(),
+    plan: caller_supplied_plan_fixture(),
+    node_id: "some-node",
+    assignee: fabric_workflow_principal,
+    event_id: "evt-9",
+    profiles: [],
+  )
+  r.status == 200
+    && string_contains(s: r.body, pattern: "assigned: some-node →")
+    && string_contains(s: r.body, pattern: "event evt-9")
+    && !string_contains(s: r.body, pattern: "fabric work request admitted")
+    && !string_contains(s: r.body, pattern: "Work tab")
+    && !string_contains(s: r.body, pattern: "waiting on fabric")
+    && !string_contains(s: r.body, pattern: "launch pending")
+}
+
 // CONTROL 3, at the response seam: a HUMAN assignee NEVER dispatches — the follow-through records
 // the fact and stops, with no launch vocabulary anywhere in the body.
 test fn witness_human_assignment_never_dispatches() -> Bool {

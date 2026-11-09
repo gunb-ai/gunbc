@@ -38,7 +38,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE STRUCTURED TAIL (the RFM's next rung): a return in an arm of a tail if or match, and a guard
 // heading a tail spine with a following statement, are admitted and lower -- the arm to its value,
 // the guard to Branch(c, arm, rest) -- and their `_und` twins prove the arm and the rest are READ.
-// A guard that falls through, is the last statement, or sits in a non-tail spine still refuses.
+// A guard that falls through, or that is the last statement, is now ADMITTED (lowered by gunbc#15876,
+// executed: inv c405be7d refused at its parent vs inv 5f508f20 resolved); the one that sits in a non-tail
+// spine refuses from the return-position guarantee (`body_lowering_reason_return_not_in_tail_position`), not
+// from an else-less-if refusal.
 //
 // THE RED ON MAIN is `bug`: `let x = if c { return j } else { k }` followed by `x`. No reader named
 // the `return` keyword, so a first-match search answered the statement with its operand: the module
@@ -46,46 +49,50 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // (gunbc.recurring_failure_mode return_lowered_as_its_operand_outside_the_function_tail). It refuses
 // now, located at the return. `arm` (a return in an if arm, the if in tail position) and
 // `lambda_nontail` were accepted the same way; `nontail` refused on main under the generic
-// statement_precedes_without_binding and now names its own cause. `guard` keeps refusing
-// else_less_if_unlowered: the guard needs the tail position carried through the value readers (the
-// same row's next-rung trigger).
+// statement_precedes_without_binding and now names its own cause. `guard` no longer refuses
+// else_less_if_unlowered: gunbc#15876 lowered the statement-form else-less `if` as a shape, so the
+// falls-through and last-statement forms ADMIT on the native-census lane (executed: inv c405be7d refused at
+// 97138503^ vs inv 5f508f20 resolved at 97138503, claim file held fixed); the non-tail-spine guard's refusal
+// now comes from the return-position guarantee. See `an_else_less_if_that_falls_through_is_admitted_at_lowering`,
+// `an_else_less_if_as_the_last_statement_is_admitted_at_lowering`, and
+// `a_guard_in_a_non_tail_spine_refuses_from_the_return_position_guarantee`.
 //
 // THE CONTROLS hold on both sides: a tail return in a fn body, after a let, and in a fn value's
 // block body are accepted. `tail_und` is the discriminator that the tail return's operand is READ,
 // not dropped: its undeclared operand refuses unbound at that atom.
-data rtp_bug_source: String = "module v2.test.rtp_bug\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(c: Bool, j: Int, k: Int) -> Int {\n  let x = if c { return j } else { k }\n  x\n}\n"
+data rtp_bug_source: String = "module v2.test.rtp_bug\n\nfn rtp_probe(c: Bool, j: Int, k: Int) -> Int {\n  let x = if c { return j } else { k }\n  x\n}\n"
 
-data rtp_nontail_source: String = "module v2.test.rtp_nontail\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(i: Int) -> Int {\n  return i\n  i\n}\n"
+data rtp_nontail_source: String = "module v2.test.rtp_nontail\n\nfn rtp_probe(i: Int) -> Int {\n  return i\n  i\n}\n"
 
-data rtp_lambda_nontail_source: String = "module v2.test.rtp_lambda_nontail\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(i: Int) -> Int {\n  let g = fn(x) {\n    return x\n    x\n  }\n  i\n}\n"
+data rtp_lambda_nontail_source: String = "module v2.test.rtp_lambda_nontail\n\nfn rtp_probe(i: Int) -> Int {\n  let g = fn(x) {\n    return x\n    x\n  }\n  i\n}\n"
 
-data rtp_guard_fallthrough_source: String = "module v2.test.rtp_guard_fallthrough\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(c: Bool, i: Int) -> Int {\n  if c { i }\n  i\n}\n"
+data rtp_guard_fallthrough_source: String = "module v2.test.rtp_guard_fallthrough\n\nfn rtp_probe(c: Bool, i: Int) -> Int {\n  if c { i }\n  i\n}\n"
 
-data rtp_guard_last_source: String = "module v2.test.rtp_guard_last\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(c: Bool, i: Int) -> Int {\n  let j = i\n  if c { return j }\n}\n"
+data rtp_guard_last_source: String = "module v2.test.rtp_guard_last\n\nfn rtp_probe(c: Bool, i: Int) -> Int {\n  let j = i\n  if c { return j }\n}\n"
 
-data rtp_guard_nontail_source: String = "module v2.test.rtp_guard_nontail\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(c: Bool, j: Int, k: Int) -> Int {\n  let x = if c {\n    if c { return j }\n    k\n  } else { k }\n  x\n}\n"
+data rtp_guard_nontail_source: String = "module v2.test.rtp_guard_nontail\n\nfn rtp_probe(c: Bool, j: Int, k: Int) -> Int {\n  let x = if c {\n    if c { return j }\n    k\n  } else { k }\n  x\n}\n"
 
-data rtp_tail_ctl_source: String = "module v2.test.rtp_tail_ctl\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(i: Int) -> Int { return i }\n"
+data rtp_tail_ctl_source: String = "module v2.test.rtp_tail_ctl\n\nfn rtp_probe(i: Int) -> Int { return i }\n"
 
-data rtp_let_tail_ctl_source: String = "module v2.test.rtp_let_tail_ctl\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(i: Int) -> Int {\n  let x = i\n  return x\n}\n"
+data rtp_let_tail_ctl_source: String = "module v2.test.rtp_let_tail_ctl\n\nfn rtp_probe(i: Int) -> Int {\n  let x = i\n  return x\n}\n"
 
-data rtp_lambda_tail_ctl_source: String = "module v2.test.rtp_lambda_tail_ctl\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(i: Int) -> Int {\n  let g = fn(x) { return x }\n  i\n}\n"
+data rtp_lambda_tail_ctl_source: String = "module v2.test.rtp_lambda_tail_ctl\n\nfn rtp_probe(i: Int) -> Int {\n  let g = fn(x) { return x }\n  i\n}\n"
 
-data rtp_tail_und_source: String = "module v2.test.rtp_tail_und\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(i: Int) -> Int { return rtp_undeclared_tail }\n"
+data rtp_tail_und_source: String = "module v2.test.rtp_tail_und\n\nfn rtp_probe(i: Int) -> Int { return rtp_undeclared_tail }\n"
 
-data rtp_arm_ctl_source: String = "module v2.test.rtp_arm_ctl\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(c: Bool, i: Int) -> Int { if c { return i } else { i } }\n"
+data rtp_arm_ctl_source: String = "module v2.test.rtp_arm_ctl\n\nfn rtp_probe(c: Bool, i: Int) -> Int { if c { return i } else { i } }\n"
 
-data rtp_guard_ctl_source: String = "module v2.test.rtp_guard_ctl\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(c: Bool, i: Int) -> Int {\n  if c { return i }\n  let j = i\n  j\n}\n"
+data rtp_guard_ctl_source: String = "module v2.test.rtp_guard_ctl\n\nfn rtp_probe(c: Bool, i: Int) -> Int {\n  if c { return i }\n  let j = i\n  j\n}\n"
 
-data rtp_guard_arm_und_source: String = "module v2.test.rtp_guard_arm_und\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(c: Bool, i: Int) -> Int {\n  if c { return rtp_undeclared_guard_arm }\n  i\n}\n"
+data rtp_guard_arm_und_source: String = "module v2.test.rtp_guard_arm_und\n\nfn rtp_probe(c: Bool, i: Int) -> Int {\n  if c { return rtp_undeclared_guard_arm }\n  i\n}\n"
 
-data rtp_guard_rest_und_source: String = "module v2.test.rtp_guard_rest_und\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(c: Bool, i: Int) -> Int {\n  if c { return i }\n  rtp_undeclared_guard_rest\n}\n"
+data rtp_guard_rest_und_source: String = "module v2.test.rtp_guard_rest_und\n\nfn rtp_probe(c: Bool, i: Int) -> Int {\n  if c { return i }\n  rtp_undeclared_guard_rest\n}\n"
 
-data rtp_match_ctl_source: String = "module v2.test.rtp_match_ctl\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\ntype RtpS = RtpA | RtpB\n\nfn rtp_probe(s: RtpS, i: Int) -> Int { match s {\n  RtpA => return i\n  RtpB => i\n} }\n"
+data rtp_match_ctl_source: String = "module v2.test.rtp_match_ctl\n\ntype RtpS = RtpA | RtpB\n\nfn rtp_probe(s: RtpS, i: Int) -> Int { match s {\n  RtpA => return i\n  RtpB => i\n} }\n"
 
-data rtp_match_und_source: String = "module v2.test.rtp_match_und\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\ntype RtpS = RtpA | RtpB\n\nfn rtp_probe(s: RtpS, i: Int) -> Int { match s {\n  RtpA => return rtp_undeclared_match_arm\n  RtpB => i\n} }\n"
+data rtp_match_und_source: String = "module v2.test.rtp_match_und\n\ntype RtpS = RtpA | RtpB\n\nfn rtp_probe(s: RtpS, i: Int) -> Int { match s {\n  RtpA => return rtp_undeclared_match_arm\n  RtpB => i\n} }\n"
 
-data rtp_match_nested_ctl_source: String = "module v2.test.rtp_match_nested_ctl\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\ntype RtpS = RtpA | RtpB\n\nfn rtp_probe(s: RtpS, t: RtpS, i: Int) -> Int { match s {\n  RtpA => return i\n  RtpB =>\n    match t {\n      RtpA => return i\n      RtpB => return i\n    }\n} }\n"
+data rtp_match_nested_ctl_source: String = "module v2.test.rtp_match_nested_ctl\n\ntype RtpS = RtpA | RtpB\n\nfn rtp_probe(s: RtpS, t: RtpS, i: Int) -> Int { match s {\n  RtpA => return i\n  RtpB =>\n    match t {\n      RtpA => return i\n      RtpB => return i\n    }\n} }\n"
 
 fn rtp_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -295,23 +302,38 @@ test fn a_return_before_another_statement_in_a_fn_value_refuses() -> Bool {
   }
 }
 
-test fn an_else_less_if_that_falls_through_still_refuses_as_unlowered() -> Bool {
+// CLIMB (executed): at the parent of gunbc#15876 (97138503^) this shape refused
+// `body_lowering_reason_else_less_if_unlowered` (inv c405be7d); #15876 lowered the else-less `if` whose arm
+// falls through with no return, so it now RESOLVES on the native-census lane (inv 5f508f20, claim file held
+// fixed, only the fold varied). Pin acceptance -- red if the fold ever refuses this well-formed shape again.
+test fn an_else_less_if_that_falls_through_is_admitted_at_lowering() -> Bool {
   match rtp_outcomes() {
-    RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: v, guard_last: _, guard_nontail: _, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: _ } => rtp_refuses_as(v: v, reason: ^body_lowering_reason_else_less_if_unlowered)
+    RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: v, guard_last: _, guard_nontail: _, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: _ } => v == RtpResolved
     RtpContextRefused => false
   }
 }
 
-test fn an_else_less_if_as_the_last_statement_still_refuses_as_unlowered() -> Bool {
+// CLIMB (executed): at the parent of gunbc#15876 (97138503^) this shape refused
+// `body_lowering_reason_else_less_if_unlowered` (inv c405be7d); #15876 lowered the else-less `if` that is the
+// last statement of the body, so it now RESOLVES on the native-census lane (inv 5f508f20, claim file held
+// fixed, only the fold varied). Pin acceptance -- red if the fold ever refuses this well-formed shape again.
+test fn an_else_less_if_as_the_last_statement_is_admitted_at_lowering() -> Bool {
   match rtp_outcomes() {
-    RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: _, guard_last: v, guard_nontail: _, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: _ } => rtp_refuses_as(v: v, reason: ^body_lowering_reason_else_less_if_unlowered)
+    RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: _, guard_last: v, guard_nontail: _, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: _ } => v == RtpResolved
     RtpContextRefused => false
   }
 }
 
-test fn a_guard_in_a_non_tail_spine_still_refuses_as_unlowered() -> Bool {
+// CLIMB (executed): at the parent of gunbc#15876 (97138503^) this shape refused
+// `body_lowering_reason_else_less_if_unlowered` (inv c405be7d); #15876 lowered the else-less `if` as a shape, so
+// the else-less `if` no longer refuses at this site -- the return inside its arm in a NON-tail spine is what
+// refuses now, with `body_lowering_reason_return_not_in_tail_position` (inv 5f508f20, claim file held fixed,
+// only the fold varied). This is an EARLIER, DIFFERENT refusal, owned by the return-position guarantee
+// gunbc.recurring_failure_mode::return_lowered_as_its_operand_outside_the_function_tail -- not an
+// `else_less_if_unlowered` refusal. Pin the reason that actually fires; red if it changes.
+test fn a_guard_in_a_non_tail_spine_refuses_from_the_return_position_guarantee() -> Bool {
   match rtp_outcomes() {
-    RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: _, guard_last: _, guard_nontail: v, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: _ } => rtp_refuses_as(v: v, reason: ^body_lowering_reason_else_less_if_unlowered)
+    RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: _, guard_last: _, guard_nontail: v, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: _ } => rtp_refuses_as(v: v, reason: ^body_lowering_reason_return_not_in_tail_position)
     RtpContextRefused => false
   }
 }
