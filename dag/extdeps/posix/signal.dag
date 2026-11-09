@@ -5,6 +5,7 @@ import std.optional { Present, Absent }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
+import extdeps.posix.process { ProcessGroupLeader }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -51,14 +52,20 @@ service posix.Signal {
     }
   }
 
+  // The input is the sealed extdeps.posix.process ProcessGroupLeader, minted ONLY by
+  // process_group_leader, which refuses pid 0, 1 and negatives. Taking that type instead of a
+  // bare NonEmptyStr is what keeps this operation from being the very defect the comment above
+  // says it exists to prevent: `kill -TERM -1` signals every process the caller may reach, and no
+  // caller can build a ProcessGroupLeader for pid 1 to get there. No mock_response: nothing
+  // started, nothing replayed -- the wet lane runs it against a real process group.
   operation TerminateProcessGroup {
     requires none
-    input { pgid: NonEmptyStr }
+    input { group: ProcessGroupLeader }
     output {
       success: Bool from "exit_success"
       stderr: String from "stderr"
     }
-    transport shell { argv: ["kill", "-TERM", "-{pgid}"] }
+    transport shell { argv: ["kill", "-TERM", "-{group.pgid}"] }
     exit {
       0 => Unit
       nonzero => String "kill -TERM process group failed"

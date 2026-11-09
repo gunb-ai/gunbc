@@ -504,7 +504,7 @@ type HarnessTerminateProcessGroup {
 }
 
 fn harness_kill_process_group(leader: ProcessGroupLeader) -> HarnessTerminateProcessGroup {
-  let r = posix.Signal.TerminateProcessGroup(pgid: leader.pgid)
+  let r = posix.Signal.TerminateProcessGroup(group: leader)
   HarnessTerminateProcessGroup { success: r.success, stderr: r.stderr }
 }
 
