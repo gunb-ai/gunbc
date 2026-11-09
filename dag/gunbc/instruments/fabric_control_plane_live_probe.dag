@@ -364,19 +364,27 @@ fn cp_probe_slot() -> Optional<RunnerSlotIdentity> {
 // subject it is the absence, named in the label's own type. Labels are strings, so naming the absence in a
 // string says exactly what is there -- unlike a placeholder in a path or identity field, which something
 // downstream could read as a real host or directory.
-fn cp_probe_subject_key_label() -> NonEmptyStr {
-  match cp_probe_slot() {
+fn cp_probe_subject_key_label_from(subject: CpProbeSubject) -> NonEmptyStr {
+  match cp_probe_slot_from(subject: subject) {
     Present { value: slot } => fabric_cell_allocation_key(slot: slot)
     Absent {} => cp_probe_no_subject_label()
   }
 }
 
+fn cp_probe_subject_key_label() -> NonEmptyStr {
+  cp_probe_subject_key_label_from(subject: cp_probe_subject())
+}
+
 // THE CELL LABEL FOR REPORTS, same discipline: the real cell id under a selection, the absence otherwise.
-fn cp_probe_subject_cell_text() -> String {
-  match cp_probe_slot() {
+fn cp_probe_subject_cell_text_from(subject: CpProbeSubject) -> String {
+  match cp_probe_slot_from(subject: subject) {
     Present { value: slot } => fabric_cell_id_for_slot(slot: slot) as String
     Absent {} => cp_probe_no_subject_label() as String
   }
+}
+
+fn cp_probe_subject_cell_text() -> String {
+  cp_probe_subject_cell_text_from(subject: cp_probe_subject())
 }
 
 type CpProbeAuthorized

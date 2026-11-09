@@ -42,7 +42,13 @@ import gunbc.instruments.fabric_control_plane_live_probe {
   fci1_checkpoint_token,
   RunnerSlotIdentity,
   Present,
-  Absent
+  Absent,
+  cp_probe_subject_key_label_from,
+  cp_probe_subject_cell_text_from,
+  fci1_decode_reservation_cleanup_authority,
+  Fci1ReservationCleanupAuthorityDecoded,
+  Fci1ReservationCleanupAuthorityUndecodable,
+  Fci1ReservationCleanupAuthorityObservationUnmodeled
 }
 import gunbc.runner.runner_slot_allocation { fabric_execution_slot_identities }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }
@@ -209,10 +215,14 @@ test fn witness_fci1_cannot_take_a_slot_the_operator_returned_to_ci_as_its_subje
     RunnerSlotIdentity { host: "srv4", slot_index: 7 },
   ]
   fci1_roster_names_none(roster: fabric_execution_slot_identities(), none_of: returned)
-    // And so the instrument cannot act on any of them, nor label anything with them: the gate selects
-    // nothing today and the label projection has no subject at all -- the concrete failure the literal
-    // subject would have caused on srv3, where the instrument still runs its legs.
-    && match cp_probe_slot() {
+    // And so the instrument cannot act on any of them, nor label anything with them: on the host its
+    // legs are carried on (cp_probe_served_host), the gate selects nothing now, and the projection has no
+    // subject at all -- the concrete failure the literal subject would have caused here. The subject is
+    // built through the pure projection so the row states the host it speaks about instead of inheriting
+    // whatever machine the witness happens to run on.
+    && match cp_probe_slot_from(
+      subject: cp_probe_subject_from(roster: fabric_execution_slot_identities(), served_host: cp_probe_served_host()),
+    ) {
       Absent {} => true
       Present { value: slot } => false
     }
@@ -256,12 +266,13 @@ test fn witness_fci1_refusal_projection_is_no_slot_at_all() -> Bool {
   // in a model-shaped field is a fork: gunbc.design_argument::continuous_generalization). What a refusal
   // may put into a label field is the string that names its own absence, and nothing else; that string is
   // not a host the fleet has, so no key, path or systemctl unit built from it can name a real cell.
-  match cp_probe_slot() {
+  let leg = cp_probe_subject_from(roster: fabric_execution_slot_identities(), served_host: cp_probe_served_host())
+  match cp_probe_slot_from(subject: leg) {
     Absent {} => true
     Present { value: slot } => false
   }
-    && cp_probe_subject_key_label() == cp_probe_no_subject_label()
-    && cp_probe_subject_cell_text() == cp_probe_no_subject_label() as String
+    && cp_probe_subject_key_label_from(subject: leg) == cp_probe_no_subject_label()
+    && cp_probe_subject_cell_text_from(subject: leg) == cp_probe_no_subject_label() as String
     && all(fabric_execution_slot_identities(), identity => identity.host != cp_probe_no_subject_label())
 }
 
@@ -317,18 +328,31 @@ test fn witness_fci1_no_subject_wire_never_decodes_as_a_cell_state() -> Bool {
 // thing varying below is the observation arm: a genuine held observation for the same key MATCHES, and
 // the no-subject observation does not. That rules out a comparator that simply returns false.
 test fn witness_fci1_no_subject_observation_matches_no_cleanup_authority() -> Bool {
-  let authority = Fci1ReservationCleanupAuthority {
-    root: "/fixture/store",
-    slot_key: cp_probe_subject_key_label(),
-    generation: 2,
-    reservation_identity: "reserved-by-fci1",
-    reservation_payload: "payload",
-    reservation_content: "content",
-  }
+  // The authority comes in through the module's OWN introduction rule. Fci1ReservationCleanupAuthority
+  // is a sole_constructor type -- its fields belong to the instrument, and a witness that could build one
+  // at will could build one the instrument would never have written. So the fixture is the wire the
+  // instrument publishes and decodes (root, slot key, generation, reservation identity, payload,
+  // content, newline-joined, exactly as fci1_reservation_cleanup_authority_wire spells them), and the
+  // authority below is whatever the module agrees to call one.
+  let leg = cp_probe_subject_from(roster: fabric_execution_slot_identities(), served_host: cp_probe_served_host())
+  let wire = join([
+    "/fixture/store", "\n", cp_probe_subject_key_label_from(subject: leg) as String,
+    "\n", "2",
+    "\n", "reserved-by-fci1",
+    "\n", "payload",
+    "\n", "content",
+  ], "")
+  match fci1_decode_reservation_cleanup_authority(wire: wire) {
+    Fci1ReservationCleanupAuthorityDecoded { authority: authority } =>
   !fci1_authority_matches_held(authority: authority, observed: Fci1SlotNoSubject { why: "no subject" })
     && !fci1_authority_matches_exact_free(authority: authority, observed: Fci1SlotNoSubject { why: "no subject" })
     && fci1_authority_matches_held(authority: authority, observed: Fci1SlotHeld {
       path: "/fixture/store", generation: 2, reservation_identity: "reserved-by-fci1",
       payload: "payload", content: "content",
     })
+    // A wire the module will not decode is not a comparison: the row would then be green because
+    // nothing was checked, so the undecodable arms refuse the row.
+    Fci1ReservationCleanupAuthorityUndecodable => false
+    Fci1ReservationCleanupAuthorityObservationUnmodeled => false
+  }
 }
