@@ -223,6 +223,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 }
 import gunbc.roadmap.roadmap_execution_contract {
   ExecutionCapability,
+  dispatch_capability_program,
   DispatchHostEnvironment,
   GitWorkspaceCapability,
   TmuxSessionCapability,
@@ -1036,34 +1037,6 @@ fn dispatch_provider_label(provider: DispatchCliProvider) -> String {
 type HostExecArgv {
   program: String
   args: List<String>
-}
-
-data dispatch_unrealized_capability_marker: String = "gunbc-unrealized-capability:"
-
-// An environment with no realization for a capability used to resolve to the empty program string.
-// Empty is non-executable, so the host did fail — but it failed as an unattributable exec error
-// with nothing naming WHICH capability was unrealized, which is a degradation that cannot be
-// counted (gunbc.design_argument::fail_closed). The marker keeps the arm non-executable and makes it self-describing at the
-// point of failure. It is not a widening: no marker value can run. The real close is a typed
-// refusal on the resolver, which requires the argv shapers above it to carry a refusal arm — that
-// rides with the DashboardExecResult typed-refusal migration named in
-// dashboard_exec_result_carrier_note, and dissolves this row with it.
-
-fn dispatch_capability_program(
-  environment: DispatchHostEnvironment,
-  cap: ExecutionCapability,
-) -> String {
-  match dispatch_host_realization(environment: environment, capability: cap) {
-    Present { value: realization } => realization.executable as String
-    Absent =>
-      join(
-        [
-          dispatch_unrealized_capability_marker,
-          execution_capability_label(capability: cap),
-        ],
-        "",
-      )
-  }
 }
 
 type DispatchBriefFields {
