@@ -142,9 +142,9 @@ test fn an_undeclared_name_inside_a_curried_lambda_refuses_at_its_atom() -> Bool
 // The specimens are Int-typed because a produced declaration's type references spell through
 // binding_spellings, which carries Int (i32) and not Bool; Bool's spelling there is the separate
 // TargetAtomRealization lane stage0_production_target names, not this one.
-data fvb_emit_source: String = "module fvb_emit_probe\n\nimport v2.std.integer { Int }\n\nfn fvb_curried_emit(p: Int) -> fn(Int) -> fn(Int) -> Int { x => y => x }\n"
+data fvb_emit_source: String = "module fvb_emit_probe\n\nfn fvb_curried_emit(p: Int) -> fn(Int) -> fn(Int) -> Int { x => y => x }\n"
 
-data fvb_emit_direct_source: String = "module fvb_emit_probe\n\nimport v2.std.integer { Int }\n\nfn fvb_direct(p: Int) -> fn(Int) -> Int { fn(q) { p } }\n"
+data fvb_emit_direct_source: String = "module fvb_emit_probe\n\nfn fvb_direct(p: Int) -> fn(Int) -> Int { fn(q) { p } }\n"
 
 data fvb_emit_curried_golden: String = "fn fvb_curried_emit(p: i32) -> impl Fn(i32) -> Box<dyn Fn(i32) -> i32> { move |x| { Box::new(move |y| { x }) } }\n\n"
 
