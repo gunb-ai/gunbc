@@ -116,6 +116,18 @@ fn serving_artifact_hold_text(h: ServingArtifactHold) -> String {
   match h { ArtifactHeldPinned { mechanism: _ } => "pinned" , ArtifactHeldEvictable { bound_by: _, floor: _ } => "evictable"  }
 }
 
+// How a rung's charged reading shows in the identity frame: a read or assumed figure shows its bytes; an UNREAD one
+// shows "unread", never 0 -- a 0 in the frame would read as a measured figure when it is really an absence, and two
+// different configurations (a rung that measured zero vs one nobody has read) would collapse to one identity
+// (review 92474; fail_closed, epistemic_humility). A pinned rung has no floor at all, so its floor frame is "none".
+fn serving_rung_reading_frame_value(r: ServingMemoryReading) -> String {
+  match r {
+    ServingMemoryRead { bytes: b, provenance: _ } => to_string(byte_size_count(b: b))
+    ServingMemoryAssumed { bytes: b, reason: _ } => to_string(byte_size_count(b: b))
+    ServingMemoryUnread { reason: _ } => "unread"
+  }
+}
+
 // ONE RUNG AS IDENTITY FRAMES, or nothing when the artifact has no rung on that medium. A rung that moves bytes,
 // changes its hold, or states a different floor is a different configuration; the charged figures (bytes, and the
 // evictable floor the budget reserves) are all in here so a change to any of them requalifies the layout.
@@ -123,11 +135,11 @@ fn serving_artifact_rung_frame(prefix: String, r: ServingArtifactRung?) -> Strin
   match r {
     Absent => ""
     Present { value: rung } => concat(identity_frame(label: concat(prefix, "-hold"), value: serving_artifact_hold_text(h: rung.holds)),
-      concat(identity_frame(label: concat(prefix, "-bytes"), value: to_string(byte_size_count(b: serving_reading_bytes_or_zero(r: rung.bytes)))),
-      concat(identity_frame(label: concat(prefix, "-floor"), value: to_string(byte_size_count(b: match rung.holds {
-        ArtifactHeldPinned { mechanism: _ } => byte_size(count: 0)
-        ArtifactHeldEvictable { bound_by: _, floor: f } => serving_reading_bytes_or_zero(r: f)
-      }))), identity_frame(label: concat(prefix, "-realizes"), value: rung.realizes as String))))
+      concat(identity_frame(label: concat(prefix, "-bytes"), value: serving_rung_reading_frame_value(r: rung.bytes)),
+      concat(identity_frame(label: concat(prefix, "-floor"), value: match rung.holds {
+        ArtifactHeldPinned { mechanism: _ } => "none"
+        ArtifactHeldEvictable { bound_by: _, floor: f } => serving_rung_reading_frame_value(r: f)
+      }), identity_frame(label: concat(prefix, "-realizes"), value: rung.realizes as String))))
   }
 }
 
@@ -141,6 +153,21 @@ fn serving_artifact_host_ram_charge(a: ServingSharedArtifact) -> ByteSize {
     Present { value: r } => match r.holds {
       ArtifactHeldPinned { mechanism: _ } => serving_reading_bytes_or_zero(r: r.bytes)
       ArtifactHeldEvictable { bound_by: _, floor: f } => serving_reading_bytes_or_zero(r: f)
+    }
+  }
+}
+
+// THE READING serving_artifact_host_ram_charge ACTUALLY BILLS (its exact mirror as a reading, not a ByteSize): the
+// whole figure of a pinned host-RAM rung, the floor of an evictable one, and NOTHING when there is no host-RAM rung.
+// Returned so the layout's missing list can guard it -- the same reading the budget folds with
+// serving_reading_bytes_or_zero, whose Unread arm contributes zero, must never be unread (review 92474; one source,
+// so the guard and the charge can never disagree).
+fn serving_artifact_charged_host_ram(a: ServingSharedArtifact) -> ServingMemoryReading? {
+  match a.host_ram {
+    Absent => Absent
+    Present { value: r } => match r.holds {
+      ArtifactHeldPinned { mechanism: _ } => Present { value: r.bytes }
+      ArtifactHeldEvictable { bound_by: _, floor: f } => Present { value: f }
     }
   }
 }
@@ -305,7 +332,18 @@ fn serving_layout_missing(g: ServingResourceGrant, b: ServingBackendProfile) -> 
   // billed as zero, silently widening the budget (gunbc.design_argument::fail_closed). Refusing while it is unread makes
   // that collapse unreachable: an operator who has not read MemorySwapMax gets ServingLayoutInputsUnread, not a free pass.
   let swap_missing = flat_map([g.swap_bound], x => serving_reading_missing(r: x))
-  concat(ram, concat(overhead, concat(backend_figures, concat(devices_missing, swap_missing))))
+  // THE CHARGED ARTIFACT RUNGS ARE GUARDED EXACTLY LIKE SWAP (root_generalization of the guard above: this is the
+  // second reader of serving_reading_bytes_or_zero's zero-for-Unread arm, so it gets the same refusal). The host-RAM
+  // rung's charged reading -- a pinned rung's bytes, an evictable rung's floor -- is folded into the reserved budget
+  // and shared_resident by serving_artifact_host_ram_charge; an Unread there would be billed as 0 and silently widen
+  // the pool (fail_closed). Refusing while it is unread makes that collapse unreachable. Only the CHARGED reading is
+  // guarded: a device or disk rung may hold Unread bytes legitimately (it reserves no host RAM), and the identity
+  // frame shows it honestly as unread rather than 0.
+  let artifact_missing = flat_map(g.shared, a => match serving_artifact_charged_host_ram(a: a) {
+    Absent => [] as List<NonEmptyStr>
+    Present { value: r } => serving_reading_missing(r: r)
+  })
+  concat(ram, concat(overhead, concat(backend_figures, concat(devices_missing, concat(swap_missing, artifact_missing)))))
 }
 
 // What a configuration rests on that no reading has shown at the requirement: allowances, and a retention cost

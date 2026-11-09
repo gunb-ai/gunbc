@@ -54,6 +54,38 @@ fn sl_grant_swap(g: ServingResourceGrant, swap: ServingMemoryReading) -> Serving
   }
 }
 
+// A grant whose shared artifacts are replaced -- so a test can hand the layout an artifact whose CHARGED host-RAM
+// reading is unread and check the layout refuses rather than billing it as zero (review 92474).
+fn sl_grant_shared(g: ServingResourceGrant, shared: List<ServingSharedArtifact>) -> ServingResourceGrant {
+  ServingResourceGrant {
+    host: g.host, usable_ram: g.usable_ram, overhead: g.overhead, shared: shared, swap_bound: g.swap_bound, devices: g.devices, charging: g.charging,
+  }
+}
+
+// An artifact whose host-RAM rung is evictable with an UNREAD floor -- the figure serving_artifact_host_ram_charge
+// bills into the pool. Copying everything else keeps it a minimal single-variable change.
+fn sl_host_ram_floor_unread(a: ServingSharedArtifact) -> ServingSharedArtifact {
+  ServingSharedArtifact {
+    name: a.name, bytes: a.bytes, owner: a.owner, device: a.device, disk: a.disk,
+    host_ram: match a.host_ram {
+      Present { value: r } => Present { value: ServingArtifactRung { bytes: r.bytes, holds: ArtifactHeldEvictable { bound_by: "fixture: evictable host-RAM rung" as NonEmptyStr, floor: ServingMemoryUnread { reason: "the host-RAM floor that the budget reserves has not been read" as NonEmptyStr } }, realizes: r.realizes } }
+      Absent => Absent
+    },
+  }
+}
+
+// An artifact whose host-RAM rung is PINNED with UNREAD bytes -- the other charged reading (a pinned rung bills its
+// whole figure). Same single-variable discipline.
+fn sl_host_ram_pinned_bytes_unread(a: ServingSharedArtifact) -> ServingSharedArtifact {
+  ServingSharedArtifact {
+    name: a.name, bytes: a.bytes, owner: a.owner, device: a.device, disk: a.disk,
+    host_ram: match a.host_ram {
+      Present { value: r } => Present { value: ServingArtifactRung { bytes: ServingMemoryUnread { reason: "the pinned host-RAM copy has not been read" as NonEmptyStr }, holds: ArtifactHeldPinned { mechanism: "fixture: pinned host-RAM rung" as NonEmptyStr }, realizes: r.realizes } }
+      Absent => Absent
+    },
+  }
+}
+
 fn sl_device(name: String, vram: ByteSize) -> ServingDevice {
   ServingDevice {
     device: name as NonEmptyStr,
@@ -581,4 +613,51 @@ test fn witness_unread_swap_bound_refuses_the_layout() -> Bool {
     ServingLayoutRefused { refusal: _ } => false
   }
   refuses && still_fits
+}
+
+// An artifact with its DEVICE rung's bytes set to a given reading -- single-variable, for the identity test: a device
+// rung reserves no host RAM, so its figure is display-only and must never be folded into a measured zero.
+fn sl_device_bytes(a: ServingSharedArtifact, r: ServingMemoryReading) -> ServingSharedArtifact {
+  ServingSharedArtifact {
+    name: a.name, bytes: a.bytes, owner: a.owner, host_ram: a.host_ram, disk: a.disk,
+    device: match a.device {
+      Present { value: d } => Present { value: ServingArtifactRung { bytes: r, holds: d.holds, realizes: d.realizes } }
+      Absent => Absent
+    },
+  }
+}
+
+// THE CHARGED ARTIFACT READING IS GUARDED LIKE SWAP (review 92474; fail_closed). serving_artifact_host_ram_charge
+// folds the host-RAM rung's reading with serving_reading_bytes_or_zero, whose Unread arm is ZERO -- so an Unread
+// charged figure would silently widen the pool by billing 0. It now joins serving_layout_missing and the layout
+// REFUSES. Pre-fix, both these layouts configured (billed 0); each assertion is red-capable on that defect.
+test fn witness_unread_charged_host_rung_refuses_the_layout_instead_of_billing_zero() -> Bool {
+  // an evictable host-RAM rung whose reserved floor is unread ...
+  let evict = sl_grant_shared(g: srv4_grant, shared: [sl_host_ram_floor_unread(a: srv4_routed_expert_artifact)])
+  let evicted = match serving_layout_derive(g: evict, groups: srv4_layer_split_groups, b: strata_srv4_layer_split_profile, r: serving_context_ceiling_requirement) {
+    ServingLayoutRefused { refusal: ServingLayoutInputsUnread { missing: ms } } => 0 < ms.length()
+    _ => false
+  }
+  // ... a pinned host-RAM rung whose billed bytes are unread ...
+  let pin = sl_grant_shared(g: srv4_grant, shared: [sl_host_ram_pinned_bytes_unread(a: srv4_routed_expert_artifact)])
+  let pinned = match serving_layout_derive(g: pin, groups: srv4_layer_split_groups, b: strata_srv4_layer_split_profile, r: serving_context_ceiling_requirement) {
+    ServingLayoutRefused { refusal: ServingLayoutInputsUnread { missing: ms } } => 0 < ms.length()
+    _ => false
+  }
+  // ... and the real srv4_grant (read floor, read bytes) still CONFIGURES -- the refusal is specifically the unread charge.
+  evicted && pinned && (match srv4_layout { ServingLayoutConfigured { replicas: _, unallocated_ram: _, evidence: _ } => true  _ => false })
+}
+
+// The identity frame no longer prints an UNREAD rung figure as a fabricated 0 (review 92466/92474). A device rung
+// measured at zero and one nobody has read used to print the same "...-bytes 0"; they must now be DISTINCT
+// configurations, while both still configure (a device rung charges no host RAM, so an unread device figure is a
+// display concern, not a budget widen, and must not refuse).
+test fn witness_unread_rung_bytes_is_not_a_measured_zero_in_the_identity() -> Bool {
+  let zeroed = sl_device_bytes(a: srv4_routed_expert_artifact, r: ServingMemoryRead { bytes: byte_size(count: 0), provenance: "fixture: measured zero" as NonEmptyStr })
+  let unread = sl_device_bytes(a: srv4_routed_expert_artifact, r: ServingMemoryUnread { reason: "fixture: the on-card cache has not been read" as NonEmptyStr })
+  let c0 = serving_layout_derive(g: sl_grant_shared(g: srv4_grant, shared: [zeroed]), groups: srv4_layer_split_groups, b: strata_srv4_layer_split_profile, r: serving_context_ceiling_requirement)
+  let c1 = serving_layout_derive(g: sl_grant_shared(g: srv4_grant, shared: [unread]), groups: srv4_layer_split_groups, b: strata_srv4_layer_split_profile, r: serving_context_ceiling_requirement)
+  (match c0 { ServingLayoutConfigured { replicas: _, unallocated_ram: _, evidence: _ } => true  _ => false })
+    && (match c1 { ServingLayoutConfigured { replicas: _, unallocated_ram: _, evidence: _ } => true  _ => false })
+    && sl_configuration(r: c0) != sl_configuration(r: c1)
 }
