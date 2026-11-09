@@ -779,6 +779,14 @@ test fn the_hand_capacity_route_reports_the_unit_and_never_drains_it() -> Bool {
     Present { value: subject } =>
       let hand = "srv1-51"
       let live = kept_slots()
+      // HOISTED INTO TYPED LETS: the lists the leg returns are what these claims judge, and naming their type
+      // here is the cheapest way to make the witness say which list it is filtering rather than leaning on
+      // inference through a call with named arguments.
+      let candidates: List<NonEmptyStr> = runner_host_drain_units(subject: subject)
+      let hand_units: List<NonEmptyStr> = runner_host_hand_started_units(
+        subject: subject,
+        population: host_population(live: live),
+      )
       let outcomes = runner_host_hand_capacity_notices(
         subject: subject,
         population: host_population(live: [hand]),
@@ -795,15 +803,10 @@ test fn the_hand_capacity_route_reports_the_unit_and_never_drains_it() -> Bool {
                  && contains(haystack: notice, needle: "will not drain it")
              _ => false
            }
-        && !any(runner_host_drain_units(subject: subject), u => (u as String) == hand)
+        && !any(candidates, u => (u as String) == hand)
         // and the live list stays untouched by the report: the kept slots are not hand-started capacity
-        && length(
-             filter(
-               runner_host_hand_started_units(subject: subject, population: host_population(live: live)),
-               u => (u as String) == "srv1-01",
-             ),
-           )
-             == 0
+        && !any(hand_units, u => (u as String) == "srv1-01")
+        && any(hand_units, u => (u as String) == hand)
   }
 }
 
