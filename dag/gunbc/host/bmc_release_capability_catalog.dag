@@ -2,7 +2,7 @@
 //
 // WHY THIS IS A gunbc MODULE AND NOT extdeps.bmc.megarac. A capability row is a claim WE make about a
 // firmware build after observing it: which controls our automation exercised, which run of ours exercised
-// them, where that run's artifacts were committed, and who read the version string. DESIGN.md §3
+// them, where that run's artifacts were committed, and who read the version string. gunbc.design_argument::single_authority
 // ("External upstream decomposition") puts observations this repository makes in the OBSERVING layer,
 // "not facts of the observed upstream", and says a missing observation is a downstream coverage
 // obligation, "never an `Unobserved` property inside the upstream module". The first version of this
@@ -55,12 +55,12 @@ import extdeps.bmc.ipmitool_observed_output {
 }
 
 // THE AUTHORITY FOR OUR OWN CAPABILITY OBSERVATIONS IS US, so it is declared HERE, in gunbc, and the
-// capability rows of this catalog cite it (review 81149; DESIGN.md §3). It is NOT a file path: a directory
+// capability rows of this catalog cite it (review 81149; gunbc.design_argument::single_authority). It is NOT a file path: a directory
 // under artifacts/ is a place bytes sit, not an authority that vouches for a claim, and crediting one is
 // the same category error as crediting the firmware vendor with a statement it never made — the first
 // version of this catalog did exactly that, pointing the 0.45.3 row at the AMI MegaRAC anchor. The
 // authority is the repository that established the fact; WHAT it established is named by a DeclRef into
-// this module, per DESIGN.md §2, never by retyping the claim as prose.
+// this module, per gunbc.design_argument::minimize_redundancy, never by retyping the claim as prose.
 //
 // The receipt bytes the observation came from are named where they belong — as the evidence's own
 // receipt_path / artifact_path, which is a pointer to re-derivable bytes, not a warrant.
@@ -147,14 +147,14 @@ type MegaRacVersionRefusal
   | StandingComponentCarriesNoVersion { component: NonEmptyStr }
 
 // WHY A COMMITTED READ CAN REFUSE, as distinct from why a STANDING refuses (MegaRacVersionRefusal, above).
-// The two questions are different, so they carry different names (DESIGN.md §3 "a materially different
+// The two questions are different, so they carry different names (gunbc.design_argument::single_authority "a materially different
 // contract needs a materially different name"): a standing refuses because the bytes it holds cannot name a
 // release; a LOOKUP at an artifact path refuses because there is nothing to read, more than one thing to
 // read, what is there establishes nothing, or what is there was attested rather than read. Every arm keeps
 // the CAUSE -- review 86103/86139 (review 38602's first fix returned the parser's "no version stored"
 // rendering for all of them, which threw the cause away and fabricated an identity out of a display cell:
-// DESIGN.md §5, "no plausible output is fabricated"). A caller that cannot distinguish these arms cannot
-// tell a broken read from a real build, which is the exact state §5 forbids entering the ledger.
+// gunbc.design_argument::fail_closed, "no plausible output is fabricated"). A caller that cannot distinguish these arms cannot
+// tell a broken read from a real build, which is the exact state gunbc.design_argument::fail_closed forbids entering the ledger.
 type MegaRacCommittedHpmCheckRefusal
   = NoCommittedRowAtPath { artifact_path: NonEmptyStr }
   | CommittedRowAmbiguousAtPath { artifact_path: NonEmptyStr, matches: Int }
@@ -167,8 +167,8 @@ type MegaRacCommittedHpmCheckReadout
   = CommittedReadEstablished { firmware: BmcFirmwareReleaseIdentity }
   | CommittedReadRefused { cause: MegaRacCommittedHpmCheckRefusal }
 
-// THE COMMITTED READ'S IDENTITY, DERIVED NOT TYPED (review 38602; DESIGN.md §3 "each fact lives in
-// exactly one place"), AND REFUSED NOT FABRICATED (review 86103/86139; DESIGN.md §5 "every path succeeds
+// THE COMMITTED READ'S IDENTITY, DERIVED NOT TYPED (review 38602; gunbc.design_argument::single_authority "each fact lives in
+// exactly one place"), AND REFUSED NOT FABRICATED (review 86103/86139; gunbc.design_argument::fail_closed "every path succeeds
 // fully or fails with a typed, located diagnostic"). A module that needs the release identity a committed
 // hpm check reports ASKS the row for it; the row is the one home of those bytes, and
 // megarac_version_establishment is the one mint that turns them into an identity. There is no wire literal
@@ -390,7 +390,7 @@ fn bmc_capability_observation_citation(decl_name: String) -> FactCitation {
 // 2023 09:36:21 CDT', Image 1; BIOS 0ACOD014; SCP shown blank. Carried as an ObservationInstant rather
 // than a bare epoch-milliseconds literal, because std.measure.ObservationInstant is the carrier the
 // corpus already has and a bare scalar with no domain or basis cannot be compared with anything —
-// DESIGN.md §2, "net concepts must not grow by re-invention" (review 81149, finding 2).
+// gunbc.design_argument::minimize_redundancy, "net concepts must not grow by re-invention" (review 81149, finding 2).
 //
 // THE DOMAIN IS THE UNIX EPOCH, not an origin named after the day being read (review 81301, blocking).
 // The draft paired a Unix-epoch count with origin "mtcollins1-bmc-web-ui-2026-10-16", which asserted

@@ -110,7 +110,7 @@ test fn altrad8ud_inband_transcript_decodes_despite_its_failed_later_commands() 
   }
 }
 
-// THE RENDER SIDE, BESIDE THE PARSE SIDE (DESIGN §2: model a concept once and derive every use): what the renderer prints is what the parser
+// THE RENDER SIDE, BESIDE THE PARSE SIDE (gunbc.design_argument::minimize_redundancy: model a concept once and derive every use): what the renderer prints is what the parser
 // reads back, so a dry controller's `mc info` is a rendering of state and not a stored reply.
 test fn rendered_report_parses_back_to_the_same_report() -> Bool uses fs: std.resources.Filesystem {
   match ipmitool_mc_info_of(stdout: h11ssl_unit1_mc_info_body()) {

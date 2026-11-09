@@ -10,7 +10,7 @@ import v2.lens.vacuity {
 // src/v2/lens/vacuity.dag::vacuity_evidence_eq. The hand fold (param-scrutinee
 // over the three nullary arms of the fieldless coproduct VacuityEvidence,
 // off-variant wildcard arm returning false) is deleted; its call sites now read
-// the derived structural == (dag/std/algebra, DESIGN §3/§4). These two witnesses
+// the derived structural == (dag/std/algebra, gunbc.design_argument::single_authority, gunbc.design_argument::closed_grounded_substrate). These two witnesses
 // are the RED + positive control for the backfill, in a production-closure module
 // (imports v2.lens.vacuity only) so they run via the entry route: the lens_vacuity
 // test module's pre-existing v2.test.nat_semiring.rung_5 import makes that module

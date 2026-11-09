@@ -112,7 +112,7 @@ fn qualification_workflow_file_name() -> NonEmptyStr {
 // and collection refuses a run whose head_sha is not the pinned revision (RunRevisionNotPinned). The residual
 // -- an edit to the workflow file on the qualification branch can drop the guard -- needs repository push, and is
 // declared as gunbc.recurring_failure_mode qualification_floor_guard_skippable_by_a_workflow_file_edit.
-// THE INPUT IS THE WORKFLOW'S expected_revision (gunbc.plans.mtcollins1_ci_service_legs G1): it already means the
+// THE INPUT IS THE WORKFLOW'S expected_revision (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) G1): it already means the
 // revision a run must check out, refusing on a mismatch, so a qualification_revision input beside it was a second
 // name for one fact, and the workflow's dispatch-input budget had no room for it.
 data qualification_revision_dispatch_input: DispatchInput = fleet_converge_expected_revision_input
@@ -251,7 +251,7 @@ fn job_display_name(job: Job) -> NonEmptyStr {
   }
 }
 
-// THE SCOPE CHECKS ARE PURE, SO A CLAIM SUPPLIES THEIR INPUTS AS VALUES (DESIGN section 3: a witness
+// THE SCOPE CHECKS ARE PURE, SO A CLAIM SUPPLIES THEIR INPUTS AS VALUES (gunbc.design_argument::single_authority: a witness
 // discriminates at one interface). The subject mint below composes them and is their only
 // production consumer; the witness exercises each one directly, and keeps ONE claim that runs the
 // real mint end to end.
@@ -801,7 +801,7 @@ fn collect_qualification_run(dispatched: DispatchedQualificationRun, token: Cont
 //
 // WHERE EACH INSTRUMENT IS READ FROM IS A TOTAL MATCH, so adding an instrument to
 // gunbc.runner.runner_throughput_qualification_route QualificationInstrument refuses to compile here until it
-// says where its reading comes from. Today's floor (gunbc.plans.mtcollins1_ci_service_legs G3, operator decision A):
+// says where its reading comes from. Today's floor (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) G3, operator decision A):
 // each subject step's memory receipt is on the designated floor job's log, and its wall is on that job's record (the
 // Jobs API steps, already read by collect_qualification_run); the guest's idle readings and a concurrent cohort are not
 // outputs of this run, and each carries a row below with the capability that would read it.

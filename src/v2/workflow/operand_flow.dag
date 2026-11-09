@@ -28,7 +28,7 @@ import v2.workflow.realization_runner {
 // than DataDependsOn carries no operand by construction (the classifier is the single source of
 // truth for which kinds apply, not a per-callsite match). operand_flows is total over its input
 // edges: a non-applicable kind or an unsettled/missing footprint yields a typed, located
-// OperandFlowRefused row rather than a silent drop, so refusals stay countable (DESIGN §5).
+// OperandFlowRefused row rather than a silent drop, so refusals stay countable (gunbc.design_argument::fail_closed).
 
 fn operand_flow_dependency_kind_classifier() -> DependencyKindClassifier<Bool> {
   DependencyKindClassifier {

@@ -1,6 +1,6 @@
 module test.claim.fleet.runtime_identity_match_witness
 
-// WHAT THIS WITNESS LOCKS (cut 6 of gunbc.plans.physical_machine_boot_program, step S10 of the cut-6
+// WHAT THIS WITNESS LOCKS (cut 6 of gunbc.plans.physical_machine_boot_program (deleted 2026-11-08), step S10 of the cut-6
 // program label; module gunbc.fleet.runtime_identity_match).
 //
 // The cut's claim is that a boot answer can be BOUND to the unit the attempt was made for, and that the
@@ -762,7 +762,7 @@ test fn test_a_text_divergence_reports_both_sides_verbatim() -> Bool {
 // an interface -- locally administered (software chose it) or group (it names a multicast group) -- is
 // shared by no particular machine: a bridge, a container, or a renamed NIC can present the same octets on
 // any unit. If the intersection stopped checking the predicate the row cites, both of these would come back
-// as Match, and that is the silent widen DESIGN section 5 calls a hard reject.
+// as Match, and that is the silent widen gunbc.design_argument::fail_closed calls a hard reject.
 test fn test_a_shared_locally_administered_address_is_not_a_binding() -> Bool {
   let pre = PreBootIdentityStanding {
     unit: fixture_unit,
@@ -1272,7 +1272,7 @@ fn first_gap_side(gaps: List<RuntimeIdentityGap>) -> IdentitySide {
 
 // Every axis row cites a declaration that EXISTS in the corpus. A comment claiming a policy is audited is
 // not evidence that it is: this reads the declaration census itself, so a row that cites a name nobody
-// declares fails here rather than looking audited (DESIGN section 3b, a home that does not resolve is a
+// declares fails here rather than looking audited (gunbc.design_argument::conformance, a home that does not resolve is a
 // citation defect). Four rows, so the count is asserted too -- a row silently dropped would otherwise
 // leave the remaining citations looking complete.
 // An axis may only be judged by the rule its comparison names. The cross combinations of (comparison,
@@ -1286,7 +1286,7 @@ fn first_gap_side(gaps: List<RuntimeIdentityGap>) -> IdentitySide {
 // THE RULE THAT RUNS FOLLOWS THE EVIDENCE, NOT THE TABLE. `axes_agree` takes ONLY the pair: there is no
 // row argument and no `comparison` field on a row any more, because a table row that could name a rule its
 // axis cannot exercise fabricated a Mismatch out of nothing (give the address axis a string policy and every
-// unit whose addresses agreed was reported as diverging -- DESIGN section 5: no fabricated output, and the
+// unit whose addresses agreed was reported as diverging -- gunbc.design_argument::fail_closed: no fabricated output, and the
 // wrong state should be unwritable rather than caught). The signature is the proof, and this witness is
 // written against it: no row is passed, so no row can overrule the rule.
 //
@@ -1337,7 +1337,7 @@ test fn test_axis_table_citations_resolve_against_the_declaration_census() -> Bo
 // and an assertion against it would be a test of the type system, not of the policy. What IS checkable, and
 // what this checks, is that a row cannot satisfy the two-home requirement by citing one declaration under
 // two names: the reading home and the binding home must be different declarations, since a home that owns
-// the field does not thereby own the identity claim (DESIGN section 3b, scope mismatch).
+// the field does not thereby own the identity claim (gunbc.design_argument::conformance, scope mismatch).
 // A row may not cite the SAME declaration as both its reading home and its binding home: that is one
 // authority asked to be two, and it is how a citation becomes decorative. A `Present` binding authority
 // that differs from the reading authority is two homes; `Absent` is not a second home at all, it is the
@@ -1354,7 +1354,7 @@ fn every_row_cites_two_homes(rows: List<RuntimeIdentityAxisRow>) -> Bool {
 // EVERY authority the TABLE carries must resolve to exactly one declaration in the corpus. The explicit
 // `cited(...)` literals above name the intended homes and would survive a swap of two real names; this
 // check is derived from the rows themselves, so it cannot be satisfied by updating the literals and
-// forgetting a row. It is the mechanical half of DESIGN section 3b: an fn cannot judge whether a home OWNS
+// forgetting a row. It is the mechanical half of gunbc.design_argument::conformance: an fn cannot judge whether a home OWNS
 // a claim, but it can refuse a row that cites a spelling the corpus does not declare -- the defect review
 // 38602 round 2 found in three rows, and the same defect my own first replacement citations committed.
 // Every citation in the table must name a declaration that EXISTS, read out of the rows themselves rather

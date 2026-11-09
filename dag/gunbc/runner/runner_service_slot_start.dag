@@ -1,0 +1,292 @@
+module gunbc.runner.runner_service_slot_start
+
+import gunbc.runner.runner_user_session_receipt_observed { runner_user_session_receipt_observed }
+import std.types { Bool, Int, List, NonEmptyStr, String, CommitSha, Secret, FilePath }
+import extdeps.git.object_store { git_object_id_wire_hex }
+import gunbc.auth.github_apps { gunbai_ci_declared_installation_id }
+import gunbc.github_effect_perform {
+  stage_controller_app_key, ControllerKeyStaged, ControllerKeyNotStaged, remove_staged_controller_key,
+  mint_controller_installation_token, ControllerTokenMinted, ControllerTokenNotMinted,
+}
+import gunbc.fleet.fleet_revision_acceptance { AcceptedFleetRevision }
+import gunbc.runner.runner_qualification_revision_admission {
+  QualificationRevisionAdmission, observe_qualification_revision, QualificationRevisionAccepted, QualificationRevisionRefused, qualification_revision_refusal_message,
+}
+import std.decl_ref { decl_ref }
+import std.integer { int_to_decimal_string }
+import std.optional { Absent, Present }
+import std.algebra { trim }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.exec.command { ArgvCommand }
+import extdeps.systemd { SystemdUnitActiveState, Active, ActiveState, WorkingDirectoryProperty, ExecStopProperty, TimeoutStopSecProperty, RestartProperty, EnvironmentProperty, parse_systemd_unit_active_state, systemd_time_span_of_seconds }
+import extdeps.systemd.systemd_run { SystemdRunProperty, NamedUnitSetting, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused, systemd_run_transient_retained_unit_command, systemd_run_option_words_refused_cause_detail }
+import extdeps.systemd.systemctl { systemctl_show_properties_command, systemctl_show_property_value }
+import product.host_identity { HostIdentity }
+import gunbc.actions_run_binding { actions_variable_trimmed, fleet_converge_subject_host_env_name }
+import gunbc.host.host_effect { HostEffectTransport }
+import gunbc.host.host_effect_realize { run_argv_over_host_effect_transport, run_argv_posix_quoted_over_host_effect_transport, RunArgvTransportObserved, RunArgvTransportRefused }
+import gunbc.host.anchored_host_transport { anchored_host_transport_for_run, AnchoredBindingBound, anchored_host_binding_refusal_reason }
+import gunbc.host.host_boot_id { HostBootId }
+import gunbc.runner.runner_host_unit_slot { current_service_population, CurrentServicePopulationDerived, CurrentServicePopulationRefused }
+import gunbc.runner.runner_lost_boot_sweep_run {
+  lost_boot_observe_current_boot, CurrentBootObserved, CurrentBootUnobserved,
+  sweep_host_standing, SweepHostBound, SweepHostNotManaged, population_refusal_text,
+  lost_boot_sweep_per_registration_allowance,
+}
+import gunbc.runner.runner_host_medium { runner_host_release_root }
+import gunbc.live_deploy.release_locus { release_locus_dir, RevisionBoundAtEmission }
+import gunbc.runner.runner_service_slot_controller {
+  service_slot_controller_execstart, service_slot_controller_execstop, service_slot_unit_env_name, service_slot_accepted_revision_env_name,
+}
+
+// THE SERVICE-SLOT START (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) F1; fleet-converge mode service_slot_start). Generic over
+// managed hosts: the host is the subject_host input and enters only through its managed row. Over the one live anchored
+// transport (gunbc.host.anchored_host_transport anchored_host_transport_for_run) it reads the host's current boot,
+// derives that boot's service population (gunbc.runner.runner_host_unit_slot current_service_population), and starts
+// one transient controller unit per member, then reads every unit back. It pushes nothing: the release is baked into
+// the image (gunbc.runner.runner_host_medium RunnerHostBakedRelease) and each unit runs from its release locus.
+//
+// EACH UNIT IS THE CONTROLLER'S, NOT THE JOB'S. Its ExecStart and ExecStop are the controller's two entries
+// (service_slot_controller_execstart / _execstop) over the baked release locus, which is its WorkingDirectory; its
+// environment names the unit and the revision this run accepted, which the controller compares with the baked one
+// before it mints; Restart=always is the re-mint (one pass per start); TimeoutStopSec bounds one deregistration with
+// readback (gunbc.runner.runner_lost_boot_sweep_run lost_boot_sweep_per_registration_allowance, the same per-registration
+// budget the sweep holds). The slot shape (gunbc.runner.runner_slot_desired) is NOT on this unit: the job runs in the
+// listener's own transient unit, which carries the shape (runner_host_unit_slot host_unit_listener_properties), so the
+// shape bounds the job's cgroup and not the controller's -- a stated divergence from the plan's "shape on the service
+// units" wording (DESIGN section 3b), because the listener unit IS the job's unit.
+//
+// THE ACCEPTED REVISION IS AN ADMITTED FLEET REVISION, never the run's raw GITHUB_SHA. Before any unit starts, the run's
+// revision is admitted through the qualification attempt's own admission (gunbc.runner.runner_qualification_revision_admission
+// observe_qualification_revision: required CI succeeded on the merge queue for it, and the default branch contains it,
+// joined into gunbc.fleet.fleet_revision_acceptance AcceptedFleetRevision), read with a gunbai-ci installation token
+// minted from the App key this run stages over its federated identity; the key is removed on every arm before a unit
+// starts. Only the admitted revision reaches a unit's environment (service_slot_accepted_revision_env_name), so the
+// controller's comparison of the baked release with that value is an EXTRA check on an admitted revision, not the only
+// one: a dispatch whose SHA equals the baked revision but was never admitted starts nothing (service_slot_start_admitted).
+// The admission module's name is the qualification attempt's because that route consumed it first; it decides fleet
+// revision admission for any run, and this is its second consumer, not a copy.
+
+data service_slot_start_attempt_prefix: String = "service-slot-start"
+data service_slot_start_receipt_path: String = "artifacts/service-slot-start-receipt.txt"
+data service_slot_start_artifact_glob: String = "artifacts/service-slot-start-*"
+data service_slot_restart_policy: NonEmptyStr = "always"
+
+fn service_slot_release_locus(revision: CommitSha) -> String {
+  release_locus_dir(root: runner_host_release_root, revision: RevisionBoundAtEmission { revision: revision })
+}
+
+fn service_slot_unit_properties(unit: NonEmptyStr, revision: CommitSha) -> List<SystemdRunProperty> {
+  let locus = service_slot_release_locus(revision: revision)
+  [
+    NamedUnitSetting { property: WorkingDirectoryProperty, value: locus as NonEmptyStr },
+    NamedUnitSetting { property: ExecStopProperty, value: service_slot_controller_execstop(release_dir: locus) },
+    NamedUnitSetting { property: TimeoutStopSecProperty, value: systemd_time_span_of_seconds(d: lost_boot_sweep_per_registration_allowance) },
+    NamedUnitSetting { property: RestartProperty, value: service_slot_restart_policy },
+    NamedUnitSetting { property: EnvironmentProperty, value: join([service_slot_unit_env_name, "=", unit as String, " ", service_slot_accepted_revision_env_name, "=", revision as String], "") as NonEmptyStr },
+  ]
+}
+
+// THE CONTROLLER'S EXECSTART IS THE ONE `gunbc run` LINE (gunbc.runner.runner_microvm_slot_unit microvm_locus_execstart),
+// split into its words for systemd-run's command tail; none of its words carries a space.
+fn service_slot_unit_start_command(unit: NonEmptyStr, revision: CommitSha) -> SystemdRunCommandReading {
+  systemd_run_transient_retained_unit_command(
+    unit: unit,
+    properties: service_slot_unit_properties(unit: unit, revision: revision),
+    command_argv: split(s: service_slot_controller_execstart(release_dir: service_slot_release_locus(revision: revision)) as String, delimiter: " "),
+  )
+}
+
+// ── one unit: start, then read back ─────────────────────────────────────────────────────────
+
+type ServiceSlotUnitStart
+  = ServiceSlotUnitActive { unit: NonEmptyStr }
+  | ServiceSlotUnitNotStarted { unit: NonEmptyStr, cause: String }
+  | ServiceSlotUnitNotActive { unit: NonEmptyStr, state: String }
+
+fn service_slot_unit_start_line(s: ServiceSlotUnitStart) -> String {
+  match s {
+    ServiceSlotUnitActive { unit: u } => join(["service-slot-start unit=", u as String, " active"], "")
+    ServiceSlotUnitNotStarted { unit: u, cause: c } => join(["service-slot-start unit=", u as String, " not-started: ", c], "")
+    ServiceSlotUnitNotActive { unit: u, state: st } => join(["service-slot-start unit=", u as String, " not-active state=", st], "")
+  }
+}
+
+fn service_slot_unit_started(s: ServiceSlotUnitStart) -> Bool {
+  match s {
+    ServiceSlotUnitActive { unit: _ } => true
+    ServiceSlotUnitNotStarted { unit: _, cause: _ } => false
+    ServiceSlotUnitNotActive { unit: _, state: _ } => false
+  }
+}
+
+// THE READBACK IS THE MANAGER'S OWN ActiveState, read over the same transport; a start whose unit is not active, or
+// whose state is unreadable, is not a started slot. A pure fold over the two supplied answers, so a witness can supply
+// them.
+fn service_slot_unit_start_of(unit: NonEmptyStr, started: Bool, start_detail: String, show_stdout: String?) -> ServiceSlotUnitStart {
+  if !started {
+    ServiceSlotUnitNotStarted { unit: unit, cause: start_detail }
+  } else {
+    match show_stdout {
+      Absent => ServiceSlotUnitNotActive { unit: unit, state: "unread" }
+      Present { value: out } =>
+        match systemctl_show_property_value(text: out, key: "ActiveState") {
+          Absent => ServiceSlotUnitNotActive { unit: unit, state: "unread" }
+          Present { value: raw } =>
+            match parse_systemd_unit_active_state(raw: trim(s: raw)) {
+              Present { value: Active } => ServiceSlotUnitActive { unit: unit }
+              _ => ServiceSlotUnitNotActive { unit: unit, state: trim(s: raw) }
+            }
+        }
+    }
+  }
+}
+
+// THE START CROSSES THE QUOTED ROUTE (merry-fox-82 side chat at a7bf4f79, P1). Two property words necessarily carry
+// spaces -- ExecStop= is the whole controller stop command and Environment= holds two assignments -- and the bare fleet
+// admission (gunbc.fleet.fleet_known_hosts_anchor portable_remote_words) refuses whitespace, so the bare dispatcher
+// could never start a unit. The start goes through gunbc.host.host_effect_realize
+// run_argv_posix_quoted_over_host_effect_transport, which quotes only under a login-shell proof and covered OpenSSH
+// releases read in the same call. The ActiveState readback stays on the bare route: every word of it is portable.
+fn service_slot_start_unit(unit: NonEmptyStr, revision: CommitSha, transport: HostEffectTransport) -> ServiceSlotUnitStart
+  uses net: Network
+  admit_callers: [decl_ref(module_path: "gunbc.runner.runner_service_slot_start", decl_name: "service_slot_start_over")]
+{
+  match service_slot_unit_start_command(unit: unit, revision: revision) {
+    SystemdRunCommandRefused { cause: c } => ServiceSlotUnitNotStarted { unit: unit, cause: systemd_run_option_words_refused_cause_detail(cause: c) }
+    SystemdRunCommandReady { command: command } =>
+      match run_argv_posix_quoted_over_host_effect_transport(command: command, transport: transport) {
+        RunArgvTransportRefused { reason: r } => ServiceSlotUnitNotStarted { unit: unit, cause: r }
+        RunArgvTransportObserved { observed: o } =>
+          if !o.success {
+            service_slot_unit_start_of(unit: unit, started: false, start_detail: join(["systemd-run exited ", int_to_decimal_string(value: o.exit_code), ": ", o.stderr], ""), show_stdout: none)
+          } else {
+            match run_argv_over_host_effect_transport(command: systemctl_show_properties_command(unit: unit, properties: [ActiveState]), transport: transport) {
+              RunArgvTransportRefused { reason: _ } => service_slot_unit_start_of(unit: unit, started: true, start_detail: "", show_stdout: none)
+              RunArgvTransportObserved { observed: shown } =>
+                service_slot_unit_start_of(unit: unit, started: true, start_detail: "", show_stdout: if shown.success { Present { value: shown.stdout } } else { none })
+            }
+          }
+      }
+  }
+}
+
+// ── the mode ─────────────────────────────────────────────────────────────────────────────────
+
+// WHAT A START RUN DID, typed: refused before any unit (no host row, no transport, the boot unobserved, no population),
+// or ran over a population with one outcome per unit. The receipt renders this; the exit is decided from it.
+type ServiceSlotStartRun
+  = ServiceSlotStartRefused { cause: String }
+  | ServiceSlotStartRan { host: String, boot: HostBootId, revision: CommitSha, units: List<ServiceSlotUnitStart> }
+
+fn service_slot_start_held(run: ServiceSlotStartRun) -> Bool {
+  match run {
+    ServiceSlotStartRefused { cause: _ } => false
+    ServiceSlotStartRan { host: _, boot: _, revision: _, units: us } => count(us) > 0 && (us |> all(u => service_slot_unit_started(s: u)))
+  }
+}
+
+fn service_slot_start_lines(run: ServiceSlotStartRun) -> List<String> {
+  match run {
+    ServiceSlotStartRefused { cause: c } => [concat("service-slot-start refused: ", c)]
+    ServiceSlotStartRan { host: h, boot: b, revision: r, units: us } =>
+      concat([join(["service-slot-start host=", h, " boot=", b.boot_id as String, " revision=", r as String], "")], us |> map(u => service_slot_unit_start_line(s: u)))
+  }
+}
+
+// THE REVISION GATE, PURE: a run's revision either was admitted (and the admitted revision is what every unit is
+// started at) or it was not, and then `start` is never called, so no unit exists. The witness drives this with a
+// supplied admission and a start that would start units.
+type ServiceSlotRevision
+  = ServiceSlotRevisionAccepted { accepted: AcceptedFleetRevision<NonEmptyStr, NonEmptyStr> }
+  | ServiceSlotRevisionRefused { cause: String }
+
+fn service_slot_revision_of_admission(admission: QualificationRevisionAdmission) -> ServiceSlotRevision {
+  match admission {
+    QualificationRevisionAccepted { accepted: a } => ServiceSlotRevisionAccepted { accepted: a }
+    QualificationRevisionRefused { refusal: r } => ServiceSlotRevisionRefused { cause: qualification_revision_refusal_message(refusal: r) }
+  }
+}
+
+fn service_slot_start_admitted(revision: ServiceSlotRevision, start: fn(CommitSha) -> ServiceSlotStartRun) -> ServiceSlotStartRun {
+  match revision {
+    ServiceSlotRevisionRefused { cause: c } => ServiceSlotStartRefused { cause: concat("the run's revision is not an accepted fleet revision, so no unit is started: ", c) }
+    ServiceSlotRevisionAccepted { accepted: a } => start(git_object_id_wire_hex(oid: a.revision) as CommitSha)
+  }
+}
+
+// THE ADMISSION READ: stage the App key over the run's federated identity, mint the installation token, admit the
+// revision with it, and remove the key on every arm after staging -- before any unit is started, since starting
+// needs no token.
+fn service_slot_revision_observed(revision_text: String, wif: Secret, key_path: NonEmptyStr) -> ServiceSlotRevision
+  uses net: Network
+  admit_callers: [decl_ref(module_path: "gunbc.runner.runner_service_slot_start", decl_name: "service_slot_start_wet")]
+{
+  match stage_controller_app_key(wif_access_token: wif, key_path: key_path) {
+    ControllerKeyNotStaged { cause } => ServiceSlotRevisionRefused { cause: cause }
+    ControllerKeyStaged { key } => {
+      let admitted = match mint_controller_installation_token(installation: gunbai_ci_declared_installation_id, key: key) {
+        ControllerTokenNotMinted { performance: _ } => ServiceSlotRevisionRefused { cause: "the gunbai-ci installation token was not minted" }
+        ControllerTokenMinted { token } => service_slot_revision_of_admission(admission: observe_qualification_revision(revision_text: revision_text, repo: "." as FilePath, token: token))
+      }
+      match remove_staged_controller_key(key_path: key_path) {
+        Present { value: cause } => ServiceSlotRevisionRefused { cause: cause }
+        Absent => admitted
+      }
+    }
+  }
+}
+
+// EVERY MEMBER OF THE CURRENT POPULATION IS STARTED AND READ BACK. A refusal before the population exists starts nothing.
+fn service_slot_start_over(host: String, revision: CommitSha) -> ServiceSlotStartRun
+  uses net: Network
+  admit_callers: [decl_ref(module_path: "gunbc.runner.runner_service_slot_start", decl_name: "service_slot_start_wet")]
+{
+  match sweep_host_standing(host: host as NonEmptyStr) {
+    SweepHostNotManaged { host: h } => ServiceSlotStartRefused { cause: concat("host is not a managed_host row: ", h) }
+    SweepHostBound { host: identity, standing: standing } =>
+      match anchored_host_transport_for_run(host: identity, prefix: service_slot_start_attempt_prefix) {
+        AnchoredBindingBound { bound: b, anchor: _ } =>
+          match lost_boot_observe_current_boot(transport: Present { value: b }) {
+            CurrentBootUnobserved { cause: c } => ServiceSlotStartRefused { cause: concat("the current boot is unobserved: ", c) }
+            CurrentBootObserved { evidence: e } =>
+              match current_service_population(host: standing, boot: e.boot, receipt: runner_user_session_receipt_observed(host: identity)) {
+                CurrentServicePopulationRefused { refusal: r } => ServiceSlotStartRefused { cause: population_refusal_text(refusal: r) }
+                CurrentServicePopulationDerived { population: p } =>
+                  ServiceSlotStartRan { host: host, boot: e.boot, revision: revision, units: p.units |> map(u => service_slot_start_unit(unit: u, revision: revision, transport: b.transport)) }
+              }
+          }
+        other => ServiceSlotStartRefused { cause: concat("no host-authenticated transport: ", anchored_host_binding_refusal_reason(b: other)) }
+      }
+  }
+}
+
+data service_slot_start_wif_env_name: NonEmptyStr = "WIF_ACCESS_TOKEN"
+data service_slot_start_runner_temp_env_name: NonEmptyStr = "RUNNER_TEMP"
+data service_slot_start_key_file_name: String = "service-slot-start-app-key"
+
+fn service_slot_start_wet() -> ProcessExit
+  uses net: Network
+{
+  let host = actions_variable_trimmed(name: fleet_converge_subject_host_env_name)
+  let revision = actions_variable_trimmed(name: "GITHUB_SHA")
+  let wif = actions_variable_trimmed(name: service_slot_start_wif_env_name)
+  let temp = actions_variable_trimmed(name: service_slot_start_runner_temp_env_name)
+  if host == "" || revision == "" || wif == "" || temp == "" {
+    exit_failure(reason: "service-slot start: the subject host, GITHUB_SHA, the run's federation token or RUNNER_TEMP is unset")
+  } else {
+    let admitted = service_slot_revision_observed(revision_text: revision, wif: wif as Secret, key_path: join([temp, "/", service_slot_start_key_file_name], "") as NonEmptyStr)
+    let run = service_slot_start_admitted(revision: admitted, start: r => service_slot_start_over(host: host, revision: r))
+    let lines = service_slot_start_lines(run: run)
+    let kept = Filesystem.Write(path: service_slot_start_receipt_path, content: concat(join(lines, "\n"), "\n"))
+    if !kept.success {
+      exit_failure(reason: concat("service-slot start: receipt write refused: ", kept.error))
+    } else if service_slot_start_held(run: run) {
+      ExitSuccess
+    } else {
+      exit_failure(reason: concat("service-slot start: not every slot is active; see the receipt:\n", join(lines, "\n")))
+    }
+  }
+}

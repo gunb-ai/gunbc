@@ -196,7 +196,7 @@ fn emit_family(
 // pipeline (v2.workflow.floor_pure_producer_share) must publish a closure-free stage: the
 // emitted source and the content key the native build is cached under. The key's DERIVATION
 // stays with each family's own native_key function; this record only joins the two portable
-// outputs, and it lives here — one type, not one per family (DESIGN §2/§3) — because the family
+// outputs, and it lives here — one type, not one per family (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority) — because the family
 // emit authority is the one module both family pipelines already import for emit_family itself.
 type EmittedFamilyCrate {
   source: Medium<String>,

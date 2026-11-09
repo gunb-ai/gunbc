@@ -4,7 +4,8 @@ import std.optional { Optional, Present, Absent }
 import std.types { String, Int, Bool, List, Port, NonEmptyStr, Timestamp }
 import std.nat { Nat }
 import gunbc.serving.serving_layout { host_6ce85c_layout, ServingLayoutResult, ServingLayoutConfigured, ServingLayoutRefused }
-import extdeps.external_authority { ExternalAuthority }
+import gunbc.serving.serving_capacity_anchor { ServingCapacityShape, ServingShapeDerived, ServingShapeEstimated, ServingShapeRefused, srv1_vllm_replica_shape, srv3_strata_shape, srv4_strata_shape, h11_strata_shape }
+import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, cited_figure_read_obligation }
 import extdeps.uri { uri_https, uri_wire }
 import extdeps.currency.currency { CurrencyCode, Usd, currency_alphabetic_code }
 import std.measure { second, second_count, ByteSize, byte_size_count, mebibyte, mebibyte_to_byte_size, Second, money_amount_micro, money_amount_micro_count }
@@ -86,7 +87,7 @@ fn money_micro_text(a: MoneyAmountMicro) -> String {
 fn bool_text(b: Bool) -> String { if b { "true" } else { "false" } }
 
 // ONE QUOTE AS ONE Lua TABLE LITERAL, with every field name and figure written here and nowhere else. The
-// response header, the meter and the stats document all read THIS table, so a price has one home (DESIGN 3:
+// response header, the meter and the stats document all read THIS table, so a price has one home (gunbc.design_argument::single_authority:
 // each fact lives in exactly one place).
 fn router_dev_comparison_row_line(q: RouterDevComparisonQuote) -> String {
   "ROUTER_COMPARISON['" + q.model + "'] = \{model='" + q.model
@@ -488,7 +489,7 @@ fn router_dev_header_lines() -> List<String> {
 //
 // * OWNED AND RENTED TURNS ARE BOTH TALLIED, UNDER SEPARATE KEYS, AND ONLY AGAINST A QUOTE. A rented turn is
 //   billed by the hour through ctrl, so its tally is token volume and a comparison value, never spend (that is
-//   a second ledger for one fact, DESIGN 3): stats `usage` is owned only and `usage_all` adds rented. An owned
+//   a second ledger for one fact, gunbc.design_argument::single_authority): stats `usage` is owned only and `usage_all` adds rented. An owned
 //   card costs nothing per turn, so actual spend is zero and only the comparison value is a number.
 // * A CACHED TOKEN IS DISCOUNTED ONLY IF THE ENGINE REPORTED IT. prompt_tokens_details.cached_tokens is
 //   tracked separately from its VALUE: a turn whose engine never declared cache_reported is counted as
@@ -496,7 +497,7 @@ fn router_dev_header_lines() -> List<String> {
 //   comparison and look like a win for the engine that never speaks.
 // * A TURN IS MEASURED ONLY IF THE ENGINE SAID SO. usage absent, malformed, negative, fractional, or a
 //   cached count above the prompt count is unmeasured or failed -- never a token count inferred from
-//   text length. The router does not fabricate a number it was not given (DESIGN 5).
+//   text length. The router does not fabricate a number it was not given (gunbc.design_argument::fail_closed).
 //
 // The counters live in the shared dict under one prefix, keyed by model, so they survive a reload and a
 // worker boundary; the epoch is set once at init so a reader can tell a zero from an untouched counter.
@@ -778,7 +779,7 @@ fn router_dev_location(up: NginxVariable, scheme: NginxVariable, key: NginxVaria
 
 // The state dictionary's capacity, as the std.measure memory carrier: 10 MiB. The directive's own
 // rendering (LuaSharedDict -> byte_size_count) already carries how a size is written; spelling "10m" here
-// would be a second, informal way of stating a size the model has as ByteSize (§3).
+// would be a second, informal way of stating a size the model has as ByteSize (gunbc.design_argument::single_authority).
 fn router_state_dict_size() -> ByteSize { mebibyte_to_byte_size(m: mebibyte(count: 10)) }
 
 fn router_dev_config(site: RouterDevSite) -> RouterDevConfig {
@@ -887,6 +888,10 @@ type RouterDevUpstream {
   retention: RouterDevRetention
   // This model's reasoning-effort dialect (RouterDevEffortRule). Empty passes the client's value through.
   effort_effects: List<RouterDevEffortRule>
+  // The standings the row's cap and retain rest on: empty when they are derived from cited or observed figures
+  // (or are not derived at all), else every uncited figure the capacity shape used, kept typed. Their read
+  // obligations are rendered, so the shipped file says which of its numbers are bets.
+  capacity_rests_on: List<CitedFigureStanding>
 }
 
 // WHAT CAPS A ROW'S ACTIVE TURNS. One integer read two ways was the meaning fork #15113 found: 0 meant "no
@@ -903,15 +908,14 @@ type RouterDevCapacity
   | RentedCapped { turns: Nat }
   | RentedUncapped
 
-// HOW MANY CONVERSATIONS A ROW RETAINS. The first-party Strata rows' count is DERIVED from the serving layout
-// (gunbc.serving.serving_layout, ServingReplicaConfig.admitted_conversations) and never typed here.
-// RetentionFrontier is a declared gap: the row's count cannot yet be derived (srv3's and srv1-vllm's layouts
-// are not modeled), so it renders no retain, as the live file does. A layout that is refused or names no
-// replica for a group never reaches a row: the h11 projection refuses (RouterDevH11Refused) and every writer stops.
+// HOW MANY CONVERSATIONS A ROW RETAINS. Every first-party row's count, and its active-turn cap, is DERIVED from
+// its deployment's capacity anchor (gunbc.serving.serving_capacity_anchor serving_capacity_shape: throughput at the
+// anchor context, the conversation policy and the swap path) and never typed here. A refused shape never reaches
+// a row: router_dev_shaped refuses, and every writer stops. A layout that is refused or names no replica for a
+// group refuses the h11 projection the same way.
 type RouterDevRetention
   = NoRetention
   | RetentionAdmitted { conversations: Nat }
-  | RetentionFrontier
 
 // HOW ONE CLIENT REASONING-EFFORT NAME IS ANSWERED BY ONE UPSTREAM MODEL'S SERVER. The pool alias and
 // each engine accept a DIFFERENT set of effort names, and an engine answers 400 on a name it does not
@@ -978,7 +982,8 @@ fn router_dev_upstream_value(u: RouterDevUpstream) -> JsonValue {
     json_kv(key: "retiring_names", value: json_array(elements: map(u.retiring_names, n => json_string(s: n)))),
     json_kv(key: "effort_effects", value: json_array(elements: map(u.effort_effects, r => router_dev_effort_rule_value(r: r)))),
     json_kv(key: "in_service", value: json_bool(b: u.in_service)),
-  ]), concat(router_dev_capacity_members(c: u.capacity), router_dev_retention_members(r: u.retention))))
+  ]), concat(concat(router_dev_capacity_members(c: u.capacity), router_dev_retention_members(r: u.retention)),
+    if count(u.capacity_rests_on) == 0 { no_members() } else { [json_kv(key: "capacity_rests_on", value: json_array(elements: map(standings_obligations(ss: u.capacity_rests_on), o => json_string(s: o))))] })))
 }
 
 fn no_members() -> List<JsonKeyValue> { [] }
@@ -995,21 +1000,63 @@ fn router_dev_retention_members(r: RouterDevRetention) -> List<JsonKeyValue> {
   match r {
     RetentionAdmitted { conversations: n } => [json_kv(key: "retain", value: json_int(n: n as Int))]
     NoRetention => no_members()
-    RetentionFrontier => no_members()
   }
 }
 
-// An h11 engine row. The router's NAME is not the PCI bus (h11-05 is bus 85, h11-88 is bus c8); the retention
-// is the joined replica's admitted_conversations, handed in by the projection, never typed. The port follows
-// the engine, not the name.
-fn router_dev_h11_row(name: String, port: Port, retiring: List<String>, retention: RouterDevRetention) -> RouterDevUpstream {
-  RouterDevUpstream {
+// A ROW SHAPED BY ITS DEPLOYMENT'S CAPACITY ANCHOR: the derived turns are the row's cap and the derived held
+// conversations its retain. A refused shape is a refusal carrying the deployment and its reason.
+type RouterDevShaped
+  = RouterDevShapedRow { row: RouterDevUpstream }
+  | RouterDevShapeRefused { reason: String }
+
+// WHETHER THE ROUTER ADMITS AN ESTIMATED CAPACITY SHAPE, and on whose word. An estimate is never promoted to a
+// derived figure: under AdmitEstimatedCapacity its row is rendered WITH the obligations it rests on; under
+// AdmitDerivedCapacityOnly it refuses the write, naming them.
+type RouterDevCapacityAdmission
+  = AdmitEstimatedCapacity { directive: NonEmptyStr }
+  | AdmitDerivedCapacityOnly
+
+// The operator's directive of 2026-11-08 (this session): "start with a heuristic anchor -- average 100k context ->
+// average throughput for that load per card/deployment, and then, we can derive the config we need from there".
+data router_dev_capacity_admission: RouterDevCapacityAdmission = AdmitEstimatedCapacity {
+  directive: "operator 2026-11-08: start with a heuristic anchor (100k context -> per-deployment throughput) and derive the router config from it" as NonEmptyStr,
+}
+
+fn standings_obligations(ss: List<CitedFigureStanding>) -> List<String> {
+  fold(ss, init: [], f: (acc, s) => match cited_figure_read_obligation(standing: s) {
+    Present { value: o } => concat(acc, [o as String])
+    Absent => acc
+  })
+}
+
+fn router_dev_shaped_under(shape: ServingCapacityShape, admission: RouterDevCapacityAdmission, row: fn(RouterDevCapacity, RouterDevRetention, List<CitedFigureStanding>) -> RouterDevUpstream) -> RouterDevShaped {
+  match shape {
+    ServingShapeRefused { deployment: d, reason: r } => RouterDevShapeRefused { reason: concat("capacity shape refused for ", concat(d as String, concat(": ", r as String))) }
+    ServingShapeDerived { deployment: _, turns: t, held: h, bound: _, cold_reread: _ } => RouterDevShapedRow { row: row(OwnedCap { turns: t }, RetentionAdmitted { conversations: h }, []) }
+    ServingShapeEstimated { deployment: d, turns: t, held: h, bound: _, cold_reread: _, standings: ss } => match admission {
+      AdmitEstimatedCapacity { directive: _ } => RouterDevShapedRow { row: row(OwnedCap { turns: t }, RetentionAdmitted { conversations: h }, ss) }
+      AdmitDerivedCapacityOnly => RouterDevShapeRefused { reason: concat("capacity shape for ", concat(d as String, concat(" is an estimate and this router admits only derived capacity; it rests on: ", join(standings_obligations(ss: ss), "; ")))) }
+    }
+  }
+}
+
+fn router_dev_shaped(shape: ServingCapacityShape, row: fn(RouterDevCapacity, RouterDevRetention, List<CitedFigureStanding>) -> RouterDevUpstream) -> RouterDevShaped {
+  router_dev_shaped_under(shape: shape, admission: router_dev_capacity_admission, row: row)
+}
+
+// An h11 engine row. The router's NAME is not the PCI bus (h11-05 is bus 85, h11-88 is bus c8). Its cap and
+// retain are the engine's capacity shape: its warm store is that bus's engine memory row and its retention may not
+// exceed the joined replica's admitted_conversations, handed in by the projection, never typed. The port follows the
+// engine, not the name.
+fn router_dev_h11_row(name: String, port: Port, retiring: List<String>, bus: String, admitted: Nat) -> RouterDevShaped {
+  router_dev_shaped(shape: h11_strata_shape(deployment: name, bus: bus, admitted: admitted), row: (cap, retention, rests) => RouterDevUpstream {
     name: name, scheme: UpstreamHttp, host: "192.168.1.202", port: port, tls_name: Absent,
-    model: "qwen3.8-flash-next-iq3_s", capacity: OwnedCap { turns: 2 }, max_model_len: 229376, path_prefix: "",
+    model: "qwen3.8-flash-next-iq3_s", capacity: cap, max_model_len: 229376, path_prefix: "",
     retiring_names: retiring, in_service: true,
     retention: retention,
     effort_effects: iq3_s_effort_rules(),
-  }
+    capacity_rests_on: rests,
+  })
 }
 
 // THE h11 ROWS FOLLOW THE LAYOUT'S REPLICA SET (operator ruling 2026-11-01, A-prime; live parity, #15622 applied
@@ -1020,10 +1067,10 @@ type RouterDevH11Engine { name: String, bus: String, port: Port, retiring: List<
 
 fn router_dev_h11_engines() -> List<RouterDevH11Engine> {
   [
-    RouterDevH11Engine { name: "h11-05", bus: "85", port: 18081 as Port, retiring: ["h11-a16-0"] },
-    RouterDevH11Engine { name: "h11-07", bus: "87", port: 18083 as Port, retiring: ["h11-a16-2"] },
-    RouterDevH11Engine { name: "h11-08", bus: "88", port: 18084 as Port, retiring: ["h11-a16-3"] },
-    RouterDevH11Engine { name: "h11-88", bus: "c8", port: 18088 as Port, retiring: [] },
+    RouterDevH11Engine { name: "h11-05", bus: "85", port: 18081, retiring: ["h11-a16-0"] },
+    RouterDevH11Engine { name: "h11-07", bus: "87", port: 18083, retiring: ["h11-a16-2"] },
+    RouterDevH11Engine { name: "h11-08", bus: "88", port: 18084, retiring: ["h11-a16-3"] },
+    RouterDevH11Engine { name: "h11-88", bus: "c8", port: 18088, retiring: [] },
   ]
 }
 
@@ -1049,8 +1096,14 @@ fn router_dev_h11_projection(layout: ServingLayoutResult, engines: List<RouterDe
             if count(named) == 0 { RouterDevH11Refused { reason: concat("a granted replica has no router naming: ", g) } }
             else if count(named) > 1 { RouterDevH11Refused { reason: concat("a granted replica has more than one router naming: ", g) } }
             else {
-              RouterDevH11Projected { rows: concat(so_far, map(named, e =>
-                router_dev_h11_row(name: e.name, port: e.port, retiring: e.retiring, retention: RetentionAdmitted { conversations: c.admitted_conversations }))) }
+              fold(named, init: RouterDevH11Projected { rows: so_far }, f: (inner, e) =>
+                match inner {
+                  RouterDevH11Refused { reason: r } => RouterDevH11Refused { reason: r }
+                  RouterDevH11Projected { rows: rows } => match router_dev_h11_row(name: e.name, port: e.port, retiring: e.retiring, bus: e.bus, admitted: c.admitted_conversations) {
+                    RouterDevShapeRefused { reason: r } => RouterDevH11Refused { reason: r }
+                    RouterDevShapedRow { row: u } => RouterDevH11Projected { rows: concat(rows, [u]) }
+                  }
+                })
             }
           }
         })
@@ -1064,7 +1117,10 @@ type RouterDevFirstParty
 fn router_dev_first_party_for(layout: ServingLayoutResult, engines: List<RouterDevH11Engine>) -> RouterDevFirstParty {
   match router_dev_h11_projection(layout: layout, engines: engines) {
     RouterDevH11Refused { reason: r } => RouterDevFirstPartyRefused { reason: r }
-    RouterDevH11Projected { rows: h } => RouterDevFirstPartyRows { rows: concat(router_dev_first_party_head(), concat(h, router_dev_first_party_tail())) }
+    RouterDevH11Projected { rows: h } => match router_dev_first_party_head() {
+      RouterDevFirstPartyRefused { reason: r } => RouterDevFirstPartyRefused { reason: r }
+      RouterDevFirstPartyRows { rows: head } => RouterDevFirstPartyRows { rows: concat(head, concat(h, router_dev_first_party_tail())) }
+    }
   }
 }
 
@@ -1072,26 +1128,41 @@ fn router_dev_first_party() -> RouterDevFirstParty {
   router_dev_first_party_for(layout: host_6ce85c_layout, engines: router_dev_h11_engines())
 }
 
-// THE LIVE ROW SET (read from srv1's upstreams.json field names and values, 2026-10-31; keys are joined at
-// deploy and are in no row). The h11 engines follow the layout grant (four since A-prime),
-// srv1's vLLM, srv3's Strata and the ctrl rented pool. A single 16 GB engine serves ~10-13 warm tok/s at 200k,
-// so cap 2. Retiring names count old-worker turns during a graceful rename.
+// THE LIVE ROW SET (read from srv1's upstreams.json field names and values, 2026-10-31, and srv4's row added there
+// 2026-11-04; keys are joined at deploy and are in no row). The h11 engines follow the layout grant (four since
+// A-prime), srv1's vLLM, srv3's and srv4's Strata and the ctrl rented pool. Every owned row's cap and retain are
+// its capacity shape (gunbc.serving.serving_capacity_anchor). Retiring names count old-worker turns during a
+// graceful rename.
 // router_dev_first_party() is the one reader: a refused projection is a refusal and never reads as no rows or
 // a smaller fleet.
 
-fn router_dev_first_party_head() -> List<RouterDevUpstream> {
+// srv1 serves as two TP=1 replicas, one container per RTX PRO 6000 (operator, 2026-11-08): lil-flash-next on 18000 and
+// lil-flash-next-1 on 18001, each with its own LMCache and TLS (CN=pool-card). The router splits traffic between them.
+fn router_dev_head_shaped() -> List<RouterDevShaped> {
   [
-    // Retention is a declared frontier for srv1-vllm and srv3-strata: no layout models their replicas yet.
-    RouterDevUpstream { name: "srv1-vllm", scheme: UpstreamHttps, host: "127.0.0.1", port: 18000, tls_name: Present { value: "pool-card" }, model: "Qwen3.8-Flash-Next", capacity: OwnedCap { turns: 4 }, max_model_len: 229376, path_prefix: "", retiring_names: [], in_service: true, retention: RetentionFrontier, effort_effects: qwen3_effort_rules() },
-    RouterDevUpstream { name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", capacity: OwnedCap { turns: 4 }, max_model_len: 229376, path_prefix: "", retiring_names: ["h11-c1"], in_service: true, retention: RetentionFrontier, effort_effects: iq3_s_effort_rules() },
+    router_dev_shaped(shape: srv1_vllm_replica_shape(deployment: "srv1-vllm"), row: (cap, retention, rests) => RouterDevUpstream { name: "srv1-vllm", scheme: UpstreamHttps, host: "127.0.0.1", port: 18000, tls_name: Present { value: "pool-card" }, model: "Qwen3.8-Flash-Next", capacity: cap, max_model_len: 229376, path_prefix: "", retiring_names: [], in_service: true, retention: retention, effort_effects: qwen3_effort_rules(), capacity_rests_on: rests }),
+    router_dev_shaped(shape: srv1_vllm_replica_shape(deployment: "srv1-vllm-1"), row: (cap, retention, rests) => RouterDevUpstream { name: "srv1-vllm-1", scheme: UpstreamHttps, host: "127.0.0.1", port: 18001, tls_name: Present { value: "pool-card" }, model: "Qwen3.8-Flash-Next", capacity: cap, max_model_len: 229376, path_prefix: "", retiring_names: [], in_service: true, retention: retention, effort_effects: qwen3_effort_rules(), capacity_rests_on: rests }),
+    router_dev_shaped(shape: srv3_strata_shape(), row: (cap, retention, rests) => RouterDevUpstream { name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", capacity: cap, max_model_len: 229376, path_prefix: "", retiring_names: ["h11-c1"], in_service: true, retention: retention, effort_effects: iq3_s_effort_rules(), capacity_rests_on: rests }),
+    router_dev_shaped(shape: srv4_strata_shape(), row: (cap, retention, rests) => RouterDevUpstream { name: "srv4-strata", scheme: UpstreamHttps, host: "192.168.1.196", port: 18443, tls_name: Present { value: "srv4" }, model: "qwen3.8-flash-next-iq3_s", capacity: cap, max_model_len: 229376, path_prefix: "", retiring_names: [], in_service: true, retention: retention, effort_effects: iq3_s_effort_rules(), capacity_rests_on: rests }),
   ]
+}
+
+fn router_dev_first_party_head() -> RouterDevFirstParty {
+  fold(router_dev_head_shaped(), init: RouterDevFirstPartyRows { rows: [] }, f: (acc, s) =>
+    match acc {
+      RouterDevFirstPartyRefused { reason: r } => RouterDevFirstPartyRefused { reason: r }
+      RouterDevFirstPartyRows { rows: rs } => match s {
+        RouterDevShapeRefused { reason: r } => RouterDevFirstPartyRefused { reason: r }
+        RouterDevShapedRow { row: u } => RouterDevFirstPartyRows { rows: concat(rs, [u]) }
+      }
+    })
 }
 
 fn router_dev_first_party_tail() -> List<RouterDevUpstream> {
   [
     // ctrl owns rental discovery and bidding. This dedicated path never routes back to this router. The pool is
     // capped at 4 turns (live; the figure the scaler reads as rented.cap), and renders as RentedCapped.
-    RouterDevUpstream { name: "ctrl-vast-pool", scheme: UpstreamHttps, host: "100.73.169.40", port: 3737, tls_name: Present { value: "srv2.tailecbe08.ts.net" }, model: "Qwen3.8-Flash-Next", capacity: RentedCapped { turns: 4 }, max_model_len: 229376, path_prefix: "/rented-pool", retiring_names: [], in_service: true, retention: NoRetention, effort_effects: qwen3_effort_rules() },
+    RouterDevUpstream { name: "ctrl-vast-pool", scheme: UpstreamHttps, host: "100.73.169.40", port: 3737, tls_name: Present { value: "srv2.tailecbe08.ts.net" }, model: "Qwen3.8-Flash-Next", capacity: RentedCapped { turns: 4 }, max_model_len: 229376, path_prefix: "/rented-pool", retiring_names: [], in_service: true, retention: NoRetention, effort_effects: qwen3_effort_rules(), capacity_rests_on: [] },
   ]
 }
 
@@ -1109,7 +1180,7 @@ fn router_dev_first_party_json(fp: RouterDevFirstParty) -> String? {
 // over its retiring names (a session keeps its binding across a rename), so a live name sitting in
 // another row's retiring list makes an idle engine look busy and the client takes a 429 from a card
 // that has no turns on it. Nothing at runtime reports that: the tally is simply wrong, and a wrong
-// answer is what DESIGN 5 forbids ("every path succeeds fully or fails with a typed, located
+// answer is what gunbc.design_argument::fail_closed forbids ("every path succeeds fully or fails with a typed, located
 // diagnostic"). The write is the only place that can still refuse, so it does.
 // A drained row's name is not live: retiring a session off an engine taken out of service is exactly
 // what the list is for (the srv3-strata rows carry the buses they replaced).

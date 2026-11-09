@@ -2057,7 +2057,7 @@ fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
 //
 // `locals` and `body_locals` are populated in lockstep by build_params_scope and
 // extend_scope_with_params, so no accepted .dag program can put a name in one and not the other.
-// That made the earlier claim "no discriminating RED is authorable" look true -- but DESIGN §4b
+// That made the earlier claim "no discriminating RED is authorable" look true -- but gunbc.design_argument::guarantee_ladder
 // says the question is what a FIXTURE can hand the compiler, not what the accepted corpus
 // contains, and this harness constructs an InferScope with the two maps as INDEPENDENT fields.
 // So the state the sixth constructor exists for is authorable exactly here, one level below the

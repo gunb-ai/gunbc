@@ -43,7 +43,7 @@ fn module_path_owner_binding_decide(
 //
 // WILDCARD-FREE (review 45417): the collapsed fn inherited a _ => [] arm from the two it replaced.
 // ModulePathBindingProjection is a closed 3-arm type, so a wildcard means a future variant silently
-// yields no labels -- an ambiguity that reports as unambiguous, which is the DESIGN section 5
+// yields no labels -- an ambiguity that reports as unambiguous, which is the gunbc.design_argument::fail_closed
 // absorbing shape and the same arm this PR deleted from v1.std.core diagnostic_to_span. Hit and
 // Miss are now spelled out, so adding a variant is a compile error here rather than a silent empty
 // label list.

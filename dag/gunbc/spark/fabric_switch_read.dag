@@ -43,7 +43,7 @@ fn crs812_wire_is_fabric_leg(w: Crs812EthernetWire) -> Bool {
 // A LANE EITHER DECODES TO A READING OR REFUSES AT THE FIELD THAT DID NOT PARSE. There is no third
 // arm that guesses: an unmodelled speed, FEC or boolean is a located refusal naming the interface,
 // the field and the raw wire, so a switch that reports something the corpus has not seen stops the
-// read loudly instead of being coerced to the nearest known value (DESIGN §5, fail-closed).
+// read loudly instead of being coerced to the nearest known value (gunbc.design_argument::fail_closed, fail-closed).
 type Crs812LaneReadOutcome
   = LaneReadOk { reading: Crs812LaneReading }
   | LaneReadWireRefused { interface: NonEmptyStr, field: NonEmptyStr, wire: String }
@@ -108,7 +108,7 @@ fn crs812_fabric_read(wires: List<Crs812EthernetWire>) -> Crs812FabricRead {
   }
 }
 
-// THE TERMINAL OF THE PURE READ CHAIN, AND A DECLARED FRONTIER (DESIGN §3c). It builds the exact
+// THE TERMINAL OF THE PURE READ CHAIN, AND A DECLARED FRONTIER (gunbc.design_argument::consumption). It builds the exact
 // Crs812SwitchSubject the assessment's inspect_fabric_switch consumes, from a switch identity, a lane
 // intent, and the wire records a read produced -- or refuses as a whole if the read did. Its ONE
 // consumer is the live-read entry that fetches /rest/interface/ethernet and decodes the JSON body

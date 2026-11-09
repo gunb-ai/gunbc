@@ -8,7 +8,7 @@ import std.types { List, String }
 // This module exists to hold ONE string, and that is the point rather than an accident of
 // factoring. The manifest has two ends -- `v1.compiler.emit_rust` writes it and
 // `gunbc.stage0.stage0_rust_host_observation` reads it -- and if each spelled the basename itself,
-// the artifact would have two names for one file, which is the nicknaming failure DESIGN 3
+// the artifact would have two names for one file, which is the nicknaming failure gunbc.design_argument::single_authority
 // names and the exact class the manifest exists to end. A shared leaf module is the smallest
 // carrier that lets both ends resolve the same symbol without the reader importing the whole
 // emitter's closure to get at one literal.
@@ -30,7 +30,7 @@ data self_host_frontier_verdict_not_passed_word: String = "controls-not-passed"
 //
 // The emitter renders one line per path as `line_prefix ++ path`, joined by the separator; the
 // observation recovers the population by splitting on the separator and stripping the prefix.
-// One grammar read in both directions (DESIGN 4) -- the structural inverse, not a second parser.
+// One grammar read in both directions (gunbc.design_argument::closed_grounded_substrate) -- the structural inverse, not a second parser.
 //
 // WHY THE ARTIFACT IS A `.rs` OF COMMENT LINES, WHICH LOOKS ODD UNTIL YOU SEE WHAT IT BUYS.
 // Two demands pull opposite ways. GATING wants the manifest inside the population

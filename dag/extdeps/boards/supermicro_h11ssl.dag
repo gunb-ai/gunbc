@@ -613,7 +613,7 @@ data supermicro_h11ssl_family_mechanical: SupermicroH11sslMechanical = Supermicr
   extents_standing: CitedToAuthority { authority: extdeps_external_authority_anchor },
 }
 
-// DESIGN section 3c declared frontier, for the cooling-zone count, the zone and slot-geometry
+// gunbc.design_argument::consumption declared frontier, for the cooling-zone count, the zone and slot-geometry
 // standings and the BIOS slot labels.
 data supermicro_h11ssl_zone_and_slot_consumer_frontier: DissolutionCondition = unbound_dissolution(
   description: "TRIGGER: a fleet placement model reads supermicro_h11ssl_header_zone_standing and supermicro_h11ssl_slot_geometry_standing and refuses to derive zone reach or slot adjacency on an H11SSL host while either is uncited. SUFFICIENT FOR: the standings have a consumer that acts on them; until then they are recorded obligations." as NonEmptyStr

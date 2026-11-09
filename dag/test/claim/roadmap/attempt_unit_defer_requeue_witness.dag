@@ -1,0 +1,32 @@
+module test.claim.roadmap.attempt_unit_defer_requeue_witness
+
+import std.types { Bool, String }
+import std.algebra { string_contains }
+import extdeps.systemd.unit_file { serialize_systemd_unit_file }
+import gunbc.live_deploy.emit { live_deploy_attempt_unit_drain_path_unit_file }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.host.host_layout { attempt_unit_spool_request_dir, attempt_unit_spool_deferred_dir }
+import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_deferred_path, attempt_system_unit_request_path }
+
+// A WAITING REQUEST COSTS NOTHING: the deferred directory is not the watched requests/ directory, nor inside it,
+// so deferring an entry leaves requests/ empty and the level-triggered path unit does not re-fire.
+test fn the_deferred_dir_is_outside_the_watched_requests_dir() -> Bool {
+  let root = "/srv/i"
+  let req = attempt_unit_spool_request_dir(instance_root: root)
+  let def = attempt_unit_spool_deferred_dir(instance_root: root)
+  req != def && !string_contains(s: def, pattern: join([req, "/"], "")) && !string_contains(s: req, pattern: join([def, "/"], ""))
+}
+
+// defer and requeue keep the entry name, so the sorted-listing (FIFO) order the drain processes in is the order
+// entries are moved back in
+test fn defer_and_requeue_keep_the_entry_name() -> Bool {
+  attempt_system_unit_deferred_path(instance_root: "/srv/i", entry: "n:k") == "/srv/i/attempt-unit-spool/deferred/n:k"
+    && attempt_system_unit_request_path(instance_root: "/srv/i", entry: "n:k") == "/srv/i/attempt-unit-spool/requests/n:k"
+}
+
+// COMPLETION RE-ARMS THE DRAIN: the drain's path unit watches the exit done/ directory edge-triggered
+// (PathChanged), beside the requests/ level, so requeue runs exactly when an attempt has ended
+test fn an_attempt_completion_re_arms_the_drain_without_a_level_spin() -> Bool {
+  let text = serialize_systemd_unit_file(file: live_deploy_attempt_unit_drain_path_unit_file(spec: deployment_spec_srv1()))
+  string_contains(s: text, pattern: "PathChanged=") && string_contains(s: text, pattern: "DirectoryNotEmpty=")
+}

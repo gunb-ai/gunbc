@@ -55,7 +55,7 @@ import v2.std.node {
 // by swiftc, not asserted here. Codable is deliberately NOT declared: its synthesized JSON shape
 // would be a second wire encoding beside gunbc.auth.approval_device_wire's, which owns the bytes.
 //
-// CONSUMER (DESIGN section 3c): a declared frontier. The named consumer is the approve-ios
+// CONSUMER (gunbc.design_argument::consumption): a declared frontier. The named consumer is the approve-ios
 // protocol-slice emission of gunbc.auth.approval_device_wire's records and coproducts, gated on the
 // v2 closure-emit route rendering a module's members (gunbc#12239); until then the executing
 // consumer is v2.test.claim.emit.swift_semantic_decl_routing at the emit_semantic_type_decl boundary.

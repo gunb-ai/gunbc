@@ -33,7 +33,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // authored below rather than argued for: the fixture arm constructs a GenerateNow row and requires
 // the counter to see it. Without that arm the live assertion would be a decoration -- permanently
 // green because the counter could be broken in a way that returns zero for every input, which is
-// exactly the shape DESIGN section 4b calls worse than absent. The two arms together are the check:
+// exactly the shape gunbc.design_argument::guarantee_ladder calls worse than absent. The two arms together are the check:
 // one says the counter can count, the other says the tree has nothing to count.
 
 data fixture_generate_now_row: CliRunHandRustAreaRow = CliRunHandRustAreaRow {

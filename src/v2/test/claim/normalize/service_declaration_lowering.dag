@@ -21,7 +21,7 @@ import std.algebra { Cons, Empty, FreeMonoid, fold_list }
 // carrying one member of each kind (its transport kind one of the closed four, v2.extdeps.languages.dag
 // dag_grammar_transport_kind_expr) in dag/extdeps/access/posix_effective_principal_read_op.dag, the
 // first gen-two census wall: that file itself is admitted by the census run over the real tree, not
-// here, where parsing all of it would cost the claim its enrolment budget (DESIGN section 3).
+// here, where parsing all of it would cost the claim its enrolment budget (gunbc.design_argument::single_authority).
 
 data posix_service_source: String = "module m\nservice a.P {\n  operation R {\n    output { o: Int = 1 }\n    readonly\n    transport shell {}\n  }\n}\n"
 
@@ -36,7 +36,7 @@ data repeated_input_source: String = "module m\nservice S {\n  operation Op {\n 
 // SUPPLIED TOKEN STREAMS (the v2.test.claim.parse.supplied_token_stream_support pattern): tokenizing each
 // fixture inside every claim put the claims over the new-witness eval-step budget. Each stream is
 // paired below with a fidelity claim that the real tokenizer produces exactly it, so supplying it
-// removes no execution of the real path (DESIGN section 3 pairing obligation).
+// removes no execution of the real path (gunbc.design_argument::witness_one_interface pairing obligation).
 fn census_of_stream(tokens: TokenStream) -> Outcome<CensusTree> {
   bind_outcome(o: supplied_stream_parse(tokens: tokens), f: fn(tree) { normalize_census(parse_tree: tree) })
 }
@@ -94,7 +94,7 @@ fn carries(ne: NonEmptyDiagnostics, reason: Symbol) -> Bool {
 
 // The two fixtures' census outcomes, each computed ONCE as a nullary value enrolled WARM in
 // v2.workflow.floor_pure_producer_share; the census claims read them rather than each re-running the
-// census over the same stream (DESIGN section 3, a witness discriminates at one interface: their
+// census over the same stream (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface: their
 // subject is the outcome, not the parse that produced it).
 fn sdl_posix_census() -> Outcome<CensusTree> {
   census_of_stream(tokens: posix_service_stream())

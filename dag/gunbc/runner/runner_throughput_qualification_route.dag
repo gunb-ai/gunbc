@@ -38,7 +38,7 @@ import gunbc.runner.runner_throughput_qualification {
 // runner and observe it ready. The registration, dispatch and deregistration legs have implemented
 // authorities that nothing on the route calls yet. Each unbound leg names the CAPABILITY missing now
 // and what it must be SUFFICIENT FOR
-// (section 4b(3)), never a pull request, because a pull request can merge while the capability stays
+// (gunbc.design_argument::guarantee_ladder (no silent regression)), never a pull request, because a pull request can merge while the capability stays
 // missing -- which is exactly what happened to the boot leg.
 
 // ── THE STAGES ────────────────────────────────────────────────────────────────────────────────
@@ -144,7 +144,7 @@ fn ephemeral_slot_unit(host: HostIdentity, attempt: NonEmptyStr) -> NonEmptyStr 
 // the declaration index in the parse phase like every other citation (review 68775: a producer
 // named in prose is a citation nothing can check). The arm says what is read; the ref says who
 // owns the vocabulary the reading is denominated in. None is a benchmark added for this route.
-// TODAY'S FLOOR'S INSTRUMENTS (gunbc.plans.mtcollins1_ci_service_legs G3, operator decision A, 2026-10-27): the withdrawn
+// TODAY'S FLOOR'S INSTRUMENTS (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) G3, operator decision A, 2026-10-27): the withdrawn
 // claim_executor floor's [floor-phase] and [floor-cgroup] rows, its claim-cost artifact and its calibration specimen are
 // deleted with it, not carried unread.
 type QualificationInstrument

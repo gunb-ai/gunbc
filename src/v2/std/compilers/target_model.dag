@@ -69,7 +69,7 @@ import v2.std.primitive_contract_ref { primitive_contract_declaration_ref, primi
 // .produced_decl_support.render) and every emit claim re-derived them. The order is
 // still the TARGET's -- what changed is that the target states the order as DATA the
 // model layer can reify, and one shared fold in the compiler reads those rows. That is
-// DESIGN section 4's "one grammar read in both directions" applied to the produced-decl
+// gunbc.design_argument::closed_grounded_substrate's "one grammar read in both directions" applied to the produced-decl
 // seam: a transform is a row, and emit selects from rows.
 //
 // The seam is unmoved: the compiler still does not know whether a signature leads with a
@@ -1196,7 +1196,7 @@ fn target_collection_shape_malformed_diagnostic(node: Node) -> Diagnostic {
 // THE ONE SELECTION RULE FOR A CLASS'S FIXED SPELLING: a token rule for that class whose pattern is
 // a literal or a keyword gives its text; any other rule gives none. The first such rule in the lex
 // wins. Both readers below apply this step and nothing else, so they cannot disagree about which
-// spelling a class has (DESIGN §3): the index, built once when a serializer spells many tokens, and
+// spelling a class has (gunbc.design_argument::single_authority): the index, built once when a serializer spells many tokens, and
 // the single lookup, which folds the rules once for one class without building a map.
 fn lex_rule_fixed_spelling(rule: LexRule, token_class: Symbol) -> Optional<String> {
   match rule {
@@ -1325,7 +1325,7 @@ fn bound_spelling_from_map(
   }
 }
 
-data target_text_carrier_scaffold_note: String = "TargetText emit-seam carrier (Slice A1): TargetText is the typed emit-seam carrier -- a nominal newtype over emitted source text, DISTINCT from String at the model layer, so emitted content flows as TargetText and a framing String fragment is a DIFFERENT type from it. ENFORCEMENT (corrected 2026-07-15, proven by execution): the type-level compile wall does NOT fire today -- neither the v1 seed nor v2 04_infer typechecks function-application argument types (04_infer carrier-checks only Branch/Match/Loop; there is no arg-vs-param unification), so a raw String passed where TargetText is declared compiles CLEAN (verified: injected smuggle at a live serialize site, full gate compile returned 0 diagnostics). Therefore this is a DESIGN.md §5 wall-AFTER-grounding (decidable, types declared and threaded, enforcement pending), NOT a wall-by-construction. Runtime guard only: .source field-access on a String fails at eval, fail-closed at runtime. The retired no-smuggled-programs / medium_structure_containment lens (#6831) is not live enforcement. Declared FRONTIER ROW, counted and prioritizable, not a silent escape hatch: DISSOLUTION TRIGGER = application-argument typechecking in 04_infer (does not exist today; its absence means EVERY type-based construction guarantee is unenforced at the call boundary -- the real root this frontier waits on). The language is NOT carried on the carrier -- it is already determined by the target: TargetModel the serialize fold holds (operator ruling 2026-07-14: a lang tag would be a §3 nickname for the extdeps.languages module). Home is std/compilers BESIDE bound_tokens_source_text (operator ruling 2026-07-15) so that fold is carrier-NATIVE: the SINGLE String->carrier introduction is text_atom (one grammar-classified token = an atom), introduced INSIDE the token fold; the ONLY join is the grammar-owned token-sequence combinator target_text_seq (folding the grammar row's declared token order); the ONLY carrier->String exit is render_target_text (whole-value render at the artifact lift + at genuine String sinks like authority_source_text). There is deliberately NO String->TargetText lift of an already-composed unit -- that direction is the smuggle the wall closes. Scaffold (seed-layer forward subset of the v2 TargetModel grammar rows, serialize_target's inverse); dissolution trigger for the scaffold itself = the grammar-row inverse subsuming it at self-host."
+data target_text_carrier_scaffold_note: String = "TargetText emit-seam carrier (Slice A1): TargetText is the typed emit-seam carrier -- a nominal newtype over emitted source text, DISTINCT from String at the model layer, so emitted content flows as TargetText and a framing String fragment is a DIFFERENT type from it. ENFORCEMENT (corrected 2026-07-15, proven by execution): the type-level compile wall does NOT fire today -- neither the v1 seed nor v2 04_infer typechecks function-application argument types (04_infer carrier-checks only Branch/Match/Loop; there is no arg-vs-param unification), so a raw String passed where TargetText is declared compiles CLEAN (verified: injected smuggle at a live serialize site, full gate compile returned 0 diagnostics). Therefore this is a gunbc.design_argument::fail_closed wall-AFTER-grounding (decidable, types declared and threaded, enforcement pending), NOT a wall-by-construction. Runtime guard only: .source field-access on a String fails at eval, fail-closed at runtime. The retired no-smuggled-programs / medium_structure_containment lens (#6831) is not live enforcement. Declared FRONTIER ROW, counted and prioritizable, not a silent escape hatch: DISSOLUTION TRIGGER = application-argument typechecking in 04_infer (does not exist today; its absence means EVERY type-based construction guarantee is unenforced at the call boundary -- the real root this frontier waits on). The language is NOT carried on the carrier -- it is already determined by the target: TargetModel the serialize fold holds (operator ruling 2026-07-14: a lang tag would be a gunbc.design_argument::single_authority nickname for the extdeps.languages module). Home is std/compilers BESIDE bound_tokens_source_text (operator ruling 2026-07-15) so that fold is carrier-NATIVE: the SINGLE String->carrier introduction is text_atom (one grammar-classified token = an atom), introduced INSIDE the token fold; the ONLY join is the grammar-owned token-sequence combinator target_text_seq (folding the grammar row's declared token order); the ONLY carrier->String exit is render_target_text (whole-value render at the artifact lift + at genuine String sinks like authority_source_text). There is deliberately NO String->TargetText lift of an already-composed unit -- that direction is the smuggle the wall closes. Scaffold (seed-layer forward subset of the v2 TargetModel grammar rows, serialize_target's inverse); dissolution trigger for the scaffold itself = the grammar-row inverse subsuming it at self-host."
 
 // LAYOUT IS std.layout's, NOT A SECOND AUTHORITY. The carrier is a std.layout document: an atom is
 // DocText, the join adds the next text as ONE part (a persistent push, so a module's token stream
@@ -1816,7 +1816,7 @@ type TargetCallApplyShape {
 // (v1_compiler_emit_rust over rt_function_registry), so no v2 target could inhabit it: TargetCallApplyShape spells
 // every call as `callee(args)` and has no column for a different callee spelling, a call form, a per-argument label
 // or a passing mode. The row below is that column. It is keyed by the std.decl_ref DeclarationRef of the contract
-// (std.primitives.<name>_contract, named by v2.std.primitive_contract_ref), never by a path String (DESIGN 3: a
+// (std.primitives.<name>_contract, named by v2.std.primitive_contract_ref), never by a path String (gunbc.design_argument::single_authority: a
 // string key is a nickname).
 //
 // Argument labels have no producer yet (Rust rows carry none), so there is no label slot; a label returns with the
@@ -1968,7 +1968,7 @@ type TargetBoolLiteralShape {
 }
 
 // AN INTEGER LITERAL IS SPELLED BY THE TARGET'S OWN LITERAL TOKEN CLASS, the one its lexer reads it
-// with on ingest, so emission reads that row backward (DESIGN section 4) instead of spelling the
+// with on ingest, so emission reads that row backward (gunbc.design_argument::closed_grounded_substrate) instead of spelling the
 // magnitude through a per-value binding row. A target that has not declared the class is
 // `IntLiteralUnwired`, and an integer literal reaching its token fold refuses typed and located --
 // never a guessed spelling.
@@ -6185,7 +6185,7 @@ fn target_value_expr_callable_arg_edges(
 // A CALL WHOSE CALLEE RESOLVED TO A std.primitives CONTRACT DECLARATION. The identity is the resolved declaration
 // (v2.compiler.resolve binds a primitive head to std.primitives.<name>_contract), carried as the presence of this edge;
 // a callee that resolved anywhere else, a user fn spelled string_length included, never has it and emits as an ordinary
-// call. The spelling alone is never the join (DESIGN 3: a name is not the declaration it was bound to).
+// call. The spelling alone is never the join (gunbc.design_argument::single_authority: a name is not the declaration it was bound to).
 fn target_value_expression_resolved_primitive_call(
   callee: Symbol,
   args: List<TargetValueExpression>
@@ -8460,7 +8460,7 @@ fn target_value_expr_match_arm_tokens(
   }
 }
 
-data target_value_expr_int_bool_octet_channel_dissolution_note: String = "Emit half deleted (DESIGN §3/§4b(4)): after the Bool de-fork, BindingRef bool-param match is not an Int octet wire, and the predicate that selected `x != 0` plus 0/1 arm bodies was constantly false, so the match-seam production was uprooted rather than left as a dead parallel route. Remaining paired half is infer: infer_match_int_scrutinee_bool_literal_scaffold on Int-scrutinee bool-literal match (countable). Dissolve that diagnostic on octet↔bool codec inhabitation ({0,1} domain, not general nonzero) — v2.compiler.infer infer_match_int_scrutinee_bool_literal_body_note."
+data target_value_expr_int_bool_octet_channel_dissolution_note: String = "Emit half deleted (gunbc.design_argument::single_authority, gunbc.design_argument::guarantee_ladder (dissolution on climb)): after the Bool de-fork, BindingRef bool-param match is not an Int octet wire, and the predicate that selected `x != 0` plus 0/1 arm bodies was constantly false, so the match-seam production was uprooted rather than left as a dead parallel route. Remaining paired half is infer: infer_match_int_scrutinee_bool_literal_scaffold on Int-scrutinee bool-literal match (countable). Dissolve that diagnostic on octet↔bool codec inhabitation ({0,1} domain, not general nonzero) — v2.compiler.infer infer_match_int_scrutinee_bool_literal_body_note."
 
 fn target_value_expr_bool_literal_value_from_atom(node: Node) -> Optional<Bool> {
   match node.kind {
@@ -11052,7 +11052,7 @@ type TargetTypeExpressionProjection {
 // strings are realization facts about how one path token is spelled in the target, stated by the
 // target's own rows in extdeps/languages, and `NoDeclarationReferenceForm` is the honest row for a
 // target that has not modeled scoping -- a fixture target may declare it deliberately, which is
-// what makes the refusal's red authorable (DESIGN section 4b).
+// what makes the refusal's red authorable (gunbc.design_argument::guarantee_ladder).
 //
 // WHY THESE THREE ARE String WHERE EVERY SIBLING ROW CARRIES Symbol, AND WHAT WOULD RETIRE THAT
 // (review 70003 on gunbc#12048, which read the difference as a fork and is right that it is one).
@@ -11060,7 +11060,7 @@ type TargetTypeExpressionProjection {
 // fixed_token_spelling_from_model against the target's lex rules. This row spells EARLY: the path
 // collapses into one Atom identity lexeme, so what it needs is a LEXEME and not a class. Retyping
 // these three to Symbol without moving the emission would make them LOOK like token classes while
-// staying pre-spelled lexemes, which is the nickname DESIGN section 3 forbids rather than a repair
+// staying pre-spelled lexemes, which is the nickname gunbc.design_argument::single_authority forbids rather than a repair
 // of it. THE REPAIR IS THE EMISSION, NOT THE FIELD TYPE: a declaration reference emitted as a token
 // SEQUENCE, so the path is readable back through the same rows it was emitted from (DESIGN section
 // 4, one grammar read in both directions). What blocks it here is deliberate -- a
@@ -12000,7 +12000,7 @@ type TargetCapabilityKey = Symbol where brand("TargetCapabilityKey")
 
 // TargetCapabilityKey is the SINGLE brand for a named target capability and it is declared HERE, in
 // v2.std.compilers.target_model. B1 collapsed TargetDeriveTraitKey into it -- that brand was not an
-// independent authority, every value of it came from one producer, so it was the section 3 nickname
+// independent authority, every value of it came from one producer, so it was the gunbc.design_argument::single_authority nickname
 // pair and it is gone. THE BRAND WAS BRIEFLY MOVED DOWN INTO std.trait_derive_shape AND MOVED BACK,
 // and the round trip is recorded because the reason is structural rather than a change of mind. The
 // brand carrier is Symbol, which is declared only in src/v2/std/node.dag; std.trait_derive_shape is
@@ -12011,7 +12011,7 @@ type TargetCapabilityKey = Symbol where brand("TargetCapabilityKey")
 // predicate are parameterized on K, instantiated at TargetCapabilityKey by v2 consumers and at
 // RustCapability by the seed path. That is stronger than moving the declaration -- a type parameter
 // removes the dependency rather than relocating it, so the closure boundary is not something std
-// can violate. THE SECTION 3 PROPERTY SURVIVES THE ROUND TRIP: one declaration, here, imported by
+// can violate. THE gunbc.design_argument::single_authority PROPERTY SURVIVES THE ROUND TRIP: one declaration, here, imported by
 // everything that needs it. An intermediate revision additionally left a LOCAL declaration here
 // while ALSO importing the identical one from std -- two byte-identical brand declarations, one
 // shadowing the other in a single module. It compiled clean and was removed on sight, and nothing
@@ -12103,7 +12103,7 @@ type TargetDeriveSupplementalGenericBoundContractCatalog {
 // free-function lookup, and NoSuchFunction discriminant then surfaced in UNRELATED modules whose
 // closure reached this one -- because target_grounding_derive_trait_discriminant was also passed as
 // a function VALUE to coproduct_nullary_inhabitant_by_discriminant, so it was resolved eagerly
-// rather than only when called. Section 5: a typecheck is not a consumer.
+// rather than only when called. gunbc.design_argument::fail_closed: a typecheck is not a consumer.
 
 fn target_derive_supplemental_generic_bound_requirement_set_empty() -> TargetDeriveSupplementalGenericBoundRequirementSet {
   empty_map()
@@ -13373,7 +13373,7 @@ fn target_reference_layer_facts(layer: TargetReferenceLayer) -> TargetReferenceL
 }
 
 // Why a transition can be refused. Two distinct causes, kept apart because their remedies differ
-// and collapsing them would be the state-space conflation DESIGN section 5 names.
+// and collapsing them would be the state-space conflation gunbc.design_argument::fail_closed names.
 //
 // SharedValueDuplication: the source is shared and the destination is unique. The only realization
 // is to clone the pointee, which produces a SECOND value where the program had one. Every other
@@ -13387,8 +13387,8 @@ fn target_reference_layer_facts(layer: TargetReferenceLayer) -> TargetReferenceL
 // exists to disagree -- but no grounded realization for it is cited anywhere in the target model
 // today, and the emitted corpus that motivated this carrier contains no instance of the pair.
 // Deriving it on the strength of "a target language happens to offer a conversion" would be
-// reaching past the model into one realization's convenience, which is the layer inversion DESIGN
-// section 3 forbids. So it refuses, loudly and with its own name, and dissolves the moment a cited
+// reaching past the model into one realization's convenience, which is the layer inversion
+// gunbc.design_argument::single_authority forbids. So it refuses, loudly and with its own name, and dissolves the moment a cited
 // realization row exists to derive it from.
 type TargetLayerTransitionRefusal
   = SharedValueDuplication
@@ -16337,7 +16337,7 @@ fn target_value_expr_bind_let_gate(node: Node) -> Bool {
   }
 }
 
-// target_project_loop realizes ONLY the unary `loop e` encoding (gunbc.plans.for_while_loop_sugar
+// target_project_loop realizes ONLY the unary `loop e` encoding (gunbc.plans.for_while_loop_sugar (deleted 2026-11-08)
 // §2.3): one evaluation of its first positional child. It admits a Loop only when every edge's role
 // (v2.std.node loop_edge_role) is the body or the bound; a Loop carrying a domain or a carrier is a
 // different encoding with a different result, so reading its first child as a unary body would emit a

@@ -41,7 +41,7 @@ type PhysicalEthernetPort {
 
 // THE FUNCTIONS AN INTERFACE CAN BE OBSERVED TO HAVE, kept apart from the unobserved arm so a carrier that
 // must NAME a function (a gap saying which function nobody read) holds this sum and cannot hold
-// `FunctionUnobserved` by construction, with no second vocabulary beside it (DESIGN.md section 3).
+// `FunctionUnobserved` by construction, with no second vocabulary beside it (gunbc.design_argument::single_authority).
 type ObservedEthernetFunction
   = BmcDedicated
   | BmcNcsi
@@ -71,12 +71,12 @@ type EthernetLinkAddress
 //
 // IT LIVES HERE, ON THE RECORD, NOT IN WHATEVER INVENTORY CITES IT LATER. Provenance is part of
 // taking a reading; a consumer that adds it afterwards can add the wrong one, and an inventory that
-// owned the provenance would be a second place an address's story is kept -- the §3 fork this
+// owned the provenance would be a second place an address's story is kept -- the gunbc.design_argument::single_authority fork this
 // carrier exists to close.
 // THE MOMENT A READING WAS TRUE, as materially different facts rather than one string. The field once
 // held three kinds of thing at once: a dated reading, a bounded reading ("undated in the source;
 // earlier than the 2026-10-03 reconfiguration") and no reading at all. A timestamp alone fits only
-// the first, and forcing the others into it would be the fabricated default DESIGN.md section 5 calls
+// the first, and forcing the others into it would be the fabricated default gunbc.design_argument::fail_closed calls
 // a hard reject, so the sum says which kind of fact it is and each arm carries only what that kind can
 // have. "No reading at all" is not a moment: it is a gap, and lives in host_interface_inventory.
 //
@@ -237,7 +237,7 @@ fn ethernet_ports_are_distinct(a: PhysicalEthernetPort, b: PhysicalEthernetPort)
 // `BmcHostBus` IS A CONTROLLER'S ETHERNET CONTROLLER SEEN AS A DEVICE ON THE HOST'S OWN BUS (USB
 // CDC-Ether, a host-to-controller virtual NIC). It has no wire and so no segment to be reached on, which
 // `BmcNcsi` -- the controller sharing a host data port's wire through the sideband -- does. They answer
-// different reach questions, so they are different names (DESIGN.md section 3, meaning fork).
+// different reach questions, so they are different names (gunbc.design_argument::single_authority, meaning fork).
 // A host's controller interfaces are read per function (`host_interface_inventory` `host_function_interface`),
 // so no predicate over EthernetFunction exists: `ethernet_function_is_controller` was deleted (review 38602
 // finding 3) and its one fold, `host_controller_interfaces`, with it (review 88405).
@@ -276,7 +276,7 @@ fn ethernet_port_may_carry_multiple_functions(
 
 // WHETHER TWO LAN RECORDS HOLD THE SAME NETWORK ADDRESS, as a standing and not a Bool. An address that
 // was never read on either side is not "not distinct": `false` there reported an observation nobody
-// made (DESIGN.md section 5), and the srv1 host-bus controller NIC has no network address at all.
+// made (gunbc.design_argument::fail_closed), and the srv1 host-bus controller NIC has no network address at all.
 type LanAddressStanding
   = LanAddressesDistinct
   | LanAddressesSame

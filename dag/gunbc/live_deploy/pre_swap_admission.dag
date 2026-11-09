@@ -66,7 +66,7 @@ import extdeps.git.inspect {
 // fn body) was installed; the new process crash-looped; deploy learned this only at readiness.
 // The candidate's declared serve entry file (DeploymentServiceConfig.serve_entry, the same
 // path ExecStart binds) is compiled before any apply fold runs. The path is a spec fact, not
-// a reverse lookup of a module name (DESIGN §3: paths follow names; this does not invent a
+// a reverse lookup of a module name (gunbc.design_argument::single_authority: paths follow names; this does not invent a
 // second path-to-name table).
 //
 // THE COMPILE IS THE CANDIDATE COMPILER'S OWN, OVER THE SERVE ROUTE'S CLOSURE. The candidate's
@@ -184,7 +184,7 @@ fn observe_checkout_head_hex() -> String {
 // Named checkout as git reports it. A detached HEAD is the literal "HEAD"; provenance for that
 // case is checkout_branch_for_admission (merge-base of HEAD and refs/remotes/origin/<B>), never
 // GITHUB_REF_NAME. An environment variable that names a CI event is not proof of a commit's
-// ancestry (DESIGN §5). Operator-local and CI share this function; neither reads GITHUB_*.
+// ancestry (gunbc.design_argument::fail_closed). Operator-local and CI share this function; neither reads GITHUB_*.
 fn observe_checkout_branch() -> String {
   trim(s: git.Core.CurrentBranch().branch)
 }
@@ -412,7 +412,7 @@ fn deployment_requires_plan_serve_entry_verdict(deployment: DesiredDeployment) -
 //
 // THERE IS NO COLD-RESOLVE FALLBACK. A missing, unreadable, or foreign-identity verdict is a
 // refusal, never a licence to re-compile here: paying the fold in the swap "just in case" is the
-// §5 absorbing widen that made this step both slow and untestable. The producer entry below
+// gunbc.design_argument::fail_closed absorbing widen that made this step both slow and untestable. The producer entry below
 // runs in the plan job (after the plan step, before the artifact upload), so every uploaded
 // plan artifact carries its verdict; a deploy whose pointer run predates this rule refuses by
 // name and the operator re-runs the plan.
@@ -431,7 +431,7 @@ type ServeEntryVerdictConsumption
 
 // THE PLAN PUBLISHES AND THE SWAP CONSUMES: one product. ServeEntryCompileVerdict is the sole
 // authority for the compile outcome and is CARRIED unchanged -- never re-spelled arm-for-arm
-// (DESIGN §2: minting a fresh authority for a concept that already exists is a failed
+// (gunbc.design_argument::minimize_redundancy: minting a fresh authority for a concept that already exists is a failed
 // decomposition; the old parallel three-arm copy lost the diagnostics list on the round trip).
 // The four identity fields bind that verdict to the exact bytes the swap will promote.
 type ServeEntryVerdictRecord {
@@ -451,7 +451,7 @@ type ServeEntryVerdictDecode
 // text from the segments the ExecStart weaves around the binary and --release-revision
 // (live_deploy_ingress_argv_segments / live_deploy_ingress_limit_argv_segments). Neither the
 // choice of listener nor the flag text is worked out twice, so the identity binding cannot drift
-// from the text the unit actually binds (DESIGN §3).
+// from the text the unit actually binds (gunbc.design_argument::single_authority).
 fn serve_entry_argv_identity_text(spec: DeploymentSpec) -> String {
   let svc = spec.service
   let args = live_deploy_serve_unit_ingress_args(service: svc)

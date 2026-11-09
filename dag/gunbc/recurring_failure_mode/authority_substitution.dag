@@ -13,7 +13,7 @@ data authority_substitution: RecurringFailureMode = RecurringFailureMode {
 
     "Nothing asserted is false — the *entailment* is invented, which is why review reads past it: both halves check out and only the arrow between them is missing.",
 
-    "It is §3's single-authority rule read in the direction authors actually violate it — not two authorities for one fact, but one authority borrowed to answer for another's.",
+    "It is gunbc.design_argument::single_authority's single-authority rule read in the direction authors actually violate it — not two authorities for one fact, but one authority borrowed to answer for another's.",
 
     "Receipt (gunbc#8865): an expecting-red probe was enrolled in `gunbc.explicit_witness_admission`, which DOCUMENTS a known red, and the PR asserted the required floor therefore held it; the floor gates on `v2.workflow.floor_expected_red` and nothing relates the two, so CI went red on a row its author had recorded as expected.",
 

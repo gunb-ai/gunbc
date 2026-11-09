@@ -52,7 +52,8 @@ import gunbc.harness.harness_reasoning_wire {
   LeasedFromHostedQuota, RunOnOperatorEndpoint, harness_serving_unit_wire,
 }
 import gunbc.harness.harness_operator_route {
-  harness_operator_route, operator_class_admission, OperatorClassAdmitted, OperatorClassRefused,
+  harness_operator_unit_policy, operator_route_for_unit, operator_route_refusal_detail, HarnessOperatorRoute,
+  operator_class_admission, OperatorClassAdmitted, OperatorClassRefused,
   operator_open_header, OperatorHeaderOpened, OperatorHeaderRefused, operator_close_header, operator_chat_completions_url,
 }
 import gunbc.harness.harness_hosted_route {
@@ -363,7 +364,7 @@ fn seat_bind_detail(replica: RentedReplicaIdentity, text: String) -> String {
 // composer downstream then had to invent a generic sentence naming neither, which is a refusal that
 // is typed and NOT located -- and the location is the whole remedy, because "the ceiling is
 // unestablished for group B" and "the partition chain broke at step read-head" send an operator to
-// different places. So the per-class read carries its own cause forward (DESIGN section 5: every
+// different places. So the per-class read carries its own cause forward (gunbc.design_argument::fail_closed: every
 // path succeeds fully or fails with a typed, LOCATED diagnostic).
 type HarnessClassHeld
   = ClassSeatsHeld { held: Nat }
@@ -467,7 +468,7 @@ fn harness_seat_standing(route: ServingRoute, store: FabricStorageBinding, now: 
 // ITS CONSUMER AND TRIGGER: the first caller that needs a named model -- a model-comparison run
 // placing the same prompt on two routes, or a turn whose prompt is tuned to one unit's reasoning
 // wire. Until one exists this arm is exercised only by its witness, which is the honest middle state
-// of DESIGN section 3c rather than the red one; deleting it would force the next such caller to
+// of gunbc.design_argument::consumption rather than the red one; deleting it would force the next such caller to
 // re-mint the distinction, and re-minting is what that section's neighbours are about.
 type ServingModelRequirement
   = AnyAdmittedModel
@@ -1594,9 +1595,14 @@ fn harness_complete_with_grant(turn: HarnessCallerTurn, presented: LeaseGrant, s
 // screen argument naming another.
 fn harness_bind_seat(short_hostname: String, class: ServingCoTenancyClass, requirement: ServingModelRequirement, shape: HarnessWireShape, inputs: List<String>, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, session: ServingSessionEntry?, admission: AdmissionTerms, turn: HarnessCallerTurn?) -> HarnessSeatBinding {
   match harness_requirement_placement(requirement: requirement, class: class) {
-    LeasedFromHostedQuota => HarnessSeatRefused { detail: "the required unit is reached through a hosted quota lease, not a fleet seat; bind it with harness_bind_hosted" }
-    PlacedOnFleetSeat => harness_bind_fleet_seat(short_hostname: short_hostname, class: class, requirement: requirement, shape: shape, inputs: inputs, actor: actor, attempt: attempt, policy: policy, session: session, admission: admission, turn: turn)
-    RunOnOperatorEndpoint =>
+    // THE POLICY NAMES A UNIT NO ROW CARRIES: a typed refusal, the same cause harness_bind_operator gives
+    // for the same absence. It is NOT a fleet placement: "the request has to go somewhere" is the shape
+    // this module's own header rules out, and a silent fleet fallback here would disagree with the bind
+    // path (DESIGN 5: refuse, never widen).
+    none => HarnessSeatRefused { detail: operator_route_refusal_detail(unit: harness_operator_unit_policy) }
+    Present { value: LeasedFromHostedQuota } => HarnessSeatRefused { detail: "the required unit is reached through a hosted quota lease, not a fleet seat; bind it with harness_bind_hosted" }
+    Present { value: PlacedOnFleetSeat } => harness_bind_fleet_seat(short_hostname: short_hostname, class: class, requirement: requirement, shape: shape, inputs: inputs, actor: actor, attempt: attempt, policy: policy, session: session, admission: admission, turn: turn)
+    Present { value: RunOnOperatorEndpoint } =>
       match turn {
         Present { value: _ } => HarnessSeatRefused { detail: "the turn is durable but its placement is the operator endpoint, which takes no seat, so there is no grant a completion could be fenced against; no work was offered" }
         none => harness_bind_operator(class: class, shape: shape)
@@ -1611,17 +1617,27 @@ fn harness_bind_operator(class: ServingCoTenancyClass, shape: HarnessWireShape) 
   match shape {
     AnthropicMessagesShape => HarnessSeatRefused { detail: "the operator endpoint speaks the OpenAI chat-completions shape only" }
     OpenAiChatCompletionsShape =>
-      match operator_class_admission(route: harness_operator_route, class: class) {
+      // THE ROUTE THE POLICY NAMES, resolved through the keyed lookup -- not the single constant. A unit
+      // with no route row refuses at bind time with its typed cause; there is no fallback to the fabric
+      // router (DESIGN 5: the absence IS the answer).
+      match operator_route_for_unit(unit: harness_operator_unit_policy) {
+        none => HarnessSeatRefused { detail: operator_route_refusal_detail(unit: harness_operator_unit_policy) }
+        Present { value: route } => harness_bind_operator_route(class: class, route: route)
+      }
+  }
+}
+
+fn harness_bind_operator_route(class: ServingCoTenancyClass, route: HarnessOperatorRoute) -> HarnessSeatBinding {
+  match operator_class_admission(route: route, class: class) {
         OperatorClassRefused { detail: d } => HarnessSeatRefused { detail: d }
         OperatorClassAdmitted =>
-          match operator_chat_completions_url(route: harness_operator_route) {
-            Absent => HarnessSeatRefused { detail: "the operator endpoint URL could not be composed" }
-            Present { value: u } =>
-              match operator_open_header(route: harness_operator_route) {
-                OperatorHeaderRefused { detail: d } => HarnessSeatRefused { detail: d }
-                OperatorHeaderOpened { header_dir: dir, header_file: hf } =>
-                  HarnessOperatorBound { url: u as String, model: harness_unit_model_id(unit: harness_operator_route.unit), unit: harness_operator_route.unit, header_dir: dir, header_file: hf }
-              }
+      match operator_chat_completions_url(route: route) {
+        Absent => HarnessSeatRefused { detail: "the operator endpoint URL could not be composed" }
+        Present { value: u } =>
+          match operator_open_header(route: route) {
+            OperatorHeaderRefused { detail: d } => HarnessSeatRefused { detail: d }
+            OperatorHeaderOpened { header_dir: dir, header_file: hf } =>
+              HarnessOperatorBound { url: u as String, model: harness_unit_model_id(unit: route.unit), unit: route.unit, header_dir: dir, header_file: hf }
           }
       }
   }
@@ -1637,14 +1653,27 @@ fn harness_bind_operator(class: ServingCoTenancyClass, shape: HarnessWireShape) 
 // unnamed requirement from a quality-sensitive caller (the router's place entry, the seat-collision probe) keeps
 // its fleet seat rather than being refused by a route it could never use; the ruling's words ("make our harness
 // pick this pod") are read as the harness worker's default, not as removing the fleet path for interactive turns.
-fn harness_requirement_placement(requirement: ServingModelRequirement, class: ServingCoTenancyClass) -> HarnessUnitPlacement {
+fn harness_requirement_placement(requirement: ServingModelRequirement, class: ServingCoTenancyClass) -> HarnessUnitPlacement? {
   match requirement {
-    AnyAdmittedModel =>
-      match operator_class_admission(route: harness_operator_route, class: class) {
-        OperatorClassAdmitted => harness_unit_placement(unit: harness_operator_route.unit)
-        OperatorClassRefused { detail: _ } => PlacedOnFleetSeat
+    AnyAdmittedModel => harness_operator_placement_for_unit(unit: harness_operator_unit_policy, class: class)
+    ExactServingUnit { unit: u } => Present { value: harness_unit_placement(unit: u) }
+  }
+}
+
+// THE UNIT-KEYED HALF OF THE ANY-MODEL PLACEMENT, split out so the witness can drive it with a unit the
+// live policy does not name. Absent means THE POLICY NAMES A UNIT NO ROW CARRIES: the caller refuses with
+// operator_route_refusal_detail, exactly as the bind path does for the same absence -- there is no
+// placement answer for a unit the route table cannot serve. The class-refused answer stays PlacedOnFleetSeat
+// (main's ruling: a quality-sensitive caller keeps its fleet seat rather than meeting a route it could
+// never use); that is a different absence from a missing row and must not be conflated with it.
+fn harness_operator_placement_for_unit(unit: HarnessServingUnit, class: ServingCoTenancyClass) -> HarnessUnitPlacement? {
+  match operator_route_for_unit(unit: unit) {
+    none => none
+    Present { value: route } =>
+      match operator_class_admission(route: route, class: class) {
+        OperatorClassAdmitted => Present { value: harness_unit_placement(unit: route.unit) }
+        OperatorClassRefused { detail: _ } => Present { value: PlacedOnFleetSeat }
       }
-    ExactServingUnit { unit: u } => harness_unit_placement(unit: u)
   }
 }
 

@@ -13,7 +13,7 @@ data external_mechanism_asserted_under_a_correct_conclusion: RecurringFailureMod
 
     "The DECISION is right; the mechanism was never measured.",
 
-    "HARM: DESIGN section 5 silent wrongness, and it is the immunised variety.",
+    "HARM: gunbc.design_argument::fail_closed silent wrongness, and it is the immunised variety.",
 
     "A wrong premise attached to a wrong conclusion dies the first time the conclusion is tested.",
 
@@ -91,7 +91,7 @@ data external_mechanism_asserted_under_a_correct_conclusion: RecurringFailureMod
 
     "The pairing is the whole trigger: the construction alone makes the honest form available, and only the enumerating consumer makes the dishonest form unwritable rather than merely noticed once.",
 
-    "Authoring one such row by hand discharges nothing and is the artifact-for-capability substitution section 4b(3) forbids.",
+    "Authoring one such row by hand discharges nothing and is the artifact-for-capability substitution gunbc.design_argument::guarantee_ladder (no silent regression) forbids.",
 
     "It is CAN-CLIMB-NOW-BUT-UNBUILT rather than blocked on grounding: `extdeps` already owns the shape for cited upstream facts.",
 
@@ -105,7 +105,7 @@ data external_mechanism_asserted_under_a_correct_conclusion: RecurringFailureMod
 
     "So the class is detectable here and falsifiable only there, which is what lets a wrong mechanism sit unchallenged beside a correct conclusion for as long as nobody goes outside to look.",
 
-    "Until axis (i)'s trigger is built this row is a reading discipline and citing it as coverage is the rung inflation section 4b(1) names.",
+    "Until axis (i)'s trigger is built this row is a reading discipline and citing it as coverage is the rung inflation gunbc.design_argument::guarantee_ladder (rung honesty) names.",
   ],
 
   evidence: [],

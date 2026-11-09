@@ -173,7 +173,7 @@ data altra_udimm_withdrawal: ModuleClassWithdrawal = ModuleClassWithdrawal {
 // parenthetical qualifier -- so its home is the authority that cites the datasheet, and the
 // product layer consumes it. An earlier revision of this module authored a SECOND representation
 // of the same contract as two Int lists plus a three-state standing, which is the parallel
-// authority §3 forbids: two rows free to drift on the next datasheet edit, each with its own
+// authority gunbc.design_argument::single_authority forbids: two rows free to drift on the next datasheet edit, each with its own
 // witness and no join between them.
 //
 // The coproduct is kept and the Int lists deleted rather than the reverse, because it is the

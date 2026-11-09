@@ -16,7 +16,7 @@ import gunbc.guarantee_rung { OutsideTheLadder, MechanicallyPreventable }
 // deleted it and bound the frontier to the native route's REQUIRED lane, which is staged under
 // node://adhoc-11684de4-07b and not yet live. Between the two nothing runs the ratchet, so a
 // frontier regression is not caught late -- it is not caught. Keeping Mitigatable would be rung
-// inflation (DESIGN section 4b(1)); the row states the silent state honestly and names the capability
+// inflation (gunbc.design_argument::guarantee_ladder (rung honesty)); the row states the silent state honestly and names the capability
 // whose execution ends it. It keeps its identity, because the subject (the frontier off the merge
 // path) is unchanged; only the interim mechanism was withdrawn.
 

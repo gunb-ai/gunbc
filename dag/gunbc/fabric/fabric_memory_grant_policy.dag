@@ -26,7 +26,7 @@ import product.fabric.memory_grant {
 // round_up(minimum + allowance, grain) -- is not derived from anything. It is a number an operator
 // chose, shaped so that it is at least the stated minimum and rounded to the grain the corpus
 // already uses for demand figures. Dressing it as a derivation would be the fabricated plausible
-// output DESIGN 5 forbids; declaring it as policy, with the laws in the carrier still deciding
+// output gunbc.design_argument::fail_closed forbids; declaring it as policy, with the laws in the carrier still deciding
 // admissibility, is not.
 //
 // WHAT WOULD REPLACE IT: a measured relation between a Work's declared held-set minimum and the
@@ -60,7 +60,7 @@ type MicroVmMemoryGrantAuthority sole_constructor { }
 // gunbc_runner_microvm_guest_cache_allowance, the ceiling (the cell's MemoryMax less the
 // realization reserve) INLINE inside runner_microvm_shape_after_cpu and
 // runner_microvm_shape_after_allowance, where it is exposed as no function. Recomputing either here
-// would be the second authority DESIGN 3 forbids, and IMPORTING the runner to read the allowance --
+// would be the second authority gunbc.design_argument::single_authority forbids, and IMPORTING the runner to read the allowance --
 // which one of the two reconciled implementations did -- closes a CYCLE the moment the wiring item
 // makes the runner's shape consume this policy, acyclicity being the import graph's only structural
 // law. So this module imports nothing from the runner, declares only what it owns (the reference,
@@ -97,7 +97,7 @@ type MicroVmMemoryGrantPolicy {
 // is only ever evaluated after it has been established to fit. The round-up is then std.measure
 // round_up_to_grain, which is the same construction one step on: it derives the pad (strictly
 // below the grain) and refuses if the sum is within that pad of the bound. A checked-add guard
-// would answer the same question one rung lower -- DESIGN 4b rung 1 validation where rung 4
+// would answer the same question one rung lower -- gunbc.design_argument::guarantee_ladder rung 1 validation where rung 4
 // construction was available -- so the add is absent and must not be helpfully restored.
 //
 // REPRESENTABILITY IS BOUNDED FIRST AND THE CEILING SECOND, AND THE ORDER IS LOAD-BEARING: you
@@ -140,7 +140,7 @@ fn microvm_memory_grant_size(policy: MicroVmMemoryGrantPolicy, minimum: ByteSize
 // issue_memory_grant, which owns every law about what a grant may be. The split is deliberate:
 // this module decides the number, the carrier decides admissibility, and neither restates the
 // other. In particular the ceiling is NOT compared here -- comparing it in both places is the
-// second authority DESIGN 3 forbids, and the one that would drift is this one.
+// second authority gunbc.design_argument::single_authority forbids, and the one that would drift is this one.
 //
 // THE ABSENT AXIS IS REFUSED HERE, NOT IN THE CARRIER, because the carrier made it unwritable: a
 // provenance needs a requirement or a permit, so a policy holding neither has nothing to construct
@@ -220,7 +220,7 @@ fn gunbc_microvm_memory_grant_policy_reference() -> DeclarationRef {
 // ITS DEFAULT IS ITS OWN FIGURE AND IS NOT gunbc.runner.runner_microvm gunbc_runner_microvm_declared_size.
 // That row is a BOOT-SMOKE FIXTURE with a receipt behind it -- the size srv4 was observed to boot,
 // demoted from any sizing arm on 2026-09-19 -- and reusing it here would give one number two
-// meanings the moment either moved, which is the meaning fork DESIGN 3 forbids, and would revive as
+// meanings the moment either moved, which is the meaning fork gunbc.design_argument::single_authority forbids, and would revive as
 // a fallback a row main deliberately retired from that role. The figure below is four gibibytes,
 // the same magnitude as that fixture; the coincidence is noted here so nobody consolidates it, and
 // the fixture may move without moving this. IT IS A ByteSize DERIVED FROM THE GIBIBYTE, not a bare
@@ -236,7 +236,7 @@ fn gunbc_microvm_memory_compatibility_permit() -> MemoryCompatibilityPermit {
   }
 }
 
-// THE DECLARED FRONTIER (DESIGN 3c). This module's consumers today are its witness suite; nothing
+// THE DECLARED FRONTIER (gunbc.design_argument::consumption). This module's consumers today are its witness suite; nothing
 // in a production sizing path calls it, and that is the brief's explicit scope. The named later
 // consumer is gunbc.runner.runner_microvm runner_microvm_shape_after_cpu_admitted, which today reads the
 // Work's minimum as a FIT GATE and then gives every admitted Work the whole cell remainder. It is

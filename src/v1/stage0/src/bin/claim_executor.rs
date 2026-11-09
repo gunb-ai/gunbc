@@ -23,7 +23,7 @@ fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, Exit
 
 /// Path-valued arguments resolve against the PROCESS CWD at the CLI boundary, refusing
 /// on a nonexistent path — never falling back to the compile-time-baked workspace root
-/// (`v1_compiler::cli_run::resolve_cli_path_arg`; DESIGN §5 fail-open closed there).
+/// (`v1_compiler::cli_run::resolve_cli_path_arg`; gunbc.design_argument::fail_closed fail-open closed there).
 fn require_path_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
     let given = require_value(args, idx, flag)?;
     match v1_compiler::cli_run::resolve_cli_path_arg("claim_executor", flag, &given) {
@@ -38,7 +38,7 @@ fn require_path_value(args: &[String], idx: usize, flag: &str) -> Result<String,
 /// Verify each declared release artifact exists, is executable, and is non-empty — failing CLOSED
 /// (exit 1) with the GitHub-Actions `::error::` annotation on the first violation. This is the
 /// in-binary home of what was previously inline `[ -x ]` / `[ -s ]` shell in the generated ci.yml
-/// (DESIGN §5 fail-open guard: an sccache-served truncated/empty cached artifact after a
+/// (gunbc.design_argument::fail_closed fail-open guard: an sccache-served truncated/empty cached artifact after a
 /// `successful` build). The artifact paths are authored by the .dag spec and passed positionally.
 fn verify_build_artifacts(paths: &[String]) -> Result<ExitCode, ExitCode> {
     use std::os::unix::fs::PermissionsExt;
@@ -58,7 +58,7 @@ fn verify_build_artifacts(paths: &[String]) -> Result<ExitCode, ExitCode> {
                     eprintln!(
                         "::error::build verification: declared artifact '{name}' absent or not \
                          executable after a 'successful' build (sccache/cache corruption — DESIGN \
-                         §5 fail-open); failing closed: {path}"
+                         gunbc.design_argument::fail_closed fail-open); failing closed: {path}"
                     );
                     return Err(ExitCode::from(1));
                 }
@@ -66,7 +66,7 @@ fn verify_build_artifacts(paths: &[String]) -> Result<ExitCode, ExitCode> {
                     eprintln!(
                         "::error::build verification: declared artifact '{name}' is zero-byte after \
                          a 'successful' build (sccache served a truncated/empty cached artifact — \
-                         DESIGN §5 fail-open); failing closed: {path}"
+                         gunbc.design_argument::fail_closed fail-open); failing closed: {path}"
                     );
                     return Err(ExitCode::from(1));
                 }
@@ -74,7 +74,7 @@ fn verify_build_artifacts(paths: &[String]) -> Result<ExitCode, ExitCode> {
             Err(_) => {
                 eprintln!(
                     "::error::build verification: declared artifact '{name}' absent or not \
-                     executable after a 'successful' build (sccache/cache corruption — DESIGN §5 \
+                     executable after a 'successful' build (sccache/cache corruption — gunbc.design_argument::fail_closed \
                      fail-open); failing closed: {path}"
                 );
                 return Err(ExitCode::from(1));
@@ -199,7 +199,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             "--regen-round-cost" => {
                 regen_round_cost_mode = true;
             }
-            // THE HEAL ROUND'S BOOTSTRAP AUTHORITY (DESIGN §5, RFM heal_round_one_bootstraps_
+            // THE HEAL ROUND'S BOOTSTRAP AUTHORITY (gunbc.design_argument::fail_closed, RFM heal_round_one_bootstraps_
             // from_the_mirror_the_change_must_repair / PR #14963): round 1's seed compiles from
             // the BASE COMMIT's committed stage0 mirror, never from the mirror the PR's own .dag
             // changes exist to repair. The flag carries NO value — the commit arrives as the
@@ -264,7 +264,7 @@ fn run() -> Result<ExitCode, ExitCode> {
 
     // Build-artifact verification (no plan run): the floor's bootstrap `cargo build` is followed by
     // this check so a `successful` build that nonetheless produced a missing/zero-byte binary
-    // (sccache serving a truncated/empty cached artifact — DESIGN §5 fail-open) fails CLOSED before
+    // (sccache serving a truncated/empty cached artifact — gunbc.design_argument::fail_closed fail-open) fails CLOSED before
     // the floor runs. The LOGIC lives here (the floor binary) instead of inline shell in ci.yml; the
     // declared artifact paths are still authored by the .dag spec and passed as positional args.
     // Short-circuits before the plan-arg requirements so it needs no `--plan-entry`.
@@ -547,15 +547,15 @@ fn run() -> Result<ExitCode, ExitCode> {
     //
     // `--required-cited-symbol` ran `v2.lens.cited_symbol_resolution` over the corpus-wide
     // `decl_facts` + `module_declaration_facts` walks, answering each authored reference by a
-    // LINEAR SCAN of a flat list of every declaration in the repository. DESIGN §3's rung-drop
+    // LINEAR SCAN of a flat list of every declaration in the repository. gunbc.design_argument::single_authority's rung-drop
     // row names exactly that shape as the thing to stop doing: the wall belongs "checked at
     // ingestion, on the module whose source carries the citation, from that module's own text,
     // rather than reconstructed corpus-wide by a second job".
     //
     // It is now the `parse` phase above, over the per-module declaration index the sweep builds
     // from the parse it was already performing. The mode is deleted rather than left standing as
-    // a second route to one question (§3, single authority), and the replacement is STRICTLY
-    // WIDER, which is the test §3's replacement doctrine sets: it enrolls every authored
+    // a second route to one question (gunbc.design_argument::single_authority, single authority), and the replacement is STRICTLY
+    // WIDER, which is the test gunbc.design_argument::single_authority's replacement doctrine sets: it enrolls every authored
     // `DeclarationRef` in the corpus rather than the five carriers the lens's population named,
     // and it indexes test modules, which `decl_facts` deliberately did not — so the
     // outside-index disposition those exclusions forced is not needed at all.
@@ -565,7 +565,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     // What stood here was a `--heads-reading-differential` mode: the same producer, reached by a
     // flag on this binary. It is DELETED in the change that makes the instrument addressable as
     // `//gunbc/instruments:heads-reading-differential`, rather than left standing beside it. Two
-    // routes to one producer is the fork DESIGN section 3 forbids, and the interval in which both
+    // routes to one producer is the fork gunbc.design_argument::single_authority forbids, and the interval in which both
     // work is exactly when a caller learns the old one and keeps it.
     //
     // The reason it was never enrolled in the required run is unchanged and is now recorded on the
@@ -875,7 +875,7 @@ mod tests {
         );
     }
 
-    // --- build-artifact verification teeth (DESIGN §5 fail-open guard) ---
+    // --- build-artifact verification teeth (gunbc.design_argument::fail_closed fail-open guard) ---
 
     fn write_exec(dir: &std::path::Path, name: &str, bytes: &[u8]) -> String {
         use std::os::unix::fs::PermissionsExt;
@@ -951,5 +951,5 @@ mod tests {
 //
 // WHAT THIS ANSWERS THAT NOTHING ELSE DOES. `--required-regen` proves the committed mirrors
 // equal what the authority emits. It never COMPILES the emitted candidate, let alone runs it: the regen host spawns exactly
-// rustfmt, rustfmt and git. So the whole promotion story rests on bytes — and DESIGN §7 says in
+// rustfmt, rustfmt and git. So the whole promotion story rests on bytes — and gunbc.design_argument::self_hosting says in
 // as many words that a byte-identical fixed point is NOT the goal, because matching bytes forces

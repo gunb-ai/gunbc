@@ -15,7 +15,7 @@ import v2.std.text { String }
 // executor walk emitting from .dag), or earlier by widening the carrier to declare the twin/oracle
 // references.
 
-// §7 seed-retained execution plumbing: claim_executor parses this carrier, dispatches
+// gunbc.design_argument::self_hosting seed-retained execution plumbing: claim_executor parses this carrier, dispatches
 // NativeBundleWitnessKind, launches the declared process, and projects the transition receipt in
 // hand Rust. Lane: v1 exit / ROADMAP 'Get hand-written Rust in this repository down to zero'. This
 // is not a new semantic authority: files, argv, identities, population, and expected output are

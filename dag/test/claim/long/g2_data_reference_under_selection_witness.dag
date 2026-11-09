@@ -16,14 +16,14 @@ import std.types { List }
 // verdict the selection seam has. On 341d3203bc2 the live path returned
 // LiveReadSelectionClassified { LocalRead }, not LiveReadSelectionRefused — measured
 // by a discriminating triple that is NOT enrolled here (LocalRead-as-contract would
-// enshrine the defect; DESIGN §5 / floor_witness_run_disposition). Refused would have
+// enshrine the defect; gunbc.design_argument::fail_closed / floor_witness_run_disposition). Refused would have
 // been fail-closed and licensed nothing; LocalRead licenses a skip and presents as a
 // faster green floor. That is under-selection.
 //
 // DISSOLVE-ON: when computation reachability follows data initializers as well as
 // function bodies, this witness goes green; its ExplicitWitnessAdmission
 // QuarantineProbeExpectRed row deletes in the same change (un-quarantine); the
-// unchanged witness remains as the permanent regression control (DESIGN §4b(4)).
+// unchanged witness remains as the permanent regression control (gunbc.design_argument::guarantee_ladder (dissolution on climb)).
 
 import v2.lens.live_read_classification {
   LiveReadSelectionRequest,
@@ -112,7 +112,7 @@ test fn specimen_classifies_as_runtime_read() -> Bool {
 // the selection seam has and is therefore the harm, and Refused, which is fail-closed
 // and licenses nothing. A single Bool cannot separate them, so on its own the
 // UNDER-selection claim would rest on the note beside it — and no Accepted program can
-// read a note (DESIGN 4c). This claim carries the other bit, so the pair has a unique
+// read a note (gunbc.design_argument::source_annotations). This claim carries the other bit, so the pair has a unique
 // signature per reachable state:
 //
 //   Classified{LocalRead}   -> (false, false)  today; both red, so the red is agreement

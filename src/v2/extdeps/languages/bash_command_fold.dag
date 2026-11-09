@@ -825,7 +825,7 @@ fn bash_fold_lex() -> LexRules {
   ModeledLexRules { root: bash_fold_lex_rules() }
 }
 
-// INGEST-direction lex view. §4 asymmetry — ingest RECOGNIZES a superset of what emit PRODUCES.
+// INGEST-direction lex view. gunbc.design_argument::closed_grounded_substrate asymmetry — ingest RECOGNIZES a superset of what emit PRODUCES.
 // Recognized-but-UNMODELED control keywords (no production); presence marks an incompletely-modeled
 // control form => AmbiguousParse, never Violation. Emit set (bash_fold_lex_rules) UNCHANGED so emit
 // stays byte-identical. Word boundaries ride the spelling (trailing/leading space; done/esac

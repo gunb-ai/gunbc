@@ -50,3 +50,21 @@ data list_at_list_positions_source: String = "module sc_ok\nimport std.types { S
 test fn lists_at_declared_list_positions_are_clean() -> ProcessExit {
   census_exit(census_verdict(census: total_blocking_census(source: list_at_list_positions_source), holds: fn(n) { n == 0 }))
 }
+
+// #16027 REGRESSION (decl_facts_skeleton refused at four record fields): a bare concat whose receiver is an
+// UNESTABLISHED fold-algebra lambda parameter (`acc.xs` through a still-unsolved generic) was typed String by
+// the builtin registry, then judged against the declared List<String>. Positive control: that exact shape is
+// admitted. The registry's String answer holds only for a ground kernel scalar receiver.
+data concat_unestablished_list_field_source: String = "module sc_cat\nimport std.types { String, List, Bool }\ntype CatR = { xs: List<String>, b: Bool }\ntype CatAlg<T> = { init: fn(String) -> T, step: fn(T, String, T) -> T }\nfn cat_run<T>(n: String, a: CatAlg<T>) -> T { a.step(a.init(n), n, a.init(n)) }\nfn probe(n: String) -> CatR { cat_run(n: n, a: CatAlg { init: fn(s) { CatR { xs: [s], b: true } }, step: fn(acc, e, child) { CatR { xs: concat(acc.xs, child.xs), b: acc.b } } }) }\n"
+
+test fn concat_of_unestablished_lists_at_a_list_field_is_admitted() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: concat_unestablished_list_field_source), holds: fn(n) { n == 0 }))
+}
+
+// RED control: String concat of two ground String literals at a List<String> field is a real scalar and is
+// still refused (the receiver is a ground kernel scalar, so the registry's String result stands).
+data concat_strings_at_list_field_source: String = "module sc_cat_red\nimport std.types { String, List }\ntype CatRedR = { xs: List<String> }\nfn probe() -> CatRedR { CatRedR { xs: concat(\"a\", \"b\") } }\n"
+
+test fn concat_of_strings_at_a_list_field_is_still_refused() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: concat_strings_at_list_field_source, wanted_class: "DeclaredTypeNotInhabited"), holds: fn(n) { n >= 1 }))
+}

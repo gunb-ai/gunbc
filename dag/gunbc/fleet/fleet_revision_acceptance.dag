@@ -70,7 +70,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // roster is the contract's own business and its evidence, not the fleet's precondition.
 // THE OLD TWO-FIELD RECORD IS GONE, NOT WRAPPED. It answered the right semantic question -- WHICH
 // contract completed -- with an incomplete representation: it could not distinguish a contract whose
-// obligations were revised under an unchanged workflow path, which is the §3 meaning fork. The
+// obligations were revised under an unchanged workflow path, which is the gunbc.design_argument::single_authority meaning fork. The
 // repair is the canonical triple, and the transition is atomic: there is no second constructor, no
 // converter, no field beside the canonical identity, and no path back to the old shape. The public
 // domain name survives because it is the right name; only its content is replaced.
@@ -159,7 +159,7 @@ fn fleet_default_branch() -> String {
 // extdeps.github.workflow_run_event beside the envelope that decodes it, not in this consumer.
 // `originating_event` is NOT closed: it is the whole GitHub event namespace, open-ended and
 // extended by upstream without notice, so a closed sum over it would be re-coining an open
-// vocabulary -- the §3 nickname wearing a coproduct. Its honest shape is the documented members
+// vocabulary -- the gunbc.design_argument::single_authority nickname wearing a coproduct. Its honest shape is the documented members
 // this repository actually discriminates plus an explicit unrecognized arm carrying the wire text,
 // which is a different modeling decision than the first and should be made as one.
 //
@@ -183,7 +183,7 @@ data default_branch_originating_event: String = "push"
 // through a different channel. Putting `GitHub | Fabric` inside the positive carrier would make
 // every consumer match on a provenance it has no business branching on, and would make adding a
 // provider an edit to the admission carrier. Two provider bindings constructing the SAME type is
-// the §2 move: one concept, N realizations, dispatch at the periphery.
+// the gunbc.design_argument::minimize_redundancy move: one concept, N realizations, dispatch at the periphery.
 type RequiredCiSucceeded<E> {
   revision: GitObjectId
   contract: RequiredCiContractIdentity
@@ -245,7 +245,7 @@ type DefaultBranchAdmission<M>
 // object id. Decoding at the binding boundary means an undecodable value refuses BEFORE any
 // positive carrier exists, so no downstream consumer can be handed a revision that is not one.
 // Carrying both an authored CommitSha and a decoded GitObjectId downstream would be two writable
-// names for one fact -- the §3 fork -- and the two could then disagree.
+// names for one fact -- the gunbc.design_argument::single_authority fork -- and the two could then disagree.
 type RevisionDecode
   = RevisionDecoded { revision: GitObjectId }
   | RevisionUndecodable { observed: String }

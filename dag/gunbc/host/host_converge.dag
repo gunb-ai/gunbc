@@ -244,11 +244,11 @@ type GunbcBinaryProvenancePolicy {
 // PerSlotMemoryCap is the per-slot systemd drop-in/property mechanism (dropin_path x
 // instance_glob x property x value), and the per_slot_tasks_max knob (a pids-controller
 // count; desired value owned by gunbc.runner.runner_slot_allocation) rides it because the mechanism is property-generic — forking a
-// parallel variant per property class would be the §2 duplication the shape exists to
+// parallel variant per property class would be the gunbc.design_argument::minimize_redundancy duplication the shape exists to
 // avoid. The variant name and its bytes_value field over-narrow to the memory axis that
-// landed first: a §3 mislabel carried knowingly rather than a ~96-site mechanical rename
+// landed first: a gunbc.design_argument::single_authority mislabel carried knowingly rather than a ~96-site mechanical rename
 // inside this change. dissolve-on: the HostAxisBundle axis framework
-// (gunbc.plans.host_convergence_circuit_residue P3), whose landing renames the variant to
+// (gunbc.plans.host_convergence_circuit_residue (deleted 2026-11-08) P3), whose landing renames the variant to
 // the mechanism it names (PerSlotUnitProperty, value_raw) in one motion.
 type ConvergeTarget
   = SliceProperty { unit: String, property: String, apply_value: String, expected_effective: String }
@@ -553,7 +553,7 @@ fn codex_runtime_bundle_knobs(host: HostIdentity) -> List<ConvergeKnob> {
 // PerSlotMemoryCap is (dropin_path x instance_glob x property x value) and is property-generic --
 // per_slot_tasks_max already rides it with a pids-controller count -- so a CPU rider needs no new
 // target. Its own declaration says forking a parallel variant per property class would be the
-// DESIGN 2 duplication the shape exists to avoid, and declines the ~96-site rename to
+// gunbc.design_argument::minimize_redundancy duplication the shape exists to avoid, and declines the ~96-site rename to
 // PerSlotUnitProperty/value_raw in favour of the HostAxisBundle P3 lane that owns it. This rider
 // does not pre-empt that rename; it is the third value to arrive at a field still named
 // bytes_value, which strengthens the case that lane already carries rather than adding a new one.
@@ -984,7 +984,7 @@ type SliceControlUnit
   | UncappedSliceControl { caps: SliceControlCaps }
 
 // THE ROSTER IS A FREE SEMIGROUP, NOT A LIST: nonemptiness is CONSTRUCTED, not validated
-// (DESIGN §5 "correctness by construction, not validation"; §3b Cardinality/absence, which names
+// (gunbc.design_argument::fail_closed "correctness by construction, not validation"; gunbc.design_argument::conformance Cardinality/absence, which names
 // std.algebra::FreeSemigroup as the canonical non-empty carrier under ruling
 // nonemptiness_is_constructed_or_proved). A Derived plan that carried zero units was the whole
 // fail-open: downstream, units: [] became an empty script, and an empty script applies cleanly and

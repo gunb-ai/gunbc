@@ -1,0 +1,49 @@
+module gunbc.fleet.printer_shell_run
+
+import std.types { String, NonEmptyStr }
+import std.process { ProcessExit, exit_failure }
+import gunbc.actions_run_binding { actions_variable_trimmed }
+import gunbc.auth.approval_gate { approval_instant_now }
+import gunbc.fleet.printer_selection { select_printer, PrinterSelected, PrinterSelectionRefused }
+import gunbc.fleet.printer_credential_source { HostCustodyCredentialSource }
+import gunbc.fleet.printer_workflow_run { printer_operation }
+
+// THE SHELL ROUTE: prepare, observe, hold-release-request or start a print from a shell on srv1, with no
+// GitHub Actions run, gated only by the operator's approval in the approval app (operator rulings
+// 2026-11-05: gunbc.design_ruling printer_start_gate_is_the_approval_not_the_ref and
+// printer_credential_is_held_in_host_custody). It calls the SAME printer_operation the workflow route
+// calls, so every refusal, the bed-clear approval card and the approval-bound start are one code path; the
+// only differences are the attribution (a locally minted run id, an explicit source revision) and the
+// credential source (HostCustodyCredentialSource: the printer LAN access code copied once into host
+// custody by fleet-converge custody, never Secret Manager, so this route holds no Google identity).
+//
+// LAUNCH AS ghrunner, the principal that already owns /var/lib/gunbc/printer-starts, print-runs and
+// print-runtime and reads the custody file through group gunbc-fleet, so no account or group change is
+// needed:
+//   sudo -u ghrunner env PRINTER_OPERATION=converge PRINTER_TARGET=printer-01 PRINTER_REQUEST_ID=<id> \
+//     PRINTER_ROOT=<root> PRINTER_RECIPE=<recipe> PRINTER_SOURCE_REVISION=<commit of the plate plan> \
+//     gunbc run --entry dag/gunbc/fleet/printer_shell_run.dag --function run
+// PRINTER_OPERATION is observe, hold-release-request or converge; observe and hold-release-request need
+// only PRINTER_TARGET. A converge over an unrecorded request prepares and records; over a recorded
+// request it files the approval card and, on approval, starts exactly what the card named.
+//
+// With no custody copy the route refuses with PrinterCustodyAbsent naming the path; it never falls back
+// to Secret Manager. The receipt carries this locally minted run id and no Actions run_attempt or sha (there is none); it never writes an empty identity field.
+fn run() -> ProcessExit {
+  match approval_instant_now() {
+    Absent => exit_failure(reason: "ShellRunClockUnreadable: the shell route mints its run id from the clock and refuses rather than reuse a constant id")
+    Present { value: at } =>
+      match select_printer(name: actions_variable_trimmed(name: "PRINTER_TARGET")) {
+        PrinterSelectionRefused => exit_failure(reason: "Printer identity is not in the fleet roster")
+        PrinterSelected { printer: printer } => {
+          let run_id = concat("shell-", at as String)
+          printer_operation(
+          operation: actions_variable_trimmed(name: "PRINTER_OPERATION"), printer: printer,
+          credential_source: HostCustodyCredentialSource { run_id: run_id },
+          request_id: actions_variable_trimmed(name: "PRINTER_REQUEST_ID"), root: actions_variable_trimmed(name: "PRINTER_ROOT"),
+          recipe: actions_variable_trimmed(name: "PRINTER_RECIPE"), revision: actions_variable_trimmed(name: "PRINTER_SOURCE_REVISION"),
+          run_id: run_id)
+        }
+      }
+  }
+}

@@ -4,7 +4,7 @@ import std.types { String, Int }
 import gunbc.http_ingress { HttpIngressAdmission, http_ingress_binding }
 import gunbc.fabric.fabric_storage_serve { fabric_storage_serve_handle }
 
-// THE DEPLOYMENT BINDING OF the fabric DB endpoint (gunbc.http_ingress, gunbc.plans.converged_ingress).
+// THE DEPLOYMENT BINDING OF the fabric DB endpoint (gunbc.http_ingress, gunbc.plans.converged_ingress (deleted 2026-11-08)).
 // The handler stays an ordinary entry; this module is where serving it is declared. The import above
 // is what puts the handler's module in the run's closure, and `handler` names which of its entries
 // this process serves. gunbc.live_deploy.emit renders the per-host values as `gunbc run --arg`s.

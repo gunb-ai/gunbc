@@ -31,7 +31,7 @@ import product.inventory { InventoryLotIdentity, InventoryLotRepetition, invento
 // says why in its own header: jurisdictions are open declaration references with deliberately no
 // central enum, because "Asia" is not a jurisdiction and adding Germany must be a row in a
 // population rather than an edit to a generic type. These rows minted a parallel stringly
-// authority beside that decision, which is the nickname DESIGN section 3 forbids - and a string
+// authority beside that decision, which is the nickname gunbc.design_argument::single_authority forbids - and a string
 // leaf hiding a named part is the anemic modeling section 2 names.
 //
 // The reference identifies the cited taxing authority. The collected rate remains a
@@ -74,7 +74,7 @@ type UseTaxResidualStanding
 // difference is not cosmetic: the state rate and the city combined rate are different figures, so
 // a state-only payment on goods used in the city leaves a residual that a city-grain reading would
 // report as settled. Citing the city rate for an attestation that said only "New York" asserts as
-// deduced what was merely inferred, which DESIGN section 4d forbids in the direction that loses
+// deduced what was merely inferred, which gunbc.design_argument::epistemic_humility forbids in the direction that loses
 // money quietly - the narrower claim is the comfortable one and it is the one with no evidence.
 //
 // This was authored wrong in 1f6c8653231, where both attested census rows cited
@@ -118,7 +118,7 @@ type LotTaxEvidence {
   standing: LotSalesTaxStanding
 }
 
-// THE CONSUMER OF StatutoryRate's jurisdiction field (DESIGN section 3c: a declaration nothing
+// THE CONSUMER OF StatutoryRate's jurisdiction field (gunbc.design_argument::consumption: a declaration nothing
 // consumes is the red one). This is the projection that replaced the deleted sibling field - a
 // caller asking where a residual is owed gets the answer FROM the rate, so the two can never
 // disagree. The unread and none arms have no destination to name, which is why the answer is an

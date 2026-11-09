@@ -7,7 +7,7 @@ import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog }
 
 // WHERE A BOARD FUNCTION SITS ON THE PCIe TREE, FOR THE BOARDS WHOSE TREE HAS BEEN READ. A host-side
 // removal acts on concrete functions, so it needs their addresses and ids; the manual states neither, so
-// these are this repository's observations, not upstream facts (DESIGN §3: an observation is a receipt in
+// these are this repository's observations, not upstream facts (gunbc.design_argument::single_authority: an observation is a receipt in
 // the observing layer). A row is held at board grain because the same board and firmware enumerate the
 // same tree, and the route that consumes it checks every id on the host before it acts and refuses on any
 // difference -- so a host whose tree differs refuses rather than having the wrong link disabled.

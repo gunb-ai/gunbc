@@ -18,10 +18,10 @@ import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarge
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.runner.runner_host_deploy {
-  RunnerHostDeploy, runner_host_deploy_for,
-  RunnerHostDeployFound, RunnerHostDeployUnmodeled, RunnerHostDeployRefused,
+  RunnerHostDeploy, runner_host_deploy_for, runner_host_zero_width_slot_identities,
+  RunnerHostDeployFound, RunnerHostDeployZeroWidth, RunnerHostDeployUnmodeled, RunnerHostDeployRefused,
 }
-import gunbc.runner.runner_host_grants { bootstrap_principal_is_not_the_grantee }
+import gunbc.runner.runner_host_grants { bootstrap_principal_is_not_the_job_user }
 import gunbc.runner.runner_host_file_converge { elevated_argv }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import gunbc.executor_privileged_operation {
@@ -124,7 +124,9 @@ fn observe_bound_host_wet(bound: HostIdentity) -> ProcessExit
       RunnerHostDeployRefused { host: h, cause: c } =>
         exit_failure(reason: join(["microvm-network-observe: ", h as String, " refuses its deploy row: ", c], ""))
       RunnerHostDeployFound { deploy: d } =>
-        observe_admitted_host_wet(deploy: d, host: bound, generation: generation as NonEmptyStr)
+        observe_admitted_host_wet(job_user: d.job_user, slots: runner_microvm_network_slot_identities_of(deploy: d), host: bound, generation: generation as NonEmptyStr)
+      RunnerHostDeployZeroWidth { spec: sp } =>
+        observe_admitted_host_wet(job_user: sp.job_user, slots: runner_host_zero_width_slot_identities(spec: sp), host: bound, generation: generation as NonEmptyStr)
     }
   }
 }
@@ -132,9 +134,9 @@ fn observe_bound_host_wet(bound: HostIdentity) -> ProcessExit
 // THE READER OF THE ROOT-ONLY SURFACES MAY NOT BE THE JOB USER, for the reason the apply refuses on:
 // reading "as the administrator" when the administrator IS the job user would mean the job user
 // holds the reads, which is the grant this module exists not to need.
-fn observe_admitted_host_wet(deploy: RunnerHostDeploy, host: HostIdentity, generation: NonEmptyStr) -> ProcessExit
+fn observe_admitted_host_wet(job_user: NonEmptyStr, slots: List<RunnerSlotIdentity>, host: HostIdentity, generation: NonEmptyStr) -> ProcessExit
 {
-  if !bootstrap_principal_is_not_the_grantee(bootstrap: executor_bootstrap_principal, deploy: deploy) {
+  if !bootstrap_principal_is_not_the_job_user(bootstrap: executor_bootstrap_principal, job_user: job_user) {
     exit_failure(reason: join(["microvm-network-observe: the administrator principal ", executor_bootstrap_principal.login as String, " is the job user on ", host as String, ", so the root-only readings would be taken by the account CI jobs run as"], ""))
   } else {
     match prepare_fleet_ssh_agent_context(attempt_raw: runner_microvm_network_observe_attempt_raw) {
@@ -145,7 +147,7 @@ fn observe_admitted_host_wet(deploy: RunnerHostDeploy, host: HostIdentity, gener
             exit_failure(reason: join(["microvm-network-observe: ", ssh_target_refusal_text(endpoint: e, refusal: why)], ""))
           SshTargetResolved { target: target } =>
             record_converge_readback_wet(
-              slots: runner_microvm_network_slot_identities_of(deploy: deploy),
+              slots: slots,
               host: host,
               generation: generation,
               reads: read_privileged_network(transport: FleetSsh { target: target, context: context }),

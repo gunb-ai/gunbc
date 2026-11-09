@@ -1,7 +1,8 @@
 module extdeps.power.types
 
 import std.types { NonEmptyStr, Int }
-import std.measure { Volt, Ampere, Millimeter, RackUnit }
+import std.measure { Volt, Ampere, Millimeter, RackUnit, Watt }
+import extdeps.power.eighty_plus { EfficiencyRating }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -37,4 +38,20 @@ type PduCatalogRow {
   front_outlet_count: Int
   rear_outlet_count: Int
   cord_length: Millimeter
+}
+
+// A HOST'S POWER SUPPLY, as a vendor publishes it: the agnostic shape, beside the PDU's. Each vendor's
+// rows live in that vendor's own module (extdeps.power.asrock_phantom_gaming, ...), never here.
+//
+// ONLY THE FIGURES A CONSUMER READS ARE FIELDS. product.node_power_envelope reads the rated DC output
+// (psu_adequacy compares the derived DC load against it) and the 80 PLUS level (the wall figure divides
+// by its efficiency). Connector counts, rail splits, dimensions and warranty are real published facts
+// with no consumer yet, so they are left in the vendor module's annotation rather than carried as
+// fields nothing reads (DESIGN 3c); the first consumer to need one -- a per-card connector admission --
+// adds it here with that consumer.
+type PowerSupplyCatalogRow {
+  model: NonEmptyStr
+  manufacturer: Vendor<Hardware>
+  rated_output: Watt
+  efficiency: EfficiencyRating
 }

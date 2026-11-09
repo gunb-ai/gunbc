@@ -7,6 +7,7 @@ import std.measure {
   ByteSize, byte_size, byte_size_count, measure_add, Memory, One,
   TokenCount, token_count, token_count_value,
   kibibyte, kibibyte_to_byte_size, mebibyte, mebibyte_to_byte_size, gibibyte, gibibyte_to_byte_size,
+  Permille, permille, permille_count,
 }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.accounting.budget { Appropriation, LineItem }
@@ -56,7 +57,7 @@ type ServingEngineMemory {
 
 // A HOST THAT DOES NOTHING BUT SERVE, so its whole RAM is this tree. A host that also runs CI or dashboard
 // sessions (srv1, srv3, srv4) is NOT one: its RAM is already partitioned by gunbc.fleet.fleet_host_budget,
-// and a second tree over the same RAM would be a second authority for it (DESIGN section 3).
+// and a second tree over the same RAM would be a second authority for it (gunbc.design_argument::single_authority).
 type ServingDedicatedHostMemory {
   host: HostIdentity
   usable_ram: HostUsableRam
@@ -299,6 +300,46 @@ data srv4_strata_snapshot_cost: ConversationSnapshotCost = ConversationSnapshotC
   observed_up_to: token_count(count: 203349),
 }
 
+// srv3's Strata (strata-main build, q4_0 KV, 2x RTX 2000 Ada), the upper envelope of all 22,002 parks in
+// ~/strata-pool/engine.log read 2026-11-08 (up to 228,921 tokens): at 10 KiB per token the largest fixed part
+// any park needed was 1,234.2 MiB, so 1,240 MiB plus 10 KiB per token lies above every one. A different build
+// from srv4's, and srv4's 800 MiB envelope does not cover it, so its own row.
+data srv3_strata_snapshot_cost: ConversationSnapshotCost = ConversationSnapshotCost {
+  fixed: mebibyte_to_byte_size(m: mebibyte(count: 1240)),
+  per_token: kibibyte_to_byte_size(k: kibibyte(count: 10)),
+  provenance: "srv3 Strata ~/strata-pool/engine.log conversation-cache park lines (snapshot_bytes), 22,002 parks, read 2026-11-08" as NonEmptyStr,
+  observed_up_to: token_count(count: 228921),
+}
+
+// srv1's vLLM conversation on LMCache's DISK tier (L2). The per-token part is the engine's own KV density: one TP=1
+// replica's 14.3 GiB of FP8 KV holds 744,477 tokens (gunbc.serving.srv1_topology_comparison), 20,625 bytes per token,
+// so a 150k conversation is ~3 GiB (the operator's own figure, 2026-11-08). An earlier reading of 800 B/token divided
+// one 3,272,704-byte disk object by the 4,096-token chunk, but lil-serve runs --separate-object-groups, so one chunk
+// spans many objects: it understated the cost ~25x and is withdrawn. This hybrid model also stores its recurrent
+// state as one bundle per conversation, the largest on disk 524,922,880 bytes (500.6 MiB): 512 MiB covers it.
+data srv1_vllm_disk_snapshot_cost: ConversationSnapshotCost = ConversationSnapshotCost {
+  fixed: mebibyte_to_byte_size(m: mebibyte(count: 512)),
+  per_token: byte_size(count: 20625),
+  provenance: "srv1 TP=1 KV pool 744,477 tokens in 14.3 GiB (operator relay, 2026-11-08) and the largest state object under /cache/kv, read 2026-11-08" as NonEmptyStr,
+  observed_up_to: token_count(count: 150000),
+}
+
+// srv1's LMCache disk tier PER REPLICA as it runs: LMCACHE_L2_GB=125 (LMCACHE_L1_GB=12) on each of lil-flash-next and
+// lil-flash-next-1, started 2026-11-08T20:24Z, each over its own host directory (~/lil/kv and ~/lil/kv-gpu1; the
+// containers' start commands, read 2026-11-08 21:5xZ). LMCache's GB is GiB: at L2_GB=150 it rejected stores at exactly
+// 161,061,273,600 bytes (150 x 2^30). Kept
+// at its eviction watermark of 0.80 ("L2 usage 0.80 above watermark 0.80; triggering eviction" in serve.log). The
+// bytes that stay warm are the configured size at the watermark, derived from the two readings. It evicts; it does
+// not refuse once full.
+data srv1_lmcache_l2_configured: ByteSize = gibibyte_to_byte_size(g: gibibyte(count: 125))
+
+data srv1_lmcache_l2_eviction_watermark: Permille = permille(count: 800)
+
+data srv1_vllm_disk_tier: ServingMemoryReading = ServingMemoryRead {
+  bytes: byte_size(count: byte_size_count(b: srv1_lmcache_l2_configured) * permille_count(p: srv1_lmcache_l2_eviction_watermark) / 1000),
+  provenance: "srv1 lil-flash-next and lil-flash-next-1 LMCACHE_L2_GB=125 each (docker inspect, 2026-11-08) at the L2 eviction watermark 0.80 (serve.log eviction_controller)" as NonEmptyStr,
+}
+
 // THE SWAP BOUND, the operator's (2026-10-30): a little swap per engine so an overrun slows instead of being
 // killed; 2 GiB is a small fraction of a 9-10 GiB engine and far below the 32 GiB each h11 engine had.
 data serving_engine_swap_bound: ByteSize = gibibyte_to_byte_size(g: gibibyte(count: 2))
@@ -374,7 +415,7 @@ data srv4_serving_engine_memory: ServingEngineMemory = ServingEngineMemory {
   conversation_slots: Present { value: 8 },
 }
 
-// DECLARED FRONTIERS (DESIGN section 3c).
+// DECLARED FRONTIERS (gunbc.design_argument::consumption).
 //
 // Consumer: the h11 cell's launch row renders its MemoryMax, MemorySwapMax (zero) and
 // --conversation-cache-mib/--conversation-cache-slots from a layout this verdict passes, and the router's

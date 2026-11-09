@@ -7,7 +7,7 @@ import gunbc.http_ingress { HttpIngressAdmission, http_ingress_binding }
 import extdeps.http.server { ServeWireResponse }
 import gunbc.native_serve { native_serve_text_plain }
 
-// THE CONTROL SERVICE FOR THE KERNEL-ATTESTED PEER (gunbc.plans.converged_ingress M2b), served by
+// THE CONTROL SERVICE FOR THE KERNEL-ATTESTED PEER (gunbc.plans.converged_ingress (deleted 2026-11-08) M2b), served by
 // `gunbc test //gunbc/instruments:native-serve-unix` (gunbc.instruments.native_serve_unix_probe judges it). Its handler
 // declares peer_user, which only a unix-socket listener attests (gunbc.http_ingress http_ingress_fact_plan), so the one
 // binary is launched twice: on a unix socket, where /whoami must answer the account the kernel attests for the

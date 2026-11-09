@@ -175,7 +175,7 @@ fn github_observation(
 // THAT IS NOT HYPOTHETICAL, IT IS WHAT THIS MODULE'S FIRST CONSUMER DID. An earlier revision of
 // gunbc.ci_workflow_scan_producer scan_observation stored content_hash_atom(value: query), so every
 // record a scan emitted carried the SAME digest, and a reader checking bytes against it would have
-// got a green establishing nothing about the bytes. DESIGN section 5: no fabricated plausible
+// got a green establishing nothing about the bytes. gunbc.design_argument::fail_closed: no fabricated plausible
 // output. A field that cannot be filled honestly is modelled as unfilled, exactly as the budget
 // one below is, rather than filled with whatever was nearby.
 type ObservationDigestStanding

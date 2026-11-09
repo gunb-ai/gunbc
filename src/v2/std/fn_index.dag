@@ -34,7 +34,7 @@ data fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger: Disposition
   }
 }
 
-// §7 seed-retained host marshal in src/v1/stage0/src/coproduct_reflection.rs
+// gunbc.design_argument::self_hosting seed-retained host marshal in src/v1/stage0/src/coproduct_reflection.rs
 // (marshal_string_literal_atom, hoist_call_arg_string_literal_edges, callee atoms on ExprCall) —
 // SOURCE half for P1 G2 live-read call reachability
 // (docs/plans/live-read-witness-classification-design.md §9 P1 / §14). Dissolves when fn-arrow body
@@ -251,7 +251,7 @@ fn atom_identities_in_subtree(node: Node) -> List<Symbol> {
 // named, or it is one this reader cannot read -- a partial Transform (application_head_read refused
 // it), or a resolved Arrow head, which carries no lexeme to match against a declaration name. The
 // last two used to answer "no callee here" and drop the call out of every reachability walk
-// silently; they are carried as located diagnostics instead (DESIGN §5).
+// silently; they are carried as located diagnostics instead (gunbc.design_argument::fail_closed).
 type CalleeTextRead
   = NoCallee
   | CalleeText { text: String }
@@ -260,7 +260,7 @@ type CalleeTextRead
 // THE QUESTION IS THE CALLEE, so this reads the head through the head layer
 // v2.std.compilers.body_lowering application_head_read and never judges operands: whether an argument
 // is whole is not what the walk asks, and paying application_read's per-operand residue checks on
-// every call of every reached body is work no consumer of the walk demands (DESIGN §2). A named
+// every call of every reached body is work no consumer of the walk demands (gunbc.design_argument::demand_before_materialization). A named
 // edge or a missing, residue or non-callee head still refuses, located. Skeleton arguments are
 // wrapper nodes anyway (`count(x)` marshals to Transform[count, Conj[Conj[]]]);
 // v2.test.claim.enforcement.skeleton_call_route_witness holds application_read over the real
@@ -297,7 +297,7 @@ fn non_empty_diagnostics_list(d: NonEmptyDiagnostics) -> List<Diagnostic> {
 // EXTRACTED DURING TRAVERSAL, NOT FILTERED OUT OF A MATERIALIZED SUBTREE.
 //
 // THE DEMAND IS "THE CALLEES IN THIS NODE", so nothing larger than that is produced to answer it --
-// DESIGN 2, minimize the demand graph before materializing its answers. What this function no
+// gunbc.design_argument::demand_before_materialization, minimize the demand graph before materializing its answers. What this function no
 // longer does is build a list of EVERY node in the declaration's subtree and then keep the few that
 // are calls; what it still does, and the paragraph below says why, is scan its own accumulator on
 // every hit to deduplicate.
@@ -307,7 +307,7 @@ fn non_empty_diagnostics_list(d: NonEmptyDiagnostics) -> List<Diagnostic> {
 // `list_append(left: acc, right: sub)` therefore copies only that child's callee list, the same
 // combine `node_subtree_nodes` uses, and the walk is already preorder (self, then children left to
 // right). The previous child-then-acc combine assumed concat charged the left; after the primitive
-// routing that cloned the growing acc on every sibling (DESIGN 6).
+// routing that cloned the growing acc on every sibling (gunbc.design_argument::how_to_work).
 //
 // DEDUPLICATION IS A LIST SCAN AND NOT A KEYED MAP. The rationale a reader cannot recover from the
 // code is that the keyed arm was WRITTEN and measured SLOWER here: a map is the one repair in this
@@ -408,7 +408,7 @@ type CallReach {
 // than a scan of everything reached so far; the accumulator is prepended to and turned once rather
 // than copied per addition; and the worklist is left alone when there is nothing to add to it,
 // which at file grain is every step, because the closure is empty and no callee resolves. That is
-// one shape at three sites, and DESIGN 2's bare-minimum-cost rule fixes it regardless of the
+// one shape at three sites, and gunbc.design_argument::minimize_redundancy's bare-minimum-cost rule fixes it regardless of the
 // realized n -- n is not a time-stable fact here, since the same walk runs at directory grain over
 // a far larger seed set.
 //
@@ -516,7 +516,7 @@ fn call_reachable_decls(
 //
 // CARRIED AS AN ANNOTATION, NOT AS DATA, and it was the other way round until review 59343. It
 // stood as `data fn_index_root_grain_law: String`, a module-scope String whose only purpose was
-// commentary and which nothing read -- exactly what DESIGN §4c forbids, and the reviewer was right
+// commentary and which nothing read -- exactly what gunbc.design_argument::source_annotations forbids, and the reviewer was right
 // to name it. It arrived here by migration from v2.lens.live_read_classification g2_root_grain_law
 // during this cut, so moving it made it mine to classify.
 fn call_reachable_decls_from_root(

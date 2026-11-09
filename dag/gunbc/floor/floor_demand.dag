@@ -211,7 +211,7 @@ fn gunbc_floor_measured_peak_is_uncensored() -> Bool {
 // memory.high line finishes clean precisely because the cache half of that charge is reclaimable:
 // the 2026-09-19 pin's 1928 high events are the kernel giving that half back. So this figure bounds
 // what the cgroup was CHARGED, which is the fact the throttle-line witnesses want, and sizing a
-// machine to it would consume a bet as a fact (DESIGN 4d; an earlier revision of this module
+// machine to it would consume a bet as a fact (gunbc.design_argument::epistemic_humility; an earlier revision of this module
 // stated it as the Work's minimum and was withdrawn). The Work's minimum is the resident held-set
 // lower bound below, derived from raw memory.stat beats.
 fn floor_cgroup_charge_ceiling(receipts: List<FloorRunCgroupPeakReceipt>) -> ByteSize {
@@ -247,7 +247,7 @@ fn gunbc_floor_cgroup_charge_ceiling() -> ByteSize {
 // declarations and floor-entry seams before it), one arm per seam the instrument names; the
 // heartbeat has always read that slot for its human line, and the stat beat now prints it on its
 // OWN line beside the counters. Before that the two facts were separate stderr streams joined
-// only by the order the lines happened to appear in -- a positional citation (DESIGN 3), which any
+// only by the order the lines happened to appear in -- a positional citation (gunbc.design_argument::single_authority), which any
 // line emitted between them by another thread invalidates silently.
 //
 // FOUR ARMS ARE NOT SEAMS AND THAT IS THE POINT. SeamNotYetEntered is a beat taken before the first
@@ -482,7 +482,7 @@ fn beat_reclaimable_cache(b: FloorMemoryStatBeat) -> MeasureSubtraction<Memory, 
 // the 2026-09-19 receipt was censored. With swap off, a workload that exceeds its ceiling is
 // killed rather than spilled, so a run that COMPLETES under that policy read its true demand.
 //
-// THE ARM RECORDS HOW THE FIGURE WAS OBTAINED, NOT JUST WHAT IT IS (DESIGN 4d). The heartbeat's
+// THE ARM RECORDS HOW THE FIGURE WAS OBTAINED, NOT JUST WHAT IT IS (gunbc.design_argument::epistemic_humility). The heartbeat's
 // cgroup envelope prints max, high, current and peak -- it does NOT print memory.swap.max -- so a
 // receipt taken from a job log CANNOT read the attempt's swap ceiling, only cite the row that
 // declares it. SwapMaxDeclaredUnread is that state and names its declaring authority; SwapMaxRead
@@ -514,7 +514,7 @@ type RunSwapPolicy
 //
 // THE TRIGGER IS CONSUMPTION, NOT CARRIAGE, and that distinction is the whole reason this is a
 // frontier rather than a todo: a field added to FloorMemoryStatBeat that no fold reads would be
-// the dangling declaration DESIGN 3c refuses, and this module already carries one declared
+// the dangling declaration gunbc.design_argument::consumption refuses, and this module already carries one declared
 // frontier for exactly that reason.
 data floor_receipt_uncarried_observation_frontier: DissolutionCondition = unbound_dissolution(
   description: "NAMED CONSUMER: receipt_peak_reading_standing, or the fit fold in gunbc.runner.runner_microvm that judges demand plus allowance against the cell remainder -- whichever of the two is the first to need a fact this receipt cannot currently state. TRIGGER: the field is CARRIED on FloorMemoryStatBeat or FloorHeldSetReceipt and READ by one of those folds, per field; a field carried and unread does not retire its line. SUFFICIENT FOR deleting the corresponding line above, and the row retires when every line has gone. NOT satisfied by printing the value in the job log -- PSI and oom_kill are printed today and that is precisely the state this row records. Process overlap's instrument now exists (floor_cgroup_stat_beat procs=), so its line is a transcription obligation like the others." as NonEmptyStr,
@@ -581,7 +581,7 @@ fn receipt_peak_beat(r: FloorHeldSetReceipt) -> FloorMemoryStatBeat? {
 // reader eyeballing which heartbeat line sat above which stat line.
 //
 // ITS CONSUMER IS A DECLARED FRONTIER, NOT AN EXECUTING ROUTE, AND SAYING SO IS THE POINT
-// (DESIGN 3c, review 69834). Today receipt_peak_seam and receipt_peak_reading_standing are
+// (gunbc.design_argument::consumption, review 69834). Today receipt_peak_seam and receipt_peak_reading_standing are
 // reached only by test.claim.floor.floor_demand_witness. An earlier revision of this note named
 // the consumer as "a consumer asking what to reduce", which is a READER and not a route, and
 // carried no trigger -- so it claimed consumption it did not have. The frontier below states the
@@ -601,7 +601,7 @@ fn receipt_peak_beat(r: FloorHeldSetReceipt) -> FloorMemoryStatBeat? {
 // 69719). An earlier revision folded the seam through a Bool and could then only emit a
 // DISJUNCTIVE cause -- "sampled before the first seam, OR transcribed from a line without one" --
 // for a case where the arm is known exactly. Collapsing a known discriminator and then
-// apologising for it in the message is the absorbing fallback DESIGN 5 forbids, one layer up from
+// apologising for it in the message is the absorbing fallback gunbc.design_argument::fail_closed forbids, one layer up from
 // the positional join the seam field removes.
 //
 // PeakBeatSampledBeforeAnySeam is a live run whose first beat landed before any seam was entered:
@@ -610,7 +610,7 @@ fn receipt_peak_beat(r: FloorHeldSetReceipt) -> FloorMemoryStatBeat? {
 // ReceiptTorn carries the overflow from the beat whose held set does not sum. Different facts,
 // different remedies, no prose to parse.
 data floor_peak_attribution_consumer_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: the reduction lane's before/after receipt, which states WHICH SEAM a landed reduction moved by evaluating receipt_peak_seam over the standing receipt on each side of the change -- the measurement gunbc.floor.floor_demand exists to make possible and the reason the seam is carried at all. TRIGGER: the change that lands the first measured floor-memory reduction, whose receipt cites a PeakAttributedTo seam on both sides; that change reads these folds from a production declaration rather than from a claim. SUFFICIENT FOR deleting this row. NOT satisfied by another witness calling the folds, nor by a reader of the receipt's prose -- DESIGN 3c asks for a route by which a declaration reaches a consumer AT EXECUTION, and a claim is not that route. If the reduction lane instead derives its attribution some other way, these two folds and their cause vocabulary are unconsumed and are deleted rather than kept." as NonEmptyStr,
+  description: "NAMED CONSUMER: the reduction lane's before/after receipt, which states WHICH SEAM a landed reduction moved by evaluating receipt_peak_seam over the standing receipt on each side of the change -- the measurement gunbc.floor.floor_demand exists to make possible and the reason the seam is carried at all. TRIGGER: the change that lands the first measured floor-memory reduction, whose receipt cites a PeakAttributedTo seam on both sides; that change reads these folds from a production declaration rather than from a claim. SUFFICIENT FOR deleting this row. NOT satisfied by another witness calling the folds, nor by a reader of the receipt's prose -- gunbc.design_argument::consumption asks for a route by which a declaration reaches a consumer AT EXECUTION, and a claim is not that route. If the reduction lane instead derives its attribution some other way, these two folds and their cause vocabulary are unconsumed and are deleted rather than kept." as NonEmptyStr,
 )
 
 type PeakUnattributableCause
@@ -805,7 +805,7 @@ data gunbc_floor_memory_stat_receipt_2026_09_19: FloorHeldSetReceipt = FloorHeld
 // selects a different beat on this receipt than on its predecessor, so the allowance moves with
 // the standing and in the opposite direction to the demand.
 //
-// THE PRODUCERS ARE NAMED AND THE FIGURES ARE NOT COPIED HERE (DESIGN 6; review 69874). An earlier
+// THE PRODUCERS ARE NAMED AND THE FIGURES ARE NOT COPIED HERE (gunbc.design_argument::how_to_work; review 69874). An earlier
 // revision of this note carried both moves as byte counts, which is the same defect this change
 // REMOVES from gunbc.runner.runner_microvm's allowance note one file over -- deleting a transcribed beat
 // figure there and minting transcribed figures here would have moved the rot rather than ending
@@ -1035,7 +1035,7 @@ type PeakLowerBoundCause
   | SwapHeldPagesAtPeak { beat: Int, swapped: ByteSize }
 
 // THE SUCCESSFUL ARM IS NAMED FOR WHAT IT ESTABLISHES, WHICH IS NOT EXACT DEMAND. It used to be
-// called PeakIsDemand, and that name asserted past its evidence in the way DESIGN 4d forbids: the
+// called PeakIsDemand, and that name asserted past its evidence in the way gunbc.design_argument::epistemic_humility forbids: the
 // arm is reached when the workload completed, the SAMPLED peak showed no stall, and swap either
 // could not spill or, read on the leaf at the peak beat, held none of its pages. Those remove two CENSORING mechanisms -- they do not make a sampled maximum the true
 // maximum. memory.stat carries no high-water counter, so this receipt's peak is the largest value
@@ -1865,7 +1865,7 @@ data gunbc_internal_fleet_trust_domain: TrustDomainRef = "gunbc.trust.internal-f
 // Architecture is unstated because the Work does not require one: the job
 // builds what it runs, and the aarch64 the fleet provides is a fact about the
 // fleet's labels rather than about this Work. Stating it would refuse an x86
-// offer for a reason the Work does not have (DESIGN 4d, over-prohibition).
+// offer for a reason the Work does not have (gunbc.design_argument::epistemic_humility, over-prohibition).
 fn floor_execution_requirements() -> ExecutionRequirements {
   ExecutionRequirements {
     capacity_class: ControlPlaneCapacity,

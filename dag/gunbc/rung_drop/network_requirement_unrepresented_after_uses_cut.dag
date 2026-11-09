@@ -7,7 +7,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // ============================================================================================
 // THE DECLARED RUNG DROP for a function's Network requirement, lowered by D13 cut (c) and its
-// final-base census (gunbc.plans.demand_restatement_follow_up; DESIGN 4b(3) no silent regression).
+// final-base census (gunbc.plans.demand_restatement_follow_up; gunbc.design_argument::guarantee_ladder (no silent regression) no silent regression).
 // ============================================================================================
 //
 // WHAT THE CRITERION MEASURED, AND WHAT IT DID NOT. Cut (c) deleted an authored `uses` row when the
