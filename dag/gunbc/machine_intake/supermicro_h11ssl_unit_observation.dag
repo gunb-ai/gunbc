@@ -32,7 +32,7 @@ import gunbc.machine_intake.supermicro_h11ssl_first_contact {
   H11sslReportedDimm, H11sslBmcClockStanding, BmcClockUnsynchronized,
 }
 
-// RECEIPTS, NOT UPSTREAM FACT (DESIGN section 3, external upstream decomposition). Readings of
+// RECEIPTS, NOT UPSTREAM FACT (gunbc.design_argument::external_upstreams, external upstream decomposition). Readings of
 // H11SSL units taken after first contact, ONE ROW PER UNIT READING, keyed by the unit's BMC MAC,
 // the same key the first-contact receipt (gunbc.machine_intake.supermicro_h11ssl_first_contact)
 // and the operator credential inventory use. A third unit or a later reading is a row here, not a
@@ -48,7 +48,7 @@ fn sha256_artifact(path: NonEmptyStr, hex: NonEmptyStr) -> EvidenceRef {
 }
 
 // A figure this receipt carries that no committed artifact contains: the observer's report, typed
-// as transcribed with what would ground it (DESIGN 4d).
+// as transcribed with what would ground it (gunbc.design_argument::epistemic_humility).
 type H11sslReportedFigure { value: NonEmptyStr, standing: CitedFigureStanding }
 
 type H11sslReadInstant
@@ -211,7 +211,7 @@ data supermicro_h11ssl_unit_readings: List<H11sslUnitReading> = [
   },
 ]
 
-// CONSUMPTION, declared frontier (DESIGN section 3c). These rows and folds are consumed by the
+// CONSUMPTION, declared frontier (gunbc.design_argument::consumption). These rows and folds are consumed by the
 // witness now. The named later change is the same arrival-intake binding the first-contact receipt
 // names (its trigger, the FRU Board Area read, came back blank on unit 2), and the BMC Snooping
 // reader, whose rows would be appended to supermicro_h11ssl_post_traces.
@@ -294,7 +294,7 @@ type H11sslDecodedTrace {
   emitter: CitedFigureStanding
 }
 
-// CONSUMER (DESIGN section 3c): the executing route for the AMI decode over a BMC-read sequence,
+// CONSUMER (gunbc.design_argument::consumption): the executing route for the AMI decode over a BMC-read sequence,
 // the reader the 0x22 receipt named as its later change. Exercised by
 // test.claim.supermicro_h11ssl_unit_observation_witness.
 fn supermicro_h11ssl_decoded_trace(t: H11sslPostTrace) -> H11sslDecodedTrace {
@@ -363,7 +363,7 @@ fn supermicro_h11ssl_shared_ordered_tail(a: H11sslPostTrace, b: H11sslPostTrace)
   xs |> skip((xs |> count) - longest_ordered_suffix_length(sub: xs, sup: nonzero_codes(t: b)))
 }
 
-// ---- The operator's CPU history (DESIGN 4d). An ATTESTATION, not a machine read: the operator
+// ---- The operator's CPU history (gunbc.design_argument::epistemic_humility). An ATTESTATION, not a machine read: the operator
 // handled the parts and is the authority on which part went into which board, but nothing here
 // was read from the parts. SMBIOS reads every serial as Unknown and no PSB fuse state was read,
 // so per-part identity and lock state stay attested; `unread` names what a machine read would add.
@@ -433,7 +433,7 @@ fn supermicro_h11ssl_attested_part(parts: List<H11sslAttestedCpuPart>, bmc_mac: 
 // becomes a loss on the admitted link (cpu_inference), so a reader sees which conclusion rests on
 // the operator's account.
 //
-// DIVERGES WITH A STATED REASON (DESIGN 3b, 6b). This arm is module-local. Operator attestation is
+// DIVERGES WITH A STATED REASON (gunbc.design_argument::conformance, gunbc.design_argument::earliest_unjustified_boundary). This arm is module-local. Operator attestation is
 // already forked per domain (gunbc.machine_intake.mtcollins1_power_on_account
 // PopulationOperatorAttested, gunbc.machine_intake.mtjade1_access_observation
 // SolSessionOperatorAttested, gunbc.machine_intake.bmc_operator_credential_inventory
@@ -468,7 +468,7 @@ fn part_premise(part: H11sslAttestedCpuPart?, owed: NonEmptyStr) -> H11sslPremis
   }
 }
 
-// ---- The inferences (DESIGN 4d): typed as bets through std.claim_evidence, never as findings.
+// ---- The inferences (gunbc.design_argument::epistemic_humility): typed as bets through std.claim_evidence, never as findings.
 // The PSB fuse state of no part was read.
 
 // PartNotPsbLockedToANonSupermicroVendor: AMD Platform Secure Boot fuses a part to one OEM's key,

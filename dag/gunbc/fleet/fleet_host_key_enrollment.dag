@@ -64,7 +64,7 @@ import gunbc.fleet.fleet_ssh_access { fleet_automation_ssh_key, fleet_automation
 //     confirmed, authored independently of anything the host says) — an identity join,
 //     not trust-on-first-use. authority is REQUIRED and NonEmptyStr, so a row cannot
 //     claim this arm without naming a non-empty authority: the "anchored but unnamed"
-//     state has no constructor (construction over validation, §5 — no witness restates
+//     state has no constructor (construction over validation, gunbc.design_argument::fail_closed — no witness restates
 //     what the carrier already forbids). The srv5/srv6 DGX Spark units are the intended
 //     inhabitant (gunbc.spark.dgx_procurement carries their cited CR1000A reservations,
 //     and the slot->box assignment IS decided — dgx_spark_router_binding_operator_allocation,
@@ -82,7 +82,7 @@ type HostKeyEnrollmentProvenance
   = ScannedFirstContact { scanned_from: NonEmptyStr }
   | IndependentlyAnchored { authority: NonEmptyStr }
   | ConsolePerBoot { boot_id: NonEmptyStr, channel: NonEmptyStr }
-  // ProvisionedInstall (T2, gunbc.plans.host_trust_provisioned_key): the key was minted ON
+  // ProvisionedInstall (T2, gunbc.plans.host_trust_provisioned_key (deleted 2026-11-08)): the key was minted ON
   // the install target during a named provisioning attempt and its public half was announced
   // over that attempt's console; the row is enrolled from that install's record, so
   // install_attempt names the attempt whose network_install_receipt row grounds the installed
@@ -216,7 +216,7 @@ fn host_key_provenance_label(p: HostKeyEnrollmentProvenance) -> String {
   }
 }
 
-// T2 CATALOG RULE (gunbc.plans.host_trust_provisioned_key): a public half belongs to ONE
+// T2 CATALOG RULE (gunbc.plans.host_trust_provisioned_key (deleted 2026-11-08)): a public half belongs to ONE
 // host identity; within that host, ONE install attempt may own it and ONE (address, record)
 // slot may state it. Legal: one host's one key recorded at several of its addresses, and
 // corroborated by several independent records. Refused: the same half under two host
@@ -228,17 +228,17 @@ fn host_key_provenance_label(p: HostKeyEnrollmentProvenance) -> String {
 // itself, so provenance arms cannot dodge it. SCOPE, stated honestly: this form is SCOPED and
 // NARROWS the catalog-wide rule the note's approval (msg_34308ee8) named; the narrowing was
 // accepted by side-chat review at 7e4e926b (merry-fox-82, msg_548aac01).
-// RUNG, stated honestly (DESIGN 4b): this rule is evaluated when the claim
+// RUNG, stated honestly (gunbc.design_argument::guarantee_ladder): this rule is evaluated when the claim
 // dag/test/claim/fleet/fleet_host_key_enrollment_witness is RUN, against the catalog itself.
-// That run is NOT on the required path - DESIGN's Building & checks keeps witnesses off it, and
+// That run is NOT on the required path - gunbc.design_document::ci_contract_blocks keeps witnesses off it, and
 // the claim lane was withdrawn from it (gunbc.rung_drop v1_required_lanes_withdrawn). So a
 // contradicting row enters the catalog unnoticed by the required gate and is caught when the
 // witness runs. Two closures exist for that gap and neither is built yet: the write-time gate,
-// the enrolment admission fold named in gunbc.plans.host_trust_provisioned_key (step ENROL: the
+// the enrolment admission fold named in gunbc.plans.host_trust_provisioned_key (deleted 2026-11-08) (step ENROL: the
 // fold admits a ProvisionedInstall row under its duplicate and staleness rules), and any later
 // row putting this check onto a required gate. Until one lands, do not read this name as
 // construction-time or required-path enforcement.
-// Both scans are single passes (DESIGN 6 cost-shape rule): std.list's fold-with-see-map over
+// Both scans are single passes (gunbc.design_argument::how_to_work cost-shape rule): std.list's fold-with-see-map over
 // the (half, host, address) slot, and a fold over the halves in std.algebra's string order
 // carrying each half-group's state -- its first host and its first recorded install attempt.
 type PublicHalfGroup {

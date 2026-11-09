@@ -24,7 +24,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // remaining operator classes, one each, with a `match` as the LEFT operand. They are what fails if a block-form alternative returns ahead of
 // binary_expr in dag_grammar_expr_expr, or if an operator class stops admitting a primary block. One
 // fragment each, parsed at the ONE production the claims are about (dag_production_expr) rather than
-// inside a whole module, whose header and declaration are not their subject (DESIGN section 3, a witness
+// inside a whole module, whose header and declaration are not their subject (gunbc.design_argument::single_authority, a witness
 // discriminates at one interface). A production parse refuses leftover tokens, so a block alternative
 // returned ahead of binary_expr would leave the operator and its right operand unconsumed and refuse;
 // each claim also asserts the match_expr shell is in the tree. (Every expression parses through a

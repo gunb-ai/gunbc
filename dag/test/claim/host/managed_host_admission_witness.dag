@@ -377,7 +377,7 @@ test fn w_a_retired_covering_drop_is_absent() -> Bool {
 // ADMISSION PERMITS A PLATFORM THAT DOES NOT CARRY SMpro (the manager's HOLD ruling, seam side).
 // The x86 specimen is snappy's SUPPLIED WITNESS INPUT (his managed_host_witness owns the fixture and
 // the row-side claim); the family here wraps the SAME cited catalog row (extdeps.cpu.amd
-// .ryzen_9_7950x3d_catalog -- the corpus's real x86 silicon, DESIGN 5: the row carries the identity).
+// .ryzen_9_7950x3d_catalog -- the corpus's real x86 silicon, gunbc.design_argument::fail_closed: the row carries the identity).
 // Minting the whole mtcollins1 record with smpro := NotCarried must ADMIT, and the projection must
 // still bind the member: standings_bound_to_record_subject now holds access==secure and compares an
 // SMpro endpoint ONLY when the platform carries a site -- requiring one is what once forced an x86

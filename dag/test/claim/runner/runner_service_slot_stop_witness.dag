@@ -1,6 +1,6 @@
 module test.claim.runner.runner_service_slot_stop_witness
 
-// THE STOP, EXECUTED OVER STAND-INS (gunbc.plans.mtcollins1_ci_service_legs F3). service_slot_stop_over is the one fold
+// THE STOP, EXECUTED OVER STAND-INS (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) F3). service_slot_stop_over is the one fold
 // a unit's ExecStop runs: it builds the slot's own binding from the admission, observes the control plane, and hands
 // the deregistration the stopping exit. The deregistration stand-in derives the subject from the binding it was handed
 // (binding_stopping_subject, the production derivation) and echoes it as a refused deregistration, so the VALUE the stop

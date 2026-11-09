@@ -2,7 +2,7 @@ module gunbc.site.gunb_ai_content
 
 // The gunb.ai CONTENT model: what the served page says, where it links, and how the pieces are
 // ordered. Copy lives here as typed data and nowhere else — the served HTML is generated from
-// these rows, so "the site's text" has one home in this repo (DESIGN §3, one upstream per fact)
+// these rows, so "the site's text" has one home in this repo (gunbc.design_argument::single_authority, one upstream per fact)
 // instead of being re-typed into a hand-maintained index.html in another repo.
 //
 // WHAT THIS MODULE DOES NOT HOLD, and why that is deliberate:
@@ -12,7 +12,7 @@ module gunbc.site.gunb_ai_content
 //   - asset BYTES: gunbc.design.brand_mark_assets (the mark and favicon files). The <img>/<link>
 //     references below are paths to those files, not copies of their contents.
 //   - the deck's own content: see the note beside the deck rows below, and the row in
-//     gunbc.plans.gunb_ai_projection's inventory that names the deck layer as open. The deck is
+//     gunbc.plans.gunb_ai_projection (deleted 2026-11-08)'s inventory that names the deck layer as open. The deck is
 //     built client-side by assets/cards.js today and is the last un-modelled part of the page.
 //
 // The copy is the operator's, verbatim (settled pick: fixed operator text as typed data). Any
@@ -169,11 +169,11 @@ data link_contact: SiteLink = SiteLink { label: "hello@gunb.ai", href: "mailto:h
 // The deck is deliberately NOT modelled in this module. Its content (the one users-system, its
 // nodes, artifacts, the O(n)/O(n²) budget claim) arrives with its own model and its own witness,
 // ordered after the static page per the parent's direction; declaring a mount row here would be a
-// declaration whose only consumer is a future module (§3c, nothing modelled "for later").
+// declaration whose only consumer is a future module (gunbc.design_argument::consumption, nothing modelled "for later").
 // It stays a named gap in the parity diff until then: the live page mounts <div
 // data-deck="users.dag"></div> and assets/cards.js fills it. The measurement that established the
 // deck is live (and that a row of this repo's inventory had it wrong) is kept as a re-derivable
-// probe in gunbc.plans.gunb_ai_projection, not as figures transcribed here — a number in a comment
+// probe in gunbc.plans.gunb_ai_projection (deleted 2026-11-08), not as figures transcribed here — a number in a comment
 // rots, a command re-runs.
 
 // ── Punctuation shared across regions ───────────────────────────────────────────────────────
@@ -187,7 +187,7 @@ data glyph_middle_dot: String = "·"
 // of the CONTENT — a colon list leaking into a <meta description> is the classic "search snippet
 // shows the internals" defect — and any second renderer of this content should be able to ask the
 // same question of the same rows. (It used to claim "the page writer consumes" it, which was not
-// true until the writer existed; §3c does not accept a hoped-for consumer.)
+// true until the writer existed; gunbc.design_argument::consumption does not accept a hoped-for consumer.)
 fn meta_description_coherent() -> Bool {
   string_contains(s: meta_description_text(), pattern: hero_statement)
     && string_contains(s: meta_description_text(), pattern: hero_paragraph_three)

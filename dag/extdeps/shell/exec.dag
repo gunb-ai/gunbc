@@ -17,7 +17,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 // THE TRANSPORT-SCRIPT CONSTRUCTION WALL. TransportScript was `= String where brand(...)` — a
 // TRANSPARENT brand, so every module could produce one, by cast or by simply passing a String into the
-// `script:` position, and the class was guarded by a lens rather than by construction (DESIGN 5:
+// `script:` position, and the class was guarded by a lens rather than by construction (gunbc.design_argument::fail_closed:
 // construction over validation). It is now a sole_constructor RECORD: only this file may build one, and
 // `transport_script_seal` below is the single admitted route in, caller-sealed to the production
 // bridges by name. A String has no route to a shell invocation that does not pass through one of them.
@@ -33,7 +33,7 @@ type TransportScript sole_constructor {
 // The ONE mint. It takes a bare String — this is extdeps, which owns the transport's interface shape
 // and must not know the product's policy carriers — and gates WHO may call it, so the policy that a
 // script body carries a reason and a dissolve-on target stays in the product layer where it belongs
-// (DESIGN 3: interface shape here, business policy in the workflow layer).
+// (gunbc.design_argument::single_authority: interface shape here, business policy in the workflow layer).
 //
 // admit_callers is the whole wall's load: adding a caller is an edit to THIS list in the dependency's
 // own module, which is a conspicuous, counted review event rather than an import someone can write in
@@ -252,7 +252,7 @@ fn process_observation(exit_code: Int, stdout: String, stderr: String) -> Proces
 // THE OBSERVATION HALF OF THAT CONVERGENCE IS DONE: extdeps.tools.jq declared a byte-identical
 // JqProcessObservation and no longer does -- it consumes this type, so the raw triple has one
 // name. The triple was the half with nothing tool-specific in it: exit_code, stdout and stderr
-// are what any process returns, so the fork was pure nicknaming (DESIGN section 3).
+// are what any process returns, so the fork was pure nicknaming (gunbc.design_argument::single_authority).
 //
 // CONVERGENCE STILL OWED, on the half that is NOT a copy of anything here. jq carries
 // JqOutcome / JqExitPolicy / jq_classify_observation, and its four-code contract reads exit 1 as

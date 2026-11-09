@@ -12,14 +12,14 @@ import gunbc.compile_diagnostic_census {
 import gunbc.compile_census_probe { ProbeCensusRows, census_rows_for }
 import std.optional { Absent, Present }
 
-// THE WALL IS REAL, PROVEN WHERE ITS RED IS AUTHORABLE (DESIGN §4b).
+// THE WALL IS REAL, PROVEN WHERE ITS RED IS AUTHORABLE (gunbc.design_argument::guarantee_ladder).
 // NO-FALLBACK-0's claim is that a plan cannot carry a spare available
 // transport. The accepted corpus can no longer express the violation —
 // PlanCandidateIneligible carries BootDeliveryCandidateIneligibility, which has
 // no eligible inhabitant — so asking for the refusal inside the corpus would be
 // asking for a check whose RED is unwritable, i.e. a decoration.
 //
-// §4b names the second boundary that decides it: a state unrepresentable in the
+// gunbc.design_argument::guarantee_ladder names the second boundary that decides it: a state unrepresentable in the
 // ACCEPTED corpus is still representable as SOURCE HANDED TO THE COMPILER BY A
 // FIXTURE. The RED places CandidateEligible in the plan's ineligible arm and
 // must be refused; the GREEN places a real ineligibility cause there and must
@@ -54,7 +54,7 @@ fn plan_ineligible_probe_source(cause: String) -> String {
 // THE ROWS ACCESSOR IS NOT REDECLARED HERE -- it is imported from its one home,
 // gunbc.compile_census_probe. This file used to carry its own `type ProbeCensusRows` and a
 // `plan_ineligible_probe_rows` that matched the census coproduct by hand; that was the second local
-// implementation of one rule (§6b), which a third copy exposed. The
+// implementation of one rule (gunbc.design_argument::earliest_unjustified_boundary), which a third copy exposed. The
 // semantics the deleted comment carried are preserved in the home: `Absent` is the `CensusNotRunnable`
 // arm, a census that could not run is not a green, and the optional keeps that fact visible instead
 // of answering 0.
@@ -143,7 +143,7 @@ test fn a_real_ineligibility_cause_is_still_admitted_in_that_arm() -> Bool {
 // token; this makes the two CENSUSES differ by one row — a population identity,
 // not a cardinality. Whatever the shared closure contributes cancels key by key,
 // so the wall is measured against the other arm rather than against a literal
-// copied out of today's tree (DESIGN §5: a measurement of the current tree is not
+// copied out of today's tree (gunbc.design_argument::fail_closed: a measurement of the current tree is not
 // an oracle). It goes red if the RED picks up a second refusal, if the GREEN
 // loses or gains one, if an advisory appears on one side only, and — unlike the
 // net-count form this replaces — if any ambient class or subject is substituted

@@ -50,7 +50,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // and the omission had to be recorded somewhere else. It was: a parallel `glm_canary_memory_request`
 // carrier said "both omitted" while THIS field, the one the argv is rendered from, still had to name a
 // fraction. Two carriers describing one launch's memory, with nothing making them agree, is the fork
-// DESIGN section 3 forbids -- and the receipt printed the second while the engine ran the first.
+// gunbc.design_argument::single_authority forbids -- and the receipt printed the second while the engine ran the first.
 //
 // THE INTEGRAL PERCENT WAS THE SECOND DEFECT. The engine's own guidance on this fleet names 0.9112 and
 // 0.9288; a Percent cannot carry either, so the type could not express the values upstream prints even
@@ -75,7 +75,7 @@ type VllmPrefixCachingRequest
 // THE RENDERING LIVES WITH THE ARGUMENT AND NOT AT EACH LAUNCH SITE. Two serving routes build vLLM
 // command lines in this repository, and before this they spelled these flags independently -- the
 // pair route emitted a hardcoded `--enable-prefix-caching` string, and the canary emitted nothing.
-// Two spellings of one upstream flag is the nicknaming DESIGN section 3 forbids at the wire layer,
+// Two spellings of one upstream flag is the nicknaming gunbc.design_argument::single_authority forbids at the wire layer,
 // and it is also how the pair route came to render a flag its request did not carry.
 //
 // AN OMITTED FIELD RENDERS NOTHING, which is what makes omission expressible end to end: the argv,
@@ -170,8 +170,8 @@ fn vllm_prefix_caching_argv(r: VllmPrefixCachingRequest) -> List<String> {
 // at github.com/vllm-project/vllm revision 1967a5627bc3710b680bbec24ecb99aaddedf22b, the pinned
 // vllm_source_revision_1967a5627; a store_true flag, default False). Omitted is a real state: the
 // field is then absent from responses, which the consumer reads as unread, never as zero.
-// DECLARED FRONTIER (DESIGN.md 3c): consumer = the shadow-Y replica launch profile under
-// gunbc.serving.*; trigger = that PR (docs/plans/serving-hardware-neutral-cutover.md). The Spark
+// DECLARED FRONTIER (gunbc.design_argument::consumption): consumer = the shadow-Y replica launch profile under
+// gunbc.serving.*; trigger = that PR (docs/plans/serving-hardware-neutral-cutover.md (deleted 2026-11-08)). The Spark
 // ServingLaunchProfile (gunbc.spark.serving_arm) is frozen X and takes no new field.
 type VllmPromptTokensDetailsRequest
   = PromptTokensDetailsOmitted
@@ -497,7 +497,7 @@ data vllm_negative_dcp_with_sliding_window: VllmVerifiedNegative = VllmVerifiedN
 // WHY IT IS NOT REPLACED WITH A CORRECTED ROW HERE. Whether to set the flag, and to what, is a
 // PRODUCT decision that trades interactive latency against prefill throughput against KV capacity.
 // extdeps owns the argument's SHAPE; the policy belongs to the consumer, and modelling it here was
-// the layer inversion DESIGN section 3 names. The measured trade and the standing decision live at
+// the layer inversion gunbc.design_argument::single_authority names. The measured trade and the standing decision live at
 // retired gunbc.spark.prefill_batch_sweep (deleted #13779), and the upstream resolution that currently supplies the value in
 // the flag's absence lives at extdeps.vllm.batch_defaults.
 //

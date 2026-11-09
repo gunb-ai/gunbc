@@ -95,7 +95,7 @@ test fn an_unreadable_events_path_refuses_and_is_not_projected_to_empty() -> Boo
   refused && !announced(w: announce) && removed.success
 }
 
-// THE REAL ROUTE (DESIGN 3 pairing obligation): harness_run_turn itself, against a backend that
+// THE REAL ROUTE (gunbc.design_argument::witness_one_interface pairing obligation): harness_run_turn itself, against a backend that
 // refuses the connection (127.0.0.1:1; no stub backend exists in the corpus, so the turn ends in a
 // typed provider failure after turn.started is written). Two waits are announced first, as the cli
 // loop does; the run must leave wait 1, wait 2, turn.started in that order. Deleting the

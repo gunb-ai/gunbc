@@ -54,7 +54,7 @@ fn pass_of(label: NonEmptyStr, outcomes: List<SmproProbeOutcome>) -> List<SmproP
   }
 }
 
-// SUPPLIED FIXTURES (DESIGN section 3, a witness discriminates at one interface). The account's inputs
+// SUPPLIED FIXTURES (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface). The account's inputs
 // are constructed here: console readings by running the real readers over EXACT BYTES of real
 // captures, and the opaque checkpoint relation supplied as a value -- its production from a reference
 // capture is held by power_on_console_readers_witness_test, and the whole bundle route by

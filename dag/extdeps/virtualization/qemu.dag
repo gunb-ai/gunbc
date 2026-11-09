@@ -9,7 +9,7 @@ import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 import extdeps.os.ubuntu_ports_archive { UbuntuArchiveBinaryPackage }
 
 // QEMU IS AN INDEPENDENTLY VERSIONED UPSTREAM (qemu.org), so it owns its own extdeps module beside
-// extdeps.virtualization.firecracker rather than sharing a generic "vmm" hub (DESIGN 3, external
+// extdeps.virtualization.firecracker rather than sharing a generic "vmm" hub (gunbc.design_argument::single_authority, external
 // upstream decomposition). The names kept are QEMU's own: the system emulator binary for the arm64
 // guest is `qemu-system-aarch64`, and its version banner is "QEMU emulator version <x.y.z>".
 //

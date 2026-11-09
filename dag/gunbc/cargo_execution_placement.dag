@@ -53,7 +53,7 @@ type CargoPlacementDecision
 // THE TWO REMOTE REFUSALS ARE DIFFERENT STATES AND CARRY DIFFERENT CAUSES. The first
 // revision of this function answered both with RemoteBuilderCannotServeLocalWorkspace,
 // including the arm where the subject is explicitly RELOCATABLE — a label that flatly
-// contradicts its own arm, and the §3 state-space conflation this file's header warns
+// contradicts its own arm, and the gunbc.design_argument::single_authority state-space conflation this file's header warns
 // about, reproduced inside the function meant to remove it (caught in review 51730).
 //
 // A relocatable subject is refused for an entirely different reason: nothing in this

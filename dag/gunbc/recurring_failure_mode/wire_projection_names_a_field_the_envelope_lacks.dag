@@ -21,7 +21,7 @@ data wire_projection_names_a_field_the_envelope_lacks: RecurringFailureMode = Re
 
     "SCOPE IS THE PROJECTION MECHANISM, NOT THIS OPERATION AND NOT THIS VENDOR. Any `from` path in any declared operation, against any transport, has this property. The population is every projection in the corpus, and the reason none of them is currently checked is that a projection path is validated against nothing -- there is no declared envelope shape for it to be validated AGAINST.",
 
-    "RUNG: found BELOW the ladder -- silent wrongness, which DESIGN section 5 puts outside it entirely rather than at rung 1.",
+    "RUNG: found BELOW the ladder -- silent wrongness, which gunbc.design_argument::fail_closed puts outside it entirely rather than at rung 1.",
 
     "CEILING 4, structurally impossible, and the reason it is the top rung is that the subject is fully decidable and entirely ours. A response type is already declared for each status (`200 => AccountPermissionGroupsListResponse`), so the set of fields an envelope carries is a fact the compiler holds at declaration time. A projection naming a path outside that shape is a decidable mismatch between two things both present in the source.",
 

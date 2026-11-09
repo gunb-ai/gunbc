@@ -22,7 +22,7 @@ import gunbc.fabric.fabric_event_log {
 // An operator who wants to know what a live partition holds -- what the seat pool of a serving group
 // has recorded -- had no modeled way to ask, so the first live receipt for the fabric DB cutover was
 // a hand-built curl. A hand-built request is not an instrument: nothing re-derives it, and the
-// reply it renders is whatever the person typed (DESIGN section 6, name the instrument).
+// reply it renders is whatever the person typed (gunbc.design_argument::how_to_work, name the instrument).
 //
 // THIS READS THE PRODUCTION FOLD, not a re-implementation of it: event_log_read_partition is the
 // same function the harness's seat transaction reads through, so a refusal here is the refusal a
@@ -49,7 +49,7 @@ fn head_word(head: HeadExpectation) -> String {
 // serialization, so a reader sees exactly the bytes the store holds rather than a rendering minted
 // here. Rendered by map-then-join rather than a fold over a copied accumulator: a readout is bounded
 // at event_log_read_budget() events, and an accumulator re-copied per event is quadratic in bytes at
-// that bound (DESIGN section 6 -- a copied accumulator is fixed regardless of the realized n).
+// that bound (gunbc.design_argument::how_to_work -- a copied accumulator is fixed regardless of the realized n).
 fn readout_lines(readout: PartitionReadout) -> String {
   join(map(readout.events, env => join([env.id as String, " ", pool_event_wire_text(event: env.event), "\n"], "")), "")
 }

@@ -237,7 +237,7 @@ fn first_arm(arms: List<WireSumArm>, tag: String) -> WireSumArm? {
 }
 
 // The consumers this fold does not yet have, each a typed row with the capability that retires it
-// (DESIGN 3c: a declared frontier with its trigger, not prose). Today read_shape is read by its
+// (gunbc.design_argument::consumption: a declared frontier with its trigger, not prose). Today read_shape is read by its
 // differential witnesses only.
 data wire_strict_reader_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(

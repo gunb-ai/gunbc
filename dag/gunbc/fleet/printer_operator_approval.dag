@@ -27,7 +27,7 @@ import gunbc.auth.approval_gate {
 // that grant to gunbc.fleet.printer_actuation start_authorized, which owns every physical effect.
 // The human approves the printer state read before filing; start_authorized re-reads it and
 // refuses if it moved.
-fn approve_and_print(hold_store: PrinterExecutionHoldStore, claims: PrinterStartClaims, evidence: StartEvidenceStore, printer: String, path: String, digest: String, version: String, attempt: String, token_source: AccessTokenSource, ams_tray: BambuAmsTray) -> ProcessExit {
+fn approve_and_print(hold_store: PrinterExecutionHoldStore, claims: PrinterStartClaims, evidence: StartEvidenceStore, printer: String, path: String, digest: String, version: String, attempt: String, credential_source: PrinterCredentialSource, ams_tray: BambuAmsTray) -> ProcessExit {
   let host=os.Hostname.ReadShort()
   if !host.success || trim(s:host.value)!=(printer_lan_host_identity() as String) {
     return exit_failure(reason:"Print starts must run on the modeled printer LAN host so approvals share one durable claim store")
@@ -37,7 +37,7 @@ fn approve_and_print(hold_store: PrinterExecutionHoldStore, claims: PrinterStart
   }
   if !printer_mqtt_tool_ready() { return exit_failure(reason: "MQTT tool is not ready; nothing requested or sent") }
   let p = match select_printer(name: printer) { PrinterSelected { printer: x } => x PrinterSelectionRefused => return exit_failure(reason: "Unknown printer") }
-  let session = match read_existing_printer_session(printer:p,version:version as NonEmptyStr,token_source:token_source) {
+  let session = match read_existing_printer_session(printer:p,version:version as NonEmptyStr,credential_source:credential_source) {
     PrinterSessionRefused {cause:c}=>return exit_failure(reason:c as String)
     PrinterSessionReady {session:s}=>s
   }
@@ -48,7 +48,7 @@ fn approve_and_print(hold_store: PrinterExecutionHoldStore, claims: PrinterStart
   }
   if !report_allows_start(text:report) { return exit_failure(reason:"Printer is not ready; no approval requested") }
   let state = match printer_state_generation(text:report) {Present {value:g}=>g Absent=>return exit_failure(reason:"Printer state cannot be identified; no approval requested")}
-  match print_request(printer: p, digest: digest, version: version, attempt: attempt, printer_state: state) {
+  match print_request(printer: p, digest: digest, version: version, attempt: attempt, printer_state: state, ams_slot: ams_tray.index + 1) {
     Absent => exit_failure(reason: "Cannot identify print request")
     Present { value: request } => match approval_instant_now() {
       Absent => exit_failure(reason: "Cannot read clock")
@@ -63,7 +63,7 @@ fn approve_and_print(hold_store: PrinterExecutionHoldStore, claims: PrinterStart
             PollObservedAt { standing: s, observed_at: at } => match approval_gate_from_poll(poll: s, request: request, observed_at: at) {
               GateRefused { cause: c } => exit_failure(reason: approval_refusal_text(cause: c))
               GateAdmitted { authorization: authorization } =>
-                with_execution_hold(store:hold_store,escalation_id:request.escalation_id,use:h=>start_authorized(hold:h,claims:claims,evidence:evidence,printer:p,path:path,digest:digest,version:version as NonEmptyStr,token_source:token_source,session:session,authorization:authorization,request:request,ams_tray:ams_tray))
+                with_execution_hold(store:hold_store,escalation_id:request.escalation_id,use:h=>start_authorized(hold:h,claims:claims,evidence:evidence,printer:p,path:path,digest:digest,version:version as NonEmptyStr,credential_source:credential_source,session:session,authorization:authorization,request:request,ams_tray:ams_tray))
             }
           }
         }

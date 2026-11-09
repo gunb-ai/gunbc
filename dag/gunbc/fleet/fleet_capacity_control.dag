@@ -141,7 +141,7 @@ fn provider_is_withdrawn(provider: ProviderKind) -> Bool {
 // RUNTIME, and those have opposite remedies: one is fixed by restoring a machine, the other by
 // restoring a provider everywhere. Collapsing them would also make a fully-withdrawn host's
 // inventory indistinguishable from a host with nothing installed -- the empty-observation narrow
-// DESIGN section 5 names, where could-not-offer is rendered as the verdict nothing-is-available.
+// gunbc.design_argument::fail_closed names, where could-not-offer is rendered as the verdict nothing-is-available.
 type CapacityAdmission
   = CapacityAdmitted
   | CapacityRefusedHostWithdrawn { host: HostIdentity, cause: CapacityWithdrawalCause }
@@ -262,7 +262,7 @@ type CapacityControlRequest
 //
 // An earlier revision of this type had a ControlApplied arm returning "host srv3 withdrawn
 // (maintenance)" for four of the five requests. That was fabricated plausible output in the sense
-// DESIGN section 5 forbids: the rosters are module-scope data rows, so a caller that applied a cut
+// gunbc.design_argument::fail_closed forbids: the rosters are module-scope data rows, so a caller that applied a cut
 // and then read host_is_withdrawn saw false immediately after being told the cut succeeded. The
 // sibling witness asserting the rosters stay empty made the two claims jointly inconsistent by
 // construction, and the witnesses could not catch it because they only compared strings between

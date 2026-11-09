@@ -30,9 +30,9 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 // Comment and document-type SPELLINGS of this language. They live here, not in whichever module emits a
-// comment, because they are facts about HTML (§4: "a new target language is rows in extdeps/languages/,
+// comment, because they are facts about HTML (gunbc.design_argument::closed_grounded_substrate: "a new target language is rows in extdeps/languages/,
 // never an edit to the fold"), and they are governed by an upstream with its own version, which is where
-// extdeps exists for (§3, external upstream decomposition).
+// extdeps exists for (gunbc.design_argument::external_upstreams, external upstream decomposition).
 //
 // One home, read rather than restated: std.languages' html_format and markdown_format now READ these rows
 // instead of typing their own "<!-- " / " -->", so the characters exist once. They stay String? there
@@ -353,7 +353,7 @@ fn html_medium_with(sp: MarkupBracket) -> MarkupMedium {
 // THERE IS NO UNGUARDED NAME ANY MORE. Both of these used to return String by calling the serializer
 // directly, which is how a comment could be written without its check (review 82279 on #14351): the check
 // lived in a walk these functions never called. The serializer now refuses, so these return the typed
-// result and every caller has to say what a refusal means where it stands -- §5's "no plausible output is
+// result and every caller has to say what a refusal means where it stands -- gunbc.design_argument::fail_closed's "no plausible output is
 // fabricated", answered at the call site that knows what it is serving.
 fn serialize_html_source_with(node: Fragment, sp: MarkupBracket) -> HtmlEmitResult {
   match serialize_fragment_with(frag: node, medium: html_medium_with(sp: sp)) {
@@ -394,7 +394,7 @@ type HtmlEmitResult
 // twice over. First, duplication: the JSX guarded route had NO counterpart, so a JSX comment holding
 // "*/" closed early and the remainder was parsed as TSX, and a Document inside a JSX expression emitted
 // "<!DOCTYPE html>" where no parser reads it — both returned JsxOk. A hazard written per language
-// guards the languages someone remembered to write it for (§6b: "a repeated pattern is rejected until
+// guards the languages someone remembered to write it for (gunbc.design_argument::earliest_unjustified_boundary: "a repeated pattern is rejected until
 // the author answers why it should not be generalized"). Second, the sentinel: `if hazard == ""` is a
 // string test standing in for a type test, so a check that ever returned "" passed.
 //
@@ -428,7 +428,7 @@ fn try_serialize_html_source(node: Fragment) -> HtmlEmitResult {
 
 // A WHOLE PAGE, doctype included. Before this, the two sites that serve a page concatenated
 // "<!DOCTYPE html>\n" onto the serialized string, so the doctype line sat OUTSIDE every guard and its
-// spelling was one more hand-typed copy of "<!DOCTYPE" (§6b). It now rides the model to the one function
+// spelling was one more hand-typed copy of "<!DOCTYPE" (gunbc.design_argument::earliest_unjustified_boundary). It now rides the model to the one function
 // allowed to write a document, and passes the same three guards as a fragment -- the URL pass over the
 // root, the doctype-name check, and the comment/raw-text walk. The URL pass does not look at the doctype
 // NAME: find_first_rejected_url flags attributes that carry URLs, and a doctype name is not one (a

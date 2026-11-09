@@ -19,7 +19,7 @@ import gunbc.rung_climb { ClimbableButUnbuilt }
 // the candidate. What does NOT exist is a mechanism that blocks a REGRESSION: the wet witnesses
 // perform host effects, so the hermetic floor refuses them at its boundary and counts them executed
 // while they assert nothing. Reporting this as MechanicallyPreventable would be the rung inflation
-// DESIGN 4b(1) names -- citing a wall that does not run.
+// gunbc.design_argument::guarantee_ladder (rung honesty) names -- citing a wall that does not run.
 //
 // THE POPULATION IS THE ADMITTED DESIRED-DEPLOYMENT ROSTER AT A FRESH ROOT, not one production
 // constructor. repository_converge_owner_wet takes a caller-supplied instance_id and

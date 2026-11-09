@@ -10,7 +10,7 @@ import gunbc.compile_diagnostic_census {
   census_total_count
 }
 
-// A SEALED COPRODUCT'S VARIANTS ARE CONSTRUCTED ONLY BY ITS DECLARING MODULE (DESIGN 4b; the seed dropped the
+// A SEALED COPRODUCT'S VARIANTS ARE CONSTRUCTED ONLY BY ITS DECLARING MODULE (gunbc.design_argument::guarantee_ladder; the seed dropped the
 // modifier because sole_constructor_construction_diags keyed on the constructed VARIANT's declaration, which
 // carries no property -- the property sits on the coproduct). The RED authors a variant from a foreign module
 // and demands exactly ONE SoleConstructorViolation keyed on that variant; the CONTROL matches every variant

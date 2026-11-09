@@ -246,7 +246,7 @@ type MtCollinsChannelPopulationRole {
 // The join REQUIRES that exactly one member of each pair appears in the 16-DIMM row, and it
 // establishes that requirement rather than assuming it. An earlier form of this function tested
 // only the left member and let the else-arm carry every other case, so a pair with NEITHER member
-// in the row, or with BOTH, still produced a plausible role - DESIGN section 5's absorbing
+// in the row, or with BOTH, still produced a plausible role - gunbc.design_argument::fail_closed's absorbing
 // fallback, where the failure arm widens instead of refusing. Both states are authorable: they
 // need only a drift in the pair rows or in the 16-DIMM row, and the general helper accepts any
 // pair a caller hands it. So the outcome is a coproduct and the two non-XOR cases refuse with the

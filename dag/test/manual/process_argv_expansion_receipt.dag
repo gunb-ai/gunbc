@@ -32,7 +32,7 @@ import extdeps.tools.jq { jq_argv_expansion_probe }
 // executed live against a real jq while the defect was isolated -- their receipts, with exact
 // commands and exit codes, are in the design note (open question 9-ter). They are not enrolled
 // because each ASSERTS THE OLD BEHAVIOR: case 2 pins the concatenating read as expected, and an
-// enrolled test asserting a defect is how that defect acquires immortality (DESIGN section 4b --
+// enrolled test asserting a defect is how that defect acquires immortality (gunbc.design_argument::guarantee_ladder --
 // evidence whose only subject is behavior the model rejects is retired with a receipt, not left
 // standing). What survives enrolled is the carrier's claim: case 4 is red unless jq receives
 // exactly two words.

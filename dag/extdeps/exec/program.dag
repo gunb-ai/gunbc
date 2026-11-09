@@ -21,7 +21,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // extdeps.tools so both can import it: the command layer names the program it invokes, and a
 // CliTool row CARRIES the same identity together with how to acquire it. Acquisition, placement
 // and convergence are installation policy and stay out of this module; the command layer must not
-// depend on them (DESIGN §3, interface vs policy).
+// depend on them (gunbc.design_argument::single_authority, interface vs policy).
 //
 // `invocation` is the word handed to execve as the program: a bare name resolved on PATH, or an
 // absolute path. Which of the two a program uses is today a fact of the row that mints it; a

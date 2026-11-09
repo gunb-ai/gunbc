@@ -229,7 +229,17 @@ data srv1_runner_host_spec: RunnerHostSpec = RunnerHostSpec {
 // reconstruct them or to fabricate a deploy to get at them.
 type RunnerHostDeployAdmission
   = RunnerHostDeployAdmitted { deploy: RunnerHostDeploy }
+  | RunnerHostDeployZeroWidthAdmitted { spec: RunnerHostSpec }
   | RunnerHostDeployWidthRefused { spec: RunnerHostSpec, host: HostIdentity, cause: String }
+
+// A GROUNDED ZERO IS ITS OWN ARM, CARRYING THE SPEC AND NO ROW. Width 0 is a derivation that completed
+// (an admission axis admitted no slot at the declared slot size), not a failure to derive, so it is
+// neither a refusal nor a deploy whose runner_count is 0 (the sentinel encoding the comment above
+// rules out). Its meaning: zero fabric/CI slots to deploy, every host-wide leg that does not
+// depend on a slot population still applies, and nothing here tears down units already running.
+fn runner_host_zero_width_slot_identities(spec: RunnerHostSpec) -> List<RunnerSlotIdentity> {
+  host_committed_identities_at(host: spec.host_label as HostIdentity, committed: 0)
+}
 
 // THE WIDTH IS RESOLVED BEFORE ANY ROW EXISTS, AND THE ROW IS BUILT ONLY IN THE ADMITTED ARM.
 //
@@ -238,7 +248,13 @@ type RunnerHostDeployAdmission
 // they are specs admitted by the same test srv2 fails. `runner_count` is written exactly once, from
 // the resolved width, and only where that width is positive.
 fn runner_host_deploy_of(host: HostIdentity, spec: RunnerHostSpec) -> RunnerHostDeployAdmission {
-  match gunbc_runner_committed_width(host: host) {
+  runner_host_deploy_from_width(host: host, spec: spec, resolved: gunbc_runner_committed_width(host: host))
+}
+
+// THE WIDTH IS A SUPPLIED VALUE AT THIS BOUNDARY, so a witness can establish what the admission does for a
+// derived 0, an unresolved cause or a positive width without re-running the memory derivation per claim.
+fn runner_host_deploy_from_width(host: HostIdentity, spec: RunnerHostSpec, resolved: RunnerWidthResolution) -> RunnerHostDeployAdmission {
+  match resolved {
     RunnerWidthUnresolved { cause: c } =>
       RunnerHostDeployWidthRefused {
         spec: spec,
@@ -249,32 +265,29 @@ fn runner_host_deploy_of(host: HostIdentity, spec: RunnerHostSpec) -> RunnerHost
       if width > 0 {
         runner_host_deploy_admitted_at_width(host: host, spec: spec, width: width)
       } else {
-        RunnerHostDeployWidthRefused {
-          spec: spec,
-          host: host,
-          cause: "this host's committed width DERIVES to zero: an admission axis admitted no slot at the declared slot size, which is a grounded zero rather than an unresolved derivation, and no operational deploy row is constructed for it",
-        }
+        RunnerHostDeployZeroWidthAdmitted { spec: spec }
       }
   }
 }
 
 fn runner_host_deploy_admitted_at_width(host: HostIdentity, spec: RunnerHostSpec, width: Int) -> RunnerHostDeployAdmission {
   RunnerHostDeployAdmitted {
-      deploy: RunnerHostDeploy {
-        host_label: spec.host_label,
-        ssh_target: spec.ssh_target,
-        runner_user: spec.runner_user,
-        unit_user: spec.unit_user,
-        job_user: spec.job_user,
-        app: spec.app,
-        runner_count: width,
-      },
+    deploy: RunnerHostDeploy {
+      host_label: spec.host_label,
+      ssh_target: spec.ssh_target,
+      runner_user: spec.runner_user,
+      unit_user: spec.unit_user,
+      job_user: spec.job_user,
+      app: spec.app,
+      runner_count: width,
+    },
   }
 }
 
 fn admitted_deploy_or_refusal(host: HostIdentity, spec: RunnerHostSpec) -> RunnerHostDeployResolution {
   match runner_host_deploy_of(host: host, spec: spec) {
     RunnerHostDeployAdmitted { deploy: d } => RunnerHostDeployFound { deploy: d }
+    RunnerHostDeployZeroWidthAdmitted { spec: sp } => RunnerHostDeployZeroWidth { spec: sp }
     RunnerHostDeployWidthRefused { spec: _, host: h, cause: c } => RunnerHostDeployRefused { host: h, cause: c }
   }
 }
@@ -312,6 +325,7 @@ data srv4_runner_host_spec: RunnerHostSpec = RunnerHostSpec {
 type RunnerHostDeployResolution
   = RunnerHostDeployFound { deploy: RunnerHostDeploy }
   | RunnerHostDeployUnmodeled { host: HostIdentity }
+  | RunnerHostDeployZeroWidth { spec: RunnerHostSpec }
   | RunnerHostDeployRefused { host: HostIdentity, cause: String }
 
 // AN UNMODELED HOST REFUSES RATHER THAN BORROWING A NEIGHBOUR'S ROW. This dispatch is the seam
@@ -326,7 +340,7 @@ type RunnerHostDeployResolution
 // unknown, not typical. An earlier revision of this sentence said that authority "answers zero
 // slots for an unknown host" -- which was true of the deleted Int API and is the exact conflation
 // this change removed, left standing as prose in the module that turns a width into a provisioning
-// target (DESIGN 4c: an annotation is never evidence that a machine claim holds, and a drifted one
+// target (gunbc.design_argument::source_annotations: an annotation is never evidence that a machine claim holds, and a drifted one
 // is a second account of a fact the declaration already carries).
 
 // AN IMAGE-BAKED HOST IS NEVER AN SSH-APPLIED DEPLOY, WHATEVER ROWS EXIST (operator decision B, 2026-10-27). Its runner
@@ -393,13 +407,13 @@ data runner_host_spec_rows: List<RunnerHostSpecRow> = [
 // WHICH HOSTS' JOB ACCOUNTS HOLD A USER SYSTEMD MANAGER (loginctl linger). gunbc.runner.runner_user_session
 // converges it: enable-linger for the host's job_user, then a readback that logind records Linger=yes AND the
 // manager answers over /run/user/<uid>/bus. srv4 only (operator decision relayed on gunbc#14972, 2026-10-25); a
-// host joins by joining this list. Declared frontier (DESIGN 3c), in order: once this converge's readback has held
+// host joins by joining this list. Declared frontier (gunbc.design_argument::consumption), in order: once this converge's readback has held
 // on a host from main, a capability runner label derived from this row (gunbc.runner.runner_registration_labels)
 // -- DONE: gunbc_user_session_label, added to the job composition only by the EVIDENCE ENTRY
 // (runner_evidence_gated_registration_labels, which takes a converge receipt parsed by
 // gunbc.runner.runner_user_session_receipt from the bytes a converge run wrote -- the roster here is the
 // converge's INPUT population, and the receipt is the EVIDENCE; hand-copied receipt rows were rejected as
-// DESIGN 6's transcribed output), and stripped from any caller-spelled or offer-spelled half; each leg
+// gunbc.design_argument::how_to_work's transcribed output), and stripped from any caller-spelled or offer-spelled half; each leg
 // observes the receipt at its own effect edge (gunbc.runner.runner_user_session_receipt_observed); then gunbc#14972's systemd credential
 // rows select on that label -- the CONSUMER of the label, the jobs that run a command under the job account's
 // user manager. gunbc.runner.runner_user_session runner_user_session_converge_ci_wet is the leg that
@@ -421,6 +435,7 @@ fn runner_host_spec_for(host: HostIdentity) -> RunnerHostSpecLookup {
 fn admitted_deploy_for(host: HostIdentity) -> RunnerHostDeploy? {
   match runner_host_deploy_for(host: host) {
     RunnerHostDeployFound { deploy: d } => Present { value: d }
+    RunnerHostDeployZeroWidth { spec: _ } => Absent
     RunnerHostDeployRefused { host: _, cause: _ } => Absent
     RunnerHostDeployUnmodeled { host: _ } => Absent
   }
@@ -429,6 +444,7 @@ fn admitted_deploy_for(host: HostIdentity) -> RunnerHostDeploy? {
 fn admitted_deploy_rows() -> List<RunnerHostDeploy> {
   fleet_runner_host_resolutions() |> flat_map(r => match r {
     RunnerHostDeployFound { deploy: d } => [d]
+    RunnerHostDeployZeroWidth { spec: _ } => []
     RunnerHostDeployRefused { host: _, cause: _ } => []
     RunnerHostDeployUnmodeled { host: _ } => []
   })
@@ -459,7 +475,7 @@ data fleet_runner_host_deploy_resolutions: List<RunnerHostDeployResolution> = fl
 // used to return extdeps.container.docker_ce docker_ce_repo_install_script — a POSIX program assembled by
 // joining string literals — which gunbc.runner.runner_gpu_container_toolchain staged to a file and ran with
 // `sh`. Review 86503 blocked on it: the same converge models the NVIDIA repository as typed actions, so a
-// hand-written shell sitting beside it is parallel authority, and §6 names that a scaffold tell. What
+// hand-written shell sitting beside it is parallel authority, and gunbc.design_argument::how_to_work names that a scaffold tell. What
 // replaces it is not a marker on the old path but the absence of one:
 //   - the repository (pinned row docker_ce_apt_repo_noble_arm64) is a FIELD OF THE PER-HOST ROW below, and
 //     provisioning stages it as typed argv legs beside the NVIDIA ones;
@@ -618,8 +634,8 @@ fn runner_host_gpu_container_toolchain_declared(host: HostIdentity) -> Bool {
 // gunbc.host.sccache_verified_install.`sccache_verified_install_script_dissolution_trigger`, and those two
 // rows -- not this paragraph -- are the record of what is owed. Deleting the old trigger together with its
 // declaration, as an earlier revision of this comment claimed, would have turned tracked debt into
-// untracked debt: DESIGN 4b allows a rung to be lowered only by declaring previous rung, temporary rung,
-// reason, bounded population and restoration trigger, and DESIGN 5 forbids hiding a deficit by installing a
+// untracked debt: gunbc.design_argument::guarantee_ladder allows a rung to be lowered only by declaring previous rung, temporary rung,
+// reason, bounded population and restoration trigger, and gunbc.design_argument::fail_closed forbids hiding a deficit by installing a
 // second path. WHAT RETIRES THE DEBT is this prereq binding
 // gunbc.host.verified_binary_install.verified_binary_install_admitted_plan through typed argv, WITHOUT THE
 // SHELL LEAF; when it does, `verified_binary_install_shell` and `sccache_verified_install_script` are
@@ -642,7 +658,7 @@ fn runner_host_sccache_provision_aarch64() -> String {
   )
 }
 
-// THE ENROLLMENT WALL, and it is CONSTRUCTION rather than a check (DESIGN §5). A host takes no
+// THE ENROLLMENT WALL, and it is CONSTRUCTION rather than a check (gunbc.design_argument::fail_closed). A host takes no
 // fleet work until it is a row in gunbc.fleet.fleet_intent.fleet_intent_known_hosts. This is the standing
 // rule the srv4 host-convergence OOM priced (gunbc.plans.fleet_subsumption_manual_gaps section C):
 // converge emitted against an unenrolled host derives NOTHING for it — or worse, stamps template

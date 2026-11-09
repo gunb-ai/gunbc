@@ -83,7 +83,7 @@ fn altra_declared_contact_count() -> Int {
 
 // THE PACKAGE BODY EXTENT, section 3 Mechanical Data, carried as a typed row rather than as the
 // sentence in the comment above it. It was prose here for two revisions, which is the exact shape
-// DESIGN §4c forbids for a machine-consumed fact: no accepted program can read a comment, so a
+// gunbc.design_argument::source_annotations forbids for a machine-consumed fact: no accepted program can read a comment, so a
 // placement asking how much board area the processor occupies had no answer to join against while
 // the number sat four lines away in English. THE UNIT IS EXACT, not rounded: 77.080 mm and 67.000
 // mm are whole micrometres, so the datasheet's three decimal places survive the carrier instead of
@@ -447,7 +447,7 @@ fn differential_pair_standing(contacts: List<PackageContact>) -> DifferentialPai
 
 // TWO LINEAR PASSES, NOT A QUADRATIC ONE. An earlier revision re-counted the whole designator
 // list once per element, which is 4926 x 4926 comparisons at the real package population — and
-// DESIGN §6's bare-minimum-cost rule is explicit that a proven quadratic fold is fixed whatever
+// gunbc.design_argument::how_to_work's bare-minimum-cost rule is explicit that a proven quadratic fold is fixed whatever
 // the realized n, because "n is small here" is not a time-stable fact and this list is sized by
 // a vendor's package, not by us.
 //
@@ -484,7 +484,7 @@ fn first_duplicate_designator(designators: List<NonEmptyStr>) -> NonEmptyStr? {
 // The admission is a COUNT-AND-IDENTITY JOIN against the declared package population, not a
 // presence check on a field. That distinction is the whole point: a stub map naming itself
 // "the Altra contact map" cannot pass, because 4926 unique designators is a quantity no
-// placeholder carries. HONESTY ABOUT THE RUNG THIS REACHES (DESIGN §4b rung honesty): the
+// placeholder carries. HONESTY ABOUT THE RUNG THIS REACHES (gunbc.design_argument::guarantee_ladder rung honesty): the
 // completeness and uniqueness halves are mechanically preventable — they refuse by execution
 // on the acceptance path. The PROVENANCE half is not: a caller who genuinely had 4926 unique
 // invented designators would admit, because nothing here can distinguish an authored list

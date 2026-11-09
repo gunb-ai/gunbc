@@ -8,7 +8,7 @@ import std.measure { Second, second, second_count }
 
 // ONE RETRY LAW. It decides only whether a retry is ADMISSIBLE and the earliest time it may run.
 // Which retry to take (now, later, or elsewhere) is a demand-policy selection; this module has
-// no preference among those (DESIGN §3d).
+// no preference among those (gunbc.design_argument::selection_precedes_convergence).
 //
 // Shape, taken from gunbc.serving.caller_backlog (the durable caller snapshot) and
 // gunbc.serving.caller_retry_contract:
@@ -24,7 +24,7 @@ import std.measure { Second, second, second_count }
 //
 // Due times are EpochSecs. Delays, caps, hints and jitter are std.measure Second — the length
 // already used by belt run bounds and event_backlog — not a second Nat beside the failure count
-// (DESIGN §2/§3). ObservationInstant stays the observation-record instant. v2.std.datetime Instant
+// (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority). ObservationInstant stays the observation-record instant. v2.std.datetime Instant
 // stays source/compiler wall-clock. std.types Seconds/Duration are not this law's length carrier.
 
 type RetryObservedClass
@@ -129,11 +129,11 @@ fn retry_terminal_in_history(history: List<RetryHistoryEvent>) -> RetryAdmissibi
 // jitter is sampled by the realization and SUPPLIED; the law never draws entropy.
 // hint is an upstream Retry-After (or none): a lower bound on the delay, never a cap.
 // An unreadable hint is RetryHintUnreadable — not RetryHintNone. Treating unknown as
-// absent would let backoff run earlier than the upstream named (DESIGN §5).
+// absent would let backoff run earlier than the upstream named (gunbc.design_argument::fail_closed).
 // earliest is last RealWorkFailure in history plus the delay. No last failure and
 // no delay hint is RetryAdmissibleNow — not epoch 0. A delay hint with no last
 // failure is RetryHintUnanchored: the lower bound cannot become an instant without
-// fabricating a clock, and "now" would ignore the bound (DESIGN §3, §5).
+// fabricating a clock, and "now" would ignore the bound (gunbc.design_argument::single_authority, gunbc.design_argument::fail_closed).
 fn retry_admissibility(
   law: RetryLaw,
   history: List<RetryHistoryEvent>,

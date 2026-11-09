@@ -30,7 +30,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // BOTH true and NotRun and Failed were BOTH false; the pairs asserted below are exactly those two
 // collapses, so each one goes red against the shape this retype replaced. That is the
 // discriminating RED this evidence is enrolled for, and it stays enrolled after the climb rather
-// than retiring with it (DESIGN 4b meta-obligation 4: a climb dissolves the redundant production
+// than retiring with it (gunbc.design_argument::guarantee_ladder meta-obligation 4: a climb dissolves the redundant production
 // machinery, never the evidence that the higher rung is still real).
 
 data clean_receipt: GateReceipt = GateObserved { outcome: GateClean }

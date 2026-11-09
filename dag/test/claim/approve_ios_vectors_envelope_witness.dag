@@ -8,7 +8,7 @@ module test.claim.approve_ios_vectors_envelope_witness
 // in the carrier to get wrong, so the second authority is gone rather than checked. What the first
 // review (review 38602) blocked was precisely the checked version: a lookup that returned the string it
 // was handed, an `Absent => ""` fabricated default, and a .contains("envelope(\"\")") grep over the
-// rendered text to notice a miss. DESIGN §5: "make it unwritable — correctness by construction, not
+// rendered text to notice a miss. gunbc.design_argument::fail_closed: "make it unwritable — correctness by construction, not
 // validation"; "a typecheck and a .contains() grep are not consumers"; a plausible output fabricated on
 // a failure path is a hard reject. All three are deleted, and with them the claims that could only be
 // true by being red at the head they are committed at.
@@ -16,7 +16,7 @@ module test.claim.approve_ios_vectors_envelope_witness
 // WHAT REMAINS, and the warrant for it. The construction retires the unknown-name state entirely:
 // passing a row means there is no string to misspell, so no claim asserts one any more. What the
 // construction cannot express from inside the carrier is that the carrier has stopped spelling names —
-// that is a property of the carrier's own text, so two lenses read it. DESIGN §5:413 warrants exactly
+// that is a property of the carrier's own text, so two lenses read it. gunbc.design_argument::fail_closed:413 warrants exactly
 // this: "construction first … keep lenses for the residue, where a pure reader over the same Node tree
 // costs no substrate edits. A lens nothing gates on is itself a lie" — each lens below is paired with the
 // emission it gates, and both were tested in the other direction: at the pre-rework head, where 15 names

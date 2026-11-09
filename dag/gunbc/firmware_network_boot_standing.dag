@@ -9,7 +9,7 @@ module gunbc.firmware_network_boot_standing
 // Nothing in the corpus could state, for one unit, that it is READY to network boot together
 // with the evidence that makes the claim good — nor, just as importantly, that it is NOT, with
 // the route a controller or a human must take to make it so. Cut 6 of
-// gunbc.plans.physical_machine_boot_program needs exactly one place that says either.
+// gunbc.plans.physical_machine_boot_program (deleted 2026-11-08) needs exactly one place that says either.
 //
 // WHY THE NAMES HERE ARE THE NAMES THE PROBE MUST EMIT. gunbc.firmware_network_boot_probe (S2)
 // emits these five axis types; it does not define them. A probe that owned its own vocabulary
@@ -72,7 +72,7 @@ import std.decl_ref { DeclarationRef, decl_ref }
 // strings and the seam GUESSED network-ness by substring over them: "IPv4" matches an iSCSI entry,
 // "HTTP" matches vendor diagnostics tooling, "Network" matches a disabled legacy option, and a
 // wrong guess here is a Ready that boots nothing -- the exact class of failure this seam exists to
-// prevent. DESIGN.md 4: in a closed system a heuristic is never necessary, the richer source
+// prevent. gunbc.design_argument::closed_grounded_substrate: in a closed system a heuristic is never necessary, the richer source
 // always exists or can be written. It already exists: the Redfish BootSourceOverrideTarget enum in
 // extdeps.bmc.types, which is what a BMC actually speaks. So the probe classifies each entry
 // against that schema and this seam consumes the KIND. The label is kept as data -- it is what a
@@ -91,7 +91,7 @@ import std.decl_ref { DeclarationRef, decl_ref }
 // is a network target" is not a question this module can ask of BootOrder alone -- it can only be
 // answered by JOINING the head's reference to the enumeration, and the join is where enabled-ness
 // and kind come from together. The false Ready is not caught by a new predicate; it
-// has no spelling (DESIGN 5: stronger than catching a wrong state is making it unwritable).
+// has no spelling (gunbc.design_argument::fail_closed: stronger than catching a wrong state is making it unwritable).
 type BootOrderEntry {
   // Redfish BootOptionReference (e.g. "0000" / "Boot0001"). The ONLY thing the two reads agree on,
   // and therefore the only thing a join may be keyed on: kind is not identity (a unit may hold two
@@ -227,7 +227,7 @@ fn firmware_boot_observation(
 // mechanisms, and beside it `RouteAuthority` was a union of five rows carrying `*Remedy` unions of
 // the SAME six mechanisms -- IpmiOneShotOverride against IpmiOneShotRemedy, HumanConsole against
 // ConsoleRemedy, arm for arm, differing only in name. `route_of` existed to translate between two
-// names for one thing, and `route_eq` to compare them, which is DESIGN 3's nicknaming with a
+// names for one thing, and `route_eq` to compare them, which is gunbc.design_argument::single_authority's nicknaming with a
 // translation layer on top. Worse, the flat union was the half that kept the old behaviour: it was
 // the type a caller could hold, hand to the attempt, and get checked at runtime.
 //
@@ -263,10 +263,10 @@ fn firmware_boot_observation(
 // IT IS NOW A UNION AND THE PRECONDITIONS ARE MEMBERS OF IT. `requires` is a LIST because a route
 // genuinely demands more than one thing (enable a stack: persistent, then reset, then re-read
 // BootOrder, and consent only when it removes a security control -- a single arm could not say
-// that). DESIGN 4c: an invariant belongs in a carrier, and a String whose only purpose was
+// that). gunbc.design_argument::source_annotations: an invariant belongs in a carrier, and a String whose only purpose was
 // commentary was misplaced data.
 //
-// WHAT THIS ACTUALLY GUARANTEES, STATED AT ITS REAL RUNG (DESIGN 4b meta-obligation
+// WHAT THIS ACTUALLY GUARANTEES, STATED AT ITS REAL RUNG (gunbc.design_argument::guarantee_ladder meta-obligation
 // 1: the reported rung must equal the rung the evidence establishes -- an inflated class never ranks
 // for climbing). This is RUNG 2, mechanically preventable, NOT a type guarantee. Precisely:
 //   * The catalog stores ROUTES ONLY. It has no blocker field, because `blocker_of` derives the
@@ -295,7 +295,7 @@ type ProcedureRequires
   | RequiresExistingBootOption
 
 // The prose a human reads when they are handed a route, derived from the typed procedure rather
-// than stored beside it. A second home for the same fact is DESIGN 3's nicknaming, and here it is
+// than stored beside it. A second home for the same fact is gunbc.design_argument::single_authority's nicknaming, and here it is
 // worse than duplication: prose and carriers disagree silently, and prose is what an operator
 // trusts. So nothing stores an obligation sentence -- `route_prose` renders the arms, and the only
 // sentence a route carries is one this function cannot produce for an arm nobody wrote (no default).
@@ -400,7 +400,7 @@ fn route_prose(route: FirmwareNetworkBootPreparationRoute) -> NonEmptyStr {
 //
 // WHY A UNION AND NOT A STRING SOMEONE REMEMBERS TO FILL: the failure this prevents is a PLAUSIBLE
 // route -- right mechanism, right blocker, a name no firmware implements -- reaching an executor that
-// PATCHes it. Making the two states different values removes the code path (DESIGN 5: stronger than
+// PATCHes it. Making the two states different values removes the code path (gunbc.design_argument::fail_closed: stronger than
 // catching a wrong state is making it unwritable), so this is rung 1 rather than a checked rung 2.
 type FirmwareMechanismName
   // THE NAME, WITH THE READ THAT ESTABLISHES IT TRAVELLING ALONGSIDE. The grounding is not a
@@ -473,12 +473,12 @@ type RouteBindingStanding
   // nothing here reads a model, a vendor, or a board id -- so this arm never claims to have rejected a
   // name for coming from another family. It records a spelling mismatch, with both spellings as typed
   // fields, because the comparison a machine must make is between the fields, and prose that disagrees
-  // with its own payload is worse than no prose (DESIGN 5).
+  // with its own payload is worse than no prose (gunbc.design_argument::fail_closed).
   // THE TWO REFUSALS, GROUPED BEHIND ONE ARM. The grouping is not tidiness: what a not-executable row
   // carries is a REFUSAL, and naming that separately makes 'this row cannot be driven, and here is a
   // drivable route' unrepresentable rather than merely unused. The compiler proved the earlier shape
   // wrong -- a match over the two refusals was forced to carry a `RouteBound` arm that no code path
-  // could ever produce, and an unreachable arm is a second thing to keep true for no benefit (§5).
+  // could ever produce, and an unreachable arm is a second thing to keep true for no benefit (gunbc.design_argument::fail_closed).
   | BindingRefused { refusal: RouteBindingRefusal }
 
 // WHAT THE BINDER MAY SAY WHEN IT WILL NOT BIND: the only thing a not-executable row carries. Two
@@ -523,7 +523,7 @@ type RedirectTargetStanding
   | RedirectTargetAbsent { why: NonEmptyStr }
 
 // WHICH ROUTES OF THE FLEET CATALOG A PARTICULAR UNIT CAN ACTUALLY DRIVE RIGHT NOW. A fold rather
-// than a Bool filter (DESIGN 4): the answer is not 'is this route usable' but which of the three
+// than a Bool filter (gunbc.design_argument::closed_grounded_substrate): the answer is not 'is this route usable' but which of the three
 // answers above it got, with the fields that make it checkable. A caller that wants only the usable
 // ones matches the first arm; a caller that reports why a unit is stuck reads the other two.
 type RouteReadinessStanding
@@ -648,7 +648,7 @@ fn authority_of(route: FirmwareNetworkBootPreparationRoute) -> CitedFigureStandi
 // worse than dead: the precondition that made one pairing impossible was written only in that
 // prose, so no check could notice the pairing. What the prose was trying to say is now
 // `ProcedureRequires` (typed, per arm, and consumed by `route_prose` for the human-facing text);
-// re-deriving it by hand is what DESIGN 3 forbids.
+// re-deriving it by hand is what gunbc.design_argument::single_authority forbids.
 data firmware_network_boot_standing_authority: CitedFigureStanding = CitedToAuthority {
   authority: ExternalAuthority { uri: uri_https(locator: "redfish.dmtf.org/schemas/v1/ComputerSystem.v1_0_0.json#Boot") },
 }
@@ -883,7 +883,7 @@ fn bind_route_from(
     // The fix is NOT to add an `if` to each row. The prerequisite is read out of `route_requires`,
     // which makes the list load-bearing rather than descriptive: a row can no longer claim
     // `RequiresExistingBootOption` while the binder ignores it, because the binder asks the list. That
-    // is the §5 move -- the constraint lives in one place and the code cannot restate it wrongly.
+    // is the gunbc.design_argument::fail_closed move -- the constraint lives in one place and the code cannot restate it wrongly.
     RedfishOneShotOverride { service_root: _, authority: _ } =>
       bind_consuming_existing_option(route: route, existence: existence)
     IpmiOneShotOverride { channel: _, authority: _ } =>
@@ -1325,7 +1325,7 @@ fn procedure_demands_existing_option(route: FirmwareNetworkBootPreparationRoute)
 // ClientNetworkBootMode.UefiHttpBoot wearing new names, and having an axis of my own beside the
 // upstream one is what let a Ready state the pair (DhcpProxy, UefiHttpBoot) -- a URL handed over a
 // proxy offer that cannot carry one -- and what forced the seam to invent a TFTP root to fill the
-// derived half. DESIGN.md 5: correctness by construction, not validation. So the second axis is
+// derived half. gunbc.design_argument::fail_closed: correctness by construction, not validation. So the second axis is
 // gone: what the unit is booting IS ClientNetworkBootMode, stated once, by its upstream type, and
 // supplied by the caller that actually knows the edge. The DHCP direction is a wire fact the site
 // edge receipts (S7) observe; it is not the unit's standing.
@@ -1376,7 +1376,7 @@ fn ready_evidence(
 
 // THE VERDICT IS NOT AUTHORABLE -- AND THE WALL THAT DOES THAT IS MEASURED, NOT ASSUMED
 //. Three mechanisms are in play here and they are NOT equally strong, so
-// each is stated at the rung an executed probe established (DESIGN 4b: an inflated rung is worse than
+// each is stated at the rung an executed probe established (gunbc.design_argument::guarantee_ladder: an inflated rung is worse than
 // sitting low):
 //
 //  (1) ENFORCED -- CALL ADMISSION. Every function that returns a verdict is `admit_callers`-walled to
@@ -1487,7 +1487,7 @@ type FirmwareNetworkBootStanding
   // `gaps` is not decoration: the earlier shape short-circuited at the FIRST
   // unanswered axis, so a unit missing both its boot order and its Secure Boot answer was
   // reported as missing only one, and an early refusal hid every later unknown. That is a lossy
-  // report, and DESIGN.md 5 asks for every degradation typed, located and countable. A single
+  // report, and gunbc.design_argument::fail_closed asks for every degradation typed, located and countable. A single
   // `cause` stays because an executor acts on one thing at a time; `gaps` says everything else the
   // fleet still does not know about this unit, so the operator learns it all in one visit instead
   // of one per attempt.
@@ -1522,7 +1522,7 @@ type FirmwareNetworkBootStanding
 // NEITHER CARRIES AN OPTION COUNT. 'Four options, none of them network' and 'the unit lists nothing
 // at all' are worth distinguishing in a report, but the observation already carries both lists, so
 // a report can count them there; a number in the blocker would be a second home for a fact the probe
-// owns, and no decision in the seam reads it (DESIGN 3: net concepts must not grow by re-invention).
+// owns, and no decision in the seam reads it (gunbc.design_argument::single_authority: net concepts must not grow by re-invention).
 type PreparationBlockingOn
   = NetworkBootOptionAbsent
   | NetworkBootOptionNotSelected
@@ -1559,7 +1559,7 @@ type FirmwareNetworkBootRefusal
   // THE UNIT HAS NO NETWORK INTERFACE AT ALL. This used to be `NoSuchUnit`, which sent
   // an operator or an actuator to inventory for a unit that is present, answered every axis, and told
   // us it has no NIC -- a hardware fact whose remedy is the firmware setting that enables the port.
-  // DESIGN 3: one name, two materially different meanings, and the material difference here is the
+  // gunbc.design_argument::single_authority: one name, two materially different meanings, and the material difference here is the
   // REMEDY, which is exactly what a refusal cause exists to route.
   | NoNetworkInterfacePresent { why: NonEmptyStr }
   // A blocker the catalog owns no remedy for. Reachable only by an edit to this module's table --
@@ -1593,7 +1593,7 @@ type FirmwareNetworkBootRefusal
   // list order: `option_with_reference` takes the first match, so the same physical unit answers
   // Ready with one enumeration and Ready-with-a-different-boot-device with the other, and neither
   // answer is better evidenced. There is no defensible tie-break here. Taking the network one is a
-  // heuristic that prefers the outcome the fleet wants (DESIGN 4: a heuristic is never necessary,
+  // heuristic that prefers the outcome the fleet wants (gunbc.design_argument::closed_grounded_substrate: a heuristic is never necessary,
   // and here it would not even be true); taking the first is what shipped and is arbitrary; taking
   // the last is the same arbitrariness with a different sign. So the unit is refused, with both
   // readings named, and the operator asks the BMC to enumerate honestly. This is the only arm in
@@ -1616,7 +1616,7 @@ type FirmwareNetworkBootRefusal
   // identifies a mismatch, not a board. No model, vendor or board id is read on this path, and two
   // different boards can report the same version string, so this arm never claims to have recognised
   // another unit's name. The versions travel as typed fields so the comparison a machine must make is
-  // between fields, and no prose has to be kept in sync with them (DESIGN 5).
+  // between fields, and no prose has to be kept in sync with them (gunbc.design_argument::fail_closed).
   | RouteBindingStaleForUnit {
       mechanism: NonEmptyStr,
       grounded_for_bios_version: NonEmptyStr,
@@ -1925,7 +1925,7 @@ fn bios_gap(bios_version: BiosVersionObservation) -> List<UnansweredAxis> {
 // only function that reads an axis and says whether it refused, and filter_map-style selection over
 // its Optional is the same question asked a second time. The earlier shape ran gap_is_refusal to
 // pick a gap and then refusal_of_gap to extract from the gap it had just picked -- two readings of
-// one fact, which is DESIGN 3's rule restated.
+// one fact, which is gunbc.design_argument::single_authority's rule restated.
 fn first_refusal(gaps: List<UnansweredAxis>) -> Optional<FirmwareReadRefusal> {
   refusals_in_order(gaps: gaps) |> first
 }
@@ -2201,7 +2201,7 @@ fn decide_from_joins(
     // reads disagree -- real firmware does this (a hidden or vendor-removed option stays listed in
     // BootOrder). Neither read may be silently trusted over the other: the alternative is a
     // persistent BIOS write justified by guessing which read is stale, which is exactly the uncaused
-    // plausible action a refusal exists to prevent (DESIGN 5). The remedy is a re-read of BootOptions,
+    // plausible action a refusal exists to prevent (gunbc.design_argument::fail_closed). The remedy is a re-read of BootOptions,
     // which is why the reference and the count both travel with the cause.
     HeadOptionNotEnumerated { order_head_reference: _, enumerated_count: _ } =>
       Refused {
@@ -2209,7 +2209,7 @@ fn decide_from_joins(
         // fold already knows the reference and the count and puts them on the arm; repeating them
         // here would create a second copy that can drift from the fields a machine reads, and a
         // diagnostic whose prose disagrees with its own typed payload is worse than one with no prose
-        // (DESIGN 5: no plausible output is fabricated). The sentence names the situation and the
+        // (gunbc.design_argument::fail_closed: no plausible output is fabricated). The sentence names the situation and the
         // remedy; the arm carries the evidence.
         cause: BootOrderHeadReferenceNotEnumerated {
           why: "the BootOrder head references a BootOptionReference the BootOptions enumeration does not contain, while the enumeration was non-empty; the two reads disagree and neither may be trusted over the other without a re-read of BootOptions",
@@ -2447,7 +2447,7 @@ fn ready_or_refuse_on_nics(
     // is the kind the ENUMERATION says the boot-order head is -- not a target this fold selected from
     // a filtered list, which is what made the old verdict wrong for [Hdd, Pxe].
     // The label is never consulted: it is kept for a human reading a console, and a guess against
-    // 'Network'/'HTTP'/'NIC1' is how a Ready boots nothing (DESIGN 4: a heuristic is never
+    // 'Network'/'HTTP'/'NIC1' is how a Ready boots nothing (gunbc.design_argument::closed_grounded_substrate: a heuristic is never
     // necessary when the typed source exists).
     OneNicCandidate { nic: nic } =>
       // NO gaps FIELD, AND NOT AN OMITTED ONE -- Ready has no such arm field (only Refused does). This is the one place in the module that may mint a Ready, and it is
@@ -2484,7 +2484,7 @@ fn ready_or_refuse_on_nics(
 // rather than a Bool, because the arm IS the finding', and its own comment adds that 'a Bool cannot
 // be quoted at an operator when a unit boots the wrong thing'. This module was that union's first
 // consumer and the first thing it did was discard the arms: filter(... => true/false) |> length > 0.
-// That is a meaning fork (DESIGN 3) -- the classification stays in the tree as decoration while the
+// That is a meaning fork (gunbc.design_argument::single_authority) -- the classification stays in the tree as decoration while the
 // decision runs on a bit -- and the concrete loss was specific: which network target a Ready unit
 // will actually boot (PXE, or UEFI-HTTP) was thrown away on the way to a verdict whose entire job is
 // to say what the unit can deliver.
@@ -2505,7 +2505,7 @@ fn ready_or_refuse_on_nics(
 // `|> first`, and that ladder is what made three refusals necessary: a fold that COUNTS a list and
 // then takes its HEAD can represent states it should never be able to reach -- 'counted one, listed
 // none' -- and each unreachable state needs an arm, a cause, and a witness. Matching the shape once
-// deletes the states instead of handling them: DESIGN 5, 'stronger than catching a wrong state is
+// deletes the states instead of handling them: gunbc.design_argument::fail_closed, 'stronger than catching a wrong state is
 // making it unwritable'.
 //
 // `NetworkEntryStanding` therefore hands up the HEAD, because the head is the entry the firmware
@@ -2579,7 +2579,7 @@ fn enumerated_options_or_empty(observation: FirmwareBootObservation) -> List<Boo
 // The first version asked, for every option, 'does any other option carry your reference with a
 // different decision?' -- an inner `filter` per outer option, n^2 comparisons for a check that reads
 // each option once. Options are now BUCKETED BY REFERENCE with a map fold, and only the buckets with
-// two or more readings are examined. The §6 obligation is stated where it can be checked against a
+// two or more readings are examined. The gunbc.design_argument::how_to_work obligation is stated where it can be checked against a
 // contract rather than against prose -- the PRIMITIVES THIS PASS ACTUALLY CALLS, with their carrier
 // costs, not just one of them: `map_insert` (dag/std/primitives.dag) is contracted `work: "1"`;
 // `concat`, used to append into a bucket, is `work: "n + m"` with `carrier_cost: CarrierSensitive {
@@ -2717,7 +2717,7 @@ fn tie_broken_by_name(a: ReferenceReading, b: ReferenceReading) -> OrderedRefere
   // THE TIEBREAK LABEL IS THE UPSTREAM WIRE SPELLING, not a local restatement of it:
   // extdeps.bmc.types owns how each target is spelled on the wire, and a second match here could
   // drift from it without changing any behaviour the fold performs -- exactly the kind of private
-  // restatement DESIGN 3 refuses.
+  // restatement gunbc.design_argument::single_authority refuses.
   if redfish_boot_target_wire(t: a.target) <= redfish_boot_target_wire(t: b.target) {
     OrderedReferenceReadings { first: a, second: b }
   } else {
@@ -2828,7 +2828,7 @@ fn join_head_to_options(
           // THE TWO READS DISAGREE, and neither may be silently trusted over the other. A real
           // firmware does this (a hidden or vendor-removed option left in BootOrder). The honest
           // report is 'your reads disagree, re-read BootOptions' -- not a BIOS write justified by
-          // guessing which read is stale (DESIGN 5: no uncaused plausible action).
+          // guessing which read is stale (gunbc.design_argument::fail_closed: no uncaused plausible action).
           Absent => HeadOptionNotEnumerated {
             order_head_reference: first.reference,
             enumerated_count: length(xs: options),
@@ -3000,7 +3000,7 @@ fn nic_candidates(nics: List<NonEmptyStr>) -> NicCandidateStanding {
 // precisely when the arm says so. That reasoning does not hold: an arm that returns a plausible
 // diagnostic and is merely UNEXERCISED is not safe, it is untested. Reorder the caller's guard and
 // every unsupported mode now ships a refusal whose text claims the model is broken -- a fabricated
-// diagnostic standing in for a real one, which is DESIGN 5's "no plausible output is fabricated"
+// diagnostic standing in for a real one, which is gunbc.design_argument::fail_closed's "no plausible output is fabricated"
 // and the reason 'unreachable' is never a reason to keep a code path.
 //
 // So: exactly ONE match on ClientNetworkBootMode in the module, the `why` arrives as data on the arm
@@ -3041,10 +3041,10 @@ fn edge_serviceable_for_mode(boot_mode: ClientNetworkBootMode) -> EdgeServiceabl
 }
 
 // ---------------------------------------------------------------------------
-// THE DECLARED FRONTIER (DESIGN 3c: name the consumer and the executing route, or classify it).
+// THE DECLARED FRONTIER (gunbc.design_argument::consumption: name the consumer and the executing route, or classify it).
 //
 // WHY THIS IS HERE RATHER THAN IN A COMMENT. This seam is the readiness contract that cut 6 of
-// gunbc.plans.physical_machine_boot_program needs, and the two modules at its boundaries are landing
+// gunbc.plans.physical_machine_boot_program (deleted 2026-11-08) needs, and the two modules at its boundaries are landing
 // as separate PRs: the probe that EMITS FirmwareBootObservation (gunbc.firmware_network_boot_probe,
 // #14275) and the actuation step that READS this standing to decide what to do with a unit
 // (gunbc.provisioning.network_boot_actuation::network_boot_arm_actuator_steps, cut 6/S9). Neither is
@@ -3073,7 +3073,7 @@ data firmware_network_boot_probe_frontier: DissolutionCondition = BoundDissoluti
 // THE CONSUMER THAT MUST EXIST. Cut 6 derives its delivery strategy from the standing, never from a
 // host row (operator policy: machine names never select), and the arm is a function of
 // Ready/NeedsPreparation/Unobserved/Refused. Until this lands, the seam has no executing route and
-// the plan step it serves is not done -- DESIGN 5's 'green by execution' is owed to it.
+// the plan step it serves is not done -- gunbc.design_argument::fail_closed's 'green by execution' is owed to it.
 data firmware_network_boot_standing_consumer_frontier: DissolutionCondition = BoundDissolution {
   trigger: DeclarationAppears { ref: firmware_network_boot_standing_consumer_ref() },
 }
@@ -3096,7 +3096,7 @@ fn firmware_network_boot_probe_producer_ref() -> DeclarationRef {
 // non-consumer is worse than no trigger, because it reports Fired and stops anyone asking.
 //
 // It now names the ACTUATION step, which is the thing that must read Ready/NeedsPreparation/
-// Unobserved/Refused in order to do anything at all -- DESIGN 3c asks for the consumer AND the
+// Unobserved/Refused in order to do anything at all -- gunbc.design_argument::consumption asks for the consumer AND the
 // executing route, and the executing route is this one. The name is carried by an owned work item
 // (node://adhoc-9cc8b205-64b, 'Cut 6/S9 owner: network-boot arm actuation'), so it is a commitment
 // somebody has been assigned rather than a name I made up; and the S5 lane's own frontier names the
@@ -3124,7 +3124,7 @@ fn frontier_status(condition: DissolutionCondition, present_decls: List<Declarat
 // probe_firmware_network_boot that defaults an axis to Ready would fire the frontier and still be
 // the most dangerous module in the fleet. Only InhabitedByProducer, with evidence, closes it.
 
-// THE INHABITATION CLAIM DESIGN 3c REQUIRES OF EVERY SUPPLIED BOUNDARY: one claim that the real
+// THE INHABITATION CLAIM gunbc.design_argument::consumption REQUIRES OF EVERY SUPPLIED BOUNDARY: one claim that the real
 // producer emits this shape. It is NOT satisfied by this module's witness hand-building an
 // observation -- a test that supplies its own fixture proves the fold works on fixtures and nothing
 // about what a BMC parser produces. So the claim names who owes it, over what evidence, and what

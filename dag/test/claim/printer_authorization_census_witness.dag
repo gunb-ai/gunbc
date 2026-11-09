@@ -4,6 +4,7 @@ import gunbc.auth.privileged_effect_census {privileged_effect_census,site_verdic
 import gunbc.auth.authorization_pattern_selection {select_authorization_pattern,PatternSelected,OperatorApprovedCapability}
 import gunbc.fleet.printer_receipt {execution_source}
 import gunbc.auth.access_token_source {WorkloadIdentityToken,GcloudPrintToken}
+import gunbc.fleet.printer_credential_source {SecretManagerCredentialSource}
 
 test fn physical_print_requires_an_approval_pattern() -> Bool {
  match select_authorization_pattern(e:printer_start_effect()) { PatternSelected {pattern:OperatorApprovedCapability,receipt:_}=>true _=>false }
@@ -16,7 +17,7 @@ test fn every_new_printer_credential_binding_is_censused() -> Bool {
  })
 }
 test fn receipt_source_comes_from_the_selected_credential() -> Bool {
- execution_source(token_source:WorkloadIdentityToken)=="github-actions" && execution_source(token_source:GcloudPrintToken)=="operator-gcloud"
+ execution_source(credential_source:SecretManagerCredentialSource {token_source:WorkloadIdentityToken})=="github-actions" && execution_source(credential_source:SecretManagerCredentialSource {token_source:GcloudPrintToken})=="operator-gcloud"
 }
 // One entry may start a printer. The token-file starts (print_workflow mode=print and the operator
 // approval run) were deleted; a second start entry must be censused here and turns this red.

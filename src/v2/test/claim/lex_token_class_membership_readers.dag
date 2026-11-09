@@ -15,7 +15,7 @@ import v2.extdeps.languages.wasm { wasm_lex_token_symbol }
 // membership now answers from a per-module data built by ONE fold over its rule set
 // (lex_rule_set_token_class_map; the per-query rebuild and linear scan were authored duplication
 // -- gunbc.recurring_failure_mode.nested_membership_scan_where_a_map_primitive_exists). A carried
-// map that was never READ proves nothing (DESIGN section 4: a claim that never ran proves nothing),
+// map that was never READ proves nothing (gunbc.design_argument::closed_grounded_substrate: a claim that never ran proves nothing),
 // so this claim calls every rewritten reader through its public API. The POSITIVES are symbols
 // these modules' own literal rule sets mint as token_class -- the map keys on the same field the
 // deleted scan compared, so each positive is a symbol the old linear scan answered true for. The

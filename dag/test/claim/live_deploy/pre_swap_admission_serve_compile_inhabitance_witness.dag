@@ -27,7 +27,7 @@ fn checkout_gunbc() -> String {
   witness_bin_release_path(root: checkout_root(), bin_name: "gunbc")
 }
 
-// The pairing obligation (DESIGN 3): the real producer, the real serve entry, the real roots. The
+// The pairing obligation (gunbc.design_argument::witness_one_interface): the real producer, the real serve entry, the real roots. The
 // candidate this checkout is compiles its own serve entry clean through the route the pre-swap
 // admission takes, which is the inhabitance the hermetic verdict claims are supplied against.
 test fn the_checkouts_serve_entry_compiles_clean_through_the_gate_route() -> Bool {

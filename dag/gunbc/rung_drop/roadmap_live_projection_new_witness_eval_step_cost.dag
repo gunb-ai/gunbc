@@ -5,7 +5,7 @@ import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, Repla
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_rows }
 
-// DECLARED 4b(3) DROP (fierce-lark-661, 2026-09-14, relayed verbatim via bright-boar-435).
+// DECLARED gunbc.design_argument::guarantee_ladder (no silent regression) DROP (fierce-lark-661, 2026-09-14, relayed verbatim via bright-boar-435).
 // This file is the authority for the DECLARATION (rungs, reason, trigger). The POPULATION's authority
 // is the policy roster `v2.workflow.floor_eval_step_cost_drop`, which the floor decides with; the
 // population below and the seed runner's membership set are both projections of it, not second
@@ -27,7 +27,7 @@ import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_rows }
 // a wrong answer -- the four still execute and a semantic red still blocks.
 //
 // AMENDED 2026-10-02 (gentle-lynx-533, PR #12995). The population shrank from four identities to
-// two: the two conjunction claims were split, DESIGN section 3, conjunction of independent cases --
+// two: the two conjunction claims were split, gunbc.design_argument::single_authority, conjunction of independent cases --
 //   witness_missing_carrier_prevents_silent_empty_authority_projection
 //     -> witness_unreadable_carrier_refuses_with_a_located_detail
 //        + witness_valid_carrier_projects_a_nonempty_document
@@ -51,7 +51,7 @@ import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_rows }
 // `v2.workflow.floor_eval_step_cost_drop`, which `v2.workflow.required_floor`
 // `claim_eval_step_standing_for_identity` decides with and the seed runner mirrors. This row's
 // population is a PROJECTION of that list, so a name cannot survive here after it leaves the policy
-// (DESIGN section 3; section 4b(3) bounded population).
+// (gunbc.design_argument::single_authority; gunbc.design_argument::guarantee_ladder (no silent regression) bounded population).
 //
 // CLAUSE (ii) OF THE TRIGGER IS NOT VERIFIED BY ANY ENROLLED CHECK, stated plainly. It asks whether
 // each identity measures under the new-witness budget ON THE ACCEPTANCE PATH, which is a LIVE

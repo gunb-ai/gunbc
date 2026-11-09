@@ -13,7 +13,7 @@ import gunbc.frontend_eval.card { frontend_language_card }
 // through gunbc.frontend_eval.attempt.frontend_eval_report, so the table is computed in the
 // interpreter from typed rows rather than in the driver.
 //
-// CONSUMPTION, CLASSIFIED (DESIGN section 3c). Today's consumer of write_model_tasks, write_judge_spec and write_card is the
+// CONSUMPTION, CLASSIFIED (gunbc.design_argument::consumption). Today's consumer of write_model_tasks, write_judge_spec and write_card is the
 // Demo 0 driver, which is local tooling outside the substrate by the repo_workspace rule that no
 // Python is committed; it is therefore a DECLARED FRONTIER, not an executing in-tree consumer. The
 // named terminal consumer is the harness worker (gunbc.harness.harness_cli harness_worker_cli)
@@ -41,7 +41,7 @@ fn write_judge_spec(path: String) -> ProcessExit {
 // THE REPORT: gunbc.frontend_eval.attempt frontend_eval_report is the fold; its rows are NOT in
 // this tree. A run's attempt records are the driver's output and stay beside the run (a generated
 // entry under target/ folds them through the same fn), because committing measured numbers as
-// source would be the transcription DESIGN section 6 forbids, and excusing that with a drop
+// source would be the transcription gunbc.design_argument::how_to_work forbids, and excusing that with a drop
 // declared inside the module it excuses would be the self-authorization section 5 forbids. The
 // numbers reach a reader through the PR that ran them, cited to the driver and the identities each
 // row binds; they enter the tree only when an in-tree instrument produces them (same trigger as

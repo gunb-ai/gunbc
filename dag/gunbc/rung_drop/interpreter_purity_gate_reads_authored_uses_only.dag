@@ -7,7 +7,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // ============================================================================================
 // THE DECLARED RUNG DROP for the interpreter's purity gate, lowered by D13 cut (c)
-// (gunbc.plans.demand_engine_program D13; DESIGN 4b(3) no silent regression).
+// (gunbc.plans.demand_engine_program D13; gunbc.design_argument::guarantee_ladder (no silent regression) no silent regression).
 // ============================================================================================
 //
 // WHAT THE GATE IS. The seed interpreter routes a named call through its pure path -- the eval

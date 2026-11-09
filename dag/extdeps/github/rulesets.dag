@@ -5,7 +5,6 @@ import extdeps.github.github { default_api_base, default_per_page }
 import extdeps.github.errors { GitHubErrorShape }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.credentials { EnvVar }
 import std.measure { Minute, minute, minute_count, MergeQueueEntryCount, merge_queue_entry_count, merge_queue_entry_count_value }
 import std.optional { Absent, Present }
 import std.resources { Network }
@@ -29,7 +28,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // THIS MODULE OWNS THE INTERFACE SHAPE OF GITHUB'S REPOSITORY RULESETS API AND NOTHING ELSE. Which
 // ruleset this repository wants, which contexts it requires, and what to do when the live ruleset
 // disagrees are business policy and live in gunbc.repo.repo_ruleset — modelling them here would be the
-// layer inversion DESIGN section 3 names, making the upstream authority carry a fact GitHub has no
+// layer inversion gunbc.design_argument::single_authority names, making the upstream authority carry a fact GitHub has no
 // opinion about.
 //
 // THE WIRE RECORDS ARE THE DECODE SURFACE, THE COPRODUCTS ARE THE DOMAIN. GitHub's rule list is
@@ -176,8 +175,8 @@ type RequiredStatusCheckWire {
 // the mechanical answer rather than a preference: declaring it changes nothing about what can be
 // READ, because the decode above produces the same untagged map either way, so every arm would
 // refuse and the module would report NoMergeQueueRule for a ruleset that has one. That is a
-// silently wrong answer where there is currently a correct one, which is the direction DESIGN
-// section 5 forbids outright. The declaration is not being deferred for convenience; it is
+// silently wrong answer where there is currently a correct one, which is the direction
+// gunbc.design_argument::fail_closed forbids outright. The declaration is not being deferred for convenience; it is
 // unreadable until its producer changes.
 type RulesetRuleParametersWire {
   strict_required_status_checks_policy: Bool?
@@ -492,7 +491,7 @@ fn merge_queue_merge_method_wire_label(m: MergeQueueMergeMethod) -> String {
 // coproduct above would silently classify it as not-a-merge-queue instead of failing here until
 // someone decides what it means. GitHub adds rule types; this repository has already had to add
 // `UnrecognizedRuleType` for the ones it does not model. A wildcard is the fabricated default
-// DESIGN section 5 reserves for a refusal, and it was left standing here when the sibling
+// gunbc.design_argument::fail_closed reserves for a refusal, and it was left standing here when the sibling
 // predicate was written out.
 fn rule_is_merge_queue(rule: RulesetRuleWire) -> Bool {
   match ruleset_rule_wire_type(rule: rule) {
@@ -513,7 +512,7 @@ fn rule_is_merge_queue(rule: RulesetRuleWire) -> Bool {
 // applied to the fields that bear units. GitHub's merge_queue `parameters` object sends plain JSON
 // integers and is read as such; the STANDING is the domain, and there those numbers are a duration
 // and a count of queue entries. std.measure already owns both, so carrying them as Int here would be a second
-// authority for minutes and for cardinality (DESIGN section 2: net concepts must not grow by
+// authority for minutes and for cardinality (gunbc.design_argument::minimize_redundancy: net concepts must not grow by
 // re-invention). The distinction is load-bearing rather than decorative: the two timeouts and the
 // four entry counts are all bare integers on the wire, and only the carrier stops a wait in
 // minutes being compared against a count of entries. Both carriers are imported from
@@ -701,7 +700,6 @@ service github.Rulesets {
     endpoint: default_api_base
     auth: Bearer
     auth_input: auth_token
-    auth_source: EnvVar { name: "GITHUB_TOKEN" }
   }
 
   operation List {

@@ -17,7 +17,7 @@ import gunbc.witness.compiler_gate_workflow { compiler_gate_floor_steps_after_ch
 // THE QUALIFICATION FLOOR JOB'S CONTRACT, BELOW BOTH OF ITS READERS. gunbc.fleet.fleet_converge_workflow emits the
 // job and gunbc.runner.runner_qualification_dispatch admits a workflow only when the job keeps this contract; the
 // dispatch module already reads the fleet-converge model, so the contract cannot live in either without a cycle.
-// Moved here unchanged from runner_qualification_dispatch (gunbc.plans.mtcollins1_ci_service_legs G1).
+// Moved here unchanged from runner_qualification_dispatch (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) G1).
 
 // NOT REQUIRED AT THE WORKFLOW: the workflow carrying the floor is the shared fleet-converge workflow, where a required
 // input would be demanded of every mode's dispatch. The floor's dispatch always supplies it

@@ -121,12 +121,12 @@ fn behavioral_receipt_selftest_label() -> Label {
 // The seed emits v2's compiler closure, assembles it as a crate, and builds it. Pass or fail is
 // the whole verdict and WHERE IT STOPS IS THE STATUS, so there is no roster of known-good entries
 // beside it: a roster is a second representation of what this instrument demonstrates by running
-// (DESIGN sections 2 and 3), and it drifts exactly when nobody updates it.
+// (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority), and it drifts exactly when nobody updates it.
 // `required_v2_emission_entries` has changed once in repository history and that change was a
 // directory move.
 //
 // WHAT A GREEN DOES NOT ESTABLISH, named so it is not cited for more than it carries. It is
-// EMISSION AND COMPILATION, not behavioural equivalence -- DESIGN section 7 asks that the emitted
+// EMISSION AND COMPILATION, not behavioural equivalence -- gunbc.design_argument::self_hosting asks that the emitted
 // module also behave as the seed does on a discriminating corpus, and that half lives in the three
 // behavioral-receipt instruments beside this one. Nor is it the second generation: the BUILT binary
 // emitting the same closure is the v2 -> v2 boundary, and it refuses today because
@@ -406,7 +406,7 @@ fn native_serve_startup_overrun_binding() -> TargetBinding {
   }
 }
 
-// THE UNIX-SOCKET PEER CONTROL (gunbc.plans.converged_ingress M2b): a handler declaring the kernel-attested
+// THE UNIX-SOCKET PEER CONTROL (gunbc.plans.converged_ingress (deleted 2026-11-08) M2b): a handler declaring the kernel-attested
 // peer_user, served natively on a unix socket at a path the host chooses, must answer every connection with the
 // account the host process runs as, never a value the request carries; the same binary launched on TCP must refuse
 // before it binds, because a TCP listener attests no peer. `gunbc test //gunbc/instruments:native-serve-unix`. Run by
@@ -604,7 +604,7 @@ fn heads_reading_differential_target() -> BuildTarget {
 // folds below are the live consumers: `instrument_targets()` folds LABELS and
 // `instrument_bindings()` folds BINDINGS. NEITHER READS A `BuildTarget`, so a `*_target()` earns
 // its place only if some other module reads it -- `self_host_target` does, and several siblings do
-// not. That residue is a DESIGN section 3c dangling set, recorded rather than resolved because
+// not. That residue is a gunbc.design_argument::consumption dangling set, recorded rather than resolved because
 // resolving it is a separate change.
 //
 // The population is deliberately NOT enumerated here: a hand-written list of which ones dangle
@@ -904,7 +904,7 @@ fn emitted_crate_workspace_binding() -> TargetBinding {
   TargetBinding { target: emitted_crate_workspace_label() producer: EmittedCrateWorkspaceProducer {} }
 }
 
-// EXPLICIT POLICY BUDGET, dated 2026-10-12 (DESIGN section 5): 600000 ms wall after emit and
+// EXPLICIT POLICY BUDGET, dated 2026-10-12 (gunbc.design_argument::fail_closed): 600000 ms wall after emit and
 // build, shared by the five NativeClaimDriver bindings that are not the nest control
 // (native-crypto-vectors, native-app-attest, native-emission-controls,
 // dag-emit-real-grammar-round-trips, native-materialization-store-closure). It is a policy
@@ -1048,7 +1048,7 @@ fn roster_import_sweep_native_entry() -> String {
 // node.dag pass measured about 16m (sunny-bee-153), and the whole point of the native route is that
 // the child does NOT pay that front end; this starts at the policy ceiling and is tightened to
 // 2x the measured child wall -- the instrument's own rows print child_wall_ms per case, so the
-// tightening number comes from the instrument, not from a transcription (DESIGN section 5).
+// tightening number comes from the instrument, not from a transcription (gunbc.design_argument::fail_closed).
 fn roster_import_sweep_native_child_deadline() -> Millisecond {
   millisecond(count: 600000)
 }
@@ -1340,13 +1340,13 @@ fn heads_reading_differential_standing_rendered(
 // THE BARE-REFERENCE CHANNEL'S OWN SUBJECT, EXPECTATIONS, CLASSIFIER AND RENDERING
 // ---------------------------------------------------------------------------------------------
 
-// THE SUBJECT IS A FIXTURE ROOT AND THAT IS WHY THE RED IS AUTHORABLE (DESIGN section 4b).
+// THE SUBJECT IS A FIXTURE ROOT AND THAT IS WHY THE RED IS AUTHORABLE (gunbc.design_argument::guarantee_ladder).
 //
 // The corpus cannot express "this file's bare channel declined" -- the loader writes nothing when
 // it declines, which is the class this instrument governs. But a SOURCE ROOT HANDED TO THE
 // COMPILER can express every condition exactly, one per entry, and a compiler's regression probes
 // are precisely such inputs. So the forbidden behaviour is expressible where this check runs, and
-// declining to enroll it would be the specification-without-execution DESIGN section 5 names.
+// declining to enroll it would be the specification-without-execution gunbc.design_argument::fail_closed names.
 //
 // Hermetic: seven modules, no `std`, nothing imported from `dag` or `src/v2`, so a corpus-wide
 // change cannot move this reading and a moved reading means a moved gate.
@@ -1403,7 +1403,7 @@ fn bare_reference_channel_expectations() -> List<BareReferenceChannelExpectation
 // { "DISABLED" }`. That is fine for exactly as long as the carrier has two arms, and the comment
 // on `bare_channel_reading_agrees` says it is expected to gain a third when the decline carrier
 // lands -- at which point the `else` renders a NEW, DISTINCT state as `DISABLED`, which is the
-// fabricated plausible output DESIGN section 5 forbids. An exhaustive match makes that misrender
+// fabricated plausible output gunbc.design_argument::fail_closed forbids. An exhaustive match makes that misrender
 // UNWRITABLE rather than merely unlikely: a third arm fails to compile here instead of quietly
 // inheriting another state's word. This is also what the host mirror does.
 fn bare_channel_eligibility_rendered(e: BareChannelEligibility) -> String {
@@ -1417,7 +1417,7 @@ fn bare_channel_module_named(modules: List<String>, wanted: String) -> Bool {
   (modules |> filter(m => m == wanted) |> count) > 0
 }
 
-// SET EQUALITY AT IDENTITY GRAIN, NOT A COUNT (DESIGN section 5). A count equality would admit a
+// SET EQUALITY AT IDENTITY GRAIN, NOT A COUNT (gunbc.design_argument::fail_closed). A count equality would admit a
 // gate change that swapped which module was pulled for another, which is exactly the fact this
 // instrument exists to hold.
 fn bare_channel_module_sets_equal(expected: List<String>, observed: List<String>) -> Bool {

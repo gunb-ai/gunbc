@@ -164,7 +164,7 @@ type Admission {
 // `test_code` is every root's test-marker channel keyed by the paths resolution binds to, built in
 // the same pass that names the roots, so no root can be resolvable while its markers are unread.
 // `blocked_members` names the members this ingest READ AND THEN REFUSED before a root existed -- a
-// member blocked at the front end -- carried once from acquisition into what admission reads (DESIGN 6b:
+// member blocked at the front end -- carried once from acquisition into what admission reads (gunbc.design_argument::earliest_unjustified_boundary:
 // the earliest boundary where the wrong thing is turned into a missing root). A blocked member is neither
 // a root nor absent: it was read, its content was in hand, and something refused it. Without this field
 // the ONLY fact admission can state about a requester's import of it is `resolve_module_not_found`, which
@@ -381,7 +381,7 @@ fn resolve_diagnostics(reason: Symbol) -> NonEmptyDiagnostics {
   diagnostics_singleton(d: resolve_diagnostic(reason: reason))
 }
 
-// module_root_find refuses with the exact QualifiedName sought — rendered as a dotted string on the Textual diagnostic file locus (§3: structural QN is identity; dotted form is projection for display). ModuleRootLookup is the structural authority; diagnostics project from ModuleRootMissing rather than parsing display text back.
+// module_root_find refuses with the exact QualifiedName sought — rendered as a dotted string on the Textual diagnostic file locus (gunbc.design_argument::single_authority: structural QN is identity; dotted form is projection for display). ModuleRootLookup is the structural authority; diagnostics project from ModuleRootMissing rather than parsing display text back.
 type ModuleRootLookup
   = ModuleRootFound { root: NormalizedTree }
   | ModuleRootMissing { requested: QualifiedName }
@@ -992,7 +992,7 @@ fn admit_captured_import_rows(
 // the identity a census joins on (std.diagnostic), not a second copy of that cause. `at` cites the
 // requested name as a declaration, exactly as the sibling `resolve_module_not_found_diagnostic_from_missing`
 // arm does -- the two arms of ONE lookup differ only in which fact they state, so they must not differ in
-// how they cite (DESIGN 6b: a fork between sibling leaves is the same defect as a fork between routes).
+// how they cite (gunbc.design_argument::root_generalization: a fork between sibling leaves is the same defect as a fork between routes).
 // This function knows only the names; the located caller, `admit_imported_module_existence`, re-stamps
 // head.reason and head.correction onto the import's own authored locus, which is where the span comes from.
 // The requester's refusal names the blocked member by identity (DeclarerRefused { declarer }) and does NOT
@@ -1359,7 +1359,7 @@ fn resolve_in_context(context: Outcome<ResolutionContext>, admission: Admission)
 // fps_a_cross_module_record_projection_infers against a passing same-module control.
 //
 // ONCE PER CONTEXT, NOT ONCE PER SUBJECT. Every subject a context resolves demands the same closure index,
-// and the shared ResolutionContext is their least common ancestor (DESIGN section 2), so the index is
+// and the shared ResolutionContext is their least common ancestor (gunbc.design_argument::minimize_redundancy), so the index is
 // produced on the first demand and carried on the context like the namespace provider beside it; a later
 // subject reads it. Recomputing it per subject made a lane of N modules do N x (N + 1) resolves, and folding
 // the roots per subject was a second quadratic term (review 74212). The per-root resolves thread the context

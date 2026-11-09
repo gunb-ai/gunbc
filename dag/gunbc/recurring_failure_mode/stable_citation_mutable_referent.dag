@@ -37,7 +37,7 @@ data stable_citation_mutable_referent: RecurringFailureMode = RecurringFailureMo
 
     "An identifier that addresses a CONTAINER (a job, a branch, a latest, a mutable tag, a rolling window) serves whatever currently occupies it, so two readings of one citation are two subjects and their DELTA is uninterpretable.",
 
-    "Cite the thing that cannot be replaced — the attempt, the commit, the immutable artifact — or capture the content at read time and say when.** The receipt worth keeping is that this survived the diligence that should have caught it: the same author had, that morning, REFUSED to file a transcribed measurement on the §6 grounds that no producer owned the number, and then built a delta out of a producer that mutates what it serves for a fixed id.",
+    "Cite the thing that cannot be replaced — the attempt, the commit, the immutable artifact — or capture the content at read time and say when.** The receipt worth keeping is that this survived the diligence that should have caught it: the same author had, that morning, REFUSED to file a transcribed measurement on the gunbc.design_argument::how_to_work grounds that no producer owned the number, and then built a delta out of a producer that mutates what it serves for a fixed id.",
 
     "Naming the instrument is not sufficient if the instrument does not serve a stable subject.",
 

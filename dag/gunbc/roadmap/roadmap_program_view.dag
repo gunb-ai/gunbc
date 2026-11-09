@@ -27,7 +27,7 @@ import std.graph { GraphEdge, CallGraph, reverse_adjacency, dfs_collect_componen
 // scraped from planning prose. The module is PURE and parameterized — it imports no live authority
 // data — so every derivation is provable on planted fixtures and the six red controls from the
 // requirements execute against synthetic graphs instead of pinning tree-copied measurements (the
-// DESIGN section 5 oracle rule). The one heuristic-shaped choice, tie-breaking the primary
+// gunbc.design_argument::fail_closed oracle rule). The one heuristic-shaped choice, tie-breaking the primary
 // constraint, is declared: ties resolve to declaration order, which is the authority's own authored
 // order, never a hidden score. What this V0 deliberately does not model, each with its trigger:
 // decision-held work (needs a typed operator-decision marker on the node; today a decision node is
@@ -129,11 +129,10 @@ fn v1_convergence_fronts() -> List<ConvergenceFrontSpec> {
     ConvergenceFrontSpec {
       front: TestMigrationTailFront,
       name: "Test migration and the namespace tail",
-      purpose: "The old compiler's tests migrate or retire with coverage receipts, the seed honesty decision lands, and the import grammar deletes.",
+      purpose: "The old compiler's tests migrate or retire with coverage receipts, and the seed honesty decision lands.",
       gates: [
         "v1-test-migration" as RoadmapNodeId,
         "v1-seed-honesty-decision" as RoadmapNodeId,
-        "namespace-import-deletion" as RoadmapNodeId,
       ],
     },
   ]
@@ -153,7 +152,7 @@ type ObligationState
 // frontier can never disagree about boundness); otherwise it is workable now. In-flight is
 // deliberately NOT an arm: work observed on a node is an overlay fact orthogonal to its dependency
 // position — an attempt can run on a held node — and fusing them would be the state-space
-// conflation DESIGN section 5 names. The requirements' partial-work controls land here by
+// conflation gunbc.design_argument::fail_closed names. The requirements' partial-work controls land here by
 // construction: nothing in this coproduct reads pull requests, so a merged PR, a partial wave, or a
 // contract-only slice cannot reach ObligationAccepted — only a matching receipt can.
 
@@ -763,7 +762,7 @@ type V1ProgramViewResult
 // declared node is a modeling defect — the requirements' misspelled-R1 red control — and the
 // projection REFUSES with every located cause rather than deriving around the hole: a silently
 // smaller front would zero the defect's frequency and misreport every count downstream, the
-// absorbing-fallback shape DESIGN section 5 forbids. Duplicate live receipts for one node and
+// absorbing-fallback shape gunbc.design_argument::fail_closed forbids. Duplicate live receipts for one node and
 // duplicate declared node ids are the same class: DuplicateAcceptanceReceipt and
 // DuplicateProgramNodeId refuse the whole projection rather than silently picking one row or
 // last-wins merging into a map. The causes list carries all failures, not the first, so one repair

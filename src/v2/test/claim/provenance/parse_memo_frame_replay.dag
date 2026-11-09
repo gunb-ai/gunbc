@@ -40,7 +40,7 @@ fn parse_path_run_through_door(root: GrammarRoot, tokens: List<Token>) -> Option
           ) {
             Rejected { diagnostics: _ } => optional_absent()
             Accepted { value: artifact, diagnostics: _ } =>
-              optional_present(value: ParsePathRun { tree: artifact.tree, index: artifact.span_index })
+              optional_present(value: ParsePathRun { tree: artifact.tree, index: v2.compiler.parse.parse_artifact_span_index(artifact: artifact) })
           }
       }
   }
@@ -297,8 +297,8 @@ test fn abandoned_path_parse_carries_only_surviving_path_provenance() -> Bool {
 // Alternative one mints three ids before X, then X's own, and fails at z. Alternative two mints FOUR
 // ids before X (a, a, their conjunction, R's wrap) -- one more than the first -- so an X served from
 // the first attempt would carry a b whose id the surviving path has already given to R's wrap. This
-// claim was red under the memo and is the permanent regression control for its deletion (DESIGN
-// section 4b(4)): every minted occurrence in the accepted tree is distinct, the index is exactly
+// claim was red under the memo and is the permanent regression control for its deletion (
+// gunbc.design_argument::guarantee_ladder (dissolution on climb)): every minted occurrence in the accepted tree is distinct, the index is exactly
 // the tree's mints, and each terminal -- b among them, at 2..3 -- resolves to its own bytes.
 fn collision_path_root() -> GrammarRoot {
   GrammarRoot {

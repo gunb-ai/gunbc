@@ -284,7 +284,7 @@ fn derive_receipt(
   // The SAME closure census that discovers subjects and judges scope decides the enrollment: a
   // roster row counts only when the witness it names is a declaration in this census. One pool,
   // one seam -- a parallel witness-existence index would be a second authority for one fact
-  // (DESIGN 3) and redundant with the derivation it shadows (DESIGN 2).
+  // (gunbc.design_argument::single_authority) and redundant with the derivation it shadows (gunbc.design_argument::minimize_redundancy).
   let enrolled = consumer_enrolled_for(
     binding: contract.consumer_witness,
     ci_entries: ci_entries,

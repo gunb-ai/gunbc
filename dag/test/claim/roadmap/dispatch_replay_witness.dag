@@ -172,7 +172,7 @@ fn prepare_exit_reason(exit: ProcessExit) -> String {
 // THE PREPARE ENTRY IS GATED THE WAY REPLAY IS, AND BY THE SAME AUTHORITY. The wet claim proves a prepared
 // recording mints and replays in a real repository; this proves the refusal an operator gets elsewhere: on the live
 // instance the entry refuses with the typed reason and no mint happens, and an unknown instance refuses too. There
-// is no arm on which a live request for a prepared recording produces a ref -- a refusal, never a fallback (§5).
+// is no arm on which a live request for a prepared recording produces a ref -- a refusal, never a fallback (gunbc.design_argument::fail_closed).
 // Mutation: route recording_prepare_cli through the lab regardless of instance (the live assertion goes red); fall
 // back to the vendor provider or to recording_capture when the gate refuses (both reason assertions go red).
 test fn the_prepare_entry_refuses_on_the_live_instance_and_never_mints_there() -> Bool {

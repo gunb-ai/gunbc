@@ -88,7 +88,7 @@ fn gpu_workload_tier_cards(policy: GpuWorkloadTierPolicy, tier: GpuWorkloadTier)
   })
 }
 
-// DESIGN section 3c declared frontier.
+// gunbc.design_argument::consumption declared frontier.
 data gpu_workload_tier_consumer_frontier: DissolutionCondition = unbound_dissolution(
   description: "TRIGGER: the dated sold-listing census (step 7 of the GPU catalogue program) prices the cards gpu_workload_tier_cards returns for LongContextTier and ExperimentalSmallTier, joining each listing to a census card by its source row. SUFFICIENT FOR: the tiers have a production consumer; until then only test.claim.gpu_market_census_witness reads them." as NonEmptyStr
 )

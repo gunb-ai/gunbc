@@ -28,7 +28,7 @@ fn ci_compile_jobs_for(
   } else {
     match measurement {
       CompileJobUnmeasured => CompileJobsRefuse {
-        reason: "ci_compile_jobs: gunbc.ci.ci_compile_measurement is Unmeasured — no committed per-rustc peak / procs-per-job / pids budget. Refusing to guess a job count (DESIGN §5); stamp a real fleet measurement first."
+        reason: "ci_compile_jobs: gunbc.ci.ci_compile_measurement is Unmeasured — no committed per-rustc peak / procs-per-job / pids budget. Refusing to guess a job count (gunbc.design_argument::fail_closed); stamp a real fleet measurement first."
       }
       CompileJobMeasured { per_rustc_peak: peak, procs_per_job: ppj, pids_budget: pids } => CompileJobs {
         count: hardware_thread_count_value(

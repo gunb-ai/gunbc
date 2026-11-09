@@ -29,7 +29,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// SUPPLIED READINGS AT THE DECISION'S BOUNDARY (DESIGN §3, a witness discriminates at one interface). The
+// SUPPLIED READINGS AT THE DECISION'S BOUNDARY (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface). The
 // real producer, observe_pcie_detach over sysfs and setpci, runs on srv1 itself; its run is the PR's
 // receipt, because no CI host carries this board.
 fn route() -> PcieDetachRoute { asrock_altrad8ud_1l2t_bmc_graphics_route }

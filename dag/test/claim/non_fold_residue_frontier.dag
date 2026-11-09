@@ -16,7 +16,7 @@ import std.keyed_roster { KeyedRosterBuilt, KeyedRosterBuildDuplicateKey }
 // is well-formed and constructs as a keyed roster. Co-located subject lists join through the
 // seed walk `nfr_live_union_is_populated_unique_and_tripled`. RED controls: a synthetic row
 // with an empty trigger fails well-formedness; a synthetic duplicate path key yields
-// KeyedRosterBuildDuplicateKey (DESIGN 4b(4): production machinery dissolves on a climb, the
+// KeyedRosterBuildDuplicateKey (gunbc.design_argument::guarantee_ladder (dissolution on climb): production machinery dissolves on a climb, the
 // evidence stays enrolled).
 
 test fn non_fold_residue_frontier_rows_well_formed_holds() -> Bool {
@@ -34,7 +34,7 @@ test fn non_fold_residue_frontier_keyed_roster_build_admits() -> Bool {
 // `unbound_dissolution(description: "")` is refused at compile (the parameter is NonEmptyStr) --
 // the wall. Refinement at non-literal positions is still deferred, so that gap is exactly what the
 // downstream well-formedness guard defends, and this control must reach it through the gap to keep
-// proving the guard works (DESIGN 4b(4)).
+// proving the guard works (gunbc.design_argument::guarantee_ladder (dissolution on climb)).
 fn synthetic_nonliteral_text(text: String) -> NonEmptyStr {
   concat(text, "")
 }

@@ -496,7 +496,7 @@ test fn published_credential_still_working_refuses() -> Bool {
 
 // UNESTABLISHED IS NOT RETIRED. An account service that did not answer must
 // not certify that the published credential stopped working; widening the
-// unknown into the good arm is the absorbing fallback DESIGN §5 names.
+// unknown into the good arm is the absorbing fallback gunbc.design_argument::fail_closed names.
 test fn published_credential_retirement_unestablished_refuses() -> Bool {
   let observation = rotation_observed(
     subj: intake_subject,
@@ -1294,7 +1294,7 @@ test fn roster_covers_every_refusal_cause() -> Bool {
   length(xs: distinct) == length(xs: ordinals) && (highest + 1) == length(xs: ordinals)
 }
 
-// NO CREDENTIAL REFUSAL IS A HARDWARE DEFECT (design §6: an access state is a
+// NO CREDENTIAL REFUSAL IS A HARDWARE DEFECT (design gunbc.design_argument::how_to_work: an access state is a
 // PartsHold, not a ReturnWindow). gunbc.machine_intake.disposition routes a
 // UnitHardware refusal to a return clock against the seller. Measured over the
 // rostered causes, which is every cause the module declares today; the

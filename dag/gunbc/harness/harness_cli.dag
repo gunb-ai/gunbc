@@ -62,7 +62,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 
 // THE FIRST WET ENTRY FOR THE DEDICATED HARNESS. It exists to make DCH-2 provable by execution
-// rather than by typecheck -- DESIGN section 5's specification-without-execution trap names exactly
+// rather than by typecheck -- gunbc.design_argument::fail_closed's specification-without-execution trap names exactly
 // this artifact as the one that looks finished without running.
 
 // The model is the SERVING desired value, not a literal. gunbc.spark.serving_desired is the single
@@ -72,7 +72,7 @@ import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 // THE WIRE PROJECTION IS CITED, NOT REBUILT. The first wet run cast the OllamaModelRef straight to
 // String and sent `OllamaModelRef { name: deepseek-v4-gguf, tag: no-h3-stop }` -- the record's
 // rendering, not its wire form -- and the backend answered `invalid model name`. Building
-// `name + ":" + tag` here instead would have worked and been the DESIGN section 3 violation:
+// `name + ":" + tag` here instead would have worked and been the gunbc.design_argument::single_authority violation:
 // extdeps.ollama.api already owns how a model reference is spelled on the wire, and a second
 // spelling drifts the moment upstream changes it. The refusal was cheap precisely because the
 // backend carried a structured cause; that is the argument for keeping the body on a failed post.
@@ -81,7 +81,7 @@ import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 // canonical upstream id -- and it was wrong for exactly the route this branch exists to reach:
 // group B's engine is launched with --served-model-name glm-5.3-flash-exl3-canary and answers to
 // THAT alias and nothing else, so a turn placed there would have named the Zhipu id and been refused
-// at the request. The id and the alias are two names for one thing (DESIGN section 3), and the
+// at the request. The id and the alias are two names for one thing (gunbc.design_argument::single_authority), and the
 // consumer was picking the one that was not observed.
 //
 // SO BOTH TRAVEL FROM THE SEAT AND NEITHER IS RECOMPUTED. The binding carries the id its own probe

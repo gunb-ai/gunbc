@@ -10,7 +10,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 // QWEN3.8-FLASH-NEXT AS THE MODEL'S OWN AUTHORITY: the architecture facts its config.json states, and
 // nothing about any engine, image or card that serves it (those are observations of this repository, in
-// gunbc.serving, DESIGN section 3 external upstream decomposition). The subject is the NVFP4 checkpoint
+// gunbc.serving, gunbc.design_argument::external_upstreams external upstream decomposition). The subject is the NVFP4 checkpoint
 // the lab publishes, because that is the artifact whose config.json carries the quantization the serving
 // recipes load.
 data flash_next_nvfp4_hub_repo: HubRepoId = HubRepoId {
@@ -136,5 +136,5 @@ fn flash_next_routed_expert_parameters(arch: FlashNextArchitecture) -> Nat {
 }
 
 data qwen3_8_flash_next_consumer_frontier: DissolutionCondition = unbound_dissolution(
-  description: "DESIGN section 3c: qwen3_8_flash_next_architecture is consumed by gunbc.serving.flash_next_roofline (KV bytes per token, routed-expert bytes per decode step, active FLOPs per prefill token). Trigger: that fold reads these fields and deleting the row makes it fail to resolve. A witness asserting only that the row exists does not close this frontier. A HarnessServingUnit arm for Flash-Next (request wire, parser, reasoning field) stays the separate frontier recorded on product.fabric.serving_recipe serving_recipe_frontier." as NonEmptyStr
+  description: "gunbc.design_argument::consumption: qwen3_8_flash_next_architecture is consumed by gunbc.serving.flash_next_roofline (KV bytes per token, routed-expert bytes per decode step, active FLOPs per prefill token). Trigger: that fold reads these fields and deleting the row makes it fail to resolve. A witness asserting only that the row exists does not close this frontier. A HarnessServingUnit arm for Flash-Next (request wire, parser, reasoning field) stays the separate frontier recorded on product.fabric.serving_recipe serving_recipe_frontier." as NonEmptyStr
 )

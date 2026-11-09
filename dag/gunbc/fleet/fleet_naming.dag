@@ -2,7 +2,7 @@ module gunbc.fleet.fleet_naming
 
 // THE NAMES A FLEET MEMBER ANSWERS TO, AND THE ONE POLICY THAT BUILDS THEM.
 //
-// WHAT THIS MODULE IS. The model step of gunbc.plans.fleet_naming_reach_access P2: the identity types
+// WHAT THIS MODULE IS. The model step of gunbc.plans.fleet_naming_reach_access (deleted 2026-11-08) P2: the identity types
 // and the single construction path, with no producer migrated and no endpoint cut over (those are P3-P5).
 // Every type here is constructed only from a HostnameAllocation, through the module's ONE policy row.
 // That is the wall the plan asks for -- "every hostname construction passes through a policy that names
@@ -116,7 +116,7 @@ type FleetNamingRefusal
   | LabelFormUnusable { slot: HostIdentity, spelling: NonEmptyStr, cause: NonEmptyStr }
 
 // THE ONE POLICY ROW THE MODULE ENACTS, read through the registry's accessor and never inlined. An
-// inline policy here plus the registry there is DESIGN 3's ungrounded duplicate: two sources that can
+// inline policy here plus the registry there is gunbc.design_argument::single_authority's ungrounded duplicate: two sources that can
 // disagree with nothing visible to show it.
 fn fleet_naming_policy() -> FleetNamingPolicy {
   select_fleet_naming_policy()

@@ -33,7 +33,7 @@ import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness {
 // because v1.compiler.infer direct_call_generic_type_argument_inhabitance_diags judges type arguments
 // only when the two applications share an AUTHORED head name, and `List` is not spelled `FreeMonoid`.
 // The class and its correction receipt are gunbc.recurring_failure_mode
-// list_typed_value_element_mismatch_admitted. v2 does not carry the defect forward (DESIGN section 7):
+// list_typed_value_element_mismatch_admitted. v2 does not carry the defect forward (gunbc.design_argument::self_hosting):
 // v2.compiler.infer infer_declared_type_obligation normalizes BOTH sides through the one alias rule
 // (infer_type_alias_normalized_at, which unfolds inside every Instantiation argument), so
 // `List<Bool>` reaches v2.std.inhabitance declared_type_inhabitance as `FreeMonoid<Bool>` and the exact
@@ -48,7 +48,7 @@ import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness {
 // carrier ONE step at the TOP of the produced type, and `List<NonEmptyStr>` is not itself a refinement.
 // THE TWO PINS HAVE DIFFERENT TRIGGERS, because the refinement-carrier chains differ in length and the
 // relation widens ONE step. `NonEmptyStr -> String` is one step: its pin retires on a declared covariance
-// route for refinements under List/FreeMonoid (a conversion, DESIGN section 4 coercion). `PathSegment ->
+// route for refinements under List/FreeMonoid (a conversion, gunbc.design_argument::closed_grounded_substrate coercion). `PathSegment ->
 // NonEmptyStr -> String` is two: a covariance route that widens one step would admit `List<NonEmptyStr>`
 // and still refuse `List<PathSegment>`, so its pin retires only when covariance widens along the FULL
 // refinement-carrier chain (transitive refinement widening, which declared_type_inhabitance_declared_carrier

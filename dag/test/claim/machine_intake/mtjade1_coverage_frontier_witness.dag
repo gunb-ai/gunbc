@@ -20,7 +20,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // COMPLETENESS IS AN IDENTITY JOIN, NOT A COUNT. An earlier revision asserted
 // list_length(...) == 23 against a roster three files away in the same tree, which is the change
-// detector DESIGN §5 names: automate the literal and it collapses to measure() == measure()
+// detector gunbc.design_argument::fail_closed names: automate the literal and it collapses to measure() == measure()
 // (review 68005). Worse for this subject specifically, a count cannot tell "a row silently left
 // the roster" — the exact failure review 67996 found — from "one left and another arrived".
 //

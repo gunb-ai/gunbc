@@ -9449,12 +9449,31 @@ pub fn parse_config_fields(
                     auth_source: auth_source.clone(),
                     rate_limit: rate_limit.clone(),
                 });
-                break Rc::new(ConfigResult {
-                    config: cfg.clone(),
-                    tokens: tokens.clone(),
-                    ctx: ctx.clone(),
-                    err: std::option::Option::None,
-                });
+                let both_sources = match auth_input.clone() {
+                    Some(_) => match auth_source.clone() {
+                        Some(src) => Some(src.clone()),
+                        std::option::Option::None => std::option::Option::None,
+                    },
+                    std::option::Option::None => std::option::Option::None,
+                };
+                match both_sources.clone() {
+                    Some(src) => {
+                        break Rc::new(ConfigResult {
+    config: cfg.clone(),
+    tokens: tokens.clone(),
+    ctx: ctx.clone(),
+    err: Some(parse_error("service config declares both `auth_input` and `auth_source`; a service has one auth authority -- the caller's input, or a declared source -- and a caller that means the environment's credential reads it explicitly".to_string(), src.span.clone())),
+});
+                    }
+                    std::option::Option::None => {
+                        break Rc::new(ConfigResult {
+                            config: cfg.clone(),
+                            tokens: tokens.clone(),
+                            ctx: ctx.clone(),
+                            err: std::option::Option::None,
+                        });
+                    }
+                }
             } else {
                 let dummy_cfg = Rc::new(ServiceConfig {
                     endpoint: crate::v1_std_core::make_expr_node(

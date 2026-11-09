@@ -166,7 +166,7 @@ fn mtcollins1_fan_observe_boot_phase_receipt(content: String) -> ProcessExit {
 // prelude's Secret Manager fetch (which reports itself through the sibling status file, review 81090)
 // are a FanObserveBootPhaseRefused receipt naming the cause, with ExitSuccess. Nothing the step models
 // is absorbed by continue-on-error: a crash or a step timeout is an UNMODELED failure and fails the
-// job at this step, before the boot, located (review 81077; DESIGN §5 - no escape hatch). Only an
+// job at this step, before the boot, located (review 81077; gunbc.design_argument::fail_closed - no escape hatch). Only an
 // unwritable receipt fails. The standalone mtcollins1_fan_observe_wet stays strict. A REFUSED
 // observation STOPS THE BOOT (operator ruling 2026-10-16): this entry still reports refusals as typed
 // receipts, and the step's prelude tail turns the receipt into the mtcollins1_fan_boot_phase_outcome_output

@@ -270,7 +270,7 @@ test fn spark_and_a_measured_gh200_trade_off_rather_than_dominate() -> Bool {
 }
 
 // An UNCITED configuration may not rank: the same row typed as a bet declares its three memory axes
-// missing on a factory route (DESIGN §4d).
+// missing on a factory route (gunbc.design_argument::epistemic_humility).
 test fn an_uncited_configuration_cannot_rank() -> Bool {
   let uncited = CoherentSuperchipCatalogRow {
     vendor: nvidia_gh200_480gb_catalog.vendor,

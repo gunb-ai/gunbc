@@ -10,7 +10,7 @@ import gunbc.roadmap.roadmap_execution_contract {
 }
 
 // THE TWO-NODE CANARY OF THE ROADMAP LAUNCH MVP, DECLARED INERT (RLM-0 of
-// docs/plans/roadmap-launch-mvp-plan.md). Nothing here is a row of gunbc.roadmap.roadmap_authority: the
+// docs/plans/roadmap-launch-mvp-plan.md (deleted 2026-11-08)). Nothing here is a row of gunbc.roadmap.roadmap_authority: the
 // identities, contract and edge are declared once, here, and consumed by the synthetic fixture
 // graph at test.claim.roadmap.roadmap_launch_canary_witness today and by the live authority at RLM-3.
 // The identities are minted per gunbc.roadmap.roadmap_model roadmap_node_identity_law, so RLM-3 adds the
@@ -92,7 +92,7 @@ fn roadmap_launch_canary_criteria_digest_hex() -> String {
 
 // THE CANARY'S DISPATCH FACTS. The canary nodes must satisfy every readiness fact a real node
 // satisfies, or the admission's admit-path witnesses stop exercising the full predicate and the
-// suite goes green without an inhabitance claim (DESIGN §3 standing rule: deleting the integration
+// suite goes green without an inhabitance claim (gunbc.design_argument::witness_one_interface standing rule: deleting the integration
 // must make a control fail). They are the roots of their own synthetic graph, and each carries a
 // centering plan; the plans lived in the deleted gunbc.roadmap.roadmap_centering roster.
 fn roadmap_launch_canary_parent_lineage() -> NodeParent? {

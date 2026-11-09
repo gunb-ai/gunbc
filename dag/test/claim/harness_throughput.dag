@@ -13,7 +13,7 @@ import gunbc.harness.harness_throughput {
 
 // A CONTROLLED FIXTURE, NOT A TREE MEASUREMENT. The rows below are authored here with their answer
 // computed by hand, so the assertion compares a fold against an independent oracle rather than
-// against whatever the current tree happens to produce -- the distinction DESIGN section 5 draws
+// against whatever the current tree happens to produce -- the distinction gunbc.design_argument::fail_closed draws
 // between a check and a change detector.
 //
 // THE ARITHMETIC, STATED SO A FAILURE IS READABLE: three clocked rounds at t=1000, 3000, 5000 ms
