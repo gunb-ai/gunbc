@@ -428,6 +428,21 @@ data fleet_usermod_binary_path: NonEmptyStr = "/usr/sbin/usermod"
 
 data fleet_posix_nologin_shell_path: NonEmptyStr = "/usr/sbin/nologin"
 
+// THE FLEET AUTOMATION LOGIN ACCOUNT'S SHELL. The account the fleet SSH transport logs in as -- its login
+// is gunbc.fleet.fleet_ssh_locus fleet_automation_principal_login ("gunbc-automation") -- is a REAL login
+// account, so its shell is a login shell, not fleet_posix_nologin_shell_path (nothing logs in as the runner
+// service account; something logs in as this one). Measured on srv5 and srv6 as 1001:1001 /bin/bash, the
+// same standing recorded in the note beside fleet_automation_user. It lives HERE, the posix-account
+// authority, so the diskless runner's boot stage that realizes the account on the live session
+// (gunbc.runner.runner_host_medium runner_host_fleet_authorized_keys_command) reads the shell rather than
+// re-spelling "/bin/bash" at the boot edge -- one rule, one place (gunbc.design_argument::single_authority).
+// OPEN SINGLE-AUTHORITY QUESTION, deliberately NOT resolved here: the automation IDENTITY is spelled by two
+// names across the model -- fleet_automation_user (this module, name "gunbc-fleet", the srv automation
+// allocations) and fleet_automation_principal_login (fleet_ssh_locus, "gunbc-automation", the transport's
+// login). The boot stage realizes the transport's login; which name is THE fleet automation principal is an
+// open question carried in the PR, not silently settled by this row.
+data fleet_automation_login_shell_path: NonEmptyStr = "/bin/bash"
+
 
 data gunbc_deploy_privileged_helper_path: NonEmptyStr = "/opt/gunbc/bin/gunbc-deploy-privileged"
 

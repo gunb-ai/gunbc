@@ -37,6 +37,9 @@ import extdeps.github.expressions {
   StringLiteral,
   Equals,
   LogicalAnd,
+  LogicalOr,
+  FunctionCall,
+  Format,
   ExpressionTemplate,
   LiteralText,
   Interpolation,
@@ -48,6 +51,13 @@ import gunbc.parse_verdict_schema {
   parse_verdict_request_family,
   parse_verdict_restore_identity_basename,
   parse_verdict_restore_receipts_basename,
+}
+import gunbc.read_set_schema {
+  fast_lane_decision_step_id,
+  fast_lane_skip_output,
+  fast_lane_skip_true,
+  fast_lane_compiler_identity_output,
+  fast_lane_native_cli_basename,
 }
 
 // POLICY (not the GitHub cache interface): this repository publishes materialization receipts
@@ -98,15 +108,70 @@ fn runner_temp_file(basename: String) -> String {
   })
 }
 
+// THE FRESH PRODUCT: the native CLI the v2-native-cli emit step built in THIS run, and its compiler
+// identity. The fast-lane stage step reads these and nothing else, so a unit saved for a sha always holds
+// the binary that sha's own run built; a restored binary can never be saved again as a new commit's unit.
 fn parse_verdict_generation_one_bin() -> String { runner_temp_file(basename: parse_verdict_generation_one_basename) }
 
-fn parse_verdict_compiler_output_expression() -> Expression {
+fn parse_verdict_fresh_compiler_output_expression() -> Expression {
   ContextAccess { context: Steps, path: [emitted_subject_v2_native_cli_step_id, "outputs", parse_verdict_compiler_output] }
+}
+
+fn parse_verdict_fresh_compiler_expr() -> String {
+  serialize_template(template: ExpressionTemplate {
+    segments: [Interpolation { expression: parse_verdict_fresh_compiler_output_expression() }]
+  })
+}
+
+// THE NATIVE CLI THIS RUN USES, ONE EXPRESSION FOR EVERY CONSUMER. On a run whose fast-lane decision
+// (gunbc.read_set_restore) answered skip, the emit step did not run, so its output is empty and its
+// generation-one file does not exist; the binary and identity are the restored unit's, which main's own
+// run built at the restored ancestor. On every other run -- a main push, a pull request the fast lane did
+// not cover, a decision that failed before deciding -- they are the fresh product. The restored values are
+// read only under `skip == 'true'`, which the decision writes last, so an identity a dying decision step
+// left behind is never read. Every native-CLI consumer (the parse restore keys, both parse walks, the
+// fast-lane checks) reads these two expressions; none reads the emit step's output directly.
+fn native_cli_reused_expression() -> Expression {
+  Equals {
+    left: ContextAccess { context: Steps, path: [fast_lane_decision_step_id, "outputs", fast_lane_skip_output] },
+    right: StringLiteral { value: fast_lane_skip_true }
+  }
+}
+
+fn parse_verdict_compiler_output_expression() -> Expression {
+  LogicalOr {
+    left: LogicalAnd {
+      left: native_cli_reused_expression(),
+      right: ContextAccess { context: Steps, path: [fast_lane_decision_step_id, "outputs", fast_lane_compiler_identity_output] }
+    },
+    right: parse_verdict_fresh_compiler_output_expression()
+  }
 }
 
 fn parse_verdict_compiler_expr() -> String {
   serialize_template(template: ExpressionTemplate {
     segments: [Interpolation { expression: parse_verdict_compiler_output_expression() }]
+  })
+}
+
+// The restored binary sits at its workspace-relative cache path; `./` makes the shell run that file
+// rather than search PATH for its name.
+fn native_cli_bin_expression() -> Expression {
+  LogicalOr {
+    left: LogicalAnd {
+      left: native_cli_reused_expression(),
+      right: StringLiteral { value: join(["./", fast_lane_native_cli_basename], "") }
+    },
+    right: FunctionCall {
+      function: Format,
+      args: [StringLiteral { value: join(["{0}/", parse_verdict_generation_one_basename], "") }, runner_temp()]
+    }
+  }
+}
+
+fn native_cli_bin() -> String {
+  serialize_template(template: ExpressionTemplate {
+    segments: [Interpolation { expression: native_cli_bin_expression() }]
   })
 }
 
@@ -151,7 +216,7 @@ fn parse_verdict_publish_args() -> List<ParseVerdictInvocationArg> {
 
 fn parse_verdict_publish_command() -> String {
   parse_verdict_invocation_command(
-    bin: parse_verdict_generation_one_bin(),
+    bin: native_cli_bin(),
     verb: cli_verb_parse_population,
     args: parse_verdict_publish_args()
   )

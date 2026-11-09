@@ -4,8 +4,8 @@ import std.types { Bool, String, FilePath }
 import extdeps.languages.json.emit { json_kv, json_string, json_object }
 import gunbc.harness.harness_wire { WireToolUseBlock, HarnessWireShape, AnthropicMessagesShape, OpenAiChatCompletionsShape }
 import gunbc.harness.harness_tool {
-  HarnessToolEnvironment, HarnessValidationRoute, ValidationNotOffered, ValidationRoutedTo,
-  HarnessToolOutcome, ToolCompleted, ToolRefused, ToolEffectRefused, ToolInputMemberMissing,
+  HarnessToolEnvironment, harness_tool_environment, HarnessValidationRoute, ValidationNotOffered, ValidationRoutedTo,
+  HarnessToolOutcome, ToolCompleted, ToolJob, ToolReport, ToolRefused, ToolEffectRefused, ToolInputMemberMissing,
   harness_execute_tool_use, harness_validate_worktree_call,
 }
 import gunbc.harness.harness_turn { harness_tool_contract_wire }
@@ -20,12 +20,12 @@ import gunbc.harness.harness_cli { harness_worker_system_prompt_at }
 // touched by this change).
 
 fn env_with(validation: HarnessValidationRoute) -> HarnessToolEnvironment {
-  HarnessToolEnvironment {
+  harness_tool_environment(
     working_directory: "/nonexistent/worktree" as FilePath,
     timeout_program: "/nonexistent/timeout" as FilePath,
-    duration_limit_seconds: 5,
+    job_output_directory: "/nonexistent/jobs" as FilePath,
     validation: validation,
-  }
+  )
 }
 
 fn call(kind: String, target: String) -> WireToolUseBlock {
@@ -37,36 +37,44 @@ fn call(kind: String, target: String) -> WireToolUseBlock {
 
 // CONTROL: a role with no routed deployment is refused by type; there is no arm that runs the work here.
 test fn an_unrouted_role_is_refused_and_never_runs_the_work_itself() -> Bool {
-  match harness_execute_tool_use(environment: env_with(validation: ValidationNotOffered), block: call(kind: "test", target: "//dag/test/claim/x/...")) {
+  match harness_execute_tool_use(environment: env_with(validation: ValidationNotOffered), block: call(kind: "test", target: "//dag/test/claim/x/...")).outcome {
     ToolRefused { disposition: ToolEffectRefused { detail: _ } } => true
     ToolRefused { disposition: _ } => false
     ToolCompleted { text: _, exit_code: _, standing: _ } => false
+    ToolJob { id: _, text: _ } => false
+    ToolReport { text: _, standing: _ } => false
   }
 }
 
 // RED-then-GREEN on the route: an unresolvable deployment is a typed nonzero result from the compute
 // entry (no dashboard instance, so no grant could be asked for), not a fallback run in this process.
 test fn a_routed_call_with_no_resolvable_deployment_fails_with_a_typed_result_and_no_fallback() -> Bool {
-  match harness_execute_tool_use(environment: env_with(validation: ValidationRoutedTo { repo_root: "/nonexistent/repo" }), block: call(kind: "test", target: "//dag/test/claim/x/...")) {
+  match harness_execute_tool_use(environment: env_with(validation: ValidationRoutedTo { repo_root: "/nonexistent/repo" }), block: call(kind: "test", target: "//dag/test/claim/x/...")).outcome {
     ToolCompleted { text, exit_code, standing: _ } => exit_code != 0 && text.contains("no dashboard instance is rooted at /nonexistent/repo")
+    ToolJob { id: _, text: _ } => false
+    ToolReport { text: _, standing: _ } => false
     ToolRefused { disposition: _ } => false
   }
 }
 
 test fn an_unknown_validation_kind_is_refused_by_name() -> Bool {
-  match harness_execute_tool_use(environment: env_with(validation: ValidationRoutedTo { repo_root: "/nonexistent/repo" }), block: call(kind: "bench", target: "x")) {
+  match harness_execute_tool_use(environment: env_with(validation: ValidationRoutedTo { repo_root: "/nonexistent/repo" }), block: call(kind: "bench", target: "x")).outcome {
     ToolRefused { disposition: ToolEffectRefused { detail } } => detail.contains("kind must be")
     ToolRefused { disposition: _ } => false
     ToolCompleted { text: _, exit_code: _, standing: _ } => false
+    ToolJob { id: _, text: _ } => false
+    ToolReport { text: _, standing: _ } => false
   }
 }
 
 test fn a_missing_target_member_is_refused_by_name() -> Bool {
   let block = WireToolUseBlock { id: "t2", name: "validate_worktree", input: json_object(members: [json_kv(key: "kind", value: json_string(s: "test"))]) }
-  match harness_execute_tool_use(environment: env_with(validation: ValidationRoutedTo { repo_root: "/nonexistent/repo" }), block: block) {
+  match harness_execute_tool_use(environment: env_with(validation: ValidationRoutedTo { repo_root: "/nonexistent/repo" }), block: block).outcome {
     ToolRefused { disposition: ToolInputMemberMissing { tool: _, member } } => member == "target"
     ToolRefused { disposition: _ } => false
     ToolCompleted { text: _, exit_code: _, standing: _ } => false
+    ToolJob { id: _, text: _ } => false
+    ToolReport { text: _, standing: _ } => false
   }
 }
 

@@ -53,7 +53,7 @@ type Cr1000aRouterStatusSnapshot {
 }
 
 // THE MAC COLUMNS OF BOTH ROUTER TABLES ARE extdeps.network.mac Eui48Address SINCE PLAN
-// gunbc.plans.site_segment_anchor_bmc_reach PHASE S1. They used to be extdeps.dhcp.v4 MacAddress, a
+// gunbc.plans.site_segment_anchor_bmc_reach (deleted 2026-11-08) PHASE S1. They used to be extdeps.dhcp.v4 MacAddress, a
 // branded NonEmptyStr: a row transcribed from the router's own table then carried six octets as text
 // with the parse deferred forever, and "is this row about the same machine as that row" was a string
 // comparison two call sites had to each get right. Eui48Address gives the columns the fields the

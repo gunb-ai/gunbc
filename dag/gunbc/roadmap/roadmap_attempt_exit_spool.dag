@@ -25,7 +25,7 @@ import extdeps.posix.signal {
 }
 import gunbc.systemd_unit_names {
   dispatch_attempt_unit_name, dispatch_review_unit_name, dispatch_audit_unit_name,
-  dispatch_supervisor_unit_name, belt_attempt_obligation_unit_name,
+  belt_attempt_obligation_unit_name,
   compute_unit_name, compute_unit_name_admission,
 }
 import extdeps.systemd {
@@ -87,22 +87,38 @@ data attempt_worker_role_token: String = "worker"
 data attempt_obligation_role_token: String = "obligation"
 data attempt_reviewer_role_prefix: String = "review."
 data attempt_auditor_role_prefix: String = "audit."
-data attempt_supervisor_role_prefix: String = "supervise.t"
 
 type AttemptUnitRole
   = AttemptWorkerRole
+  | AttemptWorkerResumedRole { ordinal: Int }
   | AttemptReviewerRole { criterion_key: String, head_sha: String }
   | AttemptAuditorRole { head_sha: String }
   | AttemptObligationRole
-  | AttemptSupervisorRole { turn: Int }
+
+// A RESUMED WORKER IS A SECOND INVOCATION OF ONE ATTEMPT'S UNIT (gunbc.plans.harness_session_lifecycle
+// S3): the same session continued after an unexplained engine refusal. Its record carries its own
+// role word so the first invocation's record is never overwritten or read as the second's end.
+data attempt_worker_resumed_token_prefix: String = "worker-resumed-"
+
+// WHICH WORKER INVOCATION A ROLE NAMES, answered from the role arm the decoder already produced: the
+// first invocation is 0, the Nth resume is N, and any other role is no worker's.
+fn attempt_worker_invocation_of(role: AttemptUnitRole) -> Int? {
+  match role {
+    AttemptWorkerRole => Present { value: 0 }
+    AttemptWorkerResumedRole { ordinal } => Present { value: ordinal }
+    AttemptReviewerRole { criterion_key: _, head_sha: _ } => none
+    AttemptAuditorRole { head_sha: _ } => none
+    AttemptObligationRole => none
+  }
+}
 
 fn attempt_unit_role_token(role: AttemptUnitRole) -> String {
   match role {
     AttemptWorkerRole => attempt_worker_role_token
+    AttemptWorkerResumedRole { ordinal } => join([attempt_worker_resumed_token_prefix, to_string(value: ordinal)], "")
     AttemptReviewerRole { criterion_key, head_sha } => join([attempt_reviewer_role_prefix, criterion_key, ".", head_sha], "")
     AttemptAuditorRole { head_sha } => join([attempt_auditor_role_prefix, head_sha], "")
     AttemptObligationRole => attempt_obligation_role_token
-    AttemptSupervisorRole { turn } => join([attempt_supervisor_role_prefix, to_string(value: turn)], "")
   }
 }
 
@@ -122,6 +138,16 @@ fn attempt_unit_role_of(token: String) -> AttemptUnitRoleDecode {
     AttemptUnitRoleDecoded { role: AttemptWorkerRole }
   } else if token == attempt_obligation_role_token {
     AttemptUnitRoleDecoded { role: AttemptObligationRole }
+  } else if starts_with(s: token, prefix: attempt_worker_resumed_token_prefix) {
+    match parse_int(text: substring(s: token, start: string_length(s: attempt_worker_resumed_token_prefix), end: string_length(s: token))) {
+      Present { value: n } =>
+        if n >= 1 {
+          AttemptUnitRoleDecoded { role: AttemptWorkerResumedRole { ordinal: n } }
+        } else {
+          AttemptUnitRoleMalformed { token: token, detail: "a resumed worker role names an ordinal below 1" }
+        }
+      Absent => AttemptUnitRoleMalformed { token: token, detail: "a resumed worker role is worker-resumed-<ordinal> and this token's ordinal does not parse as a number" }
+    }
   } else if starts_with(s: token, prefix: attempt_reviewer_role_prefix) {
     let segments = token.split(delimiter: ".")
     if count(segments) != 3 {
@@ -145,11 +171,6 @@ fn attempt_unit_role_of(token: String) -> AttemptUnitRoleDecode {
         Present { value: head_sha } => AttemptUnitRoleDecoded { role: AttemptAuditorRole { head_sha: head_sha } }
         Absent => AttemptUnitRoleMalformed { token: token, detail: "an auditor role names no head" }
       }
-    }
-  } else if starts_with(s: token, prefix: attempt_supervisor_role_prefix) {
-    match parse_int(text: substring(s: token, start: string_length(s: attempt_supervisor_role_prefix), end: string_length(s: token))) {
-      Present { value: turn } => AttemptUnitRoleDecoded { role: AttemptSupervisorRole { turn: turn } }
-      Absent => AttemptUnitRoleMalformed { token: token, detail: "a supervisor role is supervise.t<turn> and this token's turn does not parse as a number" }
     }
   } else {
     AttemptUnitRoleUnknown { token: token }
@@ -196,10 +217,10 @@ fn attempt_exit_unit_of(node_id: String, attempt_key: String, role_token: String
 fn attempt_exit_unit_for_role(node_id: String, attempt_key: String, role: AttemptUnitRole, role_token: String) -> AttemptExitUnitDerivation {
   match role {
     AttemptWorkerRole => attempt_exit_unit_admission(derivation: dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key), role_token: role_token, role: role)
+    AttemptWorkerResumedRole { ordinal: _ } => attempt_exit_unit_admission(derivation: dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key), role_token: role_token, role: role)
     AttemptObligationRole => AttemptExitUnitDerived { unit: belt_attempt_obligation_unit_name(node_id: node_id, attempt_key: attempt_key), role: role }
     AttemptReviewerRole { criterion_key, head_sha: _ } => AttemptExitUnitDerived { unit: dispatch_review_unit_name(node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key), role: role }
     AttemptAuditorRole { head_sha: _ } => AttemptExitUnitDerived { unit: dispatch_audit_unit_name(node_id: node_id, attempt_key: attempt_key), role: role }
-    AttemptSupervisorRole { turn } => AttemptExitUnitDerived { unit: dispatch_supervisor_unit_name(node_id: node_id, attempt_key: attempt_key, turn: turn), role: role }
   }
 }
 
@@ -527,6 +548,15 @@ fn attempt_exit_roadmap_entry_decode(entry_name: String, parts: List<String>) ->
     if string_length(s: node_id) == 0 || string_length(s: attempt_key) == 0 || string_length(s: role) == 0 || string_length(s: invocation_id) == 0 {
       AttemptExitEntryMalformed { entry_name: entry_name, reason: "an exit record names its node, attempt, role and invocation; one of them is empty" }
     } else {
+      attempt_exit_entry_decode_with(entry_name: entry_name, node_id: node_id, attempt_key: attempt_key, role: role, invocation_id: invocation_id, result_word: result_word, code: code, status: status)
+    }
+  }
+}
+
+fn attempt_exit_entry_decode_with(
+  entry_name: String, node_id: String, attempt_key: String, role: String,
+  invocation_id: String, result_word: String, code: ServiceExitCode, status: String,
+) -> AttemptExitEntryDecode {
       match attempt_process_end_of(code: code, status: status) {
         AttemptProcessEndRefused { reason } => AttemptExitEntryMalformed { entry_name: entry_name, reason: reason }
         AttemptProcessEndOf { end } =>
@@ -556,8 +586,6 @@ fn attempt_exit_roadmap_entry_decode(entry_name: String, parts: List<String>) ->
               }
           }
       }
-    }
-  }
 }
 
 // WHERE IN THE SPOOL AN ENTRY STANDS, which is responsibility, not evidence: the record means the
@@ -672,6 +700,49 @@ fn attempt_exit_record_matching(
 
 fn attempt_exit_stage_listings(instance_root: String) -> List<SpoolListing> {
   [RolePending, RoleHandedOff, RoleClaimed, RoleDone, RoleRefused] |> map(r => spool_queue_list(store: spool_open(kind: SpoolAttemptExit, instance_root: instance_root), role: r))
+}
+
+// THE WORKER'S CURRENT END: among the records of one attempt's worker invocations (the first and each
+// resume, AttemptWorkerResumedRole), the latest invocation's. A resume is the one way an attempt has
+// two worker records, and the earlier is history, not a rival. Each invocation still has exactly one
+// record: two for one ordinal are unreadable, as for any other role.
+fn attempt_exit_worker_record_matching(
+  subject: fn(String, String) -> Bool,
+  listings: List<SpoolListing>,
+) -> AttemptExitRecordObservation {
+  let ordinals = listings
+    |> flat_map(l => match l {
+      SpoolListed { names } => names
+      SpoolListingUnreadable { reason: _ } => [] as List<String>
+    })
+    |> flat_map(name => match attempt_exit_entry_decode(entry_name: name) {
+      AttemptExitEntryDecoded { record } =>
+        match record.subject {
+          RoadmapAttemptExit { node_id: n, attempt_key: a, role } =>
+            if subject(n, a) {
+              match attempt_worker_invocation_of(role: role) {
+                Present { value: ordinal } => [ordinal]
+                Absent => [] as List<Int>
+              }
+            } else {
+              [] as List<Int>
+            }
+          ComputeAttemptExit { identity: _ } => [] as List<Int>
+        }
+      AttemptExitEntryMalformed { entry_name: _, reason: _ } => [] as List<Int>
+    })
+  let latest = fold(ordinals, init: 0, f: (best, n) => if n > best { n } else { best })
+  let latest_role = if latest == 0 { AttemptWorkerRole } else { AttemptWorkerResumedRole { ordinal: latest } }
+  let latest_token = attempt_unit_role_token(role: latest_role)
+  attempt_exit_record_matching(
+    matches: s => match s {
+      RoadmapEntrySubject { node_id: n, attempt_key: a, role: r, invocation_id: _ } => subject(n, a) && r == latest_token
+      ComputeEntrySubject { identity: _, invocation_id: _ } => false
+      OtherEntrySubject { parts: _ } => false
+    },
+    listings: listings,
+  )
+}
 }
 
 fn attempt_exit_record_observe(instance_root: String, node_id: String, attempt_key: String, role: AttemptUnitRole) -> AttemptExitRecordObservation {

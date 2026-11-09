@@ -7,14 +7,15 @@ module gunbc.provisioning.ubuntu_network_origin_observation
 // decomposition; 3b External facts). The verdict is descriptive only: it never says an origin is
 // admitted or selected; the first thing that decides from it is the later install step.
 // CONSUMER (gunbc.design_argument::consumption): consumed by its witness in this change; executing consumer is a declared
-// later change of cut 6 of gunbc.plans.physical_machine_boot_program (the PXE-edge provisioning arm
+// later change of cut 6 of gunbc.plans.physical_machine_boot_program (deleted 2026-11-08) (the PXE-edge provisioning arm
 // and the wet install step that calls verify_ubuntu_network_origin).
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
 import std.measure { ByteSize, FiniteByteSize, byte_size_count, finite_byte_size, finite_byte_size_count, positive_measure_count }
 import std.content_hash { sha256_hex_digest }
-import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited }
+import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited, ExternalAuthority }
+import extdeps.uri { Uri, Https }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import extdeps.provisioning.ubuntu_install_media {
   UbuntuInstallMediaArtifactRow,
@@ -319,3 +320,55 @@ fn ubuntu_noble_2404_3_arm64_network_boot_member_pins() -> List<UbuntuNetworkBoo
     + member_pin(served_path: "arm64/vmlinuz", pin: ubuntu_noble_2404_3_arm64_kernel_pin())
     + member_pin(served_path: "arm64/initrd", pin: ubuntu_noble_2404_3_arm64_initrd_pin())
 }
+
+// THE LIVE-SESSION PACKAGE PRESENCE, cited to Canonical's published live-server manifest. This is a
+// PACKAGE-FACT observation, distinct from the artefact digest pins above: it records that a named package at
+// a version ships in the image, NOT a digest we pin. The diskless runner's boot stage
+// (gunbc.runner.runner_host_medium runner_host_fleet_authorized_keys_command) enables the image's OWN
+// ssh.service to authorize the fleet roster, and that only holds if openssh-server is present in the image --
+// so this is the standing that observation makes available to that stage. Live-session ACTIVATION is split:
+// what THIS change establishes by EXECUTION is only the LOCAL fact -- the stage's `systemctl is-active` read-back
+// proves ssh.service came up in the live session. The FURTHER fact, that the fleet transport actually dials in
+// and authenticates as the automation principal under the pinned host key, is NOT claimed to exist: the host's
+// static anchor is absent (as on mtcollins1 today), so gunbc.host.anchored_host_transport refuses BEFORE contact
+// and no authenticated boot read-back has been observed; supplying that anchor is outside this change. So
+// presence is cited here, local activation is executed by the stage, and the authenticated leg is a stated
+// frontier, not transcribed as done (gunbc.design_argument::epistemic_humility / fail_closed). CitedToAuthority,
+// not TranscribedUncited: the source is Canonical's manifest, not a measurement we took.
+type LiveSessionPackagePresence sole_constructor {
+  package_name: NonEmptyStr
+  version: NonEmptyStr
+  // ONE authority carrier, not two (gunbc.design_argument::single_authority). CitedFigureStanding's
+  // CitedToAuthority arm ALREADY holds the ExternalAuthority, so a separate `authority:` field would be a
+  // second place that independently decides the citation and could be set to a different value than the
+  // standing -- a fork. The standing IS the authority; every sibling observation carries it this way.
+  standing: CitedFigureStanding
+}
+
+// Canonical's published manifest for the arm64 live-server image -- the authority the package presence is
+// cited to. Same point-release directory the casper pins describe.
+data ubuntu_noble_2404_3_live_server_arm64_manifest_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cdimage.ubuntu.com/releases/24.04.3/release/ubuntu-24.04.3-live-server-arm64.manifest"
+  }
+}
+
+// openssh-server 1:9.6p1-3ubuntu13.13 (with openssh-sftp-server + openssh-client) appears in the manifest.
+// STANDING, verbatim: present in the published live-server image manifest; live-session activation not
+// established by this source. Fetched 2026-11-08 ~01:45Z, 671 lines, manifest sha256
+// 65573d3085ebf932007ad2f540c0380504c6d4af4f417c8e1a8b9d8e68089ade; the release dir's SHA256SUMS pins the
+// ISO as 2ee2163c9b901ff5926400e80759088ff3b879982a3956c02100495b489fd555. The manifest does not say which
+// squashfs layer the package sits in, hence presence-not-activation.
+data openssh_server_live_session_observation: LiveSessionPackagePresence = LiveSessionPackagePresence {
+  package_name: "openssh-server" as NonEmptyStr,
+  version: "1:9.6p1-3ubuntu13.13" as NonEmptyStr,
+  standing: CitedToAuthority { authority: ubuntu_noble_2404_3_live_server_arm64_manifest_authority },
+}
+
+// CONSUMER (gunbc.design_argument::consumption): read by test.claim.runner.runner_host_medium_fleet_keys_witness
+// `the_openssh_presence_the_boot_stage_relies_on_is_cited_to_the_manifest`, which asserts this row's package +
+// version + citation locator are exactly what the boot stage relies on when it enables the image's OWN
+// ssh.service -- so the stage's standing to depend on openssh-server flows through THIS modelled row (an
+// executing claim), not through a `//` comment. Presence only; the stage's `systemctl is-active` read-back
+// establishes activation by execution (gunbc.design_argument::fail_closed).

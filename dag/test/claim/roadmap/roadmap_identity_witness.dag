@@ -87,7 +87,6 @@ fn renamed(n: RoadmapNode) -> RoadmapNode {
     dispatch: n.dispatch,
     execution: n.execution,
     owner: n.owner,
-    signoff: n.signoff,
     parent: none,
     centering: none,
   }

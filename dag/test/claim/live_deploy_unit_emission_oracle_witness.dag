@@ -256,7 +256,7 @@ test fn the_belt_service_unit_carries_the_per_tick_watchdog_bound() -> Bool {
 // long-running multipurpose server was the same over-grant in a second place. Both routes will share
 // one publication boundary rather than one ambient token; live_deploy.spec
 // deployment_credential_env_path carries the argument.
-// SINCE THE SERVE VERB WAS DELETED (gunbc.plans.converged_ingress M1) THE EXECSTART IS `gunbc run` ON
+// SINCE THE SERVE VERB WAS DELETED (gunbc.plans.converged_ingress (deleted 2026-11-08) M1) THE EXECSTART IS `gunbc run` ON
 // THE ROADMAP'S INGRESS BINDING, so until the lab installs a revision carrying it these are the bytes
 // the emitter WOULD install over the deployed ones; every other line is unchanged.
 test fn the_serve_unit_matches_the_deployed_bytes() -> Bool {
@@ -341,7 +341,7 @@ test fn the_approval_broker_unit_would_install_these_bytes() -> Bool {
 // THE SIDECAR UNIT: binds the typed port row the broker's client dials, runs the binary installed in the locus, and the
 // broker is ordered after it and loads the digest of that same installed binary from its EnvironmentFile. Its argv is
 // the binding's arguments and nothing else -- no source, entry or function selector, because the native binary IS its
-// binding constructor (gunbc.plans.converged_ingress M2a) -- and the handler it names is the program descriptor's.
+// binding constructor (gunbc.plans.converged_ingress (deleted 2026-11-08) M2a) -- and the handler it names is the program descriptor's.
 test fn the_sidecar_unit_would_install_these_bytes() -> Bool {
   let emitted = render(doc: emit_device_crypto_sidecar_unit_doc(spec: live_spec(), revision: live_revision()), proto: live_deploy_protocol)
   emitted == join([

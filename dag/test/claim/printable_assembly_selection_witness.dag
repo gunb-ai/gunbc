@@ -16,13 +16,15 @@ import product.printed_chassis.printable_assembly_selection {
 }
 import product.printed_chassis.group_duct { group_duct_plans }
 import product.printed_chassis.duct_card_catalog { DuctCard, a16_duct_card, t4_duct_card, a2_duct_card, t10_duct_card, duct_cards, duct_card_unread_reason }
-import product.printed_chassis.gpu_duct { PlugAndFlange, FullDuct }
+import product.printed_chassis.gpu_duct { PlugAndFlange, FullDuct, CardFitRing }
+import extdeps.gpu.passive_card_row { CardRow, NeedsReading }
+import extdeps.gpu.nvidia_a16 { a16_card_row }
 import product.printed_chassis.preparation_identity { manifest_identity }
 
 fn selected(root: PrintedAssemblyRoot) -> PrintableAssembly? {
   match select_printable_assembly(root: root) {
     PrintableAssemblyReady { assembly: a } => Present { value: a }
-    PrintableAssemblyRefused { reason: _ } => none
+    PrintableAssemblyRefused { reason: _ } => Absent
   }
 }
 
@@ -212,12 +214,62 @@ test fn w_the_read_card_selects_through_the_same_function() -> Bool {
 // Digest re-recorded for the schema-string change ONLY (gunbc.a16-inlet-duct-review.v2 -> gunbc.printed-duct-review.v3):
 // a field-by-field diff of the manifest against main 18a76b7 shows that string as the sole difference, and main's
 // digest reproduced the previous literal.
+// RE-RECORDED AGAIN, text only, and settled by hash rather than by eye. #15859 (8dfe326a3545) made interface_json
+// emit one intended_overlap key per interface; that is the WHOLE difference. manifest_identity is sha256 over the
+// UTF-8 bytes of the exact manifest text (product.printed_chassis.preparation_identity), so the two manifests read
+// from the compiler's own refusal line -- at 6dd51633 (invocation 98330965-be50-4c02-a284-c7dfcf9f4bca) and at
+// 24fe705b (invocation ca5ebc9e-5115-4b1a-862d-62fe385411b0) -- decide the reviewer's duty this row imposes: sha256
+// of the 4527-char text at 6dd51633 reproduces the literal this row used, and adding exactly two members,
+// "intended_overlap": [] to each of the two interfaces and nothing else, reproduces the digest below byte for byte.
+// No dimension, string, key or list length other than those two differs, so no printed dimension moved. The a16 card
+// end that same refactor relocated (gpu_duct a16_end_face -> product.printed_chassis.card_end_interface a16_card_end)
+// carried every reading across unchanged -- face 97840 / 38600, window 88030 / 23940 / 5540 / 13090, fin setback
+// 6000, inserts 27620 / 8860 / 59720 / 7540, connector 2560, same source string -- so the ring the operator printed
+// and fitted is still the model's. The digest below is what the compiler returns for this very expression at
+// 24fe705b, read off its ProcessExit refusal line (invocation 4b0397ad-5429-4272-94f2-0fede5db37e7), not
+// hand-computed; the same run found the selection Present and the root wire byte-identical.
 test fn w_the_a16_plug_fit_ring_is_the_geometry_that_was_printed_and_fitted() -> Bool {
   match selected(root: a16_root(kind: PlugFitRing)) {
     Present { value: a } => match manifest_identity(content: serialize_json(v: printable_manifest(a: a))) {
-      Present { value: m } => m.root_wire == "a16-plug-fit-ring" && m.digest.hex == "83dddd9fb4066e4756974fd3d5c1d0dfba3dbc4f2434bf040af82d64549f3a78"
+      Present { value: m } => m.root_wire == "a16-plug-fit-ring" && m.digest.hex == "4718c23d9bcc9e914b0540d09458be6b23300d7ba3860ed8628a8fa554e5dd55"
       Absent => false
     }
     Absent => false
   }
+}
+
+// SUPPLIED CARD ROW (not a catalogue row): the A16's row with its end face read (a16_duct_card's) and its length
+// stated, but its slot count unread. Only the blower shapes read the slot pitch, so only they may refuse on it.
+data slot_count_unread_card: DuctCard = DuctCard {
+  row: CardRow {
+    id: a16_card_row.id, product: a16_card_row.product, height_class: a16_card_row.height_class,
+    slot_count: NeedsReading { read_obligation: "supplied by the witness: the card's slot count" },
+    length: a16_card_row.length, height: a16_card_row.height, brackets: a16_card_row.brackets,
+    auxiliary_power: a16_card_row.auxiliary_power, board_power: a16_card_row.board_power,
+    required_airflow: a16_card_row.required_airflow, airflow_direction: a16_card_row.airflow_direction,
+    sources: a16_card_row.sources,
+  },
+  end_face: a16_duct_card.end_face,
+}
+
+fn ready(s: PrintableAssemblySelection) -> Bool {
+  match s { PrintableAssemblyReady { assembly: _ } => true PrintableAssemblyRefused { reason: _ } => false }
+}
+
+fn refused_naming_slot_count(s: PrintableAssemblySelection) -> Bool {
+  match s { PrintableAssemblyReady { assembly: _ } => false PrintableAssemblyRefused { reason: r } => string_contains(s: r, pattern: "slot count") }
+}
+
+// An unread slot count refuses only the shapes that read the slot pitch, and names that reading.
+test fn w_an_unread_slot_count_refuses_only_the_blower_shapes() -> Bool {
+  let c = slot_count_unread_card
+  ready(s: duct_selection(root: duct_card_root(card: c, kind: PlugFitRing), card: c, mount: PlugAndFlange, extent: CardFitRing))
+    && ready(s: duct_selection(root: duct_card_root(card: c, kind: PlugDuct), card: c, mount: PlugAndFlange, extent: FullDuct))
+    && refused_naming_slot_count(s: blower_selection(root: duct_card_root(card: c, kind: BlowerDuct), card: c))
+    && refused_naming_slot_count(s: plane_on_end_selection(root: duct_card_root(card: c, kind: BlowerFlatOnEndDuct), card: c))
+}
+
+// CONTROL: the A16 (slot count read) still admits the blower shape through the same function.
+test fn w_the_read_slot_count_admits_the_blower_shape() -> Bool {
+  ready(s: blower_selection(root: duct_card_root(card: a16_duct_card, kind: BlowerDuct), card: a16_duct_card))
 }

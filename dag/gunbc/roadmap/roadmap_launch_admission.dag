@@ -35,7 +35,7 @@ import extdeps.languages.json.parse {
   JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
 }
 
-// RLM-1 (docs/plans/roadmap-launch-mvp-plan.md section 3): THE ONE ANSWER to `may THIS cause start
+// RLM-1 (docs/plans/roadmap-launch-mvp-plan.md (deleted 2026-11-08) section 3): THE ONE ANSWER to `may THIS cause start
 // THIS node NOW?`. Before this module the daily-workspace action derivation, POST
 // /dispatch/<node_id> and the periodic belt tick each derived launch eligibility on their own --
 // the page and the belt read the Ready frontier, the manual route ignored dependencies entirely
@@ -280,6 +280,10 @@ type LaunchRefusal
   | LaunchCauseNotPermitted { cause: LaunchCause, mode: SpawnMode }
   | LaunchGateNotEvaluated { gate: String }
   | LaunchNoPlacementGrant { detail: String }
+  // CONTINUE / START FRESH refuse to spawn for a node whose lineage was RETIRED by the operator. This
+  // is a NOT-ADMISSIBLE launch (409, like the other inhibitions) carried typed with the retiring
+  // principal and reason rather than flattened into a LaunchTransitionInhibited prose tag (§4c/§5).
+  | LaunchNodeRetired { by: String, reason: String }
 
 type LaunchAdmission
   = LaunchAdmitted { identity: LaunchIdentity }
@@ -310,6 +314,7 @@ fn launch_refusal_label(r: LaunchRefusal) -> String {
     LaunchCauseNotPermitted { cause: _, mode: _ } => "cause_not_permitted_by_mode"
     LaunchGateNotEvaluated { gate: _ } => "gate_not_evaluated"
     LaunchNoPlacementGrant { detail: _ } => "no_placement_grant"
+    LaunchNodeRetired { by: _, reason: _ } => "node_retired"
   }
 }
 
@@ -333,6 +338,7 @@ fn launch_refusal_reason(r: LaunchRefusal) -> String {
     LaunchCauseNotPermitted { cause, mode } => join(["cause ", launch_cause_label(c: cause), " may not start new work in spawn mode ", spawn_mode_label(m: mode)], "")
     LaunchGateNotEvaluated { gate } => join(["gate ", gate, " was not evaluated; fail-closed"], "")
     LaunchNoPlacementGrant { detail } => join(["the agent session holds no placement grant, so it is not spawned: ", detail], "")
+    LaunchNodeRetired { by, reason } => join(["the node's lineage was retired by ", by, ": ", reason], "")
   }
 }
 
@@ -355,6 +361,7 @@ fn launch_refusal_exemplars() -> List<LaunchRefusal> {
     LaunchCauseNotPermitted { cause: Timer, mode: ManualReady },
     LaunchGateNotEvaluated { gate: "g" },
     LaunchNoPlacementGrant { detail: "d" },
+    LaunchNodeRetired { by: "op", reason: "operator ended the lineage" },
   ]
 }
 

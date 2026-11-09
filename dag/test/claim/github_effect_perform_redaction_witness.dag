@@ -1,0 +1,124 @@
+module test.claim.github_effect_perform_redaction_witness
+
+// THE HEAL PUBLISHER'S CREDENTIAL-PATH REFUSALS CARRY NO BODY, NO CAUSE TEXT, NO INPUT (gunbc#15710).
+// Moved here, unchanged, from test.claim.github_effect_perform_witness so these six rows import only
+// what they test (gunbc.github_effect_perform's two refusal constructors) and no longer inherit that
+// file's other imports -- in particular test.claim.github_app_registry, whose closure refused to compile
+// on srv2 (qn-15710-e1a3), so none of these rows had executed. Each row supplies its RestRefusal and
+// asserts the exact cause text. The real-path rows stay in test.claim.github_effect_perform_witness;
+// their integration obligations are unchanged and remain UNVALIDATED at gunbc#15710's head.
+import std.types { Bool, String }
+import std.algebra { string_contains }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.transports.rest { RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import gunbc.github_effect_perform {
+  PublisherTokenMint, PublisherTokenMinted, PublisherTokenNotMinted,
+  publisher_key_unreadable, publisher_installation_token_refused,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ── CREDENTIAL-PATH REFUSALS CARRY NO BODY, NO CAUSE TEXT, NO INPUT (redaction hardening) ───────
+// Every response below plants FAKE-SECRET-MARKER where a real token, key or echoed request could
+// sit: in a Google error message, in a 2xx-undecodable cause, in a transport cause, in a non-JSON
+// body, in a forged status or reason field, and in a GitHub error body. The refusal text is what
+// reaches stderr through exit_failure, so the marker must be absent from every one, and the only
+// facts kept are the HTTP status and the closed-vocabulary codes of a Google error body.
+fn redaction_marker() -> String { "FAKE-SECRET-MARKER" }
+
+fn not_minted_cause(m: PublisherTokenMint) -> String {
+  match m {
+    PublisherTokenNotMinted { cause: c } => c
+    PublisherTokenMinted { token: _ } => "MINTED"
+  }
+}
+
+fn carries_no_marker(text: String) -> Bool { !string_contains(s: text, pattern: redaction_marker()) }
+
+fn google_401_body() -> String {
+  "{\"error\":{\"code\":401,\"message\":\"Request had invalid authentication credentials FAKE-SECRET-MARKER\",\"status\":\"UNAUTHENTICATED\",\"details\":[{\"@type\":\"type.googleapis.com/google.rpc.ErrorInfo\",\"reason\":\"ACCESS_TOKEN_EXPIRED\",\"domain\":\"googleapis.com\",\"metadata\":{\"service\":\"secretmanager.googleapis.com\",\"echo\":\"FAKE-SECRET-MARKER\"}}]}}"
+}
+
+test fn witness_a_google_error_keeps_only_status_and_safe_codes() -> Bool {
+  let c = not_minted_cause(m: publisher_key_unreadable(refusal: RestStatusRefused { status: 401, body: google_401_body() }))
+  c == "HealPublisherAppKeyUnreadable: HTTP 401 status=UNAUTHENTICATED reason=ACCESS_TOKEN_EXPIRED" && carries_no_marker(text: c)
+}
+
+test fn witness_an_undecodable_2xx_never_prints_its_cause() -> Bool {
+  let c = not_minted_cause(m: publisher_key_unreadable(refusal: RestBodyUndecodable { status: 200, cause: "payload/data near FAKE-SECRET-MARKER" }))
+  c == "HealPublisherAppKeyUnreadable: HTTP 200 undecodable (cause withheld on a credential path)" && carries_no_marker(text: c)
+}
+
+test fn witness_a_transport_refusal_never_prints_its_cause() -> Bool {
+  let k = not_minted_cause(m: publisher_key_unreadable(refusal: RestTransportRefused { cause: "connect https://x/?t=FAKE-SECRET-MARKER" }))
+  let g = not_minted_cause(m: publisher_installation_token_refused(refusal: RestTransportRefused { cause: "FAKE-SECRET-MARKER" }))
+  carries_no_marker(text: k) && carries_no_marker(text: g)
+    && k == "HealPublisherAppKeyUnreadable: transport refused (cause withheld on a credential path)"
+}
+
+test fn witness_a_non_json_body_contributes_nothing_but_its_status() -> Bool {
+  let c = not_minted_cause(m: publisher_key_unreadable(refusal: RestStatusRefused { status: 502, body: "<html>FAKE-SECRET-MARKER</html>" }))
+  c == "HealPublisherAppKeyUnreadable: HTTP 502" && carries_no_marker(text: c)
+}
+
+// A forged status outside google.rpc.Code is DROPPED; a reason that is not exactly one of the reviewed
+// reasons (lowercase, too long, trailing underscore) prints the fixed label, never its own bytes.
+test fn witness_forged_status_and_reason_fields_are_dropped() -> Bool {
+  let forged = "{\"error\":{\"status\":\"UNAUTHENTICATED FAKE-SECRET-MARKER\",\"details\":[{\"@type\":\"type.googleapis.com/google.rpc.ErrorInfo\",\"reason\":\"fake-secret-marker\",\"domain\":\"d\"}]}}"
+  let long_reason = "{\"error\":{\"details\":[{\"@type\":\"type.googleapis.com/google.rpc.ErrorInfo\",\"reason\":\"A234567890123456789012345678901234567890123456789012345678901234\",\"domain\":\"d\"}]}}"
+  let trailing = "{\"error\":{\"details\":[{\"@type\":\"type.googleapis.com/google.rpc.ErrorInfo\",\"reason\":\"EXPIRED_\",\"domain\":\"d\"}]}}"
+  not_minted_cause(m: publisher_key_unreadable(refusal: RestStatusRefused { status: 403, body: forged })) == "HealPublisherAppKeyUnreadable: HTTP 403 reason=UNRECOGNIZED"
+    && not_minted_cause(m: publisher_key_unreadable(refusal: RestStatusRefused { status: 403, body: long_reason })) == "HealPublisherAppKeyUnreadable: HTTP 403 reason=UNRECOGNIZED"
+    && not_minted_cause(m: publisher_key_unreadable(refusal: RestStatusRefused { status: 403, body: trailing })) == "HealPublisherAppKeyUnreadable: HTTP 403 reason=UNRECOGNIZED"
+}
+
+test fn witness_a_github_error_body_contributes_nothing_but_its_status() -> Bool {
+  let c = not_minted_cause(m: publisher_installation_token_refused(refusal: RestStatusRefused { status: 422, body: "{\"message\":\"token FAKE-SECRET-MARKER rejected\",\"documentation_url\":\"https://docs.github.com\"}" }))
+  c == "HealPublisherInstallationTokenRefused: HTTP 422" && carries_no_marker(text: c)
+}
+
+// ── THE REASON IS A LOOKUP, NOT A FORMAT CHECK (operator ruling on #15710) ──────────────────────────
+fn reason_body(reason_json: String) -> String {
+  concat(concat("{\"error\":{\"code\":403,\"details\":[{\"@type\":\"type.googleapis.com/google.rpc.ErrorInfo\",\"reason\":", reason_json), ",\"domain\":\"googleapis.com\"}]}}")
+}
+
+fn key_read_cause(body: String) -> String {
+  not_minted_cause(m: publisher_key_unreadable(refusal: RestStatusRefused { status: 403, body: body }))
+}
+
+// REGRESSION: an UPPERCASE planted marker that the retired [A-Z][A-Z0-9_]+[A-Z0-9] check ADMITTED.
+test fn witness_an_uppercase_marker_shaped_like_a_reason_is_not_printed() -> Bool {
+  let c = key_read_cause(body: reason_body(reason_json: "\"FAKE_SECRET_MARKER_9\""))
+  c == "HealPublisherAppKeyUnreadable: HTTP 403 reason=UNRECOGNIZED" && !string_contains(s: c, pattern: "FAKE_SECRET_MARKER")
+}
+
+test fn witness_a_reviewed_reason_prints_as_our_literal() -> Bool {
+  key_read_cause(body: reason_body(reason_json: "\"IAM_PERMISSION_DENIED\"")) == "HealPublisherAppKeyUnreadable: HTTP 403 reason=IAM_PERMISSION_DENIED"
+}
+
+test fn witness_an_unknown_reason_prints_the_fixed_label() -> Bool {
+  key_read_cause(body: reason_body(reason_json: "\"SOME_FUTURE_REASON\"")) == "HealPublisherAppKeyUnreadable: HTTP 403 reason=UNRECOGNIZED"
+}
+
+// An empty reason reads as absent (error_info_string_member maps "" to none), so it contributes no
+// reason at all; the text stays non-empty because the status is always printed.
+test fn witness_an_empty_reason_contributes_no_reason() -> Bool {
+  key_read_cause(body: reason_body(reason_json: "\"\"")) == "HealPublisherAppKeyUnreadable: HTTP 403"
+}
+
+// MALFORMED: a reason that is not a string, and an error whose details are not an array, contribute
+// no reason at all; the text stays non-empty because the status is always printed.
+test fn witness_a_malformed_reason_or_details_contributes_no_reason() -> Bool {
+  key_read_cause(body: reason_body(reason_json: "42")) == "HealPublisherAppKeyUnreadable: HTTP 403"
+    && key_read_cause(body: "{\"error\":{\"details\":{\"reason\":\"FAKE_SECRET_MARKER\"}}}") == "HealPublisherAppKeyUnreadable: HTTP 403"
+    && key_read_cause(body: "") == "HealPublisherAppKeyUnreadable: HTTP 403"
+}
+
+// DUPLICATED AND REORDERED ErrorInfo: only the first ErrorInfo is read, and in either order the
+// marker-bearing one cannot print itself.
+test fn witness_duplicated_or_reordered_error_info_never_prints_a_marker() -> Bool {
+  let known_first = "{\"error\":{\"details\":[{\"@type\":\"type.googleapis.com/google.rpc.ErrorInfo\",\"reason\":\"SERVICE_DISABLED\",\"domain\":\"d\"},{\"@type\":\"type.googleapis.com/google.rpc.ErrorInfo\",\"reason\":\"FAKE_SECRET_MARKER\",\"domain\":\"d\"}]}}"
+  let marker_first = "{\"error\":{\"details\":[{\"@type\":\"type.googleapis.com/google.rpc.ErrorInfo\",\"reason\":\"FAKE_SECRET_MARKER\",\"domain\":\"d\"},{\"@type\":\"type.googleapis.com/google.rpc.ErrorInfo\",\"reason\":\"SERVICE_DISABLED\",\"domain\":\"d\"}]}}"
+  key_read_cause(body: known_first) == "HealPublisherAppKeyUnreadable: HTTP 403 reason=SERVICE_DISABLED"
+    && key_read_cause(body: marker_first) == "HealPublisherAppKeyUnreadable: HTTP 403 reason=UNRECOGNIZED"
+}

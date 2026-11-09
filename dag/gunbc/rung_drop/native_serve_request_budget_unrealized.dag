@@ -32,7 +32,7 @@ import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable }
 // stuck-worker ceiling the process refuses 503 and exits 75.
 //
 // THE ENROLLED EVIDENCE CHANGED SHAPE ON 2026-11-04, AND THE CHANGE IS STATED HERE, NOT LEFT TO BE
-// FOUND (gunbc.plans.converged_ingress M2a; operator decision exit-after-timeout over a killable child
+// FOUND (gunbc.plans.converged_ingress (deleted 2026-11-08) M2a; operator decision exit-after-timeout over a killable child
 // per request). The abandoned-worker model this row retired on let a timed-out compiled computation
 // keep running and keep spending CPU after its client was answered, so the declared CPU limit was not
 // enforced. The native door now has ONE effective deadline, min(cpu_limit, wall_limit), armed when the

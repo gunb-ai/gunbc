@@ -4,10 +4,12 @@ import std.types { Bool, String, Int, List }
 import extdeps.languages.json.emit { json_object }
 import gunbc.harness.harness_wire { WireToolUseBlock }
 import gunbc.harness.harness_tool_kind {
-  HarnessTool, RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool, harness_tool_wire_name,
+  HarnessTool, RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool,
+  WaitJobsTool, ReadJobOutputTool, KillJobTool, harness_tool_wire_name,
 }
 import std.measure { character_count, character_count_value }
 import gunbc.harness.harness_turn { harness_event_placement_waiting, harness_tool_round_events }
+import gunbc.harness.harness_session_recovery { session_event_resumed }
 import extdeps.llm.claude_code_stream_json {
   ClaudeCodeAssistantLine,
   ClaudeCodeUserLine,
@@ -18,7 +20,8 @@ import gunbc.roadmap.roadmap_provider_events {
   ProviderExecutionState, ProviderNotStarted,
   ProviderItemActivity, RunningCommand, EditingFiles, UsingConnectedTool, Searching,
   UpdatingPlan, ReasoningItem, Reporting, HarnessReadingFile, HarnessWritingFile,
-  HarnessEditingFile, HarnessRefusingUnrecognizedTool, UnclassifiedItem,
+  HarnessEditingFile, HarnessWaitingOnJobs, HarnessReadingJobOutput,
+  HarnessKillingJob, HarnessRefusingUnrecognizedTool, UnclassifiedItem,
   classify_claude_code_stream_line,
   ItemStarted, ItemCompleted,
   ProviderEventsParsed,
@@ -401,6 +404,9 @@ fn activity_tag(activity: ProviderItemActivity) -> String {
     HarnessReadingFile => "read"
     HarnessWritingFile => "write"
     HarnessEditingFile => "edit"
+    HarnessWaitingOnJobs => "wait"
+    HarnessReadingJobOutput => "jobout"
+    HarnessKillingJob => "jobkill"
     HarnessRefusingUnrecognizedTool => "undeclared"
     EditingFiles => "other"
     UsingConnectedTool => "other"
@@ -454,6 +460,18 @@ test fn a_harness_file_write_round_is_read_back_as_writing() -> Bool {
 
 test fn a_harness_file_edit_round_is_read_back_as_editing_apart_from_writing() -> Bool {
   harness_tool_round_tags(tool: EditFileTool) == "started:edit,completed:edit"
+}
+
+test fn a_harness_wait_round_is_read_back_as_waiting_on_jobs() -> Bool {
+  harness_tool_round_tags(tool: WaitJobsTool) == "started:wait,completed:wait"
+}
+
+test fn a_harness_job_output_round_is_read_back_as_reading_job_output() -> Bool {
+  harness_tool_round_tags(tool: ReadJobOutputTool) == "started:jobout,completed:jobout"
+}
+
+test fn a_harness_job_kill_round_is_read_back_as_killing_a_job() -> Bool {
+  harness_tool_round_tags(tool: KillJobTool) == "started:jobkill,completed:jobkill"
 }
 
 // A NAME THE HARNESS DOES NOT DECLARE IS NEVER REPORTED AS A COMMAND. The dispatcher refuses such a
@@ -770,7 +788,8 @@ test fn a_item_kind_partition_names_only_reporting() -> Bool {
   let activities: List<ProviderItemActivity> = [
     RunningCommand, EditingFiles, UsingConnectedTool, Searching, UpdatingPlan,
     ReasoningItem, Reporting, HarnessReadingFile, HarnessWritingFile,
-    HarnessEditingFile, HarnessRefusingUnrecognizedTool, UnclassifiedItem,
+    HarnessEditingFile, HarnessWaitingOnJobs, HarnessReadingJobOutput,
+    HarnessKillingJob, HarnessRefusingUnrecognizedTool, UnclassifiedItem,
   ]
   count(activities.filter(a => match provider_item_activity_kind(activity: a) {
                                  ItemKindReporting => true
@@ -834,4 +853,28 @@ test fn a_detail_partition_fold_matches_the_detail_reader() -> Bool {
            none => provider_execution_detail(state: s) == ""
          },
   )
+}
+
+// THE SESSION-LIFECYCLE PAIR IS A NON-TERMINAL NOTICE, NOT AN UNKNOWN EVENT TYPE (D4). turn.resumed is
+// the real producer's line (harness_session_recovery session_event_resumed) into the real reader;
+// turn.recovery_needed is classified by its type alone. Before the arms existed either line classified as
+// an unknown event type, and one refused line refuses the whole stream, so a session that recorded a
+// recovery rendered as "event stream refused". The control is the unknown-type refusal above: a type that
+// is not in the pair is still refused.
+test fn session_resumed_and_recovery_needed_lines_are_observed_not_refused() -> Bool {
+  (match classify_provider_event_line(raw: session_event_resumed(ordinal: 1, round: 2, cause: "engine refused")) {
+    ProviderEventObserved { kind: _ } => true
+    _ => false
+  }) && (match classify_provider_event_line(raw: "{\"type\":\"turn.recovery_needed\",\"round\":2}") {
+    ProviderEventObserved { kind: _ } => true
+    _ => false
+  })
+}
+
+test fn a_stream_carrying_the_recovery_pair_is_not_refused_and_leaves_the_state_unchanged() -> Bool {
+  let text = concat(concat("{\"type\":\"turn.started\"}\n", "{\"type\":\"turn.recovery_needed\",\"round\":2}\n"), concat(concat(session_event_resumed(ordinal: 1, round: 2, cause: "engine refused"), "\n"), "{\"type\":\"turn.completed\"}\n"))
+  match provider_execution_state(parsed: parse_codex_jsonl(text: text)) {
+    ProviderCompleted { activity: _ } => true
+    _ => false
+  }
 }

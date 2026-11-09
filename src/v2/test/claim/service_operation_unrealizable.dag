@@ -1,0 +1,245 @@
+module v2.test.claim.service_operation_unrealizable
+
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrencePending, OccurrenceSynthetic }
+import v2.compiler.infer { infer_service_operation_reference_diags }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
+import v2.std.symbol_index { symbol_index_bind_at, symbol_index_declares_service_payload_at, symbol_index_lookup, symbol_index_operation_realization_at, OperationRealization, OperationRealizable, OperationUnrealizable, SymbolIndex, empty_symbol_index, symbol_index_mark_operation_realization, symbol_index_mark_service_payload }
+import v2.std.qualified_name { qualified_name_from_dotted_string, declaration_reference_path_optional, qualified_name_init, QualifiedName }
+import v2.extdeps.languages.dag { service_payload_node, dag_grammar_atom, dag_surface_edge, namespace_graft_namespace_body_node }
+import v2.std.service_realization_labels { realization_root_label, realization_unrealizable_label, realization_unrealizable_reason_label }
+import v2.std.node { StructuralLabel, CoreMarker, DeclarationReferenceEdge, Arrow, Authored, Edge, NotADeclaration, fold_list_node, Atom, Conj, Node, Symbol, TypeNode, node_equal_ignoring_provenance }
+import v2.test.claim.caller_admission_native_wall { wall_decl_ref_target }
+import std.optional { Absent, Present }
+// `concat` is the built-in two-list append, not a std.algebra declaration; `Empty` is.
+import std.algebra { Empty }
+import v2.std.diagnostic { None, Some, Suggested, Unavailable, diagnostics_has_reason }
+import v2.std.logic { Bool }
+
+
+// THE CALL-SITE READER (v2.compiler.infer infer_service_operation_reference_diags), judged over
+// values: the index carries the realization record the fill writes (symbol_index_fill, keyed by the
+// operation's declaration path), and the application is the same hand-built call the caller-admission
+// wall's witnesses use. The real-path inhabitance (lowering -> fill -> record) is the lowering claims in
+// v2.test.claim.normalize.service_realization_lowering; deleting the reader or the fill turns one red.
+
+data suo_element_locus: NodeOccurrenceIdentity = OccurrenceMinted { id: OccurrenceId { value: 940 } }
+
+fn suo_element() -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: suo_element_locus }
+}
+
+// The bindings index the reader canonicalizes through: the callee path declares itself.
+fn suo_bindings() -> SymbolIndex {
+  match declaration_reference_path_optional(node: wall_decl_ref_target()) {
+    Absent => empty_symbol_index()
+    Present { value: qn } => symbol_index_bind_at(index: empty_symbol_index(), binding_path: qn, declaring_path: qn, resolved: wall_decl_ref_target())
+  }
+}
+
+fn suo_index_with(realization: OperationRealization) -> SymbolIndex {
+  match declaration_reference_path_optional(node: wall_decl_ref_target()) {
+    Absent => empty_symbol_index()
+    Present { value: qn } => symbol_index_mark_operation_realization(index: empty_symbol_index(), qualified_path: qn, realization: realization)
+  }
+}
+
+// RED: a call to an operation recorded unrealizable refuses, typed, at the call, with the operation's
+// offending element as the correction.
+test fn a_call_to_an_unrealizable_operation_refuses_at_the_call_holds() -> Bool {
+  match infer_service_operation_reference_diags(
+    node: wall_decl_ref_target(),
+    bindings: suo_bindings(),
+    declarations: suo_index_with(realization: OperationUnrealizable { reason: ^service_realization_argv_refused, at: suo_element() })
+  ) {
+    None => false
+    Some { diagnostics: d } =>
+      diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^infer_reason_service_operation_unrealizable)
+        && match d.head.correction {
+          Suggested { node: el } =>
+            match el.occurrence_id {
+              OccurrenceMinted { id: kid } => kid.value == 940
+              OccurrenceProjected { id: kid, caused_by: _ } => kid.value == 940
+              OccurrencePending { caused_by: _ } => false
+              OccurrenceSynthetic => false
+            }
+          Unavailable { reason: _ } => false
+        }
+  }
+}
+
+// POSITIVE: a call to a realizable operation is not refused by this reader.
+test fn a_call_to_a_realizable_operation_is_admitted_holds() -> Bool {
+  match infer_service_operation_reference_diags(
+    node: wall_decl_ref_target(),
+    bindings: suo_bindings(),
+    declarations: suo_index_with(realization: OperationRealizable)
+  ) {
+    None => true
+    Some { diagnostics: _ } => false
+  }
+}
+
+fn suo_index_with_service_payload() -> SymbolIndex {
+  match declaration_reference_path_optional(node: wall_decl_ref_target()) {
+    Absent => empty_symbol_index()
+    Present { value: qn } => symbol_index_mark_service_payload(index: empty_symbol_index(), qualified_path: qualified_name_init(qn: qn))
+  }
+}
+
+// RED: fail closed. A callee declared in a marked service with NO realization entry is realization-unknown.
+test fn a_service_operation_with_no_realization_entry_refuses_as_unknown_holds() -> Bool {
+  match infer_service_operation_reference_diags(node: wall_decl_ref_target(), bindings: suo_bindings(), declarations: suo_index_with_service_payload()) {
+    None => false
+    Some { diagnostics: d } => diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^infer_reason_service_operation_realization_unknown)
+  }
+}
+
+// CONTROL: the same callee path under NO service mark (a resource capability lowers to the same Conj
+// shape and has no mirror) is not refused.
+// CONTROL: the reader refuses on the RECORD, not on the callee's spelling -- the same call over an index
+// with no record is not refused by this reader (a resource capability or plain fn).
+test fn a_call_to_a_callee_outside_a_service_with_no_record_is_not_refused_holds() -> Bool {
+  match infer_service_operation_reference_diags(
+    node: wall_decl_ref_target(),
+    bindings: suo_bindings(),
+    declarations: empty_symbol_index()
+  ) {
+    None => true
+    Some { diagnostics: _ } => false
+  }
+}
+
+// THE FILL: module t.svc holds service s.F (marked payload leaf, operation Run) and s.G (the same Conj
+// shape UNMARKED, as a resource declaration lowers). The <realization> sibling marks Run unrealizable.
+fn suo_atom(sym: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: sym } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn suo_op(name: Symbol) -> Edge {
+  Edge { label: Authored { name: name }, target: Node { kind: TypeNode { connective: Arrow }, children: [], occurrence_id: OccurrenceSynthetic }, declaration: NotADeclaration }
+}
+
+fn suo_root(with_realization: Bool) -> Node {
+  let interface = Edge {
+    label: Authored { name: ^s },
+    target: namespace_graft_namespace_body_node(
+      edges: [
+        Edge { label: Authored { name: ^F }, target: service_payload_node(edges: [suo_op(name: ^Run)], source: suo_atom(sym: ^F)), declaration: NotADeclaration },
+        Edge { label: Authored { name: ^G }, target: Node { kind: TypeNode { connective: Conj }, children: [suo_op(name: ^Cap)], occurrence_id: OccurrenceSynthetic }, declaration: NotADeclaration }
+      ],
+      source: suo_atom(sym: ^s)
+    ),
+    declaration: NotADeclaration
+  }
+  let marker = Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Authored { name: realization_unrealizable_label() }, target: suo_atom(sym: ^argv), declaration: NotADeclaration },
+      Edge { label: Authored { name: realization_unrealizable_reason_label() }, target: suo_atom(sym: ^service_realization_argv_refused), declaration: NotADeclaration }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+  let mirror = Edge {
+    label: Authored { name: realization_root_label() },
+    target: Node { kind: TypeNode { connective: Conj }, children: [
+      Edge { label: Authored { name: ^s }, target: Node { kind: TypeNode { connective: Conj }, children: [
+        Edge { label: Authored { name: ^F }, target: Node { kind: TypeNode { connective: Conj }, children: [Edge { label: Authored { name: ^Run }, target: marker, declaration: NotADeclaration }], occurrence_id: OccurrenceSynthetic }, declaration: NotADeclaration }
+      ], occurrence_id: OccurrenceSynthetic }, declaration: NotADeclaration }
+    ], occurrence_id: OccurrenceSynthetic },
+    declaration: NotADeclaration
+  }
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: concat([
+      dag_surface_edge(edge: ^dag_surface_module_header, target: dag_grammar_atom(id: ^dag_surface_module_header)),
+      dag_surface_edge(edge: ^dag_surface_module_header_qualified_name, target: fold_list_node(xs: qualified_name_from_dotted_string(dotted: "t.svc"), item_node: fn(sym) { suo_atom(sym: sym) })),
+      interface
+    ], if with_realization { [mirror] } else { [] }),
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn suo_filled(with_realization: Bool) -> SymbolIndex {
+  symbol_index_fill_module_root(index: empty_symbol_index(), root: suo_root(with_realization: with_realization), record_declarations: Empty, resource_declarations: Empty)
+}
+
+fn suo_path(dotted: String) -> QualifiedName { qualified_name_from_dotted_string(dotted: dotted) }
+
+fn suo_same_binding(dotted: String) -> Bool {
+  match symbol_index_lookup(index: suo_filled(with_realization: true), qualified_path: suo_path(dotted: dotted)) {
+    Absent => match symbol_index_lookup(index: suo_filled(with_realization: false), qualified_path: suo_path(dotted: dotted)) { Absent => true, Present { value: _ } => false }
+    Present { value: a } => match symbol_index_lookup(index: suo_filled(with_realization: false), qualified_path: suo_path(dotted: dotted)) { Absent => false, Present { value: b } => node_equal_ignoring_provenance(a: a, b: b) }
+  }
+}
+
+// POSITIVE: the fill records the operation's standing and marks the service once; the unmarked
+// resource-shaped payload is not a service.
+test fn the_fill_records_the_unrealizable_operation_and_marks_only_the_service_holds() -> Bool {
+  let index = suo_filled(with_realization: true)
+  symbol_index_declares_service_payload_at(index: index, qualified_path: suo_path(dotted: "t.svc.s.F"))
+    && !symbol_index_declares_service_payload_at(index: index, qualified_path: suo_path(dotted: "t.svc.s.G"))
+    && match symbol_index_operation_realization_at(index: index, qualified_path: suo_path(dotted: "t.svc.s.F.Run")) {
+      Present { value: OperationUnrealizable { reason: r, at: _ } } => r == ^service_realization_argv_refused
+      Present { value: OperationRealizable } => false
+      Absent => false
+    }
+}
+
+// CONTROL: the fill changes no binding. Every declaration path binds the same node with the realization
+// edge as without it.
+test fn the_realization_fill_leaves_every_binding_unchanged_holds() -> Bool {
+  suo_same_binding(dotted: "t.svc.s") && suo_same_binding(dotted: "t.svc.s.F") && suo_same_binding(dotted: "t.svc.s.F.Run")
+    && suo_same_binding(dotted: "t.svc.s.G") && suo_same_binding(dotted: "t.svc.s.G.Cap")
+}
+
+// THE REAL-ROUTE CLAIMS. The service module is filled by the real fill (symbol_index_fill_module_root) from
+// the lowered shape, so the record comes from the <realization> edge and not from a hand-supplied index. A
+// reference is the node resolution leaves: a declaration reference carrying a path.
+fn suo_reference(dotted: String) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: StructuralLabel { label: CoreMarker { marker: DeclarationReferenceEdge } },
+        target: fold_list_node(xs: qualified_name_from_dotted_string(dotted: dotted), item_node: fn(sym) { suo_atom(sym: sym) }),
+        declaration: NotADeclaration
+      }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+// The importing module's binding: `Run` imported from t.svc.s.F, bound at u.user.Run, declared at
+// t.svc.s.F.Run -- the same symbol_index_bind_at call the import binding round makes.
+fn suo_imported_bindings() -> SymbolIndex {
+  let filled = suo_filled(with_realization: true)
+  let declaring = suo_path(dotted: "t.svc.s.F.Run")
+  match symbol_index_lookup(index: filled, qualified_path: declaring) {
+    Absent => filled
+    Present { value: op } => symbol_index_bind_at(index: filled, binding_path: suo_path(dotted: "u.user.Run"), declaring_path: declaring, resolved: op)
+  }
+}
+
+fn suo_refuses(dotted: String, bindings: SymbolIndex) -> Bool {
+  match infer_service_operation_reference_diags(node: suo_reference(dotted: dotted), bindings: bindings, declarations: suo_filled(with_realization: true)) {
+    None => false
+    Some { diagnostics: d } => diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^infer_reason_service_operation_unrealizable)
+  }
+}
+
+// RED: a reference to the unrealizable operation by its declaring path refuses (a call head or a value
+// alike: the reader judges the reference, not the application).
+test fn a_reference_to_the_filled_unrealizable_operation_refuses_holds() -> Bool {
+  suo_refuses(dotted: "t.svc.s.F.Run", bindings: suo_filled(with_realization: true))
+}
+
+// RED, the import control: the same operation through an import binding refuses. The record is keyed by the
+// declaring path, so a reader that took the carried path would admit this alias.
+test fn a_reference_through_an_import_of_the_unrealizable_operation_refuses_holds() -> Bool {
+  suo_refuses(dotted: "u.user.Run", bindings: suo_imported_bindings())
+}
+
+// CONTROL: without the binding the alias declares nothing, and the reader does not invent a refusal.
+test fn an_unbound_alias_is_not_judged_by_this_reader_holds() -> Bool {
+  !suo_refuses(dotted: "u.user.Run", bindings: suo_filled(with_realization: true))
+}

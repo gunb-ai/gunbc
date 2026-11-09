@@ -389,7 +389,7 @@ fn ingress_binding_argument_text(arguments: List<String>) -> String {
 }
 
 // THE SERVED UNIT'S EXECSTART: `gunbc run` on the service's ingress binding (gunbc.http_ingress,
-// gunbc.plans.converged_ingress). There is no serve verb: the entry is the binding module, the
+// gunbc.plans.converged_ingress (deleted 2026-11-08)). There is no serve verb: the entry is the binding module, the
 // function its constructor, and every per-host value is a typed argument of that constructor --
 // which handler, the listener in its one text encoding, the release, and the per-request budgets. The
 // binding arguments are rendered once (gunbc.http_ingress http_ingress_binding_arguments) and follow the

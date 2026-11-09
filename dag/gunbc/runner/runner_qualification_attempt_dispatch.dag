@@ -7,7 +7,7 @@ import gunbc.fleet.fleet_converge_workflow {
   FleetConvergeDispatchSpec, DispatchInputValue, QualificationAttempt, fleet_converge_subject_host_input,
 }
 
-// LEG G'S FIRST DISPATCH, AS DATA AND NOT YET AN EFFECT (gunbc.plans.mtcollins1_ci_service_legs G; merry-fox-82,
+// LEG G'S FIRST DISPATCH, AS DATA AND NOT YET AN EFFECT (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) G; merry-fox-82,
 // 2026-10-31). It is the qualification_attempt mode of the fleet-converge workflow, run on an executor host and acting
 // on mtcollins1, rendered by the one builder every fleet-converge dispatch uses
 // (gunbc.fleet.fleet_converge_workflow fleet_converge_dispatch_values). It names no revision: a dispatch's revision is

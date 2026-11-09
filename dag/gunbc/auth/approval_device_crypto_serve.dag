@@ -55,7 +55,7 @@ import gunbc.auth.approval_device_crypto_wire {
 // deployment binding's fact: gunbc.auth.approval_device_crypto_ingress carries the binding
 // constructor and the NativeIngressDriver row, and the program descriptor that names this handler and
 // its startup is gunbc.auth.approval_device_crypto_realization device_crypto_native_ingress
-// (gunbc.plans.converged_ingress M2a).
+// (gunbc.plans.converged_ingress (deleted 2026-11-08) M2a).
 
 fn crypto_response(status: Int, body: String) -> ServeWireResponse {
   ServeWireResponse { status: status, content_type_label: native_serve_application_json, body: body, headers: [] }

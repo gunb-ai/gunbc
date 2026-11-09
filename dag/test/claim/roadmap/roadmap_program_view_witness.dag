@@ -8,7 +8,7 @@ import gunbc.roadmap.roadmap_model {
 }
 import gunbc.roadmap.roadmap_status {
   TicketLine, DerivableLine, TicketFields,
-  RedControlExecuted, HandbackDelivered, Signoff, Unsigned,
+  RedControlExecuted, HandbackDelivered,
 }
 import gunbc.roadmap.roadmap_execution_contract {
   ExecutionContractUnspecified, ExecutionContract,
@@ -74,7 +74,6 @@ fn fx_node_custom(
       ExecutionContract { validations: [CargoFmtValidation], extra_capabilities: [], path_scope: PathsUnrestricted, source_roots: PublicWorktreeLayout }
     } else { ExecutionContractUnspecified },
     owner: "fixture",
-    signoff: Unsigned,
     parent: none,
     centering: none,
   }
@@ -93,7 +92,6 @@ fn fx_node(id: String, bound: Bool, sized: Bool) -> RoadmapNode {
       ExecutionContract { validations: [CargoFmtValidation], extra_capabilities: [], path_scope: PathsUnrestricted, source_roots: PublicWorktreeLayout }
     } else { ExecutionContractUnspecified },
     owner: "fixture",
-    signoff: Unsigned,
     parent: none,
     centering: none,
   }
@@ -108,7 +106,6 @@ fn fx_pr_node(id: String) -> RoadmapNode {
     dispatch: Dispatchable { repo: "gunbc", acceptance: PrsMerged },
     execution: ExecutionContract { validations: [CargoFmtValidation], extra_capabilities: [], path_scope: PathsUnrestricted, source_roots: PublicWorktreeLayout },
     owner: "fixture",
-    signoff: Unsigned,
     parent: none,
     centering: none,
   }

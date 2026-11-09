@@ -6,7 +6,7 @@ module test.claim.deployment_gate_answer_witness
 // Every input below is a SUPPLIED WIRE FACT at the route's interface: the responses GitHub would return,
 // the run record, the wait, the filed claim and the tapped capability. Nothing here performs HTTP, so
 // no claim in this file establishes that a REAL transport produces those facts. That real-producer claim
-// is the declared frontier recorded in gunbc.plans.ntfy_deployment_gate_approval ("Stage 2's declared
+// is the declared frontier recorded in gunbc.plans.ntfy_deployment_gate_approval (deleted 2026-11-08) ("Stage 2's declared
 // frontier"): the route's consumer is the later actuator change, and the inhabitance claim becomes
 // executable on the real I/O path when it lands.
 //
