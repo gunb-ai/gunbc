@@ -72,6 +72,7 @@ import gunbc.machine_intake.mtcollins1_ui_status_asset_observation {
   ui_ref_diagnostic_line,
   ui_page_diagnostic_lines,
   ui_status_token_diagnostic_lines,
+  ui_catalog_lines,
   ui_asset_refs_of_page,
   ui_page_shape_of,
   ui_page_shape_line,
@@ -1976,21 +1977,50 @@ test fn w_the_page_derived_admission_still_refuses_a_json_path() -> Bool {
   }
 }
 
-test fn w_the_data_main_entry_module_is_a_derived_script_ref_with_the_loader_extension() -> Bool {
-  let refs = ui_asset_refs_of_page("<script data-main=\"/app/main\" src=\"/require.js\"></script>") |> map(r => r as String)
-  refs == ["/require.js", "/app/main.js"] && (match ui_asset_path_admission(path: "/app/main.js", derived: ui_resolved_refs(base_path: "/", refs: ui_asset_refs_of_page("<script data-main=\"/app/main\"></script>"))) {
-    AdmittedUiAssetPath { path: p } => (p as String) == "/app/main.js"
-    other => false
-  })
+test fn w_a_data_main_is_reported_and_never_derived_into_a_fetch() -> Bool {
+  (ui_asset_refs_of_page("<script data-main=\"/app/main\" src=\"/require.js\"></script>") |> map(r => r as String)) == ["/require.js"] &&
+    count(ui_asset_refs_of_page("<script data-main=\"/app/main\"></script>")) == 0
 }
 
-test fn w_a_data_main_that_already_names_javascript_is_not_extended_and_an_unnamed_main_is_not_invented() -> Bool {
-  (ui_asset_refs_of_page("<script data-main=\"/app/main.js\"></script>") |> map(r => r as String)) == ["/app/main.js"] &&
-    count(ui_asset_refs_of_page("<script src=\"/a.js\"></script>")) == 1 &&
-    (match ui_asset_path_admission(path: "/app/other.js", derived: ui_resolved_refs(base_path: "/", refs: ui_asset_refs_of_page("<script data-main=\"/app/main\"></script>"))) {
-      AdmittedUiAssetPath { path: _ } => false
-      other => true
-    })
+fn witness_catalog_text(asset: String) -> String {
+  join(ui_catalog_lines(asset_text: asset, withheld: false, session_values: witness_session_values()) |> map(l => l as String), "\n")
+}
+
+test fn w_the_flat_catalog_members_are_read_with_octet_offsets() -> Bool {
+  let asset = "xx lmedia:\{halted:\"S\",status_0:\"~\",status_1:\" - A\"} yy"
+  let joined = witness_catalog_text(asset)
+  string_contains(s: joined, pattern: "lmedia_blocks total=1 read=1") &&
+    string_contains(s: joined, pattern: "lmedia_block index=0 block_offset=3 claim=raw_member_shaped_occurrence_not_binding") &&
+    string_contains(s: joined, pattern: "key=halted state=read value_offset=19 value_length=1 hex=53") &&
+    string_contains(s: joined, pattern: "key=status_0 state=read value_offset=32 value_length=1 hex=7e") &&
+    string_contains(s: joined, pattern: "key=status_16 state=absent")
+}
+
+test fn w_a_nested_object_is_refused_and_not_truncated() -> Bool {
+  let joined = witness_catalog_text("lmedia:\{halted:\"S\",x:\{y:1},status_0:\"~\"}")
+  string_contains(s: joined, pattern: "refused=nested_object") && !string_contains(s: joined, pattern: "state=read")
+}
+
+test fn w_a_key_inside_another_members_string_is_not_read() -> Bool {
+  let joined = witness_catalog_text("lmedia:\{a:\"p,status_0:\\\"Q\",halted:\"S\"}")
+  string_contains(s: joined, pattern: "key=status_0 state=absent") && string_contains(s: joined, pattern: "key=halted state=read")
+}
+
+test fn w_a_key_past_the_block_end_is_absent() -> Bool {
+  let joined = witness_catalog_text("lmedia:\{halted:\"S\"},status_0:\"~\"")
+  string_contains(s: joined, pattern: "key=halted state=read") && string_contains(s: joined, pattern: "key=status_0 state=absent")
+}
+
+test fn w_a_duplicated_escaped_or_unterminated_member_is_refused_by_name() -> Bool {
+  string_contains(s: witness_catalog_text("lmedia:\{halted:\"S\",halted:\"T\"}"), pattern: "key=halted state=duplicated occurrences=2") &&
+    string_contains(s: witness_catalog_text("lmedia:\{halted:\"S\\n\"}"), pattern: "key=halted state=escaped") &&
+    string_contains(s: witness_catalog_text("lmedia:\{halted:\"S}"), pattern: "key=halted state=unterminated") &&
+    string_contains(s: witness_catalog_text("lmedia:\{halted:\"S\""), pattern: "refused=block_unclosed")
+}
+
+test fn w_the_catalog_reader_withholds_when_the_asset_holds_a_session_value() -> Bool {
+  let joined = join(ui_catalog_lines(asset_text: "lmedia:\{halted:\"S\"}", withheld: true, session_values: witness_session_values()) |> map(l => l as String), "\n")
+  string_contains(s: joined, pattern: "key=halted state=read") && string_contains(s: joined, pattern: "hex=withheld")
 }
 
 test fn w_the_resource_store_probes_count_their_spellings() -> Bool {
