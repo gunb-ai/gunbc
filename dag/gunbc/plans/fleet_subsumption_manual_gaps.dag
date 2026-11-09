@@ -5,7 +5,6 @@ import std.types { String, List }
 import std.markdown { MarkdownBlock }
 import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
 import gunbc.plans.md_helpers { p }
-import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 
 fn fsmg_intro() -> List<MarkdownBlock> {
   [
@@ -85,7 +84,7 @@ fn fleet_subsumption_manual_gaps_body() -> List<MarkdownBlock> {
 }
 
 data fleet_subsumption_manual_gaps_plan: Plan = Plan {
-  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  projection: PlanIsAuthorityOnly,
   slug: "fleet-subsumption-manual-gaps",
   title: "Fleet subsumption — manual steps the modeling workflow does not yet cover (srv4 receipts, 2026-07-22 install + 2026-07-23 host-convergence OOM)",
   body: fleet_subsumption_manual_gaps_body(),

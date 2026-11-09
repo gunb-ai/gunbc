@@ -1628,36 +1628,46 @@ fn infer_nullary_zero_param_coproduct_arm_use(
 ) -> Bool {
   match facts.denotation {
     Absent => false
-    Present { value: denoted } =>
-      if !infer_empty_product_shape(node: denoted) {
-        false
-      } else {
-        match declaration_reference_path_optional(node: node) {
-          Absent => false
-          Present { value: path } =>
-            match symbol_index_lookup(index: index, qualified_path: path) {
-              Absent => false
-              Present { value: declared } =>
-                match infer_variant_arm_reference_value_joined(
-                  bindings: index,
-                  arm_path: path,
-                  declared: declared
+    Present { value: _ } =>
+      infer_nullary_zero_param_coproduct_arm_declared(node: node, index: index)
+  }
+}
+
+// THE SAME QUESTION WITHOUT THE FACTS HOP. The denotation infer records IS the declaration the guarded
+// symbol_index_lookup returned (see the denotation note below), so a position inference records no
+// facts for -- a match-arm pattern -- asks the declaration directly and gets the one answer.
+fn infer_nullary_zero_param_coproduct_arm_declared(
+  node: Node,
+  index: SymbolIndex
+) -> Bool {
+  match declaration_reference_path_optional(node: node) {
+    Absent => false
+    Present { value: path } =>
+      match symbol_index_lookup(index: index, qualified_path: path) {
+        Absent => false
+        Present { value: declared } =>
+          if !infer_empty_product_shape(node: declared) {
+            false
+          } else {
+            match infer_variant_arm_reference_value_joined(
+              bindings: index,
+              arm_path: path,
+              declared: declared
+            ) {
+              VariantArmReferenceValueIdentityUnavailable => false
+              VariantArmReferenceValueIdentityContested { claimants: _ } => false
+              VariantArmReferenceValueBodyUnavailable => false
+              VariantArmReferenceValueNotDerived => false
+              VariantArmReferenceValueCoproduct { coproduct: coproduct } =>
+                match symbol_index_declared_type_params_at(
+                  index: index,
+                  qualified_path: coproduct
                 ) {
-                  VariantArmReferenceValueIdentityUnavailable => false
-                  VariantArmReferenceValueIdentityContested { claimants: _ } => false
-                  VariantArmReferenceValueBodyUnavailable => false
-                  VariantArmReferenceValueNotDerived => false
-                  VariantArmReferenceValueCoproduct { coproduct: coproduct } =>
-                    match symbol_index_declared_type_params_at(
-                      index: index,
-                      qualified_path: coproduct
-                    ) {
-                      Empty => true
-                      Cons { head: _, tail: _ } => false
-                    }
+                  Empty => true
+                  Cons { head: _, tail: _ } => false
                 }
             }
-        }
+          }
       }
   }
 }

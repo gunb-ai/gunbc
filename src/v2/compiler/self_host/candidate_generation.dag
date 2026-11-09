@@ -107,7 +107,7 @@ data direct_rust_door_awaiting_cargo_cause: Symbol = ^direct_rust_door_awaiting_
 // THE TRIGGER IS STATED AS A CAPABILITY BECAUSE ITS PREDECESSOR NAMED A DELETED MECHANISM. This
 // note previously read `feature:medium_structure_containment`, and that lens was deleted in #6831 --
 // recorded by v2.std.compilers.target_model target_text_carrier_scaffold_note and by
-// gunbc.plans.self_applying_lenses, neither of which any trigger citing it could see. A trigger
+// gunbc.plans.self_applying_lenses (deleted 2026-11-08), neither of which any trigger citing it could see. A trigger
 // retired by a mechanism that no longer exists is retired by nothing, which is the class filed as
 // gunbc.recurring_failure_mode.dissolution_trigger_cites_a_mechanism_that_is_later_deleted.
 // dissolve-on, at capability grain: a Cargo manifest AUTHORITY that produces this manifest

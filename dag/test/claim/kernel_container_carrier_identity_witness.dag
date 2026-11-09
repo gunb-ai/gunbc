@@ -241,7 +241,7 @@ test fn kc_unrelated_record_is_not_a_list_value() -> Bool {
 // ────────────────────────────────────────────────────────────────────────────────────────
 
 // THE PATH IS DERIVED FROM THE MODULE NAME, NOT HANDED IN. Hand-typing "dag/std/types.dag" restated
-// the storage rule (gunbc.plans.source_layout_authority R5: module `a.b.c` lives at `<root(a)>/b/c
+// the storage rule (gunbc.plans.source_layout_authority (deleted 2026-11-08) R5: module `a.b.c` lives at `<root(a)>/b/c
 // .dag`) as a second authority for one fact (gunbc.design_argument::single_authority): a layout move of std.types would keep this
 // string pointing at the OLD location and the guard would read a missing file. So the module name
 // `std.types` -- what this guard is actually about -- is the only spelling kept here, and the path

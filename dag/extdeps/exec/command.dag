@@ -33,7 +33,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // `ArgvCommand { argv: ["curl", "-fsL", "-o", dest, url] }` at the call site and the flags of a tool
 // this repository does not own lived wherever someone happened to need them. That is the anemic
 // modeling gunbc.design_argument::minimize_redundancy names -- a String leaf hiding named parts -- and it is what made the omitted
-// `--fail` fail-open class writable (gunbc.plans.transport_argv_anemia_dissolution, Lane B).
+// `--fail` fail-open class writable (gunbc.plans.transport_argv_anemia_dissolution (deleted 2026-11-08), Lane B).
 //
 // It is now sole_constructor: only this module may build one, and `argv_command` below is the single
 // admitted route in, caller-sealed BY NAME to the typed builders that derive an argv from a cited
@@ -82,6 +82,8 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.ssh.openssh_port_forwarding", decl_name: "ssh_stdio_forward_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_file_owned_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_file_mode_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_directory_mode_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cp_copy_as_link_command"),
     decl_ref(module_path: "extdeps.exec.command", decl_name: "scp_command"),
     decl_ref(module_path: "extdeps.exec.command", decl_name: "env_prefixed_command"),
     decl_ref(module_path: "extdeps.exec.command", decl_name: "env_prefixed_command_in"),

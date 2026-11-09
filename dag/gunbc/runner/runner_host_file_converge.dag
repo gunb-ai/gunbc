@@ -145,7 +145,7 @@ import gunbc.runner.runner_unit_file {
   runner_unit_slot_role_dropin_path,
   runner_unit_slot_role_superseded_dropin_path,
 }
-import gunbc.runner.runner_host_deploy { RunnerHostDeploy, RunnerHostDeployFound, RunnerHostDeployUnmodeled, runner_host_deploy_for, runner_job_user_env_name }
+import gunbc.runner.runner_host_deploy { RunnerHostDeploy, RunnerHostDeployFound, RunnerHostDeployZeroWidth, RunnerHostDeployUnmodeled, RunnerHostSpec, runner_host_spec_of, runner_host_deploy_for, runner_job_user_env_name }
 import extdeps.docker.endpoint { docker_host_env_var }
 import gunbc.runner.runner_slot_provision { desired_runner_slot_members, fleet_runner_slot_artifact }
 import gunbc.runner.runner_lifecycle { runner_slot_dir_path }
@@ -333,8 +333,8 @@ fn runner_host_depriv_file(depriv: String) -> FleetHostFileDesired {
 // with no deploy slot owes none. A refused rendering is WITHHELD with its own cause and never skipped,
 // and what remains is delivered: the slot then keeps whatever drop-in it has, and its tenancy
 // reading (gunbc.ci.deploy_slot_tenancy deploy_slot_observed_tenancy) says what it runs as.
-fn runner_host_slot_role_file(deploy: RunnerHostDeploy, slot: RunnerSlotIdentity) -> FleetHostFileDesired? {
-  match runner_unit_slot_role_dropin_text(deploy: deploy, slot: slot) {
+fn runner_host_slot_role_file(spec: RunnerHostSpec, slot: RunnerSlotIdentity) -> FleetHostFileDesired? {
+  match runner_unit_slot_role_dropin_text(spec: spec, slot: slot) {
     Absent => Absent
     Present { value: RunnerUnitTextRefused { reason: _ } } => Absent
     Present { value: RunnerUnitText { text: text } } =>
@@ -348,8 +348,8 @@ fn runner_host_slot_role_file(deploy: RunnerHostDeploy, slot: RunnerSlotIdentity
   }
 }
 
-fn runner_host_slot_role_withheld(deploy: RunnerHostDeploy, slot: RunnerSlotIdentity) -> List<RunnerHostFileWithheld> {
-  match runner_unit_slot_role_dropin_text(deploy: deploy, slot: slot) {
+fn runner_host_slot_role_withheld(spec: RunnerHostSpec, slot: RunnerSlotIdentity) -> List<RunnerHostFileWithheld> {
+  match runner_unit_slot_role_dropin_text(spec: spec, slot: slot) {
     Present { value: RunnerUnitTextRefused { reason: r } } =>
       [RunnerHostFileWithheld { subject: "runner-slot-role-dropin" as NonEmptyStr, cause: r }]
     _ => []
@@ -507,7 +507,12 @@ fn runner_host_slot_role_files(host: HostIdentity) -> List<FleetHostFileDesired>
     RunnerHostDeployFound { deploy: d } =>
       list_flat_map(
         filter(deploy_slot_identities, s => (s.host as String) == (host as String)),
-        s => match runner_host_slot_role_file(deploy: d, slot: s) { Present { value: f } => [f] Absent => [] },
+        s => match runner_host_slot_role_file(spec: runner_host_spec_of(deploy: d), slot: s) { Present { value: f } => [f] Absent => [] },
+      )
+    RunnerHostDeployZeroWidth { spec: sp } =>
+      list_flat_map(
+        filter(deploy_slot_identities, s => (s.host as String) == (host as String)),
+        s => match runner_host_slot_role_file(spec: sp, slot: s) { Present { value: f } => [f] Absent => [] },
       )
     _ => []
   }
@@ -518,7 +523,12 @@ fn runner_host_slot_role_withheld_files(host: HostIdentity) -> List<RunnerHostFi
     RunnerHostDeployFound { deploy: d } =>
       list_flat_map(
         filter(deploy_slot_identities, s => (s.host as String) == (host as String)),
-        s => runner_host_slot_role_withheld(deploy: d, slot: s),
+        s => runner_host_slot_role_withheld(spec: runner_host_spec_of(deploy: d), slot: s),
+      )
+    RunnerHostDeployZeroWidth { spec: sp } =>
+      list_flat_map(
+        filter(deploy_slot_identities, s => (s.host as String) == (host as String)),
+        s => runner_host_slot_role_withheld(spec: sp, slot: s),
       )
     _ => []
   }
@@ -634,6 +644,10 @@ fn runner_host_unit_files_desired(
           RunnerHostFilesDesiredRefused {
             cause: join(["runner_host_file_converge: ", h as String, " has no runner deploy row, so there is no fragment or depriv drop-in to deliver"], "") as NonEmptyStr,
           }
+        RunnerHostDeployZeroWidth { spec: sp } =>
+          RunnerHostFilesDesiredRefused {
+            cause: join(["runner_file_converge: ", sp.host_label as String, " derives to zero slots, so there is no fragment or depriv drop-in to deliver and none is retired by this pass"], "") as NonEmptyStr,
+          }
         RunnerHostDeployRefused { host: h, cause: c } =>
           RunnerHostFilesDesiredRefused {
             cause: join(["runner_host_file_converge: ", h as String, " has no runner deploy row because ", c, ", so there is no fragment or depriv drop-in to deliver"], "") as NonEmptyStr,
@@ -715,6 +729,10 @@ fn runner_host_file_subject(host: HostIdentity) -> RunnerHostFileSubjectAdmissio
     RunnerHostDeployUnmodeled { host: h } =>
       RunnerHostFileSubjectRefused {
         cause: join(["runner_host_file_converge: ", h as String, " has no runner deploy row, so it is not a runner host"], ""),
+      }
+    RunnerHostDeployZeroWidth { spec: sp } =>
+      RunnerHostFileSubjectRefused {
+        cause: join(["runner_host_file_converge: ", sp.host_label as String, " derives to zero slots, so it has no unit the teardown could be verified on and no runner file to converge"], ""),
       }
     RunnerHostDeployRefused { host: h, cause: c } =>
       RunnerHostFileSubjectRefused {
@@ -1113,6 +1131,15 @@ type SlotRoleEnvironment {
 fn runner_host_role_environments(host: HostIdentity) -> List<SlotRoleEnvironment> {
   match runner_host_deploy_for(host: host) {
     RunnerHostDeployFound { deploy: d } =>
+      map(filter(deploy_slot_identities, s => (s.host as String) == (host as String)), s => {
+        let role = runner_slot_job_role(slot: s)
+        SlotRoleEnvironment {
+          unit: runner_unit_name_of_registration(registration_name: runner_slot_instance_name(slot: s) as NonEmptyStr),
+          job_user: runner_slot_job_user(role: role, ci_job_user: d.job_user),
+          docker_host_cleared: !runner_slot_job_role_runs_containers(role: role),
+        }
+      })
+    RunnerHostDeployZeroWidth { spec: d } =>
       map(filter(deploy_slot_identities, s => (s.host as String) == (host as String)), s => {
         let role = runner_slot_job_role(slot: s)
         SlotRoleEnvironment {
@@ -1617,6 +1644,7 @@ fn runner_host_run_legs(subject: RunnerHostFileSubject, files: List<FleetHostFil
           concat(
             match runner_host_deploy_for(host: subject.host) {
               RunnerHostDeployFound { deploy: d } => [LegJobUserPasswd { job_user: d.job_user }]
+              RunnerHostDeployZeroWidth { spec: sp } => [LegJobUserPasswd { job_user: sp.job_user }]
               RunnerHostDeployRefused { host: _, cause: _ } => []
               RunnerHostDeployUnmodeled { host: _ } => []
             },
@@ -1632,6 +1660,7 @@ fn runner_host_run_legs(subject: RunnerHostFileSubject, files: List<FleetHostFil
                 ]
               }) + match runner_host_deploy_for(host: subject.host) {
                 RunnerHostDeployFound { deploy: d } => [LegJobUserIdentity { job_user: d.job_user }]
+                RunnerHostDeployZeroWidth { spec: sp } => [LegJobUserIdentity { job_user: sp.job_user }]
                 RunnerHostDeployRefused { host: _, cause: _ } => []
                 RunnerHostDeployUnmodeled { host: _ } => []
               }
@@ -2055,6 +2084,7 @@ fn observe_runner_job_user_uid(subject: RunnerHostFileSubject, context: FleetSsh
 {
   match runner_host_deploy_for(host: subject.host) {
     RunnerHostDeployUnmodeled { host: _ } => JobUserUidUnobserved { cause: "no runner deploy row names the job user" as NonEmptyStr }
+    RunnerHostDeployZeroWidth { spec: _ } => JobUserUidUnobserved { cause: "the host derives to zero slots, so no runner fragment consumes a job user uid" as NonEmptyStr }
     RunnerHostDeployRefused { host: _, cause: c } => JobUserUidUnobserved { cause: concat("the runner deploy row refuses: ", c) as NonEmptyStr }
     RunnerHostDeployFound { deploy: d } =>
       match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegJobUserPasswd { job_user: d.job_user }) {
@@ -2172,7 +2202,7 @@ fn converge_deploy_slot_account(
 //
 // WHY A DEPLOY SLOT IS ONLY ONE ROLE OF THE SAME RULE. This fold began as the deploy slot's ownership
 // transition (a CI tree any pull request job could have rewritten is never handed over to the deploy
-// account, gunbc.plans.srv1_deploy_principal_split), and that is still its deploy arm: the account and
+// account, gunbc.plans.srv1_deploy_principal_split (deleted 2026-11-08)), and that is still its deploy arm: the account and
 // the owner-only mode are the deploy role's answers. What the deploy slot alone adds is that its
 // account must be held first (deploy_slot_account_is_held); a CI slot's account is the host's job user,
 // which the slot's unit already runs as.
@@ -2335,7 +2365,7 @@ fn runner_slot_tree_step(target: RunnerSlotTreeTarget, runner_release: ActionsRu
 // THE STAGE IS WRITABLE BY ROOT ALONE FROM BEFORE THE FETCH UNTIL AFTER THE EXTRACT, because the digest
 // is checked by one leg and the bytes are read by a later one: an archive any other account could
 // replace between them would be extracted unverified under the deploy key while the run reports it
-// verified. So the stage is not in /tmp (the CI slots' jobs share it, gunbc.plans.srv1_deploy_principal_split)
+// verified. So the stage is not in /tmp (the CI slots' jobs share it, gunbc.plans.srv1_deploy_principal_split (deleted 2026-11-08))
 // but a member of the host-state tree, which root owns and nobody else writes
 // (gunbc.host_state_root host_state_tree_root); it is removed and recreated root-owned before the
 // fetch, so nothing left in it by an earlier run survives, and the fetch itself runs as root, so the

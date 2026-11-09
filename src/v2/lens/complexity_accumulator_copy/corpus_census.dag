@@ -308,7 +308,7 @@ fn corpus_subtree_gate_reports_its_unreadable_population() -> Bool {
 // The consequence is the lane's shape. The copied-accumulator walker wants exactly this production
 // tree -- it reads the grammar captures -- so it runs on real modules today. The budget gate's
 // subjects are semantic Arrows, so feeding it a real module needs resolve / infer / fold_lowering,
-// which is the compile-graph capability gunbc.plans.structural_quadratic_wall_coverage_audit names
+// which is the compile-graph capability gunbc.plans.structural_quadratic_wall_coverage_audit (deleted 2026-11-08) names
 // as the blocker. That blocker is real for the asymptotic path and is NOT a blocker for the shape
 // detector; conflating the two is what makes the audit's stale prose read as if nothing can move.
 //

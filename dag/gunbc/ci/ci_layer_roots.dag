@@ -491,6 +491,10 @@ data excl_local_repo_wet_authorized_key_enroll_reason: String = "real host-effec
 
 data excl_local_repo_wet_authorized_key_enroll_dissolve: DissolutionCondition = unbound_dissolution(description: "hermetic response coverage lands for shell.Mktemp.Dir, the shell.Exec RunArgv/RunArgvStdin operations and the Filesystem Write/CreateNew/Read operations that is SUFFICIENT FOR executing a real directory's enrollment lifecycle -- a create-exclusive write refused when the path is occupied, an append visible to a later read in the same claim, and a mode change observable from a capture -- rather than replaying authored bytes per call. Then the fns re-enroll as ordinary hermetic discovery rows, drop off local_repo_wet_schedule and their floor_route_gap expectation, and this row deletes. Per-operation canned mock_response rows do NOT discharge it: they would decouple the verdict from the file that verdict is about, which is the supplied-input claim this file exists to pair.")
 
+data excl_local_repo_wet_host_command_tree_pack_reason: String = "real host-effect execution witness whose assertions are the effects of PACKING A TREE: the staged (unelevated) tree install, a reproducible tar of it, tar's own verbose listing of that archive, and sha256sum of the archive and of its copy -- over a source tree the claim writes into a directory it made with mktemp. It spawns through the route the producer itself stages through, gunbc.host_command_binding host_command over LocalCommandHost, which reaches the shell RunArgvOutcome host effect; that operation has no mock_response, so a hermetic run refuses rather than replaying authored bytes. THIS IS A DISTINCT ADMITTED EFFECT FROM ITS NEIGHBOURS AND IS NAMED RATHER THAN FOLDED IN: no repository is built and no git runs (not excl_local_repo_wet_reason nor excl_local_repo_wet_argv_execution_reason, whose route is gunbc.command_runner), and the writes are processes' rather than Filesystem.Write's alone (not excl_local_repo_wet_tempdir_write_reason). Scheduled in v2.workflow.local_repo_wet_terminal local_repo_wet_schedule. No network, no cargo, no remote host, no sudo, nothing outside the directory each claim created and removes."
+
+data excl_local_repo_wet_host_command_tree_pack_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for the shell RunArgvOutcome host effect that gunbc.host_command_binding host_command over LocalCommandHost reaches, at a strength SUFFICIENT FOR an archive's listing and digest to be functions of the tree the argv packed -- stdout, stderr and exit status bound to the argv and to the files it read -- so these claims assert under the mock what they assert by execution today. Then they re-enroll as hermetic discovery rows, drop off local_repo_wet_schedule, and this row deletes. Per-call canned responses do NOT discharge it: a canned listing is the supplied value test.claim.runner.runner_host_baked_release_build_witness already supplies, and this file is that boundary's pairing claim.")
+
 data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   WitnessExclusionRow {
     pattern: "lifecycle_survivor_corpus_census.dag",
@@ -1125,11 +1129,6 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
-    pattern: "roadmap_task_store_wet_witness.dag",
-    classification: LocalRepoWetLane,
-    reason: excl_local_repo_wet_tempdir_write_reason,
-    dissolution: excl_local_repo_wet_dissolve},
-  WitnessExclusionRow {
     pattern: "workspace_request_consumer_witness.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
@@ -1289,6 +1288,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_argv_execution_reason,
     dissolution: excl_local_repo_wet_argv_execution_dissolve},
+  WitnessExclusionRow {
+    pattern: "runner_host_baked_release_build_wet_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_host_command_tree_pack_reason,
+    dissolution: excl_local_repo_wet_host_command_tree_pack_dissolve},
   // THE SIBLING: THE APPLY'S TWO GIT STEPS AND THE SPAWN'S ENTRY GRANT, RUN. Same route and the same
   // reason -- but this one earns its exclusion on the operations it EXECUTES rather than the argv it
   // builds: dashboard_apply_provision_op's posture and migration arms go through their production

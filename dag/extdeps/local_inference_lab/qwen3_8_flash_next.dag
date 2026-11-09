@@ -8,7 +8,7 @@ import extdeps.huggingface.hub { HubRepoId, HubModelRepo, hub_repo_https_uri, Hu
 import std.algebra { list_append, length, string_contains }
 
 // THE LOCAL-INFERENCE-LAB QWEN3.8-FLASH-NEXT NVFP4 CHECKPOINT, AS ITS PUBLISHER'S OWN EXTDEPS AUTHORITY.
-// This is the carrier gunbc.plans.flex_supplier_generalization generalization_55 declared and nothing
+// This is the carrier gunbc.plans.flex_supplier_generalization (deleted 2026-11-08) generalization_55 declared and nothing
 // built: "the RentedWeightsPlacement shape generalizes ... over a Hugging Face repo at a pinned
 // revision, and Flash-Next moves from WeightsNamedUnpinned to the pinned revision observed on the
 // image." The row was declared; this module is the destination. The publisher is local-inference-lab,

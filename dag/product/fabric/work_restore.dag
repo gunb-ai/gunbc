@@ -29,7 +29,7 @@ import product.fabric.work {
   work_for,
 }
 
-// THE VALIDATED WORK RESTORE CODEC (remote-build PR 2b; program gunbc.plans.durable_work_handoff).
+// THE VALIDATED WORK RESTORE CODEC (remote-build PR 2b; program gunbc.plans.durable_work_handoff (deleted 2026-11-08)).
 //
 // WHAT A RESTORED WORK PROVES, AND WHAT IT DOES NOT. `WorkRestored` proves ONE thing: the typed fields
 // decoded from the bytes, under the principal the CALLER expected, derive (through product.fabric.work

@@ -135,7 +135,7 @@ fn floor_base_receipt_valid(base: FloorBaseReceipt) -> Bool {
 // Conjunct 2 -- the complete input delta.
 
 // THE MEDIUM ROSTER IS PART OF THE QUERY, NEVER A FOLLOW-UP PASS. The floor cut measured this
-// directly (docs/plans/floor-cut-replacement-plan.md, step 2 bound 3): a reach measurement over
+// directly (docs/plans/floor-cut-replacement-plan.md (deleted 2026-11-08), step 2 bound 3): a reach measurement over
 // one medium reads exactly like a reach measurement, and nothing in the answer announces the media
 // it omitted. A delta computed over the source tree alone is not a small delta -- it is an
 // unknown one, and every carried row rests on it.
