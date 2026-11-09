@@ -57,7 +57,7 @@ import extdeps.filesystem.filesystem_io {
 }
 import extdeps.shell
 import gunbc.spool_queue {
-  SpoolAttemptUnit, RolePending, RoleClaimed, RoleDeferred, SpoolRole, SpoolParked, SpoolParkNotDone, SpoolParkUnmovable, SpoolStore, SpoolEntryKey, SpoolListed, SpoolListingUnreadable, SpoolKeyMinted, SpoolKeyRefused,
+  SpoolAttemptUnit, RolePending, RoleClaimed, RoleDeferred, SpoolRole, SpoolParked, SpoolParkNotDone, SpoolParkUnmovable, ParkNotApplicable, ParkNotDeclared, ParkRefused, ParkEligible, SpoolStore, SpoolEntryKey, SpoolListed, SpoolListingUnreadable, SpoolKeyMinted, SpoolKeyRefused,
   SpoolEntryPathReady, SpoolEntryRoleUndeclared, SpoolEntryKindRefused, SpoolClaimWon, SpoolClaimWonUnrecorded, SpoolClaimLost, SpoolClaimAbsentEntry, SpoolClaimNotDone, SpoolClaimUnmovable,
   spool_open, spool_queue_list, spool_queue_claim, spool_queue_defer, spool_queue_undefer, spool_entry_key_of_name, spool_entry_path,
 }
@@ -1208,7 +1208,10 @@ fn attempt_system_unit_defer_entry(instance_root: String, entry: String) -> Atte
     SpoolKeyMinted { key } =>
       match spool_queue_defer(store: spool_open(kind: SpoolAttemptUnit, instance_root: instance_root), key: key) {
         SpoolParked { into: _ } => AttemptUnitEntryWaiting { entry: entry }
-        SpoolParkNotDone { assessment: _ } => AttemptUnitEntrySkipped
+        SpoolParkNotDone { assessment: ParkNotApplicable { state: _ } } => AttemptUnitEntrySkipped
+        SpoolParkNotDone { assessment: ParkNotDeclared } => AttemptUnitEntryUnmovable { entry: entry, step: SpoolStallClaim, cause: "the attempt-unit spool declares no parked stage" }
+        SpoolParkNotDone { assessment: ParkRefused { detail: d } } => AttemptUnitEntryUnmovable { entry: entry, step: SpoolStallClaim, cause: d }
+        SpoolParkNotDone { assessment: ParkEligible { from: _, into: _ } } => AttemptUnitEntryUnmovable { entry: entry, step: SpoolStallClaim, cause: "an eligible park was not moved" }
         SpoolParkUnmovable { from: _, into: _, cause: c } => AttemptUnitEntryUnmovable { entry: entry, step: SpoolStallClaim, cause: c }
       }
   }
@@ -1234,7 +1237,10 @@ fn attempt_system_unit_undefer_entry(store: SpoolStore, entry: String) -> List<A
     SpoolKeyMinted { key } =>
       match spool_queue_undefer(store: store, key: key) {
         SpoolParked { into: _ } => [] as List<AttemptUnitEntryOutcome>
-        SpoolParkNotDone { assessment: _ } => [] as List<AttemptUnitEntryOutcome>
+        SpoolParkNotDone { assessment: ParkNotApplicable { state: _ } } => [] as List<AttemptUnitEntryOutcome>
+        SpoolParkNotDone { assessment: ParkNotDeclared } => [AttemptUnitEntryUnmovable { entry: entry, step: SpoolStallClaim, cause: "the attempt-unit spool declares no parked stage" }]
+        SpoolParkNotDone { assessment: ParkRefused { detail: d } } => [AttemptUnitEntryUnmovable { entry: entry, step: SpoolStallClaim, cause: d }]
+        SpoolParkNotDone { assessment: ParkEligible { from: _, into: _ } } => [AttemptUnitEntryUnmovable { entry: entry, step: SpoolStallClaim, cause: "an eligible park was not moved" }]
         SpoolParkUnmovable { from: _, into: _, cause: _ } => [AttemptUnitEntryUnmovable { entry: entry, step: SpoolStallClaim, cause: "a deferred request could not be moved back to requests/" }]
       }
   }

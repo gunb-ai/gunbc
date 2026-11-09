@@ -17,9 +17,9 @@ import gunbc.spool_queue {
   ClaimantObservedDead, ClaimantUnobservable, spool_entry_key_parts, spool_entry_key, spool_entry_key_of_name, spool_entry_wire_name, spool_entry_key_of_wire_name, SpoolKeyMinted, SpoolKeyRefused,
 }
 import gunbc.spool_queue {
-  spool_open, spool_entry_path, SpoolEntryPathReady, SpoolEntryRoleUndeclared, SpoolEntryKindRefused, spool_queue_observe, spool_queue_enqueue, spool_queue_claim, spool_queue_complete, spool_queue_requeue_on_evidence,
+  spool_open, spool_entry_path, SpoolEntryPathReady, SpoolEntryRoleUndeclared, SpoolEntryKindRefused, spool_queue_observe, spool_queue_claim, spool_queue_complete, spool_queue_requeue_on_evidence,
   spool_defer_assess, spool_undefer_assess, ParkEligible, ParkNotApplicable, ParkNotDeclared, ClaimParked,
-  SpoolEnqueueNotDone, SpoolClaimNotDone, SpoolCompleteNotDone, SpoolRequeueNotDone, EntryObservationUnavailable, CompleteRefused,
+   SpoolClaimNotDone, SpoolCompleteNotDone, SpoolRequeueNotDone, EntryObservationUnavailable, CompleteRefused,
 }
 
 // THE QUEUE CONTRACT FOR THE THREE CROSS-PRIVILEGE SPOOLS (gunbc.spool_queue). Every claim here is a permanent
@@ -44,8 +44,6 @@ data forged_cast_source: String = "module probe_spool_queue_forged_cast\nimport 
 
 data lawful_mint_source: String = "module probe_spool_queue_lawful\nimport std.types { NonEmptyStr, String }\nimport gunbc.spool_queue { SpoolEntryKey, SpoolKind, SpoolAttemptExit, spool_entry_key, spool_claim_assess, SpoolKeyMinted, SpoolKeyRefused }\nfn f() -> String {\n  match spool_entry_key(kind: SpoolAttemptExit, parts: [\"a\"]) {\n    SpoolKeyMinted { key: _ } => \"minted\"\n    SpoolKeyRefused { detail: d } => d\n  }\n}\n"
 
-data probe_enqueue_source: String = "module probe_spool_queue_enqueue\nimport std.types { NonEmptyStr, String }\nimport gunbc.spool_queue { spool_queue_enqueue }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
-
 data probe_claim_source: String = "module probe_spool_queue_claim\nimport std.types { NonEmptyStr, String }\nimport gunbc.spool_queue { spool_queue_claim }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
 
 data probe_complete_source: String = "module probe_spool_queue_complete\nimport std.types { NonEmptyStr, String }\nimport gunbc.spool_queue { spool_queue_complete }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
@@ -63,7 +61,6 @@ data raw_publication_source: String = "module probe_spool_queue_raw_publication_
 data probe_requeue_source: String = "module probe_spool_queue_requeue\nimport std.types { NonEmptyStr }\nimport gunbc.spool_queue { spool_queue_requeue }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
 data probe_requeue_on_evidence_source: String = "module probe_spool_queue_requeue_on_evidence\nimport std.types { NonEmptyStr }\nimport gunbc.spool_queue { spool_queue_requeue_on_evidence }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
 data probe_reap_source: String = "module probe_spool_queue_reap\nimport std.types { NonEmptyStr }\nimport gunbc.spool_queue { spool_queue_reap_stale }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
-data probe_stale_stop_source: String = "module probe_spool_queue_stale_stop\nimport std.types { NonEmptyStr }\nimport gunbc.spool_queue { spool_queue_stale_stop }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
 data raw_host_spool_stage_source: String = "module probe_spool_queue_raw_stage_enum\nimport std.types { NonEmptyStr }\nimport gunbc.durable_handoff_host { HostSpoolStage }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
 
 // RoleDeferred SEAL: the park moves take the sealed SpoolEntryKey, so a foreign module cannot park or unpark an entry it did
@@ -262,10 +259,6 @@ test fn an_observed_dead_claimant_stops_the_line_and_is_not_reclaimed() -> Proce
   }
 }
 
-test fn the_enqueue_effect_resolves() -> ProcessExit {
-  census_exit(census_verdict(census: total_blocking_census(source: probe_enqueue_source), holds: fn(n) { n == 0 }))
-}
-
 test fn the_claim_effect_resolves() -> ProcessExit {
   census_exit(census_verdict(census: total_blocking_census(source: probe_claim_source), holds: fn(n) { n == 0 }))
 }
@@ -394,11 +387,6 @@ test fn only_a_claimed_entry_is_requeued() -> ProcessExit {
   }
 }
 
-// EXPECTING-RED: the one stale effect is the line stop feeding gunbc.roadmap.spool_stall; it does not exist yet.
-test fn the_stale_stop_effect_resolves() -> ProcessExit {
-  census_exit(census_verdict(census: total_blocking_census(source: probe_stale_stop_source), holds: fn(n) { n == 0 }))
-}
-
 // PERMANENT CONTROL (was expecting-red): HostSpoolStage dissolved into SpoolRole (consumers moved: gunbc.durable_handoff_host,
 // gunbc.roadmap.spool_stall, gunbc.roadmap.roadmap_attempt_exit_spool, gunbc.roadmap.roadmap_belt_actuate,
 // gunbc.roadmap.roadmap_launch_deployment_observe, and the claims that import it). It is a MissingExport.
@@ -513,19 +501,6 @@ test fn a_key_of_another_kind_cannot_be_observed() -> ProcessExit {
       match spool_queue_observe(store: st, key: k) {
         EntryObservationUnavailable { detail: d } => if d == cross_kind_detail { ExitSuccess } else { exit_failure(reason: d) }
         other => exit_failure(reason: "a cross-kind key was observed as an entry state")
-      }
-    }
-  }
-}
-
-test fn a_key_of_another_kind_cannot_be_created() -> ProcessExit {
-  match spool_entry_key(kind: SpoolPublication, parts: ["req"]) {
-    SpoolKeyRefused { detail: d } => exit_failure(reason: d)
-    SpoolKeyMinted { key: k } => {
-      let st = spool_open(kind: SpoolAttemptUnit, instance_root: cross_kind_root)
-      match spool_queue_enqueue(store: st, key: k) {
-        SpoolEnqueueNotDone { detail: d } => if d == cross_kind_detail { ExitSuccess } else { exit_failure(reason: d) }
-        other => exit_failure(reason: "a cross-kind key was enqueued or reached the create step")
       }
     }
   }

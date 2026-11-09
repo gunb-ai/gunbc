@@ -785,31 +785,6 @@ fn spool_move_between(store: SpoolStore, key: SpoolEntryKey, from: SpoolRole, in
   }
 }
 
-type SpoolEnqueueOutcome
-  = SpoolEnqueued { key: SpoolEntryKey }
-  | SpoolEnqueueAlready { state: SpoolEntryState }
-  | SpoolEnqueueNotDone { detail: String }
-
-// ENQUEUE is create-only into the first role: mkdir for a directory entry. A body-carrying file entry is written by
-// its own requester (the publication request helper) and observed here, so this is the directory arm.
-fn spool_queue_enqueue(store: SpoolStore, key: SpoolEntryKey) -> SpoolEnqueueOutcome {
-  match spool_enqueue_assess(kind: store.kind, observed: spool_queue_observe(store: store, key: key)) {
-    EnqueueAlreadyPresent { state } => SpoolEnqueueAlready { state: state }
-    EnqueueRefused { detail } => SpoolEnqueueNotDone { detail: detail }
-    EnqueueEligible { into } =>
-      match spool_entry_path(store: store, role: into, key: key) {
-        SpoolEntryRoleUndeclared { role: _ } => SpoolEnqueueNotDone { detail: "the first role has no directory" }
-        SpoolEntryKindRefused { detail: d } => SpoolEnqueueNotDone { detail: d }
-        SpoolEntryPathReady { path: path } =>
-          match spool_declaration(kind: store.kind).entry_kind {
-            SpoolEntryFile => SpoolEnqueueNotDone { detail: "a file entry is written create-new by its requester, not made here" }
-            SpoolEntryDirectory =>
-              if shell.Mkdir.NewOwnerOnly(path: path as FilePath).success { SpoolEnqueued { key: key } } else { SpoolEnqueueNotDone { detail: join(["could not create ", path], "") } }
-          }
-      }
-  }
-}
-
 // THE CLAIM-RECORD: the boot id the claim was taken under, written inside a DIRECTORY entry once it stands in the
 // last chain role. It is the evidence spool_requeue_assess reads; an entry without one (claimed before this record
 // existed) has NoClaimantObservation and stops the line instead of requeueing.
@@ -1028,20 +1003,6 @@ fn spool_queue_refuse_foreign(store: SpoolStore, name: String) -> SpoolForeignOu
   }
 }
 
-// THE LINE STOP: a claimed entry whose claimant is observed dead, with no boot evidence to requeue on, is the stall
-// record's subject. This is the judgment only; the record is gunbc.roadmap.spool_stall's.
-type SpoolStaleStopOutcome
-  = SpoolStopsTheLine { evidence: NonEmptyStr }
-  | SpoolStaleStopNotDone { assessment: SpoolStaleAssessment }
-
-fn spool_queue_stale_stop(store: SpoolStore, key: SpoolEntryKey, liveness: SpoolClaimantLiveness) -> SpoolStaleStopOutcome {
-  match spool_stale_assess(observed: spool_queue_observe(store: store, key: key), liveness: liveness) {
-    StaleStopTheLine { evidence } => SpoolStopsTheLine { evidence: evidence }
-    other => SpoolStaleStopNotDone { assessment: other }
-  }
-}
-
-
 // FRONTIERS (declared, consumed by a named later change, DESIGN 3c). Annotations, not rows: nothing reads them, and
 // a String row that no fold reads is the dead data of DESIGN 4c. HostSpoolStage is cut and its consumers moved.
 //  - answers/: the reply record keyed to a request (publication and attempt-unit spools). Trigger: the publication
@@ -1050,8 +1011,8 @@ fn spool_queue_stale_stop(store: SpoolStore, key: SpoolEntryKey, liveness: Spool
 //    mode and group from spool_role_writers via spool_role_directory_shape. The other roles' directories are Blocked
 //    (no writers row) and wait on the answers/stalled/receipt/staging follow-up.
 
-// The out-of-corpus writers frontier, enrolled in gunbc.census_closure_frontier census_closure_frontier_row_groups
-// (the consumer). The rung drop is gunbc.rung_drop.spool_directory_writers_not_kernel_refused.
+// The out-of-corpus writers frontier. gunbc.census_closure_frontier, which once read these rows, is retired, so no
+// fold reads them at this head; the row is declared data. The rung drop is gunbc.rung_drop.spool_directory_writers_not_kernel_refused.
 data spool_out_of_corpus_writers_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.spool_queue", decl_name: "spool_role_writers"),
