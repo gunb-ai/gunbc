@@ -66,6 +66,21 @@ data probe_reap_source: String = "module probe_spool_queue_reap\nimport std.type
 data probe_stale_stop_source: String = "module probe_spool_queue_stale_stop\nimport std.types { NonEmptyStr }\nimport gunbc.spool_queue { spool_queue_stale_stop }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
 data raw_host_spool_stage_source: String = "module probe_spool_queue_raw_stage_enum\nimport std.types { NonEmptyStr }\nimport gunbc.durable_handoff_host { HostSpoolStage }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
 
+// RoleDeferred SEAL: the park moves take the sealed SpoolEntryKey, so a foreign module cannot park or unpark an entry it did
+// not mint a key for. RED: forged key into spool_queue_defer is exactly one SoleConstructorViolation; STRIPPED TWIN: the same
+// call over a key minted by spool_entry_key_of_name has zero.
+data forged_defer_source: String = "module probe_spool_queue_forged_defer\nimport std.types { NonEmptyStr }\nimport gunbc.spool_queue { SpoolEntryKey, SpoolKind, SpoolAttemptUnit, SpoolStore, spool_queue_defer, SpoolParkOutcome }\nfn f(store: SpoolStore, n: NonEmptyStr) -> SpoolParkOutcome {\n  spool_queue_defer(store: store, key: SpoolEntryKey { kind: SpoolAttemptUnit, name: n })\n}\n"
+
+data lawful_defer_source: String = "module probe_spool_queue_lawful_defer\nimport std.types { String }\nimport gunbc.spool_queue { SpoolAttemptUnit, SpoolStore, spool_queue_defer, spool_entry_key_of_name, SpoolKeyMinted, SpoolKeyRefused }\nfn f(store: SpoolStore, name: String) -> String {\n  match spool_entry_key_of_name(kind: SpoolAttemptUnit, name: name) {\n    SpoolKeyMinted { key } => match spool_queue_defer(store: store, key: key) {\n      _ => \"parked\"\n    }\n    SpoolKeyRefused { detail: d } => d\n  }\n}\n"
+
+test fn a_forged_key_cannot_defer_an_entry() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_defer_source, subject: "SpoolEntryKey"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_minted_key_defers_with_no_seal_violation() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: lawful_defer_source, subject: "SpoolEntryKey"), holds: fn(n) { n == 0 }))
+}
+
 test fn a_forged_entry_key_literal_is_refused_at_compile() -> ProcessExit {
   census_exit(census_verdict(census: seal_violations(source: forged_literal_source, subject: "SpoolEntryKey"), holds: fn(n) { n == 1 }))
 }
