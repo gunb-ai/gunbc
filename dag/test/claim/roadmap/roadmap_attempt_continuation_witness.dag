@@ -357,6 +357,8 @@ fn pri_reaped_ledger(
     verification: verification,
     review: review,
     goal_audit: goal_audit,
+    verification_retry: RefusedRetryOperatorOnly,
+    now: none,
   }
 }
 
@@ -456,6 +458,8 @@ fn pri_worktree_unknown() -> PriorExecutionObservation {
     verification: none,
     review: none,
     goal_audit: none,
+    verification_retry: RefusedRetryOperatorOnly,
+    now: none,
   }
 }
 

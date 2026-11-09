@@ -40,6 +40,7 @@ import gunbc.roadmap.roadmap_alignment {
   AlignmentCadenceStateDecoded, AlignmentCadenceStateNotDecodable,
   alignment_cadence_state_schema,
 }
+import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes }
 import gunbc.roadmap.roadmap_model {  RoadmapNode, RoadmapNodeId, RoadmapNodeIdentity, Pointer, NotDispatchable, NodeParent, MemberOf, AdmittedRoot }
 import gunbc.roadmap.roadmap_status { TicketLine, TicketFields }
 import gunbc.roadmap.roadmap_execution_contract { ExecutionContract, ExecutionContractUnspecified, NotAgentWork }

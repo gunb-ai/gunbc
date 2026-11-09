@@ -530,10 +530,11 @@ fn labels_distinct(labels: List<String>) -> Bool {
 }
 
 // THE PIN COUNTS THE EXEMPLAR ROSTER, one per LaunchRefusal arm: 15 -> 16 WITH LaunchNoPlacementGrant
-// (G5, #13074) and 16 -> 17 WITH LaunchRevisionNotLanded (#13703), neither of which moved it.
+// (G5, #13074), 16 -> 17 WITH LaunchRevisionNotLanded (#13703), and 17 -> 18 WITH LaunchNodeRetired
+// (node_retired), none of which moved it.
 test fn witness_refusal_labels_are_distinct_and_total() -> Bool {
   let labels = map(launch_refusal_exemplars(), r => launch_refusal_label(r: r))
-  count(labels) == 17 && labels_distinct(labels: labels)
+  count(labels) == 18 && labels_distinct(labels: labels)
 }
 
 test fn witness_contract_text_carries_gate_order_and_digest_is_hex16() -> Bool {

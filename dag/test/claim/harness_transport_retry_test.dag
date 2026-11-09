@@ -38,7 +38,7 @@ test fn the_named_instant_is_the_instant_due_flips() -> Bool {
 // through the same functions, and an offset spread of one puts every session on the same instant --
 // which is what the spread exists to prevent, and what makes it testable.
 test fn a_different_policy_changes_the_schedule() -> Bool {
-  let patient = HarnessTransportRetryPolicy { first_delay: second(count: 60), max_delay: second(count: 600), offset_spread: 1 }
+  let patient = HarnessTransportRetryPolicy { first_delay: second(count: 60), max_delay: second(count: 600), offset_spread: second(count: 1) }
   map([0, 1, 2, 3, 4], n => transport_retry_delay_seconds(policy: patient, re_deliveries: n)) == [60, 120, 240, 480, 600]
     && transport_retry_offset_seconds(policy: patient, session_key: "anything") == 0
     && transport_retry_next_delivery_at(policy: patient, last_delivery_at: 0, re_deliveries: 1, session_key: "anything") == 120
@@ -50,7 +50,7 @@ test fn a_different_policy_changes_the_schedule() -> Bool {
 // re-delivery never returns on this input, so reintroducing it makes this claim not finish.
 test fn the_gap_walk_is_bounded_by_the_cap_not_by_the_requests_age() -> Bool {
   let p = harness_transport_retry_policy_now
-  let flat = HarnessTransportRetryPolicy { first_delay: second(count: 0), max_delay: second(count: 300), offset_spread: 7 }
+  let flat = HarnessTransportRetryPolicy { first_delay: second(count: 0), max_delay: second(count: 300), offset_spread: second(count: 7) }
   transport_retry_delay_seconds(policy: p, re_deliveries: 1000000000) == 300
     && transport_retry_delay_seconds(policy: flat, re_deliveries: 1000000000) == 0
 }
