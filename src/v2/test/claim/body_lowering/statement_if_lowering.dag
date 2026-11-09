@@ -52,10 +52,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // @ref(v2.test.claim.self_host.closure_emission::a_closure_member_whose_body_does_not_lower_is_its_own_typed_refusal_holds)
 // (its `ce_refusing_fn` is the SAME SHAPE as `tail`: a value-position else-less `if` with an expression arm,
 // `if p { p }`, refused with `target_value_expr_reason_branch_else_less_as_value`). `let_binder` is the
-// let-BINDER VARIANT (binder value, not fn tail): only the shared `tail`/`ce_refusing_fn` shape is
-// target-guarded; the binder consumer's own refusal is not exercised on that route. Each row asserts the
-// module RESOLVES, so it goes red if the fold ever refuses one of these well-formed shapes again -- a real
-// discriminant, not a tautology. The third RED (a no-value node applied as a callee) is pinned at the fact
+// let-BINDER VARIANT (binder value, not fn tail): its value-owing consumer (the named binder) refuses at
+// the INFER stage during emission, guarded by the closure-emission member row
+// @ref(v2.test.claim.self_host.closure_emission::a_closure_member_whose_let_binder_is_an_else_less_if_is_its_own_typed_refusal_holds)
+// (its `ce_binder_fn` is the same shape, `let x = if p { p }; x`, refused with `infer_branch_else_less_as_value`).
+// The two consumer guards sit at different stages (tail at target, binder at infer) because the tail value is
+// consumed at realization while the binder value is consumed at typing. Each row asserts the module RESOLVES,
+// so it goes red if the fold ever refuses one of these well-formed shapes again -- a real discriminant, not a
+// tautology. The third RED (a no-value node applied as a callee) is pinned at the fact
 // reader in v2.compiler.infer infer_application_callee_arrow_with_facts; a surface spelling of applying an
 // if-expression is not surface syntax.
 
