@@ -102,18 +102,35 @@ fn running_os_receipt_body(producer: RunningOsReceiptProducer, host: HostIdentit
   ], "\n"), "\n")
 }
 
+// WHAT THE WRITER COMPOSED: the document, or the one reason there is none. The two reasons are different
+// anomalies (the running OS was never read, versus a console that printed a key on another boot than the one
+// read), so each keeps its own arm and its facts rather than one absence a caller has to guess between.
+type RunningOsReceiptComposition
+  = RunningOsReceiptComposed { text: String }
+  | RunningOsReceiptReadingUnobserved { cause: String }
+  | RunningOsReceiptKeyOfAnotherBoot { observed_on: String, key_checked_on: String }
+
+fn running_os_receipt_composition_text(c: RunningOsReceiptComposition) -> String {
+  match c {
+    RunningOsReceiptComposed { text: _ } => "composed"
+    RunningOsReceiptReadingUnobserved { cause: x } => concat("the running OS was not observed: ", x)
+    RunningOsReceiptKeyOfAnotherBoot { observed_on: o, key_checked_on: k } =>
+      join(["the host key was checked on boot ", k, ", not the observed boot ", o], "")
+  }
+}
+
 // THE WRITER: only an observed reading with its boot's own checked host key has a receipt. An unobserved reading,
 // or a key checked on another boot than the one observed, is not written, so a consumer finds no receipt rather
 // than one stating nothing or one pairing a running OS with another boot's key.
-fn running_os_receipt_text(producer: RunningOsReceiptProducer, reading: RunningOsReading, host_key: CheckedHostKey) -> String? {
+fn running_os_receipt_text(producer: RunningOsReceiptProducer, reading: RunningOsReading, host_key: CheckedHostKey) -> RunningOsReceiptComposition {
   match reading {
-    RunningOsUnobserved { cause: _ } => none
+    RunningOsUnobserved { cause: c } => RunningOsReceiptReadingUnobserved { cause: c }
     RunningOsObserved { running: r, observed_host: h, observed_on: b } =>
       if (host_key.boot_id as String) != (b.boot_id as String) {
-        none
+        RunningOsReceiptKeyOfAnotherBoot { observed_on: b.boot_id as String, key_checked_on: host_key.boot_id as String }
       } else {
         let body = running_os_receipt_body(producer: producer, host: h, running: r, boot: b, host_key: host_key)
-        Present { value: join([body, running_os_receipt_content_digest_prefix, running_os_receipt_content_digest(body: body), "\n"], "") }
+        RunningOsReceiptComposed { text: join([body, running_os_receipt_content_digest_prefix, running_os_receipt_content_digest(body: body), "\n"], "") }
       }
   }
 }

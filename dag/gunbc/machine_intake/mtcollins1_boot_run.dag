@@ -21,7 +21,7 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import gunbc.host.boot_medium { BootMedium, BootMediumNoTerminal, BootMediumVolumeLabel, BootMediumRunnerHostUp, bmc_boot_image_export }
 import gunbc.runner.runner_host_medium { RunnerHostUp, RunnerHostUpRefusal, RunnerHostUpPending, RunnerHostUpRefused, RunnerHostUpObserved, runner_host_up_readback, runner_host_up_refusal_text, runner_host_boot_medium, runner_host_running_os_of_up }
 import gunbc.host.running_os { RunningOsReading }
-import gunbc.host.running_os_receipt { RunningOsReceiptProducer, running_os_receipt_text }
+import gunbc.host.running_os_receipt { RunningOsReceiptProducer, running_os_receipt_text, RunningOsReceiptComposed, running_os_receipt_composition_text }
 import gunbc.machine_intake.mtcollins1_boot_receipts { mtcollins1_boot_running_os_receipt_path }
 import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_machine, mtcollins1_census_image_stem, mtcollins1_census_image, census_served_check }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_image_stem }
@@ -3320,11 +3320,11 @@ fn mtcollins1_boot_write_running_os_receipt(attempt: MtCollins1BootAttempt) -> S
         Present { value: "the runner host was accepted but GITHUB_RUN_ID or GITHUB_RUN_ATTEMPT is unset, so the running-OS receipt names no producer and is not written" }
       } else {
         match running_os_receipt_text(producer: RunningOsReceiptProducer { run_id: run_id as NonEmptyStr, run_attempt: run_attempt as NonEmptyStr }, reading: terminal.running, host_key: terminal.up.host_key) {
-          Absent => Present { value: "the runner host was accepted but its running OS was not observed, or its host key was checked on another boot than the one observed, so no running-OS receipt is written" }
-          Present { value: text } => {
+          RunningOsReceiptComposed { text: text } => {
             let wrote = Filesystem.Write(path: mtcollins1_boot_running_os_receipt_path, content: text)
             if wrote.success { none } else { Present { value: concat("could not write the running-OS receipt: ", wrote.error) } }
           }
+          other => Present { value: concat("the runner host was accepted but no running-OS receipt is written: ", running_os_receipt_composition_text(c: other)) }
         }
       }
     }

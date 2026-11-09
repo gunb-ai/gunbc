@@ -20,6 +20,7 @@ import gunbc.host.running_os_receipt {
   RunningOsReceiptDigestMismatch, RunningOsReceiptOfAnotherRun, RunningOsReceiptMalformed,
   RunningOsReceiptFieldAbsent, RunningOsReceiptFieldRepeated, RunningOsReceiptLineUnexpected, RunningOsReceiptHostKeyUnchecked,
   running_os_receipt_text, running_os_receipt_reading, running_os_receipt_producer_of_run,
+  RunningOsReceiptComposition, RunningOsReceiptComposed, RunningOsReceiptReadingUnobserved, RunningOsReceiptKeyOfAnotherBoot,
   running_os_receipt_content_digest,
 }
 
@@ -59,17 +60,17 @@ fn key_on(boot: String) -> CheckedHostKey? {
   checked_host_key(boot_id: boot as NonEmptyStr, key_type: "ssh-ed25519", key_b64: receipt_key_b64, fingerprint: receipt_key_fingerprint)
 }
 
-fn text_with_key_on(boot: String) -> String? {
+fn text_with_key_on(boot: String) -> RunningOsReceiptComposition? {
   match key_on(boot: boot) {
     Absent => none
-    Present { value: k } => running_os_receipt_text(producer: producer(run: 41000000001, attempt: 1), reading: observed_reading(), host_key: k)
+    Present { value: k } => Present { value: running_os_receipt_text(producer: producer(run: 41000000001, attempt: 1), reading: observed_reading(), host_key: k) }
   }
 }
 
 fn written() -> String {
   match text_with_key_on(boot: receipt_boot) {
-    Present { value: t } => t
-    Absent => ""
+    Present { value: RunningOsReceiptComposed { text: t } } => t
+    _ => ""
   }
 }
 
@@ -113,8 +114,8 @@ test fn an_unobserved_reading_has_no_receipt_and_undigested_bytes_are_not_one() 
   (match key_on(boot: receipt_boot) {
     Absent => false
     Present { value: k } => match running_os_receipt_text(producer: producer(run: 41000000001, attempt: 1), reading: RunningOsUnobserved { cause: "supplied" }, host_key: k) {
-      Absent => true
-      Present { value: _ } => false
+      RunningOsReceiptReadingUnobserved { cause: c } => c == "supplied"
+      _ => false
     }
   })
     && (match running_os_receipt_reading(text: "running_os_receipt\nhost=mtcollins1\n", fetched_from: producer(run: 41000000001, attempt: 1)) {
@@ -244,8 +245,8 @@ test fn the_receipt_round_trips_the_per_boot_pin() -> Bool {
 // one boot; a running OS paired with another boot's key would let a pin vouch for a boot it was never printed on.
 test fn a_key_from_another_boot_is_not_written_into_the_receipt() -> Bool {
   (match text_with_key_on(boot: other_boot) {
-    Absent => true
-    Present { value: _ } => false
+    Present { value: RunningOsReceiptKeyOfAnotherBoot { observed_on: o, key_checked_on: k } } => o == receipt_boot && k == other_boot
+    _ => false
   })
     && string_contains(s: written(), pattern: "host_key_sha256=")
 }

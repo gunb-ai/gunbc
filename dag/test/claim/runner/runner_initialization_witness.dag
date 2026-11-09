@@ -7,7 +7,7 @@ import product.host_identity { host_identity_eq }
 import extdeps.github.workflow_runs { github_workflow_run_id_of_wire, Success }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.host.running_os { RunningOsReading, RunningOsUnobserved }
-import gunbc.host.running_os_receipt { running_os_receipt_text, running_os_receipt_reading, running_os_receipt_producer_of_run, RunningOsReceiptAdmitted, RunningOsReceiptRefused, running_os_receipt_refusal_text }
+import gunbc.host.running_os_receipt { running_os_receipt_text, RunningOsReceiptComposed, running_os_receipt_composition_text, running_os_receipt_reading, running_os_receipt_producer_of_run, RunningOsReceiptAdmitted, RunningOsReceiptRefused, running_os_receipt_refusal_text }
 import gunbc.host.initialized_host { InitializedHostStanding, InitializedHostUntrusted, initialized_host_over }
 import gunbc.runner.runner_host_medium { runner_host_medium_runner_account }
 import gunbc.runner.runner_qualification_revision_admission { QualificationRevisionAdmission, QualificationRevisionRefused, QualificationRevisionUndecodable }
@@ -42,12 +42,12 @@ fn carried_reading() -> RunningOsReading {
   match mtcollins1_host_key() {
     Absent => RunningOsUnobserved { cause: "the boot run's readback checked no host key" }
     Present { value: key } => match running_os_receipt_text(producer: producer, reading: mtcollins1_running_os(), host_key: key) {
-      Absent => RunningOsUnobserved { cause: "the boot run's reading wrote no receipt" }
-      Present { value: text } => match running_os_receipt_reading(text: text, fetched_from: producer) {
+      RunningOsReceiptComposed { text: text } => match running_os_receipt_reading(text: text, fetched_from: producer) {
         RunningOsReceiptAdmitted { reading: r, host_key: k } =>
           if (k.boot_id as String) == (key.boot_id as String) && k.public_key_base64 == key.public_key_base64 { r } else { RunningOsUnobserved { cause: "the receipt carried another key than the boot run wrote" } }
         RunningOsReceiptRefused { refusal: f } => RunningOsUnobserved { cause: running_os_receipt_refusal_text(refusal: f) }
       }
+      other => RunningOsUnobserved { cause: running_os_receipt_composition_text(c: other) }
     }
   }
 }
