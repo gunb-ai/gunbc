@@ -51,3 +51,4 @@ Maintained by silent-bee-845, the daily integration manager. CI's required job (
 - FALSE rows: belt_actuate 2 (fix 6ec056ba), component_dispatch_button 1, launch_admission 1.
 - INCOMPLETE: durable_append_log 25/31; the_raw_events_initializer_is_gone hangs or runs very slowly at the 45-minute limit.
 - UNOBSERVED/wet: append_log_srv1_host_shape 4, belt_actuate 9, and the four *_wet witnesses.
+- LATENT on main (from the #15993 skip): v1 infer has two disagreeing inline copies of the fold-carrier rule. In the seed mirror, refined_call_fold_acc_type carries the generic test and refined_fold_acc_type does not. #15993's fixtures do not go red on main. Wanted: a fresh, fixture-first PR (a fixture red on main first, then the unification), with its claim run at a head that carries the heal-published mirror.
