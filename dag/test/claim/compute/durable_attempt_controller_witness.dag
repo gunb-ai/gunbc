@@ -43,7 +43,7 @@ import std.content_hash { content_hash_of_value }
 
 // These controls execute the production request acceptance, delegation, codec,
 // prepare and file CAS paths. The pause is an explicit prepared proposal, not
-// a sleep or a simulated scheduler. No process launch is performed by PR3.
+// a sleep or a simulated scheduler. No process launch is performed here.
 // The service's declared directories are prerequisites, not effects of submit.
 // Derive both populations from their existing owners; every mkdir must succeed.
 fn fixture_prepare_root(root: String) -> Bool {
@@ -190,7 +190,7 @@ test fn old_epoch_refuses_after_same_owner_reacquires() -> Bool {
 }
 
 // Opposite order: the launch commits BEFORE transfer. It remains Launching,
-// and B cannot turn it into a second launch. PR4/5 reconciles this committed
+// and B cannot turn it into a second launch. Executor admission reconciles this committed
 // intent with its exact executor grant; a transfer cannot revoke history.
 test fn launch_committed_before_transfer_is_preserved_not_relaunched() -> Bool {
   match fixture() {

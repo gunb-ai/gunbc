@@ -43,7 +43,8 @@ import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, J
 
 // This record is the delegated request's one active ownership authority.
 // The immutable request slot stores only its initial intent/link. Its owner is
-// NOT copied into a second claim record. PR4/5 consumes committed attempt intent;
+// NOT copied into a second claim record. Executor admission and fencing consume committed
+// attempt intent;
 // this module does not spawn or equate a reservation with an ExecutionGrant.
 type ControllerAttempt sole_constructor {
   request: NonEmptyStr
@@ -74,7 +75,7 @@ fn controller_store(root: NonEmptyStr, principal: NonEmptyStr) -> ControllerStor
 }
 
 fn controller_attempt_wire(r: ControllerAttempt) -> String {
-  // Preserve the canonical wire admitted by PR2b; no second serialization/hash.
+  // Preserve the canonical wire the fenced codec admits; no second serialization/hash.
   serialize_json(v: json_object(members: [
     json_kv(key: "schema", value: json_string(s: "gunbc.controller_attempt/1")),
     json_kv(key: "request", value: json_string(s: r.request as String)),
@@ -398,7 +399,8 @@ fn controller_advance(r: ControllerAttempt, next: AttemptState) -> ControllerAtt
 }
 
 
-// PR5 owns the schema migration AND its real legacy producer. Today's receipt
+// The executor-side receipt binding owns the schema migration AND its real legacy producer.
+// Today's receipt
 // has no way to bind these three facts, so a matching attempt is necessary but
 // never sufficient. Do not invent an outcome from billable time/output digest.
 type ControllerReceiptMissing
@@ -412,7 +414,8 @@ type ControllerReceiptRefusal
   | ControllerReceiptNotExecution
   | ControllerReceiptBindingMissing { missing: FreeSemigroup<ControllerReceiptMissing> }
 
-// There is deliberately no accepted constructor until PR5 can supply the
+// There is deliberately no accepted constructor until the executor-side receipt binding
+// can supply the
 // promised fields. This is a declared consumer frontier, not a silent default.
 fn controller_receipt_for_attempt(expected: FabricIdentity<NonEmptyStr, ExecutionAttemptKey>, receipt: Receipt<NonEmptyStr>, grant: ExecutionGrant<NonEmptyStr>) -> ControllerReceiptRefusal {
   if !fabric_identity_eq(left: expected, right: receipt.attempt) || !fabric_identity_eq(left: expected, right: grant.context.attempt) {

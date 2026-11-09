@@ -822,7 +822,7 @@ fn recovery_trigger_wire(t: RecoveryTrigger) -> String {
 }
 
 
-// PR3: the claim and lifecycle live in ONE slot. A HeldLease is evidence about
+// The claim and lifecycle live in ONE slot. A HeldLease is evidence about
 // the acquisition, not a substitute for the conditional write. A prepared write
 // binds its store/key/revision; ownership transfer changes that same revision.
 
