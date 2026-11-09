@@ -205,6 +205,35 @@ test fn a_fn_returning_fn_emits_impl_fn_with_a_move_closure() -> Bool {
   }
 }
 
+// THE SAME RETURNED CLOSURE BEHIND A `let`. A `let` whose TAIL is the returned closure occupies the
+// item's function-typed return position just as a bare closure does: the item's declared return type
+// is unchanged by binding a value first, so the tail closure still has to be `move`-captured (and
+// boxed, where the row boxes) by the same FunctionTypeRealizationRow. The capture is a property of
+// the POSITION, not of the body's outermost node, and the authority that reads the row already
+// threads that position through a nested `let` (v2.std.compilers.target_model
+// target_project_bind_tail passes its own tail_return down) -- what was missing was a caller that
+// SAID the position at the item body. Where no position is passed, the tail closure is projected as
+// a closure in an ordinary value position and the capture is silently absent.
+//
+// rustc is the referee, as it is for the two goldens above: this text was compiled on the same
+// runner, and the emitted form WITHOUT the capture is refused -- error[E0373]: closure may outlive
+// the current function, but it borrows `p`, which is owned by the current function -- while the
+// golden below compiles. So this is not the emitter's current output wearing a golden's clothes.
+data fvb_emit_let_tail_source: String = "module fvb_emit_probe\n\nfn fvb_let_tail(p: Int) -> fn(Int) -> Int {\n  let z = 1\n  fn(q) { p }\n}\n"
+
+data fvb_emit_let_tail_golden: String = "fn fvb_let_tail(p: i32) -> impl Fn(i32) -> i32 { let z = 1; move |q| { p } }\n\n"
+
+fn fvb_emit_let_tail_verdict() -> FvbEmitVerdict {
+  fvb_emit_verdict_of(source: fvb_emit_let_tail_source)
+}
+
+test fn a_let_binding_then_returned_closure_emits_a_move_closure() -> Bool {
+  match fvb_emit_let_tail_verdict() {
+    FvbEmitted { text: t } => t == fvb_emit_let_tail_golden
+    FvbEmitRefused { reason: _ } => false
+  }
+}
+
 // NESTED FUNCTION TYPES MINT ONE ANONYMOUS LABEL PER LEVEL, AND THAT HIDES NOTHING. `fn(Bool) ->
 // fn(Bool) -> Bool` is two Arrow types, and each domain's unnamed slot is labelled by its position in
 // its OWN list (v2.std.anonymous_binder anonymous_param_label), so both levels bind
