@@ -791,10 +791,7 @@ pub(crate) fn compile_clean_broad_stop_line_blocks_skip(
         return false;
     }
     let entry_rel = workspace_relative_repo_path(entry_path);
-    [
-        COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY,
-        COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY,
-    ]
-    .iter()
-    .any(|check| workspace_relative_repo_path(check) == entry_rel)
+    [COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY]
+        .iter()
+        .any(|check| workspace_relative_repo_path(check) == entry_rel)
 }

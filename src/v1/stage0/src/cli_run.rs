@@ -21356,6 +21356,26 @@ fn parse_unified_diff_departed_paths(diff_text: &str) -> HashSet<String> {
     departed
 }
 
+/// True when `name` is declared as a `data` item at `file_norm`, verified against the entry's
+/// own resolved import closure (`ctx.modules`) rather than by bare name — `item_registry` is
+/// flat-namespace-keyed (name only, no origin file), so a homonym declared in some unrelated
+/// file must not be mistaken for the diff-changed declaration. Because `ctx.modules` already
+/// contains only this entry's resolved import closure, a `file_norm` the entry does not import
+/// yields no match here regardless of name collisions elsewhere in the corpus.
+fn data_item_declared_in_file(
+    ctx: &v1_interpreter::InterpContext,
+    name: &str,
+    file_norm: &str,
+) -> bool {
+    ctx.modules.iter().any(|module| {
+        module.items.iter().any(|item| {
+            item_kind(item.clone()) == ItemKind::DataItem
+                && span_file_matches(&item.span.file, file_norm)
+                && authored_name_at(ctx.source_indices.clone(), item.clone()) == name
+        })
+    })
+}
+
 fn parse_unified_diff_added_paths(diff_text: &str) -> HashSet<String> {
     // Wholly-added files (`--- /dev/null` → `+++ b/path`) necessarily touch line 1
     // (the module header). Attribute at declaration grain; do not conflate with
