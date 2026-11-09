@@ -1504,7 +1504,7 @@ fn srv1_render_replica_helper_sha256() -> String {
 type Srv1InstalledArtifact {
   host_path: NonEmptyStr,
   rendered_by: NonEmptyStr,
-  bytes: Nat,
+  bytes: ByteSize,
   render_sha256: NonEmptyStr,
   installed_sha256_computed_on_host: NonEmptyStr,
 }
@@ -1513,28 +1513,28 @@ data srv1_installed_boot_path_artifacts_2026_11_09: List<Srv1InstalledArtifact> 
   Srv1InstalledArtifact {
     host_path: "/usr/local/sbin/lil-replica-launch" as NonEmptyStr,
     rendered_by: "srv1_render_replica_launcher" as NonEmptyStr,
-    bytes: 5771,
+    bytes: byte_size(5771),
     render_sha256: "c4ef731472a71c78d8e9ae24b306decd4c683934a8d76ff2e5d70020614925a9" as NonEmptyStr,
     installed_sha256_computed_on_host: "c4ef731472a71c78d8e9ae24b306decd4c683934a8d76ff2e5d70020614925a9" as NonEmptyStr,
   },
   Srv1InstalledArtifact {
     host_path: "/usr/local/etc/lil-replica/replica-0.args" as NonEmptyStr,
     rendered_by: "srv1_render_replica_engine_args" as NonEmptyStr,
-    bytes: 453,
+    bytes: byte_size(453),
     render_sha256: "972103406df3cede0104bd8847f5902b57095cfa54c4b7ec88be68633cc41fce" as NonEmptyStr,
     installed_sha256_computed_on_host: "972103406df3cede0104bd8847f5902b57095cfa54c4b7ec88be68633cc41fce" as NonEmptyStr,
   },
   Srv1InstalledArtifact {
     host_path: "/usr/local/etc/lil-replica/replica-1.args" as NonEmptyStr,
     rendered_by: "srv1_render_replica_engine_args" as NonEmptyStr,
-    bytes: 453,
+    bytes: byte_size(453),
     render_sha256: "972103406df3cede0104bd8847f5902b57095cfa54c4b7ec88be68633cc41fce" as NonEmptyStr,
     installed_sha256_computed_on_host: "972103406df3cede0104bd8847f5902b57095cfa54c4b7ec88be68633cc41fce" as NonEmptyStr,
   },
   Srv1InstalledArtifact {
     host_path: "/usr/local/sbin/lil-replica" as NonEmptyStr,
     rendered_by: "srv1_render_replica_helper" as NonEmptyStr,
-    bytes: 1222,
+    bytes: byte_size(1222),
     render_sha256: "8ced9f2ab4bfc8a46fac7a93324b0ec24ec66043f9ceb1942a0bd7c42d2f484e" as NonEmptyStr,
     installed_sha256_computed_on_host: "8ced9f2ab4bfc8a46fac7a93324b0ec24ec66043f9ceb1942a0bd7c42d2f484e" as NonEmptyStr,
   },
