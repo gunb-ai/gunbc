@@ -30,3 +30,8 @@ Maintained by silent-bee-845, the daily integration manager. CI's required job (
 - #15894 (2e18b541): src/v2/test/claim/service_operation_unrealizable.dag (if batch 1 did not cover it).
 - #16124 (9ab54645): dag/gunbc/live_deploy/user_work_slice_admission_witness.dag. CI typechecks only std.measure here, NOT slice_bounds, roadmap_belt_actuate or the witness, so a green run proves nothing about those types. HOST ACTION (the operator's): re-activate the srv1 belt so the gate goes live. The drain check plus `systemctl --user restart` are in the #16124 body; run them only with 0 review/audit workers in flight.
 - Continuation stack: #16124 changed roadmap_belt_actuate.dag, which the stack's roadmap_belt_actuate_witness exercises. The stack's next main sync must re-run that witness against #16124.
+
+## RED ON MAIN, found by execution (2026-11-09)
+- v2.test.claim.namespace_xl0.let_match_early_return at main b36c11f3: 12 of 18 rows false, with no diagnostic (6 pass). It predates the restores; the guess is that expectations drifted as body lowering changed. Needs its own work item.
+- branch_slot_readers.dag:268 refuses at LOAD (equality admission for generic LocusAnchor; v1.compiler.infer equality walk; concern equality_wall_three_site_measure_stopgap_interim; root #15992). It is the same at #16139's head and base. Suspected: every claim file that writes `== node_locus(...)` (at least 8 on main) is unloadable. A load-only check is pending on quick-newt-573.
+- Class evidence for test_claim_module_is_not_compiled_by_required_ci: #15363's new claim module passed two CI cycles with a headless Cons, then with a Node/NodeOccurrence type error.
