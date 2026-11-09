@@ -422,7 +422,7 @@ mod tests {
     /// stray `)` opens an item the grammar has no shape for. This is the file the read used to
     /// contribute nothing for.
     const PROBE_UNREADABLE: &str =
-        "module keyed_probe_root.probe\n\nfn probe_authority() -> Bool { true }\)\n";
+        "module keyed_probe_root.probe\n\nfn probe_authority() -> Bool { true }\n)\n";
 
     /// THE TYPED SHAPE of the refusal — what a caller consumes. The interpreter-level pair
     /// (`coproduct_reflection`'s `keyed_decl_facts_unreadable_file_tests`) is the half that can also
