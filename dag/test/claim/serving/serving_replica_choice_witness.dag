@@ -1,0 +1,151 @@
+// CLAIMS THE CHOICE MAKES. The selector over the one roster, run through std.decision -- pinned from BOTH
+// sides the brief demands: with nothing read at ~200k it refuses to choose (SelectionNeedsEvidence), and it
+// only ever names a host when every axis it scores on carries a reading. The fixture candidates here are
+// built AT THE WITNESS BOUNDARY with the readings the fleet does not yet have; the roster's own rows must
+// never produce a survivor, so no fixture leaks into the fleet's answer.
+module test.claim.serving.serving_replica_choice_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Optional, Present, Absent }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_identity }
+import std.interval { degenerate_interval }
+import std.pareto { AxisGap, AxisReading, ParetoEntry }
+import std.decision {
+  CausalModelEstablished, CausalModelUnestablished, ConstraintSatisfied, DecisionAssessment,
+  FleetObservedCoupling, MonotoneIncreasing, ParameterBound, PhysicalModelEstablished,
+  PhysicalModelUnestablished, SelectedWithin, SelectionNeedsEvidence, VariesAlong,
+}
+import extdeps.external_authority { CitedToAuthority, ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import gunbc.serving.serving_replica_choice {
+  ax_decode_200k, ax_host_cost_month, ax_restart_cost_ms, ax_save_cost_bytes,
+  id_constraints, id_parameter, id_subject, id_term, id_var,
+  replica_choice_field, replica_host_choice, replica_host_choice_today, rsc_region, rsc_subject,
+}
+
+// THE FLEET'S OWN STATE REFUSES. Nothing has measured decode at ~200k on any host and no host's bill has
+// been read, so the roster's candidates carry gaps on those axes and UniqueSurvivorRequired can name no
+// survivor: the answer is SelectionNeedsEvidence, and the needs are not empty -- each names a reading to
+// obtain. It is NOT SelectedWithin with some default host, and not an empty needs list.
+test fn unread_fleet_refuses_to_choose() -> Bool {
+  match replica_host_choice_today() {
+    SelectionNeedsEvidence { needs: ns } => ns.length() > 0
+    _ => false
+  }
+}
+
+test fn unread_fleet_never_answers_with_a_host() -> Bool {
+  match replica_host_choice_today() {
+    SelectedWithin { candidate: _, receipt: _ } => false
+    _ => true
+  }
+}
+
+// EVERY HOST OF THE ROSTER IS A CANDIDATE, and each of the four operating hosts carries at least the two
+// gaps the refusal is about -- the 200k decode and the monthly price. The count is pinned (2), not just
+// non-empty: an extra gap is fine (a rung's cost may also be unread), a missing one would mean an axis was
+// scored off data that does not exist.
+test fn every_roster_host_is_a_candidate_gapped_on_the_unread_axes() -> Bool {
+  let field = replica_choice_field()
+  field.length() == 4 && fold(field, init: true, f: (acc, c) =>
+    acc && c.missing_inputs.length() >= 2
+      && c.missing_inputs.any(g => declaration_ref_identity(reference: g.axis).digest == declaration_ref_identity(reference: ax_decode_200k).digest)
+      && c.missing_inputs.any(g => declaration_ref_identity(reference: g.axis).digest == declaration_ref_identity(reference: ax_host_cost_month).digest))
+}
+
+// THE MACHINE WORKS WHEN THE EVIDENCE DOES: two fixture candidates over the same axes, where `better` wins
+// every axis (more decode, lower monthly cost, cheaper save, cheaper restart) and `worse` is strictly
+// dominated on all four. With a fully-read field, the selection names `better` -- proof the selector
+// computes the trade when the readings exist, so the refusal above is about the missing readings and not a
+// broken comparison. The readings are fixtures at this boundary; the fleet has none of them.
+test fn a_dominated_field_selects_the_dominating_host() -> Bool {
+  match replica_host_choice(assessment: read_assessment(), field: [better_entry(), worse_entry()]) {
+    SelectedWithin { candidate: c, receipt: _ } => c.identity.decl_name == "replica-fixture-better"
+    _ => false
+  }
+}
+
+// A gap on ANY axis keeps the choice honest even when the other three are read: `better` again, but its
+// monthly cost is missing -- no survivor may be named on the partial field.
+test fn one_gap_still_refuses_to_choose() -> Bool {
+  match replica_host_choice(assessment: read_assessment(), field: [better_entry_missing_cost(), worse_entry()]) {
+    SelectionNeedsEvidence { needs: ns } => ns.length() > 0
+    _ => false
+  }
+}
+
+// ── THE FIXTURES ─────────────────────────────────────────────────────────────────────────────────────
+
+fn fixture_identity(name: String) -> DeclarationRef {
+  decl_ref(module_path: "gunbc.serving.serving_replica_choice", decl_name: name)
+}
+
+fn reading(axis: DeclarationRef, v: Int) -> AxisReading { AxisReading { axis: axis, interval_micro: degenerate_interval(point: v) } }
+
+fn better_entry() -> ParetoEntry {
+  ParetoEntry {
+    identity: fixture_identity(name: "replica-fixture-better"),
+    display_label: "fixture-better" as NonEmptyStr,
+    readings: [
+      reading(axis: ax_decode_200k, v: 600),
+      reading(axis: ax_host_cost_month, v: 10000000),
+      reading(axis: ax_save_cost_bytes, v: 1000000000),
+      reading(axis: ax_restart_cost_ms, v: 156),
+    ],
+    missing_inputs: [],
+  }
+}
+
+fn worse_entry() -> ParetoEntry {
+  ParetoEntry {
+    identity: fixture_identity(name: "replica-fixture-worse"),
+    display_label: "fixture-worse" as NonEmptyStr,
+    readings: [
+      reading(axis: ax_decode_200k, v: 300),
+      reading(axis: ax_host_cost_month, v: 20000000),
+      reading(axis: ax_save_cost_bytes, v: 4000000000),
+      reading(axis: ax_restart_cost_ms, v: 900000),
+    ],
+    missing_inputs: [],
+  }
+}
+
+fn better_entry_missing_cost() -> ParetoEntry {
+  ParetoEntry {
+    identity: fixture_identity(name: "replica-fixture-better"),
+    display_label: "fixture-better" as NonEmptyStr,
+    readings: [
+      reading(axis: ax_decode_200k, v: 600),
+      reading(axis: ax_save_cost_bytes, v: 1000000000),
+      reading(axis: ax_restart_cost_ms, v: 156),
+    ],
+    missing_inputs: [AxisGap { axis: ax_host_cost_month, cause: "fixture: the bill was not transcribed" as NonEmptyStr }],
+  }
+}
+
+// THE FIXTURE'S OWN EVIDENCE: an authority and a coupling receipt minted at THIS boundary, used only to
+// exercise the selector. (std.decision::bind_pick_to_subject_closure is what makes this necessary: an
+// assessment whose physical or causal model is unestablished defers, and a deferral turns even a
+// SelectedWithin into SelectionNeedsEvidence -- so a fixture that wants a survivor must establish the join,
+// not just fill the field.)
+data w_fixture_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "gunb.ai/test/serving-replica-choice-witness#fixture-evidence" },
+}
+
+data w_fixture_coupling: DeclarationRef = decl_ref(module_path: "test.claim.serving.serving_replica_choice_witness", decl_name: "w_fixture_coupling")
+
+// An assessment whose completeness join IS closed -- legitimate ONLY beside a fully-read field (a fixture
+// one, or a future receipt-backed one). It exists so the selection's machinery can be exercised; it never
+// becomes this module's own claim (rsc_unread_assessment is), and it is never handed the roster's own field,
+// which is gap-ridden by construction.
+fn read_assessment() -> DecisionAssessment {
+  DecisionAssessment {
+    subject: rsc_subject(term_ground: CitedToAuthority { authority: w_fixture_authority }),
+    sensitivities: [VariesAlong { term: id_term, variable: id_var, region: rsc_region, relation: MonotoneIncreasing, coupling: CitedToAuthority { authority: w_fixture_authority } }],
+    constraints: [ConstraintSatisfied { constraint: id_constraints, evidence: "fixture: the schedule is closed for this witness" as NonEmptyStr }],
+    parameters: [ParameterBound { parameter: id_parameter, evidence: "fixture: the grant bound for this witness" as NonEmptyStr }],
+    selected_candidate: Absent, term_drops: [],
+    physical_model: PhysicalModelEstablished { terms: [id_term] },
+    causal_model: CausalModelEstablished { couplings: [FleetObservedCoupling { receipt: w_fixture_coupling, term: id_term, variable: id_var, subject: id_subject }] },
+  }
+}

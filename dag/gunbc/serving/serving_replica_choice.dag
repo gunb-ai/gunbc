@@ -1,0 +1,355 @@
+// WHICH HOST DO WE SCALE ONTO? THE CHOICE OVER THE ONE ROSTER, MADE WITH std.decision.
+//
+// THE QUESTION: at the fleet's long-context operating point -- about 200k, the pool's own cap
+// (gunbc.serving.serving_context_cap) -- which host earns the next engine replica? The metric the fleet
+// asked for is THROUGHPUT PER UNIT OF HOST COST, and this module renders it the way
+// product.fleet_operating_point and gunbc.serving.serving_relocation already render a two-sided question in
+// this repo: NOT as a ratio anyone computes by hand -- a hand-rolled quotient between incompatible units is
+// exactly the invented scale gunbc.design_argument::one_source_of_truth forbids -- but as the axes the ratio
+// decomposes into, each with its own unit and its own reading: aggregate decode throughput (higher better)
+// against what the host costs (lower better). A candidate that wins every axis wins the ratio outright; a
+// candidate that wins one and loses another is a trade the evidence has to carry, and when it cannot,
+// std.pareto says so.
+//
+// THE COST IS NOT ONLY THE MONTHLY PRICE. The fleet's wording names what a host costs to RUN: the monthly
+// billing, the price of a SAVE, and the price of a RESTART. So the cost side is three axes, not one:
+//   - ax_host_cost_month: what the host bills per month, micro-dollars. NO BILL HAS BEEN READ for any host
+//     in the roster (srv1 is the operator's own card; the rented hosts' invoices are not in the repo), so
+//     every candidate carries a gap there, never a fabricated number.
+//   - ax_save_cost_bytes: what a warm swap WRITES per conversation, read from the profile's warm ladder
+//     through serving_host_memory's own conversation_snapshot_bytes over the rung's cost row -- the save
+//     cost the ladder already measures.
+//   - ax_restart_cost_ms: what a RESTART costs per held conversation, read from the same ladder through
+//     gunbc.serving.serving_replica_profile's durability read: a rung that SurvivesProcessRestart brings its
+//     tier back in its own measured restore milliseconds; a LostWithProcess ladder pays the cold re-read of
+//     the whole window at the row's cold-prefill rate. This is the branch serving_capacity_anchor's FRONTIER
+//     note said must happen "where the profile first reads" mechanism and durability -- it happens here.
+//
+// NO DEFAULT, EVER (gunbc.design_argument::fail_closed). Decode at ~200k has never been measured on any
+// host (the roster's readings are at 100k and 150k), and no monthly price has been read. Every candidate
+// therefore carries gaps on ax_decode_200k and ax_host_cost_month, and the selection answers
+// SelectionNeedsEvidence naming every missing reading -- never a fallback to the cheapest host, the biggest
+// card, or "srv1 because it is home". The witnesses pin both directions: the fleet's own state returns
+// SelectionNeedsEvidence, and only a fixture that READS every axis produces a survivor.
+
+module gunbc.serving.serving_replica_choice
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Optional, Present, Absent }
+import std.measure {
+  ByteSize, Millisecond, MoneyAmountMicro, TokenCount, TokensPerSecond,
+  byte_size_count, millisecond_count, money_amount_micro_count, token_count_value, tokens_per_second_count,
+}
+import std.decl_ref { DeclarationRef, decl_ref }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import std.nat { Nat }
+import std.interval { OrderedClosedInterval, degenerate_interval }
+import std.pareto { AxisGap, AxisReading, HigherIsBetter, LowerIsBetter, ParetoEntry, SelectionAxis }
+import std.decision {
+  CausalModelUnestablished, ChoiceDomain, ContextParameter, DecisionAssessment, DecisionConstraint,
+  DecisionRegion, DecisionSubject, DecisionVariable, ObjectiveMeasure, ObjectiveTerm,
+  PhysicalModelUnestablished, RealizationSelectionResult, SelectionPolicy, UniqueSurvivorRequired,
+  select_realization,
+}
+import product.host_identity { HostIdentity, host_identity_eq }
+import gunbc.serving.serving_host_memory { conversation_snapshot_bytes }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.serving.serving_replica_profile {
+  FiguresAtCoordinate, FiguresOnRow, ServingReplicaProfile, SurvivesProcessRestart, WarmSwapRestores,
+  ThroughputOperatorReading, ThroughputUnread, replica_figures_resolved, replica_survives_restart,
+  serving_replica_roster,
+}
+
+// ── THE AXES AND THE SUBJECT, MINTED HERE ───────────────────────────────────────────────────────────
+//
+// The candidate field, the axes and the subject are MINTED -- not declared -- under std.decision's rule that
+// a decision's identities come from the decision module itself (the shape gunbc.serving.serving_relocation
+// uses). A hand-declared identity with no witness would be the same defect that rule exists to stop.
+
+data ax_decode_200k: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_replica_choice", decl_name: "ax_decode_200k")
+data ax_host_cost_month: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_replica_choice", decl_name: "ax_host_cost_month")
+data ax_save_cost_bytes: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_replica_choice", decl_name: "ax_save_cost_bytes")
+data ax_restart_cost_ms: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_replica_choice", decl_name: "ax_restart_cost_ms")
+
+data id_subject: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_replica_choice", decl_name: "rsc_subject")
+data id_field: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_replica_choice", decl_name: "rsc_field")
+data id_constraints: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_replica_choice", decl_name: "rsc_constraints")
+data id_evidence: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_replica_choice", decl_name: "rsc_evidence")
+data id_objective: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_replica_choice", decl_name: "rsc_objective")
+data id_term: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_replica_choice", decl_name: "rsc_term")
+data id_domain: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_replica_choice", decl_name: "rsc_domain")
+data id_region: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_replica_choice", decl_name: "rsc_region")
+data id_parameter: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_replica_choice", decl_name: "rsc_parameter")
+data id_var: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_replica_choice", decl_name: "rsc_var")
+data id_policy: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_replica_choice", decl_name: "rsc_policy")
+
+data rsc_variable: DecisionVariable = DecisionVariable { identity: id_var }
+data rsc_constraint: DecisionConstraint = DecisionConstraint { identity: id_constraints }
+data rsc_parameter: ContextParameter = ContextParameter { identity: id_parameter }
+data rsc_region: DecisionRegion = DecisionRegion { identity: id_region }
+data rsc_domain: ChoiceDomain = ChoiceDomain { identity: id_domain, variables: [rsc_variable] }
+
+// The decision subject, over the ground its one objective term actually holds. One term: throughput per
+// unit of host cost -- a gain to maximise; the per-axis readings below are what the comparison runs on, and
+// a number the axes do not carry cannot enter the comparison through the subject (a term not in the ground
+// is dropped with its identity in term_drops, never silently zero).
+fn rsc_subject(term_ground: CitedFigureStanding) -> DecisionSubject {
+  DecisionSubject {
+    identity: id_subject,
+    question: "scale the next engine replica onto the host with the best throughput per unit of host cost at ~200k context" as NonEmptyStr,
+    parameters: [rsc_parameter], constraints: [rsc_constraint],
+    objective: ObjectiveMeasure { identity: id_objective, goal: HigherIsBetter, terms: [ObjectiveTerm { identity: id_term, ground: term_ground }] },
+    choice_domain: rsc_domain,
+  }
+}
+
+// The ONLY assessment this module asserts (gunbc.design_argument::epistemic_humility): decode at the
+// fleet's ~200k context has never been read on any host, and no host's monthly bill has been transcribed.
+// A caller that HAS readings builds its own DecisionAssessment over rsc_subject with the ground it holds --
+// the witnesses supply a fixture one at their boundary; nothing here promotes an unread claim to established.
+fn rsc_unread_assessment() -> DecisionAssessment {
+  DecisionAssessment {
+    subject: rsc_subject(term_ground: TranscribedUncited { read_obligation: "aggregate decode tok/s at ~200k context per candidate host, and each host's billed monthly cost, are unread" as NonEmptyStr }),
+    sensitivities: [], constraints: [], parameters: [],
+    selected_candidate: Absent, term_drops: [],
+    physical_model: PhysicalModelUnestablished { subject: id_subject, read_obligation: "how decode throughput varies with host hardware at ~200k context is unread" as NonEmptyStr },
+    causal_model: CausalModelUnestablished { subject: id_subject, read_obligation: "how decode throughput responds to host choice at ~200k context is unread" as NonEmptyStr },
+  }
+}
+
+fn rsc_axes() -> List<SelectionAxis> {
+  [
+    SelectionAxis { identity: ax_decode_200k, goal: HigherIsBetter },
+    SelectionAxis { identity: ax_host_cost_month, goal: LowerIsBetter },
+    SelectionAxis { identity: ax_save_cost_bytes, goal: LowerIsBetter },
+    SelectionAxis { identity: ax_restart_cost_ms, goal: LowerIsBetter },
+  ]
+}
+
+fn rsc_policy() -> SelectionPolicy { UniqueSurvivorRequired { identity: id_policy } }
+
+fn reading(axis: DeclarationRef, v: Int) -> AxisReading { AxisReading { axis: axis, interval_micro: degenerate_interval(point: v) } }
+
+// ── THE CANDIDATES: one entry per HOST, read from the one roster ────────────────────────────────────
+//
+// A CANDIDATE IS A HOST, not a row: srv1 runs two replicas, so its host-level throughput is the PAIR's
+// aggregate -- and it is NOT added up from derived halves (the halves come from dividing the pair reading;
+// re-adding them would launder a derivation back into a measurement). Two rows resolving to the SAME
+// reading -- same context, same aggregate, same sessions, which is exactly the pair case -- contribute it
+// once; rows with distinct readings sum. Save and restart costs sum across the host's replicas; an unread
+// figure anywhere poisons its axis for the host (fail closed), never a zero.
+
+type DecodeEntry { key: String, value: Int }
+
+// The reading a row resolves to, keyed by (context, rate, concurrency) -- the three numbers that make two
+// rows' figures THE SAME READING rather than two measurements that happen to look alike. Absent when the
+// row has no read aggregate.
+fn resolved_decode_entry(p: ServingReplicaProfile) -> Optional<DecodeEntry> {
+  match replica_figures_resolved(p) {
+    Absent => Absent
+    Present { value: f } => match f.throughput {
+      ThroughputUnread => Absent
+      ThroughputOperatorReading { tokens_per_second: tps, at_concurrency: n, standing: _ } =>
+        Present { value: DecodeEntry {
+          key: to_string(token_count_value(t: f.context)) + "|" + to_string(tokens_per_second_count(r: tps)) + "|" + to_string(n),
+          value: tokens_per_second_count(r: tps),
+        } }
+    }
+  }
+}
+
+fn host_aggregate_decode(rows: List<ServingReplicaProfile>) -> Optional<Int> {
+  let distinct = fold(rows, init: no_seen(), f: (acc, p) => match acc {
+    Absent => Absent
+    Present { value: seen } => match resolved_decode_entry(p: p) {
+      Absent => Absent
+      Present { value: e } => if seen.any(s => s.key == e.key) {
+        Present { value: seen }
+      } else {
+        Present { value: concat(seen, [e]) }
+      }
+    }
+  })
+  match distinct {
+    Absent => Absent
+    Present { value: es } => Present { value: fold(es, init: 0, f: (a, e) => a + e.value) }
+  }
+}
+
+// What one conversation's SAVE costs on this profile's ladder: the bytes a swap writes, read from the
+// rung's own cost row against the row's read context, through serving_host_memory's formula (never a
+// re-derived one). The ladder is INCLUSIVE, not additive (serving_host_memory states it for srv4's rungs):
+// a conversation the router saved may still sit in the RAM tier, so what a full save pays is the COLDEST
+// rung's bytes, not their sum. Any rung that is not a restoring rung -- absent or refused -- leaves the
+// save unpriced for the host, which becomes a gap, never a zero.
+fn replica_read_context(p: ServingReplicaProfile) -> Optional<TokenCount> {
+  match p.figures {
+    FiguresOnRow { context: c } => Present { value: c }
+    FiguresAtCoordinate { } => match replica_figures_resolved(p) {
+      Present { value: f } => Present { value: f.context }
+      Absent => Absent
+    }
+  }
+}
+
+fn replica_save_bytes(p: ServingReplicaProfile) -> Optional<Int> {
+  match replica_read_context(p) {
+    Absent => Absent
+    Present { value: ctx } => fold(p.warm_ladder, init: no_total(), f: (acc, r) => match r {
+      WarmSwapRestores { cost: cost } =>
+        Present { value: max_int(a: acc_or(acc, fallback: 0), b: byte_size_count(b: conversation_snapshot_bytes(cost: cost, context: ctx))) }
+      _ => Absent
+    })
+  }
+}
+
+// The fold seeds, named: a cast of `Absent` to `Optional<Int>` is refused by the compiler (a cast re-types
+// the wrapper, it does not eliminate absence), so the seeds are functions with the type written out.
+fn no_total() -> Optional<Int> { Absent }
+
+fn zero_total() -> Optional<Int> { Present { value: 0 } }
+
+fn no_seen() -> Optional<List<DecodeEntry>> { Absent }
+
+fn acc_or(x: Optional<Int>, fallback: Int) -> Int {
+  match x { Absent => fallback Present { value: v } => v }
+}
+
+fn max_int(a: Int, b: Int) -> Int { if a > b { a } else { b } }
+
+// What a RESTART costs, per held conversation. SurvivesProcessRestart: the warm rung's own measured restore
+// milliseconds are the price of bringing the tier back. LostWithProcess: the whole window must be re-read at
+// the row's cold-prefill rate -- the same figure the anchor quotes for a store miss. Either input unread
+// keeps the host's restart axis unread; it is never zero, because "restarts are free" must be a reading,
+// not an absence of data.
+fn replica_restart_ms(p: ServingReplicaProfile) -> Optional<Int> {
+  if replica_survives_restart(p) {
+    fold(p.warm_ladder, init: no_total(), f: (acc, r) => match r {
+      WarmSwapRestores { durability: SurvivesProcessRestart, restore: ms } =>
+        Present { value: max_int(a: acc_or(acc, fallback: 0), b: millisecond_count(m: ms)) }
+      _ => acc
+    })
+  } else {
+    match replica_figures_resolved(p) {
+      Absent => Absent
+      Present { value: f } => match f.cold_prefill {
+        Absent => Absent
+        Present { value: cps } => match replica_read_context(p) {
+          Absent => Absent
+          Present { value: ctx } => if tokens_per_second_count(r: cps) <= 0 {
+            Absent
+          } else {
+            Present { value: token_count_value(t: ctx) * 1000 / tokens_per_second_count(r: cps) }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn gap(axis: DeclarationRef, cause: String) -> AxisGap {
+  AxisGap { axis: axis, cause: cause as NonEmptyStr }
+}
+
+// The host's billed monthly price: the price is the host's own, and the first read bill lands on any of its
+// rows -- the fold takes the first row that carries one and refuses if the host's rows disagree... they
+// cannot disagree while every row is Absent, and when two rows of one host DO carry prices, the first one
+// read is the host's bill (there is only ever one bill per host; a second priced row of the same host is a
+// data bug the roster witnesses catch by construction, since rows of a host are built from one host row).
+fn host_monthly_cost(rows: List<ServingReplicaProfile>) -> Optional<Int> {
+  fold(rows, init: no_total(), f: (acc, p) => match acc {
+    Present { value: c } => Present { value: c }
+    Absent => match p.monthly_cost {
+      Absent => Absent
+      Present { value: m } => Present { value: money_amount_micro_count(m: m) }
+    }
+  })
+}
+
+// One summing fold with fail-closed poisoning, reused for the two cost axes that add over a host's replicas.
+// One summing fold with fail-closed poisoning: any missing addend poisons the whole sum, because a total
+// that quietly drops a host's unread price is the number a buyer would spend. Callers map the row figures
+// first, so this fold sees only the values.
+fn host_sum(values: List<Optional<Int>>) -> Optional<Int> {
+  fold(values, init: zero_total(), f: (acc, v) => match acc {
+    Absent => Absent
+    Present { value: a } => match v {
+      Absent => Absent
+      Present { value: x } => Present { value: a + x }
+    }
+  })
+}
+
+fn host_candidate(rows: List<ServingReplicaProfile>) -> ParetoEntry {
+  let host = match rows.first() {
+    Absent => operator_host_srv1
+    Present { value: r } => r.host
+  }
+  let decode = host_aggregate_decode(rows: rows)
+  let cost = host_monthly_cost(rows: rows)
+  let saves = host_sum(values: map(rows, r => replica_save_bytes(p: r)))
+  let restarts = host_sum(values: map(rows, r => replica_restart_ms(p: r)))
+  let readings0: List<AxisReading> = match decode { Absent => [] Present { value: v } => [reading(axis: ax_decode_200k, v: v)] }
+  let readings1: List<AxisReading> = match cost { Absent => [] Present { value: v } => [reading(axis: ax_host_cost_month, v: v)] }
+  let readings2: List<AxisReading> = match saves { Absent => [] Present { value: v } => [reading(axis: ax_save_cost_bytes, v: v)] }
+  let readings3: List<AxisReading> = match restarts { Absent => [] Present { value: v } => [reading(axis: ax_restart_cost_ms, v: v)] }
+  let gaps0: List<AxisGap> = match decode { Absent => [gap(axis: ax_decode_200k, cause: "no aggregate decode tok/s has been read for this host at ~200k context (the roster's readings are at 100k and 150k)")] Present { value: _ } => [] }
+  let gaps1: List<AxisGap> = match cost { Absent => [gap(axis: ax_host_cost_month, cause: "no monthly price has been transcribed for this host (its profiles' monthly_cost is Absent; read the bill and cite it)")] Present { value: _ } => [] }
+  let gaps2: List<AxisGap> = match saves { Absent => [gap(axis: ax_save_cost_bytes, cause: "a warm rung's snapshot cost or the row's read context is unread, so the save is unpriced")] Present { value: _ } => [] }
+  let gaps3: List<AxisGap> = match restarts { Absent => [gap(axis: ax_restart_cost_ms, cause: "a rung's restore time or the cold re-read rate is unread, so the restart is unpriced")] Present { value: _ } => [] }
+  ParetoEntry {
+    identity: candidate_identity(host: host),
+    display_label: (host as String) as NonEmptyStr,
+    readings: join_readings([readings0, readings1, readings2, readings3]),
+    missing_inputs: join_gaps([gaps0, gaps1, gaps2, gaps3]),
+  }
+}
+
+fn join_readings(xss: List<List<AxisReading>>) -> List<AxisReading> {
+  fold(xss, init: [], f: (a, xs) => concat(a, xs))
+}
+
+fn join_gaps(xss: List<List<AxisGap>>) -> List<AxisGap> {
+  fold(xss, init: [], f: (a, xs) => concat(a, xs))
+}
+
+// The candidate field the fleet selects among: one entry per host in the roster, grouped by the host
+// identity the rows carry (HostIdentity is opaque at compile time -- comparison is host_identity_eq, never
+// a string literal).
+fn replica_choice_field() -> List<ParetoEntry> {
+  map(hosts_in_roster(), h => host_candidate(rows: filter(serving_replica_roster, r => host_identity_eq(a: r.host, b: h))))
+}
+
+fn hosts_in_roster() -> List<HostIdentity> {
+  fold(serving_replica_roster, init: [], f: (acc, r) =>
+    if acc.any(h => host_identity_eq(a: h, b: r.host)) { acc } else { concat(acc, [r.host]) })
+}
+
+fn candidate_identity(host: HostIdentity) -> DeclarationRef {
+  decl_ref(module_path: "gunbc.serving.serving_replica_choice", decl_name: ("replica-host-" + (host as String)))
+}
+
+// ── THE SELECTION ────────────────────────────────────────────────────────────────────────────────────
+
+fn replica_host_choice(
+  assessment: DecisionAssessment,
+  field: List<ParetoEntry>,
+) -> RealizationSelectionResult<ParetoEntry> {
+  select_realization(
+    assessment: assessment,
+    candidate_field_identity: id_field,
+    field: field,
+    axes: rsc_axes(),
+    constraints: [],
+    constraint_authority: id_constraints,
+    policy: rsc_policy(),
+    evidence_snapshot: id_evidence,
+  )
+}
+
+// What the fleet asks when it has nothing read -- which is the fleet's state today: the roster's own rows
+// against the unread assessment. The answer is SelectionNeedsEvidence naming every missing reading; it must
+// never answer with a host.
+fn replica_host_choice_today() -> RealizationSelectionResult<ParetoEntry> {
+  replica_host_choice(assessment: rsc_unread_assessment(), field: replica_choice_field())
+}
