@@ -32,25 +32,24 @@ import extdeps.github.hosted_runners { github_hosted_ubuntu_2404_arm_public_cata
 
 // ONE CI PROFILE ROW PER REPOSITORY, AND WHY THE ROW IS THE UNIT THAT SHARED CI MUST BE CUT FROM.
 //
-// gunbc and its private mirror were meant to differ in two ways only: the mirror is not public, and it
-// carries rows the public repository may not hold. What they actually differ in is about two thousand
-// lines of CI EMITTER forked into the mirror, because every fact below was written into a public emitter
-// as a constant - which repository is checked out, which branch, which machine class, which entry runs
-// the roster, whether a compiler is built from another repository beside the one under test, whether a
-// heal publisher exists at all. Forking an emitter to express a difference in data is the expensive
-// version of the mistake gunbc.design_argument::single_authority forbids (one authority per subject), and it is the dangerous version
-// too: the fork has already drifted from the authority it copies, so a fix to gunbc's required gate does
-// not reach the repository whose required check IS the fork.
+// gunbc and its private mirror were once meant to differ in two ways only: the mirror is not public, and it
+// carries rows the public repository may not hold. They actually differed in about two thousand lines of CI
+// EMITTER forked into the mirror, because every fact below was written into a public emitter as a constant -
+// which repository is checked out, which branch, which machine class, which entry runs the roster, whether a
+// compiler is built from another repository beside the one under test, whether a heal publisher exists at all.
+// Forking an emitter to express a difference in data is the expensive version of the mistake
+// gunbc.design_argument::single_authority forbids (one authority per subject), and the dangerous version too:
+// the fork had already drifted from the authority it copies, so a fix to gunbc's required gate did not reach
+// the repository whose required check IS the fork. That fork is now deleted (operator ruling 2026-11-09): the
+// private mirror is just a visibility thing, and its CI is gunbc's CI 1:1 with nothing to track - a
+// repository with .dag modules and no compiler calls gunbc's gate as a caller rather than keeping its own
+// (gunb-ai/gunbc#16169).
 //
-// So the difference moves into a row. RepositoryCiProfile is the fact "what this repository's CI is", and
-// the workflow emitters are functions of it: gunbc.witness.compiler_gate_workflow::expected_compiler_gate_yml
+// So the difference lives in a row. RepositoryCiProfile is the fact "what this repository's CI is", and the
+// workflow emitters are functions of it: gunbc.witness.compiler_gate_workflow::expected_compiler_gate_yml
 // and gunbc.heal_workflow::expected_heal_workflow_yml, gunbc.heal_publisher_workflow::expected_heal_publisher_workflow_yml
-// and gunbc.drift_watch_workflow::expected_drift_watch_workflow_yml render gunbc's own four workflows;
-// gunbc.witness.repository_witness_workflow::expected_repository_witnesses_yml and
-// gunbc.ci.repository_projection_drift_workflow::expected_projection_drift_workflow_yml take a row as an
-// argument and render a mirror repository's two. gunbc's own row lives in this module; the mirror's row
-// lives IN THE MIRROR and is passed to those two as an argument, so no mirror path, module name or row name
-// needs to enter the public corpus - which is the constraint that decides several shapes below.
+// and gunbc.drift_watch_workflow::expected_drift_watch_workflow_yml render gunbc's own four workflows from
+// this module's own row. There is no second repository's row passed in from outside the public corpus.
 //
 // WHAT THIS ROW DELIBERATELY DOES NOT CARRY:
 // - runs-on label strings. A job carries a CiRunnerTarget and its spec PROJECTS from that target
@@ -63,10 +62,9 @@ import extdeps.github.hosted_runners { github_hosted_ubuntu_2404_arm_public_cata
 //   carries the GROUP NAME, which is a row in gunbc.runner.runner_group_restriction_ensure (that module
 //   documents the name as the label the group's runners register with), and an undeclared name is
 //   refused before a byte is emitted. Selecting a pool and inventing one are different acts.
-// - the roster's CONTENT. Entries are rows owned by the repository that has them
-//   (gunbc.witness.witness_roster RosterEntry); this row says how a roster is RUN and by whom, not what
-//   is in it. Keeping content out is also what lets the public profile row exist without the public
-//   repository acquiring mirror subjects.
+// - the roster's CONTENT. Entries are rows owned by the repository that has them; this row says how a
+//   roster is RUN and by whom, not what is in it. Keeping content out is also what lets the public profile
+//   row exist without the public repository acquiring subjects it does not own.
 // - the SUBJECTS that regenerate or publish. Those are DagInvocation rows: an entry path and a function
 //   name, named by the repository that owns them.
 
