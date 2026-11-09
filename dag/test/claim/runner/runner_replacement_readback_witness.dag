@@ -808,10 +808,14 @@ fn drain_leg_holds_everything(subject: RunnerHostFileSubject, live: List<String>
     && all(drain_now_units(steps: steps), u => any(subject.fabric_units, f => (f as String) == u))
 }
 
-// THE SAME LEG WHEN THE HOST SAYS A SLOT IS UP AND THE ORG ROSTER AGREES, BUT THAT SLOT HAS NEVER BUILT
-// ANYTHING: registered online, no floor job. This is the half of the invariant the registration check alone
-// cannot give -- a runner that came up and never ran a job has not shown it can take the retiree's work.
-fn drain_leg_holds_while_one_slot_is_registered_but_silent(
+// THE SAME LEG WHEN A SLOT THE PLAN IS BRINGING UP CAME UP AND REGISTERED BUT NEVER BUILT ANYTHING. The host
+// does not report it (that is what makes it a slot being brought up), the org roster nevertheless sees it
+// online, and it holds no floor job. This is the half of the invariant that registration alone cannot give:
+// a runner that came up and never ran a job has not shown it can take the retiree's work. It is a different
+// world from the claim below it, where nothing at all is known about the slot -- there the withhold says no
+// readback was produced, here it says the job has not concluded -- and the assertion checks the reason it was
+// given names the silent slot.
+fn drain_leg_holds_while_a_brought_up_slot_is_registered_but_silent(
   subject: RunnerHostFileSubject,
   wanted: List<String>,
   silent: String,
@@ -819,15 +823,29 @@ fn drain_leg_holds_while_one_slot_is_registered_but_silent(
   let steps =
     runner_host_drain_leg_decided(
       subject: subject,
-      population: host_population(live: wanted),
+      population: host_population(live: filter(wanted, w => w != silent)),
       readback: runner_retirement_readback_of(
+        // THE ROSTER DOES SEE IT: every slot, including the silent one, is registered and online.
         roster: Present { value: roster(entries: map(wanted, u => registration(u, true))) },
         qualification_verdicts: map(filter(wanted, w => w != silent), u => collected(runner: u, concluded: true)),
       ),
     )
   length(steps) == length(runner_host_drain_units(subject: subject))
     && all(subject.retired_units, u => is_step_held_for(steps: steps, unit: u))
+    && all(subject.retired_units, u => held_cause_names(steps: steps, unit: u, name: silent))
     && all(drain_now_units(steps: steps), u => any(subject.fabric_units, f => (f as String) == u))
+}
+
+// THE REASON THE GATE GAVE, read from the step it put on the receipt. A withheld retirement has to say why in
+// a form an operator can act on, so the claims read the reason rather than only the verdict. Written as a
+// scan of the steps rather than `first(...)` plus a nested pattern: matching an optional of a sum demands an
+// arm per variant of the sum, which is a compile error waiting to happen when the sum grows.
+fn held_cause_names(steps: List<RunnerHostDrainStep>, unit: NonEmptyStr, name: String) -> Bool {
+  any(steps, s => match s {
+    DrainHeld { unit: u, cause: cause } =>
+      (u as String) == (unit as String) && contains(retire_pending_cause_wire(cause: cause), name)
+    _ => false
+  })
 }
 
 // THE SAME LEG, ONE FACT CHANGED: the population this plan keeps is on the host, registered in the org, and
@@ -881,7 +899,10 @@ test fn the_drain_leg_holds_while_a_slot_the_host_is_bringing_up_has_never_run_a
 // THE HOST SAYS EVERY SLOT IS UP, THE ORG ROSTER SEES EVERY ONE OF THEM, and every one but a single slot
 // holds a floor job that concluded Success. The one that has never built anything is the hole: registration
 // alone is a runner that came up, not a runner that has taken a build. The whole retirement set stays held,
-// and only the fabric members -- which are not runner capacity -- drain.
+// EVERY SLOT THE HOST REPORTS IS UP, THE ORG ROSTER REGISTERS EVERY ONE OF THEM, and the one slot this plan
+// is bringing up -- absent from the host's answer, registered in the org, no floor job -- is the hole.
+// Registration without a completed job is not a slot that has taken a build, so every declared retiree stays
+// held and the reason the receipt gives names that slot.
 test fn the_drain_leg_waits_when_only_one_kept_slot_has_run_a_job() -> Bool {
   match srv1_subject() {
     Absent => false
@@ -894,7 +915,7 @@ test fn the_drain_leg_waits_when_only_one_kept_slot_has_run_a_job() -> Bool {
           let silent_name = silent as String
           // THE SILENT SLOT IS REALLY ONE OF THE SLOTS THE ROUTE DERIVES, or "all but one" means nothing.
           any(wanted, w => w == silent_name)
-            && drain_leg_holds_while_one_slot_is_registered_but_silent(
+            && drain_leg_holds_while_a_brought_up_slot_is_registered_but_silent(
                  subject: subject,
                  wanted: wanted,
                  silent: silent_name,
