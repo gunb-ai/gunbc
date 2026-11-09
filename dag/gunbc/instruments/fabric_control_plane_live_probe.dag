@@ -703,6 +703,16 @@ fn fci1_live_replace_held(store: FabricAllocationStore) -> Fci1HeldGenerationMut
   }
 }
 
+// Why a replacement leg stops without a generation to write. The roster's own cause is the
+// reason when no fabric execution slot is committed; anything else that reaches this point is
+// a prestate that simply is not Held.
+fn fci1_replacement_prestate_refusal(observed: Fci1AllocationSlotObservation) -> String {
+  match observed {
+    Fci1SlotNoSubject { why: why } => join(["no fabric execution slot is committed: ", why as String], "")
+    _ => "generation replacement prestate was not Held"
+  }
+}
+
 fn fci1_live_replace_held_on(store: FabricAllocationStore, slot: RunnerSlotIdentity) -> Fci1HeldGenerationMutation {
   let slot_key = fabric_cell_allocation_key(slot: slot)
   match fci1_allocation_slot_observation(store: store) {
@@ -729,6 +739,8 @@ fn fci1_live_replace_held_on(store: FabricAllocationStore, slot: RunnerSlotIdent
     Fci1SlotUnreadable { path: _ } => Fci1HeldGenerationMutationRefused { detail: "the slot is unreadable" }
     Fci1SlotUndecodable { path: _, generation: _, payload: _, content: _ } =>
       Fci1HeldGenerationMutationRefused { detail: "the slot payload is undecodable" }
+    // No subject was selected, so there is no hold anywhere for this instrument to replace.
+    Fci1SlotNoSubject { why: why } => Fci1HeldGenerationMutationRefused { detail: why }
   }
 }
 
@@ -815,8 +827,11 @@ fn fci1_assert_replace_held_in(
     Fci1SlotFree { path: _, generation: _, released_by: _, payload: _, content: _ } => -1
     Fci1SlotUnreadable { path: _ } => -1
     Fci1SlotUndecodable { path: _, generation: _, payload: _, content: _ } => -1
+    // The same "no generation to replace" reading the other non-Held arms give; the refusal
+    // below says WHY, rather than calling a missing subject a slot that happened to be free.
+    Fci1SlotNoSubject { why: _ } => -1
   }
-  if expected_generation < 1 { exit_failure(reason: "generation replacement prestate was not Held") }
+  if expected_generation < 1 { exit_failure(reason: fci1_replacement_prestate_refusal(observed: observed)) }
   else { let authority = fci1_cleanup_authority(store: store, generation: expected_generation)
   let authority_write = Filesystem.Write(
     path: fci1_cleanup_authority_generation_path(path: cleanup_path, generation: expected_generation),
@@ -1422,6 +1437,9 @@ fn fci1_write_disposable_cleanup_receipt_in(store: FabricAllocationStore, author
       let write = Filesystem.Write(path: path, content: join(["DisposableNoCommit|observed=", to_string(observed)], ""))
       if write.success { ExitSuccess } else { exit_failure(reason: "disposable no-commit receipt write refused") }
     }
+    // Nothing was selected, so there is no slot whose cleanup receipt could be written; the
+    // roster's cause is returned rather than a receipt about a slot that was never named.
+    Fci1SlotNoSubject { why: why } => exit_failure(reason: why)
     Fci1SlotHeld { path: _, generation: generation, reservation_identity: _, payload: _, content: _ } =>
       if generation == 1 || generation == 2 { match fci1_cleanup_authority_for_observation(path: authority_path, observed: observed) {
         Fci1ReservationCleanupAuthorityUndecodable => exit_failure(reason: "disposable cleanup authority undecodable")
@@ -2351,6 +2369,11 @@ fn fci1_observed_hold_generation(store: FabricAllocationStore) -> Int {
     Fci1SlotUndecodable { path: _, generation: g, payload: _, content: _ } => g
     Fci1SlotAbsent { path: _ } => 1
     Fci1SlotUnreadable { path: _ } => 1
+    // Unreachable through the entry points that use this: both callers sit behind the
+    // authorized-slot gate, which refuses a release before a generation is ever presented.
+    // It reads -1 rather than 1 so that if that gate were ever bypassed the release meets a
+    // precondition failure instead of quietly matching the generation a fresh slot carries.
+    Fci1SlotNoSubject { why: _ } => -1
   }
 }
 
