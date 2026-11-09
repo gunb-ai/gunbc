@@ -11,7 +11,6 @@ import gunbc.runner.runner_host_deploy {
   github_app_runner_org,
   runner_host_installer_command,
   runner_instance_names,
-  runner_host_docker_provision_script,
   runner_host_sccache_provision_script,
   RunnerHostDeploy,
   RunnerHostAdmission,
@@ -36,12 +35,16 @@ import std.types { NonEmptyStr, String }
 import gunbc.fleet.fleet_intent { fleet_intent_execution_surface }
 import extdeps.toolchain.types { ToolchainCapability }
 
-test fn srv4_docker_prereq_cites_official_repo() -> Bool {
-  let s = runner_host_docker_provision_script()
-  string_contains(s: s, pattern: "download.docker.com/linux/ubuntu/gpg")
-    && string_contains(s: s, pattern: "deb [arch=arm64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu noble stable")
-    && string_contains(s: s, pattern: "docker-ce-rootless-extras")
-}
+// THE DOCKER PREREQ ROW IS RETIRED, NOT RE-POINTED. `runner_host_docker_provision_script` was deleted by
+// PR #15177 (the rootless-Docker + NVIDIA container-toolkit cutover): its body moved into the toolchain
+// plane, and the per-host desire became the typed row `GpuContainerToolchainDesired` (docker_repo,
+// docker_packages) in gunbc.runner.runner_gpu_container_toolchain. This row asserted no input and no
+// decision -- three pinned substrings of a script that no longer exists at this authority -- so there is
+// nothing here to point at the successor. The facts it named are evidenced where their authorities live
+// now: the rendered docker-ce install script and its upstream-repo lines in
+// test.claim.extdeps_provisioning_elevation_witness (docker_ce_repo_install_script), and the per-host
+// provisioning in test.claim.runner.runner_gpu_container_toolchain_witness. Deleting the declaration
+// without deleting this consumer is what left the module refused at load.
 
 // THE MOVE STEP IS ASSERTED AS THE ELEVATED, QUOTED ARGV IT IS, NOT AS THE SPELLING IT HAD. The third
 // pattern read `.../sccache' /usr/local/bin/sccache` -- a hand-rendered `sudo mv` line whose
