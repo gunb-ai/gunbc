@@ -53,7 +53,16 @@ import std.dissolution { unbound_dissolution }
 type SpoolKind
   = SpoolAttemptUnit
   | SpoolAttemptExit
+  | SpoolComputeExit
   | SpoolPublication
+
+// Whether a spool's entries are partitioned under the root by the principal uid that creates them.
+// ByPrincipalUid means the path derivation inserts a uid segment between the root directory and the role
+// directory: <instance_root>/<root_name>/<uid>/<role_dir>. The kind that declares ByPrincipalUid REQUIRES
+// the uid in its mint; an Unpartitioned kind cannot receive one. This is the kind's fact, not the caller's.
+type SpoolPartition
+  = Unpartitioned
+  | ByPrincipalUid
 
 // The closed set of places an entry can stand (inbox = RolePending, queued = RoleHandedOff, running = RoleClaimed,
 // done = RoleDone, refused = RoleRefused for the exit spool). HostSpoolStage, the exit spool's former private enum, is deleted.
@@ -115,6 +124,7 @@ type SpoolDeclaration {
   claimant: SpoolPrincipal
   key_separator: String
   key_part_count: Int
+  partition: SpoolPartition
 }
 
 // THE DECLARATION IS DATA: adding a spool is a variant and a row here, never a stage list at a call site.
@@ -130,6 +140,7 @@ fn spool_declaration(kind: SpoolKind) -> SpoolDeclaration {
       claimant: PrincipalDrainer,
       key_separator: "+",
       key_part_count: 2,
+      partition: Unpartitioned,
     }
     SpoolAttemptExit => SpoolDeclaration {
       exclusion: ExclusiveByRename,
@@ -141,6 +152,19 @@ fn spool_declaration(kind: SpoolKind) -> SpoolDeclaration {
       claimant: PrincipalDrainer,
       key_separator: "+",
       key_part_count: 7,
+      partition: Unpartitioned,
+    }
+    SpoolComputeExit => SpoolDeclaration {
+      exclusion: ExclusiveByRename,
+      entry_kind: SpoolEntryDirectory,
+      chain: [],
+      terminals: [SpoolStage { role: RoleDone, directory: "done" }],
+      parked: [],
+      enqueuer: PrincipalExternalHook,
+      claimant: PrincipalDrainer,
+      key_separator: "+",
+      key_part_count: 5,
+      partition: ByPrincipalUid,
     }
     SpoolPublication => SpoolDeclaration {
       exclusion: ExclusiveByAgreement { consumer: PublicationServiceUnit { drainers_allowed: 1 } },
@@ -152,6 +176,7 @@ fn spool_declaration(kind: SpoolKind) -> SpoolDeclaration {
       claimant: PrincipalDrainer,
       key_separator: "-",
       key_part_count: 1,
+      partition: Unpartitioned,
     }
   }
 }
@@ -600,25 +625,57 @@ fn spool_role_directory_shape(kind: SpoolKind, role: SpoolRole) -> SpoolDirector
 // SpoolStore and a SpoolEntryKey; it spells no stage, no stage path and no separator (DESIGN section 3).
 // ============================================================================================================
 
-type SpoolStore {
+type SpoolStore sole_constructor {
   kind: SpoolKind
   instance_root: String
+  partition_uid: Int
 }
 
+// THE MINT FOR AN UNPARTITIONED SPOOL: takes the kind and instance root. A partitioned kind must NOT be opened
+// through here (its uid would be zero, producing a wrong path); the sealed spool_open_uid is the only mint for
+// a ByPrincipalUid kind.
 fn spool_open(kind: SpoolKind, instance_root: String) -> SpoolStore {
-  SpoolStore { kind: kind, instance_root: instance_root }
+  SpoolStore { kind: kind, instance_root: instance_root, partition_uid: 0 }
+}
+
+// THE MINT FOR A PARTITIONED SPOOL: takes the kind, instance root, and the principal uid. Only a kind whose
+// declaration says ByPrincipalUid may be opened through here; any other kind is refused (the uid would be
+// meaningless). The path derivation inserts the uid segment from the kind's declaration.
+type SpoolOpenVerdict
+  = SpoolOpenReady { store: SpoolStore }
+  | SpoolOpenRefused { cause: String }
+
+fn spool_open_uid(kind: SpoolKind, instance_root: String, uid: Int) -> SpoolOpenVerdict {
+  if spool_declaration(kind: kind).partition == ByPrincipalUid {
+    SpoolOpenReady { store: SpoolStore { kind: kind, instance_root: instance_root, partition_uid: uid } }
+  } else {
+    SpoolOpenRefused { cause: "the kind does not declare a uid partition; use spool_open" }
+  }
 }
 
 fn spool_root_name(kind: SpoolKind) -> String {
   match kind {
     SpoolAttemptUnit => "attempt-unit-spool"
     SpoolAttemptExit => "attempt-exit-spool"
+    SpoolComputeExit => "attempt-exit-spool"
     SpoolPublication => "publication-spool"
   }
 }
 
 fn spool_root_dir(store: SpoolStore) -> String {
-  join([store.instance_root, "/", spool_root_name(kind: store.kind)], "")
+  let base = join([store.instance_root, "/", spool_root_name(kind: store.kind)], "")
+  match spool_declaration(kind: store.kind).partition {
+    Unpartitioned => base
+    ByPrincipalUid => join([base, "/", to_string(value: store.partition_uid)], "")
+  }
+}
+
+// THE PROVISIONING TARGET: the shared root directory (no uid segment), where the deploy route plants the
+// directory before any seat has been launched. For an unpartitioned spool this equals spool_root_dir; for a
+// ByPrincipalUid spool it is the parent of all per-uid directories. The per-uid directory itself is created
+// by the hook (install -d, idempotent) using the same spool_root_dir the reader uses.
+fn spool_deploy_root(kind: SpoolKind, instance_root: String) -> String {
+  join([instance_root, "/", spool_root_name(kind: kind)], "")
 }
 
 // The directory a role stands in, absent for a role the spool has no directory for.
@@ -716,6 +773,7 @@ fn spool_watched_roles(kind: SpoolKind) -> List<SpoolRole> {
   match kind {
     SpoolAttemptExit => [RolePending, RoleHandedOff]
     SpoolAttemptUnit => [RolePending]
+    SpoolComputeExit => []
     SpoolPublication => [RolePending]
   }
 }

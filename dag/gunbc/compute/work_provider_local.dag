@@ -111,9 +111,9 @@ import gunbc.compute.host_capacity {
   ComputeCapacityStanding, ComputeCapacityStandingRead, ComputeCapacityStandingUnread, compute_capacity_standing, compute_capacity_standing_wire,
   ComputeCapacitySubject, ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved,
   compute_capacity_subject, compute_capacity_store, compute_release_on, compute_root,
-  compute_attempt_exit_spool_done_dir,
   ComputeCapacityStoreStanding, ComputeCapacityStoreReady, ComputeCapacityStoreUnready,
 }
+import gunbc.spool_queue { SpoolComputeExit, SpoolStore, spool_open_uid, SpoolOpenReady, SpoolOpenRefused }
 import gunbc.compute.compute_work_records { ComputeWorkRecords, ComputeWorkRecordWritten, ComputeWorkRecordUnwritten, ComputeWorkRecordPresent, ComputeWorkRecordUnread, compute_work_root, compute_work_records, compute_work_dir, compute_work_consumption_write, compute_work_consumption_path, compute_work_log_read, compute_work_log_write, compute_work_log_path }
 import gunbc.compute.compute_producer_lease {
   ComputeProducerLeases, ComputeProducerLeasesReading, ComputeProducerLeasesReady, ComputeProducerLeasesUnready, compute_producer_leases, compute_producer_leases_reading_label, ComputeProducerLeaseAcquired, ComputeProducerLeaseOccupied, ComputeProducerLeaseRefused,
@@ -804,14 +804,21 @@ fn compute_launching_uid() -> Int? {
 // process that cannot name its own uid reads NO records: it is not permitted to fall back to the spool
 // root, to another uid's directory, or to "there is no record" -- each of those would let an absence this
 // provider never observed stand for a seat's end. The caller keeps the seat and says why.
+// THE SEALED SPOOL STORE FOR THIS PROVIDER'S SEATS: the uid-partitioned done directory, opened through the
+// spool_queue mint. A process that cannot name its own uid gets NO store: it is not permitted to fall back
+// to the spool root, to another uid's directory, or to "there is no record" -- each of those would let an
+// absence this provider never observed stand for a seat's end. The caller keeps the seat and says why.
 type ComputeSeatExitSpoolDir
-  = ComputeSeatExitSpoolDirResolved { dir: String }
+  = ComputeSeatExitSpoolDirResolved { store: SpoolStore }
   | ComputeSeatExitSpoolDirUidUnreadable { cause: String }
 
 fn compute_seat_exit_spool_dir(instance: HostDashboardInstance) -> ComputeSeatExitSpoolDir {
   match compute_launching_uid() {
     Absent => ComputeSeatExitSpoolDirUidUnreadable { cause: "/proc/self/status names no effective uid for this provider process" }
-    Present { value: uid } => ComputeSeatExitSpoolDirResolved { dir: compute_attempt_exit_spool_done_dir(instance: instance, uid: uid) }
+    Present { value: uid } => match spool_open_uid(kind: SpoolComputeExit, instance_root: compute_root(instance: instance) as String, uid: uid) {
+      SpoolOpenReady { store } => ComputeSeatExitSpoolDirResolved { store: store }
+      SpoolOpenRefused { cause } => ComputeSeatExitSpoolDirUidUnreadable { cause: cause }
+    }
   }
 }
 
@@ -850,7 +857,7 @@ fn compute_unit_sccache_setenv(user_runtime_dir: FilePath) -> List<SystemdSetenv
 type ComputeUnitStopObservation
   = NoStopObservation
   | SccacheStatsAtStop
-  | AttemptExitRecordAtStop { done_dir: String, identity: String, record_owner: PosixOwnerNames }
+  | AttemptExitRecordAtStop { store: SpoolStore, identity: String, record_owner: PosixOwnerNames }
 
 // NONE WHEN AN ARM CANNOT BE RENDERED, and compute_run_unit then refuses the LAUNCH. A seat started with a
 // silently dropped stop hook is a seat whose end can never be observed -- the exact condition srv1 holds
@@ -882,7 +889,7 @@ fn compute_stop_observation_rendering(observation: ComputeUnitStopObservation) -
     // The record arm is ExecStopPost, the manager's LAST act for the unit: the record reports the unit's
     // end, including the exit status the manager must finish collecting before it can substitute the
     // variables this line carries.
-    AttemptExitRecordAtStop { done_dir, identity, record_owner } => match compute_attempt_exit_hook(done_dir: done_dir, identity: identity, record_owner: record_owner) {
+    AttemptExitRecordAtStop { store, identity, record_owner } => match compute_attempt_exit_hook(store: store, identity: identity, record_owner: record_owner) {
       AttemptExitHookRefused { reason } => StopObservationRefused { cause: reason }
       AttemptExitHookRendered { exec_line } => StopObservationProperty { property: ExecStopPostProperty, value: exec_line }
     }
@@ -929,7 +936,7 @@ fn compute_stop_observation_properties(observations: List<ComputeUnitStopObserva
 // the seat it started. That is a deployment the operator has to fix, not a seat we may settle on a guess.
 fn compute_seat_stop_observations(instance: HostDashboardInstance, identity: String) -> List<ComputeUnitStopObservation> {
   match compute_seat_exit_spool_dir(instance: instance) {
-    ComputeSeatExitSpoolDirResolved { dir } => [AttemptExitRecordAtStop { done_dir: dir, identity: identity, record_owner: instance.directory_owner }]
+    ComputeSeatExitSpoolDirResolved { store } => [AttemptExitRecordAtStop { store: store, identity: identity, record_owner: instance.directory_owner }]
     ComputeSeatExitSpoolDirUidUnreadable { cause: _ } => []
   }
 }
@@ -1099,7 +1106,7 @@ fn seat_stop_record_wire(r: SeatStopRecord) -> String {
 fn compute_seat_stop_record(instance: HostDashboardInstance, identity_hex: String) -> SeatStopRecord {
   match compute_seat_exit_spool_dir(instance: instance) {
     ComputeSeatExitSpoolDirUidUnreadable { cause } => SeatStopRecordNoUid { cause: cause }
-    ComputeSeatExitSpoolDirResolved { dir } =>
+    ComputeSeatExitSpoolDirResolved { store } =>
       match attempt_exit_record_matching(
         // The match is on WHOSE seat the entry names. The entry subject's invocation is a positional part
         // of the raw name (its purpose is to say "a record exists with these parts" before decoding, and to
@@ -1110,7 +1117,7 @@ fn compute_seat_stop_record(instance: HostDashboardInstance, identity_hex: Strin
           RoadmapEntrySubject { node_id: _, attempt_key: _, role: _, invocation_id: _ } => false
           OtherEntrySubject { parts: _ } => false
         },
-        listings: [compute_attempt_exit_record_listing(done_dir: dir)],
+        listings: [compute_attempt_exit_record_listing(store: store)],
       ) {
         AttemptExitRecordFound { record } =>
           SeatStopRecordFound { invocation_id: record.invocation_id, end: seat_stop_record_end_wire(end: record.end) }

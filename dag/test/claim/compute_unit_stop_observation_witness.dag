@@ -52,10 +52,14 @@ fn stats_only(instance: HostDashboardInstance, layout: ComputeLayout, dir: FileP
 data accepted_closed_observation_source: String = "module probe_accepted_closed_observation
 import gunbc.compute.work_provider_local { compute_run_unit, ComputeUnitRunReading, ComputeLayout, SccacheStatsAtStop, AttemptExitRecordAtStop, NoPathVirtualization }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.spool_queue { SpoolComputeExit, SpoolStore, spool_open_uid, SpoolOpenReady, SpoolOpenRefused }
 import std.types { String, FilePath }
 import std.measure { kibibyte }
 fn accepted(instance: HostDashboardInstance, layout: ComputeLayout, dir: FilePath) -> ComputeUnitRunReading {
-  compute_run_unit(instance: instance, layout: layout, identity_hex: \"x\", argv: [], env: [], launcher_env: [], granted: kibibyte(count: 1), user_runtime_dir: dir, path_virtualization: NoPathVirtualization, stop_observations: [SccacheStatsAtStop, AttemptExitRecordAtStop { done_dir: dir, identity: \"abc\", record_owner: instance.directory_owner }])
+  match spool_open_uid(kind: SpoolComputeExit, instance_root: \"/tmp/fake-compute-root\", uid: 1000) {
+    SpoolOpenReady { store } => compute_run_unit(instance: instance, layout: layout, identity_hex: \"x\", argv: [], env: [], launcher_env: [], granted: kibibyte(count: 1), user_runtime_dir: dir, path_virtualization: NoPathVirtualization, stop_observations: [SccacheStatsAtStop, AttemptExitRecordAtStop { store: store, identity: \"abc\", record_owner: instance.directory_owner }])
+    SpoolOpenRefused { cause: _ } => compute_run_unit(instance: instance, layout: layout, identity_hex: \"x\", argv: [], env: [], launcher_env: [], granted: kibibyte(count: 1), user_runtime_dir: dir, path_virtualization: NoPathVirtualization, stop_observations: [SccacheStatsAtStop])
+  }
 }
 "
 
