@@ -99,7 +99,7 @@ test fn a_bound_line_names_the_arm_and_the_counts() -> Bool {
 // ═══ THE WHOLE CHANGE (gunbc.plans.read_set_convergence P2) ═══
 
 fn change_bound(non_module_paths: List<String>, edited: List<String>) -> AffectedSetBound {
-  regen_affected_set_over_change(non_module_paths: non_module_paths, edited: edited, unlocatable: [], edges: fixture_edges, compared: fixture_compared, modules: fixture_modules)
+  regen_affected_set_over_change(non_module_paths: non_module_paths, population_changes: [], edited: edited, unlocatable: [], edges: fixture_edges, compared: fixture_compared, modules: fixture_modules)
 }
 
 // THE DISCRIMINATING RED for the seed-source arm: a hand-maintained seed file is the generator, so an
@@ -124,9 +124,37 @@ test fn a_seed_build_artifact_or_non_seed_path_keeps_the_dag_bound() -> Bool {
 
 // An unlocatable edit still refuses first, whatever else changed.
 test fn an_unlocatable_edit_refuses_before_the_seed_source_arm() -> Bool {
-  match regen_affected_set_over_change(non_module_paths: ["src/v1/stage0/src/cli_run.rs"], edited: [], unlocatable: ["fixtures/stray/gone.dag"], edges: fixture_edges, compared: fixture_compared, modules: fixture_modules) {
+  match regen_affected_set_over_change(non_module_paths: ["src/v1/stage0/src/cli_run.rs"], population_changes: [], edited: [], unlocatable: ["fixtures/stray/gone.dag"], edges: fixture_edges, compared: fixture_compared, modules: fixture_modules) {
     EditedSetUnlocatable { unlocatable: u, reason: r } => true
     AffectedMirrors { edited: e, mirrors: m, bootstrap_products: b } => false
     WholePopulation { edited: e, generation_inputs: g } => false
   }
+}
+
+fn is_whole_with(bound: AffectedSetBound, inputs: List<String>) -> Bool {
+  match bound {
+    WholePopulation { edited: e, generation_inputs: g } => same_members(a: g, b: inputs)
+    AffectedMirrors { edited: e, mirrors: m, bootstrap_products: b } => false
+    EditedSetUnlocatable { unlocatable: u, reason: r } => false
+  }
+}
+
+// THE SEED'S BUILD INPUTS BEYOND src/v1 (gunbc.seed_build_inputs): a workspace manifest, lockfile or toolchain
+// change can change the generator, so it answers the whole population; `.cargo/config.toml` is a seed-build
+// ARTIFACT heal writes, so it is not an input here.
+test fn w_RED_a_workspace_manifest_or_toolchain_edit_answers_whole_population() -> Bool {
+  is_whole_with(bound: change_bound(non_module_paths: ["Cargo.lock"], edited: ["gunbc.d"]), inputs: ["Cargo.lock"])
+    && is_whole_with(bound: change_bound(non_module_paths: ["rust-toolchain.toml"], edited: []), inputs: ["rust-toolchain.toml"])
+    && is_whole_with(bound: change_bound(non_module_paths: ["Cargo.toml"], edited: []), inputs: ["Cargo.toml"])
+    && same_members(a: mirrors_of(bound: change_bound(non_module_paths: [".cargo/config.toml"], edited: ["gunbc.d"])), b: ["gunbc_d.rs"])
+}
+
+// A MODULE POPULATION CHANGE (a `.dag` added or deleted) answers the whole population: whether the new module
+// gets a mirror, or a departed one leaves an orphan, is emission's answer over the whole population, never a
+// zero-member scope.
+test fn w_RED_an_added_or_deleted_module_answers_whole_population() -> Bool {
+  is_whole_with(
+    bound: regen_affected_set_over_change(non_module_paths: [], population_changes: ["dag/std/orphan.dag"], edited: ["std.orphan"], unlocatable: [], edges: fixture_edges, compared: fixture_compared, modules: fixture_modules),
+    inputs: ["dag/std/orphan.dag"]
+  )
 }

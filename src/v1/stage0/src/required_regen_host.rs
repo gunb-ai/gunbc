@@ -11404,10 +11404,24 @@ pub struct EditedPopulation {
     pub edited_modules: Vec<String>,
     pub unlocatable: Vec<String>,
     pub non_dag_paths: Vec<String>,
+    /// The `.dag` files this change ADDS or DELETES: a change to the module population, which the
+    /// model answers with the whole mirror population (`regen_affected_set_over_change`).
+    pub population_changes: Vec<String>,
 }
 
 pub fn edited_population_from_diff(workspace: &Path, diff_text: &str) -> EditedPopulation {
     let departed = super::parse_unified_diff_departed_paths(diff_text);
+    let added: BTreeSet<String> = super::parse_unified_diff_added_paths(diff_text)
+        .into_iter()
+        .collect();
+    let population_changes: Vec<String> = departed
+        .iter()
+        .chain(added.iter())
+        .filter(|p| p.ends_with(".dag"))
+        .cloned()
+        .collect::<BTreeSet<String>>()
+        .into_iter()
+        .collect();
     let mut paths: BTreeSet<String> = super::parse_unified_diff_changed_new_lines(diff_text)
         .keys()
         .cloned()
@@ -11451,6 +11465,7 @@ pub fn edited_population_from_diff(workspace: &Path, diff_text: &str) -> EditedP
         edited_modules: edited_modules.into_iter().collect(),
         unlocatable,
         non_dag_paths,
+        population_changes,
     }
 }
 
@@ -11777,6 +11792,7 @@ fn affected_set_model_args(
 pub fn render_affected_set_bound(
     source_roots: &[String],
     non_module_paths: &[String],
+    population_changes: &[String],
     edited: &[String],
     unlocatable: &[String],
     edges: &[(String, String)],
@@ -11797,6 +11813,16 @@ pub fn render_affected_set_bound(
         Some("non_module_paths".to_string()),
         Value::List(Rc::new(
             non_module_paths
+                .iter()
+                .map(str_value)
+                .collect::<Vec<Value>>()
+                .into(),
+        )),
+    ));
+    args.push((
+        Some("population_changes".to_string()),
+        Value::List(Rc::new(
+            population_changes
                 .iter()
                 .map(str_value)
                 .collect::<Vec<Value>>()
@@ -11904,6 +11930,7 @@ pub fn affected_set_bound_for(
     edited: &[String],
     unlocatable: &[String],
     non_dag_paths: &[String],
+    population_changes: &[String],
 ) -> Result<AffectedSetBound, String> {
     let (edges, modules) = regen_module_edges(workspace)?;
     let compared = compared_mirror_rows(&workspace.join("src/v1/stage0/src"), &modules)?;
@@ -11925,6 +11952,7 @@ pub fn affected_set_bound_for(
     render_affected_set_bound(
         source_roots,
         &non_module_paths,
+        population_changes,
         &edited,
         unlocatable,
         &edges,
@@ -12085,6 +12113,7 @@ pub fn regen_emission_scope_for_diff(
         &population.edited_modules,
         &population.unlocatable,
         &population.non_dag_paths,
+        &population.population_changes,
     )?;
     let scope = match bound.arm.as_str() {
         "AffectedMirrors" => RegenEmissionScope::Affected {
@@ -12144,6 +12173,7 @@ pub fn run_regen_affected_set(source_roots: &[String]) -> Result<RegenAffectedSe
         &population.edited_modules,
         &population.unlocatable,
         &population.non_dag_paths,
+        &population.population_changes,
     )?;
     let mut rendered = format!(
         "regen-affected-set: producer={REGEN_AFFECTED_SET_PRODUCER} host={} tree={tree} tree_dirty={tree_dirty}\n",
@@ -12396,6 +12426,15 @@ diff --git a/src/v1/stage0/src/v1_rt.rs b/src/v1/stage0/src/v1_rt.rs
         assert_eq!(
             population.non_dag_paths,
             vec![s("src/v1/stage0/src/v1_rt.rs")]
+        );
+        // Every added or deleted `.dag` is a population change, under the layout or not.
+        assert_eq!(
+            population.population_changes,
+            vec![
+                s("dag/std/gone.dag"),
+                s("dag/std/never_written.dag"),
+                s("fixtures/stray/gone.dag")
+            ]
         );
     }
 }

@@ -5,6 +5,8 @@ import std.algebra { list_map, empty_map, map_insert, map_lookup }
 import std.optional { Present, Absent }
 import gunbc.seed_build_artifact_emit { seed_build_artifacts }
 import gunbc.generated_artifact { artifact_path }
+import gunbc.seed_build_inputs { seed_build_input_members }
+import v2.std.read_set { read_set_member_covers }
 
 // THE AFFECTED SET OF ONE EDIT: which committed mirrors can change when these .dag modules
 // change. This is the bound gunbc.regen_round_cost regen_affected_set_disposition scoped
@@ -341,26 +343,33 @@ fn regen_affected_set(
   }
 }
 
-// THE SEED'S OWN SOURCE IS A GENERATION INPUT (gunbc.plans.read_set_convergence P2 and A1). Every mirror is
-// emitted by the seed, so an edit to a hand-maintained seed file -- anything under the seed tree that is
-// not one of heal's own products -- can change any mirror, and a scope that read only `.dag` edits would
-// silently leave stale mirrors. The products are excluded because heal writes them: the committed mirrors
-// arrive here already translated to their modules (an edited mirror re-adjudicates that mirror), and the
-// seed-build artifacts are gunbc.seed_build_artifact_emit's roster, read here so the two never drift. The
-// required job's fast lane declares the same tree an invalidating input (gunbc.read_set_restore
-// fast_lane_fixed_input_members) for the same reason.
-data regen_seed_source_prefix: String = "src/v1/"
-
+// THE SEED'S BUILD INPUTS ARE GENERATION INPUTS (gunbc.plans.read_set_convergence P2 and A1). Every mirror
+// is emitted by the seed, so an edit to anything that builds it -- gunbc.seed_build_inputs, declared once
+// and read with v2.std.read_set's one matcher: the seed tree, the workspace manifest and lockfile, the
+// toolchain pin, the cargo configuration -- can change any mirror, and a scope that read only `.dag` edits
+// would silently leave stale mirrors. Heal's own products are excluded because heal writes them: the
+// committed mirrors arrive here already translated to their modules (an edited mirror re-adjudicates that
+// mirror), and the seed-build artifacts are gunbc.seed_build_artifact_emit's roster (`.cargo/config.toml`
+// among them), read here so the two never drift.
 fn regen_seed_source_edits(paths: List<String>) -> List<String> {
   let products = list_map(xs: seed_build_artifacts(), f: fn(a) { artifact_path(a: a) })
-  paths |> filter(p => starts_with(s: p, prefix: regen_seed_source_prefix) && !regen_list_has(items: products, item: p))
+  paths |> filter(p =>
+    (seed_build_input_members |> any(m => read_set_member_covers(member: m, path: p)))
+      && !regen_list_has(items: products, item: p))
 }
 
-// THE BOUND A CONSUMER OVER A WHOLE CHANGE ASKS FOR: the `.dag` bound above, unless the change also
-// edits a seed source, in which case the whole population is the answer and the seed sources are its
-// generation inputs. An unlocatable edit still refuses first.
+// THE BOUND A CONSUMER OVER A WHOLE CHANGE ASKS FOR. Three things make the answer the whole population,
+// because a per-mirror selection cannot see them:
+// - a seed build input changed (above);
+// - the module POPULATION changed: a `.dag` file was added or deleted (`population_changes`). Whether the
+//   new module gets a mirror, or the departed one leaves an orphaned committed mirror, is decided by
+//   emission over the whole population; a scope keyed on today's module-to-mirror join would select
+//   nothing for either and let the round answer no affected mirrors over a stale population;
+// - the `.dag` bound itself answers it (an edit under the generation-input prefixes).
+// An unlocatable edit still refuses first.
 fn regen_affected_set_over_change(
   non_module_paths: List<String>,
+  population_changes: List<String>,
   edited: List<String>,
   unlocatable: List<String>,
   edges: List<DependencyEdge>,
@@ -370,6 +379,8 @@ fn regen_affected_set_over_change(
   let sources = regen_seed_source_edits(paths: non_module_paths)
   if count(unlocatable) == 0 && count(sources) > 0 {
     WholePopulation { edited: edited, generation_inputs: sources }
+  } else if count(unlocatable) == 0 && count(population_changes) > 0 {
+    WholePopulation { edited: edited, generation_inputs: population_changes }
   } else {
     regen_affected_set(edited: edited, unlocatable: unlocatable, edges: edges, compared: compared, modules: modules)
   }
