@@ -5,7 +5,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.vendor.bourns { bourns }
-import extdeps.electronic_component.types { ElectronicComponentRow, TvsDiodeSpec, TvsSpecification, Unidirectional }
+import extdeps.electronic_component.types { MarkStructured, ListedOnly, MarkLine, FixedGlyphs, ElectronicComponentRow, TvsDiodeSpec, TvsSpecification, Unidirectional }
 
 // Bourns's 5.0SMDJ datasheet, REV. 08/26, read 2026-10-15. Its electrical table pairs part number
 // 5.0SMDJ60A with marking 5PGK (unidirectional; the bidirectional 5.0SMDJ60CA is 5BGK), and gives
@@ -35,7 +35,7 @@ data tvs_5_0smdj60a: ElectronicComponentRow = ElectronicComponentRow {
   vendor: bourns,
   ordering_code: "5.0SMDJ60A",
   package: "DO-214AB (SMC)",
-  top_marking: "5PGK",
+  top_marking: Present { value: MarkStructured { lines: [MarkLine { segments: [FixedGlyphs { text: "5PGK" }] }], coverage: ListedOnly } },
   specification: TvsDiodeSpec { tvs: TvsSpecification {
     polarity: Unidirectional,
     reverse_standoff: volt(count: 60),

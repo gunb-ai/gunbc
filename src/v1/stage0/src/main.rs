@@ -77,50 +77,6 @@ enum RetainedCommands {
         #[arg(long = "arg")]
         args: Vec<String>,
     },
-
-    /// Long-running HTTP server: compile once, then answer each request by
-    /// calling ONE .dag entry `fn(method, path, body) -> ServeWireResponse`.
-    /// The seam is parse/write only — routing and handlers live in .dag.
-    Serve {
-        /// Source root directories (searched recursively for .dag files)
-        #[arg(long = "source-root")]
-        source_roots: Vec<String>,
-        /// Entry `.dag` file: load only this module and its transitive imports
-        #[arg(long)]
-        entry: String,
-        /// Handler function: fn(method: String, path: String, body: String) -> ServeWireResponse
-        #[arg(long)]
-        function: String,
-        #[arg(long, default_value = "127.0.0.1")]
-        host: String,
-        #[arg(long, default_value = "8080")]
-        port: u16,
-        /// Listen on this unix socket INSTEAD of --host/--port. Each request's kernel-attested
-        /// peer (SO_PEERCRED) is handed to the handler as peer_user.
-        #[arg(long = "unix-socket")]
-        unix_socket: Option<String>,
-        /// Release revision this process serves, bound ONCE at startup and immutable for the
-        /// process lifetime. Required and validated before the listener binds: `gunbc serve`
-        /// compiles its graph once, so the launch argument is the only fact describing what
-        /// this PROCESS serves; re-reading a file, an env var, or git HEAD per request would
-        /// report mutable disk state wearing a process-shaped interface. Published through
-        /// /healthz beside the served-surface identity (gunbc.running_release_identity).
-        #[arg(long = "release-revision")]
-        release_revision: String,
-        /// Per-request THREAD-CPU evaluation budget in milliseconds. Omitted means this process
-        /// declares no CPU bound -- today's behavior, stated. Deliberately no default: no
-        /// measurement of normal `roadmap_serve_handle` evaluation cost exists, and the one
-        /// adjacent figure (~70s cold graph compile) gives no reason to believe a sub-second
-        /// ceiling is safe, so an invented value would risk refusing legitimate requests.
-        #[arg(long = "eval-budget-cpu-ms")]
-        eval_budget_cpu_ms: Option<u64>,
-        /// Per-request MONOTONIC-WALL evaluation budget in milliseconds. Separate from the CPU
-        /// bound because they catch different failures: CPU catches a spin, wall catches a stall
-        /// that holds the listener while consuming almost no CPU. Neither contains an evaluation
-        /// blocked inside a single native primitive -- that needs worker isolation.
-        #[arg(long = "eval-budget-wall-ms")]
-        eval_budget_wall_ms: Option<u64>,
-    },
 }
 
 /// cargo's build-output dir (a `target` dir beside a `Cargo.toml`) is realization output, not
@@ -254,7 +210,7 @@ fn parse_render_targets(target: &str) -> Vec<v1_compiler::v1_compiler_artifact::
 ///
 /// The parent-directory arm had no representation: `create_dir_all(parent).ok()`, then a panic
 /// naming the WRITE, so a missing parent was reported as a write failure -- a silent arm feeding
-/// a misleading one, the absorbing failure arm DESIGN §5 forbids.
+/// a misleading one, the absorbing failure arm gunbc.design_argument::fail_closed forbids.
 ///
 /// The form follows `Stage0CargoBinManifestParseRefusal` in `cli_run` (gunbc#9285): a typed
 /// refusal with a `Display`, returned by `Result`, the exit taken at the command boundary.
@@ -453,44 +409,6 @@ impl v1_compiler::gunbc_cli_dispatch_generated::CliDispatchHost for RetainedCliH
         )
     }
 
-    fn measure_root_demand(
-        &self,
-        source_roots: Vec<String>,
-        repository: String,
-        receipt: String,
-        measurement_child: bool,
-    ) -> ! {
-        cli_run::measure_root_demand(source_roots, repository, receipt, measurement_child)
-    }
-
-    fn handle_serve(
-        &self,
-        source_roots: Vec<String>,
-        entry: String,
-        function: String,
-        host: String,
-        port: u16,
-        unix_socket: Option<String>,
-        release_revision: String,
-        eval_budget_cpu_ms: Option<u64>,
-        eval_budget_wall_ms: Option<u64>,
-    ) -> ! {
-        retained_dispatch(
-            RetainedCommands::Serve {
-                source_roots,
-                entry,
-                function,
-                host,
-                port,
-                unix_socket,
-                release_revision,
-                eval_budget_cpu_ms,
-                eval_budget_wall_ms,
-            },
-            self.dry_run,
-        )
-    }
-
     fn invoke_bound_target_producer(&self, target: String) -> ! {
         retained_dispatch(RetainedCommands::Test { target }, self.dry_run)
     }
@@ -541,13 +459,13 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
             // v2-emission phase calls: `cli_run::compile_entry_emission`. Before, the phase
             // reproduced the closure load, census assembly, refusal check and silent-pick gate
             // beside these, with three parameters kept equal by hand -- a gate drifting from the
-            // board's producer can green while the board refuses (DESIGN §3).
+            // board's producer can green while the board refuses (gunbc.design_argument::single_authority).
             // -- BOTH CLI SUBJECTS REACH THE ONE TRANSACTION --
             //
             // `--entry` compiles that file's reference-derived closure; without it, the first
             // `--source-root` is the primary root and the rest a dependency pool. Until this
             // landed the second case was a SECOND index/load/resolve/admit/compile/refuse
-            // pipeline open-coded here, two producers of one fact (DESIGN §3). The handler keeps
+            // pipeline open-coded here, two producers of one fact (gunbc.design_argument::single_authority). The handler keeps
             // what is its own: writing the tree, rendering diagnostics, choosing an exit code.
             //
             // THE MULTI-TARGET CASE ROUTES HERE TOO, as of the transaction taking a target
@@ -597,7 +515,7 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
                             run.subject.scope_receipt().render(),
                         );
                         // The tree is NOT written on a refusal: writing a partial tree the
-                        // compiler has disowned is a fabricated plausible output (DESIGN §5).
+                        // compiler has disowned is a fabricated plausible output (gunbc.design_argument::fail_closed).
                         eprintln!("gunbc compile: refused at {phase}: {cause}");
                         for emission in &run.emissions {
                             render_diagnostics(&emission.result);
@@ -615,7 +533,7 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
                         // disposition above is over the whole emission set, so reaching here
                         // means no target refused -- a per-target write inside the emit loop
                         // would leave one target's tree on disk beside another's refusal, the
-                        // partial fabricated output §5 forbids.
+                        // partial fabricated output gunbc.design_argument::fail_closed forbids.
                         //
                         // A single target writes to `output_dir` itself; several write to
                         // `output_dir/<name>`, the layout the deleted loop used and downstream
@@ -656,7 +574,7 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
             // re-implementing indexing, memory admission, entry-set discovery, the import walk,
             // census fill and the refusal check `cli_run::compile_emission` owns. Every
             // `--source-root` invocation routes through the transaction above, so keeping the
-            // code would be a second authority kept warm for nothing (DESIGN §3, delete-first).
+            // code would be a second authority kept warm for nothing (gunbc.design_argument::replacement_migration, delete-first).
             //
             // WHAT REMAINS BELOW IS THE `--source-dir` FLAT SCAN AND NOTHING ELSE: a legacy
             // subject with no source roots, index or dependency pool, which the transaction's
@@ -801,7 +719,7 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
         // This REFUSES rather than degrading: a typed, located reason and a nonzero exit; no
         // partial run, no guessed default verb, no plausible success. A cut that leaves a verb
         // unimplemented must say so loudly at the boundary -- an absorbing fallback here would
-        // be the exact §5 failure this deletion exists to remove.
+        // be the exact gunbc.design_argument::fail_closed failure this deletion exists to remove.
         //
         // NOT a scaffold with a trigger standing in for a decision: the terminal construction
         // is named, its two halves exist, and the missing piece is the wiring between them.
@@ -845,60 +763,9 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
                 message: Some(outcome.message),
             }
             .apply()
-        }
-
-        // `converge` is no longer a retained verb. It is a bootstrap .dag operation on the
-        // generated dispatch (gunbc.cli_dispatch_surface gunbc_fleet_converge_operation_binding),
-        // the same route `build` takes, so no arm here can answer for it.
-
-        // SERVE IS WIRED AGAIN, AND IT IS A FROZEN QUARRY ROUTE RATHER THAN A DESIGN.
-        // #8286 deleted this seam together with converge's, but converge has a successor that
-        // EXISTS (the spine above) while serve's declared successor -- gunbc.roadmap.roadmap_serve
-        // roadmap_serve_interpreted_scaffold, dissolving to emit-on-demand of the serve closure
-        // -- was never built, so the deletion removed a live outward-facing production route
-        // with no minimal Y to hold the boundary. DESIGN section 3 names that carve-out: where
-        // no Y can hold a gap-intolerant boundary, X stays FROZEN. This restores X and freezes
-        // it.
-        //
-        // FROZEN MEANS: no new options, verbs, routes into the interpreter, or completion work.
-        // The deleted refusal's claim is NOT retracted -- serve is a desired service occurrence
-        // that convergence should observe and reconcile, and gunbc.host.host_effect has no
-        // service-occurrence member to express that. This seam runs until it does.
-        //
-        // The engine objection is recorded, not argued away: this makes the interpreter
-        // load-bearing for a capability two lanes are deleting. Not a NEW dependency (it existed
-        // until #8286), but if this route attracts completion work the freeze has been repealed
-        // by drift.
-        RetainedCommands::Serve {
-            source_roots,
-            entry,
-            function,
-            host,
-            port,
-            unix_socket,
-            release_revision,
-            eval_budget_cpu_ms,
-            eval_budget_wall_ms,
-        } => {
-            cli_run::handle_serve(
-                source_roots,
-                entry,
-                function,
-                host,
-                port,
-                unix_socket,
-                release_revision,
-                cli_run::ServeEvaluationBudget {
-                    cpu_limit_ms: eval_budget_cpu_ms,
-                    wall_limit_ms: eval_budget_wall_ms,
-                },
-            );
-            Verdict {
-                status: 0,
-                message: None,
-            }
-            .apply()
-        }
+        } // `converge` is no longer a retained verb. It is a bootstrap .dag operation on the
+          // generated dispatch (gunbc.cli_dispatch_surface gunbc_fleet_converge_operation_binding),
+          // the same route `build` takes, so no arm here can answer for it.
     };
     std::process::exit(0)
 }
@@ -908,7 +775,7 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
 /// The deleted `cli_run` pair asked two independent questions -- `..._is_hard` and an
 /// `..._is_advisory` ALLOWLIST -- so a non-blocking variant absent from the allowlist was counted
 /// by NEITHER: rendered to the terminal while every reported count read zero for it, the silent
-/// wrongness §5 forbids, reachable by adding a variant and forgetting a list. One classification
+/// wrongness gunbc.design_argument::fail_closed forbids, reachable by adding a variant and forgetting a list. One classification
 /// with no third arm makes that unwritable: `hard + advisory == diagnostics.len()` by
 /// construction.
 ///
@@ -1051,7 +918,7 @@ mod tests {
     // THE TESTS SURVIVE THE FUNCTION AND ARE RE-POINTED AT THE SURVIVING AUTHORITY. Written
     // against this file's private `extract_module_path`, deleted by the fork closure, they pin
     // `cli_run`'s behaviour and now assert it there. Deleting them with the function would
-    // retire the evidence with one of two implementations -- what DESIGN §4b(4) forbids: the
+    // retire the evidence with one of two implementations -- what gunbc.design_argument::guarantee_ladder (dissolution on climb) forbids: the
     // redundant machinery goes, the discriminating cases stay enrolled.
     use v1_compiler::cli_run::extract_module_path_public as extract_module_path;
 
@@ -1334,11 +1201,11 @@ fn run_verb(
     // REFUSES host operations rather than mocking them silently; a `--claim-run` must mean the SAME
     // fail-closed mode, because a claim is not the operator's authority to run a host effect. Before
     // this, `--claim-run` fell to Wet whenever `--dry-run` was absent, so a claim whose mocked effect
-    // had no mock bound on this route silently dispatched the REAL effect against the host (a DESIGN
-    // §5 fail-open with a live side effect: the mocked journalctl ran live against srv1's journal).
+    // had no mock bound on this route silently dispatched the REAL effect against the host (a
+    // gunbc.design_argument::fail_closed fail-open with a live side effect: the mocked journalctl ran live against srv1's journal).
     // Hermetic mode owns the fail-closed rule: a mocked effect with no bound mock refuses typed
     // (`no mock_response ... refusing`), and a bound mock still serves. The mode is decided by the
-    // ONE shared authority `cli_run::execution_mode_for`, which `claim_batch` uses too (DESIGN 6b:
+    // ONE shared authority `cli_run::execution_mode_for`, which `claim_batch` uses too (gunbc.design_argument::earliest_unjustified_boundary:
     // one flag-to-mode function for both entrypoints, so they cannot diverge again).
     let execution_mode = cli_run::execution_mode_for(None, claim_run, dry_run);
     let ctx = cli_run::make_eval_context(graph.as_ref(), source_indices, execution_mode);
@@ -1509,9 +1376,39 @@ fn run_one_function(
         // is the single authority for reading the ProcessExit variant; `exit_status_for`
         // is the total map from that class to a status.
         Ok(value) => {
+            // AN INGRESS BINDING IS A DEPLOYMENT FACT THE RUN REALIZES (gunbc.http_ingress,
+            // gunbc.plans.converged_ingress). Serving is not a verb: an entry that answers a bound
+            // HttpIngressAdmission is served by this process -- bind, accept, one independent
+            // handler evaluation per request -- and a refused one exits before any listener
+            // exists. Read from the answer's type, never from the entry's name. A claim run is
+            // verification, so it never serves.
+            match cli_run::http_ingress_host::ingress_answer(&value, ctx) {
+                cli_run::http_ingress_host::IngressAnswer::NotABinding => {}
+                _ if claim_run => {
+                    return Verdict {
+                        status: 2,
+                        message: Some(format!(
+                            "error: `{function}` answered an ingress binding under --claim-run; a claim run never serves"
+                        )),
+                    }
+                }
+                cli_run::http_ingress_host::IngressAnswer::Refused(reason) => {
+                    return Verdict {
+                        status: 2,
+                        message: Some(format!("REFUSED: ingress binding `{function}`: {reason}")),
+                    }
+                }
+                cli_run::http_ingress_host::IngressAnswer::Bound(binding) => {
+                    let (status, message) = cli_run::http_ingress_host::realize(ctx, binding);
+                    return Verdict {
+                        status,
+                        message: Some(message),
+                    };
+                }
+            }
             // A `CliWireResponse` is an ANSWER PLUS A VERDICT, and it is the only return shape
             // that carries bytes for the operator. Binding it HERE rather than under a new
-            // `scm` subcommand keeps dispatch peripheral (§3): one binding serves every
+            // `scm` subcommand keeps dispatch peripheral (gunbc.design_argument::single_authority): one binding serves every
             // wire-returning entry -- `scm_log_cli_response`, `scm_status_cli_response`, and
             // whatever else renders next -- instead of the host growing an arm per verb.
             //
@@ -1578,7 +1475,7 @@ fn run_one_function(
 
 /// TOTAL map from a run's verdict to a process status, plus the message that explains it.
 ///
-/// Pure on purpose (§5 construction-over-validation). The first version inlined this in a
+/// Pure on purpose (gunbc.design_argument::fail_closed construction-over-validation). The first version inlined this in a
 /// `match` arm and DROPPED the failure case -- printed `ExitFailure { code: 1, reason:
 /// "…drift…" }` and exited 0, green for every consumer of `gunbc run` regardless of content. A
 /// planted-drift control caught it; nothing else could, since a clean run and a malformed-argv
@@ -1595,7 +1492,7 @@ fn run_one_function(
 /// totality above. The planted-drift control is a manual procedure recorded in the PR.
 fn exit_status_for(class: cli_run::ExitClass, function: &str) -> (i32, Option<String>) {
     // ONE AUTHORITY, in the lib. This function used to carry the match itself, and when the
-    // wire path needed the same decision the copy became a §3 fork -- two places deciding what
+    // wire path needed the same decision the copy became a gunbc.design_argument::single_authority fork -- two places deciding what
     // a verdict means, free to drift. The body moved to `cli_run::exit_status_for_class`, where
     // it is also REACHABLE BY AN EXECUTING TEST: `rust-unit-tests` runs
     // `cargo test -p v1-compiler --lib`, and this file is a BIN target whose tests are compiled

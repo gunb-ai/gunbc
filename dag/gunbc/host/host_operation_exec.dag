@@ -39,6 +39,7 @@ import std.operation_argv {
   operation_argv_bind_text,
   operation_argv_cause_label,
   operation_ref_label,
+  shell_materialize_operation_argv,
 }
 
 // THE DEFECT THIS MODULE EXISTS TO REMOVE, stated once here rather than repeated at each caller.
@@ -46,12 +47,12 @@ import std.operation_argv {
 // gunbc.typed_argv_exec exposes typed_argv_exec_over_ssh and typed_argv_exec_over_fleet_ssh and NO
 // TOTAL ENTRY POINT, so every caller that wanted to run one operation somewhere was forced to write
 // the transport match itself. Six one-tool domain reads did exactly that -- four arms each, the same
-// four arms, differing only in an argv row and a decoder. That is the N x M adapter structure DESIGN
-// section 3 forbids at an interface/realization seam, and it was MANUFACTURED BY AN INTERFACE THAT
+// four arms, differing only in an argv row and a decoder. That is the N x M adapter structure
+// gunbc.design_argument::single_authority forbids at an interface/realization seam, and it was MANUFACTURED BY AN INTERFACE THAT
 // DECLINED TO BE TOTAL: an interface offering only per-realization doors pushes its own dispatch
 // into every caller. Six copies is what that cost.
 //
-// So the direction is the one section 3 fixes: THE DISPATCH THAT SELECTS A REALIZATION IS ITSELF
+// So the direction is the one gunbc.design_argument::single_authority fixes: THE DISPATCH THAT SELECTS A REALIZATION IS ITSELF
 // REALIZATION. It sits here, once, peripheral to every domain caller. A caller now says WHERE (a
 // transport it genuinely knows -- which host) and WHAT (a HostOperation). It never says HOW.
 
@@ -67,13 +68,13 @@ import std.operation_argv {
 // BoundOperationInvocation beside a LocalInvocation, independently chosen -- and then RECONSTRUCTED
 // the missing relationship with a hand-maintained name mapping and a predicate, neither of which
 // `host_operation_exec` ever consulted. That is illegal-states-representable plus a hand-rolled
-// validator standing where construction was available, which DESIGN section 5 names directly:
+// validator standing where construction was available, which gunbc.design_argument::fail_closed names directly:
 // a check that re-states a constraint is a second representation of it, and the fix is a single
 // authority the realization is DERIVED from, not a check that flags the divergence afterwards.
 // Sealing the record with sole_constructor narrowed WHO could author the mismatch; it did not stop
 // the mismatch existing. Deriving both legs removes the second fact entirely, so the mapping, the
 // predicate, the seal, the mint and its admit list are all GONE rather than reduced -- and per
-// section 4b(4) the mispairing witness dissolves with them, because its RED is no longer authorable
+// gunbc.design_argument::guarantee_ladder (dissolution on climb) the mispairing witness dissolves with them, because its RED is no longer authorable
 // anywhere, not even in a fixture: there is no second field to disagree with the first.
 //
 // WHY A COPRODUCT AND NOT A CLOSURE. Three of the four transport legs consume argv materialized from
@@ -89,7 +90,7 @@ import std.operation_argv {
 //
 // 🟡 DECLARED DEBT, NOT A MODELING IMPROVEMENT: `SystemctlIsActive { unit }` is a SECOND NAMING of
 // `systemd.Systemctl.IsActive(unit:)`, which extdeps already declares with its own cited transport.
-// That is the nicknaming violation of section 3, inside a diff whose subject is a section 3
+// That is the nicknaming violation of gunbc.design_argument::single_authority, inside a diff whose subject is a gunbc.design_argument::single_authority
 // violation, and it is admitted only because the thing that dissolves it is named exactly. The
 // interpreter already dispatches local execution BY REIFIED IDENTITY: eval_service_call resolves
 // (service, operation) as a string key against its service_ops index, and

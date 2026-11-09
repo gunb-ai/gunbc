@@ -127,6 +127,18 @@ fn member_emission_bool_signature_verdict() -> MemberEmissionVerdict {
   member_emission_verdict_of(source: "module v2.test.member_emission\n\nfn f(p: Bool) -> Bool { p }\n")
 }
 
+fn member_emission_string_signature_verdict() -> MemberEmissionVerdict {
+  member_emission_verdict_of(source: "module v2.test.member_emission\n\nfn f(s: String) -> String { s }\n")
+}
+
+fn member_emission_string_field_verdict() -> MemberEmissionVerdict {
+  member_emission_verdict_of(source: "module v2.test.member_emission\n\ntype Named { name: String }\n\nfn f(x: Int) -> Int { x as Int }\n")
+}
+
+fn member_emission_declared_string_signature_verdict() -> MemberEmissionVerdict {
+  member_emission_verdict_of(source: "module v2.test.member_emission\n\ntype String = Empty | Cons { head: Int }\n\nfn f(s: String) -> String { s }\n")
+}
+
 fn member_emission_declared_type_signature_verdict() -> MemberEmissionVerdict {
   member_emission_verdict_of(source: "module v2.test.member_emission\n\ntype Decision = Allowed | Blocked\n\nfn f(d: Decision) -> Decision { d }\n")
 }
@@ -248,6 +260,39 @@ test fn a_bool_signature_is_spelled_by_its_realization_holds() -> Bool {
   match member_emission_bool_signature_verdict() {
     MemberEmitted { text: t } =>
       string_contains(s: t, pattern: "fn f(p: bool) -> bool") && !string_contains(s: t, pattern: "bool_node_symbol")
+    MemberRefused { reason: _ } => false
+    MemberClosureRefused { reason: _ } => false
+  }
+}
+
+// HOST TEXT IS SPELLED BY ITS OWN REALIZATION ROW (v2.extdeps.languages.rust
+// rust_target_atom_realization_host_text, keyed on host_text_type_node): the kernel `String` at a signature
+// and at a record field reaches Rust `String`, and the first is the case that refused
+// produced_decl_type_ref_unrealized before the row.
+test fn a_host_text_signature_is_spelled_by_its_realization_holds() -> Bool {
+  match member_emission_string_signature_verdict() {
+    MemberEmitted { text: t } => string_contains(s: t, pattern: "fn f(s: String) -> String")
+    MemberRefused { reason: _ } => false
+    MemberClosureRefused { reason: _ } => false
+  }
+}
+
+test fn a_host_text_record_field_is_spelled_by_its_realization_holds() -> Bool {
+  match member_emission_string_field_verdict() {
+    MemberEmitted { text: t } => string_contains(s: t, pattern: "name: String")
+    MemberRefused { reason: _ } => false
+    MemberClosureRefused { reason: _ } => false
+  }
+}
+
+// THE IDENTITY GUARD (gunbc.design_argument::closed_grounded_substrate, text crossings): a String the module itself declares is a different
+// declaration and must NOT take the host-text row. It keeps its declaration-reference spelling; spelling it
+// bare `String` would be the leaf-name capture the row is keyed to avoid.
+test fn a_module_declared_string_does_not_take_the_host_text_realization_holds() -> Bool {
+  match member_emission_declared_string_signature_verdict() {
+    MemberEmitted { text: t } =>
+      string_contains(s: t, pattern: "crate::v2_test_member_emission::String")
+        && !string_contains(s: t, pattern: "fn f(s: String)")
     MemberRefused { reason: _ } => false
     MemberClosureRefused { reason: _ } => false
   }
@@ -379,7 +424,7 @@ test fn a_field_refinement_inside_a_variant_payload_does_not_refine_the_declarat
 // d834c395). It then reaches the coproduct emitter and refuses at the NEXT link, declared-wrong: the field
 // type `Int where positive` is a Conj, not an atom (target_semantic_decl_field_type_not_atom). Realizing an
 // inline-refined field type is a separate emitter slice; this pin names it and goes RED the moment that
-// slice lands, to be replaced by an emission claim (DESIGN 4b: the control stays enrolled).
+// slice lands, to be replaced by an emission claim (gunbc.design_argument::guarantee_ladder: the control stays enrolled).
 fn member_emission_nested_where_verdict() -> MemberEmissionVerdict {
   member_emission_verdict_of(source: "module v2.test.member_emission\n\ntype Bag = A { n: Int where positive } | B\n\nfn positive(x: Int) -> Bool { true }\n\nfn f(x: Int) -> Int { x as Int }\n")
 }

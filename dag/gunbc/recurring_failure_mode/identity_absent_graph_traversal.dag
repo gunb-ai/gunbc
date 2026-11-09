@@ -21,7 +21,7 @@ data identity_absent_graph_traversal: RecurringFailureMode = RecurringFailureMod
 
     "The remaining candidate is host allocation identity, which exists only in the realization and not in the model.",
 
-    "RUNG: OUTSIDE THE LADDER, and the earlier revision of this row said `mitigatable`, which was inflation of exactly the kind section 4b(1) names.",
+    "RUNG: OUTSIDE THE LADDER, and the earlier revision of this row said `mitigatable`, which was inflation of exactly the kind gunbc.design_argument::guarantee_ladder (rung honesty) names.",
 
     "The invalid state is writable, nothing refuses it, and its failure is a silent skip — section 4b puts silent wrongness outside the ladder rather than low on it.",
 
@@ -31,7 +31,7 @@ data identity_absent_graph_traversal: RecurringFailureMode = RecurringFailureMod
 
     "That is a property of THAT seam's consumer being a compiled artifact, not of the class — a traversal whose consumer is a verdict rather than a compilation has no such backstop — and section 4b sets a class's rung at the MINIMUM across its in-scope paths.",
 
-    "CEILING: structural impossibility, and per section 4b(3) the trigger names the CAPABILITY rather than an artifact — an identity for synthesised occurrences, sufficient for a `visited` set over inferred type nodes to be authorable in `.dag` at all.",
+    "CEILING: structural impossibility, and per gunbc.design_argument::guarantee_ladder (no silent regression) the trigger names the CAPABILITY rather than an artifact — an identity for synthesised occurrences, sufficient for a `visited` set over inferred type nodes to be authorable in `.dag` at all.",
 
     "Nothing less retires it: a faster traversal, a memo at one seam, or a counter measuring the amplification all leave the key absent and the unsafe arm equally reachable.",
 

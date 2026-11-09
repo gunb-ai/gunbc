@@ -9,7 +9,7 @@ import std.types { FilePath }
 import gunbc.harness.harness_cli { harness_seat_wait_announce, harness_default_wire_shape, harness_default_max_tokens, harness_request_deadline }
 import gunbc.harness.harness_reasoning_wire { DeepseekV4FlashOnVllm, ReasoningOff }
 import gunbc.harness.harness_wire { harness_context_budget_for }
-import gunbc.harness.harness_tool { HarnessToolEnvironment }
+import gunbc.harness.harness_tool { HarnessToolEnvironment, ValidationNotOffered }
 import gunbc.harness.harness_turn {
   harness_run_turn, harness_event_type_only, HarnessTurnConfig, BackendAdmittedBySeat, CompletesOnProviderStop, harness_event_placement_waiting, harness_events_prior, HarnessEventsPriorRead, HarnessEventsPriorUnreadable, harness_events_append, HarnessEventsWritten, HarnessEventsUnwritable,
 }
@@ -95,7 +95,7 @@ test fn an_unreadable_events_path_refuses_and_is_not_projected_to_empty() -> Boo
   refused && !announced(w: announce) && removed.success
 }
 
-// THE REAL ROUTE (DESIGN 3 pairing obligation): harness_run_turn itself, against a backend that
+// THE REAL ROUTE (gunbc.design_argument::witness_one_interface pairing obligation): harness_run_turn itself, against a backend that
 // refuses the connection (127.0.0.1:1; no stub backend exists in the corpus, so the turn ends in a
 // typed provider failure after turn.started is written). Two waits are announced first, as the cli
 // loop does; the run must leave wait 1, wait 2, turn.started in that order. Deleting the
@@ -119,7 +119,7 @@ test fn harness_run_turn_seeds_turn_started_onto_the_prior_wait_lines() -> Bool 
       events_path: path as FilePath,
       context_budget: harness_context_budget_for(unit: DeepseekV4FlashOnVllm),
       request_deadline: harness_request_deadline,
-      environment: HarnessToolEnvironment { working_directory: dir as FilePath, timeout_program: "/usr/bin/timeout" as FilePath, duration_limit_seconds: 5 },
+      environment: HarnessToolEnvironment { working_directory: dir as FilePath, timeout_program: "/usr/bin/timeout" as FilePath, duration_limit_seconds: 5, validation: ValidationNotOffered },
       completion: CompletesOnProviderStop,
       backend_access: BackendAdmittedBySeat,
     },

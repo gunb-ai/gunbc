@@ -1307,7 +1307,7 @@ fn target_serialize_relation_row_from_model_bounded(
 
 // ONE ROW'S SERIALIZATION, GIVEN THE TARGET'S SPELLING INDEX. The index is a fact about the target, the
 // same for every row of one serialization, so it is built once at the entry and carried down: a
-// nonterminal inside a row re-enters here with the index it was handed, never rebuilding it (DESIGN §2).
+// nonterminal inside a row re-enters here with the index it was handed, never rebuilding it (gunbc.design_argument::minimize_redundancy).
 fn target_serialize_relation_row_with_lex_bounded(
   remaining: Int,
   target: TargetModel,
@@ -1348,7 +1348,7 @@ fn target_serialize_relation_row_with_lex_bounded(
 // SERIALIZE A ROW THE CALLER ALREADY DERIVED. A target that derives its program's row
 // (v2.std.grammar derive_grammar_relation_row_for_lhs) holds the row the serializer would otherwise
 // re-select by reverse-parsing the same program against the same productions -- a third resolution of
-// one program for one demand (DESIGN §2). This entry reads the given row's tokens directly.
+// one program for one demand (gunbc.design_argument::demand_before_materialization). This entry reads the given row's tokens directly.
 fn target_serialize_derived_row_bounded(remaining: Int, target: TargetModel, row: Node) -> Outcome<TargetText> {
   if remaining <= 0 {
     outcome_rejected(translate_serialize_recursion_limit_exhausted_diagnostic(emitted: row))

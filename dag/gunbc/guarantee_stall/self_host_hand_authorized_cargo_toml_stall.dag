@@ -8,7 +8,7 @@ import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 // HAND-AUTHORED as literal TOML text and duplicated dependency names and versions the emitter
 // owns. REDUCED 2026-10-03: the dependency roster is gone from every .dag harness route --
 // gunbc.instruments.emitted_crate_harness_manifest derives each harness manifest from the Cargo.toml the
-// emission wrote. What remains medium-as-string per DESIGN §3 is the overlay that module appends:
+// emission wrote. What remains medium-as-string per gunbc.design_argument::single_authority is the overlay that module appends:
 // the [lib] and [[bin]] target tables and the seed path-dependency subtable are still TOML text.
 data self_host_hand_authorized_cargo_toml_stall: GuaranteeStall = GuaranteeStall {
   subject: "harness overlay tables appended to the emitted Cargo.toml are authored as TOML text — medium-as-string for the [lib], [[bin]] and [dependencies.v1-compiler] tables; the dependency roster itself is derived from the emitted manifest and is no longer part of this stall",

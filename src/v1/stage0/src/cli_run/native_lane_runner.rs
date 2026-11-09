@@ -31,7 +31,7 @@
 //! `discover_floor_rows_for_source` over ~5300 sources to derive the universe (~4 minutes
 //! interpreted), and a second context evaluating the admission authority over a receipt built
 //! here as interpreter `Value`s. The lane's whole claim is that the emitted compiler answers, so
-//! both brackets are deleted rather than kept as a fallback (DESIGN section 3: a replacement
+//! both brackets are deleted rather than kept as a fallback (gunbc.design_argument::single_authority: a replacement
 //! migration cuts at the root; a surviving X is an attractor). If the emitted closure cannot
 //! carry the admission the emission refuses by name — there is no interpreted arm to fall back
 //! to. The one v1 evaluation left in the route is the PREPARATION above, and it is named rather
@@ -79,14 +79,6 @@ const NATIVE_COMPILE_ENTRY: &str = "src/v2/compiler/source_root_eval.dag";
 /// parameterised by it, which is why `prepare_emitted_compiler_for_entry` takes the entry rather
 /// than this file growing a second copy of that sequence.
 const V2_NATIVE_CLI_ENTRY: &str = "src/v2/cli/compile_cli.dag";
-
-pub(crate) fn native_compile_entry() -> &'static str {
-    NATIVE_COMPILE_ENTRY
-}
-
-pub(crate) fn v2_native_cli_entry() -> &'static str {
-    V2_NATIVE_CLI_ENTRY
-}
 
 /// The malformed control: deliberately unterminating bytes any honest front-end must refuse at
 /// tokenize. THE COMMITTED CARRIER IS NOT A `.dag` FILE — the bytes are not a dag program, and
@@ -153,7 +145,7 @@ const CLI_DOOR_EMITTED_WITNESS: &str = "native_cli_door_probe_value";
 const CLI_DOOR_EMITTED_VALUE: &str = "606060";
 
 /// THE REFUSAL THE EMIT PROBE PINNED UNTIL THE RENDERING LANDED, NOW THE REGRESSION IT NAMES
-/// (DESIGN section 4b(4)). From gunbc#12207 the door's translate refused the fixture's member body at
+/// (gunbc.design_argument::guarantee_ladder (dissolution on climb)). From gunbc#12207 the door's translate refused the fixture's member body at
 /// the type-expression projection (`v2.compiler.translate` `translate_type_expression_arrow_project`)
 /// rather than dropping it, and the probe expected that refusal by name. The door now renders the
 /// module member by member through the Rust target's declared rows (`v2.compiler.emit_produced`
@@ -164,7 +156,7 @@ const CLI_DOOR_EMIT_BODY_REFUSAL: &str = "translate_arrow_body_not_a_type_expres
 
 /// THE LIMITATION THE EMIT PROBE USED TO PIN, NOW THE REGRESSION IT NAMES.
 ///
-/// SUPERSEDED AS THE PIN 2026-09-23 (DESIGN section 4b(4)): once v2 lowered and grounded a `data`
+/// SUPERSEDED AS THE PIN 2026-09-23 (gunbc.design_argument::guarantee_ladder (dissolution on climb)): once v2 lowered and grounded a `data`
 /// declaration the door got past this refusal (it then stopped at `CLI_DOOR_EMIT_BODY_REFUSAL`, and now emits), so
 /// a refusal with THIS determining reason is reported as `NativeCliDoorGroundingLimitationReturned`. What the rest of this paragraph records
 /// is why the constant exists and what the refusal looked like while it held.
@@ -178,7 +170,7 @@ const CLI_DOOR_EMIT_BODY_REFUSAL: &str = "translate_arrow_body_not_a_type_expres
 /// not defects in this instrument, and `v2.cli.compile_cli` already records the same shape measured
 /// at gunbc#11507 on three different entries.
 ///
-/// SO THE PROBE EXPECTS RED, AND IT IS ENROLLED RATHER THAN DELETED (DESIGN section 4b(4)). A probe
+/// SO THE PROBE EXPECTS RED, AND IT IS ENROLLED RATHER THAN DELETED (gunbc.design_argument::guarantee_ladder (dissolution on climb)). A probe
 /// that is removed because its subject cannot pass yet leaves nothing to notice when the subject
 /// starts passing. This one pins the limitation by its CAUSE, so the day the door can ground a
 /// closure the probe stops matching and this instrument REFUSES -- which is the signal to flip it
@@ -279,7 +271,7 @@ struct EmittedBuildObserved {
 /// WHY A COMPLETED EMITTED BUILD IS NOT CLEAN, as one typed, located sentence -- or `None` when it
 /// is. The instrument seam maps a non-clean build to `ObservationDidNotHold` (exit 1), and before
 /// this the only thing printed beside that exit was the counters line, so a run whose every step
-/// said "success" exited 1 with no stated cause (DESIGN §5). The cause names the counter that
+/// said "success" exited 1 with no stated cause (gunbc.design_argument::fail_closed). The cause names the counter that
 /// decided and the warning lines themselves, which are the only evidence of WHAT warned: under
 /// `-D warnings` a rustc lint is an error, so a warning beside status 0 is one the denial did not
 /// own, and naming it is the whole point of carrying the count.
@@ -459,8 +451,8 @@ fn prepare_emitted_compiler_for_entry(
         super::native_product_cache::store_root()
     };
     // Under `fresh` NO key is derived: `derive_key` re-ingests the corpus index and reloads the
-    // closure only to hash it, which the emission below does again -- the same work twice (DESIGN
-    // section 2) for a receipt that can be written from what this run already computes.
+    // closure only to hash it, which the emission below does again -- the same work twice (
+    // gunbc.design_argument::minimize_redundancy) for a receipt that can be written from what this run already computes.
     let product_key = match &store {
         Some(_) => Some(
             super::native_product_cache::derive_key(source_roots, entry, &workspace)
@@ -775,7 +767,7 @@ fn prepare_emitted_compiler_for_entry(
     // RUN ALONE, and this call site passed the literal
     // `"v2_native_lane_carries_no_mutation_probe"` where the required emit-compile phase passes its
     // probe symbol. A cargo phase that is green because nothing was measured is the decoration
-    // DESIGN section 4b calls worse than absent: a fingerprint alias, a replayed cached verdict or
+    // gunbc.design_argument::guarantee_ladder calls worse than absent: a fingerprint alias, a replayed cached verdict or
     // an emitter that stopped reaching rustc all report `Completed status=0` byte-identically to a
     // real compile, and the instrument would carry the green under the subject's name.
     //
@@ -784,7 +776,7 @@ fn prepare_emitted_compiler_for_entry(
     // ENTRY'S OWN emitted module, requires cargo to fail ALONE on it with a diagnostic NAMING the
     // injected symbol, restores the bytes byte-exactly, and returns a typed non-discriminating
     // verdict for every other shape. Calling it here rather than copying its shape is what keeps
-    // "the emitted tree is really being compiled" one fact with one home (DESIGN section 3).
+    // "the emitted tree is really being compiled" one fact with one home (gunbc.design_argument::single_authority).
     //
     // IT RUNS AFTER THE BINARY IS IDENTIFIED AND THE IDENTITY IS RE-READ AFTERWARDS. The faulted
     // arm is a cargo run over the same crate and target directory, so the artifact this function
@@ -963,10 +955,10 @@ impl OldRouteWithdrawalGuard {
     /// not-present arm holds nothing, so a single `is_file()` before the spawns is evidence about
     /// t0 and the receipt clause reads it as evidence about the whole window -- and a binary that
     /// materializes mid-run (a concurrent build, a cache landing) would green the one control
-    /// whose entire job is to prove the native route could not have fallen back. DESIGN section 4d:
+    /// whose entire job is to prove the native route could not have fallen back. gunbc.design_argument::epistemic_humility:
     /// an inference is not promoted to a deduction. So the window is re-read after the last spawn
     /// and a path that became occupied REFUSES the run rather than widening the arm to mean
-    /// "absent at some point" (section 5: a failure arm refuses, never widens). This does not
+    /// "absent at some point" (gunbc.design_argument::fail_closed: a failure arm refuses, never widens). This does not
     /// collapse the two arms: withdrawal still closes the window by construction, and this one is
     /// an observation checked at both of its ends.
     fn verify_window_stayed_closed(&self) -> Result<(), String> {
@@ -1091,7 +1083,7 @@ fn file_refusal_at_text(at: &serde_json::Value) -> Result<String, String> {
 /// fatal cause leads each line and the head is printed only as `head=` when it differs, after a
 /// grouped tally of FATAL causes, which is the population a causal account is about.
 fn native_file_refusal_summary(refusals: &[NativeFileRefusalObserved]) -> String {
-    // First-seen order, one map probe per refusal (DESIGN §6 bare minimum cost: no linear
+    // First-seen order, one map probe per refusal (gunbc.design_argument::how_to_work bare minimum cost: no linear
     // scan per row, whatever the cause count is today).
     let mut slot: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
     let mut by_cause: Vec<(&str, usize)> = Vec::new();
@@ -1206,7 +1198,7 @@ enum NativeMemberVerdict {
 /// `v2.workflow.native_route_member_termination` `native_route_member_termination`'s result, mirrored.
 ///
 /// Three arms rather than four: `InvocationRefused` is not reachable from a population fold, so an
-/// arm for it here would be a constructor nothing can build -- the decoration DESIGN section 4b
+/// arm for it here would be a constructor nothing can build -- the decoration gunbc.design_argument::guarantee_ladder
 /// warns reads as coverage.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NativeMemberTermination {
@@ -1249,8 +1241,8 @@ fn native_member_termination(
     // `.dag` fold keeps them as four arms; here they collapse because Rust arms returning identical
     // blocks are a clippy refusal (`if_same_then_else`) and this repository treats a warning as an
     // error. Naming each condition keeps the reasons legible at the site -- which is what the arms
-    // were carrying -- without an `#[allow]`, and an escape hatch for a lint is the shape DESIGN
-    // section 5 refuses. The behaviour is identical and the witnesses that discriminate each reason
+    // were carrying -- without an `#[allow]`, and an escape hatch for a lint is the shape
+    // gunbc.design_argument::fail_closed refuses. The behaviour is identical and the witnesses that discriminate each reason
     // are unchanged.
     let a_member_was_not_observed = unobserved;
     let the_population_is_short = rows.len() as u64 != universe;
@@ -1482,7 +1474,7 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
         // made the verb consume the lane's bit instead.
         //
         // AN UNKNOWN VARIANT REFUSES RATHER THAN DEFAULTING. Mapping an unrecognized arm onto one
-        // of the four would be the absorbing fallback DESIGN section 5 forbids, and it would fail
+        // of the four would be the absorbing fallback gunbc.design_argument::fail_closed forbids, and it would fail
         // in the worst direction: a new verdict arm silently counted as a pass.
         if value.get("identity").is_some() {
             let variant = value
@@ -1531,7 +1523,7 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
 // module, NativeTestRefused { stage, reason }. This host parsed that stream for counts and then
 // DROPPED it, so the only surviving artifact was the `[native-prepare]` stderr line, which collapses
 // the same fact to `outcome=accepted|refused` through a matches!. A typed refusal computed and then
-// flattened to a Bool at the reporting boundary is the DESIGN section 5 shape, and the cost was
+// flattened to a Bool at the reporting boundary is the gunbc.design_argument::fail_closed shape, and the cost was
 // measured rather than argued: after a 113-minute full-N run at 36e6ad91 the question "why did 575
 // of 713 modules refuse" was unanswerable from anything on disk, and answering it would have meant
 // running the whole route again.
@@ -1799,7 +1791,7 @@ fn write_host_facts(
 /// The seed emits v2's compiler closure, assembles it as a crate, and builds it. That is the
 /// generation the repository can perform today, and it either holds or it does not -- there is no
 /// roster of which entries are known-good, because a roster is a second representation of what this
-/// process demonstrates by running (DESIGN sections 2 and 3). A regression here fails the step;
+/// process demonstrates by running (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority). A regression here fails the step;
 /// progress moves the failure later. Nothing separate has to be updated for either.
 ///
 /// WHY THIS IS A PREFIX OF `--v2-native-route` RATHER THAN A SECOND PATH. That route already
@@ -1813,7 +1805,7 @@ fn write_host_facts(
 /// WHAT THIS DOES NOT ESTABLISH, named so the green is not read for more than it carries. It is
 /// EMISSION, COMPILATION AND A BOUNDED EXECUTION — `walk_eval_driver_door` starts the built driver
 /// and requires it to accept a well-formed root and refuse a malformed one — and it is still not
-/// behavioural equivalence: DESIGN section 7 asks that the emitted
+/// behavioural equivalence: gunbc.design_argument::self_hosting asks that the emitted
 /// module also behave as the seed does on a discriminating corpus, and that half
 /// (`--behavioral-receipt-*`) is a declared drop that no required run performs. Nor is it the
 /// second generation: the built binary emitting the same closure is the v2 -> v2 boundary, and it
@@ -1822,8 +1814,8 @@ fn write_host_facts(
 /// position and belongs in this step when a driver exists that can reach it.
 /// What the self-host generation observed, as the fields a caller renders. Returned rather than
 /// printed so the instrument seam decides the termination: a producer that only printed would make
-/// every caller re-derive the verdict from stderr, which is the second representation DESIGN
-/// section 3 forbids.
+/// every caller re-derive the verdict from stderr, which is the second representation
+/// gunbc.design_argument::single_authority forbids.
 pub struct SelfHostHeld {
     pub closure_identity: String,
     pub binary_identity: String,
@@ -1844,8 +1836,8 @@ pub struct SelfHostHeld {
     /// THEM ... If a future consumer wants a count from a census marker, the honest change is a
     /// per-mode marker type, not a zero that has quietly become load-bearing." This field was that
     /// consumer, and its doc called the struct fill "the size of the universe its accepting control
-    /// derived". That is the fabricated plausible output DESIGN section 5 forbids outright, and
-    /// section 4b(1)'s rung inflation in a receipt. It is REMOVED rather than re-described, because
+    /// derived". That is the fabricated plausible output gunbc.design_argument::fail_closed forbids outright, and
+    /// gunbc.design_argument::guarantee_ladder (rung honesty)'s rung inflation in a receipt. It is REMOVED rather than re-described, because
     /// the accepting arm's real evidence is the assertion the control already makes -- mode is
     /// `census` and there are ZERO per-file refusals over a well-formed root -- and a receipt field
     /// that restates a required constant adds nothing a reader can act on.
@@ -1859,13 +1851,13 @@ pub struct SelfHostHeld {
 /// `--required-v2-native` — but nothing spawned it from `//gunbc/instruments:self-host`, so that
 /// instrument's green said "the closure emitted and cargo accepted it" about an executable it never
 /// started. An artifact admitted without being run is the specification-without-execution shape
-/// DESIGN section 5 names, and it is that shape whether or not a DIFFERENT route happens to run the
+/// gunbc.design_argument::fail_closed names, and it is that shape whether or not a DIFFERENT route happens to run the
 /// same program: the instrument is the thing reporting, and its evidence has to be its own.
 ///
 /// THIS CONTROL IS A SECOND READER OF THE EVAL DRIVER'S VERB SURFACE, AND SAYS SO RATHER THAN
 /// LEAVING IT TO BE DISCOVERED. The argv below spells `census` as a literal. The driver itself is
 /// the first reader and the authority: it decides what verbs it accepts. So there are two places
-/// that know this driver's argv, which is the §3 fork in its mildest form -- mild because the
+/// that know this driver's argv, which is the gunbc.design_argument::single_authority fork in its mildest form -- mild because the
 /// literal is one word in one call, and real because a change to the driver's surface makes this
 /// control spawn an argv the driver no longer accepts, and the failure would look like a broken
 /// door rather than a stale spelling.
@@ -1882,7 +1874,7 @@ pub struct SelfHostHeld {
 /// ENTRYPOINT CONTROL DERIVES ITS ARGV FROM THE DRIVER'S OWN PLAN, once that plan is on main --
 /// sufficient that no spelling of any verb survives in this file. It is deliberately NOT "when
 /// #11952 lands": that PR could land with the plan reachable and this call still spelling `census`,
-/// which would satisfy an artifact-grain trigger while the second reader stood (DESIGN §4b(3) --
+/// which would satisfy an artifact-grain trigger while the second reader stood (gunbc.design_argument::guarantee_ladder (no silent regression) --
 /// a trigger naming less than the capability is satisfied while the capability stays dead).
 ///
 /// THE PAIR IS TWO CENSUS RUNS DIFFERING ONLY IN THEIR ROOT. Over `fixtures/native_cli_door` — one
@@ -2273,8 +2265,8 @@ struct CliRefusalRendering {
 /// `<reason> @ <locus>` (`lens_verdict_diagnostic_located_text`) rather than a bare reason. The
 /// previous decoder compared the WHOLE last link against the bare constant, so a CORRECT current
 /// refusal decoded as `DeterminingReasonDiffers` -- and the controls did not catch it because their
-/// fixture still fed the OLD unlocated rendering. That is the designed-fixture failure DESIGN
-/// section 3 names: the claim stayed green while the world it was written against moved. The reason
+/// fixture still fed the OLD unlocated rendering. That is the designed-fixture failure
+/// gunbc.design_argument::single_authority names: the claim stayed green while the world it was written against moved. The reason
 /// is now split off the locus and the LOCATION IS KEPT, because where the fatal sits is the part a
 /// reader needs when the pinned limitation changes.
 ///
@@ -2566,7 +2558,7 @@ fn cli_emit_probe_refusal(verdict: &CliEmitProbeVerdict, run: &CliDoorRun) -> St
 /// WALK THROUGH THE DOOR, BOTH WAYS.
 ///
 /// WHAT THIS CLOSES. Before it, `//gunbc/instruments:v2-native-cli` emitted the CLI's closure and
-/// built it, and stopped — the door compiled and nothing ever opened it. DESIGN section 5 names
+/// built it, and stopped — the door compiled and nothing ever opened it. gunbc.design_argument::fail_closed names
 /// that exactly: a typecheck is not a consumer, and "done" is a real consumer green BY EXECUTION
 /// plus a discriminating input that goes red. `v2.test.claim.cli.v2_native_cli` executes the door's
 /// FOLDS over supplied argv and a supplied ingest, which is the right subject for those claims and
@@ -2787,6 +2779,7 @@ fn walk_cli_door(
     walk_native_ingest_layout_controls(binary, workspace)?;
     walk_native_acquisition_projection_controls(binary, workspace, scratch)?;
     walk_population_controls(binary, workspace, scratch)?;
+    walk_reference_controls(binary, workspace)?;
     let refusal_status = i64::from(refused.status.unwrap_or_default());
     eprintln!("v2-native-cli: door refused as cli_no_entry — exit {refusal_status}");
     Ok((door_exit_status, emitted_bytes, refusal_status))
@@ -3505,6 +3498,112 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
     Ok(())
 }
 
+const REFERENCE_CHECK_HOLDS_ROOT: &str = "fixtures/annotation_reference_holds/dag";
+const REFERENCE_CHECK_REFUSED_ROOT: &str = "fixtures/annotation_reference_refused/dag";
+/// `v2.cli.reference_check` `reference_check_holds_head` / `reference_check_refused_head`.
+const REFERENCE_CHECK_HOLDS_HEAD: &str = "references resolve:";
+const REFERENCE_CHECK_REFUSED_HEAD: &str = "references refused:";
+
+/// THE MARKED-REFERENCE CHECK, WALKED. `check-references` (`v2.cli.reference_check`) reads every module
+/// under the bound trees, extracts the `\@ref(...)` markers from their annotations and resolves each in
+/// the context built from the cited modules. The claims over that fold
+/// (`v2.test.claim.cli.reference_check`) run it on the interpreter; these walks are the inhabitance on
+/// the BUILT binary, and the first is the check itself:
+///
+/// - over the live governed roots (`dag`, `src/v2`) it holds, so every marked reference on the subject
+///   revision resolves -- this is the verdict the required job carries;
+/// - over the holding fixture it holds with every marker resolved (a field, a function, a relay hop);
+/// - over the refusing fixture it refuses, and each marker's own finding is on stdout: no such
+///   declaration, no such field, a cited module that does not read, a contested name, an unsupported
+///   type parameter, a malformed coordinate and an unterminated marker.
+///
+/// SEED DELTA (ctrl hand-Rust receipt): one more inhabitance walk over the existing `run_cli_door`; no
+/// new production route. Accounted on `gunbc.source_root_eval_driver_seed_growth`
+/// `source_root_eval_driver_seed_growth_justification` with the walks above it.
+fn walk_reference_controls(binary: &Path, workspace: &Path) -> Result<(), String> {
+    let live_dag = workspace.join("dag");
+    let live_v2 = workspace.join("src/v2");
+    let holds_root = workspace.join(REFERENCE_CHECK_HOLDS_ROOT);
+    let refused_root = workspace.join(REFERENCE_CHECK_REFUSED_ROOT);
+    for (label, path) in [
+        ("holds", holds_root.as_path()),
+        ("refused", refused_root.as_path()),
+    ] {
+        if !path.is_dir() {
+            return Err(format!(
+                "V2-NATIVE REFUSAL cause=NativeReferenceControlRootAbsent — {label} {} is not a directory",
+                path.display()
+            ));
+        }
+    }
+    let fail = |cause: &str, run: &CliDoorRun| -> String {
+        format!(
+            "V2-NATIVE REFUSAL cause={cause} — status={:?} stdout={} stderr={}",
+            run.status,
+            population_excerpt_lines(&run.stdout, 40),
+            population_excerpt(&run.stderr)
+        )
+    };
+
+    eprintln!("v2-native-cli: reference controls — check-references over the live roots");
+    let live = run_cli_door(
+        binary,
+        &population_argv("check-references", &[live_dag.as_path(), live_v2.as_path()]),
+    )?;
+    if live.status != Some(0) || !live.stdout.starts_with(REFERENCE_CHECK_HOLDS_HEAD) {
+        return Err(fail(
+            "NativeMarkedReferenceDoesNotResolveOnTheLiveRoots",
+            &live,
+        ));
+    }
+    eprintln!(
+        "v2-native-cli: live roots — {}",
+        live.stdout.lines().next().unwrap_or("")
+    );
+
+    let holds = run_cli_door(
+        binary,
+        &population_argv("check-references", &[holds_root.as_path()]),
+    )?;
+    if holds.status != Some(0)
+        || !holds.stdout.starts_with(REFERENCE_CHECK_HOLDS_HEAD)
+        || !holds.stdout.contains("6 marked reference(s), 6 resolved")
+    {
+        return Err(fail("NativeReferenceHoldingFixtureDidNotHold", &holds));
+    }
+
+    let refused = run_cli_door(
+        binary,
+        &population_argv("check-references", &[refused_root.as_path()]),
+    )?;
+    let expected = [
+        "6 marked reference(s), 1 resolved",
+        "@ref(gunbc.annotation_reference_home::NoSuchDeclaration): no such declaration",
+        "@ref(gunbc.annotation_reference_home::AnnotationReferenceHome::no_such_field): the declaration has no such field",
+        "@ref(gunbc.annotation_reference_no_such_module::Anything): cited module not read:",
+        "@ref(gunbc.annotation_reference_contested::AnnotationReferenceTwin): contested between",
+        "@ref(gunbc.annotation_reference_home::AnnotationReferenceBox::<T>): UnsupportedTarget",
+        "@ref(gunbc.annotation_reference_home): malformed coordinate",
+        ": unterminated marker",
+    ];
+    if refused.status != Some(CLI_DOOR_REFUSAL_EXIT)
+        || !refused.stdout.starts_with(REFERENCE_CHECK_REFUSED_HEAD)
+        || !expected
+            .iter()
+            .all(|fragment| refused.stdout.contains(fragment))
+    {
+        return Err(fail(
+            "NativeReferenceRefusingFixtureNotRefusedPerMarker",
+            &refused,
+        ));
+    }
+    eprintln!(
+        "v2-native-cli: reference controls held (live roots resolve; holding fixture resolves every marker; \
+         refusing fixture refuses each broken marker with its own finding)"
+    );
+    Ok(())
+}
+
 const PARSE_COMPILER_TOKENIZE_ENTRY: &str = "src/v2/compiler/tokenize.dag";
 const PARSE_COMPILER_PARSE_ENTRY: &str = "src/v2/compiler/parse.dag";
 const PARSE_COMPILER_SCHEMA_ENTRY: &str = "dag/gunbc/parse_verdict_schema.dag";
@@ -3982,12 +4081,13 @@ pub fn run_native_claim_program(
     ))
 }
 
-/// ONE RUN OF A `std.compiler_entry` `NativeServeDriver` SERVICE, as the observation
+/// ONE RUN OF A `std.compiler_entry` `NativeIngressDriver` SERVICE, as the observation
 /// `gunbc.native_serve_probe` `native_serve_probe_standing` needs and nothing it decides: the line
-/// the service announced once bound, the bytes each request got back (in request order), and the
-/// status and stderr of a second launch the door must refuse before binding. `refused_status` is
-/// `None` when that launch did not exit by itself within the deadline (it was killed), which the
-/// reader receives as a negative status and so as a start that was not refused.
+/// each instance announced, the responses in request order, each refused launch's status and stderr,
+/// and each deadline launch's announcement, response and exit status. Every argv is the reader's
+/// (`gunbc.native_serve_probe_plan` `native_serve_probe_launch`); the host spells no flag. A status
+/// is None when the process had to be killed at the run deadline, which the reader receives as a
+/// negative status and so as a process that did not exit by itself.
 pub struct NativeServeProgramRun {
     pub closure_identity: String,
     pub binary_identity: String,
@@ -3997,52 +4097,73 @@ pub struct NativeServeProgramRun {
     pub peer_announcement: String,
     pub peer_port: i64,
     pub responses: Vec<String>,
-    pub refused_status: Option<i32>,
-    pub refused_stderr: String,
-    pub served_exit_status: Option<i32>,
+    pub refused_statuses: Vec<Option<i32>>,
+    pub refused_stderrs: Vec<String>,
+    pub deadline_announcements: Vec<String>,
+    pub deadline_responses: Vec<String>,
+    pub deadline_exit_statuses: Vec<Option<i32>>,
+    /// The account the host's own effective uid resolves to, when the subject was served on a unix
+    /// socket: the peer the kernel must attest for every connection the host made. Empty otherwise.
+    pub unix_peer_account: String,
+    /// The contended launches, in `NativeServeLaunches::unix_contended` order: each one's status
+    /// and stderr, and whether its path still holds what the host put there (empty when not run).
+    pub unix_contended_statuses: Vec<Option<i32>>,
+    pub unix_contended_stderrs: Vec<String>,
+    pub unix_contended_kept: Vec<bool>,
     pub stderr: String,
 }
 
 /// WHICH PHASES A RUN PERFORMS, as the binding row declares them (`gunbc.native_serve_probe_plan`
-/// `NativeServePhase`). The host reads the three answers off the row and holds no per-binding
+/// `NativeServePhase`). The host reads the four answers off the row and holds no per-binding
 /// branch: a phase that is not declared is not run, and its observation reaches the reader as the
-/// absent value (no announcement, port -1, status -1).
+/// absent value (no announcement, port -1, empty lists).
 #[derive(Clone, Copy)]
 pub struct NativeServePhases {
     pub peer_instance: bool,
     pub refused_launch: bool,
-    pub stuck_ceiling_exit: bool,
+    pub deadline_exit: bool,
+    pub unix_socket: bool,
+}
+
+/// The launches a run performs, each an argv the reader rendered. Under the unix-socket phase the
+/// subject's argv names the socket path the host chose (`unix_socket_path`), and every request is
+/// exchanged over that socket.
+pub struct NativeServeLaunches {
+    pub subject: Vec<String>,
+    pub unix_socket_path: Option<String>,
+    /// Under the unix-socket phase, the CONTENDED launches: each a path the host contends, how it
+    /// contends it, and the argv that launches the subject's binary there. Each must refuse and
+    /// leave the path as the host holds it.
+    pub unix_contended: Vec<(NativeServeContention, String, Vec<String>)>,
+    pub refused: Vec<Vec<String>>,
+    pub deadline: Vec<Vec<String>>,
+}
+
+/// HOW THE HOST CONTENDS A SOCKET PATH under the unix-socket phase, the two ways another
+/// realization can be found at a path.
+#[derive(Clone, Copy)]
+pub enum NativeServeContention {
+    /// A live listener that never took the path's lock: the launch must find it live and refuse,
+    /// and a connection by that path must still reach the host's listener afterwards.
+    LiveListener,
+    /// A stale socket whose lock the host holds, the moment at which another realization has
+    /// judged the path stale and not yet bound it: the launch must refuse on the lock and leave the
+    /// stale socket untouched (the same inode).
+    HeldLock,
 }
 
 /// How long a launch, an announcement or one exchange may take before the run stops waiting. A
 /// deadline here is the instrument refusing to hang, not a budget the service is judged by.
 const NATIVE_SERVE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(30);
 
-fn native_serve_launch_args(release_revision: &str, request_deadline_ms: &str) -> Vec<String> {
-    vec![
-        "--request-deadline-ms".to_string(),
-        request_deadline_ms.to_string(),
-        "--host".to_string(),
-        "127.0.0.1".to_string(),
-        "--port".to_string(),
-        "0".to_string(),
-        "--release-revision".to_string(),
-        release_revision.to_string(),
-    ]
-}
-
-/// The launch that must refuse: wait for it to exit by itself, killing it at the deadline.
+/// A launch that must refuse: wait for it to exit by itself, killing it at the deadline.
 fn native_serve_refused_launch(
     binary: &Path,
-    refused_revision: &str,
-    request_deadline_ms: &str,
+    argv: &[String],
 ) -> Result<(Option<i32>, String), String> {
     use std::io::Read;
     let mut child = Command::new(binary)
-        .args(native_serve_launch_args(
-            refused_revision,
-            request_deadline_ms,
-        ))
+        .args(argv)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -4071,13 +4192,26 @@ fn native_serve_refused_launch(
 
 /// One request written to a fresh connection, and every byte the service sent before closing it.
 fn native_serve_exchange(address: &str, request: &str) -> String {
-    use std::io::{Read, Write};
-    let mut stream = match std::net::TcpStream::connect(address) {
-        Ok(stream) => stream,
-        Err(cause) => return format!("connect failed: {cause}"),
-    };
-    let _ = stream.set_read_timeout(Some(NATIVE_SERVE_DEADLINE));
-    let _ = stream.set_write_timeout(Some(NATIVE_SERVE_DEADLINE));
+    match std::net::TcpStream::connect(address) {
+        Ok(stream) => native_serve_exchange_on(stream, request),
+        Err(cause) => format!("connect failed: {cause}"),
+    }
+}
+
+/// The same exchange over the unix socket at `path`, the host's own process being the peer the
+/// service's kernel attests.
+fn native_serve_unix_exchange(path: &str, request: &str) -> String {
+    match std::os::unix::net::UnixStream::connect(path) {
+        Ok(stream) => native_serve_exchange_on(stream, request),
+        Err(cause) => format!("connect failed: {cause}"),
+    }
+}
+
+fn native_serve_exchange_on<S: std::io::Read + std::io::Write + NativeServeTimeouts>(
+    mut stream: S,
+    request: &str,
+) -> String {
+    stream.bound(NATIVE_SERVE_DEADLINE);
     if let Err(cause) = stream.write_all(request.as_bytes()) {
         return format!("write failed: {cause}");
     }
@@ -4088,19 +4222,62 @@ fn native_serve_exchange(address: &str, request: &str) -> String {
     String::from_utf8_lossy(&bytes).into_owned()
 }
 
-/// EMIT, BUILD, START AND EXCHANGE WITH ONE `NativeServeDriver` ENTRY. Preparation is the same
+/// The read and write bound on one exchange's connection, either kind.
+trait NativeServeTimeouts {
+    fn bound(&self, deadline: std::time::Duration);
+}
+
+impl NativeServeTimeouts for std::net::TcpStream {
+    fn bound(&self, deadline: std::time::Duration) {
+        let _ = self.set_read_timeout(Some(deadline));
+        let _ = self.set_write_timeout(Some(deadline));
+    }
+}
+
+impl NativeServeTimeouts for std::os::unix::net::UnixStream {
+    fn bound(&self, deadline: std::time::Duration) {
+        let _ = self.set_read_timeout(Some(deadline));
+        let _ = self.set_write_timeout(Some(deadline));
+    }
+}
+
+/// The account this host process's effective uid resolves to: under the unix-socket phase, the peer
+/// the service's kernel must attest. Read the way the service reads its peer (getpwuid_r), from the
+/// host's own uid rather than any connection.
+fn native_serve_host_account() -> Result<String, String> {
+    let uid = unsafe { libc::geteuid() };
+    let mut pwd: libc::passwd = unsafe { std::mem::zeroed() };
+    let mut buf = vec![0 as libc::c_char; 4096];
+    let mut result: *mut libc::passwd = std::ptr::null_mut();
+    let rc = unsafe { libc::getpwuid_r(uid, &mut pwd, buf.as_mut_ptr(), buf.len(), &mut result) };
+    if rc != 0 || result.is_null() {
+        return Err(format!(
+            "NATIVE-SERVE REFUSAL cause=HostAccountUnresolved — uid {uid} resolves to no account"
+        ));
+    }
+    Ok(unsafe { std::ffi::CStr::from_ptr(pwd.pw_name) }
+        .to_string_lossy()
+        .into_owned())
+}
+
+/// EMIT, BUILD, START AND EXCHANGE WITH ONE `NativeIngressDriver` ENTRY. Preparation is the same
 /// `prepare_emitted_compiler_for_entry` every native route uses. The host reads the bound address
 /// off the announcement (the service binds port 0, so the OS chooses and the announcement is the
 /// only place the choice is published) and otherwise carries bytes. A refusal here -- emission,
 /// build, spawn, or no announcement -- is the subject never having been reached.
+///
+/// THE DEADLINE LAUNCHES each start their own instance, send it one request and await its exit:
+/// a request that crosses the effective deadline ends the process (`gunbc.native_serve`
+/// `native_serve_deadline_exit_code`), so one instance can show one crossing. The host holds a
+/// loopback listener it never answers for the whole run and hands its port to the reader's
+/// deadline requests, which is how a handler is made to wait on the wall clock at almost no CPU.
 pub fn run_native_serve_program(
     source_roots: &[String],
     entry: &str,
-    release_revision: &str,
-    refused_revision: &str,
-    request_deadline_ms: &str,
+    launches: &NativeServeLaunches,
     phases: NativeServePhases,
     requests_for_peer_port: &dyn Fn(i64) -> Result<Vec<String>, String>,
+    deadline_requests_for_silent_port: &dyn Fn(i64) -> Result<Vec<String>, String>,
 ) -> Result<NativeServeProgramRun, String> {
     let prepared = prepare_emitted_compiler_for_entry(source_roots, entry)?;
     eprintln!(
@@ -4108,11 +4285,69 @@ pub fn run_native_serve_program(
         prepared.closure_identity,
         prepared.binary_path.display()
     );
-    let (refused_status, refused_stderr) = if phases.refused_launch {
-        native_serve_refused_launch(&prepared.binary_path, refused_revision, request_deadline_ms)?
-    } else {
-        (None, String::new())
-    };
+    let mut refused_statuses = Vec::new();
+    let mut refused_stderrs = Vec::new();
+    if phases.refused_launch {
+        for argv in &launches.refused {
+            let (status, stderr) = native_serve_refused_launch(&prepared.binary_path, argv)?;
+            refused_statuses.push(status);
+            refused_stderrs.push(stderr);
+        }
+    }
+    // THE CONTENDED LAUNCHES: each path is held by the host in the way its contention names, the
+    // binary is launched there, and what the path holds afterwards is read back.
+    let mut unix_contended_statuses = Vec::new();
+    let mut unix_contended_stderrs = Vec::new();
+    let mut unix_contended_kept = Vec::new();
+    for (contention, path, argv) in &launches.unix_contended {
+        let unbound = |cause: std::io::Error| {
+            format!(
+                "NATIVE-SERVE REFUSAL cause=ContentionUnheld entry={entry} path={path} — {cause}"
+            )
+        };
+        let (status, stderr, kept) = match contention {
+            NativeServeContention::LiveListener => {
+                let held = std::os::unix::net::UnixListener::bind(path).map_err(unbound)?;
+                let (status, stderr) = native_serve_refused_launch(&prepared.binary_path, argv)?;
+                let kept = std::os::unix::net::UnixStream::connect(path).is_ok()
+                    && held.set_nonblocking(true).is_ok()
+                    && held.accept().is_ok();
+                (status, stderr, kept)
+            }
+            NativeServeContention::HeldLock => {
+                use std::os::unix::fs::MetadataExt;
+                use std::os::unix::io::AsRawFd;
+                drop(std::os::unix::net::UnixListener::bind(path).map_err(unbound)?);
+                let before = std::fs::metadata(path).map_err(unbound)?.ino();
+                let lock = std::fs::OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .create(true)
+                    .truncate(false)
+                    .open(format!("{path}.lock"))
+                    .map_err(unbound)?;
+                if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+                    return Err(unbound(std::io::Error::last_os_error()));
+                }
+                let (status, stderr) = native_serve_refused_launch(&prepared.binary_path, argv)?;
+                let kept = std::fs::metadata(path)
+                    .map(|m| m.ino() == before)
+                    .unwrap_or(false);
+                drop(lock);
+                (status, stderr, kept)
+            }
+        };
+        unix_contended_statuses.push(status);
+        unix_contended_stderrs.push(stderr);
+        unix_contended_kept.push(kept);
+    }
+    // THE STALE SOCKET: under the unix-socket phase the subject's path already holds a socket no
+    // process listens on, which the subject must show stale and replace before it can announce.
+    if let Some(path) = &launches.unix_socket_path {
+        drop(std::os::unix::net::UnixListener::bind(path).map_err(|cause| {
+            format!("NATIVE-SERVE REFUSAL cause=StaleSocketUncreated entry={entry} path={path} — {cause}")
+        })?);
+    }
     // The PEER is a second instance of the same entry: the local server the entry's bound REST
     // handler is pointed at, so the answered arm is produced by a real exchange. Its port is the
     // one fact only it can publish, so the reader module is asked for the requests only after it.
@@ -4120,8 +4355,7 @@ pub fn run_native_serve_program(
         Some(native_serve_start(
             &prepared.binary_path,
             entry,
-            release_revision,
-            request_deadline_ms,
+            &launches.subject,
         )?)
     } else {
         None
@@ -4154,12 +4388,7 @@ pub fn run_native_serve_program(
             return Err(cause);
         }
     };
-    let mut subject = match native_serve_start(
-        &prepared.binary_path,
-        entry,
-        release_revision,
-        request_deadline_ms,
-    ) {
+    let mut subject = match native_serve_start(&prepared.binary_path, entry, &launches.subject) {
         Ok(subject) => subject,
         Err(cause) => {
             if let Some(instance) = &mut peer {
@@ -4168,26 +4397,74 @@ pub fn run_native_serve_program(
             return Err(cause);
         }
     };
-    let responses = match &subject.address {
-        Some(address) => requests
+    // UNDER THE UNIX-SOCKET PHASE every request goes over the socket the reader's argv named; the
+    // announcement still says whether the service bound, and the reader judges it.
+    let responses = match (&launches.unix_socket_path, &subject.address) {
+        (Some(path), Some(_)) => requests
+            .iter()
+            .map(|request| native_serve_unix_exchange(path, request))
+            .collect(),
+        (None, Some(address)) => requests
             .iter()
             .map(|request| native_serve_exchange(address, request))
             .collect(),
-        None => Vec::new(),
+        (_, None) => Vec::new(),
     };
-    // The last case drives the subject past its stuck-worker ceiling, after which it exits by
-    // itself; wait for that (bounded) and carry the status to the reader unjudged. Only a process
-    // still running at the deadline is killed, and it reports no status. The peer serves no budget
-    // case and is stopped.
-    let (served_exit_status, stderr) = if phases.stuck_ceiling_exit {
-        subject.await_exit()
+    let unix_peer_account = if phases.unix_socket {
+        match native_serve_host_account() {
+            Ok(account) => account,
+            Err(cause) => {
+                subject.stop();
+                if let Some(instance) = &mut peer {
+                    instance.stop();
+                }
+                return Err(cause);
+            }
+        }
     } else {
-        (None, subject.stop())
+        String::new()
     };
+    let stderr = subject.stop();
     let (peer_announcement, peer_stderr) = match &mut peer {
         Some(instance) => (instance.announcement.clone(), instance.stop()),
         None => (String::new(), String::new()),
     };
+    let mut deadline_announcements = Vec::new();
+    let mut deadline_responses = Vec::new();
+    let mut deadline_exit_statuses = Vec::new();
+    let mut deadline_stderr = String::new();
+    if phases.deadline_exit {
+        let silent = std::net::TcpListener::bind(("127.0.0.1", 0)).map_err(|cause| {
+            format!("NATIVE-SERVE REFUSAL cause=SilentListenerUnbound entry={entry} — {cause}")
+        })?;
+        let silent_port = silent
+            .local_addr()
+            .map_err(|cause| {
+                format!("NATIVE-SERVE REFUSAL cause=SilentListenerUnbound entry={entry} — {cause}")
+            })?
+            .port() as i64;
+        let deadline_requests = deadline_requests_for_silent_port(silent_port)?;
+        if deadline_requests.len() != launches.deadline.len() {
+            return Err(format!(
+                "NATIVE-SERVE REFUSAL cause=DeadlineCasesUnjoined entry={entry} — {} deadline launches but {} deadline requests",
+                launches.deadline.len(),
+                deadline_requests.len()
+            ));
+        }
+        for (argv, request) in launches.deadline.iter().zip(deadline_requests.iter()) {
+            let mut instance = native_serve_start(&prepared.binary_path, entry, argv)?;
+            let response = match &instance.address {
+                Some(address) => native_serve_exchange(address, request),
+                None => String::new(),
+            };
+            let (status, instance_stderr) = instance.await_exit();
+            deadline_announcements.push(instance.announcement.clone());
+            deadline_responses.push(response);
+            deadline_exit_statuses.push(status);
+            deadline_stderr.push_str(&instance_stderr);
+        }
+        drop(silent);
+    }
     Ok(NativeServeProgramRun {
         closure_identity: prepared.closure_identity,
         binary_identity: prepared.binary_identity,
@@ -4197,10 +4474,16 @@ pub fn run_native_serve_program(
         peer_announcement,
         peer_port,
         responses,
-        refused_status,
-        refused_stderr,
-        served_exit_status,
-        stderr: format!("{stderr}{peer_stderr}"),
+        refused_statuses,
+        refused_stderrs,
+        deadline_announcements,
+        deadline_responses,
+        deadline_exit_statuses,
+        unix_peer_account,
+        unix_contended_statuses,
+        unix_contended_stderrs,
+        unix_contended_kept,
+        stderr: format!("{stderr}{peer_stderr}{deadline_stderr}"),
     })
 }
 
@@ -4252,15 +4535,11 @@ impl NativeServeInstance {
 fn native_serve_start(
     binary: &Path,
     entry: &str,
-    release_revision: &str,
-    request_deadline_ms: &str,
+    argv: &[String],
 ) -> Result<NativeServeInstance, String> {
     use std::io::{BufRead, Read};
     let mut child = Command::new(binary)
-        .args(native_serve_launch_args(
-            release_revision,
-            request_deadline_ms,
-        ))
+        .args(argv)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -5089,7 +5368,7 @@ mod tests {
 ///
 /// These are SUPPLIED-VALUE claims over one interface -- `adjudicate_cli_emit_probe` decides a
 /// termination plus a rendered refusal, and both are values, so constructing them IS the mechanism
-/// (DESIGN section 3). The pairing obligation is discharged by the instrument itself: the real path
+/// (gunbc.design_argument::witness_one_interface). The pairing obligation is discharged by the instrument itself: the real path
 /// spawns the built binary and feeds this same function its real output, and deleting that spawn
 /// makes `//gunbc/instruments:v2-native-cli` stop observing the door entirely.
 ///
@@ -5114,7 +5393,7 @@ mod cli_emit_probe_tests {
     /// gunbc#11965/#11985 located every link: `lens_verdict_diagnostic_located_text` emits
     /// `<reason> @ <locus>`. The previous fixture fed bare reasons, so these controls stayed green
     /// while a CORRECT refusal from the built binary decoded as `DeterminingReasonDiffers` -- the
-    /// designed-fixture failure DESIGN section 3 names, where the claim survives the world it was
+    /// designed-fixture failure gunbc.design_argument::single_authority names, where the claim survives the world it was
     /// written against moving.
     /// The door's stdout for a closure whose one member is the fixture, as
     /// `closure_emission_json` renders it: the fixture's emitted text inside the carrier.
@@ -5723,38 +6002,5 @@ pub fn run_self_host_frontier(
     output.status.code().ok_or_else(|| {
         "V2-NATIVE REFUSAL cause=NativeRunKilled — the self-host-frontier child exited without a status"
             .to_string()
-    })
-}
-
-/// A CENSUS RUN BY THE EMITTED COMPILER (`demand-census`, `decl-ref-census`: one relay, the verb is
-/// the parameter). The seed's whole job is the preparation it shares with every native instrument;
-/// the census is the emitted binary's, which prints its own lines and decides its own exit. The
-/// child's stdout is relayed line for line and its status is returned unjudged.
-pub fn run_v2_census_verb(verb: &str, source_roots: &[String]) -> Result<i32, String> {
-    let preparation = prepare_emitted_compiler(source_roots)?;
-    let mut args = vec![verb.to_string()];
-    args.extend(source_roots.iter().cloned());
-    let output = Command::new(&preparation.binary_path)
-        .args(&args)
-        .output()
-        .map_err(|e| {
-            format!(
-                "V2-NATIVE REFUSAL cause=NativeRunSpawnFailed — spawning {}: {e}",
-                preparation.binary_path.display()
-            )
-        })?;
-    let stdout = String::from_utf8(output.stdout).map_err(|cause| {
-        format!("V2-NATIVE REFUSAL cause=NativeRunStdoutNotUtf8 — {verb} stdout: {cause}")
-    })?;
-    for line in stdout.lines() {
-        println!("{line}");
-    }
-    for line in String::from_utf8_lossy(&output.stderr).lines() {
-        eprintln!("{line}");
-    }
-    output.status.code().ok_or_else(|| {
-        format!(
-            "V2-NATIVE REFUSAL cause=NativeRunKilled — the {verb} child exited without a status"
-        )
     })
 }

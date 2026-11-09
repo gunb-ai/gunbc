@@ -48,7 +48,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // file must spell the identity of the seed roster's row at position i. A difference in membership or in
 // order -- one row more, one fewer, two swapped -- puts some position's identity in another file, so the
 // comparison is a join and not a count. The seed is a regression oracle, not the specification
-// (DESIGN section 7): a deliberate divergence would be recorded on the rule and this control amended.
+// (gunbc.design_argument::self_hosting): a deliberate divergence would be recorded on the rule and this control amended.
 //
 // THE DEMAND ROUTE IS THE OTHER HALF: gunbc.rung_drop.standing imports gunbc.rung_drop.roster, and on
 // main a native compile of it refused with resolve_module_not_found (the native census run 40134096037,

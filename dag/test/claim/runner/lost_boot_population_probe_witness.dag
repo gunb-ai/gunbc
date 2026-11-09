@@ -9,7 +9,7 @@ import gunbc.compile_diagnostic_census {
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// THE LOST-BOOT SWEEP'S UNWRITABLE ROUTES, ENROLLED AS EXECUTED REDS (DESIGN §4b). The probe source
+// THE LOST-BOOT SWEEP'S UNWRITABLE ROUTES, ENROLLED AS EXECUTED REDS (gunbc.design_argument::guarantee_ladder). The probe source
 // test.probe.lost_boot_population_probe calls the sweep internals from outside, fabricates a
 // derived-empty population, and reaches the supplied-width constructors through each witness helper;
 // each must refuse at its subject. The control names the same modules and calls only the

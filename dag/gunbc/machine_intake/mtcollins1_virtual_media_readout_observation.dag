@@ -160,7 +160,8 @@ module gunbc.machine_intake.mtcollins1_virtual_media_readout_observation
 // sentence, which no hash can do and which is why the quoted values above are quoted from the
 // capture rather than paraphrased from memory.
 
-import std.types { Bool, Int, NonEmptyStr, List, EpochMs, HttpStatus, list_length }
+import std.types { Bool, Int, NonEmptyStr, List, EpochMs, HttpStatus }
+import std.algebra { length }
 import extdeps.ietf.http_semantics { HttpMethod }
 import std.optional { Present, Absent, optional_present, optional_absent }
 import std.list { list_member, first_where }
@@ -221,7 +222,7 @@ type TransferProtocolReadout
 // method and status use the repo's existing HTTP authorities rather than a fresh string/Int pair:
 // HttpMethod (extdeps.ietf.http_semantics, the RFC 9110 method set) and HttpStatus (std.types, an
 // Int refined to 100-599). Minting a parallel authority for a concept the repo already models is a
-// failed decomposition (DESIGN §2), and a NonEmptyStr method would let a row hold "GTE" -- a typo
+// failed decomposition (gunbc.design_argument::minimize_redundancy), and a NonEmptyStr method would let a row hold "GTE" -- a typo
 // no type checks -- while still passing the GET-only predicate. As HttpMethod, a write cannot be
 // spelled in a row that presents itself as a GET, and a status outside 100-599 cannot be stored.
 type BmcSurfaceProbeRow {
@@ -241,7 +242,7 @@ data oem_web_server: NonEmptyStr = "lighttpd"
 // Bool/string pair leaves a state like "credential available, and here is a stale 'not
 // provisioned' principal" writable, where the string only means anything under the false arm.
 // Storing the sum makes the unavailable arm carry its principal and cause, and the available arm
-// carry nothing that could go stale. DESIGN §5: "Stronger than catching a wrong state is making it
+// carry nothing that could go stale. gunbc.design_argument::fail_closed: "Stronger than catching a wrong state is making it
 // unwritable."
 type B0CredentialGap
   = GapNone
@@ -481,7 +482,7 @@ fn ladder_is_get_only(readout: B0VirtualMediaReadout) -> Bool {
 fn b0_media_route_admission(readout: B0VirtualMediaReadout) -> BmcMediaRouteAdmission {
   match readout.transfer_protocol_readout {
     ReadoutRead { protocols: protocols } =>
-      if list_length(items: protocols) == 0 {
+      if length(xs: protocols) == 0 {
         RouteUnsettledUnread {
           cause: "VirtualMedia answered and admitted no protocol at all: nothing was admitted, which is not an admission of NFS and so selects neither route",
         }
@@ -504,7 +505,7 @@ fn b0_media_route_admission(readout: B0VirtualMediaReadout) -> BmcMediaRouteAdmi
 
 // B0'S RESULT, AS A VALUE. It says NEITHER ROUTE.
 //
-// CONSUMER CLASSIFICATION (DESIGN §3c), STATED HONESTLY BECAUSE THE HONEST ANSWER IS "NOT YET
+// CONSUMER CLASSIFICATION (gunbc.design_argument::consumption), STATED HONESTLY BECAUSE THE HONEST ANSWER IS "NOT YET
 // WIRED". The consumers of this datum today are: (a) this module's witness, which pins the
 // selector's arms; and (b) the plan gunbc.plans.boot_origin_bmc_media, whose survey and B0 phase
 // text now carry this reading's outcome and whose retirement condition already gates on "mtcollins1

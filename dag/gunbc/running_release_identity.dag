@@ -59,7 +59,7 @@ fn release_revision_text_valid(text: String) -> Bool {
 
 // Lowercase-hex validation routes through std.content_hash content_hash_validate_lower_hex_length
 // rather than a private predicate, because 'exactly N lowercase hex digits' already has ONE
-// authority in this corpus (DESIGN section 3) and a second copy would be a nickname that drifts. 40
+// authority in this corpus (gunbc.design_argument::single_authority) and a second copy would be a nickname that drifts. 40
 // digits is git's Sha1 object-name width, the width extdeps.git.object_store refines GitObjectId
 // to; the ancestry probes this revision feeds (extdeps.git.inspect MergeBaseIsAncestor) take
 // CommitSha, so the wire fact stays CommitSha and is validated at every boundary it crosses rather

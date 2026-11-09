@@ -17,7 +17,7 @@ import std.types { String, List }
 // WHY IT LIVES HERE RATHER THAN BESIDE THE COMMAND THAT USES IT (2026-09-12, #10940 srv2 closure
 // receipt). This row is POLICY: what this repository asserts about warnings. Its neighbours in
 // gunbc.repo.repo_self_build are REALIZATION: how a cargo invocation is constructed
-// (extdeps.rust.cargo_build cargo_clippy_command, extdeps.exec.command argv_words). DESIGN section 3
+// (extdeps.rust.cargo_build cargo_clippy_command, extdeps.exec.command argv_words). gunbc.design_argument::single_authority
 // keeps those apart, and a `.dag` import is module-level, so a consumer that wants only the policy
 // had no way to avoid the transport.
 //

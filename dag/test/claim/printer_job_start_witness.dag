@@ -10,7 +10,7 @@ import extdeps.oasis.mqtt {
 import extdeps.printing.bambu_lab_lan_protocol {
   bambu_request_topic, bambu_report_topic, bambu_lan_mqtt_endpoint,
   bambu_start_command, bambu_start_payload_json, bambu_start_command_qos,
-  bambu_lan_mqtt_user,
+  bambu_lan_mqtt_user, BambuAmsTray, bambu_ams_tray_of_slot,
 }
 import extdeps.tools.mosquitto_pub { mosquitto_publish_command }
 import gunbc.auth.mosquitto_options_binding { mosquitto_options_content }
@@ -23,6 +23,11 @@ import gunbc.fleet.printer_job_start {
   start_refusal, start_receipt, start_may_be_replayed, classify_publish_outcome,
 }
 import gunbc.fleet.fleet_asset_identity { printer_01, printer_02, ams_01 }
+import extdeps.printing.fdm { Pla, Petg }
+import gunbc.fleet.printer_ams_loading {
+  AmsSlotReading, AmsTraySelection, AmsTraySelected, AmsTrayRefused, select_ams_tray, select_ams_tray_from,
+}
+import product.printing.print_recipe { a1_mini_petg_functional_v1, a1_mini_pla_prototype_v1 }
 
 // THE ARGV IS THE SUBJECT OF MOST OF THESE WITNESSES, because the guarantee this leg adds is a
 // NEGATIVE one -- that a credential does not appear on a command line -- and a negative property is
@@ -33,6 +38,14 @@ import gunbc.fleet.fleet_asset_identity { printer_01, printer_02, ams_01 }
 data a_serial: NonEmptyStr = "0300CA660400324"
 data another_serial: NonEmptyStr = "0300CA652201400"
 data a_host: NonEmptyStr = "192.168.1.235"
+// The tray is made only by the checked constructor (BambuAmsTray is sole_constructor); a slot with no
+// tray yields an empty payload, which every row below asserts against and so fails.
+fn slot_one_payload(remote: NonEmptyStr, sequence_id: NonEmptyStr) -> String {
+  match bambu_ams_tray_of_slot(slot: 1) {
+    Absent => ""
+    Present { value: t } => bambu_start_payload_json(command: bambu_start_command(remote_name: remote, ams_tray: t), sequence_id: sequence_id)
+  }
+}
 data a_remote_name: NonEmptyStr = "gauge_container.3mf"
 data a_ca_path: FilePath = "/tmp/fixture/printer_ca.pem" as FilePath
 
@@ -40,8 +53,7 @@ fn start_argv() -> List<String> {
   argv_words(command: mosquitto_publish_command(
     endpoint: bambu_lan_mqtt_endpoint(host: a_host),
     topic: bambu_request_topic(serial: a_serial) as NonEmptyStr,
-    payload: bambu_start_payload_json(
-      command: bambu_start_command(remote_name: a_remote_name), sequence_id: "1"),
+    payload: slot_one_payload(remote: a_remote_name, sequence_id: "1"),
     qos: bambu_start_command_qos,
     ca_bundle: a_ca_path))
 }
@@ -152,8 +164,7 @@ test fn the_start_command_is_not_published_at_most_once() -> Bool {
 // THE START PAYLOAD NAMES A FILE ALREADY ON THE MACHINE, and names THIS one. A payload that carried
 // a stale or defaulted name would start whichever project happened to be on the card.
 test fn the_start_payload_names_the_delivered_file() -> Bool {
-  let json = bambu_start_payload_json(
-    command: bambu_start_command(remote_name: a_remote_name), sequence_id: "7")
+  let json = slot_one_payload(remote: a_remote_name, sequence_id: "7")
   string_contains(s: json, pattern: "file:///sdcard/gauge_container.3mf")
     && string_contains(s: json, pattern: "\"sequence_id\": \"7\"")
     && string_contains(s: json, pattern: "\"command\": \"project_file\"")
@@ -161,8 +172,7 @@ test fn the_start_payload_names_the_delivered_file() -> Bool {
 
 // Physical slot 1 is wire tray 0, not tray 1 or the external spool.
 test fn the_start_payload_selects_ams_slot_one() -> Bool {
-  let json = bambu_start_payload_json(
-    command: bambu_start_command(remote_name: a_remote_name), sequence_id: "1")
+  let json = slot_one_payload(remote: a_remote_name, sequence_id: "1")
   string_contains(s: json, pattern: "\"use_ams\": true") &&
   string_contains(s: json, pattern: "\"ams_mapping\": [0]")
 }
@@ -334,25 +344,78 @@ test fn a_clean_publish_is_still_published() -> Bool {
 // nothing would. That is a property of the current callers, not of the function, and a check whose
 // red depends on a caller nobody has written yet is the one that quietly stops being true.
 test fn a_quote_in_the_subtask_name_is_escaped_rather_than_closing_the_string() -> Bool {
-  let json = bambu_start_payload_json(
-    command: bambu_start_command(remote_name: "evil\".3mf" as NonEmptyStr),
-    sequence_id: "1" as NonEmptyStr)
+  let json = slot_one_payload(remote: "evil\".3mf" as NonEmptyStr, sequence_id: "1" as NonEmptyStr)
   string_contains(s: json, pattern: "evil\\\".3mf")
     && !string_contains(s: json, pattern: "\"subtask_name\": \"evil\".3mf\"")
 }
 
 test fn a_backslash_in_the_sequence_id_is_escaped() -> Bool {
-  let json = bambu_start_payload_json(
-    command: bambu_start_command(remote_name: a_remote_name),
-    sequence_id: "a\\b" as NonEmptyStr)
+  let json = slot_one_payload(remote: a_remote_name, sequence_id: "a\\b" as NonEmptyStr)
   string_contains(s: json, pattern: "\"sequence_id\": \"a\\\\b\"")
 }
 
 // THE POSITIVE CONTROL: an ordinary value passes through unmangled, so the two rows above are not
 // green merely because the escaper mangles everything.
 test fn an_ordinary_sequence_id_is_not_altered() -> Bool {
-  let json = bambu_start_payload_json(
-    command: bambu_start_command(remote_name: a_remote_name),
-    sequence_id: "plain-1" as NonEmptyStr)
+  let json = slot_one_payload(remote: a_remote_name, sequence_id: "plain-1" as NonEmptyStr)
   string_contains(s: json, pattern: "\"sequence_id\": \"plain-1\"")
+}
+
+// THE TRAY IS SELECTED, NOT DEFAULTED (gunbc.design_argument::selection_precedes_convergence). The positive: the PETG recipe against the declared
+// readings (PETG in slot 4) names wire tray 3 and the payload carries it.
+test fn a_petg_recipe_selects_ams_slot_four_which_is_wire_tray_three() -> Bool {
+  match select_ams_tray(printer: printer_01, material: a1_mini_petg_functional_v1.material) {
+    AmsTrayRefused { cause: _ } => false
+    AmsTraySelected { tray: t, slot: slot } =>
+      slot == 4 && t.index == 3
+        && string_contains(s: bambu_start_payload_json(
+             command: bambu_start_command(remote_name: a_remote_name, ams_tray: t), sequence_id: "1"),
+           pattern: "\"ams_mapping\": [3]")
+  }
+}
+
+// The discriminating control: the PLA recipe is not sent to slot 4, so the positive above is not
+// green merely because every recipe selects tray 3.
+test fn a_pla_recipe_selects_ams_slot_one() -> Bool {
+  match select_ams_tray(printer: printer_02, material: a1_mini_pla_prototype_v1.material) {
+    AmsTrayRefused { cause: _ } => false
+    AmsTraySelected { tray: t, slot: slot } => slot == 1 && t.index == 0
+  }
+}
+
+// THE RED: PETG is not loaded (only PLA is declared), so the route refuses rather than starting from
+// slot 1.
+test fn a_recipe_whose_material_is_not_loaded_is_refused_never_defaulted_to_slot_one() -> Bool {
+  match select_ams_tray_from(
+    readings: [AmsSlotReading { printer: printer_01, slot: 1, material: Pla, read_on: "2026-11-04" }],
+    printer: printer_01, material: Petg) {
+    AmsTrayRefused { cause: _ } => true
+    AmsTraySelected { tray: _, slot: _ } => false
+  }
+}
+
+// Two spools of one material is a choice the readings do not make.
+test fn two_slots_holding_the_recipe_material_refuse() -> Bool {
+  match select_ams_tray_from(
+    readings: [
+      AmsSlotReading { printer: printer_01, slot: 3, material: Petg, read_on: "2026-11-04" },
+      AmsSlotReading { printer: printer_01, slot: 4, material: Petg, read_on: "2026-11-04" }],
+    printer: printer_01, material: Petg) {
+    AmsTrayRefused { cause: _ } => true
+    AmsTraySelected { tray: _, slot: _ } => false
+  }
+}
+
+// A reading for another printer's AMS is not this printer's.
+test fn another_printers_loading_does_not_satisfy_this_printer() -> Bool {
+  match select_ams_tray_from(
+    readings: [AmsSlotReading { printer: printer_02, slot: 4, material: Petg, read_on: "2026-11-04" }],
+    printer: printer_01, material: Petg) {
+    AmsTrayRefused { cause: _ } => true
+    AmsTraySelected { tray: _, slot: _ } => false
+  }
+}
+
+test fn a_slot_outside_the_four_has_no_tray() -> Bool {
+  match bambu_ams_tray_of_slot(slot: 5) { Absent => true Present { value: _ } => false }
 }

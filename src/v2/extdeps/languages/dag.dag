@@ -1266,7 +1266,7 @@ fn dag_grammar_qualified_type_expr() -> GrammarExpr {
 }
 
 // A generic argument is a type or a natural-number literal: `Compose<Int, MachineWidth<8>>`
-// (std.integer), the one axis DESIGN section 2 cites. The literal is lexeme-stamped here, so v2 parse
+// (std.integer), the one axis gunbc.design_argument::minimize_redundancy cites. The literal is lexeme-stamped here, so v2 parse
 // keeps it as an integer-literal atom carrying its spelling; the value is NOT lost at parse (held by
 // type_application_kind int_literal_generic_argument_is_a_literal_value_node_holds), and a kinded
 // parameter's body read takes it from the application's solved instance (A0-1). It is admitted in the
@@ -1689,13 +1689,13 @@ fn dag_grammar_let_sugar_expr() -> GrammarExpr {
 fn dag_grammar_arrow_lambda_name_head_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_sequence(
-      left: dag_grammar_ident_or_type_decl_modifier_name(),
+      left: dag_grammar_primary_name_expr(),
       right: dag_grammar_terminal(token_class: ^dag_token_fat_arrow)
     ),
     right: dag_grammar_sequence(
       left: dag_grammar_terminal(token_class: ^dag_token_lparen),
       right: dag_grammar_sequence(
-        left: dag_grammar_ident_or_type_decl_modifier_name(),
+        left: dag_grammar_primary_name_expr(),
         right: dag_grammar_terminal(token_class: ^dag_token_comma)
       )
     )
@@ -1750,7 +1750,7 @@ fn dag_grammar_expr_expr() -> GrammarExpr {
 // not chain -- `a < b < c` refuses with NonAssociativeOperatorChain -- and every other row folds
 // left. `|>` binds LOOSEST: `a + b |> f` is `(a + b) |> f` (sharp-raven-357 ruling 2026-10-05; the
 // seed's tightest `|>`, dag/extdeps/languages/dag/syntax.dag dag_operators, is a seed defect under
-// DESIGN section 7, a declared divergence rather than a reading v2 owes). One row per token class, so
+// gunbc.design_argument::self_hosting, a declared divergence rather than a reading v2 owes). One row per token class, so
 // selecting a row is a lookup and no ordered alternative exists for the overlap roster to inspect
 // (v2.compiler.parse grammar_infix_tables_well_formed refuses a class named twice).
 fn dag_infix_row(token_class: Symbol, binding_power: Int, associativity: InfixAssociativity) -> InfixOperatorRow {
@@ -1892,7 +1892,7 @@ fn dag_grammar_untyped_params_helper() -> GrammarExpr {
   dag_grammar_comma_list_expr(
     item: dag_grammar_sequence(
       left: dag_grammar_value_name_guard(binder: dag_grammar_value_name_keyword_terminal(admit_bool_literals: false)),
-      right: dag_grammar_ident_or_type_decl_modifier_name()
+      right: dag_grammar_primary_name_expr()
     )
   )
 }
@@ -1943,7 +1943,7 @@ fn dag_grammar_postfix_is_suffix_expr() -> GrammarExpr {
 // An index suffix `[e]` is a postfix step beside the dotted and cast ones, so `xs[i]` is ONE
 // postfix expression. Before it the suffix did not exist and `xs[i]` parsed as `xs` followed by the
 // list literal `[i]`, two juxtaposed expressions that lowering read as the first alone or as a
-// second statement -- a silent misread (DESIGN section 5). A slice `[a..b]` has no production and
+// second statement -- a silent misread (gunbc.design_argument::fail_closed). A slice `[a..b]` has no production and
 // refuses at parse, as it did.
 //
 // THE `[` IS ON THE OPERAND'S LINE. v1 reads a `[` as an index only when it is the very next token
@@ -2489,7 +2489,7 @@ fn dag_grammar_arrow_lambda_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_sequence(
       left: dag_grammar_value_name_binder_before(
-        name: dag_grammar_ident_or_type_decl_modifier_name(),
+        name: dag_grammar_primary_name_expr(),
         follow: dag_grammar_terminal(token_class: ^dag_token_fat_arrow)
       ),
       right: dag_grammar_sequence(
@@ -2501,14 +2501,14 @@ fn dag_grammar_arrow_lambda_expr() -> GrammarExpr {
       left: dag_grammar_terminal(token_class: ^dag_token_lparen),
       right: dag_grammar_sequence(
         left: dag_grammar_value_name_binder_before(
-          name: dag_grammar_ident_or_type_decl_modifier_name(),
+          name: dag_grammar_primary_name_expr(),
           follow: dag_grammar_terminal(token_class: ^dag_token_comma)
         ),
         right: dag_grammar_sequence(
           left: dag_grammar_terminal(token_class: ^dag_token_comma),
           right: dag_grammar_sequence(
             left: dag_grammar_value_name_binder_before(
-              name: dag_grammar_ident_or_type_decl_modifier_name(),
+              name: dag_grammar_primary_name_expr(),
               follow: dag_grammar_value_name_ends_param()
             ),
             right: dag_grammar_sequence(
@@ -2516,7 +2516,7 @@ fn dag_grammar_arrow_lambda_expr() -> GrammarExpr {
                 element: dag_grammar_sequence(
                   left: dag_grammar_terminal(token_class: ^dag_token_comma),
                   right: dag_grammar_value_name_binder_before(
-                    name: dag_grammar_ident_or_type_decl_modifier_name(),
+                    name: dag_grammar_primary_name_expr(),
                     follow: dag_grammar_value_name_ends_param()
                   )
                 )
@@ -2876,7 +2876,7 @@ fn dag_grammar_fn_decl_expr() -> GrammarExpr {
 
 // `test fn` IS A CONTEXTUAL PRODUCTION, NOT A RESERVED KEYWORD. `test` stays an ordinary identifier
 // everywhere else — dag/extdeps/languages/typescript/program.dag models the TypeScript
-// compiler's own `Cond { test: ... }` field under §3's real-upstream-names rule, and a reserved
+// compiler's own `Cond { test: ... }` field under gunbc.design_argument::single_authority's real-upstream-names rule, and a reserved
 // kw_test would break that module's parse. In THIS position the marker is the EXACT WORD `test`, a
 // literal terminal, as `service` and `resource` are: the top-level choice is then three distinct
 // exact words beside the keyword-led alternatives, disjoint by construction (operator
@@ -4340,7 +4340,7 @@ fn dag_language_model_surface_empty_prelude() -> LanguageModel {
   }
 }
 
-// THE TOKEN-CLASS AND KEYWORD-CLASS MEMBERSHIP OF THE DAG LEX RULE SET, as data (DESIGN.md §2
+// THE TOKEN-CLASS AND KEYWORD-CLASS MEMBERSHIP OF THE DAG LEX RULE SET, as data (gunbc.design_argument::minimize_redundancy
 // question 1: the repetition was authored duplication, so it is repaired by carrying the first
 // value, not by caching a later request). A data declaration's initializer
 // evaluates once per interpretation (the v1 interpreter caches the data_cache at its declaration
@@ -4889,7 +4889,7 @@ fn dag_add_param_binding_ids() -> List<Symbol> {
 // each rostered under gunbc.recurring_failure_mode with its node as the trigger. STRING IS A KERNEL TYPE
 // BY ITS OWN DECLARATION (gunbc#12760): v2.std.node String, the opaque host text, with
 // host_text_type_node. It is NOT v2.std.text String, which is the structural FreeMonoid<Char>
-// (DESIGN section 4, the text ruling). Its row is the one whose foreign_declaration is
+// (gunbc.design_argument::closed_grounded_substrate, the text ruling). Its row is the one whose foreign_declaration is
 // ForeignDeclarationBinds: String is the one kernel spelling the corpus also declares with another
 // meaning, so a String declaration the author reached binds that declaration and the host text
 // applies only where none is visible (neat-boar-16, decision A). Every other row refuses a foreign
@@ -5132,7 +5132,7 @@ fn dag_kernel_type_foreign_declaration(canonical: Symbol) -> KernelSpellingForei
 }
 
 // THE KERNEL SPELLING OF THE TYPE A STRING LITERAL DENOTES: host text, the kernel `String`
-// (DESIGN section 4, Ruling 3; ruling neat-boar-16: an unimported String denotes the kernel text
+// (gunbc.design_argument::closed_grounded_substrate, Ruling 3; ruling neat-boar-16: an unimported String denotes the kernel text
 // binding, never std.string_type). It is admitted as a key type only where the kernel table above
 // binds it, which it does since gunbc#12760 (v2.std.node String, host_text_type_node); a `String`
 // that resolves to a declaration is a different type. Consumed by v2.compiler.resolve's map arm (the key-kind rule).
@@ -5554,7 +5554,7 @@ fn dag_string_decode_step(state: DagStringDecode, c: Int) -> DagStringDecode {
 
 // The lexeme's body TEXT, sliced; a lexeme is framed when its first and last scalars are the open
 // and close and there are at least two of them (quotes for a literal; quote/`{` and `}`/quote for
-// a template part). THE BODY IS READ BY SLICE, NOT REBUILT (DESIGN 6: a fixed cost, regardless of
+// a template part). THE BODY IS READ BY SLICE, NOT REBUILT (gunbc.design_argument::how_to_work: a fixed cost, regardless of
 // n): the earlier shape unfolded the lexeme to scalars and rebuilt the body one Cons at a time
 // (skip + list_init), so every caller of the lexer paid the fold's depth on the literal's length —
 // a 10^5-scalar literal overflowed the seed interpreter. string_length counts scalars, char_at and
@@ -5850,8 +5850,8 @@ fn dag_string_template_part_value_optional(node: Node) -> Optional<String> {
 // THE GRAMMAR SHAPE, AS A TYPE: a template is a text, then one or more (hole, text) pairs
 // (dag_grammar_string_template_expr: head, expr, repeat(middle, expr), tail). Adjacent texts, a
 // leading hole, a trailing hole, or a hole-free template have no constructor. segments is
-// std.algebra FreeSemigroup (DESIGN section 2: the nonempty carrier already exists; an empty
-// inhabitant has no representation), not a List with an Empty refusal (DESIGN section 5).
+// std.algebra FreeSemigroup (gunbc.design_argument::minimize_redundancy: the nonempty carrier already exists; an empty
+// inhabitant has no representation), not a List with an Empty refusal (gunbc.design_argument::fail_closed).
 type StringTemplateText {
   value: String
   at: Node
@@ -7486,7 +7486,7 @@ fn dag_surface_identity_is_top_level_item(id: Symbol) -> Bool {
 // Parse identities that inhabit a module as Authored members and are not record binders:
 // the module surface and graft-body stamp as the only explicit extras, plus every emitted
 // identity of dag_grammar_top_level_item_productions. Identity only — a missing stamp is
-// false, never a Conj-shape guess (DESIGN §5: refuse the member, never widen to the container).
+// false, never a Conj-shape guess (gunbc.design_argument::fail_closed: refuse the member, never widen to the container).
 fn dag_surface_identity_is_module_member(id: Symbol) -> Bool {
   (id == ^dag_surface_module)
     || (id == ^namespace_graft_module_body)
@@ -7665,11 +7665,11 @@ fn dag_surface_kw_then_ident_from_captured(captured: Node) -> Optional<Symbol> {
 // that needed it -- v2.lens.complexity_accumulator_copy.analyze arg_value_node reproduces it
 // step for step, and v2.compiler.body_lowering_fold body_lower_named_arg_value_optional carries
 // it fused with that stage's own operand lowering -- so a reader had to pick among three
-// spellings of one fact (DESIGN section 2: net concepts must not grow by re-invention).
+// spellings of one fact (gunbc.design_argument::minimize_redundancy: net concepts must not grow by re-invention).
 //
 // It CANNOT live in either of those: v2.compiler.body_lowering_fold imports
 // v2.compiler.fold_lowering, so a compiler stage consuming the body-lowering copy would close an
-// import cycle, and acyclicity is the import graph's only structural law (DESIGN section 3). The
+// import cycle, and acyclicity is the import graph's only structural law (gunbc.design_argument::single_authority). The
 // decoder belongs at the layer below both, beside the grammar that declares the production.
 //
 // body_lower_named_arg_value_optional is NOT a redundant copy of this and is deliberately left
@@ -8061,7 +8061,7 @@ fn alias_binding_row_target_from_decl(decl: Node, module_root: Node) -> Outcome<
 // the IMPORTING position -- "the source of truth is the walk's resolved target" -- so
 // `import m.p { A, B }` in module S is two rows, S.A -> m.p.A and S.B -> m.p.B, carried in the SAME
 // AliasBindingRow type an `alias` decl produces. Minting a second row type here would give one
-// concept two names (DESIGN section 3) and would let the two forms drift apart in the one place
+// concept two names (gunbc.design_argument::single_authority) and would let the two forms drift apart in the one place
 // they must not: what a binding at a position MEANS.
 //
 // THE BLOCK IS THE BINDING SET, NOT THE MODULE. A block-less `import m.p` yields ZERO rows rather
@@ -8353,7 +8353,7 @@ fn dag_node_is_module_surface(node: Node) -> Bool {
 
 // THE RECORD-FIELD CARRIER PREDICATE the unit-modeling and lifecycle-carrier lenses share.
 // A Conj is a record-field carrier unless THIS NODE is a module surface. A sibling that
-// happens to be a module surface does not opt the whole Conj out (DESIGN §5: refuse the
+// happens to be a module surface does not opt the whole Conj out (gunbc.design_argument::fail_closed: refuse the
 // member, never widen to the container). Other connectives are not record payloads; Disj
 // arm payloads are Conjs and are judged when those Conjs are visited.
 fn dag_node_is_record_field_carrier(node: Node) -> Bool {
@@ -8366,13 +8366,13 @@ fn dag_authored_name_is_parse_production_projection(name: Symbol) -> Bool {
 }
 
 // Stamp edges on a MODULE SURFACE only. Same spelling on an ordinary record is a user field
-// and must still be judged (DESIGN §5: refuse, never widen).
+// and must still be judged (gunbc.design_argument::fail_closed: refuse, never widen).
 fn dag_edge_is_module_surface_parse_projection(carrier: Node, name: Symbol) -> Bool {
   dag_node_is_module_surface(node: carrier) &&
     dag_authored_name_is_parse_production_projection(name: name)
 }
 
-// Per-edge skip by identity only (DESIGN §5: refuse, never widen). A non-binder record
+// Per-edge skip by identity only (gunbc.design_argument::fail_closed: refuse, never widen). A non-binder record
 // field that is an Atom or Disj must still be member_not_a_binder. fn-decl is the
 // production identity dag_surface_fn_decl (unchanged meaning for other callers).
 // test-fn identity lives only here, not in dag_node_is_fn_decl.
@@ -8464,7 +8464,7 @@ fn namespace_graft_spine_shaped_end(node: Node) -> Node {
 // THE ONE LINEAR SPINE WALK. Every link below a verified segment is itself a segment -- the chain
 // that verified it passes through them -- so a walker verifies once at its entry and then steps by
 // shape. Re-verifying membership at every level would re-walk the
-// remaining chain per step, a quadratic fold (DESIGN section 6, bare minimum cost). Present only
+// remaining chain per step, a quadratic fold (gunbc.design_argument::how_to_work, bare minimum cost). Present only
 // when `node` is a spine segment; the value is the marked module body the spine ends at.
 fn namespace_graft_spine_body_optional(node: Node) -> Optional<Node> {
   match namespace_graft_spine_shaped_edge_optional(node: node) {

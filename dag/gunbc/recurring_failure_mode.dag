@@ -8,7 +8,7 @@ module gunbc.recurring_failure_mode
 // additive, zero sentences ever lost. That is textual contention standing in for semantic
 // contention: the classes are independent, and only the line was shared. Split into rows, two lanes
 // touch two declarations and never collide, while two lanes editing the SAME class still conflict --
-// which is correct, because that is real disagreement about one fact (DESIGN section 2).
+// which is correct, because that is real disagreement about one fact (gunbc.design_argument::minimize_redundancy).
 //
 // THIS CUT IS MECHANICAL AND ITS ORACLE IS AN EMPTY DIFF. Each row carries its authored sentence
 // BYTE-FOR-BYTE and the projection renders them in roster order, so regenerating DESIGN.md after the
@@ -84,13 +84,13 @@ module gunbc.recurring_failure_mode
 // declaration makes visible. Those counts are read off the derivation base named in the PR body; they are a
 // dated observation about that tree, not an invariant.
 //
-// THE RECEIPTS ARE STILL `String` AND THAT IS AN OPEN SECTION 4c GAP, NAMED HERE RATHER THAN LEFT
-// FOR A READER TO DISCOVER. Section 4c says any invariant, receipt, ruling, citation, status, count
+// THE RECEIPTS ARE STILL `String` AND THAT IS AN OPEN gunbc.design_argument::source_annotations GAP, NAMED HERE RATHER THAN LEFT
+// FOR A READER TO DISCOVER. gunbc.design_argument::source_annotations says any invariant, receipt, ruling, citation, status, count
 // or dissolution condition belongs in a typed carrier, and a `List<String>` element still mixes all
 // of those inside one prose blob. THIS CHANGE NEITHER CREATES NOR REPAIRS THAT: the field it
 // replaces was `authored: String`, one larger blob of exactly the same unclassified prose, so the
 // classification rung is unmoved and only the merge geometry improved. Saying the parts are TYPED
-// would be the section 4b(1) inflation this file already warns about one paragraph down, which is
+// would be the gunbc.design_argument::guarantee_ladder (rung honesty) inflation this file already warns about one paragraph down, which is
 // why the wording above says SEVERABLE.
 //
 // WHY CLASSIFICATION IS NOT DONE HERE, since a gap named without a reason is just an excuse. The
@@ -101,7 +101,7 @@ module gunbc.recurring_failure_mode
 // cannot be verified by the content-hash identity that makes this change safe. Attempting both at
 // once would give up the one property that lets this land at all: that every carried byte is
 // provably unchanged. NEXT-RUNG TRIGGER, a capability rather than an artifact: a receipt variant
-// model whose constructors cover the kinds section 4c enumerates, sufficient for an EXHAUSTIVE
+// model whose constructors cover the kinds gunbc.design_argument::source_annotations enumerates, sufficient for an EXHAUSTIVE
 // match over a row's parts -- at which point an unclassified receipt has no constructor and the
 // prose cannot be written, which is rung 4 rather than a lens. THE SPLIT IS WHAT MAKES THAT
 // AFFORDABLE: classifying a row becomes an edit to one file that conflicts with nobody, where
@@ -111,7 +111,7 @@ module gunbc.recurring_failure_mode
 // carries no severable tail. The SHAPE IS NOT ENFORCED -- no lens covers row shape on this carrier
 // -- so one hand-authored multi-line row restores the two-line tail and the whole geometry with it.
 // The invalid state therefore stays WRITABLE and this is mechanically preventable at best, not
-// structural; calling the shape construction would be the rung inflation DESIGN section 4b(1) names,
+// structural; calling the shape construction would be the rung inflation gunbc.design_argument::guarantee_ladder (rung honesty) names,
 // sitting in the annotation an author consults before appending. NEXT-RUNG TRIGGER, named as the
 // capability and not as an artifact that would contribute to one: a row-shape obligation DECIDED for
 // every declaration of a growth-surface type rather than observed on the rows that happen to exist
@@ -126,7 +126,7 @@ module gunbc.recurring_failure_mode
 // refusals at the module index (`expected expression, found Eq` -- a `data` keyword landing in
 // record-field position), and losing `evidence: [],` alone is a RESOLVE refusal (`missing required
 // field 'evidence' in literal of type 'RecurringFailureMode'`). Nothing silent was found in that
-// set. A brace-balance or declared-versus-rostered check would be the DESIGN section 4b decoration:
+// set. A brace-balance or declared-versus-rostered check would be the gunbc.design_argument::guarantee_ladder decoration:
 // permanently green, because the only corpus it could fire on never reaches it.
 //
 // A THIRD CONSEQUENCE NOBODY ARGUED FOR IN ADVANCE, appended by a later lane rather than authored
@@ -158,7 +158,7 @@ module gunbc.recurring_failure_mode
 // ANECDOTE. Two row-bodies above one tail fail loudly -- the loss states are measured above and every
 // one of them is a parse or resolve refusal. Two FUNCTION bodies above one brace need not fail at
 // all: the outcome can be a function that SWALLOWED THE OTHER'S SIGNATURE AND COMPILED. A silently
-// wrong merge that typechecks is the artifact DESIGN section 5 ranks worst, and the reflexive
+// wrong merge that typechecks is the artifact gunbc.design_argument::fail_closed ranks worst, and the reflexive
 // additive resolution is precisely what produces it.
 //
 // THE READ THAT CATCHES IT COSTS NOTHING: before unioning, look at the LAST line of each side and the
@@ -168,16 +168,16 @@ module gunbc.recurring_failure_mode
 import std.types { String, NonEmptyStr, List, Int }
 import std.decl_ref { DeclarationRef }
 import gunbc.guarantee_rung { GuaranteeRung, guarantee_rung_index }
-import gunbc.rung_climb { ClimbBlocker, AwaitsOneGrounding, GroundingAuthority, GroundingDeclared, GroundingUndeclared, ClimbableButUnbuilt, TriggerAdmission, TriggerAdmitted, trigger_capability_admission }
+import gunbc.rung_climb { ClimbBlocker, AwaitsOneGrounding, GroundingAuthority, GroundingDeclared, GroundingUndeclared, ClimbableButUnbuilt }
 
-// WHERE A CLASS STANDS ON THE GUARANTEE LADDER, TYPED (DESIGN section 4b, the ledger rule's rung
+// WHERE A CLASS STANDS ON THE GUARANTEE LADDER, TYPED (gunbc.design_argument::guarantee_ladder, the ledger rule's rung
 // found at / ceiling / next trigger). The rung and trigger vocabulary is gunbc.guarantee_rung and
 // gunbc.rung_climb (the referent-free core gunbc.guarantee_stall composes with its `awaiting`
 // referents), not a second one: a row's below-ceiling standing IS a stall without the subject, the
 // population and the awaited lanes. The ledger does not import the stall, so reading rungs does not
 // reach roadmap_model and extdeps.github.
 //
-// THE POSITION TYPE IS SEPARATE FROM THE RUNG TYPE because section 4b says silent wrongness is below
+// THE POSITION TYPE IS SEPARATE FROM THE RUNG TYPE because gunbc.design_argument::guarantee_ladder says silent wrongness is below
 // the ladder and not a rung, so a class FOUND silently wrong has no GuaranteeRung to be found at;
 // guarantee_rung's OutsideTheLadder is the different fact "external reality, observed at a boundary".
 type RungPosition
@@ -185,9 +185,9 @@ type RungPosition
   | FoundOnRung { rung: GuaranteeRung }
 
 // BELOW CEILING WITHOUT A BLOCKER IS UNCONSTRUCTIBLE: BelowCeiling has no arm without a blocker
-// (which of the three section 4b ob.2 cases). The trigger capability (section 4b ob.3) is a bare
-// String, so an empty or referent-spelled one IS constructible and standing_admission REFUSES it
-// (validation, rung 2). AtCeiling carries ONE rung, so at-ceiling-with-a-trigger and
+// (which of the three gunbc.design_argument::guarantee_ladder ob.2 cases). The trigger capability (gunbc.design_argument::guarantee_ladder ob.3) is a bare
+// String, so an empty or referent-spelled one IS constructible and nothing refuses it
+// now that the retired rung census no longer reads standings. AtCeiling carries ONE rung, so at-ceiling-with-a-trigger and
 // current-above-ceiling have no constructor.
 //
 // `current` is the rung the row's prose last states for the class (a CURRENT RUNG / RUNG NOW /
@@ -229,30 +229,3 @@ fn authored(r: RecurringFailureMode) -> String {
   join(r.receipts, " ")
 }
 
-fn rung_position_index(p: RungPosition) -> Int {
-  match p {
-    FoundBelowTheLadder => -1
-    FoundOnRung { rung: r } => guarantee_rung_index(r: r)
-  }
-}
-
-type StandingAdmission
-  = StandingAdmitted
-  | StandingNotBelowCeiling { subject: String }
-  | StandingTriggerRefused { subject: String, admission: TriggerAdmission }
-
-fn standing_admission(subject: String, s: RungStanding) -> StandingAdmission {
-  match s {
-    AtCeiling { rung: _, ceiling_reason: _ } => StandingAdmitted
-    BelowCeiling { current: c, ceiling: k, blocker: b, trigger_capability: t } =>
-      if rung_position_index(p: c) < guarantee_rung_index(r: k) {
-        let admission = trigger_capability_admission(subject: subject, capability: t)
-        match admission {
-          TriggerAdmitted => StandingAdmitted
-          _ => StandingTriggerRefused { subject: subject, admission: admission }
-        }
-      } else {
-        StandingNotBelowCeiling { subject: subject }
-      }
-  }
-}

@@ -21,10 +21,10 @@ import std.algebra { FreeMonoid, Empty, Cons, FreeSemigroup }
 // in the shape this replaces: a known divergence naming nothing, which is agreement wearing the
 // other variant, and every consumer that folded over the list would have found nothing to do while
 // the value said the world had drifted. `FreeSemigroup` (std.algebra) has no empty inhabitant, so
-// the state has no constructor rather than a validator -- DESIGN section 4b rung four. It is
+// the state has no constructor rather than a validator -- gunbc.design_argument::guarantee_ladder rung four. It is
 // deliberately NOT a fresh `NonEmptyList`: std.algebra already owns the free semigroup over T as
 // the monoid's other identity, and its own grounding note withholds that alias precisely so one
-// name never resolves to two declarations (DESIGN section 3).
+// name never resolves to two declarations (gunbc.design_argument::single_authority).
 //
 // THREE: THE OBSERVER CANNOT SEE THE GOAL, AND THIS IS A SHAPE RATHER THAN A CONVENTION. An
 // observer handed the desired state can omit what the caller did not ask about, and an observation
@@ -73,7 +73,7 @@ import std.algebra { FreeMonoid, Empty, Cons, FreeSemigroup }
 // WHAT THIS MODULE DELIBERATELY DOES NOT CARRY, stated so its absence reads as a boundary and not
 // an oversight. There is no `reconcile_once`: no planner, no admission, no actuator, and no
 // post-actuation re-observation. Those are the effectful half of the same protocol, and the reason
-// they are not here is DESIGN section 3c rather than schedule -- their only honest first consumer
+// they are not here is gunbc.design_argument::consumption rather than schedule -- their only honest first consumer
 // is the fleet admission spine (gunbc.fleet.fleet_converge_plan: generation, held lease, observed
 // baseline, compare-and-set), and a protocol shipped with a single hand-fitted adapter is exactly
 // how the shape this module replaces came to have an apply stage that no corpus path ever ran.
@@ -88,7 +88,7 @@ import std.algebra { FreeMonoid, Empty, Cons, FreeSemigroup }
 
 // THE THREE NEAREST NEIGHBOURS, AND WHY THIS IS NOT A FOURTH SPELLING OF ANY OF THEM. Each already
 // owns a question this module deliberately does not ask, so a reader arriving with one of them in
-// mind can tell immediately whether they are in the right module (DESIGN section 3).
+// mind can tell immediately whether they are in the right module (gunbc.design_argument::single_authority).
 //
 //   std.claim_evidence ClaimAssessment -- the admitted evidence links for a named CLAIM and their
 //     support/challenge standing. Its subject is an argument, not a world. A domain may well
@@ -129,13 +129,13 @@ type ObservationAttempt<Observed, ObserveRefusal>
 // that argument in full for the join case).
 //
 // AND IT IS NOW CONSTRUCTED, WHICH RETIRES THE FRONTIER THAT STOOD HERE. This arm was a DECLARED
-// FRONTIER under DESIGN section 3c -- no binding minted it, so it was admissible only with its
+// FRONTIER under gunbc.design_argument::consumption -- no binding minted it, so it was admissible only with its
 // trigger stated beside it, and that trigger was a NAMED CONSUMER rather than a date:
 // product.fan_tach_health, which computed the same fact in its own vocabulary. That module is now
 // bound to this algebra and mints this arm on three causes -- a host paired to another host's
 // windows, a roster naming one header twice, a collector answering twice for one endpoint -- each
 // of them an ill-formed question set rather than an unhealthy fan. The frontier note is deleted
-// rather than left standing, because section 4b(4) retires the lower-rung machinery a climb
+// rather than left standing, because gunbc.design_argument::guarantee_ladder (dissolution on climb) retires the lower-rung machinery a climb
 // obsoletes and a note describing a state that no longer holds is worse than none: it would cite a
 // constructor that no longer exists and understate the arm's reach.
 //
@@ -174,7 +174,7 @@ type GoalAssessment<Evidence, Deviation, UnknownFact, AssessRefusal>
 // THE SUBJECT IS CARRIED IN BOTH ARMS, including the refused one. The shape this replaces did the
 // same, and a replacement that dropped it would have erased a distinction rather than completed a
 // migration: a refusal that does not say WHAT it is about is a diagnostic missing its located half
-// (DESIGN section 5), and the refused arm is exactly where a reader has least context to supply it.
+// (gunbc.design_argument::fail_closed), and the refused arm is exactly where a reader has least context to supply it.
 //
 // THE GOAL AND THE REQUEST ARE CARRIED BESIDE THE SUBJECT, for the reason the subject is carried: a
 // result that does not say WHAT WAS WANTED, and WHAT WAS ACTUALLY READ TO FIND OUT, is only

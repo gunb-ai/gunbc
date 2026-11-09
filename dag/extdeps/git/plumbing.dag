@@ -29,7 +29,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // OBJECT-STORE PLUMBING surface -- hash-object, cat-file, read-tree, write-tree,
 // update-index, checkout-index, commit-tree, unpack-file, update-ref -- was modeled
 // nowhere, and the only realization of it in the tree was a private argv corpus inside
-// `gunbc.devboot`. That is one authority split at the surface grain (DESIGN section 3),
+// `gunbc.devboot`. That is one authority split at the surface grain (gunbc.design_argument::single_authority),
 // not an un-lifted operation, and this module is the half that was missing.
 //
 // It is a sibling module rather than more rows in `extdeps.git` for the reason
@@ -64,7 +64,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // two ways and they are not interchangeable: `-C <path>` changes directory and then
 // discovers a repository from there (the worktree reading), while `--git-dir=<path>` names
 // the object/ref store directly (the bare reading, which is what a store with no worktree
-// requires). Modeling the choice as a parameter is DESIGN section 2 horizontal: one concept
+// requires). Modeling the choice as a parameter is gunbc.design_argument::minimize_redundancy horizontal: one concept
 // spanning both breadths, rather than every operation below appearing twice.
 //
 // THE BARE READING CARRIES A DIRECTORY TO RUN IN, AND THAT IS NOT REDUNDANT WITH THE STORE.
@@ -285,6 +285,33 @@ service git.Plumbing {
     transport shell { argv: [git_index_file_env_argv(index: index), "git", git_repository_address_argv(address: address), "checkout-index", "-a", "-f", "--prefix={prefix}"] }
   }
 
+  operation ResetWorktreeToTree {
+    requires opaque
+    input { address: GitRepositoryAddress, treeish: String }
+    output {
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", git_repository_address_argv(address: address), "read-tree", "-u", "--reset", "{treeish}"] }
+  }
+
+  // DROP WHAT THE INDEX DOES NOT KNOW ABOUT: `git clean -f -d`, which removes untracked files and untracked
+  // DIRECTORIES and nothing else. The flags are fixed rather than passed in, so no caller can widen this to `-x`
+  // (which would delete the ignored build caches that make a real attempt's next run cheap) or narrow it to `-f`
+  // alone (which leaves a directory of strays standing, measured: `read-tree -u --reset` reports success beside
+  // `?? junk.txt` and `?? sub/`). Paired with ResetWorktreeToTree by its consumers: that operation makes the
+  // TRACKED content equal the tree and is silent about untracked files, so forcing a worktree to EXACTLY a tree
+  // needs both. Writes no objects, so it needs no git identity.
+  operation RemoveUntrackedFromWorktree {
+    requires opaque
+    input { address: GitRepositoryAddress }
+    output {
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", git_repository_address_argv(address: address), "clean", "-f", "-d"] }
+  }
+
   operation CommitTree {
     requires opaque
     input { address: GitRepositoryAddress, tree: String, parents: GitCommitParents, message: String }
@@ -365,7 +392,7 @@ service git.Plumbing {
 // hold. A caller-facing `expected_old: Optional<GitObjectId>` would conflate four states
 // with different remedies -- create-only, update unconditionally, the caller did not supply
 // the fact, and the caller does not know the current value -- which is the state-space
-// conflation DESIGN section 5 names. So the three transitions are three named arms and the
+// conflation gunbc.design_argument::fail_closed names. So the three transitions are three named arms and the
 // empty string appears exactly once, inside CreateRefIfAbsent's transport row.
 type GitExactRefMutation
   = GitCreateRefIfAbsent { name: GitRefName, new: GitObjectId }

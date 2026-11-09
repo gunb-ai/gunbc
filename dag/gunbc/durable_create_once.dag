@@ -3,7 +3,7 @@ module gunbc.durable_create_once
 import std.types { String, Bool }
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_observation, filesystem_create_new, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized }
 
-// CONFORMANCE (DESIGN 3b). The home model for "write only if the slot is absent" is std.durable_compare_and_set CasExpectation
+// CONFORMANCE (gunbc.design_argument::conformance). The home model for "write only if the slot is absent" is std.durable_compare_and_set CasExpectation
 // ExpectSlotAbsent over gunbc.durable_cas_file_store. This module DIVERGES, with a stated reason: the RECORD_DIR ruling keeps each
 // store's existing on-disk format, and the CAS slot format would change the bytes of every record already on a host. Dissolution:
 // each store's FormatConsolidation follow-up moves it onto the slot store; this module is deleted when the last store moves.
@@ -12,7 +12,7 @@ import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_observa
 // THE ONE CREATE-ONCE PROCEDURE and the one directory admission, shared by every sealed create-once record store
 // (the grant-exceeded, microVM receipt and post-start evidence stores). Each store keeps its own seal, mint and key in its
 // declaring module and passes the path it derived; the effect, its typed classification and the readback live here once
-// (DESIGN section 6b: the second local implementation of one rule is the trigger, and there were three). This module takes a
+// (gunbc.design_argument::earliest_unjustified_boundary: the second local implementation of one rule is the trigger, and there were three). This module takes a
 // path and runs its own effect; it takes no outcome and returns no success from one.
 type CreateOnceRecording
   = CreateOnceRecorded { path: String }

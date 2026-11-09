@@ -14,7 +14,8 @@ import std.keyed_roster {
   KeyedRosterBuildDuplicateKey,
   keyed_roster_build,
 }
-import std.types { String, Bool, Int, List, list_length }
+import std.types { String, Bool, Int, List }
+import std.algebra { length }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 
@@ -105,7 +106,7 @@ fn compile_clean_shard_entry_paths_from(
 //
 // A consumer that wants to record WHICH universe it folded over previously had to name the roots
 // itself, from a constant it believed the discoverer also read. That belief is exactly the shape
-// DESIGN §5 calls validation standing where construction was available: the roots the discovery
+// gunbc.design_argument::fail_closed calls validation standing where construction was available: the roots the discovery
 // scanned and the roots a consumer printed were two representations of one fact, and nothing but a
 // witness comparing two constants held them together — a witness that goes green when the
 // declaration is edited and the discovery still scans somewhere else.
@@ -184,7 +185,7 @@ fn witness_roster_nonempty_on_fixture_facts() -> Bool {
   match compile_clean_module_shard_roster_from(
     decl_facts: compile_clean_shard_roster_mechanism_fixture_facts
   ) {
-    CompileCleanModuleShardRosterBuilt { shards: shards } => list_length(items: shards) > 0
+    CompileCleanModuleShardRosterBuilt { shards: shards } => length(xs: shards) > 0
     CompileCleanModuleShardRosterDuplicatePath { path: _, first: _, duplicate: _ } => false
   }
 }
@@ -228,7 +229,7 @@ fn witness_roster_build_refuses_synthetic_duplicate_facts() -> Bool {
 
 fn witness_roster_empty_facts_are_not_nonempty() -> Bool {
   match compile_clean_module_shard_roster_from(decl_facts: []) {
-    CompileCleanModuleShardRosterBuilt { shards: shards } => list_length(items: shards) == 0
+    CompileCleanModuleShardRosterBuilt { shards: shards } => length(xs: shards) == 0
     CompileCleanModuleShardRosterDuplicatePath { path: _, first: _, duplicate: _ } => false
   }
 }

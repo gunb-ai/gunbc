@@ -1,0 +1,10 @@
+module gunbc.annotation_reference_relay
+
+import gunbc.annotation_reference_home { AnnotationReferenceHome }
+
+// A RELAY: it declares nothing and imports a name, so a citation of the relay resolves under the home
+// it imports from (v2.compiler.live_resolution_context, one re-export hop).
+
+fn annotation_reference_relay_value(h: AnnotationReferenceHome) -> Int {
+  h.home_field
+}

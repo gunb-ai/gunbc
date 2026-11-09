@@ -27,7 +27,7 @@ import extdeps.vllm.engine_args {
 // srv1 picks, which env values it sets, which engine flags it pins, which secret file it reads — is
 // the first-party row in gunbc.serving.srv1_serving_launch, which cites this module.
 //
-// STANDING (DESIGN 4d): these spellings are transcribed from the wrapper line and from the running
+// STANDING (gunbc.design_argument::epistemic_humility): these spellings are transcribed from the wrapper line and from the running
 // container's Cmd, both read 2026-10-25; no published contract covers them, and this repository has
 // read none of the launcher's source beyond the three-line wrapper. Every row here carries
 // TranscribedUncited with that obligation, and an image upgrade re-reads it.
@@ -98,11 +98,11 @@ fn lil_serve_environment_argv(e: LilServeEnvironmentEntry) -> List<String> {
 // wrapper (gunbc.serving.srv1_serving_launch srv1_serving_wrapper, home gunbc.retained_shell_script),
 // which is the container's actual `bash -lc` command string. No module function builds shell syntax
 // out of string literals (review 86807, ctrl HAND-SHELL: medium-as-string). The interface refuses to bake
-// a transport: DESIGN 3, "transport has fused when an operation is forked per transport" — the key
+// a transport: gunbc.design_argument::interface_realization_policy, "transport has fused when an operation is forked per transport" — the key
 // value, the substitution wire, and the direct-exec file-read are the SAME operation across transports,
 // so the interface states only the source and each realization spells its own token.
 // FromFile is the only arm today: a literal key in the model would put a secret in the substrate, and
-// an env-var arm has no observed user — naming it now would be inventing argv (DESIGN 4d).
+// an env-var arm has no observed user — naming it now would be inventing argv (gunbc.design_argument::epistemic_humility).
 type LilServeApiKeySource
   = LilServeApiKeyFromFile { path: NonEmptyStr }
 
@@ -180,7 +180,7 @@ type LilServeLaunch {
 // VALUE at the transport this launch is started through: for srv1's container (a `bash -lc` command
 // string) it is the substitution token the retained wrapper carries, supplied by the CALLER
 // (gunbc.serving.srv1_serving_launch srv1_serving_launch_argv takes it as a parameter — this module
-// never constructs it); a direct-exec realization would pass the file's contents read at start. The interface does not choose between them (DESIGN 3: no fused transport); the witness
+// never constructs it); a direct-exec realization would pass the file's contents read at start. The interface does not choose between them (gunbc.design_argument::single_authority: no fused transport); the witness
 // test.claim.serving.srv1_serving_launch_witness pins the srv1 realization's full token sequence to
 // what `docker inspect` showed, so a medium cannot silently change under a caller.
 fn lil_serve_launch_argv(launch: LilServeLaunch, api_key_wire: String) -> List<String> {

@@ -24,7 +24,7 @@ data ecmascript_language_further_authority_1: ExternalAuthority = ExternalAuthor
 // fetched document is the 'ECMAScript 2027 Language Specification', published by Ecma International
 // and edited under TC39. This subject exists SEPARATELY from the TypeScript subject on purpose:
 // ECMAScript is the runtime-semantic standard, TypeScript is an independently governed product that
-// compiles to it, and DESIGN section 3's external-upstream decomposition keeps independently
+// compiles to it, and gunbc.design_argument::external_upstreams's external-upstream decomposition keeps independently
 // governed entities apart even when one targets the other. DESIGN's open decision 1 — whether
 // ECMAScript is the runtime-semantic base the TypeScript target projects onto, or a deliberately
 // separate model — is exactly a question about the relationship between these two subjects, and it

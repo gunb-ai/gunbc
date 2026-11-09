@@ -5,7 +5,7 @@ module fixtures.free_call_pool_binding.closure_without_definer
 //
 // NOTHING ENROLLED EXECUTES THESE THREE ARMS, AND THAT IS STATED HERE SO NOBODY CITES THEM AS
 // COVERAGE. The command below is the instrument and the outcome beside it is what that command
-// must produce -- a specification to re-derive, never a receipt, because DESIGN section 4c says an
+// must produce -- a specification to re-derive, never a receipt, because gunbc.design_argument::source_annotations says an
 // annotation can be evidence for nothing a machine claims.
 //
 // THE HARNESS THAT WOULD RUN THEM DOES NOT EXIST YET, MEASURED RATHER THAN ASSUMED. The corpus's
@@ -14,7 +14,7 @@ module fixtures.free_call_pool_binding.closure_without_definer
 // import-less probe refuses there with `InternalError function:<name>`, measured on two definers in
 // two different source roots. So the ACCEPTING arm of this discriminator is unauthorable in it --
 // the one harness available is blind to precisely the manufactured edge this fixture is about, which
-// is the same asymmetry one level up in the instrument. Under DESIGN section 4b that missing harness
+// is the same asymmetry one level up in the instrument. Under gunbc.design_argument::guarantee_ladder that missing harness
 // is this class's next-rung trigger, not a permanent ceiling: a nested compile that derives the
 // closure the way the real one does would run all three arms unchanged. `if_join_pool_binding`
 // stands the same way and for the same reason.

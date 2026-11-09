@@ -1,0 +1,39 @@
+module gunbc.recurring_failure_mode.a_rendering_control_covers_only_the_producer_arms_its_roster_exercises
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// A BYTE-EQUALITY CONTROL BETWEEN A RENDERED ARTIFACT AND ITS COMMITTED BYTES COVERS EXACTLY THE
+// RENDERING PATHS THE ROSTER EXERCISES, AND NOTHING SAYS SO. The comparison is one string against
+// another, so it can only reach the arms of the renderer that some roster row actually drives. An
+// arm no binding reaches is rendering code with no executing witness, and the artifact's own
+// "the committed file equals the rendering" row reads as full coverage of the renderer to anyone
+// who has not counted the arms against the roster. This row is that count, filed as debt: the
+// control stays worth running, and its coverage boundary is now stated where the control is cited.
+
+data a_rendering_control_covers_only_the_producer_arms_its_roster_exercises: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_rendering_control_covers_only_the_producer_arms_its_roster_exercises" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: MechanicallyPreventable, blocker: ClimbableButUnbuilt, trigger_capability: "a claim that drives every arm of the renderer, not only the arms a roster row happens to reach: for `gunbc.instruments.instrument_registry_emit` `instrument_producer_rust` that means a row per variant of `gunbc.target_binding` `TargetProducer`, the two with no host counterpart asserted to refuse through `instrument_registry_render_refusal` and the rest asserted to render their named form, plus a fold that the renderer's arm set equals the sum's variant set rather than a reading that assumes it. Sufficient for: a producer arm added, edited or dropped in the renderer reaching a red whether or not any instrument binds it." } },
+
+  receipts: [
+    "**a rendering control covers only the producer arms its roster exercises** (a coverage boundary nobody states). INVALID STATE: a control compares a rendered artifact with its committed bytes and is cited as covering the renderer, while the renderer has arms no roster row drives, so a defect inside those arms produces no red anywhere and the citation overstates the control. HARM: the unexercised arms are exactly the ones that hold the refusals -- the forms a producer can take that the host cannot execute -- so the part of the renderer that decides what may NOT be rendered is the part no witness reads, and a future binding of such a kind, or an edit that turns a refusal into a rendered row, passes the control that is supposed to catch it.",
+
+    "MEASURED POPULATION AT THIS HEAD (2026-11-03, head 7181b5bc3d75, read by resolving each name in `gunbc.instrument_targets` `instrument_bindings()` through its `*_binding` function's `producer:` field, the variant list of `gunbc.target_binding` `TargetProducer`, and the arms of the `match producer` in `gunbc.instruments.instrument_registry_emit` `instrument_producer_rust`). The sum has 31 variants; the renderer has 31 arms, one per variant, with no arm outside the sum and no variant without an arm; the roster binds 29 of the 31. The two the roster does NOT bind are `BazelProducer` and `RequiredFloorProducer`, and those are precisely the two arms whose body is the sentinel that makes `instrument_registry_render_refusal` refuse the whole rendering. So the byte-equality control `test.claim.instrument_registry_artifact_rendering_witness` exercises 29 arms and leaves 2 unexercised, and the equality between the arm set and the variant set -- the fact that keeps the count honest -- is established by that reading and by no claim.",
+
+    "WHY THIS IS DEBT AND NOT A BLOCKER. The unexercised arms refuse, so a binding that reaches one cannot produce a wrong artifact: it produces no artifact, loudly, at emission. What is unheld is the meta-fact -- that the refusal still refuses, and that the arm set still equals the variant set -- and the cost of holding it is one claim module over a closed sum, not a change to the renderer. The control this row qualifies is worth its run: it caught the stale `rfm-rung-census` row at this head (a roster row retired by main with the committed table still carrying it), which is a defect inside the 29 exercised arms.",
+
+    "WHAT THIS ROW DOES NOT CLAIM. It does not say the byte-equality control is unsound, and it does not move the rung of `instrument_subject_bound_twice_the_registry_reads_the_unbound_copy`, whose gap is staleness of the committed table and whose execution standing sits under `gunbc.rung_drop.v1_required_lanes_withdrawn`. The two rows share a subject and name different invalid states: one is a table behind its roster, this one is a control narrower than its citation.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.instruments.instrument_registry_emit", decl_name: "instrument_producer_rust", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.instruments.instrument_registry_emit", decl_name: "instrument_registry_render_refusal", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.target_binding", decl_name: "TargetProducer", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.instrument_targets", decl_name: "instrument_bindings", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.instrument_registry_artifact_rendering_witness", decl_name: "the_committed_instrument_registry_artifact_equals_the_rendered_bytes", field: WholeDeclaration },
+  ],
+}

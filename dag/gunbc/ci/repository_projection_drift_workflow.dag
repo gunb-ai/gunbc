@@ -1,5 +1,6 @@
 module gunbc.ci.repository_projection_drift_workflow
 
+import gunbc.ci.workflow_artifact_upload { workflow_artifact_upload_with, AbsenceRefused }
 import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.measure { byte_size_count, minute_count }
 import std.optional { Optional, Present, Absent }
@@ -30,7 +31,10 @@ import extdeps.github.actions {
   PermRead,
   WorkflowTrigger
 }
-import gunbc.action_use_admission { upload_artifact_action }
+import gunbc.action_use_admission {
+  admit_workflow_checkout_refs, WorkflowCheckoutRefsAdmitted, WorkflowCheckoutRefsRefused,
+  workflow_checkout_refs_refusal_reason, upload_artifact_action,
+}
 import gunbc.ci.ci_runner_target { ci_runner_target_spec }
 import gunbc.heal_publication_boundary { heal_repair_candidate_artifact_name }
 import gunbc.ci.repository_ci_profile {
@@ -43,6 +47,8 @@ import gunbc.ci.repository_ci_profile {
   repository_ci_profile_refusal,
   profile_overlay,
   profile_public_seed,
+  seed_source_pin,
+  seed_source_refusal_reason,
 }
 import gunbc.ci.repository_compose_overlay {
   SealEnvBinding,
@@ -57,12 +63,17 @@ import gunbc.ci.repository_compose_overlay {
   overlay_note,
   seal_ran_and_repo_alive
 }
+import gunbc.toolchain_home_standing { admit_workflow_toolchain_homes, toolchain_home_refusal_reason }
 import gunbc.ci.repository_seed_steps {
   repository_checkout_step,
   seed_build_step,
-  seed_checkout_step,
+  SeedLaneSteps,
+  seed_lane_steps,
+  seed_pin_verifier_declared_expressions,
+  seed_pin_verifier_job,
+
   record_seed_revision_step,
-  toolchain_install_step
+  SeedToolchainLane, seed_toolchain_lane, seed_toolchain_lane_steps
 }
 
 // repository_projection_drift_workflow.dag — THE ONE drift-check emitter, for a repository whose
@@ -247,7 +258,8 @@ fn projection_drift_steps(
   check_body: String,
   seal_body: String,
   record_step: Step,
-  build_step: Step
+  build_step: Step,
+  seed_lane: SeedLaneSteps
 ) -> List<Step> {
   let budget = memory_budget_rows(profile: profile)
   let check_step = RunStep {
@@ -279,16 +291,13 @@ fn projection_drift_steps(
             id: none,
             uses: upload_artifact_action,
             with: Present {
-              value: [
-                kv(key: "name", value: yaml_string(s: heal_repair_candidate_artifact_name)),
-                kv(
-                  key: "path",
-                  value: yaml_string(
-                    s: join(["${{ runner.temp }}/", seal.compose_dir_name as String, "/target/", heal_repair_candidate_artifact_name, "/"], "")
-                  )
-                ),
-                kv(key: "if-no-files-found", value: yaml_string(s: "error"))
-              ]
+              value: workflow_artifact_upload_with(
+                name: heal_repair_candidate_artifact_name,
+                path: join(["${{ runner.temp }}/", seal.compose_dir_name as String, "/target/", heal_repair_candidate_artifact_name, "/"], ""),
+                retention_days: none,
+                compression_level: none,
+                absence: AbsenceRefused,
+              )
             },
             env: none,
             if_condition: Present { value: seal_ran_and_repo_alive() },
@@ -299,15 +308,20 @@ fn projection_drift_steps(
         Absent => []
       }
         concat(
-          [
-          repository_checkout_step(step_name: program.checkout_step_name),
-          seed_checkout_step(seed: seed),
-          record_step,
-          toolchain_install_step(step_name: program.toolchain_step_name),
-          build_step,
-          check_step
-          ],
-          seal_steps
+          concat(
+            [
+              repository_checkout_step(step_name: program.checkout_step_name),
+              seed_lane.guard,
+              seed_lane.checkout,
+              record_step
+            ],
+            // THE TOOLCHAIN LANE AS ONE UNIT (isolation, install, pin), owned by
+            // gunbc.ci.repository_seed_steps: this job seals candidates on the repository's own runner
+            // group, and a toolchain installed into a home that persists across jobs is the defect
+            // gunbc.toolchain_home_standing exists to refuse.
+            seed_toolchain_lane_steps(lane: seed_toolchain_lane(step_name: program.toolchain_step_name))
+          ),
+          concat([build_step, check_step], seal_steps)
         )
 }
 
@@ -331,7 +345,9 @@ fn projection_drift_job(
   check_body: String,
   seal_body: String,
   record_step: Step,
-  build_step: Step
+  build_step: Step,
+  seed_lane: SeedLaneSteps,
+  verifier_job_id: String
 ) -> Job {
   Job {
     id: drift.job_id,
@@ -347,9 +363,18 @@ fn projection_drift_job(
       check_body: check_body,
       seal_body: seal_body,
       record_step: record_step,
-      build_step: build_step
+      build_step: build_step,
+      seed_lane: seed_lane
     ),
-    needs: [],
+    // The seed checkout's ref is the verifier's declared output, so the job cannot start until the pin
+    // The seed checkout's ref is the verifier's declared output, so this job cannot start until the pin
+    // has been proven in the intended repository. needs is NOT the whole fence: it orders the jobs and
+    // requires the verifier to have succeeded, and neither of those requires the output to EXIST -- an
+    // absent output reaches this job as the empty string, which actions/checkout resolves against the
+    // default branch. The guard step inside this job (gunbc.ci.repository_seed_steps
+    // seed_pin_consumer_guard_step) compares the value actually received against the row's pin and fails
+    // before the checkout runs.
+    needs: [verifier_job_id],
     env: none,
     outputs: none,
     if_condition: none,
@@ -400,7 +425,9 @@ fn projection_drift_workflow(
   check_body: String,
   seal_body: String,
   record_step: Step,
-  build_step: Step
+  build_step: Step,
+  seed_lane: SeedLaneSteps,
+  verifier_job: Job
 ) -> Workflow {
   Workflow {
     name: drift.workflow_name as String,
@@ -410,6 +437,7 @@ fn projection_drift_workflow(
     env: none,
     permissions: Present { value: drift_permissions },
     jobs: [
+      verifier_job,
       projection_drift_job(
         profile: profile,
         seed: seed,
@@ -419,7 +447,9 @@ fn projection_drift_workflow(
         check_body: check_body,
         seal_body: seal_body,
         record_step: record_step,
-        build_step: build_step
+        build_step: build_step,
+        seed_lane: seed_lane,
+        verifier_job_id: verifier_job.id
       )
     ]
   }
@@ -480,14 +510,78 @@ fn expected_projection_drift_workflow_yml(
               reason: "gunbc.ci.repository_projection_drift_workflow: v2.workflow.bash_emit refused the seed build command, so no workflow is emitted rather than one whose compiler is built by something the model cannot fold"
             }
             Accepted { value: build_step, diagnostics: _ } =>
-          match emit_yaml(v: project_workflow_to_yaml(workflow: projection_drift_workflow(profile: profile, seed: seed, overlay: overlay, program: program, drift: drift, check_body: check_body, seal_body: seal_body, record_step: record_step,
-                build_step: build_step))) {
+          // THE SEED IS PINNED OR THERE IS NO WORKFLOW. Both the checkout and the verifier are built
+          // from the row's pin; an owed or malformed one refuses here, before any byte is emitted, with
+          // the row's own reason. This emitter used to write `ref: <row string>` into the seed checkout
+          // and never ask the checkout-ref wall -- the hazard was live in the committed file, in a job
+          // that waits behind the run it follows.
+          match seed_source_pin(source: seed.source) {
+            Absent {  } => ProjectionDriftWorkflowGenerationRefused {
+              reason: join(["REFUSED gunbc.ci.repository_projection_drift_workflow: ", seed_source_refusal_reason(source: seed.source)], "")
+            }
+            Present { value: pin } =>
+          match seed_pin_verifier_job(
+            seed: seed,
+            pin: pin,
+            runner: ci_runner_target_spec(target: drift.runner)
+          ) {
+            Rejected { diagnostics: _ } => ProjectionDriftWorkflowGenerationRefused {
+              reason: "gunbc.ci.repository_projection_drift_workflow: the seed-pin verifier could not be built from this row, so the seed checkout has no provenance and no workflow is emitted"
+            }
+            Accepted { value: verifier_job, diagnostics: _ } =>
+          match seed_lane_steps(seed: seed, pin: pin) {
+            Rejected { diagnostics: _ } => ProjectionDriftWorkflowGenerationRefused {
+              reason: "gunbc.ci.repository_projection_drift_workflow: the seed lane refused, so no workflow is emitted whose drift check judges a compiler it did not pin"
+            }
+            Accepted { value: seed_lane, diagnostics: _ } =>
+          let drift_workflow = projection_drift_workflow(
+            profile: profile,
+            seed: seed,
+            overlay: overlay,
+            program: program,
+            drift: drift,
+            check_body: check_body,
+            seal_body: seal_body,
+            record_step: record_step,
+            build_step: build_step,
+            seed_lane: seed_lane,
+            verifier_job: verifier_job
+          )
+          // THE SAME WALL THE PUBLISHER CALLS, with nothing supplied by this caller: it reads the
+          // workflow it is about to emit, so the seed checkout is admitted only because the verifier job
+          // in this same workflow declares the output its ref reads. A ref whose producer is not in the
+          // workflow is refused here rather than shipped.
+          match admit_workflow_checkout_refs(
+            workflow: drift_workflow,
+            declared: seed_pin_verifier_declared_expressions(seed: seed)
+          ) {
+            WorkflowCheckoutRefsRefused { refusals: crs } => ProjectionDriftWorkflowGenerationRefused {
+              reason: workflow_checkout_refs_refusal_reason(workflow_module: "gunbc.ci.repository_projection_drift_workflow", refusals: crs)
+            }
+            WorkflowCheckoutRefsAdmitted =>
+          // THE SAME ADMISSION THE PUBLISHER CALLS, on the workflow about to be emitted: a seed
+          // route that installs a toolchain without isolating HOME/RUSTUP_HOME/CARGO_HOME has no
+          // standing on a self-hosted runner, and a mirror's drift lane runs self-hosted. Refusing
+          // here means the emitter cannot ship that step even if the shared lane were changed; the
+          // isolation-drop mutation is refused by this line and not only by the controls.
+          match admit_workflow_toolchain_homes(workflow: drift_workflow) {
+            WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
+              ProjectionDriftWorkflowGenerationRefused {
+                reason: toolchain_home_refusal_reason(job_id: j, refusal: r)
+              }
+            WorkflowToolchainHomesAdmitted =>
+          match emit_yaml(v: project_workflow_to_yaml(workflow: drift_workflow)) {
             EmittedYaml { text: t } => ProjectionDriftWorkflowGenerated { content: t }
             YamlEmitRefused { path: p, reason: r } =>
               ProjectionDriftWorkflowGenerationRefused {
                 reason: yaml_emit_refusal_text(module_path: "gunbc.ci.repository_projection_drift_workflow", path: p, reason: r)
               }
             }
+          }
+          }
+          }
+          }
+          }
           }
           }
           }

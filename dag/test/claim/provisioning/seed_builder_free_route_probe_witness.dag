@@ -1,0 +1,38 @@
+module test.claim.provisioning.seed_builder_free_route_probe_witness
+
+import std.types { String, Bool, Int, List }
+import extdeps.filesystem.filesystem_io
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE FREE-ROUTE SEED BUILDER, ENROLLED AS AN EXECUTED RED (gunbc.design_argument::guarantee_ladder). test.probe.seed_builder_free_route_probe
+// calls build_seed_for_control from outside its admitted callers; the compiler must refuse at that subject. A
+// control source that only NAMES the builder refuses nowhere, so the refusal is the call's.
+
+fn census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+fn blocking(c: CompileDiagnosticCensus, wanted: String, subject: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows
+        |> filter(r => (r.diagnostic_class as String) == wanted && r.subject_name == subject && r.blocking)
+        |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+data control_source: String = "module probe_seed_builder_free_route_control\nimport std.types { String }\nimport gunbc.provisioning.ubuntu_autoinstall_seed { build_seed_for_control }\nfn named() -> String { \"control\" }\n"
+
+test fn a_source_that_only_names_the_builder_calls_nothing() -> Bool {
+  blocking(c: census_of(source: control_source), wanted: "ConstructorCallAdmissionRefused", subject: "build_seed_for_control") == 0
+}
+
+test fn a_caller_outside_the_admitted_plan_wrapper_is_refused() -> Bool {
+  blocking(c: census_of(source: filesystem_read(path: "dag/test/probe/seed_builder_free_route_probe.dag").content), wanted: "ConstructorCallAdmissionRefused", subject: "build_seed_for_control") >= 1
+}

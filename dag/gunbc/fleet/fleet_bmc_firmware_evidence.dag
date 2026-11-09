@@ -13,6 +13,7 @@ import extdeps.bmc.capability {
   bmc_firmware_capability_row_for,
 }
 import gunbc.fleet.fleet_intent { srv1_baseboard, srv2_baseboard }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog }
 import extdeps.firmware.types { firmware_semantic_version }
 import gunbc.fleet.fleet_bmc_observation {
   srv3_bmc_firmware_observation,
@@ -24,7 +25,7 @@ import gunbc.fleet.fleet_bmc_observation {
 // says WHEN evidence was true, this says WHO produced it and by what means. Writing a
 // recollection into BmcFirmwareObservation would make it indistinguishable from an
 // authenticated Redfish read, which is the fabricated-plausible-output failure applied to
-// provenance (DESIGN §5).
+// provenance (gunbc.design_argument::fail_closed).
 type BmcFirmwareAttestation {
   endpoint: BmcEndpoint
   firmware: BmcFirmwareVersion
@@ -99,7 +100,7 @@ fn bmc_firmware_capability_standing(
 // statement and the BmcFirmwareEvidenceAttested arm is what says so. When the observations land,
 // srv1_bmc_firmware_evidence and srv2_bmc_firmware_evidence move to BmcFirmwareEvidenceObserved and
 // the two attestation rows below are DELETED — an attestation superseded by a read is not kept
-// beside it (DESIGN §2).
+// beside it (gunbc.design_argument::minimize_redundancy).
 
 data srv1_bmc_firmware_attestation: BmcFirmwareAttestation = BmcFirmwareAttestation {
   endpoint: srv1_baseboard.bmc,
@@ -136,3 +137,6 @@ data srv3_bmc_firmware_evidence: BmcFirmwareEvidence = BmcFirmwareEvidenceObserv
 data srv4_bmc_firmware_evidence: BmcFirmwareEvidence = BmcFirmwareEvidenceObserved {
   observation: srv4_bmc_firmware_observation,
 }
+
+data fleet_bmc_firmware_catalog: List<BmcFirmwareCapabilityRow> = asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog
+

@@ -125,7 +125,7 @@ type SpatialAdmission<Value, Uncertainty, Method, Obligation>
 
 // Uncertainty comparison is supplied by the domain: this module cannot know whether a region is
 // compared by width, radius, volume, or covariance, and inventing an ordering here would be the
-// heuristic DESIGN section 4 rules out. `uncertainty_admissible(actual, budget)` is the domain's
+// heuristic gunbc.design_argument::closed_grounded_substrate rules out. `uncertainty_admissible(actual, budget)` is the domain's
 // answer to "is this evidence precise enough for that decision".
 fn admit_spatial_decision_input<Value, Uncertainty, Evidence, Method, Obligation>(
   knowledge: SpatialKnowledge<Value, Uncertainty, Evidence, Method, Obligation>,

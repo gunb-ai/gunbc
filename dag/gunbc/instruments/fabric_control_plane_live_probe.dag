@@ -17,7 +17,7 @@ import product.fabric.provider_route { ProviderRoute }
 import std.decl_ref { decl_ref }
 import extdeps.shell
 import std.types { Bool, Int, List, NonEmptyStr, String, GitRef, FilePath }
-import std.algebra { trim, Cons, Empty }
+import std.algebra { trim, Cons, Empty, length }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.currency.currency { Usd }
 import std.measure {
@@ -208,13 +208,13 @@ fn fci1_checkpoints() -> List<Fci1Checkpoint> {
 }
 
 fn fci1_assert_checkpoint_token(token: NonEmptyStr) -> ProcessExit {
-  if list_length(items: filter(fci1_checkpoints(), c => fci1_checkpoint_token(checkpoint: c) == token)) == 1 {
+  if length(xs: filter(fci1_checkpoints(), c => fci1_checkpoint_token(checkpoint: c) == token)) == 1 {
     ExitSuccess
   } else { exit_failure(reason: join(["unknown or duplicate FCI-1 checkpoint token: ", token as String], "")) }
 }
 
 fn fci1_checkpoint_reached(token: NonEmptyStr, phase: NonEmptyStr, path: String) -> ProcessExit {
-  if token == phase && list_length(items: filter(fci1_checkpoints(), c => fci1_checkpoint_token(checkpoint: c) == token)) == 1 {
+  if token == phase && length(xs: filter(fci1_checkpoints(), c => fci1_checkpoint_token(checkpoint: c) == token)) == 1 {
     let write = Filesystem.Write(path: path, content: join([
       "CheckpointReached|checkpoint=", token as String, "|phase=", phase as String, "|status=86",
     ], ""))
@@ -223,7 +223,7 @@ fn fci1_checkpoint_reached(token: NonEmptyStr, phase: NonEmptyStr, path: String)
 }
 
 fn fci1_write_checkpoint_terminal_receipt(token: NonEmptyStr, path: String) -> ProcessExit {
-  if list_length(items: filter(fci1_checkpoints(), c => fci1_checkpoint_token(checkpoint: c) == token)) == 1 {
+  if length(xs: filter(fci1_checkpoints(), c => fci1_checkpoint_token(checkpoint: c) == token)) == 1 {
     let write = Filesystem.Write(path: path, content: join(["CheckpointNotReached|selected=", token as String], ""))
     if write.success { ExitSuccess } else { exit_failure(reason: "checkpoint terminal receipt write refused") }
   } else { exit_failure(reason: "checkpoint terminal receipt token refused") }
@@ -695,7 +695,7 @@ fn fci1_cleanup_authority_generation_path(path: String, generation: Int) -> Stri
 
 fn fci1_decode_reservation_cleanup_authority(wire: String) -> Fci1ReservationCleanupAuthorityDecode {
   let fields = split(s: wire, delimiter: "\n")
-  if list_length(items: fields) != 6 { Fci1ReservationCleanupAuthorityUndecodable }
+  if length(xs: fields) != 6 { Fci1ReservationCleanupAuthorityUndecodable }
   else { match fields.first() {
     Absent => Fci1ReservationCleanupAuthorityUndecodable
     Present { value: root } => match fields.skip(n: 1).first() {
@@ -873,7 +873,7 @@ fn fci1_decode_allocation_prestate(wire: String) -> AllocationSlotPrestate {
     Present { value: tag } => match fields.skip(n: 1).first() {
       Absent => AllocationSlotUnreadable { path: "invalid-before-wire" }
       Present { value: path } => if path == "" { AllocationSlotUnreadable { path: "invalid-before-wire" } } else {
-        if tag == "slot-absent" && list_length(items: fields) == 2 { AllocationSlotAbsent { path: path as NonEmptyStr } }
+        if tag == "slot-absent" && length(xs: fields) == 2 { AllocationSlotAbsent { path: path as NonEmptyStr } }
         else { match fields.skip(n: 2).first() {
           Absent => AllocationSlotUnreadable { path: path as NonEmptyStr }
           Present { value: generation_text } => match parse_int(s: generation_text) {
@@ -1427,7 +1427,7 @@ fn fci1_cell_observation_wire(decision: FabricCellObservationDecision) -> String
       join([
         "cell-admitted|host=", fabric_cell_observed_population_host(population: population) as String,
         "|cell=", fabric_cell_id_for_slot(slot: cp_probe_slot()) as String,
-        "|member_cardinality=", to_string(list_length(items: members)),
+        "|member_cardinality=", to_string(length(xs: members)),
         "|members=", join(map(members, m => fci1_member_wire(member: m) as String), ";"),
         "|boundaries=", serialize_content_hash(hash: fabric_ci_shell_crossing_coordinates_hash(values: boundaries)) as String,
         "|modeled-teardown-ownership=", serialize_content_hash(hash: fabric_ci_shell_crossing_coordinates_hash(values: map(members, m => fci1_modeled_ownership_wire(member: m)))) as String,
@@ -1707,8 +1707,8 @@ fn fci1_write_zero_work_receipt(phase: NonEmptyStr, path: String) -> ProcessExit
     Fci1ZeroWorkObserved {
       unit: _, control_group: _, child_cgroups: children, root_cgroup_procs: procs,
       pids_current: pids, attempts_entries: attempts, supervisor_units: services,
-    } => if list_length(items: children) == 0 && trim(s: procs) == "" && trim(s: pids) == "0"
-      && list_length(items: attempts) == 0 && list_length(items: services) == 0 {
+    } => if length(xs: children) == 0 && trim(s: procs) == "" && trim(s: pids) == "0"
+      && length(xs: attempts) == 0 && length(xs: services) == 0 {
         ExitSuccess
       } else { exit_failure(reason: "zero-Work population was nonzero") }
   } }
@@ -1770,7 +1770,7 @@ fn cp_probe_offer_for(executor: NonEmptyStr) -> SupplierOffer<NonEmptyStr> {
 }
 
 // THIS PROBE BUILDS ITS OWN ADMISSION RATHER THAN IMPORTING THE WITNESSES' FIXTURE. A production
-// instrument importing test.claim fixture code would be the layer inversion section 3 forbids, and
+// instrument importing test.claim fixture code would be the layer inversion gunbc.design_argument::single_authority forbids, and
 // it would make a test-only edit able to change what this probe exercises. The roster below
 // sanctions exactly the route this probe's own offer sits on, so the probe genuinely runs the
 // admission path instead of stepping around it - which is the point, since this row exists to prove
@@ -1873,7 +1873,7 @@ fn cp_probe_scope(work: FabricIdentity<NonEmptyStr, WorkKey>) -> ProviderUseScop
 // list the ranker is handed - is one fact, and it was written here, in every selection witness, and
 // nowhere as an authority. product.fabric.candidate_field is now that authority, so the copy here
 // is removed rather than left standing beside it: a second implementation of one fact is the fork
-// DESIGN section 3 says gets consolidated later at interest.
+// gunbc.design_argument::single_authority says gets consolidated later at interest.
 //
 // WHAT THE PROBE GAINS BY THE CUT, beyond losing a copy. It used to hand its route facts straight
 // to admit_provider_use, which meant "do these facts actually govern the route this offer runs on"
@@ -2139,7 +2139,7 @@ fn fci1_live_release_with_receipt_in(store: FabricAllocationStore, path: String)
 }
 
 // The route components this probe cites, DECLARED so the citations resolve. They were cited and
-// undeclared, which the corpus citation gate refuses as CITED-DECLARATION-ABSENT - section 3's
+// undeclared, which the corpus citation gate refuses as CITED-DECLARATION-ABSENT - gunbc.design_argument::single_authority's
 // point that a citation naming nothing is an unheckable second naming scheme. This probe declares
 // its own rather than importing the witnesses' fixture, because a production instrument reaching
 // into test.claim would be a layer inversion.
@@ -2154,7 +2154,7 @@ data probe_region: NonEmptyStr = "gunbc-fleet-site"
 // required agreement and the decision receipt pointed at cp_probe_roster, a candidate-roster
 // builder. Every one of those resolves, so the citation gate was satisfied by spelling while the
 // permit carried a fully populated ProviderUseEvidence in which no field named the fact it claimed
-// to record -- validation passing over a realization that lies, which is the shape section 5 names.
+// to record -- validation passing over a realization that lies, which is the shape gunbc.design_argument::fail_closed names.
 //
 // A citation is only worth more than a string because the NAME is the fact. Pointing eight
 // different obligations at three unrelated builders makes the evidence unreadable in the one
@@ -2162,7 +2162,7 @@ data probe_region: NonEmptyStr = "gunbc-fleet-site"
 //
 // These are the probe's own subjects, declared here rather than imported from
 // test.claim.fabric.provider_use_fixture for the reason stated above -- a production instrument
-// reaching into test.claim is the layer inversion section 3 forbids.
+// reaching into test.claim is the layer inversion gunbc.design_argument::single_authority forbids.
 data probe_posture_authority: NonEmptyStr = "probe-posture-authority"
 data probe_customer_profile: NonEmptyStr = "probe-customer-profile"
 data probe_data_handling_profile: NonEmptyStr = "probe-data-handling-profile"

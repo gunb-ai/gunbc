@@ -29,7 +29,7 @@ import gunbc.model.publication { ReleaseIdentity, release_identity_equal }
 // WHAT THIS MODULE IS NOT: it is not a mathematical maximum and does not belong in std. It carries a
 // DOMAIN LAW -- that quality is ordinal only within one publisher release, and that no order exists
 // across releases. std has no business holding that, and a generic std maximum would be exactly the
-// bare-alias reuse DESIGN section 6 warns against: the coincidence is superficial, the law is not.
+// bare-alias reuse gunbc.design_argument::how_to_work warns against: the coincidence is superficial, the law is not.
 //
 // It is not gunbc.model.publication either. Publication owns what a model release IS; this owns a
 // POLICY for selecting a unique maximum under a release-relative order. It does NOT own
@@ -54,7 +54,7 @@ import gunbc.model.publication { ReleaseIdentity, release_identity_equal }
 // compare_within_release, the single primitive every comparison here passes through.
 //
 // THIS TYPE MOVED HERE rather than being copied. Two spellings of one concept, one per realization,
-// would be the meaning fork DESIGN section 3 forbids -- and it would fork at exactly the point where
+// would be the meaning fork gunbc.design_argument::single_authority forbids -- and it would fork at exactly the point where
 // the two realizations must agree in order to be comparable at all.
 type WithinReleaseQuality {
   identity: ReleaseIdentity

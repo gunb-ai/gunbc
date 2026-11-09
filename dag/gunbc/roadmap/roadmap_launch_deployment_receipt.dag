@@ -1,5 +1,6 @@
 module gunbc.roadmap.roadmap_launch_deployment_receipt
 import std.optional { Absent, Optional, Present }
+import std.algebra { list_head }
 
 
 import gunbc.fleet.fleet_converge_scope { FleetConvergeScope, LaunchEnvironment }
@@ -59,6 +60,7 @@ import gunbc.roadmap.roadmap_launch_deployment_observe {
   EventBacklogFact, EventBacklogClear, StaleBacklog, EventSpoolStalled, EventBacklogUnobserved, event_backlog_text,
 }
 import gunbc.durable_handoff_host { host_spool_stage_wire }
+import std.algebra { length }
 
 // THE ONE JOIN THE ROADMAP LAUNCH MVP'S RLM-2 GATE PRODUCES. Every independent read RUNS -- desired
 // revision, plan receipt, apply receipt, dashboard receipt, deployed root tree, release binding,
@@ -250,7 +252,7 @@ fn window_snapshot_differences(a: WindowSnapshot, b: WindowSnapshot) -> List<Str
 
 fn observation_window_fact(opened: WindowSnapshot, closed: WindowSnapshot) -> ObservationWindowFact {
   let changed = window_snapshot_differences(a: opened, b: closed)
-  if list_length(items: changed) == 0 {
+  if length(xs: changed) == 0 {
     WindowStable { opened: opened, closed: closed }
   } else {
     WindowChanged { opened: opened, closed: closed, changed: changed }

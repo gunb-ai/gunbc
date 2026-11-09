@@ -3,7 +3,7 @@ module test.claim.roadmap.worker_git_subtree_builder_wet_witness
 // WORKER-ROOT-EQUIVALENT-3 wet witnesses for the argv builders the lab worker's commit grant is made
 // of: the shared-repository posture, written by the instance's own principal (extdeps/git), and the
 // bounded subtree re-group
-// (extdeps/tools/findutils). DESIGN 5 -- done means EXECUTED: an argv-shape claim stays green over a
+// (extdeps/tools/findutils). gunbc.design_argument::fail_closed -- done means EXECUTED: an argv-shape claim stays green over a
 // command that cannot run. At 2dc2b8de3f98 all five git builders rendered
 // `git env GIT_CONFIG_GLOBAL=... git config ...` (argv_words is [program] ++ arguments, and their
 // arguments began with the word env), every one exited 1 with "git: 'env' is not a git command", and
@@ -43,6 +43,7 @@ import extdeps.git {
 }
 import extdeps.tools.findutils {
   find_subtree_regroup_command, find_subtree_group_writable_command, find_subtree_mode_readback_command,
+  find_subtree_ungranted_entry_refusal_command,
   find_printf_type_directory_letter, find_printf_type_regular_file_letter,
 }
 // THE DEPTH THE WET TREE IS WALKED AT IS THE MODEL'S, NOT THE WITNESS'S PREFERENCE. Spelling 32 here
@@ -143,6 +144,12 @@ fn wet_build_lab_tree(root: String, gid: Int) -> Bool {
 // one host where the re-group can reach an arbitrary group at all, while the actual read failure
 // and root's own group were indistinguishable in the verdict. A sentinel must be outside the domain
 // it stands for; 0 was inside it.
+// THE ACCOUNT RUNNING THIS WITNESS, as find's -user reads it (a numeric uid is accepted): the migration's selector
+// names the principal that OWNS what it re-groups, and in this tree that is whoever built the tree.
+fn wet_self_owner() -> String {
+  to_string(wet_self_uid())
+}
+
 fn wet_self_gid() -> Int {
   match parse_int(s: wet_out(command: id_gid_command())) {
     Present { value: n } => n
@@ -291,7 +298,7 @@ data wet_objects_pruned: List<String> = ["pack", "info"]
 // git creates a new object fan-out directory 0755 and a new reflog 0644, so the group write dies at the
 // worker's FIRST commit even though every directory above it is group-writable. At 2dc2b8de all three
 // exited 1 without writing anything, and no claim noticed. gc.auto=0 and maintenance.auto=false are the
-// consumer obligation for the repack that moves to the named maintenance job (DESIGN 3c): `git commit`
+// consumer obligation for the repack that moves to the named maintenance job (gunbc.design_argument::consumption): `git commit`
 // spawns `git maintenance run --auto`, whose sweep opens packed-refs.lock IN .git ITSELF, a path #13942
 // keeps out of the worker's reach -- measured as a printed "error unable to lock packed-refs file" over
 // an exit-0 commit, which
@@ -350,7 +357,7 @@ test fn the_subtree_regroup_builders_leave_the_granted_modes_on_an_existing_tree
     let refs = concat(root, "/refs")
     let logs = concat(root, "/logs")
     let built = wet_build_lab_tree(root: root, gid: gid)
-    let granted = wet_ran(command: find_subtree_regroup_command(target: objects, group: group, pruned: wet_objects_pruned, depth: dashboard_git_worker_subtree_walk_depth))
+    let granted = wet_ran(command: find_subtree_regroup_command(target: objects, group: group, owner: wet_self_owner(), pruned: wet_objects_pruned, depth: dashboard_git_worker_subtree_walk_depth))
       // THE STICKY ARGUMENT IS THE MODEL'S DECISION, passed in rather than assumed: objects/ is the one
       // subtree the model declares needs it (dashboard_git_worker_sticky_children), refs/ and logs/ are
       // the ones it declares must not get it. So this claim exercises BOTH arms of that decision, and a
@@ -358,16 +365,19 @@ test fn the_subtree_regroup_builders_leave_the_granted_modes_on_an_existing_tree
       && wet_ran(command: find_subtree_group_writable_command(
         target: objects, pruned: wet_objects_pruned, sticky: true,
         files_group_writable: dashboard_git_worker_subtree_writes_files_in_place(child: dashboard_git_worker_objects_child),
+        owner: wet_self_owner(),
         depth: dashboard_git_worker_subtree_walk_depth))
-      && wet_ran(command: find_subtree_regroup_command(target: refs, group: group, pruned: [], depth: dashboard_git_worker_subtree_walk_depth))
+      && wet_ran(command: find_subtree_regroup_command(target: refs, group: group, owner: wet_self_owner(), pruned: [], depth: dashboard_git_worker_subtree_walk_depth))
       && wet_ran(command: find_subtree_group_writable_command(
         target: refs, pruned: [], sticky: false,
         files_group_writable: dashboard_git_worker_subtree_writes_files_in_place(child: dashboard_git_worker_refs_child),
+        owner: wet_self_owner(),
         depth: dashboard_git_worker_subtree_walk_depth))
-      && wet_ran(command: find_subtree_regroup_command(target: logs, group: group, pruned: [], depth: dashboard_git_worker_subtree_walk_depth))
+      && wet_ran(command: find_subtree_regroup_command(target: logs, group: group, owner: wet_self_owner(), pruned: [], depth: dashboard_git_worker_subtree_walk_depth))
       && wet_ran(command: find_subtree_group_writable_command(
         target: logs, pruned: [], sticky: false,
         files_group_writable: dashboard_git_worker_subtree_writes_files_in_place(child: dashboard_git_worker_logs_child),
+        owner: wet_self_owner(),
         depth: dashboard_git_worker_subtree_walk_depth))
     let objects_receipt = wet_out(command: find_subtree_mode_readback_command(target: objects, pruned: wet_objects_pruned, depth: dashboard_git_worker_subtree_walk_depth))
     let refs_receipt = wet_out(command: find_subtree_mode_readback_command(target: refs, pruned: [], depth: dashboard_git_worker_subtree_walk_depth))
@@ -462,10 +472,11 @@ test fn the_pruned_subtrees_are_never_touched_and_a_colliding_ref_name_always_is
     let objects = concat(root, "/objects")
     let refs = concat(root, "/refs")
     let built = wet_build_lab_tree(root: root, gid: gid)
-    let walked = wet_ran(command: find_subtree_regroup_command(target: objects, group: group, pruned: wet_objects_pruned, depth: dashboard_git_worker_subtree_walk_depth))
+    let walked = wet_ran(command: find_subtree_regroup_command(target: objects, group: group, owner: wet_self_owner(), pruned: wet_objects_pruned, depth: dashboard_git_worker_subtree_walk_depth))
       && wet_ran(command: find_subtree_group_writable_command(
         target: objects, pruned: wet_objects_pruned, sticky: true,
         files_group_writable: dashboard_git_worker_subtree_writes_files_in_place(child: dashboard_git_worker_objects_child),
+        owner: wet_self_owner(),
         depth: dashboard_git_worker_subtree_walk_depth))
     // (a) Whole-subtree read, prunes ABSENT, so the confined paths are visible at all.
     let whole = wet_out(command: find_subtree_mode_readback_command(target: objects, pruned: [], depth: dashboard_git_worker_subtree_walk_depth))
@@ -477,7 +488,7 @@ test fn the_pruned_subtrees_are_never_touched_and_a_colliding_ref_name_always_is
     ])
     // (b) The same walk with the prunes dropped REACHES them -- the prunes are what stand between the
     // migration and a confined-subtree grant, so this is the control that makes leg (a) mean something.
-    let unpruned = wet_ran(command: find_subtree_regroup_command(target: objects, group: group, pruned: [], depth: dashboard_git_worker_subtree_walk_depth))
+    let unpruned = wet_ran(command: find_subtree_regroup_command(target: objects, group: group, owner: wet_self_owner(), pruned: [], depth: dashboard_git_worker_subtree_walk_depth))
       && wet_ran(
         command: find_subtree_group_writable_command(
           target: objects, pruned: [], sticky: true,
@@ -486,6 +497,7 @@ test fn the_pruned_subtrees_are_never_touched_and_a_colliding_ref_name_always_is
           // group were ever dropped. The model itself passes false for objects/; this leg asks the opposite
           // question so a leaked prune shows as a confined subtree handed the whole grant.
           files_group_writable: true,
+          owner: wet_self_owner(),
           depth: dashboard_git_worker_subtree_walk_depth,
         ),
       )
@@ -506,10 +518,11 @@ test fn the_pruned_subtrees_are_never_touched_and_a_colliding_ref_name_always_is
     // leg asserted a mode no step in the claim had produced (it is green on srv1 only when something else
     // happened to grant it, which is not a claim). refs/ walks with NO prunes and sticky: false, exactly as
     // the model does for it, and the leaf ref keeps its planted 0644: refs are replaced, not appended.
-    let refs_granted = wet_ran(command: find_subtree_regroup_command(target: refs, group: group, pruned: [], depth: dashboard_git_worker_subtree_walk_depth))
+    let refs_granted = wet_ran(command: find_subtree_regroup_command(target: refs, group: group, owner: wet_self_owner(), pruned: [], depth: dashboard_git_worker_subtree_walk_depth))
       && wet_ran(command: find_subtree_group_writable_command(
         target: refs, pruned: [], sticky: false,
         files_group_writable: dashboard_git_worker_subtree_writes_files_in_place(child: dashboard_git_worker_refs_child),
+        owner: wet_self_owner(),
         depth: dashboard_git_worker_subtree_walk_depth))
     let refs_read = wet_out(command: find_subtree_mode_readback_command(target: refs, pruned: [], depth: dashboard_git_worker_subtree_walk_depth))
     let clean = wet_ran(command: rm_recursive_force_command(path: root))
@@ -564,15 +577,17 @@ test fn the_sticky_bit_lands_where_the_model_puts_it_and_still_lets_the_worker_w
     let objects = concat(root, "/objects")
     let refs = concat(root, "/refs")
     let built = wet_build_lab_tree(root: root, gid: gid)
-    let migrated = wet_ran(command: find_subtree_regroup_command(target: objects, group: group, pruned: wet_objects_pruned, depth: dashboard_git_worker_subtree_walk_depth))
+    let migrated = wet_ran(command: find_subtree_regroup_command(target: objects, group: group, owner: wet_self_owner(), pruned: wet_objects_pruned, depth: dashboard_git_worker_subtree_walk_depth))
       && wet_ran(command: find_subtree_group_writable_command(
         target: objects, pruned: wet_objects_pruned, sticky: true,
         files_group_writable: dashboard_git_worker_subtree_writes_files_in_place(child: dashboard_git_worker_objects_child),
+        owner: wet_self_owner(),
         depth: dashboard_git_worker_subtree_walk_depth))
-      && wet_ran(command: find_subtree_regroup_command(target: refs, group: group, pruned: [], depth: dashboard_git_worker_subtree_walk_depth))
+      && wet_ran(command: find_subtree_regroup_command(target: refs, group: group, owner: wet_self_owner(), pruned: [], depth: dashboard_git_worker_subtree_walk_depth))
       && wet_ran(command: find_subtree_group_writable_command(
         target: refs, pruned: [], sticky: false,
         files_group_writable: dashboard_git_worker_subtree_writes_files_in_place(child: dashboard_git_worker_refs_child),
+        owner: wet_self_owner(),
         depth: dashboard_git_worker_subtree_walk_depth))
     let objects_receipt = wet_out(command: find_subtree_mode_readback_command(target: objects, pruned: [], depth: dashboard_git_worker_subtree_walk_depth))
     let refs_receipt = wet_out(command: find_subtree_mode_readback_command(target: refs, pruned: [], depth: dashboard_git_worker_subtree_walk_depth))
@@ -714,4 +729,63 @@ test fn the_premise_argv_words_are_an_executable_shape_with_one_program_word() -
     && wet_count_of(words: argv_words(command: command), wanted: "git") == 1
     && wet_count_of(words: argv_words(command: command), wanted: "-c") == 1
     && wet_count_of(words: argv_words(command: command), wanted: "rev-parse") == 1
+}
+
+// IDEMPOTENCE BY SELECTION (the lab apply's migrate-git-worker-subtree, 2026-11-05): once attempts had written into
+// the subtree, chgrp/chmod over every walked entry died EPERM on the worker-owned, already-in-group entries. Both
+// builders now select only what the principal OWNS (and, for chgrp, what is not already in the group). Dry: the
+// selector words sit BEFORE the exec action, so an unselected entry never reaches chgrp/chmod. The paired wet claim
+// is the readback below; this one pins the route the argv takes.
+test fn the_migration_selects_only_entries_the_principal_owns() -> Bool {
+  let regroup = argv_words(command: find_subtree_regroup_command(target: "/t", group: "g", owner: "svc", pruned: [], depth: 4))
+  let chmod = argv_words(command: find_subtree_group_writable_command(target: "/t", pruned: [], sticky: false, files_group_writable: true, owner: "svc", depth: 4))
+  string_contains(s: join(regroup, " "), substring: "-user svc -not -group g -exec")
+    && string_contains(s: join(chmod, " "), substring: "-user svc -exec")
+    && !string_contains(s: join(regroup, " "), substring: "-user svc -exec")
+}
+
+// A GIT READ-ONLY LOOSE OBJECT (0444, measured git 2.47.3 even under core.sharedRepository=group) IS IN SHAPE: the
+// refusal walk passes it, and refuses a file that is writable by its owner yet not by the group, and an entry in a
+// foreign group, naming it on stderr (find's exit status is the decision).
+test fn the_readback_admits_a_read_only_loose_object_and_refuses_a_foreign_entry() -> Bool {
+  let root = wet_out(command: mktemp_directory_command(template: "wre3-shape-XXXXXX"))
+  let gid = wet_self_gid()
+  let group = wet_group_token()
+  if root == "" || gid < 0 || group == "" {
+    false
+  } else {
+    let seeded = wet_mktree(paths: [concat(root, "/objects/f9")])
+      && wet_all(steps: [chmod_set_mode_command(chmod_program: chmod_binary_path, mode: "2775", path: concat(root, "/objects")),
+        chmod_set_mode_command(chmod_program: chmod_binary_path, mode: "2775", path: concat(root, "/objects/f9"))])
+      && wet_touch_at(mode: "0444", paths: [concat(root, "/objects/f9/0123456789abcdef0123456789abcdef01234567")], gid: gid)
+    let walk = find_subtree_ungranted_entry_refusal_command(target: concat(root, "/objects"), pruned: [], group: group, depth: dashboard_git_worker_subtree_walk_depth)
+    let admitted = wet_ran(command: walk)
+    let owner_only = wet_touch_at(mode: "0644", paths: [concat(root, "/objects/f9/owner-only")], gid: gid)
+    let refused_owner_only = !wet_ran(command: walk)
+    let removed = wet_ran(command: rm_recursive_force_command(path: concat(root, "/objects/f9/owner-only")))
+    let foreign = find_subtree_ungranted_entry_refusal_command(target: concat(root, "/objects"), pruned: [], group: to_string(gid + 1), depth: dashboard_git_worker_subtree_walk_depth)
+    let refused_foreign = !wet_ran(command: foreign)
+    let clean = wet_ran(command: rm_recursive_force_command(path: root))
+    seeded && admitted && owner_only && refused_owner_only && removed && refused_foreign && clean
+  }
+}
+
+// A WORKER-WRITTEN, IN-GROUP TREE IS A NOOP: the regroup walk selects `-user <owner> -not -group <g>`, so with a
+// selector naming a uid that owns nothing here (the worker; find reads a numeric uid without a passwd row), the walk selects NOTHING and exits 0 -- where the
+// old unselected walk would have chgrp'd every entry. Both builders run green over the tree and change no mode.
+test fn a_tree_the_principal_owns_nothing_of_is_a_noop_for_both_builders() -> Bool {
+  let root = wet_out(command: mktemp_directory_command(template: "wre3-noop-XXXXXX"))
+  let gid = wet_self_gid()
+  let group = wet_group_token()
+  if root == "" || gid < 0 || group == "" {
+    false
+  } else {
+    let seeded = wet_mktree(paths: [concat(root, "/refs/heads")])
+      && wet_touch_at(mode: "0644", paths: [concat(root, "/refs/heads/x")], gid: gid)
+    let before = wet_out(command: find_subtree_mode_readback_command(target: concat(root, "/refs"), pruned: [], depth: dashboard_git_worker_subtree_walk_depth))
+    let ran = wet_ran(command: find_subtree_regroup_command(target: concat(root, "/refs"), group: group, owner: to_string(wet_self_uid() + 1), pruned: [], depth: dashboard_git_worker_subtree_walk_depth))
+    let after = wet_out(command: find_subtree_mode_readback_command(target: concat(root, "/refs"), pruned: [], depth: dashboard_git_worker_subtree_walk_depth))
+    let clean = wet_ran(command: rm_recursive_force_command(path: root))
+    seeded && before != "" && ran && before == after && clean
+  }
 }

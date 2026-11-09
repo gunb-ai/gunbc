@@ -22,7 +22,7 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE INHABITANCE CLAIMS FOR THE PROFILE STORE (DESIGN section 3, the pairing obligation). The
+// THE INHABITANCE CLAIMS FOR THE PROFILE STORE (gunbc.design_argument::witness_one_interface, the pairing obligation). The
 // profile roster read shipped decoding Filesystem.List's newline-joined `entries` as if it were a
 // list of names -- its first "entry" was a code point and `ends_with` refused -- and nothing caught
 // it because no claim ran the real store path: every consumer supplied profiles as values. These
@@ -47,7 +47,7 @@ fn ps_with_temp_dir(scenario: fn(FilePath) -> ProcessExit) -> ProcessExit {
 
 fn ps_instance(dir: FilePath) -> HostDashboardInstance {
   isolated_dashboard_instance(deployment: deployment_id(name: "profile-store-fixture" as NonEmptyStr), instance_id: "profile-store-fixture", layout: srv1_host_layout(), root: dir,
-    serve_function: "unused", listen_port: 18746, source_anchor_ref: "refs/heads/fixture", actuation: DashboardObserveOnly, provision_transport: DashboardLocalProvision)
+    serve_function: "unused", listen_port: 18746, source_anchor_ref: "refs/heads/fixture", actuation: DashboardObserveOnly, actuator_host: srv1_host_layout().host_identity)
 }
 
 // The store's directory, created the way the instance directory row would create it.

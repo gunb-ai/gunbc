@@ -1,0 +1,254 @@
+module test.claim.attempt_append_log_host_create_wet_witness
+
+// THE HOST-SIDE CREATE OF AN APPEND-LOG MEMBER, RUN WET OVER A REAL ATTEMPT-STATE DIRECTORY THE TEST OWNS.
+// Under std.durable_append_log's HostCreatesThenSandboxWrites window the host's only write is this create, and
+// it is admitted only while the member does not exist; the window then passes to the sandbox by the member's
+// existence (no hold to acquire or release -- contract: std.durable_append_log append_host_create_admission,
+// which takes NO writer standing, so nothing here is fabricated). The dedicated-account branch keeps the group-writable mode AT CREATION (the defect this
+// witness guards: a create that drops the mode leaves the dedicated worker unable to append). The service-user
+// branch was historically a plain create with no mode and stays so; an existing member is a typed outcome
+// (AlreadyExists), never an overwrite. Business key only -- the path is derived from the sealed instance, never
+// supplied by the caller.
+
+import std.types { Bool, Int, NonEmptyStr, String, FilePath }
+import std.optional { Present, Absent }
+import extdeps.shell
+import extdeps.access.posix { FileMode, PermissionBits, file_mode_octal }
+import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  HostDashboardInstance, DashboardExistingRepo, isolated_dashboard_instance, isolated_dashboard_instance_admitting,
+  DashboardActuating, DashboardLocalProvision, dashboard_home_provision_parent_root,
+  fleet_admitted_revision_source, WorkerIsServiceUser, WorkerDedicatedAccount,
+  belt_max_concurrent_default,
+  dispatch_worker_memory_ceiling,
+}
+import gunbc.roadmap.roadmap_attempt_state_store {
+  AttemptWorkerEvents, AttemptSupervisorLog,
+  attempt_append_log_host_create, AttemptAppendLogCreated, AttemptAppendLogAlreadyExists,
+  AttemptAppendLogCreateRefused, AttemptAppendLogHostUnready, AttemptAppendLogHostLegacyRefused,
+  attempt_state_provision, AttemptStateProvision, attempt_state_provision_directory,
+  attempt_log_member_directory, attempt_log_provision_path,
+  attempt_append_log_events_group_writable_mode,
+}
+import gunbc.durable_append_log_store { LegacyFramingMismatch }
+import std.durable_append_log {
+  HostCreatesThenSandboxWrites, AppendWriteAdmitted, AppendWriteRefused, CreateOverExistingMember,
+  append_host_create_admission,
+}
+import std.durable_exclusive_hold { DurableHoldOwnerRef }
+import extdeps.filesystem.filesystem_io { Filesystem }
+
+fn fresh_root() -> String {
+  shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_appendlog.XXXXXX").path
+}
+
+fn instance_service_at(root: String) -> HostDashboardInstance {
+  isolated_dashboard_instance(
+    deployment: deployment_id(name: "appendlog-wet" as NonEmptyStr),
+    instance_id: "appendlog-wet" as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: root as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18097,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    actuator_host: srv1_host_layout().host_identity,
+  )
+}
+
+fn instance_dedicated_at(root: String) -> HostDashboardInstance {
+  isolated_dashboard_instance_admitting(
+    deployment: deployment_id(name: "appendlog-wet" as NonEmptyStr),
+    instance_id: "appendlog-wet" as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: root as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18097,
+    source_seed: DashboardExistingRepo { anchor_ref: "refs/heads/main" as NonEmptyStr },
+    actuation: DashboardActuating,
+    actuator_host: srv1_host_layout().host_identity,
+    admitted_revision: fleet_admitted_revision_source,
+    dispatch_base_ref: "origin/main" as NonEmptyStr,
+    publication_base_branch: "main" as NonEmptyStr,
+    worker: WorkerDedicatedAccount,
+    provision_parent_root: dashboard_home_provision_parent_root,
+    belt_max_concurrent: belt_max_concurrent_default,
+    dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+  )
+}
+
+// The per-attempt member directory the dispatch prepare step would have made before the create; the create is
+// driven the way the provider drives it, over a directory that already exists.
+fn ensure_member_dir(instance: HostDashboardInstance) -> Bool {
+  let prov = attempt_state_provision(instance: instance, node: "wet-node", attempt_key: "wet-key")
+  let dir = attempt_state_provision_directory(provision: prov, directory: attempt_log_member_directory(member: AttemptWorkerEvents))
+  shell.Mkdir.Parents(path: dir as FilePath).success
+}
+
+// WET GREEN, SERVICE USER: the host create makes the member and it reads back present.
+test fn the_service_user_host_create_creates_the_member() -> Bool {
+  let root = fresh_root()
+  let inst = instance_service_at(root: root)
+  let ok = service_user_create_cell(instance: inst)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn service_user_create_cell(instance: HostDashboardInstance) -> Bool {
+  let ensured = ensure_member_dir(instance: instance)
+  let prov = attempt_state_provision(instance: instance, node: "wet-node", attempt_key: "wet-key")
+  let expected_path = attempt_log_provision_path(provision: prov, member: AttemptWorkerEvents)
+  match attempt_append_log_host_create(instance: instance, node: "wet-node", attempt_key: "wet-key", member: AttemptWorkerEvents) {
+    AttemptAppendLogCreated { path: p, created_mode: _ } => ensured && p == expected_path && Filesystem.Read(path: p).success
+    _ => false
+  }
+}
+
+// WET GREEN, DEDICATED ACCOUNT -- THE MODE GUARD: the host create makes the member AND the created mode is the
+// group-writable mode, so the dedicated worker can append it. file_mode_octal is the mode-read-back the codebase
+// uses for declared created modes (dispatch_unit_created_paths precedent).
+test fn the_dedicated_host_create_keeps_the_group_writable_mode() -> Bool {
+  let root = fresh_root()
+  let inst = instance_dedicated_at(root: root)
+  let ok = dedicated_create_mode_cell(instance: inst)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn dedicated_create_mode_cell(instance: HostDashboardInstance) -> Bool {
+  let ensured = ensure_member_dir(instance: instance)
+  match attempt_append_log_host_create(instance: instance, node: "wet-node", attempt_key: "wet-key", member: AttemptWorkerEvents) {
+    AttemptAppendLogCreated { path: p, created_mode: m } =>
+      match m {
+        Present { value: mode } => ensured && file_mode_octal(mode: mode) == "0660" && Filesystem.Read(path: p).success
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+// WET RED (a typed outcome, not a crash): creating over an existing member reports AlreadyExists -- an existing
+// member is an outcome, never an overwrite.
+// WET (executed claim): pre-plants the events file via a first create, then a second create reports
+// AlreadyExists with a non-empty path. The belt_actuate match is exhaustive over all 5 result variants;
+// the AlreadyExists arm produces AttemptStateInitializationFailed (no wildcard to silently continue),
+// so a stale events file from a prior attempt refuses the launch rather than projecting it.
+// NOTE: presence observation (filesystem_entry_presence_of_path) is used instead of Filesystem.Read
+// for the existence check, so permission-denied on the file no longer masquerades as absent.
+// The indeterminate-presence case (unreadable parent directory) gives HostUnready, never CreateRefused;
+// it cannot be exercised wet because the DAG filesystem extdeps lacks chmod.
+test fn a_host_create_on_an_existing_member_reports_already_exists() -> Bool {
+  let root = fresh_root()
+  let inst = instance_service_at(root: root)
+  let ok = already_exists_cell(instance: inst)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn already_exists_cell(instance: HostDashboardInstance) -> Bool {
+  let ensured = ensure_member_dir(instance: instance)
+  match attempt_append_log_host_create(instance: instance, node: "wet-node", attempt_key: "wet-key", member: AttemptWorkerEvents) {
+    AttemptAppendLogCreated { path: _, created_mode: _ } =>
+      match attempt_append_log_host_create(instance: instance, node: "wet-node", attempt_key: "wet-key", member: AttemptWorkerEvents) {
+        AttemptAppendLogAlreadyExists { path: p } => ensured && !(p == "")
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// PURE (executed claim): a host create asks for ONE fact -- whether the member is already there -- and takes no
+// writer standing at all (review 90279). Production used to pass a fabricated `WriterWindowReleased` to the append
+// admission to satisfy its signature; that literal is gone, and the parameter cannot be re-added: the compile-fed
+// pair in test.claim.durable_append_log_witness (`a_standing_handed_to_the_host_create_admission_is_refused_at_compile`)
+// shows a planted `standing:` argument on this admission is a blocking diagnostic against a clean accepted twin.
+test fn the_host_create_admission_needs_only_membership() -> Bool {
+  match append_host_create_admission(policy: HostCreatesThenSandboxWrites { principal: "attempt-worker-unit" as DurableHoldOwnerRef }, member_exists: false) {
+    AppendWriteAdmitted => match append_host_create_admission(policy: HostCreatesThenSandboxWrites { principal: "attempt-worker-unit" as DurableHoldOwnerRef }, member_exists: true) {
+      AppendWriteRefused { refusal: CreateOverExistingMember } => true
+      _ => false
+    }
+    _ => false
+  }
+}
+
+// LEGACY GENERATION REFUSAL (review 90137): the mint's claimant/generation scan runs over the ON-DISK file name,
+// so a stale pre-migration generation provider-events.jsonl.1 in the member directory is SEEN and the host create
+// refuses with the typed cause, never creating over it. A slot keyed on the CENSUS KEY ("AttemptWorkerEvents")
+// would scan for "AttemptWorkerEvents.<n>", never see this file, and create -- RED here, GREEN on the fix.
+test fn a_planted_legacy_generation_refuses_the_host_create() -> Bool {
+  let root = fresh_root()
+  let inst = instance_service_at(root: root)
+  let planted = legacy_generation_cell(instance: inst)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  planted && removed.success
+}
+
+// THE LIMIT OF THAT REFUSAL, EXECUTED (gunbc.design_argument::how_to_work: state the material limit, do not gate every unknown). The mint
+// looks only at its own member name and that name's generations (gunbc.durable_append_log_store
+// append_log_entry_is_other_framing, append_log_entry_claims), so an UNRELATED entry of the shape the retired
+// unowned-class frontier rows recorded -- job-<pid>.out under the attempt-state root -- is neither claimed nor
+// refused: the member is created beside it and the foreign bytes stay untouched and unread. This claim is a
+// specimen of what the retired census rows used to record, NOT a requirement that future mints keep ignoring it.
+test fn an_unowned_foreign_entry_is_neither_claimed_nor_refused_by_the_mint() -> Bool {
+  let root = fresh_root()
+  let inst = instance_service_at(root: root)
+  let observed = foreign_entry_cell(instance: inst)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  observed && removed.success
+}
+
+fn foreign_entry_cell(instance: HostDashboardInstance) -> Bool {
+  let ensured = ensure_member_dir(instance: instance)
+  let prov = attempt_state_provision(instance: instance, node: "wet-node", attempt_key: "wet-key")
+  let dir = attempt_state_provision_directory(provision: prov, directory: attempt_log_member_directory(member: AttemptWorkerEvents))
+  let expected_path = attempt_log_provision_path(provision: prov, member: AttemptWorkerEvents)
+  let stray = join([dir, "/job-4242.out"], "")
+  let planted = Filesystem.Write(path: stray as FilePath, content: "unowned worker stdout bytes\n")
+  match attempt_append_log_host_create(instance: instance, node: "wet-node", attempt_key: "wet-key", member: AttemptWorkerEvents) {
+    AttemptAppendLogCreated { path: p, created_mode: _ } =>
+      ensured && planted.success && p == expected_path
+      && Filesystem.Read(path: stray as FilePath).success
+      && Filesystem.Read(path: p).success
+    _ => false
+  }
+}
+
+// THE FRAMING A VARIANT DECLARES IS EXECUTED, not just stored: the LAST member of the closed set is a stdout
+// stream, so a generation file of its own name (supervisor-stdout.log.1) is the OTHER framing and the mint refuses
+// it typed. If that variant's slot were declared with the wrong framing the file would be taken as this attempt's
+// stream and the claim would go RED -- this is the control the mutant in the report is run against.
+test fn a_planted_generation_of_the_supervisor_log_refuses_the_host_create() -> Bool {
+  let root = fresh_root()
+  let inst = instance_service_at(root: root)
+  let refused = supervisor_generation_cell(instance: inst)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  refused && removed.success
+}
+
+fn supervisor_generation_cell(instance: HostDashboardInstance) -> Bool {
+  let prov = attempt_state_provision(instance: instance, node: "wet-node", attempt_key: "wet-key")
+  let dir = attempt_state_provision_directory(provision: prov, directory: attempt_log_member_directory(member: AttemptSupervisorLog))
+  let ensured = shell.Mkdir.Parents(path: dir as FilePath).success
+  let planted = Filesystem.Write(path: join([dir, "/supervisor-stdout.log.1"], ""), content: "stale supervisor stdout generation\n")
+  match attempt_append_log_host_create(instance: instance, node: "wet-node", attempt_key: "wet-key", member: AttemptSupervisorLog) {
+    AttemptAppendLogHostLegacyRefused { cause: LegacyFramingMismatch { entry: e } } =>
+      ensured && planted.success && e == ("supervisor-stdout.log.1" as NonEmptyStr)
+    _ => false
+  }
+}
+
+fn legacy_generation_cell(instance: HostDashboardInstance) -> Bool {
+  let ensured = ensure_member_dir(instance: instance)
+  let dir = attempt_state_provision_directory(
+    provision: attempt_state_provision(instance: instance, node: "wet-node", attempt_key: "wet-key"),
+    directory: attempt_log_member_directory(member: AttemptWorkerEvents)
+  )
+  let planted = Filesystem.Write(path: join([dir, "/provider-events.jsonl.1"], ""), content: "{\"stale\":true}\n")
+  match attempt_append_log_host_create(instance: instance, node: "wet-node", attempt_key: "wet-key", member: AttemptWorkerEvents) {
+    AttemptAppendLogHostLegacyRefused { cause: LegacyFramingMismatch { entry: e } } =>
+      ensured && planted.success && e == ("provider-events.jsonl.1" as NonEmptyStr)
+    _ => false
+  }
+}

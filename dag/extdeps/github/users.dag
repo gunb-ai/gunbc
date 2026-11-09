@@ -1,4 +1,5 @@
 module extdeps.github.users
+import std.types { Bearer }
 
 import std.types { String, Int, Secret }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -15,7 +16,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// §3 shape/transport split: GitHubEffect (extdeps.github.effect) is the operation SHAPE for the
+// gunbc.design_argument::single_authority shape/transport split: GitHubEffect (extdeps.github.effect) is the operation SHAPE for the
 // mutations this fleet already names. This module is ONE bound HTTP realization handler of
 // GitHub's REST surface, not a second algebra and not a policy about which credential to use.
 // Credentials are an input (auth_token: Secret), never an argv word and never an EnvVar baked

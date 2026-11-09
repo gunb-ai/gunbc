@@ -1,0 +1,667 @@
+// operator acceptance: the daily close, durable and deterministic.
+//// the node must CLOSE: an acceptance fact, durable across restart, visible on the next page read,
+// with no hand-commit and no redeploy. Before this module the only way was to hand-append an
+// AcceptanceRecorded line to the committed JSONL carrier and redeploy — an operator act with no
+// route at all.
+//
+// ONE AUTHORITY, TWO CARRIERS. The acceptance-event HISTORY stays the single authority for node
+// acceptance facts. It now reads jsonl-prefix ++ runtime-tail: the committed carrier is the seed
+// (written at authoring time and by hand-commits), and this module's fabric event-log chain
+// partition is the runtime tail (written by the serve close route). The tail is admitted by the
+// SAME native line parser as the seed and replayed through the SAME replay_acceptance_history law as
+// one sequence — so an acceptance identity present in both carriers, a tail revocation naming no
+// live receipt, or a malformed tail line REFUSES the load with a typed, located reason. Nothing is
+// double-counted and nothing is silently dropped: an unreadable tail is a load refusal, never an
+// empty tail.
+//
+// WHY THE FABRIC CHAIN AND NOT THE JSONL OR THE PER-NODE EVENT CHAINS: the jsonl is repo-committed
+// (fails "no redeploy", fails restart durability for a runtime instance); the instance event log is
+// per-node chains with no global order — but acceptance history is ONE ordered log with prefix and
+// replay laws, exactly what the CAS-head fabric chain provides (the same substrate
+// gunbc.roadmap.roadmap_task_store chose for runtime task facts). No new plan authority is added:
+// the one plan (roadmap_runtime_plan) keeps its three inputs; the acceptance authority simply
+// gained a runtime carrier.
+//
+// THE MERGED PR IS A GATE AND AN ATTACHMENT, NEVER THE ACCEPTANCE FACT. The standing ruling
+// "merged pull requests never accept" holds: the durable acceptance fact is the typed receipt
+// (red-control executed + handback delivered — the same schema the native carrier parser admits).
+// The PR enters twice, both honestly: (a) the route READS BACK GitHub through the extdeps.github
+// boundary and refuses unless the PR is verifiably merged — an unavailable read refuses too, so a
+// bare operator claim is never trusted; (b) the verified PR facts (url, merged_at, head sha) ride
+// the durable chain event beside the canonical receipt line, so the record shows its own evidence.
+module gunbc.roadmap.roadmap_operator_acceptance
+
+import std.types { String, NonEmptyStr, Bool, Int, List, EpochSecs }
+import std.nat { Nat, Zero }
+import std.checked_arithmetic { checked_int_to_nat }
+import std.integer { nat_to_int }
+import std.optional { Present, Absent, Optional }
+import std.content_hash { serialize_content_hash, Fnv1a64 }
+import std.decimal { decimal_digit_char }
+import extdeps.units.iso8601_calendar { Iso8601CivilDate, iso8601_civil_from_days, iso8601_floor_div, iso8601_seconds_per_day, iso8601_two_digits }
+import extdeps.github.pulls { PullRequestViewState, PullRequestViewOpen, PullRequestViewClosed, PullRequestViewMerged, PullRequestViewUnknown, github_pull_request_view_state_text }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
+import gunbc.fabric.fabric_event_log {
+  PartitionReadOk, PartitionReadRefused, EventAppended, EventAppendStale, EventAppendRefused,
+  event_log_read_partition_with, event_log_append_with, event_log_read_budget, event_log_refusal_wire
+}
+import product.capacity.event_chain {
+  PartitionId, ChainEvent, ChainEnvelope, ChainWalked, ChainIncomplete, ChainBudgetExhausted,
+  HeadExpectation, HeadAt, HeadAbsent, EventDecode, EventDecoded, EventUndecodable, EventId
+}
+import product.capacity.event_json { chain_event_wire_text, chain_event_decode, member_nonempty }
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_string, json_array, json_object, serialize_json }
+import gunbc.roadmap.roadmap_model {
+  RoadmapNodeId, RoadmapAcceptanceEvent, AcceptanceRecorded, RoadmapAcceptanceReceipt,
+  replay_acceptance_history, roadmap_criteria_digest, AcceptanceHistoryReplayState
+}
+import gunbc.roadmap.roadmap_status { TicketFields, RedControlExecuted, RedControlNotRun, HandbackDelivered, HandbackNotDelivered }
+import gunbc.roadmap.roadmap_event_log { RoadmapNodeStanding, NodeReadyForReview }
+import gunbc.roadmap.roadmap_acceptance_history_carrier {
+  RoadmapAcceptanceEventHistoryLoad, RoadmapAcceptanceEventHistoryLoaded, RoadmapAcceptanceEventHistoryLoadRefused,
+  roadmap_acceptance_event_history_carrier_repo_path,
+  load_roadmap_acceptance_event_history, load_roadmap_acceptance_event_history_from_carrier_text
+}
+
+data roadmap_operator_acceptance_partition: String = "roadmap-operator-acceptance"
+data roadmap_operator_acceptance_schema: String = "gunbc.roadmap-operator-acceptance/v1"
+data roadmap_operator_acceptance_kind: String = "accepted"
+
+fn roadmap_operator_acceptance_partition_id() -> PartitionId {
+  roadmap_operator_acceptance_partition as NonEmptyStr as String as PartitionId
+}
+
+// The durable tail record. `line` is the canonical acceptance_recorded JSONL line — exactly the
+// grammar the native carrier parser admits (one wire, one parser, one law); the verified PR facts
+// ride beside it in the same append-only event, never inside the receipt.
+type OperatorAcceptanceRecord {
+  operation_key: NonEmptyStr
+  line: NonEmptyStr
+  pr_url: NonEmptyStr
+  pr_merged_at: NonEmptyStr
+  pr_head_sha: NonEmptyStr
+}
+
+fn roadmap_operator_acceptance_encode(e: ChainEvent<OperatorAcceptanceRecord>) -> String {
+  chain_event_wire_text(
+    schema: roadmap_operator_acceptance_schema,
+    e: e,
+    kind: roadmap_operator_acceptance_kind,
+    members: [
+      json_kv("operation_key", json_string(e.payload.operation_key as String)),
+      json_kv("line", json_string(e.payload.line as String)),
+      json_kv("pr_url", json_string(e.payload.pr_url as String)),
+      json_kv("pr_merged_at", json_string(e.payload.pr_merged_at as String)),
+      json_kv("pr_head_sha", json_string(e.payload.pr_head_sha as String)),
+    ]
+  )
+}
+
+// Structural decode of one acceptance record. The kind parameter is kept for the shared chain
+// codec's contract (kind_decode: fn(JsonValue, String) -> T?): chain_event_decode has already
+// refused any envelope whose schema is not exactly ours, and only the close gate appends into this
+// partition, so a structurally complete record under our schema IS an acceptance record.
+fn roadmap_operator_acceptance_decode(doc: JsonValue) -> OperatorAcceptanceRecord? {
+  match member_nonempty(doc: doc, key: "operation_key") {
+    Absent => none
+    Present { value: op } =>
+      match (member_nonempty(doc: doc, key: "line")) { Absent => none  Present { value: line } =>
+        match (member_nonempty(doc: doc, key: "pr_url")) { Absent => none  Present { value: pr_url } =>
+          match (member_nonempty(doc: doc, key: "pr_merged_at")) { Absent => none  Present { value: merged_at } =>
+            match (member_nonempty(doc: doc, key: "pr_head_sha")) { Absent => none  Present { value: head } => Present { value: OperatorAcceptanceRecord { operation_key: op, line: line, pr_url: pr_url, pr_merged_at: merged_at, pr_head_sha: head } }
+            }
+          }
+        }
+      }
+  }
+}
+
+fn roadmap_operator_acceptance_decode_text(text: String) -> EventDecode<OperatorAcceptanceRecord> {
+  chain_event_decode(text: text, schema: roadmap_operator_acceptance_schema, kind_decode: fn(doc, _kind) { roadmap_operator_acceptance_decode(doc: doc) })
+}
+
+// ── READING THE TAIL ─────────────────────────────────────────────────────────────────────────────
+// One walk of the partition, oldest first, under the declared read budget. An undecodable event, a
+// broken parent link, or a budget overrun is TailUnreadable — never a skipped record: silent drops
+// are the failure this authority exists to make impossible.
+
+type OperatorAcceptanceTail
+  = TailRead { head: HeadExpectation, entries: List<ChainEnvelope<OperatorAcceptanceRecord>> }
+  | TailUnreadable { reason: NonEmptyStr }
+
+fn roadmap_operator_acceptance_read(store: FabricStorageBinding) -> OperatorAcceptanceTail {
+  match event_log_read_partition_with(
+    store: store,
+    partition: roadmap_operator_acceptance_partition_id(),
+    budget: event_log_read_budget(),
+    decode: roadmap_operator_acceptance_decode_text
+  ) {
+    PartitionReadRefused { cause: c } => TailUnreadable { reason: event_log_refusal_wire(cause: c) as NonEmptyStr }
+    PartitionReadOk { head: head, walk: walk } => match walk {
+      ChainWalked { oldest_first: envs } => TailRead { head: head, entries: envs }
+      ChainIncomplete { missing: m, newest_first_so_far: _ } => TailUnreadable { reason: join(["operator acceptance chain has a missing link at ", m as String], "") as NonEmptyStr }
+      ChainBudgetExhausted { at: a } => TailUnreadable { reason: join(["operator acceptance chain exceeds the read budget at ", a as String], "") as NonEmptyStr }
+    }
+  }
+}
+
+// ── THE WIRE LINE ────────────────────────────────────────────────────────────────────────────────
+// The receipt -> canonical-line direction of the carrier codec. The parser side is the trusted
+// native seed; this produces exactly what that seed admits: {"variant":"acceptance_recorded",
+// "receipt":{...}} with the six receipt members, the red_control/handback tagged sub-objects, and
+// criteria_digest in lowercase hex16 (the parser's validate_hex16 law). Member order is fixed, so
+// the same receipt always serializes byte-identically — the determinism the close's replay relies
+// on. An evidence-free receipt has no wire form: it is not closable, and "" says so.
+
+fn roadmap_operator_acceptance_receipt_line(receipt: RoadmapAcceptanceReceipt) -> String {
+  let red_members = match receipt.red_control {
+    RedControlExecuted { witness_module: wm, witness_fn: wf, executed_on: eo } => [
+      json_kv("variant", json_string("red_control_executed")),
+      json_kv("witness_module", json_string(wm as String)),
+      json_kv("witness_fn", json_string(wf as String)),
+      json_kv("executed_on", json_string(eo)),
+    ]
+    RedControlNotRun => [] as List<JsonKeyValue>
+  }
+  let handback_members = match receipt.handback {
+    HandbackDelivered { first_artifact: fa, further_artifacts: extra } => [
+      json_kv("variant", json_string("handback_delivered")),
+      json_kv("first_artifact", json_string(fa as String)),
+      json_kv("further_artifacts", json_array(map(extra, a => json_string(a as String)))),
+    ]
+    HandbackNotDelivered => [] as List<JsonKeyValue>
+  }
+  if count(red_members) == 0 || count(handback_members) == 0 {
+    ""
+  } else {
+    serialize_json(v: json_object([
+      json_kv("variant", json_string("acceptance_recorded")),
+      json_kv("receipt", json_object([
+        json_kv("node", json_string(receipt.node as String)),
+        json_kv("criteria_digest", json_string(serialize_content_hash(hash: Fnv1a64(receipt.criteria_digest)) as String)),
+        json_kv("red_control", json_object(red_members)),
+        json_kv("handback", json_object(handback_members)),
+        json_kv("accepted_by", json_string(receipt.accepted_by as String)),
+        json_kv("accepted_on", json_string(receipt.accepted_on)),
+      ])),
+    ]))
+  }
+}
+
+// ── THE MERGED LOAD ──────────────────────────────────────────────────────────────────────────────
+// seed events from the committed carrier ++ tail events from the chain, admitted by the same parser
+// and the same replay law as ONE sequence. Refusals are typed at every step: a tail line the parser
+// refuses, or a sequence the replay law refuses, refuses the whole load — the page and the plan then
+// say so rather than showing a history with quiet gaps.
+
+fn roadmap_operator_acceptance_history_load(path: String, store: FabricStorageBinding) -> RoadmapAcceptanceEventHistoryLoad {
+  match load_roadmap_acceptance_event_history(path: path) {
+    RoadmapAcceptanceEventHistoryLoadRefused { detail: d } => RoadmapAcceptanceEventHistoryLoadRefused { detail: d }
+    RoadmapAcceptanceEventHistoryLoaded { events: seed } =>
+      match roadmap_operator_acceptance_read(store: store) {
+        TailUnreadable { reason: r } => RoadmapAcceptanceEventHistoryLoadRefused { detail: join(["operator acceptance tail unreadable: ", r as String], "") }
+        TailRead { head: _, entries: envs } =>
+          match roadmap_operator_acceptance_parse_tail(lines: map(envs, e => e.event.payload.line as String)) {
+            RoadmapAcceptanceTailBad { line_index: i, detail: d } => RoadmapAcceptanceEventHistoryLoadRefused { detail: join(["operator acceptance tail line ", to_string(value: nat_to_int(i)), ": ", d as String], "") }
+            RoadmapAcceptanceTailOk { events: tail_events } =>
+              match replay_acceptance_history(events: concat(seed, tail_events)) {
+                Absent => RoadmapAcceptanceEventHistoryLoadRefused { detail: roadmap_operator_acceptance_replay_violation(seed: seed, tail: tail_events) }
+                Present { value: _ } => RoadmapAcceptanceEventHistoryLoaded { events: concat(seed, tail_events) }
+              }
+          }
+      }
+  }
+}
+
+type RoadmapAcceptanceTailParse
+  = RoadmapAcceptanceTailOk { events: List<RoadmapAcceptanceEvent> }
+  | RoadmapAcceptanceTailBad { line_index: Nat, detail: NonEmptyStr }
+
+// Each tail line through the SAME native parser (its law is per line), in chain order; the fold
+// keeps the FIRST refusal and stops reporting after it — the load refuses regardless, and one
+// located cause is the honest diagnosis.
+fn roadmap_operator_acceptance_parse_tail(lines: List<String>) -> RoadmapAcceptanceTailParse {
+  fold(
+    lines,
+    init: RoadmapAcceptanceTailOk { events: [] as List<RoadmapAcceptanceEvent> },
+    f: (acc, entry) => match acc {
+      RoadmapAcceptanceTailBad { line_index: i, detail: d } => RoadmapAcceptanceTailBad { line_index: i, detail: d }
+      RoadmapAcceptanceTailOk { events: got } =>
+        match load_roadmap_acceptance_event_history_from_carrier_text(text: entry) {
+          RoadmapAcceptanceEventHistoryLoadRefused { detail: d } => RoadmapAcceptanceTailBad { line_index: match checked_int_to_nat(n: count(got)) { Present { value: k } => k Absent => Zero }, detail: d as NonEmptyStr }
+          RoadmapAcceptanceEventHistoryLoaded { events: parsed } =>
+            match parsed.first() {
+              Absent => RoadmapAcceptanceTailBad { line_index: match checked_int_to_nat(n: count(got)) { Present { value: k } => k Absent => Zero }, detail: "line parsed to no event" as NonEmptyStr }
+              Present { value: e } => RoadmapAcceptanceTailOk { events: concat(got, [e]) }
+            }
+        }
+    }
+  )
+}
+
+// The replay law returned None — name WHERE it broke, for the located refusal. Each part replays on
+// its own (the close checked the tail before appending; the seed is checked here), so a None on the
+// merged sequence can only come from the seam: an acceptance identity present in both carriers, or a
+// tail revocation naming no live receipt.
+fn roadmap_operator_acceptance_replay_violation(seed: List<RoadmapAcceptanceEvent>, tail: List<RoadmapAcceptanceEvent>) -> String {
+  if replay_acceptance_history(events: seed) == none {
+    "the committed seed does not replay on its own"
+  } else if replay_acceptance_history(events: tail) == none {
+    "the runtime tail does not replay on its own"
+  } else {
+    "the seed and the tail refuse to replay as one sequence: an acceptance identity is present in both carriers, or a tail event names no predecessor in the seed"
+  }
+}
+
+// ── THE CLOSE ────────────────────────────────────────────────────────────────────────────────────
+// The write the operator's day needs. node + repo/PR are the required inputs; the receipt's
+// criteria_digest DERIVES from the node's own ticket text, accepted_by is the authenticated principal
+// the admission already verified, and the PR facts are the readback's, not the operator's claims.
+// Same inputs -> the same line, the same operation-key replay, the same durable record.
+
+type OperatorPrRow {
+  number: Int
+  // Absence is Optional here, the one spelling the codebase owns (std.optional::Optional;
+  // dag_absence_is_one_meaning). The gh boundary collapses its three absence spellings — missing
+  // member, JSON null, empty text — into Absent at the reader, so downstream there is no empty
+  // string standing beside a present value, and the durable NonEmptyStr facts are only ever
+  // built by matching Present. Construction, not validation, makes the bad case unwritable.
+  // The decoded upstream word (extdeps.github.pulls.PullRequestViewState) — the state names
+  // GitHub actually returns are an upstream fact and live there, not in a hand-written list here.
+  state: PullRequestViewState?
+  merged_at: NonEmptyStr?
+  head_sha: NonEmptyStr?
+}
+
+// The GitHub readback as the boundary hands it over. Unreadable is a RESULT, never a default: an
+// unavailable roster refuses the close fail-closed; it never admits one.
+type OperatorPrReadback
+  = PrRoster { rows: List<OperatorPrRow> }
+  | PrReadbackUnavailable { cause: NonEmptyStr }
+
+type OperatorCloseInputs {
+  node: RoadmapNodeId
+  ticket: TicketFields
+  repo: NonEmptyStr
+  pr_number: Int
+  accepted_by: NonEmptyStr
+  accepted_on: Iso8601CivilDate
+  witness_module: NonEmptyStr
+  witness_fn: NonEmptyStr
+  first_artifact: NonEmptyStr
+  further_artifacts: List<NonEmptyStr>
+  operation_key: NonEmptyStr
+  at: EpochSecs
+}
+
+type OperatorCloseRefusal
+  = CloseUnknownNode { node: NonEmptyStr }
+  | CloseAlreadyClosed { node: NonEmptyStr }
+  // The merged PR must be THE node's review PR, not any merged PR in the repo: the receipt is
+  // evidence about one node, and citing an unrelated merged PR is a fabricated plausible output
+  // (gunbc.design_argument::fail_closed). The node's NodeReadyForReview standing is where its PR is recorded; a mismatch
+  // says both numbers, and no other standing can substitute.
+  | ClosePrNotForNode { pr_number: Int, expected: NonEmptyStr }
+  | CloseEvidenceMissing { field: NonEmptyStr }
+  | ClosePrUnreadable { cause: NonEmptyStr }
+  | ClosePrNotFound { pr_number: Int }
+  | ClosePrNotMerged { pr_number: Int, state: NonEmptyStr }
+  | CloseTailUnreadable { reason: NonEmptyStr }
+  | CloseInvalidHistory { detail: NonEmptyStr }
+  | CloseKeyConflict { operation_key: NonEmptyStr }
+  | CloseCapacityFull { budget: Nat }
+  | CloseStaleHead
+  | CloseChainWriteRefused { step: NonEmptyStr, reason: NonEmptyStr }
+
+type OperatorCloseWrite
+  = CloseWritten { event_id: EventId }
+  | CloseAlreadyRecorded { event_id: EventId }
+  | CloseRefused { reason: OperatorCloseRefusal }
+
+type OperatorClosePrFacts { url: NonEmptyStr, merged_at: NonEmptyStr, head: NonEmptyStr }
+
+fn roadmap_operator_close(
+  path: String,
+  store: FabricStorageBinding,
+  inputs: OperatorCloseInputs,
+  readback: OperatorPrReadback,
+  standing: RoadmapNodeStanding?
+) -> OperatorCloseWrite {
+  // The gate runs FIRST and fail-closed: a roster we cannot read is not evidence
+  // (ClosePrUnreadable); a PR absent from the roster is not merged (ClosePrNotFound); an open or
+  // closed-unmerged PR refuses with its state. Nothing downstream ever sees an unverified PR.
+  match roadmap_operator_close_pr_gate(inputs: inputs, readback: readback) {
+    Present { value: refusal } => CloseRefused { reason: refusal }
+    Absent => match roadmap_operator_close_pr_facts(inputs: inputs, readback: readback) {
+      Absent => CloseRefused { reason: ClosePrNotFound { pr_number: inputs.pr_number } }
+      Present { value: facts } =>
+        // Merged is not enough — the PR must be THIS node's review PR. The standing arrives read
+        // from the node's own event lane by the caller (the serve route), so this layer compares
+        // the readback against the record the fabric itself holds; an operator cannot steer it.
+        match roadmap_operator_close_pr_binding(standing: standing, inputs: inputs) {
+          Present { value: refusal } => CloseRefused { reason: refusal }
+          Absent =>
+        match load_roadmap_acceptance_event_history(path: path) {
+          RoadmapAcceptanceEventHistoryLoadRefused { detail: d } => CloseRefused { reason: CloseInvalidHistory { detail: join(["seed carrier refused: ", d], "") as NonEmptyStr } }
+          RoadmapAcceptanceEventHistoryLoaded { events: seed } =>
+            match roadmap_operator_acceptance_read(store: store) {
+              TailUnreadable { reason: r } => CloseRefused { reason: CloseTailUnreadable { reason: r } }
+              TailRead { head: head, entries: envs } =>
+                match roadmap_operator_acceptance_parse_tail(lines: map(envs, e => e.event.payload.line as String)) {
+                  RoadmapAcceptanceTailBad { line_index: i, detail: d } => CloseRefused { reason: CloseInvalidHistory { detail: join(["tail line ", to_string(value: nat_to_int(i)), ": ", d as String], "") as NonEmptyStr } }
+                  RoadmapAcceptanceTailOk { events: tail_events } =>
+                    match replay_acceptance_history(events: concat(seed, tail_events)) {
+                      Absent => CloseRefused { reason: CloseInvalidHistory { detail: roadmap_operator_acceptance_replay_violation(seed: seed, tail: tail_events) as NonEmptyStr } }
+                      Present { value: replayed } =>
+                        // KEY IDEMPOTENCY BEFORE ALREADY-CLOSED: an operation replaying its own key must
+                        // answer the FIRST recording, never be refused by the side effect that recording
+                        // itself had. Only a DIFFERENT operation meets the already-closed refusal.
+                        match roadmap_operator_close_existing(envs: envs, inputs: inputs, facts: facts) {
+                          Present { value: already } => already
+                          Absent =>
+                            if roadmap_operator_node_has_live_receipt(replayed: replayed, node: inputs.node) {
+                              CloseRefused { reason: CloseAlreadyClosed { node: inputs.node as NonEmptyStr } }
+                            } else {
+                              match roadmap_operator_close_record(inputs: inputs) {
+                                Present { value: refusal } => CloseRefused { reason: refusal }
+                                Absent =>
+                                  // The whole merged sequence WITH the new event must replay before anything is
+                                  // written — a close that would create an inadmissible history is refused here,
+                                  // not discovered at the next load.
+                                  match replay_acceptance_history(events: concat(concat(seed, tail_events), [AcceptanceRecorded { receipt: roadmap_operator_close_receipt(inputs: inputs) }])) {
+                                    Absent => CloseRefused { reason: CloseInvalidHistory { detail: "the close would make the merged history replay-invalid" as NonEmptyStr } }
+                                    Present { value: _ } =>
+                                      if roadmap_operator_tail_over_budget(envs: envs) {
+                                        CloseRefused { reason: CloseCapacityFull { budget: event_log_read_budget() } }
+                                      } else {
+                                        roadmap_operator_close_append(inputs: inputs, facts: facts, head: head, store: store)
+                                      }
+                                  }
+                              }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        }
+    }
+  }
+}
+
+// The budget check in the Int lane, crossing to Nat once through
+// std.checked_arithmetic::checked_int_to_nat — the single Int->Nat crossing this codebase
+// already owns. count()'s answer is a list length, never negative, so the checked arm's
+// Absent cannot arise; Zero there compares under budget, which fails open ONLY into the
+// append's own capacity law, never into an unbounded write.
+fn roadmap_operator_tail_over_budget(envs: List<ChainEnvelope<OperatorAcceptanceRecord>>) -> Bool {
+  match checked_int_to_nat(n: count(envs) + 1) {
+    Absent => false
+    Present { value: n } => n > event_log_read_budget()
+  }
+}
+
+// Does a review standing's pr reference name exactly this PR number? The published carriers are
+// a number tail after '#' (owner/repo#12210) or after the last '/' (…/pull/4242) — both are real
+// in the event lane today. The tail must equal the canonical decimal of the number: "007", "7x"
+// and "" are not 7. No parsing, so no parse can lie.
+fn roadmap_operator_pr_ref_matches(pr: NonEmptyStr, number: Int) -> Bool {
+  match last(split(s: pr as String, delimiter: "#")) {
+    Absent => false
+    Present { value: tail } =>
+      match last(split(s: tail, delimiter: "/")) {
+        Absent => false
+        Present { value: seg } => seg == to_string(value: number)
+      }
+  }
+}
+
+// A merged PR only closes the node it belongs to: the node's NodeReadyForReview standing is the
+// fabric's own record of that PR, so the comparison is readback-vs-record, never readback-vs-claim.
+// No standing means no node on the lane; any other standing means the node never published a
+// review PR — closing it on a PR claim would fabricate the link the receipt cites.
+fn roadmap_operator_close_pr_binding(
+  standing: RoadmapNodeStanding?,
+  inputs: OperatorCloseInputs
+) -> OperatorCloseRefusal? {
+  match standing {
+    Absent => Present { value: CloseUnknownNode { node: inputs.node as NonEmptyStr } }
+    Present { value: NodeReadyForReview { pr: pr, head: _ } } =>
+      if roadmap_operator_pr_ref_matches(pr: pr, number: inputs.pr_number) { none }
+      else { Present { value: ClosePrNotForNode { pr_number: inputs.pr_number, expected: pr } } }
+    Present { value: _ } => Present { value: ClosePrNotForNode { pr_number: inputs.pr_number, expected: "no review standing (node is not ready for review)" as NonEmptyStr } }
+  }
+}
+
+fn roadmap_operator_close_pr_gate(inputs: OperatorCloseInputs, readback: OperatorPrReadback) -> OperatorCloseRefusal? {
+  match readback {
+    PrReadbackUnavailable { cause: c } => Present { value: ClosePrUnreadable { cause: c } }
+    PrRoster { rows: rows } =>
+      match filter(rows, r => r.number == inputs.pr_number).first() {
+        Absent => Present { value: ClosePrNotFound { pr_number: inputs.pr_number } }
+        Present { value: row } => if roadmap_operator_pr_is_merged(row: row) { none } else { Present { value: ClosePrNotMerged { pr_number: inputs.pr_number, state: roadmap_operator_pr_state_text(row: row) } } }
+      }
+  }
+}
+
+// Merged is what GitHub says, read back — the decoded upstream state (extdeps.github.pulls)
+// AND a merged_at AND a head sha, each by matching Present. The two carrier conventions are the
+// upstream's own (the gh CLI view says MERGED; the REST pull object says closed and proves merge
+// with mergedAt), so both constructors admit; an unknown word, an open PR, or a closed PR without
+// a merged_at all refuse. No hand-written state-word list lives on this side of the boundary.
+fn roadmap_operator_pr_is_merged(row: OperatorPrRow) -> Bool {
+  match row.state {
+    Absent => false
+    Present { value: PullRequestViewMerged } =>
+      match row.merged_at {
+        Absent => false
+        Present { value: _ } => match row.head_sha { Absent => false Present { value: _ } => true }
+      }
+    Present { value: PullRequestViewClosed } =>
+      match row.merged_at {
+        Absent => false
+        Present { value: _ } => match row.head_sha { Absent => false Present { value: _ } => true }
+      }
+    Present { value: _ } => false
+  }
+}
+
+// The state as the refusal names it, rendered by the upstream model; an absent word reads "none".
+fn roadmap_operator_pr_state_text(row: OperatorPrRow) -> NonEmptyStr {
+  match row.state {
+    Present { value: st } => github_pull_request_view_state_text(state: st)
+    Absent => "none" as NonEmptyStr
+  }
+}
+
+fn roadmap_operator_close_pr_facts(inputs: OperatorCloseInputs, readback: OperatorPrReadback) -> OperatorClosePrFacts? {
+  match readback {
+    PrReadbackUnavailable { cause: _ } => none
+    PrRoster { rows: rows } =>
+      match filter(rows, r => r.number == inputs.pr_number).first() {
+        Absent => none
+        Present { value: row } =>
+          // The durable NonEmptyStr facts are BUILT BY MATCHING PRESENT — no cast and no reliance
+          // on an earlier gate: a row missing either fact cannot construct them at all, it can
+          // only answer none (which the gate renders as its typed refusal).
+          match row.merged_at {
+            Absent => none
+            Present { value: m } =>
+              match row.head_sha {
+                Absent => none
+                Present { value: h } => Present { value: OperatorClosePrFacts {
+                  url: join(["https://github.com/", inputs.repo as String, "/pull/", to_string(value: inputs.pr_number)], "") as NonEmptyStr,
+                  merged_at: m,
+                  head: h,
+                } }
+              }
+          }
+      }
+  }
+}
+
+// The replayed state already refuses a second live receipt for one node; naming it here turns that
+// law into the operator's typed CloseAlreadyClosed rather than a generic history refusal.
+fn roadmap_operator_node_has_live_receipt(replayed: AcceptanceHistoryReplayState, node: RoadmapNodeId) -> Bool {
+  count(filter(replayed.live, r => r.node == node)) > 0
+}
+
+fn roadmap_operator_close_receipt(inputs: OperatorCloseInputs) -> RoadmapAcceptanceReceipt {
+  RoadmapAcceptanceReceipt {
+    node: inputs.node,
+    criteria_digest: roadmap_criteria_digest(t: inputs.ticket),
+    red_control: RedControlExecuted { witness_module: inputs.witness_module, witness_fn: inputs.witness_fn, executed_on: roadmap_operator_render_civil_date(date: inputs.accepted_on) },
+    handback: HandbackDelivered { first_artifact: inputs.first_artifact, further_artifacts: inputs.further_artifacts },
+    accepted_by: inputs.accepted_by,
+    accepted_on: roadmap_operator_render_civil_date(date: inputs.accepted_on),
+  }
+}
+
+// Inputs -> a wire-able record, or the located refusal. accepted_on must be a YYYY-MM-DD date (the
+// carrier's form); the receipt needs real red-control and handback evidence — empty witness fields
+// are refused here, with the field named, rather than minting an admissible-looking nothing.
+fn roadmap_operator_close_record(inputs: OperatorCloseInputs) -> OperatorCloseRefusal? {
+  // The date needs NO check: OperatorCloseInputs.accepted_on is an Iso8601CivilDate derived from
+  // the clock through the shared calendar law (extdeps.units.iso8601_calendar) — there is no
+  // hand-authored door, so a wrong state is unwritable, not validated (gunbc.design_argument::fail_closed). The
+  // witness_module/witness_fn/first_artifact emptiness branches were deleted for the same reason:
+  // NonEmptyStr already holds that constraint, so a check restating it is a second representation
+  // (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority). What is actually unchecked below is the receipt LINE — a String — so it is checked.
+  if roadmap_operator_acceptance_receipt_line(receipt: roadmap_operator_close_receipt(inputs: inputs)) == "" { Present { value: CloseEvidenceMissing { field: "red_control/handback" as NonEmptyStr } } } else { none }
+}
+
+// Idempotency by operation key, read from the chain itself: the same key carrying the same close
+// (same canonical line, same verified PR) is CloseAlreadyRecorded with the STORED event's id — the
+// durable record of the first attempt, never a recomputed twin; the same key carrying different
+// content is the typed CloseKeyConflict.
+fn roadmap_operator_close_existing(
+  envs: List<ChainEnvelope<OperatorAcceptanceRecord>>,
+  inputs: OperatorCloseInputs,
+  facts: OperatorClosePrFacts
+) -> OperatorCloseWrite? {
+  match filter(envs, e => e.event.payload.operation_key == inputs.operation_key).first() {
+    Absent => none
+    Present { value: env } =>
+      let line = roadmap_operator_acceptance_receipt_line(receipt: roadmap_operator_close_receipt(inputs: inputs))
+      if env.event.payload.line == line &&
+        env.event.payload.pr_url == facts.url &&
+        env.event.payload.pr_merged_at == facts.merged_at &&
+        env.event.payload.pr_head_sha == facts.head {
+        Present { value: CloseAlreadyRecorded { event_id: env.id } }
+      } else {
+        Present { value: CloseRefused { reason: CloseKeyConflict { operation_key: inputs.operation_key } } }
+      }
+  }
+}
+
+fn roadmap_operator_close_append(
+  inputs: OperatorCloseInputs,
+  facts: OperatorClosePrFacts,
+  head: HeadExpectation,
+  store: FabricStorageBinding
+) -> OperatorCloseWrite {
+  match roadmap_operator_acceptance_receipt_line(receipt: roadmap_operator_close_receipt(inputs: inputs)) {
+    "" => CloseRefused { reason: CloseEvidenceMissing { field: "red_control/handback" as NonEmptyStr } }
+    line => {
+      // STALE BEFORE WRITE, named by kind: the caller's revision is compared to the chain's CURRENT
+      // tip, so a head that was superseded — or never existed at all under this request — is the
+      // typed CloseStaleHead, not an opaque chain refusal. The append primitive still guards the race.
+      match roadmap_operator_acceptance_read(store: store) {
+        TailUnreadable { reason: r } => CloseRefused { reason: CloseTailUnreadable { reason: r } }
+        TailRead { head: tip, entries: _ } =>
+          if head_expectation_disagrees(head: head, tip: tip) {
+            CloseRefused { reason: CloseStaleHead }
+          } else {
+      let record = OperatorAcceptanceRecord {
+        operation_key: inputs.operation_key,
+        line: line as NonEmptyStr,
+        pr_url: facts.url,
+        pr_merged_at: facts.merged_at,
+        pr_head_sha: facts.head,
+      }
+      let event = ChainEvent {
+        partition: roadmap_operator_acceptance_partition_id(),
+        parent: match head { HeadAt { id: i } => Present { value: i } HeadAbsent => none },
+        recorded_at: inputs.at,
+        actor: inputs.accepted_by,
+        payload: record,
+      }
+      match event_log_append_with(
+        store: store,
+        partition: roadmap_operator_acceptance_partition_id(),
+        event: event,
+        expected: head,
+        encode: roadmap_operator_acceptance_encode
+      ) {
+        EventAppended { id: id } => CloseWritten { event_id: id }
+        EventAppendStale { expected: _, observed: _ } => CloseRefused { reason: CloseStaleHead }
+        EventAppendRefused { cause: c } => CloseRefused { reason: CloseChainWriteRefused { step: "operator acceptance append" as NonEmptyStr, reason: event_log_refusal_wire(cause: c) as NonEmptyStr } }
+      }
+          }
+      }
+    }
+  }
+}
+
+// The caller's expectation versus the chain's current tip: an expectation naming another head (or
+// no head when the lane has one, or a head when the lane is empty) is stale. Comparison is on the
+// id — the chain's identity — never on any caller-supplied label.
+fn head_expectation_disagrees(head: HeadExpectation, tip: HeadExpectation) -> Bool {
+  match head {
+    HeadAbsent => match tip { HeadAbsent => false HeadAt { id: _ } => true }
+    HeadAt { id: want } => match tip { HeadAbsent => true HeadAt { id: have } => (want as String) != (have as String) }
+  }
+}
+
+
+// ── LINEAGE TERMINALITY: THE ONE RULE ────────────────────────────────────────────────────────────
+// A closed node's lineage is terminal: no further verify/review obligation may spawn for it. Not a
+// second retire path — the belt's own obligation question (roadmap_belt_obligation) simply reads the
+// close. A node is closed when the merged acceptance history carries a LIVE receipt for it; a
+// history that cannot be read is ClosedStatusUnreadable, and the belt FAILS CLOSED on it (launches
+// nothing it cannot prove is still owed) — it never guesses open.
+
+type OperatorNodeClosedStatus
+  = AcceptanceFound
+  | AcceptanceAbsent
+  | ClosedStatusUnreadable { reason: NonEmptyStr }
+
+fn roadmap_operator_node_closed(node: RoadmapNodeId, history: RoadmapAcceptanceEventHistoryLoad) -> OperatorNodeClosedStatus {
+  match history {
+    RoadmapAcceptanceEventHistoryLoadRefused { detail: d } => ClosedStatusUnreadable { reason: d as NonEmptyStr }
+    RoadmapAcceptanceEventHistoryLoaded { events: events } =>
+      match replay_acceptance_history(events: events) {
+        Absent => ClosedStatusUnreadable { reason: "acceptance history does not replay" as NonEmptyStr }
+        Present { value: state } => if roadmap_operator_node_has_live_receipt(replayed: state, node: node) { AcceptanceFound } else { AcceptanceAbsent }
+      }
+  }
+}
+
+// The belt's entry: the merged history over the instance's fabric store, then the closed read.
+// A REFUSED placement fails the load closed (a tail may exist and cannot be read — never hide it);
+// an UNPLACED binding reads the seed alone, which is the truth where no runtime store has ever
+// existed (repo tools, authoring time).
+fn roadmap_operator_close_history(store: FabricStorageBinding) -> RoadmapAcceptanceEventHistoryLoad {
+  match store {
+    FabricStorageBindingUnplaced => load_roadmap_acceptance_event_history(path: roadmap_acceptance_event_history_carrier_repo_path)
+    FabricStorageBindingRefused { detail: d } => RoadmapAcceptanceEventHistoryLoadRefused { detail: join(["fabric placement refused: ", d as String], "") }
+    FabricStorageLocalFiles { operations: _ } => roadmap_operator_acceptance_history_load(path: roadmap_acceptance_event_history_carrier_repo_path, store: store)
+    FabricStorageDoorSocket { socket: _, route_prefix: _ } => roadmap_operator_acceptance_history_load(path: roadmap_acceptance_event_history_carrier_repo_path, store: store)
+    FabricStorageServed { endpoint: _ } => roadmap_operator_acceptance_history_load(path: roadmap_acceptance_event_history_carrier_repo_path, store: store)
+  }
+}
+
+// THE CIVIL DATE THE CLOCK DERIVES: the receipt's accepted_on needs no operator typing —
+// the same UTC instant the close records as its chain time names the day. The day count and the
+// proleptic-Gregorian reading are THE calendar's, not a copy: extdeps.units.iso8601_calendar
+// owns Hinnant's arithmetic (floor division included, so a negative epoch second lands on the
+// right day), and its two-digit form pads the fields.
+fn roadmap_operator_date_from_epoch_secs(secs: EpochSecs) -> Iso8601CivilDate {
+  iso8601_civil_from_days(days: iso8601_floor_div(a: secs, b: iso8601_seconds_per_day()))
+}
+
+// Text only at the write: the wire carrier's accepted_on takes YYYY-MM-DD; the two-digit form is
+// the calendar's, and this is the one place the civil date becomes text.
+fn roadmap_operator_render_civil_date(date: Iso8601CivilDate) -> NonEmptyStr {
+  join([to_string(value: date.year), "-", iso8601_two_digits(n: date.month), "-", iso8601_two_digits(n: date.day)], "") as NonEmptyStr
+}

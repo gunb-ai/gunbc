@@ -5,7 +5,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import extdeps.vendor.micron { micron }
 import std.measure { millivolt }
-import extdeps.electronic_component.types { ElectronicComponentRow, SerialFlashSpec, SerialFlashSpecification, MillivoltRange }
+import extdeps.electronic_component.types { MarkDescribedNotStructured, ElectronicComponentRow, SerialFlashSpec, SerialFlashSpecification, MillivoltRange }
 
 // Micron's MT25QU02GCBB datasheet, "2Gb, 1.8V Multiple I/O Serial Flash Memory" (mt25q_qlkt_u_02g_cbb_0,
 // read 2026-10-21 from the operator's copy): a stacked device of four 512Mb die; SPI-compatible with
@@ -41,7 +41,7 @@ data mt25qu02gcbb8e12: ElectronicComponentRow = ElectronicComponentRow {
   vendor: micron,
   ordering_code: "MT25QU02GCBB8E12-0SIT",
   package: "T-PBGA-24, 6 x 8 mm (5 x 5 array), code 12",
-  top_marking: "a lot line over the FBGA code RW251",
+  top_marking: Present { value: MarkDescribedNotStructured { text: "a lot line over the FBGA code RW251", why: "the document describes the mark and prints no glyph run" } },
   specification: SerialFlashSpec { flash: SerialFlashSpecification {
     capacity_mbit: 2048,
     supply: MillivoltRange { minimum: millivolt(count: 1700), maximum: millivolt(count: 2000) },

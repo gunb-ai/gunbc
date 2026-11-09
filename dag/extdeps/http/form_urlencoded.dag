@@ -1,7 +1,6 @@
 module extdeps.http.form_urlencoded
 
 import std.types { String, List, Bool, Int }
-import std.integer { UInt8 }
 import std.bytes { utf8_encode_bytes, bytes_octets }
 import std.encoding { utf8_decode_octets }
 import std.coercion { unicode_scalar_fold }
@@ -12,16 +11,16 @@ import std.coercion { unicode_scalar_fold }
 // Empty and absent fields remain distinct. CRLF and field-looking lines inside values are data.
 type FormField { name: String, value: String }
 type FormRead = FormDecoded { fields: List<FormField> } | FormRefused { reason: String }
-type FormOctets = FormOctetsDecoded { octets: List<UInt8> } | FormOctetsRefused
+type FormOctets = FormOctetsDecoded { octets: List<Int> } | FormOctetsRefused
 
-fn form_hex(o: UInt8) -> Int? {
-  if o >= 48 && o <= 57 { Present { value: (o as Int) - 48 } }
-  else if o >= 65 && o <= 70 { Present { value: (o as Int) - 55 } }
-  else if o >= 97 && o <= 102 { Present { value: (o as Int) - 87 } }
+fn form_hex(o: Int) -> Int? {
+  if o >= 48 && o <= 57 { Present { value: o - 48 } }
+  else if o >= 65 && o <= 70 { Present { value: o - 55 } }
+  else if o >= 97 && o <= 102 { Present { value: o - 87 } }
   else { none }
 }
 
-fn form_unescape(octets: List<UInt8>, acc: List<UInt8>) -> FormOctets {
+fn form_unescape(octets: List<Int>, acc: List<Int>) -> FormOctets {
   match octets.first() {
     Absent => FormOctetsDecoded { octets: acc }
     Present { value: head } => if head == 43 { form_unescape(octets: octets.skip(n: 1), acc: concat(acc, [32])) }

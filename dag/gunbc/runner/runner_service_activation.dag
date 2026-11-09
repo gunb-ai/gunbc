@@ -1,6 +1,7 @@
 module gunbc.runner.runner_service_activation
 
-import std.types { String, NonEmptyStr, Bool, Int, List, list_length }
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.algebra { length }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import std.disposition { ConstructionMechanism, SingleAuthority }
@@ -65,7 +66,7 @@ type RunnerServiceTransition
 // prints it -- so a reader of apply.sh learns which of the two they are looking at.
 //
 // IT ALSO MAKES THE RED AUTHORABLE, which is the property that decides whether the witness below is
-// evidence or decoration (DESIGN section 4b). If this module answered `unobserved` from a constant,
+// evidence or decoration (gunbc.design_argument::guarantee_ladder). If this module answered `unobserved` from a constant,
 // no fixture could ever reach the admitted arm, the emitted-activation assertion would be
 // permanently red, and its green counterpart would be unwritable. With the observation as an input,
 // a fixture authors both poles.
@@ -266,7 +267,7 @@ fn runner_host_transition_plan(
   standings: RunnerUnitStandings,
 ) -> RunnerTransitionPlan {
   let needing = runner_units_needing_transition(transition: transition, units: units, standings: standings)
-  if list_length(items: needing) == 0 {
+  if length(xs: needing) == 0 {
     TransitionConverged { transition: transition, units: units }
   } else {
     admit_runner_transition(transition: transition, admission: admission, units: needing)
@@ -341,7 +342,7 @@ fn runner_transition_affected_set_identity(units: List<NonEmptyStr>) -> String {
 
 fn runner_transition_affected_population_render(units: List<NonEmptyStr>) -> String {
   concat(
-    concat(" units=", to_string(list_length(items: units))),
+    concat(" units=", to_string(length(xs: units))),
     concat(" unit_set=", runner_transition_affected_set_identity(units: units)),
   )
 }
@@ -377,7 +378,7 @@ fn runner_transition_plan_line(plan: RunnerTransitionPlan) -> String {
     TransitionAdmitted { transition: t, operations: ops } =>
       concat(
         concat("ACTIVATE runner-service ", runner_transition_verb_label(transition: t)),
-        concat(" units=", to_string(list_length(items: ops))),
+        concat(" units=", to_string(length(xs: ops))),
       )
     TransitionRefused { transition: t, host_label: l, reason: r, affected_units: us } =>
       concat(
@@ -405,7 +406,7 @@ fn runner_transition_plan_line(plan: RunnerTransitionPlan) -> String {
 // would be invisible: both would still say "unobserved".
 //
 // IT IS DATA AND NOT A FUNCTION, so the day the transaction exists this row's deletion is what
-// breaks every caller that was leaning on it, one by one, loudly (DESIGN section 3, delete-first).
+// breaks every caller that was leaning on it, one by one, loudly (gunbc.design_argument::replacement_migration, delete-first).
 data runner_activation_readiness_unobserved_no_transaction: RunnerActivationReadiness = ActivationReadinessUnobserved {
   reason: "no host observation transaction exists yet: fleet convergence observes directory membership, the generation store and the hostname, and nothing reads the build-cache endpoint owner or the compile-pool slice, so neither receipt gunbc.runner.runner_activation requires can be produced (docs/plans/runner-service-capacity-convergence.md, the shared blocker)" as NonEmptyStr,
 }
@@ -450,7 +451,7 @@ fn runner_activation_admitted_operation_count(plans: List<RunnerTransitionPlan>)
     init: 0,
     f: (acc, p) =>
       match p {
-        TransitionAdmitted { transition: _, operations: ops } => acc + list_length(items: ops)
+        TransitionAdmitted { transition: _, operations: ops } => acc + length(xs: ops)
         TransitionRefused { transition: _, host_label: _, reason: _, affected_units: _ } => acc
         TransitionConverged { transition: _, units: _ } => acc
       },

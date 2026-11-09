@@ -256,6 +256,7 @@ fn empty_type_env() -> Rc<TypeEnv> {
         str_bindings: Rc::new(im::HashMap::new()),
         unit_variant_index: Rc::new(im::HashMap::new()),
         unit_variant_index_observed: false,
+        equality_by_target: Rc::new(im::HashMap::new()),
         ancestry_str_bindings: Rc::new(im::HashMap::new()),
         parents: Rc::new(vec![]),
         recursive_types: Rc::new(vec![]),
@@ -1062,6 +1063,7 @@ fn optional_match_exhaustiveness_reports_missing_absent() {
             str_bindings: Rc::new(im::HashMap::new()),
             unit_variant_index: Rc::new(im::HashMap::new()),
             unit_variant_index_observed: false,
+            equality_by_target: Rc::new(im::HashMap::new()),
             ancestry_str_bindings: Rc::new(im::HashMap::new()),
             parents: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
@@ -1093,6 +1095,7 @@ fn optional_match_exhaustiveness_rejects_some_and_none() {
             str_bindings: Rc::new(im::HashMap::new()),
             unit_variant_index: Rc::new(im::HashMap::new()),
             unit_variant_index_observed: false,
+            equality_by_target: Rc::new(im::HashMap::new()),
             ancestry_str_bindings: Rc::new(im::HashMap::new()),
             parents: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
@@ -1124,6 +1127,7 @@ fn optional_match_exhaustiveness_accepts_present_and_absent() {
             str_bindings: Rc::new(im::HashMap::new()),
             unit_variant_index: Rc::new(im::HashMap::new()),
             unit_variant_index_observed: false,
+            equality_by_target: Rc::new(im::HashMap::new()),
             ancestry_str_bindings: Rc::new(im::HashMap::new()),
             parents: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
@@ -1267,6 +1271,7 @@ fn resolve_node_uses_node_name_for_lookup() {
         str_bindings: Rc::new(im::HashMap::from_iter([("User".to_string(), user_binding)])),
         unit_variant_index: Rc::new(im::HashMap::new()),
         unit_variant_index_observed: false,
+        equality_by_target: Rc::new(im::HashMap::new()),
         ancestry_str_bindings: Rc::new(im::HashMap::new()),
         parents: Rc::new(vec![]),
         recursive_types: Rc::new(vec![]),
@@ -2010,6 +2015,7 @@ fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
         str_bindings: Rc::new(im::HashMap::from_iter([("Box".to_string(), box_binding)])),
         unit_variant_index: Rc::new(im::HashMap::new()),
         unit_variant_index_observed: false,
+        equality_by_target: Rc::new(im::HashMap::new()),
         ancestry_str_bindings: Rc::new(im::HashMap::new()),
         parents: Rc::new(vec![]),
         recursive_types: Rc::new(vec![]),
@@ -2051,7 +2057,7 @@ fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
 //
 // `locals` and `body_locals` are populated in lockstep by build_params_scope and
 // extend_scope_with_params, so no accepted .dag program can put a name in one and not the other.
-// That made the earlier claim "no discriminating RED is authorable" look true -- but DESIGN §4b
+// That made the earlier claim "no discriminating RED is authorable" look true -- but gunbc.design_argument::guarantee_ladder
 // says the question is what a FIXTURE can hand the compiler, not what the accepted corpus
 // contains, and this harness constructs an InferScope with the two maps as INDEPENDENT fields.
 // So the state the sixth constructor exists for is authorable exactly here, one level below the

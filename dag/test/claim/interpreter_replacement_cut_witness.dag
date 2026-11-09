@@ -1,6 +1,7 @@
 module test.claim.interpreter_replacement_cut_witness
 
-import std.types { String, Bool, Int, List, NonEmptyStr, list_length }
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.algebra { length }
 import gunbc.replacement_cut {
   ConsumerDisposition, RetainSameContract, RetainChangedContract, ReplacedByY,
   EvidenceOnly, Retire, Undecided,
@@ -28,7 +29,7 @@ import gunbc.interpreter_replacement_cut {
 // THE OLD ASSERTION IS NOT PRESERVED, AND THAT IS DELIBERATE RATHER THAN A LOSS. Its subject was
 // the admission verdict of a plan that no longer exists in the exact carrier, so re-enrolling it
 // would require reconstructing the coarse plan purely to keep asserting something about it -- the
-// shape DESIGN §4b(4) forbids, where evidence is retained beside the machinery it was supposed to
+// shape gunbc.design_argument::guarantee_ladder (dissolution on climb) forbids, where evidence is retained beside the machinery it was supposed to
 // dissolve with. What survives is the pair below: the survey's measured content stays
 // identity-bound so the historical record cannot drift, and the registration cannot be read as an
 // admitted exact plan.
@@ -86,7 +87,7 @@ test fn the_survey_states_its_coarser_grain() -> Bool {
 
 test fn the_survey_keeps_its_ten_measured_consumer_rows() -> Bool {
   let s = interpreter_replacement_survey()
-  list_length(items: s.consumer_rows) == 10
+  length(xs: s.consumer_rows) == 10
     && count_rows(rows: s.consumer_rows, p: is_retire) == 5
     && count_rows(rows: s.consumer_rows, p: is_undecided) == 1
 }
@@ -192,7 +193,7 @@ test fn the_survey_keeps_its_contract_fields() -> Bool {
 
 test fn the_survey_keeps_its_covered_region_labels() -> Bool {
   let labels = interpreter_replacement_survey().covered_region_labels
-  list_length(items: labels) == 4
+  length(xs: labels) == 4
     && fold(labels, init: false, f: fn(acc, l) { acc || (l as String) == "v1_compiler.v1_interpreter" })
 }
 
@@ -202,7 +203,7 @@ test fn the_survey_keeps_its_covered_region_labels() -> Bool {
 test fn the_survey_keeps_the_operator_external_x_grant() -> Bool {
   match interpreter_replacement_survey().external_x {
     ExternalXRoles { roles: rs } =>
-      list_length(items: rs) == 2
+      length(xs: rs) == 2
         && fold(rs, init: false, f: fn(acc, r) { acc || role_is_differential_oracle(r: r) })
         && fold(rs, init: false, f: fn(acc, r) { acc || role_is_historical_source(r: r) })
     NoExternalOracleRequired { justification: _ } => false
@@ -211,7 +212,7 @@ test fn the_survey_keeps_the_operator_external_x_grant() -> Bool {
 
 test fn the_survey_keeps_both_evidence_rows() -> Bool {
   let rows = interpreter_replacement_survey().evidence_rows
-  list_length(items: rows) == 2
+  length(xs: rows) == 2
     && evidence_named(rows: rows, name: "cross_representation_equality guard witness")
     && evidence_named(rows: rows, name: "interpreter_dispatch_bijection_real_roster_red")
 }
@@ -313,7 +314,7 @@ fn replaced_by(authority: String) -> fn(ConsumerDisposition) -> Bool {
 // named member left the other three free to change.
 test fn the_region_labels_are_pinned_in_order() -> Bool {
   let labels = interpreter_replacement_survey().covered_region_labels
-  list_length(items: labels) == 4
+  length(xs: labels) == 4
     && nth_label_is(labels: labels, index: 0, name: "v1_compiler.v1_interpreter")
     && nth_label_is(labels: labels, index: 1, name: "v1_compiler.v1_interpreter_dispatch_generated")
     && nth_label_is(labels: labels, index: 2, name: "gunbc.v1.v1_interpreter_primitive_surface")
@@ -351,7 +352,7 @@ test fn the_descent_basis_is_pinned_exactly() -> Bool {
 // says the claim survives against Y, the other says its subject leaves with X.
 test fn the_evidence_rows_are_pinned_by_variant_and_payload() -> Bool {
   let rows = interpreter_replacement_survey().evidence_rows
-  list_length(items: rows) == 2
+  length(xs: rows) == 2
     && fold(rows, init: false, f: fn(acc, e) {
          acc || match e {
            ReenrollAgainstY { evidence: w, surviving_claim: sc } =>

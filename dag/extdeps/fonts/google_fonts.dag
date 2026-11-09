@@ -58,7 +58,7 @@ data roboto_source: GoogleFontsFamilySource = GoogleFontsFamilySource {
 // JetBrainsMono[wght].ttf and ofl/notosans/NotoSans[wdth,wght].ttf both exist there (HTTP 200 on
 // raw.githubusercontent at google/fonts@7085eb8), each with its OFL.txt, whose text is the licence
 // copy beside it. Consumer: gunbc.site.gunb_ai_page reads .family and .weights to build the one
-// css2 request the page makes (DESIGN §3c — these rows did not exist before that page needed them).
+// css2 request the page makes (gunbc.design_argument::consumption — these rows did not exist before that page needed them).
 data jetbrains_mono_source: GoogleFontsFamilySource = GoogleFontsFamilySource {
   family: "JetBrains Mono",
   commit: google_fonts_commit,

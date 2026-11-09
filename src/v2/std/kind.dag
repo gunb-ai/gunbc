@@ -14,7 +14,7 @@ import std.optional { Optional, optional_absent, optional_present }
 // is not a type). Two kinds, because a language authority's declared-inhabitants roster carries two
 // different sorts of node: the types it declares, and the facts it states ABOUT each type (surface
 // spelling, representation, std projection). Giving both one kind would give that kind two
-// meanings (DESIGN section 3's meaning fork), so each has its own.
+// meanings (gunbc.design_argument::single_authority's meaning fork), so each has its own.
 //
 // Checked and rejected as a home: std.syllogism Proposition, an argument record (a String
 // statement with premises), which is a different concept from the kind of a fact node.
@@ -65,13 +65,13 @@ fn kind_denoted_by_node(n: Node) -> Optional<Kind> {
 
 // THE ROSTER-KIND INDEX, DERIVED ONCE PER ROSTER AND KEYED BY THE NODE. A member's kind is a fact
 // about the ROSTER, not about the node that asks: it is fixed when the roster is declared, so it is
-// derived once and every query reads it (DESIGN section 2: the demand is shared at its least common
+// derived once and every query reads it (gunbc.design_argument::demand_before_materialization: the demand is shared at its least common
 // ancestor, the run that consults the roster, never re-produced per query and never cached per
 // query node). The index is a v2.std.collection Map from each member to its kind: every member is
 // entered as TypeDenotationKind, then every fact a record states is entered as TypeFactKind over
 // it, so a member that is also a fact answers TypeFactKind, exactly as the definition above
 // requires. A query is one keyed lookup, so a run's cost is (nodes + roster), not (nodes x roster)
-// (DESIGN section 6, bare minimum cost).
+// (gunbc.design_argument::how_to_work, bare minimum cost).
 //
 // LINEAR IN THE ROSTER. A record's facts are its subtree minus the record and its subject, and only
 // a RECORD (a member carrying the subject field) walks a subtree -- every other member answers at

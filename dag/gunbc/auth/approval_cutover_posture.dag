@@ -13,7 +13,7 @@ import std.types { NonEmptyStr, String, Bool }
 //
 // SO THE INTENT IS ONE DECLARATION AND BOTH FACTS DERIVE FROM IT. The mismatched states stop being
 // loud and start being unwritable, which is the difference between a failure mode that is reported
-// and one that cannot arise (DESIGN section 4b: construction over mitigation).
+// and one that cannot arise (gunbc.design_argument::guarantee_ladder: construction over mitigation).
 //
 // WHAT THIS ROW IS NOT. It is the deployment's INTENT, not an observation of the host. tailscale
 // serve configuration and a store permission are separate effects applied by separate commands, and

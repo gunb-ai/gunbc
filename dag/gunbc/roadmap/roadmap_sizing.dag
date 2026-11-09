@@ -34,7 +34,7 @@ import std.types { String, Bool, NonEmptyStr, brand }
 // live uses: the spawn artifact rendered them, the roadmap presentation rendered them, and the
 // forecast used both their presence and their VALUES -- via cell equality -- to select calibration
 // populations and determine whether a projection could be produced. The rendering losses are
-// explicit output changes; the forecast capability loss is the declared section 4b(3) drop.
+// explicit output changes; the forecast capability loss is the declared gunbc.design_argument::guarantee_ladder (no silent regression) drop.
 //
 // An earlier draft of this note said no consumer's control flow ever branched on intricacy or
 // volume. That was FALSE and it was load-bearing: roadmap_forecast calibrate_cell selects its
@@ -56,7 +56,7 @@ import std.types { String, Bool, NonEmptyStr, brand }
 // task's title, description and exit criterion and answering how hard the work is and how much of
 // it there is, is a judgement about work NOBODY HAS PERFORMED YET. There is no observation to
 // ground it, because the thing it describes has not happened. Calling the result a measurement or a
-// size fact would be asserting as deduced what is only inferred (DESIGN section 4d), which is
+// size fact would be asserting as deduced what is only inferred (gunbc.design_argument::epistemic_humility), which is
 // precisely the defect the authored cells had: an author's ordinal guess that nothing observed and
 // nothing could contradict. Deriving the guess does not make it an observation; it makes it an
 // estimate with a stated method, which is a different and honest thing.

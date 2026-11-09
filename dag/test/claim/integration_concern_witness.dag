@@ -1,0 +1,178 @@
+module test.claim.integration_concern_witness
+
+import std.types { Bool, String, List, NonEmptyStr, CommitSha }
+import std.optional { Present, Absent }
+import std.algebra { FreeSemigroup }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.guarantee_stall { climbs_when_awaiting }
+import gunbc.lifecycle_bounded_referent { dashboard_work_item_referent }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.integration_concern {
+  IntegrationConcern, ConcernScope, ConcernKind, SuspectedFork, SuspectedCapabilityGap,
+  ConcernDisposition, Open, Triaged, Distinct, Withdrawn, Integrated,
+  ExistingHome, HomeUnresolved, HistoricalDeclaration, RetainedExecutionResult, IntegrationEvidence,
+  RequirementUnestablished, ConcernSighting, CitesDeclaration, PreservedObligation,
+  distinct_authorities, concerns_for, concerns_in_subtree, concern_is_open, kind_declarations,
+  concern_text, integration_concerns, fork_rows_have_distinct_authorities,
+}
+
+// SUPPLIED ROWS (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface): the relevance and
+// closure rules are judged over rows built here, and the last two claims run the same functions over
+// the real register, so the supplied boundary is paired with an inhabitance reading.
+
+fn gap(identity: String, model: DeclarationRef, affected: FreeSemigroup<DeclarationRef>, d: ConcernDisposition) -> IntegrationConcern {
+  IntegrationConcern {
+    identity: identity as NonEmptyStr,
+    kind: SuspectedCapabilityGap { model: model, requirement: "a supplied requirement", standing: RequirementUnestablished { decided_by: "a supplied reading" } },
+    affected: affected,
+    question: "a supplied question",
+    sightings: FreeSemigroup {
+      head: ConcernSighting {
+        revision: "0000000000000000000000000000000000000002" as CommitSha,
+        evidence: FreeSemigroup { head: CitesDeclaration { declaration: decl_ref(module_path: "test.fixture.cited_only", decl_name: "cited") }, tail: [] },
+        account: "a supplied account",
+      },
+      tail: [],
+    },
+    disposition: d,
+  }
+}
+
+// One concern whose affected declarations sit in two unrelated subtrees.
+fn cross_namespace_row() -> IntegrationConcern {
+  gap(
+    identity: "cross",
+    model: decl_ref(module_path: "std.shape_model", decl_name: "Shape"),
+    affected: FreeSemigroup { head: decl_ref(module_path: "product.alpha.left", decl_name: "a"), tail: [decl_ref(module_path: "gunbc.beta.right", decl_name: "b")] },
+    d: Open,
+  )
+}
+
+fn scope(changed: List<String>, referenced: List<String>) -> ConcernScope {
+  ConcernScope { changed: changed, referenced: referenced }
+}
+
+test fn a_cross_namespace_concern_is_relevant_from_either_affected_module() -> Bool {
+  count(concerns_for(s: scope(changed: ["product.alpha.left"], referenced: []), rows: [cross_namespace_row()])) == 1
+    && count(concerns_for(s: scope(changed: ["gunbc.beta.right"], referenced: []), rows: [cross_namespace_row()])) == 1
+}
+
+test fn a_sibling_under_a_shared_prefix_is_not_relevant() -> Bool {
+  count(concerns_for(s: scope(changed: ["product.alpha.other", "product.alpha", "product"], referenced: []), rows: [cross_namespace_row()])) == 0
+}
+
+test fn a_referenced_existing_model_makes_a_concern_relevant() -> Bool {
+  count(concerns_for(s: scope(changed: ["product.unrelated"], referenced: ["std.shape_model"]), rows: [cross_namespace_row()])) == 1
+}
+
+test fn subtree_browsing_matches_whole_segments_and_crosses_subtrees() -> Bool {
+  count(concerns_in_subtree(prefix: "product.alpha", rows: [cross_namespace_row()])) == 1
+    && count(concerns_in_subtree(prefix: "gunbc", rows: [cross_namespace_row()])) == 1
+    && count(concerns_in_subtree(prefix: "product.alp", rows: [cross_namespace_row()])) == 0
+}
+
+test fn a_fork_needs_two_distinct_authorities() -> Bool {
+  let a = decl_ref(module_path: "product.alpha.left", decl_name: "a")
+  let b = decl_ref(module_path: "gunbc.beta.right", decl_name: "b")
+  let same_twice = match distinct_authorities(first: a, second: a, rest: []) { Present { value: _ } => false Absent => true }
+  let repeated_later = match distinct_authorities(first: a, second: b, rest: [a]) { Present { value: _ } => false Absent => true }
+  let two = match distinct_authorities(first: a, second: b, rest: []) {
+    Present { value: d } => count(kind_declarations(k: SuspectedFork { authorities: d })) == 2
+    Absent => false
+  }
+  same_twice && repeated_later && two
+}
+
+test fn a_capability_gap_names_one_model_and_is_not_a_fork() -> Bool {
+  count(kind_declarations(k: cross_namespace_row().kind)) == 1
+}
+
+test fn an_awaited_work_item_does_not_close_a_concern() -> Bool {
+  let next = climbs_when_awaiting(capability: "the supplied capability", awaiting: [dashboard_work_item_referent(node: "adhoc-00000000-000" as RoadmapNodeId)])
+  let triaged = gap(
+    identity: "triaged",
+    model: decl_ref(module_path: "std.shape_model", decl_name: "Shape"),
+    affected: FreeSemigroup { head: decl_ref(module_path: "product.alpha.left", decl_name: "a"), tail: [] },
+    d: Triaged { home: HomeUnresolved { question: "where does it belong" }, preserve: [], next: next },
+  )
+  concern_is_open(c: triaged) && concern_is_open(c: cross_namespace_row())
+}
+
+test fn integrated_evidence_cites_deleted_declarations_at_their_revision() -> Bool {
+  let evidence = IntegrationEvidence {
+    integrated_at: "0000000000000000000000000000000000000001" as CommitSha,
+    superseded: [HistoricalDeclaration { at: "0000000000000000000000000000000000000000" as CommitSha, module_path: "product.deleted_since", decl_name: "removed_leaf" }],
+    replacement: FreeSemigroup { head: decl_ref(module_path: "std.shape_model", decl_name: "Shape"), tail: [] },
+    executions: FreeSemigroup { head: RetainedExecutionResult { control: decl_ref(module_path: "test.claim.shape_witness", decl_name: "shape_control"), run: "supplied-run", conclusion: "success" }, tail: [] },
+  }
+  let closed = gap(
+    identity: "closed",
+    model: decl_ref(module_path: "std.shape_model", decl_name: "Shape"),
+    affected: FreeSemigroup { head: decl_ref(module_path: "product.alpha.left", decl_name: "a"), tail: [] },
+    d: Integrated { evidence: evidence },
+  )
+  !concern_is_open(c: closed)
+}
+
+test fn distinct_and_withdrawn_close_a_concern() -> Bool {
+  let model = decl_ref(module_path: "std.shape_model", decl_name: "Shape")
+  let at = FreeSemigroup { head: decl_ref(module_path: "product.alpha.left", decl_name: "a"), tail: [] }
+  !concern_is_open(c: gap(identity: "distinct", model: model, affected: at, d: Distinct { reason: "different obligations", scope_examined: "the two supplied consumers" }))
+    && !concern_is_open(c: gap(identity: "withdrawn", model: model, affected: at, d: Withdrawn { reason: "the requirement was not supported by the evidence" }))
+}
+
+test fn the_view_renders_sightings_and_an_unestablished_requirement() -> Bool {
+  let text = concern_text(c: cross_namespace_row())
+  string_contains(s: text, pattern: "sighting at 0000000000000000000000000000000000000002")
+    && string_contains(s: text, pattern: "cites: declaration test.fixture.cited_only cited")
+    && string_contains(s: text, pattern: "requirement NOT established; decided by: a supplied reading")
+}
+
+// Cited evidence is not an implicated location; a preserved obligation's holder is.
+test fn evidence_is_cited_not_implicated_and_an_obligation_holder_is_implicated() -> Bool {
+  let next = climbs_when_awaiting(capability: "the supplied capability", awaiting: [])
+  let triaged = gap(
+    identity: "held",
+    model: decl_ref(module_path: "std.shape_model", decl_name: "Shape"),
+    affected: FreeSemigroup { head: decl_ref(module_path: "product.alpha.left", decl_name: "a"), tail: [] },
+    d: Triaged { home: HomeUnresolved { question: "where" }, preserve: [PreservedObligation { holder: decl_ref(module_path: "product.holder", decl_name: "keeps"), control: Absent, statement: "keeps its refusal" }], next: next },
+  )
+  count(concerns_for(s: scope(changed: ["test.fixture.cited_only"], referenced: []), rows: [triaged])) == 0
+    && count(concerns_for(s: scope(changed: ["product.holder"], referenced: []), rows: [triaged])) == 1
+}
+
+// The committed-row re-check. Its red cannot be authored here: DistinctAuthorities is sole_constructor,
+// and the compiler refuses a literal of it outside gunbc.integration_concern (measured: "sole_constructor
+// type 'DistinctAuthorities' cannot be constructed outside its defining module"). So a repeated authority
+// can only enter through a row in that module, which is what this re-check reads.
+test fn committed_fork_rows_name_distinct_authorities() -> Bool {
+  fork_rows_have_distinct_authorities()
+}
+
+// INHABITANCE OVER THE REAL REGISTER, BY IDENTITY. The same reading functions answer over the committed
+// rows. Each claim names the row it expects, never a count, and none requires a row to stay open, so a
+// new row in the same area or a row closed as integrated does not change these oracles; lifecycle is
+// judged over the supplied rows above.
+fn names(rows: List<IntegrationConcern>, identity: String) -> Bool {
+  any(rows, c => (c.identity as String) == identity)
+}
+
+test fn the_real_register_answers_a_scoped_reading_by_identity() -> Bool {
+  names(rows: concerns_for(s: scope(changed: ["product.printed_chassis.print_preparation"], referenced: []), rows: integration_concerns), identity: "support_restriction_scope")
+    && names(rows: concerns_for(s: scope(changed: [], referenced: ["gunbc.fleet.print_converge"]), rows: integration_concerns), identity: "started_operation_ownership")
+    && names(rows: concerns_for(s: scope(changed: [], referenced: ["product.printed_chassis.card_cooling_route"]), rows: integration_concerns), identity: "duct_placement_chosen_by_hand")
+    && !names(rows: concerns_for(s: scope(changed: ["product.printed_chassis.assembly_geometry"], referenced: []), rows: integration_concerns), identity: "support_restriction_scope")
+    // The target-syntax concern's affected set is read from its ledger: a ledgered TypeScript client
+    // and a ledgered Swift printer each make it relevant, and a module outside the ledger does not.
+    && names(rows: concerns_for(s: scope(changed: ["gunbc.site.build_meter_client"], referenced: []), rows: integration_concerns), identity: "target_syntax_built_by_hand_in_application_modules")
+    && names(rows: concerns_for(s: scope(changed: ["gunbc.approve_ios_swift_operation_errors"], referenced: []), rows: integration_concerns), identity: "target_syntax_built_by_hand_in_application_modules")
+    && !names(rows: concerns_for(s: scope(changed: ["gunbc.site.element.build_meter"], referenced: []), rows: integration_concerns), identity: "target_syntax_built_by_hand_in_application_modules")
+
+    // THE BYTE-SEQUENCE-SEARCH FORK ROW, sighted by the Mt. Collins UI asset observer. Its authorities
+    // sit in seven modules, so a change to any one of them makes it relevant, and the reading is exact:
+    // the module path above the machine_intake module is NOT relevant, because relevance compares whole
+    // module paths and never walks namespace ancestry.
+    && names(rows: concerns_for(s: scope(changed: ["gunbc.machine_intake.mtcollins1_ui_status_asset_observation"], referenced: []), rows: integration_concerns), identity: "byte_sequence_search_reimplemented_per_module")
+    && names(rows: concerns_for(s: scope(changed: [], referenced: ["extdeps.version.semver"]), rows: integration_concerns), identity: "byte_sequence_search_reimplemented_per_module")
+    && !names(rows: concerns_for(s: scope(changed: ["gunbc.machine_intake"], referenced: []), rows: integration_concerns), identity: "byte_sequence_search_reimplemented_per_module")
+}

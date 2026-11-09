@@ -25,7 +25,7 @@ module gunbc.scm.integration
 //   repeat the squash against base B: T == B selects the source, and a = Y COMES BACK.
 //
 // That is not a conflict and not a refusal. It is a silently wrong corpus that resurrects exactly the
-// change the target removed on purpose, and DESIGN section 5 places silent wrongness outside the
+// change the target removed on purpose, and gunbc.design_argument::fail_closed places silent wrongness outside the
 // ladder entirely. The deletion and re-addition forms are the same defect: a path the target restored
 // is deleted again, a path the target deleted comes back.
 
@@ -82,7 +82,7 @@ type CommitIntegration
 //
 // THE ROOT IS NOT STORED BESIDE THE REFERENCE. While the consumed commit remains resolvable its root
 // is derivable from it, so storing both would be two representations of one derivable association --
-// free to disagree, and DESIGN section 3 refuses that regardless of how unlikely the disagreement is.
+// free to disagree, and gunbc.design_argument::single_authority refuses that regardless of how unlikely the disagreement is.
 //
 // THE FUTURE BOUNDARY THIS EXPOSES, recorded as a boundary and deliberately NOT as a next-rung
 // trigger: if "kill dev history" ever means PHYSICALLY DELETING source commit records rather than

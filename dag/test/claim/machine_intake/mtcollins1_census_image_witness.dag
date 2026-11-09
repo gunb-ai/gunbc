@@ -333,7 +333,7 @@ test fn the_boot_configuration_seeds_from_the_medium_on_the_serial_console() -> 
 }
 
 // A SUPPLIED user-data body: the key and name claims below need the input's shape, not the
-// renderer's output (DESIGN §3, a witness discriminates at one interface); the real rendering route
+// renderer's output (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface); the real rendering route
 // is the inhabitance claim above.
 data census_user_data_fixture: NonEmptyStr = "#cloud-config\nautoinstall:\n  version: 1\n  interactive-sections:\n    - \"*\"\n  early-commands:\n    - sh /cdrom/gunbc-census/capture.sh\n" as NonEmptyStr
 

@@ -8,7 +8,7 @@ import std.decl_ref { DeclarationRef }
 // contains no producer that could, and its existence is not evidence that the observation happened
 // or is scheduled. It is the SPECIFICATION of an observation Step 0 owes -- the typed shape a
 // producer would have to fill -- and a specification with no producer is exactly the
-// specification-without-execution DESIGN section 5 names, which is why the standing is stated here
+// specification-without-execution gunbc.design_argument::fail_closed names, which is why the standing is stated here
 // rather than left to be inferred from the absence of a caller.
 //
 // WHY IT IS WRITTEN NOW, BEFORE ITS PRODUCER. gunbc.namespace_cut.namespace_step0_canary_v2's receipt must say,
@@ -194,7 +194,7 @@ data step0_census_receipt_fields: List<Step0CensusReceiptField> = [
 data step0_census_no_policy_promotion_rule: NonEmptyStr = "a census producer may not promote UnlistedImportUse from advisory to enforced in order to observe its own subject; the acceptance path may not be changed by the change that measures it" as NonEmptyStr
 
 // AND THE EXISTING CENSUS'S COVERAGE IS NOT UNPROVEN -- IT IS REFUTED. This row was written as a
-// caution: compile_clean_diagnostic_census selects UnlistedImportUse rows from a masked
+// caution: the retired compile-clean census selected UnlistedImportUse rows from a masked
 // type-name emission path, so its coverage of the family roster was UNESTABLISHED. That standing has
 // been discharged in the harder direction. A calibration run over a hand-authored subject shows the
 // reference-occurrence producer emitting no denominator row at all for several families of the roster
@@ -310,7 +310,7 @@ data step0_census_liveness_obligations: List<Step0CensusLivenessObligation> = [
 // THE PRODUCER STANDING IS A TYPED FIELD OF THIS CONTRACT AND IS WRITABLE NOWHERE ELSE. An earlier
 // draft had this contract and the canary's ImportDependenceNotJudged arm each state the same
 // current-state fact in their own words -- two writable authorities for one fact, which is the
-// meaning fork DESIGN section 3 forbids, arriving inside the change that exists to close one. So the
+// meaning fork gunbc.design_argument::single_authority forbids, arriving inside the change that exists to close one. So the
 // standing lives HERE, once; the canary CITES this contract and DERIVES its consequence from this
 // field rather than restating it.
 type Step0BindingProvenanceProducerStanding

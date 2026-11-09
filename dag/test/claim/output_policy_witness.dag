@@ -142,7 +142,7 @@ test fn w_neutralization_is_the_only_route_to_surfaced_text() -> Bool {
 }
 
 // Observation dissolve: Quiet suppresses Ambient ShellTrace scaffolding, but stream disposition
-// follows divergence — Anomaly is never silenced by channel Suppressed (DESIGN section 5). Verbose
+// follows divergence — Anomaly is never silenced by channel Suppressed (gunbc.design_argument::fail_closed). Verbose
 // still surfaces every stream (Full).
 
 test fn w_quiet_ambient_silent_but_divergence_still_surfaces() -> Bool {

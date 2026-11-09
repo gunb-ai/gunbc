@@ -33,7 +33,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // (std.operation_argv ArgvMaterialized), and must compile clean, so the refusal is the binder's
 // type and not the call.
 //
-// PATH SCOPE (DESIGN section 4b): this measures compile acceptance only.
+// PATH SCOPE (gunbc.design_argument::guarantee_ladder): this measures compile acceptance only.
 
 fn blocking_count(source: String) -> Int {
   match compile_dag_diagnostic_census(source) {

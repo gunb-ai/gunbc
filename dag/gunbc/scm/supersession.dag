@@ -22,7 +22,7 @@ module gunbc.scm.supersession
 //   2. ACTUATION IS COMPARE-AND-SWAP AGAINST THAT SAME GENERATION. `supersede_head_slot` refuses
 //      unless the slot still holds the generation the evidence was gathered from. A slot that moved
 //      between the read and the write is `GenerationMovedUnderEvidence` -- a typed, located refusal
-//      naming both generations, never a widen and never a retry (DESIGN section 5).
+//      naming both generations, never a widen and never a retry (gunbc.design_argument::fail_closed).
 //
 //   3. THERE IS NO STANDALONE PERMISSION VALUE TO CARRY AROUND. Authorization and swap are one
 //      operation returning the new slot together with its warrant, so a warrant is a RECEIPT of a
@@ -305,7 +305,7 @@ fn supersede_head_slot(
   }
 }
 
-// RUNG HONESTY (DESIGN section 4b), declared rather than left to be rediscovered, and MEASURED
+// RUNG HONESTY (gunbc.design_argument::guarantee_ladder), declared rather than left to be rediscovered, and MEASURED
 // rather than read off the type declarations.
 //
 // WHAT IS CLOSED. `SupersessionEvidence` cannot be forged and `mint_supersession_evidence` cannot be

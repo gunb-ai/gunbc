@@ -1,13 +1,22 @@
 module gunbc.contributor_onboarding_path
+import gunbc.repo.repo_self_build { repo_self_build_all_bins_command }
 
 import std.types { String, List, NonEmptyStr }
+import std.algebra { FreeSemigroup, non_empty_to_list }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.documentary_refs { documentary_ref_symbol_text }
+import gunbc.design_document { purpose_heading, worked_examples_heading, ci_contract_heading, ledgers_heading }
+import gunbc.design_argument {
+  DesignRow, method_separate_order_compose, fail_closed, minimize_redundancy, single_authority,
+  conformance, consumption, guarantee_ladder, closed_grounded_substrate, source_annotations, how_to_work, self_hosting,
+}
 import std.integer { int_to_decimal_string }
 import std.optional { Optional, Absent, Present }
 import std.markdown { MarkdownDocument, MarkdownBlock }
 import gunbc.plans.md_helpers { h1, h2, h3, p, li, ul, ol, hr }
 import extdeps.languages.markdown { serialize_markdown_source }
 import extdeps.exec.command { argv_words }
-import gunbc.repo.repo_self_build { repo_self_build_command, repo_self_clippy_command, repo_self_test_command, repo_self_test_compile_command }
+import gunbc.repo.repo_self_build { repo_self_build_command, repo_self_clippy_command, repo_self_test_command, repo_self_test_typecheck_command }
 import gunbc.fabric.fabric_witness_run { witnesses_lane_run_command, build_lane_run_command }
 import gunbc.cli_invoke {
   gunbc_bin_name,
@@ -57,7 +66,7 @@ import gunbc.instruments.docs_projection_agreement { docs_projection_regen_comma
 // THE AUTHORITY THIS MODULE IS, RECORDED AS AN ANNOTATION RATHER THAN AS DATA (review 65295).
 //
 // It was a String declaration whose sole purpose was commentary and which nothing read -- a
-// whole-tree grep found only its own declaration. DESIGN section 4c calls that misplaced or dead
+// whole-tree grep found only its own declaration. gunbc.design_argument::source_annotations calls that misplaced or dead
 // data, and names the comment channel as the quarantine boundary for exactly this: irreducible
 // rationale about why a construction has its shape, unreadable by any Accepted program, which is
 // the honest standing for prose that no fold consumes.
@@ -118,7 +127,7 @@ type OnboardingBlocker
 // It was first declared `std.nat` `Nat` -- `CommutativeSemiring<Magnitude>` -- and rendered with
 // `integer_nat_to_decimal_string` (then in `v2.std.integer`, since moved to `std.nat` as
 // `nat_to_decimal_string` by gunbc#13436), whose parameter was `v2.std.nat.Nat`, the Peano `Zero | Succ`
-// coproduct. Two materially different types sharing one spelling is the DESIGN section 3 meaning
+// coproduct. Two materially different types sharing one spelling is the gunbc.design_argument::single_authority meaning
 // fork, and this instance is invisible exactly where it is authored: under the interpreter's
 // numeric grounding the projection rendered 1 through 10 correctly, while the emitted closure
 // refuses it. `std.integer` `int_to_decimal_string` records that same class as already
@@ -134,14 +143,14 @@ type OnboardingBlocker
 // non_empty` made empty-string absent-file sentinels UNWRITABLE, which is why the corpus carries
 // `"<none>"` re-spellings instead of empty ones. So the filtered population was empty by
 // construction and the witness arm consuming it was permanently green while presenting as
-// coverage of a state nobody can write -- which DESIGN section 4b names as worse than absent,
+// coverage of a state nobody can write -- which gunbc.design_argument::guarantee_ladder names as worse than absent,
 // because it will be cited as coverage.
 //
 // AND IT IS NOT A MISSING FIXTURE. A sibling arm in this change was repaired exactly that way
 // after review 64627: a reading order with no first-day row is perfectly authorable, so it got an
 // authored fixture and a real RED. This one is different in
 // kind -- the forbidden state has no constructor, at the top rung of the ladder, so the field type
-// IS the guarantee and a validator restating it would be the second representation section 5
+// IS the guarantee and a validator restating it would be the second representation gunbc.design_argument::fail_closed
 // forbids. The right answer is that the check is gone and this paragraph says why, so the next
 // author does not read its absence as an oversight and add it back.
 type OnboardingStep {
@@ -180,11 +189,33 @@ type DesignReadingPriority
   | BeforeFirstCommit
   | WhenItBites
 
+// WHAT A READING NAMES, AS A REFERENCE RATHER THAN A SPELLING. A DESIGN section is a
+// gunbc.design_argument claim row, rendered from its own title and citation; the four parts that are
+// not claims (purpose, worked examples, CI contract, ledgers) carry their heading from
+// gunbc.design_document and a resolvable citation. A section number spelled as text here was how
+// this roster went stale when the document stopped numbering its sections.
+type DesignPart
+  = ClaimPart { row: DesignRow }
+  | ReferencePart { title: String, cite: DeclarationRef }
+
 type DesignReading {
-  section: NonEmptyStr
+  parts: FreeSemigroup<DesignPart>
   priority: DesignReadingPriority
   why: NonEmptyStr
 }
+
+fn design_part_text(part: DesignPart) -> String {
+  match part {
+    ClaimPart { row } => join(["*", row.title, "* (", documentary_ref_symbol_text(reference: row.cite), ")"], "")
+    ReferencePart { title, cite } => join(["*", title, "* (", documentary_ref_symbol_text(reference: cite), ")"], "")
+  }
+}
+
+fn design_reading_label(r: DesignReading) -> String {
+  join(map(non_empty_to_list(xs: r.parts), part => design_part_text(part: part)), " and ")
+}
+
+fn claim(row: DesignRow) -> DesignPart { ClaimPart { row: row } }
 
 fn source_root_flags() -> List<String> {
   fold(witness_layer_roots, init: [], f: fn(acc, root) { append(acc, items: ["--source-root", root]) })
@@ -201,7 +232,7 @@ fn source_root_flags() -> List<String> {
 // THAT ROSTER, which is worth recording rather than quietly deleting: the prose asserted the
 // single-authority property while the line beneath it minted the second authority, so the comment
 // was the only thing standing between a reader and the fork. Two independently writable lists for
-// one membership is the DESIGN section 3 nicknaming violation, and a module whose whole claim is
+// one membership is the gunbc.design_argument::single_authority nicknaming violation, and a module whose whole claim is
 // that its commands come from their authorities is the worst place to keep one.
 fn onboarding_build_command() -> String {
   repo_self_build_command(bins: witness_floor_required_bins)
@@ -230,7 +261,7 @@ fn onboarding_build_command() -> String {
 // one `rust-toolchain.toml` pins -- measured, stable rather than the pinned channel.
 //
 // NO JOB CAP IS BAKED IN, AND ONE WAS, WHICH WAS A TRANSCRIBED MEASUREMENT: a count that suited
-// one walk's host is not a fact about this repository, and DESIGN section 6 forbids carrying it.
+// one walk's host is not a fact about this repository, and gunbc.design_argument::how_to_work forbids carrying it.
 // Capping jobs belongs in the obstacle row as a conditional, where the condition can be stated.
 fn onboarding_local_build_command() -> String {
   join(
@@ -370,7 +401,7 @@ data onboarding_obstacles: List<OnboardingObstacle> = [
   OnboardingObstacle {
     step_id: "clone" as NonEmptyStr,
     symptom: "The repository root offers DESIGN.md, and README.md and CLAUDE.md are symlinks to the same file. There is no CONTRIBUTING file and no first-day document." as NonEmptyStr,
-    cause: "DESIGN.md is the single authority and is a serially-reasoned argument from axioms, loaded in full every session. Measured on the tree: it names no build command, no toolchain installer and no binary path, so the document a newcomer is pointed at cannot get them to a build." as NonEmptyStr,
+    cause: "DESIGN.md is the single authority, an argument of named claims applying one method, loaded in full every session. Measured on the tree: it names no build command, no toolchain installer and no binary path, so the document a newcomer is pointed at cannot get them to a build." as NonEmptyStr,
     disposition: RemediedByDerivation { how: "docs/onboarding.md is generated from this module (`gunbc.instruments.docs_projection_gate` `regen`) and carries the ordered path with commands derived from their authorities. DESIGN.md names `gunbc.contributor_onboarding_path`, not the projection path." as NonEmptyStr },
     discoverable_from_symptom: false,
   },
@@ -427,13 +458,13 @@ data onboarding_obstacles: List<OnboardingObstacle> = [
     step_id: "build" as NonEmptyStr,
     symptom: "The build command exits ZERO, prints no error, and produces no binary anywhere -- neither in the in-tree target path nor under the override. Measured on the cold-start walk at five minutes and one second, with a line reporting that zero artifacts were uploaded." as NonEmptyStr,
     cause: "The cargo on the path was a WRAPPER, not cargo: it dispatched the build to a remote runner of a different architecture and returned that runner's success. So the compile genuinely succeeded and the artifact genuinely does not exist on this machine, which is why there is no error text to read. This is the worst available shape for a newcomer -- a zero exit with an empty diagnostic is indistinguishable from a working build until the next step cannot find its input. It is a property of the environment rather than of the command, which is why the page cannot fix it by changing the argv." as NonEmptyStr,
-    disposition: DocumentedRemedy { remedy: "THE OBVIOUS CONTROL FOR THIS DOES NOT WORK AND THE PAGE PREVIOUSLY PRESCRIBED IT, WHICH IS THE WORSE HALF OF THIS ROW. Running the build with a flag that must be rejected was measured TWICE, in two environments, on the same command, and gave OPPOSITE ANSWERS: one session saw the flag refused with a nonzero status, and a cold-start walk saw the remote compiler reject it while the local wrapper still exited 0. The divergence is a sharper finding than either result, because the control's whole job is to establish WHICH COMPILER YOU REACHED -- and a control that answers differently depending on where it runs cannot answer that question anywhere. Do not rely on it, and do not rely on a report that it fired.\n\nTHE WRAPPER BEHAVIOUR IS NOW EXPLAINED AND IT WAS NEVER A WRAPPER DEFECT. A later walk ran the reproduction deliberately: unpiped, every failing form returned a nonzero status -- a bogus flag, a missing bin, a missing package, an injected failing test through both the shim and the remote dispatcher, an injected type error. Piped to another command, the same failure read as zero while PIPESTATUS still held the real status. THE ORIGINAL SIGHTING IS BEST EXPLAINED AS A PIPE ARTIFACT, which is the same trap that has manufactured false readings elsewhere in this repository: A SHELL PIPELINE REPORTS ONLY ITS LAST STAGE, so a status read through a pipe is the status of the pager, not of the build. Never read an exit status through a pipe; if you must pipe, read PIPESTATUS. The paragraph below is retained as the record of how it looked before that was established.\n\nWHAT WAS OBSERVED ONCE AND DID NOT REPRODUCE. A wrapper returning zero while the cargo it wrapped failed was seen once, by a stranger walking this page in a fresh clone. Six later attempts to reproduce it did not: a deliberately failing command, an unknown bin, an unknown flag, the bogus-flag build and check forms, and a run from outside a workspace all propagated a nonzero status. One thing that search did establish is worth carrying even though it is not the defect: OUTSIDE A GIT WORKTREE the wrapper reports that it is not inside one and runs LOCALLY, so a control run there exercises the local compiler and answers a different question than the same control run inside a clone. What would settle it is the original sequence repeated in a fresh clone with the status read WITHOUT A PIPE, since a pipeline reports only its last stage. Until then this is a sighting with a wanted reproducer, not an established defect, and it should not be cited as one. USE THE ARTIFACT AS THE ORACLE INSTEAD: build, then list target/release and run what is there. TO FORCE THE BUILD ONTO THIS MACHINE, HERE IS THE COMMAND RATHER THAN A DESCRIPTION OF IT -- see the step above, which prints it. Check `command -v cargo` first: if it does not resolve to the toolchain's own cargo you are talking to a wrapper, and the printed line goes around it by asking rustup where cargo lives on YOUR machine rather than naming a path that happens to be right on one. Run it from inside the clone, because rustup answers that question per directory. IF THE BUILD IS KILLED RATHER THAN FAILING, cap the job count with cargo's own flag -- a shared host is the condition, and the right number is a property of that host rather than of this repository, so the page does not pick one for you. SETTING THE BUILD MODE TO LOCAL IS NOT ENOUGH ON ITS OWN, which is the part that cost the third stranger their second attempt: forcing local through the wrapper still died in four seconds inside the build cache, on a dependency build script, WITH NO MESSAGE. Bypassing both the wrapper and the cache is what produces a binary. AND THAT CLEARING IS A WORKAROUND OVER A REAL DEFICIT RATHER THAN A SETTING, WHICH IS WHY IT IS SPELLED OUT HERE INSTEAD OF PRESCRIBED QUIETLY: the wrapper failing is a fact about this machine's build cache, and DESIGN section 5 names reaching for that clearing as the absorbing fallback that buries it. Report the wrapper failure rather than treating it as the normal way to build. The alternative for a newcomer is no binary at all, which is worse than a named workaround. AND KNOW THAT THIS CLASS IS ALREADY MODELED, which is the most useful thing on this row: gunbc.instruments.host_prelude WitnessBinRefusalReason separates a build that failed from an artifact that is absent from one that is present but not executable, and its own note names the two incidents that priced those arms -- a build returning success while writing no artifact, and a wrapper silently routing to a remote builder. Those are the two failures a newcomer meets here. The repository knows this class; the hand-rolled build on this page is simply outside the carrier that handles it, so a reader who keeps hitting it should reach for that carrier rather than invent a third account of it." as NonEmptyStr },
+    disposition: DocumentedRemedy { remedy: "THE OBVIOUS CONTROL FOR THIS DOES NOT WORK AND THE PAGE PREVIOUSLY PRESCRIBED IT, WHICH IS THE WORSE HALF OF THIS ROW. Running the build with a flag that must be rejected was measured TWICE, in two environments, on the same command, and gave OPPOSITE ANSWERS: one session saw the flag refused with a nonzero status, and a cold-start walk saw the remote compiler reject it while the local wrapper still exited 0. The divergence is a sharper finding than either result, because the control's whole job is to establish WHICH COMPILER YOU REACHED -- and a control that answers differently depending on where it runs cannot answer that question anywhere. Do not rely on it, and do not rely on a report that it fired.\n\nTHE WRAPPER BEHAVIOUR IS NOW EXPLAINED AND IT WAS NEVER A WRAPPER DEFECT. A later walk ran the reproduction deliberately: unpiped, every failing form returned a nonzero status -- a bogus flag, a missing bin, a missing package, an injected failing test through both the shim and the remote dispatcher, an injected type error. Piped to another command, the same failure read as zero while PIPESTATUS still held the real status. THE ORIGINAL SIGHTING IS BEST EXPLAINED AS A PIPE ARTIFACT, which is the same trap that has manufactured false readings elsewhere in this repository: A SHELL PIPELINE REPORTS ONLY ITS LAST STAGE, so a status read through a pipe is the status of the pager, not of the build. Never read an exit status through a pipe; if you must pipe, read PIPESTATUS. The paragraph below is retained as the record of how it looked before that was established.\n\nWHAT WAS OBSERVED ONCE AND DID NOT REPRODUCE. A wrapper returning zero while the cargo it wrapped failed was seen once, by a stranger walking this page in a fresh clone. Six later attempts to reproduce it did not: a deliberately failing command, an unknown bin, an unknown flag, the bogus-flag build and check forms, and a run from outside a workspace all propagated a nonzero status. One thing that search did establish is worth carrying even though it is not the defect: OUTSIDE A GIT WORKTREE the wrapper reports that it is not inside one and runs LOCALLY, so a control run there exercises the local compiler and answers a different question than the same control run inside a clone. What would settle it is the original sequence repeated in a fresh clone with the status read WITHOUT A PIPE, since a pipeline reports only its last stage. Until then this is a sighting with a wanted reproducer, not an established defect, and it should not be cited as one. USE THE ARTIFACT AS THE ORACLE INSTEAD: build, then list target/release and run what is there. TO FORCE THE BUILD ONTO THIS MACHINE, HERE IS THE COMMAND RATHER THAN A DESCRIPTION OF IT -- see the step above, which prints it. Check `command -v cargo` first: if it does not resolve to the toolchain's own cargo you are talking to a wrapper, and the printed line goes around it by asking rustup where cargo lives on YOUR machine rather than naming a path that happens to be right on one. Run it from inside the clone, because rustup answers that question per directory. IF THE BUILD IS KILLED RATHER THAN FAILING, cap the job count with cargo's own flag -- a shared host is the condition, and the right number is a property of that host rather than of this repository, so the page does not pick one for you. SETTING THE BUILD MODE TO LOCAL IS NOT ENOUGH ON ITS OWN, which is the part that cost the third stranger their second attempt: forcing local through the wrapper still died in four seconds inside the build cache, on a dependency build script, WITH NO MESSAGE. Bypassing both the wrapper and the cache is what produces a binary. AND THAT CLEARING IS A WORKAROUND OVER A REAL DEFICIT RATHER THAN A SETTING, WHICH IS WHY IT IS SPELLED OUT HERE INSTEAD OF PRESCRIBED QUIETLY: the wrapper failing is a fact about this machine's build cache, and gunbc.design_argument::fail_closed names reaching for that clearing as the absorbing fallback that buries it. Report the wrapper failure rather than treating it as the normal way to build. The alternative for a newcomer is no binary at all, which is worse than a named workaround. AND KNOW THAT THIS CLASS IS ALREADY MODELED, which is the most useful thing on this row: gunbc.instruments.host_prelude WitnessBinRefusalReason separates a build that failed from an artifact that is absent from one that is present but not executable, and its own note names the two incidents that priced those arms -- a build returning success while writing no artifact, and a wrapper silently routing to a remote builder. Those are the two failures a newcomer meets here. The repository knows this class; the hand-rolled build on this page is simply outside the carrier that handles it, so a reader who keeps hitting it should reach for that carrier rather than invent a third account of it." as NonEmptyStr },
     discoverable_from_symptom: false,
   },
   OnboardingObstacle {
     step_id: "run-witnesses" as NonEmptyStr,
     symptom: "After twenty-plus minutes the lane reports a failed phase and refusals that read as corpus claims. The proximate cause was printed about thirty screens earlier: a witness binary exited 127, no such file or directory." as NonEmptyStr,
-    cause: "Some witnesses invoke a separate binary, and the pair this step builds is the pair the required lane's own roster names -- not every declared bin. A binary outside that pair is absent, the invocation fails at the operating-system level, and the refusal surfaces far from the missing artifact and in the vocabulary of a claim. The distance between cause and report is the whole problem: the reader sees a claim and goes to the corpus. THE ASYMMETRY IS REAL AND IT IS NOT A HOLE, AND THE REASON IS WORTH KNOWING RATHER THAN RE-DISCOVERING. The floor lane really does build only the two-bin roster while the build lane builds every declared bin, and required floor witnesses really do invoke a bin outside that pair. What closes it is that the dependency is declared at the CONSUMER instead of in a central roster: gunbc.instruments.host_prelude witness_bin_ensure_built_typed refuses an unenrolled bin, probes the release path for an executable, RUNS cargo for that bin when it is absent rather than merely reporting it missing, and refuses with a typed reason when that build fails. So a roster grep cannot see the dependency, which is why it looks like a gap. That placement is the better shape under DESIGN section 3 -- one roster enumerating every bin any witness might someday need would be a second authority for a fact each witness already holds -- and every non-Ready arm still fails the gate, so the typing buys diagnosis rather than permission. THE CONSEQUENCE FOR THIS PAGE IS THE OPPOSITE OF REASSURING: the local route above hand-rolls its own build and therefore has NONE of that protection, while the lane it imitates has all of it." as NonEmptyStr,
+    cause: "Some witnesses invoke a separate binary, and the pair this step builds is the pair the required lane's own roster names -- not every declared bin. A binary outside that pair is absent, the invocation fails at the operating-system level, and the refusal surfaces far from the missing artifact and in the vocabulary of a claim. The distance between cause and report is the whole problem: the reader sees a claim and goes to the corpus. THE ASYMMETRY IS REAL AND IT IS NOT A HOLE, AND THE REASON IS WORTH KNOWING RATHER THAN RE-DISCOVERING. The floor lane really does build only the two-bin roster while the build lane builds every declared bin, and required floor witnesses really do invoke a bin outside that pair. What closes it is that the dependency is declared at the CONSUMER instead of in a central roster: gunbc.instruments.host_prelude witness_bin_ensure_built_typed refuses an unenrolled bin, probes the release path for an executable, RUNS cargo for that bin when it is absent rather than merely reporting it missing, and refuses with a typed reason when that build fails. So a roster grep cannot see the dependency, which is why it looks like a gap. That placement is the better shape under gunbc.design_argument::single_authority -- one roster enumerating every bin any witness might someday need would be a second authority for a fact each witness already holds -- and every non-Ready arm still fails the gate, so the typing buys diagnosis rather than permission. THE CONSEQUENCE FOR THIS PAGE IS THE OPPOSITE OF REASSURING: the local route above hand-rolls its own build and therefore has NONE of that protection, while the lane it imitates has all of it." as NonEmptyStr,
     disposition: DocumentedRemedy { remedy: join(["Search the output for a nonzero exit from a binary invocation before reading any refusal as a claim about the corpus. If one is there, build every declared bin target INTO THE IN-TREE target/ -- witnesses resolve binaries there and nowhere else -- and run the lane again. The command, rendered here rather than named so you do not have to open a .dag to get it: `", repo_self_build_all_bins_command(), "`. It is exactly the required build lane prelude. That re-run is not sampling for a green: the input changed."], "") as NonEmptyStr },
     discoverable_from_symptom: false,
   },
@@ -508,47 +539,58 @@ data onboarding_obstacles: List<OnboardingObstacle> = [
 // section and says WHY a reader needs it at that point, so the reader reads the authority itself.
 data onboarding_design_reading: List<DesignReading> = [
   DesignReading {
-    section: "Building and checks" as NonEmptyStr,
+    parts: FreeSemigroup { head: ReferencePart { title: ci_contract_heading, cite: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks") }, tail: [] },
     priority: FirstDay,
-    why: "It names the checks and the one manual per-clone seed, and it is the section this path is linked from. It is the only section a reader needs before a build." as NonEmptyStr,
+    why: "It names the checks and the one manual per-clone seed, and it is the part this path is linked from. It is the only part a reader needs before a build." as NonEmptyStr,
   },
   DesignReading {
-    section: "Section 1, the objective" as NonEmptyStr,
+    parts: FreeSemigroup {
+      head: ReferencePart { title: purpose_heading, cite: decl_ref(module_path: "gunbc.design_argument", decl_name: "goal_safe_efficient_predictable") },
+      tail: [claim(row: method_separate_order_compose)],
+    },
     priority: FirstDay,
-    why: "Three axioms and the three consequences every later section is derived from. Without it the rest of the document reads as a list of preferences rather than a chain, and a reader will argue with conclusions instead of premises." as NonEmptyStr,
+    why: "What safe, efficient and predictable mean in practice, and the method every later section applies: separate concerns by meaning and authority, order them by their real dependencies, and give their composition an explicit contract. Without it the rest reads as a list of preferences rather than one method applied." as NonEmptyStr,
   },
   DesignReading {
-    section: "Section 5, fail-closed" as NonEmptyStr,
+    parts: FreeSemigroup { head: ReferencePart { title: worked_examples_heading, cite: decl_ref(module_path: "gunbc.design_document", decl_name: "worked_examples_blocks") }, tail: [] },
+    priority: FirstDay,
+    why: "The method worked through two real problems, with the defects the tree carries today. Read it to see what sorting a problem into concerns looks like before being asked to do it in a diff." as NonEmptyStr,
+  },
+  DesignReading {
+    parts: FreeSemigroup { head: claim(row: fail_closed), tail: [] },
     priority: BeforeFirstCommit,
     why: "It carries the hard reject: a silent widen, a fabricated default, an uncounted degradation or an escape hatch is refused regardless of what else the change delivers. It is the single most likely reason a first diff is rejected." as NonEmptyStr,
   },
   DesignReading {
-    section: "Sections 2 and 3, redundancy and single authority" as NonEmptyStr,
+    parts: FreeSemigroup { head: claim(row: minimize_redundancy), tail: [claim(row: single_authority)] },
     priority: BeforeFirstCommit,
-    why: "They decide where a fact is allowed to live. A first change usually either restates something that already has an owner or cites a position instead of a symbol, and both are refused on these two sections." as NonEmptyStr,
+    why: "They decide where a fact is allowed to live. A first change usually either restates something that already has an owner or cites a position instead of a symbol, and both are refused on these two claims." as NonEmptyStr,
   },
   DesignReading {
-    section: "Sections 3b and 3c, conformance and consumption" as NonEmptyStr,
+    parts: FreeSemigroup { head: claim(row: conformance), tail: [claim(row: consumption)] },
     priority: BeforeFirstCommit,
     why: "They are the two questions a reviewer asks of a diff: does it inhabit the models it touches, and who consumes what it adds. A well-shaped declaration nothing reads is refused under the second." as NonEmptyStr,
   },
   DesignReading {
-    section: "Section 4b, the guarantee ladder" as NonEmptyStr,
+    parts: FreeSemigroup { head: claim(row: guarantee_ladder), tail: [] },
     priority: BeforeFirstCommit,
     why: "It fixes what a change may claim about its own safety, and it is where the vocabulary a reviewer will use comes from. A claim stated one rung above its executed evidence is the failure mode it names." as NonEmptyStr,
   },
   DesignReading {
-    section: "Section 4, the substrate, and section 4c, annotations" as NonEmptyStr,
+    parts: FreeSemigroup { head: claim(row: closed_grounded_substrate), tail: [claim(row: source_annotations)] },
     priority: WhenItBites,
-    why: "Needed at the first .dag edit rather than at the first read: the closed vocabulary the language is built from, and the rule that a comment is the only place uncarried prose may live." as NonEmptyStr,
+    why: "Needed at the first .dag edit rather than at the first read: the closed vocabulary the language is built from, and the rule that a comment is best-effort prose no machine claim may rest on, deletable at any time." as NonEmptyStr,
   },
   DesignReading {
-    section: "Section 6, how to work" as NonEmptyStr,
+    parts: FreeSemigroup { head: claim(row: how_to_work), tail: [] },
     priority: WhenItBites,
     why: "The authorship tells -- scaffold, workaround, for-now, a new artifact with no consumer. Read it when a change starts wanting one of those, which is the moment it is about to be refused." as NonEmptyStr,
   },
   DesignReading {
-    section: "Section 7, self-hosting, and the recurring failure modes" as NonEmptyStr,
+    parts: FreeSemigroup {
+      head: claim(row: self_hosting),
+      tail: [ReferencePart { title: ledgers_heading, cite: decl_ref(module_path: "gunbc.recurring_failure_mode", decl_name: "RecurringFailureMode") }],
+    },
     priority: WhenItBites,
     why: "Why Rust is present at all and what the seed is shrinking toward, plus the ledger of classes already found. Deferrable on day one and indispensable once a change touches the compiler." as NonEmptyStr,
   },
@@ -637,8 +679,8 @@ fn step_ids() -> List<String> {
 //
 // step_id_is_declared used to call step_ids() itself, so a fold over obstacles rebuilt the whole
 // id list and walked it once per obstacle -- O(obstacles x steps) with a fresh allocation each
-// time. DESIGN section 2's repair for demands sharing an ancestor is to carry the first value, and
-// section 6 says a proven cost shape is fixed regardless of the realised n. So the list is resolved
+// time. gunbc.design_argument::demand_before_materialization's repair for demands sharing an ancestor is to carry the first value, and
+// gunbc.design_argument::how_to_work says a proven cost shape is fixed regardless of the realised n. So the list is resolved
 // ONCE at the fold below and handed in.
 //
 // step_id_is_declared survives as the single-id query, because a caller asking about one id has no
@@ -662,14 +704,14 @@ fn obstacles_with_undeclared_step() -> List<OnboardingObstacle> {
 // WHY THERE IS NO GAPLESS-ORDINAL CHECK, AND NO ORDINAL (review 65422).
 //
 // Each step used to carry an authored `ordinal`, and a fold asserted the set was a gapless total
-// order -- by filtering the whole list once per step, which is the quadratic shape DESIGN section 6
+// order -- by filtering the whole list once per step, which is the quadratic shape gunbc.design_argument::how_to_work
 // says is always fixed regardless of the realised n. But the quadratic scan was the SYMPTOM. The
 // defect was that the order of a list was authored a second time inside its own elements, so the
 // two could disagree and a validator was needed to notice.
 //
 // The position now comes from the list. A duplicate or a gap has no constructor, so the check is
 // not made linear -- it is DELETED along with the field and the two fixtures that fed it, which is
-// DESIGN section 5's preference for making the state unwritable over catching it. This is the same
+// gunbc.design_argument::fail_closed's preference for making the state unwritable over catching it. This is the same
 // repair the rule roster above received, and the step ordinal was the last authored position left.
 
 fn step_blocks(s: OnboardingStep, position: Int) -> List<MarkdownBlock> {
@@ -700,7 +742,7 @@ fn obstacle_item_text(o: OnboardingObstacle) -> String {
 }
 
 fn reading_item_text(r: DesignReading) -> String {
-  join(["**", (r.section as String), " — ", priority_rendered(pr: r.priority), ".** ", (r.why as String)], "")
+  join(["**", design_reading_label(r: r), " — ", priority_rendered(pr: r.priority), ".** ", (r.why as String)], "")
 }
 
 
@@ -770,7 +812,7 @@ fn onboarding_bus_factor_blocks() -> List<MarkdownBlock> {
 }
 
 // OPERATOR FACTS DESIGN.md USED TO CARRY. They change with tooling rather than with the design, so
-// they live with the walked path that exercises them; DESIGN.md's Building & checks keeps only the
+// they live with the walked path that exercises them; gunbc.design_document::ci_contract_blocks keeps only the
 // CI contract and links here.
 type OnboardingReference {
   topic: NonEmptyStr
@@ -784,7 +826,7 @@ data onboarding_reference: List<OnboardingReference> = [
   },
   OnboardingReference {
     topic: "Local checks" as NonEmptyStr,
-    fact: "`cargo fmt --all --check` runs in the generated pre-commit hook (`gunbc.githooks.githooks_pre_commit_emit`). `cargo clippy --all-targets -- -D warnings` (`gunbc.repo.repo_self_build` `repo_self_clippy_command`, the only command compiling the integration-test and example targets) and `cargo test --release -p v1-compiler --lib` (`repo_self_test_command`) are local only and block nothing; the required job does compile that same harness without running it, through `repo_self_test_compile_command` (`gunbc.witness.compiler_gate_workflow` `compiler_gate_v1_unit_test_compile_step`), so a `#[test]` that no longer BUILDS blocks a merge while a `#[test]` that fails does not." as NonEmptyStr,
+    fact: "`cargo fmt --all --check` runs in the generated pre-commit hook (`gunbc.githooks.githooks_pre_commit_emit`). `cargo clippy --all-targets -- -D warnings` (`gunbc.repo.repo_self_build` `repo_self_clippy_command`, the only command compiling the integration-test and example targets) and `cargo test --release -p v1-compiler --lib` (`repo_self_test_command`) are local only and block nothing; the required job does typecheck that same population without running it, through `repo_self_test_typecheck_command` (`cargo check --profile test -p v1-compiler --lib`; `gunbc.witness.compiler_gate_workflow` `compiler_gate_v1_unit_test_compile_step`), so a `#[test]` that no longer TYPECHECKS blocks a merge while a `#[test]` that fails, or an error only codegen or link would find, does not." as NonEmptyStr,
   },
   OnboardingReference {
     topic: "Hooks" as NonEmptyStr,
@@ -806,7 +848,7 @@ fn onboarding_reference_blocks() -> List<MarkdownBlock> {
 fn onboarding_reading_blocks() -> List<MarkdownBlock> {
   [
     h2(text: "Reading DESIGN.md in an order"),
-    p(text: "`DESIGN.md` is reasoned serially from three axioms, and every section is a consequence of the ones before it. So it rewards being read in its own order and punishes being skimmed for the section that seems relevant. What follows is when you need each part, not a summary of any of them — a shorter second account of the axioms would be the exact duplication the document forbids."),
+    p(text: "`DESIGN.md` is one argument. Each section states one claim, rendered from a `gunbc.design_argument` row and cited by that row's symbol; sections carry no numbers. The order of sections is for reading: which claims a claim rests on is its premise list, checked in `gunbc.design_argument`, not its position. Read the purpose, the method and the worked examples first, because every later claim applies that method. What follows is when you need each part, not a summary of any of them — a shorter second account of the method would be the exact duplication the document forbids."),
     ul(items: map(onboarding_design_reading, r => li(text: reading_item_text(r: r)))),
   ]
 }
@@ -818,7 +860,7 @@ fn onboarding_checks_blocks() -> List<MarkdownBlock> {
     ol(items: [
       li(text: join(["Lint over every target, which is local diligence and is run by no required step: the all-targets lint left the required path with the lanes it was kept on, and `gunbc.rung_drop` `v1_required_lanes_withdrawn` names it as a member of the withdrawn population. Its history is in `gunbc.rung_drop` `rust_unit_tests_off_the_merge_path`, whose 2026-09-04 text says the lint did NOT leave CI and carries the dated correction that it since did: `", repo_self_clippy_command(), "`"], "")),
       li(text: join(["The package's own unit tests, which are local diligence and are run by no required step: `", repo_self_test_command(), "`"], "")),
-      li(text: join(["The same harness COMPILED, which the required job does block on: `", repo_self_test_compile_command(), "`"], "")),
+      li(text: join(["The same harness TYPECHECKED, which the required job does block on: `", repo_self_test_typecheck_command(), "`"], "")),
       li(text: join(["The source roots every entry is resolved against: `", join(source_root_flags(), " "), "`"], "")),
     ]),
   ]

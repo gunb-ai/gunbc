@@ -36,7 +36,7 @@ import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import extdeps.router.verizon_cr1000a { Cr1000aDhcpLeaseRow }
 
 // SPARK-0 (2026-08-05). Three deliberately separate fact classes: (1) the vendor catalog (extdeps.systems.nvidia) -- what NVIDIA documents the product to be; (2) operator procurement intent (this module) -- that two units were ordered and that srv5/srv6 are RESERVED identities for them; (3) deployment observation -- physical binding evidence that must never be fabricated. A reserved identity is explicitly NOT enrollment: srv5/srv6 do not appear in gunbc.fleet.fleet_intent_network's endpoint list, gunbc.fleet.fleet_intent's ComputeHost list, or any phase matrix/compute offer.
-// SPARK-LANE-A (2026-08-06) moved the identities to gunbc.fleet.fleet_intent_network, the single authority for a host's fleet identity (§3 -- SPARK-0 forked them privately here only because that file was mid-refactor at the time).
+// SPARK-LANE-A (2026-08-06) moved the identities to gunbc.fleet.fleet_intent_network, the single authority for a host's fleet identity (gunbc.design_argument::single_authority -- SPARK-0 forked them privately here only because that file was mid-refactor at the time).
 // SPARK-LANE-A revision (2026-08-07), operator review of #7952. Two identity defects and one staleness, repaired below and in gunbc.fleet.fleet_lifecycle_observation. The staleness: BOTH UNITS ARRIVED and hold Static, Active CR1000A reservations, so the earlier "not yet arrived / no MAC exists / no address chosen" rows were false. Arrival is DERIVED from the observed reservation rows (dgx_spark_arrival_standing) rather than asserted in prose that can drift. SPARK-ALLOC-LAND-0 (2026-08-07): the slot allocation was delegated by the operator ("the 5, 6 decision is arbitrary - just make it yourself") and decided on ascending address order; it is recorded as an OperatorAllocation receipt, never as an observation.
 type HardwareProcurementIntent {
   vendor_catalog: IntegratedComputeSystemCatalogRow
@@ -65,7 +65,7 @@ type HardwareProcurementIntent {
 
 data observed_dgx_spark_router_reservations: List<Cr1000aDhcpLeaseRow> = []
 
-// SPARK-LANE-A. The router-side half of a slot: a DHCP static reservation is the act that turns "a slot we intend to use" into "an address the fleet can reach", and gunbc.fleet.fleet_intent_network's endpoint note recorded that this act had no carrier anywhere in the tree. It has one here. The reservation is NOT re-modeled: it is the cited extdeps.router.verizon_cr1000a Cr1000aDhcpLeaseRow, the same row gunbc.network_identity_subsumption consumes for srv3 -- minting a second mac/address pair beside it would be the §3 nickname failure.
+// SPARK-LANE-A. The router-side half of a slot: a DHCP static reservation is the act that turns "a slot we intend to use" into "an address the fleet can reach", and gunbc.fleet.fleet_intent_network's endpoint note recorded that this act had no carrier anywhere in the tree. It has one here. The reservation is NOT re-modeled: it is the cited extdeps.router.verizon_cr1000a Cr1000aDhcpLeaseRow, the same row gunbc.network_identity_subsumption consumes for srv3 -- minting a second mac/address pair beside it would be the gunbc.design_argument::single_authority nickname failure.
 //
 // THE JOIN IS A DECISION, NOT AN OBSERVATION, and the carrier says so structurally rather than in
 // prose: an assignment cannot be authored without naming the authority that made it. The two boxes
@@ -197,7 +197,7 @@ fn dgx_spark_arrival_standing() -> DgxSparkArrivalStanding {
   }
 }
 
-// Derived, not spelled: the set of reserved identities IS the set of identities carrying a router binding row, so the two cannot disagree (§2 -- a second hand-written identity list would be the copy that drifts).
+// Derived, not spelled: the set of reserved identities IS the set of identities carrying a router binding row, so the two cannot disagree (gunbc.design_argument::minimize_redundancy -- a second hand-written identity list would be the copy that drifts).
 fn dgx_spark_reserved_identities() -> List<HostIdentity> {
   map(dgx_spark_router_bindings, b => router_binding_identity(binding: b))
 }
@@ -378,7 +378,7 @@ fn admit_dgx_spark_deployment(
   }
 }
 
-// SPARK-LANE-A: the procurement-grain convergence read. Per-unit disposition is DERIVED by calling admit_dgx_spark_deployment, never by a second copy of its checks -- a forked convergence rule would let a unit read "converged" here while the wall refuses it (§2/§3).
+// SPARK-LANE-A: the procurement-grain convergence read. Per-unit disposition is DERIVED by calling admit_dgx_spark_deployment, never by a second copy of its checks -- a forked convergence rule would let a unit read "converged" here while the wall refuses it (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority).
 type DgxSparkUnitDisposition
   = DgxSparkUnitDeployed { deployment: DgxSparkDeployment }
   | DgxSparkUnitPending { identity: HostIdentity, reason: DgxSparkAdmissionRefusalReason }
@@ -390,7 +390,7 @@ type DgxSparkProcurementConvergence
   | DgxSparkProcurementPending { pending: List<DgxSparkUnitDisposition> }
   | DgxSparkProcurementRosterEmpty { disposed: List<DgxSparkDisposedUnit> }
 
-// Two arms, not three: a unit is deployed or it is pending with a typed, located cause. There is deliberately no `Unknown` arm -- every reason a unit is not deployed is one of the closed DgxSparkAdmissionRefusalReason causes, so "we could not tell" cannot masquerade as a verdict (§5 state-space conflation). This is a diff-shaped read but NOT an instance of the gunbc.membership_reconcile spine: that spine reconciles a desired member set against an OBSERVED member set of the same type with teardown as the Removed arm, and here the two sides are different types (a reserved identity vs an admitted deployment) and there is no teardown -- you cannot retract a machine that was never present. Instantiating the spine would mean inventing an M that fits neither side, so the genericity would buy nothing and cost a fake member type.
+// Two arms, not three: a unit is deployed or it is pending with a typed, located cause. There is deliberately no `Unknown` arm -- every reason a unit is not deployed is one of the closed DgxSparkAdmissionRefusalReason causes, so "we could not tell" cannot masquerade as a verdict (gunbc.design_argument::fail_closed state-space conflation). This is a diff-shaped read but NOT an instance of the gunbc.membership_reconcile spine: that spine reconciles a desired member set against an OBSERVED member set of the same type with teardown as the Removed arm, and here the two sides are different types (a reserved identity vs an admitted deployment) and there is no teardown -- you cannot retract a machine that was never present. Instantiating the spine would mean inventing an M that fits neither side, so the genericity would buy nothing and cost a fake member type.
 fn dgx_spark_unit_disposition(
   binding: DgxSparkRouterBinding,
   observations: List<FleetLifecycleObservation>,

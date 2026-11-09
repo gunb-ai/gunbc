@@ -14,7 +14,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // names took the caller's value whether or not it declared the input. (2) THE EXECUTABLE POSITION
 // IS NOT BINDABLE (see the corpus witness and dag/test/fixture/argv_executable_position_probe.dag).
 // Each refusal is typed and located with no arm that proceeds -- nothing is sanitized, escaped, or
-// dropped (DESIGN 5).
+// dropped (gunbc.design_argument::fail_closed).
 
 data systemctl_path: String = "dag/extdeps/systemd/systemctl.dag"
 data systemctl_service: String = "systemd.Systemctl"

@@ -5,7 +5,6 @@ import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.compiler.reference_site_collector { collect_reference_sites }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.extdeps.languages.dag { dag_language_model }
-import std.types { list_length }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
@@ -13,7 +12,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node }
 import v2.std.qualified_name { qualified_name_to_dotted_string }
 import v2.std.text { String }
-import std.algebra { Cons, Empty, FreeMonoid, fold_list }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, length }
 import extdeps.communication.medium { Lossless, Medium }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -26,8 +25,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // both saw a qualified parameter type and a qualified field type, and only the collector saw a
 // dotted callee and a qualified call argument, because the parse walker had no postfix handling
 // (gunbc.recurring_failure_mode reference_reader_without_postfix_handling_drops_call_sites). The
-// parse walker was deleted on that evidence (replacement migration, DESIGN section 3), and these
-// cells remain as the collector's regression controls (DESIGN section 4b(4)): each reds if the
+// parse walker was deleted on that evidence (replacement migration, gunbc.design_argument::replacement_migration), and these
+// cells remain as the collector's regression controls (gunbc.design_argument::guarantee_ladder (dissolution on climb)): each reds if the
 // collector loses its site, and the call cells red if the collector mislocates a site or emits an
 // extra one inside the call.
 data qsd_source: String = "module v2.test.qsd_subject\n\nimport std.types { Bool }\n\ntype QsdWrapper { fld: v2.test.qsd_provider.QsdFieldType }\n\nfn qsd_param(p: v2.test.qsd_provider.QsdParamType) -> Bool { true }\n\nfn qsd_call() -> Bool { v2.test.qsd_provider.qsd_callee(x: v2.test.qsd_provider.qsd_argument) }\n"
@@ -102,7 +101,7 @@ fn qsd_call_body_rows() -> FreeMonoid<String> {
 
 fn qsd_call_body_has_exactly(row: String) -> Bool {
   let rows = qsd_call_body_rows()
-  list_length(items: rows) == 2
+  length(xs: rows) == 2
     && fold_list(xs: rows, empty: false, cons: fn(acc, r) { acc || r == row })
 }
 

@@ -636,7 +636,7 @@ fn body_lower_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
 // `infer_grounding_not_derived` diagnostic anchors on with no occurrence to look up, which is how a
 // fatal ends up naming no file at all. Every caller already holds the node it read the symbol from,
 // so the source is supplied rather than searched for -- searching the tree for an equal node would
-// be the plausible guess DESIGN section 5 forbids.
+// be the plausible guess gunbc.design_argument::fail_closed forbids.
 fn body_lower_type_atom_node(sym: Symbol, source: Node) -> Node {
   node_lowered_from(
     kind: TypeNode { connective: Atom { identity: sym } },
@@ -1955,11 +1955,11 @@ fn body_lower_sequence_left_is_lbrace(captured: Node) -> Bool {
 }
 
 // THE DOT IS NOT AN OPERATOR, AND READING IT AS ONE WAS THE EARLIEST UNJUSTIFIED BOUNDARY OF THE
-// CROSS-MODULE REFERENCE CLASS (DESIGN section 6b). The grammar owns the dot as
+// CROSS-MODULE REFERENCE CLASS (gunbc.design_argument::earliest_unjustified_boundary). The grammar owns the dot as
 // dag_grammar_postfix_dot_suffix_expr, one suffix of a postfix chain, and never as an infix
 // production. This reader accepted ANY lex token as a binary operator, so `v2.test.p.value` lowered
 // to Transform(dot, v2, test) with every later segment DROPPED -- a fabricated plausible body
-// (DESIGN section 5) that no consumer reads and that the resolver refuses as an unbound `v2`.
+// (gunbc.design_argument::fail_closed) that no consumer reads and that the resolver refuses as an unbound `v2`.
 // Measured on the production route (v2.test.claim.namespace_xl0.call_argument_mention_survival) before
 // this arm existed. A dotted chain is lowered by body_lower_dotted_reference_optional below. The
 // block delimiters are excluded for the sibling reason (gunbc#11595): a brace is a body boundary,
@@ -3155,9 +3155,9 @@ fn body_lower_sequence_head_is_arrow(node: Node) -> Bool {
 // LIST and answered with the first arrow it met there. For `fn g(h: fn(Int) -> Int) -> Bool`
 // -- which parses today, because fn_type is a type_expr alternative -- it returned
 // dag_binding_type_int for a function declared to return Bool. A wrong answer with no diagnostic
-// is DESIGN section 5's forbidden class, not a cost finding. The positional read cannot reach a
+// is gunbc.design_argument::fail_closed's forbidden class, not a cost finding. The positional read cannot reach a
 // parameter's type at all, so the invalid state is unwritable rather than checked for
-// (DESIGN section 4b: construction over validation). Its sibling
+// (gunbc.design_argument::guarantee_ladder: construction over validation). Its sibling
 // body_lower_type_expr_after_arrow, a second blind arrow hunt with no consumer on main, is
 // deleted with it rather than left standing as a second authority for the same question.
 // Discriminating red: test.claim.parse_test_fn_decl_return_clause
@@ -3423,7 +3423,7 @@ fn body_lower_return_type_from_fn_captured(captured: Node) -> Optional<Node> {
 // body_lower_try_body_lowered then re-read the RAW node, and the call-argument reader
 // (body_lower_value_lowered) folded each argument a second time -- body_lower_fold demanded exactly
 // twice per input, once under body_lower_fold_children here and once from the value reader
-// (DESIGN section 2: the least common ancestor computes once and carries the value). The peel is
+// (gunbc.design_argument::minimize_redundancy: the least common ancestor computes once and carries the value). The peel is
 // the value reader's own, so both readers answer one fold the same way.
 fn body_lower_try_fold_behavior_optional(node: Node) -> Outcome<Optional<Node>> {
   match body_lower_fold(node: node) {
@@ -3789,9 +3789,9 @@ fn body_lower_callback_init(row: CallbackStepRow, source: Node) -> Node {
 // what the step does and the direction callback_step_shape_iteration_direction reads off the same shape.
 // The old match was one arm per realization, a second hand-written sibling to the direction reader over
 // the same sum; the contradiction had no constructor, because the direction is now read from the shape
-// and never spelled beside it (DESIGN section 5: the row carries the shape, the direction derives from
+// and never spelled beside it (gunbc.design_argument::fail_closed: the row carries the shape, the direction derives from
 // it, so the contradicted pair has no constructor). A realization with no row never reaches
-// here: the assembly refuses it first (no silent default, DESIGN section 5).
+// here: the assembly refuses it first (no silent default, gunbc.design_argument::fail_closed).
 fn body_lower_callback_step_body(row: CallbackStepRow, accumulator: Symbol, member: Symbol, body: Node, source: Node) -> Node {
   let acc_ref = body_lower_param_ref_atom(source: source, identity: accumulator)
   match row.step_shape {
@@ -3842,7 +3842,7 @@ fn body_lower_callback_encoding_from(operands: CallbackCallOperands, collection:
                         // (v2.compiler.fold_lowering callback_step_row: a realization without a row is
                         // refused at compile time by infer_match_non_exhaustive), so there is no absent
                         // row to refuse at the assembly and no default to fall through to
-                        // (DESIGN section 5: the total match leaves no absent case to default).
+                        // (gunbc.design_argument::fail_closed: the total match leaves no absent case to default).
                         let row = callback_step_row(r: operands.realization)
                         match body_lower_function_value_arrow(
                           shell: callback_node,
@@ -4448,7 +4448,7 @@ fn body_lower_fn_decl_named_member_wrap(arrow: Node, fn_name: DeclaredName, sour
 // lowered the nested fn_decl child by the time this shell reduces, and this arm lifts the member out
 // of the sequence's right projection. Another marker word never reaches this arm: it refuses at parse
 // (DeclarationMarkerNotTest), so there is no spelling to check here. The TEST-NESS marker is deliberately not reified into the
-// member node: it rides its own channel beside the semantic tree (the DESIGN section 4c shape),
+// member node: it rides its own channel beside the semantic tree (the gunbc.design_argument::source_annotations shape),
 // v2.compiler.test_marker_capture over the same parse tree, so the semantic member stays identical
 // to a plain fn's.
 //
@@ -4865,7 +4865,7 @@ fn body_lower_fn_decl_arrow(shell: Node, sig: BodyLowerFnSignature, body: Option
 // needs the parse encoding) and the image REPLACES the shell, so the raw token subtree never enters
 // the tree. The fn declaration's Arrow then finds the image by the shell's own identity (kept in
 // body_lower_admit_clause_image) and hangs it under the core marker AdmitCallersEdge — one build,
-// one fact, one place (DESIGN section 3).
+// one fact, one place (gunbc.design_argument::single_authority).
 //
 // WHY THE ROSTER IS RE-HUNG AT ALL: a raw grammar-sequence encoding is token atoms, and token atoms
 // do not ground, so a raw roster in a subject's own module would refuse the whole fixture at
@@ -4875,7 +4875,7 @@ fn body_lower_fn_decl_arrow(shell: Node, sig: BodyLowerFnSignature, body: Option
 // FALLBACK, FAIL-CLOSED: if the authored spine does not read, the carrier hangs a MARKER atom at
 // the clause's own occurrence instead of a roster. The reader demands a roster conj and REFUSES
 // (^infer_reason_admit_callers_entries_unreadable at the clause) — a malformed clause is never a
-// shorter roster (DESIGN section 5: a failure arm must refuse, never widen).
+// shorter roster (gunbc.design_argument::fail_closed: a failure arm must refuse, never widen).
 // THE CARRIER (v2 body lowering): a fn's authored `admit_callers` clause becomes one AdmitCallersEdge
 // on the fn's Arrow, whose target is the clause's lowered roster. The clause is an OPTIONAL ELEMENT of
 // the fn-decl production, so it is read off the fn shell's optional-element projection — identified by
@@ -4883,7 +4883,7 @@ fn body_lower_fn_decl_arrow(shell: Node, sig: BodyLowerFnSignature, body: Option
 // fn header's other optional (the return type). The outer Absent (no such optional) is the only
 // silence: a fn without the clause has nothing to judge. Once a clause IS present, every failure to
 // read it hangs the clause-fallback marker instead -- the reader refuses it as
-// ^infer_reason_admit_callers_entries_unreadable at the clause (DESIGN §5: a failure arm must refuse,
+// ^infer_reason_admit_callers_entries_unreadable at the clause (gunbc.design_argument::fail_closed: a failure arm must refuse,
 // never widen). A grammar or graft change that reshapes the clause shell switches the wall to
 // REFUSING, never off.
 fn body_lower_fn_admit_clause_edges(shell: Node) -> List<Edge> {
@@ -5002,7 +5002,7 @@ fn body_lower_admit_roster_from_entries(entries: List<Node>, template: Node) -> 
 // grammar's sequence-projection edges (@grammar_sequence_left_node_projection carries the record,
 // @grammar_sequence_right_node_projection carries the rest, the empty conj root ends the spine).
 // This is the substrate's standing linked-list-in-a-tree shape, read by the shared
-// sugar_sequence_pair_optional; the carrier mints it and adds no second name for it (DESIGN §2).
+// sugar_sequence_pair_optional; the carrier mints it and adds no second name for it (gunbc.design_argument::minimize_redundancy).
 // Every edge is authored and distinct within its node, so connective_edges_conform accepts it, and
 // an empty authored list lowers to the empty conj root without refusing. All built nodes share the
 // template's minted occurrence (the template left the tree with the swap); close_lowered_image marks
@@ -5507,7 +5507,7 @@ fn body_lower_call_arg_capture_is_named(arg_capture: Node) -> Bool {
 // no binder for a carried function literal, and refused there at the WRONG atom -- the literal's own
 // parameter (gunbc.recurring_failure_mode
 // carried_unlowered_value_accepted_as_an_advisory_refuses_downstream_at_the_wrong_atom). A widened
-// answer is not a refusal (DESIGN section 5), so the carry is deleted and every value position --
+// answer is not a refusal (gunbc.design_argument::fail_closed), so the carry is deleted and every value position --
 // field initializer, if condition and arms, let value, each statement of a block, match arm body --
 // asks this reader and refuses AT THE VALUE, under the value's own cause, when it cannot lower it.
 // A refusal the reader itself raises (an inner call argument, a list literal) is the value's
@@ -5541,7 +5541,7 @@ fn body_lower_value_read(value: Node) -> Outcome<Node> {
 // at the lambda (call_argument_unread), the walker answered with the BODY of the `f:` literal, and the
 // Bind carried that body as `folded`'s value -- the fold call, the filter/map/split chain, `init` and
 // the literal's binders all gone, and the module Accepted. That is a wrong answer where a located
-// refusal was owed (DESIGN section 5), found by the full-corpus census on the PR that removed the
+// refusal was owed (gunbc.design_argument::fail_closed), found by the full-corpus census on the PR that removed the
 // value carry: nine files refusing call_argument_unread at base were Accepted this way. The walker is
 // still the reader for a value the fold ACCEPTS but leaves unpeelable.
 fn body_lower_value_lowered(node: Node) -> Outcome<Optional<Node>> {
@@ -6523,7 +6523,7 @@ fn body_lower_postfix_projection_step(repeat_elem: Node) -> Optional<Node> {
 //
 // LOWERING DOES NOT DECIDE WHAT THE CHAIN DENOTES. `r.v` over a parameter and `a.b.C` over a
 // module path are one relation, syntactic containment (docs/plans/namespace-resolution-design.md
-// section 3), and the resolver's unique-on-chain rule (section 13) resolves the FIRST segment on
+// gunbc.design_argument::single_authority), and the resolver's unique-on-chain rule (section 13) resolves the FIRST segment on
 // the ancestor chain and projects the rest. Deciding here would be a second resolver with no scope
 // to consult. So every chain of bare segments lowers to the one spine, and the resolver is where
 // the answer lives.
@@ -6606,14 +6606,14 @@ fn body_lower_dotted_head_raw_atom_optional(node: Node) -> Optional<Node> {
 // argument row). A brace record suffix is the PostfixRecord step, and any other suffix kind is
 // not this shape and the walk declines so the existing arms run unchanged.
 //
-// WHAT CHANGED HERE AND WHY (gunbc#12033's PR2, DESIGN 6b). The walk used to admit a call ONLY on
+// WHAT CHANGED HERE AND WHY (gunbc#12033's PR2, gunbc.design_argument::earliest_unjustified_boundary). The walk used to admit a call ONLY on
 // the FINAL segment and answered DottedChainCallBeforeEnd for anything else, which the readers
 // declined to the pre-existing arms. Those arms read ONE repeat element and then decided, so the
 // declined chains lost everything after the first step: `shell.Env.Get(name: n).value` reached the
 // old body_lower_try_postfix_projection, whose first element `.Env` carries no call suffix, and
 // REFUSED postfix_field_access_refused; `fields.skip(n: i).first()` built Transform(skip, fields, i)
 // and DROPPED `.first()` with no diagnostic at all. One boundary, two outcomes, and the silent one
-// is the worse: DESIGN 4b puts silent wrongness below the ladder rather than on it. The repair is
+// is the worse: gunbc.design_argument::guarantee_ladder puts silent wrongness below the ladder rather than on it. The repair is
 // not a guard at either symptom -- it is that a postfix chain is a SEQUENCE of steps and was being
 // read as one step. This walk now collects the whole sequence and body_lower_postfix_chain_fold
 // folds it left-associatively, so both outcomes are removed by the same construction.
@@ -7443,7 +7443,7 @@ fn body_lower_postfix_projection_has_call_suffix(repeat_elem: Node) -> Bool {
 // simply not this shape and must DECLINE to the existing arms exactly as the pre-PR2 walk did.
 // Measured: refusing the absent case as well took the workload from 0 to 103 refusing rows over
 // ordinary modules -- src/v2/compiler/tokenize.dag, src/v2/std/artifact.dag and 101 others --
-// which is DESIGN section 5 inverted, a decline widened into a refusal rather than a widen
+// which is gunbc.design_argument::fail_closed inverted, a decline widened into a refusal rather than a widen
 // narrowed into one.
 type PostfixSuffixRead
   = PostfixSuffixNone
@@ -10450,7 +10450,7 @@ fn body_lower_paren_group_lowered(group: Node, inner: Node) -> Outcome<Node> {
   }
 }
 
-// A LIST LITERAL IS THE FLAT FREE-MONOID INTRODUCTION (DESIGN section 4). `List<T>` is
+// A LIST LITERAL IS THE FLAT FREE-MONOID INTRODUCTION (gunbc.design_argument::closed_grounded_substrate). `List<T>` is
 // std.algebra FreeMonoid<T> (dag/std/algebra.dag), and `[e1, .., en]` lowers to ONE Transform whose
 // head is the reference to that declaration and whose remaining positional children are the
 // elements in order; `[]` is the Transform with the head alone. The authority for the shape is
@@ -10894,7 +10894,7 @@ fn body_lower_type_decl_uncarried(shell: Node) -> Outcome<Node> {
 }
 
 // A type declaration this lowering cannot read -- no captured child, or no declared name -- refuses,
-// located. It was returned as its parse shell and accepted, which is the widening arm DESIGN section 5
+// located. It was returned as its parse shell and accepted, which is the widening arm gunbc.design_argument::fail_closed
 // forbids: every later stage then met grammar tokens where a declaration should stand.
 fn body_lower_type_decl_unreadable(shell: Node) -> Outcome<Node> {
   Rejected {
@@ -11271,7 +11271,7 @@ fn body_lower_type_decl_by_body(shell: Node, captured: Node, type_name: Declared
   }
 }
 
-// SERVICE DECLARATIONS, AT DECLARATION GRADE. A service is an interface (DESIGN section 3): a named
+// SERVICE DECLARATIONS, AT DECLARATION GRADE. A service is an interface (gunbc.design_argument::single_authority): a named
 // product of function types. `service S { operation Op { input { a: A } output { b: B } } }` lowers
 // onto existing connectives only -- `Conj { S: Conj { Op: Arrow(Conj { operation_input: Conj { a: A } },
 // Conj { b: B }, order [operation_input]) } }`, a one-parameter declared signature whose parameter is
@@ -11289,7 +11289,7 @@ fn body_lower_type_decl_by_body(shell: Node, captured: Node, type_name: Declared
 // THE NAME IS ONE LABEL, THE WHOLE DECLARED SPELLING (`shell.Find`), not a per-segment spine. A
 // spine collides at the module (dag/extdeps/shell.dag declares sixteen services under `shell`) and
 // needs a prefix merge in namespace_graft. FRONTIER, stated: the dotted label hides named parts
-// (DESIGN section 2) and a dotted reference to it does not resolve; the trigger is v2 resolving
+// (gunbc.design_argument::minimize_redundancy) and a dotted reference to it does not resolve; the trigger is v2 resolving
 // service CALLS, at which point the spine plus a graft prefix merge becomes the required shape and
 // this label migrates in one transition.
 // The production shells directly beneath a node, looking through the choice wrappers
@@ -12532,7 +12532,7 @@ fn body_lower_resource_with_release(a: BodyLowerResourceAcc, entry: Node) -> Out
 }
 
 // A CAPABILITY IS AN INTERFACE ARROW. Realization facts that body_lower_operation now lowers into
-// an entry have no resource carrier (DESIGN section 3: a resource is not a service), so a capability
+// an entry have no resource carrier (gunbc.design_argument::single_authority: a resource is not a service), so a capability
 // that authored them refuses at the capability, located, under its own cause -- never the service
 // blanket and never by dropping the entry.
 fn body_lower_resource_with_capability(a: BodyLowerResourceAcc, entry: Node) -> Outcome<BodyLowerResourceAcc> {

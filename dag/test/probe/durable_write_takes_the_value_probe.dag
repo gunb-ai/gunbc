@@ -14,7 +14,7 @@ module test.probe.durable_write_takes_the_value_probe
 //
 // ENROLLED AS AN EXPECTING-RED HOLE: the witness asserts the census carries NO blocking row at the
 // permit argument; when the exemption closes this program refuses, that assertion goes red, and
-// the row is rewritten to expect the refusal. It does not retire (DESIGN 4b, meta-obligation 4).
+// the row is rewritten to expect the refusal. It does not retire (gunbc.design_argument::guarantee_ladder, meta-obligation 4).
 // What IS structural regardless of this hole: the permit cannot be authored
 // (test.probe.data_effect_permit_forged_probe).
 

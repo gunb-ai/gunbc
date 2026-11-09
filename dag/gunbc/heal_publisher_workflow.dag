@@ -1,11 +1,12 @@
 module gunbc.heal_publisher_workflow
+import gunbc.ci.repository_ci_profile { gunbc_repository_ci_profile }
 
 
 import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.measure { minute_count }
 import std.optional { Optional, Present, Absent }
 import v2.std.diagnostic {
-  Outcome, Accepted, Rejected, bind_outcome, outcome_accepted,
+  Outcome, Accepted, Rejected, bind_outcome, outcome_accepted, outcome_rejected, module_unavailable_diagnostic,
   Diagnostic, NonEmptyDiagnostics, diagnostics_singleton, diagnostics_reason_lexemes,
   Textual, WholeFile, Unavailable, CorrectionNotModeled
 }
@@ -30,15 +31,18 @@ import gunbc.workflow_capability_closure {
   workflow_job_capability_closure, capability_closure_is_closed
 }
 import gunbc.toolchain_home_standing {
-  admit_workflow_toolchain_homes, WorkflowToolchainHomesAdmitted, WorkflowToolchainHomeRefused, toolchain_home_refusal_reason
+  admit_workflow_toolchain_homes, WorkflowToolchainHomesAdmitted, WorkflowToolchainHomeRefused, toolchain_home_refusal_reason,
+  step_installs_toolchain, step_isolates_toolchain_homes, step_pins_default_toolchain,
 }
 import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step, toolchain_pin_rustup_default_step }
 import gunbc.witness.witness_floor_workflow { witness_floor_toolchain_step, witness_floor_build_step }
 import gunbc.ci.ci_materialization { step_display_name }
 import gunbc.ci.ci_runner_target { ci_runner_target_spec }
+import extdeps.github.expressions { Expression, interpolate }
 import gunbc.ci.repository_ci_profile {
   DagInvocation, HealPublisherPolicy, OverlayIngest, PublicSeed, PublisherCompilerSource, RepositoryCiProfile,
-  profile_overlay, profile_public_seed, profile_publisher_compiler_source, repository_ci_profile_refusal
+  profile_overlay, profile_public_seed, profile_publisher_compiler_source, repository_ci_profile_refusal,
+  seed_source_pin, seed_source_refusal_reason
 }
 import gunbc.repo.repo_self_build { repo_self_build_command }
 import gunbc.heal_workflow {
@@ -49,7 +53,7 @@ import gunbc.heal_publication_boundary {
   phase_isolation, phases_are_isolated
 }
 import gunbc.heal_publication { heal_publication_candidate_directory_env, heal_publication_receipt_path }
-// The federation record is LEASED from its owner (DESIGN 3b): the emitter asks it for the provider path
+// The federation record is LEASED from its owner (gunbc.design_argument::conformance): the emitter asks it for the provider path
 // and the service account, and never spells either.
 import gunbc.auth.heal_publisher_federation { HealPublisherFederation, heal_publisher_federation_provider_resource }
 import gunbc.ci.ci_spec { heal_publisher_cgroup_prelude, heal_publisher_cgroup_prelude_script }
@@ -57,7 +61,11 @@ import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script_with_prelude }
 // THE SAME SEED AND COMPOSE PIECES THE DRIFT EMITTER USES, imported rather than re-spelled: a publisher
 // that built its seed differently from the job that sealed the candidate would publish against a compiler
 // nothing verified.
-import gunbc.ci.repository_seed_steps { seed_checkout_step, seed_build_step, toolchain_install_step }
+import gunbc.ci.repository_seed_steps {
+  SeedLaneSteps, seed_lane_steps, seed_build_step,
+  SeedToolchainLane, seed_toolchain_lane, seed_toolchain_lane_steps,
+  seed_pin_verifier_job, seed_pin_verifier_declared_expressions,   seed_pin_checkout_ref_expression,
+}
 import gunbc.ci.repository_compose_overlay {
   ComposeSpec, composed_source_roots, compose_gunbc_run_statements, compose_preamble_statements,
   local_runs_note, merge_checkout_compose, overlay_note
@@ -95,7 +103,7 @@ import v2.workflow.bash_emit { bash_emit_stmts }
 // App token, the write and the readback, but NOT the earlier WIF federation exchange. The credential-free claim
 // is precisely about ADMIT reading no credential; it is not a claim that a closed PR costs no token at all. (The admit step once carried `GITHUB_TOKEN: ${{ github.token }}`; that line was dead
 // decoration -- the credential-free admit reads no environment token -- so it is deleted rather than left
-// cited as a safeguard it does not provide, per DESIGN 5.)
+// cited as a safeguard it does not provide, per gunbc.design_argument::fail_closed.)
 
 // THE PUBLISHER'S NAME, JOB ID AND TIMEOUT COME FROM THE REPOSITORY'S CI PROFILE ROW. Two of these
 // literals used to sit beside the step list while the profile also described the job; the row is now the
@@ -109,7 +117,7 @@ data heal_publisher_no_job_refusal_reason: String = "REFUSED gunbc.heal_publishe
 // publisher's reasons, rather than in the projection: the projection says only that the case is not one this
 // emitter can be built from, and this is the module that knows why (its two phases would run a compiler the
 // row's build steps never produced).
-data heal_publisher_seed_route_without_a_composition_refusal_reason: String = "REFUSED gunbc.heal_publisher_workflow: the row's CompilerSource is Declared_seed -- it builds a second compiler from a declared seed but names no overlay to compose, so there is no root the publisher's phases could run that compiler in. Admit and publish would run this checkout's own `target/release/gunbc`, a binary these build steps never produced: a candidate sealed from one compiler and admitted against another, which is the drift this workflow exists to prevent (DESIGN section 5, no fabricated default). A publisher that runs under a seed it built declares Declared_seed_under_composed_overlay; a publisher that runs this checkout's floor build declares Own_checkout_under_witness_floor. A lane that runs its roster under a seed compiler it built has a consumer and is emitted by gunbc.witness.repository_witness_workflow, not by this emitter."
+data heal_publisher_seed_route_without_a_composition_refusal_reason: String = "REFUSED gunbc.heal_publisher_workflow: the row's CompilerSource is Declared_seed -- it builds a second compiler from a declared seed but names no overlay to compose, so there is no root the publisher's phases could run that compiler in. Admit and publish would run this checkout's own `target/release/gunbc`, a binary these build steps never produced: a candidate sealed from one compiler and admitted against another, which is the drift this workflow exists to prevent (gunbc.design_argument::fail_closed, no fabricated default). A publisher that runs under a seed it built declares Declared_seed_under_composed_overlay; a publisher that runs this checkout's floor build declares Own_checkout_under_witness_floor. A lane that runs its roster under a seed compiler it built has a consumer and is emitted by gunbc.witness.repository_witness_workflow, not by this emitter."
 
 data heal_publisher_candidate_directory: String = "heal-candidate"
 
@@ -483,26 +491,177 @@ fn heal_publisher_route_steps(source: PublisherCompilerSource) -> Outcome<List<H
 // publisher runs cannot come from different recipes. NO STEP IS INVENTED WHEN A FOLD FAILS: the seed
 // grammar's own refusal travels outward, and a caller that reconstructed a cause from a field would report a
 // failure that did not happen.
+// THE ROLE OF A TOOLCHAIN-LANE STEP, DERIVED FROM THE STEP AND NOT FROM WHERE IT SITS IN A LIST.
+// gunbc.toolchain_home_standing is already the authority on what an install IS (a UsesStep of the upstream
+// setup action) and what an isolation IS (the run step that wipes and rebinds HOME, CARGO_HOME and
+// RUSTUP_HOME under RUNNER_TEMP); the pin is asked of the same module, by the command rows that make it
+// the pin. Asking IT those questions here means the capability role and the standing verdict cannot
+// disagree about the same step -- and a role read off a list position would be a second, hand-kept
+// account of the same fact, which is the shape that let the seed arm install into a shared home while
+// its own-checkout sibling composed the pair.
+//
+// THERE IS NO FALL-THROUGH ARM. A final `else` labelling whatever was left the default-toolchain pin
+// would be a fabricated default (gunbc.design_argument::fail_closed): any step at all -- a checkout, an upload, a build step --
+// would receive the pin's consumes-only by being unnamed, and the classification would stop deciding
+// anything about the step it annotated. A lane member the module cannot recognise is a lane that lost
+// that member, and it refuses with a reason rather than being assigned a role.
+fn heal_publisher_seed_toolchain_role(step: Step) -> Outcome<StepCapabilityRole> {
+  if step_installs_toolchain(step: step) {
+    outcome_accepted(value: provides_only(capabilities: [CargoCapability, RustcCapability, RustfmtCapability, RustupCapability]))
+  } else if step_isolates_toolchain_homes(step: step) {
+    outcome_accepted(value: capability_neutral)
+  } else if step_pins_default_toolchain(step: step) {
+    outcome_accepted(value: consumes_only(capabilities: [RustupCapability, CargoCapability]))
+  } else {
+    outcome_rejected(
+      d: module_unavailable_diagnostic(
+        reason: "heal_publisher_seed_lane_step_unrecognised: the seed toolchain lane is the isolation, the install and the pin, each recognised by gunbc.toolchain_home_standing's own checks, and this step is none of them",
+        module_file: "gunbc.heal_publisher_workflow"
+      )
+    )
+  }
+}
+
+// THE FOLD'S SEED, TYPED. An empty list literal in an argument position has no expected collection to
+// read its element type from, so the element type is stated once, in the return type of the helper that
+// hands it over.
+fn heal_publisher_seed_bound_steps_empty() -> List<HealPublisherBoundStep> {
+  []
+}
+
+// THE LANE ENTERS THE ROUTE AS A UNIT, AND THE UNIT IS AS SOUND AS ITS MEMBERS. Each member's role is
+// asked of the step itself, above; the first member the module cannot recognise refuses the whole route,
+// so a lane that lost a member never reaches the emitted YAML -- where the whole-workflow admission from
+// gunbc.toolchain_home_standing would refuse the file anyway. Refusing at emission keeps the reason
+// beside the fact that broke.
+//
+// WHY THE ORDER LIVES IN gunbc.ci.repository_seed_steps AND NOT HERE. THE LANE CARRIES ITS OWN ORDER
+// (isolation before install before pin): the isolation wipes and re-points HOME/CARGO_HOME/RUSTUP_HOME
+// under a per-job RUNNER_TEMP directory, and a self-hosted runner -- which is exactly where the seed
+// arm runs, in a declared fleet group -- keeps its home between jobs, so an install placed first lands
+// in a toolchain home shared with every other job on the machine and the pin then selects from it. The
+// standing module refuses that file by name, and it refused THIS job by name before the fix. The route
+// splices the shared lane's steps and owns only what a publisher owes a step, which is its role.
+fn heal_publisher_seed_lane_bound_steps() -> Outcome<List<HealPublisherBoundStep>> {
+  fold(
+    xs: seed_toolchain_lane_steps(lane: seed_toolchain_lane(step_name: heal_publisher_toolchain_install_step_name)),
+    init: outcome_accepted(value: heal_publisher_seed_bound_steps_empty()),
+    f: fn(acc, step) {
+      match acc {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: bound_so_far, diagnostics: _ } =>
+          match heal_publisher_seed_toolchain_role(step: step) {
+            Rejected { diagnostics: d } => Rejected { diagnostics: d }
+            Accepted { value: role, diagnostics: _ } =>
+              outcome_accepted(
+                value: concat(
+                  bound_so_far,
+                  [HealPublisherBoundStep {
+                    step: heal_publisher_only_when_repair_owed(step: step),
+                    role: role,
+                  }]
+                )
+              )
+          }
+      }
+    }
+  )
+}
+
 fn heal_publisher_seed_route_steps(seed: PublicSeed) -> Outcome<List<HealPublisherBoundStep>> {
+  // The pin is read from the ROW here, not passed in beside it: the guard below compares what the
+  // verifier answered against the same value the row declares, and a pin threaded in from a caller would
+  // be a second authority over which commit the publisher is allowed to build.
+  match seed_source_pin(source: seed.source) {
+    Absent {  } => outcome_rejected(
+      d: module_unavailable_diagnostic(
+        reason: seed_source_refusal_reason(source: seed.source),
+        module_file: "gunbc.heal_publisher_workflow"
+      )
+    )
+    Present { value: pin } =>
   match seed_build_step(seed: seed) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: build_step, diagnostics: _ } =>
-      outcome_accepted(
-        value: [
-          HealPublisherBoundStep {
-            step: heal_publisher_only_when_repair_owed(step: seed_checkout_step(seed: seed)),
-            role: capability_neutral,
-          },
-          HealPublisherBoundStep {
-            step: heal_publisher_only_when_repair_owed(step: toolchain_install_step(step_name: heal_publisher_toolchain_install_step_name)),
-            role: provides_only(capabilities: [CargoCapability, RustcCapability, RustfmtCapability, RustupCapability]),
-          },
-          HealPublisherBoundStep {
-            step: heal_publisher_only_when_repair_owed(step: build_step),
-            role: consumes_only(capabilities: [CargoCapability]),
-          },
-        ]
-      )
+      match seed_lane_steps(seed: seed, pin: pin) {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: seed_lane, diagnostics: _ } =>
+          // THE TOOLCHAIN LANE AS ONE UNIT -- isolation, install, pin, in the order
+          // gunbc.ci.repository_seed_steps owns, each member's role asked of the step itself. This arm
+          // publishes from a self-hosted fleet group, so the install lands on a runner whose home
+          // persists and is shared with every other slot: the unisolated install this composition makes
+          // unconstructible is the one gunbc.toolchain_home_standing refuses, and it refused THIS job by
+          // name before the fix. An unrecognisable member refuses the route here.
+          match heal_publisher_seed_lane_bound_steps() {
+            Rejected { diagnostics: d } => Rejected { diagnostics: d }
+            Accepted { value: lane_bound, diagnostics: _ } =>
+              outcome_accepted(
+                value: concat(
+                  [
+                    // THE GUARD BEFORE THE CHECKOUT, gated on the same condition the checkout is: a lane
+                    // that checks out the seed at all is a lane that has to have been told which commit it
+                    // checked out.
+                    HealPublisherBoundStep {
+                      step: heal_publisher_only_when_repair_owed(step: seed_lane.guard),
+                      role: capability_neutral,
+                    },
+                    HealPublisherBoundStep {
+                      step: heal_publisher_only_when_repair_owed(step: seed_lane.checkout),
+                      role: capability_neutral,
+                    },
+                  ],
+                  concat(
+                    lane_bound,
+                    [
+                      HealPublisherBoundStep {
+                        step: heal_publisher_only_when_repair_owed(step: build_step),
+                        role: consumes_only(capabilities: [CargoCapability]),
+                      },
+                    ]
+                  )
+                )
+              )
+          }
+      }
+    }
+  }
+}
+
+// THE REF EXPRESSIONS AND PRODUCER RECORDS THE WALL IS SHOWN, projected from the same source the steps
+// were built from. The own-checkout route declares nothing and passes nothing, which is also why its
+// emitted bytes are unchanged by this work: no seed, no verifier, no Needs ref to admit.
+fn heal_publisher_declared_ref_expressions(source: PublisherCompilerSource) -> List<Expression> {
+  match source {
+    PublisherBuildsItsOwnCheckout { required_bins: _ } => []
+    PublisherRunsUnderComposedSeed { seed: seed, overlay: _ } => seed_pin_verifier_declared_expressions(seed: seed)
+  }
+}
+
+// THE VERIFIER JOB THE SEED ROUTE CANNOT RUN WITHOUT, or its absence for the route that needs none. One
+// function answers both arms so the publisher cannot emit a seed checkout whose job was forgotten: the
+// own-checkout route gets Absent and keeps `needs: []`, the seed route gets the job its checkout names.
+fn heal_publisher_verifier_job(source: PublisherCompilerSource, job: HealPublisherPolicy) -> Outcome<Optional<Job>> {
+  match source {
+    PublisherBuildsItsOwnCheckout { required_bins: _ } =>
+      outcome_accepted(value: Absent {  })
+    PublisherRunsUnderComposedSeed { seed: seed, overlay: _ } =>
+      match seed_source_pin(source: seed.source) {
+        Absent {  } => outcome_rejected(
+          d: module_unavailable_diagnostic(
+            reason: seed_source_refusal_reason(source: seed.source),
+            module_file: "gunbc.heal_publisher_workflow"
+          )
+        )
+        Present { value: pin } =>
+          bind_outcome(
+            o: seed_pin_verifier_job(
+              seed: seed,
+              pin: pin,
+              runner: ci_runner_target_spec(target: job.runner)
+            ),
+            f: fn(verifier) { outcome_accepted(value: Present { value: verifier }) }
+          )
+      }
   }
 }
 
@@ -591,7 +750,12 @@ fn heal_publisher_job_permissions(pull_requests: PermissionLevel) -> WorkflowPer
 // THE PUBLISHER JOB, BUILT FROM THE ROW THE EMITTER WAS GIVEN: its id, its machine class and its ceiling
 // are reads of that one row, so a repository that declares no publisher has no publisher job -- not a job
 // with a placeholder id downloading a candidate nothing sealed.
-fn heal_publisher_job(profile: RepositoryCiProfile, job: HealPublisherPolicy, steps: List<HealPublisherBoundStep>) -> Job {
+fn heal_publisher_job(
+  profile: RepositoryCiProfile,
+  job: HealPublisherPolicy,
+  steps: List<HealPublisherBoundStep>,
+  needs: List<String>
+) -> Job {
   Job {
     id: job.job_id as String,
     name: none,
@@ -602,7 +766,9 @@ fn heal_publisher_job(profile: RepositoryCiProfile, job: HealPublisherPolicy, st
     runner: ci_runner_target_spec(target: job.runner),
     environment: none,
     steps: list_map(xs: steps, f: fn(b) { b.step }),
-    needs: [],
+    // The seed route's checkout names the seed-pin verifier's declared output, so the publisher waits on
+    // the job that proves the pin; the own-checkout route needs nobody and says so with an empty list.
+    needs: needs,
     env: none,
     outputs: none,
     if_condition: Present { value: heal_publisher_job_condition() },
@@ -640,14 +806,24 @@ fn heal_publisher_census_workflow(profile: RepositoryCiProfile) -> Optional<Work
             Present { value: source } =>
               match heal_publisher_resolved_steps(profile: profile, job: job, source: source) {
                 Rejected { diagnostics: _ } => Absent
-                Accepted { value: steps, diagnostics: _ } => Present { value: heal_publisher_workflow_of(profile: profile, job: job, steps: steps) }
+                Accepted { value: steps, diagnostics: _ } =>
+                  match heal_publisher_verifier_job(source: source, job: job) {
+                    Rejected { diagnostics: _ } => Absent {  }
+                    Accepted { value: verifier_job, diagnostics: _ } =>
+                      Present { value: heal_publisher_workflow_of(profile: profile, job: job, steps: steps, verifier_job: verifier_job) }
+                  }
               }
           }
       }
   }
 }
 
-fn heal_publisher_workflow_of(profile: RepositoryCiProfile, job: HealPublisherPolicy, steps: List<HealPublisherBoundStep>) -> Workflow {
+fn heal_publisher_workflow_of(
+  profile: RepositoryCiProfile,
+  job: HealPublisherPolicy,
+  steps: List<HealPublisherBoundStep>,
+  verifier_job: Optional<Job>
+) -> Workflow {
   Workflow {
   name: job.workflow_name as String,
   run_name: none,
@@ -670,7 +846,23 @@ fn heal_publisher_workflow_of(profile: RepositoryCiProfile, job: HealPublisherPo
     ]
   },
   permissions: none,
-  jobs: [heal_publisher_job(profile: profile, job: job, steps: steps)]
+  jobs: concat(
+    match verifier_job {
+      Present { value: v } => [v]
+      Absent {  } => []
+    },
+    [
+      heal_publisher_job(
+        profile: profile,
+        job: job,
+        steps: steps,
+        needs: match verifier_job {
+          Present { value: v } => [v.id]
+          Absent {  } => []
+        }
+      )
+    ]
+  )
 }
 }
 
@@ -696,10 +888,12 @@ fn checkout_step_names_another_subject(step: Step) -> Bool {
     && any(step_input_names(step: step), k => k == "ref" || k == "repository")
 }
 
-// THE ONE REFERENCE A PUBLISHER MAY CHECK OUT BESIDES ITS OWN COMMIT is the public seed the row declares,
-// at the ref the row declares. That checkout is the compiler this repository exists to run under - pinned by
-// the row, not by the event, and not the candidate's code - so naming it is not the boundary violation.
-// A checkout of any other repository or ref still is.
+// THE ONE REFERENCE A PUBLISHER MAY CHECK OUT BESIDES ITS OWN COMMIT is the public seed's pinned commit,
+// named as the output of the job that proves the pin exists. That checkout is the compiler this repository
+// exists to run under - pinned by the row, not by the event, and not the candidate's code - so naming it is
+// not the boundary violation. A checkout of any other repository, or of a ref that is not the verifier's
+// declared output, still is: this comparison used to be against `seed.ref_name`, a string that could name a
+// branch, which is the thing the exact-pin work removed from the model.
 fn publisher_input_names_undeclared_subject(input: YamlKeyValue, seed: Optional<PublicSeed>) -> Bool {
   match seed {
     Absent => true
@@ -709,7 +903,10 @@ fn publisher_input_names_undeclared_subject(input: YamlKeyValue, seed: Optional<
           if input.key == "repository" {
             v != s.repository as String
           } else if input.key == "ref" {
-            v != s.ref_name as String
+            match seed_pin_checkout_ref_expression(seed: s) {
+              Present { value: e } => v != interpolate(expression: e)
+              Absent {  } => true
+            }
           } else {
             true
           }
@@ -855,11 +1052,18 @@ fn heal_publisher_workflow_yml_of_admitted_row(profile: RepositoryCiProfile) -> 
       match heal_publisher_resolved_steps(profile: profile, job: job, source: source) {
         Rejected { diagnostics: d } => HealPublisherWorkflowGenerationRefused { reason: heal_publisher_steps_refusal_reason(diagnostics: d) }
         Accepted { value: steps, diagnostics: _ } =>
-      match admit_workflow_checkout_refs(workflow: heal_publisher_workflow_of(profile: profile, job: job, steps: steps), declared: []) {
+      match heal_publisher_verifier_job(source: source, job: job) {
+        Rejected { diagnostics: d } => HealPublisherWorkflowGenerationRefused { reason: heal_publisher_steps_refusal_reason(diagnostics: d) }
+        Accepted { value: verifier_job, diagnostics: _ } =>
+      let publisher_workflow = heal_publisher_workflow_of(profile: profile, job: job, steps: steps, verifier_job: verifier_job)
+      match admit_workflow_checkout_refs(
+        workflow: publisher_workflow,
+        declared: heal_publisher_declared_ref_expressions(source: source)
+      ) {
     WorkflowCheckoutRefsRefused { refusals: crs } =>
       HealPublisherWorkflowGenerationRefused { reason: workflow_checkout_refs_refusal_reason(workflow_module: "gunbc.heal_publisher_workflow", refusals: crs) }
     WorkflowCheckoutRefsAdmitted =>
-      match admit_workflow_toolchain_homes(workflow: heal_publisher_workflow_of(profile: profile, job: job, steps: steps)) {
+      match admit_workflow_toolchain_homes(workflow: publisher_workflow) {
     WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
       HealPublisherWorkflowGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
     WorkflowToolchainHomesAdmitted =>
@@ -868,12 +1072,13 @@ fn heal_publisher_workflow_yml_of_admitted_row(profile: RepositoryCiProfile) -> 
       } else if !heal_publisher_capability_closure_holds(steps: steps) {
         HealPublisherWorkflowGenerationRefused { reason: heal_publisher_capability_refusal_reason }
       } else {
-        match emit_yaml(v: project_workflow_to_yaml(workflow: heal_publisher_workflow_of(profile: profile, job: job, steps: steps))) {
+        match emit_yaml(v: project_workflow_to_yaml(workflow: publisher_workflow)) {
           EmittedYaml { text: t } => HealPublisherWorkflowGenerated { content: t }
           YamlEmitRefused { path: p, reason: r } => HealPublisherWorkflowGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.heal_publisher_workflow", path: p, reason: r) }
         }
       }
       }
+  }
   }
   }
   }

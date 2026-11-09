@@ -1,7 +1,29 @@
 module test.claim.os_install_actuator_selection
 
+import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_built }
+import gunbc.boot_artifact_delivery { BootControlTarget, BootFromRemovableMedia }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3 }
+import gunbc.fleet.fleet_intent { srv1_host }
+import gunbc.host.host_toolchain_ensure { ReachAccessAbsent, ReachActuatorUnsatisfiable, ReachResolved, ReachTargetAbsent, host_toolchain_ensure_reach_under }
+import gunbc.nbd_proxy_virtual_media_install { ActuatorArmNbdProxy, OsInstallActuatorArm, OsInstallActuatorStep, ActuatorStepActuatorHostUnsatisfiable, ActuatorStepImageUnresolved, ActuatorStepReady, ActuatorStepRealizationAbsent, ActuatorStepRefused, actuator_step_realization_under, os_install_actuator_steps, srv3_nbd_proxy_export_placeholder }
+import gunbc.os_install_actuator_selection { ActuatorToolchainGrant, ActuatorUnsatisfiable, BmcNetworkReach, OperatorHostPreference, OsInstallActuatorSelection, live_srv3_actuator_reach_facts, os_install_actuator_requirement_kinds, os_install_actuator_requirement_satisfied, srv3_os_install_actuator_host_failover_fixture_selects_srv2, srv3_os_install_actuator_host_is_derived_srv1, srv3_os_install_actuator_host_selected_because_requirements_and_policy, srv3_os_install_actuator_per_host_observation_forks_dissolution_trigger, srv3_os_install_actuator_selection, srv3_os_install_actuator_selection_is_selected_on_live_fleet, srv3_os_install_actuator_tie_break_policy }
+import gunbc.provisioning.seeded_install_media_publish { SeededImageResolution, SeededImageResolved }
+import gunbc.srv3.srv3_host_effect_apply { Srv3ActuatorTargetSelected, Srv3ActuatorTargetUnsatisfiable, srv3_actuator_target_under }
+import gunbc.srv3.srv3_seeded_install_media_artifact { srv3_seeded_install_media_input_for }
+import std.algebra { string_contains }
+import std.disposition { Scaffold, Terminal }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, List, NonEmptyStr }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The supplied-values boundary for the step-shape claims: arm and control are given here because these claims are
+// about what each step sequence contains, not about which plan selects it (the plan route is the
+// os_install_actuator_plan_standing_for claims below, which admit the plan and derive both).
+fn actuator_steps_fixture(arm: OsInstallActuatorArm, boot_control: BootControlTarget) -> List<OsInstallActuatorStep> {
+  os_install_actuator_steps(arm: arm, boot_control: boot_control, export: srv3_nbd_proxy_export_placeholder)
+}
 
 test fn os_install_actuator_requirements_dispatch_through_kind_rows() -> Bool {
   match os_install_actuator_requirement_kinds.first() { Present { value: first } => first == BmcNetworkReach  Absent => false }
@@ -40,7 +62,7 @@ test fn srv3_actuator_host_failover_fixture_selects_srv2() -> Bool {
 // DISCRIMINATING RED CONTROL for the fabricated-default fail-open this lane closed. Before the
 // repair, srv3_os_install_actuator_host answered srv1_host on the ActuatorUnsatisfiable arm, so an
 // unsatisfiable selection actuated an OS install against a DIFFERENT machine with no diagnostic
-// (DESIGN section 5, fabricated default). The declaration is deleted; these witnesses assert that
+// (gunbc.design_argument::fail_closed, fabricated default). The declaration is deleted; these witnesses assert that
 // the two consumers which reach real hardware now refuse under an unsatisfiable selection rather
 // than naming any host at all.
 data unsatisfiable_actuator_selection_fixture: OsInstallActuatorSelection = ActuatorUnsatisfiable {
@@ -61,7 +83,7 @@ data srv3_resolved_image_fixture: SeededImageResolution = SeededImageResolved {
 }
 
 test fn unsatisfiable_selection_refuses_the_nbd_proxy_serve_step() -> Bool {
-  match os_install_actuator_steps(mechanism: NbdProxyVirtualMediaInstall, export: srv3_nbd_proxy_export_placeholder).first() {
+  match actuator_steps_fixture(arm: ActuatorArmNbdProxy, boot_control: BootFromRemovableMedia).first() {
     Absent => false
     Present { value: first_step } =>
       match actuator_step_realization_under(
@@ -104,7 +126,7 @@ test fn satisfiable_selection_still_yields_the_selected_actuator_target() -> Boo
 
 // The third consumer that reaches real hardware. Collapsing an unsatisfiable selection into an
 // Optional made this path answer "host absent from compute inventory", inventing a cause with a
-// different remedy for a failure it did not have; DESIGN section 5 asks for a typed and LOCATED
+// different remedy for a failure it did not have; gunbc.design_argument::fail_closed asks for a typed and LOCATED
 // diagnostic, and a located one names the selection. This asserts the reason survives the reach.
 test fn unsatisfiable_selection_names_the_selection_not_the_inventory() -> Bool {
   match host_toolchain_ensure_reach_under(

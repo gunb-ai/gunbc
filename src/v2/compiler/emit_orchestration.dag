@@ -9,7 +9,7 @@ import v2.compiler.target_serialize { grammar_relation_row_for_emitted, target_b
 import v2.compiler.translate { translate }
 import v2.std.node_query { find_named_child }
 import v2.std.orchestration_emit { OrchEmitCarried, OrchEmitPrepared, OrchEmitPreparedRow, OrchestrationEmitMedium, OrchRunEmitPlan, orch_construct_run_rawline, orch_construct_retry, orch_construct_retry_1level, orch_construct_seq2, orch_construct_if, orch_construct_if_else, orch_construct_if_block, orch_construct_if_else_block, orch_construct_while, orch_construct_cmdsubst_assign, orch_construct_let_assign }
-import v2.extdeps.languages.bash { bash_stmt_negation_emitted, bash_stmt_negation_target_model, bash_stmt_andor_emitted, bash_stmt_andor_target_model, bash_stmt_with_redir_emitted, bash_stmt_with_redir_target_model, bash_stmt_exit_emitted, bash_stmt_exit_target_model, bash_redir_stdout_and_stderr_null_emitted, bash_redir_stdout_and_stderr_null_target_model, bash_redir_stderr_null_emitted, bash_redir_stderr_null_target_model, bash_redir_stdout_to_stderr_emitted, bash_redir_stdout_to_stderr_target_model, bash_redir_stdout_null_emitted, bash_redir_stdout_null_target_model, bash_redir_to_file_emitted, bash_redir_to_file_target_model }
+import v2.extdeps.languages.bash { bash_cmdsubst_body_spelling, bash_stmt_negation_emitted, bash_stmt_negation_target_model, bash_stmt_andor_emitted, bash_stmt_andor_target_model, bash_stmt_with_redir_emitted, bash_stmt_with_redir_target_model, bash_stmt_exit_emitted, bash_stmt_exit_target_model, bash_redir_stdout_and_stderr_null_emitted, bash_redir_stdout_and_stderr_null_target_model, bash_redir_stderr_null_emitted, bash_redir_stderr_null_target_model, bash_redir_stdout_to_stderr_emitted, bash_redir_stdout_to_stderr_target_model, bash_redir_stdout_null_emitted, bash_redir_stdout_null_target_model, bash_redir_to_file_emitted, bash_redir_to_file_target_model }
 import v2.extdeps.languages.bash_orch_if { bash_test_str_eq_emitted, bash_test_str_eq_target_model, bash_test_str_empty_emitted, bash_test_str_empty_target_model, bash_test_str_nonempty_emitted, bash_test_str_nonempty_target_model, bash_test_int_ne_emitted, bash_test_int_ne_target_model, bash_log_matches_grep_emitted, bash_log_matches_grep_target_model, bash_stmt_or_ignore_fail_emitted, bash_stmt_or_ignore_fail_target_model }
 import v2.std.orchestration { Run, PipelineStep, Do, If, Let, While, Pipeline, Expr, ExprLit, ExprVarRef, ExprCmdSubst, EscalationLevel, Predicate, ExitZero, LogMatches, StrEq, StrEmpty, StrNonempty, IntNe, Not, And, Or, RedirectSpec, CaptureSpec, DiscardAll, DiscardErr, DiscardOut, StdoutAndStderr, ToFile, IgnoreFail, ExitStatus, TeeTo, CmdSubst, Comment, Exit }
 import std.env_binding { EnvBinding }
@@ -52,7 +52,7 @@ fn orch_emit_registry_emitted_root(
 
 // THE PREPARED ROW FOR ONE CONSTRUCT, taken from the call that first demanded it.
 //
-// What this re-derives is exactly what the medium's rows already fixed (DESIGN §6b chain
+// What this re-derives is exactly what the medium's rows already fixed (gunbc.design_argument::earliest_unjustified_boundary chain
 // re-derivation): the registry resolve (one authority bundle walk plus one named-child find),
 // the translate pass over the row (its only target reads are the projection-presence check,
 // which is absent for every realize target these rows produce, and the grammar match against
@@ -272,7 +272,7 @@ fn orch_emit_run_with_redir(stmt: String, redir: RedirectSpec) -> Outcome<String
 // there and is read at each site rather than respelled, and v2.extdeps.languages.bash_orch_if and
 // v2.workflow.effect_plan_bash_materialize already read it. `binder` renders bare in `name=$?`, so
 // it is a POSIX name in exactly the sense XBD 3.235 defines -- the fork was a second name for one
-// fact (DESIGN section 3), not a different rule.
+// fact (gunbc.design_argument::single_authority), not a different rule.
 fn orch_emit_exit_status_bind(
   stmt: String,
   binder: String,
@@ -509,7 +509,15 @@ fn orch_emit_cmdsubst_command_spelling(callee: String, args: List<String>) -> St
 }
 
 fn orch_emit_cmdsubst_word_spelling(callee: String, args: List<String>) -> String {
-  concat("$(", concat(orch_emit_cmdsubst_command_spelling(callee: callee, args: args), ")"))
+  // Same rule as every other bash substitution spelling site: a body that opens with `(` is separated from
+  // `$(` so the bytes are never an arithmetic expansion; other bodies are untouched.
+  concat(
+    "$(",
+    concat(
+      bash_cmdsubst_body_spelling(body: orch_emit_cmdsubst_command_spelling(callee: callee, args: args)),
+      ")"
+    )
+  )
 }
 
 fn orch_emit_expr_spelling(e: Expr, medium: OrchestrationEmitMedium) -> Outcome<String> {
@@ -1003,7 +1011,7 @@ fn orch_emit_retry_1level(
 
 // Three-or-more escalation levels previously reused realize_retry_1level and stuffed rest into occ2
 // via escalation_tail — silently dropping level1.env (3level golden had E2=1 after w1, never E1=1)
-// and the final level's LogMatches.pattern. Same DESIGN §5 class as the PR2b silent drops. Refuse
+// and the final level's LogMatches.pattern. Same gunbc.design_argument::fail_closed class as the PR2b silent drops. Refuse
 // (^orch_emit_retry_multilevel_unsupported) until a faithful N-level template threads each level's
 // env with the next level's detect (as orch_emit_retry_2level does). 🟡 dissolve-on: that template +
 // reclaim of escalation_step/final rows under a correct cross-level fold.
@@ -1275,7 +1283,7 @@ fn orch_emit_pipeline(
 
 data nfr_reason_orch_emit: String = "one-special-variant dispatch (ExprCmdSubst to cmdsubst_assign; every other Expr through the uniform spelling path) — enumerating all Expr variants would clone the general arm; landed with the shell-to-dag P2b/P4 slices (#6573), surfaced on the 2026-07-14 nightly cold sweep (masking receipt 9)"
 
-data nfr_dissolve_orch_emit: DissolutionCondition = unbound_dissolution(description: "emit becomes the backward grammar-row fold (DESIGN §4) and the special case dissolves with the orchestration-emit fold migration")
+data nfr_dissolve_orch_emit: DissolutionCondition = unbound_dissolution(description: "emit becomes the backward grammar-row fold (gunbc.design_argument::closed_grounded_substrate) and the special case dissolves with the orchestration-emit fold migration")
 
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {

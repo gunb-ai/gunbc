@@ -15,7 +15,7 @@ import gunbc.instrument_targets { witness_deferral_freeze_population_label }
 // AUTHORITY is the freeze file itself: its typed FrozenPathDeferral entries ARE the population, and
 // the instrument under this row's DerivedBy re-derives them as an IDENTITY JOIN over those typed
 // entries (entry#function per row) — never a count restated here, which would be a second
-// representation of the roster (§5). rung_drop_population_is_readable refuses this row unless the
+// representation of the roster (gunbc.design_argument::fail_closed). rung_drop_population_is_readable refuses this row unless the
 // label is rostered in gunbc.instrument_targets exactly once, so the drop and its instrument cannot
 // drift apart silently: the drop names a population only by pointing at the instrument that derives
 // it.
@@ -24,7 +24,7 @@ import gunbc.instrument_targets { witness_deferral_freeze_population_label }
 // coverage while its claim runs on no lane: the one schedule consumer that executed deferred
 // witnesses (run_discovery_corpus_with_options_inner) was deleted as unreachable on 2026-10-04, and
 // the freeze file's own header admits the laundering ("same laundering"). A deferred claim enrolled
-// in nothing is a rung drop with no rung-drop row, which §5 refuses: a guarantee that is off the
+// in nothing is a rung drop with no rung-drop row, which gunbc.design_argument::fail_closed refuses: a guarantee that is off the
 // ladder is a rung drop, and a rung drop is declared. The census found the drop undeclared across
 // the whole 101-entry population; this row is that declaration.
 //

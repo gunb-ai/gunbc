@@ -1,0 +1,155 @@
+module gunbc.target_syntax_transcription
+
+import std.types { List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+// THE TARGET-SYNTAX DEBT LEDGER: application code that names a target language's syntax, and what
+// would let it stop.
+//
+// THE RULE IT IS DEBT AGAINST (gunbc.design_argument::closed_grounded_substrate, "one grammar, read in both directions"): an
+// application is ordinary .dag, and emitting it to a target language is that language's grammar rows
+// read backward through the shared target model (v2.std.compilers.target_model) -- a new target is
+// rows in extdeps/languages, never an edit to the application. Rust is emitted that way. Swift and
+// TypeScript application code mostly is not yet: where the emit route could not print what an app
+// needed, its modules build the target's syntax tree themselves (sw_* from v2.extdeps.languages.swift.syntax,
+// ts_* from extdeps.languages.typescript), or the target source is written by hand outside .dag. That
+// is admitted in the short term (operator, 2026-11-04) on the condition that all of it is tracked
+// here with what would dissolve it.
+//
+// TWO KINDS OF ROW.
+// - A TRANSCRIBED TREE: a module that constructs target syntax. It dissolves when the emit route
+//   prints the module's facts from ordinary .dag and the module stops importing the target's
+//   constructors; its consumer then reads the emitted artifact through the route, not the tree.
+// - HAND-WRITTEN SOURCE: a target file with no .dag authority at all. It dissolves when a model
+//   exists that the route can print it from.
+// Where a row's debt is already recorded with its own dissolution, the row CITES that record
+// (DebtRecordedAt) instead of restating it, so the ledger never becomes a second authority for a
+// trigger another module owns.
+//
+// SCOPE, AND WHAT THIS IS NOT. The rows are the application modules a reading found at the revision
+// cited by gunbc.integration_concern target_syntax_built_by_hand_in_application_modules, with the
+// command that produced it. It is not a census and gates nothing: a module that starts naming target
+// syntax is not refused for being absent here; it is added when noticed. Excluded on purpose: the
+// grammars themselves (extdeps/languages, src/v2/extdeps/languages) and the compiler's emit and parse
+// claims, which test the target languages and must name their syntax; captured fixtures of served
+// output (dag/test/fixture/gunb_ai); and the Python transport harness under test/namecheap, which no
+// one has yet decided is application code. Other targets (bash, YAML, CSS, HTML) were not read.
+
+type TargetLanguage = TargetSwift | TargetTypeScript
+
+type TranscriptionDebt
+  = DebtRecordedAt { record: DeclarationRef }
+  | DebtRecordedHere { dissolution: DissolutionCondition }
+
+type TargetSyntaxDebt
+  = TranscribedTree {
+      builder: DeclarationRef
+      target: TargetLanguage
+      emits: NonEmptyStr
+      debt: TranscriptionDebt
+    }
+  | HandWrittenSource {
+      path: NonEmptyStr
+      target: TargetLanguage
+      debt: TranscriptionDebt
+    }
+
+// ── What would dissolve the rows that have no record of their own ─────────────────────────────
+
+// The browser clients: each builds the statements of a served script by hand. Two capabilities are
+// owed, and the second is useless without the first.
+data typescript_browser_client_dissolution: DissolutionCondition = unbound_dissolution(
+  description: "DISSOLVES WHEN (a) the browser surfaces these clients use -- DOM query, attribute and class edits, event listeners, timers, fetch, localStorage, Web Audio -- are modelled as extdeps (the WHATWG and W3C specifications, one module each, cited), SUFFICIENT FOR a client's behaviour to be written as ordinary .dag over them, and (b) the v2 emit route prints such a module to TypeScript through v2.std.compilers.target_model and the typescript grammar rows, SUFFICIENT FOR the served script to be produced from that module with the client no longer importing extdeps.languages.typescript constructors",
+)
+
+// The server emitter builds a Node.js program; Node's http module is the surface it needs.
+data typescript_node_server_dissolution: DissolutionCondition = unbound_dissolution(
+  description: "DISSOLVES WHEN Node.js's http and fs surfaces are modelled as extdeps and the v2 emit route prints a module written over them to TypeScript, SUFFICIENT FOR emit_node_http_static_server_program's program to be produced from an ordinary .dag description of the static server",
+)
+
+// The two Swift printers that already read a model: the facts are derived, only the syntax is
+// hand-built. Their trigger is the general one for Swift declarations.
+data swift_model_printer_dissolution: DissolutionCondition = unbound_dissolution(
+  description: "DISSOLVES WHEN the v2 emit route prints a module's coproducts, records and total functions to Swift through the closure-emit door (the swift_decl rows, gunbc#12218) with statements and switch bodies, SUFFICIENT FOR the printed file to be emitted from the model module itself (gunbc.approve_ios_enrolment_machine, gunbc.approve_ios_operation_errors) so the printer module can be deleted",
+)
+
+// ── The rows ──────────────────────────────────────────────────────────────────────────────────
+
+data target_syntax_debts: List<TargetSyntaxDebt> = [
+  // Swift trees. Three transcribe the wire and are already recorded by the app's own frontier row.
+  TranscribedTree { builder: decl_ref(module_path: "gunbc.approve_ios_swift_wire", decl_name: "approve_ios_wire_swift_file"), target: TargetSwift,
+    emits: "apps/approve-ios/Approve/Wire.swift", debt: DebtRecordedAt { record: decl_ref(module_path: "gunbc.approve_ios_app", decl_name: "approve_ios_transcribed_swift_frontier") } },
+  TranscribedTree { builder: decl_ref(module_path: "gunbc.approve_ios_swift_protocol", decl_name: "approve_ios_protocol_swift_file"), target: TargetSwift,
+    emits: "apps/approve-ios/Approve/Protocol.swift", debt: DebtRecordedAt { record: decl_ref(module_path: "gunbc.approve_ios_app", decl_name: "approve_ios_bodied_member_frontier") } },
+  TranscribedTree { builder: decl_ref(module_path: "gunbc.approve_ios_swift_protocol_vector_tests", decl_name: "approve_ios_protocol_vector_tests_swift_file"), target: TargetSwift,
+    emits: "apps/approve-ios/ApproveTests/ProtocolVectorTests.swift", debt: DebtRecordedAt { record: decl_ref(module_path: "gunbc.approve_ios_app", decl_name: "approve_ios_transcribed_swift_frontier") } },
+  TranscribedTree { builder: decl_ref(module_path: "gunbc.approve_ios_swift_enrolment_machine", decl_name: "approve_ios_enrolment_machine_swift_file"), target: TargetSwift,
+    emits: "apps/approve-ios/Approve/EnrolmentMachine.swift and ApproveTests/EnrolmentMachineTests.swift", debt: DebtRecordedHere { dissolution: swift_model_printer_dissolution } },
+  TranscribedTree { builder: decl_ref(module_path: "gunbc.approve_ios_swift_operation_errors", decl_name: "approve_ios_operation_errors_swift_file"), target: TargetSwift,
+    emits: "apps/approve-ios/Approve/OperationErrors.swift and ApproveTests/OperationErrorsTests.swift", debt: DebtRecordedHere { dissolution: swift_model_printer_dissolution } },
+
+  // Hand-written Swift: each file already has a retained row in the app, with its own trigger.
+  HandWrittenSource { path: "apps/approve-ios/Approve/Views.swift", target: TargetSwift,
+    debt: DebtRecordedAt { record: decl_ref(module_path: "gunbc.approve_ios_app", decl_name: "approve_ios_views_retained") } },
+  HandWrittenSource { path: "apps/approve-ios/Approve/Garden.swift", target: TargetSwift,
+    debt: DebtRecordedAt { record: decl_ref(module_path: "gunbc.approve_ios_app", decl_name: "approve_ios_garden_retained") } },
+  HandWrittenSource { path: "apps/approve-ios/Approve/ApproveApp.swift", target: TargetSwift,
+    debt: DebtRecordedAt { record: decl_ref(module_path: "gunbc.approve_ios_app", decl_name: "approve_ios_app_entry_retained") } },
+  HandWrittenSource { path: "apps/approve-ios/Approve/DeviceKeys.swift", target: TargetSwift,
+    debt: DebtRecordedAt { record: decl_ref(module_path: "gunbc.approve_ios_app", decl_name: "approve_ios_device_keys_retained") } },
+  HandWrittenSource { path: "apps/approve-ios/Approve/AppState.swift", target: TargetSwift,
+    debt: DebtRecordedAt { record: decl_ref(module_path: "gunbc.approve_ios_app", decl_name: "approve_ios_enrolment_state_frontier") } },
+  HandWrittenSource { path: "apps/approve-ios/Approve/EnrolmentState.swift", target: TargetSwift,
+    debt: DebtRecordedAt { record: decl_ref(module_path: "gunbc.approve_ios_app", decl_name: "approve_ios_enrolment_state_frontier") } },
+
+  // TypeScript trees: the site and roadmap browser clients, none recorded before this ledger.
+  TranscribedTree { builder: decl_ref(module_path: "gunbc.roadmap.roadmap_component", decl_name: "dispatch_preamble_statements"), target: TargetTypeScript,
+    emits: "the daily workspace's dispatch, dashboard and component scripts", debt: DebtRecordedHere { dissolution: typescript_browser_client_dissolution } },
+  TranscribedTree { builder: decl_ref(module_path: "gunbc.roadmap.roadmap_issue_sort", decl_name: "issue_sort_bind_statements"), target: TargetTypeScript,
+    emits: "the tracker's issue sorting script", debt: DebtRecordedHere { dissolution: typescript_browser_client_dissolution } },
+  TranscribedTree { builder: decl_ref(module_path: "gunbc.roadmap.roadmap_inline_assignment_client", decl_name: "inline_assignment_bind_statements"), target: TargetTypeScript,
+    emits: "the tracker's inline assignment script", debt: DebtRecordedHere { dissolution: typescript_browser_client_dissolution } },
+  TranscribedTree { builder: decl_ref(module_path: "gunbc.roadmap.roadmap_allocation_client", decl_name: "allocation_render_statements"), target: TargetTypeScript,
+    emits: "the allocation panel's script", debt: DebtRecordedHere { dissolution: typescript_browser_client_dissolution } },
+  TranscribedTree { builder: decl_ref(module_path: "gunbc.site.controls", decl_name: "sound_toggle_bind_statements"), target: TargetTypeScript,
+    emits: "the site controls' script (sound, toggles)", debt: DebtRecordedHere { dissolution: typescript_browser_client_dissolution } },
+  TranscribedTree { builder: decl_ref(module_path: "gunbc.site.choice_client", decl_name: "choice_bind_statements"), target: TargetTypeScript,
+    emits: "the choice control's script", debt: DebtRecordedHere { dissolution: typescript_browser_client_dissolution } },
+  TranscribedTree { builder: decl_ref(module_path: "gunbc.site.mention_client", decl_name: "mention_bind_statements"), target: TargetTypeScript,
+    emits: "the mention picker's script", debt: DebtRecordedHere { dissolution: typescript_browser_client_dissolution } },
+  TranscribedTree { builder: decl_ref(module_path: "gunbc.site.build_meter_client", decl_name: "build_meter_bind_statements"), target: TargetTypeScript,
+    emits: "the build meter's script (the workspace workers)", debt: DebtRecordedHere { dissolution: typescript_browser_client_dissolution } },
+  TranscribedTree { builder: decl_ref(module_path: "gunbc.site.specimen_meter_client", decl_name: "specimen_meter_bind_statements"), target: TargetTypeScript,
+    emits: "the specimen meter's script", debt: DebtRecordedHere { dissolution: typescript_browser_client_dissolution } },
+  TranscribedTree { builder: decl_ref(module_path: "gunbc.site.session_client", decl_name: "session_read_bind_statements"), target: TargetTypeScript,
+    emits: "the session read script", debt: DebtRecordedHere { dissolution: typescript_browser_client_dissolution } },
+  TranscribedTree { builder: decl_ref(module_path: "gunbc.design.theme_transition", decl_name: "reframe_watcher_program"), target: TargetTypeScript,
+    emits: "the theme transition's reframe watcher program", debt: DebtRecordedHere { dissolution: typescript_browser_client_dissolution } },
+  TranscribedTree { builder: decl_ref(module_path: "gunbc.node_http_server_emit", decl_name: "emit_node_http_static_server_program"), target: TargetTypeScript,
+    emits: "the Node.js static file server program", debt: DebtRecordedHere { dissolution: typescript_node_server_dissolution } },
+]
+
+// ── Readings ──────────────────────────────────────────────────────────────────────────────────
+// Consumed by gunbc.integration_concern target_syntax_built_by_hand_in_application_modules, whose
+// affected set is these declarations, so the concern is relevant to any change touching a row.
+
+fn debt_record(d: TargetSyntaxDebt) -> TranscriptionDebt {
+  match d {
+    TranscribedTree { builder: _, target: _, emits: _, debt: r } => r
+    HandWrittenSource { path: _, target: _, debt: r } => r
+  }
+}
+
+// The declarations a debt implicates: the tree's builder, and wherever its debt is recorded. A
+// hand-written file has no declaration of its own, only its record.
+fn debt_declarations(d: TargetSyntaxDebt) -> List<DeclarationRef> {
+  let recorded = match debt_record(d: d) {
+    DebtRecordedAt { record: r } => [r]
+    DebtRecordedHere { dissolution: _ } => []
+  }
+  match d {
+    TranscribedTree { builder: b, target: _, emits: _, debt: _ } => concat([b], recorded)
+    HandWrittenSource { path: _, target: _, debt: _ } => recorded
+  }
+}

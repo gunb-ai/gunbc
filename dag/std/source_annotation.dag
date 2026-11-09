@@ -1,7 +1,7 @@
 module std.source_annotation
 import std.optional { Absent, Present }
-import std.algebra { empty_map, map_insert, map_lookup, map_support_keys, list_snoc_item, list_sort_by_key, int_total_order, list_at_optional, length, collection_concat_shape, list_push }
-// The language-agnostic authority for source annotations, per DESIGN 4c. It names no .dag syntax and no lexical rule: a realization decides what its annotation syntax looks like and routes it through its own annotation channel, then lands rows of THIS shape. Both the v1 seed tokenizer and the v2 modeled tokenizer import from here rather than each minting a placement enum, because two spellings of one concept is the nicknaming defect this whole lane exists to remove.
+import std.algebra { empty_map, map_insert, map_lookup, map_support_keys, list_snoc_item, list_sort_by_key, int_total_order, list_at_optional, length, collection_concat_shape, list_push, list_head }
+// The language-agnostic authority for source annotations, per gunbc.design_argument::source_annotations. It names no .dag syntax and no lexical rule: a realization decides what its annotation syntax looks like and routes it through its own annotation channel, then lands rows of THIS shape. Both the v1 seed tokenizer and the v2 modeled tokenizer import from here rather than each minting a placement enum, because two spellings of one concept is the nicknaming defect this whole lane exists to remove.
 
 import std.coercion { unicode_scalar_unfold }
 import std.types { String, SourceSpan, List, Bool, Map }
@@ -32,7 +32,7 @@ type UnboundAnnotationCapture {
 //
 // THE NEIGHBOURS ARE DIRECT CHILDREN, NEVER DESCENDANTS. For `foo(a, b)` with a comment on its own line between the arguments, the scope is the call and before = a, after = b. Picking the nearest node at ANY depth would hand the comment to a fragment of `a`; picking by proximity alone would let prose inside f's body attach to the next declaration g. Both are wrong answers the scope-then-children order makes unwritable.
 //
-// NOTE WHAT IS ABSENT: no gap has an identity of its own. A scope or neighbour REFERS to an occurrence the semantic parser already allocated, or to a region by its extent; attachment mints nothing, so adding, editing or deleting a comment cannot shift any occurrence identity (DESIGN 4c).
+// NOTE WHAT IS ABSENT: no gap has an identity of its own. A scope or neighbour REFERS to an occurrence the semantic parser already allocated, or to a region by its extent; attachment mints nothing, so adding, editing or deleting a comment cannot shift any occurrence identity (gunbc.design_argument::source_annotations).
 type AnnotationScope
   = FileScope
   | OccurrenceScope { occurrence: OccurrenceId }
@@ -367,7 +367,7 @@ fn keyed_annotation_rows_agree(
     left,
     init: KeyedAnnotationRowWalk { rest: right, agreed: true },
     f: (acc, row) =>
-      match first(acc.rest) {
+      match list_head(xs: acc.rest) {
         Absent => KeyedAnnotationRowWalk { rest: [], agreed: false }
         Present { value: other } =>
           KeyedAnnotationRowWalk {

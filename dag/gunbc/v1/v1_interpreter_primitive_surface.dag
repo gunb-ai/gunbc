@@ -246,7 +246,7 @@ fn v1_interpreter_cross_form_spellings() -> List<String> {
 // eval_call_native_intercept — shared enums with per-family macro subsets — the same mismatch
 // degrades to runtime unreachable! until per-family enum split lands (named follow-up). A handler
 // identity absent from the roster cannot be reached through generated lookup without editing the
-// roster (DESIGN.md 5, construction over validation). No live-tree scan of Rust source is involved
+// roster (gunbc.design_argument::fail_closed, construction over validation). No live-tree scan of Rust source is involved
 // and none is wanted.
 //
 // THE RESIDUE IS CHECKABLE, WHICH IS THE POINT. Every primitive handler macro arm carries the token
@@ -297,7 +297,7 @@ data arm_accepted_shape_gap_note: String = "ARITY IS NOT DERIVABLE FROM THIS DIS
 // fully gone, so the variant is deleted from ArmEnumeration rather than left uninhabited -- the
 // invalid state 'a row claims to be derived-from-dispatch-form rather than authored or declared'
 // now has no constructor at all, climbing from a witness RED control to structurally impossible
-// (DESIGN.md 4b). The evidence that stays enrolled and executing is
+// (gunbc.design_argument::guarantee_ladder). The evidence that stays enrolled and executing is
 // roster_rows_are_authored_in_roster_not_transcribed_from_rust in
 // test.claim.v1_interpreter_primitive_dispatch_authority_acceptance (every authored-roster row's
 // enumeration equals AuthoredInRoster) and declared_residual_rows_retain_independent_dispositions
@@ -1360,54 +1360,9 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
-      arm: InterpreterPrimitiveArmId { identity: "free_call.builtin_function_registry_keys" },
-      form: FreeCall,
-      authored_spelling: "builtin_function_registry_keys",
-      realization_module: "v1_interpreter",
-      dispatch_symbol: "eval_builtin_inner",
-      dispatch_emit_site: EvalBuiltinInnerSite,
-      enumeration: AuthoredInRoster,
-    },
-    InterpreterPrimitiveDispatchArm {
       arm: InterpreterPrimitiveArmId { identity: "free_call.compile_dag_operation_requires" },
       form: FreeCall,
       authored_spelling: "compile_dag_operation_requires",
-      realization_module: "v1_interpreter",
-      dispatch_symbol: "eval_builtin_inner",
-      dispatch_emit_site: EvalBuiltinInnerSite,
-      enumeration: AuthoredInRoster,
-    },
-    InterpreterPrimitiveDispatchArm {
-      arm: InterpreterPrimitiveArmId { identity: "free_call.compile_dag_primitive_call_edges" },
-      form: FreeCall,
-      authored_spelling: "compile_dag_primitive_call_edges",
-      realization_module: "v1_interpreter",
-      dispatch_symbol: "eval_builtin_inner",
-      dispatch_emit_site: EvalBuiltinInnerSite,
-      enumeration: AuthoredInRoster,
-    },
-    InterpreterPrimitiveDispatchArm {
-      arm: InterpreterPrimitiveArmId { identity: "free_call.source_root_ingest_module_identities" },
-      form: FreeCall,
-      authored_spelling: "source_root_ingest_module_identities",
-      realization_module: "v1_interpreter",
-      dispatch_symbol: "eval_builtin_inner",
-      dispatch_emit_site: EvalBuiltinInnerSite,
-      enumeration: AuthoredInRoster,
-    },
-    InterpreterPrimitiveDispatchArm {
-      arm: InterpreterPrimitiveArmId { identity: "free_call.required_floor_nominal_subject_module_identities" },
-      form: FreeCall,
-      authored_spelling: "required_floor_nominal_subject_module_identities",
-      realization_module: "v1_interpreter",
-      dispatch_symbol: "eval_builtin_inner",
-      dispatch_emit_site: EvalBuiltinInnerSite,
-      enumeration: AuthoredInRoster,
-    },
-    InterpreterPrimitiveDispatchArm {
-      arm: InterpreterPrimitiveArmId { identity: "free_call.entry_closure_module_identities" },
-      form: FreeCall,
-      authored_spelling: "entry_closure_module_identities",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
       dispatch_emit_site: EvalBuiltinInnerSite,

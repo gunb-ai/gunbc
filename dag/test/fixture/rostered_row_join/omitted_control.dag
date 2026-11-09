@@ -3,7 +3,7 @@ module test.fixture.rostered_row_join.omitted_control
 import std.types { String, List }
 
 // THE DISCRIMINATING RED FOR THE DECLARED-VERSUS-ROSTERED IDENTITY JOIN, and it is a PERMANENT
-// control rather than a probe that retires when the wall lands (section 4b(4)).
+// control rather than a probe that retires when the wall lands (gunbc.design_argument::guarantee_ladder (dissolution on climb)).
 //
 // TWO ROWS ARE DECLARED HERE AND THE ROSTER BELOW NAMES ONE. The join over `gunbc.rostered_row_join`
 // must report `omitted_control_row_b` as declared and

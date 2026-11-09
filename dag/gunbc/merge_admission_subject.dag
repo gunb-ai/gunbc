@@ -37,8 +37,8 @@ fn walk_attempt_id_eq(left: WalkAttemptId, right: WalkAttemptId) -> Bool {
 // by ANCESTRY, which a tree does not carry. So a base TREE alone cannot determine the merge
 // result, and an earlier revision of this carrier (and of MergeAdmissionReceiptV2) pinned only the
 // tree. The tree field is GONE rather than kept beside the commit: a commit determines its tree, so
-// carrying both would be two representations of one fact (DESIGN §3) introduced by the very change
-// that closes a §3-shaped hole. Measured before removing it -- the only reader of the tree that was
+// carrying both would be two representations of one fact (gunbc.design_argument::single_authority) introduced by the very change
+// that closes a gunbc.design_argument::single_authority-shaped hole. Measured before removing it -- the only reader of the tree that was
 // not its own comparison was a format oracle decoding the observed tree FOR that comparison, so it
 // left with it, taking a ShowTree observation and a decode step out of three call sites.
 //
@@ -85,7 +85,7 @@ data merge_admission_tested_subject_schema: String = "gunbc.merge_admission_test
 // wet entry, this fn only joins and refuses. Every part must be nonempty — an empty run id, attempt
 // number, or job name yields Absent, and the caller REFUSES the run rather than substituting a
 // constant: a silent local would make every non-GitHub run one attempt, so the wrong-attempt
-// refusal could never fire off CI, which is exactly the unreachable-arm shape §5 forbids.
+// refusal could never fire off CI, which is exactly the unreachable-arm shape gunbc.design_argument::fail_closed forbids.
 // Non-GitHub execution supplies GUNBC_WALK_ATTEMPT_ID explicitly and it passes through
 // compose_explicit_walk_attempt_id under the same nonempty law.
 

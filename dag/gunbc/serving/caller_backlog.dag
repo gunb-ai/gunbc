@@ -98,7 +98,7 @@ type SeatRef {
 }
 
 // A work with no seat yet holds NO seat: the record's `seat` is absent, never a placeholder reservation, so
-// "unplaced" is a presence fact the type carries (§3b cardinality/absence) rather than a string convention.
+// "unplaced" is a presence fact the type carries (gunbc.design_argument::conformance cardinality/absence) rather than a string convention.
 fn seat_refs_agree(held: SeatRef?, expected: SeatRef?) -> Bool {
   match held {
     Absent => match expected { Absent => true  Present { value: _ } => false }
@@ -832,7 +832,7 @@ type AttemptCommit
 // (docs/plans/serving-capacity-home-ruling.md) and is fenced by the generation of its
 // product.capacity.lease LeaseGrant: the replica presents its LeaseFence (grant identity and generation),
 // fence_verdict must find it current, the grant must be the work's reservation, and unexpired at `at`.
-// CONSUMERS (§3c): SeatLeaseFence and logical_work_id_of/DispatchTurnKey are consumed by the harness
+// CONSUMERS (gunbc.design_argument::consumption): SeatLeaseFence and logical_work_id_of/DispatchTurnKey are consumed by the harness
 // serving seat (gunbc.harness.harness_seat harness_complete_caller_turn, harness_caller_admit), which
 // builds the fence from the grant it reads out of the seat partition at completion.
 type AttemptFence

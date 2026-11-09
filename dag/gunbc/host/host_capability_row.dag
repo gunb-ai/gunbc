@@ -53,7 +53,7 @@ import gunbc.host.bmc_release_capability_catalog {
 // controller was observed but nothing says which build it runs. The catalog's three per-release arms are
 // REUSED as they are, because a second sum naming the same three facts would have to be hand-edited in
 // step every time the catalog grows an arm, and nothing but a human would notice the drift: a type name
-// establishes nothing (DESIGN §2, net concepts must not grow by re-invention; §3, no second name for one
+// establishes nothing (gunbc.design_argument::minimize_redundancy, net concepts must not grow by re-invention; gunbc.design_argument::single_authority, no second name for one
 // concept). No arm here is a default row. There is deliberately no "the catalog entry contradicts its own
 // evidence" arm: review 81366 derives each entry's release from the artifact its standing carries, so
 // such an entry has no constructor and surfaces as the catalog's own Uncatalogued arm, whose repair ("go

@@ -5,7 +5,7 @@ import std.process { ProcessExit }
 import gunbc.compile_census_probe { blocking_class_census, total_blocking_census, census_verdict, census_exit, CensusVerdict }
 
 // ENROLLED EVIDENCE for the refusal that the `func` keyword cut made necessary, kept here rather
-// than run once and discarded because DESIGN section 4b(4) enrolls a class's discriminating RED
+// than run once and discarded because gunbc.design_argument::guarantee_ladder (dissolution on climb) enrolls a class's discriminating RED
 // and its positive control as the standing proof that the rung stays real. The ad-hoc pair this
 // replaces ran on a remote runner that no longer exists, which establishes nothing about any
 // later revision.
@@ -21,7 +21,7 @@ import gunbc.compile_census_probe { blocking_class_census, total_blocking_census
 // WHY NOT LEAVE IT TO THE RUST `compile_error!` THAT ALREADY EXISTED. That arm is a
 // target-specific failure discovered only when the emitted crate is compiled, so `gunbc compile`
 // reports success over an artifact engineered to fail its own target compiler. A green compile
-// whose output cannot build is the fabricated-plausible-output failure of DESIGN section 5.
+// whose output cannot build is the fabricated-plausible-output failure of gunbc.design_argument::fail_closed.
 //
 // THE PAIR IS WHAT DISCRIMINATES, and neither arm is satisfiable by a check that always answers
 // the same way: a compiler that refused every `uses` row passes the refusal and FAILS the
@@ -74,7 +74,7 @@ import gunbc.compile_census_probe { blocking_class_census, total_blocking_census
 // still spells it must be refused rather than quietly re-admitted, and nothing else in this change
 // asserts that -- the corpus sweep establishes that no `func` declaration REMAINS, which is a
 // different claim from the grammar REFUSING one. This arm is authorable exactly because a fixture
-// hands the compiler source it would never accept from the tree, which is what DESIGN section 4b
+// hands the compiler source it would never accept from the tree, which is what gunbc.design_argument::guarantee_ladder
 // names as the boundary that decides whether a top-rung check has a writable RED.
 //
 // COVERAGE BOUND, STATED BECAUSE IT IS NOT OBVIOUS FROM A GREEN. These arms cover the parse-time
