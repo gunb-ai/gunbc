@@ -1,0 +1,175 @@
+module gunbc.serving.lil_serving_defects
+
+import std.types { Bool, List, NonEmptyStr }
+import std.list { first_where }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+// WHAT THE local-inference-lab (lil) vLLM IMAGE ACTUALLY DOES ON srv1 WHEN IT IS ASKED FOR THREE
+// CONFIGURATIONS IT HAS NEVER BEEN QUALIFIED FOR — a first-party read of the running image.
+//
+// WHY IT SITS IN gunbc.serving AND NOT IN extdeps. gunbc.design_argument::external_upstreams is explicit:
+// "observations this repository makes are receipts in the observing layer, never facts of the upstream,"
+// and a generic hub "may not ... store consumer coverage state." These four rows are exactly such
+// observations — readings THIS repository took at srv1 on 2026-11-08 (the exact error strings were read from
+// the container's own log and from the launcher and replica-proxy source inside the running lil-flash-next
+// container, not relayed), keyed to one host and its image build. That is a receipt in the observing layer,
+// which is where this module lives, alongside the sibling srv1 serving observations
+// (gunbc.serving.flash_next_image_capability_observation). It is deliberately NOT in extdeps: the fact that
+// the launcher, the b12x kernels, LMCache and vLLM are upstream code makes these an OBSERVATION of an
+// external artifact taken by us, not a version-scoped FACT of the upstream, and extdeps.<upstream> may carry
+// only the latter. The build/certification contract stays in extdeps.vllm.local_inference_lab_build; the
+// arch-keyed capability matrix stays in gunbc.serving.flash_next_image_capability_observation. `standing`
+// names where this repository read each row, rather than a transcribed obligation.
+//
+// WHY EACH ROW CARRIES ITS EXACT ERROR STRING RATHER THAN A PARAPHRASE. The operator's item list
+// arrived with cells truncated; the whole point of these rows is that a gap was filled by READING srv1,
+// never by guessing. A witness (test.claim.serving.lil_serving_defects_witness) asserts each row still
+// carries the verbatim substring that was read, so a later edit that softens or invents the wording is
+// refused. The strings are quoted descriptions of an external artifact (like the capability module's
+// `b12x_sm120_only` and `ple_needs_b12x` data), naming vLLM/b12x/LMCache source paths — external
+// symbols, not repository symbols — which is exactly the kind of report a `data ... : NonEmptyStr` carries.
+//
+// WHAT IS NOT CLAIMED. These are single-occurrence reads at one host on one image build, not a claim
+// that the config is broken on every host. They are also NOT filed under gunbc.recurring_failure_mode:
+// that ledger's `RecurringFailureMode` carries a `rung: RungReading` over the compiler's guarantee
+// ladder — it enumerates THIS compiler's own defect classes, not fleet serving failures — so a vLLM
+// runtime hang has no home there and forcing one would misrepresent the ladder.
+
+type LilServeComponent
+  = B12xPcieAllReduce
+  | LilLauncher
+  | VllmEngine
+  | LmCacheRecurrentConnector
+  | LilReplicaProxy
+
+// Where a fix is owed and where it would be reported. The report is NOT opened from this repository:
+// filing it is outward-facing and is handed back to the operator/parent as a draft.
+type LilServingDefect {
+  identity: NonEmptyStr
+  component: LilServeComponent
+  affected_config: NonEmptyStr
+  exact_error: NonEmptyStr
+  source_line: NonEmptyStr
+  on_image: NonEmptyStr
+  upstream_repo: NonEmptyStr
+  upstream_ask: NonEmptyStr
+  receipt: NonEmptyStr
+}
+
+// THE RECEIPT, named once. Every row points at this read: the srv1 containers' own log and the source
+// read inside the running container, on the 2026-11-03-19-54-02 lil image (vLLM build string
+// 0.1.dev22105+g5009fa56b, present verbatim in each defect log).
+data srv1_lil_defect_receipt: NonEmptyStr = "srv1 (nvjet1), 2026-11-08: read from ~/lil/serve/serve.log and from /opt/lil/runtime/*.py inside the running lil-flash-next container, image docker.iot-bots.li:5555/local-inference-lab:2026-11-03-19-54-02 (vLLM 0.1.dev22105+g5009fa56b), two RTX PRO 6000 Blackwell SM120 with no GPU P2P" as NonEmptyStr
+
+// EACH ROW IS A NAMED DECLARATION, and the launch guard binds its defects BY NAME (review 92374):
+// srv1_serving_replica_layout.srv1_launch_admission references these rows as declarations, so renaming or
+// deleting one is a COMPILE ERROR at the guard — never a silently-missed string lookup that lets an unsafe
+// launch through. Retiring a defect after its fix lands is a deliberate act — remove the row AND its
+// consuming check together, enforced by the compiler — not a lookup that quietly answers Absent.
+
+// F24 — b12x PCIe all-reduce hangs TP=2 init on srv1, which has no GPU P2P. Both ranks logged the
+// all-reduce init failure (each retaining CUDA IPC ownership), the custom all-reduce was then
+// disabled for the missing P2P, and the surviving rank waited on a ONE-ELEMENT NCCL broadcast in
+// b12x's own failure-exchange path until the 600 s NCCL watchdog fired. The lil launcher sets the
+// off-switch only when --disable-custom-all-reduce is passed, so the rtx-pro-6000-pcie profile on a
+// P2P-less host has to be told by hand; the profile does not do it.
+data srv1_f24_b12x_tp2_hang_defect: LilServingDefect = LilServingDefect {
+      identity: "srv1-f24-b12x-pcie-allreduce-tp2-hang" as NonEmptyStr,
+      component: B12xPcieAllReduce,
+      affected_config: "tensor_parallel_size=2 on two RTX PRO 6000 (SM120) over PCIe with no GPU P2P" as NonEmptyStr,
+      exact_error: "B12X PCIe all-reduce initialization failed on rank 0: failed to exchange CUDA IPC import-open status; CUDA IPC ownership was retained" as NonEmptyStr,
+      source_line: "b12x/integration/vllm/b12x_pcie_all_reduce.py:298; hang in b12x/comm/pcie/pcie_oneshot.py:653 (_exchange_setup_failures -> _broadcast_gather_object), Watchdog caught collective operation timeout OpType=BROADCAST NumelIn=1 NumelOut=1 Timeout(ms)=600000 ran for 600017 milliseconds" as NonEmptyStr,
+      on_image: "local-inference-lab:2026-11-03-19-54-02 (vLLM 0.1.dev22105+g5009fa56b)" as NonEmptyStr,
+      upstream_repo: "b12x (the image's b12x_pcie_all_reduce / comm.pcie owner); secondary: local-inference-lab launcher profile rtx-pro-6000-pcie" as NonEmptyStr,
+      upstream_ask: "When the B12X PCIe all-reduce init fails (CUDA IPC import-open cannot be exchanged and ownership is retained), abort cleanly and let NCCL take the collective immediately instead of entering _exchange_setup_failures, where the rank that retained CUDA IPC ownership never posts and the peer blocks on a one-element broadcast to the watchdog. Separately, the lil rtx-pro-6000-pcie hardware profile should derive VLLM_ENABLE_PCIE_ALLREDUCE=0 when P2P is absent (the launcher sets it to 0 only when --disable-custom-all-reduce is passed) rather than relying on the operator to pass the flag." as NonEmptyStr,
+      receipt: srv1_lil_defect_receipt,
+}
+
+// F25 — NVFP4 main KV cache is not a target for qwen38-flash-next on this image. The launcher's
+// supported-KV allow-list is the literal set {fp8, fp8_e4m3}, so nvfp4 KV is refused before the
+// engine starts; pushed past the allow-list, vLLM itself refuses because the QSA attention path
+// only builds a BF16 or FP8 E4M3 main KV cache. FP8 is the floor, not a preference.
+data srv1_f25_nvfp4_kv_defect: LilServingDefect = LilServingDefect {
+      identity: "srv1-f25-nvfp4-main-kv-unsupported" as NonEmptyStr,
+      component: LilLauncher,
+      affected_config: "kv_cache_dtype=nvfp4 on qwen38-flash-next (profile qwen38-flash-next, hardware rtx-pro-6000-pcie)" as NonEmptyStr,
+      exact_error: "NotImplementedError: QSA requires BF16 or FP8 E4M3 main KV cache" as NonEmptyStr,
+      source_line: "runtime/launcher.py:2011 (supported_kv = {\"fp8\", \"fp8_e4m3\"}) and launcher.py:2019 (\"<model> supports target KV settings ['fp8', 'fp8_e4m3']; other precisions require separate qualification\"); engine refusal raised through vllm/v1/executor/multiproc_executor.py:1073" as NonEmptyStr,
+      on_image: "local-inference-lab:2026-11-03-19-54-02 (vLLM 0.1.dev22105+g5009fa56b)" as NonEmptyStr,
+      upstream_repo: "local-inference-lab (launcher allow-list); secondary: vLLM QSA main-KV builder" as NonEmptyStr,
+      upstream_ask: "Either qualify an NVFP4 main KV cache for the QSA path (the engine currently builds only BF16 or FP8 E4M3, raising NotImplementedError) or document FP8 E4M3 as the FP floor in the launcher's supported-KV allow-list so a request for nvfp4 KV fails at the profile with the reason instead of surfacing a raw NotImplementedError from the engine core." as NonEmptyStr,
+      receipt: srv1_lil_defect_receipt,
+}
+
+// F26a — lil's own REPLICAS=2 mode (one container, two single-GPU servers) crashes the SECOND
+// engine: LMCache's recurrent-checkpoint connector asks the transfer context for checkpoint slot
+// views over a shared-memory region that the second process never registered. The first engine
+// brings up; the replica never does.
+data srv1_f26a_lmcache_replica_crash_defect: LilServingDefect = LilServingDefect {
+      identity: "srv1-f26a-lmcache-replica-checkpoint-dma-crash" as NonEmptyStr,
+      component: LmCacheRecurrentConnector,
+      affected_config: "lil-serve replicas=2 (two single-GPU replica servers behind one proxy), LMCache ram-disk, recurrent checkpoint connector on" as NonEmptyStr,
+      exact_error: "RuntimeError: Checkpoint DMA requires a registered SHM mapping" as NonEmptyStr,
+      source_line: "lmcache/integration/vllm/recurrent_checkpoint_connector.py:253 (bind_boundary_checkpoint_state) -> lmcache/integration/vllm/checkpoint_copy.py:59 -> lmcache/v1/multiprocess/transfer_context/shm.py:227" as NonEmptyStr,
+      on_image: "local-inference-lab:2026-11-03-19-54-02 (vLLM 0.1.dev22105+g5009fa56b)" as NonEmptyStr,
+      upstream_repo: "LMCache (recurrent checkpoint connector / multiprocess transfer context); secondary: local-inference-lab replica bring-up ordering" as NonEmptyStr,
+      upstream_ask: "In replicas>1 bring-up the second replica's engine core reaches bind_boundary_checkpoint_state before its shared-memory checkpoint region is registered, so checkpoint_slot_views raises 'Checkpoint DMA requires a registered SHM mapping' and the replica dies at engine-core init. Either register the SHM mapping per replica before binding checkpoint state, or have the connector fall back to a copy path (or disable checkpoint DMA) when no mapping is registered, instead of raising and taking the whole replica down." as NonEmptyStr,
+      receipt: srv1_lil_defect_receipt,
+}
+
+// F26b — the proxy lil puts in front of the replicas always dials them over plain HTTP. main()
+// accepts only --host/--port/--replica (no TLS material), and build_app hard-codes the http://
+// scheme for every upstream. When the replicas are given --ssl-keyfile/--ssl-certfile (as srv1
+// requires for its serving endpoints) the proxy speaks HTTP to a TLS listener and every forwarded
+// request fails; the proxy's own failure branch renders it as a 502 naming the client-side
+// 'Server disconnected' error.
+data srv1_f26b_replica_proxy_tls_defect: LilServingDefect = LilServingDefect {
+      identity: "srv1-f26b-replica-proxy-plain-http-to-tls-replicas" as NonEmptyStr,
+      component: LilReplicaProxy,
+      affected_config: "lil-serve replicas=2 behind the replica proxy, replicas launched with --ssl-keyfile/--ssl-certfile" as NonEmptyStr,
+      exact_error: "replica 0 unavailable: Server disconnected without sending a response." as NonEmptyStr,
+      source_line: "runtime/replica_proxy.py:297 (bases = [f\"http://<upstream>\" for upstream in upstreams]); runtime/replica_proxy.py main() accepts only --host/--port/--replica and has no TLS argument; runtime/replicas.py:122 launches the proxy with 127.0.0.1:<port> replicas and passes no TLS to it" as NonEmptyStr,
+      on_image: "local-inference-lab:2026-11-03-19-54-02 (vLLM 0.1.dev22105+g5009fa56b)" as NonEmptyStr,
+      upstream_repo: "local-inference-lab (runtime/replica_proxy.py + runtime/replicas.py)" as NonEmptyStr,
+      upstream_ask: "The replica proxy hard-codes http:// for every upstream and its argument surface carries no TLS material, so a deployment that serves replicas over HTTPS (replicas inherit --ssl-keyfile/--ssl-certfile) breaks every request: the proxy's plaintext call to a TLS listener surfaces as the 502 'replica N unavailable: Server disconnected'. Derive the upstream scheme from whether the replicas were given TLS (thread --ssl-keyfile/--ssl-certfile, or a --replica-scheme/--replica-tls flag, from replicas.py into replica_proxy.py), or serve replicas on the loopback without TLS while keeping the public proxy TLS." as NonEmptyStr,
+      receipt: srv1_lil_defect_receipt,
+}
+
+// The roster of standing receipts, assembled from the named declarations above. Consumers that must be
+// tie-by-name to a SPECIFIC defect (the launch guard) reference the named rows directly; this list is for
+// enumeration (the witness over every row, the frontier's coverage count).
+fn srv1_lil_serving_defect_rows() -> List<LilServingDefect> {
+  [
+    srv1_f24_b12x_tp2_hang_defect,
+    srv1_f25_nvfp4_kv_defect,
+    srv1_f26a_lmcache_replica_crash_defect,
+    srv1_f26b_replica_proxy_tls_defect,
+  ]
+}
+
+fn defect_component_eq(a: LilServeComponent, b: LilServeComponent) -> Bool {
+  match a {
+    B12xPcieAllReduce => match b { B12xPcieAllReduce => true, _ => false }
+    LilLauncher => match b { LilLauncher => true, _ => false }
+    VllmEngine => match b { VllmEngine => true, _ => false }
+    LmCacheRecurrentConnector => match b { LmCacheRecurrentConnector => true, _ => false }
+    LilReplicaProxy => match b { LilReplicaProxy => true, _ => false }
+  }
+}
+
+fn defect_by_identity(rows: List<LilServingDefect>, identity: NonEmptyStr) -> LilServingDefect? {
+  first_where(xs: rows, keep: fn(r) {
+    r.identity == identity
+  })
+}
+
+// THE ONE FACT THAT MAKES REPAIR WORTH FILING, stated once and typed. Whether a repaired REPLICAS=2 would
+// recover the second replica's host-RAM PLE table is a host-budget question, not prose here: it is carried as
+// the ByteSize srv1_replica_host_budget ple_pinned in gunbc.serving.srv1_serving_replica_layout, whose comment
+// records that this image lacks VLLM_PLE_SHARED_TABLE_DIR so the saving is NOT budgeted (one PLE copy per
+// replica). This module keeps only the defect rows and their receipts.
+
+
+data lil_serving_defects_frontier: DissolutionCondition = unbound_dissolution(
+  description: "gunbc.design_argument::consumption: the named defect rows are bound BY NAME to the srv1 launch admission guard srv1_launch_admission in gunbc.serving.srv1_serving_replica_layout (each refusal cites the declaration srv1_f24_b12x_tp2_hang_defect / srv1_f25_nvfp4_kv_defect / srv1_f26a_lmcache_replica_crash_defect, so a rename or deletion is a compile error at the guard, not a missed string lookup); srv1_lil_serving_defect_rows + defect_by_identity are consumed by test.claim.serving.lil_serving_defects_witness, which ties the enumeration and the verbatim receipts to the same named rows; srv1_launch_admission is itself consumed over an executing route by apply_legs' boot enablement (gunbc.live_deploy.srv1_serving_engine_unit srv1_replica_boot_unit_names arms the lil-replica@ instances only for an admitted launch configuration and reports ApplyPlanRefused with the defect identity on refusal), so a standing defect has a real consequence on the boot plan, not a witness-only one. The discriminating refusals are asserted by test.claim.serving.srv1_serving_replica_layout_witness and the boot-gate route by test.claim.live_deploy.srv1_serving_engine_unit_witness. The F24-F26 upstream filing drafts cite these receipts. Declared frontier, trigger: when a newer lil image build is run at srv1, re-read the launcher and replica_proxy source and the container log; a row whose exact_error no longer appears on the new build is retired to history by a DELIBERATE EDIT — delete the row AND its consuming check together (the compiler refuses a dangling reference, so retirement can never be a silent identity miss) — and its upstream issue, once opened by the operator, is linked rather than restated." as NonEmptyStr
+)

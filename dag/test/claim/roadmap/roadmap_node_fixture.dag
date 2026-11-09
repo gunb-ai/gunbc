@@ -6,7 +6,6 @@ import gunbc.roadmap.roadmap_model {
 }
 import gunbc.roadmap.roadmap_status {
   RoadmapItem, AuthoredLine, DerivableLine, SupersededLine, TicketLine, TicketFields,
-  Signoff, SignedOff, RedControlEvidence, HandbackEvidence,
 }
 import gunbc.roadmap.roadmap_authority { roadmap_node }
 import gunbc.roadmap.roadmap_launch_canary { roadmap_launch_canary_execution_contract }
@@ -67,23 +66,4 @@ fn fx_ticket_wi(identity: String, id: String, done: Bool, t: TicketFields, repo:
 
 fn fx_superseded(identity: String, id: String, by: String, content: String) -> RoadmapNode {
   roadmap_node(identity: identity, id: id, owner: "", carriers: [], line: SupersededLine { by: by, content: content })
-}
-
-fn fx_signed(by: String, works: RedControlEvidence, scope_equivalent: HandbackEvidence, as_expected: Bool) -> Signoff {
-  SignedOff { by: by, works: works, scope_equivalent: scope_equivalent, as_expected: as_expected }
-}
-
-fn fx_sign(rn: RoadmapNode, s: Signoff) -> RoadmapNode {
-  RoadmapNode {
-    identity: rn.identity,
-    node: rn.node,
-    line: rn.line,
-    carriers: rn.carriers,
-    dispatch: rn.dispatch,
-    execution: rn.execution,
-    owner: rn.owner,
-    signoff: s,
-    parent: rn.parent,
-    centering: rn.centering,
-  }
 }

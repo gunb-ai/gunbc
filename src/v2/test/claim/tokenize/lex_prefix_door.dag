@@ -8,6 +8,8 @@ import std.algebra { for_all, length }
 import v2.std.compilers.lexing { Token, token_stream_remaining }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.integer { Int }
+import std.nat { Nat, nat_add }
+import std.host_text { string_length, substring }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Symbol }
 import v2.std.text { String }
@@ -30,7 +32,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // Every limit the controls sweep is below this and every text swept is shorter, so the last limits of a
 // sweep are past the end of the text.
-fn sweep_last() -> Int { 60 }
+fn sweep_last() -> Nat { 60 }
 
 fn swept_texts() -> List<String> {
   [
@@ -55,9 +57,9 @@ fn string_text() -> String { "data s: String = \"abc def\"\n" }
 
 fn template_text() -> String { "data s: String = \"a \{x\} b\"\n" }
 
-fn string_cut_first() -> Int { 18 }
+fn string_cut_first() -> Nat { 18 }
 
-fn string_cut_last() -> Int { 25 }
+fn string_cut_last() -> Nat { 25 }
 
 // A text with a character the dag lexer matches no rule for, after a clean header.
 fn text_with_a_bad_character() -> String { "module a.b\n`bad\n" }
@@ -71,18 +73,18 @@ fn whole_tokens(text: String) -> List<Token> {
   }
 }
 
-fn prefix_of(text: String, window: Int) -> Outcome<LexPrefix> {
+fn prefix_of(text: String, window: Nat) -> Outcome<LexPrefix> {
   tokenize_prefix_prepared(text: text, file: probe_file(), prepared: dag_prepared_lex(), limit: LexWalkUntil { scalars: window })
 }
 
-fn prefix_tokens(text: String, window: Int) -> List<Token> {
+fn prefix_tokens(text: String, window: Nat) -> List<Token> {
   match prefix_of(text: text, window: window) {
     Rejected { diagnostics: _ } => []
     Accepted { value: prefix, diagnostics: _ } => token_stream_remaining(stream: prefix.stream)
   }
 }
 
-fn prefix_complete(text: String, window: Int) -> Bool {
+fn prefix_complete(text: String, window: Nat) -> Bool {
   match prefix_of(text: text, window: window) {
     Rejected { diagnostics: _ } => false
     Accepted { value: prefix, diagnostics: _ } => prefix.complete
@@ -102,22 +104,22 @@ fn leads(prefix: List<Token>, whole: List<Token>) -> Bool {
   }
 }
 
-fn leads_at_every_window(text: String, window: Int) -> Bool {
+fn leads_at_every_window(text: String, window: Nat) -> Bool {
   if window > sweep_last() {
     true
   } else {
-    leads(prefix: prefix_tokens(text: text, window: window), whole: whole_tokens(text: text)) && leads_at_every_window(text: text, window: window + 1)
+    leads(prefix: prefix_tokens(text: text, window: window), whole: whole_tokens(text: text)) && leads_at_every_window(text: text, window: nat_add(a: window, b: 1))
   }
 }
 
 // `complete` is exactly "the prefix is the whole lex": it implies the token counts agree, and a count
 // that agrees with the whole lex's for a text that the window cut implies complete.
-fn complete_means_whole_at_every_window(text: String, window: Int) -> Bool {
+fn complete_means_whole_at_every_window(text: String, window: Nat) -> Bool {
   if window > sweep_last() {
     true
   } else {
     (!prefix_complete(text: text, window: window) || length(xs: prefix_tokens(text: text, window: window)) == length(xs: whole_tokens(text: text)))
-      && complete_means_whole_at_every_window(text: text, window: window + 1)
+      && complete_means_whole_at_every_window(text: text, window: nat_add(a: window, b: 1))
   }
 }
 
@@ -176,7 +178,7 @@ fn refusal_reason_of_whole(text: String) -> Symbol {
   }
 }
 
-fn refusal_reason_of_prefix(text: String, window: Int) -> Symbol {
+fn refusal_reason_of_prefix(text: String, window: Nat) -> Symbol {
   match prefix_of(text: text, window: window) {
     Accepted { value: _, diagnostics: _ } => ^lex_prefix_no_refusal
     Rejected { diagnostics: ds } => ds.head.reason
@@ -202,12 +204,12 @@ fn is_none_or_the_whole_lexs(reason: Symbol, text: String) -> Bool {
   reason == ^lex_prefix_no_refusal || reason == refusal_reason_of_whole(text: text)
 }
 
-fn refuses_only_as_the_whole_lex_does(text: String, window: Int) -> Bool {
+fn refuses_only_as_the_whole_lex_does(text: String, window: Nat) -> Bool {
   if window > sweep_last() {
     true
   } else {
     is_none_or_the_whole_lexs(reason: refusal_reason_of_prefix(text: text, window: window), text: text)
-      && refuses_only_as_the_whole_lex_does(text: text, window: window + 1)
+      && refuses_only_as_the_whole_lex_does(text: text, window: nat_add(a: window, b: 1))
   }
 }
 
@@ -222,54 +224,54 @@ test fn no_window_refuses_a_text_the_whole_lex_accepts_or_refuses_for_another_ca
 // literal: the delimited rule finds no close and the opening quote matches no rule, which is the cause
 // of every one of the 14 modules a 4096-scalar cut refused. The door over the same limits is accepted
 // and says it is incomplete, with the tokens it holds the whole lex's.
-fn cut_of(text: String, window: Int) -> String {
-  substring(s: text, start: 0, end: window)
+fn cut_of(text: String, window: Nat) -> String {
+  substring(text: text, start: 0, end: window)
 }
 
-fn window_is_open(text: String, window: Int) -> Bool {
+fn window_is_open(text: String, window: Nat) -> Bool {
   match prefix_of(text: text, window: window) {
     Rejected { diagnostics: _ } => false
     Accepted { value: prefix, diagnostics: _ } => !prefix.complete
   }
 }
 
-fn cuts_refuse_for(text: String, window: Int, reason: Symbol) -> Bool {
+fn cuts_refuse_for(text: String, window: Nat, reason: Symbol) -> Bool {
   if window > string_cut_last() {
     true
   } else {
     refusal_reason_of_whole(text: cut_of(text: text, window: window)) == reason
-      && cuts_refuse_for(text: text, window: window + 1, reason: reason)
+      && cuts_refuse_for(text: text, window: nat_add(a: window, b: 1), reason: reason)
   }
 }
 
-fn windows_are_open_across(text: String, window: Int) -> Bool {
+fn windows_are_open_across(text: String, window: Nat) -> Bool {
   if window > string_cut_last() {
     true
   } else {
     window_is_open(text: text, window: window)
       && refusal_reason_of_prefix(text: text, window: window) == ^lex_prefix_no_refusal
-      && windows_are_open_across(text: text, window: window + 1)
+      && windows_are_open_across(text: text, window: nat_add(a: window, b: 1))
   }
 }
 
-fn cuts_refuse_somehow(text: String, window: Int) -> Bool {
+fn cuts_refuse_somehow(text: String, window: Nat) -> Bool {
   if window > string_cut_last() {
     true
   } else {
     !(refusal_reason_of_whole(text: cut_of(text: text, window: window)) == ^lex_prefix_no_refusal)
-      && cuts_refuse_somehow(text: text, window: window + 1)
+      && cuts_refuse_somehow(text: text, window: nat_add(a: window, b: 1))
   }
 }
 
 test fn a_cut_inside_a_string_literal_is_refused_where_the_door_is_open() -> Bool {
-  string_length(s: string_text()) > string_cut_last()
+  string_length(text: string_text()) > string_cut_last()
     && refusal_reason_of_whole(text: string_text()) == ^lex_prefix_no_refusal
     && cuts_refuse_for(text: string_text(), window: string_cut_first(), reason: ^tokenize_lex_e1_unrecognized_char)
     && windows_are_open_across(text: string_text(), window: string_cut_first())
 }
 
 test fn a_cut_inside_a_template_hole_is_refused_where_the_door_is_open() -> Bool {
-  string_length(s: template_text()) > string_cut_last()
+  string_length(text: template_text()) > string_cut_last()
     && refusal_reason_of_whole(text: template_text()) == ^lex_prefix_no_refusal
     && cuts_refuse_somehow(text: template_text(), window: string_cut_first())
     && windows_are_open_across(text: template_text(), window: string_cut_first())

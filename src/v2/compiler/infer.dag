@@ -58,7 +58,7 @@ import std.optional {
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, qualified_name_to_dotted_string, lexical_reference_label_optional, parameter_reference_path_optional, qualified_name_init, qualified_name_last_segment, declaration_denotation_of_type, declaration_denotation_is_optional }
 import v2.std.node_query { find_core_child, is_wildcard_pattern, node_is_coproduct, BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, construct_tag_path_optional, declared_field_from_edge, declared_field_named, find_labeled_child, find_named_child, arrow_constant_member_codomain, field_projection_optional, named_child_lookup, pattern_wildcard_name }
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
-import v2.std.symbol_index { DeclaredPayloadKind, MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_declaring_path_of, symbol_index_is_module_root_at, symbol_index_lookup }
+import v2.std.symbol_index { symbol_index_declares_service_payload_at, OperationRealizable, OperationUnrealizable, symbol_index_operation_realization_at, DeclaredPayloadKind, MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_declaring_path_of, symbol_index_is_module_root_at, symbol_index_lookup }
 import v2.compiler.fold_lowering { FoldMemberFormal, RosterSignatureLookup, NotARosterPrimitiveCallRow, RosterPrimitiveCallSignature, RosterPrimitiveCallSignatureUnreadable, collection_roster_primitive_call_signature_at, FoldMemberRole, FoldStepTakesCollectionMember, FoldStepTakesNoMember, fold_collection_member_type, fold_loop_step, fold_realized_member_role, fold_step_body_node, fold_step_carrier_formal, fold_step_declared_return, fold_step_formal_at, fold_step_member_formal }
 import v2.std.node { node_same_occurrence, node_equal_ignoring_provenance, content_hash, node_occurrence_allocator_after, BranchConditionSlot, BranchElseSlot, BranchThenSlot, branch_slot_target, ArrowBodyEdge, BindBinderSlot, BindBodySlot, BindValueSlot, ChildSlot, LabeledChild, MatchArmSlot, MatchScrutineeSlot, PositionalOrdinal, bind_positional_slot, bind_slot_target, match_positional_slot, match_slot_target, match_role_slots, child_slot_target, positional_child_target_nodes, symbol_lexeme, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, AdmitCallersEdge, Ambiguous, NotFound, DeclarationReferenceKind, Found, MarkedReference, NodeFoldTopDown, NotMarkedReference, Symbol, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_named_edge_is_metadata, arrow_signature_order_edge, core_edge_target_lookup, edge_is_core, edge_label_of, fold_node_topdown, match_arm_pattern_edge, bind_key_edge, MatchArmBodyEdge, MatchArmPatternEdge, node_subtree_nodes, resolved_reference_body_kind, symbol_eq, symbol_intern_lexeme, StructuralLabel, host_text_type_node, symbol_type_node, node_rebuild, node_with_occurrence_id, Arrow, Atom, Bind, Branch, ComputationNode, Conj, Disj, Edge, Instantiation, Loop, Match, Authored, Node, NodeFold, Positional, Transform, TypeNode, is_empty_conj_root, Value, all_edges_positional, canonicalize_node_strip_provenance, fold_node, loop_edge_contributes_to_iteration_fold, well_formed, NotADeclaration }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
@@ -103,6 +103,7 @@ fn inferred_facts_subject_node(facts: InferredFacts) -> Node {
   match facts.grounding {
     DerivedGrounding { grounding: g } => g.node
     GroundingNotDerived { node: n, site: _ } => n
+    GroundingNoValue { node: n } => n
   }
 }
 
@@ -114,6 +115,10 @@ fn inferred_facts_grounding_derived(facts: InferredFacts) -> Bool {
   match facts.grounding {
     DerivedGrounding { grounding: _ } => true
     GroundingNotDerived { node: _, site: _ } => false
+    // A node that decidely produces no value has no derived grounding -- and it is not a frontier either.
+    // A consumer that reads this flag to decide "unknown, so count it" must not treat it as one: the arm
+    // that owes a value matches GroundingNoValue itself and refuses.
+    GroundingNoValue { node: _ } => false
   }
 }
 
@@ -121,6 +126,7 @@ fn inferred_facts_canonical_admitted(facts: InferredFacts) -> Bool {
   match facts.grounding {
     DerivedGrounding { grounding: g } => canonical_grounding_admits_infer_facts(grounding: g)
     GroundingNotDerived { node: _, site: _ } => false
+    GroundingNoValue { node: _ } => false
   }
 }
 
@@ -129,6 +135,8 @@ fn inferred_facts_grounding_witness(facts: InferredFacts) -> Witness<CanonicalGr
     DerivedGrounding { grounding: g } => Holds { value: g }
     GroundingNotDerived { node: n, site: _ } =>
       Violates { diagnostic: infer_grounding_not_derived_diagnostic(at: node_locus(node: n)) }
+    GroundingNoValue { node: n } =>
+      Violates { diagnostic: infer_branch_else_less_as_value_diagnostic(node: n) }
   }
 }
 
@@ -137,6 +145,8 @@ fn inferred_facts_resolved_type(facts: InferredFacts) -> Witness<Node> {
     DerivedGrounding { grounding: g } => Holds { value: g.witness.structural.evidence }
     GroundingNotDerived { node: n, site: _ } =>
       Violates { diagnostic: infer_grounding_not_derived_diagnostic(at: node_locus(node: n)) }
+    GroundingNoValue { node: n } =>
+      Violates { diagnostic: infer_branch_else_less_as_value_diagnostic(node: n) }
   }
 }
 
@@ -146,6 +156,8 @@ fn inferred_facts_algebra_ref(facts: InferredFacts) -> Witness<AlgebraRef> {
       Holds { value: algebra_ref_from_grounding(grounding: g) }
     GroundingNotDerived { node: n, site: _ } =>
       Violates { diagnostic: infer_grounding_not_derived_diagnostic(at: node_locus(node: n)) }
+    GroundingNoValue { node: n } =>
+      Violates { diagnostic: infer_branch_else_less_as_value_diagnostic(node: n) }
   }
 }
 
@@ -154,6 +166,8 @@ fn inferred_facts_canonical_witness(facts: InferredFacts) -> Witness<CanonicalGr
     DerivedGrounding { grounding: g } => Holds { value: g.witness }
     GroundingNotDerived { node: n, site: _ } =>
       Violates { diagnostic: infer_grounding_not_derived_diagnostic(at: node_locus(node: n)) }
+    GroundingNoValue { node: n } =>
+      Violates { diagnostic: infer_branch_else_less_as_value_diagnostic(node: n) }
   }
 }
 
@@ -246,6 +260,17 @@ fn infer_algebra_ref_ungrounded_diagnostic(node: Node) -> Diagnostic {
 fn infer_branch_shape_invalid_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
     reason: ^infer_branch_shape_invalid,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// The condition and the then arm are read and only the else arm is missing: that is the ELSE-LESS shape, not
+// a malformed Branch. This route types a Branch as a VALUE, and a value needs an arm for the path the
+// condition does not take, so it refuses -- with the cause the slot table actually answered (DESIGN 5).
+fn infer_branch_else_less_as_value_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_branch_else_less_as_value,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -1859,6 +1884,8 @@ fn canonical_grounding_from_inferred_facts(
   match facts.grounding {
     GroundingNotDerived { node: n, site: _ } =>
       outcome_rejected(infer_grounding_demanded_not_derived_diagnostic(at: node_locus(node: n)))
+    GroundingNoValue { node: n } =>
+      outcome_rejected(infer_branch_else_less_as_value_diagnostic(node: n))
     DerivedGrounding { grounding: g } =>
       if !node_same_occurrence(a: node, b: g.node) {
         outcome_rejected(infer_canonical_grounding_incoherent_diagnostic(node: node))
@@ -2317,6 +2344,7 @@ fn inferred_facts_resolved_type_optional(facts: InferredFacts) -> Optional<Node>
   match facts.grounding {
     DerivedGrounding { grounding: g } => optional_present(value: g.witness.structural.evidence)
     GroundingNotDerived { node: _, site: _ } => optional_absent()
+    GroundingNoValue { node: _ } => optional_absent()
   }
 }
 
@@ -2681,7 +2709,7 @@ fn infer_branch_bool_if_else_admitted(
           Absent => outcome_rejected(infer_branch_shape_invalid_diagnostic(node: node))
           Present { value: then_target } =>
             match branch_slot_target(n: node, slot: BranchElseSlot) {
-              Absent => outcome_rejected(infer_branch_shape_invalid_diagnostic(node: node))
+              Absent => outcome_rejected(infer_branch_else_less_as_value_diagnostic(node: node))
               Present { value: else_target } =>
                 match lookup_inferred_facts_in_entries(entries: entries, key: cond_target) {
                   Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: cond_target))
@@ -4298,6 +4326,9 @@ fn infer_application_callee_arrow_with_facts(
             Present { value: facts } =>
               match facts.grounding {
                 GroundingNotDerived { node: _, site: _ } => Absent
+                // A CALLEE THAT PRODUCES NO VALUE is not a function: the application refuses at its own
+                // row (a RED control on the no-value fact).
+                GroundingNoValue { node: _ } => Absent
                 DerivedGrounding { grounding: g } =>
                   infer_operator_arrow(operator: g.witness.structural.evidence)
               }
@@ -6510,7 +6541,121 @@ fn infer_gather_fold_failure_node() -> Node {
   }
 }
 
+// THE ELSE-LESS BRANCH'S OWN FACTS: a DECIDED ANSWER that the node produces no value (ruling
+// keen-heron-809, option 2c), carried as its own arm on the grounding coproduct -- NOT a NotDerivedSite,
+// whose default is the counted frontier (DESIGN 5: a decided answer is not ignorance). The condition is
+// still judged Bool and the then arm is still folded (its effects are the Branch's, conditionally); the
+// node gets no type, no witness and no denotation. Every consumer that owes a value refuses these facts
+// with infer_branch_else_less_as_value; the binder-absent Bind is the one site that admits them.
+fn infer_branch_else_less_facts(
+  node: Node,
+  entries: Map<Node, List<InferredFacts>>,
+) -> Outcome<InferredFacts> {
+  match branch_slot_target(n: node, slot: BranchThenSlot) {
+    Absent => outcome_rejected(infer_branch_shape_invalid_diagnostic(node: node))
+    Present { value: then_target } =>
+      match lookup_inferred_facts_in_entries(entries: entries, key: then_target) {
+        Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: then_target))
+        Present { value: _ } =>
+          match infer_descent_witness_for_node(n: node) {
+            Violates { diagnostic: d } => outcome_rejected(d)
+            Holds { value: descent_proof } =>
+              Accepted {
+                value: InferredFacts {
+                  grounding: GroundingNoValue { node: node },
+                  descent: Holds { value: descent_proof },
+                  denotation: optional_absent(),
+                  type_instances: []
+                },
+                diagnostics: None
+              }
+          }
+      }
+  }
+}
+
 fn infer_gather_branch_row_on_entries(
+  node: Node,
+  entries: Map<Node, List<InferredFacts>>,
+  pending: Diagnostics,
+  partials: List<Node>,
+  resolved: ResolvedTree,
+) -> InferGatherFoldAcc {
+  match branch_slot_target(n: node, slot: BranchElseSlot) {
+    // NO ELSE SLOT: the row records the no-value fact instead of refusing, so the fold keeps the arm's
+    // effects and the condition's Bool judgment; a site that owes a value judges the fact at its own row.
+    Absent => infer_gather_branch_else_less_row(node: node, entries: entries, pending: pending)
+    Present { value: _ } =>
+      infer_gather_branch_value_row(
+        node: node,
+        entries: entries,
+        pending: pending,
+        partials: partials,
+        resolved: resolved
+      )
+  }
+}
+
+fn infer_gather_branch_else_less_row(
+  node: Node,
+  entries: Map<Node, List<InferredFacts>>,
+  pending: Diagnostics,
+) -> InferGatherFoldAcc {
+  match infer_branch_condition_refusal(node: node, entries: entries) {
+    Present { value: d } =>
+      infer_gather_fold_acc_failed(
+        node: node,
+        pending: rejected_with_pending(pending: pending, rejected: diagnostics_singleton(d: d)),
+        await_branch_row: false,
+        await_match_row: false,
+        await_loop_row: false,
+        await_transform_row: false,
+        children_remaining: 0
+      )
+    Absent =>
+      match infer_branch_else_less_facts(node: node, entries: entries) {
+        Rejected { diagnostics: r } =>
+          infer_gather_fold_acc_failed(
+            node: node,
+            pending: rejected_with_pending(pending: pending, rejected: r),
+            await_branch_row: false,
+            await_match_row: false,
+            await_loop_row: false,
+            await_transform_row: false,
+            children_remaining: 0
+          )
+        Accepted { value: facts, diagnostics: d } =>
+          match admitted_inferred_facts_entry(node: node, facts: facts) {
+            Rejected { diagnostics: r } =>
+              infer_gather_fold_acc_failed(
+                node: node,
+                pending: rejected_with_pending(pending: pending, rejected: r),
+                await_branch_row: false,
+                await_match_row: false,
+                await_loop_row: false,
+                await_transform_row: false,
+                children_remaining: 0
+              )
+            Accepted { value: entry, diagnostics: ed } =>
+              infer_gather_fold_acc_ok(
+                node: node,
+                entries: inferred_facts_index_enter(index: entries, entry: entry),
+                pending: diagnostics_merge(
+                  outer: diagnostics_merge(outer: pending, inner: d),
+                  inner: ed
+                ),
+                await_branch_row: false,
+                await_match_row: false,
+                await_loop_row: false,
+                await_transform_row: false,
+                children_remaining: 0
+              )
+          }
+      }
+  }
+}
+
+fn infer_gather_branch_value_row(
   node: Node,
   entries: Map<Node, List<InferredFacts>>,
   pending: Diagnostics,
@@ -7232,6 +7377,11 @@ fn infer_transform_cast_optional(node: Node, entries: Map<Node, List<InferredFac
               Present { value: operand_facts } =>
                 match operand_facts.grounding {
                   GroundingNotDerived { node: _, site: _ } => optional_absent()
+                  // A CAST OWS A VALUE to its target: the operand produces none, so the cast refuses with
+                  // the fact's own reason rather than silently crossing nothing (a value demand, like the
+                  // application and the return).
+                  GroundingNoValue { node: n } =>
+                    optional_present(value: outcome_rejected(infer_branch_else_less_as_value_diagnostic(node: n)))
                   DerivedGrounding { grounding: g } =>
                     optional_present(value: bind_outcome(
                       o: coercion_cast_crossing(
@@ -8194,7 +8344,9 @@ fn infer_gather_hand_up_failed(node: Node, start: InferHoldResolution, r: NonEmp
   )
 }
 
-// THE BRANCH'S OWN ADMISSION BEFORE ITS TYPE IS PUBLISHED: three positional children and a Bool condition. A hand-up
+// THE BRANCH'S OWN ADMISSION BEFORE ITS TYPE IS PUBLISHED: an arity the slot table reads (three
+// positionals, or two for the else-less shape -- v2.std.node branch_positional_shape_admitted) and a Bool
+// condition. A hand-up
 // (infer_gather_branch_hand_up) publishes its first held arm's type without the arm agreement of infer_branch_bool_if_else, but
 // never without this judgment, so a non-Bool condition cannot be admitted because an enclosing join closes the arms.
 fn infer_branch_condition_refusal(node: Node, entries: Map<Node, List<InferredFacts>>) -> Optional<Diagnostic> {
@@ -10778,7 +10930,64 @@ fn infer_frame_with_binder_type(frame: InferFrame, row: InferBinderType) -> Infe
 // THE LET IS ITS BODY: once the body has settled the Bind derives at the body's type -- not the
 // annotation's, not the value's -- so the enclosing check (a declared return, an argument) judges what
 // the let actually produces. A body with no derived type leaves the Bind on the counted frontier.
+// THE ONE ADMIT SITE FOR THE NO-VALUE FACT (ruling keen-heron-809 2c): a Bind with NO BINDER owns no
+// value, so its value child is evaluated for its effects and discarded -- the statement form. A Bind that
+// NAMES a binder owes that binder a value, so it refuses a value child that produces none, with the same
+// reason every value demand uses.
+fn infer_gather_bind_value_no_value_refusal(
+  node: Node,
+  entries: Map<Node, List<InferredFacts>>,
+) -> Optional<Diagnostic> {
+  match bind_slot_target(n: node, slot: BindBinderSlot) {
+    Absent => optional_absent()
+    Present { value: _ } =>
+      match bind_slot_target(n: node, slot: BindValueSlot) {
+        Absent => optional_absent()
+        Present { value: value } =>
+          match lookup_inferred_facts_in_entries(entries: entries, key: value) {
+            Absent => optional_absent()
+            Present { value: facts } =>
+              match facts.grounding {
+                GroundingNoValue { node: branch } =>
+                  optional_present(value: infer_branch_else_less_as_value_diagnostic(node: branch))
+                DerivedGrounding { grounding: _ } => optional_absent()
+                GroundingNotDerived { node: _, site: _ } => optional_absent()
+              }
+          }
+      }
+  }
+}
+
 fn infer_gather_let_result_row(
+  node: Node,
+  entries: Map<Node, List<InferredFacts>>,
+  pending: Diagnostics,
+  partials: List<Node>,
+  kinds: List<RosterKindIndex>,
+  resolved: ResolvedTree,
+  rigid_binders: List<Symbol>,
+) -> InferGatherFoldAcc {
+  match infer_gather_bind_value_no_value_refusal(node: node, entries: entries) {
+    Present { value: d } =>
+      infer_gather_formed_facts_row(
+        node: node,
+        formed: Rejected { diagnostics: diagnostics_singleton(d: d) },
+        entries: entries,
+        pending: pending
+      )
+    Absent => infer_gather_let_result_row_on_body(
+      node: node,
+      entries: entries,
+      pending: pending,
+      partials: partials,
+      kinds: kinds,
+      resolved: resolved,
+      rigid_binders: rigid_binders
+    )
+  }
+}
+
+fn infer_gather_let_result_row_on_body(
   node: Node,
   entries: Map<Node, List<InferredFacts>>,
   pending: Diagnostics,
@@ -11938,6 +12147,59 @@ fn infer_admission_root_module_symbol(root: Node) -> Optional<Symbol> {
 // tree-level fault, it is unreadable only where a judgment needs it, so the refusal fires at the
 // application being judged (module_unreadable, located at the call), never as a root-level
 // precondition that would refuse every fn-rooted context wholesale.
+// A REFERENCE TO A SERVICE OPERATION THE REALIZATION CANNOT LOWER IS REFUSED AT THE REFERENCE. The service
+// lowering keeps the interface and every realizable operation, and records an operation whose argv this
+// lowering does not evaluate as OperationUnrealizable (symbol_index_fill, keyed by the operation's
+// DECLARATION path). This is the one reader: infer_caller_admission_diags folds every node of the resolved
+// tree, and every node marked as a declaration reference is judged -- a call head, an operation used as a
+// value, the same operation through an import or alias. The mention's path is first resolved to its declaring
+// path (symbol_index_declaring_path_of over the bindings index, resolve's own decision), never read as carried:
+// an alias path has no record, so the carried path would admit it. An unavailable or contested mention is
+// resolution's refusal, not this reader's. The correction is the operation's offending element. A declaring
+// path in a marked service payload (symbol_index_declares_service_payload_at, the service's own mark) with NO
+// entry is realization-unknown and refuses too; a declaration outside a service (a resource capability, a
+// plain fn) imposes nothing here.
+fn infer_service_operation_reference_diags(node: Node, bindings: SymbolIndex, declarations: SymbolIndex) -> Diagnostics {
+  match resolved_reference_body_kind(target: node) {
+    NotMarkedReference => None
+    MarkedReference { kind: DeclarationReferenceKind } =>
+      match declaration_reference_path_optional(node: node) {
+        Absent => None
+        Present { value: qn } =>
+          match symbol_index_declaring_path_of(index: bindings, target: qn) {
+            MentionDeclaringUnique { declaring: declaring } => infer_service_operation_declared_diags(node: node, declaring: declaring, declarations: declarations)
+            MentionDeclaringUnavailable => None
+            MentionDeclaringContested { claimants: _ } => None
+          }
+      }
+    MarkedReference { kind: _ } => None
+  }
+}
+
+fn infer_service_operation_declared_diags(node: Node, declaring: QualifiedName, declarations: SymbolIndex) -> Diagnostics {
+  match symbol_index_operation_realization_at(index: declarations, qualified_path: declaring) {
+    Absent =>
+      if symbol_index_declares_service_payload_at(index: declarations, qualified_path: qualified_name_init(qn: declaring)) {
+        infer_admission_diags_of([
+          Diagnostic {
+            reason: ^infer_reason_service_operation_realization_unknown,
+            at: node_locus(node: node),
+            correction: Unavailable { reason: CorrectionNotModeled }
+          }
+        ])
+      } else { None }
+    Present { value: OperationRealizable } => None
+    Present { value: OperationUnrealizable { reason: _, at: element } } =>
+      infer_admission_diags_of([
+        Diagnostic {
+          reason: ^infer_reason_service_operation_unrealizable,
+          at: node_locus(node: node),
+          correction: Suggested { node: element }
+        }
+      ])
+  }
+}
+
 fn infer_caller_admission_diags(tree: ResolvedTree, entries: Map<Node, List<InferredFacts>>) -> Diagnostics {
   fold_node_topdown(
     n: tree.root,
@@ -11947,12 +12209,15 @@ fn infer_caller_admission_diags(tree: ResolvedTree, entries: Map<Node, List<Infe
     },
         algebra: NodeFoldTopDown {
           init: fn(self, ctx) {
-            infer_caller_admission_application_diags(
-              application: self,
-              caller: ctx.caller,
-              module_symbol: ctx.module_symbol,
-              entries: entries,
-              declarations: tree.resolved_declarations
+            diagnostics_merge(
+              outer: infer_caller_admission_application_diags(
+                application: self,
+                caller: ctx.caller,
+                module_symbol: ctx.module_symbol,
+                entries: entries,
+                declarations: tree.resolved_declarations
+              ),
+              inner: infer_service_operation_reference_diags(node: self, bindings: tree.symbol_index, declarations: tree.resolved_declarations)
             )
           },
           child_context: fn(self, ctx, edge) { infer_admission_child_context(self: self, ctx: ctx, edge: edge) },

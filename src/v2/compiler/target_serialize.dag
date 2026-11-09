@@ -65,6 +65,10 @@ import v2.std.diagnostic {
 }
 import v2.std.node { positional_child_target_nodes,
   Atom,
+  BranchConditionSlot,
+  BranchElseSlot,
+  BranchThenSlot,
+  branch_slot_target,
   Conj,
   Edge,
   Authored,
@@ -1044,6 +1048,10 @@ fn project_occupancy_carrier_from_inferred_facts(
   }
 }
 
+// The Branch's value slots are read through the v2.std.node table, not by indexing the positional list
+// beside it (DESIGN 3: the roles live at the table). This is the VALUE route, so all three slots must be
+// Present: an else-less (two-positional) Branch owes a value it cannot produce and refuses here with the
+// shape reason, exactly as the positional read refused a missing index 2.
 fn project_branch_from_inferred_facts(
   arrow: Node,
   body: Node,
@@ -1052,7 +1060,7 @@ fn project_branch_from_inferred_facts(
   declarations: SymbolIndex,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
-  match list_at_optional(xs: positional_child_target_nodes(node: body), index: 0) {
+  match branch_slot_target(n: body, slot: BranchConditionSlot) {
     Absent =>
       outcome_rejected(
         d: target_value_expr_diagnostic(
@@ -1061,7 +1069,7 @@ fn project_branch_from_inferred_facts(
         )
       )
     Present { value: cond } =>
-      match list_at_optional(xs: positional_child_target_nodes(node: body), index: 1) {
+      match branch_slot_target(n: body, slot: BranchThenSlot) {
         Absent =>
           outcome_rejected(
             d: target_value_expr_diagnostic(
@@ -1070,11 +1078,14 @@ fn project_branch_from_inferred_facts(
             )
           )
         Present { value: then_arm } =>
-          match list_at_optional(xs: positional_child_target_nodes(node: body), index: 2) {
+          match branch_slot_target(n: body, slot: BranchElseSlot) {
+            // The condition and the then arm are read; only the else arm is missing. That is the else-less
+            // shape, which this VALUE route cannot render -- but it is not a malformed node, so it does not
+            // get the malformed-shape reason (DESIGN 5: one cause per reason).
             Absent =>
               outcome_rejected(
                 d: target_value_expr_diagnostic(
-                  reason: ^target_value_expr_reason_transform_shape_invalid,
+                  reason: ^target_value_expr_reason_branch_else_less_as_value,
                   node: body
                 )
               )

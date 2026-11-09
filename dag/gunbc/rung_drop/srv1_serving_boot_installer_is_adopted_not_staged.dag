@@ -1,0 +1,41 @@
+module gunbc.rung_drop.srv1_serving_boot_installer_is_adopted_not_staged
+
+import std.types { NonEmptyStr }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// DECLARED DROP (gunbc.design_argument::guarantee_ladder, no silent regression; review 92440) for the
+// two-replica migration in gunbc.serving.srv1_serving_replica_layout / gunbc.live_deploy.apply_legs.
+// BEFORE: convergence STAGED srv1's serving boot from the model — the singleton unit and its retained
+// wrapper were written by the apply legs (the wrapper through gunbc.extdeps.vllm.srv1_serving_launch's
+// Installable arm, unit bytes via serialize_systemd_unit_file), so what would run at boot was model
+// bytes on every apply. AFTER: apply only retires that legacy singleton and runs `systemctl enable` on
+// lil-replica@0/@1, whose unit file and helper are the OPERATOR's hand install — adopted, hash-pinned,
+// read from the host, but no longer written or content-verified by convergence. The climb-back is not a
+// re-add of the singleton (the operator's two-replica layout is the decision); it is convergence staging
+// ITS OWN bytes for the REPLICA unit and helper, rendered from srv1_replica_unit_contract and
+// v2.workflow.bash_emit, witnessed against the host.
+
+data srv1_serving_boot_installer_is_adopted_not_staged: RungDrop = RungDrop {
+  identity: "srv1_serving_boot_installer_is_adopted_not_staged" as NonEmptyStr,
+
+  subject: "srv1's serving boot path (the replica unit file and its helper): staged by convergence from the model, now adopted from the operator's hand install and only enabled by apply",
+
+  declared: "2026-11-09",
+
+  standing: Standing { declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged { replacement: "convergence staging its own replica unit file rendered from gunbc.serving.srv1_serving_replica_layout srv1_replica_unit_contract and its own helper emitted through v2.workflow.bash_emit (the scaffold markers srv1_replica_helper_bash_emit_dissolution and the boot-path guard srv1_replica_boot_path_guard's dissolution), staged only when the on-host sha256 differs and never while a healthy replica runs" },
+    population: Enumerated { members: FreeSemigroup {
+      head: "ReplicaUnitBytesUnverifiedAtApply: apply enables lil-replica@0/@1 without comparing the on-host unit file to srv1_replica_unit_contract (sha relayed, not computed)",
+      tail: [
+        "HelperAdoptionShallow: /usr/local/sbin/lil-replica adopts by running-by-name only; the contract's eight adoption_verifies fields are not checked, so a named-but-drifted container is adopted without a drift report (srv1_helper_adoption_verification_gap)",
+        "EngineArgvNotTheLiveExec: the live unit's ExecStart runs the operator's gpu.sh with a runtime EXTRA, not the typed srv1_replica_engine_argv render (srv1_boot_path_executes_rendered_argv)",
+        "LegacySingletonBytesNoLongerWritten: the retired gunbc-srv1-serving-engine.service unit and wrapper bytes were previously convergence-written; nothing writes boot units from the model on srv1 now",
+      ]
+    } },
+    restoration_trigger: "RESIDUAL the adoption hides: a healthy replica that drifts from the contract on any verified aspect is adopted today, and an EXTRA-edited gpu.sh changes the real launch without any model change. WHAT MUST BE SUFFICIENT: convergence stages its own lil-replica@.service bytes rendered from srv1_replica_unit_contract and its own helper emitted from the contract rows through v2.workflow.bash_emit; a witness on srv1 diffs both on-host files against the modeled contract and the retained receipts (computing their sha256); until that witness is green this row stands. OBSERVED AT RETIREMENT: the apply legs write both files from the model (Installable arms), the boot-path guard and the two bash_emit scaffold markers are deleted, and the live unit's ExecStart is the rendered srv1_replica_engine_argv."
+  } }
+}

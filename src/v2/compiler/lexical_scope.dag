@@ -36,8 +36,7 @@ import v2.std.node {
   MatchScrutineeSlot,
   bind_positional_slot,
   bind_slot_target,
-  match_positional_slot,
-  positional_child_count
+  match_positional_slot
 }
 import v2.std.node_query { construct_field_edges, construct_tag_optional, find_core_child, is_wildcard_pattern }
 import v2.std.type_binder { edge_is_cast_target, edge_is_type_annotation, edge_is_type_params }
@@ -193,8 +192,9 @@ fn arrow_slot_scope_binds_value_params(scope: ArrowSlotScope) -> Bool {
 
 // ---- Bind ----------------------------------------------------------------------------------------------
 
-// A `let`'s binder is its FIRST positional child when that child is an atom and the Bind carries its
-// three positional children (binder, value, body).
+// A `let`'s binder is the Bind's binder SLOT as the table numbers it (v2.std.node bind_slot_target): present
+// on a three-positional Bind, ABSENT on a binder-absent (two-positional) Bind, whose first positional is the
+// value. The table is the only arity judgment here.
 type BindBinder {
   name: Symbol
   atom: Node
@@ -203,18 +203,14 @@ type BindBinder {
 fn bind_binder(n: Node) -> Optional<BindBinder> {
   match n.kind {
     ComputationNode { behavior: Bind } =>
-      if positional_child_count(children: n.children) == 3 {
-        match bind_slot_target(n: n, slot: BindBinderSlot) {
-          Present { value: binder } =>
-            match binder.kind {
-              TypeNode { connective: Atom { identity: sym } } => optional_present(value: BindBinder { name: sym, atom: binder })
-              TypeNode { connective: _ } => optional_absent()
-              ComputationNode { behavior: _ } => optional_absent()
-            }
-          Absent => optional_absent()
-        }
-      } else {
-        optional_absent()
+      match bind_slot_target(n: n, slot: BindBinderSlot) {
+        Present { value: binder } =>
+          match binder.kind {
+            TypeNode { connective: Atom { identity: sym } } => optional_present(value: BindBinder { name: sym, atom: binder })
+            TypeNode { connective: _ } => optional_absent()
+            ComputationNode { behavior: _ } => optional_absent()
+          }
+        Absent => optional_absent()
       }
     TypeNode { connective: _ } => optional_absent()
     ComputationNode { behavior: _ } => optional_absent()

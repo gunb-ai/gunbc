@@ -189,7 +189,7 @@ fn bind_choose_branch(
   node: Node,
   _condition: RuntimeValue,
   _env: EvaluationEnvironment
-) -> Outcome<Node> {
+) -> Outcome<Optional<Node>> {
   outcome_rejected(d: bind_runtime_diagnostic(n: node))
 }
 

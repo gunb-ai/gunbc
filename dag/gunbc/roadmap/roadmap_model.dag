@@ -6,7 +6,7 @@ import std.algebra { list_snoc_item }
 import std.content_hash { Fnv1a64Structural }
 import std.content_hash { content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural, content_hash_eq_structural }
 import gunbc.roadmap.roadmap_status {
-  RoadmapItem, DriftVerdict, Signoff, signoff_accepts, signoff_drift,
+  RoadmapItem,
   node_title, item_description, item_exit_criterion,
   TicketFields, line_ticket,
   DerivableLine, AuthoredLine, PlainLine, SupersededLine, TicketLine,
@@ -36,8 +36,9 @@ type Acceptance
 // WorkItemDispatch.acceptance names the evidence a worker must return for review; it is not the
 // work item's lifecycle verdict. PrsMerged means a merged PR is the expected implementation
 // artifact, while ManualAcceptance means the evidence is operator-inspected directly. In both cases
-// RoadmapNode.signoff is the separate acceptance step and the only route to completed work. A PR
-// can be merged while its roadmap node remains open for residue or rework.
+// the node's acceptance receipt (RoadmapAcceptanceReceipt, in the acceptance event history) is the
+// separate acceptance step and the only route to completed work. A PR can be merged while its
+// roadmap node remains open for residue or rework.
 
 // WorkItemDispatch is the UNBUNDLED remainder of the former NodeSizing coproduct, which fused four
 // independent facts under one discriminant: whether the row is a dispatchable work item at all, the
@@ -83,7 +84,6 @@ type RoadmapNode {
   dispatch: WorkItemDispatch
   execution: WorkItemExecutionContract
   owner: String
-  signoff: Signoff
   parent: NodeParent?
   centering: NonEmptyStr?
 }
@@ -220,15 +220,7 @@ fn node_carrier_clean(rn: RoadmapNode, existing_docs: List<String>) -> Bool {
   all(rn.carriers, p => pointer_resolves(p: p, existing_docs: existing_docs))
 }
 
-fn node_status_drift(rn: RoadmapNode, committed_box: Bool, merged: List<Int>) -> DriftVerdict {
-  signoff_drift(s: rn.signoff, committed_box: committed_box)
-}
-
-fn node_closed(rn: RoadmapNode) -> Bool {
-  signoff_accepts(s: rn.signoff)
-}
-
-data roadmap_acceptance_receipt_note: String = "Acceptance is a durable typed fact, never row deletion (operator verdict 2026-07-28): before this carrier, accepting a node meant removing its only representation from the active graph, after which a dependent's prerequisite had no acceptance fact to join against and every count was a hand-reconstructed snapshot. A RoadmapAcceptanceReceipt names the node, carries the executed red-control and delivered handback evidence (reusing the #7380 evidence carriers — a receipt without an executed witness or a delivered artifact is unwritable), and pins criteria_digest = roadmap_criteria_digest over the row's own declared brief/red_control/handback. The digest closes the criteria-drift half fail-closed: editing a node's acceptance criteria changes the derived digest, the stored receipt stops matching, and the node returns to the active set while the validity witness reds — an acceptance can never silently survive a criteria rewrite. Merged pull requests never accept: node_accepted consults only receipt rows, and implementation evidence stays review input. REMAINING GAP, counted not implied (same shape as signoff_evidence_note): the witness named inside RedControlExecuted is not mechanically joined to the prose red_control it discharges — any executed witness name satisfies the evidence arm. OWNER: roadmap-runtime; DISSOLVE-ON: TicketFields.red_control becoming a typed reference to its discharging witness, at which point receipt_matches_node derives the join instead of trusting the named pair."
+data roadmap_acceptance_receipt_note: String = "Acceptance is a durable typed fact, never row deletion (operator verdict 2026-07-28): before this carrier, accepting a node meant removing its only representation from the active graph, after which a dependent's prerequisite had no acceptance fact to join against and every count was a hand-reconstructed snapshot. A RoadmapAcceptanceReceipt names the node, carries the executed red-control and delivered handback evidence (reusing the #7380 evidence carriers — a receipt without an executed witness or a delivered artifact is unwritable), and pins criteria_digest = roadmap_criteria_digest over the row's own declared brief/red_control/handback. The digest closes the criteria-drift half fail-closed: editing a node's acceptance criteria changes the derived digest, the stored receipt stops matching, and the node returns to the active set while the validity witness reds — an acceptance can never silently survive a criteria rewrite. Merged pull requests never accept: node_accepted consults only receipt rows, and implementation evidence stays review input. REMAINING GAP, counted not implied: the witness named inside RedControlExecuted is not mechanically joined to the prose red_control it discharges — any executed witness name satisfies the evidence arm. OWNER: roadmap-runtime; DISSOLVE-ON: TicketFields.red_control becoming a typed reference to its discharging witness, at which point receipt_matches_node derives the join instead of trusting the named pair."
 
 type RoadmapAcceptanceReceipt {
   node: RoadmapNodeId
