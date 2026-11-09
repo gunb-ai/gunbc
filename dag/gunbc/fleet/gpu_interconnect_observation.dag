@@ -15,7 +15,8 @@ module gunbc.fleet.gpu_interconnect_observation
 //
 // THE CAUSAL SENTENCE IS NOT A READING. "GPU-to-GPU peer access is absent" is something an instrument
 // answered; "therefore TP=2 loses to 2xTP=1 by the whole margin, and the fork's TP=2-wins rows reverse here"
-// is an explanation sitting on top of that reading plus a benchmark whose measurement half lives in #16104.
+// is an explanation sitting on top of that reading plus a benchmark carried by
+// gunbc.serving.srv1_topology_comparison (it arrived on #16104 and has been on main since 2026-11-09).
 // It is carried as HypothesisStanding, never as a fact, and the bet that a PCIe switch card would fix it is
 // carried as a bet with the observation that would settle it named. DESIGN.md, "Epistemic humility": a
 // reading whose shape is known but whose answer is not in hand is refused, never filled from memory -- which

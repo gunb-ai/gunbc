@@ -423,7 +423,7 @@ invariant is an interface fact in `InterfaceSummary`'s contract slot; a `0..n` p
 feeding a `1..n` consumer is *"a located type mismatch at the boundary — unwritable, not
 reviewed"*). Its FLAG E names what is missing: the cardinality lattice itself, deliberately
 not designed there. `docs/plans/cardinality-refinement.md` (status: scoping; registered as
-`gunbc.plans.cardinality_refinement`) carries the lattice proposal — a **closed decidable
+`gunbc.plans.cardinality_refinement (deleted 2026-11-08)`) carries the lattice proposal — a **closed decidable
 predicate vocabulary** (`Length<N>`, `NonEmpty`, `Bounded<Lo,Hi>`, `Width<N>`, all linear
 arithmetic over counts, chosen precisely to stay inside §4's bounded substrate where general
 refinement would not) plus fold-propagation, whose std seed already has green witnesses.
@@ -639,7 +639,7 @@ What did not happen is the generic mechanism, or the rest of the dimensions movi
 |---|---|---|---|
 | Type safety | `dag/std/types.dag` | `TypeBinding.resolved` | **Partial** — argument position only; return, `data` annotation, generic instantiation unchecked; `v2.*` exempt |
 | Termination | `dag/std/termination.dag` (BoundedLattice, bottom = fail-closed) | `TypeBinding.provenance`, `ExprCall.descent_evidence` | **UNVERIFIED in v1** — thesis-era status was "Partial, 421 violations, non-blocking"; **walled in v2 for loops** (`v2.std.cardinality` bound measure) |
-| Cardinality / multiplicity | `v2.std.refinement` (+ scoped lattice plan `gunbc.plans.cardinality_refinement`) | No | **RepresentableButForgeable** — see §4/§4b; operator re-directed 2026-07-04 |
+| Cardinality / multiplicity | `v2.std.refinement` (+ scoped lattice plan `gunbc.plans.cardinality_refinement (deleted 2026-11-08)`) | No | **RepresentableButForgeable** — see §4/§4b; operator re-directed 2026-07-04 |
 | Ownership | `src/v1/ownership.dag`, `src/v2/lens/ownership.dag` | No — still a separate pass | **Partial**, plus a known latent fail-open (Rc wrap) |
 | Side effects | `dag/std/behavioral.dag`, `dag/std/effects.dag` | No | Consumers now exist (`std.effect_grant`, `std.realization`, `gunbc.host.host_effect`) — an improvement on the thesis-era "declared, not consumed" — but **not at binding sites** |
 | Idempotence | `dag/std/effects.dag` (lattice from `EffectShape`) | No | No |

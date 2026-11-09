@@ -15,7 +15,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 // The Simulated boundary MATERIALIZATION handler (realization side of std.frame_boundary,
-// docs/plans/effect-namespace-grants.md 6, owned silent-ibex-417): the always-available baseline
+// docs/plans/effect-namespace-grants.md (deleted 2026-11-08) 6, owned silent-ibex-417): the always-available baseline
 // that closes a frame's layers by CONVENTION -- 'everything outside the layer is assumed-absent /
 // offline-configured', with nothing to provision. It is one of N boundary handlers
 // (netns/container/seccomp are the ByConstruction siblings that spawn a real boundary); gunbc.design_argument::single_authority keeps

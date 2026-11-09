@@ -17,7 +17,7 @@ import gunbc.runner.runner_revision_request_context { revision_request_context }
 import gunbc.durable_handoff_rest { host_request_outcome_response, OutcomeUnknown, OutcomeUnauthenticated }
 import gunbc.runner.runner_revision_request_service { revision_job_request_respond }
 
-// Served natively by its own deployment binding (gunbc.plans.converged_ingress M2a): the descriptor below names this
+// Served natively by its own deployment binding (gunbc.plans.converged_ingress (deleted 2026-11-08) M2a): the descriptor below names this
 // module's constructor and handler, and the NativeIngressDriver row selects the native realization.
 data revision_request_fixture_program: NativeIngressProgram = NativeIngressProgram {
   binding: DeclarationRef { module_path: "gunbc.instruments.revision_request_fixture", decl_name: "revision_request_fixture_ingress", field: WholeDeclaration },

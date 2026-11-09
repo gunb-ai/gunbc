@@ -52,7 +52,7 @@ fn device_crypto_obligation_evidence(o: DeviceCryptoObligation) -> NonEmptyStr {
 // the natively emitted binary calls, the exact handler it serves, and its startup self-check with that self-check's
 // bound. It lives here, with the receipt type, so the sidecar that mints a receipt, the broker that joins an echo to it,
 // and the emitter that renders the sidecar's main all read one fact; it names those declarations by reference and
-// imports none of their modules, so no import cycle arises (gunbc.plans.converged_ingress M2a).
+// imports none of their modules, so no import cycle arises (gunbc.plans.converged_ingress (deleted 2026-11-08) M2a).
 data device_crypto_native_ingress: NativeIngressProgram = NativeIngressProgram {
   binding: DeclarationRef { module_path: "gunbc.auth.approval_device_crypto_ingress", decl_name: "approval_device_crypto_ingress", field: WholeDeclaration },
   handler: DeclarationRef { module_path: "gunbc.auth.approval_device_crypto_serve", decl_name: "approval_device_crypto_handle", field: WholeDeclaration },

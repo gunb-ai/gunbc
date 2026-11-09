@@ -6,7 +6,6 @@ import std.dissolution { unbound_dissolution }
 import std.markdown { MarkdownBlock, MarkdownTableRow, TableBlock, AlignNone }
 import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
 import gunbc.plans.md_helpers { h2, p, li, ul, cell, row }
-import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 
 // FLEET HARDWARE FACTS, CONSUMED (operator, 2026-11-07). The operator's intent, in their words: changing
 // the installed hardware or an operating decision should change the generated configuration, admission
@@ -83,7 +82,7 @@ data fleet_hardware_consumer_migrations: List<ConsumerMigrationRow> = [
     superseded: "--device nvidia.com/gpu=all and route device_index 0, which silently change meaning when a card is added",
     waits_on: ["GPU power-cap realization"],
     closes_on: "the engine starts only after its own devices qualify (Requires= and After= on a cap step that fails on refusal); a one-card configuration stays evaluable while a second card is pending; TP=2 requires both members and never degrades to TP=1",
-    standing: MigrationUnstarted,
+    standing: MigrationStartedHere { what: "gunbc.serving.srv1_serving_launch now declares srv1_serving_gpu_group (the one powered card, gpu_board_04) and CONSTRUCTS the installed wrapper's `--device` from it: srv1_serving_docker_device_words_of renders one `--device nvidia.com/gpu=<UUID>` per member (the UUID resolved through gunbc.fleet.gpu_device_observation current_gpu_device_observations_of, admitted through gunbc.fleet.gpu_power_state_policy admit_gpu_cap_against), and builds the wrapper body (the script the boot unit installs for the next boot) only inside srv1_serving_wrapper's Installable arm, where the group resolved to a non-empty admitted set; a group that does not resolve is Srv1ServingWrapperRefused and has NO body, so neither `nvidia.com/gpu=all` nor a GPU-less `docker run` is writable, and the deploy's install leg matches that same value. The route's served device ordinal is derived from the declared group (srv1_serving_served_device_rank), no longer the literal 0. The host copy the RUNNING container was launched from (still `all`) is retained as history in srv1_serving_wrapper_running_body and pinned by gunbc.host.srv1_serving_startup_receipt; srv1_serving_wrapper_adoption types the installed-vs-running gap PendingOperatorRelaunch — a DECLARED relaunch obligation the OPERATOR performs, never an auto-restart. The power-limit readback that lets a device run stays owned by gunbc.fleet.gpu_power_cap_converge, enforced on the real path by the engine unit's Requires= on the cap unit. Readiness belongs to the selected configuration: the one-card group resolves while gpu_board_01 (Workstation) is pending, and a TP=2 group refuses rather than degrading to TP=1 (asserted in test.claim.serving.srv1_serving_launch_witness and test.claim.live_deploy.live_deploy_apply_plan_witness)." },
   },
   ConsumerMigrationRow {
     consumer: "host power qualification",
@@ -126,9 +125,9 @@ data fleet_hardware_consumer_migrations: List<ConsumerMigrationRow> = [
     owner: decl_ref(module_path: "gunbc.serving.flash_next_maxq_fork_measurements", decl_name: "flash_next_maxq_fork_measurements_frontier"),
     inputs: "the exact device group, placement, interconnect, software, caps and workload a reading was taken on",
     superseded: "readings from a rented two-card PCIe 5 host read as if they described srv1's PCIe 4 pair",
-    waits_on: ["the srv1 TP=2 vs 2xTP=1 serving reading, carried by gunbc.serving.srv1_topology_comparison on #16104 -- not on main yet", "the re-run of both NCCL arms with neither serving replica loaded, which srv1_collective_read_obligation names (the 2x delta between the arms is recorded as a hypothesis until then)"],
+    waits_on: ["the re-run of both NCCL arms with neither serving replica loaded, which srv1_collective_read_obligation names (the 2x delta between the arms is recorded as a hypothesis until then)"],
     closes_on: "evidence from another configuration cannot qualify this one; srv1's own P2P, NCCL and serving readings exist before TP=2 is admitted",
-    standing: MigrationStartedHere { what: "the Workstation card half of the wait is closed: it enumerates (gunbc.fleet.gpu_device_observation, 2026-11-08). srv1's own interconnect readings exist and are first-hand: peer access refused by the chipset in both directions, the pair at NODE across two host bridges, both links negotiating Gen4 x16 below the Gen5 x16 the cards advertise, ACS redirecting at both root ports, the SMMU translating both GPU groups (gunbc.fleet.gpu_interconnect_observation). The NCCL half landed too, on 2026-11-08 22:22 UTC at the operator's request: an eight-row first-hand all-reduce sweep in a short-lived container with both CDI GPUs (default arm and NCCL_P2P_DISABLE=1, four sizes each), which also retired the relayed claim that the two arms behave the same -- they differ by about 2x from 256 KiB up while naming the same SHM/direct transport, and that difference is typed as a hypothesis with its re-run obligation rather than read as a mechanism. What keeps this row open is the serving reading only: gunbc.serving.srv1_topology_comparison is on #16104 and not on main, so this closes when that lands, not before" },
+    standing: MigrationStartedHere { what: "the Workstation card half of the wait is closed: it enumerates (gunbc.fleet.gpu_device_observation, 2026-11-08). srv1's own interconnect readings exist and are first-hand: peer access refused by the chipset in both directions, the pair at NODE across two host bridges, both links negotiating Gen4 x16 below the Gen5 x16 the cards advertise, ACS redirecting at both root ports, the SMMU translating both GPU groups (gunbc.fleet.gpu_interconnect_observation). The NCCL half landed too, on 2026-11-08 22:22 UTC at the operator's request: an eight-row first-hand all-reduce sweep in a short-lived container with both CDI GPUs (default arm and NCCL_P2P_DISABLE=1, four sizes each), which also retired the relayed claim that the two arms behave the same -- they differ by about 2x from 256 KiB up while naming the same SHM/direct transport, and that difference is typed as a hypothesis with its re-run obligation rather than read as a mechanism. What keeps this row open is one obligation, not a missing reading: the throughput comparison itself landed on main with #16104 (gunbc.serving.srv1_topology_comparison, 2026-11-09), so all three of P2P, NCCL and serving readings named by closes_on are in-tree; what remains is the sweep re-taken in a window with neither serving replica loaded, because the 2x gap between the two arms is a hypothesis while both replicas were holding memory" },
   },
   ConsumerMigrationRow {
     consumer: "router admission ceiling",
@@ -146,7 +145,7 @@ data fleet_hardware_consumer_migrations: List<ConsumerMigrationRow> = [
     superseded: "card-cooling route reports on A16-specific inputs",
     waits_on: [],
     closes_on: "card-dependent outputs derive from the selected subject; catalog candidates are not presented as installed",
-    standing: MigrationUnstarted,
+    standing: MigrationStartedHere { what: "card_cooling_route reports now take a RouteSubject built from duct_card_dims (route_subject_of), so card-dependent outputs derive from the selected card and route_report_for refuses an unread card by naming its reading, never substituting the A16 (this change)" },
   },
   ConsumerMigrationRow {
     consumer: "energy and cost",
@@ -205,5 +204,5 @@ data fleet_hardware_fact_consumption_plan: Plan = Plan {
   retirement: PlanRetiresWhen {
     condition: unbound_dissolution(description: "Retire when every row of fleet_hardware_consumer_migrations has closed on its stated evidence (or moved to the program that owns it and closed there), each superseded independent authoring or bypass is removed, and the owned-hardware population carries an explicit disposition for every physical unit."),
   },
-  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  projection: PlanIsAuthorityOnly,
 }

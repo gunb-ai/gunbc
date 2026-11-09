@@ -77,7 +77,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// RLM-1 red controls (docs/plans/roadmap-launch-mvp-plan.md section 3, RLM-1 falsifiers), each
+// RLM-1 red controls (docs/plans/roadmap-launch-mvp-plan.md (deleted 2026-11-08) section 3, RLM-1 falsifiers), each
 // enrolled as a permanent regression control over the RLM-0 synthetic canary graph and the fixture
 // host: (a) the blocked child is refused DependenciesBlocked and the tick fold over it produces no
 // actuation outcome at all -- SpawnNotAdmitted is the only arm a refusal can reach, and Spawned /

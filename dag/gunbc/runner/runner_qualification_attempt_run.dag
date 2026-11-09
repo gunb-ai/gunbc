@@ -60,7 +60,7 @@ import gunbc.runner.runner_qualification_attempt_pass {
   AttemptNothingRegistered, AttemptDeregistered, AttemptRegistrationRemains,
 }
 
-// THE PRODUCTION BINDING OF THE QUALIFICATION PASS (gunbc.plans.mtcollins1_ci_service_legs G1b): the qualification_attempt
+// THE PRODUCTION BINDING OF THE QUALIFICATION PASS (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) G1b): the qualification_attempt
 // fleet-converge mode runs qualification_attempt_wet, which binds every real effect to
 // gunbc.runner.runner_qualification_attempt_pass qualification_attempt_pass_over and nothing else decides an order.
 //

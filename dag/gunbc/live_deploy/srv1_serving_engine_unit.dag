@@ -15,7 +15,7 @@ import gunbc.host.host_layout { operator_home_root }
 import gunbc.live_deploy.spec { gunbc_service_user }
 import gunbc.live_deploy.board_function_converge_unit { RetiredHandInstalledRemoval }
 import gunbc.live_deploy.srv1_gpu_power_cap_unit { srv1_gpu_power_cap_unit_name }
-import gunbc.serving.srv1_serving_launch { srv1_serving_wrapper }
+import gunbc.retained_shell_script { RetainedShellScript }
 
 // SRV1'S SERVING ENGINE COMES BACK AT BOOT (operator, 2026-11-02, after the 15:50Z outage left the router
 // routing to an engine nothing restarted). The engine is the lil-flash-next container that
@@ -34,9 +34,12 @@ import gunbc.serving.srv1_serving_launch { srv1_serving_wrapper }
 // (gunbc.serving.srv1_serving_launch srv1_serving_unmodeled_frontier_rows); this unit only covers a boot,
 // when nothing is bound. A shutdown stops the container through docker.
 //
-// The wrapper is installed from the model, not from the host's hand copy: its bytes are
-// srv1_serving_wrapper.body, whose sha256 the launch witness pins to the startup receipt's reading of the
-// script the running container was launched from.
+// The wrapper is installed FROM THE MODEL: its bytes are the script in srv1_serving_wrapper's Installable arm,
+// whose `--device` flags are the declared GPU group's per-device selectors; a group that does not resolve has no
+// script, and the deploy refuses the engine leg (gunbc.live_deploy.apply_legs deploy_apply_srv1_serving_engine_plan).
+// The startup receipt pins the sha of the script the RUNNING container was launched from; when the installed
+// body is ahead of it (a group change not yet relaunched into) srv1_serving_wrapper_adoption types the gap as
+// a PendingOperatorRelaunch — declared, not auto-applied, and never a red witness.
 
 data srv1_serving_engine_unit_name: NonEmptyStr = "gunbc-srv1-serving-engine.service"
 
@@ -51,8 +54,10 @@ data srv1_serving_engine_wrapper_path: NonEmptyStr = "/usr/local/libexec/gunbc/s
 // never happen here because the image is a local build pinned by digest.
 data srv1_serving_engine_start_timeout: Second = second(count: 300)
 
-fn srv1_serving_engine_wrapper_text() -> String {
-  srv1_serving_wrapper.body
+// The wrapper text is the Installable arm's own script: a caller must hold that arm to ask for it, so a refused
+// group has no text to install (gunbc.serving.srv1_serving_launch srv1_serving_wrapper).
+fn srv1_serving_engine_wrapper_text(script: RetainedShellScript) -> String {
+  script.body
 }
 
 fn srv1_serving_engine_unit_file() -> SystemdUnitFile {
