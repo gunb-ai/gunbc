@@ -1,8 +1,10 @@
 module test.claim.fabric.fabric_ci_fci1_allocation_lifecycle_witness
 
+import std.optional { Absent, Present }
+
 import gunbc.fabric.fabric_required_build_cell {
   AllocationSlotAbsent, AllocationSlotFree, AllocationSlotHeld, AllocationSlotUnreadable,
-  AllocationSlotNoSubject, AllocationSlotRefusedNoSubject,
+  AllocationSlotNoSubject, AllocationSlotRefusedNoSubject, AllocationStoreRestorationRefusedNoSubject,
   AllocationStoreRestorationRefused,
   AllocationSlotAbsentReturnedFree, AllocationSlotFreeReturnedFree,
   AllocationSlotAdmitted, AllocationSlotRefusedHeld, AllocationSlotRefusedUnreadable,
@@ -10,17 +12,37 @@ import gunbc.fabric.fabric_required_build_cell {
 }
 import gunbc.instruments.fabric_control_plane_live_probe {
   Fci1CheckpointAfterCanonicalCommitBeforeTransport,
-  cp_probe_served_host, cp_probe_subject, cp_probe_subject_from, cp_probe_slot_from,
-  cp_probe_authorized_from, cp_probe_authorized_slot, cp_probe_no_subject_marker,
-  Fci1SlotNoSubject, Fci1SlotHeld, Fci1AuthorityExpected, Fci1AuthorityMismatch,
-  Fci1ReservationCleanupAuthority, fci1_authority_matches_held, fci1_authority_matches_exact_free,
-  fci1_allocation_prestate_wire, fci1_decode_allocation_prestate, fci1_expected_held_generation,
+  cp_probe_served_host,
+  cp_probe_subject,
+  cp_probe_subject_from,
+  cp_probe_slot_from,
+  cp_probe_authorized_from,
+  cp_probe_authorized_slot,
+  cp_probe_no_subject_label,
+  cp_probe_subject_key_label,
+  cp_probe_subject_cell_text,
+  Fci1SlotNoSubject,
+  Fci1SlotHeld,
+  Fci1ReservationCleanupAuthority,
+  fci1_authority_matches_held,
+  fci1_authority_matches_exact_free,
+  fci1_allocation_prestate_wire,
+  fci1_decode_allocation_prestate,
+  fci1_expected_held_generation,
   fabric_cell_allocation_key,
-  CpProbeSubjectSelected, CpProbeSubjectNoFabricExecutionSlot, CpProbeSubjectHostMachineryUnavailable,
-  CpProbeSubject, CpProbeAuthorized, CpProbeAuthorizedSlot, CpProbeAuthorizedRefused,
+  CpProbeSubjectSelected,
+  CpProbeSubjectNoFabricExecutionSlot,
+  CpProbeSubjectHostMachineryUnavailable,
+  CpProbeSubject,
+  CpProbeAuthorized,
+  CpProbeAuthorizedSlot,
+  CpProbeAuthorizedRefused,
   Fci1CheckpointAfterReleaseBeforeGrading,
   Fci1CheckpointGenerationHeldTwo,
   fci1_checkpoint_token,
+  RunnerSlotIdentity,
+  Present,
+  Absent
 }
 import gunbc.runner.runner_slot_allocation { fabric_execution_slot_identities }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }
@@ -183,10 +205,13 @@ test fn witness_fci1_cannot_take_a_slot_the_operator_returned_to_ci_as_its_subje
     RunnerSlotIdentity { host: "srv4", slot_index: 7 },
   ]
   fci1_roster_names_none(roster: fabric_execution_slot_identities(), none_of: returned)
-    // And so the instrument cannot act on any of them: neither what the gate selects nor what the
-    // projection falls back to is one of them -- the concrete failure the literal subject would have
-    // caused on srv3, where the instrument still runs its legs.
-    && fci1_roster_names_none(roster: [cp_probe_slot()], none_of: returned)
+    // And so the instrument cannot act on any of them, nor label anything with them: the gate selects
+    // nothing today and the label projection has no subject at all -- the concrete failure the literal
+    // subject would have caused on srv3, where the instrument still runs its legs.
+    && match cp_probe_slot() {
+      Absent {} => true
+      Present { value: slot } => false
+    }
 }
 
 // THE EFFECT SURFACE CANNOT OBTAIN A SLOT THE ROSTER DID NOT SELECT (2026-11-09 review).
@@ -221,19 +246,19 @@ test fn witness_fci1_effect_legs_act_only_on_the_roster_selected_subject() -> Bo
 }
 
 test fn witness_fci1_refusal_projection_is_no_slot_at_all() -> Bool {
-  let marker = cp_probe_no_subject_marker()
-  // A refusal cannot name a cell: the marker is not a committed fabric identity and sits on no host the
-  // fleet has, so a key, path or systemctl unit built from it refers to nothing that exists.
-  !fci1_roster_names(roster: fabric_execution_slot_identities(), want: marker)
-    && (marker.host as String) != "srv1"
-    && (marker.host as String) != "srv2"
-    && (marker.host as String) != "srv3"
-    && (marker.host as String) != "srv4"
-    && marker.slot_index == 0
-    // And today's projection -- the roster commits srv1's members, which the srv3 legs do not serve --
-    // is that marker, not srv1-13.
-    && !fci1_roster_names(roster: [cp_probe_slot()], want: RunnerSlotIdentity { host: "srv1", slot_index: 13 })
-    && !fci1_roster_names(roster: [cp_probe_slot()], want: RunnerSlotIdentity { host: "srv1", slot_index: 14 })
+  // A refusal projects NOTHING, not a stand-in. Today the roster commits srv1's members and these are the
+  // srv3 legs, so there is no subject: the projection is Absent -- neither srv1-13 nor srv1-14 nor a
+  // fabricated identity, because the sentinel identity was deleted rather than dressed up (a placeholder
+  // in a model-shaped field is a fork: gunbc.design_argument::continuous_generalization). What a refusal
+  // may put into a label field is the string that names its own absence, and nothing else; that string is
+  // not a host the fleet has, so no key, path or systemctl unit built from it can name a real cell.
+  match cp_probe_slot() {
+    Absent {} => true
+    Present { value: slot } => false
+  }
+    && cp_probe_subject_key_label() == cp_probe_no_subject_label()
+    && cp_probe_subject_cell_text() == cp_probe_no_subject_label() as String
+    && all(fabric_execution_slot_identities(), identity => identity.host != cp_probe_no_subject_label())
 }
 
 // ─── A REFUSAL MUST NOT WEAR A CELL STATE ──────────────────────────────────────────────────────
@@ -263,7 +288,7 @@ test fn witness_fci1_no_subject_is_admitted_by_nothing_grants_no_generation() ->
       held_generation: 1,
       poststate: AllocationSlotFree { path: "/fixture/store", generation: 2 },
     ) {
-      AllocationStoreRestorationRefused { path: p } => p == "no-fabric-execution-slot-committed"
+      AllocationStoreRestorationRefusedNoSubject { why: reported } => reported == why
       _ => false
     }
 }
@@ -282,14 +307,15 @@ test fn witness_fci1_no_subject_wire_never_decodes_as_a_cell_state() -> Bool {
 }
 
 // THE CLEANUP AUTHORITY COMPARATORS MUST NOT MATCH A READ THAT NEVER HAPPENED. The fixture's slot_key is
-// the current subject's key -- the marker's key today, since the projection is what the comparator still
-// reads (gunbc.integration_concern::cp_probe_labels_are_built_from_an_unbound_subject) -- so the only
+// the label the comparator itself derives for the current subject (the label-side rung,
+// gunbc.integration_concern::cp_probe_labels_are_built_from_an_unbound_subject), so both sides take the
+// same branch and the only
 // thing varying below is the observation arm: a genuine held observation for the same key MATCHES, and
 // the no-subject observation does not. That rules out a comparator that simply returns false.
 test fn witness_fci1_no_subject_observation_matches_no_cleanup_authority() -> Bool {
   let authority = Fci1ReservationCleanupAuthority {
     root: "/fixture/store",
-    slot_key: fabric_cell_allocation_key(slot: cp_probe_no_subject_marker()),
+    slot_key: cp_probe_subject_key_label(),
     generation: 2,
     reservation_identity: "reserved-by-fci1",
     reservation_payload: "payload",

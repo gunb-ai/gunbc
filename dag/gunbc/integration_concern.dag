@@ -1789,7 +1789,7 @@ data cp_probe_labels_are_built_from_an_unbound_subject: IntegrationConcern = Int
     head: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_slot"),
     tail: [
       decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_authorized_slot"),
-      decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_no_subject_marker"),
+      decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_no_subject_label"),
     ],
   },
   question: "Do the key/path builders take the bound RunnerSlotIdentity as a parameter (the shape fci1_bounded_controls_legs already uses), or does the label surface collapse into a single builder that is handed the selection once per instrument run? And once no caller remains, can cp_probe_slot be deleted rather than documented?",
@@ -1817,9 +1817,9 @@ data cp_probe_labels_are_built_from_an_unbound_subject: IntegrationConcern = Int
         statement: "no leg that mutates OR READS the market, the allocation store or the host may obtain a slot, or an answer about a cell, except through the identity bound by the subject gate's Selected arm -- a refusal is an arm of its own type (AllocationSlotNoSubject, Fci1SlotNoSubject, Fci1BindingNoSubject, AllocationSlotRefusedNoSubject), never the arm that a real observation of an empty directory produces; a row that lets a mutating leg read the projection instead goes red here",
       },
       PreservedObligation {
-        holder: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_no_subject_marker"),
+        holder: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_no_subject_label"),
         control: Absent,
-        statement: "a refusal projects a marker that names no fleet host and no committed index, so a label built on a refusal cannot name a real cell, and no reader or writer may answer a refusal with the marker-shaped identity either -- only the pure builders in the residual scope may -- the property that keeps the remaining builder uses from being a hazard while this rung stands",
+        statement: "a refusal projects only the label string that names its own absence, which is not a host the fleet has, so a label built on a refusal cannot name a real cell; the projection itself is an Optional and no reader or writer may obtain an identity from a refusal at all -- only the pure builders in the residual scope may consume the label -- the property that keeps those uses from being a hazard while this rung stands",
       },
     ],
     next: climbs_when(capability: "the RESIDUAL key, path and report builders -- pure label and wire sites only, since every effectful reader and writer was gated on the selection on 2026-11-09 (review 92425) -- take the Selected-bound identity and gunbc.instruments.fabric_control_plane_live_probe::cp_probe_slot is deleted, so no function in the instrument can name a slot the roster did not select"),
