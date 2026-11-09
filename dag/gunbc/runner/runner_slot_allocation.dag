@@ -641,7 +641,7 @@ data srv1_microvm_shakedown_slot_realization: MicrovmSlotRealizationRow = Microv
 }
 
 data srv1_microvm_revision_job_slot_realization: MicrovmSlotRealizationRow = MicrovmSlotRealizationRow {
-  slot: srv1_microvm_revision_job_slot(),
+  slot: srv1_revision_job_slot(),
   realization: MicrovmSlotNotRealized {
     observed_at: "2026-11-09T01:20Z",
     reading: "no controller unit and no microVM slot instance is installed or live on srv1; the only active microVM unit is the network ruleset gunbc-microvm-nft.service",
