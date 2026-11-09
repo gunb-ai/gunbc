@@ -5,6 +5,8 @@ import std.types { Bool, List }
 import v2.std.integer { Int }
 import v2.std.text { String }
 import std.algebra { for_all, is_empty, length }
+import std.nat { Nat, nat_add }
+import v2.test.claim.compiler.literal_elaboration { lel_reason }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.compiler.module_header {
@@ -412,29 +414,29 @@ fn reader_with_tail(tail: Reach) -> ModuleHeaderReader {
   ModuleHeaderReader { lex: reader().lex, grammar: reader().grammar, tail: tail }
 }
 
-fn header_from(reader: ModuleHeaderReader, content: String, window: Int) -> String {
+fn header_from(reader: ModuleHeaderReader, content: String, window: Nat) -> String {
   read_text(read: module_header_read_from(reader: reader, file: "test/header.dag", content: content, window: window))
 }
 
 // Every window the sweeps try is below this and every swept text is shorter, so the last windows of a
 // sweep are past the end of the text.
-fn sweep_last() -> Int { 40 }
+fn sweep_last() -> Nat { 40 }
 
-fn reads_as_the_whole_file_from_every_window(reader: ModuleHeaderReader, content: String, window: Int) -> Bool {
+fn reads_as_the_whole_file_from_every_window(reader: ModuleHeaderReader, content: String, window: Nat) -> Bool {
   if window > sweep_last() {
     true
   } else {
     header_from(reader: reader, content: content, window: window) == whole_header_of(content: content)
-      && reads_as_the_whole_file_from_every_window(reader: reader, content: content, window: window + 1)
+      && reads_as_the_whole_file_from_every_window(reader: reader, content: content, window: nat_add(a: window, b: 1))
   }
 }
 
-fn reads_unlike_the_whole_file_from_some_window(reader: ModuleHeaderReader, content: String, window: Int) -> Bool {
+fn reads_unlike_the_whole_file_from_some_window(reader: ModuleHeaderReader, content: String, window: Nat) -> Bool {
   if window > sweep_last() {
     false
   } else {
     !(header_from(reader: reader, content: content, window: window) == whole_header_of(content: content))
-      || reads_unlike_the_whole_file_from_some_window(reader: reader, content: content, window: window + 1)
+      || reads_unlike_the_whole_file_from_some_window(reader: reader, content: content, window: nat_add(a: window, b: 1))
   }
 }
 
@@ -517,7 +519,23 @@ test fn a_header_production_whose_tail_is_not_bounded_is_refused_not_read_throug
 // A window that holds no scalar can never grow, so it is refused and never looped on.
 test fn a_first_window_that_holds_no_scalar_is_refused() -> Bool {
   header_from(reader: reader(), content: "module a.b\n", window: 0) == "refused"
-    && header_from(reader: reader(), content: "module a.b\n", window: -4) == "refused"
+}
+
+// A NEGATIVE FIRST WINDOW IS UNWRITABLE (DESIGN section 4b, a climb to rung 4; tidy-ant-251 msg_31998a49). The window
+// is a COUNT of scalars, so module_header_read_from takes a std.nat Nat and the `< 1` refusal that once also
+// answered -4 now answers only 0 (above). The RED moved, in FORM not meaning: what was "a negative window is
+// refused at read time" is now "a negative window is refused at the type boundary, before any read". The
+// fixture source writes the negative window at a Nat formal of read_from's shape and is refused by infer's
+// literal judge at the Nat grounding row (the reason v2.test.claim.compiler.literal_elaboration
+// lel_negative_literal_at_nat_refuses pins); the positive control is the same source with a window the count
+// admits.
+fn mhd_negative_window_src(window: String) -> String {
+  "module p\n\nimport std.nat { Nat }\n\nfn read_from(window: Nat) -> Bool {\n  true\n}\n\nfn uses() -> Bool {\n  read_from(window: " + window + ")\n}\n"
+}
+
+test fn a_negative_first_window_is_refused_at_the_nat_boundary() -> Bool {
+  lel_reason(src: mhd_negative_window_src(window: "-4")) == ^infer_reason_literal_outside_kernel_grounding_range
+    && lel_reason(src: mhd_negative_window_src(window: "4")) == ^accepted
 }
 
 // A LEXICAL ERROR INSIDE THE WINDOW IS THE WHOLE LEX'S ERROR, WITH ITS OWN CAUSE; ONE BEYOND IT IS THE

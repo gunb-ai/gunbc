@@ -7,7 +7,7 @@ import gunbc.roadmap.roadmap_model {
   WorkItemDispatch, NotDispatchable, Dispatchable,
   SectionElement, Group, SectionGroup,
 }
-import gunbc.roadmap.roadmap_status { DerivableLine, AuthoredLine, SupersededLine, Signoff, Unsigned, SignedOff, RedControlExecuted, HandbackDelivered, HandbackNotDelivered }
+import gunbc.roadmap.roadmap_status { DerivableLine, AuthoredLine, SupersededLine }
 import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified }
 import gunbc.roadmap.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap.roadmap_spawner { next_spawnable, roadmap_spawn_request_json, spawn_frontier, roadmap_dispatch_json }
@@ -26,37 +26,23 @@ fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
     dispatch: Dispatchable { repo: "gunbc", acceptance: PrsMerged },
     execution: ExecutionContractUnspecified,
     owner: "",
-    signoff: Unsigned,
     parent: none,
     centering: none,
   }
 }
 
-fn accepted_node(base: RoadmapNode) -> RoadmapNode {
+// A CLOSED node inside the plan. A node definition carries no acceptance: an accepted node and its
+// edges leave the document through the acceptance history before the spawner reads it, so the
+// closed shape a definition can still state is a superseded line, which closes dependency edges.
+fn closed_node(base: RoadmapNode) -> RoadmapNode {
   RoadmapNode {
     identity: "rnfx_Z9KZSNBGMW86W36XPHHP" as RoadmapNodeIdentity,
     node: base.node,
-    line: base.line,
+    line: SupersededLine { by: "successor-lane", content: "closed" },
     carriers: base.carriers,
     dispatch: base.dispatch,
     execution: base.execution,
     owner: base.owner,
-    signoff: SignedOff { by: "operator", works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] }, as_expected: true },
-    parent: none,
-    centering: none,
-  }
-}
-
-fn rejected_node(base: RoadmapNode) -> RoadmapNode {
-  RoadmapNode {
-    identity: "rnfx_BDFRJM5H1F0VB3E58P5N" as RoadmapNodeIdentity,
-    node: base.node,
-    line: base.line,
-    carriers: base.carriers,
-    dispatch: base.dispatch,
-    execution: base.execution,
-    owner: base.owner,
-    signoff: SignedOff { by: "operator", works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: HandbackNotDelivered, as_expected: true },
     parent: none,
     centering: none,
   }
@@ -71,7 +57,6 @@ fn undispatchable_derivable(id: String, prs: List<Int>, title: String) -> Roadma
     dispatch: NotDispatchable,
     execution: ExecutionContractUnspecified,
     owner: "",
-    signoff: Unsigned,
     parent: none,
     centering: none,
   }
@@ -93,7 +78,7 @@ fn fixture_doc(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> RoadmapDoc
 }
 
 test fn witness_satisfied_dep_is_spawnable() -> Bool {
-  let node_a = accepted_node(base: sized_derivable(id: "test-a", prs: [100], title: "Node A"))
+  let node_a = closed_node(base: sized_derivable(id: "test-a", prs: [100], title: "Node A"))
   let node_b = sized_derivable(id: "test-b", prs: [200], title: "Node B")
   let edges = [RoadmapEdge { child: roadmap_spawner_nid(s: "test-b"), parent: roadmap_spawner_nid(s: "test-a") }]
   let doc = fixture_doc(nodes: [node_a, node_b], edges: edges)
@@ -117,8 +102,8 @@ test fn witness_unsized_node_excluded() -> Bool {
   !any(spawnable, n => n.node == roadmap_spawner_nid(s: "test-unsized"))
 }
 
-test fn witness_accepted_node_excluded() -> Bool {
-  let node = accepted_node(base: sized_derivable(id: "test-done", prs: [999], title: "Done Node"))
+test fn witness_closed_node_excluded() -> Bool {
+  let node = closed_node(base: sized_derivable(id: "test-done", prs: [999], title: "Done Node"))
   let doc = fixture_doc(nodes: [node], edges: [])
   let spawnable = next_spawnable(doc: doc, merged: [999])
   !any(spawnable, n => n.node == roadmap_spawner_nid(s: "test-done"))
@@ -129,13 +114,6 @@ test fn witness_merged_unsigned_node_remains_spawnable() -> Bool {
   let doc = fixture_doc(nodes: [node], edges: [])
   let spawnable = next_spawnable(doc: doc, merged: [999])
   any(spawnable, n => n.node == roadmap_spawner_nid(s: "test-review"))
-}
-
-test fn witness_rejected_signoff_remains_spawnable_for_rework() -> Bool {
-  let node = rejected_node(base: sized_derivable(id: "test-rework", prs: [999], title: "Rework Node"))
-  let doc = fixture_doc(nodes: [node], edges: [])
-  let spawnable = next_spawnable(doc: doc, merged: [999])
-  any(spawnable, n => n.node == roadmap_spawner_nid(s: "test-rework"))
 }
 
 test fn witness_top_level_sized_node_spawnable() -> Bool {
@@ -158,7 +136,7 @@ test fn witness_json_schema_field_present() -> Bool {
 }
 
 test fn witness_json_satisfied_dep_in_ready() -> Bool {
-  let node_a = accepted_node(base: sized_derivable(id: "parent-done-node", prs: [100], title: "A2"))
+  let node_a = closed_node(base: sized_derivable(id: "parent-done-node", prs: [100], title: "A2"))
   let node_b = sized_derivable(id: "child-ready-node", prs: [200], title: "B2")
   let edges = [RoadmapEdge { child: roadmap_spawner_nid(s: "child-ready-node"), parent: roadmap_spawner_nid(s: "parent-done-node") }]
   let doc = fixture_doc(nodes: [node_a, node_b], edges: edges)
@@ -191,9 +169,9 @@ test fn witness_spawn_frontier_ready_matches_next_spawnable() -> Bool {
 }
 
 test fn witness_all_parents_gate_spawnability() -> Bool {
-  let node_a = accepted_node(base: sized_derivable(id: "mp-a", prs: [100], title: "Node A"))
+  let node_a = closed_node(base: sized_derivable(id: "mp-a", prs: [100], title: "Node A"))
   let node_b_open = sized_derivable(id: "mp-b", prs: [200], title: "Node B")
-  let node_b_done = accepted_node(base: node_b_open)
+  let node_b_done = closed_node(base: node_b_open)
   let node_c = sized_derivable(id: "mp-c", prs: [300], title: "Node C")
   let edges = [
     RoadmapEdge { child: roadmap_spawner_nid(s: "mp-c"), parent: roadmap_spawner_nid(s: "mp-a") },
@@ -209,8 +187,8 @@ test fn witness_all_parents_gate_spawnability() -> Bool {
     && any(both_parents_done, n => n.node == roadmap_spawner_nid(s: "mp-c"))
 }
 
-test fn witness_dispatch_json_partitions_ready_upcoming_done() -> Bool {
-  let node_done = accepted_node(base: sized_derivable(id: "dj-done", prs: [100], title: "Done Node"))
+test fn witness_dispatch_json_partitions_ready_upcoming_superseded() -> Bool {
+  let node_done = closed_node(base: sized_derivable(id: "dj-done", prs: [100], title: "Done Node"))
   let node_ready = sized_derivable(id: "dj-ready", prs: [200], title: "Ready Node")
   let node_gated = sized_derivable(id: "dj-gated", prs: [300], title: "Gated Node")
   let edges = [
@@ -219,11 +197,11 @@ test fn witness_dispatch_json_partitions_ready_upcoming_done() -> Bool {
   ]
   let doc = fixture_doc(nodes: [node_done, node_ready, node_gated], edges: edges)
   let json = roadmap_dispatch_json(doc: doc, merged: [100])
-  string_contains(s: json, pattern: "roadmap-dispatch/v2")
+  string_contains(s: json, pattern: "roadmap-dispatch/v3")
     && string_contains(s: json, pattern: "\"node_id\": \"dj-ready\"")
-    && !string_contains(s: json, pattern: "\"node_id\": \"dj-done\"")
+    && string_contains(s: json, pattern: "\"node_id\": \"dj-done\", \"superseded_by\": \"successor-lane\"")
     && string_contains(s: json, pattern: "\"node_id\": \"dj-gated\", \"title\": \"Gated Node\", \"unmet_parents\": [\"dj-ready\"]")
-    && string_contains(s: json, pattern: "\"done\": [\"dj-done\"]")
+    && !string_contains(s: json, pattern: "\"done\": ")
 }
 
 fn superseded_node(id: String, by: String, content: String) -> RoadmapNode {
@@ -235,7 +213,6 @@ fn superseded_node(id: String, by: String, content: String) -> RoadmapNode {
     dispatch: NotDispatchable,
     execution: ExecutionContractUnspecified,
     owner: "",
-    signoff: Unsigned,
     parent: none,
     centering: none,
   }
@@ -264,7 +241,6 @@ test fn witness_superseded_control_open_parent_still_gates() -> Bool {
     dispatch: NotDispatchable,
     execution: ExecutionContractUnspecified,
     owner: "",
-    signoff: Unsigned,
     parent: none,
     centering: none,
   }
