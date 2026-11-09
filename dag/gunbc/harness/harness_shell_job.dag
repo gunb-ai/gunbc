@@ -282,7 +282,8 @@ fn harness_command_table_line(obs: HarnessShellJobObservation) -> String {
 }
 
 fn harness_command_table(jobs: List<HarnessShellJob>) -> String {
-  if list_length(items: jobs) == 0 {
+  // @ref(std.algebra::length)
+  if std.algebra.length(xs: jobs) == 0 {
     "COMMAND TABLE: (no jobs)"
   } else {
     join(
@@ -395,7 +396,7 @@ fn harness_wait_until_any(jobs: List<HarnessShellJob>, remaining: Second) -> Har
   match harness_first_running_now_finished(before: jobs, after: stamped) {
     Present { value: obs } => WaitLoopFinished { jobs: stamped, observation: obs }
     Absent =>
-      if list_length(items: filter(stamped, j => harness_job_is_running(job: j))) == 0 {
+      if std.algebra.length(xs: filter(stamped, j => harness_job_is_running(job: j))) == 0 {
         WaitLoopNoRunningJob { jobs: stamped }
       } else if measure_le(a: remaining, b: second(count: 0)) {
         WaitLoopExpired { jobs: stamped }
