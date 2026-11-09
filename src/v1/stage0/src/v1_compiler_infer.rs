@@ -39434,6 +39434,40 @@ pub fn typecheck_module_demanded(
                 binding_forks: env_result.binding_forks.clone(),
             });
         }
+        if ((realized_items.clone().len() as i64) == 0) {
+            return Rc::new(TypecheckModuleResult {
+                typed: Rc::new(TypedModule {
+                    progress: ModuleTypecheckProgress::AbandonedBeforeItems,
+                    module: resolved.module.clone(),
+                    items: Rc::new(vec![]),
+                    type_env: env.clone(),
+                    type_env_cache: env_cache.clone(),
+                    interface: build_module_interface(
+                        crate::v1_std_core::authored_name_at(
+                            source_indices.clone(),
+                            resolved.module.clone(),
+                        ),
+                        resolved.module.clone(),
+                        env.clone(),
+                        env_cache.clone(),
+                        source_indices.clone(),
+                    ),
+                    func_env: Rc::new(ResolvedFuncEnv {
+                        name: crate::v1_std_core::authored_name_at(
+                            source_indices.clone(),
+                            resolved.module.clone(),
+                        ),
+                        local: v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
+                        parents: Rc::new(vec![]),
+                    }),
+                    item_registry: v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
+                    occurrence_transport: Some(resolved.occurrence_transport.clone()),
+                }),
+                diagnostics: v1_rt::concat(env_diags.clone(), seed_diags.clone()),
+                provider_demands: Rc::new(vec![]),
+                binding_forks: env_result.binding_forks.clone(),
+            });
+        }
         let resolved_module_name =
             crate::v1_std_core::authored_name_at(source_indices.clone(), resolved.module.clone());
         let synthesized_items = equality_synthesized_items(

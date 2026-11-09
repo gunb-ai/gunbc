@@ -21055,6 +21055,41 @@ fn typecheck_module_demanded(resolved: ResolvedModule, parent_index: Map<String,
     }
   }
 
+  // THE EMPTY-REALIZATION FAST PATH. A module this run realizes NOTHING of has no spelled edge, no
+  // typed edge and no contribution: its context, its analyzed contributions, its synthesized equality
+  // members and its boundary audit all take the realized items as their only input, so all of them
+  // would build an empty result at the full per-module price. The stub returned here is the same
+  // shape the abandonment-before-items path returns -- with the type env still BUILT above, so this
+  // module's own import and type-environment diagnostics keep firing exactly as they did; what is
+  // skipped is only work over declarations none of them can see. A reader in another module that
+  // names something this stub does not carry asks a declaration the run did not realize: the reading
+  // module's boundary audit refuses it as a located realization gap, or its own environment build
+  // refuses it -- a refusal either way, never an answer of 'absent'.
+  if count(realized_items) == 0 {
+    return TypecheckModuleResult {
+      typed: TypedModule {
+        progress: AbandonedBeforeItems,
+        module: resolved.module,
+        items: [],
+        type_env: env,
+        type_env_cache: env_cache,
+        interface: build_module_interface(
+          module_path: authored_name_at(source_indices: source_indices, node: resolved.module),
+          module: resolved.module,
+          env: env,
+          cache: env_cache,
+          source_indices: source_indices
+        ),
+        func_env: ResolvedFuncEnv { name: authored_name_at(source_indices: source_indices, node: resolved.module), local: empty_map(), parents: [] },
+        item_registry: empty_map(),
+        occurrence_transport: Present { value: resolved.occurrence_transport },
+      },
+      diagnostics: concat(env_diags, seed_diags),
+      provider_demands: [],
+      binding_forks: env_result.binding_forks
+    }
+  }
+
   let resolved_module_name = authored_name_at(source_indices: source_indices, node: resolved.module)
   let synthesized_items = equality_synthesized_items(items: realized_items, module_name: resolved_module_name, env: env)
   let contributions = map(concat(realized_items, synthesized_items), item =>
