@@ -8,6 +8,7 @@ use self::DecimalMoneyPerHourConversion::*;
 use self::FiniteByteSizeBuild::*;
 use self::GrainRounding::*;
 use self::InstantOrder::*;
+use self::MeasureFit::*;
 use self::MeasureSubtraction::*;
 use self::PositiveCelsiusDelta::*;
 use self::PositiveMeasureCount::*;
@@ -372,6 +373,46 @@ pub fn measure_sub<Q, S>(
 
 pub fn measure_le<Q, S>(a: Rc<Measure<Q, S, i64>>, b: Rc<Measure<Q, S, i64>>) -> bool {
     (a.count.clone() <= b.count.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum MeasureFit<Q, S> {
+    Fits {
+        available: Rc<Measure<Q, S, i64>>,
+    },
+    Below {
+        requested: Rc<Measure<Q, S, i64>>,
+        available: Rc<Measure<Q, S, i64>>,
+    },
+}
+impl<Q: Clone, S: Clone> MeasureFit<Q, S> {
+    pub fn available(&self) -> Rc<Measure<Q, S, i64>> {
+        match self {
+            MeasureFit::Fits {
+                available: __val, ..
+            } => __val.clone(),
+            MeasureFit::Below {
+                available: __val, ..
+            } => __val.clone(),
+        }
+    }
+}
+
+pub fn measure_fits<Q, S>(
+    requested: Rc<Measure<Q, S, i64>>,
+    available: Rc<Measure<Q, S, i64>>,
+) -> Rc<MeasureFit<Q, S>> {
+    if measure_le(requested.clone(), available.clone()) {
+        Rc::new(MeasureFit::Fits {
+            available: available.clone(),
+        })
+    } else {
+        Rc::new(MeasureFit::Below {
+            requested: requested.clone(),
+            available: available.clone(),
+        })
+    }
 }
 
 pub fn time_measure<S>(count: Nat) -> Rc<Measure<Time, S, i64>> {
