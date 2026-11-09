@@ -24,8 +24,11 @@ import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_
 // through a shared type rather than by choice.
 //
 // It lives here instead: a fleet-side roster we author, about executors we
-// either own or rent. We know srv3-06 is ours and runs our control plane. We
-// know what we bought a spark for. The supplier is never asked.
+// either own or rent. We know srv1-13 and srv1-14 -- the fleet's fabric
+// execution members (srv3/srv4 returned their two to GitHub Actions by the
+// operator ruling of 2026-11-09, recorded as
+// gunbc.design_ruling::srv3_srv4_fabric_slots_serve_ci) -- are ours and run
+// our control plane. We know what we bought a spark for. The supplier is never asked.
 //
 // THE PRECEDENT THIS FOLLOWS is already in the corpus one layer down.
 // product.supplier.ubicloud refuses to name an isolation profile from a

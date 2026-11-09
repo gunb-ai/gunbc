@@ -9,10 +9,16 @@ import gunbc.fabric.fabric_required_build_cell {
 }
 import gunbc.instruments.fabric_control_plane_live_probe {
   Fci1CheckpointAfterCanonicalCommitBeforeTransport,
+  cp_probe_served_host, cp_probe_subject, cp_probe_subject_from, cp_probe_slot_from,
+  CpProbeSubjectSelected, CpProbeSubjectNoFabricExecutionSlot, CpProbeSubjectHostMachineryUnavailable,
+  CpProbeSubject,
   Fci1CheckpointAfterReleaseBeforeGrading,
   Fci1CheckpointGenerationHeldTwo,
   fci1_checkpoint_token,
 }
+import gunbc.runner.runner_slot_allocation { fabric_execution_slot_identities }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }
+import product.host_identity { HostIdentity }
 
 // The held arm now asserts the CAUSE and the observed generation, not merely that the slot was
 // refused: under the previous Bool a held slot and an unreadable one were the same observation.
@@ -91,4 +97,88 @@ test fn witness_fci1_already_free_checkpoint_is_distinct_from_held() -> Bool {
 
 test fn witness_fci1_disposable_replacement_checkpoint_is_separate() -> Bool {
   fci1_checkpoint_token(checkpoint: Fci1CheckpointGenerationHeldTwo) == "generation-held-two"
+}
+
+// ---------------------------------------------------------------------------
+// THE FCI-1 INSTRUMENT'S SUBJECT IS DERIVED FROM THE FABRIC EXECUTION ROSTER.
+//
+// gunbc.instruments.fabric_control_plane_live_probe used to answer its subject as the authored literal
+// `RunnerSlotIdentity { host: "srv3", slot_index: 6 }`, and no leg ever joined that literal back to
+// gunbc.runner.runner_slot_allocation::fabric_execution_slot_identities -- the slot was an allocation key,
+// a /opt/fabric-cells path component and a systemd unit name, and nothing asked whether the fleet had
+// committed it to fabric execution. gunbc.design_ruling::srv3_srv4_fabric_slots_serve_ci (2026-11-09)
+// returned srv3-06/07 and srv4-06/07 to GitHub Actions, so the literal had become a pointer at a CI
+// runner. These rows feed the gate rosters it has never seen, which is what makes the refusal
+// discriminating rather than always-on: it tracks the roster, and the located cause cites the ruling.
+// ---------------------------------------------------------------------------
+
+fn fci1_roster_names(roster: List<RunnerSlotIdentity>, want: RunnerSlotIdentity) -> Bool {
+  match roster {
+    Cons { head: h, tail: t } => runner_slot_identity_equal(a: h, b: want)
+      || fci1_roster_names(roster: t, want: want)
+    Empty => false
+  }
+}
+
+fn fci1_roster_names_none(roster: List<RunnerSlotIdentity>, none_of: List<RunnerSlotIdentity>) -> Bool {
+  match none_of {
+    Cons { head: h, tail: t } => !fci1_roster_names(roster: roster, want: h)
+      && fci1_roster_names_none(roster: roster, none_of: t)
+    Empty => true
+  }
+}
+
+fn fci1_projection_names_its_own_absence(subject: CpProbeSubject) -> Bool {
+  let projected = cp_probe_slot_from(subject: subject)
+  (projected.host as String) != "srv3"
+    && (projected.host as String) != "srv1"
+    && (projected.host as String) != "srv2"
+    && (projected.host as String) != "srv4"
+    && projected.slot_index == 0
+}
+
+test fn witness_fci1_subject_follows_the_roster_and_not_the_old_literal() -> Bool {
+  let srv4_nine = RunnerSlotIdentity { host: "srv4", slot_index: 9 }
+  let srv1_thirteen = RunnerSlotIdentity { host: "srv1", slot_index: 13 }
+  match cp_probe_subject_from(roster: [srv4_nine], served_host: "srv4" as HostIdentity) {
+    // A member on the host the instrument serves is selected exactly as the roster names it -- including
+    // a slot the authored literal could never have produced.
+    CpProbeSubjectSelected { slot } => runner_slot_identity_equal(a: slot, b: srv4_nine)
+    _ => false
+  }
+    // A member on a host whose legs this instrument does not carry is NOT silently adopted: the refusal
+    // carries the derived identity, so the operator can see what the roster asked for.
+    && match cp_probe_subject_from(roster: [srv1_thirteen], served_host: cp_probe_served_host()) {
+      CpProbeSubjectHostMachineryUnavailable { cause } =>
+        runner_slot_identity_equal(a: cause.derived, b: srv1_thirteen)
+          && (cause.served_host as String) == "srv3"
+      _ => false
+    }
+}
+
+test fn witness_fci1_no_committed_fabric_execution_slot_refuses_with_a_located_cause() -> Bool {
+  let nothing = cp_probe_subject_from(roster: [], served_host: cp_probe_served_host())
+  match nothing {
+    CpProbeSubjectNoFabricExecutionSlot { cause } =>
+      cause.authority == "gunbc.design_ruling::srv3_srv4_fabric_slots_serve_ci (2026-11-09)"
+        && cause.why == "no fabric execution slot is committed: FCI-1 declines to act rather than drive allocation keys, /opt/fabric-cells paths and systemctl at a slot that serves GitHub Actions"
+    _ => false
+  }
+    // With no subject there is no plausible slot to act on either: the projection names its own absence
+    // instead of falling back to a host, so a caller that skipped the gate still cannot name a cell path.
+    && fci1_projection_names_its_own_absence(subject: nothing)
+}
+
+test fn witness_fci1_cannot_take_a_slot_the_operator_returned_to_ci_as_its_subject() -> Bool {
+  let returned = [
+    RunnerSlotIdentity { host: "srv3", slot_index: 6 },
+    RunnerSlotIdentity { host: "srv3", slot_index: 7 },
+    RunnerSlotIdentity { host: "srv4", slot_index: 6 },
+    RunnerSlotIdentity { host: "srv4", slot_index: 7 },
+  ]
+  fci1_roster_names_none(roster: fabric_execution_slot_identities(), none_of: returned)
+    // And so the instrument cannot act on any of them: neither what the gate selects nor what the
+    // projection falls back to is one of them -- the concrete failure the literal subject would have
+    // caused on srv3, where the instrument still runs its legs.
+    && fci1_roster_names_none(roster: [cp_probe_slot()], none_of: returned)
 }

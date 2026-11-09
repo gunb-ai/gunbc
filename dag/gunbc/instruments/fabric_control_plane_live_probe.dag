@@ -18,6 +18,7 @@ import std.decl_ref { decl_ref }
 import extdeps.shell
 import std.types { Bool, Int, List, NonEmptyStr, String, GitRef, FilePath }
 import std.algebra { trim, Cons, Empty, length }
+import product.host_identity { HostIdentity }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.currency.currency { Usd }
 import std.measure {
@@ -26,7 +27,7 @@ import std.measure {
 }
 import product.fabric.work { Shape, HardRequirements, ExecutionRequirements, ControlPlaneCapacity , WarmResidencyRequired }
 import product.fabric.envelope { unstated_envelope }
-import gunbc.runner.runner_slot_allocation { gunbc_runner_slot_offer_envelope }
+import gunbc.runner.runner_slot_allocation { gunbc_runner_slot_offer_envelope, fabric_execution_slot_identities }
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.supply { SupplierOffer, QuotedPerSecond, ObservedSupply }
 import std.durable_compare_and_set {
@@ -124,6 +125,7 @@ import gunbc.fabric.fabric_cell_converge {
   fabric_cell_id_for_slot,
   fabric_cell_member_key, fabric_cell_member_ownership,
   fabric_cell_base_dir, fabric_cell_root_path, fabric_cell_attempt_root_path,
+  fabric_cell_slice_name,
   fabric_cell_observation_refusal_identity,
 }
 import gunbc.fabric.fabric_witness_run {
@@ -254,8 +256,117 @@ fn cp_probe_demand_id(key: DemandKey) -> FabricIdentity<NonEmptyStr, DemandKey> 
   FabricIdentity { principal: "gunbc", key: key }
 }
 
+// THE SUBJECT OF THIS INSTRUMENT IS DERIVED FROM THE ROSTER, NOT AUTHORED.
+//
+// This used to be `RunnerSlotIdentity { host: "srv3", slot_index: 6 }`, and nothing in the instrument
+// ever asked gunbc.runner.runner_slot_allocation whether that slot was a fabric execution member -- the
+// slot was a key, a path component and a systemd unit name, and nothing joined it back to the authority.
+// gunbc.design_ruling::srv3_srv4_fabric_slots_serve_ci (2026-11-09) returned srv3-06/07 and srv4-06/07
+// to GitHub Actions, and the live read of that date found no cell and no slice on either managed host.
+// A literal subject would have kept driving allocation keys, /opt/fabric-cells paths and `systemctl` at
+// a slot the operator had just committed to Actions -- acting on a CI slot is the failure this closes.
+//
+// So the roster answers WHICH SLOT, and this file answers only what its own legs can serve:
+// `cp_probe_served_host` is a capability of the code below (`srv3_observe_path_owner`,
+// `fabric_cell_probe_wet(host: "srv3")`, the actuator's root-and-hostname legs), not a statement about
+// what the fleet commits. That pairing is what makes the two refusals below discriminating rather than
+// permanent: a roster that commits a member on the served host selects it, a roster that commits nothing
+// refuses with the located cause, and a roster whose member is elsewhere refuses because the legs are not
+// carried there. Making another host FCI-1's fixture is an operator decision with its own evidence trail:
+// re-keying means porting those legs, not editing a string here.
+fn cp_probe_served_host() -> HostIdentity {
+  "srv3"
+}
+
+type CpProbeNoFabricExecutionSlot {
+  why: NonEmptyStr
+  authority: NonEmptyStr
+}
+
+type CpProbeHostMachineryUnavailable {
+  derived: RunnerSlotIdentity
+  served_host: NonEmptyStr
+  why: NonEmptyStr
+}
+
+type CpProbeSubject
+  = CpProbeSubjectSelected { slot: RunnerSlotIdentity }
+  | CpProbeSubjectNoFabricExecutionSlot { cause: CpProbeNoFabricExecutionSlot }
+  | CpProbeSubjectHostMachineryUnavailable { cause: CpProbeHostMachineryUnavailable }
+
+// The pure gate, so the refusal is testable without a host: the roster goes in, the subject or the
+// located refusal comes out. `cp_probe_subject()` below is this over the real roster.
+fn cp_probe_no_committed_slot() -> CpProbeSubject {
+  CpProbeSubjectNoFabricExecutionSlot {
+    cause: CpProbeNoFabricExecutionSlot {
+      why: "no fabric execution slot is committed: FCI-1 declines to act rather than drive allocation keys, /opt/fabric-cells paths and systemctl at a slot that serves GitHub Actions",
+      authority: "gunbc.design_ruling::srv3_srv4_fabric_slots_serve_ci (2026-11-09)",
+    }
+  }
+}
+
+fn cp_probe_subject_from(roster: List<RunnerSlotIdentity>, served_host: HostIdentity) -> CpProbeSubject {
+  match roster {
+    Cons { head: slot, tail: _ } => if slot.host == served_host {
+      CpProbeSubjectSelected { slot: slot }
+    } else {
+      CpProbeSubjectHostMachineryUnavailable {
+        cause: CpProbeHostMachineryUnavailable {
+          derived: slot,
+          served_host: served_host as NonEmptyStr,
+          why: "the roster's fabric execution member is on a host this instrument's legs do not serve (srv3_observe_path_owner, fabric_cell_probe_wet and the actuator's hostname leg); porting the legs is the operator's re-keying decision, not an edit to a literal",
+        }
+      }
+    }
+    Empty => cp_probe_no_committed_slot()
+  }
+}
+
+fn cp_probe_subject() -> CpProbeSubject {
+  cp_probe_subject_from(roster: fabric_execution_slot_identities(), served_host: cp_probe_served_host())
+}
+
+// The slot the instrument's key and path helpers project. Total because thirty call sites need a value,
+// and every leg is gated on `cp_probe_subject()` first -- which is why the no-roster arm is a MARKER and
+// not a plausible slot: it names its own absence, is not a host the fleet has, and can only reach a
+// caller that skipped the gate. Today the roster commits srv1's members, so this projects the
+// machinery-unavailable arm's derived slot, and the gate refuses before anything runs.
+fn cp_probe_slot_from(subject: CpProbeSubject) -> RunnerSlotIdentity {
+  match subject {
+    CpProbeSubjectSelected { slot } => slot
+    CpProbeSubjectHostMachineryUnavailable { cause } => cause.derived
+    CpProbeSubjectNoFabricExecutionSlot { _ } => RunnerSlotIdentity {
+      host: "no-fabric-execution-slot-committed",
+      slot_index: 0,
+    }
+  }
+}
+
 fn cp_probe_slot() -> RunnerSlotIdentity {
-  RunnerSlotIdentity { host: "srv3", slot_index: 6 }
+  cp_probe_slot_from(subject: cp_probe_subject())
+}
+
+// A refusal is a reason for whoever runs the instrument, not a stack trace: it names the cause and the
+// ruling that produced it.
+fn cp_probe_subject_refusal(subject: CpProbeSubject) -> String {
+  match subject {
+    CpProbeSubjectSelected { slot } => join(
+      ["fabric execution subject: ", slot.host as String, "-", to_string(slot.slot_index)],
+      "",
+    )
+    CpProbeSubjectNoFabricExecutionSlot { cause } => join(
+      [cause.why as String, " [", cause.authority as String, "]"],
+      "",
+    )
+    CpProbeSubjectHostMachineryUnavailable { cause } => join(
+      [
+        "fabric execution member is on ", cause.derived.host as String,
+        ", a host this instrument does not serve (it serves ", cause.served_host as String, "): ",
+        cause.why as String,
+      ],
+      "",
+    )
+  }
 }
 
 // NOTHING OFFERED AND EVERYTHING REJECTED ARE DIFFERENT STATES WITH DIFFERENT REMEDIES, so
@@ -1653,8 +1764,33 @@ fn fci1_host_operation_value(operation: HostOperation) -> String? {
   }
 }
 
+// THE GATE, AND IT RUNS FIRST. The zero-Work receipt is the instrument's proof that a fabric cell is
+// running nothing -- which is only a question you may ask of a slot the fleet has committed to fabric
+// execution. The roster answers; when it commits nothing on the served host this refuses with the
+// located cause (naming gunbc.design_ruling::srv3_srv4_fabric_slots_serve_ci) before `systemctl`,
+// the cgroup reads or the attempts enumeration run, and `fci1_write_zero_work_receipt` fails the phase
+// on that cause. Under the 2026-11-09 ruling that is today's answer: srv3 declares no cell, so the
+// instrument declines instead of reading a CI slot's unit.
 fn fci1_zero_work_observation() -> Fci1ZeroWorkObservation {
-  let unit = "fabric-cell-srv3-06.slice" as NonEmptyStr
+  let subject = cp_probe_subject()
+  match subject {
+    CpProbeSubjectSelected { slot: _ } => fci1_zero_work_observation_unchecked()
+    CpProbeSubjectNoFabricExecutionSlot { cause: _ } => Fci1ZeroWorkRefused {
+      cause: cp_probe_subject_refusal(subject: subject) as NonEmptyStr,
+    }
+    CpProbeSubjectHostMachineryUnavailable { cause: _ } => Fci1ZeroWorkRefused {
+      cause: cp_probe_subject_refusal(subject: subject) as NonEmptyStr,
+    }
+  }
+}
+
+// The leg itself, unchecked: it assumes a subject has been selected. Call it through
+// `fci1_zero_work_observation` below, which refuses before this runs when the roster commits nothing.
+// Even here the unit name is DERIVED (`fabric_cell_slice_name` over the selected slot) rather than the
+// literal "fabric-cell-srv3-06.slice" it used to carry, so a subject change cannot leave the systemctl
+// leg pointing at the old slot.
+fn fci1_zero_work_observation_unchecked() -> Fci1ZeroWorkObservation {
+  let unit = fabric_cell_slice_name(slot: cp_probe_slot()) as NonEmptyStr
   match systemctl_show_property_read(transport: LocalShell, unit: unit, property: ControlGroup) {
     SystemdPropertyCaptureRefused { reason: why } => Fci1ZeroWorkRefused { cause: join(["ControlGroup observation refused: ", why], "") }
     SystemdPropertyBlank => Fci1ZeroWorkRefused { cause: "ControlGroup observation empty" }
