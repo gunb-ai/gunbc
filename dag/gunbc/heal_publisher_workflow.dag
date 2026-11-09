@@ -620,39 +620,10 @@ fn checkout_step_names_another_subject(step: Step) -> Bool {
     && any(step_input_names(step: step), k => k == "ref" || k == "repository")
 }
 
-// WITH NO PUBLIC SEED there is no repository the publisher may check out besides its own commit, so any
-// repository/ref input on a checkout step names a subject the publisher did not declare - the boundary the
-// checkout-isolation check enforces. (The seed's pinned-commit checkout this used to permit belonged to the
-// private mirror's composed-seed publisher; gunb-ai/gunbc#16169 moved the mirror to a caller of gunbc's gate.)
-fn publisher_input_names_undeclared_subject(input: YamlKeyValue) -> Bool { true }
-
-fn publisher_checkout_fetches_candidate_code(step: Step) -> Bool {
-  if step_uses_action(step: step, action: checkout_action) == false {
-    false
-  } else {
-    match step {
-      UsesStep {
-        name: _, id: _, uses: _, with: w, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _
-      } =>
-        match w {
-          Absent => false
-          Present { value: rows } =>
-            any(
-              rows,
-              row =>
-                (row.key == "ref" || row.key == "repository")
-                  && publisher_input_names_undeclared_subject(input: row)
-            )
-        }
-      _ => false
-    }
-  }
-}
-
 fn publisher_job_executes_candidate_code(steps: List<HealPublisherBoundStep>, profile: RepositoryCiProfile) -> Bool {
   any(
     steps,
-    b => publisher_checkout_fetches_candidate_code(step: b.step)
+    b => checkout_step_names_another_subject(step: b.step)
   )
 }
 
