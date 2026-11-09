@@ -103,18 +103,18 @@ pub fn parse_dag_content_checked(
             located,
         });
     }
-    let module = result
-        .module
-        .as_ref()
-        .ok_or_else(|| DagParseRefusal::ModuleHeadAbsent {
+    let module = result.module.as_ref().ok_or_else(|| {
+        DagParseRefusal::ModuleHeadAbsent {
             file: filename.to_string(),
-        })?;
+        }
+    })?;
     Ok(ParsedDagFile {
         module: module.clone(),
         items: module.children.clone(),
         source_indices,
     })
 }
+
 
 /// SIBLING PARSE-TO-`None` PATH — SILENCE REPAIRED, SIGNATURE DELIBERATELY NOT CHANGED HERE.
 ///

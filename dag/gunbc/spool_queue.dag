@@ -1,6 +1,7 @@
 module gunbc.spool_queue
 
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, path_segment_is_safe }
+import std.nat { Nat, Zero }
 import std.algebra { trim }
 import extdeps.shell
 import extdeps.exec.command { ArgvCommand }
@@ -628,11 +629,15 @@ fn spool_role_directory_shape(kind: SpoolKind, role: SpoolRole) -> SpoolDirector
 type SpoolStore sole_constructor {
   kind: SpoolKind
   instance_root: String
-  partition_uid: Optional<Int>
+  partition_uid: Optional<Nat>
 }
 
-// THE MINT FOR AN UNPARTITIONED SPOOL: takes the kind and instance root. A partitioned kind must NOT be opened
-// through here; the sealed spool_open_uid is the only mint for a ByPrincipalUid kind.
+// THE MINT FOR AN UNPARTITIONED SPOOL: takes the kind and instance root and stamps partition_uid: Absent. A
+// ByPrincipalUid kind must NOT be opened through here -- spool_open_uid is the only mint for it, and it is the
+// only mint that stamps Present. Together the two sole-constructor mints guarantee the invariant "partition_uid
+// is Present iff the kind declares ByPrincipalUid". Should a partitioned kind nonetheless be opened through
+// here, spool_root_dir REFUSES (returns Absent) rather than resolving to the shared root, so no operation can
+// read or write the shared spool on a malformed store (fail_closed: the mismatch has no silent path).
 fn spool_open(kind: SpoolKind, instance_root: String) -> SpoolStore {
   SpoolStore { kind: kind, instance_root: instance_root, partition_uid: Absent }
 }
@@ -645,10 +650,10 @@ type SpoolOpenVerdict
   = SpoolOpenReady { store: SpoolStore }
   | SpoolOpenRefused { cause: String }
 
-fn spool_open_uid(kind: SpoolKind, instance_root: String, uid: Int) -> SpoolOpenVerdict {
+fn spool_open_uid(kind: SpoolKind, instance_root: String, uid: Nat) -> SpoolOpenVerdict {
   if spool_declaration(kind: kind).partition != ByPrincipalUid {
     SpoolOpenRefused { cause: "the kind does not declare a uid partition; use spool_open" }
-  } else if uid <= 0 {
+  } else if uid == Zero {
     SpoolOpenRefused { cause: "a partitioned spool requires a positive principal uid" }
   } else if !path_segment_is_safe(raw: to_string(value: uid)) {
     SpoolOpenRefused { cause: "the rendered uid is not a safe path segment" }
@@ -666,30 +671,48 @@ fn spool_root_name(kind: SpoolKind) -> String {
   }
 }
 
-fn spool_root_dir(store: SpoolStore) -> String {
-  let base = join([store.instance_root, "/", spool_root_name(kind: store.kind)], "")
+// THE ONE SHARED PREFIX every path in a spool is built from: <instance_root>/<root_name>. Provisioning
+// (spool_deploy_root) plants this directory; a partitioned spool's per-uid directory and every role path
+// hang off it. Provisioning and the reader therefore derive the shared prefix through this ONE function,
+// never by hand (review 92698: provisioning and the hook/door must build the path through one function).
+fn spool_base_dir(kind: SpoolKind, instance_root: String) -> String {
+  join([instance_root, "/", spool_root_name(kind: kind)], "")
+}
+
+// THE DIRECTORY OF A STORE: the shared prefix, plus the principal uid segment for a ByPrincipalUid spool.
+// A partitioned store WITHOUT a uid is a malformed state: the only mint that produces it (spool_open_uid)
+// guarantees a Present uid, and the sole_constructor keyword blocks any other construction. If such a
+// store ever reaches here, this REFUSES (Absent) rather than falling back to the shared root -- returning
+// the base would let the hook write and the door list the SHARED spool, the exact cross-uid planting the
+// declaration forbids (fail_closed: no silent default).
+fn spool_root_dir(store: SpoolStore) -> Optional<String> {
+  let base = spool_base_dir(kind: store.kind, instance_root: store.instance_root)
   match spool_declaration(kind: store.kind).partition {
-    Unpartitioned => base
+    Unpartitioned => Present { value: base }
     ByPrincipalUid => match store.partition_uid {
-      Present { value: uid } => join([base, "/", to_string(value: uid)], "")
-      Absent => base
+      Present { value: uid } => Present { value: join([base, "/", to_string(value: uid)], "") }
+      Absent => Absent
     }
   }
 }
 
 // THE PROVISIONING TARGET: the shared root directory (no uid segment), where the deploy route plants the
-// directory before any seat has been launched. For an unpartitioned spool this equals spool_root_dir; for a
-// ByPrincipalUid spool it is the parent of all per-uid directories. The per-uid directory itself is created
-// by the hook (install -d, idempotent) using the same spool_root_dir the reader uses.
+// directory before any seat has been launched. For an unpartitioned spool this is the store's own root; for
+// a ByPrincipalUid spool it is the parent of all per-uid directories. The per-uid directory itself is
+// created by the hook (install -d, idempotent) through spool_role_path, which reads the same spool_base_dir.
 fn spool_deploy_root(kind: SpoolKind, instance_root: String) -> String {
-  join([instance_root, "/", spool_root_name(kind: kind)], "")
+  spool_base_dir(kind: kind, instance_root: instance_root)
 }
 
-// The directory a role stands in, absent for a role the spool has no directory for.
+// The directory a role stands in, absent for a role the spool has no directory for -- and absent for a
+// malformed partitioned store (see spool_root_dir), so the operation refuses rather than touching the shared root.
 fn spool_role_path(store: SpoolStore, role: SpoolRole) -> Optional<String> {
-  match spool_role_dir(kind: store.kind, role: role) {
-    Present { value: d } => Present { value: join([spool_root_dir(store: store), "/", d], "") }
+  match spool_root_dir(store: store) {
     Absent => Absent
+    Present { value: root } => match spool_role_dir(kind: store.kind, role: role) {
+      Present { value: d } => Present { value: join([root, "/", d], "") }
+      Absent => Absent
+    }
   }
 }
 

@@ -11,6 +11,8 @@ import extdeps.tools.gnu_coreutils { coreutils_install_directories_arguments }
 import gunbc.managed_directory { declared_directory_mode, DirectoryOwnerAllEveryoneTraverse }
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath, GitRef, EpochSecs, Seconds }
 import std.optional { Optional, Present, Absent }
+import std.nat { Nat }
+import std.checked_arithmetic { checked_int_to_nat }
 import std.env_binding { EnvBinding }
 import extdeps.tools.env { env_absolute_program, env_prefixed_args }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
@@ -815,9 +817,12 @@ type ComputeSeatExitSpoolDir
 fn compute_seat_exit_spool_dir(instance: HostDashboardInstance) -> ComputeSeatExitSpoolDir {
   match compute_launching_uid() {
     Absent => ComputeSeatExitSpoolDirUidUnreadable { cause: "/proc/self/status names no effective uid for this provider process" }
-    Present { value: uid } => match compute_exit_spool_open(instance: instance, uid: uid) {
-      SpoolOpenReady { store } => ComputeSeatExitSpoolDirResolved { store: store }
-      SpoolOpenRefused { cause } => ComputeSeatExitSpoolDirUidUnreadable { cause: cause }
+    Present { value: uid } => match checked_int_to_nat(n: uid) {
+      Absent => ComputeSeatExitSpoolDirUidUnreadable { cause: "the effective uid is negative" }
+      Present { value: uid_nat } => match compute_exit_spool_open(instance: instance, uid: uid_nat) {
+        SpoolOpenReady { store } => ComputeSeatExitSpoolDirResolved { store: store }
+        SpoolOpenRefused { cause } => ComputeSeatExitSpoolDirUidUnreadable { cause: cause }
+      }
     }
   }
 }

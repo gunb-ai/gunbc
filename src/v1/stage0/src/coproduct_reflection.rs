@@ -3010,11 +3010,8 @@ mod keyed_decl_facts_unreadable_file_tests {
                 FIXTURE_COUNTER.fetch_add(1, Ordering::Relaxed)
             ));
         std::fs::create_dir_all(&dir).expect("fixture dir");
-        std::fs::write(
-            dir.join("probe.dag"),
-            format!("module {PROBE_MODULE}\n\n{body}\n"),
-        )
-        .expect("fixture file");
+        std::fs::write(dir.join("probe.dag"), format!("module {PROBE_MODULE}\n\n{body}\n"))
+            .expect("fixture file");
         vec![dir.to_string_lossy().into_owned()]
     }
 

@@ -200,7 +200,7 @@ fn compute_attempt_exit_spool_directory(instance: HostDashboardInstance) -> Owne
 // THE TYPED MINT FOR THE COMPUTE EXIT SPOOL: takes the business key (the instance plus the principal uid)
 // and derives the instance root from the compute layout, so no caller spells the path. This is the only way
 // to open a SpoolComputeExit store.
-fn compute_exit_spool_open(instance: HostDashboardInstance, uid: Int) -> SpoolOpenVerdict {
+fn compute_exit_spool_open(instance: HostDashboardInstance, uid: Nat) -> SpoolOpenVerdict {
   spool_open_uid(kind: SpoolComputeExit, instance_root: compute_root(instance: instance) as String, uid: uid)
 }
 
