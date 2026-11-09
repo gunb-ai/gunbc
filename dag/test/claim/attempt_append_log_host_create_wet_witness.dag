@@ -24,7 +24,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dispatch_worker_memory_ceiling,
 }
 import gunbc.roadmap.roadmap_attempt_state_store {
-  AttemptWorkerEvents, AttemptSupervisorLog,
+  AttemptWorkerEvents, AttemptAuditLog,
   attempt_append_log_host_create, AttemptAppendLogCreated, AttemptAppendLogAlreadyExists,
   AttemptAppendLogCreateRefused, AttemptAppendLogHostUnready, AttemptAppendLogHostLegacyRefused,
   attempt_state_provision, AttemptStateProvision, attempt_state_provision_directory,
@@ -216,25 +216,25 @@ fn foreign_entry_cell(instance: HostDashboardInstance) -> Bool {
 }
 
 // THE FRAMING A VARIANT DECLARES IS EXECUTED, not just stored: the LAST member of the closed set is a stdout
-// stream, so a generation file of its own name (supervisor-stdout.log.1) is the OTHER framing and the mint refuses
+// stream, so a generation file of its own name (auditor-stdout.log.1) is the OTHER framing and the mint refuses
 // it typed. If that variant's slot were declared with the wrong framing the file would be taken as this attempt's
 // stream and the claim would go RED -- this is the control the mutant in the report is run against.
 test fn a_planted_generation_of_the_supervisor_log_refuses_the_host_create() -> Bool {
   let root = fresh_root()
   let inst = instance_service_at(root: root)
-  let refused = supervisor_generation_cell(instance: inst)
+  let refused = audit_generation_cell(instance: inst)
   let removed = shell.Remove.RecursiveForce(path: root)
   refused && removed.success
 }
 
-fn supervisor_generation_cell(instance: HostDashboardInstance) -> Bool {
+fn audit_generation_cell(instance: HostDashboardInstance) -> Bool {
   let prov = attempt_state_provision(instance: instance, node: "wet-node", attempt_key: "wet-key")
-  let dir = attempt_state_provision_directory(provision: prov, directory: attempt_log_member_directory(member: AttemptSupervisorLog))
+  let dir = attempt_state_provision_directory(provision: prov, directory: attempt_log_member_directory(member: AttemptAuditLog))
   let ensured = shell.Mkdir.Parents(path: dir as FilePath).success
-  let planted = Filesystem.Write(path: join([dir, "/supervisor-stdout.log.1"], ""), content: "stale supervisor stdout generation\n")
-  match attempt_append_log_host_create(instance: instance, node: "wet-node", attempt_key: "wet-key", member: AttemptSupervisorLog) {
+  let planted = Filesystem.Write(path: join([dir, "/auditor-stdout.log.1"], ""), content: "stale auditor stdout generation\n")
+  match attempt_append_log_host_create(instance: instance, node: "wet-node", attempt_key: "wet-key", member: AttemptAuditLog) {
     AttemptAppendLogHostLegacyRefused { cause: LegacyFramingMismatch { entry: e } } =>
-      ensured && planted.success && e == ("supervisor-stdout.log.1" as NonEmptyStr)
+      ensured && planted.success && e == ("auditor-stdout.log.1" as NonEmptyStr)
     _ => false
   }
 }

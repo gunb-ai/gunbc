@@ -228,30 +228,10 @@ pub fn build_module_path_index_from_witness_roots() -> HashMap<String, String> {
     build_module_path_index(&default_source_roots())
 }
 
-/// The refusing form of `try_build_module_index`: a missing root, an unreadable directory, a
-/// non-UTF-8 source or a directory named like a `.dag` is an ordinary, user-caused condition and
-/// owes a typed located refusal, so it prints the cause and exits 1, the exit class the other
-/// infallible index consumers already carry (`refuse_module_index`). It never panics.
-pub(crate) fn build_module_index_or_refuse(source_roots: &[String]) -> ModuleSourceIndex {
-    match try_build_module_index(source_roots) {
-        Ok(index) => index,
-        Err(refusal) => refuse_module_index_build(&refusal),
-    }
-}
-
-/// `primary-precedence` pool indexing: the first root is authoritative; later roots
-/// fill only modules not already present (matches `gunbc compile --dependency-pool-index
-/// primary-precedence` in `dag_compile_clean_transport`).
-pub(crate) fn build_module_index_primary_precedence_or_refuse(
-    source_roots: &[String],
-) -> ModuleSourceIndex {
-    match try_build_module_index_primary_precedence(source_roots) {
-        Ok(index) => index,
-        Err(refusal) => refuse_module_index_build(&refusal),
-    }
-}
-
-fn refuse_module_index_build(refusal: &str) -> ! {
+/// The CLI boundary for the module-index-build refusal: print the located refusal and exit 1.
+/// The library build path (`try_build_module_index`, `try_build_module_index_primary_precedence`)
+/// only returns the refusal; the infallible consumers call this, never a unit-test path.
+pub(crate) fn refuse_module_index_build(refusal: &str) -> ! {
     eprintln!("module index refused: {refusal}");
     std::process::exit(1)
 }
@@ -2605,7 +2585,7 @@ pub fn whole_tree_strict_sources(
     source_roots: &[String],
     exclude_substrings: &[String],
 ) -> Result<WholeTreeStrictSources, String> {
-    let index = build_module_index_or_refuse(source_roots);
+    let index = try_build_module_index(source_roots)?;
     let total = index.len();
     let all_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = index
         .iter()
@@ -3896,7 +3876,7 @@ mod strict_refusal_counts_blocking_diagnostics {
 #[cfg(test)]
 mod entry_resolve_refusal_tests {
     use super::{resolve_entry_with_index_typed, EntryResolveRefusal, ResolveFailure};
-    use crate::cli_run::build_multi_entry_index;
+    use crate::cli_run::{build_multi_entry_index, try_build_module_index};
     use std::fs;
 
     fn scratch(tag: &str) -> std::path::PathBuf {
@@ -3943,8 +3923,32 @@ mod entry_resolve_refusal_tests {
         .unwrap();
         fs::create_dir_all(dir.join("adir.dag")).unwrap();
         let roots = vec![dir.to_string_lossy().to_string()];
-        let index = build_multi_entry_index(&roots);
         let entry = |n: &str| dir.join(n).to_string_lossy().to_string();
+
+        // (1) A directory named like a `.dag` is an ordinary, user-caused condition that
+        // owes a TYPED, located refusal RETURNED to its caller — not std::process::exit
+        // from library code. gunbc.design_argument::fail_closed: every path fails with a
+        // typed, located diagnostic, and the CLI boundary (build_multi_entry_index) is the
+        // only thing that chooses the exit code. A library refusal that exits the process is
+        // not a typed refusal — it aborts every co-resident unit test in the harness, which
+        // is precisely the defect this replaces.
+        let refusal = match try_build_module_index(&roots) {
+            Err(refusal) => refusal,
+            Ok(_) => panic!(
+                "a directory named like a `.dag` must surface as a typed refusal, not abort the process"
+            ),
+        };
+        assert!(
+            refusal.contains("directory named like a") && refusal.contains("adir.dag"),
+            "the refusal must be located at the offending directory adir.dag, got: {refusal}"
+        );
+
+        // (2) With the misnamed directory gone the index builds and the resolver does its
+        // job: an entry that is not a module (never a file) did not reach its subject
+        // (EntryMissing); an entry that exists is never classified missing, whatever its
+        // closure then says (bad.dag's broken closure must not leak into classification).
+        fs::remove_dir_all(dir.join("adir.dag")).unwrap();
+        let index = build_multi_entry_index(&roots);
         assert!(matches!(
             resolve_entry_with_index_typed(&index, &entry("adir.dag")),
             Err(EntryResolveRefusal::EntryMissing { .. })

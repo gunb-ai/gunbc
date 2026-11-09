@@ -1,59 +1,144 @@
 module test.claim.roadmap.roadmap_attempt_continuation_witness
 
-import gunbc.roadmap.roadmap_nesting { RoadmapMembership }
+// THE WITNESS FOR THE ONE DECISION. Each `test fn` is a family of the ContinuationPlan partition,
+// and each carries a DISCRIMINATING RED CONTROL: a negative assertion that the plan is NOT a nearby
+// variant it could be confused with (a joined lineage is not a spawn; a continued lineage is not a
+// completion; a completion spawns nothing). A witness that only asserts the positive arm passes when
+// the decision is wrong in the confusable direction -- the red control is what makes it discriminate.
 
 import std.types { Bool, String, Int }
 import gunbc.roadmap.roadmap_model {  RoadmapNodeId }
 import gunbc.roadmap.roadmap_attempt_continuation {
-  AttemptOrigin, FreshFromBase, ContinueFromAttempt, PriorAttemptFacts,
-  ContinuationTurnRead, ContinuationTurnAbsent, ContinuationTurnKnown, ContinuationTurnUnreadable,
-  ContinuationDecision, ContinuationSpawnFresh, ContinuationSpawnFromPrior, ContinuationRefused, ContinuationHold, ContinuationComplete,
-  ContinuationEscalate, ContinuationPlanDefect, ContinuationStuck,
-  continuation_decision, continuation_turn_cap, attempt_origin_base_ref, attempt_origin_turn, continuation_brief_prefix,
-  continuation_alignment_l0_pointer, continuation_alignment_ask,
+  PriorExecutionObservation,
+  WorktreeStanding, WorktreeStands, WorktreeReaped, WorktreeUnknown,
+  ContinuationPlan, StartInitial, AlreadyRunning, Resume, NextAttempt, Restore, AlreadyComplete, Refuse,
+  RefuseCause, RetryExhausted, RetryLedgerUnreadable, BranchAbsent, BranchUndetermined, WorktreeUnobserved, CaptureStoreUnreadable, CaptureOwed, SegmentDamaged,
+  continuation_plan,
+  BranchStanding, BranchLive, BranchGone, BranchUnknown,
 }
+import gunbc.roadmap.roadmap_workflow_progress {
+  AttemptWorktreePresent, AttemptWorktreeAbsent, AttemptWorktreeUnobserved,
+}
+import gunbc.harness.harness_session_recovery { SessionRecoveryNone }
 import gunbc.roadmap.roadmap_submission {
   WorkerSubmission, SubmissionReady, SubmissionBlocked, SubmissionNeedsContext,
   SubmissionCapture, submission_digest, SubmissionCaptureRootBound,
   SubmissionCaptureObservation,
-  CaptureForHead, CaptureAbsent, CaptureUnreadable,
-}
-import gunbc.roadmap.roadmap_supervisor {
-  SupervisorVerdict, VerdictNominal, VerdictPlanDefect, VerdictStuck,
-  SupervisorVerdictReceipt, supervisor_verdict_text, supervisor_verdict_decode, VerdictDecoded, VerdictNotDecodable,
-  SupervisorVerdictObservation, SupervisorVerdictAbsent, SupervisorVerdictBound, SupervisorVerdictUnreadable,
-  SupervisorTarget, SupervisorForNode, SupervisorAtTop, supervisor_target_for,
-  supervisor_verdict_schema,
+  CaptureForHead, CaptureAbsent, CaptureUnreadable, CaptureNotAttempted,
 }
 import gunbc.roadmap.roadmap_workflow_stage {
-  WorkflowSegment, VerificationWorkflowSegment, ReviewWorkflowSegment, GoalAuditWorkflowSegment,
+  WorkflowSegment, WorkflowSegmentKind, WorkflowSegmentState, VerificationWorkflowSegment, ReviewWorkflowSegment, GoalAuditWorkflowSegment,
   WorkflowSegmentFailed, WorkflowSegmentComplete, WorkflowSegmentPending,
   WorkflowSegmentActive, WorkflowSegmentRefused, WorkflowSegmentStopped,
 }
 
-fn te(child: String, parent: String) -> RoadmapMembership {
-  RoadmapMembership { project: child, member: parent, contribution: "fixture contribution" }
-}
+import gunbc.roadmap.roadmap_refused_retry { RefusedRetryStanding, RefusedRetryOwed, RefusedRetryExhausted, RefusedRetryOperatorOnly, RefusedRetryUnreadable }
 
 fn pri(
   capture: SubmissionCaptureObservation,
-  verdict: SupervisorVerdictObservation,
   verification: WorkflowSegment?,
   review: WorkflowSegment?,
   goal_audit: WorkflowSegment?,
-) -> PriorAttemptFacts {
-  PriorAttemptFacts {
-    node_id: "n1",
-    memberships: [te(child: "arc-1", parent: "n1")],
+) -> PriorExecutionObservation {
+  PriorExecutionObservation {
     attempt_key: "a1",
     branch: "roadmap/n1/a1",
+    // PRESENT by default: the whole existing partition is read from the CAPTURE, so the worktree STANDS here
+    // and its capture/recovery are exactly the fields the decision consults. Reaped cases build their own.
+    standing: WorktreeStands { path: "/wt", capture: capture, recovery: SessionRecoveryNone },
     worker_terminal: true,
-    capture: capture,
-    supervisor_verdict: verdict,
     verification: verification,
     review: review,
     goal_audit: goal_audit,
+    verification_retry: RefusedRetryOperatorOnly,
+    now: none,
   }
+}
+
+// A PRIOR ATTEMPT WHOSE WORKTREE IS GONE (reaped). Under the standing-as-a-sum (DESIGN §5: correctness by
+// construction), the capture and recovery that lived inside the tree are NOT CARRIED AT ALL -- there is no
+// field to fake them into. The prior witness's 'CaptureUnreadable { "worktree is not present..." }' placeholder
+// is now UNWRITABLE by the type. The durable branch standing is the only substitute the decision can route on
+// (lab bug #2), and the ledger segments stay because they live in the ledger, not the tree.
+fn pri_reaped(branch_head: BranchStanding) -> PriorExecutionObservation {
+  PriorExecutionObservation {
+    attempt_key: "a1",
+    branch: "roadmap/n1/a1",
+    standing: WorktreeReaped { path: "/wt", branch_head: branch_head },
+    worker_terminal: true,
+    verification: none,
+    review: none,
+    goal_audit: none,
+    verification_retry: RefusedRetryOperatorOnly,
+    now: none,
+  }
+}
+
+fn pri_reaped_not_terminal(standing: WorktreeStanding) -> PriorExecutionObservation {
+  PriorExecutionObservation {
+    attempt_key: "a1",
+    branch: "roadmap/n1/a1",
+    standing: standing,
+    worker_terminal: false,
+    verification: none,
+    review: none,
+    goal_audit: none,
+    verification_retry: RefusedRetryOperatorOnly,
+    now: none,
+  }
+}
+
+// THE D3 FAMILY: A STILL-RESUMABLE (NOT-TERMINAL) ATTEMPT WHOSE WORKTREE WAS REAPED. The tree is gone but
+// the lineage has NOT ended, so CONTINUE must RESTORE the SAME attempt in place from its live branch and
+// reopen its claim -- never JOIN a session whose tree is gone, and never mint a NextAttempt (the lineage has
+// not ENDED). RED CONTROLS each discriminate the confusable direction: a restore is not a NextAttempt (which
+// would orphan the live attempt's ledger under a new key) and not an AlreadyRunning join (which would claim
+// a session beside a missing tree); a gone/unreadable branch is refused, never restored onto a fiction.
+test fn reaped_live_branch_not_terminal_restores_same_key_never_next_attempt() -> Bool {
+  let o = pri_reaped_not_terminal(standing: WorktreeReaped { path: "/wt", branch_head: BranchLive })
+  (match continuation_plan(obs: Present { value: o }) {
+    Restore { reason, attempt_key, from_branch } =>
+      attempt_key == "a1"
+        && from_branch == "roadmap/n1/a1"
+        && reason.contains("live (not terminal)")
+        && reason.contains("restored in place")
+        && reason.contains("claim reopened")
+    _ => false
+  })
+    // RED: it must NOT be a next attempt (which mints a new key and abandons the live attempt's history).
+    && !(match continuation_plan(obs: Present { value: o }) { NextAttempt { reason: _, from_branch: _ } => true, _ => false })
+    // RED: it must NOT be an AlreadyRunning join (there is no live tree to join beside).
+    && !(match continuation_plan(obs: Present { value: o }) { AlreadyRunning { reason: _, attempt_key: _ } => true, _ => false })
+}
+
+test fn reaped_gone_branch_not_terminal_refuses_never_restores() -> Bool {
+  let o = pri_reaped_not_terminal(standing: WorktreeReaped { path: "/wt", branch_head: BranchGone })
+  (match continuation_plan(obs: Present { value: o }) {
+    Refuse { cause: BranchAbsent, reason: r } => r.contains("nothing to restore")
+    _ => false
+  })
+    && !(match continuation_plan(obs: Present { value: o }) { Restore { reason: _, attempt_key: _, from_branch: _ } => true, _ => false })
+}
+
+test fn reaped_unknown_branch_not_terminal_refuses_never_restores() -> Bool {
+  let o = pri_reaped_not_terminal(standing: WorktreeReaped { path: "/wt", branch_head: BranchUnknown { reason: "git rev-parse exit 128: lock file exists" } })
+  (match continuation_plan(obs: Present { value: o }) {
+    Refuse { cause: BranchUndetermined { reason: _ }, reason: r } => r.contains("failed branch check is not an absence")
+    _ => false
+  })
+    && !(match continuation_plan(obs: Present { value: o }) { Restore { reason: _, attempt_key: _, from_branch: _ } => true, _ => false })
+}
+
+test fn reaped_unobserved_worktree_not_terminal_refuses_never_joins_or_restores() -> Bool {
+  let o = pri_reaped_not_terminal(
+    standing: WorktreeUnknown { path: "/wt", cause: "the dispatch worktree root could not be listed" },
+  )
+  (match continuation_plan(obs: Present { value: o }) {
+    Refuse { cause: WorktreeUnobserved { cause: _ }, reason: r } => r.contains("could not be established")
+    _ => false
+  })
+    && !(match continuation_plan(obs: Present { value: o }) { Restore { reason: _, attempt_key: _, from_branch: _ } => true, _ => false })
+    && !(match continuation_plan(obs: Present { value: o }) { AlreadyRunning { reason: _, attempt_key: _ } => true, _ => false })
 }
 
 fn capture_for(submission: WorkerSubmission) -> CaptureForHead {
@@ -77,466 +162,356 @@ fn ready_capture() -> CaptureForHead {
   })
 }
 
-fn failed_prior() -> PriorAttemptFacts {
-  pri(
-    capture: ready_capture(),
-    verdict: SupervisorVerdictAbsent,
-    verification: Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentFailed, detail: "sandbox render red at roadmap_sandbox.dag" } },
+fn segment(kind: WorkflowSegmentKind, state: WorkflowSegmentState, detail: String) -> WorkflowSegment? {
+  Present { value: WorkflowSegment { kind: kind, state: state, detail: detail } }
+}
+
+// A CONTINUED lineage carries its branch and says where the new attempt starts -- and it is NOT a
+// completion and NOT a join: the red control on every NextAttempt witness.
+fn continued_on(plan: ContinuationPlan, pattern: String) -> Bool {
+  match plan {
+    NextAttempt { reason, from_branch } =>
+      reason.contains(pattern) && from_branch == "roadmap/n1/a1" && reason.contains("roadmap/n1/a1") && reason.contains("starts from that branch's head")
+    _ => false
+  }
+}
+
+test fn no_prior_attempt_is_the_first_attempt() -> Bool {
+  (match continuation_plan(obs: none) {
+    StartInitial { reason: _ } => true
+    _ => false
+  })
+    // RED CONTROL: the first attempt is not mistaken for a continuation (which would need a branch)
+    // nor a join.
+    && !(match continuation_plan(obs: none) { NextAttempt { reason: _, from_branch: _ } => true, _ => false })
+    && !(match continuation_plan(obs: none) { AlreadyRunning { reason: _, attempt_key: _ } => true, _ => false })
+}
+
+test fn worker_not_terminal_joins_the_live_attempt_never_double() -> Bool {
+  let running = pri(capture: ready_capture(), verification: none, review: none, goal_audit: none)
+  let joined = PriorExecutionObservation {
+    attempt_key: running.attempt_key,
+    branch: running.branch,
+    // LIVE attempt: the tree stands (its capture/recovery are the present-path facts) and the worker is not
+    // terminal -- the decision joins this session rather than starting a second attempt beside it.
+    standing: WorktreeStands { path: "/wt", capture: ready_capture(), recovery: SessionRecoveryNone },
+    worker_terminal: false,
+    verification: none,
     review: none,
     goal_audit: none,
-  )
-}
-
-test fn no_prior_attempt_starts_fresh() -> Bool {
-  match continuation_decision(prior: none, prior_turn: ContinuationTurnAbsent) {
-    ContinuationSpawnFresh { reason: _ } => true
-    _ => false
+    verification_retry: RefusedRetryOperatorOnly,
+    now: none,
   }
-}
-
-// DISCRIMINATING: a failed verdict on a terminal prior continues on the prior's branch at turn 2 and
-// the brief prefix carries the verdict; a green verdict on the same prior starts fresh.
-test fn a_failed_verdict_continues_on_the_prior_branch_with_the_verdict_in_the_brief() -> Bool {
-  match continuation_decision(prior: Present { value: failed_prior() }, prior_turn: ContinuationTurnAbsent) {
-    ContinuationSpawnFromPrior { origin } =>
-      attempt_origin_turn(origin: origin) == 2
-        && attempt_origin_base_ref(origin: origin, instance_base_ref: "origin/main") == "roadmap/n1/a1"
-        && string_contains(s: continuation_brief_prefix(origin: origin), pattern: "sandbox render red")
-        && string_contains(s: continuation_brief_prefix(origin: origin), pattern: "turn 2 of 3")
+  (match continuation_plan(obs: Present { value: joined }) {
+    AlreadyRunning { reason, attempt_key } => attempt_key == "a1" && reason.contains("is live") && reason.contains("no second attempt")
     _ => false
-  }
+  })
+    // RED CONTROL: a live attempt is joined, never re-spawned as a first attempt or continued as a
+    // new attempt beside the one that is still running.
+    && !(match continuation_plan(obs: Present { value: joined }) { StartInitial { reason: _ } => true, _ => false })
+    && !(match continuation_plan(obs: Present { value: joined }) { NextAttempt { reason: _, from_branch: _ } => true, _ => false })
 }
 
-test fn a_fully_approved_lineage_is_complete_and_spawns_nothing() -> Bool {
+test fn red_verdict_continues_a_new_attempt_from_branch_head() -> Bool {
+  let verify_red = pri(capture: ready_capture(), verification: segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentFailed, detail: "sandbox render red"), review: none, goal_audit: none)
+  let review_red = pri(capture: ready_capture(), verification: segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "verified"), review: segment(kind: ReviewWorkflowSegment, state: WorkflowSegmentFailed, detail: "dag/a.dag: the arm is missing"), goal_audit: none)
+  let audit_red = pri(capture: ready_capture(), verification: segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "verified"), review: segment(kind: ReviewWorkflowSegment, state: WorkflowSegmentComplete, detail: "approved"), goal_audit: segment(kind: GoalAuditWorkflowSegment, state: WorkflowSegmentFailed, detail: "the contract's red control is absent"))
+  continued_on(plan: continuation_plan(obs: Present { value: verify_red }), pattern: "verification failed: sandbox render red")
+    && continued_on(plan: continuation_plan(obs: Present { value: review_red }), pattern: "review requested changes: dag/a.dag: the arm is missing")
+    && continued_on(plan: continuation_plan(obs: Present { value: audit_red }), pattern: "goal audit requested changes: the contract's red control is absent")
+}
+
+test fn all_green_completes_and_the_continue_is_a_noop() -> Bool {
   let green = pri(
     capture: ready_capture(),
-    verdict: SupervisorVerdictAbsent,
-    verification: Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "2 validations" } },
-    review: Present { value: WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentComplete, detail: "approved" } },
-    goal_audit: Present { value: WorkflowSegment { kind: GoalAuditWorkflowSegment, state: WorkflowSegmentComplete, detail: "approved" } },
+    verification: segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "verified"),
+    review: segment(kind: ReviewWorkflowSegment, state: WorkflowSegmentComplete, detail: "approved"),
+    goal_audit: segment(kind: GoalAuditWorkflowSegment, state: WorkflowSegmentComplete, detail: "approved"),
   )
-  match continuation_decision(prior: Present { value: green }, prior_turn: ContinuationTurnAbsent) {
-    ContinuationComplete { reason } => string_contains(s: reason, pattern: "the lineage is complete")
+  (match continuation_plan(obs: Present { value: green }) {
+    AlreadyComplete { reason } => reason.contains("the lineage is complete") && reason.contains("nothing spawns")
     _ => false
-  }
-}
-
-// DISCRIMINATING: a green verification hands the decision to the review. Changes requested continues
-// with the reviewer's reasons in the brief; a pending review holds rather than spawning anything.
-test fn a_green_verification_with_changes_requested_continues_and_a_pending_review_holds() -> Bool {
-  let verified = Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "2 validations" } }
-  let changes = pri(capture: ready_capture(), verdict: SupervisorVerdictAbsent, verification: verified,
-    review: Present { value: WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentFailed, detail: "dag/a.dag: the arm is missing" } }, goal_audit: none)
-  let pending = pri(capture: ready_capture(), verdict: SupervisorVerdictAbsent, verification: verified,
-    review: Present { value: WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting" } }, goal_audit: none)
-  let a = match continuation_decision(prior: Present { value: changes }, prior_turn: ContinuationTurnAbsent) {
-    ContinuationSpawnFromPrior { origin } => string_contains(s: continuation_brief_prefix(origin: origin), pattern: "review requested changes: dag/a.dag: the arm is missing")
-    _ => false
-  }
-  let b = match continuation_decision(prior: Present { value: pending }, prior_turn: ContinuationTurnAbsent) {
-    ContinuationHold { reason } => string_contains(s: reason, pattern: "awaits review")
-    _ => false
-  }
-  a && b
-}
-
-// DISCRIMINATING: at the cap the decision ESCALATES to the derived supervisor rather than
-// refusing (the cap is a cadence, not a failure), and an unreadable turn file still refuses
-// rather than being read as 1.
-test fn the_turn_cap_escalates_and_an_unreadable_turn_still_refuses() -> Bool {
-  let at_cap = continuation_decision(
-    prior: Present { value: failed_prior() },
-    prior_turn: ContinuationTurnKnown { turn: continuation_turn_cap },
-  )
-  let unreadable = continuation_decision(
-    prior: Present { value: failed_prior() },
-    prior_turn: ContinuationTurnUnreadable { reason: "permission denied" },
-  )
-  match at_cap {
-    ContinuationEscalate { escalation } =>
-      escalation.attempt_key == "a1"
-        && escalation.branch == "roadmap/n1/a1"
-        && escalation.turn == continuation_turn_cap
-        && match unreadable {
-          ContinuationRefused { reason: r } => string_contains(s: r, pattern: "permission denied")
-          _ => false
-        }
-    _ => false
-  }
-}
-
-// DISCRIMINATING: an approved review hands the decision to the goal audit; changes requested there
-// continue with the auditor's reasons, and a pending audit holds.
-test fn an_approved_review_with_audit_changes_continues_and_a_pending_audit_holds() -> Bool {
-  let verified = Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "2 validations" } }
-  let approved = Present { value: WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentComplete, detail: "all approved" } }
-  let changes = pri(capture: ready_capture(), verdict: SupervisorVerdictAbsent, verification: verified, review: approved,
-    goal_audit: Present { value: WorkflowSegment { kind: GoalAuditWorkflowSegment, state: WorkflowSegmentFailed, detail: "the check could pass with the goal unmet" } })
-  let pending = pri(capture: ready_capture(), verdict: SupervisorVerdictAbsent, verification: verified, review: approved,
-    goal_audit: Present { value: WorkflowSegment { kind: GoalAuditWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting" } })
-  let a = match continuation_decision(prior: Present { value: changes }, prior_turn: ContinuationTurnAbsent) {
-    ContinuationSpawnFromPrior { origin } => string_contains(s: continuation_brief_prefix(origin: origin), pattern: "goal audit requested changes: the check could pass with the goal unmet")
-    _ => false
-  }
-  let b = match continuation_decision(prior: Present { value: pending }, prior_turn: ContinuationTurnAbsent) {
-    ContinuationHold { reason } => string_contains(s: reason, pattern: "goal audit")
-    _ => false
-  }
-  a && b
-}
-
-// A PRIOR WHOSE CAPTURE DECLARES NON-READY, with the verification segment still pending -- the
-// production shape of attempt cd172fe81b806160: the worker ended truthfully blocked, the belt
-// bound the capture, and a segment-only reading answered Fresh, discarding the implementation.
-fn declared_prior(readiness_explanation: WorkerSubmission) -> PriorAttemptFacts {
-  pri(
-    capture: capture_for(submission: readiness_explanation),
-    verdict: SupervisorVerdictAbsent,
-    verification: Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting" } },
-    review: none,
-    goal_audit: none,
-  )
-}
-
-fn blocked_prior() -> PriorAttemptFacts {
-  declared_prior(readiness_explanation: WorkerSubmission {
-    readiness: SubmissionBlocked,
-    explanation: "the acceptance run was still in flight when the budget died",
-    limitations: "acceptance unconfirmed",
   })
+    // RED CONTROL: a complete lineage is neither joined into a spawn nor continued; it is done.
+    && !(match continuation_plan(obs: Present { value: green }) { NextAttempt { reason: _, from_branch: _ } => true, _ => false })
+    && !(match continuation_plan(obs: Present { value: green }) { StartInitial { reason: _ } => true, _ => false })
 }
 
-// DISCRIMINATING: a terminal prior whose capture declares blocked continues on the prior branch at
-// the next turn with the worker's explanation leading the brief -- never a fresh start from base.
-test fn a_blocked_submission_continues_with_its_explanation_carried() -> Bool {
-  match continuation_decision(prior: Present { value: blocked_prior() }, prior_turn: ContinuationTurnAbsent) {
-    ContinuationSpawnFromPrior { origin } =>
-      attempt_origin_turn(origin: origin) == 2
-        && attempt_origin_base_ref(origin: origin, instance_base_ref: "origin/main") == "roadmap/n1/a1"
-        && string_contains(s: continuation_brief_prefix(origin: origin), pattern: "declared blocked: the acceptance run was still in flight when the budget died")
-        && string_contains(s: continuation_brief_prefix(origin: origin), pattern: "turn 2 of 3")
+test fn handed_in_nothing_continues_from_branch_head() -> Bool {
+  let yielded = pri(capture: CaptureAbsent, verification: none, review: none, goal_audit: none)
+  let blocked = pri(capture: capture_for(submission: WorkerSubmission { readiness: SubmissionBlocked, explanation: "the acceptance run was still in flight", limitations: "" }), verification: none, review: none, goal_audit: none)
+  let needs = pri(capture: capture_for(submission: WorkerSubmission { readiness: SubmissionNeedsContext, explanation: "the contract does not say which artifact the lane renders", limitations: "" }), verification: none, review: none, goal_audit: none)
+  continued_on(plan: continuation_plan(obs: Present { value: yielded }), pattern: "without handing in a candidate")
+    && continued_on(plan: continuation_plan(obs: Present { value: blocked }), pattern: "its worker reported it was blocked")
+    && continued_on(plan: continuation_plan(obs: Present { value: needs }), pattern: "its submission declared needs-context")
+}
+
+// THE CAPTURE IS OWED, NOT HANDED-IN-NOTHING. A terminal worker whose belt commit step has not settled
+// this head yields CaptureNotAttempted -- the repo-wide meaning is 'owed' (dogfood StageOwed, belt
+// ClaimCaptureOwed), and the recurring-failure-mode record absent_reads_identically_to_never_looked is the
+// authority that 'no capture because owed' and 'no capture because settled' read the same and must not be
+// conflated. So the decision REFUSES and waits for the belt's commit lane to settle it (that boundedness is
+// held by belt_capture_absence_for_attempt reading the commit record, not by a fabricated 'legacy' label).
+// RED CONTROL: it must NEVER start a new attempt from the branch head -- that would silently drop work the
+// prior worker had not committed. If the code ever re-reads 'owed' as 'handed in nothing', this fails.
+test fn owed_capture_refuses_and_never_spawns_from_branch_head() -> Bool {
+  let owed = pri(capture: CaptureNotAttempted { reason: "the belt's commit step has not run for this attempt" }, verification: none, review: none, goal_audit: none)
+  (match continuation_plan(obs: Present { value: owed }) {
+    Refuse { cause: CaptureOwed { reason: _ }, reason: r } => r.contains("prior attempt a1")
     _ => false
-  }
-}
-
-// DISCRIMINATING: needs-context is the same unfinished shape with the worker's own account, and
-// continues the same way.
-test fn a_needs_context_submission_continues_with_its_explanation_carried() -> Bool {
-  let p = declared_prior(readiness_explanation: WorkerSubmission {
-    readiness: SubmissionNeedsContext,
-    explanation: "the contract does not say which artifact the lane renders",
-    limitations: "",
   })
-  match continuation_decision(prior: Present { value: p }, prior_turn: ContinuationTurnKnown { turn: 1 }) {
-    ContinuationSpawnFromPrior { origin } =>
-      attempt_origin_turn(origin: origin) == 2
-        && attempt_origin_base_ref(origin: origin, instance_base_ref: "origin/main") == "roadmap/n1/a1"
-        && string_contains(s: continuation_brief_prefix(origin: origin), pattern: "declared needs-context: the contract does not say which artifact the lane renders")
-    _ => false
-  }
+    // RED CONTROL: an owed capture is never continued -- no new attempt is spawned onto a possibly-dirty head.
+    && !(match continuation_plan(obs: Present { value: owed }) { NextAttempt { reason: _, from_branch: _ } => true, _ => false })
 }
 
-// DISCRIMINATING: a terminal prior with no capture at its head yielded -- the belt's commit was
-// preservation only -- and the next turn continues from the prior branch to finish and submit.
-test fn a_yielded_prior_continues_with_the_yield_reason_carried() -> Bool {
-  let p = pri(
-    capture: CaptureAbsent,
-    verdict: SupervisorVerdictAbsent,
-    verification: Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting" } },
-    review: none,
-    goal_audit: none,
-  )
-  match continuation_decision(prior: Present { value: p }, prior_turn: ContinuationTurnAbsent) {
-    ContinuationSpawnFromPrior { origin } =>
-      attempt_origin_turn(origin: origin) == 2
-        && attempt_origin_base_ref(origin: origin, instance_base_ref: "origin/main") == "roadmap/n1/a1"
-        && string_contains(s: continuation_brief_prefix(origin: origin), pattern: "preservation only")
+test fn a_stopped_segment_is_a_refusal_not_a_fallback() -> Bool {
+  let unreadable = pri(capture: CaptureUnreadable { reason: "the capture directory could not be listed" }, verification: none, review: none, goal_audit: none)
+  let stopped = pri(capture: ready_capture(), verification: segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentStopped, detail: "stopped"), review: none, goal_audit: none)
+  (match continuation_plan(obs: Present { value: unreadable }) {
+    Refuse { cause: CaptureStoreUnreadable { reason: _ }, reason: r } => r.contains("the capture directory could not be listed")
     _ => false
-  }
-}
-
-// RED CONTROL: a ready capture is a candidate, and a candidate is verification's to judge -- the
-// decision HOLDS (the belt owes the verification, no spawn of any kind) and NEVER routes to
-// SpawnFromPrior past an unjudged candidate, so a fabricated ready submission cannot route a
-// lineage around the verify gate.
-test fn a_ready_candidate_holds_for_verification_and_never_continues() -> Bool {
-  let p = declared_prior(readiness_explanation: WorkerSubmission {
-    readiness: SubmissionReady,
-    explanation: "implemented the change and ran the acceptance route",
-    limitations: "",
   })
-  match continuation_decision(prior: Present { value: p }, prior_turn: ContinuationTurnAbsent) {
-    ContinuationHold { reason } => string_contains(s: reason, pattern: "verification is owed and still pending")
+    && (match continuation_plan(obs: Present { value: stopped }) {
+      Refuse { cause: SegmentDamaged { segment: VerificationWorkflowSegment }, reason: r } => r.contains("does not inhabit")
+      _ => false
+    })
+    // RED CONTROL: a refusal is never a spawn.
+    && !(match continuation_plan(obs: Present { value: unreadable }) { NextAttempt { reason: _, from_branch: _ } => true, _ => false })
+}
+
+// The unbounded worker explanation is bounded and the truncation is marked.
+test fn worker_explanation_is_bounded() -> Bool {
+  let seed = "block-block-block-block-block-block-block-block-block-"
+  let a4 = concat(concat(seed, seed), concat(seed, seed))
+  let long_detail = concat(concat(a4, a4), concat(a4, a4))
+  let blocked = pri(capture: capture_for(submission: WorkerSubmission { readiness: SubmissionBlocked, explanation: long_detail, limitations: "" }), verification: none, review: none, goal_audit: none)
+  match continuation_plan(obs: Present { value: blocked }) {
+    NextAttempt { reason, from_branch: _ } => reason.contains(" ...") && string_length(s: reason) < 1400
     _ => false
   }
 }
 
-// DISCRIMINATING: the capture arm pays the same cap cadence and the same refusal as a failed
-// verdict -- a blocked lineage at the cap escalates with its stall named, and an unreadable turn
-// file is never guessed as turn 1.
-test fn a_blocked_submission_at_the_cap_escalates_and_an_unreadable_turn_refuses() -> Bool {
-  let at_cap = continuation_decision(
-    prior: Present { value: blocked_prior() },
-    prior_turn: ContinuationTurnKnown { turn: continuation_turn_cap },
-  )
-  let unreadable = continuation_decision(
-    prior: Present { value: blocked_prior() },
-    prior_turn: ContinuationTurnUnreadable { reason: "permission denied" },
-  )
-  match at_cap {
-    ContinuationEscalate { escalation } =>
-      escalation.turn == continuation_turn_cap
-        && string_contains(s: escalation.reason, pattern: "blocked")
-        && match unreadable {
-          ContinuationRefused { reason: r } => string_contains(s: r, pattern: "permission denied")
-          _ => false
-        }
+// The waiting states all collapse to the JOIN: a segment owed, pending, active or retried-on-
+// environment is a lineage still in motion, joined rather than waited on by a spawn; a stopped
+// segment (a state it cannot inhabit) is the damaged-record refusal.
+test fn segments_in_motion_join_and_stopped_refuses() -> Bool {
+  let owed = pri(capture: ready_capture(), verification: none, review: none, goal_audit: none)
+  let pending = pri(capture: ready_capture(), verification: segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentPending, detail: "queued"), review: none, goal_audit: none)
+  let active = pri(capture: ready_capture(), verification: segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentActive, detail: "running"), review: none, goal_audit: none)
+  let refused = pri(capture: ready_capture(), verification: segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentRefused, detail: "toolchain missing"), review: none, goal_audit: none)
+  let stopped = pri(capture: ready_capture(), verification: segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentStopped, detail: "stopped"), review: none, goal_audit: none)
+  (match continuation_plan(obs: Present { value: owed }) {
+    AlreadyRunning { reason, attempt_key: _ } => reason.contains("verification is owed")
     _ => false
-  }
+  })
+    && (match continuation_plan(obs: Present { value: pending }) {
+      AlreadyRunning { reason, attempt_key: _ } => reason.contains("still pending")
+      _ => false
+    })
+    && (match continuation_plan(obs: Present { value: active }) {
+      AlreadyRunning { reason, attempt_key: _ } => reason.contains("running")
+      _ => false
+    })
+    && (match continuation_plan(obs: Present { value: refused }) {
+      AlreadyRunning { reason, attempt_key: _ } => reason.contains("about the candidate") && !reason.contains("environment fact") && reason.contains("operator resumes") && !reason.contains("retries")
+      _ => false
+    })
+    && (match continuation_plan(obs: Present { value: stopped }) {
+      // The STOPPED segment must surface specifically as the verification SegmentDamaged refusal, not any Refuse.
+      Refuse { cause: SegmentDamaged { segment: VerificationWorkflowSegment }, reason: _ } => true
+      _ => false
+    })
 }
 
-// DISCRIMINATING: a capture that cannot be established is refused, never read as a yield and
-// never as a candidate -- the decision does not guess over possibly-committed work.
-test fn an_unreadable_capture_refuses_with_its_reason() -> Bool {
-  let p = pri(
-    capture: CaptureUnreadable { reason: "the capture record does not decode" },
-    verdict: SupervisorVerdictAbsent,
-    verification: Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting" } },
-    review: none,
-    goal_audit: none,
-  )
-  match continuation_decision(prior: Present { value: p }, prior_turn: ContinuationTurnAbsent) {
-    ContinuationRefused { reason } => string_contains(s: reason, pattern: "does not decode")
-    _ => false
-  }
+// LAB BUG #2, THE GENERAL RESTORE. A reaped worktree must NOT block the decision and must NOT be read as
+// 'the worker handed in nothing'. When the branch is still live it is the durable record, so CONTINUE
+// restores: a new attempt from that branch's head. RED CONTROLS: the unread capture is never turned into a
+// Resume (there is no directory to resume into), never a false completion, and never the first attempt.
+test fn reaped_worktree_with_live_branch_restores_from_branch_head() -> Bool {
+  let o = pri_reaped(branch_head: BranchLive)
+  continued_on(plan: continuation_plan(obs: Present { value: o }), pattern: "worktree is gone")
+    // RED CONTROL: an unread capture must not be misread as a resumable session (the worktree is gone --
+    // resuming would drive a worker into a directory that no longer exists).
+    && !(match continuation_plan(obs: Present { value: o }) { Resume { reason: _, attempt_key: _, ordinal: _, causes: _ } => true, _ => false })
+    // RED CONTROL: it is not 'handed in nothing' read as a completion, nor a first attempt (it continues prior work).
+    && !(match continuation_plan(obs: Present { value: o }) { AlreadyComplete { reason: _ } => true, _ => false })
+    && !(match continuation_plan(obs: Present { value: o }) { StartInitial { reason: _ } => true, _ => false })
 }
 
-// THE CADENCE TEXT STAYS BOUNDED AND NAMES THE DRIFT ROUTE (harness-work-lifecycle alignment
-// ladder, cadence point 2): the ask caps the answer at three sentences carried in the submission's
-// explanation, and a named drift routes to the supervisor path rather than reading as failure. L0
-// stays a pointer -- the load phase carries the principles' text, the preamble names their home.
-test fn the_alignment_ask_is_bounded_and_names_the_drift_route() -> Bool {
-  string_contains(s: continuation_alignment_ask, pattern: "at most three sentences")
-    && string_contains(s: continuation_alignment_ask, pattern: "submission's explanation")
-    && string_contains(s: continuation_alignment_ask, pattern: "routes to the supervisor path")
-    && string_contains(s: continuation_alignment_ask, pattern: "not a failure")
-    && string_contains(s: continuation_alignment_l0_pointer, pattern: "DESIGN.md")
-    && string_contains(s: continuation_alignment_l0_pointer, pattern: "fail-closed")
-}
-
-// ------------------------------------------------------------------------------------------------
-// The supervisor escalation: the cap is a cadence, and the verdict receipt is the only route back.
-// ------------------------------------------------------------------------------------------------
-
-fn capped_prior(verdict: SupervisorVerdictObservation) -> PriorAttemptFacts {
-  pri(
-    capture: ready_capture(),
-    verdict: verdict,
-    verification: Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentFailed, detail: "sandbox render red" } },
-    review: none,
-    goal_audit: none,
-  )
-}
-
-fn nominal_receipt(turn: Int) -> SupervisorVerdictObservation {
-  SupervisorVerdictBound {
-    receipt: SupervisorVerdictReceipt {
-      attempt_key: "a1",
-      adjudicated_turn: turn,
-      verdict: VerdictNominal { basis: "the worker was two files into a four-file port with every edit green" },
-    },
-  }
-}
-
-// THE TARGET IS DERIVED FROM THE DECOMPOSITION DAG: a leaf escalates to its arc's supervisor, a
-// project-of-one leaf to its own node's supervisor, a root arc (standalone with members) to the
-// top, and an ambiguous membership derives nothing at all.
-test fn the_escalation_target_is_derived_never_rostered() -> Bool {
-  match supervisor_target_for(node_id: "leaf", memberships: [te(child: "arc", parent: "leaf")]) {
-    Present { value: SupervisorForNode { node_id } } =>
-      node_id == "arc"
-        && (match supervisor_target_for(node_id: "solo", memberships: [te(child: "arc", parent: "leaf")]) {
-          Present { value: SupervisorForNode { node_id: own } } => own == "solo"
-          _ => false
-        })
-        && (match supervisor_target_for(node_id: "arc", memberships: [te(child: "arc", parent: "leaf")]) {
-          Present { value: SupervisorAtTop } => true
-          _ => false
-        })
-        && (match supervisor_target_for(node_id: "leaf", memberships: [te(child: "arc", parent: "leaf"), te(child: "arc2", parent: "leaf")]) {
-          Absent => true
-          Present { value: _ } => false
-        })
-    _ => false
-  }
-}
-
-// THE CAPPED LINEAGE ESCALATES TO ITS ARC'S SUPERVISOR with the whole checkpoint named -- never a
-// refusal, never a fresh start.
-test fn a_capped_lineage_escalates_to_the_derived_supervisor() -> Bool {
-  match continuation_decision(prior: Present { value: capped_prior(verdict: SupervisorVerdictAbsent) }, prior_turn: ContinuationTurnKnown { turn: continuation_turn_cap }) {
-    ContinuationEscalate { escalation } =>
-      escalation.node_id == "n1"
-        && escalation.attempt_key == "a1"
-        && escalation.branch == "roadmap/n1/a1"
-        && escalation.turn == continuation_turn_cap
-        && (match escalation.target {
-          SupervisorForNode { node_id } => node_id == "arc-1"
-          _ => false
-        })
-    _ => false
-  }
-}
-
-// A NOMINAL VERDICT FOR THIS TURN RENEWS THE LINEAGE EXACTLY ONCE, on the supervisor's stated
-// evidence: the continuation runs at the next turn from the prior branch with the basis leading
-// the brief.
-test fn a_nominal_verdict_for_this_turn_issues_the_renewed_continuation() -> Bool {
-  match continuation_decision(
-    prior: Present { value: capped_prior(verdict: nominal_receipt(turn: continuation_turn_cap)) },
-    prior_turn: ContinuationTurnKnown { turn: continuation_turn_cap },
-  ) {
-    ContinuationSpawnFromPrior { origin } =>
-      attempt_origin_turn(origin: origin) == continuation_turn_cap + 1
-        && attempt_origin_base_ref(origin: origin, instance_base_ref: "origin/main") == "roadmap/n1/a1"
-        && string_contains(s: continuation_brief_prefix(origin: origin), pattern: "adjudicated this lineage Nominal")
-        && string_contains(s: continuation_brief_prefix(origin: origin), pattern: "two files into a four-file port")
-    _ => false
-  }
-}
-
-// RED CONTROL: a Nominal verdict bound to a DIFFERENT turn authorizes nothing -- the route reads
-// the receipt's adjudicated turn, never the label, so a stale or fabricated Nominal escalates
-// rather than issuing a continuation.
-test fn a_nominal_verdict_for_another_turn_does_not_continue() -> Bool {
-  match continuation_decision(
-    prior: Present { value: capped_prior(verdict: nominal_receipt(turn: 1)) },
-    prior_turn: ContinuationTurnKnown { turn: continuation_turn_cap },
-  ) {
-    ContinuationEscalate { escalation } =>
-      string_contains(s: escalation.reason, pattern: "adjudicates a different turn")
-    _ => false
-  }
-}
-
-// PLANDEFECT AND STUCK ARE TERMINAL TYPED STATES OF THEIR OWN -- surfaced as themselves, never
-// spelled "failed": a budget spent is not a task failed.
-test fn plan_defect_and_stuck_verdicts_are_terminal_typed_states() -> Bool {
-  let defect = continuation_decision(
-    prior: Present { value: capped_prior(verdict: SupervisorVerdictBound { receipt: SupervisorVerdictReceipt { attempt_key: "a1", adjudicated_turn: continuation_turn_cap, verdict: VerdictPlanDefect { defect: "the brief scopes four files as one edit" } } }) },
-    prior_turn: ContinuationTurnKnown { turn: continuation_turn_cap },
-  )
-  let stuck = continuation_decision(
-    prior: Present { value: capped_prior(verdict: SupervisorVerdictBound { receipt: SupervisorVerdictReceipt { attempt_key: "a1", adjudicated_turn: continuation_turn_cap, verdict: VerdictStuck { cause: "the emitter lacks the lowering this contract needs" } } }) },
-    prior_turn: ContinuationTurnKnown { turn: continuation_turn_cap },
-  )
-  match defect {
-    ContinuationPlanDefect { defect: d } =>
-      string_contains(s: d, pattern: "scopes four files")
-        && match stuck {
-          ContinuationStuck { cause } => string_contains(s: cause, pattern: "lacks the lowering")
-          _ => false
-        }
-    _ => false
-  }
-}
-
-// AN UNDECODABLE VERDICT REFUSES, never guessed: the decision does not invent an adjudication over
-// a lineage it cannot read.
-test fn an_unreadable_supervisor_verdict_refuses() -> Bool {
-  match continuation_decision(
-    prior: Present { value: capped_prior(verdict: SupervisorVerdictUnreadable { reason: "the verdict does not decode" }) },
-    prior_turn: ContinuationTurnKnown { turn: continuation_turn_cap },
-  ) {
-    ContinuationRefused { reason } => string_contains(s: reason, pattern: "does not decode")
-    _ => false
-  }
-}
-
-// THE RECEIPT CODEC ROUND TRIPS, and the schema wall refuses a document that is not exactly this
-// shape -- the same discipline the submission artifact carries, because both are consumed by a
-// decision that must never guess.
-test fn the_verdict_receipt_round_trips_and_the_schema_wall_holds() -> Bool {
-  let receipt = SupervisorVerdictReceipt {
+// A REAPED WORKTREE WHOSE LEDGER SEGMENTS ARE SUPPLIED. The verification/review/goal-audit segments live in
+// the ATTEMPTS LEDGER, not the worktree, so a reap does NOT hide them. These witnesses prove the reaped
+// decision READS them (review 91383): complete -> AlreadyComplete, in-flight -> AlreadyRunning, failed ->
+// restore -- instead of the old blanket restore that answered "continue" for finished or in-motion lineages.
+fn pri_reaped_ledger(
+  verification: WorkflowSegment?,
+  review: WorkflowSegment?,
+  goal_audit: WorkflowSegment?,
+) -> PriorExecutionObservation {
+  PriorExecutionObservation {
     attempt_key: "a1",
-    adjudicated_turn: 3,
-    verdict: VerdictStuck { cause: "missing capability" },
-  }
-  match supervisor_verdict_decode(text: supervisor_verdict_text(receipt: receipt)) {
-    VerdictNotDecodable { reason: _ } => false
-    VerdictDecoded { receipt: r } =>
-      r.attempt_key == "a1"
-        && r.adjudicated_turn == 3
-        && (match r.verdict {
-          VerdictStuck { cause } => cause == "missing capability"
-          _ => false
-        })
-        && (match supervisor_verdict_decode(text: "{\"route\": \"stuck\", \"statement\": \"x\", \"attempt_key\": \"a1\", \"adjudicated_turn\": 3}") {
-          VerdictNotDecodable { reason } => string_contains(s: reason, pattern: "schema")
-          VerdictDecoded { receipt: _ } => false
-        })
+    branch: "roadmap/n1/a1",
+    // REAPED with the live branch to restore from; the capture/recovery are absent (never faked), and the
+    // ledger segments -- which survive a reap -- are what the decision reads next.
+    standing: WorktreeReaped { path: "/wt", branch_head: BranchLive },
+    worker_terminal: true,
+    verification: verification,
+    review: review,
+    goal_audit: goal_audit,
+    verification_retry: RefusedRetryOperatorOnly,
+    now: none,
   }
 }
 
-// ------------------------------------------------------------------------------------------------
-// The vocabulary repair (branch review 2026-09-23, blocker 2): SpawnFresh means exactly "no prior
-// owned lineage exists" -- every unresolved-but-present lineage state is a Hold (or the named
-// Refused), never a fresh spawn beside live work.
-// ------------------------------------------------------------------------------------------------
-
-fn running_prior() -> PriorAttemptFacts {
-  let p = failed_prior()
-  PriorAttemptFacts {
-    node_id: p.node_id,
-    memberships: p.memberships,
-    attempt_key: p.attempt_key,
-    branch: p.branch,
-    worker_terminal: false,
-    capture: p.capture,
-    supervisor_verdict: p.supervisor_verdict,
-    verification: p.verification,
-    review: p.review,
-    goal_audit: p.goal_audit,
-  }
-}
-
-// AN ACTIVE WORKER IS A HOLD, the repair's core: before it answered Fresh and the belt spawned a
-// second lineage beside the live one. No spawn arm is reachable from a running worker.
-test fn a_running_worker_holds_and_never_spawns_fresh() -> Bool {
-  match continuation_decision(prior: Present { value: running_prior() }, prior_turn: ContinuationTurnAbsent) {
-    ContinuationHold { reason } => string_contains(s: reason, pattern: "has not ended")
-    _ => false
-  }
-}
-
-// VERIFICATION OWNED BY THE BELT HOLDS THE LINEAGE: absent, pending, and active segments are the
-// belt's outstanding obligation, not a spawn's business; a refused verification is an environment
-// fact and the obligation stays outstanding with the retry named; a stopped segment is a state
-// verification does not inhabit and refuses.
-test fn verification_owed_pending_active_hold_and_refused_retries_while_stopped_refuses() -> Bool {
-  let owed = pri(capture: ready_capture(), verdict: SupervisorVerdictAbsent, verification: none, review: none, goal_audit: none)
-  let pending = pri(capture: ready_capture(), verdict: SupervisorVerdictAbsent, verification: Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting" } }, review: none, goal_audit: none)
-  let active = pri(capture: ready_capture(), verdict: SupervisorVerdictAbsent, verification: Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentActive, detail: "running" } }, review: none, goal_audit: none)
-  let refused = pri(capture: ready_capture(), verdict: SupervisorVerdictAbsent, verification: Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentRefused, detail: "sandbox image missing" } }, review: none, goal_audit: none)
-  let stopped = pri(capture: ready_capture(), verdict: SupervisorVerdictAbsent, verification: Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentStopped, detail: "x" } }, review: none, goal_audit: none)
-  (match continuation_decision(prior: Present { value: owed }, prior_turn: ContinuationTurnAbsent) {
-    ContinuationHold { reason } => reason.contains("verification is owed")
+// A LINEAGE THAT FINISHED BEFORE ITS WORKTREE WAS REAPED IS COMPLETE, NOT RESTORABLE. Its ledger already
+// records verification green + review approved + goal audit approved; its CONTINUE is a no-op and NOTHING
+// spawns. RED CONTROL (review 91383): this must NOT be a NextAttempt -- starting a fresh attempt on finished
+// work is exactly the defect the reviewer found (the reap used to make the plan answer "continue").
+test fn reaped_worktree_with_completed_ledger_is_already_complete_not_a_spawn() -> Bool {
+  let o = pri_reaped_ledger(
+    verification: segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "verified"),
+    review: segment(kind: ReviewWorkflowSegment, state: WorkflowSegmentComplete, detail: "approved"),
+    goal_audit: segment(kind: GoalAuditWorkflowSegment, state: WorkflowSegmentComplete, detail: "approved"),
+  )
+  (match continuation_plan(obs: Present { value: o }) {
+    AlreadyComplete { reason } => reason.contains("nothing spawns")
     _ => false
   })
-    && (match continuation_decision(prior: Present { value: pending }, prior_turn: ContinuationTurnAbsent) {
-      ContinuationHold { reason } => reason.contains("still pending")
+    // RED CONTROL: finished work never spawns a new attempt, and is never mistaken for a first attempt.
+    && !(match continuation_plan(obs: Present { value: o }) { NextAttempt { reason: _, from_branch: _ } => true, _ => false })
+    && !(match continuation_plan(obs: Present { value: o }) { StartInitial { reason: _ } => true, _ => false })
+}
+
+// A VERDICT STILL IN MOTION SURVIVES THE REAP AND IS JOINED, NOT DOUBLED. Its review is still running, so a
+// CONTINUE joins the in-flight verdict instead of starting a second attempt beside it. RED CONTROL (review
+// 91383): this must NOT be a NextAttempt -- that double-spawn is what the module's "the live check IS the
+// guard" forbids, and a reap used to hide it. This is the discriminator against the restore arm.
+test fn reaped_worktree_with_a_verdict_in_flight_joins_not_double_spawns() -> Bool {
+  let o = pri_reaped_ledger(
+    verification: segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "verified"),
+    review: segment(kind: ReviewWorkflowSegment, state: WorkflowSegmentActive, detail: "running"),
+    goal_audit: none,
+  )
+  (match continuation_plan(obs: Present { value: o }) {
+    AlreadyRunning { reason, attempt_key } => attempt_key == "a1" && reason.contains("no attempt spawns beside it")
+    _ => false
+  })
+    // RED CONTROL: an in-flight verdict is never doubled by a new attempt.
+    && !(match continuation_plan(obs: Present { value: o }) { NextAttempt { reason: _, from_branch: _ } => true, _ => false })
+}
+
+// A FAILED VERDICT STILL RESTORES. The ledger shows the lineage stopped short (verification red), so even with
+// the worktree reaped CONTINUE restores a fresh attempt from the live branch head -- the reap neither turns a
+// genuine continue into a join nor refuses it. RED CONTROL: not a completion, and not a join.
+test fn reaped_worktree_with_a_failed_verdict_still_restores_from_branch_head() -> Bool {
+  let o = pri_reaped_ledger(
+    verification: segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentFailed, detail: "sandbox render red"),
+    review: none,
+    goal_audit: none,
+  )
+  continued_on(plan: continuation_plan(obs: Present { value: o }), pattern: "verification failed: sandbox render red")
+    // RED CONTROL: a failed verdict is not a completion and not a join -- it is a genuine continue-from-branch.
+    && !(match continuation_plan(obs: Present { value: o }) { AlreadyComplete { reason: _ } => true, _ => false })
+    && !(match continuation_plan(obs: Present { value: o }) { AlreadyRunning { reason: _, attempt_key: _ } => true, _ => false })
+}
+
+// A GONE BRANCH LEAVES NOTHING TO RESTORE ONTO -- the typed BranchAbsent refusal (a Refuse, never a spawn
+// onto a base ref). RED CONTROL: this must NOT continue (spawning onto a gone branch would fabricate a base).
+test fn reaped_worktree_with_gone_branch_is_a_typed_branch_absent_refusal() -> Bool {
+  let o = pri_reaped(branch_head: BranchGone)
+  (match continuation_plan(obs: Present { value: o }) {
+    Refuse { cause: BranchAbsent, reason: r } => r.contains("roadmap/n1/a1")
+    _ => false
+  })
+    // RED CONTROL: a gone branch is never treated as restorable -- no new attempt is spawned onto it.
+    && !(match continuation_plan(obs: Present { value: o }) { NextAttempt { reason: _, from_branch: _ } => true, _ => false })
+}
+
+// A FAILED BRANCH CHECK IS NOT THE FACT THAT THE BRANCH IS GONE, and is not live either -- it is unknown,
+// and unknown is refused, never restored onto. RED CONTROL: unlike the live-branch case, this must NOT
+// continue; if the code confused Unknown with Live it would wrongly spawn a restore here. This is the exact
+// arm that separates 'the git command failed' from 'the branch is gone'.
+test fn reaped_worktree_with_unreadable_branch_refuses_never_restores_onto_unknown() -> Bool {
+  let o = pri_reaped(branch_head: BranchUnknown { reason: "git rev-parse exit 128: lock file exists" })
+  (match continuation_plan(obs: Present { value: o }) {
+    Refuse { cause: BranchUndetermined { reason: _ }, reason: r } => r.contains("roadmap/n1/a1")
+    _ => false
+  })
+    // RED CONTROL: an unknown branch is NOT treated as live -- no restore is spawned onto a branch we could
+    // not confirm exists. (This is the discriminator against the live-branch restore arm.)
+    && !(match continuation_plan(obs: Present { value: o }) { NextAttempt { reason: _, from_branch: _ } => true, _ => false })
+}
+
+// A WORKTREE WHOSE PRESENCE COULD NOT BE ESTABLISHED (the root would not list, the subject was refused, or
+// the directory lists but its head would not read -- a git fault on a LIVE worktree). This is NOT the reaped
+// case and must never be restored onto: a still-present worktree may hold uncommitted live work that a
+// restore-from-branch (git worktree add, no --force) would clobber or silently omit. This is the state the
+// reviewer's filesystem-absence-adoption finding turns on -- a failed read is unknown, never 'gone'.
+fn pri_worktree_unknown() -> PriorExecutionObservation {
+  PriorExecutionObservation {
+    attempt_key: "a1",
+    branch: "roadmap/n1/a1",
+    // Presence NOT established: the sum carries ONLY the unreadability cause -- no branch_head, no capture.
+    // Even a LIVE branch could not license a restore here, and the type now makes pairing a possibly-live
+    // tree with a branch standing (or a fabricated capture) UNWRITABLE, not merely ruled out by match order.
+    standing: WorktreeUnknown { path: "/wt", cause: "the dispatch worktree root could not be listed" },
+    worker_terminal: true,
+    verification: none,
+    review: none,
+    goal_audit: none,
+    verification_retry: RefusedRetryOperatorOnly,
+    now: none,
+  }
+}
+
+test fn worktree_unknown_refuses_never_restores_onto_a_possibly_live_worktree() -> Bool {
+  let o = pri_worktree_unknown()
+  (match continuation_plan(obs: Present { value: o }) {
+    Refuse { cause: WorktreeUnobserved { cause: _ }, reason: r } => r.contains("prior attempt a1") && r.contains("could not establish")
+    _ => false
+  })
+    // RED CONTROL: presence-not-established must NOT restore. With a LIVE branch, if the worktree standing
+    // were collapsed from AttemptWorktreeUnobserved into AttemptWorktreeAbsent this would take the restore
+    // arm and spawn -- failing here. This is
+    // the exact discriminator between 'established gone (restorable)' and 'could not tell (refuse)'.
+    && !(match continuation_plan(obs: Present { value: o }) { NextAttempt { reason: _, from_branch: _ } => true, _ => false })
+    // And it must not be mistaken for a resumable in-place session either.
+    && !(match continuation_plan(obs: Present { value: o }) { Resume { reason: _, attempt_key: _, ordinal: _, causes: _ } => true, _ => false })
+}
+
+fn refused_with(retry: RefusedRetryStanding) -> PriorExecutionObservation {
+  PriorExecutionObservation {
+    attempt_key: "a1",
+    branch: "roadmap/n1/a1",
+    standing: WorktreeStands { path: "/wt", capture: ready_capture(), recovery: SessionRecoveryNone },
+    worker_terminal: true,
+    verification: segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentRefused, detail: "toolchain missing"),
+    review: none,
+    goal_audit: none,
+    verification_retry: retry,
+    now: none,
+  }
+}
+
+// THE REFUSED-VERIFICATION RETRY BOUND (0e). UNEXECUTED (sf84-r9: shared main closure refusals at
+// host_effect:248 and fleet_physical_inventory:367). RED CONTROLS: an Owed retry JOINS (never spawns and never
+// refuses); a spent bound refuses with RetryExhausted carrying the count (never joins forever, never spawns);
+// an unreadable ledger refuses with RetryLedgerUnreadable (never read as Owed or as Exhausted); an
+// OperatorOnly refusal joins and is not a retry.
+test fn refused_verification_retry_bound_joins_while_owed_and_refuses_when_spent_or_unreadable() -> Bool {
+  (match continuation_plan(obs: Present { value: refused_with(retry: RefusedRetryOwed { ordinal: 2 }) }) {
+    AlreadyRunning { reason, attempt_key: _ } => reason.contains("retry 2")
+    _ => false
+  })
+    && (match continuation_plan(obs: Present { value: refused_with(retry: RefusedRetryExhausted { attempts: 3 }) }) {
+      Refuse { cause: RetryExhausted { attempts }, reason: _ } => attempts == 3
       _ => false
     })
-    && (match continuation_decision(prior: Present { value: active }, prior_turn: ContinuationTurnAbsent) {
-      ContinuationHold { reason } => reason.contains("running")
+    && (match continuation_plan(obs: Present { value: refused_with(retry: RefusedRetryUnreadable { reason: "ledger torn" }) }) {
+      Refuse { cause: RetryLedgerUnreadable { reason }, reason: _ } => reason == "ledger torn"
       _ => false
     })
-    && (match continuation_decision(prior: Present { value: refused }, prior_turn: ContinuationTurnAbsent) {
-      ContinuationHold { reason } => reason.contains("environment fact") && reason.contains("retries")
-      _ => false
-    })
-    && (match continuation_decision(prior: Present { value: stopped }, prior_turn: ContinuationTurnAbsent) {
-      ContinuationRefused { reason } => reason.contains("does not inhabit")
+    && (match continuation_plan(obs: Present { value: refused_with(retry: RefusedRetryOperatorOnly) }) {
+      AlreadyRunning { reason, attempt_key: _ } => reason.contains("operator resumes") && !reason.contains("retry ")
       _ => false
     })
 }

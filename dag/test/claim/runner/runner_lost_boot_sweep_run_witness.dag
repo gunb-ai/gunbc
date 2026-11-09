@@ -700,14 +700,15 @@ test fn the_deleting_arm_is_gated_until_the_go() -> Bool {
   }
 }
 
-// WITHOUT A HOST, OR WITHOUT THE RUN'S COORDINATES, AN ANCHOR AND THE GO, THE LIVE OBSERVATION IS UNOBSERVED AND MINTS
-// NOTHING; the join then refuses. This run holds none of them, so nothing is contacted.
+// WITHOUT A HOST, OR WITHOUT THE TOKEN THAT READS THE HOST'S RUNNING-OS RECEIPT (its per-boot pin), THE LIVE
+// OBSERVATION IS UNOBSERVED AND MINTS NOTHING; the join then refuses. This run holds neither, so nothing is read or
+// contacted.
 test fn the_live_observation_without_its_inputs_is_unobserved() -> Bool {
-  (match lost_boot_live_observation(host: "") {
+  (match lost_boot_live_observation(host: "", token: none) {
     CurrentBootUnobserved { cause: c } => string_contains(s: c, pattern: "is unset")
     CurrentBootObserved { evidence: _ } => false
-  }) && (match lost_boot_live_observation(host: "mtcollins1") {
-    CurrentBootUnobserved { cause: _ } => true
+  }) && (match lost_boot_live_observation(host: "mtcollins1", token: none) {
+    CurrentBootUnobserved { cause: c } => string_contains(s: c, pattern: "GITHUB_TOKEN is unset") && string_contains(s: c, pattern: "per-boot pin")
     CurrentBootObserved { evidence: _ } => false
   })
 }
