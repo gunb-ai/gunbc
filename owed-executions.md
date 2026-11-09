@@ -64,3 +64,11 @@ Maintained by silent-bee-845, the daily integration manager. CI's required job (
 - Owed-wet: the real supervised session (verdict written, read back, acted on; needs a stub backend of scripted tool calls, which does not exist yet); 25 UNOBSERVED rows (belt_actuate 9, operator_close_retire 15, roadmap_serve 1); the *_wet stack modules, including harness_events_lost_update_wet_witness.
 - COST DEFECT on main: durable_append_log_witness::the_raw_events_initializer_is_gone exceeds a 600 s CPU budget at about 4,100 eval steps, so the time is inside a builtin (the nested in-process compile of deleted_callable_route_is_gone).
 - Declared frontier: 0b-2, the wake that fires at redeliver_at. Not built.
+
+## MORE LOAD-RED ON MAIN (witty-wolf-241 handoff, 2026-11-09)
+- compiler/callback_argument_formal and compiler/function_value_type: both refused at load by a non-exhaustive match in src/v2/test/claim/body_let_annotation.dag (missing the GroundingNoValue arm).
+- compiler/staging: refused at load, unresolved LiveTreeDisposition.
+- emit/bind_tail_is_an_expression: refused at load by the LocusAnchor equality wall (#15992, #16143).
+- body_lowering/data_initializer_fn_value: 0/3 at every leg.
+- The emitter third boundary (branch/match tail closure): lane dispatched 2026-11-09.
+- Fleet flake: runs that die at ~50 s with "workflow file issue" and no steps are the fleet, not the diff; re-run them.
