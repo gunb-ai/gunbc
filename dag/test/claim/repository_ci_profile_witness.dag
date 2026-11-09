@@ -584,8 +584,8 @@ test fn the_federation_audiences_are_two_spellings_of_one_resource_and_the_lifet
     && token_lifetime_wire(s: heal_publisher_cloud_token_lifetime) == "300s"
     && token_lifetime_within_ordinary_maximum(s: heal_publisher_cloud_token_lifetime)
     // The discriminating half. A lifetime just past the ORDINARY hour must be refused: the ceiling that
-    // accepts it exists in this model (default_token_lifetime.max_seconds, the CONDITIONAL twelve-hour
-    // extended maximum reachable only under constraints/iam.allowServiceAccountCredentialLifetimeExtension),
+    // accepts it exists in this model (default_token_lifetime.extended_maximum, the CONDITIONAL twelve-hour
+    // ceiling reachable only under default_token_lifetime.extended_maximum_condition),
     // so a predicate named for the maximum that checked that instead would pass this value -- and the
     // publisher, whose service account that constraint is not known to name, would be promised a credential
     // Google refuses to issue.

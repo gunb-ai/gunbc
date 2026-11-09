@@ -665,7 +665,38 @@ data heal_publisher_cloud_credential_requirement: CredentialUseRequirement = Cre
 // that can fail before the mint may be moved below it, and nothing here may write the token: it lives in
 // this process's memory only, never in the environment (the step env entry this replaces was masked in
 // the log but real in every child process), never in argv, never in a file, never in a receipt.
+// THE CEILING IS ASKED BEFORE THE EXCHANGE, not discovered after it. Three federated round trips cost
+// seconds and burn an OIDC assertion; asking for a lifetime Google will not issue, for an account whose
+// organization policy this runner cannot read, is a refusal the publisher can compute for free first. The
+// bound is the ORDINARY maximum and it is read from the API model -- never restated here -- because that is
+// the only ceiling decidable without observing org policy: `default_token_lifetime.extended_maximum` is
+// reachable only under `extended_maximum_condition`, which this tree represents no allowlist for. So the
+// publisher asks for at most one hour of credential and refuses its own request above that, instead of
+// sending it and reading a 400.
+fn heal_publisher_lifetime_ceiling_refusal() -> Optional<NonEmptyStr> {
+  if token_lifetime_within_ordinary_maximum(s: heal_publisher_cloud_token_lifetime) {
+    Absent
+  } else {
+    Present {
+      value: concat(
+        "HealPublisherLifetimeBeyondOrdinaryMaximum: the publisher asked for ",
+        token_lifetime_wire(s: heal_publisher_cloud_token_lifetime),
+        " of credential, past the lifetime Google grants without the organization-policy constraint this runner cannot observe; nothing was exchanged",
+      )
+    }
+  }
+}
+
 fn heal_publisher_cloud_credential() -> PublisherCloudCredential uses net: Network, clk: std.resources.Clock
+{
+  match heal_publisher_lifetime_ceiling_refusal() {
+    Present { value: reason } => PublisherCloudCredentialNotMinted { cause: reason }
+    Absent => heal_publisher_cloud_credential_exchange()
+  }
+}
+
+// THE THREE LEGS. Split out so the ceiling above is the first decision the mint makes, ahead of any send.
+fn heal_publisher_cloud_credential_exchange() -> PublisherCloudCredential uses net: Network, clk: std.resources.Clock
 {
   match env_value(name: github_actions_runtime.oidc_request_url_env) {
     Absent =>

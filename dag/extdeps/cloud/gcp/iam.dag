@@ -7,7 +7,7 @@ import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail, GcpOperation, 
 import std.types { Bearer, Bool, Int, Json, List, NonEmptyStr, Secret, String }
 import std.algebra { fold_list }
 import std.optional { Absent, Present }
-import std.measure { Second, second_count }
+import std.measure { Second, second, second_count }
 import extdeps.ietf.http_semantics { GET, POST }
 import std.resources { Network }
 import extdeps.transports.rest { RestResult }
@@ -380,38 +380,49 @@ type ImpersonationChain {
   delegates: List<String>
 }
 
+// THE FOUR FACTS Google's generateAccessToken contract actually carries, kept APART. Upstream held one
+// conflated pair (default_seconds 3600 beside an unconditioned max_seconds 43200), which is what
+// DESIGN's token-lifetime worked example and the open concern
+// gunbc.integration_concern::gcp_token_lifetime_condition_and_expiry_unconsumed both question: the twelve-hour
+// figure is reachable ONLY for a service account the named organization-policy constraint allows, so storing
+// it bare let a consumer treat it as the ceiling. Durations are Second, not a bare second-count: a `Nat`
+// `*_seconds` field is the re-invention that concern's own account names ("restates 3600 as a bare literal"),
+// and this module already owns the measure.
 type TokenLifetime {
-  default_seconds: Int
-  max_seconds: Int
+  // What Google issues when a request asks for no lifetime at all.
+  default_lifetime: Second
+  // The ceiling Google applies UNCONDITIONALLY. The only one decidable without observing org policy, so the
+  // only one a predicate may claim.
+  ordinary_maximum: Second
+  // The ceiling reachable ONLY under `extended_maximum_condition`. Not a ceiling on its own: a request above
+  // ordinary_maximum is refused for an account the constraint does not name.
+  extended_maximum: Second
+  // The constraint that alone makes extended_maximum reachable, named rather than assumed away. This tree
+  // represents no allowlist, so nothing may conclude a lifetime is grantable from extended_maximum.
+  extended_maximum_condition: NonEmptyStr
 }
 
 data default_token_lifetime: TokenLifetime = {
-  default_seconds: 3600,
-  max_seconds: 43200
+  default_lifetime: second(count: 3600),
+  ordinary_maximum: second(count: 3600),
+  extended_maximum: second(count: 43200),
+  extended_maximum_condition: "constraints/iam.allowServiceAccountCredentialLifetimeExtension",
 }
 
 // The protobuf Duration spelling ("Ns") of a lifetime is upstream's wire form and lives only here; callers
-// hold a Second. The ceiling is upstream's own (default_token_lifetime.max_seconds), so a lifetime above it
-// is decidable before the request is sent.
+// hold a Second. It encodes; it deliberately does not rule -- whether a lifetime may be ASKED FOR is
+// token_lifetime_within_ordinary_maximum's job, because only the ordinary maximum is decidable without
+// observing org policy (see default_token_lifetime's extended_maximum_condition).
 fn token_lifetime_wire(s: Second) -> String {
   to_string(second_count(s: s)) + "s"
 }
 
-// THE ORDINARY MAXIMUM, which Google applies UNCONDITIONALLY: a service account the organization-policy
-// constraint constraints/iam.allowServiceAccountCredentialLifetimeExtension does not name is refused above
-// one hour, and this tree represents no such allowlist. It is therefore the only ceiling decidable without
-// observing org policy, and the only one a predicate may claim. `default_token_lifetime` above is upstream's
-// conflation of the default WITH the ordinary maximum, and its `max_seconds: 43200` is the CONDITIONAL
-// extended ceiling reachable only under that constraint (DESIGN's worked example, the token-lifetime bullet,
-// names exactly this: the condition is "not universal", so checking max_seconds and calling the result
-// "within_maximum" would assert as deduced what is only inferred).
-data ordinary_token_lifetime_seconds: Nat = 3600
-
-// Named for what it checks. A lifetime over the ordinary maximum is not thereby invalid -- it is valid for
-// an account the constraint does name -- so this refuses nothing on its own; it is the ceiling a consumer
-// states when it will not depend on org policy. `token_lifetime_wire`'s sibling, same single home.
+// Named for what it checks, and reading the ceiling from the record that owns it rather than restating a
+// number. Exceeding the ordinary maximum is not invalidity -- such a lifetime is valid for a service account
+// `default_token_lifetime.extended_maximum_condition` does name -- so this refuses nothing by itself; it is
+// the bound a consumer states when it will not depend on org policy it cannot observe.
 fn token_lifetime_within_ordinary_maximum(s: Second) -> Bool {
-  second_count(s: s) <= ordinary_token_lifetime_seconds
+  second_count(s: s) <= second_count(s: default_token_lifetime.ordinary_maximum)
 }
 
 type GcpGenerateAccessToken200Body {
