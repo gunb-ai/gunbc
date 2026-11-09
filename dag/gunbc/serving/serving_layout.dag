@@ -307,7 +307,13 @@ fn serving_layout_missing(g: ServingResourceGrant, b: ServingBackendProfile) -> 
     _ => [] as List<NonEmptyStr>
   }
   let backend_figures = flat_map(serving_profile_readings(b: b), x => serving_reading_missing(r: x))
-  concat(ram, concat(overhead, concat(backend_figures, flat_map(g.devices, d => serving_reading_missing(r: d.vram)))))
+  let devices_missing = flat_map(g.devices, d => serving_reading_missing(r: d.vram))
+  // THE SWAP BOUND IS GUARDED LIKE EVERY OTHER CHARGED READING. It is charged in the identity frame and the host-memory
+  // verdict through serving_reading_bytes_or_zero, whose Unread arm contributes nothing -- so an Unread bound would be
+  // billed as zero, silently widening the budget (gunbc.design_argument::fail_closed). Refusing while it is unread makes
+  // that collapse unreachable: an operator who has not read MemorySwapMax gets ServingLayoutInputsUnread, not a free pass.
+  let swap_missing = flat_map([g.swap_bound], x => serving_reading_missing(r: x))
+  concat(ram, concat(overhead, concat(backend_figures, concat(devices_missing, swap_missing))))
 }
 
 // What a configuration rests on that no reading has shown at the requirement: allowances, and a retention cost

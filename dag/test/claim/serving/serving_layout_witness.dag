@@ -17,6 +17,7 @@ import gunbc.serving.serving_layout {
   ServingLayoutResult, ServingLayoutConfigured, ServingLayoutRefused, ServingLayoutRefusal,
   ServingLayoutRamShort, ServingLayoutDeviceTooSmall, ServingLayoutBackendCannotRetain, ServingLayoutUnknownDevice,
   ServingLayoutDeviceInTwoGroups, ServingLayoutContextAboveBackend, ServingLayoutDuplicateGroupName, ServingLayoutSnapshotCostNotPositive,
+  ServingLayoutInputsUnread,
   ServingBackendSupportsTopology, ServingLiveQualified, ServingLiveUnqualified,
   ServingLiveStandingUnqualified, ServingLiveStandingQualified, ServingLiveRequalificationRequired,
   ServingAdmitted, ServingAdmissionRefused, ServingAdmission,
@@ -40,6 +41,16 @@ fn sl_grant_with(g: ServingResourceGrant, ram: ByteSize, devices: List<ServingDe
     host: g.host,
     usable_ram: HostUsableRamMeasured { bytes: ram, provenance: "witness fixture" as NonEmptyStr },
     overhead: g.overhead, shared: g.shared, swap_bound: g.swap_bound, devices: devices, charging: g.charging,
+  }
+}
+
+// The same grant with its swap bound replaced, so a witness can hand the derivation an Unread bound and watch it refuse
+// rather than silently bill the missing swap as zero (the fail_closed headroom the h11 review left open).
+fn sl_grant_swap(g: ServingResourceGrant, swap: ServingMemoryReading) -> ServingResourceGrant {
+  ServingResourceGrant {
+    host: g.host,
+    usable_ram: g.usable_ram,
+    overhead: g.overhead, shared: g.shared, swap_bound: swap, devices: g.devices, charging: g.charging,
   }
 }
 
@@ -574,4 +585,27 @@ test fn witness_srv3_derivation_carries_the_grants_swap_label() -> Bool {
       }
     ServingLayoutRefused { refusal: _ } => false
   }
+}
+
+// THE SWAP BOUND IS GUARDED LIKE EVERY OTHER CHARGED READING (review 92400). serving_reading_bytes_or_zero contributes
+// nothing for an Unread reading, and the identity frame plus the host-memory verdict charge the swap through it -- so an
+// Unread swap bound would widen the budget by its true bytes without a word (gunbc.design_argument::fail_closed: a
+// silent widen is a hard reject). serving_layout_missing therefore lists the swap bound too, so an unread one is refused.
+// Discriminating: with the guard absent the very same grant derives Configured (the swap would not be listed missing),
+// so refuses would be false and this witness fails. The real srv3 grant carries its bound as an Assumed reading (a
+// declared bet, not a missing reading), so srv3_layout still derives -- the guard refuses only what was never read.
+test fn witness_unread_swap_bound_refuses_the_layout() -> Bool {
+  let unread = ServingMemoryUnread { reason: "strata.slice MemorySwapMax has not been read" as NonEmptyStr }
+  let refused = serving_layout_derive(
+    g: sl_grant_swap(g: srv3_grant, swap: unread), groups: srv3_layer_split_groups,
+    b: strata_srv3_layer_split_profile, r: serving_context_ceiling_requirement)
+  let refuses = match refused {
+    ServingLayoutRefused { refusal: ServingLayoutInputsUnread { missing: m } } => 0 < count(m)
+    _ => false
+  }
+  let still_fits = match srv3_layout {
+    ServingLayoutConfigured { replicas: rs, unallocated_ram: _, evidence: _ } => 0 < rs.length()
+    ServingLayoutRefused { refusal: _ } => false
+  }
+  refuses && still_fits
 }
