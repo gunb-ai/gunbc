@@ -4,7 +4,7 @@ import std.types { Bool, NonEmptyStr, List }
 import std.nat { Nat }
 import std.algebra { length, string_contains }
 import std.optional { Absent, Present }
-import std.measure { byte_size_count }
+import std.measure { byte_size_count, gibibyte, gibibyte_count, gibibyte_to_byte_size, gibibyte_ceiling }
 import gunbc.serving.srv1_serving_replica_layout {
   srv1_replica_0, srv1_replica_1, srv1_serving_replica_roster,
   srv1_replica_host_budget, srv1_replica_total_host_claim,
@@ -15,8 +15,8 @@ import gunbc.serving.srv1_serving_replica_layout {
   srv1_serving_gpu_launcher, srv1_replica_engine_argv, srv1_replica_device_words,
   Srv1ServingReplicaSpec,
 }
-import gunbc.serving.lil_serving_defects { srv1_lil_serving_defect_rows, defect_by_identity, LilServingDefect }
-import extdeps.container.nvidia_container_toolkit { nvidia_cdi_device_selector_of }
+import extdeps.container.nvidia_container_toolkit { nvidia_cdi_device_selector_of, nvidia_cdi_device_name_prefix }
+import gunbc.serving.serving_host_memory { srv1_lmcache_l2_configured }
 
 // ── admission guard witnesses ───────────────────────────────────────────────────────────────────────
 //
@@ -35,8 +35,7 @@ fn witness_cfg(tp: Nat, kv: Srv1KvCacheDtype, reps: Nat, p2p: Bool) -> Srv1Launc
     kv_cache_dtype: kv,
     profile: "qwen38-flash-next" as NonEmptyStr,
     hardware: "rtx-pro-6000-pcie" as NonEmptyStr,
-    lmcache_l1_gb: 12,
-    lmcache_l2_gb: 125,
+    lmcache_l1: gibibyte_to_byte_size(g: gibibyte(count: 12)),
     max_model_len: 229376,
     image_digest: "sha256:2ad6245e058de7b4d0b973b08d60f67b18f563e4bd63d6a0e9b0406222a098e9" as NonEmptyStr,
     lil_replicas: reps,
@@ -194,10 +193,33 @@ test fn the_launcher_case_statement_matches_the_roster() -> Bool {
 test fn the_replica_device_word_uses_the_shared_selector() -> Bool {
   let r = srv1_replica_0
   let words = srv1_replica_device_words(replica: r)
-  let ok_form = length(xs: words) == 2
-    && (words[0] as String) == "--device"
-    && (words[1] as String) == (nvidia_cdi_device_selector_of(uuid: r.gpu_uuid) as String)
-  let expected = join(["--device ", nvidia_cdi_device_selector_of(uuid: r.gpu_uuid) as String], "")
-  let in_launcher = string_contains(s: srv1_serving_gpu_launcher.body as String, pattern: expected)
-  ok_form && in_launcher
+  // The model's device word is the shared selector's output tagged --device (one home for nvidia.com/gpu=<UUID>).
+  let model_ok = words == ["--device" as NonEmptyStr, nvidia_cdi_device_selector_of(uuid: r.gpu_uuid)]
+  // gpu.sh pins the device with the SAME CDI prefix the shared selector emits; it binds the UUID itself from
+  // the case statement into `--device nvidia.com/gpu=$GPU`, so the launcher carries the prefix, not the literal
+  // UUID, on the docker line. The UUID↔index binding to the roster is asserted by
+  // the_launcher_case_statement_matches_the_roster, which checks each replica's UUID appears in the body.
+  let launcher_flag = join(["--device ", nvidia_cdi_device_name_prefix as String], "")
+  let launcher_ok = string_contains(s: srv1_serving_gpu_launcher.body as String, pattern: launcher_flag)
+  model_ok && launcher_ok
+}
+
+// THE LAUNCHER RECEIPT AGREES WITH THE TYPED ROWS (review 92353: the retained body restates the 32g memory
+// limit and the L1/L2 tier sizes as literals — a hash-pinned ADOPTED on-host receipt, not a second authority).
+// This ties each restated literal to its typed source so a drift between the host file and the model is a RED
+// witness, not a silent authority fork: --memory=32g tracks srv1_replica_host_budget.cgroup_memory_limit (32
+// GiB), the L1/L2 env values track srv1_admitted_launch_config.lmcache_l1 and srv1_lmcache_l2_configured, and
+// --max-model-len tracks the config. If the operator edits the on-host script (its sha256 no longer matches
+// srv1_serving_gpu_launcher) the receipt itself is stale; if only a typed row moves, this catches the divergence.
+test fn the_launcher_receipt_agrees_with_the_typed_rows() -> Bool {
+  let body = srv1_serving_gpu_launcher.body as String
+  let cfg = srv1_admitted_launch_config
+  let mem_gib = gibibyte_count(g: gibibyte_ceiling(b: srv1_replica_host_budget.cgroup_memory_limit))
+  let l1_gib = gibibyte_count(g: gibibyte_ceiling(b: cfg.lmcache_l1))
+  let l2_gib = gibibyte_count(g: gibibyte_ceiling(b: srv1_lmcache_l2_configured))
+  let mem_ok = mem_gib == 32 && string_contains(s: body, pattern: "--memory=32g")
+  let l1_ok = l1_gib == 12 && string_contains(s: body, pattern: "LMCACHE_L1_GB=12")
+  let l2_ok = l2_gib == 125 && string_contains(s: body, pattern: "LMCACHE_L2_GB=125")
+  let mml_ok = cfg.max_model_len == 229376 && string_contains(s: body, pattern: "--max-model-len 229376")
+  mem_ok && l1_ok && l2_ok && mml_ok
 }

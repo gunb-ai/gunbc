@@ -27,15 +27,16 @@ module gunbc.serving.srv1_serving_replica_layout
 import std.types { String, NonEmptyStr, Port, List }
 import std.nat { Nat }
 import std.optional { Absent, Optional, Present }
-import std.measure { ByteSize, Second, byte_size, byte_size_count, second }
+import std.measure { ByteSize, Second, byte_size, byte_size_count, second, gibibyte, gibibyte_count, gibibyte_to_byte_size, gibibyte_ceiling }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.retained_shell_script { RetainedShellScript }
 import gunbc.serving.rented_replica { RentedReplicaIdentity }
 import gunbc.serving.serving_enrollment { ServingRoute, CeilingByDeclaredPolicy, serving_replica_route }
+import gunbc.serving.serving_host_memory { srv1_lmcache_l2_configured }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, render_ipv4_address }
-import gunbc.serving.lil_serving_defects { LilServingDefect, LilServeComponent, B12xPcieAllReduce, LilLauncher, LmCacheRecurrentConnector, LilReplicaProxy, srv1_lil_serving_defect_rows, defect_by_identity }
+import gunbc.serving.lil_serving_defects { LilServingDefect, srv1_f24_b12x_tp2_hang_defect, srv1_f25_nvfp4_kv_defect, srv1_f26a_lmcache_replica_crash_defect }
 import extdeps.container.nvidia_container_toolkit { nvidia_cdi_device_selector_of }
 
 // ── the per-replica identity ─────────────────────────────────────────────────────────────────────────
@@ -142,6 +143,18 @@ data srv1_serving_gpu_launcher: RetainedShellScript = RetainedShellScript {
   reason: "the per-replica launcher on srv1 (sha256 c486a841250e4a2b0a86b794150867eb72190f42f8d48b72361fc7fd52e26cf, read from ~/strata-test/srv1_lil_serve_gpu.sh 2026-11-08 21:36 UTC): maps the operator's 0|1 argument to the correct GPU UUID, container name, port, KV dir and serve dir, then runs one TP=1 container with UUID-selected device, 32 GiB memory, 16 GiB shm, srv1-inference.slice, LMCache ram-disk L1=12/L2=125. The removal loop retries docker rm -f because LMCache flush can fail the first removal; the TLS identity is copied from replica 0's serve dir (shared across both). The systemd helper (lil-replica@.service) invokes this; direct operator invocation is the manual-relaunch route." as NonEmptyStr,
   dissolves_to: decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_run_foreground_argv"),
 }
+
+// The counted bash-emit scaffold marker for the retained launcher (the hand-shell gate). This is the
+// on-carrier dissolution the RetainedShellScript above owes, mirroring extdeps.entropy's
+// entropy_read_password_shell_emit_dissolution_trigger and extdeps.bmc.serial_console's
+// sol_console_*_bash_emit_dissolution_trigger. The gpu.sh body is a hash-pinned ADOPTED RECEIPT of the
+// operator's on-host file (~/strata-test/srv1_lil_serve_gpu.sh, sha256 c486a841...26cf) — its literals
+// (ports, --memory=32g, L1=12/L2=125, the UUID-mapped device) are the host file's own bytes, NOT a second
+// authority: nothing in the model parses the body for values, the boot realization is the typed render
+// srv1_replica_engine_argv, and the witness ties the receipt's literals to the typed rows so a drift is
+// caught rather than silently forked. DISSOLVES WHEN the launcher is emitted from the typed replica rows
+// through v2.workflow.bash_emit (bash_emit_stmts), leaving no hand-authored shell body in this module.
+data srv1_serving_gpu_launcher_bash_emit_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.serving.srv1_serving_replica_layout srv1_serving_gpu_launcher — the per-replica launcher is retained as an opaque hash-pinned shell receipt. DISSOLVES WHEN it is rendered from the typed Srv1ServingReplicaSpec/Srv1LaunchConfig rows through v2.workflow.bash_emit bash_emit_stmts (device word via nvidia_cdi_device_selector_of, memory/shm via ByteSize, ports via Port, LMCache tiers via their single authority), leaving no hand-authored medium-as-string body here. Until then it is an adopted receipt verified against the typed rows, not an authority.")
 
 // ── the systemd management (lil-replica@.service) ───────────────────────────────────────────────────
 //
@@ -454,11 +467,11 @@ type Srv1LaunchConfig {
   profile: NonEmptyStr
   // The hardware target (the lil-serve --hardware value; rtx-pro-6000-pcie on srv1).
   hardware: NonEmptyStr
-  // The LMCache L1 (RAM / shm) tier size in GiB.
-  lmcache_l1_gb: Nat
-  // The LMCache L2 (NVMe) tier size in GiB. Typed here so the tier is not only in the launcher string;
-  // gunbc.serving.serving_host_memory::srv1_lmcache_l2_configured is the host-memory receipt for the same tier.
-  lmcache_l2_gb: Nat
+  // The LMCache L1 (RAM / shm) tier size, typed. No serving_host_memory owner exists for the L1 tier, so this
+  // module owns it as a ByteSize; it is rendered as LMCACHE_L1_GB=<n> only at the env boundary. (The L2 tier is
+  // NOT held here -- srv1_replica_engine_argv reads gunbc.serving.serving_host_memory::srv1_lmcache_l2_configured
+  // directly, the single authority for that configured size, per review 92343.)
+  lmcache_l1: ByteSize
   // The engine --max-model-len value.
   max_model_len: Nat
   // The image digest the container runs (typed so the image is not only in the launcher string).
@@ -484,8 +497,7 @@ data srv1_admitted_launch_config: Srv1LaunchConfig = Srv1LaunchConfig {
   kv_cache_dtype: Fp8E4m3,
   profile: "qwen38-flash-next" as NonEmptyStr,
   hardware: "rtx-pro-6000-pcie" as NonEmptyStr,
-  lmcache_l1_gb: 12,
-  lmcache_l2_gb: 125,
+  lmcache_l1: gibibyte_to_byte_size(g: gibibyte(count: 12)),
   max_model_len: 229376,
   image_digest: "sha256:2ad6245e058de7b4d0b973b08d60f67b18f563e4bd63d6a0e9b0406222a098e9" as NonEmptyStr,
   lil_replicas: 1,
@@ -500,19 +512,18 @@ fn srv1_launch_refuse(defect: LilServingDefect) -> Srv1LaunchAdmission {
   }
 }
 
-// The admission function: checks the three defect-bound conditions and refuses or admits. Each check
-// reads the corresponding defect from the module's rows (the rows are the authority for the refusal
-// text); if a defect dissolves (upstream fixes it), the row disappears and the corresponding check stops
-// refusing (the guard's condition is "the defect stands" not "the config is bad in the abstract").
+// The admission function: checks the three defect-bound conditions and refuses or admits. Each check binds
+// its defect BY NAME — it cites the named declaration in gunbc.serving.lil_serving_defects, not a string
+// lookup (review 92374, gunbc.design_argument::fail_closed). A rename or deletion of a defect row is a
+// COMPILE ERROR at its consuming check, so "the key didn't match" can never share a path with "the defect
+// was retired" and silently admit an unsafe launch. Retiring a defect after an upstream fix is then a
+// deliberate act — delete the row AND its consuming check together, enforced by the compiler — and the
+// refusal text still comes from the row itself (the rows are the authority for what was observed).
 fn srv1_launch_admission(config: Srv1LaunchConfig) -> Srv1LaunchAdmission {
-  match defect_by_identity(rows: srv1_lil_serving_defect_rows(), identity: "srv1-f24-b12x-pcie-allreduce-tp2-hang") {
-    Present { value: f24 } =>
-      if config.tensor_parallel_size > 1 && !config.host_gpu_p2p {
-        srv1_launch_refuse(defect: f24)
-      } else {
-        srv1_launch_check_f25(config: config)
-      }
-    Absent => srv1_launch_check_f25(config: config)
+  if config.tensor_parallel_size > 1 && !config.host_gpu_p2p {
+    srv1_launch_refuse(defect: srv1_f24_b12x_tp2_hang_defect)
+  } else {
+    srv1_launch_check_f25(config: config)
   }
 }
 
@@ -521,41 +532,38 @@ fn srv1_kv_dtype_is_nvfp4(d: Srv1KvCacheDtype) -> Bool {
 }
 
 fn srv1_launch_check_f25(config: Srv1LaunchConfig) -> Srv1LaunchAdmission {
-  match defect_by_identity(rows: srv1_lil_serving_defect_rows(), identity: "srv1-f25-nvfp4-main-kv-unsupported") {
-    Present { value: f25 } =>
-      if srv1_kv_dtype_is_nvfp4(d: config.kv_cache_dtype) {
-        srv1_launch_refuse(defect: f25)
-      } else {
-        srv1_launch_check_f26(config: config)
-      }
-    Absent => srv1_launch_check_f26(config: config)
+  if srv1_kv_dtype_is_nvfp4(d: config.kv_cache_dtype) {
+    srv1_launch_refuse(defect: srv1_f25_nvfp4_kv_defect)
+  } else {
+    srv1_launch_check_f26(config: config)
   }
 }
 
 fn srv1_launch_check_f26(config: Srv1LaunchConfig) -> Srv1LaunchAdmission {
+  // lil single-process multi-replica stays refused while the standing crash receipt binds by name
+  // (srv1_f26a_lmcache_replica_crash_defect); the two independent TP=1 containers of the roster are the
+  // admitted layout. F26b (srv1_f26b_replica_proxy_tls_defect) makes that same shape unsafe even after
+  // F26a's fix lands, so a retirement edit must remove BOTH checks, not one.
   if config.lil_replicas > 1 {
-    match defect_by_identity(rows: srv1_lil_serving_defect_rows(), identity: "srv1-f26a-lmcache-replica-checkpoint-dma-crash") {
-      Present { value: f26a } => srv1_launch_refuse(defect: f26a)
-      Absent =>
-        match defect_by_identity(rows: srv1_lil_serving_defect_rows(), identity: "srv1-f26b-replica-proxy-plain-http-to-tls-replicas") {
-          Present { value: f26b } => srv1_launch_refuse(defect: f26b)
-          Absent => Srv1LaunchAdmitted { layout: "lil single-process multi-replica" as NonEmptyStr }
-        }
-    }
+    srv1_launch_refuse(defect: srv1_f26a_lmcache_replica_crash_defect)
   } else {
     Srv1LaunchAdmitted { layout: "two independent TP=1 containers (srv1_serving_replica_roster)" as NonEmptyStr }
   }
 }
 
-// ── the admitted launch is DERIVED from the launcher, not written down beside it ──────────────────────
+// ── the boot realization is CONSTRUCTED from typed rows, then validated by admission ────────────────
 //
 // The launch admission guard is the boot path's production consumer (srv1_serving_engine_unit
-// .srv1_replica_boot_unit_names_for), so it must read what the launcher ACTUALLY runs — not a free-standing
-// constant that stays green while the script diverges. The effective configuration is therefore DERIVED from
-// the retained launcher body (the engine flags the script passes); flipping the script to a refused shape
-// (nvfp4 KV, TP=2 on this no-P2P host, lil REPLICAS>1) changes the derived config and the boot plan stops
-// enabling the units. This closes the fail_closed tell "validation stood where construction was available":
-// the guard now validates the realization (gunbc.design_argument::fail_closed, guarantee_ladder).
+// .srv1_replica_boot_unit_names_for reads srv1_replica_engine_argv's source, srv1_admitted_launch_config), and
+// the realization is BUILT from those same typed rows — construction, not validation of a scraped script. There
+// is one authority for TP size, KV dtype, REPLICAS, LMCache tiers and max-model-len: srv1_admitted_launch_config.
+// The engine argv is rendered from it (srv1_replica_engine_argv) and the guard reads it (srv1_launch_admission);
+// a refused shape (nvfp4 KV, TP=2 on this no-P2P host, lil REPLICAS>1) can never be rendered for boot, because
+// boot is gated on the guard returning Admitted over the SAME rows the render consumes. This closes the
+// fail_closed tell "validation stood where construction was available": the boot path could not arm for a
+// refused config even if the retained gpu.sh receipt were edited, because boot runs the typed render, not the
+// receipt (gunbc.design_argument::fail_closed, guarantee_ladder). gpu.sh is a hash-pinned adopted receipt
+// (srv1_serving_gpu_launcher), verified against the typed rows, never scraped for values.
 //
 // The launcher pins each replica's GPU by UUID (its `case $IDX` maps the argument to --device
 // nvidia.com/gpu=<UUID>). The device word is rendered through the ONE authority for that string,
@@ -581,8 +589,11 @@ fn srv1_replica_engine_argv(config: Srv1LaunchConfig) -> List<NonEmptyStr> {
     Fp8E4m3 => []
   }
   let tp = if config.tensor_parallel_size > 1 { ["--tensor-parallel-size" as NonEmptyStr, to_string(config.tensor_parallel_size) as NonEmptyStr] } else { [] }
-  let l1 = concat("LMCACHE_L1_GB=", to_string(config.lmcache_l1_gb)) as NonEmptyStr
-  let l2 = concat("LMCACHE_L2_GB=", to_string(config.lmcache_l2_gb)) as NonEmptyStr
+  // GiB is rendered ONLY here, at the LMCACHE_L*_GB= env boundary (interface boundary), from the ByteSize tiers.
+  // L1 is this module's typed field; L2 comes from its single authority, srv1_lmcache_l2_configured. The rounding
+  // is gibibyte_ceiling (the one home for ByteSize -> GiB).
+  let l1 = concat("LMCACHE_L1_GB=", to_string(gibibyte_count(g: gibibyte_ceiling(b: config.lmcache_l1)))) as NonEmptyStr
+  let l2 = concat("LMCACHE_L2_GB=", to_string(gibibyte_count(g: gibibyte_ceiling(b: srv1_lmcache_l2_configured)))) as NonEmptyStr
   let head = [
     "lil-serve" as NonEmptyStr,
     "--profile" as NonEmptyStr, config.profile,
