@@ -1,5 +1,6 @@
 module test.claim.compute.attempt_discharge_wet_witness
 
+import std.optional { Present, Absent }
 import gunbc.durable_cas_file_store { SlotStore }
 import gunbc.host.host_layout { srv1_host_layout }
 import gunbc.deployment_risk { deployment_id }
@@ -15,8 +16,9 @@ import std.algebra { trim, string_contains }
 import std.measure { Kibibyte, kibibyte, kibibyte_count }
 import std.durable_compare_and_set { cas_generation_first }
 import product.capacity.event_chain { PartitionId }
+import gunbc.owned_directory { owned_directory_path }
 import gunbc.compute.host_capacity {
-  compute_root,
+  compute_root, compute_root_directory, compute_capacity_directories,
   ComputeCapacitySubject, host_capacity_subject_in, ComputeBuildPool, compute_reserve_against, ComputeReservation, ComputeReserved,
   ComputeRelease, ComputeReleased, compute_release,
   ComputeCapacityStanding, ComputeCapacityStandingRead, ComputeCapacityStandingUnread, compute_capacity_standing_on,
@@ -32,8 +34,8 @@ import gunbc.compute.work_provider_local {
   compute_open_attempt_minted, ComputeRecoverSeats, RecoverSeatsFound, RecoverSeatsUnreadable, compute_recover_seats, AttemptGate, AttemptGateReady, AttemptGateRefused, compute_open_retry_attempt,
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
-  AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused,
-  attempt_exit_spool_stage_dir, attempt_exit_stage_listings,
+  RolePending, RoleHandedOff, RoleClaimed, RoleDone, RoleRefused,
+  attempt_exit_stage_listings,
 }
 import gunbc.compute.compute_producer_lease { ComputeProducerLeases, ComputeProducerLeaseAcquired, ComputeProducerLeaseOccupied, ComputeProducerLeaseRefused, ComputeProducerLeaseHeldBy, ComputeProducerLeaseNotHeld, ComputeProducerLeaseUnreadable, ComputeProducerLeasesReading, ComputeProducerLeasesReady, ComputeProducerLeasesUnready, compute_lease_slots, compute_producer_leases, compute_producer_lease_acquire, compute_producer_lease_standing , ComputeProducerLeaseReleased, ComputeProducerLeaseKept, compute_producer_lease_release_current }
 import gunbc.compute.compute_seat_ensure {
@@ -59,12 +61,20 @@ import gunbc.compute.compute_seat_ensure {
 //
 // THIS FILE RUNS ON THE LOCAL-REPO WET LANE: rows in local_repo_wet_terminal, floor_route_gap (chunk
 // 21, the identities that reach fresh_root()) and ci_layer_roots witness_exclusion_frontier.
+import gunbc.spool_queue { SpoolAttemptExit, SpoolRole, RolePending, RoleHandedOff, RoleClaimed, RoleDone, RoleRefused, spool_open, spool_role_path, SpoolKind }
 
 data granted_kib: Int = 1048576
 data supplied_host: Kibibyte = kibibyte(count: 67108864)
 
+// The compute capacity ledger is OBSERVED, never created, by gunbc.fabric.fabric_storage_file_store
+// (fabric_store_area_standing); its directories are provisioned from the declaration-derived targets
+// compute_capacity_directories, so the fixture provisions exactly those and spells no path of its own.
 fn fresh_root() -> String {
-  shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_seat_discharge.XXXXXX").path
+  let made = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_seat_discharge.XXXXXX").path
+  let instance = instance_at(root: made)
+  let root_ok = shell.Mkdir.Parents(path: owned_directory_path(t: compute_root_directory(instance: instance)) as String).success
+  let cap_ok = all(compute_capacity_directories(instance: instance), d => shell.Mkdir.Parents(path: owned_directory_path(t: d) as String).success)
+  if root_ok && cap_ok { made as String } else { "" }
 }
 
 // THE SUBJECT IS MINTED, NEVER BUILT: the ledger roots under the isolated instance's own compute root through the
@@ -129,19 +139,19 @@ fn made(path: String) -> Bool {
 // A REAL EXIT-SPOOL ENTRY, written the way the spool writes it: the entry's directory NAME is the record
 // (roadmap_attempt_exit_spool's own seven-part codec), placed in a stage directory.
 fn exit_recorded(root: String, key: String) -> Bool {
-  made(path: attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitInbox))
-    && made(path: attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitQueued))
-    && made(path: attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitRunning))
-    && made(path: attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitRefused))
-    && made(path: join([attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitDone), "/node-a+", key, "+worker+0123456789abcdef0123456789abcdef+success+exited+0"], ""))
+  made(path: spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RolePending))
+    && made(path: spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RoleHandedOff))
+    && made(path: spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RoleClaimed))
+    && made(path: spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RoleRefused))
+    && made(path: join([spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RoleDone), "/node-a+", key, "+worker+0123456789abcdef0123456789abcdef+success+exited+0"], ""))
 }
 
 fn spool_unrecorded(root: String) -> Bool {
-  made(path: attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitInbox))
-    && made(path: attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitQueued))
-    && made(path: attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitRunning))
-    && made(path: attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitDone))
-    && made(path: attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitRefused))
+  made(path: spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RolePending))
+    && made(path: spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RoleHandedOff))
+    && made(path: spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RoleClaimed))
+    && made(path: spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RoleDone))
+    && made(path: spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RoleRefused))
 }
 
 fn record_of(reference: String, state: AttemptState, owner: AttemptOwner) -> AttemptRecord {
@@ -1027,6 +1037,13 @@ fn absent_of(root: String) -> String {
   join([root, "/absent"], "")
 }
 
+fn spool_witness_dir(kind: SpoolKind, instance_root: String, role: SpoolRole) -> String {
+  match spool_role_path(store: spool_open(kind: kind, instance_root: instance_root), role: role) {
+    Present { value: d } => d
+    Absent => "<the spool declares no directory for this role>"
+  }
+}
+
 // AN UNDECODABLE EXIT ENTRY IS NAMED, NOT SWALLOWED. A spool entry whose name resolves to no subject is
 // not "no exit": it proves no seat's ending (seat_worker_exit_owners claims no ended owner from it) and it
 // must not disappear from the record either - silently dropping it is what let a seat whose exit entry could
@@ -1050,7 +1067,7 @@ fn an_undecodable_exit_entry_is_named_by_the_pass_and_claims_no_ending_cell(root
     && spool_unrecorded(root: root)
     // The spool's own reader lists stage DIRECTORIES, so an entry is a directory whose NAME is the record -
     // here a name whose systemd variables were never substituted, which is not a seven-part record.
-    && made(path: join([attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitRefused), "/node-a+key-a+worker"], ""))
+    && made(path: join([spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RoleRefused), "/node-a+key-a+worker"], ""))
     && (match seat_exit_entries_undecodable(listings: attempt_exit_stage_listings(instance_root: root)).first() {
          Present { value: u } => string_contains(s: u.entry_name, pattern: "node-a+key-a+worker") && string_contains(s: u.reason, pattern: "seven")
          Absent => false
