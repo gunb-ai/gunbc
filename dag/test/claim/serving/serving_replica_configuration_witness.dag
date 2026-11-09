@@ -83,30 +83,36 @@ test fn the_ram_only_variant_is_the_pair_without_its_disk_tier() -> Bool {
 // the slot-file candidate holds warm disk the batched one does not, and that difference comes from the rungs
 // rather than from prose. The engine base, the cache and the expert floor are all read rows on this host, so
 // the RAM axis resolves and the disk axis DISAGREES between the two candidates.
-test fn srv4_candidates_differ_on_the_disk_axis_and_agree_on_ram() -> Bool {
+test fn srv4_candidates_charge_equal_ram() -> Bool {
   let with_rung = configuration_host_charges(c: srv4_batch1_slotfile_configuration)
   let without = configuration_host_charges(c: srv4_batch8_ram_only_configuration)
   match with_rung.ram {
     Present { value: a } =>
       match without.ram {
         Present { value: b } =>
-          byte_size_count(b: a) == byte_size_count(b: b)
-            && byte_size_count(b: a) > 0
-            // The batched candidate holds NO warm disk and says so with a zero: no rung, no obligation.
-            && match without.disk {
-              Present { value: zeroed } => byte_size_count(b: zeroed) == 0
-              Absent => false
-            }
-            // The slot-file candidate's disk axis REFUSES -- srv4's parked budget is declared, not read -- and
-            // the refusal is an obligation naming the budget, not a quiet zero. That gap is the difference
-            // between the two configurations, stated honestly.
-            && match with_rung.disk {
-              Absent => with_rung.obligations.length() > 0
-              Present { value: _ } => false
-            }
+          byte_size_count(b: a) == byte_size_count(b: b) && byte_size_count(b: a) > 0
         Absent => false
       }
     Absent => false
+  }
+}
+
+test fn srv4_ram_only_config_holds_no_warm_disk() -> Bool {
+  let without = configuration_host_charges(c: srv4_batch8_ram_only_configuration)
+  match without.disk {
+    Present { value: zeroed } => byte_size_count(b: zeroed) == 0
+    Absent => false
+  }
+}
+
+// The slot-file candidate's disk axis REFUSES -- srv4's parked budget is declared, not read -- and the refusal
+// is an obligation naming the budget, not a quiet zero. That gap is the difference between the two
+// configurations, stated honestly.
+test fn srv4_slotfile_disk_axis_refuses_with_an_obligation() -> Bool {
+  let with_rung = configuration_host_charges(c: srv4_batch1_slotfile_configuration)
+  match with_rung.disk {
+    Absent => with_rung.obligations.length() > 0
+    Present { value: _ } => false
   }
 }
 

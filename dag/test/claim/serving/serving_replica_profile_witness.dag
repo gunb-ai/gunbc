@@ -8,7 +8,7 @@ import std.types { Bool, List, String }
 import std.algebra { string_contains }
 import std.optional { Optional, Present, Absent }
 import std.measure { byte_size_count, gibibyte, gibibyte_to_byte_size, token_count_value, tokens_per_second_count, watt }
-import std.decl_ref { DeclarationRef, declaration_ref_identity }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_identity }
 import extdeps.external_authority { TranscribedUncited }
 import product.fabric.serving_throughput { ThroughputOperatorReading, ThroughputUnread }
 import gunbc.serving.serving_replica_profile {
