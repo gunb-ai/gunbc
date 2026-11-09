@@ -16,6 +16,38 @@ import gunbc.rung_climb { ClimbableButUnbuilt }
 // side effect; the trigger names the direct capability, a census joining committed files at
 // generated-artifact locations back to registry membership, because a guard that answers about
 // enrollment bytes is not the guard that answers about orphaned artifacts.
+// A SPECIMEN OF THIS ROW, MEASURED: NOT A MUTATION, A REAL DEFECT THAT SAT ON main.
+//
+// `gunbc#15598` added `InstrumentRegistryGeneratedRsArtifact` to `gunbc.generated_artifact` WITH its
+// committed location (`src/v1/stage0/src/instrument_registry_generated.rs`), its `CommitRequired` policy
+// and its producer row (`gunbc.instruments.instrument_registry_emit`
+// `expected_instrument_registry_generated_rs`), and wired it into the seed-build emit arms
+// (`gunbc.seed_build_artifact_emit`) and the docs projection gate — and never entered it into
+// `generated_artifact_registry`. This row's predicted invalid state was therefore on main in the flesh,
+// not simulated: `committed_generated_artifact_paths` never named the file, so the heal candidates,
+// `generated_artifact_observation` and the tier-O regeneration gate never adjudicated its bytes, and
+// .gitattributes classified the generated file `!merge` — a HAND-MADE source, merge-conflicting by policy —
+// instead of `merge=generated-artifact`. Nothing went red. The only comparisons that existed for those
+// bytes were a `cfg(test)` test no required lane runs and
+// `test.claim.instrument_registry_artifact_rendering_witness`, which lives in the opt-in corpus, not the
+// required floor. RECEIPTS, every one of them RUN on this head under `gunbc run --claim-run`:
+// `test.claim.instrument_registry_artifact_rendering_witness` is GREEN (exit 0, 3m, peak RSS 2.52 GiB) — the
+// committed file already equalled the producer's rendering, so enrolling it opens no byte drift; and
+// `test.claim.gitattributes_emit_witness` is the EXECUTED DISCRIMINATOR for the membership half — 7/7 PASS
+// without the member (exit 0, 5m, peak 3.29 GiB), 6/7 with the single FAIL on
+// `witness_committed_matches_emit_holds` once the member is added (exit 1, 4m, peak 3.29 GiB): the emitted
+// file gained the `merge=generated-artifact` row the committed file lacks, which is the whole of what this
+// wall notices, and the regeneration the PR's heal-generated-artifacts job exists to discharge.
+//
+// WHY THE ROW STAYS `RungUnread` AFTER THE ENROLLMENT. Enrolling the artifact makes the registry admit it;
+// it does not put a COMPARISON on the required path that fails a second deletion of any member. Delete a
+// member from the whole-list literal and the emitted .gitattributes line is what disagrees with the
+// committed file first. A second reading, taken locally: `regeneration_rosters_witness` does fail a
+// deletion from the SEED-BUILD family — but it is an opt-in corpus row, and running it pulled the whole
+// corpus through the registry's closure, reaching 9.4 GiB and climbing before this host's 12 GiB watchdog
+// killed it at 9m, so its red-to-green is left to the CI corpus rather than asserted from here.
+// `RungUnread`: no rung has been attempted for this wall, let alone dropped.
+
 data generated_artifact_registry_membership_stall: GuaranteeStall = GuaranteeStall {
   subject: "a committed generated artifact leaves generated_artifact_registry and stops being adjudicated",
   current: MechanicallyPreventable,
