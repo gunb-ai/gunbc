@@ -1,6 +1,6 @@
 module gunbc.machine_intake.mtcollins1_virtual_media_readout_observation
 
-// MTCOLLINS1 PHASE B0 (gunbc.plans.boot_origin_bmc_media B0; discharges work item
+// MTCOLLINS1 PHASE B0 (gunbc.plans.boot_origin_bmc_media (deleted 2026-11-08) B0; discharges work item
 // adhoc-9e4ea90a-fd0 alongside adhoc-b4222c87-d37): WHAT THE CONTROLLER ADMITS FOR VIRTUAL MEDIA,
 // AND WHAT COULD NOT BE READ.
 //
@@ -507,7 +507,7 @@ fn b0_media_route_admission(readout: B0VirtualMediaReadout) -> BmcMediaRouteAdmi
 //
 // CONSUMER CLASSIFICATION (gunbc.design_argument::consumption), STATED HONESTLY BECAUSE THE HONEST ANSWER IS "NOT YET
 // WIRED". The consumers of this datum today are: (a) this module's witness, which pins the
-// selector's arms; and (b) the plan gunbc.plans.boot_origin_bmc_media, whose survey and B0 phase
+// selector's arms; and (b) the plan gunbc.plans.boot_origin_bmc_media (deleted 2026-11-08), whose survey and B0 phase
 // text now carry this reading's outcome and whose retirement condition already gates on "mtcollins1
 // has booted that ISO through the media route its B0 observation selected". There is NO executing
 // route that reads this datum as a value: no boot-lane code branches on it, and no B3 gate consumes

@@ -26,7 +26,7 @@ import v2.std.node {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE S0 DOMAIN EDGE (gunbc.plans.for_while_loop_sugar §2.2): at most one ^loop_domain_edge on a Loop,
+// THE S0 DOMAIN EDGE (gunbc.plans.for_while_loop_sugar (deleted 2026-11-08) §2.2): at most one ^loop_domain_edge on a Loop,
 // the value iterated. These claims build Loops directly as nodes: a domain Loop conforms, two domain
 // edges refuse, the unary form is unchanged, the hash separates a domain Loop from a unary one and
 // does not move with the domain edge's position, the domain is not part of the iteration fold, and

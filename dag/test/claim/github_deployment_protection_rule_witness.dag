@@ -180,7 +180,6 @@ import extdeps.github.actions_runs {
   RunSuccess,
 }
 import extdeps.uri { Https }
-import gunbc.plan_registry { all_plans }
 
 // Two fixed environments, named rather than spelled at each call site: the one the gate protects and
 // one that is NOT the gate. Upstream's example uses prod-eus; these two are what makes the field
@@ -1034,22 +1033,6 @@ test fn the_model_scope_cites_the_published_authorities() -> Bool {
         |> any(a => a.uri.locator == limits_authority.uri.locator))
     && (external_model_scope_citations(scope: extdeps_model_scope)
         |> any(a => a.uri.locator == spec_authority.uri.locator))
-}
-
-// ---------------------------------------------------------------------------
-// 11. The plan is registered, because a plan that is not findable is a plan that was not written
-// ---------------------------------------------------------------------------
-
-// The plan carrier this model implements has to be reachable through the registry authority. This fails
-// if it is unregistered, if its name changes, or if it is registered twice.
-test fn the_plan_is_registered_in_the_authority_registry() -> Bool {
-  (all_plans |> filter(p => (p.slug as String) == "ntfy-deployment-gate-approval") |> count) == 1
-    && (all_plans
-        |> filter(p => (p.slug as String) == "ntfy-deployment-gate-approval")
-        |> fold(init: 0, f: (acc, p) => acc + 1)) == 1
-    && (all_plans
-        |> filter(p => (p.slug as String) == "ntfy-deployment-gate-approval")
-        |> fold(init: "", f: (acc, p) => if acc == "" { p.title } else { acc })) != ""
 }
 
 // A BRACE IN A REVIEW-PATH SEGMENT IS REFUSED (new with the one segment check): the value is substituted

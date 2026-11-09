@@ -4,7 +4,7 @@ import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-// FORWARD-FREEZE RECEIPT FOR THE SEED'S INGRESS REALIZATION (gunbc.plans.converged_ingress M1).
+// FORWARD-FREEZE RECEIPT FOR THE SEED'S INGRESS REALIZATION (gunbc.plans.converged_ingress (deleted 2026-11-08) M1).
 //
 // THE SERVE VERB IS DELETED AND THIS IS WHAT REPLACES IT. `gunbc serve` (cli_run handle_serve and
 // its helpers) held its own framing, limits, release check, liveness document, argument plan,

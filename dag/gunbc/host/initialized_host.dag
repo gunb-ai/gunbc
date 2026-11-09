@@ -12,7 +12,7 @@ import gunbc.host.running_os { RunningOs, RunningOsReading, RunningOsObserved, R
 import gunbc.host.host_boot_id { HostBootId, BootIdReadEstablished, BootIdReadUnreadable, boot_id_read_verdict }
 import gunbc.host.host_operation_exec { HostOperationOutcome, host_operation_exec, ProcfsReadBootId }
 
-// WHAT ANY BOOT TRANSACTION HANDS ON ONCE A HOST IS UP (gunbc.plans.physical_machine_boot_program, the
+// WHAT ANY BOOT TRANSACTION HANDS ON ONCE A HOST IS UP (gunbc.plans.physical_machine_boot_program (deleted 2026-11-08), the
 // initialized-host contract): the host, the reach and trust it was authenticated over, what OS is running, and
 // which boot this is. It is generic: no board, no delivery route, no persistence assumption and no runner fact.
 // What a runner additionally needs (its account, the accepted workload revision) sits on top of it in

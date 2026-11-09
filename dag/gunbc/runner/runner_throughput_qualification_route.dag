@@ -144,7 +144,7 @@ fn ephemeral_slot_unit(host: HostIdentity, attempt: NonEmptyStr) -> NonEmptyStr 
 // the declaration index in the parse phase like every other citation (review 68775: a producer
 // named in prose is a citation nothing can check). The arm says what is read; the ref says who
 // owns the vocabulary the reading is denominated in. None is a benchmark added for this route.
-// TODAY'S FLOOR'S INSTRUMENTS (gunbc.plans.mtcollins1_ci_service_legs G3, operator decision A, 2026-10-27): the withdrawn
+// TODAY'S FLOOR'S INSTRUMENTS (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) G3, operator decision A, 2026-10-27): the withdrawn
 // claim_executor floor's [floor-phase] and [floor-cgroup] rows, its claim-cost artifact and its calibration specimen are
 // deleted with it, not carried unread.
 type QualificationInstrument

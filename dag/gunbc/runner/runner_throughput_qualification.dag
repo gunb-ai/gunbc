@@ -96,7 +96,7 @@ import std.integer { int_to_decimal_string }
 // `revision` pins the corpus it walked. Two runs differing in either measured different work. The floor is the
 // required job's own work (gunbc.runner.runner_qualification_floor_job): a seed build, then one gunbc test step per
 // gunbc.emitted_subject_build_gate emitted_subject_build_rows row. The withdrawn floor's calibration specimen is gone
-// with it (gunbc.plans.mtcollins1_ci_service_legs G3, operator decision A).
+// with it (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) G3, operator decision A).
 type FloorWorkloadPin {
   program: NonEmptyStr
   revision: CommitSha

@@ -19,7 +19,7 @@ import gunbc.instruments.native_serve_startup_slow_twin { native_serve_startup_s
 // bind and serve. A launch whose startup were bounded by the request deadline would exit before binding and the reader
 // would be red.
 //
-// TWO MORE CONTROLS RIDE ON THE SAME RUN (gunbc.plans.converged_ingress M2a):
+// TWO MORE CONTROLS RIDE ON THE SAME RUN (gunbc.plans.converged_ingress (deleted 2026-11-08) M2a):
 // - A STARTUP-ONLY EFFECT. The startup reads extdeps.clock Clock and the handler demands no effect, so the rendered main
 //   must bind the clock for the startup call alone (the union of the handler's and the startup's effects). The handler
 //   echoes the reading the startup passed with, so the reader sees the effect executed.
@@ -60,7 +60,7 @@ fn slow_startup(executable_octets: List<Int>) -> NativeServeStartup<String> {
   NativeServeStartupPassed { line: concat("slow startup finished after a spin of ", note), value: note }
 }
 
-// STARTUP COMPOSED WITH REQUEST FACTS (gunbc.plans.converged_ingress M2b): the handler's request parameters are not the
+// STARTUP COMPOSED WITH REQUEST FACTS (gunbc.plans.converged_ingress (deleted 2026-11-08) M2b): the handler's request parameters are not the
 // legacy set -- the path and the request's header list -- and the startup value follows them, so the door plans the
 // request facts from these names and appends the startup value from the exact startup declaration.
 fn slow_header(headers: List<ServeRequestHeader>) -> String {

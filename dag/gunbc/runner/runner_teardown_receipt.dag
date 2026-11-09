@@ -41,7 +41,7 @@ type HostUnitEnvironmentInventory {
   workspace: NonEmptyStr
 }
 
-// A WHOLE BOOT AS THE ENVIRONMENT (gunbc.plans.mtcollins1_ci_service_legs S7, merry-fox-82's BMC-observer decision of
+// A WHOLE BOOT AS THE ENVIRONMENT (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) S7, merry-fox-82's BMC-observer decision of
 // 2026-10-30). On a boot that holds nothing persistent the boot IS the attempt's environment, as the VMM is a
 // microVM's: every unit, cgroup and tmpfs the attempt made lives in its RAM, so the boot ending is the teardown and
 // no per-resource read is owed. That premise is not assumed of a host: the record is minted only from a reading of
