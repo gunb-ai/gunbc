@@ -289,7 +289,7 @@ type ApprovalFiling
 // its whole poll window waiting for a decision nobody had been asked to make, and died on its step
 // timeout. A status the transport reports as a refusal is a refusal whatever its body says, so the
 // body is consulted only over a 2xx (gunbc.design_argument::fail_closed: no plausible output is fabricated). This is the
-// caller-side half of the fail-open class gunbc.plans.transport_argv_anemia_dissolution names.
+// caller-side half of the fail-open class gunbc.plans.transport_argv_anemia_dissolution (deleted 2026-11-08) names.
 fn approval_filing_from_post(success: Bool, body: String) -> ApprovalFiling {
   if !success {
     // The two ways a POST fails are told apart in the reason: an answer the transport reports as a

@@ -166,7 +166,7 @@ test fn request_headers_reach_the_handler_lowercased_in_arrival_order() -> Bool 
   }
 }
 
-// The authorization fact is in the one vocabulary (gunbc.plans.converged_ingress M2b), so both realizations plan it:
+// The authorization fact is in the one vocabulary (gunbc.plans.converged_ingress (deleted 2026-11-08) M2b), so both realizations plan it:
 // its value is the head's Authorization field, derived from the framed header fields, and absent is "".
 fn w_text_argument(a: HttpIngressArgument) -> String {
   match a {
@@ -241,7 +241,7 @@ test fn the_handler_is_identified_by_module_and_name() -> Bool {
   }
 }
 
-// ── THE NATIVE REALIZATION'S FOLDS (gunbc.plans.converged_ingress M2a) ─────────────────────────
+// ── THE NATIVE REALIZATION'S FOLDS (gunbc.plans.converged_ingress (deleted 2026-11-08) M2a) ─────────────────────────
 // The binding's arguments have one rendering, and the native argv grammar reads exactly that rendering
 // back: `--arg name=value` and nothing else. The selectors gunbc run takes before them choose a
 // constructor the native binary already is, so they refuse rather than being ignored.
@@ -309,7 +309,7 @@ test fn the_native_contract_refuses_another_handler_and_a_refused_binding() -> B
     && starts_with(s: w_native_contract(listener: "tcp:127.0.0.1:0", cpu: 0, wall: 1, program_handler: "serve_seam_probe"), prefix: "REFUSED: cpu_limit_ms must be a positive integer")
 }
 
-// THE WHOLE FACT PLAN (gunbc.plans.converged_ingress M2b): the native start plans the handler's declared request
+// THE WHOLE FACT PLAN (gunbc.plans.converged_ingress (deleted 2026-11-08) M2b): the native start plans the handler's declared request
 // parameters with the seed's own http_ingress_fact_plan, in declared order, so a non-legacy order, the header list and
 // the authorization fact are planned; the unix socket is admitted and so is peer_user under it.
 test fn the_native_start_plans_the_whole_fact_vocabulary_in_declared_order() -> Bool {

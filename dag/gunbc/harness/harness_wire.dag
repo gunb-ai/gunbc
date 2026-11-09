@@ -377,7 +377,7 @@ fn harness_cached_tokens_read(doc: JsonValue) -> ServingCachedTokensReading {
 // request followed by the reply it received; this function does not reconstruct it.
 // DECLARED FRONTIER (gunbc.design_argument::consumption): the caller of harness_chat_completion_session_entry is the
 // warm-trace producer / session-keyed binder (the next PR of
-// docs/plans/serving-hardware-neutral-cutover.md), which feeds each completed response back as
+// docs/plans/serving-hardware-neutral-cutover.md (deleted 2026-11-08)), which feeds each completed response back as
 // `session:` to harness_bind_seat. Trigger: that PR; the decode-to-standing route is witnessed in
 // test.claim.harness_cached_tokens_witness_test meanwhile.
 fn harness_chat_completion_session_entry(unit: HarnessServingUnit, body: String, launch: NonEmptyStr, turn: NonEmptyStr, inputs_and_reply: List<String>) -> ServingSessionEntry? {

@@ -1,6 +1,6 @@
 module test.claim.runner.runner_service_slot_start_witness
 
-// THE SERVICE-SLOT START, AT ITS PURE BOUNDARIES (gunbc.plans.mtcollins1_ci_service_legs F1). The unit each start makes is
+// THE SERVICE-SLOT START, AT ITS PURE BOUNDARIES (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) F1). The unit each start makes is
 // read off the one command builder; the readback and the run's verdict are folds over supplied answers. Pairing
 // frontier: the start against a live host (the anchored transport and the population of a real boot) runs only on the
 // operator's go, as F5's first live service pass.

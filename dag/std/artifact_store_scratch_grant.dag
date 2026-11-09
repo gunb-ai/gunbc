@@ -16,7 +16,7 @@ import std.filesystem_path_grant {
 }
 import std.materialization_ladder { Frame, SharedStateFrame }
 
-// P-B scratch-grant authority (docs/plans/effect-namespace-grants.md 6): the artifact-store host
+// P-B scratch-grant authority (docs/plans/effect-namespace-grants.md (deleted 2026-11-08) 6): the artifact-store host
 // transport's /tmp/gunbc_* store roots are frame-owned scratch grants (LifecycleByConvention).
 // extdeps.realization.artifact_store_fs dispatches Write/Read only on Admitted verdicts from
 // artifact_store_scratch_target_admissible — the SINGLE admission entry. INTERIM HONESTY

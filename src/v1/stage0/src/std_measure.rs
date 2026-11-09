@@ -1737,6 +1737,16 @@ pub fn tokens_per_second_count(r: TokensPerSecond) -> Nat {
     measure_count(r)
 }
 
+pub fn token_count_duration_at(tokens: TokenCount, rate: TokensPerSecond) -> Option<Millisecond> {
+    match crate::std_nat::nat_ceil_div(
+        v1_rt::int_mul(token_count_value(tokens), milliseconds_per_second()),
+        tokens_per_second_count(rate),
+    ) {
+        Some(ms) => Some(millisecond(ms.clone())),
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
 pub type MilliTokensPerSecond = Rc<Measure<Frequency, Milli, Nat>>;
 
 pub fn milli_tokens_per_second(count: Nat) -> MilliTokensPerSecond {

@@ -49,7 +49,7 @@ import product.capacity.redemption {
 //
 // CUTOVER (2026-09-19): partitions start empty in the fabric DB. Nothing is imported from the git log
 // -- this realization never derives state from the one it replaced -- and termed leases make the
-// drain sufficient: see docs/plans/fabric-storage.md. The git repository is left read-only on its host as
+// drain sufficient: see docs/plans/fabric-storage.md (deleted 2026-11-08). The git repository is left read-only on its host as
 // history and is consulted by nothing.
 
 // WHY A LOG OPERATION REFUSED, TYPED. A store fault carries std.fabric_storage's arm unchanged, so an

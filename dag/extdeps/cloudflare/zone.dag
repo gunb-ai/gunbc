@@ -3,7 +3,7 @@ module extdeps.cloudflare.zone
 // THE CLOUDFLARE ZONE: the unit a custom domain must live in. gunbc.cloudflare.boot_origin refuses an
 // r2.dev boot origin and needs its hostname bound as an R2 custom domain; that bind is admissible only
 // inside an ACTIVE zone in the SAME account as the bucket. Cloudflare states the rule itself, so the open
-// item of gunbc.plans.boot_origin_bmc_media closes at its own citation below rather than at inference.
+// item of gunbc.plans.boot_origin_bmc_media (deleted 2026-11-08) closes at its own citation below rather than at inference.
 // This module carries the vendor's interface SHAPE and nothing else: no transport, no effect, no policy.
 // Every write belongs to a gunbc.cloudflare.* fold behind the gunbc.auth authorization pattern.
 

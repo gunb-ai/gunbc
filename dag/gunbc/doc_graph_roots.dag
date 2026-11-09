@@ -231,31 +231,49 @@ data body_lowering_production_consumer_ref: DeclarationRef = DeclarationRef { mo
 data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
-    slug: "fabric-recut-program",
-    primary_work: DeclarationRef { module_path: "std.temporal_effect", decl_name: "HeldLease", field: WholeDeclaration },
+    slug: "shell-to-dag-residual-census-and-arc-completion",
+    primary_work: DeclarationRef { module_path: "gunbc.host.host_effect_realize", decl_name: "host_effect_apply", field: WholeDeclaration },
     additional_works: [
-      DeclarationRef { module_path: "std.computation_identity", decl_name: "ComputationIdentity", field: WholeDeclaration },
-      DeclarationRef { module_path: "gunbc.ci.ci_fleet", decl_name: "ComputeOffer", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.retained_shell_script", decl_name: "RetainedShellScript", field: WholeDeclaration },
+      DeclarationRef { module_path: "extdeps.shell.exec", decl_name: "TransportScript", field: WholeDeclaration },
     ],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the fabric carriers consume the canonical lease, computation-identity and market authorities, and the old ComputeNeed/Opportunity/ComputeOffer vocabulary is migrated rather than coexisting; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject host_effect_apply describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
-    slug: "ci-minutes-product-design",
-    primary_work: DeclarationRef { module_path: "gunbc.ci.ci_fleet", decl_name: "ComputeOffer", field: WholeDeclaration },
-    additional_works: [
-
-    ],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the CI-minutes product ships and its subject ComputeOffer describes a sold surface rather than a proposed one; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
+    slug: "roadmap-workspace-ux-plan",
+    primary_work: DeclarationRef { module_path: "gunbc.roadmap.roadmap_page", decl_name: "roadmap_page_for_authority", field: WholeDeclaration },
+    additional_works: [],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the three pillars land on their carriers — P2's sessions surface on belt B's route model, P3's motion register in gunbc.design.*, P1b on the page — and the plan registers as a gunbc.plan.Plan row") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
-    slug: "cli-run-reconcile-defork",
-    primary_work: DeclarationRef { module_path: "v2.lens.module_graph", decl_name: "import_closure_live", field: WholeDeclaration },
+    slug: "namespace-unique-on-chain-operational-plan",
+    primary_work: DeclarationRef { module_path: "std.occurrence_binding", decl_name: "occurrence_binding_from_candidates", field: WholeDeclaration },
     additional_works: [
-      DeclarationRef { module_path: "extdeps.cache.types", decl_name: "CacheInterfaceCatalogFacts", field: WholeDeclaration },
+      DeclarationRef { module_path: "std.occurrence_binding", decl_name: "OccurrenceBindingResult", field: WholeDeclaration },
     ],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject import_closure_live describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject occurrence_binding_from_candidates describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "namespace-resolution-design",
+    primary_work: DeclarationRef { module_path: "v2.std.symbol_index", decl_name: "SymbolIndex", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.std.node", decl_name: "Symbol", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.std.symbol_index", decl_name: "symbol_index_global_unique_lookup", field: WholeDeclaration },
+    ],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject SymbolIndex describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "namespace-cut-replacement-plan",
+    primary_work: DeclarationRef { module_path: "gunbc.replacement_cut", decl_name: "admit_replacement_cut_plan", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.std.symbol_index", decl_name: "SymbolIndex", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.compiler.resolve", decl_name: "lookup_symbol_index_atom_identity", field: WholeDeclaration },
+    ],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the integration/namespace-cut cutover merges to main and the import concept / import-name-universe authorities named in this plan are deleted per its terminal receipt; the row deletes with the document once the cut is no longer the active migration vehicle. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -268,21 +286,12 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
-    slug: "emit-type-surface-traversal-cost",
-    primary_work: DeclarationRef { module_path: "v1.compiler.infer_emit_info", decl_name: "collect_type_node_import_surface_names", field: WholeDeclaration },
+    slug: "cli-run-reconcile-defork",
+    primary_work: DeclarationRef { module_path: "v2.lens.module_graph", decl_name: "import_closure_live", field: WholeDeclaration },
     additional_works: [
-      DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "collect_value_emit_type_surface_names", field: WholeDeclaration },
-      DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "reference_derived_use_line_plan", field: WholeDeclaration },
+      DeclarationRef { module_path: "extdeps.cache.types", decl_name: "CacheInterfaceCatalogFacts", field: WholeDeclaration },
     ],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the traversal this record measures stops re-entering shared nodes -- either because synthesised occurrences gain an identity a visited set can key on, or because the use-line seam is derived from the emitted reference set and this producer has no caller -- at which point the document describes history rather than a live cost and deletes with this row. Registered at subject grain: collect_type_node_import_surface_names is the traversal whose amplification these figures partition, collect_value_emit_type_surface_names is the per-expression caller that drives it, and reference_derived_use_line_plan is the consumer whose candidate union decides whether the producer is needed at all; movement in any of the three is what would make these numbers false.") },
-  },
-  HandAuthoredDocBind {
-    home: PlanDoc,
-    slug: "floor-cut-replacement-plan",
-    primary_work: DeclarationRef { module_path: "gunbc.replacement_cut", decl_name: "admit_replacement_cut_plan", field: WholeDeclaration },
-    additional_works: [
-    ],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the integration/floor-cut cutover merges to main and the old generated-ci / ci_floor_plan authorities named in this plan are deleted per its terminal receipt; the row deletes with the document once the cut is no longer the active migration vehicle. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject import_closure_live describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -297,120 +306,7 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
     ],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject KeyRelation describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
-  HandAuthoredDocBind {
-    home: PlanDoc,
-    slug: "model-grounding-lens-extract",
-    primary_work: DeclarationRef { module_path: "std.types", decl_name: "NonEmptyStr", field: WholeDeclaration },
-    additional_works: [
-      DeclarationRef { module_path: "std.realization_schedule", decl_name: "Schedule", field: WholeDeclaration },
-    ],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject NonEmptyStr describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
-  },
-  HandAuthoredDocBind {
-    home: PlanDoc,
-    slug: "namespace-cut-replacement-plan",
-    primary_work: DeclarationRef { module_path: "gunbc.replacement_cut", decl_name: "admit_replacement_cut_plan", field: WholeDeclaration },
-    additional_works: [
-      DeclarationRef { module_path: "v2.std.symbol_index", decl_name: "SymbolIndex", field: WholeDeclaration },
-      DeclarationRef { module_path: "v2.compiler.resolve", decl_name: "lookup_symbol_index_atom_identity", field: WholeDeclaration },
-    ],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the integration/namespace-cut cutover merges to main and the import concept / import-name-universe authorities named in this plan are deleted per its terminal receipt; the row deletes with the document once the cut is no longer the active migration vehicle. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
-  },
-  HandAuthoredDocBind {
-    home: PlanDoc,
-    slug: "namespace-resolution-design",
-    primary_work: DeclarationRef { module_path: "v2.std.symbol_index", decl_name: "SymbolIndex", field: WholeDeclaration },
-    additional_works: [
-      DeclarationRef { module_path: "v2.std.node", decl_name: "Symbol", field: WholeDeclaration },
-      DeclarationRef { module_path: "v2.std.symbol_index", decl_name: "symbol_index_global_unique_lookup", field: WholeDeclaration },
-    ],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject SymbolIndex describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
-  },
-  HandAuthoredDocBind {
-    home: PlanDoc,
-    slug: "namespace-unique-on-chain-operational-plan",
-    primary_work: DeclarationRef { module_path: "std.occurrence_binding", decl_name: "occurrence_binding_from_candidates", field: WholeDeclaration },
-    additional_works: [
-      DeclarationRef { module_path: "std.occurrence_binding", decl_name: "OccurrenceBindingResult", field: WholeDeclaration },
-    ],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject occurrence_binding_from_candidates describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
-  },
-  HandAuthoredDocBind {
-    home: PlanDoc,
-    slug: "roadmap-spawner",
-    primary_work: DeclarationRef { module_path: "gunbc.roadmap.roadmap_spawner", decl_name: "next_spawnable", field: WholeDeclaration },
-    additional_works: [
-      DeclarationRef { module_path: "gunbc.roadmap.roadmap_model", decl_name: "Acceptance", field: WholeDeclaration },
-      DeclarationRef { module_path: "gunbc.process_algebra", decl_name: "ProcessNodeId", field: WholeDeclaration },
-    ],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject next_spawnable describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
-  },
 
-  HandAuthoredDocBind {
-    home: PlanDoc,
-    slug: "shell-intent-emit-realization-design",
-    primary_work: DeclarationRef { module_path: "v2.std.orchestration", decl_name: "Pipeline", field: WholeDeclaration },
-    additional_works: [
-      DeclarationRef { module_path: "v2.std.node", decl_name: "Edge", field: WholeDeclaration },
-      DeclarationRef { module_path: "gunbc.host.host_effect_realize", decl_name: "host_effect_apply", field: WholeDeclaration },
-    ],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject Pipeline describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
-  },
-  HandAuthoredDocBind {
-    home: PlanDoc,
-    slug: "shell-to-dag-residual-census-and-arc-completion",
-    primary_work: DeclarationRef { module_path: "gunbc.host.host_effect_realize", decl_name: "host_effect_apply", field: WholeDeclaration },
-    additional_works: [
-      DeclarationRef { module_path: "gunbc.retained_shell_script", decl_name: "RetainedShellScript", field: WholeDeclaration },
-      DeclarationRef { module_path: "extdeps.shell.exec", decl_name: "TransportScript", field: WholeDeclaration },
-    ],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject host_effect_apply describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
-  },
-  HandAuthoredDocBind {
-    home: PlanDoc,
-    slug: "generated-file-conflict-policy",
-    primary_work: DeclarationRef { module_path: "gunbc.generated_artifact_registry", decl_name: "committed_generated_artifacts", field: WholeDeclaration },
-    additional_works: [DeclarationRef { module_path: "gunbc.instruments.generated_artifact_gate", decl_name: "run_generated_artifact_drift_gate", field: WholeDeclaration }, DeclarationRef { module_path: "gunbc.commit_workflow", decl_name: "commit_gate_roster", field: WholeDeclaration }, DeclarationRef { module_path: "gunbc.stage0.stage0_rust_source_lifecycle_scaffold", decl_name: "derived_generated_stage0_repo_paths", field: WholeDeclaration }, DeclarationRef { module_path: "std.keyed_roster", decl_name: "keyed_roster_build", field: WholeDeclaration }],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "all four charter lanes are landed AND bound: commit-writer admission consumed at every writer transport (the heal arm and the dashboard autocommit daemon), the .gitattributes + repo-local git-config projections live with read-back, stage0 membership derived with its host-supply scaffold dissolved or re-triggered, and the keyed-roster construction wall enrolled per-PR. Then the surviving policy rows migrate to DESIGN or a registered gunbc.plan.Plan row and this bind deletes with the doc.") },
-  },
-  HandAuthoredDocBind {
-    home: PlanDoc,
-    slug: "effect-namespace-grants",
-    primary_work: DeclarationRef { module_path: "gunbc.plans.host_effect_orchestration", decl_name: "host_effect_orchestration_plan", field: WholeDeclaration },
-    additional_works: [],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the grant/envelope model lands (the doc's FLAG-A §6 interim is its only near-term consumer)") },
-  },
-  HandAuthoredDocBind {
-    home: PlanDoc,
-    slug: "emission-admission-stage-aware-pipeline-design",
-    primary_work: DeclarationRef { module_path: "v2.compiler.self_host.emitter_producer_provenance", decl_name: "emitter_producer_provenance_note", field: WholeDeclaration },
-    additional_works: [DeclarationRef { module_path: "v2.compiler.self_host", decl_name: "canonical_emitted_bytes_digest", field: WholeDeclaration }, DeclarationRef { module_path: "gunbc.bootstrap", decl_name: "CompilerStage", field: WholeDeclaration }],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "Stages 1–9 in the design doc land or are honestly retired: candidate/promoted lifecycle with RecoveryAnchor retention, SuccessorCapabilityReceipt fix-forward gate, declared-change vs regression on the merge path, generation lineage binds ConsumerRead on regen and warm-merge (Promoted bindings only), bridge-generation protocol for incompatible requirement revisions, phased-single-process CI prelude-duplication witness is green on a representative PR, and the doc migrates into a registered gunbc.plan.Plan row (the registration becomes the binding)") },
-  },
-  HandAuthoredDocBind {
-    home: PlanDoc,
-    slug: "roadmap-workspace-ux-plan",
-    primary_work: DeclarationRef { module_path: "gunbc.roadmap.roadmap_page", decl_name: "roadmap_page_for_authority", field: WholeDeclaration },
-    additional_works: [],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the three pillars land on their carriers — P2's sessions surface on belt B's route model, P3's motion register in gunbc.design.*, P1b on the page — and the plan registers as a gunbc.plan.Plan row") },
-  },
-  HandAuthoredDocBind {
-    home: PlanDoc,
-    slug: "roadmap-workspace-remodel-plan",
-    primary_work: DeclarationRef { module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_dispatch_result_band", field: WholeDeclaration },
-    additional_works: [],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the composition-session slices land on their carriers — the StateResponse rule kind and ResponseScope in gunbc.design.*, the RoadmapRow archetype grid, page altitude from the attention law, anomaly evidence in the row disclosure — and the plan registers as a gunbc.plan.Plan row (extends roadmap-workspace-ux-plan, whose row dissolves on its own trigger)") },
-  },
-  HandAuthoredDocBind {
-    home: PlanDoc,
-    slug: "roadmap-launch-mvp-plan",
-    primary_work: DeclarationRef { module_path: "gunbc.roadmap.roadmap_launch_canary", decl_name: "roadmap_launch_canary_execution_contract", field: WholeDeclaration },
-    additional_works: [
-      DeclarationRef { module_path: "gunbc.roadmap.roadmap_launch_canary_sentinel", decl_name: "roadmap_launch_canary_sentinel", field: WholeDeclaration },
-      DeclarationRef { module_path: "gunbc.roadmap.roadmap_spawner", decl_name: "node_is_spawnable", field: WholeDeclaration },
-    ],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the RLM-6 terminal receipt is recorded -- one receipt joining every frozen identity of the serial gate chain (the canary parent Done by explicit acceptance, its child Ready, the parent's relaunch refused AlreadyAccepted); at that point the plan describes shipped behavior and the row deletes with the document") },
-  },
   HandAuthoredDocBind {
     home: PlanDoc,
     slug: "compiler-guarantee-recovery-gap-analysis",
@@ -424,46 +320,6 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
     primary_work: DeclarationRef { module_path: "extdeps.cpu_attachment.lotes_azifa072", decl_name: "azifa072_depopulation_is_arithmetically_consistent", field: WholeDeclaration },
     additional_works: [],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the reduced parser cases this document carries are held by an EXECUTING REGRESSION CARRIER -- a witness that authors `100 \\n - 1` and its `+` and `*` controls and refuses when the leading-minus continuation is truncated again -- the production citation in extdeps.cpu_attachment.lotes_azifa072 is repointed to that carrier, and no other evidence consumer names this document. Then the receipt is the carrier and this bind deletes with the md. IT IS DELIBERATELY NOT PlanHasNoRetirement: the evidence being load-bearing TODAY is not grounds for making a Markdown file the permanent terminal form of a parser guarantee, which is exactly the shape the three g1 controls were wrongly given before they moved to v2.lens.cited_symbol_resolution.") },
-  },
-  HandAuthoredDocBind {
-    home: PlanDoc,
-    slug: "microvm-launch-displacement-analysis",
-    primary_work: DeclarationRef { module_path: "gunbc.fabric.fabric_ci_program", decl_name: "fabric_ci_gates", field: WholeDeclaration },
-    additional_works: [
-      DeclarationRef { module_path: "gunbc.runner.runner_host_image_store", decl_name: "host_image_store", field: WholeDeclaration },
-    ],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the measurement this document exists to scope is taken and its answer is acted on: the host boot script that starts every production micro-VM on Mt. Collins acquires an authoring home, at which point the central finding -- that one home is modeled and the other is outside the corpus entirely -- is false and the document deletes with this bind. Registered at subject grain: the bound declarations are the two carriers whose movement would make its framing wrong -- FCI-3, whose exit predicate the receipted zero-byte-credential launch violates and whose displacement this document prices, and the host image store, whose resilient:false standing is what makes the unauthored actuation a single-copy risk rather than merely an untidy one. It is deliberately bound to NEITHER the FCI-2 module NOR the failure-mode row this analysis continues, because both are authored on the unmerged #10674 and a bind to a symbol that does not resolve is the citation defect this document was already corrected for once. When #10674 lands, the failure-mode row is the natural third work to add here.") },
-  },
-  HandAuthoredDocBind {
-    home: PlanDoc,
-    slug: "runner-throughput-qualification-recut",
-    primary_work: DeclarationRef { module_path: "gunbc.runner.runner_throughput_qualification", decl_name: "qualification_run_producer_frontier", field: WholeDeclaration },
-    additional_works: [
-      DeclarationRef { module_path: "product.fabric.node_qualification", decl_name: "OfferDeliveryClaim", field: WholeDeclaration },
-      DeclarationRef { module_path: "gunbc.runner.runner_throughput_qualification_route", decl_name: "mtcollins1_route_legs", field: WholeDeclaration },
-      DeclarationRef { module_path: "gunbc.recurring_failure_mode.witness_oracle_transcribed_from_the_tree_it_measures", decl_name: "witness_oracle_transcribed_from_the_tree_it_measures", field: WholeDeclaration },
-    ],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the four-type shape the operator's 2026-09-19 hold on gunbc#11722 rules -- SelectedRunnerQualification consumed as input, ObservedRunnerQualificationRun and RunnerThroughputAssessment as sole_constructor records, RunnerOfferDeliveryClaim joined by product.fabric.capacity_admission admit_delivered_offer -- is on main with every effectful route leg bound, and the first ObservedRunnerQualificationRun is minted from a real run on mtcollins1. SUFFICIENT FOR deleting this bind and docs/plans/runner-throughput-qualification-recut.md together: the producer frontier and every leg of mtcollins1_route_legs bound here have dissolved into bound authorities and the plan describes a shipped system. NOT satisfied by the plan existing, by the recut landing with the legs still declared, or by a fixture-minted run.") },
-  },
-  HandAuthoredDocBind {
-    home: PlanDoc,
-    slug: "ci-per-job-microvm-migration",
-    primary_work: DeclarationRef { module_path: "gunbc.runner.runner_attempt_launch", decl_name: "host_boot_cutover_frontier", field: WholeDeclaration },
-    additional_works: [
-      DeclarationRef { module_path: "gunbc.witness.witness_floor_workflow", decl_name: "toolchain_filesystem_probe_dissolution_condition", field: WholeDeclaration },
-      DeclarationRef { module_path: "gunbc.runner.runner_host_image_placeability", decl_name: "host_image_placeability_standing", field: WholeDeclaration },
-    ],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "NAMED CONSUMER: the operator cutover that binds host_boot_cutover_frontier and points gunbc plus gunbc-private required jobs at per-attempt microVM labels. TRIGGER: that capability -- Y execs at host boot, host image built from Y, and selected_ci_runner_target no longer names the shared-filesystem fleet slot for those jobs -- which is also when toolchain_filesystem_probe_dissolution_condition may fire on the microVM arm. SUFFICIENT FOR deleting this bind and docs/plans/ci-per-job-microvm-migration.md together. NOT satisfied by this plan existing, by BMC HTTPS answering, or by Y remaining shadow.") },
-  },
-  HandAuthoredDocBind {
-    home: PlanDoc,
-    slug: "altra-cross-channel-rank-mixing-survey",
-    primary_work: DeclarationRef { module_path: "extdeps.ocp.mt_jade.memory_mixing", decl_name: "mt_jade_mixed_dimm_support_table", field: WholeDeclaration },
-    additional_works: [
-      DeclarationRef { module_path: "extdeps.ampere.mt_collins_product_brief.memory_population", decl_name: "memory_population_coverage", field: WholeDeclaration },
-      DeclarationRef { module_path: "extdeps.ampere.mt_collins_getting_started_guide.subject", decl_name: "mt_collins_gsg_authority", field: WholeDeclaration },
-    ],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "a cited upstream authority resolves the Different Channel x Mixing 1R & 2R cell that Mt. Jade Rev 1.0 Table 3 leaves TBD -- a later OCP Mt. Jade revision, an Ampere document naming rank as a population axis, or a vendor answer landed as an extdeps row -- and the table row it binds to no longer carries MixingUndetermined at that coordinate; the survey then describes a question that is closed and deletes with this bind. NOT satisfied by Mt. Collins unit 1 continuing to run the configuration cleanly: that is a gunbc observation, which the survey itself refuses to promote. Registered at subject grain: the TBD cell is the fact whose movement makes the document's purpose false; the two Ampere GSG declarations are bound because the survey's one positive finding -- the cross-channel rule Ampere does publish is capacity, not rank -- reads from them.") },
   },
 ]
 

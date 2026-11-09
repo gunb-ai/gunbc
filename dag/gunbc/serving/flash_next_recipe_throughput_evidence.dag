@@ -4,7 +4,8 @@ import std.types { Bool, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { token_count_value, tokens_per_second_count, second_count, MilliTokensPerSecond, milli_tokens_per_second, milli_tokens_per_second_count, TokensPerSecond, tokens_per_second, ConcurrentRequestThousandths, concurrent_request_thousandths, concurrent_request_thousandths_count }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import product.fabric.serving_recipe { serving_recipe_flash_next_lab_vllm, ServingThroughput, ThroughputOperatorReading, ThroughputUnread }
+import product.fabric.serving_recipe { serving_recipe_flash_next_lab_vllm }
+import product.fabric.serving_throughput { ServingThroughput, ThroughputOperatorReading, ThroughputUnread }
 import gunbc.serving.flash_next_maxq_run_receipt { FlashNextMaxQRunReceipt, flash_next_maxq_run_2026_10_21 }
 
 // WHAT THE MAX-Q RECEIPT SAYS ABOUT THE RECIPE'S THROUGHPUT SLOT. serving_recipe_flash_next_lab_vllm holds an uncited operator

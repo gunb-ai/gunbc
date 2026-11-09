@@ -700,6 +700,13 @@ data operator_may_arbitrarily_retire_any_work_item: DesignRuling = DesignRuling 
   provenance: "Operator, relayed by silent-bee-845 on the daily-workspace close/advance slice: \"I should be allowed to arbitrarily retire any work item\". The operator RETIRE route (gunbc.roadmap.roadmap_serve, POST /issue/\{node\}/retire) ends any work item in any state and is recorded honestly as retired by <principal>, never as accepted; its only refusals are unknown node, already terminal, unauthenticated, and stale revision — never a lineage-state precondition; the lab-only lineage-retire route's \"only a ContinuationEnded lineage\" admission dies with that route (deleted per the same-day dispatch ruling, START FRESH superseding it) and is not carried to main. A closed or retired NODE is terminal — and terminality is never a separate operator-facing lineage state: the operator ruling of the same day (dispatch collapses to CONTINUE and START FRESH, retire-LINEAGE deleted, START FRESH superseding it) keeps the standing node-level, while the belt computes terminality internally from the node's own standing and durable acceptance (gunbc.roadmap.roadmap_belt_obligation and gunbc.roadmap.roadmap_belt_actuate read that one rule: no further verify/review/re-delivery spawns, fail closed on unreadable). Dispatch verbs CONTINUE and START FRESH refuse on a retired node with that reason; retired does not satisfy dependents, and a child held by a retired parent surfaces the reason visibly as 'blocked by retired <id>' (derived from the blocker's standing, no new label type) — the same use-found defect class as a_write_control_renders_disabled_with_no_visible_reason.",
 }
 
+data seed_read_set_receipt_is_admitted: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "seed_read_set_receipt_is_admitted"),
+  decided: "2026-11-08",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "replacement_migration"),
+  provenance: "Operator ruling 2026-11-08, direct to session bright-ibex-807, verbatim: \"yes, small seed read-set is fine\". Asked as an exception to the 2026-11-08 seed freeze: the v1 seed's demand acquisition (v1_compiler.cli_run.demand_acquire) may record its read set -- every file it reads, every path it probes and finds absent or unadmitted, every directory it enumerates -- to the file named by GUNBC_READ_SET_OUT, so the required job can skip the emit and build when a pull request changes nothing that acquisition reads. Admitted for this one purpose and no other: no resolution, checking or emission behavior of the seed changes. It dissolves with the seed walk it instruments (gunbc.run_demand_acquire_seed_growth).",
+}
+
 data n7_requires_only_its_own_closure: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "n7_requires_only_its_own_closure"),
   decided: "2026-11-08",
@@ -841,6 +848,7 @@ fn design_rulings() -> List<DesignRuling> {
     self_host_scope_is_the_compiler_closures,
     imports_are_the_terminal_name_mechanism,
     plans_reset_and_audit_recommendations_2026_11_08,
+    seed_read_set_receipt_is_admitted,
   ]
 }
 

@@ -16,7 +16,7 @@ import gunbc.native_serve_probe_plan {
 // build), nor one that ran the homonym twin's startup or handler by bare name (the twin refuses, or answers 418). The
 // answer also names the request's path and its X-Probe header: the handler's request parameters are (path,
 // request_headers) before the startup value, so the startup composes with a fact plan that is not the legacy set
-// (gunbc.plans.converged_ingress M2b).
+// (gunbc.plans.converged_ingress (deleted 2026-11-08) M2b).
 
 fn native_serve_probe_phases() -> List<NativeServePhase> {
   []

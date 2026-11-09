@@ -64,7 +64,7 @@ type WorkspaceWriterEpoch {
 
 // One file of the revision: its path inside the workspace, the blob holding its bytes (the chunk's
 // own SHA-256, so the fetch verifies the reading's digest equals the address), and its size. Whole
-// files are one chunk until docs/plans/fabric-storage.md step 5 (chunked objects); a file larger than
+// files are one chunk until docs/plans/fabric-storage.md (deleted 2026-11-08) step 5 (chunked objects); a file larger than
 // the placement's whole-object bound is refused by fabric_blob_put_plan, never split here.
 type WorkspaceEntry {
   path: NonEmptyStr
