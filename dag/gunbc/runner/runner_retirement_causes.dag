@@ -288,6 +288,3 @@ fn floor_job_ran_on(evidence: ReplacementJobEvidence, slot: NonEmptyStr) -> Bool
     FloorJobRefused { slot: _, reason: _ } => false
   }
 }
-    FloorJobRefused { slot: _, reason: _ } => false
-  }
-}
