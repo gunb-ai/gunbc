@@ -282,7 +282,7 @@ fn harness_command_table_line(obs: HarnessShellJobObservation) -> String {
 }
 
 fn harness_command_table(jobs: List<HarnessShellJob>) -> String {
-  // @ref(std.algebra::length) is the one size authority over a FreeMonoid carrier.
+  // @ref(std.algebra::length)
   if std.algebra.length(xs: jobs) == 0 {
     "COMMAND TABLE: (no jobs)"
   } else {
