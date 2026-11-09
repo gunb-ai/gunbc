@@ -157,12 +157,16 @@ fn fci1_roster_names_none(roster: List<RunnerSlotIdentity>, none_of: List<Runner
 }
 
 fn fci1_projection_names_its_own_absence(subject: CpProbeSubject) -> Bool {
-  let projected = cp_probe_slot_from(subject: subject)
-  (projected.host as String) != "srv3"
-    && (projected.host as String) != "srv1"
-    && (projected.host as String) != "srv2"
-    && (projected.host as String) != "srv4"
-    && projected.slot_index == 0
+  // Post-review-92428 a refusal projects NOTHING rather than a stand-in that merely names no real host:
+  // cp_probe_slot_from is an Optional, so with no subject there is no identity at all -- not srv1-13, not
+  // a fabricated host -- for an allocation key, a /opt/fabric-cells path or a systemctl unit to be built
+  // from. Asserting Absent is what keeps the deleted sentinel from coming back dressed up as a "safe"
+  // placeholder (gunbc.design_argument::continuous_generalization: a sentinel in a model that could
+  // express the case is a fork).
+  match cp_probe_slot_from(subject: subject) {
+    Absent {} => true
+    Present { value: _ } => false
+  }
 }
 
 test fn witness_fci1_subject_follows_the_roster_and_not_the_old_literal() -> Bool {

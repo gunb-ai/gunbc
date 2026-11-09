@@ -1003,10 +1003,10 @@ fn fci1_live_reserve_and_observe_available_in(
           ExitSuccess => ExitFailure { code: 86, reason: "FCI1InjectedFailureAfterCommitBeforeTransport" }
           ExitFailure { code: _, reason: why } => exit_failure(reason: why)
         }
-      // The binding is observed only for a selected subject. A refusal is not an unreadable store,
-      // an absent reservation or a payload mismatch: the leg stops with the located cause instead of
-      // reporting a cell state that was never read.
-      match fci1_live_binding_observation(store: store) {
+      // The binding is observed on the ordinary path, and only for a selected subject: a refusal is
+      // not an unreadable store, an absent reservation or a payload mismatch, so the leg stops with the
+      // located cause instead of reporting a cell state that was never read.
+      } else { match fci1_live_binding_observation(store: store) {
         Fci1BindingNoSubject { why: why } => exit_failure(reason: join(["Fci1BindingObservationNoSubject: ", why as String], ""))
         Fci1BindingObserved { observation: observation } =>
         match required_build_cell_lifetime_sample(observation: observation) {
@@ -1187,6 +1187,10 @@ fn fci1_assert_allocation_available_in(store: FabricAllocationStore) -> ProcessE
     AllocationSlotRefusedHeld { path: _, generation: _ } => exit_failure(reason: "FCI-1 allocation slot remains held")
     AllocationSlotRefusedUnreadable { path: _ } => exit_failure(reason: "FCI-1 allocation slot unreadable")
     AllocationSlotRefusedUndecodable { path: _, generation: _ } => exit_failure(reason: "FCI-1 allocation slot undecodable")
+    // Nothing was selected, so "is the slot available?" has no answer -- and "yes, it is free" is the
+    // one answer this leg must never give, because its caller reserves on it.
+    AllocationSlotRefusedNoSubject { why: why } =>
+      exit_failure(reason: join(["FCI-1 allocation admission refused with no subject selected: ", why as String], ""))
   }
 }
 
@@ -1256,6 +1260,12 @@ fn fci1_slot_prestate_equal(a: AllocationSlotPrestate, b: AllocationSlotPrestate
       AllocationSlotUnreadable { path: bp } => ap == bp
       _ => false
     }
+    // Two refusals are "equal" only in the trivial sense that the same cause came back; they are not an
+    // observation of a state, and nothing downstream may read this as a matched pre/post pair.
+    AllocationSlotNoSubject { why: aw } => match b {
+      AllocationSlotNoSubject { why: bw } => aw == bw
+      _ => false
+    }
     AllocationSlotUndecodable { path: ap, generation: ag } => match b {
       AllocationSlotUndecodable { path: bp, generation: bg } => ap == bp && ag == bg
       _ => false
@@ -1291,6 +1301,7 @@ fn fci1_cleanup_authority_for_observation(
     Fci1SlotAbsent { path: _ } => Fci1ReservationCleanupAuthorityObservationUnmodeled
     Fci1SlotUnreadable { path: _ } => Fci1ReservationCleanupAuthorityObservationUnmodeled
     Fci1SlotUndecodable { path: _, generation: _, payload: _, content: _ } => Fci1ReservationCleanupAuthorityObservationUnmodeled
+    Fci1SlotNoSubject { why: _ } => Fci1ReservationCleanupAuthorityObservationUnmodeled
   }
 }
 
@@ -1353,6 +1364,7 @@ fn fci1_canonical_cleanup_disposition(
           AllocationSlotHeld { path: _, generation: _ } => CanonicalCleanupRefused { prestate: prestate, observed: observed }
           AllocationSlotUnreadable { path: _ } => CanonicalCleanupRefused { prestate: prestate, observed: observed }
           AllocationSlotUndecodable { path: _, generation: _ } => CanonicalCleanupRefused { prestate: prestate, observed: observed }
+          AllocationSlotNoSubject { why: _ } => CanonicalCleanupRefused { prestate: prestate, observed: observed }
         }
       } else { match fci1_cleanup_authority_for_observation(path: authority_path, observed: observed) {
         Fci1ReservationCleanupAuthorityDecoded { authority: authority } =>
@@ -1426,6 +1438,10 @@ fn fci1_write_canonical_cleanup_receipt_in(store: FabricAllocationStore, before_
     CanonicalAlreadyExactFree { prestate: _, authority: _, poststate: _, restoration: AllocationSlotAbsentReturnedFree { path: _, held_generation: _, post_generation: _ } } => ExitSuccess
     CanonicalAlreadyExactFree { prestate: _, authority: _, poststate: _, restoration: AllocationSlotFreeReturnedFree { path: _, pre_generation: _, held_generation: _, post_generation: _ } } => ExitSuccess
     CanonicalAlreadyExactFree { prestate: _, authority: _, poststate: _, restoration: AllocationStoreRestorationRefused { path: _ } } => exit_failure(reason: "canonical already-free state did not satisfy exact restoration")
+    // The two reads never happened, because the second had no subject: that is not an already-free slot,
+    // and the receipt must not be written as though it were.
+    CanonicalAlreadyExactFree { prestate: _, authority: _, poststate: _, restoration: AllocationStoreRestorationRefusedNoSubject { why: why } } =>
+      exit_failure(reason: join(["canonical already-free restoration refused with no subject selected: ", why as String], ""))
     CanonicalCleanupRefused { prestate: _, observed: _ } => exit_failure(reason: "canonical cleanup disposition refused")
   } }
 }
@@ -1464,6 +1480,8 @@ fn fci1_write_disposable_cleanup_receipt_in(store: FabricAllocationStore, author
               Fci1SlotHeld { path: _, generation: _, reservation_identity: _, payload: _, content: _ } => exit_failure(reason: "disposable release terminal state was not Free")
               Fci1SlotUnreadable { path: _ } => exit_failure(reason: "disposable release terminal state was not Free")
               Fci1SlotUndecodable { path: _, generation: _, payload: _, content: _ } => exit_failure(reason: "disposable release terminal state was not Free")
+              // A terminal observation needs a subject; without one there is nothing that was released.
+              Fci1SlotNoSubject { why: _ } => exit_failure(reason: "disposable release terminal state had no selected subject")
             }
             HoldEndBudgetRefused { slot_key: _, refusal: _ } => exit_failure(reason: "disposable release refused")
             HoldEndSlotNotHeld { slot_key: _, detail: _ } => exit_failure(reason: "disposable release refused")
@@ -1539,6 +1557,9 @@ fn fci1_assert_slot_absent_admitted() -> ProcessExit {
     AllocationSlotRefusedHeld { path: _, generation: _ } => exit_failure(reason: "FCI-1 absent slot was not admitted")
     AllocationSlotRefusedUnreadable { path: _ } => exit_failure(reason: "FCI-1 absent slot was not admitted")
     AllocationSlotRefusedUndecodable { path: _, generation: _ } => exit_failure(reason: "FCI-1 absent slot was not admitted")
+    // Total over the arm this control cannot reach -- the prestate is supplied -- but it must be named,
+    // and naming it here says which answer is wrong: a control with no subject is not an admission.
+    AllocationSlotRefusedNoSubject { why: _ } => exit_failure(reason: "FCI-1 absent slot was admitted without a subject")
   }
 }
 
@@ -1550,6 +1571,7 @@ fn fci1_assert_unreadable_slot_refused() -> ProcessExit {
     AllocationSlotAdmitted { path: _ } => exit_failure(reason: "FCI-1 unreadable slot was admitted")
     AllocationSlotRefusedHeld { path: _, generation: _ } => exit_failure(reason: "FCI-1 unreadable slot was admitted")
     AllocationSlotRefusedUndecodable { path: _, generation: _ } => exit_failure(reason: "FCI-1 unreadable slot was admitted")
+    AllocationSlotRefusedNoSubject { why: _ } => exit_failure(reason: "FCI-1 unreadable slot was admitted without a subject")
   }
 }
 
