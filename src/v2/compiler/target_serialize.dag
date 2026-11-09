@@ -28,6 +28,9 @@ import v2.std.compilers.target_model {
   canonical_operation_from_wire_node,
   target_bodied_arrow_compose_statement_tokens,
   target_project_arrow_body_to_value_expression,
+  target_project_realized_closure,
+  arrow_domain_binder_names,
+  FunctionTypeAtItemReturn,
   target_value_expr_project_body_subexpression,
   target_value_expression_binding_ref,
   target_value_expression_conditional,
@@ -90,7 +93,16 @@ import v2.std.node { positional_child_target_nodes,
   Branch,
   ComputationNode,
   Disj,
+  ComputationBody,
+  DeclarationReferenceBody,
+  DirectAtomBody,
+  FunctionValueBody,
+  LexicalReferenceBody,
+  ParameterReferenceBody,
+  RecordConstructBody,
+  UnsupportedArrowBody,
   Instantiation,
+  classify_arrow_body_form,
   symbol_intern_lexeme,
   symbol_lexeme
 }
@@ -1226,14 +1238,36 @@ fn project_arrow_body_from_inferred_facts(
   match find_arrow_body_child(root: arrow) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: body, diagnostics: _ } =>
-      project_value_node_from_inferred_facts(
-        arrow: arrow,
-        node: body,
-        target: target,
-        tree: tree,
-        declarations: declarations,
-        handle_transform: handle_transform
-      )
+      // A BODY THAT IS A FUNCTION VALUE IS NOT PROJECTED BY KIND HERE. Its shape is decided
+      // by the target's FunctionTypeRealizationRow for the item's return position — the row
+      // carries the capture mode (`move`, which a capture by value needs to outlive this frame)
+      // and the boxing (`Box::new(` ... `)` over a boxed return) — and only the realized-closure
+      // route reads that row. The structural dispatch below answers from the node's kind alone,
+      // and the kind it sees on a returned closure is the kind a closure in any OTHER position
+      // (an argument, a let) also has; that projection deliberately leaves a closure unreleased,
+      // so routing a RETURNED closure through it emitted `|x| { ... }` where the target's row
+      // says `move |x| { ... }`, dropping the capture and the box and emitting Rust that will not
+      // typecheck. The classifier is the same one the value-expression admission and the sibling
+      // target_project_arrow_body_to_value_expression dispatch on, so the produced-declaration
+      // route no longer holds its own answer to which forms project as returned closures.
+      match classify_arrow_body_form(target: body) {
+        FunctionValueBody =>
+          target_project_realized_closure(
+            closure: body,
+            position: FunctionTypeAtItemReturn,
+            enclosing: arrow_domain_binder_names(arrow: arrow),
+            target: target,
+            source_bool_form: dag_value_expression_projection().bool_literal_form,
+            handle_transform: handle_transform
+          )
+        DirectAtomBody => project_value_node_from_inferred_facts(arrow: arrow, node: body, target: target, tree: tree, declarations: declarations, handle_transform: handle_transform)
+        RecordConstructBody => project_value_node_from_inferred_facts(arrow: arrow, node: body, target: target, tree: tree, declarations: declarations, handle_transform: handle_transform)
+        DeclarationReferenceBody => project_value_node_from_inferred_facts(arrow: arrow, node: body, target: target, tree: tree, declarations: declarations, handle_transform: handle_transform)
+        ParameterReferenceBody => project_value_node_from_inferred_facts(arrow: arrow, node: body, target: target, tree: tree, declarations: declarations, handle_transform: handle_transform)
+        LexicalReferenceBody => project_value_node_from_inferred_facts(arrow: arrow, node: body, target: target, tree: tree, declarations: declarations, handle_transform: handle_transform)
+        ComputationBody { behavior: _ } => project_value_node_from_inferred_facts(arrow: arrow, node: body, target: target, tree: tree, declarations: declarations, handle_transform: handle_transform)
+        UnsupportedArrowBody => project_value_node_from_inferred_facts(arrow: arrow, node: body, target: target, tree: tree, declarations: declarations, handle_transform: handle_transform)
+      }
   }
 }
 
