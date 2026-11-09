@@ -66,10 +66,25 @@ module gunbc.witness.compiler_gate_workflow
 
 import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.measure { Minute, minute_count }
-import std.algebra { fold_list, list_append, list_map, list_find_first }
+import std.algebra { fold_list, list_append, list_map, list_find_first, string_contains }
 import gunbc.parse_verdict_schema { parse_verdict_restore_ancestor_ordinals }
 import std.optional { Absent, Optional, Present }
 import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
+import v2.std.node { Node }
+import v2.std.diagnostic { Outcome, Accepted, Rejected }
+import v2.workflow.bash_emit { bash_emit_stmts }
+import v2.extdeps.languages.bash_build {
+  bash_build_command_from_lits,
+  bash_build_command_with_words,
+  bash_build_exit,
+  bash_build_if_from_stmts,
+  bash_build_negation,
+  bash_build_test_bracket,
+  bash_build_word_cmdsubst,
+  bash_build_word_concat_from_nodes,
+  bash_build_word_lit,
+  bash_build_word_var
+}
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue }
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
@@ -380,35 +395,101 @@ fn compiler_gate_caller_checkout_step() -> Step {
   }
 }
 
-// THE COMPOSITION: the caller's dag/ is added to gunbc's, file by file, and a path both trees hold is
-// refused rather than overwritten -- module a.b.c has one storage path, so a clash is two modules
-// claiming one name, and neither silently wins.
-// THE SHELL IS A DECLARED CARRIER, not the authority for what it decides. Two capabilities retire it,
-// and the marker names both: the compiler reading a caller's tree as its own source root (so nothing is
-// copied, and a module both trees declare is refused by the source layout, gunbc.source_layout, as a
-// located diagnostic rather than by a file test), and the remaining statements rendering through
-// v2.extdeps.languages.bash_build rather than being spelled here.
-data compiler_gate_compose_caller_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: compiler_gate_compose_caller_statements -- hand-spelled shell that copies a calling repository's dag/ into gunbc's and refuses a path both trees hold. Dissolves when the compiler admits a second checkout as a source root whose modules the source layout (gunbc.source_layout) admits or refuses by namespace, so the copy is deleted and a clash is that layout's located refusal; any statement left after that renders through v2.extdeps.languages.bash_build instead of being spelled as text.")
+// THE COMPOSITION, MODELLED: what is copied where, and what refuses. The caller's tree is added to
+// gunbc's file by file. A caller file that REPLACES one of gunbc's with different bytes is two
+// modules claiming one storage path (gunbc.design_argument::single_authority), and it is refused: gunbc's
+// checkout is a git tree, so such a replacement is exactly a tracked change under the tree, and
+// `git diff --quiet` is the whole test -- no per-file loop, so the statements stay inside the
+// bash_build grammar. A replacement with identical bytes is the same module and is not refused.
+type CallerTreeComposition {
+  caller_checkout: String
+  tree_directory: String
+}
 
-data compiler_gate_compose_caller_script: String = join([
-  concat("# ", dissolution_description(condition: compiler_gate_compose_caller_dissolution_trigger)),
-  "set -euo pipefail",
-  concat(concat("CALLER='", compiler_gate_caller_checkout_path), "/dag'"),
-  "GUNBC_HEAD=$(git rev-parse HEAD)",
-  concat(concat("echo \"judging $GITHUB_REPOSITORY@$GITHUB_SHA composed onto ", gunbc_repository_name()), "@$GUNBC_HEAD\""),
-  "test -d \"$CALLER\" || { echo \"::error::the calling repository has no dag/ directory, so there is nothing to compose\"; exit 1; }",
-  "CLASH=$(cd \"$CALLER\" && find . -type f -printf '%P\\n' | while IFS= read -r f; do if [ -e \"$GITHUB_WORKSPACE/dag/$f\" ]; then echo \"dag/$f\"; fi; done)",
-  "if [ -n \"$CLASH\" ]; then echo \"::error::these paths exist in both trees, so two modules claim one name:\"; echo \"$CLASH\"; exit 1; fi",
-  "cp -a \"$CALLER/.\" dag/",
-  concat(concat("rm -rf -- '", compiler_gate_caller_checkout_path), "'"),
-  "echo \"composed $(find dag -name '*.dag' | wc -l) .dag files under dag/\""
-], "\n")
+data compiler_gate_caller_composition: CallerTreeComposition = CallerTreeComposition {
+  caller_checkout: compiler_gate_caller_checkout_path,
+  tree_directory: "dag"
+}
+
+// THE SHELL IS A DECLARED CARRIER of the model above, not its authority. Two capabilities retire it, and
+// the marker names both: the compiler reading a caller's checkout as its own source root (so nothing is
+// copied, and a module both trees declare is refused by the source layout, gunbc.source_layout, as a
+// located diagnostic), and a workflow step that is a typed file-system effect rather than a script.
+data compiler_gate_compose_caller_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: compiler_gate_compose_caller_statements -- bash-node carrier of CallerTreeComposition, copying a calling repository's dag/ into gunbc's and refusing a caller file that replaces one of gunbc's. Dissolves when the compiler admits a second checkout as a source root whose modules the source layout (gunbc.source_layout) admits or refuses by namespace, so the copy is deleted and a clash is that layout's located refusal.")
+
+data compiler_gate_compose_caller_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ compose-caller emission was rejected by v2.workflow.bash_emit"
+
+fn compiler_gate_compose_caller_echo(words: List<Node>) -> Node {
+  bash_build_command_with_words(words: [bash_build_word_lit(text: "echo"), bash_build_word_concat_from_nodes(parts: words)])
+}
+
+fn compiler_gate_compose_caller_statements(c: CallerTreeComposition) -> List<Node> {
+  let caller_tree = join([c.caller_checkout, "/", c.tree_directory], "")
+  [
+    bash_build_if_from_stmts(
+      cond: bash_build_negation(inner: bash_build_test_bracket(words: [bash_build_word_lit(text: "-d"), bash_build_word_lit(text: caller_tree)])),
+      then_stmts: [
+        compiler_gate_compose_caller_echo(words: [bash_build_word_lit(text: "::error::the calling repository has no dag/ directory, so there is nothing to compose")]),
+        bash_build_exit(code: "1")
+      ]
+    ),
+    bash_build_command_from_lits(lits: ["cp", "-a", join([caller_tree, "/."], ""), join([c.tree_directory, "/"], "")]),
+    bash_build_if_from_stmts(
+      cond: bash_build_negation(inner: bash_build_command_from_lits(lits: ["git", "diff", "--quiet", "--", c.tree_directory])),
+      then_stmts: [
+        compiler_gate_compose_caller_echo(words: [bash_build_word_lit(text: "::error::the calling repository replaces these files of gunbc's tree, so two modules claim one storage path:")]),
+        bash_build_command_from_lits(lits: ["git", "diff", "--name-only", "--", c.tree_directory]),
+        bash_build_exit(code: "1")
+      ]
+    ),
+    bash_build_command_from_lits(lits: ["rm", "-rf", "--", c.caller_checkout]),
+    compiler_gate_compose_caller_echo(words: [
+      bash_build_word_lit(text: "judging "),
+      bash_build_word_var(name: "GITHUB_REPOSITORY"),
+      bash_build_word_lit(text: "@"),
+      bash_build_word_var(name: "GITHUB_SHA"),
+      bash_build_word_lit(text: join([" composed onto ", gunbc_repository_name(), "@"], "")),
+      bash_build_word_cmdsubst(body: bash_build_command_from_lits(lits: ["git", "rev-parse", "HEAD"]))
+    ])
+  ]
+}
+
+fn compiler_gate_compose_caller_script_outcome() -> Outcome<String> {
+  match bash_emit_stmts(statements: compiler_gate_compose_caller_statements(c: compiler_gate_caller_composition), set_e: true) {
+    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+    Accepted { value: body, diagnostics: ds } =>
+      Accepted {
+        value: concat(concat("# ", concat(dissolution_description(condition: compiler_gate_compose_caller_dissolution_trigger), "\n")), body),
+        diagnostics: ds
+      }
+  }
+}
+
+fn compiler_gate_compose_caller_script() -> String {
+  match compiler_gate_compose_caller_script_outcome() {
+    Accepted { value: script, diagnostics: _ } => script
+    Rejected { diagnostics: _ } => compiler_gate_compose_caller_emit_refused_poison
+  }
+}
+
+// THE GATE CONJUNCT: a compose step whose nodes the serializer refuses, or whose marker or refusal did
+// not survive rendering, stops the workflow from generating rather than emitting a step that composes
+// without refusing.
+fn compiler_gate_compose_caller_script_is_renderable() -> Bool {
+  match compiler_gate_compose_caller_script_outcome() {
+    Accepted { value: script, diagnostics: _ } =>
+      !string_contains(s: script, pattern: compiler_gate_compose_caller_emit_refused_poison)
+        && string_contains(s: script, pattern: "dissolve-on: ")
+        && string_contains(s: script, pattern: "exit 1")
+    Rejected { diagnostics: _ } => false
+  }
+}
 
 fn compiler_gate_compose_caller_step() -> Step {
   RunStep {
     name: Present { value: "Compose the calling repository's dag/ into gunbc's" },
     id: none,
-    run: compiler_gate_compose_caller_script,
+    run: compiler_gate_compose_caller_script(),
     shell: none,
     env: none,
     working_directory: none,
@@ -423,8 +504,12 @@ fn compiler_gate_fleet_head_bound_steps() -> List<CompilerGateBoundStep> {
   concat(compiler_gate_fleet_judged_head_bound_steps(), compiler_gate_fleet_toolchain_bound_steps())
 }
 
-// THE JUDGED CHECKOUT AND ITS STAMP GUARD, which run before anything else on every run.
-fn compiler_gate_fleet_judged_head_bound_steps() -> List<CompilerGateBoundStep> {
+// THE STEPS THAT ASSEMBLE THE JUDGED TREE: gunbc's own checkout, or, in the called form, gunbc's default
+// branch, the caller's commit and their composition. Exactly one arm runs on any event (the `if:` on
+// each), and none of them invokes a binary. The stamp guard reads the tree these steps leave, so it
+// stands immediately after them; claims read this list rather than an index, so the called form's steps
+// are not mistaken for binary-invoking ones.
+fn compiler_gate_judged_tree_bound_steps() -> List<CompilerGateBoundStep> {
   [
     CompilerGateBoundStep {
       step: compiler_gate_fleet_checkout_step(),
@@ -446,8 +531,18 @@ fn compiler_gate_fleet_judged_head_bound_steps() -> List<CompilerGateBoundStep> 
       role: capability_neutral,
       step_name: "Compose the calling repository's dag/ into gunbc's",
     },
-    // THE STAMP GUARD IS THE SECOND STEP IN THE JOB, ahead of the toolchain install and of every step
-    // that invokes a binary built from this checkout. It belongs there because what it refuses -- a
+  ]
+}
+
+fn compiler_gate_judged_tree_step_names() -> List<String> {
+  list_map(xs: compiler_gate_judged_tree_bound_steps(), f: fn(b) { b.step_name })
+}
+
+// THE JUDGED TREE AND ITS STAMP GUARD, which run before anything else on every run.
+fn compiler_gate_fleet_judged_head_bound_steps() -> List<CompilerGateBoundStep> {
+  list_append(left: compiler_gate_judged_tree_bound_steps(), right: [
+    // THE STAMP GUARD STANDS RIGHT AFTER THE JUDGED TREE IS ASSEMBLED, ahead of the toolchain install and
+    // of every step that invokes a binary built from this checkout. It belongs there because what it refuses -- a
     // subject older than the instruction running it -- is a fact about the CHECKOUT, and the earlier it
     // is refused, the less work is spent on a run that is about to be invalid. It runs no product and
     // needs no toolchain, so nothing it requires is missing at this point.
@@ -468,7 +563,7 @@ fn compiler_gate_fleet_judged_head_bound_steps() -> List<CompilerGateBoundStep> 
       role: capability_neutral,
       step_name: compiler_gate_contract_stamp_evidence_step_name,
     },
-  ]
+  ])
 }
 
 // AN ISOLATED TOOLCHAIN HOME AND A PINNED DEFAULT.
@@ -1134,6 +1229,10 @@ fn compiler_gate_generation_gate_first_failure(profile: RepositoryCiProfile, wor
       // turn that into a permanent full run with nothing in the generated file saying why.
       name: "fast_lane_decision_script_is_renderable (the fast-lane decision step cannot be built as nodes)",
       holds: fast_lane_decision_script_is_renderable()
+    },
+    CompilerGateGenerationGate {
+      name: "compiler_gate_compose_caller_script_is_renderable (the called form's compose step cannot be built as nodes, or lost its marker or refusal)",
+      holds: compiler_gate_compose_caller_script_is_renderable()
     }
   ]
   let first_false = list_find_first(xs: gates, predicate: fn(g) { !g.holds })
