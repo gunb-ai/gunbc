@@ -2507,6 +2507,99 @@ test fn witness_issue_comment_composer_posts_urlencoded_with_stable_key_and_csrf
   }
 }
 
+// THE OPERATOR FORMS SHOW ONLY WHAT AN OPERATOR DECIDES (operator request 2026-11-09: "what is up
+// with all of these fields in the UI? could you please get rid of these somehow?"). Three claims,
+// all read off the ONE rendered page the operator is shown: the generated idempotency key rides
+// hidden on both acts; the close form's acceptance receipt rides behind a CLOSED "Operator: record
+// acceptance" disclosure; and the irreversible act names its consequence on its summary and its
+// button and stands behind a required confirm box — an operator once pressed it meaning to end a
+// single failed attempt, and the item was gone.
+// THE RED CONTROLS are the shapes this page must never show again: a text input named key, the raw
+// "Operation key" label, a typable field outside the acceptance disclosure, a destructive submit
+// outside the confirmed disclosure, and the bare "Retire work item" button.
+
+// The markup of one operator form, sliced out of the rendered page between the tag its producer
+// emits and the first form close. A form the page does not render yields "", which fails every
+// claim below rather than passing it quietly.
+fn issue_operator_form_region(html: String, cls: String, path: String) -> String {
+  let open_tag = join([ "<form class=\"issue-operator-form ", cls, "\" method=\"post\" enctype=\"application/x-www-form-urlencoded\" action=\"", path, "\">" ], "")
+  string_at(parts: split(s: string_at(parts: split(s: html, delimiter: open_tag), index: 1), delimiter: "</form>"), index: 0)
+}
+
+fn issue_close_form_region(html: String) -> String {
+  issue_operator_form_region(html: html, cls: "issue-close-form", path: "/issue/issue-detail-specimen/close")
+}
+
+fn issue_retire_form_region(html: String) -> String {
+  issue_operator_form_region(html: html, cls: "issue-retire-form", path: "/issue/issue-detail-specimen/retire")
+}
+
+fn issue_disclosure_open_tag(cls: String, summary: String) -> String {
+  join([ "<details class=\"issue-operator-disclosure ", cls, "\"><summary class=\"issue-operator-disclosure-summary\">", summary, "</summary>" ], "")
+}
+
+test fn witness_issue_operator_idempotency_key_rides_hidden_never_visible() -> Bool {
+  match issue_detail_fixture_html() {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      let close_form = issue_close_form_region(html: h)
+      let retire_form = issue_retire_form_region(html: h)
+      string_contains(s: close_form, pattern: "<input name=\"key\" type=\"hidden\" value=\"close-issue-detail-specimen\"")
+        && string_contains(s: retire_form, pattern: "<input name=\"key\" type=\"hidden\" value=\"retire-issue-detail-specimen\"")
+        // RED CONTROLS: the key is not a box a human reads or types, and no label advertises it.
+        && !string_contains(s: h, pattern: "Operation key")
+        && !string_contains(s: close_form, pattern: "name=\"key\" type=\"text\"")
+        && !string_contains(s: retire_form, pattern: "name=\"key\" type=\"text\"")
+  }
+}
+
+test fn witness_issue_close_acceptance_inputs_collapse_behind_operator_disclosure() -> Bool {
+  match issue_detail_fixture_html() {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      let close_form = issue_close_form_region(html: h)
+      let tag = issue_disclosure_open_tag(cls: "issue-close-acceptance", summary: "Operator: record acceptance")
+      let head = string_at(parts: split(s: close_form, delimiter: tag), index: 0)
+      let body = string_at(parts: split(s: close_form, delimiter: tag), index: 1)
+      // The act stays on the page; the evidence the handler validates rides inside the fold.
+      string_contains(s: close_form, pattern: ">Close node (merged PR accepted)</button>")
+        && string_contains(s: head, pattern: "<input name=\"key\" type=\"hidden\"")
+        && string_contains(s: head, pattern: "<input name=\"csrf\" type=\"hidden\"")
+        && string_contains(s: body, pattern: "name=\"repo\"")
+        && string_contains(s: body, pattern: "name=\"pr\"")
+        && string_contains(s: body, pattern: "name=\"witness_module\"")
+        && string_contains(s: body, pattern: "name=\"witness_fn\"")
+        && string_contains(s: body, pattern: "name=\"first_artifact\"")
+        && string_contains(s: body, pattern: "name=\"further_artifacts\"")
+        // RED CONTROLS: the disclosure ships closed, and nothing typable shows before it opens.
+        && occurrence_count(s: close_form, pattern: "<details class=\"issue-operator-disclosure issue-close-acceptance\" open") == 0
+        && !string_contains(s: head, pattern: "type=\"text\"")
+        && !string_contains(s: head, pattern: "<button")
+  }
+}
+
+test fn witness_issue_retire_is_named_and_confirmed() -> Bool {
+  match issue_detail_fixture_html() {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      let retire_form = issue_retire_form_region(html: h)
+      let tag = issue_disclosure_open_tag(cls: "issue-retire-confirm", summary: "Retire this work item — removes it from the roadmap, cannot be undone")
+      let head = string_at(parts: split(s: retire_form, delimiter: tag), index: 0)
+      let body = string_at(parts: split(s: retire_form, delimiter: tag), index: 1)
+      string_contains(s: head, pattern: "<input name=\"key\" type=\"hidden\" value=\"retire-issue-detail-specimen\"")
+        && string_contains(s: head, pattern: "<input name=\"expected_revision\" type=\"hidden\"")
+        && string_contains(s: body, pattern: "This ends the work item itself: it leaves the roadmap and there is no un-retire")
+        && string_contains(s: body, pattern: "<input name=\"confirm_irreversible\" type=\"checkbox\" required=\"required\"")
+        && string_contains(s: body, pattern: "I understand: this removes the work item from the roadmap and cannot be undone")
+        && string_contains(s: body, pattern: ">Retire this work item (cannot be undone)</button>")
+        // RED CONTROLS: the bare label that disposed of a live item is gone from the whole page, the
+        // disclosure ships closed, and the destructive submit exists only inside the confirmed fold.
+        && !string_contains(s: h, pattern: ">Retire work item</button>")
+        && occurrence_count(s: retire_form, pattern: "<details class=\"issue-operator-disclosure issue-retire-confirm\" open") == 0
+        && !string_contains(s: head, pattern: "<button")
+  }
+}
+
 // THE PUBLICATION HANDOFF (owner mandate control 9): a published attempt result renders ONE compact
 // automated entry in the Comments stream — fabric's service avatar, the PR and head, and the
 // merge owner the fold reassigned to (the stored return_to) — while the standing the page reads

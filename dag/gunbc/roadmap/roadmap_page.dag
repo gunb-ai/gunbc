@@ -3327,16 +3327,51 @@ fn issue_query_snapshot_for_projection(proj: RoadmapAuthorityProjection, attempt
 // the acceptance model truly requires OF THE OPERATOR — an executed red control and a delivered
 // artifact are claims no machine can read off the PR — so they stay in the form as honest operator
 // evidence, never invented server-side. RETIRE is the operator's arbitrary end for any work item,
-// in any state: one optional reason, and the lineage goes terminal honestly ("retired by"). The
-// operation key rides the per-render form operation plus the node id, so a double submit replays
-// instead of duplicating; it is visible and editable, because the named conflict answer tells the
-// operator to change it and retry.
+// in any state: one optional reason, and the lineage goes terminal honestly ("retired by").
+//
+// FIELD VISIBILITY IS NOT A SERVER CONTRACT (2026-11-09 operator request: "what is up with all of
+// these fields in the UI? could you please get rid of these somehow?"). An identity token is not a
+// human's typing task: the operation key rides the per-render form operation plus the node id and
+// ships HIDDEN, exactly as the assign form already carries its key and CSRF token — a fresh page
+// mints a fresh key, which is the retry path after a recorded conflict; no operator ever edits it.
+// A receipt field the close handler validates stays REQUIRED OF THE OPERATOR but is not the daily
+// view, so it rides behind a CLOSED disclosure titled by what it records ("Operator: record
+// acceptance"). Collapsed by default is not optional-by-omission: the disclosure carries the
+// fields, the handler still refuses a close without them, and opening it is the operator's own act.
+// The irreversible act names its consequence on its own summary and button, sits behind its own
+// CLOSED disclosure, and demands a confirm box the operator ticks — because an operator who meant
+// to end one failed attempt once pressed this and disposed of the item itself.
 fn issue_operator_hidden(name: String, value: String) -> Fragment {
   el_attrs("input", [
     attr(name: "name", value: name),
     attr(name: "type", value: "hidden"),
     attr(name: "value", value: value),
   ], [])
+}
+
+// The one closed-disclosure producer for operator forms: the summary names the act in what-it-does
+// words, and the body is the input the operator reaches only when they meant it. No `open`
+// attribute ships — the collapsed default is server-decided and holds with no JavaScript, so the
+// daily page shows the summary and nothing else. The producer emits no hidden state of its own: it
+// wraps nodes one producer already made.
+fn issue_operator_disclosure(summary: String, cls: String, body: List<Fragment>) -> Fragment {
+  let head = el_attrs("summary", [attr(name: "class", value: "issue-operator-disclosure-summary")], [txt(summary)])
+  el_attrs("details", [attr(name: "class", value: join(["issue-operator-disclosure ", cls], ""))], concat([ head ], body))
+}
+
+// The confirm step of the irreversible act: one box, required, whose label repeats the consequence.
+// With no JavaScript the browser's own required-check holds the submit until the box is ticked;
+// the field name is the operator's page bookkeeping only — no server route reads it, which is why
+// the retire contract (key + expected_revision + optional reason) is untouched by its presence.
+fn issue_operator_confirm_box(label: String) -> Fragment {
+  el_attrs("label", [attr(name: "class", value: "issue-operator-confirm")], [
+    el_attrs("input", [
+      attr(name: "name", value: "confirm_irreversible"),
+      attr(name: "type", value: "checkbox"),
+      attr(name: "required", value: "required"),
+    ], []),
+    txt(label),
+  ])
 }
 
 fn issue_operator_text(name: String, label: String, value: String, placeholder: String) -> Fragment {
@@ -3360,14 +3395,19 @@ fn issue_close_form_nodes(node_id: String, command_context: IssueFormContext) ->
     attr(name: "enctype", value: "application/x-www-form-urlencoded"),
     attr(name: "action", value: issue_close_path(node_id: node_id)),
   ], [
-    issue_operator_text(name: "key", label: "Operation key (idempotency)", value: key_prefill, placeholder: "unique per acceptance act"),
+    issue_operator_hidden(name: "key", value: key_prefill),
     issue_operator_hidden(name: "csrf", value: command_context.csrf),
-    issue_operator_text(name: "repo", label: "Repository (owner/name)", value: "", placeholder: "briansrls/gunbc"),
-    issue_operator_text(name: "pr", label: "Merged pull request #", value: "", placeholder: "14189"),
-    issue_operator_text(name: "witness_module", label: "Red-control witness module", value: "", placeholder: "test/claim/..."),
-    issue_operator_text(name: "witness_fn", label: "Red-control witness fn", value: "", placeholder: "witness_executes"),
-    issue_operator_text(name: "first_artifact", label: "First handback artifact", value: "", placeholder: "commit, PR, report, or artifact name"),
-    issue_operator_text(name: "further_artifacts", label: "Further artifacts (newline-separated)", value: "", placeholder: "optional"),
+    issue_operator_disclosure(
+      summary: "Operator: record acceptance",
+      cls: "issue-close-acceptance",
+      body: [
+        issue_operator_text(name: "repo", label: "Repository (owner/name)", value: "", placeholder: "briansrls/gunbc"),
+        issue_operator_text(name: "pr", label: "Merged pull request #", value: "", placeholder: "14189"),
+        issue_operator_text(name: "witness_module", label: "Red-control witness module", value: "", placeholder: "test/claim/..."),
+        issue_operator_text(name: "witness_fn", label: "Red-control witness fn", value: "", placeholder: "witness_executes"),
+        issue_operator_text(name: "first_artifact", label: "First handback artifact", value: "", placeholder: "commit, PR, report, or artifact name"),
+        issue_operator_text(name: "further_artifacts", label: "Further artifacts (newline-separated)", value: "", placeholder: "optional"),
+      ]),
     el_attrs("button", [
       attr(name: "class", value: "issue-operator-submit issue-action-text"),
       attr(name: "type", value: "submit"),
@@ -3383,14 +3423,22 @@ fn issue_retire_form_nodes(node_id: String, expected_revision: String, command_c
     attr(name: "enctype", value: "application/x-www-form-urlencoded"),
     attr(name: "action", value: issue_retire_path(node_id: node_id)),
   ], [
-    issue_operator_text(name: "key", label: "Operation key (idempotency)", value: key_prefill, placeholder: "unique per retire act"),
+    issue_operator_hidden(name: "key", value: key_prefill),
     issue_operator_hidden(name: "csrf", value: command_context.csrf),
     issue_operator_hidden(name: "expected_revision", value: expected_revision),
-    issue_operator_text(name: "reason", label: "Why (recorded honestly as the retirement reason)", value: "", placeholder: "optional"),
-    el_attrs("button", [
-      attr(name: "class", value: "issue-operator-submit issue-action-text"),
-      attr(name: "type", value: "submit"),
-    ], [ txt("Retire work item") ]),
+    issue_operator_disclosure(
+      summary: "Retire this work item — removes it from the roadmap, cannot be undone",
+      cls: "issue-retire-confirm",
+      body: [
+        el_class("p", "issue-operator-retire-warning", [ txt(
+          "This ends the work item itself: it leaves the roadmap and there is no un-retire. It is NOT how you end one failed attempt so the item runs again — retiring is permanent disposal, not a fresh start.") ]),
+        issue_operator_text(name: "reason", label: "Why (recorded honestly as the retirement reason)", value: "", placeholder: "optional"),
+        issue_operator_confirm_box(label: "I understand: this removes the work item from the roadmap and cannot be undone"),
+        el_attrs("button", [
+          attr(name: "class", value: "issue-operator-submit issue-action-text"),
+          attr(name: "type", value: "submit"),
+        ], [ txt("Retire this work item (cannot be undone)") ]),
+      ]),
   ])
 }
 
