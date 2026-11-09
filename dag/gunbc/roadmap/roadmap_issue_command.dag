@@ -91,7 +91,7 @@ fn issue_command_apply(layout: RoadmapEventCarrierLayout, command: IssueCommand,
   match issue_command_receipt_disagreement(command: command, event: event) {
     Present { value: why } => CarrierClosed {
       result: EventAppendRefused { id: roadmap_event_id_for(e: event, schema: roadmap_event_schema), step: "receipt", reason: why },
-      closes: [] }
+      close: SnapshotNotOpened }
     Absent => {
       let operation = match command { AssignIssue { subject, assignee: _, return_to: _ } => subject.operation CreateComment { subject, body: _ } => subject.operation RetireNode { subject, reason: _ } => subject.operation AcceptNode { subject, receipt: _, pr_url: _, merged_at: _, head_sha: _ } => subject.operation RevokeAcceptance { subject, receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => subject.operation }
       roadmap_event_append(layout: layout, event: event, operation: operation as String)

@@ -39,6 +39,7 @@ import std.optional { Present, Absent, Optional }
 import std.content_hash { serialize_content_hash, Fnv1a64 }
 import std.decimal { decimal_digit_char }
 import extdeps.units.iso8601_calendar { Iso8601CivilDate, iso8601_civil_from_days, iso8601_floor_div, iso8601_seconds_per_day, iso8601_two_digits }
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_string, json_array, json_object, serialize_json }
 import extdeps.github.pulls { PullRequestViewState, PullRequestViewOpen, PullRequestViewClosed, PullRequestViewMerged, PullRequestViewUnknown, github_pull_request_view_state_text }
 // The capacity constant the close's own growth guard uses — the same budget the log's readers enforce.
 import gunbc.fabric.fabric_event_log { event_log_read_budget }
@@ -612,7 +613,7 @@ fn roadmap_operator_close_append(
   facts: OperatorClosePrFacts
 ) -> OperatorCloseWrite {
   match principal_ref_parse_label(s: inputs.accepted_by as String) {
-    Absent => CloseRefused { reason: CloseInvalidReceipt { detail: "accepted_by is not an authenticated principal spelling" as NonEmptyStr } }
+    Absent => CloseRefused { reason: CloseEvidenceMissing { field: "accepted_by (not an authenticated principal spelling)" as NonEmptyStr } }
     Present { value: author_ref } => {
       let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
       match roadmap_operator_acceptance_tip(layout: layout, node: inputs.node) {

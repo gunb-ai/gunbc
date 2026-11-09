@@ -65,9 +65,13 @@ import gunbc.roadmap.roadmap_execution_contract {
   PathsUnrestricted, PublicWorktreeLayout,
 }
 import gunbc.roadmap.roadmap_document { RoadmapDocument }
-import gunbc.roadmap.roadmap_authority { roadmap_authority_projection, RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused }
+import gunbc.roadmap.roadmap_authority {
+  roadmap_authority_projection, RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
+  roadmap_retired_node_ids_load,
+}
+import gunbc.roadmap.roadmap_event_log { RetiredNodeIdsLoaded }
 import gunbc.roadmap.roadmap_spawner { doc_all_nodes }
-import gunbc.roadmap.roadmap_emit { node_is_superseded, acceptance_pending_suffix_inlines, line_inlines }
+import gunbc.roadmap.roadmap_emit { acceptance_pending_suffix_inlines, line_inlines }
 import std.markdown { MarkdownInline, TextInline, ParagraphBlock }
 import test.claim.roadmap.roadmap_authority_subtree_fixture { fx_subtree_fixture_ids }
 import std.algebra { empty_map, map_insert, map_lookup }
@@ -149,7 +153,9 @@ fn active_edges() -> List<RoadmapEdge> {
 }
 
 fn live_accepted_node_ids() -> List<RoadmapNodeId>? {
-  match frontier_sets_projection(history: roadmap_acceptance_event_history_load()) {
+  match frontier_sets_projection(
+    history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load(),
+  ) {
     FrontierSetsProjected { accepted: ids, withheld: _ } => Present { value: ids }
     FrontierSetsProjectionRefused { detail: _ } => Absent
   }
@@ -569,7 +575,7 @@ test fn witness_orphan_reopen_revocation_refuses_frontier_sets() -> Bool {
       revoked_by: "operator" as NonEmptyStr,
       revoked_on: "2026-09-13" as NonEmptyStr,
     },
-  ] }) {
+  ] }, retired: RetiredNodeIdsLoaded { ids: [] }) {
     FrontierSetsProjectionRefused { detail } =>
       detail == "acceptance-history-unreplayable"
     FrontierSetsProjected { accepted: _, withheld: _ } => false
@@ -596,7 +602,7 @@ test fn witness_record_after_remains_superseded_on_superseded_line_refuses_front
         AcceptanceRecorded { receipt } =>
           match frontier_sets_projection(history: RoadmapAcceptanceEventHistoryLoaded { events: concat(prior, [
             AcceptanceRecorded { receipt: receipt },
-          ]) }) {
+          ]) }, retired: RetiredNodeIdsLoaded { ids: [] }) {
             FrontierSetsProjectionRefused { detail } =>
               detail == concat("live-receipt-on-superseded-line:", "entry-graph-union-construction")
             FrontierSetsProjected { accepted: _, withheld: _ } => false
@@ -920,7 +926,10 @@ test fn witness_v2_emitter_direct_rust_door_has_discriminating_contract() -> Boo
 // no superseded or awaiting-acceptance row survives), and serializing ~200 rows to find those facts
 // cost the markdown emitter's whole fold per run. The markers' spelling is the emitter's own
 // subject (test.claim.roadmap_emit_test); the clauses here are the same per-row predicates the
-// emitter renders them from (gunbc.roadmap.roadmap_emit node_is_superseded, acceptance_pending_suffix_inlines).
+// emitter renders them from (gunbc.roadmap.roadmap_emit acceptance_pending_suffix_inlines). The
+// superseded clause left with the authored supersession carrier: a row is out of the plan because it
+// is accepted or because the event log retires it, and projected_row_is_active had no caller left to
+// make that claim on main, so it goes rather than surviving as an import of a deleted name.
 fn inline_text_contains(i: MarkdownInline, pattern: String) -> Bool {
   match i {
     TextInline { text } => string_contains(s: text, pattern: pattern)
@@ -928,20 +937,12 @@ fn inline_text_contains(i: MarkdownInline, pattern: String) -> Bool {
   }
 }
 
-// One pass per projected row: neither accepted row named below, not superseded, not awaiting
-// an acceptance receipt.
-fn projected_row_is_active(n: RoadmapNode) -> Bool {
-  let id = n.node as String
-  !(id == "namespace-occurrence-transport")
-    && !(id == "pderive-typesafe-nullary-reflection")
-    && !node_is_superseded(rn: n)
-    && !any(acceptance_pending_suffix_inlines(rn: n, merged: authored_merged_prs()), i => inline_text_contains(i: i, pattern: "awaiting an acceptance receipt"))
-}
-
 // The former markdown claim's text clause, split off because it is independent of which rows are
 // active: no projected row's line and no preamble paragraph carries an operator TODO.
 test fn witness_projection_carries_no_operator_todo() -> Bool {
-  match roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) {
+  match roadmap_authority_projection(
+    history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load(),
+  ) {
     RoadmapAuthorityProjectionRefused { detail: _ } => false
     RoadmapAuthorityProjected { doc: d, accepted: _, withheld: _ } =>
       !any(doc_all_nodes(doc: d), n => any(line_inlines(line: n.line), i => inline_text_contains(i: i, pattern: "Operator TODO")))
@@ -1057,7 +1058,9 @@ test fn witness_fleet_state_frontier_authority_is_host_converge_carrier() -> Boo
 }
 
 test fn witness_projected_dependency_edges_include_active_edges() -> Bool {
-  match frontier_sets_projection(history: roadmap_acceptance_event_history_load()) {
+  match frontier_sets_projection(
+    history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load(),
+  ) {
     FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
       match projected_roadmap_dependency_edges_projection() {
         ProjectedRoadmapDependencyEdgesProjected { edges: projected } =>
@@ -1120,7 +1123,9 @@ fn projected_document_carries(ids: Map<String, Bool>, id: String) -> Bool {
 }
 
 test fn witness_authority_document_carries_every_active_declared_row() -> Bool {
-  match roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) {
+  match roadmap_authority_projection(
+    history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load(),
+  ) {
     RoadmapAuthorityProjectionRefused { detail: _ } => false
     RoadmapAuthorityProjected { doc: d, accepted, withheld } => {
       let shown = projected_document_id_set(doc: d)

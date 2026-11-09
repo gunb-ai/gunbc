@@ -55,9 +55,13 @@ import gunbc.roadmap.roadmap_acceptance_history_carrier {
   RoadmapAcceptanceEventHistoryLoaded,
   RoadmapAcceptanceEventHistoryLoadRefused,
 }
-import gunbc.roadmap.roadmap_operator_acceptance { roadmap_operator_close_history }
+import gunbc.roadmap.roadmap_operator_acceptance {
+  roadmap_operator_close_history, roadmap_all_events_after_snapshot_close,
+}
 import gunbc.roadmap.roadmap_event_log { RoadmapRetiredNodeIds, RetiredNodeIdsLoaded, RetiredNodeIdsRefused, roadmap_retired_node_ids_of }
-import gunbc.roadmap.roadmap_event_carrier { roadmap_event_carrier_layout_for_instance }
+import gunbc.roadmap.roadmap_event_carrier {
+  roadmap_event_carrier_layout_for_instance, roadmap_events_read_all, AllEventsRead, AllEventsReadRefused,
+}
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified, closing_contract_authoring_contract, gunbc_claim_execution_contract, gunbc_claims_execution_contract }
 import gunbc.roadmap.roadmap_status {
@@ -5094,8 +5098,7 @@ fn roadmap_acceptance_event_history_load() -> RoadmapAcceptanceEventHistoryLoad 
 // is the fail-open this whole change exists to close
 // (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08).
 fn roadmap_retired_node_ids_load() -> RoadmapRetiredNodeIds {
-  let read = roadmap_events_read_all(layout: roadmap_event_carrier_layout_for_instance(instance: srv1_live_dashboard_instance()))
-  match read.result {
+  match roadmap_all_events_after_snapshot_close(read: roadmap_events_read_all(layout: roadmap_event_carrier_layout_for_instance(instance: srv1_live_dashboard_instance()))) {
     AllEventsReadRefused { step, reason } => RetiredNodeIdsRefused { detail: join(["event log read refused at ", step, ": ", reason], "") as NonEmptyStr }
     AllEventsRead { envelopes } => roadmap_retired_node_ids_of(envs: envelopes)
   }
@@ -6488,7 +6491,9 @@ fn roadmap_authority_refusal_document(detail: String) -> RoadmapDocument {
 }
 
 fn roadmap_authority() -> RoadmapDocument {
-  match roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) {
+  match roadmap_authority_projection(
+    history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load(),
+  ) {
     RoadmapAuthorityProjected { doc: doc, accepted: _, withheld: _ } => doc
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       roadmap_authority_refusal_document(detail: detail)
