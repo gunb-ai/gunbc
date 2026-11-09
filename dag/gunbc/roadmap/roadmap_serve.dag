@@ -17,8 +17,8 @@ import gunbc.site.brand { site_favicon_path, site_favicon_type, site_favicon_sou
 import gunbc.site.controls { site_client_path, site_client_source }
 import gunbc.roadmap.roadmap_style { roadmap_styles, roadmap_css }
 
-import gunbc.roadmap.roadmap_attempt_request_binding { AttemptLaunchRequest, LaunchForClaim, LaunchAutonomous }
-import gunbc.roadmap.roadmap_dispatch_actuator { ExecutorDefault, decode_dispatch_executor_request, DispatchExecutorRequestDecoded, DispatchExecutorRequestUnknown }
+import gunbc.roadmap.roadmap_attempt_request_binding { AttemptLaunchRequest, LaunchAutonomous }
+import gunbc.roadmap.roadmap_dispatch_actuator { decode_dispatch_executor_request, DispatchExecutorRequestDecoded, DispatchExecutorRequestUnknown }
 import gunbc.roadmap.roadmap_event_log { StandingsObserved, NodeStandingRow, roadmap_issue_state, roadmap_standing_is_retired }
 
 import gunbc.roadmap.roadmap_issue_command { IssueCommandSubject, AssignIssue, CreateComment, RetireNode, IssueFormContext, issue_command_apply, issue_operation_nonce }
@@ -203,9 +203,10 @@ import extdeps.google.issue_tracker {
 }
 import gunbc.roadmap.roadmap_presentation { stale_attempt_nodes }
 import gunbc.roadmap.roadmap_belt_actuate {
-  BeltSpawnOutcome, Spawned, SupervisorConvened, SpawnFailed, SpawnNotAdmitted, SpawnLaunchPending,
+  BeltSpawnOutcome, Spawned, SpawnFailed, SpawnNotAdmitted, SpawnLaunchPending,
   belt_spawn_outcome_json, belt_launch_host_standing_for_page_over,
   belt_dispatch_node_for_instance_over,
+
   belt_workflow_attempts_observe_scoped, WorkflowAttemptsOneNode,
   WorkflowAttemptsObserved, WorkflowAttemptsRefused,
   BeltStopResult, StopProcessStopped, StopRetainedSessionCleared, StopSignaledSessionCleared, StopDisabled,
@@ -553,13 +554,13 @@ fn launch_refusal_http_status(r: LaunchRefusal) -> HttpStatus {
     LaunchLivenessUnobserved { session_name: _, reason: _ } => 503
     LaunchGateNotEvaluated { gate: _ } => 503
     LaunchNoPlacementGrant { detail: _ } => 503
+    LaunchNodeRetired { by: _, reason: _ } => 409
   }
 }
 
 fn belt_dispatch_status(r: BeltSpawnOutcome) -> HttpStatus {
   match r {
     Spawned { node_id: _, session_name: _, provider: _, launch: _ } => 200
-    SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } => 200
     SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => 502
     SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch: _, entry: _ } => 202
     SpawnNotAdmitted { node_id: _, refusal } => launch_refusal_http_status(r: refusal)
@@ -616,8 +617,6 @@ fn serve_dispatch_with_follow_ups(instance: HostDashboardInstance, r: BeltSpawnO
   let response = belt_dispatch_response(r: r)
   match r {
     Spawned { node_id: _, session_name: _, provider: _, launch: _ } =>
-      serve_with_operator_follow_ups(instance: instance, action: OperatorDispatch, response: response)
-    SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } =>
       serve_with_operator_follow_ups(instance: instance, action: OperatorDispatch, response: response)
     SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } =>
       serve_with_operator_follow_ups(instance: instance, action: OperatorDispatch, response: response)
@@ -1430,6 +1429,14 @@ fn serve_assignment_launch_follow_through(
 
 // The follow-through over a profile roster the caller read once: the display resolution is a pure
 // fold over it, so the human/Fabric decision is reachable without the profile-store read.
+// ASSIGN IS OWNERSHIP ONLY. The assign path records the AssignIssue event (its caller) and confirms
+// it to the person -- it does NOT launch. Launching is the operator's CONTINUE / START FRESH verb,
+// gated behind ServeActionDispatchNode (the /dispatch route), NOT behind ServeActionAssignIssue: an
+// actor granted assign but not dispatch can assign a node and does NOT launch a worker by doing so
+// (ruling gunbc.design_ruling dispatch_is_continue_or_start_fresh; the former fabric branch here
+// reached belt_dispatch_node_for_instance_over on the ASSIGN authority, which was the assign-as-launch
+// coupling removed). The confirmation names the person, never the principal; the dispatch-node
+// authority check lives only on the launch route.
 fn serve_assignment_launch_follow_through_over(
   instance: HostDashboardInstance,
   plan: RoadmapAuthorityProjection,
@@ -1439,22 +1446,7 @@ fn serve_assignment_launch_follow_through_over(
   profiles: List<PrincipalProfile>,
 ) -> ServeHttpResponse {
   let assignee_display = assignment_confirmation_display(assignee: assignee, profiles: profiles)
-  if principal_ref_eq(a: assignee, b: fabric_workflow_principal) {
-    serve_fabric_assignment_response(
-      node_id: node_id,
-      assignee_display: assignee_display,
-      event_id: event_id,
-      outcome: belt_dispatch_node_for_instance_over(
-        instance: instance,
-        plan: fn() { plan },
-        node_id: node_id,
-        request: LaunchForClaim { node: node_id as NonEmptyStr as RoadmapNodeId, claim: event_id as NonEmptyStr as RoadmapEventId },
-        executor: ExecutorDefault,
-      ),
-    )
-  } else {
-    serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\n"], ""))
-  }
+  serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\n"], ""))
 }
 
 // THE CONFIRMATION'S DISPLAY RESOLUTION over the read-once roster: the first profile matching the
@@ -1492,12 +1484,16 @@ fn assignment_confirmation_profile(assignee: PrincipalRef, profiles: List<Princi
   }
 }
 
+// THE LAUNCH-OUTCOME RENDERER for a fabric work request, exercised at the response seam by the serve
+// witnesses. It renders a BeltSpawnOutcome (spawned / pending / admitted-refusal) into the body that
+// names the session or locates the wait in the launch's typed vocabulary; the assignment RECORD is the
+// caller's, and an admission refusal here never claims to undo it ("the assignment stands", never
+// "assignment failed"). ASSIGN itself no longer launches (it is ownership-only); this renderer backs
+// the dispatch/launch response path that the fabric request reaches.
 fn serve_fabric_assignment_response(node_id: String, assignee_display: String, event_id: String, outcome: BeltSpawnOutcome) -> ServeHttpResponse {
   match outcome {
     Spawned { node_id: _, session_name, provider: _, launch: _ } =>
       serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\nfabric work request admitted: session ", session_name, " — the attempt renders on the Work tab\n"], ""))
-    SupervisorConvened { node_id: _, unit, provider: _, launch: _ } =>
-      serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\nfabric work request admitted: supervisor ", unit, " — the attempt renders on the Work tab\n"], ""))
     SpawnFailed { node_id: _, step, detail, provider: _, launch: _ } =>
       serve_text_response(status: 502, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\nfabric launch failed at ", step, ": ", detail, " — the assignment stands; re-assign to retry the request\n"], ""))
     SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch: _, entry } =>

@@ -9,6 +9,7 @@ import gunbc.harness.harness_tool_kind {
 }
 import std.measure { character_count, character_count_value }
 import gunbc.harness.harness_turn { harness_event_placement_waiting, harness_tool_round_events }
+import gunbc.harness.harness_session_recovery { session_event_resumed }
 import extdeps.llm.claude_code_stream_json {
   ClaudeCodeAssistantLine,
   ClaudeCodeUserLine,
@@ -852,4 +853,28 @@ test fn a_detail_partition_fold_matches_the_detail_reader() -> Bool {
            none => provider_execution_detail(state: s) == ""
          },
   )
+}
+
+// THE SESSION-LIFECYCLE PAIR IS A NON-TERMINAL NOTICE, NOT AN UNKNOWN EVENT TYPE (D4). turn.resumed is
+// the real producer's line (harness_session_recovery session_event_resumed) into the real reader;
+// turn.recovery_needed is classified by its type alone. Before the arms existed either line classified as
+// an unknown event type, and one refused line refuses the whole stream, so a session that recorded a
+// recovery rendered as "event stream refused". The control is the unknown-type refusal above: a type that
+// is not in the pair is still refused.
+test fn session_resumed_and_recovery_needed_lines_are_observed_not_refused() -> Bool {
+  (match classify_provider_event_line(raw: session_event_resumed(ordinal: 1, round: 2, cause: "engine refused")) {
+    ProviderEventObserved { kind: _ } => true
+    _ => false
+  }) && (match classify_provider_event_line(raw: "{\"type\":\"turn.recovery_needed\",\"round\":2}") {
+    ProviderEventObserved { kind: _ } => true
+    _ => false
+  })
+}
+
+test fn a_stream_carrying_the_recovery_pair_is_not_refused_and_leaves_the_state_unchanged() -> Bool {
+  let text = concat(concat("{\"type\":\"turn.started\"}\n", "{\"type\":\"turn.recovery_needed\",\"round\":2}\n"), concat(concat(session_event_resumed(ordinal: 1, round: 2, cause: "engine refused"), "\n"), "{\"type\":\"turn.completed\"}\n"))
+  match provider_execution_state(parsed: parse_codex_jsonl(text: text)) {
+    ProviderCompleted { activity: _ } => true
+    _ => false
+  }
 }
