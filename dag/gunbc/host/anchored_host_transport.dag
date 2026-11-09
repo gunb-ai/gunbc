@@ -226,7 +226,7 @@ data anchored_host_transport_frontier_rows: List<FrontierRow> = [
     ref: decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "anchored_host_key_scan_wet"),
     reason: "the gated readback is prepared and GATED: it is called only by the witness (wet arms never execute) and no workflow dispatches it, so no presented key has ever been read back and every production anchor stays Absent. SUPERSEDED FOR mtcollins1 by the operator's 2026-11-08 decision that its host trust is the per-boot pin (anchored_host_transport_live_per_boot): the static anchor is not to be filled, so this row's trigger below is not to be fired, and deleting the static-anchor path (this arm, anchored_host_trusted_row, the row's anchor field) is a named follow-up",
     dissolution: unbound_dissolution(
-      description: "dissolves when, on a live boot of mtcollins1 with merry-fox-82's relayed go, this wet arm executes its Present branch over the real transport and the printed presented line is recorded through the real dispatch (lost_boot_sweep_effect_pairing_frontier) and transcribed into the anchor through anchored_host_trusted_row; a simulated Present does not fire this"
+      description: "dissolves when the static-anchor path is DELETED (delete-first, no consumer remains): anchored_host_key_scan_wet, anchored_host_trusted_row, anchored_host_transport_of over AnchoredHostRow.anchor, mtcollins1_host_key_anchor and mtcollins1_host_key_read_obligation. Filling the anchor does NOT fire this: the operator's 2026-11-08 decision makes mtcollins1's host trust the per-boot pin and forbids a static anchor fill or mint, and no other host has a row"
     )
   ),
   frontier_row_decl(
