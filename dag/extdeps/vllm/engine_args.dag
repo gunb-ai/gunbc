@@ -171,7 +171,7 @@ fn vllm_prefix_caching_argv(r: VllmPrefixCachingRequest) -> List<String> {
 // vllm_source_revision_1967a5627; a store_true flag, default False). Omitted is a real state: the
 // field is then absent from responses, which the consumer reads as unread, never as zero.
 // DECLARED FRONTIER (gunbc.design_argument::consumption): consumer = the shadow-Y replica launch profile under
-// gunbc.serving.*; trigger = that PR (docs/plans/serving-hardware-neutral-cutover.md). The Spark
+// gunbc.serving.*; trigger = that PR (docs/plans/serving-hardware-neutral-cutover.md (deleted 2026-11-08)). The Spark
 // ServingLaunchProfile (gunbc.spark.serving_arm) is frozen X and takes no new field.
 type VllmPromptTokensDetailsRequest
   = PromptTokensDetailsOmitted

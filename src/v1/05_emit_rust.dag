@@ -17617,8 +17617,8 @@ fn cursor_walk_join(a: CursorWalk, b: CursorWalk) -> CursorWalk {
 // that is neither the scrutinee of its own list match nor `p` handed back at its own self-call
 // position needs the VALUE of `p`: the unchanged base minus the consumed prefix, `base.skip(cursor)`
 // (emit_rust_expr_var renders it). That costs one skip at the use instead of one per step, which is
-// what admits a walk whose exit appends the rest of a list (std.algebra sort_merge_into,
-// `Empty => list_append(left: acc, right: left)`) or hands a list back unchanged at its own position,
+// what admits a walk whose exit appends the rest of a list (the shape the std.algebra stable merge had before
+// it became an index cursor: `Empty => list_append(left: acc, right: left)`) or hands a list back unchanged at its own position,
 // an advance of 0. Admitted only when no tail binder is mentioned (a tail is an index, never a value)
 // and every mention of `p` is a plain occurrence that runs once per iteration and means the param:
 // not inside a lambda or a for-each body, and not under a binder that rebinds the spelling.

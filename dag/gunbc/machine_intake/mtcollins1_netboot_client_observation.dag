@@ -33,7 +33,7 @@ import extdeps.provisioning.network_boot { ClientNetworkBootMode, UefiPxe }
 // THE READING IS SIX OCTETS, NOT A STRING. This row was a NonEmptyStr holding the colon text and
 // every consumer had to decode it again if it wanted to know anything about it — which octet was
 // the OUI, whether two rows were the same machine — and the row that carried it could itself be a
-// typo that no type would catch. Plan gunbc.plans.site_segment_anchor_bmc_reach phase S1 moved it
+// typo that no type would catch. Plan gunbc.plans.site_segment_anchor_bmc_reach (deleted 2026-11-08) phase S1 moved it
 // onto extdeps.network.mac Eui48Address, the carrier whose whole point is that an address IS its
 // six octets (it refuses construction by text and takes the octets as typed numbers instead). The
 // octets below are the ones in the capture cited above, read off the packet's Client-Ethernet-Address

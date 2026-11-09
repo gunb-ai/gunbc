@@ -46,7 +46,7 @@ import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboa
 // ONE store instance, so every writer reaches this store on the one host that holds it -- in process
 // there, and through the served endpoint (gunbc.fabric.fabric_storage_serve, reached by gunbc.fabric.fabric_storage_client)
 // from every other host -- and no host keeps a second writable copy. Replication
-// and failover are the program in docs/plans/fabric-storage.md, not this module.
+// and failover are the program in docs/plans/fabric-storage.md (deleted 2026-11-08), not this module.
 //
 // THE ROOT IS NOT CREATED BY A WRITE (the CAS store's rule, for the same reason): standing up the
 // directory that defines the store's identity is a placement decision, made once by the mint below

@@ -140,7 +140,7 @@ import gunbc.runner.runner_service_activation {
   UnitStandingsUnobserved,
   runner_host_activation_units,
 }
-import gunbc.runner.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound, RunnerHostDeployUnmodeled }
+import gunbc.runner.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound, RunnerHostDeployZeroWidth, RunnerHostDeployUnmodeled }
 import gunbc.live_deploy.unit_standing { read_unit_property, UnitPropertyValue, UnitPropertyUnreadable }
 import extdeps.systemd { ActiveState, UnitFileState }
 import gunbc.host_convergence_protocol {
@@ -525,6 +525,10 @@ fn observe_slot_retirement_evidence_wet(host: NonEmptyStr) -> SlotRetirementEvid
       SlotRetirementEvidenceAbsent {
         cause: join([h as String, " is refused as a runner host (", c, "), so no retirement was observed and none may be assumed"], ""),
       }
+    RunnerHostDeployZeroWidth { spec: sp } =>
+      SlotRetirementEvidenceAbsent {
+        cause: join([sp.host_label as String, " derives to zero slots, so no width transition was observed and no retirement is authorised by this pass"], ""),
+      }
     RunnerHostDeployFound { deploy: _ } =>
       match interruption_authorization_for_host(host: host as HostIdentity) {
         HostInterruptionAuthorizationAbsent { host: _, cause: c } =>
@@ -627,6 +631,10 @@ fn observe_runner_unit_standings_wet(host: NonEmptyStr) -> RunnerUnitStandings
     RunnerHostDeployUnmodeled { host: h } =>
       UnitStandingsUnobserved {
         reason: join([h as String, " has no runner host deploy row, so it desires no units and no standing was read"], "") as NonEmptyStr,
+      }
+    RunnerHostDeployZeroWidth { spec: sp } =>
+      UnitStandingsUnobserved {
+        reason: join([sp.host_label as String, " derives to zero slots, so it desires no units and no standing was read (units already running are not touched)"], "") as NonEmptyStr,
       }
     RunnerHostDeployFound { deploy: d } => {
       let reads = map(runner_host_activation_units(deploy: d), u => observe_runner_unit_standing_wet(unit: u))

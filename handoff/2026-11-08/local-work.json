@@ -1,0 +1,9 @@
+[
+  {
+    "session": "keen-koi-376",
+    "base": "70b7b9950b6a4ece369de8b0f8cc255dd45d88d8",
+    "patch": "keen-koi-376-tracked-wip.patch",
+    "sha256": "f6ed3f2d1c2e1fc7dc62334658204301a3d17d630502cb52e3b8e39eda240008",
+    "status": "uncommitted tracked work preserved, not applied"
+  }
+]

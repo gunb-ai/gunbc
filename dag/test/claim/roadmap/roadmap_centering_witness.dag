@@ -2,7 +2,7 @@ module test.claim.roadmap.roadmap_centering_witness
 
 import std.types { String, Int, List, Bool, NonEmptyStr }
 import gunbc.roadmap.roadmap_model { RoadmapNode, RoadmapNodeId, ManualAcceptance, Dispatchable }
-import gunbc.roadmap.roadmap_status { Unsigned, TicketLine }
+import gunbc.roadmap.roadmap_status { TicketLine }
 import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes }
 import gunbc.roadmap.roadmap_belt { ManualReady }
 import gunbc.roadmap.roadmap_launch_canary {
@@ -42,7 +42,6 @@ fn uncentered_node() -> RoadmapNode {
     dispatch: Dispatchable { repo: "gunbc", acceptance: ManualAcceptance },
     execution: roadmap_launch_canary_execution_contract(),
     owner: "",
-    signoff: Unsigned,
     parent: roadmap_launch_canary_parent_lineage(),
     centering: none,
   }
@@ -53,7 +52,6 @@ fn centered_node() -> RoadmapNode {
     identity: roadmap_launch_canary_parent_identity,
     id: roadmap_launch_canary_parent_node_id(),
     execution: roadmap_launch_canary_execution_contract(),
-    signoff: Unsigned,
   )
 }
 

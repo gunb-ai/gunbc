@@ -289,7 +289,7 @@ fn jit_credential_delivered(delivery: JitCredentialDelivery) -> Bool {
 // An inverted push with the pull still reachable is TWO authorities for one credential, and the
 // segment race survives in the one that is still answerable -- so this row exists to keep the
 // deletion countable rather than to imply it happened. It was not attempted here because the fetch
-// has no subject in source control: docs/plans/microvm-launch-displacement-analysis.md establishes,
+// has no subject in source control: docs/plans/microvm-launch-displacement-analysis.md (deleted 2026-11-08) establishes,
 // by a code search carried with a positive control and a per-repository reachability control, that
 // the Mt. Collins host boot script is authored in no repository. It exists as bytes inside a host
 // image under the store gunbc.runner.runner_host_image_store records as not resilient, with no

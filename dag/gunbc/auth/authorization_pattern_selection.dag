@@ -78,7 +78,7 @@ type WorkloadIdentityStanding
 // there, so it is wider than any one resource and owes the same witness as a wide mint. Without the
 // arm such an effect had to be filed under a cloud reach it does not have, or under MintsNoCredential,
 // and the selection then either refused it silently or named a pattern whose reach is not its own
-// (gunbc.plans.srv1_deploy_principal_split).
+// (gunbc.plans.srv1_deploy_principal_split (deleted 2026-11-08)).
 type MintedCredentialReach
   = MintsNoCredential
   | MintsResourceScopedCredential

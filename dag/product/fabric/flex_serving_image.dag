@@ -5,7 +5,7 @@ import std.measure { ByteSize, gibibyte, gibibyte_to_byte_size }
 
 // THE SERVING IMAGE AS ONE SUPPLIER-AGNOSTIC FACT: what a rented card runs, whoever rents it. Each supplier
 // realizes it in its own launch shape (Vast: a template, product.fabric.flex_vast_template; EC2: a launch
-// template whose user-data starts this image under docker, gunbc.plans.flex_supplier_generalization PR 3),
+// template whose user-data starts this image under docker, gunbc.plans.flex_supplier_generalization (deleted 2026-11-08) PR 3),
 // and neither restates a field here. One image, one onstart, N realizations.
 type FlexServingImage {
   // The OCI repository and the sha256 digest that pins it; the pull reference is

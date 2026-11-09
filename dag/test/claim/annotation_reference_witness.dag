@@ -1,0 +1,123 @@
+module test.claim.annotation_reference_witness
+
+import std.types { Bool, Int, List, String }
+import std.algebra { Cons, Empty, length, list_head }
+import std.optional { Absent, Present }
+import std.decl_ref { DeclarationRef, NamedField, TypeParameter, WholeDeclaration, declaration_ref_eq, decl_ref, decl_field_ref, decl_type_parameter_ref }
+import std.annotation_reference {
+  AnnotationReference,
+  AnnotationReferenceExtraction,
+  CoordinateMalformed,
+  MalformedReferenceMarker,
+  MarkerUnterminated,
+  annotation_references_text,
+}
+
+// The extractor's discriminating cases, each run through the one production extractor over the raw
+// lexeme text a lexer hands it.
+
+fn only_reference(x: AnnotationReferenceExtraction) -> DeclarationRef? {
+  if length(xs: x.malformed) != 0 || length(xs: x.references) != 1 {
+    Absent
+  } else {
+    match list_head(xs: x.references) {
+      Present { value: r } => Present { value: r.reference }
+      Absent => Absent
+    }
+  }
+}
+
+fn extracts_exactly(text: String, expected: DeclarationRef) -> Bool {
+  match only_reference(x: annotation_references_text(text: text, start: 0)) {
+    Present { value: r } => declaration_ref_eq(a: r, b: expected)
+    Absent => false
+  }
+}
+
+fn extracts_nothing(text: String) -> Bool {
+  let x = annotation_references_text(text: text, start: 0)
+  length(xs: x.references) == 0 && length(xs: x.malformed) == 0
+}
+
+fn malformed_only(text: String, count: Int) -> Bool {
+  let x = annotation_references_text(text: text, start: 0)
+  length(xs: x.references) == 0 && length(xs: x.malformed) == count
+}
+
+test fn whole_declaration_reference_extracts() -> Bool {
+  extracts_exactly(text: "// see @ref(std.decl_ref::DeclarationRef) here", expected: decl_ref(module_path: "std.decl_ref", decl_name: "DeclarationRef"))
+}
+
+test fn named_field_reference_extracts() -> Bool {
+  extracts_exactly(text: "// @ref(std.decl_ref::DeclarationRef::module_path)", expected: decl_field_ref(module_path: "std.decl_ref", decl_name: "DeclarationRef", field_name: "module_path"))
+}
+
+test fn type_parameter_reference_extracts() -> Bool {
+  extracts_exactly(text: "// @ref(std.optional::Optional::<T>)", expected: decl_type_parameter_ref(module_path: "std.optional", decl_name: "Optional", parameter: "T"))
+}
+
+test fn unmarked_prose_and_external_sections_are_not_references() -> Bool {
+  extracts_nothing(text: "// RFC 8725 §3 and std.decl_ref::DeclarationRef written as code, ref(x) and @ref without paren")
+}
+
+test fn escaped_marker_is_literal() -> Bool {
+  extracts_nothing(text: "// write \\@ref(std.decl_ref::DeclarationRef) to show the marker")
+}
+
+test fn bare_module_path_is_malformed_not_guessed() -> Bool {
+  malformed_only(text: "// @ref(std.decl_ref)", count: 1)
+}
+
+test fn single_colon_is_malformed() -> Bool {
+  malformed_only(text: "// @ref(std.decl_ref:DeclarationRef)", count: 1)
+}
+
+test fn four_segments_are_malformed() -> Bool {
+  malformed_only(text: "// @ref(a::b::c::d)", count: 1)
+}
+
+test fn leading_digit_segment_is_malformed() -> Bool {
+  malformed_only(text: "// @ref(std.9x::Y)", count: 1)
+}
+
+test fn unterminated_marker_is_reported() -> Bool {
+  let x = annotation_references_text(text: "// @ref(std.decl_ref::DeclarationRef", start: 0)
+  match list_head(xs: x.malformed) {
+    Present { value: m } => length(xs: x.references) == 0 && length(xs: x.malformed) == 1 && match m.cause { MarkerUnterminated => true CoordinateMalformed => false }
+    Absent => false
+  }
+}
+
+// A malformed marker must not hide a later valid one: the breaking character is scanned again.
+test fn malformed_marker_does_not_swallow_the_next() -> Bool {
+  let x = annotation_references_text(text: "// @ref(broken @ref(std.decl_ref::DeclarationRef)", start: 0)
+  length(xs: x.malformed) == 1 && length(xs: x.references) == 1
+}
+
+test fn adjacent_marker_breaks_and_rescans() -> Bool {
+  let x = annotation_references_text(text: "// @ref(a.b@ref(std.decl_ref::decl_ref)", start: 0)
+  length(xs: x.malformed) == 1 && length(xs: x.references) == 1
+}
+
+test fn two_references_on_one_line_both_extract() -> Bool {
+  let x = annotation_references_text(text: "// @ref(a.b::C) and @ref(d.e::F::g)", start: 0)
+  length(xs: x.malformed) == 0 && length(xs: x.references) == 2
+}
+
+// Offsets are octets from the capture start: `// é ` is 2 + 1 + 2 + 1 = 6 octets, so the marker
+// starts at start + 6 and ends after its 15 ASCII octets.
+test fn offsets_are_octets_on_non_ascii_text() -> Bool {
+  let x = annotation_references_text(text: "// é @ref(a.b::Cdef)", start: 100)
+  match list_head(xs: x.references) {
+    Present { value: r } => r.start == 106 && r.end == 121
+    Absent => false
+  }
+}
+
+test fn malformed_marker_carries_its_location_and_text() -> Bool {
+  let x = annotation_references_text(text: "// @ref(x)", start: 10)
+  match list_head(xs: x.malformed) {
+    Present { value: m } => m.start == 13 && m.end == 20 && m.text == "@ref(x)" && match m.cause { CoordinateMalformed => true MarkerUnterminated => false }
+    Absent => false
+  }
+}

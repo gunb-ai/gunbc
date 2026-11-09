@@ -10,7 +10,8 @@ import std.algebra { Cons, Empty, list_append, list_snoc_item, fold_list, is_emp
 import v2.std.text { Char, CharAbsent, CharFound, SourceFold, String, fold_source, string_head, string_is_empty }
 import std.unicode.types { unicode_scalar_utf8_octet_count }
 import std.unicode.char_class { unicode_char_code_point }
-import std.host_text { string_length }
+import std.host_text { string_length, substring }
+import std.nat { Nat, nat_add }
 import std.source_annotation { AnnotationPlacement, LeadingAfterLineIndent, TrailingAfterSemanticToken, AnnotationLineState, advance_line_prefix_indent_only, placement_from_line_prefix, annotation_line_state_initial, advance_annotation_line_state, BlankLine, AnnotationOnlyLine }
 import v2.std.compilers.lexing {
   AnnotationRule,
@@ -453,7 +454,7 @@ fn lex_pattern_first(pattern: LexPattern) -> LexFirst {
 fn lex_first_admits(first: LexFirst, c: Char) -> Bool {
   first.nullable
     || std.algebra.contains(xs: first.chars, item: c, eq: fn(a, b) { a == b })
-    || any(xs: first.classes, predicate: fn(k) { char_in_class(c: c, class: k) })
+    || fold_list(xs: first.classes, empty: false, cons: fn(acc, k) { acc || char_in_class(c: c, class: k) })
 }
 
 // Rules whose FIRST is only literal characters are reached through by_char; every other rule --
@@ -1006,7 +1007,7 @@ fn lex_walk_init(src: v2.std.text.String, truncated: Bool, file: Symbol, prepare
 // carrier's end answers Beyond (LexHead), so the walk has no limit to check and no second way to stop.
 type LexWalkLimit
   = LexWalkWhole
-  | LexWalkUntil { scalars: Int }
+  | LexWalkUntil { scalars: Nat }
 
 fn lex_walk_is_done(acc: LexWalkAcc) -> Bool {
   acc.done
@@ -1459,8 +1460,8 @@ fn lex_window(text: String, limit: LexWalkLimit) -> LexWindow {
   match limit {
     LexWalkWhole => LexWindow { text: text, truncated: false }
     LexWalkUntil { scalars: n } =>
-      if (string_length(text: substring(s: text, start: 0, end: n + 1)) as Int) > n {
-        LexWindow { text: substring(s: text, start: 0, end: if n < 0 { 0 } else { n }), truncated: true }
+      if string_length(text: substring(text: text, start: 0, end: nat_add(a: n, b: 1))) > n {
+        LexWindow { text: substring(text: text, start: 0, end: n), truncated: true }
       } else {
         LexWindow { text: text, truncated: false }
       }
@@ -1479,6 +1480,31 @@ fn lex_window(text: String, limit: LexWalkLimit) -> LexWindow {
 // rest of the text. The cost of the door follows the window and not the text: the unfold, which builds a
 // scalar sequence at hundreds of nanoseconds a scalar, is paid for the window.
 fn tokenize_prefix_prepared(text: String, file: Symbol, prepared: PreparedLexRules, limit: LexWalkLimit) -> Outcome<LexPrefix> {
+  match tokenize_walk_prepared(text: text, file: file, prepared: prepared, limit: limit) {
+    v2.std.diagnostic.Rejected { diagnostics: ds } =>
+      v2.std.diagnostic.Rejected { diagnostics: ds }
+    v2.std.diagnostic.Accepted { value: walk, diagnostics: ds } =>
+      v2.std.diagnostic.Accepted {
+        value: LexPrefix { stream: lex_artifact_semantic_tokens(artifact: walk.artifact), complete: walk.complete },
+        diagnostics: ds
+      }
+  }
+}
+
+// THE AUTHORED LEX OF A WHOLE TEXT: the same door read without the semantic projection, so a consumer
+// of the annotation channel (std.annotation_reference) gets the captures the semantic walk made and
+// never re-lexes. It is the one walk: the token stream a semantic consumer reads is
+// lex_artifact_semantic_tokens of this artifact.
+fn tokenize_artifact_prepared(text: String, file: Symbol, prepared: PreparedLexRules) -> Outcome<LexArtifact> {
+  match tokenize_walk_prepared(text: text, file: file, prepared: prepared, limit: LexWalkWhole) {
+    v2.std.diagnostic.Rejected { diagnostics: ds } =>
+      v2.std.diagnostic.Rejected { diagnostics: ds }
+    v2.std.diagnostic.Accepted { value: walk, diagnostics: ds } =>
+      v2.std.diagnostic.Accepted { value: walk.artifact, diagnostics: ds }
+  }
+}
+
+fn tokenize_walk_prepared(text: String, file: Symbol, prepared: PreparedLexRules, limit: LexWalkLimit) -> Outcome<LexArtifactWalk> {
   let window = lex_window(text: text, limit: limit)
   let source = unicode_scalar_unfold(s: window.text)
   let at = Textual {
@@ -1490,18 +1516,10 @@ fn tokenize_prefix_prepared(text: String, file: Symbol, prepared: PreparedLexRul
       if window.truncated || !is_empty(xs: source) {
         v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e0_source_not_exhausted_diagnostic(at: at)) }
       } else {
-        v2.std.diagnostic.Accepted { value: LexPrefix { stream: token_stream_empty(), complete: true }, diagnostics: v2.std.diagnostic.None }
+        v2.std.diagnostic.Accepted { value: LexArtifactWalk { artifact: lex_artifact_new(tokens: token_stream_empty(), annotations: []), complete: true }, diagnostics: v2.std.diagnostic.None }
       }
     PreparedModeledLexRules { root: prepared_set } =>
-      match lex_walk_artifact_windowed(source: source, truncated: window.truncated, file: file, prepared: prepared_set) {
-        v2.std.diagnostic.Rejected { diagnostics: ds } =>
-          v2.std.diagnostic.Rejected { diagnostics: ds }
-        v2.std.diagnostic.Accepted { value: walk, diagnostics: ds } =>
-          v2.std.diagnostic.Accepted {
-            value: LexPrefix { stream: lex_artifact_semantic_tokens(artifact: walk.artifact), complete: walk.complete },
-            diagnostics: ds
-          }
-      }
+      lex_walk_artifact_windowed(source: source, truncated: window.truncated, file: file, prepared: prepared_set)
   }
 }
 

@@ -32,7 +32,7 @@ data min_coreutils_version: VersionConstraint = ">= 8.0"
 // THE COREUTILS ARGV BUILDERS. Each is one utility's one operation, cited to the manual anchored at
 // the top of this module, admitted by name on extdeps.exec.command argv_command. They exist because
 // every one of these was previously hand-spelled at a call site as a bare word list, which is where
-// a flag can be dropped without anything noticing (gunbc.plans.transport_argv_anemia_dissolution).
+// a flag can be dropped without anything noticing (gunbc.plans.transport_argv_anemia_dissolution (deleted 2026-11-08)).
 //
 // PATH-resolved program name, deliberately: this repository has made no filesystem observation of
 // the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
@@ -173,7 +173,20 @@ fn cp_preserve_if_absent_command(source: String, destination: String) -> ArgvCom
 // recursion flags (the caller hands one entry). THE ARGV FORM, like coreutils_install_file_owned_argv:
 // a caller that elevates builds the command itself with sudo_elevate_command.
 fn cp_copy_as_link_argv(source: String, destination: String) -> List<String> {
-  [cp_program().invocation as String, "-P", source, destination]
+  concat([cp_program().invocation as String], cp_copy_as_link_arguments(source: source, destination: destination))
+}
+
+// THE OPERANDS OF cp -P, without the program word: the one spelling both the argv form above and the
+// unelevated command below take.
+fn cp_copy_as_link_arguments(source: String, destination: String) -> List<String> {
+  ["-P", source, destination]
+}
+
+// cp -P AS THE INVOKING PRINCIPAL: the link written as the link, owned by whoever runs it. For a caller
+// that writes into a tree it owns (gunbc.host.host_effect_realize's staged tree install, whose ownership
+// is declared by the archive rather than set per entry), so no chown follows it.
+fn cp_copy_as_link_command(source: String, destination: String) -> ArgvCommand {
+  argv_command(program: cp_program(), arguments: cp_copy_as_link_arguments(source: source, destination: destination))
 }
 
 // install(1) COPYING /dev/null CREATES AN EMPTY FILE WITH ITS FINAL OWNER AND MODE IN ONE STEP.
@@ -236,7 +249,7 @@ fn rm_recursive_force_one_file_system_exec_argv() -> List<String> {
 // with the same argv and the same -T rationale; its two consumers (gunbc.package_delivery
 // publish_codex_runtime_current_link and the event-log real-execution witness) were moved onto this
 // builder and the service deleted, so one upstream fact has one declaration (review 68813 on
-// #11760) -- the direction gunbc.plans.transport_argv_anemia_dissolution names. extdeps.linux.usb_gadget
+// #11760) -- the direction gunbc.plans.transport_argv_anemia_dissolution (deleted 2026-11-08) names. extdeps.linux.usb_gadget
 // configfs_op_line WAS the last hand-spelled `ln -sf` inside a script string; that frontier has now
 // folded: the gadget's symlink op mints through ln_symbolic_force_into_directory_command (the
 // into-directory sibling below), because the -T form refuses precisely the into-directory case the
@@ -390,6 +403,13 @@ fn coreutils_install_directories_arguments(mode: FileMode, paths: List<String>) 
     ],
     paths,
   )
+}
+
+// install -d -m AS THE INVOKING PRINCIPAL: the directory created with its mode, owned by whoever runs it
+// (coreutils_install_directories_arguments' one spelling). For a principal creating directories in a tree
+// it owns -- the staged tree install, whose ownership the archive declares.
+fn install_directory_mode_command(mode: FileMode, path: String) -> ArgvCommand {
+  argv_command(program: install_program(), arguments: coreutils_install_directories_arguments(mode: mode, paths: [path]))
 }
 
 fn coreutils_install_file_owned_argv(

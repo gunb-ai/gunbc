@@ -21,7 +21,7 @@ import extdeps.gpu_bench.request_v2 { GpuBenchPhasePrime, GpuBenchPhaseWarm, Gpu
 import extdeps.gpu_bench.request_v4 { GpuBenchRequestV4 }
 import gunbc.serving.serving_benchmark { ServingBenchmarkVersion }
 
-// THE RUN-LEVEL RECEIPT OF ONE SERVING-BENCHMARK RUN: row E0 of plan gunbc.plans.serving_fleet_program
+// THE RUN-LEVEL RECEIPT OF ONE SERVING-BENCHMARK RUN: row E0 of plan gunbc.plans.serving_fleet_program (deleted 2026-11-08)
 // (#14953). A per-request row cannot carry what the tiers need (the throughput curve over active levels,
 // the power cap in force, wall power, the cell that produced it), so this receipt is one observation per
 // run, admitted against ONE gunbc.serving.serving_benchmark version and built from the gpu-bench

@@ -4,7 +4,7 @@ import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField }
 
-// FORWARD-FREEZE RECEIPT FOR THE SEED EMITTER'S NATIVE INGRESS REALIZATION (gunbc.plans.converged_ingress M2a, M2b).
+// FORWARD-FREEZE RECEIPT FOR THE SEED EMITTER'S NATIVE INGRESS REALIZATION (gunbc.plans.converged_ingress (deleted 2026-11-08) M2a, M2b).
 //
 // The v1 emitter's native serve arm read a unit driver (NativeServeDriver) and spelled the handler, the startup and
 // the startup bound by convention (native_serve_handle, native_serve_startup, native_serve_startup_bound), and its

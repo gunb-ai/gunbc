@@ -1,0 +1,388 @@
+diff --git a/dag/gunbc/rung_drop/stub_loop_value_claims_lose_value_path_at_admission.dag b/dag/gunbc/rung_drop/stub_loop_value_claims_lose_value_path_at_admission.dag
+index d71384acd1c..9d13fe9285a 100644
+--- a/dag/gunbc/rung_drop/stub_loop_value_claims_lose_value_path_at_admission.dag
++++ b/dag/gunbc/rung_drop/stub_loop_value_claims_lose_value_path_at_admission.dag
+@@ -16,14 +16,14 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+ data stub_loop_value_claims_lose_value_path_at_admission: RungDrop = RungDrop {
+   identity: "stub_loop_value_claims_lose_value_path_at_admission" as NonEmptyStr,
+ 
+-  subject: "the value (and wrong-value RED) discrimination of stub-driven Loop claims in loop_eval_by_execution, emit_host_loop_equals_eval, loop_demand_driven_eval and add_arrow_eval_by_execution",
++  subject: "the value (and wrong-value RED) discrimination of stub-driven Loop claims in loop_eval_by_execution, emit_host_loop_equals_eval, loop_demand_driven_eval and add_arrow_eval_by_execution, and the Loop leg of the family witness module emit_on_demand_match_loop_fold_family_witness",
+ 
+   declared: "2026-11-06",
+ 
+   standing: Standing { declaration: TypedDeclaration {
+     previous: MechanicallyPreventable,
+     temporary: Mitigatable,
+-    reason: LostAsPassenger { carrier: "admission now refuses every Loop that lacks a realized edge, so the stub's value path is gone; the stubs' hand-supplied termination facts are not read by admission (v2.compiler.eval eval_loop_admission)" },
++    reason: LostAsPassenger { carrier: "admission now refuses every Loop that lacks a realized edge, so the stub's value path is gone; the stubs' hand-supplied termination facts are not read by admission (v2.compiler.eval eval_loop_admission). REMOVED, NOT WAIVED: the claim emit_host_loop_wrong_fixture_refuses_holds (emit_host_loop_equals_eval) is deleted from the population because its predicate evaluated the one fixed emit_loop_eval_subgraph_node and never the wrong-value tree, so it never observed a wrong fixture. Its obligation (the emit-vs-eval route tells a wrong Loop fixture from the right one) is UNMET; no behaviour is implied implemented, no rung is promoted, nothing is waived. OPEN DEFERRAL, family witness Loop leg. GRAIN: the member names the COMPOSITE claim emit_on_demand_match_loop_fold_family_one_build_holds, and only its Loop-leg obligation is deferred; its match and fold legs are NOT waived. No subclaim identity is invented and the test is not split. CAUSE, emit_loop_eval_subject evaluates the fixed fixture Loop, which v2.compiler.eval eval_loop_admission refuses with v2_eval_loop_bound_not_executable, so the eval side of the emit-vs-eval comparison is a refusal and not a Loop value. NON-DISCRIMINATING ASSERTIONS, both in that claim: the emit_loop_eval_verdict_is_pass conjunct in mlf_family_primary_agreements, and emit_loop_eval_verdict_is_fail in mlf_family_alt_loop_mismatch. OBLIGATION: the emitted loop member host output equals the eval of a realized Loop, and the alt (wrong-value) Loop is told apart from it, each by an executed comparison of values. The restored emit_loop_eval_* exports repair the dependency break and do NOT establish Loop execution coverage. No acceptance, no LAND waiver. ROUTE NOTE (moved out of the population member string for emit_host_loop_equals_eval emit_host_loop_equals_eval_holds, text unchanged in substance): that claim's emit-vs-eval ROUTE, v2.compiler.emit_host run_test_claim_emit_vs_eval, is no longer called by the emit_host_loop claim, so the emitted-host run of a Loop fixture is unexercised here." },
+     population: Enumerated { members: FreeSemigroup { head: "v2.test.claim.execution.long.loop_eval_by_execution loop_source_driven_executes_holds", tail: [
+       "v2.test.claim.execution.long.loop_eval_by_execution loop_source_driven_wrong_value_red_holds",
+       "v2.test.claim.execution.long.loop_eval_by_execution loop_direct_runtime_holds",
+@@ -32,11 +32,11 @@ data stub_loop_value_claims_lose_value_path_at_admission: RungDrop = RungDrop {
+       "v2.test.claim.execution.long.loop_eval_by_execution loop_fixture_wrong_value_red_holds",
+       "v2.test.claim.execution.long.loop_eval_by_execution loop_census_ingested_executes_holds",
+       "v2.test.claim.execution.long.loop_eval_by_execution loop_census_ingested_wrong_value_red_holds",
+-      "v2.test.claim.execution.emit_host_loop_equals_eval emit_host_loop_equals_eval_holds (also its emit-vs-eval ROUTE: v2.compiler.emit_host run_test_claim_emit_vs_eval is no longer called by either emit_host_loop claim, so the emitted-host run of a Loop fixture is unexercised here)",
+-      "v2.test.claim.execution.emit_host_loop_equals_eval emit_host_loop_wrong_fixture_refuses_holds",
++      "v2.test.claim.execution.emit_host_loop_equals_eval emit_host_loop_equals_eval_holds",
++      "v2.test.claim.execution.emit_on_demand_match_loop_fold_family_witness emit_on_demand_match_loop_fold_family_one_build_holds",
+       "v2.test.claim.manual.loop_demand_driven_eval loop_demand_driven_eval_keystone_holds",
+       "v2.test.claim.execution.long.add_arrow_eval_by_execution add_arrow_eval_lazy_arm_loop_suppression_holds"
+     ] } },
+-    restoration_trigger: "the emit-vs-eval route over a fold-realized Loop is re-entered by the two emit_host_loop claims, and the fold driver evaluates a fold-realized Loop's step body over its domain, sufficient for these value claims to discriminate a wrong carrier again; each wrong-value RED listed (the *_wrong_value_red_holds, loop_value_perturbation_red_holds and emit_host_loop_wrong_fixture_refuses_holds claims) regains its wrong-value RED when that capability is executed, not when the driver is merely enrolled."
++    restoration_trigger: "the emit-vs-eval route over a fold-realized Loop is re-entered by the two emit_host_loop claims, and the fold driver evaluates a fold-realized Loop's step body over its domain, sufficient for these value claims to discriminate a wrong carrier again; each wrong-value RED listed (the *_wrong_value_red_holds, loop_value_perturbation_red_holds and the removed emit_host_loop_wrong_fixture_refuses_holds claim, whose wrong-fixture obligation is regained by a new claim that observes the wrong tree, not by restoring the old one) regains its wrong-value RED when that capability is executed; the family witness Loop leg regains discrimination when a fold-realized Loop fixture that admission accepts is evaluated by the iterating driver (PR-2 proper), emit_loop_eval_subject yields a value, and both listed assertions are re-pointed at it and executed, not when the driver is merely enrolled."
+   } }
+ }
+diff --git a/dag/gunbc/witness/witness_deferral_freeze.dag b/dag/gunbc/witness/witness_deferral_freeze.dag
+index 8c66bcf47eb..b509fc07f79 100644
+--- a/dag/gunbc/witness/witness_deferral_freeze.dag
++++ b/dag/gunbc/witness/witness_deferral_freeze.dag
+@@ -86,6 +86,11 @@ THE RATCHET, and why it is a freeze rather than a sweep. Classifying every histo
+ // known-red. The row deletes, so the required floor runs the file. The same change deleted
+ // cwc_malformed_nary_coproduct_fail_open_control (the negation of its sibling) and repaired the
+ // resolve door that cwc_cwc_module_resolve_accepts reads.
++// SHRINK LOG. 2026-11-06 - src/v2/test/claim/execution/emit_host_loop_equals_eval.dag
++// [emit_host_loop_wrong_fixture_refuses_holds], 1 identity, DELETED BECAUSE THE CLAIM WAS REMOVED, not
++// retired by an executing consumer and not exempted: its predicate read the one fixed subgraph node and
++// never the wrong-value tree, so it did not observe a wrong fixture. The lost obligation stays UNMET and is
++// recorded in gunbc.rung_drop stub_loop_value_claims_lose_value_path_at_admission.
+ // SHRINK LOG. 2026-10-06 — accumulator_copy lean/bash/swift/glob freeze identities deleted, not
+ // renamed: their test-fn bodies were a weaker contract than zero_suspects_within_ratchet (typed
+ // Filesystem.Read existence). The priced-out file_gate walks live as ordinary fns consumed by
+@@ -599,7 +604,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
+     ]
+   },
+   FrozenPathDeferral { entry: "src/v2/test/claim/execution/emit_host_fold_closure_equals_eval.dag", functions: ["emit_host_fold_closure_wrong_fixture_refuses_holds"] },
+-  FrozenPathDeferral { entry: "src/v2/test/claim/execution/emit_host_loop_equals_eval.dag", functions: ["emit_host_loop_wrong_fixture_refuses_holds"] },
+   FrozenPathDeferral {
+     entry: "src/v2/test/claim/execution/emit_host_match_equals_eval.dag",
+     functions: [
+diff --git a/src/v2/test/claim/execution/emit_host_loop_equals_eval.dag b/src/v2/test/claim/execution/emit_host_loop_equals_eval.dag
+index 1f36cc81a80..eddbbf6737f 100644
+--- a/src/v2/test/claim/execution/emit_host_loop_equals_eval.dag
++++ b/src/v2/test/claim/execution/emit_host_loop_equals_eval.dag
+@@ -9,7 +9,12 @@ import v2.test.claim.complexity_gate.table_fixture_loop_subject_producer {
+ import v2.compiler.emit_host { emit_host_octets_byte_string }
+ import v2.test.claim.execution.loop_admission_refusal { loop_outcome_reason }
+ import v2.compiler.eval {
++  EvalContext,
++  TestClaimEvalSubject,
++  TestClaimRun,
+   eval,
++  eval_context_with_semantics,
++  eval_test_claim_subject,
+   inputs_root_only
+ }
+ import v2.compiler.infer { InferredFacts, InferredTree }
+@@ -49,6 +54,7 @@ import v2.std.runtime {
+   EnvironmentBindingKey,
+   EvaluationEnvironment,
+   InterpretationAlgebra,
++  InterpretationStructureWitness,
+   LoopInterpreter,
+   RuntimePrimitive,
+   RuntimePrimitiveValue,
+@@ -58,6 +64,16 @@ import v2.std.runtime {
+   MatchInterpreter,
+   runtime_reject_match_arm
+ }
++import v2.std.verdict { verdict_establishes_divergence, verdict_establishes_equivalence }
++import v2.std.verification {
++  EqualsClaim,
++  Integration,
++  ManualAnchorAbsent,
++  TestClaim,
++  TestClassification,
++  Tier3,
++  manual_claim_anchor
++}
+ import v2.std.witness { Holds }
+ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+ 
+@@ -217,27 +233,70 @@ fn emit_loop_eval_refusal_reason(tree: InferredTree) -> String {
+   )
+ }
+ 
+-fn emit_loop_eval_verdict_is_pass(tree: InferredTree) -> Bool {
++// REMOVED: the TREE-taking emit_loop_eval_verdict_is_fail and the claim emit_host_loop_wrong_fixture_refuses_holds. Both
++// evaluated the ONE fixed emit_loop_eval_subgraph_node, so the wrong-value tree was never read and the cell
++// asserted the same refusal as emit_host_loop_equals_eval_holds; it did not observe a wrong fixture. The
++// obligation it named (a wrong fixture is told apart on the emit-vs-eval route) is NOT met by anything
++// here; see gunbc.rung_drop stub_loop_value_claims_lose_value_path_at_admission.
++fn emit_loop_eval_admission_refusal_is_pass(tree: InferredTree) -> Bool {
+   emit_loop_eval_refusal_reason(tree: tree) == "v2_eval_loop_bound_not_executable"
+ }
+ 
+-fn emit_loop_eval_verdict_is_fail(tree: InferredTree) -> Bool {
+-  emit_loop_eval_refusal_reason(tree: tree) == "v2_eval_loop_bound_not_executable"
++// RESTORED (removed by 80eaba8c10e, still consumed by emit_on_demand_match_loop_fold_family_witness, which
++// imports emit_loop_eval_subject and the run-taking emit_loop_eval_verdict_is_pass/_is_fail). Same bodies as
++// at 84ef8e7d; the only change is the stub step's Continue -> Completed (Continue no longer exists after
++// 2bec6bc526f). emit_loop_eval_run is NOT restored: nothing consumes it (the family witness builds its own run).
++// These restore the CONTRACT only; the eval side of that witness's Loop leg is still refused at admission.
++fn emit_loop_eval_structure_witness() -> InterpretationStructureWitness {
++  InterpretationStructureWitness {
++    allocate_literal: ^emit_loop_eval_allocate_literal,
++    call_primitive: ^emit_loop_eval_call_primitive,
++    choose_branch: ^emit_loop_eval_choose_branch,
++    step_loop: ^emit_loop_eval_step_loop,
++    bind_value: ^emit_loop_eval_bind_value,
++    choose_arm: ^runtime_reject_match_arm
++  }
+ }
+ 
+-test fn emit_host_loop_equals_eval_holds() -> Bool {
+-  match emit_loop_eval_producer_tree() {
+-    Accepted { value: tree, diagnostics: _ } =>
+-      emit_loop_eval_verdict_is_pass(tree: tree)
+-    Rejected { diagnostics: _ } => false
++fn emit_loop_eval_context() -> EvalContext {
++  eval_context_with_semantics(
++    runtime_identity: ^emit_loop_eval_interpretation_pin,
++    interpretation: emit_loop_eval_interpretation(),
++    structure_witness: emit_loop_eval_structure_witness()
++  )
++}
++
++fn emit_loop_eval_claim(rhs_result_node: Node) -> TestClaim {
++  EqualsClaim {
++    label: "S2 B8: rust emit(loop-fn) host-run == eval(loop-body) via shared octet codec",
++    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
++    lhs: rhs_result_node,
++    rhs: rhs_result_node,
++    classification: TestClassification { tier: Tier3, layer: Integration }
+   }
+ }
+ 
+-test fn emit_host_loop_wrong_fixture_refuses_holds() -> Bool {
+-  match emit_loop_eval_wrong_value_producer_tree() {
++fn emit_loop_eval_subject(tree: InferredTree) -> TestClaimEvalSubject<Node> {
++  eval_test_claim_subject(
++    claim: emit_loop_eval_claim(rhs_result_node: emit_loop_eval_subgraph_node),
++    context: emit_loop_eval_context(),
++    tree: tree,
++    evaluator_pin: ^emit_loop_eval_evaluator_pin
++  )
++}
++
++fn emit_loop_eval_verdict_is_pass(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
++  verdict_establishes_equivalence(v: run.verdict)
++}
++
++fn emit_loop_eval_verdict_is_fail(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
++  verdict_establishes_divergence(v: run.verdict)
++}
++
++test fn emit_host_loop_equals_eval_holds() -> Bool {
++  match emit_loop_eval_producer_tree() {
+     Accepted { value: tree, diagnostics: _ } =>
+-      emit_loop_eval_verdict_is_fail(tree: tree)
++      emit_loop_eval_admission_refusal_is_pass(tree: tree)
+     Rejected { diagnostics: _ } => false
+   }
+ }
+-
+diff --git a/src/v2/test/claim/execution/emit_on_demand_match_loop_fold_family_witness.dag b/src/v2/test/claim/execution/emit_on_demand_match_loop_fold_family_witness.dag
+index c9b4d30454c..e64b1c6072e 100644
+--- a/src/v2/test/claim/execution/emit_on_demand_match_loop_fold_family_witness.dag
++++ b/src/v2/test/claim/execution/emit_on_demand_match_loop_fold_family_witness.dag
+@@ -356,6 +356,10 @@ fn mlf_family_primary_agreements(
+     )
+ }
+ 
++// OPEN DEFERRAL: this family's Loop leg has NIL discriminating coverage (admission refuses the fixed Loop with
++// v2_eval_loop_bound_not_executable; the emit_loop_eval_verdict_is_pass conjunct in mlf_family_primary_agreements
++// and the fail assertion below do not discriminate). The typed record, obligation and trigger live in
++// gunbc.rung_drop stub_loop_value_claims_lose_value_path_at_admission. No acceptance, no LAND waiver.
+ fn mlf_family_alt_loop_mismatch(
+   workspace: String,
+   source: Medium<String>,
+diff --git a/src/v2/test/claim/execution/loop_fold_driver.dag b/src/v2/test/claim/execution/loop_fold_driver.dag
+index 3bb7771b967..87c052ee573 100644
+--- a/src/v2/test/claim/execution/loop_fold_driver.dag
++++ b/src/v2/test/claim/execution/loop_fold_driver.dag
+@@ -2,7 +2,7 @@ module v2.test.claim.execution.loop_fold_driver
+ 
+ import v2.compiler.eval { eval, eval_loop_admission, inputs_root_only }
+ import v2.compiler.infer { InferredTree }
+-import v2.test.lens_common.loop_eval_fixture { lef_facts, lef_interpretation, lef_marker_bytes, lef_other_marker_bytes }
++import v2.test.lens_common.loop_eval_fixture { lef_facts, lef_interpretation, lef_locus_interpretation, lef_locus_step, lef_marker_bytes, lef_other_marker_bytes }
+ import v2.compiler.fold_lowering { fold_family_realization, fold_realization_declaration_path }
+ import v2.extdeps.languages.dag { dag_loop_measure_node }
+ import v2.extdeps.runtimes.v2_evaluator { v2_eval_terminal_value }
+@@ -12,12 +12,28 @@ import std.optional { Absent, Present }
+ import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+ import v2.std.node { symbol_lexeme, ComputationNode, Edge, Loop, Node, NotADeclaration, Positional, core_edge_label, LoopBoundEdge, LoopRealizedDeclarationEdge, TypeNode, Atom }
+ import v2.std.qualified_name { declaration_reference_node }
+-import v2.std.runtime { EvaluationEnvironment, EvaluationFrame, Iterate, RuntimePrimitive, RuntimeUnit, RuntimeUnitValue, RuntimeValue }
++import std.types { List }
++import v2.std.machine { Byte }
++import v2.std.runtime { Completed, EvaluationEnvironment, EvaluationFrame, Iterate, RuntimePrimitive, RuntimeUnit, RuntimeUnitValue, RuntimeValue }
+ 
+ // THE ADMISSION CONTROLS OF THE FOLD-FIRST LOOP DRIVER (PR-1). ENROLLED, NOT EXECUTED: CI evaluates no
+ // witness, so none of these has run; each is source-only until an executed receipt exists at the exact head.
+-// C1 and C2 (the driver honouring the DERIVED direction on a CONSTRUCTED Loop whose realized edge is
+-// std.algebra fold_list_right; NOT surface-to-Loop right folds, a route that does not exist) belong to PR-2.
++// RECORD CHANGE, C1 FOLDED INTO C2 (no waiver, no promotion). The original record read one sentence: "C1 and
++// C2 (the driver honouring the DERIVED direction on a CONSTRUCTED Loop whose realized edge is std.algebra
++// fold_list_right; NOT surface-to-Loop right folds, a route that does not exist) belong to PR-2." Both
++// names pointed at that one obligation, so the mapping is C1 -> C2, one obligation kept under one name: C2 =
++// the driver honours the DERIVED direction on such a Loop. C2 HAS NO CONTROL AND CANNOT HAVE ONE AT THIS
++// HEAD, and none is authored: the driver (v2.compiler.eval eval_loop_node) makes ONE step_loop call and
++// never iterates a domain, and eval_loop_admission_realization reads the direction as
++// `Present { value: _ }`, discarding it. No step can observe an order that is never produced; a cell
++// standing in for it would be green or red for another reason. C2 is an UNMET obligation of the iterating
++// driver (PR-2 proper), recorded here, not waived and not promoted.
++// ORDER OBSERVABLE PER ITERATION: UNMET (execution obligation; no iteration exists to observe). Not waived.
++// FOLD-FAMILY ADMISSION DEPENDENCY: the step-locus cells below reach step_loop only if
++// fold_family_realization(head: ^fold_list) is Present (fd_loop_realized then carries the realized edge);
++// if Absent, fd_loop_realized yields a bound-only Loop, admission refuses, and every eval cell reads [].
++// UNEXECUTED RISKS of the step-locus cells: a closure (fn(node, env)) in the interpreter step_loop slot is
++// untested syntax and typing for that slot; its types and runtime behaviour are unobserved.
+ 
+ fn fd_atom(s: Symbol) -> Node {
+   Node { kind: TypeNode { connective: Atom { identity: s } }, occurrence_id: OccurrenceSynthetic, children: [] }
+@@ -176,3 +192,81 @@ test fn fd_completed_partition_remainder_holds() -> Bool {
+     && r != "eval_rejected_canonical_mismatch" && r != "eval_rejected_resolved_type_mismatch"
+     && r != "eval_rejected_inhabitance_mismatch" && r != "v2_eval_loop_iterate_at_terminal"
+ }
++
++// STEP-LOCUS CONTROL (ENROLLED, NOT EXECUTED). The step is IDENTITY-SENSITIVE (fixture lef_locus_step): it
++// completes with the marker iff the node it is handed is structurally equal (node_equal_ignoring_provenance)
++// to the INTENDED Loop, else with the other byte. Pre-registered jointly: positives (1a) intended -> marker,
++// (1b) body -> other byte, (1c) a DIFFERENT Loop (the bound-only Loop) -> other byte; (2) eval of the admitted
++// Loop yields the marker; reds (3) eval == other byte and (4) eval == the byte for a different Loop each FAIL
++// on a driver that hands step_loop the intended Loop. Limit: a structural COPY of the intended Loop is
++// indistinguishable (object identity is not observable); the step is still a stub for the loop BODY.
++fn fd_direct_locus_bytes(node: Node) -> List<Byte> {
++  match lef_locus_step(intended: fd_loop_realized(head: ^fold_list), node: node, _env: EvaluationEnvironment { bindings: empty_map() }) {
++    Accepted { value: control, diagnostics: _ } =>
++      match control {
++        Completed { value: v } =>
++          match v {
++            RuntimePrimitive { value: p } => p.bytes
++            _ => []
++          }
++        _ => []
++      }
++    Rejected { diagnostics: _ } => []
++  }
++}
++
++fn fd_eval_locus_bytes() -> List<Byte> {
++  let loop_node = fd_loop_realized(head: ^fold_list)
++  match eval(
++    tree: InferredTree { root: loop_node, facts: PartialFunction { lookup: lef_facts } },
++    interpretation: lef_locus_interpretation(intended: loop_node),
++    inputs: inputs_root_only(root: loop_node)
++  ) {
++    Accepted { value: v, diagnostics: _ } =>
++      match v {
++        RuntimePrimitive { value: p } => p.bytes
++        _ => []
++      }
++    Rejected { diagnostics: _ } => []
++  }
++}
++
++// POSITIVE fd_locus_step_on_a_loop_node_yields_the_marker_holds: the step, handed the Loop, completes with the marker. PASS expected.
++test fn fd_locus_step_on_a_loop_node_yields_the_marker_holds() -> Bool {
++  fd_direct_locus_bytes(node: fd_loop_realized(head: ^fold_list)) == lef_marker_bytes()
++}
++
++// POSITIVE fd_locus_step_on_the_body_node_yields_the_other_byte_holds: the same step, handed the body, completes with the OTHER byte. PASS expected. Together with the marker positive
++// this shows the step reads its node, so (2) cannot pass by a constant step.
++test fn fd_locus_step_on_the_body_node_yields_the_other_byte_holds() -> Bool {
++  fd_direct_locus_bytes(node: fd_step()) == lef_other_marker_bytes()
++}
++
++// POSITIVE fd_locus_eval_hands_the_step_the_loop_holds, through eval: eval_loop_node hands step_loop the Loop. PASS expected. A refusal earlier or later
++// (the fd_completed_partition_* set applies to the same facts and tree) gives [] and FAILs this cell.
++test fn fd_locus_eval_hands_the_step_the_loop_holds() -> Bool {
++  fd_eval_locus_bytes() == lef_marker_bytes()
++}
++
++// POSITIVE fd_locus_step_on_a_different_loop_yields_the_other_byte_holds: a DIFFERENT Loop node (bound-only, no realized edge) is not the intended one. PASS expected.
++test fn fd_locus_step_on_a_different_loop_yields_the_other_byte_holds() -> Bool {
++  fd_direct_locus_bytes(node: fd_loop_bound_only(bound: dag_loop_measure_node())) == lef_other_marker_bytes()
++}
++
++// RED fd_locus_eval_equals_the_non_loop_byte_holds, paired with POSITIVES fd_locus_eval_hands_the_step_the_loop_holds,
++// fd_locus_step_on_a_loop_node_yields_the_marker_holds, fd_locus_step_on_the_body_node_yields_the_other_byte_holds
++// and fd_locus_step_on_a_different_loop_yields_the_other_byte_holds (pre-registered FAIL): eval result equals the
++// other byte. It can only FAIL on the current driver (which hands the intended Loop) and PASSes only if eval handed
++// step_loop a non-intended node. Read JOINTLY with those positives: a refusal gives [] and FAILs it for an
++// unrelated reason, so a FAIL means nothing unless the paired positives PASS.
++test fn fd_locus_eval_equals_the_non_loop_byte_holds() -> Bool {
++  fd_eval_locus_bytes() == lef_other_marker_bytes()
++}
++
++// RED fd_locus_eval_equals_a_different_loop_byte_holds, paired with POSITIVES
++// fd_locus_step_on_a_different_loop_yields_the_other_byte_holds and fd_locus_eval_hands_the_step_the_loop_holds
++// (pre-registered FAIL): eval result equals the byte given for a different Loop; same joint reading. It asserts the
++// same value as the non_loop_byte red; it differs only in sourcing that byte from the different Loop.
++test fn fd_locus_eval_equals_a_different_loop_byte_holds() -> Bool {
++  fd_eval_locus_bytes() == fd_direct_locus_bytes(node: fd_loop_bound_only(bound: dag_loop_measure_node()))
++}
+diff --git a/src/v2/test/lens_common/loop_eval_fixture.dag b/src/v2/test/lens_common/loop_eval_fixture.dag
+index 139fcba3170..79318e0ada9 100644
+--- a/src/v2/test/lens_common/loop_eval_fixture.dag
++++ b/src/v2/test/lens_common/loop_eval_fixture.dag
+@@ -7,7 +7,7 @@ import v2.compiler.infer { InferredFacts }
+ import v2.std.cardinality { RankingComponent, TerminationProof }
+ import v2.std.diagnostic { Diagnostic, ExternalContractUnknown, Outcome, Unavailable, node_locus, outcome_accepted, outcome_rejected }
+ import v2.std.machine { Byte }
+-import v2.std.node { Atom, Node, Symbol, TypeNode }
++import v2.std.node { Atom, Node, Symbol, TypeNode, node_equal_ignoring_provenance }
+ import v2.std.runtime {
+   BindInterpreter,
+   BranchInterpreter,
+@@ -87,6 +87,34 @@ fn lef_iterate_step(_node: Node, _env: EvaluationEnvironment) -> Outcome<Control
+   outcome_accepted(value: Iterate { carrier: lef_marker_value() })
+ }
+ 
++// IDENTITY-SENSITIVE STEP (step-locus control): the value it completes with is read from the NODE it is
++// handed, compared with the INTENDED node by v2.std.node node_equal_ignoring_provenance: structural equality
++// of kind and children, ignoring provenance. It is NOT pointer identity and NOT occurrence identity. Marker
++// iff the handed node is structurally equal to the intended Loop, the other byte for any other node. A
++// structurally equal COPY of the intended Loop also yields the marker. The step is still a stub for the loop BODY.
++fn lef_node_value(node: Node, intended: Node) -> RuntimeValue {
++  if node_equal_ignoring_provenance(a: node, b: intended) {
++    lef_marker_value()
++  } else {
++    RuntimePrimitive { value: RuntimePrimitiveValue { primitive_type: lef_value_type(), bytes: lef_other_marker_bytes() } }
++  }
++}
++
++fn lef_locus_step(intended: Node, node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
++  outcome_accepted(value: Completed { value: lef_node_value(node: node, intended: intended) })
++}
++
++fn lef_locus_interpretation(intended: Node) -> InterpretationAlgebra {
++  InterpretationAlgebra {
++    value: ValueInterpreter { allocate_literal: lef_allocate_literal, identity: ^lef_allocate_literal },
++    transform: TransformInterpreter { call_primitive: lef_call_primitive, identity: ^lef_call_primitive },
++    branch: BranchInterpreter { choose_branch: lef_choose_branch, identity: ^lef_choose_branch },
++    loop: LoopInterpreter { step_loop: fn(node, env) { lef_locus_step(intended: intended, node: node, _env: env) }, identity: ^lef_locus_step },
++    bind: BindInterpreter { bind_value: lef_bind_value, identity: ^lef_bind_value },
++    match: MatchInterpreter { choose_arm: runtime_reject_match_arm, identity: ^runtime_reject_match_arm }
++  }
++}
++
+ fn lef_loop_interpreter(completes: Bool) -> LoopInterpreter {
+   if completes {
+     LoopInterpreter { step_loop: lef_completed_step, identity: ^lef_completed_step }
+diff --git a/src/v2/workflow/floor_cost_debt.dag b/src/v2/workflow/floor_cost_debt.dag
+index 408690e5152..24237209b80 100644
+--- a/src/v2/workflow/floor_cost_debt.dag
++++ b/src/v2/workflow/floor_cost_debt.dag
+@@ -1022,7 +1022,7 @@ fn floor_cost_debt_proven_chunk_17() -> List<String> {
+ }
+ 
+ fn floor_cost_debt_proven_chunk_18() -> List<String> {
+-  Cons { head: "v2.test.claim.execution.emit_host_filesystem_read_equals_eval.emit_host_filesystem_read_equals_eval_holds", tail: Cons { head: "v2.test.claim.execution.emit_host_filesystem_read_equals_eval.emit_host_filesystem_read_wrong_oracle_refuses_holds", tail: Cons { head: "v2.test.claim.execution.emit_host_fold_closure_equals_eval.emit_host_fold_closure_equals_eval_holds", tail: Cons { head: "v2.test.claim.execution.emit_host_fold_closure_equals_eval.emit_host_fold_closure_wrong_fixture_refuses_holds", tail: Cons { head: "v2.test.claim.execution.emit_host_loop_equals_eval.emit_host_loop_wrong_fixture_refuses_holds", tail: Cons { head: "v2.test.claim.execution.emit_host_match_equals_eval.emit_host_match_equals_eval_holds", tail: Cons { head: "v2.test.claim.execution.emit_host_match_equals_eval.emit_host_match_run_reaches_semantics_holds", tail: Cons { head: "v2.test.claim.execution.emit_host_match_equals_eval.emit_host_match_wrong_fixture_refuses_holds", tail: Cons { head: "v2.test.claim.execution.emit_host_meet_join_equals_eval.emit_host_join_equals_eval_holds", tail: Cons { head: "v2.test.claim.execution.emit_host_meet_join_equals_eval.emit_host_join_wrong_fixture_refuses_holds", tail: Cons { head: "v2.test.claim.execution.emit_host_meet_join_equals_eval.emit_host_meet_equals_eval_holds", tail: Cons { head: "v2.test.claim.execution.emit_host_meet_join_equals_eval.emit_host_meet_wrong_fixture_refuses_holds", tail: Cons { head: "v2.test.claim.execution.emit_host_module_equals_eval.emit_host_module_add_equals_eval_holds", tail: Cons { head: "v2.test.claim.execution.emit_host_module_equals_eval.emit_host_module_wrong_oracle_refuses_holds", tail: Cons { head: "v2.test.claim.execution.emit_host_module_equals_eval.emit_module_join_concatenates_two_decls", tail: Cons { head: "v2.test.claim.execution.emit_host_shell_exec_run_equals_eval.emit_host_shell_exec_run_equals_eval_holds", tail: Cons { head: "v2.test.claim.execution.emit_host_shell_exec_run_equals_eval.emit_host_shell_exec_run_wrong_oracle_refuses_holds", tail: Cons { head: "v2.test.claim.execution.emit_host_variant_construct_equals_eval.emit_host_variant_construct_equals_eval_holds", tail: Cons { head: "v2.test.claim.execution.emit_host_variant_construct_equals_eval.emit_host_variant_construct_wrong_fixture_refuses_holds", tail: Empty {} } } } } } } } } } } } } } } } } } } }
++  Cons { head: "v2.test.claim.execution.emit_host_filesystem_read_equals_eval.emit_host_filesystem_read_equals_eval_holds", tail: Cons { head: "v2.test.claim.execution.emit_host_filesystem_read_equals_eval.emit_host_filesystem_read_wrong_oracle_refuses_holds", tail: Cons { head: "v2.test.claim.execution.emit_host_fold_closure_equals_eval.emit_host_fold_closure_equals_eval_holds", tail: Cons { head: "v2.test.claim.execution.emit_host_fold_closure_equals_eval.emit_host_fold_closure_wrong_fixture_refuses_holds", tail: Cons { head: "v2.test.claim.execution.emit_host_match_equals_eval.emit_host_match_equals_eval_holds", tail: Cons { head: "v2.test.claim.execution.emit_host_match_equals_eval.emit_host_match_run_reaches_semantics_holds", tail: Cons { head: "v2.test.claim.execution.emit_host_match_equals_eval.emit_host_match_wrong_fixture_refuses_holds", tail: Cons { head: "v2.test.claim.execution.emit_host_meet_join_equals_eval.emit_host_join_equals_eval_holds", tail: Cons { head: "v2.test.claim.execution.emit_host_meet_join_equals_eval.emit_host_join_wrong_fixture_refuses_holds", tail: Cons { head: "v2.test.claim.execution.emit_host_meet_join_equals_eval.emit_host_meet_equals_eval_holds", tail: Cons { head: "v2.test.claim.execution.emit_host_meet_join_equals_eval.emit_host_meet_wrong_fixture_refuses_holds", tail: Cons { head: "v2.test.claim.execution.emit_host_module_equals_eval.emit_host_module_add_equals_eval_holds", tail: Cons { head: "v2.test.claim.execution.emit_host_module_equals_eval.emit_host_module_wrong_oracle_refuses_holds", tail: Cons { head: "v2.test.claim.execution.emit_host_module_equals_eval.emit_module_join_concatenates_two_decls", tail: Cons { head: "v2.test.claim.execution.emit_host_shell_exec_run_equals_eval.emit_host_shell_exec_run_equals_eval_holds", tail: Cons { head: "v2.test.claim.execution.emit_host_shell_exec_run_equals_eval.emit_host_shell_exec_run_wrong_oracle_refuses_holds", tail: Cons { head: "v2.test.claim.execution.emit_host_variant_construct_equals_eval.emit_host_variant_construct_equals_eval_holds", tail: Cons { head: "v2.test.claim.execution.emit_host_variant_construct_equals_eval.emit_host_variant_construct_wrong_fixture_refuses_holds", tail: Empty {} } } } } } } } } } } } } } } } } } }
+ }
+ 
+ fn floor_cost_debt_proven_chunk_19() -> List<String> {
