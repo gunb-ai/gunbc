@@ -8,7 +8,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // test-only detector that joins those spellings to SubstrateInputsOnly stamps. Authored because
 // gunbc.seed_growth_admission seed_growth_forward_freeze_policy_note makes unenumerated hand growth
 // in src/v1 a stop-line, and because an annotation beside the functions is not that enumeration
-// (DESIGN section 4c). Requested by review 62244 on gunbc#10811.
+// (gunbc.design_argument::source_annotations). Requested by review 62244 on gunbc#10811.
 //
 // THE POPULATION BELOW IS DERIVED, NOT COUNTED. It is the ADDED HAND ITEMS list printed by
 // gunbc.instruments.seed_growth_change_population over origin/main...HEAD. Inline modules are scopes, not
@@ -26,7 +26,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // WHY IT IS RUST AND NOT .dag. The census must read witness files that may not RESOLVE. A Node
 // fold (v2.std.fn_index callees_from_decl) does not reach those files; parse_entry_live_tree_disposition
 // is already a textual seed reader on the same line, so the detector inhabits that reader
-// (DESIGN section 3b: stated inhabitance, not that the fold was harder). The tests call those
+// (gunbc.design_argument::conformance: stated inhabitance, not that the fold was harder). The tests call those
 // host functions and the live registry, which a .dag witness under the required floor cannot.
 //
 // WHAT IS NOT NETTED. parse_entry_live_tree_disposition is ExistingSeedItemModified -- it keeps

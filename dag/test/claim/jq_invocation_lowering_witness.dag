@@ -263,7 +263,7 @@ test fn stdin_reaches_the_plan_without_entering_the_argument_vector() -> Bool {
 // Rejected, which one shared diagnostic identity would satisfy -- and did, while the cause was
 // prose the diagnostic never read. Each pair of causes must carry a distinct identity. (A third
 // cause, JqFileInputLoweringUnwired, dissolved with the Wave 2 file-input lowering -- dissolution
-// on climb, per DESIGN 4b.)
+// on climb, per gunbc.design_argument::guarantee_ladder.)
 test fn the_refusal_causes_carry_distinct_identities() -> Bool {
   jq_lowering_refusal_identity(cause: JqBindingNameDuplicate)
     != jq_lowering_refusal_identity(cause: JqTextBindingUnwired)

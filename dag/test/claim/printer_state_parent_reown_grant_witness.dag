@@ -5,7 +5,7 @@ module test.claim.printer_state_parent_reown_grant_witness
 // artifact: asserting it through `artifact_generate` is what keeps the claim on the real route rather than on a
 // copy of the file. Artifact emission drags the whole model with it — a scripted walk of the `module`/`import`
 // graph puts this entry at ~2,100 modules / ~722k source lines, against ~130 modules / ~36k for the eight
-// physical witnesses in printer_state_parent_reown_witness.dag. DESIGN section 3 says a witness discriminates
+// physical witnesses in printer_state_parent_reown_witness.dag. gunbc.design_argument::single_authority says a witness discriminates
 // at one interface; paying 722k lines so that eight claims about chmod, symlinks and read-back can run is the
 // cost that rule is meant to refuse. Nothing is duplicated between the two files and neither imports the other.
 

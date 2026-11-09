@@ -397,7 +397,7 @@ test fn a_bound_observation_carries_the_instrument_source_vintage() -> Bool {
 
 // A doubly-unavailable fold reports the INSTRUMENT refusal, not a merged or widened one, and
 // carries the execution axis with it so the caller can still answer 'is retry pointless'.
-// Asserted rather than assumed, since DESIGN section 5 forbids a failure arm absorbing a second
+// Asserted rather than assumed, since gunbc.design_argument::fail_closed forbids a failure arm absorbing a second
 // failure into silence.
 test fn a_doubly_unavailable_fold_reports_the_instrument_refusal() -> Bool {
   match an_instrument_status(

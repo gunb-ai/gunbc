@@ -92,7 +92,7 @@ fn srv3_boot_once_cd_operator_approved() -> ProcessExit
 // The expiry check needs an instant, and the only honest source of one is the clock -- a
 // caller-supplied observed_at would let the grant be revalidated against whatever time made it
 // pass. An unreadable clock REFUSES: "we could not tell whether the grant had expired" is not
-// evidence that it had not (§5 -- a failure arm refuses, never widens).
+// evidence that it had not (gunbc.design_argument::fail_closed -- a failure arm refuses, never widens).
 // THE CLAIM IS TAKEN BEFORE ANY MUTATION AND IT IS THE STORE THAT DECIDES. Evaluating the grant
 // and then executing is a check, and the check races: two runs, or one run restarted after a
 // crash, each read the same valid grant and each proceed. The durable compare-and-set on the

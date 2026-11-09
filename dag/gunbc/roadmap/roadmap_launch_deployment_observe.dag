@@ -298,6 +298,7 @@ fn event_backlog_bound(stage: SpoolRole) -> Second? {
     RoleClaimed => event_backlog_queued_bound()
     RoleDone => none
     RoleRefused => none
+    RoleDeferred => none
   }
 }
 
@@ -334,7 +335,7 @@ fn event_backlog_health_bounds() -> List<HostSpoolHealthBound> {
 // THE STALL RECORD COMES FIRST. `stalled` is the entries the exit drain recorded as unmovable
 // (gunbc.roadmap.spool_stall spool_stall_read_at): while any exist the belt-exit service is
 // held, so ageing says nothing about them and every spooled entry is waiting behind the head. This is the
-// stall record's consumer (DESIGN section 3c).
+// stall record's consumer (gunbc.design_argument::consumption).
 fn event_backlog_judge(stalled: List<String>, entries: List<EventBacklogEntry>) -> EventBacklogFact {
   match stalled.first() {
     Present { value: head } => EventSpoolStalled { waiting: count(entries |> filter(e => e.stage == RolePending || e.stage == RoleHandedOff)), head: head }

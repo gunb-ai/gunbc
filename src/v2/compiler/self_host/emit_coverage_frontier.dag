@@ -22,7 +22,7 @@ import std.dissolution { DissolutionCondition }
 // and why, a meta-level fact about the host pipeline's own source, not about witness bodies). The
 // third sibling was named here as v2.compiler.self_host.frontier until 2026-08-24; that module was
 // deleted and its roster with it, so the citation named nothing — corrected when the seed-retention
-// axis it was pointing at got a real carrier. Reused shape (DESIGN section 2, horizontal):
+// axis it was pointing at got a real carrier. Reused shape (gunbc.design_argument::minimize_redundancy, horizontal):
 // DeclarationRef subject + disposition enum with reason/dissolve_on + count-based census, the same
 // pattern as both siblings.
 
@@ -60,7 +60,7 @@ fn coverage_subject(module_path: String, decl_name: String) -> DeclarationRef {
 
 // ALL FIFTEEN roster rows are SelfEmittedNative as of 2026-09-08 — the InterpreterRetained
 // population is zero and the retained_via_eval_agreement row constructor was deleted with the last
-// flip (DESIGN section 3c: a constructor no row consumes is dead data; the InterpreterRetained
+// flip (gunbc.design_argument::consumption: a constructor no row consumes is dead data; the InterpreterRetained
 // VARIANT stays as the disposition authority's other state, matched by coverage_row_is_native).
 // Each promotion landed on a native-only verdict arm (positive + wrong-octet broken control) in
 // the already file-grain-enrolled native-only verdict entry, so each backing citation is enrolled
@@ -337,7 +337,7 @@ fn schedule_entry_matches(entry: ScheduleWitnessEntry, backing_entry: String, ba
   )
 }
 
-// Construction, not a vibe check (DESIGN section 5): a SelfEmittedNative claim is only as good as
+// Construction, not a vibe check (gunbc.design_argument::fail_closed): a SelfEmittedNative claim is only as good as
 // its citation. coverage_row_backing_is_enrolled cross-references the row's
 // backing_entry/backing_function against falsifier_self_host_wet_template_entries — the SAME
 // enrolled-offline-witness roster wet_receipt_enrollment.dag already gates. A row claiming

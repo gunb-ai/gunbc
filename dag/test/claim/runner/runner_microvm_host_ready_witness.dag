@@ -40,7 +40,7 @@ test fn the_release_artifact_is_identified_by_version_arch_and_digest() -> Bool 
     && firecracker_version_line(rel: firecracker_release_aarch64) == "Firecracker v1.16.1"
 }
 
-// THE FIXTURE IS SUPPLIED AT ONE INTERFACE (DESIGN section 3): every claim below discriminates over
+// THE FIXTURE IS SUPPLIED AT ONE INTERFACE (gunbc.design_argument::witness_one_interface): every claim below discriminates over
 // firecracker_host_ready / _in_this_process / the standing renderer, so the standing is constructed
 // rather than produced by running the host probes those claims are not about. The inhabitance claim
 // that the real producer emits this shape is the converge itself, which runs on a host and writes
@@ -141,7 +141,7 @@ test fn a_writable_device_does_not_carry_a_login_the_database_no_longer_enrols()
 // standing could not tell them apart: either the grant landed and this process predates it, or
 // /dev/kvm is not handed to the group the grant names at all. Ubuntu's udev default is UPSTREAM
 // DESIRED STATE, not a readback of this host, so reading the capability off it would be asserting
-// as deduced what was only inferred (DESIGN section 4d). Both contradiction shapes refuse -- a
+// as deduced what was only inferred (gunbc.design_argument::epistemic_humility). Both contradiction shapes refuse -- a
 // device owned by another group, and a device owned by kvm with no group-write -- and so does an
 // unreadable probe.
 test fn enrolment_does_not_carry_a_device_this_host_does_not_delegate_to_that_group() -> Bool {

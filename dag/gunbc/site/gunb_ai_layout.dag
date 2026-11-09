@@ -48,7 +48,7 @@ import gunbc.design.gunb_ai_hues {
 // and ANY combination renders — that independence is the contract the content-model and
 // page layers consume: they ask for rules, never for a preset.
 //
-// Consumers (DESIGN §3c): gunbc.site.gunb_ai_layout_review (writes the ballot to the
+// Consumers (gunbc.design_argument::consumption): gunbc.site.gunb_ai_layout_review (writes the ballot to the
 // srv1 review site) and test.claim.site_gunb_ai_layout_witness (claim-run over the
 // RENDERED combinations).
 
@@ -84,7 +84,7 @@ data column_count_max: Int = 4
 // The card grid's track list, as TYPED values from extdeps.languages.css.grid_values.
 // These were hand-joined strings until the grammar existed; the grammar's arrival is the
 // dissolution trigger this comment named, so the strings are gone rather than kept beside
-// the typed route (§6: no second path beside a modelled route). One fact, one home: the
+// the typed route (gunbc.design_argument::how_to_work: no second path beside a modelled route). One fact, one home: the
 // shape of minmax()/repeat() now lives only in the extdeps wire, and this layer states
 // which tracks it wants.
 // The zero in minmax(0, 1fr) is a CssLength, not a literal "0": the wire renders a zero
@@ -153,9 +153,9 @@ fn grid_choice_admissible(choice: GridChoice) -> Bool {
 //
 // The 480 point also does NOT repeat the 700 rule. An earlier draft emitted the
 // single-column rule at both widths; every viewport under 480 is under 700 too, so the
-// second rule could never fire anything the first had not — duplicated work (§2), and on a
+// second rule could never fire anything the first had not — duplicated work (gunbc.design_argument::minimize_redundancy), and on a
 // ballot a fabricated choice, since the two options rendered identically while the caption
-// claimed the tighter one did something (§5, "no plausible output is fabricated"). A
+// claimed the tighter one did something (gunbc.design_argument::fail_closed, "no plausible output is fabricated"). A
 // response point therefore carries WHAT it changes, not only where. The tightening below is
 // this layer's proposal for its own element (.cards), put to the operator on the ballot; the
 // live site's 480 rules touch .masthead and .carved-rule, which arrive with the primitives
@@ -196,7 +196,7 @@ data breakpoints_stack_only: BreakpointChoice = StackOnly
 
 // The points each option asks for. A point is typed end to end: its condition is the
 // MediaCondition the rule consumes, so "a breakpoint that is not a length" is not a value
-// this language can express (§5, correctness by construction) — there is no runtime
+// this language can express (gunbc.design_argument::fail_closed, correctness by construction) — there is no runtime
 // admissibility check over ScaleValue arms and no sentinel condition standing in for a
 // case the type already excludes. Lengths and property names are named once, here, and
 // both the page and the witness derive their text from these rows through the upstream
@@ -374,7 +374,7 @@ fn scheme_rules(scheme: SchemeChoice) -> List<BuildRule> {
   match scheme {
     // Dark is the UNCONDITIONAL state: the tokens layer's :root already carries the night
     // values, so "dark only" is the absence of an override, not an extra block. Nothing is
-    // emitted, and nothing is invented to look like work here (§2).
+    // emitted, and nothing is invented to look like work here (gunbc.design_argument::minimize_redundancy).
     DarkOnly => []
     // The override is emitted on extdeps.languages.css.selectors.root_selector — literally
     // the SAME row gunbc.site.gunb_ai_tokens emits its unconditional custom properties on,
@@ -421,7 +421,7 @@ fn auto_wire() -> String {
 
 // The scale tokens this layer reads, named in one place so the witness can check every
 // var() reference in the rendered rules against upstream rows rather than a copied list
-// (§3: one home; a token read here but not listed is a witness gap, and the list is
+// (gunbc.design_argument::single_authority: one home; a token read here but not listed is a witness gap, and the list is
 // derived from the same rows the rules use, so it cannot drift).
 fn layout_scale_tokens() -> List<ScaleToken> {
   [gunb_measure_page, site_measure_prose, gap_sm, gap_md, gap_lg, gap_xl,

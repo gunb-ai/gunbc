@@ -599,7 +599,7 @@ type TriggeringRunFacts {
 // tree (a credential-free fetch into an isolated store); no git transport answers the pull request's number,
 // head ref, base ref, or open/closed state. An earlier shape filled PullRequestFacts from the sealed
 // candidate itself, which made admit's number/head_ref/base arms compare a value with itself -- arms no input
-// could make refuse, reporting a guarantee they could not discharge (DESIGN 4b rung honesty). They are gone.
+// could make refuse, reporting a guarantee they could not discharge (gunbc.design_argument::guarantee_ladder rung honesty). They are gone.
 // The LIVE cross-check of number, head ref and base ref against the sealed candidate runs at PUBLISH, at the
 // credential site next to the write (classify_publish_pull_request, in gunbc.heal_publication), where an
 // authed github.Pulls.Get answers. What admit DOES check, and can, is the candidate's own base_ref against

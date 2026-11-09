@@ -89,7 +89,7 @@ import gunbc.live_deploy.member_observe {
 // reconciles its owned members against `observed: []`. So a role move, or NoProdRole, would leave the
 // old singleton running and, on a move, start a second EMPTY one beside it -- the store's state does not
 // travel with a unit. This module assesses the DESIRED realization against an INDEPENDENT OBSERVATION
-// of every roster host (DESIGN 3d) and, only when that assessment admits it, mints the one token an
+// of every roster host (gunbc.design_argument::selection_precedes_convergence) and, only when that assessment admits it, mints the one token an
 // apply may act on (RoleSingletonAdmission).
 //
 // ONLY FIRST INSTALL AND NOOP ARE IMPLEMENTED. Noop when exactly one complete realization is
@@ -101,7 +101,7 @@ import gunbc.live_deploy.member_observe {
 // and not an ssh hand step: a holder that already has its units therefore Noops the assessment
 // and the apply still ensures the marker.
 //
-// MOVE AND REMOVE ARE A DECLARED FRONTIER, not an untracked stall (DESIGN 4b). Operator ruling
+// MOVE AND REMOVE ARE A DECLARED FRONTIER, not an untracked stall (gunbc.design_argument::guarantee_ladder). Operator ruling
 // 2026-10-05 on closed gunbc#13217: "Move/Remove convergence is the next deliverable after D2".
 // Today's arms are RoleSingletonMoveUnimplemented and RoleSingletonRemovalUnimplemented.
 // TRIGGER: RoleSingletonConvergence grows Move and Remove actuation arms and those two refusal

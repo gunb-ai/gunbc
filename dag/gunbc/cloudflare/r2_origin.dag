@@ -25,7 +25,7 @@ import std.human_intervention {
 // SUPPLIES THEM IS A SECOND AUTHORITY FOR THE SAME FACTS. extdeps.cloudflare.r2 owns the SHAPE of an
 // R2 bucket resource name and gunbc.cloudflare.r2_token_mint owns the mint POLICY; neither may know
 // which account this fleet has or which bucket is its durable origin, because those are workflow
-// facts (DESIGN section 3: interface, realization and policy are three facts). Until this module
+// facts (gunbc.design_argument::interface_realization_policy: interface, realization and policy are three facts). Until this module
 // existed they were parameters supplied by nobody, which is why every mint declaration sat on the
 // frontier.
 //
@@ -104,7 +104,7 @@ type OriginAdmission
 //
 // ONE STANDING FOR BOTH DIRECTIONS. An earlier revision carried the read locus as a bare SecretRef
 // and would have grown a differently shaped write field beside it; two shapes for one concept is the
-// fork DESIGN section 3 forbids, so both directions inhabit OriginCredentialStanding and the field
+// fork gunbc.design_argument::single_authority forbids, so both directions inhabit OriginCredentialStanding and the field
 // names carry the direction.
 //
 // OriginCredentialMintEntryUnbuilt: no mint entry exists for this credential yet; secret_id is where
@@ -495,7 +495,7 @@ fn bucket_purpose_origin_standing(purpose: BucketPurpose) -> R2OriginStanding {
 }
 
 // THE RULE CLOUDFLARE INSTALLED ON OUR NEW BUCKET, an OBSERVATION and so homed here rather than in
-// extdeps.cloudflare.r2_lifecycle (DESIGN 3: a receipt belongs to the observing layer), as the live GET answered it for gunbai-fabric-cache
+// extdeps.cloudflare.r2_lifecycle (gunbc.design_argument::single_authority: a receipt belongs to the observing layer), as the live GET answered it for gunbai-fabric-cache
 // (fleet-converge r2_bucket_ensure run 37361093408, 2026-10-05): incomplete multipart uploads are
 // aborted after seven days, bucket-wide. A PUT replaces the whole rule set, so a purpose that keeps
 // this default names it in its desired set rather than deleting it as a side effect.

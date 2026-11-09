@@ -13,7 +13,7 @@ data provider_substituted_action_runtime: RecurringFailureMode = RecurringFailur
 
     "INVALID STATE: a workflow depends on an action whose declared mechanism is not the one that executes. The job's success is evidence about the substituted mechanism, never about the release the producer shipped.",
 
-    "WHY IT SURVIVES: execution succeeds, so no job fails; the only signal is a warning annotation, and a warning is the absorbing fallback DESIGN section 5 forbids -- the platform repairs our declared mechanism on our behalf and the line does not stop. Bumping the two artifact tags would silence this occurrence while leaving the next substitution (or a tag that moves back onto a node20 commit) equally silent.",
+    "WHY IT SURVIVES: execution succeeds, so no job fails; the only signal is a warning annotation, and a warning is the absorbing fallback gunbc.design_argument::fail_closed forbids -- the platform repairs our declared mechanism on our behalf and the line does not stop. Bumping the two artifact tags would silence this occurrence while leaving the next substitution (or a tag that moves back onto a node20 commit) equally silent.",
 
     "THE PRODUCER MUST BE READ, NOT THE RELEASE NOTE: actions/download-artifact v6.0.0 is announced as its Node 24 release, and its action.yml at 018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 still declares node20; node24 is declared first at v7.0.0. A model keyed on the marketed major would have admitted a release the runner still substitutes.",
 

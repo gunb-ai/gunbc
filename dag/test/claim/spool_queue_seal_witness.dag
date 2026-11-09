@@ -11,13 +11,14 @@ import gunbc.spool_queue {
   spool_needs_claim_stage, ExclusiveByRename, ExclusiveByAgreement,
   spool_requeue_assess, BootsObserved, NoClaimantObservation, RequeueEligible, RequeueClaimantStillBound, RequeueNotClaimed, RequeueRefused,
   spool_enqueue_assess, EnqueueEligible, EnqueueAlreadyPresent, EntryAbsent, spool_complete_assess, CompleteEligible, SpoolOutcomeDone, RoleDone, spool_role_writers, PrincipalExternalHook, PrincipalDrainer, SpoolPrincipal,
-  SpoolRole, SpoolKind, SpoolAttemptUnit, SpoolAttemptExit, EntryStanding, EntryAmbiguous, RolePending, RoleClaimed, RoleHandedOff, RoleRefused,
+  SpoolRole, SpoolKind, SpoolAttemptUnit, SpoolAttemptExit, EntryStanding, EntryAmbiguous, RolePending, RoleClaimed, RoleHandedOff, RoleRefused, RoleDeferred,
   ClaimEligible, ClaimRoleUndeclared, ClaimNotRealized, SpoolPublication, SpoolEntryDirectory, SpoolEntryFile, SpoolOutcomeRefused, spool_role_dir, spool_declaration, CompleteNotClaimed, ClaimAlreadyClaimed, ClaimRefused, ClaimAbsent, ClaimTerminal,
   spool_claim_assess, spool_stale_assess, StaleNotApplicable, StaleClaimantLive, StaleStopTheLine, StaleRefused,
   ClaimantObservedDead, ClaimantUnobservable, spool_entry_key_parts, spool_entry_key, spool_entry_key_of_name, spool_entry_wire_name, spool_entry_key_of_wire_name, SpoolKeyMinted, SpoolKeyRefused,
 }
 import gunbc.spool_queue {
   spool_open, spool_entry_path, SpoolEntryPathReady, SpoolEntryRoleUndeclared, SpoolEntryKindRefused, spool_queue_observe, spool_queue_enqueue, spool_queue_claim, spool_queue_complete, spool_queue_requeue_on_evidence,
+  spool_defer_assess, spool_undefer_assess, ParkEligible, ParkNotApplicable, ParkNotDeclared, ClaimParked,
   SpoolEnqueueNotDone, SpoolClaimNotDone, SpoolCompleteNotDone, SpoolRequeueNotDone, EntryObservationUnavailable, CompleteRefused,
 }
 
@@ -405,8 +406,8 @@ test fn every_declared_spool_has_a_wellformed_stage_graph() -> ProcessExit {
 // are each refused by the same decision.
 test fn a_malformed_stage_graph_is_refused() -> ProcessExit {
   let base = spool_declaration(kind: SpoolAttemptUnit)
-  let overlapping = SpoolDeclaration { exclusion: base.exclusion, entry_kind: base.entry_kind, chain: base.chain, terminals: [SpoolStage { role: RoleClaimed, directory: "claimed2" }], enqueuer: PrincipalRequester, claimant: PrincipalDrainer, key_separator: "-", key_part_count: 2 }
-  let keyless = SpoolDeclaration { exclusion: base.exclusion, entry_kind: base.entry_kind, chain: base.chain, terminals: [], enqueuer: PrincipalRequester, claimant: PrincipalDrainer, key_separator: "-", key_part_count: 0 }
+  let overlapping = SpoolDeclaration { exclusion: base.exclusion, entry_kind: base.entry_kind, chain: base.chain, terminals: [SpoolStage { role: RoleClaimed, directory: "claimed2" }], parked: base.parked, enqueuer: PrincipalRequester, claimant: PrincipalDrainer, key_separator: "-", key_part_count: 2 }
+  let keyless = SpoolDeclaration { exclusion: base.exclusion, entry_kind: base.entry_kind, chain: base.chain, terminals: [], parked: base.parked, enqueuer: PrincipalRequester, claimant: PrincipalDrainer, key_separator: "-", key_part_count: 0 }
   if spool_declaration_wellformed(declaration: overlapping) || spool_declaration_wellformed(declaration: keyless) {
     exit_failure(reason: "a malformed stage graph was admitted")
   } else {
@@ -541,4 +542,50 @@ test fn a_key_of_another_kind_cannot_be_requeued() -> ProcessExit {
       }
     }
   }
+}
+
+// RoleDeferred IS A ROW OF THE SAME DECLARATION: the attempt-unit spool declares it (directory derived, claimant the
+// writer), the others do not, and a parked role that also stands in the chain is refused like any overlapping stage.
+test fn the_parked_stage_is_declared_by_the_attempt_unit_spool_alone() -> ProcessExit {
+  if spool_role_dir_present(kind: SpoolAttemptUnit, role: RoleDeferred) && (!spool_role_dir_present(kind: SpoolAttemptExit, role: RoleDeferred)) && (!spool_role_dir_present(kind: SpoolPublication, role: RoleDeferred)) && (!is_empty(xs: spool_role_writers(kind: SpoolAttemptUnit, role: RoleDeferred))) && is_empty(xs: spool_role_writers(kind: SpoolPublication, role: RoleDeferred)) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "the parked stage is not declared by the attempt-unit spool alone")
+  }
+}
+
+test fn a_parked_role_in_the_chain_is_refused() -> ProcessExit {
+  let base = spool_declaration(kind: SpoolAttemptUnit)
+  let doubled = SpoolDeclaration { exclusion: base.exclusion, entry_kind: base.entry_kind, chain: base.chain, terminals: base.terminals, parked: [SpoolStage { role: RolePending, directory: "deferred" }], enqueuer: PrincipalRequester, claimant: PrincipalDrainer, key_separator: base.key_separator, key_part_count: base.key_part_count }
+  if spool_declaration_wellformed(declaration: doubled) {
+    exit_failure(reason: "a parked role standing in the chain was admitted")
+  } else {
+    ExitSuccess
+  }
+}
+
+// DEFER AND UNDEFER are the only two moves: pending -> deferred and deferred -> pending. A claimed entry is not parked,
+// a parked entry is not claimed, and a spool with no parked stage refuses both.
+test fn only_the_two_declared_park_moves_exist() -> ProcessExit {
+  let ok = match spool_defer_assess(kind: SpoolAttemptUnit, observed: EntryStanding { role: RolePending }) {
+    ParkEligible { from: RolePending, into: RoleDeferred } => true
+    _ => false
+  } && match spool_undefer_assess(kind: SpoolAttemptUnit, observed: EntryStanding { role: RoleDeferred }) {
+    ParkEligible { from: RoleDeferred, into: RolePending } => true
+    _ => false
+  }
+  let refused = match spool_defer_assess(kind: SpoolAttemptUnit, observed: EntryStanding { role: RoleClaimed }) {
+    ParkNotApplicable { state: _ } => true
+    _ => false
+  } && match spool_undefer_assess(kind: SpoolAttemptUnit, observed: EntryStanding { role: RoleClaimed }) {
+    ParkNotApplicable { state: _ } => true
+    _ => false
+  } && match spool_defer_assess(kind: SpoolPublication, observed: EntryStanding { role: RolePending }) {
+    ParkNotDeclared => true
+    _ => false
+  } && match spool_claim_assess(kind: SpoolAttemptUnit, observed: EntryStanding { role: RoleDeferred }) {
+    ClaimParked { role: _ } => true
+    _ => false
+  }
+  if ok && refused { ExitSuccess } else { exit_failure(reason: "a park move outside the two declared ones exists, or a declared one is missing") }
 }

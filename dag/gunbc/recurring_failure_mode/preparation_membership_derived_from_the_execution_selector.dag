@@ -13,7 +13,7 @@ data preparation_membership_derived_from_the_execution_selector: RecurringFailur
 
     "A production module whose only importers are test modules outside the roster -- or which no test module imports at all -- is never loaded, never resolved, never typechecked, by any required run.",
 
-    "HARM: the floor DESIGN section 4b names first -- names resolve, values inhabit declared types, closed variants eliminate exhaustively -- is unchecked over that population while both required lanes report green, so `main is green` and `the corpus holds the floor` are different propositions and nothing in the run says which one it established.",
+    "HARM: the floor gunbc.design_argument::guarantee_ladder names first -- names resolve, values inhabit declared types, closed variants eliminate exhaustively -- is unchecked over that population while both required lanes report green, so `main is green` and `the corpus holds the floor` are different propositions and nothing in the run says which one it established.",
 
     "**THE DISTINGUISHING FACT AGAINST EVERY NEIGHBOURING CLASS IS THAT NOTHING EVER LOOKED.** No diagnostic was produced and dropped, no lane swallowed an error, no aggregation lost a red, no exit status was mis-propagated. The first missing edge is ADMISSION TO THE PREPARED POPULATION, upstream of body resolution, which is why every instrument downstream of preparation reads clean and why looking for a suppressed diagnostic finds nothing.",
 
@@ -35,7 +35,7 @@ data preparation_membership_derived_from_the_execution_selector: RecurringFailur
 
     "No prefix string can name those 589, so the vocabulary cannot express half the exposed population; and reaching the remainder would mean enrolling 501 further test modules, which is the wall-clock the `required_gate_bankruptcy` drop was declared to cut.",
 
-    "Widening also fuses WHAT TO COMPILE with WHAT TO EXECUTE into one roster, which is the DESIGN section 3 fork, and that drop already rules that widening the static roster moves its population rather than retiring it.",
+    "Widening also fuses WHAT TO COMPILE with WHAT TO EXECUTE into one roster, which is the gunbc.design_argument::single_authority fork, and that drop already rules that widening the static roster moves its population rather than retiring it.",
 
     "**WHAT THE EXPOSURE NUMBER IS AND IS NOT: 1208 is production modules nobody compiles, NOT 1208 defects,** and it is a lower bound on the omitted authorities rather than an upper one, because the run's own `required-floor-disposition` artifact cannot count them -- they are DEPENDENCIES of witnesses, not witness identities, so the 12386 `declined_outside_gate_closure` rows on run 33967952362 are a different population and none of them is a production authority.",
 

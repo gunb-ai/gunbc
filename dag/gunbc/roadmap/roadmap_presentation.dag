@@ -93,7 +93,7 @@ import gunbc.harness.harness_throughput {
 // the actuator cell is the falsifier specimen this module dissolves. DELIBERATE ABSENCE: no
 // progress_percent field, and none may be added — the seven obligations are independently
 // evidenced facts, not percentage increments; a scalar appears only if the graph establishes one
-// (making the false scalar UNWRITABLE is the §5 construction form of the rule).
+// (making the false scalar UNWRITABLE is the gunbc.design_argument::fail_closed construction form of the rule).
 
 // ONE projection authority across server and client (operator constraint 1, 2026-08-01). The
 // dangerous shape is two: the server folding facts to HTML here while client TypeScript
@@ -142,7 +142,7 @@ type ActivityEvidenceRow {
 // every attempt arm, and a refused strip without its red segment would be a refusal with no
 // location. ActivityUnobservable is 'the evidence could not
 // be read', distinct from refusal and absence — collapsing it into either is the state-space
-// conflation §5 names. NAMING: the field is current_activity, not latest_observation — the event
+// conflation gunbc.design_argument::fail_closed names. NAMING: the field is current_activity, not latest_observation — the event
 // authority establishes no temporal order across observation channels, so 'latest' would claim an
 // ordering nobody derived.
 
@@ -793,7 +793,7 @@ fn agent_completion_claim(process: WorkerProcessEvidence) -> String {
 // Bool that could disagree with it: per belt_sessions_observation_separation_note, a running or
 // exited pane implies a present session container, an unobserved pane probe maps a PRESENT session
 // to process-unobserved, and Absent means no container was observed. A second session_present
-// parameter would be the two-facts-one-truth fork §3 forbids.
+// parameter would be the two-facts-one-truth fork gunbc.design_argument::single_authority forbids.
 
 fn session_container_value(process: WorkerProcessEvidence) -> String {
   match process {
@@ -1534,7 +1534,7 @@ fn activity_evidence_row_json_value(row: ActivityEvidenceRow) -> JsonValue {
 // evidence rows are label/value pairs). The obligation ledger is NOT duplicated
 // here — the attempt payload already carries the canonical segments and the client renders the
 // ledger from those rows; a second segments copy under activity would be the dual representation
-// §3 forbids.
+// gunbc.design_argument::single_authority forbids.
 fn activity_view_json_value(view: ActivityView) -> JsonValue {
   let summary_class = activity_line_class_key(c: activity_line_class_of_activity(a: view))
   let bar = task_bar_view_of_activity(a: view, observation: ObservationsNominal)

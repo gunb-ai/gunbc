@@ -128,7 +128,7 @@ import gunbc.roadmap.roadmap_publish_observe {
 // unique". They are not. RoadmapPublicationSubject carries SIX fields -- repository, branch and
 // expected_base as well -- so two different publication questions could address the same request
 // and answer path. That is keying an address on less than its declared inputs, the same shape as a
-// cache key that omits half of what it depends on, and DESIGN section 5 names it directly: the
+// cache key that omits half of what it depends on, and gunbc.design_argument::fail_closed names it directly: the
 // declaration can be edited green while the realization still collides.
 //
 // THE COLLISION`S TWO HALVES HAVE DIFFERENT SEVERITIES, and only one of them was already contained.
@@ -146,7 +146,7 @@ import gunbc.roadmap.roadmap_publish_observe {
 // document carries -- so the key cannot drift away from the subject it names by someone adding a
 // field to one and not the other.
 //
-// AND THIS RETIRES A VALIDATOR RATHER THAN ADDING ONE (DESIGN section 4b, construction over
+// AND THIS RETIRES A VALIDATOR RATHER THAN ADDING ONE (gunbc.design_argument::guarantee_ladder, construction over
 // validation). The previous key interpolated ledger-supplied strings into a filename, so a value
 // carrying `/` or `..` would have addressed a file outside the spool, and a PublicationSpoolAddress
 // coproduct refused that case. A lower-hex-16 digest cannot carry a path separator: the invalid

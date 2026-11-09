@@ -115,7 +115,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 //
 // AND EIGHT IS NOT AN AUTHORITY EITHER. The denominator is not a number that was chosen; it is the
 // set of exact identities that could be named, and its cardinality is whatever falls out —
-// completeness is an identity join, not a count equality (DESIGN §5). A ninth grounded identity
+// completeness is an identity join, not a count equality (gunbc.design_argument::fail_closed). A ninth grounded identity
 // joins without ceremony; the specimen class expands into its real members when committed. The
 // roster is the join, and any count over it is a reading rather than a fact about the population.
 

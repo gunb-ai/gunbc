@@ -276,7 +276,7 @@ fn ipmi_lan_bad_password_threshold_served(
 // bounded at 655350 rather than 65535: the scaling is applied HERE, against the
 // cited source, and what leaves this module is a std.measure Second. A product layer
 // multiplying a raw int by 10 or 1000 to compare with a timestamp would be a second
-// unit system beside std.measure (DESIGN.md section 2).
+// unit system beside std.measure (gunbc.design_argument::minimize_redundancy).
 // CONSUMER: bmc_failed_attempt_window in gunbc.machine_intake.bmc_secure.
 fn ipmi_lan_attempt_count_reset_window(served: IpmiLanBadPasswordThreshold) -> Second {
   second(count: served.attempt_count_reset_secs)

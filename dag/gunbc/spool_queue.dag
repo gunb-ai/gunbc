@@ -28,14 +28,14 @@ import std.dissolution { unbound_dissolution }
 // its stages in host_layout, took instance_root as a String, and decided "who owns this entry" by which
 // directory it happened to be found in.
 //
-// WHY THIS IS A NEW HOME AND NOT AN EXISTING ONE (DESIGN section 2, DFS first). None of the neighbours
+// WHY THIS IS A NEW HOME AND NOT AN EXISTING ONE (gunbc.design_argument::minimize_redundancy, DFS first). None of the neighbours
 // carries a queue or claim contract:
 //   - product.capacity.event_chain / pool_events / gunbc.fabric.fabric_event_log: a hash-linked LOG under a
 //     head expectation. One total order, no per-entry state, no claim. Spool entries are independent and each
 //     is claimed exactly once.
 //   - std.durable_exclusive_hold: held/free of ONE keyed slot with an owner and a release. A queue entry is
 //     created, claimed once and then terminal; it is never freed and re-held. Stretching Hold over that
-//     lifecycle would give "release" two meanings (DESIGN section 3, meaning fork).
+//     lifecycle would give "release" two meanings (gunbc.design_argument::single_authority, meaning fork).
 //   - std.durable_compare_and_set: judges the GENERATION of a payload slot. These records have no payload and
 //     rename(2) is the election, so a CAS body would be a format change.
 //   - std.observation: occurrences for reports, not a state machine.
@@ -57,12 +57,15 @@ type SpoolKind
 
 // The closed set of places an entry can stand (inbox = RolePending, queued = RoleHandedOff, running = RoleClaimed,
 // done = RoleDone, refused = RoleRefused for the exit spool). HostSpoolStage, the exit spool's former private enum, is deleted.
+// RoleDeferred is a PARKING stage off the chain: the attempt-unit spool moves a request out of the watched pending
+// directory into it while the slice's byte bound cannot admit the request, and back (gunbc.roadmap.attempt_worker_byte_admission).
 type SpoolRole
   = RolePending
   | RoleHandedOff
   | RoleClaimed
   | RoleDone
   | RoleRefused
+  | RoleDeferred
 
 // Who may perform a verb. ExternalHook is a writer the corpus does not execute (a systemd ExecStopPost mkdir).
 type SpoolPrincipal
@@ -71,7 +74,9 @@ type SpoolPrincipal
   | PrincipalExternalHook
 
 // chain: the non-terminal roles in order. A claim advances an entry ONE step along it; there is no step back.
-// terminals: the roles an entry can finish in. A role in neither list is not declared for the spool.
+// terminals: the roles an entry can finish in.
+// parked: the roles an entry is moved OUT to from the first chain role and BACK from, by the claimant, without being
+// claimed (the only two moves: first chain role -> parked, parked -> first chain role). A role in none of the three lists is not declared for the spool.
 // entry_kind: what one entry IS on disk. The exit and unit spools are directory NAMES (payload-less, claimed by
 // shell.Move.NoReplaceDirectory); the publication spool holds FILES WITH BODIES (written create-new, retired by
 // Move.File). A file entry carries its extension on the variant; a directory name has none to carry.
@@ -88,7 +93,7 @@ type SpoolStage {
 
 // HOW EXACTLY-ONE-CONSUMER IS ESTABLISHED for a spool. ExclusiveByRename: the claim rename elects one winner, so any
 // number of drainers is safe. ExclusiveByAgreement: no election exists; safety rests on a fact OUTSIDE the corpus
-// that there is one consumer. That is rung 1 of the guarantee ladder (DESIGN 4b, mitigation, by agreement), never
+// that there is one consumer. That is rung 1 of the guarantee ladder (gunbc.design_argument::guarantee_ladder, mitigation, by agreement), never
 // structural, and it is declared with the consumer it assumes and the trigger that ends the assumption.
 // consumer: PublicationServiceUnit names gunbc.live_deploy.spec deployment_publication_service_unit_name, a systemd
 // service unit; drainers_allowed is the count the assumption covers. TRIGGER: drainers observed above drainers_allowed
@@ -105,6 +110,7 @@ type SpoolDeclaration {
   entry_kind: SpoolEntryKind
   chain: List<SpoolStage>
   terminals: List<SpoolStage>
+  parked: List<SpoolStage>
   enqueuer: SpoolPrincipal
   claimant: SpoolPrincipal
   key_separator: String
@@ -119,6 +125,7 @@ fn spool_declaration(kind: SpoolKind) -> SpoolDeclaration {
       entry_kind: SpoolEntryDirectory,
       chain: [SpoolStage { role: RolePending, directory: "requests" }, SpoolStage { role: RoleClaimed, directory: "claimed" }],
       terminals: [],
+      parked: [SpoolStage { role: RoleDeferred, directory: "deferred" }],
       enqueuer: PrincipalRequester,
       claimant: PrincipalDrainer,
       key_separator: "+",
@@ -129,6 +136,7 @@ fn spool_declaration(kind: SpoolKind) -> SpoolDeclaration {
       entry_kind: SpoolEntryDirectory,
       chain: [SpoolStage { role: RolePending, directory: "inbox" }, SpoolStage { role: RoleHandedOff, directory: "queued" }, SpoolStage { role: RoleClaimed, directory: "running" }],
       terminals: [SpoolStage { role: RoleDone, directory: "done" }, SpoolStage { role: RoleRefused, directory: "refused" }],
+      parked: [],
       enqueuer: PrincipalExternalHook,
       claimant: PrincipalDrainer,
       key_separator: "+",
@@ -139,6 +147,7 @@ fn spool_declaration(kind: SpoolKind) -> SpoolDeclaration {
       entry_kind: SpoolEntryFile { wire_suffix: ".json" },
       chain: [SpoolStage { role: RolePending, directory: "requests" }],
       terminals: [SpoolStage { role: RoleRefused, directory: "requests-refused" }],
+      parked: [],
       enqueuer: PrincipalRequester,
       claimant: PrincipalDrainer,
       key_separator: "-",
@@ -157,7 +166,11 @@ fn spool_role_dir(kind: SpoolKind, role: SpoolRole) -> Optional<String> {
     Absent =>
       match spool_stage_of(stages: spool_declaration(kind: kind).terminals, role: role) {
         Present { value: s } => Present { value: s.directory as String }
-        Absent => Absent
+        Absent =>
+          match spool_stage_of(stages: spool_declaration(kind: kind).parked, role: role) {
+            Present { value: s } => Present { value: s.directory as String }
+            Absent => Absent
+          }
       }
   }
 }
@@ -206,6 +219,7 @@ fn spool_role_writers(kind: SpoolKind, role: SpoolRole) -> List<SpoolPrincipal> 
       RoleClaimed => [spool_declaration(kind: kind).claimant]
       RoleDone => [spool_declaration(kind: kind).claimant]
       RoleRefused => [spool_declaration(kind: kind).claimant]
+      RoleDeferred => [spool_declaration(kind: kind).claimant]
     }
   }
 }
@@ -290,6 +304,55 @@ fn spool_role_is_terminal(kind: SpoolKind, role: SpoolRole) -> Bool {
   spool_declaration(kind: kind).terminals |> any(s => s.role == role)
 }
 
+fn spool_role_is_parked(kind: SpoolKind, role: SpoolRole) -> Bool {
+  spool_declaration(kind: kind).parked |> any(s => s.role == role)
+}
+
+// DEFER AND UNDEFER: the two moves a parking stage admits, and the only ones. DEFER leaves the FIRST chain role for the
+// parked role, and only an entry standing in it (never a claimed entry: Claimed -> anything but a terminal or the
+// evidenced requeue does not exist). UNDEFER returns a parked entry to the first chain role. Neither claims, so
+// neither writes a claim record. A spool that declares no parked role refuses both, typed.
+type SpoolParkAssessment
+  = ParkEligible { from: SpoolRole, into: SpoolRole }
+  | ParkNotApplicable { state: SpoolEntryState }
+  | ParkNotDeclared
+  | ParkRefused { detail: String }
+
+fn spool_park_roles(kind: SpoolKind) -> Optional<SpoolRole> {
+  spool_declaration(kind: kind).parked |> map(s => s.role) |> first()
+}
+
+fn spool_park_over(kind: SpoolKind, observed: SpoolEntryState, from: SpoolRole, into: SpoolRole) -> SpoolParkAssessment {
+  match observed {
+    EntryStanding { role: r } => if (r == from) { ParkEligible { from: from, into: into } } else { ParkNotApplicable { state: observed } }
+    EntryAbsent => ParkNotApplicable { state: observed }
+    EntryAmbiguous { roles: _ } => ParkRefused { detail: "the entry stands in two stages" }
+    EntryObservationUnavailable { detail: d } => ParkRefused { detail: d }
+  }
+}
+
+fn spool_defer_assess(kind: SpoolKind, observed: SpoolEntryState) -> SpoolParkAssessment {
+  match spool_park_roles(kind: kind) {
+    Absent => ParkNotDeclared
+    Present { value: parked } =>
+      match spool_requeue_target(kind: kind) {
+        Absent => ParkNotDeclared
+        Present { value: first_role } => spool_park_over(kind: kind, observed: observed, from: first_role, into: parked)
+      }
+  }
+}
+
+fn spool_undefer_assess(kind: SpoolKind, observed: SpoolEntryState) -> SpoolParkAssessment {
+  match spool_park_roles(kind: kind) {
+    Absent => ParkNotDeclared
+    Present { value: parked } =>
+      match spool_requeue_target(kind: kind) {
+        Absent => ParkNotDeclared
+        Present { value: first_role } => spool_park_over(kind: kind, observed: observed, from: parked, into: first_role)
+      }
+  }
+}
+
 // THE ONLY FORWARD STEP. The successor of a role is the next element of its own chain, in declared order (the chain order is the only order); the LAST chain role (the claim
 // itself) and every terminal have none. THE ONLY CONSTRUCTOR THAT MOVES AN ENTRY TO AN EARLIER ROLE IS
 // spool_requeue_assess, gated on a typed claimant-dead observation (a boot id differing from the one the claim
@@ -326,6 +389,7 @@ type SpoolClaimAssessment
   | ClaimTerminal { state: SpoolEntryState }
   | ClaimRoleUndeclared { role: SpoolRole }
   | ClaimNotRealized
+  | ClaimParked { role: SpoolRole }
   | ClaimRefused { detail: String }
 
 fn spool_claim_assess(kind: SpoolKind, observed: SpoolEntryState) -> SpoolClaimAssessment {
@@ -344,6 +408,8 @@ fn spool_claim_over(kind: SpoolKind, observed: SpoolEntryState) -> SpoolClaimAss
     EntryStanding { role: r } =>
       if spool_role_is_terminal(kind: kind, role: r) {
         ClaimTerminal { state: observed }
+      } else if spool_role_is_parked(kind: kind, role: r) {
+        ClaimParked { role: r }
       } else {
         if !optional_is_absent(opt: spool_role_dir(kind: kind, role: r)) {
           match spool_chain_successor(kind: kind, role: r) {
@@ -395,10 +461,10 @@ fn spool_role_is_last(kind: SpoolKind, role: SpoolRole) -> Bool {
 
 // THE STAGE GRAPH'S INVARIANTS, DECIDED OVER A DECLARATION (rung 2, mitigation by validation: the lists can still be
 // written malformed; this is what refuses them). Roles are unique across chain and terminals (so spool_role_dir is single-valued), and
-// the key has at least one part. NEXT-RUNG TRIGGER: an indexed/dependent list type (strictly-ordered, disjoint stage
+// the key has at least one part. (Parked roles are in the uniqueness set too.) NEXT-RUNG TRIGGER: an indexed/dependent list type (strictly-ordered, disjoint stage
 // lists) in the substrate; then the overlapping declaration has no constructor and this decision dissolves.
 fn spool_declaration_wellformed(declaration: SpoolDeclaration) -> Bool {
-  let roles = list_append(left: declaration.chain |> map(s => s.role), right: declaration.terminals |> map(s => s.role))
+  let roles = list_append(left: list_append(left: declaration.chain |> map(s => s.role), right: declaration.terminals |> map(s => s.role)), right: declaration.parked |> map(s => s.role))
   unique(xs: roles, eq: fn(a, b) { a == b }) && declaration.key_part_count > 0
 }
 
@@ -508,6 +574,7 @@ fn spool_role_label(kind: SpoolKind, role: SpoolRole) -> String {
         RoleClaimed => "claimed"
         RoleDone => "done"
         RoleRefused => "refused"
+        RoleDeferred => "deferred"
       }
   }
 }
@@ -640,7 +707,7 @@ fn spool_role_presence(store: SpoolStore, role: SpoolRole, key: SpoolEntryKey) -
 }
 
 fn spool_declared_roles(kind: SpoolKind) -> List<SpoolRole> {
-  [RolePending, RoleHandedOff, RoleClaimed, RoleDone, RoleRefused] |> filter(r => !optional_is_absent(opt: spool_role_dir(kind: kind, role: r)))
+  [RolePending, RoleHandedOff, RoleClaimed, RoleDone, RoleRefused, RoleDeferred] |> filter(r => !optional_is_absent(opt: spool_role_dir(kind: kind, role: r)))
 }
 
 // THE ROLES A PATH UNIT WATCHES, by kind, as a LEVEL: non-empty means an entry no drain has claimed.
@@ -845,6 +912,32 @@ fn spool_queue_complete(store: SpoolStore, key: SpoolEntryKey, outcome: SpoolOut
       }
     other => SpoolCompleteNotDone { assessment: other }
   }
+}
+
+// DEFER / UNDEFER, realized: the same no-replace rename as the claim, judged from a fresh observation. A refused
+// rename is re-observed; the entry still where it was is Unmovable (the caller's stall verdict), never success.
+type SpoolParkOutcome
+  = SpoolParked { into: SpoolRole }
+  | SpoolParkNotDone { assessment: SpoolParkAssessment }
+  | SpoolParkUnmovable { from: SpoolRole, into: SpoolRole, cause: String }
+
+fn spool_park_move(store: SpoolStore, key: SpoolEntryKey, assessment: SpoolParkAssessment) -> SpoolParkOutcome {
+  match assessment {
+    ParkEligible { from, into } =>
+      match spool_move_between(store: store, key: key, from: from, into: into) {
+        SpoolMoved => SpoolParked { into: into }
+        SpoolMoveRefused { detail: why } => SpoolParkUnmovable { from: from, into: into, cause: why }
+      }
+    other => SpoolParkNotDone { assessment: other }
+  }
+}
+
+fn spool_queue_defer(store: SpoolStore, key: SpoolEntryKey) -> SpoolParkOutcome {
+  spool_park_move(store: store, key: key, assessment: spool_defer_assess(kind: store.kind, observed: spool_queue_observe(store: store, key: key)))
+}
+
+fn spool_queue_undefer(store: SpoolStore, key: SpoolEntryKey) -> SpoolParkOutcome {
+  spool_park_move(store: store, key: key, assessment: spool_undefer_assess(kind: store.kind, observed: spool_queue_observe(store: store, key: key)))
 }
 
 type SpoolRequeueOutcome

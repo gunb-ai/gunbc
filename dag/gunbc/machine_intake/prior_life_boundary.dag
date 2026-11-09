@@ -198,7 +198,7 @@ data mt_jade_platform_ref: DeclarationRef = decl_ref(module_path: "extdeps.ocp.m
 // THE ROWS (warm-crane-577 for the operator, 2026-10-05, reported upward for veto). Mt. Collins and
 // Mt. Jade both require ALL EIGHT carriers and admit only the uncleared baseline-cursor arm. A
 // required subset would assert, without evidence, that the other carriers are irrelevant -- absence
-// is not irrelevance (DESIGN §3d) -- so narrowing a platform's set is a new row with its reason.
+// is not irrelevance (gunbc.design_argument::selection_precedes_convergence) -- so narrowing a platform's set is a new row with its reason.
 // Mt. Jade's row is a requirement, not an observation: it does not depend on the unit's unobserved
 // controller family and claims none.
 data prior_life_platform_policies: List<PriorLifePolicy> = [
@@ -823,7 +823,7 @@ type PriorLifeBoundaryEstablished sole_constructor {
   // Present exactly when this prior life was established ACROSS an admitted forced first rotation: the
   // typed inference the row rested on (the vendor row and behaviour that license believing a password
   // change leaves the prior life alone). The standing says its own premise instead of leaving the reader
-  // to guess which runs carried one (§4d: an inference stays typed, and it stays on the fact it qualifies).
+  // to guess which runs carried one (gunbc.design_argument::epistemic_humility: an inference stays typed, and it stays on the fact it qualifies).
   // Absent for every ordinary unit.
   forced_write_inference: ForcedWritePreservesArchiveInference?
 }
@@ -915,15 +915,15 @@ type DryPriorLifeStep {
 
 // AN ENTRY OF AN ARCHIVE, KEPT AS THE VENDOR SERVED IT. An entry's identity is the content the archive
 // captured for it: a SEL record's own served fields, a log entry's (Id, Severity, Message) under its log
-// service's Id, an account event's (Id, Severity, Message). No string stands in for a reference (§2), and
+// service's Id, an account event's (Id, Severity, Message). No string stands in for a reference (gunbc.design_argument::minimize_redundancy), and
 // no caller supplies one: the standing below is DERIVED inside this module from the two sealed archives,
 // because a caller that could name a pre-write entry could name one over an archive whose history the
-// write erased -- the exact run the third outcome exists to stop (§3, §5: unwritable, not caught).
+// write erased -- the exact run the third outcome exists to stop (gunbc.design_argument::single_authority, gunbc.design_argument::fail_closed: unwritable, not caught).
 // WHY NOT A TIMESTAMP COMPARISON, as an outside review proposed: an entry's served time is the
 // CONTROLLER's clock, which orders nothing (extdeps.bmc.redfish_telemetry, on RedfishLogEntry.Created:
 // "Created is the BMC's clock and orders nothing") and which this project has observed wrong at the
 // factory; comparing it to an observer-side write instant would read an ordering out of a fact the vendor
-// module itself declares unordered (§5, no fabricated defaults). The ONE grounded ordering fact this layer
+// module itself declares unordered (gunbc.design_argument::fail_closed, no fabricated defaults). The ONE grounded ordering fact this layer
 // holds is whether THIS RUN captured the entry BEFORE the write. Consumers: PostWriteEntryStanding and
 // prior_life_pre_write_standing below.
 type ArchivedEntryIdentity
@@ -983,7 +983,7 @@ type PostWriteEntryStanding
 // not a timestamp, whose source orders nothing -- appears in the archive this run captured before the
 // write. No pre-write capture grounds NOTHING: that is the 03.22.00 first-boot case, where the
 // authenticated read answers the forced 403 until the write, and a factory-fresh controller and an
-// erased one read identically from here; so neither is claimed, and the operator is asked (§5 fail
+// erased one read identically from here; so neither is claimed, and the operator is asked (gunbc.design_argument::fail_closed fail
 // closed, and item 6: not a pass, not a plain refusal). Consumer: dry_archive_prior_life_across_forced_write.
 fn prior_life_pre_write_standing(post: List<ArchivedEntryIdentity>, pre: List<ArchivedEntryIdentity>) -> PostWriteEntryStanding {
   match post |> filter(e => 0 < length(xs: pre |> filter(p => archived_entry_identity_eq(a: e, b: p)))) |> first() {
@@ -998,7 +998,7 @@ fn prior_life_pre_write_standing(post: List<ArchivedEntryIdentity>, pre: List<Ar
 // THE TWO RESOLUTIONS THE OPERATOR MUST CHOOSE BETWEEN, named on the verdict so the run says WHICH
 // decision it needs rather than failing with a bare no (item 6). NULLARY: the variants ARE the decision;
 // the operator's confirmation or quarantine lands as its own sealed fact through the operator's decision
-// route when one exists, and prose receipts prefilled here would be commentary stored as data (§4c).
+// route when one exists, and prose receipts prefilled here would be commentary stored as data (gunbc.design_argument::source_annotations).
 // Consumer: the third outcome below; trigger for receipts: an operator decision surface (frontier below).
 type FactoryFreshOrQuarantine
   = ConfirmFactoryFresh {}
@@ -1009,7 +1009,7 @@ type FactoryFreshOrQuarantine
 // stands (it blocks fleet admission by being an incomplete the fold never establishes), and the options
 // stay nullary -- a prefilled receipt would fabricate the very decision the operator owes.
 //
-// READ BY, not just declared (§3c): the decision_frontier field of PriorLifeIndeterminateAcrossForcedWrite,
+// READ BY, not just declared (gunbc.design_argument::consumption): the decision_frontier field of PriorLifeIndeterminateAcrossForcedWrite,
 // set by prior_life_indeterminate_across_forced_write below, so the stop itself carries the trigger that
 // would dissolve it to whoever reads it; and the witness claim
 // w_the_indeterminate_stop_carries_its_own_dissolution_trigger.
@@ -1017,11 +1017,11 @@ data prior_life_operator_decision_frontier: DissolutionCondition = unbound_disso
   description: "dissolves when an operator decision surface consumes PriorLifeIndeterminateAcrossForcedWrite.options -- an authenticated operator route that records ConfirmFactoryFresh or QuarantineUnit for the named subject as its own sealed fact (with the deciding operator and instant) and admits or quarantines the unit accordingly; NOT satisfied by any run minting either variant itself" as NonEmptyStr,
 )
 
-// THE PREMISE THE FORCED-CHANGE ROW RESTS ON, TYPED AS AN INFERENCE (DESIGN §4d), never asserted as fact:
+// THE PREMISE THE FORCED-CHANGE ROW RESTS ON, TYPED AS AN INFERENCE (gunbc.design_argument::epistemic_humility), never asserted as fact:
 // the vendor build's OWN credential-policy row -- the FactoryLoginForcesPasswordChange behaviour the vendor
 // module serves for that (board x firmware) -- is what licenses believing that the forced write is a
 // password change and not a log / virtual-media / telemetry erase, and so that the prior life survives it.
-// It carries the row's SYMBOLS rather than a sentence about them (§4c): the (board x firmware) key and the
+// It carries the row's SYMBOLS rather than a sentence about them (gunbc.design_argument::source_annotations): the (board x firmware) key and the
 // behaviour arm as the vendor module serves them. It arrives only through the row admission, so no caller
 // can state this premise for a build the vendor module does not force. Consumers: the row's reason
 // (gunbc.machine_intake.arrival_converge ForcedFirstRotationPrecedesPriorLife), the context below, and
@@ -1074,7 +1074,7 @@ fn prior_life_forced_write_budget() -> LegBudget {
 // before it began, or its finish was unobservable: an attempted write with no grounded completion grounds
 // nothing downstream, and the boundary falls to the operator decision rather than inventing an order.
 // admit_callers: this realization's witnesses. The PRODUCTION caller is the apply route the leg is named
-// for -- bmc_rotation_route forced_first_rotation_apply_frontier (§3c); a witness minting it is the dry
+// for -- bmc_rotation_route forced_first_rotation_apply_frontier (gunbc.design_argument::consumption); a witness minting it is the dry
 // realization of that leg, not its discharge.
 fn forced_first_rotation_write_leg(write: AdmittedForcedFirstRotation, began_millis: EpochMs, finished_millis: EpochMs) -> ForcedFirstRotationWriteLeg?
   admit_callers: [
@@ -1093,7 +1093,7 @@ fn forced_first_rotation_write_leg(write: AdmittedForcedFirstRotation, began_mil
 // ORDERING THIS RUN'S TWO ARCHIVE READS AROUND ITS FORCED WRITE, through gunbc.clock_read's typed ordering.
 // A cross-clock comparison is refused BY THE ORDERING ITSELF (InstantClocksDiffer), not by a guard this module
 // remembers to ask first -- so a pre-capture from another observer source cannot be ordered into this window at
-// all (§5: make the wrong state unwritable; §6b: the rule lives with the clock, not at the call site). The two
+// all (gunbc.design_argument::fail_closed: make the wrong state unwritable; gunbc.design_argument::earliest_unjustified_boundary: the rule lives with the clock, not at the call site). The two
 // leg instants are already ordered through the same operation by forced_first_rotation_write_transition, so
 // their agreement is transitive here and needs no separate check. The outcome keeps the two failure kinds
 // apart, so the refusal says which: instants from different clocks, or an ordering that points the wrong way.
@@ -1149,7 +1149,7 @@ type ForcedFirstRotationWriteApplied sole_constructor {
 // conjunction refuses and NO plan is due -- the write that unforces the controller is not planned by
 // BmcSecure, it is the write the forced admission licensed (gunbc.machine_intake.bmc_rotation_route
 // forced_first_rotation_apply_frontier). Minting a plan for it would put a second, invented plan beside the
-// admission that actually licensed the write (§3: one authority for why a write may happen).
+// admission that actually licensed the write (gunbc.design_argument::single_authority: one authority for why a write may happen).
 //
 // WHAT THE MINT REFUSES: a write the controller did not accept (the transport's own typed refusal), and a
 // world whose served Redfish census does not show the effect the admission names -- the account present and
@@ -1193,7 +1193,7 @@ fn forced_first_rotation_write_applied(
   }
 }
 
-// THE JOINS, MADE AT THE MINT (§5: make the wrong state unwritable, do not validate it): the completion record
+// THE JOINS, MADE AT THE MINT (gunbc.design_argument::fail_closed: make the wrong state unwritable, do not validate it): the completion record
 // must name the account THAT leg's admission licensed (a record minted under one leg cannot be paired with
 // another leg's write), and it must be stamped between the leg's start and its completion -- a write stamped
 // outside the window it was admitted under is a write that leg never carried. Consumers: the row admission
@@ -1276,7 +1276,7 @@ type PriorLifeIndeterminateAcrossForcedWrite sole_constructor {
   options: List<FactoryFreshOrQuarantine>
   // THE DEBT THIS STOP IS WAITING ON, carried WITH the stop rather than left in a module the reader would
   // have to open: the incomplete step that keeps the unit out of the fleet names its own dissolution
-  // trigger. This is also what READS the frontier row (§3c: a declaration names its consumer).
+  // trigger. This is also what READS the frontier row (gunbc.design_argument::consumption: a declaration names its consumer).
   decision_frontier: DissolutionCondition
 }
 
@@ -1503,7 +1503,7 @@ fn write_then_read_back(key: StepInstanceKey, consumed: StepInstanceKey, subject
   DryPriorLifeStep { outcome: outcome, store: written.store }
 }
 
-// THE PHASE, DRY. The platform's policy row is selected before the step (DESIGN §3d) by the caller's
+// THE PHASE, DRY. The platform's policy row is selected before the step (gunbc.design_argument::selection_precedes_convergence) by the caller's
 // platform; the controller is observed and assessed through the projection; Noop needs the store's
 // own held object, Apply writes and reads back, and every refusal writes nothing. Confined to the
 // arrival convergence's step and to the Bool claims of its witness that supply its inputs, so no

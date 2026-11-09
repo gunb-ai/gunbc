@@ -62,7 +62,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // derived by the walk's own resolution authority applied to its entry file (plan_entry_disposition
 // -> floor_discovery_resolve_entry_live_tree over Filesystem.Read), so the bundle file's
 // ReadsLiveTree comes from its authored declaration. Assertions are structural laws and identity
-// joins, never tree-copied count literals (DESIGN §5 oracle rule): partition exactness,
+// joins, never tree-copied count literals (gunbc.design_argument::fail_closed oracle rule): partition exactness,
 // exactly-once at identity grain, and every enrolled plan member joining exactly one row whose
 // class is a carried class (NativeRequired or NativeLiveObservation — a carried member never
 // classifies as blocked). Residue, declared: the floor also walks test declarations in

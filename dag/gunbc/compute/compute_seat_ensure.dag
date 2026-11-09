@@ -3,7 +3,7 @@ module gunbc.compute.compute_seat_ensure
 import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse, UpsertClassification, ObservationVerdict, Converged, Drifted, Inaccessible, UnknownRefused }
 import std.list { distinct_by_key }
-import std.measure { Kibibyte, kibibyte, measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend }
+import std.measure { Kibibyte, kibibyte, measure_count, measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend }
 import gunbc.durable_cas_file_store { CasSlotKeysAbsent, slot_keys, CasSlotKeysListed, CasSlotKeysListingRefused, CasSlotKeysSubjectRefused }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
 import gunbc.compute.compute_attempt_slots_root {
@@ -45,7 +45,7 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
 // This is an ensure over std.upsert_decision, not a second release path: the decision is made here, the
 // ACTION is gunbc.compute.work_provider_local compute_recover_attempt_in, which re-proves unit
 // termination itself and releases through the ledger's own release. Selection precedes convergence
-// (DESIGN 3d): which references to ensure is chosen by the driver below, from the attempt records.
+// (gunbc.design_argument::selection_precedes_convergence): which references to ensure is chosen by the driver below, from the attempt records.
 //
 //   live owner (deadline not reached / unit not ended) -> Noop, seat kept, unit NOT stopped
 //   owner proven ended, its unit still live             -> Apply: STOP the unit the slot record names,
@@ -154,7 +154,9 @@ fn seat_granted_of(reading: AttemptSlotReading) -> Kibibyte {
 
 fn seat_fell_by(before: Kibibyte, after: Kibibyte, granted: Kibibyte) -> Bool {
   match measure_sub(a: before, b: after) {
-    MeasureDifference { value: d } => d == granted
+    // Kibibyte is a Measure<_,_,Nat>, on which structural '==' is refused by the equality plan (gunbc#15175);
+    // compare the magnitudes with the std.measure idiom, as gunbc.fleet.fleet_physical_inventory does.
+    MeasureDifference { value: d } => measure_count(m: d) == measure_count(m: granted)
     MeasureSubtrahendExceedsMinuend => false
   }
 }

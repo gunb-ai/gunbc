@@ -317,7 +317,7 @@ test fn the_difference_and_the_error_do_not_render_the_same_reason() -> Bool {
 // THE POSITIVE CONTROL FOR THE CONVERGED ARM, reached THROUGH PRODUCTION. Round 3 deleted the control
 // that existed (a_destination_cmp_calls_identical_converges) because it reached the converged arm via
 // the classifier, which was the bypass being closed, and put nothing back -- leaving the arm with no
-// executed claim while the module asserted it had landed. 4b(4) forecloses that trade.
+// executed claim while the module asserted it had landed. gunbc.design_argument::guarantee_ladder (dissolution on climb) forecloses that trade.
 //
 // A first repair restored a control by admitting THIS MODULE to the mint. That worked but was the
 // weaker instrument: it tested the mint's passthrough while skipping the four legs that earn the

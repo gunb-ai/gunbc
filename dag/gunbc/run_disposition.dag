@@ -89,7 +89,7 @@ fn supersession_available_for_event(event: String) -> Bool {
 // While the live policy is an unconditional false, no production input can reach
 // DispositionSuperseded -- so a witness asserting that a lawful supersession is recognised, and
 // excluded from the verdict-bearing denominator, would be permanently green by construction if it
-// could only ask the live policy. DESIGN 4b says to ask whether the RED is authorable before
+// could only ask the live policy. gunbc.design_argument::guarantee_ladder says to ask whether the RED is authorable before
 // writing the check; taking the spec is what keeps it authorable, exactly as the fixture-authored
 // slot shape does for the runner width.
 fn supersession_available_under(policy: RunningSupersessionPolicy, event: String) -> Bool {
@@ -333,7 +333,7 @@ fn classify_cancellation(spec: RunningSupersessionPolicy, pending: PendingReplac
 // shape is honestly unobserved. An arm no producer can construct, reached by a classifier that
 // derives its own input, would be a check whose RED is not authorable anywhere -- permanently
 // green by construction, carrying no information, and worse than absent because it would be cited
-// as coverage. DESIGN 4b says to ask that question BEFORE writing the check, and it says the
+// as coverage. gunbc.design_argument::guarantee_ladder says to ask that question BEFORE writing the check, and it says the
 // deciding boundary is whether the state is authorable by a FIXTURE, not whether it occurs in the
 // accepted corpus. Taking the standing here makes it authorable, so the pending arm executes.
 //

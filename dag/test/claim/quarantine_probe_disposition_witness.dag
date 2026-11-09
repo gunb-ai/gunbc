@@ -69,7 +69,7 @@ import std.algebra { Cons, Empty, fold_list, empty_map, map_insert, map_lookup }
 // read once and only the entries' own rows are kept, so each subject reads its module by key.
 // The earlier shape folded the whole census once per admission row -- rows x corpus, 677,277
 // eval steps of the live claim's ~788k measured with claim_batch -- to name a few dozen modules
-// (DESIGN section 6, bare minimum cost).
+// (gunbc.design_argument::how_to_work, bare minimum cost).
 fn entry_modules(facts: List<ModuleDeclarationFact>, rows: List<ExplicitWitnessAdmission>) -> Map<String, String> {
   let wanted = fold_list(xs: rows, empty: empty_map(), cons: fn(acc, row) { map_insert(m: acc, key: row.witness.entry, value: true) })
   fold_list(
@@ -185,7 +185,7 @@ test fn every_quarantine_probe_derives_exactly_one_disposition() -> ProcessExit 
 // equivalence is read off ONE live evaluation rather than re-folding the whole join once per
 // dropped population: the earlier mutation form paid the live join five times and was refused at
 // 808,294 eval steps (CI run 36656467027), cost that bought no discrimination the single reading
-// lacks (DESIGN section 3, a witness discriminates at one interface). The mutation half of the
+// lacks (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface). The mutation half of the
 // equivalence -- that a dropped population really does unhold -- is asserted on supplied facts by
 // the fixture claims below (a_probe_held_by_nothing_is_an_alarm_and_does_not_hold, and the
 // outside-gate pair), where it costs nothing. The live-tree and path-exclusion axes are not
@@ -220,7 +220,7 @@ fn some_disposition_holds_by(ds: List<QuarantineProbeDisposition>, kind: fn(Quar
 // entry once for the whole batch, so four claims here re-pay one resolve and each stays under its own
 // budget -- the same shape the probes that located this defect used (two ProcessExit claims over one
 // entry in one batch), which is why the split's affordability is a measured property and not an argument.
-// DESIGN section 6's defect is re-paying one entry's resolve across chunked children; it is not "two
+// gunbc.design_argument::how_to_work's defect is re-paying one entry's resolve across chunked children; it is not "two
 // claims read the same thing".
 fn population_member_count(
   ds: List<QuarantineProbeDisposition>,
@@ -290,7 +290,7 @@ test fn the_outside_gate_population_is_load_bearing() -> ProcessExit {
 // WHY IT EXISTS, AND WHO CONSUMES IT. The fold reports an unheld admission as an alarm arm, but nothing
 // asserted that no row may REACH that arm -- that state was reachable, unowned, silent, which is the
 // degradation this repo refuses. CONSUMER AND ROUTE, stated because a claim no job runs must be
-// classified rather than left ambiguous (DESIGN section 3c): the consumer is whoever edits
+// classified rather than left ambiguous (gunbc.design_argument::consumption): the consumer is whoever edits
 // `gunbc.explicit_witness_admission`, running this file where the rows are authored; the route that
 // executes it is NO REQUIRED JOB, and that is declared, not an omission -- `dag/test/claim` is a discovery
 // root, and `gunbc.rung_drop.v1_required_lanes_withdrawn` records that the witness lane's
@@ -328,7 +328,7 @@ test fn every_admitted_probe_row_has_at_least_one_holder() -> ProcessExit {
 // THE ARM IS SELECTED BY CONSTRUCTOR, never by comparing the rendered label. An earlier spelling here read
 // `unheld_disposition_arm(disposition: d) == "QuarantineProbeNowPassing"`, which made the display string a
 // second authority for which arm is the zero-holder arm: rename or reword that label and the filter selects
-// nothing, the live claim goes green vacuously, and only the fixture below notices (review 84130, DESIGN §5
+// nothing, the live claim goes green vacuously, and only the fixture below notices (review 84130, gunbc.design_argument::fail_closed
 // — make the wrong state unwritable where a constructor match is available). `is_zero_holder_disposition`
 // is that match, and it is total over the three arms so a fourth cannot default its way in.
 fn is_zero_holder_disposition(d: QuarantineProbeDisposition) -> Bool {
@@ -377,7 +377,7 @@ fn unheld_admitted_rows(ds: List<QuarantineProbeDisposition>) -> List<String> {
 }
 
 // THE ARM AS THE MESSAGE NAMES IT. Total over the three arms, because the disposition is a sum type and
-// a wildcard here would let a fourth arm print nothing (DESIGN section 5: no plausible output
+// a wildcard here would let a fourth arm print nothing (gunbc.design_argument::fail_closed: no plausible output
 // fabricated). The two refusal arms mean opposite things -- NowPassing is an admission NO carrier holds,
 // HeldByMoreThanOne is an admission TWO carriers hold -- so the reader must not have to re-derive which
 // one fired from a count alone.

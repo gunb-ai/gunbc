@@ -131,7 +131,7 @@ fn ordinary_subject() -> RoadmapPublicationSubject {
 // The path-separator and empty-field refusals this block used to assert are GONE, deliberately.
 // publication_spool_key returns a lower-hex-16 digest, so no subject can produce a key containing
 // `/` or `..` and the refusal's RED is no longer authorable anywhere -- a check that cannot fail is
-// a decoration cited as coverage (DESIGN section 4b), so it is deleted with the machinery it guarded
+// a decoration cited as coverage (gunbc.design_argument::guarantee_ladder), so it is deleted with the machinery it guarded
 // rather than kept as a permanently-green reassurance.
 
 fn key_of(s: RoadmapPublicationSubject) -> String { publication_spool_key(subject: s) }

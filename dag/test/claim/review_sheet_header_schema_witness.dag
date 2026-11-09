@@ -278,7 +278,7 @@ fn probe_source(name: String) -> String {
 // THE COUNTING HELPERS ARE IMPORTED, NOT RE-DERIVED. gunbc.compile_census_probe is the single home
 // for "compile this source string and count what it refused", including the -1-never-0 failure arms
 // that keep a census which never ran distinguishable from a clean compile. An earlier revision of
-// this witness declared its own copies; that is the DESIGN section 3 fork, and the copy already
+// this witness declared its own copies; that is the gunbc.design_argument::single_authority fork, and the copy already
 // sitting in test.claim.data_class_refusal_probe_witness is debt rather than precedent (review
 // 68548).
 //

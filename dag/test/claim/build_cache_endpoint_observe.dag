@@ -217,7 +217,7 @@ test fn witness_managed_unit_owner_is_already_converged() -> Bool {
 // equality that has to be re-typed every time the fleet's width moves. Asserting the property the
 // decoder actually decides makes this row survive a width change instead of being broken by one.
 //
-// THIS COMMENT SAT INSIDE THE MATCH BODY UNTIL 2026-08-23 AND REFUSED THE WHOLE FLOOR. DESIGN 4c
+// THIS COMMENT SAT INSIDE THE MATCH BODY UNTIL 2026-08-23 AND REFUSED THE WHOLE FLOOR. gunbc.design_argument::source_annotations
 // admits standalone leading blocks attached to MODULE-SCOPE declarations and nothing else, so an
 // annotation indented into a declaration body is a located parse refusal rather than a style note --
 // and it refuses at PREPARATION, taking every witness in the corpus with it rather than failing the
@@ -541,7 +541,7 @@ test fn witness_our_own_unit_holding_an_unlistened_socket_refuses_as_not_serving
 // the same shape indefinitely. The two are indistinguishable from outside -- which is precisely why
 // the arm must refuse rather than guess: refusing is correct for the wedged case and merely early
 // for the race, while converging is wrong for the wedged case and only accidentally right for the
-// race. Under DESIGN section 5 that asymmetry decides it, and the residual cost is one bounded
+// race. Under gunbc.design_argument::fail_closed that asymmetry decides it, and the residual cost is one bounded
 // false refusal rather than a host mutation.
 //
 // Each of the three is decoded by a witness in this file rather than argued for here: state (1) by
@@ -713,7 +713,7 @@ test fn witness_holder_argv_cannot_regress_to_the_bracket_form() -> Bool {
 // so the claim failed and was enrolled expected-red in v2.workflow.floor_expected_red while the
 // script was the transport (enrollment commit 34e1e75c862: FAIL here, this module's pre-existing
 // hermetic claims PASS). This diff's staging commit greens the probe and withdraws that enrollment
-// in the same motion: DESIGN 4b(4) -- an expecting-red probe that greens when its wall lands flips
+// in the same motion: gunbc.design_argument::guarantee_ladder (dissolution on climb) -- an expecting-red probe that greens when its wall lands flips
 // to a permanent regression control (this test stays enrolled here, green), while its expected-red
 // listing, whose claim was that the probe fails, does not outlive its red, so no v2.workflow
 // listing for it remains. The migration lands the install as a typed staging fold over
@@ -796,7 +796,7 @@ test fn compile_pool_install_staging_refuses_a_path_unit_name_before_any_operati
   }
 }
 
-// THE DECOMPOSED LOCALSHELL CALL, HERMETIC (DESIGN 3: the witness discriminates at one interface,
+// THE DECOMPOSED LOCALSHELL CALL, HERMETIC (gunbc.design_argument::witness_one_interface: the witness discriminates at one interface,
 // and the values are supplied). The first cut of this receipt ran printf(1) locally through the
 // transport and read its stdout -- wet local exec, which the floor's hermetic route never reaches
 // (a changed witness that plans an exec gets no terminal verdict, so it is not a floor claim). The
@@ -909,7 +909,7 @@ test fn witness_compile_pool_install_vectors_pass_the_portable_wall() -> Bool {
   }
 }
 
-// THE FAILURE SEQUENCE, HERMETIC (DESIGN 3: the witness discriminates at one interface, and the
+// THE FAILURE SEQUENCE, HERMETIC (gunbc.design_argument::witness_one_interface: the witness discriminates at one interface, and the
 // values are supplied). The first cut of this witness ran the fold wet over the SshShell transport
 // against a .invalid host -- two real ssh legs whose outcome depends on the runner's DNS and ssh
 // behavior, so the claim was not the floor's to own, and the floor refused it. The sequence's

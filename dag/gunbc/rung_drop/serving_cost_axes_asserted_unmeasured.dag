@@ -6,11 +6,11 @@ import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, Delet
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 
 // ============================================================================================
-// THE DECLARED RUNG DROP for two serving cost axes asserted rather than observed (DESIGN 4b(3)).
+// THE DECLARED RUNG DROP for two serving cost axes asserted rather than observed (gunbc.design_argument::guarantee_ladder (no silent regression)).
 // ============================================================================================
 //
 // WHY THIS ROW EXISTS AT ALL. gunbc.serving.turn_admission carried this departure as an ANNOTATION,
-// and an annotation cannot discharge it: DESIGN 4c is explicit that no Accepted program can read
+// and an annotation cannot discharge it: gunbc.design_argument::source_annotations is explicit that no Accepted program can read
 // one, so a machine claim standing only in prose is a claim nothing checks. Review 62228 named that
 // exactly, and it is right -- the honest shapes are the fail-closed arms or a declared drop, and
 // prose beside the asserting arm is neither.

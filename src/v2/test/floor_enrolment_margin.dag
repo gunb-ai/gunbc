@@ -46,7 +46,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE EXECUTING EVIDENCE FOR THE ENROLMENT MARGIN GATE. These run the .dag fold itself, one
 // discriminating arm each, so the model's rung is established by execution rather than by the host
-// citing it (DESIGN section 4b(1): a type name, a diagnostic variant or a plan establishes
+// citing it (gunbc.design_argument::guarantee_ladder (rung honesty): a type name, a diagnostic variant or a plan establishes
 // nothing). The host mirror in `v1_compiler.cli_run` realizes these same functions.
 //
 // THESE WITNESSES ARE THEMSELVES A SPECIMEN OF WHAT THE GATE GUARDS: they are new identities under
@@ -140,7 +140,7 @@ fn standing_kind(s: EnrolmentMarginStanding) -> String {
 // If the envelope permille were ever set to 1000 (no inflation), `implied_clean_run_budget` returns
 // the ceiling unchanged and every arm below still type-checks while the gate silently becomes the
 // ceiling it was built to sit inside -- permanently green by construction against the population it
-// exists for, which DESIGN section 4b calls worse than absent because it would still be cited as
+// exists for, which gunbc.design_argument::guarantee_ladder calls worse than absent because it would still be cited as
 // coverage. This witness is the guard: the budget must be STRICTLY BELOW the ceiling.
 test fn the_enrolment_budget_is_strictly_below_the_ceiling() -> Bool {
   millisecond_count(m: floor_enrolment_margin_budget_ms())

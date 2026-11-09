@@ -96,7 +96,7 @@ fn destination_is_known_public(identity: DestinationIdentity) -> Bool {
 // Owner and name on a named destination ARE observed from the slug. Privacy and default
 // branch are not. destination_is_known_public reads Unobserved as not known to be public.
 // RoadmapPublicationSubject.repository is still a GitHub Repository (Bool/String, no
-// Unobserved arm). A fill would encode an unobserved fact as an established one (DESIGN §5).
+// Unobserved arm). A fill would encode an unobserved fact as an established one (gunbc.design_argument::fail_closed).
 // The publication path therefore refuses: DestinationGithubRepositoryUnobserved, consumed as
 // PublicationSubjectUnobserved. Do not mint a Repository for Unobserved standing.
 
@@ -194,7 +194,7 @@ fn node_dispatch_destination(node: RoadmapNode) -> DispatchDestination {
 // resolves any well-formed owner/name so publication can name that repository. This
 // instance still creates worktrees in instance.repo_root against dispatch_git_remote_ref
 // (gunbc_merge_target_ref). Admitting a resolved non-gunbc destination onto that tree
-// would work in gunbc and publish elsewhere — DESIGN section 5 widen. Until spawn binds
+// would work in gunbc and publish elsewhere — gunbc.design_argument::fail_closed widen. Until spawn binds
 // worktree and remote to the destination, actuation is only the known-public gunbc tree.
 // TRIGGER to retire this refuse: worktree-add and the merge remote are taken from the
 // node's destination, not from the instance gunbc constants.

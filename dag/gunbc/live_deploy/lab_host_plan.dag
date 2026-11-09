@@ -25,7 +25,7 @@ import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_intent { ComputeHost }
 import extdeps.tailscale.serve { TailscaleServeCapability }
 
-// FIRST CONSUMER of the per-host software surface (DESIGN 3c). DeploymentHostTarget.lab_plan
+// FIRST CONSUMER of the per-host software surface (gunbc.design_argument::consumption). DeploymentHostTarget.lab_plan
 // carries the LabDeployPlan. emit matches LabPlanRefused before TailscaleServeCapability, so a
 // sandbox or toolchain refusal is not nicknamed ScopedRemovalUnobserved. os_package_manager and
 // tailscale_client stay host readings, not a collapsed plan cause. Witnesses are not this consumer.
@@ -33,7 +33,7 @@ import extdeps.tailscale.serve { TailscaleServeCapability }
 // WORKER-SANDBOX SELECTION. A host whose user manager does not enforce ProtectHome must not yield a
 // plan that claims user-manager confinement (sysctl 1 → system-manager launcher). Sysctl 0 is a
 // bet that the user manager would enforce, not an observation of confinement, so the plan refuses
-// rather than minting ProtectHome (DESIGN 4d). The selected identity is SystemManagerLauncherSelected.
+// rather than minting ProtectHome (gunbc.design_argument::epistemic_humility). The selected identity is SystemManagerLauncherSelected.
 // gunbc.live_deploy.apply_legs deploy_apply_worker_sandbox_plan is that realization on the applying path.
 
 type WorkerSandboxChoice

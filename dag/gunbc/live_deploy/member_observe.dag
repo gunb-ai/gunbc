@@ -91,7 +91,7 @@ import gunbc.fleet.fleet_posix_accounts { fleet_posix_worker_shared_group_name }
 // THE HOST'S SIDE OF THE RECONCILE, read by the evaluator that plans the deploy so the decision and
 // the mutation are one evaluation (operator direction, 2026-09-06: one semantic evaluation per
 // convergence transaction; nothing here starts a second evaluator on the host). Each observation is
-// ONE interface with TWO realizations, which is DESIGN section 3's rule for transport: when the
+// ONE interface with TWO realizations, which is gunbc.design_argument::witness_one_interface's rule for transport: when the
 // executor is the host (LocalShell) the read is the tool's own typed operation -- extdeps.git.inspect,
 // extdeps.crypto.hash, extdeps.systemd.systemctl, extdeps.filesystem, extdeps.shell -- and when the
 // host is behind ssh the same invocation goes as argv through gunbc.host.host_effect_realize
@@ -169,7 +169,7 @@ fn path_basename(path: String) -> String {
 // entry_presence itself -- it reaches the far side as the bootstrap principal, and a root:root 0700
 // parent refuses that listing -- but the argv and the membership read are the same facts whichever
 // principal runs them, and two copies of a membership predicate can drift into two answers about
-// one question (DESIGN §2: net concepts must not grow by re-invention).
+// one question (gunbc.design_argument::minimize_redundancy: net concepts must not grow by re-invention).
 fn parent_listing_argv(parent: String) -> List<String> {
   ["ls", "-1", "-A", "--", parent]
 }
@@ -421,7 +421,7 @@ fn running_process_identity(active: SystemdUnitActiveState, spec: DeploymentSpec
     // not an inability to look (the annotation above this function's caller's own words: an Active
     // process that cannot be probed is unobservable, NOT stale -- and this one could be probed).
     // Whether it means a replacement is decide_member's domain assessment, over the member's own
-    // revision; nothing is decided here (DESIGN 6b, D14).
+    // revision; nothing is decided here (gunbc.design_argument::earliest_unjustified_boundary, D14).
     HealthzAnsweredUnhealthy { status, detail } =>
       MemberObserved { identity: ProcessAt { process: ProcessObservedUnhealthy { active: active, status: status, detail: detail } } }
     HealthzBodyRead { body } => match observe_running_release_identity(healthz_body: body) {
@@ -690,7 +690,7 @@ fn deployment_repository_shared_posture_members(spec: DeploymentSpec) -> List<Co
 // refuses the derivation rather than silently planning a re-group on a host we could not look at.
 //
 // THE GROUP IS THE DECLARED TOKEN: the fold compares find's `%g` against fleet_posix_worker_shared_group_name,
-// the one row production grants and proves under. This is the PRODUCTION route (DESIGN 3 pairing): a wet
+// the one row production grants and proves under. This is the PRODUCTION route (gunbc.design_argument::single_authority pairing): a wet
 // witness that groups a throwaway tree to a token its own host resolves passes that token to the fold
 // directly, and keeps this production spelling executed so the substituted value is never the only route.
 fn observe_git_worker_subtree(arm: ObservationArm, instance: HostDashboardInstance, path: String, child: NonEmptyStr) -> ObservedMember {

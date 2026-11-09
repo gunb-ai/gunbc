@@ -66,7 +66,7 @@ type RunnerServiceTransition
 // prints it -- so a reader of apply.sh learns which of the two they are looking at.
 //
 // IT ALSO MAKES THE RED AUTHORABLE, which is the property that decides whether the witness below is
-// evidence or decoration (DESIGN section 4b). If this module answered `unobserved` from a constant,
+// evidence or decoration (gunbc.design_argument::guarantee_ladder). If this module answered `unobserved` from a constant,
 // no fixture could ever reach the admitted arm, the emitted-activation assertion would be
 // permanently red, and its green counterpart would be unwritable. With the observation as an input,
 // a fixture authors both poles.
@@ -406,7 +406,7 @@ fn runner_transition_plan_line(plan: RunnerTransitionPlan) -> String {
 // would be invisible: both would still say "unobserved".
 //
 // IT IS DATA AND NOT A FUNCTION, so the day the transaction exists this row's deletion is what
-// breaks every caller that was leaning on it, one by one, loudly (DESIGN section 3, delete-first).
+// breaks every caller that was leaning on it, one by one, loudly (gunbc.design_argument::replacement_migration, delete-first).
 data runner_activation_readiness_unobserved_no_transaction: RunnerActivationReadiness = ActivationReadinessUnobserved {
   reason: "no host observation transaction exists yet: fleet convergence observes directory membership, the generation store and the hostname, and nothing reads the build-cache endpoint owner or the compile-pool slice, so neither receipt gunbc.runner.runner_activation requires can be produced (docs/plans/runner-service-capacity-convergence.md, the shared blocker)" as NonEmptyStr,
 }

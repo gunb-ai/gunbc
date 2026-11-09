@@ -5,14 +5,14 @@ import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, Repla
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_build_job_membership_rows }
 
-// DECLARED 4b(3) DROP, OPERATOR-ADMITTED (eager-owl-205, 2026-09-30, on gunbc#12800, escalation
+// DECLARED gunbc.design_argument::guarantee_ladder (no silent regression) DROP, OPERATOR-ADMITTED (eager-owl-205, 2026-09-30, on gunbc#12800, escalation
 // msg_00eaf0e6, option 1 with conditions). The DECLARATION lives here; the POPULATION's authority is
 // `v2.workflow.floor_eval_step_cost_drop` `floor_eval_step_cost_drop_build_job_membership_rows`.
 //
 // EXACTLY ONE IDENTITY, THE MEMBERSHIP HALF. test.claim.workflow_dispatch_input_witness
 // the_build_job_carries_the_reset_observer_dispatch_admission is the only claim that runs the real
 // build-job producer, gunbc.fleet.fleet_converge_workflow fleet_converge_build_job_own_steps, and asserts
-// the dispatch admission step is one of its steps. DESIGN section 3's pairing obligation forbids
+// the dispatch admission step is one of its steps. gunbc.design_argument::witness_one_interface's pairing obligation forbids
 // supplying that list, so the real producer runs. The step's CONTENT -- gate, entry, both dispatch
 // inputs -- is held by the_reset_observer_dispatch_admission_step_carries_its_gate_entry_and_inputs
 // over the step's own producer, under the budget and outside this drop.

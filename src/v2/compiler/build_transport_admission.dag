@@ -24,8 +24,8 @@ import v2.std.host_transport {
 // HostTransportDescriptor onto a NamespacePosition and runs std.effect_grant.admit_effect against
 // the SINGLE build-envelope authority
 // (v2.compiler.build_workspace_grant.build_workspace_grant_envelope -- consumed, never re-minted,
-// DESIGN 3): a build that would touch anything outside that envelope is a located std.access.Deny,
-// never silently widened (DESIGN 5). The descriptor's decisions combine only through
+// gunbc.design_argument::single_authority): a build that would touch anything outside that envelope is a located std.access.Deny,
+// never silently widened (gunbc.design_argument::fail_closed). The descriptor's decisions combine only through
 // std.access.decision_meet; this compiler profile carries no independent allow/deny fold. The named
 // consumer is the emit-host build transport (src/v2/compiler/emit_host.emit_host_run_transport, a
 // v1_interpreter.rs intrinsic), which runs only on Permit, with the intrinsic's existing

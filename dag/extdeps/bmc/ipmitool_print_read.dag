@@ -165,7 +165,7 @@ fn nonempty(v: String?) -> NonEmptyStr? {
 
 // THE `sol info` LABELS, SPELLED ONCE. `ipmi_sol_configuration_of_sol_info` looks these up and
 // `render_ipmi_sol_info` prints them, so a modeled controller's `sol info` answer is always in the shape the
-// reader accepts (DESIGN section 3: each fact lives in exactly one place).
+// reader accepts (gunbc.design_argument::single_authority: each fact lives in exactly one place).
 type IpmiSolInfoLabel = Enabled | PrivilegeLevel | VolatileBitRate | PayloadChannel | PayloadPort
 
 fn ipmi_sol_info_label_text(label: IpmiSolInfoLabel) -> String {
@@ -205,7 +205,7 @@ fn ipmi_sol_configuration_of_sol_info(stdout: String) -> IpmiSolConfiguration? {
   }
 }
 
-// THE RENDER SIDE, BESIDE THE PARSE SIDE (DESIGN §2: model a concept once and derive every use). ipmitool prints `sol info` with each label
+// THE RENDER SIDE, BESIDE THE PARSE SIDE (gunbc.design_argument::minimize_redundancy: model a concept once and derive every use). ipmitool prints `sol info` with each label
 // right-padded to 31 columns, then ` : `, then the value — the layout the committed captures carry. A dry
 // controller answers `sol info` with THIS rendering of the configuration the world models, so a modeled
 // console claim goes through the same bytes a real capture does and can be read back by the parser above.

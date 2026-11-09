@@ -126,7 +126,7 @@ import gunbc.host.host_layout { belt_spawn_workdir_env_var, publication_answer_d
 // What it WAS good for: the expected bytes were obtained independently of the functions under
 // test, so a row transcribed from the host and left alone is not a self-capture golden — it
 // cannot certify a renderer as correct merely because nobody edited it, which is the change
-// detector DESIGN section 5 rejects. A row that still holds its transcription is a sound BASELINE
+// detector gunbc.design_argument::fail_closed rejects. A row that still holds its transcription is a sound BASELINE
 // for refactoring these renderers: a red means the emitter moved off the last observed deployed
 // baseline, which during a migration is exactly the question.
 //
@@ -163,7 +163,7 @@ import gunbc.host.host_layout { belt_spawn_workdir_env_var, publication_answer_d
 // live_deploy_serve_unit_file return one before rendering), which asserts the DECISION — principal,
 // slice, working tree, environment derivation — and cannot be satisfied by editing the expectation.
 // What is forbidden is what happened here: editing the bytes while a paragraph three screens up
-// keeps vouching for their independence. That is DESIGN section 4b rung inflation, and the
+// keeps vouching for their independence. That is gunbc.design_argument::guarantee_ladder rung inflation, and the
 // inflated claim was load-bearing — it was cited to justify keeping these rows.
 //
 // It is needed because nothing else pins these bytes. dag/test/claim/live_deploy/emit.dag
@@ -189,7 +189,7 @@ import gunbc.host.host_layout { belt_spawn_workdir_env_var, publication_answer_d
 // deployment membership by
 // operator directive 2026-08-13, and test.claim.live_deploy.emit carries an enrolled claim
 // asserting exactly that absence. So the re-arm trigger I wrote could never fire: no apply will
-// ever install those units. That is the stalled-trigger shape DESIGN section 4b names, a `cannot
+// ever install those units. That is the stalled-trigger shape gunbc.design_argument::guarantee_ladder names, a `cannot
 // climb` wearing the label `can climb after one event`, and it would have sent a later session
 // waiting on an apply that cannot deliver.
 //
@@ -298,7 +298,7 @@ test fn the_slice_unit_matches_the_deployed_bytes() -> Bool {
 // THE TWO EVALUATION-BUDGET FLAGS ARE PROJECTED, NOT TRANSCRIBED, and the rest of the line is
 // pinned. They are a separately owned policy (gunbc.live_deploy.spec dashboard_serve_cpu_limit /
 // dashboard_serve_wall_limit) with its own declared basis, so transcribing them here would red this
-// oracle for a budget change that has nothing to do with the broker -- and DESIGN section 6 is
+// oracle for a budget change that has nothing to do with the broker -- and gunbc.design_argument::how_to_work is
 // explicit that a measurement is cited by naming its producer rather than by copying its number.
 // What this oracle exists to pin is the broker's IDENTITY in the unit: which description, which
 // slice, which entry, which function, which port, which principal, and the ABSENCE of the two
@@ -478,7 +478,7 @@ fn belt_service_file() -> SystemdUnitFile {
 // THE SECTION ACCESSORS ARE PREDICATES OVER THE COPRODUCT, AND THE WRONG-VARIANT ARM IS `false`,
 // NOT AN EMPTY LIST. SystemdUnitFile is closed over three variants; every emitter here returns one
 // of them, so an extractor returning a section list needs an arm for the two it does not expect.
-// The tempting arm is `_ => []`, and it is the fabricated plausible output DESIGN section 5
+// The tempting arm is `_ => []`, and it is the fabricated plausible output gunbc.design_argument::fail_closed
 // forbids: every membership test over an empty list is false, so an ABSENCE assertion would pass
 // VACUOUSLY -- and three of the six REDs below assert absence. That one arm would green the
 // evidence while the emitter did anything at all.
@@ -1007,7 +1007,7 @@ test fn belt_service_working_directory_goes_red_under_different_root() -> Bool {
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
 // `any` IS IMPORTED, NOT DEFINED. std.algebra already carries it, and a second definition here
-// would be the re-invention DESIGN section 2 forbids -- net concepts must not grow. The first cut
+// would be the re-invention gunbc.design_argument::minimize_redundancy forbids -- net concepts must not grow. The first cut
 // of this file hand-rolled both `any` and `all` over a `[first, ..rest]` match arm, which this
 // parser does not admit (src/v2/lens/fn_index_depth_agreement records the same refusal) and which
 // produced 194 parse errors before the file ran anywhere. The universal is `for_all`, imported from the same module --
@@ -1191,7 +1191,7 @@ test fn the_writers_column_directories_reach_every_reader_exactly_once() -> Bool
 // spells the seed CLI; only an admission that can answer for that grammar emits. A host seed
 // install and an in-place seed build at an admitted revision both do; an undeclared admission
 // refuses TYPED, naming the path and the missing provenance -- never a unit that would die at
-// restart (DESIGN section 5: the unjustified state is refused, not assumed).
+// restart (gunbc.design_argument::fail_closed: the unjustified state is refused, not assumed).
 
 test fn an_undeclared_serve_binary_source_refuses_the_serve_unit_typed() -> Bool {
   let emitted = live_deploy_serve_unit_emission(
@@ -1226,7 +1226,7 @@ test fn an_in_place_built_serve_binary_emits_the_same_grammar_at_its_own_path() 
 
 // The unit-doc rendering route (roadmap_dashboard_service_status_cli) has no type channel to
 // read, so the grammar refusal must reach the operator as loud poison text — the same
-// __GUNBC_*_REFUSED__ discipline the OIDC readback refusal already keeps (DESIGN section 5).
+// __GUNBC_*_REFUSED__ discipline the OIDC readback refusal already keeps (gunbc.design_argument::fail_closed).
 test fn the_grammar_refusal_poisons_the_unit_doc_route() -> Bool {
   let doc = emit_systemd_unit_doc(
     spec: spec_with_serve_binary(base: live_spec(), binary: admit_fixed_serve_path(

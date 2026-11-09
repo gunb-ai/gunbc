@@ -135,7 +135,7 @@ fn w_pool_or_refused(
   }
 }
 
-// THE ROLE ROSTER IS SUPPLIED (review 77708; DESIGN section 3, a witness discriminates at one interface): the
+// THE ROLE ROSTER IS SUPPLIED (review 77708; gunbc.design_argument::witness_one_interface, a witness discriminates at one interface): the
 // claims are about the readiness logic, so they hand it a roster rather than reading the production one,
 // whose only rows (srv5, srv6) went with Group A. srv10 is the fixture host in whichever role a claim names.
 fn w_roster(role: SparkCellRole) -> List<SparkCellRoleAssignment> {

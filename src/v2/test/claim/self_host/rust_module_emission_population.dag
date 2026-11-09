@@ -111,7 +111,7 @@ fn population_observe(src: String, target: TargetModel) -> PopulationStage {
 // v2.workflow.floor_pure_producer_share already records for direct_rust_door_specimen_resolved
 // and produced_add_module_source, and it has the same repair: the walk is ONE computation serving
 // several claims, so it is carried once at its consumers' shared ancestor rather than recomputed
-// per claim (DESIGN section 2 -- minimize the demand graph before materializing its answers).
+// per claim (gunbc.design_argument::demand_before_materialization -- minimize the demand graph before materializing its answers).
 // These producers are nullary, so the roster's warm path forces them during strict preparation,
 // OUTSIDE every per-claim budget, and each arm then serves the landed fill and compares.
 // THE PRODUCTION WALK IS NOT SHORTCUT BY THIS: the producers ARE the production observation, one

@@ -190,7 +190,7 @@ fn linux_filesystem_mount_type(kind: LinuxFilesystemKind) -> NonEmptyStr {
 }
 
 // WHETHER A MOUNT OF THIS KIND CAN KEEP ANYTHING ACROSS A POWER CYCLE, a property of the kind. A memory-only kind
-// keeps nothing only while its row is cited: an uncited row is a bet (DESIGN 4d) and refuses with its read obligation.
+// keeps nothing only while its row is cited: an uncited row is a bet (gunbc.design_argument::epistemic_humility) and refuses with its read obligation.
 type LinuxFilesystemPersistence
   = LinuxFilesystemKeepsNothing { filesystem: LinuxMemoryOnlyFilesystem }
   | LinuxFilesystemMayPersist

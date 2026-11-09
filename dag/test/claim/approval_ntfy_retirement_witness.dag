@@ -126,7 +126,7 @@ test fn the_recursive_flag_travels_with_the_target() -> Bool {
 // against lists the account as installed, so a host answering otherwise has been changed by something
 // outside this corpus. It is never success: an absence the run did not cause is not a retirement. And
 // no other leg gets to guess one -- a leg that declares no such answer reads NO exit that way, because
-// "which code would have meant missing" is exactly the plausible default DESIGN.md 5 refuses.
+// "which code would have meant missing" is exactly the plausible default gunbc.design_argument::fail_closed refuses.
 
 fn witness_leg_declares_subject_absent(leg: NtfyRetireLeg) -> Bool {
   match leg.subject_absent {
@@ -305,7 +305,7 @@ test fn the_account_absence_is_getent_not_found_and_no_line() -> Bool {
 // A PATH. test(1) exits 0 when the operand is there and 1 when it is not, and exits 2 on its OWN
 // error -- and `sudo -n` exits 1 when it refuses to run at all. So only exit 1 is absence: reading
 // every non-zero exit as absence is a silent widen that prints `absent:` for a read that never
-// happened, which is exactly what DESIGN.md 5 refuses.
+// happened, which is exactly what gunbc.design_argument::fail_closed refuses.
 test fn a_path_probe_reads_only_exit_one_as_absent() -> Bool {
   witness_read_state(read: ntfy_retire_path_read(exit_code: 0)) == "present"
     && witness_read_state(read: ntfy_retire_path_read(exit_code: 1)) == "absent"

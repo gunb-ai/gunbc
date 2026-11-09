@@ -5,7 +5,7 @@ import std.algebra { FreeSemigroup }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
 import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
 
-// DECLARED 4b(3) DROP (2026-10-10, review 78515 on gunbc#13709). The publication helper used to
+// DECLARED gunbc.design_argument::guarantee_ladder (no silent regression) DROP (2026-10-10, review 78515 on gunbc#13709). The publication helper used to
 // re-ask on belt_tick_cadence after a oneshot exit that left the request in requests/. The path
 // unit is the event source (DirectoryNotEmpty=); a leftover pending file retriggers immediately
 // and systemd then fails the .path unit (trigger-limit-hit) until apply. Stopping outcomes now

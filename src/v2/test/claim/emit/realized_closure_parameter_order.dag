@@ -29,7 +29,7 @@ import v2.std.node {
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // A RETURNED CLOSURE IS EMITTED WITH ITS PARAMETERS IN DECLARED ORDER, ASKED AT ITS ONE INTERFACE
-// (DESIGN section 3's witness rule) with supplied closure Arrows. The emitted closure is applied
+// (gunbc.design_argument::single_authority's witness rule) with supplied closure Arrows. The emitted closure is applied
 // positionally, so v2.std.compilers.target_model realized_closure_ordered_params -- the list
 // target_project_realized_closure hands to the closure wire -- must follow the Arrow's declared
 // order, not its domain Conj's stored sequence. The specimen declares (z, a), both Int, body z: its

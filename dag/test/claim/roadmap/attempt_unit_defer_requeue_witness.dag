@@ -1,0 +1,31 @@
+module test.claim.roadmap.attempt_unit_defer_requeue_witness
+
+import std.types { Bool, String }
+import std.algebra { string_contains }
+import extdeps.systemd.unit_file { serialize_systemd_unit_file }
+import gunbc.live_deploy.emit { live_deploy_attempt_unit_drain_path_unit_file }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.spool_queue { SpoolAttemptUnit, RolePending, RoleDeferred, spool_role_dirs }
+
+// A WAITING REQUEST COSTS NOTHING: the deferred directory is not the watched requests/ directory, nor inside it,
+// so deferring an entry leaves requests/ empty and the level-triggered path unit does not re-fire.
+test fn the_deferred_dir_is_outside_the_watched_requests_dir() -> Bool {
+  let root = "/srv/i"
+  let req = join(spool_role_dirs(kind: SpoolAttemptUnit, instance_root: root, roles: [RolePending]), "")
+  let def = join(spool_role_dirs(kind: SpoolAttemptUnit, instance_root: root, roles: [RoleDeferred]), "")
+  req != def && !string_contains(s: def, pattern: join([req, "/"], "")) && !string_contains(s: req, pattern: join([def, "/"], ""))
+}
+
+// defer and requeue keep the entry name, so the sorted-listing (FIFO) order the drain processes in is the order
+// entries are moved back in
+test fn defer_and_requeue_keep_the_entry_name() -> Bool {
+  spool_role_dirs(kind: SpoolAttemptUnit, instance_root: "/srv/i", roles: [RoleDeferred]) == ["/srv/i/attempt-unit-spool/deferred"]
+    && spool_role_dirs(kind: SpoolAttemptUnit, instance_root: "/srv/i", roles: [RolePending]) == ["/srv/i/attempt-unit-spool/requests"]
+}
+
+// COMPLETION RE-ARMS THE DRAIN: the drain's path unit watches the exit done/ directory edge-triggered
+// (PathChanged), beside the requests/ level, so requeue runs exactly when an attempt has ended
+test fn an_attempt_completion_re_arms_the_drain_without_a_level_spin() -> Bool {
+  let text = serialize_systemd_unit_file(file: live_deploy_attempt_unit_drain_path_unit_file(spec: deployment_spec_srv1()))
+  string_contains(s: text, pattern: "PathChanged=") && string_contains(s: text, pattern: "DirectoryNotEmpty=")
+}

@@ -18,12 +18,12 @@ import std.frame_boundary {
 // 81 is explicit that an ABSENT grant is not ENFORCED isolation: a build subprocess (cargo/cc) can
 // reach the network at runtime with no declared effect, so 'no network' must be enforced by the
 // REALIZATION (netns/--offline/sandbox), a boundary CLOSED at LifecycleByConstruction, else it is a
-// DESIGN 5 fail-open on the network axis. This module lifts that into an EXECUTABLE requirement:
+// gunbc.design_argument::fail_closed fail-open on the network axis. This module lifts that into an EXECUTABLE requirement:
 // host_run_network_boundary_admits requires every network layer (UriTree) materialized at
 // LifecycleByConstruction. A LifecycleByConvention closure (the offline-flag / vendored-deps
 // Simulated baseline -- the only handler available in-container, unshare --net is EPERM here) is
 // WEAKER and is REFUSED, never silently accepted (operator policy 2026-07-20, Option 1
-// fail-closed). Three states stay DISTINCT (DESIGN 5 state-space): HostRunBoundaryRefused names a
+// fail-closed). Three states stay DISTINCT (gunbc.design_argument::fail_closed state-space): HostRunBoundaryRefused names a
 // layer with NO closure; HostRunBoundaryUnderConstructed names a layer closed only ByConvention
 // (the in-container reality); HostRunBoundaryAdmitted is the strong grade. This is the .dag
 // decision the seed realization will consume: dissolve-on = the netns/container ByConstruction

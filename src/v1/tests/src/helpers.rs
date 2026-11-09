@@ -241,6 +241,8 @@ fn resolve_imports_transitively_with_index(
 fn analyze_complexity_options() -> CompilePipelineOptions {
     CompilePipelineOptions {
         analyze_complexity: true,
+        analyze_ownership: true,
+        analyze_test_references: true,
     }
 }
 

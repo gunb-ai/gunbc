@@ -28,7 +28,7 @@ data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.Su
 // table, so a red names the rule that broke. The table is synthetic on purpose: nothing here names
 // a real module, so the sweep cannot rename its own oracle.
 //
-// The pairing obligation (DESIGN 3) is carried by gunbc.instruments.layout_migration: its census
+// The pairing obligation (gunbc.design_argument::witness_one_interface) is carried by gunbc.instruments.layout_migration: its census
 // runs this engine over the real population and refuses on any undecided note, so deleting that
 // integration fails the census, not this file.
 
