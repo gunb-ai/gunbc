@@ -26418,12 +26418,6 @@ mod witness_layer_roots_compile_clean_tests {
         ));
     }
 
-    /// #7915 receipt: scope witness must also remain eligible on the same touch set.
-    #[test]
-
-    /// Mechanism-touch pair (7933A): any non-docs .dag change blocks scope witness skip.
-    #[test]
-
     /// Mechanism-touch pair (7933A): same .dag touch blocks shard_a skip under the broad rule.
     #[test]
     fn stop_line_mechanism_touch_dag_blocks_shard_a_skip() {
@@ -26444,8 +26438,6 @@ mod witness_layer_roots_compile_clean_tests {
         ));
     }
 
-    /// RED control: a scope-only rule would not block shard_a; broad stop-line does on #7915 receipt.
-    #[test]
     #[test]
     fn compile_clean_shard_entry_paths_fast_refuses_duplicate_path_keys() {
         let facts = vec![
