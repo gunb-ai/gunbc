@@ -244,8 +244,19 @@ data host_effect_converge_loop_evidence: IdempotencyEvidence = NonIdempotent {
   reason: host_effect_converge_loop_reason,
 }
 
+// Read by construction rather than structural '==': IdempotencyEvidence carries EffectShape<KeySource>,
+// whose CreateCause<K> member is a generic application the v1 equality plan does not model, so '==' on it
+// is refused at resolve (gunbc#15175). The match states the same predicate as the declared value above:
+// NonIdempotent, an AppendEffect shape, and the converge-loop reason. Dissolves when the equality plan
+// judges that shape (the gunbc#15992 equality-synthesis line); then this may return to '=='.
 fn host_effect_is_converge_loop_evidence(evidence: IdempotencyEvidence) -> Bool {
-  evidence == host_effect_converge_loop_evidence
+  match evidence {
+    NonIdempotent { shape: shape, reason: reason } => match shape {
+      AppendEffect => reason == host_effect_converge_loop_reason
+      _ => false
+    }
+    _ => false
+  }
 }
 
 fn host_effect_lattice_evidence(shape: EffectShape<KeySource>) -> IdempotencyEvidence {

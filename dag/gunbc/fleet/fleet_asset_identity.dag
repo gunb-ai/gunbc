@@ -65,5 +65,8 @@ data p4261_e1_b: PhysicalAssetIdentity = "p4261-e1-b" as PhysicalAssetIdentity
 // The opened pair's E1 from the lot of ten, allocated 2026-11-08 before its first recorded reading, as the
 // GH200 units were before they arrived: the comparison reads the P4261 sheets ask of it bind to this
 // asset from the first one, never to "the lot board". E1 is the operator's reading of its label; once its
-// sticker is read, the serial is recorded on its rows and is the reading that names the board.
+// sticker is read, the serial is recorded on its rows and is the reading that names the board. Before its
+// first new measurement, a label or photograph reading must tell this board apart from the other lot
+// boards; and the allocation attaches nothing retroactively -- an earlier lot observation that named no
+// board stays unattributed rather than becoming this asset's.
 data p4261_e1_c: PhysicalAssetIdentity = "p4261-e1-c" as PhysicalAssetIdentity
