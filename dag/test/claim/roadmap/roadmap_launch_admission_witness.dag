@@ -12,7 +12,7 @@ import gunbc.worker_lifecycle { WorkerProcessRunning, WorkerProcessExited, Worke
 import gunbc.roadmap.roadmap_launch_admission { LaunchCensusRow }
 import gunbc.roadmap.roadmap_belt { SpawnMode, Paused, ManualReady, AutomaticReady, DesiredMember, roadmap_belt_production_spawn_mode, spawn_mode_label, belt_reconcile_upsert_count, BeltCapacity, belt_free_slots_int }
 import gunbc.roadmap.roadmap_belt_actuate {
-  BeltSpawnOutcome, Spawned, SupervisorConvened, SpawnFailed, SpawnNotAdmitted, SpawnLaunchPending,
+  BeltSpawnOutcome, Spawned, SpawnFailed, SpawnNotAdmitted, SpawnLaunchPending,
   belt_tick_admit_and_spawn, belt_dispatch_status_label, belt_dispatch_result_ok,
   BeltLaunchDecision, BeltLaunchDecided, BeltLaunchWithheld, belt_tick_admit,
   BeltLaunchPass, belt_tick_launch_pass,
@@ -170,7 +170,6 @@ fn no_actuation_outcome(o: BeltSpawnOutcome) -> Bool {
   match o {
     SpawnNotAdmitted { node_id: _, refusal: _ } => true
     Spawned { node_id: _, session_name: _, provider: _, launch: _ } => false
-    SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } => false
     SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => false
     SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch: _, entry: _ } => false
   }
@@ -530,9 +529,12 @@ fn labels_distinct(labels: List<String>) -> Bool {
   all(labels, l => count(filter(labels, x => x == l)) == 1)
 }
 
+// THE PIN COUNTS THE EXEMPLAR ROSTER, one per LaunchRefusal arm: 15 -> 16 WITH LaunchNoPlacementGrant
+// (G5, #13074), 16 -> 17 WITH LaunchRevisionNotLanded (#13703), and 17 -> 18 WITH LaunchNodeRetired
+// (node_retired), none of which moved it.
 test fn witness_refusal_labels_are_distinct_and_total() -> Bool {
   let labels = map(launch_refusal_exemplars(), r => launch_refusal_label(r: r))
-  count(labels) == 17 && labels_distinct(labels: labels)
+  count(labels) == 18 && labels_distinct(labels: labels)
 }
 
 test fn witness_contract_text_carries_gate_order_and_digest_is_hex16() -> Bool {

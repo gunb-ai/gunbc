@@ -1723,6 +1723,7 @@ data equality_wall_three_site_measure_stopgap_interim: IntegrationConcern = Inte
     },
     tail: [],
   },
+  disposition: Open,
 }
 
 data host_effect_apply_witness_import_block_absent: IntegrationConcern = IntegrationConcern {
@@ -1750,6 +1751,7 @@ data host_effect_apply_witness_import_block_absent: IntegrationConcern = Integra
     },
     tail: [],
   },
+  disposition: Open,
 }
 
 // THE NEIGHBOUR, not a second row: this concern stands beside

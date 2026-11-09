@@ -6,6 +6,7 @@ import product.host_identity { HostIdentity }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import extdeps.network.endpoint { SocketAddress }
 import extdeps.ssh.keys { Ed25519, ssh_key_algorithm_token, ssh_key_blob_parses_for, ssh_key_blob_sha256_fingerprint }
+import extdeps.linux.kernel_random { kernel_boot_id_of }
 import gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow, ConsolePerBoot }
 
 // THE CONSOLE FACT, policy-free: what a host's boot printed on its serial console about its own host key, and the
@@ -47,18 +48,25 @@ type CheckedHostKey sole_constructor {
   sha256_fingerprint: String
 }
 
-// THE CHECKED CONSTRUCTOR, used by any reader that already holds the fields: the key type
-// is ed25519, the blob parses as one, and the fingerprint is the one derived from the blob (gunbc.design_argument::fail_closed: a line whose fields
-// disagree is no line).
+// THE CHECKED CONSTRUCTOR, used by any reader that already holds the fields: the boot id is a kernel boot id (a
+// UUID, extdeps.linux.kernel_random kernel_boot_id_of), the key type is ed25519, the blob parses as one, and the
+// fingerprint is the one derived from the blob (gunbc.design_argument::fail_closed: a line whose fields disagree is
+// no line). The boot id is held in its canonical UUID spelling, so console text around it (whitespace, a control
+// character) never reaches a pin, a receipt or a refusal diagnostic. Both readers pass through here: the boot run's
+// SOL reader (gunbc.runner.runner_host_medium) and the running-OS receipt reader (gunbc.host.running_os_receipt).
 fn checked_host_key(boot_id: NonEmptyStr, key_type: String, key_b64: String, fingerprint: String) -> CheckedHostKey? {
-  if key_type == (ssh_key_algorithm_token(a: Ed25519) as String) && ssh_key_blob_parses_for(material: key_b64 as NonEmptyStr, algorithm: Ed25519) && fingerprint_names_blob(blob: key_b64, fingerprint: fingerprint) {
-    Present { value: CheckedHostKey {
-      boot_id: boot_id,
-      key_type: key_type,
-      public_key_base64: key_b64,
-      sha256_fingerprint: fingerprint,
-    } }
-  } else { none }
+  match kernel_boot_id_of(text: boot_id as String) {
+    Absent => none
+    Present { value: boot } =>
+      if key_type == (ssh_key_algorithm_token(a: Ed25519) as String) && ssh_key_blob_parses_for(material: key_b64 as NonEmptyStr, algorithm: Ed25519) && fingerprint_names_blob(blob: key_b64, fingerprint: fingerprint) {
+        Present { value: CheckedHostKey {
+          boot_id: (boot as String) as NonEmptyStr,
+          key_type: key_type,
+          public_key_base64: key_b64,
+          sha256_fingerprint: fingerprint,
+        } }
+      } else { none }
+  }
 }
 
 // THE PER-BOOT POLICY over a checked key: the pin's anchor is the key, with the ConsolePerBoot provenance naming

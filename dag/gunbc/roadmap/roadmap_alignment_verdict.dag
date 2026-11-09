@@ -1,0 +1,135 @@
+module gunbc.roadmap.roadmap_alignment_verdict
+
+import std.types { String }
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonString, JsonNumber, JsonArray, JsonObject, json_string, json_object, json_kv }
+import extdeps.languages.json.parse { json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject }
+
+// THE VERDICT LIVES APART FROM THE CHAIN THAT PRODUCES ITS QUESTION. gunbc.roadmap.roadmap_alignment
+// resolves the alignment chain over the whole roadmap authority; the harness only needs to read and
+// write a verdict, so the vocabulary and its codec are this module's, and roadmap_alignment imports
+// them (gunbc.plans.harness_session_lifecycle, slice S1: the harness applies the verdict inline).
+
+// ------------------------------------------------------------------------------------------------
+// The check-outcome vocabulary. The ladder's cadence point 2 declares exactly these verdicts and
+// nothing else: a magnitudinal standing (a Fermi estimate, order-of-magnitude, evidence-cited --
+// ALIGNED (+0/-0), MISALIGNED with a named direction, EXTREMELY MISALIGNED with a named direction,
+// CATASTROPHICALLY MISALIGNED with a named reason) plus RoutedConflict, which is NOT a magnitude
+// and not a worker signal: instructions disagreeing is a routing arm, it tunes no cadence. The
+// outcome must be able to change the next work performed -- a check whose answer cannot is
+// ceremony, and ceremony here reads as diligence.
+// ------------------------------------------------------------------------------------------------
+
+type AlignmentVerdict
+  = Aligned
+  | Misaligned { direction: String }
+  | ExtremelyMisaligned { direction: String }
+  | CatastrophicallyMisaligned { reason: String }
+  | RoutedConflict { conflict: String }
+
+fn alignment_verdict_key(v: AlignmentVerdict) -> String {
+  match v {
+    Aligned => "aligned"
+    Misaligned { direction: _ } => "misaligned"
+    ExtremelyMisaligned { direction: _ } => "extremely-misaligned"
+    CatastrophicallyMisaligned { reason: _ } => "catastrophically-misaligned"
+    RoutedConflict { conflict: _ } => "routed-conflict"
+  }
+}
+
+// THE VERDICT CARRIES ITS PAYLOAD on the wire, not just its kind: a receipt reader needs the named
+// direction or reason, and a kind-only codec would force re-interpretation from prose.
+fn alignment_verdict_json(v: AlignmentVerdict) -> JsonValue {
+  match v {
+    Aligned =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: alignment_verdict_key(v: v))),
+      ])
+    Misaligned { direction } =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: alignment_verdict_key(v: v))),
+        json_kv(key: "direction", value: json_string(s: direction)),
+      ])
+    ExtremelyMisaligned { direction } =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: alignment_verdict_key(v: v))),
+        json_kv(key: "direction", value: json_string(s: direction)),
+      ])
+    CatastrophicallyMisaligned { reason } =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: alignment_verdict_key(v: v))),
+        json_kv(key: "reason", value: json_string(s: reason)),
+      ])
+    RoutedConflict { conflict } =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: alignment_verdict_key(v: v))),
+        json_kv(key: "conflict", value: json_string(s: conflict)),
+      ])
+  }
+}
+
+fn alignment_verdict_decode_json(v: JsonValue) -> AlignmentVerdict? {
+  match json_object_unique_member(v: v, key: "kind") {
+    JsonMemberFound { value: JsonString { value: kind } } =>
+      if kind == "aligned" {
+        Present { value: Aligned }
+      } else if kind == "misaligned" {
+        match json_object_unique_member(v: v, key: "direction") {
+          JsonMemberFound { value: JsonString { value: d } } => Present { value: Misaligned { direction: d } }
+          JsonMemberFound { value: JsonNull } => none
+          JsonMemberFound { value: JsonBool { value: _ } } => none
+          JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+          JsonMemberFound { value: JsonArray { elements: _ } } => none
+          JsonMemberFound { value: JsonObject { members: _ } } => none
+          JsonMemberAbsent => none
+          JsonMemberDuplicated { count: _ } => none
+          JsonMemberNotAnObject => none
+        }
+      } else if kind == "extremely-misaligned" {
+        match json_object_unique_member(v: v, key: "direction") {
+          JsonMemberFound { value: JsonString { value: d } } => Present { value: ExtremelyMisaligned { direction: d } }
+          JsonMemberFound { value: JsonNull } => none
+          JsonMemberFound { value: JsonBool { value: _ } } => none
+          JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+          JsonMemberFound { value: JsonArray { elements: _ } } => none
+          JsonMemberFound { value: JsonObject { members: _ } } => none
+          JsonMemberAbsent => none
+          JsonMemberDuplicated { count: _ } => none
+          JsonMemberNotAnObject => none
+        }
+      } else if kind == "catastrophically-misaligned" {
+        match json_object_unique_member(v: v, key: "reason") {
+          JsonMemberFound { value: JsonString { value: r } } => Present { value: CatastrophicallyMisaligned { reason: r } }
+          JsonMemberFound { value: JsonNull } => none
+          JsonMemberFound { value: JsonBool { value: _ } } => none
+          JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+          JsonMemberFound { value: JsonArray { elements: _ } } => none
+          JsonMemberFound { value: JsonObject { members: _ } } => none
+          JsonMemberAbsent => none
+          JsonMemberDuplicated { count: _ } => none
+          JsonMemberNotAnObject => none
+        }
+      } else if kind == "routed-conflict" {
+        match json_object_unique_member(v: v, key: "conflict") {
+          JsonMemberFound { value: JsonString { value: c } } => Present { value: RoutedConflict { conflict: c } }
+          JsonMemberFound { value: JsonNull } => none
+          JsonMemberFound { value: JsonBool { value: _ } } => none
+          JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+          JsonMemberFound { value: JsonArray { elements: _ } } => none
+          JsonMemberFound { value: JsonObject { members: _ } } => none
+          JsonMemberAbsent => none
+          JsonMemberDuplicated { count: _ } => none
+          JsonMemberNotAnObject => none
+        }
+      } else {
+        none
+      }
+    JsonMemberFound { value: JsonNull } => none
+    JsonMemberFound { value: JsonBool { value: _ } } => none
+    JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+    JsonMemberFound { value: JsonArray { elements: _ } } => none
+    JsonMemberFound { value: JsonObject { members: _ } } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
+  }
+}
