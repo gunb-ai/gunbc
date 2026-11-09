@@ -831,7 +831,7 @@ fn roadmap_acceptance_migration_verdict(
   if count(problems) > 0 {
     join(concat([join(["MIGRATION REFUSED: ", to_string(value: count(wanted)), " manifest events, ",
       to_string(value: count(held_ids)), " held, ", to_string(value: count(problems)), " disagreement(s):"], "")],
-      concat(map(problems, pr => join(["  ", pr], "")), event_lines))), "\n")
+      concat(map(problems, pr => join(["  ", pr], "")), event_lines)), "\n")
   } else {
     join(concat([join(["MIGRATION VERIFIED: ", to_string(value: count(wanted)), " manifest events (",
       to_string(value: count(filter(wanted, e => match e { AcceptanceRecorded { receipt: _ } => true AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } => false }))), " acceptances, ",

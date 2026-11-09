@@ -1240,6 +1240,10 @@ fn roadmap_issue_comments_of_chain(chain: List<RoadmapEventEnvelope>) -> List<Is
     Retired { reason: _ } => acc
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => acc
     ResultReturned { attempt: _, claim: _, outcome: _ } => acc
+    // An acceptance is not a comment: it belongs to the standing and the closed set, never to the
+    // comment stream. It is absorbed here so the fold stays exhaustive on purpose.
+    AcceptanceRecordedEvent { receipt: _, pr_url: _, merged_at: _, head_sha: _ } => acc
+    AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => acc
   })
 }
 
