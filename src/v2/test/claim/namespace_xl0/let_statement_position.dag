@@ -456,3 +456,319 @@ test fn a_reachable_statement_let_refuses_its_undeclared_atom() -> Bool {
     LstContextRefused => false
   }
 }
+// ---------------------------------------------------------------------------
+// PROBE (temporary, not a claim). The paired run at 76a531366d3d reported 13 of 17 rows false at BOTH
+// legs -- every is_accepted control -- so the archived author recorded predictions rather than readings, and
+// the runner prints no values (claim_batch gives PASS / FAIL / UNOBSERVED plus closure diagnostics, never a
+// computed value; confirmed with the build owner). These rows classify verdicts instead of pinning
+// behaviour, so each PASS is one reading of what this route actually decides. probe_verdict_of re-enters the
+// same ingest the claims read, so the classes below are the same verdicts the pinned rows see. This block is
+// deleted before the PR lands; the pinned rows are rewritten from the readings it produces, which is what
+// review 92393 asks for (run the suite, cite the run).
+
+fn probe_verdict_of(name: String, unit: Symbol) -> LstVerdict {
+  match native_test_context_from_ingest(ingest: lst_ingest()) {
+    Rejected { diagnostics: _ } => LstAbsent
+    Accepted { value: context, diagnostics: _ } => lst_verdict_in(context: context, module_name: name, unit: unit)
+  }
+}
+
+fn probe_class(name: String, unit: Symbol, want: Symbol) -> Bool {
+  match probe_verdict_of(name: name, unit: unit) {
+    LstResolved => want == ^probe_class_resolved
+    LstRefused { reason: _, at_atom: _ } => want == ^probe_class_resolve_refused
+    LstFileRefused { fatal_reason: _ } => want == ^probe_class_file_refused
+    LstAbsent => want == ^probe_class_absent
+  }
+}
+
+fn probe_file_reason(name: String, unit: Symbol, want: Symbol) -> Bool {
+  match probe_verdict_of(name: name, unit: unit) {
+    LstFileRefused { fatal_reason: Present { value: r } } => r == want
+    _ => false
+  }
+}
+
+fn probe_file_reason_present(name: String, unit: Symbol) -> Bool {
+  match probe_verdict_of(name: name, unit: unit) {
+    LstFileRefused { fatal_reason: Present { value: _ } } => true
+    _ => false
+  }
+}
+
+test fn probe_ctl_body_let_resolved() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.ctl_body_let", unit: ^lst_ctl_body_let_cu, want: ^probe_class_resolved)
+}
+test fn probe_ctl_body_let_file_refused() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.ctl_body_let", unit: ^lst_ctl_body_let_cu, want: ^probe_class_file_refused)
+}
+test fn probe_ctl_body_let_resolve_refused() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.ctl_body_let", unit: ^lst_ctl_body_let_cu, want: ^probe_class_resolve_refused)
+}
+test fn probe_ctl_body_let_absent() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.ctl_body_let", unit: ^lst_ctl_body_let_cu, want: ^probe_class_absent)
+}
+test fn probe_ctl_arm_expr_resolved() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.ctl_arm_expr", unit: ^lst_ctl_arm_expr_cu, want: ^probe_class_resolved)
+}
+test fn probe_ctl_arm_expr_file_refused() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.ctl_arm_expr", unit: ^lst_ctl_arm_expr_cu, want: ^probe_class_file_refused)
+}
+test fn probe_ctl_arm_expr_resolve_refused() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.ctl_arm_expr", unit: ^lst_ctl_arm_expr_cu, want: ^probe_class_resolve_refused)
+}
+test fn probe_ctl_arm_expr_absent() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.ctl_arm_expr", unit: ^lst_ctl_arm_expr_cu, want: ^probe_class_absent)
+}
+test fn probe_ctl_arm_block_resolved() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.ctl_arm_block", unit: ^lst_ctl_arm_block_cu, want: ^probe_class_resolved)
+}
+test fn probe_ctl_arm_block_file_refused() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.ctl_arm_block", unit: ^lst_ctl_arm_block_cu, want: ^probe_class_file_refused)
+}
+test fn probe_ctl_arm_block_resolve_refused() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.ctl_arm_block", unit: ^lst_ctl_arm_block_cu, want: ^probe_class_resolve_refused)
+}
+test fn probe_ctl_arm_block_absent() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.ctl_arm_block", unit: ^lst_ctl_arm_block_cu, want: ^probe_class_absent)
+}
+test fn probe_ctl_if_branch_resolved() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.ctl_if_branch", unit: ^lst_ctl_if_branch_cu, want: ^probe_class_resolved)
+}
+test fn probe_ctl_if_branch_file_refused() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.ctl_if_branch", unit: ^lst_ctl_if_branch_cu, want: ^probe_class_file_refused)
+}
+test fn probe_ctl_if_branch_resolve_refused() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.ctl_if_branch", unit: ^lst_ctl_if_branch_cu, want: ^probe_class_resolve_refused)
+}
+test fn probe_ctl_if_branch_absent() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.ctl_if_branch", unit: ^lst_ctl_if_branch_cu, want: ^probe_class_absent)
+}
+test fn probe_ctl_fn_value_resolved() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.ctl_fn_value", unit: ^lst_ctl_fn_value_cu, want: ^probe_class_resolved)
+}
+test fn probe_ctl_fn_value_file_refused() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.ctl_fn_value", unit: ^lst_ctl_fn_value_cu, want: ^probe_class_file_refused)
+}
+test fn probe_ctl_fn_value_resolve_refused() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.ctl_fn_value", unit: ^lst_ctl_fn_value_cu, want: ^probe_class_resolve_refused)
+}
+test fn probe_ctl_fn_value_absent() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.ctl_fn_value", unit: ^lst_ctl_fn_value_cu, want: ^probe_class_absent)
+}
+test fn probe_arm_block_let_resolved() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.arm_block_let", unit: ^lst_arm_block_let_cu, want: ^probe_class_resolved)
+}
+test fn probe_arm_block_let_file_refused() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.arm_block_let", unit: ^lst_arm_block_let_cu, want: ^probe_class_file_refused)
+}
+test fn probe_arm_block_let_resolve_refused() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.arm_block_let", unit: ^lst_arm_block_let_cu, want: ^probe_class_resolve_refused)
+}
+test fn probe_arm_block_let_absent() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.arm_block_let", unit: ^lst_arm_block_let_cu, want: ^probe_class_absent)
+}
+test fn probe_arm_block_two_let_resolved() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.arm_block_two_let", unit: ^lst_arm_block_two_let_cu, want: ^probe_class_resolved)
+}
+test fn probe_arm_block_two_let_file_refused() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.arm_block_two_let", unit: ^lst_arm_block_two_let_cu, want: ^probe_class_file_refused)
+}
+test fn probe_arm_block_two_let_resolve_refused() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.arm_block_two_let", unit: ^lst_arm_block_two_let_cu, want: ^probe_class_resolve_refused)
+}
+test fn probe_arm_block_two_let_absent() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.arm_block_two_let", unit: ^lst_arm_block_two_let_cu, want: ^probe_class_absent)
+}
+test fn probe_arm_tail_let_resolved() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.arm_tail_let", unit: ^lst_arm_tail_let_cu, want: ^probe_class_resolved)
+}
+test fn probe_arm_tail_let_file_refused() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.arm_tail_let", unit: ^lst_arm_tail_let_cu, want: ^probe_class_file_refused)
+}
+test fn probe_arm_tail_let_resolve_refused() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.arm_tail_let", unit: ^lst_arm_tail_let_cu, want: ^probe_class_resolve_refused)
+}
+test fn probe_arm_tail_let_absent() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.arm_tail_let", unit: ^lst_arm_tail_let_cu, want: ^probe_class_absent)
+}
+test fn probe_arm_block_if_match_resolved() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.arm_block_if_match", unit: ^lst_arm_block_if_match_cu, want: ^probe_class_resolved)
+}
+test fn probe_arm_block_if_match_file_refused() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.arm_block_if_match", unit: ^lst_arm_block_if_match_cu, want: ^probe_class_file_refused)
+}
+test fn probe_arm_block_if_match_resolve_refused() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.arm_block_if_match", unit: ^lst_arm_block_if_match_cu, want: ^probe_class_resolve_refused)
+}
+test fn probe_arm_block_if_match_absent() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.arm_block_if_match", unit: ^lst_arm_block_if_match_cu, want: ^probe_class_absent)
+}
+test fn probe_if_match_branch_resolved() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.if_match_branch", unit: ^lst_if_match_branch_cu, want: ^probe_class_resolved)
+}
+test fn probe_if_match_branch_file_refused() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.if_match_branch", unit: ^lst_if_match_branch_cu, want: ^probe_class_file_refused)
+}
+test fn probe_if_match_branch_resolve_refused() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.if_match_branch", unit: ^lst_if_match_branch_cu, want: ^probe_class_resolve_refused)
+}
+test fn probe_if_match_branch_absent() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.if_match_branch", unit: ^lst_if_match_branch_cu, want: ^probe_class_absent)
+}
+test fn probe_arm_rest_und_resolved() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.arm_rest_und", unit: ^lst_arm_rest_und_cu, want: ^probe_class_resolved)
+}
+test fn probe_arm_rest_und_file_refused() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.arm_rest_und", unit: ^lst_arm_rest_und_cu, want: ^probe_class_file_refused)
+}
+test fn probe_arm_rest_und_resolve_refused() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.arm_rest_und", unit: ^lst_arm_rest_und_cu, want: ^probe_class_resolve_refused)
+}
+test fn probe_arm_rest_und_absent() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.arm_rest_und", unit: ^lst_arm_rest_und_cu, want: ^probe_class_absent)
+}
+test fn probe_tail_call_resolved() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.tail_call", unit: ^lst_tail_call_cu, want: ^probe_class_resolved)
+}
+test fn probe_tail_call_file_refused() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.tail_call", unit: ^lst_tail_call_cu, want: ^probe_class_file_refused)
+}
+test fn probe_tail_call_resolve_refused() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.tail_call", unit: ^lst_tail_call_cu, want: ^probe_class_resolve_refused)
+}
+test fn probe_tail_call_absent() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.tail_call", unit: ^lst_tail_call_cu, want: ^probe_class_absent)
+}
+test fn probe_let_und_reachable_resolved() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.let_und_reachable", unit: ^lst_let_und_reachable_cu, want: ^probe_class_resolved)
+}
+test fn probe_let_und_reachable_file_refused() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.let_und_reachable", unit: ^lst_let_und_reachable_cu, want: ^probe_class_file_refused)
+}
+test fn probe_let_und_reachable_resolve_refused() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.let_und_reachable", unit: ^lst_let_und_reachable_cu, want: ^probe_class_resolve_refused)
+}
+test fn probe_let_und_reachable_absent() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.let_und_reachable", unit: ^lst_let_und_reachable_cu, want: ^probe_class_absent)
+}
+test fn probe_tail_let_resolved() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.tail_let", unit: ^lst_tail_let_cu, want: ^probe_class_resolved)
+}
+test fn probe_tail_let_file_refused() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.tail_let", unit: ^lst_tail_let_cu, want: ^probe_class_file_refused)
+}
+test fn probe_tail_let_resolve_refused() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.tail_let", unit: ^lst_tail_let_cu, want: ^probe_class_resolve_refused)
+}
+test fn probe_tail_let_absent() -> Bool {
+  probe_class(name: "v2.test.fixture.namespace_xl0.tail_let", unit: ^lst_tail_let_cu, want: ^probe_class_absent)
+}
+test fn probe_ctl_body_let_file_reason_present() -> Bool {
+  probe_file_reason_present(name: "v2.test.fixture.namespace_xl0.ctl_body_let", unit: ^lst_ctl_body_let_cu)
+}
+test fn probe_ctl_body_let_reason_statement_let_in_tail_position() -> Bool {
+  probe_file_reason(name: "v2.test.fixture.namespace_xl0.ctl_body_let", unit: ^lst_ctl_body_let_cu, want: ^body_lowering_reason_statement_let_in_tail_position)
+}
+test fn probe_ctl_body_let_reason_let_body_not_reachable_from_node() -> Bool {
+  probe_file_reason(name: "v2.test.fixture.namespace_xl0.ctl_body_let", unit: ^lst_ctl_body_let_cu, want: ^body_lowering_reason_let_body_not_reachable_from_node)
+}
+test fn probe_ctl_body_let_reason_let_binding_name_absent() -> Bool {
+  probe_file_reason(name: "v2.test.fixture.namespace_xl0.ctl_body_let", unit: ^lst_ctl_body_let_cu, want: ^body_lowering_reason_let_binding_name_absent)
+}
+test fn probe_ctl_body_let_reason_let_bound_value_absent() -> Bool {
+  probe_file_reason(name: "v2.test.fixture.namespace_xl0.ctl_body_let", unit: ^lst_ctl_body_let_cu, want: ^body_lowering_reason_let_bound_value_absent)
+}
+test fn probe_ctl_body_let_reason_let_navigation_refused() -> Bool {
+  probe_file_reason(name: "v2.test.fixture.namespace_xl0.ctl_body_let", unit: ^lst_ctl_body_let_cu, want: ^body_lowering_reason_let_navigation_refused)
+}
+test fn probe_ctl_body_let_reason_function_value_body_unread() -> Bool {
+  probe_file_reason(name: "v2.test.fixture.namespace_xl0.ctl_body_let", unit: ^lst_ctl_body_let_cu, want: ^body_lowering_reason_function_value_body_unread)
+}
+test fn probe_ctl_body_let_reason_match_arm_navigation_refused() -> Bool {
+  probe_file_reason(name: "v2.test.fixture.namespace_xl0.ctl_body_let", unit: ^lst_ctl_body_let_cu, want: ^body_lowering_reason_match_arm_navigation_refused)
+}
+test fn probe_ctl_body_let_reason_if_navigation_refused() -> Bool {
+  probe_file_reason(name: "v2.test.fixture.namespace_xl0.ctl_body_let", unit: ^lst_ctl_body_let_cu, want: ^body_lowering_reason_if_navigation_refused)
+}
+test fn probe_ctl_arm_block_file_reason_present() -> Bool {
+  probe_file_reason_present(name: "v2.test.fixture.namespace_xl0.ctl_arm_block", unit: ^lst_ctl_arm_block_cu)
+}
+test fn probe_ctl_arm_block_reason_statement_let_in_tail_position() -> Bool {
+  probe_file_reason(name: "v2.test.fixture.namespace_xl0.ctl_arm_block", unit: ^lst_ctl_arm_block_cu, want: ^body_lowering_reason_statement_let_in_tail_position)
+}
+test fn probe_ctl_arm_block_reason_let_body_not_reachable_from_node() -> Bool {
+  probe_file_reason(name: "v2.test.fixture.namespace_xl0.ctl_arm_block", unit: ^lst_ctl_arm_block_cu, want: ^body_lowering_reason_let_body_not_reachable_from_node)
+}
+test fn probe_ctl_arm_block_reason_let_binding_name_absent() -> Bool {
+  probe_file_reason(name: "v2.test.fixture.namespace_xl0.ctl_arm_block", unit: ^lst_ctl_arm_block_cu, want: ^body_lowering_reason_let_binding_name_absent)
+}
+test fn probe_ctl_arm_block_reason_let_bound_value_absent() -> Bool {
+  probe_file_reason(name: "v2.test.fixture.namespace_xl0.ctl_arm_block", unit: ^lst_ctl_arm_block_cu, want: ^body_lowering_reason_let_bound_value_absent)
+}
+test fn probe_ctl_arm_block_reason_let_navigation_refused() -> Bool {
+  probe_file_reason(name: "v2.test.fixture.namespace_xl0.ctl_arm_block", unit: ^lst_ctl_arm_block_cu, want: ^body_lowering_reason_let_navigation_refused)
+}
+test fn probe_ctl_arm_block_reason_function_value_body_unread() -> Bool {
+  probe_file_reason(name: "v2.test.fixture.namespace_xl0.ctl_arm_block", unit: ^lst_ctl_arm_block_cu, want: ^body_lowering_reason_function_value_body_unread)
+}
+test fn probe_ctl_arm_block_reason_match_arm_navigation_refused() -> Bool {
+  probe_file_reason(name: "v2.test.fixture.namespace_xl0.ctl_arm_block", unit: ^lst_ctl_arm_block_cu, want: ^body_lowering_reason_match_arm_navigation_refused)
+}
+test fn probe_ctl_arm_block_reason_if_navigation_refused() -> Bool {
+  probe_file_reason(name: "v2.test.fixture.namespace_xl0.ctl_arm_block", unit: ^lst_ctl_arm_block_cu, want: ^body_lowering_reason_if_navigation_refused)
+}
+test fn probe_arm_block_let_file_reason_present() -> Bool {
+  probe_file_reason_present(name: "v2.test.fixture.namespace_xl0.arm_block_let", unit: ^lst_arm_block_let_cu)
+}
+test fn probe_arm_block_let_reason_statement_let_in_tail_position() -> Bool {
+  probe_file_reason(name: "v2.test.fixture.namespace_xl0.arm_block_let", unit: ^lst_arm_block_let_cu, want: ^body_lowering_reason_statement_let_in_tail_position)
+}
+test fn probe_arm_block_let_reason_let_body_not_reachable_from_node() -> Bool {
+  probe_file_reason(name: "v2.test.fixture.namespace_xl0.arm_block_let", unit: ^lst_arm_block_let_cu, want: ^body_lowering_reason_let_body_not_reachable_from_node)
+}
+test fn probe_arm_block_let_reason_let_binding_name_absent() -> Bool {
+  probe_file_reason(name: "v2.test.fixture.namespace_xl0.arm_block_let", unit: ^lst_arm_block_let_cu, want: ^body_lowering_reason_let_binding_name_absent)
+}
+test fn probe_arm_block_let_reason_let_bound_value_absent() -> Bool {
+  probe_file_reason(name: "v2.test.fixture.namespace_xl0.arm_block_let", unit: ^lst_arm_block_let_cu, want: ^body_lowering_reason_let_bound_value_absent)
+}
+test fn probe_arm_block_let_reason_let_navigation_refused() -> Bool {
+  probe_file_reason(name: "v2.test.fixture.namespace_xl0.arm_block_let", unit: ^lst_arm_block_let_cu, want: ^body_lowering_reason_let_navigation_refused)
+}
+test fn probe_arm_block_let_reason_function_value_body_unread() -> Bool {
+  probe_file_reason(name: "v2.test.fixture.namespace_xl0.arm_block_let", unit: ^lst_arm_block_let_cu, want: ^body_lowering_reason_function_value_body_unread)
+}
+test fn probe_arm_block_let_reason_match_arm_navigation_refused() -> Bool {
+  probe_file_reason(name: "v2.test.fixture.namespace_xl0.arm_block_let", unit: ^lst_arm_block_let_cu, want: ^body_lowering_reason_match_arm_navigation_refused)
+}
+test fn probe_arm_block_let_reason_if_navigation_refused() -> Bool {
+  probe_file_reason(name: "v2.test.fixture.namespace_xl0.arm_block_let", unit: ^lst_arm_block_let_cu, want: ^body_lowering_reason_if_navigation_refused)
+}
+test fn probe_tail_let_file_reason_present() -> Bool {
+  probe_file_reason_present(name: "v2.test.fixture.namespace_xl0.tail_let", unit: ^lst_tail_let_cu)
+}
+test fn probe_tail_let_reason_statement_let_in_tail_position() -> Bool {
+  probe_file_reason(name: "v2.test.fixture.namespace_xl0.tail_let", unit: ^lst_tail_let_cu, want: ^body_lowering_reason_statement_let_in_tail_position)
+}
+test fn probe_tail_let_reason_let_body_not_reachable_from_node() -> Bool {
+  probe_file_reason(name: "v2.test.fixture.namespace_xl0.tail_let", unit: ^lst_tail_let_cu, want: ^body_lowering_reason_let_body_not_reachable_from_node)
+}
+test fn probe_tail_let_reason_let_binding_name_absent() -> Bool {
+  probe_file_reason(name: "v2.test.fixture.namespace_xl0.tail_let", unit: ^lst_tail_let_cu, want: ^body_lowering_reason_let_binding_name_absent)
+}
+test fn probe_tail_let_reason_let_bound_value_absent() -> Bool {
+  probe_file_reason(name: "v2.test.fixture.namespace_xl0.tail_let", unit: ^lst_tail_let_cu, want: ^body_lowering_reason_let_bound_value_absent)
+}
+test fn probe_tail_let_reason_let_navigation_refused() -> Bool {
+  probe_file_reason(name: "v2.test.fixture.namespace_xl0.tail_let", unit: ^lst_tail_let_cu, want: ^body_lowering_reason_let_navigation_refused)
+}
+test fn probe_tail_let_reason_function_value_body_unread() -> Bool {
+  probe_file_reason(name: "v2.test.fixture.namespace_xl0.tail_let", unit: ^lst_tail_let_cu, want: ^body_lowering_reason_function_value_body_unread)
+}
+test fn probe_tail_let_reason_match_arm_navigation_refused() -> Bool {
+  probe_file_reason(name: "v2.test.fixture.namespace_xl0.tail_let", unit: ^lst_tail_let_cu, want: ^body_lowering_reason_match_arm_navigation_refused)
+}
+test fn probe_tail_let_reason_if_navigation_refused() -> Bool {
+  probe_file_reason(name: "v2.test.fixture.namespace_xl0.tail_let", unit: ^lst_tail_let_cu, want: ^body_lowering_reason_if_navigation_refused)
+}
