@@ -178,7 +178,7 @@ fn effect_choose_branch(
   node: Node,
   _value: RuntimeValue,
   _env: EvaluationEnvironment
-) -> Outcome<Node> {
+) -> Outcome<Optional<Node>> {
   Rejected {
     diagnostics: diagnostics_singleton(
       d: eval_diagnostic(reason: ^effect_runtime_rejected, node: node)

@@ -11,12 +11,20 @@ import v2.extdeps.languages.bash_build {
 }
 import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, kv }
 import extdeps.github.actions { Step, RunStep }
+import extdeps.github.expressions { ContextAccess, Runner, ExpressionTemplate, Interpolation, LiteralText, serialize_template }
+import gunbc.read_set_schema {
+  read_set_request_family,
+  read_set_receipt_basename,
+  read_set_env_name,
+  fast_lane_native_cli_basename,
+  fast_lane_compiler_identity_basename,
+}
 import gunbc.parse_verdict_publish {
   materialization_family_cache_save_step,
   materialization_gha_cache_key_prefix,
   materialization_publish_if,
   parse_verdict_generation_one_bin,
-  parse_verdict_compiler_expr,
+  parse_verdict_fresh_compiler_expr,
   github_sha_expr,
 }
 
@@ -32,17 +40,13 @@ import gunbc.parse_verdict_publish {
 // WHY THE UNIT IS SAVED LAST. Steps after a failed step do not run, so a unit that exists for a sha is
 // evidence that every earlier step of the job went green on that sha. A pull request whose diff misses the
 // receipt and the fixed inputs can then reuse that verdict for the closure-dependent steps, and run only
-// the whole-tree checks with the restored binary. Nothing reads the unit yet: this change only RECORDS, so
-// the skip predicate that will consume it can first be checked against real receipts.
+// the whole-tree checks with the restored binary. gunbc.read_set_restore is that reader: it restores the
+// unit for the nearest published first-parent ancestor of the base and decides whether it covers the change.
+// The file names and receipt kinds both sides read are gunbc.read_set_schema.
 //
 // The binary is copied into the workspace before saving, because a cache entry's version hashes the
 // path string it was saved under (gunbc.parse_verdict_publish parse_verdict_cache_working_directory): a
 // path under the runner's absolute temp directory would restore only on a runner that spells it the same.
-data read_set_request_family: String = "fast-lane"
-data read_set_receipt_basename: String = "gunbc-read-set.txt"
-data read_set_env_name: String = "GUNBC_READ_SET_OUT"
-data fast_lane_native_cli_basename: String = "gunbc-fast-lane-native-cli"
-data fast_lane_compiler_identity_basename: String = "gunbc-fast-lane-compiler-identity"
 data fast_lane_stage_step_name: String = "Stage the fast-lane unit"
 data fast_lane_stage_unemittable_marker: String = "__GUNBC_FAST_LANE_STAGE_UNEMITTABLE__"
 
@@ -50,8 +54,24 @@ fn read_set_emit_env() -> YamlKeyValue {
   kv(key: read_set_env_name, value: yaml_string(s: read_set_receipt_basename))
 }
 
+// THE UNIT'S KEY CARRIES THE RUNNER ARCHITECTURE: the unit holds a native executable, so a unit is reusable
+// only on the architecture that built it. Save (this module) and restore (gunbc.read_set_restore) both build
+// the key here, from the commit expression each side owns.
+fn fast_lane_unit_cache_key(commit: String) -> String {
+  join(
+    [
+      materialization_gha_cache_key_prefix(family: read_set_request_family),
+      serialize_template(template: ExpressionTemplate {
+        segments: [Interpolation { expression: ContextAccess { context: Runner, path: ["arch"] } }, LiteralText { text: "-" }]
+      }),
+      commit
+    ],
+    ""
+  )
+}
+
 fn read_set_publish_cache_key() -> String {
-  concat(materialization_gha_cache_key_prefix(family: read_set_request_family), github_sha_expr())
+  fast_lane_unit_cache_key(commit: github_sha_expr())
 }
 
 fn fast_lane_unit_path() -> String {
@@ -80,6 +100,9 @@ fn fast_lane_stage_script() -> String {
   }
 }
 
+// THE STAGE READS THE FRESH PRODUCT (gunbc.parse_verdict_publish parse_verdict_generation_one_bin and
+// parse_verdict_fresh_compiler_expr), never the shared native-CLI expressions, so a unit saved for a commit
+// holds the binary that commit's own run built and a restored binary is never saved again under a new sha.
 fn fast_lane_stage_step() -> Step {
   RunStep {
     name: Present { value: fast_lane_stage_step_name },
@@ -89,7 +112,7 @@ fn fast_lane_stage_step() -> Step {
     env: Present {
       value: [
         kv(key: "GEN_ONE", value: yaml_string(s: parse_verdict_generation_one_bin())),
-        kv(key: "COMPILER", value: yaml_string(s: parse_verdict_compiler_expr())),
+        kv(key: "COMPILER", value: yaml_string(s: parse_verdict_fresh_compiler_expr())),
       ]
     },
     working_directory: none,

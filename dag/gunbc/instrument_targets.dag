@@ -660,6 +660,18 @@ fn roster_import_sweep_controls_function() -> String {
   "roster_import_sweep_controls_wire"
 }
 
+// THE REAL ROUTE BEHIND THE CONTROLS' SUPPLIED INPUTS (DESIGN 3, the pairing obligation): the companion derivation, the
+// home closure and the selecting-call entry executed once over the real std sources, each line compared to the value the
+// controls label is supplied (v2.workflow.roster_import_sweep roster_import_sweep_real_route_inhabitance). Its own label so
+// the controls stay on supplied inputs; dispatched on the fleet like the controls.
+fn roster_import_sweep_real_route_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "roster-import-sweep-real-route" } }
+}
+
+fn roster_import_sweep_real_route_binding() -> TargetBinding {
+  TargetBinding { target: roster_import_sweep_real_route_label() producer: CliWireProgramProducer { entry: roster_import_sweep_controls_entry() function: "roster_import_sweep_real_route_wire" } }
+}
+
 fn roster_import_sweep_controls_binding() -> TargetBinding {
   TargetBinding { target: roster_import_sweep_controls_label() producer: CliWireProgramProducer { entry: roster_import_sweep_controls_entry() function: roster_import_sweep_controls_function() } }
 }
@@ -1176,7 +1188,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     cardinality_realization_binding(),
     regen_round_cost_binding(),
     credential_acquisition_systemd_rows_binding(),
-    known_red_derivation_binding(), roster_reach_inhabitance_binding(), witness_deferral_freeze_population_binding(), append_chain_ladder_binding(), last_use_move_binding(), exit_return_ownership_binding(), cons_tail_recursion_binding(), pattern_binder_capture_binding(), member_home_cost_binding(), roster_import_sweep_controls_binding(), roster_rehome_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(), derived_equality_routes_binding(),
+    known_red_derivation_binding(), roster_reach_inhabitance_binding(), witness_deferral_freeze_population_binding(), append_chain_ladder_binding(), last_use_move_binding(), exit_return_ownership_binding(), cons_tail_recursion_binding(), pattern_binder_capture_binding(), member_home_cost_binding(), roster_import_sweep_controls_binding(), roster_import_sweep_real_route_binding(), roster_rehome_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(), derived_equality_routes_binding(),
     compute_dependency_wrong_capture_binding(),
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),

@@ -311,14 +311,25 @@ fn ui_attr_refs_of_page(page_text: String) -> List<HtmlAttributeReference> {
   html_attribute_references(ui_octets_of(page_text), [megarac_ui_src_name_octets, megarac_ui_href_name_octets])
 }
 
+// RequireJS names its entry module by data-main without the extension and loads it with ".js" appended
+// unless the value already ends in ".js" (requirejs.org, "data-main"). The page names the value and the
+// loader's rule names the file, so the derived path is a Candidate in the same derived set as a src,
+// and the unchanged JavaScript admission still judges it.
+fn ui_data_main_script_ref(value: String) -> String {
+  if ui_string_ends_with(value, megarac_ui_asset_path_suffix) { value } else { join([value, megarac_ui_asset_path_suffix as String], "") }
+}
+
 fn ui_asset_refs_of_page(page_text: String) -> List<NonEmptyStr> {
-  ui_attr_refs_of_page(page_text) |> map(r => ui_octets_text(r.value) as NonEmptyStr)
+  concat(
+    ui_attr_refs_of_page(page_text) |> map(r => ui_octets_text(r.value) as NonEmptyStr),
+    html_attribute_references(ui_octets_of(page_text), [megarac_ui_data_main_name_octets]) |> filter(r => count(r.value) > 0) |> map(r => ui_data_main_script_ref(ui_octets_text(r.value)) as NonEmptyStr),
+  )
 }
 
 // The guard a caller's path must pass. Shape first (each failure names itself), then membership in
 // the derived set -- so an invented path that also looks perfectly ordinary is still refused, which
 // is the case the reviewer asked to see go red.
-fn ui_asset_path_shape_refusal(path: String) -> MegaRacUiAssetPathRefusal? {
+fn ui_path_walk_refusal(path: String) -> MegaRacUiAssetPathRefusal? {
   let path_octets = ui_octets_of(path)
   let slash = 47
   let dot_dot = ui_octets_of("..")
@@ -334,10 +345,19 @@ fn ui_asset_path_shape_refusal(path: String) -> MegaRacUiAssetPathRefusal? {
   } else if (match ui_octets_index_of(path_octets, [colon]) { Present { value: _ } => true Absent => false }) || (match ui_octets_index_of(path_octets, [slash, slash]) { Present { value: _ } => true Absent => false }) {
     // a colon could be a port or a scheme; a double slash could be an authority. Neither is a path.
     Present { value: AssetPathCarriesSchemeOrAuthority { path: path } }
-  } else if !ui_string_ends_with(path, megarac_ui_asset_path_suffix) {
-    Present { value: AssetPathIsNotJavaScript { path: path } }
   } else {
     Absent
+  }
+}
+
+fn ui_asset_path_shape_refusal(path: String) -> MegaRacUiAssetPathRefusal? {
+  match ui_path_walk_refusal(path) {
+    Present { value: cause } => Present { value: cause }
+    Absent => if !ui_string_ends_with(path, megarac_ui_asset_path_suffix) {
+      Present { value: AssetPathIsNotJavaScript { path: path } }
+    } else {
+      Absent
+    }
   }
 }
 
@@ -421,6 +441,12 @@ data megarac_ui_probes: List<MegaRacUiProbe> = [
   MegaRacUiProbe { name: "preload" as NonEmptyStr, octets: ui_octets_of("preload") },
   MegaRacUiProbe { name: "select_lang" as NonEmptyStr, octets: ui_octets_of("select_lang") },
   MegaRacUiProbe { name: "lang_en_us" as NonEmptyStr, octets: ui_octets_of("en-us") },
+  MegaRacUiProbe { name: "res_store" as NonEmptyStr, octets: ui_octets_of("resStore") },
+  MegaRacUiProbe { name: "resources" as NonEmptyStr, octets: ui_octets_of("resources") },
+  MegaRacUiProbe { name: "res_option" as NonEmptyStr, octets: ui_octets_of("res:") },
+  MegaRacUiProbe { name: "lmedia_object" as NonEmptyStr, octets: ui_octets_of("lmedia:{") },
+  MegaRacUiProbe { name: "lmedia_object_quoted" as NonEmptyStr, octets: ui_octets_of("\"lmedia\":{") },
+  MegaRacUiProbe { name: "local_storage_res" as NonEmptyStr, octets: ui_octets_of("\"res_\"") },
 ]
 
 data megarac_ui_data_main_name_octets: List<Int> = ui_octets_of("data-main")
@@ -1618,6 +1644,7 @@ fn ui_try_one_asset(
         http_status: http.http_status,
         transport_ok: http.transport_ok,
       )
+      let key = megarac_ui_constructed_key_of_asset(asset_text: http.body, asset_path: admitted_path)
       MegaRacUiAssetTry {
         attempt: MegaRacUiAssetAttempt {
           path: admitted_path as String,
@@ -1626,7 +1653,7 @@ fn ui_try_one_asset(
           excerpt: excerpt,
         },
         diagnostic_lines: if http.transport_ok && http.http_status == 200 {
-          concat(ui_status_token_diagnostic_lines(asset_text: http.body, session_values: session_values), [megarac_ui_constructed_key_line(key: megarac_ui_constructed_key_of_asset(asset_text: http.body, asset_path: admitted_path))])
+          concat(ui_status_token_diagnostic_lines(asset_text: http.body, session_values: session_values), [megarac_ui_constructed_key_line(key: key)])
         } else {
           []
         },

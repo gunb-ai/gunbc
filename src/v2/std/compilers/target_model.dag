@@ -15123,10 +15123,13 @@ fn target_transform_positional_operand_binding(node: Node, index: Int) -> Outcom
 fn target_bind_binder_binding(bind: Node) -> Outcome<Symbol> {
   match bind_slot_target(n: bind, slot: BindBinderSlot) {
     Present { value: child } => target_transform_positional_operand_binding_atom(child: child)
+    // A Bind with NO BINDER is the statement Bind the lowering produces. At this VALUE route a value is owed
+    // and there is no binder to hold it, so it refuses -- with the cause the slot table answered, not the
+    // malformed-shape reason (DESIGN 5). The statement render is the target model's own statement kind.
     Absent =>
       outcome_rejected(
         target_value_expr_diagnostic(
-          reason: ^target_value_expr_reason_transform_shape_invalid,
+          reason: ^target_value_expr_reason_bind_binder_absent_as_value,
           node: bind
         )
       )
@@ -15171,7 +15174,7 @@ fn target_value_expr_arrow_has_branch_body(arrow: Node) -> Bool {
     Accepted { value: body, diagnostics: _ } =>
       match body.kind {
         ComputationNode { behavior: Branch } =>
-          length(xs: positional_child_target_nodes(node: body)) == 3
+          target_branch_value_slots_complete(node: body)
         TypeNode { connective: _ } => false
         ComputationNode { behavior: Value } => false
         ComputationNode { behavior: Transform } => false
@@ -15180,6 +15183,25 @@ fn target_value_expr_arrow_has_branch_body(arrow: Node) -> Bool {
         ComputationNode { behavior: Match } => false
       }
     Rejected { diagnostics: _ } => false
+  }
+}
+
+// All three Branch slots Present at the table: the condition the bool gate reads, the then arm, and the else
+// arm the VALUE route cannot do without. The arity question is asked at the table, not by counting
+// positionals beside it (DESIGN 3), so an else-less (two-positional) Branch is ineligible here the same way a
+// malformed one always was, and no second arity spelling survives.
+fn target_branch_value_slots_complete(node: Node) -> Bool {
+  match branch_slot_target(n: node, slot: BranchConditionSlot) {
+    Absent => false
+    Present { value: _ } =>
+      match branch_slot_target(n: node, slot: BranchThenSlot) {
+        Absent => false
+        Present { value: _ } =>
+          match branch_slot_target(n: node, slot: BranchElseSlot) {
+            Absent => false
+            Present { value: _ } => true
+          }
+      }
   }
 }
 
@@ -16268,10 +16290,13 @@ fn target_project_branch_bool_if_else(
             )
           Present { value: then_arm } =>
             match branch_slot_target(n: body, slot: BranchElseSlot) {
+              // The condition and the then arm are read; only the else arm is missing. That is the else-less
+              // shape, which this VALUE route cannot render -- but it is not a malformed node, so it does not
+              // get the malformed-shape reason (DESIGN 5: one cause per reason).
               Absent =>
                 outcome_rejected(
                   target_value_expr_diagnostic(
-                    reason: ^target_value_expr_reason_transform_shape_invalid,
+                    reason: ^target_value_expr_reason_branch_else_less_as_value,
                     node: body
                   )
                 )

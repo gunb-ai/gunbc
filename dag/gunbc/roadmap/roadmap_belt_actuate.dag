@@ -13,7 +13,8 @@ import gunbc.roadmap.roadmap_nesting { roadmap_memberships }
 import std.algebra { trim, skip, list_append }
 import std.durable_compare_and_set { cas_generation_count }
 import extdeps.sudo.elevation { sudo_elevate, ElevatedInvocation }
-import extdeps.systemd.systemctl { systemctl_start_argv, systemctl_reset_failed_argv }
+import extdeps.systemd.systemctl { systemctl_start_argv, systemctl_reset_failed_argv, systemctl_show_user_property_argv }
+import gunbc.systemctl_show_read { SystemdPropertyCapture, SystemdPropertyCaptured, SystemdPropertyBlank, SystemdPropertyCaptureRefused, systemctl_show_property_value_from_stdout }
 import extdeps.systemd.service_exec { ServiceResultSuccess }
 
 import gunbc.output_policy { OutcomeIsData }
@@ -227,12 +228,22 @@ import gunbc.roadmap.attempt_system_unit_launch {
 }
 import extdeps.systemd {
   ExecStopPostProperty, WorkingDirectoryProperty, RuntimeMaxSecProperty, CollectModeProperty, MemoryMax,
+  MemoryCurrent, SystemdUnitProperty,
+  parse_systemd_memory_limit_show, SystemdCgroupMemoryLimit, MemoryLimitUnbounded, MemoryLimitBytes, MemoryLimitAbsent,
   systemd_time_span_of_seconds, systemd_unit_name_wire, systemd_unit_name_refusal_detail,
   SystemdUnitNameAdmitted, SystemdUnitNameStemEmpty, SystemdUnitNameDisallowedCharacter,
   SystemdUnitNameOverlong,
 }
 import gunbc.compute.unit_bounds { gunbc_user_work_transient_command }
-import std.measure { byte_size_count, kibibyte, Second }
+// row 29 (#15822 comment 6663129463): the pre-launch memory-fit gate for the user-work slice. The fold
+// lives PURE in gunbc.live_deploy.slice_bounds; the resident charge and the enforced ceiling are read via
+// the authorized cgroup/systemd parsers, so a non-numeric, negative, or infinity wire value is a refusal,
+// never a coerced number.
+import gunbc.live_deploy.slice_bounds {
+  user_work_slice_admit_against, user_work_slice_unit_name,
+}
+import extdeps.linux.cgroup_v2_memory { parse_cgroup_nonnegative_bytes }
+import std.measure { ByteSize, byte_size_count, kibibyte, Second, Fits, Below }
 import gunbc.deploy_transition {
   ActuationAdmission,
   ActuationAdmitted,
@@ -12190,6 +12201,70 @@ fn belt_audit_verified_attempt(instance: HostDashboardInstance, progress: Workfl
   }
 }
 
+// THE PRE-LAUNCH MEMORY-FIT GATE (row 29, srv1 #15822 comment 6663129463). A reviewer or auditor is
+// about to start, via systemd-run --user, INTO gunbc-user-work.slice -- the same slice the lab's standing
+// obligation daemons and the observe loop already fill. The belt previously admitted a review on slot
+// COUNT and liveness alone and let the kernel memcg-OOM the unit after launch. This hoists that decision
+// to before launch: it reads the slice's resident charge (the consumer's OBSERVED demand, DESIGN 3b), and
+// asks the pure fold (user_work_slice_admit_against) whether THIS unit's bound fits the room that charge
+// leaves under the ruled ceiling. If it cannot be established -- full, unbounded, or unreadable -- the
+// caller must NOT start the unit; it defers instead (quick-wolf's row-30 contract: a pre-launch deferral
+// is not a death, spends no turn cap, and retries each tick). The read is the authorized cgroup count-file
+// parser, so a non-numeric/negative wire value is a refusal, never a coerced number.
+type BeltSliceFitCheck
+  = BeltSliceFits
+  | BeltSliceFull { requested: ByteSize, available: ByteSize }
+  | BeltSliceUnreadable { reason: String }
+
+// ONE `systemctl --user show -p <property> <unit> --value` through the belt. The capture DECISION is the
+// single authority's: systemctl_show_property_value_from_stdout folds the wire to SystemdPropertyCaptured
+// | SystemdPropertyBlank | SystemdPropertyCaptureRefused, so "the unit answered blank" stays a DISTINCT arm
+// from a refusal -- the exact merge a two-way sum hides, and why the existing three-way type was split.
+// Only the TRANSPORT diverges: the belt's sole exec primitive is belt_exec -> WitnessBin.Run, whereas a
+// HostEffectTransport's LocalShell leg routes through the modeled systemd realization that host_operation_exec
+// reaches and the awk-emitted belt does not wire -- so the belt supplies its own transport and reuses the
+// authoritative capture semantics over it. A stated Conformance divergence (review 92299), not a fork.
+fn belt_read_user_slice_property(unit: NonEmptyStr, property: SystemdUnitProperty, workdir: String) -> SystemdPropertyCapture {
+  let show_args = systemctl_show_user_property_argv(unit: unit, property: property)
+  match belt_exec(cmd: host_exec_argv(program: "systemctl", args: show_args.skip(n: 1)), workdir: workdir) {
+    ExecFailed { program: _, exit_code, stderr } => SystemdPropertyCaptureRefused { reason: join(["systemctl show exited ", to_string(exit_code), ": ", trim(stderr)], "") }
+    ExecRefused { program: _, reason } => SystemdPropertyCaptureRefused { reason: reason }
+    ExecOk { stdout } => systemctl_show_property_value_from_stdout(success: true, stdout: stdout)
+  }
+}
+
+fn belt_user_work_slice_fit(requested: ByteSize, workdir: String) -> BeltSliceFitCheck {
+  // The slice's resident charge (sum of members) AND the ceiling the kernel will actually enforce
+  // (the slice MemoryMax). The ceiling is read, not derived from source: the incident host carries 44 GiB
+  // while the source ruling yields 50, and admitting against 50 would launch a review straight into an
+  // OOM at the enforced 44. An unbounded or unreadable ceiling refuses -- placement is not established.
+  match belt_read_user_slice_property(unit: user_work_slice_unit_name, property: MemoryCurrent, workdir: workdir) {
+    SystemdPropertyBlank => BeltSliceUnreadable { reason: "the user-work slice reported a blank MemoryCurrent, so no fit can be established" }
+    SystemdPropertyCaptureRefused { reason } => BeltSliceUnreadable { reason: join(["the user-work slice resident charge could not be read: ", reason], "") }
+    SystemdPropertyCaptured { value: current_raw } =>
+      match parse_cgroup_nonnegative_bytes(text: current_raw) {
+        Absent => BeltSliceUnreadable { reason: "the user-work slice reported a MemoryCurrent that is not a non-negative byte count, so no fit can be established" }
+        Present { value: charged } =>
+          match belt_read_user_slice_property(unit: user_work_slice_unit_name, property: MemoryMax, workdir: workdir) {
+            SystemdPropertyBlank => BeltSliceUnreadable { reason: "the user-work slice reported a blank MemoryMax, so no fit can be established" }
+            SystemdPropertyCaptureRefused { reason } => BeltSliceUnreadable { reason: join(["the user-work slice ceiling could not be read: ", reason], "") }
+            SystemdPropertyCaptured { value: max_raw } =>
+              match parse_systemd_memory_limit_show(raw: max_raw) {
+                MemoryLimitUnbounded => BeltSliceUnreadable { reason: "the user-work slice declares no finite MemoryMax, so no fit can be established (placement is not bounded)" }
+                MemoryLimitAbsent => BeltSliceUnreadable { reason: "the user-work slice reported a MemoryMax that is not a byte count, so no fit can be established" }
+                MemoryLimitBytes { bytes: ceiling } =>
+                  match user_work_slice_admit_against(ceiling: ceiling, charged: charged, requested: requested) {
+                    // The one fit rule (std.measure measure_fits) answers; the caller maps its verdict to
+                    // the belt's own deferral noun. Fits => start the unit; Below => refuse before launch.
+                    Fits { available: _ } => BeltSliceFits
+                    Below { requested: r, available: a } => BeltSliceFull { requested: r, available: a }
+                  }
+              }
+          }
+      }
+  }
+}
+
 fn belt_audit_spawn(instance: HostDashboardInstance, progress: WorkflowAttemptProgress, worktree: String, head: String, verification_detail: String) -> BeltReviewOutcome {
   let node_id = progress.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
   match belt_lookup_node(node_id: progress.node_id) {
@@ -12224,6 +12299,10 @@ fn belt_audit_spawn(instance: HostDashboardInstance, progress: WorkflowAttemptPr
               match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: progress.node_id, attempt_key: progress.attempt_key, role: AttemptAuditorRole { head_sha: head }, record_owner: instance.directory_owner) {
                 AttemptExitHookRefused { reason } => ReviewFailed { node_id: progress.node_id, criterion: goal_audit_criterion_key, detail: join(["the auditor was not launched: its exit hook could not be rendered: ", reason as String], "") }
                 AttemptExitHookRendered { exec_line } =>
+              match belt_user_work_slice_fit(requested: instance.dispatch_worker_memory_max, workdir: worktree) {
+                BeltSliceUnreadable { reason } => ReviewDeferred { node_id: progress.node_id, criterion: goal_audit_criterion_key, reason: join(["the auditor was not launched: ", reason], "") }
+                BeltSliceFull { requested: r, available: a } => ReviewDeferred { node_id: progress.node_id, criterion: goal_audit_criterion_key, reason: join(["admission refused at the user-work slice: this audit asks ", to_string(byte_size_count(b: r)), " bytes and only ", to_string(byte_size_count(b: a)), " remain under the slice ceiling; deferred for the standing services to drain rather than launched to be memcg-OOM-killed"], "") }
+                BeltSliceFits =>
               match metering_roster_admit(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, role: MeteredAuditor { head: head as NonEmptyStr }) {
                 RosterAdmissionRefused { cause: roster_cause } => ReviewFailed { node_id: progress.node_id, criterion: goal_audit_criterion_key, detail: join(["the auditor was not launched: ", roster_cause], "") }
                 RosterAdmitted =>
@@ -12236,6 +12315,7 @@ fn belt_audit_spawn(instance: HostDashboardInstance, progress: WorkflowAttemptPr
                     ExecFailed { program: _, exit_code, stderr } => ReviewFailed { node_id: progress.node_id, criterion: goal_audit_criterion_key, detail: join(["the auditor unit could not be started (exit ", to_string(exit_code), "): ", stderr], "") }
                     ExecRefused { program: _, reason } => ReviewFailed { node_id: progress.node_id, criterion: goal_audit_criterion_key, detail: reason }
                   }
+              }
               }
               }
               }
@@ -12528,6 +12608,10 @@ fn belt_review_spawn(instance: HostDashboardInstance, node_id: String, attempt_k
       match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key, role: AttemptReviewerRole { criterion_key: key, head_sha: head }, record_owner: instance.directory_owner) {
         AttemptExitHookRefused { reason } => ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer was not launched: its exit hook could not be rendered: ", reason as String], "") }
         AttemptExitHookRendered { exec_line } =>
+      match belt_user_work_slice_fit(requested: instance.dispatch_worker_memory_max, workdir: worktree) {
+        BeltSliceUnreadable { reason } => ReviewDeferred { node_id: node_id, criterion: call.id, reason: join(["the reviewer was not launched: ", reason], "") }
+        BeltSliceFull { requested: r, available: a } => ReviewDeferred { node_id: node_id, criterion: call.id, reason: join(["admission refused at the user-work slice: this review asks ", to_string(byte_size_count(b: r)), " bytes and only ", to_string(byte_size_count(b: a)), " remain under the slice ceiling; deferred for the standing services to drain rather than launched to be memcg-OOM-killed"], "") }
+        BeltSliceFits =>
       match metering_roster_admit(instance: instance, node_id: nid, attempt_key: attempt_key, role: MeteredReviewer { criterion_key: key as NonEmptyStr, head: head as NonEmptyStr }) {
         RosterAdmissionRefused { cause: roster_cause } => ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer was not launched: ", roster_cause], "") }
         RosterAdmitted =>
@@ -12540,6 +12624,7 @@ fn belt_review_spawn(instance: HostDashboardInstance, node_id: String, attempt_k
             ExecFailed { program: _, exit_code, stderr } => ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer unit could not be started (exit ", to_string(exit_code), "): ", stderr], "") }
             ExecRefused { program: _, reason } => ReviewFailed { node_id: node_id, criterion: call.id, detail: reason }
           }
+      }
       }
       }
       }

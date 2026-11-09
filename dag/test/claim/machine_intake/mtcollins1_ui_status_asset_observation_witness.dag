@@ -1968,3 +1968,37 @@ test fn w_the_diagnostics_read_two_and_a_half_mebibytes_of_js_shaped_text() -> B
     string_contains(s: joined, pattern: "probe name=label_key_call count=16385") &&
     string_contains(s: joined, pattern: "bare=1")
 }
+
+test fn w_the_page_derived_admission_still_refuses_a_json_path() -> Bool {
+  match ui_asset_path_admission(path: "/locales/en-US/lmedia.json", derived: ["/locales/en-US/lmedia.json" as NonEmptyStr]) {
+    RefusedUiAssetPath { path: _, cause: AssetPathIsNotJavaScript { path: _ } } => true
+    other => false
+  }
+}
+
+test fn w_the_data_main_entry_module_is_a_derived_script_ref_with_the_loader_extension() -> Bool {
+  let refs = ui_asset_refs_of_page("<script data-main=\"/app/main\" src=\"/require.js\"></script>") |> map(r => r as String)
+  refs == ["/require.js", "/app/main.js"] && (match ui_asset_path_admission(path: "/app/main.js", derived: ui_resolved_refs(base_path: "/", refs: ui_asset_refs_of_page("<script data-main=\"/app/main\"></script>"))) {
+    AdmittedUiAssetPath { path: p } => (p as String) == "/app/main.js"
+    other => false
+  })
+}
+
+test fn w_a_data_main_that_already_names_javascript_is_not_extended_and_an_unnamed_main_is_not_invented() -> Bool {
+  (ui_asset_refs_of_page("<script data-main=\"/app/main.js\"></script>") |> map(r => r as String)) == ["/app/main.js"] &&
+    count(ui_asset_refs_of_page("<script src=\"/a.js\"></script>")) == 1 &&
+    (match ui_asset_path_admission(path: "/app/other.js", derived: ui_resolved_refs(base_path: "/", refs: ui_asset_refs_of_page("<script data-main=\"/app/main\"></script>"))) {
+      AdmittedUiAssetPath { path: _ } => false
+      other => true
+    })
+}
+
+test fn w_the_resource_store_probes_count_their_spellings() -> Bool {
+  let joined = join(ui_status_token_diagnostic_lines(asset_text: "x resStore y resources z res:\{lmedia:\{a}} \"lmedia\":\{b} \"res_\" w", session_values: witness_session_values()) |> map(l => l as String), "\n")
+  string_contains(s: joined, pattern: "probe name=res_store count=1") &&
+    string_contains(s: joined, pattern: "probe name=resources count=1") &&
+    string_contains(s: joined, pattern: "probe name=res_option count=1") &&
+    string_contains(s: joined, pattern: "probe name=lmedia_object count=1") &&
+    string_contains(s: joined, pattern: "probe name=lmedia_object_quoted count=1") &&
+    string_contains(s: joined, pattern: "probe name=local_storage_res count=1")
+}

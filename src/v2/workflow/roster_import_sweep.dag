@@ -3066,7 +3066,6 @@ fn roster_controls_report() -> String {
         + roster_control_home_converges(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_no_import_anchor(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_import_closes_cycle(prepared: prepared, lex: dag_prepared_lex())
-        + roster_control_closure_inhabited()
         + roster_control_row_scope(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_scope_selects_its_row()
         + roster_home_exact_file_control()
@@ -3189,7 +3188,6 @@ fn roster_control_fails(verdicts: List<RosterControlVerdict>) -> String {
 // added without being declared, fails the count. A name is matched by identity in both directions.
 fn roster_rename_control_names() -> List<String> {
   [
-    "companion-derived",
     "rename-positive (with the companion import)",
     "rename-in-argument (no tag used: no companion)",
     "companion imports only the tags used",
@@ -3294,7 +3292,7 @@ fn roster_rename_controls_counted(prepared: PreparedGrammar, lex: PreparedLexRul
 }
 
 fn roster_rename_control_verdicts(prepared: PreparedGrammar, lex: PreparedLexRules) -> List<RosterControlVerdict> {
-  let companions = roster_run_walk(root: "", rows: roster_rename_production_row(), prepared: prepared, lex: lex).companions
+  let companions = roster_control_supplied_companion()
   let before = "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> String {\n  match map_get(m, k) {\n    Present { value: v } => match map_get(m, v) {\n      Present { value: w } => w\n      Absent => k\n    }\n    Absent => k\n  }\n}\n"
   let after = "module c.rename\n\nimport std.algebra { Cons, map_lookup }\nimport std.optional { Absent, Present }\n\nfn f(m: Map<String, String>, k: String) -> String {\n  match map_lookup(m: m, key: k) {\n    Present { value: v } => match map_lookup(m: m, key: v) {\n      Present { value: w } => w\n      Absent => k\n    }\n    Absent => k\n  }\n}\n"
   let nested = "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, Map<String, String>>, k: String) -> Optional<String> {\n  g(x: map_get(m, k), k: k)\n}\n"
@@ -3305,7 +3303,6 @@ fn roster_rename_control_verdicts(prepared: PreparedGrammar, lex: PreparedLexRul
   let tags_imported_after = "module c.rename\n\nimport std.algebra { Cons, map_lookup }\nimport std.optional { Absent, Present }\n\nfn f(m: Map<String, String>, k: String) -> String {\n  match map_lookup(m: m, key: k) {\n    Present { value: v } => v\n    Absent => k\n  }\n}\n"
   let unrenamed = "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(o: Optional<String>, k: String) -> String {\n  match o {\n    Present { value: v } => v\n    Absent => k\n  }\n}\n"
   [
-    roster_control_verdict(name: "companion-derived", fail: roster_companion_derived_check(companions: companions)),
     roster_control_verdict(name: "rename-positive (with the companion import)", fail: roster_rename_expect_text(companions: companions, name: "rename-positive (with the companion import)", before: before, after: after, prepared: prepared, lex: lex)),
     roster_control_verdict(name: "rename-in-argument (no tag used: no companion)", fail: roster_rename_expect_text(companions: companions, name: "rename-in-argument (no tag used: no companion)", before: nested, after: nested_after, prepared: prepared, lex: lex)),
     roster_control_verdict(name: "companion imports only the tags used", fail: roster_rename_expect_text(companions: companions, name: "companion imports only the tags used", before: only_present, after: only_present_after, prepared: prepared, lex: lex)),
@@ -3631,8 +3628,8 @@ fn roster_appended_callee_green() -> String {
 
 // AN UNDERIVABLE COMPANION REFUSES THE FILE IT WOULD GOVERN: a rename row whose callee the home does not declare.
 fn roster_companion_underivable_control(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
-  let ghost = [RosterHeadRow { call: "map_get", key: "map_get", import_name: "no_such_lookup", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "no_such_lookup", positional: ["m", "key"], appended: [] } }]
-  let companions = roster_run_walk(root: "", rows: ghost, prepared: prepared, lex: lex).companions
+  let ghost = roster_control_ghost_rows()
+  let companions = roster_control_supplied_ghost_companion()
   let text = "module c.rename\n\nimport std.algebra { Cons, no_such_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Bool {\n  match no_such_lookup(m: m, key: k) {\n    Present { value: _ } => true\n    Absent => false\n  }\n}\n"
   match roster_sweep_text_rows(sides: roster_home_sides(rows: ghost), companions: companions, path: "control/rename.dag", text: text, prepared: prepared, lex: lex, candidates: ghost, closures: roster_control_closures()) {
     RosterRefused { reason: r } => if starts_with(s: roster_refusal_text(reason: r), prefix: "companion-underivable call=map_get") { "" } else { "CONTROL-FAIL companion-underivable: refused " + roster_refusal_text(reason: r) + "\n" }
@@ -4040,7 +4037,8 @@ fn roster_control_row_scope(prepared: PreparedGrammar, lex: PreparedLexRules) ->
 
 // A SCOPE THAT SELECTS NOTHING REFUSES, it never reads as converged (side chat on #14883). Each RED goes through the real
 // entry; the apply RED runs at a nonexistent root, so a selection refusal (and not apply-lock-unavailable) proves the check
-// precedes the lock. The positive control is the same entry with a selecting call reaching the files.
+// precedes the lock. The positive is roster_scope_selection_refusal_in over a SUPPLIED one-row table (below); the real
+// entry reaching its files with a selecting call is executed by the inhabitance claim, not on this label.
 fn roster_control_scope_selects_its_row() -> String {
   let algebra = qualified_name_from_dotted_string(dotted: "std.algebra")
   let count_row = RosterHeadRow { call: "count", key: "count", import_name: "collection_count_shape", home: algebra, labels: [], head: KeepHead }
@@ -4048,7 +4046,6 @@ fn roster_control_scope_selects_its_row() -> String {
     + roster_scope_exit_refuses(name: "wrong-home", exit: roster_import_sweep_row_exit(paths_csv: "control/none.dag", home: "std.host_text", call: "count"), refusal: RefusalScopeSelectsNoRow { home: "std.host_text", selection: "call=count" })
     + roster_scope_exit_refuses(name: "unknown-home", exit: roster_import_sweep_home_exit(paths_csv: "control/none.dag", home: "std.no_such_home"), refusal: RefusalScopeSelectsNoRow { home: "std.no_such_home", selection: "every-row" })
     + roster_scope_exit_refuses(name: "apply-before-lock", exit: roster_import_sweep_apply_row_exit(root_dir: "/nonexistent-roster-control-root", paths_csv: "control/none.dag", home: "std.algebra", call: "cuont"), refusal: RefusalScopeSelectsNoRow { home: "std.algebra", selection: "call=cuont" })
-    + roster_scope_exit_refuses(name: "selecting-call", exit: roster_import_sweep_row_exit(paths_csv: "control/none.dag", home: "std.algebra", call: "count"), refusal: RefusalUnreadable)
     + match roster_scope_selection_refusal_in(table: [count_row, count_row], scope: OneHome { home: algebra, rows: OnlyCall { call: "count" } }) {
         Present { value: r } =>
           if roster_refusal_text(reason: r) == roster_refusal_text(reason: RefusalScopeSelectsSeveralRows { home: "std.algebra", call: "count", count: 2 }) { "" } else { "CONTROL-FAIL scope-selection several-rows: refused " + roster_refusal_text(reason: r) + "\n" }
@@ -4135,6 +4132,88 @@ fn roster_exit_reason_is(exit: ProcessExit, reason: String) -> Bool {
     ExitSuccess => false
     ExitFailure { code: _, reason: r } => r == reason
   }
+}
+
+// THE SUPPLIED COMPANIONS (DESIGN 3, a witness discriminates at one interface): the rename-text controls are about the
+// rewrite given a companion, so they take the companion as a supplied value instead of re-deriving it from the real
+// std.algebra and std.optional on every run (that derivation normalizes the 93KB std.algebra). The real producer is
+// asserted to emit exactly these values by roster_import_sweep_real_route_inhabitance, which is NOT on the controls label.
+fn roster_control_supplied_companion() -> List<RosterCompanion> {
+  [CompanionDerived { call: "map_get", to: "map_lookup", module: "std.optional", tags: ["Absent", "Present"], closure: RosterClosureRead { home: "std.optional", modules: ["std.optional"] } }]
+}
+
+data roster_control_ghost_underivable_detail: String = "home std.algebra declares no no_such_lookup"
+
+fn roster_control_supplied_ghost_companion() -> List<RosterCompanion> {
+  [CompanionUnderivable { call: "map_get", to: "no_such_lookup", detail: roster_control_ghost_underivable_detail }]
+}
+
+fn roster_control_ghost_rows() -> List<RosterHeadRow> {
+  [RosterHeadRow { call: "map_get", key: "map_get", import_name: "no_such_lookup", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "no_such_lookup", positional: ["m", "key"], appended: [] } }]
+}
+
+// THE ONE INHABITANCE CLAIM for the supplied inputs above (the pairing obligation): the REAL route, executed once, emits the
+// supplied shapes. Enrolled as its own label, `gunbc test //gunbc/instruments:roster-import-sweep-real-route`
+// (roster_import_sweep_real_route_wire), deliberately NOT on //gunbc/instruments:roster-import-sweep-controls, whose budget
+// it would otherwise carry. One line per claim, `<name> HELD` or `<name> FAIL <why>`; a reader joins on the names.
+// Deleting any of these routes makes its line FAIL.
+fn roster_import_sweep_real_route_inhabitance() -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "grammar FAIL unprepared\n"
+    Accepted { value: prepared, diagnostics: _ } => {
+      let derived = roster_run_walk(root: "", rows: roster_rename_production_row(), prepared: prepared, lex: dag_prepared_lex()).companions
+      let ghost = roster_run_walk(root: "", rows: roster_control_ghost_rows(), prepared: prepared, lex: dag_prepared_lex()).companions
+      roster_inhabitance_line(name: "companion-derived", fail: roster_companion_derived_check(companions: derived) + roster_companion_equals_supplied(real: derived, supplied: roster_control_supplied_companion()))
+        + roster_inhabitance_line(name: "companion-underivable", fail: roster_companion_equals_supplied(real: ghost, supplied: roster_control_supplied_ghost_companion()))
+        + roster_inhabitance_line(name: "closure-inhabited", fail: roster_control_closure_inhabited())
+        + roster_inhabitance_line(name: "selecting-call", fail: roster_scope_exit_refuses(name: "selecting-call", exit: roster_import_sweep_row_exit(paths_csv: "control/none.dag", home: "std.algebra", call: "count"), refusal: RefusalUnreadable))
+    }
+  }
+}
+
+// THE CLAIM'S EXECUTING ROUTE: the label //gunbc/instruments:roster-import-sweep-real-route (gunbc.instrument_targets), its own
+// label so the controls label stays on supplied inputs. Green only when every DECLARED claim name answers HELD: a missing
+// line is a failure, never an implicit pass.
+data roster_real_route_claim_names: List<String> = ["companion-derived", "companion-underivable", "closure-inhabited", "selecting-call"]
+
+fn roster_import_sweep_real_route_wire() -> CliWireResponse {
+  let report = roster_import_sweep_real_route_inhabitance()
+  let lines = split(s: report, delimiter: "\n")
+  let missing = fold_list(xs: roster_real_route_claim_names, empty: "", cons: fn(acc, nm) {
+    if roster_contains(xs: lines, name: nm + " HELD") { acc } else { acc + "CONTROL-FAIL real-route: " + nm + " did not answer HELD\n" }
+  })
+  if missing == "" {
+    CliWirePrintable { bytes: report + "roster-import-sweep real route held\n", exit: ExitSuccess }
+  } else {
+    CliWirePrintable { bytes: report + missing, exit: exit_failure(reason: report + missing) }
+  }
+}
+
+fn roster_inhabitance_line(name: String, fail: String) -> String {
+  if fail == "" { name + " HELD\n" } else { name + " FAIL " + fail }
+}
+
+fn roster_companion_text(c: RosterCompanion) -> String {
+  match c {
+    CompanionDerived { call: c1, to: t, module: m, tags: ts, closure: cl } => "derived " + c1 + "->" + t + " " + m + " {" + roster_join(xs: ts, sep: ",") + "} " + roster_closure_text(c: cl)
+    CompanionUnderivable { call: c1, to: t, detail: d } => "underivable " + c1 + "->" + t + " " + d
+    CompanionNone => "none"
+  }
+}
+
+fn roster_closure_text(c: RosterHomeClosure) -> String {
+  match c {
+    RosterClosureRead { home: h, modules: ms } => "closure " + h + " [" + roster_join(xs: ms, sep: ",") + "]"
+    RosterClosureUnread { home: h } => "closure " + h + " unread"
+  }
+}
+
+// The real producer's companions, compared to the supplied ones by their full rendering, so a drift in module, tags,
+// closure or detail on the real route fails this claim instead of silently leaving the supplied controls stale.
+fn roster_companion_equals_supplied(real: List<RosterCompanion>, supplied: List<RosterCompanion>) -> String {
+  let r = roster_join(xs: list_map(xs: real, f: fn(c) { roster_companion_text(c: c) }), sep: " | ")
+  let p = roster_join(xs: list_map(xs: supplied, f: fn(c) { roster_companion_text(c: c) }), sep: " | ")
+  if r == p { "" } else { "real route emits [" + r + "], the controls are supplied [" + p + "]\n" }
 }
 
 // THE INHABITANCE CLAIM for the supplied closures: the real producer, through the compiler's acquisition door, reads

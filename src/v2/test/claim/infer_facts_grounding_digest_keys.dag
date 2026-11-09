@@ -1,0 +1,68 @@
+module v2.test.claim.infer_facts_grounding_digest_keys
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.node { Atom, Node, Symbol, TypeNode }
+import v2.compiler.inferred_tree {
+  GroundingNoValue,
+  GroundingNotDerived,
+  InferredFacts,
+  LiteralTypeUnknown,
+  NodeGrounding
+}
+import v2.compiler.infer { infer_descent_witness_for_node }
+import v2.compiler.eval { inferred_facts_digest }
+import std.optional { optional_absent }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT IS inferred_facts_digest OVER THE GROUNDING COPRODUCT. Facts are keyed by this digest, so
+// two facts that differ ONLY in which grounding arm they carry must not share a key: a shared digest would
+// let a cache entry recorded for a node that decided it produces no value answer a query about a node that
+// is merely undecided, and the second node would inherit the first one's judgment (a keys/hashing
+// completeness defect; ruling keen-heron-809). The node and the descent witness are held EQUAL across the
+// pair, so the arm is the only difference; the arm contributes its own tag node to the preimage
+// (v2.compiler.eval eval_grounding_no_value_digest_node), which is what makes the two digests move apart.
+// The second arm is the one most at risk of collision, because both it and the no-value arm carry just a
+// node.
+
+fn ifgd_node(name: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: name } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn ifgd_facts(grounding: NodeGrounding, at: Node) -> InferredFacts {
+  InferredFacts {
+    grounding: grounding,
+    descent: infer_descent_witness_for_node(n: at),
+    denotation: optional_absent(),
+    type_instances: []
+  }
+}
+
+test fn ifgd_the_grounding_arm_alone_separates_the_facts_digest_holds() -> Bool {
+  let probe = ifgd_node(name: ^ifgd_probe_node)
+  inferred_facts_digest(
+    facts: ifgd_facts(grounding: GroundingNoValue { node: probe }, at: probe)
+  )
+    != inferred_facts_digest(
+      facts: ifgd_facts(
+        grounding: GroundingNotDerived { node: probe, site: LiteralTypeUnknown },
+        at: probe
+      )
+    )
+}
+
+test fn ifgd_the_no_value_arm_still_keys_on_its_node_holds() -> Bool {
+  let left = ifgd_node(name: ^ifgd_probe_left)
+  let right = ifgd_node(name: ^ifgd_probe_right)
+  inferred_facts_digest(
+    facts: ifgd_facts(grounding: GroundingNoValue { node: left }, at: left)
+  )
+    != inferred_facts_digest(
+      facts: ifgd_facts(grounding: GroundingNoValue { node: right }, at: right)
+    )
+}
