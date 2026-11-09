@@ -2977,8 +2977,11 @@ mod keyed_decl_facts_unreadable_file_tests {
 
     /// Does not parse: the module head is intact — so the key finds the file and the read takes it
     /// into the fold — and then a stray `)` opens an item the grammar has no shape for. This is the
-    /// failure the read used to swallow.
-    const DOES_NOT_PARSE: &str = "fn probe_authority() -> Bool { true }\n)";
+    /// failure the read used to swallow. The token is the recipe
+    /// `src/v1/stage0/tests/dag_parse_sweep_refusal_location.rs` proves refuses at the heads layer
+    /// ("a stray `)` at the start of a line is no module item"), so the fixture does not rest on my
+    /// own guess about the grammar.
+    const DOES_NOT_PARSE: &str = "fn probe_authority() -> Bool { true }\n) stray";
 
     static FIXTURE_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -3023,7 +3026,10 @@ mod keyed_decl_facts_unreadable_file_tests {
     #[test]
     fn a_derived_file_that_does_not_parse_refuses_rather_than_answering_empty() {
         let roots = probe_root("refuse", DOES_NOT_PARSE);
-        match read(&roots) {
+        // `&read(...)`, not `read(...)`: `Value` implements `Drop`, and moving a payload out of
+        // something with drop glue is E0509 -- the arms below only read what they match, so they
+        // match it by reference.
+        match &read(&roots) {
             Ok(answer) => panic!(
                 "the keyed read of {PROBE_QUALIFIED} answered {answer:?} about a file it could not \
                  read. That is the silent miss: an unreadable derived file and an absent \
@@ -3060,7 +3066,7 @@ mod keyed_decl_facts_unreadable_file_tests {
     #[test]
     fn the_same_read_answers_the_row_when_the_derived_file_parses() {
         let roots = probe_root("accept", PARSES);
-        match read(&roots) {
+        match &read(&roots) {
             Ok(Value::List(rows)) => {
                 assert_eq!(
                     rows.len(),
