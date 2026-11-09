@@ -275,16 +275,18 @@ test fn srv4_experts_are_capped_and_disk_backed() -> Bool {
 
 // srv3's experts sit in its own private anonymous arena: a host-RAM rung the layout says nothing maps, so
 // nothing can reclaim it. It is charged, and it is charged WHOLE.
-test fn srv3_experts_are_charged_whole_in_host_ram() -> Bool {
-  let rungs = replica_expert_rungs(p: srv3_strata_profile)
-  rungs.any(r => match r {
-      ExpertInHostRam { bytes: bytes, holds: holds, mechanism: _ } => byte_size_count(b: bytes) > 0
+test fn srv3_has_a_host_ram_expert_rung() -> Bool {
+  replica_expert_rungs(p: srv3_strata_profile).any(r => match r {
+      ExpertInHostRam { bytes: bytes, holds: _, mechanism: _ } => byte_size_count(b: bytes) > 0
       _ => false
     })
-    && match replica_expert_ram_charge(p: srv3_strata_profile) {
-      Present { value: bytes } => byte_size_count(b: bytes) > 0
-      Absent => false
-    }
+}
+
+test fn srv3_expert_ram_charge_is_the_whole_arena() -> Bool {
+  match replica_expert_ram_charge(p: srv3_strata_profile) {
+    Present { value: bytes } => byte_size_count(b: bytes) > 0
+    Absent => false
+  }
 }
 
 // srv1 has no artifact row for its weights: the charge is unread AND the obligation says what to read. A
@@ -303,19 +305,26 @@ test fn srv1_expert_placement_is_an_obligation_not_a_zero() -> Bool {
 // cache, its expert floor and its base are all read rows, so the sum stands. srv3 refuses because its base is
 // an ASSUMPTION, h11 because its base was never read, srv1 because its base was never measured with the cache
 // empty -- each naming why. No host gets a partial total (the sum of an unknown is unknown).
-test fn host_charges_fail_closed_component_by_component() -> Bool {
-  let srv4 = replica_host_charges(p: srv4_strata_profile)
-  let srv3 = replica_host_charges(p: srv3_strata_profile)
-  let h11 = replica_host_charges(p: h11_strata_profile(bus: "87"))
-  let srv1 = replica_host_charges(p: srv1_vllm_replica_0_profile)
-  match srv4.ram {
-    Present { value: bytes } =>
-      byte_size_count(b: bytes) > byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 16)))
-        && match srv3.ram { Absent => srv3.obligations.length() > 0 Present { value: _ } => false }
-        && match h11.ram { Absent => h11.obligations.length() > 0 Present { value: _ } => false }
-        && match srv1.ram { Absent => srv1.obligations.length() >= 2 Present { value: _ } => false }
+test fn srv4_ram_charges_its_engine_rungs() -> Bool {
+  match replica_host_charges(p: srv4_strata_profile).ram {
+    Present { value: bytes } => byte_size_count(b: bytes) > byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 16)))
     Absent => false
   }
+}
+
+test fn srv3_ram_refuses_with_an_obligation() -> Bool {
+  let p = replica_host_charges(p: srv3_strata_profile)
+  match p.ram { Absent => p.obligations.length() > 0 Present { value: _ } => false }
+}
+
+test fn h11_ram_refuses_with_an_obligation() -> Bool {
+  let p = replica_host_charges(p: h11_strata_profile(bus: "87"))
+  match p.ram { Absent => p.obligations.length() > 0 Present { value: _ } => false }
+}
+
+test fn srv1_ram_refuses_on_at_least_two_components() -> Bool {
+  let p = replica_host_charges(p: srv1_vllm_replica_0_profile)
+  match p.ram { Absent => p.obligations.length() >= 2 Present { value: _ } => false }
 }
 
 // ── A READING PRICES ONLY THE RUN IT WAS TAKEN UNDER ──────────────────────────────────────────
