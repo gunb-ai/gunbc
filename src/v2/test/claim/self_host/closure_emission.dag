@@ -574,3 +574,71 @@ test fn an_emitted_row_carries_no_diagnostic_holds() -> Bool {
           _ => false })
   }
 }
+
+// NESTED NULLARY COPRODUCT ARMS (R1). A marked declaration reference reached through a record field or a
+// match arm is projected by the same facts-aware rule as an arrow body, so a nullary arm spells as its
+// parent's arm there too. The arrow-body spelling `CeTsiScheme::Https` is the oracle for the nested ones.
+data ce_nested_arm_record_source: String = "module v2.test.ce_nested_arm_record\n\ntype CeTsiScheme = Https | Http\n\ntype CeTsiUri { scheme: CeTsiScheme }\n\ndata ce_nested_arm_record_uri: CeTsiUri = CeTsiUri { scheme: Https }\n"
+
+data ce_nested_arm_match_source: String = "module v2.test.ce_nested_arm_match\n\ntype CeTsiScheme = Https | Http\n\nfn ce_nested_arm_flip(s: CeTsiScheme) -> CeTsiScheme { match s { Https => Http Http => Https } }\n"
+
+data ce_nested_arm_const_source: String = "module v2.test.ce_nested_arm_const\n\ntype CeTsiScheme = Https | Http\n\ntype CeTsiUri { scheme: CeTsiScheme }\n\nfn ce_nested_arm_k() -> CeTsiScheme { Https }\n\nfn ce_nested_arm_red() -> CeTsiUri { CeTsiUri { scheme: ce_nested_arm_k } }\n"
+
+fn ce_nested_arm_emitted_contains(source: String, id: Symbol, path: String, module: String, pattern: String) -> Bool {
+  match ce_row_of(located: ce_emit(ingest: [ce_read(source: source, id: id, path: path)], entry: module), name: module) {
+    Absent => false
+    Present { value: row } =>
+      match json_field_string(obj: row, key: "emitted") {
+        FieldRead { value: text } => string_contains(s: text, pattern: pattern)
+        _ => false
+      }
+  }
+}
+
+test fn a_nested_nullary_arm_in_a_record_field_emits_its_parents_arm_holds() -> Bool {
+  ce_nested_arm_emitted_contains(
+    source: ce_nested_arm_record_source,
+    id: ^ce_nested_arm_record_read,
+    path: "src/v2/test/ce_nested_arm_record.dag",
+    module: "v2.test.ce_nested_arm_record",
+    pattern: "CeTsiScheme::Https"
+  )
+}
+
+// DECLARED PIN of today's production behaviour, not the target one. A match whose arm pattern is a
+// nullary coproduct arm refuses `target_lex_rule_literal_not_found`: the production Rust lex
+// (`rust_production_lex_rules`) has no rule for `rust_token_unwired_match` or `rust_token_unwired_fat_arrow`;
+// those exist only in `rust_staging_match_additional_lex_rules`. The pattern-position recognition itself is
+// held by `v2.test.claim.emit.nested_arm_pattern_position`. TRIGGER: the production match-emission wiring
+// (rustc-validated rules), which flips this to the positive assertion that the emission contains
+// `CeTsiScheme::Https =>`; this pin then goes red on purpose and is rewritten, not deleted.
+test fn a_match_with_a_nullary_arm_pattern_refuses_for_want_of_production_match_tokens_holds() -> Bool {
+  match ce_emit(
+    ingest: [ce_read(source: ce_nested_arm_match_source, id: ^ce_nested_arm_match_read, path: "src/v2/test/ce_nested_arm_match.dag")],
+    entry: "v2.test.ce_nested_arm_match"
+  ).outcome {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: e, diagnostics: _ } =>
+      ce_arm_is_refused_with(arm: ce_arm_of(e: e, name: "v2.test.ce_nested_arm_match"), reason: ^target_lex_rule_literal_not_found)
+  }
+}
+
+// RED. A marked reference to a nullary ARROW constant is not an arm: the facts-aware rule must not spell it
+// `CeTsiScheme::ce_nested_arm_k`. The row either refuses or spells something else; it never becomes an arm.
+test fn a_nested_reference_to_a_nullary_arrow_constant_is_not_spelled_as_an_arm_holds() -> Bool {
+  let module = "v2.test.ce_nested_arm_const"
+  match ce_row_of(
+    located: ce_emit(
+      ingest: [ce_read(source: ce_nested_arm_const_source, id: ^ce_nested_arm_const_read, path: "src/v2/test/ce_nested_arm_const.dag")],
+      entry: module
+    ),
+    name: module
+  ) {
+    Absent => false
+    Present { value: row } =>
+      match json_field_string(obj: row, key: "emitted") {
+        FieldRead { value: text } => !string_contains(s: text, pattern: "::ce_nested_arm_k")
+        _ => true
+      }
+  }
+}

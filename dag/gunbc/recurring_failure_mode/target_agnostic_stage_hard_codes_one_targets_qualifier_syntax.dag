@@ -1,0 +1,19 @@
+module gunbc.recurring_failure_mode.target_agnostic_stage_hard_codes_one_targets_qualifier_syntax
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
+
+data target_agnostic_stage_hard_codes_one_targets_qualifier_syntax: RecurringFailureMode = RecurringFailureMode {
+  identity: "target_agnostic_stage_hard_codes_one_targets_qualifier_syntax" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
+
+  receipts: [
+    "INVALID STATE: `v2.compiler.target_serialize` `nullary_coproduct_arm_binding_spelling` builds a nullary coproduct arm's value spelling as parent + the literal \"::\" + leaf. \"::\" is Rust's path-qualifier syntax, written into a stage that serves every target (DESIGN section 3: interface, realization and policy are three facts; realization syntax belongs to the target's rows). A target whose qualifier is not \"::\" would receive Rust spelling, silently.",
+    "REACH WIDENED BY gunbc keen-koi-376 nested-nullary-arm: `v2.std.compilers.target_model` `target_value_expr_project_body_subexpression` now hands a marked declaration reference reached through a record field or a match arm to the facts-aware projection, so the same spelling is emitted at those nested positions (the six `scheme: Https` rows) as well as at the arrow body. The defect was not introduced there; the reach is.",
+    "DISTINGUISHING FACTS: the target already declares the qualifier. `v2.std.compilers.target_model` `DeclarationReferenceForm` `ModuleScopedPath` carries `scope_separator_text` (rust: \"::\"), and `NoDeclarationReferenceForm` (TypeScript) states that the target has none. `TargetSumTypeShape.variant_separator` is the pipe between arms, not a qualifier, so it is not the source of this fact.",
+    "RUNG FOUND AT: mitigated for Rust only (correct by coincidence of the one target that reaches the stage). CEILING: structurally guaranteed -- the qualifier is read from the target's own row, or the target without one refuses. NEXT-RUNG TRIGGER (a capability): the arm binding spelling reads the target's `DeclarationReferenceForm` `scope_separator_text` and refuses for `NoDeclarationReferenceForm`; this row retires when no literal qualifier remains in `v2.compiler.target_serialize`. Not fixed in the PR that files it, by instruction.",
+  ],
+
+  evidence: [],
+}

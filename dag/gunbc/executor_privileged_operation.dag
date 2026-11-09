@@ -870,6 +870,24 @@ fn ensure_system_account_converge_command_as_root(login: NonEmptyStr, shell: Non
   ) as NonEmptyStr
 }
 
+// THE SECOND AS-ROOT CALLER THE NOTE ABOVE ANTICIPATED. The diskless runner medium
+// (gunbc.runner.runner_host_medium runner_host_up_stages) realizes the fleet automation LOGIN account
+// on the live session, and a login account is EnsureJobAccount, not EnsureSystemAccount: the fleet's
+// transport (gunbc.host.anchored_host_transport) logs in as it over the pinned host key, so it needs a
+// HOME (the authorized_keys the boot stage writes lives under it) and a real login shell, not the
+// nologin shell a service account carries. This is the same operation as the one above -- EnsureJobAccount's
+// own argv, its own precondition, the same precondition_guarded_shell_command join -- with only the sudo
+// prefix left off, sound because EnsureJobAccount's principal is RunsAsRoot. It is a sibling of
+// ensure_system_account_converge_command_as_root, not a fork: both read the ONE argv/precondition of their
+// named operation from this module, which is the whole reason the grant and its command share a spelling.
+fn ensure_job_account_converge_command_as_root(login: NonEmptyStr, shell: NonEmptyStr, home: NonEmptyStr) -> NonEmptyStr {
+  let op = EnsureJobAccount { login: login, shell: shell, home: home }
+  precondition_guarded_shell_command(
+    precondition: executor_privileged_operation_precondition(op: op),
+    command: join(map(executor_privileged_operation_argv(op: op), w => posix_single_quote(spelling: w as String)), " "),
+  ) as NonEmptyStr
+}
+
 fn executor_privileged_operation_shell_command(op: ExecutorPrivilegedOperation) -> String {
   join(
     map(

@@ -1,0 +1,101 @@
+module v2.test.claim.emit.nested_arm_pattern_position
+
+import v2.compiler.target_serialize { match_arm_pattern_nodes, node_is_match_arm_pattern }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty, list_map, list_find_first }
+import std.optional { Absent, Optional, Present }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { ComputationNode, Match, MatchArmSlot, MatchArmBodyEdge, MatchArmPatternEdge, Node, match_role_slots, child_slot_target }
+import v2.std.node_query { find_core_child }
+import v2.std.text { String }
+
+// THE FALLBACK'S POSITION GUARD. The value-position RED (a marked reference with missing facts still
+// refuses emit_declaration_reference_inferred_facts_absent) is not authorable: the real route infers
+// facts at every value position, so no source produces a missing fact there. What IS authorable is the
+// guard that scopes the fallback: node_is_match_arm_pattern is true for an arm's pattern and false for
+// the same-spelling reference in an arm's BODY, which is the discrimination that keeps facts_absent the
+// refusal everywhere but the pattern slot (v2.compiler.target_serialize project_nested_node_with_facts).
+data nap_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^nested_arm_pattern_artifact,
+  file_path: "src/v2/pilot/nested_arm_pattern_pilot.dag"
+}
+
+data nap_source: String = "module p\n\ntype S = Https | Http\n\nfn flip(s: S) -> S { match s { Https => Https Http => Https } }\n"
+
+fn nap_find_match(n: Node) -> Optional<Node> {
+  match n.kind {
+    ComputationNode { behavior: Match } => Present { value: n }
+    _ => fold(n.children, init: Absent, f: fn(acc, e) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => nap_find_match(n: e.target)
+      }
+    })
+  }
+}
+
+// The first arm's pattern and its body are both the spelling `Https`; only their position differs.
+fn nap_first_arm_child(root: Node, want_pattern: Bool) -> Optional<Node> {
+  match nap_find_match(n: root) {
+    Absent => Absent
+    Present { value: m } =>
+      match list_find_first(
+        xs: list_map(xs: match_role_slots(n: m, role: MatchArmSlot), f: fn(slot) { child_slot_target(slot: slot) }),
+        predicate: fn(_arm) { true }
+      ) {
+        Absent => Absent
+        Present { value: arm } =>
+          if want_pattern {
+            match find_core_child(root: arm, marker: MatchArmPatternEdge) {
+              Accepted { value: c, diagnostics: _ } => Present { value: c }
+              Rejected { diagnostics: _ } => Absent
+            }
+          } else {
+            match find_core_child(root: arm, marker: MatchArmBodyEdge) {
+              Accepted { value: c, diagnostics: _ } => Present { value: c }
+              Rejected { diagnostics: _ } => Absent
+            }
+          }
+      }
+  }
+}
+
+fn nap_verdict(pattern_expected: Bool, probe_pattern: Bool) -> Bool {
+  match assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness {
+        source: Medium { carried: nap_source, fidelity: Lossless },
+        artifact: nap_artifact,
+        compilation_unit: ^nested_arm_pattern_cu,
+        source_root: V2Tree
+      },
+      tail: Empty
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match nap_first_arm_child(root: tree.root, want_pattern: probe_pattern) {
+        Absent => false
+        Present { value: node } =>
+          node_is_match_arm_pattern(patterns: match_arm_pattern_nodes(arrow: tree.root), node: node) == pattern_expected
+      }
+  }
+}
+
+test fn an_arm_pattern_is_recognized_as_a_pattern_position_holds() -> Bool {
+  nap_verdict(pattern_expected: true, probe_pattern: true)
+}
+
+// RED. The same spelling in the arm BODY is a value position, so the guard refuses it the fallback.
+test fn the_same_spelling_in_an_arm_body_is_not_a_pattern_position_holds() -> Bool {
+  nap_verdict(pattern_expected: false, probe_pattern: false)
+}

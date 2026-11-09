@@ -1,0 +1,323 @@
+module test.claim.runner.runner_host_medium_fleet_keys_witness
+
+// WITNESS: the diskless runner medium's boot stage puts the fleet's authorized keys on the LIVE session and
+// brings up ssh.service to serve them (operator ruling 2026-11-07, gunbc.design_ruling
+// fleet_authorized_keys_on_every_install_route -- the row lives in the install-route PR, this witness covers
+// the sibling the install routes could not: the BMC virtual-media boot, which never installs, so the
+// autoinstall `ssh` section (a Subiquity TARGET-system feature) never lands and a witness over that YAML
+// would certify a key that never reaches the running machine).
+//
+// INDEPENDENT ORACLE (gunbc.design_argument::fail_closed, "Done means executed"): the expected key lines are
+// spelled from the two NAMED key constants imported directly from the authority
+// (gunbc.fleet.fleet_ssh_access operator_macbook_ssh_key, fleet_automation_ssh_key), NOT from the stage's own
+// output -- so this is not measure() == measure(). If fleet_authorized_keys ever dropped a key, the stage
+// would omit it while this witness still demanded it, and the claim would go red. The keys are imported from
+// the authority module, not from another witness module, so the claim's cost does not move with another
+// claim's reach (DESIGN "a witness discriminates at one interface").
+//
+// SUBSTRING CHECKS come from test.fixture.text_scan (occurrences/occurs_before), not
+// std.algebra.string_contains:
+// the std form is a HostRealizedSeam self-call needing a projection row and emit path -- far larger than a
+// claim needs, and this module is a claim (its stated consumer class).
+
+import std.types { String, Bool }
+import gunbc.fleet.fleet_ssh_access { operator_macbook_ssh_key, fleet_automation_ssh_key }
+import extdeps.ssh.keys { ssh_public_key_canonical_line }
+import test.fixture.text_scan { occurrences, occurs_before }
+import gunbc.runner.runner_host_medium { runner_host_fleet_authorized_keys_command, runner_host_fleet_authorized_keys_stage_command, RunnerHostFleetBootBuilt, RunnerHostFleetBootRefused, sshd_effective_config_satisfies_fleet_hardening, runner_host_key_file, runner_host_ssh_service_unit }
+import gunbc.fleet.fleet_ssh_locus { fleet_automation_principal_login }
+// The boot stage's standing to enable the image's OWN ssh.service rests on this package-presence row; the
+// witness is its named consumer (consumption), and reads the CitedToAuthority arm to check the citation.
+import gunbc.provisioning.ubuntu_network_origin_observation { openssh_server_live_session_observation }
+import extdeps.external_authority { CitedToAuthority }
+
+// Present-or-not over a String, built on the claim-safe occurrences counter (a needle that occurs at least
+// once splits the haystack into 2+ pieces).
+fn contains(haystack: String, needle: String) -> Bool {
+  occurrences(s: haystack, pattern: needle) > 0
+}
+
+// The built boot command String for the positive assertions. The production helper
+// runner_host_fleet_authorized_keys_command now returns the TYPED sum (no fabricated string, review 92065
+// finding 2); the witnesses match it here. On the module's constant drop-in path the build always admits, so
+// this yields the command; were it ever to REFUSE, it returns "" so every positive 'contains' below fails and
+// the witness goes RED -- a refusal can never certify a stage that was not built (fail_closed). The refusal
+// surface itself is covered independently by the RED witnesses that match
+// runner_host_fleet_authorized_keys_stage_command directly.
+fn fleet_keys_rendered_boot_command() -> String {
+  match runner_host_fleet_authorized_keys_command() {
+    RunnerHostFleetBootBuilt { command: c } => c as String
+    RunnerHostFleetBootRefused { path: _ } => ""
+  }
+}
+
+// GREEN: the real rendered boot-stage command carries BOTH fleet keys (canonical form), in the account the
+// fleet transport is MODELLED to log in as, on the per-boot host key the transport is MODELLED to anchor on
+// (that static anchor is absent on mtcollins1 today, so gunbc.host.anchored_host_transport refuses before
+// contact -- the authenticated boot read-back is a stated frontier, not yet observed), with ssh.service enabled
+// and read back locally. Every conjunct is checked against the stage's actual rendered text, and the two keys
+// against constants spelled independently above.
+test fn the_fleet_boot_stage_authorizes_exactly_the_fleet_roster() -> Bool {
+  let rendered = fleet_keys_rendered_boot_command()
+  let operator_line = ssh_public_key_canonical_line(k: operator_macbook_ssh_key)
+  let automation_line = ssh_public_key_canonical_line(k: fleet_automation_ssh_key)
+  // The authorized_keys writer targets the transport's own login; the sshd drop-in authorizes ONLY that
+  // login and pins THE per-boot host key (a second key would fork the pin); password/keyboard auth off.
+  // The live image's OWN ssh.service is enabled and its active-state READ BACK -- the stage fails if sshd
+  // did not come up, so a host the fleet cannot reach is never reported booted.
+  contains(haystack: rendered, needle: operator_line)
+    && contains(haystack: rendered, needle: automation_line)
+    && contains(haystack: rendered, needle: concat("getent passwd ", fleet_automation_principal_login as String))
+    && contains(haystack: rendered, needle: concat("AllowUsers ", fleet_automation_principal_login as String))
+    && contains(haystack: rendered, needle: concat("HostKey ", runner_host_key_file as String))
+    && contains(haystack: rendered, needle: "PasswordAuthentication no")
+    && contains(haystack: rendered, needle: "KbdInteractiveAuthentication no")
+    && contains(haystack: rendered, needle: runner_host_ssh_service_unit as String)
+    && contains(haystack: rendered, needle: "is-active")
+}
+
+// GREEN (ordering, not mere membership): the fleet roster is authorized BEFORE the ssh service is enabled,
+// and the enable comes BEFORE the is-active read-back. Two lines can both be present yet be in the wrong
+// sequence, which a contains-check would pass. The order markers are the systemctl subcommand tokens
+// ("enable", "is-active") -- each is a single argv element unique to its own step (they appear nowhere in the
+// key writer, the account ensure, or the drop-in), so they mark WHICH step, not an incidental layout token
+// like " && " (which now also sits INSIDE the &&-chained key writer and would prove nothing about step order)
+// (test.fixture.text_scan occurs_before).
+test fn the_stage_writes_keys_then_enables_then_reads_back_ssh_service() -> Bool {
+  let rendered = fleet_keys_rendered_boot_command()
+  let automation_line = ssh_public_key_canonical_line(k: fleet_automation_ssh_key)
+  occurs_before(haystack: rendered, before: automation_line, after: "enable")
+    && occurs_before(haystack: rendered, before: "enable", after: "is-active")
+}
+
+// RED (the predicate can say no): a rendered command that omits a fleet key must fail the contains-check.
+// This drives the PREDICATE to its false branch, not the real route -- the stage maps the ONE roster
+// (fleet_authorized_keys) so it has no reachable "omit a key" state to drive it into (the reviewer's note on
+// the sibling install-route witness); showing the predicate distinguishes presence from absence is what is
+// honest here. The wrong value is a copy of the real command with the automation line excised, so the only
+// difference from GREEN is the missing key.
+test fn a_command_missing_a_fleet_key_fails_the_predicate() -> Bool {
+  let rendered = fleet_keys_rendered_boot_command()
+  let automation_line = ssh_public_key_canonical_line(k: fleet_automation_ssh_key)
+  let excised = join(split(s: rendered, delimiter: automation_line), "")
+  // The excised copy must fail the predicate, and the real command must still contain the line -- else the
+  // excision proved nothing.
+  contains(haystack: excised, needle: automation_line) == false
+    && contains(haystack: rendered, needle: automation_line)
+}
+
+// INHABITANCE TIE: the account and the host key the stage authorizes are the ones the fleet SSH transport
+// consumes -- the login is gunbc.fleet.fleet_ssh_locus fleet_automation_principal_login (what
+// gunbc.host.anchored_host_transport resolves its target principal to) and the HostKey is THE per-boot host
+// key (runner_host_key_file) the transport pins on. Asserted by matching the stage text to those authority
+// symbols, so the tie is to the same constants the transport reads, not a re-spelled copy -- and without
+// importing the transport module's heavy closure into this claim's cost.
+test fn the_stage_authorizes_the_transport_login_under_the_per_boot_host_key() -> Bool {
+  let rendered = fleet_keys_rendered_boot_command()
+  contains(haystack: rendered, needle: concat("AllowUsers ", fleet_automation_principal_login as String))
+    && contains(haystack: rendered, needle: concat("HostKey ", runner_host_key_file as String))
+}
+
+// GREEN/RED (fail_closed, review 92028 + side-chat P2): the stage is ONE '&&'-chain on a SINGLE line, AND --
+// critically, this is what a mere newline-count/token-order test cannot prove (merry-fox-82: semicolon sequencing
+// would also pass those) -- the mutation is UNREACHABLE on a failed lookup or a bad home:
+//  (1) getent runs under its OWN status: the passwd line is captured as `H=$(getent passwd <login>)` so the
+//      assignment's exit IS getent's; getent is NOT hidden behind a `| cut` (whose exit masked a failed lookup and
+//      left H EMPTY, writing to /.ssh -- side-chat reproduced chain_status=0 home=<>). The `)` right after the
+//      login proves getent is the sole command substitution, not piped.
+//  (2) the home is then validated NON-EMPTY ([ -n "$H" ]) and ABSOLUTE ([ "${H#/}" != "$H" ]), and BOTH
+//      validations sit BEFORE the first `install`, so a missing account / empty home / relative home cannot reach it.
+//  (3) the whole thing is one line (EXACTLY one trailing newline) and `install` sits before `systemctl`, so a guard
+//      failure ends the chain before BOTH the install and the systemctl enable/restart/is-active -- no later install,
+//      no systemctl (fail_closed: full success or a located failure, never a plausible green).
+test fn the_stage_fails_closed_before_any_mutation() -> Bool {
+  let rendered = fleet_keys_rendered_boot_command()
+  let login = fleet_automation_principal_login as String
+  contains(haystack: rendered, needle: concat("getent passwd ", login, ")"))
+    && contains(haystack: rendered, needle: "[ -n \"$H\" ]")
+    && contains(haystack: rendered, needle: "[ \"$\{H#/}\" != \"$H\" ]")
+    && occurs_before(haystack: rendered, before: "[ -n \"$H\" ]", after: "install -d")
+    && occurs_before(haystack: rendered, before: "[ \"$\{H#/}\" != \"$H\" ]", after: "install -d")
+    && (occurrences(s: rendered, pattern: "\n") == 1)
+    && occurs_before(haystack: rendered, before: "install -d", after: "systemctl")
+}
+
+// GREEN/RED (single authority + consumption, review 92032): the boot stage enables the image's OWN ssh.service,
+// and its standing to do so is the openssh-server PRESENCE row -- so that row must be CONSUMED (not dangling)
+// and cited by a SINGLE authority (no fork). Independent oracles spelled HERE (not read from the module's own
+// constants), per this witness's oracle discipline: the package name, the pinned version, and the manifest
+// locator. The row's standing is matched destructured to its ExternalAuthority.uri.locator (a _ fallback keeps
+// the match exhaustive); a row that became TranscribedUncited, or was re-pointed at a different authority, or
+// whose package/version drifted, turns this red. Presence only -- the STAGE's `systemctl is-active` read-back
+// (test 5 / the enable test) establishes ACTIVATION by execution, not this row (fail_closed).
+test fn the_openssh_presence_the_boot_stage_relies_on_is_cited_to_the_manifest() -> Bool {
+  let obs = openssh_server_live_session_observation
+  let cited_locator = match obs.standing {
+    CitedToAuthority { authority: a } => a.uri.locator as String
+    _ => ""
+  }
+  contains(haystack: obs.package_name as String, needle: "openssh-server")
+    && contains(haystack: obs.version as String, needle: "1:9.6p1-3ubuntu13.13")
+    && contains(haystack: cited_locator, needle: "ubuntu-24.04.3-live-server-arm64.manifest")
+}
+
+// GREEN (rung honesty, review 92040; literal read-back, review 92065 side-chat P2): the sshd drop-in's first-wins
+// keywords (`PasswordAuthentication no`, `KbdInteractiveAuthentication no`, ...) only take effect if this boot's
+// file is the one sshd reads FIRST, since sshd keeps the first value per keyword and sshd_config.d is included in
+// lexical order. So the drop-in sorts FIRST (`00-`), AND the stage READS BACK the EFFECTIVE config with a literal
+// `sshd -T | grep -Fx '<lower-cased keyword> <value>'` per hardening directive (FIXED-string, case-SENSITIVE -- the
+// OLD `grep -Eix` false-accepted a wrong path via the '.' wildcard and case fold) plus, for the accumulating
+// `allowusers` keyword (OpenSSH appends it), a `grep -c '^allowusers '` count that must be exactly one -- the
+// hardening rung is established by executed evidence, not assumed from is-active going green (fail_closed;
+// gunbc.host.export_host_reader_converge readbacks the same way). The checks are derived from the ONE authority
+// sshd_fleet_auth_hardening, so this checks the read-back the stage ACTUALLY emits, not a copy: the auth keywords
+// the reviewer named must each appear as a `grep -Fx` operand, and the read-back sits AFTER the enable/restart and
+// BEFORE the final is-active (a config that never got written back would still let is-active pass -- the read-back
+// is what closes that).
+test fn the_stage_readbacks_the_effective_hardening_via_sshd_T() -> Bool {
+  let rendered = fleet_keys_rendered_boot_command()
+  // The argv render ('sshd' '-T', each word posix_single_quote'd by runner_host_capture_shell from
+  // sshd_effective_config_argv) is asserted, NOT a hand-spelled "sshd -T": an unquoted revert would miss this
+  // needle, so the witness pins the single-authority argv as the source of the verb (review 92042).
+  contains(haystack: rendered, needle: "'sshd' '-T'")
+    && contains(haystack: rendered, needle: "grep -Fx 'passwordauthentication no'")
+    && contains(haystack: rendered, needle: "grep -Fx 'kbdinteractiveauthentication no'")
+    && contains(haystack: rendered, needle: "grep -Fx 'pubkeyauthentication yes'")
+    && contains(haystack: rendered, needle: "grep -c '^allowusers '")
+    && occurs_before(haystack: rendered, before: "grep -Fx 'passwordauthentication no'", after: "is-active")
+}
+
+// RED (the predicate can say no): a rendered command that omits the sshd -T effective-config read-back -- the
+// pre-fix medium route, which enabled ssh.service and trusted is-active alone -- must fail the contains-check.
+// Excising every `grep -Fx` (the read-back's own token, present once per hardening directive and nowhere else --
+// the key writer uses grep -qxF, not -Fx) shows the predicate distinguishes presence from absence; the real
+// command still carries it, so the excision proved something.
+test fn a_command_missing_the_sshd_T_readback_fails_the_predicate() -> Bool {
+  let rendered = fleet_keys_rendered_boot_command()
+  let without_readback = join(split(s: rendered, delimiter: "grep -Fx"), "")
+  contains(haystack: without_readback, needle: "grep -Fx") == false
+    && contains(haystack: rendered, needle: "grep -Fx")
+}
+
+// GREEN (source_annotations, review 92044): the hand-assembled boot command CARRIES its dissolution condition
+// on the artifact itself -- the typed DissolutionCondition's description (not // prose) is appended as a
+// trailing '#' comment, and it NAMES the orchestration-to-shell bash-emit capability that retires this shell:
+// v2.workflow.bash_emit / bash_emit_stmts, tracked as #5828. So a reader of the emitted stage sees, on the
+// code that ran, exactly what dissolves it -- the ctrl HAND-SHELL rule and DESIGN gunbc.design_argument::
+// source_annotations ("a dissolution condition belongs in a typed carrier") are satisfied on the artifact,
+// not only in a comment.
+test fn the_boot_command_carries_its_dissolution_trigger_naming_bash_emit() -> Bool {
+  let rendered = fleet_keys_rendered_boot_command()
+  contains(haystack: rendered, needle: "DISSOLVES WHEN")
+    && contains(haystack: rendered, needle: "v2.workflow.bash_emit")
+    && contains(haystack: rendered, needle: "#5828")
+}
+
+// RED (the predicate can say no): excising the dissolution marker -- the pre-marker route, whose only nod to
+// being interim was the // comment that named a different capability -- drops the marker and the predicate
+// says no; the real command still carries it, so the excision proved something.
+test fn a_command_without_the_dissolution_marker_fails_the_predicate() -> Bool {
+  let rendered = fleet_keys_rendered_boot_command()
+  let without_marker = join(split(s: rendered, delimiter: "DISSOLVES WHEN"), "")
+  contains(haystack: without_marker, needle: "DISSOLVES WHEN") == false
+    && contains(haystack: rendered, needle: "DISSOLVES WHEN")
+}
+
+// RED (a refused redirect pathname builds NO shell and yields a typed refusal, not a fabricated stage).
+// The sshd drop-in write redirect is admitted via extdeps.posix.shell_command_language
+// admit_posix_redirect_pathname and serialized via emit_posix_redirection -- the ONE POSIX redirect authority
+// (the reviewer on review 92063; gunbc.design_argument::single_authority; the gunbc.serving.serving_launch
+// admit-before-redirect pattern). A pathname that cannot inhabit a POSIX pathname (empty, or carrying a NUL)
+// must make the boot stage REFUSE, so a bad path can never silently write to '/' or a nonsense target
+// (gunbc.design_argument::fail_closed). This drives an empty path through the real stage builder: it must come
+// back RunnerHostFleetBootRefused with that path, and NEVER a built command. If the admit/emit routing were
+// removed (the pre-review behaviour: the path interpolated straight into `printf ... > '<path>'`), the empty
+// path would build a command and this predicate would go red.
+test fn the_fleet_stage_refuses_an_empty_drop_in_redirect_path() -> Bool {
+  match runner_host_fleet_authorized_keys_stage_command(drop_in_path: "") {
+    RunnerHostFleetBootRefused { path: p } => p == ""
+    RunnerHostFleetBootBuilt { command: _ } => false
+  }
+}
+
+// RED (a NUL in the redirect path is refused too -- a NUL cannot inhabit an XBD pathname). Same builder, same
+// typed refusal; a command here would certify a redirect the OS could never open.
+test fn the_fleet_stage_refuses_a_nul_in_the_drop_in_redirect_path() -> Bool {
+  match runner_host_fleet_authorized_keys_stage_command(
+    drop_in_path: concat("/etc/ssh/sshd_config.d/00-gunbc-runner-fleet.conf", "\u{0}"),
+  ) {
+    RunnerHostFleetBootRefused { path: _ } => true
+    RunnerHostFleetBootBuilt { command: _ } => false
+  }
+}
+
+// GREEN (literal-value read-back, correct effective config): the pure predicate over the sshd -T text that the
+// stage reads back -- every fleet hardening directive present with its EXACT keyword+value -- must accept.
+test fn the_effective_config_predicate_accepts_the_correct_config() -> Bool {
+  let correct = join([
+    "passwordauthentication no",
+    "kbdinteractiveauthentication no",
+    "pubkeyauthentication yes",
+    "authorizedkeysfile .ssh/authorized_keys",
+    "usepam yes",
+    "strictmodes yes",
+    "allowusers gunbc-automation",
+    "allowagentforwarding no",
+    "x11forwarding no",
+  ], "\n")
+  sshd_effective_config_satisfies_fleet_hardening(text: correct)
+}
+
+// RED (literal-value read-back, absolute key path): a wrong AuthorizedKeysFile value must be REJECTED. The old
+// `grep -Eix 'authorizedkeysfile .ssh/authorized_keys'` false-accepted this because the '.' in .ssh is an ERE
+// wildcard, so /ssh/authorized_keys matched it.
+test fn the_effective_config_predicate_rejects_an_absolute_key_path() -> Bool {
+  let conflicting = join([
+    "passwordauthentication no",
+    "kbdinteractiveauthentication no",
+    "pubkeyauthentication yes",
+    "authorizedkeysfile /ssh/authorized_keys",
+    "usepam yes",
+    "strictmodes yes",
+    "allowusers gunbc-automation",
+    "allowagentforwarding no",
+    "x11forwarding no",
+  ], "\n")
+  sshd_effective_config_satisfies_fleet_hardening(text: conflicting) == false
+}
+
+// RED (literal-value read-back, case-different key path): the path is a value, so its case must be compared
+// literally. The old `-i` flag folded case and false-accepted .SSH/authorized_keys.
+test fn the_effective_config_predicate_rejects_a_case_different_key_path() -> Bool {
+  let conflicting = join([
+    "passwordauthentication no",
+    "kbdinteractiveauthentication no",
+    "pubkeyauthentication yes",
+    "authorizedkeysfile .SSH/authorized_keys",
+    "usepam yes",
+    "strictmodes yes",
+    "allowusers gunbc-automation",
+    "allowagentforwarding no",
+    "x11forwarding no",
+  ], "\n")
+  sshd_effective_config_satisfies_fleet_hardening(text: conflicting) == false
+}
+
+// RED (literal-value read-back, extra allowed user): OpenSSH APPENDS AllowUsers across every config file, so an
+// earlier file's extra allowusers line must FAIL the read-back -- the complete population has to equal exactly
+// the expected one, not merely contain it. Presence-only matching (the old grep -Eix) false-accepted this.
+test fn the_effective_config_predicate_rejects_an_extra_allowed_user() -> Bool {
+  let conflicting = join([
+    "passwordauthentication no",
+    "kbdinteractiveauthentication no",
+    "pubkeyauthentication yes",
+    "authorizedkeysfile .ssh/authorized_keys",
+    "usepam yes",
+    "strictmodes yes",
+    "allowusers gunbc-automation",
+    "allowusers other-login",
+    "allowagentforwarding no",
+    "x11forwarding no",
+  ], "\n")
+  sshd_effective_config_satisfies_fleet_hardening(text: conflicting) == false
+}
