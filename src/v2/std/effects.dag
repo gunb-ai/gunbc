@@ -8,7 +8,7 @@ import std.effects {
 }
 
 // v2.std.effects DISSOLVED onto the single std.effects authority (dag-v2 de-fork,
-// `gunbc.plans.dag_v2_defork_audit`). The EffectShape<K> / CreateCause<K> TYPE is imported from
+// `gunbc.plans.dag_v2_defork_audit (deleted 2026-11-08)`). The EffectShape<K> / CreateCause<K> TYPE is imported from
 // std, never re-defined here -- what was the v2 fork (EffectShape = IsIdempotent | IsBreaking, a
 // 2-level idempotency-class partition) is GONE: idempotency is DERIVED from the one flat
 // EffectShape (gunbc.design_argument::closed_grounded_substrate, ops from inhabitance). This module instantiates the type at K =
@@ -27,7 +27,7 @@ import std.effects {
 // NOT a fork of std.effects. The verb/cause/idempotency algebra is imported from std; only the key
 // REPRESENTATION differs (Symbol here, String in std's REST derivation). The String/Symbol
 // unification is deferred to the grants key/target re-grounding
-// (docs/plans/effect-namespace-grants.md), never crossed at this seam. dissolve-on = grants grounds
+// (docs/plans/effect-namespace-grants.md (deleted 2026-11-08)), never crossed at this seam. dissolve-on = grants grounds
 // key/target on the containment tree (QualifiedName).
 
 type SubstrateKeySource

@@ -55,6 +55,17 @@ import gunbc.machine_intake.mtcollins1_ui_status_asset_observation {
   megarac_ui_status_excerpt_of_asset,
   ui_asset_path_admission,
   ui_text_needle_scan,
+  ConstructedKeyCandidate,
+  MarkerContextNotEstablished,
+  ConstructedKeyRefused,
+  ConstructedKeyZeroBranchAbsent,
+  ConstructedKeyAbsentInBranch,
+  ConstructedKeyUnsupportedLexicalForm,
+  ConstructedKeyNoGuardGroup,
+  ConstructedKeyBranchExceedsWindow,
+  ConstructedKeyGroupUnclosed,
+  megarac_ui_constructed_key_of_asset,
+  MegaRacUiConstructedKey,
   ui_asset_path_shape_refusal,
   ui_ref_admission,
   ui_resolved_refs,
@@ -1820,6 +1831,117 @@ test fn w_the_native_search_equals_the_octet_fold_oracle() -> Bool {
         native.starts == html_octets_first_starts(hay, n, 2)
     })
   })
+}
+
+// The observed shape (receipt 42492171400): status 0's key is built by concatenation. The fixture puts a
+// multi-octet character before the branch so the offsets are shown to be octets, and a literal-looking
+// decoy key in the NEXT branch that must not be bound.
+data witness_constructed_asset: String = "é;x=1,\"1\"==r&&(l=!0,a.t(\"lmedia:started\")),\"0\"==r&&(l=!0,this.$(\".s\").html(a.t(\"lmedia:status_\"+r))),\"100\"==r&&(a.t(\"lmedia:status_\"+r))"
+
+test fn w_the_constructed_status_zero_key_is_found_with_octet_offsets() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: witness_constructed_asset, asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: _ } => false
+    ConstructedKeyCandidate { asset_path: _, asset_sha256: _, marker_offset: branch, key_prefix_offset: key, key_prefix_text: prefix, operand_text: operand, candidate_span_length: _, marker_context: _ } =>
+      branch == 44 && key == 81 && prefix as String == "lmedia:status_" && operand as String == "r" &&
+        slice_text_at(witness_constructed_asset, key, 14) == "lmedia:status_"
+  }
+}
+
+test fn w_a_branch_without_the_constructed_call_is_refused_not_bound_to_the_next_branch() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==r&&(l=!0,a.t(\"lmedia:started\")),\"100\"==r&&(a.t(\"lmedia:status_\"+r))", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyAbsentInBranch { marker_offset: at } } => at == 2
+    _ => false
+  }
+}
+
+test fn w_an_asset_without_the_zero_branch_is_refused() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "nothing here", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyZeroBranchAbsent } => true
+    _ => false
+  }
+}
+
+test fn w_a_call_in_a_later_comparison_is_not_the_zero_branch() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==r&&(l=!0,a.t(\"lmedia:started\")),1==r&&(a.t(\"lmedia:status_\"+r))", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyAbsentInBranch { marker_offset: _ } } => true
+    _ => false
+  }
+}
+
+test fn w_a_call_after_a_string_comparison_is_not_the_zero_branch() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==r&&(l=!0),r==\"1\"&&(a.t(\"lmedia:status_\"+r))", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyAbsentInBranch { marker_offset: _ } } => true
+    _ => false
+  }
+}
+
+test fn w_a_call_in_a_separate_statement_is_not_the_zero_branch() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==r&&(l=!0);a.t(\"lmedia:status_\"+r)", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyAbsentInBranch { marker_offset: _ } } => true
+    _ => false
+  }
+}
+
+test fn w_a_longer_identifier_is_not_the_zero_marker() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==result&&(a.t(\"lmedia:status_\"+r))", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyNoGuardGroup { marker_offset: _ } } => true
+    _ => false
+  }
+}
+
+test fn w_a_regex_literal_in_the_zero_branch_is_an_unsupported_form() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==r&&(/[(]/.test(s)),1==r&&(a.t(\"lmedia:status_\"+r))", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyUnsupportedLexicalForm { marker_offset: _ } } => true
+    _ => false
+  }
+}
+
+test fn w_a_comment_in_the_zero_branch_is_an_unsupported_form() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==r&&(l=!0/*x*/)", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyUnsupportedLexicalForm { marker_offset: _ } } => true
+    _ => false
+  }
+}
+
+test fn w_call_shaped_text_inside_a_string_is_not_a_call() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==r&&(s='a.t(\"lmedia:status_\"+r)')", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyAbsentInBranch { marker_offset: _ } } => true
+    _ => false
+  }
+}
+
+data witness_long_branch_text: String = "x,\"0\"==r&&(pppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp,a.t(\"lmedia:status_\"+r))"
+
+test fn w_a_branch_longer_than_the_window_is_not_reported_as_call_absent() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: witness_long_branch_text, asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyBranchExceedsWindow { marker_offset: _, window_limit: limit } } => limit == 400
+    _ => false
+  }
+}
+
+test fn w_an_unterminated_group_at_the_end_of_the_asset_is_unclosed() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,\"0\"==r&&(a.t(\"lmedia:status_\"+r)", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyRefused { cause: ConstructedKeyGroupUnclosed { marker_offset: _ } } => true
+    _ => false
+  }
+}
+
+test fn w_a_marker_inside_a_string_literal_is_only_a_candidate() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,s='\"0\"==r&&(a.t(\"lmedia:status_\"+r))'", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyCandidate { asset_path: _, asset_sha256: _, marker_offset: _, key_prefix_offset: _, key_prefix_text: _, operand_text: _, candidate_span_length: _, marker_context: MarkerContextNotEstablished } => true
+    _ => false
+  }
+}
+
+test fn w_a_marker_inside_a_comment_is_only_a_candidate() -> Bool {
+  match megarac_ui_constructed_key_of_asset(asset_text: "x,/*\"0\"==r&&(a.t(\"lmedia:status_\"+r))*/", asset_path: "/source.min.js" as NonEmptyStr) {
+    ConstructedKeyCandidate { asset_path: _, asset_sha256: _, marker_offset: _, key_prefix_offset: _, key_prefix_text: _, operand_text: _, candidate_span_length: _, marker_context: MarkerContextNotEstablished } => true
+    _ => false
+  }
+}
+
+fn slice_text_at(text: String, octet_offset: Int, n: Int) -> String {
+  ui_octets_text(ui_octets_slice(ui_octets_of(text), octet_offset, n))
 }
 
 fn witness_text_doubled(text: String, times: Int) -> String {

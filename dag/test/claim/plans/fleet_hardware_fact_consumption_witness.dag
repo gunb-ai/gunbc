@@ -3,7 +3,7 @@ module test.claim.plans.fleet_hardware_fact_consumption_witness
 import std.types { Bool, List, String }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.plan { Plan }
-import gunbc.plan_registry_batch_g { batch_g_plans }
+import gunbc.plan_registry { all_plans }
 import gunbc.plans.fleet_hardware_fact_consumption {
   fleet_hardware_consumer_migrations, fleet_hardware_fact_consumption_plan,
   MigrationUnstarted, MigrationStartedHere, MigrationOwnedByProgram,
@@ -13,7 +13,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE CARRIER IS A REGISTERED PLAN, so its rows reach the plan projection rather than sitting unread.
 test fn the_carrier_is_registered() -> Bool {
-  any(batch_g_plans, p => p.slug == fleet_hardware_fact_consumption_plan.slug)
+  any(all_plans, p => p.slug == fleet_hardware_fact_consumption_plan.slug)
 }
 
 // EVERY CONSUMER IN THE OPERATOR'S REVIEW HAS ONE ROW, and no consumer is listed twice.

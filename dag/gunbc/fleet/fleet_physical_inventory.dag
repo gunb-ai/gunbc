@@ -268,7 +268,7 @@ data installed_cooler_containments: List<PhysicalContainment> = [
   HostContainsComponent { host: operator_host_srv4, component: cooler_srv4 },
 ]
 
-// ---- GPU BOARDS (gunbc.plans.gpu_card_host_program row N6b, card residence, in its first form: a card
+// ---- GPU BOARDS (gunbc.plans.gpu_card_host_program (deleted 2026-11-08) row N6b, card residence, in its first form: a card
 // as an asset with its board catalog row and serial, contained in its host). The slot each card sits in is
 // row N6a's extension of PhysicalContainment and is not carried yet, so the slot facts read so far stay in
 // the annotation beside the row they belong to.
@@ -324,7 +324,7 @@ data gpu_board_03_asset: PhysicalAsset = PhysicalAsset {
 // 98.02.6A.00.03). Its device binding -- UUID, PCI function, power-limit range -- is the typed reading in
 // gunbc.fleet.gpu_device_observation, not restated here. Installed by the operator
 // 2026-11-07 in the slot the Workstation card left; the same PCIe 4.0 x16 ceiling applies (dmesg: "limited
-// by 16.0 GT/s PCIe x16 link at 0005:00:01.0"). Not the rented Vast Max-Q of gunbc.plans.gpu_card_host_program
+// by 16.0 GT/s PCIe x16 link at 0005:00:01.0"). Not the rented Vast Max-Q of gunbc.plans.gpu_card_host_program (deleted 2026-11-08)
 // (that census row stays OutsideBound): this one is owned. Its procurement is unrecorded.
 data gpu_board_04_asset: PhysicalAsset = PhysicalAsset {
   identity: gpu_board_04,

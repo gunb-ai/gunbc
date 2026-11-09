@@ -116,7 +116,7 @@ fn runner_host_listener_path() -> String {
 // nothing more. CHANGING THIS CHANGES THE BOOT IMAGE (the medium's user-data, so its output digest).
 data runner_host_medium_runner_account: NonEmptyStr = "gunbc-runner"
 
-// THE BAKED RELEASE (gunbc.plans.mtcollins1_ci_service_legs F1; merry-fox-82, 2026-10-27: bake the release into the
+// THE BAKED RELEASE (gunbc.plans.mtcollins1_ci_service_legs (deleted 2026-11-08) F1; merry-fox-82, 2026-10-27: bake the release into the
 // image, decision A; build it in the publish run as a local-source artifact, decision A). A gunbc release-locus tree --
 // the aarch64 binary, the corpus and its tree receipt -- packed as one tarball by the publish run at one pinned
 // revision, measured there, and staged on the host that builds the image. It rides in the seed as a COPIED artifact:

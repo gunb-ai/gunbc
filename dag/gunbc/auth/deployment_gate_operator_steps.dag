@@ -2,7 +2,7 @@ module gunbc.auth.deployment_gate_operator_steps
 
 // The OPERATOR'S OWN ACTS for moving the srv1 deployment gate from the GitHub "Review deployments"
 // click onto the existing ntfy tap, modelled as std.human_intervention rows rather than as prose
-// in a runbook. The plan that argues for them is gunbc.plans.ntfy_deployment_gate_approval; this
+// in a runbook. The plan that argues for them is gunbc.plans.ntfy_deployment_gate_approval (deleted 2026-11-08); this
 // file carries their burden, so that the human cost of this design is countable next to the other
 // human burdens in the provisioning fleet (gunbc.design_argument::minimize_redundancy: an alternative that quietly keeps a human
 // step is not cheaper, it is uncounted).

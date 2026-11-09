@@ -5,7 +5,7 @@ import std.algebra { FreeSemigroup }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
-// DECLARED 2026-10-06, operator-approved (CI short-term relief, docs/plans/ci-end-to-end-accounting.md).
+// DECLARED 2026-10-06, operator-approved (CI short-term relief, docs/plans/ci-end-to-end-accounting.md (deleted 2026-11-08)).
 // The emit-build lane's two instruments (//gunbc/instruments:self-host and :v2-native-cli) each run
 // the native fault-and-restoration rebuild (emitted_closure_compile_host establish_discriminating_red,
 // called from native_lane_runner): one injected type error, cargo required to fail alone on a

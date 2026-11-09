@@ -20,7 +20,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // frontier row demanded. The Ipv4Address brand went first, 2026-07-24, into the structured four-octet
 // carrier in extdeps.network.ipv4; consumers import that directly, because ipv4 is a network concept
 // rather than a DHCP one and re-homing it through this module was a layering artifact. The
-// MacAddress brand followed on 2026-10-26, under plan gunbc.plans.site_segment_anchor_bmc_reach
+// MacAddress brand followed on 2026-10-26, under plan gunbc.plans.site_segment_anchor_bmc_reach (deleted 2026-11-08)
 // phase S1: the brand is DELETED and every consumer site is re-homed onto extdeps.network.mac
 // Eui48Address, the six grounded octets. That is the conjunction the row's unbound reason carried in
 // words -- deletion PLUS migration -- which is exactly what no trigger could encode, so the row left
