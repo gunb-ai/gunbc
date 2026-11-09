@@ -1,7 +1,8 @@
 module v2.test.claim.parse.juxtaposition_shape_probe
 
 import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
-import v2.compiler.body_lowering_fold { body_lower_stmt_spine_has_successor }
+import v2.compiler.body_lowering_fold { body_lower_body_subtree_lower, body_lower_stmt_spine_has_successor, body_lower_unwrap_captured }
+import v2.extdeps.languages.dag { ParseSubtreeAbsent, ParseSubtreeFound, parse_subtree_find_production_captured }
 import v2.std.diagnostic { Accepted, Rejected }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
@@ -86,12 +87,41 @@ fn first_stmt_seq(root: Node) -> Optional<Node> {
   })
 }
 
+// body_lower_try_statement_spine hands body_lower_stmt_spine_has_successor the CAPTURED child of the
+// dag_surface_stmt_seq production (body_lower_find_captured unwraps it), not the production shell. The
+// right-nested spine carries grammar_sequence_left/right as DIRECT children of that captured Conj, and
+// find_named_child does not recurse -- so the read must unwrap the shell first (body_lower_unwrap_captured)
+// exactly as the gate does. A faithful two-statement spine reports a successor; if it does not, the
+// spine structure itself is the gap.
 fn spine_successor(tag: String, text: String) -> Bool {
   match parse_tree(tag: tag, text: text) {
     Present { value: t } =>
       match first_stmt_seq(root: t) {
-        Present { value: spine } => body_lower_stmt_spine_has_successor(spine: spine)
+        Present { value: shell } =>
+          match body_lower_unwrap_captured(shell: shell) {
+            Present { value: spine } => body_lower_stmt_spine_has_successor(spine: spine)
+            Absent => false
+          }
         Absent => false
+      }
+    Absent => false
+  }
+}
+
+// The decisive read at the real lowering authority. body_lower_body_from_fn_captured -> body_lower_body_subtree_lower
+// -> body_lower_try_statement_spine is the fn-body route normalize takes. body_lower_body_subtree_lower on the
+// fn_body's captured child REJECTS a non-final bare value once the spine is seen; it ACCEPTS when the body
+// silently folds to the last literal. This is the exact predicate the fix must flip.
+fn body_subtree_rejects(tag: String, text: String) -> Bool {
+  match parse_tree(tag: tag, text: text) {
+    Present { value: t } =>
+      match parse_subtree_find_production_captured(root: t, emitted: ^dag_surface_fn_body) {
+        ParseSubtreeFound { captured: body } =>
+          match body_lower_body_subtree_lower(captured: body) {
+            Rejected { diagnostics: _ } => true
+            Accepted { value: _, diagnostics: _ } => false
+          }
+        ParseSubtreeAbsent => false
       }
     Absent => false
   }
@@ -103,6 +133,21 @@ test fn jp_one_spine_has_successor() -> Bool { spine_successor(tag: "one", text:
 test fn jp_two_spine_has_successor() -> Bool { spine_successor(tag: "two", text: two_source()) }
 // Reference: the let-then-tail body has TWO statements, so a successor is expected here.
 test fn jp_line_spine_has_successor() -> Bool { spine_successor(tag: "line", text: one_line_list_source()) }
+
+// Juxtaposed BARE NAMES (no brackets): the A-vs-B discriminator. If body_lower_body_subtree_lower already
+// REJECTS this (a bare value before a tail), the spine authority fires for bare values and the list case is
+// a list-specific gap; if it ACCEPTS, every juxtaposed non-final bare value escapes uniformly.
+fn names_source() -> String {
+  "module probe.juxtap_names\n\nimport v2.std.integer { Int }\n\nfn two_names(a: Int, b: Int) -> Int {\n  a\n  b\n}\n"
+}
+
+// THE decisive lowering predicate at body_lower_body_subtree_lower (the fn-body route normalize takes).
+// At base every one of these ACCEPTS today (the silent last-wins); the fix must flip jp_two and jp_names
+// to REJECT while jp_one / jp_line stay ACCEPT.
+test fn jp_two_body_subtree_rejects() -> Bool { body_subtree_rejects(tag: "two", text: two_source()) }
+test fn jp_one_body_subtree_rejects() -> Bool { body_subtree_rejects(tag: "one", text: one_source()) }
+test fn jp_line_body_subtree_rejects() -> Bool { body_subtree_rejects(tag: "line", text: one_line_list_source()) }
+test fn jp_names_body_subtree_rejects() -> Bool { body_subtree_rejects(tag: "names", text: names_source()) }
 
 fn emitted_is(n: Node, sym: Symbol) -> Bool {
   match parse_production_emitted_identity_optional(node: n) {
