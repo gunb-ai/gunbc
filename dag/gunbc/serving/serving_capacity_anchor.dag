@@ -9,7 +9,7 @@ import product.fabric.serving_throughput { ServingThroughput, ThroughputOperator
 import gunbc.serving.flash_next_maxq_fork_measurements { fork_prefill_readings, ForkPrefillReading }
 import gunbc.serving.flash_next_topology { topology_dp }
 import gunbc.serving.srv1_topology_comparison { Srv1TopologyReading, srv1_topology_reading, srv1_layout }
-import gunbc.serving.serving_layout { ServingLayoutResult, ServingLayoutConfigured, ServingLayoutRefused, srv4_layout }
+import gunbc.serving.serving_layout { ServingLayoutResult, ServingLayoutConfigured, ServingLayoutRefused, srv3_layout, srv4_layout }
 import gunbc.serving.serving_host_memory {
   ServingMemoryReading, ServingMemoryRead, ServingMemoryAssumed, ServingMemoryUnread, ServingEngineMemory, ConversationSnapshotCost,
   conversation_snapshot_bytes, serving_warm_sessions_within,
@@ -311,7 +311,10 @@ fn srv1_vllm_replica_anchor(deployment: String, r: Srv1TopologyReading) -> Servi
 fn srv3_strata_anchor() -> ServingCapacityAnchor {
   ServingCapacityAnchor {
     deployment: "srv3-strata" as NonEmptyStr,
-    grant: GrantUnmodeled { obligation: "no serving layout models srv3's Strata replica" as NonEmptyStr },
+    // srv3's replica is modelled now (gunbc.serving.serving_layout's srv3_layout: one engine across both RTX 2000
+    // Ada cards, its experts in a pinned private arena), so its cap is bounded by what that layout's retention
+    // budget admits — the same path srv4's anchor takes, and the reason no typed "cap 4" survives here.
+    grant: single_replica_grant(layout: srv3_layout, deployment: "srv3-strata"),
     context: token_count(count: 100000),
     throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: 26), at_concurrency: 2, standing: heuristic(o: "srv3 engine.log 'strata batch (pipelined, 2 groups)' rows/s median 26.3 over 3,657 windows, mixed context, 2026-11-08") },
     cold_prefill: Present { value: tokens_per_second(count: 838) },

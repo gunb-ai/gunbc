@@ -14,7 +14,9 @@ import extdeps.filesystem.filesystem_io { Filesystem, FilesystemReadRefused, Fil
 import extdeps.transports.rest { RestResult, RestAnswered }
 import product.host_identity { HostIdentity }
 import gunbc.actions_run_binding { actions_variable_trimmed }
-import gunbc.host.anchored_host_transport { anchored_host_transport_for_run, AnchoredBindingBound, anchored_host_binding_refusal_reason }
+import gunbc.host.anchored_host_transport { AnchoredBindingBound, anchored_host_binding_refusal_reason }
+import gunbc.runner.runner_initialization { runner_host_pinned_binding }
+import extdeps.shell.credentials { env_credential }
 import gunbc.auth.github_apps { GitHubAppControlPlaneState, gunbai_ci_declared, gunbai_ci_declared_installation_id }
 import gunbc.auth.github_app_control_plane_observe { observe_github_app_control_plane }
 import gunbc.auth.github_credential { GitHubCredentialAuthority, ManagedAppInstallationCredential, GitHubCredentialProfileRef }
@@ -76,9 +78,10 @@ import gunbc.runner.runner_jit_deregistration {
 // THE OBSERVATION ROUTE IS THE HOST TRANSPORT, A PARAMETER. lost_boot_observe_current_boot reads
 // /proc/sys/kernel/random/boot_id through host_operation_exec (ProcfsReadBootId) over a HostEffectTransport and
 // is the only place the evidence is minted. The run reaches the swept host over the one live anchored transport
-// (gunbc.host.anchored_host_transport anchored_host_transport_live: the host's known-hosts anchor as the only trusted
-// row, the presented key scanned, the operator's go), so a host with no anchor, no go or a presented key that is not
-// the anchor's is unobserved and refuses at the join. The read, its refusals and the mint are exercised in
+// (gunbc.host.anchored_host_transport anchored_host_transport_live_per_boot: the per-boot pin from the host's
+// running-OS receipt as the only trusted known-hosts row, the presented key scanned, the operator's go, the live boot
+// the pin's), so a host with no receipt, no go, a presented key that is not the pin's or a boot that is not the pin's
+// is unobserved and refuses at the join. The read, its refusals and the mint are exercised in
 // test.claim.runner.runner_lost_boot_sweep_run_witness. HOST BINDING IS STRUCTURE: the observer takes a
 // gunbc.host.host_bound_transport HostBoundTransport, whose host is derived from the transport's address
 // through the managed-host join and cannot be stated, so evidence for a host other than the one reached is
@@ -278,15 +281,24 @@ fn write_sweep_receipt(lines: List<String>) -> ProcessExit {
   if kept.success { ExitSuccess } else { exit_failure(reason: concat("lost-boot sweep: receipt write refused: ", kept.error)) }
 }
 
-// THE LIVE OBSERVATION: the one anchored transport to the swept host, then the boot id read over it. A refusal to
-// bind is the observation's own cause, so the join refuses with it and nothing past the join runs.
-fn lost_boot_live_observation(host: String) -> CurrentBootObservation {
+// THE LIVE OBSERVATION: the one anchored transport to the swept host -- bound by the per-boot pin its boot run
+// published (gunbc.runner.runner_initialization runner_host_pinned_binding, read with the run's GITHUB_TOKEN) --
+// then the boot id read over it. A refusal to bind is the observation's own cause, so the join refuses with it and
+// nothing past the join runs. The pin is the LATEST boot run's: a host that rebooted outside a boot run presents a
+// key no receipt carries, so it is not reached, and the sweep refuses rather than trusting it.
+data lost_boot_sweep_github_token_env_name: NonEmptyStr = "GITHUB_TOKEN"
+
+fn lost_boot_live_observation(host: String, token: Secret?) -> CurrentBootObservation {
   if host == "" {
     CurrentBootUnobserved { cause: concat(lost_boot_sweep_host_env_name, " is unset, so no host is reached") }
   } else {
-    match anchored_host_transport_for_run(host: host as HostIdentity, prefix: lost_boot_sweep_attempt_prefix) {
-      AnchoredBindingBound { bound: b, anchor: _ } => lost_boot_observe_current_boot(transport: Present { value: b })
-      other => CurrentBootUnobserved { cause: concat("no host-authenticated transport: ", anchored_host_binding_refusal_reason(b: other)) }
+    match token {
+      Absent => CurrentBootUnobserved { cause: concat(lost_boot_sweep_github_token_env_name as String, " is unset, so the host's running-OS receipt, which carries its per-boot pin, is not read and no host is reached") }
+      Present { value: t } =>
+        match runner_host_pinned_binding(host: host as HostIdentity, prefix: lost_boot_sweep_attempt_prefix, token: t) {
+          AnchoredBindingBound { bound: b, anchor: _ } => lost_boot_observe_current_boot(transport: Present { value: b })
+          other => CurrentBootUnobserved { cause: concat("no host-authenticated transport: ", anchored_host_binding_refusal_reason(b: other)) }
+        }
     }
   }
 }
@@ -304,7 +316,7 @@ fn lost_boot_sweep_admission() -> LostBootSweepAdmission {
   if host_name == "" || capture_path == "" {
     SweepNotAdmitted { cause: join(["lost-boot sweep: ", lost_boot_sweep_host_env_name, " and ", lost_boot_sweep_capture_path_env_name, " are required and never defaulted"], "") }
   } else {
-    match lost_boot_current_input(host: host_name, capture_path: capture_path, observed: lost_boot_live_observation(host: host_name)) {
+    match lost_boot_current_input(host: host_name, capture_path: capture_path, observed: lost_boot_live_observation(host: host_name, token: env_credential(env_var: lost_boot_sweep_github_token_env_name).token)) {
       LostBootCurrentRefused { cause } => SweepNotAdmitted { cause: cause }
       LostBootCurrentPresent { host: admitted, boot } => {
         let wif = actions_variable_trimmed(name: lost_boot_sweep_wif_access_token_env_name)

@@ -3,7 +3,7 @@ module gunbc.serving.router_dev_policy
 import std.optional { Optional, Present, Absent }
 import std.types { String, Int, Bool, List, Port, NonEmptyStr, Timestamp }
 import std.nat { Nat }
-import gunbc.serving.serving_layout { host_6ce85c_layout, ServingLayoutResult, ServingLayoutConfigured, ServingLayoutRefused }
+import gunbc.serving.serving_layout { host_6ce85c_layout, srv3_layout, srv4_layout, ServingLayoutResult, ServingLayoutConfigured, ServingLayoutRefused }
 import gunbc.serving.serving_capacity_anchor { ServingCapacityShape, ServingShapeDerived, ServingShapeEstimated, ServingShapeRefused, srv1_vllm_replica_shape, srv3_strata_shape, srv4_strata_shape, h11_strata_shape }
 import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, cited_figure_read_obligation }
 import extdeps.uri { uri_https, uri_wire }
@@ -1044,64 +1044,146 @@ fn router_dev_shaped(shape: ServingCapacityShape, row: fn(RouterDevCapacity, Rou
   router_dev_shaped_under(shape: shape, admission: router_dev_capacity_admission, row: row)
 }
 
-// An h11 engine row. The router's NAME is not the PCI bus (h11-05 is bus 85, h11-88 is bus c8). Its cap and
-// retain are the engine's capacity shape: its warm store is that bus's engine memory row and its retention may not
-// exceed the joined replica's admitted_conversations, handed in by the projection, never typed. The port follows the
-// engine, not the name.
-fn router_dev_h11_row(name: String, port: Port, retiring: List<String>, bus: String, admitted: Nat) -> RouterDevShaped {
-  router_dev_shaped(shape: h11_strata_shape(deployment: name, bus: bus, admitted: admitted), row: (cap, retention, rests) => RouterDevUpstream {
-    name: name, scheme: UpstreamHttp, host: "192.168.1.202", port: port, tls_name: Absent,
+// WHICH ANCHOR A PROJECTED ROW'S CAP AND RETAIN ARE DERIVED FROM, chosen by the naming row and nowhere else. The
+// projection never picks a capacity formula; a naming that names no anchor the anchor module has a formula for is
+// refused, never defaulted to a plausible number (gunbc.design_argument::fail_closed). The bus lives INSIDE the h11
+// arm: an h11 row is addressed by bus and needs one, srv3/srv4 carry none, so the state "an h11 row with no bus"
+// (which the projection had to refuse at run time) cannot be written -- construction where a check used to stand.
+type RouterDevReplicaAnchor = AnchorH11Strata { bus: String } | AnchorSrv3Strata | AnchorSrv4Strata
+
+// h11's group is the bus, prefixed -- the layout names its h11 device groups "h11-strata@<bus>", so deriving the
+// group from the bus keeps the two from drifting apart (review 92443): the bus is stated once, on the anchor.
+fn router_dev_h11_group(bus: String) -> String {
+  concat("h11-strata@", bus)
+}
+
+// An h11 replica naming, built from the bus ONCE: the group and the anchor's bus are both derived from that one
+// figure, so a row cannot say one bus in its group and another in its anchor.
+fn router_dev_h11_naming(name: String, port: Nat, bus: String, retiring: List<String>) -> RouterDevReplicaNaming {
+  RouterDevReplicaNaming {
+    group: router_dev_h11_group(bus: bus),
+    name: name,
+    scheme: UpstreamHttp,
+    host: "192.168.1.202",
+    port: port,
+    tls_name: Absent,
+    anchor: AnchorH11Strata { bus: bus },
+    retiring: retiring,
+  }
+}
+
+// The anchor, at the admission the JOINED REPLICA has. h11's needs the bus (its warm store is that card's engine
+// memory row) and the replica's own admitted conversations (one replica per card, so the join gives it exactly
+// one); srv3's and srv4's anchors take their grant from their own single layer-split replica, so for them the
+// replica's identity and admission arrive and are not needed — the join is still what makes the row exist.
+fn router_dev_replica_shape(n: RouterDevReplicaNaming, admitted: Nat) -> ServingCapacityShape {
+  match n.anchor {
+    AnchorH11Strata { bus: b } => h11_strata_shape(deployment: n.name, bus: b, admitted: admitted)
+    AnchorSrv3Strata => srv3_strata_shape()
+    AnchorSrv4Strata => srv4_strata_shape()
+  }
+}
+
+// A PROJECTED ROW: the naming's endpoint facts, the capacity and retention its anchor derives. Every row that
+// comes out of a layout is the same Strata iq3_s engine on the same context ceiling, which is why one builder
+// serves h11, srv3 and srv4; srv1's vLLM replicas are not layout-projected and stay in the head.
+fn router_dev_replica_row(n: RouterDevReplicaNaming, admitted: Nat) -> RouterDevShaped {
+  router_dev_shaped(shape: router_dev_replica_shape(n: n, admitted: admitted), row: (cap, retention, rests) => RouterDevUpstream {
+    name: n.name, scheme: n.scheme, host: n.host, port: n.port, tls_name: n.tls_name,
     model: "qwen3.8-flash-next-iq3_s", capacity: cap, max_model_len: 229376, path_prefix: "",
-    retiring_names: retiring, in_service: true,
+    retiring_names: n.retiring, in_service: true,
     retention: retention,
     effort_effects: iq3_s_effort_rules(),
     capacity_rests_on: rests,
   })
 }
 
-// THE h11 ROWS FOLLOW THE LAYOUT'S REPLICA SET (operator ruling 2026-11-01, A-prime; live parity, #15622 applied
-// 21:11-21:13Z). An engine's NAME, port and retired names are a naming fact; its EXISTENCE and its retention are
-// the layout's: a bus the layout does not grant yields no row, so a router roster cannot outlive the grant. An
-// engine whose bus IS granted keeps its row.
-type RouterDevH11Engine { name: String, bus: String, port: Port, retiring: List<String> }
+// THE ROWS FOLLOW EACH HOST'S LAYOUT REPLICA SET (operator ruling 2026-11-01, A-prime; live parity, #15622 applied
+// 21:11-21:13Z; generalized to every owned Strata host 2026-11-09). An engine's NAME, address, port and retired
+// names are a naming fact; its EXISTENCE and its capacity are its layout's: a replica the layout does not grant
+// yields no row, so a router roster cannot outlive the grant, and an engine the naming table lists that no replica
+// names is omitted — that is the A-prime case (c5/c7 left the grant). The table of h11 engine rows this replaced
+// (RouterDevH11Engine / router_dev_h11_engines) is deleted: every field it carried lives in a naming row now.
 
-fn router_dev_h11_engines() -> List<RouterDevH11Engine> {
+// ONE GRANTED REPLICA'S ROUTER NAMING: the row's NAME, address, port, TLS and retired names — the facts only the
+// naming can give — plus the LAYOUT GROUP it is this router's face for, and the anchor its capacity rests on.
+// h11 names one row per card, because its layout grants one replica per card and the bus is what distinguishes
+// them; srv3 and srv4 name ONE row each, because their layout grants one replica that spans both cards. The
+// naming row is not a claim that the replica exists: only its layout's grant is that.
+type RouterDevReplicaNaming {
+  group: String
+  name: String
+  scheme: RouterUpstreamScheme
+  host: String
+  port: Port
+  tls_name: String?
+  anchor: RouterDevReplicaAnchor
+  retiring: List<String>
+}
+
+// h11's naming. Its groups are h11-strata@<bus>; the router's NAME is not the bus (h11-05 is bus 85, h11-88 is
+// bus c8), and the port follows the engine, not the name. The bus is what its anchor needs for the warm store.
+fn router_dev_h11_namings() -> List<RouterDevReplicaNaming> {
   [
-    RouterDevH11Engine { name: "h11-05", bus: "85", port: 18081, retiring: ["h11-a16-0"] },
-    RouterDevH11Engine { name: "h11-07", bus: "87", port: 18083, retiring: ["h11-a16-2"] },
-    RouterDevH11Engine { name: "h11-08", bus: "88", port: 18084, retiring: ["h11-a16-3"] },
-    RouterDevH11Engine { name: "h11-88", bus: "c8", port: 18088, retiring: [] },
+    router_dev_h11_naming(name: "h11-05", port: 18081, bus: "85", retiring: ["h11-a16-0"]),
+    router_dev_h11_naming(name: "h11-07", port: 18083, bus: "87", retiring: ["h11-a16-2"]),
+    router_dev_h11_naming(name: "h11-08", port: 18084, bus: "88", retiring: ["h11-a16-3"]),
+    router_dev_h11_naming(name: "h11-88", port: 18088, bus: "c8", retiring: []),
   ]
 }
 
-// THE PROJECTION READS THE CONFIGURED LAYOUT ONCE and joins each replica to its router naming (group
-// h11-strata@<bus> <-> bus), deriving the row's retention from that joined replica. It REFUSES, never
-// narrows: a refused layout, a granted group with no naming, and a granted group with more than one naming are
-// each a typed refusal that stops the write before any row is rendered. An engine in the naming table that
-// no replica names is the only thing omitted -- that is the A-prime case (c5/c7 left the grant).
-type RouterDevH11Projection
-  = RouterDevH11Projected { rows: List<RouterDevUpstream> }
-  | RouterDevH11Refused { reason: String }
+// srv3's naming: ONE row, because its layout grants ONE replica across both cards (--layer-split 24 is one engine,
+// so one endpoint — the second card is not a second upstream). Its engine listens plain on 18080; there is no TLS
+// front on srv3. It retires h11-c1, the lane whose turns it took over. Its cap and retain are its anchor's, and
+// that anchor's grant is srv3_layout's admitted retention — the hand-typed "OwnedCap turns 4" that stood here is
+// gone, and the reason it was wrong is in the frontier below.
+fn router_dev_srv3_namings() -> List<RouterDevReplicaNaming> {
+  [RouterDevReplicaNaming { group: "strata-pool", name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, anchor: AnchorSrv3Strata, retiring: ["h11-c1"] }]
+}
 
-fn router_dev_h11_projection(layout: ServingLayoutResult, engines: List<RouterDevH11Engine>) -> RouterDevH11Projection {
+// srv4's naming, and THE ANSWER TO "TWO ENGINES, WHICH ENDPOINT?" (the operator-route question the original brief
+// raised): there are not two. srv4's layout grants ONE replica spanning both cards, so the operator route
+// (gunbc.harness.harness_operator_route, #16043: the srv4 TLS front to one endpoint, no fallback) addresses one
+// engine and stays right. If srv4 is ever laid out as one replica per card, this naming table grows a row per card
+// with its own port and the operator route must say which replica it fronts — that is a layout change, and the
+// projection makes a silent answer impossible because the row set is then no longer one. Its engine serves TLS
+// with CN=srv4 on 18443.
+fn router_dev_srv4_namings() -> List<RouterDevReplicaNaming> {
+  [RouterDevReplicaNaming { group: "gunbc-srv4-daily-engine", name: "srv4-strata", scheme: UpstreamHttps, host: "192.168.1.196", port: 18443, tls_name: Present { value: "srv4" }, anchor: AnchorSrv4Strata, retiring: [] }]
+}
+
+// THE PROJECTION READS THE CONFIGURED LAYOUT ONCE and joins each granted replica to its router naming by group,
+// deriving the row's capacity and retention from THAT replica. It is h11's projection with h11's address, port
+// and bus taken out of it (operator ruling 2026-11-01, A-prime, generalized 2026-11-09 so srv3 and srv4 are
+// projected by the same rule and not cloned — gunbc.design_argument::root_generalization). It REFUSES, never
+// narrows: a refused layout, a granted replica with no naming, and a granted replica with more than one naming are
+// each a typed refusal that stops the write before any row is rendered. A naming no replica names is the only
+// thing omitted — that is the A-prime case (c5/c7 left the grant), and it is the case that makes a layout refusal
+// loud rather than a quietly smaller fleet: a refused layout yields NO replicas, and the writer that requires this
+// host's rows then refuses the whole write.
+type RouterDevReplicaProjection
+  = RouterDevReplicaProjected { rows: List<RouterDevUpstream> }
+  | RouterDevReplicaRefused { reason: String }
+
+fn router_dev_replica_projection(host: String, layout: ServingLayoutResult, namings: List<RouterDevReplicaNaming>) -> RouterDevReplicaProjection {
   match layout {
-    ServingLayoutRefused { refusal: _ } => RouterDevH11Refused { reason: "the serving layout is refused, so no h11 row set can be derived" }
+    ServingLayoutRefused { refusal: _ } => RouterDevReplicaRefused { reason: concat("the serving layout of ", concat(host, " is refused, so no row set can be derived for it")) }
     ServingLayoutConfigured { replicas: rs, unallocated_ram: _, evidence: _ } =>
-      fold(rs, init: RouterDevH11Projected { rows: [] }, f: (acc, c) =>
+      fold(rs, init: RouterDevReplicaProjected { rows: [] }, f: (acc, c) =>
         match acc {
-          RouterDevH11Refused { reason: r } => RouterDevH11Refused { reason: r }
-          RouterDevH11Projected { rows: so_far } => {
+          RouterDevReplicaRefused { reason: r } => RouterDevReplicaRefused { reason: r }
+          RouterDevReplicaProjected { rows: so_far } => {
             let g = c.group as String
-            let named = filter(engines, e => concat("h11-strata@", e.bus) == g)
-            if count(named) == 0 { RouterDevH11Refused { reason: concat("a granted replica has no router naming: ", g) } }
-            else if count(named) > 1 { RouterDevH11Refused { reason: concat("a granted replica has more than one router naming: ", g) } }
+            let named = filter(namings, n => n.group == g)
+            if count(named) == 0 { RouterDevReplicaRefused { reason: concat("a granted replica of ", concat(host, concat(" has no router naming: ", g))) } }
+            else if count(named) > 1 { RouterDevReplicaRefused { reason: concat("a granted replica of ", concat(host, concat(" has more than one router naming: ", g))) } }
             else {
-              fold(named, init: RouterDevH11Projected { rows: so_far }, f: (inner, e) =>
+              fold(named, init: RouterDevReplicaProjected { rows: so_far }, f: (inner, n) =>
                 match inner {
-                  RouterDevH11Refused { reason: r } => RouterDevH11Refused { reason: r }
-                  RouterDevH11Projected { rows: rows } => match router_dev_h11_row(name: e.name, port: e.port, retiring: e.retiring, bus: e.bus, admitted: c.admitted_conversations) {
-                    RouterDevShapeRefused { reason: r } => RouterDevH11Refused { reason: r }
-                    RouterDevShapedRow { row: u } => RouterDevH11Projected { rows: concat(rows, [u]) }
+                  RouterDevReplicaRefused { reason: r } => RouterDevReplicaRefused { reason: r }
+                  RouterDevReplicaProjected { rows: rows } => match router_dev_replica_row(n: n, admitted: c.admitted_conversations) {
+                    RouterDevShapeRefused { reason: r } => RouterDevReplicaRefused { reason: r }
+                    RouterDevShapedRow { row: u } => RouterDevReplicaProjected { rows: concat(rows, [u]) }
                   }
                 })
             }
@@ -1114,18 +1196,27 @@ type RouterDevFirstParty
   = RouterDevFirstPartyRows { rows: List<RouterDevUpstream> }
   | RouterDevFirstPartyRefused { reason: String }
 
-fn router_dev_first_party_for(layout: ServingLayoutResult, engines: List<RouterDevH11Engine>) -> RouterDevFirstParty {
-  match router_dev_h11_projection(layout: layout, engines: engines) {
-    RouterDevH11Refused { reason: r } => RouterDevFirstPartyRefused { reason: r }
-    RouterDevH11Projected { rows: h } => match router_dev_first_party_head() {
-      RouterDevFirstPartyRefused { reason: r } => RouterDevFirstPartyRefused { reason: r }
-      RouterDevFirstPartyRows { rows: head } => RouterDevFirstPartyRows { rows: concat(head, concat(h, router_dev_first_party_tail())) }
+// THE FIRST-PARTY SET: the head, then every layout-projected host, then the tail. Each host is projected by the
+// SAME rule from ITS OWN layout, and any one of them refusing refuses the whole set — a router can never be
+// rendered from a fleet that a layout does not grant.
+fn router_dev_first_party_for(h11: ServingLayoutResult, srv3: ServingLayoutResult, srv4: ServingLayoutResult) -> RouterDevFirstParty {
+  match router_dev_replica_projection(host: "h11", layout: h11, namings: router_dev_h11_namings()) {
+    RouterDevReplicaRefused { reason: r } => RouterDevFirstPartyRefused { reason: r }
+    RouterDevReplicaProjected { rows: h } => match router_dev_replica_projection(host: "srv3", layout: srv3, namings: router_dev_srv3_namings()) {
+      RouterDevReplicaRefused { reason: r } => RouterDevFirstPartyRefused { reason: r }
+      RouterDevReplicaProjected { rows: s3 } => match router_dev_replica_projection(host: "srv4", layout: srv4, namings: router_dev_srv4_namings()) {
+        RouterDevReplicaRefused { reason: r } => RouterDevFirstPartyRefused { reason: r }
+        RouterDevReplicaProjected { rows: s4 } => match router_dev_first_party_head() {
+          RouterDevFirstPartyRefused { reason: r } => RouterDevFirstPartyRefused { reason: r }
+          RouterDevFirstPartyRows { rows: head } => RouterDevFirstPartyRows { rows: concat(head, concat(h, concat(s3, concat(s4, router_dev_first_party_tail())))) }
+        }
+      }
     }
   }
 }
 
 fn router_dev_first_party() -> RouterDevFirstParty {
-  router_dev_first_party_for(layout: host_6ce85c_layout, engines: router_dev_h11_engines())
+  router_dev_first_party_for(h11: host_6ce85c_layout, srv3: srv3_layout, srv4: srv4_layout)
 }
 
 // THE LIVE ROW SET (read from srv1's upstreams.json field names and values, 2026-10-31, and srv4's row added there
@@ -1142,8 +1233,6 @@ fn router_dev_head_shaped() -> List<RouterDevShaped> {
   [
     router_dev_shaped(shape: srv1_vllm_replica_shape(deployment: "srv1-vllm"), row: (cap, retention, rests) => RouterDevUpstream { name: "srv1-vllm", scheme: UpstreamHttps, host: "127.0.0.1", port: 18000, tls_name: Present { value: "pool-card" }, model: "Qwen3.8-Flash-Next", capacity: cap, max_model_len: 229376, path_prefix: "", retiring_names: [], in_service: true, retention: retention, effort_effects: qwen3_effort_rules(), capacity_rests_on: rests }),
     router_dev_shaped(shape: srv1_vllm_replica_shape(deployment: "srv1-vllm-1"), row: (cap, retention, rests) => RouterDevUpstream { name: "srv1-vllm-1", scheme: UpstreamHttps, host: "127.0.0.1", port: 18001, tls_name: Present { value: "pool-card" }, model: "Qwen3.8-Flash-Next", capacity: cap, max_model_len: 229376, path_prefix: "", retiring_names: [], in_service: true, retention: retention, effort_effects: qwen3_effort_rules(), capacity_rests_on: rests }),
-    router_dev_shaped(shape: srv3_strata_shape(), row: (cap, retention, rests) => RouterDevUpstream { name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", capacity: cap, max_model_len: 229376, path_prefix: "", retiring_names: ["h11-c1"], in_service: true, retention: retention, effort_effects: iq3_s_effort_rules(), capacity_rests_on: rests }),
-    router_dev_shaped(shape: srv4_strata_shape(), row: (cap, retention, rests) => RouterDevUpstream { name: "srv4-strata", scheme: UpstreamHttps, host: "192.168.1.196", port: 18443, tls_name: Present { value: "srv4" }, model: "qwen3.8-flash-next-iq3_s", capacity: cap, max_model_len: 229376, path_prefix: "", retiring_names: [], in_service: true, retention: retention, effort_effects: iq3_s_effort_rules(), capacity_rests_on: rests }),
   ]
 }
 

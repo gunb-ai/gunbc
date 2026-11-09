@@ -1,6 +1,6 @@
 module test.claim.host.initialized_host_witness
 
-import std.types { Bool, String }
+import std.types { Bool, String, NonEmptyStr }
 import std.optional { Present, Absent }
 import std.algebra { string_contains }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -17,10 +17,11 @@ import gunbc.host.anchored_host_transport {
 import gunbc.host.running_os { RunningOsReading, RunningOsObserved, RunningOsUnobserved, RunningDeliveredArtifact }
 import gunbc.host.initialized_host {
   HostInitialized, HostNotInitialized, InitializedHostUntrusted, InitializedHostBootUnread, InitializedHostBootDisagrees,
-  InitializedHostReadingOfAnotherHost,
+  InitializedHostReadingOfAnotherHost, InitializedHostRunningOsUnobserved,
   initialized_host_over, initialized_host_live, initialized_host_identity, initialized_host_reach, initialized_host_os,
 }
-import gunbc.runner.runner_host_medium { runner_host_running_os }
+import gunbc.runner.runner_host_medium { runner_host_running_os, runner_host_up_readback, RunnerHostUpObserved }
+import gunbc.host.per_boot_console_pin { CheckedHostKey, checked_host_key }
 import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_boot_medium }
 import test.claim.host.anchored_host_transport_witness { anchored_fixture_row }
 import test.claim.runner.runner_host_medium_witness { subject_with, closed }
@@ -80,6 +81,27 @@ fn mtcollins1_running_os() -> RunningOsReading {
   }
 }
 
+// THE HOST KEY mtcollins1's boot printed, as the boot run's real readback takes it out of the same closed capture
+// (gunbc.runner.runner_host_medium runner_host_up_readback, RunnerHostUp host_key): the key the running-OS receipt
+// carries and the per-boot pin is minted from.
+fn mtcollins1_host_key() -> CheckedHostKey? {
+  match subject_with(medium: mtcollins1_boot_medium) {
+    Absent => none
+    Present { value: s } => match runner_host_up_readback(capture: closed(install_exit: "0", machine: "aarch64"), subject: s) {
+      RunnerHostUpObserved { up: up } => Present { value: up.host_key }
+      _ => none
+    }
+  }
+}
+
+// The same public key, checked on a LATER boot: what a receipt from another boot run would carry.
+fn mtcollins1_host_key_on_later_boot() -> CheckedHostKey? {
+  match mtcollins1_host_key() {
+    Absent => none
+    Present { value: k } => checked_host_key(boot_id: later_boot as NonEmptyStr, key_type: k.key_type, key_b64: k.public_key_base64, fingerprint: k.sha256_fingerprint)
+  }
+}
+
 fn boot_read(stdout: String) -> HostOperationOutcome {
   HostOperationObserved { stdout: stdout, success: true, stderr: none }
 }
@@ -99,12 +121,49 @@ test fn mtcollins1_s_route_yields_an_initialized_host_with_its_own_facts() -> Bo
   }
 }
 
-// RED, ON THE PRODUCTION ROUTE: mtcollins1's pin is absent on main, so the live route refuses at the anchored
-// transport, contacting nothing, and no record exists. A host with no pin is never initialized.
+// RED, ON THE PRODUCTION ROUTE: with no host key from the boot's running-OS receipt there is no per-boot pin, so the
+// live route refuses at the anchored transport, contacting nothing, and no record exists. A host with no pin is never
+// initialized; the static anchor is not consulted (operator decision 2026-11-08).
 test fn a_host_with_no_pinned_key_is_refused_before_any_effect() -> Bool {
-  match initialized_host_live(host: operator_host_mtcollins1, attempt_raw: "witness", running: mtcollins1_running_os()) {
+  match initialized_host_live(host: operator_host_mtcollins1, attempt_raw: "witness", running: mtcollins1_running_os(), host_key: none) {
     HostNotInitialized { refusal: InitializedHostUntrusted { cause: c } } =>
-      string_contains(s: c, pattern: "no trusted statement about mtcollins1") && string_contains(s: c, pattern: "nothing contacted")
+      string_contains(s: c, pattern: "no per-boot host-key pin for mtcollins1") && string_contains(s: c, pattern: "nothing contacted")
+    _ => false
+  }
+}
+
+// RED, ON THE PRODUCTION ROUTE: a pin printed at another boot than the one the running-OS reading observed is refused
+// as a pin from another boot BEFORE the operator's go is even read -- the cause is the boot, not the gate -- so a
+// receipt pairing one boot's reading with another boot's key authenticates nothing.
+test fn initialization_refuses_a_pin_from_another_boot_before_any_effect() -> Bool {
+  match mtcollins1_host_key_on_later_boot() {
+    Absent => false
+    Present { value: k } => match initialized_host_live(host: operator_host_mtcollins1, attempt_raw: "witness", running: mtcollins1_running_os(), host_key: Present { value: k }) {
+      HostNotInitialized { refusal: InitializedHostUntrusted { cause: c } } =>
+        string_contains(s: c, pattern: concat("the pin was printed at boot ", later_boot)) && string_contains(s: c, pattern: concat("not boot ", captured_boot))
+      _ => false
+    }
+  }
+}
+
+// THE SAME-BOOT PIN IS ADMITTED UP TO THE OPERATOR'S GO: mtcollins1's real key on the boot its reading observed passes
+// the pin's checks, and the route then stops at the go (unset in a witness), still contacting nothing. With the
+// RED above, this shows the boot comparison discriminates rather than refusing every pin.
+test fn a_pin_of_the_observed_boot_reaches_the_operators_go_and_contacts_nothing() -> Bool {
+  match mtcollins1_host_key() {
+    Absent => false
+    Present { value: k } => (k.boot_id as String) == captured_boot && match initialized_host_live(host: operator_host_mtcollins1, attempt_raw: "witness", running: mtcollins1_running_os(), host_key: Present { value: k }) {
+      HostNotInitialized { refusal: InitializedHostUntrusted { cause: c } } =>
+        string_contains(s: c, pattern: "GATED") && string_contains(s: c, pattern: "nothing contacted")
+      _ => false
+    }
+  }
+}
+
+// RED: a running OS that was not observed is refused before the transport is even prepared.
+test fn an_unobserved_running_os_is_refused_before_any_effect() -> Bool {
+  match initialized_host_live(host: operator_host_mtcollins1, attempt_raw: "witness", running: RunningOsUnobserved { cause: "supplied" }, host_key: mtcollins1_host_key()) {
+    HostNotInitialized { refusal: InitializedHostRunningOsUnobserved { cause: c } } => c == "supplied"
     _ => false
   }
 }

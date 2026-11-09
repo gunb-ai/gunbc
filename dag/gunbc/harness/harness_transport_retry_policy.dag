@@ -1,0 +1,122 @@
+module gunbc.harness.harness_transport_retry_policy
+
+import std.types { String, Int, Bool, EpochSecs }
+import std.measure { Second, second, second_count }
+import std.host_text { chars }
+import std.unicode.char_class { unicode_char_code_point }
+
+// ── WHEN THE BELT RE-DELIVERS A PATIENT REQUEST: the re-delivery schedule, kept apart ────────────────
+//
+// A request on the operator route is a PATIENT REQUEST CONTRACT: it is delivered, and then watched for
+// indefinitely (operator direction 2026-10-27: "i deliver the request, and wait indefinitely for the
+// response (like a patient contract) - that sort of contract can be used in any context, batch,
+// streaming - its orthogonal to latency/throughput"). A client timeout means "stopped watching", never
+// "failed" and never "cancelled". So nothing in this module decides WHETHER a pending request still
+// stands -- while it is recorded pending it always does -- and nothing here can end one. What this
+// module decides is WHEN THE BELT next re-delivers it.
+//
+// IT REPLACES A BUDGET. This module once carried a total wait budget and a transport_retry_fits
+// predicate that stopped asking once the arithmetic ran out, and the harness slept beside the request
+// until it did: that used a live process and a clock as a queue entry -- the request was alive only
+// while a worker sat next to it, and it died when the arithmetic said so. Both are deleted (companion
+// principle, operator side chat 2026-10-27: "Accept work durably first. Materialize it only when the
+// resources required have been admitted. Never use a live process as a queue entry"). Pending is one
+// durable event in the session's own event stream (gunbc.harness.harness_session_recovery
+// session_event_request_pending), and the belt re-delivers from that record for as long as it stands.
+//
+// The policy stays sequestered from the mechanism so it can change over time (operator, 2026-10-12:
+// "keep it sequestered into its own sort of policy area because we'll change it over time"). The
+// continuation and the worker read one value, harness_transport_retry_policy_now, and nothing else here.
+//
+// This is the caller's side of a retry the serving route leaves to its callers
+// (gunbc.serving.caller_retry_contract); it makes the belt come back, and establishes none of that
+// contract's durability properties by doing so.
+type HarnessTransportRetryPolicy {
+  first_delay: Second
+  max_delay: Second
+  offset_spread: Second
+}
+
+// THE OPERATOR ENGINE IS EXPECTED TO RESTART AND TO RUN SLOW (operator, 2026-10-12): the lab's empty
+// replies were the engine reloading under the request, back about 27 s later. So the first re-delivery
+// comes 15 s after the last delivery, each later one doubles the gap, capped at 5 minutes -- and that is
+// ALL this schedule does: the doubling SPACES the re-deliveries, it never ends one. The 30-minute budget
+// this policy once carried, and the fit test that stopped asking when it ran out, are deleted. Each gap
+// is offset by up to offset_spread - 1 seconds, derived from the session's own key, so sessions that
+// lost capacity together do not all re-deliver the instant the gap has passed.
+data harness_transport_retry_policy_now: HarnessTransportRetryPolicy = HarnessTransportRetryPolicy {
+  first_delay: second(count: 15),
+  max_delay: second(count: 300),
+  offset_spread: second(count: 7),
+}
+
+// THE GAP BEFORE THE NEXT RE-DELIVERY, before its offset: first_delay doubled once per re-delivery
+// already made, never past max_delay. The count moves the instant; it never ends the request. The work
+// is bounded by the doublings that fit under the cap (about log2(max_delay / first_delay)), NOT by the
+// request's age: the walk stops the moment the gap reaches the cap, because every later gap is the cap,
+// and a gap that cannot grow (first_delay of zero or less) stops at once for the same reason. A request
+// ten days or a hundred days old costs the same handful of steps per belt sweep.
+fn transport_retry_delay_seconds(policy: HarnessTransportRetryPolicy, re_deliveries: Int) -> Int {
+  transport_retry_gap_after(
+    gap: second_count(s: policy.first_delay) as Int,
+    cap: second_count(s: policy.max_delay) as Int,
+    doublings_left: re_deliveries,
+  )
+}
+
+// One forward walk: double the gap while doublings remain and it is still below the cap.
+fn transport_retry_gap_after(gap: Int, cap: Int, doublings_left: Int) -> Int {
+  if doublings_left <= 0 {
+    gap
+  } else if gap <= 0 {
+    gap
+  } else if gap >= cap {
+    cap
+  } else {
+    let doubled = 2 * gap
+    transport_retry_gap_after(
+      gap: if doubled > cap { cap } else { doubled },
+      cap: cap,
+      doublings_left: doublings_left - 1,
+    )
+  }
+}
+
+// THE SESSION'S OFFSET: small, stable for one session, different across sessions. The key is read through
+// the declared host-text unfold (std.host_text chars) and each scalar through its declared code point
+// (std.unicode.char_class unicode_char_code_point), never an implicit Char-to-Int (review 91933).
+fn transport_retry_offset_seconds(policy: HarnessTransportRetryPolicy, session_key: String) -> Int {
+  let spread = second_count(s: policy.offset_spread) as Int
+  if spread <= 1 {
+    0
+  } else {
+    fold(chars(text: session_key), init: 0, f: (acc, c) => (acc + unicode_char_code_point(c: c)) % spread)
+  }
+}
+
+// THE NEXT RE-DELIVERY INSTANT: the instant of the LAST DELIVERY (not of the last hold -- a round that
+// re-pends keeps the schedule it earned, so the gap never restarts under an attempt), plus the gap this
+// many re-deliveries have earned, plus the session's place in the schedule. Pure over clock readings
+// the caller already holds; the belt reads the clock once per sweep and passes it down. Instants are
+// std.types EpochSecs -- the tree's epoch-second carrier (gunbc.compute.attempt_lifecycle AttemptRecord
+// .opened_at / .launch_deadline, product.capacity's seat ledger) -- never a bare Int: a schedule input
+// that is not an instant cannot be passed in by accident. The gaps are second COUNTS (the policy's own
+// first_delay and max_delay are std.measure Second; these functions add their counts onto an instant,
+// the same instant-plus-Nat-count arithmetic gunbc.serving.serving_front_door front_door_admit_held
+// performs on the seat ledger).
+// 🟡 feature:measure-instant-carrier dissolve-on: a constructed std.measure instant carrier
+// (ObservationInstant, or an EpochSecs with unit evidence at non-literal positions) that the wire, the
+// worker, and the belt can all hand each other; then these parameters and the recovery module's
+// since / last_delivery_at become it, and the epoch re-admission at parse (session_epoch_member) deletes.
+fn transport_retry_next_delivery_at(policy: HarnessTransportRetryPolicy, last_delivery_at: EpochSecs, re_deliveries: Int, session_key: String) -> EpochSecs {
+  last_delivery_at
+    + transport_retry_delay_seconds(policy: policy, re_deliveries: re_deliveries)
+    + transport_retry_offset_seconds(policy: policy, session_key: session_key)
+}
+
+// WHETHER THE NEXT RE-DELIVERY IS DUE at the instant the caller holds. No budget, no expiry, no
+// "stopped asking": due means the gap has passed, and nothing else is consulted. A pending request
+// waits ten days or a hundred -- the answer is the same function.
+fn transport_retry_redelivery_due(policy: HarnessTransportRetryPolicy, last_delivery_at: EpochSecs, re_deliveries: Int, session_key: String, at: EpochSecs) -> Bool {
+  transport_retry_next_delivery_at(policy: policy, last_delivery_at: last_delivery_at, re_deliveries: re_deliveries, session_key: session_key) <= at
+}
