@@ -441,6 +441,40 @@ fn sl_rung_bytes(a: ServingSharedArtifact, m: ServingArtifactMedium) -> Nat {
   }
 }
 
+// True when the rung on this medium exists and states its size as UNREAD -- the honest shape when a figure exists
+// only as an unattributed aggregate (srv3's expert host-RAM rung, whose only number is the cgroup file counter). The
+// reason is a NonEmptyStr -- checking it is present and non-blank is the obligation being carried, not dropped.
+fn sl_rung_bytes_unread(a: ServingSharedArtifact, m: ServingArtifactMedium) -> Bool {
+  match sl_rung(a: a, m: m) {
+    Absent => false
+    Present { value: r } => match r.bytes {
+      ServingMemoryUnread { reason: reason } => reason.length() > 0
+      _ => false
+    }
+  }
+}
+
+// A rung whose size is a stated bet: Assumed, with a positive figure and a non-blank obligation naming the read that
+// replaces it. Used for srv3's disk backing (the shard size srv3 has not du'd).
+fn sl_rung_bytes_assumed(a: ServingSharedArtifact, m: ServingArtifactMedium) -> Bool {
+  match sl_rung(a: a, m: m) {
+    Absent => false
+    Present { value: r } => match r.bytes {
+      ServingMemoryAssumed { bytes: b, reason: reason } => byte_size_count(b: b) > 0 && reason.length() > 0
+      _ => false
+    }
+  }
+}
+
+// The one check the two hosts genuinely share: the routed-expert artifact is modelled as exactly three rungs (card,
+// host-RAM, disk). Shared as a helper only because it MEANS the same for srv4 and srv3; the arithmetic differs, so
+// each host keeps its own honest partition witness (root_generalization forbids one over-general helper).
+fn has_three_expert_rungs(a: ServingSharedArtifact) -> Bool {
+  sl_rung_count(a: a, m: ArtifactOnDevice) == 1
+    && sl_rung_count(a: a, m: ArtifactInHostRam) == 1
+    && sl_rung_count(a: a, m: ArtifactOnDisk) == 1
+}
+
 // A pinned rung's floor is its whole (nothing can be squeezed out); an evictable rung's floor is the floor it
 // states on its hold — the same reading the budget reserves.
 fn sl_rung_floor(a: ServingSharedArtifact, m: ServingArtifactMedium) -> Nat {
@@ -471,19 +505,24 @@ fn sl_rung_pinned(a: ServingSharedArtifact, m: ServingArtifactMedium) -> Bool {
 
 // THE SAME ARTIFACT KIND, CHARGED TWO WAYS, WHICH IS THE WHOLE POINT OF THE HOLD. h11's experts are mlocked: the
 // host reserves them WHOLE, exactly as it did before rungs existed (that equality against the host's own reading
-// of the locked copy is the regression that proves h11's charge moved not at all). srv3's are private anonymous
-// memory: nothing can reclaim them, so they too are charged whole. srv4's are a page cache under a cgroup cap:
-// they grow into whatever the cap leaves and are reclaimed first, so the host reserves only their FLOOR —
-// strictly less than the 13.2 GiB resident at load, which is the figure an unfocused model would have reserved.
+// of the locked copy is the regression that proves h11's charge moved not at all). srv3 used to be private anonymous
+// memory charged whole; after the 2026-11-09 mmap+cap hand change it runs srv4's shape — a page cache under its
+// service cap — so it too reserves only its FLOOR. srv4's are the same: they grow into whatever the cap leaves and are
+// reclaimed first, so the host reserves only their FLOOR — strictly less than the resident figure at load, which is
+// the figure an unfocused model would have reserved.
 test fn witness_pinned_rungs_reserve_whole_and_evictable_ones_their_floor() -> Bool {
   // h11: the charge IS the lock service's resident copy, unchanged.
   fold(host_6ce85c_grant.shared, init: 0, f: (acc, a) => acc + byte_size_count(b: serving_artifact_host_ram_charge(a: a)))
     == byte_size_count(b: host_6ce85c_serving_memory_observed.shared_resident)
-    && sl_rung_pinned(a: srv3_routed_expert_artifact, m: ArtifactInHostRam)
-  // srv3: pinned, so the charge is the arena's whole 46.84 GiB.
+  // srv3: evictable under its service cap like srv4 (the 2026-11-09 mmap+cap hand change), so the charge is its
+  // 22 GiB working-set floor; its resident expert figure is UNREAD (the cgroup file counter overstates the shard and is
+  // not attributed to experts), so it is kept out of the charge entirely -- the floor reserves only what a turn must keep.
+    && !sl_rung_pinned(a: srv3_routed_expert_artifact, m: ArtifactInHostRam)
     && byte_size_count(b: serving_artifact_host_ram_charge(a: srv3_routed_expert_artifact))
-      == sl_rung_bytes(a: srv3_routed_expert_artifact, m: ArtifactInHostRam)
-      && sl_rung_bytes(a: srv3_routed_expert_artifact, m: ArtifactInHostRam) == byte_size_count(b: mebibyte_to_byte_size(m: mebibyte(count: 47964)))
+      == sl_rung_floor(a: srv3_routed_expert_artifact, m: ArtifactInHostRam)
+      && sl_rung_floor(a: srv3_routed_expert_artifact, m: ArtifactInHostRam) == byte_size_count(b: sl_gib(n: 22))
+      && sl_rung_bytes(a: srv3_routed_expert_artifact, m: ArtifactInHostRam) == 0
+      && sl_rung_bytes_unread(a: srv3_routed_expert_artifact, m: ArtifactInHostRam)
   // srv4: evictable, so the charge is its 8 GiB floor and NOT its 13.2 GiB resident figure.
     && !sl_rung_pinned(a: srv4_routed_expert_artifact, m: ArtifactInHostRam)
     && byte_size_count(b: serving_artifact_host_ram_charge(a: srv4_routed_expert_artifact))
@@ -500,10 +539,13 @@ test fn witness_pinned_rungs_reserve_whole_and_evictable_ones_their_floor() -> B
     && sl_rung_pinned(a: srv3_routed_expert_artifact, m: ArtifactOnDevice)
 }
 
-// THE RUNGS ARE ONE ARTIFACT, NOT THREE FACTS: srv4's engine planned "46.8 GiB experts, 22.9 GiB in the GPU
-// caches, 0.0 GiB RAM copy, file tier 24.0 GiB", so the card rung and the disk rung TOGETHER are the file (each
-// figure rounded to 0.1 GiB, hence the one-gibibyte tolerance), and the host-RAM rung is the part of the disk rung
-// the page cache is holding — never more than it. A wrong figure in any rung breaks one of these.
+// THE RUNGS ARE ONE ARTIFACT, NOT THREE FACTS (srv4, whose rung bytes are all READ): its engine planned "46.8 GiB
+// experts, 22.9 GiB in the GPU caches, 0.0 GiB RAM copy, file tier 24.0 GiB", so the card rung and the disk rung
+// TOGETHER are the file (figures rounded to 0.1 GiB, hence the one-gibibyte tolerance), and the host-RAM rung is the
+// part of the disk rung the page cache is holding -- never more than it, and a figure srv4 actually READ (so it must be
+// positive). A wrong figure in any rung breaks one of these. srv3's card and host-RAM bytes are UNREAD, so it does NOT
+// run through this arithmetic (sl_rung_bytes folds Unread to 0 and would make card+disk==whole pass on bytes never
+// measured); it gets its own honest typing witness below. Only "exactly three rungs" is shared (has_three_expert_rungs).
 test fn witness_srv4_expert_rungs_partition_the_file_they_came_from() -> Bool {
   let a = srv4_routed_expert_artifact
   let whole = byte_size_count(b: a.bytes)
@@ -511,35 +553,45 @@ test fn witness_srv4_expert_rungs_partition_the_file_they_came_from() -> Bool {
   let on_disk = sl_rung_bytes(a: a, m: ArtifactOnDisk)
   let in_ram = sl_rung_bytes(a: a, m: ArtifactInHostRam)
   let one_gib = byte_size_count(b: sl_gib(n: 1))
-  sl_rung_count(a: a, m: ArtifactOnDevice) == 1 && sl_rung_count(a: a, m: ArtifactInHostRam) == 1 && sl_rung_count(a: a, m: ArtifactOnDisk) == 1
+  has_three_expert_rungs(a: a)
     && on_cards + on_disk >= whole && on_cards + on_disk <= whole + one_gib
     && in_ram <= on_disk && in_ram > 0
 }
 
-// THE ARITHMETIC THAT MAKES SRV3'S ASSUMED BASE A STATED BET AND NOT A GUESS: the engine's own memory plus its
-// pinned arena re-sum to the 52 GiB its pre-mmap twin on srv4 was READ at (2026-10-30) — base 5284 MiB + arena
-// 46.84 GiB = 52 GiB exactly. When memory.current is read on srv3, this is the figure it has to land near; the
-// day it does not, the assumption is wrong and this test says so before the grant is trusted.
-test fn witness_srv3_base_and_its_pinned_arena_resum_to_the_read_of_the_same_shape() -> Bool {
-  byte_size_count(b: serving_reading_bytes_or_zero(r: srv3_strata_engine_memory.base))
-    + sl_rung_bytes(a: srv3_routed_expert_artifact, m: ArtifactInHostRam)
-    == byte_size_count(b: mebibyte_to_byte_size(m: mebibyte(count: 53248)))
+// SRV3 SIBLING (review 2787d022): srv3 has the SAME three-rung structure, but its card cache and resident host-RAM
+// pages are UNREAD and its disk size is a du-pending Assumption. It must NOT be run through partition arithmetic --
+// sl_rung_bytes folds unread bytes to 0, so card+disk ~= whole would pass on bytes never measured. What is honest and
+// checkable instead: exactly three rungs; card and host-RAM sizes typed UNREAD; disk typed ASSUMED with a positive
+// figure; and the obligations PRESERVED, not dropped -- each unread/assumed reason is a NonEmptyStr naming the read that
+// replaces it (the length check makes that concrete, not vacuous). The host-RAM rung's positive reserve is its FLOOR,
+// which the floor and billing witnesses check; nothing here sums unknown bytes.
+test fn witness_srv3_expert_rungs_are_honestly_typed_not_partitioned() -> Bool {
+  let a = srv3_routed_expert_artifact
+  has_three_expert_rungs(a: a)
+    && sl_rung_bytes_unread(a: a, m: ArtifactOnDevice)
+    && sl_rung_bytes_unread(a: a, m: ArtifactInHostRam)
+    && sl_rung_bytes_assumed(a: a, m: ArtifactOnDisk)
 }
 
-// SRV3 AS GRANTED, BY THE SAME DERIVATION srv4 USES: one replica holding both cards inside the 110 GiB the
-// engine's own guard reads, its live --batch 8 as the one batch input, the budget Fits, nothing qualified live.
-// Its group is named for the unit that runs it, which is also the group its router naming joins on. Fifteen
+// (No sum-to-MemoryCurrent witness: base is an assumption and the expert host-RAM rung is UNREAD, so there is no model
+// figure to add to base. The ~79-81 GiB MemoryCurrent is recorded as an observation in srv3_grant's basis and the
+// rung's reason; composing it would re-promote the unattributed file counter the P1 fix removes.)
+
+// SRV3 AS GRANTED, BY THE SAME DERIVATION srv4 USES: one replica holding both cards inside the 96 GiB MemoryHigh
+// its service drop-in sets, its live --batch 8 as the one batch input, the budget Fits, nothing qualified live.
+// Its group is named for the unit that runs it, which is also the group its router naming joins on. Seventeen
 // conversations is what the 64 GiB RAM conversation cache holds at srv3's declared snapshot cost inside the RAM the
-// pinned 46.84 GiB expert arena leaves the guard; that cache budget is a CEILING the engine may spend, not a
-// reservation this layout made, so the figure is exactly as good as the memory.current reading the live obligation
-// asks for. A layout that dropped the arena charge would admit far more here, which is what makes the pin bite.
+// evictable expert tier leaves the cap (it reserves only its 22 GiB working-set floor, not the unattributed page-cache
+// counter, which stays Unread); that cache budget is a CEILING the engine may spend, not a reservation this layout made, so the figure
+// is exactly as good as the memory.current reading the live obligation asks for. A layout that reserved the whole
+// resident page cache instead of the floor would admit far fewer here, which is what makes the evictable charge bite.
 test fn witness_srv3_is_one_replica_across_two_gpus_in_its_own_slice() -> Bool {
   sl_replicas(r: srv3_layout).length() == 1
     && (match srv3_layout {
       ServingLayoutConfigured { replicas: rs, unallocated_ram: _, evidence: e } =>
         rs.all(c => c.group == "strata-pool" && c.devices.length() == 2 && c.active_slots == 8
-          && c.admitted_conversations == 15
-          && byte_size_count(b: c.memory_max) <= byte_size_count(b: sl_gib(n: 110)))
+          && c.admitted_conversations == 17
+          && byte_size_count(b: c.memory_max) <= byte_size_count(b: sl_gib(n: 96)))
         && (match e.budget { ServingMemoryFits { spare: _ } => true  _ => false })
         && (match e.live { ServingLiveStandingUnqualified { obligation: _ } => true  _ => false })
         && sl_all_grow_to_ceiling_under(r: srv3_layout, b: strata_srv3_layer_split_profile)
@@ -595,11 +647,12 @@ test fn witness_srv3_derivation_carries_the_grants_swap_label() -> Bool {
 }
 
 // THE CHARGED ASSUMPTIONS ARE LISTED AS ASSUMPTIONS, NOT PROMOTED TO OBSERVED (review 92488). srv3 fills its swap
-// bound (from srv4) and its shared artifact's host-RAM rung (the 46.84 GiB arena, srv4's file) with borrowed assumed
-// figures that the budget CHARGES. serving_layout_assumptions folds the profile, the devices, the swap bound and each
-// artifact's charged reading, so the derived identity cannot present a borrowed number as observed
-// (gunbc.design_argument::epistemic_humility). The reasons are read from their SOURCE rows, not retyped: removing the
-// swap or artifact fold from serving_layout_assumptions drops that reason from the derived list and this goes RED.
+// bound (from srv4), its shared artifact's host-RAM rung FLOOR (the working set the budget reserves) and its disk rung
+// (the shard size) with borrowed assumed figures that the budget CHARGES. serving_layout_assumptions folds the profile,
+// the devices, the swap bound and each artifact's charged reading, so the derived identity cannot present a borrowed
+// number as observed (gunbc.design_argument::epistemic_humility). The reasons are read from their SOURCE rows, not
+// retyped: removing the swap or artifact fold from serving_layout_assumptions drops that reason from the derived list
+// and this goes RED.
 fn ca_reason_listed(r: ServingMemoryReading, list: List<NonEmptyStr>) -> Bool {
   match r {
     ServingMemoryAssumed { bytes: _, reason: x } => list.any(a => a == x)
@@ -607,20 +660,36 @@ fn ca_reason_listed(r: ServingMemoryReading, list: List<NonEmptyStr>) -> Bool {
   }
 }
 
+fn ca_evictable_floor(a: ServingSharedArtifact) -> ServingMemoryReading {
+  match a.host_ram {
+    Present { value: r } => match r.holds { ArtifactHeldEvictable { bound_by: _, floor: f } => f  _ => ServingMemoryUnread { reason: "not evictable" as NonEmptyStr } }
+    Absent => ServingMemoryUnread { reason: "no host-RAM rung" as NonEmptyStr }
+  }
+}
+
 test fn witness_srv3_charged_assumptions_are_listed_not_promoted() -> Bool {
   match srv3_layout {
     ServingLayoutConfigured { replicas: _, unallocated_ram: _, evidence: e } => {
-      // The swap bound is charged per replica and srv3 fills it with a borrowed srv4 figure (Assumed); the disk rung
-      // holds the 46 GiB arena figure borrowed from srv4's file (Assumed) -- not billed (srv3 has a host-RAM rung too)
-      // but still a bet a reader must not take as measured. Both reasons are read from their SOURCE rows, so removing
-      // either the swap or the artifact fold from serving_layout_assumptions drops that reason from the derived list
-      // and this goes RED. (srv3's host-RAM rung is a measured Read -- 47,964 MiB read over ssh -- so it is correctly
-      // NOT an assumption, and this test does not ask for it.)
+      // The swap bound is charged per replica and srv3 fills it with a borrowed srv4 figure (Assumed); the host-RAM
+      // rung's FLOOR is the 22 GiB working set taken from srv4's read (Assumed -- it, not the resident figure, is what
+      // the budget charges for the expert tier); and the disk rung holds the shard size srv3 has not du'd (Assumed).
+      // All three are bets a reader must not take as measured, and all are read from their SOURCE rows: removing the
+      // swap or artifact fold from serving_layout_assumptions drops a reason and this goes RED. The host-RAM rung BYTES
+      // are UNREAD (the cgroup file counter overstates the shard and is not attributed to experts), so they are NOT a
+      // listed assumption -- they must stay an obligation, never promoted to a figure; the check below fails if they
+      // are ever promoted to Read/Assumed.
       let disk_assumed = match srv3_routed_expert_artifact.disk {
         Present { value: r } => ca_reason_listed(r: r.bytes, list: e.assumptions)
         Absent => false
       }
-      ca_reason_listed(r: srv3_grant.swap_bound, list: e.assumptions) && disk_assumed
+      let host_ram_bytes_unread = match srv3_routed_expert_artifact.host_ram {
+        Present { value: r } => match r.bytes { ServingMemoryUnread { reason: _ } => true  _ => false }
+        Absent => false
+      }
+      ca_reason_listed(r: srv3_grant.swap_bound, list: e.assumptions)
+        && ca_reason_listed(r: ca_evictable_floor(a: srv3_routed_expert_artifact), list: e.assumptions)
+        && host_ram_bytes_unread
+        && disk_assumed
     }
     ServingLayoutRefused { refusal: _ } => false
   }
