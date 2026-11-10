@@ -71,11 +71,24 @@ fn rest_body_uninhabited_declared_phrase() -> String {
   "the response body does not inhabit its declared output type"
 }
 
+fn rest_body_uninhabited_located_withheld() -> String {
+  // The emitted route's whole-body serde decode cannot work out WHICH field failed (the interpreter's
+  // typed decode can; the emitted arm catches from_str / field-extraction failures together, and the
+  // field a hostile body presented is withheld on a credential path). So it does NOT fabricate a
+  // location -- gunbc.design_argument::fail_closed ("no plausible output is fabricated") and
+  // gunbc.design_argument::epistemic_humility ("do not assert as deduced what is only inferred").
+  // This value honestly states the field is withheld, rather than standing in a type name for a field
+  // the emitter never computed.
+  "the failing field withheld on a credential path"
+}
+
 fn rest_declared_cause_text(declared: String, located: String, coproduct: String) -> String {
   // The pinned shape every refusal that withholds body text takes. Every argument is declared-side:
-  // `declared` is a selected cause phrase, `located` a compiler-known field, `coproduct` the
-  // declared output type name. The claims assert a located substring and a coproduct substring
-  // rather than one exact sentence, so the shape is what is pinned here.
+  // `declared` is a selected cause phrase, `located` a compiler-known field OR a value that honestly
+  // states the field is withheld/unknown (the emitted whole-body decode passes
+  // rest_body_uninhabited_located_withheld -- it must not pass a type name standing in for a field it
+  // never located), `coproduct` the declared output type name. The claims assert a located substring
+  // and a coproduct substring rather than one exact sentence, so the shape is what is pinned here.
   concat(
     "body did not inhabit the declared output: ",
     declared,

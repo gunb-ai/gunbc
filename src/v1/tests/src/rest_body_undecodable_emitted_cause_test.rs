@@ -23,6 +23,16 @@ use crate::helpers::compile_dag;
 // RED at main (the arms emitted the leaking expressions), GREEN at head (they route through
 // v1.compiler.rest_cause_text).
 
+// TEST RECEIPT (ctrl review policy: a new hand-written Rust test carries a receipt). This file is
+// hand-written Rust in the CONVENTIONAL hand-written test package v1-compiler-tests
+// (src/v1/tests/src/*_test.rs), NOT hand-written Rust smuggled into the generated stage0 mirror that
+// gunbc.integration_concern::grain_witness_tests_are_hand_written_rust_in_the_stage0_mirror governs
+// -- like every other *_test.rs here it is ordinary hand-written test source, so no before/after seed
+// census applies. Deferral, naming a lane and a tracking row: the emitted-route cause text it pins is
+// owned by the single authority v1.compiler.rest_cause_text, whose interpreter-side fold-in (the fork)
+// is tracked at dag/gunbc/rung_drop/gunbc_run_unreached_declarations_not_realized.dag (NEXT RUNG,
+// dispatched by silent-bee-845) as PR-2; that row is the lane that owns this witness's subject text.
+
 const FAKE_SECRET_MARKER: &str = "FAKE-SECRET-MARKER";
 
 fn rest_exchange_probe() -> &'static str {
@@ -81,18 +91,21 @@ fn emitted_rest_body_undecodable_cause_carries_declared_text_not_body_derived_er
     );
 
     // The decode arm publishes the pinned 'body did not inhabit the declared output: <declared> at
-    // <located> (<coproduct>)' template over declared facts -- not the serde message. Absent at
-    // main (which emitted the '{}' format over `error`).
+    // <located> (<coproduct>)' template, but the emitted whole-body serde decode never located a
+    // field, so <located> must honestly say the field is withheld -- NOT stand the output type in for
+    // a field it never computed (gunbc.design_argument::fail_closed / epistemic_humility). Absent at
+    // main, which emitted the '{}' format over `error`.
     assert!(
         emitted.contains(
             "body did not inhabit the declared output: the response body does not inhabit its \
-             declared output type at"
+             declared output type at the failing field withheld on a credential path ("
         ),
-        "the emitted decode arm did not publish the declared 'did not inhabit ... at ... (...)' \
-         template\n--- emitted ---\n{emitted}"
+        "the emitted decode arm did not publish the declared 'did not inhabit ... at <withheld> \
+         (<coproduct>)' template\n--- emitted ---\n{emitted}"
     );
-    // The shape the claims in dag/test/claim/rest_exchange_replay.dag pin: the located field and the
-    // coproduct are present inside the 'at ... ( ... )' region.
+    // The shape the claims in dag/test/claim/rest_exchange_replay.dag pin (the '... at <located>
+    // (<coproduct>)' region) is kept, and no fabricated field: the located slot carries the
+    // withheld-field phrase rather than a field the emitter never worked out.
     assert!(
         emitted.contains(" at ") && emitted.contains(" (") && emitted.contains(")"),
         "the emitted decode cause lost the pinned '... at <located> (<coproduct>)' shape\n--- emitted ---\n{emitted}"

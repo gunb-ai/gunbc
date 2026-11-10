@@ -4,7 +4,7 @@ import v1.compiler.infer_emit_info { declaring_span_key, type_decl_occurrence_bi
 import v1.std.core { expr_literal_string_optional, item_generic_param_names }
 import v1.compiler.infer_types { is_leaf_type }
 import v1.compiler.emit { render_target_name }
-import v1.compiler.rest_cause_text { rest_body_read_refused_cause_text, rest_body_uninhabited_declared_phrase, rest_declared_cause_text }
+import v1.compiler.rest_cause_text { rest_body_read_refused_cause_text, rest_body_uninhabited_declared_phrase, rest_body_uninhabited_located_withheld, rest_declared_cause_text }
 import std.unicode.scalar { ascii_lowercase }
 import std.occurrence_identity { OccurrenceSynthetic, authored_occurrence_of }
 import std.decl_ref { decl_ref, DeclarationRef, WholeDeclaration, declaration_ref_in_list, declaration_ref_eq }
@@ -19176,7 +19176,7 @@ fn emit_rust_rest_result_lowering(op_node: Node, transport: Node, output_type: S
     "})();\n",
     "match __rest_decoded {\n",
     "    Ok(answer) => Ok(", rust_rest_answered(answer_expr: "answer"), "),\n",
-    "    Err(_error) => Ok(", rust_rest_refused(refusal_arm: concat("RestBodyUndecodable { status: status as i64, cause: \"", rest_declared_cause_text(declared: rest_body_uninhabited_declared_phrase(), located: output_type, coproduct: output_type), "\".to_string() }")), "),\n",
+    "    Err(_error) => Ok(", rust_rest_refused(refusal_arm: concat("RestBodyUndecodable { status: status as i64, cause: \"", rest_declared_cause_text(declared: rest_body_uninhabited_declared_phrase(), located: rest_body_uninhabited_located_withheld(), coproduct: output_type), "\".to_string() }")), "),\n",
     "}")
 }
 
