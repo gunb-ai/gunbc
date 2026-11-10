@@ -6,7 +6,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 import std.types { String, NonEmptyStr, List, Int, Bool, FilePath, Port }
 import std.evaluation_budget { EvaluationLimit, LimitSet, LimitUnset }
-import std.measure { PositiveMillisecond, positive_millisecond, positive_measure_count }
+import std.measure { PositiveMillisecond, positive_millisecond, positive_measure_count, ByteSize, byte_size_count }
 import std.os.types { OsPackageManager }
 import std.optional { Present, Absent }
 import extdeps.package_managers.apt {
@@ -43,6 +43,9 @@ import gunbc.live_deploy.slice_bounds {
   attempt_worker_slice_unit_name,
   repository_convergence_slice_unit_name,
   approval_broker_slice_unit_name,
+  DeclaredSliceMemoryMax,
+  declared_system_slice_memory_maxes,
+  live_deploy_slice_memory_max,
 }
 import gunbc.fleet.fleet_intent_network {
   srv1_tailscale_endpoint,
@@ -681,6 +684,50 @@ fn deployment_systemd_unit_path(names: DeploymentNames) -> NonEmptyStr {
 // name per deployment identity, so a twin instance gets its own slice rather than sharing a bound.
 fn deployment_slice_unit_name(names: DeploymentNames) -> NonEmptyStr {
   join([deployment_belt_unit_stem(names: names), ".slice"], "") as NonEmptyStr
+}
+
+// The deployment slice is capped at boot by gunbc.live_deploy.emit (MemoryMax= live_deploy_slice_memory_max,
+// MemoryHigh= / MemorySwapMax= alongside), exactly like a fleet system slice. So a named .service
+// under it -- a belt oneshot -- owes the same classification as a unit under any other capped system
+// slice: gunbc.compute.unit_bounds recognized_system_slice must admit it, or a belt unit refuses
+// UncappedSystemSlice at start despite a finite live memory.max (the srv1 daily-workspace belt refusal).
+// Its unit NAME is not a constant -- it is derived per deployment from the daily-workspace instance's
+// DeploymentNames by deployment_slice_unit_name above -- so the census must derive it, never hand-type
+// it. spec is the single home that can compose the row: it imports gunbc.live_deploy.slice_bounds for
+// the cap and gunbc.roadmap.roadmap_dashboard_instance for the instance, and owns the naming fold.
+// (slice_bounds stays a leaf and must NOT import spec -- spec imports slice_bounds -- the import cycle the
+// census cannot cross from its own side, so the deployment row is contributed here and read back by
+// gunbc.compute.unit_bounds.) This adds no memory budget: the cap is the value emit already writes.
+fn declared_deployment_system_slice_row() -> DeclaredSliceMemoryMax {
+  DeclaredSliceMemoryMax {
+    unit: deployment_slice_unit_name(names: srv1_live_deployment_names(instance: srv1_live_dashboard_instance())),
+    memory_max: live_deploy_slice_memory_max,
+  }
+}
+
+// THE census: the single answer to "which system slices are capped, and by how much". It is read
+// through modeled_system_slice_memory_max below, which gunbc.compute.unit_bounds recognized_system_slice
+// delegates to -- so the positive-cap rule is written in exactly one place. It is the fleet-wide rows
+// slice_bounds declares, plus the derived deployment-slice row. A census that hand-typed the deployment
+// slice would drift the moment the deployment was renamed; composing it here keeps the name single-sourced.
+fn declared_system_slice_memory_maxes_including_deployment() -> List<DeclaredSliceMemoryMax> {
+  concat(declared_system_slice_memory_maxes(), [declared_deployment_system_slice_row()])
+}
+
+// THE one positive-cap rule, over THE census. This replaces the old slice_bounds-side lookup of the same
+// name, which read only the fleet roster and so answered Absent for the deployment slice -- a second,
+// disagreeing answer to "is this a capped system slice" (DESIGN single_authority). recognized_system_slice
+// DELEGATES to this lookup (matching Present/Absent) rather than re-writing the predicate, so there is one
+// rule, and production exercises the same lookup the witnesses do. It lives in spec, not in the
+// slice_bounds leaf, because the census needs spec's deployment naming and slice_bounds cannot import spec.
+fn modeled_system_slice_memory_max(unit: String) -> ByteSize? {
+  match (
+    declared_system_slice_memory_maxes_including_deployment()
+      |> filter(row => (row.unit as String) == unit && byte_size_count(b: row.memory_max) > 0)
+  ).first() {
+    Absent => none
+    Present { value: row } => Present { value: row.memory_max }
+  }
 }
 
 fn deployment_slice_unit_path(names: DeploymentNames) -> NonEmptyStr {

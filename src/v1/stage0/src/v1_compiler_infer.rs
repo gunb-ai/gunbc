@@ -223,6 +223,7 @@ use crate::v1_compiler_infer_env::TypeReferenceDeclarationReading::{
     TypeReferenceIsKernelType, TypeReferenceIsTypeVariable, TypeReferenceNamesDeclaration,
     TypeReferenceUnidentified,
 };
+use crate::v1_compiler_infer_env::UnitVariantPhantomLookup::UnitVariantPhantomPresent;
 pub use crate::v1_compiler_infer_env::{
     alias_rhs_head_of_declaration, bare_name_miss_diagnostic, binding_declares_name,
     build_unit_variant_index, carried_declaration_ref, census_declaration_type_env,
@@ -236,12 +237,12 @@ pub use crate::v1_compiler_infer_env::{
     is_recursive_type_by_name, is_unsolved_type_variable, is_where_refinement_node,
     kernel_settled_name, listed_import_required_bare_call_blocked, lookup_binding_by_name,
     lookup_binding_on_chain, lookup_type, lookup_type_by_name, lookup_type_for,
-    merge_inductive_fields, merge_type_env_cache, merge_type_env_cache_guarded,
-    node_is_kernel_mint_named, node_with_children, node_with_inferred, overlay_skips_kernel_name,
-    parameterized_alias_rhs, put_inductive_field, put_inductive_field_cross,
-    qualified_all_but_last, qualify_borrowed_inferred, qualify_borrowed_type_names,
-    qualify_decl_reference_positions, settled_head_of_declaration, settled_type,
-    settled_type_of_declaration, str_bindings_from_bindings, symbol_index_insert,
+    lookup_unit_variant_phantom_type, merge_inductive_fields, merge_type_env_cache,
+    merge_type_env_cache_guarded, node_is_kernel_mint_named, node_with_children,
+    node_with_inferred, overlay_skips_kernel_name, parameterized_alias_rhs, put_inductive_field,
+    put_inductive_field_cross, qualified_all_but_last, qualify_borrowed_inferred,
+    qualify_borrowed_type_names, qualify_decl_reference_positions, settled_head_of_declaration,
+    settled_type, settled_type_of_declaration, str_bindings_from_bindings, symbol_index_insert,
     symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup,
     text_crossing_by_identity, text_representation_by_identity, text_representation_is_text_arm,
     text_representation_is_unidentified, text_representations_cross, transparent_alias_rhs,
@@ -250,6 +251,7 @@ pub use crate::v1_compiler_infer_env::{
     unit_variant_index_shadow_insert, GlobalBareCandidate, GlobalBareLookupState,
     GuardedTypeEnvCacheMerge, ServiceCensusEntry, SymbolIndex, TypeBinding, TypeEnv, TypeEnvCache,
     TypeEnvCacheMergeConflict, TypeReferenceDeclarationReading, UnitVariantContribution,
+    UnitVariantPhantomLookup,
 };
 use crate::v1_compiler_infer_items::ItemKind::{
     DataItem, FnItem, OtherItem, ResourceItem, ServiceItem, TypeItem,
@@ -6245,18 +6247,18 @@ pub fn equality_resolved_declaration_structure(
     at_root: bool,
 ) -> Rc<EqualityWalk> {
     {
+        let applied = equality_reference_applies_arguments(peeled.clone());
         let w = equality_resolved_declaration_structure_core(
-            rt,
+            rt.clone(),
             peeled.clone(),
             name.clone(),
             identity,
-            scope.clone(),
+            equality_scope_with_params(scope.clone(), rt.clone()),
             visited,
             depth.clone(),
             at_root,
         );
-        if (((w.refusal.clone() != std::option::Option::None)
-            || !equality_reference_applies_arguments(peeled.clone()))
+        if (((w.refusal.clone() != std::option::Option::None) || !applied.clone())
             || equality_arguments_by_target(
                 peeled.children.clone(),
                 scope.clone(),
@@ -6267,6 +6269,61 @@ pub fn equality_resolved_declaration_structure(
         } else {
             equality_walk_refused(equality_refused(name.clone(), "a routed member inside a generic application whose shape the equality plan does not model".to_string(), false))
         }
+    }
+}
+
+pub fn equality_argument_is_enclosing_type_parameter(n: Rc<Node>, scope: Rc<InferScope>) -> bool {
+    name_is_enclosing_declared_type_parameter(
+        crate::v1_std_core::authored_name_at(scope.type_env.source_indices.clone(), n),
+        scope.clone(),
+    )
+}
+
+pub fn equality_scope_with_params(scope: Rc<InferScope>, rt: Rc<Node>) -> Rc<InferScope> {
+    {
+        let names = Rc::new({
+            let mut __result = Vec::new();
+            for p in rt.params.clone().iter().cloned() {
+                __result.push(crate::v1_std_core::authored_name_at(
+                    scope.type_env.source_indices.clone(),
+                    p.clone(),
+                ));
+            }
+            __result
+        });
+        if ((names.clone().len() as i64) == 0) {
+            scope.clone()
+        } else {
+            Rc::new(InferScope {
+                type_env: scope.type_env.clone(),
+                func_env: scope.func_env.clone(),
+                locals: scope.locals.clone(),
+                body_locals: scope.body_locals.clone(),
+                match_bound_names: scope.match_bound_names.clone(),
+                module_name: scope.module_name.clone(),
+                service_registry: scope.service_registry.clone(),
+                item_registry: scope.item_registry.clone(),
+                lambda_param_provenance: scope.lambda_param_provenance.clone(),
+                caller_decl_name: scope.caller_decl_name.clone(),
+                in_flight_lambda_param_names: scope.in_flight_lambda_param_names.clone(),
+                enclosing_declared_type_param_names: v1_rt::concat(
+                    scope.enclosing_declared_type_param_names.clone(),
+                    names.clone(),
+                ),
+            })
+        }
+    }
+}
+
+pub fn is_unit_variant_phantom_argument(n: Rc<Node>, scope: Rc<InferScope>) -> bool {
+    match (*crate::v1_compiler_infer_env::lookup_unit_variant_phantom_type(
+        scope.type_env.clone(),
+        crate::v1_std_core::authored_name_at(scope.type_env.source_indices.clone(), n),
+    ))
+    .clone()
+    {
+        UnitVariantPhantomLookup::UnitVariantPhantomPresent { variant: _, .. } => true,
+        _ => false,
     }
 }
 
@@ -6383,7 +6440,15 @@ pub fn equality_argument_by_target(n: Rc<Node>, scope: Rc<InferScope>, depth: i6
 if ((resolved.connective.clone() != Connective::NoConnective) || (type_reference_identity(resolved.clone(), source_indices.clone()) != identity.clone())) {
                                                 equality_argument_by_target(resolved.clone(), scope.clone(), v1_rt::int_add(depth.clone(), 1))
                                             } else {
-                                                false
+                                                if is_unit_variant_phantom_argument(peeled.clone(), scope.clone()) {
+                                                    true
+                                                } else {
+                                                    if equality_argument_is_enclosing_type_parameter(peeled.clone(), scope.clone()) {
+                                                        true
+                                                    } else {
+                                                        false
+                                                    }
+                                                }
                                             }
 },
 }

@@ -285,10 +285,15 @@ fn group_fit_plate_readme(p: GroupDuctPlan) -> String {
 // row's openings, so the housing overhangs the row on its corner's far side (toward the first card).
 //
 // THE AIR IS AN ESTIMATE, not a qualification (product.printed_chassis.group_cooling_plan says what that would
-// take). At the operator's ~37 W per card (the A2's lowest settable cap is 40 W, extdeps.gpu.nvidia_a2) the row
-// needs about 8 L/s through its fins for a 15 K air rise; the blower's free-air flow is 10.7 L/s and its
-// zero-flow pressure 186 Pa (extdeps.fans.delta delta_bfb1012m_rating). Whether the fins' impedance leaves it
-// there is read by running the cards capped and watching their temperatures.
+// take). At the operator's 35 W per card the row needs about 8 L/s through its fins for a 15 K air rise; the
+// blower's free-air flow is 10.7 L/s and its zero-flow pressure 186 Pa (extdeps.fans.delta delta_bfb1012m_rating).
+// Whether the fins' impedance leaves it there is read by running the cards capped and watching their temperatures.
+// (Correction 2026-11-10, srv14/butch read: this parenthetical once claimed "the A2's lowest settable cap is 40
+// W" -- FALSE. The product page's 40–60 W is a TDP ENVELOPE, a different quantity from the driver's settable
+// power-limit range; on butch the driver reports the lowest settable power limit as 35 W (nvidia-smi -q -d POWER,
+// min 35 / default 60 / max 60 W, 2026-11-10), and the operator caps each A2 at exactly 35 W. So the duct's air
+// figure is computed at 35 W, and the 40 W product-page floor cannot be relied on as a settable floor. See
+// extdeps.gpu.nvidia_a2's reconciling note on its two power facts.)
 data group_plenum_height_taper: Micrometer = micrometer(count: 18000)
 data group_plenum_width_taper: Micrometer = micrometer(count: 12000)
 
