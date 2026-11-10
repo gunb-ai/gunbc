@@ -127,9 +127,28 @@ fn iso8601_utc_instant_text(i: Iso8601UtcInstant) -> String {
   iso8601_utc_text(unix: iso8601_utc_instant_epoch_seconds(i: i))
 }
 
-// Whole seconds from an earlier instant to a later one; Absent when the pair is reversed, so a clock step or a
-// swapped field surfaces as a refusal rather than as a negative -- or absolute -- duration.
+// Are the clock-face parts inside the range their names claim? The parts are ints an author writes, so
+// `hour: 99` and `month: 13` are CONSTRUCTIBLE; refusing them here is what stops such a value from becoming a
+// plausible epoch count. Day is bounded to 1..31 rather than to month length: the day arithmetic above
+// normalizes the rest, and no reading in this repo needs the finer rule. Reading the parts as unbounded was the
+// gap a review caught -- "stronger than catching a wrong state is making it unwritable" (the parts cannot be
+// made unwritable in this language, so the next best thing is that a span over them refuses).
+fn iso8601_utc_instant_parts_are_in_range(i: Iso8601UtcInstant) -> Bool {
+  (i.date.month >= 1 && i.date.month <= 12)
+    && (i.date.day >= 1 && i.date.day <= 31)
+    && (i.hour >= 0 && i.hour <= 23)
+    && (i.minute >= 0 && i.minute <= 59)
+    && (i.second >= 0 && i.second <= 59)
+}
+
+// Whole seconds from an earlier instant to a later one; Absent when the pair is reversed or when either instant
+// has an out-of-range part, so a clock step, a swapped field or a mistyped clock face surfaces as a refusal
+// rather than as a negative -- or absolute, or plausible -- duration. The other instant readers stay total on
+// purpose (a text rendering of a bad instant is still a rendering of what was typed); only the span refuses.
 fn iso8601_utc_instant_seconds_between(earlier: Iso8601UtcInstant, later: Iso8601UtcInstant) -> Second? {
+  if !iso8601_utc_instant_parts_are_in_range(i: earlier) || !iso8601_utc_instant_parts_are_in_range(i: later) {
+    none
+  } else {
   let delta = iso8601_utc_instant_epoch_seconds(i: later) - iso8601_utc_instant_epoch_seconds(i: earlier)
   if delta < 0 {
     none
@@ -138,6 +157,7 @@ fn iso8601_utc_instant_seconds_between(earlier: Iso8601UtcInstant, later: Iso860
       CheckedNatOverflow { cause: _ } => none
       CheckedNatReady { value: n } => Present { value: second(count: n) }
     }
+  }
   }
 }
 

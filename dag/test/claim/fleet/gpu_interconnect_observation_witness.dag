@@ -19,6 +19,7 @@ import extdeps.storage.types { PcieLink, Gen4, Gen5, pcie_generation_wire }
 import extdeps.units.iso8601_calendar {
   Iso8601CivilDate,
   Iso8601UtcInstant,
+  iso8601_utc_instant_parts_are_in_range,
   iso8601_utc_instant_seconds_between,
   iso8601_utc_instant_text,
 }
@@ -40,7 +41,7 @@ import gunbc.fleet.gpu_interconnect_observation {
   srv1_nccl_arm_default, srv1_nccl_arm_p2p_disabled,
   srv1_collective_read_obligation, srv1_collective_read_executed_2026_11_09,
   srv1_collective_read_follow_ups_2026_11_09,
-  srv1_collective_read_window_duration, srv1_collective_read_measurement_duration, srv1_window_seconds_between,
+  srv1_collective_read_window_duration, srv1_collective_read_measurement_duration,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -367,9 +368,10 @@ test fn an_open_task_and_its_completion_record_do_not_share_a_row() -> Bool {
 // same route srv1_serving_replica_layout's router-window row reads them through, so 469 s and 16 s exist in
 // exactly one place. The green control re-measures the same pair the record names. The red controls are the two
 // transcription errors a typed instant still allows: a pair in the wrong order must refuse, and an instant a few
-// seconds off must produce a DIFFERENT number, not the recorded one. The error a text field allowed -- a value
-// like `2026-11-9T22:3:4Z` sitting in a record until something parsed it -- is no longer writable: the parts are
-// an Int year, month, day, hour, minute, second.
+// seconds off must produce a DIFFERENT number, not the recorded one. A malformed TEXT instant --
+// `2026-11-9T22:3:4Z` -- is no longer a value that can sit in a record: the parts are Ints. What remains writable
+// is an out-of-range clock face (`hour: 99`, `month: 13`), because this language cannot mint a ranged Int; the
+// span refuses those too, which is the third red case below.
 test fn the_record_spans_are_computed_from_its_instants() -> Bool {
   let run = srv1_collective_read_executed_2026_11_09
   match srv1_collective_read_window_duration(run: run) {
@@ -409,6 +411,27 @@ test fn the_record_spans_are_computed_from_its_instants() -> Bool {
       Absent => false
       Present { value: w } => second_count(w) == 0
     }
+    // RED control: an out-of-range clock face. `hour: 99` and `month: 13` are constructible ints, so they must
+    // be refused at the span instead of becoming a plausible count -- the reading is what the parts claim.
+    && match iso8601_utc_instant_seconds_between(
+      earlier: Iso8601UtcInstant { date: Iso8601CivilDate { year: 2026, month: 11, day: 9 }, hour: 99, minute: 39, second: 48 },
+      later: run.window_end,
+    ) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    && match iso8601_utc_instant_seconds_between(
+      earlier: run.window_start,
+      later: Iso8601UtcInstant { date: Iso8601CivilDate { year: 2026, month: 13, day: 9 }, hour: 22, minute: 47, second: 37 },
+    ) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    // and the parts of the recorded instants ARE in range, which is what makes the green spans mean anything
+    && iso8601_utc_instant_parts_are_in_range(i: run.window_start)
+    && iso8601_utc_instant_parts_are_in_range(i: run.window_end)
+    && iso8601_utc_instant_parts_are_in_range(i: run.measurement_start)
+    && iso8601_utc_instant_parts_are_in_range(i: run.measurement_end)
 }
 
 // AN EXPLANATION IS NEVER A PREMISE. Both srv1 rows -- the one about what missing peer access accounts for,
