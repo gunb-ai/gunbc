@@ -16,7 +16,7 @@ import extdeps.cloud.gcp.iam_admin {
 }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail, WifPoolWire, WifProviderWire, WifPoolOperation, WifProviderOperation }
 import gunbc.auth.gcp_operation_wait { wif_create_operation_wait }
-import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestCredentialRefused, rest_credential_refusal_cause, RestBodyUndecodable }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestCredentialRefused, rest_credential_refusal_cause, RestBodyUndecodable, RestResponseDecodeRefused, rest_decode_refusal_cause }
 import gunbc.auth.access_token_source {
   read_supplied_access_token, SuppliedTokenReady, SuppliedTokenUnavailable,
   AccessTokenSource, OperatorSuppliedToken, secret_access_token_path_env
@@ -51,6 +51,8 @@ fn rest_refusal_text(o: RestRefusal) -> String {
       cause as String
     }
     RestBodyUndecodable { status, cause } => join(["status ", to_string(status as Int), " undecodable: ", cause as String], "")
+    RestResponseDecodeRefused { status, field_path, coproduct, vocabulary, received_bytes, parse_line, parse_column } =>
+      rest_decode_refusal_cause(status: status, field_path: field_path, coproduct: coproduct, vocabulary: vocabulary, received_bytes: received_bytes, parse_line: parse_line, parse_column: parse_column) as String
   }
 }
 
@@ -251,6 +253,11 @@ fn subject_creation(o: RestRefusal) -> SubjectCreation {
     }
     RestBodyUndecodable { status, cause } =>
       SubjectCreateRefused { cause: join(["status ", to_string(status as Int), " undecodable: ", cause as String], "") }
+    RestResponseDecodeRefused { status, field_path, coproduct, vocabulary, received_bytes, parse_line, parse_column } =>
+      SubjectCreateRefused {
+        cause: join(["status ", to_string(status as Int), " ",
+                     rest_decode_refusal_cause(status: status, field_path: field_path, coproduct: coproduct, vocabulary: vocabulary, received_bytes: received_bytes, parse_line: parse_line, parse_column: parse_column) as String], "")
+      }
   }
 }
 
@@ -295,6 +302,8 @@ fn outcome_is_not_found(o: RestRefusal) -> Bool {
     RestTransportRefused { cause: _ } => false
     RestCredentialRefused { refusal: _ } => false
     RestBodyUndecodable { status: _, cause: _ } => false
+    RestResponseDecodeRefused { status: _, field_path: _, coproduct: _, vocabulary: _, received_bytes: _, parse_line: _, parse_column: _ } => false
+    RestResponseDecodeRefused { status: _, field_path: _, coproduct: _, vocabulary: _, received_bytes: _, parse_line: _, parse_column: _ } => false
   }
 }
 
@@ -304,6 +313,8 @@ fn outcome_is_forbidden(o: RestRefusal) -> Bool {
     RestTransportRefused { cause: _ } => false
     RestCredentialRefused { refusal: _ } => false
     RestBodyUndecodable { status: _, cause: _ } => false
+    RestResponseDecodeRefused { status: _, field_path: _, coproduct: _, vocabulary: _, received_bytes: _, parse_line: _, parse_column: _ } => false
+    RestResponseDecodeRefused { status: _, field_path: _, coproduct: _, vocabulary: _, received_bytes: _, parse_line: _, parse_column: _ } => false
   }
 }
 

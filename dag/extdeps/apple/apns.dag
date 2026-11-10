@@ -9,7 +9,7 @@ import std.measure { Second, second, ByteSize, byte_size, byte_size_count }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.algebra { length }
 import extdeps.crypto.signature { SignatureSuite, EcdsaP256Sha256 }
-import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestCredentialRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestCredentialRefused, RestBodyUndecodable, RestResponseDecodeRefused, rest_decode_refusal_cause }
 import extdeps.auth.jwt { JwtCompactSerialization }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, serialize_json, json_object, json_kv, json_string, json_int }
 
@@ -279,6 +279,8 @@ fn apns_send_outcome_of(rest: RestResult<String>) -> ApnsSendOutcome {
       RestTransportRefused { cause } => ApnsUnreached { cause: cause as String }
       RestCredentialRefused { refusal: r } => ApnsNotSent { refusal: r }
       RestBodyUndecodable { status, cause } => ApnsUndecodable { status: status, cause: cause as String }
+      RestResponseDecodeRefused { status, field_path, coproduct, vocabulary, received_bytes, parse_line, parse_column } =>
+        ApnsUndecodable { status: status, cause: rest_decode_refusal_cause(status: status, field_path: field_path, coproduct: coproduct, vocabulary: vocabulary, received_bytes: received_bytes, parse_line: parse_line, parse_column: parse_column) as String }
     }
   }
 }

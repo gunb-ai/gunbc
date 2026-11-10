@@ -20875,15 +20875,115 @@ fn rest_transport_refused_value(ctx: &InterpContext, cause: String) -> Value {
     )
 }
 
-fn rest_body_undecodable_value(ctx: &InterpContext, status: u16, cause: String) -> Value {
+/// How the realization spells a decode refusal on its way up: the model's own field path and
+/// coproduct name, plus one tag from the closed vocabulary of reasons. Deliberately NOT the offending
+/// text -- a response body can be anything, and a refusal must not carry a witness to it.
+fn rest_response_decode_refused_value(
+    ctx: &InterpContext,
+    status: u16,
+    refusal: &RestResponseDecodeRefusal,
+    received_bytes: Option<usize>,
+) -> Value {
+    rest_decode_refused_value(
+        ctx,
+        status,
+        rest_decode_vocabulary_tag(&refusal.cause),
+        Some(refusal.field_path.clone()),
+        Some(refusal.coproduct.clone()),
+        received_bytes,
+        None,
+    )
+}
+
+/// THE ONE PLACE a refused 200 body is spelled as a value, for all four ways it can fail: the read
+/// (BodyNotUtf8), the JSON parser (BodyNotJson -- where a truncated response lands, and the byte count
+/// is what separates that from a complete body that merely does not fit), a null standing where the
+/// declared output has a field (FieldWasNull), and the type-directed decoder (every other tag, which
+/// brings its own field path and coproduct name). No arm carries a byte of the body: a size and the
+/// position the parser stopped at are the most a refusal may say about content, which is what lets a
+/// caller on a credential path print it.
+fn rest_decode_refused_value(
+    ctx: &InterpContext,
+    status: u16,
+    tag: &'static str,
+    field_path: Option<String>,
+    coproduct: Option<String>,
+    received_bytes: Option<usize>,
+    parse: Option<(usize, usize)>,
+) -> Value {
     rest_refusal_variant(
         ctx,
-        "RestBodyUndecodable",
+        "RestResponseDecodeRefused",
         vec![
             (ctx.sym("status"), Value::Int(status as i64)),
-            (ctx.sym("cause"), str_value(cause)),
+            (
+                ctx.sym("field_path"),
+                decode_name_or_absent(&field_path.unwrap_or_default(), ctx),
+            ),
+            (
+                ctx.sym("coproduct"),
+                decode_name_or_absent(&coproduct.unwrap_or_default(), ctx),
+            ),
+            (
+                ctx.sym("vocabulary"),
+                variant_value(ctx, "RestDecodeVocabulary", tag, Vec::new()),
+            ),
+            (
+                ctx.sym("received_bytes"),
+                optional_int_or_absent(received_bytes, ctx),
+            ),
+            (
+                ctx.sym("parse_line"),
+                optional_int_or_absent(parse.map(|(line, _)| line), ctx),
+            ),
+            (
+                ctx.sym("parse_column"),
+                optional_int_or_absent(parse.map(|(_, column)| column), ctx),
+            ),
         ],
     )
+}
+
+/// A count the realization actually established, or `Absent`. A zero would be a plausible-looking count
+/// where none was established -- the same rule `decode_name_or_absent` applies to names.
+fn optional_int_or_absent(count: Option<usize>, ctx: &InterpContext) -> Value {
+    match count {
+        Some(value) => optional_present(Value::Int(value as i64), ctx),
+        None => optional_absent(ctx),
+    }
+}
+
+/// A name the decode actually established, or `Absent`. An empty string would be a plausible-looking
+/// name where no name was established.
+fn decode_name_or_absent(name: &str, ctx: &InterpContext) -> Value {
+    if name.is_empty() {
+        optional_absent(ctx)
+    } else {
+        optional_present(str_value(name), ctx)
+    }
+}
+
+/// The closed set of reasons a body can refuse to inhabit its declared output, as the tag the model
+/// declares on `extdeps.transports.rest` `RestDecodeVocabulary`. The tag, not its rendering: the model
+/// owns how a tag is worded (`rest_decode_vocabulary_text`), the realization only names it.
+fn rest_decode_vocabulary_tag(cause: &RestResponseDecodeCause) -> &'static str {
+    match cause {
+        RestResponseDecodeCause::DeclarationUnresolved => "DeclarationUnresolved",
+        RestResponseDecodeCause::NoWireContract => "NoWireContract",
+        RestResponseDecodeCause::ModuleWireContractUnresolved { .. } => {
+            "ModuleWireContractUnresolved"
+        }
+        RestResponseDecodeCause::AmbiguousWireContract { .. } => "AmbiguousWireContract",
+        RestResponseDecodeCause::UnsupportedEncoding { .. } => "UnsupportedEncoding",
+        RestResponseDecodeCause::UnsupportedNaming { .. } => "UnsupportedNaming",
+        RestResponseDecodeCause::NotAString { .. } => "NotAString",
+        RestResponseDecodeCause::UnknownSpelling { .. } => "UnknownSpelling",
+        RestResponseDecodeCause::AuthoredNameIsNotTheWireKey { .. } => {
+            "AuthoredNameIsNotTheWireKey"
+        }
+        RestResponseDecodeCause::AmbiguousWireSpelling { .. } => "AmbiguousWireSpelling",
+        RestResponseDecodeCause::NotAnExactDecimal { .. } => "NotAnExactDecimal",
+    }
 }
 
 #[derive(Clone)]
@@ -21271,9 +21371,20 @@ fn decide_rest_exchange(
         }
         RestExchangeObservationHost::Response {
             status,
-            body: RestBodyObservationHost::ReadRefused(cause),
+            body: RestBodyObservationHost::ReadRefused(_cause),
         } => {
-            return refused(rest_body_undecodable_value(ctx, status, cause));
+            // The read itself failed, which for this transport means the body is not UTF-8 text. The
+            // library's read message is not carried: it is third-party text about a response body, and
+            // the vocabulary tag says everything a caller may act on.
+            return refused(rest_decode_refused_value(
+                ctx,
+                status,
+                "BodyNotUtf8",
+                None,
+                None,
+                None,
+                None,
+            ));
         }
         RestExchangeObservationHost::Response {
             status,
@@ -21289,27 +21400,44 @@ fn decide_rest_exchange(
         let json = match serde_json::from_str::<serde_json::Value>(&body) {
             Ok(json) => json,
             Err(error) => {
-                let cause = format!("JSON body did not decode: {}", error);
-                return refused(rest_body_undecodable_value(ctx, status, cause));
+                // A truncated or partial 200 lands here, and it is the case a replay of the same bytes
+                // cannot reproduce -- which is exactly why the byte count and the position the parser
+                // stopped at are carried and the parser's message (which quotes the body) is not.
+                return refused(rest_decode_refused_value(
+                    ctx,
+                    status,
+                    "BodyNotJson",
+                    None,
+                    None,
+                    Some(body.as_bytes().len()),
+                    Some((error.line(), error.column())),
+                ));
             }
         };
         match map_response_to_value_json(&json, op_node, ctx) {
             Ok(mapped) => mapped,
             Err(refusal) => {
-                return refused(rest_body_undecodable_value(
+                return refused(rest_response_decode_refused_value(
                     ctx,
                     status,
-                    format!("body did not inhabit the declared output: {}", refusal),
+                    &refusal,
+                    Some(body.as_bytes().len()),
                 ));
             }
         }
     };
     if let Some(missing) = rest_payload_null_fields(&mapped, op_node, ctx) {
-        let cause = format!(
-            "HTTP {} body did not inhabit the declared output (null at {})",
-            status, missing
-        );
-        return refused(rest_body_undecodable_value(ctx, status, cause));
+        // The declared field a null stood at, which is what this arm always knew and never said in a
+        // form a consumer could act on.
+        return refused(rest_decode_refused_value(
+            ctx,
+            status,
+            "FieldWasNull",
+            Some(missing),
+            None,
+            Some(body.as_bytes().len()),
+            None,
+        ));
     }
     rest_answered_value(ctx, mapped)
 }

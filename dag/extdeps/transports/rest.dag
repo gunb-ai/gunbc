@@ -95,10 +95,83 @@ type RestTransportConfig {
 // rendered into a transport string. It is deliberately not RestTransportRefused: that arm means the
 // client tried and nothing answered, which for a mutation leaves the write uncertain, whereas a
 // credential refused before the send establishes that nothing was written.
+// A FIFTH, AND IT IS NOT A KIND OF RestBodyUndecodable. RestBodyUndecodable says the bytes never
+// became a value at all: they could not be read, or they were not JSON. Its `cause` is a string from
+// the HTTP and JSON libraries, which can name response bytes, so a caller on a credential path is
+// right to withhold it. A DECODE REFUSAL IS A DIFFERENT EVENT: the body was read, parsed, and then
+// found not to inhabit the type the operation's response block declares. What failed is named by the
+// MODEL -- the dotted field path, the coproduct declaration, and one reason out of a closed set. None
+// of it is response content. The two realization causes that could carry a response string (the
+// spelling that named no arm, the text that was not a finite decimal) contribute their vocabulary tag
+// here and NOT the string itself, which is why this refusal may be printed where the other may not.
+// Before it existed, the realization flattened it into RestBodyUndecodable's free text and every
+// consumer that withheld that text withheld the diagnosis with it: a heal-publish refusal of a
+// public pull-request read reached an operator as "status 200 undecodable" and nothing else.
+// The two names are Optional because the realization refuses on some causes BEFORE it can locate a
+// field or resolve a coproduct's declaration; an empty string would be a plausible-looking value
+// standing where the honest answer is that the name was not established (the same rule that leaves
+// RestTransportRefused without a status).
+type RestDecodeVocabulary
+  = DeclarationUnresolved
+  | NoWireContract
+  | ModuleWireContractUnresolved
+  | AmbiguousWireContract
+  | UnsupportedEncoding
+  | UnsupportedNaming
+  | NotAString
+  | UnknownSpelling
+  | AuthoredNameIsNotTheWireKey
+  | AmbiguousWireSpelling
+  | NotAnExactDecimal
+  // The three arms below are named by the REALIZATION rather than by the type-directed decoder: the
+  // body got no further than the transport's read, the JSON parser, or a null standing where the
+  // declared output has a field. They belong in this same closed set because a caller must be able to
+  // ask "which of the four ways can a 200 body fail?" and get one vocabulary, not one per layer: the
+  // arms that used to be RestBodyUndecodable's free text were exactly the ones no consumer could name.
+  | BodyNotUtf8
+  | BodyNotJson
+  | FieldWasNull
+
+fn rest_decode_vocabulary_text(v: RestDecodeVocabulary) -> NonEmptyStr {
+  match v {
+    DeclarationUnresolved => "declaration-unresolved"
+    NoWireContract => "no-wire-contract"
+    ModuleWireContractUnresolved => "module-wire-contract-unresolved"
+    AmbiguousWireContract => "ambiguous-wire-contract"
+    UnsupportedEncoding => "unsupported-encoding"
+    UnsupportedNaming => "unsupported-naming"
+    NotAString => "not-a-string"
+    UnknownSpelling => "unknown-spelling"
+    AuthoredNameIsNotTheWireKey => "authored-name-is-not-the-wire-key"
+    AmbiguousWireSpelling => "ambiguous-wire-spelling"
+    NotAnExactDecimal => "not-an-exact-decimal"
+    BodyNotUtf8 => "body-not-utf8"
+    BodyNotJson => "body-not-json"
+    FieldWasNull => "field-was-null"
+  }
+}
+
 type RestRefusal
   = RestStatusRefused { status: HttpStatus, body: String }
   | RestTransportRefused { cause: NonEmptyStr }
   | RestBodyUndecodable { status: HttpStatus, cause: NonEmptyStr }
+  | RestResponseDecodeRefused {
+      status: HttpStatus
+      field_path: NonEmptyStr?
+      coproduct: NonEmptyStr?
+      vocabulary: RestDecodeVocabulary
+      // HOW MANY BYTES ARRIVED, from the transport's own buffer -- a size, not a byte of the body. It
+      // separates a truncated or empty 200 (the likeliest transient failure, and the one a replay of
+      // the same bytes cannot reproduce) from a complete body that simply does not fit the declaration.
+      // Absent when the refusal happened before any bytes were established: the read itself failing.
+      received_bytes: Int?
+      // WHERE THE JSON PARSER STOPPED, as the parser reports it: a line and a column. Not a byte
+      // offset, because that is not what this parser establishes, and inventing one from a line and a
+      // column would assert a precision the realization does not have. Absent for every vocabulary
+      // except BodyNotJson.
+      parse_line: Int?
+      parse_column: Int?
+    }
   | RestCredentialRefused { refusal: AccessRefusal }
 
 // THE RESULT OF EVERY REST OPERATION IS THIS COPRODUCT, AND NO OPERATION DECLARES IT. An
@@ -165,6 +238,44 @@ fn rest_credential_refusal_cause(refusal: AccessRefusal) -> NonEmptyStr {
   concat("not sent, the credential was refused before dispatch: ", access_refusal_reason(refusal: refusal)) as NonEmptyStr
 }
 
+// HOW A DECODE REFUSAL IS NAMED WHEREVER A MODULE CARRIES ONE: the model's own account -- which
+// declared field, which coproduct, which reason out of the closed RestDecodeVocabulary -- and nothing
+// the remote sent. Every consumer that turns a refusal into text goes through this, so the diagnosis is
+// worded once rather than re-derived, or dropped, at each site.
+fn rest_decode_refusal_cause(
+  status: HttpStatus,
+  field_path: NonEmptyStr?,
+  coproduct: NonEmptyStr?,
+  vocabulary: RestDecodeVocabulary,
+  received_bytes: Int?,
+  parse_line: Int?,
+  parse_column: Int?
+) -> NonEmptyStr {
+  let named = match coproduct {
+    Present { value: c } => c as String
+    Absent => "an unnamed coproduct"
+  }
+  let located = match field_path {
+    Present { value: f } => concat(" at ", f as String)
+    Absent => ""
+  }
+  let after_bytes = match received_bytes {
+    Present { value: n } => join([" after ", to_string(n), " bytes"], "")
+    Absent => ""
+  }
+  // Named together or not at all: a line without the column it is the column of would read as a
+  // location the realization never established.
+  let where_parsing_stopped = match parse_line {
+    Present { value: line } => match parse_column {
+      Present { value: column } => join([", parsing stopped at line ", to_string(line), " column ", to_string(column)], "")
+      Absent => ""
+    }
+    Absent => ""
+  }
+  join(["status ", to_string(status as Int), " did not inhabit ", named, located, " (",
+        rest_decode_vocabulary_text(v: vocabulary), after_bytes, where_parsing_stopped, ")"], "") as NonEmptyStr
+}
+
 fn classify_rest_refusal(standing: RestExchangeStanding) -> RestExchangeRefusal {
   match standing {
     RestReadExchange { refusal } =>
@@ -172,6 +283,8 @@ fn classify_rest_refusal(standing: RestExchangeStanding) -> RestExchangeRefusal 
         RestStatusRefused { status, body } => RestExchangeStatusRefused { status: status, body: body }
         RestTransportRefused { cause } => RestExchangeUnreached { cause: cause }
         RestBodyUndecodable { status, cause } => RestExchangeUndecodable { status: status, cause: cause }
+        RestResponseDecodeRefused { status, field_path, coproduct, vocabulary, received_bytes, parse_line, parse_column } =>
+          RestExchangeUndecodable { status: status, cause: rest_decode_refusal_cause(status: status, field_path: field_path, coproduct: coproduct, vocabulary: vocabulary, received_bytes: received_bytes, parse_line: parse_line, parse_column: parse_column) }
         RestCredentialRefused { refusal: r } => RestExchangeUnreached { cause: rest_credential_refusal_cause(refusal: r) }
       }
     RestMutationExchange { refusal } =>
@@ -191,6 +304,10 @@ fn classify_rest_refusal(standing: RestExchangeStanding) -> RestExchangeRefusal 
         RestBodyUndecodable { status, cause } =>
           RestExchangeCommitAmbiguous {
             detail: rest_exchange_ambiguous_detail(prefix: "mutation answered with a body this client could not decode, so the outcome is unread rather than known: ", rest: cause as String)
+          }
+        RestResponseDecodeRefused { status, field_path, coproduct, vocabulary, received_bytes, parse_line, parse_column } =>
+          RestExchangeCommitAmbiguous {
+            detail: rest_exchange_ambiguous_detail(prefix: "mutation answered with a body that did not inhabit its declared output, so the outcome is unread rather than known: ", rest: rest_decode_refusal_cause(status: status, field_path: field_path, coproduct: coproduct, vocabulary: vocabulary, received_bytes: received_bytes, parse_line: parse_line, parse_column: parse_column) as String)
           }
         // NOT commit-ambiguous, unlike RestTransportRefused just above: the request never left this
         // process, so the mutation is established as not written and Unreached is its true reading.

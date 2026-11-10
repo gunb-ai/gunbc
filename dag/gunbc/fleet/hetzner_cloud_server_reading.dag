@@ -2,7 +2,7 @@ module gunbc.fleet.hetzner_cloud_server_reading
 
 import std.types { Bool, Int, String }
 import std.optional { Present, Absent }
-import extdeps.transports.rest { RestRefusal, RestStatusRefused, RestTransportRefused, RestCredentialRefused, rest_credential_refusal_cause, RestBodyUndecodable }
+import extdeps.transports.rest { RestRefusal, RestStatusRefused, RestTransportRefused, RestCredentialRefused, rest_credential_refusal_cause, RestBodyUndecodable, RestResponseDecodeRefused, rest_decode_refusal_cause }
 import extdeps.cloud.hetzner_cloud_api { HetznerServerResponse, HetznerServerRead, HetznerServerObserved, HetznerServerReadRefused }
 import gunbc.fleet.provider_acquisition { ProviderResourceAcquisition }
 
@@ -41,6 +41,8 @@ fn rest_refusal_line(r: RestRefusal) -> String {
       cause as String
     }
     RestBodyUndecodable { status, cause } => join(["status ", to_string(status as Int), " undecodable: ", cause as String], "")
+    RestResponseDecodeRefused { status, field_path, coproduct, vocabulary, received_bytes, parse_line, parse_column } =>
+      rest_decode_refusal_cause(status: status, field_path: field_path, coproduct: coproduct, vocabulary: vocabulary, received_bytes: received_bytes, parse_line: parse_line, parse_column: parse_column) as String
   }
 }
 

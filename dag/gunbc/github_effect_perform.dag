@@ -50,7 +50,7 @@ import extdeps.filesystem.filesystem_io { Filesystem, FilesystemDelete, Filesyst
 import extdeps.cloud.gcp.secret_manager
 import extdeps.cloud.gcp.secret_manager { decode_sm_access_version_secret_wire, SmAccessVersionSecretDecoded, SmAccessVersionSecretDecodeRefused }
 import extdeps.cloud.gcp.error_info { gcp_safe_error_codes }
-import extdeps.transports.rest { RestRefusal, RestStatusRefused, RestTransportRefused, RestCredentialRefused, rest_credential_refusal_cause, RestBodyUndecodable }
+import extdeps.transports.rest { RestRefusal, RestStatusRefused, RestTransportRefused, RestCredentialRefused, rest_credential_refusal_cause, RestBodyUndecodable, RestResponseDecodeRefused, rest_decode_refusal_cause }
 import extdeps.github.app { GitHubInstallationTokenPermissions, github_installation_token_permissions }
 import extdeps.github.effect { contents_write, pull_requests_write }
 import gunbc.auth.github_apps { gunbai_bot_declared, gunbai_bot_app_pem_secret, gunbai_bot_declared_installation_id, gunbai_bot_host_signing_key }
@@ -618,6 +618,8 @@ fn publisher_refusal_text(refusal: RestRefusal) -> String {
       cause as String
     }
     RestBodyUndecodable { status, cause: _ } => join(["HTTP ", to_string(status as Int), " undecodable (cause withheld on a credential path)"], "")
+    RestResponseDecodeRefused { status, field_path, coproduct, vocabulary, received_bytes, parse_line, parse_column } =>
+      join(["HTTP ", to_string(status as Int), " ", rest_decode_refusal_cause(status: status, field_path: field_path, coproduct: coproduct, vocabulary: vocabulary, received_bytes: received_bytes, parse_line: parse_line, parse_column: parse_column) as String], "")
   }
 }
 

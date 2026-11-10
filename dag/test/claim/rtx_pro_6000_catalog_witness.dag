@@ -50,7 +50,7 @@ import std.effect_grant { Read, ServiceOpTree, NamespacePosition, Replay, Lifecy
 import extdeps.uri { Uri, Https }
 import extdeps.ietf.http_semantics { GET }
 import extdeps.transports.rest {
-  RestAnswered, RestRefused, RestBodyUndecodable, RestUnauthenticated, RestBodyRead, RestResponseObserved,
+  RestAnswered, RestRefused, RestResponseDecodeRefused, RestUnauthenticated, RestBodyRead, RestResponseObserved,
   RestBoundOperationInvocation, RestExchangeFixture,
 }
 import std.operation_argv { OperationRef }
@@ -597,8 +597,13 @@ fn replayed_tier_isolation_dedicated(body: String) -> Bool {
 fn replay_refuses_at_allocation(body: String) -> Bool {
   match evaluate_in_witness_frame(frame: storefront_frame(body: body), subject: fn(_scope) {
     match test.RestReplay.StorefrontProductsPage() {
-      RestRefused { refusal: RestBodyUndecodable { status, cause } } =>
-        status == 200 && string_contains(s: cause, pattern: "allocation")
+      RestRefused { refusal: RestResponseDecodeRefused { status, field_path, coproduct, vocabulary, received_bytes, parse_line, parse_column } } => {
+        let located = match field_path {
+          Present { value: f } => f as String
+          Absent => ""
+        }
+        status == 200 && string_contains(s: located, pattern: "allocation")
+      }
       _ => false
     }
   }) {

@@ -3,6 +3,7 @@ module test.fixture.rest_exchange_replay_probe
 import std.types { Bool, Int, List, String }
 import std.serialization { Text }
 import extdeps.github.workflow_runs { WorkflowRunList }
+import extdeps.github.pulls { PullRequest }
 import extdeps.cloud.gcp.gcp { WifProviderWire, WifProviderListWire, WifPoolWire }
 import extdeps.transports.rest { RestResult }
 import extdeps.cloud.packet_ai { PacketAiStorefrontProduct, PacketAiStorefrontProducts }
@@ -106,6 +107,18 @@ service test.RestReplay {
     readonly
     transport rest { method: GET, path: "/answer" }
     response { 200 => WorkflowRunList }
+  }
+
+  // PullGetPage carries the OUTPUT SHAPE and response type of extdeps.github.pulls `Get` verbatim,
+  // so a recorded GET /repos/{owner}/{repo}/pulls/{number} body reaches the same type-directed decode
+  // gunbc.heal_publication's open-PR check reads through before it publishes anything.
+  operation PullGetPage {
+    output {
+      pr: PullRequest
+    }
+    readonly
+    transport rest { method: GET, path: "/answer" }
+    response { 200 => PullRequest }
   }
 
   operation StorefrontProductsPage {

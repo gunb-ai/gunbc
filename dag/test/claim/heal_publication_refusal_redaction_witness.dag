@@ -7,7 +7,8 @@ module test.claim.heal_publication_refusal_redaction_witness
 // FAKE-SECRET-MARKER is planted where a credential or echoed request could sit.
 import std.types { Bool, String }
 import std.algebra { string_contains }
-import extdeps.transports.rest { RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestStatusRefused, RestTransportRefused, RestBodyUndecodable, RestResponseDecodeRefused, UnknownSpelling, DeclarationUnresolved }
+import std.optional { Present, Absent }
 import gunbc.heal_publication { rest_refusal_text }
 
 fn marker() -> String { "FAKE-SECRET-MARKER" }
@@ -27,4 +28,49 @@ test fn witness_a_transport_refusal_withholds_its_cause() -> Bool {
 test fn witness_an_undecodable_answer_withholds_its_cause() -> Bool {
   let t = rest_refusal_text(o: RestBodyUndecodable { status: 201, cause: "expected sha near FAKE-SECRET-MARKER" })
   t == "status 201 undecodable (cause withheld on a credential path)" && carries_no_marker(text: t)
+}
+
+// THE ARM THE RULE ABOVE WAS BLIND TO, AND THE RULE STILL HOLDS ON IT. A decode refusal is not a
+// response body and not a transport cause: the bytes were read and parsed, and then failed the type
+// the operation declares. What extdeps.transports.rest RestResponseDecodeRefused carries is the
+// model's own account of that -- a field path, a coproduct name, a tag from the closed
+// RestDecodeVocabulary -- and the two realization causes that could hold a response string
+// (the spelling that named no arm, the text that was not a finite decimal) contribute only their tag.
+// So the line names which declared field refused, which is what a refused publish was missing when it
+// reached an operator as "status 200 undecodable" with the field unrecoverable from the run. It stays
+// marker-free because it never holds response or request text in the first place.
+test fn witness_a_decode_refusal_names_the_field_and_carries_no_content() -> Bool {
+  let t = rest_refusal_text(o: RestResponseDecodeRefused {
+    status: 200,
+    field_path: Present { value: "pr.user.type" },
+    coproduct: Present { value: "UserType" },
+    vocabulary: UnknownSpelling
+    received_bytes: Present { value: 4096 }
+    parse_line: Absent
+    parse_column: Absent
+  })
+  string_contains(s: t, pattern: "pr.user.type")
+    && string_contains(s: t, pattern: "UserType")
+    && string_contains(s: t, pattern: "unknown-spelling")
+    // The size that arrived is part of the account: it is what tells a truncated response from a
+    // complete one that does not fit, and a byte count leaks nothing.
+    && string_contains(s: t, pattern: "after 4096 bytes")
+    && carries_no_marker(text: t)
+}
+
+// NO NAME IS INVENTED WHERE THE REALIZATION COULD NOT ESTABLISH ONE. The refusal that fires before a
+// field is located, or before a coproduct's declaration resolves, says so; an empty string standing in
+// for "no name" would read as a field called nothing.
+test fn witness_an_unlocated_decode_refusal_invents_no_name() -> Bool {
+  let t = rest_refusal_text(o: RestResponseDecodeRefused {
+    status: 500, field_path: Absent, coproduct: Absent, vocabulary: DeclarationUnresolved
+    received_bytes: Absent, parse_line: Absent, parse_column: Absent
+  })
+  string_contains(s: t, pattern: "an unnamed coproduct")
+    && string_contains(s: t, pattern: "declaration-unresolved")
+    && !string_contains(s: t, pattern: "null")
+    // Nothing was established, so nothing is dressed up as established: no size, no parser position.
+    && !string_contains(s: t, pattern: "bytes")
+    && !string_contains(s: t, pattern: "parsing stopped")
+    && carries_no_marker(text: t)
 }

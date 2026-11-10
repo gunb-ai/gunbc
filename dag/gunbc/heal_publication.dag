@@ -30,7 +30,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
 import extdeps.git
 import extdeps.git.plumbing { GitWorktreeAt, GitDirectoryAt }
-import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestCredentialRefused, rest_credential_refusal_cause, RestBodyUndecodable }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestCredentialRefused, rest_credential_refusal_cause, RestBodyUndecodable, RestResponseDecodeRefused, rest_decode_refusal_cause }
 import extdeps.github.pulls { Open, Closed }
 import extdeps.github.commits { comparison_files_listing_cap }
 import extdeps.github.git_database { GitTreeItemWire, GitTreeEntryInput, git_blob_encoding_utf8 }
@@ -240,6 +240,17 @@ fn observe_and_admit_wet(subject: HealPublicationSubject) -> PublisherRun
 // publisher_refusal_text, which keeps Google's). A credential refused before dispatch sent no request
 // and holds no body, so it keeps its access-refusal reason (extdeps.transports.rest
 // rest_credential_refusal_cause).
+// THE DECODE REFUSAL IS THE ONE ARM THAT KEEPS ITS DIAGNOSIS, AND IT IS NOT AN EXCEPTION TO THE RULE
+// ABOVE -- IT IS THE CASE THE RULE WAS BLIND TO. extdeps.transports.rest RestResponseDecodeRefused
+// carries no body and no free text: a field path, a coproduct declaration name, and a tag from the
+// closed RestDecodeVocabulary. It is the model's own account of which declared field the response did
+// not inhabit, produced after the bytes were read and parsed, and it cannot name request material --
+// the two realization causes that could carry a response string contribute only their tag. The comment
+// above names a closed-vocabulary code as the thing worth keeping, and says a GitHub error body has
+// none: on this arm there is one, because the account is the model's and not the response's. Before it,
+// a run that could not read its own pull request reported only "status 200 undecodable
+// (cause withheld on a credential path)", and the field that refused could not be recovered from any
+// artifact of the run.
 fn rest_refusal_text(o: RestRefusal) -> String {
   match o {
     RestStatusRefused { status, body: _ } => concat("status ", to_string(status as Int))
@@ -249,6 +260,8 @@ fn rest_refusal_text(o: RestRefusal) -> String {
       cause as String
     }
     RestBodyUndecodable { status, cause: _ } => join(["status ", to_string(status as Int), " undecodable (cause withheld on a credential path)"], "")
+    RestResponseDecodeRefused { status, field_path, coproduct, vocabulary, received_bytes, parse_line, parse_column } =>
+      rest_decode_refusal_cause(status: status, field_path: field_path, coproduct: coproduct, vocabulary: vocabulary, received_bytes: received_bytes, parse_line: parse_line, parse_column: parse_column) as String
   }
 }
 
@@ -511,6 +524,9 @@ fn publish_admitted_wet(subject: HealPublicationSubject, publisher_token: Secret
                     RestTransportRefused { cause: _ } => readback_wet(subject: subject, publisher_token: publisher_token, pull_number: pull_number, admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
                     RestCredentialRefused { refusal: _ } => refused_exit(refusal: ReferenceWriteRefused { detail: rest_refusal_text(o: refusal) })
                     RestBodyUndecodable { status: _, cause: _ } => readback_wet(subject: subject, publisher_token: publisher_token, pull_number: pull_number, admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
+                    // A refusal to inhabit the write's declared output says nothing about whether the
+                    // ref moved, so the readback is still owed -- same as the undecodable arm above.
+                    RestResponseDecodeRefused { status: _, field_path: _, coproduct: _, vocabulary: _, received_bytes: _, parse_line: _, parse_column: _ } => readback_wet(subject: subject, publisher_token: publisher_token, pull_number: pull_number, admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
                   }
                 }
               }
