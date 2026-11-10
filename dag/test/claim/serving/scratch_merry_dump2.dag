@@ -1,0 +1,49 @@
+module test.claim.serving.scratch_merry_dump2
+
+// SCRATCH, NOT FOR MERGE. Three probes in one run:
+//   1. the launcher render, between sentinels, for a byte diff against the installed file;
+//   2. the two red bash_command_fold controls' actual Outcomes, with the refusal reasons.
+// Run: gunbc run --source-root dag --source-root src/v2 --entry <this file> --function main
+
+import std.types { String }
+import std.process { ExitSuccess }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import v2.std.diagnostic { diagnostics_reason_lexemes, Outcome }
+import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_node }
+import gunbc.extdeps.languages.bash_build {
+  bash_build_command_from_word_nodes, bash_build_word_var, bash_build_command_from_lits,
+  bash_build_with_redir_from_file, bash_build_word_positional, bash_build_word_double_quoted,
+  bash_build_word_kinded,
+}
+import gunbc.serving.srv1_serving_replica_layout { srv1_render_replica_launcher }
+
+fn probe(label: String, outcome: Outcome<String>) -> String {
+  match outcome {
+    Accepted { value: v } => concat(label, concat(" ACCEPTED[", concat(v, "]\n")))
+    Rejected { diagnostics: d } =>
+      concat(label, concat(" REJECTED[", concat(diagnostics_reason_lexemes(diagnostics: d), "]\n")))
+  }
+}
+
+fn main() -> CliWireResponse {
+  let bad_var = bash_build_command_from_word_nodes(words: [bash_build_word_var(name: "1x")])
+  let redir_inner = bash_build_command_from_lits(lits: ["exec"])
+  let zero_word = match bash_build_word_positional(index: "0") {
+    Present { value: p } => match bash_build_word_double_quoted(parts: [p]) {
+      Present { value: n } => n
+      Absent => bash_build_word_kinded(kind: ^scratch_refused_double_quoted, value: "0")
+    }
+    Absent => bash_build_word_kinded(kind: ^scratch_refused_positional, value: "0")
+  }
+  let redir = bash_build_with_redir_from_file(inner: redir_inner, path: zero_word)
+  CliWirePrintable {
+    bytes: concat(
+      concat("<<<LAUNCHER>>>\n", concat(srv1_render_replica_launcher(), "<<<END_LAUNCHER>>>\n")),
+      concat(
+        probe(label: "BADVAR", outcome: bash_fold_serialize_node(stmt: bad_var)),
+        probe(label: "REDIR0", outcome: bash_fold_serialize_node(stmt: redir))
+      )
+    ),
+    exit: ExitSuccess,
+  }
+}
