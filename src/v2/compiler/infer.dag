@@ -2136,15 +2136,17 @@ fn refinement_declared_carrier(index: SymbolIndex, source_type: Node) -> Optiona
   }
 }
 
-// THE CARRIER IS RECORDED ONCE, HERE, BY THE ONLY LAYER THAT MAY READ THE INDEX. A node's declared
+// THE CARRIER IS DECIDED HERE, AND ONLY HERE -- BY THE ONLY LAYER THAT MAY READ THE INDEX. A node's declared
 // carrier is a fact about a DECLARATION, and declarations are reached through the symbol index, which
 // v2.compiler.eval's header puts outside the evaluator's reach. The evaluator nevertheless has to ask
 // the question -- its value-acceptance gate compares the node's declared type against the type the
 // interpretation stamped on the value, and a numeric refinement's values are stamped with the carrier
 // (v2.extdeps.runtimes.v2_evaluator v2_eval_int_runtime_value stamps v2.std.integer
-// integer_int_type_node) -- so the answer is written into v2.compiler.inferred_tree InferredFacts,
-// the table infer writes and v2.compiler.eval reads through its inferred_facts_* readers, and read back
-// there. This is the
+// integer_int_type_node) -- so the answer is written into v2.compiler.inferred_tree InferredFacts, the
+// table infer writes and v2.compiler.eval reads through its inferred_facts_* readers, and read back there.
+// The decision is in one place, not memoised: std.algebra PartialFunction carries only a lookup closure, so
+// this fill composes into that closure and reads the index once per lookup rather than up front -- one
+// place, not one read. This is the
 // v2 instance of gunbc.recurring_failure_mode::the_checker_admits_a_cast_the_evaluator_refuses.
 // IT IS A FILL, NOT A RE-JUDGMENT: for every node this re-wraps the facts the gather already produced
 // (grounding, descent, denotation, type_instances are carried through untouched) and adds only the
