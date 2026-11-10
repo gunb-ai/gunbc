@@ -137,6 +137,22 @@ test fn a_minted_partitioned_store_has_no_seal_violation() -> ProcessExit {
   census_exit(census_verdict(census: seal_violations(source: minted_partitioned_store_source, subject: "SpoolStore"), holds: fn(n) { n == 0 }))
 }
 
+// FRESHNESS PAIR for the compute exit spool realization: a reader that reaches the done directory THROUGH the
+// sealed derivation (spool_open_uid + spool_role_path, business key in, path derived inside) carries NO blocking
+// diagnostic; the reader that instead hand-joins the done path via the deleted compute_attempt_exit_spool_done_dir
+// is refused (review 92698: provisioning and the hook/door must build the path through ONE sealed function, never
+// by hand). present -> 0, hand-joined -> RED. This is the pairing that proves the reader claim is fresh, not vacuous.
+data partitioned_reader_twin_source: String = "module probe_partitioned_reader_twin\nimport std.types { String }\nimport std.optional { Present, Absent }\nimport gunbc.spool_queue { SpoolComputeExit, spool_open_uid, spool_role_path, RoleDone, SpoolOpenReady, SpoolOpenRefused }\nfn f() -> String {\n  match spool_open_uid(kind: SpoolComputeExit, instance_root: \"/tmp/compute/root\", uid: 1000) {\n    SpoolOpenReady { store } => match spool_role_path(store: store, role: RoleDone) {\n      Present { value: _ } => \"readable\"\n      Absent => \"refused\"\n    }\n    SpoolOpenRefused { cause: _ } => \"unready\"\n  }\n}\n"
+
+data partitioned_reader_handjoined_source: String = "module probe_partitioned_reader_handjoined\nimport std.types { String }\nimport std.optional { Present, Absent }\nimport gunbc.spool_queue { SpoolComputeExit, spool_open_uid, SpoolOpenReady, SpoolOpenRefused }\nimport gunbc.compute.host_capacity { compute_attempt_exit_spool_done_dir }\nfn f() -> String {\n  match spool_open_uid(kind: SpoolComputeExit, instance_root: \"/tmp/compute/root\", uid: 1000) {\n    SpoolOpenReady { store: _ } => compute_attempt_exit_spool_done_dir(\"/tmp/compute/root\", 1000)\n    SpoolOpenRefused { cause: c } => c\n  }\n}\n"
+
+test fn the_partitioned_reader_reaches_the_realization_and_the_handjoined_reader_is_refused() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: total_blocking_census(source: partitioned_reader_twin_source), holds: fn(n) { n == 0 }),
+    blocking_delta(hostile: partitioned_reader_handjoined_source, safe: partitioned_reader_twin_source, holds: fn(n) { n >= 1 }),
+  ])
+}
+
 test fn a_claim_over_a_pending_entry_is_eligible() -> ProcessExit {
   match spool_claim_assess(kind: SpoolAttemptUnit, observed: EntryStanding { role: RolePending }) {
     ClaimEligible { from: _, into: _ } => ExitSuccess
@@ -444,6 +460,27 @@ test fn the_typed_path_result_consumer_compiles_clean() -> ProcessExit {
 
 test fn the_host_spool_stage_enum_is_gone() -> ProcessExit {
   census_exit(census_verdict(census: blocking_subject_census(source: raw_host_spool_stage_source, wanted_class: "MissingExport", wanted_subject: "HostSpoolStage"), holds: fn(n) { n == 1 }))
+}
+
+// DELETE-FIRST (DESIGN.md §3): the compute exit spool's old path-taking functions and its declaration row are
+// deleted -- not kept beside the sealed mint. A module that imports each by name is refused with exactly one
+// MissingExport, mirroring the_host_spool_stage_enum_is_gone. Spelling the shared root by hand (the hand-joined
+// path review 92698 flagged) is likewise refused: the path exists only inside the sealed derivation.
+data deleted_spool_root_source: String = "module probe_deleted_spool_root\nimport std.types { String }\nimport gunbc.compute.host_capacity { compute_attempt_exit_spool_root }\nfn f() -> String { \"gone\" }\n"
+
+data deleted_spool_uid_dir_source: String = "module probe_deleted_spool_uid_dir\nimport std.types { String }\nimport gunbc.compute.host_capacity { compute_attempt_exit_spool_uid_dir }\nfn f() -> String { \"gone\" }\n"
+
+data deleted_spool_done_dir_source: String = "module probe_deleted_spool_done_dir\nimport std.types { String }\nimport gunbc.compute.host_capacity { compute_attempt_exit_spool_done_dir }\nfn f() -> String { \"gone\" }\n"
+
+data deleted_spool_declaration_source: String = "module probe_deleted_spool_declaration\nimport std.types { String }\nimport gunbc.compute.host_capacity { ComputeAttemptExitSpoolDeclaration }\nfn f() -> String { \"gone\" }\n"
+
+test fn the_compute_exit_spool_path_functions_are_gone() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: blocking_subject_census(source: deleted_spool_root_source, wanted_class: "MissingExport", wanted_subject: "compute_attempt_exit_spool_root"), holds: fn(n) { n == 1 }),
+    census_verdict(census: blocking_subject_census(source: deleted_spool_uid_dir_source, wanted_class: "MissingExport", wanted_subject: "compute_attempt_exit_spool_uid_dir"), holds: fn(n) { n == 1 }),
+    census_verdict(census: blocking_subject_census(source: deleted_spool_done_dir_source, wanted_class: "MissingExport", wanted_subject: "compute_attempt_exit_spool_done_dir"), holds: fn(n) { n == 1 }),
+    census_verdict(census: blocking_subject_census(source: deleted_spool_declaration_source, wanted_class: "MissingExport", wanted_subject: "ComputeAttemptExitSpoolDeclaration"), holds: fn(n) { n == 1 }),
+  ])
 }
 
 test fn every_declared_spool_has_a_wellformed_stage_graph() -> ProcessExit {
