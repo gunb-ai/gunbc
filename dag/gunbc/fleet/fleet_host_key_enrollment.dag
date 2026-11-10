@@ -197,7 +197,7 @@ data fleet_host_key_enrollments: List<KnownHostKeyRow> = [
     key_type: "ssh-ed25519",
     public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAICGsQWUBtO/2m0sIIe+nsQQHaeYwuAtW5P7qbY9dwvDT",
     sha256_fingerprint: "SHA256:HkgfTNVU7UyX2NJHYg4wziWO0F9rHTsE0muUjN9N5Uc",
-    provenance: ScannedFirstContact { scanned_from: "2026-11-10: `cat /etc/ssh/ssh_host_ed25519key.pub` on 192.168.1.205 over ssh with StrictHostKeyChecking=accept-new; the ssh session proved who WE are to the host (fleet-automation key), not WHICH machine we reached -- whatever answered at .205 was trusted on first contact, so reading its own file reports what that machine says about itself. DHCP lease, not reserved; no cited external key authority." as NonEmptyStr },
+    provenance: ScannedFirstContact { scanned_from: "2026-11-10: `cat /etc/ssh/ssh_host_ed25519_key.pub` and `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on 192.168.1.205 over ssh opened with StrictHostKeyChecking=accept-new (key material + fingerprint reproduced by that command). The ssh session proved who WE are to the host (fleet-automation key), not WHICH machine we reached -- whatever answered at .205 was trusted on first contact, so reading its own file reports what that machine says about itself. DHCP lease, not reserved; no cited external key authority." as NonEmptyStr },
   },
 ]
 
