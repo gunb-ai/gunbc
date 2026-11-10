@@ -4277,12 +4277,12 @@ fn build_equality_by_target(items: List<Node>, env: TypeEnv, module_name: String
   let declarations = items |> filter(item => equality_declaration_is_walked(item: item))
   let seed = fold(declarations, init: env.equality_by_target, f: (acc, d) =>
     map_insert(acc, node_declaration_identity(n: d, source_indices: source_indices), true))
-  let settled = equality_by_target_rounds(declarations: declarations, env: env, module_name: module_name, table: seed, fuel: (declarations |> count) + 1)
+  let settled = equality_by_target_rounds(declarations: declarations, env: env, module_name: module_name, table: seed, type_summaries: type_summaries, fuel: (declarations |> count) + 1)
   fold(items |> filter(item => equality_declaration_is_marker(item: item, source_indices: source_indices)), init: settled, f: (acc, d) =>
     map_insert(acc, node_declaration_identity(n: d, source_indices: source_indices), true))
 }
 
-fn equality_by_target_rounds(declarations: List<Node>, env: TypeEnv, module_name: String, table: Map<String, Bool>, fuel: Int) -> Map<String, Bool> {
+fn equality_by_target_rounds(declarations: List<Node>, env: TypeEnv, module_name: String, table: Map<String, Bool>, type_summaries: TypeSummaryIndex, fuel: Int) -> Map<String, Bool> {
   let scope = equality_synthesis_scope(env: type_env_with_equality_by_target(env: env, by_target: table), module_name: module_name, type_summaries: type_summaries)
   let next = fold(declarations, init: table, f: (acc, d) =>
     map_insert(acc, node_declaration_identity(n: d, source_indices: env.source_indices), equality_declaration_by_target(d: d, scope: scope)))
@@ -4293,7 +4293,7 @@ fn equality_by_target_rounds(declarations: List<Node>, env: TypeEnv, module_name
     // every local declaration (no derived equality, fail-closed): each holder then refuses at its authored comparison, located.
     fold(declarations, init: next, f: (acc, d) => map_insert(acc, node_declaration_identity(n: d, source_indices: env.source_indices), false))
   } else {
-    equality_by_target_rounds(declarations: declarations, env: env, module_name: module_name, table: next, fuel: fuel - 1)
+    equality_by_target_rounds(declarations: declarations, env: env, module_name: module_name, table: next, type_summaries: type_summaries, fuel: fuel - 1)
   }
 }
 
