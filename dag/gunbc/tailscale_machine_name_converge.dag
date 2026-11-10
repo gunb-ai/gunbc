@@ -91,7 +91,7 @@ import gunbc.fleet.fleet_ssh_locus {
   prepare_fleet_ssh_agent_context,
 }
 import gunbc.fleet.fleet_tailnet { fleet_tailnet_domain, tailnet_host_from }
-import gunbc.product.host_identity { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
 import gunbc.typed_argv_exec {
   TypedArgvExecConverged,
@@ -102,7 +102,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import std.algebra { string_contains }
 import std.optional { Optional, Present, Absent }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, Int, NonEmptyStr, String }
 
 // THE STAGE CLAIM, IN THE INVOCATION ENVIRONMENT. Two named claims, and the absence of a claim is its own
 // arm rather than a default: "which stage am I in" must never be answered by a value that happens to be
@@ -221,7 +221,7 @@ fn tailscale_machine_name_desired(host: HostIdentity) -> TailscaleMachineNameDes
       }
     Present { value: domain } =>
       match tailscale_machine_name_label(
-        fqdn: tailnet_host_from(host: host as NonEmptyStr, domain: Present { value: domain })
+        fqdn: tailnet_host_from(host: host as NonEmptyStr, domain: Present { value: domain }) as String
       ) {
         LabelRead { label: label } => DerivedName { name: label }
         LabelUnusable { cause: cause } =>
@@ -544,7 +544,7 @@ fn tailscale_machine_name_entry(mode: TailscaleMachineNameMode) -> ProcessExit {
   let window = tailscale_machine_name_window_read()
   match fleet_converge_split_read() {
     SplitRefused { reason: reason } => exit_failure(reason: fleet_converge_split_refusal_line(reason: reason))
-    SplitOk { subject_host: raw_host } =>
+    SplitOk { executor_runner_name: _, subject_host: raw_host } =>
       match administrator_ssh_target(host: raw_host as HostIdentity) {
         SshTargetRefused { endpoint: endpoint, refusal: refusal } =>
           exit_failure(reason: ssh_target_refusal_text(endpoint: endpoint, refusal: refusal))
@@ -552,7 +552,7 @@ fn tailscale_machine_name_entry(mode: TailscaleMachineNameMode) -> ProcessExit {
           match prepare_fleet_ssh_agent_context(attempt_raw: tailscale_machine_name_ci_attempt_raw) {
             FleetSshContextRefused { cause: cause } =>
               exit_failure(reason: join(["fleet ssh context refused: ", cause], ""))
-            FleetSshContextReady { context: context } =>
+            FleetSshContextReady { context: context, receipt: _ } =>
               tailscale_machine_name_report(
                 host: raw_host as HostIdentity,
                 window: window,
